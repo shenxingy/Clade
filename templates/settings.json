@@ -1,0 +1,148 @@
+{
+  "env": {
+    "TG_BOT_TOKEN": "",
+    "TG_CHAT_ID": ""
+  },
+  "permissions": {
+    "allow": [
+      "Bash(git:*)",
+      "Bash(python:*)",
+      "Bash(python3:*)",
+      "Bash(pip:*)",
+      "Bash(pip3:*)",
+      "Bash(conda:*)",
+      "Bash(node:*)",
+      "Bash(npm:*)",
+      "Bash(npx:*)",
+      "Bash(yarn:*)",
+      "Bash(pnpm:*)",
+      "Bash(bun:*)",
+      "Bash(pytest:*)",
+      "Bash(mypy:*)",
+      "Bash(ruff:*)",
+      "Bash(black:*)",
+      "Bash(isort:*)",
+      "Bash(eslint:*)",
+      "Bash(tsc:*)",
+      "Bash(docker:*)",
+      "Bash(docker-compose:*)",
+      "Bash(make:*)",
+      "Bash(cmake:*)",
+      "Bash(cargo:*)",
+      "Bash(curl:*)",
+      "Bash(wget:*)",
+      "Bash(ssh:*)",
+      "Bash(scp:*)",
+      "Bash(chmod:*)",
+      "Bash(mkdir:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(which:*)",
+      "Bash(echo:*)",
+      "Bash(env:*)",
+      "Bash(export:*)",
+      "Bash(source:*)",
+      "Bash(nvidia-smi:*)",
+      "Bash(gpustat:*)",
+      "Bash(htop:*)",
+      "Bash(top:*)",
+      "Bash(free:*)",
+      "Bash(df:*)",
+      "Bash(du:*)",
+      "Bash(wc:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(gh:*)",
+      "Bash(jq:*)",
+      "Bash(uvicorn:*)",
+      "Bash(gunicorn:*)",
+      "Bash(tensorboard:*)",
+      "Read(~/**)",
+      "Edit(~/**)",
+      "Write(~/**)"
+    ],
+    "deny": [
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Read(~/**/.env)"
+    ]
+  },
+  "skipDangerousModePermissionPrompt": true,
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/session-context.sh",
+            "timeout": 10,
+            "statusMessage": "Loading project context..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/post-edit-check.sh",
+            "async": true,
+            "timeout": 120,
+            "statusMessage": "Running type-check..."
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "Review the conversation transcript below. Determine if the assistant completed ALL tasks the user explicitly requested. Check: 1) Every explicit request was addressed 2) No partial implementations left unfinished 3) No obvious errors introduced. If EVERYTHING is complete, respond {\"ok\": true}. If something is clearly incomplete or broken, respond {\"ok\": false, \"reason\": \"brief description of what's missing\"}. Be lenient — only block if something is clearly unfinished. Context: $ARGUMENTS",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "permission_prompt|idle_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/notify-telegram.sh",
+            "async": true,
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "TaskCompleted": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/verify-task-completed.sh",
+            "timeout": 120,
+            "statusMessage": "Verifying task completion..."
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/correction-detector.sh",
+            "timeout": 5,
+            "statusMessage": ""
+          }
+        ]
+      }
+    ]
+  }
+}
