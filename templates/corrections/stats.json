@@ -2,5 +2,10 @@
   "frontend": 0,
   "backend": 0,
   "schema": 0,
+  "ml": 0,
+  "ios": 0,
+  "android": 0,
+  "systems": 0,
+  "academic": 0,
   "unknown": 0
 }

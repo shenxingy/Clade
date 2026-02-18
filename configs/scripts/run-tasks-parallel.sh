@@ -120,7 +120,7 @@ get_task_retries() {
 extract_file_refs() {
   local prompt="$1"
   # Match common file path patterns
-  echo "$prompt" | grep -oP '[a-zA-Z0-9_./-]+\.(ts|tsx|js|jsx|py|md|json|yaml|yml|sh|css|scss)' | sort -u
+  echo "$prompt" | grep -oP '[a-zA-Z0-9_./-]+\.(ts|tsx|js|jsx|py|ipynb|md|json|yaml|yml|sh|css|scss|rs|go|swift|kt|java|c|cpp|h|hpp|tex|bib|rb|lua|zig|dart)' | sort -u
 }
 
 detect_conflicts() {

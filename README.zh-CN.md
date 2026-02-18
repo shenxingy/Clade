@@ -18,14 +18,30 @@ cd claude-code-kit
 
 > **依赖：** `jq`（用于合并 settings）。其他一切都是可选的。
 
+## 支持的语言和框架
+
+自动检测 — hooks 和 agents 会适配你的项目类型：
+
+| 语言 | 编辑检查 | 任务门禁 | 类型检查器 | 测试执行器 |
+|------|---------|---------|-----------|-----------|
+| **TypeScript / JavaScript** | `tsc`（monorepo 感知） | type-check + build | tsc | jest / vitest / npm test |
+| **Python** | pyright / mypy | ruff + pyright/mypy | pyright / mypy | pytest |
+| **Rust** | `cargo check` | cargo check + test | cargo check | cargo test |
+| **Go** | `go vet` | go build + vet + test | go vet | go test |
+| **Swift / iOS** | `swift build` | swift build / xcodebuild | swift build | swift test / xcodebuild test |
+| **Kotlin / Android / Java** | `gradlew compile` | gradle compile + test | gradle compile | gradle test |
+| **LaTeX** | `chktex` | chktex（警告） | chktex | — |
+
+所有检查**按检测自动启用** — 如果工具未安装或项目标记不存在，hook 会静默跳过。
+
 ## 安装后会发生什么
 
 | 时机 | 触发什么 | 做了什么 |
 |------|---------|---------|
 | 在 git 仓库中打开 Claude Code | `session-context.sh` | 加载最近提交、分支状态、docker 状态和学到的纠正规则到上下文 |
-| Claude 编辑 `.ts`/`.tsx`/`.py` 文件 | `post-edit-check.sh` | **异步**运行类型检查 — 错误以系统消息出现，不阻塞工作 |
+| Claude 编辑代码文件 | `post-edit-check.sh` | **异步**运行语言对应的检查（tsc、pyright、cargo check、go vet、swift build、gradle、chktex） |
 | 你纠正 Claude（"错了，用 X"） | `correction-detector.sh` | 记录纠正，提示 Claude 保存可复用的规则 |
-| Claude 标记任务完成 | `verify-task-completed.sh` | 自适应质量门禁：始终类型检查，错误率高时额外构建检查 |
+| Claude 标记任务完成 | `verify-task-completed.sh` | 自适应质量门禁：检查编译/lint，严格模式额外运行 build + test |
 | Claude 需要权限 / 空闲 | `notify-telegram.sh` | 发送 Telegram 提醒，不用盯着终端 |
 | 会话结束 | Stop hook (settings.json) | 验证所有任务已完成后才退出 |
 
@@ -80,9 +96,9 @@ cd claude-code-kit
 | Agent | 模型 | 用途 |
 |-------|------|------|
 | `code-reviewer` | Sonnet | 带持久记忆的代码审查 |
-| `verify-app` | Sonnet | 运行时验证（API 路由、页面、构建） |
-| `type-checker` | Haiku | 快速 TypeScript/Python 类型验证 |
-| `test-runner` | Haiku | 测试执行与失败分析 |
+| `verify-app` | Sonnet | 运行时验证 — 适配项目类型（Web、Rust、Go、Swift、Gradle、LaTeX） |
+| `type-checker` | Haiku | 快速类型/编译检查 — 自动检测语言（TS、Python、Rust、Go、Swift、Kotlin、LaTeX） |
+| `test-runner` | Haiku | 测试执行 — 自动检测框架（pytest、jest、cargo test、go test、swift test、gradle、make） |
 
 Claude 自动选择 agent。Haiku agent 速度快、成本低，用于机械性检查；Sonnet agent 推理更深入，用于审查和验证。
 
@@ -108,12 +124,17 @@ Claude 自动选择 agent。Haiku agent 速度快、成本低，用于机械性�
 
 随着时间推移，Claude 的行为自动对齐你的风格。质量门禁（`verify-task-completed.sh`）也会自适应 — Claude 错误多的领域会自动触发更严格的检查。
 
-错误率追踪在 `~/.claude/corrections/stats.json`：
+错误率按领域追踪在 `~/.claude/corrections/stats.json`：
 ```json
 {
-  "frontend": 0.35,  // >0.3 = 严格模式（类型检查 + 构建）
-  "backend": 0.05,   // <0.1 = 宽松模式（仅类型检查）
-  "schema": 0.2      // 默认模式（仅类型检查）
+  "frontend": 0.35,  // >0.3 = 严格模式（额外 build + test）
+  "backend": 0.05,   // <0.1 = 宽松模式（仅基础检查）
+  "ml": 0.2,         // ML/AI 训练代码
+  "ios": 0,          // Swift / Xcode
+  "android": 0,      // Kotlin / Gradle
+  "systems": 0,      // Rust / Go
+  "academic": 0,     // LaTeX
+  "schema": 0.2
 }
 ```
 
@@ -165,11 +186,16 @@ Claude 自动选择 agent。Haiku agent 速度快、成本低，用于机械性�
 {
   "frontend": 0.4,
   "backend": 0.05,
+  "ml": 0.2,
+  "ios": 0,
+  "android": 0,
+  "systems": 0,
+  "academic": 0,
   "schema": 0.2
 }
 ```
 
-`> 0.3` 触发严格模式（类型检查 + 构建）。`< 0.1` 触发宽松模式（仅类型检查）。
+`> 0.3` 触发严格模式（额外 build + test 检查）。`< 0.1` 触发宽松模式（仅基础检查）。领域分类：`frontend`、`backend`、`ml`、`ios`、`android`、`systems`（Rust/Go）、`academic`（LaTeX）、`schema`。
 
 ### 添加新 Hook
 

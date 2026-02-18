@@ -18,14 +18,30 @@ Start a new Claude Code session to activate everything.
 
 > **Requirements:** `jq` (for settings merge). Everything else is optional.
 
+## Supported Languages & Frameworks
+
+Auto-detection — hooks and agents adapt to your project type:
+
+| Language | Edit check | Task gate | Type checker | Test runner |
+|----------|-----------|-----------|-------------|-------------|
+| **TypeScript / JavaScript** | `tsc` (monorepo-aware) | type-check + build | tsc | jest / vitest / npm test |
+| **Python** | pyright / mypy | ruff + pyright/mypy | pyright / mypy | pytest |
+| **Rust** | `cargo check` | cargo check + test | cargo check | cargo test |
+| **Go** | `go vet` | go build + vet + test | go vet | go test |
+| **Swift / iOS** | `swift build` | swift build / xcodebuild | swift build | swift test / xcodebuild test |
+| **Kotlin / Android / Java** | `gradlew compile` | gradle compile + test | gradle compile | gradle test |
+| **LaTeX** | `chktex` | chktex (warnings) | chktex | — |
+
+All checks are **opt-in by detection** — if the tool isn't installed or the project marker isn't present, the hook silently skips.
+
 ## What Happens After Install
 
 | When | What fires | What it does |
 |------|-----------|-------------|
 | You open Claude Code in a git repo | `session-context.sh` | Loads recent commits, branch state, docker status, and learned correction rules into context |
-| Claude edits a `.ts`/`.tsx`/`.py` file | `post-edit-check.sh` | Runs type-check **async** — errors appear as system messages without blocking |
+| Claude edits a code file | `post-edit-check.sh` | Runs language-appropriate checks **async** (tsc, pyright, cargo check, go vet, swift build, gradle, chktex) |
 | You correct Claude ("wrong, use X") | `correction-detector.sh` | Logs the correction, prompts Claude to save a reusable rule |
-| Claude marks a task as done | `verify-task-completed.sh` | Adaptive quality gate: type-check always, build check if error rate is high |
+| Claude marks a task as done | `verify-task-completed.sh` | Adaptive quality gate: checks compilation/lint, adds build+test in strict mode |
 | Claude needs permission / goes idle | `notify-telegram.sh` | Sends Telegram alert so you don't have to watch the terminal |
 | Session ends | Stop hook (in settings.json) | Verifies all tasks were completed before exit |
 
@@ -80,9 +96,9 @@ All hooks are shell scripts — zero API cost, sub-second execution.
 | Agent | Model | Use case |
 |-------|-------|----------|
 | `code-reviewer` | Sonnet | Code review with persistent memory |
-| `verify-app` | Sonnet | Runtime verification (API routes, pages, build) |
-| `type-checker` | Haiku | Fast TypeScript/Python type verification |
-| `test-runner` | Haiku | Test execution and failure analysis |
+| `verify-app` | Sonnet | Runtime verification — adapts to project type (web, Rust, Go, Swift, Gradle, LaTeX) |
+| `type-checker` | Haiku | Fast type/compilation check — auto-detects language (TS, Python, Rust, Go, Swift, Kotlin, LaTeX) |
+| `test-runner` | Haiku | Test execution — auto-detects framework (pytest, jest, cargo test, go test, swift test, gradle, make) |
 
 Claude auto-selects agents. Haiku agents are fast and cheap for mechanical checks; Sonnet agents reason deeper for reviews.
 
@@ -108,12 +124,17 @@ Next session starts         session-context.sh            Claude follows
 
 Over time, Claude's behavior aligns to your style automatically. The quality gate (`verify-task-completed.sh`) also adapts — domains where Claude makes more errors get stricter checks.
 
-Error rates are tracked in `~/.claude/corrections/stats.json`:
+Error rates are tracked per domain in `~/.claude/corrections/stats.json`:
 ```json
 {
-  "frontend": 0.35,  // >0.3 = strict mode (type-check + build)
-  "backend": 0.05,   // <0.1 = relaxed mode (type-check only)
-  "schema": 0.2      // default mode (type-check only)
+  "frontend": 0.35,  // >0.3 = strict mode (adds build + test)
+  "backend": 0.05,   // <0.1 = relaxed mode (basic checks only)
+  "ml": 0.2,         // ML/AI training code
+  "ios": 0,          // Swift / Xcode
+  "android": 0,      // Kotlin / Gradle
+  "systems": 0,      // Rust / Go
+  "academic": 0,     // LaTeX
+  "schema": 0.2
 }
 ```
 
@@ -165,11 +186,16 @@ Edit `~/.claude/corrections/stats.json`:
 {
   "frontend": 0.4,
   "backend": 0.05,
+  "ml": 0.2,
+  "ios": 0,
+  "android": 0,
+  "systems": 0,
+  "academic": 0,
   "schema": 0.2
 }
 ```
 
-`> 0.3` triggers strict mode (type-check + build). `< 0.1` triggers relaxed mode (type-check only).
+`> 0.3` triggers strict mode (adds build + test checks). `< 0.1` triggers relaxed mode (basic checks only). Domains: `frontend`, `backend`, `ml`, `ios`, `android`, `systems` (Rust/Go), `academic` (LaTeX), `schema`.
 
 ### Add a new hook
 

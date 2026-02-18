@@ -22,8 +22,8 @@
             "type": "command",
             "command": "~/.claude/hooks/post-edit-check.sh",
             "async": true,
-            "timeout": 120,
-            "statusMessage": "Running type-check..."
+            "timeout": 180,
+            "statusMessage": "Running checks..."
           }
         ]
       }
@@ -58,7 +58,7 @@
           {
             "type": "command",
             "command": "~/.claude/hooks/verify-task-completed.sh",
-            "timeout": 120,
+            "timeout": 180,
             "statusMessage": "Verifying task completion..."
           }
         ]

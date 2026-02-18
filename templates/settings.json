@@ -10,6 +10,7 @@
       "Bash(python3:*)",
       "Bash(pip:*)",
       "Bash(pip3:*)",
+      "Bash(uv:*)",
       "Bash(conda:*)",
       "Bash(node:*)",
       "Bash(npm:*)",
@@ -19,6 +20,7 @@
       "Bash(bun:*)",
       "Bash(pytest:*)",
       "Bash(mypy:*)",
+      "Bash(pyright:*)",
       "Bash(ruff:*)",
       "Bash(black:*)",
       "Bash(isort:*)",
@@ -29,6 +31,27 @@
       "Bash(make:*)",
       "Bash(cmake:*)",
       "Bash(cargo:*)",
+      "Bash(rustc:*)",
+      "Bash(go:*)",
+      "Bash(swift:*)",
+      "Bash(swiftc:*)",
+      "Bash(xcodebuild:*)",
+      "Bash(pod:*)",
+      "Bash(gradle:*)",
+      "Bash(./gradlew:*)",
+      "Bash(kotlin:*)",
+      "Bash(kotlinc:*)",
+      "Bash(java:*)",
+      "Bash(javac:*)",
+      "Bash(mvn:*)",
+      "Bash(pdflatex:*)",
+      "Bash(xelatex:*)",
+      "Bash(lualatex:*)",
+      "Bash(latexmk:*)",
+      "Bash(bibtex:*)",
+      "Bash(biber:*)",
+      "Bash(chktex:*)",
+      "Bash(jupyter:*)",
       "Bash(curl:*)",
       "Bash(wget:*)",
       "Bash(ssh:*)",
@@ -90,8 +113,8 @@
             "type": "command",
             "command": "~/.claude/hooks/post-edit-check.sh",
             "async": true,
-            "timeout": 120,
-            "statusMessage": "Running type-check..."
+            "timeout": 180,
+            "statusMessage": "Running checks..."
           }
         ]
       }
@@ -126,7 +149,7 @@
           {
             "type": "command",
             "command": "~/.claude/hooks/verify-task-completed.sh",
-            "timeout": 120,
+            "timeout": 180,
             "statusMessage": "Verifying task completion..."
           }
         ]
