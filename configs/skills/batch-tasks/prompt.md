@@ -89,21 +89,21 @@ When the user provides quoted task descriptions:
    - **Steps** — Numbered implementation steps, specific enough that a fresh session can follow without exploring
    - **Context from TODO.md** — Include the original TODO item's sub-details so the executor knows the full requirements
 
-4. **Assign a model** based on task complexity:
+4. **Assign a model** based on task complexity and cost-performance:
 
-| Model | Criteria | Examples |
-|-------|----------|---------|
-| `haiku` | 1 file, deletions/renames, <20 lines changed | Remove unused section, delete import, rename variable, fix typo |
-| `sonnet` | 2-4 files, standard features, clear patterns to follow | Add filter component, new API endpoint, add form field |
-| `opus` | 5+ files, architectural changes, subtle cross-cutting patterns | Refactor auth system, new cross-cutting feature, complex state management |
+| Model | Cost | Criteria | Examples |
+|-------|------|----------|---------|
+| `haiku` | $1/$5 MTok | 1-2 files, mechanical changes, <30 lines | Delete import, rename variable, fix typo, add a field, update config, write simple test |
+| `sonnet` | $3/$15 MTok | 2-8 files, standard features, clear patterns | New API endpoint, add component, form with validation, multi-file feature |
+| `opus` | $5/$25 MTok | 5+ files, architectural, deep reasoning needed | Large refactor, cross-cutting concerns, complex state management, ambiguous "improve X" tasks |
 
-Default to `sonnet` when uncertain. Use `haiku` aggressively for simple deletions/cleanups.
+**Cost-performance rule**: Sonnet 4.6 scores 79.6% on SWE-bench vs Opus 4.6's 80.8% — only 1.2 pts difference at 60% of the cost. Default to `sonnet`. Reserve `opus` for tasks that genuinely require deep multi-file reasoning or very long outputs (>64K tokens). Use `haiku` aggressively — it handles mechanical tasks well and costs 1/3 of Sonnet.
 
 5. **Assign timeout and retries** based on task scope:
 
 | Field | Default | When to override |
 |-------|---------|-----------------|
-| `timeout` | 600 (10 min) | Set to 300 for haiku tasks, 900+ for opus/complex tasks |
+| `timeout` | 600 (10 min) | Set to 300 for haiku tasks, 900-1200 for opus/complex tasks |
 | `retries` | 2 | Set to 0 for destructive/irreversible tasks, 3 for flaky tasks |
 
 ### Plan quality guidelines

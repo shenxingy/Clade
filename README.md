@@ -38,7 +38,7 @@ All checks are **opt-in by detection** — if the tool isn't installed or the pr
 
 | When | What fires | What it does |
 |------|-----------|-------------|
-| You open Claude Code in a git repo | `session-context.sh` | Loads recent commits, branch state, docker status, and learned correction rules into context |
+| You open Claude Code in a git repo | `session-context.sh` | Loads git context, correction rules, and model selection guidance into context |
 | Claude edits a code file | `post-edit-check.sh` | Runs language-appropriate checks **async** (tsc, pyright, cargo check, go vet, swift build, gradle, chktex) |
 | You correct Claude ("wrong, use X") | `correction-detector.sh` | Logs the correction, prompts Claude to save a reusable rule |
 | Claude marks a task as done | `verify-task-completed.sh` | Adaptive quality gate: checks compilation/lint, adds build+test in strict mode |
@@ -104,7 +104,7 @@ Claude auto-selects agents. Haiku agents are fast and cheap for mechanical check
 
 ### Skills (slash commands)
 
-**`/batch-tasks`** reads TODO.md, researches the codebase, generates detailed plans for each task, scores them on readiness (scout scoring), then executes via `claude -p`. Supports serial and parallel (git worktree) execution.
+**`/batch-tasks`** reads TODO.md, researches the codebase, generates detailed plans for each task, scores them on readiness (scout scoring), assigns the optimal model per task (haiku for mechanical, sonnet for standard, opus for complex), then executes via `claude -p`. Supports serial and parallel (git worktree) execution.
 
 **`/sync`** reviews recent git history, checks off completed TODO items, appends a session summary to PROGRESS.md, and optionally commits.
 
@@ -146,6 +146,18 @@ Error rates are tracked per domain in `~/.claude/corrections/stats.json`:
 | `run-tasks-parallel.sh` | Parallel execution using git worktrees |
 
 Both are called by `/batch-tasks` — you don't need to run them directly.
+
+### Automatic Model Selection
+
+The kit optimizes model usage at every level:
+
+| Level | How it works |
+|-------|-------------|
+| **Session start** | `session-context.sh` injects model guidance — Claude will suggest switching to Opus for complex refactors |
+| **Batch tasks** | Each task is assigned haiku/sonnet/opus based on complexity and cost-performance data |
+| **Sub-agents** | Haiku for mechanical checks (type-check, tests), Sonnet for reasoning (review, verification) |
+
+Based on benchmarks: Sonnet 4.6 scores 79.6% on SWE-bench vs Opus 4.6's 80.8% at 60% of the cost. The kit defaults to Sonnet and only escalates to Opus when the task genuinely needs it.
 
 ## Configuration
 
@@ -255,6 +267,7 @@ claude-code-kit/
         ├── hooks.md                   # Hook system deep dive
         ├── subagents.md               # Custom agent patterns
         ├── batch-tasks.md             # Batch execution research
+        ├── models.md                  # Model comparison & selection guide
         └── power-users.md             # Patterns from top Claude Code users
 ```
 
@@ -274,6 +287,7 @@ Removes all deployed hooks, agents, skills, scripts, and commands. Preserves:
 - [Hooks Research](docs/research/hooks.md) — Hook system deep dive
 - [Subagents Research](docs/research/subagents.md) — Custom agent patterns
 - [Batch Tasks Research](docs/research/batch-tasks.md) — Batch execution improvements
+- [Model Selection Guide](docs/research/models.md) — Cost-performance analysis and selection rules
 - [Power Users Research](docs/research/power-users.md) — Patterns from top users
 
 ## License
