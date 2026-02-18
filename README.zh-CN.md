@@ -55,6 +55,8 @@ cd claude-code-kit
 | `/sync` | 更新 TODO.md（勾掉完成项）+ 追加会话总结到 PROGRESS.md |
 | `/sync --commit` | 同上 + 提交文档更改 |
 | `/review` | 当前项目的全面技术债务审查 |
+| `/model-research` | 搜索最新 Claude 模型数据，显示变化 |
+| `/model-research --apply` | 同上 + 更新模型指南、会话上下文和批量任务配置 |
 
 ## 什么时候用什么
 
@@ -108,6 +110,8 @@ Claude 自动选择 agent。Haiku agent 速度快、成本低，用于机械性�
 
 **`/sync`** 审查最近的 git 历史，勾掉已完成的 TODO 项，追加会话总结到 PROGRESS.md，可选提交。
 
+**`/model-research`** 搜索最新的 Claude 模型发布、基准测试和定价信息。与当前指南对比并显示变化。使用 `--apply` 时，更新 `docs/research/models.md`、会话上下文中的模型指南和批量任务的模型分配逻辑。
+
 ### 纠正学习循环
 
 最独特的功能。工作原理：
@@ -156,6 +160,7 @@ Kit 在每个层级优化模型使用：
 | **会话启动** | `session-context.sh` 注入模型指南 — Claude 会在遇到复杂重构时建议切换到 Opus |
 | **批量任务** | 每个任务根据复杂度和性价比数据自动分配 haiku/sonnet/opus |
 | **子代理** | Haiku 处理机械性检查（类型检查、测试），Sonnet 处理推理（审查、验证） |
+| **保持最新** | 新模型发布时运行 `/model-research --apply` 更新所有选择逻辑 |
 
 基于基准测试：Sonnet 4.6 在 SWE-bench 上得分 79.6%，Opus 4.6 为 80.8%，但 Sonnet 只需 60% 的成本。Kit 默认使用 Sonnet，仅在任务确实需要时才升级到 Opus。
 
@@ -249,7 +254,10 @@ claude-code-kit/
 │   │   ├── batch-tasks/               # /batch-tasks skill
 │   │   │   ├── SKILL.md
 │   │   │   └── prompt.md
-│   │   └── sync/                      # /sync skill
+│   │   ├── sync/                      # /sync skill
+│   │   │   ├── SKILL.md
+│   │   │   └── prompt.md
+│   │   └── model-research/            # /model-research skill
 │   │       ├── SKILL.md
 │   │       └── prompt.md
 │   ├── scripts/

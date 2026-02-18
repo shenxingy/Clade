@@ -53,6 +53,7 @@ done
 MANAGED_SKILLS=(
   batch-tasks
   sync
+  model-research
 )
 
 echo "Removing managed skills..."

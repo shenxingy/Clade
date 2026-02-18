@@ -55,6 +55,8 @@ All checks are **opt-in by detection** — if the tool isn't installed or the pr
 | `/sync` | Update TODO.md (check off done items) + append session summary to PROGRESS.md |
 | `/sync --commit` | Same + commit the doc changes |
 | `/review` | Comprehensive tech debt review of the current project |
+| `/model-research` | Search web for latest Claude model data, show what changed |
+| `/model-research --apply` | Same + update model guide, session context, and batch-tasks configs |
 
 ## When to Use What
 
@@ -108,6 +110,8 @@ Claude auto-selects agents. Haiku agents are fast and cheap for mechanical check
 
 **`/sync`** reviews recent git history, checks off completed TODO items, appends a session summary to PROGRESS.md, and optionally commits.
 
+**`/model-research`** searches the web for latest Claude model announcements, benchmarks, and pricing. Compares against the current guide and shows what changed. With `--apply`, updates `docs/research/models.md`, the session-context model guidance, and batch-tasks model assignment criteria.
+
 ### Correction Learning Loop
 
 The most distinctive feature. Here's how it works:
@@ -156,6 +160,7 @@ The kit optimizes model usage at every level:
 | **Session start** | `session-context.sh` injects model guidance — Claude will suggest switching to Opus for complex refactors |
 | **Batch tasks** | Each task is assigned haiku/sonnet/opus based on complexity and cost-performance data |
 | **Sub-agents** | Haiku for mechanical checks (type-check, tests), Sonnet for reasoning (review, verification) |
+| **Staying current** | Run `/model-research --apply` when new models drop to update all selection logic |
 
 Based on benchmarks: Sonnet 4.6 scores 79.6% on SWE-bench vs Opus 4.6's 80.8% at 60% of the cost. The kit defaults to Sonnet and only escalates to Opus when the task genuinely needs it.
 
@@ -249,7 +254,10 @@ claude-code-kit/
 │   │   ├── batch-tasks/               # /batch-tasks skill
 │   │   │   ├── SKILL.md
 │   │   │   └── prompt.md
-│   │   └── sync/                      # /sync skill
+│   │   ├── sync/                      # /sync skill
+│   │   │   ├── SKILL.md
+│   │   │   └── prompt.md
+│   │   └── model-research/            # /model-research skill
 │   │       ├── SKILL.md
 │   │       └── prompt.md
 │   ├── scripts/
