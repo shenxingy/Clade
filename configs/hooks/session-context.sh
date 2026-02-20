@@ -11,6 +11,24 @@ fi
 
 CONTEXT=""
 
+# ─── Auto-pull from remote ────────────────────────────────────────────
+# Only pull if: tracking branch exists, working tree is clean, and remote has new commits
+TRACKING=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null)
+if [[ -n "$TRACKING" ]]; then
+  git fetch --quiet 2>/dev/null
+  BEHIND=$(git rev-list HEAD..@{u} --count 2>/dev/null)
+  DIRTY=$(git status --short 2>/dev/null)
+
+  if [[ "${BEHIND:-0}" -gt 0 ]]; then
+    if [[ -z "$DIRTY" ]]; then
+      PULL_OUT=$(git pull --ff-only 2>&1)
+      CONTEXT="${CONTEXT}Auto-pulled ${BEHIND} new commit(s) from ${TRACKING}:\n${PULL_OUT}\n\n"
+    else
+      CONTEXT="${CONTEXT}WARNING: Remote has ${BEHIND} new commit(s) but working tree is dirty — skipped auto-pull. Consider pulling manually after stashing or committing.\n\n"
+    fi
+  fi
+fi
+
 # Recent commits
 GIT_LOG=$(git log --oneline -5 2>/dev/null)
 if [[ -n "$GIT_LOG" ]]; then
