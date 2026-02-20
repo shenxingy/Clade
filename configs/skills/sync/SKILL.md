@@ -17,7 +17,7 @@ End-of-session documentation ritual. Reviews what was done and updates project d
 ## Usage
 
 ```
-/sync          # Update TODO.md + PROGRESS.md
-/commit        # Commit all changes (code + docs) split by module
-/commit --push # Commit + push
+/sync            # Update TODO.md + PROGRESS.md
+/commit          # Commit all changes (code + docs) split by module + push
+/commit --no-push  # Commit only, skip push
 ```

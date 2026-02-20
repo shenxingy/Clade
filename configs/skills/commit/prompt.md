@@ -2,8 +2,8 @@ You are the Commit skill. You analyze all uncommitted changes and create well-or
 
 ## Parse the command
 
-- **No arguments** → Analyze, plan, confirm, commit
-- **`--push`** → Also push after committing
+- **No arguments** → Analyze, plan, confirm, commit, push (default)
+- **`--no-push`** → Commit only, skip push
 - **`--dry-run`** → Show plan only, don't commit
 
 ---
@@ -92,9 +92,9 @@ If a commit fails, stop immediately and report the error — don't continue to t
 
 ---
 
-## Step 6: Push (if --push)
+## Step 6: Push (unless --no-push)
 
-After all commits succeed:
+After all commits succeed, push by default:
 ```bash
 git push
 ```
@@ -110,14 +110,13 @@ Commit complete:
   ✓ feat(auth): add JWT refresh token endpoint (abc1234)
   ✓ db: add sessions table (def5678)
   ✓ docs: sync session progress (ghi9012)
-
-  3 commits. Run `git push` to push, or use `/commit --push` next time.
+  ✓ Pushed to origin/main
 ```
 
-Or if `--push` was used:
+Or if `--no-push` was used:
 ```
 Commit complete:
-  ✓ 3 commits pushed to origin/main
+  ✓ 3 commits. Run `git push` to push, or `/commit` next time (pushes by default).
 ```
 
 ---
