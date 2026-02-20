@@ -60,7 +60,7 @@ For each unchecked item, run the full planning phase (see PLANNING PHASE section
 
 ### Step 4: Write task file and offer to run
 
-Write to `tasks.txt`, show preview, and ask if the user wants to run.
+Before writing, always attempt to Read `tasks.txt` first (it may already exist from a previous run; the Write tool requires a prior Read on existing files). Then write the new content to `tasks.txt`, show preview, and ask if the user wants to run.
 
 ---
 
@@ -69,7 +69,7 @@ Write to `tasks.txt`, show preview, and ask if the user wants to run.
 When the user provides quoted task descriptions:
 
 1. Run PLANNING PHASE for each quoted string
-2. Write to `tasks.txt`
+2. Attempt to Read `tasks.txt` first (required before Write if file exists), then write new content to `tasks.txt`
 3. Show preview and offer to run
 
 ---
@@ -370,7 +370,7 @@ The runner script re-reads the task file before each new task, so appending new 
 When the user mentions a new task while a batch is running:
 
 1. **Run PLANNING PHASE** for the new task
-2. Append a new `===TASK===` block to the task file
+2. Read `tasks.txt` first, then append a new `===TASK===` block by writing the full updated content
 3. Confirm:
    ```
    Added to queue: [sonnet] "Refactor the header component"
