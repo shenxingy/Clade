@@ -4,7 +4,7 @@
 
 **把 Claude Code 从聊天助手变成自主编码系统。**
 
-一个安装脚本。五个 hooks、四个 agents、两个 skills，以及一个纠正学习循环 — 协同工作，让 Claude 编码更好、自动捕获错误、跨会话记住你的偏好。
+一个安装脚本。五个 hooks、四个 agents、三个 skills，以及一个纠正学习循环 — 协同工作，让 Claude 编码更好、自动捕获错误、跨会话记住你的偏好。
 
 ## 安装（30 秒）
 
@@ -53,8 +53,10 @@ cd claude-code-kit
 | `/batch-tasks step2 step4` | 规划 + 执行指定 TODO 步骤 |
 | `/batch-tasks --parallel` | 通过 git worktrees 并行执行 |
 | `/sync` | 更新 TODO.md（勾掉完成项）+ 追加会话总结到 PROGRESS.md |
-| `/sync --commit` | 同上 + 提交文档更改 |
-| `/review` | 当前项目的全面技术债务审查 |
+| `/commit` | 按模块拆分未提交的改动，分多个逻辑 commit 提交并推送 |
+| `/commit --no-push` | 同上，但跳过推送 |
+| `/commit --dry-run` | 仅展示拆分计划，不实际提交 |
+| `/review` | 全面技术债务审查 — 自动将 Critical/Warning 发现写入 TODO.md |
 | `/model-research` | 搜索最新 Claude 模型数据，显示变化 |
 | `/model-research --apply` | 同上 + 更新模型指南、会话上下文和批量任务配置 |
 
@@ -72,12 +74,17 @@ cd claude-code-kit
 
 **`/review`** — 大版本发布前或接手新代码库时：
 - 找死代码、类型问题、安全风险、文档过期
+- Critical 和 Warning 级别发现会自动写入 TODO.md 的 `## Tech Debt` 区块
 - 定期跑一下 — 技术债积累得比你想的快
 
 **`/sync`** — 每次编码会话结束时：
 - 勾掉完成的 TODO 项，把经验教训记录到 PROGRESS.md
-- `--commit` 把文档更新打包成 git commit
+- 不提交 — 之后跑 `/commit` 把代码 + 文档一起按模块拆分提交
 - 这是构建团队记忆的方式 — 跳过它，你就会重复过去的错误
+
+**`/commit`** — 准备提交时：
+- 分析所有未提交的改动，按模块（schema、API、前端、配置、文档等）拆分成逻辑清晰的 commits
+- 默认推送；`--no-push` 跳过推送，`--dry-run` 仅预览拆分计划
 
 ## 工作原理
 
@@ -108,7 +115,9 @@ Claude 自动选择 agent。Haiku agent 速度快、成本低，用于机械性�
 
 **`/batch-tasks`** 读取 TODO.md，研究代码库，为每个任务生成详细计划，进行就绪度评分（scout scoring），自动为每个任务分配最优模型（haiku 处理机械性任务、sonnet 处理常规任务、opus 处理复杂任务），然后通过 `claude -p` 执行。支持串行和并行（git worktree）执行。
 
-**`/sync`** 审查最近的 git 历史，勾掉已完成的 TODO 项，追加会话总结到 PROGRESS.md，可选提交。
+**`/sync`** 审查最近的 git 历史，勾掉已完成的 TODO 项，追加会话总结到 PROGRESS.md。不提交 — 之后跑 `/commit` 统一处理。
+
+**`/commit`** 分析所有未提交改动，按模块分组（schema、API、前端、配置、文档等），生成 commit message，展示计划并确认，然后依序提交并推送。`--no-push` 跳过推送；`--dry-run` 仅展示计划。
 
 **`/model-research`** 搜索最新的 Claude 模型发布、基准测试和定价信息。与当前指南对比并显示变化。使用 `--apply` 时，更新 `docs/research/models.md`、会话上下文中的模型指南和批量任务的模型分配逻辑。
 
@@ -255,6 +264,9 @@ claude-code-kit/
 │   │   │   ├── SKILL.md
 │   │   │   └── prompt.md
 │   │   ├── sync/                      # /sync skill
+│   │   │   ├── SKILL.md
+│   │   │   └── prompt.md
+│   │   ├── commit/                    # /commit skill
 │   │   │   ├── SKILL.md
 │   │   │   └── prompt.md
 │   │   └── model-research/            # /model-research skill

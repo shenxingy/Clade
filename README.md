@@ -4,7 +4,7 @@
 
 **Turn Claude Code from a chat assistant into an autonomous coding system.**
 
-One install script. Five hooks, four agents, two skills, and a correction learning loop — all working together so Claude codes better, catches its own mistakes, and remembers your preferences across sessions.
+One install script. Five hooks, four agents, three skills, and a correction learning loop — all working together so Claude codes better, catches its own mistakes, and remembers your preferences across sessions.
 
 ## Install (30 seconds)
 
@@ -53,8 +53,10 @@ All checks are **opt-in by detection** — if the tool isn't installed or the pr
 | `/batch-tasks step2 step4` | Plan + run specific TODO steps |
 | `/batch-tasks --parallel` | Run tasks concurrently via git worktrees |
 | `/sync` | Update TODO.md (check off done items) + append session summary to PROGRESS.md |
-| `/sync --commit` | Same + commit the doc changes |
-| `/review` | Comprehensive tech debt review of the current project |
+| `/commit` | Split uncommitted changes into logical commits by module, commit + push by default |
+| `/commit --no-push` | Same, but skip push |
+| `/commit --dry-run` | Show the split plan only, don't commit |
+| `/review` | Comprehensive tech debt review — auto-writes Critical/Warning findings to TODO.md |
 | `/model-research` | Search web for latest Claude model data, show what changed |
 | `/model-research --apply` | Same + update model guide, session context, and batch-tasks configs |
 
@@ -72,12 +74,17 @@ All checks are **opt-in by detection** — if the tool isn't installed or the pr
 
 **`/review`** — before releases or when onboarding to a codebase:
 - Finds dead code, type issues, security risks, stale docs
+- Critical and Warning findings are automatically written to the `## Tech Debt` section of TODO.md
 - Run periodically — tech debt sneaks in fast
 
 **`/sync`** — at the end of every coding session:
 - Checks off completed TODO items and captures lessons in PROGRESS.md
-- `--commit` bundles doc updates into a git commit
+- Run `/commit` after to commit everything (docs + code) split by module
 - This builds institutional memory — skip it and you'll repeat past mistakes
+
+**`/commit`** — when you're ready to commit:
+- Analyzes all uncommitted changes and splits them into logical commits by module
+- Pushes by default; use `--no-push` to skip, `--dry-run` to preview the plan
 
 ## How It Works
 
@@ -108,7 +115,9 @@ Claude auto-selects agents. Haiku agents are fast and cheap for mechanical check
 
 **`/batch-tasks`** reads TODO.md, researches the codebase, generates detailed plans for each task, scores them on readiness (scout scoring), assigns the optimal model per task (haiku for mechanical, sonnet for standard, opus for complex), then executes via `claude -p`. Supports serial and parallel (git worktree) execution.
 
-**`/sync`** reviews recent git history, checks off completed TODO items, appends a session summary to PROGRESS.md, and optionally commits.
+**`/sync`** reviews recent git history, checks off completed TODO items, and appends a session summary to PROGRESS.md. Does not commit — run `/commit` after to commit everything.
+
+**`/commit`** analyzes all uncommitted changes, groups files into logical commits by module (schema, API, frontend, config, docs, etc.), generates commit messages, shows the plan for confirmation, then executes and pushes by default. `--no-push` skips push; `--dry-run` shows the plan only.
 
 **`/model-research`** searches the web for latest Claude model announcements, benchmarks, and pricing. Compares against the current guide and shows what changed. With `--apply`, updates `docs/research/models.md`, the session-context model guidance, and batch-tasks model assignment criteria.
 
@@ -255,6 +264,9 @@ claude-code-kit/
 │   │   │   ├── SKILL.md
 │   │   │   └── prompt.md
 │   │   ├── sync/                      # /sync skill
+│   │   │   ├── SKILL.md
+│   │   │   └── prompt.md
+│   │   ├── commit/                    # /commit skill
 │   │   │   ├── SKILL.md
 │   │   │   └── prompt.md
 │   │   └── model-research/            # /model-research skill
