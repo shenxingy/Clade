@@ -156,3 +156,22 @@ After completing all phases, produce a summary in this format:
 ```
 
 Present the full report directly in the conversation output. Do NOT save the report to a file — it becomes stale as soon as findings are fixed. If the user explicitly asks to save it, then write it to `docs/reviews/YYYY-MM-DD-tech-debt-review.md`.
+
+## After the report: update TODO.md
+
+After printing the report, automatically update `TODO.md`:
+
+1. Read the current TODO.md (create it if missing)
+2. Find or create a section `## Tech Debt` (add at the end if absent)
+3. Add each 🔴 Critical and 🟡 Warning finding as an unchecked item:
+   ```
+   ## Tech Debt
+   - [ ] 🔴 [brief description] (`file:line`)
+   - [ ] 🟡 [brief description] (`file:line`)
+   ```
+4. Skip findings already present in TODO.md (match by description)
+5. Skip 🔵 Info items — those are optional and shouldn't pollute the backlog
+6. Report how many items were added:
+   ```
+   TODO.md updated: added 3 items (2 critical, 1 warning) to ## Tech Debt
+   ```

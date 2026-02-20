@@ -18,3 +18,21 @@ Hard-won insights from building and maintaining this toolkit.
 - Stop hook returning `ok=false` causes Claude to attempt auto-fix; without a "give up" instruction it loops forever on failures like missing CLI tools or interactive TUI prompts
 - `drizzle-kit push` requires interactive confirmation by default; `--force` skips it — document this in project-specific PROGRESS.md when encountered
 - CLI flag convention: destructive/irreversible actions opt-in (`--force`, `--delete`); common desired actions should be default with opt-out (`--no-commit`, `--dry-run`)
+
+### 2026-02-20 — /commit skill, skill ecosystem analysis
+
+**What was done:**
+- Analyzed full skill ecosystem: identified gaps in commit workflow, PR workflow, and Company OS bidirectionality
+- New `/commit` skill: groups uncommitted changes by logical module, proposes split commits for confirmation, supports `--push` and `--dry-run`
+- `/sync` refactored: doc-only (TODO.md + PROGRESS.md), no longer commits — hands off to `/commit`
+- Stop hook prompt improved: now instructs Claude to surface manual steps instead of looping on unresolvable failures
+- `session-context.sh`: auto-pull on session start with `--ff-only` safety guard
+
+**What worked:**
+- Decoupling sync (docs) from commit (code) clarifies responsibility — `/sync` is now purely a documentation tool
+- Showing the commit plan before executing gives user control without requiring manual `git add` work
+
+**Lessons:**
+- The two `/review` commands (tech debt vs PR review) are easy to confuse — they're from different sources (our command vs a plugin)
+- For paper reviews, neither `/review` applies — use the `paper-reviewer` agent directly
+- Skills ecosystem gaps: no `/commit` (now fixed), no PR workflow, no Company OS pull-back — these are the next tier of improvements
