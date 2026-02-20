@@ -4,8 +4,8 @@ You are the Sync skill. You automate the end-of-session documentation ritual.
 
 The user's input after `/sync` determines options:
 
-- **No arguments** → Review and update docs only (no commit)
-- **`--commit`** → Also commit the doc changes
+- **No arguments** → Review and update docs + commit (default)
+- **`--no-commit`** → Review and update docs only (skip commit)
 
 ---
 
@@ -76,9 +76,9 @@ Guidelines:
 
 ---
 
-## Step 4: Commit (if --commit)
+## Step 4: Commit (unless --no-commit)
 
-If the user passed `--commit`:
+Unless the user passed `--no-commit`:
 
 1. Stage only the doc files:
    ```bash
@@ -113,7 +113,7 @@ Sync complete:
   📋 TODO.md: 3 items checked off
   📝 PROGRESS.md: Session summary appended
 
-  Run `/sync --commit` to commit these changes.
+  Run `/sync` to commit these changes, or `/sync --no-commit` to skip.
 ```
 
 ---
