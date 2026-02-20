@@ -172,6 +172,166 @@ detect_conflicts() {
   done
 }
 
+# ─── Timeout + cleanup helpers ───────────────────────────────────────
+
+record_task_start_state() {
+  _CONTAINERS_BEFORE=$(docker ps -q 2>/dev/null | sort || true)
+  _GPU_PIDS_BEFORE=$(nvidia-smi --query-compute-apps=pid --format=csv,noheader 2>/dev/null | sort || true)
+}
+
+cleanup_escaped_processes() {
+  local task_name="$1"
+  local cleaned=""
+
+  if command -v docker &>/dev/null && docker info &>/dev/null 2>&1; then
+    local containers_now new_containers
+    containers_now=$(docker ps -q 2>/dev/null | sort || true)
+    new_containers=$(comm -13 <(echo "${_CONTAINERS_BEFORE:-}") <(echo "$containers_now") | tr '\n' ' ')
+    if [[ -n "$new_containers" ]]; then
+      echo "  🐳 Stopping Docker containers started by task: $new_containers"
+      # shellcheck disable=SC2086
+      docker stop $new_containers 2>/dev/null || true
+      cleaned+="docker:$new_containers "
+    fi
+  fi
+
+  if command -v nvidia-smi &>/dev/null; then
+    local gpu_pids_now new_gpu_pids
+    gpu_pids_now=$(nvidia-smi --query-compute-apps=pid --format=csv,noheader 2>/dev/null | sort || true)
+    new_gpu_pids=$(comm -13 <(echo "${_GPU_PIDS_BEFORE:-}") <(echo "$gpu_pids_now"))
+    if [[ -n "$new_gpu_pids" ]]; then
+      echo "  🖥️  Killing GPU processes started by task: $new_gpu_pids"
+      echo "$new_gpu_pids" | xargs kill -TERM 2>/dev/null || true
+      sleep 5
+      echo "$new_gpu_pids" | xargs kill -KILL 2>/dev/null || true
+      cleaned+="gpu_pids:$new_gpu_pids "
+    fi
+  fi
+
+  [[ -n "$cleaned" ]] && echo "  Cleaned up: $cleaned"
+}
+
+collect_diagnostics() {
+  echo "=== Diagnostics: $(date '+%Y-%m-%d %H:%M:%S') ==="
+
+  if command -v docker &>/dev/null && docker info &>/dev/null 2>&1; then
+    echo "--- Running containers ---"
+    docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || true
+    local unhealthy
+    unhealthy=$(docker ps --filter "health=unhealthy" --format "{{.Names}}" 2>/dev/null || true)
+    [[ -n "$unhealthy" ]] && echo "⚠️  Unhealthy: $unhealthy"
+    for cf in docker-compose.yml docker-compose.yaml compose.yml compose.yaml; do
+      [[ -f "$cf" ]] && { docker compose -f "$cf" ps 2>/dev/null || true; break; }
+    done
+  fi
+
+  if command -v nvidia-smi &>/dev/null; then
+    echo "--- GPU processes ---"
+    nvidia-smi --query-compute-apps=pid,process_name,used_gpu_memory \
+      --format=csv,noheader 2>/dev/null || true
+  fi
+
+  echo "--- Long-running processes (>30s) ---"
+  ps -eo pid,etimes,comm,args --sort=-etimes 2>/dev/null | \
+    awk 'NR==1 || ($2>30 && /npm|node|pnpm|bun|expo|metro|cargo|go |python|java|docker|kubectl|helm|deploy|migrate|train|torchrun/)' | \
+    head -12 || ps aux 2>/dev/null | head -8
+
+  echo "--- Resources ---"
+  df -h . 2>/dev/null | tail -1 || true
+  free -h 2>/dev/null | grep Mem || true
+}
+
+analyze_timeout() {
+  local task_name="$1" timeout_sec="$2" log_file="$3"
+  echo ""; echo "🔍 Analyzing timeout — $task_name"
+
+  local diag last_log af
+  diag=$(collect_diagnostics 2>/dev/null)
+  last_log=$(tail -30 "$log_file" 2>/dev/null || true)
+  af=$(mktemp /tmp/claude-analysis-XXXXXX)
+  cat > "$af" <<PROMPT
+A batch task timed out after ${timeout_sec}s. Diagnose and give specific fix commands.
+
+## Timed-out task
+$task_name
+
+## Last 30 lines before timeout
+\`\`\`
+$last_log
+\`\`\`
+
+## System state
+\`\`\`
+$diag
+\`\`\`
+
+Answer concisely (max 12 lines):
+1. Root cause of the hang (blocked I/O, deadlock, service down, etc.)
+2. Docker/GPU/infra issues? (unhealthy container, stuck deploy, port conflict, prior run still active)
+3. Recommendation: RETRY-NOW / RETRY-AFTER-FIX / SKIP
+4. If RETRY-AFTER-FIX: give the exact shell commands to fix it
+PROMPT
+
+  local analysis=""
+  if command -v claude &>/dev/null; then
+    analysis=$(timeout 90s claude -p --model haiku --dangerously-skip-permissions < "$af" 2>/dev/null \
+      || echo "(analysis unavailable)")
+  fi
+  rm -f "$af"
+
+  echo ""
+  echo "┌─ Timeout Analysis ─────────────────────────────────────────────"
+  if [[ -n "$analysis" ]]; then
+    while IFS= read -r line; do printf "│ %s\n" "$line"; done <<< "$analysis"
+  else
+    while IFS= read -r line; do printf "│ %s\n" "$line"; done <<< "$diag"
+  fi
+  echo "└────────────────────────────────────────────────────────────────"
+  echo ""
+
+  { echo ""; echo "=== Timeout Analysis ==="; [[ -n "$analysis" ]] && echo "$analysis"; echo ""; echo "$diag"; } >> "$log_file"
+}
+
+run_claude_task() {
+  local model="$1" timeout_sec="$2" log_file="$3" workdir="${4:-$(pwd)}"
+
+  local pf runner
+  pf=$(mktemp /tmp/claude-task-XXXXXX)
+  runner=$(mktemp /tmp/claude-runner-XXXXXX.sh)
+  cat > "$pf"
+  printf '#!/usr/bin/env bash\ncd "%s" || exit 1\nexec claude -p --model "%s" %s --verbose\n' \
+    "$workdir" "$model" "$CLAUDE_FLAGS" > "$runner"
+  chmod +x "$runner"
+
+  touch "$log_file"
+  tail -f "$log_file" &
+  local tail_pid=$!
+  if command -v setsid &>/dev/null; then
+    setsid "$runner" < "$pf" >> "$log_file" 2>&1 &
+  else
+    "$runner" < "$pf" >> "$log_file" 2>&1 &
+  fi
+  local pgid=$!
+
+  ( sleep "${timeout_sec}"
+    if kill -0 "${pgid}" 2>/dev/null; then
+      kill -- "-${pgid}" 2>/dev/null || true
+      sleep 30
+      kill -KILL -- "-${pgid}" 2>/dev/null || true
+    fi
+  ) &
+  local watchdog_pid=$!
+
+  wait "${pgid}"
+  local ec=$?
+  kill "${watchdog_pid}" 2>/dev/null; kill "${tail_pid}" 2>/dev/null
+  wait "${watchdog_pid}" 2>/dev/null; wait "${tail_pid}" 2>/dev/null
+  rm -f "${pf}" "${runner}"
+
+  [[ $ec -eq 143 || $ec -eq 137 ]] && ec=124
+  return $ec
+}
+
 # ─── Progress tracking (atomic with flock) ────────────────────────────
 
 update_progress() {
@@ -228,10 +388,10 @@ run_task_in_worktree() {
       (cd "$wt_dir" && git checkout . && git clean -fd) 2>/dev/null
     fi
 
+    record_task_start_state
+
     local exit_code=0
-    echo "$task_prompt" | \
-      (cd "$wt_dir" && timeout "${task_timeout}s" claude -p --model "$model" $CLAUDE_FLAGS --verbose) \
-      2>&1 | tee "$log_file" || exit_code=$?
+    echo "$task_prompt" | run_claude_task "$model" "$task_timeout" "$log_file" "$wt_dir" || exit_code=$?
 
     if [[ $exit_code -eq 0 ]]; then
       succeeded=true
@@ -243,6 +403,8 @@ run_task_in_worktree() {
       break
     elif [[ $exit_code -eq 124 ]]; then
       echo "[$task_idx] Timed out (attempt $attempt/$max_attempts)"
+      cleanup_escaped_processes "$task_name"
+      analyze_timeout "$task_name" "$task_timeout" "$log_file"
     else
       echo "[$task_idx] Failed with exit $exit_code (attempt $attempt/$max_attempts)"
     fi
@@ -388,13 +550,17 @@ if [[ ${#MERGE_FAILURES[@]} -gt 0 ]]; then
     log_file="$LOG_DIR/${TIMESTAMP}-task-${task_idx}-serial.log"
 
     echo "Running task $task_idx serially: $task_name"
+    record_task_start_state
     exit_code=0
-    echo "$task_prompt" | timeout "${task_timeout}s" claude -p --model "$model" $CLAUDE_FLAGS --verbose \
-      2>&1 | tee "$log_file" || exit_code=$?
+    echo "$task_prompt" | run_claude_task "$model" "$task_timeout" "$log_file" || exit_code=$?
 
     if [[ $exit_code -eq 0 ]]; then
       SUCCESS=$((SUCCESS + 1))
     else
+      if [[ $exit_code -eq 124 ]]; then
+        cleanup_escaped_processes "$task_name"
+        analyze_timeout "$task_name" "$task_timeout" "$log_file"
+      fi
       FAILED=$((FAILED + 1))
     fi
   done
