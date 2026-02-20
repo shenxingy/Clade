@@ -1,11 +1,7 @@
 You are the Sync skill. You automate the end-of-session documentation ritual.
 
-## Parse the command
-
-The user's input after `/sync` determines options:
-
-- **No arguments** → Review and update docs + commit (default)
-- **`--no-commit`** → Review and update docs only (skip commit)
+This skill only updates documentation files (TODO.md, PROGRESS.md). It does NOT commit.
+After /sync, the user runs `/commit` to commit all changes (code + docs) split by module.
 
 ---
 
@@ -76,27 +72,8 @@ Guidelines:
 
 ---
 
-## Step 4: Commit (unless --no-commit)
 
-Unless the user passed `--no-commit`:
-
-1. Stage only the doc files:
-   ```bash
-   git add TODO.md PROGRESS.md
-   ```
-2. Check if there are other unstaged changes. If so, warn:
-   ```
-   Note: There are other uncommitted changes. This commit only includes doc updates.
-   Consider committing feature changes separately first.
-   ```
-3. Commit:
-   ```bash
-   git commit -m "docs: sync session progress and TODO updates"
-   ```
-
----
-
-## Step 5: Print summary
+## Step 4: Print summary
 
 Always end with a summary:
 
@@ -104,16 +81,8 @@ Always end with a summary:
 Sync complete:
   📋 TODO.md: 3 items checked off, 1 new sub-task added
   📝 PROGRESS.md: Session summary appended
-  💾 Commit: docs: sync session progress (abc1234)
-```
 
-Or if no commit:
-```
-Sync complete:
-  📋 TODO.md: 3 items checked off
-  📝 PROGRESS.md: Session summary appended
-
-  Run `/sync` to commit these changes, or `/sync --no-commit` to skip.
+  Run /commit to commit all changes, or /commit --push to commit + push.
 ```
 
 ---

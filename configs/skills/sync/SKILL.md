@@ -1,23 +1,23 @@
 ---
 name: sync
-description: End-of-session documentation sync — updates TODO.md, PROGRESS.md, and commits by default
-argument-hint: '[--no-commit]'
+description: End-of-session documentation sync — updates TODO.md and PROGRESS.md only (run /commit after to commit everything)
+argument-hint: ''
 ---
 
 # Sync Skill
 
-End-of-session ritual automation. Reviews what was done, updates project documentation, and optionally commits.
+End-of-session documentation ritual. Reviews what was done and updates project docs — no commit. Run `/commit` after to commit everything (docs + code) split by module.
 
 ## What it does
 
 1. Reviews recent git history to understand what was accomplished
 2. Auto-updates TODO.md (checks off completed items)
 3. Appends a session summary to PROGRESS.md
-4. Optionally commits the doc changes
 
 ## Usage
 
 ```
-/sync                              # Review + update docs + commit (default)
-/sync --no-commit                  # Review + update docs only (skip commit)
+/sync          # Update TODO.md + PROGRESS.md
+/commit        # Commit all changes (code + docs) split by module
+/commit --push # Commit + push
 ```
