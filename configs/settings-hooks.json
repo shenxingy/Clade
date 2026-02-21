@@ -33,8 +33,8 @@
         "hooks": [
           {
             "type": "prompt",
-            "prompt": "Review the conversation transcript below. Determine if the assistant completed ALL tasks the user explicitly requested. Check: 1) Every explicit request was addressed 2) No partial implementations left unfinished 3) No obvious errors introduced. If EVERYTHING is complete, respond {\"ok\": true}. If something is clearly incomplete or broken, respond {\"ok\": false, \"reason\": \"brief description of what's missing\"}. Be lenient — only block if something is clearly unfinished. IMPORTANT: If you return ok=false, the assistant will attempt to fix the issue. If automated fixes are not possible (e.g. missing CLI tools, interactive prompts required, manual steps needed), the assistant MUST clearly tell the user what manual action is required and stop attempting — do not loop. Context: $ARGUMENTS",
-            "timeout": 15
+            "prompt": "RESPOND WITH ONLY VALID JSON — no preamble, no explanation, no markdown. Your entire response must be exactly one of: {\"ok\": true} or {\"ok\": false, \"reason\": \"brief reason\"}. Any other output will cause a JSON parse error.\n\nReview the conversation transcript. Determine if the assistant completed ALL tasks the user explicitly requested. Check: 1) Every explicit request was addressed 2) No partial implementations left unfinished 3) No obvious errors introduced. Be lenient — only return ok=false if something is clearly unfinished AND automatable by the assistant. If the remaining work requires manual steps (missing CLI tools, interactive prompts, browser actions), return ok=true — the assistant should have already told the user. Context: $ARGUMENTS",
+            "timeout": 30
           }
         ]
       }
