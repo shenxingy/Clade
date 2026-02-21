@@ -22,7 +22,7 @@ Hard-won insights from building and maintaining this toolkit.
 ### 2026-02-20 — /commit skill, skill ecosystem analysis
 
 **What was done:**
-- Analyzed full skill ecosystem: identified gaps in commit workflow, PR workflow, and Company OS bidirectionality
+- Analyzed full skill ecosystem: identified gaps in commit workflow, PR workflow, and internal tool bidirectionality
 - New `/commit` skill: groups uncommitted changes by logical module, proposes split commits for confirmation, supports `--push` and `--dry-run`
 - `/sync` refactored: doc-only (TODO.md + PROGRESS.md), no longer commits — hands off to `/commit`
 - Stop hook prompt improved: now instructs Claude to surface manual steps instead of looping on unresolvable failures
@@ -35,4 +35,4 @@ Hard-won insights from building and maintaining this toolkit.
 **Lessons:**
 - The two `/review` commands (tech debt vs PR review) are easy to confuse — they're from different sources (our command vs a plugin)
 - For paper reviews, neither `/review` applies — use the `paper-reviewer` agent directly
-- Skills ecosystem gaps: no `/commit` (now fixed), no PR workflow, no Company OS pull-back — these are the next tier of improvements
+- Skills ecosystem gaps: no `/commit` (now fixed), no PR workflow — these are the next tier of improvements
