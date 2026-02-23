@@ -2,3 +2,6 @@ logs/
 orchestrator/.venv/
 orchestrator/Caddyfile
 orchestrator/caddy.log
+orchestrator/__pycache__/
+.claude/
+orchestrator/.claude/
