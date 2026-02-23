@@ -62,6 +62,7 @@ All checks are **opt-in by detection** — if the tool isn't installed or the pr
 | `/review` | Comprehensive tech debt review — auto-writes Critical/Warning findings to TODO.md |
 | `/model-research` | Search web for latest Claude model data, show what changed |
 | `/model-research --apply` | Same + update model guide, session context, and batch-tasks configs |
+| `/orchestrate` | Switch to orchestrator mode — ask clarifying questions, decompose goal into tasks, write `proposed-tasks.md` (used by the Web UI) |
 
 ## When to Use What
 
@@ -114,26 +115,34 @@ With this alias, Claude runs fully autonomously — no approval dialogs, no inte
 
 ### 2. Batch your task input (the core habit)
 
-Write all tasks upfront, then feed multiple agents simultaneously:
+Write all tasks upfront, then launch agents simultaneously:
 
 ```bash
-# Morning: 30 min to write task files for the day
+mkdir -p .claude/tasks
+
+# Good task file: specific files, patterns to follow, edge cases to handle
 cat > .claude/tasks/task-001.md << 'EOF'
 Add rate limiting to all /api/auth/* routes.
-Use existing rateLimiter in lib/middleware.ts. Set 10 req/min for auth, 60/min for reads.
+Use the existing rateLimiter in lib/middleware.ts.
+Set 10 req/min for POST /auth/login, 60/min for GET endpoints.
+Return 429 with {"error": "rate_limit_exceeded", "retry_after": N} on breach.
 EOF
 
 cat > .claude/tasks/task-002.md << 'EOF'
-Write E2E tests for the checkout flow.
-Cover: add to cart, apply coupon, success, payment failure.
-Use existing fixtures in tests/fixtures/cart.ts.
+Write E2E tests for the checkout flow in tests/e2e/checkout.spec.ts.
+Follow the pattern in tests/e2e/cart.spec.ts.
+Cover: add to cart, apply coupon, checkout success, payment failure (card_declined).
 EOF
 
-# Open parallel agents — one per terminal
-cc   # Terminal 1 → paste task-001
-cc   # Terminal 2 → paste task-002
-cc   # Terminal 3 → paste task-003
+# Launch agents — one per terminal, fully autonomous
+cc -p "$(cat .claude/tasks/task-001.md)"   # Terminal 1 (non-interactive)
+cc -p "$(cat .claude/tasks/task-002.md)"   # Terminal 2 (non-interactive)
+
+# Or run interactively if you want to watch/guide:
+cc   # Terminal 3 → paste task content
 ```
+
+> **What makes a good task file:** Name the exact files to edit/create. Reference existing patterns to follow (`"follow the pattern in X"`). Specify edge cases and error formats. Vague tasks ("improve the auth flow") get vague results.
 
 Your thinking decouples from execution — design all tasks in one burst, let agents execute while you do other things.
 
@@ -159,6 +168,61 @@ Claude processes messages in order — send all tasks at once and go do somethin
 ```
 
 No waiting required. You're free from the moment you send.
+
+### 5. Orchestrator Web UI — chat to plan, watch workers execute
+
+The fastest way to go from idea to parallel execution. One chat session with an AI orchestrator decomposes your goal into tasks; a dashboard shows N workers executing them simultaneously.
+
+```bash
+./orchestrator/start.sh
+# → Opens http://localhost:8765 in your browser
+```
+
+**Workflow:**
+
+```
+1. Chat: "Build a SaaS with auth, billing, analytics"
+   → Orchestrator asks 2-3 clarifying questions (stack, constraints, existing code)
+   → You answer (type or use OS voice input)
+
+2. Orchestrator proposes task breakdown
+   → Writes .claude/proposed-tasks.md
+   → UI shows confirmation overlay: "4 tasks ready. Start all?"
+
+3. Click "Start All Workers"
+   → Workers launch in parallel: claude -p "$(cat task.md)" --dangerously-skip-permissions
+   → Dashboard updates every 1s: status, last commit, elapsed time
+
+4. Monitor:
+   Worker 1 │ running  │ feat: add NextAuth config    │ 2m34s │ [Pause] [Chat]
+   Worker 2 │ running  │ feat: create Stripe webhook  │ 1m12s │ [Pause] [Chat]
+   Worker 3 │ blocked  │ needs Stripe API key         │ 0m45s │        [Chat]
+
+5. Worker 3 blocked → click [Chat] → type "Use sk_test_xxx"
+   → Worker stops, message injected as context, worker restarts
+
+6. All done: progress bar 100%, review with: git log --oneline
+```
+
+**Layout:**
+
+```
+┌─────────────────────────────────┬──────────────────────────────┐
+│  Orchestrator Chat (PTY)        │  Task Queue                  │
+│                                 │  ├ pending: Implement auth   │
+│  > Build a SaaS with auth...    │  ├ pending: Add Stripe       │
+│  < What tech stack?             │  └ [Run] [Delete] [+ Add]    │
+│  > Next.js, Prisma, Stripe      ├──────────────────────────────┤
+│  < Writing 4 tasks...           │  Workers                     │
+│                                 │  ┌──────────────────────────┐│
+│  ┌─ 4 tasks ready ──────────┐   │  │ running │ feat: auth...  ││
+│  │ Start All Workers? [Yes] │   │  │ 2m34s   │ [Pause][Chat]  ││
+│  └──────────────────────────┘   │  └──────────────────────────┘│
+│  [Type message... ]   [Send]    │  ████░░░░░ 35%  ETA ~8 min   │
+└─────────────────────────────────┴──────────────────────────────┘
+```
+
+**No build step.** Single HTML file + FastAPI backend. Requires Python 3.9+.
 
 ---
 
@@ -392,6 +456,11 @@ Edit `~/.claude/corrections/stats.json`:
 claude-code-kit/
 ├── install.sh                         # One-command deployment
 ├── uninstall.sh                       # Clean removal
+├── orchestrator/                      # Web UI for parallel agent orchestration
+│   ├── start.sh                       # Launch script (installs deps, opens browser)
+│   ├── server.py                      # FastAPI server (PTY orchestrator + worker pool)
+│   ├── requirements.txt               # Python deps (fastapi, uvicorn, ptyprocess, watchfiles)
+│   └── web/index.html                 # Single-file vanilla JS UI (chat + dashboard)
 ├── configs/
 │   ├── settings-hooks.json            # Hook definitions (merged into settings.json)
 │   ├── hooks/
@@ -414,6 +483,7 @@ claude-code-kit/
 │   │   ├── commit/                    # /commit skill
 │   │   ├── worktree/                  # /worktree skill — create parallel git worktrees
 │   │   ├── frontend-design/           # /frontend-design skill — production-grade UI generation
+│   │   ├── orchestrate/               # /orchestrate skill — AI orchestrator persona for Web UI
 │   │   ├── companyos-update/          # /companyos-update skill — sync task status to Company OS
 │   │   ├── companyos-wiki/            # /companyos-wiki skill — create/update Company OS wiki pages
 │   │   └── model-research/            # /model-research skill
@@ -425,6 +495,7 @@ claude-code-kit/
 │       └── review.md                  # /review tech debt command
 ├── templates/
 │   ├── settings.json                  # settings.json template (no secrets)
+│   ├── CLAUDE.md                      # Agent Ground Rules template (auto-deployed to ~/.claude/)
 │   └── corrections/
 │       ├── rules.md                   # Initial correction rules
 │       └── stats.json                 # Initial domain error rates
