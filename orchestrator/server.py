@@ -136,32 +136,49 @@ class TaskQueue:
             return None
 
     async def import_from_proposed(self) -> list[dict]:
-        """Parse .claude/proposed-tasks.md and add tasks to queue."""
+        """Parse .claude/proposed-tasks.md and add tasks to queue, skipping duplicates."""
         f = self._proposed_tasks_file()
         if not f.exists():
             return []
         content = f.read_text()
         blocks = content.split("===TASK===")
         added = []
-        for block in blocks:
-            block = block.strip()
-            if not block:
-                continue
-            lines = block.splitlines()
-            model = "sonnet"
-            desc_lines = []
-            in_header = True
-            for line in lines:
-                if in_header and line.startswith("model:"):
-                    model = line.split(":", 1)[1].strip()
-                elif in_header and line.strip() == "---":
-                    in_header = False
-                elif not in_header:
-                    desc_lines.append(line)
-            description = "\n".join(desc_lines).strip()
-            if description:
-                task = await self.add(description, model)
-                added.append(task)
+        async with self._lock:
+            tasks = self._load()
+            existing_descriptions = {t["description"] for t in tasks}
+            for block in blocks:
+                block = block.strip()
+                if not block:
+                    continue
+                lines = block.splitlines()
+                model = "sonnet"
+                desc_lines = []
+                in_header = True
+                for line in lines:
+                    if in_header and line.startswith("model:"):
+                        model = line.split(":", 1)[1].strip()
+                    elif in_header and line.strip() == "---":
+                        in_header = False
+                    elif not in_header:
+                        desc_lines.append(line)
+                description = "\n".join(desc_lines).strip()
+                if description and description not in existing_descriptions:
+                    task = {
+                        "id": str(uuid.uuid4())[:8],
+                        "description": description,
+                        "model": model,
+                        "status": "pending",
+                        "worker_id": None,
+                        "started_at": None,
+                        "elapsed_s": 0,
+                        "last_commit": None,
+                        "log_file": None,
+                    }
+                    tasks.append(task)
+                    existing_descriptions.add(description)
+                    added.append(task)
+            if added:
+                self._save(tasks)
         return added
 
 
