@@ -4,7 +4,7 @@
 
 **Turn Claude Code from a chat assistant into an autonomous coding system.**
 
-One install script. Five hooks, four agents, three skills, and a correction learning loop — all working together so Claude codes better, catches its own mistakes, and remembers your preferences across sessions.
+One install script. Six hooks, four agents, six skills, a safety guardian, and a correction learning loop — all working together so Claude codes better, catches its own mistakes, and can run unattended overnight while you sleep.
 
 ## Install (30 seconds)
 
@@ -38,7 +38,8 @@ All checks are **opt-in by detection** — if the tool isn't installed or the pr
 
 | When | What fires | What it does |
 |------|-----------|-------------|
-| You open Claude Code in a git repo | `session-context.sh` | Loads git context, correction rules, and model selection guidance into context |
+| You open Claude Code in a git repo | `session-context.sh` | Loads git context, recent handoff, correction rules, and model guidance into context |
+| Claude tries to run a Bash command | `pre-tool-guardian.sh` | **Blocks** database migrations (they timeout), catastrophic rm -rf, force push to main, SQL DROP |
 | Claude edits a code file | `post-edit-check.sh` | Runs language-appropriate checks **async** (tsc, pyright, cargo check, go vet, swift build, gradle, chktex) |
 | You correct Claude ("wrong, use X") | `correction-detector.sh` | Logs the correction, prompts Claude to save a reusable rule |
 | Claude marks a task as done | `verify-task-completed.sh` | Adaptive quality gate: checks compilation/lint, adds build+test in strict mode |
@@ -49,6 +50,8 @@ All checks are **opt-in by detection** — if the tool isn't installed or the pr
 
 | Command | What it does |
 |---------|-------------|
+| `/handoff` | Save session state to `.claude/handoff-*.md` — enables overnight runs and context relay between agents |
+| `/pickup` | Load latest handoff and immediately resume work — zero-friction session restart |
 | `/batch-tasks` | Parse TODO.md, auto-plan each task, execute via `claude -p` (serial or parallel) |
 | `/batch-tasks step2 step4` | Plan + run specific TODO steps |
 | `/batch-tasks --parallel` | Run tasks concurrently via git worktrees |
@@ -77,6 +80,16 @@ All checks are **opt-in by detection** — if the tool isn't installed or the pr
 - Critical and Warning findings are automatically written to the `## Tech Debt` section of TODO.md
 - Run periodically — tech debt sneaks in fast
 
+**`/handoff`** — when context is getting full (~80%) or before stopping:
+- Saves everything about the current session state to `.claude/handoff-{timestamp}.md`
+- Includes: what was done, what's pending, git state, exact next steps, gotchas
+- Enables the next session (or a fresh overnight agent) to resume without human re-briefing
+
+**`/pickup`** — at the start of a new session:
+- Reads the latest handoff file and presents a concise briefing
+- Verifies git state matches the handoff
+- Immediately starts executing the first Next Step from the handoff — no waiting
+
 **`/sync`** — at the end of every coding session:
 - Checks off completed TODO items and captures lessons in PROGRESS.md
 - Run `/commit` after to commit everything (docs + code) split by module
@@ -86,6 +99,134 @@ All checks are **opt-in by detection** — if the tool isn't installed or the pr
 - Analyzes all uncommitted changes and splits them into logical commits by module
 - Pushes by default; use `--no-push` to skip, `--dry-run` to preview the plan
 
+## Maximize Throughput
+
+The bottleneck for Claude Code is not code generation — it's **how fast you input tasks**. These setups eliminate the friction.
+
+### 1. Skip permission prompts
+
+```bash
+# Add to ~/.zshrc or ~/.bashrc
+alias cc='claude --dangerously-skip-permissions'
+```
+
+With this alias, Claude runs fully autonomously — no approval dialogs, no interruptions. Use `cc` instead of `claude`. Always commit before starting a session (git is your rollback).
+
+### 2. Batch your task input (the core habit)
+
+Write all tasks upfront, then feed multiple agents simultaneously:
+
+```bash
+# Morning: 30 min to write task files for the day
+cat > .claude/tasks/task-001.md << 'EOF'
+Add rate limiting to all /api/auth/* routes.
+Use existing rateLimiter in lib/middleware.ts. Set 10 req/min for auth, 60/min for reads.
+EOF
+
+cat > .claude/tasks/task-002.md << 'EOF'
+Write E2E tests for the checkout flow.
+Cover: add to cart, apply coupon, success, payment failure.
+Use existing fixtures in tests/fixtures/cart.ts.
+EOF
+
+# Open parallel agents — one per terminal
+cc   # Terminal 1 → paste task-001
+cc   # Terminal 2 → paste task-002
+cc   # Terminal 3 → paste task-003
+```
+
+Your thinking decouples from execution — design all tasks in one burst, let agents execute while you do other things.
+
+### 3. Run parallel agents with worktrees
+
+Use `/worktree` to create isolated git worktrees so multiple agents work the same repo without conflicts:
+
+```
+/worktree create feat/auth-rework    # Terminal 1
+/worktree create feat/rate-limiting  # Terminal 2
+```
+
+Each agent works in its own directory. `committer` prevents staging conflicts. Merge when done.
+
+### 4. Task queue — sequential tasks, one shot
+
+Claude processes messages in order — send all tasks at once and go do something else:
+
+```
+1. Fix the null pointer in UserService.getUserById()
+2. Add input validation to all POST endpoints
+3. Update the API docs in README.md
+```
+
+No waiting required. You're free from the moment you send.
+
+---
+
+## Overnight Autonomous Operation
+
+The kit is designed to run unattended — you sleep, agents work.
+
+### Pattern: Task Queue → Sleep → Review
+
+```bash
+# 1. Write task files for what you want done
+cat > tasks.txt << 'EOF'
+===TASK===
+model: sonnet
+timeout: 600
+retries: 2
+---
+Implement the user settings page at app/settings/page.tsx.
+Follow the pattern in app/profile/page.tsx. Use the existing
+useUser hook and the settingsSchema from lib/schema.ts.
+===TASK===
+model: sonnet
+timeout: 600
+retries: 2
+---
+Add rate limiting middleware to all /api/auth/* routes.
+Use the existing rateLimiter in lib/middleware.ts. Set 10 req/min.
+EOF
+
+# 2. Queue and run
+claude  # open session
+/batch-tasks --run tasks.txt  # starts in background, you can close the terminal
+
+# 3. You get Telegram notifications when blocked or done
+# 4. Next morning: /pickup to see what was done, review commits
+```
+
+### Pattern: Parallel Sessions (3-4x throughput)
+
+```bash
+# Terminal 1 — feature A
+git worktree add ../proj-feat-a -b feat/settings-page
+cd ../proj-feat-a && claude
+# → assign task A, /handoff when done
+
+# Terminal 2 — feature B (independent)
+git worktree add ../proj-feat-b -b feat/rate-limiting
+cd ../proj-feat-b && claude
+# → assign task B, /handoff when done
+
+# Review both in main branch, merge PRs
+```
+
+### Pattern: Context Relay (long tasks across sessions)
+
+```bash
+# Session 1 (context getting full at ~80%)
+/handoff  # saves state to .claude/handoff-2026-02-23-14-30.md
+# close session
+
+# Session 2 (fresh context)
+/pickup   # reads handoff, immediately resumes next step
+```
+
+The `pre-tool-guardian.sh` hook protects unattended runs: database migrations, catastrophic `rm -rf`, force pushes to main, and SQL DROP statements are automatically blocked and redirected to manual execution — so agents can't irreversibly destroy state while you sleep.
+
+---
+
 ## How It Works
 
 ### Hooks (automatic behaviors)
@@ -93,6 +234,7 @@ All checks are **opt-in by detection** — if the tool isn't installed or the pr
 | Hook | Trigger | Model cost |
 |------|---------|-----------|
 | `session-context.sh` | SessionStart | None (shell only) |
+| `pre-tool-guardian.sh` | PreToolUse (Bash) | None (shell only) |
 | `post-edit-check.sh` | PostToolUse (Edit/Write) | None (shell only) |
 | `correction-detector.sh` | UserPromptSubmit | None (shell only) |
 | `verify-task-completed.sh` | TaskCompleted | None (shell only) |
@@ -112,6 +254,10 @@ All hooks are shell scripts — zero API cost, sub-second execution.
 Claude auto-selects agents. Haiku agents are fast and cheap for mechanical checks; Sonnet agents reason deeper for reviews.
 
 ### Skills (slash commands)
+
+**`/handoff`** saves the entire session state to `.claude/handoff-{timestamp}.md`: what was accomplished, git state, blockers, ordered next steps, and gotchas. Run this when context is ~80% full, before stopping work, or before handing off to a parallel agent. The next session auto-loads it via `session-context.sh`.
+
+**`/pickup`** reads the latest handoff, verifies git state, and immediately resumes work from the first pending Next Step. Zero briefing required for the new session or agent.
 
 **`/batch-tasks`** reads TODO.md, researches the codebase, generates detailed plans for each task, scores them on readiness (scout scoring), assigns the optimal model per task (haiku for mechanical, sonnet for standard, opus for complex), then executes via `claude -p`. Supports serial and parallel (git worktree) execution.
 
@@ -249,7 +395,8 @@ claude-code-kit/
 ├── configs/
 │   ├── settings-hooks.json            # Hook definitions (merged into settings.json)
 │   ├── hooks/
-│   │   ├── session-context.sh         # SessionStart: load git context + corrections
+│   │   ├── session-context.sh         # SessionStart: load git context + handoff + corrections
+│   │   ├── pre-tool-guardian.sh       # PreToolUse: block migrations/rm-rf/force-push/DROP
 │   │   ├── post-edit-check.sh         # PostToolUse: async type-check after edits
 │   │   ├── notify-telegram.sh         # Notification: Telegram alerts
 │   │   ├── verify-task-completed.sh   # TaskCompleted: adaptive quality gate
@@ -260,19 +407,18 @@ claude-code-kit/
 │   │   ├── type-checker.md            # Haiku type checker
 │   │   └── verify-app.md              # Sonnet app verification
 │   ├── skills/
+│   │   ├── handoff/                   # /handoff skill — end-of-session context dump
+│   │   ├── pickup/                    # /pickup skill — start-of-session context load
 │   │   ├── batch-tasks/               # /batch-tasks skill
-│   │   │   ├── SKILL.md
-│   │   │   └── prompt.md
 │   │   ├── sync/                      # /sync skill
-│   │   │   ├── SKILL.md
-│   │   │   └── prompt.md
 │   │   ├── commit/                    # /commit skill
-│   │   │   ├── SKILL.md
-│   │   │   └── prompt.md
+│   │   ├── worktree/                  # /worktree skill — create parallel git worktrees
+│   │   ├── frontend-design/           # /frontend-design skill — production-grade UI generation
+│   │   ├── companyos-update/          # /companyos-update skill — sync task status to Company OS
+│   │   ├── companyos-wiki/            # /companyos-wiki skill — create/update Company OS wiki pages
 │   │   └── model-research/            # /model-research skill
-│   │       ├── SKILL.md
-│   │       └── prompt.md
 │   ├── scripts/
+│   │   ├── committer.sh               # Safe commit for parallel agents (no git add .)
 │   │   ├── run-tasks.sh               # Serial task runner
 │   │   └── run-tasks-parallel.sh      # Parallel runner (git worktrees)
 │   └── commands/
@@ -287,8 +433,10 @@ claude-code-kit/
         ├── hooks.md                   # Hook system deep dive
         ├── subagents.md               # Custom agent patterns
         ├── batch-tasks.md             # Batch execution research
-        ├── models.md                  # Model comparison & selection guide
-        └── power-users.md             # Patterns from top Claude Code users
+        ├── models.md                          # Model comparison & selection guide
+        ├── power-users.md                     # Patterns from top Claude Code users
+        ├── openclaw-dev-velocity-analysis.md  # steipete velocity analysis
+        └── solo-dev-velocity-playbook.md      # Actionable solo dev playbook
 ```
 
 ## Uninstall

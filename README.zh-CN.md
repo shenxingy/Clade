@@ -4,7 +4,7 @@
 
 **把 Claude Code 从聊天助手变成自主编码系统。**
 
-一个安装脚本。五个 hooks、四个 agents、三个 skills，以及一个纠正学习循环 — 协同工作，让 Claude 编码更好、自动捕获错误、跨会话记住你的偏好。
+一个安装脚本。六个 hooks、四个 agents、六个 skills、一个安全守卫，以及一个纠正学习循环 — 协同工作，让 Claude 编码更好、自动捕获错误、可以在你睡觉时无人值守地跑通宵。
 
 ## 安装（30 秒）
 
@@ -38,7 +38,8 @@ cd claude-code-kit
 
 | 时机 | 触发什么 | 做了什么 |
 |------|---------|---------|
-| 在 git 仓库中打开 Claude Code | `session-context.sh` | 加载 git 上下文、纠正规则和模型选择指南到上下文 |
+| 在 git 仓库中打开 Claude Code | `session-context.sh` | 加载 git 上下文、上次 handoff、纠正规则和模型指南到上下文 |
+| Claude 尝试执行 Bash 命令 | `pre-tool-guardian.sh` | **拦截**数据库迁移（会超时）、危险 rm -rf、force push to main、SQL DROP |
 | Claude 编辑代码文件 | `post-edit-check.sh` | **异步**运行语言对应的检查（tsc、pyright、cargo check、go vet、swift build、gradle、chktex） |
 | 你纠正 Claude（"错了，用 X"） | `correction-detector.sh` | 记录纠正，提示 Claude 保存可复用的规则 |
 | Claude 标记任务完成 | `verify-task-completed.sh` | 自适应质量门禁：检查编译/lint，严格模式额外运行 build + test |
@@ -49,6 +50,8 @@ cd claude-code-kit
 
 | 命令 | 功能 |
 |------|------|
+| `/handoff` | 保存会话状态到 `.claude/handoff-*.md` — 支持通宵运行和 agent 间上下文接力 |
+| `/pickup` | 加载最新 handoff 并立即恢复工作 — 新会话零摩擦启动 |
 | `/batch-tasks` | 解析 TODO.md，自动规划每个任务，通过 `claude -p` 执行（串行或并行） |
 | `/batch-tasks step2 step4` | 规划 + 执行指定 TODO 步骤 |
 | `/batch-tasks --parallel` | 通过 git worktrees 并行执行 |
@@ -77,6 +80,15 @@ cd claude-code-kit
 - Critical 和 Warning 级别发现会自动写入 TODO.md 的 `## Tech Debt` 区块
 - 定期跑一下 — 技术债积累得比你想的快
 
+**`/handoff`** — 上下文快满时（约 80%）或停止工作前：
+- 将会话完整状态保存到 `.claude/handoff-{时间戳}.md`
+- 包含：做了什么、待做什么、git 状态、精确的下一步、坑点提示
+- 让下一个会话（或者通宵跑的 agent）无需人工交代背景就能接着干
+
+**`/pickup`** — 新会话开始时：
+- 读取最新 handoff，展示简洁摘要，立即执行 Next Steps 第一条
+- 不需要用户再说一遍背景
+
 **`/sync`** — 每次编码会话结束时：
 - 勾掉完成的 TODO 项，把经验教训记录到 PROGRESS.md
 - 不提交 — 之后跑 `/commit` 把代码 + 文档一起按模块拆分提交
@@ -86,6 +98,68 @@ cd claude-code-kit
 - 分析所有未提交的改动，按模块（schema、API、前端、配置、文档等）拆分成逻辑清晰的 commits
 - 默认推送；`--no-push` 跳过推送，`--dry-run` 仅预览拆分计划
 
+## 最大化产出
+
+Claude Code 的瓶颈不是代码生成速度，而是**你输入任务的速度**。以下设置消除这些摩擦。
+
+### 1. 跳过权限确认弹窗
+
+```bash
+# 加到 ~/.zshrc 或 ~/.bashrc
+alias cc='claude --dangerously-skip-permissions'
+```
+
+有了这个 alias，Claude 全程自主运行，无需任何确认对话框。用 `cc` 代替 `claude` 启动。启动前确保 git 干净——这是你的回退保障。
+
+### 2. 批量输入任务（核心习惯）
+
+提前写好所有任务，然后同时启动多个 agent：
+
+```bash
+# 每天早上花 30 分钟写好当天的任务文件
+cat > .claude/tasks/task-001.md << 'EOF'
+给所有 /api/auth/* 路由添加速率限制。
+使用 lib/middleware.ts 中现有的 rateLimiter。认证接口 10 次/分，读接口 60 次/分。
+EOF
+
+cat > .claude/tasks/task-002.md << 'EOF'
+为结账流程写 E2E 测试。
+覆盖：加购、优惠券、成功、支付失败。使用 tests/fixtures/cart.ts 中的现有 fixture。
+EOF
+
+# 然后同时启动多个 agent，每个负责一个任务
+cc   # Terminal 1 → 粘贴 task-001
+cc   # Terminal 2 → 粘贴 task-002
+cc   # Terminal 3 → 粘贴 task-003
+```
+
+你的思考和执行解耦——集中一次设计所有任务，让 agent 并行执行，你去做别的事。
+
+### 3. 用 worktree 并行多个 agent
+
+`/worktree` skill 创建隔离的 git worktrees，多个 agent 在同一 repo 里互不干扰：
+
+```
+/worktree create feat/auth-rework    # Terminal 1
+/worktree create feat/rate-limiting  # Terminal 2
+```
+
+每个终端的 agent 在独立目录工作。`committer` 防止 staging 冲突。完成后合并即可。
+
+### 4. 任务队列——顺序任务一次发完
+
+Claude 按顺序处理消息——把所有任务一次发完，然后你就自由了：
+
+```
+1. 修复 UserService.getUserById() 里的空指针
+2. 给所有 POST 接口加输入校验
+3. 更新 README.md 中的 API 文档
+```
+
+不用等待，发完第一条你就可以去做别的。
+
+---
+
 ## 工作原理
 
 ### Hooks（自动行为）
@@ -93,6 +167,7 @@ cd claude-code-kit
 | Hook | 触发时机 | 模型开销 |
 |------|---------|---------|
 | `session-context.sh` | SessionStart | 无（纯 shell） |
+| `pre-tool-guardian.sh` | PreToolUse (Bash) | 无（纯 shell） |
 | `post-edit-check.sh` | PostToolUse (Edit/Write) | 无（纯 shell） |
 | `correction-detector.sh` | UserPromptSubmit | 无（纯 shell） |
 | `verify-task-completed.sh` | TaskCompleted | 无（纯 shell） |
@@ -249,7 +324,8 @@ claude-code-kit/
 ├── configs/
 │   ├── settings-hooks.json            # Hook 定义（合并到 settings.json）
 │   ├── hooks/
-│   │   ├── session-context.sh         # SessionStart: 加载 git 上下文 + 纠正规则
+│   │   ├── session-context.sh         # SessionStart: 加载 git 上下文 + handoff + 纠正规则
+│   │   ├── pre-tool-guardian.sh       # PreToolUse: 拦截迁移/rm-rf/force-push/DROP
 │   │   ├── post-edit-check.sh         # PostToolUse: 编辑后异步类型检查
 │   │   ├── notify-telegram.sh         # Notification: Telegram 提醒
 │   │   ├── verify-task-completed.sh   # TaskCompleted: 自适应质量门禁
@@ -260,19 +336,18 @@ claude-code-kit/
 │   │   ├── type-checker.md            # Haiku 类型检查器
 │   │   └── verify-app.md              # Sonnet 应用验证器
 │   ├── skills/
+│   │   ├── handoff/                   # /handoff skill — 会话结束上下文存档
+│   │   ├── pickup/                    # /pickup skill — 会话开始上下文恢复
 │   │   ├── batch-tasks/               # /batch-tasks skill
-│   │   │   ├── SKILL.md
-│   │   │   └── prompt.md
 │   │   ├── sync/                      # /sync skill
-│   │   │   ├── SKILL.md
-│   │   │   └── prompt.md
 │   │   ├── commit/                    # /commit skill
-│   │   │   ├── SKILL.md
-│   │   │   └── prompt.md
+│   │   ├── worktree/                  # /worktree skill — 创建并行 git worktrees
+│   │   ├── frontend-design/           # /frontend-design skill — 生产级 UI 生成
+│   │   ├── companyos-update/          # /companyos-update skill — 同步任务到 Company OS
+│   │   ├── companyos-wiki/            # /companyos-wiki skill — 创建/更新 Company OS wiki
 │   │   └── model-research/            # /model-research skill
-│   │       ├── SKILL.md
-│   │       └── prompt.md
 │   ├── scripts/
+│   │   ├── committer.sh               # 多 agent 安全提交（禁止 git add .）
 │   │   ├── run-tasks.sh               # 串行任务执行器
 │   │   └── run-tasks-parallel.sh      # 并行执行器（git worktrees）
 │   └── commands/
@@ -287,8 +362,10 @@ claude-code-kit/
         ├── hooks.md                   # Hook 系统深入研究
         ├── subagents.md               # 自定义 Agent 模式
         ├── batch-tasks.md             # 批量执行研究
-        ├── models.md                  # 模型对比与选择指南
-        └── power-users.md             # 顶级用户的使用模式
+        ├── models.md                          # 模型对比与选择指南
+        ├── power-users.md                     # 顶级用户的使用模式
+        ├── openclaw-dev-velocity-analysis.md  # steipete 开发速度分析
+        └── solo-dev-velocity-playbook.md      # 可操作的 solo 开发提速手册
 ```
 
 ## 卸载
