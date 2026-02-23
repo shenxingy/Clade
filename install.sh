@@ -56,6 +56,20 @@ echo "Installing commands..."
 cp "$SCRIPT_DIR/configs/commands/"*.md "$CLAUDE_DIR/commands/"
 echo "  Installed: $(ls "$SCRIPT_DIR/configs/commands/"*.md | xargs -I{} basename {} | tr '\n' ' ')"
 
+# ─── 6b. Symlink committer to ~/.local/bin (for PATH access) ─────────
+
+if [[ -f "$CLAUDE_DIR/scripts/committer.sh" ]]; then
+  mkdir -p "$HOME/.local/bin"
+  ln -sf "$CLAUDE_DIR/scripts/committer.sh" "$HOME/.local/bin/committer"
+  echo "  Symlinked committer → ~/.local/bin/committer"
+  # Remind if ~/.local/bin is not in PATH
+  if ! echo "$PATH" | grep -q "$HOME/.local/bin"; then
+    echo "  WARNING: ~/.local/bin is not in your PATH."
+    echo "  Add this to ~/.zshrc or ~/.bashrc:"
+    echo '    export PATH="$HOME/.local/bin:$PATH"'
+  fi
+fi
+
 # ─── 7. Initialize corrections (don't overwrite existing) ────────────
 
 if [[ ! -f "$CLAUDE_DIR/corrections/rules.md" ]]; then
