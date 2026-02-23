@@ -4,6 +4,31 @@ Hard-won insights from building and maintaining this toolkit.
 
 ---
 
+### 2026-02-23 — Agent autonomy layer: handoff/pickup, guardian hook, committer
+
+**What was done:**
+- New `/handoff` skill: end-of-session context dump to `.claude/handoff-*.md`
+- New `/pickup` skill: start-of-session context load from latest handoff file
+- `session-context.sh`: auto-inject handoff file (< 24h old) at session start
+- New `pre-tool-guardian.sh` hook (PreToolUse/Bash): blocks database migrations, catastrophic rm -rf, force push to main, SQL DROP statements
+- New `committer.sh` script: safe commit for parallel agents — forces explicit file paths, validates conventional commit format
+- `settings-hooks.json`: added PreToolUse/Bash hook for guardian
+- `install.sh`: added committer symlink to `~/.local/bin/`
+- `~/.claude/CLAUDE.md`: added "Agent Ground Rules" section (commits, communication, autonomy, context management)
+
+**What worked:**
+- Research from steipete/OpenClaw playbook directly informed all additions — these are battle-tested patterns
+- handoff/pickup solve the biggest gap: context loss across sessions (the #1 blocker for overnight autonomous runs)
+- committer.sh is a direct copy of steipete's pattern — prevents cross-agent git contamination
+
+**Lessons:**
+- PreToolUse guardian must use `jq -r '.tool_name'` on stdin JSON — NOT command args. Hook input is always stdin JSON.
+- `stat -c %Y` works on Linux for file mtime; `date -r` is macOS — guard both for portability
+- committer.sh should clear the staging area first (`git restore --staged :/`) before staging specified files — otherwise previously-staged files from other agents leak in
+- The Agent Ground Rules in global CLAUDE.md are the key forcing function — without them, agents fall back to old habits even if the tools exist
+
+---
+
 ### 2026-02-20 — Stop hook, auto-pull, sync skill improvements
 
 **What was done:**

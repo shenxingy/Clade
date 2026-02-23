@@ -55,6 +55,21 @@ if command -v docker &>/dev/null; then
   fi
 fi
 
+# Auto-load latest handoff file (< 24h old)
+HANDOFF_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}/.claude"
+if [[ -d "$HANDOFF_DIR" ]]; then
+  LATEST_HANDOFF=$(ls -t "$HANDOFF_DIR"/handoff-*.md 2>/dev/null | head -1)
+  if [[ -n "$LATEST_HANDOFF" ]]; then
+    FILE_MTIME=$(stat -c %Y "$LATEST_HANDOFF" 2>/dev/null || date -r "$LATEST_HANDOFF" +%s 2>/dev/null || echo "0")
+    NOW=$(date +%s)
+    AGE_HOURS=$(( (NOW - FILE_MTIME) / 3600 ))
+    if [[ $AGE_HOURS -lt 24 ]]; then
+      HANDOFF_CONTENT=$(cat "$LATEST_HANDOFF" 2>/dev/null)
+      CONTEXT="${CONTEXT}\n## Handoff from previous session (${AGE_HOURS}h ago)\n${HANDOFF_CONTENT}\nRun /pickup to resume from this handoff.\n"
+    fi
+  fi
+fi
+
 # Load correction rules (learned preferences)
 RULES_FILE="$HOME/.claude/corrections/rules.md"
 if [[ -f "$RULES_FILE" ]]; then
