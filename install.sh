@@ -109,7 +109,49 @@ else
   fi
 fi
 
-# ─── 9. Summary ──────────────────────────────────────────────────────
+# ─── 9. Set up shell aliases (cc + claude bypass) ────────────────────
+
+echo "Configuring shell aliases..."
+
+setup_alias() {
+  local rc_file="$1"
+  [[ -f "$rc_file" ]] || return
+  if grep -q "dangerously-skip-permissions" "$rc_file" 2>/dev/null; then
+    echo "  Aliases already in $rc_file — skipping"
+    return
+  fi
+  cat >> "$rc_file" << 'SHELLEOF'
+
+# Claude Code: skip permission prompts (added by claude-code-kit)
+alias claude='claude --dangerously-skip-permissions'
+alias cc='claude --dangerously-skip-permissions'
+SHELLEOF
+  echo "  Added aliases to $rc_file"
+}
+
+setup_alias "$HOME/.zshrc"
+setup_alias "$HOME/.bashrc"
+echo "  Run: source ~/.zshrc  (or open a new terminal) to activate"
+
+# ─── 10. Deploy Agent Ground Rules to ~/.claude/CLAUDE.md ────────────
+
+GLOBAL_CLAUDE="$CLAUDE_DIR/CLAUDE.md"
+TEMPLATE_CLAUDE="$SCRIPT_DIR/templates/CLAUDE.md"
+
+if [[ -f "$TEMPLATE_CLAUDE" ]]; then
+  echo "Configuring ~/.claude/CLAUDE.md..."
+  if [[ ! -f "$GLOBAL_CLAUDE" ]]; then
+    cp "$TEMPLATE_CLAUDE" "$GLOBAL_CLAUDE"
+    echo "  Created ~/.claude/CLAUDE.md with Agent Ground Rules"
+  elif ! grep -q "Agent Ground Rules" "$GLOBAL_CLAUDE" 2>/dev/null; then
+    { echo ""; cat "$TEMPLATE_CLAUDE"; } >> "$GLOBAL_CLAUDE"
+    echo "  Appended Agent Ground Rules to existing ~/.claude/CLAUDE.md"
+  else
+    echo "  ~/.claude/CLAUDE.md already has Agent Ground Rules — skipping"
+  fi
+fi
+
+# ─── 11. Summary ─────────────────────────────────────────────────────
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -122,5 +164,9 @@ echo "  Skills:   $(ls -d "$CLAUDE_DIR/skills/"*/ 2>/dev/null | wc -l) skills"
 echo "  Scripts:  $(ls "$CLAUDE_DIR/scripts/"*.sh 2>/dev/null | wc -l) scripts"
 echo "  Commands: $(ls "$CLAUDE_DIR/commands/"*.md 2>/dev/null | wc -l) commands"
 echo ""
-echo "Start a new Claude Code session to activate all hooks."
+echo "Next steps:"
+echo "  1. source ~/.zshrc   (or ~/.bashrc) to activate shell aliases"
+echo "  2. Start a new Claude Code session to activate all hooks"
+echo "  3. Use 'cc' to launch Claude Code in fully autonomous mode"
+echo "  4. Run ./orchestrator/start.sh to open the Orchestrator Web UI"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
