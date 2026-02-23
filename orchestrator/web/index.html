@@ -1,0 +1,1382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Claude Code Orchestrator</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --bg2: #161b22;
+      --bg3: #21262d;
+      --border: #30363d;
+      --text: #e6edf3;
+      --text2: #8b949e;
+      --accent: #58a6ff;
+      --green: #3fb950;
+      --yellow: #d29922;
+      --red: #f85149;
+      --purple: #bc8cff;
+      --orange: #ffa657;
+      --radius: 8px;
+      --font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 14px;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ─── Header ─────────────────────────────────────────────────── */
+    header {
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+    header h1 {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    header h1 .logo { color: var(--accent); font-size: 18px; }
+    .header-status {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text2);
+    }
+    .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--text2);
+      display: inline-block;
+    }
+    .dot.green { background: var(--green); }
+    .dot.yellow { background: var(--yellow); animation: pulse 1.5s infinite; }
+    .dot.red { background: var(--red); }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    /* ─── Layout ─────────────────────────────────────────────────── */
+    .main {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ─── Chat Panel (left 60%) ──────────────────────────────────── */
+    .chat-panel {
+      width: 60%;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border);
+      position: relative;
+    }
+
+    .chat-header {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+      color: var(--text2);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--bg2);
+      flex-shrink: 0;
+    }
+
+    #terminal {
+      flex: 1;
+      overflow: hidden;
+      background: #0d1117;
+      padding: 4px 8px;
+    }
+    /* Make xterm canvas fill container */
+    #terminal .xterm { height: 100%; }
+    #terminal .xterm-viewport { overflow-y: auto !important; }
+    #terminal .xterm-viewport::-webkit-scrollbar { width: 6px; }
+    #terminal .xterm-viewport::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    .chat-input-row {
+      display: flex;
+      gap: 8px;
+      padding: 10px 12px;
+      border-top: 1px solid var(--border);
+      background: var(--bg2);
+      flex-shrink: 0;
+    }
+    .chat-input-row input {
+      flex: 1;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 13px;
+      font-family: var(--font-mono);
+      padding: 8px 12px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .chat-input-row input:focus { border-color: var(--accent); }
+    .chat-input-row input::placeholder { color: var(--text2); }
+
+    .btn {
+      background: var(--accent);
+      color: #0d1117;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 14px;
+      cursor: pointer;
+      transition: opacity 0.15s;
+      white-space: nowrap;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn:active { opacity: 0.7; }
+    .btn.secondary {
+      background: var(--bg3);
+      color: var(--text);
+      border: 1px solid var(--border);
+      font-weight: 500;
+    }
+    .btn.danger { background: var(--red); color: #fff; }
+    .btn.success { background: var(--green); color: #0d1117; }
+    .btn.small { padding: 4px 10px; font-size: 12px; }
+
+    /* ─── Proposed Tasks Overlay ─────────────────────────────────── */
+    .overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(13,17,23,0.92);
+      backdrop-filter: blur(4px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      z-index: 100;
+    }
+    .overlay.hidden { display: none; }
+    .overlay-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      max-width: 520px;
+      width: 100%;
+    }
+    .overlay-card h2 {
+      font-size: 16px;
+      margin-bottom: 6px;
+      color: var(--text);
+    }
+    .overlay-card .subtitle {
+      color: var(--text2);
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+    .task-preview {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      max-height: 220px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      color: var(--text2);
+      margin-bottom: 16px;
+    }
+    .task-preview .task-title {
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .overlay-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    /* ─── Dashboard Panel (right 40%) ───────────────────────────── */
+    .dashboard {
+      width: 40%;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .dashboard-section {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .dashboard-section.queue { flex: 0 0 auto; max-height: 40%; border-bottom: 1px solid var(--border); }
+    .dashboard-section.workers { flex: 1; overflow-y: auto; }
+
+    .section-header {
+      padding: 8px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text2);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--bg2);
+      flex-shrink: 0;
+    }
+
+    /* ─── Queue ──────────────────────────────────────────────────── */
+    .queue-list {
+      overflow-y: auto;
+      max-height: calc(40vh - 80px);
+      flex: 1;
+    }
+    .queue-list::-webkit-scrollbar { width: 4px; }
+    .queue-list::-webkit-scrollbar-thumb { background: var(--border); }
+
+    .queue-item {
+      padding: 8px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.1s;
+    }
+    .queue-item:hover { background: var(--bg2); }
+    .queue-item .task-name {
+      flex: 1;
+      font-size: 12px;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .queue-item .task-model {
+      font-size: 11px;
+      color: var(--text2);
+      background: var(--bg3);
+      border-radius: 4px;
+      padding: 2px 6px;
+    }
+    .queue-actions { display: flex; gap: 4px; }
+
+    .add-task-row {
+      padding: 8px 12px;
+      border-top: 1px solid var(--border);
+      background: var(--bg2);
+      flex-shrink: 0;
+    }
+    .add-task-row textarea {
+      width: 100%;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 12px;
+      font-family: var(--font-mono);
+      padding: 6px 10px;
+      resize: vertical;
+      min-height: 52px;
+      outline: none;
+    }
+    .add-task-row textarea:focus { border-color: var(--accent); }
+    .add-task-row textarea::placeholder { color: var(--text2); }
+    .add-task-footer {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 6px;
+    }
+    .add-task-footer select {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 12px;
+      padding: 4px 8px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    /* ─── Worker Cards ───────────────────────────────────────────── */
+    .workers-list {
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .worker-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+      transition: border-color 0.2s;
+    }
+    .worker-card.running { border-left: 3px solid var(--green); }
+    .worker-card.paused { border-left: 3px solid var(--yellow); }
+    .worker-card.blocked { border-left: 3px solid var(--red); }
+    .worker-card.done { border-left: 3px solid var(--text2); opacity: 0.7; }
+    .worker-card.failed { border-left: 3px solid var(--red); opacity: 0.8; }
+
+    .worker-top {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .worker-name {
+      flex: 1;
+      font-size: 12px;
+      font-weight: 500;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      line-height: 1.4;
+    }
+    .badge {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      padding: 2px 6px;
+      border-radius: 4px;
+      flex-shrink: 0;
+    }
+    .badge.running { background: rgba(63,185,80,0.15); color: var(--green); }
+    .badge.paused { background: rgba(210,153,34,0.15); color: var(--yellow); }
+    .badge.blocked { background: rgba(248,81,73,0.2); color: var(--red); }
+    .badge.done { background: rgba(139,148,158,0.15); color: var(--text2); }
+    .badge.failed { background: rgba(248,81,73,0.15); color: var(--red); }
+    .badge.starting { background: rgba(88,166,255,0.15); color: var(--accent); }
+
+    .worker-commit {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text2);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      margin-bottom: 8px;
+    }
+    .worker-commit .hash { color: var(--purple); }
+
+    .worker-footer {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .elapsed {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text2);
+      margin-right: auto;
+    }
+
+    /* ─── Chat with Worker Dialog ─────────────────────────────────── */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+    }
+    .modal-backdrop.hidden { display: none; }
+    .modal {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      width: 480px;
+      max-width: 90vw;
+    }
+    .modal h3 { font-size: 15px; margin-bottom: 6px; }
+    .modal .modal-sub { color: var(--text2); font-size: 12px; margin-bottom: 14px; }
+    .modal textarea {
+      width: 100%;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 13px;
+      padding: 10px;
+      resize: vertical;
+      min-height: 80px;
+      outline: none;
+      font-family: var(--font-mono);
+    }
+    .modal textarea:focus { border-color: var(--accent); }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+
+    /* ─── Footer Progress Bar ─────────────────────────────────────── */
+    .progress-footer {
+      border-top: 1px solid var(--border);
+      padding: 8px 14px;
+      background: var(--bg2);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .progress-bar-track {
+      flex: 1;
+      height: 6px;
+      background: var(--bg3);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: var(--green);
+      border-radius: 3px;
+      transition: width 0.4s ease;
+    }
+    .progress-label {
+      font-size: 12px;
+      color: var(--text2);
+      white-space: nowrap;
+    }
+    .eta-label {
+      font-size: 12px;
+      color: var(--text2);
+      white-space: nowrap;
+      font-family: var(--font-mono);
+    }
+
+    /* ─── Usage Bar ──────────────────────────────────────────────── */
+    .usage-bar {
+      border-top: 1px solid var(--border);
+      padding: 5px 14px;
+      background: var(--bg2);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+      font-size: 11px;
+    }
+    .usage-text { color: var(--text2); flex: 1; font-family: var(--font-mono); }
+
+    /* ─── Empty state ─────────────────────────────────────────────── */
+    .empty {
+      padding: 24px;
+      text-align: center;
+      color: var(--text2);
+      font-size: 12px;
+    }
+
+    /* ─── Scrollbar global ───────────────────────────────────────── */
+    .dashboard-section.workers::-webkit-scrollbar { width: 4px; }
+    .dashboard-section.workers::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* ─── Tab Bar ────────────────────────────────────────────────── */
+    .tab-bar {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      padding: 4px 12px;
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+      flex-shrink: 0;
+      position: relative;
+    }
+    .tab-bar::-webkit-scrollbar { height: 3px; }
+    .tab-bar::-webkit-scrollbar-thumb { background: var(--border); }
+    .tab {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 5px;
+      font-size: 12px;
+      cursor: pointer;
+      white-space: nowrap;
+      color: var(--text2);
+      background: transparent;
+      border: 1px solid transparent;
+      transition: all 0.15s;
+    }
+    .tab:hover { background: var(--bg3); color: var(--text); }
+    .tab.active { background: var(--bg3); border-color: var(--border); color: var(--text); }
+    .tab .tab-name { font-weight: 500; }
+    .tab .tab-badge {
+      font-size: 10px;
+      background: var(--green);
+      color: #0d1117;
+      border-radius: 8px;
+      padding: 1px 5px;
+      font-weight: 700;
+    }
+    .tab .tab-badge.idle { background: var(--bg); color: var(--text2); border: 1px solid var(--border); }
+    .tab .tab-close {
+      opacity: 0;
+      font-size: 11px;
+      color: var(--text2);
+      margin-left: 2px;
+    }
+    .tab:hover .tab-close { opacity: 1; }
+    .tab-add {
+      padding: 4px 10px;
+      background: transparent;
+      border: 1px dashed var(--border);
+      border-radius: 5px;
+      color: var(--text2);
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.15s;
+      flex-shrink: 0;
+    }
+    .tab-add:hover { border-color: var(--accent); color: var(--accent); }
+  </style>
+</head>
+<body>
+
+<!-- ─── Header ──────────────────────────────────────────────────────────────── -->
+<header>
+  <h1><span class="logo">⬡</span> Claude Code Orchestrator</h1>
+  <button id="projectBadge" onclick="openProjectPicker()" style="
+    font-size:12px;color:var(--text2);background:var(--bg3);
+    border:1px solid var(--border);border-radius:5px;
+    padding:3px 10px;font-family:var(--font-mono);cursor:pointer;
+    transition:border-color 0.15s;
+  " title="Click to switch project">📁 ...</button>
+  <div class="header-status">
+    <span class="dot" id="orchDot"></span>
+    <span id="orchStatus">Connecting...</span>
+  </div>
+</header>
+
+<!-- ─── Tab Bar ──────────────────────────────────────────────────────────────── -->
+<div class="tab-bar" id="tabBar">
+  <!-- tabs rendered dynamically -->
+  <button class="tab-add" onclick="openNewTabPicker()" title="Open new project tab">＋</button>
+</div>
+
+<!-- ─── Main Layout ─────────────────────────────────────────────────────────── -->
+<div class="main">
+
+  <!-- Left: Chat Panel -->
+  <div class="chat-panel">
+    <div class="chat-header">
+      <span class="dot yellow" id="chatDot"></span>
+      <span>Orchestrator Session</span>
+      <span style="margin-left:auto;font-size:11px;opacity:0.6">Interactive · PTY</span>
+    </div>
+
+    <div class="terminal" id="terminal"></div>
+
+    <!-- Proposed Tasks Overlay -->
+    <div class="overlay hidden" id="proposedOverlay">
+      <div class="overlay-card">
+        <h2>Tasks Ready</h2>
+        <p class="subtitle">The orchestrator has written task proposals. Review and confirm to start workers.</p>
+        <div class="task-preview" id="proposedPreview"></div>
+        <div class="overlay-actions">
+          <button class="btn secondary" onclick="skipProposed()">Skip</button>
+          <button class="btn secondary" onclick="editProposed()">Edit</button>
+          <button class="btn success" onclick="confirmProposed()">Start All Workers</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="chat-input-row" title="Click terminal above to type directly. Use this bar to paste long text.">
+      <input type="text" id="chatInput" placeholder="Paste long text here → Enter to send (or type directly in terminal above)" autocomplete="off" style="font-size:12px;color:var(--text2)" />
+      <button class="btn secondary" onclick="sendChat()" style="white-space:nowrap;font-size:12px">Paste Send</button>
+    </div>
+  </div>
+
+  <!-- Right: Dashboard -->
+  <div class="dashboard">
+
+    <!-- Queue Section -->
+    <div class="dashboard-section queue">
+      <div class="section-header">
+        <span>Task Queue <span id="queueCount" style="font-weight:400;color:var(--text2)"></span></span>
+        <button class="btn small success" id="runAllBtn" onclick="runAllTasks()" style="display:none">▶ Run All</button>
+        <button class="btn small secondary" onclick="toggleAddTask()">+ Add</button>
+      </div>
+      <div class="queue-list" id="queueList"></div>
+      <div class="add-task-row" id="addTaskRow" style="display:none">
+        <textarea id="newTaskDesc" placeholder="Describe the task… or paste ===TASK=== blocks"></textarea>
+        <div class="add-task-footer">
+          <select id="newTaskModel">
+            <option value="sonnet">sonnet</option>
+            <option value="haiku">haiku</option>
+            <option value="opus">opus</option>
+          </select>
+          <button class="btn small" onclick="addTask()">Add Task</button>
+          <button class="btn small secondary" onclick="importProposedToQueue()">Import Proposed</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Workers Section -->
+    <div class="dashboard-section workers">
+      <div class="section-header">
+        <span>Workers <span id="workerCount" style="font-weight:400;color:var(--text2)"></span></span>
+      </div>
+      <div class="workers-list" id="workersList"></div>
+    </div>
+
+    <!-- Progress Footer -->
+    <div class="progress-footer">
+      <div class="progress-bar-track">
+        <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
+      </div>
+      <span class="progress-label" id="progressLabel">0%</span>
+      <span class="eta-label" id="etaLabel"></span>
+    </div>
+
+    <!-- Usage Bar -->
+    <div class="usage-bar" id="usageBar">
+      <span id="usageText" class="usage-text">Loading usage...</span>
+      <button class="btn small secondary" onclick="refreshUsage()" style="padding:2px 8px;font-size:10px">↻</button>
+      <span id="usageUpdated" style="font-size:10px;color:var(--text2);opacity:0.6"></span>
+    </div>
+
+  </div>
+</div>
+
+<!-- Worker Log Modal -->
+<div class="modal-backdrop hidden" id="workerLogModal" onclick="if(event.target===this)closeWorkerLog()">
+  <div class="modal" style="width:680px;max-width:95vw">
+    <h3>Worker Log <span id="workerLogTitle" style="font-weight:400;color:var(--text2);font-size:13px"></span></h3>
+    <pre id="workerLogContent" style="
+      background:var(--bg);border:1px solid var(--border);border-radius:6px;
+      padding:12px;font-size:11px;font-family:var(--font-mono);
+      max-height:60vh;overflow-y:auto;white-space:pre-wrap;word-break:break-all;
+      color:var(--text2);margin:12px 0 0;
+    ">Loading...</pre>
+    <div class="modal-actions" style="margin-top:10px">
+      <button class="btn secondary" onclick="closeWorkerLog()">Close</button>
+      <button class="btn secondary" onclick="refreshWorkerLog()">Refresh</button>
+    </div>
+  </div>
+</div>
+
+<!-- Project Picker Modal -->
+<div class="modal-backdrop hidden" id="projectPickerModal" onclick="if(event.target===this)closeProjectPicker()">
+  <div class="modal" style="width:560px;max-width:95vw">
+    <h3>Open New Tab</h3>
+    <p class="modal-sub">Choose a project to open in a new session tab.</p>
+    <input id="projectPathInput" type="text" placeholder="/home/user/projects/my-app" style="
+      width:100%;background:var(--bg3);border:1px solid var(--border);
+      border-radius:6px;color:var(--text);font-size:13px;
+      font-family:var(--font-mono);padding:8px 12px;outline:none;margin-bottom:10px;
+    " />
+    <div style="font-size:11px;color:var(--text2);margin-bottom:6px;display:flex;align-items:center;gap:8px">
+      <span>Git repos found:</span>
+      <button class="btn small secondary" onclick="loadProjects()">Scan</button>
+    </div>
+    <div id="projectList" style="
+      max-height:260px;overflow-y:auto;
+      background:var(--bg);border:1px solid var(--border);border-radius:6px;
+    ">
+      <div class="empty">Click Scan to find git repos</div>
+    </div>
+    <div class="modal-actions" style="margin-top:12px">
+      <button class="btn secondary" onclick="closeProjectPicker()">Cancel</button>
+      <button class="btn" onclick="confirmProjectSwitch()">Open Tab</button>
+    </div>
+  </div>
+</div>
+
+<!-- Chat with Worker Modal -->
+<div class="modal-backdrop hidden" id="workerChatModal">
+  <div class="modal">
+    <h3>Send Message to Worker</h3>
+    <p class="modal-sub" id="workerChatSub">Stops the worker, injects your message as context, and restarts it.</p>
+    <textarea id="workerChatInput" placeholder="e.g. Use Stripe test key sk_test_xxx for now"></textarea>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeWorkerChat()">Cancel</button>
+      <button class="btn" onclick="sendWorkerMessage()">Send & Restart</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── State ──────────────────────────────────────────────────────────────────
+let chatWs = null;
+let statusWs = null;
+let activeWorkerId = null;
+let workers = [];
+let queue = [];
+let elapsedTimers = {};
+let sessions = [];
+let activeSessionId = null;
+
+// ─── xterm.js terminal ───────────────────────────────────────────────────────
+const term = new Terminal({
+  theme: {
+    background: '#0d1117',
+    foreground: '#e6edf3',
+    cursor: '#58a6ff',
+    selectionBackground: 'rgba(88,166,255,0.3)',
+    black: '#0d1117', brightBlack: '#484f58',
+    red: '#f85149',   brightRed: '#ff7b72',
+    green: '#3fb950', brightGreen: '#56d364',
+    yellow: '#d29922', brightYellow: '#e3b341',
+    blue: '#58a6ff',  brightBlue: '#79c0ff',
+    magenta: '#bc8cff', brightMagenta: '#d2a8ff',
+    cyan: '#39c5cf',  brightCyan: '#56d4dd',
+    white: '#b1bac4', brightWhite: '#f0f6fc',
+  },
+  fontFamily: "'SF Mono', 'Fira Code', 'Cascadia Code', monospace",
+  fontSize: 13,
+  lineHeight: 1.4,
+  cursorBlink: true,
+  scrollback: 5000,
+  allowTransparency: false,
+});
+const fitAddon = new FitAddon.FitAddon();
+term.loadAddon(fitAddon);
+term.open(document.getElementById('terminal'));
+fitAddon.fit();
+
+// Forward every keystroke directly to PTY — real terminal behavior
+term.onData(data => {
+  if (chatWs && chatWs.readyState === WebSocket.OPEN) {
+    chatWs.send(JSON.stringify({ type: 'input', data }));
+  }
+});
+
+function fitAndSync() {
+  fitAddon.fit();
+  // Tell server the new PTY size
+  if (chatWs && chatWs.readyState === WebSocket.OPEN) {
+    chatWs.send(JSON.stringify({ type: 'resize', rows: term.rows, cols: term.cols }));
+  }
+}
+window.addEventListener('resize', fitAndSync);
+
+// ─── Tab management ──────────────────────────────────────────────────────────
+async function loadSessions() {
+  try {
+    const res = await fetch('/api/sessions');
+    sessions = await res.json();
+    if (sessions.length > 0 && !activeSessionId) {
+      activeSessionId = sessions[0].session_id;
+    }
+    renderTabs();
+  } catch(e) {}
+}
+
+function renderTabs() {
+  const bar = document.getElementById('tabBar');
+  const addBtn = bar.querySelector('.tab-add');
+  bar.querySelectorAll('.tab').forEach(t => t.remove());
+  sessions.forEach(s => {
+    const isActive = s.session_id === activeSessionId;
+    const badge = s.running_count > 0
+      ? `<span class="tab-badge">${s.running_count}</span>`
+      : (s.worker_count > 0 ? `<span class="tab-badge idle">${s.worker_count}</span>` : '');
+    const showClose = sessions.length > 1;
+    const div = document.createElement('div');
+    div.className = 'tab' + (isActive ? ' active' : '');
+    div.innerHTML = `<span class="tab-name">${esc(s.name)}</span>${badge}${showClose ? `<span class="tab-close" data-sid="${esc(s.session_id)}">×</span>` : ''}`;
+    div.querySelector('.tab-close')?.addEventListener('click', e => { e.stopPropagation(); closeTab(s.session_id); });
+    div.addEventListener('click', () => switchTab(s.session_id));
+    bar.insertBefore(div, addBtn);
+  });
+}
+
+async function switchTab(sessionId) {
+  if (sessionId === activeSessionId) return;
+  activeSessionId = sessionId;
+  renderTabs();
+  if (chatWs) chatWs.close();
+  if (statusWs) statusWs.close();
+  connectChat();
+  connectStatus();
+  term.clear();
+  const name = sessions.find(s => s.session_id === sessionId)?.name || sessionId;
+  term.write(`\r\n\x1b[33m[Switched to ${name}]\x1b[0m\r\n`);
+  refreshProjectBadge();
+}
+
+async function closeTab(sessionId) {
+  if (!confirm('Close this project tab?')) return;
+  await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
+  if (activeSessionId === sessionId) {
+    const remaining = sessions.filter(s => s.session_id !== sessionId);
+    activeSessionId = remaining[0]?.session_id || null;
+  }
+  await loadSessions();
+  if (activeSessionId) switchTab(activeSessionId);
+}
+
+function openNewTabPicker() {
+  openProjectPicker();
+}
+
+// ─── WebSocket: Chat ─────────────────────────────────────────────────────────
+function connectChat() {
+  const url = activeSessionId
+    ? `ws://${location.host}/ws/chat?session=${activeSessionId}`
+    : `ws://${location.host}/ws/chat`;
+  chatWs = new WebSocket(url);
+
+  chatWs.onopen = () => {
+    setOrchStatus('connected', 'Orchestrator active');
+    // Sync terminal size to PTY immediately
+    chatWs.send(JSON.stringify({ type: 'resize', rows: term.rows, cols: term.cols }));
+  };
+
+  chatWs.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'output') {
+      term.write(msg.data);  // xterm handles all ANSI natively
+    }
+  };
+
+  chatWs.onclose = () => {
+    setOrchStatus('disconnected', 'Disconnected');
+    term.write('\r\n\x1b[33m[Reconnecting...]\x1b[0m\r\n');
+    setTimeout(connectChat, 2000);
+  };
+
+  chatWs.onerror = () => {
+    setOrchStatus('disconnected', 'Connection error');
+  };
+}
+
+function sendChat() {
+  const input = document.getElementById('chatInput');
+  const text = input.value;
+  if (!text.trim() || !chatWs || chatWs.readyState !== WebSocket.OPEN) return;
+  chatWs.send(JSON.stringify({ type: 'input', data: text + '\r' }));
+  input.value = '';
+}
+
+document.getElementById('chatInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendChat();
+  }
+});
+
+// ─── WebSocket: Status ───────────────────────────────────────────────────────
+function connectStatus() {
+  const url = activeSessionId
+    ? `ws://${location.host}/ws/status?session=${activeSessionId}`
+    : `ws://${location.host}/ws/status`;
+  statusWs = new WebSocket(url);
+
+  statusWs.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'status') {
+      updateDashboard(msg);
+    } else if (msg.type === 'proposed_tasks') {
+      if (msg.content && msg.content.includes('===TASK===')) {
+        showProposedOverlay(msg.content);
+      }
+    }
+  };
+
+  statusWs.onclose = () => setTimeout(connectStatus, 2000);
+}
+
+// Keep-alive ping
+setInterval(() => {
+  if (statusWs && statusWs.readyState === WebSocket.OPEN) {
+    statusWs.send('ping');
+  }
+}, 20000);
+
+// ─── Dashboard update ────────────────────────────────────────────────────────
+function updateDashboard(data) {
+  // Ignore status updates from sessions that aren't active
+  if (data.session_id && data.session_id !== activeSessionId) {
+    // Still update the badge count for the other session's tab
+    const s = sessions.find(s => s.session_id === data.session_id);
+    if (s) {
+      s.running_count = (data.workers || []).filter(w => w.status === 'running').length;
+      s.worker_count = (data.workers || []).length;
+      renderTabs();
+    }
+    return;
+  }
+
+  workers = data.workers || [];
+  queue = data.queue || [];
+
+  // Update badge for active session
+  const active = sessions.find(s => s.session_id === activeSessionId);
+  if (active) {
+    active.running_count = workers.filter(w => w.status === 'running').length;
+    active.worker_count = workers.length;
+    renderTabs();
+  }
+
+  renderQueue();
+  renderWorkers();
+  updateProgress(data.progress_pct || 0, data.eta_seconds || 0);
+}
+
+function renderQueue() {
+  const list = document.getElementById('queueList');
+  const pending = queue.filter(t => ['pending','queued'].includes(t.status));
+
+  document.getElementById('queueCount').textContent = `(${pending.length})`;
+
+  const runAllBtn = document.getElementById('runAllBtn');
+  if (runAllBtn) runAllBtn.style.display = pending.length > 0 ? '' : 'none';
+
+  if (pending.length === 0) {
+    list.innerHTML = '<div class="empty">No pending tasks</div>';
+    return;
+  }
+
+  list.innerHTML = pending.map(task => `
+    <div class="queue-item">
+      <span class="task-name" title="${esc(task.description)}">${esc(firstLine(task.description))}</span>
+      <span class="task-model">${esc(task.model)}</span>
+      <div class="queue-actions">
+        <button class="btn small success" onclick="runTask('${task.id}')">Run</button>
+        <button class="btn small danger" onclick="deleteTask('${task.id}')">×</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderWorkers() {
+  const list = document.getElementById('workersList');
+  document.getElementById('workerCount').textContent = `(${workers.length})`;
+
+  if (workers.length === 0) {
+    list.innerHTML = '<div class="empty">No active workers<br><span style="font-size:11px;opacity:0.6">Start tasks from the queue above</span></div>';
+    return;
+  }
+
+  list.innerHTML = workers.map(w => {
+    const commitDisplay = w.auto_committed
+      ? `<span style="color:#4ade80;font-weight:600">✓ committed</span>`
+      : w.last_commit
+        ? `<span class="hash">${esc(w.last_commit.slice(0,7))}</span> ${esc(w.last_commit.slice(8,60))}`
+        : '<span style="opacity:0.5">no commits yet</span>';
+
+    const canPause = w.status === 'running';
+    const canResume = w.status === 'paused';
+    const canChat = ['running','paused','blocked'].includes(w.status);
+
+    return `
+      <div class="worker-card ${w.status}" id="wcard-${w.id}">
+        <div class="worker-top">
+          <span class="worker-name" title="${esc(w.description)}">${esc(firstLine(w.description))}</span>
+          <span class="badge ${w.status}">${w.status}</span>
+        </div>
+        <div class="worker-commit">${commitDisplay}</div>
+        <div class="worker-footer">
+          <span class="elapsed" id="elapsed-${w.id}">${formatElapsed(w.elapsed_s)}</span>
+          ${canPause ? `<button class="btn small secondary" onclick="pauseWorker('${w.id}')">Pause</button>` : ''}
+          ${canResume ? `<button class="btn small" onclick="resumeWorker('${w.id}')">Resume</button>` : ''}
+          ${canChat ? `<button class="btn small secondary" onclick="openWorkerChat('${w.id}', '${esc(firstLine(w.description))}')">Chat</button>` : ''}
+          <button class="btn small secondary" onclick="openWorkerLog('${w.id}', '${esc(firstLine(w.description))}')">Log</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  // Tick elapsed timers locally so they update without full re-render
+  startElapsedTickers();
+}
+
+function startElapsedTickers() {
+  clearInterval(window._elapsedInterval);
+  window._elapsedInterval = setInterval(() => {
+    workers.forEach(w => {
+      // Only tick for actively running workers; done/paused/blocked stay frozen
+      if (w.status === 'running') {
+        const el = document.getElementById(`elapsed-${w.id}`);
+        if (el) {
+          w.elapsed_s++;
+          el.textContent = formatElapsed(w.elapsed_s);
+        }
+      }
+    });
+  }, 1000);
+}
+
+function updateProgress(pct, eta) {
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressLabel').textContent = pct + '%';
+  document.getElementById('etaLabel').textContent = eta > 0 ? `ETA ${formatElapsed(eta)}` : '';
+}
+
+// ─── Task actions ────────────────────────────────────────────────────────────
+async function runTask(id) {
+  await fetch(`/api/tasks/${id}/run`, { method: 'POST' });
+}
+
+async function deleteTask(id) {
+  await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
+}
+
+async function addTask() {
+  const desc = document.getElementById('newTaskDesc').value.trim();
+  const model = document.getElementById('newTaskModel').value;
+  if (!desc) return;
+
+  // If it's ===TASK=== format, save to proposed-tasks.md and import
+  if (desc.includes('===TASK===')) {
+    await fetch('/api/tasks/import-proposed', { method: 'POST' });
+  } else {
+    await fetch('/api/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ description: desc, model }),
+    });
+  }
+  document.getElementById('newTaskDesc').value = '';
+}
+
+async function importProposedToQueue() {
+  const res = await fetch('/api/tasks/import-proposed', { method: 'POST' });
+  const data = await res.json();
+  showToast(`Imported ${data.imported} tasks from proposed-tasks.md`);
+}
+
+function toggleAddTask() {
+  const row = document.getElementById('addTaskRow');
+  row.style.display = row.style.display === 'none' ? 'block' : 'none';
+}
+
+// ─── Worker actions ──────────────────────────────────────────────────────────
+async function pauseWorker(id) {
+  await fetch(`/api/workers/${id}/pause`, { method: 'POST' });
+}
+
+async function resumeWorker(id) {
+  await fetch(`/api/workers/${id}/resume`, { method: 'POST' });
+}
+
+function openWorkerChat(id, name) {
+  activeWorkerId = id;
+  document.getElementById('workerChatSub').textContent =
+    `Worker: ${name}\nStops the worker, injects your message as context, and restarts it.`;
+  document.getElementById('workerChatInput').value = '';
+  document.getElementById('workerChatModal').classList.remove('hidden');
+  document.getElementById('workerChatInput').focus();
+}
+
+function closeWorkerChat() {
+  document.getElementById('workerChatModal').classList.add('hidden');
+  activeWorkerId = null;
+}
+
+// ─── Worker Log viewer ────────────────────────────────────────────────────────
+let activeLogWorkerId = null;
+
+async function openWorkerLog(id, name) {
+  activeLogWorkerId = id;
+  document.getElementById('workerLogTitle').textContent = `— ${name}`;
+  document.getElementById('workerLogModal').classList.remove('hidden');
+  await refreshWorkerLog();
+}
+
+async function refreshWorkerLog() {
+  if (!activeLogWorkerId) return;
+  const el = document.getElementById('workerLogContent');
+  try {
+    const res = await fetch(`/api/workers/${activeLogWorkerId}/log?lines=200`);
+    const data = await res.json();
+    el.textContent = data.log || '(empty log)';
+    el.scrollTop = el.scrollHeight;
+  } catch(e) {
+    el.textContent = 'Error loading log.';
+  }
+}
+
+function closeWorkerLog() {
+  document.getElementById('workerLogModal').classList.add('hidden');
+  activeLogWorkerId = null;
+}
+
+async function sendWorkerMessage() {
+  if (!activeWorkerId) return;
+  const msg = document.getElementById('workerChatInput').value.trim();
+  if (!msg) return;
+
+  await fetch(`/api/workers/${activeWorkerId}/message`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: msg }),
+  });
+  closeWorkerChat();
+  showToast('Message sent — worker restarted with new context');
+}
+
+document.getElementById('workerChatInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.metaKey) sendWorkerMessage();
+  if (e.key === 'Escape') closeWorkerChat();
+});
+
+// ─── Proposed Tasks Overlay ──────────────────────────────────────────────────
+function showProposedOverlay(content) {
+  // Render a simplified preview
+  const blocks = content.split('===TASK===').filter(b => b.trim());
+  const preview = blocks.map((b, i) => {
+    const lines = b.trim().splitlines ? b.trim().split('\n') : b.trim().split('\n');
+    const headerEnd = lines.findIndex(l => l.trim() === '---');
+    const title = headerEnd >= 0
+      ? lines.slice(headerEnd + 1).find(l => l.trim()) || `Task ${i+1}`
+      : `Task ${i+1}`;
+    return `<div class="task-title">Task ${i+1}: ${esc(title.trim())}</div>`;
+  }).join('\n');
+
+  document.getElementById('proposedPreview').innerHTML =
+    `<div style="margin-bottom:8px;color:var(--text2)">${blocks.length} task${blocks.length !== 1 ? 's' : ''} proposed</div>` + preview;
+  document.getElementById('proposedOverlay').classList.remove('hidden');
+}
+
+function skipProposed() {
+  document.getElementById('proposedOverlay').classList.add('hidden');
+}
+
+async function editProposed() {
+  document.getElementById('proposedOverlay').classList.add('hidden');
+  // Open the task editor with existing content
+  document.getElementById('addTaskRow').style.display = 'block';
+  try {
+    const res = await fetch('/api/tasks');
+    // Just toggle the add row — user can edit in textarea
+  } catch(e) {}
+  showToast('Edit .claude/proposed-tasks.md directly, then click "Import Proposed"');
+}
+
+async function confirmProposed() {
+  document.getElementById('proposedOverlay').classList.add('hidden');
+  // Import then start all
+  await fetch('/api/tasks/import-proposed', { method: 'POST' });
+  const res = await fetch('/api/tasks/start-all', { method: 'POST' });
+  const data = await res.json();
+  showToast(`Started ${data.started} workers`);
+}
+
+async function runAllTasks() {
+  const res = await fetch('/api/tasks/start-all', { method: 'POST' });
+  const data = await res.json();
+  showToast(`Started ${data.started} worker${data.started !== 1 ? 's' : ''}`);
+}
+
+// ─── Header status ───────────────────────────────────────────────────────────
+function setOrchStatus(state, text) {
+  const dot = document.getElementById('orchDot');
+  const label = document.getElementById('orchStatus');
+  dot.className = 'dot ' + (state === 'connected' ? 'green' : state === 'connecting' ? 'yellow' : 'red');
+  label.textContent = text;
+}
+
+// ─── Toast ───────────────────────────────────────────────────────────────────
+function showToast(msg) {
+  const el = document.createElement('div');
+  el.textContent = msg;
+  Object.assign(el.style, {
+    position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)',
+    background: '#21262d', border: '1px solid #30363d', borderRadius: '8px',
+    padding: '10px 18px', fontSize: '13px', color: '#e6edf3',
+    zIndex: '999', transition: 'opacity 0.3s',
+  });
+  document.body.appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, 3000);
+}
+
+// ─── Utilities ───────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s || '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function firstLine(s) {
+  return String(s || '').split('\n')[0].trim();
+}
+
+function formatElapsed(s) {
+  s = Math.max(0, Math.round(s));
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  if (m === 0) return `${sec}s`;
+  return `${m}m${sec.toString().padStart(2,'0')}s`;
+}
+
+// ─── Usage ───────────────────────────────────────────────────────────────────
+async function refreshUsage() {
+  try {
+    const res = await fetch('/api/usage');
+    const d = await res.json();
+    const today = d.today || {};
+    const week = d.this_week || {};
+    document.getElementById('usageText').textContent =
+      `Today: ${today.messages||0} msgs · ${today.sessions||0} sessions  |  Week: ${week.messages||0} msgs`;
+    document.getElementById('usageUpdated').textContent = `stats as of ${d.last_updated||'?'}`;
+  } catch(e) {
+    document.getElementById('usageText').textContent = 'Usage unavailable';
+  }
+}
+
+// ─── Boot ────────────────────────────────────────────────────────────────────
+loadSessions().then(() => {
+  connectChat();
+  connectStatus();
+});
+refreshUsage();
+setInterval(refreshUsage, 60000);
+
+// ─── Project switcher ────────────────────────────────────────────────────────
+function refreshProjectBadge() {
+  const active = sessions.find(s => s.session_id === activeSessionId);
+  const btn = document.getElementById('projectBadge');
+  if (active) {
+    btn.textContent = '📁 ' + active.name;
+    btn.title = (active.path || active.name) + '\n(click to open new tab)';
+  } else {
+    fetch('/api/project').then(r => r.json()).then(d => {
+      btn.textContent = '📁 ' + d.name;
+      btn.title = d.path + '\n(click to open new tab)';
+    }).catch(() => {});
+  }
+}
+
+function openProjectPicker() {
+  document.getElementById('projectPickerModal').classList.remove('hidden');
+  document.getElementById('projectPathInput').focus();
+  loadProjects();
+}
+
+function closeProjectPicker() {
+  document.getElementById('projectPickerModal').classList.add('hidden');
+}
+
+async function loadProjects() {
+  const list = document.getElementById('projectList');
+  list.innerHTML = '<div class="empty">Scanning...</div>';
+  try {
+    const res = await fetch('/api/projects');
+    const projects = await res.json();
+    if (!projects.length) {
+      list.innerHTML = '<div class="empty">No git repos found under home dir</div>';
+      return;
+    }
+    list.innerHTML = projects.map(p => `
+      <div onclick="selectProject('${esc(p.path)}')" style="
+        padding:8px 14px;border-bottom:1px solid var(--border);
+        cursor:pointer;display:flex;align-items:center;gap:10px;
+      " onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background=''">
+        <span style="font-weight:500;font-size:13px">${esc(p.name)}</span>
+        <span style="font-size:11px;color:var(--text2);font-family:var(--font-mono)">${esc(p.path)}</span>
+      </div>
+    `).join('');
+  } catch(e) {
+    list.innerHTML = '<div class="empty">Error scanning projects</div>';
+  }
+}
+
+function selectProject(path) {
+  document.getElementById('projectPathInput').value = path;
+}
+
+async function confirmProjectSwitch() {
+  const path = document.getElementById('projectPathInput').value.trim();
+  if (!path) return;
+  closeProjectPicker();
+  showToast('Opening new tab...');
+  try {
+    const res = await fetch('/api/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path }),
+    });
+    const data = await res.json();
+    if (data.error) { showToast('Error: ' + data.error); return; }
+    await loadSessions();
+    switchTab(data.session_id);
+  } catch(e) {
+    showToast('Failed to open new tab');
+  }
+}
+
+document.getElementById('projectPathInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') confirmProjectSwitch();
+  if (e.key === 'Escape') closeProjectPicker();
+});
+
+// ─── Pane keyboard shortcuts ─────────────────────────────────────────────────
+// Ctrl+\        → split active pane right  (title hint for split-right button)
+// Ctrl+-        → split active pane down   (title hint for split-down button)
+// Ctrl+Shift+W  → close active pane        (title hint for close-pane button)
+// Ctrl+Shift+←/→/↑/↓ → navigate panes
+document.addEventListener('keydown', (e) => {
+  // Don't fire shortcuts when typing in input/textarea
+  if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+
+  // Ctrl+\ → split active pane right
+  if (e.ctrlKey && !e.shiftKey && e.key === '\\') {
+    e.preventDefault();
+    if (typeof PaneManager !== 'undefined') PaneManager.splitActive('h');
+    return;
+  }
+
+  // Ctrl+- → split active pane down
+  if (e.ctrlKey && !e.shiftKey && e.key === '-') {
+    e.preventDefault();
+    if (typeof PaneManager !== 'undefined') PaneManager.splitActive('v');
+    return;
+  }
+
+  // Ctrl+Shift+W → close active pane (only when more than 1 pane exists)
+  if (e.ctrlKey && e.shiftKey && e.key === 'W') {
+    e.preventDefault();
+    if (typeof PaneManager !== 'undefined' && PaneManager.panes.size > 1) {
+      PaneManager.removePane(PaneManager.activePaneId);
+    }
+    return;
+  }
+
+  // Ctrl+Shift+Arrow → navigate between panes
+  if (e.ctrlKey && e.shiftKey) {
+    const dirMap = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' };
+    const dir = dirMap[e.key];
+    if (dir) {
+      e.preventDefault();
+      if (typeof PaneManager !== 'undefined') PaneManager.focusNeighbor(dir);
+    }
+  }
+});
+
+// Show which project is loaded
+refreshProjectBadge();
+
+// Poll sessions list every 5 seconds to keep badges current
+setInterval(() => loadSessions(), 5000);
+</script>
+</body>
+</html>
