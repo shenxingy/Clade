@@ -2,6 +2,38 @@
 
 ---
 
+### 2026-02-24 — Phase 4: Agent Teams + Critical Path + Cross-worker Messaging
+
+**What was done:**
+
+**Agent Teams:**
+- `server.py`: Added `agent_teams` bool setting (default: False) to `_SETTINGS_DEFAULTS`
+- `server.py`: `Worker.start()` — builds env dict; when `agent_teams` enabled, sets `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`
+- `index.html`: Settings panel checkbox under new "Experimental" section + loadSettings/saveSettings wiring
+
+**Critical Path:**
+- `server.py`: Added `is_critical_path INTEGER DEFAULT 0` column to `tasks` table (schema + ALTER migration)
+- `server.py`: Added `is_critical_path` to `_ALLOWED_TASK_COLS` — enables update via generic task update
+- `server.py`: `TaskQueue.add()` accepts `is_critical_path` param, included in INSERT
+- `server.py`: `POST /api/tasks` passes `is_critical_path` from request body
+- `server.py`: Added `POST /api/tasks/{task_id}` generic update endpoint (filters by `_ALLOWED_TASK_COLS`)
+- `server.py`: Existing model boost logic in `start_worker()` already handles `is_critical_path` — data path was broken, now fixed
+- `index.html`: Red ⚡ badge on queue items when `is_critical_path`; checkbox in add-task form
+
+**Cross-worker Messaging:**
+- `server.py`: `worker_messages` table (id, to_task_id, from_task_id, content, created_at, read)
+- `server.py`: `TaskQueue.send_message()`, `get_messages()`, `mark_messages_read()` methods
+- `server.py`: `Worker.start()` accepts optional `task_queue` param; flushes unread messages into task description before writing task file
+- `server.py`: `POST /api/tasks/{task_id}/messages` and `GET /api/tasks/{task_id}/messages` endpoints
+- `index.html`: ✉ button on each pending task → prompt input → POST; messages injected into worker on startup
+
+**Lessons:**
+- The critical path model boost logic already existed in `start_worker()` but the data path was broken — `is_critical_path` was never persisted in DB or passed through API. Fix was purely plumbing (DB column + API param passthrough).
+- Message injection into `Worker.start()` requires passing `task_queue` — updated signature to accept optional param to avoid breaking existing callers.
+- Generic `POST /api/tasks/{task_id}` update endpoint filters by `_ALLOWED_TASK_COLS` for safety — reusable for future task fields.
+
+---
+
 ### 2026-02-24 — Phase 4: GitHub Issues Sync
 
 **What was done:**

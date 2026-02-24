@@ -954,6 +954,11 @@
     <span>Context budget warnings</span>
     <input type="checkbox" id="settingContextBudget" checked onchange="saveSettings()" />
   </label>
+  <div style="font-size:10px;font-weight:600;opacity:0.5;text-transform:uppercase;letter-spacing:0.5px;margin-top:10px;margin-bottom:4px;padding:0 12px">Experimental</div>
+  <label class="settings-row">
+    <span>Agent Teams (experimental)</span>
+    <input type="checkbox" id="settingAgentTeams" onchange="saveSettings()" />
+  </label>
   <div style="font-size:10px;font-weight:600;opacity:0.5;text-transform:uppercase;letter-spacing:0.5px;margin-top:10px;margin-bottom:4px;padding:0 12px">GitHub Issues</div>
   <label class="settings-row">
     <span>Sync to GitHub Issues</span>
@@ -1040,6 +1045,9 @@
             <option value="haiku">haiku</option>
             <option value="opus">opus</option>
           </select>
+          <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer" title="Boost model tier for this task">
+            <input type="checkbox" id="newTaskCritical" /> Critical path
+          </label>
           <button class="btn small" onclick="addTask()">Add Task</button>
           <button class="btn small secondary" onclick="importProposedToQueue()">Import Proposed</button>
         </div>
@@ -1741,14 +1749,17 @@ function renderQueue() {
     } else {
       scoreBadge = `<span class="score-badge pending" title="Scoring...">…</span>`;
     }
+    const critBadge = task.is_critical_path ? '<span style="color:#ef4444;font-weight:700;margin-right:2px" title="Critical path — model tier boosted">⚡</span>' : '';
     return `
     <div class="queue-item${isBlocked ? ' blocked' : ''}">
       ${scoreBadge}
+      ${critBadge}
       <span class="task-name" title="${esc(task.description)}">${esc(firstLine(task.description))}</span>
       ${blockedHtml}
       <span class="task-model">${esc(task.model)}</span>
       ${task.gh_issue_number ? `<span class="gh-issue-badge" title="GitHub Issue #${task.gh_issue_number}">#${task.gh_issue_number}</span>` : ''}
       <div class="queue-actions">
+        <button class="btn small secondary" onclick="sendTaskMessage('${esc(task.id)}')" title="Send message to this task">✉</button>
         <button class="btn small success" onclick="runTask('${esc(task.id)}')">Run</button>
         <button class="btn small danger" onclick="deleteTask('${esc(task.id)}')">×</button>
       </div>
@@ -1883,6 +1894,21 @@ async function deleteTask(id) {
   await fetch(`/api/tasks/${id}?session=${activeSessionId}`, { method: 'DELETE' });
 }
 
+async function sendTaskMessage(taskId) {
+  const content = prompt('Message to send to this task (will be injected when worker starts):');
+  if (!content || !content.trim()) return;
+  try {
+    await fetch(`/api/tasks/${taskId}/messages?session=${activeSessionId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: content.trim() }),
+    });
+    showToast('Message sent');
+  } catch(e) {
+    showToast('Error sending message: ' + e.message);
+  }
+}
+
 async function addTask() {
   const desc = document.getElementById('newTaskDesc').value.trim();
   const model = document.getElementById('newTaskModel').value;
@@ -1897,13 +1923,16 @@ async function addTask() {
         body: JSON.stringify({ content: desc }),
       });
     } else {
+      const isCritical = document.getElementById('newTaskCritical')?.checked ? 1 : 0;
       await fetch(`/api/tasks?session=${activeSessionId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ description: desc, model }),
+        body: JSON.stringify({ description: desc, model, is_critical_path: isCritical }),
       });
     }
     document.getElementById('newTaskDesc').value = '';
+    const critEl = document.getElementById('newTaskCritical');
+    if (critEl) critEl.checked = false;
   } catch(e) {
     showToast('Error adding task: ' + e.message);
     // textarea value is preserved (not cleared)
@@ -2960,6 +2989,9 @@ async function loadSettings() {
     if (elAutoOracle) elAutoOracle.checked = s.auto_oracle ?? false;
     if (elAutoMR) elAutoMR.checked = s.auto_model_routing ?? false;
     if (elCtxBudget) elCtxBudget.checked = s.context_budget_warning ?? true;
+    // Agent Teams
+    const elAgentTeams = document.getElementById('settingAgentTeams');
+    if (elAgentTeams) elAgentTeams.checked = s.agent_teams ?? false;
     // GitHub Issues sync
     const elGhSync = document.getElementById('settingGhSync');
     const elGhLabel = document.getElementById('settingGhLabel');
@@ -2993,6 +3025,7 @@ function saveSettings() {
           auto_oracle: document.getElementById('settingAutoOracle')?.checked ?? false,
           auto_model_routing: document.getElementById('settingAutoModelRouting')?.checked ?? false,
           context_budget_warning: document.getElementById('settingContextBudget')?.checked ?? true,
+          agent_teams: document.getElementById('settingAgentTeams')?.checked ?? false,
           github_issues_sync: document.getElementById('settingGhSync')?.checked ?? false,
           github_issues_label: document.getElementById('settingGhLabel')?.value || 'orchestrator',
         }),
