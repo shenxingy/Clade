@@ -9,6 +9,7 @@ import asyncio
 import json
 import os
 import re
+import shlex
 import signal
 import time
 import uuid
@@ -36,13 +37,24 @@ PROJECT_DIR = Path(os.environ.get("ORCHESTRATOR_PROJECT_DIR", str(Path.cwd())))
 _settings_file = Path.home() / ".claude" / "orchestrator-settings.json"
 
 
+_SETTINGS_DEFAULTS = {
+    "max_workers": 0,
+    "auto_start": True,
+    "auto_push": True,
+    "auto_merge": True,
+    "auto_review": True,
+    "default_model": "sonnet",
+}
+
+
 def _load_settings() -> dict:
+    defaults = dict(_SETTINGS_DEFAULTS)
     if _settings_file.exists():
         try:
-            return json.loads(_settings_file.read_text())
+            defaults.update(json.loads(_settings_file.read_text()))
         except Exception:
             pass
-    return {"max_workers": 0}
+    return defaults
 
 
 def _save_settings(s: dict) -> None:
@@ -132,6 +144,13 @@ class TaskQueue:
                     pushed_at REAL,
                     merged_at REAL,
                     FOREIGN KEY (task_id) REFERENCES tasks(id)
+                )
+            """)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS schedule (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    scheduled_at TEXT,
+                    triggered INTEGER DEFAULT 0
                 )
             """)
             await db.commit()
@@ -253,6 +272,27 @@ class TaskQueue:
             async with db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)) as cur:
                 row = await cur.fetchone()
         return self._row_to_dict(row) if row else None
+
+    async def get_schedule(self) -> dict | None:
+        await self._ensure_db()
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            async with db.execute("SELECT scheduled_at, triggered FROM schedule WHERE id=1") as cur:
+                row = await cur.fetchone()
+                if not row or not row[0]:
+                    return None
+                return {"scheduled_at": row[0], "triggered": bool(row[1])}
+
+    async def save_schedule(self, scheduled_at: str | None, triggered: bool = False) -> None:
+        await self._ensure_db()
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            if scheduled_at is None:
+                await db.execute("DELETE FROM schedule WHERE id=1")
+            else:
+                await db.execute(
+                    "INSERT OR REPLACE INTO schedule (id, scheduled_at, triggered) VALUES (1, ?, ?)",
+                    (scheduled_at, int(triggered)),
+                )
+            await db.commit()
 
     async def import_from_proposed(self, content: str | None = None) -> list[dict]:
         """Parse ===TASK=== blocks and add to queue, skipping duplicates."""
@@ -383,6 +423,47 @@ async def _score_task(task_id: str, description: str, db_path: Path, claude_dir:
             pass
     finally:
         score_file.unlink(missing_ok=True)
+
+
+async def _write_progress_entry(
+    task_description: str, log_path: Path | None, project_dir: Path
+) -> None:
+    """After merge: summarize worker log and append a lesson entry to PROGRESS.md."""
+    title = task_description.splitlines()[0][:80] if task_description else "Unknown task"
+    log_tail = ""
+    if log_path and log_path.exists():
+        try:
+            text = log_path.read_text(errors="replace")
+            log_tail = "\n".join(text.splitlines()[-80:])
+        except Exception:
+            pass
+
+    prompt = (
+        f"A Claude Code worker completed this task:\n**{title}**\n\n"
+        f"Last 80 lines of worker log:\n```\n{log_tail}\n```\n\n"
+        "Write a concise PROGRESS.md entry (2-4 bullet points) in this exact format:\n"
+        f"### [{date.today().isoformat()}] Task: {title}\n"
+        "- What worked: [1 sentence]\n"
+        "- Watch out for: [1 sentence]\n\n"
+        "RESPOND WITH ONLY the markdown entry, no preamble."
+    )
+    try:
+        proc = await asyncio.create_subprocess_shell(
+            f'claude -p {shlex.quote(prompt)} --model claude-haiku-4-5-20251001',
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=60)
+        entry = out.decode().strip()
+        if entry:
+            progress_file = project_dir / "PROGRESS.md"
+            existing = progress_file.read_text(errors="replace") if progress_file.exists() else "# Progress Log\n"
+            lines = existing.splitlines(keepends=True)
+            insert_at = 1 if lines and lines[0].startswith("#") else 0
+            lines.insert(insert_at, f"\n{entry}\n")
+            progress_file.write_text("".join(lines))
+    except Exception:
+        pass  # non-critical — don't break the merge flow
 
 
 # ─── Worker Pool ──────────────────────────────────────────────────────────────
@@ -701,17 +782,18 @@ class Worker:
 
                 branch = f"orchestrator/task-{self.task_id}"
                 self.branch_name = branch
-                push_proc = await asyncio.create_subprocess_shell(
-                    f'git push origin HEAD:{branch} --force-with-lease',
-                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-                    cwd=str(self._project_dir),
-                )
-                try:
-                    p_out, p_err = await asyncio.wait_for(push_proc.communicate(), timeout=30)
-                    if push_proc.returncode == 0:
-                        self.auto_pushed = True
-                except asyncio.TimeoutError:
-                    pass
+                if GLOBAL_SETTINGS.get("auto_push", True):
+                    push_proc = await asyncio.create_subprocess_shell(
+                        f'git push origin HEAD:{branch} --force-with-lease',
+                        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                        cwd=str(self._project_dir),
+                    )
+                    try:
+                        p_out, p_err = await asyncio.wait_for(push_proc.communicate(), timeout=30)
+                        if push_proc.returncode == 0:
+                            self.auto_pushed = True
+                    except asyncio.TimeoutError:
+                        pass
 
                 log_proc = await asyncio.create_subprocess_exec(
                     "git", "log", "-1", "--oneline",
@@ -878,6 +960,9 @@ class ProjectSession:
         # Scheduler state
         self._scheduled_start: datetime | None = None
         self._schedule_triggered: bool = False
+        self._schedule_loaded: bool = False
+        # Run-complete notification state
+        self._run_complete: bool = False
 
     @property
     def name(self) -> str:
@@ -1025,6 +1110,14 @@ async def status_loop():
         await asyncio.sleep(1)
         for session in registry.all():
             try:
+                # On first tick, restore persisted schedule
+                if not session._schedule_loaded:
+                    session._schedule_loaded = True
+                    saved = await session.task_queue.get_schedule()
+                    if saved and not saved["triggered"]:
+                        session._scheduled_start = datetime.fromisoformat(saved["scheduled_at"])
+                        session._schedule_triggered = False
+
                 await session.worker_pool.poll_all(session.task_queue)
                 await _check_blockers(session)
 
@@ -1053,6 +1146,9 @@ async def status_loop():
                 if session._scheduled_start and not session._schedule_triggered:
                     if datetime.now() >= session._scheduled_start:
                         session._schedule_triggered = True
+                        await session.task_queue.save_schedule(
+                            session._scheduled_start.isoformat(), triggered=True
+                        )
                         tasks = await session.task_queue.list()
                         done_ids = {t["id"] for t in tasks if t["status"] == "done"}
                         pending = [t for t in tasks if t["status"] in ("pending", "queued")]
@@ -1065,6 +1161,15 @@ async def status_loop():
 
                 tasks = await session.task_queue.list()
                 workers = [w.to_dict() for w in session.worker_pool.all()]
+
+                # Detect run-complete (all workers idle, no pending tasks, but some done)
+                running_workers = [w for w in session.worker_pool.all() if w.status == "running"]
+                pending_tasks = [t for t in tasks if t["status"] in ("pending", "queued")]
+                done_tasks = [t for t in tasks if t["status"] in ("done", "failed")]
+                if not running_workers and not pending_tasks and done_tasks and not session._run_complete:
+                    session._run_complete = True
+                elif pending_tasks or running_workers:
+                    session._run_complete = False
 
                 total = len(tasks)
                 done_count = sum(1 for t in tasks if t["status"] in ("done", "failed"))
@@ -1089,6 +1194,7 @@ async def status_loop():
                     "eta_seconds": eta_seconds,
                     "success_rate": success_rate,
                     "schedule": session._schedule_dict(),
+                    "run_complete": session._run_complete,
                 })
                 dead = []
                 for ws in session.status_subscribers:
@@ -1130,6 +1236,57 @@ async def create_session(body: dict):
     return session.to_dict()
 
 
+
+@app.get("/api/sessions/overview")
+async def sessions_overview():
+    result = []
+    for s in registry.all():
+        tasks = await s.task_queue.list()
+        pending = sum(1 for t in tasks if t["status"] in ("pending", "queued"))
+        running = sum(1 for t in tasks if t["status"] == "running")
+        done = sum(1 for t in tasks if t["status"] == "done")
+        failed = sum(1 for t in tasks if t["status"] == "failed")
+        total_attempted = done + failed
+        success_rate = round(done / total_attempted * 100) if total_attempted else None
+        done_workers = [w for w in s.worker_pool.all() if w.status == "done"]
+        avg_s = (sum(w.elapsed_s for w in done_workers) / len(done_workers)) if done_workers else None
+        eta_s = round(avg_s * pending / max(1, running)) if (avg_s and pending) else None
+        result.append({
+            "session_id": s.session_id,
+            "name": s.name,
+            "pending": pending,
+            "running": running,
+            "done": done,
+            "failed": failed,
+            "success_rate": success_rate,
+            "eta_seconds": eta_s,
+        })
+    return result
+
+
+@app.post("/api/sessions/start-all-queued")
+async def global_start_all():
+    total_started = 0
+    session_results = []
+    for s in registry.all():
+        tasks = await s.task_queue.list()
+        done_ids = {t["id"] for t in tasks if t["status"] == "done"}
+        pending = [t for t in tasks if t["status"] in ("pending", "queued")]
+        max_w = GLOBAL_SETTINGS.get("max_workers", 0)
+        running_count = sum(1 for w in s.worker_pool.all() if w.status == "running")
+        available = max(0, max_w - running_count) if max_w > 0 else len(pending)
+        started = []
+        for task in pending:
+            if not _deps_met(task, done_ids) or available <= 0:
+                continue
+            await s.worker_pool.start_worker(task, s.task_queue, s.project_dir, s.claude_dir)
+            started.append(task["id"])
+            available -= 1
+        total_started += len(started)
+        session_results.append({"session_id": s.session_id, "name": s.name, "started": len(started)})
+    return {"total_started": total_started, "sessions": session_results}
+
+
 @app.get("/api/sessions/{session_id}")
 async def get_session_detail(session_id: str):
     s = registry.get(session_id)
@@ -1164,6 +1321,7 @@ async def set_schedule(session_id: str, body: dict):
             scheduled += timedelta(days=1)
         s._scheduled_start = scheduled
         s._schedule_triggered = False
+        await s.task_queue.save_schedule(scheduled.isoformat())
         in_sec = int((scheduled - now).total_seconds())
         return {"scheduled_at": scheduled.isoformat(), "in_seconds": in_sec}
     except Exception as e:
@@ -1177,6 +1335,7 @@ async def cancel_schedule(session_id: str):
         raise HTTPException(status_code=404, detail="Session not found")
     s._scheduled_start = None
     s._schedule_triggered = False
+    await s.task_queue.save_schedule(None)
     return {"ok": True}
 
 
@@ -1513,7 +1672,7 @@ async def merge_all_done(s: ProjectSession = Depends(_resolve_session)):
             pr_url = pr_out.decode().strip()
             w.pr_url = pr_url
             created += 1
-            if branch.startswith("orchestrator/task-"):
+            if branch.startswith("orchestrator/task-") and GLOBAL_SETTINGS.get("auto_merge", True):
                 merge_proc = await asyncio.create_subprocess_shell(
                     f'gh pr merge {pr_url} --squash --delete-branch',
                     stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
@@ -1523,6 +1682,11 @@ async def merge_all_done(s: ProjectSession = Depends(_resolve_session)):
                 if merge_proc.returncode == 0:
                     w.pr_merged = True
                     merged += 1
+                    asyncio.ensure_future(_write_progress_entry(
+                        task_description=w.description,
+                        log_path=w._log_path,
+                        project_dir=s.project_dir,
+                    ))
             results.append({"worker_id": w.id, "pr_url": pr_url})
         except Exception as e:
             results.append({"worker_id": w.id, "error": str(e)})
