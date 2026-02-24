@@ -2,6 +2,41 @@
 
 ---
 
+### 2026-02-23 — P2: Multi-Project Dashboard + Settings Panel
+
+**What was done:**
+- `server.py`: Expanded `_SETTINGS_DEFAULTS` with 5 new keys: `auto_start`, `auto_push`, `auto_merge`, `auto_review`, `default_model`
+  - `_load_settings()` now merges over defaults — backward compatible (existing files just have `max_workers`)
+- `server.py`: `auto_push` gate in `verify_and_commit()` — push block skipped when `auto_push=False`
+- `server.py`: `auto_merge` gate in `merge_all_done()` — squash merge skipped when `auto_merge=False`
+- `server.py`: `GET /api/sessions/overview` endpoint — aggregates pending/running/done/failed per session, computes ETA
+  - **Route ordering**: registered BEFORE `/{session_id}` to avoid FastAPI routing conflict
+- `server.py`: `POST /api/sessions/start-all-queued` — starts pending tasks across ALL sessions at once
+  - Respects `max_workers` per session, skips tasks with unmet deps
+- `index.html`: Multi-project overview section (execute mode, hidden when only 1 session)
+  - Progress bar fill, running/done/failed counts, ETA label
+  - Click a row to `switchTab()` to that session
+- `index.html`: `▶▶ Start All Queued` button — calls `/api/sessions/start-all-queued`
+- `index.html`: Settings panel expanded from 1 field to 6
+  - Checkboxes for auto_start, auto_push, auto_merge, auto_review; model dropdown; max_workers number input
+  - `loadSettings()` populates all 6 fields + syncs `autoStartToggle` in chat header
+  - `saveSettings()` sends all 6 keys (debounced 400ms)
+- `index.html`: `setMode('execute')` starts `_overviewInterval` (8s poll); `setMode('plan')` clears it
+- `index.html`: `switchTab()` now calls `renderOverview()` to update active row highlight
+- `index.html`: Footer success rate span — `renderHistory()` also updates `#footerSuccessRate`
+
+**What worked:**
+- Python script bulk edits (vs Edit tool) essential when formatter hook races with sequential edits
+- `_SETTINGS_DEFAULTS` dict + `defaults.update(loaded)` pattern is clean and backward-compatible
+- Route ordering is easily verified with `grep -n "app.get.*sessions\|app.post.*sessions"` after insertion
+
+**Lessons:**
+- The formatter PostToolUse hook (`post-edit-check.sh`) runs asynchronously and can modify files between Edit tool calls — causes "file modified since read" errors on rapid sequential edits. Use Python bulk transforms to make all changes atomically.
+- Always verify FastAPI route order for static vs parameterized routes (`/overview` before `/{session_id}`)
+- HTML replace via Python: always `print(repr(content[idx-5:idx+100]))` to verify exact bytes before building search string — Unicode box-drawing chars look similar but differ in byte count
+
+---
+
 ### 2026-02-23 — P1: Auto-stop notification, schedule persistence, post-merge PROGRESS.md injection
 
 **What was done:**
