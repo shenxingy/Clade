@@ -119,6 +119,13 @@
     #terminalContainer .xterm-viewport::-webkit-scrollbar { width: 6px; }
     #terminalContainer .xterm-viewport::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
+    /* ─── Pane splits ────────────────────────────────────────────── */
+    .pane-wrapper { transition: outline 0.1s; }
+    .pane-wrapper .xterm { height: 100%; }
+    .pane-wrapper .xterm-viewport { overflow-y: auto !important; }
+    .pane-wrapper .xterm-viewport::-webkit-scrollbar { width: 6px; }
+    .pane-wrapper .xterm-viewport::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
     .chat-input-row {
       display: flex;
       gap: 8px;
@@ -735,7 +742,7 @@ let activeSessionId = null;
 // Per-session state: each session gets its own terminal + WebSocket pair
 // so switching tabs only hides/shows — nothing is ever disconnected.
 const sessionStates = new Map();
-// sessionId → { chatWs, statusWs, term, fitAddon, el, opened }
+// sessionId → { statusWs, el, panes: Map, activePaneId, opened }
 
 // ─── Per-session terminal helpers ────────────────────────────────────────────
 const TERM_THEME = {
@@ -751,104 +758,265 @@ const TERM_THEME = {
   white: '#b1bac4', brightWhite: '#f0f6fc',
 };
 
+// ─── PaneManager ─────────────────────────────────────────────────────────────
+// Manages split panes within the active session's terminal container.
+// Each session (in sessionStates) owns a panes Map; PaneManager operates
+// on whichever session is currently active.
+const PaneManager = {
+  // Proxy to active session's pane map
+  get panes() {
+    const st = sessionStates.get(activeSessionId);
+    return st ? st.panes : new Map();
+  },
+  get activePaneId() {
+    const st = sessionStates.get(activeSessionId);
+    return st ? st.activePaneId : null;
+  },
+
+  _nextId() { return 'pane-' + Math.random().toString(36).slice(2, 7); },
+
+  // Create a new pane inside `container`, belonging to `sessionId`.
+  createPane(container, sessionId) {
+    const sid = sessionId || activeSessionId;
+    const st = sessionStates.get(sid);
+    if (!st) return null;
+
+    const id = this._nextId();
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'pane-wrapper';
+    wrapper.style.cssText = 'flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;position:relative;';
+    wrapper.dataset.paneId = id;
+    wrapper.addEventListener('click', () => {
+      if (activeSessionId === sid) this.setActive(id);
+    });
+
+    const term = new Terminal({
+      theme: TERM_THEME,
+      fontFamily: "'SF Mono', 'Fira Code', 'Cascadia Code', monospace",
+      fontSize: 13, lineHeight: 1.4, cursorBlink: true,
+      scrollback: 5000, allowTransparency: false,
+    });
+    const fitAddon = new FitAddon.FitAddon();
+    term.loadAddon(fitAddon);
+    term.open(wrapper);
+
+    const pane = { id, term, fitAddon, ws: null, element: wrapper, sessionId: sid };
+    st.panes.set(id, pane);
+
+    term.onData(data => {
+      const activeSt = sessionStates.get(activeSessionId);
+      if (activeSt && activeSt.activePaneId === id &&
+          pane.ws && pane.ws.readyState === WebSocket.OPEN) {
+        pane.ws.send(JSON.stringify({ type: 'input', data }));
+      }
+    });
+
+    container.appendChild(wrapper);
+    setTimeout(() => { try { fitAddon.fit(); } catch(e) {} }, 50);
+    this.connectPaneWs(sid, id);
+    return id;
+  },
+
+  connectPaneWs(sessionId, paneId) {
+    const st = sessionStates.get(sessionId);
+    if (!st) return;
+    const pane = st.panes.get(paneId);
+    if (!pane) return;
+
+    // Close any existing connection cleanly before replacing
+    if (pane.ws) { pane.ws.onclose = null; pane.ws.close(); }
+
+    const url = `ws://${location.host}/ws/chat?session=${sessionId}`;
+    const ws = new WebSocket(url);
+    pane.ws = ws;
+
+    ws.onopen = () => {
+      const isActive = sessionId === activeSessionId;
+      const st2 = sessionStates.get(sessionId);
+      if (isActive && st2 && st2.activePaneId === paneId) {
+        setOrchStatus('connected', 'Orchestrator active');
+      }
+      ws.send(JSON.stringify({ type: 'resize', rows: pane.term.rows, cols: pane.term.cols }));
+    };
+    ws.onmessage = (e) => {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'output') pane.term.write(msg.data);
+    };
+    ws.onclose = () => {
+      const isActive = sessionId === activeSessionId;
+      const st2 = sessionStates.get(sessionId);
+      if (isActive && st2 && st2.activePaneId === paneId) {
+        setOrchStatus('disconnected', 'Disconnected');
+        pane.term.write('\r\n\x1b[33m[Reconnecting...]\x1b[0m\r\n');
+      }
+      setTimeout(() => {
+        if (sessionStates.has(sessionId) && st.panes.has(paneId)) {
+          this.connectPaneWs(sessionId, paneId);
+        }
+      }, 2000);
+    };
+    ws.onerror = () => {
+      if (sessionId === activeSessionId) setOrchStatus('disconnected', 'Connection error');
+    };
+  },
+
+  setActive(paneId) {
+    const st = sessionStates.get(activeSessionId);
+    if (!st) return;
+    st.activePaneId = paneId;
+    st.panes.forEach((p, pid) => {
+      p.element.style.outline = pid === paneId
+        ? '2px solid var(--accent)'
+        : '1px solid transparent';
+    });
+    const pane = st.panes.get(paneId);
+    if (pane && pane.ws && pane.ws.readyState === WebSocket.OPEN) {
+      setOrchStatus('connected', 'Orchestrator active');
+    }
+  },
+
+  splitActive(direction) {
+    const st = sessionStates.get(activeSessionId);
+    if (!st || !st.activePaneId) return;
+    const pane = st.panes.get(st.activePaneId);
+    if (!pane) return;
+
+    const oldWrapper = pane.element;
+    const parent = oldWrapper.parentElement;
+
+    const splitContainer = document.createElement('div');
+    splitContainer.style.cssText = [
+      'flex:1;display:flex;min-width:0;min-height:0;overflow:hidden;gap:2px;',
+      direction === 'h' ? 'flex-direction:row;' : 'flex-direction:column;',
+    ].join('');
+
+    parent.replaceChild(splitContainer, oldWrapper);
+    splitContainer.appendChild(oldWrapper);
+    oldWrapper.style.flex = '1';
+
+    const newId = this.createPane(splitContainer, activeSessionId);
+    setTimeout(() => {
+      this.fitSession(activeSessionId);
+      if (newId) this.setActive(newId);
+    }, 100);
+  },
+
+  removePane(paneId) {
+    const st = sessionStates.get(activeSessionId);
+    if (!st || st.panes.size <= 1) return;
+    const pane = st.panes.get(paneId);
+    if (!pane) return;
+
+    if (pane.ws) { pane.ws.onclose = null; pane.ws.close(); }
+    pane.term.dispose();
+
+    const wrapper = pane.element;
+    const splitContainer = wrapper.parentElement;
+    st.panes.delete(paneId);
+
+    if (splitContainer && splitContainer !== st.el) {
+      const sibling = [...splitContainer.children].find(c => c !== wrapper);
+      if (sibling) {
+        const grandParent = splitContainer.parentElement;
+        sibling.style.flex = splitContainer.style.flex || '1';
+        grandParent.replaceChild(sibling, splitContainer);
+      }
+    } else {
+      wrapper.remove();
+    }
+
+    const firstId = [...st.panes.keys()][0];
+    if (firstId) this.setActive(firstId);
+    this.fitSession(activeSessionId);
+  },
+
+  focusNeighbor(dir) {
+    const st = sessionStates.get(activeSessionId);
+    if (!st) return;
+    const ids = [...st.panes.keys()];
+    const idx = ids.indexOf(st.activePaneId);
+    if (idx === -1) return;
+    const next = (dir === 'right' || dir === 'down')
+      ? ids[(idx + 1) % ids.length]
+      : ids[(idx - 1 + ids.length) % ids.length];
+    this.setActive(next);
+  },
+
+  fitSession(sessionId) {
+    const st = sessionStates.get(sessionId);
+    if (!st || !st.opened) return;
+    st.panes.forEach(p => {
+      try { p.fitAddon.fit(); } catch(e) {}
+      if (p.ws && p.ws.readyState === WebSocket.OPEN) {
+        p.ws.send(JSON.stringify({ type: 'resize', rows: p.term.rows, cols: p.term.cols }));
+      }
+    });
+  },
+
+  fitAll() { this.fitSession(activeSessionId); },
+};
+
 function createSessionState(sessionId) {
-  // Each session gets its own absolutely-positioned terminal div
+  // Each session gets its own absolutely-positioned flex container for its panes
   const el = document.createElement('div');
   el.id = `term-${sessionId}`;
-  el.style.cssText = 'position:absolute;inset:0;display:none;';
+  el.style.cssText = 'position:absolute;inset:0;display:none;flex-direction:row;';
   document.getElementById('terminalContainer').appendChild(el);
 
-  const term = new Terminal({
-    theme: TERM_THEME,
-    fontFamily: "'SF Mono', 'Fira Code', 'Cascadia Code', monospace",
-    fontSize: 13, lineHeight: 1.4, cursorBlink: true,
-    scrollback: 5000, allowTransparency: false,
-  });
-  const fitAddon = new FitAddon.FitAddon();
-  term.loadAddon(fitAddon);
-  // Don't call term.open() yet — wait until first shown to avoid fit() on hidden element
-
-  const state = { chatWs: null, statusWs: null, term, fitAddon, el, opened: false };
+  const state = {
+    statusWs: null,
+    el,
+    panes: new Map(),      // paneId → pane object (managed by PaneManager)
+    activePaneId: null,
+    opened: false,         // true after first pane created
+  };
   sessionStates.set(sessionId, state);
-
-  term.onData(data => {
-    if (state.chatWs && state.chatWs.readyState === WebSocket.OPEN) {
-      state.chatWs.send(JSON.stringify({ type: 'input', data }));
-    }
-  });
   return state;
 }
 
 function showSessionTerminal(sessionId) {
   const state = sessionStates.get(sessionId);
   if (!state) return;
-  state.el.style.display = 'block';
-  // Open the xterm.js canvas on first show (element must be visible for correct sizing)
+  state.el.style.display = 'flex';
+  // Create the first pane on first show (element must be visible for correct sizing)
   if (!state.opened) {
-    state.term.open(state.el);
     state.opened = true;
+    const firstId = PaneManager.createPane(state.el, sessionId);
+    if (firstId) PaneManager.setActive(firstId);
   }
   // Use rAF to let the DOM settle before fitting
-  requestAnimationFrame(() => {
-    state.fitAddon.fit();
-    syncPtySize(sessionId);
-  });
-}
-
-function syncPtySize(sessionId) {
-  const state = sessionStates.get(sessionId);
-  if (!state || !state.opened) return;
-  if (state.chatWs && state.chatWs.readyState === WebSocket.OPEN) {
-    state.chatWs.send(JSON.stringify({ type: 'resize', rows: state.term.rows, cols: state.term.cols }));
-  }
+  requestAnimationFrame(() => PaneManager.fitSession(sessionId));
 }
 
 function destroySessionState(sessionId) {
   const state = sessionStates.get(sessionId);
   if (!state) return;
-  if (state.chatWs)  { state.chatWs.onclose  = null; state.chatWs.close(); }
-  if (state.statusWs){ state.statusWs.onclose = null; state.statusWs.close(); }
-  state.term.dispose();
+  // Dispose all panes for this session
+  state.panes.forEach(pane => {
+    if (pane.ws) { pane.ws.onclose = null; pane.ws.close(); }
+    pane.term.dispose();
+  });
+  state.panes.clear();
+  if (state.statusWs) { state.statusWs.onclose = null; state.statusWs.close(); }
   state.el.remove();
   sessionStates.delete(sessionId);
 }
 
-// ─── WebSocket: Chat (per session) ───────────────────────────────────────────
-function connectChat(sessionId) {
-  const state = sessionStates.get(sessionId);
-  if (!state) return;
-  const url = `ws://${location.host}/ws/chat?session=${sessionId}`;
-  const ws = new WebSocket(url);
-  state.chatWs = ws;
-
-  ws.onopen = () => {
-    if (sessionId === activeSessionId) setOrchStatus('connected', 'Orchestrator active');
-    syncPtySize(sessionId);
-  };
-  ws.onmessage = (e) => {
-    const msg = JSON.parse(e.data);
-    if (msg.type === 'output') state.term.write(msg.data);
-  };
-  ws.onclose = () => {
-    if (sessionId === activeSessionId) {
-      setOrchStatus('disconnected', 'Disconnected');
-      state.term.write('\r\n\x1b[33m[Reconnecting...]\x1b[0m\r\n');
-    }
-    // Reconnect only if this session still exists
-    setTimeout(() => { if (sessionStates.has(sessionId)) connectChat(sessionId); }, 2000);
-  };
-  ws.onerror = () => {
-    if (sessionId === activeSessionId) setOrchStatus('disconnected', 'Connection error');
-  };
-}
+// ─── WebSocket: Chat ──────────────────────────────────────────────────────────
+// Per-pane connections are managed by PaneManager.connectPaneWs().
+// connectChat() is kept as a no-op so loadSessions() callers don't break.
+function connectChat(sessionId) { /* handled by PaneManager per pane */ }
 
 function sendChat() {
   const input = document.getElementById('chatInput');
   const text = input.value;
   if (!text.trim()) return;
-  const state = sessionStates.get(activeSessionId);
-  if (!state || !state.chatWs || state.chatWs.readyState !== WebSocket.OPEN) return;
-  state.chatWs.send(JSON.stringify({ type: 'input', data: text + '\r' }));
+  const st = sessionStates.get(activeSessionId);
+  if (!st || !st.activePaneId) return;
+  const pane = st.panes.get(st.activePaneId);
+  if (!pane || !pane.ws || pane.ws.readyState !== WebSocket.OPEN) return;
+  pane.ws.send(JSON.stringify({ type: 'input', data: text + '\r' }));
   input.value = '';
 }
 
@@ -883,13 +1051,8 @@ setInterval(() => {
   }
 }, 20000);
 
-// ─── Window resize — only fit active terminal ─────────────────────────────────
-function fitAndSync() {
-  const state = sessionStates.get(activeSessionId);
-  if (!state || !state.opened) return;
-  state.fitAddon.fit();
-  syncPtySize(activeSessionId);
-}
+// ─── Window resize — fit all panes in the active session ─────────────────────
+function fitAndSync() { PaneManager.fitAll(); }
 window.addEventListener('resize', fitAndSync);
 
 // ─── Tab management ──────────────────────────────────────────────────────────
@@ -952,9 +1115,11 @@ async function switchTab(sessionId) {
   // Show (lazily open if first visit) the new session's terminal
   showSessionTerminal(sessionId);
 
-  // Update connection status dot
+  // Update connection status dot from active pane
   const newState = sessionStates.get(sessionId);
-  if (newState?.chatWs?.readyState === WebSocket.OPEN) {
+  const activePaneId = newState?.activePaneId;
+  const activePane = activePaneId ? newState.panes.get(activePaneId) : null;
+  if (activePane?.ws?.readyState === WebSocket.OPEN) {
     setOrchStatus('connected', 'Orchestrator active');
   } else {
     setOrchStatus('connecting', 'Connecting...');
@@ -1367,8 +1532,11 @@ async function confirmProjectSwitch() {
   showToast('Opening new tab...');
   // Pass current terminal dimensions so the new PTY starts at the correct size
   const activeState = sessionStates.get(activeSessionId);
-  const rows = (activeState?.opened ? activeState.term.rows : null) || 24;
-  const cols = (activeState?.opened ? activeState.term.cols : null) || 80;
+  let rows = 24, cols = 80;
+  if (activeState?.activePaneId) {
+    const p = activeState.panes.get(activeState.activePaneId);
+    if (p) { rows = p.term.rows || 24; cols = p.term.cols || 80; }
+  }
   try {
     const res = await fetch('/api/sessions', {
       method: 'POST',
