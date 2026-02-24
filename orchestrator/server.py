@@ -311,7 +311,7 @@ class TaskQueue:
             if not block:
                 continue
             lines = block.splitlines()
-            model = "sonnet"
+            model = GLOBAL_SETTINGS.get("default_model", "sonnet")
             timeout = 600
             retries = 2
             depends_on: list[str] = []
@@ -464,6 +464,48 @@ async def _write_progress_entry(
             progress_file.write_text("".join(lines))
     except Exception:
         pass  # non-critical — don't break the merge flow
+
+
+async def _write_pr_review(pr_url: str, task_description: str, project_dir: Path) -> None:
+    """After PR creation: generate AI review and post as PR comment."""
+    title = task_description.splitlines()[0][:80] if task_description else "Unknown task"
+    try:
+        diff_proc = await asyncio.create_subprocess_shell(
+            f'gh pr diff {shlex.quote(pr_url)}',
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+            cwd=str(project_dir),
+        )
+        diff_out, _ = await asyncio.wait_for(diff_proc.communicate(), timeout=30)
+        diff_text = diff_out.decode()[:4000]
+
+        prompt = (
+            f"Review this PR for the task: **{title}**\n\n"
+            f"Diff:\n```diff\n{diff_text}\n```\n\n"
+            "Write a brief code review (3-5 bullet points):\n"
+            "- **Summary**: what changed\n"
+            "- **Correctness**: does it solve the task?\n"
+            "- **Risks**: any concerns or edge cases?\n"
+            "RESPOND WITH ONLY the review markdown, no preamble."
+        )
+        review_proc = await asyncio.create_subprocess_shell(
+            f'claude -p {shlex.quote(prompt)} --model claude-haiku-4-5-20251001',
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        review_out, _ = await asyncio.wait_for(review_proc.communicate(), timeout=60)
+        review_text = review_out.decode().strip()
+
+        if review_text:
+            comment_proc = await asyncio.create_subprocess_shell(
+                f'gh pr comment {shlex.quote(pr_url)} --body {shlex.quote(review_text)}',
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+                cwd=str(project_dir),
+            )
+            await asyncio.wait_for(comment_proc.communicate(), timeout=30)
+    except Exception:
+        pass  # non-critical
 
 
 # ─── Worker Pool ──────────────────────────────────────────────────────────────
@@ -1479,7 +1521,7 @@ async def list_tasks(s: ProjectSession = Depends(_resolve_session)):
 async def create_task(body: dict, s: ProjectSession = Depends(_resolve_session)):
     task = await s.task_queue.add(
         description=body["description"],
-        model=body.get("model", "sonnet"),
+        model=body.get("model") or GLOBAL_SETTINGS.get("default_model", "sonnet"),
     )
     asyncio.ensure_future(
         _score_task(task["id"], task["description"], s.task_queue._db_path, s.claude_dir)
@@ -1545,7 +1587,7 @@ async def retry_failed(s: ProjectSession = Depends(_resolve_session)):
                 f"\n\n---\n**Previous attempt failed. Error context:**\n```\n{failed_reason[:2000]}\n```\n"
                 "Do NOT repeat the same approach. Analyze the error above and try a different strategy."
             )
-        new_task = await s.task_queue.add(retry_desc, t.get("model", "sonnet"))
+        new_task = await s.task_queue.add(retry_desc, t.get("model") or GLOBAL_SETTINGS.get("default_model", "sonnet"))
         retried.append(new_task["id"])
     return {"retried": len(retried), "task_ids": retried}
 
@@ -1672,6 +1714,8 @@ async def merge_all_done(s: ProjectSession = Depends(_resolve_session)):
             pr_url = pr_out.decode().strip()
             w.pr_url = pr_url
             created += 1
+            if GLOBAL_SETTINGS.get("auto_review", True):
+                asyncio.ensure_future(_write_pr_review(pr_url, w.description, s.project_dir))
             if branch.startswith("orchestrator/task-") and GLOBAL_SETTINGS.get("auto_merge", True):
                 merge_proc = await asyncio.create_subprocess_shell(
                     f'gh pr merge {pr_url} --squash --delete-branch',
