@@ -2,6 +2,29 @@
 
 ---
 
+### 2026-02-23 — Security hardening round 2: 8 more backend + 4 frontend fixes
+
+**What was done:**
+- `server.py`: `shlex.quote(str(task_file))` in `Worker.start()` — path with spaces no longer breaks shell cmd
+- `server.py`: `_ALLOWED_TASK_COLS` allowlist in `TaskQueue.update()` — blocks SQL injection via rogue column names
+- `server.py`: Worker dedup guard now checks `status in ("running", "starting")` — prevents double-spawn during startup race
+- `server.py`: `shlex.quote(branch)` in `merge_all_done` — fixes gh pr create injection via branch name
+- `server.py`: `asyncio.Lock` wraps `_ensure_db` — prevents concurrent double-initialization
+- `server.py`: `asyncio.to_thread(target.read_text)` in `_watch_session_proposed_tasks` — unblocks event loop on large files
+- `server.py`: `asyncio.to_thread(scan_projects, ...)` in GET /api/projects — directory scan no longer blocks event loop
+- `server.py`: Empty supervisor response guard in `_run_supervisor` — 3 consecutive empty responses → cancel loop, prevents infinite spin
+- `index.html`: Worker Chat/Log buttons use `data-wid`/`data-name` + `this.dataset.*` — eliminates backslash-injection risk in onclick
+- `index.html`: Worker Pause/Resume/Chat/Log buttons have deterministic `id="btn-*-{wid}"` — focus restoration now actually works
+- `index.html`: `startLoop()` POSTs `max_iterations` + `supervisor_model` from settings panel
+- `index.html`: `confirmProposed()` passes `_lastProposedContent` in POST body — no longer depends on stale disk file
+
+**Lessons:**
+- `asyncio.Lock` must wrap the entire `_ensure_db` including the `if _initialized: return` check — setting the flag before the first await is insufficient because coroutines can interleave between the check and the flag set.
+- `data-*` attributes + `this.dataset.*` are the correct pattern for all onclick handlers that involve user-controlled strings — `esc()` is HTML-safe but not JS-string-safe.
+- Always quote branch names in shell commands — branch names containing `/`, `-`, or `.` are fine but names containing spaces or special chars (e.g., from automated tooling) silently break the command.
+
+---
+
 ### 2026-02-23 — Security hardening: 8 backend + 5 frontend fixes
 
 **What was done:**
