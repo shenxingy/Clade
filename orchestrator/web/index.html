@@ -668,6 +668,96 @@
     }
     .settings-close { font-size: 12px; color: var(--text2); cursor: pointer; }
 
+    /* ─── Loop Bar ──────────────────────────────────────────────── */
+    .loop-bar {
+      padding: 6px 14px 4px;
+      background: var(--bg2);
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .loop-bar .section-header {
+      border-bottom: none;
+      padding: 0 0 4px;
+      background: transparent;
+    }
+    .loop-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .loop-input {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--text);
+      font-size: 11px;
+      font-family: var(--font-mono);
+      padding: 3px 8px;
+      outline: none;
+      transition: border-color 0.15s;
+      min-width: 0;
+    }
+    .loop-input:focus { border-color: var(--accent); }
+    .loop-input::placeholder { color: var(--text2); }
+    #loopArtifact { flex: 2; min-width: 120px; }
+    #loopContextDir { flex: 1; min-width: 80px; }
+    .loop-inline {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      font-size: 11px;
+      color: var(--text2);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .loop-inline input[type=number] {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      font-size: 11px;
+      padding: 2px 4px;
+      text-align: center;
+    }
+    #loopProgress {
+      display: flex;
+      align-items: center;
+      margin-top: 4px;
+      gap: 0;
+    }
+    .badge.idle { background: rgba(139,148,158,0.15); color: var(--text2); }
+    .badge.running { background: rgba(63,185,80,0.15); color: var(--green); }
+    .badge.paused { background: rgba(210,153,34,0.15); color: var(--yellow); }
+    .badge.converged { background: rgba(88,166,255,0.15); color: var(--accent); }
+    .badge.cancelled { background: rgba(248,81,73,0.15); color: var(--red); }
+
+    /* ─── Deferred Items ─────────────────────────────────────────── */
+    #deferredSection {
+      border-top: 1px solid var(--border);
+      background: var(--bg2);
+      flex-shrink: 0;
+    }
+    #deferredSection summary {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      padding: 6px 14px;
+      user-select: none;
+      color: var(--text2);
+    }
+    #deferredSection summary:hover { color: var(--text); }
+    .deferred-item {
+      padding: 5px 14px;
+      border-top: 1px solid var(--border);
+      font-size: 11px;
+    }
+    .deferred-item .deferred-desc { color: var(--text); margin-bottom: 2px; }
+    .deferred-item .deferred-reason { color: var(--text2); font-style: italic; }
+    .deferred-item .deferred-iter { color: var(--purple); font-family: var(--font-mono); font-size: 10px; }
+
     /* ─── DAG View ───────────────────────────────────────────────── */
     #dagView {
       display: none; overflow: auto; border: 1px solid var(--border);
@@ -746,6 +836,27 @@
     <span>Max workers <span style="color:var(--text2);font-size:10px">(0=∞)</span></span>
     <input type="number" id="settingMaxWorkers" min="0" max="20" value="0" onchange="saveSettings()" oninput="saveSettings()" />
   </label>
+  <div style="padding:4px 12px;font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:0.5px;border-top:1px solid var(--border);margin-top:2px">Iteration Loop</div>
+  <label class="settings-row">
+    <span>Loop supervisor model</span>
+    <select id="settingLoopModel" onchange="saveSettings()" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:11px;padding:2px 6px">
+      <option value="haiku">Haiku (fast)</option>
+      <option value="sonnet" selected>Sonnet (balanced)</option>
+      <option value="opus">Opus (smart)</option>
+    </select>
+  </label>
+  <label class="settings-row">
+    <span>Loop convergence K <span style="color:var(--text2);font-size:10px">(max changes)</span></span>
+    <input type="number" id="settingLoopK" min="1" max="20" value="2" style="width:50px" onchange="saveSettings()" oninput="saveSettings()" />
+  </label>
+  <label class="settings-row">
+    <span>Loop convergence N <span style="color:var(--text2);font-size:10px">(consecutive iters)</span></span>
+    <input type="number" id="settingLoopN" min="1" max="10" value="3" style="width:50px" onchange="saveSettings()" oninput="saveSettings()" />
+  </label>
+  <label class="settings-row" style="margin-bottom:6px">
+    <span>Loop max iterations <span style="color:var(--text2);font-size:10px">(safety cap)</span></span>
+    <input type="number" id="settingLoopMax" min="5" max="100" value="20" style="width:50px" onchange="saveSettings()" oninput="saveSettings()" />
+  </label>
 </div>
 
 <!-- ─── Tab Bar ──────────────────────────────────────────────────────────────── -->
@@ -764,7 +875,7 @@
       <input class="goal-input" id="goalInput" placeholder="Describe your goal…" autocomplete="off" />
       <button class="btn" id="orchestrateBtn" onclick="sendOrchestrate()" style="white-space:nowrap;font-size:12px;padding:4px 12px">⚡ Orchestrate</button>
       <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);cursor:pointer;margin-left:8px;white-space:nowrap" title="Auto-start workers when tasks are proposed">
-        <input type="checkbox" id="autoStartToggle" checked style="cursor:pointer" />
+        <input type="checkbox" id="autoStartToggle" checked style="cursor:pointer" onchange="document.getElementById('settingAutoStart').checked=this.checked;saveSettings()" />
         Auto-start
       </label>
       <span style="margin-left:auto;font-size:11px;opacity:0.6">PTY</span>
@@ -862,6 +973,37 @@
       <button class="btn small danger" id="cancelScheduleBtn" onclick="cancelSchedule()" style="padding:3px 8px;font-size:11px;display:none">✕</button>
       <span id="scheduleCountdown" style="font-size:11px;color:var(--yellow);margin-left:4px"></span>
     </div>
+
+    <!-- Loop Control Bar (Execute mode) -->
+    <div class="loop-bar" id="loopBar" style="display:none">
+      <div class="section-header" style="padding:0 0 4px">
+        <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Iteration Loop</span>
+        <span id="loopStatusBadge" class="badge idle" style="font-size:10px">idle</span>
+      </div>
+      <div class="loop-controls">
+        <input id="loopArtifact" type="text" class="loop-input" placeholder="Artifact path (e.g. paper.tex)" />
+        <input id="loopContextDir" type="text" class="loop-input" placeholder="Codebase dir (optional)" />
+        <label class="loop-inline">K=<input id="loopK" type="number" value="2" min="1" max="20" style="width:36px"/></label>
+        <label class="loop-inline">N=<input id="loopN" type="number" value="3" min="1" max="10" style="width:36px"/></label>
+        <button class="btn small" onclick="startLoop()">▶ Start</button>
+        <button class="btn small secondary" onclick="pauseLoop()" id="loopPauseBtn" style="display:none">⏸ Pause</button>
+        <button class="btn small secondary" onclick="resumeLoop()" id="loopResumeBtn" style="display:none">▶ Resume</button>
+        <button class="btn small danger" onclick="cancelLoop()" id="loopCancelBtn" style="display:none">✕</button>
+      </div>
+      <div id="loopProgress" style="display:none;align-items:center;margin-top:4px;gap:0">
+        <span id="loopIterLabel" style="font-size:11px;color:var(--text2)">Iteration 0</span>
+        <span id="loopConvergence" style="font-size:11px;color:var(--text2);margin-left:8px"></span>
+        <canvas id="loopSparkline" width="120" height="20" style="vertical-align:middle;margin-left:8px"></canvas>
+      </div>
+    </div>
+
+    <!-- Deferred Items Accordion (Execute mode) -->
+    <details id="deferredSection" style="display:none">
+      <summary>
+        Deferred Items <span id="deferredCount" class="badge idle" style="font-size:10px">0</span>
+      </summary>
+      <div id="deferredList"></div>
+    </details>
 
     <!-- Progress Footer -->
     <div class="progress-footer">
@@ -1407,6 +1549,7 @@ function updateDashboard(data) {
   renderHistory(data.success_rate);
   updateProgress(data.progress_pct || 0, data.eta_seconds || 0);
   updateSchedulerDisplay(data.schedule);
+  updateLoopUI(data.loop_state || null);
 }
 
 function renderQueue() {
@@ -1892,11 +2035,11 @@ function refreshProjectBadge() {
   const btn = document.getElementById('projectBadge');
   if (active) {
     btn.textContent = '📁 ' + active.name;
-    btn.title = (active.path || active.name) + '\n(click to open new tab)';
+    btn.title = (active.path || active.name) + '\n(click to add another project)';
   } else {
     fetch('/api/project').then(r => r.json()).then(d => {
       btn.textContent = '📁 ' + d.name;
-      btn.title = d.path + '\n(click to open new tab)';
+      btn.title = d.path + '\n(click to add another project)';
     }).catch(() => {});
   }
 }
@@ -2044,8 +2187,15 @@ function setMode(mode) {
     renderOverview();
     if (!_overviewInterval) _overviewInterval = setInterval(renderOverview, 8000);
   }
-  // Sync scheduler bar visibility with mode
+  // Sync scheduler bar + loop bar visibility with mode
   updateSchedulerDisplay(_lastSchedule);
+  const loopBar = document.getElementById('loopBar');
+  if (loopBar) loopBar.style.display = mode === 'execute' ? '' : 'none';
+  // Deferred section: only visible in execute mode when there are items
+  if (mode !== 'execute') {
+    const deferredSection = document.getElementById('deferredSection');
+    if (deferredSection) deferredSection.style.display = 'none';
+  }
   localStorage.setItem('orchestrator_mode', mode);
 }
 // Restore mode on load (or default to plan)
@@ -2132,6 +2282,170 @@ async function mergeAllDone() {
   }
 }
 
+// ─── Iteration Loop ───────────────────────────────────────────────────────────
+
+let _loopConvergedToasted = false;
+
+async function startLoop() {
+  if (!activeSessionId) return;
+  const artifactPath = document.getElementById('loopArtifact')?.value.trim();
+  if (!artifactPath) { showToast('Artifact path is required'); return; }
+  const contextDir = document.getElementById('loopContextDir')?.value.trim() || null;
+  const k = parseInt(document.getElementById('loopK')?.value) || 2;
+  const n = parseInt(document.getElementById('loopN')?.value) || 3;
+  try {
+    const r = await fetch(`/api/sessions/${activeSessionId}/loop/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        artifact_path: artifactPath,
+        context_dir: contextDir,
+        convergence_k: k,
+        convergence_n: n,
+      }),
+    });
+    const d = await r.json();
+    if (d.detail) { showToast('Error: ' + d.detail); return; }
+    _loopConvergedToasted = false;
+    showToast('Loop started — Iteration 1 underway');
+  } catch(e) { showToast('Failed to start loop'); }
+}
+
+async function pauseLoop() {
+  if (!activeSessionId) return;
+  await fetch(`/api/sessions/${activeSessionId}/loop/pause`, { method: 'POST' });
+  showToast('Loop paused — current workers will finish');
+}
+
+async function resumeLoop() {
+  if (!activeSessionId) return;
+  await fetch(`/api/sessions/${activeSessionId}/loop/resume`, { method: 'POST' });
+  showToast('Loop resumed');
+}
+
+async function cancelLoop() {
+  if (!activeSessionId) return;
+  await fetch(`/api/sessions/${activeSessionId}/loop`, { method: 'DELETE' });
+  _loopConvergedToasted = false;
+  showToast('Loop cancelled');
+}
+
+function drawSparkline(canvas, values) {
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  if (!values || values.length === 0) return;
+  const max = Math.max(...values, 1);
+  const barW = Math.max(3, Math.floor(w / (values.length + 1)));
+  const gap = 2;
+  values.forEach((v, i) => {
+    const barH = Math.max(2, Math.round((v / max) * (h - 2)));
+    const x = i * (barW + gap);
+    const y = h - barH;
+    ctx.fillStyle = v === 0 ? 'var(--green)' : 'var(--accent)';
+    // Canvas doesn't understand CSS vars; use hardcoded values
+    ctx.fillStyle = v === 0 ? '#3fb950' : '#58a6ff';
+    ctx.fillRect(x, y, barW, barH);
+  });
+}
+
+function updateLoopUI(loopState) {
+  const badge = document.getElementById('loopStatusBadge');
+  const pauseBtn = document.getElementById('loopPauseBtn');
+  const resumeBtn = document.getElementById('loopResumeBtn');
+  const cancelBtn = document.getElementById('loopCancelBtn');
+  const progress = document.getElementById('loopProgress');
+  const iterLabel = document.getElementById('loopIterLabel');
+  const convergenceLabel = document.getElementById('loopConvergence');
+  const sparkCanvas = document.getElementById('loopSparkline');
+  const deferredSection = document.getElementById('deferredSection');
+  const deferredCount = document.getElementById('deferredCount');
+  const deferredList = document.getElementById('deferredList');
+
+  if (!badge) return;
+
+  if (!loopState || !loopState.status || loopState.status === 'idle') {
+    badge.textContent = 'idle';
+    badge.className = 'badge idle';
+    if (pauseBtn) pauseBtn.style.display = 'none';
+    if (resumeBtn) resumeBtn.style.display = 'none';
+    if (cancelBtn) cancelBtn.style.display = 'none';
+    if (progress) progress.style.display = 'none';
+    if (deferredSection) deferredSection.style.display = 'none';
+    return;
+  }
+
+  const status = loopState.status;
+  badge.textContent = status;
+  badge.className = 'badge ' + status;
+
+  const isRunning = status === 'running';
+  const isPaused = status === 'paused';
+  const isActive = isRunning || isPaused;
+  const isConverged = status === 'converged';
+
+  if (pauseBtn) pauseBtn.style.display = isRunning ? '' : 'none';
+  if (resumeBtn) resumeBtn.style.display = isPaused ? '' : 'none';
+  if (cancelBtn) cancelBtn.style.display = isActive ? '' : 'none';
+
+  // Progress row
+  if (progress) {
+    progress.style.display = (isActive || isConverged) ? 'flex' : 'none';
+  }
+  if (iterLabel) {
+    iterLabel.textContent = `Iteration ${loopState.iteration || 0}`;
+  }
+
+  // Convergence text
+  if (convergenceLabel) {
+    const hist = loopState.changes_history || [];
+    const k = loopState.convergence_k || 2;
+    const n = loopState.convergence_n || 3;
+    if (isConverged) {
+      convergenceLabel.textContent = `Converged after ${loopState.iteration} iterations`;
+      convergenceLabel.style.color = 'var(--green)';
+    } else if (hist.length > 0) {
+      const recent = hist.slice(-n);
+      const withinThreshold = recent.filter(c => c <= k).length;
+      convergenceLabel.textContent = `${withinThreshold}/${n} within threshold`;
+      convergenceLabel.style.color = 'var(--text2)';
+    } else {
+      convergenceLabel.textContent = '';
+    }
+  }
+
+  // Sparkline
+  drawSparkline(sparkCanvas, loopState.changes_history || []);
+
+  // Convergence toast (one-shot)
+  if (isConverged && !_loopConvergedToasted) {
+    _loopConvergedToasted = true;
+    showToast('✓ Loop converged — ready for human review');
+    // Expand deferred section if there are items
+    if (deferredSection && (loopState.deferred_items || []).length > 0) {
+      deferredSection.open = true;
+    }
+  }
+  if (!isConverged) _loopConvergedToasted = false;
+
+  // Deferred items
+  const deferred = loopState.deferred_items || [];
+  if (deferredSection && currentMode === 'execute') {
+    deferredSection.style.display = deferred.length > 0 ? '' : 'none';
+    if (deferredCount) deferredCount.textContent = deferred.length;
+    if (deferredList) {
+      deferredList.innerHTML = deferred.map(item => `
+        <div class="deferred-item">
+          <div class="deferred-iter">[Loop-${item.iteration || '?'}]</div>
+          <div class="deferred-desc">${esc(item.description)}</div>
+          ${item.reason ? `<div class="deferred-reason">${esc(item.reason)}</div>` : ''}
+        </div>
+      `).join('');
+    }
+  }
+}
+
 // ─── Settings ─────────────────────────────────────────────────────────────────
 
 async function loadSettings() {
@@ -2150,6 +2464,20 @@ async function loadSettings() {
     if (elAutoReview) elAutoReview.checked = s.auto_review ?? true;
     if (elModel) elModel.value = s.default_model ?? 'sonnet';
     if (elMaxW) elMaxW.value = s.max_workers ?? 0;
+    // Loop settings
+    const elLoopModel = document.getElementById('settingLoopModel');
+    const elLoopK = document.getElementById('settingLoopK');
+    const elLoopN = document.getElementById('settingLoopN');
+    const elLoopMax = document.getElementById('settingLoopMax');
+    if (elLoopModel) elLoopModel.value = s.loop_supervisor_model ?? 'sonnet';
+    if (elLoopK) elLoopK.value = s.loop_convergence_k ?? 2;
+    if (elLoopN) elLoopN.value = s.loop_convergence_n ?? 3;
+    if (elLoopMax) elLoopMax.value = s.loop_max_iterations ?? 20;
+    // Sync loop inputs from settings defaults
+    const loopK = document.getElementById('loopK');
+    const loopN = document.getElementById('loopN');
+    if (loopK && !loopK._userSet) loopK.value = s.loop_convergence_k ?? 2;
+    if (loopN && !loopN._userSet) loopN.value = s.loop_convergence_n ?? 3;
     // Sync autoStartToggle in chat header
     const ast = document.getElementById('autoStartToggle');
     if (ast) ast.checked = s.auto_start ?? true;
@@ -2171,6 +2499,10 @@ function saveSettings() {
           auto_review: document.getElementById('settingAutoReview')?.checked ?? true,
           default_model: document.getElementById('settingModel')?.value ?? 'sonnet',
           max_workers: parseInt(document.getElementById('settingMaxWorkers')?.value) || 0,
+          loop_supervisor_model: document.getElementById('settingLoopModel')?.value ?? 'sonnet',
+          loop_convergence_k: parseInt(document.getElementById('settingLoopK')?.value) || 2,
+          loop_convergence_n: parseInt(document.getElementById('settingLoopN')?.value) || 3,
+          loop_max_iterations: parseInt(document.getElementById('settingLoopMax')?.value) || 20,
         }),
       });
     } catch {}
