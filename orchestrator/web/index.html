@@ -384,6 +384,18 @@
     .badge.failed { background: rgba(248,81,73,0.15); color: var(--red); }
     .badge.starting { background: rgba(88,166,255,0.15); color: var(--accent); }
 
+    .worker-log-tail {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text2);
+      opacity: 0.65;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      padding: 4px 0 6px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 6px;
+    }
     .worker-commit {
       font-family: var(--font-mono);
       font-size: 11px;
@@ -1036,7 +1048,10 @@ function connectStatus(sessionId) {
     const msg = JSON.parse(e.data);
     if (msg.type === 'status') updateDashboard(msg);
     else if (msg.type === 'proposed_tasks') {
-      if (msg.content && msg.content.includes('===TASK===')) showProposedOverlay(msg.content);
+      if (msg.content && msg.content.includes('===TASK===')) {
+        window._lastProposedContent = msg.content;
+        showProposedOverlay(msg.content);
+      }
     }
   };
   ws.onclose = () => setTimeout(() => {
@@ -1207,12 +1222,22 @@ function renderWorkers() {
     const canResume = w.status === 'paused';
     const canChat = ['running','paused','blocked'].includes(w.status);
 
+    // Show last log line as a live progress hint when running
+    const lastLogLine = w.log_tail
+      ? w.log_tail.split('\n').filter(Boolean).pop() || ''
+      : '';
+    const logTailHtml = (w.status === 'running' || w.status === 'starting') && lastLogLine
+      ? `<div class="worker-log-tail" title="${esc(lastLogLine)}">${esc(lastLogLine)}</div>`
+      : '';
+
     return `
       <div class="worker-card ${w.status}" id="wcard-${w.id}">
         <div class="worker-top">
           <span class="worker-name" title="${esc(w.description)}">${esc(firstLine(w.description))}</span>
+          <span style="font-size:10px;opacity:0.35;font-family:var(--font-mono);flex-shrink:0">#${w.id}</span>
           <span class="badge ${w.status}">${w.status}</span>
         </div>
+        ${logTailHtml}
         <div class="worker-commit">${commitDisplay}</div>
         <div class="worker-footer">
           <span class="elapsed" id="elapsed-${w.id}">${formatElapsed(w.elapsed_s)}</span>
@@ -1317,28 +1342,42 @@ function closeWorkerChat() {
 
 // ─── Worker Log viewer ────────────────────────────────────────────────────────
 let activeLogWorkerId = null;
+let _logRefreshInterval = null;
 
 async function openWorkerLog(id, name) {
   activeLogWorkerId = id;
-  document.getElementById('workerLogTitle').textContent = `— ${name}`;
+  document.getElementById('workerLogTitle').textContent = `#${id} — ${name}`;
   document.getElementById('workerLogModal').classList.remove('hidden');
   await refreshWorkerLog();
+  // Auto-refresh every 2s while the worker is still active
+  clearInterval(_logRefreshInterval);
+  _logRefreshInterval = setInterval(async () => {
+    const w = workers.find(w => w.id === activeLogWorkerId);
+    if (!w || !['running', 'starting'].includes(w.status)) {
+      clearInterval(_logRefreshInterval);
+      _logRefreshInterval = null;
+      return;
+    }
+    await refreshWorkerLog();
+  }, 2000);
 }
 
 async function refreshWorkerLog() {
   if (!activeLogWorkerId) return;
   const el = document.getElementById('workerLogContent');
   try {
-    const res = await fetch(`/api/workers/${activeLogWorkerId}/log?lines=200&session=${activeSessionId}`);
+    const res = await fetch(`/api/workers/${activeLogWorkerId}/log?lines=300&session=${activeSessionId}`);
     const data = await res.json();
     el.textContent = data.log || '(empty log)';
-    el.scrollTop = el.scrollHeight;
+    el.scrollTop = el.scrollHeight;  // always follow latest output
   } catch(e) {
     el.textContent = 'Error loading log.';
   }
 }
 
 function closeWorkerLog() {
+  clearInterval(_logRefreshInterval);
+  _logRefreshInterval = null;
   document.getElementById('workerLogModal').classList.add('hidden');
   activeLogWorkerId = null;
 }
@@ -1386,13 +1425,14 @@ function skipProposed() {
 
 async function editProposed() {
   document.getElementById('proposedOverlay').classList.add('hidden');
-  // Open the task editor with existing content
   document.getElementById('addTaskRow').style.display = 'block';
-  try {
-    const res = await fetch('/api/tasks');
-    // Just toggle the add row — user can edit in textarea
-  } catch(e) {}
-  showToast('Edit .claude/proposed-tasks.md directly, then click "Import Proposed"');
+  // Populate textarea with the last proposed-tasks content so user can edit inline
+  if (window._lastProposedContent) {
+    document.getElementById('newTaskDesc').value = window._lastProposedContent;
+    showToast('Edit the ===TASK=== blocks, then click Add Task');
+  } else {
+    showToast('Edit .claude/proposed-tasks.md directly, then click "Import Proposed"');
+  }
 }
 
 async function confirmProposed() {
