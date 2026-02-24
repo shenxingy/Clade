@@ -2,6 +2,26 @@
 
 ---
 
+### 2026-02-23 — Bug fix: worker code loss (verify/cleanup race condition)
+
+**What was done:**
+- `server.py`: Fixed race condition where `verify_and_commit()` ran concurrently with `_cleanup_worktree()`, causing the worktree to be deleted before git diff/commit could run
+- `server.py`: Added `_original_project_dir` to Worker to survive worktree path reassignment
+- `server.py`: Added `_on_worker_done()` coroutine — runs verify first, then cleanup, sequentially
+- `server.py`: `poll()` now schedules `_on_worker_done()` (not `_cleanup_worktree()` directly)
+- `server.py`: Removed duplicate `verify_and_commit()` trigger from `poll_all()` (now handled inside `_on_worker_done()`)
+- `server.py`: `_cleanup_worktree()` restores `_project_dir = _original_project_dir` so later git cmds still have a valid cwd
+- `server.py`: `stop()` now delegates to `_cleanup_worktree()` (DRY, uses same `_original_project_dir` cwd)
+
+**What worked:**
+- The sequential `await verify_and_commit(); await _cleanup_worktree()` pattern completely closes the race — worktree exists for the full duration of verification
+
+**Watch out for:**
+- Workers can still exit with rc=0 and produce no commits (claude says "Done" without using committer). The verify step handles this: if no changed files found → returns False; the task stays "done" but without auto_committed=True, so no push/PR happens. This is acceptable — the bigger bug (code silently lost) is now fixed.
+- `_original_project_dir` must be set in `__init__` before `start()` can overwrite `_project_dir`
+
+---
+
 ### 2026-02-23 — P3: Iteration Loop (Ralph-style Supervisor)
 
 **What was done:**
