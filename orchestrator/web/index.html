@@ -977,7 +977,7 @@
       <div id="broadcastBar" class="broadcast-bar" style="display:none;margin:6px 12px 0">
         <input id="broadcastInput" type="text" placeholder="Broadcast message to all running workers..."
           onkeydown="if(event.key==='Enter')broadcastAll()" />
-        <button class="btn small" onclick="broadcastAll()">→ All</button>
+        <button class="btn small" id="broadcastBtn" onclick="broadcastAll()">→ All</button>
       </div>
       <div class="workers-list" id="workersList"></div>
     </div>
@@ -1011,8 +1011,8 @@
         <span id="loopStatusBadge" class="badge idle" style="font-size:10px">idle</span>
       </div>
       <div class="loop-controls">
-        <input id="loopArtifact" type="text" class="loop-input" placeholder="Artifact path (e.g. paper.tex)" />
-        <input id="loopContextDir" type="text" class="loop-input" placeholder="Codebase dir (optional)" />
+        <input id="loopArtifact" type="text" class="loop-input" placeholder="Artifact path (e.g. paper.tex)" oninput="this._userEdited=true" />
+        <input id="loopContextDir" type="text" class="loop-input" placeholder="Codebase dir (optional)" oninput="this._userEdited=true" />
         <label class="loop-inline">K=<input id="loopK" type="number" value="2" min="1" max="20" style="width:36px"/></label>
         <label class="loop-inline">N=<input id="loopN" type="number" value="3" min="1" max="10" style="width:36px"/></label>
         <label class="loop-inline">Mode:
@@ -1942,15 +1942,25 @@ async function confirmProposed() {
 }
 
 async function runAllTasks() {
-  const res = await fetch(`/api/tasks/start-all?session=${activeSessionId}`, { method: 'POST' });
-  const data = await res.json();
-  showToast(`Started ${data.started} worker${data.started !== 1 ? 's' : ''}`);
+  const btn = document.getElementById('runAllBtn');
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch(`/api/tasks/start-all?session=${activeSessionId}`, { method: 'POST' });
+    const data = await res.json();
+    showToast(`Started ${data.started} worker${data.started !== 1 ? 's' : ''}`);
+  } catch(e) { showToast('Error: ' + e.message); }
+  finally { if (btn) btn.disabled = false; }
 }
 
 async function retryAllFailed() {
-  const res = await fetch(`/api/tasks/retry-failed?session=${activeSessionId}`, { method: 'POST' });
-  const data = await res.json();
-  showToast(`Requeued ${data.retried} failed task${data.retried !== 1 ? 's' : ''} with error context`);
+  const btn = document.getElementById('retryFailedBtn');
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch(`/api/tasks/retry-failed?session=${activeSessionId}`, { method: 'POST' });
+    const data = await res.json();
+    showToast(`Requeued ${data.retried} failed task${data.retried !== 1 ? 's' : ''} with error context`);
+  } catch(e) { showToast('Error: ' + e.message); }
+  finally { if (btn) btn.disabled = false; }
 }
 
 // ─── Task History (done/failed) ───────────────────────────────────────────────
@@ -1982,7 +1992,7 @@ function renderHistory(successRate) {
   if (!_historyExpanded) return; // collapsed — only update counts
 
   listEl.innerHTML = history.map(t => {
-    const badge = `<span class="badge ${t.status}" style="font-size:10px">${t.status}</span>`;
+    const badge = `<span class="badge ${esc(t.status)}" style="font-size:10px">${esc(t.status)}</span>`;
     const hash = t.last_commit ? `<span class="hash" style="font-size:10px">${esc(t.last_commit.slice(0,8))}</span>` : '';
     return `<div class="queue-item" style="opacity:${t.status==='done'?'1':'0.65'}">
       ${badge}
@@ -2212,6 +2222,10 @@ document.addEventListener('keydown', (e) => {
   // Don't fire shortcuts when typing in input/textarea
   if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
 
+  // Skip if xterm terminal has focus (canvas inside .xterm container)
+  const xtermEl = document.querySelector('.xterm-helper-textarea');
+  if (xtermEl && (document.activeElement === xtermEl || xtermEl.contains(document.activeElement))) return;
+
   // Ctrl+\ → split active pane right
   if (e.ctrlKey && !e.shiftKey && e.key === '\\') {
     e.preventDefault();
@@ -2379,13 +2393,18 @@ async function broadcastAll() {
   const msg = document.getElementById('broadcastInput')?.value?.trim();
   if (!msg) return;
   const sid = activeSessionId;
-  const r = await fetch(`/api/sessions/${sid}/workers/broadcast`, {
-    method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ message: msg }),
-  });
-  const d = await r.json();
-  showToast(d.count > 0 ? `Broadcast sent to ${d.count} worker${d.count!==1?'s':''}` : 'No running workers');
-  if (d.count > 0) document.getElementById('broadcastInput').value = '';
+  const btn = document.getElementById('broadcastBtn');
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch(`/api/sessions/${sid}/workers/broadcast`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ message: msg }),
+    });
+    const d = await r.json();
+    showToast(d.count > 0 ? `Broadcast sent to ${d.count} worker${d.count!==1?'s':''}` : 'No running workers');
+    if (d.count > 0) document.getElementById('broadcastInput').value = '';
+  } catch(e) { showToast('Error: ' + e.message); }
+  finally { if (btn) btn.disabled = false; }
 }
 
 async function generateAgentsMd() {
@@ -2498,7 +2517,32 @@ function updateLoopUI(loopState) {
     if (cancelBtn) cancelBtn.style.display = 'none';
     if (progress) progress.style.display = 'none';
     if (deferredSection) deferredSection.style.display = 'none';
+    const a = document.getElementById('loopArtifact');
+    const c = document.getElementById('loopContextDir');
+    if (a) a._userEdited = false;
+    if (c) c._userEdited = false;
     return;
+  }
+
+  // Sync input fields from live loop state (restore after page reload)
+  const artifactInput = document.getElementById('loopArtifact');
+  const contextInput = document.getElementById('loopContextDir');
+  const kInput = document.getElementById('loopK');
+  const nInput = document.getElementById('loopN');
+  if (loopState.artifact_path && artifactInput && !artifactInput._userEdited) {
+    artifactInput.value = loopState.artifact_path;
+  }
+  if (contextInput && !contextInput._userEdited) {
+    contextInput.value = loopState.context_dir || '';
+  }
+  if (kInput && !kInput._userEdited) kInput.value = loopState.convergence_k ?? 2;
+  if (nInput && !nInput._userEdited) nInput.value = loopState.convergence_n ?? 3;
+
+  if (['converged', 'cancelled'].includes(loopState.status)) {
+    const a = document.getElementById('loopArtifact');
+    const c = document.getElementById('loopContextDir');
+    if (a) a._userEdited = false;
+    if (c) c._userEdited = false;
   }
 
   const status = loopState.status;

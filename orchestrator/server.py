@@ -393,6 +393,7 @@ class TaskQueue:
                     "convergence_n": 3,
                     "max_iterations": 20,
                     "supervisor_model": "sonnet",
+                    "mode": "review",
                     "created_at": now,
                     "updated_at": now,
                 }
@@ -402,14 +403,15 @@ class TaskQueue:
                         """INSERT INTO iteration_loops
                            (name, artifact_path, context_dir, status, iteration,
                             changes_history, deferred_items, convergence_k, convergence_n,
-                            max_iterations, supervisor_model, created_at, updated_at)
-                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                            max_iterations, supervisor_model, mode, created_at, updated_at)
+                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                         (
                             fields["name"], fields["artifact_path"], fields["context_dir"],
                             fields["status"], fields["iteration"], fields["changes_history"],
                             fields["deferred_items"], fields["convergence_k"],
                             fields["convergence_n"], fields["max_iterations"],
-                            fields["supervisor_model"], fields["created_at"], fields["updated_at"],
+                            fields["supervisor_model"], fields.get("mode", "review"),
+                            fields["created_at"], fields["updated_at"],
                         ),
                     )
                     await db.commit()
@@ -808,7 +810,13 @@ class Worker:
                     stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
                     cwd=str(self._project_dir),
                 )
-                wt_out2, _ = await asyncio.wait_for(wt_proc2.communicate(), timeout=30)
+                try:
+                    await asyncio.wait_for(wt_proc2.communicate(), timeout=30)
+                except asyncio.TimeoutError:
+                    wt_proc2.kill()
+                    await wt_proc2.communicate()
+                except Exception:
+                    pass
                 if wt_proc2.returncode == 0:
                     self._project_dir = self._worktree_path
                 else:
@@ -1005,6 +1013,8 @@ class Worker:
                 v_out, _ = await asyncio.wait_for(verify_proc.communicate(), timeout=120)
                 result = v_out.decode().strip()
             except asyncio.TimeoutError:
+                verify_proc.kill()
+                await verify_proc.communicate()
                 return False
         finally:
             verify_file.unlink(missing_ok=True)
@@ -1371,6 +1381,8 @@ class ProjectSession:
                     out, _ = await asyncio.wait_for(proc.communicate(), timeout=300)
                     response = out.decode().strip()
                 except asyncio.TimeoutError:
+                    proc.kill()
+                    await proc.communicate()
                     response = ""
             except Exception:
                 response = ""
@@ -1726,9 +1738,12 @@ async def list_sessions():
 
 @app.post("/api/sessions")
 async def create_session(body: dict):
-    path = Path(body["path"]).expanduser().resolve()
+    path_str = body.get("path", "").strip()
+    if not path_str:
+        raise HTTPException(status_code=400, detail="path is required")
+    path = Path(path_str).expanduser().resolve()
     if not path.is_dir():
-        return {"error": f"Directory not found: {path}"}
+        raise HTTPException(status_code=400, detail=f"Directory not found: {path}")
     session = registry.create(str(path))
     rows = int(body.get("rows", 24))
     cols = int(body.get("cols", 80))
@@ -1976,9 +1991,12 @@ async def get_project():
 
 @app.post("/api/project")
 async def switch_project(body: dict):
-    new_path = Path(body["path"]).expanduser().resolve()
+    path_str = body.get("path", "").strip()
+    if not path_str:
+        raise HTTPException(status_code=400, detail="path is required")
+    new_path = Path(path_str).expanduser().resolve()
     if not new_path.is_dir():
-        return {"error": f"Directory not found: {new_path}"}
+        raise HTTPException(status_code=400, detail=f"Directory not found: {new_path}")
     old = registry.default()
     if old:
         registry.remove(old.session_id)
@@ -2068,8 +2086,11 @@ async def list_tasks(s: ProjectSession = Depends(_resolve_session)):
 
 @app.post("/api/tasks")
 async def create_task(body: dict, s: ProjectSession = Depends(_resolve_session)):
+    description = body.get("description", "").strip()
+    if not description:
+        raise HTTPException(status_code=400, detail="description is required")
     task = await s.task_queue.add(
-        description=body["description"],
+        description=description,
         model=body.get("model") or GLOBAL_SETTINGS.get("default_model", "sonnet"),
     )
     asyncio.ensure_future(
@@ -2451,7 +2472,10 @@ async def get_settings():
 
 @app.post("/api/settings")
 async def post_settings(body: dict = Body(...)):
-    GLOBAL_SETTINGS.update(body)
+    valid_keys = set(_SETTINGS_DEFAULTS.keys())
+    for k, v in body.items():
+        if k in valid_keys:
+            GLOBAL_SETTINGS[k] = v
     snapshot = dict(GLOBAL_SETTINGS)
     await asyncio.to_thread(_save_settings, snapshot)
     return GLOBAL_SETTINGS
