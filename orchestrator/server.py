@@ -33,6 +33,12 @@ _ALLOWED_TASK_COLS = {"status", "description", "model", "depends_on", "mode", "r
                       "worker_id", "started_at", "elapsed_s", "last_commit", "log_file",
                       "failed_reason", "score_note"}
 
+_MODEL_ALIASES = {
+    "haiku": "claude-haiku-4-5-20251001",
+    "sonnet": "claude-sonnet-4-6",
+    "opus": "claude-opus-4-6",
+}
+
 # ─── Paths ────────────────────────────────────────────────────────────────────
 
 BASE_DIR = Path(__file__).parent
@@ -122,6 +128,7 @@ class TaskQueue:
         self._db_path = claude_dir / "tasks.db"
         self._initialized = False
         self._init_lock = asyncio.Lock()
+        self._upsert_lock = asyncio.Lock()
 
     def _proposed_tasks_file(self) -> Path:
         return self._claude_dir / "proposed-tasks.md"
@@ -367,55 +374,56 @@ class TaskQueue:
     async def upsert_loop(self, **kwargs) -> dict | None:
         """Update existing loop row, or create one with provided fields."""
         await self._ensure_db()
-        existing = await self.get_loop()
-        now = datetime.now().isoformat()
-        for key in ("changes_history", "deferred_items"):
-            if key in kwargs and not isinstance(kwargs[key], str):
-                kwargs[key] = json.dumps(kwargs[key])
-        if existing is None:
-            fields = {
-                "name": "default",
-                "artifact_path": "",
-                "context_dir": None,
-                "status": "idle",
-                "iteration": 0,
-                "changes_history": "[]",
-                "deferred_items": "[]",
-                "convergence_k": 2,
-                "convergence_n": 3,
-                "max_iterations": 20,
-                "supervisor_model": "sonnet",
-                "created_at": now,
-                "updated_at": now,
-            }
-            fields.update(kwargs)
-            async with aiosqlite.connect(str(self._db_path)) as db:
-                await db.execute(
-                    """INSERT INTO iteration_loops
-                       (name, artifact_path, context_dir, status, iteration,
-                        changes_history, deferred_items, convergence_k, convergence_n,
-                        max_iterations, supervisor_model, created_at, updated_at)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (
-                        fields["name"], fields["artifact_path"], fields["context_dir"],
-                        fields["status"], fields["iteration"], fields["changes_history"],
-                        fields["deferred_items"], fields["convergence_k"],
-                        fields["convergence_n"], fields["max_iterations"],
-                        fields["supervisor_model"], fields["created_at"], fields["updated_at"],
-                    ),
-                )
-                await db.commit()
-        else:
-            update = dict(kwargs)
-            update["updated_at"] = now
-            set_clause = ", ".join(f"{k} = ?" for k in update)
-            values = list(update.values()) + [existing["id"]]
-            async with aiosqlite.connect(str(self._db_path)) as db:
-                await db.execute(
-                    f"UPDATE iteration_loops SET {set_clause} WHERE id = ?", values
-                )
-                await db.commit()
-        return await self.get_loop()
+        async with self._upsert_lock:
+            existing = await self.get_loop()
+            now = datetime.now().isoformat()
+            for key in ("changes_history", "deferred_items"):
+                if key in kwargs and not isinstance(kwargs[key], str):
+                    kwargs[key] = json.dumps(kwargs[key])
+            if existing is None:
+                fields = {
+                    "name": "default",
+                    "artifact_path": "",
+                    "context_dir": None,
+                    "status": "idle",
+                    "iteration": 0,
+                    "changes_history": "[]",
+                    "deferred_items": "[]",
+                    "convergence_k": 2,
+                    "convergence_n": 3,
+                    "max_iterations": 20,
+                    "supervisor_model": "sonnet",
+                    "created_at": now,
+                    "updated_at": now,
+                }
+                fields.update(kwargs)
+                async with aiosqlite.connect(str(self._db_path)) as db:
+                    await db.execute(
+                        """INSERT INTO iteration_loops
+                           (name, artifact_path, context_dir, status, iteration,
+                            changes_history, deferred_items, convergence_k, convergence_n,
+                            max_iterations, supervisor_model, created_at, updated_at)
+                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        (
+                            fields["name"], fields["artifact_path"], fields["context_dir"],
+                            fields["status"], fields["iteration"], fields["changes_history"],
+                            fields["deferred_items"], fields["convergence_k"],
+                            fields["convergence_n"], fields["max_iterations"],
+                            fields["supervisor_model"], fields["created_at"], fields["updated_at"],
+                        ),
+                    )
+                    await db.commit()
+            else:
+                update = dict(kwargs)
+                update["updated_at"] = now
+                set_clause = ", ".join(f"{k} = ?" for k in update)
+                values = list(update.values()) + [existing["id"]]
+                async with aiosqlite.connect(str(self._db_path)) as db:
+                    await db.execute(
+                        f"UPDATE iteration_loops SET {set_clause} WHERE id = ?", values
+                    )
+                    await db.commit()
+            return await self.get_loop()
 
     async def import_from_proposed(self, content: str | None = None) -> list[dict]:
         """Parse ===TASK=== blocks and add to queue, skipping duplicates."""
@@ -542,7 +550,11 @@ async def _score_task(task_id: str, description: str, db_path: Path, claude_dir:
                         (score, note, task_id),
                     )
                     await db.commit()
-        except (asyncio.TimeoutError, Exception):
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()  # drain stdout/stderr
+            out = b""
+        except Exception:
             pass
     finally:
         score_file.unlink(missing_ok=True)
@@ -576,15 +588,20 @@ async def _write_progress_entry(
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
         )
-        out, _ = await asyncio.wait_for(proc.communicate(), timeout=60)
+        try:
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout=60)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()  # drain stdout/stderr
+            out = b""
         entry = out.decode().strip()
         if entry:
             progress_file = project_dir / "PROGRESS.md"
-            existing = progress_file.read_text(errors="replace") if progress_file.exists() else "# Progress Log\n"
+            existing = await asyncio.to_thread(progress_file.read_text, errors="replace") if progress_file.exists() else "# Progress Log\n"
             lines = existing.splitlines(keepends=True)
             insert_at = 1 if lines and lines[0].startswith("#") else 0
             lines.insert(insert_at, f"\n{entry}\n")
-            progress_file.write_text("".join(lines))
+            await asyncio.to_thread(progress_file.write_text, "".join(lines))
     except Exception:
         pass  # non-critical — don't break the merge flow
 
@@ -599,7 +616,12 @@ async def _write_pr_review(pr_url: str, task_description: str, project_dir: Path
             stderr=asyncio.subprocess.DEVNULL,
             cwd=str(project_dir),
         )
-        diff_out, _ = await asyncio.wait_for(diff_proc.communicate(), timeout=30)
+        try:
+            diff_out, _ = await asyncio.wait_for(diff_proc.communicate(), timeout=30)
+        except asyncio.TimeoutError:
+            diff_proc.kill()
+            await diff_proc.communicate()  # drain stdout/stderr
+            diff_out = b""
         diff_text = diff_out.decode()[:4000]
 
         prompt = (
@@ -616,7 +638,12 @@ async def _write_pr_review(pr_url: str, task_description: str, project_dir: Path
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
         )
-        review_out, _ = await asyncio.wait_for(review_proc.communicate(), timeout=60)
+        try:
+            review_out, _ = await asyncio.wait_for(review_proc.communicate(), timeout=60)
+        except asyncio.TimeoutError:
+            review_proc.kill()
+            await review_proc.communicate()  # drain stdout/stderr
+            review_out = b""
         review_text = review_out.decode().strip()
 
         if review_text:
@@ -626,7 +653,11 @@ async def _write_pr_review(pr_url: str, task_description: str, project_dir: Path
                 stderr=asyncio.subprocess.DEVNULL,
                 cwd=str(project_dir),
             )
-            await asyncio.wait_for(comment_proc.communicate(), timeout=30)
+            try:
+                await asyncio.wait_for(comment_proc.communicate(), timeout=30)
+            except asyncio.TimeoutError:
+                comment_proc.kill()
+                await comment_proc.communicate()  # drain stdout/stderr
     except Exception:
         pass  # non-critical
 
@@ -649,7 +680,12 @@ async def _oracle_review(task_description: str, diff_text: str, claude_dir: Path
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
         )
-        out, _ = await asyncio.wait_for(proc.communicate(), timeout=60)
+        try:
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout=60)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()  # drain stdout/stderr
+            out = b""
         result = out.decode().strip()
         approved = result.startswith("APPROVED")
         reason = result.split(":", 1)[-1].strip()[:80] if ":" in result else result[:80]
@@ -808,7 +844,8 @@ class Worker:
             "claude-haiku-4-5-20251001",
             "claude-opus-4-5", "claude-sonnet-4-5", "claude-haiku-4-5",
         }
-        model = self.model if self.model in _ALLOWED_MODELS else "claude-sonnet-4-6"
+        model = _MODEL_ALIASES.get(self.model, self.model)
+        model = model if model in _ALLOWED_MODELS else "claude-sonnet-4-6"
         shell_cmd = (
             f'claude -p "$(cat {shlex.quote(str(task_file))})" --model {model} --dangerously-skip-permissions'
         )
@@ -1061,7 +1098,8 @@ class WorkerPool:
         )
         if existing:
             return existing
-        model = task.get("model", "sonnet")
+        model = task.get("model", GLOBAL_SETTINGS.get("default_model", "sonnet"))
+        model = _MODEL_ALIASES.get(model, model)
         description = task["description"]
         if GLOBAL_SETTINGS.get("auto_model_routing", False):
             score = task.get("score")
@@ -1078,6 +1116,7 @@ class WorkerPool:
                     )
                 if task.get("is_critical_path"):
                     model = {"haiku": "sonnet", "sonnet": "opus"}.get(model, model)
+        model = _MODEL_ALIASES.get(model, model)
         worker = Worker(
             task["id"],
             description,
@@ -1207,6 +1246,8 @@ class OrchestratorSession:
 
     def stop(self) -> None:
         self._running = False
+        if hasattr(self, '_read_task') and self._read_task and not self._read_task.done():
+            self._read_task.cancel()
         if self.pty and self.pty.isalive():
             self.pty.terminate()
 
@@ -1586,10 +1627,9 @@ async def status_loop():
                 _newly_ready = [
                     t for t in _auto_tasks
                     if t["status"] == "pending"
-                    and t.get("depends_on")
                     and _deps_met(t, _done_ids)
                 ]
-                if _newly_ready:
+                if _newly_ready and GLOBAL_SETTINGS.get("auto_start", True):
                     _max_w = GLOBAL_SETTINGS.get("max_workers", 0)
                     _running = [w for w in session.worker_pool.all() if w.status == "running"]
                     for _task in _newly_ready:
@@ -1665,8 +1705,8 @@ async def status_loop():
                         dead.append(ws)
                 for ws in dead:
                     session.status_subscribers.remove(ws)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.exception("status_loop error for session %s: %s", getattr(session, 'session_id', '?'), exc)
 
 
 @app.on_event("startup")
@@ -1763,6 +1803,7 @@ async def start_loop(session_id: str, body: dict):
     convergence_n = int(body.get("convergence_n", GLOBAL_SETTINGS.get("loop_convergence_n", 3)))
     max_iterations = int(body.get("max_iterations", GLOBAL_SETTINGS.get("loop_max_iterations", 20)))
     supervisor_model = body.get("supervisor_model", GLOBAL_SETTINGS.get("loop_supervisor_model", "sonnet"))
+    mode = body.get("mode", "review")
 
     # Cancel any running loop coroutine
     if s._loop_task and not s._loop_task.done():
@@ -1782,6 +1823,7 @@ async def start_loop(session_id: str, body: dict):
         convergence_n=convergence_n,
         max_iterations=max_iterations,
         supervisor_model=supervisor_model,
+        mode=mode,
     )
 
     s._loop_task = asyncio.ensure_future(s._run_supervisor())

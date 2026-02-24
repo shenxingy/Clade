@@ -2,6 +2,31 @@
 
 ---
 
+### 2026-02-24 — Security & correctness round 3: 8 backend + 5 frontend fixes
+
+**What was done:**
+- `server.py`: `_MODEL_ALIASES` dict — short aliases ("haiku"/"sonnet"/"opus") now map to full model IDs; auto_model_routing was previously a complete no-op
+- `server.py`: `asyncio.wait_for` TimeoutError now kills the subprocess before draining — prevents zombie accumulation in `_score_task`, `_oracle_review`, `_write_progress_entry`, `_write_pr_review`
+- `server.py`: `status_loop` `_newly_ready` filter — removed `and t.get("depends_on")` so no-dep tasks auto-start too; wrapped with `GLOBAL_SETTINGS.get("auto_start", True)` so toggle is respected server-side
+- `server.py`: `start_loop` endpoint now reads `mode` from request body and passes to `upsert_loop`
+- `server.py`: `OrchestratorSession.stop()` now cancels `_read_task` alongside PTY termination
+- `server.py`: `status_loop` exception logged via `logger.exception()` instead of silently swallowed
+- `server.py`: `_upsert_lock` on `TaskQueue` prevents TOCTOU race in `upsert_loop`
+- `server.py`: `_write_progress_entry` file I/O moved to `asyncio.to_thread`
+- `index.html`: `loopStartBtn` id added — double-submit prevention in `startLoop()` now actually works
+- `index.html`: `confirmProposed()` wrapped in try/catch with toast on failure
+- `index.html`: `addTask()` wrapped in try/catch; textarea value preserved on error
+- `index.html`: `connectStatus()` onerror schedules reconnect (for browsers where onclose doesn't fire)
+- `index.html`: `renderOverview()` inner `sessions` var renamed to `overviewData` (was shadowing outer module var)
+
+**Lessons:**
+- Short model aliases in settings/routing must be normalized before the allowlist check — easy to miss because fallback to default model is silent and the feature "works" just with the wrong model.
+- `asyncio.wait_for` cancels the coroutine but NOT the underlying subprocess — always `proc.kill()` + `await proc.communicate()` in the TimeoutError handler.
+- `t.get("depends_on")` is falsy for `[]` — conditions like `and t.get(field)` silently exclude items with empty lists. Use explicit `is not None` or just drop the guard.
+- `auto_start` toggle was frontend-only; the server always auto-started via `status_loop`. Settings toggles need to be enforced at both layers.
+
+---
+
 ### 2026-02-23 — Security hardening round 2: 8 more backend + 4 frontend fixes
 
 **What was done:**
