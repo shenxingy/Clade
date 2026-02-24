@@ -275,7 +275,21 @@ class Worker:
 
         task_file = self._claude_dir / f"task-{self.id}.md"
         task_file.parent.mkdir(parents=True, exist_ok=True)
-        task_file.write_text(self.description)
+
+        # Prepend project CLAUDE.md for context
+        effective_description = self.description
+        claude_md = self._claude_dir / "CLAUDE.md"
+        if claude_md.exists():
+            try:
+                claude_content = claude_md.read_text(errors="replace").strip()
+                if claude_content:
+                    effective_description = (
+                        f"# Project Context (from .claude/CLAUDE.md)\n\n{claude_content}\n\n"
+                        f"---\n\n# Task\n\n{self.description}"
+                    )
+            except Exception:
+                pass
+        task_file.write_text(effective_description)
 
         shell_cmd = (
             f'claude -p "$(cat {task_file})" --model {self.model} --dangerously-skip-permissions'
