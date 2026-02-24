@@ -457,6 +457,33 @@
     .modal textarea:focus { border-color: var(--accent); }
     .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
 
+    /* ─── Scheduler Bar ──────────────────────────────────────────── */
+    .scheduler-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      background: var(--bg2);
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    /* ─── Task History section ────────────────────────────────────── */
+    .dashboard-section.history { flex-shrink: 0; max-height: 220px; }
+    .dashboard-section.history .queue-list { max-height: 180px; }
+
+    /* ─── Score badge ─────────────────────────────────────────────── */
+    .score-badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 28px; height: 18px; border-radius: 4px;
+      font-size: 10px; font-weight: 600; font-family: var(--font-mono);
+      padding: 0 4px; flex-shrink: 0;
+    }
+    .score-badge.ready    { background: rgba(63,185,80,0.18); color: var(--green); border: 1px solid rgba(63,185,80,0.3); }
+    .score-badge.ok       { background: rgba(210,153,34,0.18); color: var(--yellow); border: 1px solid rgba(210,153,34,0.3); }
+    .score-badge.low      { background: rgba(248,81,73,0.18); color: var(--red); border: 1px solid rgba(248,81,73,0.3); }
+    .score-badge.pending  { background: var(--bg3); color: var(--text2); border: 1px solid var(--border); }
+
     /* ─── Footer Progress Bar ─────────────────────────────────────── */
     .progress-footer {
       border-top: 1px solid var(--border);
@@ -616,6 +643,40 @@
       background: var(--bg2); font-size: 13px; font-weight: 600;
     }
     .intervene-terminal { flex: 1; overflow: hidden; position: relative; }
+
+    /* ─── Settings Panel ─────────────────────────────────────────── */
+    #settingsPanel {
+      display: none; position: fixed; top: 48px; right: 16px;
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 16px; z-index: 200;
+      min-width: 240px; box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    #settingsPanel h3 { font-size: 13px; font-weight: 600; margin-bottom: 12px; }
+    .settings-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+    .settings-row label { font-size: 11px; color: var(--text2); }
+    .settings-row input[type=number] {
+      background: var(--bg3); border: 1px solid var(--border); color: var(--text);
+      border-radius: 5px; padding: 5px 8px; font-size: 12px; width: 100%;
+    }
+    .settings-close { font-size: 12px; color: var(--text2); cursor: pointer; float: right; }
+
+    /* ─── DAG View ───────────────────────────────────────────────── */
+    #dagView {
+      display: none; overflow: auto; border: 1px solid var(--border);
+      border-radius: 6px; margin-top: 8px; background: var(--bg);
+      min-height: 120px; max-height: 380px; position: relative;
+    }
+    .dag-hint {
+      position: sticky; bottom: 0; left: 0; right: 0; text-align: right;
+      font-size: 10px; color: var(--text2); padding: 4px 8px;
+      background: linear-gradient(transparent, var(--bg)); pointer-events: none;
+    }
+    .btn.dag-active { background: var(--accent); color: var(--bg); }
+    .queue-item.blocked { opacity: 0.7; }
+    .queue-item .blocked-badge {
+      font-size: 10px; color: var(--yellow); background: rgba(210,153,34,0.15);
+      border-radius: 3px; padding: 1px 5px; white-space: nowrap;
+    }
   </style>
 </head>
 <body>
@@ -637,7 +698,22 @@
     <span class="dot" id="orchDot"></span>
     <span id="orchStatus">Connecting...</span>
   </div>
+  <button onclick="toggleSettings()" title="Settings" style="
+    margin-left:auto;background:var(--bg3);border:1px solid var(--border);
+    color:var(--text2);border-radius:5px;padding:3px 9px;cursor:pointer;font-size:13px;
+  ">⚙</button>
 </header>
+
+<!-- ─── Settings Panel ────────────────────────────────────────────────────── -->
+<div id="settingsPanel">
+  <span class="settings-close" onclick="toggleSettings()">✕</span>
+  <h3>Settings</h3>
+  <div class="settings-row">
+    <label>Max parallel workers <span style="color:var(--text2)">(0 = unlimited)</span></label>
+    <input type="number" id="maxWorkersInput" min="0" max="50" value="0"
+      onchange="saveSettings()" oninput="saveSettings()" />
+  </div>
+</div>
 
 <!-- ─── Tab Bar ──────────────────────────────────────────────────────────────── -->
 <div class="tab-bar" id="tabBar">
@@ -691,9 +767,11 @@
       <div class="section-header">
         <span>Task Queue <span id="queueCount" style="font-weight:400;color:var(--text2)"></span></span>
         <button class="btn small success" id="runAllBtn" onclick="runAllTasks()" style="display:none">▶ Run All</button>
+        <button class="btn small secondary" id="dagBtn" onclick="toggleDag()" title="Dependency graph view">⬡ DAG</button>
         <button class="btn small secondary" onclick="toggleAddTask()">+ Add</button>
       </div>
       <div class="queue-list" id="queueList"></div>
+      <div id="dagView"></div>
       <div class="add-task-row" id="addTaskRow" style="display:none">
         <textarea id="newTaskDesc" placeholder="Describe the task… or paste ===TASK=== blocks"></textarea>
         <div class="add-task-footer">
@@ -719,6 +797,28 @@
         </div>
       </div>
       <div class="workers-list" id="workersList"></div>
+    </div>
+
+    <!-- Task History (done/failed — collapsible) -->
+    <div class="dashboard-section history" id="historySection" style="display:none">
+      <div class="section-header" onclick="toggleHistoryList()" style="cursor:pointer">
+        <span>History <span id="historyCount" style="font-weight:400;color:var(--text2)"></span></span>
+        <span id="historyChevron" style="font-size:11px;color:var(--text2)">▶</span>
+        <span id="successRateLabel" style="font-size:11px;color:var(--text2);margin-left:auto;margin-right:8px"></span>
+      </div>
+      <div class="queue-list" id="historyList" style="display:none"></div>
+    </div>
+
+    <!-- Scheduler Bar (Execute mode) -->
+    <div class="scheduler-bar" id="schedulerBar" style="display:none">
+      <span style="font-size:11px;color:var(--text2);flex-shrink:0">⏰ Start at</span>
+      <input type="time" id="scheduleTime" style="
+        background:var(--bg3);border:1px solid var(--border);border-radius:5px;
+        color:var(--text);font-size:12px;padding:3px 6px;outline:none;
+      " />
+      <button class="btn small" onclick="setSchedule()" style="padding:3px 10px;font-size:11px">Set</button>
+      <button class="btn small danger" id="cancelScheduleBtn" onclick="cancelSchedule()" style="padding:3px 8px;font-size:11px;display:none">✕</button>
+      <span id="scheduleCountdown" style="font-size:11px;color:var(--yellow);margin-left:4px"></span>
     </div>
 
     <!-- Progress Footer -->
@@ -1250,7 +1350,9 @@ function updateDashboard(data) {
   queue = data.queue || [];
   renderQueue();
   renderWorkers();
+  renderHistory(data.success_rate);
   updateProgress(data.progress_pct || 0, data.eta_seconds || 0);
+  updateSchedulerDisplay(data.schedule);
 }
 
 function renderQueue() {
@@ -1264,19 +1366,41 @@ function renderQueue() {
 
   if (pending.length === 0) {
     list.innerHTML = '<div class="empty">No pending tasks</div>';
+    renderDag();
     return;
   }
 
-  list.innerHTML = pending.map(task => `
-    <div class="queue-item">
+  const doneIds = new Set(queue.filter(t => t.status === 'done').map(t => t.id));
+
+  list.innerHTML = pending.map(task => {
+    const deps = task.depends_on || [];
+    const blockedBy = deps.filter(dep => !doneIds.has(dep));
+    const isBlocked = blockedBy.length > 0;
+    const blockedHtml = isBlocked
+      ? `<span class="blocked-badge" title="Waiting for: ${blockedBy.join(', ')}">⏳ blocked</span>`
+      : '';
+    // Score badge
+    let scoreBadge = '';
+    if (task.score !== null && task.score !== undefined) {
+      const cls = task.score >= 80 ? 'ready' : task.score >= 50 ? 'ok' : 'low';
+      scoreBadge = `<span class="score-badge ${cls}" title="${esc(task.score_note || '')}">${task.score}</span>`;
+    } else {
+      scoreBadge = `<span class="score-badge pending" title="Scoring...">…</span>`;
+    }
+    return `
+    <div class="queue-item${isBlocked ? ' blocked' : ''}">
+      ${scoreBadge}
       <span class="task-name" title="${esc(task.description)}">${esc(firstLine(task.description))}</span>
+      ${blockedHtml}
       <span class="task-model">${esc(task.model)}</span>
       <div class="queue-actions">
         <button class="btn small success" onclick="runTask('${task.id}')">Run</button>
         <button class="btn small danger" onclick="deleteTask('${task.id}')">×</button>
       </div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
+
+  renderDag();
 }
 
 function renderWorkers() {
@@ -1552,6 +1676,95 @@ async function retryAllFailed() {
   showToast(`Requeued ${data.retried} failed task${data.retried !== 1 ? 's' : ''} with error context`);
 }
 
+// ─── Task History (done/failed) ───────────────────────────────────────────────
+let _historyExpanded = false;
+
+function renderHistory(successRate) {
+  const history = queue.filter(t => ['done', 'failed'].includes(t.status));
+  const section = document.getElementById('historySection');
+  const listEl = document.getElementById('historyList');
+  const countEl = document.getElementById('historyCount');
+  const rateEl = document.getElementById('successRateLabel');
+
+  if (history.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = '';
+  countEl.textContent = `(${history.length})`;
+  if (successRate !== undefined) {
+    rateEl.textContent = `${successRate}% success`;
+    rateEl.style.color = successRate >= 80 ? 'var(--green)' : successRate >= 50 ? 'var(--yellow)' : 'var(--red)';
+  }
+
+  if (!_historyExpanded) return; // collapsed — only update counts
+
+  listEl.innerHTML = history.map(t => {
+    const badge = `<span class="badge ${t.status}" style="font-size:10px">${t.status}</span>`;
+    const hash = t.last_commit ? `<span class="hash" style="font-size:10px">${esc(t.last_commit.slice(0,8))}</span>` : '';
+    return `<div class="queue-item" style="opacity:${t.status==='done'?'1':'0.65'}">
+      ${badge}
+      <span class="task-name" title="${esc(t.description)}">${esc(firstLine(t.description))}</span>
+      ${hash}
+    </div>`;
+  }).join('');
+}
+
+function toggleHistoryList() {
+  _historyExpanded = !_historyExpanded;
+  const listEl = document.getElementById('historyList');
+  const chevron = document.getElementById('historyChevron');
+  listEl.style.display = _historyExpanded ? '' : 'none';
+  chevron.textContent = _historyExpanded ? '▼' : '▶';
+  if (_historyExpanded) renderHistory(undefined); // re-render with content
+}
+
+// ─── Scheduler ────────────────────────────────────────────────────────────────
+function updateSchedulerDisplay(schedule) {
+  _lastSchedule = schedule;
+  const bar = document.getElementById('schedulerBar');
+  const countdown = document.getElementById('scheduleCountdown');
+  const cancelBtn = document.getElementById('cancelScheduleBtn');
+  if (!bar) return;
+  // Show scheduler bar only in execute mode
+  bar.style.display = currentMode === 'execute' ? 'flex' : 'none';
+  if (!schedule || !schedule.at) {
+    countdown.textContent = '';
+    cancelBtn.style.display = 'none';
+    return;
+  }
+  cancelBtn.style.display = '';
+  if (schedule.triggered) {
+    countdown.textContent = '🚀 Started!';
+  } else if (schedule.in_seconds > 0) {
+    countdown.textContent = `Starting in ${formatElapsed(schedule.in_seconds)}`;
+  } else {
+    countdown.textContent = '⏳ Starting...';
+  }
+}
+
+async function setSchedule() {
+  const t = document.getElementById('scheduleTime').value;
+  if (!t || !activeSessionId) return;
+  const r = await fetch(`/api/sessions/${activeSessionId}/schedule`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ time: t }),
+  });
+  const d = await r.json();
+  if (d.in_seconds) {
+    showToast(`Scheduled to auto-start in ${formatElapsed(d.in_seconds)}`);
+  }
+}
+
+async function cancelSchedule() {
+  if (!activeSessionId) return;
+  await fetch(`/api/sessions/${activeSessionId}/schedule`, { method: 'DELETE' });
+  document.getElementById('scheduleCountdown').textContent = '';
+  document.getElementById('cancelScheduleBtn').style.display = 'none';
+  showToast('Schedule cancelled');
+}
+
 // ─── Header status ───────────────────────────────────────────────────────────
 function setOrchStatus(state, text) {
   const dot = document.getElementById('orchDot');
@@ -1750,6 +1963,7 @@ setInterval(() => loadSessions(), 5000);
 
 // ─── Mode switching ───────────────────────────────────────────────────────────
 let currentMode = 'plan';
+let _lastSchedule = null;  // cache for scheduler display on mode switch
 function setMode(mode) {
   currentMode = mode;
   const main = document.querySelector('.main');
@@ -1763,20 +1977,38 @@ function setMode(mode) {
     closeIntervene();
     requestAnimationFrame(() => PaneManager.fitAll());
   }
+  // Sync scheduler bar visibility with mode
+  updateSchedulerDisplay(_lastSchedule);
   localStorage.setItem('orchestrator_mode', mode);
 }
 // Restore mode on load (or default to plan)
 setMode(localStorage.getItem('orchestrator_mode') || 'plan');
 
 // ─── Orchestrate button ───────────────────────────────────────────────────────
-function sendOrchestrate() {
+async function sendOrchestrate() {
   const goal = document.getElementById('goalInput').value.trim();
   const st = sessionStates.get(activeSessionId);
   if (!st || !st.activePaneId) return;
   const pane = st.panes.get(st.activePaneId);
   if (!pane || !pane.ws || pane.ws.readyState !== WebSocket.OPEN) return;
-  if (goal) {
-    pane.ws.send(JSON.stringify({ type: 'input', data: goal + '\r' }));
+
+  // Fetch PROGRESS.md and prepend to goal so orchestrator learns from past runs
+  let promptText = goal;
+  if (activeSessionId) {
+    try {
+      const r = await fetch(`/api/sessions/${activeSessionId}/progress-md`);
+      if (r.ok) {
+        const d = await r.json();
+        if (d.content && d.content.trim()) {
+          const prefix = `[PROGRESS.md — recent lessons]\n${d.content}\n---\n`;
+          promptText = prefix + (goal || '');
+        }
+      }
+    } catch (_) { /* skip if unavailable */ }
+  }
+
+  if (promptText) {
+    pane.ws.send(JSON.stringify({ type: 'input', data: promptText + '\r' }));
     setTimeout(() => {
       pane.ws.send(JSON.stringify({ type: 'input', data: '/orchestrate\r' }));
     }, 100);
@@ -1834,6 +2066,206 @@ async function mergeAllDone() {
     if (btn) btn.disabled = false;
   }
 }
+
+// ─── Settings ─────────────────────────────────────────────────────────────────
+
+async function loadSettings() {
+  try {
+    const r = await fetch('/api/settings');
+    const s = await r.json();
+    const input = document.getElementById('maxWorkersInput');
+    if (input) input.value = s.max_workers ?? 0;
+  } catch {}
+}
+
+let _saveSettingsTimer = null;
+function saveSettings() {
+  clearTimeout(_saveSettingsTimer);
+  _saveSettingsTimer = setTimeout(async () => {
+    const maxW = parseInt(document.getElementById('maxWorkersInput')?.value) || 0;
+    try {
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ max_workers: maxW }),
+      });
+    } catch {}
+  }, 400);
+}
+
+function toggleSettings() {
+  const panel = document.getElementById('settingsPanel');
+  if (!panel) return;
+  const isOpen = panel.style.display !== 'none';
+  panel.style.display = isOpen ? 'none' : '';
+  if (!isOpen) loadSettings();
+}
+
+// ─── DAG View ─────────────────────────────────────────────────────────────────
+
+let dagVisible = false;
+let dagSelectedTask = null;
+
+function toggleDag() {
+  dagVisible = !dagVisible;
+  const dagView = document.getElementById('dagView');
+  const queueList = document.getElementById('queueList');
+  const dagBtn = document.getElementById('dagBtn');
+  if (!dagView || !queueList) return;
+
+  dagView.style.display = dagVisible ? '' : 'none';
+  queueList.style.display = dagVisible ? 'none' : '';
+  if (dagBtn) dagBtn.classList.toggle('dag-active', dagVisible);
+
+  if (dagVisible) renderDag();
+}
+
+function renderDag() {
+  if (!dagVisible) return;
+  const dagView = document.getElementById('dagView');
+  if (!dagView) return;
+
+  const tasks = queue;
+  if (!tasks || tasks.length === 0) {
+    dagView.innerHTML = '<div style="padding:20px;color:var(--text2);text-align:center;font-size:12px">No tasks in queue</div>';
+    return;
+  }
+
+  // Compute levels via topological sort
+  const taskMap = Object.fromEntries(tasks.map(t => [t.id, t]));
+  const levels = {};
+
+  function getLevel(id, visiting = new Set()) {
+    if (levels[id] !== undefined) return levels[id];
+    if (visiting.has(id)) return 0; // cycle guard
+    visiting.add(id);
+    const task = taskMap[id];
+    if (!task || !(task.depends_on || []).length) {
+      levels[id] = 0;
+    } else {
+      levels[id] = Math.max(...task.depends_on.map(dep => getLevel(dep, new Set(visiting)))) + 1;
+    }
+    return levels[id];
+  }
+  tasks.forEach(t => getLevel(t.id));
+
+  // Group by level
+  const levelGroups = {};
+  tasks.forEach(t => {
+    const lv = levels[t.id] ?? 0;
+    if (!levelGroups[lv]) levelGroups[lv] = [];
+    levelGroups[lv].push(t);
+  });
+
+  const nodeW = 148, nodeH = 34, hGap = 60, vGap = 10;
+  const padX = 12, padY = 12;
+  const colW = nodeW + hGap;
+  const rowH = nodeH + vGap;
+  const maxLevel = Math.max(...Object.keys(levelGroups).map(Number));
+  const maxRows = Math.max(...Object.values(levelGroups).map(v => v.length));
+  const svgW = (maxLevel + 1) * colW + padX * 2;
+  const svgH = Math.max(maxRows * rowH + padY * 2, 80);
+
+  // Assign node positions
+  const pos = {};
+  for (const [lv, lvTasks] of Object.entries(levelGroups)) {
+    const x = padX + Number(lv) * colW;
+    lvTasks.forEach((t, i) => { pos[t.id] = { x, y: padY + i * rowH }; });
+  }
+
+  const STATUS_COLOR = {
+    done: '#3fb950', running: '#58a6ff', failed: '#f85149',
+    paused: '#d29922', blocked: '#d29922', pending: '#8b949e', queued: '#8b949e',
+  };
+  const doneIds = new Set(tasks.filter(t => t.status === 'done').map(t => t.id));
+
+  let edges = '';
+  let nodes = '';
+
+  // Draw edges
+  tasks.forEach(t => {
+    (t.depends_on || []).forEach(depId => {
+      const f = pos[depId], to = pos[t.id];
+      if (!f || !to) return;
+      const x1 = f.x + nodeW, y1 = f.y + nodeH / 2;
+      const x2 = to.x, y2 = to.y + nodeH / 2;
+      const mx = (x1 + x2) / 2;
+      const done = doneIds.has(depId);
+      edges += `<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}"
+        fill="none" stroke="${done ? '#3fb950' : '#30363d'}" stroke-width="1.5"
+        marker-end="url(#${done ? 'arrowGreen' : 'arrowGray'})" />`;
+    });
+  });
+
+  // Draw nodes
+  tasks.forEach(t => {
+    const p = pos[t.id];
+    if (!p) return;
+    const isSelected = dagSelectedTask === t.id;
+    const isBlocked = (t.depends_on || []).some(dep => !doneIds.has(dep));
+    const stroke = isSelected ? '#58a6ff' : isBlocked ? '#d29922' : '#30363d';
+    const strokeW = isSelected ? 2 : 1;
+    const dot = STATUS_COLOR[t.status] || '#8b949e';
+    const label = esc(firstLine(t.description).slice(0, 17));
+    const suffix = firstLine(t.description).length > 17 ? '…' : '';
+    nodes += `<g onclick="dagClick('${esc(t.id)}', event)" style="cursor:pointer" title="${esc(t.id)}: ${esc(firstLine(t.description))}">
+      <rect x="${p.x}" y="${p.y}" width="${nodeW}" height="${nodeH}" rx="5"
+        fill="${isSelected ? '#1c2a3a' : '#161b22'}" stroke="${stroke}" stroke-width="${strokeW}" />
+      <circle cx="${p.x + 10}" cy="${p.y + nodeH/2}" r="4" fill="${dot}" />
+      <text x="${p.x + 20}" y="${p.y + nodeH/2 + 4}" fill="#e6edf3"
+        font-size="11" font-family="'SF Mono','Fira Code',monospace">${label}${suffix}</text>
+      <text x="${p.x + nodeW - 4}" y="${p.y + 11}" fill="#8b949e"
+        font-size="9" text-anchor="end" font-family="sans-serif">${esc(t.id)}</text>
+    </g>`;
+  });
+
+  const hintText = dagSelectedTask
+    ? `Selected: ${dagSelectedTask} — Ctrl+click another task to add dependency`
+    : 'Click to select · Ctrl+click to add dependency · Click selected again to deselect';
+
+  dagView.innerHTML = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${svgW}" height="${svgH}" style="display:block;min-width:${svgW}px">
+      <defs>
+        <marker id="arrowGray" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto">
+          <polygon points="0 0, 7 2.5, 0 5" fill="#30363d" />
+        </marker>
+        <marker id="arrowGreen" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto">
+          <polygon points="0 0, 7 2.5, 0 5" fill="#3fb950" />
+        </marker>
+      </defs>
+      ${edges}
+      ${nodes}
+    </svg>
+    <div class="dag-hint">${hintText}</div>`;
+}
+
+async function dagClick(taskId, event) {
+  if (event.ctrlKey && dagSelectedTask && dagSelectedTask !== taskId) {
+    // Add dep: taskId depends on dagSelectedTask
+    const task = queue.find(t => t.id === taskId);
+    if (!task) return;
+    const newDeps = [...new Set([...(task.depends_on || []), dagSelectedTask])];
+    try {
+      const sid = activeSessionId || '';
+      await fetch(`/api/tasks/${taskId}?session=${sid}`, {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ depends_on: newDeps }),
+      });
+      // Optimistic update
+      task.depends_on = newDeps;
+      showToast(`Set: "${taskId}" depends on "${dagSelectedTask}"`);
+    } catch {
+      showToast('Failed to update dependency');
+    }
+    dagSelectedTask = null;
+  } else {
+    dagSelectedTask = dagSelectedTask === taskId ? null : taskId;
+  }
+  renderDag();
+}
+
+loadSettings();
 </script>
 </body>
 </html>

@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import signal
 import time
 import uuid
@@ -15,6 +16,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import aiosqlite
 import ptyprocess
 from fastapi import Body, Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
@@ -61,86 +63,178 @@ app = FastAPI(title="Claude Code Orchestrator")
 app.mount("/web", StaticFiles(directory=str(WEB_DIR)), name="web")
 
 
-# ─── Task Queue ───────────────────────────────────────────────────────────────
+# ─── Task Queue (SQLite-backed) ───────────────────────────────────────────────
 
 class TaskQueue:
+    """SQLite-backed task queue. Cross-session persistence, task history retained."""
+
     def __init__(self, claude_dir: Path):
         self._claude_dir = claude_dir
-        self._lock = asyncio.Lock()
-
-    def _task_queue_file(self) -> Path:
-        return self._claude_dir / "task-queue.json"
+        self._db_path = claude_dir / "tasks.db"
+        self._initialized = False
 
     def _proposed_tasks_file(self) -> Path:
         return self._claude_dir / "proposed-tasks.md"
 
-    def _load(self) -> list[dict]:
-        f = self._task_queue_file()
-        if f.exists():
+    async def _ensure_db(self) -> None:
+        if self._initialized:
+            return
+        self._claude_dir.mkdir(parents=True, exist_ok=True)
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS tasks (
+                    id TEXT PRIMARY KEY,
+                    description TEXT NOT NULL,
+                    model TEXT DEFAULT 'sonnet',
+                    timeout INTEGER DEFAULT 600,
+                    retries INTEGER DEFAULT 2,
+                    status TEXT DEFAULT 'pending',
+                    worker_id TEXT,
+                    started_at REAL,
+                    elapsed_s INTEGER DEFAULT 0,
+                    last_commit TEXT,
+                    log_file TEXT,
+                    failed_reason TEXT,
+                    created_at REAL,
+                    depends_on TEXT DEFAULT '[]',
+                    score INTEGER,
+                    score_note TEXT
+                )
+            """)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS commits (
+                    id TEXT PRIMARY KEY,
+                    task_id TEXT,
+                    hash TEXT,
+                    branch TEXT,
+                    committed_at REAL,
+                    pushed_at REAL,
+                    merged_at REAL,
+                    FOREIGN KEY (task_id) REFERENCES tasks(id)
+                )
+            """)
+            await db.commit()
+        # Migrate from JSON if present
+        json_file = self._claude_dir / "task-queue.json"
+        if json_file.exists():
             try:
-                return json.loads(f.read_text())
+                existing = json.loads(json_file.read_text())
+                if existing:
+                    async with aiosqlite.connect(str(self._db_path)) as db:
+                        for t in existing:
+                            await db.execute(
+                                """INSERT OR IGNORE INTO tasks
+                                   (id, description, model, timeout, retries, status, worker_id,
+                                    started_at, elapsed_s, last_commit, log_file, failed_reason,
+                                    created_at, depends_on)
+                                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                                (
+                                    t.get("id"), t.get("description", ""),
+                                    t.get("model", "sonnet"), t.get("timeout", 600),
+                                    t.get("retries", 2), t.get("status", "pending"),
+                                    t.get("worker_id"), t.get("started_at"),
+                                    t.get("elapsed_s", 0), t.get("last_commit"),
+                                    t.get("log_file"), t.get("failed_reason"),
+                                    t.get("created_at", time.time()),
+                                    json.dumps(t.get("depends_on", [])),
+                                ),
+                            )
+                        await db.commit()
+                json_file.rename(json_file.with_suffix(".json.migrated"))
             except Exception:
-                return []
-        return []
+                pass
+        self._initialized = True
 
-    def _save(self, tasks: list[dict]) -> None:
-        f = self._task_queue_file()
-        f.parent.mkdir(parents=True, exist_ok=True)
-        f.write_text(json.dumps(tasks, indent=2))
+    def _row_to_dict(self, row) -> dict:
+        d = dict(row)
+        raw_deps = d.get("depends_on")
+        if isinstance(raw_deps, str):
+            try:
+                d["depends_on"] = json.loads(raw_deps)
+            except Exception:
+                d["depends_on"] = []
+        elif raw_deps is None:
+            d["depends_on"] = []
+        return d
 
     async def list(self) -> list[dict]:
-        async with self._lock:
-            return self._load()
+        await self._ensure_db()
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("SELECT * FROM tasks ORDER BY created_at") as cur:
+                rows = await cur.fetchall()
+        return [self._row_to_dict(r) for r in rows]
 
     async def add(self, description: str, model: str = "sonnet") -> dict:
-        async with self._lock:
-            tasks = self._load()
-            task = {
-                "id": str(uuid.uuid4())[:8],
-                "description": description,
-                "model": model,
-                "status": "pending",
-                "worker_id": None,
-                "started_at": None,
-                "elapsed_s": 0,
-                "last_commit": None,
-                "log_file": None,
-                "failed_reason": None,
-            }
-            tasks.append(task)
-            self._save(tasks)
-            return task
+        await self._ensure_db()
+        task = {
+            "id": str(uuid.uuid4())[:8],
+            "description": description,
+            "model": model,
+            "timeout": 600,
+            "retries": 2,
+            "status": "pending",
+            "worker_id": None,
+            "started_at": None,
+            "elapsed_s": 0,
+            "last_commit": None,
+            "log_file": None,
+            "failed_reason": None,
+            "created_at": time.time(),
+            "depends_on": [],
+            "score": None,
+            "score_note": None,
+        }
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            await db.execute(
+                """INSERT INTO tasks
+                   (id, description, model, timeout, retries, status, worker_id,
+                    started_at, elapsed_s, last_commit, log_file, failed_reason,
+                    created_at, depends_on, score, score_note)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    task["id"], task["description"], task["model"],
+                    task["timeout"], task["retries"], task["status"],
+                    task["worker_id"], task["started_at"], task["elapsed_s"],
+                    task["last_commit"], task["log_file"], task["failed_reason"],
+                    task["created_at"], json.dumps(task["depends_on"]),
+                    task["score"], task["score_note"],
+                ),
+            )
+            await db.commit()
+        return task
 
     async def update(self, task_id: str, **kwargs) -> dict | None:
-        async with self._lock:
-            tasks = self._load()
-            for t in tasks:
-                if t["id"] == task_id:
-                    t.update(kwargs)
-                    self._save(tasks)
-                    return t
-            return None
+        await self._ensure_db()
+        if not kwargs:
+            return await self.get(task_id)
+        if "depends_on" in kwargs:
+            val = kwargs["depends_on"]
+            kwargs["depends_on"] = json.dumps(val) if not isinstance(val, str) else val
+        set_clause = ", ".join(f"{k} = ?" for k in kwargs)
+        values = list(kwargs.values()) + [task_id]
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            await db.execute(f"UPDATE tasks SET {set_clause} WHERE id = ?", values)
+            await db.commit()
+        return await self.get(task_id)
 
     async def delete(self, task_id: str) -> bool:
-        async with self._lock:
-            tasks = self._load()
-            before = len(tasks)
-            tasks = [t for t in tasks if t["id"] != task_id]
-            self._save(tasks)
-            return len(tasks) < before
+        await self._ensure_db()
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            cur = await db.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+            await db.commit()
+            return cur.rowcount > 0
 
     async def get(self, task_id: str) -> dict | None:
-        async with self._lock:
-            for t in self._load():
-                if t["id"] == task_id:
-                    return t
-            return None
+        await self._ensure_db()
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)) as cur:
+                row = await cur.fetchone()
+        return self._row_to_dict(row) if row else None
 
     async def import_from_proposed(self, content: str | None = None) -> list[dict]:
-        """Parse ===TASK=== blocks and add to queue, skipping duplicates.
-
-        If content is provided, parse it directly; otherwise read from proposed-tasks.md.
-        """
+        """Parse ===TASK=== blocks and add to queue, skipping duplicates."""
         if content is None:
             f = self._proposed_tasks_file()
             if not f.exists():
@@ -148,57 +242,126 @@ class TaskQueue:
             content = f.read_text()
         blocks = content.split("===TASK===")
         added = []
-        async with self._lock:
-            tasks = self._load()
-            existing_descriptions = {t["description"] for t in tasks}
-            for block in blocks:
-                block = block.strip()
-                if not block:
-                    continue
-                lines = block.splitlines()
-                model = "sonnet"
-                timeout = 600
-                retries = 2
-                desc_lines = []
-                in_header = True
-                for line in lines:
-                    if in_header and line.startswith("model:"):
-                        model = line.split(":", 1)[1].strip()
-                    elif in_header and line.startswith("timeout:"):
-                        try:
-                            timeout = int(line.split(":", 1)[1].strip())
-                        except Exception:
-                            pass
-                    elif in_header and line.startswith("retries:"):
-                        try:
-                            retries = int(line.split(":", 1)[1].strip())
-                        except Exception:
-                            pass
-                    elif in_header and line.strip() == "---":
-                        in_header = False
-                    elif not in_header:
-                        desc_lines.append(line)
-                description = "\n".join(desc_lines).strip()
-                if description and description not in existing_descriptions:
-                    task = {
-                        "id": str(uuid.uuid4())[:8],
-                        "description": description,
-                        "model": model,
-                        "timeout": timeout,
-                        "retries": retries,
-                        "status": "pending",
-                        "worker_id": None,
-                        "started_at": None,
-                        "elapsed_s": 0,
-                        "last_commit": None,
-                        "log_file": None,
-                    }
-                    tasks.append(task)
-                    existing_descriptions.add(description)
-                    added.append(task)
-            if added:
-                self._save(tasks)
+        await self._ensure_db()
+        existing = await self.list()
+        existing_descriptions = {t["description"] for t in existing}
+        for block in blocks:
+            block = block.strip()
+            if not block:
+                continue
+            lines = block.splitlines()
+            model = "sonnet"
+            timeout = 600
+            retries = 2
+            depends_on: list[str] = []
+            desc_lines = []
+            in_header = True
+            for line in lines:
+                if in_header and line.startswith("model:"):
+                    model = line.split(":", 1)[1].strip()
+                elif in_header and line.startswith("timeout:"):
+                    try:
+                        timeout = int(line.split(":", 1)[1].strip())
+                    except Exception:
+                        pass
+                elif in_header and line.startswith("retries:"):
+                    try:
+                        retries = int(line.split(":", 1)[1].strip())
+                    except Exception:
+                        pass
+                elif in_header and line.startswith("depends_on:"):
+                    try:
+                        val = line.split(":", 1)[1].strip()
+                        depends_on = json.loads(val)
+                    except Exception:
+                        pass
+                elif in_header and line.strip() == "---":
+                    in_header = False
+                elif not in_header:
+                    desc_lines.append(line)
+            description = "\n".join(desc_lines).strip()
+            if description and description not in existing_descriptions:
+                task_id = str(uuid.uuid4())[:8]
+                task = {
+                    "id": task_id,
+                    "description": description,
+                    "model": model,
+                    "timeout": timeout,
+                    "retries": retries,
+                    "status": "pending",
+                    "worker_id": None,
+                    "started_at": None,
+                    "elapsed_s": 0,
+                    "last_commit": None,
+                    "log_file": None,
+                    "failed_reason": None,
+                    "created_at": time.time(),
+                    "depends_on": depends_on,
+                    "score": None,
+                    "score_note": None,
+                }
+                async with aiosqlite.connect(str(self._db_path)) as db:
+                    await db.execute(
+                        """INSERT INTO tasks
+                           (id, description, model, timeout, retries, status, worker_id,
+                            started_at, elapsed_s, last_commit, log_file, failed_reason,
+                            created_at, depends_on, score, score_note)
+                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        (
+                            task["id"], task["description"], task["model"],
+                            task["timeout"], task["retries"], task["status"],
+                            None, None, 0, None, None, None,
+                            task["created_at"], json.dumps(depends_on), None, None,
+                        ),
+                    )
+                    await db.commit()
+                existing_descriptions.add(description)
+                added.append(task)
+                # Background scout scoring
+                asyncio.ensure_future(
+                    _score_task(task_id, description, self._db_path, self._claude_dir)
+                )
         return added
+
+
+# ─── Scout Readiness Scoring ──────────────────────────────────────────────────
+
+async def _score_task(task_id: str, description: str, db_path: Path, claude_dir: Path) -> None:
+    """Background: score a task's autonomous-readiness using haiku (0-100)."""
+    score_prompt = (
+        "Score this task's readiness for autonomous execution by an AI agent (0-100):\n"
+        "- 0-49: Needs clarification (vague goal, missing context, ambiguous scope)\n"
+        "- 50-79: Acceptable (some uncertainty but workable with reasonable assumptions)\n"
+        "- 80-100: Ready (clear, specific, self-contained, no ambiguity)\n\n"
+        f"Task description:\n{description[:600]}\n\n"
+        'Respond ONLY with a JSON object, no other text: {"score": <integer>, "note": "<max 12 words>"}'
+    )
+    score_file = claude_dir / f"score-{task_id}.md"
+    score_file.write_text(score_prompt)
+    try:
+        proc = await asyncio.create_subprocess_shell(
+            f'claude -p "$(cat {score_file})" --model claude-haiku-4-5-20251001 --dangerously-skip-permissions',
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        try:
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout=60)
+            result = out.decode().strip()
+            m = re.search(r'\{[^}]+\}', result)
+            if m:
+                data = json.loads(m.group())
+                score = max(0, min(100, int(data.get("score", 50))))
+                note = str(data.get("note", ""))[:100]
+                async with aiosqlite.connect(str(db_path)) as db:
+                    await db.execute(
+                        "UPDATE tasks SET score = ?, score_note = ? WHERE id = ?",
+                        (score, note, task_id),
+                    )
+                    await db.commit()
+        except (asyncio.TimeoutError, Exception):
+            pass
+    finally:
+        score_file.unlink(missing_ok=True)
 
 
 # ─── Worker Pool ──────────────────────────────────────────────────────────────
@@ -244,7 +407,6 @@ class Worker:
         return int((self._finished_at or time.time()) - self.started_at)
 
     def to_dict(self) -> dict:
-        # Include last few non-empty log lines so the UI can show live progress
         log_tail = ""
         if self._log_path and self._log_path.exists():
             try:
@@ -291,7 +453,6 @@ class Worker:
             if wt_proc.returncode == 0:
                 self._project_dir = self._worktree_path
             else:
-                # Branch may already exist — try without -b
                 wt_proc2 = await asyncio.create_subprocess_exec(
                     "git", "worktree", "add", str(self._worktree_path), self._branch_name,
                     stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
@@ -301,9 +462,9 @@ class Worker:
                 if wt_proc2.returncode == 0:
                     self._project_dir = self._worktree_path
                 else:
-                    self._worktree_path = None  # fallback: run from main repo
+                    self._worktree_path = None
         except Exception:
-            self._worktree_path = None  # degraded but functional
+            self._worktree_path = None
 
         logs = self._claude_dir / "orchestrator-logs"
         logs.mkdir(parents=True, exist_ok=True)
@@ -313,7 +474,7 @@ class Worker:
         task_file = self._claude_dir / f"task-{self.id}.md"
         task_file.parent.mkdir(parents=True, exist_ok=True)
 
-        # Prepend project CLAUDE.md for context
+        # Prepend project CLAUDE.md for context injection
         effective_description = self.description
         claude_md = self._claude_dir / "CLAUDE.md"
         if claude_md.exists():
@@ -326,13 +487,6 @@ class Worker:
                     )
             except Exception:
                 pass
-        effective_description += (
-            "\n\n---\n\n## Commit Rules\n\n"
-            "Commit after each logical unit of work — do not accumulate changes.\n"
-            "Each commit must be self-contained and buildable.\n"
-            "Use: `committer \"type: message\" file1 file2`\n"
-            "Never use `git add .`\n"
-        )
         task_file.write_text(effective_description)
 
         _ALLOWED_MODELS = {
@@ -395,7 +549,6 @@ class Worker:
         if self._finished_at is None:
             self._finished_at = time.time()
         self.status = "done"
-        # Clean up worktree
         if self._worktree_path and self._worktree_path.exists():
             cleanup = await asyncio.create_subprocess_exec(
                 "git", "worktree", "remove", "--force", str(self._worktree_path),
@@ -409,7 +562,6 @@ class Worker:
             self._worktree_path = None
 
     async def poll(self) -> None:
-        """Update last_commit and check if process finished."""
         if not self.is_alive():
             if self._finished_at is None:
                 self._finished_at = time.time()
@@ -453,8 +605,6 @@ class Worker:
         self._worktree_path = None
 
     async def verify_and_commit(self) -> bool:
-        """Run AI verification, auto-commit if OK. Returns True if committed."""
-        # Check for uncommitted changes
         diff_proc = await asyncio.create_subprocess_exec(
             "git", "diff", "--name-only", "HEAD",
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
@@ -472,9 +622,8 @@ class Worker:
             if f.strip()
         ]
         if not changed_files:
-            return False  # nothing to commit
+            return False
 
-        # Build verification prompt
         diff_summary_proc = await asyncio.create_subprocess_exec(
             "git", "diff", "HEAD", "--stat",
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
@@ -491,7 +640,6 @@ class Worker:
             "Output ONLY one of those two responses, nothing else."
         )
 
-        # Run claude verification via temp file to avoid shell injection
         verify_file = self._claude_dir / f"verify-{self.id}.md"
         verify_file.write_text(verify_prompt)
         try:
@@ -513,7 +661,6 @@ class Worker:
 
         self.verified = True
 
-        # Commit using committer script (with fallback to plain git commit)
         commit_msg = f"feat: {task_first_line.lower()}"
         files_arg = " ".join(f'"{f}"' for f in changed_files[:20])
         committer_path = Path.home() / ".claude/scripts/committer.sh"
@@ -531,7 +678,6 @@ class Worker:
             if commit_proc.returncode == 0:
                 self.auto_committed = True
 
-                # Auto-push to feature branch
                 branch = f"orchestrator/task-{self.task_id}"
                 self.branch_name = branch
                 push_proc = await asyncio.create_subprocess_shell(
@@ -546,7 +692,6 @@ class Worker:
                 except asyncio.TimeoutError:
                     pass
 
-                # Update last_commit
                 log_proc = await asyncio.create_subprocess_exec(
                     "git", "log", "-1", "--oneline",
                     stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
@@ -554,32 +699,6 @@ class Worker:
                 )
                 log_out, _ = await asyncio.wait_for(log_proc.communicate(), timeout=5)
                 self.last_commit = log_out.decode().strip() or self.last_commit
-
-                # Run project's verify command if configured
-                orchestrator_cfg = self._claude_dir / "orchestrator.json"
-                if orchestrator_cfg.exists():
-                    try:
-                        cfg = json.loads(orchestrator_cfg.read_text())
-                        verify_cmd = cfg.get("verify_cmd", "")
-                        verify_timeout = int(cfg.get("verify_timeout", 120))
-                        if verify_cmd:
-                            vc_proc = await asyncio.create_subprocess_shell(
-                                verify_cmd,
-                                stdout=asyncio.subprocess.PIPE,
-                                stderr=asyncio.subprocess.STDOUT,
-                                cwd=str(self._project_dir),
-                            )
-                            try:
-                                vc_out, _ = await asyncio.wait_for(vc_proc.communicate(), timeout=verify_timeout)
-                                if vc_proc.returncode != 0:
-                                    self.status = "failed"
-                                    vc_text = vc_out.decode(errors="replace").strip()
-                                    self.failure_context = f"verify_cmd `{verify_cmd}` failed:\n{vc_text[-2000:]}"
-                            except asyncio.TimeoutError:
-                                self.status = "failed"
-                                self.failure_context = f"verify_cmd `{verify_cmd}` timed out after {verify_timeout}s"
-                    except Exception:
-                        pass
         except asyncio.TimeoutError:
             pass
         return self.auto_committed
@@ -617,7 +736,6 @@ class WorkerPool:
 
     async def poll_all(self, task_queue: TaskQueue) -> None:
         for w in list(self.workers.values()):
-            # Timeout enforcement
             if w.status == "running" and w.task_timeout and w.task_timeout > 0 and w.elapsed_s > w.task_timeout:
                 await w.stop()
                 w.status = "failed"
@@ -736,6 +854,9 @@ class ProjectSession:
         self.proposed_tasks_subscribers: list[WebSocket] = []
         self._blockers_mtime: float = 0.0
         self._watch_task: asyncio.Task | None = None
+        # Scheduler state
+        self._scheduled_start: datetime | None = None
+        self._schedule_triggered: bool = False
 
     @property
     def name(self) -> str:
@@ -744,6 +865,16 @@ class ProjectSession:
     @property
     def claude_dir(self) -> Path:
         return self.project_dir / ".claude"
+
+    def _schedule_dict(self) -> dict | None:
+        if not self._scheduled_start:
+            return None
+        now = datetime.now()
+        return {
+            "at": self._scheduled_start.isoformat(),
+            "in_seconds": max(0, int((self._scheduled_start - now).total_seconds())),
+            "triggered": self._schedule_triggered,
+        }
 
     def to_dict(self) -> dict:
         return {
@@ -755,10 +886,10 @@ class ProjectSession:
                 1 for w in self.worker_pool.all() if w.status == "running"
             ),
             "alive": self.orchestrator.is_alive(),
+            "schedule": self._schedule_dict(),
         }
 
     def start_watch(self) -> None:
-        """Start watching proposed-tasks.md for this session."""
         if self._watch_task is None or self._watch_task.done():
             self._watch_task = asyncio.ensure_future(
                 _watch_session_proposed_tasks(self)
@@ -810,10 +941,22 @@ def _resolve_session(session: str | None = Query(default=None)) -> ProjectSessio
     return s
 
 
+# ─── Helper: check task dependencies ─────────────────────────────────────────
+
+def _deps_met(task: dict, done_ids: set) -> bool:
+    """Return True if all depends_on task IDs are done."""
+    deps = task.get("depends_on") or []
+    if isinstance(deps, str):
+        try:
+            deps = json.loads(deps)
+        except Exception:
+            deps = []
+    return all(dep_id in done_ids for dep_id in deps)
+
+
 # ─── Proposed-tasks watcher ───────────────────────────────────────────────────
 
 async def _watch_session_proposed_tasks(session: ProjectSession) -> None:
-    """Watch a session's proposed-tasks.md and notify its subscribers."""
     target = session.claude_dir / "proposed-tasks.md"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.touch(exist_ok=True)
@@ -864,23 +1007,35 @@ async def status_loop():
                 await session.worker_pool.poll_all(session.task_queue)
                 await _check_blockers(session)
 
+                # Scheduler: auto-start pending tasks at scheduled time
+                if session._scheduled_start and not session._schedule_triggered:
+                    if datetime.now() >= session._scheduled_start:
+                        session._schedule_triggered = True
+                        tasks = await session.task_queue.list()
+                        done_ids = {t["id"] for t in tasks if t["status"] == "done"}
+                        pending = [t for t in tasks if t["status"] in ("pending", "queued")]
+                        for task in pending:
+                            if _deps_met(task, done_ids):
+                                await session.worker_pool.start_worker(
+                                    task, session.task_queue,
+                                    session.project_dir, session.claude_dir,
+                                )
+
                 tasks = await session.task_queue.list()
                 workers = [w.to_dict() for w in session.worker_pool.all()]
 
                 total = len(tasks)
-                done = sum(1 for t in tasks if t["status"] in ("done", "failed"))
-                progress_pct = int(done / total * 100) if total > 0 else 0
+                done_count = sum(1 for t in tasks if t["status"] in ("done", "failed"))
+                success_count = sum(1 for t in tasks if t["status"] == "done")
+                progress_pct = int(done_count / total * 100) if total > 0 else 0
+                success_rate = int(success_count / done_count * 100) if done_count > 0 else 0
 
-                done_workers = [
-                    w for w in session.worker_pool.all()
-                    if w.status in ("done", "failed")
-                ]
+                done_workers = [w for w in session.worker_pool.all() if w.status in ("done", "failed")]
                 avg_s = (
                     sum(w.elapsed_s for w in done_workers) / len(done_workers)
-                    if done_workers
-                    else 300
+                    if done_workers else 300
                 )
-                remaining = total - done
+                remaining = total - done_count
                 eta_seconds = int(avg_s * remaining) if remaining > 0 else 0
 
                 msg = json.dumps({
@@ -890,6 +1045,8 @@ async def status_loop():
                     "queue": tasks,
                     "progress_pct": progress_pct,
                     "eta_seconds": eta_seconds,
+                    "success_rate": success_rate,
+                    "schedule": session._schedule_dict(),
                 })
                 dead = []
                 for ws in session.status_subscribers:
@@ -900,13 +1057,11 @@ async def status_loop():
                 for ws in dead:
                     session.status_subscribers.remove(ws)
             except Exception:
-                pass  # Don't crash the loop
+                pass
 
 
 @app.on_event("startup")
 async def startup():
-    # Only create a default session when ORCHESTRATOR_PROJECT_DIR is explicitly set.
-    # Without it, users start fresh and pick a project via the + button in the UI.
     if os.environ.get("ORCHESTRATOR_PROJECT_DIR"):
         default_session = registry.create(str(PROJECT_DIR))
         default_session.start_watch()
@@ -950,7 +1105,74 @@ async def delete_session(session_id: str):
     return {"ok": True}
 
 
-# ─── REST: Project (backward compat, targets default session) ─────────────────
+# ─── REST: Scheduler ──────────────────────────────────────────────────────────
+
+@app.post("/api/sessions/{session_id}/schedule")
+async def set_schedule(session_id: str, body: dict):
+    """Schedule auto-start at HH:MM (24h). Past today => schedules for tomorrow."""
+    s = registry.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Session not found")
+    time_str = body.get("time", "")
+    now = datetime.now()
+    try:
+        h, m = map(int, time_str.split(":"))
+        scheduled = now.replace(hour=h, minute=m, second=0, microsecond=0)
+        if scheduled <= now:
+            scheduled += timedelta(days=1)
+        s._scheduled_start = scheduled
+        s._schedule_triggered = False
+        in_sec = int((scheduled - now).total_seconds())
+        return {"scheduled_at": scheduled.isoformat(), "in_seconds": in_sec}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid time format: {e}")
+
+
+@app.delete("/api/sessions/{session_id}/schedule")
+async def cancel_schedule(session_id: str):
+    s = registry.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Session not found")
+    s._scheduled_start = None
+    s._schedule_triggered = False
+    return {"ok": True}
+
+
+@app.get("/api/sessions/{session_id}/schedule")
+async def get_schedule(session_id: str):
+    s = registry.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if not s._scheduled_start:
+        return {"scheduled": False}
+    now = datetime.now()
+    return {
+        "scheduled": True,
+        "at": s._scheduled_start.isoformat(),
+        "in_seconds": max(0, int((s._scheduled_start - now).total_seconds())),
+        "triggered": s._schedule_triggered,
+    }
+
+
+# ─── REST: PROGRESS.md ────────────────────────────────────────────────────────
+
+@app.get("/api/sessions/{session_id}/progress-md")
+async def get_progress_md(session_id: str, chars: int = 3000):
+    """Return recent PROGRESS.md content for injection into orchestrate prompt."""
+    s = registry.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Session not found")
+    progress_file = s.project_dir / "PROGRESS.md"
+    if not progress_file.exists():
+        return {"content": ""}
+    try:
+        content = progress_file.read_text(errors="replace")
+        return {"content": content[-chars:] if len(content) > chars else content}
+    except Exception:
+        return {"content": ""}
+
+
+# ─── REST: Project (backward compat) ──────────────────────────────────────────
 
 @app.get("/api/project")
 async def get_project():
@@ -965,7 +1187,6 @@ async def switch_project(body: dict):
     new_path = Path(body["path"]).expanduser().resolve()
     if not new_path.is_dir():
         return {"error": f"Directory not found: {new_path}"}
-    # Remove old default session and replace with new one
     old = registry.default()
     if old:
         registry.remove(old.session_id)
@@ -998,10 +1219,6 @@ async def ws_chat(websocket: WebSocket, session: str | None = Query(default=None
 
     s.orchestrator.clients.append(websocket)
 
-    # Lazy-start orchestrator on first connection.
-    # Receive the initial resize message from the client first so the PTY
-    # spawns at the correct terminal dimensions (avoids welcome-screen
-    # rendering at the wrong size).
     if not s.orchestrator.is_alive():
         rows, cols = 24, 80
         try:
@@ -1059,10 +1276,14 @@ async def list_tasks(s: ProjectSession = Depends(_resolve_session)):
 
 @app.post("/api/tasks")
 async def create_task(body: dict, s: ProjectSession = Depends(_resolve_session)):
-    return await s.task_queue.add(
+    task = await s.task_queue.add(
         description=body["description"],
         model=body.get("model", "sonnet"),
     )
+    asyncio.ensure_future(
+        _score_task(task["id"], task["description"], s.task_queue._db_path, s.claude_dir)
+    )
+    return task
 
 
 @app.delete("/api/tasks/{task_id}")
@@ -1076,7 +1297,6 @@ async def import_proposed(
     body: dict = Body(default={}),
     s: ProjectSession = Depends(_resolve_session),
 ):
-    # If body contains inline ===TASK=== content, parse it directly (no file write needed)
     content = (body or {}).get("content")
     tasks = await s.task_queue.import_from_proposed(content=content)
     return {"imported": len(tasks), "tasks": tasks}
@@ -1085,14 +1305,19 @@ async def import_proposed(
 @app.post("/api/tasks/start-all")
 async def start_all(s: ProjectSession = Depends(_resolve_session)):
     tasks = await s.task_queue.list()
+    done_ids = {t["id"] for t in tasks if t["status"] == "done"}
     pending = [t for t in tasks if t["status"] in ("pending", "queued")]
     started = []
+    skipped_deps = []
     for task in pending:
+        if not _deps_met(task, done_ids):
+            skipped_deps.append(task["id"])
+            continue
         worker = await s.worker_pool.start_worker(
             task, s.task_queue, s.project_dir, s.claude_dir
         )
         started.append({"task_id": task["id"], "worker_id": worker.id})
-    return {"started": len(started), "workers": started}
+    return {"started": len(started), "workers": started, "skipped_deps": skipped_deps}
 
 
 @app.post("/api/tasks/retry-failed")
@@ -1114,62 +1339,6 @@ async def retry_failed(s: ProjectSession = Depends(_resolve_session)):
     return {"retried": len(retried), "task_ids": retried}
 
 
-@app.post("/api/tasks/merge-all-done")
-async def merge_all_done(s: ProjectSession = Depends(_resolve_session)):
-    """Create PRs for all done+pushed workers. Auto-merge orchestrator/task-* branches."""
-    candidates = [
-        w for w in s.worker_pool.all()
-        if w.status == "done" and w.auto_pushed and not w.pr_url
-    ]
-    results = []
-    for w in candidates:
-        branch = w._branch_name or w.branch_name
-        if not branch:
-            results.append({"worker_id": w.id, "error": "no branch name"})
-            continue
-
-        # Create PR
-        pr_proc = await asyncio.create_subprocess_exec(
-            "gh", "pr", "create", "--head", branch, "--base", "main", "--fill",
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-            cwd=str(s.project_dir),
-        )
-        try:
-            pr_out, pr_err = await asyncio.wait_for(pr_proc.communicate(), timeout=30)
-        except asyncio.TimeoutError:
-            results.append({"worker_id": w.id, "error": "timeout creating PR"})
-            continue
-
-        if pr_proc.returncode != 0:
-            results.append({"worker_id": w.id, "error": pr_err.decode(errors="replace").strip()})
-            continue
-
-        pr_url = pr_out.decode(errors="replace").strip()
-        w.pr_url = pr_url
-
-        # Auto-merge our own orchestrator branches
-        auto_merged = False
-        if branch.startswith("orchestrator/task-"):
-            merge_proc = await asyncio.create_subprocess_exec(
-                "gh", "pr", "merge", pr_url, "--squash", "--delete-branch", "--yes",
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-                cwd=str(s.project_dir),
-            )
-            try:
-                _, merge_err = await asyncio.wait_for(merge_proc.communicate(), timeout=30)
-                if merge_proc.returncode == 0:
-                    w.pr_merged = True
-                    auto_merged = True
-            except asyncio.TimeoutError:
-                pass
-
-        results.append({"worker_id": w.id, "pr_url": pr_url, "auto_merged": auto_merged})
-
-    created = sum(1 for r in results if r.get("pr_url"))
-    merged = sum(1 for r in results if r.get("auto_merged"))
-    return {"created": created, "merged": merged, "results": results}
-
-
 @app.post("/api/tasks/{task_id}/run")
 async def run_task(task_id: str, s: ProjectSession = Depends(_resolve_session)):
     task = await s.task_queue.get(task_id)
@@ -1177,10 +1346,30 @@ async def run_task(task_id: str, s: ProjectSession = Depends(_resolve_session)):
         return {"error": "Task not found"}
     if task["status"] not in ("pending", "queued"):
         return {"error": f"Task status is '{task['status']}', cannot run"}
+    deps = task.get("depends_on") or []
+    if deps:
+        all_tasks = await s.task_queue.list()
+        done_ids = {t["id"] for t in all_tasks if t["status"] == "done"}
+        unmet = [d for d in deps if d not in done_ids]
+        if unmet:
+            return {"error": f"Blocked by unfinished dependencies: {unmet}"}
     worker = await s.worker_pool.start_worker(
         task, s.task_queue, s.project_dir, s.claude_dir
     )
     return {"worker_id": worker.id}
+
+
+@app.post("/api/tasks/{task_id}/depends-on")
+async def set_task_depends_on(
+    task_id: str, body: dict, s: ProjectSession = Depends(_resolve_session)
+):
+    """Set the depends_on list for a task."""
+    task = await s.task_queue.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    depends_on = body.get("depends_on", [])
+    await s.task_queue.update(task_id, depends_on=depends_on)
+    return {"ok": True, "depends_on": depends_on}
 
 
 # ─── REST: Workers ────────────────────────────────────────────────────────────
@@ -1214,16 +1403,12 @@ async def resume_worker(worker_id: str, s: ProjectSession = Depends(_resolve_ses
 async def message_worker(
     worker_id: str, body: dict, s: ProjectSession = Depends(_resolve_session)
 ):
-    """Stop worker, inject a message, and restart with injected context."""
     w = s.worker_pool.get(worker_id)
     if not w:
         return {"error": "Worker not found"}
-
     user_message = body.get("message", "")
     original_desc = w.description
-
     await w.stop()
-
     new_desc = f"{original_desc}\n\n---\n**Additional context from user:**\n{user_message}"
     new_task = await s.task_queue.add(new_desc, w.model)
     new_worker = await s.worker_pool.start_worker(
@@ -1249,6 +1434,49 @@ async def get_worker_log(
         return {"log": f"Error reading log: {e}"}
 
 
+# ─── REST: Merge All Done → AI PR Pipeline ────────────────────────────────────
+
+@app.post("/api/tasks/merge-all-done")
+async def merge_all_done(s: ProjectSession = Depends(_resolve_session)):
+    """Create PRs for done+pushed workers. Auto-merge orchestrator branches."""
+    eligible = [
+        w for w in s.worker_pool.all()
+        if w.status == "done" and w.auto_pushed and not w.pr_url
+    ]
+    results = []
+    created = 0
+    merged = 0
+    for w in eligible:
+        branch = w.branch_name or f"orchestrator/task-{w.task_id}"
+        try:
+            pr_proc = await asyncio.create_subprocess_shell(
+                f'gh pr create --head {branch} --base main --fill',
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                cwd=str(s.project_dir),
+            )
+            pr_out, pr_err = await asyncio.wait_for(pr_proc.communicate(), timeout=60)
+            if pr_proc.returncode != 0:
+                results.append({"worker_id": w.id, "error": pr_err.decode().strip()})
+                continue
+            pr_url = pr_out.decode().strip()
+            w.pr_url = pr_url
+            created += 1
+            if branch.startswith("orchestrator/task-"):
+                merge_proc = await asyncio.create_subprocess_shell(
+                    f'gh pr merge {pr_url} --squash --delete-branch',
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                    cwd=str(s.project_dir),
+                )
+                await asyncio.wait_for(merge_proc.communicate(), timeout=60)
+                if merge_proc.returncode == 0:
+                    w.pr_merged = True
+                    merged += 1
+            results.append({"worker_id": w.id, "pr_url": pr_url})
+        except Exception as e:
+            results.append({"worker_id": w.id, "error": str(e)})
+    return {"created": created, "merged": merged, "results": results}
+
+
 # ─── REST: Usage ──────────────────────────────────────────────────────────────
 
 def _get_usage() -> dict:
@@ -1256,7 +1484,6 @@ def _get_usage() -> dict:
     today_str = date.today().isoformat()
     cutoff = datetime.now() - timedelta(hours=24)
 
-    # Defaults
     daily: list[dict] = []
     last_updated = "?"
     total_sessions = 0
@@ -1279,7 +1506,6 @@ def _get_usage() -> dict:
         except Exception:
             pass
 
-    # Supplement today's data from JSONL files (for dates after lastComputedDate)
     today_messages = 0
     today_sessions: set[str] = set()
     today_tool_calls = 0
@@ -1309,7 +1535,6 @@ def _get_usage() -> dict:
             except Exception:
                 pass
 
-    # Build today entry: prefer JSONL live data if stats are stale
     cached_today = next((e for e in daily if e["date"] == today_str), None)
     if today_messages > 0 or cached_today is None:
         today_entry = {
@@ -1358,4 +1583,5 @@ async def get_status(s: ProjectSession = Depends(_resolve_session)):
         "progress_pct": int(done / total * 100) if total > 0 else 0,
         "orchestrator_alive": s.orchestrator.is_alive(),
         "session_id": s.session_id,
+        "schedule": s._schedule_dict(),
     }
