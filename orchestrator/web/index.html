@@ -1087,11 +1087,11 @@ function updateProgress(pct, eta) {
 
 // ─── Task actions ────────────────────────────────────────────────────────────
 async function runTask(id) {
-  await fetch(`/api/tasks/${id}/run`, { method: 'POST' });
+  await fetch(`/api/tasks/${id}/run?session=${activeSessionId}`, { method: 'POST' });
 }
 
 async function deleteTask(id) {
-  await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
+  await fetch(`/api/tasks/${id}?session=${activeSessionId}`, { method: 'DELETE' });
 }
 
 async function addTask() {
@@ -1099,11 +1099,15 @@ async function addTask() {
   const model = document.getElementById('newTaskModel').value;
   if (!desc) return;
 
-  // If it's ===TASK=== format, save to proposed-tasks.md and import
+  // If it's ===TASK=== format, send content to server then import
   if (desc.includes('===TASK===')) {
-    await fetch('/api/tasks/import-proposed', { method: 'POST' });
+    await fetch(`/api/tasks/import-proposed?session=${activeSessionId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: desc }),
+    });
   } else {
-    await fetch('/api/tasks', {
+    await fetch(`/api/tasks?session=${activeSessionId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ description: desc, model }),
@@ -1113,7 +1117,7 @@ async function addTask() {
 }
 
 async function importProposedToQueue() {
-  const res = await fetch('/api/tasks/import-proposed', { method: 'POST' });
+  const res = await fetch(`/api/tasks/import-proposed?session=${activeSessionId}`, { method: 'POST' });
   const data = await res.json();
   showToast(`Imported ${data.imported} tasks from proposed-tasks.md`);
 }
@@ -1125,11 +1129,11 @@ function toggleAddTask() {
 
 // ─── Worker actions ──────────────────────────────────────────────────────────
 async function pauseWorker(id) {
-  await fetch(`/api/workers/${id}/pause`, { method: 'POST' });
+  await fetch(`/api/workers/${id}/pause?session=${activeSessionId}`, { method: 'POST' });
 }
 
 async function resumeWorker(id) {
-  await fetch(`/api/workers/${id}/resume`, { method: 'POST' });
+  await fetch(`/api/workers/${id}/resume?session=${activeSessionId}`, { method: 'POST' });
 }
 
 function openWorkerChat(id, name) {
@@ -1160,7 +1164,7 @@ async function refreshWorkerLog() {
   if (!activeLogWorkerId) return;
   const el = document.getElementById('workerLogContent');
   try {
-    const res = await fetch(`/api/workers/${activeLogWorkerId}/log?lines=200`);
+    const res = await fetch(`/api/workers/${activeLogWorkerId}/log?lines=200&session=${activeSessionId}`);
     const data = await res.json();
     el.textContent = data.log || '(empty log)';
     el.scrollTop = el.scrollHeight;
@@ -1179,7 +1183,7 @@ async function sendWorkerMessage() {
   const msg = document.getElementById('workerChatInput').value.trim();
   if (!msg) return;
 
-  await fetch(`/api/workers/${activeWorkerId}/message`, {
+  await fetch(`/api/workers/${activeWorkerId}/message?session=${activeSessionId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message: msg }),
@@ -1229,14 +1233,14 @@ async function editProposed() {
 async function confirmProposed() {
   document.getElementById('proposedOverlay').classList.add('hidden');
   // Import then start all
-  await fetch('/api/tasks/import-proposed', { method: 'POST' });
-  const res = await fetch('/api/tasks/start-all', { method: 'POST' });
+  await fetch(`/api/tasks/import-proposed?session=${activeSessionId}`, { method: 'POST' });
+  const res = await fetch(`/api/tasks/start-all?session=${activeSessionId}`, { method: 'POST' });
   const data = await res.json();
   showToast(`Started ${data.started} workers`);
 }
 
 async function runAllTasks() {
-  const res = await fetch('/api/tasks/start-all', { method: 'POST' });
+  const res = await fetch(`/api/tasks/start-all?session=${activeSessionId}`, { method: 'POST' });
   const data = await res.json();
   showToast(`Started ${data.started} worker${data.started !== 1 ? 's' : ''}`);
 }

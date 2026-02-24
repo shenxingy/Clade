@@ -152,11 +152,23 @@ class TaskQueue:
                     continue
                 lines = block.splitlines()
                 model = "sonnet"
+                timeout = 600
+                retries = 2
                 desc_lines = []
                 in_header = True
                 for line in lines:
                     if in_header and line.startswith("model:"):
                         model = line.split(":", 1)[1].strip()
+                    elif in_header and line.startswith("timeout:"):
+                        try:
+                            timeout = int(line.split(":", 1)[1].strip())
+                        except Exception:
+                            pass
+                    elif in_header and line.startswith("retries:"):
+                        try:
+                            retries = int(line.split(":", 1)[1].strip())
+                        except Exception:
+                            pass
                     elif in_header and line.strip() == "---":
                         in_header = False
                     elif not in_header:
@@ -167,6 +179,8 @@ class TaskQueue:
                         "id": str(uuid.uuid4())[:8],
                         "description": description,
                         "model": model,
+                        "timeout": timeout,
+                        "retries": retries,
                         "status": "pending",
                         "worker_id": None,
                         "started_at": None,
@@ -211,6 +225,7 @@ class Worker:
         self.verified: bool = False
         self.auto_committed: bool = False
         self._verify_triggered: bool = False
+        self.task_timeout: int = 600  # default 10 min
 
     @property
     def elapsed_s(self) -> int:
@@ -242,7 +257,7 @@ class Worker:
         task_file.write_text(self.description)
 
         shell_cmd = (
-            f'claude -p "$(cat {task_file})" --dangerously-skip-permissions'
+            f'claude -p "$(cat {task_file})" --model {self.model} --dangerously-skip-permissions'
         )
 
         log_fd = open(self._log_path, "w")
@@ -355,29 +370,38 @@ class Worker:
             "Output ONLY one of those two responses, nothing else."
         )
 
-        # Run claude verification
-        verify_proc = await asyncio.create_subprocess_shell(
-            f'claude -p "{verify_prompt.replace(chr(34), chr(39))}" --dangerously-skip-permissions',
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
-            cwd=str(self._project_dir),
-        )
+        # Run claude verification via temp file to avoid shell injection
+        verify_file = self._claude_dir / f"verify-{self.id}.md"
+        verify_file.write_text(verify_prompt)
         try:
-            v_out, _ = await asyncio.wait_for(verify_proc.communicate(), timeout=120)
-            result = v_out.decode().strip()
-        except asyncio.TimeoutError:
-            return False
+            verify_proc = await asyncio.create_subprocess_shell(
+                f'claude -p "$(cat {verify_file})" --model haiku --dangerously-skip-permissions',
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+                cwd=str(self._project_dir),
+            )
+            try:
+                v_out, _ = await asyncio.wait_for(verify_proc.communicate(), timeout=120)
+                result = v_out.decode().strip()
+            except asyncio.TimeoutError:
+                return False
+        finally:
+            verify_file.unlink(missing_ok=True)
 
         if "VERIFIED_OK" not in result:
             return False
 
         self.verified = True
 
-        # Commit using committer script
+        # Commit using committer script (with fallback to plain git commit)
         commit_msg = f"feat: {task_first_line.lower()}"
         files_arg = " ".join(f'"{f}"' for f in changed_files[:20])
         committer_path = Path.home() / ".claude/scripts/committer.sh"
+        if committer_path.exists():
+            commit_cmd = f'bash {committer_path} "{commit_msg}" {files_arg}'
+        else:
+            commit_cmd = f'git add {files_arg} && git commit -m "{commit_msg}"'
         commit_proc = await asyncio.create_subprocess_shell(
-            f'bash {committer_path} "{commit_msg}" {files_arg}',
+            commit_cmd,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
             cwd=str(self._project_dir),
         )
@@ -416,6 +440,7 @@ class WorkerPool:
             project_dir,
             claude_dir,
         )
+        worker.task_timeout = task.get("timeout", 600)
         self.workers[worker.id] = worker
         await task_queue.update(task["id"], status="running", worker_id=worker.id)
         await worker.start()
@@ -429,6 +454,17 @@ class WorkerPool:
 
     async def poll_all(self, task_queue: TaskQueue) -> None:
         for w in list(self.workers.values()):
+            # Timeout enforcement
+            if w.status == "running" and w.task_timeout and w.task_timeout > 0 and w.elapsed_s > w.task_timeout:
+                await w.stop()
+                w.status = "failed"
+                await task_queue.update(
+                    w.task_id,
+                    status="failed",
+                    elapsed_s=w.elapsed_s,
+                    last_commit=w.last_commit,
+                )
+                continue
             await w.poll()
             if w.status in ("done", "failed"):
                 await task_queue.update(
@@ -641,6 +677,7 @@ async def _check_blockers(session: ProjectSession) -> None:
     if running:
         newest = max(running, key=lambda w: w.started_at)
         newest.status = "blocked"
+        await session.task_queue.update(newest.task_id, status="blocked")
 
 
 # ─── Status broadcast loop ────────────────────────────────────────────────────
