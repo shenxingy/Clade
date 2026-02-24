@@ -224,6 +224,54 @@ The fastest way to go from idea to parallel execution. One chat session with an 
 
 **No build step.** Single HTML file + FastAPI backend. Requires Python 3.9+.
 
+#### GUI Settings Reference
+
+Open the **⚙ Settings** panel (top-right of the Web UI) to configure:
+
+| Setting | Default | Effect |
+|---------|---------|--------|
+| Auto-start workers | ON | Workers launch immediately when `proposed-tasks.md` is written |
+| Auto-push | ON | Push to feature branch after each commit |
+| Auto-merge | ON | Squash-merge `orchestrator/task-*` PRs automatically |
+| Auto-review | ON | Post AI code review comment on each PR |
+| **Oracle validation** | OFF | Haiku independently reviews each diff before push — catches "completed but wrong" silently; rejects bad pushes |
+| **Auto model routing** | OFF | Picks model by scout score: score ≥80 → haiku, 50-79 → sonnet, <50 → sonnet + ask-first warning |
+| **Context budget warnings** | ON | Token bar on every worker card (green → amber at 120K → red at 160K); writes `.claude/context-warning-{id}.md` with `/compact` instructions |
+| **AGENTS.md → Generate** | — | Builds file→branch ownership map from `git log`; copy output to `.claude/AGENTS.md` to prevent cross-worker collisions |
+
+#### Broadcast to All Workers
+
+When all running workers need the same correction mid-run, use the **→ All Workers** bar visible at the top of the workers section in Execute mode:
+
+```
+Example: "The DB schema changed — column is now user_id not userId"
+→ All running workers stop, receive the message as prepended context, and restart
+```
+
+Useful when you realize a global constraint changed and every worker needs to know.
+
+#### Iteration Loop (Autonomous Refinement)
+
+Closes the review → fix → verify feedback loop for any iterative artifact (papers, code audits, content QA).
+
+```
+1. Execute mode → Loop section
+2. Enter: artifact path = paper.tex  (or server.py, README.md, etc.)
+           codebase dir = ./src       (optional, for DATA_CHECK workers)
+           K = 2, N = 3               (converge when ≤2 changes for 3 consecutive iters)
+
+3. ▶ Start Loop — the supervisor:
+     FIXABLE   → spawns a worker to fix it automatically
+     DATA_CHECK → spawns a read-only worker to verify a claim against your codebase
+     DEFERRED  → adds to the accordion below (requires human review — never auto-fixed)
+     CONVERGED → loop ends, toast fires
+
+4. After all workers finish → count changes → check convergence → repeat
+5. Converged? Review deferred items in the accordion.
+```
+
+The loop runs fully unattended. Set `max_iterations` in Settings as a safety cap.
+
 ---
 
 ## Overnight Autonomous Operation
@@ -300,11 +348,22 @@ The `pre-tool-guardian.sh` hook protects unattended runs: database migrations, c
 | `session-context.sh` | SessionStart | None (shell only) |
 | `pre-tool-guardian.sh` | PreToolUse (Bash) | None (shell only) |
 | `post-edit-check.sh` | PostToolUse (Edit/Write) | None (shell only) |
+| `post-tool-use-lint.sh` | PostToolUse (Edit/Write) | None (shell only) |
 | `correction-detector.sh` | UserPromptSubmit | None (shell only) |
 | `verify-task-completed.sh` | TaskCompleted | None (shell only) |
 | `notify-telegram.sh` | Notification | None (shell only) |
 
 All hooks are shell scripts — zero API cost, sub-second execution.
+
+**`post-tool-use-lint.sh`** runs your project's `verify_cmd` after every file edit. On failure it writes `.claude/lint-feedback.md` and exits with code 2 — Claude sees the error output and fixes it in the next turn. Configure via `.claude/orchestrator.json`:
+
+```json
+{
+  "verify_cmd": "python3 -m py_compile src/main.py"
+}
+```
+
+Common values: `"tsc --noEmit"` (TypeScript), `"python3 -m py_compile <file>"` (Python), `"cargo check"` (Rust), `"go build ./..."` (Go). Leave unset to disable.
 
 ### Agents (specialized sub-agents)
 
@@ -328,6 +387,15 @@ Claude auto-selects agents. Haiku agents are fast and cheap for mechanical check
 **`/sync`** reviews recent git history, checks off completed TODO items, and appends a session summary to PROGRESS.md. Does not commit — run `/commit` after to commit everything.
 
 **`/commit`** analyzes all uncommitted changes, groups files into logical commits by module (schema, API, frontend, config, docs, etc.), generates commit messages, shows the plan for confirmation, then executes and pushes by default. `--no-push` skips push; `--dry-run` shows the plan only.
+
+**`/orchestrate`** now includes:
+- **Step 0**: reads `PROGRESS.md` (last 3000 chars) + `.claude/AGENTS.md` before planning — avoids past mistakes and respects existing file ownership
+- **Enhanced task template**: every task gets `verify_cmd`, `own_files`, `forbidden_files`, acceptance checklist, Context Management (`/compact` at 75%), and Commit Rules blocks auto-filled
+- **Step 3.5**: auto-generates `.claude/AGENTS.md` from task `own_files` after writing `proposed-tasks.md` — workers see who owns what before starting
+
+**`/batch-tasks`** now:
+- **Reads AGENTS.md** before planning: injects file ownership into each task description; flags overlapping file claims for review
+- **Configurable scout threshold**: set `"scout_threshold": 50` in `.claude/orchestrator.json` — tasks below the threshold are written to `.claude/low-score-tasks.md` instead of executed
 
 **`/model-research`** searches the web for latest Claude model announcements, benchmarks, and pricing. Compares against the current guide and shows what changed. With `--apply`, updates `docs/research/models.md`, the session-context model guidance, and batch-tasks model assignment criteria.
 
