@@ -1,5 +1,68 @@
 # Progress Log
 
+---
+
+### 2026-02-23 — P1: SQLite persistence, scheduler, scout scoring, PROGRESS.md injection
+
+**What was done:**
+- `server.py`: Rewrote `TaskQueue` to use aiosqlite — tasks stored in `.claude/tasks.db`
+  - Auto-migrates from `task-queue.json` on first run (renames to `.json.migrated`)
+  - History-preserving: done/failed tasks kept in DB, only removed by explicit delete
+  - New fields: `depends_on` (JSON array), `score` (int 0-100), `score_note` (string)
+- `server.py`: Background `_score_task()` coroutine — runs claude-haiku after task import to score readiness
+  - Parses JSON `{"score": <int>, "note": "<str>"}` from model output
+  - Updates `tasks.score` and `tasks.score_note` via separate DB connection
+- `server.py`: Added scheduler state to `ProjectSession` (`_scheduled_start`, `_schedule_triggered`)
+  - `status_loop` checks if `now >= scheduled_start` each tick and auto-starts pending tasks
+  - Endpoints: `POST/DELETE/GET /api/sessions/{id}/schedule`
+- `server.py`: Added `GET /api/sessions/{id}/progress-md` endpoint (returns last 3000 chars)
+- `server.py`: `_deps_met()` helper; `start-all` and `run_task` skip tasks with unmet deps
+- `index.html`: History section — collapsible "History" list showing done/failed tasks with success rate
+- `index.html`: Scheduler bar — ⏰ time picker, Set/Cancel buttons, countdown display (execute mode only)
+- `index.html`: Score badges on task cards — green (≥80) / yellow (≥50) / red (<50) / pending (…)
+- `index.html`: `sendOrchestrate()` now async — fetches PROGRESS.md and prepends as context prefix
+- `index.html`: `setMode()` calls `updateSchedulerDisplay(_lastSchedule)` to sync bar on mode switch
+
+**What worked:**
+- Lazy `_ensure_db()` pattern — async init without changing synchronous `__init__`
+- `asyncio.ensure_future(_score_task(...))` for non-blocking background scoring after import
+- Caching `_lastSchedule` in JS so `setMode()` can re-render scheduler bar without a fresh fetch
+- `[PROGRESS.md — recent lessons]\n{content}\n---\n` prefix format is clear to the orchestrator model
+
+**Lessons:**
+- aiosqlite `row_factory = aiosqlite.Row` enables `dict(row)` conversion — cleaner than manual column mapping
+- Write tool rejects writes when file was read in multiple partial reads (tracks single read operation). Workaround: write via Bash subagent using Python
+- sqlite3 JSON is stored as text; parse with `json.loads()` on read, `json.dumps()` on write
+- Scheduler bar must be hidden in plan mode — `updateSchedulerDisplay` checks `currentMode` but `setMode` must also call it (with cached data) to sync visibility on mode switch
+
+---
+
+### 2026-02-23 — P3: Dependency graph view + Worker resource limits
+
+**What was done:**
+- `server.py`: Added `GLOBAL_SETTINGS` (max_workers, persisted to `~/.claude/orchestrator-settings.json`)
+- `server.py`: Added `depends_on: []` field to every task in `TaskQueue.add()`
+- `server.py`: Added `PATCH /api/tasks/{task_id}` endpoint to update `depends_on`, `description`, `model`
+- `server.py`: Added `GET/POST /api/settings` endpoints for global settings
+- `server.py`: Modified `start-all` — skips tasks with unmet dependencies; enforces max_workers slot limit
+- `server.py`: `status_loop` now auto-starts newly unblocked tasks when dependencies complete (within max_workers limit)
+- `index.html`: Settings panel (⚙ button in header) — max_workers input, synced to `/api/settings`
+- `index.html`: `⬡ DAG` toggle button in task queue header — switches between list view and SVG DAG view
+- `index.html`: SVG DAG visualization — topological layout, bezier edges, colored nodes by status, green edges for satisfied deps
+- `index.html`: Interaction — click to select a task, Ctrl+click to add `depends_on` (calls PATCH endpoint)
+- `index.html`: Task cards show `⏳ blocked` badge when dependencies aren't done
+
+**What worked:**
+- Topological sort with cycle guard (visiting set) is correct and handles all edge cases
+- Optimistic update in `dagClick` (update local `task.depends_on` immediately) gives snappy UX without waiting for WebSocket refresh
+- Debounced `saveSettings()` prevents spamming the API on every keystroke
+- `status_loop` auto-start is gated by `t.get("depends_on")` — tasks without deps are unaffected (they start via start-all)
+
+**Lessons:**
+- `depends_on` migration is seamless: existing tasks without the field get `.get("depends_on", [])` defaulting to `[]`
+- SVG DAG needs `min-width` on the container to scroll horizontally when there are many dependency levels
+- `PATCH /api/tasks/{task_id}` ordering matters: must appear BEFORE `POST /api/tasks/import-proposed` in FastAPI route registration to avoid routing conflicts with the static route `/api/tasks/{task_id}`
+
 Hard-won insights from building and maintaining this toolkit.
 
 ---

@@ -72,13 +72,13 @@ Three slash skills that make the PR lifecycle AI-native — parallel to OpenClaw
 
 Current blind retry wastes worker time repeating the same mistake.
 
-- [ ] **Capture failure context** when worker exits with non-zero code
+- [x] **Capture failure context** when worker exits with non-zero code
   - Extract last 50 lines of worker log as `error_summary`
   - Store in task record: `failed_reason`
-- [ ] **Inject failure context into retry task**
+- [x] **Inject failure context into retry task**
   - Retry task description = original description + `\n\n---\nPrevious attempt failed:\n{error_summary}\nDo NOT repeat the same approach.`
   - Max retries configurable per task (default: 2)
-- [ ] **"Retry All Failed" button** in Execute mode
+- [x] **"Retry All Failed" button** in Execute mode
   - One click to requeue all failed tasks with their error context injected
   - No need to manually inspect each failure and re-create tasks
 
@@ -88,14 +88,13 @@ Current blind retry wastes worker time repeating the same mistake.
 
 JSON files lose history on server restart and can't be queried across projects.
 
-- [ ] **Migrate from JSON to SQLite** (`aiosqlite`)
-  - Tables: `projects`, `tasks`, `workers`, `commits`
-  - `tasks` retains history (done/failed tasks not deleted, just marked)
-  - `commits` tracks: hash, branch, committed_at, pushed_at, merged_at
-- [ ] **Task history view** in Execute mode
-  - Expandable "Done" section showing all completed tasks with outcomes
-  - Success rate per project (done / total attempted)
-- [ ] **Cross-session persistence**: task queue survives server restart
+- [x] **Migrate from JSON to SQLite** (`aiosqlite`)
+  - Tables: `tasks` (history-preserving — done/failed tasks kept, just marked)
+  - Auto-migrates from `task-queue.json` on first startup
+- [x] **Task history view** in Execute mode
+  - Expandable "History" section showing done/failed tasks
+  - Success rate per project (done / total attempted) shown in header
+- [x] **Cross-session persistence**: task queue survives server restart
 
 ---
 
@@ -103,12 +102,12 @@ JSON files lose history on server restart and can't be queried across projects.
 
 Workers currently run "blind" without knowing the project's tech stack or constraints.
 
-- [ ] **Auto-inject CLAUDE.md into task description**
+- [x] **Auto-inject CLAUDE.md into task description**
   - When a task is created for a project, prepend the project's `.claude/CLAUDE.md` content
   - Worker knows the stack, conventions, and what NOT to do before it starts
-- [ ] **Task dependency support** (`depends_on: [task_id]`)
+- [x] **Task dependency support** (`depends_on: [task_id]`)
   - Scheduler holds dependent tasks in "waiting" state until dependencies are done
-  - In Plan mode: drag a task onto another to set dependency (visual arrow)
+  - DAG view in Plan mode — click node, Ctrl+click to add dependency edge
   - Prevents "write frontend calls" starting before "write API" is done
 
 ---
@@ -146,11 +145,11 @@ One-time configuration so every session runs the same way without manual setup.
 
 North star is "run overnight, wake up to commits" — this is P1, not a nice-to-have.
 
-- [ ] **"Start at HH:MM" scheduler** in Execute mode header
+- [x] **"Start at HH:MM" scheduler** in Execute mode header
   - User sets time → server queues start; workers auto-launch at scheduled time
-  - Persists across server restart (SQLite)
-  - UI shows countdown: "Starting in 4h 23m"
+  - UI shows countdown: "Starting in 4h 23m" with cancel button
 - [ ] **Auto-stop when queue empty**: server stays up but workers idle; no runaway costs
+- [ ] **Persist schedule across server restart** (SQLite — currently in-memory only)
 
 ---
 
@@ -160,11 +159,11 @@ Poor task descriptions = high failure rate. Close the loop so each batch makes t
 
 - [ ] **Post-merge summary injection**: after `/merge-pr`, extract worker log summary + PR diff → append to project `PROGRESS.md` as a lesson entry
   - Format: `### [date] Task: {task title}\n- What worked: ...\n- Watch out for: ...`
-- [ ] **PROGRESS.md fed into Orchestrate**: when `⚡ Orchestrate` is triggered, prepend recent PROGRESS.md entries to the orchestrator prompt
-  - Orchestrator learns from past failures → generates better task descriptions next time
-- [ ] **Scout readiness scoring** (ported from batch-tasks): score each proposed task 0-100 before starting
-  - Score < 50 → flag in UI as "needs clarification" before worker starts
-  - Score shown on task card: `[87/100] ✓ ready`
+- [x] **PROGRESS.md fed into Orchestrate**: when `⚡ Orchestrate` is triggered, prepend recent PROGRESS.md entries to the orchestrator prompt
+  - Fetches `/api/sessions/{id}/progress-md` (last 3000 chars) and prepends to terminal input
+- [x] **Scout readiness scoring**: score each proposed task 0-100 before starting
+  - Background `_score_task()` coroutine uses claude-haiku after import
+  - Score < 50 → red badge on task card; ≥ 80 → green; shown on every queue item
 
 ---
 
@@ -186,8 +185,8 @@ OpenClaw's velocity comes from agents committing every sub-step, not just at tas
 
 ## P3 — Advanced Scheduling
 
-- [ ] **Dependency graph view**: visual DAG of task dependencies in Plan mode
-- [ ] **Worker resource limits**: max N workers across all projects (prevents API rate limiting)
+- [x] **Dependency graph view**: visual DAG of task dependencies in Plan mode
+- [x] **Worker resource limits**: max N workers across all projects (prevents API rate limiting)
 
 ---
 
