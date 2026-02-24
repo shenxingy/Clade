@@ -2,6 +2,28 @@
 
 ---
 
+### 2026-02-24 — Security & correctness round 4: 6 backend + 5 frontend fixes
+
+**What was done:**
+- `server.py`: `verify_and_commit` TimeoutError now kills subprocess (was the only remaining unpatched timeout path)
+- `server.py`: `post_settings` key allowlist — only `_SETTINGS_DEFAULTS` keys accepted; arbitrary injection blocked
+- `server.py`: `create_task`/`create_session`/`switch_project` — `body["key"]` → `.get()` + `HTTPException(400)`; `{"error":...}` 200 responses → `HTTPException(400)`
+- `server.py`: `_run_supervisor` supervisor subprocess now kill+drain on TimeoutError
+- `server.py`: `upsert_loop` INSERT now includes `mode` column — plan_build mode no longer silently reverts to 'review' on first start
+- `server.py`: `wt_proc2` in `Worker.start()` now kill+drain on TimeoutError
+- `index.html`: `runAllTasks()` / `retryAllFailed()` — button disabled during fetch (double-submit prevention)
+- `index.html`: `broadcastAll()` — button disabled during fetch; `broadcastBtn` id added to HTML
+- `index.html`: keyboard shortcut listener now skips when xterm `.xterm-helper-textarea` has focus
+- `index.html`: `updateLoopUI()` syncs loopArtifact/contextDir/K/N from live loop_state on page reload; `_userEdited` flag prevents overwriting manual edits
+- `index.html`: `renderHistory` t.status now wrapped in `esc()` for CSS class + inner text
+
+**Lessons:**
+- When applying a "kill subprocess on TimeoutError" fix, audit EVERY `asyncio.wait_for(proc.communicate(), ...)` call in the file — it's easy to fix the obvious ones and miss one in a utility function like `verify_and_commit`.
+- Settings endpoints that accept arbitrary dicts must validate against a known-good key set before merging into global state — `dict.update(body)` is never safe.
+- xterm.js captures keyboard input via a hidden `<textarea class="xterm-helper-textarea">` — checking `document.activeElement.tagName` for INPUT/TEXTAREA is insufficient because xterm also uses a textarea but it's the `document.activeElement`.
+
+---
+
 ### 2026-02-24 — Security & correctness round 3: 8 backend + 5 frontend fixes
 
 **What was done:**
