@@ -142,9 +142,50 @@ One-time configuration so every session runs the same way without manual setup.
 
 ---
 
+## P1 — Scheduled Overnight Runs
+
+North star is "run overnight, wake up to commits" — this is P1, not a nice-to-have.
+
+- [ ] **"Start at HH:MM" scheduler** in Execute mode header
+  - User sets time → server queues start; workers auto-launch at scheduled time
+  - Persists across server restart (SQLite)
+  - UI shows countdown: "Starting in 4h 23m"
+- [ ] **Auto-stop when queue empty**: server stays up but workers idle; no runaway costs
+
+---
+
+## P1 — Task Quality Feedback Loop
+
+Poor task descriptions = high failure rate. Close the loop so each batch makes the next one better.
+
+- [ ] **Post-merge summary injection**: after `/merge-pr`, extract worker log summary + PR diff → append to project `PROGRESS.md` as a lesson entry
+  - Format: `### [date] Task: {task title}\n- What worked: ...\n- Watch out for: ...`
+- [ ] **PROGRESS.md fed into Orchestrate**: when `⚡ Orchestrate` is triggered, prepend recent PROGRESS.md entries to the orchestrator prompt
+  - Orchestrator learns from past failures → generates better task descriptions next time
+- [ ] **Scout readiness scoring** (ported from batch-tasks): score each proposed task 0-100 before starting
+  - Score < 50 → flag in UI as "needs clarification" before worker starts
+  - Score shown on task card: `[87/100] ✓ ready`
+
+---
+
+## P0 — Granular Commit Injection
+
+OpenClaw's velocity comes from agents committing every sub-step, not just at task end.
+
+- [ ] **Inject commit discipline into every worker task description**
+  - Append to every task before sending to worker:
+    ```
+    ## Commit Rules
+    Commit after each logical unit of work — don't accumulate.
+    Each commit must be self-contained and buildable.
+    Use: committer "type: message" file1 file2
+    ```
+  - This goes into the CLAUDE.md prepend block, not the task body — applies universally
+
+---
+
 ## P3 — Advanced Scheduling
 
-- [ ] **Scheduled runs**: "Start at 11pm" — queue tasks, workers auto-start at scheduled time
 - [ ] **Dependency graph view**: visual DAG of task dependencies in Plan mode
 - [ ] **Worker resource limits**: max N workers across all projects (prevents API rate limiting)
 
