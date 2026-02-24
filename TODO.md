@@ -254,7 +254,7 @@ After `verify_and_commit()` passes but before auto-push, send diff + task descri
 ### PLANNING/BUILDING Loop Phase Distinction
 Upgrade the existing iteration loop to match the proven ralph-loop pattern.
 - [x] Loop config: add `mode` field — `"review"` (current default) | `"plan_build"`
-- [ ] In `plan_build` mode, `_run_supervisor()` runs two sub-phases:
+- [x] In `plan_build` mode, `_run_supervisor()` runs two sub-phases:
   - **PLAN phase**: supervisor reads artifact + codebase context → writes `IMPLEMENTATION_PLAN.md` to artifact dir → no workers spawned yet
   - **BUILD phase**: supervisor reads plan → picks top unfinished item → spawns one FIXABLE worker → marks item done → repeats until "STATUS: COMPLETE"
 - [x] UI: loop config shows mode selector when starting a loop
