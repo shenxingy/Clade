@@ -2,6 +2,29 @@
 
 ---
 
+### 2026-02-23 — fix: dead settings and UI bugs (auto_review, default_model, orchestrate, toast)
+
+**What was done:**
+- `server.py`: `auto_review` — implemented `_write_pr_review()` coroutine; fires after PR creation if setting is ON
+  - Gets PR diff via `gh pr diff`, calls haiku for 3-5 bullet review, posts via `gh pr comment`
+  - Fire-and-forget (`asyncio.ensure_future`), never blocks the merge pipeline
+- `server.py`: `default_model` — 3 callers now respect `GLOBAL_SETTINGS.get("default_model")`:
+  - `create_task` endpoint, `import_from_proposed()` parser default, `retry_failed` endpoint
+  - Pattern: `body.get("model") or GLOBAL_SETTINGS.get("default_model", "sonnet")`
+- `index.html`: Orchestrate button — removed unreliable 100ms `setTimeout`; both sends now go synchronously (PTY buffers and sequences them correctly)
+- `index.html`: run-complete toast — replaced global `window._runCompleteToasted` boolean with per-session Map; toast now fires per-project with project name in message
+
+**What worked:**
+- `or` pattern (`body.get("model") or GLOBAL_SETTINGS.get(...)`) correctly handles both `None` and empty string from callers
+- Fire-and-forget pattern (`asyncio.ensure_future`) keeps merge endpoint fast even with haiku review latency
+- PTY buffer sequencing: removing the setTimeout doesn't cause race conditions since the PTY serializes stdin reads naturally
+
+**Lessons:**
+- Settings that exist in `_SETTINGS_DEFAULTS` but have no runtime `GLOBAL_SETTINGS.get()` call are invisible bugs — adding a setting key is not enough; must audit every callsite that should use it
+- `setTimeout(..., 100)` as a "wait for PTY to process" is a smell — the PTY already buffers; the delay just introduces fragility
+
+---
+
 ### 2026-02-23 — P2: Multi-Project Dashboard + Settings Panel
 
 **What was done:**

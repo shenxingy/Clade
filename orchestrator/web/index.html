@@ -1379,12 +1379,15 @@ function openNewTabPicker() { openProjectPicker(); }
 
 // ─── Dashboard update ────────────────────────────────────────────────────────
 function updateDashboard(data) {
-  // Run-complete notification (one-shot per batch)
-  if (data.run_complete && !window._runCompleteToasted) {
-    window._runCompleteToasted = true;
-    showToast('✓ All tasks complete — queue empty');
+  // Run-complete notification (one-shot per session per batch)
+  if (!window._runCompleteToasted) window._runCompleteToasted = {};
+  const _sid = data.session_id;
+  if (data.run_complete && !window._runCompleteToasted[_sid]) {
+    window._runCompleteToasted[_sid] = true;
+    const _sname = sessions.find(s => s.session_id === _sid)?.name || 'session';
+    showToast(`✓ All tasks complete — ${_sname}`);
   }
-  if (!data.run_complete) window._runCompleteToasted = false;
+  if (!data.run_complete) delete window._runCompleteToasted[_sid];
 
   // Always update badge count for whichever session sent this status
   const s = sessions.find(s => s.session_id === data.session_id);
@@ -2072,13 +2075,11 @@ async function sendOrchestrate() {
   }
 
   if (promptText) {
+    // Send context first so it's in conversation history when /orchestrate fires.
+    // Both sends are buffered by the PTY and processed sequentially — no delay needed.
     pane.ws.send(JSON.stringify({ type: 'input', data: promptText + '\r' }));
-    setTimeout(() => {
-      pane.ws.send(JSON.stringify({ type: 'input', data: '/orchestrate\r' }));
-    }, 100);
-  } else {
-    pane.ws.send(JSON.stringify({ type: 'input', data: '/orchestrate\r' }));
   }
+  pane.ws.send(JSON.stringify({ type: 'input', data: '/orchestrate\r' }));
   document.getElementById('goalInput').value = '';
 }
 document.getElementById('goalInput')?.addEventListener('keydown', e => {
