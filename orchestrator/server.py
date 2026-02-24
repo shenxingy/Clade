@@ -1036,6 +1036,7 @@ class WorkerPool:
         claude_dir: Path,
     ) -> Worker:
         model = task.get("model", "sonnet")
+        description = task["description"]
         if GLOBAL_SETTINGS.get("auto_model_routing", False):
             score = task.get("score")
             if score is not None:
@@ -1043,11 +1044,17 @@ class WorkerPool:
                     model = "haiku"
                 elif score < 50:
                     model = "sonnet"
+                    description = (
+                        "⚠ This task scored low on readiness (<50). "
+                        "Ask clarifying questions before writing any code. "
+                        "Do NOT start implementing until requirements are clear.\n\n"
+                        + description
+                    )
                 if task.get("is_critical_path"):
                     model = {"haiku": "sonnet", "sonnet": "opus"}.get(model, model)
         worker = Worker(
             task["id"],
-            task["description"],
+            description,
             model,
             project_dir,
             claude_dir,
