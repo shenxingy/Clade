@@ -9,8 +9,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="$SCRIPT_DIR/.venv"
 PORT="${ORCHESTRATOR_PORT:-8765}"
-# Project dir = where you invoke start.sh from (or override with --project)
-PROJECT_DIR="${ORCHESTRATOR_PROJECT_DIR:-$(pwd)}"
+# Project dir: must be set explicitly via --project or ORCHESTRATOR_PROJECT_DIR.
+# No default — users pick a project from the UI when none is specified.
+PROJECT_DIR="${ORCHESTRATOR_PROJECT_DIR:-}"
 
 # Parse args
 while [[ $# -gt 0 ]]; do
@@ -62,7 +63,11 @@ fi
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "Claude Code Orchestrator"
-echo "Project: $PROJECT_DIR"
+if [[ -n "$PROJECT_DIR" ]]; then
+  echo "Project: $PROJECT_DIR"
+else
+  echo "Project: (none — pick one via the + button)"
+fi
 echo "URL: http://localhost:$PORT"
 echo "Press Ctrl+C to stop."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -97,5 +102,7 @@ else
 fi
 echo ""
 
-ORCHESTRATOR_PROJECT_DIR="$PROJECT_DIR" \
-  "$VENV_DIR/bin/uvicorn" server:app --port "$PORT" --host "$BIND_HOST"
+if [[ -n "$PROJECT_DIR" ]]; then
+  export ORCHESTRATOR_PROJECT_DIR="$PROJECT_DIR"
+fi
+"$VENV_DIR/bin/uvicorn" server:app --port "$PORT" --host "$BIND_HOST"

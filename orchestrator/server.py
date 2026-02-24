@@ -694,9 +694,11 @@ async def status_loop():
 
 @app.on_event("startup")
 async def startup():
-    # Create default session from PROJECT_DIR; orchestrator lazy-started on first WS connect
-    default_session = registry.create(str(PROJECT_DIR))
-    default_session.start_watch()
+    # Only create a default session when ORCHESTRATOR_PROJECT_DIR is explicitly set.
+    # Without it, users start fresh and pick a project via the + button in the UI.
+    if os.environ.get("ORCHESTRATOR_PROJECT_DIR"):
+        default_session = registry.create(str(PROJECT_DIR))
+        default_session.start_watch()
     asyncio.ensure_future(status_loop())
 
 
