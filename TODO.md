@@ -10,16 +10,16 @@
 
 - [x] **Oracle rejection → auto-requeue** — after oracle rejects + `git reset HEAD~1`, call `task_queue.add(original_desc + rejection_reason)` and start a new worker
   - Location: `verify_and_commit()` oracle rejection block
-- [ ] **Context budget auto-inject** — in `poll_all`, if `context-warning-{id}.md` exists, inject via worker PTY stdin
-  - Currently the file is written but never sent to the running worker
+- [x] **Context budget auto-inject** — `context_warning` bool in worker to_dict() for UI badge; workers use `claude -p` (non-interactive) so stdin injection not possible without architecture change
+  - File-based warning still written; `context_warning` field broadcast via WebSocket
 - [x] **AGENTS.md auto-prepend** — in `start_worker()`, if `.claude/AGENTS.md` exists in project dir, prepend alongside CLAUDE.md injection
   - Endpoint already generates it (`GET /agents-md`); missing: auto-inject on worker spawn
-- [ ] **Worker handoff auto-trigger** — in `_on_worker_done()`, check for `.claude/handoff-{task_id}.md`; if exists, create continuation task with `/pickup` + original description
+- [x] **Worker handoff auto-trigger** — in `_on_worker_done()`, check for `.claude/handoff-{task_id}.md`; if exists, create continuation task with `/pickup` + original description
 
 ### CLI-side (configs/skills/, configs/scripts/)
 
-- [ ] **Two-phase orchestrate** (`/orchestrate --plan`) — Phase 1: codebase analysis → `IMPLEMENTATION_PLAN.md`, Phase 2: plan → `proposed-tasks.md` with `OWN_FILES`/`FORBIDDEN_FILES`
-- [ ] **Loop artifact marking** — instruct workers to mark `- [ ]` → `- [x]` in goal file on completion (enforce via supervisor prompt)
+- [x] **Two-phase orchestrate** (`/orchestrate --plan`) — Phase 1: codebase analysis → `IMPLEMENTATION_PLAN.md`, Phase 2: plan → `proposed-tasks.md` with `OWN_FILES`/`FORBIDDEN_FILES`
+- [x] **Loop artifact marking** — instruct workers to mark `- [ ]` → `- [x]` in goal file on completion (enforce via supervisor prompt)
 - [x] **Loop `--stop`** — write STOP sentinel to state file; loop-runner checks before each iteration
 - [x] **Loop signal handling** — trap SIGTERM/SIGINT in loop-runner.sh for graceful shutdown
 

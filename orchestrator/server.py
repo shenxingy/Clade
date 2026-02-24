@@ -749,6 +749,8 @@ class Worker:
         self.oracle_reason: str | None = None
         self._oracle_requeue: bool = False
         self._oracle_requeue_reason: str | None = None
+        self._handoff_requeue: bool = False
+        self._handoff_content: str | None = None
         self.model_score: int | None = None
         self.branch_name: str | None = None
         self.pr_url: str | None = None
@@ -795,6 +797,7 @@ class Worker:
             "oracle_reason": self.oracle_reason,
             "model_score": self.model_score,
             "estimated_tokens": self._estimate_tokens(),
+            "context_warning": self._estimate_tokens() > 160000,
         }
 
     def _estimate_tokens(self) -> int:
@@ -998,6 +1001,16 @@ class Worker:
         """Run after process exits: verify+commit while worktree is still alive, then clean up."""
         if self.status == "done":
             await self.verify_and_commit()
+        # Check for handoff file — worker wrote it to signal continuation needed
+        handoff_path = self._claude_dir / f"handoff-{self.task_id}.md"
+        if handoff_path.exists():
+            try:
+                self._handoff_content = handoff_path.read_text(errors="replace").strip()
+                self._handoff_requeue = bool(self._handoff_content)
+                handoff_path.unlink(missing_ok=True)
+                logger.info("Handoff file found for task %s — flagging for continuation", self.task_id)
+            except Exception:
+                pass
         await self._cleanup_worktree()
 
     async def verify_and_commit(self) -> bool:
@@ -1260,6 +1273,17 @@ class WorkerPool:
                     )
                     await task_queue.add(retry_desc, w.model)
                     logger.info("Oracle rejected task %s — re-queued with reason", w.task_id)
+                # Worker wrote handoff file → create continuation task
+                if w._handoff_requeue:
+                    w._handoff_requeue = False
+                    continuation_desc = (
+                        f"{w.description}\n\n---\n"
+                        f"**Continuation — previous session handed off:**\n"
+                        f"{w._handoff_content}\n\n"
+                        f"Run /pickup if available, then continue from where the previous worker left off."
+                    )
+                    await task_queue.add(continuation_desc, w.model)
+                    logger.info("Handoff task %s → continuation queued", w.task_id)
             else:
                 await task_queue.update(
                     w.task_id,
