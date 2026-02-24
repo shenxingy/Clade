@@ -105,6 +105,7 @@ class TaskQueue:
                 "elapsed_s": 0,
                 "last_commit": None,
                 "log_file": None,
+                "failed_reason": None,
             }
             tasks.append(task)
             self._save(tasks)
@@ -230,6 +231,7 @@ class Worker:
         self.auto_committed: bool = False
         self._verify_triggered: bool = False
         self.task_timeout: int = 600  # default 10 min
+        self.failure_context: str | None = None
 
     @property
     def elapsed_s(self) -> int:
@@ -258,6 +260,7 @@ class Worker:
             "verified": self.verified,
             "auto_committed": self.auto_committed,
             "log_tail": log_tail,
+            "failure_context": self.failure_context,
         }
 
     async def start(self) -> None:
@@ -331,6 +334,13 @@ class Worker:
                 self._finished_at = time.time()
             rc = self.proc.returncode if self.proc else -1
             self.status = "done" if rc == 0 else "failed"
+            if self.status == "failed" and self._log_path and self._log_path.exists():
+                try:
+                    text = self._log_path.read_text(errors="replace")
+                    lines = [l for l in text.splitlines() if l.strip()]
+                    self.failure_context = "\n".join(lines[-50:])
+                except Exception:
+                    pass
             return
 
         try:
@@ -487,6 +497,8 @@ class WorkerPool:
                     elapsed_s=w.elapsed_s,
                     last_commit=w.last_commit,
                 )
+                if w.status == "failed" and w.failure_context:
+                    await task_queue.update(w.task_id, failed_reason=w.failure_context)
             else:
                 await task_queue.update(
                     w.task_id,
@@ -933,6 +945,25 @@ async def start_all(s: ProjectSession = Depends(_resolve_session)):
         )
         started.append({"task_id": task["id"], "worker_id": worker.id})
     return {"started": len(started), "workers": started}
+
+
+@app.post("/api/tasks/retry-failed")
+async def retry_failed(s: ProjectSession = Depends(_resolve_session)):
+    """Requeue all failed tasks with their failure context injected."""
+    tasks = await s.task_queue.list()
+    failed = [t for t in tasks if t["status"] == "failed"]
+    retried = []
+    for t in failed:
+        failed_reason = t.get("failed_reason", "")
+        retry_desc = t["description"]
+        if failed_reason:
+            retry_desc += (
+                f"\n\n---\n**Previous attempt failed. Error context:**\n```\n{failed_reason[:2000]}\n```\n"
+                "Do NOT repeat the same approach. Analyze the error above and try a different strategy."
+            )
+        new_task = await s.task_queue.add(retry_desc, t.get("model", "sonnet"))
+        retried.append(new_task["id"])
+    return {"retried": len(retried), "task_ids": retried}
 
 
 @app.post("/api/tasks/{task_id}/run")
