@@ -2,6 +2,34 @@
 
 ---
 
+### 2026-02-23 — P3: Iteration Loop (Ralph-style Supervisor)
+
+**What was done:**
+- `server.py`: Added `iteration_loops` DB table (artifact_path, status, iteration, changes_history, deferred_items, convergence params)
+- `server.py`: `TaskQueue.get_loop()`, `upsert_loop()`, `delete_loop()` — pattern mirrors `get_schedule`/`save_schedule`
+- `server.py`: `ProjectSession._run_supervisor()` coroutine — reads artifact, calls supervisor model with JSON-only prompt wrapped in `---ARTIFACT---` delimiters, parses findings, spawns FIXABLE/DATA_CHECK workers, accumulates DEFERRED items, waits for workers, checks convergence
+- `server.py`: 5 loop endpoints (`/loop/start`, `/loop`, `/loop/pause`, `/loop/resume`, `DELETE /loop`) all registered before `/{session_id}` routes
+- `server.py`: `status_loop()` now includes `loop_state` in every WebSocket broadcast
+- `server.py`: 4 new `_SETTINGS_DEFAULTS` keys: `loop_supervisor_model`, `loop_convergence_k/n`, `loop_max_iterations`
+- `index.html`: Loop control bar (execute-mode only) with artifact input, K/N inputs, Start/Pause/Resume/Cancel buttons, sparkline canvas, convergence label
+- `index.html`: Deferred items accordion below loop bar; auto-expands on convergence
+- `index.html`: `updateLoopUI()` function wired into `updateDashboard()` via `data.loop_state`
+- `index.html`: `drawSparkline()` renders mini bar chart of changes_history on `<canvas>`
+- `index.html`: 4 new settings panel rows + `loadSettings()`/`saveSettings()` wired
+
+**What worked:**
+- `re.search(r'\[.*\]', response, re.DOTALL)` reliably extracts JSON array even when supervisor wraps it in prose
+- Using `---ARTIFACT---` / `---END---` delimiters prevents the artifact content from confusing the supervisor prompt
+- `delete_loop()` + fresh `upsert_loop()` on start avoids partial field pollution from previous runs
+- Loop coroutine is stored as `session._loop_task` — cancellable via `task.cancel()` for pause/stop
+
+**Watch out for:**
+- `upsert_loop()` only updates the fields you pass (partial update) — callers that want a full reset must call `delete_loop()` first (as `start_loop` endpoint does)
+- Convergence checks `changes_history[-n:]` — the list must have at least N entries before convergence is possible; initial iterations with few spawned tasks won't trigger it prematurely
+- Loop badge CSS classes (`idle`, `running`, `paused`, `converged`, `cancelled`) must be defined — they're now added alongside existing `badge.*` definitions
+
+---
+
 ### 2026-02-23 — fix: dead settings and UI bugs (auto_review, default_model, orchestrate, toast)
 
 **What was done:**
