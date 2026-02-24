@@ -576,6 +576,46 @@
       flex-shrink: 0;
     }
     .tab-add:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ─── Mode buttons ───────────────────────────────────────────── */
+    .mode-btn {
+      background: var(--bg3); border: 1px solid var(--border); border-radius: 5px;
+      color: var(--text2); font-size: 12px; font-weight: 600; padding: 4px 12px;
+      cursor: pointer; transition: all 0.15s;
+    }
+    .mode-btn.active { background: var(--accent); color: #0d1117; border-color: var(--accent); }
+    .mode-btn:hover:not(.active) { border-color: var(--accent); color: var(--text); }
+
+    /* ─── Goal input ─────────────────────────────────────────────── */
+    .goal-input {
+      flex: 1; background: var(--bg3); border: 1px solid var(--border);
+      border-radius: 5px; color: var(--text); font-size: 12px;
+      font-family: var(--font-mono); padding: 4px 10px; outline: none;
+      min-width: 0; transition: border-color 0.15s;
+    }
+    .goal-input:focus { border-color: var(--accent); }
+    .goal-input::placeholder { color: var(--text2); }
+
+    /* ─── Plan / Execute layout ──────────────────────────────────── */
+    .main.execute-mode .chat-panel { display: none; }
+    .main.execute-mode .dashboard { width: 100%; }
+    .main.plan-mode .chat-panel { width: 70%; }
+    .main.plan-mode .dashboard { width: 30%; }
+
+    /* ─── Intervene panel ────────────────────────────────────────── */
+    .intervene-panel {
+      position: fixed; right: 0; top: 0; bottom: 0; width: 50vw;
+      background: var(--bg2); border-left: 1px solid var(--border);
+      display: flex; flex-direction: column; z-index: 150;
+      transform: translateX(100%); transition: transform 0.25s ease;
+    }
+    .intervene-panel.open { transform: translateX(0); }
+    .intervene-header {
+      padding: 10px 14px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      background: var(--bg2); font-size: 13px; font-weight: 600;
+    }
+    .intervene-terminal { flex: 1; overflow: hidden; position: relative; }
   </style>
 </head>
 <body>
@@ -583,6 +623,10 @@
 <!-- ─── Header ──────────────────────────────────────────────────────────────── -->
 <header>
   <h1><span class="logo">⬡</span> Claude Code Orchestrator</h1>
+  <div style="display:flex;gap:4px;margin-left:8px">
+    <button class="mode-btn active" id="modePlanBtn" onclick="setMode('plan')" title="Plan mode: orchestrate tasks">📋 Plan</button>
+    <button class="mode-btn" id="modeExecBtn" onclick="setMode('execute')" title="Execute mode: monitor workers">▶ Execute</button>
+  </div>
   <button id="projectBadge" onclick="openProjectPicker()" style="
     font-size:12px;color:var(--text2);background:var(--bg3);
     border:1px solid var(--border);border-radius:5px;
@@ -602,14 +646,19 @@
 </div>
 
 <!-- ─── Main Layout ─────────────────────────────────────────────────────────── -->
-<div class="main">
+<div class="main plan-mode">
 
   <!-- Left: Chat Panel -->
   <div class="chat-panel">
     <div class="chat-header">
       <span class="dot yellow" id="chatDot"></span>
-      <span>Orchestrator Session</span>
-      <span style="margin-left:auto;font-size:11px;opacity:0.6">Interactive · PTY</span>
+      <input class="goal-input" id="goalInput" placeholder="Describe your goal…" autocomplete="off" />
+      <button class="btn" id="orchestrateBtn" onclick="sendOrchestrate()" style="white-space:nowrap;font-size:12px;padding:4px 12px">⚡ Orchestrate</button>
+      <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);cursor:pointer;margin-left:8px;white-space:nowrap" title="Auto-start workers when tasks are proposed">
+        <input type="checkbox" id="autoStartToggle" checked style="cursor:pointer" />
+        Auto-start
+      </label>
+      <span style="margin-left:auto;font-size:11px;opacity:0.6">PTY</span>
     </div>
 
     <div class="terminal" id="terminalContainer"></div>
@@ -663,6 +712,10 @@
     <div class="dashboard-section workers">
       <div class="section-header">
         <span>Workers <span id="workerCount" style="font-weight:400;color:var(--text2)"></span></span>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button class="btn small secondary" onclick="openIntervene()" id="interveneBtn" style="display:none">⌨ Intervene</button>
+          <button class="btn small success" id="mergeAllBtn" onclick="mergeAllDone()" style="display:none">⬇ Merge All Done</button>
+        </div>
       </div>
       <div class="workers-list" id="workersList"></div>
     </div>
@@ -684,6 +737,15 @@
     </div>
 
   </div>
+</div>
+
+<!-- Intervene Panel (Execute mode slide-in terminal) -->
+<div class="intervene-panel" id="intervenePanel">
+  <div class="intervene-header">
+    <span>Intervene — Orchestrator Terminal</span>
+    <button class="btn small secondary" onclick="closeIntervene()">✕ Close</button>
+  </div>
+  <div class="intervene-terminal" id="interveneTerminal"></div>
 </div>
 
 <!-- Worker Log Modal -->
@@ -1050,7 +1112,21 @@ function connectStatus(sessionId) {
     else if (msg.type === 'proposed_tasks') {
       if (msg.content && msg.content.includes('===TASK===')) {
         window._lastProposedContent = msg.content;
-        showProposedOverlay(msg.content);
+        const autoStart = document.getElementById('autoStartToggle')?.checked;
+        if (autoStart) {
+          // Auto-mode: import + start immediately, no overlay
+          fetch(`/api/tasks/import-proposed?session=${activeSessionId}`, { method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ content: msg.content })
+          }).then(() => fetch(`/api/tasks/start-all?session=${activeSessionId}`, { method: 'POST' }))
+            .then(r => r.json())
+            .then(d => {
+              setMode('execute');
+              showToast(`Auto-started ${d.started} worker${d.started !== 1 ? 's' : ''}`);
+            });
+        } else {
+          showProposedOverlay(msg.content);
+        }
       }
     }
   };
@@ -1205,6 +1281,10 @@ function renderQueue() {
 function renderWorkers() {
   const list = document.getElementById('workersList');
   document.getElementById('workerCount').textContent = `(${workers.length})`;
+
+  const doneCount = workers.filter(w => w.status === 'done' && w.auto_committed).length;
+  const mergeBtn = document.getElementById('mergeAllBtn');
+  if (mergeBtn) mergeBtn.style.display = doneCount > 0 && currentMode === 'execute' ? '' : 'none';
 
   if (workers.length === 0) {
     list.innerHTML = '<div class="empty">No active workers<br><span style="font-size:11px;opacity:0.6">Start tasks from the queue above</span></div>';
@@ -1645,6 +1725,73 @@ refreshProjectBadge();
 
 // Poll sessions list every 5 seconds to keep badges current
 setInterval(() => loadSessions(), 5000);
+
+// ─── Mode switching ───────────────────────────────────────────────────────────
+let currentMode = 'plan';
+function setMode(mode) {
+  currentMode = mode;
+  const main = document.querySelector('.main');
+  main.classList.toggle('plan-mode', mode === 'plan');
+  main.classList.toggle('execute-mode', mode === 'execute');
+  document.getElementById('modePlanBtn').classList.toggle('active', mode === 'plan');
+  document.getElementById('modeExecBtn').classList.toggle('active', mode === 'execute');
+  const intervBtn = document.getElementById('interveneBtn');
+  if (intervBtn) intervBtn.style.display = mode === 'execute' ? '' : 'none';
+  if (mode === 'plan') {
+    closeIntervene();
+    requestAnimationFrame(() => PaneManager.fitAll());
+  }
+  localStorage.setItem('orchestrator_mode', mode);
+}
+// Restore mode on load (or default to plan)
+setMode(localStorage.getItem('orchestrator_mode') || 'plan');
+
+// ─── Orchestrate button ───────────────────────────────────────────────────────
+function sendOrchestrate() {
+  const goal = document.getElementById('goalInput').value.trim();
+  const st = sessionStates.get(activeSessionId);
+  if (!st || !st.activePaneId) return;
+  const pane = st.panes.get(st.activePaneId);
+  if (!pane || !pane.ws || pane.ws.readyState !== WebSocket.OPEN) return;
+  if (goal) {
+    pane.ws.send(JSON.stringify({ type: 'input', data: goal + '\r' }));
+    setTimeout(() => {
+      pane.ws.send(JSON.stringify({ type: 'input', data: '/orchestrate\r' }));
+    }, 100);
+  } else {
+    pane.ws.send(JSON.stringify({ type: 'input', data: '/orchestrate\r' }));
+  }
+  document.getElementById('goalInput').value = '';
+}
+document.getElementById('goalInput')?.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendOrchestrate(); }
+});
+
+// ─── Intervene panel ──────────────────────────────────────────────────────────
+function openIntervene() {
+  document.getElementById('intervenePanel').classList.add('open');
+  const st = sessionStates.get(activeSessionId);
+  if (st) {
+    const interveneTerm = document.getElementById('interveneTerminal');
+    interveneTerm.appendChild(st.el);
+    st.el.style.display = 'flex';
+    requestAnimationFrame(() => PaneManager.fitSession(activeSessionId));
+  }
+}
+function closeIntervene() {
+  document.getElementById('intervenePanel').classList.remove('open');
+  const st = sessionStates.get(activeSessionId);
+  const container = document.getElementById('terminalContainer');
+  if (st && container) {
+    container.appendChild(st.el);
+    if (currentMode === 'plan') st.el.style.display = 'flex';
+  }
+}
+
+// ─── Merge All Done (stub) ────────────────────────────────────────────────────
+async function mergeAllDone() {
+  showToast('Merge feature coming soon — push from your terminal for now');
+}
 </script>
 </body>
 </html>
