@@ -27,9 +27,9 @@
 
 ## Phase 4 — Swarm Intelligence
 
-- [ ] Swarm mode — N workers self-claim from shared queue (no central allocator)
-- [ ] File ownership enforcement — AGENTS.md boundaries checked before worker edits
-- [ ] GitHub Issues sync — Issues as persistent task database (survives machine restarts, editable from phone)
+- [x] Swarm mode — N workers self-claim from shared queue (no central allocator)
+- [x] File ownership enforcement — OWN_FILES/FORBIDDEN_FILES parsed from proposed-tasks.md, stored in DB, enforced in verify_and_commit, violation → requeue
+- [x] GitHub Issues sync — Issues as persistent task database (survives machine restarts, editable from phone)
 - [ ] Agent Teams — expose `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`
 - [ ] Cross-worker messaging — mailbox pattern
 - [ ] Task hot-path / critical path indicator + model tier boost for critical-path tasks

@@ -292,6 +292,15 @@
       border-radius: 4px;
       padding: 2px 6px;
     }
+    .gh-issue-badge {
+      font-size: 10px;
+      color: var(--purple);
+      background: rgba(188,140,255,0.12);
+      border: 1px solid rgba(188,140,255,0.25);
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: var(--font-mono);
+    }
     .queue-actions { display: flex; gap: 4px; }
 
     .add-task-row {
@@ -728,9 +737,59 @@
     }
     .badge.idle { background: rgba(139,148,158,0.15); color: var(--text2); }
     .badge.running { background: rgba(63,185,80,0.15); color: var(--green); }
+    .badge.active { background: rgba(63,185,80,0.15); color: var(--green); }
     .badge.paused { background: rgba(210,153,34,0.15); color: var(--yellow); }
+    .badge.draining { background: rgba(210,153,34,0.15); color: var(--yellow); }
     .badge.converged { background: rgba(88,166,255,0.15); color: var(--accent); }
+    .badge.done { background: rgba(88,166,255,0.15); color: var(--accent); }
     .badge.cancelled { background: rgba(248,81,73,0.15); color: var(--red); }
+    .badge.stopped { background: rgba(248,81,73,0.15); color: var(--red); }
+
+    /* ─── Swarm Bar ──────────────────────────────────────────────── */
+    .swarm-bar {
+      padding: 6px 14px 4px;
+      background: var(--bg2);
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .swarm-bar .section-header {
+      border-bottom: none;
+      padding: 0 0 4px;
+      background: transparent;
+    }
+    .swarm-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .swarm-inline {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      font-size: 11px;
+      color: var(--text2);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .swarm-inline input[type=number] {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      font-size: 11px;
+      padding: 2px 4px;
+      text-align: center;
+      width: 44px;
+    }
+    #swarmProgress {
+      display: flex;
+      align-items: center;
+      margin-top: 4px;
+      gap: 8px;
+      font-size: 11px;
+      color: var(--text2);
+    }
 
     /* ─── Deferred Items ─────────────────────────────────────────── */
     #deferredSection {
@@ -895,6 +954,15 @@
     <span>Context budget warnings</span>
     <input type="checkbox" id="settingContextBudget" checked onchange="saveSettings()" />
   </label>
+  <div style="font-size:10px;font-weight:600;opacity:0.5;text-transform:uppercase;letter-spacing:0.5px;margin-top:10px;margin-bottom:4px;padding:0 12px">GitHub Issues</div>
+  <label class="settings-row">
+    <span>Sync to GitHub Issues</span>
+    <input type="checkbox" id="settingGhSync" onchange="saveSettings()" />
+  </label>
+  <label class="settings-row">
+    <span>Issue label</span>
+    <input type="text" id="settingGhLabel" value="orchestrator" onchange="saveSettings()" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:11px;padding:2px 6px;width:100px;text-align:right" />
+  </label>
 </div>
 
 <!-- ─── Tab Bar ──────────────────────────────────────────────────────────────── -->
@@ -958,6 +1026,7 @@
       <div class="section-header">
         <span>Task Queue <span id="queueCount" style="font-weight:400;color:var(--text2)"></span></span>
         <button class="btn small success" id="runAllBtn" onclick="runAllTasks()" style="display:none">▶ Run All</button>
+        <button class="btn small secondary" id="ghSyncBtn" onclick="ghSync()" title="Sync with GitHub Issues" style="display:none">⇅ Sync</button>
         <button class="btn small secondary" id="dagBtn" onclick="toggleDag()" title="Dependency graph view">⬡ DAG</button>
         <button class="btn small secondary" onclick="toggleAddTask()">+ Add</button>
       </div>
@@ -1043,6 +1112,25 @@
         <span id="loopIterLabel" style="font-size:11px;color:var(--text2)">Iteration 0</span>
         <span id="loopConvergence" style="font-size:11px;color:var(--text2);margin-left:8px"></span>
         <canvas id="loopSparkline" width="120" height="20" style="vertical-align:middle;margin-left:8px"></canvas>
+      </div>
+    </div>
+
+    <!-- Swarm Control Bar (Execute mode) -->
+    <div class="swarm-bar" id="swarmBar" style="display:none">
+      <div class="section-header" style="padding:0 0 4px">
+        <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Swarm Mode</span>
+        <span id="swarmStatusBadge" class="badge idle" style="font-size:10px">idle</span>
+      </div>
+      <div class="swarm-controls">
+        <label class="swarm-inline">Slots: <input id="swarmSlots" type="number" value="3" min="1" max="20" oninput="this._userEdited=true" /></label>
+        <button class="btn small" id="swarmStartBtn" onclick="startSwarm()">▶ Start</button>
+        <button class="btn small secondary" id="swarmStopBtn" onclick="stopSwarm()" style="display:none">Stop</button>
+        <button class="btn small danger" id="swarmForceStopBtn" onclick="forceStopSwarm()" style="display:none">Force Stop</button>
+        <button class="btn small secondary" id="swarmResizeBtn" onclick="resizeSwarm()" style="display:none">Resize</button>
+      </div>
+      <div id="swarmProgress" style="display:none">
+        <span id="swarmMetrics"></span>
+        <span id="swarmElapsed" style="color:var(--text2)"></span>
       </div>
     </div>
 
@@ -1618,6 +1706,7 @@ function updateDashboard(data) {
   updateProgress(data.progress_pct || 0, data.eta_seconds || 0);
   updateSchedulerDisplay(data.schedule);
   updateLoopUI(data.loop_state || null);
+  updateSwarmUI(data.swarm_state || null);
 }
 
 function renderQueue() {
@@ -1658,6 +1747,7 @@ function renderQueue() {
       <span class="task-name" title="${esc(task.description)}">${esc(firstLine(task.description))}</span>
       ${blockedHtml}
       <span class="task-model">${esc(task.model)}</span>
+      ${task.gh_issue_number ? `<span class="gh-issue-badge" title="GitHub Issue #${task.gh_issue_number}">#${task.gh_issue_number}</span>` : ''}
       <div class="queue-actions">
         <button class="btn small success" onclick="runTask('${esc(task.id)}')">Run</button>
         <button class="btn small danger" onclick="deleteTask('${esc(task.id)}')">×</button>
@@ -2346,6 +2436,8 @@ function setMode(mode) {
   updateSchedulerDisplay(_lastSchedule);
   const loopBar = document.getElementById('loopBar');
   if (loopBar) loopBar.style.display = mode === 'execute' ? '' : 'none';
+  const swarmBar = document.getElementById('swarmBar');
+  if (swarmBar) swarmBar.style.display = mode === 'execute' ? '' : 'none';
   const bb = document.getElementById('broadcastBar');
   if (bb) bb.style.display = mode === 'execute' ? 'flex' : 'none';
   // Deferred section: only visible in execute mode when there are items
@@ -2676,6 +2768,156 @@ function updateLoopUI(loopState) {
   }
 }
 
+// ─── Swarm ────────────────────────────────────────────────────────────────────
+
+let _swarmCompleteToasted = false;
+
+async function startSwarm() {
+  if (!activeSessionId) return;
+  const btn = document.getElementById('swarmStartBtn');
+  if (btn) btn.disabled = true;
+  try {
+    const slots = parseInt(document.getElementById('swarmSlots').value) || 3;
+    const r = await fetch(`/api/sessions/${activeSessionId}/swarm/start`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ slots }),
+    });
+    const data = await r.json();
+    if (!r.ok) {
+      showToast(data.detail || 'Failed to start swarm', true);
+    }
+  } catch (e) {
+    showToast('Swarm start failed: ' + e.message, true);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function stopSwarm() {
+  if (!activeSessionId) return;
+  try {
+    await fetch(`/api/sessions/${activeSessionId}/swarm/stop`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ force: false }),
+    });
+  } catch (e) {
+    showToast('Swarm stop failed: ' + e.message, true);
+  }
+}
+
+async function forceStopSwarm() {
+  if (!activeSessionId) return;
+  try {
+    await fetch(`/api/sessions/${activeSessionId}/swarm/stop`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ force: true }),
+    });
+  } catch (e) {
+    showToast('Swarm force stop failed: ' + e.message, true);
+  }
+}
+
+async function resizeSwarm() {
+  if (!activeSessionId) return;
+  try {
+    const slots = parseInt(document.getElementById('swarmSlots').value) || 3;
+    const r = await fetch(`/api/sessions/${activeSessionId}/swarm/resize`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ slots }),
+    });
+    const data = await r.json();
+    if (data.error) {
+      showToast(data.error, true);
+    } else {
+      const si = document.getElementById('swarmSlots');
+      if (si) si._userEdited = false;
+    }
+  } catch (e) {
+    showToast('Swarm resize failed: ' + e.message, true);
+  }
+}
+
+function _fmtElapsed(s) {
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
+}
+
+function updateSwarmUI(swarmState) {
+  const badge = document.getElementById('swarmStatusBadge');
+  const startBtn = document.getElementById('swarmStartBtn');
+  const stopBtn = document.getElementById('swarmStopBtn');
+  const forceStopBtn = document.getElementById('swarmForceStopBtn');
+  const resizeBtn = document.getElementById('swarmResizeBtn');
+  const progress = document.getElementById('swarmProgress');
+  const metrics = document.getElementById('swarmMetrics');
+  const elapsed = document.getElementById('swarmElapsed');
+  const slotsInput = document.getElementById('swarmSlots');
+
+  if (!badge) return;
+
+  if (!swarmState || swarmState.status === 'idle') {
+    badge.textContent = 'idle';
+    badge.className = 'badge idle';
+    if (startBtn) startBtn.style.display = '';
+    if (stopBtn) stopBtn.style.display = 'none';
+    if (forceStopBtn) forceStopBtn.style.display = 'none';
+    if (resizeBtn) resizeBtn.style.display = 'none';
+    if (progress) progress.style.display = 'none';
+    if (slotsInput) { slotsInput.disabled = false; slotsInput._userEdited = false; }
+    _swarmCompleteToasted = false;
+    return;
+  }
+
+  const status = swarmState.status;
+  badge.textContent = status;
+  badge.className = 'badge ' + status;
+
+  const isActive = status === 'active';
+  const isDraining = status === 'draining';
+  const isTerminal = status === 'done' || status === 'stopped';
+
+  if (startBtn) startBtn.style.display = (isActive || isDraining) ? 'none' : '';
+  if (stopBtn) stopBtn.style.display = isActive ? '' : 'none';
+  if (forceStopBtn) forceStopBtn.style.display = (isActive || isDraining) ? '' : 'none';
+  if (resizeBtn) resizeBtn.style.display = isActive ? '' : 'none';
+  if (slotsInput) {
+    slotsInput.disabled = isDraining;
+    if (swarmState.target_slots && !slotsInput._userEdited) {
+      slotsInput.value = swarmState.target_slots;
+    }
+  }
+
+  // Progress
+  const stats = swarmState.stats || {};
+  const running = swarmState.running || 0;
+  const target = swarmState.target_slots || 0;
+  if (progress && metrics) {
+    progress.style.display = (isActive || isDraining || isTerminal) ? 'flex' : 'none';
+    const parts = [`${running}/${target} slots`];
+    if (stats.done > 0 || stats.failed > 0) {
+      parts.push(`${stats.done} done`);
+      if (stats.failed > 0) parts.push(`${stats.failed} failed`);
+    }
+    metrics.textContent = parts.join(' · ');
+  }
+  if (elapsed && swarmState.elapsed_s) {
+    elapsed.textContent = _fmtElapsed(swarmState.elapsed_s);
+  }
+
+  // Completion toast
+  if (isTerminal && !_swarmCompleteToasted) {
+    _swarmCompleteToasted = true;
+    const reason = swarmState.done_reason || status;
+    showToast(`Swarm ${status}: ${reason}`);
+  }
+  if (!isTerminal) _swarmCompleteToasted = false;
+}
+
 // ─── Settings ─────────────────────────────────────────────────────────────────
 
 async function loadSettings() {
@@ -2718,6 +2960,14 @@ async function loadSettings() {
     if (elAutoOracle) elAutoOracle.checked = s.auto_oracle ?? false;
     if (elAutoMR) elAutoMR.checked = s.auto_model_routing ?? false;
     if (elCtxBudget) elCtxBudget.checked = s.context_budget_warning ?? true;
+    // GitHub Issues sync
+    const elGhSync = document.getElementById('settingGhSync');
+    const elGhLabel = document.getElementById('settingGhLabel');
+    if (elGhSync) elGhSync.checked = s.github_issues_sync ?? false;
+    if (elGhLabel) elGhLabel.value = s.github_issues_label ?? 'orchestrator';
+    // Show/hide sync button based on setting
+    const syncBtn = document.getElementById('ghSyncBtn');
+    if (syncBtn) syncBtn.style.display = s.github_issues_sync ? '' : 'none';
   } catch {}
 }
 
@@ -2743,8 +2993,13 @@ function saveSettings() {
           auto_oracle: document.getElementById('settingAutoOracle')?.checked ?? false,
           auto_model_routing: document.getElementById('settingAutoModelRouting')?.checked ?? false,
           context_budget_warning: document.getElementById('settingContextBudget')?.checked ?? true,
+          github_issues_sync: document.getElementById('settingGhSync')?.checked ?? false,
+          github_issues_label: document.getElementById('settingGhLabel')?.value || 'orchestrator',
         }),
       });
+      // Update sync button visibility
+      const syncBtn = document.getElementById('ghSyncBtn');
+      if (syncBtn) syncBtn.style.display = document.getElementById('settingGhSync')?.checked ? '' : 'none';
     } catch {}
   }, 400);
 }
@@ -2755,6 +3010,30 @@ function toggleSettings() {
   const isOpen = panel.style.display !== 'none';
   panel.style.display = isOpen ? 'none' : '';
   if (!isOpen) loadSettings();
+}
+
+// ─── GitHub Issues Sync ───────────────────────────────────────────────────────
+
+async function ghSync() {
+  const btn = document.getElementById('ghSyncBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⇅ Syncing...'; }
+  try {
+    const pullR = await fetch(`/api/issues/sync-pull?session=${activeSessionId}`, { method: 'POST' });
+    const pull = await pullR.json();
+    const pushR = await fetch(`/api/issues/sync-push?session=${activeSessionId}`, { method: 'POST' });
+    const push = await pushR.json();
+    const parts = [];
+    if (pull.created) parts.push(`+${pull.created} from GitHub`);
+    if (pull.updated) parts.push(`${pull.updated} updated`);
+    if (pull.deleted) parts.push(`${pull.deleted} removed`);
+    if (push.created) parts.push(`${push.created} pushed`);
+    if (push.updated) parts.push(`${push.updated} synced`);
+    showToast(parts.length ? 'Sync: ' + parts.join(', ') : 'Sync complete — no changes');
+  } catch (e) {
+    showToast('Sync failed: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⇅ Sync'; }
+  }
 }
 
 // ─── Multi-project Overview ────────────────────────────────────────────────────
