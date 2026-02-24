@@ -457,14 +457,14 @@ class OrchestratorSession:
         self._running = False
         self._read_task: asyncio.Task | None = None
 
-    def start(self, project_dir: Path) -> None:
+    def start(self, project_dir: Path, rows: int = 24, cols: int = 80) -> None:
         if self.pty and self.pty.isalive():
             return
         env = {**os.environ, "TERM": "xterm-256color"}
         self.pty = ptyprocess.PtyProcess.spawn(
             ["claude", "--dangerously-skip-permissions"],
             env=env,
-            dimensions=(40, 120),
+            dimensions=(rows, cols),
             cwd=str(project_dir),
         )
         self._running = True
@@ -713,7 +713,9 @@ async def create_session(body: dict):
     if not path.is_dir():
         return {"error": f"Directory not found: {path}"}
     session = registry.create(str(path))
-    session.orchestrator.start(session.project_dir)
+    rows = int(body.get("rows", 24))
+    cols = int(body.get("cols", 80))
+    session.orchestrator.start(session.project_dir, rows=rows, cols=cols)
     session.start_watch()
     return session.to_dict()
 
@@ -783,10 +785,22 @@ async def ws_chat(websocket: WebSocket, session: str | None = Query(default=None
 
     s.orchestrator.clients.append(websocket)
 
-    # Lazy-start orchestrator on first connection
+    # Lazy-start orchestrator on first connection.
+    # Receive the initial resize message from the client first so the PTY
+    # spawns at the correct terminal dimensions (avoids welcome-screen
+    # rendering at the wrong size).
     if not s.orchestrator.is_alive():
-        s.orchestrator.start(s.project_dir)
-        await asyncio.sleep(0.5)
+        rows, cols = 24, 80
+        try:
+            first_data = await asyncio.wait_for(websocket.receive_text(), timeout=2.0)
+            first_msg = json.loads(first_data)
+            if first_msg.get("type") == "resize":
+                rows = int(first_msg.get("rows", rows))
+                cols = int(first_msg.get("cols", cols))
+        except Exception:
+            pass
+        s.orchestrator.start(s.project_dir, rows=rows, cols=cols)
+        await asyncio.sleep(0.3)
 
     try:
         while True:
