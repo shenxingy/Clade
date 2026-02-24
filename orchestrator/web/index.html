@@ -644,21 +644,29 @@
     }
     .intervene-terminal { flex: 1; overflow: hidden; position: relative; }
 
-    /* ─── Settings Panel ─────────────────────────────────────────── */
+    /* ─── Settings Panel ─────────────────────────────────────── */
     #settingsPanel {
       display: none; position: fixed; top: 48px; right: 16px;
       background: var(--bg2); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 16px; z-index: 200;
-      min-width: 240px; box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      border-radius: var(--radius); z-index: 200;
+      min-width: 260px; box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      overflow: hidden;
     }
-    #settingsPanel h3 { font-size: 13px; font-weight: 600; margin-bottom: 12px; }
-    .settings-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
-    .settings-row label { font-size: 11px; color: var(--text2); }
+    .settings-header {
+      padding: 8px 12px; font-weight: 600; font-size: 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .settings-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 5px 12px; font-size: 12px; gap: 10px; cursor: pointer;
+    }
+    .settings-row:hover { background: var(--bg3); }
     .settings-row input[type=number] {
       background: var(--bg3); border: 1px solid var(--border); color: var(--text);
-      border-radius: 5px; padding: 5px 8px; font-size: 12px; width: 100%;
+      border-radius: 5px; padding: 3px 6px; font-size: 12px; width: 56px; text-align: center;
     }
-    .settings-close { font-size: 12px; color: var(--text2); cursor: pointer; float: right; }
+    .settings-close { font-size: 12px; color: var(--text2); cursor: pointer; }
 
     /* ─── DAG View ───────────────────────────────────────────────── */
     #dagView {
@@ -706,13 +714,38 @@
 
 <!-- ─── Settings Panel ────────────────────────────────────────────────────── -->
 <div id="settingsPanel">
-  <span class="settings-close" onclick="toggleSettings()">✕</span>
-  <h3>Settings</h3>
-  <div class="settings-row">
-    <label>Max parallel workers <span style="color:var(--text2)">(0 = unlimited)</span></label>
-    <input type="number" id="maxWorkersInput" min="0" max="50" value="0"
-      onchange="saveSettings()" oninput="saveSettings()" />
+  <div class="settings-header">
+    <span>⚙ Settings</span>
+    <span class="settings-close" onclick="toggleSettings()">✕</span>
   </div>
+  <label class="settings-row">
+    <span>Auto-start workers</span>
+    <input type="checkbox" id="settingAutoStart" onchange="saveSettings()" />
+  </label>
+  <label class="settings-row">
+    <span>Auto-push commits</span>
+    <input type="checkbox" id="settingAutoPush" onchange="saveSettings()" />
+  </label>
+  <label class="settings-row">
+    <span>Auto-merge PRs</span>
+    <input type="checkbox" id="settingAutoMerge" onchange="saveSettings()" />
+  </label>
+  <label class="settings-row">
+    <span>Auto-review PRs</span>
+    <input type="checkbox" id="settingAutoReview" onchange="saveSettings()" />
+  </label>
+  <label class="settings-row">
+    <span>Default model</span>
+    <select id="settingModel" onchange="saveSettings()" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:11px;padding:2px 6px">
+      <option value="haiku">Haiku (fast)</option>
+      <option value="sonnet">Sonnet (balanced)</option>
+      <option value="opus">Opus (smart)</option>
+    </select>
+  </label>
+  <label class="settings-row" style="margin-bottom:6px">
+    <span>Max workers <span style="color:var(--text2);font-size:10px">(0=∞)</span></span>
+    <input type="number" id="settingMaxWorkers" min="0" max="20" value="0" onchange="saveSettings()" oninput="saveSettings()" />
+  </label>
 </div>
 
 <!-- ─── Tab Bar ──────────────────────────────────────────────────────────────── -->
@@ -761,6 +794,15 @@
 
   <!-- Right: Dashboard -->
   <div class="dashboard">
+
+    <!-- Multi-project overview (execute mode, 2+ sessions) -->
+    <div class="dashboard-section" id="overviewSection" style="display:none;border-bottom:1px solid var(--border)">
+      <div class="section-header">
+        <span>All Projects</span>
+        <button class="btn small" onclick="startAllQueued()">▶▶ Start All Queued</button>
+      </div>
+      <div id="overviewList" style="max-height:180px;overflow-y:auto"></div>
+    </div>
 
     <!-- Queue Section -->
     <div class="dashboard-section queue">
@@ -828,6 +870,7 @@
       </div>
       <span class="progress-label" id="progressLabel">0%</span>
       <span class="eta-label" id="etaLabel"></span>
+      <span id="footerSuccessRate" style="font-size:11px;color:var(--text2);margin-left:auto"></span>
     </div>
 
     <!-- Usage Bar -->
@@ -1317,6 +1360,7 @@ async function switchTab(sessionId) {
     setOrchStatus('connecting', 'Connecting...');
   }
   refreshProjectBadge();
+  renderOverview();
 }
 
 async function closeTab(sessionId) {
@@ -1702,6 +1746,11 @@ function renderHistory(successRate) {
   if (successRate !== undefined) {
     rateEl.textContent = `${successRate}% success`;
     rateEl.style.color = successRate >= 80 ? 'var(--green)' : successRate >= 50 ? 'var(--yellow)' : 'var(--red)';
+    const footerRate = document.getElementById('footerSuccessRate');
+    if (footerRate) {
+      footerRate.textContent = `${successRate}% success`;
+      footerRate.style.color = successRate >= 80 ? 'var(--green)' : successRate >= 50 ? 'var(--yellow)' : 'var(--red)';
+    }
   }
 
   if (!_historyExpanded) return; // collapsed — only update counts
@@ -1971,6 +2020,8 @@ setInterval(() => loadSessions(), 5000);
 // ─── Mode switching ───────────────────────────────────────────────────────────
 let currentMode = 'plan';
 let _lastSchedule = null;  // cache for scheduler display on mode switch
+let _overviewInterval = null;
+
 function setMode(mode) {
   currentMode = mode;
   const main = document.querySelector('.main');
@@ -1983,6 +2034,12 @@ function setMode(mode) {
   if (mode === 'plan') {
     closeIntervene();
     requestAnimationFrame(() => PaneManager.fitAll());
+    clearInterval(_overviewInterval);
+    _overviewInterval = null;
+  }
+  if (mode === 'execute') {
+    renderOverview();
+    if (!_overviewInterval) _overviewInterval = setInterval(renderOverview, 8000);
   }
   // Sync scheduler bar visibility with mode
   updateSchedulerDisplay(_lastSchedule);
@@ -2080,8 +2137,21 @@ async function loadSettings() {
   try {
     const r = await fetch('/api/settings');
     const s = await r.json();
-    const input = document.getElementById('maxWorkersInput');
-    if (input) input.value = s.max_workers ?? 0;
+    const elAutoStart = document.getElementById('settingAutoStart');
+    const elAutoPush = document.getElementById('settingAutoPush');
+    const elAutoMerge = document.getElementById('settingAutoMerge');
+    const elAutoReview = document.getElementById('settingAutoReview');
+    const elModel = document.getElementById('settingModel');
+    const elMaxW = document.getElementById('settingMaxWorkers');
+    if (elAutoStart) elAutoStart.checked = s.auto_start ?? true;
+    if (elAutoPush) elAutoPush.checked = s.auto_push ?? true;
+    if (elAutoMerge) elAutoMerge.checked = s.auto_merge ?? true;
+    if (elAutoReview) elAutoReview.checked = s.auto_review ?? true;
+    if (elModel) elModel.value = s.default_model ?? 'sonnet';
+    if (elMaxW) elMaxW.value = s.max_workers ?? 0;
+    // Sync autoStartToggle in chat header
+    const ast = document.getElementById('autoStartToggle');
+    if (ast) ast.checked = s.auto_start ?? true;
   } catch {}
 }
 
@@ -2089,12 +2159,18 @@ let _saveSettingsTimer = null;
 function saveSettings() {
   clearTimeout(_saveSettingsTimer);
   _saveSettingsTimer = setTimeout(async () => {
-    const maxW = parseInt(document.getElementById('maxWorkersInput')?.value) || 0;
     try {
       await fetch('/api/settings', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ max_workers: maxW }),
+        body: JSON.stringify({
+          auto_start: document.getElementById('settingAutoStart')?.checked ?? true,
+          auto_push: document.getElementById('settingAutoPush')?.checked ?? true,
+          auto_merge: document.getElementById('settingAutoMerge')?.checked ?? true,
+          auto_review: document.getElementById('settingAutoReview')?.checked ?? true,
+          default_model: document.getElementById('settingModel')?.value ?? 'sonnet',
+          max_workers: parseInt(document.getElementById('settingMaxWorkers')?.value) || 0,
+        }),
       });
     } catch {}
   }, 400);
@@ -2106,6 +2182,45 @@ function toggleSettings() {
   const isOpen = panel.style.display !== 'none';
   panel.style.display = isOpen ? 'none' : '';
   if (!isOpen) loadSettings();
+}
+
+// ─── Multi-project Overview ────────────────────────────────────────────────────
+
+async function renderOverview() {
+  if (currentMode !== 'execute') return;
+  try {
+    const r = await fetch('/api/sessions/overview');
+    const sessions = await r.json();
+    const section = document.getElementById('overviewSection');
+    const list = document.getElementById('overviewList');
+    if (!section || !list) return;
+    section.style.display = sessions.length > 1 ? '' : 'none';
+    list.innerHTML = sessions.map(s => {
+      const total = s.done + s.failed + s.running + s.pending;
+      const pct = total > 0 ? Math.round((s.done + s.failed) / total * 100) : 0;
+      const eta = s.eta_seconds
+        ? (s.eta_seconds < 60 ? '<1m' : `~${Math.round(s.eta_seconds / 60)}m`)
+        : '';
+      const isActive = s.session_id === activeSessionId;
+      return `<div class="overview-row ${isActive ? 'active' : ''}" onclick="switchTab('${esc(s.session_id)}')">
+        <span class="proj-name">${esc(s.name)}</span>
+        <div class="proj-bar"><div class="proj-bar-fill" style="width:${pct}%"></div></div>
+        <span class="proj-counts">${s.running > 0 ? `${s.running} run · ` : ''}${s.done}✓ · ${s.failed}✗</span>
+        <span class="proj-eta">${eta}</span>
+      </div>`;
+    }).join('');
+  } catch(e) {}
+}
+
+async function startAllQueued() {
+  try {
+    const r = await fetch('/api/sessions/start-all-queued', { method: 'POST' });
+    const d = await r.json();
+    showToast(`Started ${d.total_started} worker${d.total_started !== 1 ? 's' : ''} across ${d.sessions.length} project${d.sessions.length !== 1 ? 's' : ''}`);
+    renderOverview();
+  } catch(e) {
+    showToast('Failed to start workers');
+  }
 }
 
 // ─── DAG View ─────────────────────────────────────────────────────────────────
