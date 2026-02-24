@@ -289,7 +289,7 @@ class Worker:
             else:
                 # Branch may already exist — try without -b
                 wt_proc2 = await asyncio.create_subprocess_exec(
-                    "git", "worktree", "add", str(self._worktree_path), "HEAD",
+                    "git", "worktree", "add", str(self._worktree_path), self._branch_name,
                     stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
                     cwd=str(self._project_dir),
                 )
@@ -324,8 +324,14 @@ class Worker:
                 pass
         task_file.write_text(effective_description)
 
+        _ALLOWED_MODELS = {
+            "claude-opus-4-6", "claude-sonnet-4-6",
+            "claude-haiku-4-5-20251001",
+            "claude-opus-4-5", "claude-sonnet-4-5", "claude-haiku-4-5",
+        }
+        model = self.model if self.model in _ALLOWED_MODELS else "claude-sonnet-4-6"
         shell_cmd = (
-            f'claude -p "$(cat {task_file})" --model {self.model} --dangerously-skip-permissions'
+            f'claude -p "$(cat {task_file})" --model {model} --dangerously-skip-permissions'
         )
 
         log_fd = open(self._log_path, "w")
@@ -337,6 +343,7 @@ class Worker:
             env={**os.environ},
             cwd=str(self._project_dir),
         )
+        log_fd.close()
         self.pid = self.proc.pid
         try:
             self.pgid = os.getpgid(self.proc.pid)
@@ -577,12 +584,21 @@ class WorkerPool:
             if w.status == "running" and w.task_timeout and w.task_timeout > 0 and w.elapsed_s > w.task_timeout:
                 await w.stop()
                 w.status = "failed"
+                if w._log_path and w._log_path.exists():
+                    try:
+                        text = w._log_path.read_text(errors="replace")
+                        lines = [l for l in text.splitlines() if l.strip()]
+                        w.failure_context = "\n".join(lines[-50:])
+                    except Exception:
+                        pass
                 await task_queue.update(
                     w.task_id,
                     status="failed",
                     elapsed_s=w.elapsed_s,
                     last_commit=w.last_commit,
                 )
+                if w.failure_context:
+                    await task_queue.update(w.task_id, failed_reason=w.failure_context)
                 continue
             await w.poll()
             if w.status in ("done", "failed"):

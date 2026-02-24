@@ -1116,10 +1116,10 @@ function connectStatus(sessionId) {
         const autoStart = document.getElementById('autoStartToggle')?.checked;
         if (autoStart) {
           // Auto-mode: import + start immediately, no overlay
-          fetch(`/api/tasks/import-proposed?session=${activeSessionId}`, { method: 'POST',
+          fetch(`/api/tasks/import-proposed?session=${sessionId}`, { method: 'POST',
             headers: {'Content-Type':'application/json'},
             body: JSON.stringify({ content: msg.content })
-          }).then(() => fetch(`/api/tasks/start-all?session=${activeSessionId}`, { method: 'POST' }))
+          }).then(() => fetch(`/api/tasks/start-all?session=${sessionId}`, { method: 'POST' }))
             .then(r => r.json())
             .then(d => {
               setMode('execute');
