@@ -6,6 +6,7 @@ Manages multiple project sessions, each with an interactive orchestrator (PTY) +
 from __future__ import annotations
 
 import asyncio
+import fnmatch
 import json
 import logging
 import os
@@ -31,7 +32,8 @@ from watchfiles import awatch
 
 _ALLOWED_TASK_COLS = {"status", "description", "model", "depends_on", "mode", "result", "score",
                       "worker_id", "started_at", "elapsed_s", "last_commit", "log_file",
-                      "failed_reason", "score_note"}
+                      "failed_reason", "score_note", "own_files", "forbidden_files",
+                      "gh_issue_number"}
 
 _ALLOWED_LOOP_COLS = {
     "name", "artifact_path", "context_dir", "status", "iteration",
@@ -72,6 +74,8 @@ _SETTINGS_DEFAULTS = {
     "auto_oracle": False,
     "auto_model_routing": False,
     "context_budget_warning": True,
+    "github_issues_sync": False,
+    "github_issues_label": "orchestrator",
 }
 
 
@@ -162,7 +166,10 @@ class TaskQueue:
                         created_at REAL,
                         depends_on TEXT DEFAULT '[]',
                         score INTEGER,
-                        score_note TEXT
+                        score_note TEXT,
+                        own_files TEXT DEFAULT '[]',
+                        forbidden_files TEXT DEFAULT '[]',
+                        gh_issue_number INTEGER
                     )
                 """)
                 await db.execute("""
@@ -213,6 +220,19 @@ class TaskQueue:
                     await db.execute("ALTER TABLE iteration_loops ADD COLUMN plan_phase TEXT DEFAULT 'plan'")
                 except Exception:
                     pass  # column already exists
+                # Migration: add file ownership columns for existing DBs
+                try:
+                    await db.execute("ALTER TABLE tasks ADD COLUMN own_files TEXT DEFAULT '[]'")
+                except Exception:
+                    pass
+                try:
+                    await db.execute("ALTER TABLE tasks ADD COLUMN forbidden_files TEXT DEFAULT '[]'")
+                except Exception:
+                    pass
+                try:
+                    await db.execute("ALTER TABLE tasks ADD COLUMN gh_issue_number INTEGER")
+                except Exception:
+                    pass
                 await db.commit()
             # Migrate from JSON if present
             json_file = self._claude_dir / "task-queue.json"
@@ -247,14 +267,15 @@ class TaskQueue:
 
     def _row_to_dict(self, row) -> dict:
         d = dict(row)
-        raw_deps = d.get("depends_on")
-        if isinstance(raw_deps, str):
-            try:
-                d["depends_on"] = json.loads(raw_deps)
-            except Exception:
-                d["depends_on"] = []
-        elif raw_deps is None:
-            d["depends_on"] = []
+        for key in ("depends_on", "own_files", "forbidden_files"):
+            raw = d.get(key)
+            if isinstance(raw, str):
+                try:
+                    d[key] = json.loads(raw)
+                except Exception:
+                    d[key] = []
+            elif raw is None:
+                d[key] = []
         return d
 
     async def list(self) -> list[dict]:
@@ -265,7 +286,9 @@ class TaskQueue:
                 rows = await cur.fetchall()
         return [self._row_to_dict(r) for r in rows]
 
-    async def add(self, description: str, model: str = "sonnet") -> dict:
+    async def add(self, description: str, model: str = "sonnet",
+                  own_files: list[str] | None = None,
+                  forbidden_files: list[str] | None = None) -> dict:
         await self._ensure_db()
         task = {
             "id": str(uuid.uuid4())[:8],
@@ -284,14 +307,16 @@ class TaskQueue:
             "depends_on": [],
             "score": None,
             "score_note": None,
+            "own_files": own_files or [],
+            "forbidden_files": forbidden_files or [],
         }
         async with aiosqlite.connect(str(self._db_path)) as db:
             await db.execute(
                 """INSERT INTO tasks
                    (id, description, model, timeout, retries, status, worker_id,
                     started_at, elapsed_s, last_commit, log_file, failed_reason,
-                    created_at, depends_on, score, score_note)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    created_at, depends_on, score, score_note, own_files, forbidden_files)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     task["id"], task["description"], task["model"],
                     task["timeout"], task["retries"], task["status"],
@@ -299,6 +324,7 @@ class TaskQueue:
                     task["last_commit"], task["log_file"], task["failed_reason"],
                     task["created_at"], json.dumps(task["depends_on"]),
                     task["score"], task["score_note"],
+                    json.dumps(task["own_files"]), json.dumps(task["forbidden_files"]),
                 ),
             )
             await db.commit()
@@ -308,9 +334,10 @@ class TaskQueue:
         await self._ensure_db()
         if not kwargs:
             return await self.get(task_id)
-        if "depends_on" in kwargs:
-            val = kwargs["depends_on"]
-            kwargs["depends_on"] = json.dumps(val) if not isinstance(val, str) else val
+        for key in ("depends_on", "own_files", "forbidden_files"):
+            if key in kwargs:
+                val = kwargs[key]
+                kwargs[key] = json.dumps(val) if not isinstance(val, str) else val
         for k in kwargs:
             if k not in _ALLOWED_TASK_COLS:
                 raise ValueError(f"Unknown task column: {k}")
@@ -491,6 +518,15 @@ class TaskQueue:
                 elif not in_header:
                     desc_lines.append(line)
             description = "\n".join(desc_lines).strip()
+            # Parse OWN_FILES / FORBIDDEN_FILES from description body
+            own_files: list[str] = []
+            forbidden_files: list[str] = []
+            for dl in desc_lines:
+                stripped = dl.strip()
+                if stripped.startswith("OWN_FILES:"):
+                    own_files = [p.strip() for p in stripped.split(":", 1)[1].split(",") if p.strip()]
+                elif stripped.startswith("FORBIDDEN_FILES:"):
+                    forbidden_files = [p.strip() for p in stripped.split(":", 1)[1].split(",") if p.strip()]
             if description and description not in existing_descriptions:
                 task_id = str(uuid.uuid4())[:8]
                 task = {
@@ -510,19 +546,22 @@ class TaskQueue:
                     "depends_on": depends_on,
                     "score": None,
                     "score_note": None,
+                    "own_files": own_files,
+                    "forbidden_files": forbidden_files,
                 }
                 async with aiosqlite.connect(str(self._db_path)) as db:
                     await db.execute(
                         """INSERT INTO tasks
                            (id, description, model, timeout, retries, status, worker_id,
                             started_at, elapsed_s, last_commit, log_file, failed_reason,
-                            created_at, depends_on, score, score_note)
-                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                            created_at, depends_on, score, score_note, own_files, forbidden_files)
+                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                         (
                             task["id"], task["description"], task["model"],
                             task["timeout"], task["retries"], task["status"],
                             None, None, 0, None, None, None,
                             task["created_at"], json.dumps(depends_on), None, None,
+                            json.dumps(own_files), json.dumps(forbidden_files),
                         ),
                     )
                     await db.commit()
@@ -533,6 +572,35 @@ class TaskQueue:
                     _score_task(task_id, description, self._db_path, self._claude_dir)
                 )
         return added
+
+    async def claim_next_pending(self, done_ids: set[str]) -> dict | None:
+        """Atomically claim the next pending task whose deps are met.
+
+        Uses SQLite serialized writes: UPDATE ... WHERE status='pending'
+        with rowcount > 0 meaning we won the claim. No Python lock needed.
+        """
+        await self._ensure_db()
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM tasks WHERE status = 'pending' ORDER BY created_at"
+            ) as cur:
+                candidates = [self._row_to_dict(r) for r in await cur.fetchall()]
+
+        for task in candidates:
+            if not _deps_met(task, done_ids):
+                continue
+            # Atomic CAS: only succeeds if still pending
+            async with aiosqlite.connect(str(self._db_path)) as db:
+                cur = await db.execute(
+                    "UPDATE tasks SET status = 'running' WHERE id = ? AND status = 'pending'",
+                    (task["id"],),
+                )
+                await db.commit()
+                if cur.rowcount > 0:
+                    task["status"] = "running"
+                    return task
+        return None
 
 
 # ─── Scout Readiness Scoring ──────────────────────────────────────────────────
@@ -715,6 +783,210 @@ async def _oracle_review(task_description: str, diff_text: str, claude_dir: Path
         prompt_file.unlink(missing_ok=True)
 
 
+# ─── GitHub Issues Sync ──────────────────────────────────────────────────────
+
+def _format_issue_body(task: dict) -> str:
+    """Encode task metadata in HTML comment + description body."""
+    meta: dict[str, Any] = {"task_id": task["id"], "model": task.get("model", "sonnet")}
+    if task.get("own_files"):
+        meta["own_files"] = task["own_files"]
+    if task.get("forbidden_files"):
+        meta["forbidden_files"] = task["forbidden_files"]
+    if task.get("depends_on"):
+        meta["depends_on"] = task["depends_on"]
+    return f"<!-- orchestrator-meta\n{json.dumps(meta, indent=2)}\n-->\n\n{task['description']}"
+
+
+def _parse_issue_body(body: str) -> tuple[dict, str]:
+    """Extract (metadata_dict, description) from issue body."""
+    m = re.search(r'<!-- orchestrator-meta\n(.*?)\n-->', body, re.DOTALL)
+    if m:
+        try:
+            meta = json.loads(m.group(1))
+        except Exception:
+            meta = {}
+        desc = body[m.end():].strip()
+        return meta, desc
+    return {}, body.strip()
+
+
+def _gh_label() -> str:
+    return GLOBAL_SETTINGS.get("github_issues_label", "orchestrator")
+
+
+async def _gh_create_issue(task: dict, project_dir: Path, db_path: Path) -> int | None:
+    """Create GitHub Issue from task. Returns issue number or None."""
+    if not GLOBAL_SETTINGS.get("github_issues_sync"):
+        return None
+    label = _gh_label()
+    first_line = (task["description"].splitlines()[0][:120]) if task["description"] else "Orchestrator task"
+    body = _format_issue_body(task)
+    cmd = (
+        f'gh issue create --title {shlex.quote(first_line)} '
+        f'--body {shlex.quote(body)} '
+        f'--label {shlex.quote(label + ",pending")}'
+    )
+    try:
+        proc = await asyncio.create_subprocess_shell(
+            cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            cwd=str(project_dir),
+        )
+        try:
+            out, err = await asyncio.wait_for(proc.communicate(), timeout=30)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
+            return None
+        if proc.returncode != 0:
+            logger.warning("gh issue create failed: %s", err.decode()[:200])
+            return None
+        # stdout is the issue URL, e.g. https://github.com/owner/repo/issues/42
+        url = out.decode().strip()
+        m = re.search(r'/issues/(\d+)', url)
+        if not m:
+            return None
+        issue_num = int(m.group(1))
+        async with aiosqlite.connect(str(db_path)) as db:
+            await db.execute("UPDATE tasks SET gh_issue_number = ? WHERE id = ?", (issue_num, task["id"]))
+            await db.commit()
+        return issue_num
+    except Exception as e:
+        logger.warning("gh issue create error: %s", e)
+        return None
+
+
+async def _gh_update_issue_status(task: dict, project_dir: Path) -> bool:
+    """Update issue labels/state to match task status."""
+    if not GLOBAL_SETTINGS.get("github_issues_sync"):
+        return False
+    num = task.get("gh_issue_number")
+    if not num:
+        return False
+    label = _gh_label()
+    status = task.get("status", "pending")
+    try:
+        if status in ("done", "failed"):
+            # Close the issue + update labels
+            status_label = "done" if status == "done" else "failed"
+            cmd = (
+                f'gh issue close {num} && '
+                f'gh issue edit {num} '
+                f'--add-label {shlex.quote(status_label)} '
+                f'--remove-label pending,running'
+            )
+        elif status == "running":
+            cmd = (
+                f'gh issue edit {num} '
+                f'--add-label running '
+                f'--remove-label pending'
+            )
+        else:
+            return False
+        proc = await asyncio.create_subprocess_shell(
+            cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
+            cwd=str(project_dir),
+        )
+        try:
+            _, err = await asyncio.wait_for(proc.communicate(), timeout=30)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
+            return False
+        if proc.returncode != 0:
+            logger.warning("gh issue update failed for #%s: %s", num, err.decode()[:200])
+        return proc.returncode == 0
+    except Exception as e:
+        logger.warning("gh issue update error: %s", e)
+        return False
+
+
+async def _gh_pull_issues(project_dir: Path, task_queue: "TaskQueue") -> dict:
+    """Fetch orchestrator-labeled issues, sync to local DB."""
+    label = _gh_label()
+    cmd = (
+        f'gh issue list --label {shlex.quote(label)} --state all '
+        f'--json number,title,body,state,labels --limit 200'
+    )
+    try:
+        proc = await asyncio.create_subprocess_shell(
+            cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            cwd=str(project_dir),
+        )
+        try:
+            out, err = await asyncio.wait_for(proc.communicate(), timeout=30)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
+            return {"error": "timeout"}
+        if proc.returncode != 0:
+            return {"error": err.decode()[:200]}
+        issues = json.loads(out.decode())
+    except Exception as e:
+        return {"error": str(e)}
+
+    stats = {"created": 0, "updated": 0, "deleted": 0, "skipped": 0}
+    local_tasks = await task_queue.list()
+    by_issue = {t["gh_issue_number"]: t for t in local_tasks if t.get("gh_issue_number")}
+
+    for issue in issues:
+        num = issue["number"]
+        meta, desc = _parse_issue_body(issue.get("body") or "")
+        is_closed = issue.get("state", "").upper() == "CLOSED"
+
+        if num in by_issue:
+            local = by_issue[num]
+            # Closed on GitHub + local pending → delete local task
+            if is_closed and local["status"] == "pending":
+                await task_queue.delete(local["id"])
+                stats["deleted"] += 1
+            # Open + local pending + body changed → update description
+            elif not is_closed and local["status"] == "pending" and desc and desc != local["description"]:
+                await task_queue.update(local["id"], description=desc)
+                stats["updated"] += 1
+            else:
+                stats["skipped"] += 1
+        else:
+            # No local match — if open, create local task
+            if not is_closed:
+                title = issue.get("title", "")
+                description = desc or title
+                model = meta.get("model", GLOBAL_SETTINGS.get("default_model", "sonnet"))
+                own_files = meta.get("own_files")
+                forbidden_files = meta.get("forbidden_files")
+                task = await task_queue.add(
+                    description=description, model=model,
+                    own_files=own_files, forbidden_files=forbidden_files,
+                )
+                await task_queue.update(task["id"], gh_issue_number=num)
+                stats["created"] += 1
+            else:
+                stats["skipped"] += 1
+
+    return stats
+
+
+async def _gh_push_all(project_dir: Path, task_queue: "TaskQueue") -> dict:
+    """Push all local tasks to GitHub Issues."""
+    stats = {"created": 0, "updated": 0, "errors": []}
+    tasks = await task_queue.list()
+    db_path = task_queue._db_path
+
+    for task in tasks:
+        if task.get("gh_issue_number"):
+            ok = await _gh_update_issue_status(task, project_dir)
+            if ok:
+                stats["updated"] += 1
+            # not counting failures as errors — silent skip
+        else:
+            num = await _gh_create_issue(task, project_dir, db_path)
+            if num:
+                stats["created"] += 1
+            else:
+                stats["errors"].append(task["id"])
+
+    return stats
+
+
 # ─── Worker Pool ──────────────────────────────────────────────────────────────
 
 class Worker:
@@ -760,6 +1032,10 @@ class Worker:
         self.failure_context: str | None = None
         self._worktree_path: Path | None = None
         self._branch_name: str | None = None
+        self.own_files: list[str] = []
+        self.forbidden_files: list[str] = []
+        self._ownership_violation: bool = False
+        self._ownership_violation_reason: str | None = None
 
     @property
     def elapsed_s(self) -> int:
@@ -1013,6 +1289,34 @@ class Worker:
                 pass
         await self._cleanup_worktree()
 
+    def _check_file_ownership(self, changed_files: list[str]) -> tuple[bool, str]:
+        """Check changed files against own_files/forbidden_files globs. Returns (ok, reason)."""
+        if not self.own_files and not self.forbidden_files:
+            return True, ""
+
+        def _matches(filepath: str, patterns: list[str]) -> bool:
+            for pat in patterns:
+                if pat.endswith("/**"):
+                    prefix = pat[:-3]  # "src/db/**" → "src/db"
+                    if filepath == prefix or filepath.startswith(prefix + "/"):
+                        return True
+                if fnmatch.fnmatch(filepath, pat):
+                    return True
+            return False
+
+        # Check forbidden files
+        for f in changed_files:
+            if self.forbidden_files and _matches(f, self.forbidden_files):
+                return False, f"File '{f}' matches FORBIDDEN_FILES pattern"
+
+        # Check own files (if set, every changed file must match at least one pattern)
+        if self.own_files:
+            for f in changed_files:
+                if not _matches(f, self.own_files):
+                    return False, f"File '{f}' not in OWN_FILES patterns"
+
+        return True, ""
+
     async def verify_and_commit(self) -> bool:
         diff_proc = await asyncio.create_subprocess_exec(
             "git", "diff", "--name-only", "HEAD",
@@ -1045,6 +1349,32 @@ class Worker:
             if f.strip()
         ]
         if not changed_files:
+            return False
+
+        # File ownership enforcement
+        ok, reason = self._check_file_ownership(changed_files)
+        if not ok:
+            self._ownership_violation = True
+            self._ownership_violation_reason = reason
+            # Discard all changes in worktree
+            discard = await asyncio.create_subprocess_exec(
+                "git", "checkout", ".",
+                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+                cwd=str(self._project_dir),
+            )
+            try:
+                await asyncio.wait_for(discard.communicate(), timeout=10)
+            except Exception:
+                pass
+            clean = await asyncio.create_subprocess_exec(
+                "git", "clean", "-fd",
+                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+                cwd=str(self._project_dir),
+            )
+            try:
+                await asyncio.wait_for(clean.communicate(), timeout=10)
+            except Exception:
+                pass
             return False
 
         diff_summary_proc = await asyncio.create_subprocess_exec(
@@ -1220,6 +1550,8 @@ class WorkerPool:
         )
         worker.model_score = task.get("score")
         worker.task_timeout = task.get("timeout", 600)
+        worker.own_files = task.get("own_files", [])
+        worker.forbidden_files = task.get("forbidden_files", [])
         self.workers[worker.id] = worker
         await task_queue.update(task["id"], status="running", worker_id=worker.id)
         await worker.start()
@@ -1231,7 +1563,7 @@ class WorkerPool:
     def all(self) -> list[Worker]:
         return list(self.workers.values())
 
-    async def poll_all(self, task_queue: TaskQueue) -> None:
+    async def poll_all(self, task_queue: TaskQueue, project_dir: Path | None = None) -> None:
         for w in list(self.workers.values()):
             if w.status == "running" and w.task_timeout and w.task_timeout > 0 and w.elapsed_s > w.task_timeout:
                 await w.stop()
@@ -1251,6 +1583,10 @@ class WorkerPool:
                 )
                 if w.failure_context:
                     await task_queue.update(w.task_id, failed_reason=w.failure_context)
+                if project_dir and GLOBAL_SETTINGS.get("github_issues_sync"):
+                    t = await task_queue.get(w.task_id)
+                    if t:
+                        asyncio.ensure_future(_gh_update_issue_status(t, project_dir))
                 continue
             await w.poll()
             if w.status in ("done", "failed"):
@@ -1262,6 +1598,10 @@ class WorkerPool:
                 )
                 if w.status == "failed" and w.failure_context:
                     await task_queue.update(w.task_id, failed_reason=w.failure_context)
+                if project_dir and GLOBAL_SETTINGS.get("github_issues_sync"):
+                    t = await task_queue.get(w.task_id)
+                    if t:
+                        asyncio.ensure_future(_gh_update_issue_status(t, project_dir))
                 # Oracle rejected → re-queue with rejection reason as context
                 if w._oracle_requeue:
                     w._oracle_requeue = False
@@ -1271,8 +1611,26 @@ class WorkerPool:
                         f"{w._oracle_requeue_reason}\n"
                         f"Fix the issue described above. Do NOT repeat the same approach."
                     )
-                    await task_queue.add(retry_desc, w.model)
+                    await task_queue.add(retry_desc, w.model,
+                                        own_files=w.own_files, forbidden_files=w.forbidden_files)
                     logger.info("Oracle rejected task %s — re-queued with reason", w.task_id)
+                # File ownership violation → re-queue with violation context
+                if w._ownership_violation:
+                    w._ownership_violation = False
+                    retry_desc = (
+                        f"{w.description}\n\n---\n"
+                        f"Previous attempt REJECTED — file ownership violation:\n"
+                        f"{w._ownership_violation_reason}\n\n"
+                        f"You MUST only edit files matching your OWN_FILES patterns. "
+                        f"Do NOT touch FORBIDDEN_FILES. Find an alternative approach."
+                    )
+                    await task_queue.add(retry_desc, w.model,
+                                        own_files=w.own_files, forbidden_files=w.forbidden_files)
+                    await task_queue.update(
+                        w.task_id,
+                        failed_reason=f"Ownership violation: {w._ownership_violation_reason[:200]}"
+                    )
+                    logger.info("Ownership violation task %s — re-queued with reason", w.task_id)
                 # Worker wrote handoff file → create continuation task
                 if w._handoff_requeue:
                     w._handoff_requeue = False
@@ -1282,7 +1640,8 @@ class WorkerPool:
                         f"{w._handoff_content}\n\n"
                         f"Run /pickup if available, then continue from where the previous worker left off."
                     )
-                    await task_queue.add(continuation_desc, w.model)
+                    await task_queue.add(continuation_desc, w.model,
+                                        own_files=w.own_files, forbidden_files=w.forbidden_files)
                     logger.info("Handoff task %s → continuation queued", w.task_id)
             else:
                 await task_queue.update(
@@ -1303,6 +1662,178 @@ class WorkerPool:
                                 "CONTEXT WARNING: ~80% context window used. "
                                 "Run /compact now — preserve current task state, files modified, next steps."
                             )
+
+
+# ─── Swarm Manager ────────────────────────────────────────────────────────────
+
+class SwarmManager:
+    """N-slot swarm: auto-claims tasks and fills worker slots.
+
+    State machine: idle → active → draining → done/stopped
+    """
+
+    def __init__(self, session: "ProjectSession"):
+        self._session = session
+        self._status = "idle"  # idle/active/draining/done/stopped
+        self._done_reason: str | None = None
+        self._target_slots = 0
+        self._active_worker_ids: set[str] = set()
+        self._stats = {"started": 0, "done": 0, "failed": 0}
+        self._task: asyncio.Task | None = None
+        self._started_at: float | None = None
+
+    @property
+    def status(self) -> str:
+        return self._status
+
+    def to_dict(self) -> dict:
+        running = sum(
+            1 for wid in self._active_worker_ids
+            if (w := self._session.worker_pool.workers.get(wid)) and w.status in ("running", "starting")
+        )
+        elapsed = int(time.time() - self._started_at) if self._started_at else 0
+        return {
+            "status": self._status,
+            "target_slots": self._target_slots,
+            "running": running,
+            "stats": dict(self._stats),
+            "done_reason": self._done_reason,
+            "elapsed_s": elapsed,
+        }
+
+    def start(self, slots: int) -> dict:
+        if self._status == "active":
+            return {"error": "Swarm already active"}
+        self._status = "active"
+        self._done_reason = None
+        self._target_slots = max(1, min(slots, 20))
+        self._active_worker_ids = set()
+        self._stats = {"started": 0, "done": 0, "failed": 0}
+        self._started_at = time.time()
+        self._task = asyncio.ensure_future(self._refill_loop())
+        return self.to_dict()
+
+    def stop(self) -> dict:
+        if self._status != "active":
+            return {"error": f"Swarm is {self._status}, not active"}
+        self._status = "draining"
+        return self.to_dict()
+
+    async def force_stop(self) -> dict:
+        self._status = "stopped"
+        self._done_reason = "force_stopped"
+        if self._task and not self._task.done():
+            self._task.cancel()
+            self._task = None
+        # Kill all swarm-tracked workers
+        for wid in list(self._active_worker_ids):
+            w = self._session.worker_pool.workers.get(wid)
+            if w and w.status in ("running", "starting"):
+                await w.stop()
+                w.status = "failed"
+                await self._session.task_queue.update(w.task_id, status="failed")
+        self._active_worker_ids.clear()
+        return self.to_dict()
+
+    def resize(self, new_slots: int) -> dict:
+        if self._status != "active":
+            return {"error": f"Swarm is {self._status}, cannot resize"}
+        self._target_slots = max(1, min(new_slots, 20))
+        return self.to_dict()
+
+    async def _refill_loop(self) -> None:
+        """Core loop: count running → clean finished → claim tasks → fill slots → wait."""
+        try:
+            while self._status in ("active", "draining"):
+                await self._refill_once()
+                # Wait before next check (faster than status_loop's 1s)
+                await asyncio.sleep(0.5)
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            logger.exception("Swarm refill_loop error")
+            self._status = "stopped"
+            self._done_reason = "error"
+
+    async def _refill_once(self) -> None:
+        pool = self._session.worker_pool
+        tq = self._session.task_queue
+
+        # Clean up finished workers from tracking set
+        finished_ids = set()
+        for wid in list(self._active_worker_ids):
+            w = pool.workers.get(wid)
+            if w is None or w.status in ("done", "failed"):
+                finished_ids.add(wid)
+                if w and w.status == "done":
+                    self._stats["done"] += 1
+                elif w and w.status == "failed":
+                    self._stats["failed"] += 1
+        self._active_worker_ids -= finished_ids
+
+        # Count currently running swarm workers
+        running = sum(
+            1 for wid in self._active_worker_ids
+            if (w := pool.workers.get(wid)) and w.status in ("running", "starting")
+        )
+
+        # If draining, just wait for current workers to finish
+        if self._status == "draining":
+            if running == 0:
+                self._status = "stopped"
+                self._done_reason = "drained"
+            return
+
+        # Calculate how many slots to fill
+        # Also respect global max_workers
+        global_max = GLOBAL_SETTINGS.get("max_workers", 0)
+        total_running = sum(1 for w in pool.workers.values() if w.status in ("running", "starting"))
+        if global_max > 0:
+            global_available = max(0, global_max - total_running)
+        else:
+            global_available = self._target_slots  # no global limit
+        to_fill = min(self._target_slots - running, global_available)
+
+        if to_fill <= 0:
+            if running > 0:
+                return  # slots full, wait for workers to finish
+            # Global cap held by non-swarm workers — don't conclude completion
+            if global_max > 0 and global_available == 0 and total_running > 0:
+                return
+
+        # Get done task IDs for dependency checks
+        all_tasks = await tq.list()
+        done_ids = {t["id"] for t in all_tasks if t["status"] == "done"}
+
+        # Try to claim and start tasks
+        claimed_any = False
+        for _ in range(max(to_fill, 0)):
+            task = await tq.claim_next_pending(done_ids)
+            if task is None:
+                break
+            claimed_any = True
+            worker = await pool.start_worker(
+                task, tq, self._session.project_dir, self._session.claude_dir
+            )
+            self._active_worker_ids.add(worker.id)
+            self._stats["started"] += 1
+
+        # Check completion conditions
+        if not claimed_any and running == 0:
+            # No tasks claimed, no workers running — check why
+            pending = [t for t in all_tasks if t["status"] == "pending"]
+            if not pending:
+                # No pending tasks at all → all complete
+                self._status = "done"
+                self._done_reason = "all_complete"
+            else:
+                # Pending tasks exist but none were claimable (all blocked by deps)
+                blocked_pending = [t for t in pending if not _deps_met(t, done_ids)]
+                if len(blocked_pending) == len(pending):
+                    # All pending tasks are blocked and nothing is running to unblock them
+                    self._status = "done"
+                    self._done_reason = "blocked"
+                # else: some tasks have deps met but were claimed by another path — wait
 
 
 # ─── Orchestrator Session (PTY) ───────────────────────────────────────────────
@@ -1394,6 +1925,8 @@ class ProjectSession:
         self._run_complete: bool = False
         # Iteration loop coroutine
         self._loop_task: asyncio.Task | None = None
+        # Swarm manager
+        self._swarm: SwarmManager | None = None
 
     @property
     def name(self) -> str:
@@ -1807,6 +2340,8 @@ class SessionRegistry:
                 s._watch_task.cancel()
             if s._loop_task and not s._loop_task.done():
                 s._loop_task.cancel()
+            if s._swarm:
+                asyncio.ensure_future(s._swarm.force_stop())
             # Stop all running workers and schedule worktree cleanup
             for w in list(s.worker_pool.workers.values()):
                 if w.status in ("running", "starting", "paused"):
@@ -1898,10 +2433,12 @@ async def status_loop():
                         session._scheduled_start = datetime.fromisoformat(saved["scheduled_at"])
                         session._schedule_triggered = False
 
-                await session.worker_pool.poll_all(session.task_queue)
+                await session.worker_pool.poll_all(session.task_queue, session.project_dir)
                 await _check_blockers(session)
 
                 # Auto-start tasks whose dependencies just became satisfied
+                # Skip auto_start when swarm owns task dispatch for this session
+                _swarm_active = session._swarm and session._swarm.status in ("active", "draining")
                 _auto_tasks = await session.task_queue.list()
                 _done_ids = {t["id"] for t in _auto_tasks if t["status"] == "done"}
                 _newly_ready = [
@@ -1909,7 +2446,7 @@ async def status_loop():
                     if t["status"] == "pending"
                     and _deps_met(t, _done_ids)
                 ]
-                if _newly_ready and GLOBAL_SETTINGS.get("auto_start", True):
+                if _newly_ready and GLOBAL_SETTINGS.get("auto_start", True) and not _swarm_active:
                     _max_w = GLOBAL_SETTINGS.get("max_workers", 0)
                     for _task in _newly_ready:
                         # Re-count running workers each iteration to avoid overshoot race
@@ -1966,6 +2503,7 @@ async def status_loop():
                 eta_seconds = int(avg_s * remaining) if remaining > 0 else 0
 
                 loop_state = await session.task_queue.get_loop()
+                swarm_state = session._swarm.to_dict() if session._swarm else None
                 msg = json.dumps({
                     "type": "status",
                     "session_id": session.session_id,
@@ -1977,6 +2515,7 @@ async def status_loop():
                     "schedule": session._schedule_dict(),
                     "run_complete": session._run_complete,
                     "loop_state": loop_state,
+                    "swarm_state": swarm_state,
                 })
                 dead = []
                 for ws in list(session.status_subscribers):
@@ -2080,6 +2619,9 @@ async def start_loop(session_id: str, body: dict):
     s = registry.get(session_id)
     if not s:
         raise HTTPException(status_code=404, detail="Session not found")
+    # Mutual exclusion with swarm
+    if s._swarm and s._swarm.status in ("active", "draining"):
+        raise HTTPException(status_code=409, detail="Cannot start loop while swarm is active")
     artifact_path = body.get("artifact_path", "").strip()
     if not artifact_path:
         raise HTTPException(status_code=400, detail="artifact_path required")
@@ -2161,6 +2703,61 @@ async def cancel_loop(session_id: str):
         status="cancelled", iteration=0, changes_history=[], deferred_items=[]
     )
     return {"ok": True}
+
+
+# ─── REST: Swarm ──────────────────────────────────────────────────────────────
+
+@app.post("/api/sessions/{session_id}/swarm/start")
+async def start_swarm(session_id: str, body: dict):
+    s = registry.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Session not found")
+    # Mutual exclusion with iteration loop
+    loop_state = await s.task_queue.get_loop()
+    if loop_state and loop_state.get("status") == "running":
+        raise HTTPException(status_code=409, detail="Cannot start swarm while iteration loop is running")
+    if s._swarm and s._swarm.status == "active":
+        raise HTTPException(status_code=409, detail="Swarm already active")
+    # Cancel old refill loop if still running
+    if s._swarm and s._swarm._task and not s._swarm._task.done():
+        s._swarm._task.cancel()
+    slots = int(body.get("slots", 3))
+    s._swarm = SwarmManager(s)
+    return s._swarm.start(slots)
+
+
+@app.post("/api/sessions/{session_id}/swarm/stop")
+async def stop_swarm(session_id: str, body: dict = Body(default={})):
+    s = registry.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if not s._swarm:
+        raise HTTPException(status_code=404, detail="No swarm active")
+    force = (body or {}).get("force", False)
+    if force:
+        return await s._swarm.force_stop()
+    return s._swarm.stop()
+
+
+@app.post("/api/sessions/{session_id}/swarm/resize")
+async def resize_swarm(session_id: str, body: dict):
+    s = registry.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if not s._swarm:
+        raise HTTPException(status_code=404, detail="No swarm active")
+    slots = int(body.get("slots", 3))
+    return s._swarm.resize(slots)
+
+
+@app.get("/api/sessions/{session_id}/swarm")
+async def get_swarm(session_id: str):
+    s = registry.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if not s._swarm:
+        return {"status": "idle"}
+    return s._swarm.to_dict()
 
 
 @app.get("/api/sessions/{session_id}")
@@ -2366,6 +2963,8 @@ async def create_task(body: dict, s: ProjectSession = Depends(_resolve_session))
     asyncio.ensure_future(
         _score_task(task["id"], task["description"], s.task_queue._db_path, s.claude_dir)
     )
+    if GLOBAL_SETTINGS.get("github_issues_sync"):
+        asyncio.ensure_future(_gh_create_issue(task, s.project_dir, s.task_queue._db_path))
     return task
 
 
@@ -2382,6 +2981,9 @@ async def import_proposed(
 ):
     content = (body or {}).get("content")
     tasks = await s.task_queue.import_from_proposed(content=content)
+    if GLOBAL_SETTINGS.get("github_issues_sync") and tasks:
+        for t in tasks:
+            asyncio.ensure_future(_gh_create_issue(t, s.project_dir, s.task_queue._db_path))
     return {"imported": len(tasks), "tasks": tasks}
 
 
@@ -2737,6 +3339,24 @@ def _get_usage() -> dict:
 async def get_usage():
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _get_usage)
+
+
+# ─── REST: GitHub Issues Sync ─────────────────────────────────────────────────
+
+@app.post("/api/issues/sync-pull")
+async def issues_sync_pull(s: ProjectSession = Depends(_resolve_session)):
+    if not GLOBAL_SETTINGS.get("github_issues_sync"):
+        raise HTTPException(status_code=400, detail="GitHub Issues sync is disabled")
+    result = await _gh_pull_issues(s.project_dir, s.task_queue)
+    return result
+
+
+@app.post("/api/issues/sync-push")
+async def issues_sync_push(s: ProjectSession = Depends(_resolve_session)):
+    if not GLOBAL_SETTINGS.get("github_issues_sync"):
+        raise HTTPException(status_code=400, detail="GitHub Issues sync is disabled")
+    result = await _gh_push_all(s.project_dir, s.task_queue)
+    return result
 
 
 # ─── REST: Settings ───────────────────────────────────────────────────────────

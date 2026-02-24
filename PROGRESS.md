@@ -2,6 +2,80 @@
 
 ---
 
+### 2026-02-24 — Phase 4: GitHub Issues Sync
+
+**What was done:**
+- `server.py`: Added `gh_issue_number INTEGER` column to `tasks` table (schema + ALTER migration)
+- `server.py`: `_format_issue_body()` / `_parse_issue_body()` — HTML comment metadata block (`<!-- orchestrator-meta ... -->`) keeps task_id, model, own_files, depends_on invisible on GitHub while description is freely editable
+- `server.py`: `_gh_create_issue()` — creates GitHub Issue via `gh issue create`, parses issue number from URL, stores in DB. Fire-and-forget from POST /api/tasks and import-proposed
+- `server.py`: `_gh_update_issue_status()` — updates labels (pending/running/done/failed) and closes issues on completion. Called from `poll_all()` when task reaches done/failed
+- `server.py`: `_gh_pull_issues()` — fetches orchestrator-labeled issues, creates local tasks for new open issues, updates pending task descriptions from GitHub edits, deletes local pending tasks when issue closed on GitHub
+- `server.py`: `_gh_push_all()` — pushes all local tasks to GitHub (create missing, update status on existing)
+- `server.py`: REST endpoints `POST /api/issues/sync-pull` and `POST /api/issues/sync-push` with sync-disabled guard
+- `server.py`: Settings `github_issues_sync` (bool, default off) + `github_issues_label` (str, default "orchestrator")
+- `server.py`: `poll_all()` signature updated to accept `project_dir` for issue status sync on task completion
+- `index.html`: Settings panel — checkbox for sync toggle + text input for label
+- `index.html`: Sync button in queue header (hidden when sync disabled) — calls pull then push, shows toast
+- `index.html`: Purple `#N` badge on tasks with linked GitHub issues
+
+**Key design decisions:**
+- Event-driven push + manual pull (no polling timer) — simple, no background load
+- Conflict policy: pending tasks → phone edit wins; running/done → local wins
+- Labels: `orchestrator` namespace + status labels for filtering
+- All `gh` commands guarded by `github_issues_sync` setting — zero behavioral change when disabled (default)
+
+**Lessons:**
+- `gh issue create --label "a,b"` passes comma-separated labels as a single argument — works correctly
+- Issue body HTML comments are invisible in GitHub's rendered markdown — perfect for metadata
+- Fire-and-forget `asyncio.ensure_future` for issue creation keeps the task creation path fast — failures are logged but don't block the user
+
+---
+
+### 2026-02-24 — Phase 4: File Ownership Enforcement
+
+**What was done:**
+- `server.py`: Added `own_files`/`forbidden_files` TEXT columns to `tasks` table (schema + ALTER migration)
+- `server.py`: `import_from_proposed()` now parses `OWN_FILES:` and `FORBIDDEN_FILES:` lines from task description body → stored as JSON arrays in DB
+- `server.py`: `_row_to_dict()` deserializes both fields (same pattern as `depends_on`)
+- `server.py`: `TaskQueue.add()` accepts `own_files`/`forbidden_files` params — used by requeue to preserve rules
+- `server.py`: `Worker` class gains `own_files`, `forbidden_files`, `_ownership_violation`, `_ownership_violation_reason` fields; plumbed from task dict in `start_worker()`
+- `server.py`: `_check_file_ownership(changed_files)` helper — checks forbidden glob matches and own-files allowlist; supports `dir/**` prefix patterns + `fnmatch` globs
+- `server.py`: `verify_and_commit()` calls ownership check before haiku verify; on violation: `git checkout . && git clean -fd` to discard, returns False
+- `server.py`: `poll_all()` detects `_ownership_violation` flag → requeues task with violation reason, preserves ownership rules, marks original as failed
+
+**Lessons:**
+- Ownership enforcement follows the same flag-bridge pattern as oracle requeue: set flag in Worker method (no queue access), pick up in `poll_all()` (has queue access)
+- `fnmatch` handles simple globs well but `dir/**` needs special prefix-check logic — `fnmatch("src/db/schema.py", "src/db/**")` doesn't match in Python's fnmatch
+- Lines are left in the description body so workers still see OWN_FILES/FORBIDDEN_FILES as guidance text — parsing is additive, not destructive
+
+---
+
+### 2026-02-24 — Phase 4: Swarm Mode (N-slot self-claiming workers)
+
+**What was done:**
+- `server.py`: `TaskQueue.claim_next_pending(done_ids)` — atomic CAS via `UPDATE ... WHERE status='pending'` with `rowcount > 0` check; SQLite serialized writes guarantee exclusivity without Python locks
+- `server.py`: `SwarmManager` class — state machine (`idle → active → draining → done/stopped`); `_refill_loop()` runs every 0.5s, counts running workers, cleans finished, claims tasks via CAS, fills open slots; detects completion (`all_complete` or `blocked`)
+- `server.py`: `ProjectSession._swarm` field + cleanup in `SessionRegistry.remove()` (force_stop on session teardown)
+- `server.py`: `status_loop` guard — skips `auto_start` when swarm is active for that session; `poll_all()` still runs (timeouts, completions, oracle/handoff requeue)
+- `server.py`: `swarm_state` added to WebSocket broadcast alongside `loop_state`
+- `server.py`: 4 REST endpoints — `/swarm/start`, `/swarm/stop` (graceful/force), `/swarm/resize`, `GET /swarm`; registered before `/{session_id}` catch-all route
+- `server.py`: Mutual exclusion — swarm rejects start if loop running; loop rejects start if swarm active
+- `index.html`: Swarm control bar (execute mode) — slots input, start/stop/force-stop/resize buttons, status badge, progress line (`3/5 slots · 7 done · 2m 15s`), completion toast
+- `index.html`: `updateSwarmUI()` called from `updateDashboard()`; swarm bar visibility toggled in `setMode()`
+
+**Key design decisions:**
+- SwarmManager wraps WorkerPool — existing Worker class (one-shot `claude -p`) unchanged; smarter scheduling on top
+- `claim_next_pending` uses two connections: read candidates first, then atomic CAS update — avoids long-held locks
+- Refill loop at 0.5s (2x faster than status_loop's 1s) for responsive slot filling
+- Completion detection: `all_complete` (no pending tasks), `blocked` (pending but all deps unmet, nothing running), `drained` (manual stop), `force_stopped` (immediate kill)
+- Global `max_workers` is respected as a ceiling — `to_fill = min(target_slots - running, global_available)`
+
+**Lessons:**
+- Swarm and iteration loop are fundamentally different dispatch models: swarm is pull-based (workers finish → manager claims next), loop is push-based (supervisor decides what to do each iteration). Mutual exclusion in v1 is the right call — combining them would require a complex priority system.
+- SQLite CAS (`UPDATE WHERE status='pending'` + `rowcount > 0`) is sufficient for single-process concurrency — no need for a distributed lock. If we ever go multi-process, we'd need `BEGIN EXCLUSIVE` or a separate lock file.
+
+---
+
 ### 2026-02-24 — Phase 3 complete: all 7 items done
 
 **What was done (batch 2 — remaining 4 items):**
