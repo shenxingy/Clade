@@ -228,6 +228,8 @@ class Worker:
         self._log_path: Path | None = None
         self.verified: bool = False
         self.auto_committed: bool = False
+        self.auto_pushed: bool = False
+        self.branch_name: str | None = None
         self._verify_triggered: bool = False
         self.task_timeout: int = 600  # default 10 min
 
@@ -257,6 +259,8 @@ class Worker:
             "log_file": self.log_file,
             "verified": self.verified,
             "auto_committed": self.auto_committed,
+            "auto_pushed": self.auto_pushed,
+            "branch_name": self.branch_name,
             "log_tail": log_tail,
         }
 
@@ -423,6 +427,22 @@ class Worker:
             c_out, c_err = await asyncio.wait_for(commit_proc.communicate(), timeout=30)
             if commit_proc.returncode == 0:
                 self.auto_committed = True
+
+                # Auto-push to feature branch
+                branch = f"orchestrator/task-{self.task_id}"
+                self.branch_name = branch
+                push_proc = await asyncio.create_subprocess_shell(
+                    f'git push origin HEAD:{branch} --force-with-lease',
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                    cwd=str(self._project_dir),
+                )
+                try:
+                    p_out, p_err = await asyncio.wait_for(push_proc.communicate(), timeout=30)
+                    if push_proc.returncode == 0:
+                        self.auto_pushed = True
+                except asyncio.TimeoutError:
+                    pass
+
                 # Update last_commit
                 log_proc = await asyncio.create_subprocess_exec(
                     "git", "log", "-1", "--oneline",
