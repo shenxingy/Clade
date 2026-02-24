@@ -2,6 +2,39 @@
 
 ---
 
+### 2026-02-23 — P3/P4/CC-CLI: Oracle, Broadcast, Model Routing, Context Budget, AGENTS.md, Hooks
+
+**What was done (5-task parallel batch):**
+- `server.py`: `_oracle_review()` — haiku diff review after auto_commit; gates auto_push; oracle result in to_dict()
+- `server.py`: `_estimate_tokens()` — worker method; estimates from description + log size; poll_all writes context-warning-{id}.md at >160K
+- `server.py`: `start_worker()` — score-based model routing (haiku ≥80 / sonnet 50-79 / sonnet+clarify <50) when `auto_model_routing` is ON; sets `worker.model_score`
+- `server.py`: `broadcast_to_workers()` endpoint — stops workers, injects message into task description, restarts
+- `server.py`: `get_agents_md()` endpoint — git log-based file→branch ownership map, returns AGENTS.md block
+- `server.py`: `ALTER TABLE iteration_loops ADD COLUMN mode` (idempotent); `_run_supervisor()` reads mode at top of each iteration (stub for plan_build)
+- `index.html`: broadcast bar (hidden by default, shown in execute mode); oracle badge + model/score in worker card; token bar (3px strip under commit hash)
+- `index.html`: loopMode selector (review/plan_build) in loop control bar
+- `index.html`: File Ownership section + Quality Gates section in settings panel; broadcastAll() + generateAgentsMd() JS functions
+- `orchestrate/prompt.md`: Step 0 (read PROGRESS.md + AGENTS.md before planning); enhanced task template (verify_cmd, own_files, forbidden_files, acceptance, Context Management, Commit Rules); Step 3.5 (auto-generate AGENTS.md from own_files)
+- `batch-tasks/prompt.md`: AGENTS.md check in planning phase (step 3); scout_threshold config from orchestrator.json; low-score-tasks.md for below-threshold items
+- `~/.claude/hooks/post-tool-use-lint.sh`: runs verify_cmd after Write/Edit; writes lint-feedback.md; exits 2 on failure to surface back to Claude
+- `~/.claude/hooks/post-commit-verify.sh`: runs verify_cmd after commit (only when CLAUDE_POST_COMMIT_VERIFY=1); reverts HEAD on failure; writes to blockers.md
+- `~/.claude/settings.json`: registered post-tool-use-lint.sh as second PostToolUse hook (alongside post-edit-check.sh)
+
+**What worked:**
+- Parallel batch (`/batch-tasks --parallel all todos`) ran tasks 1 (server.py) and 2 (index.html) simultaneously — wall time ~8 min instead of 15+ sequential
+- Tasks 3/4/5 (prompt + hooks) ran serially after task 2 — they edit `~/.claude/` files outside the git repo, so no merge needed
+- All 5 task logs confirmed success; py_compile passes on server.py; JSON validation passes on settings.json
+- Agents editing absolute paths (main repo) instead of worktree paths is acceptable when tasks don't create commits — the batch runner merges worktree commits, but these tasks just edited files directly
+
+**Watch out for:**
+- Broadcast endpoint currently stops running workers and restarts them — this loses in-progress Claude context for those workers; use sparingly or only for new context (not corrections mid-task)
+- Oracle review (`_oracle_review`) runs haiku with the diff; haiku may approve code it doesn't fully understand — it's a syntactic sanity check, not a semantic review
+- `context-warning-{id}.md` is written but NOT auto-injected into the worker process (no stdin/PTY mechanism yet) — the file exists for manual inspection; the auto-inject bullet remains open
+- PLANNING/BUILDING loop phase is stub only — `_run_supervisor()` reads `mode` but doesn't implement the two-phase logic yet
+- Oracle rejection currently blocks push but doesn't re-queue the task — fourth oracle bullet remains open
+
+---
+
 ### 2026-02-23 — Bug fix: worker code loss (verify/cleanup race condition)
 
 **What was done:**
