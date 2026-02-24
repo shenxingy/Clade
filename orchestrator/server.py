@@ -44,6 +44,10 @@ _SETTINGS_DEFAULTS = {
     "auto_merge": True,
     "auto_review": True,
     "default_model": "sonnet",
+    "loop_supervisor_model": "sonnet",
+    "loop_convergence_k": 2,
+    "loop_convergence_n": 3,
+    "loop_max_iterations": 20,
 }
 
 
@@ -151,6 +155,24 @@ class TaskQueue:
                     id INTEGER PRIMARY KEY CHECK (id = 1),
                     scheduled_at TEXT,
                     triggered INTEGER DEFAULT 0
+                )
+            """)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS iteration_loops (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL DEFAULT 'default',
+                    artifact_path TEXT NOT NULL DEFAULT '',
+                    context_dir TEXT,
+                    status TEXT DEFAULT 'idle',
+                    iteration INTEGER DEFAULT 0,
+                    changes_history TEXT DEFAULT '[]',
+                    deferred_items TEXT DEFAULT '[]',
+                    convergence_k INTEGER DEFAULT 2,
+                    convergence_n INTEGER DEFAULT 3,
+                    max_iterations INTEGER DEFAULT 20,
+                    supervisor_model TEXT DEFAULT 'sonnet',
+                    created_at TEXT,
+                    updated_at TEXT
                 )
             """)
             await db.commit()
@@ -293,6 +315,84 @@ class TaskQueue:
                     (scheduled_at, int(triggered)),
                 )
             await db.commit()
+
+    async def get_loop(self) -> dict | None:
+        await self._ensure_db()
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM iteration_loops ORDER BY id DESC LIMIT 1"
+            ) as cur:
+                row = await cur.fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        for key in ("changes_history", "deferred_items"):
+            if isinstance(d.get(key), str):
+                try:
+                    d[key] = json.loads(d[key])
+                except Exception:
+                    d[key] = []
+        return d
+
+    async def delete_loop(self) -> None:
+        await self._ensure_db()
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            await db.execute("DELETE FROM iteration_loops")
+            await db.commit()
+
+    async def upsert_loop(self, **kwargs) -> dict | None:
+        """Update existing loop row, or create one with provided fields."""
+        await self._ensure_db()
+        existing = await self.get_loop()
+        now = datetime.now().isoformat()
+        for key in ("changes_history", "deferred_items"):
+            if key in kwargs and not isinstance(kwargs[key], str):
+                kwargs[key] = json.dumps(kwargs[key])
+        if existing is None:
+            fields = {
+                "name": "default",
+                "artifact_path": "",
+                "context_dir": None,
+                "status": "idle",
+                "iteration": 0,
+                "changes_history": "[]",
+                "deferred_items": "[]",
+                "convergence_k": 2,
+                "convergence_n": 3,
+                "max_iterations": 20,
+                "supervisor_model": "sonnet",
+                "created_at": now,
+                "updated_at": now,
+            }
+            fields.update(kwargs)
+            async with aiosqlite.connect(str(self._db_path)) as db:
+                await db.execute(
+                    """INSERT INTO iteration_loops
+                       (name, artifact_path, context_dir, status, iteration,
+                        changes_history, deferred_items, convergence_k, convergence_n,
+                        max_iterations, supervisor_model, created_at, updated_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        fields["name"], fields["artifact_path"], fields["context_dir"],
+                        fields["status"], fields["iteration"], fields["changes_history"],
+                        fields["deferred_items"], fields["convergence_k"],
+                        fields["convergence_n"], fields["max_iterations"],
+                        fields["supervisor_model"], fields["created_at"], fields["updated_at"],
+                    ),
+                )
+                await db.commit()
+        else:
+            update = dict(kwargs)
+            update["updated_at"] = now
+            set_clause = ", ".join(f"{k} = ?" for k in update)
+            values = list(update.values()) + [existing["id"]]
+            async with aiosqlite.connect(str(self._db_path)) as db:
+                await db.execute(
+                    f"UPDATE iteration_loops SET {set_clause} WHERE id = ?", values
+                )
+                await db.commit()
+        return await self.get_loop()
 
     async def import_from_proposed(self, content: str | None = None) -> list[dict]:
         """Parse ===TASK=== blocks and add to queue, skipping duplicates."""
@@ -1005,6 +1105,8 @@ class ProjectSession:
         self._schedule_loaded: bool = False
         # Run-complete notification state
         self._run_complete: bool = False
+        # Iteration loop coroutine
+        self._loop_task: asyncio.Task | None = None
 
     @property
     def name(self) -> str:
@@ -1042,6 +1144,168 @@ class ProjectSession:
             self._watch_task = asyncio.ensure_future(
                 _watch_session_proposed_tasks(self)
             )
+
+    async def _run_supervisor(self) -> None:
+        """Iterative review-fix loop (Ralph-style supervisor)."""
+        _MODEL_MAP = {
+            "haiku": "claude-haiku-4-5-20251001",
+            "sonnet": "claude-sonnet-4-6",
+            "opus": "claude-opus-4-6",
+        }
+        while True:
+            loop_state = await self.task_queue.get_loop()
+            if not loop_state or loop_state["status"] != "running":
+                return
+
+            iteration = loop_state["iteration"] + 1
+            await self.task_queue.upsert_loop(iteration=iteration)
+
+            # Read artifact
+            artifact_path = loop_state["artifact_path"]
+            try:
+                content = Path(artifact_path).read_text(errors="replace")
+            except Exception:
+                await self.task_queue.upsert_loop(status="cancelled")
+                return
+
+            model_short = loop_state.get("supervisor_model", "sonnet")
+            model = _MODEL_MAP.get(model_short, "claude-sonnet-4-6")
+
+            prompt = (
+                "Review the following artifact. Output ONLY a JSON array, no prose.\n"
+                "Each element must be exactly one of:\n"
+                '  {"type":"FIXABLE","description":"...","task":"imperative task description for a worker"}\n'
+                '  {"type":"DATA_CHECK","description":"...","query":"what to verify in codebase"}\n'
+                '  {"type":"DEFERRED","description":"...","reason":"why human/retraining needed"}\n'
+                '  {"type":"CONVERGED","description":"no significant issues"}\n\n'
+                "Artifact:\n---ARTIFACT---\n"
+                f"{content}\n"
+                "---END---"
+            )
+
+            prompt_file = self.claude_dir / f"supervisor-iter-{iteration}.md"
+            response = ""
+            try:
+                prompt_file.write_text(prompt)
+                proc = await asyncio.create_subprocess_shell(
+                    f'claude -p "$(cat {shlex.quote(str(prompt_file))})" '
+                    f'--model {model} --dangerously-skip-permissions',
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                try:
+                    out, _ = await asyncio.wait_for(proc.communicate(), timeout=300)
+                    response = out.decode().strip()
+                except asyncio.TimeoutError:
+                    response = ""
+            except Exception:
+                response = ""
+            finally:
+                prompt_file.unlink(missing_ok=True)
+
+            # Extract JSON array (supervisor may include prose around it)
+            findings = []
+            m = re.search(r'\[.*\]', response, re.DOTALL)
+            if m:
+                try:
+                    findings = json.loads(m.group())
+                except Exception:
+                    findings = []
+
+            # Re-check status after supervisor call
+            loop_state = await self.task_queue.get_loop()
+            if not loop_state or loop_state["status"] != "running":
+                return
+
+            context_dir = loop_state.get("context_dir") or str(self.project_dir)
+            deferred_items = list(loop_state.get("deferred_items") or [])
+            spawned_task_ids: list[str] = []
+            converged = False
+
+            for finding in findings:
+                ftype = finding.get("type", "")
+                if ftype == "CONVERGED":
+                    converged = True
+                    break
+                elif ftype == "FIXABLE":
+                    task_desc = (
+                        f"[Loop-{iteration}] "
+                        f"{finding.get('task', finding.get('description', ''))}"
+                    )
+                    task = await self.task_queue.add(task_desc, model_short)
+                    spawned_task_ids.append(task["id"])
+                    await self.worker_pool.start_worker(
+                        task, self.task_queue, self.project_dir, self.claude_dir
+                    )
+                elif ftype == "DATA_CHECK":
+                    query = finding.get("query", finding.get("description", ""))
+                    task_desc = (
+                        f"[Loop-{iteration}] Cross-check the following claim against "
+                        f"the codebase at {context_dir}.\n"
+                        f"Report what you find. Do NOT modify any files.\nQuery: {query}"
+                    )
+                    task = await self.task_queue.add(task_desc, model_short)
+                    spawned_task_ids.append(task["id"])
+                    await self.worker_pool.start_worker(
+                        task, self.task_queue, self.project_dir, self.claude_dir
+                    )
+                elif ftype == "DEFERRED":
+                    deferred_items.append({
+                        "description": finding.get("description", ""),
+                        "reason": finding.get("reason", ""),
+                        "iteration": iteration,
+                    })
+
+            await self.task_queue.upsert_loop(deferred_items=deferred_items)
+
+            if converged:
+                await self.task_queue.upsert_loop(status="converged")
+                return
+
+            # Wait for all spawned workers to finish
+            if spawned_task_ids:
+                while True:
+                    loop_state = await self.task_queue.get_loop()
+                    if not loop_state or loop_state["status"] != "running":
+                        return
+                    all_done = all(
+                        (await self.task_queue.get(tid) or {}).get("status") in ("done", "failed")
+                        for tid in spawned_task_ids
+                    )
+                    if all_done:
+                        break
+                    await asyncio.sleep(3)
+
+            changes_this_iter = len(spawned_task_ids)
+            loop_state = await self.task_queue.get_loop()
+            if not loop_state:
+                return
+
+            changes_history = list(loop_state.get("changes_history") or [])
+            changes_history.append(changes_this_iter)
+
+            k = loop_state.get("convergence_k", 2)
+            n = loop_state.get("convergence_n", 3)
+            max_iter = loop_state.get("max_iterations", 20)
+
+            is_converged = (
+                len(changes_history) >= n
+                and all(c <= k for c in changes_history[-n:])
+            )
+
+            if is_converged or iteration >= max_iter:
+                await self.task_queue.upsert_loop(
+                    changes_history=changes_history,
+                    status="converged",
+                )
+                return
+
+            await self.task_queue.upsert_loop(changes_history=changes_history)
+
+            # Check if paused/cancelled before starting next iteration
+            loop_state = await self.task_queue.get_loop()
+            if not loop_state or loop_state["status"] != "running":
+                return
 
 
 # ─── Session Registry ─────────────────────────────────────────────────────────
@@ -1227,6 +1491,7 @@ async def status_loop():
                 remaining = total - done_count
                 eta_seconds = int(avg_s * remaining) if remaining > 0 else 0
 
+                loop_state = await session.task_queue.get_loop()
                 msg = json.dumps({
                     "type": "status",
                     "session_id": session.session_id,
@@ -1237,6 +1502,7 @@ async def status_loop():
                     "success_rate": success_rate,
                     "schedule": session._schedule_dict(),
                     "run_complete": session._run_complete,
+                    "loop_state": loop_state,
                 })
                 dead = []
                 for ws in session.status_subscribers:
@@ -1327,6 +1593,94 @@ async def global_start_all():
         total_started += len(started)
         session_results.append({"session_id": s.session_id, "name": s.name, "started": len(started)})
     return {"total_started": total_started, "sessions": session_results}
+
+
+# ─── REST: Iteration Loop ────────────────────────────────────────────────────
+
+@app.post("/api/sessions/{session_id}/loop/start")
+async def start_loop(session_id: str, body: dict):
+    s = registry.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Session not found")
+    artifact_path = body.get("artifact_path", "").strip()
+    if not artifact_path:
+        raise HTTPException(status_code=400, detail="artifact_path required")
+    context_dir = body.get("context_dir") or None
+    convergence_k = int(body.get("convergence_k", GLOBAL_SETTINGS.get("loop_convergence_k", 2)))
+    convergence_n = int(body.get("convergence_n", GLOBAL_SETTINGS.get("loop_convergence_n", 3)))
+    max_iterations = int(body.get("max_iterations", GLOBAL_SETTINGS.get("loop_max_iterations", 20)))
+    supervisor_model = body.get("supervisor_model", GLOBAL_SETTINGS.get("loop_supervisor_model", "sonnet"))
+
+    # Cancel any running loop coroutine
+    if s._loop_task and not s._loop_task.done():
+        s._loop_task.cancel()
+        s._loop_task = None
+
+    # Reset loop state (delete old row, create fresh)
+    await s.task_queue.delete_loop()
+    await s.task_queue.upsert_loop(
+        artifact_path=artifact_path,
+        context_dir=context_dir,
+        status="running",
+        iteration=0,
+        changes_history=[],
+        deferred_items=[],
+        convergence_k=convergence_k,
+        convergence_n=convergence_n,
+        max_iterations=max_iterations,
+        supervisor_model=supervisor_model,
+    )
+
+    s._loop_task = asyncio.ensure_future(s._run_supervisor())
+    return await s.task_queue.get_loop()
+
+
+@app.get("/api/sessions/{session_id}/loop")
+async def get_loop_state(session_id: str):
+    s = registry.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return await s.task_queue.get_loop() or {}
+
+
+@app.post("/api/sessions/{session_id}/loop/pause")
+async def pause_loop(session_id: str):
+    s = registry.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if s._loop_task and not s._loop_task.done():
+        s._loop_task.cancel()
+        s._loop_task = None
+    await s.task_queue.upsert_loop(status="paused")
+    return await s.task_queue.get_loop()
+
+
+@app.post("/api/sessions/{session_id}/loop/resume")
+async def resume_loop(session_id: str):
+    s = registry.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Session not found")
+    loop_state = await s.task_queue.get_loop()
+    if not loop_state:
+        raise HTTPException(status_code=404, detail="No loop to resume")
+    await s.task_queue.upsert_loop(status="running")
+    if s._loop_task is None or s._loop_task.done():
+        s._loop_task = asyncio.ensure_future(s._run_supervisor())
+    return await s.task_queue.get_loop()
+
+
+@app.delete("/api/sessions/{session_id}/loop")
+async def cancel_loop(session_id: str):
+    s = registry.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if s._loop_task and not s._loop_task.done():
+        s._loop_task.cancel()
+        s._loop_task = None
+    await s.task_queue.upsert_loop(
+        status="cancelled", iteration=0, changes_history=[], deferred_items=[]
+    )
+    return {"ok": True}
 
 
 @app.get("/api/sessions/{session_id}")

@@ -46,7 +46,7 @@ if [[ ! -d "$VENV_DIR" ]]; then
   fi
 fi
 
-if ! "$VENV_DIR/bin/python" -c "import fastapi, uvicorn, ptyprocess, watchfiles" 2>/dev/null; then
+if ! "$VENV_DIR/bin/python" -c "import fastapi, uvicorn, ptyprocess, watchfiles, aiosqlite" 2>/dev/null; then
   echo "Installing dependencies..."
   if command -v uv &>/dev/null; then
     uv pip install -r "$SCRIPT_DIR/requirements.txt" --python "$VENV_DIR" --quiet
