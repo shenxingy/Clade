@@ -175,16 +175,16 @@ class TaskQueue:
                     max_iterations INTEGER DEFAULT 20,
                     supervisor_model TEXT DEFAULT 'sonnet',
                     created_at TEXT,
-                    updated_at TEXT
+                    updated_at TEXT,
+                    mode TEXT DEFAULT 'review'
                 )
             """)
-            await db.commit()
-        async with aiosqlite.connect(str(self._db_path)) as db:
+            # Migration: add mode column for existing DBs that predate this column
             try:
                 await db.execute("ALTER TABLE iteration_loops ADD COLUMN mode TEXT DEFAULT 'review'")
-                await db.commit()
             except Exception:
-                pass  # Already exists
+                pass  # column already exists
+            await db.commit()
         # Migrate from JSON if present
         json_file = self._claude_dir / "task-queue.json"
         if json_file.exists():
@@ -510,7 +510,7 @@ async def _score_task(task_id: str, description: str, db_path: Path, claude_dir:
     score_file.write_text(score_prompt)
     try:
         proc = await asyncio.create_subprocess_shell(
-            f'claude -p "$(cat {score_file})" --model claude-haiku-4-5-20251001 --dangerously-skip-permissions',
+            f'claude -p "$(cat {shlex.quote(str(score_file))})" --model claude-haiku-4-5-20251001 --dangerously-skip-permissions',
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
         )
@@ -799,16 +799,18 @@ class Worker:
             f'claude -p "$(cat {task_file})" --model {model} --dangerously-skip-permissions'
         )
 
-        log_fd = open(self._log_path, "w")
-        self.proc = await asyncio.create_subprocess_shell(
-            shell_cmd,
-            stdout=log_fd,
-            stderr=log_fd,
-            preexec_fn=os.setsid,
-            env={**os.environ},
-            cwd=str(self._project_dir),
-        )
-        log_fd.close()
+        log_fd = open(self._log_path, "w")  # noqa: WPS515
+        try:
+            self.proc = await asyncio.create_subprocess_shell(
+                shell_cmd,
+                stdout=log_fd,
+                stderr=log_fd,
+                preexec_fn=os.setsid,
+                env={**os.environ},
+                cwd=str(self._project_dir),
+            )
+        finally:
+            log_fd.close()
         self.pid = self.proc.pid
         try:
             self.pgid = os.getpgid(self.proc.pid)
@@ -944,7 +946,7 @@ class Worker:
         verify_file.write_text(verify_prompt)
         try:
             verify_proc = await asyncio.create_subprocess_shell(
-                f'claude -p "$(cat {verify_file})" --model haiku --dangerously-skip-permissions',
+                f'claude -p "$(cat {shlex.quote(str(verify_file))})" --model claude-haiku-4-5-20251001 --dangerously-skip-permissions',
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
                 cwd=str(self._project_dir),
             )
@@ -962,12 +964,15 @@ class Worker:
         self.verified = True
 
         commit_msg = f"feat: {task_first_line.lower()}"
-        files_arg = " ".join(f'"{f}"' for f in changed_files[:20])
+        files_arg = " ".join(shlex.quote(f) for f in changed_files[:20])
         committer_path = Path.home() / ".claude/scripts/committer.sh"
         if committer_path.exists():
-            commit_cmd = f'bash {committer_path} "{commit_msg}" {files_arg}'
+            commit_cmd = (
+                f'bash {shlex.quote(str(committer_path))} '
+                f'{shlex.quote(commit_msg)} {files_arg}'
+            )
         else:
-            commit_cmd = f'git add {files_arg} && git commit -m "{commit_msg}"'
+            commit_cmd = f'git add {files_arg} && git commit -m {shlex.quote(commit_msg)}'
         commit_proc = await asyncio.create_subprocess_shell(
             commit_cmd,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
@@ -1035,6 +1040,13 @@ class WorkerPool:
         project_dir: Path,
         claude_dir: Path,
     ) -> Worker:
+        # Guard: prevent spawning a second worker for the same task
+        existing = next(
+            (w for w in self.workers.values() if w.task_id == task["id"] and w.status == "running"),
+            None,
+        )
+        if existing:
+            return existing
         model = task.get("model", "sonnet")
         description = task["description"]
         if GLOBAL_SETTINGS.get("auto_model_routing", False):
@@ -1340,9 +1352,13 @@ class ProjectSession:
                     )
                     task = await self.task_queue.add(task_desc, model_short)
                     spawned_task_ids.append(task["id"])
-                    await self.worker_pool.start_worker(
-                        task, self.task_queue, self.project_dir, self.claude_dir
-                    )
+                    _max_w = GLOBAL_SETTINGS.get("max_workers", 0)
+                    _running = sum(1 for w in self.worker_pool.workers.values() if w.status == "running")
+                    if _max_w <= 0 or _running < _max_w:
+                        await self.worker_pool.start_worker(
+                            task, self.task_queue, self.project_dir, self.claude_dir
+                        )
+                    # else: task is queued; status_loop will auto-start it when a slot opens
                 elif ftype == "DATA_CHECK":
                     query = finding.get("query", finding.get("description", ""))
                     task_desc = (
@@ -1352,9 +1368,13 @@ class ProjectSession:
                     )
                     task = await self.task_queue.add(task_desc, model_short)
                     spawned_task_ids.append(task["id"])
-                    await self.worker_pool.start_worker(
-                        task, self.task_queue, self.project_dir, self.claude_dir
-                    )
+                    _max_w = GLOBAL_SETTINGS.get("max_workers", 0)
+                    _running = sum(1 for w in self.worker_pool.workers.values() if w.status == "running")
+                    if _max_w <= 0 or _running < _max_w:
+                        await self.worker_pool.start_worker(
+                            task, self.task_queue, self.project_dir, self.claude_dir
+                        )
+                    # else: task is queued; status_loop will auto-start it when a slot opens
                 elif ftype == "DEFERRED":
                     deferred_items.append({
                         "description": finding.get("description", ""),
@@ -1443,6 +1463,8 @@ class SessionRegistry:
             s.orchestrator.stop()
             if s._watch_task and not s._watch_task.done():
                 s._watch_task.cancel()
+            if s._loop_task and not s._loop_task.done():
+                s._loop_task.cancel()
         if self._default_id == session_id:
             self._default_id = next(iter(self.sessions), None)
 
@@ -2363,7 +2385,8 @@ async def get_settings():
 @app.post("/api/settings")
 async def post_settings(body: dict = Body(...)):
     GLOBAL_SETTINGS.update(body)
-    _save_settings(GLOBAL_SETTINGS)
+    snapshot = dict(GLOBAL_SETTINGS)
+    await asyncio.to_thread(_save_settings, snapshot)
     return GLOBAL_SETTINGS
 
 

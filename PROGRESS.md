@@ -2,6 +2,31 @@
 
 ---
 
+### 2026-02-23 — Security hardening: 8 backend + 5 frontend fixes
+
+**What was done:**
+- `server.py`: ALTER TABLE TOCTOU — moved migration into same aiosqlite connection as CREATE TABLE
+- `server.py`: `shlex.quote()` on all user-controlled paths in `_score_task()` and `verify_and_commit()`
+- `server.py`: Wrong model alias "haiku" → "claude-haiku-4-5-20251001" in `verify_and_commit()`
+- `server.py`: Blocking `open()` fd leak fixed with `try/finally` in `Worker.start()`
+- `server.py`: Worker dedup guard — same task_id cannot spawn two concurrent workers
+- `server.py`: Blocking `_save_settings()` moved to `asyncio.to_thread()` in POST /settings endpoint
+- `server.py`: `_loop_task` now cancelled (alongside `_watch_task`) in `SessionRegistry.remove()`
+- `server.py`: `_run_supervisor()` respects `max_workers` limit before spawning FIXABLE/DATA_CHECK workers
+- `index.html`: Token bar denominator corrected `/ 2000` → `/ 200000 * 100` (was always 100%)
+- `index.html`: `sessionId` (undefined var) fallback removed in `broadcastAll()` and `generateAgentsMd()`
+- `index.html`: XSS in `loadProjects()` onclick replaced with `data-*` attribute + `addEventListener`
+- `index.html`: Focus preservation before/after `renderWorkers()` innerHTML replacement
+- `index.html`: Start Loop button disabled during fetch (double-submit prevention)
+
+**Lessons:**
+- Token bar at constant 100% is a silent bug — no error, just misleading UI. Always check the denominator against the actual context window size.
+- `sessionId` as a bare variable inside an async function looks like it could reference an outer scope — always use explicit globals (`activeSessionId`) to avoid the silent undefined fallback.
+- `esc()` escapes HTML entities but doesn't prevent JS injection in onclick attributes if the attacker controls quotes. DOM manipulation is always safer than innerHTML+onclick templates.
+- TOCTOU on SQLite schema migration: using two sequential `async with aiosqlite.connect()` blocks means the second block may not see the first's commit. Always do related DDL+DML in one connection.
+
+---
+
 ### 2026-02-23 — P3/P4/CC-CLI: Oracle, Broadcast, Model Routing, Context Budget, AGENTS.md, Hooks
 
 **What was done (5-task parallel batch):**
