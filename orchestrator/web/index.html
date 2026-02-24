@@ -1711,10 +1711,10 @@ function renderWorkers() {
         ${tokenBar}
         <div class="worker-footer">
           <span class="elapsed" id="elapsed-${w.id}">${formatElapsed(w.elapsed_s)}</span>
-          ${canPause ? `<button class="btn small secondary" onclick="pauseWorker('${w.id}')">Pause</button>` : ''}
-          ${canResume ? `<button class="btn small" onclick="resumeWorker('${w.id}')">Resume</button>` : ''}
-          ${canChat ? `<button class="btn small secondary" onclick="openWorkerChat('${w.id}', '${esc(firstLine(w.description))}')">Chat</button>` : ''}
-          <button class="btn small secondary" onclick="openWorkerLog('${w.id}', '${esc(firstLine(w.description))}')">Log</button>
+          ${canPause ? `<button class="btn small secondary" id="btn-pause-${w.id}" onclick="pauseWorker('${w.id}')">Pause</button>` : ''}
+          ${canResume ? `<button class="btn small" id="btn-resume-${w.id}" onclick="resumeWorker('${w.id}')">Resume</button>` : ''}
+          ${canChat ? `<button class="btn small secondary" id="btn-chat-${w.id}" data-wid="${w.id}" data-name="${esc(firstLine(w.description))}" onclick="openWorkerChat(this.dataset.wid, this.dataset.name)">Chat</button>` : ''}
+          <button class="btn small secondary" id="btn-log-${w.id}" data-wid="${w.id}" data-name="${esc(firstLine(w.description))}" onclick="openWorkerLog(this.dataset.wid, this.dataset.name)">Log</button>
         </div>
       </div>`;
   }).join('');
@@ -1914,7 +1914,11 @@ async function editProposed() {
 async function confirmProposed() {
   document.getElementById('proposedOverlay').classList.add('hidden');
   // Import then start all
-  await fetch(`/api/tasks/import-proposed?session=${activeSessionId}`, { method: 'POST' });
+  await fetch(`/api/tasks/import-proposed?session=${activeSessionId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content: window._lastProposedContent || '' }),
+  });
   const res = await fetch(`/api/tasks/start-all?session=${activeSessionId}`, { method: 'POST' });
   const data = await res.json();
   showToast(`Started ${data.started} workers`);
@@ -2403,6 +2407,8 @@ async function startLoop() {
         convergence_k: k,
         convergence_n: n,
         mode: document.getElementById('loopMode')?.value || 'review',
+        max_iterations: parseInt(document.getElementById('settingLoopMax')?.value) || 20,
+        supervisor_model: document.getElementById('settingLoopModel')?.value || 'sonnet',
       }),
     });
     const d = await r.json();

@@ -7,12 +7,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import re
 import shlex
 import signal
 import time
 import uuid
+
+logger = logging.getLogger(__name__)
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -23,6 +26,12 @@ from fastapi import Body, Depends, FastAPI, HTTPException, Query, WebSocket, Web
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from watchfiles import awatch
+
+# ─── Constants ────────────────────────────────────────────────────────────────
+
+_ALLOWED_TASK_COLS = {"status", "description", "model", "depends_on", "mode", "result", "score",
+                      "worker_id", "started_at", "elapsed_s", "last_commit", "log_file",
+                      "failed_reason", "score_note"}
 
 # ─── Paths ────────────────────────────────────────────────────────────────────
 
@@ -112,109 +121,111 @@ class TaskQueue:
         self._claude_dir = claude_dir
         self._db_path = claude_dir / "tasks.db"
         self._initialized = False
+        self._init_lock = asyncio.Lock()
 
     def _proposed_tasks_file(self) -> Path:
         return self._claude_dir / "proposed-tasks.md"
 
     async def _ensure_db(self) -> None:
-        if self._initialized:
-            return
-        self._claude_dir.mkdir(parents=True, exist_ok=True)
-        async with aiosqlite.connect(str(self._db_path)) as db:
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS tasks (
-                    id TEXT PRIMARY KEY,
-                    description TEXT NOT NULL,
-                    model TEXT DEFAULT 'sonnet',
-                    timeout INTEGER DEFAULT 600,
-                    retries INTEGER DEFAULT 2,
-                    status TEXT DEFAULT 'pending',
-                    worker_id TEXT,
-                    started_at REAL,
-                    elapsed_s INTEGER DEFAULT 0,
-                    last_commit TEXT,
-                    log_file TEXT,
-                    failed_reason TEXT,
-                    created_at REAL,
-                    depends_on TEXT DEFAULT '[]',
-                    score INTEGER,
-                    score_note TEXT
-                )
-            """)
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS commits (
-                    id TEXT PRIMARY KEY,
-                    task_id TEXT,
-                    hash TEXT,
-                    branch TEXT,
-                    committed_at REAL,
-                    pushed_at REAL,
-                    merged_at REAL,
-                    FOREIGN KEY (task_id) REFERENCES tasks(id)
-                )
-            """)
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS schedule (
-                    id INTEGER PRIMARY KEY CHECK (id = 1),
-                    scheduled_at TEXT,
-                    triggered INTEGER DEFAULT 0
-                )
-            """)
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS iteration_loops (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL DEFAULT 'default',
-                    artifact_path TEXT NOT NULL DEFAULT '',
-                    context_dir TEXT,
-                    status TEXT DEFAULT 'idle',
-                    iteration INTEGER DEFAULT 0,
-                    changes_history TEXT DEFAULT '[]',
-                    deferred_items TEXT DEFAULT '[]',
-                    convergence_k INTEGER DEFAULT 2,
-                    convergence_n INTEGER DEFAULT 3,
-                    max_iterations INTEGER DEFAULT 20,
-                    supervisor_model TEXT DEFAULT 'sonnet',
-                    created_at TEXT,
-                    updated_at TEXT,
-                    mode TEXT DEFAULT 'review'
-                )
-            """)
-            # Migration: add mode column for existing DBs that predate this column
-            try:
-                await db.execute("ALTER TABLE iteration_loops ADD COLUMN mode TEXT DEFAULT 'review'")
-            except Exception:
-                pass  # column already exists
-            await db.commit()
-        # Migrate from JSON if present
-        json_file = self._claude_dir / "task-queue.json"
-        if json_file.exists():
-            try:
-                existing = json.loads(json_file.read_text())
-                if existing:
-                    async with aiosqlite.connect(str(self._db_path)) as db:
-                        for t in existing:
-                            await db.execute(
-                                """INSERT OR IGNORE INTO tasks
-                                   (id, description, model, timeout, retries, status, worker_id,
-                                    started_at, elapsed_s, last_commit, log_file, failed_reason,
-                                    created_at, depends_on)
-                                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                                (
-                                    t.get("id"), t.get("description", ""),
-                                    t.get("model", "sonnet"), t.get("timeout", 600),
-                                    t.get("retries", 2), t.get("status", "pending"),
-                                    t.get("worker_id"), t.get("started_at"),
-                                    t.get("elapsed_s", 0), t.get("last_commit"),
-                                    t.get("log_file"), t.get("failed_reason"),
-                                    t.get("created_at", time.time()),
-                                    json.dumps(t.get("depends_on", [])),
-                                ),
-                            )
-                        await db.commit()
-                json_file.rename(json_file.with_suffix(".json.migrated"))
-            except Exception:
-                pass
-        self._initialized = True
+        async with self._init_lock:
+            if self._initialized:
+                return
+            self._claude_dir.mkdir(parents=True, exist_ok=True)
+            async with aiosqlite.connect(str(self._db_path)) as db:
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS tasks (
+                        id TEXT PRIMARY KEY,
+                        description TEXT NOT NULL,
+                        model TEXT DEFAULT 'sonnet',
+                        timeout INTEGER DEFAULT 600,
+                        retries INTEGER DEFAULT 2,
+                        status TEXT DEFAULT 'pending',
+                        worker_id TEXT,
+                        started_at REAL,
+                        elapsed_s INTEGER DEFAULT 0,
+                        last_commit TEXT,
+                        log_file TEXT,
+                        failed_reason TEXT,
+                        created_at REAL,
+                        depends_on TEXT DEFAULT '[]',
+                        score INTEGER,
+                        score_note TEXT
+                    )
+                """)
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS commits (
+                        id TEXT PRIMARY KEY,
+                        task_id TEXT,
+                        hash TEXT,
+                        branch TEXT,
+                        committed_at REAL,
+                        pushed_at REAL,
+                        merged_at REAL,
+                        FOREIGN KEY (task_id) REFERENCES tasks(id)
+                    )
+                """)
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS schedule (
+                        id INTEGER PRIMARY KEY CHECK (id = 1),
+                        scheduled_at TEXT,
+                        triggered INTEGER DEFAULT 0
+                    )
+                """)
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS iteration_loops (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL DEFAULT 'default',
+                        artifact_path TEXT NOT NULL DEFAULT '',
+                        context_dir TEXT,
+                        status TEXT DEFAULT 'idle',
+                        iteration INTEGER DEFAULT 0,
+                        changes_history TEXT DEFAULT '[]',
+                        deferred_items TEXT DEFAULT '[]',
+                        convergence_k INTEGER DEFAULT 2,
+                        convergence_n INTEGER DEFAULT 3,
+                        max_iterations INTEGER DEFAULT 20,
+                        supervisor_model TEXT DEFAULT 'sonnet',
+                        created_at TEXT,
+                        updated_at TEXT,
+                        mode TEXT DEFAULT 'review'
+                    )
+                """)
+                # Migration: add mode column for existing DBs that predate this column
+                try:
+                    await db.execute("ALTER TABLE iteration_loops ADD COLUMN mode TEXT DEFAULT 'review'")
+                except Exception:
+                    pass  # column already exists
+                await db.commit()
+            # Migrate from JSON if present
+            json_file = self._claude_dir / "task-queue.json"
+            if json_file.exists():
+                try:
+                    existing = json.loads(json_file.read_text())
+                    if existing:
+                        async with aiosqlite.connect(str(self._db_path)) as db:
+                            for t in existing:
+                                await db.execute(
+                                    """INSERT OR IGNORE INTO tasks
+                                       (id, description, model, timeout, retries, status, worker_id,
+                                        started_at, elapsed_s, last_commit, log_file, failed_reason,
+                                        created_at, depends_on)
+                                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                                    (
+                                        t.get("id"), t.get("description", ""),
+                                        t.get("model", "sonnet"), t.get("timeout", 600),
+                                        t.get("retries", 2), t.get("status", "pending"),
+                                        t.get("worker_id"), t.get("started_at"),
+                                        t.get("elapsed_s", 0), t.get("last_commit"),
+                                        t.get("log_file"), t.get("failed_reason"),
+                                        t.get("created_at", time.time()),
+                                        json.dumps(t.get("depends_on", [])),
+                                    ),
+                                )
+                            await db.commit()
+                    json_file.rename(json_file.with_suffix(".json.migrated"))
+                except Exception:
+                    pass
+            self._initialized = True
 
     def _row_to_dict(self, row) -> dict:
         d = dict(row)
@@ -282,6 +293,9 @@ class TaskQueue:
         if "depends_on" in kwargs:
             val = kwargs["depends_on"]
             kwargs["depends_on"] = json.dumps(val) if not isinstance(val, str) else val
+        for k in kwargs:
+            if k not in _ALLOWED_TASK_COLS:
+                raise ValueError(f"Unknown task column: {k}")
         set_clause = ", ".join(f"{k} = ?" for k in kwargs)
         values = list(kwargs.values()) + [task_id]
         async with aiosqlite.connect(str(self._db_path)) as db:
@@ -796,7 +810,7 @@ class Worker:
         }
         model = self.model if self.model in _ALLOWED_MODELS else "claude-sonnet-4-6"
         shell_cmd = (
-            f'claude -p "$(cat {task_file})" --model {model} --dangerously-skip-permissions'
+            f'claude -p "$(cat {shlex.quote(str(task_file))})" --model {model} --dangerously-skip-permissions'
         )
 
         log_fd = open(self._log_path, "w")  # noqa: WPS515
@@ -1042,7 +1056,7 @@ class WorkerPool:
     ) -> Worker:
         # Guard: prevent spawning a second worker for the same task
         existing = next(
-            (w for w in self.workers.values() if w.task_id == task["id"] and w.status == "running"),
+            (w for w in self.workers.values() if w.task_id == task["id"] and w.status in ("running", "starting")),
             None,
         )
         if existing:
@@ -1267,6 +1281,7 @@ class ProjectSession:
             "sonnet": "claude-sonnet-4-6",
             "opus": "claude-opus-4-6",
         }
+        consecutive_empty = 0
         while True:
             loop_state = await self.task_queue.get_loop()
             if not loop_state or loop_state["status"] != "running":
@@ -1320,6 +1335,16 @@ class ProjectSession:
                 response = ""
             finally:
                 prompt_file.unlink(missing_ok=True)
+
+            if not response.strip():
+                consecutive_empty += 1
+                if consecutive_empty >= 3:
+                    await self.task_queue.upsert_loop(status="cancelled")
+                    logger.warning("Loop cancelled: 3 consecutive empty supervisor responses")
+                    return
+                await asyncio.sleep(5)
+                continue
+            consecutive_empty = 0
 
             # Extract JSON array (supervisor may include prose around it)
             findings = []
@@ -1502,7 +1527,7 @@ async def _watch_session_proposed_tasks(session: ProjectSession) -> None:
     target.touch(exist_ok=True)
     try:
         async for _changes in awatch(str(target)):
-            content = target.read_text() if target.exists() else ""
+            content = await asyncio.to_thread(target.read_text) if target.exists() else ""
             msg = json.dumps({
                 "type": "proposed_tasks",
                 "session_id": session.session_id,
@@ -1924,7 +1949,7 @@ async def switch_project(body: dict):
 @app.get("/api/projects")
 async def list_projects(base: str | None = None):
     base_path = Path(base).expanduser() if base else None
-    return scan_projects(base_path)
+    return await asyncio.to_thread(scan_projects, base_path)
 
 
 @app.get("/")
@@ -2249,7 +2274,7 @@ async def merge_all_done(s: ProjectSession = Depends(_resolve_session)):
         branch = w.branch_name or f"orchestrator/task-{w.task_id}"
         try:
             pr_proc = await asyncio.create_subprocess_shell(
-                f'gh pr create --head {branch} --base main --fill',
+                f'gh pr create --head {shlex.quote(branch)} --base main --fill',
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
                 cwd=str(s.project_dir),
             )
