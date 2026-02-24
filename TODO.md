@@ -116,12 +116,12 @@ Workers currently run "blind" without knowing the project's tech stack or constr
 
 One screen to rule all overnight runs across all projects.
 
-- [ ] **Multi-project overview** at top of Execute mode
+- [x] **Multi-project overview** at top of Execute mode
   - Each project: name | progress bar | running/done/failed counts | ETA
   - Click to drill into that project's workers
-- [ ] **Global "Start All Queued"** button
+- [x] **Global "Start All Queued"** button
   - Starts all pending tasks across all open project sessions at once
-- [ ] **Success rate metrics**
+- [x] **Success rate metrics**
   - Per project: % tasks done successfully, avg time per task
   - Displayed in Execute mode footer
 
@@ -131,13 +131,13 @@ One screen to rule all overnight runs across all projects.
 
 One-time configuration so every session runs the same way without manual setup.
 
-- [ ] **Auto-start workers** when proposed tasks arrive (ON/OFF)
-- [ ] **Auto-push** to feature branch after commit (ON/OFF)
-- [ ] **Auto-merge** for `orchestrator/task-*` branches (ON/OFF, default ON)
-- [ ] **Auto-review** run `/review-pr` after PR creation (ON/OFF, default ON)
-- [ ] **Default model** per task priority (opus/sonnet/haiku)
-- [ ] **Max parallel workers** per project
-- [ ] **Settings persist** in localStorage (or SQLite)
+- [x] **Auto-start workers** when proposed tasks arrive (ON/OFF)
+- [x] **Auto-push** to feature branch after commit (ON/OFF)
+- [x] **Auto-merge** for `orchestrator/task-*` branches (ON/OFF, default ON)
+- [x] **Auto-review** run `/review-pr` after PR creation (ON/OFF, default ON)
+- [x] **Default model** per task priority (opus/sonnet/haiku)
+- [x] **Max parallel workers** per project
+- [x] **Settings persist** in `~/.claude/orchestrator-settings.json` (server-side)
 
 ---
 
