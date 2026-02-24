@@ -782,6 +782,19 @@
     .token-bar-fill { height:100%; transition:width 0.3s; }
     .badge.oracle-ok { background:rgba(52,211,153,0.15); color:#34d399; }
     .badge.oracle-rejected { background:rgba(239,68,68,0.15); color:#ef4444; }
+
+    /* ─── Multi-project Overview ─────────────────────────────────── */
+    .overview-row {
+      display: flex; align-items: center; gap: 8px; padding: 5px 10px;
+      border-radius: 5px; cursor: pointer; font-size: 11px;
+      transition: background 0.1s;
+    }
+    .overview-row:hover, .overview-row.active { background: var(--bg3); }
+    .proj-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+    .proj-bar { width: 60px; height: 4px; border-radius: 2px; background: var(--bg3); flex-shrink: 0; }
+    .proj-bar-fill { height: 100%; border-radius: 2px; background: var(--accent); transition: width 0.3s; }
+    .proj-counts { color: var(--text2); white-space: nowrap; }
+    .proj-eta { color: var(--text2); font-family: var(--font-mono); white-space: nowrap; min-width: 30px; text-align: right; }
   </style>
 </head>
 <body>
@@ -817,7 +830,7 @@
   </div>
   <label class="settings-row">
     <span>Auto-start workers</span>
-    <input type="checkbox" id="settingAutoStart" onchange="saveSettings()" />
+    <input type="checkbox" id="settingAutoStart" onchange="document.getElementById('autoStartToggle').checked=this.checked;saveSettings()" />
   </label>
   <label class="settings-row">
     <span>Auto-push commits</span>
@@ -1115,7 +1128,7 @@
 </div>
 
 <!-- Chat with Worker Modal -->
-<div class="modal-backdrop hidden" id="workerChatModal">
+<div class="modal-backdrop hidden" id="workerChatModal" onclick="if(event.target===this)closeWorkerChat()">
   <div class="modal">
     <h3>Send Message to Worker</h3>
     <p class="modal-sub" id="workerChatSub">Stops the worker, injects your message as context, and restarts it.</p>
@@ -1223,7 +1236,8 @@ const PaneManager = {
     // Close any existing connection cleanly before replacing
     if (pane.ws) { pane.ws.onclose = null; pane.ws.close(); }
 
-    const url = `ws://${location.host}/ws/chat?session=${sessionId}`;
+    const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const url = `${wsProto}://${location.host}/ws/chat?session=${sessionId}`;
     const ws = new WebSocket(url);
     pane.ws = ws;
 
@@ -1236,8 +1250,10 @@ const PaneManager = {
       ws.send(JSON.stringify({ type: 'resize', rows: pane.term.rows, cols: pane.term.cols }));
     };
     ws.onmessage = (e) => {
-      const msg = JSON.parse(e.data);
-      if (msg.type === 'output') pane.term.write(msg.data);
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'output') pane.term.write(msg.data);
+      } catch {}
     };
     ws.onclose = () => {
       const isActive = sessionId === activeSessionId;
@@ -1424,12 +1440,14 @@ document.getElementById('chatInput').addEventListener('keydown', (e) => {
 function connectStatus(sessionId) {
   const state = sessionStates.get(sessionId);
   if (!state) return;
-  const url = `ws://${location.host}/ws/status?session=${sessionId}`;
+  const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const url = `${wsProto}://${location.host}/ws/status?session=${sessionId}`;
   const ws = new WebSocket(url);
   state.statusWs = ws;
 
   ws.onmessage = (e) => {
-    const msg = JSON.parse(e.data);
+    let msg;
+    try { msg = JSON.parse(e.data); } catch { return; }
     if (msg.type === 'status') updateDashboard(msg);
     else if (msg.type === 'proposed_tasks') {
       if (msg.content && msg.content.includes('===TASK===')) {
@@ -1445,7 +1463,8 @@ function connectStatus(sessionId) {
             .then(d => {
               setMode('execute');
               showToast(`Auto-started ${d.started} worker${d.started !== 1 ? 's' : ''}`);
-            });
+            })
+            .catch(err => showToast(`Auto-start failed: ${err.message}`));
         } else {
           showProposedOverlay(msg.content);
         }
@@ -1526,9 +1545,9 @@ function renderTabs() {
 async function switchTab(sessionId) {
   if (sessionId === activeSessionId) return;
 
-  if (window._logRefreshInterval) {
-    clearInterval(window._logRefreshInterval);
-    window._logRefreshInterval = null;
+  if (_logRefreshInterval) {
+    clearInterval(_logRefreshInterval);
+    _logRefreshInterval = null;
   }
 
   // Hide current session's terminal — keep its WS alive
@@ -1679,7 +1698,8 @@ function renderWorkers() {
     if (w.pr_merged) {
       commitDisplay = `<span style="color:#4ade80;font-weight:600">✓ merged</span>`;
     } else if (w.pr_url) {
-      commitDisplay = `<span style="color:#4ade80;font-weight:600">✓ committed · <a href="${esc(w.pr_url)}" target="_blank" style="color:#60a5fa">PR ↗</a></span>`;
+      const safeUrl = /^https?:\/\//i.test(w.pr_url) ? w.pr_url : '#';
+      commitDisplay = `<span style="color:#4ade80;font-weight:600">✓ committed · <a href="${esc(safeUrl)}" target="_blank" rel="noopener" style="color:#60a5fa">PR ↗</a></span>`;
     } else if (w.auto_committed) {
       commitDisplay = `<span style="color:#4ade80;font-weight:600">✓ committed${w.auto_pushed ? ' · ✓ pushed' : ''}</span>`;
     } else if (w.last_commit) {
@@ -1724,8 +1744,8 @@ function renderWorkers() {
         ${tokenBar}
         <div class="worker-footer">
           <span class="elapsed" id="elapsed-${w.id}">${formatElapsed(w.elapsed_s)}</span>
-          ${canPause ? `<button class="btn small secondary" id="btn-pause-${w.id}" onclick="pauseWorker('${w.id}')">Pause</button>` : ''}
-          ${canResume ? `<button class="btn small" id="btn-resume-${w.id}" onclick="resumeWorker('${w.id}')">Resume</button>` : ''}
+          ${canPause ? `<button class="btn small secondary" id="btn-pause-${w.id}" data-wid="${esc(String(w.id))}" onclick="pauseWorker(this.dataset.wid)">Pause</button>` : ''}
+          ${canResume ? `<button class="btn small" id="btn-resume-${w.id}" data-wid="${esc(String(w.id))}" onclick="resumeWorker(this.dataset.wid)">Resume</button>` : ''}
           ${canChat ? `<button class="btn small secondary" id="btn-chat-${w.id}" data-wid="${w.id}" data-name="${esc(firstLine(w.description))}" onclick="openWorkerChat(this.dataset.wid, this.dataset.name)">Chat</button>` : ''}
           <button class="btn small secondary" id="btn-log-${w.id}" data-wid="${w.id}" data-name="${esc(firstLine(w.description))}" onclick="openWorkerLog(this.dataset.wid, this.dataset.name)">Log</button>
         </div>
@@ -1902,7 +1922,7 @@ function showProposedOverlay(content) {
   // Render a simplified preview
   const blocks = content.split('===TASK===').filter(b => b.trim());
   const preview = blocks.map((b, i) => {
-    const lines = b.trim().splitlines ? b.trim().split('\n') : b.trim().split('\n');
+    const lines = b.trim().split('\n');
     const headerEnd = lines.findIndex(l => l.trim() === '---');
     const title = headerEnd >= 0
       ? lines.slice(headerEnd + 1).find(l => l.trim()) || `Task ${i+1}`
@@ -2105,8 +2125,10 @@ function firstLine(s) {
 
 function formatElapsed(s) {
   s = Math.max(0, Math.round(s));
-  const m = Math.floor(s / 60);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
   const sec = s % 60;
+  if (h > 0) return `${h}h${m.toString().padStart(2,'0')}m`;
   if (m === 0) return `${sec}s`;
   return `${m}m${sec.toString().padStart(2,'0')}s`;
 }
@@ -2227,9 +2249,9 @@ document.getElementById('projectPathInput').addEventListener('keydown', e => {
 });
 
 // ─── Pane keyboard shortcuts ─────────────────────────────────────────────────
-// Ctrl+\        → split active pane right  (title hint for split-right button)
-// Ctrl+-        → split active pane down   (title hint for split-down button)
-// Ctrl+Shift+W  → close active pane        (title hint for close-pane button)
+// Ctrl+\          → split active pane right
+// Ctrl+|          → split active pane down  (Ctrl+Shift+\)
+// Ctrl+Shift+X    → close active pane
 // Ctrl+Shift+←/→/↑/↓ → navigate panes
 document.addEventListener('keydown', (e) => {
   // Don't fire shortcuts when typing in input/textarea
@@ -2246,15 +2268,17 @@ document.addEventListener('keydown', (e) => {
     return;
   }
 
-  // Ctrl+- → split active pane down
-  if (e.ctrlKey && !e.shiftKey && e.key === '-') {
+  // Ctrl+| (Ctrl+Shift+\) → split active pane down
+  // NOTE: Ctrl+- was avoided because it conflicts with browser zoom-out
+  if (e.ctrlKey && e.shiftKey && e.key === '|') {
     e.preventDefault();
     if (typeof PaneManager !== 'undefined') PaneManager.splitActive('v');
     return;
   }
 
-  // Ctrl+Shift+W → close active pane (only when more than 1 pane exists)
-  if (e.ctrlKey && e.shiftKey && e.key === 'W') {
+  // Ctrl+Shift+X → close active pane (only when more than 1 pane exists)
+  // NOTE: Ctrl+Shift+W was avoided because it closes the browser window
+  if (e.ctrlKey && e.shiftKey && e.key === 'X') {
     e.preventDefault();
     if (typeof PaneManager !== 'undefined' && PaneManager.panes.size > 1) {
       PaneManager.removePane(PaneManager.activePaneId);
@@ -2271,6 +2295,20 @@ document.addEventListener('keydown', (e) => {
       if (typeof PaneManager !== 'undefined') PaneManager.focusNeighbor(dir);
     }
   }
+
+  // Escape → close settings panel if open
+  if (e.key === 'Escape') {
+    const panel = document.getElementById('settingsPanel');
+    if (panel && panel.style.display !== 'none') toggleSettings();
+  }
+});
+
+// Close settings panel on click outside
+document.addEventListener('click', (e) => {
+  const panel = document.getElementById('settingsPanel');
+  if (!panel || panel.style.display === 'none') return;
+  const btn = document.querySelector('[onclick="toggleSettings()"]');
+  if (!panel.contains(e.target) && (!btn || !btn.contains(e.target))) toggleSettings();
 });
 
 // Show which project is loaded
@@ -2373,6 +2411,7 @@ function closeIntervene() {
   if (st && container) {
     container.appendChild(st.el);
     if (currentMode === 'plan') st.el.style.display = 'flex';
+    requestAnimationFrame(() => PaneManager.fitSession(activeSessionId));
   }
 }
 
