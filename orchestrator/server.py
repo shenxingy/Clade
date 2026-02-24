@@ -31,6 +31,27 @@ WEB_DIR = BASE_DIR / "web"
 # Kept for backward compat / default session init; not used in new code paths
 PROJECT_DIR = Path(os.environ.get("ORCHESTRATOR_PROJECT_DIR", str(Path.cwd())))
 
+# ─── Global Settings ──────────────────────────────────────────────────────────
+
+_settings_file = Path.home() / ".claude" / "orchestrator-settings.json"
+
+
+def _load_settings() -> dict:
+    if _settings_file.exists():
+        try:
+            return json.loads(_settings_file.read_text())
+        except Exception:
+            pass
+    return {"max_workers": 0}
+
+
+def _save_settings(s: dict) -> None:
+    _settings_file.parent.mkdir(parents=True, exist_ok=True)
+    _settings_file.write_text(json.dumps(s, indent=2))
+
+
+GLOBAL_SETTINGS: dict = _load_settings()
+
 
 def scan_projects(base: Path | None = None, max_depth: int = 3) -> list[dict]:
     """Find git repos under base dir (default: home)."""
@@ -1007,6 +1028,27 @@ async def status_loop():
                 await session.worker_pool.poll_all(session.task_queue)
                 await _check_blockers(session)
 
+                # Auto-start tasks whose dependencies just became satisfied
+                _auto_tasks = await session.task_queue.list()
+                _done_ids = {t["id"] for t in _auto_tasks if t["status"] == "done"}
+                _newly_ready = [
+                    t for t in _auto_tasks
+                    if t["status"] == "pending"
+                    and t.get("depends_on")
+                    and _deps_met(t, _done_ids)
+                ]
+                if _newly_ready:
+                    _max_w = GLOBAL_SETTINGS.get("max_workers", 0)
+                    _running = [w for w in session.worker_pool.all() if w.status == "running"]
+                    for _task in _newly_ready:
+                        if _max_w > 0 and len(_running) >= _max_w:
+                            break
+                        _w = await session.worker_pool.start_worker(
+                            _task, session.task_queue,
+                            session.project_dir, session.claude_dir,
+                        )
+                        _running.append(_w)
+
                 # Scheduler: auto-start pending tasks at scheduled time
                 if session._scheduled_start and not session._schedule_triggered:
                     if datetime.now() >= session._scheduled_start:
@@ -1309,14 +1351,24 @@ async def start_all(s: ProjectSession = Depends(_resolve_session)):
     pending = [t for t in tasks if t["status"] in ("pending", "queued")]
     started = []
     skipped_deps = []
+    # Enforce max workers limit
+    max_w = GLOBAL_SETTINGS.get("max_workers", 0)
+    if max_w > 0:
+        running_count = sum(1 for w in s.worker_pool.all() if w.status == "running")
+        available = max(0, max_w - running_count)
+    else:
+        available = len(pending)
     for task in pending:
         if not _deps_met(task, done_ids):
             skipped_deps.append(task["id"])
             continue
+        if available <= 0:
+            break
         worker = await s.worker_pool.start_worker(
             task, s.task_queue, s.project_dir, s.claude_dir
         )
         started.append({"task_id": task["id"], "worker_id": worker.id})
+        available -= 1
     return {"started": len(started), "workers": started, "skipped_deps": skipped_deps}
 
 
@@ -1567,6 +1619,20 @@ def _get_usage() -> dict:
 async def get_usage():
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _get_usage)
+
+
+# ─── REST: Settings ───────────────────────────────────────────────────────────
+
+@app.get("/api/settings")
+async def get_settings():
+    return GLOBAL_SETTINGS
+
+
+@app.post("/api/settings")
+async def post_settings(body: dict = Body(...)):
+    GLOBAL_SETTINGS.update(body)
+    _save_settings(GLOBAL_SETTINGS)
+    return GLOBAL_SETTINGS
 
 
 # ─── REST: Status ─────────────────────────────────────────────────────────────
