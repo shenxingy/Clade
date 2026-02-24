@@ -815,21 +815,22 @@ class Worker:
             if wt_proc.returncode == 0:
                 self._project_dir = self._worktree_path
             else:
-                wt_proc2 = await asyncio.create_subprocess_exec(
-                    "git", "worktree", "add", str(self._worktree_path), self._branch_name,
-                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-                    cwd=str(self._project_dir),
-                )
                 try:
-                    await asyncio.wait_for(wt_proc2.communicate(), timeout=30)
-                except asyncio.TimeoutError:
-                    wt_proc2.kill()
-                    await wt_proc2.communicate()
+                    wt_proc2 = await asyncio.create_subprocess_exec(
+                        "git", "worktree", "add", str(self._worktree_path), self._branch_name,
+                        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                        cwd=str(self._project_dir),
+                    )
+                    try:
+                        await asyncio.wait_for(wt_proc2.communicate(), timeout=30)
+                    except asyncio.TimeoutError:
+                        wt_proc2.kill()
+                        await wt_proc2.communicate()
+                    if wt_proc2.returncode == 0:
+                        self._project_dir = self._worktree_path
+                    else:
+                        self._worktree_path = None
                 except Exception:
-                    pass
-                if wt_proc2.returncode == 0:
-                    self._project_dir = self._worktree_path
-                else:
                     self._worktree_path = None
         except asyncio.TimeoutError:
             wt_proc.kill()
@@ -924,7 +925,7 @@ class Worker:
                 pass
         if self._finished_at is None:
             self._finished_at = time.time()
-        self.status = "done"
+        self._verify_triggered = True  # prevent _on_worker_done from running after forced stop
         await self._cleanup_worktree()
 
     async def poll(self) -> None:
@@ -1019,7 +1020,12 @@ class Worker:
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
             cwd=str(self._project_dir),
         )
-        diff_out, _ = await asyncio.wait_for(diff_summary_proc.communicate(), timeout=10)
+        try:
+            diff_out, _ = await asyncio.wait_for(diff_summary_proc.communicate(), timeout=10)
+        except asyncio.TimeoutError:
+            diff_summary_proc.kill()
+            await diff_summary_proc.communicate()
+            return False
 
         task_first_line = self.description.splitlines()[0][:80]
         verify_prompt = (
@@ -1088,6 +1094,19 @@ class Worker:
                         self.oracle_result = "approved" if approved else "rejected"
                         self.oracle_reason = reason
                         if not approved:
+                            # Undo the commit so rejected work is not accidentally pushed later
+                            reset_proc = await asyncio.create_subprocess_exec(
+                                "git", "reset", "HEAD~1",
+                                stdout=asyncio.subprocess.DEVNULL,
+                                stderr=asyncio.subprocess.DEVNULL,
+                                cwd=str(self._project_dir),
+                            )
+                            try:
+                                await asyncio.wait_for(reset_proc.communicate(), timeout=10)
+                            except asyncio.TimeoutError:
+                                reset_proc.kill()
+                                await reset_proc.communicate()
+                            self.auto_committed = False
                             return False
                     except Exception:
                         pass  # fail-open
@@ -1252,20 +1271,21 @@ class OrchestratorSession:
         self._read_task = asyncio.ensure_future(self._read_loop())
 
     async def _read_loop(self) -> None:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         while self._running and self.pty and self.pty.isalive():
             try:
                 data = await loop.run_in_executor(None, self._read_chunk)
                 if data:
                     msg = json.dumps({"type": "output", "data": data})
                     dead = []
-                    for ws in self.clients:
+                    for ws in list(self.clients):
                         try:
                             await ws.send_text(msg)
                         except Exception:
                             dead.append(ws)
                     for ws in dead:
-                        self.clients.remove(ws)
+                        if ws in self.clients:
+                            self.clients.remove(ws)
             except Exception:
                 await asyncio.sleep(0.05)
 
@@ -1677,15 +1697,16 @@ async def status_loop():
                 ]
                 if _newly_ready and GLOBAL_SETTINGS.get("auto_start", True):
                     _max_w = GLOBAL_SETTINGS.get("max_workers", 0)
-                    _running = [w for w in session.worker_pool.all() if w.status == "running"]
                     for _task in _newly_ready:
-                        if _max_w > 0 and len(_running) >= _max_w:
+                        # Re-count running workers each iteration to avoid overshoot race
+                        if _max_w > 0 and sum(
+                            1 for w in session.worker_pool.all() if w.status == "running"
+                        ) >= _max_w:
                             break
-                        _w = await session.worker_pool.start_worker(
+                        await session.worker_pool.start_worker(
                             _task, session.task_queue,
                             session.project_dir, session.claude_dir,
                         )
-                        _running.append(_w)
 
                 # Scheduler: auto-start pending tasks at scheduled time
                 if session._scheduled_start and not session._schedule_triggered:
@@ -1744,13 +1765,14 @@ async def status_loop():
                     "loop_state": loop_state,
                 })
                 dead = []
-                for ws in session.status_subscribers:
+                for ws in list(session.status_subscribers):
                     try:
                         await ws.send_text(msg)
                     except Exception:
                         dead.append(ws)
                 for ws in dead:
-                    session.status_subscribers.remove(ws)
+                    if ws in session.status_subscribers:
+                        session.status_subscribers.remove(ws)
             except Exception as exc:
                 logger.exception("status_loop error for session %s: %s", getattr(session, 'session_id', '?'), exc)
 
@@ -2201,7 +2223,7 @@ async def retry_failed(s: ProjectSession = Depends(_resolve_session)):
 async def run_task(task_id: str, s: ProjectSession = Depends(_resolve_session)):
     task = await s.task_queue.get(task_id)
     if not task:
-        return {"error": "Task not found"}
+        raise HTTPException(status_code=404, detail="Task not found")
     if task["status"] not in ("pending", "queued"):
         return {"error": f"Task status is '{task['status']}', cannot run"}
     deps = task.get("depends_on") or []
@@ -2241,7 +2263,7 @@ async def list_workers(s: ProjectSession = Depends(_resolve_session)):
 async def pause_worker(worker_id: str, s: ProjectSession = Depends(_resolve_session)):
     w = s.worker_pool.get(worker_id)
     if not w:
-        return {"error": "Worker not found"}
+        raise HTTPException(status_code=404, detail="Worker not found")
     w.pause()
     await s.task_queue.update(w.task_id, status="paused")
     return {"status": w.status}
@@ -2251,7 +2273,7 @@ async def pause_worker(worker_id: str, s: ProjectSession = Depends(_resolve_sess
 async def resume_worker(worker_id: str, s: ProjectSession = Depends(_resolve_session)):
     w = s.worker_pool.get(worker_id)
     if not w:
-        return {"error": "Worker not found"}
+        raise HTTPException(status_code=404, detail="Worker not found")
     w.resume()
     await s.task_queue.update(w.task_id, status="running")
     return {"status": w.status}
@@ -2263,7 +2285,7 @@ async def message_worker(
 ):
     w = s.worker_pool.get(worker_id)
     if not w:
-        return {"error": "Worker not found"}
+        raise HTTPException(status_code=404, detail="Worker not found")
     user_message = body.get("message", "")
     original_desc = w.description
     await w.stop()
@@ -2343,9 +2365,10 @@ async def get_agents_md(session_id: str):
 async def get_worker_log(
     worker_id: str, lines: int = 100, s: ProjectSession = Depends(_resolve_session)
 ):
+    lines = min(lines, 5000)
     w = s.worker_pool.get(worker_id)
     if not w:
-        return {"error": "Worker not found"}
+        raise HTTPException(status_code=404, detail="Worker not found")
     if not w._log_path or not w._log_path.exists():
         return {"log": ""}
     try:
