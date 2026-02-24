@@ -234,6 +234,8 @@ class Worker:
         self._verify_triggered: bool = False
         self.task_timeout: int = 600  # default 10 min
         self.failure_context: str | None = None
+        self._worktree_path: Path | None = None
+        self._branch_name: str | None = None
 
     @property
     def elapsed_s(self) -> int:
@@ -265,9 +267,40 @@ class Worker:
             "branch_name": self.branch_name,
             "log_tail": log_tail,
             "failure_context": self.failure_context,
+            "worktree_path": str(self._worktree_path) if self._worktree_path else None,
         }
 
     async def start(self) -> None:
+        # Create isolated git worktree for this worker
+        worktree_base = self._claude_dir / "worktrees"
+        worktree_base.mkdir(parents=True, exist_ok=True)
+        self._worktree_path = worktree_base / f"worker-{self.id}"
+        self._branch_name = f"orchestrator/task-{self.task_id}"
+
+        wt_proc = await asyncio.create_subprocess_exec(
+            "git", "worktree", "add", str(self._worktree_path), "-b", self._branch_name,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            cwd=str(self._project_dir),
+        )
+        try:
+            wt_out, wt_err = await asyncio.wait_for(wt_proc.communicate(), timeout=30)
+            if wt_proc.returncode == 0:
+                self._project_dir = self._worktree_path
+            else:
+                # Branch may already exist — try without -b
+                wt_proc2 = await asyncio.create_subprocess_exec(
+                    "git", "worktree", "add", str(self._worktree_path), "HEAD",
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                    cwd=str(self._project_dir),
+                )
+                wt_out2, _ = await asyncio.wait_for(wt_proc2.communicate(), timeout=30)
+                if wt_proc2.returncode == 0:
+                    self._project_dir = self._worktree_path
+                else:
+                    self._worktree_path = None  # fallback: run from main repo
+        except Exception:
+            self._worktree_path = None  # degraded but functional
+
         logs = self._claude_dir / "orchestrator-logs"
         logs.mkdir(parents=True, exist_ok=True)
         self._log_path = logs / f"worker-{self.id}.log"
@@ -344,6 +377,18 @@ class Worker:
         if self._finished_at is None:
             self._finished_at = time.time()
         self.status = "done"
+        # Clean up worktree
+        if self._worktree_path and self._worktree_path.exists():
+            cleanup = await asyncio.create_subprocess_exec(
+                "git", "worktree", "remove", "--force", str(self._worktree_path),
+                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+                cwd=str(self._claude_dir.parent),
+            )
+            try:
+                await asyncio.wait_for(cleanup.communicate(), timeout=15)
+            except Exception:
+                pass
+            self._worktree_path = None
 
     async def poll(self) -> None:
         """Update last_commit and check if process finished."""
@@ -359,6 +404,8 @@ class Worker:
                     self.failure_context = "\n".join(lines[-50:])
                 except Exception:
                     pass
+            if self._worktree_path and self._worktree_path.exists():
+                asyncio.ensure_future(self._cleanup_worktree())
             return
 
         try:
@@ -372,6 +419,20 @@ class Worker:
             self.last_commit = stdout.decode().strip() or None
         except Exception:
             pass
+
+    async def _cleanup_worktree(self) -> None:
+        if not self._worktree_path:
+            return
+        cleanup = await asyncio.create_subprocess_exec(
+            "git", "worktree", "remove", "--force", str(self._worktree_path),
+            stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+            cwd=str(self._claude_dir.parent),
+        )
+        try:
+            await asyncio.wait_for(cleanup.communicate(), timeout=15)
+        except Exception:
+            pass
+        self._worktree_path = None
 
     async def verify_and_commit(self) -> bool:
         """Run AI verification, auto-commit if OK. Returns True if committed."""
