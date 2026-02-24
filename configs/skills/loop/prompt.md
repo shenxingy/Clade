@@ -10,6 +10,7 @@ The programmer provides a GOAL file (ideal end state). The supervisor does task 
 
 - **`GOAL_FILE [options]`** → LAUNCH MODE
 - **`--status`** → STATUS MODE
+- **`--stop`** → STOP MODE
 - **`--dry-run GOAL_FILE`** → DRY RUN MODE
 - **`--resume GOAL_FILE`** → RESUME MODE (skip enrichment, continue from state)
 
@@ -34,6 +35,18 @@ Supervisor: sonnet → Workers: sonnet (4 parallel)
 Action:     workers-2
 ```
 If no progress file: "No active loop. Start one with `/loop goal.md`"
+
+---
+
+## ACTION: STOP (`--stop`)
+
+1. Check if `.claude/loop-state` exists
+2. If exists: write `STOP=true` to the state file
+   ```bash
+   echo "STOP=true" >> .claude/loop-state
+   ```
+3. Show: "Stop sentinel written. Loop will exit after current iteration completes."
+4. If no state file: "No active loop to stop."
 
 ---
 
