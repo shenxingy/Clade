@@ -229,35 +229,35 @@ Closes the review→fix→verify feedback loop. Runs autonomously until converge
 
 ### Oracle Validation (second-model review before merge)
 After `verify_and_commit()` passes but before auto-push, send diff + task description to a fresh model instance with no prior context. Independent validation catches "completed but wrong" silently.
-- [ ] `_oracle_review(task_description, diff_text)` async function → calls haiku, returns APPROVED/REJECTED + reason
-- [ ] Gate `auto_push` on oracle approval (new setting `auto_oracle`, default OFF to avoid breaking existing flow)
-- [ ] Worker card shows oracle result badge (✓ oracle / ✗ oracle rejected)
+- [x] `_oracle_review(task_description, diff_text)` async function → calls haiku, returns APPROVED/REJECTED + reason
+- [x] Gate `auto_push` on oracle approval (new setting `auto_oracle`, default OFF to avoid breaking existing flow)
+- [x] Worker card shows oracle result badge (✓ oracle / ✗ oracle rejected)
 - [ ] Oracle rejection → task re-queued with rejection reason as context (same as retry-with-failure-context)
 
 ### Broadcast to All Workers
-- [ ] `POST /api/sessions/{id}/workers/broadcast` endpoint
+- [x] `POST /api/sessions/{id}/workers/broadcast` endpoint
   - Appends message to each running worker's task description; pokes each worker process (SIGCONT if paused, or writes to stdin via proc)
   - Returns list of worker IDs that received the message
-- [ ] "Broadcast" button in Execute mode workers header
+- [x] "Broadcast" button in Execute mode workers header
   - Small input + "→ All" button, visible when ≥1 worker is running
   - On click: POST broadcast, show toast "Broadcast sent to N workers"
 
 ### Model Tier Auto-Routing
-- [ ] When `auto_start` launches a worker, pick model by scout score:
+- [x] When `auto_start` launches a worker, pick model by scout score:
   - score ≥ 80 → haiku (clear task, cheap)
   - score 50-79 → sonnet (default)
   - score < 50 → escalate to sonnet + prepend "This task needs clarification — ask before coding"
   - score = null (not yet scored) → wait for score OR fallback to default_model after 15s
-- [ ] New setting `auto_model_routing` (default OFF)
-- [ ] Worker card shows model used + score that determined it
+- [x] New setting `auto_model_routing` (default OFF)
+- [x] Worker card shows model used + score that determined it
 
 ### PLANNING/BUILDING Loop Phase Distinction
 Upgrade the existing iteration loop to match the proven ralph-loop pattern.
-- [ ] Loop config: add `mode` field — `"review"` (current default) | `"plan_build"`
+- [x] Loop config: add `mode` field — `"review"` (current default) | `"plan_build"`
 - [ ] In `plan_build` mode, `_run_supervisor()` runs two sub-phases:
   - **PLAN phase**: supervisor reads artifact + codebase context → writes `IMPLEMENTATION_PLAN.md` to artifact dir → no workers spawned yet
   - **BUILD phase**: supervisor reads plan → picks top unfinished item → spawns one FIXABLE worker → marks item done → repeats until "STATUS: COMPLETE"
-- [ ] UI: loop config shows mode selector when starting a loop
+- [x] UI: loop config shows mode selector when starting a loop
 
 ---
 
@@ -265,14 +265,14 @@ Upgrade the existing iteration loop to match the proven ralph-loop pattern.
 *Reduces worker failure rate; each item is a standalone improvement.*
 
 ### Context Budget Indicator
-- [ ] Estimate token usage per worker: `len(task_description) / 4 + log_file_size / 4` (rough heuristic)
-- [ ] Worker card shows mini token bar: gray → yellow at 60%, red at 80%
+- [x] Estimate token usage per worker: `len(task_description) / 4 + log_file_size / 4` (rough heuristic)
+- [x] Worker card shows mini token bar: gray → yellow at 60%, red at 80%
 - [ ] At 80%, inject "CONTEXT: You are approaching your context limit. Use /compact to preserve critical state before continuing." into worker via broadcast-style message
-- [ ] New setting `context_budget_warning` (default ON)
+- [x] New setting `context_budget_warning` (default ON)
 
 ### AGENTS.md Auto-Generation
-- [ ] `GET /api/sessions/{id}/agents-md` endpoint — runs `git blame --porcelain` on changed files, builds file→branch-owner map, formats as AGENTS.md block
-- [ ] New "Generate AGENTS.md" button in settings panel or task add row
+- [x] `GET /api/sessions/{id}/agents-md` endpoint — runs `git log` on changed files, builds file→branch-owner map, formats as AGENTS.md block
+- [x] New "Generate AGENTS.md" button in settings panel
 - [ ] Output is prepended to every worker's task description (alongside existing CLAUDE.md injection)
 - [ ] Format: "## File Ownership\n- /src/api/ → task-{id}\n- Do NOT edit files owned by other workers"
 
@@ -309,12 +309,12 @@ Upgrade the existing iteration loop to match the proven ralph-loop pattern.
 ### Structured Task Description Format
 *Current `orchestrate/prompt.md` has `===TASK===` blocks but is missing key fields workers need for safe parallel execution.*
 
-- [ ] **Add mandatory fields to `===TASK===` block template** in `orchestrate/prompt.md`:
+- [x] **Add mandatory fields to `===TASK===` block template** in `orchestrate/prompt.md`:
   - `VERIFY_CMD:` — command to run after implementation (e.g. `npm run build`, `pytest tests/`, `tsc --noEmit`)
   - `OWN_FILES:` — glob patterns this worker owns and may edit (e.g. `src/api/auth/**`)
   - `FORBIDDEN_FILES:` — explicit "do NOT touch" list (populated from other tasks' `OWN_FILES`)
   - Workers must refuse to edit files in `FORBIDDEN_FILES` and write to `.claude/blockers.md` if they must
-- [ ] **Acceptance criteria field** — structured checklist appended to every task so worker self-checks before committing
+- [x] **Acceptance criteria field** — structured checklist appended to every task so worker self-checks before committing
   ```
   ACCEPTANCE:
   - [ ] All existing tests still pass
@@ -325,17 +325,17 @@ Upgrade the existing iteration loop to match the proven ralph-loop pattern.
 ### AGENTS.md File Ownership
 *Prevents cross-worker file collisions in parallel runs without needing the GUI to generate AGENTS.md.*
 
-- [ ] **`/orchestrate` skill generates AGENTS.md stub** when writing `proposed-tasks.md`
+- [x] **`/orchestrate` skill generates AGENTS.md stub** when writing `proposed-tasks.md`
   - Format: `## File Ownership\n### worker task-{id}\n- owns: src/api/auth/**\n- hands-off: src/frontend/**`
   - Written to `.claude/AGENTS.md` in the project root (workers read this automatically via CLAUDE.md include)
-- [ ] **AGENTS.md injected into every worker task description** alongside CLAUDE.md content
+- [x] **AGENTS.md injected into every worker task description** alongside CLAUDE.md content
   - `/orchestrate` prepends `## Parallel Worker Boundaries\n{AGENTS.md content}` to every task before writing to proposed-tasks.md
   - Worker sees exactly who owns what before starting
 
 ### Worker `/compact` Discipline
 *Workers currently run until context overflow with no self-awareness — they silently degrade.*
 
-- [ ] **Add `/compact` instruction block to every task description** (appended by orchestrate skill):
+- [x] **Add `/compact` instruction block to every task description** (appended by orchestrate skill):
   ```
   ## Context Management
   When your context window reaches ~75% full:
@@ -350,11 +350,11 @@ Upgrade the existing iteration loop to match the proven ralph-loop pattern.
 ### PostToolUse Lint/Type-Check Hook
 *Workers write bad code, commit it, push it. A hook running after every file write catches errors before they accumulate.*
 
-- [ ] **`~/.claude/hooks/post-tool-use-lint.sh`** — runs project lint after every `Write`/`Edit` tool call
+- [x] **`~/.claude/hooks/post-tool-use-lint.sh`** — runs project lint after every `Write`/`Edit` tool call
   - Reads `VERIFY_CMD` from `.claude/orchestrator.json` (same field as server-side verify_cmd)
   - If exit code non-zero: write error to `.claude/lint-feedback.md`; worker reads it next turn and fixes
   - Hook registered in `~/.claude/settings.json` under `hooks.PostToolUse`
-- [ ] **`~/.claude/hooks/post-commit-verify.sh`** — runs full verify_cmd after every commit
+- [x] **`~/.claude/hooks/post-commit-verify.sh`** — runs full verify_cmd after every commit
   - On failure: `git revert HEAD --no-edit` + write to `.claude/blockers.md`
   - Prevents bad commits from accumulating in the worktree
 
@@ -365,17 +365,17 @@ Upgrade the existing iteration loop to match the proven ralph-loop pattern.
   - Phase 1 (PLAN): read codebase context + PROGRESS.md → write `IMPLEMENTATION_PLAN.md` with architecture decisions, risks, and ordered steps
   - Phase 2 (DECOMPOSE): read `IMPLEMENTATION_PLAN.md` → decompose into `proposed-tasks.md` tasks with `OWN_FILES`/`FORBIDDEN_FILES` filled from plan
   - This is the `/orchestrate` analog of the GUI's PLANNING/BUILDING loop phase distinction
-- [ ] **PROGRESS.md prepend in orchestrate prompt** (already in GUI's ⚡ Orchestrate button — match it in the skill)
+- [x] **PROGRESS.md prepend in orchestrate prompt** (already in GUI's ⚡ Orchestrate button — match it in the skill)
   - Skill reads last 3000 chars of `PROGRESS.md` and prepends to planning context: `## Past Lessons\n{progress}`
   - Workers learn from previous batch failures before the next batch starts
 
 ### Scout Scoring in CLI Batch Tasks
 *`batch-tasks` skill already has scout scoring — expose it in the orchestrate→batch pipeline.*
 
-- [ ] **`/batch-tasks` auto-reads AGENTS.md** when executing tasks from `proposed-tasks.md`
+- [x] **`/batch-tasks` auto-reads AGENTS.md** when executing tasks from `proposed-tasks.md`
   - Injects file ownership into each task description before spawning worker
   - Conflicts (two tasks claiming same file) → warning toast + manual resolution prompt
-- [ ] **Scout score threshold configurable** via `.claude/orchestrator.json` → `"scout_threshold": 50`
+- [x] **Scout score threshold configurable** via `.claude/orchestrator.json` → `"scout_threshold": 50`
   - Tasks below threshold written to `.claude/low-score-tasks.md` instead of executed
   - User reviews and either rewrites or promotes manually
 
