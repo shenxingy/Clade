@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import ptyprocess
-from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import Body, Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from watchfiles import awatch
@@ -135,12 +135,16 @@ class TaskQueue:
                     return t
             return None
 
-    async def import_from_proposed(self) -> list[dict]:
-        """Parse .claude/proposed-tasks.md and add tasks to queue, skipping duplicates."""
-        f = self._proposed_tasks_file()
-        if not f.exists():
-            return []
-        content = f.read_text()
+    async def import_from_proposed(self, content: str | None = None) -> list[dict]:
+        """Parse ===TASK=== blocks and add to queue, skipping duplicates.
+
+        If content is provided, parse it directly; otherwise read from proposed-tasks.md.
+        """
+        if content is None:
+            f = self._proposed_tasks_file()
+            if not f.exists():
+                return []
+            content = f.read_text()
         blocks = content.split("===TASK===")
         added = []
         async with self._lock:
@@ -232,6 +236,15 @@ class Worker:
         return int((self._finished_at or time.time()) - self.started_at)
 
     def to_dict(self) -> dict:
+        # Include last few non-empty log lines so the UI can show live progress
+        log_tail = ""
+        if self._log_path and self._log_path.exists():
+            try:
+                text = self._log_path.read_text(errors="replace")
+                non_empty = [l for l in text.splitlines() if l.strip()]
+                log_tail = "\n".join(non_empty[-4:])
+            except Exception:
+                pass
         return {
             "id": self.id,
             "task_id": self.task_id,
@@ -244,6 +257,7 @@ class Worker:
             "log_file": self.log_file,
             "verified": self.verified,
             "auto_committed": self.auto_committed,
+            "log_tail": log_tail,
         }
 
     async def start(self) -> None:
@@ -898,8 +912,13 @@ async def delete_task(task_id: str, s: ProjectSession = Depends(_resolve_session
 
 
 @app.post("/api/tasks/import-proposed")
-async def import_proposed(s: ProjectSession = Depends(_resolve_session)):
-    tasks = await s.task_queue.import_from_proposed()
+async def import_proposed(
+    body: dict = Body(default={}),
+    s: ProjectSession = Depends(_resolve_session),
+):
+    # If body contains inline ===TASK=== content, parse it directly (no file write needed)
+    content = (body or {}).get("content")
+    tasks = await s.task_queue.import_from_proposed(content=content)
     return {"imported": len(tasks), "tasks": tasks}
 
 
