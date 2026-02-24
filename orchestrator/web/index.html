@@ -713,6 +713,7 @@
       <div class="section-header">
         <span>Workers <span id="workerCount" style="font-weight:400;color:var(--text2)"></span></span>
         <div style="display:flex;gap:6px;align-items:center">
+          <button class="btn small danger" id="retryFailedBtn" onclick="retryAllFailed()" style="display:none">↺ Retry Failed</button>
           <button class="btn small secondary" onclick="openIntervene()" id="interveneBtn" style="display:none">⌨ Intervene</button>
           <button class="btn small success" id="mergeAllBtn" onclick="mergeAllDone()" style="display:none">⬇ Merge All Done</button>
         </div>
@@ -1286,6 +1287,11 @@ function renderWorkers() {
   const mergeBtn = document.getElementById('mergeAllBtn');
   if (mergeBtn) mergeBtn.style.display = doneCount > 0 && currentMode === 'execute' ? '' : 'none';
 
+  // Show/hide Retry Failed button based on whether there are failed workers
+  const failedCount = workers.filter(w => w.status === 'failed').length;
+  const retryBtn = document.getElementById('retryFailedBtn');
+  if (retryBtn) retryBtn.style.display = failedCount > 0 ? '' : 'none';
+
   if (workers.length === 0) {
     list.innerHTML = '<div class="empty">No active workers<br><span style="font-size:11px;opacity:0.6">Start tasks from the queue above</span></div>';
     return;
@@ -1528,6 +1534,12 @@ async function runAllTasks() {
   const res = await fetch(`/api/tasks/start-all?session=${activeSessionId}`, { method: 'POST' });
   const data = await res.json();
   showToast(`Started ${data.started} worker${data.started !== 1 ? 's' : ''}`);
+}
+
+async function retryAllFailed() {
+  const res = await fetch(`/api/tasks/retry-failed?session=${activeSessionId}`, { method: 'POST' });
+  const data = await res.json();
+  showToast(`Requeued ${data.retried} failed task${data.retried !== 1 ? 's' : ''} with error context`);
 }
 
 // ─── Header status ───────────────────────────────────────────────────────────
