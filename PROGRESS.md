@@ -2,6 +2,29 @@
 
 ---
 
+### 2026-02-24 — Security & correctness round 5: 7 backend + 6 frontend fixes
+
+**What was done:**
+- `server.py`: `push_proc` and `merge_proc` kill+drain on TimeoutError — completes the subprocess timeout audit
+- `server.py`: `_ALLOWED_LOOP_COLS` allowlist for `upsert_loop` UPDATE (parallel to `_ALLOWED_TASK_COLS`)
+- `server.py`: `SessionRegistry.remove()` now stops all running/starting/paused workers with `ensure_future(w.stop())`
+- `server.py`: `import_from_proposed` normalizes model alias via `_MODEL_ALIASES`; `retry_failed` does too
+- `server.py`: `wt_proc` (first worktree attempt) now has explicit TimeoutError → kill+drain handler
+- `server.py`: `verify_and_commit` git diff/ls-files initial calls now have TimeoutError → kill+drain → return False
+- `index.html`: `renderQueue` onclick wraps `task.id` with `esc()`
+- `index.html`: `blockedBy.join(', ')` in title attribute now wrapped with `esc()`
+- `index.html`: `#loopK`/`#loopN` now have `oninput="this._userEdited=true"`; `loadSettings` corrected from `_userSet` → `_userEdited`; `updateLoopUI` resets flag on idle/converged/cancelled
+- `index.html`: `setMode('execute')` hides `proposedOverlay`
+- `index.html`: `switchTab()` clears `_logRefreshInterval` to prevent cross-session log polling
+- `index.html`: `decodeHtml()` helper added; `openWorkerLog`/`openWorkerChat` use it to prevent double-encoding
+
+**Lessons:**
+- Subprocess timeout audit must include ALL `asyncio.wait_for(proc.communicate())` calls, including git push, gh pr merge, git diff, git ls-files — not just the "main" subprocess. A structured audit pattern: grep for `wait_for.*communicate` and verify each site has kill+drain in TimeoutError handler.
+- `session.remove()` must be treated as a full resource teardown — workers, tasks, loop coroutine, watch task, and WebSocket subscribers all need explicit cleanup.
+- `loadSettings` guard flag naming must exactly match the flag set by the input handler — `_userSet` vs `_userEdited` discrepancy silently disables the guard.
+
+---
+
 ### 2026-02-24 — Security & correctness round 4: 6 backend + 5 frontend fixes
 
 **What was done:**

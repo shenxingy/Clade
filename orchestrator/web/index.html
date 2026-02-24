@@ -1013,8 +1013,8 @@
       <div class="loop-controls">
         <input id="loopArtifact" type="text" class="loop-input" placeholder="Artifact path (e.g. paper.tex)" oninput="this._userEdited=true" />
         <input id="loopContextDir" type="text" class="loop-input" placeholder="Codebase dir (optional)" oninput="this._userEdited=true" />
-        <label class="loop-inline">K=<input id="loopK" type="number" value="2" min="1" max="20" style="width:36px"/></label>
-        <label class="loop-inline">N=<input id="loopN" type="number" value="3" min="1" max="10" style="width:36px"/></label>
+        <label class="loop-inline">K=<input id="loopK" type="number" value="2" min="1" max="20" style="width:36px" oninput="this._userEdited=true"/></label>
+        <label class="loop-inline">N=<input id="loopN" type="number" value="3" min="1" max="10" style="width:36px" oninput="this._userEdited=true"/></label>
         <label class="loop-inline">Mode:
           <select id="loopMode" style="font-size:11px;padding:2px">
             <option value="review">Review</option>
@@ -1526,6 +1526,11 @@ function renderTabs() {
 async function switchTab(sessionId) {
   if (sessionId === activeSessionId) return;
 
+  if (window._logRefreshInterval) {
+    clearInterval(window._logRefreshInterval);
+    window._logRefreshInterval = null;
+  }
+
   // Hide current session's terminal — keep its WS alive
   const oldState = sessionStates.get(activeSessionId);
   if (oldState) oldState.el.style.display = 'none';
@@ -1618,7 +1623,7 @@ function renderQueue() {
     const blockedBy = deps.filter(dep => !doneIds.has(dep));
     const isBlocked = blockedBy.length > 0;
     const blockedHtml = isBlocked
-      ? `<span class="blocked-badge" title="Waiting for: ${blockedBy.join(', ')}">⏳ blocked</span>`
+      ? `<span class="blocked-badge" title="Waiting for: ${esc(blockedBy.join(', '))}">⏳ blocked</span>`
       : '';
     // Score badge
     let scoreBadge = '';
@@ -1635,8 +1640,8 @@ function renderQueue() {
       ${blockedHtml}
       <span class="task-model">${esc(task.model)}</span>
       <div class="queue-actions">
-        <button class="btn small success" onclick="runTask('${task.id}')">Run</button>
-        <button class="btn small danger" onclick="deleteTask('${task.id}')">×</button>
+        <button class="btn small success" onclick="runTask('${esc(task.id)}')">Run</button>
+        <button class="btn small danger" onclick="deleteTask('${esc(task.id)}')">×</button>
       </div>
     </div>`;
   }).join('');
@@ -1817,8 +1822,9 @@ async function resumeWorker(id) {
 
 function openWorkerChat(id, name) {
   activeWorkerId = id;
+  const displayName = decodeHtml(name);
   document.getElementById('workerChatSub').textContent =
-    `Worker: ${name}\nStops the worker, injects your message as context, and restarts it.`;
+    `Worker: ${displayName}\nStops the worker, injects your message as context, and restarts it.`;
   document.getElementById('workerChatInput').value = '';
   document.getElementById('workerChatModal').classList.remove('hidden');
   document.getElementById('workerChatInput').focus();
@@ -1835,7 +1841,8 @@ let _logRefreshInterval = null;
 
 async function openWorkerLog(id, name) {
   activeLogWorkerId = id;
-  document.getElementById('workerLogTitle').textContent = `#${id} — ${name}`;
+  const displayName = decodeHtml(name);
+  document.getElementById('workerLogTitle').textContent = `#${id} — ${displayName}`;
   document.getElementById('workerLogModal').classList.remove('hidden');
   await refreshWorkerLog();
   // Auto-refresh every 2s while the worker is still active
@@ -2086,6 +2093,12 @@ function esc(s) {
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
+function decodeHtml(str) {
+  const txt = document.createElement('textarea');
+  txt.innerHTML = str;
+  return txt.value;
+}
+
 function firstLine(s) {
   return String(s || '').split('\n')[0].trim();
 }
@@ -2287,6 +2300,7 @@ function setMode(mode) {
     _overviewInterval = null;
   }
   if (mode === 'execute') {
+    document.getElementById('proposedOverlay')?.classList.add('hidden');
     renderOverview();
     if (!_overviewInterval) _overviewInterval = setInterval(renderOverview, 8000);
   }
@@ -2519,8 +2533,12 @@ function updateLoopUI(loopState) {
     if (deferredSection) deferredSection.style.display = 'none';
     const a = document.getElementById('loopArtifact');
     const c = document.getElementById('loopContextDir');
+    const kInput = document.getElementById('loopK');
+    const nInput = document.getElementById('loopN');
     if (a) a._userEdited = false;
     if (c) c._userEdited = false;
+    if (kInput) kInput._userEdited = false;
+    if (nInput) nInput._userEdited = false;
     return;
   }
 
@@ -2541,8 +2559,12 @@ function updateLoopUI(loopState) {
   if (['converged', 'cancelled'].includes(loopState.status)) {
     const a = document.getElementById('loopArtifact');
     const c = document.getElementById('loopContextDir');
+    const kInput = document.getElementById('loopK');
+    const nInput = document.getElementById('loopN');
     if (a) a._userEdited = false;
     if (c) c._userEdited = false;
+    if (kInput) kInput._userEdited = false;
+    if (nInput) nInput._userEdited = false;
   }
 
   const status = loopState.status;
@@ -2645,8 +2667,8 @@ async function loadSettings() {
     // Sync loop inputs from settings defaults
     const loopK = document.getElementById('loopK');
     const loopN = document.getElementById('loopN');
-    if (loopK && !loopK._userSet) loopK.value = s.loop_convergence_k ?? 2;
-    if (loopN && !loopN._userSet) loopN.value = s.loop_convergence_n ?? 3;
+    if (loopK && !loopK._userEdited) loopK.value = s.loop_convergence_k ?? 2;
+    if (loopN && !loopN._userEdited) loopN.value = s.loop_convergence_n ?? 3;
     // Sync autoStartToggle in chat header
     const ast = document.getElementById('autoStartToggle');
     if (ast) ast.checked = s.auto_start ?? true;

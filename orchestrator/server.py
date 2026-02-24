@@ -33,6 +33,12 @@ _ALLOWED_TASK_COLS = {"status", "description", "model", "depends_on", "mode", "r
                       "worker_id", "started_at", "elapsed_s", "last_commit", "log_file",
                       "failed_reason", "score_note"}
 
+_ALLOWED_LOOP_COLS = {
+    "name", "artifact_path", "context_dir", "status", "iteration",
+    "changes_history", "deferred_items", "convergence_k", "convergence_n",
+    "max_iterations", "supervisor_model", "mode", "updated_at",
+}
+
 _MODEL_ALIASES = {
     "haiku": "claude-haiku-4-5-20251001",
     "sonnet": "claude-sonnet-4-6",
@@ -418,6 +424,9 @@ class TaskQueue:
             else:
                 update = dict(kwargs)
                 update["updated_at"] = now
+                for k in update:
+                    if k not in _ALLOWED_LOOP_COLS:
+                        raise ValueError(f"Unknown loop column: {k}")
                 set_clause = ", ".join(f"{k} = ?" for k in update)
                 values = list(update.values()) + [existing["id"]]
                 async with aiosqlite.connect(str(self._db_path)) as db:
@@ -453,6 +462,7 @@ class TaskQueue:
             for line in lines:
                 if in_header and line.startswith("model:"):
                     model = line.split(":", 1)[1].strip()
+                    model = _MODEL_ALIASES.get(model, model)
                 elif in_header and line.startswith("timeout:"):
                     try:
                         timeout = int(line.split(":", 1)[1].strip())
@@ -821,6 +831,11 @@ class Worker:
                     self._project_dir = self._worktree_path
                 else:
                     self._worktree_path = None
+        except asyncio.TimeoutError:
+            wt_proc.kill()
+            await wt_proc.communicate()
+            # Fall through to wt_proc2 retry or failure handling
+            self._worktree_path = None
         except Exception:
             self._worktree_path = None
 
@@ -971,13 +986,27 @@ class Worker:
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
             cwd=str(self._project_dir),
         )
-        stdout, _ = await asyncio.wait_for(diff_proc.communicate(), timeout=10)
+        try:
+            stdout, _ = await asyncio.wait_for(diff_proc.communicate(), timeout=10)
+        except asyncio.TimeoutError:
+            diff_proc.kill()
+            await diff_proc.communicate()
+            return False
+        except Exception:
+            return False
         untracked_proc = await asyncio.create_subprocess_exec(
             "git", "ls-files", "--others", "--exclude-standard",
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
             cwd=str(self._project_dir),
         )
-        ut_out, _ = await asyncio.wait_for(untracked_proc.communicate(), timeout=10)
+        try:
+            ut_out, _ = await asyncio.wait_for(untracked_proc.communicate(), timeout=10)
+        except asyncio.TimeoutError:
+            untracked_proc.kill()
+            await untracked_proc.communicate()
+            return False
+        except Exception:
+            return False
         changed_files = [
             f for f in (stdout.decode().strip() + "\n" + ut_out.decode().strip()).splitlines()
             if f.strip()
@@ -1076,7 +1105,8 @@ class Worker:
                         if push_proc.returncode == 0:
                             self.auto_pushed = True
                     except asyncio.TimeoutError:
-                        pass
+                        push_proc.kill()
+                        await push_proc.communicate()
 
                 log_proc = await asyncio.create_subprocess_exec(
                     "git", "log", "-1", "--oneline",
@@ -1543,6 +1573,10 @@ class SessionRegistry:
                 s._watch_task.cancel()
             if s._loop_task and not s._loop_task.done():
                 s._loop_task.cancel()
+            # Stop all running workers and schedule worktree cleanup
+            for w in list(s.worker_pool.workers.values()):
+                if w.status in ("running", "starting", "paused"):
+                    asyncio.ensure_future(w.stop())
         if self._default_id == session_id:
             self._default_id = next(iter(self.sessions), None)
 
@@ -2157,7 +2191,8 @@ async def retry_failed(s: ProjectSession = Depends(_resolve_session)):
                 f"\n\n---\n**Previous attempt failed. Error context:**\n```\n{failed_reason[:2000]}\n```\n"
                 "Do NOT repeat the same approach. Analyze the error above and try a different strategy."
             )
-        new_task = await s.task_queue.add(retry_desc, t.get("model") or GLOBAL_SETTINGS.get("default_model", "sonnet"))
+        model = _MODEL_ALIASES.get(t.get("model", "sonnet"), t.get("model", "sonnet"))
+        new_task = await s.task_queue.add(retry_desc, model)
         retried.append(new_task["id"])
     return {"retried": len(retried), "task_ids": retried}
 
@@ -2356,7 +2391,11 @@ async def merge_all_done(s: ProjectSession = Depends(_resolve_session)):
                     stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
                     cwd=str(s.project_dir),
                 )
-                await asyncio.wait_for(merge_proc.communicate(), timeout=60)
+                try:
+                    await asyncio.wait_for(merge_proc.communicate(), timeout=60)
+                except asyncio.TimeoutError:
+                    merge_proc.kill()
+                    await merge_proc.communicate()
                 if merge_proc.returncode == 0:
                     w.pr_merged = True
                     merged += 1
