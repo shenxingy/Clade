@@ -747,6 +747,8 @@ class Worker:
         self.auto_pushed: bool = False
         self.oracle_result: str | None = None
         self.oracle_reason: str | None = None
+        self._oracle_requeue: bool = False
+        self._oracle_requeue_reason: str | None = None
         self.model_score: int | None = None
         self.branch_name: str | None = None
         self.pr_url: str | None = None
@@ -855,19 +857,29 @@ class Worker:
         task_file = self._claude_dir / f"task-{self.id}.md"
         task_file.parent.mkdir(parents=True, exist_ok=True)
 
-        # Prepend project CLAUDE.md for context injection
+        # Prepend project CLAUDE.md + AGENTS.md for context injection
         effective_description = self.description
+        context_blocks = []
         claude_md = self._claude_dir / "CLAUDE.md"
         if claude_md.exists():
             try:
                 claude_content = claude_md.read_text(errors="replace").strip()
                 if claude_content:
-                    effective_description = (
-                        f"# Project Context (from .claude/CLAUDE.md)\n\n{claude_content}\n\n"
-                        f"---\n\n# Task\n\n{self.description}"
-                    )
+                    context_blocks.append(f"# Project Context (from .claude/CLAUDE.md)\n\n{claude_content}")
             except Exception:
                 pass
+        agents_md = self._claude_dir / "AGENTS.md"
+        if not agents_md.exists():
+            agents_md = self._project_dir / "AGENTS.md"
+        if agents_md.exists():
+            try:
+                agents_content = agents_md.read_text(errors="replace").strip()
+                if agents_content:
+                    context_blocks.append(f"# File Ownership (from AGENTS.md)\n\n{agents_content}")
+            except Exception:
+                pass
+        if context_blocks:
+            effective_description = "\n\n---\n\n".join(context_blocks) + f"\n\n---\n\n# Task\n\n{self.description}"
         task_file.write_text(effective_description)
 
         _ALLOWED_MODELS = {
@@ -1114,6 +1126,9 @@ class Worker:
                                 reset_proc.kill()
                                 await reset_proc.communicate()
                             self.auto_committed = False
+                            # Flag for requeue — poll_all will pick this up
+                            self._oracle_requeue = True
+                            self._oracle_requeue_reason = reason
                             return False
                     except Exception:
                         pass  # fail-open
@@ -1234,6 +1249,17 @@ class WorkerPool:
                 )
                 if w.status == "failed" and w.failure_context:
                     await task_queue.update(w.task_id, failed_reason=w.failure_context)
+                # Oracle rejected → re-queue with rejection reason as context
+                if w._oracle_requeue:
+                    w._oracle_requeue = False
+                    retry_desc = (
+                        f"{w.description}\n\n---\n"
+                        f"Previous attempt was REJECTED by oracle review:\n"
+                        f"{w._oracle_requeue_reason}\n"
+                        f"Fix the issue described above. Do NOT repeat the same approach."
+                    )
+                    await task_queue.add(retry_desc, w.model)
+                    logger.info("Oracle rejected task %s — re-queued with reason", w.task_id)
             else:
                 await task_queue.update(
                     w.task_id,

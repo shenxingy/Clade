@@ -1,7 +1,7 @@
 ---
 name: loop
 description: Goal-driven autonomous improvement loop — supervisor plans tasks each iteration, workers execute in parallel via batch-tasks, repeats until goal is achieved
-argument-hint: 'GOAL_FILE [--model haiku|sonnet|opus] [--worker-model MODEL] [--max-iter N] [--max-workers N] [--dry-run] [--status] [--resume]'
+argument-hint: 'GOAL_FILE [--model haiku|sonnet|opus] [--worker-model MODEL] [--max-iter N] [--max-workers N] [--dry-run] [--status] [--stop] [--resume]'
 ---
 
 # Loop Skill
@@ -46,6 +46,7 @@ The **supervisor** does the task breakdown — not you.
 /loop goal.md --max-iter 3             # Short run to test
 /loop goal.md --max-workers 2          # Limit parallel workers
 /loop --status                         # Check current loop progress
+/loop --stop                           # Stop loop after current iteration
 /loop --dry-run goal.md                # Preview without running
 /loop --resume goal.md                 # Resume interrupted loop
 ```

@@ -25,6 +25,16 @@
 
 set -uo pipefail
 
+# Graceful shutdown on SIGTERM/SIGINT
+_cleanup() {
+  echo ""
+  echo "⚠ Loop interrupted (signal). Saving state..."
+  [[ -n "${STATE_FILE:-}" ]] && state_write INTERRUPTED true
+  [[ -n "${PROGRESS_FILE:-}" ]] && write_progress "interrupted" "signal"
+  exit 130
+}
+trap _cleanup SIGTERM SIGINT
+
 # Allow nested claude calls from within a Claude Code session
 unset CLAUDECODE 2>/dev/null || true
 
@@ -118,6 +128,13 @@ write_progress "running" "init"
 
 # ── Main loop ─────────────────────────────────────────────────────────────────
 while [[ $iteration -lt $MAX_ITER ]]; do
+  # Check for STOP sentinel (allows /loop --stop from another session)
+  if [[ "$(state_read STOP false)" == "true" ]]; then
+    write_progress "stopped" "user-requested"
+    echo "⚠ STOP sentinel found in state file. Exiting."
+    exit 0
+  fi
+
   iteration=$((iteration + 1))
   state_write ITERATION "$iteration"
 
