@@ -554,6 +554,32 @@ class Worker:
                 )
                 log_out, _ = await asyncio.wait_for(log_proc.communicate(), timeout=5)
                 self.last_commit = log_out.decode().strip() or self.last_commit
+
+                # Run project's verify command if configured
+                orchestrator_cfg = self._claude_dir / "orchestrator.json"
+                if orchestrator_cfg.exists():
+                    try:
+                        cfg = json.loads(orchestrator_cfg.read_text())
+                        verify_cmd = cfg.get("verify_cmd", "")
+                        verify_timeout = int(cfg.get("verify_timeout", 120))
+                        if verify_cmd:
+                            vc_proc = await asyncio.create_subprocess_shell(
+                                verify_cmd,
+                                stdout=asyncio.subprocess.PIPE,
+                                stderr=asyncio.subprocess.STDOUT,
+                                cwd=str(self._project_dir),
+                            )
+                            try:
+                                vc_out, _ = await asyncio.wait_for(vc_proc.communicate(), timeout=verify_timeout)
+                                if vc_proc.returncode != 0:
+                                    self.status = "failed"
+                                    vc_text = vc_out.decode(errors="replace").strip()
+                                    self.failure_context = f"verify_cmd `{verify_cmd}` failed:\n{vc_text[-2000:]}"
+                            except asyncio.TimeoutError:
+                                self.status = "failed"
+                                self.failure_context = f"verify_cmd `{verify_cmd}` timed out after {verify_timeout}s"
+                    except Exception:
+                        pass
         except asyncio.TimeoutError:
             pass
         return self.auto_committed
