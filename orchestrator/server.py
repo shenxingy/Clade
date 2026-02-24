@@ -33,7 +33,7 @@ from watchfiles import awatch
 _ALLOWED_TASK_COLS = {"status", "description", "model", "depends_on", "mode", "result", "score",
                       "worker_id", "started_at", "elapsed_s", "last_commit", "log_file",
                       "failed_reason", "score_note", "own_files", "forbidden_files",
-                      "gh_issue_number"}
+                      "gh_issue_number", "is_critical_path"}
 
 _ALLOWED_LOOP_COLS = {
     "name", "artifact_path", "context_dir", "status", "iteration",
@@ -76,6 +76,7 @@ _SETTINGS_DEFAULTS = {
     "context_budget_warning": True,
     "github_issues_sync": False,
     "github_issues_label": "orchestrator",
+    "agent_teams": False,
 }
 
 
@@ -169,7 +170,8 @@ class TaskQueue:
                         score_note TEXT,
                         own_files TEXT DEFAULT '[]',
                         forbidden_files TEXT DEFAULT '[]',
-                        gh_issue_number INTEGER
+                        gh_issue_number INTEGER,
+                        is_critical_path INTEGER DEFAULT 0
                     )
                 """)
                 await db.execute("""
@@ -233,6 +235,20 @@ class TaskQueue:
                     await db.execute("ALTER TABLE tasks ADD COLUMN gh_issue_number INTEGER")
                 except Exception:
                     pass
+                try:
+                    await db.execute("ALTER TABLE tasks ADD COLUMN is_critical_path INTEGER DEFAULT 0")
+                except Exception:
+                    pass
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS worker_messages (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        to_task_id TEXT NOT NULL,
+                        from_task_id TEXT,
+                        content TEXT NOT NULL,
+                        created_at REAL,
+                        read INTEGER DEFAULT 0
+                    )
+                """)
                 await db.commit()
             # Migrate from JSON if present
             json_file = self._claude_dir / "task-queue.json"
@@ -288,7 +304,8 @@ class TaskQueue:
 
     async def add(self, description: str, model: str = "sonnet",
                   own_files: list[str] | None = None,
-                  forbidden_files: list[str] | None = None) -> dict:
+                  forbidden_files: list[str] | None = None,
+                  is_critical_path: bool = False) -> dict:
         await self._ensure_db()
         task = {
             "id": str(uuid.uuid4())[:8],
@@ -309,14 +326,16 @@ class TaskQueue:
             "score_note": None,
             "own_files": own_files or [],
             "forbidden_files": forbidden_files or [],
+            "is_critical_path": int(is_critical_path),
         }
         async with aiosqlite.connect(str(self._db_path)) as db:
             await db.execute(
                 """INSERT INTO tasks
                    (id, description, model, timeout, retries, status, worker_id,
                     started_at, elapsed_s, last_commit, log_file, failed_reason,
-                    created_at, depends_on, score, score_note, own_files, forbidden_files)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    created_at, depends_on, score, score_note, own_files, forbidden_files,
+                    is_critical_path)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     task["id"], task["description"], task["model"],
                     task["timeout"], task["retries"], task["status"],
@@ -325,6 +344,7 @@ class TaskQueue:
                     task["created_at"], json.dumps(task["depends_on"]),
                     task["score"], task["score_note"],
                     json.dumps(task["own_files"]), json.dumps(task["forbidden_files"]),
+                    task["is_critical_path"],
                 ),
             )
             await db.commit()
@@ -572,6 +592,40 @@ class TaskQueue:
                     _score_task(task_id, description, self._db_path, self._claude_dir)
                 )
         return added
+
+    async def send_message(self, to_task_id: str, content: str, from_task_id: str | None = None) -> dict:
+        await self._ensure_db()
+        msg = {"to_task_id": to_task_id, "from_task_id": from_task_id,
+               "content": content, "created_at": time.time(), "read": 0}
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            cur = await db.execute(
+                "INSERT INTO worker_messages (to_task_id, from_task_id, content, created_at, read) VALUES (?,?,?,?,?)",
+                (to_task_id, from_task_id, content, msg["created_at"], 0),
+            )
+            await db.commit()
+            msg["id"] = cur.lastrowid
+        return msg
+
+    async def get_messages(self, task_id: str, unread_only: bool = True) -> list[dict]:
+        await self._ensure_db()
+        sql = "SELECT * FROM worker_messages WHERE to_task_id = ?"
+        if unread_only:
+            sql += " AND read = 0"
+        sql += " ORDER BY created_at"
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(sql, (task_id,)) as cur:
+                return [dict(r) for r in await cur.fetchall()]
+
+    async def mark_messages_read(self, task_id: str) -> int:
+        await self._ensure_db()
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            cur = await db.execute(
+                "UPDATE worker_messages SET read = 1 WHERE to_task_id = ? AND read = 0",
+                (task_id,),
+            )
+            await db.commit()
+            return cur.rowcount
 
     async def claim_next_pending(self, done_ids: set[str]) -> dict | None:
         """Atomically claim the next pending task whose deps are met.
@@ -1086,7 +1140,7 @@ class Worker:
                 pass
         return desc_tokens + log_tokens
 
-    async def start(self) -> None:
+    async def start(self, task_queue: "TaskQueue | None" = None) -> None:
         # Create isolated git worktree for this worker
         worktree_base = self._claude_dir / "worktrees"
         worktree_base.mkdir(parents=True, exist_ok=True)
@@ -1159,6 +1213,19 @@ class Worker:
                 pass
         if context_blocks:
             effective_description = "\n\n---\n\n".join(context_blocks) + f"\n\n---\n\n# Task\n\n{self.description}"
+        # Inject unread messages from other tasks
+        if task_queue:
+            try:
+                messages = await task_queue.get_messages(self.task_id, unread_only=True)
+                if messages:
+                    msg_block = "\n\n---\n**Messages from other tasks:**\n"
+                    for m in messages:
+                        sender = m.get("from_task_id") or "human"
+                        msg_block += f"- [{sender}]: {m['content']}\n"
+                    effective_description += msg_block
+                    await task_queue.mark_messages_read(self.task_id)
+            except Exception:
+                pass
         task_file.write_text(effective_description)
 
         _ALLOWED_MODELS = {
@@ -1172,6 +1239,10 @@ class Worker:
             f'claude -p "$(cat {shlex.quote(str(task_file))})" --model {model} --dangerously-skip-permissions'
         )
 
+        env = {**os.environ}
+        if GLOBAL_SETTINGS.get("agent_teams"):
+            env["CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"] = "1"
+
         log_fd = open(self._log_path, "w")  # noqa: WPS515
         try:
             self.proc = await asyncio.create_subprocess_shell(
@@ -1179,7 +1250,7 @@ class Worker:
                 stdout=log_fd,
                 stderr=log_fd,
                 preexec_fn=os.setsid,
-                env={**os.environ},
+                env=env,
                 cwd=str(self._project_dir),
             )
         finally:
@@ -1554,7 +1625,7 @@ class WorkerPool:
         worker.forbidden_files = task.get("forbidden_files", [])
         self.workers[worker.id] = worker
         await task_queue.update(task["id"], status="running", worker_id=worker.id)
-        await worker.start()
+        await worker.start(task_queue=task_queue)
         return worker
 
     def get(self, worker_id: str) -> Worker | None:
@@ -2959,6 +3030,7 @@ async def create_task(body: dict, s: ProjectSession = Depends(_resolve_session))
     task = await s.task_queue.add(
         description=description,
         model=body.get("model") or GLOBAL_SETTINGS.get("default_model", "sonnet"),
+        is_critical_path=bool(body.get("is_critical_path", 0)),
     )
     asyncio.ensure_future(
         _score_task(task["id"], task["description"], s.task_queue._db_path, s.claude_dir)
@@ -2972,6 +3044,17 @@ async def create_task(body: dict, s: ProjectSession = Depends(_resolve_session))
 async def delete_task(task_id: str, s: ProjectSession = Depends(_resolve_session)):
     ok = await s.task_queue.delete(task_id)
     return {"ok": ok}
+
+
+@app.post("/api/tasks/{task_id}")
+async def update_task(task_id: str, body: dict, s: ProjectSession = Depends(_resolve_session)):
+    task = await s.task_queue.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    updates = {k: v for k, v in body.items() if k in _ALLOWED_TASK_COLS}
+    if not updates:
+        return task
+    return await s.task_queue.update(task_id, **updates)
 
 
 @app.post("/api/tasks/import-proposed")
@@ -3066,6 +3149,21 @@ async def set_task_depends_on(
     depends_on = body.get("depends_on", [])
     await s.task_queue.update(task_id, depends_on=depends_on)
     return {"ok": True, "depends_on": depends_on}
+
+
+@app.post("/api/tasks/{task_id}/messages")
+async def send_task_message(task_id: str, body: dict, s: ProjectSession = Depends(_resolve_session)):
+    content = (body.get("content") or "").strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="content is required")
+    from_task_id = body.get("from_task_id")
+    msg = await s.task_queue.send_message(task_id, content, from_task_id=from_task_id)
+    return msg
+
+
+@app.get("/api/tasks/{task_id}/messages")
+async def get_task_messages(task_id: str, s: ProjectSession = Depends(_resolve_session)):
+    return await s.task_queue.get_messages(task_id, unread_only=False)
 
 
 # ─── REST: Workers ────────────────────────────────────────────────────────────
