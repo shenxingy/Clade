@@ -36,7 +36,7 @@ _ALLOWED_TASK_COLS = {"status", "description", "model", "depends_on", "mode", "r
 _ALLOWED_LOOP_COLS = {
     "name", "artifact_path", "context_dir", "status", "iteration",
     "changes_history", "deferred_items", "convergence_k", "convergence_n",
-    "max_iterations", "supervisor_model", "mode", "updated_at",
+    "max_iterations", "supervisor_model", "mode", "plan_phase", "updated_at",
 }
 
 _MODEL_ALIASES = {
@@ -200,12 +200,17 @@ class TaskQueue:
                         supervisor_model TEXT DEFAULT 'sonnet',
                         created_at TEXT,
                         updated_at TEXT,
-                        mode TEXT DEFAULT 'review'
+                        mode TEXT DEFAULT 'review',
+                        plan_phase TEXT DEFAULT 'plan'
                     )
                 """)
                 # Migration: add mode column for existing DBs that predate this column
                 try:
                     await db.execute("ALTER TABLE iteration_loops ADD COLUMN mode TEXT DEFAULT 'review'")
+                except Exception:
+                    pass  # column already exists
+                try:
+                    await db.execute("ALTER TABLE iteration_loops ADD COLUMN plan_phase TEXT DEFAULT 'plan'")
                 except Exception:
                     pass  # column already exists
                 await db.commit()
@@ -400,6 +405,7 @@ class TaskQueue:
                     "max_iterations": 20,
                     "supervisor_model": "sonnet",
                     "mode": "review",
+                    "plan_phase": "plan",
                     "created_at": now,
                     "updated_at": now,
                 }
@@ -409,14 +415,15 @@ class TaskQueue:
                         """INSERT INTO iteration_loops
                            (name, artifact_path, context_dir, status, iteration,
                             changes_history, deferred_items, convergence_k, convergence_n,
-                            max_iterations, supervisor_model, mode, created_at, updated_at)
-                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                            max_iterations, supervisor_model, mode, plan_phase, created_at, updated_at)
+                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                         (
                             fields["name"], fields["artifact_path"], fields["context_dir"],
                             fields["status"], fields["iteration"], fields["changes_history"],
                             fields["deferred_items"], fields["convergence_k"],
                             fields["convergence_n"], fields["max_iterations"],
                             fields["supervisor_model"], fields.get("mode", "review"),
+                            fields.get("plan_phase", "plan"),
                             fields["created_at"], fields["updated_at"],
                         ),
                     )
@@ -1389,7 +1396,9 @@ class ProjectSession:
                 return
 
             mode = loop_state.get("mode", "review")
-            # plan_build mode: two-phase PLAN then BUILD (stub — falls through to review)
+            if mode == "plan_build":
+                await self._run_plan_build()
+                return
 
             iteration = loop_state["iteration"] + 1
             await self.task_queue.upsert_loop(iteration=iteration)
@@ -1560,6 +1569,161 @@ class ProjectSession:
             loop_state = await self.task_queue.get_loop()
             if not loop_state or loop_state["status"] != "running":
                 return
+
+    async def _run_plan_build(self) -> None:
+        """Two-phase plan_build supervisor.
+
+        PLAN phase: reads the artifact + codebase file listing, calls Claude to
+        write IMPLEMENTATION_PLAN.md (a markdown checklist) in context_dir.
+
+        BUILD phase: reads the plan, picks the first unchecked item, spawns ONE
+        FIXABLE worker, waits for it to complete, marks the item done, and
+        repeats until no unchecked items remain or max_iterations is reached.
+        """
+        _MODEL_MAP = {
+            "haiku": "claude-haiku-4-5-20251001",
+            "sonnet": "claude-sonnet-4-6",
+            "opus": "claude-opus-4-6",
+        }
+
+        loop_state = await self.task_queue.get_loop()
+        if not loop_state:
+            return
+
+        model_short = loop_state.get("supervisor_model", "sonnet")
+        model = _MODEL_MAP.get(model_short, "claude-sonnet-4-6")
+        context_dir = loop_state.get("context_dir") or str(self.project_dir)
+        artifact_path = loop_state["artifact_path"]
+        plan_path = Path(context_dir) / "IMPLEMENTATION_PLAN.md"
+
+        # ── PLAN phase ────────────────────────────────────────────────────────
+        plan_phase = loop_state.get("plan_phase") or "plan"
+        if plan_phase == "plan":
+            try:
+                artifact_content = Path(artifact_path).read_text(errors="replace")
+            except Exception:
+                await self.task_queue.upsert_loop(status="cancelled")
+                logger.warning("plan_build: cannot read artifact; cancelling")
+                return
+
+            # Collect codebase file listing for context
+            try:
+                proc = await asyncio.create_subprocess_shell(
+                    f'find {shlex.quote(context_dir)} -type f -not -path "*/.*" | head -200',
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                out, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
+                file_listing = out.decode().strip() or "(no files found)"
+            except Exception:
+                file_listing = "(could not list files)"
+
+            prompt = (
+                "You are a planning agent. Given an artifact and a codebase file listing, "
+                "produce a concrete implementation plan.\n\n"
+                "Output ONLY a markdown document (to be saved as IMPLEMENTATION_PLAN.md).\n"
+                "The document must contain a checklist of concrete, self-contained tasks "
+                "that can each be executed by a single Claude Code worker. "
+                "Use this exact format for each task:\n"
+                "  - [ ] <imperative task description>\n\n"
+                "You may add a brief # header and a short context paragraph before the checklist, "
+                "but do not add prose between checklist items.\n\n"
+                f"Codebase files ({context_dir}):\n{file_listing}\n\n"
+                f"Artifact:\n---ARTIFACT---\n{artifact_content}\n---END---"
+            )
+
+            prompt_file = self.claude_dir / "plan-build-plan.md"
+            response = ""
+            try:
+                prompt_file.write_text(prompt)
+                proc = await asyncio.create_subprocess_shell(
+                    f'claude -p "$(cat {shlex.quote(str(prompt_file))})" '
+                    f'--model {model} --dangerously-skip-permissions',
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                try:
+                    out, _ = await asyncio.wait_for(proc.communicate(), timeout=300)
+                    response = out.decode().strip()
+                except asyncio.TimeoutError:
+                    proc.kill()
+                    await proc.communicate()
+                    response = ""
+            except Exception:
+                response = ""
+            finally:
+                prompt_file.unlink(missing_ok=True)
+
+            if not response.strip():
+                await self.task_queue.upsert_loop(status="cancelled")
+                logger.warning("plan_build: PLAN phase got empty response; cancelling")
+                return
+
+            plan_path.write_text(response)
+            await self.task_queue.upsert_loop(plan_phase="build", iteration=1)
+
+        # ── BUILD phase ───────────────────────────────────────────────────────
+        while True:
+            loop_state = await self.task_queue.get_loop()
+            if not loop_state or loop_state["status"] != "running":
+                return
+
+            if not plan_path.exists():
+                await self.task_queue.upsert_loop(status="cancelled")
+                logger.warning("plan_build: IMPLEMENTATION_PLAN.md missing; cancelling")
+                return
+
+            plan_text = plan_path.read_text()
+            lines = plan_text.splitlines()
+
+            # Find first unchecked item
+            task_line_idx = None
+            task_desc = None
+            for i, line in enumerate(lines):
+                m = re.match(r'^\s*-\s*\[ \]\s*(.*)', line)
+                if m:
+                    task_line_idx = i
+                    task_desc = m.group(1).strip()
+                    break
+
+            if task_line_idx is None:
+                # All tasks done
+                await self.task_queue.upsert_loop(status="converged")
+                return
+
+            iteration = loop_state.get("iteration", 1)
+            max_iter = loop_state.get("max_iterations", 20)
+            if iteration > max_iter:
+                await self.task_queue.upsert_loop(status="converged")
+                return
+
+            # Spawn one worker for this task
+            worker_task_desc = f"[Plan-{iteration}] {task_desc}"
+            task = await self.task_queue.add(worker_task_desc, model_short)
+            _max_w = GLOBAL_SETTINGS.get("max_workers", 0)
+            _running = sum(1 for w in self.worker_pool.workers.values() if w.status == "running")
+            if _max_w <= 0 or _running < _max_w:
+                await self.worker_pool.start_worker(
+                    task, self.task_queue, self.project_dir, self.claude_dir
+                )
+
+            # Wait for the worker to finish
+            while True:
+                loop_state = await self.task_queue.get_loop()
+                if not loop_state or loop_state["status"] != "running":
+                    return
+                t = await self.task_queue.get(task["id"])
+                if (t or {}).get("status") in ("done", "failed"):
+                    break
+                await asyncio.sleep(3)
+
+            # Mark item done in the plan (- [ ] → - [x])
+            lines[task_line_idx] = re.sub(
+                r'^(\s*-\s*)\[ \]', r'\1[x]', lines[task_line_idx]
+            )
+            plan_path.write_text("\n".join(lines))
+
+            await self.task_queue.upsert_loop(iteration=iteration + 1)
 
 
 # ─── Session Registry ─────────────────────────────────────────────────────────

@@ -435,3 +435,27 @@ Hard-won insights from building and maintaining this toolkit.
 **Lessons:**
 - `type: "prompt"` hooks must output *only* JSON — any surrounding text breaks validation; always lead with the format constraint
 - 15s timeout is too tight for Stop hook reviewing long conversations; 30s is safer
+
+### 2026-02-24 — Loop mode first run + plan_build implementation
+
+**What was done:**
+- Ran loop-1 using `LOOP_ARTIFACT.md` as the artifact with 6 workers for 6 open tasks
+- One worker (plan_build task) produced 169-line implementation of `_run_plan_build()` — committed
+- Other 5 workers completed without commits (tasks may have been description-only or worker didn't use committer)
+- Fixed `_run_supervisor()` to dispatch to `_run_plan_build()` when `mode == "plan_build"`
+
+**plan_build implementation details:**
+- PLAN phase: reads artifact + codebase file listing → calls `claude -p` → writes `IMPLEMENTATION_PLAN.md`
+- BUILD phase: finds first `- [ ] item` → spawns one worker → polls until done → marks `[x]` → loops
+- DB schema: added `plan_phase TEXT DEFAULT 'plan'` column with ALTER TABLE migration guard
+- All subprocess calls wrapped with `asyncio.wait_for()` timeouts (30s/300s/10s)
+
+**What worked:**
+- Workers operating in worktrees can still modify the main `server.py` (worktree isolation is per-branch, not per-file)
+- Loop supervisor correctly spawns 6 workers from a 6-task artifact without deadlocking
+
+**Lessons:**
+- Workers in loop mode write changes to the worktree branch — changes are NOT auto-committed back to main unless `verify_and_commit()` succeeds
+- If loop coroutine is interrupted (server restart), `changes_history=[]` stays empty and loop status stays `running` — must Cancel + restart the loop
+- Workers tend to describe changes in output rather than actually implement them; the fix is better prompting in `start_worker()` (AGENTS.md, CLAUDE.md prepend)
+- The `_run_plan_build()` BUILD phase tight-loop (poll every 3s) is correct — no asyncio.sleep(0) needed since we're waiting for external process
