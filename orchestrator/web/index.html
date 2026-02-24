@@ -715,7 +715,7 @@
         <div style="display:flex;gap:6px;align-items:center">
           <button class="btn small danger" id="retryFailedBtn" onclick="retryAllFailed()" style="display:none">↺ Retry Failed</button>
           <button class="btn small secondary" onclick="openIntervene()" id="interveneBtn" style="display:none">⌨ Intervene</button>
-          <button class="btn small success" id="mergeAllBtn" onclick="mergeAllDone()" style="display:none">⬇ Merge All Done</button>
+          <button class="btn small success" id="mergeAllBtn" onclick="mergeAllDone()" style="display:none">⬇ Create PRs</button>
         </div>
       </div>
       <div class="workers-list" id="workersList"></div>
@@ -1283,9 +1283,12 @@ function renderWorkers() {
   const list = document.getElementById('workersList');
   document.getElementById('workerCount').textContent = `(${workers.length})`;
 
-  const doneCount = workers.filter(w => w.status === 'done' && w.auto_committed).length;
+  const mergeable = workers.filter(w => w.status === 'done' && w.auto_pushed && !w.pr_url);
   const mergeBtn = document.getElementById('mergeAllBtn');
-  if (mergeBtn) mergeBtn.style.display = doneCount > 0 && currentMode === 'execute' ? '' : 'none';
+  if (mergeBtn) {
+    mergeBtn.style.display = mergeable.length > 0 && currentMode === 'execute' ? '' : 'none';
+    mergeBtn.textContent = `⬇ Create PRs (${mergeable.length})`;
+  }
 
   // Show/hide Retry Failed button based on whether there are failed workers
   const failedCount = workers.filter(w => w.status === 'failed').length;
@@ -1298,11 +1301,18 @@ function renderWorkers() {
   }
 
   list.innerHTML = workers.map(w => {
-    const commitDisplay = w.auto_committed
-      ? `<span style="color:#4ade80;font-weight:600">✓ committed</span>`
-      : w.last_commit
-        ? `<span class="hash">${esc(w.last_commit.slice(0,7))}</span> ${esc(w.last_commit.slice(8,60))}`
-        : '<span style="opacity:0.5">no commits yet</span>';
+    let commitDisplay;
+    if (w.pr_merged) {
+      commitDisplay = `<span style="color:#4ade80;font-weight:600">✓ merged</span>`;
+    } else if (w.pr_url) {
+      commitDisplay = `<span style="color:#4ade80;font-weight:600">✓ committed · <a href="${esc(w.pr_url)}" target="_blank" style="color:#60a5fa">PR ↗</a></span>`;
+    } else if (w.auto_committed) {
+      commitDisplay = `<span style="color:#4ade80;font-weight:600">✓ committed${w.auto_pushed ? ' · ✓ pushed' : ''}</span>`;
+    } else if (w.last_commit) {
+      commitDisplay = `<span class="hash">${esc(w.last_commit.slice(0,7))}</span> ${esc(w.last_commit.slice(8,60))}`;
+    } else {
+      commitDisplay = '<span style="opacity:0.5">no commits yet</span>';
+    }
 
     const canPause = w.status === 'running';
     const canResume = w.status === 'paused';
@@ -1800,9 +1810,29 @@ function closeIntervene() {
   }
 }
 
-// ─── Merge All Done (stub) ────────────────────────────────────────────────────
+// ─── Merge All Done → AI PR Pipeline ─────────────────────────────────────────
 async function mergeAllDone() {
-  showToast('Merge feature coming soon — push from your terminal for now');
+  const btn = document.getElementById('mergeAllBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Creating PRs…'; }
+  try {
+    const r = await fetch(`/api/tasks/merge-all-done?session=${activeSessionId}`, { method: 'POST' });
+    const d = await r.json();
+    if (d.created === 0) {
+      showToast('No eligible workers (need: done + pushed + no PR yet)');
+    } else {
+      const autoMsg = d.merged > 0 ? `, ${d.merged} auto-merged` : '';
+      showToast(`Created ${d.created} PR${d.created !== 1 ? 's' : ''}${autoMsg}`);
+    }
+    // Surface any per-worker errors
+    (d.results || []).filter(r => r.error).forEach(r => {
+      console.warn(`Worker ${r.worker_id} PR error:`, r.error);
+    });
+  } catch (e) {
+    showToast('PR creation failed — check console');
+    console.error(e);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 </script>
 </body>

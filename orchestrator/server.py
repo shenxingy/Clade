@@ -231,6 +231,8 @@ class Worker:
         self.auto_committed: bool = False
         self.auto_pushed: bool = False
         self.branch_name: str | None = None
+        self.pr_url: str | None = None
+        self.pr_merged: bool = False
         self._verify_triggered: bool = False
         self.task_timeout: int = 600  # default 10 min
         self.failure_context: str | None = None
@@ -265,6 +267,8 @@ class Worker:
             "auto_committed": self.auto_committed,
             "auto_pushed": self.auto_pushed,
             "branch_name": self.branch_name,
+            "pr_url": self.pr_url,
+            "pr_merged": self.pr_merged,
             "log_tail": log_tail,
             "failure_context": self.failure_context,
             "worktree_path": str(self._worktree_path) if self._worktree_path else None,
@@ -322,6 +326,13 @@ class Worker:
                     )
             except Exception:
                 pass
+        effective_description += (
+            "\n\n---\n\n## Commit Rules\n\n"
+            "Commit after each logical unit of work — do not accumulate changes.\n"
+            "Each commit must be self-contained and buildable.\n"
+            "Use: `committer \"type: message\" file1 file2`\n"
+            "Never use `git add .`\n"
+        )
         task_file.write_text(effective_description)
 
         _ALLOWED_MODELS = {
@@ -1075,6 +1086,62 @@ async def retry_failed(s: ProjectSession = Depends(_resolve_session)):
         new_task = await s.task_queue.add(retry_desc, t.get("model", "sonnet"))
         retried.append(new_task["id"])
     return {"retried": len(retried), "task_ids": retried}
+
+
+@app.post("/api/tasks/merge-all-done")
+async def merge_all_done(s: ProjectSession = Depends(_resolve_session)):
+    """Create PRs for all done+pushed workers. Auto-merge orchestrator/task-* branches."""
+    candidates = [
+        w for w in s.worker_pool.all()
+        if w.status == "done" and w.auto_pushed and not w.pr_url
+    ]
+    results = []
+    for w in candidates:
+        branch = w._branch_name or w.branch_name
+        if not branch:
+            results.append({"worker_id": w.id, "error": "no branch name"})
+            continue
+
+        # Create PR
+        pr_proc = await asyncio.create_subprocess_exec(
+            "gh", "pr", "create", "--head", branch, "--base", "main", "--fill",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            cwd=str(s.project_dir),
+        )
+        try:
+            pr_out, pr_err = await asyncio.wait_for(pr_proc.communicate(), timeout=30)
+        except asyncio.TimeoutError:
+            results.append({"worker_id": w.id, "error": "timeout creating PR"})
+            continue
+
+        if pr_proc.returncode != 0:
+            results.append({"worker_id": w.id, "error": pr_err.decode(errors="replace").strip()})
+            continue
+
+        pr_url = pr_out.decode(errors="replace").strip()
+        w.pr_url = pr_url
+
+        # Auto-merge our own orchestrator branches
+        auto_merged = False
+        if branch.startswith("orchestrator/task-"):
+            merge_proc = await asyncio.create_subprocess_exec(
+                "gh", "pr", "merge", pr_url, "--squash", "--delete-branch", "--yes",
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                cwd=str(s.project_dir),
+            )
+            try:
+                _, merge_err = await asyncio.wait_for(merge_proc.communicate(), timeout=30)
+                if merge_proc.returncode == 0:
+                    w.pr_merged = True
+                    auto_merged = True
+            except asyncio.TimeoutError:
+                pass
+
+        results.append({"worker_id": w.id, "pr_url": pr_url, "auto_merged": auto_merged})
+
+    created = sum(1 for r in results if r.get("pr_url"))
+    merged = sum(1 for r in results if r.get("auto_merged"))
+    return {"created": created, "merged": merged, "results": results}
 
 
 @app.post("/api/tasks/{task_id}/run")
