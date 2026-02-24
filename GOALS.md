@@ -1,18 +1,47 @@
-# GOALS — Claude Code Orchestrator
+# GOALS — Claude Code Kit
 
-**North star:** 1000+ commits/day. You describe requirements, AI implements them in parallel overnight. You wake up to merged PRs.
+**North star:** 1000+ commits/day. You describe what you want; AI delivers overnight. Wake up to merged PRs.
 
-**Design principle:** Every step that a human does manually is a bug. Every step that a worker does sequentially instead of in parallel is waste.
+**Design principle:** Every step a human does manually is a bug. Every step a worker does sequentially instead of in parallel is waste.
 
 ---
 
-## Phase 1 — One-Shot Batch (DONE)
-*Status: ✓ shipped*
+## Two Pillars
 
-Plan mode → orchestrate → tasks auto-import → workers run in parallel → PRs created and merged.
-You type a goal once, come back to committed code.
+This project has two complementary layers. CLI is the engine, GUI is the cockpit.
 
-**Success criteria (achieved):**
+### CLI Layer — The Foundation
+`configs/` → installed to `~/.claude/` (skills, scripts, hooks, templates)
+
+Works everywhere: SSH, tmux, CI, phone via Tailscale. No server required.
+- **Skills**: /commit, /sync, /handoff, /pickup, /orchestrate, /batch-tasks, /loop
+- **Scripts**: committer.sh, run-tasks.sh, run-tasks-parallel.sh, loop-runner.sh
+- **Hooks**: session-context, guardian, lint/verify, correction-detector
+- **Templates**: CLAUDE.md, settings.json
+
+CLI strengths: scriptable, composable, safe for self-modification (scripts are external to codebase), works in any environment.
+CLI limitations: no real-time visualization, typing-heavy, no mobile dashboard, no one-click phase switching.
+
+### GUI Layer — The Extension
+`orchestrator/` (Python FastAPI + vanilla JS web UI)
+
+Adds what CLI can't provide:
+- Real-time worker dashboard with status, logs, token bars
+- Visual task dependency DAG
+- One-click plan/execute mode switching
+- Mobile/remote access (Caddy HTTPS)
+- Multi-project overview with progress bars
+- Iteration loop control with convergence sparklines
+- Settings panel for zero-click overnight mode
+
+GUI wraps CLI primitives — workers use the same committer, same verify commands, same CLAUDE.md injection.
+
+---
+
+## Phase 1 — One-Shot Batch ✓ DONE
+
+Plan → orchestrate → tasks auto-import → workers run in parallel → PRs created and merged.
+
 - [x] Split Plan/Execute UI
 - [x] Git worktree isolation per worker
 - [x] Auto-push + auto-merge pipeline
@@ -21,72 +50,72 @@ You type a goal once, come back to committed code.
 - [x] Task dependency DAG
 - [x] Retry with failure context injection
 - [x] Scout readiness scoring
+- [x] Granular commit injection (committer discipline)
 
 ---
 
-## Phase 2 — Feedback Loops (IN PROGRESS)
-*Status: iteration loop shipped, more to come*
+## Phase 2 — Feedback Loops ✓ DONE
 
-The output of one batch feeds the next planning step. Autonomous refinement cycles, not just one-shot batches.
+The output of one batch feeds the next planning step. Autonomous refinement cycles.
 
-**Success criteria:**
-- [x] Iteration loop (Ralph-style supervisor) — review artifact → fix → verify → repeat
-- [ ] Self-organizing swarm — workers self-claim tasks, no central assignment bottleneck
-- [ ] Oracle validation — second model reviews before merge (independent bias-free check)
-- [ ] Model tier routing — auto-assign haiku/sonnet/opus by task complexity score
-- [ ] `uzi broadcast` — inject a message into ALL running workers simultaneously
-- [ ] PLANNING/BUILDING phase distinction — loop has explicit plan phase before execute phase
+- [x] Iteration loop (Ralph-style supervisor) — review mode
+- [x] Oracle validation — second model reviews before merge (gates push)
+- [x] Model tier auto-routing — haiku/sonnet/opus by scout score
+- [x] Broadcast to all workers — inject message into running workers
+- [x] Plan/build two-phase loop — PLAN→IMPLEMENTATION_PLAN.md→BUILD
+- [x] Multi-project dashboard + settings panel
+- [x] Post-merge PROGRESS.md injection (lessons learned)
+- [x] CLI loop skill (/loop) — autonomous loop without web UI
+- [x] Context budget indicator (file-based, partial)
 
 ---
 
-## Phase 3 — AI-Native Context Engineering
-*Status: not started*
+## Phase 3 — Autonomous Robustness (CURRENT)
 
-Workers should have maximum relevant context at minimum token cost. Context is the bottleneck for task quality.
+Close remaining gaps so the system runs overnight without human intervention.
 
-**Success criteria:**
-- [ ] AGENTS.md auto-generation — file ownership inferred from git blame, injected into every worker
-- [ ] Semantic code TLDR — 5-layer index (AST, call graph, imports) at ~1,200 tokens vs raw 23,000
-- [ ] Context budget tracking — show token usage estimate per worker in UI
-- [ ] `/compact` injection — workers told to compact when approaching context limit
-- [ ] Skills system — on-demand domain knowledge loaded per task, not stuffed into base CLAUDE.md
+- [ ] Oracle rejection → auto-requeue (task re-queued with rejection reason as context)
+- [ ] Context budget auto-inject (inject warning into worker PTY, not just write file)
+- [ ] AGENTS.md auto-prepend to workers (start_worker reads and injects)
+- [ ] Worker handoff auto-trigger (detect handoff file → create continuation task)
+- [ ] Two-phase orchestrate (/orchestrate --plan → IMPLEMENTATION_PLAN.md → proposed-tasks.md)
+- [ ] Loop artifact marking (workers mark goal file items as done)
+- [ ] Loop --stop (kill running loop from another session)
 
 ---
 
 ## Phase 4 — Swarm Intelligence
-*Status: not started*
 
-N workers operating as a true swarm: shared task pool, file ownership enforcement, no-collision parallel execution at scale.
+N workers operating as a true swarm: shared task pool, self-claiming, no central allocator.
 
-**Success criteria:**
-- [ ] Swarm mode — N workers all pulling from shared queue, self-claiming, no central allocator
-- [ ] File ownership system — AGENTS.md declares who owns what; workers respect boundaries
-- [ ] GitHub Issues sync — use Issues as persistent multi-session task database
-- [ ] Agent Teams integration — expose `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`
-- [ ] Cross-worker messaging — workers can message each other (mailbox pattern)
-- [ ] Worker dashboard → 1000+ commit/day pace visible in real time
+- [ ] Swarm mode — workers pull from shared queue, self-schedule
+- [ ] File ownership enforcement — AGENTS.md boundaries respected by workers
+- [ ] GitHub Issues sync — Issues as persistent multi-session task database
+- [ ] Agent Teams — expose `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`
+- [ ] Cross-worker messaging — mailbox pattern for inter-agent communication
+- [ ] Task hot-path indicator — critical path detection + model tier boost
 
 ---
 
-## The OpenClaw Recipe (what made 600 commits/day possible)
+## Phase 5 — Context Intelligence
 
-1. **`committer "msg" file1 file2`** — scoped staging, the anti-collision primitive (✓ we use this)
-2. **One worktree per task** — true isolation, zero branch collisions (✓ done)
-3. **AGENTS.md with file ownership** — parallel agents never touch each other's files
-4. **Ralph loop** — autonomous iteration until a goal is met, not one-shot
-5. **Self-organizing workers** — workers pull from queue, no bottleneck at dispatch
-6. **Oracle second-model review** — independent validation with fresh context before merge
-7. **Model tier routing** — haiku for triage/scoring, sonnet for implementation, opus for architecture
-8. **Context compaction discipline** — workers `/compact` between subtasks to extend range
+Reduce worker failure rate by giving them maximum relevant context at minimum token cost.
+
+- [ ] Semantic code TLDR — AST-based function summaries, ~1,200 tokens vs 23,000 raw
+- [ ] Intervention recording — replay successful corrections on similar failures
+- [ ] Dual-condition exit gate — semantic convergence analysis, not just change counting
 
 ---
 
-## Why This Matters
+## The OpenClaw Recipe (reference)
 
-The cost of ideas is near-zero with AI. The bottleneck is now:
-1. **Task clarity** (scouting, scoring, planning loops)
-2. **Execution parallelism** (worktrees, swarm)
-3. **Integration quality** (oracle review, file ownership)
-4. **Iteration speed** (feedback loops, no human in the loop for known-good patterns)
+What made 600 commits/day possible:
 
-Reaching 1000+ commits/day is not about AI being faster — it's about removing every human-required step in the loop.
+1. **`committer "msg" file1 file2`** — scoped staging, anti-collision primitive ✓
+2. **One worktree per task** — true isolation ✓
+3. **AGENTS.md with file ownership** — parallel agents stay in lanes (partial)
+4. **Ralph loop** — autonomous iteration until goal is met ✓
+5. **Self-organizing workers** — workers pull from queue (Phase 4)
+6. **Oracle second-model review** — independent validation ✓
+7. **Model tier routing** — haiku/sonnet/opus by complexity ✓
+8. **Context compaction discipline** — workers /compact between subtasks ✓

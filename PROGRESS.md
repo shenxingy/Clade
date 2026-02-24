@@ -459,3 +459,22 @@ Hard-won insights from building and maintaining this toolkit.
 - If loop coroutine is interrupted (server restart), `changes_history=[]` stays empty and loop status stays `running` — must Cancel + restart the loop
 - Workers tend to describe changes in output rather than actually implement them; the fix is better prompting in `start_worker()` (AGENTS.md, CLAUDE.md prepend)
 - The `_run_plan_build()` BUILD phase tight-loop (poll every 3s) is correct — no asyncio.sleep(0) needed since we're waiting for external process
+
+### 2026-02-24 — /loop CLI skill
+
+**What was done:**
+- Implemented `~/.claude/scripts/loop-runner.sh` — autonomous supervisor+worker loop in pure bash
+- Implemented `~/.claude/skills/loop/` (SKILL.md + prompt.md) — `/loop` skill with context enrichment
+- Loop runner: supervisor (`claude -p`) reads artifact → outputs next task or `STATUS: CONVERGED` → worker via `run-tasks.sh`
+- Skill: generates `loop-context.md` from codebase exploration (key optimization — saves tokens on every supervisor call)
+- Supports: `--status`, `--dry-run`, `--resume`, `--model`, `--worker-model`, `--max-iter`
+
+**Key design decisions:**
+- Supervisor uses `claude -p` (non-interactive, cheap); workers use full `claude --dangerously-skip-permissions` via run-tasks.sh
+- State file is plain KEY=VALUE (no JSON dependencies); progress file format matches run-tasks.sh
+- `unset CLAUDECODE` allows nested claude calls from within Claude Code session
+- Context file (loop-context.md) is generated once per launch by the skill, then reused each iteration
+
+**Lessons:**
+- CLI loop vs web UI loop: CLI loop is safer for self-modification (script is external to codebase); web UI is better for parallel workers + real-time monitoring
+- The skill's context enrichment step is where it adds value over raw bash — the skill session has full codebase context that the background `claude -p` calls lack
