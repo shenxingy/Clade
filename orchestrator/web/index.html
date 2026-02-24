@@ -1657,6 +1657,10 @@ function renderWorkers() {
     return;
   }
 
+  // Preserve focused element so re-render doesn't steal focus from inputs
+  const focusedId = document.activeElement && list.contains(document.activeElement)
+    ? document.activeElement.id : null;
+
   list.innerHTML = workers.map(w => {
     let commitDisplay;
     if (w.pr_merged) {
@@ -1689,7 +1693,7 @@ function renderWorkers() {
       ? `<span class="badge oracle-rejected" title="${esc(w.oracle_reason||'')}">✗ oracle</span>`
       : '';
     const modelInfo = `<span style="font-size:10px;opacity:0.5;margin-left:4px">${w.model||''}${w.model_score!=null?' · '+w.model_score:''}</span>`;
-    const tokenPct = w.estimated_tokens ? Math.min(100, w.estimated_tokens / 2000) : 0;
+    const tokenPct = w.estimated_tokens ? Math.min(100, w.estimated_tokens / 200000 * 100) : 0;
     const tokenColor = w.estimated_tokens > 160000 ? '#ef4444' : w.estimated_tokens > 120000 ? '#f59e0b' : '#34d399';
     const tokenBar = w.estimated_tokens > 0
       ? `<div class="token-bar" title="~${(w.estimated_tokens||0).toLocaleString()} tokens"><div class="token-bar-fill" style="width:${tokenPct}%;background:${tokenColor}"></div></div>`
@@ -1714,6 +1718,12 @@ function renderWorkers() {
         </div>
       </div>`;
   }).join('');
+
+  // Restore focus if a button/element inside the list had focus before re-render
+  if (focusedId) {
+    const el = document.getElementById(focusedId);
+    if (el) el.focus();
+  }
 
   // Tick elapsed timers locally so they update without full re-render
   startElapsedTickers();
@@ -2113,15 +2123,24 @@ async function loadProjects() {
       list.innerHTML = '<div class="empty">No git repos found under home dir</div>';
       return;
     }
-    list.innerHTML = projects.map(p => `
-      <div onclick="selectProject('${esc(p.path)}')" style="
-        padding:8px 14px;border-bottom:1px solid var(--border);
-        cursor:pointer;display:flex;align-items:center;gap:10px;
-      " onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background=''">
-        <span style="font-weight:500;font-size:13px">${esc(p.name)}</span>
-        <span style="font-size:11px;color:var(--text2);font-family:var(--font-mono)">${esc(p.path)}</span>
-      </div>
-    `).join('');
+    list.innerHTML = '';
+    projects.forEach(p => {
+      const div = document.createElement('div');
+      div.dataset.path = p.path;
+      div.style.cssText = 'padding:8px 14px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:10px;';
+      div.addEventListener('mouseover', () => { div.style.background = 'var(--bg2)'; });
+      div.addEventListener('mouseout', () => { div.style.background = ''; });
+      div.addEventListener('click', () => selectProject(p.path));
+      const name = document.createElement('span');
+      name.style.cssText = 'font-weight:500;font-size:13px';
+      name.textContent = p.name;
+      const path = document.createElement('span');
+      path.style.cssText = 'font-size:11px;color:var(--text2);font-family:var(--font-mono)';
+      path.textContent = p.path;
+      div.appendChild(name);
+      div.appendChild(path);
+      list.appendChild(div);
+    });
   } catch(e) {
     list.innerHTML = '<div class="empty">Error scanning projects</div>';
   }
@@ -2338,7 +2357,7 @@ async function mergeAllDone() {
 async function broadcastAll() {
   const msg = document.getElementById('broadcastInput')?.value?.trim();
   if (!msg) return;
-  const sid = (typeof activeSessionId !== 'undefined' && activeSessionId) || sessionId;
+  const sid = activeSessionId;
   const r = await fetch(`/api/sessions/${sid}/workers/broadcast`, {
     method: 'POST', headers: {'Content-Type':'application/json'},
     body: JSON.stringify({ message: msg }),
@@ -2349,7 +2368,7 @@ async function broadcastAll() {
 }
 
 async function generateAgentsMd() {
-  const sid = (typeof activeSessionId !== 'undefined' && activeSessionId) || sessionId;
+  const sid = activeSessionId;
   if (!sid) { showToast('No active session'); return; }
   try {
     const r = await fetch(`/api/sessions/${sid}/agents-md`);
@@ -2372,6 +2391,8 @@ async function startLoop() {
   const contextDir = document.getElementById('loopContextDir')?.value.trim() || null;
   const k = parseInt(document.getElementById('loopK')?.value) || 2;
   const n = parseInt(document.getElementById('loopN')?.value) || 3;
+  const btn = document.querySelector('#loopBar .btn.accent');
+  if (btn) btn.disabled = true;
   try {
     const r = await fetch(`/api/sessions/${activeSessionId}/loop/start`, {
       method: 'POST',
@@ -2389,6 +2410,7 @@ async function startLoop() {
     _loopConvergedToasted = false;
     showToast('Loop started — Iteration 1 underway');
   } catch(e) { showToast('Failed to start loop'); }
+  finally { if (btn) btn.disabled = false; }
 }
 
 async function pauseLoop() {
