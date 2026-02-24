@@ -1335,6 +1335,13 @@ function openNewTabPicker() { openProjectPicker(); }
 
 // ─── Dashboard update ────────────────────────────────────────────────────────
 function updateDashboard(data) {
+  // Run-complete notification (one-shot per batch)
+  if (data.run_complete && !window._runCompleteToasted) {
+    window._runCompleteToasted = true;
+    showToast('✓ All tasks complete — queue empty');
+  }
+  if (!data.run_complete) window._runCompleteToasted = false;
+
   // Always update badge count for whichever session sent this status
   const s = sessions.find(s => s.session_id === data.session_id);
   if (s) {

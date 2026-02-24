@@ -2,6 +2,36 @@
 
 ---
 
+### 2026-02-23 — P1: Auto-stop notification, schedule persistence, post-merge PROGRESS.md injection
+
+**What was done:**
+- `server.py`: Added `schedule` table to SQLite (`tasks.db`) — single row keyed at `id=1`
+  - `TaskQueue.get_schedule()` / `save_schedule()` — persists scheduled_at + triggered flag
+  - `status_loop` restores schedule on first tick (`_schedule_loaded` guard); marks triggered=True in DB when scheduler fires
+  - `set_schedule` and `cancel_schedule` endpoints now call `save_schedule()` — schedule survives server restart
+- `server.py`: Run-complete detection in `status_loop`
+  - Sets `session._run_complete = True` (one-shot) when: no running workers, no pending tasks, at least one done task
+  - Resets to False when new work appears (pending or running)
+  - Broadcast as `run_complete` field in WebSocket status message
+- `server.py`: `_write_progress_entry()` background coroutine
+  - Triggered by `asyncio.ensure_future()` after each successful squash merge in `merge_all_done`
+  - Reads last 80 lines of worker log, calls claude-haiku to generate a concise lesson entry
+  - Inserts entry after the first heading line of `PROGRESS.md` (non-blocking, errors silently swallowed)
+- `index.html`: Run-complete toast in `updateDashboard()`
+  - Fires `showToast('✓ All tasks complete — queue empty')` once per batch (guarded by `window._runCompleteToasted`)
+  - Resets guard when `run_complete` goes false so next batch can notify again
+
+**What worked:**
+- `_schedule_loaded` boolean flag on `ProjectSession` is the cleanest way to trigger one-shot DB load without changing the `__init__` signature
+- `asyncio.ensure_future()` for post-merge PROGRESS.md write — truly fire-and-forget, merge API response is instant
+- `window._runCompleteToasted` guards the toast from repeating on every status tick
+
+**Lessons:**
+- `claude --max-tokens` flag doesn't exist in the CLI — only `--max-budget-usd`; always verify CLI flags against `claude --help` before using
+- `shlex.quote()` is essential when passing a large prompt string as a shell argument — prevents injection if prompt contains quotes
+
+---
+
 ### 2026-02-23 — P1: SQLite persistence, scheduler, scout scoring, PROGRESS.md injection
 
 **What was done:**

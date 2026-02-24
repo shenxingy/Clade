@@ -148,8 +148,8 @@ North star is "run overnight, wake up to commits" — this is P1, not a nice-to-
 - [x] **"Start at HH:MM" scheduler** in Execute mode header
   - User sets time → server queues start; workers auto-launch at scheduled time
   - UI shows countdown: "Starting in 4h 23m" with cancel button
-- [ ] **Auto-stop when queue empty**: server stays up but workers idle; no runaway costs
-- [ ] **Persist schedule across server restart** (SQLite — currently in-memory only)
+- [x] **Auto-stop when queue empty**: server stays up but workers idle; no runaway costs
+- [x] **Persist schedule across server restart** (SQLite — currently in-memory only)
 
 ---
 
@@ -157,7 +157,7 @@ North star is "run overnight, wake up to commits" — this is P1, not a nice-to-
 
 Poor task descriptions = high failure rate. Close the loop so each batch makes the next one better.
 
-- [ ] **Post-merge summary injection**: after `/merge-pr`, extract worker log summary + PR diff → append to project `PROGRESS.md` as a lesson entry
+- [x] **Post-merge summary injection**: after `/merge-pr`, extract worker log summary + PR diff → append to project `PROGRESS.md` as a lesson entry
   - Format: `### [date] Task: {task title}\n- What worked: ...\n- Watch out for: ...`
 - [x] **PROGRESS.md fed into Orchestrate**: when `⚡ Orchestrate` is triggered, prepend recent PROGRESS.md entries to the orchestrator prompt
   - Fetches `/api/sessions/{id}/progress-md` (last 3000 chars) and prepends to terminal input
