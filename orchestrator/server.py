@@ -624,6 +624,7 @@ class Worker:
         self.description = description
         self.model = model
         self._project_dir = project_dir
+        self._original_project_dir = project_dir  # preserved for restore after worktree cleanup
         self._claude_dir = claude_dir
         self.proc: asyncio.subprocess.Process | None = None
         self.pgid: int | None = None
@@ -793,17 +794,7 @@ class Worker:
         if self._finished_at is None:
             self._finished_at = time.time()
         self.status = "done"
-        if self._worktree_path and self._worktree_path.exists():
-            cleanup = await asyncio.create_subprocess_exec(
-                "git", "worktree", "remove", "--force", str(self._worktree_path),
-                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
-                cwd=str(self._claude_dir.parent),
-            )
-            try:
-                await asyncio.wait_for(cleanup.communicate(), timeout=15)
-            except Exception:
-                pass
-            self._worktree_path = None
+        await self._cleanup_worktree()
 
     async def poll(self) -> None:
         if not self.is_alive():
@@ -818,7 +809,10 @@ class Worker:
                     self.failure_context = "\n".join(lines[-50:])
                 except Exception:
                     pass
-            if self._worktree_path and self._worktree_path.exists():
+            if not self._verify_triggered:
+                self._verify_triggered = True
+                asyncio.ensure_future(self._on_worker_done())
+            elif self._worktree_path and self._worktree_path.exists():
                 asyncio.ensure_future(self._cleanup_worktree())
             return
 
@@ -840,13 +834,20 @@ class Worker:
         cleanup = await asyncio.create_subprocess_exec(
             "git", "worktree", "remove", "--force", str(self._worktree_path),
             stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
-            cwd=str(self._claude_dir.parent),
+            cwd=str(self._original_project_dir),
         )
         try:
             await asyncio.wait_for(cleanup.communicate(), timeout=15)
         except Exception:
             pass
         self._worktree_path = None
+        self._project_dir = self._original_project_dir  # restore so git cmds still work
+
+    async def _on_worker_done(self) -> None:
+        """Run after process exits: verify+commit while worktree is still alive, then clean up."""
+        if self.status == "done":
+            await self.verify_and_commit()
+        await self._cleanup_worktree()
 
     async def verify_and_commit(self) -> bool:
         diff_proc = await asyncio.create_subprocess_exec(
@@ -1016,9 +1017,8 @@ class WorkerPool:
                     elapsed_s=w.elapsed_s,
                     last_commit=w.last_commit,
                 )
-            if w.status == "done" and not w._verify_triggered:
-                w._verify_triggered = True
-                asyncio.ensure_future(w.verify_and_commit())
+            # verify_and_commit() is triggered in poll() via _on_worker_done() to ensure
+            # it runs before worktree cleanup — no separate trigger needed here
 
 
 # ─── Orchestrator Session (PTY) ───────────────────────────────────────────────
