@@ -775,6 +775,13 @@
       font-size: 10px; color: var(--yellow); background: rgba(210,153,34,0.15);
       border-radius: 3px; padding: 1px 5px; white-space: nowrap;
     }
+    .broadcast-bar { display:flex; gap:6px; align-items:center; padding:6px 8px; background:var(--bg3); border-radius:6px; margin-bottom:8px; }
+    .broadcast-bar input { flex:1; background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:4px 8px; font-size:12px; color:var(--text); outline:none; }
+    .broadcast-bar input:focus { border-color:var(--accent); }
+    .token-bar { height:3px; border-radius:2px; background:var(--bg3); margin-top:3px; overflow:hidden; }
+    .token-bar-fill { height:100%; transition:width 0.3s; }
+    .badge.oracle-ok { background:rgba(52,211,153,0.15); color:#34d399; }
+    .badge.oracle-rejected { background:rgba(239,68,68,0.15); color:#ef4444; }
   </style>
 </head>
 <body>
@@ -856,6 +863,24 @@
   <label class="settings-row" style="margin-bottom:6px">
     <span>Loop max iterations <span style="color:var(--text2);font-size:10px">(safety cap)</span></span>
     <input type="number" id="settingLoopMax" min="5" max="100" value="20" style="width:50px" onchange="saveSettings()" oninput="saveSettings()" />
+  </label>
+  <div style="font-size:10px;font-weight:600;opacity:0.5;text-transform:uppercase;letter-spacing:0.5px;margin-top:10px;margin-bottom:4px;padding:0 12px">File Ownership</div>
+  <label class="settings-row">
+    <span>AGENTS.md</span>
+    <button class="btn small secondary" onclick="generateAgentsMd()">Generate</button>
+  </label>
+  <div style="font-size:10px;font-weight:600;opacity:0.5;text-transform:uppercase;letter-spacing:0.5px;margin-top:10px;margin-bottom:4px;padding:0 12px">Quality Gates</div>
+  <label class="settings-row">
+    <span>Oracle validation (2nd model review)</span>
+    <input type="checkbox" id="settingAutoOracle" onchange="saveSettings()" />
+  </label>
+  <label class="settings-row">
+    <span>Auto model routing by score</span>
+    <input type="checkbox" id="settingAutoModelRouting" onchange="saveSettings()" />
+  </label>
+  <label class="settings-row">
+    <span>Context budget warnings</span>
+    <input type="checkbox" id="settingContextBudget" checked onchange="saveSettings()" />
   </label>
 </div>
 
@@ -949,6 +974,11 @@
           <button class="btn small success" id="mergeAllBtn" onclick="mergeAllDone()" style="display:none">⬇ Create PRs</button>
         </div>
       </div>
+      <div id="broadcastBar" class="broadcast-bar" style="display:none;margin:6px 12px 0">
+        <input id="broadcastInput" type="text" placeholder="Broadcast message to all running workers..."
+          onkeydown="if(event.key==='Enter')broadcastAll()" />
+        <button class="btn small" onclick="broadcastAll()">→ All</button>
+      </div>
       <div class="workers-list" id="workersList"></div>
     </div>
 
@@ -985,6 +1015,12 @@
         <input id="loopContextDir" type="text" class="loop-input" placeholder="Codebase dir (optional)" />
         <label class="loop-inline">K=<input id="loopK" type="number" value="2" min="1" max="20" style="width:36px"/></label>
         <label class="loop-inline">N=<input id="loopN" type="number" value="3" min="1" max="10" style="width:36px"/></label>
+        <label class="loop-inline">Mode:
+          <select id="loopMode" style="font-size:11px;padding:2px">
+            <option value="review">Review</option>
+            <option value="plan_build">Plan+Build</option>
+          </select>
+        </label>
         <button class="btn small" onclick="startLoop()">▶ Start</button>
         <button class="btn small secondary" onclick="pauseLoop()" id="loopPauseBtn" style="display:none">⏸ Pause</button>
         <button class="btn small secondary" onclick="resumeLoop()" id="loopResumeBtn" style="display:none">▶ Resume</button>
@@ -1647,15 +1683,28 @@ function renderWorkers() {
       ? `<div class="worker-log-tail" title="${esc(lastLogLine)}">${esc(lastLogLine)}</div>`
       : '';
 
+    const oracleBadge = w.oracle_result === 'approved'
+      ? `<span class="badge oracle-ok" title="${esc(w.oracle_reason||'')}">✓ oracle</span>`
+      : w.oracle_result === 'rejected'
+      ? `<span class="badge oracle-rejected" title="${esc(w.oracle_reason||'')}">✗ oracle</span>`
+      : '';
+    const modelInfo = `<span style="font-size:10px;opacity:0.5;margin-left:4px">${w.model||''}${w.model_score!=null?' · '+w.model_score:''}</span>`;
+    const tokenPct = w.estimated_tokens ? Math.min(100, w.estimated_tokens / 2000) : 0;
+    const tokenColor = w.estimated_tokens > 160000 ? '#ef4444' : w.estimated_tokens > 120000 ? '#f59e0b' : '#34d399';
+    const tokenBar = w.estimated_tokens > 0
+      ? `<div class="token-bar" title="~${(w.estimated_tokens||0).toLocaleString()} tokens"><div class="token-bar-fill" style="width:${tokenPct}%;background:${tokenColor}"></div></div>`
+      : '';
+
     return `
       <div class="worker-card ${w.status}" id="wcard-${w.id}">
         <div class="worker-top">
           <span class="worker-name" title="${esc(w.description)}">${esc(firstLine(w.description))}</span>
           <span style="font-size:10px;opacity:0.35;font-family:var(--font-mono);flex-shrink:0">#${w.id}</span>
-          <span class="badge ${w.status}">${w.status}</span>
+          <span class="badge ${w.status}">${w.status}</span>${oracleBadge}${modelInfo}
         </div>
         ${logTailHtml}
         <div class="worker-commit">${commitDisplay}</div>
+        ${tokenBar}
         <div class="worker-footer">
           <span class="elapsed" id="elapsed-${w.id}">${formatElapsed(w.elapsed_s)}</span>
           ${canPause ? `<button class="btn small secondary" onclick="pauseWorker('${w.id}')">Pause</button>` : ''}
@@ -2191,6 +2240,8 @@ function setMode(mode) {
   updateSchedulerDisplay(_lastSchedule);
   const loopBar = document.getElementById('loopBar');
   if (loopBar) loopBar.style.display = mode === 'execute' ? '' : 'none';
+  const bb = document.getElementById('broadcastBar');
+  if (bb) bb.style.display = mode === 'execute' ? 'flex' : 'none';
   // Deferred section: only visible in execute mode when there are items
   if (mode !== 'execute') {
     const deferredSection = document.getElementById('deferredSection');
@@ -2282,6 +2333,34 @@ async function mergeAllDone() {
   }
 }
 
+// ─── Broadcast / Agents.md ────────────────────────────────────────────────────
+
+async function broadcastAll() {
+  const msg = document.getElementById('broadcastInput')?.value?.trim();
+  if (!msg) return;
+  const sid = (typeof activeSessionId !== 'undefined' && activeSessionId) || sessionId;
+  const r = await fetch(`/api/sessions/${sid}/workers/broadcast`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ message: msg }),
+  });
+  const d = await r.json();
+  showToast(d.count > 0 ? `Broadcast sent to ${d.count} worker${d.count!==1?'s':''}` : 'No running workers');
+  if (d.count > 0) document.getElementById('broadcastInput').value = '';
+}
+
+async function generateAgentsMd() {
+  const sid = (typeof activeSessionId !== 'undefined' && activeSessionId) || sessionId;
+  if (!sid) { showToast('No active session'); return; }
+  try {
+    const r = await fetch(`/api/sessions/${sid}/agents-md`);
+    const d = await r.json();
+    if (d.agents_md) {
+      try { await navigator.clipboard.writeText(d.agents_md); showToast('AGENTS.md copied to clipboard'); }
+      catch { console.log('AGENTS.md:\n', d.agents_md); showToast('AGENTS.md generated (see console)'); }
+    }
+  } catch { showToast('Error generating AGENTS.md'); }
+}
+
 // ─── Iteration Loop ───────────────────────────────────────────────────────────
 
 let _loopConvergedToasted = false;
@@ -2302,6 +2381,7 @@ async function startLoop() {
         context_dir: contextDir,
         convergence_k: k,
         convergence_n: n,
+        mode: document.getElementById('loopMode')?.value || 'review',
       }),
     });
     const d = await r.json();
@@ -2481,6 +2561,13 @@ async function loadSettings() {
     // Sync autoStartToggle in chat header
     const ast = document.getElementById('autoStartToggle');
     if (ast) ast.checked = s.auto_start ?? true;
+    // Quality gate settings
+    const elAutoOracle = document.getElementById('settingAutoOracle');
+    const elAutoMR = document.getElementById('settingAutoModelRouting');
+    const elCtxBudget = document.getElementById('settingContextBudget');
+    if (elAutoOracle) elAutoOracle.checked = s.auto_oracle ?? false;
+    if (elAutoMR) elAutoMR.checked = s.auto_model_routing ?? false;
+    if (elCtxBudget) elCtxBudget.checked = s.context_budget_warning ?? true;
   } catch {}
 }
 
@@ -2503,6 +2590,9 @@ function saveSettings() {
           loop_convergence_k: parseInt(document.getElementById('settingLoopK')?.value) || 2,
           loop_convergence_n: parseInt(document.getElementById('settingLoopN')?.value) || 3,
           loop_max_iterations: parseInt(document.getElementById('settingLoopMax')?.value) || 20,
+          auto_oracle: document.getElementById('settingAutoOracle')?.checked ?? false,
+          auto_model_routing: document.getElementById('settingAutoModelRouting')?.checked ?? false,
+          context_budget_warning: document.getElementById('settingContextBudget')?.checked ?? true,
         }),
       });
     } catch {}

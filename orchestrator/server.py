@@ -48,6 +48,9 @@ _SETTINGS_DEFAULTS = {
     "loop_convergence_k": 2,
     "loop_convergence_n": 3,
     "loop_max_iterations": 20,
+    "auto_oracle": False,
+    "auto_model_routing": False,
+    "context_budget_warning": True,
 }
 
 
@@ -176,6 +179,12 @@ class TaskQueue:
                 )
             """)
             await db.commit()
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            try:
+                await db.execute("ALTER TABLE iteration_loops ADD COLUMN mode TEXT DEFAULT 'review'")
+                await db.commit()
+            except Exception:
+                pass  # Already exists
         # Migrate from JSON if present
         json_file = self._claude_dir / "task-queue.json"
         if json_file.exists():
@@ -608,6 +617,35 @@ async def _write_pr_review(pr_url: str, task_description: str, project_dir: Path
         pass  # non-critical
 
 
+async def _oracle_review(task_description: str, diff_text: str, claude_dir: Path) -> tuple[bool, str]:
+    """Independent second-model review of a diff. Returns (approved, reason). Fails open."""
+    prompt = (
+        "You are an independent code reviewer with no prior context.\n"
+        "Review the diff and task description. Output ONLY one of:\n"
+        "  APPROVED: <one-line reason>\n"
+        "  REJECTED: <one-line reason>\n\n"
+        f"Task: {task_description[:400]}\n\nDiff:\n{diff_text[:3000]}"
+    )
+    prompt_file = claude_dir / f"oracle-{uuid.uuid4().hex[:8]}.md"
+    try:
+        prompt_file.write_text(prompt)
+        proc = await asyncio.create_subprocess_shell(
+            f'claude -p "$(cat {shlex.quote(str(prompt_file))})" '
+            f'--model claude-haiku-4-5-20251001 --dangerously-skip-permissions',
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=60)
+        result = out.decode().strip()
+        approved = result.startswith("APPROVED")
+        reason = result.split(":", 1)[-1].strip()[:80] if ":" in result else result[:80]
+        return approved, reason
+    except Exception as e:
+        return True, f"oracle error: {e}"
+    finally:
+        prompt_file.unlink(missing_ok=True)
+
+
 # ─── Worker Pool ──────────────────────────────────────────────────────────────
 
 class Worker:
@@ -638,6 +676,9 @@ class Worker:
         self.verified: bool = False
         self.auto_committed: bool = False
         self.auto_pushed: bool = False
+        self.oracle_result: str | None = None
+        self.oracle_reason: str | None = None
+        self.model_score: int | None = None
         self.branch_name: str | None = None
         self.pr_url: str | None = None
         self.pr_merged: bool = False
@@ -679,7 +720,21 @@ class Worker:
             "log_tail": log_tail,
             "failure_context": self.failure_context,
             "worktree_path": str(self._worktree_path) if self._worktree_path else None,
+            "oracle_result": self.oracle_result,
+            "oracle_reason": self.oracle_reason,
+            "model_score": self.model_score,
+            "estimated_tokens": self._estimate_tokens(),
         }
+
+    def _estimate_tokens(self) -> int:
+        desc_tokens = len(self.description) // 4
+        log_tokens = 0
+        if self._log_path and self._log_path.exists():
+            try:
+                log_tokens = self._log_path.stat().st_size // 4
+            except Exception:
+                pass
+        return desc_tokens + log_tokens
 
     async def start(self) -> None:
         # Create isolated git worktree for this worker
@@ -923,6 +978,25 @@ class Worker:
             if commit_proc.returncode == 0:
                 self.auto_committed = True
 
+                # Oracle validation gate
+                if GLOBAL_SETTINGS.get("auto_oracle", False):
+                    try:
+                        diff_proc = await asyncio.create_subprocess_exec(
+                            "git", "diff", "HEAD~1", "HEAD",
+                            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+                            cwd=str(self._project_dir),
+                        )
+                        diff_out, _ = await asyncio.wait_for(diff_proc.communicate(), timeout=15)
+                        approved, reason = await _oracle_review(
+                            self.description, diff_out.decode(), self._claude_dir
+                        )
+                        self.oracle_result = "approved" if approved else "rejected"
+                        self.oracle_reason = reason
+                        if not approved:
+                            return False
+                    except Exception:
+                        pass  # fail-open
+
                 branch = f"orchestrator/task-{self.task_id}"
                 self.branch_name = branch
                 if GLOBAL_SETTINGS.get("auto_push", True):
@@ -961,13 +1035,24 @@ class WorkerPool:
         project_dir: Path,
         claude_dir: Path,
     ) -> Worker:
+        model = task.get("model", "sonnet")
+        if GLOBAL_SETTINGS.get("auto_model_routing", False):
+            score = task.get("score")
+            if score is not None:
+                if score >= 80:
+                    model = "haiku"
+                elif score < 50:
+                    model = "sonnet"
+                if task.get("is_critical_path"):
+                    model = {"haiku": "sonnet", "sonnet": "opus"}.get(model, model)
         worker = Worker(
             task["id"],
             task["description"],
-            task.get("model", "sonnet"),
+            model,
             project_dir,
             claude_dir,
         )
+        worker.model_score = task.get("score")
         worker.task_timeout = task.get("timeout", 600)
         self.workers[worker.id] = worker
         await task_queue.update(task["id"], status="running", worker_id=worker.id)
@@ -1019,6 +1104,17 @@ class WorkerPool:
                 )
             # verify_and_commit() is triggered in poll() via _on_worker_done() to ensure
             # it runs before worktree cleanup — no separate trigger needed here
+        if GLOBAL_SETTINGS.get("context_budget_warning", True):
+            for w in list(self.workers.values()):
+                if w.status == "running":
+                    tokens = w._estimate_tokens()
+                    if tokens > 160000:
+                        warn_file = w._claude_dir / f"context-warning-{w.id}.md"
+                        if not warn_file.exists():
+                            warn_file.write_text(
+                                "CONTEXT WARNING: ~80% context window used. "
+                                "Run /compact now — preserve current task state, files modified, next steps."
+                            )
 
 
 # ─── Orchestrator Session (PTY) ───────────────────────────────────────────────
@@ -1156,6 +1252,9 @@ class ProjectSession:
             loop_state = await self.task_queue.get_loop()
             if not loop_state or loop_state["status"] != "running":
                 return
+
+            mode = loop_state.get("mode", "review")
+            # plan_build mode: two-phase PLAN then BUILD (stub — falls through to review)
 
             iteration = loop_state["iteration"] + 1
             await self.task_queue.upsert_loop(iteration=iteration)
@@ -2022,6 +2121,70 @@ async def message_worker(
         new_task, s.task_queue, s.project_dir, s.claude_dir
     )
     return {"new_worker_id": new_worker.id, "new_task_id": new_task["id"]}
+
+
+@app.post("/api/sessions/{session_id}/workers/broadcast")
+async def broadcast_to_workers(session_id: str, body: dict):
+    session = registry.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    message = body.get("message", "").strip()
+    if not message:
+        return {"error": "message required"}
+    sent_to = []
+    for worker in list(session.worker_pool.workers.values()):
+        if worker.status == "running":
+            original_desc = worker.description
+            await worker.stop()
+            new_desc = f"{original_desc}\n\n---\n**Broadcast message:** {message}"
+            new_task = await session.task_queue.add(new_desc, worker.model)
+            await session.worker_pool.start_worker(
+                new_task, session.task_queue, session.project_dir, session.claude_dir
+            )
+            sent_to.append(worker.id)
+    return {"sent_to": sent_to, "count": len(sent_to)}
+
+
+@app.get("/api/sessions/{session_id}/agents-md")
+async def get_agents_md(session_id: str):
+    session = registry.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "git", "log", "--name-only", "--format=%D", "--max-count=200",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+            cwd=str(session.project_dir),
+        )
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
+    except Exception as e:
+        return {"agents_md": f"# File Ownership\n\n(error: {e})\n"}
+    file_to_branch: dict[str, str] = {}
+    current_branch = "main"
+    for line in out.decode(errors="replace").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if "orchestrator/task-" in line:
+            for part in line.split(","):
+                part = part.strip()
+                if "orchestrator/task-" in part:
+                    current_branch = part.replace("HEAD -> ", "").replace("origin/", "").strip()
+                    break
+        elif ("/" in line or "." in line) and current_branch not in ("main", "HEAD"):
+            file_to_branch.setdefault(line, current_branch)
+    branch_files: dict[str, list[str]] = {}
+    for f, b in file_to_branch.items():
+        branch_files.setdefault(b, []).append(f)
+    out_lines = ["# File Ownership", ""]
+    for branch, files in sorted(branch_files.items()):
+        out_lines.append(f"### {branch}")
+        for f in sorted(files)[:15]:
+            out_lines.append(f"- owns: {f}")
+        out_lines.append("")
+    if not branch_files:
+        out_lines.append("No branch-specific ownership detected.")
+    return {"agents_md": "\n".join(out_lines)}
 
 
 @app.get("/api/workers/{worker_id}/log")
