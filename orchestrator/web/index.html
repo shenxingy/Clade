@@ -1021,7 +1021,7 @@
             <option value="plan_build">Plan+Build</option>
           </select>
         </label>
-        <button class="btn small" onclick="startLoop()">▶ Start</button>
+        <button class="btn small" id="loopStartBtn" onclick="startLoop()">▶ Start</button>
         <button class="btn small secondary" onclick="pauseLoop()" id="loopPauseBtn" style="display:none">⏸ Pause</button>
         <button class="btn small secondary" onclick="resumeLoop()" id="loopResumeBtn" style="display:none">▶ Resume</button>
         <button class="btn small danger" onclick="cancelLoop()" id="loopCancelBtn" style="display:none">✕</button>
@@ -1455,6 +1455,14 @@ function connectStatus(sessionId) {
   ws.onclose = () => setTimeout(() => {
     if (sessionStates.has(sessionId)) connectStatus(sessionId);
   }, 2000);
+  ws.onerror = () => {
+    // If the connection was never established, onclose may not fire in all browsers
+    if (ws.readyState !== WebSocket.OPEN) {
+      setTimeout(() => {
+        if (sessionStates.has(sessionId)) connectStatus(sessionId);
+      }, 3000);
+    }
+  };
 }
 
 // Keep-alive ping for all sessions
@@ -1765,21 +1773,26 @@ async function addTask() {
   const model = document.getElementById('newTaskModel').value;
   if (!desc) return;
 
-  // If it's ===TASK=== format, send content to server then import
-  if (desc.includes('===TASK===')) {
-    await fetch(`/api/tasks/import-proposed?session=${activeSessionId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: desc }),
-    });
-  } else {
-    await fetch(`/api/tasks?session=${activeSessionId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ description: desc, model }),
-    });
+  try {
+    // If it's ===TASK=== format, send content to server then import
+    if (desc.includes('===TASK===')) {
+      await fetch(`/api/tasks/import-proposed?session=${activeSessionId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: desc }),
+      });
+    } else {
+      await fetch(`/api/tasks?session=${activeSessionId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: desc, model }),
+      });
+    }
+    document.getElementById('newTaskDesc').value = '';
+  } catch(e) {
+    showToast('Error adding task: ' + e.message);
+    // textarea value is preserved (not cleared)
   }
-  document.getElementById('newTaskDesc').value = '';
 }
 
 async function importProposedToQueue() {
@@ -1913,15 +1926,19 @@ async function editProposed() {
 
 async function confirmProposed() {
   document.getElementById('proposedOverlay').classList.add('hidden');
-  // Import then start all
-  await fetch(`/api/tasks/import-proposed?session=${activeSessionId}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content: window._lastProposedContent || '' }),
-  });
-  const res = await fetch(`/api/tasks/start-all?session=${activeSessionId}`, { method: 'POST' });
-  const data = await res.json();
-  showToast(`Started ${data.started} workers`);
+  try {
+    // Import then start all
+    await fetch(`/api/tasks/import-proposed?session=${activeSessionId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: window._lastProposedContent || '' }),
+    });
+    const res = await fetch(`/api/tasks/start-all?session=${activeSessionId}`, { method: 'POST' });
+    const data = await res.json();
+    showToast(`Started ${data.started} workers`);
+  } catch(e) {
+    showToast('Error importing tasks: ' + e.message);
+  }
 }
 
 async function runAllTasks() {
@@ -2395,7 +2412,7 @@ async function startLoop() {
   const contextDir = document.getElementById('loopContextDir')?.value.trim() || null;
   const k = parseInt(document.getElementById('loopK')?.value) || 2;
   const n = parseInt(document.getElementById('loopN')?.value) || 3;
-  const btn = document.querySelector('#loopBar .btn.accent');
+  const btn = document.getElementById('loopStartBtn');
   if (btn) btn.disabled = true;
   try {
     const r = await fetch(`/api/sessions/${activeSessionId}/loop/start`, {
@@ -2641,12 +2658,12 @@ async function renderOverview() {
   if (currentMode !== 'execute') return;
   try {
     const r = await fetch('/api/sessions/overview');
-    const sessions = await r.json();
+    const overviewData = await r.json();
     const section = document.getElementById('overviewSection');
     const list = document.getElementById('overviewList');
     if (!section || !list) return;
-    section.style.display = sessions.length > 1 ? '' : 'none';
-    list.innerHTML = sessions.map(s => {
+    section.style.display = overviewData.length > 1 ? '' : 'none';
+    list.innerHTML = overviewData.map(s => {
       const total = s.done + s.failed + s.running + s.pending;
       const pct = total > 0 ? Math.round((s.done + s.failed) / total * 100) : 0;
       const eta = s.eta_seconds
