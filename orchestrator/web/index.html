@@ -106,17 +106,18 @@
       flex-shrink: 0;
     }
 
-    #terminal {
+    #terminalContainer {
       flex: 1;
       overflow: hidden;
       background: #0d1117;
       padding: 4px 8px;
+      position: relative;
     }
     /* Make xterm canvas fill container */
-    #terminal .xterm { height: 100%; }
-    #terminal .xterm-viewport { overflow-y: auto !important; }
-    #terminal .xterm-viewport::-webkit-scrollbar { width: 6px; }
-    #terminal .xterm-viewport::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    #terminalContainer .xterm { height: 100%; }
+    #terminalContainer .xterm-viewport { overflow-y: auto !important; }
+    #terminalContainer .xterm-viewport::-webkit-scrollbar { width: 6px; }
+    #terminalContainer .xterm-viewport::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
     .chat-input-row {
       display: flex;
@@ -592,7 +593,7 @@
       <span style="margin-left:auto;font-size:11px;opacity:0.6">Interactive · PTY</span>
     </div>
 
-    <div class="terminal" id="terminal"></div>
+    <div class="terminal" id="terminalContainer"></div>
 
     <!-- Proposed Tasks Overlay -->
     <div class="overlay hidden" id="proposedOverlay">
@@ -725,56 +726,169 @@
 
 <script>
 // ─── State ──────────────────────────────────────────────────────────────────
-let chatWs = null;
-let statusWs = null;
 let activeWorkerId = null;
 let workers = [];
 let queue = [];
-let elapsedTimers = {};
 let sessions = [];
 let activeSessionId = null;
 
-// ─── xterm.js terminal ───────────────────────────────────────────────────────
-const term = new Terminal({
-  theme: {
-    background: '#0d1117',
-    foreground: '#e6edf3',
-    cursor: '#58a6ff',
-    selectionBackground: 'rgba(88,166,255,0.3)',
-    black: '#0d1117', brightBlack: '#484f58',
-    red: '#f85149',   brightRed: '#ff7b72',
-    green: '#3fb950', brightGreen: '#56d364',
-    yellow: '#d29922', brightYellow: '#e3b341',
-    blue: '#58a6ff',  brightBlue: '#79c0ff',
-    magenta: '#bc8cff', brightMagenta: '#d2a8ff',
-    cyan: '#39c5cf',  brightCyan: '#56d4dd',
-    white: '#b1bac4', brightWhite: '#f0f6fc',
-  },
-  fontFamily: "'SF Mono', 'Fira Code', 'Cascadia Code', monospace",
-  fontSize: 13,
-  lineHeight: 1.4,
-  cursorBlink: true,
-  scrollback: 5000,
-  allowTransparency: false,
-});
-const fitAddon = new FitAddon.FitAddon();
-term.loadAddon(fitAddon);
-term.open(document.getElementById('terminal'));
-fitAddon.fit();
+// Per-session state: each session gets its own terminal + WebSocket pair
+// so switching tabs only hides/shows — nothing is ever disconnected.
+const sessionStates = new Map();
+// sessionId → { chatWs, statusWs, term, fitAddon, el, opened }
 
-// Forward every keystroke directly to PTY — real terminal behavior
-term.onData(data => {
-  if (chatWs && chatWs.readyState === WebSocket.OPEN) {
-    chatWs.send(JSON.stringify({ type: 'input', data }));
+// ─── Per-session terminal helpers ────────────────────────────────────────────
+const TERM_THEME = {
+  background: '#0d1117', foreground: '#e6edf3',
+  cursor: '#58a6ff', selectionBackground: 'rgba(88,166,255,0.3)',
+  black: '#0d1117', brightBlack: '#484f58',
+  red: '#f85149',   brightRed: '#ff7b72',
+  green: '#3fb950', brightGreen: '#56d364',
+  yellow: '#d29922', brightYellow: '#e3b341',
+  blue: '#58a6ff',  brightBlue: '#79c0ff',
+  magenta: '#bc8cff', brightMagenta: '#d2a8ff',
+  cyan: '#39c5cf',  brightCyan: '#56d4dd',
+  white: '#b1bac4', brightWhite: '#f0f6fc',
+};
+
+function createSessionState(sessionId) {
+  // Each session gets its own absolutely-positioned terminal div
+  const el = document.createElement('div');
+  el.id = `term-${sessionId}`;
+  el.style.cssText = 'position:absolute;inset:0;display:none;';
+  document.getElementById('terminalContainer').appendChild(el);
+
+  const term = new Terminal({
+    theme: TERM_THEME,
+    fontFamily: "'SF Mono', 'Fira Code', 'Cascadia Code', monospace",
+    fontSize: 13, lineHeight: 1.4, cursorBlink: true,
+    scrollback: 5000, allowTransparency: false,
+  });
+  const fitAddon = new FitAddon.FitAddon();
+  term.loadAddon(fitAddon);
+  // Don't call term.open() yet — wait until first shown to avoid fit() on hidden element
+
+  const state = { chatWs: null, statusWs: null, term, fitAddon, el, opened: false };
+  sessionStates.set(sessionId, state);
+
+  term.onData(data => {
+    if (state.chatWs && state.chatWs.readyState === WebSocket.OPEN) {
+      state.chatWs.send(JSON.stringify({ type: 'input', data }));
+    }
+  });
+  return state;
+}
+
+function showSessionTerminal(sessionId) {
+  const state = sessionStates.get(sessionId);
+  if (!state) return;
+  state.el.style.display = 'block';
+  // Open the xterm.js canvas on first show (element must be visible for correct sizing)
+  if (!state.opened) {
+    state.term.open(state.el);
+    state.opened = true;
   }
+  // Use rAF to let the DOM settle before fitting
+  requestAnimationFrame(() => {
+    state.fitAddon.fit();
+    syncPtySize(sessionId);
+  });
+}
+
+function syncPtySize(sessionId) {
+  const state = sessionStates.get(sessionId);
+  if (!state || !state.opened) return;
+  if (state.chatWs && state.chatWs.readyState === WebSocket.OPEN) {
+    state.chatWs.send(JSON.stringify({ type: 'resize', rows: state.term.rows, cols: state.term.cols }));
+  }
+}
+
+function destroySessionState(sessionId) {
+  const state = sessionStates.get(sessionId);
+  if (!state) return;
+  if (state.chatWs)  { state.chatWs.onclose  = null; state.chatWs.close(); }
+  if (state.statusWs){ state.statusWs.onclose = null; state.statusWs.close(); }
+  state.term.dispose();
+  state.el.remove();
+  sessionStates.delete(sessionId);
+}
+
+// ─── WebSocket: Chat (per session) ───────────────────────────────────────────
+function connectChat(sessionId) {
+  const state = sessionStates.get(sessionId);
+  if (!state) return;
+  const url = `ws://${location.host}/ws/chat?session=${sessionId}`;
+  const ws = new WebSocket(url);
+  state.chatWs = ws;
+
+  ws.onopen = () => {
+    if (sessionId === activeSessionId) setOrchStatus('connected', 'Orchestrator active');
+    syncPtySize(sessionId);
+  };
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'output') state.term.write(msg.data);
+  };
+  ws.onclose = () => {
+    if (sessionId === activeSessionId) {
+      setOrchStatus('disconnected', 'Disconnected');
+      state.term.write('\r\n\x1b[33m[Reconnecting...]\x1b[0m\r\n');
+    }
+    // Reconnect only if this session still exists
+    setTimeout(() => { if (sessionStates.has(sessionId)) connectChat(sessionId); }, 2000);
+  };
+  ws.onerror = () => {
+    if (sessionId === activeSessionId) setOrchStatus('disconnected', 'Connection error');
+  };
+}
+
+function sendChat() {
+  const input = document.getElementById('chatInput');
+  const text = input.value;
+  if (!text.trim()) return;
+  const state = sessionStates.get(activeSessionId);
+  if (!state || !state.chatWs || state.chatWs.readyState !== WebSocket.OPEN) return;
+  state.chatWs.send(JSON.stringify({ type: 'input', data: text + '\r' }));
+  input.value = '';
+}
+
+document.getElementById('chatInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
 });
 
+// ─── WebSocket: Status (per session) ─────────────────────────────────────────
+function connectStatus(sessionId) {
+  const state = sessionStates.get(sessionId);
+  if (!state) return;
+  const url = `ws://${location.host}/ws/status?session=${sessionId}`;
+  const ws = new WebSocket(url);
+  state.statusWs = ws;
+
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'status') updateDashboard(msg);
+    else if (msg.type === 'proposed_tasks') {
+      if (msg.content && msg.content.includes('===TASK===')) showProposedOverlay(msg.content);
+    }
+  };
+  ws.onclose = () => setTimeout(() => {
+    if (sessionStates.has(sessionId)) connectStatus(sessionId);
+  }, 2000);
+}
+
+// Keep-alive ping for all sessions
+setInterval(() => {
+  for (const state of sessionStates.values()) {
+    if (state.statusWs && state.statusWs.readyState === WebSocket.OPEN) state.statusWs.send('ping');
+  }
+}, 20000);
+
+// ─── Window resize — only fit active terminal ─────────────────────────────────
 function fitAndSync() {
-  fitAddon.fit();
-  // Tell server the new PTY size
-  if (chatWs && chatWs.readyState === WebSocket.OPEN) {
-    chatWs.send(JSON.stringify({ type: 'resize', rows: term.rows, cols: term.cols }));
-  }
+  const state = sessionStates.get(activeSessionId);
+  if (!state || !state.opened) return;
+  state.fitAddon.fit();
+  syncPtySize(activeSessionId);
 }
 window.addEventListener('resize', fitAndSync);
 
@@ -785,6 +899,22 @@ async function loadSessions() {
     sessions = await res.json();
     if (sessions.length > 0 && !activeSessionId) {
       activeSessionId = sessions[0].session_id;
+    }
+    // Create state + connect WS for any session we don't know about yet
+    for (const s of sessions) {
+      if (!sessionStates.has(s.session_id)) {
+        createSessionState(s.session_id);
+        connectChat(s.session_id);
+        connectStatus(s.session_id);
+        if (s.session_id === activeSessionId) {
+          showSessionTerminal(s.session_id);
+          setOrchStatus('connecting', 'Connecting...');
+        }
+      }
+    }
+    // Clean up states for sessions deleted on the server
+    for (const [sid] of sessionStates) {
+      if (!sessions.find(s => s.session_id === sid)) destroySessionState(sid);
     }
     renderTabs();
   } catch(e) {}
@@ -811,132 +941,56 @@ function renderTabs() {
 
 async function switchTab(sessionId) {
   if (sessionId === activeSessionId) return;
+
+  // Hide current session's terminal — keep its WS alive
+  const oldState = sessionStates.get(activeSessionId);
+  if (oldState) oldState.el.style.display = 'none';
+
   activeSessionId = sessionId;
   renderTabs();
-  if (chatWs) chatWs.close();
-  if (statusWs) statusWs.close();
-  connectChat();
-  connectStatus();
-  term.clear();
-  const name = sessions.find(s => s.session_id === sessionId)?.name || sessionId;
-  term.write(`\r\n\x1b[33m[Switched to ${name}]\x1b[0m\r\n`);
+
+  // Show (lazily open if first visit) the new session's terminal
+  showSessionTerminal(sessionId);
+
+  // Update connection status dot
+  const newState = sessionStates.get(sessionId);
+  if (newState?.chatWs?.readyState === WebSocket.OPEN) {
+    setOrchStatus('connected', 'Orchestrator active');
+  } else {
+    setOrchStatus('connecting', 'Connecting...');
+  }
   refreshProjectBadge();
 }
 
 async function closeTab(sessionId) {
   if (!confirm('Close this project tab?')) return;
   await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
+  destroySessionState(sessionId);
   if (activeSessionId === sessionId) {
     const remaining = sessions.filter(s => s.session_id !== sessionId);
     activeSessionId = remaining[0]?.session_id || null;
   }
   await loadSessions();
-  if (activeSessionId) switchTab(activeSessionId);
+  if (activeSessionId) showSessionTerminal(activeSessionId);
 }
 
-function openNewTabPicker() {
-  openProjectPicker();
-}
-
-// ─── WebSocket: Chat ─────────────────────────────────────────────────────────
-function connectChat() {
-  const url = activeSessionId
-    ? `ws://${location.host}/ws/chat?session=${activeSessionId}`
-    : `ws://${location.host}/ws/chat`;
-  chatWs = new WebSocket(url);
-
-  chatWs.onopen = () => {
-    setOrchStatus('connected', 'Orchestrator active');
-    // Sync terminal size to PTY immediately
-    chatWs.send(JSON.stringify({ type: 'resize', rows: term.rows, cols: term.cols }));
-  };
-
-  chatWs.onmessage = (e) => {
-    const msg = JSON.parse(e.data);
-    if (msg.type === 'output') {
-      term.write(msg.data);  // xterm handles all ANSI natively
-    }
-  };
-
-  chatWs.onclose = () => {
-    setOrchStatus('disconnected', 'Disconnected');
-    term.write('\r\n\x1b[33m[Reconnecting...]\x1b[0m\r\n');
-    setTimeout(connectChat, 2000);
-  };
-
-  chatWs.onerror = () => {
-    setOrchStatus('disconnected', 'Connection error');
-  };
-}
-
-function sendChat() {
-  const input = document.getElementById('chatInput');
-  const text = input.value;
-  if (!text.trim() || !chatWs || chatWs.readyState !== WebSocket.OPEN) return;
-  chatWs.send(JSON.stringify({ type: 'input', data: text + '\r' }));
-  input.value = '';
-}
-
-document.getElementById('chatInput').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    sendChat();
-  }
-});
-
-// ─── WebSocket: Status ───────────────────────────────────────────────────────
-function connectStatus() {
-  const url = activeSessionId
-    ? `ws://${location.host}/ws/status?session=${activeSessionId}`
-    : `ws://${location.host}/ws/status`;
-  statusWs = new WebSocket(url);
-
-  statusWs.onmessage = (e) => {
-    const msg = JSON.parse(e.data);
-    if (msg.type === 'status') {
-      updateDashboard(msg);
-    } else if (msg.type === 'proposed_tasks') {
-      if (msg.content && msg.content.includes('===TASK===')) {
-        showProposedOverlay(msg.content);
-      }
-    }
-  };
-
-  statusWs.onclose = () => setTimeout(connectStatus, 2000);
-}
-
-// Keep-alive ping
-setInterval(() => {
-  if (statusWs && statusWs.readyState === WebSocket.OPEN) {
-    statusWs.send('ping');
-  }
-}, 20000);
+function openNewTabPicker() { openProjectPicker(); }
 
 // ─── Dashboard update ────────────────────────────────────────────────────────
 function updateDashboard(data) {
-  // Ignore status updates from sessions that aren't active
-  if (data.session_id && data.session_id !== activeSessionId) {
-    // Still update the badge count for the other session's tab
-    const s = sessions.find(s => s.session_id === data.session_id);
-    if (s) {
-      s.running_count = (data.workers || []).filter(w => w.status === 'running').length;
-      s.worker_count = (data.workers || []).length;
-      renderTabs();
-    }
-    return;
-  }
-
-  workers = data.workers || [];
-  queue = data.queue || [];
-
-  // Update badge for active session
-  const active = sessions.find(s => s.session_id === activeSessionId);
-  if (active) {
-    active.running_count = workers.filter(w => w.status === 'running').length;
-    active.worker_count = workers.length;
+  // Always update badge count for whichever session sent this status
+  const s = sessions.find(s => s.session_id === data.session_id);
+  if (s) {
+    s.running_count = (data.workers || []).filter(w => w.status === 'running').length;
+    s.worker_count = (data.workers || []).length;
     renderTabs();
   }
 
+  // Only render the full dashboard for the active session
+  if (data.session_id && data.session_id !== activeSessionId) return;
+
+  workers = data.workers || [];
+  queue = data.queue || [];
   renderQueue();
   renderWorkers();
   updateProgress(data.progress_pct || 0, data.eta_seconds || 0);
@@ -1244,10 +1298,8 @@ async function refreshUsage() {
 }
 
 // ─── Boot ────────────────────────────────────────────────────────────────────
-loadSessions().then(() => {
-  connectChat();
-  connectStatus();
-});
+// loadSessions() creates session states + connects WS for all sessions
+loadSessions();
 refreshUsage();
 setInterval(refreshUsage, 60000);
 
@@ -1309,11 +1361,15 @@ async function confirmProjectSwitch() {
   if (!path) return;
   closeProjectPicker();
   showToast('Opening new tab...');
+  // Pass current terminal dimensions so the new PTY starts at the correct size
+  const activeState = sessionStates.get(activeSessionId);
+  const rows = (activeState?.opened ? activeState.term.rows : null) || 24;
+  const cols = (activeState?.opened ? activeState.term.cols : null) || 80;
   try {
     const res = await fetch('/api/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path }),
+      body: JSON.stringify({ path, rows, cols }),
     });
     const data = await res.json();
     if (data.error) { showToast('Error: ' + data.error); return; }
