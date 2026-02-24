@@ -2,6 +2,21 @@
 
 ---
 
+### 2026-02-24 — Phase 3 complete: all 7 items done
+
+**What was done (batch 2 — remaining 4 items):**
+- `server.py`: `context_warning` bool in `to_dict()` — broadcasts via WebSocket for UI badge. Workers use `claude -p` (non-interactive) so stdin injection isn't possible without switching to PTY-based workers.
+- `server.py`: `_on_worker_done()` — checks for `.claude/handoff-{task_id}.md` after verify+commit; reads content, sets `_handoff_requeue` flag; `poll_all` picks it up and creates continuation task with handoff context + `/pickup` instruction
+- `orchestrate/prompt.md` + `SKILL.md`: Two-phase mode (`--plan`) — Phase 1 writes `IMPLEMENTATION_PLAN.md` (architecture, risks, execution order, file graph); Phase 2 decomposes plan into `proposed-tasks.md` with `OWN_FILES`/`FORBIDDEN_FILES` per task
+- `loop-runner.sh`: Artifact marking — supervisor prompt now instructs workers to mark `- [ ]` → `- [x]` in goal file; all 3 worker footer templates include the reminder
+
+**Lessons:**
+- `claude -p` is non-interactive: reads task from argument, executes, exits. No stdin for mid-flight messages. True context injection requires switching workers to interactive `claude` sessions (PTY-based), which is a Phase 4+ architectural change.
+- Handoff detection must happen BEFORE `_cleanup_worktree()` — the handoff file lives in the worktree directory and gets destroyed on cleanup
+- Artifact marking via prompt instruction (not code enforcement) is the right approach — workers may complete partial work and shouldn't be forced to mark items done
+
+---
+
 ### 2026-02-24 — Phase 3 quick wins: AGENTS.md prepend, oracle requeue, loop --stop
 
 **What was done:**

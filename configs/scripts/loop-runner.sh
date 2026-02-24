@@ -213,7 +213,8 @@ retries: 1
  - Which file to edit and which function/section
  - What exactly to implement
  - How to verify it works
- - Commit with: committer "type: msg" file1 file2}
+ - Commit with: committer "type: msg" file1 file2
+ - After completing, mark the corresponding item in the goal file as done: change - [ ] to - [x]}
 
 ===TASK===
 model: sonnet
@@ -277,6 +278,7 @@ INSTRUCTIONS
           echo "- Use committer \"type: msg\" file1 file2 to commit (NEVER git add .)"
           echo "- Re-read every changed file before finishing"
           echo "- Run compile / type-check if applicable"
+          echo "- Mark the completed item in the goal file: change \`- [ ]\` to \`- [x]\`"
         fi
         echo "===TASK==="
         in_body=false
@@ -312,6 +314,7 @@ INSTRUCTIONS
       echo "- Use committer \"type: msg\" file1 file2 to commit (NEVER git add .)"
       echo "- Re-read every changed file before finishing"
       echo "- Run compile / type-check if applicable"
+      echo "- Mark the completed item in the goal file: change \`- [ ]\` to \`- [x]\`"
     } > "$ITER_TASKS"
   fi
 
