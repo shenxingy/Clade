@@ -1679,7 +1679,10 @@ class Worker:
     async def _on_worker_done(self) -> None:
         """Run after process exits: verify+commit while worktree is still alive, then clean up."""
         if self.status == "done":
-            await self.verify_and_commit()
+            try:
+                await self.verify_and_commit()
+            except Exception:
+                logger.exception("verify_and_commit failed for worker %s", self.id)
         # Parse token usage from log
         if self._log_path and self._log_path.exists():
             try:
@@ -1907,8 +1910,12 @@ class Worker:
                     stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
                     cwd=str(self._project_dir),
                 )
-                log_out, _ = await asyncio.wait_for(log_proc.communicate(), timeout=5)
-                self.last_commit = log_out.decode().strip() or self.last_commit
+                try:
+                    log_out, _ = await asyncio.wait_for(log_proc.communicate(), timeout=5)
+                    self.last_commit = log_out.decode().strip() or self.last_commit
+                except asyncio.TimeoutError:
+                    log_proc.kill()
+                    await log_proc.communicate()
         except asyncio.TimeoutError:
             pass
         return self.auto_committed
@@ -2603,7 +2610,12 @@ class ProjectSession:
                     stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
                     cwd=diff_dir,
                 )
-                diff_out, _ = await asyncio.wait_for(diff_proc.communicate(), timeout=15)
+                try:
+                    diff_out, _ = await asyncio.wait_for(diff_proc.communicate(), timeout=15)
+                except asyncio.TimeoutError:
+                    diff_proc.kill()
+                    await diff_proc.communicate()
+                    diff_out = b""
                 if diff_out.strip():
                     sorted_lines = sorted(diff_out.decode().strip().splitlines())
                     semantic_hash = hashlib.md5("\n".join(sorted_lines).encode()).hexdigest()[:12]
@@ -3888,7 +3900,13 @@ async def merge_all_done(s: ProjectSession = Depends(_resolve_session)):
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
                 cwd=str(s.project_dir),
             )
-            pr_out, pr_err = await asyncio.wait_for(pr_proc.communicate(), timeout=60)
+            try:
+                pr_out, pr_err = await asyncio.wait_for(pr_proc.communicate(), timeout=60)
+            except asyncio.TimeoutError:
+                pr_proc.kill()
+                await pr_proc.communicate()
+                results.append({"worker_id": w.id, "error": "gh pr create timed out"})
+                continue
             if pr_proc.returncode != 0:
                 results.append({"worker_id": w.id, "error": pr_err.decode().strip()})
                 continue
