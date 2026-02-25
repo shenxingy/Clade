@@ -1598,7 +1598,7 @@ function connectStatus(sessionId) {
           }).then(() => fetch(`/api/tasks/start-all?session=${sessionId}`, { method: 'POST' }))
             .then(r => r.json())
             .then(d => {
-              setMode('execute');
+              if (sessionId === activeSessionId) setMode('execute');
               showToast(`Auto-started ${d.started} worker${d.started !== 1 ? 's' : ''}`);
             })
             .catch(err => showToast(`Auto-start failed: ${err.message}`));
@@ -1612,12 +1612,11 @@ function connectStatus(sessionId) {
     if (sessionStates.has(sessionId)) connectStatus(sessionId);
   }, 2000);
   ws.onerror = () => {
-    // If the connection was never established, onclose may not fire in all browsers
-    if (ws.readyState !== WebSocket.OPEN) {
-      setTimeout(() => {
-        if (sessionStates.has(sessionId)) connectStatus(sessionId);
-      }, 3000);
-    }
+    // Prevent double reconnect (onerror + onclose both fire)
+    ws.onclose = null;
+    setTimeout(() => {
+      if (sessionStates.has(sessionId)) connectStatus(sessionId);
+    }, 3000);
   };
 }
 
@@ -1686,6 +1685,7 @@ async function switchTab(sessionId) {
     clearInterval(_logRefreshInterval);
     _logRefreshInterval = null;
   }
+  _historyExpanded = false;
 
   // Hide current session's terminal — keep its WS alive
   const oldState = sessionStates.get(activeSessionId);
@@ -1890,7 +1890,7 @@ function renderWorkers() {
       : w.oracle_result === 'rejected'
       ? `<span class="badge oracle-rejected" title="${esc(w.oracle_reason||'')}">✗ oracle</span>`
       : '';
-    const modelInfo = `<span style="font-size:10px;opacity:0.5;margin-left:4px">${w.model||''}${w.model_score!=null?' · '+w.model_score:''}</span>`;
+    const modelInfo = `<span style="font-size:10px;opacity:0.5;margin-left:4px">${esc(String(w.model||''))}${w.model_score!=null?' · '+esc(String(w.model_score)):''}</span>`;
     const tokenPct = w.estimated_tokens ? Math.min(100, w.estimated_tokens / 200000 * 100) : 0;
     const tokenColor = w.estimated_tokens > 160000 ? '#ef4444' : w.estimated_tokens > 120000 ? '#f59e0b' : '#34d399';
     const tokenBar = w.estimated_tokens > 0
@@ -1898,22 +1898,22 @@ function renderWorkers() {
       : '';
 
     return `
-      <div class="worker-card ${w.status}" id="wcard-${w.id}">
+      <div class="worker-card ${esc(w.status)}" id="wcard-${esc(String(w.id))}">
         <div class="worker-top">
           <span class="worker-name" title="${esc(w.description)}">${esc(firstLine(w.description))}</span>
-          <span style="font-size:10px;opacity:0.35;font-family:var(--font-mono);flex-shrink:0">#${w.id}</span>
-          <span class="badge ${w.status}">${w.status}</span>${oracleBadge}${modelInfo}
+          <span style="font-size:10px;opacity:0.35;font-family:var(--font-mono);flex-shrink:0">#${esc(String(w.id))}</span>
+          <span class="badge ${esc(w.status)}">${esc(w.status)}</span>${oracleBadge}${modelInfo}
         </div>
         ${logTailHtml}
         <div class="worker-commit">${commitDisplay}</div>
         ${tokenBar}
         <div class="worker-footer">
-          <span class="elapsed" id="elapsed-${w.id}">${formatElapsed(w.elapsed_s)}</span>
+          <span class="elapsed" id="elapsed-${esc(String(w.id))}">${formatElapsed(w.elapsed_s)}</span>
           ${w.estimated_cost > 0 ? `<span style="font-size:10px;color:var(--text2);margin-left:4px">$${w.estimated_cost.toFixed(4)}</span>` : ''}
-          ${canPause ? `<button class="btn small secondary" id="btn-pause-${w.id}" data-wid="${esc(String(w.id))}" onclick="pauseWorker(this.dataset.wid)">Pause</button>` : ''}
-          ${canResume ? `<button class="btn small" id="btn-resume-${w.id}" data-wid="${esc(String(w.id))}" onclick="resumeWorker(this.dataset.wid)">Resume</button>` : ''}
-          ${canChat ? `<button class="btn small secondary" id="btn-chat-${w.id}" data-wid="${w.id}" data-name="${esc(firstLine(w.description))}" onclick="openWorkerChat(this.dataset.wid, this.dataset.name)">Chat</button>` : ''}
-          <button class="btn small secondary" id="btn-log-${w.id}" data-wid="${w.id}" data-name="${esc(firstLine(w.description))}" onclick="openWorkerLog(this.dataset.wid, this.dataset.name)">Log</button>
+          ${canPause ? `<button class="btn small secondary" id="btn-pause-${esc(String(w.id))}" data-wid="${esc(String(w.id))}" onclick="pauseWorker(this.dataset.wid)">Pause</button>` : ''}
+          ${canResume ? `<button class="btn small" id="btn-resume-${esc(String(w.id))}" data-wid="${esc(String(w.id))}" onclick="resumeWorker(this.dataset.wid)">Resume</button>` : ''}
+          ${canChat ? `<button class="btn small secondary" id="btn-chat-${esc(String(w.id))}" data-wid="${esc(String(w.id))}" data-name="${esc(firstLine(w.description))}" onclick="openWorkerChat(this.dataset.wid, this.dataset.name)">Chat</button>` : ''}
+          <button class="btn small secondary" id="btn-log-${esc(String(w.id))}" data-wid="${esc(String(w.id))}" data-name="${esc(firstLine(w.description))}" onclick="openWorkerLog(this.dataset.wid, this.dataset.name)">Log</button>
         </div>
       </div>`;
   }).join('');
@@ -2052,7 +2052,7 @@ async function openWorkerLog(id, name) {
   // Auto-refresh every 2s while the worker is still active
   clearInterval(_logRefreshInterval);
   _logRefreshInterval = setInterval(async () => {
-    const w = workers.find(w => w.id === activeLogWorkerId);
+    const w = workers.find(w => String(w.id) === String(activeLogWorkerId));
     if (!w || !['running', 'starting'].includes(w.status)) {
       clearInterval(_logRefreshInterval);
       _logRefreshInterval = null;
@@ -2086,6 +2086,7 @@ function closeWorkerLog() {
 
 async function showCodeTldr() {
   if (!activeSessionId) return;
+  if (_logRefreshInterval) { clearInterval(_logRefreshInterval); _logRefreshInterval = null; }
   document.getElementById('workerLogTitle').textContent = 'Code TLDR';
   document.getElementById('workerLogContent').textContent = 'Loading...';
   document.getElementById('workerLogModal').classList.remove('hidden');
@@ -2102,6 +2103,7 @@ async function showCodeTldr() {
 
 async function showInterventions() {
   if (!activeSessionId) return;
+  if (_logRefreshInterval) { clearInterval(_logRefreshInterval); _logRefreshInterval = null; }
   document.getElementById('workerLogTitle').textContent = 'Recorded Interventions';
   document.getElementById('workerLogContent').textContent = 'Loading...';
   document.getElementById('workerLogModal').classList.remove('hidden');
