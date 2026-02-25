@@ -39,7 +39,7 @@ TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 PROGRESS_FILE="$LOG_DIR/${TIMESTAMP}-progress"
 
 # Defaults
-DEFAULT_TIMEOUT=600     # 10 minutes per task
+DEFAULT_TIMEOUT=900     # 15 minutes per task
 DEFAULT_RETRIES=2       # Retry failed tasks up to 2 times
 
 # Default: skip permissions for unattended execution
