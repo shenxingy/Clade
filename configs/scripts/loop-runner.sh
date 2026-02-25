@@ -80,6 +80,24 @@ SUPERVISOR_MODEL_ID=$(model_id "$SUPERVISOR_MODEL")
 
 mkdir -p "$LOG_DIR" "$(dirname "$STATE_FILE")"
 
+# ── Pre-flight: check source vs deployed script mismatch ──────────────────────
+DEPLOY_DIR="$HOME/.claude/scripts"
+_deploy_mismatch=false
+for _script in run-tasks.sh run-tasks-parallel.sh loop-runner.sh; do
+  _src="$SCRIPTS_DIR/$_script"
+  _dst="$DEPLOY_DIR/$_script"
+  if [[ -f "$_src" && -f "$_dst" ]] && ! diff -q "$_src" "$_dst" &>/dev/null; then
+    echo "⚠ WARNING: source $_script differs from deployed $_dst"
+    _deploy_mismatch=true
+  fi
+done
+if $_deploy_mismatch; then
+  echo "  Run install.sh to sync source → ~/.claude/scripts/"
+  echo "  Continuing in 5s..."
+  sleep 5
+fi
+unset _deploy_mismatch _script _src _dst
+
 # ── State file (KEY=VALUE) ────────────────────────────────────────────────────
 state_read() {
   grep -m1 "^${1}=" "$STATE_FILE" 2>/dev/null | cut -d= -f2- || echo "${2:-}"
@@ -272,6 +290,7 @@ INSTRUCTIONS
     # Supervisor output proper format — use directly, append self-review footer to each task
     PROCESSED=$(mktemp /tmp/loop-tasks-XXXXXX.txt)
     in_body=false
+    seen_first_task=false
     while IFS= read -r line; do
       if [[ "$line" == "===TASK===" ]]; then
         if $in_body; then
@@ -285,12 +304,14 @@ INSTRUCTIONS
         fi
         echo "===TASK==="
         in_body=false
-      elif [[ "$line" == "---" ]] && ! $in_body; then
+        seen_first_task=true
+      elif [[ "$line" == "---" ]] && ! $in_body && $seen_first_task; then
         echo "---"
         in_body=true
-      else
+      elif $seen_first_task; then
         echo "$line"
       fi
+      # Lines before first ===TASK=== are preamble — skip them
     done <<< "$SUPERVISOR_OUTPUT" >> "$PROCESSED"
     # Append footer to last task
     if $in_body; then
