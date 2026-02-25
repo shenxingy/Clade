@@ -4,7 +4,7 @@
 
 ---
 
-## Phase 3 — Autonomous Robustness (CURRENT)
+## Phase 3 — Autonomous Robustness
 
 ### Server-side (orchestrator/server.py)
 
@@ -41,6 +41,35 @@
 - [x] Semantic code TLDR — AST function signatures + JS/TS regex extraction at ~750 tokens vs raw 5K+ file paths
 - [x] Intervention recording — replay successful /message corrections on similar failures
 - [x] Dual-condition exit gate — semantic diff hash + change count (not just counting)
+
+---
+
+## Phase 6 — Observability & Resilience (CURRENT)
+
+- [ ] **Task analytics** — success/failure rate, avg duration per model, distribution chart; new dashboard widget
+  - Data source: `tasks` table (status, elapsed_s, model, started_at)
+  - Endpoint: `GET /api/sessions/{session_id}/analytics`
+  - UI: collapsible stats card in execute panel (pie chart + summary numbers)
+- [ ] **Token/cost tracking** — parse `claude -p` stdout for token usage lines, store in tasks table
+  - New columns: `input_tokens`, `output_tokens`, `estimated_cost`
+  - Parse in `Worker.poll()` or `_on_worker_done()` from log file
+  - UI: cost column in task list, session total in header
+- [ ] **Cost budget limit** — max spend per session; auto-pause workers when budget exceeded
+  - New setting: `cost_budget` (default: 0 = unlimited)
+  - Check in `poll_all()` before starting new workers
+  - UI: budget input in settings panel, warning toast when approaching limit
+- [ ] **Stuck worker detection** — log file mtime unchanged for N minutes → kill + requeue
+  - Check in `poll_all()`: compare `log_path.stat().st_mtime` against threshold
+  - New setting: `stuck_timeout_minutes` (default: 15)
+  - Requeue with `[STUCK-RETRY]` prefix for context
+- [ ] **Session state persistence** — survive server restart
+  - On startup: scan for orphaned worktree dirs, match to tasks in DB still marked `running`
+  - Mark orphaned tasks as `interrupted`, allow one-click retry
+  - Persist worker→task mapping in DB (not just in-memory WorkerPool)
+- [ ] **Completion notifications** — webhook when batch/loop finishes
+  - New setting: `notification_webhook` (URL)
+  - Fire on: all tasks done, loop converged, error count > threshold
+  - Payload: session_id, summary stats, failed task list
 
 ---
 
