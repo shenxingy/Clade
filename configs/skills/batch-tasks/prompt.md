@@ -233,7 +233,7 @@ Format rules:
    ```
 3. Run the script **in the background** using `run_in_background: true`:
    ```bash
-   bash scripts/run-tasks.sh <file>
+   bash ~/.claude/scripts/run-tasks.sh <file>
    ```
 4. After launching, immediately show a progress display (see PROGRESS MONITORING below).
 5. Tell the user:
@@ -261,7 +261,7 @@ Format rules:
    ```
 3. Run **in the background** using `run_in_background: true`:
    ```bash
-   bash scripts/run-tasks-parallel.sh <file>
+   bash ~/.claude/scripts/run-tasks-parallel.sh <file>
    ```
 4. Show progress and tell user they can check status anytime.
 
@@ -271,7 +271,7 @@ Format rules:
 
 1. Execute:
    ```bash
-   bash scripts/run-tasks.sh <file> --dry-run
+   bash ~/.claude/scripts/run-tasks.sh <file> --dry-run
    ```
 2. Shows what would run without executing anything, including model per task.
 
@@ -383,7 +383,7 @@ When the user mentions a new task while a batch is running:
 
 - Be concise. This is a utility, not a conversation.
 - Always show exact commands.
-- The serial runner is at `scripts/run-tasks.sh`, the parallel runner is at `scripts/run-tasks-parallel.sh` — never recreate them, just call them.
+- The serial runner is at `~/.claude/scripts/run-tasks.sh`, the parallel runner is at `~/.claude/scripts/run-tasks-parallel.sh` — never recreate them, just call them.
 - Default task file is `tasks.txt` at project root.
 - When running batches, ALWAYS use `run_in_background: true` so the user can keep interacting.
 - **ALWAYS run the PLANNING PHASE** before writing tasks. This is the skill's primary value.
