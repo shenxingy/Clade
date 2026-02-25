@@ -79,6 +79,18 @@ if [[ -f "$RULES_FILE" ]]; then
   fi
 fi
 
+# Audit nudge (if corrections haven't been audited in 7+ days)
+LAST_AUDIT_FILE="$HOME/.claude/corrections/.last-audit"
+if [[ -f "$LAST_AUDIT_FILE" ]]; then
+  AUDIT_MTIME=$(stat -c %Y "$LAST_AUDIT_FILE" 2>/dev/null || stat -f %m "$LAST_AUDIT_FILE" 2>/dev/null || echo 0)
+  AUDIT_AGE_DAYS=$(( ($(date +%s) - AUDIT_MTIME) / 86400 ))
+else
+  AUDIT_AGE_DAYS=999
+fi
+if [[ $AUDIT_AGE_DAYS -ge 7 ]]; then
+  CONTEXT="${CONTEXT}\nAudit reminder: Correction rules haven't been audited in ${AUDIT_AGE_DAYS}+ days. Run /audit to graduate mature rules to CLAUDE.md and clean up stale ones.\n"
+fi
+
 # Model selection guidance
 CONTEXT="${CONTEXT}\nModel guide: Sonnet 4.6 is optimal for most coding (79.6% SWE-bench, 40% cheaper than Opus). Switch to Opus 4.6 only for: large refactors (10+ files), deep architectural reasoning, or outputs >64K tokens. Use Haiku 4.5 for sub-agents doing mechanical checks. If you detect the user is about to do a complex multi-file refactor on Sonnet, suggest: 'This task may benefit from Opus — run /model to switch.'\n"
 
