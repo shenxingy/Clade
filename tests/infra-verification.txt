@@ -1,1 +1,0 @@
-Infrastructure verified: setsid --wait, GROUPS unset, state reset
