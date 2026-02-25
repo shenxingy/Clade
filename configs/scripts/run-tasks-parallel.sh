@@ -299,13 +299,12 @@ run_claude_task() {
   pf=$(mktemp /tmp/claude-task-XXXXXX)
   runner=$(mktemp /tmp/claude-runner-XXXXXX.sh)
   cat > "$pf"
-  printf '#!/usr/bin/env bash\ncd "%s" || exit 1\nexec claude -p --model "%s" %s --verbose\n' \
+  # Use stream-json for real-time output (--verbose alone buffers until exit, lost on kill)
+  printf '#!/usr/bin/env bash\ncd "%s" || exit 1\nexec claude -p --model "%s" %s --verbose --output-format stream-json\n' \
     "$workdir" "$model" "$CLAUDE_FLAGS" > "$runner"
   chmod +x "$runner"
 
   touch "$log_file"
-  tail -f "$log_file" &
-  local tail_pid=$!
   if command -v setsid &>/dev/null; then
     setsid "$runner" < "$pf" >> "$log_file" 2>&1 &
   else
@@ -313,10 +312,32 @@ run_claude_task() {
   fi
   local pgid=$!
 
-  # Heartbeat: log process liveness every 30s (claude -p buffers all output until completion)
-  ( while kill -0 "${pgid}" 2>/dev/null; do
+  # Stall-detecting heartbeat: track log growth, kill worker if stalled
+  local stall_threshold="${STALL_THRESHOLD:-10}"  # consecutive stale checks (10 × 30s = 5min)
+  ( prev_bytes=0; stale_count=0
+    while kill -0 "${pgid}" 2>/dev/null; do
       sleep 30
-      kill -0 "${pgid}" 2>/dev/null && echo "[heartbeat $(date +%H:%M:%S)] worker alive (PID ${pgid})" >> "$log_file"
+      if kill -0 "${pgid}" 2>/dev/null; then
+        local wt_changes=""
+        if [[ -d "$workdir/.git" ]] || [[ -f "$workdir/.git" ]]; then
+          wt_changes=" changes=$(cd "$workdir" && git diff --stat 2>/dev/null | wc -l)"
+        fi
+        local log_bytes growth
+        log_bytes=$(stat -c%s "$log_file" 2>/dev/null || stat -f%z "$log_file" 2>/dev/null || echo 0)
+        growth=$((log_bytes - prev_bytes))
+        if [[ $growth -le 100 ]]; then
+          stale_count=$((stale_count + 1))
+        else
+          stale_count=0
+        fi
+        echo "[heartbeat $(date +%H:%M:%S)] worker alive (PID ${pgid}) log=${log_bytes}b growth=${growth}b stale=${stale_count}/${stall_threshold}${wt_changes}" >> "$log_file"
+        prev_bytes=$log_bytes
+        if [[ $stale_count -ge $stall_threshold ]]; then
+          echo "[heartbeat $(date +%H:%M:%S)] STALL DETECTED — no log growth for $((stale_count * 30))s, killing worker" >> "$log_file"
+          kill -- "-${pgid}" 2>/dev/null || kill "${pgid}" 2>/dev/null || true
+          break
+        fi
+      fi
     done
   ) &
   local heartbeat_pid=$!
@@ -333,8 +354,8 @@ run_claude_task() {
 
   wait "${pgid}"
   local ec=$?
-  kill "${watchdog_pid}" "${heartbeat_pid}" 2>/dev/null; kill "${tail_pid}" 2>/dev/null
-  wait "${watchdog_pid}" "${heartbeat_pid}" 2>/dev/null; wait "${tail_pid}" 2>/dev/null
+  kill "${watchdog_pid}" "${heartbeat_pid}" 2>/dev/null
+  wait "${watchdog_pid}" "${heartbeat_pid}" 2>/dev/null
   rm -f "${pf}" "${runner}"
 
   [[ $ec -eq 143 || $ec -eq 137 ]] && ec=124
@@ -492,19 +513,21 @@ fi
 update_progress "starting" 0 "$TOTAL" 0 0
 mkdir -p "$WORKTREE_BASE"
 
+# Results dir: subshells write "success"/"failed" files here (avoids bash subshell variable loss)
+RESULTS_DIR=$(mktemp -d /tmp/claude-results-XXXXXX)
+
 SUCCESS=0
 FAILED=0
 COMPLETED=0
-declare -A TASK_RESULTS
 
 # Process groups: tasks within a group run serially, but we run multiple groups in parallel
 run_group() {
   local group_tasks="$1"
   for task_idx in $group_tasks; do
     if run_task_in_worktree "$task_idx"; then
-      TASK_RESULTS[$task_idx]="success"
+      echo "success" > "$RESULTS_DIR/task-$task_idx"
     else
-      TASK_RESULTS[$task_idx]="failed"
+      echo "failed" > "$RESULTS_DIR/task-$task_idx"
     fi
   done
 }
@@ -532,7 +555,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 
 MERGE_FAILURES=()
 for i in $(seq 1 "$TOTAL"); do
-  result="${TASK_RESULTS[$i]:-unknown}"
+  result=$(cat "$RESULTS_DIR/task-$i" 2>/dev/null || echo "unknown")
   if [[ "$result" == "success" ]]; then
     if merge_worktree "$i"; then
       SUCCESS=$((SUCCESS + 1))
@@ -579,6 +602,7 @@ fi
 
 # Cleanup
 rmdir "$WORKTREE_BASE" 2>/dev/null || true
+rm -rf "$RESULTS_DIR" 2>/dev/null || true
 
 update_progress "done" "$TOTAL" "$TOTAL" "$SUCCESS" "$FAILED"
 
