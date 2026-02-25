@@ -38,9 +38,9 @@
 
 ## Phase 5 — Context Intelligence
 
-- [ ] Semantic code TLDR — AST function signatures + call graph at ~1,200 tokens vs raw 23K
-- [ ] Intervention recording — replay successful /message corrections on similar failures
-- [ ] Dual-condition exit gate — semantic convergence + change count (not just counting)
+- [x] Semantic code TLDR — AST function signatures + JS/TS regex extraction at ~750 tokens vs raw 5K+ file paths
+- [x] Intervention recording — replay successful /message corrections on similar failures
+- [x] Dual-condition exit gate — semantic diff hash + change count (not just counting)
 
 ---
 

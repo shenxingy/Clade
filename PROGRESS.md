@@ -2,6 +2,42 @@
 
 ---
 
+### 2026-02-24 — Phase 5: Context Intelligence (Semantic TLDR, Dual Exit Gate, Interventions)
+
+**What was done:**
+
+**Semantic Code TLDR:**
+- `server.py`: Added `import ast` and `import hashlib` to imports
+- `server.py`: New `_generate_code_tldr()` function + helpers (`_parse_python_ast`, `_python_func_sig`, `_parse_js_ts_regex`) — walks `.py` files via AST, `.js/.ts/.tsx` via regex, extracts class/function signatures
+- `server.py`: Module-level `_tldr_cache` dict with mtime-based invalidation, 3000-char output cap (~750 tokens)
+- `server.py`: `Worker.start()` — injects TLDR as `# Codebase Structure` context block after AGENTS.md
+- `server.py`: `_run_plan_build()` PLAN phase — replaces `find | head -200` with TLDR-first, `find` as fallback
+- `server.py`: `GET /api/sessions/{session_id}/code-tldr` endpoint via `run_in_executor`
+- `index.html`: "Code TLDR" View button in settings panel (Context Intelligence section), `showCodeTldr()` function reuses workerLogModal
+
+**Dual-Condition Exit Gate:**
+- `server.py`: `_run_supervisor()` — computes semantic diff hash via `git diff --stat`, sorted + md5-hashed
+- `server.py`: `changes_history` entries changed from `int` to `{"count": int, "hash": str}` with inline migration for old int entries
+- `server.py`: Dual convergence: `count_converged` (all recent N within threshold K) OR `semantic_converged` (last two hashes match = oscillation detected)
+- `index.html`: `drawSparkline()` normalizes entries (`typeof v === 'object' ? v.count : v`)
+- `index.html`: `updateLoopUI()` convergence label shows reason (count/semantic/max_iterations)
+
+**Intervention Recording:**
+- `server.py`: New `interventions` DB table (failure_pattern, correction, task_description_hint, success, source_task_id, spawned_task_id, created_at)
+- `server.py`: `TaskQueue` methods: `record_intervention()`, `mark_intervention_success()`, `find_matching_intervention()`, `list_interventions()`
+- `server.py`: `POST /api/workers/{worker_id}/message` — captures `w.failure_context` before stop, records intervention with spawned_task_id
+- `server.py`: `poll_all()` — when `w.status == "done"`, calls `mark_intervention_success(w.task_id)` (fail-open)
+- `server.py`: `start_worker()` — if task has `failed_reason`, calls `find_matching_intervention()` and appends correction to description
+- `server.py`: `GET /api/interventions` endpoint
+- `index.html`: "Interventions" View button + count badge in settings panel, `showInterventions()` function
+
+**Lessons:**
+- AST `tree.body` iteration is cleaner than `ast.walk()` for extracting top-level items — avoids needing parent tracking to distinguish nested vs top-level functions
+- Inline migration pattern (wrapping old ints as dicts) works well for backward-compatible format changes in JSON columns
+- All three features follow fail-open pattern — errors never block task execution, only add optional intelligence
+
+---
+
 ### 2026-02-24 — Phase 4: Agent Teams + Critical Path + Cross-worker Messaging
 
 **What was done:**

@@ -5,8 +5,10 @@ Manages multiple project sessions, each with an interactive orchestrator (PTY) +
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import fnmatch
+import hashlib
 import json
 import logging
 import os
@@ -119,6 +121,136 @@ def scan_projects(base: Path | None = None, max_depth: int = 3) -> list[dict]:
 
     _scan(base, 0)
     return results[:50]  # cap at 50
+
+
+# ─── Semantic Code TLDR ──────────────────────────────────────────────────────
+
+_tldr_cache: dict[str, tuple[float, str]] = {}  # dir -> (max_mtime, tldr_text)
+
+_SKIP_DIRS = {".git", ".hg", ".svn", "node_modules", "__pycache__", "dist", "build",
+              ".venv", "venv", ".tox", ".mypy_cache", ".pytest_cache", ".next", ".nuxt"}
+
+
+def _python_func_sig(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
+    params = []
+    for a in node.args.args:
+        p = a.arg
+        if a.annotation:
+            try:
+                p += f": {ast.unparse(a.annotation)}"
+            except Exception:
+                pass
+        params.append(p)
+    ret = ""
+    if node.returns:
+        try:
+            ret = f" -> {ast.unparse(node.returns)}"
+        except Exception:
+            pass
+    prefix = "async def" if isinstance(node, ast.AsyncFunctionDef) else "def"
+    return f"{prefix} {node.name}({', '.join(params)}){ret}"
+
+
+def _parse_python_ast(source: str) -> list[str]:
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
+    results = []
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef):
+            bases = []
+            for b in node.bases:
+                try:
+                    bases.append(ast.unparse(b))
+                except Exception:
+                    pass
+            base_str = f"({', '.join(bases)})" if bases else ""
+            results.append(f"class {node.name}{base_str}")
+            for item in node.body:
+                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    results.append(f"  {_python_func_sig(item)}")
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            results.append(_python_func_sig(node))
+    return results
+
+
+_JS_PATTERNS = [
+    re.compile(r'^\s*(?:export\s+)?class\s+(\w+)'),
+    re.compile(r'^\s*(?:export\s+)?(?:async\s+)?function\s+(\w[\w$]*)'),
+    re.compile(r'^\s*(?:export\s+)?(?:const|let|var)\s+(\w[\w$]*)\s*=\s*(?:async\s+)?\('),
+    re.compile(r'^\s*(?:export\s+default\s+)?(?:async\s+)?function\s*\('),
+]
+
+
+def _parse_js_ts_regex(source: str) -> list[str]:
+    results = []
+    for line in source.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("//") or stripped.startswith("/*"):
+            continue
+        for pat in _JS_PATTERNS:
+            m = pat.match(line)
+            if m:
+                # Trim to reasonable length
+                sig = stripped[:120]
+                if sig.endswith("{"):
+                    sig = sig[:-1].rstrip()
+                results.append(sig)
+                break
+    return results
+
+
+def _generate_code_tldr(project_dir: str) -> str:
+    root = Path(project_dir)
+    if not root.is_dir():
+        return ""
+
+    # Check mtime-based cache
+    max_mtime = 0.0
+    files_to_scan: list[tuple[Path, str]] = []  # (path, ext)
+    try:
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS and not d.startswith(".")]
+            for fname in filenames:
+                ext = Path(fname).suffix.lower()
+                if ext in (".py", ".js", ".ts", ".tsx", ".jsx"):
+                    fpath = Path(dirpath) / fname
+                    try:
+                        mt = fpath.stat().st_mtime
+                        if mt > max_mtime:
+                            max_mtime = mt
+                        files_to_scan.append((fpath, ext))
+                    except OSError:
+                        pass
+    except OSError:
+        return ""
+
+    cached = _tldr_cache.get(project_dir)
+    if cached and cached[0] >= max_mtime:
+        return cached[1]
+
+    lines: list[str] = []
+    for fpath, ext in sorted(files_to_scan, key=lambda x: str(x[0])):
+        try:
+            source = fpath.read_text(errors="replace")
+        except OSError:
+            continue
+        rel = str(fpath.relative_to(root))
+        if ext == ".py":
+            sigs = _parse_python_ast(source)
+        else:
+            sigs = _parse_js_ts_regex(source)
+        if sigs:
+            lines.append(f"## {rel}")
+            lines.extend(sigs)
+            lines.append("")
+
+    result = "\n".join(lines)
+    if len(result) > 3000:
+        result = result[:3000] + "\n... (truncated)"
+    _tldr_cache[project_dir] = (max_mtime, result)
+    return result
 
 
 # ─── App ──────────────────────────────────────────────────────────────────────
@@ -247,6 +379,18 @@ class TaskQueue:
                         content TEXT NOT NULL,
                         created_at REAL,
                         read INTEGER DEFAULT 0
+                    )
+                """)
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS interventions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        failure_pattern TEXT NOT NULL,
+                        correction TEXT NOT NULL,
+                        task_description_hint TEXT,
+                        success INTEGER DEFAULT 0,
+                        source_task_id TEXT,
+                        spawned_task_id TEXT,
+                        created_at REAL
                     )
                 """)
                 await db.commit()
@@ -626,6 +770,62 @@ class TaskQueue:
             )
             await db.commit()
             return cur.rowcount
+
+    async def record_intervention(
+        self, failure_pattern: str, correction: str,
+        task_description_hint: str | None = None,
+        source_task_id: str | None = None,
+        spawned_task_id: str | None = None,
+    ) -> int:
+        await self._ensure_db()
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            cur = await db.execute(
+                """INSERT INTO interventions
+                   (failure_pattern, correction, task_description_hint,
+                    source_task_id, spawned_task_id, created_at)
+                   VALUES (?,?,?,?,?,?)""",
+                (failure_pattern, correction, task_description_hint,
+                 source_task_id, spawned_task_id, time.time()),
+            )
+            await db.commit()
+            return cur.lastrowid
+
+    async def mark_intervention_success(self, spawned_task_id: str) -> None:
+        await self._ensure_db()
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            await db.execute(
+                "UPDATE interventions SET success = 1 WHERE spawned_task_id = ?",
+                (spawned_task_id,),
+            )
+            await db.commit()
+
+    async def find_matching_intervention(self, failure_pattern: str) -> dict | None:
+        if not failure_pattern or len(failure_pattern.strip()) < 10:
+            return None
+        await self._ensure_db()
+        first_line = failure_pattern.strip().splitlines()[0].strip().lower()
+        if len(first_line) < 10:
+            return None
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM interventions WHERE success = 1 ORDER BY created_at DESC"
+            ) as cur:
+                rows = await cur.fetchall()
+        for row in rows:
+            stored = (row["failure_pattern"] or "").strip().splitlines()
+            if stored and first_line in stored[0].strip().lower():
+                return dict(row)
+        return None
+
+    async def list_interventions(self, limit: int = 50) -> list[dict]:
+        await self._ensure_db()
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM interventions ORDER BY created_at DESC LIMIT ?", (limit,)
+            ) as cur:
+                return [dict(r) for r in await cur.fetchall()]
 
     async def claim_next_pending(self, done_ids: set[str]) -> dict | None:
         """Atomically claim the next pending task whose deps are met.
@@ -1211,6 +1411,12 @@ class Worker:
                     context_blocks.append(f"# File Ownership (from AGENTS.md)\n\n{agents_content}")
             except Exception:
                 pass
+        try:
+            tldr = _generate_code_tldr(str(self._original_project_dir))
+            if tldr:
+                context_blocks.append(f"# Codebase Structure (auto-generated)\n\n{tldr}")
+        except Exception:
+            pass
         if context_blocks:
             effective_description = "\n\n---\n\n".join(context_blocks) + f"\n\n---\n\n# Task\n\n{self.description}"
         # Inject unread messages from other tasks
@@ -1611,6 +1817,19 @@ class WorkerPool:
                     )
                 if task.get("is_critical_path"):
                     model = {"haiku": "sonnet", "sonnet": "opus"}.get(model, model)
+        # Auto-inject past intervention corrections for retried/failed tasks
+        failed_reason = task.get("failed_reason")
+        if failed_reason:
+            try:
+                match = await task_queue.find_matching_intervention(failed_reason)
+                if match:
+                    description = (
+                        f"{description}\n\n---\n"
+                        f"**Auto-injected correction (from past intervention):**\n"
+                        f"{match['correction']}"
+                    )
+            except Exception:
+                pass
         model = _MODEL_ALIASES.get(model, model)
         worker = Worker(
             task["id"],
@@ -1669,6 +1888,11 @@ class WorkerPool:
                 )
                 if w.status == "failed" and w.failure_context:
                     await task_queue.update(w.task_id, failed_reason=w.failure_context)
+                if w.status == "done":
+                    try:
+                        await task_queue.mark_intervention_success(w.task_id)
+                    except Exception:
+                        pass
                 if project_dir and GLOBAL_SETTINGS.get("github_issues_sync"):
                     t = await task_queue.get(w.task_id)
                     if t:
@@ -2194,21 +2418,48 @@ class ProjectSession:
                     await asyncio.sleep(3)
 
             changes_this_iter = len(spawned_task_ids)
+
+            # Compute semantic diff hash for oscillation detection
+            semantic_hash = ""
+            try:
+                diff_dir = loop_state.get("context_dir") or str(self.project_dir)
+                diff_proc = await asyncio.create_subprocess_exec(
+                    "git", "diff", "--stat",
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+                    cwd=diff_dir,
+                )
+                diff_out, _ = await asyncio.wait_for(diff_proc.communicate(), timeout=15)
+                if diff_out.strip():
+                    sorted_lines = sorted(diff_out.decode().strip().splitlines())
+                    semantic_hash = hashlib.md5("\n".join(sorted_lines).encode()).hexdigest()[:12]
+            except Exception:
+                pass
+
             loop_state = await self.task_queue.get_loop()
             if not loop_state:
                 return
 
             changes_history = list(loop_state.get("changes_history") or [])
-            changes_history.append(changes_this_iter)
+            # Migration: wrap old int entries as dicts
+            changes_history = [
+                e if isinstance(e, dict) else {"count": e, "hash": ""}
+                for e in changes_history
+            ]
+            changes_history.append({"count": changes_this_iter, "hash": semantic_hash})
 
             k = loop_state.get("convergence_k", 2)
             n = loop_state.get("convergence_n", 3)
             max_iter = loop_state.get("max_iterations", 20)
 
-            is_converged = (
-                len(changes_history) >= n
-                and all(c <= k for c in changes_history[-n:])
+            # Dual convergence: count-based OR semantic hash repetition
+            recent_n = changes_history[-n:] if len(changes_history) >= n else []
+            count_converged = len(recent_n) >= n and all(e["count"] <= k for e in recent_n)
+            semantic_converged = (
+                len(changes_history) >= 2
+                and changes_history[-1]["hash"]
+                and changes_history[-1]["hash"] == changes_history[-2]["hash"]
             )
+            is_converged = count_converged or semantic_converged
 
             if is_converged or iteration >= max_iter:
                 await self.task_queue.upsert_loop(
@@ -2260,17 +2511,25 @@ class ProjectSession:
                 logger.warning("plan_build: cannot read artifact; cancelling")
                 return
 
-            # Collect codebase file listing for context
+            # Collect codebase context — prefer TLDR, fallback to find
             try:
-                proc = await asyncio.create_subprocess_shell(
-                    f'find {shlex.quote(context_dir)} -type f -not -path "*/.*" | head -200',
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.DEVNULL,
+                loop2 = asyncio.get_event_loop()
+                file_listing = await loop2.run_in_executor(
+                    None, _generate_code_tldr, context_dir
                 )
-                out, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
-                file_listing = out.decode().strip() or "(no files found)"
             except Exception:
-                file_listing = "(could not list files)"
+                file_listing = ""
+            if not file_listing:
+                try:
+                    proc = await asyncio.create_subprocess_shell(
+                        f'find {shlex.quote(context_dir)} -type f -not -path "*/.*" | head -200',
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.DEVNULL,
+                    )
+                    out, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
+                    file_listing = out.decode().strip() or "(no files found)"
+                except Exception:
+                    file_listing = "(could not list files)"
 
             prompt = (
                 "You are a planning agent. Given an artifact and a codebase file listing, "
@@ -3202,9 +3461,22 @@ async def message_worker(
         raise HTTPException(status_code=404, detail="Worker not found")
     user_message = body.get("message", "")
     original_desc = w.description
+    failure_ctx = w.failure_context or ""
     await w.stop()
     new_desc = f"{original_desc}\n\n---\n**Additional context from user:**\n{user_message}"
     new_task = await s.task_queue.add(new_desc, w.model)
+    # Record intervention for future auto-injection
+    try:
+        if failure_ctx:
+            await s.task_queue.record_intervention(
+                failure_pattern=failure_ctx,
+                correction=user_message,
+                task_description_hint=original_desc[:200],
+                source_task_id=w.task_id,
+                spawned_task_id=new_task["id"],
+            )
+    except Exception:
+        pass
     new_worker = await s.worker_pool.start_worker(
         new_task, s.task_queue, s.project_dir, s.claude_dir
     )
@@ -3273,6 +3545,26 @@ async def get_agents_md(session_id: str):
     if not branch_files:
         out_lines.append("No branch-specific ownership detected.")
     return {"agents_md": "\n".join(out_lines)}
+
+
+@app.get("/api/sessions/{session_id}/code-tldr")
+async def get_code_tldr(session_id: str):
+    session = registry.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    loop = asyncio.get_event_loop()
+    try:
+        tldr = await loop.run_in_executor(
+            None, _generate_code_tldr, str(session.project_dir)
+        )
+    except Exception as e:
+        tldr = f"(error: {e})"
+    return {"tldr": tldr or "(no code files found)"}
+
+
+@app.get("/api/interventions")
+async def list_interventions(s: ProjectSession = Depends(_resolve_session)):
+    return await s.task_queue.list_interventions()
 
 
 @app.get("/api/workers/{worker_id}/log")
