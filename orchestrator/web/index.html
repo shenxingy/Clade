@@ -545,6 +545,8 @@ const PaneManager = {
       } catch {}
     };
     ws.onclose = () => {
+      if (pane._reconnecting) return;
+      pane._reconnecting = true;
       const isActive = sessionId === activeSessionId;
       const st2 = sessionStates.get(sessionId);
       if (isActive && st2 && st2.activePaneId === paneId) {
@@ -552,6 +554,7 @@ const PaneManager = {
         pane.term.write('\r\n\x1b[33m[Reconnecting...]\x1b[0m\r\n');
       }
       setTimeout(() => {
+        pane._reconnecting = false;
         const curr = sessionStates.get(sessionId);
         if (curr && curr.panes.has(paneId)) {
           this.connectPaneWs(sessionId, paneId);
@@ -560,13 +563,6 @@ const PaneManager = {
     };
     ws.onerror = () => {
       if (sessionId === activeSessionId) setOrchStatus('disconnected', 'Connection error');
-      ws.onclose = null;
-      setTimeout(() => {
-        const curr = sessionStates.get(sessionId);
-        if (curr && curr.panes.has(paneId)) {
-          this.connectPaneWs(sessionId, paneId);
-        }
-      }, 3000);
     };
   },
 
@@ -1497,6 +1493,7 @@ async function setSchedule() {
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({ time: t }),
   });
+  if (!r.ok) { showToast('Failed to set schedule', true); return; }
   const d = await r.json();
   if (d.in_seconds) {
     showToast(`Scheduled to auto-start in ${formatElapsed(d.in_seconds)}`);
@@ -1505,10 +1502,13 @@ async function setSchedule() {
 
 async function cancelSchedule() {
   if (!activeSessionId) return;
-  await fetch(`/api/sessions/${activeSessionId}/schedule`, { method: 'DELETE' });
-  document.getElementById('scheduleCountdown').textContent = '';
-  document.getElementById('cancelScheduleBtn').style.display = 'none';
-  showToast('Schedule cancelled');
+  try {
+    const res = await fetch(`/api/sessions/${activeSessionId}/schedule`, { method: 'DELETE' });
+    if (!res.ok) { showToast('Failed to cancel schedule', true); return; }
+    document.getElementById('scheduleCountdown').textContent = '';
+    document.getElementById('cancelScheduleBtn').style.display = 'none';
+    showToast('Schedule cancelled');
+  } catch (e) { showToast('Error: ' + e.message, true); }
 }
 
 // ─── Header status ───────────────────────────────────────────────────────────
@@ -2139,8 +2139,8 @@ async function startSwarm() {
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ slots }),
     });
-    const data = await r.json();
     if (!r.ok) {
+      const data = await r.json().catch(() => ({}));
       showToast(data.detail || 'Failed to start swarm', true);
     }
   } catch (e) {
@@ -2153,11 +2153,12 @@ async function startSwarm() {
 async function stopSwarm() {
   if (!activeSessionId) return;
   try {
-    await fetch(`/api/sessions/${activeSessionId}/swarm/stop`, {
+    const res = await fetch(`/api/sessions/${activeSessionId}/swarm/stop`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ force: false }),
     });
+    if (!res.ok) showToast('Failed to stop swarm', true);
   } catch (e) {
     showToast('Swarm stop failed: ' + e.message, true);
   }
@@ -2166,11 +2167,12 @@ async function stopSwarm() {
 async function forceStopSwarm() {
   if (!activeSessionId) return;
   try {
-    await fetch(`/api/sessions/${activeSessionId}/swarm/stop`, {
+    const res = await fetch(`/api/sessions/${activeSessionId}/swarm/stop`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ force: true }),
     });
+    if (!res.ok) showToast('Failed to force-stop swarm', true);
   } catch (e) {
     showToast('Swarm force stop failed: ' + e.message, true);
   }
