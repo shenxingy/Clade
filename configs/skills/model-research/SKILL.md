@@ -2,6 +2,7 @@
 name: model-research
 description: Research latest Claude models and update selection guide — run when new models drop or periodically to stay current
 argument-hint: '[--apply]'
+user_invocable: true
 ---
 
 # Model Research Skill

@@ -2,6 +2,7 @@
 name: orchestrate
 description: Project orchestrator mode — ask clarifying questions, decompose goals into tasks, write proposed-tasks.md for workers to execute. Use inside the Orchestrator Web UI.
 argument-hint: '[goal] [--plan]'
+user_invocable: true
 ---
 
 # Orchestrate Skill

@@ -2,6 +2,7 @@
 name: sync
 description: End-of-session documentation sync — updates TODO.md and PROGRESS.md only (run /commit after to commit everything)
 argument-hint: ''
+user_invocable: true
 ---
 
 # Sync Skill
