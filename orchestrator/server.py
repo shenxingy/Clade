@@ -2050,7 +2050,7 @@ class WorkerPool:
                 except Exception:
                     pass
             await w.poll()
-            if w.status in ("done", "failed"):
+            if w.status in ("done", "failed", "blocked"):
                 await task_queue.update(
                     w.task_id,
                     status=w.status,
@@ -2934,6 +2934,7 @@ async def _check_blockers(session: ProjectSession) -> None:
     running = [w for w in session.worker_pool.all() if w.status == "running"]
     if running:
         newest = max(running, key=lambda w: w.started_at)
+        await newest.stop()
         newest.status = "blocked"
         await session.task_queue.update(newest.task_id, status="blocked")
 
