@@ -940,8 +940,8 @@ async def _score_task(task_id: str, description: str, db_path: Path, claude_dir:
         'Respond ONLY with a JSON object, no other text: {"score": <integer>, "note": "<max 12 words>"}'
     )
     score_file = claude_dir / f"score-{task_id}.md"
-    score_file.write_text(score_prompt)
     try:
+        score_file.write_text(score_prompt)
         proc = await asyncio.create_subprocess_shell(
             f'claude -p "$(cat {shlex.quote(str(score_file))})" --model claude-haiku-4-5-20251001 --dangerously-skip-permissions',
             stdout=asyncio.subprocess.PIPE,
@@ -1410,6 +1410,7 @@ class Worker:
         self._ownership_violation: bool = False
         self._ownership_violation_reason: str | None = None
         self._stuck_detected: bool = False
+        self._terminal_persisted: bool = False
         self._input_tokens: int = 0
         self._output_tokens: int = 0
         self._estimated_cost: float = 0.0
@@ -2054,31 +2055,33 @@ class WorkerPool:
             if w.status not in ("done", "failed", "blocked"):
                 await w.poll()
             if w.status in ("done", "failed", "blocked"):
-                await task_queue.update(
-                    w.task_id,
-                    status=w.status,
-                    elapsed_s=w.elapsed_s,
-                    last_commit=w.last_commit,
-                )
-                # Persist token/cost data
-                if w._input_tokens or w._output_tokens:
+                if not w._terminal_persisted:
+                    w._terminal_persisted = True
                     await task_queue.update(
                         w.task_id,
-                        input_tokens=w._input_tokens,
-                        output_tokens=w._output_tokens,
-                        estimated_cost=w._estimated_cost,
+                        status=w.status,
+                        elapsed_s=w.elapsed_s,
+                        last_commit=w.last_commit,
                     )
-                if w.status == "failed" and w.failure_context:
-                    await task_queue.update(w.task_id, failed_reason=w.failure_context)
-                if w.status == "done":
-                    try:
-                        await task_queue.mark_intervention_success(w.task_id)
-                    except Exception:
-                        pass
-                if project_dir and GLOBAL_SETTINGS.get("github_issues_sync"):
-                    t = await task_queue.get(w.task_id)
-                    if t:
-                        asyncio.ensure_future(_gh_update_issue_status(t, project_dir))
+                    # Persist token/cost data
+                    if w._input_tokens or w._output_tokens:
+                        await task_queue.update(
+                            w.task_id,
+                            input_tokens=w._input_tokens,
+                            output_tokens=w._output_tokens,
+                            estimated_cost=w._estimated_cost,
+                        )
+                    if w.status == "failed" and w.failure_context:
+                        await task_queue.update(w.task_id, failed_reason=w.failure_context)
+                    if w.status == "done":
+                        try:
+                            await task_queue.mark_intervention_success(w.task_id)
+                        except Exception:
+                            pass
+                    if project_dir and GLOBAL_SETTINGS.get("github_issues_sync"):
+                        t = await task_queue.get(w.task_id)
+                        if t:
+                            asyncio.ensure_future(_gh_update_issue_status(t, project_dir))
                 # Oracle rejected → re-queue with rejection reason as context
                 if w._oracle_requeue:
                     w._oracle_requeue = False
@@ -2776,7 +2779,7 @@ class ProjectSession:
                 logger.warning("plan_build: IMPLEMENTATION_PLAN.md missing; cancelling")
                 return
 
-            plan_text = plan_path.read_text()
+            plan_text = plan_path.read_text(errors="replace")
             lines = plan_text.splitlines()
 
             # Find first unchecked item
@@ -2927,9 +2930,10 @@ async def _watch_session_proposed_tasks(session: ProjectSession) -> None:
 
 async def _check_blockers(session: ProjectSession) -> None:
     f = session.claude_dir / "blockers.md"
-    if not f.exists():
+    try:
+        mtime = f.stat().st_mtime
+    except FileNotFoundError:
         return
-    mtime = f.stat().st_mtime
     if mtime <= session._blockers_mtime:
         return
     session._blockers_mtime = mtime
@@ -3352,6 +3356,10 @@ async def start_swarm(session_id: str, body: dict):
     # Cancel old refill loop if still running
     if s._swarm and s._swarm._task and not s._swarm._task.done():
         s._swarm._task.cancel()
+        try:
+            await s._swarm._task
+        except (asyncio.CancelledError, Exception):
+            pass
     try:
         slots = int(body.get("slots", 3))
     except (ValueError, TypeError):
