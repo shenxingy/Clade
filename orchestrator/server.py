@@ -2026,13 +2026,15 @@ class WorkerPool:
                         w.failure_context = stuck_reason
                         await task_queue.update(w.task_id, status="failed",
                                                 elapsed_s=w.elapsed_s, failed_reason=stuck_reason)
-                        # Requeue with stuck context (only once — avoid infinite retry loop)
-                        if not w.description.startswith("[STUCK-RETRY]"):
+                        # Requeue with stuck context (skip: already retried, or loop-managed tasks)
+                        _is_loop_task = w.description.startswith("[Loop-") or w.description.startswith("[Plan-")
+                        if not w.description.startswith("[STUCK-RETRY]") and not _is_loop_task:
                             retry_desc = f"[STUCK-RETRY] {w.description}"
                             await task_queue.add(retry_desc, w.model,
                                                  own_files=w.own_files, forbidden_files=w.forbidden_files)
                         else:
-                            logger.warning("Worker %s is a stuck-retry that got stuck again — not re-queuing", w.id)
+                            logger.warning("Worker %s stuck — not re-queuing (retry=%s, loop=%s)",
+                                           w.id, w.description.startswith("[STUCK-RETRY]"), _is_loop_task)
                         if project_dir and GLOBAL_SETTINGS.get("github_issues_sync"):
                             t = await task_queue.get(w.task_id)
                             if t:
@@ -2583,7 +2585,7 @@ class ProjectSession:
                     if not loop_state or loop_state["status"] != "running":
                         return
                     all_done = all(
-                        (await self.task_queue.get(tid) or {}).get("status") in ("done", "failed")
+                        (await self.task_queue.get(tid) or {}).get("status") in ("done", "failed", "blocked", "interrupted")
                         for tid in spawned_task_ids
                     )
                     if all_done:
@@ -2802,7 +2804,7 @@ class ProjectSession:
                 if not loop_state or loop_state["status"] != "running":
                     return
                 t = await self.task_queue.get(task["id"])
-                if (t or {}).get("status") in ("done", "failed"):
+                if (t or {}).get("status") in ("done", "failed", "blocked", "interrupted"):
                     break
                 await asyncio.sleep(3)
 
@@ -2960,9 +2962,14 @@ async def status_loop():
                 else:
                     session._budget_exceeded = False
 
-                if _newly_ready and GLOBAL_SETTINGS.get("auto_start", True) and not _swarm_active and not session._budget_exceeded:
+                if _newly_ready and GLOBAL_SETTINGS.get("auto_start", True) and not _swarm_active:
                     _max_w = GLOBAL_SETTINGS.get("max_workers", 0)
                     for _task in _newly_ready:
+                        # Budget gate: skip non-loop tasks when budget exceeded
+                        _desc = _task.get("description", "")
+                        _is_loop_task = _desc.startswith("[Loop-") or _desc.startswith("[Plan-")
+                        if session._budget_exceeded and not _is_loop_task:
+                            continue
                         # Re-count running workers each iteration to avoid overshoot race
                         if _max_w > 0 and sum(
                             1 for w in session.worker_pool.all() if w.status == "running"
@@ -2994,10 +3001,12 @@ async def status_loop():
                 workers = [w.to_dict() for w in session.worker_pool.all()]
 
                 # Detect run-complete (all workers idle, no pending tasks, but some done)
+                # Suppress during active loop — loop has its own loop_converged notification
                 running_workers = [w for w in session.worker_pool.all() if w.status == "running"]
                 pending_tasks = [t for t in tasks if t["status"] in ("pending", "queued")]
                 done_tasks = [t for t in tasks if t["status"] in ("done", "failed")]
-                if not running_workers and not pending_tasks and done_tasks and not session._run_complete:
+                _loop_running = loop_state and loop_state.get("status") == "running"
+                if not running_workers and not pending_tasks and done_tasks and not session._run_complete and not _loop_running:
                     session._run_complete = True
                     asyncio.ensure_future(_fire_notification("run_complete", session))
                     # High failure rate notification (one-shot)
