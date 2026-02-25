@@ -107,16 +107,16 @@ Reduce worker failure rate by giving them maximum relevant context at minimum to
 
 ---
 
-## Phase 6 — Observability & Resilience (CURRENT)
+## Phase 6 — Observability & Resilience ✓ DONE
 
 The system works. Now make it trustworthy at scale: know what happened, what it cost, and recover from failures.
 
-- [ ] **Task analytics** — success/failure rate, avg duration, model distribution; dashboard widget in UI
-- [ ] **Token/cost tracking** — parse claude CLI output for token counts, estimate cost per task, cumulative cost per session
-- [ ] **Cost budget limit** — set max spend per session/loop; auto-pause when budget hit
-- [ ] **Stuck worker detection** — if log file unchanged for N minutes, mark as stuck, auto-kill + requeue
-- [ ] **Session state persistence** — survive server restart (re-attach to running workers or mark as interrupted)
-- [ ] **Completion notifications** — webhook/callback when all tasks done or error threshold exceeded
+- [x] **Task analytics** — success/failure rate, avg duration, model distribution; collapsible dashboard widget with donut chart
+- [x] **Token/cost tracking** — parse claude CLI log for token counts, estimate cost per task, cumulative cost per session
+- [x] **Cost budget limit** — max spend per session; auto-pause auto-start when budget hit, manual Run bypasses
+- [x] **Stuck worker detection** — log file mtime unchanged for N minutes → kill + requeue (one-shot, no infinite loop)
+- [x] **Session state persistence** — survive server restart (mark orphaned tasks as interrupted, one-click retry)
+- [x] **Completion notifications** — webhook on run_complete, high_failure_rate, loop_converged
 
 ---
 

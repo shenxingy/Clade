@@ -35,7 +35,8 @@ from watchfiles import awatch
 _ALLOWED_TASK_COLS = {"status", "description", "model", "depends_on", "mode", "result", "score",
                       "worker_id", "started_at", "elapsed_s", "last_commit", "log_file",
                       "failed_reason", "score_note", "own_files", "forbidden_files",
-                      "gh_issue_number", "is_critical_path"}
+                      "gh_issue_number", "is_critical_path",
+                      "input_tokens", "output_tokens", "estimated_cost"}
 
 _ALLOWED_LOOP_COLS = {
     "name", "artifact_path", "context_dir", "status", "iteration",
@@ -79,6 +80,9 @@ _SETTINGS_DEFAULTS = {
     "github_issues_sync": False,
     "github_issues_label": "orchestrator",
     "agent_teams": False,
+    "stuck_timeout_minutes": 15,
+    "cost_budget": 0,
+    "notification_webhook": "",
 }
 
 
@@ -253,6 +257,59 @@ def _generate_code_tldr(project_dir: str) -> str:
     return result
 
 
+# ─── Session Recovery ─────────────────────────────────────────────────────────
+
+async def _recover_orphaned_tasks(task_queue: "TaskQueue") -> int:
+    """Mark running/starting tasks as interrupted after server restart. Fail-open."""
+    try:
+        await task_queue._ensure_db()
+        async with aiosqlite.connect(str(task_queue._db_path)) as db:
+            cursor = await db.execute(
+                "UPDATE tasks SET status = 'interrupted' WHERE status IN ('running', 'starting')"
+            )
+            count = cursor.rowcount
+            await db.commit()
+            return count
+    except Exception as e:
+        logger.warning("_recover_orphaned_tasks failed (fail-open): %s", e)
+        return 0
+
+
+async def _fire_notification(event: str, session: "ProjectSession", extra: dict | None = None) -> None:
+    """Fire webhook notification. Fail-open (no deps, follows _gh_update_issue_status pattern)."""
+    webhook = GLOBAL_SETTINGS.get("notification_webhook", "")
+    if not webhook:
+        return
+    try:
+        tasks = await session.task_queue.list()
+        done = sum(1 for t in tasks if t["status"] == "done")
+        failed = sum(1 for t in tasks if t["status"] == "failed")
+        failed_list = [t["description"][:120] for t in tasks if t["status"] == "failed"]
+        payload = json.dumps({
+            "event": event,
+            "session_id": session.session_id,
+            "project_name": session.name,
+            "project_path": str(session.project_dir),
+            "total": len(tasks), "done": done, "failed": failed,
+            "failed_tasks": failed_list[:10],
+            **(extra or {}),
+        })
+        proc = await asyncio.create_subprocess_exec(
+            "curl", "-s", "-X", "POST", "--max-time", "10",
+            "-H", "Content-Type: application/json",
+            "-d", payload, webhook,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        try:
+            await asyncio.wait_for(proc.communicate(), timeout=15)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
+    except Exception:
+        pass  # fail-open
+
+
 # ─── App ──────────────────────────────────────────────────────────────────────
 
 app = FastAPI(title="Claude Code Orchestrator")
@@ -369,6 +426,19 @@ class TaskQueue:
                     pass
                 try:
                     await db.execute("ALTER TABLE tasks ADD COLUMN is_critical_path INTEGER DEFAULT 0")
+                except Exception:
+                    pass
+                # Token/cost tracking columns
+                try:
+                    await db.execute("ALTER TABLE tasks ADD COLUMN input_tokens INTEGER")
+                except Exception:
+                    pass
+                try:
+                    await db.execute("ALTER TABLE tasks ADD COLUMN output_tokens INTEGER")
+                except Exception:
+                    pass
+                try:
+                    await db.execute("ALTER TABLE tasks ADD COLUMN estimated_cost REAL")
                 except Exception:
                     pass
                 await db.execute("""
@@ -1241,6 +1311,55 @@ async def _gh_push_all(project_dir: Path, task_queue: "TaskQueue") -> dict:
     return stats
 
 
+# ─── Token/Cost Tracking ─────────────────────────────────────────────────────
+
+_TOKEN_PATTERNS = [
+    # Claude CLI: "Total tokens: input=1234, output=5678"
+    re.compile(r"[Tt]otal\s+tokens?.*?input\s*=\s*(\d+).*?output\s*=\s*(\d+)"),
+    # "Input tokens: 1234" / "Output tokens: 5678" on separate lines
+    re.compile(r"[Ii]nput\s+tokens?\s*[:=]\s*(\d+)"),
+    re.compile(r"[Oo]utput\s+tokens?\s*[:=]\s*(\d+)"),
+    # Compact: "tokens: 1234/5678" or "1234 in / 5678 out"
+    re.compile(r"(\d+)\s*(?:in|input)\s*/\s*(\d+)\s*(?:out|output)"),
+]
+
+
+def _parse_token_usage(log_path: Path) -> tuple[int, int]:
+    """Scan log file bottom-up for token usage. Returns (input_tokens, output_tokens)."""
+    try:
+        text = log_path.read_text(errors="replace")
+    except Exception:
+        return 0, 0
+    lines = text.splitlines()
+    input_t, output_t = 0, 0
+    # Scan from bottom (most likely near end)
+    for line in reversed(lines[-200:]):
+        m = _TOKEN_PATTERNS[0].search(line)
+        if m:
+            return int(m.group(1)), int(m.group(2))
+        m3 = _TOKEN_PATTERNS[3].search(line)
+        if m3:
+            return int(m3.group(1)), int(m3.group(2))
+    # Fallback: separate input/output lines
+    for line in reversed(lines[-200:]):
+        if not input_t:
+            m1 = _TOKEN_PATTERNS[1].search(line)
+            if m1:
+                input_t = int(m1.group(1))
+        if not output_t:
+            m2 = _TOKEN_PATTERNS[2].search(line)
+            if m2:
+                output_t = int(m2.group(1))
+        if input_t and output_t:
+            break
+    return input_t, output_t
+
+
+def _estimate_cost(input_tokens: int, output_tokens: int) -> float:
+    """Estimate USD cost using Sonnet pricing ($3/MTok input, $15/MTok output)."""
+    return round(input_tokens * 3.0 / 1_000_000 + output_tokens * 15.0 / 1_000_000, 4)
+
+
 # ─── Worker Pool ──────────────────────────────────────────────────────────────
 
 class Worker:
@@ -1290,6 +1409,10 @@ class Worker:
         self.forbidden_files: list[str] = []
         self._ownership_violation: bool = False
         self._ownership_violation_reason: str | None = None
+        self._stuck_detected: bool = False
+        self._input_tokens: int = 0
+        self._output_tokens: int = 0
+        self._estimated_cost: float = 0.0
 
     @property
     def elapsed_s(self) -> int:
@@ -1328,6 +1451,9 @@ class Worker:
             "model_score": self.model_score,
             "estimated_tokens": self._estimate_tokens(),
             "context_warning": self._estimate_tokens() > 160000,
+            "input_tokens": self._input_tokens,
+            "output_tokens": self._output_tokens,
+            "estimated_cost": self._estimated_cost,
         }
 
     def _estimate_tokens(self) -> int:
@@ -1554,6 +1680,13 @@ class Worker:
         """Run after process exits: verify+commit while worktree is still alive, then clean up."""
         if self.status == "done":
             await self.verify_and_commit()
+        # Parse token usage from log
+        if self._log_path and self._log_path.exists():
+            try:
+                self._input_tokens, self._output_tokens = _parse_token_usage(self._log_path)
+                self._estimated_cost = _estimate_cost(self._input_tokens, self._output_tokens)
+            except Exception:
+                pass
         # Check for handoff file — worker wrote it to signal continuation needed
         handoff_path = self._claude_dir / f"handoff-{self.task_id}.md"
         if handoff_path.exists():
@@ -1878,6 +2011,35 @@ class WorkerPool:
                     if t:
                         asyncio.ensure_future(_gh_update_issue_status(t, project_dir))
                 continue
+            # Stuck worker detection: log file mtime unchanged for N minutes
+            stuck_timeout = GLOBAL_SETTINGS.get("stuck_timeout_minutes", 15)
+            if (w.status == "running" and not w._stuck_detected
+                    and stuck_timeout > 0 and w._log_path and w._log_path.exists()):
+                try:
+                    idle_s = time.time() - w._log_path.stat().st_mtime
+                    if idle_s > stuck_timeout * 60:
+                        w._stuck_detected = True
+                        logger.warning("Worker %s stuck (no log output for %dm) — killing", w.id, stuck_timeout)
+                        await w.stop()
+                        w.status = "failed"
+                        stuck_reason = f"[STUCK] No log output for {int(idle_s)}s (threshold: {stuck_timeout}min)"
+                        w.failure_context = stuck_reason
+                        await task_queue.update(w.task_id, status="failed",
+                                                elapsed_s=w.elapsed_s, failed_reason=stuck_reason)
+                        # Requeue with stuck context (only once — avoid infinite retry loop)
+                        if not w.description.startswith("[STUCK-RETRY]"):
+                            retry_desc = f"[STUCK-RETRY] {w.description}"
+                            await task_queue.add(retry_desc, w.model,
+                                                 own_files=w.own_files, forbidden_files=w.forbidden_files)
+                        else:
+                            logger.warning("Worker %s is a stuck-retry that got stuck again — not re-queuing", w.id)
+                        if project_dir and GLOBAL_SETTINGS.get("github_issues_sync"):
+                            t = await task_queue.get(w.task_id)
+                            if t:
+                                asyncio.ensure_future(_gh_update_issue_status(t, project_dir))
+                        continue
+                except Exception:
+                    pass
             await w.poll()
             if w.status in ("done", "failed"):
                 await task_queue.update(
@@ -1886,6 +2048,14 @@ class WorkerPool:
                     elapsed_s=w.elapsed_s,
                     last_commit=w.last_commit,
                 )
+                # Persist token/cost data
+                if w._input_tokens or w._output_tokens:
+                    await task_queue.update(
+                        w.task_id,
+                        input_tokens=w._input_tokens,
+                        output_tokens=w._output_tokens,
+                        estimated_cost=w._estimated_cost,
+                    )
                 if w.status == "failed" and w.failure_context:
                     await task_queue.update(w.task_id, failed_reason=w.failure_context)
                 if w.status == "done":
@@ -2222,6 +2392,8 @@ class ProjectSession:
         self._loop_task: asyncio.Task | None = None
         # Swarm manager
         self._swarm: SwarmManager | None = None
+        self._budget_exceeded: bool = False
+        self._failure_notified: bool = False
 
     @property
     def name(self) -> str:
@@ -2401,6 +2573,7 @@ class ProjectSession:
 
             if converged:
                 await self.task_queue.upsert_loop(status="converged")
+                asyncio.ensure_future(_fire_notification("loop_converged", self))
                 return
 
             # Wait for all spawned workers to finish
@@ -2466,6 +2639,7 @@ class ProjectSession:
                     changes_history=changes_history,
                     status="converged",
                 )
+                asyncio.ensure_future(_fire_notification("loop_converged", self))
                 return
 
             await self.task_queue.upsert_loop(changes_history=changes_history)
@@ -2602,12 +2776,14 @@ class ProjectSession:
             if task_line_idx is None:
                 # All tasks done
                 await self.task_queue.upsert_loop(status="converged")
+                asyncio.ensure_future(_fire_notification("loop_converged", self))
                 return
 
             iteration = loop_state.get("iteration", 1)
             max_iter = loop_state.get("max_iterations", 20)
             if iteration > max_iter:
                 await self.task_queue.upsert_loop(status="converged")
+                asyncio.ensure_future(_fire_notification("loop_converged", self))
                 return
 
             # Spawn one worker for this task
@@ -2776,7 +2952,15 @@ async def status_loop():
                     if t["status"] == "pending"
                     and _deps_met(t, _done_ids)
                 ]
-                if _newly_ready and GLOBAL_SETTINGS.get("auto_start", True) and not _swarm_active:
+                # Cost budget check — pause auto-start if budget exceeded
+                _cost_budget = GLOBAL_SETTINGS.get("cost_budget", 0)
+                if _cost_budget > 0:
+                    _session_cost = sum(t.get("estimated_cost") or 0 for t in _auto_tasks)
+                    session._budget_exceeded = _session_cost >= _cost_budget
+                else:
+                    session._budget_exceeded = False
+
+                if _newly_ready and GLOBAL_SETTINGS.get("auto_start", True) and not _swarm_active and not session._budget_exceeded:
                     _max_w = GLOBAL_SETTINGS.get("max_workers", 0)
                     for _task in _newly_ready:
                         # Re-count running workers each iteration to avoid overshoot race
@@ -2815,8 +2999,15 @@ async def status_loop():
                 done_tasks = [t for t in tasks if t["status"] in ("done", "failed")]
                 if not running_workers and not pending_tasks and done_tasks and not session._run_complete:
                     session._run_complete = True
+                    asyncio.ensure_future(_fire_notification("run_complete", session))
+                    # High failure rate notification (one-shot)
+                    _fail_count = sum(1 for t in done_tasks if t["status"] == "failed")
+                    if len(done_tasks) >= 2 and _fail_count / len(done_tasks) > 0.5 and not session._failure_notified:
+                        session._failure_notified = True
+                        asyncio.ensure_future(_fire_notification("high_failure_rate", session))
                 elif pending_tasks or running_workers:
                     session._run_complete = False
+                    session._failure_notified = False
 
                 total = len(tasks)
                 done_count = sum(1 for t in tasks if t["status"] in ("done", "failed"))
@@ -2844,6 +3035,8 @@ async def status_loop():
                     "success_rate": success_rate,
                     "schedule": session._schedule_dict(),
                     "run_complete": session._run_complete,
+                    "budget_exceeded": session._budget_exceeded,
+                    "budget_limit": GLOBAL_SETTINGS.get("cost_budget", 0),
                     "loop_state": loop_state,
                     "swarm_state": swarm_state,
                 })
@@ -2864,6 +3057,9 @@ async def status_loop():
 async def startup():
     if os.environ.get("ORCHESTRATOR_PROJECT_DIR"):
         default_session = registry.create(str(PROJECT_DIR))
+        recovered = await _recover_orphaned_tasks(default_session.task_queue)
+        if recovered:
+            logger.info("Recovered %d orphaned tasks as 'interrupted'", recovered)
         default_session.start_watch()
     asyncio.ensure_future(status_loop())
 
@@ -2884,6 +3080,9 @@ async def create_session(body: dict):
     if not path.is_dir():
         raise HTTPException(status_code=400, detail=f"Directory not found: {path}")
     session = registry.create(str(path))
+    recovered = await _recover_orphaned_tasks(session.task_queue)
+    if recovered:
+        logger.info("Recovered %d orphaned tasks as 'interrupted' for new session", recovered)
     rows = int(body.get("rows", 24))
     cols = int(body.get("cols", 80))
     session.orchestrator.start(session.project_dir, rows=rows, cols=cols)
@@ -2917,6 +3116,62 @@ async def sessions_overview():
             "eta_seconds": eta_s,
         })
     return result
+
+
+@app.get("/api/sessions/{session_id}/analytics")
+async def session_analytics(session_id: str):
+    s = registry.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Session not found")
+    tasks = await s.task_queue.list()
+    total = len(tasks)
+    done = sum(1 for t in tasks if t["status"] == "done")
+    failed = sum(1 for t in tasks if t["status"] == "failed")
+    interrupted = sum(1 for t in tasks if t["status"] == "interrupted")
+    pending = sum(1 for t in tasks if t["status"] in ("pending", "queued"))
+    attempted = done + failed
+    success_rate = round(done / attempted * 100, 1) if attempted else 0
+
+    total_cost = 0.0
+    total_input = 0
+    total_output = 0
+    model_stats: dict[str, dict] = {}
+    for t in tasks:
+        model = t.get("model", "sonnet")
+        cost = t.get("estimated_cost") or 0
+        inp = t.get("input_tokens") or 0
+        out = t.get("output_tokens") or 0
+        total_cost += cost
+        total_input += inp
+        total_output += out
+        if model not in model_stats:
+            model_stats[model] = {"count": 0, "done": 0, "failed": 0,
+                                  "total_elapsed_s": 0, "total_cost": 0.0,
+                                  "total_input_tokens": 0, "total_output_tokens": 0}
+        ms = model_stats[model]
+        ms["count"] += 1
+        if t["status"] == "done":
+            ms["done"] += 1
+        elif t["status"] == "failed":
+            ms["failed"] += 1
+        ms["total_elapsed_s"] += t.get("elapsed_s") or 0
+        ms["total_cost"] += cost
+        ms["total_input_tokens"] += inp
+        ms["total_output_tokens"] += out
+
+    for ms in model_stats.values():
+        ms["avg_elapsed_s"] = round(ms["total_elapsed_s"] / ms["count"], 1) if ms["count"] else 0
+        ms["total_cost"] = round(ms["total_cost"], 4)
+
+    return {
+        "total": total, "done": done, "failed": failed,
+        "interrupted": interrupted, "pending": pending,
+        "success_rate": success_rate,
+        "model_stats": model_stats,
+        "total_cost": round(total_cost, 4),
+        "total_input_tokens": total_input,
+        "total_output_tokens": total_output,
+    }
 
 
 @app.post("/api/sessions/start-all-queued")
@@ -3198,6 +3453,7 @@ async def switch_project(body: dict):
     if old:
         registry.remove(old.session_id)
     new_session = registry.create(str(new_path))
+    await _recover_orphaned_tasks(new_session.task_queue)
     await asyncio.sleep(0.3)
     new_session.start_watch()
     return {"path": str(new_session.project_dir), "name": new_session.name}
@@ -3375,6 +3631,21 @@ async def retry_failed(s: ProjectSession = Depends(_resolve_session)):
         new_task = await s.task_queue.add(retry_desc, model)
         retried.append(new_task["id"])
     return {"retried": len(retried), "task_ids": retried}
+
+
+@app.post("/api/tasks/{task_id}/retry")
+async def retry_task(task_id: str, s: ProjectSession = Depends(_resolve_session)):
+    """Reset an interrupted or failed task back to pending for retry."""
+    task = await s.task_queue.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task["status"] not in ("interrupted", "failed"):
+        return {"error": f"Task status is '{task['status']}', can only retry interrupted/failed"}
+    await s.task_queue.update(
+        task_id, status="pending", worker_id=None,
+        started_at=None, elapsed_s=0, failed_reason=None,
+    )
+    return {"ok": True, "task_id": task_id}
 
 
 @app.post("/api/tasks/{task_id}/run")
