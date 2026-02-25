@@ -45,13 +45,20 @@ jq -n \
   --arg project "$PROJECT" \
   '{timestamp: $ts, prompt: $prompt, project: $project}' >> "$HISTORY_FILE"
 
-# Remind Claude to extract a rule
+# Remind Claude to extract a rule with root-cause analysis
 CONTEXT="A user correction was detected in the prompt above. After addressing the user's request:
 1. Extract the lesson (what was wrong, what's correct)
-2. Append a concise rule to ~/.claude/corrections/rules.md in this format:
-   - [YYYY-MM-DD] <domain>: <do this> instead of <not this>
-   Example: - [2026-02-17] imports: Use @/ path aliases instead of relative paths
-3. Keep rules.md under 30 lines — remove outdated rules if needed"
+2. Identify the root cause — which category does this fall into?
+   - settings-disconnect: defined but not wired/called/loaded
+   - edge-case: untested input, OS, or state (empty, first-run, null)
+   - async-race: stale closure, TOCTOU, zombie process, missing lock
+   - security: unsanitized input, leaked secrets, missing auth
+   - deploy-gap: source ≠ deployed, config ≠ loaded, defined ≠ called
+3. Append a rule to ~/.claude/corrections/rules.md in this format:
+   - [YYYY-MM-DD] <domain> (<root-cause>): <do this> instead of <not this>
+   Example: - [2026-02-25] imports (settings-disconnect): Use @/ path aliases and verify tsconfig paths are set — not bare relative paths that break on move
+4. In one sentence: how could you have caught this BEFORE the user pointed it out? (e.g., 'I should have checked cross-platform compat when using shell builtins')
+5. Keep rules.md under 50 lines — remove outdated rules if needed"
 
 jq -n --arg ctx "$CONTEXT" \
   '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":$ctx}}'
