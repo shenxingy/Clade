@@ -15,13 +15,13 @@ fi
 # Matches: don't/别用/不要/错了/改回/wrong/revert/undo/actually...instead/should have/应该
 PATTERNS=(
   '不要|别用|错了|改回|不对|别这样|重新|撤回|应该'
-  '\b(wrong|revert|undo|rollback|actually|instead|should have|shouldn'\''t have|go back|put back|change back|not what I)\b'
-  '\b(no,? *(use|do|make|try|put))\b'
+  '(^|[^a-zA-Z])(wrong|revert|undo|rollback|actually|instead|should have|shouldn'\''t have|go back|put back|change back|not what I)($|[^a-zA-Z])'
+  '(^|[^a-zA-Z])(no,? *(use|do|make|try|put))($|[^a-zA-Z])'
 )
 
 MATCHED=false
 for pattern in "${PATTERNS[@]}"; do
-  if echo "$PROMPT" | grep -qiP "$pattern" 2>/dev/null || echo "$PROMPT" | grep -qiE "$pattern" 2>/dev/null; then
+  if echo "$PROMPT" | grep -qiE "$pattern" 2>/dev/null; then
     MATCHED=true
     break
   fi

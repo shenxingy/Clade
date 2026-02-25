@@ -14,6 +14,9 @@ run_typecheck_for_file() {
   local file_path="$1"
   local exit_code=0
   local result=""
+  # Ensure pipe exit codes propagate (e.g. cmd | tail returns cmd's exit code)
+  local _prev_pipefail=$(set +o | grep pipefail)
+  set -o pipefail
 
   case "$file_path" in
     *.ts|*.tsx|*.js|*.jsx)
@@ -106,6 +109,7 @@ run_typecheck_for_file() {
   if [[ -n "$result" ]]; then
     echo "$result"
   fi
+  eval "$_prev_pipefail"
   return $exit_code
 }
 
@@ -114,10 +118,13 @@ run_typecheck_for_file() {
 run_typecheck_for_project() {
   local dir="$1"
   local strict_mode="${2:-false}"
-  local exit_code=0
+  local ec=0
   local result=""
 
   cd "$dir" 2>/dev/null || return 0
+  # Ensure pipe exit codes propagate (e.g. cmd | tail returns cmd's exit code)
+  local _prev_pipefail=$(set +o | grep pipefail)
+  set -o pipefail
 
   # ── TypeScript / JavaScript ──────────────────────────────────────
 
@@ -138,8 +145,8 @@ run_typecheck_for_project() {
       result=""
     fi
 
-    exit_code=$?
-    if [[ -n "$result" ]] && [[ $exit_code -ne 0 ]]; then
+    ec=$?
+    if [[ $ec -ne 0 ]] && [[ -n "$result" ]]; then
       echo "Type-check failing. Fix TypeScript errors before completing this task:" >&2
       echo "$result" | tail -15 >&2
       return 2
@@ -155,7 +162,8 @@ run_typecheck_for_project() {
       else
         build_result=$(npm run build 2>&1)
       fi
-      if [[ $? -ne 0 ]]; then
+      ec=$?
+      if [[ $ec -ne 0 ]]; then
         echo "Build failing (strict mode). Fix build errors before completing this task:" >&2
         echo "$build_result" | tail -20 >&2
         return 2
@@ -168,7 +176,8 @@ run_typecheck_for_project() {
   if [[ -f "pyproject.toml" ]] || [[ -f "setup.py" ]] || [[ -f "requirements.txt" ]]; then
     if command -v ruff &>/dev/null; then
       result=$(ruff check . 2>&1 | head -20)
-      if [[ $? -ne 0 ]]; then
+      ec=$?
+      if [[ $ec -ne 0 ]]; then
         echo "Ruff lint errors. Fix before completing this task:" >&2
         echo "$result" >&2
         return 2
@@ -183,7 +192,8 @@ run_typecheck_for_project() {
       elif command -v mypy &>/dev/null; then
         type_result=$(mypy . 2>&1 | tail -20)
       fi
-      if [[ -n "$type_result" ]] && [[ $? -ne 0 ]]; then
+      ec=$?
+      if [[ $ec -ne 0 ]] && [[ -n "$type_result" ]]; then
         echo "Type errors (strict mode). Fix before completing this task:" >&2
         echo "$type_result" >&2
         return 2
@@ -195,7 +205,8 @@ run_typecheck_for_project() {
 
   if [[ -f "Cargo.toml" ]] && command -v cargo &>/dev/null; then
     result=$(cargo check 2>&1 | tail -20)
-    if [[ $? -ne 0 ]]; then
+    ec=$?
+    if [[ $ec -ne 0 ]]; then
       echo "Cargo check failing. Fix Rust errors before completing this task:" >&2
       echo "$result" >&2
       return 2
@@ -204,7 +215,8 @@ run_typecheck_for_project() {
     if [[ "$strict_mode" == "true" ]]; then
       local test_result
       test_result=$(cargo test 2>&1 | tail -20)
-      if [[ $? -ne 0 ]]; then
+      ec=$?
+      if [[ $ec -ne 0 ]]; then
         echo "Cargo test failing (strict mode). Fix before completing this task:" >&2
         echo "$test_result" >&2
         return 2
@@ -216,14 +228,16 @@ run_typecheck_for_project() {
 
   if [[ -f "go.mod" ]] && command -v go &>/dev/null; then
     result=$(go build ./... 2>&1 | tail -20)
-    if [[ $? -ne 0 ]]; then
+    ec=$?
+    if [[ $ec -ne 0 ]]; then
       echo "Go build failing. Fix errors before completing this task:" >&2
       echo "$result" >&2
       return 2
     fi
 
     result=$(go vet ./... 2>&1 | tail -20)
-    if [[ $? -ne 0 ]]; then
+    ec=$?
+    if [[ $ec -ne 0 ]]; then
       echo "Go vet errors. Fix before completing this task:" >&2
       echo "$result" >&2
       return 2
@@ -232,7 +246,8 @@ run_typecheck_for_project() {
     if [[ "$strict_mode" == "true" ]]; then
       local test_result
       test_result=$(go test ./... 2>&1 | tail -20)
-      if [[ $? -ne 0 ]]; then
+      ec=$?
+      if [[ $ec -ne 0 ]]; then
         echo "Go test failing (strict mode). Fix before completing this task:" >&2
         echo "$test_result" >&2
         return 2
@@ -244,7 +259,8 @@ run_typecheck_for_project() {
 
   if [[ -f "Package.swift" ]] && command -v swift &>/dev/null; then
     result=$(swift build 2>&1 | tail -20)
-    if [[ $? -ne 0 ]]; then
+    ec=$?
+    if [[ $ec -ne 0 ]]; then
       echo "Swift build failing. Fix errors before completing this task:" >&2
       echo "$result" >&2
       return 2
@@ -253,7 +269,8 @@ run_typecheck_for_project() {
     if [[ "$strict_mode" == "true" ]]; then
       local test_result
       test_result=$(swift test 2>&1 | tail -20)
-      if [[ $? -ne 0 ]]; then
+      ec=$?
+      if [[ $ec -ne 0 ]]; then
         echo "Swift test failing (strict mode). Fix before completing this task:" >&2
         echo "$test_result" >&2
         return 2
@@ -262,7 +279,8 @@ run_typecheck_for_project() {
   elif ls *.xcodeproj &>/dev/null || ls *.xcworkspace &>/dev/null; then
     if command -v xcodebuild &>/dev/null; then
       result=$(xcodebuild build -quiet 2>&1 | tail -20)
-      if [[ $? -ne 0 ]]; then
+      ec=$?
+      if [[ $ec -ne 0 ]]; then
         echo "Xcode build failing. Fix errors before completing this task:" >&2
         echo "$result" >&2
         return 2
@@ -275,11 +293,13 @@ run_typecheck_for_project() {
   if [[ -f "build.gradle" || -f "build.gradle.kts" ]]; then
     if [[ -f "./gradlew" ]]; then
       result=$(./gradlew compileKotlin 2>&1 | tail -20)
-      if [[ $? -ne 0 ]]; then
+      ec=$?
+      if [[ $ec -ne 0 ]]; then
         # Fallback to Java compilation
         result=$(./gradlew compileJava 2>&1 | tail -20)
+        ec=$?
       fi
-      if [[ $? -ne 0 ]]; then
+      if [[ $ec -ne 0 ]]; then
         echo "Gradle compile failing. Fix errors before completing this task:" >&2
         echo "$result" >&2
         return 2
@@ -288,7 +308,8 @@ run_typecheck_for_project() {
       if [[ "$strict_mode" == "true" ]]; then
         local test_result
         test_result=$(./gradlew test 2>&1 | tail -20)
-        if [[ $? -ne 0 ]]; then
+        ec=$?
+        if [[ $ec -ne 0 ]]; then
           echo "Gradle test failing (strict mode). Fix before completing this task:" >&2
           echo "$test_result" >&2
           return 2
@@ -303,12 +324,14 @@ run_typecheck_for_project() {
     local main_tex
     main_tex=$(ls *.tex | head -1)
     result=$(chktex -q "$main_tex" 2>&1 | head -20)
-    if [[ $? -ne 0 ]] && [[ "$strict_mode" == "true" ]]; then
+    ec=$?
+    if [[ $ec -ne 0 ]] && [[ "$strict_mode" == "true" ]]; then
       echo "LaTeX lint warnings (strict mode). Review before completing:" >&2
       echo "$result" >&2
       # Don't block on LaTeX warnings, just warn
     fi
   fi
 
+  eval "$_prev_pipefail"
   return 0
 }
