@@ -59,8 +59,8 @@ fi
 HANDOFF_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}/.claude"
 if [[ -d "$HANDOFF_DIR" ]]; then
   LATEST_HANDOFF=$(ls -t "$HANDOFF_DIR"/handoff-*.md 2>/dev/null | head -1)
-  if [[ -n "$LATEST_HANDOFF" ]]; then
-    FILE_MTIME=$(stat -c %Y "$LATEST_HANDOFF" 2>/dev/null || date -r "$LATEST_HANDOFF" +%s 2>/dev/null || echo "0")
+  if [[ -n "$LATEST_HANDOFF" && -f "$LATEST_HANDOFF" ]]; then
+    FILE_MTIME=$(stat -c %Y "$LATEST_HANDOFF" 2>/dev/null || stat -f %m "$LATEST_HANDOFF" 2>/dev/null || echo 0)
     NOW=$(date +%s)
     AGE_HOURS=$(( (NOW - FILE_MTIME) / 3600 ))
     if [[ $AGE_HOURS -lt 24 ]]; then

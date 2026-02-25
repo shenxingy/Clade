@@ -56,8 +56,13 @@ for pattern in "${MIGRATION_PATTERNS[@]}"; do
 done
 
 # ─── Catastrophic rm -rf on system/home directories ──────────────────
-# Block rm -rf targeting /, ~, $HOME, or critical system paths.
-if echo "$COMMAND" | grep -qE 'rm[[:space:]]+-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*[[:space:]]+(\/[^a-zA-Z]|~|~\/|\$HOME|\/home|\/etc|\/usr|\/var|\/sys|\/proc|\/boot|\/dev|\/root)'; then
+# Block rm with both -r and -f flags targeting /, ~, $HOME, or critical system paths.
+# Handles any flag order: -rf, -fr, -r -f, -f -r, -rfi, etc.
+DANGEROUS_PATHS='(/[[:space:]]|/\*|~|\$HOME|/home|/etc|/usr|/var|/sys|/proc|/boot)\b'
+if echo "$COMMAND" | grep -qE '\brm\b' \
+  && echo "$COMMAND" | grep -qE '\brm\b.*-[a-zA-Z]*r' \
+  && echo "$COMMAND" | grep -qE '\brm\b.*-[a-zA-Z]*f' \
+  && echo "$COMMAND" | grep -qE "$DANGEROUS_PATHS"; then
   jq -n \
     --arg cmd "$COMMAND" \
     '{"decision":"block","reason":("Catastrophic rm -rf blocked on system/home directory. Command: " + $cmd + ". If intentional, run manually in your terminal.")}'
@@ -66,7 +71,10 @@ fi
 
 # ─── Force push to main/master ────────────────────────────────────────
 # Force-pushing to shared branches destroys history. Block unconditionally.
-if echo "$COMMAND" | grep -qE 'git[[:space:]]+push[[:space:]]+.*(--force|-f).*[[:space:]]+(origin[[:space:]]+)?(main|master)([[:space:]]|$)'; then
+# Handles flags before or after branch name: git push --force origin main, git push origin main -f
+if echo "$COMMAND" | grep -qE 'git[[:space:]]+push[[:space:]]' \
+  && echo "$COMMAND" | grep -qE '(--force\b|-f\b)' \
+  && echo "$COMMAND" | grep -qE '\b(main|master)\b'; then
   jq -n \
     --arg cmd "$COMMAND" \
     '{"decision":"block","reason":("Force push to main/master blocked. This destroys shared history. Use --force-with-lease on a feature branch, or ask the user explicitly. Command: " + $cmd)}'

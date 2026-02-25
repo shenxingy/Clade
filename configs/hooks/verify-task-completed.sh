@@ -22,7 +22,7 @@ STRICT_MODE=false
 
 if [[ -f "$STATS_FILE" ]] && command -v jq &>/dev/null; then
   # Determine domain from changed files
-  CHANGED_FILES=$(git diff --name-only HEAD~1 2>/dev/null || git diff --name-only 2>/dev/null)
+  CHANGED_FILES=$(git diff --name-only --diff-filter=ACMR HEAD 2>/dev/null || git diff --name-only --cached 2>/dev/null || echo "")
 
   # Categorize domain
   DOMAIN="unknown"
