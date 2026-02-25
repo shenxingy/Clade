@@ -26,7 +26,7 @@ TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 LOG_DIR="logs/claude-tasks"
 PROGRESS_FILE="$LOG_DIR/${TIMESTAMP}-progress"
 
-DEFAULT_TIMEOUT=900
+DEFAULT_TIMEOUT=1800
 DEFAULT_RETRIES=2
 
 CLAUDE_FLAGS="--dangerously-skip-permissions"

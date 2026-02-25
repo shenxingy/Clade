@@ -308,7 +308,7 @@ INSTRUCTIONS
     {
       echo "===TASK==="
       echo "model: $WORKER_MODEL"
-      echo "timeout: 900"
+      echo "timeout: 1800"
       echo "retries: 1"
       echo "---"
       echo "$SUPERVISOR_OUTPUT"
