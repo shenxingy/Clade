@@ -1400,7 +1400,8 @@ const PaneManager = {
         pane.term.write('\r\n\x1b[33m[Reconnecting...]\x1b[0m\r\n');
       }
       setTimeout(() => {
-        if (sessionStates.has(sessionId) && st.panes.has(paneId)) {
+        const curr = sessionStates.get(sessionId);
+        if (curr && curr.panes.has(paneId)) {
           this.connectPaneWs(sessionId, paneId);
         }
       }, 2000);
@@ -1950,11 +1951,17 @@ function updateProgress(pct, eta) {
 
 // ─── Task actions ────────────────────────────────────────────────────────────
 async function runTask(id) {
-  await fetch(`/api/tasks/${id}/run?session=${activeSessionId}`, { method: 'POST' });
+  try {
+    const res = await fetch(`/api/tasks/${id}/run?session=${activeSessionId}`, { method: 'POST' });
+    if (!res.ok) showToast('Failed to start task', true);
+  } catch(e) { showToast('Error: ' + e.message, true); }
 }
 
 async function deleteTask(id) {
-  await fetch(`/api/tasks/${id}?session=${activeSessionId}`, { method: 'DELETE' });
+  try {
+    const res = await fetch(`/api/tasks/${id}?session=${activeSessionId}`, { method: 'DELETE' });
+    if (!res.ok) showToast('Failed to delete task', true);
+  } catch(e) { showToast('Error: ' + e.message, true); }
 }
 
 async function sendTaskMessage(taskId) {
@@ -2132,14 +2139,18 @@ async function sendWorkerMessage() {
   if (!activeWorkerId) return;
   const msg = document.getElementById('workerChatInput').value.trim();
   if (!msg) return;
-
-  await fetch(`/api/workers/${activeWorkerId}/message?session=${activeSessionId}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: msg }),
-  });
-  closeWorkerChat();
-  showToast('Message sent — worker restarted with new context');
+  try {
+    const res = await fetch(`/api/workers/${activeWorkerId}/message?session=${activeSessionId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg }),
+    });
+    if (!res.ok) { showToast('Failed to send message', true); return; }
+    closeWorkerChat();
+    showToast('Message sent — worker restarted with new context');
+  } catch(e) {
+    showToast('Error: ' + e.message, true);
+  }
 }
 
 document.getElementById('workerChatInput').addEventListener('keydown', (e) => {
@@ -2185,16 +2196,18 @@ async function confirmProposed() {
   document.getElementById('proposedOverlay').classList.add('hidden');
   try {
     // Import then start all
-    await fetch(`/api/tasks/import-proposed?session=${activeSessionId}`, {
+    const importRes = await fetch(`/api/tasks/import-proposed?session=${activeSessionId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content: window._lastProposedContent || '' }),
     });
+    if (!importRes.ok) { showToast('Failed to import tasks', true); return; }
     const res = await fetch(`/api/tasks/start-all?session=${activeSessionId}`, { method: 'POST' });
+    if (!res.ok) { showToast('Failed to start workers', true); return; }
     const data = await res.json();
     showToast(`Started ${data.started} workers`);
   } catch(e) {
-    showToast('Error importing tasks: ' + e.message);
+    showToast('Error importing tasks: ' + e.message, true);
   }
 }
 
@@ -2203,9 +2216,10 @@ async function runAllTasks() {
   if (btn) btn.disabled = true;
   try {
     const res = await fetch(`/api/tasks/start-all?session=${activeSessionId}`, { method: 'POST' });
+    if (!res.ok) { showToast('Failed to start workers', true); return; }
     const data = await res.json();
     showToast(`Started ${data.started} worker${data.started !== 1 ? 's' : ''}`);
-  } catch(e) { showToast('Error: ' + e.message); }
+  } catch(e) { showToast('Error: ' + e.message, true); }
   finally { if (btn) btn.disabled = false; }
 }
 
@@ -2485,6 +2499,10 @@ async function confirmProjectSwitch() {
     const data = await res.json();
     if (data.error) { showToast('Error: ' + data.error); return; }
     await loadSessions();
+    if (!sessionStates.has(data.session_id)) {
+      showToast('Failed to register new session', true);
+      return;
+    }
     switchTab(data.session_id);
   } catch(e) {
     showToast('Failed to open new tab');
