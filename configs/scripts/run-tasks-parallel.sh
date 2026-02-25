@@ -392,7 +392,9 @@ run_task_in_worktree() {
   local succeeded=false
   for attempt in $(seq 1 "$max_attempts"); do
     if [[ $attempt -gt 1 ]]; then
-      echo "[$task_idx] Retry $attempt/$max_attempts..."
+      # Exponential backoff on timeout (like TCP congestion control)
+      task_timeout=$(( task_timeout * 3 / 2 ))
+      echo "[$task_idx] Retry $attempt/$max_attempts (timeout: ${task_timeout}s)..."
       # Reset worktree on retry
       (cd "$wt_dir" && git checkout . && git clean -fd) 2>/dev/null
     fi

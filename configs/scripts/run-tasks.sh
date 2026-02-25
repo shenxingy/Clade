@@ -527,8 +527,10 @@ while true; do
     log_file="$LOG_DIR/${TIMESTAMP}-task-${idx}-attempt-${attempt}.log"
 
     if [[ $attempt -gt 1 ]]; then
+      # Exponential backoff on timeout (like TCP congestion control)
+      task_timeout=$(( task_timeout * 3 / 2 ))
       echo ""
-      echo "🔄 Retry $attempt/$max_attempts for task $idx..."
+      echo "🔄 Retry $attempt/$max_attempts for task $idx (timeout: ${task_timeout}s)..."
       sleep 3  # Brief cooldown between retries
     fi
 
