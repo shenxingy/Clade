@@ -126,7 +126,8 @@ extract_file_refs() {
 detect_conflicts() {
   local total
   total=$(count_tasks)
-  declare -gA TASK_FILES_MAP
+  unset TASK_FILES_MAP
+  declare -gA TASK_FILES_MAP=()
 
   for i in $(seq 1 "$total"); do
     local prompt
@@ -135,8 +136,10 @@ detect_conflicts() {
   done
 
   # Build conflict groups: tasks sharing files go in the same serial group
+  unset GROUPS ASSIGNED
   declare -ga GROUPS=()
-  declare -gA ASSIGNED
+  declare -gA ASSIGNED=()
+
   local group_idx=0
 
   for i in $(seq 1 "$total"); do
