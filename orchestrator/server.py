@@ -2102,7 +2102,7 @@ class WorkerPool:
                                         own_files=w.own_files, forbidden_files=w.forbidden_files)
                     await task_queue.update(
                         w.task_id,
-                        failed_reason=f"Ownership violation: {w._ownership_violation_reason[:200]}"
+                        failed_reason=f"Ownership violation: {(w._ownership_violation_reason or '')[:200]}"
                     )
                     logger.info("Ownership violation task %s — re-queued with reason", w.task_id)
                 # Worker wrote handoff file → create continuation task
@@ -2701,9 +2701,8 @@ class ProjectSession:
 
             # Collect codebase context — prefer TLDR, fallback to find
             try:
-                loop2 = asyncio.get_event_loop()
-                file_listing = await loop2.run_in_executor(
-                    None, _generate_code_tldr, context_dir
+                file_listing = await asyncio.to_thread(
+                    _generate_code_tldr, context_dir
                 )
             except Exception:
                 file_listing = ""
@@ -3107,11 +3106,15 @@ async def create_session(body: dict):
     except (ValueError, TypeError):
         raise HTTPException(status_code=400, detail="rows and cols must be integers")
     session = registry.create(str(path))
-    recovered = await _recover_orphaned_tasks(session.task_queue)
-    if recovered:
-        logger.info("Recovered %d orphaned tasks as 'interrupted' for new session", recovered)
-    session.orchestrator.start(session.project_dir, rows=rows, cols=cols)
-    session.start_watch()
+    try:
+        recovered = await _recover_orphaned_tasks(session.task_queue)
+        if recovered:
+            logger.info("Recovered %d orphaned tasks as 'interrupted' for new session", recovered)
+        session.orchestrator.start(session.project_dir, rows=rows, cols=cols)
+        session.start_watch()
+    except Exception:
+        registry.remove(session.session_id)
+        raise
     return session.to_dict()
 
 
@@ -3236,15 +3239,22 @@ async def start_loop(session_id: str, body: dict):
     if not artifact_path:
         raise HTTPException(status_code=400, detail="artifact_path required")
     context_dir = body.get("context_dir") or None
-    convergence_k = int(body.get("convergence_k", GLOBAL_SETTINGS.get("loop_convergence_k", 2)))
-    convergence_n = int(body.get("convergence_n", GLOBAL_SETTINGS.get("loop_convergence_n", 3)))
-    max_iterations = int(body.get("max_iterations", GLOBAL_SETTINGS.get("loop_max_iterations", 20)))
+    try:
+        convergence_k = int(body.get("convergence_k", GLOBAL_SETTINGS.get("loop_convergence_k", 2)))
+        convergence_n = int(body.get("convergence_n", GLOBAL_SETTINGS.get("loop_convergence_n", 3)))
+        max_iterations = int(body.get("max_iterations", GLOBAL_SETTINGS.get("loop_max_iterations", 20)))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="convergence_k, convergence_n, max_iterations must be integers")
     supervisor_model = body.get("supervisor_model", GLOBAL_SETTINGS.get("loop_supervisor_model", "sonnet"))
     mode = body.get("mode", "review")
 
-    # Cancel any running loop coroutine
+    # Cancel any running loop coroutine — await to prevent race
     if s._loop_task and not s._loop_task.done():
         s._loop_task.cancel()
+        try:
+            await s._loop_task
+        except (asyncio.CancelledError, Exception):
+            pass
         s._loop_task = None
 
     # Reset loop state (delete old row, create fresh)
@@ -3331,7 +3341,10 @@ async def start_swarm(session_id: str, body: dict):
     # Cancel old refill loop if still running
     if s._swarm and s._swarm._task and not s._swarm._task.done():
         s._swarm._task.cancel()
-    slots = int(body.get("slots", 3))
+    try:
+        slots = int(body.get("slots", 3))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="slots must be an integer")
     s._swarm = SwarmManager(s)
     return s._swarm.start(slots)
 
@@ -3356,7 +3369,10 @@ async def resize_swarm(session_id: str, body: dict):
         raise HTTPException(status_code=404, detail="Session not found")
     if not s._swarm:
         raise HTTPException(status_code=404, detail="No swarm active")
-    slots = int(body.get("slots", 3))
+    try:
+        slots = int(body.get("slots", 3))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="slots must be an integer")
     return s._swarm.resize(slots)
 
 
@@ -3848,10 +3864,9 @@ async def get_code_tldr(session_id: str):
     session = registry.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    loop = asyncio.get_event_loop()
     try:
-        tldr = await loop.run_in_executor(
-            None, _generate_code_tldr, str(session.project_dir)
+        tldr = await asyncio.to_thread(
+            _generate_code_tldr, str(session.project_dir)
         )
     except Exception as e:
         tldr = f"(error: {e})"
@@ -4029,8 +4044,7 @@ def _get_usage() -> dict:
 
 @app.get("/api/usage")
 async def get_usage():
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, _get_usage)
+    return await asyncio.to_thread(_get_usage)
 
 
 # ─── REST: GitHub Issues Sync ─────────────────────────────────────────────────
