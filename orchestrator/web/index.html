@@ -1408,6 +1408,13 @@ const PaneManager = {
     };
     ws.onerror = () => {
       if (sessionId === activeSessionId) setOrchStatus('disconnected', 'Connection error');
+      ws.onclose = null;
+      setTimeout(() => {
+        const curr = sessionStates.get(sessionId);
+        if (curr && curr.panes.has(paneId)) {
+          this.connectPaneWs(sessionId, paneId);
+        }
+      }, 3000);
     };
   },
 
@@ -1637,6 +1644,7 @@ window.addEventListener('resize', fitAndSync);
 async function loadSessions() {
   try {
     const res = await fetch('/api/sessions');
+    if (!res.ok) return;
     sessions = await res.json();
     if (sessions.length > 0 && !activeSessionId) {
       activeSessionId = sessions[0].session_id;
@@ -2027,11 +2035,17 @@ function toggleAddTask() {
 
 // ─── Worker actions ──────────────────────────────────────────────────────────
 async function pauseWorker(id) {
-  await fetch(`/api/workers/${id}/pause?session=${activeSessionId}`, { method: 'POST' });
+  try {
+    const res = await fetch(`/api/workers/${id}/pause?session=${activeSessionId}`, { method: 'POST' });
+    if (!res.ok) showToast('Failed to pause worker', true);
+  } catch(e) { showToast('Error: ' + e.message, true); }
 }
 
 async function resumeWorker(id) {
-  await fetch(`/api/workers/${id}/resume?session=${activeSessionId}`, { method: 'POST' });
+  try {
+    const res = await fetch(`/api/workers/${id}/resume?session=${activeSessionId}`, { method: 'POST' });
+    if (!res.ok) showToast('Failed to resume worker', true);
+  } catch(e) { showToast('Error: ' + e.message, true); }
 }
 
 function openWorkerChat(id, name) {
@@ -2228,6 +2242,7 @@ async function retryAllFailed() {
   if (btn) btn.disabled = true;
   try {
     const res = await fetch(`/api/tasks/retry-failed?session=${activeSessionId}`, { method: 'POST' });
+    if (!res.ok) { showToast('Failed to retry tasks', true); return; }
     const data = await res.json();
     showToast(`Requeued ${data.retried} failed task${data.retried !== 1 ? 's' : ''} with error context`);
   } catch(e) { showToast('Error: ' + e.message); }
