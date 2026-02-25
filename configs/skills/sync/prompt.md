@@ -72,6 +72,19 @@ Guidelines:
 
 ---
 
+## Step 3b: Prune old entries
+
+If PROGRESS.md exceeds 100 lines:
+1. Identify entries older than 30 days (by their `### YYYY-MM-DD` headers)
+2. If the entry is NOT marked with `[ACTIVE]`, move it to `docs/progress-archive/YYYY-MM.md` (create the file if needed, append to it)
+3. Keep PROGRESS.md under 100 lines — the most recent entries stay
+4. Show what was archived:
+   ```
+   Archived 3 old entries to docs/progress-archive/2026-01.md
+   ```
+
+---
+
 
 ## Step 4: Print summary
 
