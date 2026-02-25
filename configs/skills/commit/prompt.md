@@ -127,3 +127,4 @@ Commit complete:
 - Never use `git add .` or `git add -A` — always add specific files
 - If working tree is clean, say so and exit immediately
 - Only one confirmation step — don't ask again after the user says proceed
+- **Alternative for simple cases:** For agents that need a quick single commit without multi-group splitting, use `~/.claude/scripts/committer.sh "type: message" file1 file2 ...` instead of this skill. The commit skill is for interactive, multi-group commit workflows.

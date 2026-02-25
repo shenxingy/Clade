@@ -47,7 +47,7 @@ Read steps from TODO.md, auto-plan implementation details, and run them sequenti
 3. **Scout scoring** — Each task is scored on readiness (target files found, patterns clear, no blocking deps). Tasks scoring <50 are skipped.
 4. **Model assignment** — Each task gets assigned `haiku`, `sonnet`, or `opus` based on complexity
 5. Tasks are written to `tasks.txt` in delimited block format
-6. `scripts/run-tasks.sh` (serial) or `scripts/run-tasks-parallel.sh` (parallel) executes tasks
+6. `~/.claude/scripts/run-tasks.sh` (serial) or `~/.claude/scripts/run-tasks-parallel.sh` (parallel) executes tasks
 7. Each task runs with a timeout; on failure, working tree is rolled back and the task is retried
 8. Logs go to `logs/claude-tasks/` with timestamps (per attempt)
 9. After all tasks complete: success/failure summary, failures logged to PROGRESS.md + GitHub Issue
