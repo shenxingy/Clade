@@ -954,6 +954,18 @@
     <span>Context budget warnings</span>
     <input type="checkbox" id="settingContextBudget" checked onchange="saveSettings()" />
   </label>
+  <div style="font-size:10px;font-weight:600;opacity:0.5;text-transform:uppercase;letter-spacing:0.5px;margin-top:10px;margin-bottom:4px;padding:0 12px">Context Intelligence</div>
+  <label class="settings-row">
+    <span>Code TLDR</span>
+    <button class="btn small secondary" onclick="showCodeTldr()">View</button>
+  </label>
+  <label class="settings-row">
+    <span>Interventions</span>
+    <span style="display:flex;align-items:center;gap:6px">
+      <span class="badge" id="interventionCount" style="font-size:10px;display:none">0</span>
+      <button class="btn small secondary" onclick="showInterventions()">View</button>
+    </span>
+  </label>
   <div style="font-size:10px;font-weight:600;opacity:0.5;text-transform:uppercase;letter-spacing:0.5px;margin-top:10px;margin-bottom:4px;padding:0 12px">Experimental</div>
   <label class="settings-row">
     <span>Agent Teams (experimental)</span>
@@ -2017,6 +2029,47 @@ function closeWorkerLog() {
   activeLogWorkerId = null;
 }
 
+// ─── Code TLDR viewer ───────────────────────────────────────────────────────
+
+async function showCodeTldr() {
+  if (!activeSessionId) return;
+  document.getElementById('workerLogTitle').textContent = 'Code TLDR';
+  document.getElementById('workerLogContent').textContent = 'Loading...';
+  document.getElementById('workerLogModal').classList.remove('hidden');
+  try {
+    const res = await fetch(`/api/sessions/${activeSessionId}/code-tldr`);
+    const data = await res.json();
+    document.getElementById('workerLogContent').textContent = data.tldr || '(empty)';
+  } catch(e) {
+    document.getElementById('workerLogContent').textContent = 'Error loading TLDR.';
+  }
+}
+
+// ─── Interventions viewer ───────────────────────────────────────────────────
+
+async function showInterventions() {
+  if (!activeSessionId) return;
+  document.getElementById('workerLogTitle').textContent = 'Recorded Interventions';
+  document.getElementById('workerLogContent').textContent = 'Loading...';
+  document.getElementById('workerLogModal').classList.remove('hidden');
+  try {
+    const res = await fetch(`/api/interventions?session=${activeSessionId}`);
+    const data = await res.json();
+    if (!data.length) {
+      document.getElementById('workerLogContent').textContent = '(no interventions recorded yet)';
+      return;
+    }
+    const text = data.map(iv => {
+      const status = iv.success ? '[SUCCESS]' : '[pending]';
+      const ts = iv.created_at ? new Date(iv.created_at * 1000).toLocaleString() : '';
+      return `${status} ${ts}\nPattern: ${iv.failure_pattern}\nCorrection: ${iv.correction}\nTask hint: ${iv.task_description_hint || '(none)'}\n`;
+    }).join('\n---\n\n');
+    document.getElementById('workerLogContent').textContent = text;
+  } catch(e) {
+    document.getElementById('workerLogContent').textContent = 'Error loading interventions.';
+  }
+}
+
 async function sendWorkerMessage() {
   if (!activeWorkerId) return;
   const msg = document.getElementById('workerChatInput').value.trim();
@@ -2654,15 +2707,15 @@ function drawSparkline(canvas, values) {
   const w = canvas.width, h = canvas.height;
   ctx.clearRect(0, 0, w, h);
   if (!values || values.length === 0) return;
-  const max = Math.max(...values, 1);
-  const barW = Math.max(3, Math.floor(w / (values.length + 1)));
+  // Normalize: entries may be int or {count, hash}
+  const counts = values.map(v => typeof v === 'object' ? (v.count || 0) : v);
+  const max = Math.max(...counts, 1);
+  const barW = Math.max(3, Math.floor(w / (counts.length + 1)));
   const gap = 2;
-  values.forEach((v, i) => {
+  counts.forEach((v, i) => {
     const barH = Math.max(2, Math.round((v / max) * (h - 2)));
     const x = i * (barW + gap);
     const y = h - barH;
-    ctx.fillStyle = v === 0 ? 'var(--green)' : 'var(--accent)';
-    // Canvas doesn't understand CSS vars; use hardcoded values
     ctx.fillStyle = v === 0 ? '#3fb950' : '#58a6ff';
     ctx.fillRect(x, y, barW, barH);
   });
@@ -2753,12 +2806,21 @@ function updateLoopUI(loopState) {
     const hist = loopState.changes_history || [];
     const k = loopState.convergence_k || 2;
     const n = loopState.convergence_n || 3;
+    // Normalize entries: may be int or {count, hash}
+    const entries = hist.map(e => typeof e === 'object' ? e : {count: e, hash: ''});
     if (isConverged) {
-      convergenceLabel.textContent = `Converged after ${loopState.iteration} iterations`;
+      // Detect reason
+      let reason = 'count';
+      if (entries.length >= 2 && entries[entries.length-1].hash && entries[entries.length-1].hash === entries[entries.length-2].hash) {
+        reason = 'semantic';
+      } else if ((loopState.iteration || 0) >= (loopState.max_iterations || 20)) {
+        reason = 'max_iterations';
+      }
+      convergenceLabel.textContent = `Converged after ${loopState.iteration} iterations (${reason})`;
       convergenceLabel.style.color = 'var(--green)';
-    } else if (hist.length > 0) {
-      const recent = hist.slice(-n);
-      const withinThreshold = recent.filter(c => c <= k).length;
+    } else if (entries.length > 0) {
+      const recent = entries.slice(-n);
+      const withinThreshold = recent.filter(e => e.count <= k).length;
       convergenceLabel.textContent = `${withinThreshold}/${n} within threshold`;
       convergenceLabel.style.color = 'var(--text2)';
     } else {
@@ -3000,6 +3062,16 @@ async function loadSettings() {
     // Show/hide sync button based on setting
     const syncBtn = document.getElementById('ghSyncBtn');
     if (syncBtn) syncBtn.style.display = s.github_issues_sync ? '' : 'none';
+    // Load intervention count
+    try {
+      const ivRes = await fetch(`/api/interventions?session=${activeSessionId}`);
+      const ivData = await ivRes.json();
+      const ivBadge = document.getElementById('interventionCount');
+      if (ivBadge && ivData.length > 0) {
+        ivBadge.textContent = ivData.length;
+        ivBadge.style.display = '';
+      }
+    } catch {}
   } catch {}
 }
 
