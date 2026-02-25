@@ -18,7 +18,7 @@ echo ""
 # ─── 1. Create directories ───────────────────────────────────────────
 
 echo "Creating directories..."
-mkdir -p "$CLAUDE_DIR"/{hooks,agents,skills,scripts,corrections,commands}
+mkdir -p "$CLAUDE_DIR"/{hooks/lib,agents,skills,scripts,corrections,commands}
 
 # ─── 2. Copy hooks (chmod +x) ────────────────────────────────────────
 
@@ -26,6 +26,12 @@ echo "Installing hooks..."
 cp "$SCRIPT_DIR/configs/hooks/"*.sh "$CLAUDE_DIR/hooks/"
 chmod +x "$CLAUDE_DIR/hooks/"*.sh
 echo "  Installed: $(ls "$SCRIPT_DIR/configs/hooks/"*.sh | xargs -I{} basename {} | tr '\n' ' ')"
+
+# Copy hook libraries
+if [[ -d "$SCRIPT_DIR/configs/hooks/lib" ]]; then
+  cp "$SCRIPT_DIR/configs/hooks/lib/"*.sh "$CLAUDE_DIR/hooks/lib/"
+  echo "  Installed lib: $(ls "$SCRIPT_DIR/configs/hooks/lib/"*.sh | xargs -I{} basename {} | tr '\n' ' ')"
+fi
 
 # ─── 3. Copy agents ──────────────────────────────────────────────────
 
@@ -49,6 +55,12 @@ echo "Installing scripts..."
 cp "$SCRIPT_DIR/configs/scripts/"*.sh "$CLAUDE_DIR/scripts/"
 chmod +x "$CLAUDE_DIR/scripts/"*.sh
 echo "  Installed: $(ls "$SCRIPT_DIR/configs/scripts/"*.sh | xargs -I{} basename {} | tr '\n' ' ')"
+
+# Deploy models.env (canonical model IDs)
+if [[ -f "$SCRIPT_DIR/configs/models.env" ]]; then
+  cp "$SCRIPT_DIR/configs/models.env" "$CLAUDE_DIR/models.env"
+  echo "  Installed models.env (canonical model IDs)"
+fi
 
 # ─── 6. Copy commands ────────────────────────────────────────────────
 
