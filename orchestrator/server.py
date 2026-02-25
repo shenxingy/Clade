@@ -2999,6 +2999,7 @@ async def status_loop():
 
                 tasks = await session.task_queue.list()
                 workers = [w.to_dict() for w in session.worker_pool.all()]
+                loop_state = await session.task_queue.get_loop()
 
                 # Detect run-complete (all workers idle, no pending tasks, but some done)
                 # Suppress during active loop — loop has its own loop_converged notification
@@ -3032,7 +3033,6 @@ async def status_loop():
                 remaining = total - done_count
                 eta_seconds = int(avg_s * remaining) if remaining > 0 else 0
 
-                loop_state = await session.task_queue.get_loop()
                 swarm_state = session._swarm.to_dict() if session._swarm else None
                 msg = json.dumps({
                     "type": "status",
@@ -3088,12 +3088,15 @@ async def create_session(body: dict):
     path = Path(path_str).expanduser().resolve()
     if not path.is_dir():
         raise HTTPException(status_code=400, detail=f"Directory not found: {path}")
+    try:
+        rows = int(body.get("rows", 24))
+        cols = int(body.get("cols", 80))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="rows and cols must be integers")
     session = registry.create(str(path))
     recovered = await _recover_orphaned_tasks(session.task_queue)
     if recovered:
         logger.info("Recovered %d orphaned tasks as 'interrupted' for new session", recovered)
-    rows = int(body.get("rows", 24))
-    cols = int(body.get("cols", 80))
     session.orchestrator.start(session.project_dir, rows=rows, cols=cols)
     session.start_watch()
     return session.to_dict()
