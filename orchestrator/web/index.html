@@ -511,7 +511,7 @@ const PaneManager = {
     });
 
     container.appendChild(wrapper);
-    setTimeout(() => { try { fitAddon.fit(); } catch(e) {} }, 50);
+    setTimeout(() => { try { fitAddon.fit(); } catch(e) { console.warn(e); } }, 50);
     this.connectPaneWs(sid, id);
     return id;
   },
@@ -542,7 +542,7 @@ const PaneManager = {
       try {
         const msg = JSON.parse(e.data);
         if (msg.type === 'output') pane.term.write(msg.data);
-      } catch {}
+      } catch(e) { console.warn(e); }
     };
     ws.onclose = () => {
       if (pane._reconnecting) return;
@@ -633,7 +633,7 @@ const PaneManager = {
 
     const firstId = [...st.panes.keys()][0];
     if (firstId) this.setActive(firstId);
-    this.fitSession(activeSessionId);
+    if (st.panes.size > 0) this.fitSession(activeSessionId);
   },
 
   focusNeighbor(dir) {
@@ -652,7 +652,7 @@ const PaneManager = {
     const st = sessionStates.get(sessionId);
     if (!st || !st.opened) return;
     st.panes.forEach(p => {
-      try { p.fitAddon.fit(); } catch(e) {}
+      try { p.fitAddon.fit(); } catch(e) { console.warn(e); }
       if (p.ws && p.ws.readyState === WebSocket.OPEN) {
         p.ws.send(JSON.stringify({ type: 'resize', rows: p.term.rows, cols: p.term.cols }));
       }
@@ -814,7 +814,7 @@ async function loadSessions() {
       if (!sessions.find(s => s.session_id === sid)) destroySessionState(sid);
     }
     renderTabs();
-  } catch(e) {}
+  } catch(e) { console.warn(e); }
 }
 
 function renderTabs() {
@@ -1585,16 +1585,18 @@ setInterval(refreshUsage, 60000);
 
 // ─── Project switcher ────────────────────────────────────────────────────────
 function refreshProjectBadge() {
-  const active = sessions.find(s => s.session_id === activeSessionId);
+  const capturedSid = activeSessionId;
+  const active = sessions.find(s => s.session_id === capturedSid);
   const btn = document.getElementById('projectBadge');
   if (active) {
     btn.textContent = '📁 ' + active.name;
     btn.title = (active.path || active.name) + '\n(click to add another project)';
   } else {
     fetch('/api/project').then(r => r.json()).then(d => {
+      if (activeSessionId !== capturedSid) return;
       btn.textContent = '📁 ' + d.name;
       btn.title = d.path + '\n(click to add another project)';
-    }).catch(() => {});
+    }).catch(e => { console.warn(e); });
   }
 }
 
@@ -1831,6 +1833,7 @@ document.getElementById('goalInput')?.addEventListener('keydown', e => {
 // ─── Intervene panel ──────────────────────────────────────────────────────────
 let _intervenedSessionId = null;
 function openIntervene() {
+  if (_intervenedSessionId != null && _intervenedSessionId !== activeSessionId) closeIntervene();
   _intervenedSessionId = activeSessionId;
   document.getElementById('intervenePanel').classList.add('open');
   const st = sessionStates.get(activeSessionId);
@@ -1845,6 +1848,7 @@ function closeIntervene() {
   const sid = _intervenedSessionId || activeSessionId;
   document.getElementById('intervenePanel').classList.remove('open');
   const st = sessionStates.get(sid);
+  if (!st || !st.el) { _intervenedSessionId = null; return; }
   const container = document.getElementById('terminalContainer');
   if (st && container) {
     container.appendChild(st.el);
@@ -2321,7 +2325,7 @@ async function renderAnalytics() {
     // Donut chart
     const entries = Object.entries(d.model_stats).filter(([,s]) => s.count > 0);
     if (entries.length > 0) drawDonut(entries);
-  } catch {}
+  } catch(e) { console.warn(e); }
 }
 
 function drawDonut(entries) {
@@ -2415,8 +2419,8 @@ async function loadSettings() {
         ivBadge.textContent = ivData.length;
         ivBadge.style.display = '';
       }
-    } catch {}
-  } catch {}
+    } catch(e) { console.warn(e); }
+  } catch(e) { console.warn(e); }
 }
 
 let _saveSettingsTimer = null;
@@ -2452,7 +2456,7 @@ function saveSettings() {
       // Update sync button visibility
       const syncBtn = document.getElementById('ghSyncBtn');
       if (syncBtn) syncBtn.style.display = document.getElementById('settingGhSync')?.checked ? '' : 'none';
-    } catch {}
+    } catch(e) { console.warn(e); }
   }, 400);
 }
 
@@ -2513,7 +2517,7 @@ async function renderOverview() {
         <span class="proj-eta">${eta}</span>
       </div>`;
     }).join('');
-  } catch(e) {}
+  } catch(e) { console.warn(e); }
 }
 
 async function startAllQueued() {
