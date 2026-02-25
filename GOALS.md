@@ -70,40 +70,53 @@ The output of one batch feeds the next planning step. Autonomous refinement cycl
 
 ---
 
-## Phase 3 — Autonomous Robustness (CURRENT)
+## Phase 3 — Autonomous Robustness ✓ DONE
 
 Close remaining gaps so the system runs overnight without human intervention.
 
-- [ ] Oracle rejection → auto-requeue (task re-queued with rejection reason as context)
-- [ ] Context budget auto-inject (inject warning into worker PTY, not just write file)
-- [ ] AGENTS.md auto-prepend to workers (start_worker reads and injects)
-- [ ] Worker handoff auto-trigger (detect handoff file → create continuation task)
-- [ ] Two-phase orchestrate (/orchestrate --plan → IMPLEMENTATION_PLAN.md → proposed-tasks.md)
-- [ ] Loop artifact marking (workers mark goal file items as done)
-- [ ] Loop --stop (kill running loop from another session)
+- [x] Oracle rejection → auto-requeue (task re-queued with rejection reason as context)
+- [x] Context budget auto-inject (warning field broadcast via WebSocket)
+- [x] AGENTS.md auto-prepend to workers (start_worker reads and injects)
+- [x] Worker handoff auto-trigger (detect handoff file → create continuation task)
+- [x] Two-phase orchestrate (/orchestrate --plan → IMPLEMENTATION_PLAN.md → proposed-tasks.md)
+- [x] Loop artifact marking (workers mark goal file items as done)
+- [x] Loop --stop + signal handling (SIGTERM/SIGINT graceful shutdown)
 
 ---
 
-## Phase 4 — Swarm Intelligence
+## Phase 4 — Swarm Intelligence ✓ DONE
 
 N workers operating as a true swarm: shared task pool, self-claiming, no central allocator.
 
-- [ ] Swarm mode — workers pull from shared queue, self-schedule
-- [ ] File ownership enforcement — AGENTS.md boundaries respected by workers
-- [ ] GitHub Issues sync — Issues as persistent multi-session task database
-- [ ] Agent Teams — expose `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`
-- [ ] Cross-worker messaging — mailbox pattern for inter-agent communication
-- [ ] Task hot-path indicator — critical path detection + model tier boost
+- [x] Swarm mode — workers pull from shared queue, self-schedule
+- [x] File ownership enforcement — OWN_FILES/FORBIDDEN_FILES parsed, stored in DB, enforced in verify_and_commit
+- [x] GitHub Issues sync — Issues as persistent multi-session task database
+- [x] Agent Teams — expose `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`
+- [x] Cross-worker messaging — mailbox pattern for inter-agent communication
+- [x] Task hot-path indicator — critical path detection + model tier boost
 
 ---
 
-## Phase 5 — Context Intelligence
+## Phase 5 — Context Intelligence ✓ DONE
 
 Reduce worker failure rate by giving them maximum relevant context at minimum token cost.
 
-- [ ] Semantic code TLDR — AST-based function summaries, ~1,200 tokens vs 23,000 raw
-- [ ] Intervention recording — replay successful corrections on similar failures
-- [ ] Dual-condition exit gate — semantic convergence analysis, not just change counting
+- [x] Semantic code TLDR — AST function signatures + JS/TS regex, ~750 tokens vs 5K+ raw
+- [x] Intervention recording — replay successful corrections on similar failures
+- [x] Dual-condition exit gate — semantic diff hash + change count convergence
+
+---
+
+## Phase 6 — Observability & Resilience (CURRENT)
+
+The system works. Now make it trustworthy at scale: know what happened, what it cost, and recover from failures.
+
+- [ ] **Task analytics** — success/failure rate, avg duration, model distribution; dashboard widget in UI
+- [ ] **Token/cost tracking** — parse claude CLI output for token counts, estimate cost per task, cumulative cost per session
+- [ ] **Cost budget limit** — set max spend per session/loop; auto-pause when budget hit
+- [ ] **Stuck worker detection** — if log file unchanged for N minutes, mark as stuck, auto-kill + requeue
+- [ ] **Session state persistence** — survive server restart (re-attach to running workers or mark as interrupted)
+- [ ] **Completion notifications** — webhook/callback when all tasks done or error threshold exceeded
 
 ---
 
@@ -113,9 +126,9 @@ What made 600 commits/day possible:
 
 1. **`committer "msg" file1 file2`** — scoped staging, anti-collision primitive ✓
 2. **One worktree per task** — true isolation ✓
-3. **AGENTS.md with file ownership** — parallel agents stay in lanes (partial)
+3. **AGENTS.md with file ownership** — parallel agents stay in lanes ✓
 4. **Ralph loop** — autonomous iteration until goal is met ✓
-5. **Self-organizing workers** — workers pull from queue (Phase 4)
+5. **Self-organizing workers** — workers pull from queue ✓
 6. **Oracle second-model review** — independent validation ✓
 7. **Model tier routing** — haiku/sonnet/opus by complexity ✓
 8. **Context compaction discipline** — workers /compact between subtasks ✓
