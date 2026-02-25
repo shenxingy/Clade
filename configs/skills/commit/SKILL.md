@@ -2,6 +2,7 @@
 name: commit
 description: Analyze uncommitted changes, split into logical commits by module, commit and push by default
 argument-hint: '[--no-push] [--dry-run]'
+user_invocable: true
 ---
 
 # Commit Skill
