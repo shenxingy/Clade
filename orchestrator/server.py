@@ -948,6 +948,8 @@ async def merge_all_done(s: ProjectSession = Depends(_resolve_session)):
                 except asyncio.TimeoutError:
                     merge_proc.kill()
                     await merge_proc.communicate()
+                    results.append({"worker_id": w.id, "error": "gh pr merge timed out"})
+                    continue
                 if merge_proc.returncode == 0:
                     w.pr_merged = True
                     merged += 1

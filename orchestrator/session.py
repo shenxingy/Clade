@@ -211,7 +211,7 @@ class ProjectSession:
             prompt_file = self.claude_dir / f"supervisor-iter-{iteration}.md"
             response = ""
             try:
-                prompt_file.write_text(prompt)
+                prompt_file.write_text(prompt, errors="replace")
                 proc = await asyncio.create_subprocess_shell(
                     f'claude -p "$(cat {shlex.quote(str(prompt_file))})" '
                     f'--model {model} --dangerously-skip-permissions',
@@ -242,12 +242,22 @@ class ProjectSession:
 
             # Extract JSON array (supervisor may include prose around it)
             findings = []
-            m = re.search(r'\[.*\]', response, re.DOTALL)
-            if m:
-                try:
-                    findings = json.loads(m.group())
-                except Exception:
-                    findings = []
+            # Try direct parse first, then extract balanced JSON array
+            try:
+                findings = json.loads(response.strip())
+            except Exception:
+                start = response.find('[')
+                if start != -1:
+                    depth = 0
+                    for i, ch in enumerate(response[start:], start):
+                        if ch == '[': depth += 1
+                        elif ch == ']': depth -= 1
+                        if depth == 0:
+                            try:
+                                findings = json.loads(response[start:i+1])
+                            except Exception:
+                                pass
+                            break
 
             # Re-check status after supervisor call
             loop_state = await self.task_queue.get_loop()
@@ -458,7 +468,7 @@ class ProjectSession:
             prompt_file = self.claude_dir / "plan-build-plan.md"
             response = ""
             try:
-                prompt_file.write_text(prompt)
+                prompt_file.write_text(prompt, errors="replace")
                 proc = await asyncio.create_subprocess_shell(
                     f'claude -p "$(cat {shlex.quote(str(prompt_file))})" '
                     f'--model {model} --dangerously-skip-permissions',
@@ -517,7 +527,7 @@ class ProjectSession:
 
             iteration = loop_state.get("iteration", 1)
             max_iter = loop_state.get("max_iterations", 20)
-            if iteration > max_iter:
+            if iteration >= max_iter:
                 await self.task_queue.upsert_loop(status="converged")
                 asyncio.ensure_future(_fire_notification("loop_converged", self))
                 return
@@ -547,7 +557,7 @@ class ProjectSession:
                 r'^(\s*-\s*)\[ \]', r'\1[x]', lines[task_line_idx]
             )
             try:
-                plan_path.write_text("\n".join(lines))
+                plan_path.write_text("\n".join(lines), errors="replace")
             except OSError as e:
                 logger.error("plan_build: failed to write plan checkpoint: %s", e)
                 await self.task_queue.upsert_loop(status="cancelled")
