@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import os
+import shlex
 import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -566,6 +567,10 @@ async def ws_status(websocket: WebSocket, session: str | None = Query(default=No
         while True:
             await websocket.receive_text()  # keep alive
     except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.warning("ws_status unexpected error: %s", e)
+    finally:
         if websocket in s.status_subscribers:
             s.status_subscribers.remove(websocket)
         if websocket in s.proposed_tasks_subscribers:

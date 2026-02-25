@@ -482,7 +482,7 @@ class ProjectSession:
                 logger.warning("plan_build: PLAN phase got empty response; cancelling")
                 return
 
-            plan_path.write_text(response)
+            plan_path.write_text(response, errors="replace")
             await self.task_queue.upsert_loop(plan_phase="build", iteration=1)
 
         # ── BUILD phase ───────────────────────────────────────────────────────
