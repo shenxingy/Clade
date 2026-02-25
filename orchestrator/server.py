@@ -2829,7 +2829,12 @@ class ProjectSession:
             lines[task_line_idx] = re.sub(
                 r'^(\s*-\s*)\[ \]', r'\1[x]', lines[task_line_idx]
             )
-            plan_path.write_text("\n".join(lines))
+            try:
+                plan_path.write_text("\n".join(lines))
+            except OSError as e:
+                logger.error("plan_build: failed to write plan checkpoint: %s", e)
+                await self.task_queue.upsert_loop(status="cancelled")
+                return
 
             await self.task_queue.upsert_loop(iteration=iteration + 1)
 
@@ -2915,7 +2920,7 @@ async def _watch_session_proposed_tasks(session: ProjectSession) -> None:
                 "content": content,
             })
             dead = []
-            for ws in session.proposed_tasks_subscribers:
+            for ws in list(session.proposed_tasks_subscribers):
                 try:
                     await ws.send_text(msg)
                 except Exception:
@@ -3560,10 +3565,14 @@ async def ws_chat(websocket: WebSocket, session: str | None = Query(default=None
             data = await websocket.receive_text()
             msg = json.loads(data)
             if msg.get("type") == "input":
-                s.orchestrator.send_input(msg["data"])
+                s.orchestrator.send_input(msg.get("data", ""))
             elif msg.get("type") == "resize":
                 s.orchestrator.resize(msg.get("rows", 24), msg.get("cols", 80))
     except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.warning("ws_chat unexpected error: %s", e)
+    finally:
         if websocket in s.orchestrator.clients:
             s.orchestrator.clients.remove(websocket)
 
