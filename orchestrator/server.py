@@ -2049,7 +2049,10 @@ class WorkerPool:
                         continue
                 except Exception:
                     pass
-            await w.poll()
+            # Guard: don't poll() workers already in a terminal state — poll() would
+            # overwrite "blocked" with "failed" based on process exit code
+            if w.status not in ("done", "failed", "blocked"):
+                await w.poll()
             if w.status in ("done", "failed", "blocked"):
                 await task_queue.update(
                     w.task_id,
@@ -3292,6 +3295,10 @@ async def pause_loop(session_id: str):
         raise HTTPException(status_code=404, detail="Session not found")
     if s._loop_task and not s._loop_task.done():
         s._loop_task.cancel()
+        try:
+            await s._loop_task
+        except (asyncio.CancelledError, Exception):
+            pass
         s._loop_task = None
     await s.task_queue.upsert_loop(status="paused")
     return await s.task_queue.get_loop()
@@ -3318,6 +3325,10 @@ async def cancel_loop(session_id: str):
         raise HTTPException(status_code=404, detail="Session not found")
     if s._loop_task and not s._loop_task.done():
         s._loop_task.cancel()
+        try:
+            await s._loop_task
+        except (asyncio.CancelledError, Exception):
+            pass
         s._loop_task = None
     await s.task_queue.upsert_loop(
         status="cancelled", iteration=0, changes_history=[], deferred_items=[]
