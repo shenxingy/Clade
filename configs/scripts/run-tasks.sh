@@ -448,10 +448,13 @@ run_claude_task() {
     "$workdir" "$model" "$CLAUDE_FLAGS" > "$runner"
   chmod +x "$runner"
 
-  # setsid creates a new session; runner PID = new PGID, so kill -PGID kills the whole tree
+  # CRITICAL: setsid without --wait forks and the parent exits immediately,
+  # causing `wait $pid` to return instantly with exit 0. This makes workers
+  # appear to succeed without actually running. Use --wait to block until
+  # the child process exits. setsid --wait also forwards signals to the child.
   touch "$log_file"
-  if command -v setsid &>/dev/null; then
-    setsid "$runner" < "$pf" >> "$log_file" 2>&1 &
+  if command -v setsid &>/dev/null && setsid --help 2>&1 | grep -q "\-\-wait"; then
+    setsid --wait "$runner" < "$pf" >> "$log_file" 2>&1 &
   else
     "$runner" < "$pf" >> "$log_file" 2>&1 &
   fi
@@ -475,7 +478,8 @@ run_claude_task() {
         prev_bytes=$log_bytes
         if [[ $stale_count -ge $stall_threshold ]]; then
           echo "[heartbeat $(date +%H:%M:%S)] STALL DETECTED — no log growth for $((stale_count * 30))s, killing worker" >> "$log_file"
-          kill -- "-${pgid}" 2>/dev/null || kill "${pgid}" 2>/dev/null || true
+          # With setsid --wait, SIGTERM is forwarded to the child's process group
+          kill "${pgid}" 2>/dev/null || true
           break
         fi
       fi
@@ -483,12 +487,12 @@ run_claude_task() {
   ) &
   local heartbeat_pid=$!
 
-  # Watchdog: SIGTERM the process group after timeout, then SIGKILL after 30s grace
+  # Watchdog: SIGTERM after timeout (setsid --wait forwards to child group), then SIGKILL after 30s grace
   ( sleep "${timeout_sec}"
     if kill -0 "${pgid}" 2>/dev/null; then
-      kill -- "-${pgid}" 2>/dev/null || true
+      kill "${pgid}" 2>/dev/null || true
       sleep 30
-      kill -KILL -- "-${pgid}" 2>/dev/null || true
+      kill -KILL "${pgid}" 2>/dev/null || true
     fi
   ) &
   local watchdog_pid=$!
