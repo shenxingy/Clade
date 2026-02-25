@@ -86,6 +86,18 @@ If PROGRESS.md exceeds 100 lines:
 ---
 
 
+## Step 3c: Generate session scorecard
+
+Run the session scorecard generator to log quality metrics:
+
+```bash
+bash ~/.claude/scripts/session-scorecard.sh
+```
+
+This appends a JSON entry to `~/.claude/corrections/scorecards.jsonl` with correction counts, commits, and a quality score. If the script doesn't exist, skip this step silently.
+
+---
+
 ## Step 4: Print summary
 
 Always end with a summary:
