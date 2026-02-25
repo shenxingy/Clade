@@ -1595,13 +1595,14 @@ function connectStatus(sessionId) {
           fetch(`/api/tasks/import-proposed?session=${sessionId}`, { method: 'POST',
             headers: {'Content-Type':'application/json'},
             body: JSON.stringify({ content: msg.content })
-          }).then(() => fetch(`/api/tasks/start-all?session=${sessionId}`, { method: 'POST' }))
+          }).then(r => { if (!r.ok) throw new Error(`Import failed: ${r.status}`); })
+            .then(() => fetch(`/api/tasks/start-all?session=${sessionId}`, { method: 'POST' }))
             .then(r => r.json())
             .then(d => {
               if (sessionId === activeSessionId) setMode('execute');
               showToast(`Auto-started ${d.started} worker${d.started !== 1 ? 's' : ''}`);
             })
-            .catch(err => showToast(`Auto-start failed: ${err.message}`));
+            .catch(err => showToast(`Auto-start failed: ${err.message}`, true));
         } else {
           showProposedOverlay(msg.content);
         }
@@ -1714,10 +1715,7 @@ async function closeTab(sessionId) {
   if (!confirm('Close this project tab?')) return;
   await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
   destroySessionState(sessionId);
-  if (activeSessionId === sessionId) {
-    const remaining = sessions.filter(s => s.session_id !== sessionId);
-    activeSessionId = remaining[0]?.session_id || null;
-  }
+  if (activeSessionId === sessionId) activeSessionId = null;
   await loadSessions();
   if (activeSessionId) showSessionTerminal(activeSessionId);
 }
@@ -2005,9 +2003,14 @@ async function addTask() {
 }
 
 async function importProposedToQueue() {
-  const res = await fetch(`/api/tasks/import-proposed?session=${activeSessionId}`, { method: 'POST' });
-  const data = await res.json();
-  showToast(`Imported ${data.imported} tasks from proposed-tasks.md`);
+  try {
+    const res = await fetch(`/api/tasks/import-proposed?session=${activeSessionId}`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) { showToast(`Import failed: ${data.detail || res.status}`, true); return; }
+    showToast(`Imported ${data.imported} tasks from proposed-tasks.md`);
+  } catch (e) {
+    showToast('Error importing tasks: ' + e.message, true);
+  }
 }
 
 function toggleAddTask() {
@@ -2228,8 +2231,11 @@ async function retryInterrupted(taskId) {
 
 // ─── Task History (done/failed) ───────────────────────────────────────────────
 let _historyExpanded = false;
+let _lastSuccessRate;
 
 function renderHistory(successRate) {
+  if (successRate !== undefined) _lastSuccessRate = successRate;
+  else successRate = _lastSuccessRate;
   const history = queue.filter(t => ['done', 'failed', 'interrupted'].includes(t.status));
   const section = document.getElementById('historySection');
   const listEl = document.getElementById('historyList');
@@ -2333,12 +2339,14 @@ function setOrchStatus(state, text) {
 }
 
 // ─── Toast ───────────────────────────────────────────────────────────────────
-function showToast(msg) {
+function showToast(msg, isError = false) {
   const el = document.createElement('div');
   el.textContent = msg;
   Object.assign(el.style, {
     position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)',
-    background: '#21262d', border: '1px solid #30363d', borderRadius: '8px',
+    background: isError ? '#3d1212' : '#21262d',
+    border: `1px solid ${isError ? '#f85149' : '#30363d'}`,
+    borderRadius: '8px',
     padding: '10px 18px', fontSize: '13px', color: '#e6edf3',
     zIndex: '999', transition: 'opacity 0.3s',
   });
@@ -2636,7 +2644,9 @@ document.getElementById('goalInput')?.addEventListener('keydown', e => {
 });
 
 // ─── Intervene panel ──────────────────────────────────────────────────────────
+let _intervenedSessionId = null;
 function openIntervene() {
+  _intervenedSessionId = activeSessionId;
   document.getElementById('intervenePanel').classList.add('open');
   const st = sessionStates.get(activeSessionId);
   if (st) {
@@ -2647,14 +2657,16 @@ function openIntervene() {
   }
 }
 function closeIntervene() {
+  const sid = _intervenedSessionId || activeSessionId;
   document.getElementById('intervenePanel').classList.remove('open');
-  const st = sessionStates.get(activeSessionId);
+  const st = sessionStates.get(sid);
   const container = document.getElementById('terminalContainer');
   if (st && container) {
     container.appendChild(st.el);
     if (currentMode === 'plan') st.el.style.display = 'flex';
-    requestAnimationFrame(() => PaneManager.fitSession(activeSessionId));
+    requestAnimationFrame(() => PaneManager.fitSession(sid));
   }
+  _intervenedSessionId = null;
 }
 
 // ─── Merge All Done → AI PR Pipeline ─────────────────────────────────────────
@@ -3388,8 +3400,10 @@ function renderDag() {
   const padX = 12, padY = 12;
   const colW = nodeW + hGap;
   const rowH = nodeH + vGap;
-  const maxLevel = Math.max(...Object.keys(levelGroups).map(Number));
-  const maxRows = Math.max(...Object.values(levelGroups).map(v => v.length));
+  const lvKeys = Object.keys(levelGroups);
+  const maxLevel = lvKeys.length > 0 ? Math.max(...lvKeys.map(Number)) : 0;
+  const lvVals = Object.values(levelGroups);
+  const maxRows = lvVals.length > 0 ? Math.max(...lvVals.map(v => v.length)) : 1;
   const svgW = (maxLevel + 1) * colW + padX * 2;
   const svgH = Math.max(maxRows * rowH + padY * 2, 80);
 
@@ -3435,7 +3449,7 @@ function renderDag() {
     const dot = STATUS_COLOR[t.status] || '#8b949e';
     const label = esc(firstLine(t.description).slice(0, 17));
     const suffix = firstLine(t.description).length > 17 ? '…' : '';
-    nodes += `<g onclick="dagClick('${esc(t.id)}', event)" style="cursor:pointer" title="${esc(t.id)}: ${esc(firstLine(t.description))}">
+    nodes += `<g data-tid="${esc(t.id)}" onclick="dagClick(this.dataset.tid, event)" style="cursor:pointer" title="${esc(t.id)}: ${esc(firstLine(t.description))}">
       <rect x="${p.x}" y="${p.y}" width="${nodeW}" height="${nodeH}" rx="5"
         fill="${isSelected ? '#1c2a3a' : '#161b22'}" stroke="${stroke}" stroke-width="${strokeW}" />
       <circle cx="${p.x + 10}" cy="${p.y + nodeH/2}" r="4" fill="${dot}" />
