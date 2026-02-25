@@ -2,6 +2,58 @@
 
 ---
 
+### 2026-02-24 — Phase 6: Observability & Resilience (6 features)
+
+**What was done:**
+
+**Session State Persistence:**
+- `server.py`: `_recover_orphaned_tasks()` — marks running/starting tasks as interrupted on restart
+- Called in `startup()`, `create_session()`, and `switch_project()`
+- `POST /api/tasks/{task_id}/retry` endpoint — resets interrupted/failed tasks to pending
+- `index.html`: `.badge.interrupted` CSS (orange), retry button in history, `retryInterrupted()` JS
+
+**Stuck Worker Detection:**
+- `server.py`: `stuck_timeout_minutes` setting (default: 15), `_stuck_detected` flag on Worker
+- `poll_all()`: checks `log_path.stat().st_mtime` idle time, kills + requeues with `[STUCK-RETRY]` prefix
+- One-shot retry guard: `[STUCK-RETRY]` tasks that get stuck again are NOT re-queued (avoids infinite loop)
+- `index.html`: stuck timeout number input in settings panel
+
+**Token/Cost Tracking:**
+- `server.py`: DB migration adds `input_tokens`, `output_tokens`, `estimated_cost` columns
+- `_parse_token_usage()` — regex-based log parser (4 patterns, scans bottom-up)
+- `_estimate_cost()` — Sonnet pricing ($3/MTok in, $15/MTok out)
+- Called in `_on_worker_done()`, persisted to DB in `poll_all()`, exposed in `Worker.to_dict()`
+- `index.html`: cost per worker card, `footerCost` span with DB+live cost sum
+
+**Task Analytics:**
+- `server.py`: `GET /api/sessions/{session_id}/analytics` — total/done/failed/interrupted/pending, success_rate, model_stats, total_cost/tokens
+- `index.html`: collapsible `<details>` card with summary numbers, per-model breakdown, canvas donut chart (80x80, model-colored arcs), 10s polling
+
+**Cost Budget Limit:**
+- `server.py`: `cost_budget` setting (0=unlimited), `_budget_exceeded` flag on session
+- `status_loop()`: checks budget before auto-start (manual "Run" button bypasses intentionally)
+- WebSocket payload: `budget_exceeded` + `budget_limit` keys
+- `index.html`: cost budget input in settings, one-shot toast on exceed, red footer label
+
+**Completion Notifications:**
+- `server.py`: `notification_webhook` setting, `_failure_notified` flag (reset on new run)
+- `_fire_notification()` — curl-based, fail-open, sends JSON payload
+- Triggers: `run_complete`, `high_failure_rate` (>50%, one-shot), `loop_converged` (4 convergence points)
+- `index.html`: Notifications section in settings with webhook URL input
+
+**Post-review fixes (from code review):**
+- Stuck-retry infinite loop guard: `[STUCK-RETRY]` prefixed tasks not re-queued on second stuck
+- `_recover_orphaned_tasks` added to `switch_project` (was missing)
+- `_failure_notified` reset when tasks become active again
+- Footer cost uses DB tasks + live workers (not just live workers)
+
+**Lessons:**
+- Code review after implementation caught 4 real bugs including an infinite loop
+- fail-open pattern (try/except pass) is essential for all notification/webhook code
+- Budget check placement matters: in status_loop for auto-start, NOT in run_task for manual runs
+
+---
+
 ### 2026-02-24 — Phase 5: Context Intelligence (Semantic TLDR, Dual Exit Gate, Interventions)
 
 **What was done:**

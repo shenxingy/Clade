@@ -391,6 +391,7 @@
     .badge.blocked { background: rgba(248,81,73,0.2); color: var(--red); }
     .badge.done { background: rgba(139,148,158,0.15); color: var(--text2); }
     .badge.failed { background: rgba(248,81,73,0.15); color: var(--red); }
+    .badge.interrupted { background: rgba(227,155,35,0.2); color: var(--yellow); }
     .badge.starting { background: rgba(88,166,255,0.15); color: var(--accent); }
 
     .worker-log-tail {
@@ -954,6 +955,14 @@
     <span>Context budget warnings</span>
     <input type="checkbox" id="settingContextBudget" checked onchange="saveSettings()" />
   </label>
+  <label class="settings-row">
+    <span>Stuck timeout <span style="color:var(--text2);font-size:10px">(min, 0=off)</span></span>
+    <input type="number" id="settingStuckTimeout" min="0" max="120" value="15" style="width:50px" onchange="saveSettings()" oninput="saveSettings()" />
+  </label>
+  <label class="settings-row">
+    <span>Cost budget $ <span style="color:var(--text2);font-size:10px">(0=off)</span></span>
+    <input type="number" id="settingCostBudget" min="0" step="0.5" value="0" style="width:60px" onchange="saveSettings()" oninput="saveSettings()" />
+  </label>
   <div style="font-size:10px;font-weight:600;opacity:0.5;text-transform:uppercase;letter-spacing:0.5px;margin-top:10px;margin-bottom:4px;padding:0 12px">Context Intelligence</div>
   <label class="settings-row">
     <span>Code TLDR</span>
@@ -979,6 +988,11 @@
   <label class="settings-row">
     <span>Issue label</span>
     <input type="text" id="settingGhLabel" value="orchestrator" onchange="saveSettings()" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:11px;padding:2px 6px;width:100px;text-align:right" />
+  </label>
+  <div style="font-size:10px;font-weight:600;opacity:0.5;text-transform:uppercase;letter-spacing:0.5px;margin-top:10px;margin-bottom:4px;padding:0 12px">Notifications</div>
+  <label class="settings-row">
+    <span>Webhook URL</span>
+    <input type="text" id="settingWebhook" placeholder="https://..." onchange="saveSettings()" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:11px;padding:2px 6px;width:140px;text-align:right" />
   </label>
 </div>
 
@@ -1094,6 +1108,20 @@
       <div class="queue-list" id="historyList" style="display:none"></div>
     </div>
 
+    <!-- Analytics Section (collapsible) -->
+    <details id="analyticsSection" style="display:none;margin:0 0 2px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;font-size:12px">
+      <summary style="padding:8px 12px;cursor:pointer;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text2)">
+        Analytics <span id="analyticsCostBadge" style="font-weight:400;color:var(--green)"></span>
+      </summary>
+      <div id="analyticsContent" style="padding:4px 12px 10px">
+        <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+          <div id="analyticsSummary" style="flex:1;min-width:180px"></div>
+          <canvas id="analyticsDonut" width="80" height="80" style="flex-shrink:0"></canvas>
+        </div>
+        <div id="analyticsModels" style="margin-top:6px"></div>
+      </div>
+    </details>
+
     <!-- Scheduler Bar (Execute mode) -->
     <div class="scheduler-bar" id="schedulerBar" style="display:none">
       <span style="font-size:11px;color:var(--text2);flex-shrink:0">⏰ Start at</span>
@@ -1169,6 +1197,7 @@
       </div>
       <span class="progress-label" id="progressLabel">0%</span>
       <span class="eta-label" id="etaLabel"></span>
+      <span id="footerCost" style="font-size:11px;color:var(--text2);margin-left:8px"></span>
       <span id="footerSuccessRate" style="font-size:11px;color:var(--text2);margin-left:auto"></span>
     </div>
 
@@ -1727,6 +1756,29 @@ function updateDashboard(data) {
   updateSchedulerDisplay(data.schedule);
   updateLoopUI(data.loop_state || null);
   updateSwarmUI(data.swarm_state || null);
+
+  // Total session cost: DB tasks + live workers
+  const dbCost = queue.reduce((s, t) => s + (t.estimated_cost || 0), 0);
+  const liveCost = workers.filter(w => w.status === 'running').reduce((s, w) => s + (w.estimated_cost || 0), 0);
+  const totalCost = dbCost + liveCost;
+  const costEl = document.getElementById('footerCost');
+  if (costEl) {
+    if (data.budget_exceeded) {
+      costEl.textContent = `$${totalCost.toFixed(4)} BUDGET`;
+      costEl.style.color = 'var(--red)';
+    } else {
+      costEl.textContent = totalCost > 0 ? `$${totalCost.toFixed(4)}` : '';
+      costEl.style.color = 'var(--text2)';
+    }
+    costEl.dataset.totalCost = totalCost;
+  }
+  // Budget exceeded toast (one-shot)
+  if (!window._budgetToasted) window._budgetToasted = {};
+  if (data.budget_exceeded && !window._budgetToasted[data.session_id]) {
+    window._budgetToasted[data.session_id] = true;
+    showToast(`Cost budget exceeded ($${data.budget_limit}) — auto-start paused`);
+  }
+  if (!data.budget_exceeded) delete window._budgetToasted[data.session_id];
 }
 
 function renderQueue() {
@@ -1857,6 +1909,7 @@ function renderWorkers() {
         ${tokenBar}
         <div class="worker-footer">
           <span class="elapsed" id="elapsed-${w.id}">${formatElapsed(w.elapsed_s)}</span>
+          ${w.estimated_cost > 0 ? `<span style="font-size:10px;color:var(--text2);margin-left:4px">$${w.estimated_cost.toFixed(4)}</span>` : ''}
           ${canPause ? `<button class="btn small secondary" id="btn-pause-${w.id}" data-wid="${esc(String(w.id))}" onclick="pauseWorker(this.dataset.wid)">Pause</button>` : ''}
           ${canResume ? `<button class="btn small" id="btn-resume-${w.id}" data-wid="${esc(String(w.id))}" onclick="resumeWorker(this.dataset.wid)">Resume</button>` : ''}
           ${canChat ? `<button class="btn small secondary" id="btn-chat-${w.id}" data-wid="${w.id}" data-name="${esc(firstLine(w.description))}" onclick="openWorkerChat(this.dataset.wid, this.dataset.name)">Chat</button>` : ''}
@@ -2162,11 +2215,20 @@ async function retryAllFailed() {
   finally { if (btn) btn.disabled = false; }
 }
 
+async function retryInterrupted(taskId) {
+  try {
+    const res = await fetch(`/api/tasks/${taskId}/retry?session=${activeSessionId}`, { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) showToast('Task reset to pending — will auto-start');
+    else showToast(data.error || 'Retry failed');
+  } catch(e) { showToast('Error: ' + e.message); }
+}
+
 // ─── Task History (done/failed) ───────────────────────────────────────────────
 let _historyExpanded = false;
 
 function renderHistory(successRate) {
-  const history = queue.filter(t => ['done', 'failed'].includes(t.status));
+  const history = queue.filter(t => ['done', 'failed', 'interrupted'].includes(t.status));
   const section = document.getElementById('historySection');
   const listEl = document.getElementById('historyList');
   const countEl = document.getElementById('historyCount');
@@ -2193,10 +2255,14 @@ function renderHistory(successRate) {
   listEl.innerHTML = history.map(t => {
     const badge = `<span class="badge ${esc(t.status)}" style="font-size:10px">${esc(t.status)}</span>`;
     const hash = t.last_commit ? `<span class="hash" style="font-size:10px">${esc(t.last_commit.slice(0,8))}</span>` : '';
+    const retryBtn = (t.status === 'interrupted' || t.status === 'failed')
+      ? `<button class="btn small secondary" onclick="retryInterrupted('${esc(t.id)}')" style="padding:1px 6px;font-size:10px;margin-left:auto;flex-shrink:0">↺ Retry</button>`
+      : '';
     return `<div class="queue-item" style="opacity:${t.status==='done'?'1':'0.65'}">
       ${badge}
       <span class="task-name" title="${esc(t.description)}">${esc(firstLine(t.description))}</span>
       ${hash}
+      ${retryBtn}
     </div>`;
   }).join('');
 }
@@ -3009,6 +3075,77 @@ function updateSwarmUI(swarmState) {
   if (!isTerminal) _swarmCompleteToasted = false;
 }
 
+// ─── Analytics ─────────────────────────────────────────────────────────────────
+
+const _MODEL_COLORS = { haiku: '#34d399', sonnet: '#58a6ff', opus: '#bc8cff' };
+
+async function renderAnalytics() {
+  if (!activeSessionId) return;
+  try {
+    const r = await fetch(`/api/sessions/${activeSessionId}/analytics`);
+    const d = await r.json();
+    const section = document.getElementById('analyticsSection');
+    if (!section) return;
+    if (d.total === 0) { section.style.display = 'none'; return; }
+    section.style.display = '';
+
+    const costBadge = document.getElementById('analyticsCostBadge');
+    if (costBadge) costBadge.textContent = d.total_cost > 0 ? `$${d.total_cost.toFixed(4)}` : '';
+
+    const summary = document.getElementById('analyticsSummary');
+    if (summary) {
+      summary.innerHTML = `
+        <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:11px;line-height:1.6">
+          <span>Total: <b>${d.total}</b></span>
+          <span style="color:var(--green)">Done: <b>${d.done}</b></span>
+          <span style="color:var(--red)">Failed: <b>${d.failed}</b></span>
+          ${d.interrupted ? `<span style="color:var(--yellow)">Interrupted: <b>${d.interrupted}</b></span>` : ''}
+          <span>Rate: <b>${d.success_rate}%</b></span>
+        </div>
+        ${d.total_cost > 0 ? `<div style="font-size:11px;margin-top:4px;color:var(--text2)">Cost: <b style="color:var(--text)">$${d.total_cost.toFixed(4)}</b> &middot; Tokens: ${(d.total_input_tokens/1000).toFixed(1)}K in / ${(d.total_output_tokens/1000).toFixed(1)}K out</div>` : ''}`;
+    }
+
+    const modelsEl = document.getElementById('analyticsModels');
+    if (modelsEl && Object.keys(d.model_stats).length > 0) {
+      modelsEl.innerHTML = Object.entries(d.model_stats).map(([m, s]) => {
+        const c = _MODEL_COLORS[m] || 'var(--text2)';
+        return `<div style="font-size:10px;color:var(--text2);margin-top:2px">
+          <span style="color:${c};font-weight:600">${m}</span>:
+          ${s.count} tasks, ${s.done} done, avg ${Math.round(s.avg_elapsed_s)}s
+          ${s.total_cost > 0 ? `, $${s.total_cost.toFixed(4)}` : ''}
+        </div>`;
+      }).join('');
+    }
+
+    // Donut chart
+    const entries = Object.entries(d.model_stats).filter(([,s]) => s.count > 0);
+    if (entries.length > 0) drawDonut(entries);
+  } catch {}
+}
+
+function drawDonut(entries) {
+  const canvas = document.getElementById('analyticsDonut');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  const cx = w / 2, cy = h / 2, r = 32, inner = 18;
+  const total = entries.reduce((s, [, v]) => s + v.count, 0);
+  let angle = -Math.PI / 2;
+  for (const [model, stats] of entries) {
+    const slice = (stats.count / total) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, angle, angle + slice);
+    ctx.arc(cx, cy, inner, angle + slice, angle, true);
+    ctx.closePath();
+    ctx.fillStyle = _MODEL_COLORS[model] || '#888';
+    ctx.fill();
+    angle += slice;
+  }
+}
+
+setInterval(renderAnalytics, 10000);
+
 // ─── Settings ─────────────────────────────────────────────────────────────────
 
 async function loadSettings() {
@@ -3051,6 +3188,10 @@ async function loadSettings() {
     if (elAutoOracle) elAutoOracle.checked = s.auto_oracle ?? false;
     if (elAutoMR) elAutoMR.checked = s.auto_model_routing ?? false;
     if (elCtxBudget) elCtxBudget.checked = s.context_budget_warning ?? true;
+    const elStuck = document.getElementById('settingStuckTimeout');
+    if (elStuck) elStuck.value = s.stuck_timeout_minutes ?? 15;
+    const elBudget = document.getElementById('settingCostBudget');
+    if (elBudget) elBudget.value = s.cost_budget ?? 0;
     // Agent Teams
     const elAgentTeams = document.getElementById('settingAgentTeams');
     if (elAgentTeams) elAgentTeams.checked = s.agent_teams ?? false;
@@ -3059,6 +3200,8 @@ async function loadSettings() {
     const elGhLabel = document.getElementById('settingGhLabel');
     if (elGhSync) elGhSync.checked = s.github_issues_sync ?? false;
     if (elGhLabel) elGhLabel.value = s.github_issues_label ?? 'orchestrator';
+    const elWebhook = document.getElementById('settingWebhook');
+    if (elWebhook) elWebhook.value = s.notification_webhook ?? '';
     // Show/hide sync button based on setting
     const syncBtn = document.getElementById('ghSyncBtn');
     if (syncBtn) syncBtn.style.display = s.github_issues_sync ? '' : 'none';
@@ -3097,9 +3240,12 @@ function saveSettings() {
           auto_oracle: document.getElementById('settingAutoOracle')?.checked ?? false,
           auto_model_routing: document.getElementById('settingAutoModelRouting')?.checked ?? false,
           context_budget_warning: document.getElementById('settingContextBudget')?.checked ?? true,
+          stuck_timeout_minutes: parseInt(document.getElementById('settingStuckTimeout')?.value) || 0,
+          cost_budget: parseFloat(document.getElementById('settingCostBudget')?.value) || 0,
           agent_teams: document.getElementById('settingAgentTeams')?.checked ?? false,
           github_issues_sync: document.getElementById('settingGhSync')?.checked ?? false,
           github_issues_label: document.getElementById('settingGhLabel')?.value || 'orchestrator',
+          notification_webhook: document.getElementById('settingWebhook')?.value || '',
         }),
       });
       // Update sync button visibility
