@@ -2,7 +2,9 @@
 # correction-detector.sh — Detect user corrections and build a learning history
 # Triggered by UserPromptSubmit
 # Reads JSON from stdin: {"prompt": "user's message", ...}
-# If a correction is detected, logs it and reminds Claude to extract rules.
+# If a correction is detected, logs it, updates stats.json, and reminds Claude to extract rules.
+
+LIBDIR="$(cd "$(dirname "$0")" && pwd)/lib"
 
 INPUT=$(cat)
 PROMPT=$(echo "$INPUT" | jq -r '.prompt // empty')
@@ -43,7 +45,24 @@ jq -n \
   --arg ts "$TIMESTAMP" \
   --arg prompt "$PROMPT" \
   --arg project "$PROJECT" \
-  '{timestamp: $ts, prompt: $prompt, project: $project}' >> "$HISTORY_FILE"
+  --arg type "explicit" \
+  '{timestamp: $ts, prompt: $prompt, project: $project, type: $type}' >> "$HISTORY_FILE"
+
+# ─── Auto-increment domain stats ──────────────────────────────────────
+STATS_FILE="$CORRECTIONS_DIR/stats.json"
+if [[ -f "$STATS_FILE" ]] && command -v jq &>/dev/null; then
+  # Detect domain from recent changes in this project
+  if [[ -d "$PROJECT" ]]; then
+    source "$LIBDIR/domain-detect.sh" 2>/dev/null
+    (cd "$PROJECT" && detect_domain) 2>/dev/null
+  fi
+  DOMAIN="${DOMAIN:-unknown}"
+  # Atomically increment the counter for this domain
+  TMP_STATS=$(mktemp)
+  jq --arg d "$DOMAIN" '.[$d] = ((.[$d] // 0) + 1)' "$STATS_FILE" > "$TMP_STATS" 2>/dev/null \
+    && mv "$TMP_STATS" "$STATS_FILE" \
+    || rm -f "$TMP_STATS"
+fi
 
 # Remind Claude to extract a rule with root-cause analysis
 CONTEXT="A user correction was detected in the prompt above. After addressing the user's request:

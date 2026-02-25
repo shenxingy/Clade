@@ -12,6 +12,7 @@
 
 LIBDIR="$(cd "$(dirname "$0")" && pwd)/lib"
 source "$LIBDIR/typecheck.sh"
+source "$LIBDIR/domain-detect.sh"
 
 cd "${CLAUDE_PROJECT_DIR:-$(pwd)}" 2>/dev/null || exit 0
 
@@ -21,32 +22,7 @@ STATS_FILE="$HOME/.claude/corrections/stats.json"
 STRICT_MODE=false
 
 if [[ -f "$STATS_FILE" ]] && command -v jq &>/dev/null; then
-  # Determine domain from changed files
-  CHANGED_FILES=$(git diff --name-only --diff-filter=ACMR HEAD 2>/dev/null || git diff --name-only --cached 2>/dev/null || echo "")
-
-  # Categorize domain
-  DOMAIN="unknown"
-  if echo "$CHANGED_FILES" | grep -qE '\.(tsx?|jsx?)$'; then
-    DOMAIN="frontend"
-  elif echo "$CHANGED_FILES" | grep -qE '\.(py|ipynb)$'; then
-    if echo "$CHANGED_FILES" | grep -qE 'train|model|dataset|experiment|notebook'; then
-      DOMAIN="ml"
-    else
-      DOMAIN="backend"
-    fi
-  elif echo "$CHANGED_FILES" | grep -qE 'schema|migration|drizzle|prisma'; then
-    DOMAIN="schema"
-  elif echo "$CHANGED_FILES" | grep -qE '\.swift$|\.xib$|\.storyboard$|Podfile|\.xcodeproj'; then
-    DOMAIN="ios"
-  elif echo "$CHANGED_FILES" | grep -qE '\.(kt|java)$|\.gradle'; then
-    DOMAIN="android"
-  elif echo "$CHANGED_FILES" | grep -qE '\.rs$'; then
-    DOMAIN="systems"
-  elif echo "$CHANGED_FILES" | grep -qE '\.go$'; then
-    DOMAIN="systems"
-  elif echo "$CHANGED_FILES" | grep -qE '\.tex$|\.bib$'; then
-    DOMAIN="academic"
-  fi
+  detect_domain
 
   # Read error rate for this domain
   ERROR_RATE=$(jq -r --arg d "$DOMAIN" '.[$d] // 0' "$STATS_FILE" 2>/dev/null)
