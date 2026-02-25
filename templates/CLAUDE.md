@@ -35,3 +35,13 @@ Structure code for efficient Claude Code tool usage:
 - **Cohesion over separation**: Keep tightly coupled code in one file. Fix a bug by reading 1 file, not 3.
 - **DAG imports**: Module dependency graph must be a strict DAG (no circular imports). Use lazy imports or duck typing (`Any`) to break potential cycles.
 - **CSS extraction**: For HTML files with inline CSS > 200 lines, extract to separate `.css` file. Keep JS inline if tightly coupled (SPA globals, no module system).
+
+## Pre-Code Reflection
+
+Before writing or modifying code, consider these failure patterns (learned from cross-project audits):
+
+- **Settings/wiring**: If adding a config/setting/flag — trace the full path: definition → read → callsite → effect. Untested wiring = silent feature breakage.
+- **Edge cases**: Does this work on first run (empty DB, no git history)? On a different OS (stat -c vs -f, path separators)? With empty/null/duplicate input?
+- **Async boundaries**: If async — what happens when the world changes mid-flight? Subprocess needs kill+drain on timeout? Closure captures stale state? Lock granularity sufficient?
+- **Security surface**: Am I validating at the system boundary? Any secrets, credentials, or user input flowing into commands/queries/URLs without sanitization?
+- **Deploy gap**: Will this change actually reach the runtime? Source ≠ deployed. Config ≠ loaded. Defined ≠ called.

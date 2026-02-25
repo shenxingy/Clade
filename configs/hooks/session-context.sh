@@ -73,7 +73,7 @@ fi
 # Load correction rules (learned preferences)
 RULES_FILE="$HOME/.claude/corrections/rules.md"
 if [[ -f "$RULES_FILE" ]]; then
-  RULES=$(tail -30 "$RULES_FILE" 2>/dev/null)
+  RULES=$(tail -50 "$RULES_FILE" 2>/dev/null)
   if [[ -n "$RULES" ]]; then
     CONTEXT="${CONTEXT}\nCorrection rules (learned from past feedback):\n${RULES}\n"
   fi

@@ -2,6 +2,20 @@
 
 ---
 
+### 2026-02-25 — Pre-Code Reflection (learning from mistakes)
+
+**What was done:**
+- `templates/CLAUDE.md`: Added `## Pre-Code Reflection` section — 5 failure-pattern checks (settings/wiring, edge cases, async, security, deploy gap) derived from cross-project audit
+- `configs/hooks/correction-detector.sh`: Enhanced CONTEXT to require root-cause classification (5 categories), reflection step ("how could I have caught this before the user pointed it out"), updated rule format with `(<root-cause>)` tag, bumped max to 50 lines
+- `templates/corrections/rules.md`: Replaced empty template with structured seed — header with format/categories, 5 universal seed rules from audit findings
+- `configs/hooks/session-context.sh`: `tail -30` → `tail -50` to accommodate header + seed rules
+
+**Lessons:**
+- install.sh is idempotent and won't overwrite existing `rules.md` or update existing `CLAUDE.md` — by design, but means existing users need manual steps to pick up template changes
+- Seed rules should be universal (cross-platform compat, async subprocess cleanup) not project-specific
+
+---
+
 ### 2026-02-24 — Phase 6: Observability & Resilience (6 features)
 
 **What was done:**
