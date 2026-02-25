@@ -238,7 +238,7 @@ INSTRUCTIONS
   echo "  Supervisor planning ($SUPERVISOR_MODEL)..."
 
   SUPERVISOR_OUTPUT=$(
-    timeout 180s claude -p \
+    timeout 300s claude -p \
       --model "$SUPERVISOR_MODEL_ID" \
       --dangerously-skip-permissions \
       < "$PROMPT_FILE" \
