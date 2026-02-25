@@ -1400,8 +1400,8 @@ class SwarmManager:
             w = self._session.worker_pool.workers.get(wid)
             if w and w.status in ("running", "starting"):
                 await w.stop()
-                w.status = "failed"
                 await self._session.task_queue.update(w.task_id, status="failed")
+                w.status = "failed"
         self._active_worker_ids.clear()
         return self.to_dict()
 
