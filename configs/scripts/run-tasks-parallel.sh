@@ -313,6 +313,15 @@ run_claude_task() {
   fi
   local pgid=$!
 
+  # Heartbeat: log process liveness every 30s (claude -p buffers all output until completion)
+  ( while kill -0 "${pgid}" 2>/dev/null; do
+      sleep 30
+      kill -0 "${pgid}" 2>/dev/null && echo "[heartbeat $(date +%H:%M:%S)] worker alive (PID ${pgid})" >> "$log_file"
+    done
+  ) &
+  local heartbeat_pid=$!
+
+  # Watchdog: SIGTERM the process group after timeout, then SIGKILL after 30s grace
   ( sleep "${timeout_sec}"
     if kill -0 "${pgid}" 2>/dev/null; then
       kill -- "-${pgid}" 2>/dev/null || true
@@ -324,8 +333,8 @@ run_claude_task() {
 
   wait "${pgid}"
   local ec=$?
-  kill "${watchdog_pid}" 2>/dev/null; kill "${tail_pid}" 2>/dev/null
-  wait "${watchdog_pid}" 2>/dev/null; wait "${tail_pid}" 2>/dev/null
+  kill "${watchdog_pid}" "${heartbeat_pid}" 2>/dev/null; kill "${tail_pid}" 2>/dev/null
+  wait "${watchdog_pid}" "${heartbeat_pid}" 2>/dev/null; wait "${tail_pid}" 2>/dev/null
   rm -f "${pf}" "${runner}"
 
   [[ $ec -eq 143 || $ec -eq 137 ]] && ec=124
