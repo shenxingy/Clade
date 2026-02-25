@@ -1597,7 +1597,7 @@ function connectStatus(sessionId) {
             body: JSON.stringify({ content: msg.content })
           }).then(r => { if (!r.ok) throw new Error(`Import failed: ${r.status}`); })
             .then(() => fetch(`/api/tasks/start-all?session=${sessionId}`, { method: 'POST' }))
-            .then(r => r.json())
+            .then(r => { if (!r.ok) throw new Error(`Start-all failed: ${r.status}`); return r.json(); })
             .then(d => {
               if (sessionId === activeSessionId) setMode('execute');
               showToast(`Auto-started ${d.started} worker${d.started !== 1 ? 's' : ''}`);
