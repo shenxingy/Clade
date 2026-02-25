@@ -48,6 +48,9 @@ CONTEXT_FILE=""
 LOG_DIR="logs/loop"
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# Source canonical model IDs
+source "$SCRIPTS_DIR/../models.env" 2>/dev/null || source "$HOME/.claude/models.env"
+
 shift
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -66,10 +69,10 @@ done
 
 model_id() {
   case "$1" in
-    haiku)  echo "claude-haiku-4-5-20251001" ;;
-    sonnet) echo "claude-sonnet-4-6"          ;;
-    opus)   echo "claude-opus-4-6"            ;;
-    *)      echo "$1"                         ;;
+    haiku)  echo "$MODEL_HAIKU" ;;
+    sonnet) echo "$MODEL_SONNET" ;;
+    opus)   echo "$MODEL_OPUS" ;;
+    *)      echo "$1" ;;
   esac
 }
 
