@@ -1,0 +1,42 @@
+name: Feature Request
+description: Propose a new feature or improvement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve claude-code-kit! Please describe your idea clearly.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem being solved
+      description: What pain point or gap does this address? Link to related issues if any.
+      placeholder: "I keep having to manually... / There's no way to... / It would be faster if..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe your preferred solution. Be as specific as possible — which files, hooks, scripts, or settings would be involved?
+      placeholder: "Add a new hook that... / Modify the /commit skill to... / A new config option..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other approaches did you consider? Why is your proposed solution better?
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Screenshots, examples from other tools, or anything else relevant.
+    validations:
+      required: false

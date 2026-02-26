@@ -1,10 +1,14 @@
 **English** | [中文](README.zh-CN.md)
 
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/shenxingy/claude-code-kit/blob/main/CONTRIBUTING.md) [![good first issue](https://img.shields.io/github/issues/shenxingy/claude-code-kit/good%20first%20issue)](https://github.com/shenxingy/claude-code-kit/labels/good%20first%20issue)
+
 # Claude Code Kit
 
 **Turn Claude Code from a chat assistant into an autonomous coding system.**
 
 One install script. Six hooks, four agents, six skills, a safety guardian, and a correction learning loop — all working together so Claude codes better, catches its own mistakes, and can run unattended overnight while you sleep.
+
+> If this saves you time, a star helps others find it — and if something breaks, [open an issue](https://github.com/shenxingy/claude-code-kit/issues/new/choose).
 
 ## Install (30 seconds)
 
@@ -596,6 +600,19 @@ Removes all deployed hooks, agents, skills, scripts, and commands. Preserves:
 - [Batch Tasks Research](docs/research/batch-tasks.md) — Batch execution improvements
 - [Model Selection Guide](docs/research/models.md) — Cost-performance analysis and selection rules
 - [Power Users Research](docs/research/power-users.md) — Patterns from top users
+
+## Contributing
+
+Contributions are welcome — code, docs, issue triage, and bug reports all count. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, commit format, and architecture overview.
+
+### Known Limitations
+
+These are real rough edges — good candidates for contributions:
+
+1. **Loop skill on non-code tasks** (research/docs) fails silently — workers produce no diff, no commit, loop reports failure with no useful error
+2. **GUI loop controls are rough** — use CLI `/loop` for production runs; the web UI loop is better for experimentation
+3. **Workers in worktrees inherit parent environment** — project-specific env vars (DB URLs, API keys) leak into worker shells; sanitize your env before overnight runs
+4. **Context budget tracking is per-session** — multi-day overnight runs may exhaust context without a restart; use `/handoff` + `/pickup` for long tasks
 
 ## License
 
