@@ -120,7 +120,7 @@ get_task_retries() {
 extract_file_refs() {
   local prompt="$1"
   # Match common file path patterns
-  echo "$prompt" | grep -oP '[a-zA-Z0-9_./-]+\.(ts|tsx|js|jsx|py|ipynb|md|json|yaml|yml|sh|css|scss|rs|go|swift|kt|java|c|cpp|h|hpp|tex|bib|rb|lua|zig|dart)' | sort -u
+  echo "$prompt" | grep -oP '[a-zA-Z0-9_./-]+\.(tsx|ts|jsx|js|py|ipynb|md|json|yaml|yml|sh|css|scss|rs|go|swift|kt|java|cpp|hpp|c|h|tex|bib|rb|lua|zig|dart)' | sort -u
 }
 
 detect_conflicts() {
@@ -321,9 +321,10 @@ run_claude_task() {
 
   # Stall-detecting heartbeat: track log growth, kill worker if stalled
   local stall_threshold="${STALL_THRESHOLD:-10}"  # consecutive stale checks (10 × 30s = 5min)
-  ( prev_bytes=0; stale_count=0
+  ( trap 'exit 0' TERM INT
+    prev_bytes=0; stale_count=0
     while kill -0 "${pgid}" 2>/dev/null; do
-      sleep 30
+      sleep 30 & wait $! 2>/dev/null || exit 0
       if kill -0 "${pgid}" 2>/dev/null; then
         local wt_changes=""
         if [[ -d "$workdir/.git" ]] || [[ -f "$workdir/.git" ]]; then
@@ -351,10 +352,11 @@ run_claude_task() {
   local heartbeat_pid=$!
 
   # Watchdog: SIGTERM after timeout (setsid --wait forwards to child group), then SIGKILL after 30s grace
-  ( sleep "${timeout_sec}"
+  ( trap 'exit 0' TERM INT
+    sleep "${timeout_sec}" & wait $! 2>/dev/null || exit 0
     if kill -0 "${pgid}" 2>/dev/null; then
       kill "${pgid}" 2>/dev/null || true
-      sleep 30
+      sleep 30 & wait $! 2>/dev/null || exit 0
       kill -KILL "${pgid}" 2>/dev/null || true
     fi
   ) &
@@ -362,8 +364,8 @@ run_claude_task() {
 
   wait "${pgid}"
   local ec=$?
-  kill "${watchdog_pid}" "${heartbeat_pid}" 2>/dev/null
-  wait "${watchdog_pid}" "${heartbeat_pid}" 2>/dev/null
+  kill "${heartbeat_pid}" "${watchdog_pid}" 2>/dev/null
+  wait "${heartbeat_pid}" "${watchdog_pid}" 2>/dev/null
   rm -f "${pf}" "${runner}"
 
   [[ $ec -eq 143 || $ec -eq 137 ]] && ec=124

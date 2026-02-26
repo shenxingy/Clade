@@ -462,9 +462,10 @@ run_claude_task() {
 
   # Stall-detecting heartbeat: track log growth, kill worker if stalled
   local stall_threshold="${STALL_THRESHOLD:-10}"  # consecutive stale checks (10 × 30s = 5min)
-  ( prev_bytes=0; stale_count=0
+  ( trap 'exit 0' TERM INT
+    prev_bytes=0; stale_count=0
     while kill -0 "${pgid}" 2>/dev/null; do
-      sleep 30
+      sleep 30 & wait $! 2>/dev/null || exit 0
       if kill -0 "${pgid}" 2>/dev/null; then
         local log_bytes growth
         log_bytes=$(stat -c%s "$log_file" 2>/dev/null || stat -f%z "$log_file" 2>/dev/null || echo 0)
@@ -488,10 +489,11 @@ run_claude_task() {
   local heartbeat_pid=$!
 
   # Watchdog: SIGTERM after timeout (setsid --wait forwards to child group), then SIGKILL after 30s grace
-  ( sleep "${timeout_sec}"
+  ( trap 'exit 0' TERM INT
+    sleep "${timeout_sec}" & wait $! 2>/dev/null || exit 0
     if kill -0 "${pgid}" 2>/dev/null; then
       kill "${pgid}" 2>/dev/null || true
-      sleep 30
+      sleep 30 & wait $! 2>/dev/null || exit 0
       kill -KILL "${pgid}" 2>/dev/null || true
     fi
   ) &
@@ -499,8 +501,8 @@ run_claude_task() {
 
   wait "${pgid}"
   local ec=$?
-  kill "${watchdog_pid}" "${heartbeat_pid}" 2>/dev/null
-  wait "${watchdog_pid}" "${heartbeat_pid}" 2>/dev/null
+  kill "${heartbeat_pid}" "${watchdog_pid}" 2>/dev/null
+  wait "${heartbeat_pid}" "${watchdog_pid}" 2>/dev/null
   rm -f "${pf}" "${runner}"
 
   # Normalize SIGTERM(143) / SIGKILL(137) → 124 (same as timeout(1))
