@@ -406,7 +406,7 @@ Claude auto-selects agents. Haiku agents are fast and cheap for mechanical check
 
 **`/batch-tasks`** now:
 - **Reads AGENTS.md** before planning: injects file ownership into each task description; flags overlapping file claims for review
-- **Configurable scout threshold**: set `"scout_threshold": 50` in `.claude/orchestrator.json` — tasks below the threshold are written to `.claude/low-score-tasks.md` instead of executed
+- **Scout scoring**: tasks scoring 0–49 are skipped (a GitHub Issue is created in their place); tasks scoring 50–79 are flagged with a `# WARNING` comment and run with caution; 80–100 run normally
 
 **`/model-research`** searches the web for latest Claude model announcements, benchmarks, and pricing. Compares against the current guide and shows what changed. With `--apply`, updates `docs/research/models.md`, the session-context model guidance, and batch-tasks model assignment criteria.
 
