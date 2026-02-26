@@ -2,6 +2,42 @@
 
 ---
 
+### 2026-02-26 — GitHub Community Infrastructure + Docs Audit
+
+**What was done:**
+
+**Community infrastructure (3 commits):**
+- `.github/ISSUE_TEMPLATE/bug_report.yml` — structured bug report form (auto-labels: bug, triage)
+- `.github/ISSUE_TEMPLATE/feature_request.yml` — feature request form (auto-labels: enhancement)
+- `.github/ISSUE_TEMPLATE/config.yml` — blank issues disabled, directs to Discussions
+- `.github/PULL_REQUEST_TEMPLATE.md` — PR checklist (type/description/testing/docs)
+- `.github/workflows/ci.yml` — CI: Python syntax check + shell syntax check + shell tests
+- `CONTRIBUTING.md` — full contribution guide (setup, commit format, PR process, architecture overview)
+- `CODE_OF_CONDUCT.md` — Contributor Covenant adapted
+- `SECURITY.md` — private vulnerability reporting to alex@get-reality.com
+- `README.md` — added PRs Welcome + good first issue badges, star CTA, Contributing section, Known Limitations
+- GitHub Community Health score: 100% (all green)
+
+**Docs accuracy audit (2 more commits):**
+- Fixed README headline: "Six hooks, four agents, six skills" → "Nine hooks, five agents, nine skills"
+- Implemented `post-tool-use-lint.sh` hook (was documented but never existed) — reads `verify_cmd` from `.claude/orchestrator.json`, exits 2 on failure with lint-feedback.md
+- Registered `post-tool-use-lint.sh` in `settings-hooks.json`
+- Added missing hooks to README hooks table: `revert-detector.sh`, `edit-shadow-detector.sh`
+- Added `paper-reviewer` to README agents table
+- Added `/loop` and `/audit` to README commands table
+- Fixed repo structure section: removed 4 non-existent skills (worktree, frontend-design, companyos-update, companyos-wiki); added actual `loop/` and `audit/`
+- Fixed CI test path: `test_loop_system.py` (never existed) → `tests/test-loop.sh`
+- Fixed `uninstall.sh`: was only removing 5/9 hooks, 4/5 agents, 3/9 skills, 2/6 scripts — now complete
+- Fixed README scout_threshold description: was claiming configurable via orchestrator.json; actually hardcoded 3-tier scoring in batch-tasks prompt
+
+**Lessons:**
+- `uninstall.sh` never kept in sync with new hook/agent/skill additions — worth checking after every feature addition
+- Documented-but-not-implemented features (post-tool-use-lint, scout_threshold config) accumulate silently; a periodic cross-ref audit catches them
+- Community Health 100% requires: Description + README + Code of conduct + Contributing + License + Security policy + Issue templates + PR template — all 8 present now
+- GitHub auto-creates `bug`, `documentation`, `duplicate`, `enhancement`, `good first issue`, `help wanted`, `invalid`, `question`, `wontfix` labels — only `triage` and `blocked` needed manual creation
+
+---
+
 ### 2026-02-25 — Pre-Code Reflection (learning from mistakes)
 
 **What was done:**
