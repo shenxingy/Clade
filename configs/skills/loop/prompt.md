@@ -185,3 +185,9 @@ Goal achieved → supervisor outputs STATUS: CONVERGED → loop exits.
 - Context enrichment is not optional — it saves tokens on every supervisor call
 - The loop wraps AROUND batch-tasks; it does not replace it
 - Goal file = ideal state description. Task breakdown is the supervisor's job, not yours.
+- If user provides a goal file that lacks a **Verification Checklist** section, warn them:
+  ```
+  ⚠ Goal file has no Verification Checklist. Workers won't know what "done" means.
+  Template: configs/templates/loop-goal.md
+  Continuing anyway — but quality gates may be weak.
+  ```
