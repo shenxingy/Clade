@@ -298,7 +298,7 @@
         <label class="loop-inline">K=<input id="loopK" type="number" value="2" min="1" max="20" style="width:36px" oninput="this._userEdited=true"/></label>
         <label class="loop-inline">N=<input id="loopN" type="number" value="3" min="1" max="10" style="width:36px" oninput="this._userEdited=true"/></label>
         <label class="loop-inline">Mode:
-          <select id="loopMode" style="font-size:11px;padding:2px">
+          <select id="loopMode" style="font-size:11px;padding:2px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);outline:none">
             <option value="review">Review</option>
             <option value="plan_build">Plan+Build</option>
           </select>
@@ -444,16 +444,16 @@ const sessionStates = new Map();
 
 // ─── Per-session terminal helpers ────────────────────────────────────────────
 const TERM_THEME = {
-  background: '#0d1117', foreground: '#e6edf3',
-  cursor: '#58a6ff', selectionBackground: 'rgba(88,166,255,0.3)',
-  black: '#0d1117', brightBlack: '#484f58',
-  red: '#f85149',   brightRed: '#ff7b72',
-  green: '#3fb950', brightGreen: '#56d364',
-  yellow: '#d29922', brightYellow: '#e3b341',
-  blue: '#58a6ff',  brightBlue: '#79c0ff',
-  magenta: '#bc8cff', brightMagenta: '#d2a8ff',
-  cyan: '#39c5cf',  brightCyan: '#56d4dd',
-  white: '#b1bac4', brightWhite: '#f0f6fc',
+  background: '#1E1B16', foreground: '#E8E0D4',
+  cursor: '#C15F3C', selectionBackground: 'rgba(193,95,60,0.3)',
+  black: '#1E1B16', brightBlack: '#5C554A',
+  red: '#C0534A',   brightRed: '#D4756D',
+  green: '#5A9A4F', brightGreen: '#7AB86E',
+  yellow: '#C49A3C', brightYellow: '#D4B35C',
+  blue: '#7A9EC2',  brightBlue: '#9BB8D4',
+  magenta: '#9B7EC8', brightMagenta: '#B89FD8',
+  cyan: '#5BA8A8',  brightCyan: '#7AC0C0',
+  white: '#B5ADA3', brightWhite: '#F0EDE8',
 };
 
 // ─── PaneManager ─────────────────────────────────────────────────────────────
@@ -968,7 +968,7 @@ function renderQueue() {
     } else {
       scoreBadge = `<span class="score-badge pending" title="Scoring...">…</span>`;
     }
-    const critBadge = task.is_critical_path ? '<span style="color:#ef4444;font-weight:700;margin-right:2px" title="Critical path — model tier boosted">⚡</span>' : '';
+    const critBadge = task.is_critical_path ? '<span style="color:var(--red);font-weight:700;margin-right:2px" title="Critical path — model tier boosted">⚡</span>' : '';
     return `
     <div class="queue-item${isBlocked ? ' blocked' : ''}">
       ${scoreBadge}
@@ -1016,12 +1016,12 @@ function renderWorkers() {
   list.innerHTML = workers.map(w => {
     let commitDisplay;
     if (w.pr_merged) {
-      commitDisplay = `<span style="color:#4ade80;font-weight:600">✓ merged</span>`;
+      commitDisplay = `<span style="color:var(--green);font-weight:600">✓ merged</span>`;
     } else if (w.pr_url) {
       const safeUrl = /^https?:\/\//i.test(w.pr_url) ? w.pr_url : '#';
-      commitDisplay = `<span style="color:#4ade80;font-weight:600">✓ committed · <a href="${esc(safeUrl)}" target="_blank" rel="noopener" style="color:#60a5fa">PR ↗</a></span>`;
+      commitDisplay = `<span style="color:var(--green);font-weight:600">✓ committed · <a href="${esc(safeUrl)}" target="_blank" rel="noopener" style="color:var(--accent)">PR ↗</a></span>`;
     } else if (w.auto_committed) {
-      commitDisplay = `<span style="color:#4ade80;font-weight:600">✓ committed${w.auto_pushed ? ' · ✓ pushed' : ''}</span>`;
+      commitDisplay = `<span style="color:var(--green);font-weight:600">✓ committed${w.auto_pushed ? ' · ✓ pushed' : ''}</span>`;
     } else if (w.last_commit) {
       commitDisplay = `<span class="hash">${esc(w.last_commit.slice(0,7))}</span> ${esc(w.last_commit.slice(8,60))}`;
     } else {
@@ -1047,7 +1047,7 @@ function renderWorkers() {
       : '';
     const modelInfo = `<span style="font-size:10px;opacity:0.5;margin-left:4px">${esc(String(w.model||''))}${w.model_score!=null?' · '+esc(String(w.model_score)):''}</span>`;
     const tokenPct = w.estimated_tokens ? Math.min(100, w.estimated_tokens / 200000 * 100) : 0;
-    const tokenColor = w.estimated_tokens > 160000 ? '#ef4444' : w.estimated_tokens > 120000 ? '#f59e0b' : '#34d399';
+    const tokenColor = w.estimated_tokens > 160000 ? 'var(--red)' : w.estimated_tokens > 120000 ? 'var(--yellow)' : 'var(--green)';
     const tokenBar = w.estimated_tokens > 0
       ? `<div class="token-bar" title="~${(w.estimated_tokens||0).toLocaleString()} tokens"><div class="token-bar-fill" style="width:${tokenPct}%;background:${tokenColor}"></div></div>`
       : '';
@@ -1525,10 +1525,10 @@ function showToast(msg, isError = false) {
   el.textContent = msg;
   Object.assign(el.style, {
     position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)',
-    background: isError ? '#3d1212' : '#21262d',
-    border: `1px solid ${isError ? '#f85149' : '#30363d'}`,
-    borderRadius: '8px',
-    padding: '10px 18px', fontSize: '13px', color: '#e6edf3',
+    background: isError ? 'rgba(192,83,74,0.08)' : 'var(--bg2)',
+    border: `1px solid ${isError ? 'var(--red)' : 'var(--border)'}`,
+    borderRadius: '12px', boxShadow: 'var(--shadow-md)',
+    padding: '10px 18px', fontSize: '13px', color: 'var(--text)',
     zIndex: '999', transition: 'opacity 0.3s',
   });
   document.body.appendChild(el);
@@ -1536,6 +1536,8 @@ function showToast(msg, isError = false) {
 }
 
 // ─── Utilities ───────────────────────────────────────────────────────────────
+function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
 function esc(s) {
   return String(s || '')
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
@@ -1985,7 +1987,7 @@ function drawSparkline(canvas, values) {
     const barH = Math.max(2, Math.round((v / max) * (h - 2)));
     const x = i * (barW + gap);
     const y = h - barH;
-    ctx.fillStyle = v === 0 ? '#3fb950' : '#58a6ff';
+    ctx.fillStyle = v === 0 ? cssVar('--green') : cssVar('--accent');
     ctx.fillRect(x, y, barW, barH);
   });
 }
@@ -2282,7 +2284,7 @@ function updateSwarmUI(swarmState) {
 
 // ─── Analytics ─────────────────────────────────────────────────────────────────
 
-const _MODEL_COLORS = { haiku: '#34d399', sonnet: '#58a6ff', opus: '#bc8cff' };
+function _modelColor(model) { return { haiku: cssVar('--green'), sonnet: cssVar('--accent'), opus: cssVar('--purple') }[model] || cssVar('--text2'); }
 
 async function renderAnalytics() {
   if (!activeSessionId) return;
@@ -2313,7 +2315,7 @@ async function renderAnalytics() {
     const modelsEl = document.getElementById('analyticsModels');
     if (modelsEl && Object.keys(d.model_stats).length > 0) {
       modelsEl.innerHTML = Object.entries(d.model_stats).map(([m, s]) => {
-        const c = _MODEL_COLORS[m] || 'var(--text2)';
+        const c = _modelColor(m);
         return `<div style="font-size:10px;color:var(--text2);margin-top:2px">
           <span style="color:${c};font-weight:600">${m}</span>:
           ${s.count} tasks, ${s.done} done, avg ${Math.round(s.avg_elapsed_s)}s
@@ -2343,7 +2345,7 @@ function drawDonut(entries) {
     ctx.arc(cx, cy, r, angle, angle + slice);
     ctx.arc(cx, cy, inner, angle + slice, angle, true);
     ctx.closePath();
-    ctx.fillStyle = _MODEL_COLORS[model] || '#888';
+    ctx.fillStyle = _modelColor(model);
     ctx.fill();
     angle += slice;
   }
@@ -2606,8 +2608,8 @@ function renderDag() {
   }
 
   const STATUS_COLOR = {
-    done: '#3fb950', running: '#58a6ff', failed: '#f85149',
-    paused: '#d29922', blocked: '#d29922', pending: '#8b949e', queued: '#8b949e',
+    done: cssVar('--green'), running: cssVar('--accent'), failed: cssVar('--red'),
+    paused: cssVar('--yellow'), blocked: cssVar('--yellow'), pending: cssVar('--text2'), queued: cssVar('--text2'),
   };
   const doneIds = new Set(tasks.filter(t => t.status === 'done').map(t => t.id));
 
@@ -2624,7 +2626,7 @@ function renderDag() {
       const mx = (x1 + x2) / 2;
       const done = doneIds.has(depId);
       edges += `<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}"
-        fill="none" stroke="${done ? '#3fb950' : '#30363d'}" stroke-width="1.5"
+        fill="none" stroke="${done ? cssVar('--green') : cssVar('--border')}" stroke-width="1.5"
         marker-end="url(#${done ? 'arrowGreen' : 'arrowGray'})" />`;
     });
   });
@@ -2635,18 +2637,18 @@ function renderDag() {
     if (!p) return;
     const isSelected = dagSelectedTask === t.id;
     const isBlocked = (t.depends_on || []).some(dep => !doneIds.has(dep));
-    const stroke = isSelected ? '#58a6ff' : isBlocked ? '#d29922' : '#30363d';
+    const stroke = isSelected ? cssVar('--accent') : isBlocked ? cssVar('--yellow') : cssVar('--border');
     const strokeW = isSelected ? 2 : 1;
-    const dot = STATUS_COLOR[t.status] || '#8b949e';
+    const dot = STATUS_COLOR[t.status] || cssVar('--text2');
     const label = esc(firstLine(t.description).slice(0, 17));
     const suffix = firstLine(t.description).length > 17 ? '…' : '';
     nodes += `<g data-tid="${esc(t.id)}" onclick="dagClick(this.dataset.tid, event)" style="cursor:pointer" title="${esc(t.id)}: ${esc(firstLine(t.description))}">
-      <rect x="${p.x}" y="${p.y}" width="${nodeW}" height="${nodeH}" rx="5"
-        fill="${isSelected ? '#1c2a3a' : '#161b22'}" stroke="${stroke}" stroke-width="${strokeW}" />
+      <rect x="${p.x}" y="${p.y}" width="${nodeW}" height="${nodeH}" rx="8"
+        fill="${isSelected ? cssVar('--bg3') : cssVar('--bg2')}" stroke="${stroke}" stroke-width="${strokeW}" />
       <circle cx="${p.x + 10}" cy="${p.y + nodeH/2}" r="4" fill="${dot}" />
-      <text x="${p.x + 20}" y="${p.y + nodeH/2 + 4}" fill="#e6edf3"
+      <text x="${p.x + 20}" y="${p.y + nodeH/2 + 4}" fill="${cssVar('--text')}"
         font-size="11" font-family="'SF Mono','Fira Code',monospace">${label}${suffix}</text>
-      <text x="${p.x + nodeW - 4}" y="${p.y + 11}" fill="#8b949e"
+      <text x="${p.x + nodeW - 4}" y="${p.y + 11}" fill="${cssVar('--text2')}"
         font-size="9" text-anchor="end" font-family="sans-serif">${esc(t.id)}</text>
     </g>`;
   });
@@ -2659,10 +2661,10 @@ function renderDag() {
     <svg xmlns="http://www.w3.org/2000/svg" width="${svgW}" height="${svgH}" style="display:block;min-width:${svgW}px">
       <defs>
         <marker id="arrowGray" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto">
-          <polygon points="0 0, 7 2.5, 0 5" fill="#30363d" />
+          <polygon points="0 0, 7 2.5, 0 5" fill="${cssVar('--border')}" />
         </marker>
         <marker id="arrowGreen" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto">
-          <polygon points="0 0, 7 2.5, 0 5" fill="#3fb950" />
+          <polygon points="0 0, 7 2.5, 0 5" fill="${cssVar('--green')}" />
         </marker>
       </defs>
       ${edges}
