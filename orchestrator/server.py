@@ -454,6 +454,35 @@ async def get_schedule(session_id: str):
 # ─── REST: PROGRESS.md ────────────────────────────────────────────────────────
 
 
+@app.post("/api/sessions/{session_id}/set-orchestrate-goal")
+async def set_orchestrate_goal(session_id: str, body: dict):
+    """Save goal + PROGRESS.md context to .claude/orchestrate-goal.md so the
+    orchestrate skill can read it without a separate PTY message (avoids race)."""
+    s = registry.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Session not found")
+    goal = body.get("goal", "").strip()
+    if not goal:
+        raise HTTPException(status_code=400, detail="goal is required")
+
+    # Build context: recent PROGRESS.md + goal
+    lines = ["# Orchestrate Goal\n"]
+    progress_file = s.project_dir / "PROGRESS.md"
+    if progress_file.exists():
+        try:
+            content = progress_file.read_text(errors="replace")
+            recent = content[-3000:] if len(content) > 3000 else content
+            lines.append(f"## PROGRESS.md (recent lessons)\n{recent}\n---\n")
+        except Exception:
+            pass
+    lines.append(f"## Goal\n{goal}\n")
+
+    goal_file = s.project_dir / ".claude" / "orchestrate-goal.md"
+    goal_file.parent.mkdir(parents=True, exist_ok=True)
+    goal_file.write_text("".join(lines))
+    return {"ok": True, "path": str(goal_file)}
+
+
 @app.get("/api/sessions/{session_id}/progress-md")
 async def get_progress_md(session_id: str, chars: int = 3000):
     """Return recent PROGRESS.md content for injection into orchestrate prompt."""

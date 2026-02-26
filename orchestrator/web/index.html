@@ -1804,27 +1804,21 @@ async function sendOrchestrate() {
   if (!st || !st.activePaneId) return;
   const pane = st.panes.get(st.activePaneId);
   if (!pane || !pane.ws || pane.ws.readyState !== WebSocket.OPEN) return;
+  if (!goal) return;
 
-  // Fetch PROGRESS.md and prepend to goal so orchestrator learns from past runs
-  let promptText = goal;
-  if (activeSessionId) {
-    try {
-      const r = await fetch(`/api/sessions/${activeSessionId}/progress-md`);
-      if (r.ok) {
-        const d = await r.json();
-        if (d.content && d.content.trim()) {
-          const prefix = `[PROGRESS.md — recent lessons]\n${d.content}\n---\n`;
-          promptText = prefix + (goal || '');
-        }
-      }
-    } catch (_) { /* skip if unavailable */ }
-  }
+  // Save goal + PROGRESS.md context to file first, then send a single /orchestrate\r.
+  // Previously two rapid PTY sends (goal text + /orchestrate) caused a race:
+  // Claude started responding to the goal message before /orchestrate arrived,
+  // leaving /orchestrate queued and requiring a second manual Enter.
+  try {
+    await fetch(`/api/sessions/${activeSessionId}/set-orchestrate-goal`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ goal })
+    });
+  } catch (_) { /* non-fatal: skill will ask for goal interactively */ }
 
-  if (promptText) {
-    // Send context first so it's in conversation history when /orchestrate fires.
-    // Both sends are buffered by the PTY and processed sequentially — no delay needed.
-    pane.ws.send(JSON.stringify({ type: 'input', data: promptText + '\r' }));
-  }
+  // Single PTY send — no race condition, no second Enter needed
   pane.ws.send(JSON.stringify({ type: 'input', data: '/orchestrate\r' }));
   document.getElementById('goalInput').value = '';
 }
