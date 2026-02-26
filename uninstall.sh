@@ -35,6 +35,12 @@ for hook in "${MANAGED_HOOKS[@]}"; do
   fi
 done
 
+# Remove hook libraries
+if [[ -d "$CLAUDE_DIR/hooks/lib" ]]; then
+  rm -rf "$CLAUDE_DIR/hooks/lib"
+  echo "  Removed: hooks/lib/"
+fi
+
 # ─── 2. Remove agents ────────────────────────────────────────────────
 
 MANAGED_AGENTS=(
@@ -75,7 +81,7 @@ for skill in "${MANAGED_SKILLS[@]}"; do
   fi
 done
 
-# ─── 4. Remove scripts ───────────────────────────────────────────────
+# ─── 4. Remove scripts + committer symlink ───────────────────────────
 
 MANAGED_SCRIPTS=(
   committer.sh
@@ -94,6 +100,11 @@ for script in "${MANAGED_SCRIPTS[@]}"; do
   fi
 done
 
+if [[ -L "$HOME/.local/bin/committer" ]]; then
+  rm "$HOME/.local/bin/committer"
+  echo "  Removed: ~/.local/bin/committer symlink"
+fi
+
 # ─── 5. Remove commands ──────────────────────────────────────────────
 
 MANAGED_COMMANDS=(
@@ -108,18 +119,52 @@ for cmd in "${MANAGED_COMMANDS[@]}"; do
   fi
 done
 
-# ─── 6. Remove hooks from settings.json ──────────────────────────────
+# ─── 6. Remove templates ─────────────────────────────────────────────
+
+echo "Removing templates..."
+if [[ -d "$CLAUDE_DIR/templates" ]]; then
+  rm -rf "$CLAUDE_DIR/templates"
+  echo "  Removed: templates/"
+fi
+
+# ─── 7. Remove models.env ────────────────────────────────────────────
+
+if [[ -f "$CLAUDE_DIR/models.env" ]]; then
+  rm "$CLAUDE_DIR/models.env"
+  echo "Removed models.env"
+fi
+
+# ─── 8. Remove status line script ────────────────────────────────────
+
+if [[ -f "$CLAUDE_DIR/statusline-command.sh" ]]; then
+  rm "$CLAUDE_DIR/statusline-command.sh"
+  echo "Removed statusline-command.sh"
+fi
+
+# ─── 9. Remove hooks + statusLine from settings.json ─────────────────
 
 echo "Cleaning settings.json..."
 if [[ -f "$CLAUDE_DIR/settings.json" ]] && command -v jq &>/dev/null; then
-  jq 'del(.hooks)' "$CLAUDE_DIR/settings.json" > /tmp/claude-settings-clean.json
+  jq 'del(.hooks) | del(.statusLine)' "$CLAUDE_DIR/settings.json" > /tmp/claude-settings-clean.json
   mv /tmp/claude-settings-clean.json "$CLAUDE_DIR/settings.json"
-  echo "  Removed hooks from settings.json"
+  echo "  Removed hooks + statusLine from settings.json"
 else
   echo "  Skipped (no settings.json or jq not available)"
 fi
 
-# ─── 7. Clean up empty directories ───────────────────────────────────
+# ─── 10. Remove shell aliases ─────────────────────────────────────────
+
+echo "Removing shell aliases..."
+for rc_file in "$HOME/.zshrc" "$HOME/.bashrc"; do
+  [[ -f "$rc_file" ]] || continue
+  if grep -q "dangerously-skip-permissions" "$rc_file" 2>/dev/null; then
+    # Remove the block added by install.sh (comment + 2 alias lines)
+    sed -i '/# Claude Code: skip permission prompts (added by claude-code-kit)/,/^alias cc=/d' "$rc_file"
+    echo "  Removed aliases from $rc_file"
+  fi
+done
+
+# ─── 11. Clean up empty directories ──────────────────────────────────
 
 for dir in hooks agents scripts commands; do
   rmdir "$CLAUDE_DIR/$dir" 2>/dev/null && echo "  Removed empty dir: $dir" || true
@@ -131,6 +176,6 @@ echo "Uninstall complete."
 echo ""
 echo "Preserved:"
 echo "  - ~/.claude/corrections/ (user data)"
-echo "  - ~/.claude/settings.json (env, permissions — only hooks removed)"
+echo "  - ~/.claude/settings.json (env, permissions — hooks/statusLine removed)"
 echo "  - Other skills not managed by this repo"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
