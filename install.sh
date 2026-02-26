@@ -18,7 +18,7 @@ echo ""
 # ─── 1. Create directories ───────────────────────────────────────────
 
 echo "Creating directories..."
-mkdir -p "$CLAUDE_DIR"/{hooks/lib,agents,skills,scripts,corrections,commands}
+mkdir -p "$CLAUDE_DIR"/{hooks/lib,agents,skills,scripts,corrections,commands,templates}
 
 # ─── 2. Copy hooks (chmod +x) ────────────────────────────────────────
 
@@ -82,6 +82,21 @@ if [[ -f "$CLAUDE_DIR/scripts/committer.sh" ]]; then
   fi
 fi
 
+# ─── 6c. Deploy templates ────────────────────────────────────────────
+
+echo "Installing templates..."
+if [[ -d "$SCRIPT_DIR/configs/templates" ]]; then
+  cp -r "$SCRIPT_DIR/configs/templates/"* "$CLAUDE_DIR/templates/"
+  echo "  Installed: $(ls "$SCRIPT_DIR/configs/templates/" | tr '\n' ' ')"
+fi
+
+# ─── 6d. Deploy + configure status line ──────────────────────────────
+
+echo "Configuring status line..."
+cp "$SCRIPT_DIR/configs/scripts/statusline-command.sh" "$CLAUDE_DIR/statusline-command.sh"
+chmod +x "$CLAUDE_DIR/statusline-command.sh"
+echo "  Installed statusline-command.sh"
+
 # ─── 7. Initialize corrections (don't overwrite existing) ────────────
 
 if [[ ! -f "$CLAUDE_DIR/corrections/rules.md" ]]; then
@@ -105,11 +120,15 @@ if ! command -v jq &>/dev/null; then
 else
   HOOKS=$(jq '.hooks' "$SCRIPT_DIR/configs/settings-hooks.json")
 
+  STATUSLINE='{"type":"command","command":"bash ~/.claude/statusline-command.sh"}'
+
   if [[ -f "$CLAUDE_DIR/settings.json" ]]; then
-    # Merge: update hooks field, preserve everything else
-    jq --argjson hooks "$HOOKS" '.hooks = $hooks' "$CLAUDE_DIR/settings.json" > /tmp/claude-settings-merged.json
+    # Merge: update hooks + statusLine, preserve everything else
+    jq --argjson hooks "$HOOKS" --argjson sl "$STATUSLINE" \
+      '.hooks = $hooks | .statusLine = $sl' \
+      "$CLAUDE_DIR/settings.json" > /tmp/claude-settings-merged.json
     mv /tmp/claude-settings-merged.json "$CLAUDE_DIR/settings.json"
-    echo "  Merged hooks into existing settings.json"
+    echo "  Merged hooks + statusLine into existing settings.json"
   else
     # Fresh install: copy template
     cp "$SCRIPT_DIR/templates/settings.json" "$CLAUDE_DIR/settings.json"

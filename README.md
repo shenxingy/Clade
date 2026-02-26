@@ -280,6 +280,43 @@ Closes the review → fix → verify feedback loop for any iterative artifact (p
 
 The loop runs fully unattended. Set `max_iterations` in Settings as a safety cap.
 
+### 6. Recommended terminal setup
+
+The fastest input experience combines a GPU-accelerated terminal with split panes and voice input.
+
+**Terminal: Ghostty** (recommended)
+
+Ghostty renders at 120fps with near-zero latency — noticeably faster than iTerm2 or the default macOS Terminal. Split panes let you watch multiple agents simultaneously without switching windows.
+
+```
+# Ghostty split layout for parallel agents
+┌────────────────────────┬────────────────────────┐
+│  cc (interactive)      │  cc -p task-002.md     │
+│  ↑ your main session   │  ↑ background worker   │
+├────────────────────────┼────────────────────────┤
+│  cc -p task-001.md     │  git log --oneline -10 │
+│  ↑ background worker   │  ↑ monitor commits      │
+└────────────────────────┴────────────────────────┘
+```
+
+Ghostty keybindings for split panes:
+- `Cmd+D` — split right
+- `Cmd+Shift+D` — split down
+- `Cmd+Option+Arrow` — navigate panes
+
+**Voice input** (reduces typing fatigue significantly)
+
+Instead of typing tasks, dictate them. This is particularly effective for the Orchestrator chat — you can have a natural conversation with the AI.
+
+| Platform | Tool | Setup |
+|----------|------|-------|
+| macOS | System voice dictation | System Settings → Keyboard → Dictation → enable, set shortcut |
+| macOS | [Whisper transcription](https://github.com/openai/whisper) | `brew install whisper-cpp` + configure shortcut |
+| Linux | `nerd-dictation` | `pip install nerd-dictation` — uses Vosk offline model |
+| All | SuperWhisper / Wispr Flow | GUI apps with hotkey push-to-talk, works in any text field |
+
+Workflow: press hotkey → speak → release → text appears in terminal. Effective for 30–200 word task descriptions.
+
 ---
 
 ## Overnight Autonomous Operation
