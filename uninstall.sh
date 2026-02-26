@@ -17,7 +17,11 @@ echo ""
 
 MANAGED_HOOKS=(
   session-context.sh
+  pre-tool-guardian.sh
   post-edit-check.sh
+  post-tool-use-lint.sh
+  edit-shadow-detector.sh
+  revert-detector.sh
   notify-telegram.sh
   verify-task-completed.sh
   correction-detector.sh
@@ -35,6 +39,7 @@ done
 
 MANAGED_AGENTS=(
   code-reviewer.md
+  paper-reviewer.md
   test-runner.md
   type-checker.md
   verify-app.md
@@ -51,9 +56,15 @@ done
 # ─── 3. Remove managed skills ────────────────────────────────────────
 
 MANAGED_SKILLS=(
+  audit
   batch-tasks
-  sync
+  commit
+  handoff
+  loop
   model-research
+  orchestrate
+  pickup
+  sync
 )
 
 echo "Removing managed skills..."
@@ -67,8 +78,12 @@ done
 # ─── 4. Remove scripts ───────────────────────────────────────────────
 
 MANAGED_SCRIPTS=(
+  committer.sh
+  loop-runner.sh
+  rule-cluster.sh
   run-tasks.sh
   run-tasks-parallel.sh
+  session-scorecard.sh
 )
 
 echo "Removing scripts..."
