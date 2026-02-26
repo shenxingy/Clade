@@ -45,6 +45,12 @@
           },
           {
             "type": "command",
+            "command": "~/.claude/hooks/post-tool-use-lint.sh",
+            "timeout": 30,
+            "statusMessage": "Running verify_cmd..."
+          },
+          {
+            "type": "command",
             "command": "~/.claude/hooks/edit-shadow-detector.sh",
             "async": true,
             "timeout": 5
