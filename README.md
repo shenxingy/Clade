@@ -6,7 +6,7 @@
 
 **Turn Claude Code from a chat assistant into an autonomous coding system.**
 
-One install script. Six hooks, four agents, six skills, a safety guardian, and a correction learning loop — all working together so Claude codes better, catches its own mistakes, and can run unattended overnight while you sleep.
+One install script. Nine hooks, five agents, nine skills, a safety guardian, and a correction learning loop — all working together so Claude codes better, catches its own mistakes, and can run unattended overnight while you sleep.
 
 > If this saves you time, a star helps others find it — and if something breaks, [open an issue](https://github.com/shenxingy/claude-code-kit/issues/new/choose).
 
@@ -64,6 +64,10 @@ All checks are **opt-in by detection** — if the tool isn't installed or the pr
 | `/commit --no-push` | Same, but skip push |
 | `/commit --dry-run` | Show the split plan only, don't commit |
 | `/review` | Comprehensive tech debt review — auto-writes Critical/Warning findings to TODO.md |
+| `/loop GOAL_FILE` | Goal-driven autonomous improvement loop — supervisor plans tasks each iteration, workers execute in parallel |
+| `/loop --status` | Show current loop state (iteration, convergence, worker results) |
+| `/loop --stop` | Stop a running loop |
+| `/audit` | Audit `corrections/rules.md` — find rules to promote to CLAUDE.md, remove redundant or contradictory entries |
 | `/model-research` | Search web for latest Claude model data, show what changed |
 | `/model-research --apply` | Same + update model guide, session context, and batch-tasks configs |
 | `/orchestrate` | Switch to orchestrator mode — ask clarifying questions, decompose goal into tasks, write `proposed-tasks.md` (used by the Web UI) |
@@ -351,8 +355,10 @@ The `pre-tool-guardian.sh` hook protects unattended runs: database migrations, c
 |------|---------|-----------|
 | `session-context.sh` | SessionStart | None (shell only) |
 | `pre-tool-guardian.sh` | PreToolUse (Bash) | None (shell only) |
+| `revert-detector.sh` | PreToolUse (Bash) | None (shell only) |
 | `post-edit-check.sh` | PostToolUse (Edit/Write) | None (shell only) |
 | `post-tool-use-lint.sh` | PostToolUse (Edit/Write) | None (shell only) |
+| `edit-shadow-detector.sh` | PostToolUse (Edit/Write) | None (shell only) |
 | `correction-detector.sh` | UserPromptSubmit | None (shell only) |
 | `verify-task-completed.sh` | TaskCompleted | None (shell only) |
 | `notify-telegram.sh` | Notification | None (shell only) |
@@ -374,6 +380,7 @@ Common values: `"tsc --noEmit"` (TypeScript), `"python3 -m py_compile <file>"` (
 | Agent | Model | Use case |
 |-------|-------|----------|
 | `code-reviewer` | Sonnet | Code review with persistent memory |
+| `paper-reviewer` | Sonnet | Academic paper review — structured critique for LaTeX papers before submission |
 | `verify-app` | Sonnet | Runtime verification — adapts to project type (web, Rust, Go, Swift, Gradle, LaTeX) |
 | `type-checker` | Haiku | Fast type/compilation check — auto-detects language (TS, Python, Rust, Go, Swift, Kotlin, LaTeX) |
 | `test-runner` | Haiku | Test execution — auto-detects framework (pytest, jest, cargo test, go test, swift test, gradle, make) |
@@ -553,11 +560,9 @@ claude-code-kit/
 │   │   ├── batch-tasks/               # /batch-tasks skill
 │   │   ├── sync/                      # /sync skill
 │   │   ├── commit/                    # /commit skill
-│   │   ├── worktree/                  # /worktree skill — create parallel git worktrees
-│   │   ├── frontend-design/           # /frontend-design skill — production-grade UI generation
+│   │   ├── loop/                      # /loop skill — goal-driven autonomous improvement loop
+│   │   ├── audit/                     # /audit skill — corrections/rules.md cleanup
 │   │   ├── orchestrate/               # /orchestrate skill — AI orchestrator persona for Web UI
-│   │   ├── companyos-update/          # /companyos-update skill — sync task status to Company OS
-│   │   ├── companyos-wiki/            # /companyos-wiki skill — create/update Company OS wiki pages
 │   │   └── model-research/            # /model-research skill
 │   ├── scripts/
 │   │   ├── committer.sh               # Safe commit for parallel agents (no git add .)

@@ -44,26 +44,18 @@ jobs:
           chmod +x install.sh
           bash -n install.sh && echo "install.sh syntax OK"
 
-  unit-tests:
-    name: Unit Tests
+  shell-tests:
+    name: Shell Tests
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install test dependencies
-        run: pip install pytest
-
-      - name: Run unit tests
+      - name: Run loop system tests
         run: |
-          cd tests
-          python -m pytest test_loop_system.py -x --timeout=30 -v \
-            --ignore-glob="*integration*" \
-            -k "not integration" \
-            || echo "::warning::Some tests failed — see output above"
+          if [[ -f tests/test-loop.sh ]]; then
+            bash tests/test-loop.sh || echo "::warning::Some tests failed — see output above"
+          else
+            echo "No shell tests found, skipping"
+          fi
         continue-on-error: true
