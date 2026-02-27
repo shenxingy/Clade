@@ -324,7 +324,7 @@ async def get_loop_sources(session_id: str):
     if not s:
         raise HTTPException(status_code=404, detail="Session not found")
     project_dir = s.project_dir
-    priority_names = ["BRAINSTORM.md", "TODO.md", "GOALS.md", "PROGRESS.md"]
+    priority_names = ["BRAINSTORM.md", "TODO.md", "VISION.md", "PROGRESS.md"]
     results: list[dict] = []
     seen: set[str] = set()
     for name in priority_names:
