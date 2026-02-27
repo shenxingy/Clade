@@ -90,6 +90,7 @@ MANAGED_SCRIPTS=(
   run-tasks.sh
   run-tasks-parallel.sh
   session-scorecard.sh
+  statusline-command.sh
 )
 
 echo "Removing scripts..."
