@@ -1206,10 +1206,22 @@ async function addTask() {
 
 async function importProposedToQueue() {
   try {
-    const res = await fetch(`/api/tasks/import-proposed?session=${activeSessionId}`, { method: 'POST' });
+    const res = await fetch(`/api/tasks/import-proposed?session=${activeSessionId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
     const data = await res.json();
     if (!res.ok) { showToast(`Import failed: ${data.detail || res.status}`, true); return; }
-    showToast(`Imported ${data.imported} tasks from proposed-tasks.md`);
+    const skipped = data.skipped || {};
+    const skipTotal = Object.values(skipped).reduce((a, b) => a + b, 0);
+    if (data.imported === 0 && skipTotal > 0) {
+      const skipParts = Object.entries(skipped).map(([s, n]) => `${n} ${s}`).join(', ');
+      showToast(`Imported 0 tasks — ${skipTotal} already in queue (${skipParts})`, true);
+    } else {
+      const suffix = skipTotal > 0 ? `, ${skipTotal} skipped (already in queue)` : '';
+      showToast(`Imported ${data.imported} tasks${suffix}`);
+    }
   } catch (e) {
     showToast('Error importing tasks: ' + e.message, true);
   }
