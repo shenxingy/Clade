@@ -679,64 +679,103 @@
 
     /* ─── Loop Bar ──────────────────────────────────────────────── */
     .loop-bar {
-      padding: 6px 14px 4px;
+      padding: 6px 14px 6px;
       background: var(--bg2);
       border-top: 1px solid var(--border);
       flex-shrink: 0;
     }
-    .loop-bar .section-header {
-      border-bottom: none;
-      padding: 0 0 4px;
-      background: transparent;
-    }
-    .loop-controls {
+    .loop-header {
       display: flex;
       align-items: center;
       gap: 6px;
-      flex-wrap: wrap;
+      margin-bottom: 6px;
     }
-    .loop-input {
+    .loop-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text2);
+    }
+    /* Preset cards */
+    .loop-preset-cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 5px;
+      margin-bottom: 6px;
+    }
+    .loop-preset-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1px;
+      padding: 5px 6px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      text-align: center;
+    }
+    .loop-preset-card:hover { border-color: var(--accent); background: var(--bg2); }
+    .loop-preset-card.active {
+      border-color: var(--accent);
+      background: rgba(193,95,60,0.07);
+    }
+    .loop-preset-icon { font-size: 14px; line-height: 1; }
+    .loop-preset-name { font-size: 11px; font-weight: 600; color: var(--text); }
+    .loop-preset-desc { font-size: 10px; color: var(--text2); }
+    /* Source row */
+    .loop-source-row {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .loop-source-label { font-size: 11px; color: var(--text2); flex-shrink: 0; }
+    .loop-source-select {
+      flex: 1;
+      min-width: 0;
+      font-size: 11px;
+      padding: 3px 6px;
       background: var(--bg3);
       border: 1px solid var(--border);
       border-radius: 5px;
       color: var(--text);
-      font-size: 11px;
       font-family: var(--font-mono);
-      padding: 3px 8px;
       outline: none;
-      transition: border-color 0.15s;
-      min-width: 0;
     }
-    .loop-input:focus { border-color: var(--accent); }
-    .loop-input::placeholder { color: var(--text2); }
-    #loopArtifact { flex: 2; min-width: 120px; }
-    #loopContextDir { flex: 1; min-width: 80px; }
-    .loop-inline {
+    .loop-source-select:focus { border-color: var(--accent); }
+    .loop-adv-toggle { padding: 3px 7px; flex-shrink: 0; }
+    /* Advanced panel */
+    .loop-advanced {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 5px;
+      padding: 5px 8px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+    }
+    .loop-adv-item {
       display: flex;
       align-items: center;
       gap: 3px;
       font-size: 11px;
       color: var(--text2);
       white-space: nowrap;
-      flex-shrink: 0;
     }
-    .loop-inline input[type=number] {
-      background: var(--bg3);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      color: var(--text);
-      font-size: 11px;
-      padding: 2px 4px;
-      text-align: center;
-    }
-    #loopProgress {
+    /* Running bar */
+    .loop-running-bar {
       display: flex;
       align-items: center;
-      margin-top: 4px;
       gap: 0;
     }
     .badge.idle { background: rgba(138,126,111,0.12); color: var(--text2); }
     .badge.active { background: rgba(90,154,79,0.12); color: var(--green); }
+    .badge.running { background: rgba(90,154,79,0.12); color: var(--green); }
+    .badge.paused { background: rgba(196,154,60,0.12); color: var(--yellow); }
     .badge.draining { background: rgba(196,154,60,0.12); color: var(--yellow); }
     .badge.converged { background: rgba(193,95,60,0.12); color: var(--accent); }
     .loop-bar .badge.done,

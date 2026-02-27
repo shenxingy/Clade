@@ -288,30 +288,64 @@
 
     <!-- Loop Control Bar (Execute mode) -->
     <div class="loop-bar" id="loopBar" style="display:none">
-      <div class="section-header" style="padding:0 0 4px">
-        <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Iteration Loop</span>
+      <!-- Header -->
+      <div class="loop-header">
+        <span class="loop-title">Iteration Loop</span>
         <span id="loopStatusBadge" class="badge idle" style="font-size:10px">idle</span>
       </div>
-      <div class="loop-controls">
-        <input id="loopArtifact" type="text" class="loop-input" placeholder="Artifact path (e.g. paper.tex)" oninput="this._userEdited=true" />
-        <input id="loopContextDir" type="text" class="loop-input" placeholder="Codebase dir (optional)" oninput="this._userEdited=true" />
-        <label class="loop-inline">K=<input id="loopK" type="number" value="2" min="1" max="20" style="width:36px" oninput="this._userEdited=true"/></label>
-        <label class="loop-inline">N=<input id="loopN" type="number" value="3" min="1" max="10" style="width:36px" oninput="this._userEdited=true"/></label>
-        <label class="loop-inline">Mode:
-          <select id="loopMode" style="font-size:11px;padding:2px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);outline:none">
-            <option value="review">Review</option>
-            <option value="plan_build">Plan+Build</option>
+      <!-- Config panel (idle/done) -->
+      <div id="loopConfigPanel">
+        <div class="loop-preset-cards">
+          <button class="loop-preset-card active" data-preset="review" onclick="selectLoopPreset('review')">
+            <span class="loop-preset-icon">🔍</span>
+            <span class="loop-preset-name">Review Fix</span>
+            <span class="loop-preset-desc">Bugs &amp; polish</span>
+          </button>
+          <button class="loop-preset-card" data-preset="build" onclick="selectLoopPreset('build')">
+            <span class="loop-preset-icon">🏗</span>
+            <span class="loop-preset-name">Plan+Build</span>
+            <span class="loop-preset-desc">Goals → code</span>
+          </button>
+          <button class="loop-preset-card" data-preset="polish" onclick="selectLoopPreset('polish')">
+            <span class="loop-preset-icon">✨</span>
+            <span class="loop-preset-name">Polish</span>
+            <span class="loop-preset-desc">No TODOs left</span>
+          </button>
+        </div>
+        <div class="loop-source-row">
+          <span class="loop-source-label">Source:</span>
+          <select id="loopSourceSelect" class="loop-source-select" onchange="saveLoopPrefs()">
+            <option value="">— select file —</option>
           </select>
-        </label>
-        <button class="btn small" id="loopStartBtn" onclick="startLoop()">▶ Start</button>
-        <button class="btn small secondary" onclick="pauseLoop()" id="loopPauseBtn" style="display:none">⏸ Pause</button>
-        <button class="btn small secondary" onclick="resumeLoop()" id="loopResumeBtn" style="display:none">▶ Resume</button>
-        <button class="btn small danger" onclick="cancelLoop()" id="loopCancelBtn" style="display:none">✕</button>
+          <button class="btn small secondary loop-adv-toggle" onclick="toggleLoopAdvanced()" title="Advanced settings">⚙</button>
+          <button class="btn small" id="loopStartBtn" onclick="startLoop()">▶ Start</button>
+        </div>
+        <div class="loop-advanced" id="loopAdvanced" style="display:none">
+          <label class="loop-adv-item">K=<input id="loopK" type="number" value="3" min="1" max="20" style="width:40px" onchange="saveLoopPrefs()" /></label>
+          <label class="loop-adv-item">N=<input id="loopN" type="number" value="6" min="1" max="20" style="width:40px" onchange="saveLoopPrefs()" /></label>
+          <label class="loop-adv-item">Model:
+            <select id="loopAdvModel" onchange="saveLoopPrefs()" style="font-size:11px;padding:2px 4px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text)">
+              <option value="haiku">Haiku</option>
+              <option value="sonnet" selected>Sonnet</option>
+              <option value="opus">Opus</option>
+            </select>
+          </label>
+          <label class="loop-adv-item">Dir:<input id="loopContextDir" type="text" style="font-size:11px;padding:2px 6px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);width:120px;font-family:var(--font-mono)" placeholder="auto" onchange="saveLoopPrefs()" /></label>
+        </div>
       </div>
-      <div id="loopProgress" style="display:none;align-items:center;margin-top:4px;gap:0">
-        <span id="loopIterLabel" style="font-size:11px;color:var(--text2)">Iteration 0</span>
-        <span id="loopConvergence" style="font-size:11px;color:var(--text2);margin-left:8px"></span>
-        <canvas id="loopSparkline" width="120" height="20" style="vertical-align:middle;margin-left:8px"></canvas>
+      <!-- Running panel (compact, active loops) -->
+      <div id="loopRunningPanel" style="display:none">
+        <div class="loop-running-bar">
+          <span id="loopRunningPreset" style="font-size:11px;font-weight:600;color:var(--accent)"></span>
+          <span id="loopIterLabel" style="font-size:11px;color:var(--text2);margin-left:6px">Iter 0</span>
+          <span id="loopConvergence" style="font-size:11px;color:var(--text2);margin-left:6px"></span>
+          <canvas id="loopSparkline" width="100" height="16" style="vertical-align:middle;margin-left:6px"></canvas>
+          <div style="margin-left:auto;display:flex;gap:4px">
+            <button class="btn small secondary" onclick="pauseLoop()" id="loopPauseBtn" style="display:none;padding:2px 7px">⏸</button>
+            <button class="btn small secondary" onclick="resumeLoop()" id="loopResumeBtn" style="display:none;padding:2px 7px">▶</button>
+            <button class="btn small danger" onclick="cancelLoop()" id="loopCancelBtn" style="display:none;padding:2px 7px">✕</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -852,6 +886,9 @@ async function switchTab(sessionId) {
 
   activeSessionId = sessionId;
   renderTabs();
+
+  // Reload loop prefs/sources for the new session (execute mode only)
+  if (currentMode === 'execute') { applyLoopPrefs(); loadLoopSources(); }
 
   // Show (lazily open if first visit) the new session's terminal
   showSessionTerminal(sessionId);
@@ -1784,6 +1821,7 @@ function setMode(mode) {
   updateSchedulerDisplay(_lastSchedule);
   const loopBar = document.getElementById('loopBar');
   if (loopBar) loopBar.style.display = mode === 'execute' ? '' : 'none';
+  if (mode === 'execute') { applyLoopPrefs(); loadLoopSources(); }
   const swarmBar = document.getElementById('swarmBar');
   if (swarmBar) swarmBar.style.display = mode === 'execute' ? '' : 'none';
   const bb = document.getElementById('broadcastBar');
@@ -1926,14 +1964,103 @@ async function generateAgentsMd() {
 // ─── Iteration Loop ───────────────────────────────────────────────────────────
 
 let _loopConvergedToasted = false;
+let _loopPreset = 'review'; // active preset key
+
+const LOOP_PRESETS = {
+  review: { mode: 'review',      k: 3, n: 6,  label: 'Review Fix' },
+  build:  { mode: 'plan_build',  k: 2, n: 10, label: 'Plan+Build' },
+  polish: { mode: 'review',      k: 4, n: 8,  label: 'Polish'     },
+};
+
+function selectLoopPreset(preset) {
+  _loopPreset = preset;
+  document.querySelectorAll('.loop-preset-card').forEach(c => {
+    c.classList.toggle('active', c.dataset.preset === preset);
+  });
+  // Apply K/N defaults unless user has customised them
+  const cfg = LOOP_PRESETS[preset] || LOOP_PRESETS.review;
+  const kEl = document.getElementById('loopK');
+  const nEl = document.getElementById('loopN');
+  if (kEl) kEl.value = cfg.k;
+  if (nEl) nEl.value = cfg.n;
+  saveLoopPrefs();
+}
+
+function toggleLoopAdvanced() {
+  const adv = document.getElementById('loopAdvanced');
+  if (adv) adv.style.display = adv.style.display === 'none' ? '' : 'none';
+}
+
+async function loadLoopSources() {
+  if (!activeSessionId) return;
+  const sel = document.getElementById('loopSourceSelect');
+  if (!sel) return;
+  try {
+    const r = await fetch(`/api/sessions/${activeSessionId}/loop/sources`);
+    if (!r.ok) return;
+    const sources = await r.json();
+    const saved = loadLoopPrefs()?.source || '';
+    sel.innerHTML = '<option value="">— select file —</option>' +
+      sources.map(s => `<option value="${esc(s.path)}"${s.path === saved ? ' selected' : ''}>${esc(s.label)}</option>`).join('');
+    // Auto-select best candidate if nothing saved
+    if (!saved && sources.length > 0) {
+      sel.value = sources[0].path;
+    }
+  } catch(e) { /* ignore */ }
+}
+
+function _loopPrefsKey() {
+  return `loop-pref-${activeSessionId || 'default'}`;
+}
+
+function loadLoopPrefs() {
+  try {
+    const raw = localStorage.getItem(_loopPrefsKey());
+    return raw ? JSON.parse(raw) : null;
+  } catch(e) { return null; }
+}
+
+function saveLoopPrefs() {
+  try {
+    const prefs = {
+      preset: _loopPreset,
+      source: document.getElementById('loopSourceSelect')?.value || '',
+      advanced: {
+        k: parseInt(document.getElementById('loopK')?.value) || 3,
+        n: parseInt(document.getElementById('loopN')?.value) || 6,
+        model: document.getElementById('loopAdvModel')?.value || 'sonnet',
+        contextDir: document.getElementById('loopContextDir')?.value || '',
+      },
+    };
+    localStorage.setItem(_loopPrefsKey(), JSON.stringify(prefs));
+  } catch(e) { /* ignore */ }
+}
+
+function applyLoopPrefs() {
+  const prefs = loadLoopPrefs();
+  if (!prefs) return;
+  if (prefs.preset && LOOP_PRESETS[prefs.preset]) {
+    selectLoopPreset(prefs.preset);
+  }
+  if (prefs.advanced) {
+    const { k, n, model, contextDir } = prefs.advanced;
+    if (k) { const el = document.getElementById('loopK'); if (el) el.value = k; }
+    if (n) { const el = document.getElementById('loopN'); if (el) el.value = n; }
+    if (model) { const el = document.getElementById('loopAdvModel'); if (el) el.value = model; }
+    if (contextDir) { const el = document.getElementById('loopContextDir'); if (el) el.value = contextDir; }
+  }
+  // source is restored in loadLoopSources after options are populated
+}
 
 async function startLoop() {
   if (!activeSessionId) return;
-  const artifactPath = document.getElementById('loopArtifact')?.value.trim();
-  if (!artifactPath) { showToast('Artifact path is required'); return; }
+  const artifactPath = document.getElementById('loopSourceSelect')?.value.trim();
+  if (!artifactPath) { showToast('Select a source file first'); return; }
   const contextDir = document.getElementById('loopContextDir')?.value.trim() || null;
-  const k = parseInt(document.getElementById('loopK')?.value) || 2;
-  const n = parseInt(document.getElementById('loopN')?.value) || 3;
+  const cfg = LOOP_PRESETS[_loopPreset] || LOOP_PRESETS.review;
+  const k = parseInt(document.getElementById('loopK')?.value) || cfg.k;
+  const n = parseInt(document.getElementById('loopN')?.value) || cfg.n;
+  const model = document.getElementById('loopAdvModel')?.value || document.getElementById('settingLoopModel')?.value || 'sonnet';
   const btn = document.getElementById('loopStartBtn');
   if (btn) btn.disabled = true;
   try {
@@ -1945,15 +2072,16 @@ async function startLoop() {
         context_dir: contextDir,
         convergence_k: k,
         convergence_n: n,
-        mode: document.getElementById('loopMode')?.value || 'review',
+        mode: cfg.mode,
         max_iterations: parseInt(document.getElementById('settingLoopMax')?.value) || 20,
-        supervisor_model: document.getElementById('settingLoopModel')?.value || 'sonnet',
+        supervisor_model: model,
       }),
     });
     const d = await r.json();
     if (d.detail) { showToast('Error: ' + d.detail); return; }
+    saveLoopPrefs();
     _loopConvergedToasted = false;
-    showToast('Loop started — Iteration 1 underway');
+    showToast(`Loop started — ${cfg.label} · Iteration 1`);
   } catch(e) { showToast('Failed to start loop'); }
   finally { if (btn) btn.disabled = false; }
 }
@@ -1999,127 +2127,102 @@ function drawSparkline(canvas, values) {
 
 function updateLoopUI(loopState) {
   const badge = document.getElementById('loopStatusBadge');
+  const configPanel = document.getElementById('loopConfigPanel');
+  const runningPanel = document.getElementById('loopRunningPanel');
   const pauseBtn = document.getElementById('loopPauseBtn');
   const resumeBtn = document.getElementById('loopResumeBtn');
   const cancelBtn = document.getElementById('loopCancelBtn');
-  const progress = document.getElementById('loopProgress');
   const iterLabel = document.getElementById('loopIterLabel');
   const convergenceLabel = document.getElementById('loopConvergence');
   const sparkCanvas = document.getElementById('loopSparkline');
+  const runningPresetLabel = document.getElementById('loopRunningPreset');
   const deferredSection = document.getElementById('deferredSection');
   const deferredCount = document.getElementById('deferredCount');
   const deferredList = document.getElementById('deferredList');
 
   if (!badge) return;
 
-  if (!loopState || !loopState.status || loopState.status === 'idle') {
-    badge.textContent = 'idle';
-    badge.className = 'badge idle';
-    if (pauseBtn) pauseBtn.style.display = 'none';
-    if (resumeBtn) resumeBtn.style.display = 'none';
-    if (cancelBtn) cancelBtn.style.display = 'none';
-    if (progress) progress.style.display = 'none';
-    if (deferredSection) deferredSection.style.display = 'none';
-    const a = document.getElementById('loopArtifact');
-    const c = document.getElementById('loopContextDir');
-    const kInput = document.getElementById('loopK');
-    const nInput = document.getElementById('loopN');
-    if (a) a._userEdited = false;
-    if (c) c._userEdited = false;
-    if (kInput) kInput._userEdited = false;
-    if (nInput) nInput._userEdited = false;
-    return;
-  }
-
-  // Sync input fields from live loop state (restore after page reload)
-  const artifactInput = document.getElementById('loopArtifact');
-  const contextInput = document.getElementById('loopContextDir');
-  const kInput = document.getElementById('loopK');
-  const nInput = document.getElementById('loopN');
-  if (loopState.artifact_path && artifactInput && !artifactInput._userEdited) {
-    artifactInput.value = loopState.artifact_path;
-  }
-  if (contextInput && !contextInput._userEdited) {
-    contextInput.value = loopState.context_dir || '';
-  }
-  if (kInput && !kInput._userEdited) kInput.value = loopState.convergence_k ?? 2;
-  if (nInput && !nInput._userEdited) nInput.value = loopState.convergence_n ?? 3;
-
-  if (['converged', 'cancelled'].includes(loopState.status)) {
-    const a = document.getElementById('loopArtifact');
-    const c = document.getElementById('loopContextDir');
-    const kInput = document.getElementById('loopK');
-    const nInput = document.getElementById('loopN');
-    if (a) a._userEdited = false;
-    if (c) c._userEdited = false;
-    if (kInput) kInput._userEdited = false;
-    if (nInput) nInput._userEdited = false;
-  }
-
-  const status = loopState.status;
-  badge.textContent = status;
-  badge.className = 'badge ' + status;
-
+  const status = (loopState && loopState.status) ? loopState.status : 'idle';
   const isRunning = status === 'running';
   const isPaused = status === 'paused';
   const isActive = isRunning || isPaused;
   const isConverged = status === 'converged';
+  const isIdle = !isActive && !isConverged;
 
+  badge.textContent = status;
+  badge.className = 'badge ' + status;
+
+  // Panel visibility: show config when idle/done, running panel when active
+  if (configPanel) configPanel.style.display = isActive ? 'none' : '';
+  if (runningPanel) runningPanel.style.display = isActive ? '' : 'none';
+
+  if (isIdle) {
+    if (deferredSection) deferredSection.style.display = 'none';
+    return;
+  }
+
+  // Running / paused / converged state
   if (pauseBtn) pauseBtn.style.display = isRunning ? '' : 'none';
   if (resumeBtn) resumeBtn.style.display = isPaused ? '' : 'none';
   if (cancelBtn) cancelBtn.style.display = isActive ? '' : 'none';
 
-  // Progress row
-  if (progress) {
-    progress.style.display = (isActive || isConverged) ? 'flex' : 'none';
+  // Preset label in running bar (infer from loop mode)
+  if (runningPresetLabel && loopState) {
+    const modeMap = { review: 'Review Fix', plan_build: 'Plan+Build' };
+    // Try to match stored preset label
+    const storedPreset = loadLoopPrefs()?.preset;
+    const presetLabel = (storedPreset && LOOP_PRESETS[storedPreset])
+      ? LOOP_PRESETS[storedPreset].label
+      : (modeMap[loopState.mode] || loopState.mode || '');
+    runningPresetLabel.textContent = presetLabel;
   }
-  if (iterLabel) {
-    iterLabel.textContent = `Iteration ${loopState.iteration || 0}`;
+
+  if (iterLabel && loopState) {
+    iterLabel.textContent = `Iter ${loopState.iteration || 0}`;
   }
 
   // Convergence text
-  if (convergenceLabel) {
+  if (convergenceLabel && loopState) {
     const hist = loopState.changes_history || [];
-    const k = loopState.convergence_k || 2;
-    const n = loopState.convergence_n || 3;
-    // Normalize entries: may be int or {count, hash}
+    const k = loopState.convergence_k || 3;
+    const n = loopState.convergence_n || 6;
     const entries = hist.map(e => typeof e === 'object' ? e : {count: e, hash: ''});
     if (isConverged) {
-      // Detect reason
       let reason = 'count';
       if (entries.length >= 2 && entries[entries.length-1].hash && entries[entries.length-1].hash === entries[entries.length-2].hash) {
         reason = 'semantic';
       } else if ((loopState.iteration || 0) >= (loopState.max_iterations || 20)) {
         reason = 'max_iterations';
       }
-      convergenceLabel.textContent = `Converged after ${loopState.iteration} iterations (${reason})`;
+      convergenceLabel.textContent = `Converged after ${loopState.iteration} iters (${reason})`;
       convergenceLabel.style.color = 'var(--green)';
     } else if (entries.length > 0) {
       const recent = entries.slice(-n);
       const withinThreshold = recent.filter(e => e.count <= k).length;
-      convergenceLabel.textContent = `${withinThreshold}/${n} within threshold`;
+      convergenceLabel.textContent = `${withinThreshold}/${n} ≤${k}`;
       convergenceLabel.style.color = 'var(--text2)';
     } else {
       convergenceLabel.textContent = '';
     }
   }
 
-  // Sparkline
-  drawSparkline(sparkCanvas, loopState.changes_history || []);
+  drawSparkline(sparkCanvas, (loopState && loopState.changes_history) || []);
 
   // Convergence toast (one-shot)
   if (isConverged && !_loopConvergedToasted) {
     _loopConvergedToasted = true;
     showToast('✓ Loop converged — ready for human review');
-    // Expand deferred section if there are items
     if (deferredSection && (loopState.deferred_items || []).length > 0) {
       deferredSection.open = true;
     }
+    // Show config panel again so user can restart
+    if (configPanel) configPanel.style.display = '';
+    if (runningPanel) runningPanel.style.display = 'none';
   }
   if (!isConverged) _loopConvergedToasted = false;
 
   // Deferred items
-  const deferred = loopState.deferred_items || [];
+  const deferred = (loopState && loopState.deferred_items) || [];
   if (deferredSection && currentMode === 'execute') {
     deferredSection.style.display = deferred.length > 0 ? '' : 'none';
     if (deferredCount) deferredCount.textContent = deferred.length;

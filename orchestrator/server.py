@@ -317,6 +317,32 @@ async def cancel_loop(session_id: str):
     )
     return {"ok": True}
 
+
+@app.get("/api/sessions/{session_id}/loop/sources")
+async def get_loop_sources(session_id: str):
+    s = registry.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Session not found")
+    project_dir = s.project_dir
+    priority_names = ["BRAINSTORM.md", "TODO.md", "GOALS.md", "PROGRESS.md"]
+    results: list[dict] = []
+    seen: set[str] = set()
+    for name in priority_names:
+        p = project_dir / name
+        if p.exists():
+            results.append({"label": name, "path": str(p)})
+            seen.add(str(p))
+    candidates: list[Path] = []
+    for pattern in ("*.tex", "*.md"):
+        for p in project_dir.glob(pattern):
+            if str(p) not in seen:
+                candidates.append(p)
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    for p in candidates[:5]:
+        results.append({"label": p.name, "path": str(p)})
+    return results
+
+
 # ─── REST: Swarm ──────────────────────────────────────────────────────────────
 
 
