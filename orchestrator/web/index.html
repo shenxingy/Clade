@@ -314,9 +314,10 @@
         </div>
         <div class="loop-source-row">
           <span class="loop-source-label">Source:</span>
-          <select id="loopSourceSelect" class="loop-source-select" onchange="saveLoopPrefs()">
+          <select id="loopSourceSelect" class="loop-source-select" onchange="onLoopSourceChange()">
             <option value="">— select file —</option>
           </select>
+          <input id="loopSourceCustom" type="text" class="loop-source-custom" placeholder="or type path…" oninput="saveLoopPrefs()" style="display:none" />
           <button class="btn small secondary loop-adv-toggle" onclick="toggleLoopAdvanced()" title="Advanced settings">⚙</button>
           <button class="btn small" id="loopStartBtn" onclick="startLoop()">▶ Start</button>
         </div>
@@ -1995,6 +1996,7 @@ function toggleLoopAdvanced() {
 async function loadLoopSources() {
   if (!activeSessionId) return;
   const sel = document.getElementById('loopSourceSelect');
+  const customIn = document.getElementById('loopSourceCustom');
   if (!sel) return;
   try {
     const r = await fetch(`/api/sessions/${activeSessionId}/loop/sources`);
@@ -2003,12 +2005,21 @@ async function loadLoopSources() {
     const saved = loadLoopPrefs()?.source || '';
     sel.innerHTML = '<option value="">— select file —</option>' +
       sources.map(s => `<option value="${esc(s.path)}"${s.path === saved ? ' selected' : ''}>${esc(s.label)}</option>`).join('');
-    // Auto-select best candidate if nothing saved
-    if (!saved && sources.length > 0) {
-      sel.value = sources[0].path;
-      saveLoopPrefs();
+    // No auto-detected sources → show custom input instead
+    if (sources.length === 0) {
+      sel.style.display = 'none';
+      if (customIn) { customIn.style.display = ''; customIn.value = saved; }
+    } else {
+      sel.style.display = '';
+      if (customIn) customIn.style.display = 'none';
+      // Auto-select best candidate if nothing saved
+      if (!saved) { sel.value = sources[0].path; saveLoopPrefs(); }
     }
   } catch(e) { /* ignore */ }
+}
+
+function onLoopSourceChange() {
+  saveLoopPrefs();
 }
 
 function _loopPrefsKey() {
@@ -2022,12 +2033,17 @@ function loadLoopPrefs() {
   } catch(e) { return null; }
 }
 
+function _getLoopSource() {
+  const sel = document.getElementById('loopSourceSelect');
+  const customIn = document.getElementById('loopSourceCustom');
+  if (customIn && customIn.style.display !== 'none') return customIn.value.trim();
+  const hasOptions = sel && sel.options.length > 1;
+  return hasOptions ? (sel.value || '') : (loadLoopPrefs()?.source || '');
+}
+
 function saveLoopPrefs() {
   try {
-    const sel = document.getElementById('loopSourceSelect');
-    // If options are not yet populated (only placeholder), preserve any saved source
-    const hasOptions = sel && sel.options.length > 1;
-    const source = hasOptions ? (sel.value || '') : (loadLoopPrefs()?.source || '');
+    const source = _getLoopSource();
     const prefs = {
       preset: _loopPreset,
       source,
@@ -2064,8 +2080,8 @@ function applyLoopPrefs() {
 
 async function startLoop() {
   if (!activeSessionId) return;
-  const artifactPath = document.getElementById('loopSourceSelect')?.value.trim();
-  if (!artifactPath) { showToast('Select a source file first'); return; }
+  const artifactPath = _getLoopSource();
+  if (!artifactPath) { showToast('Select or enter a source file first'); return; }
   const contextDir = document.getElementById('loopContextDir')?.value.trim() || null;
   const cfg = LOOP_PRESETS[_loopPreset] || LOOP_PRESETS.review;
   const k = parseInt(document.getElementById('loopK')?.value) || cfg.k;

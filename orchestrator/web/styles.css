@@ -746,6 +746,20 @@
     }
     .loop-source-select:focus { border-color: var(--accent); }
     .loop-adv-toggle { padding: 3px 7px; flex-shrink: 0; }
+    .loop-source-custom {
+      flex: 1;
+      min-width: 0;
+      font-size: 11px;
+      padding: 3px 6px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--text);
+      font-family: var(--font-mono);
+      outline: none;
+    }
+    .loop-source-custom:focus { border-color: var(--accent); }
+    .loop-source-custom::placeholder { color: var(--text2); }
     /* Advanced panel */
     .loop-advanced {
       display: flex;
