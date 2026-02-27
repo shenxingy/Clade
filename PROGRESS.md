@@ -2,6 +2,35 @@
 
 ---
 
+### 2026-02-27 — Gap Analysis vs Top Players → Phase 7 & 8 Roadmap
+
+**What was done:**
+- Conducted gap analysis comparing current system against OpenClaw / steipete patterns
+- Identified root cause why 1000+ commits/day is not yet reached (see key insight below)
+- Added Phase 7 (Task Velocity Engine) and Phase 8 (Closed-Loop Work Generation) to GOALS.md and TODO.md
+
+**Key insight — The real bottlenecks:**
+1. **Task granularity**: Current tasks are "feature"-level (2-3 commits/task). OpenClaw peaks when doing HORIZONTAL tasks at file-level (1 commit/file). The fix is task type classification + auto-decomposition for horizontal tasks — NOT blindly splitting all tasks.
+2. **No task factory**: 100% of tasks are manually written. System should auto-generate tasks from: TODO comments, CI failures, coverage gaps, outdated deps, GitHub labels.
+3. **No worker auto-scaling**: Worker count is manually set. Queue depth should drive automatic scaling.
+4. **Per-file commit discipline not enforced**: Worker prompt doesn't explicitly require "commit after each file immediately."
+
+**Math:**
+- Target: 1000 commits/day = 62 commits/hour
+- Current: ~5 workers × 2 commits/task × 1 task/hour ≈ 160 commits/day
+- Phase 7 goal: 10 workers × 6 commits/task × 1 task/hour = 960 commits/day
+
+**What worked in research:**
+- The HORIZONTAL vs VERTICAL task type distinction is the right mental model — don't over-apply micro-tasks to feature work
+- OpenClaw's extreme commit velocity (835/day peak) was always during systematic refactoring sprints, not continuous feature development
+
+**What to watch for in Phase 7:**
+- Horizontal auto-decomposition must maintain shared context between sibling micro-tasks (they all stem from the same parent task)
+- Worker auto-scaling needs a cooldown to prevent spawn storms when queue bursts briefly
+- Task Factory dedup is critical — scanners will re-run and must not create duplicate tasks
+
+---
+
 ### 2026-02-26 — GitHub Community Infrastructure + Docs Audit
 
 **What was done:**
