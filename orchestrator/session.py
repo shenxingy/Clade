@@ -212,11 +212,13 @@ class ProjectSession:
             response = ""
             try:
                 prompt_file.write_text(prompt, errors="replace")
+                _env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
                 proc = await asyncio.create_subprocess_shell(
                     f'claude -p "$(cat {shlex.quote(str(prompt_file))})" '
                     f'--model {model} --dangerously-skip-permissions',
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.DEVNULL,
+                    env=_env,
                 )
                 try:
                     out, _ = await asyncio.wait_for(proc.communicate(), timeout=300)
@@ -469,11 +471,13 @@ class ProjectSession:
             response = ""
             try:
                 prompt_file.write_text(prompt, errors="replace")
+                _env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
                 proc = await asyncio.create_subprocess_shell(
                     f'claude -p "$(cat {shlex.quote(str(prompt_file))})" '
                     f'--model {model} --dangerously-skip-permissions',
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.DEVNULL,
+                    env=_env,
                 )
                 try:
                     out, _ = await asyncio.wait_for(proc.communicate(), timeout=300)

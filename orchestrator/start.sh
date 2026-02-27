@@ -105,4 +105,7 @@ echo ""
 if [[ -n "$PROJECT_DIR" ]]; then
   export ORCHESTRATOR_PROJECT_DIR="$PROJECT_DIR"
 fi
+# Unset CLAUDECODE so workers can launch claude even when orchestrator is
+# started from inside a Claude Code session (prevents "nested session" error)
+unset CLAUDECODE
 "$VENV_DIR/bin/uvicorn" server:app --port "$PORT" --host "$BIND_HOST"
