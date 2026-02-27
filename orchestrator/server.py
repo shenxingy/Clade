@@ -463,7 +463,7 @@ async def set_orchestrate_goal(session_id: str, body: dict):
         raise HTTPException(status_code=404, detail="Session not found")
     goal = body.get("goal", "").strip()
     if not goal:
-        raise HTTPException(status_code=400, detail="goal is required")
+        raise HTTPException(status_code=422, detail="Goal must not be empty")
 
     # Build context: recent PROGRESS.md + goal
     lines = ["# Orchestrate Goal\n"]

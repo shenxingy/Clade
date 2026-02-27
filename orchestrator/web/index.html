@@ -1812,11 +1812,20 @@ async function sendOrchestrate() {
   // Claude started responding to the goal message before /orchestrate arrived,
   // leaving /orchestrate queued and requiring a second manual Enter.
   try {
-    await fetch(`/api/sessions/${activeSessionId}/set-orchestrate-goal`, {
+    const resp = await fetch(`/api/sessions/${activeSessionId}/set-orchestrate-goal`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ goal })
     });
+    if (!resp.ok) {
+      console.warn(`set-orchestrate-goal failed (${resp.status}): falling back to direct goal input`);
+      // Fallback: type goal + /orchestrate directly (pre-file-bridge approach)
+      pane.ws.send(JSON.stringify({ type: 'input', data: goal + '\r' }));
+      pane.ws.send(JSON.stringify({ type: 'input', data: '/orchestrate\r' }));
+      pane.term.scrollToBottom();
+      document.getElementById('goalInput').value = '';
+      return;
+    }
   } catch (_) { /* non-fatal: skill will ask for goal interactively */ }
 
   // Single PTY send — no race condition, no second Enter needed
