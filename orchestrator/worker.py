@@ -761,6 +761,9 @@ class Worker:
         )
 
         env = {**os.environ}
+        # Unset CLAUDECODE so workers can launch even when the orchestrator itself
+        # is started from inside a Claude Code session (prevents "nested session" error)
+        env.pop("CLAUDECODE", None)
         if GLOBAL_SETTINGS.get("agent_teams"):
             env["CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"] = "1"
 
