@@ -337,7 +337,12 @@ async def get_loop_sources(session_id: str):
         for p in project_dir.glob(pattern):
             if str(p) not in seen:
                 candidates.append(p)
-    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    def _mtime(p: Path) -> float:
+        try:
+            return p.stat().st_mtime
+        except OSError:
+            return 0.0
+    candidates.sort(key=_mtime, reverse=True)
     for p in candidates[:5]:
         results.append({"label": p.name, "path": str(p)})
     return results

@@ -1977,13 +1977,14 @@ function selectLoopPreset(preset) {
   document.querySelectorAll('.loop-preset-card').forEach(c => {
     c.classList.toggle('active', c.dataset.preset === preset);
   });
-  // Apply K/N defaults unless user has customised them
+  // Reset K/N to preset defaults (intentional — clicking a card resets parameters)
   const cfg = LOOP_PRESETS[preset] || LOOP_PRESETS.review;
   const kEl = document.getElementById('loopK');
   const nEl = document.getElementById('loopN');
   if (kEl) kEl.value = cfg.k;
   if (nEl) nEl.value = cfg.n;
-  saveLoopPrefs();
+  // Save preset+K/N but preserve current source (select may not be populated yet)
+  _saveLoopPrefsPreserveSource();
 }
 
 function toggleLoopAdvanced() {
@@ -2005,6 +2006,7 @@ async function loadLoopSources() {
     // Auto-select best candidate if nothing saved
     if (!saved && sources.length > 0) {
       sel.value = sources[0].path;
+      saveLoopPrefs();
     }
   } catch(e) { /* ignore */ }
 }
@@ -2022,9 +2024,13 @@ function loadLoopPrefs() {
 
 function saveLoopPrefs() {
   try {
+    const sel = document.getElementById('loopSourceSelect');
+    // If options are not yet populated (only placeholder), preserve any saved source
+    const hasOptions = sel && sel.options.length > 1;
+    const source = hasOptions ? (sel.value || '') : (loadLoopPrefs()?.source || '');
     const prefs = {
       preset: _loopPreset,
-      source: document.getElementById('loopSourceSelect')?.value || '',
+      source,
       advanced: {
         k: parseInt(document.getElementById('loopK')?.value) || 3,
         n: parseInt(document.getElementById('loopN')?.value) || 6,
@@ -2034,6 +2040,10 @@ function saveLoopPrefs() {
     };
     localStorage.setItem(_loopPrefsKey(), JSON.stringify(prefs));
   } catch(e) { /* ignore */ }
+}
+
+function _saveLoopPrefsPreserveSource() {
+  saveLoopPrefs(); // saveLoopPrefs already preserves source when unpopulated
 }
 
 function applyLoopPrefs() {
@@ -2077,8 +2087,11 @@ async function startLoop() {
         supervisor_model: model,
       }),
     });
-    const d = await r.json();
-    if (d.detail) { showToast('Error: ' + d.detail); return; }
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      showToast('Error: ' + (d.detail || r.statusText));
+      return;
+    }
     saveLoopPrefs();
     _loopConvergedToasted = false;
     showToast(`Loop started — ${cfg.label} · Iteration 1`);
@@ -2088,21 +2101,30 @@ async function startLoop() {
 
 async function pauseLoop() {
   if (!activeSessionId) return;
-  await fetch(`/api/sessions/${activeSessionId}/loop/pause`, { method: 'POST' });
-  showToast('Loop paused — current workers will finish');
+  try {
+    const r = await fetch(`/api/sessions/${activeSessionId}/loop/pause`, { method: 'POST' });
+    if (!r.ok) { showToast('Pause failed'); return; }
+    showToast('Loop paused — current workers will finish');
+  } catch(e) { showToast('Pause failed'); }
 }
 
 async function resumeLoop() {
   if (!activeSessionId) return;
-  await fetch(`/api/sessions/${activeSessionId}/loop/resume`, { method: 'POST' });
-  showToast('Loop resumed');
+  try {
+    const r = await fetch(`/api/sessions/${activeSessionId}/loop/resume`, { method: 'POST' });
+    if (!r.ok) { showToast('Resume failed'); return; }
+    showToast('Loop resumed');
+  } catch(e) { showToast('Resume failed'); }
 }
 
 async function cancelLoop() {
   if (!activeSessionId) return;
-  await fetch(`/api/sessions/${activeSessionId}/loop`, { method: 'DELETE' });
-  _loopConvergedToasted = false;
-  showToast('Loop cancelled');
+  try {
+    const r = await fetch(`/api/sessions/${activeSessionId}/loop`, { method: 'DELETE' });
+    if (!r.ok) { showToast('Cancel failed'); return; }
+    _loopConvergedToasted = false;
+    showToast('Loop cancelled');
+  } catch(e) { showToast('Cancel failed'); }
 }
 
 function drawSparkline(canvas, values) {
@@ -2147,12 +2169,15 @@ function updateLoopUI(loopState) {
   const isPaused = status === 'paused';
   const isActive = isRunning || isPaused;
   const isConverged = status === 'converged';
-  const isIdle = !isActive && !isConverged;
+  // Post-active: states that may have deferred items and need full rendering
+  const isPostActive = isConverged || status === 'done' || status === 'cancelled';
+  // Idle: truly no loop has run, nothing to show
+  const isIdle = !isActive && !isPostActive;
 
   badge.textContent = status;
   badge.className = 'badge ' + status;
 
-  // Panel visibility: show config when idle/done, running panel when active
+  // Panel visibility: running panel shown only while actively running/paused
   if (configPanel) configPanel.style.display = isActive ? 'none' : '';
   if (runningPanel) runningPanel.style.display = isActive ? '' : 'none';
 
@@ -2215,9 +2240,7 @@ function updateLoopUI(loopState) {
     if (deferredSection && (loopState.deferred_items || []).length > 0) {
       deferredSection.open = true;
     }
-    // Show config panel again so user can restart
-    if (configPanel) configPanel.style.display = '';
-    if (runningPanel) runningPanel.style.display = 'none';
+    // Panel visibility is already set correctly above (configPanel shown, runningPanel hidden)
   }
   if (!isConverged) _loopConvergedToasted = false;
 
@@ -2229,7 +2252,7 @@ function updateLoopUI(loopState) {
     if (deferredList) {
       deferredList.innerHTML = deferred.map(item => `
         <div class="deferred-item">
-          <div class="deferred-iter">[Loop-${item.iteration || '?'}]</div>
+          <div class="deferred-iter">[Loop-${esc(String(item.iteration ?? '?'))}]</div>
           <div class="deferred-desc">${esc(item.description)}</div>
           ${item.reason ? `<div class="deferred-reason">${esc(item.reason)}</div>` : ''}
         </div>
