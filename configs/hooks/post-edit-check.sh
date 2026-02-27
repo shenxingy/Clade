@@ -28,4 +28,12 @@ if [[ $EXIT_CODE -ne 0 ]] && [[ -n "$RESULT" ]]; then
   report_error "Type-check errors after editing $FILE_PATH:\n$RESULT"
 fi
 
+# ─── Commit reminder ───
+UNCOMMITTED_COUNT=$(git diff --name-only HEAD 2>/dev/null | wc -l | xargs)
+COMMIT_REMINDER_THRESHOLD=${COMMIT_REMINDER_THRESHOLD:-2}
+
+if [[ "$UNCOMMITTED_COUNT" -ge "$COMMIT_REMINDER_THRESHOLD" ]] && [[ "$UNCOMMITTED_COUNT" -gt 0 ]]; then
+  jq -n --arg count "$UNCOMMITTED_COUNT" '{"systemMessage": ("⚠ " + $count + " files edited without commit — run: committer \"type: desc\" file1 file2")}'
+fi
+
 exit 0
