@@ -313,11 +313,11 @@
           </button>
         </div>
         <div class="loop-source-row">
-          <span class="loop-source-label">Source:</span>
+          <span class="loop-source-label" title="File supervisor reads each iteration to find issues — e.g. TODO.md, GOALS.md, or a code file">Artifact:</span>
           <select id="loopSourceSelect" class="loop-source-select" onchange="onLoopSourceChange()">
             <option value="">— select file —</option>
           </select>
-          <input id="loopSourceCustom" type="text" class="loop-source-custom" placeholder="or type path…" oninput="saveLoopPrefs()" style="display:none" />
+          <input id="loopSourceCustom" type="text" class="loop-source-custom" placeholder="absolute path to file…" oninput="saveLoopPrefs()" style="display:none" />
           <button class="btn small secondary loop-adv-toggle" onclick="toggleLoopAdvanced()" title="Advanced settings">⚙</button>
           <button class="btn small" id="loopStartBtn" onclick="startLoop()">▶ Start</button>
         </div>
