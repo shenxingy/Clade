@@ -541,7 +541,7 @@ const PaneManager = {
     ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data);
-        if (msg.type === 'output') pane.term.write(msg.data);
+        if (msg.type === 'output') { pane.term.write(msg.data); pane.term.scrollToBottom(); }
       } catch(e) { console.warn(e); }
     };
     ws.onclose = () => {
@@ -722,6 +722,7 @@ function sendChat() {
   const pane = st.panes.get(st.activePaneId);
   if (!pane || !pane.ws || pane.ws.readyState !== WebSocket.OPEN) return;
   pane.ws.send(JSON.stringify({ type: 'input', data: text + '\r' }));
+  pane.term.scrollToBottom();
   input.value = '';
 }
 
@@ -1820,6 +1821,7 @@ async function sendOrchestrate() {
 
   // Single PTY send — no race condition, no second Enter needed
   pane.ws.send(JSON.stringify({ type: 'input', data: '/orchestrate\r' }));
+  pane.term.scrollToBottom();
   document.getElementById('goalInput').value = '';
 }
 document.getElementById('goalInput')?.addEventListener('keydown', e => {
