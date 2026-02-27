@@ -770,7 +770,6 @@
     .loop-running-bar {
       display: flex;
       align-items: center;
-      gap: 0;
     }
     .badge.idle { background: rgba(138,126,111,0.12); color: var(--text2); }
     .badge.active { background: rgba(90,154,79,0.12); color: var(--green); }
