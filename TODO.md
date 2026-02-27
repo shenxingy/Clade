@@ -1,6 +1,8 @@
 # TODO — Claude Code Kit
 
-**Two pillars: CLI (configs/) is the foundation, GUI (orchestrator/) extends it.**
+> Vision and architecture: see [VISION.md](VISION.md)
+
+All phases 1–6 complete. Phase 7+ TBD.
 
 ---
 

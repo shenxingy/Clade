@@ -16,19 +16,19 @@ Perform a comprehensive tech debt review of this project. Work through each sect
 Read all project documents and assess their alignment.
 
 ### 1.1 Document Existence Check
-Check if these files exist at the project root: `CLAUDE.md`, `GOALS.md`, `TODO.md`, `PROGRESS.md`, `BRAINSTORM.md`
+Check if these files exist at the project root: `CLAUDE.md`, `VISION.md`, `TODO.md`, `PROGRESS.md`, `BRAINSTORM.md`
 - Report which ones are missing
 
 ### 1.2 Document Consistency Audit
 Read each existing document and answer:
-- **GOALS ↔ TODO alignment**: Do TODO items actually trace back to GOALS? Are there goals with no corresponding TODOs? Are there orphan TODOs that serve no goal?
+- **VISION ↔ TODO alignment**: Do TODO items actually trace back to VISION? Are there goals with no corresponding TODOs? Are there orphan TODOs that serve no goal?
 - **TODO ↔ PROGRESS alignment**: Do completed items in TODO match what's recorded in PROGRESS? Are there TODO items marked done but missing from PROGRESS? Are there PROGRESS entries about work not reflected in TODO?
 - **PROGRESS lessons applied**: Are lessons/failures from PROGRESS reflected in current TODO priorities or CLAUDE.md guardrails? Or are past mistakes being repeated?
 - **BRAINSTORM inbox status**: Is BRAINSTORM.md empty (processed) or has it accumulated unprocessed ideas?
 - **CLAUDE.md accuracy**: Does CLAUDE.md reflect the actual current state of the project (tech stack, conventions, file structure)? Or is it outdated?
 
 ### 1.3 Development Direction Check
-Based on GOALS.md and the current codebase state:
+Based on VISION.md and the current codebase state:
 - Is the project moving toward its stated goals?
 - Are there signs of scope creep (work being done that doesn't serve any goal)?
 - Are priorities appropriate (P0 items done before P1, etc.)?

@@ -40,7 +40,7 @@ Group files into commits using these heuristics. Use judgment — logical cohesi
 | Frontend/UI | `**/components/**`, `**/pages/**`, `**/app/**`, `**/*.css`, `**/styles/**` | `feat:` / `fix:` |
 | Config/Infra | `**/.env*`, `**/config/**`, `**/docker*`, `**/*.yml`, `**/settings*` | `config:` |
 | Tests | `**/test*`, `**/__tests__/**`, `**/*.test.*`, `**/*.spec.*` | `test:` |
-| Docs | `README*`, `TODO.md`, `PROGRESS.md`, `GOALS.md`, `CLAUDE.md`, `**/docs/**` | `docs:` |
+| Docs | `README*`, `TODO.md`, `PROGRESS.md`, `VISION.md`, `CLAUDE.md`, `**/docs/**` | `docs:` |
 | Scripts/Tools | `**/scripts/**`, `**/*.sh`, `**/hooks/**`, `**/skills/**`, `**/commands/**` | `chore:` |
 
 **Cross-cutting rule:** If schema + API + frontend changes all implement the same feature (e.g., "add users table + CRUD routes + UI"), group them into ONE `feat:` commit — don't split what belongs together.
