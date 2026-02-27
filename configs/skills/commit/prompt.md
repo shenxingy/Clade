@@ -16,7 +16,14 @@ git diff --stat
 git diff --cached --stat
 ```
 
-Collect ALL changed files — both staged and unstaged. If nothing is changed, say so and exit.
+Collect ALL changed files — both staged and unstaged.
+
+If nothing is changed, check for unpushed commits:
+```bash
+git log origin/main..HEAD --oneline
+```
+- Unpushed commits exist AND `--no-push` was NOT used → push immediately, report result, exit
+- No unpushed commits either → say "Nothing to commit or push" and exit
 
 ---
 
