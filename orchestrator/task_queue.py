@@ -408,18 +408,20 @@ class TaskQueue:
                     await db.commit()
             return await self.get_loop()
 
-    async def import_from_proposed(self, content: str | None = None) -> list[dict]:
-        """Parse ===TASK=== blocks and add to queue, skipping duplicates."""
+    async def import_from_proposed(self, content: str | None = None) -> tuple[list[dict], dict]:
+        """Parse ===TASK=== blocks and add to queue, skipping duplicates.
+        Returns (added_tasks, skip_counts) where skip_counts maps status→count."""
         if content is None:
             f = self._proposed_tasks_file()
             if not f.exists():
-                return []
+                return [], {}
             content = f.read_text()
         blocks = content.split("===TASK===")
         added = []
+        skip_counts: dict[str, int] = {}
         await self._ensure_db()
         existing = await self.list()
-        existing_descriptions = {t["description"] for t in existing}
+        existing_by_desc = {t["description"]: t["status"] for t in existing}
         for block in blocks:
             block = block.strip()
             if not block:
@@ -465,7 +467,11 @@ class TaskQueue:
                     own_files = [p.strip() for p in stripped.split(":", 1)[1].split(",") if p.strip()]
                 elif stripped.startswith("FORBIDDEN_FILES:"):
                     forbidden_files = [p.strip() for p in stripped.split(":", 1)[1].split(",") if p.strip()]
-            if description and description not in existing_descriptions:
+            if description and description in existing_by_desc:
+                st = existing_by_desc[description]
+                skip_counts[st] = skip_counts.get(st, 0) + 1
+                continue
+            if description:
                 task_id = str(uuid.uuid4())[:8]
                 task = {
                     "id": task_id,
@@ -503,14 +509,14 @@ class TaskQueue:
                         ),
                     )
                     await db.commit()
-                existing_descriptions.add(description)
+                existing_by_desc[description] = "pending"
                 added.append(task)
                 # Background scout scoring (lazy import to avoid circular dep)
                 from worker import _score_task
                 asyncio.ensure_future(
                     _score_task(task_id, description, self._db_path, self._claude_dir)
                 )
-        return added
+        return added, skip_counts
 
     async def send_message(self, to_task_id: str, content: str, from_task_id: str | None = None) -> dict:
         await self._ensure_db()

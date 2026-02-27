@@ -668,28 +668,17 @@ async def delete_task(task_id: str, s: ProjectSession = Depends(_resolve_session
     return {"ok": ok}
 
 
-@app.post("/api/tasks/{task_id}")
-async def update_task(task_id: str, body: dict, s: ProjectSession = Depends(_resolve_session)):
-    task = await s.task_queue.get(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    updates = {k: v for k, v in body.items() if k in _ALLOWED_TASK_COLS}
-    if not updates:
-        return task
-    return await s.task_queue.update(task_id, **updates)
-
-
 @app.post("/api/tasks/import-proposed")
 async def import_proposed(
     body: dict = Body(default={}),
     s: ProjectSession = Depends(_resolve_session),
 ):
     content = (body or {}).get("content")
-    tasks = await s.task_queue.import_from_proposed(content=content)
+    tasks, skip_counts = await s.task_queue.import_from_proposed(content=content)
     if GLOBAL_SETTINGS.get("github_issues_sync") and tasks:
         for t in tasks:
             asyncio.ensure_future(_gh_create_issue(t, s.project_dir, s.task_queue._db_path))
-    return {"imported": len(tasks), "tasks": tasks}
+    return {"imported": len(tasks), "tasks": tasks, "skipped": skip_counts}
 
 
 @app.post("/api/tasks/start-all")
@@ -738,6 +727,80 @@ async def retry_failed(s: ProjectSession = Depends(_resolve_session)):
         new_task = await s.task_queue.add(retry_desc, model)
         retried.append(new_task["id"])
     return {"retried": len(retried), "task_ids": retried}
+
+
+@app.post("/api/tasks/merge-all-done")
+async def merge_all_done(s: ProjectSession = Depends(_resolve_session)):
+    """Create PRs for done+pushed workers. Auto-merge orchestrator branches."""
+    eligible = [
+        w for w in s.worker_pool.all()
+        if w.status == "done" and w.auto_pushed and not w.pr_url
+    ]
+    results = []
+    created = 0
+    merged = 0
+    for w in eligible:
+        branch = w.branch_name or f"orchestrator/task-{w.task_id}"
+        try:
+            pr_proc = await asyncio.create_subprocess_shell(
+                f'gh pr create --head {shlex.quote(branch)} --base main --fill',
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                cwd=str(s.project_dir),
+            )
+            try:
+                pr_out, pr_err = await asyncio.wait_for(pr_proc.communicate(), timeout=60)
+            except asyncio.TimeoutError:
+                pr_proc.kill()
+                await pr_proc.communicate()
+                results.append({"worker_id": w.id, "error": "gh pr create timed out"})
+                continue
+            if pr_proc.returncode != 0:
+                results.append({"worker_id": w.id, "error": pr_err.decode().strip()})
+                continue
+            pr_url = pr_out.decode().strip()
+            w.pr_url = pr_url
+            created += 1
+            if GLOBAL_SETTINGS.get("auto_review", True):
+                asyncio.ensure_future(_write_pr_review(pr_url, w.description, s.project_dir))
+            if branch.startswith("orchestrator/task-") and GLOBAL_SETTINGS.get("auto_merge", True):
+                merge_proc = await asyncio.create_subprocess_shell(
+                    f'gh pr merge {pr_url} --squash --delete-branch',
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                    cwd=str(s.project_dir),
+                )
+                try:
+                    await asyncio.wait_for(merge_proc.communicate(), timeout=60)
+                except asyncio.TimeoutError:
+                    merge_proc.kill()
+                    await merge_proc.communicate()
+                    results.append({"worker_id": w.id, "error": "gh pr merge timed out"})
+                    continue
+                if merge_proc.returncode == 0:
+                    w.pr_merged = True
+                    merged += 1
+                    asyncio.ensure_future(_write_progress_entry(
+                        task_description=w.description,
+                        log_path=w._log_path,
+                        project_dir=s.project_dir,
+                    ))
+            results.append({"worker_id": w.id, "pr_url": pr_url})
+        except Exception as e:
+            results.append({"worker_id": w.id, "error": str(e)})
+    return {"created": created, "merged": merged, "results": results}
+
+
+# NOTE: This parameterized route must come AFTER all static /api/tasks/<name> routes
+# (import-proposed, start-all, retry-failed, merge-all-done) or FastAPI will
+# match those paths as task_id and return 404.
+@app.post("/api/tasks/{task_id}")
+async def update_task(task_id: str, body: dict, s: ProjectSession = Depends(_resolve_session)):
+    task = await s.task_queue.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    updates = {k: v for k, v in body.items() if k in _ALLOWED_TASK_COLS}
+    if not updates:
+        return task
+    return await s.task_queue.update(task_id, **updates)
 
 
 @app.post("/api/tasks/{task_id}/retry")
@@ -960,68 +1023,6 @@ async def get_worker_log(
         return {"log": tail, "path": str(w._log_path)}
     except Exception as e:
         return {"log": f"Error reading log: {e}"}
-
-# ─── REST: Merge All Done → AI PR Pipeline ────────────────────────────────────
-
-
-@app.post("/api/tasks/merge-all-done")
-async def merge_all_done(s: ProjectSession = Depends(_resolve_session)):
-    """Create PRs for done+pushed workers. Auto-merge orchestrator branches."""
-    eligible = [
-        w for w in s.worker_pool.all()
-        if w.status == "done" and w.auto_pushed and not w.pr_url
-    ]
-    results = []
-    created = 0
-    merged = 0
-    for w in eligible:
-        branch = w.branch_name or f"orchestrator/task-{w.task_id}"
-        try:
-            pr_proc = await asyncio.create_subprocess_shell(
-                f'gh pr create --head {shlex.quote(branch)} --base main --fill',
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-                cwd=str(s.project_dir),
-            )
-            try:
-                pr_out, pr_err = await asyncio.wait_for(pr_proc.communicate(), timeout=60)
-            except asyncio.TimeoutError:
-                pr_proc.kill()
-                await pr_proc.communicate()
-                results.append({"worker_id": w.id, "error": "gh pr create timed out"})
-                continue
-            if pr_proc.returncode != 0:
-                results.append({"worker_id": w.id, "error": pr_err.decode().strip()})
-                continue
-            pr_url = pr_out.decode().strip()
-            w.pr_url = pr_url
-            created += 1
-            if GLOBAL_SETTINGS.get("auto_review", True):
-                asyncio.ensure_future(_write_pr_review(pr_url, w.description, s.project_dir))
-            if branch.startswith("orchestrator/task-") and GLOBAL_SETTINGS.get("auto_merge", True):
-                merge_proc = await asyncio.create_subprocess_shell(
-                    f'gh pr merge {pr_url} --squash --delete-branch',
-                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-                    cwd=str(s.project_dir),
-                )
-                try:
-                    await asyncio.wait_for(merge_proc.communicate(), timeout=60)
-                except asyncio.TimeoutError:
-                    merge_proc.kill()
-                    await merge_proc.communicate()
-                    results.append({"worker_id": w.id, "error": "gh pr merge timed out"})
-                    continue
-                if merge_proc.returncode == 0:
-                    w.pr_merged = True
-                    merged += 1
-                    asyncio.ensure_future(_write_progress_entry(
-                        task_description=w.description,
-                        log_path=w._log_path,
-                        project_dir=s.project_dir,
-                    ))
-            results.append({"worker_id": w.id, "pr_url": pr_url})
-        except Exception as e:
-            results.append({"worker_id": w.id, "error": str(e)})
-    return {"created": created, "merged": merged, "results": results}
 
 # ─── REST: Usage ──────────────────────────────────────────────────────────────
 
