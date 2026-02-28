@@ -24,7 +24,8 @@ _ALLOWED_TASK_COLS = {"status", "description", "model", "depends_on", "mode", "r
                       "worker_id", "started_at", "elapsed_s", "last_commit", "log_file",
                       "failed_reason", "score_note", "own_files", "forbidden_files",
                       "gh_issue_number", "is_critical_path",
-                      "input_tokens", "output_tokens", "estimated_cost"}
+                      "input_tokens", "output_tokens", "estimated_cost",
+                      "task_type", "source_ref", "parent_task_id"}
 
 _ALLOWED_LOOP_COLS = {
     "name", "artifact_path", "context_dir", "status", "iteration",
@@ -71,6 +72,9 @@ _SETTINGS_DEFAULTS = {
     "stuck_timeout_minutes": 15,
     "cost_budget": 0,
     "notification_webhook": "",
+    "auto_scale": False,
+    "min_workers": 1,
+    "webhook_secret": "",
 }
 
 
