@@ -68,6 +68,14 @@
     <span>Max workers <span style="color:var(--text2);font-size:10px">(0=∞)</span></span>
     <input type="number" id="settingMaxWorkers" min="0" max="20" value="0" onchange="saveSettings()" oninput="saveSettings()" />
   </label>
+  <label class="settings-row">
+    <span>Auto-scale workers</span>
+    <input type="checkbox" id="settingAutoScale" onchange="saveSettings()" />
+  </label>
+  <label class="settings-row" style="margin-bottom:6px">
+    <span>Min workers <span style="color:var(--text2);font-size:10px">(auto-scale floor)</span></span>
+    <input type="number" id="settingMinWorkers" min="1" max="16" value="1" style="width:50px" onchange="saveSettings()" oninput="saveSettings()" />
+  </label>
   <div style="padding:4px 12px;font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:0.5px;border-top:1px solid var(--border);margin-top:2px">Iteration Loop</div>
   <label class="settings-row">
     <span>Loop supervisor model</span>
@@ -215,6 +223,30 @@
       </div>
       <div class="queue-list" id="queueList"></div>
       <div id="dagView"></div>
+      <div id="presetCardsRow" style="display:none">
+        <div class="preset-cards">
+          <div class="preset-card" onclick="applyPreset('test-writer')">
+            <div class="preset-icon">🧪</div>
+            <div class="preset-name">Test Writer</div>
+            <div class="preset-desc">Add unit tests for untested code</div>
+          </div>
+          <div class="preset-card" onclick="applyPreset('refactor-bot')">
+            <div class="preset-icon">♻️</div>
+            <div class="preset-name">Refactor Bot</div>
+            <div class="preset-desc">Clean up code smell and tech debt</div>
+          </div>
+          <div class="preset-card" onclick="applyPreset('docs-bot')">
+            <div class="preset-icon">📝</div>
+            <div class="preset-name">Docs Bot</div>
+            <div class="preset-desc">Write or update documentation</div>
+          </div>
+          <div class="preset-card" onclick="applyPreset('security-scan')">
+            <div class="preset-icon">🔒</div>
+            <div class="preset-name">Security Scan</div>
+            <div class="preset-desc">Audit for vulnerabilities</div>
+          </div>
+        </div>
+      </div>
       <div class="add-task-row" id="addTaskRow" style="display:none">
         <textarea id="newTaskDesc" placeholder="Describe the task… or paste ===TASK=== blocks"></textarea>
         <div class="add-task-footer">
@@ -222,6 +254,11 @@
             <option value="sonnet">sonnet</option>
             <option value="haiku">haiku</option>
             <option value="opus">opus</option>
+          </select>
+          <select id="taskType" title="Task type" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text2);font-size:11px;padding:2px 6px">
+            <option value="AUTO">Auto</option>
+            <option value="HORIZONTAL">H — Horizontal</option>
+            <option value="VERTICAL">V — Vertical</option>
           </select>
           <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer" title="Boost model tier for this task">
             <input type="checkbox" id="newTaskCritical" /> Critical path
@@ -1015,6 +1052,7 @@ function renderQueue() {
       <span class="task-name" title="${esc(task.description)}">${esc(firstLine(task.description))}</span>
       ${blockedHtml}
       <span class="task-model">${esc(task.model)}</span>
+      ${task.task_type === 'HORIZONTAL' ? '<span class="badge-h">H</span>' : task.task_type === 'VERTICAL' ? '<span class="badge-v">V</span>' : ''}
       ${task.gh_issue_number ? `<span class="gh-issue-badge" title="GitHub Issue #${task.gh_issue_number}">#${task.gh_issue_number}</span>` : ''}
       <div class="queue-actions">
         <button class="btn small secondary" onclick="sendTaskMessage('${esc(task.id)}')" title="Send message to this task">✉</button>
@@ -1097,6 +1135,7 @@ function renderWorkers() {
           <span class="worker-name" title="${esc(w.description)}">${esc(firstLine(w.description))}</span>
           <span style="font-size:10px;opacity:0.35;font-family:var(--font-mono);flex-shrink:0">#${esc(String(w.id))}</span>
           <span class="badge ${esc(w.status)}">${esc(w.status)}</span>${oracleBadge}${modelInfo}
+          ${w.task_type === 'HORIZONTAL' ? '<span class="badge-h">H</span>' : w.task_type === 'VERTICAL' ? '<span class="badge-v">V</span>' : ''}
         </div>
         ${logTailHtml}
         <div class="worker-commit">${commitDisplay}</div>
@@ -1229,7 +1268,43 @@ async function importProposedToQueue() {
 
 function toggleAddTask() {
   const row = document.getElementById('addTaskRow');
-  row.style.display = row.style.display === 'none' ? 'block' : 'none';
+  const presets = document.getElementById('presetCardsRow');
+  const show = row.style.display === 'none';
+  row.style.display = show ? 'block' : 'none';
+  if (presets) presets.style.display = show ? 'block' : 'none';
+}
+
+function applyPreset(type) {
+  const presets = {
+    'test-writer': {
+      text: "Scan the codebase for untested functions and modules. Write comprehensive unit tests using the project's existing test framework. Focus on edge cases, error paths, and boundary conditions. Commit tests with meaningful names.",
+      model: 'sonnet',
+      taskType: 'HORIZONTAL'
+    },
+    'refactor-bot': {
+      text: 'Identify code smells: duplicated logic, overly long functions (>50 lines), magic numbers, unclear naming, deeply nested conditionals. Refactor for readability and maintainability. No behavior changes — tests must still pass.',
+      model: 'sonnet',
+      taskType: 'HORIZONTAL'
+    },
+    'docs-bot': {
+      text: 'Review the codebase for missing or outdated documentation. Write or update: module-level docstrings, README sections, inline comments for non-obvious logic. Focus on public APIs and key algorithms.',
+      model: 'haiku',
+      taskType: 'VERTICAL'
+    },
+    'security-scan': {
+      text: 'Audit the codebase for security vulnerabilities: SQL injection, XSS, hardcoded secrets, insecure deserialization, missing input validation, overly permissive CORS, exposed error details in API responses. Fix any issues found.',
+      model: 'sonnet',
+      taskType: 'VERTICAL'
+    }
+  };
+  const p = presets[type];
+  if (!p) return;
+  const textarea = document.getElementById('newTaskDesc');
+  if (textarea) textarea.value = p.text;
+  const modelSel = document.getElementById('newTaskModel');
+  if (modelSel) modelSel.value = p.model;
+  const typeSel = document.getElementById('taskType');
+  if (typeSel) typeSel.value = p.taskType;
 }
 
 // ─── Worker actions ──────────────────────────────────────────────────────────
@@ -2530,6 +2605,10 @@ async function loadSettings() {
     if (elAutoReview) elAutoReview.checked = s.auto_review ?? true;
     if (elModel) elModel.value = s.default_model ?? 'sonnet';
     if (elMaxW) elMaxW.value = s.max_workers ?? 0;
+    const elAutoScale = document.getElementById('settingAutoScale');
+    const elMinW = document.getElementById('settingMinWorkers');
+    if (elAutoScale) elAutoScale.checked = s.auto_scale ?? false;
+    if (elMinW) elMinW.value = s.min_workers ?? 1;
     // Loop settings
     const elLoopModel = document.getElementById('settingLoopModel');
     const elLoopK = document.getElementById('settingLoopK');
@@ -2599,6 +2678,8 @@ function saveSettings() {
           auto_review: document.getElementById('settingAutoReview')?.checked ?? true,
           default_model: document.getElementById('settingModel')?.value ?? 'sonnet',
           max_workers: parseInt(document.getElementById('settingMaxWorkers')?.value) || 0,
+          auto_scale: document.getElementById('settingAutoScale')?.checked ?? false,
+          min_workers: parseInt(document.getElementById('settingMinWorkers')?.value) || 1,
           loop_supervisor_model: document.getElementById('settingLoopModel')?.value ?? 'sonnet',
           loop_convergence_k: parseInt(document.getElementById('settingLoopK')?.value) || 2,
           loop_convergence_n: parseInt(document.getElementById('settingLoopN')?.value) || 3,
