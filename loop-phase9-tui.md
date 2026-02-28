@@ -161,7 +161,7 @@ if echo "$SUPERVISOR_OUTPUT" | grep -q "STATUS: CONVERGED"; then
 fi
 ```
 
-### 6. verify-task-completed.sh — Commit Granularity Stats
+### 6. verify-task-completed.sh — Commit Granularity Stats [✓]
 File: `configs/hooks/verify-task-completed.sh`
 
 Read the file first. At the end of the script (before final exit), add commit ratio tracking:
