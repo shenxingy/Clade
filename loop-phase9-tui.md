@@ -181,7 +181,7 @@ _track_commit_granularity() {
 ( _track_commit_granularity ) &
 ```
 
-### 7. Kit Completeness — Copy Missing Skills
+### 7. Kit Completeness — Copy Missing Skills ✓ DONE
 Copy these skills from `~/.claude/skills/` into `configs/skills/`:
 - `review-pr` → `configs/skills/review-pr/`
 - `merge-pr` → `configs/skills/merge-pr/`
@@ -191,7 +191,7 @@ Use: `cp -r ~/.claude/skills/review-pr configs/skills/` etc.
 
 Then check `install.sh` to see if it installs all dirs in `configs/skills/` automatically or needs updating.
 
-### 8. /research Skill
+### 8. /research Skill ✓ DONE
 Create `configs/skills/research/prompt.md`
 
 This skill helps automate Steps 1-5 of the planning workflow. When invoked with `/research [topic]`:
