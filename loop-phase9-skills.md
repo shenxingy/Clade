@@ -84,8 +84,8 @@ fi
 ## Success Criteria
 
 - `configs/skills/map/prompt.md` exists and describes the /map workflow
-- `configs/hooks/prompt-tracker.sh` exists, is executable, exits 0
-- `configs/settings-hooks.json` registers prompt-tracker under UserPromptSubmit
+- [x] `configs/hooks/prompt-tracker.sh` exists, is executable, exits 0
+- [x] `configs/settings-hooks.json` registers prompt-tracker under UserPromptSubmit
 - `configs/skills/incident/prompt.md` exists
 - `configs/hooks/session-context.sh` includes revert rate check
 - All files committed with `committer`
