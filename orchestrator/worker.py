@@ -759,6 +759,9 @@ class Worker:
         shell_cmd = (
             f'claude -p "$(cat {shlex.quote(str(task_file))})" --model {model} --dangerously-skip-permissions'
         )
+        mcp_config = self._project_dir / ".claude" / "mcp.json"
+        if mcp_config.exists():
+            shell_cmd += f" --mcp-config {shlex.quote(str(mcp_config))}"
 
         env = {**os.environ}
         # Unset CLAUDECODE so workers can launch even when the orchestrator itself

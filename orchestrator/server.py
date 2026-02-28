@@ -55,6 +55,9 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Claude Code Orchestrator")
 
+from routes.webhooks import router as webhooks_router  # noqa: E402
+app.include_router(webhooks_router)
+
 # Serve static files (web UI)
 app.mount("/web", StaticFiles(directory=str(WEB_DIR)), name="web")
 
