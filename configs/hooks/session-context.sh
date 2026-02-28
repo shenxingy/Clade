@@ -115,6 +115,16 @@ CONTEXT="${CONTEXT}\nIMPORTANT: Always respond in the same language the user wri
 # Model selection guidance
 CONTEXT="${CONTEXT}\nModel guide: Sonnet 4.6 is optimal for most coding (79.6% SWE-bench, 40% cheaper than Opus). Switch to Opus 4.6 only for: large refactors (10+ files), deep architectural reasoning, or outputs >64K tokens. Use Haiku 4.5 for sub-agents doing mechanical checks. If you detect the user is about to do a complex multi-file refactor on Sonnet, suggest: 'This task may benefit from Opus — run /model to switch.'\n"
 
+# Revert rate check
+REVERT_COUNT=$(git log --oneline --since="7 days ago" --grep="^Revert" 2>/dev/null | wc -l | tr -d ' ')
+TOTAL_COUNT=$(git log --oneline --since="7 days ago" 2>/dev/null | wc -l | tr -d ' ')
+if [[ "${TOTAL_COUNT:-0}" -gt 10 && "${REVERT_COUNT:-0}" -gt 0 ]]; then
+  REVERT_RATE=$(( REVERT_COUNT * 100 / TOTAL_COUNT ))
+  if [[ "$REVERT_RATE" -gt 10 ]]; then
+    CONTEXT="${CONTEXT}\n⚠ High revert rate this week: ${REVERT_COUNT}/${TOTAL_COUNT} commits (${REVERT_RATE}%)\n"
+  fi
+fi
+
 if [[ -n "$CONTEXT" ]]; then
   jq -n --arg ctx "$CONTEXT" \
     '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":$ctx}}'
