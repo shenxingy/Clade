@@ -587,8 +587,8 @@ if mcp_config.exists():
 - [x] Task cards in UI show H/V/A badge based on `task_type`
 - [x] `_SETTINGS_DEFAULTS` includes `auto_scale`, `min_workers`, `webhook_secret`
 - [x] Settings panel has auto-scale toggle + min/max inputs that persist to settings file
-- [ ] `status_loop()` has auto-scaling logic with 30s cooldown
-- [ ] `_decompose_horizontal()` exists and creates child tasks for HORIZONTAL task type
+- [x] `status_loop()` has auto-scaling logic with 30s cooldown
+- [x] `_decompose_horizontal()` exists and creates child tasks for HORIZONTAL task type
 - [x] `orchestrator/task_factory/ci_watcher.py` exists and has `check_ci_failures()` function
 - [x] `orchestrator/task_factory/coverage_scan.py` exists and has `check_coverage_gaps()` function
 - [x] `orchestrator/task_factory/dep_update.py` exists and has `check_outdated_deps()` function
@@ -599,7 +599,7 @@ if mcp_config.exists():
 - [x] Clicking a preset fills textarea + sets model
 - [x] `worker.py` detects `.claude/mcp.json` and passes `--mcp-config` to subprocess
 - [x] `configs/templates/mcp.json.example` exists
-- [ ] Server starts without errors after all changes
+- [x] Server starts without errors after all changes
 
 ---
 
