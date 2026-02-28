@@ -1,6 +1,49 @@
 # Progress Log
 
 ---
+### 2026-02-28 — Loop: loop-fix-debt
+
+**Iterations:** 3
+**Goal file:** loop-fix-debt.md
+**Commits since start:**
+```
+00db07f feat: add coverage_scan and dep_update_scan settings defaults
+a79231d feat: wire task factories into status_loop()
+991d09c fix: correct VALUES placeholder count in TaskQueue.add() INSERT
+f5d9e5f fix: add task_type/source_ref/parent_task_id to TaskQueue.add()
+e473843 fix: add httpx to requirements
+f5501cb fix: correct webhook dedup status strings and persist source_ref
+0219927 fix: add cwd and remove redundant imports in _decompose_horizontal
+baa64b0 docs: mark Phase 7.3 and Phase 8 items done in TODO.md and VISION.md
+```
+
+**Lesson:** Autonomous loops can introduce silent wiring bugs — new DB columns added but not plumbed through `add()`, new modules created but never called. Post-loop tech debt review (`/review`) is now standard practice. The 10-round gap check caught 8 remaining items the loop missed.
+
+---
+### 2026-02-27 — Loop: loop-gui-features
+
+**Iterations:** 3
+**Goal file:** /home/alexshen/projects/claude-code-kit/loop-gui-features.md
+**Commits since start:**
+```
+6fe7c04 docs: mark auto-scaling and decompose_horizontal as complete
+3b19727 docs: add loop-phase9-skills run summary to PROGRESS.md
+300d9ad feat: add auto-scaling and horizontal task decomposition to status_loop
+c6b4d0a feat: add GitHub webhook endpoint and MCP config detection
+eb55be4 Merge branch 'batch/task-4-20260227-211550'
+c9ab0ce Merge branch 'batch/task-2-20260227-211550'
+38590aa Merge branch 'batch/task-1-20260227-211550'
+f76627e feat: add H/V/A badges, preset cards, and auto-scale settings to GUI
+8140177 batch: Create all `orchestrator/task_factory/` module files. These are new files; code is provided verbatim.
+4c0d588 docs: mark task_factory acceptance criteria as complete
+330dc81 feat: add coverage_scan and dep_update task factories
+b6a9299 feat: add ci_watcher task factory
+f2d5ac8 docs: mark task_type/source_ref/parent_task_id DB columns and config fields as complete
+181118a feat: add task_type/source_ref/parent_task_id DB columns and config fields
+```
+
+---
+
 ### 2026-02-27 — Loop: loop-phase9-skills
 
 **Iterations:** 2
