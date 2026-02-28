@@ -802,8 +802,8 @@ async def status_loop():
                     if _factory_now - getattr(session, '_dep_update_last', 0) > 3600:
                         session._dep_update_last = _factory_now
                         try:
-                            from task_factory.dep_update import check_dep_updates
-                            asyncio.ensure_future(check_dep_updates(session.task_queue, str(session.project_dir)))
+                            from task_factory.dep_update import check_outdated_deps
+                            asyncio.ensure_future(check_outdated_deps(session.task_queue, str(session.project_dir)))
                         except Exception as e:
                             logger.warning("Dep update error: %s", e)
 
