@@ -672,7 +672,6 @@ async def _check_blockers(session: ProjectSession) -> None:
 
 async def _decompose_horizontal(task: dict, session) -> None:
     """Decompose a HORIZONTAL task into per-file VERTICAL child tasks."""
-    import asyncio, shlex
     desc = task.get("description", "")
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -680,6 +679,7 @@ async def _decompose_horizontal(task: dict, session) -> None:
             f"List the source files that need changes for this task. Output one file path per line, no explanation:\n{desc}",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
+            cwd=str(session.project_dir),
         )
         try:
             stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
