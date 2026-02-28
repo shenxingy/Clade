@@ -46,4 +46,18 @@ if $STRICT_MODE; then
 fi
 
 run_typecheck_for_project "$(pwd)" "$STRICT_MODE"
+
+# Track commit granularity stats (non-blocking)
+_track_commit_granularity() {
+  local files_changed commits_made ratio stats_file
+  files_changed=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | wc -l | tr -d ' ')
+  commits_made=$(git log --oneline --since="1 hour ago" 2>/dev/null | wc -l | tr -d ' ')
+  [[ "$files_changed" -eq 0 ]] && return 0
+  ratio=$(echo "scale=2; $commits_made / $files_changed" | bc 2>/dev/null || echo "0")
+  stats_file="${CLAUDE_PROJECT_DIR:-$(pwd)}/.claude/stats.jsonl"
+  mkdir -p "$(dirname "$stats_file")"
+  echo "{\"date\":\"$(date -Iseconds)\",\"commits\":$commits_made,\"files\":$files_changed,\"ratio\":$ratio}" >> "$stats_file"
+}
+( _track_commit_granularity ) &
+
 exit $?
