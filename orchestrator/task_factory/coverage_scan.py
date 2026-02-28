@@ -44,7 +44,7 @@ async def check_coverage_gaps(
                     timeout=30,
                 )
             except Exception as e:
-                logger.warning(f"Failed to generate coverage.json: {e}")
+                logger.warning("Failed to generate coverage.json: %s", e)
                 return created_ids
 
         # Read coverage data
@@ -55,7 +55,7 @@ async def check_coverage_gaps(
         try:
             data = json.loads(coverage_file.read_text())
         except Exception as e:
-            logger.warning(f"Failed to parse coverage.json: {e}")
+            logger.warning("Failed to parse coverage.json: %s", e)
             return created_ids
 
         # Get existing tasks to deduplicate
@@ -99,13 +99,13 @@ async def check_coverage_gaps(
             description = f"Improve test coverage for {filepath} (currently {coverage_pct:.1f}%, target {threshold}%)"
 
             try:
-                task = await task_queue.add(description=description)
+                task = await task_queue.add(description=description, source_ref=source_ref)
                 created_ids.append(task["id"])
-                logger.info(f"Created task {task['id']} for coverage gap in {filepath}")
+                logger.info("Created task %s for coverage gap in %s", task["id"], filepath)
             except Exception as e:
-                logger.warning(f"Failed to create task for coverage gap in {filepath}: {e}")
+                logger.warning("Failed to create task for coverage gap in %s: %s", filepath, e)
 
     except Exception as e:
-        logger.warning(f"Error checking coverage gaps: {e}")
+        logger.warning("Error checking coverage gaps: %s", e)
 
     return created_ids

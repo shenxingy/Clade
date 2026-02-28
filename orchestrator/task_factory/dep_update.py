@@ -49,7 +49,7 @@ async def check_outdated_deps(task_queue: Any, project_dir: str) -> list[str]:
                     # Cap at 10 packages
                     python_deps = deps[:10]
             except Exception as e:
-                logger.warning(f"Failed to check Python dependencies: {e}")
+                logger.warning("Failed to check Python dependencies: %s", e)
 
         # Check Node.js dependencies
         node_deps = []
@@ -70,7 +70,7 @@ async def check_outdated_deps(task_queue: Any, project_dir: str) -> list[str]:
                     except json.JSONDecodeError:
                         pass
             except Exception as e:
-                logger.warning(f"Failed to check Node.js dependencies: {e}")
+                logger.warning("Failed to check Node.js dependencies: %s", e)
 
         # Create tasks for Python dependencies
         for dep in python_deps:
@@ -90,11 +90,11 @@ async def check_outdated_deps(task_queue: Any, project_dir: str) -> list[str]:
             description = f"Update Python dependency: {name} from {current} to {latest}"
 
             try:
-                task = await task_queue.add(description=description)
+                task = await task_queue.add(description=description, source_ref=source_ref)
                 created_ids.append(task["id"])
-                logger.info(f"Created task {task['id']} for Python dependency {name}")
+                logger.info("Created task %s for Python dependency %s", task["id"], name)
             except Exception as e:
-                logger.warning(f"Failed to create task for Python dependency {name}: {e}")
+                logger.warning("Failed to create task for Python dependency %s: %s", name, e)
 
         # Create tasks for Node.js dependencies
         for name, dep_info in node_deps:
@@ -113,13 +113,13 @@ async def check_outdated_deps(task_queue: Any, project_dir: str) -> list[str]:
             description = f"Update Node.js dependency: {name} from {current} to {latest}"
 
             try:
-                task = await task_queue.add(description=description)
+                task = await task_queue.add(description=description, source_ref=source_ref)
                 created_ids.append(task["id"])
-                logger.info(f"Created task {task['id']} for Node.js dependency {name}")
+                logger.info("Created task %s for Node.js dependency %s", task["id"], name)
             except Exception as e:
-                logger.warning(f"Failed to create task for Node.js dependency {name}: {e}")
+                logger.warning("Failed to create task for Node.js dependency %s: %s", name, e)
 
     except Exception as e:
-        logger.warning(f"Error checking outdated dependencies: {e}")
+        logger.warning("Error checking outdated dependencies: %s", e)
 
     return created_ids
