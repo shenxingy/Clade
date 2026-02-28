@@ -270,7 +270,7 @@ class TaskQueue:
                     started_at, elapsed_s, last_commit, log_file, failed_reason,
                     created_at, depends_on, score, score_note, own_files, forbidden_files,
                     is_critical_path, task_type, source_ref, parent_task_id)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     task["id"], task["description"], task["model"],
                     task["timeout"], task["retries"], task["status"],
