@@ -8,6 +8,19 @@ Claude Code Kit is a bash+Python automation framework. CLI layer lives in `confi
 
 ---
 
+## Progress
+
+- [x] 1. session-context.sh — Smart Warm-up
+- [ ] 2. loop-runner.sh — Auto-PROGRESS on Convergence
+- [ ] 3. loop-runner.sh — Notify on Convergence/Interruption
+- [ ] 4. loop-runner.sh — HORIZONTAL Mode
+- [ ] 5. loop-runner.sh — --exit-gate Flag
+- [ ] 6. verify-task-completed.sh — Commit Granularity Stats
+- [ ] 7. Kit Completeness — Copy Missing Skills
+- [ ] 8. /research Skill
+
+---
+
 ## Requirements
 
 ### 1. session-context.sh — Smart Warm-up
