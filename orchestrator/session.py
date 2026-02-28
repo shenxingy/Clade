@@ -780,6 +780,33 @@ async def status_loop():
                             )
                             session._last_autoscale = time.time()
 
+                # ─── Task factory polling ────────────────────────────────────────────────
+                _factory_now = time.time()
+                if GLOBAL_SETTINGS.get("github_issues_sync", False):
+                    if _factory_now - getattr(session, '_ci_watcher_last', 0) > 300:
+                        session._ci_watcher_last = _factory_now
+                        try:
+                            from task_factory.ci_watcher import check_ci_failures
+                            asyncio.ensure_future(check_ci_failures(session.task_queue, str(session.project_dir)))
+                        except Exception as e:
+                            logger.warning("CI watcher error: %s", e)
+                if GLOBAL_SETTINGS.get("coverage_scan", False):
+                    if _factory_now - getattr(session, '_coverage_scan_last', 0) > 1800:
+                        session._coverage_scan_last = _factory_now
+                        try:
+                            from task_factory.coverage_scan import check_coverage_gaps
+                            asyncio.ensure_future(check_coverage_gaps(session.task_queue, str(session.project_dir)))
+                        except Exception as e:
+                            logger.warning("Coverage scan error: %s", e)
+                if GLOBAL_SETTINGS.get("dep_update_scan", False):
+                    if _factory_now - getattr(session, '_dep_update_last', 0) > 3600:
+                        session._dep_update_last = _factory_now
+                        try:
+                            from task_factory.dep_update import check_dep_updates
+                            asyncio.ensure_future(check_dep_updates(session.task_queue, str(session.project_dir)))
+                        except Exception as e:
+                            logger.warning("Dep update error: %s", e)
+
                 # Complete grouped parents when all children are done
                 _grouped = [t for t in _auto_tasks if t["status"] == "grouped"]
                 for _gp in _grouped:
