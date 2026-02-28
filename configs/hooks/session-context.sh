@@ -35,6 +35,24 @@ if [[ -n "$GIT_LOG" ]]; then
   CONTEXT="Recent commits:\n${GIT_LOG}\n\n"
 fi
 
+# Loop state (if active)
+if [[ -f ".claude/loop-state" ]]; then
+  CONVERGED=$(grep "^CONVERGED=" .claude/loop-state | cut -d= -f2)
+  ITERATION=$(grep "^ITERATION=" .claude/loop-state | cut -d= -f2)
+  GOAL=$(grep "^GOAL=" .claude/loop-state | cut -d= -f2 | xargs basename 2>/dev/null)
+  if [[ "$CONVERGED" == "true" ]]; then
+    CONTEXT="${CONTEXT}Loop: ✓ converged (${GOAL}, iter ${ITERATION})\n"
+  elif [[ "$CONVERGED" == "false" ]]; then
+    CONTEXT="${CONTEXT}Loop: ⟳ running (${GOAL}, iter ${ITERATION})\n"
+  fi
+fi
+
+# Next TODO item
+NEXT_TODO=$(grep -m1 "^\- \[ \]" TODO.md 2>/dev/null | sed 's/- \[ \] \*\*//' | sed 's/\*\*.*//' | xargs)
+if [[ -n "$NEXT_TODO" ]]; then
+  CONTEXT="${CONTEXT}\nNext TODO: ${NEXT_TODO}\n"
+fi
+
 # Uncommitted changes
 GIT_STATUS=$(git status --short 2>/dev/null | head -15)
 if [[ -n "$GIT_STATUS" ]]; then
