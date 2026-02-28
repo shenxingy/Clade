@@ -592,13 +592,13 @@ if mcp_config.exists():
 - [x] `orchestrator/task_factory/ci_watcher.py` exists and has `check_ci_failures()` function
 - [x] `orchestrator/task_factory/coverage_scan.py` exists and has `check_coverage_gaps()` function
 - [x] `orchestrator/task_factory/dep_update.py` exists and has `check_outdated_deps()` function
-- [ ] `orchestrator/routes/webhooks.py` exists with `/api/webhooks/github` endpoint
-- [ ] Webhook endpoint validates HMAC signature
-- [ ] Webhook router registered in `server.py` with `app.include_router()`
+- [x] `orchestrator/routes/webhooks.py` exists with `/api/webhooks/github` endpoint
+- [x] Webhook endpoint validates HMAC signature
+- [x] Webhook router registered in `server.py` with `app.include_router()`
 - [x] GUI preset cards appear above task form (4 presets: test-writer, refactor-bot, docs-bot, security-scan)
 - [x] Clicking a preset fills textarea + sets model
-- [ ] `worker.py` detects `.claude/mcp.json` and passes `--mcp-config` to subprocess
-- [ ] `configs/templates/mcp.json.example` exists
+- [x] `worker.py` detects `.claude/mcp.json` and passes `--mcp-config` to subprocess
+- [x] `configs/templates/mcp.json.example` exists
 - [ ] Server starts without errors after all changes
 
 ---
@@ -609,7 +609,7 @@ if mcp_config.exists():
 
 - [ ] `cd orchestrator && python -c "import server; print('OK')"` passes (no import errors)
 - [ ] `cd orchestrator && python -c "from task_factory.ci_watcher import check_ci_failures; print('OK')"` passes
-- [ ] `cd orchestrator && python -c "from routes.webhooks import router; print('OK')"` passes
+- [x] `cd orchestrator && python -c "from routes.webhooks import router; print('OK')"` passes
 - [ ] All new Python files have no syntax errors (`python -m py_compile <file>`)
 - [ ] No circular imports introduced (DAG rule)
 - [ ] Each feature committed separately with `committer`
