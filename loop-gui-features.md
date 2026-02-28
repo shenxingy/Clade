@@ -584,9 +584,9 @@ if mcp_config.exists():
 - [x] `source_ref` column exists in tasks table
 - [x] `parent_task_id` column exists in tasks table
 - [x] `import_from_proposed()` parses `TYPE:` header field and stores `task_type`
-- [ ] Task cards in UI show H/V/A badge based on `task_type`
+- [x] Task cards in UI show H/V/A badge based on `task_type`
 - [x] `_SETTINGS_DEFAULTS` includes `auto_scale`, `min_workers`, `webhook_secret`
-- [ ] Settings panel has auto-scale toggle + min/max inputs that persist to settings file
+- [x] Settings panel has auto-scale toggle + min/max inputs that persist to settings file
 - [ ] `status_loop()` has auto-scaling logic with 30s cooldown
 - [ ] `_decompose_horizontal()` exists and creates child tasks for HORIZONTAL task type
 - [ ] `orchestrator/task_factory/ci_watcher.py` exists and has `check_ci_failures()` function
@@ -595,8 +595,8 @@ if mcp_config.exists():
 - [ ] `orchestrator/routes/webhooks.py` exists with `/api/webhooks/github` endpoint
 - [ ] Webhook endpoint validates HMAC signature
 - [ ] Webhook router registered in `server.py` with `app.include_router()`
-- [ ] GUI preset cards appear above task form (4 presets: test-writer, refactor-bot, docs-bot, security-scan)
-- [ ] Clicking a preset fills textarea + sets model
+- [x] GUI preset cards appear above task form (4 presets: test-writer, refactor-bot, docs-bot, security-scan)
+- [x] Clicking a preset fills textarea + sets model
 - [ ] `worker.py` detects `.claude/mcp.json` and passes `--mcp-config` to subprocess
 - [ ] `configs/templates/mcp.json.example` exists
 - [ ] Server starts without errors after all changes
@@ -616,9 +616,9 @@ if mcp_config.exists():
 
 ### Human-Verifiable
 
-- [ ] H/V/A badges visible in task queue and worker cards
-- [ ] Preset cards render correctly and fill form on click
-- [ ] Settings panel shows auto-scale toggle and persists on reload
+- [x] H/V/A badges visible in task queue and worker cards
+- [x] Preset cards render correctly and fill form on click
+- [x] Settings panel shows auto-scale toggle and persists on reload
 - [ ] Server starts: `cd orchestrator && python server.py` no errors
 
 ---

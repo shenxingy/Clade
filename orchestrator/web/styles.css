@@ -892,6 +892,17 @@
     .token-bar-fill { height:100%; transition:width 0.3s; }
     .badge.oracle-ok { background:rgba(90,154,79,0.12); color:var(--green); }
     .badge.oracle-rejected { background:rgba(192,83,74,0.12); color:var(--red); }
+    .badge-h { background: #f97316; color: #fff; border-radius: 3px; padding: 1px 5px; font-size: 11px; font-weight: bold; }
+    .badge-v { background: #3b82f6; color: #fff; border-radius: 3px; padding: 1px 5px; font-size: 11px; font-weight: bold; }
+    .badge-a { background: #6b7280; color: #fff; border-radius: 3px; padding: 1px 5px; font-size: 11px; font-weight: bold; }
+
+    /* ─── Preset Cards ────────────────────────────────────────────── */
+    .preset-cards { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; padding: 0 12px; }
+    .preset-card { flex: 1; min-width: 120px; padding: 10px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; transition: border-color 0.15s, background 0.15s; text-align: center; background: var(--bg2); }
+    .preset-card:hover { border-color: var(--accent); background: rgba(193,95,60,0.08); }
+    .preset-icon { font-size: 20px; margin-bottom: 4px; }
+    .preset-name { font-size: 13px; font-weight: 600; color: var(--text); }
+    .preset-desc { font-size: 11px; color: var(--text2); margin-top: 2px; }
 
     /* ─── Multi-project Overview ─────────────────────────────────── */
     .overview-row {
