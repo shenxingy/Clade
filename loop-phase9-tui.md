@@ -53,7 +53,7 @@ if [[ -n "$NEXT_TODO" ]]; then
 fi
 ```
 
-### 2. loop-runner.sh — Auto-PROGRESS on Convergence
+### 2. [DONE] loop-runner.sh — Auto-PROGRESS on Convergence
 File: `~/.claude/scripts/loop-runner.sh`
 
 Read the file first (it's large). Find the block after `state_write CONVERGED true` (around line 292-295).
@@ -89,7 +89,7 @@ _write_loop_progress() {
 ( _write_loop_progress ) &
 ```
 
-### 3. loop-runner.sh — Notify on Convergence/Interruption
+### 3. [DONE] loop-runner.sh — Notify on Convergence/Interruption
 File: `~/.claude/scripts/loop-runner.sh`
 
 Find the notify-telegram script at `configs/hooks/notify-telegram.sh`. Check if `TELEGRAM_TOKEN` env var is set.
@@ -114,7 +114,7 @@ _notify_loop() {
 Call on convergence: `_notify_loop "converged" "✓ Loop converged: $(basename $GOAL_FILE) in ${iteration} iterations"`
 Call on interruption (in `_cleanup`): `_notify_loop "interrupted" "✗ Loop interrupted: $(basename $GOAL_FILE) at iter ${iteration:-?}"`
 
-### 4. loop-runner.sh — HORIZONTAL Mode
+### 4. [DONE] loop-runner.sh — HORIZONTAL Mode
 File: `~/.claude/scripts/loop-runner.sh`
 
 Read the GOAL_FILE parsing section. After `GOAL_FILE` is validated, add:
@@ -140,7 +140,7 @@ MODE: VERTICAL   # VERTICAL (default, feature tasks) or HORIZONTAL (file-level m
 [Testable conditions that define "done"]
 ```
 
-### 5. loop-runner.sh — --exit-gate Flag
+### 5. [DONE] loop-runner.sh — --exit-gate Flag
 File: `~/.claude/scripts/loop-runner.sh`
 
 Add to argument parsing section:
