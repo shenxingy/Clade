@@ -113,6 +113,7 @@ When the user confirms the breakdown, write tasks to `.claude/proposed-tasks.md`
 model: sonnet
 timeout: 600
 retries: 2
+TYPE: VERTICAL
 ---
 [Task title: verb + noun, e.g. "Implement NextAuth configuration"]
 
@@ -138,6 +139,7 @@ Acceptance criteria:
 model: haiku
 timeout: 300
 retries: 2
+TYPE: HORIZONTAL
 ---
 [Next task...]
 ```
@@ -146,6 +148,11 @@ retries: 2
 - `haiku`: Simple/mechanical tasks — config files, copy-paste patterns, <20 lines, one file
 - `sonnet`: Standard features — 2-4 files, moderate complexity, existing patterns to follow
 - `opus`: Complex architectural work — 5+ files, novel patterns, significant reasoning required
+
+**TYPE selection guide:**
+- `VERTICAL`: Standard feature/bugfix — one logical unit, stays in its lane (default)
+- `HORIZONTAL`: Same operation across many files — e.g. "add type hints to all modules", "rename X to Y everywhere" — will be auto-decomposed into per-file micro-tasks
+- `AUTO`: Let the orchestrator decide (defaults to VERTICAL if unclear)
 
 ### Step 4: Notify User
 After writing the file, say exactly:
