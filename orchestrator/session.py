@@ -667,6 +667,44 @@ async def _check_blockers(session: ProjectSession) -> None:
         newest.status = "blocked"
         await session.task_queue.update(newest.task_id, status="blocked")
 
+# ─── Horizontal task decomposition ───────────────────────────────────────────
+
+
+async def _decompose_horizontal(task: dict, session) -> None:
+    """Decompose a HORIZONTAL task into per-file VERTICAL child tasks."""
+    import asyncio, shlex
+    desc = task.get("description", "")
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "claude", "--model", "claude-haiku-4-5-20251001", "-p",
+            f"List the source files that need changes for this task. Output one file path per line, no explanation:\n{desc}",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        try:
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
+            stdout = b""
+    except Exception as e:
+        logger.warning("_decompose_horizontal failed: %s", e)
+        return
+
+    lines = [l.strip() for l in stdout.decode().splitlines() if l.strip() and not l.strip().startswith("#")]
+    files = lines[:20]
+    if not files:
+        return
+
+    for path in files:
+        await session.task_queue.add(
+            description=f"[file: {path}] {desc}",
+            parent_task_id=task["id"],
+            task_type="VERTICAL",
+        )
+    await session.task_queue.update(task["id"], status="grouped")
+
+
 # ─── Status broadcast loop ────────────────────────────────────────────────────
 
 
@@ -717,10 +755,37 @@ async def status_loop():
                             1 for w in session.worker_pool.all() if w.status == "running"
                         ) >= _max_w:
                             break
+                        if _task.get("task_type") == "HORIZONTAL":
+                            await _decompose_horizontal(_task, session)
+                            continue
                         await session.worker_pool.start_worker(
                             _task, session.task_queue,
                             session.project_dir, session.claude_dir,
                         )
+
+                # Auto-scaling: spawn extra workers when queue is backlogged
+                if GLOBAL_SETTINGS.get("auto_scale", False) and not _swarm_active:
+                    _running_now = sum(1 for w in session.worker_pool.all() if w.status == "running")
+                    _pending_now = len([t for t in _auto_tasks if t["status"] == "pending"])
+                    _max_w = GLOBAL_SETTINGS.get("max_workers", 8) or 8
+                    _spawn_cooldown = getattr(session, '_last_autoscale', 0)
+                    if (_pending_now > _running_now * 2
+                            and _running_now < _max_w
+                            and time.time() - _spawn_cooldown > 30):
+                        _ready = [t for t in _auto_tasks if t["status"] == "pending" and _deps_met(t, _done_ids)]
+                        if _ready and not getattr(session, '_budget_exceeded', False):
+                            await session.worker_pool.start_worker(
+                                _ready[0], session.task_queue,
+                                session.project_dir, session.claude_dir,
+                            )
+                            session._last_autoscale = time.time()
+
+                # Complete grouped parents when all children are done
+                _grouped = [t for t in _auto_tasks if t["status"] == "grouped"]
+                for _gp in _grouped:
+                    _children = [t for t in _auto_tasks if t.get("parent_task_id") == _gp["id"]]
+                    if _children and all(c["status"] in ("done", "failed") for c in _children):
+                        await session.task_queue.update(_gp["id"], status="done")
 
                 # Scheduler: auto-start pending tasks at scheduled time
                 if session._scheduled_start and not session._schedule_triggered:
