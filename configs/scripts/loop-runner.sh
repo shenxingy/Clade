@@ -454,3 +454,15 @@ echo ""
 echo "Logs:     $LOG_DIR/"
 echo "State:    $STATE_FILE"
 echo "Progress: $PROGRESS_FILE"
+
+# ── Auto-deploy: run install.sh if configs/ was modified ──────────────────────
+INSTALL_SH="${PROJECT_DIR:-$(pwd)}/install.sh"
+if [[ -f "$INSTALL_SH" ]]; then
+  CONFIGS_CHANGED=$(git -C "${PROJECT_DIR:-$(pwd)}" diff --name-only HEAD~1 HEAD 2>/dev/null | grep "^configs/" | wc -l || echo 0)
+  if [[ "${CONFIGS_CHANGED:-0}" -gt 0 ]]; then
+    echo ""
+    echo "⚙ configs/ changed — running install.sh to deploy..."
+    bash "$INSTALL_SH" 2>&1 | grep -E "^(Installed|  Installed|Installation complete)" || true
+    echo "✓ Deployed to ~/.claude/"
+  fi
+fi
