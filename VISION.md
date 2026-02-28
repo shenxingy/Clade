@@ -80,21 +80,21 @@ See `TODO.md` for detailed task breakdown.
 
 ### 7.1 — Hook Layer（BOTH: CLI & GUI 共享）
 
-- [ ] Commit reminder hook — 扩展 `post-edit-check.sh`，≥2 文件未提交时注入提醒
-- [ ] Commit granularity gate — `verify-task-completed.sh` 统计 commit/file 比率
-- [ ] CLAUDE.md per-file rule — 全局规则：每改一文件立即提交
+- [x] Commit reminder hook — 扩展 `post-edit-check.sh`，≥2 文件未提交时注入提醒
+- [x] Commit granularity gate — `verify-task-completed.sh` 统计 commit/file 比率
+- [x] CLAUDE.md per-file rule — 全局规则：每改一文件立即提交
 
 ### 7.2 — CLI/TUI Velocity（configs/ 层）
 
-- [ ] loop-runner.sh HORIZONTAL 模式 — supervisor 上限 20 micro-tasks
-- [ ] TODO scanner CLI — `scan-todos.sh` 扫描注释 → task file
-- [ ] tmux dispatcher — `tmux-dispatch.sh` 多 pane 自动分发任务
+- [x] loop-runner.sh HORIZONTAL 模式 — supervisor 上限 20 micro-tasks
+- [x] TODO scanner CLI — `scan-todos.sh` 扫描注释 → task file
+- [x] tmux dispatcher — `tmux-dispatch.sh` 多 pane 自动分发任务
 
 ### 7.3 — GUI Velocity（orchestrator/ 层）
 
-- [ ] Task type 字段（HORIZONTAL / VERTICAL / AUTO）+ UI badge
-- [ ] Horizontal auto-decomposition — haiku 拆文件 → 子任务
-- [ ] Worker auto-scaling — queue depth 驱动自动扩缩容
+- [x] Task type 字段（HORIZONTAL / VERTICAL / AUTO）+ UI badge
+- [x] Horizontal auto-decomposition — haiku 拆文件 → 子任务
+- [x] Worker auto-scaling — queue depth 驱动自动扩缩容
 
 ---
 
@@ -104,19 +104,19 @@ See `TODO.md` for detailed task breakdown.
 
 ### 8.1 — Task Factories（BOTH: CLI 脚本 + GUI 模块）
 
-- [ ] CI failure watcher — 轮询 GitHub Actions，失败时生成 fix task
-- [ ] Test coverage gap detector — 为低覆盖模块生成测试任务
-- [ ] Dependency update bot — 检测过期依赖，每包一个 haiku 级任务
+- [x] CI failure watcher — 轮询 GitHub Actions，失败时生成 fix task
+- [x] Test coverage gap detector — 为低覆盖模块生成测试任务
+- [x] Dependency update bot — 检测过期依赖，每包一个 haiku 级任务
 
 ### 8.2 — External Triggers（GUI only）
 
-- [ ] GitHub webhook endpoint — Issue 标签 / PR 评论 → 自动创建任务
+- [x] GitHub webhook endpoint — Issue 标签 / PR 评论 → 自动创建任务
 
 ### 8.3 — Specialist Presets（BOTH）
 
-- [ ] CLI task templates — `configs/templates/` 专项模板（test-writer, refactor-bot, security-scan）
-- [ ] GUI preset cards — Task 创建 UI "Quick Presets" 区域
-- [ ] MCP integration — worker 启动时自动加载项目 `.claude/mcp.json`
+- [x] CLI task templates — `configs/templates/` 专项模板（test-writer, refactor-bot, security-scan）
+- [x] GUI preset cards — Task 创建 UI "Quick Presets" 区域
+- [x] MCP integration — worker 启动时自动加载项目 `.claude/mcp.json`
 
 ---
 
