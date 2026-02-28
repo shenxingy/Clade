@@ -32,6 +32,7 @@ _cleanup() {
   echo "⚠ Loop interrupted (signal). Saving state..."
   [[ -n "${STATE_FILE:-}" ]] && state_write INTERRUPTED true
   [[ -n "${PROGRESS_FILE:-}" ]] && write_progress "interrupted" "signal"
+  type _notify_loop &>/dev/null && _notify_loop "interrupted" "✗ Loop interrupted: $(basename ${GOAL_FILE:-unknown}) at iter ${iteration:-?}"
   exit 130
 }
 trap _cleanup SIGTERM SIGINT
@@ -48,6 +49,7 @@ STATE_FILE=".claude/loop-state"
 CONTEXT_FILE=""
 LOG_DIR="logs/loop"
 RESUME=false
+EXIT_GATE=""
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Source canonical model IDs
@@ -64,6 +66,7 @@ while [[ $# -gt 0 ]]; do
     --context)       CONTEXT_FILE="$2";     shift 2 ;;
     --log-dir)       LOG_DIR="$2";          shift 2 ;;
     --resume)        RESUME=true;           shift ;;
+    --exit-gate)     EXIT_GATE="$2";       shift 2 ;;
     *)               echo "Unknown flag: $1" >&2; shift ;;
   esac
 done
@@ -137,6 +140,45 @@ ACTION=${2:-}
 EOF
 }
 
+# Auto-write PROGRESS.md entry on convergence
+_write_loop_progress() {
+  local goal_name started iterations project_dir log_summary progress_file
+  goal_name=$(basename "${GOAL_FILE}" .md)
+  started=$(state_read STARTED "unknown")
+  iterations="${iteration}"
+  project_dir="${PROJECT_DIR:-$(pwd)}"
+  progress_file="${project_dir}/PROGRESS.md"
+
+  # Get commits since loop started
+  log_summary=$(git -C "${project_dir}" log --oneline --since="${started}" 2>/dev/null | head -20 || echo "no commits found")
+
+  if [[ -f "$progress_file" ]]; then
+    local entry
+    entry="### $(date '+%Y-%m-%d') — Loop: ${goal_name}\n\n**Iterations:** ${iterations}\n**Goal file:** ${GOAL_FILE}\n**Commits since start:**\n\`\`\`\n${log_summary}\n\`\`\`\n\n---\n\n"
+    # Prepend entry after the first line (the # Progress Log header)
+    local tmp
+    tmp=$(mktemp)
+    head -3 "$progress_file" > "$tmp"
+    printf "%b" "$entry" >> "$tmp"
+    tail -n +4 "$progress_file" >> "$tmp"
+    mv "$tmp" "$progress_file"
+  fi
+}
+
+# Notify via Telegram on convergence/interruption
+_notify_loop() {
+  local status="$1" msg="$2"
+  # Try project-local notify script first, then global
+  local notify_script=""
+  for candidate in "${PROJECT_DIR:-$(pwd)}/configs/hooks/notify-telegram.sh" \
+                   "${HOME}/.claude/hooks/notify-telegram.sh"; do
+    if [[ -f "$candidate" ]]; then notify_script="$candidate"; break; fi
+  done
+  [[ -z "$notify_script" ]] && return 0
+  [[ -z "${TELEGRAM_TOKEN:-}" ]] && return 0
+  bash "$notify_script" "$msg" 2>/dev/null &
+}
+
 # ── Banner ────────────────────────────────────────────────────────────────────
 echo ""
 echo "╔════════════════════════════════════════╗"
@@ -150,6 +192,8 @@ echo "  State:      $STATE_FILE"
 echo ""
 
 write_progress "running" "init"
+
+EXTRA_CONTEXT=""
 
 # ── Main loop ─────────────────────────────────────────────────────────────────
 while [[ $iteration -lt $MAX_ITER ]]; do
@@ -171,6 +215,10 @@ while [[ $iteration -lt $MAX_ITER ]]; do
 
   # ── Gather codebase state for supervisor ──────────────────────────────────
   [[ -f "$GOAL_FILE" ]] || { echo "Error: goal file missing: $GOAL_FILE" >&2; write_progress "error" "goal-missing"; exit 1; }
+
+  # Parse MODE from first 10 lines of goal file
+  LOOP_MODE=$(head -10 "$GOAL_FILE" | grep "^MODE:" | cut -d: -f2 | xargs)
+  LOOP_MODE="${LOOP_MODE:-VERTICAL}"
 
   goal_content=$(cat "$GOAL_FILE")
   git_log=$(git log --oneline -20 2>/dev/null || echo "(no git history)")
@@ -219,7 +267,22 @@ HEADER
       echo ""
     fi
 
-    cat << 'INSTRUCTIONS'
+    # Set mode-specific task instructions
+    if [[ "$LOOP_MODE" == "HORIZONTAL" ]]; then
+      LOOP_MODE_INSTRUCTION="output up to 20 file-level micro-tasks. Each task MUST touch exactly 1 file. Use model: haiku for all tasks."
+      MAX_TASKS_RULE="- Max 20 tasks per iteration (HORIZONTAL mode: one file per task)"
+    else
+      LOOP_MODE_INSTRUCTION="output 1–4 tasks"
+      MAX_TASKS_RULE="- Max 4 tasks per iteration"
+    fi
+
+    if [[ -n "$EXTRA_CONTEXT" ]]; then
+      echo "## Exit Gate Feedback"
+      echo -e "$EXTRA_CONTEXT"
+      echo ""
+    fi
+
+    cat << INSTRUCTIONS
 ## Your task
 
 Compare the goal against what has been implemented (read the recent commits and diffs above).
@@ -227,7 +290,7 @@ Compare the goal against what has been implemented (read the recent commits and 
 If the goal is FULLY achieved, output exactly:
   STATUS: CONVERGED
 
-Otherwise, output 1–4 tasks in this EXACT format (no preamble, no explanation):
+Otherwise, ${LOOP_MODE_INSTRUCTION} in this EXACT format (no preamble, no explanation):
 
 ===TASK===
 model: haiku|sonnet|opus
@@ -247,12 +310,13 @@ model: sonnet
 
 Rules:
 - Each task must be INDEPENDENT (workers run in parallel; no task may depend on another's output)
-- Max 4 tasks per iteration
+${MAX_TASKS_RULE}
 - Workers commit via: committer "type: message" file1 file2  (NEVER git add .)
 - Workers have full Claude Code tool access (Read, Edit, Bash, Glob, Grep)
 - Pick model by complexity: haiku=mechanical/1-file, sonnet=standard, opus=architectural/multi-file
 - Do NOT re-assign tasks that are already in the git log as completed commits
 INSTRUCTIONS
+    EXTRA_CONTEXT=""
   } > "$PROMPT_FILE"
 
   # ── Run supervisor ────────────────────────────────────────────────────────
@@ -276,10 +340,28 @@ INSTRUCTIONS
 
   # ── Check convergence ────────────────────────────────────────────────────
   if echo "$SUPERVISOR_OUTPUT" | grep -q "STATUS: CONVERGED"; then
-    state_write CONVERGED true
-    write_progress "converged" ""
-    echo "✓ Goal achieved — loop converged at iteration $iteration"
-    break
+    if [[ -n "$EXIT_GATE" ]]; then
+      echo "  Running exit gate: ${EXIT_GATE}"
+      if eval "$EXIT_GATE" > /tmp/loop-gate-output 2>&1; then
+        echo "  ✓ Exit gate passed"
+        state_write CONVERGED true
+        write_progress "converged" ""
+        ( _write_loop_progress ) &
+        _notify_loop "converged" "✓ Loop converged: $(basename $GOAL_FILE) in ${iteration} iterations"
+        echo "✓ Goal achieved — loop converged at iteration $iteration"
+        break
+      else
+        echo "  ✗ Exit gate failed — continuing loop with failure context"
+        EXTRA_CONTEXT="Exit gate failed:\n$(cat /tmp/loop-gate-output | tail -20)\nDo NOT output STATUS: CONVERGED until the exit gate passes."
+      fi
+    else
+      state_write CONVERGED true
+      write_progress "converged" ""
+      ( _write_loop_progress ) &
+      _notify_loop "converged" "✓ Loop converged: $(basename $GOAL_FILE) in ${iteration} iterations"
+      echo "✓ Goal achieved — loop converged at iteration $iteration"
+      break
+    fi
   fi
 
   if echo "$SUPERVISOR_OUTPUT" | grep -qi "^ERROR:"; then
