@@ -55,8 +55,8 @@ GUI wraps CLI primitives — workers use the same committer, same verify command
 | 4 | Swarm Intelligence | Shared queue, file ownership, GitHub Issues sync, cross-worker messaging | ✓ DONE |
 | 5 | Context Intelligence | Semantic TLDR, intervention replay, dual-condition exit gate | ✓ DONE |
 | 6 | Observability & Resilience | Analytics, cost tracking, budget limits, stuck detection, notifications | ✓ DONE |
-| 7 | Task Velocity Engine | Hook-enforced commit discipline, HORIZONTAL task decomposition, auto-scaling | 🔄 IN PROGRESS |
-| 8 | Closed-Loop Work Generation | Task factories (CI/coverage/deps), GitHub webhooks, specialist presets | 📋 PLANNED |
+| 7 | Task Velocity Engine | Hook-enforced commit discipline, HORIZONTAL task decomposition, auto-scaling | ✓ DONE |
+| 8 | Closed-Loop Work Generation | Task factories (CI/coverage/deps), GitHub webhooks, specialist presets | ✓ DONE |
 | 9 | Meta-Intelligence | Session warm-up, loop auto-PROGRESS, pattern detection, /research + /map + /incident skills | 🔄 IN PROGRESS |
 | 10 | Portfolio Mode | Cross-project task routing, system auto-ranks work, human approves not generates | 💡 FUTURE |
 
