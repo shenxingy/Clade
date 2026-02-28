@@ -4,3 +4,5 @@ ptyprocess
 watchfiles
 aiosqlite
 httpx
+pytest
+pytest-asyncio
