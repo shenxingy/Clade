@@ -39,11 +39,13 @@ from session import (
     status_loop,
 )
 from task_queue import TaskQueue
-from worker import (
-    _generate_code_tldr,
+from github_sync import (
     _gh_create_issue,
     _gh_pull_issues,
     _gh_push_all,
+)
+from worker import (
+    _generate_code_tldr,
     _score_task,
     _write_pr_review,
     _write_progress_entry,
