@@ -589,9 +589,9 @@ if mcp_config.exists():
 - [ ] Settings panel has auto-scale toggle + min/max inputs that persist to settings file
 - [ ] `status_loop()` has auto-scaling logic with 30s cooldown
 - [ ] `_decompose_horizontal()` exists and creates child tasks for HORIZONTAL task type
-- [ ] `orchestrator/task_factory/ci_watcher.py` exists and has `check_ci_failures()` function
-- [ ] `orchestrator/task_factory/coverage_scan.py` exists and has `check_coverage_gaps()` function
-- [ ] `orchestrator/task_factory/dep_update.py` exists and has `check_outdated_deps()` function
+- [x] `orchestrator/task_factory/ci_watcher.py` exists and has `check_ci_failures()` function
+- [x] `orchestrator/task_factory/coverage_scan.py` exists and has `check_coverage_gaps()` function
+- [x] `orchestrator/task_factory/dep_update.py` exists and has `check_outdated_deps()` function
 - [ ] `orchestrator/routes/webhooks.py` exists with `/api/webhooks/github` endpoint
 - [ ] Webhook endpoint validates HMAC signature
 - [ ] Webhook router registered in `server.py` with `app.include_router()`
