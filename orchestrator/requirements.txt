@@ -3,3 +3,4 @@ uvicorn[standard]
 ptyprocess
 watchfiles
 aiosqlite
+httpx
