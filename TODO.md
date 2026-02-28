@@ -81,46 +81,23 @@ Phases 1–6 complete. Phase 7 (Task Velocity Engine) and Phase 8 (Closed-Loop W
 
 ### 7.1 Hook Layer — BOTH（代码级强制，任何 claude session 受益）
 
-- [ ] **Commit reminder hook** — 扩展 `configs/hooks/post-edit-check.sh`
-  - 新增：在脚本末尾统计 `git diff --name-only HEAD` 的未提交文件数
-  - 若未提交文件数 ≥ 2，向 stdout 追加 `systemMessage`：
-    `"⚠ {N} files edited without commit — run: committer \"type: desc\" file1 file2 ..."`
-  - 配置：`COMMIT_REMINDER_THRESHOLD=2`（环境变量，可覆盖）
-  - 注意：保持 async=false（需要同步反馈），不阻断（不返回 exit 2）
-  - 文件：`configs/hooks/post-edit-check.sh` + `configs/settings-hooks.json`（已注册，无需改）
+- [x] **Commit reminder hook** — `configs/hooks/post-edit-check.sh` ✓ (loop 2026-02-27)
 
 - [ ] **Commit granularity gate** — 扩展 `configs/hooks/verify-task-completed.sh`
   - 新增：统计 task 期间 commit 数 vs 变更文件数（`git log --oneline` 比对 session 开始 SHA）
   - `commit_count / changed_files < 0.5` → 追加警告到 stats，不阻断完成
-  - 用途：识别"攒批 commit"模式，供后续分析
 
-- [ ] **CLAUDE.md per-file rule** — 更新 `configs/templates/CLAUDE.md` + 全局 `~/.claude/CLAUDE.md`
-  - Commits 章节新增：
-    `"After modifying each file, commit immediately with committer before opening the next file. Never batch file edits into one commit."`
+- [x] **CLAUDE.md per-file rule** — `configs/templates/CLAUDE.md` ✓ (loop 2026-02-27)
 
 ---
 
 ### 7.2 CLI/TUI Velocity — configs/ 层（bash 实现）
 
-- [ ] **loop-runner.sh HORIZONTAL 模式** — 移除 supervisor 4-task 上限
-  - 当 goal file 顶部有 `MODE: HORIZONTAL` 标记时，supervisor prompt 改为：
-    `"Output up to 20 file-level micro-tasks. Each task must touch exactly 1 file."`
-  - `run-tasks-parallel.sh` 的 `MAX_WORKERS` 对应调大（由 goal file 中 `MAX_WORKERS: N` 指定）
-  - 文件：`configs/scripts/loop-runner.sh`，`configs/templates/loop-goal.md`（新增 MODE 字段）
+- [ ] **loop-runner.sh HORIZONTAL 模式** — goal file 加 `MODE: HORIZONTAL` → supervisor 最多 20 micro-tasks
 
-- [ ] **TODO scanner CLI** — `configs/scripts/scan-todos.sh`
-  - 用法：`bash scan-todos.sh [project-dir] >> tasks.txt`
-  - 扫描 `grep -rn "TODO:\|FIXME:\|HACK:\|XXX:"` → 每条生成 `===TASK===` 格式的任务块
-  - 去重：对比已有 tasks.txt，同文件+行号 skip
-  - 任务格式：`model: haiku\ntimeout: 600\n---\nfix(todo): {comment} in {file}:{line}\n...`
-  - 可单独用，也可输出给 `batch-tasks`
+- [x] **TODO scanner CLI** — `configs/scripts/scan-todos.sh` ✓ (loop 2026-02-27)
 
-- [ ] **tmux dispatcher** — `configs/scripts/tmux-dispatch.sh`
-  - 用法：`bash tmux-dispatch.sh tasks.txt [--workers 6]`
-  - 读取 tasks.txt（`===TASK===` 格式），在 tmux session `claude-fleet` 中创建 N 个 pane
-  - 每个 pane：`claude --dangerously-skip-permissions -p "$(next_task)"` + `vt title "task-N: {name}"`
-  - 内置 task dispatcher：pane 完成后自动从队列取下一个（`flock` 保护计数器文件）
-  - 完成后打印汇总（success/failed/skipped）
+- [x] **tmux dispatcher** — `configs/scripts/tmux-dispatch.sh` ✓ (loop 2026-02-27)
 
 ---
 
@@ -146,6 +123,64 @@ Phases 1–6 complete. Phase 7 (Task Velocity Engine) and Phase 8 (Closed-Loop W
     - `max_workers: int = 8`
   - 前端 Settings 面板：Auto-Scale 开关 + min/max 数字输入
   - 防止 spawn storm：每次 spawn 后冷却 30s 才检查下一次
+
+---
+
+## Phase 9 — Meta-Intelligence (TUI/CLI Layer)
+
+Goal: maximize autonomous run hours. Minimize human intervention. System knows where it is, learns from patterns, notifies when done.
+
+### 9.1 Smart Session Warm-up
+
+- [ ] **session-context.sh: loop-state + next TODO** — extend existing hook
+  - Add after git log block: read `.claude/loop-state` if exists → show CONVERGED/running/stopped
+  - Add: find next unchecked `- [ ]` item in TODO.md → show as "Next: ..."
+  - Files: `configs/hooks/session-context.sh`
+
+### 9.2 Loop Intelligence
+
+- [ ] **loop-runner.sh: auto-PROGRESS on convergence** — on CONVERGED, spawn haiku
+  - Read `git log --oneline` since loop started (use STARTED timestamp from state file)
+  - Write structured entry to PROGRESS.md: `### {date} — Loop: {goal_name}\n**Iterations:** N\n**Commits:** ...\n**Summary:** ...`
+  - Files: `~/.claude/scripts/loop-runner.sh`
+
+- [ ] **loop-runner.sh: notify-telegram on convergence** — if `notify-telegram.sh` exists + TELEGRAM_TOKEN set
+  - Call `bash configs/hooks/notify-telegram.sh "Loop converged: {goal} in {N} iterations"` on CONVERGED and INTERRUPTED
+  - Files: `~/.claude/scripts/loop-runner.sh`
+
+- [ ] **loop-runner.sh: HORIZONTAL mode** — `MODE: HORIZONTAL` in goal file → supervisor outputs up to 20 micro-tasks
+  - Parse `MODE:` from first 5 lines of goal file
+  - Inject into supervisor prompt: `"Output up to 20 file-level micro-tasks. Each task must touch exactly 1 file."`
+  - Files: `~/.claude/scripts/loop-runner.sh`, `configs/templates/loop-goal.md` (add MODE field example)
+
+- [ ] **loop-runner.sh: --exit-gate flag** — hard convergence gate
+  - `--exit-gate "bash typecheck.sh"` → run command before accepting CONVERGED
+  - If gate fails: supervisor gets failure output as context, loop continues
+  - If gate passes: accept CONVERGED
+  - Files: `~/.claude/scripts/loop-runner.sh`
+
+### 9.3 Commit Quality
+
+- [ ] **verify-task-completed.sh: commit granularity stats** — non-blocking tracking
+  - Count commits made since task started vs files changed
+  - If ratio < 0.5: append warning to `.claude/stats.jsonl`: `{"date":..., "task":..., "commits":N, "files":M, "ratio":R}`
+  - Files: `configs/hooks/verify-task-completed.sh`
+
+### 9.4 Kit Completeness
+
+- [ ] **Copy review-pr, merge-pr, worktree skills to configs/skills/**
+  - Copy from `~/.claude/skills/{review-pr,merge-pr,worktree}/` → `configs/skills/`
+  - Update `install.sh` if needed to install these skills
+  - Files: `configs/skills/review-pr/`, `configs/skills/merge-pr/`, `configs/skills/worktree/`
+
+### 9.5 Research Skill
+
+- [ ] **`/research` skill** — planning automation (Steps 1-5)
+  - Input: raw idea or problem description (from user prompt args)
+  - Process: web search top 3-5 competitors/tools, extract key features, compare to current VISION.md
+  - Output: structured BRAINSTORM.md entry with `## [Research] {date} — {topic}` header
+  - Also reads current VISION.md + TODO.md to find gaps and opportunities
+  - Files: `configs/skills/research/prompt.md`
 
 ---
 
