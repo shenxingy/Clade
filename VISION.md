@@ -1,8 +1,15 @@
 # VISION — Claude Code Kit
 
-**North star:** 1000+ commits/day. You describe what you want; AI delivers overnight. Wake up to merged PRs.
+**North star:** Maximum autonomous hours. Set direction in the morning — wake up to merged PRs. Human role: define goals + review results. Everything else is automated.
 
-**Design principle:** Every step a human does manually is a bug. Every step a worker does sequentially instead of in parallel is waste.
+**Real metric:** How many hours can the system run unattended and still deliver results that match expectations? Today: ~2 hours. Target: overnight (8-16 hours).
+
+**Design principles:**
+- Every human intervention is a system failure — find the root cause and eliminate it
+- Every step a human does manually is a bug — automate it or remove it
+- Every step a worker does sequentially instead of in parallel is waste — parallelize it
+- Planning quality determines autonomous run length — a good plan prevents 5 interruptions downstream
+- The human is a director, not an executor — 6 projects in parallel, all running while you sleep
 
 ---
 
@@ -50,6 +57,8 @@ GUI wraps CLI primitives — workers use the same committer, same verify command
 | 6 | Observability & Resilience | Analytics, cost tracking, budget limits, stuck detection, notifications | ✓ DONE |
 | 7 | Task Velocity Engine | Hook-enforced commit discipline, HORIZONTAL task decomposition, auto-scaling | 🔄 IN PROGRESS |
 | 8 | Closed-Loop Work Generation | Task factories (CI/coverage/deps), GitHub webhooks, specialist presets | 📋 PLANNED |
+| 9 | Meta-Intelligence | Session warm-up, loop auto-PROGRESS, pattern detection, /research + /map + /incident skills | 🔄 IN PROGRESS |
+| 10 | Portfolio Mode | Cross-project task routing, system auto-ranks work, human approves not generates | 💡 FUTURE |
 
 See `TODO.md` for detailed task breakdown.
 

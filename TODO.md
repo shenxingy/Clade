@@ -175,12 +175,30 @@ Goal: maximize autonomous run hours. Minimize human intervention. System knows w
 
 ### 9.5 Research Skill
 
-- [ ] **`/research` skill** — planning automation (Steps 1-5)
-  - Input: raw idea or problem description (from user prompt args)
-  - Process: web search top 3-5 competitors/tools, extract key features, compare to current VISION.md
-  - Output: structured BRAINSTORM.md entry with `## [Research] {date} — {topic}` header
-  - Also reads current VISION.md + TODO.md to find gaps and opportunities
-  - Files: `configs/skills/research/prompt.md`
+- [x] **`/research` skill** ✓ — `configs/skills/research/prompt.md` (loop 2026-02-27)
+
+### 9.6 Pattern Intelligence & Self-Improvement
+
+- [ ] **`/map` skill** — codebase structure visualization
+  - Scan `configs/` + `orchestrator/` → generate Mermaid diagram of modules + responsibilities
+  - Output to `ARCHITECTURE.md` in project root
+  - File: `configs/skills/map/prompt.md`
+
+- [ ] **Prompt fingerprint tracker** — detect recurring user prompts
+  - In `configs/hooks/session-context.sh` (or a new PostToolUse hook): log prompt hash + first 60 chars to `.claude/prompt-log.jsonl`
+  - After 3+ identical hashes: append suggestion to session context: `"You've run this prompt 3x — consider making it a skill"`
+  - File: `configs/hooks/session-context.sh` or new `configs/hooks/prompt-tracker.sh`
+
+- [ ] **`/incident` skill** — operational incident → learning
+  - User describes what went wrong → skill writes structured incident to `.claude/incidents.md`
+  - Format: date, what happened, root cause, corrective action, suggested hook/rule
+  - Optionally appends a new rule to `corrections/rules.md`
+  - File: `configs/skills/incident/prompt.md`
+
+- [ ] **Value tracking** — extend `.claude/stats.jsonl` with revert detection
+  - `configs/hooks/session-context.sh`: on startup, count `git log --oneline --grep="Revert"` in last 7 days
+  - If revert rate > 10%: surface warning in session context: `"⚠ High revert rate this week ({N} reverts)"`
+  - Pairs with existing commit granularity stats from `verify-task-completed.sh`
 
 ---
 
