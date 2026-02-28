@@ -98,12 +98,12 @@ async def github_webhook(
     existing_tasks = await task_queue.list()
     for t in existing_tasks:
         if t.get("source_ref") == source_ref and t.get("status") not in (
-            "completed", "failed", "cancelled"
+            "done", "failed"
         ):
             logger.info("Skipping duplicate webhook event source_ref=%s", source_ref)
             return {"status": "duplicate", "source_ref": source_ref}
 
-    task = await task_queue.add(description=description)
+    task = await task_queue.add(description=description, source_ref=source_ref)
     logger.info(
         "Queued task %s from GitHub webhook event=%s source_ref=%s",
         task["id"], x_github_event, source_ref,
