@@ -1,6 +1,27 @@
 # Progress Log
 
 ---
+### 2026-02-27 — Loop: loop-phase9-skills
+
+**Iterations:** 2
+**Goal file:** loop-phase9-skills.md
+**Commits since start:**
+```
+6864c3c docs(goals): mark /incident skill done in loop-phase9-skills.md
+30fa77a feat(skills): add /incident structured incident logging skill
+3d803e2 Merge branch 'batch/task-4-20260227-191646'
+f8f4479 Merge branch 'batch/task-2-20260227-191646'
+127343b docs(todo): mark revert rate tracker complete in Phase 9 goals
+e4afa0c feat(hooks): add revert rate tracker to session context
+c57c710 docs(goals): mark prompt-tracker done in loop-phase9-skills.md
+5694499 feat(hooks): add prompt fingerprint tracker hook
+6164705 docs(goals): mark /map skill done in loop-phase9-skills.md
+f3207f5 feat(skills): add /map architecture diagram skill
+0229fd4 docs: add loop-phase9-skills.md goal file
+```
+
+---
+
 
 ### 2026-02-27 — Gap Analysis vs Top Players → Phase 7 & 8 Roadmap
 
