@@ -102,6 +102,12 @@
             "command": "~/.claude/hooks/correction-detector.sh",
             "timeout": 5,
             "statusMessage": ""
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/prompt-tracker.sh",
+            "async": true,
+            "timeout": 5
           }
         ]
       }
