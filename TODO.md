@@ -195,7 +195,7 @@ Goal: maximize autonomous run hours. Minimize human intervention. System knows w
   - Optionally appends a new rule to `corrections/rules.md`
   - File: `configs/skills/incident/prompt.md`
 
-- [ ] **Value tracking** — extend `.claude/stats.jsonl` with revert detection
+- [x] **Value tracking** — extend `.claude/stats.jsonl` with revert detection
   - `configs/hooks/session-context.sh`: on startup, count `git log --oneline --grep="Revert"` in last 7 days
   - If revert rate > 10%: surface warning in session context: `"⚠ High revert rate this week ({N} reverts)"`
   - Pairs with existing commit granularity stats from `verify-task-completed.sh`
