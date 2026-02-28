@@ -38,14 +38,14 @@ async def check_ci_failures(task_queue: Any, project_dir: str) -> list[str]:
                 text=True,
             ).strip()
         except Exception as e:
-            logger.warning(f"Failed to get git remote: {e}")
+            logger.warning("Failed to get git remote: %s", e)
             return created_ids
 
         # Parse owner/repo from URL
         # Handles both HTTPS (https://github.com/owner/repo.git) and SSH (git@github.com:owner/repo.git)
         match = re.search(r'github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?$', remote_url)
         if not match:
-            logger.warning(f"Could not parse owner/repo from remote URL: {remote_url}")
+            logger.warning("Could not parse owner/repo from remote URL: %s", remote_url)
             return created_ids
 
         owner, repo = match.groups()
@@ -81,14 +81,13 @@ async def check_ci_failures(task_queue: Any, project_dir: str) -> list[str]:
 
             # Add task to queue
             try:
-                task = await task_queue.add(description=description)
-                # Store source_ref as metadata (if task_queue.add supports it, otherwise update separately)
+                task = await task_queue.add(description=description, source_ref=source_ref)
                 created_ids.append(task["id"])
-                logger.info(f"Created task {task['id']} for CI failure {source_ref}")
+                logger.info("Created task %s for CI failure %s", task["id"], source_ref)
             except Exception as e:
-                logger.warning(f"Failed to create task for CI run {run['id']}: {e}")
+                logger.warning("Failed to create task for CI run %s: %s", run["id"], e)
 
     except Exception as e:
-        logger.warning(f"Error checking CI failures: {e}")
+        logger.warning("Error checking CI failures: %s", e)
 
     return created_ids
