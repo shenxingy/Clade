@@ -144,6 +144,18 @@ class TaskQueue:
                     await db.execute("ALTER TABLE tasks ADD COLUMN estimated_cost REAL")
                 except Exception:
                     pass
+                try:
+                    await db.execute("ALTER TABLE tasks ADD COLUMN task_type TEXT DEFAULT 'AUTO'")
+                except Exception:
+                    pass
+                try:
+                    await db.execute("ALTER TABLE tasks ADD COLUMN source_ref TEXT")
+                except Exception:
+                    pass
+                try:
+                    await db.execute("ALTER TABLE tasks ADD COLUMN parent_task_id TEXT")
+                except Exception:
+                    pass
                 await db.execute("""
                     CREATE TABLE IF NOT EXISTS worker_messages (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -430,6 +442,7 @@ class TaskQueue:
             model = GLOBAL_SETTINGS.get("default_model", "sonnet")
             timeout = 600
             retries = 2
+            task_type = "AUTO"
             depends_on: list[str] = []
             desc_lines = []
             in_header = True
@@ -447,6 +460,9 @@ class TaskQueue:
                         retries = int(line.split(":", 1)[1].strip())
                     except Exception:
                         pass
+                elif in_header and line.startswith("TYPE:"):
+                    val = line.split(":", 1)[1].strip().upper()
+                    task_type = val if val in ("HORIZONTAL", "VERTICAL", "AUTO") else "AUTO"
                 elif in_header and line.startswith("depends_on:"):
                     try:
                         val = line.split(":", 1)[1].strip()
@@ -492,20 +508,23 @@ class TaskQueue:
                     "score_note": None,
                     "own_files": own_files,
                     "forbidden_files": forbidden_files,
+                    "task_type": task_type,
                 }
                 async with aiosqlite.connect(str(self._db_path)) as db:
                     await db.execute(
                         """INSERT INTO tasks
                            (id, description, model, timeout, retries, status, worker_id,
                             started_at, elapsed_s, last_commit, log_file, failed_reason,
-                            created_at, depends_on, score, score_note, own_files, forbidden_files)
-                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                            created_at, depends_on, score, score_note, own_files, forbidden_files,
+                            task_type)
+                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                         (
                             task["id"], task["description"], task["model"],
                             task["timeout"], task["retries"], task["status"],
                             None, None, 0, None, None, None,
                             task["created_at"], json.dumps(depends_on), None, None,
                             json.dumps(own_files), json.dumps(forbidden_files),
+                            task_type,
                         ),
                     )
                     await db.commit()
