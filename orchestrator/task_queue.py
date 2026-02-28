@@ -234,7 +234,10 @@ class TaskQueue:
     async def add(self, description: str, model: str = "sonnet",
                   own_files: list[str] | None = None,
                   forbidden_files: list[str] | None = None,
-                  is_critical_path: bool = False) -> dict:
+                  is_critical_path: bool = False,
+                  task_type: str = "AUTO",
+                  source_ref: str | None = None,
+                  parent_task_id: str | None = None) -> dict:
         await self._ensure_db()
         task = {
             "id": str(uuid.uuid4())[:8],
@@ -256,6 +259,9 @@ class TaskQueue:
             "own_files": own_files or [],
             "forbidden_files": forbidden_files or [],
             "is_critical_path": int(is_critical_path),
+            "task_type": task_type,
+            "source_ref": source_ref,
+            "parent_task_id": parent_task_id,
         }
         async with aiosqlite.connect(str(self._db_path)) as db:
             await db.execute(
@@ -263,8 +269,8 @@ class TaskQueue:
                    (id, description, model, timeout, retries, status, worker_id,
                     started_at, elapsed_s, last_commit, log_file, failed_reason,
                     created_at, depends_on, score, score_note, own_files, forbidden_files,
-                    is_critical_path)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    is_critical_path, task_type, source_ref, parent_task_id)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     task["id"], task["description"], task["model"],
                     task["timeout"], task["retries"], task["status"],
@@ -273,7 +279,8 @@ class TaskQueue:
                     task["created_at"], json.dumps(task["depends_on"]),
                     task["score"], task["score_note"],
                     json.dumps(task["own_files"]), json.dumps(task["forbidden_files"]),
-                    task["is_critical_path"],
+                    task["is_critical_path"], task["task_type"], task["source_ref"],
+                    task["parent_task_id"],
                 ),
             )
             await db.commit()
