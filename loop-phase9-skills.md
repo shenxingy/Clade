@@ -11,7 +11,7 @@ After loop converges, `install.sh` auto-runs (deploy gap fixed).
 
 ## Requirements
 
-### 1. `/map` skill
+### 1. `/map` skill ✓
 Create `configs/skills/map/prompt.md`
 
 When the user runs `/map`, Claude should:
