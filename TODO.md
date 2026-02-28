@@ -101,19 +101,19 @@ Phases 1–6 complete. Phase 7 (Task Velocity Engine) and Phase 8 (Closed-Loop W
 
 ### 7.3 GUI Velocity — orchestrator/ 层（Python 实现）
 
-- [ ] **Task type 字段** — DB + 解析 + UI badge
+- [x] **Task type 字段** — DB + 解析 + UI badge
   - `orchestrator/server.py`：`tasks` 表 ALTER 加 `task_type TEXT DEFAULT 'AUTO'`
   - 解析 `proposed-tasks.md` 中 `TYPE: HORIZONTAL|VERTICAL` 字段，写入 DB
   - 前端：worker card 显示 `H`（橙）/ `V`（蓝）/ `A`（灰）badge
   - `/orchestrate` skill 生成的 `proposed-tasks.md` 格式中加 `TYPE:` 字段（改 skill prompt）
 
-- [ ] **Horizontal auto-decomposition** — `orchestrator/server.py`
+- [x] **Horizontal auto-decomposition** — `orchestrator/server.py`
   - `start_worker()` 前：`if task.task_type == 'HORIZONTAL'` → 调用 `_decompose_horizontal(task)`
   - `_decompose_horizontal`：用 claude haiku 列出受影响文件列表 → 每个文件创建子任务
   - 子任务描述：`[file: {path}] {原始任务描述}`，`parent_task_id` 字段记录父任务
   - 父任务状态改为 `grouped`，所有子任务完成后父任务自动 complete
 
-- [ ] **Worker auto-scaling** — `orchestrator/server.py` + 前端设置
+- [x] **Worker auto-scaling** — `orchestrator/server.py` + 前端设置
   - `status_loop()` 加逻辑：`pending_count > running_count * 2` → `_start_worker()`（最多到 `max_workers`）
   - 新 settings（`orchestrator/settings.json`）：
     - `auto_scale: bool = false`
@@ -167,20 +167,20 @@ Goal: maximize autonomous run hours. Minimize human intervention. System knows w
 每个 factory 都有两种输出形态：CLI 版本输出 `===TASK===` 格式文件，GUI 版本写入 orchestrator DB。
 
 - [x] **CI failure watcher — CLI** (`configs/scripts/scan-ci-failures.sh`) ✓
-  - [ ] GUI (`orchestrator/task_factory/ci_watcher.py`)：GitHub Actions API 轮询，`status_loop()` 集成
+  - [x] GUI (`orchestrator/task_factory/ci_watcher.py`)：GitHub Actions API 轮询，`status_loop()` 集成
   - 去重 key：`source_ref = ci_run_{run_id}`（tasks 表新增 `source_ref TEXT` 列）
 
 - [x] **Test coverage gap detector — CLI** (`configs/scripts/scan-coverage.sh`) ✓
-  - [ ] GUI (`orchestrator/task_factory/coverage_scan.py`)：同 CLI 逻辑，写 DB
+  - [x] GUI (`orchestrator/task_factory/coverage_scan.py`)：同 CLI 逻辑，写 DB
 
 - [x] **Dependency update bot — CLI** (`configs/scripts/scan-deps.sh`) ✓
-  - [ ] GUI (`orchestrator/task_factory/dep_update.py`)：同逻辑，写 DB
+  - [x] GUI (`orchestrator/task_factory/dep_update.py`)：同逻辑，写 DB
 
 ---
 
 ### 8.2 External Triggers — GUI only
 
-- [ ] **GitHub webhook endpoint** — `orchestrator/routes/webhooks.py`
+- [x] **GitHub webhook endpoint** — `orchestrator/routes/webhooks.py`
   - `POST /api/webhooks/github`，注册到 FastAPI router
   - 触发条件：Issue 加 `claude-do-it` 标签 → 用 title+body 创建任务
   - 触发条件：Issue / PR 评论匹配 `/claude <instruction>` → 解析指令创建任务
@@ -195,15 +195,28 @@ Goal: maximize autonomous run hours. Minimize human intervention. System knows w
   - `task-test-writer.md`, `task-refactor-bot.md`, `task-security-scan.md` 已完成
   - 用法：`cat configs/templates/task-test-writer.md >> tasks.txt && bash batch-tasks tasks.txt`
 
-- [ ] **GUI preset cards** — Task 创建 UI 新增 "Quick Presets" 区域（4 个 card）
+- [x] **GUI preset cards** — Task 创建 UI 新增 "Quick Presets" 区域（4 个 card）
   - `test-writer` / `refactor-bot` / `docs-bot` / `security-scan`
   - 点击 → 预填 prompt + 自动设 `TYPE=HORIZONTAL` + 推荐 model
   - 前端：新增 `<PresetCards>` 组件，放在 TaskCreateForm 上方
 
-- [ ] **MCP integration** — `docs/mcp-setup.md` + worker 自动加载
+- [x] **MCP integration** — `docs/mcp-setup.md` + worker 自动加载
   - 文档：推荐 servers（`brave-search`, `playwright-browser`, `filesystem`）+ 安装命令
   - `orchestrator/server.py`：`start_worker()` 时检测项目目录 `.claude/mcp.json` → 注入 worker 环境
   - `configs/templates/mcp.json.example`：可复制的示例配置
+
+---
+
+## Tech Debt
+
+- [ ] 🔴 `TaskQueue.add()` missing `task_type`/`source_ref`/`parent_task_id` params — `_decompose_horizontal()` and task factories will TypeError at runtime (`orchestrator/task_queue.py:234`)
+- [ ] 🔴 `httpx` not in requirements.txt but imported by ci_watcher — `ModuleNotFoundError` at import time (`orchestrator/task_factory/ci_watcher.py:9`)
+- [ ] 🔴 Task factories never called — ci_watcher/coverage_scan/dep_update created but never imported or wired into `status_loop()` (dead code)
+- [ ] 🔴 Webhook dedup uses wrong status `"completed"` instead of `"done"` — dedup silently always fails (`orchestrator/routes/webhooks.py:101`)
+- [ ] 🟡 `source_ref` never persisted in DB — webhook `add()` call drops it, dedup field always `None` (`orchestrator/routes/webhooks.py:106`)
+- [ ] 🟡 `worker.py` over 1500-line limit at 1513 lines — extract GitHub sync functions to `orchestrator/github_sync.py` (`orchestrator/worker.py`)
+- [ ] 🟡 TODO.md + VISION.md stale — Phase 7.3 + Phase 8 items still `[ ]` despite being implemented; VISION.md milestone table not updated
+- [ ] 🟡 `_decompose_horizontal` missing `cwd=project_dir` in subprocess — claude haiku runs in wrong directory (`orchestrator/session.py:678`)
 
 ---
 
