@@ -75,6 +75,8 @@ _SETTINGS_DEFAULTS = {
     "auto_scale": False,
     "min_workers": 1,
     "webhook_secret": "",
+    "coverage_scan": False,
+    "dep_update_scan": False,
 }
 
 
