@@ -1,5 +1,7 @@
 # Loop Goal — [Short Description]
 
+MODE: VERTICAL   # VERTICAL (default) or HORIZONTAL (file-level micro-tasks, up to 20)
+
 ## Goal
 
 [Describe the ideal end state. What should be true when this loop is done?
