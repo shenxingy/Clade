@@ -43,7 +43,7 @@ The hook should:
 
 Also update `configs/settings-hooks.json` to register this new hook under `UserPromptSubmit`. Look at the existing format in that file first.
 
-### 3. `/incident` skill
+### 3. `/incident` skill ✓
 Create `configs/skills/incident/prompt.md`
 
 When the user runs `/incident` (optionally with a description), Claude should:
@@ -86,7 +86,7 @@ fi
 - `configs/skills/map/prompt.md` exists and describes the /map workflow
 - [x] `configs/hooks/prompt-tracker.sh` exists, is executable, exits 0
 - [x] `configs/settings-hooks.json` registers prompt-tracker under UserPromptSubmit
-- `configs/skills/incident/prompt.md` exists
+- [x] `configs/skills/incident/prompt.md` exists
 - `configs/hooks/session-context.sh` includes revert rate check
 - All files committed with `committer`
 - `install.sh` will auto-run after convergence (deploy gap already fixed)
