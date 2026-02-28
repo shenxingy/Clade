@@ -83,9 +83,7 @@ Phases 1–6 complete. Phase 7 (Task Velocity Engine) and Phase 8 (Closed-Loop W
 
 - [x] **Commit reminder hook** — `configs/hooks/post-edit-check.sh` ✓ (loop 2026-02-27)
 
-- [ ] **Commit granularity gate** — 扩展 `configs/hooks/verify-task-completed.sh`
-  - 新增：统计 task 期间 commit 数 vs 变更文件数（`git log --oneline` 比对 session 开始 SHA）
-  - `commit_count / changed_files < 0.5` → 追加警告到 stats，不阻断完成
+- [x] **Commit granularity gate** — `configs/hooks/verify-task-completed.sh` ✓ (loop 2026-02-27)
 
 - [x] **CLAUDE.md per-file rule** — `configs/templates/CLAUDE.md` ✓ (loop 2026-02-27)
 
@@ -93,7 +91,7 @@ Phases 1–6 complete. Phase 7 (Task Velocity Engine) and Phase 8 (Closed-Loop W
 
 ### 7.2 CLI/TUI Velocity — configs/ 层（bash 实现）
 
-- [ ] **loop-runner.sh HORIZONTAL 模式** — goal file 加 `MODE: HORIZONTAL` → supervisor 最多 20 micro-tasks
+- [x] **loop-runner.sh HORIZONTAL 模式** ✓ (loop 2026-02-27)
 
 - [x] **TODO scanner CLI** — `configs/scripts/scan-todos.sh` ✓ (loop 2026-02-27)
 
@@ -131,69 +129,27 @@ Phases 1–6 complete. Phase 7 (Task Velocity Engine) and Phase 8 (Closed-Loop W
 Goal: maximize autonomous run hours. Minimize human intervention. System knows where it is, learns from patterns, notifies when done.
 
 ### 9.1 Smart Session Warm-up
-
-- [ ] **session-context.sh: loop-state + next TODO** — extend existing hook
-  - Add after git log block: read `.claude/loop-state` if exists → show CONVERGED/running/stopped
-  - Add: find next unchecked `- [ ]` item in TODO.md → show as "Next: ..."
-  - Files: `configs/hooks/session-context.sh`
+- [x] **session-context.sh: loop-state + next TODO** ✓ (loop 2026-02-27)
 
 ### 9.2 Loop Intelligence
-
-- [ ] **loop-runner.sh: auto-PROGRESS on convergence** — on CONVERGED, spawn haiku
-  - Read `git log --oneline` since loop started (use STARTED timestamp from state file)
-  - Write structured entry to PROGRESS.md: `### {date} — Loop: {goal_name}\n**Iterations:** N\n**Commits:** ...\n**Summary:** ...`
-  - Files: `~/.claude/scripts/loop-runner.sh`
-
-- [ ] **loop-runner.sh: notify-telegram on convergence** — if `notify-telegram.sh` exists + TELEGRAM_TOKEN set
-  - Call `bash configs/hooks/notify-telegram.sh "Loop converged: {goal} in {N} iterations"` on CONVERGED and INTERRUPTED
-  - Files: `~/.claude/scripts/loop-runner.sh`
-
-- [ ] **loop-runner.sh: HORIZONTAL mode** — `MODE: HORIZONTAL` in goal file → supervisor outputs up to 20 micro-tasks
-  - Parse `MODE:` from first 5 lines of goal file
-  - Inject into supervisor prompt: `"Output up to 20 file-level micro-tasks. Each task must touch exactly 1 file."`
-  - Files: `~/.claude/scripts/loop-runner.sh`, `configs/templates/loop-goal.md` (add MODE field example)
-
-- [ ] **loop-runner.sh: --exit-gate flag** — hard convergence gate
-  - `--exit-gate "bash typecheck.sh"` → run command before accepting CONVERGED
-  - If gate fails: supervisor gets failure output as context, loop continues
-  - If gate passes: accept CONVERGED
-  - Files: `~/.claude/scripts/loop-runner.sh`
+- [x] **loop-runner.sh: auto-PROGRESS on convergence** ✓ (loop 2026-02-27)
+- [x] **loop-runner.sh: notify-telegram on convergence** ✓ (loop 2026-02-27)
+- [x] **loop-runner.sh: HORIZONTAL mode** ✓ (loop 2026-02-27)
+- [x] **loop-runner.sh: --exit-gate flag** ✓ (loop 2026-02-27)
 
 ### 9.3 Commit Quality
-
-- [ ] **verify-task-completed.sh: commit granularity stats** — non-blocking tracking
-  - Count commits made since task started vs files changed
-  - If ratio < 0.5: append warning to `.claude/stats.jsonl`: `{"date":..., "task":..., "commits":N, "files":M, "ratio":R}`
-  - Files: `configs/hooks/verify-task-completed.sh`
+- [x] **verify-task-completed.sh: commit granularity stats** ✓ (loop 2026-02-27)
 
 ### 9.4 Kit Completeness
-
-- [ ] **Copy review-pr, merge-pr, worktree skills to configs/skills/**
-  - Copy from `~/.claude/skills/{review-pr,merge-pr,worktree}/` → `configs/skills/`
-  - Update `install.sh` if needed to install these skills
-  - Files: `configs/skills/review-pr/`, `configs/skills/merge-pr/`, `configs/skills/worktree/`
+- [x] **Copy review-pr, merge-pr, worktree skills to configs/skills/** ✓ (loop 2026-02-27)
 
 ### 9.5 Research Skill
-
-- [x] **`/research` skill** ✓ — `configs/skills/research/prompt.md` (loop 2026-02-27)
+- [x] **`/research` skill** ✓ (loop 2026-02-27)
 
 ### 9.6 Pattern Intelligence & Self-Improvement
-
-- [ ] **`/map` skill** — codebase structure visualization
-  - Scan `configs/` + `orchestrator/` → generate Mermaid diagram of modules + responsibilities
-  - Output to `ARCHITECTURE.md` in project root
-  - File: `configs/skills/map/prompt.md`
-
-- [ ] **Prompt fingerprint tracker** — detect recurring user prompts
-  - In `configs/hooks/session-context.sh` (or a new PostToolUse hook): log prompt hash + first 60 chars to `.claude/prompt-log.jsonl`
-  - After 3+ identical hashes: append suggestion to session context: `"You've run this prompt 3x — consider making it a skill"`
-  - File: `configs/hooks/session-context.sh` or new `configs/hooks/prompt-tracker.sh`
-
-- [ ] **`/incident` skill** — operational incident → learning
-  - User describes what went wrong → skill writes structured incident to `.claude/incidents.md`
-  - Format: date, what happened, root cause, corrective action, suggested hook/rule
-  - Optionally appends a new rule to `corrections/rules.md`
-  - File: `configs/skills/incident/prompt.md`
+- [x] **`/map` skill** ✓ (loop 2026-02-27)
+- [x] **Prompt fingerprint tracker** ✓ (loop 2026-02-27)
+- [x] **`/incident` skill** ✓ (loop 2026-02-27)
 
 - [x] **Value tracking** — extend `.claude/stats.jsonl` with revert detection
   - `configs/hooks/session-context.sh`: on startup, count `git log --oneline --grep="Revert"` in last 7 days
