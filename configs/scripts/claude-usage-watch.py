@@ -16,7 +16,7 @@ from pathlib import Path
 USAGE_API  = "https://api.anthropic.com/api/oauth/usage"
 CREDS_FILE = Path.home() / ".claude" / ".credentials.json"
 CACHE_FILE = Path.home() / ".claude" / "usage-watch-cache.json"
-CACHE_TTL  = 120  # seconds
+CACHE_TTL  = 300  # seconds (5 min — 1% quota takes ~100 min to accumulate)
 
 
 def _load_token():
