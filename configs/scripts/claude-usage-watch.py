@@ -99,12 +99,12 @@ def run():
     sign = "+" if delta >= 0 else ""
     delta_str = f"{sign}{delta:.0f}%"
 
-    if delta > 20:
-        colored = f"\033[1;31m{delta_str}\033[0m"   # red
-    elif delta > 5:
-        colored = f"\033[1;33m{delta_str}\033[0m"   # yellow
+    if delta <= -20:
+        colored = f"\033[1;31m{delta_str}\033[0m"   # red — significantly underpacing
+    elif delta <= -10:
+        colored = f"\033[1;33m{delta_str}\033[0m"   # yellow — slightly slow
     else:
-        colored = f"\033[1;32m{delta_str}\033[0m"   # green
+        colored = delta_str                          # no color — normal
 
     print(f"{colored} ({left})", end="")
 
