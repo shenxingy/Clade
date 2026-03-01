@@ -793,7 +793,8 @@ async def merge_all_done(s: ProjectSession = Depends(_resolve_session)):
                     ))
             results.append({"worker_id": w.id, "pr_url": pr_url})
         except Exception as e:
-            results.append({"worker_id": w.id, "error": str(e)})
+            logger.warning("merge_all_done worker %s failed: %s", w.id, e)
+            results.append({"worker_id": w.id, "error": "PR merge failed"})
     return {"created": created, "merged": merged, "results": results}
 
 
