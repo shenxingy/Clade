@@ -126,33 +126,40 @@ The status line shows `dir  git:(branch)  ● (4d)` — the quota pace indicator
 
 ### Display Modes
 
-Three modes available — switch with `slt` (cycles symbol → percent → bar → symbol):
+Two modes — toggle with `slt`:
 
 | Mode | Example | When to use |
 |------|---------|-------------|
-| `symbol` (default) | `● (4d)` | Minimal — glance at the shape |
-| `percent` | `73% (4d)` | Precise — see the actual projected % |
-| `bar` | `▓▓▓░░ (4d)` | Visual — progress bar toward 100% |
+| `symbol` (default) | `● (4d)` | Glance at shape + color |
+| `percent` | `73% (4d)` | See the exact projected % |
 
 ```bash
-slt              # cycle to next mode
-slt percent      # set specific mode
-slt bar
+slt            # toggle between modes
+slt percent    # set specific mode
 slt symbol
 ```
 
 Mode is saved to `~/.claude/.statusline-mode` and persists across sessions.
 
+### Color Gradient
+
+Both modes use a red → yellow → green gradient based on projected week-end utilization:
+
+| Color | Range | Meaning |
+|-------|-------|---------|
+| Bright green | > 100% | Overpacing |
+| Green | 75 – 100% | On track |
+| Yellow | 50 – 75% | Push a bit more |
+| Red | < 50% | Need more work |
+
 ### Symbol Reference
 
-| Symbol | Meaning | Projected week-end usage |
-|--------|---------|--------------------------|
-| `◉` | Overpacing | > 100% |
-| `●` | On track | 95 – 100% |
-| `◑` | Push a bit more | 85 – 95% |
-| `○` | Need more work | < 85% |
-
-In `percent` and `bar` modes, color encodes the same thresholds: green (≥ 95%), yellow (85–95%), no color (< 85%).
+| Symbol | Projected |
+|--------|-----------|
+| `◉` | > 100% |
+| `●` | 75 – 100% |
+| `◑` | 50 – 75% |
+| `○` | < 50% |
 
 ### Time Remaining Format
 
