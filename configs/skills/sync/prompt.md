@@ -72,7 +72,25 @@ Guidelines:
 
 ---
 
-## Step 3b: Prune old entries
+## Step 3b: README health check
+
+Count lines in README.md:
+```bash
+wc -l README.md
+```
+
+If README.md has more than 300 lines, identify the largest section(s) that are reference material (not install/commands/overview) and note them as candidates to move to `docs/`. Output a brief note like:
+
+```
+README health: 450 lines (over 300 limit)
+  → Candidates to move to docs/: "How It Works" (~150 lines), "Configuration" (~80 lines)
+```
+
+If README.md is under 300 lines, skip silently.
+
+---
+
+## Step 3c: Prune old entries
 
 If PROGRESS.md exceeds 100 lines:
 1. Identify entries older than 30 days (by their `### YYYY-MM-DD` headers)
@@ -86,7 +104,7 @@ If PROGRESS.md exceeds 100 lines:
 ---
 
 
-## Step 3c: Generate session scorecard
+## Step 3d: Generate session scorecard
 
 Run the session scorecard generator to log quality metrics:
 
