@@ -231,7 +231,7 @@ class TaskQueue:
         await self._ensure_db()
         async with aiosqlite.connect(str(self._db_path)) as db:
             db.row_factory = aiosqlite.Row
-            async with db.execute("SELECT * FROM tasks ORDER BY created_at") as cur:
+            async with db.execute("SELECT * FROM tasks ORDER BY priority_score DESC, created_at ASC") as cur:
                 rows = await cur.fetchall()
         return [self._row_to_dict(r) for r in rows]
 
@@ -613,7 +613,7 @@ class TaskQueue:
         async with aiosqlite.connect(str(self._db_path)) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                "SELECT * FROM tasks WHERE status = 'pending' ORDER BY created_at"
+                "SELECT * FROM tasks WHERE status = 'pending' ORDER BY priority_score DESC, created_at ASC"
             ) as cur:
                 candidates = [self._row_to_dict(r) for r in await cur.fetchall()]
 
