@@ -95,19 +95,19 @@ def run():
     elapsed = _elapsed_pct(resets)
     left    = _remaining(resets)
 
-    # Too early in the period — projection is unreliable
-    if elapsed < 15:
-        print(f"— ({left})", end="")
-        return
-
-    projected = min(usage / elapsed * 100, 999)
-
-    if projected >= 95:
-        symbol = "●"   # on track
-    elif projected >= 80:
-        symbol = "◑"   # slightly behind, push a bit more
+    if elapsed <= 0:
+        projected = 0
     else:
-        symbol = "○"   # behind, need more work
+        projected = usage / elapsed * 100
+
+    if projected > 100:
+        symbol = "◉"   # overpacing, great
+    elif projected >= 95:
+        symbol = "●"   # on track
+    elif projected >= 85:
+        symbol = "◑"   # push a bit more
+    else:
+        symbol = "○"   # need more work
 
     print(f"{symbol} ({left})", end="")
 
