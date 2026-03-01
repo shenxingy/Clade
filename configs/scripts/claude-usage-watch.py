@@ -2,12 +2,14 @@
 """
 claude-usage-watch — compact Claude Code quota pace for the status line.
 
-Output: ⚡ +3% (4.4d)
-  +3%  = usage% - elapsed%  (positive = ahead of pace, negative = under pace)
-  4.4d = days until weekly reset
+Modes (set via ~/.claude/.statusline-mode):
+  symbol  (default) ● (4d)
+  percent           73% (4d)
+  bar               ▓▓▓░░ (4d)
 
-Color: green if delta ≤ 5, yellow if ≤ 20, red if > 20.
-Cache: 2 minutes (avoids hammering the API on every status refresh).
+Toggle with: slt  (statusline-toggle — cycles symbol → percent → bar → symbol)
+
+Cache: 5 minutes (avoids hammering the API on every status refresh).
 """
 import json, time, urllib.request
 from datetime import datetime, timezone
@@ -16,8 +18,31 @@ from pathlib import Path
 USAGE_API  = "https://api.anthropic.com/api/oauth/usage"
 CREDS_FILE = Path.home() / ".claude" / ".credentials.json"
 CACHE_FILE = Path.home() / ".claude" / "usage-watch-cache.json"
-CACHE_TTL  = 300  # seconds (5 min — 1% quota takes ~100 min to accumulate)
+MODE_FILE  = Path.home() / ".claude" / ".statusline-mode"
+CACHE_TTL  = 300  # seconds (5 min)
 
+# ─── Mode ───
+
+def _mode():
+    try:
+        return MODE_FILE.read_text().strip()
+    except Exception:
+        return "symbol"
+
+# ─── Colors (ANSI) ───
+
+GREEN  = "\033[32m"
+YELLOW = "\033[33m"
+RESET  = "\033[0m"
+
+def _color(projected):
+    if projected >= 95:
+        return GREEN
+    if projected >= 85:
+        return YELLOW
+    return ""  # no color (<85%) — "need more work" but not alarming
+
+# ─── API / cache ───
 
 def _load_token():
     try:
@@ -55,6 +80,7 @@ def _save_cache(d):
     except Exception:
         pass
 
+# ─── Calculations ───
 
 def _elapsed_pct(resets_at_str, days=7):
     try:
@@ -78,6 +104,37 @@ def _remaining(resets_at_str):
     except Exception:
         return "?"
 
+# ─── Renderers ───
+
+def _render_symbol(projected, left):
+    if projected > 100:
+        symbol = "◉"
+    elif projected >= 95:
+        symbol = "●"
+    elif projected >= 85:
+        symbol = "◑"
+    else:
+        symbol = "○"
+    return f"{symbol} ({left})"
+
+
+def _render_percent(projected, left):
+    col = _color(projected)
+    pct = min(int(projected), 999)
+    if col:
+        return f"{col}{pct}%{RESET} ({left})"
+    return f"{pct}% ({left})"
+
+
+def _render_bar(projected, left, width=5):
+    filled = min(width, round(min(projected, 100) / 100 * width))
+    bar = "▓" * filled + "░" * (width - filled)
+    col = _color(projected)
+    if col:
+        return f"{col}{bar}{RESET} ({left})"
+    return f"{bar} ({left})"
+
+# ─── Main ───
 
 def run():
     data = _load_cache()
@@ -96,21 +153,15 @@ def run():
     elapsed = _elapsed_pct(resets)
     left    = _remaining(resets)
 
-    if elapsed <= 0:
-        projected = 0
-    else:
-        projected = usage / elapsed * 100
+    projected = (usage / elapsed * 100) if elapsed > 0 else 0
 
-    if projected > 100:
-        symbol = "◉"   # overpacing, great
-    elif projected >= 95:
-        symbol = "●"   # on track
-    elif projected >= 85:
-        symbol = "◑"   # push a bit more
+    mode = _mode()
+    if mode == "percent":
+        print(_render_percent(projected, left), end="")
+    elif mode == "bar":
+        print(_render_bar(projected, left), end="")
     else:
-        symbol = "○"   # need more work
-
-    print(f"{symbol} ({left})", end="")
+        print(_render_symbol(projected, left), end="")
 
 
 if __name__ == "__main__":
