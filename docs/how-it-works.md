@@ -169,17 +169,17 @@ Color is based on projected week-end utilization (a separate calculation used on
 
 Switch emoji themes with `slt theme`:
 
-| Theme | Emojis | Style | Stage logic |
-|-------|--------|-------|-------------|
-| `circles` | ○ ◑ ● ◉ | 冷静/minimal | fill level |
-| `bird` | 🥚🐣🐥🦢 | 可爱 | ugly duckling → swan |
-| `moon` | 🌑🌙🌛🌝 | 少女心 | new → full moon |
-| `weather` | 🌩️🌧️🌤️🌈 | 感性 | storm → rainbow |
-| `mood` | 🫠😐😊🤩 | 情绪 | melting → ecstatic |
-| `coffee` | 😴☕💪⚡ | 效率 | tired → wired |
-| `rocket` | 🌍🚀🛸⭐ | 科技感 | earth → star |
-| `ocean` | 🫧🐠🐬🐋 | 可爱 | ripple → whale |
-| `dragon` | 🥚🦎🐉👑 | 热情 | egg → dragon king |
+| Theme | Emojis | Stage logic |
+|-------|--------|-------------|
+| `circles` | ○ ◑ ● ◉ | fill level |
+| `bird` | 🥚🐣🐥🦢 | ugly duckling → swan |
+| `moon` | 🌑🌙🌛🌝 | new → full moon |
+| `weather` | 🌩️🌧️🌤️🌈 | storm → rainbow |
+| `mood` | 🫠😐😊🤩 | melting → ecstatic |
+| `coffee` | 😴☕💪⚡ | tired → wired |
+| `rocket` | 🌍🚀🛸⭐ | earth → star |
+| `ocean` | 🫧🐠🐬🐋 | ripple → whale |
+| `dragon` | 🥚🦎🐉👑 | egg → dragon king |
 
 Each theme maps to four delta thresholds:
 
