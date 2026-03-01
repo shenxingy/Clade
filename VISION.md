@@ -57,7 +57,7 @@ GUI wraps CLI primitives — workers use the same committer, same verify command
 | 6 | Observability & Resilience | Analytics, cost tracking, budget limits, stuck detection, notifications | ✓ DONE |
 | 7 | Task Velocity Engine | Hook-enforced commit discipline, HORIZONTAL task decomposition, auto-scaling | ✓ DONE |
 | 8 | Closed-Loop Work Generation | Task factories (CI/coverage/deps), GitHub webhooks, specialist presets | ✓ DONE |
-| 9 | Meta-Intelligence | Session warm-up, loop auto-PROGRESS, pattern detection, /research + /map + /incident skills | 🔄 IN PROGRESS |
+| 9 | Meta-Intelligence | Session warm-up, loop auto-PROGRESS, pattern detection, /research + /map + /incident skills | ✓ DONE |
 | 10 | Portfolio Mode | Cross-project task routing, system auto-ranks work, human approves not generates | 💡 FUTURE |
 
 See `TODO.md` for detailed task breakdown.
