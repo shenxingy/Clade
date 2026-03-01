@@ -3,13 +3,13 @@
 claude-usage-watch — compact Claude Code quota pace for the status line.
 
 Modes (set via ~/.claude/.statusline-mode):
-  symbol  (default) ● (4d)
-  percent           73% (4d)
-  bar               ▓▓▓░░ (4d)
+  symbol  (default)  ● (4d)    — colored circle showing pace
+  percent            73% (4d)  — colored projected utilization %
 
-Toggle with: slt  (statusline-toggle — cycles symbol → percent → bar → symbol)
+Color gradient 0→100%: red → yellow → green → bright green (>100%)
+Toggle with: slt  (statusline-toggle — cycles symbol ↔ percent)
 
-Cache: 5 minutes (avoids hammering the API on every status refresh).
+Cache: 5 minutes.
 """
 import json, time, urllib.request
 from datetime import datetime, timezone
@@ -19,28 +19,30 @@ USAGE_API  = "https://api.anthropic.com/api/oauth/usage"
 CREDS_FILE = Path.home() / ".claude" / ".credentials.json"
 CACHE_FILE = Path.home() / ".claude" / "usage-watch-cache.json"
 MODE_FILE  = Path.home() / ".claude" / ".statusline-mode"
-CACHE_TTL  = 300  # seconds (5 min)
+CACHE_TTL  = 300
 
 # ─── Mode ───
 
 def _mode():
     try:
-        return MODE_FILE.read_text().strip()
+        m = MODE_FILE.read_text().strip()
+        return m if m in ("symbol", "percent") else "symbol"
     except Exception:
         return "symbol"
 
-# ─── Colors (ANSI) ───
+# ─── Color gradient ───
 
-GREEN  = "\033[32m"
-YELLOW = "\033[33m"
-RESET  = "\033[0m"
+RED          = "\033[31m"
+YELLOW       = "\033[33m"
+GREEN        = "\033[32m"
+BRIGHT_GREEN = "\033[1;32m"
+RESET        = "\033[0m"
 
 def _color(projected):
-    if projected >= 95:
-        return GREEN
-    if projected >= 85:
-        return YELLOW
-    return ""  # no color (<85%) — "need more work" but not alarming
+    if projected > 100: return BRIGHT_GREEN
+    if projected >= 75: return GREEN
+    if projected >= 50: return YELLOW
+    return RED
 
 # ─── API / cache ───
 
@@ -107,32 +109,18 @@ def _remaining(resets_at_str):
 # ─── Renderers ───
 
 def _render_symbol(projected, left):
-    if projected > 100:
-        symbol = "◉"
-    elif projected >= 95:
-        symbol = "●"
-    elif projected >= 85:
-        symbol = "◑"
-    else:
-        symbol = "○"
-    return f"{symbol} ({left})"
+    if projected > 100:  symbol = "◉"
+    elif projected >= 75: symbol = "●"
+    elif projected >= 50: symbol = "◑"
+    else:                 symbol = "○"
+    col = _color(projected)
+    return f"{col}{symbol}{RESET} ({left})"
 
 
 def _render_percent(projected, left):
     col = _color(projected)
     pct = min(int(projected), 999)
-    if col:
-        return f"{col}{pct}%{RESET} ({left})"
-    return f"{pct}% ({left})"
-
-
-def _render_bar(projected, left, width=5):
-    filled = min(width, round(min(projected, 100) / 100 * width))
-    bar = "▓" * filled + "░" * (width - filled)
-    col = _color(projected)
-    if col:
-        return f"{col}{bar}{RESET} ({left})"
-    return f"{bar} ({left})"
+    return f"{col}{pct}%{RESET} ({left})"
 
 # ─── Main ───
 
@@ -155,11 +143,8 @@ def run():
 
     projected = (usage / elapsed * 100) if elapsed > 0 else 0
 
-    mode = _mode()
-    if mode == "percent":
+    if _mode() == "percent":
         print(_render_percent(projected, left), end="")
-    elif mode == "bar":
-        print(_render_bar(projected, left), end="")
     else:
         print(_render_symbol(projected, left), end="")
 
