@@ -29,7 +29,7 @@ from config import (
     _recover_orphaned_tasks,
 )
 from task_queue import TaskQueue
-from worker import SwarmManager, WorkerPool, _generate_code_tldr
+from worker import SwarmManager, WorkerPool, _generate_code_tldr, _rank_tasks
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +132,7 @@ class ProjectSession:
         self._ci_watcher_last: float = 0.0
         self._coverage_scan_last: float = 0.0
         self._dep_update_last: float = 0.0
+        self._priority_rank_last: float = 0.0
 
     @property
     def name(self) -> str:
@@ -319,6 +320,7 @@ class ProjectSession:
             if converged:
                 await self.task_queue.upsert_loop(status="converged")
                 asyncio.create_task(_fire_notification("loop_converged", self))
+                asyncio.create_task(_suggest_next_goals(self))
                 return
 
             # Wait for all spawned workers to finish
@@ -390,6 +392,7 @@ class ProjectSession:
                     status="converged",
                 )
                 asyncio.create_task(_fire_notification("loop_converged", self))
+                asyncio.create_task(_suggest_next_goals(self))
                 return
 
             await self.task_queue.upsert_loop(changes_history=changes_history)
@@ -522,6 +525,7 @@ class ProjectSession:
                 # All tasks done
                 await self.task_queue.upsert_loop(status="converged")
                 asyncio.create_task(_fire_notification("loop_converged", self))
+                asyncio.create_task(_suggest_next_goals(self))
                 return
 
             iteration = loop_state.get("iteration", 1)
@@ -529,6 +533,7 @@ class ProjectSession:
             if iteration >= max_iter:
                 await self.task_queue.upsert_loop(status="converged")
                 asyncio.create_task(_fire_notification("loop_converged", self))
+                asyncio.create_task(_suggest_next_goals(self))
                 return
 
             # Spawn one worker for this task
@@ -700,6 +705,70 @@ async def _decompose_horizontal(task: dict, session) -> None:
     await session.task_queue.update(task["id"], status="grouped")
 
 
+# ─── Goal suggestion helper ───────────────────────────────────────────────────
+
+
+async def _suggest_next_goals(session: "ProjectSession") -> None:
+    """After loop converges: use haiku to suggest 3 next goals. Writes to .claude/suggested-goals.md."""
+    try:
+        context_parts = []
+        for fname, max_chars, label in [
+            ("PROGRESS.md", 2000, "PROGRESS"),
+            ("VISION.md", 1000, "VISION"),
+            ("TODO.md", 500, "TODO (open items)"),
+        ]:
+            fpath = session.project_dir / fname
+            if fpath.exists():
+                text = fpath.read_text(encoding="utf-8", errors="replace")
+                if fname == "TODO.md":
+                    lines = [l for l in text.splitlines() if "- [ ]" in l]
+                    text = "\n".join(lines)
+                context_parts.append(f"=== {label} ===\n{text[-max_chars:]}")
+
+        context = "\n\n".join(context_parts)
+        prompt = (
+            "Based on this project context, suggest exactly 3 concrete next goals for an autonomous loop. "
+            "Format:\n1. [Goal title]: [2-sentence description of what to build/fix and why]\n"
+            "2. ...\n3. ...\n\nContext:\n" + context
+        )
+
+        proc = await asyncio.wait_for(
+            asyncio.create_subprocess_exec(
+                "claude", "-p", prompt,
+                "--model", "claude-haiku-4-5-20251001",
+                "--dangerously-skip-permissions",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+                cwd=str(session.project_dir),
+            ),
+            timeout=60,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=60)
+        content = stdout.decode().strip() if stdout else ""
+        if not content:
+            return
+
+        goals_file = session.claude_dir / "suggested-goals.md"
+        goals_file.write_text(content, encoding="utf-8")
+
+        msg = json.dumps({
+            "type": "suggested_goals",
+            "session_id": session.session_id,
+            "content": content,
+        })
+        dead = []
+        for ws in list(session.status_subscribers):
+            try:
+                await ws.send_text(msg)
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            if ws in session.status_subscribers:
+                session.status_subscribers.remove(ws)
+    except Exception:
+        pass  # fail-open
+
+
 # ─── Status broadcast loop ────────────────────────────────────────────────────
 
 
@@ -729,6 +798,18 @@ async def status_loop():
                     if t["status"] == "pending"
                     and _deps_met(t, _done_ids)
                 ]
+
+                # Priority ranking: re-rank unranked pending tasks every 5 minutes
+                if (GLOBAL_SETTINGS.get("auto_start", True)
+                        and time.time() - session._priority_rank_last > 300):
+                    _unranked = [t for t in _auto_tasks
+                                 if t["status"] == "pending" and not (t.get("priority_score") or 0)]
+                    if _unranked:
+                        session._priority_rank_last = time.time()
+                        asyncio.create_task(
+                            _rank_tasks(session.task_queue, session.claude_dir)
+                        )
+
                 # Cost budget check — pause auto-start if budget exceeded
                 _cost_budget = GLOBAL_SETTINGS.get("cost_budget", 0)
                 if _cost_budget > 0:
@@ -736,6 +817,16 @@ async def status_loop():
                     session._budget_exceeded = _session_cost >= _cost_budget
                 else:
                     session._budget_exceeded = False
+
+                # Worker pool router: enforce max_workers as a global ceiling across all sessions
+                _global_max = GLOBAL_SETTINGS.get("max_workers", 0)
+                if _global_max > 0:
+                    _global_running = sum(
+                        sum(1 for w in s.worker_pool.all() if w.status == "running")
+                        for s in registry.all()
+                    )
+                    if _global_running >= _global_max:
+                        _newly_ready = []  # global cap hit — skip auto-start this tick
 
                 if _newly_ready and GLOBAL_SETTINGS.get("auto_start", True) and not _swarm_active:
                     _max_w = GLOBAL_SETTINGS.get("max_workers", 0)
@@ -764,7 +855,9 @@ async def status_loop():
                     _pending_now = len([t for t in _auto_tasks if t["status"] == "pending"])
                     _max_w = GLOBAL_SETTINGS.get("max_workers", 8) or 8
                     _spawn_cooldown = getattr(session, '_last_autoscale', 0)
-                    if (_pending_now > _running_now * 2
+                    if _global_max > 0 and _global_running >= _global_max:
+                        pass  # skip auto-scaling, global cap hit
+                    elif (_pending_now > _running_now * 2
                             and _running_now < _max_w
                             and time.time() - _spawn_cooldown > 30):
                         _ready = [t for t in _auto_tasks if t["status"] == "pending" and _deps_met(t, _done_ids)]
