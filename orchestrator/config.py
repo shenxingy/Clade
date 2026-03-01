@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 
-_ALLOWED_TASK_COLS = {"status", "description", "model", "depends_on", "mode", "result", "score",
+_ALLOWED_TASK_COLS = {"status", "description", "model", "depends_on", "score",
                       "worker_id", "started_at", "elapsed_s", "last_commit", "log_file",
                       "failed_reason", "score_note", "own_files", "forbidden_files",
                       "gh_issue_number", "is_critical_path",
