@@ -653,9 +653,9 @@ class Worker:
                     pass
             if not self._verify_triggered:
                 self._verify_triggered = True
-                asyncio.ensure_future(self._on_worker_done())
+                asyncio.create_task(self._on_worker_done())
             elif self._worktree_path and self._worktree_path.exists():
-                asyncio.ensure_future(self._cleanup_worktree())
+                asyncio.create_task(self._cleanup_worktree())
             return
 
         try:
@@ -1027,7 +1027,7 @@ class WorkerPool:
                 if project_dir and GLOBAL_SETTINGS.get("github_issues_sync"):
                     t = await task_queue.get(w.task_id)
                     if t:
-                        asyncio.ensure_future(_gh_update_issue_status(t, project_dir))
+                        asyncio.create_task(_gh_update_issue_status(t, project_dir))
                 continue
             # Stuck worker detection: log file mtime unchanged for N minutes
             stuck_timeout = GLOBAL_SETTINGS.get("stuck_timeout_minutes", 15)
@@ -1056,7 +1056,7 @@ class WorkerPool:
                         if project_dir and GLOBAL_SETTINGS.get("github_issues_sync"):
                             t = await task_queue.get(w.task_id)
                             if t:
-                                asyncio.ensure_future(_gh_update_issue_status(t, project_dir))
+                                asyncio.create_task(_gh_update_issue_status(t, project_dir))
                         continue
                 except Exception:
                     pass
@@ -1091,7 +1091,7 @@ class WorkerPool:
                     if project_dir and GLOBAL_SETTINGS.get("github_issues_sync"):
                         t = await task_queue.get(w.task_id)
                         if t:
-                            asyncio.ensure_future(_gh_update_issue_status(t, project_dir))
+                            asyncio.create_task(_gh_update_issue_status(t, project_dir))
                 # Oracle rejected → re-queue with rejection reason as context
                 if w._oracle_requeue:
                     w._oracle_requeue = False
@@ -1200,7 +1200,7 @@ class SwarmManager:
         self._active_worker_ids = set()
         self._stats = {"started": 0, "done": 0, "failed": 0}
         self._started_at = time.time()
-        self._task = asyncio.ensure_future(self._refill_loop())
+        self._task = asyncio.create_task(self._refill_loop())
         return self.to_dict()
 
     def stop(self) -> dict:
