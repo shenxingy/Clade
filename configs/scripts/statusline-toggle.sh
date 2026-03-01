@@ -44,7 +44,7 @@ VALID_THEMES=(circles bird plant weather mood coffee crystal rocket ocean dragon
 
 _get_mode() {
   local m; m=$(cat "$MODE_FILE" 2>/dev/null)
-  case "$m" in symbol|percent|off) echo "$m" ;; *) echo "symbol" ;; esac
+  case "$m" in symbol|percent|number|off) echo "$m" ;; *) echo "symbol" ;; esac
 }
 
 _get_theme() {
@@ -79,18 +79,19 @@ _show_all_themes() {
 
 _mode_preview() {
   local mode=$1 theme; theme=$(_get_theme)
-  local e2=${THEME_E2[$theme]} e3=${THEME_E3[$theme]}
+  local e2=${THEME_E2[$theme]}
   case "$mode" in
-    symbol)  echo "  symbol  → $e2 (4d)          emoji only, no number" ;;
-    percent) echo "  percent → $e2 +4% (4d)      emoji + delta vs 95% target" ;;
-    off)     echo "  off     → (nothing)          clean prompt, no indicator" ;;
+    symbol)  echo "  symbol  → $e2 (4d)          emoji only" ;;
+    percent) echo "  percent → $e2 +4% (4d)      emoji + delta" ;;
+    number)  echo "  number  → +4% (4d)           delta only, no emoji" ;;
+    off)     echo "  off     → (nothing)          no indicator" ;;
   esac
 }
 
 # ─── Handle: slt theme [name] ───
 
 if [[ "$1" == "theme" ]]; then
-  if [[ -z "$2" ]]; then
+  if [[ -z "$2" || "$2" == "list" ]]; then
     _show_all_themes
     exit 0
   fi
@@ -112,7 +113,7 @@ fi
 
 if [[ -n "$1" ]]; then
   case "$1" in
-    symbol|percent|off)
+    symbol|percent|number|off)
       echo "$1" > "$MODE_FILE"
       echo "Mode set to: $1"
       _mode_preview "$1"
@@ -133,7 +134,8 @@ fi
 current=$(_get_mode)
 case "$current" in
   symbol)  next="percent" ;;
-  percent) next="off"     ;;
+  percent) next="number"  ;;
+  number)  next="off"     ;;
   *)       next="symbol"  ;;
 esac
 
