@@ -46,7 +46,7 @@ THEMES = {
 def _mode():
     try:
         m = MODE_FILE.read_text().strip()
-        return m if m in ("symbol", "percent", "off") else "symbol"
+        return m if m in ("symbol", "percent", "number", "off") else "symbol"
     except Exception:
         return "symbol"
 
@@ -170,10 +170,13 @@ def run():
     sym = _symbol(delta)
     col = _color(projected)
 
+    sign = "+" if delta >= 0 else ""
+    pct  = f"{sign}{delta:.0f}%"
+
     if mode == "percent":
-        sign = "+" if delta >= 0 else ""
-        pct  = f"{sign}{delta:.0f}%"
         print(f"{sym} {col}{pct}{RESET} ({left})", end="")
+    elif mode == "number":
+        print(f"{col}{pct}{RESET} ({left})", end="")
     else:  # symbol
         print(f"{sym} ({left})", end="")
 
