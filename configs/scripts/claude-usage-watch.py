@@ -1,48 +1,70 @@
 #!/usr/bin/env python3
 """
-claude-usage-watch — compact Claude Code quota pace for the status line.
+claude-usage-watch — Claude Code quota pace for the status line.
 
-Modes (set via ~/.claude/.statusline-mode):
-  symbol  (default)  ● (4d)    — colored circle showing pace
-  percent            73% (4d)  — colored projected utilization %
+Metric: delta = usage% - elapsed% × 0.95
+  delta = 0  → exactly on pace for 95% weekly target
+  delta > 0  → ahead of 95% target
+  delta < 0  → behind 95% target
+  Linear: moving 1pt always requires the same amount of work, any day of the week.
 
-Color gradient 0→100%: red → yellow → green → bright green (>100%)
-Toggle with: slt  (statusline-toggle — cycles symbol ↔ percent)
+Modes  (~/.claude/.statusline-mode):   symbol | percent | off
+Themes (~/.claude/.statusline-theme):  circles | bird | plant
 
-Cache: 5 minutes.
+slt            — cycle mode (symbol → percent → off → symbol)
+slt theme bird — set theme
 """
 import json, time, urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-USAGE_API  = "https://api.anthropic.com/api/oauth/usage"
-CREDS_FILE = Path.home() / ".claude" / ".credentials.json"
-CACHE_FILE = Path.home() / ".claude" / "usage-watch-cache.json"
-MODE_FILE  = Path.home() / ".claude" / ".statusline-mode"
-CACHE_TTL  = 300
+USAGE_API    = "https://api.anthropic.com/api/oauth/usage"
+CREDS_FILE   = Path.home() / ".claude" / ".credentials.json"
+CACHE_FILE   = Path.home() / ".claude" / "usage-watch-cache.json"
+MODE_FILE    = Path.home() / ".claude" / ".statusline-mode"
+THEME_FILE   = Path.home() / ".claude" / ".statusline-theme"
+CACHE_TTL    = 300
+TARGET_RATE  = 0.95   # 95% weekly utilization = "excellent"
 
-# ─── Mode ───
+# ─── Themes ───
+# Four levels, mapped from delta: [very behind, behind, on track, ahead]
+# delta thresholds: < -15  /  -15 to -5  /  -5 to +5  /  > +5
+
+THEMES = {
+    "circles": ["○", "◑", "●", "◉"],
+    "bird":    ["🥚", "🐣", "🐥", "🦅"],
+    "plant":   ["🌱", "🌿", "🌸", "🌺"],
+}
 
 def _mode():
     try:
         m = MODE_FILE.read_text().strip()
-        return m if m in ("symbol", "percent") else "symbol"
+        return m if m in ("symbol", "percent", "off") else "symbol"
     except Exception:
         return "symbol"
 
+def _theme():
+    try:
+        t = THEME_FILE.read_text().strip()
+        return t if t in THEMES else "circles"
+    except Exception:
+        return "circles"
+
+def _symbol(delta):
+    levels = THEMES[_theme()]
+    if delta < -15: return levels[0]
+    if delta < -5:  return levels[1]
+    if delta < 5:   return levels[2]
+    return levels[3]
+
 # ─── Continuous truecolor gradient ───
-#
-# 0% → red (220,0,0)  →  50% → yellow (220,180,0)  →  95% → green (0,180,0)
-# >100% → bold bright green
-#
-# Segment 1 (0→50%):  R=220 fixed,  G ramps 0→180,  B=0
-# Segment 2 (50→95%): R ramps 220→0, G=180 fixed,   B=0
+# Maps projected% to color: 0%=red  50%=yellow  95%=green  >100%=bold bright green
 
 RESET = "\033[0m"
 
 def _color(projected):
     if projected > 100:
-        return "\033[1;32m"          # bold bright green — overpacing
+        return "\033[1;32m"
     p = max(0.0, min(projected, 95.0))
     if p <= 50:
         t = p / 50.0
@@ -60,7 +82,6 @@ def _load_token():
     except Exception:
         return None
 
-
 def _fetch(token):
     req = urllib.request.Request(USAGE_API, headers={
         "Authorization": f"Bearer {token}",
@@ -72,7 +93,6 @@ def _fetch(token):
     except Exception:
         return None
 
-
 def _load_cache():
     try:
         d = json.loads(CACHE_FILE.read_text())
@@ -81,7 +101,6 @@ def _load_cache():
     except Exception:
         pass
     return None
-
 
 def _save_cache(d):
     try:
@@ -102,7 +121,6 @@ def _elapsed_pct(resets_at_str, days=7):
     except Exception:
         return 0.0
 
-
 def _remaining(resets_at_str):
     try:
         resets_at = datetime.fromisoformat(resets_at_str.replace("Z", "+00:00"))
@@ -114,25 +132,13 @@ def _remaining(resets_at_str):
     except Exception:
         return "?"
 
-# ─── Renderers ───
-
-def _render_symbol(projected, left):
-    if projected > 100:   symbol = "◉"
-    elif projected >= 95: symbol = "●"
-    elif projected >= 85: symbol = "◑"
-    else:                 symbol = "○"
-    col = _color(projected)
-    return f"{col}{symbol}{RESET} ({left})"
-
-
-def _render_percent(projected, left):
-    col = _color(projected)
-    pct = min(int(projected), 999)
-    return f"{col}{pct}%{RESET} ({left})"
-
 # ─── Main ───
 
 def run():
+    mode = _mode()
+    if mode == "off":
+        return
+
     data = _load_cache()
     if not data or "seven_day" not in data:
         token = _load_token()
@@ -149,12 +155,20 @@ def run():
     elapsed = _elapsed_pct(resets)
     left    = _remaining(resets)
 
-    projected = (usage / elapsed * 100) if elapsed > 0 else 0
+    # Delta: how far ahead/behind the 95% weekly target pace
+    # Linear: 1pt delta always = 1% of weekly quota, regardless of day
+    delta     = usage - elapsed * TARGET_RATE
+    projected = (usage / elapsed * 100) if elapsed > 0 else 0  # for color only
 
-    if _mode() == "percent":
-        print(_render_percent(projected, left), end="")
-    else:
-        print(_render_symbol(projected, left), end="")
+    sym = _symbol(delta)
+    col = _color(projected)
+
+    if mode == "percent":
+        sign = "+" if delta >= 0 else ""
+        pct  = f"{sign}{delta:.0f}%"
+        print(f"{sym} {col}{pct}{RESET} ({left})", end="")
+    else:  # symbol
+        print(f"{sym} ({left})", end="")
 
 
 if __name__ == "__main__":
