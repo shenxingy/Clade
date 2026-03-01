@@ -145,7 +145,7 @@ TYPE: HORIZONTAL
 ```
 
 **Model selection guide:**
-- `haiku`: Simple/mechanical tasks — config files, copy-paste patterns, <20 lines, one file
+- `haiku`: Simple/mechanical tasks — config files, copy-paste patterns, <30 lines, one file
 - `sonnet`: Standard features — 2-4 files, moderate complexity, existing patterns to follow
 - `opus`: Complex architectural work — 5+ files, novel patterns, significant reasoning required
 
