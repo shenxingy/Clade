@@ -172,13 +172,14 @@ Switch emoji themes with `slt theme`:
 | Theme | Emojis | Style | Stage logic |
 |-------|--------|-------|-------------|
 | `circles` | ○ ◑ ● ◉ | 冷静/minimal | fill level |
-| `bird` | 🥚🐣🐥🦅 | 可爱 | egg → eagle |
-| `plant` | 🌱🌿🌸🌺 | 少女心 | sprout → flower |
-| `weather` | 🌧️🌤️☀️🌈 | 感性 | storm → rainbow |
-| `coffee` | 😴☕🧠⚡ | 效率 | tired → wired |
+| `bird` | 🥚🐣🐥🦢 | 可爱 | ugly duckling → swan |
+| `moon` | 🌑🌙🌛🌝 | 少女心 | new → full moon |
+| `weather` | 🌩️🌧️🌤️🌈 | 感性 | storm → rainbow |
+| `mood` | 🫠😐😊🤩 | 情绪 | melting → ecstatic |
+| `coffee` | 😴☕💪⚡ | 效率 | tired → wired |
 | `rocket` | 🌍🚀🛸⭐ | 科技感 | earth → star |
 | `ocean` | 🫧🐠🐬🐋 | 可爱 | ripple → whale |
-| `dragon` | 🥚🦎🐉🔥 | 热情 | egg → dragon |
+| `dragon` | 🥚🦎🐉👑 | 热情 | egg → dragon king |
 
 Each theme maps to four delta thresholds:
 

@@ -30,15 +30,16 @@ _def() {
 
 #        name      e0   e1   e2   e3    label0          label1         label2         label3          desc
 _def circles  "○"  "◑"  "●"  "◉"  "far behind"    "a bit behind" "on track"     "crushing it"  "classic circles"
-_def bird     "🥚" "🐣" "🐥" "🦅" "egg"           "hatching"     "chick"        "eagle soars"  "egg → eagle"
-_def plant    "🌱" "🌿" "🌸" "🌺" "just sprouted" "growing"      "in bloom"     "full flower"  "sprout → flower"
-_def weather  "🌧️" "🌤️" "☀️" "🌈" "stormy"        "clearing up"  "sunny"        "rainbow!"     "rain → rainbow"
-_def coffee   "😴" "☕" "🧠" "⚡" "not awake yet" "caffeinated"  "focused"      "supercharged" "tired → wired"
+_def bird     "🥚" "🐣" "🐥" "🦢" "egg"           "hatching"     "duckling"     "swan!"        "ugly duckling → swan"
+_def moon     "🌑" "🌙" "🌛" "🌝" "new moon"      "crescent"     "half moon"    "full moon!"   "new → full moon"
+_def weather  "🌩️" "🌧️" "🌤️" "🌈" "thunderstorm"  "rainy"        "clearing up"  "rainbow!"     "storm → rainbow"
+_def mood     "🫠" "😐" "😊" "🤩" "melting"       "meh"          "feeling good" "on fire!"     "melting → ecstatic"
+_def coffee   "😴" "☕" "💪" "⚡" "not awake yet" "caffeinated"  "energized"    "supercharged" "tired → wired"
 _def rocket   "🌍" "🚀" "🛸" "⭐" "grounded"      "launched"     "in orbit"     "among stars"  "earth → star"
 _def ocean    "🫧" "🐠" "🐬" "🐋" "just a ripple" "swimming"     "diving deep"  "whale mode"   "ripple → whale"
-_def dragon   "🥚" "🦎" "🐉" "🔥" "egg"           "lizard"       "dragon"       "fire breath"  "egg → dragon"
+_def dragon   "🥚" "🦎" "🐉" "👑" "egg"           "lizard"       "dragon"       "dragon king!" "egg → dragon king"
 
-VALID_THEMES=(circles bird plant weather coffee rocket ocean dragon)
+VALID_THEMES=(circles bird moon weather mood coffee rocket ocean dragon)
 
 _get_mode() {
   local m; m=$(cat "$MODE_FILE" 2>/dev/null)
