@@ -311,6 +311,9 @@ function connectStatus(sessionId) {
     let msg;
     try { msg = JSON.parse(e.data); } catch { return; }
     if (msg.type === 'status') updateDashboard(msg);
+    else if (msg.type === 'suggested_goals') {
+      showSuggestedGoals(msg.content, msg.session_id);
+    }
     else if (msg.type === 'proposed_tasks') {
       if (msg.content && msg.content.includes('===TASK===')) {
         window._lastProposedContent = msg.content;
@@ -1206,6 +1209,14 @@ async function refreshUsage() {
 loadSessions();
 refreshUsage();
 setInterval(refreshUsage, 60000);
+// Check on load whether to show the portfolio button (≥2 sessions)
+updatePortfolio();
+// Restore suggested goals from sessionStorage for current session
+(function restoreSuggestedGoals() {
+  if (!activeSessionId) return;
+  const saved = sessionStorage.getItem('suggestedGoals_' + activeSessionId);
+  if (saved) showSuggestedGoals(saved, null);
+})();
 
 // ─── Project switcher ────────────────────────────────────────────────────────
 function refreshProjectBadge() {
@@ -2228,6 +2239,90 @@ async function ghSync() {
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '⇅ Sync'; }
   }
+}
+
+// ─── Portfolio Panel ──────────────────────────────────────────────────────────
+
+let portfolioInterval = null;
+
+function togglePortfolio() {
+  const panel = document.getElementById('portfolioPanel');
+  if (!panel) return;
+  const visible = panel.style.display !== 'none';
+  panel.style.display = visible ? 'none' : 'block';
+  if (!visible) {
+    updatePortfolio();
+    portfolioInterval = setInterval(updatePortfolio, 5000);
+  } else {
+    clearInterval(portfolioInterval);
+    portfolioInterval = null;
+  }
+}
+
+async function updatePortfolio() {
+  try {
+    const resp = await fetch('/api/sessions/overview');
+    const sessions = await resp.json();
+    if (sessions.length < 2) {
+      const btnContainer = document.getElementById('portfolioBtnContainer');
+      if (btnContainer) btnContainer.style.display = 'none';
+      return;
+    }
+    const btnContainer = document.getElementById('portfolioBtnContainer');
+    if (btnContainer) btnContainer.style.display = '';
+    const rows = sessions.map(s => {
+      const pending = s.pending_count || 0;
+      const running = s.running_count || 0;
+      const done = s.done_count || 0;
+      const failed = s.failed_count || 0;
+      const cost = s.total_cost != null ? `$${s.total_cost.toFixed(2)}` : '—';
+      const rate = s.cost_rate_per_hour != null ? `$${s.cost_rate_per_hour.toFixed(2)}` : '—';
+      let eta = '—';
+      if (pending === 0 && running === 0) {
+        eta = 'done';
+      } else if (s.cost_rate_per_hour && done > 0) {
+        const elapsed = s.total_cost / s.cost_rate_per_hour;
+        const rate_tasks = done / elapsed;
+        const eta_hours = pending / rate_tasks;
+        eta = eta_hours < 1 ? `${Math.round(eta_hours * 60)}min` : `${eta_hours.toFixed(1)}h`;
+      }
+      const name = s.session_id ? s.session_id.replace('/home/', '').split('/').slice(-2).join('/') : s.session_id;
+      return `<tr><td>${esc(name)}</td><td style="text-align:center">${pending}</td><td style="text-align:center">${running}</td><td style="text-align:center">${done}</td><td style="text-align:center">${failed}</td><td style="text-align:center">${cost}</td><td style="text-align:center">${rate}</td><td style="text-align:center">${eta}</td></tr>`;
+    }).join('');
+    const tableBody = document.getElementById('portfolioTable');
+    if (tableBody) tableBody.innerHTML = rows;
+  } catch (e) {
+    // fail silently
+  }
+}
+
+// ─── Suggested Goals Widget ────────────────────────────────────────────────────
+
+function showSuggestedGoals(content, sessionId) {
+  if (sessionId) sessionStorage.setItem('suggestedGoals_' + sessionId, content);
+
+  let div = document.getElementById('suggestedGoals');
+  if (!div) {
+    div = document.createElement('div');
+    div.id = 'suggestedGoals';
+    div.style.cssText = 'margin: 8px 0; padding: 12px; border: 1px solid #5a3e5a; border-radius: 4px; background: #1a0a2e;';
+    const loopPanel = document.getElementById('loopBar') || document.getElementById('loopPanel');
+    if (loopPanel) loopPanel.parentNode.insertBefore(div, loopPanel.nextSibling);
+    else document.body.appendChild(div);
+  }
+  div.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+      <span style="color:#c792ea; font-weight:bold;">✨ Suggested Next Goals</span>
+      <span>
+        <button onclick="navigator.clipboard.writeText(document.getElementById('suggestedGoalsContent').textContent)"
+          style="background:#333; color:#ccc; border:1px solid #555; border-radius:3px; padding:2px 8px; cursor:pointer; margin-right:4px;">Copy</button>
+        <button onclick="document.getElementById('suggestedGoals').style.display='none'"
+          style="background:#333; color:#ccc; border:1px solid #555; border-radius:3px; padding:2px 8px; cursor:pointer;">×</button>
+      </span>
+    </div>
+    <pre id="suggestedGoalsContent" style="margin:0; white-space:pre-wrap; color:#e0e0e0; font-size:0.9em;">${content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+  `;
+  div.style.display = 'block';
 }
 
 // ─── Multi-project Overview ────────────────────────────────────────────────────
