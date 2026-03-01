@@ -6,7 +6,7 @@
 
 **Turn Claude Code from a chat assistant into an autonomous coding system.**
 
-One install script. Nine hooks, five agents, nine skills, a safety guardian, and a correction learning loop — all working together so Claude codes better, catches its own mistakes, and can run unattended overnight while you sleep.
+One install script. Ten hooks, five agents, fifteen skills, a safety guardian, and a correction learning loop — all working together so Claude codes better, catches its own mistakes, and can run unattended overnight while you sleep.
 
 > If this saves you time, a star helps others find it — and if something breaks, [open an issue](https://github.com/shenxingy/claude-code-kit/issues/new/choose).
 
@@ -48,6 +48,7 @@ All checks are **opt-in by detection** — if the tool isn't installed or the pr
 | You correct Claude ("wrong, use X") | `correction-detector.sh` | Logs the correction, prompts Claude to save a reusable rule |
 | Claude marks a task as done | `verify-task-completed.sh` | Adaptive quality gate: checks compilation/lint, adds build+test in strict mode |
 | Claude needs permission / goes idle | `notify-telegram.sh` | Sends Telegram alert so you don't have to watch the terminal |
+| Every prompt you send | `prompt-tracker.sh` | Tracks prompt fingerprints to surface repeated patterns |
 | Session ends | Stop hook (in settings.json) | Verifies all tasks were completed before exit |
 
 ## Available Commands
@@ -71,6 +72,12 @@ All checks are **opt-in by detection** — if the tool isn't installed or the pr
 | `/model-research` | Search web for latest Claude model data, show what changed |
 | `/model-research --apply` | Same + update model guide, session context, and batch-tasks configs |
 | `/orchestrate` | Switch to orchestrator mode — ask clarifying questions, decompose goal into tasks, write `proposed-tasks.md` (used by the Web UI) |
+| `/worktree` | Create and manage git worktrees for parallel Claude Code sessions |
+| `/research` | Deep research on a topic — web search, synthesize, save findings to `docs/research/` |
+| `/map` | Generate a codebase map — file ownership, module graph, entry points — useful for onboarding new agents |
+| `/incident` | Incident response mode — diagnose a production issue, write a postmortem, add follow-up tasks to TODO |
+| `/review-pr` | AI reviews a PR diff and posts a structured review comment |
+| `/merge-pr` | Squash-merge a PR and clean up the branch |
 
 ## When to Use What
 
@@ -399,6 +406,7 @@ The `pre-tool-guardian.sh` hook protects unattended runs: database migrations, c
 | `correction-detector.sh` | UserPromptSubmit | None (shell only) |
 | `verify-task-completed.sh` | TaskCompleted | None (shell only) |
 | `notify-telegram.sh` | Notification | None (shell only) |
+| `prompt-tracker.sh` | UserPromptSubmit | None (shell only) |
 
 All hooks are shell scripts — zero API cost, sub-second execution.
 
@@ -446,6 +454,18 @@ Claude auto-selects agents. Haiku agents are fast and cheap for mechanical check
 - **Scout scoring**: tasks scoring 0–49 are skipped (a GitHub Issue is created in their place); tasks scoring 50–79 are flagged with a `# WARNING` comment and run with caution; 80–100 run normally
 
 **`/model-research`** searches the web for latest Claude model announcements, benchmarks, and pricing. Compares against the current guide and shows what changed. With `--apply`, updates `docs/research/models.md`, the session-context model guidance, and batch-tasks model assignment criteria.
+
+**`/worktree`** creates a new git worktree in `.claude/worktrees/` with an isolated branch, switches the session into it. Use when running parallel Claude Code sessions on the same repo.
+
+**`/research`** runs a structured deep-dive on a topic — web search, synthesize findings, save to `docs/research/<topic>.md`. Useful before starting a complex feature.
+
+**`/map`** generates a codebase map: file → branch ownership from `git log`, module dependency graph, and entry points. Output is saved as `.claude/AGENTS.md` for workers to use.
+
+**`/incident`** activates incident response mode: diagnose the issue, propose a root cause, draft a postmortem, and add follow-up tasks to TODO.md.
+
+**`/review-pr`** reads a PR diff and posts a structured review comment with Critical/Warning/Suggestion sections.
+
+**`/merge-pr`** squash-merges a PR and deletes the feature branch.
 
 ### Correction Learning Loop
 
@@ -584,6 +604,7 @@ claude-code-kit/
 │   │   ├── pre-tool-guardian.sh       # PreToolUse: block migrations/rm-rf/force-push/DROP
 │   │   ├── post-edit-check.sh         # PostToolUse: async type-check after edits
 │   │   ├── notify-telegram.sh         # Notification: Telegram alerts
+│   │   ├── prompt-tracker.sh          # UserPromptSubmit: track prompt fingerprints
 │   │   ├── verify-task-completed.sh   # TaskCompleted: adaptive quality gate
 │   │   └── correction-detector.sh     # UserPromptSubmit: learn from corrections
 │   ├── agents/
@@ -600,7 +621,13 @@ claude-code-kit/
 │   │   ├── loop/                      # /loop skill — goal-driven autonomous improvement loop
 │   │   ├── audit/                     # /audit skill — corrections/rules.md cleanup
 │   │   ├── orchestrate/               # /orchestrate skill — AI orchestrator persona for Web UI
-│   │   └── model-research/            # /model-research skill
+│   │   ├── model-research/            # /model-research skill
+│   │   ├── worktree/                  # /worktree skill — git worktree management
+│   │   ├── research/                  # /research skill — deep research + docs synthesis
+│   │   ├── map/                       # /map skill — codebase ownership/module graph
+│   │   ├── incident/                  # /incident skill — incident response + postmortem
+│   │   ├── review-pr/                 # /review-pr skill — AI PR review
+│   │   └── merge-pr/                  # /merge-pr skill — squash-merge + branch cleanup
 │   ├── scripts/
 │   │   ├── committer.sh               # Safe commit for parallel agents (no git add .)
 │   │   ├── run-tasks.sh               # Serial task runner
