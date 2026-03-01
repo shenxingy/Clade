@@ -499,53 +499,18 @@ class TaskQueue:
                 skip_counts[st] = skip_counts.get(st, 0) + 1
                 continue
             if description:
-                task_id = str(uuid.uuid4())[:8]
-                task = {
-                    "id": task_id,
-                    "description": description,
-                    "model": model,
-                    "timeout": timeout,
-                    "retries": retries,
-                    "status": "pending",
-                    "worker_id": None,
-                    "started_at": None,
-                    "elapsed_s": 0,
-                    "last_commit": None,
-                    "log_file": None,
-                    "failed_reason": None,
-                    "created_at": time.time(),
-                    "depends_on": depends_on,
-                    "score": None,
-                    "score_note": None,
-                    "own_files": own_files,
-                    "forbidden_files": forbidden_files,
-                    "task_type": task_type,
-                }
-                async with aiosqlite.connect(str(self._db_path)) as db:
-                    await db.execute(
-                        """INSERT INTO tasks
-                           (id, description, model, timeout, retries, status, worker_id,
-                            started_at, elapsed_s, last_commit, log_file, failed_reason,
-                            created_at, depends_on, score, score_note, own_files, forbidden_files,
-                            task_type)
-                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                        (
-                            task["id"], task["description"], task["model"],
-                            task["timeout"], task["retries"], task["status"],
-                            None, None, 0, None, None, None,
-                            task["created_at"], json.dumps(depends_on), None, None,
-                            json.dumps(own_files), json.dumps(forbidden_files),
-                            task_type,
-                        ),
-                    )
-                    await db.commit()
+                task = await self.add(
+                    description=description,
+                    model=model,
+                    own_files=own_files,
+                    forbidden_files=forbidden_files,
+                    task_type=task_type,
+                )
+                if depends_on:
+                    await self.update(task["id"], depends_on=depends_on)
+                    task["depends_on"] = depends_on
                 existing_by_desc[description] = "pending"
                 added.append(task)
-                # Background scout scoring (lazy import to avoid circular dep)
-                from worker import _score_task
-                asyncio.create_task(
-                    _score_task(task_id, description, self._db_path, self._claude_dir)
-                )
         return added, skip_counts
 
     async def send_message(self, to_task_id: str, content: str, from_task_id: str | None = None) -> dict:
