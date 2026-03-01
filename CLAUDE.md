@@ -17,7 +17,7 @@ A two-layer automation toolkit on top of Claude Code CLI:
 cd orchestrator && uvicorn server:app --reload
 
 # Run tests
-cd orchestrator && python -m pytest tests/ -v
+cd orchestrator && .venv/bin/python -m pytest tests/ -v
 
 # Syntax check
 cd orchestrator && python -m py_compile server.py session.py task_queue.py worker.py
