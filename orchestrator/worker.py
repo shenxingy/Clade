@@ -929,6 +929,56 @@ class Worker:
             pass
         return self.auto_committed
 
+# ─── Task Ranking ─────────────────────────────────────────────────────────────
+
+
+async def _rank_tasks(task_queue: "TaskQueue", claude_dir: Path) -> None:
+    """Score all unranked pending tasks by impact/urgency using haiku.
+    Updates priority_score (0.0–1.0) in DB. 1.0 = highest priority."""
+    try:
+        all_tasks = await task_queue.list()
+        unranked = [t for t in all_tasks
+                    if t["status"] == "pending" and not (t.get("priority_score") or 0)]
+        if not unranked:
+            return
+        items = unranked[:20]
+        task_lines = "\n".join(
+            f'{t["id"]}: {str(t.get("description") or "")[:120]}'
+            for t in items
+        )
+        prompt = (
+            "Score these tasks by impact and urgency (0.0=low, 1.0=high). "
+            "Return ONLY a JSON array: [{\"id\": \"...\", \"score\": 0.0}, ...]\n\n"
+            + task_lines
+        )
+        proc = await asyncio.wait_for(
+            asyncio.create_subprocess_exec(
+                "claude", "-p", prompt,
+                "--model", "claude-haiku-4-5-20251001",
+                "--dangerously-skip-permissions",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+                cwd=str(claude_dir),
+            ),
+            timeout=60,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=60)
+        text = stdout.decode() if stdout else ""
+        # Extract JSON array from response
+        import re as _re
+        m = _re.search(r'\[.*?\]', text, _re.DOTALL)
+        if not m:
+            return
+        scores = json.loads(m.group())
+        for entry in scores:
+            tid = entry.get("id")
+            score = float(entry.get("score", 0.0))
+            if tid:
+                await task_queue.update(tid, priority_score=score)
+    except Exception:
+        pass  # fail-open
+
+
 # ─── Worker Pool ──────────────────────────────────────────────────────────────
 
 
