@@ -72,8 +72,8 @@ def _remaining(resets_at_str):
         resets_at = datetime.fromisoformat(resets_at_str.replace("Z", "+00:00"))
         hours = (resets_at - datetime.now(timezone.utc)).total_seconds() / 3600
         if hours < 1:   return f"{int(hours*60)}m"
-        if hours < 24:  return f"{hours:.0f}h"
-        return f"{hours/24:.1f}d"
+        if hours < 48:  return f"{hours:.0f}h"
+        return f"{hours/24:.0f}d"
     except Exception:
         return "?"
 
@@ -94,19 +94,22 @@ def run():
     resets  = w.get("resets_at", "")
     elapsed = _elapsed_pct(resets)
     left    = _remaining(resets)
-    delta   = usage - elapsed
 
-    sign = "+" if delta >= 0 else ""
-    delta_str = f"{sign}{delta:.0f}%"
+    # Too early in the period — projection is unreliable
+    if elapsed < 15:
+        print(f"— ({left})", end="")
+        return
 
-    if delta <= -20:
-        colored = f"\033[1;31m{delta_str}\033[0m"   # red — significantly underpacing
-    elif delta <= -10:
-        colored = f"\033[1;33m{delta_str}\033[0m"   # yellow — slightly slow
+    projected = min(usage / elapsed * 100, 999)
+
+    if projected >= 95:
+        symbol = "●"   # on track
+    elif projected >= 80:
+        symbol = "◑"   # slightly behind, push a bit more
     else:
-        colored = delta_str                          # no color — normal
+        symbol = "○"   # behind, need more work
 
-    print(f"{colored} ({left})", end="")
+    print(f"{symbol} ({left})", end="")
 
 
 if __name__ == "__main__":
