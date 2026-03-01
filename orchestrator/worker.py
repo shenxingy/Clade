@@ -346,7 +346,8 @@ async def _oracle_review(task_description: str, diff_text: str, claude_dir: Path
         reason = result.split(":", 1)[-1].strip()[:80] if ":" in result else result[:80]
         return approved, reason
     except Exception as e:
-        return True, f"oracle error: {e}"
+        logger.warning("oracle review error: %s", e)
+        return True, "oracle error (fail-open)"
     finally:
         prompt_file.unlink(missing_ok=True)
 

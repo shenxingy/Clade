@@ -993,7 +993,8 @@ async def get_agents_md(session_id: str):
         )
         out, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
     except Exception as e:
-        return {"agents_md": f"# File Ownership\n\n(error: {e})\n"}
+        logger.warning("get_agents_md git error: %s", e)
+        return {"agents_md": "# File Ownership\n\n(error generating map)\n"}
     file_to_branch: dict[str, str] = {}
     current_branch = "main"
     for line in out.decode(errors="replace").splitlines():
@@ -1056,7 +1057,8 @@ async def get_worker_log(
         tail = "\n".join(text.splitlines()[-lines:])
         return {"log": tail, "path": str(w._log_path)}
     except Exception as e:
-        return {"log": f"Error reading log: {e}"}
+        logger.warning("get_worker_log read error: %s", e)
+        return {"log": "Error reading log"}
 
 # ─── REST: Usage ──────────────────────────────────────────────────────────────
 
