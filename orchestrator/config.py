@@ -25,7 +25,7 @@ _ALLOWED_TASK_COLS = {"status", "description", "model", "depends_on", "mode", "r
                       "failed_reason", "score_note", "own_files", "forbidden_files",
                       "gh_issue_number", "is_critical_path",
                       "input_tokens", "output_tokens", "estimated_cost",
-                      "task_type", "source_ref", "parent_task_id"}
+                      "task_type", "source_ref", "parent_task_id", "priority_score"}
 
 _ALLOWED_LOOP_COLS = {
     "name", "artifact_path", "context_dir", "status", "iteration",
