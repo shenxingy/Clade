@@ -509,8 +509,14 @@ The status line shows `dir  git:(branch)  ● (4d)` — the quota pace indicator
 | `◑` | Push a bit more | 85 – 95% |
 | `○` | Need more work | < 85% |
 
-**Time remaining** counts down as: `6d → 4d → 1.5d → 18h → 45m`
-(whole days → decimal days inside last 2 days → hours inside last 24h → minutes inside last hour)
+**Time remaining** is a continuous countdown. The display format switches based on how much time is left:
+
+| Remaining | Format | Example |
+|-----------|--------|---------|
+| > 48h | whole days | `6d`, `5d`, `3d` |
+| 24h – 48h | one decimal place | `1.5d`, `1.2d` |
+| 1h – 24h | hours | `18h`, `9h` |
+| < 1h | minutes | `45m`, `12m` |
 
 **How it works:** calls `GET https://api.anthropic.com/api/oauth/usage` (same source as `/usage`) every 5 minutes, reads `seven_day.utilization` and `resets_at`, computes `projected = utilization% / elapsed%`. Token is read from `~/.claude/.credentials.json` — no extra setup needed.
 
