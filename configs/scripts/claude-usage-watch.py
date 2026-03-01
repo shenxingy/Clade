@@ -71,8 +71,9 @@ def _remaining(resets_at_str):
     try:
         resets_at = datetime.fromisoformat(resets_at_str.replace("Z", "+00:00"))
         hours = (resets_at - datetime.now(timezone.utc)).total_seconds() / 3600
-        if hours < 1:   return f"{int(hours*60)}m"
-        if hours < 48:  return f"{hours:.0f}h"
+        if hours < 1:    return f"{int(hours*60)}m"
+        if hours < 24:   return f"{hours:.0f}h"
+        if hours < 48:   return f"{hours/24:.1f}d"
         return f"{hours/24:.0f}d"
     except Exception:
         return "?"
