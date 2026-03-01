@@ -27,13 +27,20 @@ CACHE_TTL    = 300
 TARGET_RATE  = 0.95   # 95% weekly utilization = "excellent"
 
 # ─── Themes ───
-# Four levels, mapped from delta: [very behind, behind, on track, ahead]
+# Four levels: [far behind, behind, on track, ahead]
 # delta thresholds: < -15  /  -15 to -5  /  -5 to +5  /  > +5
 
 THEMES = {
-    "circles": ["○", "◑", "●", "◉"],
+    "circles": ["○",  "◑",  "●",  "◉" ],
     "bird":    ["🥚", "🐣", "🐥", "🦅"],
     "plant":   ["🌱", "🌿", "🌸", "🌺"],
+    "weather": ["🌧️", "🌤️", "☀️", "🌈"],
+    "mood":    ["😴", "😐", "😊", "🤩"],
+    "crystal": ["🪨", "💎", "💍", "👑"],
+    "coffee":  ["😴", "☕", "🧠", "⚡"],
+    "rocket":  ["🌍", "🚀", "🛸", "⭐"],
+    "ocean":   ["🐚", "🐠", "🐬", "🐋"],
+    "dragon":  ["🥚", "🦎", "🐉", "🔥"],
 }
 
 def _mode():
