@@ -247,11 +247,11 @@ Goal: maximize autonomous run hours. Minimize human intervention. System knows w
 
 Human role: set direction for N projects → system auto-allocates workers, auto-ranks tasks, surfaces blockers.
 
-- [ ] **Cross-project session overview** — single dashboard showing all active sessions + their queue depth + cost rate
-- [ ] **Task priority ranker** — haiku scores pending tasks by impact/urgency across sessions; reorders queues
-- [ ] **Worker pool router** — global `max_workers` budget shared across sessions; auto-rebalances based on queue depth
-- [ ] **Morning briefing skill** — `/brief` generates a summary of overnight run: commits made, cost, failures, suggested next goals
-- [ ] **Goal suggestion engine** — after each loop converges, suggest next 3 goals based on PROGRESS.md lessons + VISION.md gaps
+- [x] **Cross-project session overview** — single dashboard showing all active sessions + their queue depth + cost rate
+- [x] **Task priority ranker** — haiku scores pending tasks by impact/urgency across sessions; reorders queues
+- [x] **Worker pool router** — global `max_workers` budget shared across sessions; auto-rebalances based on queue depth
+- [x] **Morning briefing skill** — `/brief` generates a summary of overnight run: commits made, cost, failures, suggested next goals
+- [x] **Goal suggestion engine** — after each loop converges, suggest next 3 goals based on PROGRESS.md lessons + VISION.md gaps
 
 ---
 
