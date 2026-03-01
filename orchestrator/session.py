@@ -665,7 +665,7 @@ async def _decompose_horizontal(task: dict, session) -> None:
     desc = task.get("description", "")
     try:
         proc = await asyncio.create_subprocess_exec(
-            "claude", "--model", "claude-haiku-4-5-20251001", "-p",
+            "claude", "--dangerously-skip-permissions", "--model", "claude-haiku-4-5-20251001", "-p",
             f"List the source files that need changes for this task. Output one file path per line, no explanation:\n{desc}",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
