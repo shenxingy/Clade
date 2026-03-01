@@ -138,10 +138,11 @@ All checks are **opt-in by detection** — if the tool isn't installed or the pr
 - Useful for working on two features simultaneously, or running a loop while also coding
 - Worktree is cleaned up automatically if no changes are made
 
-**`/review`** — before releases or when onboarding to a codebase:
-- Finds dead code, type issues, security risks, stale docs
-- Critical and Warning findings are automatically written to the `## Tech Debt` section of TODO.md
-- Run periodically — tech debt sneaks in fast
+**`/review`** — before releases, after a long sprint, or when onboarding to a codebase:
+- **Finds and fixes** (not just reports): file size violations, lint errors, dead code, security issues, UI bugs, doc staleness, goal/code misalignment
+- Loops until clean — reruns after each fix pass, up to 3 iterations
+- Remaining unfixed issues are written to `## Tech Debt` in TODO.md
+- 8 phases: doc health → goal alignment → code structure → lint → comments → bugs → security → UI
 
 **`/review-pr NUMBER`** — before merging a pull request:
 - Reads the PR diff and posts a structured review comment (Critical / Warning / Suggestion)

@@ -134,10 +134,11 @@ cd claude-code-kit
 - 创建独立的 git worktree + 分支，会话之间不冲突
 - 适合同时开发两个功能，或在跑 loop 的同时继续写代码
 
-**`/review`** — 大版本发布前或接手新代码库时：
-- 找死代码、类型问题、安全风险、文档过期
-- Critical 和 Warning 级别发现会自动写入 TODO.md 的 `## Tech Debt` 区块
-- 定期跑一下 — 技术债积累得比你想的快
+**`/review`** — 大版本发布前、长期冲刺结束后或接手新代码库时：
+- **发现并修复**（不只是报告）：文件大小、lint 错误、死代码、安全漏洞、UI 逻辑、文档过期、功能与目标不一致
+- 修完再扫，循环最多 3 轮直到干净
+- 无法自动修复的 Critical/Warning 写入 TODO.md 的 `## Tech Debt`
+- 8 个阶段：文档健康 → 目标一致 → 代码结构 → Lint → 注释 → Bug → 安全 → UI
 
 **`/review-pr NUMBER`** — 合并 PR 前：
 - 读取 PR diff，发布结构化审查评论（Critical / Warning / Suggestion）
