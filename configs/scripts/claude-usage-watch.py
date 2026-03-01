@@ -70,15 +70,21 @@ def _symbol(delta):
 RESET = "\033[0m"
 
 def _color(projected):
+    # Muted palette — low saturation so the indicator doesn't steal attention.
+    # 0% → soft red  →  50% → amber  →  95% → sage green  →  >100% → slightly brighter green
     if projected > 100:
-        return "\033[1;32m"
+        return "\033[38;2;85;160;85m"    # soft bright green, no bold
     p = max(0.0, min(projected, 95.0))
     if p <= 50:
         t = p / 50.0
-        r, g, b = 220, int(180 * t), 0
+        r = 160
+        g = int(75 + 50 * t)             # 75 → 125
+        b = int(75 - 20 * t)             # 75 → 55
     else:
         t = (p - 50.0) / 45.0
-        r, g, b = int(220 * (1 - t)), 180, 0
+        r = int(160 - 90 * t)            # 160 → 70
+        g = int(125 + 20 * t)            # 125 → 145
+        b = int(55 + 15 * t)             # 55 → 70
     return f"\033[38;2;{r};{g};{b}m"
 
 # ─── API / cache ───
