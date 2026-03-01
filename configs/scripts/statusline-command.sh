@@ -34,6 +34,14 @@ if [ -f "$loop_state_file" ]; then
   fi
 fi
 
+# ─── Usage pace ───
+
+usage_segment=""
+_usage_script="$HOME/.claude/scripts/claude-usage-watch.py"
+if command -v python3 >/dev/null 2>&1 && [ -f "$_usage_script" ]; then
+  usage_segment=" $(python3 "$_usage_script" 2>/dev/null)"
+fi
+
 # ─── Build output ───
 
 output=""
@@ -48,5 +56,8 @@ fi
 
 # Loop status
 output+="${loop_segment}"
+
+# Usage pace: ⚡ +3% (4.4d)
+output+="${usage_segment}"
 
 printf "%b" "$output"
