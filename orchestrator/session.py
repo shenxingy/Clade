@@ -54,7 +54,7 @@ class OrchestratorSession:
             cwd=str(project_dir),
         )
         self._running = True
-        self._read_task = asyncio.ensure_future(self._read_loop())
+        self._read_task = asyncio.create_task(self._read_loop())
 
     async def _read_loop(self) -> None:
         loop = asyncio.get_running_loop()
@@ -161,7 +161,7 @@ class ProjectSession:
 
     def start_watch(self) -> None:
         if self._watch_task is None or self._watch_task.done():
-            self._watch_task = asyncio.ensure_future(
+            self._watch_task = asyncio.create_task(
                 _watch_session_proposed_tasks(self)
             )
 
@@ -313,7 +313,7 @@ class ProjectSession:
 
             if converged:
                 await self.task_queue.upsert_loop(status="converged")
-                asyncio.ensure_future(_fire_notification("loop_converged", self))
+                asyncio.create_task(_fire_notification("loop_converged", self))
                 return
 
             # Wait for all spawned workers to finish
@@ -384,7 +384,7 @@ class ProjectSession:
                     changes_history=changes_history,
                     status="converged",
                 )
-                asyncio.ensure_future(_fire_notification("loop_converged", self))
+                asyncio.create_task(_fire_notification("loop_converged", self))
                 return
 
             await self.task_queue.upsert_loop(changes_history=changes_history)
@@ -516,14 +516,14 @@ class ProjectSession:
             if task_line_idx is None:
                 # All tasks done
                 await self.task_queue.upsert_loop(status="converged")
-                asyncio.ensure_future(_fire_notification("loop_converged", self))
+                asyncio.create_task(_fire_notification("loop_converged", self))
                 return
 
             iteration = loop_state.get("iteration", 1)
             max_iter = loop_state.get("max_iterations", 20)
             if iteration >= max_iter:
                 await self.task_queue.upsert_loop(status="converged")
-                asyncio.ensure_future(_fire_notification("loop_converged", self))
+                asyncio.create_task(_fire_notification("loop_converged", self))
                 return
 
             # Spawn one worker for this task
@@ -592,11 +592,11 @@ class SessionRegistry:
             if s._loop_task and not s._loop_task.done():
                 s._loop_task.cancel()
             if s._swarm:
-                asyncio.ensure_future(s._swarm.force_stop())
+                asyncio.create_task(s._swarm.force_stop())
             # Stop all running workers and schedule worktree cleanup
             for w in list(s.worker_pool.workers.values()):
                 if w.status in ("running", "starting", "paused"):
-                    asyncio.ensure_future(w.stop())
+                    asyncio.create_task(w.stop())
         if self._default_id == session_id:
             self._default_id = next(iter(self.sessions), None)
 
@@ -777,7 +777,7 @@ async def status_loop():
                         session._ci_watcher_last = _factory_now
                         try:
                             from task_factory.ci_watcher import check_ci_failures
-                            asyncio.ensure_future(check_ci_failures(session.task_queue, str(session.project_dir)))
+                            asyncio.create_task(check_ci_failures(session.task_queue, str(session.project_dir)))
                         except Exception as e:
                             logger.warning("CI watcher error: %s", e)
                 if GLOBAL_SETTINGS.get("coverage_scan", False):
@@ -785,7 +785,7 @@ async def status_loop():
                         session._coverage_scan_last = _factory_now
                         try:
                             from task_factory.coverage_scan import check_coverage_gaps
-                            asyncio.ensure_future(check_coverage_gaps(session.task_queue, str(session.project_dir)))
+                            asyncio.create_task(check_coverage_gaps(session.task_queue, str(session.project_dir)))
                         except Exception as e:
                             logger.warning("Coverage scan error: %s", e)
                 if GLOBAL_SETTINGS.get("dep_update_scan", False):
@@ -793,7 +793,7 @@ async def status_loop():
                         session._dep_update_last = _factory_now
                         try:
                             from task_factory.dep_update import check_outdated_deps
-                            asyncio.ensure_future(check_outdated_deps(session.task_queue, str(session.project_dir)))
+                            asyncio.create_task(check_outdated_deps(session.task_queue, str(session.project_dir)))
                         except Exception as e:
                             logger.warning("Dep update error: %s", e)
 
@@ -833,12 +833,12 @@ async def status_loop():
                 _loop_running = loop_state and loop_state.get("status") == "running"
                 if not running_workers and not pending_tasks and done_tasks and not session._run_complete and not _loop_running:
                     session._run_complete = True
-                    asyncio.ensure_future(_fire_notification("run_complete", session))
+                    asyncio.create_task(_fire_notification("run_complete", session))
                     # High failure rate notification (one-shot)
                     _fail_count = sum(1 for t in done_tasks if t["status"] == "failed")
                     if len(done_tasks) >= 2 and _fail_count / len(done_tasks) > 0.5 and not session._failure_notified:
                         session._failure_notified = True
-                        asyncio.ensure_future(_fire_notification("high_failure_rate", session))
+                        asyncio.create_task(_fire_notification("high_failure_rate", session))
                 elif pending_tasks or running_workers:
                     session._run_complete = False
                     session._failure_notified = False

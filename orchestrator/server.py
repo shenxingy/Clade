@@ -11,6 +11,7 @@ import logging
 import os
 import shlex
 import time
+from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -55,24 +56,26 @@ logger = logging.getLogger(__name__)
 
 # ─── App ──────────────────────────────────────────────────────────────────────
 
-app = FastAPI(title="Claude Code Orchestrator")
 
-from routes.webhooks import router as webhooks_router  # noqa: E402
-app.include_router(webhooks_router)
-
-# Serve static files (web UI)
-app.mount("/web", StaticFiles(directory=str(WEB_DIR)), name="web")
-
-
-@app.on_event("startup")
-async def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     if os.environ.get("ORCHESTRATOR_PROJECT_DIR"):
         default_session = registry.create(str(PROJECT_DIR))
         recovered = await _recover_orphaned_tasks(default_session.task_queue)
         if recovered:
             logger.info("Recovered %d orphaned tasks as 'interrupted'", recovered)
         default_session.start_watch()
-    asyncio.ensure_future(status_loop())
+    asyncio.create_task(status_loop())
+    yield
+
+
+app = FastAPI(title="Claude Code Orchestrator", lifespan=lifespan)
+
+from routes.webhooks import router as webhooks_router  # noqa: E402
+app.include_router(webhooks_router)
+
+# Serve static files (web UI)
+app.mount("/web", StaticFiles(directory=str(WEB_DIR)), name="web")
 
 # ─── REST: Sessions ───────────────────────────────────────────────────────────
 
@@ -263,7 +266,7 @@ async def start_loop(session_id: str, body: dict):
         mode=mode,
     )
 
-    s._loop_task = asyncio.ensure_future(s._run_supervisor())
+    s._loop_task = asyncio.create_task(s._run_supervisor())
     return await s.task_queue.get_loop()
 
 
@@ -301,7 +304,7 @@ async def resume_loop(session_id: str):
         raise HTTPException(status_code=404, detail="No loop to resume")
     await s.task_queue.upsert_loop(status="running")
     if s._loop_task is None or s._loop_task.done():
-        s._loop_task = asyncio.ensure_future(s._run_supervisor())
+        s._loop_task = asyncio.create_task(s._run_supervisor())
     return await s.task_queue.get_loop()
 
 
@@ -659,11 +662,11 @@ async def create_task(body: dict, s: ProjectSession = Depends(_resolve_session))
         model=body.get("model") or GLOBAL_SETTINGS.get("default_model", "sonnet"),
         is_critical_path=bool(body.get("is_critical_path", 0)),
     )
-    asyncio.ensure_future(
+    asyncio.create_task(
         _score_task(task["id"], task["description"], s.task_queue._db_path, s.claude_dir)
     )
     if GLOBAL_SETTINGS.get("github_issues_sync"):
-        asyncio.ensure_future(_gh_create_issue(task, s.project_dir, s.task_queue._db_path))
+        asyncio.create_task(_gh_create_issue(task, s.project_dir, s.task_queue._db_path))
     return task
 
 
@@ -682,7 +685,7 @@ async def import_proposed(
     tasks, skip_counts = await s.task_queue.import_from_proposed(content=content)
     if GLOBAL_SETTINGS.get("github_issues_sync") and tasks:
         for t in tasks:
-            asyncio.ensure_future(_gh_create_issue(t, s.project_dir, s.task_queue._db_path))
+            asyncio.create_task(_gh_create_issue(t, s.project_dir, s.task_queue._db_path))
     return {"imported": len(tasks), "tasks": tasks, "skipped": skip_counts}
 
 
@@ -766,7 +769,7 @@ async def merge_all_done(s: ProjectSession = Depends(_resolve_session)):
             w.pr_url = pr_url
             created += 1
             if GLOBAL_SETTINGS.get("auto_review", True):
-                asyncio.ensure_future(_write_pr_review(pr_url, w.description, s.project_dir))
+                asyncio.create_task(_write_pr_review(pr_url, w.description, s.project_dir))
             if branch.startswith("orchestrator/task-") and GLOBAL_SETTINGS.get("auto_merge", True):
                 merge_proc = await asyncio.create_subprocess_shell(
                     f'gh pr merge {pr_url} --squash --delete-branch',
@@ -783,7 +786,7 @@ async def merge_all_done(s: ProjectSession = Depends(_resolve_session)):
                 if merge_proc.returncode == 0:
                     w.pr_merged = True
                     merged += 1
-                    asyncio.ensure_future(_write_progress_entry(
+                    asyncio.create_task(_write_progress_entry(
                         task_description=w.description,
                         log_path=w._log_path,
                         project_dir=s.project_dir,

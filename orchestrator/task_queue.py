@@ -543,7 +543,7 @@ class TaskQueue:
                 added.append(task)
                 # Background scout scoring (lazy import to avoid circular dep)
                 from worker import _score_task
-                asyncio.ensure_future(
+                asyncio.create_task(
                     _score_task(task_id, description, self._db_path, self._claude_dir)
                 )
         return added, skip_counts
