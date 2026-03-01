@@ -156,6 +156,10 @@ class TaskQueue:
                     await db.execute("ALTER TABLE tasks ADD COLUMN parent_task_id TEXT")
                 except Exception:
                     pass
+                try:
+                    await db.execute("ALTER TABLE tasks ADD COLUMN priority_score REAL DEFAULT 0.0")
+                except Exception:
+                    pass
                 await db.execute("""
                     CREATE TABLE IF NOT EXISTS worker_messages (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,

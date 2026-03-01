@@ -87,8 +87,8 @@ async def test_source_ref_stored(task_queue: TaskQueue):
 
 
 async def test_priority_score_default(task_queue: TaskQueue):
-    """New tasks should have priority_score of 0.0 (or None if column not yet migrated)."""
+    """New tasks should have priority_score of 0.0."""
     task = await task_queue.add("Priority test task")
     fetched = await task_queue.get(task["id"])
     priority = fetched.get("priority_score")
-    assert priority in (0.0, None, 0)
+    assert priority == 0.0

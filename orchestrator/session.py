@@ -23,6 +23,7 @@ from watchfiles import awatch
 from config import (
     GLOBAL_SETTINGS,
     PROJECT_DIR,
+    _MODEL_ALIASES,
     _deps_met,
     _fire_notification,
     _recover_orphaned_tasks,
@@ -166,11 +167,6 @@ class ProjectSession:
 
     async def _run_supervisor(self) -> None:
         """Iterative review-fix loop (Ralph-style supervisor)."""
-        _MODEL_MAP = {
-            "haiku": "claude-haiku-4-5-20251001",
-            "sonnet": "claude-sonnet-4-6",
-            "opus": "claude-opus-4-6",
-        }
         consecutive_empty = 0
         while True:
             loop_state = await self.task_queue.get_loop()
@@ -194,7 +190,7 @@ class ProjectSession:
                 return
 
             model_short = loop_state.get("supervisor_model", "sonnet")
-            model = _MODEL_MAP.get(model_short, "claude-sonnet-4-6")
+            model = _MODEL_ALIASES.get(model_short, "claude-sonnet-4-6")
 
             prompt = (
                 "Review the following artifact. Output ONLY a JSON array, no prose.\n"
@@ -408,18 +404,12 @@ class ProjectSession:
         FIXABLE worker, waits for it to complete, marks the item done, and
         repeats until no unchecked items remain or max_iterations is reached.
         """
-        _MODEL_MAP = {
-            "haiku": "claude-haiku-4-5-20251001",
-            "sonnet": "claude-sonnet-4-6",
-            "opus": "claude-opus-4-6",
-        }
-
         loop_state = await self.task_queue.get_loop()
         if not loop_state:
             return
 
         model_short = loop_state.get("supervisor_model", "sonnet")
-        model = _MODEL_MAP.get(model_short, "claude-sonnet-4-6")
+        model = _MODEL_ALIASES.get(model_short, "claude-sonnet-4-6")
         context_dir = loop_state.get("context_dir") or str(self.project_dir)
         artifact_path = loop_state["artifact_path"]
         plan_path = Path(context_dir) / "IMPLEMENTATION_PLAN.md"
