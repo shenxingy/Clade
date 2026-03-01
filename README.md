@@ -100,6 +100,26 @@ All checks are **opt-in by detection** — if the tool isn't installed or the pr
 - Claude auto-detects complexity and enters plan mode when needed
 - Tip: be specific. "Add retry with exponential backoff to the API client" > "improve the API client"
 
+**`/research TOPIC`** — before starting a complex feature or choosing a library:
+- Searches the web, synthesizes findings, saves to `docs/research/<topic>.md`
+- Useful for competitive analysis, API evaluation, architecture decisions
+- Run before `/orchestrate` so the plan is grounded in real data
+
+**`/model-research`** — when new Claude models drop or periodically:
+- Searches for latest benchmarks, pricing, and capability changes
+- `--apply` updates the model guide, session context, and batch-tasks configs automatically
+- Keeps the kit's model selection logic current without manual research
+
+**`/orchestrate`** — when using the Orchestrator Web UI to plan large work:
+- Ask clarifying questions, decompose goal into tasks, write `proposed-tasks.md`
+- Workers pick up tasks from there; run inside the Web UI for best experience
+- Better than `/batch-tasks` when the scope isn't fully defined yet
+
+**`/map`** — when onboarding to an unfamiliar codebase or before dispatching agents:
+- Generates file ownership map (from git log), module dependency graph, entry points
+- Saved as `.claude/AGENTS.md` — workers read this to avoid stepping on each other
+- Run once at project start, re-run after major refactors
+
 **`/batch-tasks`** — when you have a structured TODO list:
 - Multi-step implementations broken into discrete tasks
 - Use `--parallel` when tasks don't share files
@@ -110,10 +130,28 @@ All checks are **opt-in by detection** — if the tool isn't installed or the pr
 - Runs unattended — leave it overnight, check results in the morning
 - Write a clear goal file first; vague goals produce endless loops
 
+**`/worktree`** — when running parallel Claude Code sessions on the same repo:
+- Creates an isolated git worktree with its own branch so sessions don't conflict
+- Useful for working on two features simultaneously, or running a loop while also coding
+- Worktree is cleaned up automatically if no changes are made
+
 **`/review`** — before releases or when onboarding to a codebase:
 - Finds dead code, type issues, security risks, stale docs
 - Critical and Warning findings are automatically written to the `## Tech Debt` section of TODO.md
 - Run periodically — tech debt sneaks in fast
+
+**`/review-pr NUMBER`** — before merging a pull request:
+- Reads the PR diff and posts a structured review comment (Critical / Warning / Suggestion)
+- Faster than a full `/review` when you just need eyes on a specific change
+
+**`/merge-pr NUMBER`** — to merge and clean up a PR:
+- Squash-merges the PR and deletes the feature branch
+- Run after `/review-pr` gives the green light
+
+**`/incident DESCRIPTION`** — when something is broken in production:
+- Diagnoses the issue, proposes a root cause, drafts a postmortem
+- Adds follow-up tasks to TODO.md automatically
+- Start here instead of free-form debugging — structured response is faster under pressure
 
 **`/handoff`** — when context is getting full (~80%) or before stopping:
 - Saves everything about the current session state to `.claude/handoff-{timestamp}.md`
@@ -124,6 +162,11 @@ All checks are **opt-in by detection** — if the tool isn't installed or the pr
 - Reads the latest handoff file and presents a concise briefing
 - Verifies git state matches the handoff
 - Immediately starts executing the first Next Step from the handoff — no waiting
+
+**`/audit`** — periodically to keep the correction learning system clean:
+- Finds rules in `corrections/rules.md` that should be promoted to CLAUDE.md or hooks
+- Removes redundant or contradictory entries that have accumulated over time
+- Run every few weeks, or when you notice Claude ignoring a rule
 
 **`/sync`** — at the end of every coding session:
 - Checks off completed TODO items and captures lessons in PROGRESS.md
