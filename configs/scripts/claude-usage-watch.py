@@ -30,19 +30,27 @@ def _mode():
     except Exception:
         return "symbol"
 
-# ─── Color gradient ───
+# ─── Continuous truecolor gradient ───
+#
+# 0% → red (220,0,0)  →  50% → yellow (220,180,0)  →  95% → green (0,180,0)
+# >100% → bold bright green
+#
+# Segment 1 (0→50%):  R=220 fixed,  G ramps 0→180,  B=0
+# Segment 2 (50→95%): R ramps 220→0, G=180 fixed,   B=0
 
-RED          = "\033[31m"
-YELLOW       = "\033[33m"
-GREEN        = "\033[32m"
-BRIGHT_GREEN = "\033[1;32m"
-RESET        = "\033[0m"
+RESET = "\033[0m"
 
 def _color(projected):
-    if projected > 100: return BRIGHT_GREEN
-    if projected >= 75: return GREEN
-    if projected >= 50: return YELLOW
-    return RED
+    if projected > 100:
+        return "\033[1;32m"          # bold bright green — overpacing
+    p = max(0.0, min(projected, 95.0))
+    if p <= 50:
+        t = p / 50.0
+        r, g, b = 220, int(180 * t), 0
+    else:
+        t = (p - 50.0) / 45.0
+        r, g, b = int(220 * (1 - t)), 180, 0
+    return f"\033[38;2;{r};{g};{b}m"
 
 # ─── API / cache ───
 
@@ -109,9 +117,9 @@ def _remaining(resets_at_str):
 # ─── Renderers ───
 
 def _render_symbol(projected, left):
-    if projected > 100:  symbol = "◉"
-    elif projected >= 75: symbol = "●"
-    elif projected >= 50: symbol = "◑"
+    if projected > 100:   symbol = "◉"
+    elif projected >= 95: symbol = "●"
+    elif projected >= 85: symbol = "◑"
     else:                 symbol = "○"
     col = _color(projected)
     return f"{col}{symbol}{RESET} ({left})"
