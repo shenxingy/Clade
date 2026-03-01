@@ -127,6 +127,11 @@ class ProjectSession:
         self._swarm: SwarmManager | None = None
         self._budget_exceeded: bool = False
         self._failure_notified: bool = False
+        # Status loop timer attrs (used by status_loop via getattr fallback)
+        self._last_autoscale: float = 0.0
+        self._ci_watcher_last: float = 0.0
+        self._coverage_scan_last: float = 0.0
+        self._dep_update_last: float = 0.0
 
     @property
     def name(self) -> str:
