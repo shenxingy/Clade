@@ -36,6 +36,14 @@ Structure code for efficient Claude Code tool usage:
 - **DAG imports**: Module dependency graph must be a strict DAG (no circular imports). Use lazy imports or duck typing (`Any`) to break potential cycles.
 - **CSS extraction**: For HTML files with inline CSS > 200 lines, extract to separate `.css` file. Keep JS inline if tightly coupled (SPA globals, no module system).
 
+## README & Docs
+
+- README is a landing page, not a reference manual. Target: 200–300 lines.
+- When README exceeds ~300 lines: move detailed sections to `docs/` files. Keep in README: install, key features table, command table, links to docs.
+- Every README must have a TOC (GitHub anchor format) when it has 5+ sections.
+- docs/ files: line 1 = language toggle, line 3 = back link to README, then internal TOC.
+- The `/sync` skill checks: if README > 300 lines, flag sections that should move to docs/.
+
 ## Pre-Code Reflection
 
 Before writing or modifying code, consider these failure patterns (learned from cross-project audits):
