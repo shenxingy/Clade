@@ -1,6 +1,29 @@
 # Progress Log
 
 ---
+### 2026-03-01 — Loop: loop-fix-debt3
+
+**Iterations:** 1
+**Goal file:** docs/plans/loop-fix-debt3.md
+**Commits:**
+```
+e2823e2 fix: remove phantom columns mode and result from _ALLOWED_TASK_COLS
+ad8fb94 fix: replace str(e) with static error message in merge_all_done
+f5b517c refactor: extract inline JS from web/index.html into web/app.js
+7a501eb fix: add --dangerously-skip-permissions to _decompose_horizontal haiku call
+1971731 fix: declare _last_autoscale and factory timer attrs in ProjectSession.__init__
+d00c483 refactor: import_from_proposed calls self.add() instead of raw INSERT
+c8faedd feat: add CORSMiddleware to FastAPI app for remote/mobile access
+9b51f7f fix: correct schedule endpoint error message from ISO 8601 to HH:MM format
+```
+
+**Lessons:**
+- `import_from_proposed` refactored to call `self.add()` — now gets `source_ref` and `is_critical_path` for free; only need post-call `update()` for `depends_on`
+- `add()` doesn't support `depends_on`/`timeout`/`retries` params; these need separate `update()` call if non-default values needed
+- JS extraction from HTML: use `sed -n 'Np,Mp'` to extract lines, then `python3 re.sub` to replace the inline block. Reliable for large HTML files.
+- Always add `--dangerously-skip-permissions` to any headless `claude -p` subprocess; without it, Claude prompts interactively and times out silently.
+
+---
 ### 2026-02-28 — Loop: loop-fix-debt
 
 **Iterations:** 3
