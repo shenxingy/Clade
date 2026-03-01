@@ -468,7 +468,7 @@ async def set_schedule(session_id: str, body: dict):
         in_sec = int((scheduled - now).total_seconds())
         return {"scheduled_at": scheduled.isoformat(), "in_seconds": in_sec}
     except Exception as e:
-        raise HTTPException(status_code=400, detail="Invalid time format: use ISO 8601 (e.g. 2026-03-01T09:00:00)")
+        raise HTTPException(status_code=400, detail="Invalid time format. Use HH:MM (24h), e.g. 09:00")
 
 
 @app.delete("/api/sessions/{session_id}/schedule")
