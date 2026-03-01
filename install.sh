@@ -54,7 +54,11 @@ done
 echo "Installing scripts..."
 cp "$SCRIPT_DIR/configs/scripts/"*.sh "$CLAUDE_DIR/scripts/"
 chmod +x "$CLAUDE_DIR/scripts/"*.sh
-echo "  Installed: $(ls "$SCRIPT_DIR/configs/scripts/"*.sh | xargs -I{} basename {} | tr '\n' ' ')"
+# Also copy Python utility scripts
+for f in "$SCRIPT_DIR/configs/scripts/"*.py; do
+  [[ -f "$f" ]] && cp "$f" "$CLAUDE_DIR/scripts/" && chmod +x "$CLAUDE_DIR/scripts/$(basename "$f")"
+done
+echo "  Installed: $(ls "$SCRIPT_DIR/configs/scripts/"*.sh "$SCRIPT_DIR/configs/scripts/"*.py 2>/dev/null | xargs -I{} basename {} | tr '\n' ' ')"
 
 # Deploy models.env (canonical model IDs)
 if [[ -f "$SCRIPT_DIR/configs/models.env" ]]; then
