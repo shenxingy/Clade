@@ -498,6 +498,22 @@ Error rates are tracked per domain in `~/.claude/corrections/stats.json`:
 }
 ```
 
+### Status Line
+
+The status line shows `dir  git:(branch)  ● (4d)` — the quota pace indicator on the right:
+
+| Symbol | Meaning | Projected week-end usage |
+|--------|---------|--------------------------|
+| `◉` | Overpacing | > 100% |
+| `●` | On track | 95 – 100% |
+| `◑` | Push a bit more | 85 – 95% |
+| `○` | Need more work | < 85% |
+
+**Time remaining** counts down as: `6d → 4d → 1.5d → 18h → 45m`
+(whole days → decimal days inside last 2 days → hours inside last 24h → minutes inside last hour)
+
+**How it works:** calls `GET https://api.anthropic.com/api/oauth/usage` (same source as `/usage`) every 5 minutes, reads `seven_day.utilization` and `resets_at`, computes `projected = utilization% / elapsed%`. Token is read from `~/.claude/.credentials.json` — no extra setup needed.
+
 ### Scripts (task runners)
 
 | Script | What it does |
