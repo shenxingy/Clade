@@ -86,6 +86,12 @@ if [[ -f "$CLAUDE_DIR/scripts/committer.sh" ]]; then
   fi
 fi
 
+if [[ -f "$CLAUDE_DIR/scripts/statusline-toggle.sh" ]]; then
+  mkdir -p "$HOME/.local/bin"
+  ln -sf "$CLAUDE_DIR/scripts/statusline-toggle.sh" "$HOME/.local/bin/slt"
+  echo "  Symlinked statusline-toggle → ~/.local/bin/slt  (usage: slt to cycle modes)"
+fi
+
 # ─── 6c. Deploy templates ────────────────────────────────────────────
 
 echo "Installing templates..."

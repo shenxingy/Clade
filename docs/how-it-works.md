@@ -122,7 +122,28 @@ Error rates are tracked per domain in `~/.claude/corrections/stats.json`:
 
 ## Status Line
 
-The status line shows `dir  git:(branch)  ● (4d)` — the quota pace indicator on the right:
+The status line shows `dir  git:(branch)  ● (4d)` — the quota pace indicator on the right.
+
+### Display Modes
+
+Three modes available — switch with `slt` (cycles symbol → percent → bar → symbol):
+
+| Mode | Example | When to use |
+|------|---------|-------------|
+| `symbol` (default) | `● (4d)` | Minimal — glance at the shape |
+| `percent` | `73% (4d)` | Precise — see the actual projected % |
+| `bar` | `▓▓▓░░ (4d)` | Visual — progress bar toward 100% |
+
+```bash
+slt              # cycle to next mode
+slt percent      # set specific mode
+slt bar
+slt symbol
+```
+
+Mode is saved to `~/.claude/.statusline-mode` and persists across sessions.
+
+### Symbol Reference
 
 | Symbol | Meaning | Projected week-end usage |
 |--------|---------|--------------------------|
@@ -131,7 +152,9 @@ The status line shows `dir  git:(branch)  ● (4d)` — the quota pace indicator
 | `◑` | Push a bit more | 85 – 95% |
 | `○` | Need more work | < 85% |
 
-**Time remaining** is a continuous countdown. The display format switches based on how much time is left:
+In `percent` and `bar` modes, color encodes the same thresholds: green (≥ 95%), yellow (85–95%), no color (< 85%).
+
+### Time Remaining Format
 
 | Remaining | Format | Example |
 |-----------|--------|---------|
