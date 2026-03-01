@@ -33,14 +33,12 @@ _def circles  "○"  "◑"  "●"  "◉"  "far behind"    "a bit behind" "on tra
 _def bird     "🥚" "🐣" "🐥" "🦅" "egg"           "hatching"     "chick"        "eagle soars"  "egg → eagle"
 _def plant    "🌱" "🌿" "🌸" "🌺" "just sprouted" "growing"      "in bloom"     "full flower"  "sprout → flower"
 _def weather  "🌧️" "🌤️" "☀️" "🌈" "stormy"        "clearing up"  "sunny"        "rainbow!"     "rain → rainbow"
-_def mood     "😴" "😐" "😊" "🤩" "asleep"        "meh"          "feeling good" "on fire!"     "sleepy → ecstatic"
-_def crystal  "🪨" "💎" "💍" "👑" "rough stone"   "gem"          "ring"         "crown"        "rock → crown"
 _def coffee   "😴" "☕" "🧠" "⚡" "not awake yet" "caffeinated"  "focused"      "supercharged" "tired → wired"
 _def rocket   "🌍" "🚀" "🛸" "⭐" "grounded"      "launched"     "in orbit"     "among stars"  "earth → star"
-_def ocean    "🐚" "🐠" "🐬" "🐋" "beachcombing"  "swimming"     "diving deep"  "whale mode"   "shell → whale"
+_def ocean    "🫧" "🐠" "🐬" "🐋" "just a ripple" "swimming"     "diving deep"  "whale mode"   "ripple → whale"
 _def dragon   "🥚" "🦎" "🐉" "🔥" "egg"           "lizard"       "dragon"       "fire breath"  "egg → dragon"
 
-VALID_THEMES=(circles bird plant weather mood coffee crystal rocket ocean dragon)
+VALID_THEMES=(circles bird plant weather coffee rocket ocean dragon)
 
 _get_mode() {
   local m; m=$(cat "$MODE_FILE" 2>/dev/null)

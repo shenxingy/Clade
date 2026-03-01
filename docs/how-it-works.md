@@ -126,40 +126,75 @@ The status line shows `dir  git:(branch)  ● (4d)` — the quota pace indicator
 
 ### Display Modes
 
-Two modes — toggle with `slt`:
+Four modes — cycle with `slt`, or set directly:
 
 | Mode | Example | When to use |
 |------|---------|-------------|
-| `symbol` (default) | `● (4d)` | Glance at shape + color |
-| `percent` | `73% (4d)` | See the exact projected % |
+| `symbol` (default) | `🐥 (4d)` | Glance at emoji + color |
+| `percent` | `🐥 +4% (4d)` | Emoji + delta vs 95% target |
+| `number` | `+4% (4d)` | Delta only, no emoji |
+| `off` | *(nothing)* | Hide completely |
 
 ```bash
-slt            # toggle between modes
-slt percent    # set specific mode
+slt              # cycle: symbol → percent → number → off → symbol
+slt percent      # set specific mode
 slt symbol
+slt off
 ```
 
 Mode is saved to `~/.claude/.statusline-mode` and persists across sessions.
 
+### Metric: Delta vs 95% Target
+
+The indicator shows `delta = usage% − elapsed% × 0.95`:
+
+- **0%** = exactly on pace for 95% weekly utilization (the "excellent" target)
+- **positive** = ahead of target (`+8%` means you've used 8% more than the target pace)
+- **negative** = behind target (`−12%` means you're lagging behind)
+
+This is linear: 1pt delta always represents the same amount of token usage, regardless of the day of the week. (Unlike a projected-end% metric, which would count the same tokens as more significant early in the week.)
+
 ### Color Gradient
 
-Both modes use a red → yellow → green gradient based on projected week-end utilization:
+Color is based on projected week-end utilization (a separate calculation used only for coloring). Muted palette — low saturation so the indicator doesn't compete with the prompt:
 
-| Color | Range | Meaning |
+| Color | Projected utilization | Meaning |
+|-------|-----------------------|---------|
+| Soft green | > 100% | Overpacing |
+| Sage green | ~95% | Excellent — right on target |
+| Amber | ~50% | Moderate usage |
+| Soft red | ~0% | Very low usage |
+
+### Themes
+
+Switch emoji themes with `slt theme`:
+
+| Theme | Emojis | Style | Stage logic |
+|-------|--------|-------|-------------|
+| `circles` | ○ ◑ ● ◉ | 冷静/minimal | fill level |
+| `bird` | 🥚🐣🐥🦅 | 可爱 | egg → eagle |
+| `plant` | 🌱🌿🌸🌺 | 少女心 | sprout → flower |
+| `weather` | 🌧️🌤️☀️🌈 | 感性 | storm → rainbow |
+| `coffee` | 😴☕🧠⚡ | 效率 | tired → wired |
+| `rocket` | 🌍🚀🛸⭐ | 科技感 | earth → star |
+| `ocean` | 🫧🐠🐬🐋 | 可爱 | ripple → whale |
+| `dragon` | 🥚🦎🐉🔥 | 热情 | egg → dragon |
+
+Each theme maps to four delta thresholds:
+
+| Stage | Delta | Meaning |
 |-------|-------|---------|
-| Bright green | > 100% | Overpacing |
-| Green | 75 – 100% | On track |
-| Yellow | 50 – 75% | Push a bit more |
-| Red | < 50% | Need more work |
+| level 0 | < −15% | Far behind target |
+| level 1 | −15% to −5% | A bit behind |
+| level 2 | −5% to +5% | On track |
+| level 3 | > +5% | Ahead of target |
 
-### Symbol Reference
+```bash
+slt theme           # list all themes (current marked with →)
+slt theme rocket    # set theme + show stage breakdown
+```
 
-| Symbol | Projected |
-|--------|-----------|
-| `◉` | > 100% |
-| `●` | 75 – 100% |
-| `◑` | 50 – 75% |
-| `○` | < 50% |
+Theme is saved to `~/.claude/.statusline-theme` and persists across sessions.
 
 ### Time Remaining Format
 
@@ -170,7 +205,7 @@ Both modes use a red → yellow → green gradient based on projected week-end u
 | 1h – 24h | hours | `18h`, `9h` |
 | < 1h | minutes | `45m`, `12m` |
 
-**How it works:** calls `GET https://api.anthropic.com/api/oauth/usage` (same source as `/usage`) every 5 minutes, reads `seven_day.utilization` and `resets_at`, computes `projected = utilization% / elapsed%`. Token is read from `~/.claude/.credentials.json` — no extra setup needed.
+**How it works:** calls `GET https://api.anthropic.com/api/oauth/usage` (same source as `/usage`) every 5 minutes, reads `seven_day.utilization` and `resets_at`, computes `delta = utilization% − elapsed% × 0.95`. Token is read from `~/.claude/.credentials.json` — no extra setup needed.
 
 ## Scripts (task runners)
 
