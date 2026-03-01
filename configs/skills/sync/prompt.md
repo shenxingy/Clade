@@ -107,7 +107,7 @@ Sync complete:
   📋 TODO.md: 3 items checked off, 1 new sub-task added
   📝 PROGRESS.md: Session summary appended
 
-  Run /commit to commit all changes, or /commit --push to commit + push.
+  Run /commit to commit all changes (pushes by default; use --no-push to skip).
 ```
 
 ---
