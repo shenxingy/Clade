@@ -28,8 +28,14 @@
     <span class="dot" id="orchDot"></span>
     <span id="orchStatus">Connecting...</span>
   </div>
+  <span id="portfolioBtnContainer" style="display:none;margin-left:auto">
+    <button onclick="togglePortfolio()" title="Portfolio overview" style="
+      background:var(--bg3);border:1px solid var(--border);
+      color:var(--text2);border-radius:5px;padding:3px 9px;cursor:pointer;font-size:13px;
+    ">📊 Portfolio</button>
+  </span>
   <button onclick="toggleSettings()" title="Settings" style="
-    margin-left:auto;background:var(--bg3);border:1px solid var(--border);
+    background:var(--bg3);border:1px solid var(--border);
     color:var(--text2);border-radius:5px;padding:3px 9px;cursor:pointer;font-size:13px;
   ">⚙</button>
 </header>
@@ -210,6 +216,19 @@
         <button class="btn small" onclick="startAllQueued()">▶▶ Start All Queued</button>
       </div>
       <div id="overviewList" style="max-height:180px;overflow-y:auto"></div>
+    </div>
+
+    <!-- Portfolio Panel (header button shows when ≥2 sessions) -->
+    <div id="portfolioPanel" style="display:none; margin: 8px 0; padding: 8px; border: 1px solid #444; border-radius: 4px; background: #1a1a2e;">
+      <h4 style="margin: 0 0 8px 0; color: #7eb8f7;">📊 Portfolio Overview</h4>
+      <table style="width:100%; border-collapse: collapse; font-size: 0.85em;">
+        <thead><tr style="color: #aaa;">
+          <th style="text-align:left">Session</th>
+          <th>Pending</th><th>Running</th><th>Done</th><th>Failed</th>
+          <th>Cost</th><th>Rate/hr</th><th>ETA</th>
+        </tr></thead>
+        <tbody id="portfolioTable"></tbody>
+      </table>
     </div>
 
     <!-- Queue Section -->
