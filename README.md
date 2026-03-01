@@ -10,6 +10,20 @@ One install script. Ten hooks, five agents, fifteen skills, a safety guardian, a
 
 > If this saves you time, a star helps others find it — and if something breaks, [open an issue](https://github.com/shenxingy/claude-code-kit/issues/new/choose).
 
+## Table of Contents
+
+1. [Install](#install-30-seconds)
+2. [Supported Languages](#supported-languages--frameworks)
+3. [What Happens After Install](#what-happens-after-install)
+4. [Available Commands](#available-commands)
+5. [When to Use What](#when-to-use-what)
+6. [Documentation](#documentation)
+7. [Repo Structure](#repo-structure)
+8. [Uninstall](#uninstall)
+9. [Contributing](#contributing)
+10. [Known Limitations](#known-limitations)
+11. [License](#license)
+
 ## Install (30 seconds)
 
 ```bash
@@ -115,499 +129,18 @@ All checks are **opt-in by detection** — if the tool isn't installed or the pr
 - Analyzes all uncommitted changes and splits them into logical commits by module
 - Pushes by default; use `--no-push` to skip, `--dry-run` to preview the plan
 
-## Maximize Throughput
-
-The bottleneck for Claude Code is not code generation — it's **how fast you input tasks**. These setups eliminate the friction.
-
-### 1. Skip permission prompts
-
-```bash
-# Add to ~/.zshrc or ~/.bashrc
-alias cc='claude --dangerously-skip-permissions'
-```
-
-With this alias, Claude runs fully autonomously — no approval dialogs, no interruptions. Use `cc` instead of `claude`. Always commit before starting a session (git is your rollback).
-
-### 2. Batch your task input (the core habit)
-
-Write all tasks upfront, then launch agents simultaneously:
-
-```bash
-mkdir -p .claude/tasks
-
-# Good task file: specific files, patterns to follow, edge cases to handle
-cat > .claude/tasks/task-001.md << 'EOF'
-Add rate limiting to all /api/auth/* routes.
-Use the existing rateLimiter in lib/middleware.ts.
-Set 10 req/min for POST /auth/login, 60/min for GET endpoints.
-Return 429 with {"error": "rate_limit_exceeded", "retry_after": N} on breach.
-EOF
-
-cat > .claude/tasks/task-002.md << 'EOF'
-Write E2E tests for the checkout flow in tests/e2e/checkout.spec.ts.
-Follow the pattern in tests/e2e/cart.spec.ts.
-Cover: add to cart, apply coupon, checkout success, payment failure (card_declined).
-EOF
-
-# Launch agents — one per terminal, fully autonomous
-cc -p "$(cat .claude/tasks/task-001.md)"   # Terminal 1 (non-interactive)
-cc -p "$(cat .claude/tasks/task-002.md)"   # Terminal 2 (non-interactive)
-
-# Or run interactively if you want to watch/guide:
-cc   # Terminal 3 → paste task content
-```
-
-> **What makes a good task file:** Name the exact files to edit/create. Reference existing patterns to follow (`"follow the pattern in X"`). Specify edge cases and error formats. Vague tasks ("improve the auth flow") get vague results.
-
-Your thinking decouples from execution — design all tasks in one burst, let agents execute while you do other things.
-
-### 3. Run parallel agents with worktrees
-
-Use `/worktree` to create isolated git worktrees so multiple agents work the same repo without conflicts:
-
-```
-/worktree create feat/auth-rework    # Terminal 1
-/worktree create feat/rate-limiting  # Terminal 2
-```
-
-Each agent works in its own directory. `committer` prevents staging conflicts. Merge when done.
-
-### 4. Task queue — sequential tasks, one shot
-
-Claude processes messages in order — send all tasks at once and go do something else:
-
-```
-1. Fix the null pointer in UserService.getUserById()
-2. Add input validation to all POST endpoints
-3. Update the API docs in README.md
-```
-
-No waiting required. You're free from the moment you send.
-
-### 5. Orchestrator Web UI — chat to plan, watch workers execute
-
-The fastest way to go from idea to parallel execution. One chat session with an AI orchestrator decomposes your goal into tasks; a dashboard shows N workers executing them simultaneously.
-
-```bash
-./orchestrator/start.sh
-# → Opens http://localhost:8765 in your browser
-```
-
-**Workflow:**
-
-```
-1. Chat: "Build a SaaS with auth, billing, analytics"
-   → Orchestrator asks 2-3 clarifying questions (stack, constraints, existing code)
-   → You answer (type or use OS voice input)
-
-2. Orchestrator proposes task breakdown
-   → Writes .claude/proposed-tasks.md
-   → UI shows confirmation overlay: "4 tasks ready. Start all?"
-
-3. Click "Start All Workers"
-   → Workers launch in parallel: claude -p "$(cat task.md)" --dangerously-skip-permissions
-   → Dashboard updates every 1s: status, last commit, elapsed time
-
-4. Monitor:
-   Worker 1 │ running  │ feat: add NextAuth config    │ 2m34s │ [Pause] [Chat]
-   Worker 2 │ running  │ feat: create Stripe webhook  │ 1m12s │ [Pause] [Chat]
-   Worker 3 │ blocked  │ needs Stripe API key         │ 0m45s │        [Chat]
-
-5. Worker 3 blocked → click [Chat] → type "Use sk_test_xxx"
-   → Worker stops, message injected as context, worker restarts
-
-6. All done: progress bar 100%, review with: git log --oneline
-```
-
-**Layout:**
-
-```
-┌─────────────────────────────────┬──────────────────────────────┐
-│  Orchestrator Chat (PTY)        │  Task Queue                  │
-│                                 │  ├ pending: Implement auth   │
-│  > Build a SaaS with auth...    │  ├ pending: Add Stripe       │
-│  < What tech stack?             │  └ [Run] [Delete] [+ Add]    │
-│  > Next.js, Prisma, Stripe      ├──────────────────────────────┤
-│  < Writing 4 tasks...           │  Workers                     │
-│                                 │  ┌──────────────────────────┐│
-│  ┌─ 4 tasks ready ──────────┐   │  │ running │ feat: auth...  ││
-│  │ Start All Workers? [Yes] │   │  │ 2m34s   │ [Pause][Chat]  ││
-│  └──────────────────────────┘   │  └──────────────────────────┘│
-│  [Type message... ]   [Send]    │  ████░░░░░ 35%  ETA ~8 min   │
-└─────────────────────────────────┴──────────────────────────────┘
-```
-
-**No build step.** Single HTML file + FastAPI backend. Requires Python 3.9+.
-
-#### GUI Settings Reference
-
-Open the **⚙ Settings** panel (top-right of the Web UI) to configure:
-
-| Setting | Default | Effect |
-|---------|---------|--------|
-| Auto-start workers | ON | Workers launch immediately when `proposed-tasks.md` is written |
-| Auto-push | ON | Push to feature branch after each commit |
-| Auto-merge | ON | Squash-merge `orchestrator/task-*` PRs automatically |
-| Auto-review | ON | Post AI code review comment on each PR |
-| **Oracle validation** | OFF | Haiku independently reviews each diff before push — catches "completed but wrong" silently; rejects bad pushes |
-| **Auto model routing** | OFF | Picks model by scout score: score ≥80 → haiku, 50-79 → sonnet, <50 → sonnet + ask-first warning |
-| **Context budget warnings** | ON | Token bar on every worker card (green → amber at 120K → red at 160K); writes `.claude/context-warning-{id}.md` with `/compact` instructions |
-| **AGENTS.md → Generate** | — | Builds file→branch ownership map from `git log`; copy output to `.claude/AGENTS.md` to prevent cross-worker collisions |
-| **Webhook secret** | _(empty)_ | HMAC-SHA256 secret for `POST /api/webhooks/github`. **Security note:** if left empty, the endpoint accepts all requests — set this before exposing the orchestrator to the internet |
-
-#### Broadcast to All Workers
-
-When all running workers need the same correction mid-run, use the **→ All Workers** bar visible at the top of the workers section in Execute mode:
-
-```
-Example: "The DB schema changed — column is now user_id not userId"
-→ All running workers stop, receive the message as prepended context, and restart
-```
-
-Useful when you realize a global constraint changed and every worker needs to know.
-
-#### Iteration Loop (Autonomous Refinement)
-
-Closes the review → fix → verify feedback loop for any iterative artifact (papers, code audits, content QA).
-
-```
-1. Execute mode → Loop section
-2. Enter: artifact path = paper.tex  (or server.py, README.md, etc.)
-           codebase dir = ./src       (optional, for DATA_CHECK workers)
-           K = 2, N = 3               (converge when ≤2 changes for 3 consecutive iters)
-
-3. ▶ Start Loop — the supervisor:
-     FIXABLE   → spawns a worker to fix it automatically
-     DATA_CHECK → spawns a read-only worker to verify a claim against your codebase
-     DEFERRED  → adds to the accordion below (requires human review — never auto-fixed)
-     CONVERGED → loop ends, toast fires
-
-4. After all workers finish → count changes → check convergence → repeat
-5. Converged? Review deferred items in the accordion.
-```
-
-The loop runs fully unattended. Set `max_iterations` in Settings as a safety cap.
-
-### 6. Recommended terminal setup
-
-The fastest input experience combines a GPU-accelerated terminal with split panes and voice input.
-
-**Terminal: Ghostty** (recommended)
-
-Ghostty renders at 120fps with near-zero latency — noticeably faster than iTerm2 or the default macOS Terminal. Split panes let you watch multiple agents simultaneously without switching windows.
-
-```
-# Ghostty split layout for parallel agents
-┌────────────────────────┬────────────────────────┐
-│  cc (interactive)      │  cc -p task-002.md     │
-│  ↑ your main session   │  ↑ background worker   │
-├────────────────────────┼────────────────────────┤
-│  cc -p task-001.md     │  git log --oneline -10 │
-│  ↑ background worker   │  ↑ monitor commits      │
-└────────────────────────┴────────────────────────┘
-```
-
-Ghostty keybindings for split panes:
-- `Cmd+D` — split right
-- `Cmd+Shift+D` — split down
-- `Cmd+Option+Arrow` — navigate panes
-
-**Voice input** (reduces typing fatigue significantly)
-
-Instead of typing tasks, dictate them. This is particularly effective for the Orchestrator chat — you can have a natural conversation with the AI.
-
-| Platform | Tool | Setup |
-|----------|------|-------|
-| macOS | System voice dictation | System Settings → Keyboard → Dictation → enable, set shortcut |
-| macOS | [Whisper transcription](https://github.com/openai/whisper) | `brew install whisper-cpp` + configure shortcut |
-| Linux | `nerd-dictation` | `pip install nerd-dictation` — uses Vosk offline model |
-| All | SuperWhisper / Wispr Flow | GUI apps with hotkey push-to-talk, works in any text field |
-
-Workflow: press hotkey → speak → release → text appears in terminal. Effective for 30–200 word task descriptions.
-
----
-
-## Overnight Autonomous Operation
-
-The kit is designed to run unattended — you sleep, agents work.
-
-### Pattern: Task Queue → Sleep → Review
-
-```bash
-# 1. Write task files for what you want done
-cat > tasks.txt << 'EOF'
-===TASK===
-model: sonnet
-timeout: 600
-retries: 2
----
-Implement the user settings page at app/settings/page.tsx.
-Follow the pattern in app/profile/page.tsx. Use the existing
-useUser hook and the settingsSchema from lib/schema.ts.
-===TASK===
-model: sonnet
-timeout: 600
-retries: 2
----
-Add rate limiting middleware to all /api/auth/* routes.
-Use the existing rateLimiter in lib/middleware.ts. Set 10 req/min.
-EOF
-
-# 2. Queue and run
-claude  # open session
-/batch-tasks --run tasks.txt  # starts in background, you can close the terminal
-
-# 3. You get Telegram notifications when blocked or done
-# 4. Next morning: /pickup to see what was done, review commits
-```
-
-### Pattern: Parallel Sessions (3-4x throughput)
-
-```bash
-# Terminal 1 — feature A
-git worktree add ../proj-feat-a -b feat/settings-page
-cd ../proj-feat-a && claude
-# → assign task A, /handoff when done
-
-# Terminal 2 — feature B (independent)
-git worktree add ../proj-feat-b -b feat/rate-limiting
-cd ../proj-feat-b && claude
-# → assign task B, /handoff when done
-
-# Review both in main branch, merge PRs
-```
-
-### Pattern: Context Relay (long tasks across sessions)
-
-```bash
-# Session 1 (context getting full at ~80%)
-/handoff  # saves state to .claude/handoff-2026-02-23-14-30.md
-# close session
-
-# Session 2 (fresh context)
-/pickup   # reads handoff, immediately resumes next step
-```
-
-The `pre-tool-guardian.sh` hook protects unattended runs: database migrations, catastrophic `rm -rf`, force pushes to main, and SQL DROP statements are automatically blocked and redirected to manual execution — so agents can't irreversibly destroy state while you sleep.
-
----
-
-## How It Works
-
-### Hooks (automatic behaviors)
-
-| Hook | Trigger | Model cost |
-|------|---------|-----------|
-| `session-context.sh` | SessionStart | None (shell only) |
-| `pre-tool-guardian.sh` | PreToolUse (Bash) | None (shell only) |
-| `revert-detector.sh` | PreToolUse (Bash) | None (shell only) |
-| `post-edit-check.sh` | PostToolUse (Edit/Write) | None (shell only) |
-| `post-tool-use-lint.sh` | PostToolUse (Edit/Write) | None (shell only) |
-| `edit-shadow-detector.sh` | PostToolUse (Edit/Write) | None (shell only) |
-| `correction-detector.sh` | UserPromptSubmit | None (shell only) |
-| `verify-task-completed.sh` | TaskCompleted | None (shell only) |
-| `notify-telegram.sh` | Notification | None (shell only) |
-| `prompt-tracker.sh` | UserPromptSubmit | None (shell only) |
-
-All hooks are shell scripts — zero API cost, sub-second execution.
-
-**`post-tool-use-lint.sh`** runs your project's `verify_cmd` after every file edit. On failure it writes `.claude/lint-feedback.md` and exits with code 2 — Claude sees the error output and fixes it in the next turn. Configure via `.claude/orchestrator.json`:
-
-```json
-{
-  "verify_cmd": "python3 -m py_compile src/main.py"
-}
-```
-
-Common values: `"tsc --noEmit"` (TypeScript), `"python3 -m py_compile <file>"` (Python), `"cargo check"` (Rust), `"go build ./..."` (Go). Leave unset to disable.
-
-### Agents (specialized sub-agents)
-
-| Agent | Model | Use case |
-|-------|-------|----------|
-| `code-reviewer` | Sonnet | Code review with persistent memory |
-| `paper-reviewer` | Sonnet | Academic paper review — structured critique for LaTeX papers before submission |
-| `verify-app` | Sonnet | Runtime verification — adapts to project type (web, Rust, Go, Swift, Gradle, LaTeX) |
-| `type-checker` | Haiku | Fast type/compilation check — auto-detects language (TS, Python, Rust, Go, Swift, Kotlin, LaTeX) |
-| `test-runner` | Haiku | Test execution — auto-detects framework (pytest, jest, cargo test, go test, swift test, gradle, make) |
-
-Claude auto-selects agents. Haiku agents are fast and cheap for mechanical checks; Sonnet agents reason deeper for reviews.
-
-### Skills (slash commands)
-
-**`/handoff`** saves the entire session state to `.claude/handoff-{timestamp}.md`: what was accomplished, git state, blockers, ordered next steps, and gotchas. Run this when context is ~80% full, before stopping work, or before handing off to a parallel agent. The next session auto-loads it via `session-context.sh`.
-
-**`/pickup`** reads the latest handoff, verifies git state, and immediately resumes work from the first pending Next Step. Zero briefing required for the new session or agent.
-
-**`/batch-tasks`** reads TODO.md, researches the codebase, generates detailed plans for each task, scores them on readiness (scout scoring), assigns the optimal model per task (haiku for mechanical, sonnet for standard, opus for complex), then executes via `claude -p`. Supports serial and parallel (git worktree) execution.
-
-**`/sync`** reviews recent git history, checks off completed TODO items, and appends a session summary to PROGRESS.md. Does not commit — run `/commit` after to commit everything.
-
-**`/commit`** analyzes all uncommitted changes, groups files into logical commits by module (schema, API, frontend, config, docs, etc.), generates commit messages, shows the plan for confirmation, then executes and pushes by default. `--no-push` skips push; `--dry-run` shows the plan only.
-
-**`/orchestrate`** now includes:
-- **Step 0**: reads `PROGRESS.md` (last 3000 chars) + `.claude/AGENTS.md` before planning — avoids past mistakes and respects existing file ownership
-- **Enhanced task template**: every task gets `verify_cmd`, `own_files`, `forbidden_files`, acceptance checklist, Context Management (`/compact` at 75%), and Commit Rules blocks auto-filled
-- **Step 3.5**: auto-generates `.claude/AGENTS.md` from task `own_files` after writing `proposed-tasks.md` — workers see who owns what before starting
-
-**`/batch-tasks`** now:
-- **Reads AGENTS.md** before planning: injects file ownership into each task description; flags overlapping file claims for review
-- **Scout scoring**: tasks scoring 0–49 are skipped (a GitHub Issue is created in their place); tasks scoring 50–79 are flagged with a `# WARNING` comment and run with caution; 80–100 run normally
-
-**`/model-research`** searches the web for latest Claude model announcements, benchmarks, and pricing. Compares against the current guide and shows what changed. With `--apply`, updates `docs/research/models.md`, the session-context model guidance, and batch-tasks model assignment criteria.
-
-**`/worktree`** creates a new git worktree in `.claude/worktrees/` with an isolated branch, switches the session into it. Use when running parallel Claude Code sessions on the same repo.
-
-**`/research`** runs a structured deep-dive on a topic — web search, synthesize findings, save to `docs/research/<topic>.md`. Useful before starting a complex feature.
-
-**`/map`** generates a codebase map: file → branch ownership from `git log`, module dependency graph, and entry points. Output is saved as `.claude/AGENTS.md` for workers to use.
-
-**`/incident`** activates incident response mode: diagnose the issue, propose a root cause, draft a postmortem, and add follow-up tasks to TODO.md.
-
-**`/review-pr`** reads a PR diff and posts a structured review comment with Critical/Warning/Suggestion sections.
-
-**`/merge-pr`** squash-merges a PR and deletes the feature branch.
-
-### Correction Learning Loop
-
-The most distinctive feature. Here's how it works:
-
-```
-You correct Claude          correction-detector.sh        Claude saves rule
-("don't use relative   ──>  detects correction pattern ──>  to corrections/
-  imports")                  via keyword matching             rules.md
-
-Next session starts         session-context.sh            Claude follows
-                       ──>  loads rules.md into      ──>  the rule without
-                            system context                 being told again
-```
-
-Over time, Claude's behavior aligns to your style automatically. The quality gate (`verify-task-completed.sh`) also adapts — domains where Claude makes more errors get stricter checks.
-
-Error rates are tracked per domain in `~/.claude/corrections/stats.json`:
-```json
-{
-  "frontend": 0.35,  // >0.3 = strict mode (adds build + test)
-  "backend": 0.05,   // <0.1 = relaxed mode (basic checks only)
-  "ml": 0.2,         // ML/AI training code
-  "ios": 0,          // Swift / Xcode
-  "android": 0,      // Kotlin / Gradle
-  "systems": 0,      // Rust / Go
-  "academic": 0,     // LaTeX
-  "schema": 0.2
-}
-```
-
-### Status Line
-
-The status line shows `dir  git:(branch)  ● (4d)` — the quota pace indicator on the right:
-
-| Symbol | Meaning | Projected week-end usage |
-|--------|---------|--------------------------|
-| `◉` | Overpacing | > 100% |
-| `●` | On track | 95 – 100% |
-| `◑` | Push a bit more | 85 – 95% |
-| `○` | Need more work | < 85% |
-
-**Time remaining** is a continuous countdown. The display format switches based on how much time is left:
-
-| Remaining | Format | Example |
-|-----------|--------|---------|
-| > 48h | whole days | `6d`, `5d`, `3d` |
-| 24h – 48h | one decimal place | `1.5d`, `1.2d` |
-| 1h – 24h | hours | `18h`, `9h` |
-| < 1h | minutes | `45m`, `12m` |
-
-**How it works:** calls `GET https://api.anthropic.com/api/oauth/usage` (same source as `/usage`) every 5 minutes, reads `seven_day.utilization` and `resets_at`, computes `projected = utilization% / elapsed%`. Token is read from `~/.claude/.credentials.json` — no extra setup needed.
-
-### Scripts (task runners)
-
-| Script | What it does |
-|--------|-------------|
-| `run-tasks.sh` | Serial execution with timeout, retry, and rollback |
-| `run-tasks-parallel.sh` | Parallel execution using git worktrees |
-
-Both are called by `/batch-tasks` — you don't need to run them directly.
-
-### Automatic Model Selection
-
-The kit optimizes model usage at every level:
-
-| Level | How it works |
-|-------|-------------|
-| **Session start** | `session-context.sh` injects model guidance — Claude will suggest switching to Opus for complex refactors |
-| **Batch tasks** | Each task is assigned haiku/sonnet/opus based on complexity and cost-performance data |
-| **Sub-agents** | Haiku for mechanical checks (type-check, tests), Sonnet for reasoning (review, verification) |
-| **Staying current** | Run `/model-research --apply` when new models drop to update all selection logic |
-
-Based on benchmarks: Sonnet 4.6 scores 79.6% on SWE-bench vs Opus 4.6's 80.8% at 60% of the cost. The kit defaults to Sonnet and only escalates to Opus when the task genuinely needs it.
-
-## Configuration
-
-### Required
-
-Nothing. Everything works out of the box with sensible defaults.
-
-### Optional
-
-Set these in `~/.claude/settings.json` under `"env"`:
-
-| Variable | Purpose |
-|----------|---------|
-| `TG_BOT_TOKEN` | Telegram bot token for notifications |
-| `TG_CHAT_ID` | Telegram chat ID for notifications |
-
-### Tuning
-
-| File | What to tune |
-|------|-------------|
-| `~/.claude/corrections/rules.md` | Add/edit correction rules directly |
-| `~/.claude/corrections/stats.json` | Adjust error rates per domain (0-1) to control quality gate strictness |
-
-## Customization
-
-### Add a correction rule manually
-
-Edit `~/.claude/corrections/rules.md`:
-```
-- [2026-02-17] imports: Use @/ path aliases instead of relative paths
-- [2026-02-17] naming: Use camelCase for TypeScript variables, not snake_case
-```
-
-### Adjust quality gate thresholds
-
-Edit `~/.claude/corrections/stats.json`:
-```json
-{
-  "frontend": 0.4,
-  "backend": 0.05,
-  "ml": 0.2,
-  "ios": 0,
-  "android": 0,
-  "systems": 0,
-  "academic": 0,
-  "schema": 0.2
-}
-```
-
-`> 0.3` triggers strict mode (adds build + test checks). `< 0.1` triggers relaxed mode (basic checks only). Domains: `frontend`, `backend`, `ml`, `ios`, `android`, `systems` (Rust/Go), `academic` (LaTeX), `schema`.
-
-### Add a new hook
-
-1. Create `configs/hooks/your-hook.sh`
-2. Add the hook definition to `configs/settings-hooks.json`
-3. Run `./install.sh`
-
-### Add a new agent
-
-1. Create `configs/agents/your-agent.md` with frontmatter (name, description, tools, model)
-2. Run `./install.sh`
-
-### Add a new skill
-
-1. Create `configs/skills/your-skill/SKILL.md` (frontmatter + description)
-2. Create `configs/skills/your-skill/prompt.md` (full skill prompt)
-3. Run `./install.sh`
+## Documentation
+
+| Guide | Contents |
+|-------|----------|
+| [Maximize Throughput](docs/throughput.md) | Skip permission prompts, batch task input, parallel worktrees, task queue patterns, terminal + voice setup |
+| [Orchestrator Web UI](docs/orchestrator.md) | Chat-to-plan workflow, worker dashboard, settings reference, broadcast, iteration loop |
+| [Overnight Autonomous Operation](docs/autonomous-operation.md) | Task queue pattern, parallel sessions, context relay, safety guarantees |
+| [How It Works](docs/how-it-works.md) | Hooks, agents, skills internals, correction learning loop, status line, model selection |
+| [Configuration & Customization](docs/configuration.md) | Required/optional settings, tuning thresholds, adding hooks/agents/skills |
+| [Hooks Research](docs/research/hooks.md) | Hook system deep dive |
+| [Model Selection Guide](docs/research/models.md) | Cost-performance analysis and selection rules |
+| [Power Users Research](docs/research/power-users.md) | Patterns from top users |
 
 ## Repo Structure
 
@@ -660,10 +193,16 @@ claude-code-kit/
 ├── templates/
 │   ├── settings.json                  # settings.json template (no secrets)
 │   ├── CLAUDE.md                      # Agent Ground Rules template (auto-deployed to ~/.claude/)
+│   ├── README.md                      # Starter README template for new projects
 │   └── corrections/
 │       ├── rules.md                   # Initial correction rules
 │       └── stats.json                 # Initial domain error rates
 └── docs/
+    ├── throughput.md                  # Maximize throughput guide
+    ├── orchestrator.md                # Orchestrator Web UI guide
+    ├── autonomous-operation.md        # Overnight autonomous operation guide
+    ├── how-it-works.md                # How hooks, agents, skills work
+    ├── configuration.md               # Configuration & customization guide
     └── research/
         ├── hooks.md                   # Hook system deep dive
         ├── subagents.md               # Custom agent patterns
@@ -684,14 +223,6 @@ Removes all deployed hooks, agents, skills, scripts, and commands. Preserves:
 - `~/.claude/corrections/` (your learned rules and history)
 - `~/.claude/settings.json` (env vars and permissions — only hooks are removed)
 - Skills not managed by this repo
-
-## Learn More
-
-- [Hooks Research](docs/research/hooks.md) — Hook system deep dive
-- [Subagents Research](docs/research/subagents.md) — Custom agent patterns
-- [Batch Tasks Research](docs/research/batch-tasks.md) — Batch execution improvements
-- [Model Selection Guide](docs/research/models.md) — Cost-performance analysis and selection rules
-- [Power Users Research](docs/research/power-users.md) — Patterns from top users
 
 ## Contributing
 
