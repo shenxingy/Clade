@@ -58,12 +58,14 @@ All checks are **opt-in by detection** — if the tool isn't installed or the pr
 |------|-----------|-------------|
 | You open Claude Code in a git repo | `session-context.sh` | Loads git context, recent handoff, correction rules, and model guidance into context |
 | Claude tries to run a Bash command | `pre-tool-guardian.sh` | **Blocks** database migrations (they timeout), catastrophic rm -rf, force push to main, SQL DROP |
+| Claude tries to run a git revert/reset | `revert-detector.sh` | Detects implicit corrections (reverting Claude's own work) and logs them as learning events |
 | Claude edits a code file | `post-edit-check.sh` | Runs language-appropriate checks **async** (tsc, pyright, cargo check, go vet, swift build, gradle, chktex) |
+| Claude edits a code file | `post-tool-use-lint.sh` | Runs project's `verify_cmd` from `.claude/orchestrator.json` after every edit |
+| Claude edits a code file | `edit-shadow-detector.sh` | Tracks which files were edited; used by the correction learning system |
 | You correct Claude ("wrong, use X") | `correction-detector.sh` | Logs the correction, prompts Claude to save a reusable rule |
 | Claude marks a task as done | `verify-task-completed.sh` | Adaptive quality gate: checks compilation/lint, adds build+test in strict mode |
 | Claude needs permission / goes idle | `notify-telegram.sh` | Sends Telegram alert so you don't have to watch the terminal |
 | Every prompt you send | `prompt-tracker.sh` | Tracks prompt fingerprints to surface repeated patterns |
-| Session ends | Stop hook (in settings.json) | Verifies all tasks were completed before exit |
 
 ## Available Commands
 
@@ -92,6 +94,7 @@ All checks are **opt-in by detection** — if the tool isn't installed or the pr
 | `/incident` | Incident response mode — diagnose a production issue, write a postmortem, add follow-up tasks to TODO |
 | `/review-pr` | AI reviews a PR diff and posts a structured review comment |
 | `/merge-pr` | Squash-merge a PR and clean up the branch |
+| `/brief` | Morning briefing — overnight commits, queue status, recent lessons, next 3 TODO items |
 
 ## When to Use What
 
@@ -148,6 +151,11 @@ All checks are **opt-in by detection** — if the tool isn't installed or the pr
 - Squash-merges the PR and deletes the feature branch
 - Run after `/review-pr` gives the green light
 
+**`/brief`** — first thing in the morning after an overnight run:
+- Shows commits from the last 18h, orchestrator queue status, recent lesson from PROGRESS.md
+- Lists next 3 open TODO items with one improvement suggestion
+- Faster than reading PROGRESS.md + git log + TODO.md separately
+
 **`/incident DESCRIPTION`** — when something is broken in production:
 - Diagnoses the issue, proposes a root cause, drafts a postmortem
 - Adds follow-up tasks to TODO.md automatically
@@ -203,46 +211,59 @@ claude-code-kit/
 ├── uninstall.sh                       # Clean removal
 ├── orchestrator/                      # Web UI for parallel agent orchestration
 │   ├── start.sh                       # Launch script (installs deps, opens browser)
-│   ├── server.py                      # FastAPI server (PTY orchestrator + worker pool)
-│   ├── requirements.txt               # Python deps (fastapi, uvicorn, ptyprocess, watchfiles)
-│   └── web/index.html                 # Single-file vanilla JS UI (chat + dashboard)
+│   ├── server.py                      # FastAPI app — all REST + WebSocket routes
+│   ├── session.py                     # ProjectSession, SessionRegistry, status loop
+│   ├── worker.py                      # WorkerPool, SwarmManager, scoring, oracle
+│   ├── task_queue.py                  # SQLite-backed task CRUD
+│   ├── config.py                      # Global settings, model aliases, utilities
+│   ├── github_sync.py                 # GitHub API wrappers (issues, push)
+│   ├── requirements.txt               # Python dependencies
+│   └── web/index.html                 # Single-file SPA (chat + dashboard)
 ├── configs/
 │   ├── settings-hooks.json            # Hook definitions (merged into settings.json)
 │   ├── hooks/
 │   │   ├── session-context.sh         # SessionStart: load git context + handoff + corrections
 │   │   ├── pre-tool-guardian.sh       # PreToolUse: block migrations/rm-rf/force-push/DROP
+│   │   ├── revert-detector.sh         # PreToolUse: detect git revert/reset as corrections
 │   │   ├── post-edit-check.sh         # PostToolUse: async type-check after edits
-│   │   ├── notify-telegram.sh         # Notification: Telegram alerts
+│   │   ├── post-tool-use-lint.sh      # PostToolUse: run project verify_cmd
+│   │   ├── edit-shadow-detector.sh    # PostToolUse: track edited files for corrections
+│   │   ├── correction-detector.sh     # UserPromptSubmit: learn from corrections
 │   │   ├── prompt-tracker.sh          # UserPromptSubmit: track prompt fingerprints
 │   │   ├── verify-task-completed.sh   # TaskCompleted: adaptive quality gate
-│   │   └── correction-detector.sh     # UserPromptSubmit: learn from corrections
+│   │   └── notify-telegram.sh         # Notification: Telegram alerts
 │   ├── agents/
 │   │   ├── code-reviewer.md           # Sonnet code reviewer with memory
 │   │   ├── test-runner.md             # Haiku test runner
 │   │   ├── type-checker.md            # Haiku type checker
-│   │   └── verify-app.md              # Sonnet app verification
+│   │   ├── verify-app.md              # Sonnet app verification
+│   │   └── paper-reviewer.md          # Academic paper reviewer (LaTeX)
 │   ├── skills/
-│   │   ├── handoff/                   # /handoff skill — end-of-session context dump
-│   │   ├── pickup/                    # /pickup skill — start-of-session context load
-│   │   ├── batch-tasks/               # /batch-tasks skill
-│   │   ├── sync/                      # /sync skill
-│   │   ├── commit/                    # /commit skill
-│   │   ├── loop/                      # /loop skill — goal-driven autonomous improvement loop
-│   │   ├── audit/                     # /audit skill — corrections/rules.md cleanup
-│   │   ├── orchestrate/               # /orchestrate skill — AI orchestrator persona for Web UI
-│   │   ├── model-research/            # /model-research skill
-│   │   ├── worktree/                  # /worktree skill — git worktree management
-│   │   ├── research/                  # /research skill — deep research + docs synthesis
-│   │   ├── map/                       # /map skill — codebase ownership/module graph
-│   │   ├── incident/                  # /incident skill — incident response + postmortem
-│   │   ├── review-pr/                 # /review-pr skill — AI PR review
-│   │   └── merge-pr/                  # /merge-pr skill — squash-merge + branch cleanup
+│   │   ├── handoff/                   # /handoff — end-of-session context dump
+│   │   ├── pickup/                    # /pickup — start-of-session context load
+│   │   ├── batch-tasks/               # /batch-tasks — batch task execution
+│   │   ├── loop/                      # /loop — goal-driven autonomous improvement loop
+│   │   ├── sync/                      # /sync — update TODO + PROGRESS
+│   │   ├── commit/                    # /commit — split commits by module
+│   │   ├── review/                    # /review — tech debt review
+│   │   ├── audit/                     # /audit — corrections/rules.md cleanup
+│   │   ├── research/                  # /research — deep research + docs synthesis
+│   │   ├── model-research/            # /model-research — model data update
+│   │   ├── orchestrate/               # /orchestrate — AI orchestrator for Web UI
+│   │   ├── map/                       # /map — codebase ownership/module graph
+│   │   ├── worktree/                  # /worktree — git worktree management
+│   │   ├── incident/                  # /incident — incident response + postmortem
+│   │   ├── review-pr/                 # /review-pr — AI PR review
+│   │   ├── merge-pr/                  # /merge-pr — squash-merge + branch cleanup
+│   │   └── brief/                     # /brief — morning briefing
 │   ├── scripts/
 │   │   ├── committer.sh               # Safe commit for parallel agents (no git add .)
 │   │   ├── run-tasks.sh               # Serial task runner
-│   │   └── run-tasks-parallel.sh      # Parallel runner (git worktrees)
+│   │   ├── run-tasks-parallel.sh      # Parallel runner (git worktrees)
+│   │   ├── statusline-toggle.sh       # slt — cycle status line modes/themes
+│   │   └── claude-usage-watch.py      # Quota pace indicator for status line
 │   └── commands/
-│       └── review.md                  # /review tech debt command
+│       └── review.md                  # /review tech debt command spec
 ├── templates/
 │   ├── settings.json                  # settings.json template (no secrets)
 │   ├── CLAUDE.md                      # Agent Ground Rules template (auto-deployed to ~/.claude/)
