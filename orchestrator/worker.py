@@ -458,8 +458,8 @@ class Worker:
                 pass
         return desc_tokens + log_tokens
 
-    async def start(self, task_queue: TaskQueue | None = None) -> None:
-        # Create isolated git worktree for this worker
+    async def _setup_worktree(self) -> None:
+        """Create an isolated git worktree for this worker. Updates self._project_dir on success."""
         worktree_base = self._claude_dir / "worktrees"
         worktree_base.mkdir(parents=True, exist_ok=True)
         self._worktree_path = worktree_base / f"worker-{self.id}"
@@ -495,11 +495,12 @@ class Worker:
         except asyncio.TimeoutError:
             wt_proc.kill()
             await wt_proc.communicate()
-            # Fall through to wt_proc2 retry or failure handling
             self._worktree_path = None
         except Exception:
             self._worktree_path = None
 
+    async def _build_task_file(self, task_queue: TaskQueue | None) -> Path:
+        """Set up log path and write the task file with injected context. Returns task file path."""
         logs = self._claude_dir / "orchestrator-logs"
         logs.mkdir(parents=True, exist_ok=True)
         self._log_path = logs / f"worker-{self.id}.log"
@@ -551,7 +552,10 @@ class Worker:
             except Exception:
                 pass
         task_file.write_text(effective_description)
+        return task_file
 
+    def _build_cmd_and_env(self, task_file: Path) -> tuple[str, dict]:
+        """Resolve model alias, build shell command, and prepare env dict."""
         _ALLOWED_MODELS = {
             "claude-opus-4-6", "claude-sonnet-4-6",
             "claude-haiku-4-5-20251001",
@@ -572,6 +576,13 @@ class Worker:
         env.pop("CLAUDECODE", None)
         if GLOBAL_SETTINGS.get("agent_teams"):
             env["CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"] = "1"
+
+        return shell_cmd, env
+
+    async def start(self, task_queue: TaskQueue | None = None) -> None:
+        await self._setup_worktree()
+        task_file = await self._build_task_file(task_queue)
+        shell_cmd, env = self._build_cmd_and_env(task_file)
 
         log_fd = open(self._log_path, "w")  # noqa: WPS515
         try:
