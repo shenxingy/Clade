@@ -105,6 +105,11 @@ All checks are **opt-in by detection** — if the tool isn't installed or the pr
 - Use `--parallel` when tasks don't share files
 - Well-defined TODO.md entries get high scout scores; vague tasks may be skipped
 
+**`/loop GOAL_FILE`** — when you want Claude to keep iterating until a goal is met:
+- Supervisor plans tasks each iteration, workers execute in parallel via git worktrees
+- Runs unattended — leave it overnight, check results in the morning
+- Write a clear goal file first; vague goals produce endless loops
+
 **`/review`** — before releases or when onboarding to a codebase:
 - Finds dead code, type issues, security risks, stale docs
 - Critical and Warning findings are automatically written to the `## Tech Debt` section of TODO.md
@@ -128,6 +133,11 @@ All checks are **opt-in by detection** — if the tool isn't installed or the pr
 **`/commit`** — when you're ready to commit:
 - Analyzes all uncommitted changes and splits them into logical commits by module
 - Pushes by default; use `--no-push` to skip, `--dry-run` to preview the plan
+
+**`slt`** — to control the quota pace indicator in the status line:
+- `slt` cycles through modes: symbol → percent → number → off
+- `slt theme` lists all 9 emoji themes; `slt theme <name>` sets one
+- The indicator shows how far ahead/behind your 95% weekly usage target you are
 
 ## Documentation
 
