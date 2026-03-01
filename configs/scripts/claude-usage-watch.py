@@ -106,7 +106,7 @@ def run():
     else:
         colored = f"\033[1;32m{delta_str}\033[0m"   # green
 
-    print(f"⚡ {colored} ({left})", end="")
+    print(f"{colored} ({left})", end="")
 
 
 if __name__ == "__main__":
