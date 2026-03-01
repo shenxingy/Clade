@@ -253,6 +253,7 @@ Open the **⚙ Settings** panel (top-right of the Web UI) to configure:
 | **Auto model routing** | OFF | Picks model by scout score: score ≥80 → haiku, 50-79 → sonnet, <50 → sonnet + ask-first warning |
 | **Context budget warnings** | ON | Token bar on every worker card (green → amber at 120K → red at 160K); writes `.claude/context-warning-{id}.md` with `/compact` instructions |
 | **AGENTS.md → Generate** | — | Builds file→branch ownership map from `git log`; copy output to `.claude/AGENTS.md` to prevent cross-worker collisions |
+| **Webhook secret** | _(empty)_ | HMAC-SHA256 secret for `POST /api/webhooks/github`. **Security note:** if left empty, the endpoint accepts all requests — set this before exposing the orchestrator to the internet |
 
 #### Broadcast to All Workers
 
