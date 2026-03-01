@@ -123,7 +123,10 @@ async def create_session(body: dict):
 async def sessions_overview():
     result = []
     for s in registry.all():
-        tasks = await s.task_queue.list()
+        try:
+            tasks = await s.task_queue.list()
+        except Exception:
+            tasks = []
         pending = sum(1 for t in tasks if t["status"] in ("pending", "queued"))
         running = sum(1 for t in tasks if t["status"] == "running")
         done = sum(1 for t in tasks if t["status"] == "done")
@@ -133,6 +136,19 @@ async def sessions_overview():
         done_workers = [w for w in s.worker_pool.all() if w.status == "done"]
         avg_s = (sum(w.elapsed_s for w in done_workers) / len(done_workers)) if done_workers else None
         eta_s = round(avg_s * pending / max(1, running)) if (avg_s and pending) else None
+        # Cost metrics
+        try:
+            total_cost = sum((t.get("estimated_cost") or 0.0) for t in tasks)
+            started_ats = [t["started_at"] for t in tasks if t.get("started_at") is not None]
+            if started_ats:
+                first_started = min(started_ats)
+                elapsed_hours = (time.time() - first_started) / 3600
+                cost_rate_per_hour = total_cost / elapsed_hours if elapsed_hours > 0 else None
+            else:
+                cost_rate_per_hour = None
+        except Exception:
+            total_cost = 0.0
+            cost_rate_per_hour = None
         result.append({
             "session_id": s.session_id,
             "name": s.name,
@@ -142,6 +158,8 @@ async def sessions_overview():
             "failed": failed,
             "success_rate": success_rate,
             "eta_seconds": eta_s,
+            "total_cost": round(total_cost, 6),
+            "cost_rate_per_hour": round(cost_rate_per_hour, 6) if cost_rate_per_hour is not None else None,
         })
     return result
 
