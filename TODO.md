@@ -334,10 +334,10 @@ Goal: one command starts everything, runs overnight without stopping on minor is
 
 ### 11.3 — 3-Tier Issue Handling
 
-- [ ] **Add 3-tier rules to `/loop` supervisor prompt**
+- [ ] **Add 3-tier rules to `loop-runner.sh` `INSTRUCTIONS` heredoc** (lines 285-318 in loop-runner.sh — that's where the supervisor prompt is built; the loop skill's prompt.md only launches loop-runner, it doesn't contain the supervisor instructions)
   - Tier 1 (uncertainty): pick reversible default → log to `.claude/decisions.md` → continue
   - Tier 2 (task failure): skip task → log to `.claude/skipped.md` → continue
-  - Tier 3 (true blocker): write to `.claude/blockers.md` → stop
+  - Tier 3 (true blocker): write to `.claude/blockers.md` → stop loop
   - True blocker criteria: destructive/irreversible ops, needs secrets/permissions, mutually exclusive directions with high rollback cost
 - [ ] **Add `decisions.md` / `skipped.md` cleanup to `/sync` skill** — all three tier files (decisions, skipped, blockers) must include ISO timestamp per entry; /sync archives to `.claude/*-archive.md` at session end
 - [ ] **blockers.md stale entry handling in start.sh** — on launch, check entry timestamps; interactive mode: prompt "still blocked? (y/N)" for entries older than 24h; overnight mode (no TTY): auto-stop and log stale blocker to morning-review.md with note "review .claude/blockers.md"; use `[ -t 0 ]` to detect TTY
@@ -419,8 +419,21 @@ write .claude/morning-review.md → stop
 
 - [ ] **Add `# FROZEN` convention to CLAUDE.md template** — sections marked `# FROZEN` are strong-convention immutable for AI agents (not a hard filesystem lock — relies on prompt compliance)
   - Document the limitation clearly: prevents ~90% of accidental modifications, not 100%
-- [ ] **Add BRAINSTORM proposal rule to `/loop` supervisor prompt** — "If you discover a new approach, library, or direction change, write it to BRAINSTORM.md with `[AI]` prefix. Never modify GOALS.md or VISION.md directly."
+- [ ] **Add BRAINSTORM proposal rule to `loop-runner.sh` `INSTRUCTIONS` heredoc** — inject into the same block as 3-tier rules: "If you discover a new approach or direction change, write it to BRAINSTORM.md with `[AI]` prefix. Never modify GOALS.md or VISION.md directly."
 - [ ] **Inject BRAINSTORM rule into start.sh goal string** — since start.sh is a shell script (no supervisor prompt), the rule must be appended to the goal text passed to loop-runner.sh each iteration
+
+---
+
+### 11.8 — loop-runner.sh Known Bugs
+
+- [ ] **Bug: workers race-condition on goal file marking** — loop-runner.sh lines 305 + 427 instruct every worker to change `- [ ]` to `- [x]` in the goal file; parallel workers editing the same file cause merge conflicts or silent overwrites; fix: remove goal-file marking from worker instructions; supervisor marks items done at the start of each iteration based on git log, not workers
+  - Location: `INSTRUCTIONS` heredoc line 305, fallback wrapper line 427
+
+- [ ] **Bug: auto-deploy checks only last commit, not full loop run** — loop-runner.sh line 461: `git diff --name-only HEAD~1 HEAD` misses configs/ changes from earlier iterations; fix: record start commit to state file at loop start (`state_write STARTED_COMMIT "$(git rev-parse HEAD)"`), then check `git diff --name-only $(state_read STARTED_COMMIT)..HEAD` at the end
+
+- [ ] **Bug: non-code task silent failure** — worker runs doc/research task → no commit → supervisor sees no git change → may loop forever or declare false CONVERGED; fix: after workers run, check if any new commits appeared since iteration start; if 0 new commits → inject into supervisor context: "Workers produced no commits this iteration. If this is expected (doc task), declare CONVERGED. If unexpected, treat as Tier 2 failure." (`git log --oneline --since="$ITER_START" | wc -l`)
+
+- [ ] **Bug + prerequisite: cost tracking requires `claude -p` JSON output** — Phase 11 plan requires `loop-cost.log`, but `claude -p` doesn't expose cost in plain-text output; verify: does `claude -p --output-format json` include token usage? If yes: parse and append to `.claude/loop-cost.log` after each supervisor call; if no: cost tracking requires a different approach (estimate from model + token count heuristic)
 
 ---
 
