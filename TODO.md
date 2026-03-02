@@ -243,7 +243,7 @@ Goal: maximize autonomous run hours. Minimize human intervention. System knows w
 
 ---
 
-## Phase 10 — Portfolio Mode (FUTURE)
+## Phase 10 — Portfolio Mode (DONE)
 
 Human role: set direction for N projects → system auto-allocates workers, auto-ranks tasks, surfaces blockers.
 
@@ -267,10 +267,10 @@ Goal: one command starts everything, runs unattended for any duration (2h lunch 
 ② CLAUDE.md template (11.4)              — Project Type + Features fields
 ③ /verify skill (11.2)                   — needs those fields to work
 ④ 3-tier rules in /loop (11.3)           — foundation for /start to rely on
-⑤ loop-runner.sh bug fixes (11.8)        — overnight mode relies on reliable loop behavior
+⑤ loop-runner.sh bug fixes (11.8)        — autonomous mode relies on reliable loop behavior
 ⑥ Update /orchestrate Feature tag (11.1) — prerequisite for one-feature filtering
 ⑦ /start morning mode + start.sh (11.1)  — morning mode first, validate pattern
-⑧ /start overnight mode (11.1)           — full autonomous
+⑧ /start autonomous mode (11.1)          — full autonomous
 ⑨ Safety layer (11.7)                    — cost guard + budget settings
 ```
 
@@ -401,7 +401,7 @@ write .claude/session-report-{timestamp}.md → stop
 - [ ] **Design gap: filtered-tasks.md convergence detection breaks after Bug 1 fix** — if workers no longer mark `- [ ]` → `- [x]` in the goal file (Bug 1 fix removes this), nobody updates filtered-tasks.md during the loop, so the "more work?" grep always returns the original unchecked count → start.sh loops forever; fix: start.sh should re-run `/orchestrate` at the start of EACH outer iteration to produce a fresh proposed-tasks.md → re-filter to filtered-tasks.md; convergence detection uses the freshly generated filtered-tasks.md count (based on /orchestrate's assessment of remaining work), NOT on worker-modified file mutations; this also means workers never need to touch the goal file → Bug 1 race condition is eliminated cleanly
 
 - [ ] **Shell invocation gaps in start.sh patterns** — several shell call patterns in the plan are missing flags or have wrong ordering:
-  - `/verify` call missing `--dangerously-skip-permissions` — /verify reads CLAUDE.md and test files via Claude tools; without this flag, `claude -p` prompts interactively for permissions in overnight mode → hangs forever
+  - `/verify` call missing `--dangerously-skip-permissions` — /verify reads CLAUDE.md and test files via Claude tools; without this flag, `claude -p` prompts interactively for permissions in unattended mode → hangs forever
   - `/orchestrate` call missing `GOALS.md` + `PROGRESS.md` — only CLAUDE.md + TODO.md injected; orchestrate needs north star context to make good decisions; also needs PROGRESS.md to avoid regenerating already-done tasks; add both to the `printf` arg list
   - Optional docs not guarded: `cat BRAINSTORM.md` crashes if file doesn't exist (common after it's been processed and emptied) → the entire `printf` substitution fails; use `$(cat BRAINSTORM.md 2>/dev/null || echo "")` pattern for all docs that may be absent
   - `committer.sh` called BEFORE `claude -p sync` in the pass flow — `sync` modifies TODO.md + PROGRESS.md; commit must come AFTER sync; correct order: run `claude -p sync` first, then `committer "docs: sync" TODO.md PROGRESS.md`
@@ -427,7 +427,7 @@ write .claude/session-report-{timestamp}.md → stop
 
 - [ ] **One-feature focus strategy** — each /start iteration locks ALL workers onto the same single highest-priority incomplete feature; workers still run in parallel (multiple workers, one goal), but no two features progress simultaneously; prevents cross-feature test pollution (borrowed from Anthropic long-running agent research)
 
-- [ ] **30s plan approval window** — interactive mode only (default ON); overnight mode default OFF, enable with `--confirm`; after /orchestrate writes proposed-tasks.md, print plan + wait 30s; Ctrl+C aborts, timeout auto-continues
+- [ ] **30s plan approval window** — interactive mode only (default ON); unattended mode default OFF, enable with `--confirm`; after /orchestrate writes proposed-tasks.md, print plan + wait 30s; Ctrl+C aborts, timeout auto-continues
 
 - [ ] **Session progress file** (`.claude/session-progress.md`) — written/updated by start.sh at the start of each iteration: current goal, tasks in flight, last completed, iteration count, cost so far; machine-readable for start.sh itself to resume after crash (not for /pickup — /pickup is for Claude context, start.sh is a shell process); format: simple key=value for easy shell parsing
 
