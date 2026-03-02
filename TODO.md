@@ -393,7 +393,7 @@ write .claude/morning-review.md → stop
   - Max verify-fail retries: 3 per task before tier 2 escalation; retry counter tracked in session-progress.md
   - Writes `.claude/morning-review.md` on finish by parsing `.claude/loop-cost.log`
   - verify-fail → fix task flow: `grep "FAILED_ANCHORS:" verify-output.txt` → write fix tasks → re-run loop-runner.sh
-  - **"more work?" detection**: after committer.sh + claude -p sync, `grep -c "^\- \[ \]" filtered-tasks.md` to count remaining scoped tasks; if 0 → converged; if >0 → loop back (uses filtered-tasks.md, NOT full TODO.md)
+  - **Convergence detection**: at the TOP of each outer iteration, AFTER fresh /orchestrate runs, `grep -c "^\- \[ \]" filtered-tasks.md`; if 0 → truly converged (no more open tasks in current feature scope), write morning-review.md + stop; if >0 → run /loop; this replaces the old "re-read filtered-tasks.md after verify" pattern — workers never mutate filtered-tasks.md, /orchestrate regenerates it fresh each iteration
 
 - [ ] **Design gap: filtered-tasks.md convergence detection breaks after Bug 1 fix** — if workers no longer mark `- [ ]` → `- [x]` in the goal file (Bug 1 fix removes this), nobody updates filtered-tasks.md during the loop, so the "more work?" grep always returns the original unchecked count → start.sh loops forever; fix: start.sh should re-run `/orchestrate` at the start of EACH outer iteration to produce a fresh proposed-tasks.md → re-filter to filtered-tasks.md; convergence detection uses the freshly generated filtered-tasks.md count (based on /orchestrate's assessment of remaining work), NOT on worker-modified file mutations; this also means workers never need to touch the goal file → Bug 1 race condition is eliminated cleanly
 
