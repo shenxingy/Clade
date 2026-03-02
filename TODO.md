@@ -286,7 +286,7 @@ Goal: one command starts everything, runs overnight without stopping on minor is
 ### 11.6 — Phase 10 Verification ← start here (unblock dependencies)
 
 - [ ] **Verify Phase 10 features actually work end-to-end** — cross-project session overview, priority ranker, worker pool router all marked `[x]` but need manual testing. Acceptance criteria:
-  - `priority_score` ranker returns a non-zero numeric score for at least one task (currently pure stub, no scoring logic)
+  - `priority_score` ranker runs without error and updates scores for ≥1 task — `_rank_tasks()` in `worker.py:938` is implemented (haiku-based, writes to DB), but has never been end-to-end tested against a live task queue
   - Cross-project session overview lists sessions from ≥2 projects
   - Worker pool router assigns haiku/sonnet/opus based on task complexity field
   - If any fail: add fix tasks here before proceeding to 11.4+
