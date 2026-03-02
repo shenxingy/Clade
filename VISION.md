@@ -2,7 +2,9 @@
 
 **North star:** Maximum autonomous hours. Set direction in the morning — wake up to merged PRs. Human role: define goals + review results. Everything else is automated.
 
-**Real metric:** How many hours can the system run unattended and still deliver results that match expectations? Today: ~2 hours. Target: overnight (8-16 hours).
+**Real metric:** Oracle-approved task completions per hour of unattended runtime. Commits measure activity; oracle-approved tasks measure verified progress. Human leverage ratio = effective output / human time invested. Today: ~1.5x. Target: 3x (24h output from 8h human direction-setting).
+
+**Autonomous run length:** How many hours can the system run unattended before needing human input? Today: ~2 hours. Target: overnight (8-16 hours).
 
 **Design principles:**
 - Every human intervention is a system failure — find the root cause and eliminate it
@@ -59,6 +61,7 @@ GUI wraps CLI primitives — workers use the same committer, same verify command
 | 8 | Closed-Loop Work Generation | Task factories (CI/coverage/deps), GitHub webhooks, specialist presets | ✓ DONE |
 | 9 | Meta-Intelligence | Session warm-up, loop auto-PROGRESS, pattern detection, /research + /map + /incident skills | ✓ DONE |
 | 10 | Portfolio Mode | Cross-project task routing, system auto-ranks work, human approves not generates | ✓ DONE |
+| 11 | Autonomous Lifecycle | /start one-command lifecycle, /verify project-aware testing, 3-tier issue handling, drift prevention | 🔄 NEXT |
 
 See `TODO.md` for detailed task breakdown.
 
