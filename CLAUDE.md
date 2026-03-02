@@ -13,10 +13,7 @@ A two-layer automation toolkit on top of Claude Code CLI:
 # Install CLI layer (skills, hooks, keybindings)
 ./install.sh
 
-# slt = statusline-toggle — control quota pace indicator in status line
-# slt              → cycle mode: symbol → percent → number → off
-# slt theme        → list all 9 emoji themes
-# slt theme <name> → set theme (circles/bird/moon/weather/mood/coffee/rocket/ocean/dragon)
+# slt — statusline-toggle (quota pace indicator). See /slt skill.
 
 # Start orchestrator (from project root or orchestrator dir)
 cd orchestrator && uvicorn server:app --reload
