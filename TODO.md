@@ -263,13 +263,14 @@ Goal: one command starts everything, runs overnight without stopping on minor is
 
 **Implementation order (dependency chain):**
 ```
-① Phase 10 verification (11.6) — fix broken stubs before building on top
-② CLAUDE.md template (11.4)   — Project Type + Features fields
-③ /verify skill (11.2)        — needs those fields to work
-④ 3-tier rules in /loop (11.3) — foundation for /start to rely on
-⑤ /start morning mode (11.1a) — lightweight, validate the pattern
-⑥ /start overnight mode (11.1b) — full autonomous
-⑦ Safety layer (11.7)         — cost guard + context management
+① Phase 10 verification (11.6)         — fix broken stubs before building on top
+② CLAUDE.md template (11.4)            — Project Type + Features fields
+③ /verify skill (11.2)                 — needs those fields to work
+④ 3-tier rules in /loop (11.3)         — foundation for /start to rely on
+⑤ Update /orchestrate Feature tag (11.1) — prerequisite for one-feature filtering
+⑥ /start morning mode + start.sh (11.1) — morning mode first, validate pattern
+⑦ /start overnight mode (11.1)         — full autonomous
+⑧ Safety layer (11.7)                  — cost guard + budget settings
 ```
 
 **Architecture decision: /start = pure shell script (not a Claude meta-skill)**
@@ -299,7 +300,7 @@ Goal: one command starts everything, runs overnight without stopping on minor is
 - [ ] **Add `## Project Type` section to `configs/templates/CLAUDE.md`**
   ```
   ## Project Type
-  - Type: [web-fullstack | api-only | cli | ml-pipeline | library]
+  - Type: [web-fullstack | api-only | cli | ml-pipeline | library | skill-system | toolkit]
   - Frontend: [framework + port, or N/A]
   - Backend: [framework + port, or N/A]
   - Test command: [e.g. pytest tests/ -v]
@@ -324,10 +325,10 @@ Goal: one command starts everything, runs overnight without stopping on minor is
   - **Output must end with machine-parseable footer** (for start.sh to grep):
     ```
     VERIFY_RESULT: pass|partial|fail
-    FAILED_ANCHORS: anchor-name-1, anchor-name-2
+    FAILED_ANCHORS: anchor-name-1, anchor-name-2  (or "none" if no failures)
     UNVERIFIABLE: N
     ```
-  - Human-readable summary above the footer; footer always last 3 lines
+  - Human-readable summary above the footer; footer always last 3 lines; FAILED_ANCHORS must always be present (use "none" not blank line — blank breaks grep)
 
 ---
 
@@ -339,7 +340,7 @@ Goal: one command starts everything, runs overnight without stopping on minor is
   - Tier 3 (true blocker): write to `.claude/blockers.md` → stop
   - True blocker criteria: destructive/irreversible ops, needs secrets/permissions, mutually exclusive directions with high rollback cost
 - [ ] **Add `decisions.md` / `skipped.md` cleanup to `/sync` skill** — all three tier files (decisions, skipped, blockers) must include ISO timestamp per entry; /sync archives to `.claude/*-archive.md` at session end
-- [ ] **blockers.md stale entry handling in start.sh** — on launch, print entries older than 24h and prompt "still blocked? (y/N)"; if N → remove entry and continue; if Y → stop as normal; prevents old resolved blockers from permanently blocking /start
+- [ ] **blockers.md stale entry handling in start.sh** — on launch, check entry timestamps; interactive mode: prompt "still blocked? (y/N)" for entries older than 24h; overnight mode (no TTY): auto-stop and log stale blocker to morning-review.md with note "review .claude/blockers.md"; use `[ -t 0 ]` to detect TTY
 
 ---
 
@@ -348,42 +349,50 @@ Goal: one command starts everything, runs overnight without stopping on minor is
 **Internal flow (overnight mode):**
 ```
 read GOALS/TODO/PROGRESS/BRAINSTORM
-  ↓ no clear next step → /research first
-/orchestrate → proposed-tasks.md
+/orchestrate → proposed-tasks.md  (orchestrate decides if /research needed — not start.sh)
   ↓
 /loop  [3-tier active]
   ↓
 /verify
-  ├─ pass    → /commit → /sync → more work? → back to /loop
-  ├─ partial → log gaps → /commit → continue
+  ├─ pass    → committer.sh → claude -p sync → re-read filtered-tasks.md: unchecked items? → back to /loop
+  ├─ partial → log gaps to skipped.md → committer.sh → next iteration (treat as pass for loop purposes)
   └─ fail    → create fix tasks → back to /loop (max 3 retries → tier 2)
   ↓
-each iteration: check context% / cost / blockers.md
+each iteration: check cost / wall-clock time / blockers.md  (no context% — shell has none)
   ↓
 write .claude/morning-review.md → stop
 ```
 
 **Convergence = stop when ALL true:**
-- Tasks within `--goal` scope (or current phase non-infrastructure items) all `[x]`
+- `grep -c "^\- \[ \]" filtered-tasks.md` returns 0 (all tasks in current feature scope done)
 - `/verify` returns pass or partial
-- No pending tasks in queue
 - OR: iteration budget reached / cost cap hit / blocker written
-- Note: /start never targets itself as a convergence criterion (circular); scope is always externally defined
+- Note: checks filtered-tasks.md (scoped), NOT all of TODO.md (too broad); /start never targets itself (circular)
 
-- [ ] **Create `configs/skills/start/prompt.md` — morning mode** (read + summarize + wait, no workers launched)
-  - Read GOALS/TODO/PROGRESS/BRAINSTORM → summarize current state → list recommended next steps → wait
-  - Lightweight: no orchestrate, no loop, no workers
+- [ ] **Create `configs/skills/start/prompt.md` — morning mode** (thin wrapper only; no workers launched)
+  - Skill just calls `bash ~/.claude/scripts/start.sh --morning` via Bash tool and displays output
+  - start.sh --morning: invokes `claude -p "$(printf '%s\n\n%s\n\n%s\n\n%s\n\n%s' "$(cat ~/.claude/skills/start/morning-brief.md)" "$(cat GOALS.md)" "$(cat TODO.md)" "$(cat PROGRESS.md)" "$(cat BRAINSTORM.md)")"`; `morning-brief.md` lives in `configs/skills/start/` alongside prompt.md; it instructs Claude to summarize state + list top 3 next steps; output to stdout, then exit
 
 - [ ] **Create `configs/scripts/start.sh` — overnight mode** (shell script, NOT prompt.md)
   - Shell orchestrator: reads TODO → calls loop-runner.sh → calls /verify → parses output → creates fix tasks if needed → loops
-  - **Calling /orchestrate from shell**: `claude -p "$(cat ~/.claude/skills/orchestrate/prompt.md)\n\n$(cat CLAUDE.md)\n\n$(cat TODO.md)" > proposed-tasks.md` — inject CLAUDE.md + TODO.md as context suffix; document exact invocation in script header comments
-  - **One-feature focus filtering**: after /orchestrate writes proposed-tasks.md, start.sh reads it, groups tasks by feature tag, selects the highest-priority feature's tasks only, writes filtered-tasks.md → passes filtered-tasks.md to loop-runner.sh; feature priority determined by order in TODO.md
+  - **Calling /orchestrate from shell** (use heredoc to avoid `\n` issues):
+    ```bash
+    claude -p "$(printf '%s\n\n%s\n\n%s' \
+      "$(cat ~/.claude/skills/orchestrate/prompt.md)" \
+      "$(cat CLAUDE.md)" \
+      "$(cat TODO.md)")" > proposed-tasks.md
+    ```
+  - **One-feature focus filtering**: after /orchestrate writes proposed-tasks.md, start.sh groups tasks by `Feature:` tag, selects tasks for top-priority incomplete feature (priority = order in TODO.md), writes filtered-tasks.md → loop-runner.sh receives filtered-tasks.md
   - **Calling /verify from shell**: `claude -p "$(cat ~/.claude/skills/verify/prompt.md)" > .claude/verify-output.txt`; then `grep "VERIFY_RESULT:" .claude/verify-output.txt` to branch on pass/partial/fail
+  - **Calling /commit + /sync from shell**: use `committer.sh` directly (not the /commit skill — skill requires interactive Claude session); committer.sh stages and commits changed files; /sync = update TODO.md + PROGRESS.md (done by a separate claude -p call)
   - Must re-read GOALS.md + VISION.md at start of every iteration (drift anchor, injected into loop-runner goal)
   - Must NOT modify GOALS.md or VISION.md directly — proposals go to BRAINSTORM.md with `[AI]` prefix
   - Max verify-fail retries: 3 per task before tier 2 escalation; retry counter tracked in session-progress.md
-  - Writes `.claude/morning-review.md` on finish by parsing loop-runner output logs
+  - Writes `.claude/morning-review.md` on finish by parsing `.claude/loop-cost.log`
   - verify-fail → fix task flow: `grep "FAILED_ANCHORS:" verify-output.txt` → write fix tasks → re-run loop-runner.sh
+  - **"more work?" detection**: after committer.sh + claude -p sync, `grep -c "^\- \[ \]" filtered-tasks.md` to count remaining scoped tasks; if 0 → converged; if >0 → loop back (uses filtered-tasks.md, NOT full TODO.md)
+
+- [ ] **Add cost logging to loop-runner.sh** — after each run, append `COST: $X.XX DURATION: Xmin TASKS: N` to `.claude/loop-cost.log`; start.sh reads this to populate morning-review.md; without this, morning-review Cost field will be blank
 
 - [ ] **Morning review format** (`.claude/morning-review.md`):
   ```
@@ -394,13 +403,15 @@ write .claude/morning-review.md → stop
   ## Suggested next step
   ```
 
+- [ ] **Update `/orchestrate` skill to tag tasks with `Feature: <name>`** — each task block in proposed-tasks.md must include a `Feature:` line mapping to a phase/goal name in TODO.md; prerequisite for one-feature focus filtering in start.sh
+
 - [ ] **Targeted mode** (`/start --goal "X"`) — skip orchestrate, run loop with specific goal, stop when done or failed
 
 - [ ] **One-feature focus strategy** — each /start iteration locks ALL workers onto the same single highest-priority incomplete feature; workers still run in parallel (multiple workers, one goal), but no two features progress simultaneously; prevents cross-feature test pollution (borrowed from Anthropic long-running agent research)
 
 - [ ] **30s plan approval window** — interactive mode only (default ON); overnight mode default OFF, enable with `--confirm`; after /orchestrate writes proposed-tasks.md, print plan + wait 30s; Ctrl+C aborts, timeout auto-continues
 
-- [ ] **Session progress file** (`.claude/session-progress.md`) — written/updated at the start of each /start iteration: current goal, tasks in flight, last completed; distinct from morning-review.md (which is for humans) — this is machine-readable state for /pickup to resume mid-run; /handoff carries it when context fills
+- [ ] **Session progress file** (`.claude/session-progress.md`) — written/updated by start.sh at the start of each iteration: current goal, tasks in flight, last completed, iteration count, cost so far; machine-readable for start.sh itself to resume after crash (not for /pickup — /pickup is for Claude context, start.sh is a shell process); format: simple key=value for easy shell parsing
 
 ---
 
@@ -408,15 +419,17 @@ write .claude/morning-review.md → stop
 
 - [ ] **Add `# FROZEN` convention to CLAUDE.md template** — sections marked `# FROZEN` are strong-convention immutable for AI agents (not a hard filesystem lock — relies on prompt compliance)
   - Document the limitation clearly: prevents ~90% of accidental modifications, not 100%
-- [ ] **Add BRAINSTORM proposal rule to `/loop` and `/start` supervisor prompts** — "If you discover a new approach, library, or direction change, write it to BRAINSTORM.md with `[AI]` prefix. Never modify GOALS.md or VISION.md directly."
+- [ ] **Add BRAINSTORM proposal rule to `/loop` supervisor prompt** — "If you discover a new approach, library, or direction change, write it to BRAINSTORM.md with `[AI]` prefix. Never modify GOALS.md or VISION.md directly."
+- [ ] **Inject BRAINSTORM rule into start.sh goal string** — since start.sh is a shell script (no supervisor prompt), the rule must be appended to the goal text passed to loop-runner.sh each iteration
 
 ---
 
 ### 11.7 — Safety Layer
 
-- [ ] **Cost guard in `/start`** — read `cost_budget` setting before launching overnight mode; refuse to start if budget = 0 and no explicit `--budget N` flag; print estimated cost per iteration
+- [ ] **Cost guard in `start.sh`** — read budget from `~/.claude/start-settings.json` (separate from orchestrator settings — start.sh is CLI-only and doesn't load the orchestrator); key: `overnight_budget_usd`; refuse to launch overnight mode if key missing and no `--budget N` flag; print estimated cost per iteration based on last run's cost log
 - [ ] **Context management** — /start (shell) has no context of its own; workers manage their own context via existing handoff/pickup mechanism; /start only monitors wall-clock time and cost, not context %; remove context check from /start responsibilities
-- [ ] **Mode auto-detection** — `--goal "X"` → targeted; `--mode morning|overnight` → explicit; default → overnight
+- [ ] **Entry point unification** — `start.sh` is the single entry point for both modes; morning mode: `start.sh --morning` (calls `claude -p` with morning skill prompt, exits after output); overnight mode: `start.sh` or `start.sh --overnight`; the skill `configs/skills/start/prompt.md` becomes a thin wrapper that calls `start.sh --morning` via Bash tool — avoids two separate things both called "/start"
+- [ ] **Mode auto-detection** — `--goal "X"` → targeted (skip orchestrate); `--morning` → morning briefing; default (no flags) → overnight; TTY detection: if interactive terminal and no flags → default to morning (safer); if no TTY → overnight
 
 ---
 
