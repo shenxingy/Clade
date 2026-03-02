@@ -263,14 +263,15 @@ Goal: one command starts everything, runs overnight without stopping on minor is
 
 **Implementation order (dependency chain):**
 ```
-① Phase 10 verification (11.6)         — fix broken stubs before building on top
-② CLAUDE.md template (11.4)            — Project Type + Features fields
-③ /verify skill (11.2)                 — needs those fields to work
-④ 3-tier rules in /loop (11.3)         — foundation for /start to rely on
-⑤ Update /orchestrate Feature tag (11.1) — prerequisite for one-feature filtering
-⑥ /start morning mode + start.sh (11.1) — morning mode first, validate pattern
-⑦ /start overnight mode (11.1)         — full autonomous
-⑧ Safety layer (11.7)                  — cost guard + budget settings
+① Phase 10 verification (11.6)           — fix broken stubs before building on top
+② CLAUDE.md template (11.4)              — Project Type + Features fields
+③ /verify skill (11.2)                   — needs those fields to work
+④ 3-tier rules in /loop (11.3)           — foundation for /start to rely on
+⑤ loop-runner.sh bug fixes (11.8)        — overnight mode relies on reliable loop behavior
+⑥ Update /orchestrate Feature tag (11.1) — prerequisite for one-feature filtering
+⑦ /start morning mode + start.sh (11.1)  — morning mode first, validate pattern
+⑧ /start overnight mode (11.1)           — full autonomous
+⑨ Safety layer (11.7)                    — cost guard + budget settings
 ```
 
 **Architecture decision: /start = pure shell script (not a Claude meta-skill)**
