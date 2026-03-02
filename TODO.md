@@ -363,6 +363,12 @@ write .claude/morning-review.md → stop
 
 - [ ] **Targeted mode** (`/start --goal "X"`) — skip orchestrate, run loop with specific goal, stop when done or failed
 
+- [ ] **One-feature focus strategy** — overnight supervisor picks the single highest-priority incomplete feature, finishes it fully before moving to the next; prevents N features progressing in parallel and polluting each other's tests (borrowed from Anthropic long-running agent research)
+
+- [ ] **30s plan approval window** — after /orchestrate writes proposed-tasks.md, print the plan and wait 30 seconds before launching workers; Ctrl+C aborts, timeout auto-continues; zero-cost last-chance intervention point that builds human trust without blocking automation
+
+- [ ] **Session progress file** (`.claude/session-progress.md`) — written/updated at the start of each /start iteration: current goal, tasks in flight, last completed; distinct from morning-review.md (which is for humans) — this is machine-readable state for /pickup to resume mid-run; /handoff carries it when context fills
+
 ---
 
 ### 11.5 — Drift Prevention Conventions
