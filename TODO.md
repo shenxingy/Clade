@@ -340,6 +340,8 @@ Goal: one command starts everything, runs overnight without stopping on minor is
   - Tier 2 (task failure): skip task → log to `.claude/skipped.md` → continue
   - Tier 3 (true blocker): write to `.claude/blockers.md` → stop loop
   - True blocker criteria: destructive/irreversible ops, needs secrets/permissions, mutually exclusive directions with high rollback cost
+  - **Supervisor needs blocker detection**: add to INSTRUCTIONS heredoc — "If `.claude/blockers.md` appears in the recent diff (was written this loop run), output STATUS: CONVERGED — a Tier 3 blocker requires human input before proceeding"
+- [ ] **Add `blockers.md` check to loop-runner.sh per-iteration guard** — loop-runner.sh currently only checks STOP sentinel (line 200) between iterations; workers write blockers.md to their worktree which gets merged back after the iteration; at the top of each new iteration, add: `if [[ -f ".claude/blockers.md" ]]; then echo "⚠ Blocker detected"; exit 1; fi` — prevents wasted iterations after a Tier 3 blocker is committed; place alongside STOP sentinel check (line 200)
 - [ ] **Add `decisions.md` / `skipped.md` cleanup to `/sync` skill** — all three tier files (decisions, skipped, blockers) must include ISO timestamp per entry; /sync archives to `.claude/*-archive.md` at session end
 - [ ] **blockers.md stale entry handling in start.sh** — on launch, check entry timestamps; interactive mode: prompt "still blocked? (y/N)" for entries older than 24h; overnight mode (no TTY): auto-stop and log stale blocker to morning-review.md with note "review .claude/blockers.md"; use `[ -t 0 ]` to detect TTY
 
@@ -383,7 +385,7 @@ write .claude/morning-review.md → stop
       "$(cat CLAUDE.md)" \
       "$(cat TODO.md)")" > proposed-tasks.md
     ```
-  - **One-feature focus filtering**: after /orchestrate writes proposed-tasks.md, start.sh groups tasks by `Feature:` tag, selects tasks for top-priority incomplete feature (priority = order in TODO.md), writes filtered-tasks.md → loop-runner.sh receives filtered-tasks.md
+  - **One-feature focus filtering**: after /orchestrate writes proposed-tasks.md, start.sh groups tasks by `Feature:` tag, selects tasks for top-priority incomplete feature (priority = order in TODO.md), writes filtered-tasks.md → loop-runner.sh receives filtered-tasks.md; **fallback if no Feature: tags found**: treat all tasks as one group (run everything in one loop) — prevents start.sh crash when /orchestrate hasn't been updated yet to emit tags
   - **Calling /verify from shell**: `claude -p "$(cat ~/.claude/skills/verify/prompt.md)" > .claude/verify-output.txt`; then `grep "VERIFY_RESULT:" .claude/verify-output.txt` to branch on pass/partial/fail
   - **Calling /commit + /sync from shell**: use `committer.sh` directly (not the /commit skill — skill requires interactive Claude session); committer.sh stages and commits changed files; /sync = update TODO.md + PROGRESS.md (done by a separate claude -p call)
   - Must re-read GOALS.md + VISION.md at start of every iteration (drift anchor, injected into loop-runner goal)
@@ -442,7 +444,7 @@ write .claude/morning-review.md → stop
 
 - [ ] **Bug: auto-deploy checks only last commit, not full loop run** — loop-runner.sh line 461: `git diff --name-only HEAD~1 HEAD` misses configs/ changes from earlier iterations; fix: record start commit to state file at loop start (`state_write STARTED_COMMIT "$(git rev-parse HEAD)"`), then check `git diff --name-only $(state_read STARTED_COMMIT)..HEAD` at the end
 
-- [ ] **Bug: non-code task silent failure** — worker runs doc/research task → no commit → supervisor sees no git change → may loop forever or declare false CONVERGED; fix: after workers run, check if any new commits appeared since iteration start; if 0 new commits → inject into supervisor context: "Workers produced no commits this iteration. If this is expected (doc task), declare CONVERGED. If unexpected, treat as Tier 2 failure." (`git log --oneline --since="$ITER_START" | wc -l`)
+- [ ] **Bug: non-code task silent failure** — worker runs doc/research task → no commit → supervisor sees no git change → may loop forever or declare false CONVERGED; fix: capture `ITER_START_SHA=$(git rev-parse HEAD)` before workers run each iteration, then check `git rev-list $ITER_START_SHA..HEAD --count` after run-tasks-parallel.sh returns; if 0 → inject into supervisor context: "Workers produced no commits this iteration. If this is expected (doc task), declare CONVERGED. If unexpected, treat as Tier 2 failure."; use SHA not timestamp (`--since`) to avoid clock drift / same-second precision issues
 
 - [ ] **Bug + prerequisite: cost tracking requires `claude -p` JSON output** — Phase 11 plan requires `loop-cost.log`, but `claude -p` doesn't expose cost in plain-text output; verify: does `claude -p --output-format json` include token usage? If yes: parse and append to `.claude/loop-cost.log` after each supervisor call; if no: cost tracking requires a different approach (estimate from model + token count heuristic)
 
