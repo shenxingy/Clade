@@ -293,6 +293,9 @@ Goal: one command starts everything, runs overnight without stopping on minor is
 
 ### 11.4 — CLAUDE.md Template New Sections
 
+- [ ] **Dogfooding: add `## Project Type` + `## Features` to claude-code-kit's own CLAUDE.md** — required before /verify can work on this project; also serves as the first end-to-end test of the template design
+  - Project Type: cli + skill-system
+  - Features: install.sh installs skills/hooks/scripts, slt cycles modes, /commit splits and pushes, /loop runs until convergence
 - [ ] **Add `## Project Type` section to `configs/templates/CLAUDE.md`**
   ```
   ## Project Type
@@ -318,7 +321,13 @@ Goal: one command starts everything, runs overnight without stopping on minor is
   - Strategy map: frontend → Playwright exploratory; API → httpx smoke tests; test suite exists → run it; CLI → run with sample inputs; no test strategy → report "unverifiable, skipped"
   - Playwright fallback: if Playwright MCP not available, skip UI tests and note the gap
   - Check behavior anchors in CLAUDE.md `## Features` section; flag any that no longer hold
-  - Output: pass / partial (N behaviors unverifiable) / fail (N behaviors broken)
+  - **Output must end with machine-parseable footer** (for start.sh to grep):
+    ```
+    VERIFY_RESULT: pass|partial|fail
+    FAILED_ANCHORS: anchor-name-1, anchor-name-2
+    UNVERIFIABLE: N
+    ```
+  - Human-readable summary above the footer; footer always last 3 lines
 
 ---
 
@@ -329,8 +338,8 @@ Goal: one command starts everything, runs overnight without stopping on minor is
   - Tier 2 (task failure): skip task → log to `.claude/skipped.md` → continue
   - Tier 3 (true blocker): write to `.claude/blockers.md` → stop
   - True blocker criteria: destructive/irreversible ops, needs secrets/permissions, mutually exclusive directions with high rollback cost
-- [ ] **Add `decisions.md` cleanup to `/sync` skill** — archive or clear decisions.md at session end so it doesn't accumulate across runs
-- [ ] **blockers.md timestamp + stale entry handling** — each entry must include ISO timestamp; /start on launch prints entries older than 24h and prompts "still blocked? (y/N)" before stopping; /sync archives resolved blockers to `.claude/blockers-archive.md` to prevent indefinite accumulation
+- [ ] **Add `decisions.md` / `skipped.md` cleanup to `/sync` skill** — all three tier files (decisions, skipped, blockers) must include ISO timestamp per entry; /sync archives to `.claude/*-archive.md` at session end
+- [ ] **blockers.md stale entry handling in start.sh** — on launch, print entries older than 24h and prompt "still blocked? (y/N)"; if N → remove entry and continue; if Y → stop as normal; prevents old resolved blockers from permanently blocking /start
 
 ---
 
@@ -366,12 +375,15 @@ write .claude/morning-review.md → stop
   - Lightweight: no orchestrate, no loop, no workers
 
 - [ ] **Create `configs/scripts/start.sh` — overnight mode** (shell script, NOT prompt.md)
-  - Shell orchestrator: reads TODO → calls loop-runner.sh → calls `claude -p "$(cat verify/prompt.md)"` for verify → parses output → creates fix tasks if needed → loops
+  - Shell orchestrator: reads TODO → calls loop-runner.sh → calls /verify → parses output → creates fix tasks if needed → loops
+  - **Calling /orchestrate from shell**: `claude -p "$(cat ~/.claude/skills/orchestrate/prompt.md)\n\n$(cat CLAUDE.md)\n\n$(cat TODO.md)" > proposed-tasks.md` — inject CLAUDE.md + TODO.md as context suffix; document exact invocation in script header comments
+  - **One-feature focus filtering**: after /orchestrate writes proposed-tasks.md, start.sh reads it, groups tasks by feature tag, selects the highest-priority feature's tasks only, writes filtered-tasks.md → passes filtered-tasks.md to loop-runner.sh; feature priority determined by order in TODO.md
+  - **Calling /verify from shell**: `claude -p "$(cat ~/.claude/skills/verify/prompt.md)" > .claude/verify-output.txt`; then `grep "VERIFY_RESULT:" .claude/verify-output.txt` to branch on pass/partial/fail
   - Must re-read GOALS.md + VISION.md at start of every iteration (drift anchor, injected into loop-runner goal)
   - Must NOT modify GOALS.md or VISION.md directly — proposals go to BRAINSTORM.md with `[AI]` prefix
   - Max verify-fail retries: 3 per task before tier 2 escalation; retry counter tracked in session-progress.md
   - Writes `.claude/morning-review.md` on finish by parsing loop-runner output logs
-  - verify-fail → fix task flow: parse /verify output → extract failed behavior anchors → write fix tasks to task file → re-run loop-runner.sh targeting those tasks
+  - verify-fail → fix task flow: `grep "FAILED_ANCHORS:" verify-output.txt` → write fix tasks → re-run loop-runner.sh
 
 - [ ] **Morning review format** (`.claude/morning-review.md`):
   ```
