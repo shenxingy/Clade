@@ -4,6 +4,19 @@
 
 **Core capability:** The system autonomously manages long-running work end-to-end — self-plans, claims tasks, executes, verifies, loops. Overnight is one scenario; the primitive is an unattended session of any length: 2 hours during lunch, 8 hours overnight, a full weekend. The human sets direction and returns when ready — not when the system needs them.
 
+**Works on any project, any phase:** The same primitives apply whether starting from zero or iterating on an existing codebase. Phase 0 (greenfield): /orchestrate reads an empty repo + a brief → plans bootstrap tasks → builds the skeleton. Phase N (ongoing): reads existing code + TODO + PROGRESS → plans the next increment. The system doesn't distinguish — it just reads context and drives forward.
+
+**Dual-source intelligence model:** Good planning requires two inputs — human insight and AI-gathered signals. Both feed the same inbox:
+```
+Human observations, ideas, direction
+                    ↘
+                     BRAINSTORM.md  →  deliberate review  →  TODO.md
+                    ↗
+AI-surfaced findings (competitor research, codebase analysis,
+post-loop insights, pattern detection)
+```
+Neither source auto-creates tasks. BRAINSTORM is a signal inbox, not a task queue. Emptying it is a deliberate act — human + AI jointly review, challenge, and decide what belongs in TODO. Competitive research is one AI signal source: run periodically, findings go to BRAINSTORM, human decides what's worth building.
+
 **Real metric:** Oracle-approved task completions per hour of unattended runtime. Commits measure activity; oracle-approved tasks measure verified progress. Human leverage ratio = effective output / human time invested. Today: ~1.5x. Target: 3x (24h output from 8h human direction-setting).
 
 **Autonomous run length:** How many hours can the system run unattended before needing human input? Today: ~2 hours. Target: sustained (8-16 hours, any time of day).
@@ -43,7 +56,7 @@ Adds what CLI can't provide:
 - Mobile/remote access (Caddy HTTPS)
 - Multi-project overview with progress bars
 - Iteration loop control with convergence sparklines
-- Settings panel for zero-click overnight mode
+- Settings panel for zero-click autonomous run configuration
 
 GUI wraps CLI primitives — workers use the same committer, same verify commands, same CLAUDE.md injection.
 
