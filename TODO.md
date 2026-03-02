@@ -2,7 +2,7 @@
 
 > Vision and architecture: see [VISION.md](VISION.md)
 
-Phases 1–9 substantially complete. Phase 10 (Portfolio Mode) is next.
+Phases 1–10 complete. Phase 11 (Autonomous Lifecycle) is next.
 
 ---
 
@@ -252,6 +252,69 @@ Human role: set direction for N projects → system auto-allocates workers, auto
 - [x] **Worker pool router** — global `max_workers` budget shared across sessions; auto-rebalances based on queue depth
 - [x] **Morning briefing skill** — `/brief` generates a summary of overnight run: commits made, cost, failures, suggested next goals
 - [x] **Goal suggestion engine** — after each loop converges, suggest next 3 goals based on PROGRESS.md lessons + VISION.md gaps
+
+---
+
+---
+
+## Phase 11 — Autonomous Lifecycle
+
+Goal: one command starts everything, runs overnight without stopping on minor issues, surfaces a clean morning review. Human role shrinks to: set direction + approve proposals + resolve true blockers.
+
+### 11.1 — `/start` Skill
+
+- [ ] **Create `configs/skills/start/prompt.md`** — full lifecycle orchestrator
+  - 3 modes: morning briefing (read + summarize + wait), overnight autonomous (decide + run + leave summary), targeted (`--goal "X"`, stop when done)
+  - Internal flow: read GOALS/TODO/PROGRESS/BRAINSTORM → decide mode → /research if no clear next step → /orchestrate → /loop → /verify → /commit → /sync
+  - Must re-read GOALS.md + VISION.md at start of every supervisor iteration (drift anchor)
+  - Must NOT modify GOALS.md or VISION.md directly — proposals go to BRAINSTORM.md with `[AI]` prefix
+  - Stop conditions: converged / iteration budget reached / true blocker written to `.claude/blockers.md`
+
+### 11.2 — `/verify` Skill
+
+- [ ] **Create `configs/skills/verify/prompt.md`** — project-type-aware testing
+  - Auto-detect project type from CLAUDE.md `## Project Type` section; fallback: scan repo structure
+  - Strategy map: frontend → Playwright exploratory; API → httpx smoke tests; test suite exists → run it; CLI → run with sample inputs; no test strategy → report "unverifiable, skipped"
+  - Playwright fallback: if Playwright MCP not available, skip UI tests and note the gap
+  - Check behavior anchors in CLAUDE.md `## Features` section; flag any that no longer hold
+  - Output: pass / partial (N behaviors unverifiable) / fail (N behaviors broken)
+
+### 11.3 — 3-Tier Issue Handling
+
+- [ ] **Add 3-tier rules to `/start` and `/loop` skill prompts**
+  - Tier 1 (uncertainty): pick reversible default → log to `.claude/decisions.md` → continue
+  - Tier 2 (task failure): skip task → log to `.claude/skipped.md` → continue
+  - Tier 3 (true blocker): write to `.claude/blockers.md` → stop
+  - True blocker criteria: destructive/irreversible ops, needs secrets/permissions, mutually exclusive directions with high rollback cost
+- [ ] **Add `decisions.md` cleanup to `/sync` skill** — archive or clear decisions.md at session end so it doesn't accumulate across runs
+
+### 11.4 — CLAUDE.md Template New Sections
+
+- [ ] **Add `## Project Type` section to `configs/templates/CLAUDE.md`**
+  ```
+  ## Project Type
+  - Type: [web-fullstack | api-only | cli | ml-pipeline | library]
+  - Frontend: [framework + port, or N/A]
+  - Backend: [framework + port, or N/A]
+  - Test command: [e.g. pytest tests/ -v]
+  - Verify command: [e.g. ./scripts/smoke-test.sh, or N/A]
+  ```
+- [ ] **Add `## Features` section to `configs/templates/CLAUDE.md`**
+  ```
+  ## Features (Behavior Anchors)
+  # Used by /verify to check that key behaviors still hold after each loop iteration.
+  # Format: - [Feature name]: [what happens when user does X]
+  ```
+
+### 11.5 — Drift Prevention Conventions
+
+- [ ] **Add `# FROZEN` convention to CLAUDE.md template** — sections marked `# FROZEN` are strong-convention immutable for AI agents (not a hard filesystem lock — relies on prompt compliance)
+  - Document the limitation clearly: prevents ~90% of accidental modifications, not 100%
+- [ ] **Add BRAINSTORM proposal rule to `/loop` and `/start` supervisor prompts** — "If you discover a new approach, library, or direction change, write it to BRAINSTORM.md with `[AI]` prefix. Never modify GOALS.md or VISION.md directly."
+
+### 11.6 — Phase 10 Verification
+
+- [ ] **Verify Phase 10 features actually work end-to-end** — cross-project session overview, priority ranker, worker pool router all marked `[x]` but need manual testing to confirm they function as described. If gaps found, add fix tasks here.
 
 ---
 
