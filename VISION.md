@@ -1,17 +1,19 @@
 # VISION — Claude Code Kit
 
-**North star:** Maximum autonomous hours. Set direction in the morning — wake up to merged PRs. Human role: define goals + review results. Everything else is automated.
+**North star:** Maximum autonomous hours. Give it a direction — come back later to merged PRs. Human role: define goals + review results. Everything else is automated.
+
+**Core capability:** The system autonomously manages long-running work end-to-end — self-plans, claims tasks, executes, verifies, loops. Overnight is one scenario; the primitive is an unattended session of any length: 2 hours during lunch, 8 hours overnight, a full weekend. The human sets direction and returns when ready — not when the system needs them.
 
 **Real metric:** Oracle-approved task completions per hour of unattended runtime. Commits measure activity; oracle-approved tasks measure verified progress. Human leverage ratio = effective output / human time invested. Today: ~1.5x. Target: 3x (24h output from 8h human direction-setting).
 
-**Autonomous run length:** How many hours can the system run unattended before needing human input? Today: ~2 hours. Target: overnight (8-16 hours).
+**Autonomous run length:** How many hours can the system run unattended before needing human input? Today: ~2 hours. Target: sustained (8-16 hours, any time of day).
 
 **Design principles:**
 - Every human intervention is a system failure — find the root cause and eliminate it
 - Every step a human does manually is a bug — automate it or remove it
 - Every step a worker does sequentially instead of in parallel is waste — parallelize it
 - Planning quality determines autonomous run length — a good plan prevents 5 interruptions downstream
-- The human is a director, not an executor — 6 projects in parallel, all running while you sleep
+- The human is a director, not an executor — 6 projects in parallel, all running unattended
 
 ---
 
@@ -61,7 +63,7 @@ GUI wraps CLI primitives — workers use the same committer, same verify command
 | 8 | Closed-Loop Work Generation | Task factories (CI/coverage/deps), GitHub webhooks, specialist presets | ✓ DONE |
 | 9 | Meta-Intelligence | Session warm-up, loop auto-PROGRESS, pattern detection, /research + /map + /incident skills | ✓ DONE |
 | 10 | Portfolio Mode | Cross-project task routing, system auto-ranks work, human approves not generates | ✓ DONE |
-| 11 | Autonomous Lifecycle | /start one-command lifecycle, /verify project-aware testing, 3-tier issue handling, drift prevention | 🔄 NEXT |
+| 11 | Autonomous Lifecycle | /start one-command unattended run (any duration), /verify project-aware testing, 3-tier issue handling, drift prevention | 🔄 NEXT |
 
 See `TODO.md` for detailed task breakdown.
 
