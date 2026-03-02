@@ -38,7 +38,7 @@ This project has two complementary layers. CLI is the engine, GUI is the cockpit
 `configs/` → installed to `~/.claude/` (skills, scripts, hooks, templates)
 
 Works everywhere: SSH, tmux, CI, phone via Tailscale. No server required.
-- **Skills**: /commit, /sync, /handoff, /pickup, /orchestrate, /batch-tasks, /loop
+- **Skills**: /commit, /sync, /handoff, /pickup, /orchestrate, /batch-tasks, /loop, /research, /map, /incident, /brief, /review-pr, /merge-pr, /worktree
 - **Scripts**: committer.sh, run-tasks.sh, run-tasks-parallel.sh, loop-runner.sh
 - **Hooks**: session-context, guardian, lint/verify, correction-detector
 - **Templates**: CLAUDE.md, settings.json
