@@ -263,17 +263,32 @@ Goal: one command starts everything, runs overnight without stopping on minor is
 
 **Implementation order (dependency chain):**
 ```
-① CLAUDE.md template (11.4) — Project Type + Features fields
-② /verify skill (11.2)      — needs those fields to work
-③ 3-tier rules in /loop (11.3) — foundation for /start to rely on
-④ /start morning mode (11.1a) — lightweight, validate the pattern
-⑤ /start overnight mode (11.1b) — full autonomous
-⑥ Safety layer (11.7)       — cost guard + context management
+① Phase 10 verification (11.6) — fix broken stubs before building on top
+② CLAUDE.md template (11.4)   — Project Type + Features fields
+③ /verify skill (11.2)        — needs those fields to work
+④ 3-tier rules in /loop (11.3) — foundation for /start to rely on
+⑤ /start morning mode (11.1a) — lightweight, validate the pattern
+⑥ /start overnight mode (11.1b) — full autonomous
+⑦ Safety layer (11.7)         — cost guard + context management
 ```
+
+**Architecture decision: /start = pure shell script (not a Claude meta-skill)**
+- /start is a shell script (like loop-runner.sh), NOT a Claude skill that runs in one session
+- Rationale: a single-session skill calling /orchestrate + /loop + /verify would blow context in one iteration
+- /start calls bottom-layer scripts directly: loop-runner.sh, batch-tasks, committer
+- Each worker = independent Claude session; /start itself consumes zero context
+- Does NOT require the GUI orchestrator to be running — TUI-native
 
 ---
 
-### 11.4 — CLAUDE.md Template New Sections ← start here
+### 11.6 — Phase 10 Verification ← start here (unblock dependencies)
+
+- [ ] **Verify Phase 10 features actually work end-to-end** — cross-project session overview, priority ranker, worker pool router all marked `[x]` but need manual testing to confirm they function as described. If gaps found, add fix tasks here.
+  - Priority: `priority_score` ranker is a stub with no scoring logic — /start's one-feature focus relies on correct ranking; must be fixed first
+
+---
+
+### 11.4 — CLAUDE.md Template New Sections
 
 - [ ] **Add `## Project Type` section to `configs/templates/CLAUDE.md`**
   ```
@@ -336,10 +351,11 @@ write .claude/morning-review.md → stop
 ```
 
 **Convergence = stop when ALL true:**
-- Target phase TODO items all `[x]`
+- Tasks within `--goal` scope (or current phase non-infrastructure items) all `[x]`
 - `/verify` returns pass or partial
 - No pending tasks in queue
 - OR: iteration budget reached / cost cap hit / blocker written
+- Note: /start never targets itself as a convergence criterion (circular); scope is always externally defined
 
 - [ ] **Create `configs/skills/start/prompt.md` — morning mode** (read + summarize + wait, no workers launched)
   - Read GOALS/TODO/PROGRESS/BRAINSTORM → summarize current state → list recommended next steps → wait
@@ -363,9 +379,9 @@ write .claude/morning-review.md → stop
 
 - [ ] **Targeted mode** (`/start --goal "X"`) — skip orchestrate, run loop with specific goal, stop when done or failed
 
-- [ ] **One-feature focus strategy** — overnight supervisor picks the single highest-priority incomplete feature, finishes it fully before moving to the next; prevents N features progressing in parallel and polluting each other's tests (borrowed from Anthropic long-running agent research)
+- [ ] **One-feature focus strategy** — each /start iteration locks ALL workers onto the same single highest-priority incomplete feature; workers still run in parallel (multiple workers, one goal), but no two features progress simultaneously; prevents cross-feature test pollution (borrowed from Anthropic long-running agent research)
 
-- [ ] **30s plan approval window** — after /orchestrate writes proposed-tasks.md, print the plan and wait 30 seconds before launching workers; Ctrl+C aborts, timeout auto-continues; zero-cost last-chance intervention point that builds human trust without blocking automation
+- [ ] **30s plan approval window** — interactive mode only (default ON); overnight mode default OFF, enable with `--confirm`; after /orchestrate writes proposed-tasks.md, print plan + wait 30s; Ctrl+C aborts, timeout auto-continues
 
 - [ ] **Session progress file** (`.claude/session-progress.md`) — written/updated at the start of each /start iteration: current goal, tasks in flight, last completed; distinct from morning-review.md (which is for humans) — this is machine-readable state for /pickup to resume mid-run; /handoff carries it when context fills
 
@@ -376,12 +392,6 @@ write .claude/morning-review.md → stop
 - [ ] **Add `# FROZEN` convention to CLAUDE.md template** — sections marked `# FROZEN` are strong-convention immutable for AI agents (not a hard filesystem lock — relies on prompt compliance)
   - Document the limitation clearly: prevents ~90% of accidental modifications, not 100%
 - [ ] **Add BRAINSTORM proposal rule to `/loop` and `/start` supervisor prompts** — "If you discover a new approach, library, or direction change, write it to BRAINSTORM.md with `[AI]` prefix. Never modify GOALS.md or VISION.md directly."
-
----
-
-### 11.6 — Phase 10 Verification
-
-- [ ] **Verify Phase 10 features actually work end-to-end** — cross-project session overview, priority ranker, worker pool router all marked `[x]` but need manual testing to confirm they function as described. If gaps found, add fix tasks here.
 
 ---
 
