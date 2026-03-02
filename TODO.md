@@ -351,26 +351,26 @@ Goal: one command starts everything, runs overnight without stopping on minor is
 
 **Internal flow (overnight mode):**
 ```
-read GOALS/TODO/PROGRESS/BRAINSTORM
-/orchestrate → proposed-tasks.md  (orchestrate decides if /research needed — not start.sh)
-  ↓
-/loop  [3-tier active]
-  ↓
-/verify
-  ├─ pass    → committer.sh → claude -p sync → re-read filtered-tasks.md: unchecked items? → back to /loop
-  ├─ partial → log gaps to skipped.md → committer.sh → next iteration (treat as pass for loop purposes)
-  └─ fail    → create fix tasks → back to /loop (max 3 retries → tier 2)
-  ↓
-each iteration: check cost / wall-clock time / blockers.md  (no context% — shell has none)
+outer iteration start:
+  check blockers.md + cost + wall-clock → stop if hit
+  /orchestrate → fresh proposed-tasks.md  (orchestrate decides if /research needed — not start.sh)
+  filter by top-priority feature → fresh filtered-tasks.md
+  if grep -c "^\- \[ \]" filtered-tasks.md == 0 → CONVERGED (done)
+  /loop [3-tier active] (goal = filtered-tasks.md)
+    ↓
+  /verify
+    ├─ pass    → claude -p sync → committer "docs: sync" → outer iteration start
+    ├─ partial → log gaps to skipped.md → claude -p sync → committer → outer iteration start
+    └─ fail    → create fix tasks → back to /loop (max 3 retries → tier 2)
   ↓
 write .claude/morning-review.md → stop
 ```
 
 **Convergence = stop when ALL true:**
-- `grep -c "^\- \[ \]" filtered-tasks.md` returns 0 (all tasks in current feature scope done)
+- Fresh `/orchestrate` output produces 0 open tasks for the current feature (checked at outer loop start)
 - `/verify` returns pass or partial
-- OR: iteration budget reached / cost cap hit / blocker written
-- Note: checks filtered-tasks.md (scoped), NOT all of TODO.md (too broad); /start never targets itself (circular)
+- OR: iteration budget reached / cost cap hit / blocker written / max retries on verify-fail
+- Note: convergence check is on freshly-generated filtered-tasks.md (not worker-mutated files); /start never targets itself (circular)
 
 - [ ] **Create `configs/skills/start/prompt.md` — morning mode** (thin wrapper only; no workers launched)
   - Skill just calls `bash ~/.claude/scripts/start.sh --morning` via Bash tool and displays output
