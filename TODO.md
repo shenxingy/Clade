@@ -259,7 +259,7 @@ Human role: set direction for N projects → system auto-allocates workers, auto
 
 ## Phase 11 — Autonomous Lifecycle
 
-Goal: one command starts everything, runs overnight without stopping on minor issues, surfaces a clean morning review. Human role shrinks to: set direction + approve proposals + resolve true blockers.
+Goal: one command starts everything, runs unattended for any duration (2h lunch / 8h overnight / full weekend) without stopping on minor issues, surfaces a clean session report when done. Human role shrinks to: set direction + approve proposals + resolve true blockers. The system self-plans, claims tasks, executes, verifies, loops — overnight is just one scenario, not the core constraint.
 
 **Implementation order (dependency chain):**
 ```
@@ -280,6 +280,7 @@ Goal: one command starts everything, runs overnight without stopping on minor is
 - /start calls bottom-layer scripts directly: loop-runner.sh, batch-tasks, committer
 - Each worker = independent Claude session; /start itself consumes zero context
 - Does NOT require the GUI orchestrator to be running — TUI-native
+- Works for any run duration: `start.sh` (autonomous until done/blocked/budget), `start.sh --hours 4`, `start.sh --morning` (briefing only)
 
 ---
 
@@ -344,13 +345,13 @@ Goal: one command starts everything, runs overnight without stopping on minor is
   - **Supervisor needs blocker detection**: add to INSTRUCTIONS heredoc — "If `.claude/blockers.md` appears in the recent diff (was written this loop run), output STATUS: CONVERGED — a Tier 3 blocker requires human input before proceeding"
 - [ ] **Add `blockers.md` check to loop-runner.sh per-iteration guard** — loop-runner.sh currently only checks STOP sentinel (line 200) between iterations; workers write blockers.md to their worktree which gets merged back after the iteration; at the top of each new iteration, add: `if [[ -f ".claude/blockers.md" ]]; then echo "⚠ Blocker detected"; exit 1; fi` — prevents wasted iterations after a Tier 3 blocker is committed; place alongside STOP sentinel check (line 200)
 - [ ] **Add `decisions.md` / `skipped.md` cleanup to `/sync` skill** — all three tier files (decisions, skipped, blockers) must include ISO timestamp per entry; /sync archives to `.claude/*-archive.md` at session end
-- [ ] **blockers.md stale entry handling in start.sh** — on launch, check entry timestamps; interactive mode: prompt "still blocked? (y/N)" for entries older than 24h; overnight mode (no TTY): auto-stop and log stale blocker to morning-review.md with note "review .claude/blockers.md"; use `[ -t 0 ]` to detect TTY
+- [ ] **blockers.md stale entry handling in start.sh** — on launch, check entry timestamps; interactive mode (TTY): prompt "still blocked? (y/N)" for entries older than 24h; unattended mode (no TTY): auto-stop and log stale blocker to session-report with note "review .claude/blockers.md"; use `[ -t 0 ]` to detect TTY
 
 ---
 
 ### 11.1 — `/start` Skill
 
-**Internal flow (overnight mode):**
+**Internal flow (autonomous/unattended mode):**
 ```
 outer iteration start:
   check blockers.md + cost + wall-clock → stop if hit
@@ -364,7 +365,7 @@ outer iteration start:
     ├─ partial → log gaps to skipped.md → claude -p sync → committer → outer iteration start
     └─ fail    → create fix tasks → back to /loop (max 3 retries → tier 2)
   ↓
-write .claude/morning-review.md → stop
+write .claude/session-report-{timestamp}.md → stop
 ```
 
 **Convergence = stop when ALL true:**
@@ -373,12 +374,13 @@ write .claude/morning-review.md → stop
 - OR: iteration budget reached / cost cap hit / blocker written / max retries on verify-fail
 - Note: convergence check is on freshly-generated filtered-tasks.md (not worker-mutated files); /start never targets itself (circular)
 
-- [ ] **Create `configs/skills/start/prompt.md` — morning mode** (thin wrapper only; no workers launched)
+- [ ] **Create `configs/skills/start/prompt.md` — morning briefing mode** (thin wrapper only; no workers launched)
   - Skill just calls `bash ~/.claude/scripts/start.sh --morning` via Bash tool and displays output
-  - start.sh --morning: invokes `claude -p "$(printf '%s\n\n%s\n\n%s\n\n%s\n\n%s' "$(cat ~/.claude/skills/start/morning-brief.md)" "$(cat GOALS.md)" "$(cat TODO.md)" "$(cat PROGRESS.md)" "$(cat BRAINSTORM.md)")"`; `morning-brief.md` lives in `configs/skills/start/` alongside prompt.md; it instructs Claude to summarize state + list top 3 next steps; output to stdout, then exit
+  - start.sh --morning: invokes `claude -p "$(printf '%s\n\n%s\n\n%s\n\n%s\n\n%s' "$(cat ~/.claude/skills/start/morning-brief.md)" "$(cat GOALS.md 2>/dev/null || cat VISION.md)" "$(cat TODO.md)" "$(cat PROGRESS.md)" "$(cat BRAINSTORM.md 2>/dev/null || echo "")")"`; `morning-brief.md` lives in `configs/skills/start/` alongside prompt.md; instructs Claude to summarize state + list top 3 next steps; output to stdout, then exit
 
-- [ ] **Create `configs/scripts/start.sh` — overnight mode** (shell script, NOT prompt.md)
-  - Shell orchestrator: reads TODO → calls loop-runner.sh → calls /verify → parses output → creates fix tasks if needed → loops
+- [ ] **Create `configs/scripts/start.sh` — autonomous/unattended mode** (shell script, NOT prompt.md)
+  - Shell orchestrator: self-plans, claims work, executes, verifies, loops — runs for any duration until done/blocked/budget hit
+  - Stop conditions: all tasks done (convergence) / `session_budget_usd` hit / wall-clock `--hours N` / `.claude/blockers.md` written / manual `--stop`
   - **Calling /orchestrate from shell** (use heredoc to avoid `\n` issues):
     ```bash
     claude -p "$(printf '%s\n\n%s\n\n%s' \
@@ -392,7 +394,7 @@ write .claude/morning-review.md → stop
   - Must re-read GOALS.md + VISION.md at start of every iteration (drift anchor, injected into loop-runner goal)
   - Must NOT modify GOALS.md or VISION.md directly — proposals go to BRAINSTORM.md with `[AI]` prefix
   - Max verify-fail retries: 3 per task before tier 2 escalation; retry counter tracked in session-progress.md
-  - Writes `.claude/morning-review.md` on finish by parsing `.claude/loop-cost.log`
+  - Writes `.claude/session-report-{timestamp}.md` on finish by parsing `.claude/loop-cost.log`; works whether run was 2h or 16h
   - verify-fail → fix task flow: `grep "FAILED_ANCHORS:" verify-output.txt` → write fix tasks → re-run loop-runner.sh
   - **Convergence detection**: at the TOP of each outer iteration, AFTER fresh /orchestrate runs, `grep -c "^\- \[ \]" filtered-tasks.md`; if 0 → truly converged (no more open tasks in current feature scope), write morning-review.md + stop; if >0 → run /loop; this replaces the old "re-read filtered-tasks.md after verify" pattern — workers never mutate filtered-tasks.md, /orchestrate regenerates it fresh each iteration
 
@@ -408,14 +410,16 @@ write .claude/morning-review.md → stop
 
 - [ ] **Add cost logging to loop-runner.sh** — after each run, append `COST: $X.XX DURATION: Xmin TASKS: N` to `.claude/loop-cost.log`; start.sh reads this to populate morning-review.md; without this, morning-review Cost field will be blank
 
-- [ ] **Morning review format** (`.claude/morning-review.md`):
+- [ ] **Session report format** (`.claude/session-report-{timestamp}.md`):
   ```
+  ## Session: {start} → {end}  ({duration})
   ## Completed (N tasks, oracle approved)
   ## Skipped (N tasks — see .claude/skipped.md)
   ## Blockers (see .claude/blockers.md)
   ## Cost: $X.XX
   ## Suggested next step
   ```
+  (timestamped so multiple runs don't overwrite each other; human can read whenever they return)
 
 - [ ] **Update `/orchestrate` skill to tag tasks with `Feature: <name>`** — each task block in proposed-tasks.md must include a `Feature:` line mapping to a phase/goal name in TODO.md; prerequisite for one-feature focus filtering in start.sh
 
@@ -456,10 +460,15 @@ write .claude/morning-review.md → stop
 
 ### 11.7 — Safety Layer
 
-- [ ] **Cost guard in `start.sh`** — read budget from `~/.claude/start-settings.json` (separate from orchestrator settings — start.sh is CLI-only and doesn't load the orchestrator); key: `overnight_budget_usd`; refuse to launch overnight mode if key missing and no `--budget N` flag; print estimated cost per iteration based on last run's cost log
+- [ ] **Cost guard in `start.sh`** — read budget from `~/.claude/start-settings.json` (separate from orchestrator settings — start.sh is CLI-only and doesn't load the orchestrator); key: `session_budget_usd`; if not set and no `--budget N` flag passed: warn and use a default cap (e.g. $5); print estimated cost per iteration based on last run's cost log
 - [ ] **Context management** — /start (shell) has no context of its own; workers manage their own context via existing handoff/pickup mechanism; /start only monitors wall-clock time and cost, not context %; remove context check from /start responsibilities
-- [ ] **Entry point unification** — `start.sh` is the single entry point for both modes; morning mode: `start.sh --morning` (calls `claude -p` with morning skill prompt, exits after output); overnight mode: `start.sh` or `start.sh --overnight`; the skill `configs/skills/start/prompt.md` becomes a thin wrapper that calls `start.sh --morning` via Bash tool — avoids two separate things both called "/start"
-- [ ] **Mode auto-detection** — `--goal "X"` → targeted (skip orchestrate); `--morning` → morning briefing; default (no flags) → overnight; TTY detection: if interactive terminal and no flags → default to morning (safer); if no TTY → overnight
+- [ ] **Entry point unification** — `start.sh` is the single entry point for all modes:
+  - `start.sh --morning` → briefing only (no workers; summarizes state + suggests next steps)
+  - `start.sh` or `start.sh --run` → autonomous run until done/blocked/budget
+  - `start.sh --hours 4` → autonomous run with wall-clock time limit
+  - `start.sh --goal "X"` → targeted run (skip orchestrate, run loop with specific goal)
+  - The skill `configs/skills/start/prompt.md` is a thin wrapper: calls `start.sh --morning` via Bash tool
+- [ ] **Mode auto-detection** — TTY detection: if interactive terminal and no flags → show plan + 30s approval window then run; if no TTY → run immediately (unattended); `--morning` always just briefs and exits; `--confirm` forces approval window even in no-TTY mode
 
 ---
 
