@@ -1,6 +1,29 @@
 # Progress Log
 
 ---
+### 2026-03-01 — Loop: docs-review-goal
+
+**Goal file:** `.claude/docs-review-goal.md`
+**Issues fixed:**
+- BRAINSTORM.md cleared — competitive research items already in TODO.md (Phase 11.1: one-feature focus, 30s approval window, session progress file)
+- TODO.md Phase 8/9 ordering swapped — Phase 9 was incorrectly listed before Phase 8
+- TODO.md: two `morning-review.md` references updated to `session-report-{timestamp}.md` (consistent with session report format spec)
+- VISION.md: CLI skills list updated to include Phase 9/10 additions (/research, /map, /incident, /brief, /review-pr, /merge-pr, /worktree)
+- CLAUDE.md: key file map updated — `web/index.html` + 4 extracted JS modules (`app-core`, `app-dashboard`, `app-loop`, `app-viewers`)
+
+---
+
+### 2026-03-01 — Loop: review-phase11-goal
+
+**Iterations:** 2
+**Goal file:** /home/alexshen/projects/claude-code-kit/.claude/review-phase11-goal.md
+**Commits since start:**
+```
+f8ac0b5 docs: mark priority_score ranker TODO as done — implementation verified complete
+```
+
+---
+
 ### 2026-03-01 — Loop: loop-fix-debt3
 
 **Iterations:** 1

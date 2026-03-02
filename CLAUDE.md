@@ -58,7 +58,11 @@ routes/webhooks.py ← GitHub webhook handler (included by server.py)
 | `session.py` | `ProjectSession`, `SessionRegistry`, `status_loop()` |
 | `server.py` | FastAPI app, all REST + WebSocket routes |
 | `github_sync.py` | GitHub issue create/update/pull/push via `gh` CLI |
-| `web/index.html` | Single-page UI (served at `/web/index.html`) |
+| `web/index.html` | Single-page UI shell (served at `/web/index.html`) |
+| `web/app-core.js` | Core state, WebSocket, worker card rendering |
+| `web/app-dashboard.js` | Dashboard widgets, session overview |
+| `web/app-loop.js` | Loop control, convergence sparklines |
+| `web/app-viewers.js` | Log viewer, task detail panels |
 
 ## Settings
 

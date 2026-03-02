@@ -124,40 +124,6 @@ Phases 1–10 complete. Phase 11 (Autonomous Lifecycle) is next.
 
 ---
 
-## Phase 9 — Meta-Intelligence (TUI/CLI Layer)
-
-Goal: maximize autonomous run hours. Minimize human intervention. System knows where it is, learns from patterns, notifies when done.
-
-### 9.1 Smart Session Warm-up
-- [x] **session-context.sh: loop-state + next TODO** ✓ (loop 2026-02-27)
-
-### 9.2 Loop Intelligence
-- [x] **loop-runner.sh: auto-PROGRESS on convergence** ✓ (loop 2026-02-27)
-- [x] **loop-runner.sh: notify-telegram on convergence** ✓ (loop 2026-02-27)
-- [x] **loop-runner.sh: HORIZONTAL mode** ✓ (loop 2026-02-27)
-- [x] **loop-runner.sh: --exit-gate flag** ✓ (loop 2026-02-27)
-
-### 9.3 Commit Quality
-- [x] **verify-task-completed.sh: commit granularity stats** ✓ (loop 2026-02-27)
-
-### 9.4 Kit Completeness
-- [x] **Copy review-pr, merge-pr, worktree skills to configs/skills/** ✓ (loop 2026-02-27)
-
-### 9.5 Research Skill
-- [x] **`/research` skill** ✓ (loop 2026-02-27)
-
-### 9.6 Pattern Intelligence & Self-Improvement
-- [x] **`/map` skill** ✓ (loop 2026-02-27)
-- [x] **Prompt fingerprint tracker** ✓ (loop 2026-02-27)
-- [x] **`/incident` skill** ✓ (loop 2026-02-27)
-
-- [x] **Value tracking** — extend `.claude/stats.jsonl` with revert detection
-  - `configs/hooks/session-context.sh`: on startup, count `git log --oneline --grep="Revert"` in last 7 days
-  - If revert rate > 10%: surface warning in session context: `"⚠ High revert rate this week ({N} reverts)"`
-  - Pairs with existing commit granularity stats from `verify-task-completed.sh`
-
----
-
 ## Phase 8 — Closed-Loop Work Generation
 
 ---
@@ -204,6 +170,40 @@ Goal: maximize autonomous run hours. Minimize human intervention. System knows w
   - 文档：推荐 servers（`brave-search`, `playwright-browser`, `filesystem`）+ 安装命令
   - `orchestrator/server.py`：`start_worker()` 时检测项目目录 `.claude/mcp.json` → 注入 worker 环境
   - `configs/templates/mcp.json.example`：可复制的示例配置
+
+---
+
+## Phase 9 — Meta-Intelligence (TUI/CLI Layer)
+
+Goal: maximize autonomous run hours. Minimize human intervention. System knows where it is, learns from patterns, notifies when done.
+
+### 9.1 Smart Session Warm-up
+- [x] **session-context.sh: loop-state + next TODO** ✓ (loop 2026-02-27)
+
+### 9.2 Loop Intelligence
+- [x] **loop-runner.sh: auto-PROGRESS on convergence** ✓ (loop 2026-02-27)
+- [x] **loop-runner.sh: notify-telegram on convergence** ✓ (loop 2026-02-27)
+- [x] **loop-runner.sh: HORIZONTAL mode** ✓ (loop 2026-02-27)
+- [x] **loop-runner.sh: --exit-gate flag** ✓ (loop 2026-02-27)
+
+### 9.3 Commit Quality
+- [x] **verify-task-completed.sh: commit granularity stats** ✓ (loop 2026-02-27)
+
+### 9.4 Kit Completeness
+- [x] **Copy review-pr, merge-pr, worktree skills to configs/skills/** ✓ (loop 2026-02-27)
+
+### 9.5 Research Skill
+- [x] **`/research` skill** ✓ (loop 2026-02-27)
+
+### 9.6 Pattern Intelligence & Self-Improvement
+- [x] **`/map` skill** ✓ (loop 2026-02-27)
+- [x] **Prompt fingerprint tracker** ✓ (loop 2026-02-27)
+- [x] **`/incident` skill** ✓ (loop 2026-02-27)
+
+- [x] **Value tracking** — extend `.claude/stats.jsonl` with revert detection
+  - `configs/hooks/session-context.sh`: on startup, count `git log --oneline --grep="Revert"` in last 7 days
+  - If revert rate > 10%: surface warning in session context: `"⚠ High revert rate this week ({N} reverts)"`
+  - Pairs with existing commit granularity stats from `verify-task-completed.sh`
 
 ---
 
@@ -396,7 +396,7 @@ write .claude/session-report-{timestamp}.md → stop
   - Max verify-fail retries: 3 per task before tier 2 escalation; retry counter tracked in session-progress.md
   - Writes `.claude/session-report-{timestamp}.md` on finish by parsing `.claude/loop-cost.log`; works whether run was 2h or 16h
   - verify-fail → fix task flow: `grep "FAILED_ANCHORS:" verify-output.txt` → write fix tasks → re-run loop-runner.sh
-  - **Convergence detection**: at the TOP of each outer iteration, AFTER fresh /orchestrate runs, `grep -c "^\- \[ \]" filtered-tasks.md`; if 0 → truly converged (no more open tasks in current feature scope), write morning-review.md + stop; if >0 → run /loop; this replaces the old "re-read filtered-tasks.md after verify" pattern — workers never mutate filtered-tasks.md, /orchestrate regenerates it fresh each iteration
+  - **Convergence detection**: at the TOP of each outer iteration, AFTER fresh /orchestrate runs, `grep -c "^\- \[ \]" filtered-tasks.md`; if 0 → truly converged (no more open tasks in current feature scope), write `session-report-{timestamp}.md` + stop; if >0 → run /loop; this replaces the old "re-read filtered-tasks.md after verify" pattern — workers never mutate filtered-tasks.md, /orchestrate regenerates it fresh each iteration
 
 - [ ] **Design gap: filtered-tasks.md convergence detection breaks after Bug 1 fix** — if workers no longer mark `- [ ]` → `- [x]` in the goal file (Bug 1 fix removes this), nobody updates filtered-tasks.md during the loop, so the "more work?" grep always returns the original unchecked count → start.sh loops forever; fix: start.sh should re-run `/orchestrate` at the start of EACH outer iteration to produce a fresh proposed-tasks.md → re-filter to filtered-tasks.md; convergence detection uses the freshly generated filtered-tasks.md count (based on /orchestrate's assessment of remaining work), NOT on worker-modified file mutations; this also means workers never need to touch the goal file → Bug 1 race condition is eliminated cleanly
 
@@ -408,7 +408,7 @@ write .claude/session-report-{timestamp}.md → stop
   - `claude -p sync` call also needs `--dangerously-skip-permissions` — sync skill reads project files via Claude tools
   - `start.sh` needs `unset CLAUDECODE` at the top — when invoked via the /start skill's Bash tool call, `CLAUDECODE` is set by the parent session; without unset, any `claude -p` call inside start.sh fails with "nested sessions not supported"; same fix as loop-runner.sh line 41 to update docs
 
-- [ ] **Add cost logging to loop-runner.sh** — after each run, append `COST: $X.XX DURATION: Xmin TASKS: N` to `.claude/loop-cost.log`; start.sh reads this to populate morning-review.md; without this, morning-review Cost field will be blank
+- [ ] **Add cost logging to loop-runner.sh** — after each run, append `COST: $X.XX DURATION: Xmin TASKS: N` to `.claude/loop-cost.log`; start.sh reads this to populate `session-report-{timestamp}.md`; without this, session report Cost field will be blank
 
 - [ ] **Session report format** (`.claude/session-report-{timestamp}.md`):
   ```
