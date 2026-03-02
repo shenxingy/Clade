@@ -283,8 +283,11 @@ Goal: one command starts everything, runs overnight without stopping on minor is
 
 ### 11.6 — Phase 10 Verification ← start here (unblock dependencies)
 
-- [ ] **Verify Phase 10 features actually work end-to-end** — cross-project session overview, priority ranker, worker pool router all marked `[x]` but need manual testing to confirm they function as described. If gaps found, add fix tasks here.
-  - Priority: `priority_score` ranker is a stub with no scoring logic — /start's one-feature focus relies on correct ranking; must be fixed first
+- [ ] **Verify Phase 10 features actually work end-to-end** — cross-project session overview, priority ranker, worker pool router all marked `[x]` but need manual testing. Acceptance criteria:
+  - `priority_score` ranker returns a non-zero numeric score for at least one task (currently pure stub, no scoring logic)
+  - Cross-project session overview lists sessions from ≥2 projects
+  - Worker pool router assigns haiku/sonnet/opus based on task complexity field
+  - If any fail: add fix tasks here before proceeding to 11.4+
 
 ---
 
@@ -327,6 +330,7 @@ Goal: one command starts everything, runs overnight without stopping on minor is
   - Tier 3 (true blocker): write to `.claude/blockers.md` → stop
   - True blocker criteria: destructive/irreversible ops, needs secrets/permissions, mutually exclusive directions with high rollback cost
 - [ ] **Add `decisions.md` cleanup to `/sync` skill** — archive or clear decisions.md at session end so it doesn't accumulate across runs
+- [ ] **blockers.md timestamp + stale entry handling** — each entry must include ISO timestamp; /start on launch prints entries older than 24h and prompts "still blocked? (y/N)" before stopping; /sync archives resolved blockers to `.claude/blockers-archive.md` to prevent indefinite accumulation
 
 ---
 
@@ -361,12 +365,13 @@ write .claude/morning-review.md → stop
   - Read GOALS/TODO/PROGRESS/BRAINSTORM → summarize current state → list recommended next steps → wait
   - Lightweight: no orchestrate, no loop, no workers
 
-- [ ] **Create `configs/skills/start/prompt.md` — overnight mode** (full autonomous)
-  - Full flow as above
-  - Must re-read GOALS.md + VISION.md at start of every supervisor iteration (drift anchor)
+- [ ] **Create `configs/scripts/start.sh` — overnight mode** (shell script, NOT prompt.md)
+  - Shell orchestrator: reads TODO → calls loop-runner.sh → calls `claude -p "$(cat verify/prompt.md)"` for verify → parses output → creates fix tasks if needed → loops
+  - Must re-read GOALS.md + VISION.md at start of every iteration (drift anchor, injected into loop-runner goal)
   - Must NOT modify GOALS.md or VISION.md directly — proposals go to BRAINSTORM.md with `[AI]` prefix
-  - Max verify-fail retries: 3 per task before tier 2 escalation
-  - Writes `.claude/morning-review.md` on finish
+  - Max verify-fail retries: 3 per task before tier 2 escalation; retry counter tracked in session-progress.md
+  - Writes `.claude/morning-review.md` on finish by parsing loop-runner output logs
+  - verify-fail → fix task flow: parse /verify output → extract failed behavior anchors → write fix tasks to task file → re-run loop-runner.sh targeting those tasks
 
 - [ ] **Morning review format** (`.claude/morning-review.md`):
   ```
@@ -398,7 +403,7 @@ write .claude/morning-review.md → stop
 ### 11.7 — Safety Layer
 
 - [ ] **Cost guard in `/start`** — read `cost_budget` setting before launching overnight mode; refuse to start if budget = 0 and no explicit `--budget N` flag; print estimated cost per iteration
-- [ ] **Context management in `/start`** — check context usage before each iteration; if ≥ 80% → trigger `/handoff` → stop cleanly; next `/start` invocation detects handoff file → `/pickup` → resume
+- [ ] **Context management** — /start (shell) has no context of its own; workers manage their own context via existing handoff/pickup mechanism; /start only monitors wall-clock time and cost, not context %; remove context check from /start responsibilities
 - [ ] **Mode auto-detection** — `--goal "X"` → targeted; `--mode morning|overnight` → explicit; default → overnight
 
 ---
