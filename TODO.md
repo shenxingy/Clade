@@ -329,6 +329,7 @@ Goal: one command starts everything, runs overnight without stopping on minor is
     UNVERIFIABLE: N
     ```
   - Human-readable summary above the footer; footer always last 3 lines; FAILED_ANCHORS must always be present (use "none" not blank line — blank breaks grep)
+  - `partial` vs `fail` distinction must be explicit in the prompt: `partial` = some anchors unverifiable (no test strategy, missing Playwright, insufficient coverage); `fail` = anchors that can be tested and are now regressing; start.sh uses this to decide skip-and-continue vs create-fix-tasks
 
 ---
 
@@ -392,6 +393,16 @@ write .claude/morning-review.md → stop
   - verify-fail → fix task flow: `grep "FAILED_ANCHORS:" verify-output.txt` → write fix tasks → re-run loop-runner.sh
   - **"more work?" detection**: after committer.sh + claude -p sync, `grep -c "^\- \[ \]" filtered-tasks.md` to count remaining scoped tasks; if 0 → converged; if >0 → loop back (uses filtered-tasks.md, NOT full TODO.md)
 
+- [ ] **Design gap: filtered-tasks.md convergence detection breaks after Bug 1 fix** — if workers no longer mark `- [ ]` → `- [x]` in the goal file (Bug 1 fix removes this), nobody updates filtered-tasks.md during the loop, so the "more work?" grep always returns the original unchecked count → start.sh loops forever; fix: start.sh should re-run `/orchestrate` at the start of EACH outer iteration to produce a fresh proposed-tasks.md → re-filter to filtered-tasks.md; convergence detection uses the freshly generated filtered-tasks.md count (based on /orchestrate's assessment of remaining work), NOT on worker-modified file mutations; this also means workers never need to touch the goal file → Bug 1 race condition is eliminated cleanly
+
+- [ ] **Shell invocation gaps in start.sh patterns** — several shell call patterns in the plan are missing flags or have wrong ordering:
+  - `/verify` call missing `--dangerously-skip-permissions` — /verify reads CLAUDE.md and test files via Claude tools; without this flag, `claude -p` prompts interactively for permissions in overnight mode → hangs forever
+  - `/orchestrate` call missing `GOALS.md` + `PROGRESS.md` — only CLAUDE.md + TODO.md injected; orchestrate needs north star context to make good decisions; also needs PROGRESS.md to avoid regenerating already-done tasks; add both to the `printf` arg list
+  - Optional docs not guarded: `cat BRAINSTORM.md` crashes if file doesn't exist (common after it's been processed and emptied) → the entire `printf` substitution fails; use `$(cat BRAINSTORM.md 2>/dev/null || echo "")` pattern for all docs that may be absent
+  - `committer.sh` called BEFORE `claude -p sync` in the pass flow — `sync` modifies TODO.md + PROGRESS.md; commit must come AFTER sync; correct order: run `claude -p sync` first, then `committer "docs: sync" TODO.md PROGRESS.md`
+  - `claude -p sync` call also needs `--dangerously-skip-permissions` — sync skill reads project files via Claude tools
+  - `start.sh` needs `unset CLAUDECODE` at the top — when invoked via the /start skill's Bash tool call, `CLAUDECODE` is set by the parent session; without unset, any `claude -p` call inside start.sh fails with "nested sessions not supported"; same fix as loop-runner.sh line 41 to update docs
+
 - [ ] **Add cost logging to loop-runner.sh** — after each run, append `COST: $X.XX DURATION: Xmin TASKS: N` to `.claude/loop-cost.log`; start.sh reads this to populate morning-review.md; without this, morning-review Cost field will be blank
 
 - [ ] **Morning review format** (`.claude/morning-review.md`):
@@ -434,6 +445,9 @@ write .claude/morning-review.md → stop
 - [ ] **Bug: non-code task silent failure** — worker runs doc/research task → no commit → supervisor sees no git change → may loop forever or declare false CONVERGED; fix: after workers run, check if any new commits appeared since iteration start; if 0 new commits → inject into supervisor context: "Workers produced no commits this iteration. If this is expected (doc task), declare CONVERGED. If unexpected, treat as Tier 2 failure." (`git log --oneline --since="$ITER_START" | wc -l`)
 
 - [ ] **Bug + prerequisite: cost tracking requires `claude -p` JSON output** — Phase 11 plan requires `loop-cost.log`, but `claude -p` doesn't expose cost in plain-text output; verify: does `claude -p --output-format json` include token usage? If yes: parse and append to `.claude/loop-cost.log` after each supervisor call; if no: cost tracking requires a different approach (estimate from model + token count heuristic)
+
+- [ ] **Bug: `git_recent_diff` uses wrong commit range** — loop-runner.sh line 226: `git diff HEAD~"$((iteration-1))"..HEAD` is incorrect — on iteration 1 this is `HEAD~0..HEAD` = empty diff; on iteration 3 it shows only last 2 commits by position, NOT the commits from this loop run specifically (if each iteration produces multiple commits, the count is off); this can mislead the supervisor into thinking less work was done; fix: same root cause as Bug 2 — record `STARTED_COMMIT` at loop start (`state_write STARTED_COMMIT "$(git rev-parse HEAD)"`), then use `git diff $(state_read STARTED_COMMIT)..HEAD --stat` here; the label "Files changed since loop started" becomes accurate; fix is shared with Bug 2 (same `STARTED_COMMIT` state key handles both)
+  - Location: `line 226`, shares fix with auto-deploy Bug 2
 
 ---
 
