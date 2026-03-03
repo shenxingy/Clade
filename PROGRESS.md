@@ -1,6 +1,28 @@
 # Progress Log
 
 ---
+### 2026-03-02 — start.sh Comprehensive Hardening (12 issues)
+
+**Fixed 12 issues from full audit:**
+1. **Verify-fail retry path**: fix tasks were overwritten by next /orchestrate. Added `VERIFY_FIX_PENDING` flag to skip orchestrate + preserve `VERIFY_RETRIES` count across re-loops.
+2. **No timeout on `claude -p`**: orchestrate/verify 300s, sync 120s, morning 300s. Timeout → partial (not crash).
+3. **No signal handler**: Added `trap _shutdown SIGTERM SIGINT` — writes session report + fires notification before exit.
+4. **Python injection in `_filter_by_feature`**: Replaced shell-interpolated `'$VAR'` with `os.environ['_FILTER_FEATURE']`.
+5. **Stale loop-state-start**: `rm -f .claude/loop-state-start` before each loop-runner.sh call.
+6. **No lock file**: `flock -n .claude/start.lock` prevents concurrent instances.
+7. **Resume doesn't restore settings**: BUDGET/HOURS/MAX_WORKERS/models saved to session-progress.md, restored on `--resume` (CLI flags override).
+8. **Verify/sync failures silent**: Detect timeout (exit 124) and empty output explicitly, log warnings.
+9. **--max-iter / --max-inner-iter flags**: Both configurable (defaults: 20 outer, 5 inner).
+10. **Notification on completion/interrupt**: `_notify()` fires Telegram webhook (if configured) on session end.
+11. **--dry-run flag**: (implemented by worker in e2e test)
+12. **Verify retry count reset bug**: `VERIFY_RETRIES=0` was inside outer loop — now only resets on fresh orchestrate, not on verify-fix re-loop.
+
+**Lessons:**
+- `flock -n FD` + `exec FD>lockfile` is the idiomatic bash lock pattern — lock released on process exit (no cleanup needed)
+- Env vars for python inline scripts (`_VAR="$shell_var" python3 -c "os.environ['_VAR']"`) is the safest shell→python data passing
+- Verify-fail retry requires both flag (`VERIFY_FIX_PENDING`) AND preserving retry count — two separate state pieces that must travel together through `continue`
+
+---
 ### 2026-03-02 — End-to-End Test: start.sh on claude-code-kit
 
 **First real test of full start.sh → loop-runner.sh → worker pipeline.**
