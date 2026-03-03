@@ -363,6 +363,13 @@ Then stop immediately. Do NOT attempt workarounds for true blockers.
 If \`.claude/blockers.md\` appears in the recent git diff (was written during this loop run), output:
   STATUS: CONVERGED
 A Tier 3 blocker requires human input before proceeding.
+
+## Drift prevention
+
+If you discover a new approach or direction change during work:
+- Write it to BRAINSTORM.md with \`[AI]\` prefix
+- Never modify GOALS.md or VISION.md directly — those are human-owned anchor files
+- Continue with the current task plan; the new idea will be reviewed later
 INSTRUCTIONS
     EXTRA_CONTEXT=""
   } > "$PROMPT_FILE"
