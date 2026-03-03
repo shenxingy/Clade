@@ -107,7 +107,18 @@ get_task_model() {
 }
 
 get_task_timeout() {
-  get_task_field "$1" "timeout" "$DEFAULT_TIMEOUT"
+  local explicit
+  explicit=$(get_task_field "$1" "timeout" "")
+  if [[ -n "$explicit" ]]; then
+    echo "$explicit"
+    return
+  fi
+  # Model-aware defaults: haiku=15min, sonnet=30min, opus=60min
+  case "$(get_task_model "$1")" in
+    haiku)  echo 900  ;;
+    opus)   echo 3600 ;;
+    *)      echo 1800 ;;
+  esac
 }
 
 get_task_retries() {
