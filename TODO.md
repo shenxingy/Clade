@@ -263,7 +263,7 @@ Goal: one command starts everything, runs unattended for any duration (2h lunch 
 
 **Implementation order (dependency chain):**
 ```
-① Phase 10 verification (11.6)           — fix broken stubs before building on top
+① Phase 10 verification + cost-tracking investigation (11.6) — fix stubs + unblock session-report design
 ② CLAUDE.md template (11.4)              — Project Type + Features fields
 ③ /verify skill (11.2)                   — needs those fields to work
 ④ 3-tier rules in /loop (11.3)           — foundation for /start to rely on
@@ -271,7 +271,7 @@ Goal: one command starts everything, runs unattended for any duration (2h lunch 
 ⑥ Update /orchestrate Feature tag (11.1) — prerequisite for one-feature filtering
 ⑦ /start morning mode + start.sh (11.1)  — morning mode first, validate pattern
 ⑧ /start autonomous mode (11.1)          — full autonomous
-⑨ Safety layer (11.7)                    — cost guard + budget settings
+⑨ Safety layer (11.7)                    — cost guard + budget settings + --resume
 ```
 
 **Architecture decision: /start = pure shell script (not a Claude meta-skill)**
@@ -286,34 +286,21 @@ Goal: one command starts everything, runs unattended for any duration (2h lunch 
 
 ### 11.6 — Phase 10 Verification ← start here (unblock dependencies)
 
-- [ ] **Verify Phase 10 features actually work end-to-end** — cross-project session overview, priority ranker, worker pool router all marked `[x]` but need manual testing. Acceptance criteria:
-  - `priority_score` ranker runs without error and updates scores for ≥1 task — `_rank_tasks()` in `worker.py:938` is implemented (haiku-based, writes to DB), but has never been end-to-end tested against a live task queue
-  - Cross-project session overview lists sessions from ≥2 projects
-  - Worker pool router assigns haiku/sonnet/opus based on task complexity field
-  - If any fail: add fix tasks here before proceeding to 11.4+
+- [x] **Verify Phase 10 features actually work end-to-end** — code-level trace confirmed:
+  - ✓ Priority ranker: `_rank_tasks()` → 5min timer → haiku scores → DB write → `claim_next_pending()` ORDER BY priority_score DESC. Full chain wired.
+  - ✓ Cross-project overview: `GET /api/sessions/overview` returns pending/running + cost_rate_per_hour across all sessions.
+  - ✓ Model routing: score≥80→haiku, <50→sonnet+warning, critical_path→tier upgrade. Gated by `auto_model_routing` setting.
+  - ✓ Global max_workers: enforced in status_loop + auto-scale + start-all-queued.
+  - ⚠ Worker rebalancing NOT implemented (TODO said "auto-rebalances" but only global cap exists, no inter-session redistribution). Deferred — not needed for Phase 11 CLI layer.
+- [x] **Investigate `claude -p --output-format json` for cost tracking** — CONFIRMED: JSON output includes `total_cost_usd` (float) + `modelUsage.{model}.costUSD` per-model breakdown + full token counts. Parse with `jq '.total_cost_usd'`. Not a blocker — cost tracking fully feasible.
 
 ---
 
 ### 11.4 — CLAUDE.md Template New Sections
 
-- [ ] **Dogfooding: add `## Project Type` + `## Features` to claude-code-kit's own CLAUDE.md** — required before /verify can work on this project; also serves as the first end-to-end test of the template design
-  - Project Type: cli + skill-system
-  - Features: install.sh installs skills/hooks/scripts, slt cycles modes, /commit splits and pushes, /loop runs until convergence
-- [ ] **Add `## Project Type` section to `configs/templates/CLAUDE.md`**
-  ```
-  ## Project Type
-  - Type: [web-fullstack | api-only | cli | ml-pipeline | library | skill-system | toolkit]
-  - Frontend: [framework + port, or N/A]
-  - Backend: [framework + port, or N/A]
-  - Test command: [e.g. pytest tests/ -v]
-  - Verify command: [e.g. ./scripts/smoke-test.sh, or N/A]
-  ```
-- [ ] **Add `## Features` section to `configs/templates/CLAUDE.md`**
-  ```
-  ## Features (Behavior Anchors)
-  # Used by /verify to check that key behaviors still hold after each loop iteration.
-  # Format: - [Feature name]: [what happens when user does X]
-  ```
+- [x] **Dogfooding: add `## Project Type` + `## Features` to claude-code-kit's own CLAUDE.md** — added with 6 behavior anchors (install.sh, slt, /commit, /loop, committer, loop-runner.sh)
+- [x] **Add `## Project Type` section to `configs/templates/CLAUDE.md`**
+- [x] **Add `## Features` section to `configs/templates/CLAUDE.md`**
 
 ---
 
@@ -398,15 +385,13 @@ write .claude/session-report-{timestamp}.md → stop
   - verify-fail → fix task flow: `grep "FAILED_ANCHORS:" verify-output.txt` → write fix tasks → re-run loop-runner.sh
   - **Convergence detection**: at the TOP of each outer iteration, AFTER fresh /orchestrate runs, `grep -c "^\- \[ \]" filtered-tasks.md`; if 0 → truly converged (no more open tasks in current feature scope), write `session-report-{timestamp}.md` + stop; if >0 → run /loop; this replaces the old "re-read filtered-tasks.md after verify" pattern — workers never mutate filtered-tasks.md, /orchestrate regenerates it fresh each iteration
 
-- [ ] **Design gap: filtered-tasks.md convergence detection breaks after Bug 1 fix** — if workers no longer mark `- [ ]` → `- [x]` in the goal file (Bug 1 fix removes this), nobody updates filtered-tasks.md during the loop, so the "more work?" grep always returns the original unchecked count → start.sh loops forever; fix: start.sh should re-run `/orchestrate` at the start of EACH outer iteration to produce a fresh proposed-tasks.md → re-filter to filtered-tasks.md; convergence detection uses the freshly generated filtered-tasks.md count (based on /orchestrate's assessment of remaining work), NOT on worker-modified file mutations; this also means workers never need to touch the goal file → Bug 1 race condition is eliminated cleanly
-
-- [ ] **Shell invocation gaps in start.sh patterns** — several shell call patterns in the plan are missing flags or have wrong ordering:
-  - `/verify` call missing `--dangerously-skip-permissions` — /verify reads CLAUDE.md and test files via Claude tools; without this flag, `claude -p` prompts interactively for permissions in unattended mode → hangs forever
-  - `/orchestrate` call missing `GOALS.md` + `PROGRESS.md` — only CLAUDE.md + TODO.md injected; orchestrate needs north star context to make good decisions; also needs PROGRESS.md to avoid regenerating already-done tasks; add both to the `printf` arg list
-  - Optional docs not guarded: `cat BRAINSTORM.md` crashes if file doesn't exist (common after it's been processed and emptied) → the entire `printf` substitution fails; use `$(cat BRAINSTORM.md 2>/dev/null || echo "")` pattern for all docs that may be absent
-  - `committer.sh` called BEFORE `claude -p sync` in the pass flow — `sync` modifies TODO.md + PROGRESS.md; commit must come AFTER sync; correct order: run `claude -p sync` first, then `committer "docs: sync" TODO.md PROGRESS.md`
-  - `claude -p sync` call also needs `--dangerously-skip-permissions` — sync skill reads project files via Claude tools
-  - `start.sh` needs `unset CLAUDECODE` at the top — when invoked via the /start skill's Bash tool call, `CLAUDECODE` is set by the parent session; without unset, any `claude -p` call inside start.sh fails with "nested sessions not supported"; same fix as loop-runner.sh line 41 to update docs
+- [ ] **Shell invocation checklist for start.sh** (implementation notes, not a separate task — check these while building start.sh):
+  - All `claude -p` calls need `--dangerously-skip-permissions` (verify, orchestrate, sync) — without it, hangs in unattended mode
+  - `/orchestrate` call must inject: CLAUDE.md + TODO.md + GOALS.md/VISION.md + PROGRESS.md + skipped.md (if exists) — orchestrate needs north star + history to avoid regenerating done/skipped tasks
+  - Optional docs guarded: `$(cat BRAINSTORM.md 2>/dev/null || echo "")` for all files that may be absent
+  - Order: `claude -p sync` FIRST, then `committer "docs: sync" TODO.md PROGRESS.md` (sync modifies the files)
+  - `unset CLAUDECODE` at the top of start.sh (same fix as loop-runner.sh line 41)
+  - Note: "design gap" (convergence after Bug 1 fix) is already solved — convergence detection uses fresh /orchestrate output at each outer iteration start, not worker-modified files
 
 - [ ] **Add cost logging to loop-runner.sh** — after each run, append `COST: $X.XX DURATION: Xmin TASKS: N` to `.claude/loop-cost.log`; start.sh reads this to populate `session-report-{timestamp}.md`; without this, session report Cost field will be blank
 
@@ -426,6 +411,8 @@ write .claude/session-report-{timestamp}.md → stop
 - [ ] **Targeted mode** (`/start --goal "X"`) — skip orchestrate, run loop with specific goal, stop when done or failed
 
 - [ ] **One-feature focus strategy** — each /start iteration locks ALL workers onto the same single highest-priority incomplete feature; workers still run in parallel (multiple workers, one goal), but no two features progress simultaneously; prevents cross-feature test pollution (borrowed from Anthropic long-running agent research)
+  - **Feature priority mapping**: after /orchestrate writes proposed-tasks.md, start.sh groups tasks by `Feature:` tag; priority = first Feature whose TODO.md section still has unchecked `- [ ]` items (scan top-down); fallback if no `Feature:` tags: treat all tasks as one group
+  - **Tier 2 skip → next feature**: when a feature's tasks are all skipped/blocked (logged to skipped.md), inject skipped.md content into next /orchestrate call so it doesn't regenerate the same tasks; if all features are skipped → CONVERGED (nothing actionable left)
 
 - [ ] **30s plan approval window** — interactive mode only (default ON); unattended mode default OFF, enable with `--confirm`; after /orchestrate writes proposed-tasks.md, print plan + wait 30s; Ctrl+C aborts, timeout auto-continues
 
@@ -447,14 +434,14 @@ write .claude/session-report-{timestamp}.md → stop
 - [ ] **Bug: workers race-condition on goal file marking** — loop-runner.sh lines 305 + 427 instruct every worker to change `- [ ]` to `- [x]` in the goal file; parallel workers editing the same file cause merge conflicts or silent overwrites; fix: remove goal-file marking from worker instructions; supervisor marks items done at the start of each iteration based on git log, not workers
   - Location: `INSTRUCTIONS` heredoc line 305, fallback wrapper line 427
 
-- [ ] **Bug: auto-deploy checks only last commit, not full loop run** — loop-runner.sh line 461: `git diff --name-only HEAD~1 HEAD` misses configs/ changes from earlier iterations; fix: record start commit to state file at loop start (`state_write STARTED_COMMIT "$(git rev-parse HEAD)"`), then check `git diff --name-only $(state_read STARTED_COMMIT)..HEAD` at the end
+- [ ] **Bug: auto-deploy + git_recent_diff both use wrong commit range (shared fix: STARTED_COMMIT)** — Two symptoms, one root cause:
+  - Auto-deploy (line 461): `git diff --name-only HEAD~1 HEAD` only checks last commit, misses configs/ changes from earlier iterations
+  - git_recent_diff (line 226): `HEAD~$((iteration-1))..HEAD` is wrong — iteration 1 = `HEAD~0..HEAD` = empty diff; multi-commit iterations also miscounted
+  - Fix: record start commit at loop start: `state_write STARTED_COMMIT "$(git rev-parse HEAD)"`; auto-deploy uses `git diff --name-only $(state_read STARTED_COMMIT)..HEAD`; git_recent_diff uses `git diff $(state_read STARTED_COMMIT)..HEAD --stat`
 
 - [ ] **Bug: non-code task silent failure** — worker runs doc/research task → no commit → supervisor sees no git change → may loop forever or declare false CONVERGED; fix: capture `ITER_START_SHA=$(git rev-parse HEAD)` before workers run each iteration, then check `git rev-list $ITER_START_SHA..HEAD --count` after run-tasks-parallel.sh returns; if 0 → inject into supervisor context: "Workers produced no commits this iteration. If this is expected (doc task), declare CONVERGED. If unexpected, treat as Tier 2 failure."; use SHA not timestamp (`--since`) to avoid clock drift / same-second precision issues
 
-- [ ] **Bug + prerequisite: cost tracking requires `claude -p` JSON output** — Phase 11 plan requires `loop-cost.log`, but `claude -p` doesn't expose cost in plain-text output; verify: does `claude -p --output-format json` include token usage? If yes: parse and append to `.claude/loop-cost.log` after each supervisor call; if no: cost tracking requires a different approach (estimate from model + token count heuristic)
-
-- [ ] **Bug: `git_recent_diff` uses wrong commit range** — loop-runner.sh line 226: `git diff HEAD~"$((iteration-1))"..HEAD` is incorrect — on iteration 1 this is `HEAD~0..HEAD` = empty diff; on iteration 3 it shows only last 2 commits by position, NOT the commits from this loop run specifically (if each iteration produces multiple commits, the count is off); this can mislead the supervisor into thinking less work was done; fix: same root cause as Bug 2 — record `STARTED_COMMIT` at loop start (`state_write STARTED_COMMIT "$(git rev-parse HEAD)"`), then use `git diff $(state_read STARTED_COMMIT)..HEAD --stat` here; the label "Files changed since loop started" becomes accurate; fix is shared with Bug 2 (same `STARTED_COMMIT` state key handles both)
-  - Location: `line 226`, shares fix with auto-deploy Bug 2
+- [ ] **Bug: cost tracking requires `claude -p` JSON output** — Phase 11 plan requires `loop-cost.log`, but `claude -p` doesn't expose cost in plain-text output; **investigation moved to 11.6** (investigate early to unblock session-report design); if JSON output works: parse and append to `.claude/loop-cost.log` after each supervisor call; if no: estimate from model + token count heuristic, or defer session-report Cost field
 
 ---
 
@@ -467,6 +454,7 @@ write .claude/session-report-{timestamp}.md → stop
   - `start.sh` or `start.sh --run` → autonomous run until done/blocked/budget
   - `start.sh --hours 4` → autonomous run with wall-clock time limit
   - `start.sh --goal "X"` → targeted run (skip orchestrate, run loop with specific goal)
+  - `start.sh --resume` → crash recovery: read `.claude/session-progress.md` for last iteration state (current feature, iteration count, cost so far), skip to the next outer iteration; essential for "any duration" autonomy — machine restart, OOM, SSH drop should not lose all session progress
   - The skill `configs/skills/start/prompt.md` is a thin wrapper: calls `start.sh --morning` via Bash tool
 - [ ] **Mode auto-detection** — TTY detection: if interactive terminal and no flags → show plan + 30s approval window then run; if no TTY → run immediately (unattended); `--morning` always just briefs and exits; `--confirm` forces approval window even in no-TTY mode
 
