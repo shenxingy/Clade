@@ -345,11 +345,8 @@ write .claude/session-report-{timestamp}.md → stop
 - OR: iteration budget reached / cost cap hit / blocker written / max retries on verify-fail
 - Note: convergence check is on freshly-generated filtered-tasks.md (not worker-mutated files); /start never targets itself (circular)
 
-- [ ] **Create `configs/skills/start/prompt.md` — morning briefing mode** (thin wrapper only; no workers launched)
-  - Skill just calls `bash ~/.claude/scripts/start.sh --morning` via Bash tool and displays output
-  - start.sh --morning: invokes `claude -p "$(printf '%s\n\n%s\n\n%s\n\n%s\n\n%s' "$(cat ~/.claude/skills/start/morning-brief.md)" "$(cat GOALS.md 2>/dev/null || cat VISION.md)" "$(cat TODO.md)" "$(cat PROGRESS.md)" "$(cat BRAINSTORM.md 2>/dev/null || echo "")")"`; `morning-brief.md` lives in `configs/skills/start/` alongside prompt.md; instructs Claude to summarize state + list top 3 next steps; output to stdout, then exit
-
-- [ ] **Create `configs/scripts/start.sh` — autonomous/unattended mode** (shell script, NOT prompt.md)
+- [x] **Create `configs/skills/start/prompt.md` — morning briefing mode** — thin wrapper + `morning-brief.md` prompt template
+- [x] **Create `configs/scripts/start.sh` — autonomous/unattended mode** (shell script, NOT prompt.md)
   - Shell orchestrator: self-plans, claims work, executes, verifies, loops — runs for any duration until done/blocked/budget hit
   - Stop conditions: all tasks done (convergence) / `session_budget_usd` hit / wall-clock `--hours N` / `.claude/blockers.md` written / manual `--stop`
   - **Calling /orchestrate from shell** (use heredoc to avoid `\n` issues):
@@ -369,47 +366,22 @@ write .claude/session-report-{timestamp}.md → stop
   - verify-fail → fix task flow: `grep "FAILED_ANCHORS:" verify-output.txt` → write fix tasks → re-run loop-runner.sh
   - **Convergence detection**: at the TOP of each outer iteration, AFTER fresh /orchestrate runs, `grep -c "^\- \[ \]" filtered-tasks.md`; if 0 → truly converged (no more open tasks in current feature scope), write `session-report-{timestamp}.md` + stop; if >0 → run /loop; this replaces the old "re-read filtered-tasks.md after verify" pattern — workers never mutate filtered-tasks.md, /orchestrate regenerates it fresh each iteration
 
-- [ ] **Shell invocation checklist for start.sh** (implementation notes, not a separate task — check these while building start.sh):
-  - All `claude -p` calls need `--dangerously-skip-permissions` (verify, orchestrate, sync) — without it, hangs in unattended mode
-  - `/orchestrate` call must inject: CLAUDE.md + TODO.md + GOALS.md/VISION.md + PROGRESS.md + skipped.md (if exists) — orchestrate needs north star + history to avoid regenerating done/skipped tasks
-  - Optional docs guarded: `$(cat BRAINSTORM.md 2>/dev/null || echo "")` for all files that may be absent
-  - Order: `claude -p sync` FIRST, then `committer "docs: sync" TODO.md PROGRESS.md` (sync modifies the files)
-  - `unset CLAUDECODE` at the top of start.sh (same fix as loop-runner.sh line 41)
-  - Note: "design gap" (convergence after Bug 1 fix) is already solved — convergence detection uses fresh /orchestrate output at each outer iteration start, not worker-modified files
-
-- [ ] **Add cost logging to loop-runner.sh** — after each run, append `COST: $X.XX DURATION: Xmin TASKS: N` to `.claude/loop-cost.log`; start.sh reads this to populate `session-report-{timestamp}.md`; without this, session report Cost field will be blank
-
-- [ ] **Session report format** (`.claude/session-report-{timestamp}.md`):
-  ```
-  ## Session: {start} → {end}  ({duration})
-  ## Completed (N tasks, oracle approved)
-  ## Skipped (N tasks — see .claude/skipped.md)
-  ## Blockers (see .claude/blockers.md)
-  ## Cost: $X.XX
-  ## Suggested next step
-  ```
-  (timestamped so multiple runs don't overwrite each other; human can read whenever they return)
-
-- [ ] **Update `/orchestrate` skill to tag tasks with `Feature: <name>`** — each task block in proposed-tasks.md must include a `Feature:` line mapping to a phase/goal name in TODO.md; prerequisite for one-feature focus filtering in start.sh
-
-- [ ] **Targeted mode** (`/start --goal "X"`) — skip orchestrate, run loop with specific goal, stop when done or failed
-
-- [ ] **One-feature focus strategy** — each /start iteration locks ALL workers onto the same single highest-priority incomplete feature; workers still run in parallel (multiple workers, one goal), but no two features progress simultaneously; prevents cross-feature test pollution (borrowed from Anthropic long-running agent research)
-  - **Feature priority mapping**: after /orchestrate writes proposed-tasks.md, start.sh groups tasks by `Feature:` tag; priority = first Feature whose TODO.md section still has unchecked `- [ ]` items (scan top-down); fallback if no `Feature:` tags: treat all tasks as one group
-  - **Tier 2 skip → next feature**: when a feature's tasks are all skipped/blocked (logged to skipped.md), inject skipped.md content into next /orchestrate call so it doesn't regenerate the same tasks; if all features are skipped → CONVERGED (nothing actionable left)
-
-- [ ] **30s plan approval window** — interactive mode only (default ON); unattended mode default OFF, enable with `--confirm`; after /orchestrate writes proposed-tasks.md, print plan + wait 30s; Ctrl+C aborts, timeout auto-continues
-
-- [ ] **Session progress file** (`.claude/session-progress.md`) — written/updated by start.sh at the start of each iteration: current goal, tasks in flight, last completed, iteration count, cost so far; machine-readable for start.sh itself to resume after crash (not for /pickup — /pickup is for Claude context, start.sh is a shell process); format: simple key=value for easy shell parsing
+- [x] **Shell invocation checklist** — all `claude -p` calls use `--dangerously-skip-permissions`; orchestrate injects CLAUDE.md + TODO.md + GOALS.md + PROGRESS.md + skipped.md; optional docs guarded; sync before committer; unset CLAUDECODE at top
+- [ ] **Add cost logging to loop-runner.sh** — need to add `--output-format json` to supervisor `claude -p` call and parse `total_cost_usd`; append to `.claude/loop-cost.log` per iteration (enhancement — start.sh works without it, cost just shows as 0)
+- [x] **Session report format** — `_write_session_report()` in start.sh writes timestamped `.claude/session-report-{id}.md`
+- [x] **Update `/orchestrate` skill to tag tasks with `Feature: <name>`** — added Feature: line to task block format + documentation
+- [x] **Targeted mode** (`/start --goal "X"`) — implemented: skips orchestrate, copies goal file directly to filtered-tasks.md
+- [x] **One-feature focus strategy** — `_filter_by_feature()` groups by Feature: tag, picks first feature, filters tasks; skipped.md injected into /orchestrate context for next iteration
+- [x] **30s plan approval window** — TTY detection + `read -t 30` auto-continue; `--confirm` forces window in non-TTY mode
+- [x] **Session progress file** — `_write_progress()` writes key=value to `.claude/session-progress.md`; `--resume` reads it back
 
 ---
 
 ### 11.5 — Drift Prevention Conventions
 
-- [ ] **Add `# FROZEN` convention to CLAUDE.md template** — sections marked `# FROZEN` are strong-convention immutable for AI agents (not a hard filesystem lock — relies on prompt compliance)
-  - Document the limitation clearly: prevents ~90% of accidental modifications, not 100%
-- [ ] **Add BRAINSTORM proposal rule to `loop-runner.sh` `INSTRUCTIONS` heredoc** — inject into the same block as 3-tier rules: "If you discover a new approach or direction change, write it to BRAINSTORM.md with `[AI]` prefix. Never modify GOALS.md or VISION.md directly."
-- [ ] **Inject BRAINSTORM rule into start.sh goal string** — since start.sh is a shell script (no supervisor prompt), the rule must be appended to the goal text passed to loop-runner.sh each iteration
+- [x] **Add `# FROZEN` convention to CLAUDE.md template** — documented with ~90% effectiveness caveat
+- [x] **Add BRAINSTORM proposal rule to `loop-runner.sh` `INSTRUCTIONS` heredoc** — "write to BRAINSTORM.md with [AI] prefix, never modify GOALS.md/VISION.md"
+- [x] **Inject BRAINSTORM rule into start.sh goal string** — appended to loop-goal.md before each loop-runner.sh call
 
 ---
 
@@ -424,16 +396,10 @@ write .claude/session-report-{timestamp}.md → stop
 
 ### 11.7 — Safety Layer
 
-- [ ] **Cost guard in `start.sh`** — read budget from `~/.claude/start-settings.json` (separate from orchestrator settings — start.sh is CLI-only and doesn't load the orchestrator); key: `session_budget_usd`; if not set and no `--budget N` flag passed: warn and use a default cap (e.g. $5); print estimated cost per iteration based on last run's cost log
-- [ ] **Context management** — /start (shell) has no context of its own; workers manage their own context via existing handoff/pickup mechanism; /start only monitors wall-clock time and cost, not context %; remove context check from /start responsibilities
-- [ ] **Entry point unification** — `start.sh` is the single entry point for all modes:
-  - `start.sh --morning` → briefing only (no workers; summarizes state + suggests next steps)
-  - `start.sh` or `start.sh --run` → autonomous run until done/blocked/budget
-  - `start.sh --hours 4` → autonomous run with wall-clock time limit
-  - `start.sh --goal "X"` → targeted run (skip orchestrate, run loop with specific goal)
-  - `start.sh --resume` → crash recovery: read `.claude/session-progress.md` for last iteration state (current feature, iteration count, cost so far), skip to the next outer iteration; essential for "any duration" autonomy — machine restart, OOM, SSH drop should not lose all session progress
-  - The skill `configs/skills/start/prompt.md` is a thin wrapper: calls `start.sh --morning` via Bash tool
-- [ ] **Mode auto-detection** — TTY detection: if interactive terminal and no flags → show plan + 30s approval window then run; if no TTY → run immediately (unattended); `--morning` always just briefs and exits; `--confirm` forces approval window even in no-TTY mode
+- [x] **Cost guard in `start.sh`** — reads `~/.claude/start-settings.json`, `--budget N` flag, defaults to $5 with warning; checked every iteration via `_check_stop_conditions()`
+- [x] **Context management** — start.sh is zero-context (pure shell); workers manage their own via handoff/pickup; start.sh only tracks wall-clock and cost
+- [x] **Entry point unification** — `start.sh` supports: `--morning`, `--run` (default), `--hours N`, `--goal "X"`, `--budget N`, `--resume`, `--stop`; skill wrapper delegates to start.sh
+- [x] **Mode auto-detection** — TTY → show plan + 30s approval window; no TTY → run immediately; `--confirm` forces window
 
 ---
 

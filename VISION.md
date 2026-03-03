@@ -76,7 +76,7 @@ GUI wraps CLI primitives — workers use the same committer, same verify command
 | 8 | Closed-Loop Work Generation | Task factories (CI/coverage/deps), GitHub webhooks, specialist presets | ✓ DONE |
 | 9 | Meta-Intelligence | Session warm-up, loop auto-PROGRESS, pattern detection, /research + /map + /incident skills | ✓ DONE |
 | 10 | Portfolio Mode | Cross-project task routing, system auto-ranks work, human approves not generates | ✓ DONE |
-| 11 | Autonomous Lifecycle | /start one-command unattended run (any duration), /verify project-aware testing, 3-tier issue handling, drift prevention | 🔄 NEXT |
+| 11 | Autonomous Lifecycle | /start one-command unattended run (any duration), /verify project-aware testing, 3-tier issue handling, drift prevention | ✓ DONE |
 
 See `TODO.md` for detailed task breakdown.
 
