@@ -1,12 +1,80 @@
 # VISION — Claude Code Kit
 
-**North star:** Maximum autonomous hours. Give it a direction — come back later to merged PRs. Human role: define goals + review results. Everything else is automated.
+## What This Is
 
-**Core capability:** The system autonomously manages long-running work end-to-end — self-plans, claims tasks, executes, verifies, loops. Overnight is one scenario; the primitive is an unattended session of any length: 2 hours during lunch, 8 hours overnight, a full weekend. The human sets direction and returns when ready — not when the system needs them.
+An **AI Software Development Engineer (SDE)** — not a collection of scripts, but a complete system that mirrors how a senior developer works: receive requirements, plan, build, verify, maintain. The human sets direction; the system does everything else.
 
-**Works on any project, any phase:** The same primitives apply whether starting from zero or iterating on an existing codebase. Phase 0 (greenfield): /orchestrate reads an empty repo + a brief → plans bootstrap tasks → builds the skeleton. Phase N (ongoing): reads existing code + TODO + PROGRESS → plans the next increment. The system doesn't distinguish — it just reads context and drives forward.
+**One monorepo, two pillars:** CLI configs (the engine) + Orchestrator (the cockpit). Same primitives, two interfaces, one goal.
 
-**Dual-source intelligence model:** Good planning requires two inputs — human insight and AI-gathered signals. Both feed the same inbox:
+---
+
+## North Star
+
+**Maximum autonomous hours.** Give it a direction — come back later to merged PRs.
+
+| Metric | Target |
+|---|---|
+| Autonomous run length | 8-16 hours (overnight/weekend) |
+| Human leverage ratio | 3x (24h output from 8h direction-setting) |
+| Task success rate | 90%+ (oracle-approved) |
+| Cost per approved task | < $2 (viable vs manual work) |
+| Recovery from failure | Self-healing (3-tier) |
+
+*Baselines to be measured after sustained autonomous runs on real projects. Only hard data point so far: e2e test completed 2 iterations, $0.78, 2 minutes (2026-03-02). Cost economics depend heavily on task complexity and model selection — haiku-heavy routing is key to staying under budget.*
+
+**Real metric:** Oracle-approved task completions per hour of unattended runtime.
+
+---
+
+## The Development Lifecycle
+
+Every project, every feature follows this pipeline. The system manages the full cycle — the human enters at any phase and the system picks up from there. **Multi-feature strategy:** `start.sh` processes one feature at a time, picking the highest-priority uncompleted feature from TODO.md each outer iteration. When a feature converges (all tasks done + verify pass), the next iteration picks the next feature. This is sequential focus, not parallel — deliberate, because parallel features create merge conflicts and scattered context.
+
+```
+ ┌──────────────────────────────────────────────────────────────────────┐
+ │                     THE AI SDE LIFECYCLE                              │
+ │                                                                      │
+ │  Main pipeline (sequential per feature):                             │
+ │                                                                      │
+ │  ┌──────────┐  ┌──────────┐  ┌───────────┐  ┌────────┐  ┌────────┐ │
+ │  │ CAPTURE  │─→│  REFINE  │─→│ ARCHITECT │─→│ BUILD  │─→│ VERIFY │ │
+ │  │          │  │          │  │           │  │        │  │        │ │
+ │  │ Ideas to │  │ AI helps │  │ Tech plan │  │ Loops  │  │ Real   │ │
+ │  │ inbox    │  │ shape    │  │ + tasks   │  │ until  │  │ tests  │ │
+ │  └──────────┘  └──────────┘  └───────────┘  │ done   │  │        │ │
+ │       ↑                                      └────────┘  └───┬────┘ │
+ │       │                                                      │      │
+ │       │  ┌─────────────────────────────────────────────┐     │      │
+ │       └──│                PATROL                       │←────┘      │
+ │          │  Cross-project scan: CI fails, coverage     │            │
+ │          │  gaps, stale deps → new issues feed back    │            │
+ │          └─────────────────────────────────────────────┘            │
+ │                                                                      │
+ │  Side channel (triggers at any phase):                               │
+ │                                                                      │
+ │  ┌──────────┐                                                        │
+ │  │ RESEARCH │ ── /research scans web for competitors, tools,         │
+ │  │          │    techniques → findings land in BRAINSTORM.md         │
+ │  └──────────┘                                                        │
+ └──────────────────────────────────────────────────────────────────────┘
+```
+
+### Phase-by-Phase Detail
+
+| Phase | What Happens | Human Role | System Role | Entry Point |
+|---|---|---|---|---|
+| **Capture** | Raw ideas land in inbox | Write ideas in BRAINSTORM.md | AI surfaces findings from code/research, also writes to BRAINSTORM.md with `[AI]` prefix | BRAINSTORM.md |
+| **Refine** | Ideas become goals + tasks | Discuss, challenge, approve | Analyze feasibility, suggest priorities, distribute to VISION.md + TODO.md | AI conversation |
+| **Architect** | Goals become technical plans | Review plan, approve approach | `/orchestrate` reads codebase + goals → proposed-tasks.md with file ownership + Feature tags | `/orchestrate` |
+| **Build** | Tasks executed in parallel | Set budget + time constraints | `/start` → `/loop` → workers (plan → execute → commit → repeat until converged) | `/start --goal` or `/start --run` |
+| **Verify** | Changes tested for real | Review results when done | `/verify` runs project-type-aware tests against behavior anchors; pass/partial/fail with machine-parseable output | `/verify` |
+| **Patrol** | Continuous health scanning | Review patrol findings | Task factories scan CI failures, coverage gaps, stale deps; findings → TODO.md or BRAINSTORM.md | `start.sh --patrol` (planned) |
+| **Research** | External intelligence (any phase) | Request topics, evaluate findings | `/research` scans web for competitors, tools, techniques → BRAINSTORM.md | `/research` |
+
+### Dual-Source Intelligence
+
+Good planning requires two inputs — human insight and AI-gathered signals. Both feed the same inbox:
+
 ```
 Human observations, ideas, direction
                     ↘
@@ -15,50 +83,164 @@ Human observations, ideas, direction
 AI-surfaced findings (competitor research, codebase analysis,
 post-loop insights, pattern detection)
 ```
-Neither source auto-creates tasks. BRAINSTORM is a signal inbox, not a task queue. Emptying it is a deliberate act — human + AI jointly review, challenge, and decide what belongs in TODO. Competitive research is one AI signal source: run periodically, findings go to BRAINSTORM, human decides what's worth building.
 
-**Real metric:** Oracle-approved task completions per hour of unattended runtime. Commits measure activity; oracle-approved tasks measure verified progress. Human leverage ratio = effective output / human time invested. Today: ~1.5x. Target: 3x (24h output from 8h human direction-setting).
+Neither source auto-creates tasks. BRAINSTORM is a signal inbox, not a task queue. Emptying it is a deliberate act — human + AI jointly review, challenge, and decide what belongs in TODO.
 
-**Autonomous run length:** How many hours can the system run unattended before needing human input? Today: ~2 hours. Target: sustained (8-16 hours, any time of day).
+---
 
-**Design principles:**
-- Every human intervention is a system failure — find the root cause and eliminate it
-- Every step a human does manually is a bug — automate it or remove it
-- Every step a worker does sequentially instead of in parallel is waste — parallelize it
-- Planning quality determines autonomous run length — a good plan prevents 5 interruptions downstream
-- The human is a director, not an executor — 6 projects in parallel, all running unattended
+## Role Architecture
+
+The system has implicit roles, not explicit microservices. Each role maps to existing components:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        USER                                      │
+│  Sets direction. Reviews results. Resolves Tier 3 blockers.     │
+└──────────────┬──────────────────────────────────────────────────┘
+               │
+               │  Claude Code TUI  /  Orchestrator Web UI
+               │
+┌──────────────┴──────────────────────────────────────────────────┐
+│                                                                   │
+│  ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────┐        │
+│  │ Collector │ │ Architect │ │  Builder  │ │ Verifier  │        │
+│  │           │ │           │ │           │ │           │        │
+│  │BRAINSTORM │ │/orchestr. │ │/start     │ │/verify    │        │
+│  │/research  │ │proposed-  │ │/loop      │ │/review    │        │
+│  │task facts.│ │tasks.md   │ │workers    │ │           │        │
+│  └───────────┘ └───────────┘ └───────────┘ └───────────┘        │
+│                                                                   │
+│  ┌───────────┐ ┌───────────┐                                     │
+│  │ Patroller │ │Researcher │                                     │
+│  │           │ │           │                                     │
+│  │CI watcher │ │/research  │                                     │
+│  │coverage   │ │web search │                                     │
+│  │dep scan   │ │competitor │                                     │
+│  └───────────┘ └───────────┘                                     │
+│                                                                   │
+│  ── shared primitives ──────────────────────────────────────     │
+│  committer.sh │ loop-runner.sh │ 3-tier handling │ hooks        │
+│  CLAUDE.md inject │ worktrees │ cost tracking │ notifications    │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+**No central dispatcher.** Each role is triggered directly (user invokes a skill or start.sh chains them). A dispatcher would add complexity without value — the phases have different trigger patterns (capture = anytime, build = long-running, patrol = periodic) that don't benefit from uniform routing.
 
 ---
 
 ## Two Pillars
 
-This project has two complementary layers. CLI is the engine, GUI is the cockpit.
-
-### CLI Layer — The Foundation
-`configs/` → installed to `~/.claude/` (skills, scripts, hooks, templates)
+### CLI Layer — The Engine
+`configs/` → installed to `~/.claude/` via `install.sh`
 
 Works everywhere: SSH, tmux, CI, phone via Tailscale. No server required.
-- **Skills**: /commit, /sync, /handoff, /pickup, /orchestrate, /batch-tasks, /loop, /research, /map, /incident, /brief, /review-pr, /merge-pr, /worktree
-- **Scripts**: committer.sh, run-tasks.sh, run-tasks-parallel.sh, loop-runner.sh
-- **Hooks**: session-context, guardian, lint/verify, correction-detector
-- **Templates**: CLAUDE.md, settings.json
 
-CLI strengths: scriptable, composable, safe for self-modification (scripts are external to codebase), works in any environment.
-CLI limitations: no real-time visualization, typing-heavy, no mobile dashboard, no one-click phase switching.
+| Category | Components |
+|---|---|
+| **Skills** | /commit, /sync, /handoff, /pickup, /orchestrate, /loop, /start, /verify, /research, /map, /incident, /review-pr, /merge-pr, /worktree, /frontend-design |
+| **Scripts** | committer.sh, start.sh, loop-runner.sh, run-tasks-parallel.sh, statusline-toggle.sh, tmux-dispatch.sh, scan-todos.sh |
+| **Hooks** | session-context, guardian, post-edit-check, verify-task-completed, correction-detector |
+| **Templates** | CLAUDE.md, task presets (test-writer, refactor-bot, security-scan) |
 
-### GUI Layer — The Extension
+**Strengths:** Scriptable, composable, safe for self-modification (scripts external to codebase), works in any environment, zero-dependency.
+
+**Limitations:** No real-time visualization, no mobile dashboard, no multi-project overview at a glance.
+
+### Orchestrator Layer — The Cockpit
 `orchestrator/` (Python FastAPI + vanilla JS web UI)
 
 Adds what CLI can't provide:
-- Real-time worker dashboard with status, logs, token bars
-- Visual task dependency DAG
-- One-click plan/execute mode switching
-- Mobile/remote access (Caddy HTTPS)
-- Multi-project overview with progress bars
-- Iteration loop control with convergence sparklines
-- Settings panel for zero-click autonomous run configuration
 
-GUI wraps CLI primitives — workers use the same committer, same verify commands, same CLAUDE.md injection.
+| Capability | What It Does |
+|---|---|
+| Worker dashboard | Real-time status, logs, token bars per worker |
+| Task management | Dependency DAG visualization, preset cards, queue overview |
+| Loop control | Start/stop/pause, convergence sparklines, iteration history |
+| Multi-project view | All sessions at a glance — queue depth, cost rate, health |
+| Settings panel | Zero-click autonomous run configuration |
+| GitHub integration | Webhooks (issue label → task), PR auto-creation |
+| Analytics | Success rate, cost breakdown, model usage distribution |
+
+**Role:** Monitoring + high-level configuration. NOT the daily workflow entry point (that's TUI). The cockpit answers "what's happening across all my projects?" — the TUI answers "get this done."
+
+### Mutual Exclusion
+
+Both layers can run autonomous loops (CLI: `start.sh` / `loop-runner.sh`, GUI: orchestrator iteration loop). **Only one loop per project at a time.** `start.sh` uses `flock` on `.claude/start.lock`; orchestrator should check the same lock. Running both simultaneously on the same project will cause worktree and commit conflicts.
+
+---
+
+## Autonomy Boundaries
+
+The system's autonomy is not binary. Three zones govern what AI can decide:
+
+| Zone | AI Action | Examples |
+|---|---|---|
+| **Green** (do it) | Execute immediately, no human needed | Fix bug, run tests, format code, simple refactor, commit |
+| **Yellow** (do + tell) | Execute, log decision for human review | Add dependency, change interface, perf optimization |
+| **Red** (must ask) | Stop and wait for human | Architecture change, delete feature, tech stack migration |
+
+Zones are enforced at runtime by the **3-tier issue handling** system, which also handles failures:
+
+| Tier | File | Purpose | System behavior |
+|---|---|---|---|
+| 1 | decisions.md | Yellow-zone choices the AI made | Log + continue; human reviews later |
+| 2 | skipped.md | Tasks that failed but aren't blockers | Log + skip + continue; human reviews later |
+| 3 | blockers.md | Red-zone decisions or unrecoverable failures | Session pauses; human must resolve |
+
+---
+
+## What "Done" Looks Like
+
+### Morning Workflow (Today)
+```bash
+start.sh --morning          # 30-second briefing: overnight results + suggested goals
+start.sh --goal todo.md     # Point at today's work → walk away
+```
+
+### Ideal Workflow (Target)
+```bash
+# Sunday evening: plan the week (human + AI conversation)
+# BRAINSTORM ideas → refine → write TODO items → /orchestrate
+# Result: TODO.md has 2 features prioritized: auth first, then dashboard
+
+# Sunday night: kick off overnight run (features run sequentially)
+start.sh --run --budget 10
+
+# Monday morning: review overnight results
+start.sh --morning
+# → "Auth MVP merged (12 commits, $3.20). Dashboard: 60% done,
+#    blocked on design system choice (see blockers.md).
+#    3 new ideas in BRAINSTORM.md from patrol findings."
+
+# Resolve the blocker in 2 minutes:
+# read blockers.md, make the decision, update TODO.md/CLAUDE.md, then:
+rm .claude/blockers.md              # clear the blocker
+start.sh --resume --hours 8         # resume where it left off
+```
+
+**Note:** The human still makes the Capture → Refine → Architect decisions. The system automates Build → Verify → Patrol. Full lifecycle automation (BRAINSTORM → auto-plan → auto-execute) is an explicit non-goal — deliberate planning is where human judgment adds the most value.
+
+### The Experience Across Interfaces
+
+| Interface | When | What |
+|---|---|---|
+| **Claude Code TUI** | Daily development | `/start`, `/loop`, `/commit`, `/verify` — hands-on-keyboard flow |
+| **Orchestrator Web** | Morning check-in, multi-project oversight | Dashboard: all projects at a glance, cost burn rate, worker health |
+| **Telegram/Webhook** | Away from desk | Notifications: "Loop converged", "Blocker written", "Budget 80%" |
+| **BRAINSTORM.md** | Anytime, anywhere | Lowest-friction idea capture — even from phone via GitHub edit |
+
+---
+
+## Design Principles
+
+1. **Every unplanned human intervention is a system failure** — if Build/Verify/Patrol needs a human, find the root cause and eliminate it. Planned interventions (Capture, Refine, Architect) are where human judgment adds the most value.
+2. **Every manual step is a bug** — automate it or remove it
+3. **Every sequential step is waste** — parallelize it
+4. **Planning quality determines autonomous run length** — a good plan prevents 5 interruptions downstream
+5. **Fail open, not closed** — minor issues get logged and skipped, only true blockers stop the system
+6. **The human is a director, not an executor** — 6 projects in parallel, all running unattended
+7. **Dual-layer independence** — CLI works without GUI, GUI wraps CLI primitives; either layer alone is useful
+8. **Self-modification safe** — scripts and configs are external to project codebases; the system can update itself without corrupting the projects it works on
 
 ---
 
@@ -66,87 +248,78 @@ GUI wraps CLI primitives — workers use the same committer, same verify command
 
 | Phase | Name | Summary | Status |
 |---|---|---|---|
-| 1 | One-Shot Batch | Plan → orchestrate → parallel workers → PRs merged | ✓ DONE |
-| 2 | Feedback Loops | Iteration loop, oracle validation, model routing, CLI /loop | ✓ DONE |
-| 3 | Autonomous Robustness | Oracle requeue, context budget, AGENTS.md inject, handoff trigger | ✓ DONE |
-| 4 | Swarm Intelligence | Shared queue, file ownership, GitHub Issues sync, cross-worker messaging | ✓ DONE |
-| 5 | Context Intelligence | Semantic TLDR, intervention replay, dual-condition exit gate | ✓ DONE |
-| 6 | Observability & Resilience | Analytics, cost tracking, budget limits, stuck detection, notifications | ✓ DONE |
-| 7 | Task Velocity Engine | Hook-enforced commit discipline, HORIZONTAL task decomposition, auto-scaling | ✓ DONE |
-| 8 | Closed-Loop Work Generation | Task factories (CI/coverage/deps), GitHub webhooks, specialist presets | ✓ DONE |
-| 9 | Meta-Intelligence | Session warm-up, loop auto-PROGRESS, pattern detection, /research + /map + /incident skills | ✓ DONE |
-| 10 | Portfolio Mode | Cross-project task routing, system auto-ranks work, human approves not generates | ✓ DONE |
-| 11 | Autonomous Lifecycle | /start one-command unattended run (any duration), /verify project-aware testing, 3-tier issue handling, drift prevention | ✓ DONE |
-
-See `TODO.md` for detailed task breakdown.
-
----
-
-## Phase 7 — Task Velocity Engine
-
-打破 1000+ commits/day 的两个根本瓶颈。两个层（CLI/TUI 和 GUI）各自有对应实现。
-
-**The math:**
-```
-目标: 1000 commits/day ÷ 16小时 = 62 commits/hour
-现状: ~5 workers × 2 commits/task × 1 task/hour ≈ 160 commits/day
-路径: 10 workers × 6 commits/task × 1 task/hour = 960 ≈ 目标
-      ↑ worker数量     ↑ 提交粒度（关键杠杆）
-```
-
-**核心洞察：** HORIZONTAL 任务（同一操作 × N 文件）应自动拆成 file-level micro-tasks，每个 micro-task 1 commit。VERTICAL 任务（功能开发/bugfix）保持原粒度，但 hook 层强制 per-step commit。
-
-### 7.1 — Hook Layer（BOTH: CLI & GUI 共享）
-
-- [x] Commit reminder hook — 扩展 `post-edit-check.sh`，≥2 文件未提交时注入提醒
-- [x] Commit granularity gate — `verify-task-completed.sh` 统计 commit/file 比率
-- [x] CLAUDE.md per-file rule — 全局规则：每改一文件立即提交
-
-### 7.2 — CLI/TUI Velocity（configs/ 层）
-
-- [x] loop-runner.sh HORIZONTAL 模式 — supervisor 上限 20 micro-tasks
-- [x] TODO scanner CLI — `scan-todos.sh` 扫描注释 → task file
-- [x] tmux dispatcher — `tmux-dispatch.sh` 多 pane 自动分发任务
-
-### 7.3 — GUI Velocity（orchestrator/ 层）
-
-- [x] Task type 字段（HORIZONTAL / VERTICAL / AUTO）+ UI badge
-- [x] Horizontal auto-decomposition — haiku 拆文件 → 子任务
-- [x] Worker auto-scaling — queue depth 驱动自动扩缩容
+| 1 | One-Shot Batch | Plan → orchestrate → parallel workers → PRs merged | DONE |
+| 2 | Feedback Loops | Iteration loop, oracle validation, model routing, CLI /loop | DONE |
+| 3 | Autonomous Robustness | Oracle requeue, context budget, AGENTS.md inject, handoff trigger | DONE |
+| 4 | Swarm Intelligence | Shared queue, file ownership, GitHub Issues sync, cross-worker messaging | DONE |
+| 5 | Context Intelligence | Semantic TLDR, intervention replay, dual-condition exit gate | DONE |
+| 6 | Observability & Resilience | Analytics, cost tracking, budget limits, stuck detection, notifications | DONE |
+| 7 | Task Velocity Engine | Hook-enforced commit discipline, HORIZONTAL decomposition, auto-scaling | DONE |
+| 8 | Closed-Loop Work Generation | Task factories (CI/coverage/deps), GitHub webhooks, specialist presets | DONE |
+| 9 | Meta-Intelligence | Session warm-up, loop auto-PROGRESS, pattern detection, /research + /map + /incident | DONE |
+| 10 | Portfolio Mode | Cross-project task routing, priority ranking, goal suggestions | DONE |
+| 11 | Autonomous Lifecycle | /start one-command unattended, /verify testing, 3-tier issues, drift prevention | DONE |
+| 12 | System Polish | Visual verify, cross-project patrol, design constraints, batch feedback | NEXT |
+| 13 | GUI Redesign | Orchestrator cockpit redesign — monitoring-first, remove interactive editing | FUTURE |
 
 ---
 
-## Phase 8 — Closed-Loop Work Generation
+## Phase 12 — System Polish & Hardening
 
-当前所有任务都靠人工写入。这一 phase 让系统从外部信号自主生成工作议程。**人类角色变为：设定方向 + 验收结果。**
+**Prerequisite: stress-test on real projects.** Before building Phase 12 features, run `start.sh` on 3+ real projects (not just this repo) for multi-hour sessions. Collect baseline data for the North Star metrics, find bugs that only appear under sustained load, and validate that the existing pipeline is solid. Phase 12 features solve problems we've *hypothesized* — stress-testing reveals problems that *actually* block longer autonomous runs.
 
-### 8.1 — Task Factories（BOTH: CLI 脚本 + GUI 模块）
+The system is functionally complete. Phase 12 is about closing gaps that reduce real-world autonomous run length.
 
-- [x] CI failure watcher — 轮询 GitHub Actions，失败时生成 fix task
-- [x] Test coverage gap detector — 为低覆盖模块生成测试任务
-- [x] Dependency update bot — 检测过期依赖，每包一个 haiku 级任务
+### 12.1 — Visual Verification
+`/verify` currently reads code but doesn't see the UI. For **frontend/fullstack projects** (detected via `## Project Type` in CLAUDE.md), extend with:
+- Playwright screenshot capture at key routes, saved to `.claude/verify-screenshots/`
+- AI visual review against design system constraints
+- Machine-parseable `VISUAL_RESULT: pass|fail` alongside existing `VERIFY_RESULT`
+- Skipped entirely for CLI/backend/ML project types
 
-### 8.2 — External Triggers（GUI only）
+### 12.2 — Cross-Project Patrol
+`start.sh --patrol` mode:
+- Scan all `~/projects/*/` directories with `CLAUDE.md`
+- Per project: run task factories (CI, coverage, deps), scan for TODO comments
+- Aggregate findings: each project's TODO.md gets new items, summary to terminal
+- Lightweight: no loop, no workers — just scan + report + commit
 
-- [x] GitHub webhook endpoint — Issue 标签 / PR 评论 → 自动创建任务
+### 12.3 — Design System Constraint
+Solve "AI frontend aesthetics" problem by constraining AI output:
+- `/orchestrate` architect phase injects design system reference (component library + theme + spacing rules)
+- `/frontend-design` skill references project-specific design tokens
+- Reduces AI's creative freedom = more consistent output
 
-### 8.3 — Specialist Presets（BOTH）
-
-- [x] CLI task templates — `configs/templates/` 专项模板（test-writer, refactor-bot, security-scan）
-- [x] GUI preset cards — Task 创建 UI "Quick Presets" 区域
-- [x] MCP integration — worker 启动时自动加载项目 `.claude/mcp.json`
+### 12.4 — Batch Feedback Mode
+Address the "serial feedback" pain point. Interface: **file-based annotation** (CLI-native, no GUI needed):
+- `/verify` outputs structured markdown checklist to `.claude/verify-issues.md`
+- User annotates each item: `[fix]`, `[skip]`, `[wontfix]` — one editing pass
+- Next loop iteration reads annotations: `[fix]` items become tasks, rest logged to skipped.md
+- Reduces human round-trips from N issues x 2 messages to 1 batch review
 
 ---
 
-## The OpenClaw Recipe (reference)
+## Phase 13 — Orchestrator GUI Redesign (Future)
 
-What made 600 commits/day possible:
+Separated from Phase 12 due to scope — this is a full product redesign, not a polish task.
 
-1. **`committer "msg" file1 file2`** — scoped staging, anti-collision primitive
-2. **One worktree per task** — true isolation
-3. **AGENTS.md with file ownership** — parallel agents stay in lanes
-4. **Ralph loop** — autonomous iteration until goal is met
-5. **Self-organizing workers** — workers pull from queue
-6. **Oracle second-model review** — independent validation
-7. **Model tier routing** — haiku/sonnet/opus by complexity
-8. **Context compaction discipline** — workers /compact between subtasks
+Current GUI has accumulated features without a clear design intent. Redesign with explicit scope:
+- **Keep:** Worker dashboard, multi-project overview, cost analytics, settings panel
+- **Remove/Simplify:** Interactive task editing (use TUI), inline prompt input (use TUI)
+- **Add:** Session timeline (visual history of iterations), blocker queue (one-click resolve)
+- Goal: the GUI is a cockpit for monitoring, not a second IDE
+
+---
+
+## Long-Term Direction
+
+Beyond Phase 12, the system's evolution follows the same principle: **reduce human time per unit of output.**
+
+Potential directions (not committed — these live in BRAINSTORM.md when ready):
+- **Voice interface** — dictate ideas and direction instead of typing
+- **Multi-agent specialization** — dedicated agents for frontend, backend, testing (vs current general workers)
+- **Learning from corrections** — intervention patterns auto-generalize into worker pre-prompts (partially started: correction-detector hook + rules.md exist, but no auto-injection into worker prompts yet)
+- **Project templates** — `/start --template saas` bootstraps a full project from zero with best-practice structure
+- **Team mode** — multiple humans + AI swarm on the same codebase with coordination protocol
+
+These are signals, not plans. When the time comes, they'll go through the standard lifecycle: BRAINSTORM → discuss → VISION → TODO → build.
