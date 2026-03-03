@@ -167,7 +167,10 @@ _accumulate_cost() {
   if [[ -f "$COST_LOG" ]]; then
     local cumulative
     cumulative=$(tail -1 "$COST_LOG" 2>/dev/null | grep -oP 'CUMULATIVE=\$\K[0-9.]+' || echo 0)
-    TOTAL_COST=$(python3 -c "print(round($TOTAL_COST + $cumulative, 4))" 2>/dev/null || echo "$TOTAL_COST")
+    # Skip python3 call if cumulative is zero or empty (file exists but no data yet)
+    if [[ -n "$cumulative" && "$cumulative" != "0" ]]; then
+      TOTAL_COST=$(python3 -c "print(round($TOTAL_COST + $cumulative, 4))" 2>/dev/null || echo "$TOTAL_COST")
+    fi
   fi
 }
 

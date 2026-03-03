@@ -87,7 +87,8 @@ model_id() {
 
 SUPERVISOR_MODEL_ID=$(model_id "$SUPERVISOR_MODEL")
 
-mkdir -p "$LOG_DIR" "$(dirname "$STATE_FILE")"
+mkdir -p "$LOG_DIR" "$(dirname "$STATE_FILE")" "$(dirname "${COST_LOG:-.claude/loop-cost.log}")"
+touch "${COST_LOG:-.claude/loop-cost.log}"
 
 # ── Pre-flight: check source vs deployed script mismatch ──────────────────────
 DEPLOY_DIR="$HOME/.claude/scripts"
