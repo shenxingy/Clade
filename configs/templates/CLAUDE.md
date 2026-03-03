@@ -1,3 +1,14 @@
+# Project Type
+- Type: [web-fullstack | api-only | cli | ml-pipeline | library | skill-system | toolkit]
+- Frontend: [framework + port, or N/A]
+- Backend: [framework + port, or N/A]
+- Test command: [e.g. pytest tests/ -v]
+- Verify command: [e.g. ./scripts/smoke-test.sh, or N/A]
+
+# Features (Behavior Anchors)
+# Used by /verify to check that key behaviors still hold after each loop iteration.
+# Format: - [Feature name]: [what happens when user does X]
+
 # Agent Ground Rules
 
 These rules apply to ALL agents (Claude Code sessions) across all projects. They enable autonomous, unattended operation with minimal human intervention.
