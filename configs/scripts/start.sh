@@ -10,6 +10,8 @@
 #   start.sh --hours N           Autonomous with wall-clock limit
 #   start.sh --goal "X"          Targeted run (skip orchestrate, use goal directly)
 #   start.sh --budget N          Set cost budget in USD
+#   start.sh --max-iter N        Max outer iterations (default: 20)
+#   start.sh --max-inner-iter N  Max inner loop iterations per outer (default: 5)
 #   start.sh --resume            Resume from last session-progress.md
 #   start.sh --stop              Write stop sentinel
 #   start.sh --dry-run           Dry run: show plan and exit without executing
@@ -23,6 +25,7 @@ set -uo pipefail
 
 # Allow nested claude calls
 unset CLAUDECODE 2>/dev/null || true
+
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -39,6 +42,7 @@ GOAL=""
 BUDGET=0
 DRY_RUN=false
 MAX_OUTER_ITER=20
+MAX_INNER_ITER=5
 MAX_VERIFY_RETRIES=3
 SUPERVISOR_MODEL="sonnet"
 WORKER_MODEL="sonnet"
@@ -58,6 +62,8 @@ while [[ $# -gt 0 ]]; do
     --model)         SUPERVISOR_MODEL="$2"; shift 2 ;;
     --worker-model)  WORKER_MODEL="$2";    shift 2 ;;
     --max-workers)   MAX_WORKERS="$2";     shift 2 ;;
+    --max-iter)      MAX_OUTER_ITER="$2";  shift 2 ;;
+    --max-inner-iter) MAX_INNER_ITER="$2"; shift 2 ;;
     --confirm)       CONFIRM=true;         shift ;;
     *)               echo "Unknown flag: $1" >&2; shift ;;
   esac
@@ -85,6 +91,17 @@ _safe_cat() { cat "$1" 2>/dev/null || echo ""; }
 
 _log() { echo "[$(date '+%H:%M:%S')] $*"; }
 
+_notify() {
+  # Fire-and-forget notification via loop-runner's notify hook (if available)
+  local status="$1" msg="$2"
+  for hook in "${SCRIPTS_DIR}/../hooks/notify-telegram.sh" "$HOME/.claude/hooks/notify-telegram.sh"; do
+    if [[ -x "$hook" ]]; then
+      bash "$hook" "$status" "$msg" &>/dev/null &
+      return
+    fi
+  done
+}
+
 _write_progress() {
   cat > "$PROGRESS_FILE" <<EOF
 SESSION_ID=$SESSION_ID
@@ -96,6 +113,11 @@ STARTED=$START_TIME
 LAST_UPDATE=$(date +%s)
 STATUS=$1
 VERIFY_RETRIES=${VERIFY_RETRIES:-0}
+BUDGET=$BUDGET
+HOURS=$HOURS
+MAX_WORKERS=$MAX_WORKERS
+SUPERVISOR_MODEL=$SUPERVISOR_MODEL
+WORKER_MODEL=$WORKER_MODEL
 EOF
 }
 
@@ -186,6 +208,16 @@ EOF
   _log "Session report written to ${REPORT_DIR}/session-report-${SESSION_ID}.md"
 }
 
+# Graceful shutdown on SIGTERM/SIGINT
+_shutdown() {
+  echo ""
+  _log "Signal received — shutting down..."
+  _write_session_report "interrupted"
+  _notify "interrupted" "Session $SESSION_ID interrupted (${OUTER_ITER:-0} iters, \$$TOTAL_COST)"
+  exit 130
+}
+trap _shutdown SIGTERM SIGINT
+
 # ─── Feature filtering ────────────────────────────────────────────────────────
 _filter_by_feature() {
   local proposed="$1" filtered="$2"
@@ -207,18 +239,13 @@ _filter_by_feature() {
   CURRENT_FEATURE=$(grep -i -m1 "^Feature:" "$proposed" | sed 's/^Feature: *//i')
   _log "Focusing on feature: $CURRENT_FEATURE"
 
-  # Extract only tasks with this feature tag
-  python3 -c "
-import sys
-blocks = open('$proposed').read().split('===TASK===')
-out = []
-for b in blocks:
-    if b.strip() and '$CURRENT_FEATURE'.lower() in b.lower():
-        out.append(b)
-if out:
-    print('===TASK===' + '===TASK==='.join(out))
-else:
-    print('')
+  # Extract only tasks with this feature tag (use env var to avoid shell injection)
+  _FILTER_FEATURE="$CURRENT_FEATURE" _FILTER_INPUT="$proposed" python3 -c "
+import os
+feat = os.environ['_FILTER_FEATURE'].lower()
+blocks = open(os.environ['_FILTER_INPUT']).read().split('===TASK===')
+out = [b for b in blocks if b.strip() and feat in b.lower()]
+print('===TASK===' + '===TASK==='.join(out) if out else '')
 " > "$filtered"
 
   local task_count
@@ -238,7 +265,7 @@ if [[ "$MODE" == "morning" ]]; then
     exit 1
   fi
 
-  claude -p --dangerously-skip-permissions \
+  timeout 300s claude -p --dangerously-skip-permissions \
     "$(printf '%s\n\n---\n\n## VISION / GOALS\n%s\n\n## TODO\n%s\n\n## PROGRESS\n%s\n\n## BRAINSTORM\n%s\n\n## Recent git log\n%s' \
       "$(_safe_cat "$BRIEF_PROMPT")" \
       "$(_safe_cat GOALS.md)$(_safe_cat VISION.md)" \
@@ -270,7 +297,13 @@ if [[ "$MODE" == "resume" ]]; then
   TOTAL_COST=$(_read_progress TOTAL_COST 0)
   CURRENT_FEATURE=$(_read_progress CURRENT_FEATURE "")
   START_TIME=$(_read_progress STARTED "$START_TIME")
-  _log "Resuming session $SESSION_ID from iteration $OUTER_ITER (cost: \$$TOTAL_COST)"
+  # Restore settings from previous session (CLI flags override if provided)
+  [[ "$BUDGET" -eq 0 || "$BUDGET" -eq 5 ]] && BUDGET=$(_read_progress BUDGET "$BUDGET")
+  [[ "$HOURS" -eq 0 ]] && HOURS=$(_read_progress HOURS "$HOURS")
+  [[ "$MAX_WORKERS" -eq 4 ]] && MAX_WORKERS=$(_read_progress MAX_WORKERS "$MAX_WORKERS")
+  [[ "$SUPERVISOR_MODEL" == "sonnet" ]] && SUPERVISOR_MODEL=$(_read_progress SUPERVISOR_MODEL "$SUPERVISOR_MODEL")
+  [[ "$WORKER_MODEL" == "sonnet" ]] && WORKER_MODEL=$(_read_progress WORKER_MODEL "$WORKER_MODEL")
+  _log "Resuming session $SESSION_ID from iteration $OUTER_ITER (cost: \$$TOTAL_COST, budget: \$$BUDGET)"
   MODE="run"  # Continue as normal run
 fi
 
@@ -280,6 +313,16 @@ _log "Budget: \$$BUDGET | Max iterations: $MAX_OUTER_ITER | Workers: $MAX_WORKER
 [[ "$HOURS" -gt 0 ]] && _log "Wall-clock limit: ${HOURS}h"
 
 mkdir -p .claude logs/loop
+
+# Prevent concurrent start.sh instances on the same project
+LOCK_FILE=".claude/start.lock"
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+  echo "Error: another start.sh is already running in this project." >&2
+  echo "  (lock: $LOCK_FILE)" >&2
+  exit 1
+fi
+# Lock released automatically on exit (fd 9 closes)
 
 # Stale blocker check
 if [[ -f ".claude/blockers.md" ]]; then
@@ -322,7 +365,8 @@ fi
 # ─── Outer loop ───────────────────────────────────────────────────────────────
 while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
   OUTER_ITER=$((OUTER_ITER + 1))
-  VERIFY_RETRIES=0
+  # Reset verify retries only on fresh orchestrate (not on verify-fix re-loop)
+  [[ "${VERIFY_FIX_PENDING:-false}" != "true" ]] && VERIFY_RETRIES=0
 
   _log "═══ Outer iteration $OUTER_ITER / $MAX_OUTER_ITER ═══"
   _write_progress "planning"
@@ -333,8 +377,11 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
     exit 0
   fi
 
-  # ── Plan: run /orchestrate ──
-  if [[ -n "$GOAL" ]]; then
+  # ── Plan: run /orchestrate (skip if verify-fail created fix tasks) ──
+  if [[ "${VERIFY_FIX_PENDING:-false}" == "true" ]]; then
+    _log "Skipping orchestrate — running verify-fail fix tasks"
+    VERIFY_FIX_PENDING=false
+  elif [[ -n "$GOAL" ]]; then
     # Targeted mode: skip orchestrate, use goal directly as loop-runner goal
     _log "Targeted mode: using goal '$GOAL'"
     if [[ -f "$GOAL" ]]; then
@@ -349,7 +396,7 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
   else
     _log "Running /orchestrate..."
 
-    claude -p --dangerously-skip-permissions \
+    timeout 300s claude -p --dangerously-skip-permissions \
       "$(printf '%s\n\n---\n\n## CLAUDE.md\n%s\n\n## TODO.md\n%s\n\n## GOALS / VISION\n%s\n\n## PROGRESS.md\n%s\n\n## Skipped tasks\n%s\n\n## BRAINSTORM\n%s' \
         "$(_safe_cat "$HOME/.claude/skills/orchestrate/prompt.md")" \
         "$(_safe_cat CLAUDE.md)" \
@@ -411,6 +458,9 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
   _write_progress "executing"
   _log "Running loop (goal: .claude/filtered-tasks.md)..."
 
+  # Clear stale loop state from previous outer iteration
+  rm -f .claude/loop-state-start
+
   # Inject drift prevention rule into goal
   {
     cat .claude/filtered-tasks.md
@@ -423,7 +473,7 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
     --model "$SUPERVISOR_MODEL" \
     --worker-model "$WORKER_MODEL" \
     --max-workers "$MAX_WORKERS" \
-    --max-iter 5 \
+    --max-iter "$MAX_INNER_ITER" \
     --state .claude/loop-state-start \
     --log-dir logs/loop 2>&1 | tee -a "logs/loop/start-${SESSION_ID}.log"
 
@@ -441,12 +491,25 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
   _write_progress "verifying"
   _log "Running /verify..."
 
-  claude -p --dangerously-skip-permissions \
+  VERIFY_EXIT=0
+  timeout 300s claude -p --dangerously-skip-permissions \
     "$(_safe_cat "$HOME/.claude/skills/verify/prompt.md")" \
-    > .claude/verify-output.txt 2>/dev/null
+    > .claude/verify-output.txt 2>/dev/null || VERIFY_EXIT=$?
 
-  VERIFY_RESULT=$(grep -m1 "VERIFY_RESULT:" .claude/verify-output.txt 2>/dev/null | awk '{print $2}' || echo "partial")
-  FAILED_ANCHORS=$(grep -m1 "FAILED_ANCHORS:" .claude/verify-output.txt 2>/dev/null | cut -d: -f2- | xargs || echo "none")
+  if [[ $VERIFY_EXIT -eq 124 ]]; then
+    _log "⚠ /verify timed out (300s) — treating as partial"
+    VERIFY_RESULT="partial"
+    FAILED_ANCHORS="none"
+  elif [[ ! -s .claude/verify-output.txt ]]; then
+    _log "⚠ /verify produced empty output (exit $VERIFY_EXIT) — treating as partial"
+    VERIFY_RESULT="partial"
+    FAILED_ANCHORS="none"
+  else
+    VERIFY_RESULT=$(grep -m1 "VERIFY_RESULT:" .claude/verify-output.txt 2>/dev/null | awk '{print $2}')
+    VERIFY_RESULT=${VERIFY_RESULT:-partial}
+    FAILED_ANCHORS=$(grep -m1 "FAILED_ANCHORS:" .claude/verify-output.txt 2>/dev/null | cut -d: -f2- | xargs)
+    FAILED_ANCHORS=${FAILED_ANCHORS:-none}
+  fi
 
   _log "Verify result: $VERIFY_RESULT (failed anchors: $FAILED_ANCHORS)"
 
@@ -485,7 +548,8 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
           echo "Commit with: committer \"fix: repair broken anchors\" <files>"
         } > .claude/filtered-tasks.md
 
-        # Go back to loop (don't re-orchestrate)
+        # Go back to loop — skip orchestrate next iteration
+        VERIFY_FIX_PENDING=true
         continue
       fi
       ;;
@@ -495,9 +559,9 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
   _write_progress "syncing"
   _log "Syncing docs..."
 
-  claude -p --dangerously-skip-permissions \
+  timeout 120s claude -p --dangerously-skip-permissions \
     "$(_safe_cat "$HOME/.claude/skills/sync/prompt.md")" \
-    > /dev/null 2>&1
+    > /dev/null 2>&1 || true
 
   # Commit doc updates
   if [[ -n "$(git status --porcelain TODO.md PROGRESS.md 2>/dev/null)" ]]; then
@@ -516,4 +580,5 @@ else
   _write_session_report "completed"
 fi
 
+_notify "done" "Session $SESSION_ID complete (${OUTER_ITER} iters, \$$TOTAL_COST)"
 _log "Done. Report: ${REPORT_DIR}/session-report-${SESSION_ID}.md"
