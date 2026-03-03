@@ -306,33 +306,17 @@ Goal: one command starts everything, runs unattended for any duration (2h lunch 
 
 ### 11.2 — `/verify` Skill
 
-- [ ] **Create `configs/skills/verify/prompt.md`** — project-type-aware testing
-  - Auto-detect project type from CLAUDE.md `## Project Type` section; fallback: scan repo structure
-  - Strategy map: frontend → Playwright exploratory; API → httpx smoke tests; test suite exists → run it; CLI → run with sample inputs; no test strategy → report "unverifiable, skipped"
-  - Playwright fallback: if Playwright MCP not available, skip UI tests and note the gap
-  - Check behavior anchors in CLAUDE.md `## Features` section; flag any that no longer hold
-  - **Output must end with machine-parseable footer** (for start.sh to grep):
-    ```
-    VERIFY_RESULT: pass|partial|fail
-    FAILED_ANCHORS: anchor-name-1, anchor-name-2  (or "none" if no failures)
-    UNVERIFIABLE: N
-    ```
-  - Human-readable summary above the footer; footer always last 3 lines; FAILED_ANCHORS must always be present (use "none" not blank line — blank breaks grep)
+- [x] **Create `configs/skills/verify/prompt.md`** — project-type-aware testing with behavior anchors, machine-parseable VERIFY_RESULT/FAILED_ANCHORS/UNVERIFIABLE footer
   - `partial` vs `fail` distinction must be explicit in the prompt: `partial` = some anchors unverifiable (no test strategy, missing Playwright, insufficient coverage); `fail` = anchors that can be tested and are now regressing; start.sh uses this to decide skip-and-continue vs create-fix-tasks
 
 ---
 
 ### 11.3 — 3-Tier Issue Handling
 
-- [ ] **Add 3-tier rules to `loop-runner.sh` `INSTRUCTIONS` heredoc** (lines 285-318 in loop-runner.sh — that's where the supervisor prompt is built; the loop skill's prompt.md only launches loop-runner, it doesn't contain the supervisor instructions)
-  - Tier 1 (uncertainty): pick reversible default → log to `.claude/decisions.md` → continue
-  - Tier 2 (task failure): skip task → log to `.claude/skipped.md` → continue
-  - Tier 3 (true blocker): write to `.claude/blockers.md` → stop loop
-  - True blocker criteria: destructive/irreversible ops, needs secrets/permissions, mutually exclusive directions with high rollback cost
-  - **Supervisor needs blocker detection**: add to INSTRUCTIONS heredoc — "If `.claude/blockers.md` appears in the recent diff (was written this loop run), output STATUS: CONVERGED — a Tier 3 blocker requires human input before proceeding"
-- [ ] **Add `blockers.md` check to loop-runner.sh per-iteration guard** — loop-runner.sh currently only checks STOP sentinel (line 200) between iterations; workers write blockers.md to their worktree which gets merged back after the iteration; at the top of each new iteration, add: `if [[ -f ".claude/blockers.md" ]]; then echo "⚠ Blocker detected"; exit 1; fi` — prevents wasted iterations after a Tier 3 blocker is committed; place alongside STOP sentinel check (line 200)
-- [ ] **Add `decisions.md` / `skipped.md` cleanup to `/sync` skill** — all three tier files (decisions, skipped, blockers) must include ISO timestamp per entry; /sync archives to `.claude/*-archive.md` at session end
-- [ ] **blockers.md stale entry handling in start.sh** — on launch, check entry timestamps; interactive mode (TTY): prompt "still blocked? (y/N)" for entries older than 24h; unattended mode (no TTY): auto-stop and log stale blocker to session-report with note "review .claude/blockers.md"; use `[ -t 0 ]` to detect TTY
+- [x] **Add 3-tier rules to `loop-runner.sh` `INSTRUCTIONS` heredoc** — Tier 1 (decisions.md), Tier 2 (skipped.md), Tier 3 (blockers.md) + supervisor blocker detection
+- [x] **Add `blockers.md` check to loop-runner.sh per-iteration guard** — placed alongside STOP sentinel; stops loop + notifies on Tier 3 blocker
+- [x] **Add `decisions.md` / `skipped.md` cleanup to `/sync` skill** — archives tier files to `*-archive.md` and deletes originals
+- [ ] **blockers.md stale entry handling in start.sh** — deferred to 11.1 (start.sh implementation)
 
 ---
 
@@ -431,17 +415,10 @@ write .claude/session-report-{timestamp}.md → stop
 
 ### 11.8 — loop-runner.sh Known Bugs
 
-- [ ] **Bug: workers race-condition on goal file marking** — loop-runner.sh lines 305 + 427 instruct every worker to change `- [ ]` to `- [x]` in the goal file; parallel workers editing the same file cause merge conflicts or silent overwrites; fix: remove goal-file marking from worker instructions; supervisor marks items done at the start of each iteration based on git log, not workers
-  - Location: `INSTRUCTIONS` heredoc line 305, fallback wrapper line 427
-
-- [ ] **Bug: auto-deploy + git_recent_diff both use wrong commit range (shared fix: STARTED_COMMIT)** — Two symptoms, one root cause:
-  - Auto-deploy (line 461): `git diff --name-only HEAD~1 HEAD` only checks last commit, misses configs/ changes from earlier iterations
-  - git_recent_diff (line 226): `HEAD~$((iteration-1))..HEAD` is wrong — iteration 1 = `HEAD~0..HEAD` = empty diff; multi-commit iterations also miscounted
-  - Fix: record start commit at loop start: `state_write STARTED_COMMIT "$(git rev-parse HEAD)"`; auto-deploy uses `git diff --name-only $(state_read STARTED_COMMIT)..HEAD`; git_recent_diff uses `git diff $(state_read STARTED_COMMIT)..HEAD --stat`
-
-- [ ] **Bug: non-code task silent failure** — worker runs doc/research task → no commit → supervisor sees no git change → may loop forever or declare false CONVERGED; fix: capture `ITER_START_SHA=$(git rev-parse HEAD)` before workers run each iteration, then check `git rev-list $ITER_START_SHA..HEAD --count` after run-tasks-parallel.sh returns; if 0 → inject into supervisor context: "Workers produced no commits this iteration. If this is expected (doc task), declare CONVERGED. If unexpected, treat as Tier 2 failure."; use SHA not timestamp (`--since`) to avoid clock drift / same-second precision issues
-
-- [ ] **Bug: cost tracking requires `claude -p` JSON output** — Phase 11 plan requires `loop-cost.log`, but `claude -p` doesn't expose cost in plain-text output; **investigation moved to 11.6** (investigate early to unblock session-report design); if JSON output works: parse and append to `.claude/loop-cost.log` after each supervisor call; if no: estimate from model + token count heuristic, or defer session-report Cost field
+- [x] **Bug: workers race-condition on goal file marking** — removed `- [ ]` → `- [x]` instructions from both INSTRUCTIONS heredoc and fallback wrapper; replaced with "Do NOT modify the goal file"
+- [x] **Bug: auto-deploy + git_recent_diff both use wrong commit range** — added `STARTED_COMMIT` to state file at loop start; both git_recent_diff and auto-deploy now use `$(state_read STARTED_COMMIT)..HEAD`
+- [x] **Bug: non-code task silent failure** — added `ITER_START_SHA` capture before workers + `git rev-list` count after; zero commits → injects context for supervisor to decide CONVERGED vs re-plan
+- [ ] **Cost logging to loop-cost.log** — need to add `--output-format json` to supervisor `claude -p` call and parse `total_cost_usd` from JSON output; append to `.claude/loop-cost.log` per iteration (deferred to 11.1 start.sh implementation)
 
 ---
 
