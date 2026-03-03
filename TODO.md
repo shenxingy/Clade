@@ -403,6 +403,58 @@ write .claude/session-report-{timestamp}.md → stop
 
 ---
 
+## Phase 12 — System Polish & Hardening
+
+Goal: close gaps that reduce real-world autonomous run length. The system is functionally complete; this phase is about quality, consistency, and UX.
+
+### 12.0 — Stress-Test Prerequisite
+
+- [ ] **Run `start.sh` on 3+ real projects for multi-hour sessions** — collect baseline metrics (autonomous run length, success rate, cost per task), find bugs that only appear under sustained load
+- [ ] **Record baselines in PROGRESS.md** — fill in the North Star metrics table with real data
+
+---
+
+### 12.1 — Visual Verification (frontend/fullstack projects only)
+
+- [ ] **Playwright screenshot capture in `/verify`** — capture key routes, save to `.claude/verify-screenshots/`; skip for CLI/backend/ML project types
+- [ ] **AI visual review** — feed screenshots to vision model, compare against design system constraints
+- [ ] **Machine-parseable `VISUAL_RESULT: pass|fail`** — alongside existing `VERIFY_RESULT`
+
+---
+
+### 12.2 — Cross-Project Patrol
+
+- [ ] **`start.sh --patrol` mode** — scan all `~/projects/*/` with `CLAUDE.md`
+- [ ] **Per-project task factory scan** — CI failures, coverage gaps, stale deps, TODO comments
+- [ ] **Aggregate patrol report** — summary to terminal + per-project TODO.md updates
+
+---
+
+### 12.3 — Design System Constraint
+
+- [ ] **Design token injection in `/orchestrate`** — architect phase references component library + theme
+- [ ] **`/frontend-design` design system awareness** — reads project `.design-system.md` for constraints
+
+---
+
+### 12.4 — Batch Feedback Mode (file-based)
+
+- [ ] **Structured issue checklist from `/verify`** — output to `.claude/verify-issues.md`, not one-by-one
+- [ ] **File-based annotation** — user marks `[fix]` / `[skip]` / `[wontfix]` per item in one editing pass
+- [ ] **Auto-task creation** — next loop iteration reads annotations, `[fix]` items become tasks, rest → skipped.md
+
+---
+
+## Phase 13 — Orchestrator GUI Redesign (Future)
+
+Separated from Phase 12 due to scope — this is a full product redesign.
+
+- [ ] **Audit current GUI** — catalog all features, classify as keep/remove/redesign
+- [ ] **Monitoring-first redesign** — worker dashboard, session timeline, blocker queue
+- [ ] **Remove interactive editing** — task editing and prompt input belong in TUI, not GUI
+
+---
+
 ## Design Decisions
 
 | Decision | Choice | Reason |
