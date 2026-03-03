@@ -259,43 +259,46 @@ start.sh --resume --hours 8         # resume where it left off
 | 9 | Meta-Intelligence | Session warm-up, loop auto-PROGRESS, pattern detection, /research + /map + /incident | DONE |
 | 10 | Portfolio Mode | Cross-project task routing, priority ranking, goal suggestions | DONE |
 | 11 | Autonomous Lifecycle | /start one-command unattended, /verify testing, 3-tier issues, drift prevention | DONE |
-| 12 | System Polish | Visual verify, cross-project patrol, design constraints, batch feedback | NEXT |
+| 12 | Product Intelligence | UI interaction testing, autonomous work discovery, design constraints, batch feedback | NEXT |
 | 13 | GUI Redesign | Orchestrator cockpit redesign — monitoring-first, remove interactive editing | FUTURE |
 
 ---
 
-## Phase 12 — System Polish & Hardening
+## Phase 12 — From Code-Centric to Product-Centric
 
-**Prerequisite: stress-test on real projects.** Before building Phase 12 features, run `start.sh` on 3+ real projects (not just this repo) for multi-hour sessions. Collect baseline data for the North Star metrics, find bugs that only appear under sustained load, and validate that the existing pipeline is solid. Phase 12 features solve problems we've *hypothesized* — stress-testing reveals problems that *actually* block longer autonomous runs.
+The system can plan, build, and verify **code**. But shipping a product requires more — the system must also interact with what it builds (click buttons, walk user flows), evaluate UX holistically, and continuously discover new work without human-written TODOs. Phase 12 bridges this gap.
 
-The system is functionally complete. Phase 12 is about closing gaps that reduce real-world autonomous run length.
+**Prerequisite (12.0):** Stress-test `start.sh` on 3+ real projects for multi-hour sessions to collect baselines and find bugs before adding new capabilities.
 
-### 12.1 — Visual Verification
-`/verify` currently reads code but doesn't see the UI. For **frontend/fullstack projects** (detected via `## Project Type` in CLAUDE.md), extend with:
-- Playwright screenshot capture at key routes, saved to `.claude/verify-screenshots/`
-- AI visual review against design system constraints
-- Machine-parseable `VISUAL_RESULT: pass|fail` alongside existing `VERIFY_RESULT`
-- Skipped entirely for CLI/backend/ML project types
+### 12.1 — UI Interaction Testing (Playwright)
+The system currently reads code but never **uses** the product. For frontend/fullstack projects:
+- Playwright launches the app, walks through key user flows (not just screenshots — actual clicks, form fills, navigation)
+- AI evaluates each flow: does it work? Is it intuitive? Are there unnecessary steps?
+- Findings split into two categories:
+  - **Bugs** (broken flow, crash, wrong result) → fix tasks for next loop
+  - **UX improvements** (better button placement, simpler flow, clearer labels) → BRAINSTORM.md with `[AI]` prefix for human review
+- Machine-parseable output: `INTERACTION_RESULT: pass|partial|fail` + structured issue list
+- Triggered by `/verify` for frontend projects; skipped for CLI/backend/ML
 
-### 12.2 — Cross-Project Patrol
-`start.sh --patrol` mode:
-- Scan all `~/projects/*/` directories with `CLAUDE.md`
-- Per project: run task factories (CI, coverage, deps), scan for TODO comments
-- Aggregate findings: each project's TODO.md gets new items, summary to terminal
-- Lightweight: no loop, no workers — just scan + report + commit
+### 12.2 — Autonomous Work Discovery
+The system stops when TODO.md is empty. It should keep finding work:
+- **Task factories in CLI** — extract CI watcher, coverage scanner, dep updater from orchestrator GUI → standalone scripts callable by start.sh
+- **Post-convergence scan** — after each feature converges, start.sh runs task factories before declaring "done"; new findings → next iteration
+- **UX audit as work source** — 12.1 Playwright findings feed back as new tasks (bugs) or BRAINSTORM items (UX improvements)
+- **Code health scan** — dead code, TODO comments, lint warnings, type errors → auto-generated tasks
 
 ### 12.3 — Design System Constraint
-Solve "AI frontend aesthetics" problem by constraining AI output:
+Solve "AI frontend aesthetics" by constraining AI output:
 - `/orchestrate` architect phase injects design system reference (component library + theme + spacing rules)
-- `/frontend-design` skill references project-specific design tokens
-- Reduces AI's creative freedom = more consistent output
+- `/frontend-design` skill reads project-specific `.design-system.md`
+- Fewer choices = more consistent output
 
 ### 12.4 — Batch Feedback Mode
-Address the "serial feedback" pain point. Interface: **file-based annotation** (CLI-native, no GUI needed):
+Address "serial feedback" pain point. Interface: **file-based annotation** (CLI-native):
 - `/verify` outputs structured markdown checklist to `.claude/verify-issues.md`
-- User annotates each item: `[fix]`, `[skip]`, `[wontfix]` — one editing pass
-- Next loop iteration reads annotations: `[fix]` items become tasks, rest logged to skipped.md
-- Reduces human round-trips from N issues x 2 messages to 1 batch review
+- User annotates: `[fix]` / `[skip]` / `[wontfix]` — one editing pass
+- Next loop reads annotations: `[fix]` → tasks, rest → skipped.md
+- Cross-project patrol: `start.sh --patrol` scans all `~/projects/*/` with `CLAUDE.md`, runs task factories per project, outputs aggregate report
 
 ---
 

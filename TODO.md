@@ -403,30 +403,33 @@ write .claude/session-report-{timestamp}.md → stop
 
 ---
 
-## Phase 12 — System Polish & Hardening
+## Phase 12 — From Code-Centric to Product-Centric
 
-Goal: close gaps that reduce real-world autonomous run length. The system is functionally complete; this phase is about quality, consistency, and UX.
+Goal: the system must not only build code, but also USE what it builds — interact with the UI, evaluate UX, and continuously discover new work without hand-written TODOs.
 
 ### 12.0 — Stress-Test Prerequisite
 
-- [ ] **Run `start.sh` on 3+ real projects for multi-hour sessions** — collect baseline metrics (autonomous run length, success rate, cost per task), find bugs that only appear under sustained load
+- [ ] **Run `start.sh` on 3+ real projects for multi-hour sessions** — collect baseline metrics (autonomous run length, success rate, cost per task), find bugs under sustained load
 - [ ] **Record baselines in PROGRESS.md** — fill in the North Star metrics table with real data
 
 ---
 
-### 12.1 — Visual Verification (frontend/fullstack projects only)
+### 12.1 — UI Interaction Testing (frontend/fullstack only)
 
-- [ ] **Playwright screenshot capture in `/verify`** — capture key routes, save to `.claude/verify-screenshots/`; skip for CLI/backend/ML project types
-- [ ] **AI visual review** — feed screenshots to vision model, compare against design system constraints
-- [ ] **Machine-parseable `VISUAL_RESULT: pass|fail`** — alongside existing `VERIFY_RESULT`
+- [ ] **Playwright user flow walker** — launch app, click buttons, fill forms, navigate pages (not just screenshots)
+- [ ] **AI UX evaluation** — for each flow: does it work? Is it intuitive? Unnecessary steps? Better placement?
+- [ ] **Findings classification** — bugs → fix tasks for next loop; UX improvements → BRAINSTORM.md with `[AI]` prefix
+- [ ] **Machine-parseable output** — `INTERACTION_RESULT: pass|partial|fail` + structured issue list
+- [ ] **Integration with `/verify`** — triggered automatically for frontend projects; skipped for CLI/backend/ML
 
 ---
 
-### 12.2 — Cross-Project Patrol
+### 12.2 — Autonomous Work Discovery
 
-- [ ] **`start.sh --patrol` mode** — scan all `~/projects/*/` with `CLAUDE.md`
-- [ ] **Per-project task factory scan** — CI failures, coverage gaps, stale deps, TODO comments
-- [ ] **Aggregate patrol report** — summary to terminal + per-project TODO.md updates
+- [ ] **Extract task factories to CLI** — CI watcher, coverage scanner, dep updater as standalone scripts (currently orchestrator-only)
+- [ ] **Post-convergence scan in start.sh** — after feature converges, run task factories before declaring "done"; findings → next iteration
+- [ ] **UX audit as work source** — 12.1 Playwright bugs feed back as tasks; UX improvements feed BRAINSTORM.md
+- [ ] **Code health scan** — dead code, TODO comments, lint warnings, type errors → auto-generated tasks
 
 ---
 
@@ -437,11 +440,12 @@ Goal: close gaps that reduce real-world autonomous run length. The system is fun
 
 ---
 
-### 12.4 — Batch Feedback Mode (file-based)
+### 12.4 — Batch Feedback + Cross-Project Patrol
 
 - [ ] **Structured issue checklist from `/verify`** — output to `.claude/verify-issues.md`, not one-by-one
 - [ ] **File-based annotation** — user marks `[fix]` / `[skip]` / `[wontfix]` per item in one editing pass
-- [ ] **Auto-task creation** — next loop iteration reads annotations, `[fix]` items become tasks, rest → skipped.md
+- [ ] **Auto-task creation** — next loop reads annotations, `[fix]` → tasks, rest → skipped.md
+- [ ] **`start.sh --patrol`** — scan all `~/projects/*/` with `CLAUDE.md`, run task factories per project, aggregate report
 
 ---
 
