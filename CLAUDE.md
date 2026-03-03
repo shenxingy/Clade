@@ -1,5 +1,20 @@
 # Claude Code Kit — Project Context
 
+## Project Type
+- Type: cli + skill-system
+- Frontend: N/A (orchestrator has vanilla JS UI but not the primary interface)
+- Backend: FastAPI (orchestrator/, port 8000) — optional, CLI layer works standalone
+- Test command: cd orchestrator && .venv/bin/python -m pytest tests/ -v
+- Verify command: cd orchestrator && python -m py_compile server.py session.py task_queue.py worker.py
+
+## Features (Behavior Anchors)
+- install.sh: running `./install.sh` copies skills/hooks/scripts/keybindings to ~/.claude/ without errors
+- slt: running `slt` cycles the statusline mode (symbol → percent → number → off)
+- /commit: analyzes uncommitted changes, splits into logical commits by module, pushes by default
+- /loop: given a goal file, runs supervisor+worker iterations until converged or max-iter
+- committer: `committer "type: msg" file1 file2` stages only named files and commits
+- loop-runner.sh: runs background loop — supervisor plans tasks, workers execute in parallel via worktrees
+
 ## What This Project Is
 
 A two-layer automation toolkit on top of Claude Code CLI:
