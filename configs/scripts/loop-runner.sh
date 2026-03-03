@@ -48,9 +48,12 @@ MAX_WORKERS=4
 STATE_FILE=".claude/loop-state"
 CONTEXT_FILE=""
 LOG_DIR="logs/loop"
+COST_LOG=".claude/loop-cost.log"
+CUMULATIVE_COST=0
 RESUME=false
 EXIT_GATE=""
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
+START_TIME=$(date +%s)
 
 # Source canonical model IDs
 source "$SCRIPTS_DIR/../models.env" 2>/dev/null || source "$HOME/.claude/models.env"
@@ -214,6 +217,7 @@ while [[ $iteration -lt $MAX_ITER ]]; do
   fi
 
   iteration=$((iteration + 1))
+  ITER_START_TIME=$(date +%s)
   state_write ITERATION "$iteration"
 
   echo ""
@@ -378,19 +382,25 @@ INSTRUCTIONS
   SUPERVISOR_LOG="$LOG_DIR/iter-${iteration}-supervisor.log"
   echo "  Supervisor planning ($SUPERVISOR_MODEL)..."
 
-  SUPERVISOR_OUTPUT=$(
+  SUPERVISOR_JSON=$(
     timeout 300s claude -p \
       --model "$SUPERVISOR_MODEL_ID" \
       --dangerously-skip-permissions \
+      --output-format json \
       < "$PROMPT_FILE" \
       2>"$SUPERVISOR_LOG" \
-    || echo "ERROR: supervisor failed — see $SUPERVISOR_LOG"
+    || echo '{"result":"ERROR: supervisor failed — see '"$SUPERVISOR_LOG"'","total_cost_usd":0}'
   )
   rm -f "$PROMPT_FILE"
+
+  # Extract text result and cost from JSON
+  SUPERVISOR_OUTPUT=$(echo "$SUPERVISOR_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('result',''))" 2>/dev/null || echo "$SUPERVISOR_JSON")
+  ITER_SUPERVISOR_COST=$(echo "$SUPERVISOR_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('total_cost_usd',0))" 2>/dev/null || echo 0)
 
   echo ""
   echo "  Supervisor output:"
   echo "$SUPERVISOR_OUTPUT" | sed 's/^/  │ /'
+  echo "  Supervisor cost: \$${ITER_SUPERVISOR_COST}"
   echo ""
 
   # ── Check convergence ────────────────────────────────────────────────────
@@ -491,6 +501,7 @@ INSTRUCTIONS
   # ── Run workers in parallel ───────────────────────────────────────────────
   write_progress "running" "workers-$iteration"
   ITER_START_SHA=$(git rev-parse HEAD 2>/dev/null || echo "")
+  COST_MARKER=$(mktemp /tmp/loop-cost-marker-XXXXXX)
   echo "  Running $task_count worker(s) in parallel (MAX_WORKERS=$MAX_WORKERS)..."
   MAX_WORKERS="$MAX_WORKERS" bash "$SCRIPTS_DIR/run-tasks-parallel.sh" "$ITER_TASKS" 2>&1
 
@@ -505,6 +516,26 @@ INSTRUCTIONS
     fi
   fi
 
+  # ── Log iteration cost ──────────────────────────────────────────────────
+  # Worker logs live in logs/claude-tasks/ (created by run-tasks-parallel.sh).
+  # Find logs newer than the marker file created before workers started.
+  ITER_WORKER_COST=0
+  WORKER_LOG_DIR="$(git rev-parse --show-toplevel 2>/dev/null || pwd)/logs/claude-tasks"
+  for wlog in $(find "$WORKER_LOG_DIR" -name "*.log" -newer "$COST_MARKER" 2>/dev/null); do
+    [[ -f "$wlog" ]] || continue
+    wcost=$(grep -o '"total_cost_usd":[0-9.]*' "$wlog" 2>/dev/null | tail -1 | cut -d: -f2 || echo 0)
+    ITER_WORKER_COST=$(python3 -c "print(round($ITER_WORKER_COST + ${wcost:-0}, 4))" 2>/dev/null || echo "$ITER_WORKER_COST")
+  done
+  rm -f "$COST_MARKER"
+  ITER_TOTAL_COST=$(python3 -c "print(round(${ITER_SUPERVISOR_COST:-0} + $ITER_WORKER_COST, 4))" 2>/dev/null || echo 0)
+  CUMULATIVE_COST=$(python3 -c "print(round(${CUMULATIVE_COST:-0} + $ITER_TOTAL_COST, 4))" 2>/dev/null || echo "$ITER_TOTAL_COST")
+  ITER_DURATION=$(( ($(date +%s) - ITER_START_TIME) / 60 ))
+  ELAPSED=$(( ($(date +%s) - START_TIME) / 60 ))
+
+  mkdir -p "$(dirname "${COST_LOG:-.claude/loop-cost.log}")"
+  echo "ITER=$iteration COST=\$$ITER_TOTAL_COST CUMULATIVE=\$$CUMULATIVE_COST SUPERVISOR=\$$ITER_SUPERVISOR_COST WORKERS=\$$ITER_WORKER_COST DURATION=${ITER_DURATION}min ELAPSED=${ELAPSED}min TASKS=$task_count" >> "${COST_LOG:-.claude/loop-cost.log}"
+  echo "  Cost: \$$ITER_TOTAL_COST this iter (cumulative: \$$CUMULATIVE_COST) | ${ITER_DURATION}min | ${ELAPSED}min elapsed"
+
   echo ""
   echo "  Iteration $iteration complete."
 done
@@ -517,10 +548,13 @@ if [[ "$(state_read CONVERGED false)" != "true" ]]; then
   echo "  Check git log for what was done. Run again to continue."
 fi
 
+TOTAL_ELAPSED=$(( ($(date +%s) - START_TIME) / 60 ))
 echo ""
 echo "Logs:     $LOG_DIR/"
 echo "State:    $STATE_FILE"
 echo "Progress: $PROGRESS_FILE"
+echo "Cost:     \$$CUMULATIVE_COST over ${TOTAL_ELAPSED}min ($iteration iterations)"
+echo "Cost log: $COST_LOG"
 
 # ── Auto-deploy: run install.sh if configs/ was modified ──────────────────────
 INSTALL_SH="${PROJECT_DIR:-$(pwd)}/install.sh"
