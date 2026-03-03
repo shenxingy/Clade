@@ -9,6 +9,12 @@
 # Used by /verify to check that key behaviors still hold after each loop iteration.
 # Format: - [Feature name]: [what happens when user does X]
 
+# FROZEN Sections Convention
+# Sections marked with `# FROZEN` should NOT be modified by AI agents.
+# This is a strong convention (prompt-enforced, ~90% effective), not a filesystem lock.
+# Human must explicitly remove the FROZEN marker to allow AI edits.
+# Use for: project vision, core architecture decisions, security policies.
+
 # Agent Ground Rules
 
 These rules apply to ALL agents (Claude Code sessions) across all projects. They enable autonomous, unattended operation with minimal human intervention.
