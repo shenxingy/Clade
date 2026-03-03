@@ -115,27 +115,34 @@ get_task_retries() {
 }
 
 # ─── Conflict detection ──────────────────────────────────────────────
-# Simple heuristic: extract file paths mentioned in task prompts
+# Default: parallel. Only serialize on explicit depends_on: or OWN_FILES: overlap.
+# The worktree merge-conflict → serial-retry mechanism handles rare actual conflicts.
 
-extract_file_refs() {
-  local prompt="$1"
-  # Match common file path patterns
-  echo "$prompt" | grep -oP '[a-zA-Z0-9_./-]+\.(tsx|ts|jsx|js|py|ipynb|md|json|yaml|yml|sh|css|scss|rs|go|swift|kt|java|cpp|hpp|c|h|tex|bib|rb|lua|zig|dart)' | sort -u
+extract_own_files() {
+  # Only match explicit OWN_FILES: declarations, not file-like strings in prose
+  local task_idx="$1"
+  get_task_field "$task_idx" "OWN_FILES" "" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' | sort -u
+}
+
+get_task_depends_on() {
+  get_task_field "$1" "depends_on" ""
 }
 
 detect_conflicts() {
   local total
   total=$(count_tasks)
-  unset TASK_FILES_MAP
-  declare -gA TASK_FILES_MAP=()
+
+  # Collect OWN_FILES and depends_on for each task
+  unset TASK_OWN_FILES TASK_DEPS
+  declare -gA TASK_OWN_FILES=()
+  declare -gA TASK_DEPS=()
 
   for i in $(seq 1 "$total"); do
-    local prompt
-    prompt=$(get_task_prompt "$i")
-    TASK_FILES_MAP[$i]=$(extract_file_refs "$prompt")
+    TASK_OWN_FILES[$i]=$(extract_own_files "$i")
+    TASK_DEPS[$i]=$(get_task_depends_on "$i")
   done
 
-  # Build conflict groups: tasks sharing files go in the same serial group
+  # Build conflict groups: only serialize on explicit depends_on or OWN_FILES overlap
   unset GROUPS ASSIGNED
   declare -ga GROUPS=()
   declare -gA ASSIGNED=()
@@ -151,17 +158,32 @@ detect_conflicts() {
     for j in $(seq $((i + 1)) "$total"); do
       if [[ -n "${ASSIGNED[$j]:-}" ]]; then continue; fi
 
-      local files_i="${TASK_FILES_MAP[$i]}"
-      local files_j="${TASK_FILES_MAP[$j]}"
       local conflict=false
 
-      if [[ -n "$files_i" && -n "$files_j" ]]; then
-        while IFS= read -r f; do
-          if echo "$files_j" | grep -qF "$f"; then
+      # Source 1: explicit depends_on declaration
+      local deps_j="${TASK_DEPS[$j]}"
+      if [[ -n "$deps_j" ]]; then
+        for dep in $deps_j; do
+          if [[ "$dep" == "$i" ]]; then
             conflict=true
             break
           fi
-        done <<< "$files_i"
+        done
+      fi
+
+      # Source 2: OWN_FILES overlap (both tasks must declare OWN_FILES)
+      if ! $conflict; then
+        local files_i="${TASK_OWN_FILES[$i]}"
+        local files_j="${TASK_OWN_FILES[$j]}"
+        if [[ -n "$files_i" && -n "$files_j" ]]; then
+          while IFS= read -r f; do
+            [[ -z "$f" ]] && continue
+            if echo "$files_j" | grep -qF "$f"; then
+              conflict=true
+              break
+            fi
+          done <<< "$files_i"
+        fi
       fi
 
       if $conflict; then
