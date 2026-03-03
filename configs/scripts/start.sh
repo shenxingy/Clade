@@ -443,9 +443,33 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
       > .claude/proposed-tasks.md 2>/dev/null
 
     if [[ ! -s .claude/proposed-tasks.md ]] || ! grep -q "^===TASK===$" .claude/proposed-tasks.md 2>/dev/null; then
-      _log "⚠ /orchestrate produced no tasks. Stopping."
-      _write_session_report "converged"
-      exit 0
+      _log "⚠ /orchestrate produced no ===TASK=== blocks — retrying with format enforcement..."
+
+      # Retry once with explicit format instruction prepended
+      {
+        printf 'CRITICAL: You MUST output ONLY ===TASK=== blocks. No prose, no explanation. If there is truly nothing to do, output exactly "STATUS: CONVERGED" on its own line.\n\n'
+        printf '%s\n\n---\n\n## CLAUDE.md\n%s\n\n## TODO.md\n%s\n\n## GOALS / VISION\n%s\n\n## PROGRESS.md\n%s\n\n## Skipped tasks\n%s\n\n## BRAINSTORM\n%s' \
+          "$(_safe_cat "$HOME/.claude/skills/orchestrate/prompt.md")" \
+          "$(_safe_cat CLAUDE.md)" \
+          "$(_safe_cat TODO.md)" \
+          "$(_safe_cat GOALS.md)$(_safe_cat VISION.md)" \
+          "$(_safe_cat PROGRESS.md)" \
+          "$(_safe_cat .claude/skipped.md)" \
+          "$(_safe_cat BRAINSTORM.md)"
+      } | timeout 300s claude -p --dangerously-skip-permissions \
+        > .claude/proposed-tasks.md 2>/dev/null
+
+      if grep -q "^===TASK===$" .claude/proposed-tasks.md 2>/dev/null; then
+        _log "Retry succeeded — found tasks"
+      elif grep -q "STATUS: CONVERGED" .claude/proposed-tasks.md 2>/dev/null; then
+        _log "✓ Explicit convergence declared by /orchestrate"
+        _write_session_report "converged"
+        exit 0
+      else
+        _log "⚠ No tasks after retry — treating as converged"
+        _write_session_report "converged"
+        exit 0
+      fi
     fi
 
     # ── Filter by feature ──
