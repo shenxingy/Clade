@@ -1,7 +1,27 @@
 # Progress Log
 
 ---
+### 2026-03-02 — End-to-End Test: start.sh on claude-code-kit
 
+**First real test of full start.sh → loop-runner.sh → worker pipeline.**
+
+**Result:** Goal achieved in 2 iterations, $0.78 total cost, 2 minutes.
+- Iter 1: supervisor planned 1 haiku task → worker implemented --dry-run → merge conflict → auto-serial-retry → success (1 commit)
+- Iter 2: supervisor verified all checklist items done → CONVERGED
+- Auto-deploy triggered (configs/ changed)
+
+**4 bugs found and fixed:**
+1. `grep -c "pattern" file || echo 0` produces `"0\n0"` (not `"0"`) — grep outputs count "0" before failing, then `|| echo 0` appends another "0". Fixed across loop-runner.sh, start.sh, tmux-dispatch.sh with `var=$(grep -c ...) || var=0` pattern.
+2. Loop-runner cost logging unreachable on CONVERGED — `break` exits before cost block. Fixed: log supervisor cost before break.
+3. `/orchestrate` returning conversational text ("No goal file found") passes `-s` (non-empty) check. Fixed: also check for `===TASK===` markers.
+4. Targeted mode (`--goal`) convergence check counts `===TASK===` markers, but plain goal files don't have them → instant false convergence. Fixed: skip task-count convergence in targeted mode, delegate to loop-runner supervisor.
+
+**Lessons:**
+- `grep -c` returns exit code 1 when count=0 (unlike `wc -l` which returns 0 with exit 0). Never use `$(grep -c ... || echo 0)` — use `$(grep -c ...) || var=0` instead.
+- Worktree merge conflict → serial fallback works perfectly for single-worker scenarios. The serial worker ran on main directly, which also captured our uncommitted manual fixes.
+- Cost tracking works end-to-end: supervisor $0.25 + worker $0.33 per iteration, cumulative total accurate.
+
+---
 ### 2026-03-02 — Phase 11 Complete: Autonomous Lifecycle
 
 **What was built (all in one session):**
