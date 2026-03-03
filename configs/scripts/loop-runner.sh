@@ -405,6 +405,12 @@ INSTRUCTIONS
 
   # ── Check convergence ────────────────────────────────────────────────────
   if echo "$SUPERVISOR_OUTPUT" | grep -q "STATUS: CONVERGED"; then
+    # Log supervisor cost even when converging
+    CUMULATIVE_COST=$(python3 -c "print(round(${CUMULATIVE_COST:-0} + ${ITER_SUPERVISOR_COST:-0}, 4))" 2>/dev/null || echo "$CUMULATIVE_COST")
+    ELAPSED=$(( ($(date +%s) - START_TIME) / 60 ))
+    mkdir -p "$(dirname "${COST_LOG:-.claude/loop-cost.log}")"
+    echo "ITER=$iteration COST=\$${ITER_SUPERVISOR_COST:-0} CUMULATIVE=\$$CUMULATIVE_COST SUPERVISOR=\$${ITER_SUPERVISOR_COST:-0} WORKERS=\$0 DURATION=$(( ($(date +%s) - ITER_START_TIME) / 60 ))min ELAPSED=${ELAPSED}min TASKS=0 STATUS=CONVERGED" >> "${COST_LOG:-.claude/loop-cost.log}"
+
     if [[ -n "$EXIT_GATE" ]]; then
       echo "  Running exit gate: ${EXIT_GATE}"
       if eval "$EXIT_GATE" > /tmp/loop-gate-output 2>&1; then
@@ -494,7 +500,7 @@ INSTRUCTIONS
   fi
 
   # Show task summary
-  task_count=$(grep -c "^===TASK===$" "$ITER_TASKS" || echo 0)
+  task_count=$(grep -c "^===TASK===$" "$ITER_TASKS" 2>/dev/null) || task_count=0
   echo "  Planned $task_count task(s) for this iteration"
   echo ""
 

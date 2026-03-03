@@ -64,7 +64,9 @@ fi
 
 # ─── Task parsing ─────────────────────────────────────────────────────────────
 count_tasks() {
-    grep -c '^===TASK===$' "$TASK_FILE" 2>/dev/null || echo 0
+    local n
+    n=$(grep -c '^===TASK===$' "$TASK_FILE" 2>/dev/null) || n=0
+    echo "$n"
 }
 
 # Extract the prompt body (text after the --- line) for task N (1-indexed)
@@ -252,8 +254,8 @@ fi
 SUCCESS=0
 FAILED=0
 if [[ -f "$RESULTS_FILE" ]]; then
-    SUCCESS=$(grep -c '^success$' "$RESULTS_FILE" 2>/dev/null || echo 0)
-    FAILED=$(grep -c  '^failed$'  "$RESULTS_FILE" 2>/dev/null || echo 0)
+    SUCCESS=$(grep -c '^success$' "$RESULTS_FILE" 2>/dev/null) || SUCCESS=0
+    FAILED=$(grep -c  '^failed$'  "$RESULTS_FILE" 2>/dev/null) || FAILED=0
 fi
 
 echo ""
