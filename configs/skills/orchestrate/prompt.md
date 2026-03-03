@@ -114,6 +114,7 @@ model: sonnet
 timeout: 600
 retries: 2
 TYPE: VERTICAL
+Feature: [feature/phase name from TODO.md, e.g. "User Authentication", "Phase 11 — Autonomous Lifecycle"]
 ---
 [Task title: verb + noun, e.g. "Implement NextAuth configuration"]
 
@@ -153,6 +154,8 @@ TYPE: HORIZONTAL
 - `VERTICAL`: Standard feature/bugfix — one logical unit, stays in its lane (default)
 - `HORIZONTAL`: Same operation across many files — e.g. "add type hints to all modules", "rename X to Y everywhere" — will be auto-decomposed into per-file micro-tasks
 - `AUTO`: Let the orchestrator decide (defaults to VERTICAL if unclear)
+
+**Feature tag:** Every task MUST have a `Feature:` line mapping to a phase or goal name from TODO.md. This enables start.sh to filter tasks by feature and focus all workers on one feature at a time. If TODO.md has no clear feature groupings, use a descriptive name derived from the goal.
 
 ### Step 4: Notify User
 After writing the file, say exactly:
