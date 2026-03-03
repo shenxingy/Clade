@@ -1,6 +1,29 @@
 # Progress Log
 
 ---
+### 2026-03-02 — Phase 11 Complete: Autonomous Lifecycle
+
+**What was built (all in one session):**
+- `/verify` skill: project-type-aware testing with behavior anchors, machine-parseable footer
+- 3-tier issue handling: Tier 1 (decisions.md), Tier 2 (skipped.md), Tier 3 (blockers.md) in loop-runner.sh
+- loop-runner.sh bug fixes: goal-file race removed, STARTED_COMMIT for accurate diffs, zero-commit detection
+- `/orchestrate` Feature: tag for one-feature focus filtering
+- `/start` skill + `start.sh`: full autonomous lifecycle (plan → filter → loop → verify → sync → repeat)
+- Drift prevention: FROZEN convention + BRAINSTORM proposal rule in both loop-runner.sh and start.sh
+- Safety layer: cost guard ($5 default), wall-clock limit, TTY detection, --resume crash recovery
+
+**Key design decisions:**
+- start.sh is pure shell (zero LLM context) — each worker is an independent Claude session
+- Convergence detected by fresh /orchestrate output, not worker-modified files
+- Feature focus: one feature at a time, skipped.md injected to prevent task re-generation
+- `claude -p --output-format json` confirmed: `total_cost_usd` + per-model breakdown available
+
+**Remaining (deferred):**
+- Cost logging to loop-cost.log (need `--output-format json` on supervisor calls in loop-runner.sh)
+- Worker rebalancing across sessions (Phase 12 backlog)
+- End-to-end test of full start.sh cycle on a real project
+
+---
 ### 2026-03-02 — Phase 11 S1: Verification + Template
 
 **Phase 10 verification (code-level trace, no GUI):**
