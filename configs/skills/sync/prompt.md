@@ -98,6 +98,23 @@ This appends a JSON entry to `~/.claude/corrections/scorecards.jsonl` with corre
 
 ---
 
+## Step 3d: Archive tier files
+
+Check for 3-tier issue handling files from autonomous loop runs:
+
+```bash
+ls .claude/decisions.md .claude/skipped.md .claude/blockers.md 2>/dev/null
+```
+
+For each file that exists:
+1. Append its contents to `.claude/{name}-archive.md` (create if needed)
+2. Delete the original file
+3. Report what was archived
+
+If none exist, skip silently.
+
+---
+
 ## Step 4: Print summary
 
 Always end with a summary:

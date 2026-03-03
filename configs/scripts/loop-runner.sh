@@ -204,6 +204,15 @@ while [[ $iteration -lt $MAX_ITER ]]; do
     exit 0
   fi
 
+  # Check for Tier 3 blocker (written by worker in previous iteration)
+  if [[ -f ".claude/blockers.md" ]]; then
+    echo "⚠ Blocker detected (.claude/blockers.md exists). Stopping loop."
+    echo "  Review the blocker, resolve it, then delete .claude/blockers.md to continue."
+    write_progress "blocked" "tier3-blocker"
+    _notify_loop "blocked" "⚠ Tier 3 blocker detected — human input required"
+    exit 1
+  fi
+
   iteration=$((iteration + 1))
   state_write ITERATION "$iteration"
 
@@ -315,6 +324,46 @@ ${MAX_TASKS_RULE}
 - Workers have full Claude Code tool access (Read, Edit, Bash, Glob, Grep)
 - Pick model by complexity: haiku=mechanical/1-file, sonnet=standard, opus=architectural/multi-file
 - Do NOT re-assign tasks that are already in the git log as completed commits
+
+## 3-Tier Issue Handling (for workers)
+
+Each task description MUST include these rules for the worker:
+
+**Tier 1 — Uncertainty (pick a default, keep going):**
+When you're unsure about a minor choice (naming, ordering, style), pick the reversible default.
+Log: append a timestamped entry to \`.claude/decisions.md\`:
+\`\`\`
+## [ISO-timestamp] Decision: [what you decided]
+Context: [why you were unsure]
+Choice: [what you picked and why]
+\`\`\`
+Then continue working. Do NOT stop for minor ambiguities.
+
+**Tier 2 — Task failure (skip, log, continue):**
+If your task fails after reasonable attempts (compile error you can't fix, missing dependency, test won't pass):
+Log: append a timestamped entry to \`.claude/skipped.md\`:
+\`\`\`
+## [ISO-timestamp] Skipped: [task summary]
+Reason: [what failed]
+Attempted: [what you tried]
+\`\`\`
+Commit any partial work, then stop this task. Do NOT loop retrying.
+
+**Tier 3 — True blocker (stop everything):**
+Only for: destructive/irreversible operations, needs secrets/permissions you don't have, mutually exclusive directions with high rollback cost.
+Write to \`.claude/blockers.md\`:
+\`\`\`
+## [ISO-timestamp] Blocker: [what's blocking]
+Impact: [what can't proceed]
+Needs: [what human input is required]
+\`\`\`
+Then stop immediately. Do NOT attempt workarounds for true blockers.
+
+## Blocker detection (for supervisor)
+
+If \`.claude/blockers.md\` appears in the recent git diff (was written during this loop run), output:
+  STATUS: CONVERGED
+A Tier 3 blocker requires human input before proceeding.
 INSTRUCTIONS
     EXTRA_CONTEXT=""
   } > "$PROMPT_FILE"
