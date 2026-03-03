@@ -324,6 +324,41 @@ if ! flock -n 9; then
 fi
 # Lock released automatically on exit (fd 9 closes)
 
+# ── Startup health check (disk/memory) ──
+_check_startup_health() {
+  # Disk pressure check
+  local disk_usage
+  disk_usage=$(df -P . 2>/dev/null | awk 'NR==2 {gsub(/%/,"",$5); print $5}')
+  if [[ -n "$disk_usage" ]]; then
+    if [[ "$disk_usage" -ge 95 ]]; then
+      echo "ERROR: Disk usage at ${disk_usage}% — aborting to prevent data loss." >&2
+      echo "  Free up space and retry." >&2
+      exit 1
+    elif [[ "$disk_usage" -ge 90 ]]; then
+      echo "⚠ Disk usage at ${disk_usage}% — running low."
+      if [[ -t 0 ]]; then
+        read -t 15 -p "  Continue anyway? (Y/n, auto-Y in 15s): " _answer || _answer="y"
+        if [[ "${_answer,,}" == "n" ]]; then
+          echo "Aborted by user."
+          exit 1
+        fi
+      else
+        echo "  (non-TTY: continuing with warning)"
+      fi
+    fi
+  fi
+
+  # Low memory warning (optional, best-effort)
+  if command -v free &>/dev/null; then
+    local avail_mb
+    avail_mb=$(free -m 2>/dev/null | awk '/^Mem:/ {print $7}')
+    if [[ -n "$avail_mb" && "$avail_mb" -lt 512 ]]; then
+      echo "⚠ Low memory: ${avail_mb}MB available. Workers may OOM."
+    fi
+  fi
+}
+_check_startup_health
+
 # Stale blocker check
 if [[ -f ".claude/blockers.md" ]]; then
   if [[ -t 0 ]]; then
