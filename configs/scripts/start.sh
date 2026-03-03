@@ -12,6 +12,7 @@
 #   start.sh --budget N          Set cost budget in USD
 #   start.sh --resume            Resume from last session-progress.md
 #   start.sh --stop              Write stop sentinel
+#   start.sh --dry-run           Dry run: show plan and exit without executing
 #
 # Architecture:
 #   start.sh is a pure shell script — consumes zero LLM context.
@@ -36,6 +37,7 @@ MODE="run"
 HOURS=0
 GOAL=""
 BUDGET=0
+DRY_RUN=false
 MAX_OUTER_ITER=20
 MAX_VERIFY_RETRIES=3
 SUPERVISOR_MODEL="sonnet"
@@ -50,6 +52,7 @@ while [[ $# -gt 0 ]]; do
     --hours)         HOURS="$2";           shift 2 ;;
     --goal)          GOAL="$2";            shift 2 ;;
     --budget)        BUDGET="$2";          shift 2 ;;
+    --dry-run)       DRY_RUN=true;         shift ;;
     --resume)        MODE="resume";        shift ;;
     --stop)          MODE="stop";          shift ;;
     --model)         SUPERVISOR_MODEL="$2"; shift 2 ;;
@@ -155,9 +158,9 @@ _write_session_report() {
   local completed_count skipped_count blocker_count
   completed_count=$(git log --oneline --since="@${START_TIME}" 2>/dev/null | wc -l | tr -d ' ')
   skipped_count=0
-  [[ -f ".claude/skipped.md" ]] && skipped_count=$(grep -c "^## " .claude/skipped.md 2>/dev/null || echo 0)
+  [[ -f ".claude/skipped.md" ]] && { skipped_count=$(grep -c "^## " .claude/skipped.md 2>/dev/null) || skipped_count=0; }
   blocker_count=0
-  [[ -f ".claude/blockers.md" ]] && blocker_count=$(grep -c "^## " .claude/blockers.md 2>/dev/null || echo 0)
+  [[ -f ".claude/blockers.md" ]] && { blocker_count=$(grep -c "^## " .claude/blockers.md 2>/dev/null) || blocker_count=0; }
 
   cat > "${REPORT_DIR}/session-report-${SESSION_ID}.md" <<EOF
 ## Session: $(date -d "@${START_TIME}" '+%Y-%m-%d %H:%M' 2>/dev/null || date -r "$START_TIME" '+%Y-%m-%d %H:%M' 2>/dev/null || echo "unknown") → ${end_time}  (${duration}min)
@@ -219,7 +222,7 @@ else:
 " > "$filtered"
 
   local task_count
-  task_count=$(grep -c "^===TASK===$" "$filtered" 2>/dev/null || echo 0)
+  task_count=$(grep -c "^===TASK===$" "$filtered" 2>/dev/null) || task_count=0
   _log "Filtered: $task_count task(s) for feature '$CURRENT_FEATURE'"
 }
 
@@ -332,7 +335,7 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
 
   # ── Plan: run /orchestrate ──
   if [[ -n "$GOAL" ]]; then
-    # Targeted mode: skip orchestrate, use goal directly
+    # Targeted mode: skip orchestrate, use goal directly as loop-runner goal
     _log "Targeted mode: using goal '$GOAL'"
     if [[ -f "$GOAL" ]]; then
       cp "$GOAL" .claude/filtered-tasks.md
@@ -341,6 +344,8 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
       echo "$GOAL" > .claude/filtered-tasks.md
     fi
     CURRENT_FEATURE="targeted"
+    # Targeted goals use loop-runner's supervisor for convergence, not ===TASK=== counting
+    TARGETED=true
   else
     _log "Running /orchestrate..."
 
@@ -355,10 +360,10 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
         "$(_safe_cat BRAINSTORM.md)")" \
       > .claude/proposed-tasks.md 2>/dev/null
 
-    if [[ ! -s .claude/proposed-tasks.md ]]; then
-      _log "⚠ /orchestrate produced empty output. Stopping."
-      _write_session_report "orchestrate-failed"
-      exit 1
+    if [[ ! -s .claude/proposed-tasks.md ]] || ! grep -q "^===TASK===$" .claude/proposed-tasks.md 2>/dev/null; then
+      _log "⚠ /orchestrate produced no tasks. Stopping."
+      _write_session_report "converged"
+      exit 0
     fi
 
     # ── Filter by feature ──
@@ -366,15 +371,17 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
   fi
 
   # ── Convergence check: any open tasks? ──
-  open_tasks=$(grep -c "^===TASK===$" .claude/filtered-tasks.md 2>/dev/null || echo 0)
-
-  if [[ "$open_tasks" -eq 0 ]]; then
-    _log "✓ No open tasks — converged!"
-    _write_session_report "converged"
-    exit 0
+  if [[ "${TARGETED:-false}" != "true" ]]; then
+    open_tasks=$(grep -c "^===TASK===$" .claude/filtered-tasks.md 2>/dev/null) || open_tasks=0
+    if [[ "$open_tasks" -eq 0 ]]; then
+      _log "✓ No open tasks — converged!"
+      _write_session_report "converged"
+      exit 0
+    fi
+    _log "$open_tasks task(s) to execute"
+  else
+    _log "Targeted mode — delegating convergence to loop-runner supervisor"
   fi
-
-  _log "$open_tasks task(s) to execute"
 
   # ── Interactive approval window ──
   if [[ -t 0 && "${CONFIRM:-}" != "true" ]]; then
@@ -384,6 +391,20 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
     echo ""
     echo "  Starting in 30s... (Ctrl+C to abort)"
     read -t 30 || true
+  fi
+
+  # ── Dry-run exit ──
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo ""
+    echo "  [DRY RUN] Would execute:"
+    echo "    Feature:  ${CURRENT_FEATURE:-all}"
+    echo "    Tasks:    ${open_tasks:-0}"
+    echo "    Workers:  $MAX_WORKERS × $WORKER_MODEL"
+    echo "    Budget:   \$$BUDGET"
+    echo ""
+    echo "  loop-runner.sh would run with goal: .claude/loop-goal.md"
+    echo "  Exiting (dry run — no workers started, no verify run)."
+    exit 0
   fi
 
   # ── Execute: run /loop ──
@@ -408,6 +429,13 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
 
   _accumulate_cost
   _log "Cumulative cost: \$$TOTAL_COST"
+
+  # Targeted mode: one outer iteration is enough (loop-runner iterates internally)
+  if [[ "${TARGETED:-false}" == "true" ]]; then
+    _log "Targeted mode complete."
+    _write_session_report "completed"
+    exit 0
+  fi
 
   # ── Verify ──
   _write_progress "verifying"
