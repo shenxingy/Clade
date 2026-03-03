@@ -1,6 +1,37 @@
 # Progress Log
 
 ---
+### 2026-03-02 — Phase 11 S1: Verification + Template
+
+**Phase 10 verification (code-level trace, no GUI):**
+- Priority ranker: full chain wired (`_rank_tasks` → 5min timer → haiku → DB → claim ordering)
+- Cross-project overview: `GET /api/sessions/overview` complete with cost_rate
+- Model routing + global max_workers: both enforced at multiple points
+- Gap: worker rebalancing (inter-session redistribution) not implemented — deferred, not needed for Phase 11
+
+**Cost tracking investigation:**
+- `claude -p --output-format json` outputs `total_cost_usd` + per-model `costUSD` breakdown — fully parseable with `jq`
+- Bug 4 is NOT a blocker — cost tracking in loop-runner.sh and session-report is feasible
+
+**CLAUDE.md template (11.4):**
+- Added `## Project Type` + `## Features (Behavior Anchors)` to template and dogfooded on this project
+- 6 anchors: install.sh, slt, /commit, /loop, committer, loop-runner.sh
+
+---
+### 2026-03-01 — Loop: docs-review-goal
+
+**Iterations:** 3
+**Goal file:** /home/alexshen/projects/claude-code-kit/.claude/docs-review-goal.md
+**Commits since start:**
+```
+62fefd1 Merge branch 'batch/task-2-20260301-225754'
+ef96f0c docs: trim PROGRESS.md — remove changelog bloat, keep lessons
+f72c1fc docs: fix stale overnight-mode references and Phase 10 status in TODO
+d50da15 docs: review pass — clear brainstorm, fix phase ordering, update skills list, fix file map
+```
+
+---
+
 ### 2026-03-01 — Loop: docs-review-goal
 
 Docs accuracy sweep: cleared BRAINSTORM.md, fixed Phase 8/9 ordering in TODO.md, updated session-report filename format, updated VISION.md skills list, updated CLAUDE.md file map.
