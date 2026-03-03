@@ -119,7 +119,7 @@ state_write() {
 
 if ! $RESUME || [[ ! -f "$STATE_FILE" ]]; then
   # Fresh start: reset state (default behavior)
-  { echo "ITERATION=0"; echo "CONVERGED=false"; echo "GOAL=$(realpath "$GOAL_FILE")"; echo "STARTED=$(date -Iseconds)"; } > "$STATE_FILE"
+  { echo "ITERATION=0"; echo "CONVERGED=false"; echo "GOAL=$(realpath "$GOAL_FILE")"; echo "STARTED=$(date -Iseconds)"; echo "STARTED_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo 'HEAD')"; } > "$STATE_FILE"
 fi
 
 iteration=$(state_read ITERATION 0)
@@ -232,7 +232,7 @@ while [[ $iteration -lt $MAX_ITER ]]; do
   goal_content=$(cat "$GOAL_FILE")
   git_log=$(git log --oneline -20 2>/dev/null || echo "(no git history)")
   git_status=$(git status --short 2>/dev/null | head -20 || echo "(no git repo)")
-  git_recent_diff=$(git diff HEAD~"$((iteration - 1))"..HEAD --stat 2>/dev/null | tail -20 || echo "(no diff)")
+  git_recent_diff=$(git diff "$(state_read STARTED_COMMIT HEAD)"..HEAD --stat 2>/dev/null | tail -20 || echo "(no diff)")
 
   extra_context=""
   if [[ -n "$CONTEXT_FILE" && -f "$CONTEXT_FILE" ]]; then
@@ -310,8 +310,7 @@ retries: 1
  - Which file to edit and which function/section
  - What exactly to implement
  - How to verify it works
- - Commit with: committer "type: msg" file1 file2
- - After completing, mark the corresponding item in the goal file as done: change - [ ] to - [x]}
+ - Commit with: committer "type: msg" file1 file2}
 
 ===TASK===
 model: sonnet
@@ -435,7 +434,7 @@ INSTRUCTIONS
           echo "- Use committer \"type: msg\" file1 file2 to commit (NEVER git add .)"
           echo "- Re-read every changed file before finishing"
           echo "- Run compile / type-check if applicable"
-          echo "- Mark the completed item in the goal file: change \`- [ ]\` to \`- [x]\`"
+          echo "- Do NOT modify the goal file — the supervisor tracks completion via git log"
         fi
         echo "===TASK==="
         in_body=false
@@ -484,8 +483,20 @@ INSTRUCTIONS
 
   # ── Run workers in parallel ───────────────────────────────────────────────
   write_progress "running" "workers-$iteration"
+  ITER_START_SHA=$(git rev-parse HEAD 2>/dev/null || echo "")
   echo "  Running $task_count worker(s) in parallel (MAX_WORKERS=$MAX_WORKERS)..."
   MAX_WORKERS="$MAX_WORKERS" bash "$SCRIPTS_DIR/run-tasks-parallel.sh" "$ITER_TASKS" 2>&1
+
+  # Check if workers produced any commits (Bug 3: non-code task silent failure)
+  if [[ -n "$ITER_START_SHA" ]]; then
+    ITER_COMMIT_COUNT=$(git rev-list "$ITER_START_SHA"..HEAD --count 2>/dev/null || echo 0)
+    if [[ "$ITER_COMMIT_COUNT" -eq 0 ]]; then
+      echo "  ⚠ Workers produced 0 commits this iteration."
+      EXTRA_CONTEXT="Workers produced no commits in the previous iteration. If this is expected (documentation/research task with no code changes), you may declare CONVERGED. If unexpected, treat as Tier 2 failure and re-plan with different approach."
+    else
+      echo "  ✓ $ITER_COMMIT_COUNT commit(s) this iteration."
+    fi
+  fi
 
   echo ""
   echo "  Iteration $iteration complete."
@@ -507,7 +518,7 @@ echo "Progress: $PROGRESS_FILE"
 # ── Auto-deploy: run install.sh if configs/ was modified ──────────────────────
 INSTALL_SH="${PROJECT_DIR:-$(pwd)}/install.sh"
 if [[ -f "$INSTALL_SH" ]]; then
-  CONFIGS_CHANGED=$(git -C "${PROJECT_DIR:-$(pwd)}" diff --name-only HEAD~1 HEAD 2>/dev/null | grep "^configs/" | wc -l | tr -d ' \n' || echo 0)
+  CONFIGS_CHANGED=$(git -C "${PROJECT_DIR:-$(pwd)}" diff --name-only "$(state_read STARTED_COMMIT HEAD)"..HEAD 2>/dev/null | grep "^configs/" | wc -l | tr -d ' \n' || echo 0)
   if [[ "${CONFIGS_CHANGED:-0}" -gt 0 ]]; then
     echo ""
     echo "⚙ configs/ changed — running install.sh to deploy..."
