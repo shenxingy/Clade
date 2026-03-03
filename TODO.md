@@ -316,7 +316,7 @@ Goal: one command starts everything, runs unattended for any duration (2h lunch 
 - [x] **Add 3-tier rules to `loop-runner.sh` `INSTRUCTIONS` heredoc** — Tier 1 (decisions.md), Tier 2 (skipped.md), Tier 3 (blockers.md) + supervisor blocker detection
 - [x] **Add `blockers.md` check to loop-runner.sh per-iteration guard** — placed alongside STOP sentinel; stops loop + notifies on Tier 3 blocker
 - [x] **Add `decisions.md` / `skipped.md` cleanup to `/sync` skill** — archives tier files to `*-archive.md` and deletes originals
-- [ ] **blockers.md stale entry handling in start.sh** — deferred to 11.1 (start.sh implementation)
+- [x] **blockers.md stale entry handling in start.sh** — TTY: 30s prompt (auto-clear); unattended: exit with `blocked-stale` report
 
 ---
 
@@ -367,7 +367,7 @@ write .claude/session-report-{timestamp}.md → stop
   - **Convergence detection**: at the TOP of each outer iteration, AFTER fresh /orchestrate runs, `grep -c "^\- \[ \]" filtered-tasks.md`; if 0 → truly converged (no more open tasks in current feature scope), write `session-report-{timestamp}.md` + stop; if >0 → run /loop; this replaces the old "re-read filtered-tasks.md after verify" pattern — workers never mutate filtered-tasks.md, /orchestrate regenerates it fresh each iteration
 
 - [x] **Shell invocation checklist** — all `claude -p` calls use `--dangerously-skip-permissions`; orchestrate injects CLAUDE.md + TODO.md + GOALS.md + PROGRESS.md + skipped.md; optional docs guarded; sync before committer; unset CLAUDECODE at top
-- [ ] **Add cost logging to loop-runner.sh** — need to add `--output-format json` to supervisor `claude -p` call and parse `total_cost_usd`; append to `.claude/loop-cost.log` per iteration (enhancement — start.sh works without it, cost just shows as 0)
+- [x] **Add cost logging to loop-runner.sh** — supervisor uses `--output-format json` + python3 JSON parsing; worker costs parsed from `logs/claude-tasks/` stream-json logs via marker-file-based discovery; per-iteration + cumulative totals logged to `.claude/loop-cost.log`
 - [x] **Session report format** — `_write_session_report()` in start.sh writes timestamped `.claude/session-report-{id}.md`
 - [x] **Update `/orchestrate` skill to tag tasks with `Feature: <name>`** — added Feature: line to task block format + documentation
 - [x] **Targeted mode** (`/start --goal "X"`) — implemented: skips orchestrate, copies goal file directly to filtered-tasks.md
@@ -390,7 +390,7 @@ write .claude/session-report-{timestamp}.md → stop
 - [x] **Bug: workers race-condition on goal file marking** — removed `- [ ]` → `- [x]` instructions from both INSTRUCTIONS heredoc and fallback wrapper; replaced with "Do NOT modify the goal file"
 - [x] **Bug: auto-deploy + git_recent_diff both use wrong commit range** — added `STARTED_COMMIT` to state file at loop start; both git_recent_diff and auto-deploy now use `$(state_read STARTED_COMMIT)..HEAD`
 - [x] **Bug: non-code task silent failure** — added `ITER_START_SHA` capture before workers + `git rev-list` count after; zero commits → injects context for supervisor to decide CONVERGED vs re-plan
-- [ ] **Cost logging to loop-cost.log** — need to add `--output-format json` to supervisor `claude -p` call and parse `total_cost_usd` from JSON output; append to `.claude/loop-cost.log` per iteration (deferred to 11.1 start.sh implementation)
+- [x] **Cost logging to loop-cost.log** — supervisor `--output-format json` + worker stream-json parsing; marker-file discovery for worker logs; cumulative tracking; start.sh `_accumulate_cost()` reads CUMULATIVE value
 
 ---
 

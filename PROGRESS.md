@@ -18,8 +18,19 @@
 - Feature focus: one feature at a time, skipped.md injected to prevent task re-generation
 - `claude -p --output-format json` confirmed: `total_cost_usd` + per-model breakdown available
 
+**Cost logging (added post-phase):**
+- Supervisor: `--output-format json` + python3 JSON parsing for both result text and `total_cost_usd`
+- Workers: marker-file discovery (`find logs/claude-tasks -newer $marker`) to locate stream-json logs from run-tasks-parallel.sh, parse `total_cost_usd` per worker
+- Per-iteration log line: `ITER=N COST=$X CUMULATIVE=$Y SUPERVISOR=$S WORKERS=$W DURATION=Nmin ELAPSED=Nmin TASKS=N`
+- start.sh `_accumulate_cost()` reads CUMULATIVE value from last log line
+- Final summary: total cost + elapsed time + iteration count printed at script end
+
+**Lessons (cost logging):**
+- Worker log files are owned by run-tasks-parallel.sh (`logs/claude-tasks/${TIMESTAMP}-task-${idx}.log`), not by loop-runner.sh — discovery via marker file (`find -newer`) is the cleanest cross-script approach
+- `--output-format json` wraps the result in `{"result":"...","total_cost_usd":N}` — need python3 JSON parsing to extract text (can't use raw output as task list anymore)
+- `--output-format stream-json` (used by workers) embeds `"total_cost_usd"` in the last result event — grep for the last occurrence
+
 **Remaining (deferred):**
-- Cost logging to loop-cost.log (need `--output-format json` on supervisor calls in loop-runner.sh)
 - Worker rebalancing across sessions (Phase 12 backlog)
 - End-to-end test of full start.sh cycle on a real project
 

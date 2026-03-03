@@ -138,11 +138,11 @@ _check_stop_conditions() {
 }
 
 _accumulate_cost() {
-  # Read last entry from loop-cost.log and add to total
+  # Read cumulative cost from loop-cost.log (loop-runner.sh tracks running total)
   if [[ -f "$COST_LOG" ]]; then
-    local last_cost
-    last_cost=$(tail -1 "$COST_LOG" 2>/dev/null | grep -oP 'COST: \$\K[0-9.]+' || echo 0)
-    TOTAL_COST=$(python3 -c "print(round($TOTAL_COST + $last_cost, 4))" 2>/dev/null || echo "$TOTAL_COST")
+    local cumulative
+    cumulative=$(tail -1 "$COST_LOG" 2>/dev/null | grep -oP 'CUMULATIVE=\$\K[0-9.]+' || echo 0)
+    TOTAL_COST=$(python3 -c "print(round($TOTAL_COST + $cumulative, 4))" 2>/dev/null || echo "$TOTAL_COST")
   fi
 }
 
