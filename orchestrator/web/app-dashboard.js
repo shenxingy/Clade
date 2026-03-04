@@ -53,6 +53,101 @@ function updateDashboard(data) {
     showToast(`Cost budget exceeded ($${data.budget_limit}) — auto-start paused`);
   }
   if (!data.budget_exceeded) delete window._budgetToasted[data.session_id];
+
+  // Render start.sh process cards (Phase 13)
+  renderProcessCards(data.processes || []);
+}
+
+// ─── Process Cards (start.sh) ────────────────────────────────────────────────
+function renderProcessCards(processes) {
+  let section = document.getElementById('processSection');
+  if (processes.length === 0) {
+    if (section) section.style.display = 'none';
+    return;
+  }
+  // Create section if it doesn't exist
+  if (!section) {
+    section = document.createElement('div');
+    section.id = 'processSection';
+    section.className = 'dashboard-section process-section';
+    section.innerHTML = `
+      <div class="section-header">
+        <span>Running Processes <span id="processCount" style="font-weight:400;color:var(--text2)"></span></span>
+        <button class="btn small secondary" onclick="openStartProcessModal()">+ Start Process</button>
+      </div>
+      <div class="process-cards" id="processCards"></div>
+    `;
+    // Insert before queue section
+    const queue = document.querySelector('.dashboard-section.queue');
+    if (queue) queue.parentElement.insertBefore(section, queue);
+  }
+  section.style.display = '';
+  const running = processes.filter(p => p.status === 'running');
+  document.getElementById('processCount').textContent = `(${running.length}/${processes.length})`;
+  document.getElementById('processCards').innerHTML = processes.map(p => {
+    const statusIcon = { running: '▶', converged: '✓', stopped: '■', failed: '✗', blocked: '⏳' }[p.status] || '?';
+    return `
+      <div class="process-card ${esc(p.status)}">
+        <div class="process-card-top">
+          <span class="process-name">📁 ${esc(p.project_name)}</span>
+          <span class="badge ${esc(p.status)}">${statusIcon} ${esc(p.status)}</span>
+          ${p.cost > 0 ? `<span style="font-size:11px;color:var(--text2)">$${p.cost.toFixed(2)}</span>` : ''}
+        </div>
+        <div class="process-detail">${esc(p.mode)} · ${esc(formatElapsed(p.elapsed_s))}</div>
+        <div class="process-actions">
+          ${p.status === 'running'
+            ? `<button class="btn small danger" onclick="stopProcess('${esc(p.project_dir)}')">Stop</button>`
+            : `<button class="btn small" onclick="restartProcess('${esc(p.project_dir)}', '${esc(p.mode)}')">Restart</button>`}
+          <button class="btn small secondary" onclick="viewProcessReport('${esc(p.project_dir)}')">Report</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function stopProcess(projectDir) {
+  try {
+    await fetch(`/api/processes/${encodeURIComponent(projectDir)}`, { method: 'DELETE' });
+    showToast('Process stopped');
+  } catch (e) { showToast('Failed to stop: ' + e.message, true); }
+}
+
+async function restartProcess(projectDir, mode) {
+  try {
+    await fetch('/api/processes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_dir: projectDir, mode }),
+    });
+    showToast('Process restarted');
+  } catch (e) { showToast('Failed to restart: ' + e.message, true); }
+}
+
+async function viewProcessReport(projectDir) {
+  try {
+    const res = await fetch(`/api/processes/${encodeURIComponent(projectDir)}/report`);
+    if (!res.ok) { showToast('No report available', true); return; }
+    const data = await res.json();
+    // Reuse worker log modal for display
+    document.getElementById('workerLogTitle').textContent = `Process Report — ${projectDir.split('/').pop()}`;
+    document.getElementById('workerLogContent').textContent = data.report || 'No report available';
+    document.getElementById('workerLogModal').classList.remove('hidden');
+  } catch (e) { showToast('Failed to load report', true); }
+}
+
+function openStartProcessModal() {
+  // Simple prompt-based start for now
+  const projectDir = prompt('Project directory path:');
+  if (!projectDir) return;
+  const mode = prompt('Mode (--run, --morning, --patrol, --goal <file>):', '--run');
+  if (!mode) return;
+  fetch('/api/processes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project_dir: projectDir, mode }),
+  }).then(r => {
+    if (r.ok) showToast('Process started');
+    else r.json().then(d => showToast(d.detail || 'Failed', true));
+  }).catch(e => showToast('Error: ' + e.message, true));
 }
 
 function renderQueue() {
