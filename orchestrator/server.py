@@ -79,7 +79,11 @@ app.add_middleware(
 )
 
 from routes.webhooks import router as webhooks_router  # noqa: E402
+from routes.ideas import router as ideas_router  # noqa: E402
+from routes.process import router as process_router  # noqa: E402
 app.include_router(webhooks_router)
+app.include_router(ideas_router)
+app.include_router(process_router)
 
 # Serve static files (web UI)
 app.mount("/web", StaticFiles(directory=str(WEB_DIR)), name="web")

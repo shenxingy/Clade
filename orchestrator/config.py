@@ -77,6 +77,8 @@ _SETTINGS_DEFAULTS = {
     "webhook_secret": "",
     "coverage_scan": False,
     "dep_update_scan": False,
+    "patrol_schedule": "",
+    "patrol_auto_ideas": False,
 }
 
 

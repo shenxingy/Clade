@@ -786,6 +786,27 @@ async def status_loop():
                         session._schedule_triggered = False
 
                 await session.worker_pool.poll_all(session.task_queue, session.project_dir)
+                # Poll start.sh processes (Phase 13)
+                from process_manager import process_pool as _pp
+                await _pp.poll()
+                # Auto-patrol scheduling (Phase 13.7)
+                _patrol_sched = GLOBAL_SETTINGS.get("patrol_schedule", "")
+                if _patrol_sched and not getattr(session, "_patrol_triggered_today", False):
+                    try:
+                        now = datetime.now()
+                        hh, mm = _patrol_sched.split(":")
+                        if now.hour == int(hh) and now.minute == int(mm):
+                            session._patrol_triggered_today = True
+                            _patrol_mode = "--patrol"
+                            _existing = _pp.get(str(session.project_dir))
+                            if not _existing or _existing.status != "running":
+                                await _pp.start(session.project_dir, mode=_patrol_mode)
+                                logger.info("Auto-patrol triggered at %s", _patrol_sched)
+                    except Exception as e:
+                        logger.warning("Patrol schedule parse error: %s", e)
+                # Reset patrol trigger at midnight
+                if hasattr(session, "_patrol_triggered_today") and datetime.now().hour == 0:
+                    session._patrol_triggered_today = False
                 await _check_blockers(session)
 
                 # Auto-start tasks whose dependencies just became satisfied
@@ -956,6 +977,7 @@ async def status_loop():
                 eta_seconds = int(avg_s * remaining) if remaining > 0 else 0
 
                 swarm_state = session._swarm.to_dict() if session._swarm else None
+                from process_manager import process_pool as _pp2
                 msg = json.dumps({
                     "type": "status",
                     "session_id": session.session_id,
@@ -970,6 +992,7 @@ async def status_loop():
                     "budget_limit": GLOBAL_SETTINGS.get("cost_budget", 0),
                     "loop_state": loop_state,
                     "swarm_state": swarm_state,
+                    "processes": _pp2.to_list(),
                 })
                 dead = []
                 for ws in list(session.status_subscribers):
