@@ -1,6 +1,24 @@
 # Progress Log
 
 ---
+### 2026-03-04 — Phase 12.4: Batch Feedback + Cross-Project Patrol
+
+**What was built (4 sub-tasks):**
+1. **Structured issue checklist** — `/verify` prompt now writes `.claude/verify-issues.md` with `- [ ]` checkboxes organized by section (Failed Anchors, Test Failures, Compile Errors, UI Issues, Lint Warnings). Only created when issues exist; overwritten each run.
+2. **Annotation convention** — users mark items with `[fix]`/`[skip]`/`[wontfix]` in one editing pass. Documented in verify prompt.
+3. **`scan-verify-issues.sh`** — follows `scan-health.sh` pattern. Reads annotations: `[fix]` → emits ===TASK=== blocks (max 5, lint→haiku/600s, others→sonnet/900s); `[skip]`/`[wontfix]` → appends to skipped.md. Cleans processed items from file.
+4. **`start.sh --patrol`** — scans all `~/projects/*/` with CLAUDE.md, runs 5 scan scripts per project (ci-failures, coverage, deps, health, verify-issues) with `timeout 120s`, writes report to `~/.claude/patrol-report-{date}.md` + stdout summary table.
+
+**start.sh integration (5 points):**
+- `BATCH_FEEDBACK_PENDING=false` init flag
+- Batch feedback check before orchestrate: if verify-issues.md has `[fix]` annotations, run scan-verify-issues.sh → filtered-tasks.md
+- Orchestrate-skip expanded: verify-fix OR batch-feedback → skip orchestrate
+- Pre-verify cleanup: `rm -f .claude/verify-issues.md` alongside playwright-issues.md
+- Post-convergence: scan-verify-issues.sh added to scan_scripts array
+
+**Files changed:** `verify/prompt.md`, `scan-verify-issues.sh` (new), `start.sh`, `TODO.md`, `PROGRESS.md`
+
+---
 ### 2026-03-04 — Stress test #4: claude-code-kit self-test + post-test fixes
 
 **Config:** $10 budget, 5 max iterations, sonnet supervisor/workers
