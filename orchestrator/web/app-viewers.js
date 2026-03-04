@@ -559,8 +559,13 @@ function setMode(mode) {
   const main = document.querySelector('.main');
   main.classList.toggle('plan-mode', mode === 'plan');
   main.classList.toggle('execute-mode', mode === 'execute');
+  main.classList.toggle('ideas-mode', mode === 'ideas');
   document.getElementById('modePlanBtn').classList.toggle('active', mode === 'plan');
   document.getElementById('modeExecBtn').classList.toggle('active', mode === 'execute');
+  document.getElementById('modeIdeasBtn').classList.toggle('active', mode === 'ideas');
+  // Ideas panel visibility
+  const ideasPanel = document.getElementById('ideasPanel');
+  if (ideasPanel) ideasPanel.style.display = mode === 'ideas' ? 'flex' : 'none';
   const intervBtn = document.getElementById('interveneBtn');
   if (intervBtn) intervBtn.style.display = mode === 'execute' ? '' : 'none';
   if (mode === 'plan') {
@@ -573,6 +578,9 @@ function setMode(mode) {
     document.getElementById('proposedOverlay')?.classList.add('hidden');
     renderOverview();
     if (!_overviewInterval) _overviewInterval = setInterval(renderOverview, 8000);
+  }
+  if (mode === 'ideas' && typeof loadIdeas === 'function') {
+    loadIdeas();
   }
   // Sync scheduler bar + loop bar visibility with mode
   updateSchedulerDisplay(_lastSchedule);

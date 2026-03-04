@@ -17,6 +17,7 @@
   <div style="display:flex;gap:4px;margin-left:8px">
     <button class="mode-btn active" id="modePlanBtn" onclick="setMode('plan')" title="Plan mode: orchestrate tasks">📋 Plan</button>
     <button class="mode-btn" id="modeExecBtn" onclick="setMode('execute')" title="Execute mode: monitor workers">▶ Execute</button>
+    <button class="mode-btn" id="modeIdeasBtn" onclick="setMode('ideas')" title="Ideas mode: brainstorm + evaluate">💡 Ideas</button>
   </div>
   <button id="projectBadge" onclick="openProjectPicker()" style="
     font-size:12px;color:var(--text2);background:var(--bg3);
@@ -452,6 +453,42 @@
     </div>
 
   </div>
+
+  <!-- Ideas Panel (ideas mode) -->
+  <div class="ideas-panel" id="ideasPanel" style="display:none">
+    <div class="ideas-input-stream">
+      <div class="ideas-input-header">
+        <h3>Ideas</h3>
+        <button class="btn small secondary" onclick="syncBrainstorm()">Sync BRAINSTORM.md</button>
+      </div>
+      <div class="ideas-list" id="ideasList">
+        <div class="empty">No ideas yet — start typing below</div>
+      </div>
+      <div class="ideas-input-bar">
+        <textarea id="ideaInput" placeholder="Type an idea... (Enter to submit, Shift+Enter for newline)" rows="2"></textarea>
+        <button class="btn" onclick="submitIdea()">Add</button>
+      </div>
+    </div>
+    <div class="ideas-eval-sidebar" id="ideasEvalSidebar">
+      <div class="eval-header">AI Evaluation</div>
+      <div class="eval-content" id="evalContent">
+        <div class="empty">Select an idea to see AI evaluation</div>
+      </div>
+      <div class="eval-chat" id="evalChat" style="display:none">
+        <div class="eval-messages" id="evalMessages"></div>
+        <div class="eval-input-row">
+          <input id="evalInput" placeholder="Discuss with AI..." />
+          <button class="btn small" onclick="sendEvalMessage()">Send</button>
+        </div>
+      </div>
+      <div class="eval-actions" id="evalActions" style="display:none">
+        <button class="btn small success" onclick="promoteIdea('todo')">Promote to TODO</button>
+        <button class="btn small secondary" onclick="promoteIdea('vision')">Add to VISION</button>
+        <button class="btn small danger" onclick="archiveIdea()">Archive</button>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <!-- Intervene Panel (Execute mode slide-in terminal) -->
@@ -524,5 +561,6 @@
 <script src="/web/app-dashboard.js"></script>
 <script src="/web/app-viewers.js"></script>
 <script src="/web/app-loop.js"></script>
+<script src="/web/app-ideas.js"></script>
 </body>
 </html>
