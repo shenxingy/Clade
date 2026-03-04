@@ -59,13 +59,18 @@ Grants workers read/write access to paths outside the git worktree.
 ```json
 "playwright": {
   "command": "npx",
-  "args": ["-y", "@modelcontextprotocol/server-playwright"]
+  "args": ["-y", "@playwright/mcp", "--headless"]
 }
 ```
 
-Requires: `npm install -g playwright && playwright install chromium`
+Setup:
+```bash
+npx playwright install chromium
+```
 
-**Best for:** end-to-end testing tasks, scraping, visual regression checks.
+The `--headless` flag runs the browser without a visible window — required for autonomous/CI environments. Remove it for interactive debugging with a visible browser.
+
+**Best for:** UI interaction testing (used by `/verify` for frontend projects), end-to-end testing tasks, scraping, visual regression checks.
 
 ---
 

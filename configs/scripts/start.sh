@@ -580,8 +580,11 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
   _write_progress "verifying"
   _log "Running /verify..."
 
+  rm -f .claude/playwright-issues.md
   VERIFY_EXIT=0
-  timeout 300s claude -p --dangerously-skip-permissions \
+  MCP_ARGS=()
+  [[ -f .claude/mcp.json ]] && MCP_ARGS=(--mcp-config .claude/mcp.json)
+  timeout 300s claude -p --dangerously-skip-permissions "${MCP_ARGS[@]}" \
     "$(_safe_cat "$HOME/.claude/skills/verify/prompt.md")" \
     > .claude/verify-output.txt 2>/dev/null || VERIFY_EXIT=$?
 
@@ -589,18 +592,22 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
     _log "⚠ /verify timed out (300s) — treating as partial"
     VERIFY_RESULT="partial"
     FAILED_ANCHORS="none"
+    INTERACTION_RESULT="skipped"
   elif [[ ! -s .claude/verify-output.txt ]]; then
     _log "⚠ /verify produced empty output (exit $VERIFY_EXIT) — treating as partial"
     VERIFY_RESULT="partial"
     FAILED_ANCHORS="none"
+    INTERACTION_RESULT="skipped"
   else
     VERIFY_RESULT=$(grep -m1 "VERIFY_RESULT:" .claude/verify-output.txt 2>/dev/null | awk '{print $2}')
     VERIFY_RESULT=${VERIFY_RESULT:-partial}
     FAILED_ANCHORS=$(grep -m1 "FAILED_ANCHORS:" .claude/verify-output.txt 2>/dev/null | cut -d: -f2- | xargs)
     FAILED_ANCHORS=${FAILED_ANCHORS:-none}
+    INTERACTION_RESULT=$(grep -m1 "INTERACTION_RESULT:" .claude/verify-output.txt 2>/dev/null | awk '{print $2}')
+    INTERACTION_RESULT=${INTERACTION_RESULT:-skipped}
   fi
 
-  _log "Verify result: $VERIFY_RESULT (failed anchors: $FAILED_ANCHORS)"
+  _log "Verify result: $VERIFY_RESULT (failed anchors: $FAILED_ANCHORS, interaction: $INTERACTION_RESULT)"
 
   case "$VERIFY_RESULT" in
     pass)
@@ -643,6 +650,68 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
       fi
       ;;
   esac
+
+  # ── Handle INTERACTION_RESULT ──
+  case "$INTERACTION_RESULT" in
+    fail)
+      _log "⚠ UI interaction failures detected"
+      if [[ -f .claude/playwright-issues.md ]]; then
+        # [BUG] items → create fix tasks (same as FAILED_ANCHORS flow)
+        bug_items=$(grep -c "^\[BUG\]" .claude/playwright-issues.md 2>/dev/null) || bug_items=0
+        if [[ "$bug_items" -gt 0 && "$VERIFY_RESULT" != "fail" ]]; then
+          _log "Found $bug_items UI bug(s) — creating fix tasks"
+          {
+            echo "===TASK==="
+            echo "model: sonnet"
+            echo "timeout: 900"
+            echo "retries: 1"
+            echo "Feature: $CURRENT_FEATURE"
+            echo "---"
+            echo "Fix UI bugs found by Playwright interaction testing."
+            echo ""
+            echo "Read .claude/playwright-issues.md for [BUG] items."
+            echo "Each [BUG] describes a broken UI element or flow."
+            echo "Fix the issues and verify they work."
+            echo ""
+            echo "Commit with: committer \"fix: UI interaction bugs\" <files>"
+          } > .claude/filtered-tasks.md
+          VERIFY_FIX_PENDING=true
+        elif [[ "$bug_items" -eq 0 ]]; then
+          _log "⚠ INTERACTION_RESULT=fail but no [BUG] items in playwright-issues.md — treating as partial"
+          echo "## [$(date -Iseconds)] Partial UI interaction: fail reported but no [BUG] items" >> .claude/skipped.md
+        fi
+        # [UX] items → append to BRAINSTORM.md
+        ux_items=$(grep "^\[UX\]" .claude/playwright-issues.md 2>/dev/null || true)
+        if [[ -n "$ux_items" ]]; then
+          _log "Appending UX suggestions to BRAINSTORM.md"
+          {
+            echo ""
+            echo "## [AI] UI/UX issues from Playwright testing ($(date -Iseconds))"
+            echo "$ux_items" | sed 's/^\[UX\]/- [AI]/'
+          } >> BRAINSTORM.md
+        fi
+      else
+        _log "⚠ INTERACTION_RESULT=fail but .claude/playwright-issues.md missing — treating as partial"
+        echo "## [$(date -Iseconds)] Partial UI interaction: fail reported but no issues file" >> .claude/skipped.md
+      fi
+      ;;
+    partial)
+      echo "## [$(date -Iseconds)] Partial UI interaction: some flows unverifiable" >> .claude/skipped.md
+      ;;
+  esac
+
+  # UI interaction fix loop — only fires when interaction (not verify) set VERIFY_FIX_PENDING,
+  # because VERIFY_RESULT=fail already `continue`d above and never reaches here.
+  if [[ "${VERIFY_FIX_PENDING:-false}" == "true" ]]; then
+    VERIFY_RETRIES=$((VERIFY_RETRIES + 1))
+    if [[ $VERIFY_RETRIES -ge $MAX_VERIFY_RETRIES ]]; then
+      _log "Max verify retries reached (including UI fixes) — skipping"
+      echo "## [$(date -Iseconds)] Skipped: UI interaction fixes exhausted retries" >> .claude/skipped.md
+      VERIFY_FIX_PENDING=false
+    else
+      continue
+    fi
+  fi
 
   # ── Sync docs ──
   _write_progress "syncing"

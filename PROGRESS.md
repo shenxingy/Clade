@@ -1,6 +1,34 @@
 # Progress Log
 
 ---
+### 2026-03-03 — Phase 12.1: UI Interaction Testing via Playwright MCP
+
+**What was built:**
+- `/verify` skill now has a conditional "UI Interaction" strategy for `web-fullstack` projects
+- Uses `@playwright/mcp` (Microsoft's official server) with `--headless` for autonomous use
+- Flow: detect frontend port → navigate → snapshot → walk up to 5 pages → click/fill → evaluate
+- Findings written to `.claude/playwright-issues.md` with `[BUG]`/`[UX]` tags
+- `INTERACTION_RESULT: pass|partial|fail|skipped` added as 4th footer line
+- `start.sh` parses INTERACTION_RESULT: `[BUG]` → fix tasks, `[UX]` → BRAINSTORM.md
+- `start.sh` passes `--mcp-config .claude/mcp.json` to verify when file exists
+- Auth-gated pages handled gracefully (mark unverifiable, not BUG)
+
+**Review findings fixed (6 issues):**
+1. `$MCP_FLAG` word splitting → array `MCP_ARGS=()` + `"${MCP_ARGS[@]}"`
+2. `fail` with missing `playwright-issues.md` → log + degrade to partial
+3. `fail` with 0 `[BUG]` items → log + degrade to partial
+4. Stale `playwright-issues.md` across iterations → `rm -f` before each verify
+5. Dead `|| ux_items=""` → `|| true`
+6. Redundant guard condition simplified + commented
+
+**Files changed:** `mcp.json.example`, `verify/prompt.md`, `start.sh`, `docs/mcp-setup.md`
+
+**Lessons:**
+- Unquoted shell variables for optional flags (`$MCP_FLAG`) are fragile — arrays are the correct pattern
+- LLM output can drift from spec (fail without writing issues file) — always handle missing/empty gracefully
+- Stale files from previous iterations cause false positives — clear transient state before each verify run
+
+---
 ### 2026-03-03 — Stress Test #3: deepfake-platform (ML monorepo, code health + security)
 
 **Third stress test, different project type. ML monorepo with 5 code health tasks on deepfake-platform (multi-domain detection platform).**

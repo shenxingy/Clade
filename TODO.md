@@ -429,18 +429,18 @@ Goal: the system must not only build code, but also USE what it builds — inter
 
 #### Bugs found in stress test #3 (deepfake-platform)
 
-- [ ] 🔴 **Budget not enforced by inner loop** — start.sh budget check is at the outer loop level only; loop-runner.sh has no budget awareness. $5 budget → $12.79 actual spend (2.5x overshoot). Fix: pass budget to loop-runner.sh OR check `_accumulate_cost()` between inner iterations.
+- [ ] 🔵 **Budget not enforced by inner loop** — start.sh budget check is at outer loop only; loop-runner.sh has no budget awareness. Low priority — Pro subscription usage-based, not per-dollar billing.
 - [ ] 🟡 **`head -N` pipe kills start.sh** — piping start.sh output through `head -80` sends SIGPIPE → kills pipeline. Document: never pipe start.sh output through line-limiting commands. Consider `trap '' PIPE` at start.sh top.
 
 ---
 
 ### 12.1 — UI Interaction Testing (frontend/fullstack only)
 
-- [ ] **Playwright user flow walker** — launch app, click buttons, fill forms, navigate pages (not just screenshots)
-- [ ] **AI UX evaluation** — for each flow: does it work? Is it intuitive? Unnecessary steps? Better placement?
-- [ ] **Findings classification** — bugs → fix tasks for next loop; UX improvements → BRAINSTORM.md with `[AI]` prefix
-- [ ] **Machine-parseable output** — `INTERACTION_RESULT: pass|partial|fail` + structured issue list
-- [ ] **Integration with `/verify`** — triggered automatically for frontend projects; skipped for CLI/backend/ML
+- [x] **Playwright user flow walker** — launch app, click buttons, fill forms, navigate pages (not just screenshots)
+- [x] **AI UX evaluation** — for each flow: does it work? Is it intuitive? Unnecessary steps? Better placement?
+- [x] **Findings classification** — bugs → fix tasks for next loop; UX improvements → BRAINSTORM.md with `[AI]` prefix
+- [x] **Machine-parseable output** — `INTERACTION_RESULT: pass|partial|fail` + structured issue list
+- [x] **Integration with `/verify`** — triggered automatically for frontend projects; skipped for CLI/backend/ML
 
 ---
 
