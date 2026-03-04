@@ -141,6 +141,47 @@ Write a human-readable summary, then the machine-parseable footer.
 {any observations, warnings, suggestions}
 ```
 
+### Structured issue checklist (`.claude/verify-issues.md`)
+
+After producing the summary above, if ANY issues were found (failed anchors, test failures, compile errors, UI bugs, lint warnings), ALSO write a structured checklist to `.claude/verify-issues.md`.
+
+**Rules:**
+- Overwrite each run (not append) — old issues are stale
+- Only create this file when there ARE issues. If everything passes, do NOT create it.
+- One `- [ ]` checkbox per issue, one line each
+- Use sections below — omit sections with no issues
+
+**Format:**
+```
+## Failed Anchors
+- [ ] anchor-name: brief description of failure
+
+## Test Failures
+- [ ] test_module::test_name: assertion error / brief reason
+
+## Compile Errors
+- [ ] file:line: error description
+
+## UI Issues
+- [ ] [BUG] page/element: what's broken
+- [ ] [UX] page/element: usability concern
+
+## Lint Warnings
+- [ ] file:line: warning code + message
+```
+
+**Copying from playwright-issues.md:** If `.claude/playwright-issues.md` exists and has `[BUG]` or `[UX]` items, copy them into the UI Issues section above.
+
+**Annotation convention (for human reviewers):**
+Users can annotate each checkbox to control what happens next:
+- `[fix]` → auto-creates a fix task on next run
+- `[skip]` → moved to `.claude/skipped.md` (won't be raised again)
+- `[wontfix]` → moved to `.claude/skipped.md` with wontfix reason
+
+Example: `- [ ] [fix] slt: cycles to wrong mode after "off"`
+
+Unannotated items remain in the file for next review.
+
 ### Footer (MUST be the last 4 lines — start.sh greps these):
 
 ```
