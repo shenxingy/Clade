@@ -222,6 +222,49 @@ _shutdown() {
 trap _shutdown SIGTERM SIGINT
 trap '' PIPE  # Ignore SIGPIPE — prevents death when piped through head/tail
 
+# ─── Post-convergence scan ────────────────────────────────────────────────────
+# Run task factory scripts to discover more work before declaring "done".
+# Returns 0 if findings exist (tasks written to .claude/scan-findings.md), 1 if clean.
+_POST_CONVERGENCE_DONE=false  # Only scan once per session (prevent infinite loops)
+
+_post_convergence_scan() {
+  if [[ "$_POST_CONVERGENCE_DONE" == "true" ]]; then
+    return 1
+  fi
+  _POST_CONVERGENCE_DONE=true
+
+  _log "Running post-convergence work discovery scans..."
+  local findings=""
+  local scan_scripts=(
+    "$SCRIPTS_DIR/scan-ci-failures.sh"
+    "$SCRIPTS_DIR/scan-coverage.sh"
+    "$SCRIPTS_DIR/scan-deps.sh"
+    "$SCRIPTS_DIR/scan-health.sh"
+  )
+
+  for script in "${scan_scripts[@]}"; do
+    if [[ -x "$script" ]]; then
+      local output
+      output=$(timeout 120s bash "$script" . 2>/dev/null || true)
+      if echo "$output" | grep -q "^===TASK===$"; then
+        findings="${findings}${output}"$'\n'
+      fi
+    fi
+  done
+
+  if [[ -n "$findings" ]] && echo "$findings" | grep -q "^===TASK===$"; then
+    local finding_count
+    finding_count=$(echo "$findings" | grep -c "^===TASK===$") || finding_count=0
+    _log "Post-convergence scan found $finding_count new task(s) — injecting into next iteration"
+    echo "$findings" > .claude/filtered-tasks.md
+    CURRENT_FEATURE="post-convergence"
+    return 0
+  else
+    _log "Post-convergence scan: clean — no new issues found"
+    return 1
+  fi
+}
+
 # ─── Feature filtering ────────────────────────────────────────────────────────
 _filter_by_feature() {
   local proposed="$1" filtered="$2"
@@ -494,12 +537,20 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
         _log "Retry succeeded — found tasks"
       elif grep -q "STATUS: CONVERGED" .claude/proposed-tasks.md 2>/dev/null; then
         _log "✓ Explicit convergence declared by /orchestrate"
-        _write_session_report "converged"
-        exit 0
+        if _post_convergence_scan; then
+          _log "Continuing with post-convergence findings..."
+        else
+          _write_session_report "converged"
+          exit 0
+        fi
       else
         _log "⚠ No tasks after retry — treating as converged"
-        _write_session_report "converged"
-        exit 0
+        if _post_convergence_scan; then
+          _log "Continuing with post-convergence findings..."
+        else
+          _write_session_report "converged"
+          exit 0
+        fi
       fi
     fi
 
@@ -511,9 +562,14 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
   if [[ "${TARGETED:-false}" != "true" ]]; then
     open_tasks=$(grep -c "^===TASK===$" .claude/filtered-tasks.md 2>/dev/null) || open_tasks=0
     if [[ "$open_tasks" -eq 0 ]]; then
-      _log "✓ No open tasks — converged!"
-      _write_session_report "converged"
-      exit 0
+      _log "✓ No open tasks — feature converged!"
+      # Try post-convergence scan before declaring session done
+      if _post_convergence_scan; then
+        _log "Continuing with post-convergence findings..."
+      else
+        _write_session_report "converged"
+        exit 0
+      fi
     fi
     _log "$open_tasks task(s) to execute"
   else
@@ -581,6 +637,12 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
   # Targeted mode: one outer iteration is enough (loop-runner iterates internally)
   if [[ "${TARGETED:-false}" == "true" ]]; then
     _log "Targeted mode complete."
+    # Try post-convergence scan before declaring session done
+    if _post_convergence_scan; then
+      _log "Continuing with post-convergence findings..."
+      TARGETED=false  # Switch to normal mode for scan findings
+      continue
+    fi
     _write_session_report "completed"
     exit 0
   fi
