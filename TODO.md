@@ -455,8 +455,8 @@ Goal: the system must not only build code, but also USE what it builds — inter
 
 ### 12.3 — Design System Constraint
 
-- [ ] **Design token injection in `/orchestrate`** — architect phase references component library + theme
-- [ ] **`/frontend-design` design system awareness** — reads project `.design-system.md` for constraints
+- [x] **Design token injection in `/orchestrate`** — architect phase references component library + theme
+- [x] **`/frontend-design` design system awareness** — reads project `.design-system.md` for constraints
 
 ---
 
