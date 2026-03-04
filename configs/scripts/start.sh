@@ -14,6 +14,7 @@
 #   start.sh --max-inner-iter N  Max inner loop iterations per outer (default: 5)
 #   start.sh --resume            Resume from last session-progress.md
 #   start.sh --stop              Write stop sentinel
+#   start.sh --patrol            Cross-project scan (report only, no workers)
 #   start.sh --dry-run           Dry run: show plan and exit without executing
 #
 # Architecture:
@@ -65,6 +66,7 @@ while [[ $# -gt 0 ]]; do
     --max-workers)   MAX_WORKERS="$2";     shift 2 ;;
     --max-iter)      MAX_OUTER_ITER="$2";  shift 2 ;;
     --max-inner-iter) MAX_INNER_ITER="$2"; shift 2 ;;
+    --patrol)        MODE="patrol";        shift ;;
     --confirm)       CONFIRM=true;         shift ;;
     *)               echo "Unknown flag: $1" >&2; shift ;;
   esac
@@ -301,6 +303,103 @@ print('===TASK===' + '===TASK==='.join(out) if out else '')
   task_count=$(grep -c "^===TASK===$" "$filtered" 2>/dev/null) || task_count=0
   _log "Filtered: $task_count task(s) for feature '$CURRENT_FEATURE'"
 }
+
+# ─── PATROL MODE ─────────────────────────────────────────────────────────────
+# Scan all ~/projects/*/ with CLAUDE.md, run task factories, aggregate report.
+# Report-only — no workers, no /verify per project.
+_patrol() {
+  local patrol_date
+  patrol_date=$(date +%Y-%m-%d)
+  local report_file="$HOME/.claude/patrol-report-${patrol_date}.md"
+  local total_tasks=0
+  local project_count=0
+  local summary_table="| Project | Issues | Details |"$'\n'"| --- | --- | --- |"
+  local all_findings=""
+
+  _log "Starting cross-project patrol scan..."
+
+  local scan_scripts=(
+    "$SCRIPTS_DIR/scan-ci-failures.sh"
+    "$SCRIPTS_DIR/scan-coverage.sh"
+    "$SCRIPTS_DIR/scan-deps.sh"
+    "$SCRIPTS_DIR/scan-health.sh"
+    "$SCRIPTS_DIR/scan-verify-issues.sh"
+  )
+
+  for project_dir in "$HOME"/projects/*/; do
+    [[ -f "${project_dir}CLAUDE.md" ]] || continue
+    local project_name
+    project_name=$(basename "$project_dir")
+    project_count=$((project_count + 1))
+
+    _log "  Scanning: $project_name"
+    local project_findings=""
+    local project_task_count=0
+
+    for script in "${scan_scripts[@]}"; do
+      [[ -x "$script" ]] || continue
+      local output
+      output=$(timeout 120s bash "$script" "$project_dir" 2>/dev/null || true)
+      if echo "$output" | grep -q "^===TASK===$"; then
+        # Tag tasks with project
+        local tagged
+        tagged=$(echo "$output" | sed "s/^===TASK===$/===TASK===\nproject: ${project_name}/")
+        project_findings="${project_findings}${tagged}"$'\n'
+        local script_tasks
+        script_tasks=$(echo "$output" | grep -c "^===TASK===$") || script_tasks=0
+        project_task_count=$((project_task_count + script_tasks))
+      fi
+    done
+
+    # Build summary row
+    if [[ $project_task_count -gt 0 ]]; then
+      local detail_summary
+      detail_summary=$(echo "$project_findings" | grep -E "^(fix|refactor|test|chore):" | head -3 | tr '\n' '; ' | sed 's/; $//')
+      summary_table="${summary_table}"$'\n'"| ${project_name} | ${project_task_count} | ${detail_summary:-scan issues found} |"
+      total_tasks=$((total_tasks + project_task_count))
+      all_findings="${all_findings}"$'\n'"### ${project_name}"$'\n'"${project_findings}"
+    else
+      summary_table="${summary_table}"$'\n'"| ${project_name} | 0 | clean |"
+    fi
+  done
+
+  # Write report
+  {
+    echo "# Patrol Report — ${patrol_date}"
+    echo ""
+    echo "Scanned ${project_count} project(s), found ${total_tasks} issue(s)."
+    echo ""
+    echo "## Summary"
+    echo ""
+    echo "${summary_table}"
+  } > "$report_file"
+
+  # Append raw findings
+  if [[ $total_tasks -gt 0 ]]; then
+    {
+      echo ""
+      echo "## Raw Findings"
+      echo "$all_findings"
+    } >> "$report_file"
+  fi
+
+  _log "Patrol complete: ${project_count} projects, ${total_tasks} issues"
+  _log "Report: $report_file"
+
+  # Print summary to stdout
+  echo ""
+  echo "═══ Patrol Report — ${patrol_date} ═══"
+  echo ""
+  echo "${summary_table}"
+  echo ""
+  echo "Total: ${total_tasks} issue(s) across ${project_count} project(s)"
+  echo "Full report: ${report_file}"
+}
+
+if [[ "$MODE" == "patrol" ]]; then
+  _patrol
+  exit 0
+fi
 
 # ─── MORNING BRIEFING MODE ───────────────────────────────────────────────────
 if [[ "$MODE" == "morning" ]]; then
