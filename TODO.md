@@ -424,7 +424,7 @@ Goal: the system must not only build code, but also USE what it builds — inter
 
 #### Bugs found in stress test #2 (ai-ap-manager)
 
-- [ ] 🔴 **Stale installed scripts** — `install.sh` must be re-run after script changes; source (`configs/scripts/`) ≠ installed (`~/.claude/scripts/`). All 5 fixes above were in source but not deployed. Add version/checksum comparison or auto-reinstall.
+- [x] 🔴 **Stale installed scripts** — `install.sh` writes `.kit-source-dir` + `.kit-checksum`; `session-context.sh` warns on mismatch; `start.sh` auto-reinstalls (TTY) or aborts (unattended).
 - [x] 🟡 **Orphaned watchdog sleeps block start.sh** — watchdog/heartbeat trap handlers now kill inner `sleep` PID before exit. Validated in stress test #2b (zero orphaned processes).
 
 ---
