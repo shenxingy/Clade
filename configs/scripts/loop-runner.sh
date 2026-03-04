@@ -50,6 +50,7 @@ CONTEXT_FILE=""
 LOG_DIR="logs/loop"
 COST_LOG=".claude/loop-cost.log"
 CUMULATIVE_COST=0
+BUDGET=0
 RESUME=false
 EXIT_GATE=""
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -69,6 +70,7 @@ while [[ $# -gt 0 ]]; do
     --context)       CONTEXT_FILE="$2";     shift 2 ;;
     --log-dir)       LOG_DIR="$2";          shift 2 ;;
     --resume)        RESUME=true;           shift ;;
+    --budget)        BUDGET="$2";          shift 2 ;;
     --exit-gate)     EXIT_GATE="$2";       shift 2 ;;
     *)               echo "Unknown flag: $1" >&2; shift ;;
   esac
@@ -192,6 +194,7 @@ echo "  Goal:       $GOAL_FILE"
 echo "  Supervisor: $SUPERVISOR_MODEL"
 echo "  Worker:     $WORKER_MODEL (max $MAX_WORKERS parallel)"
 echo "  Max iter:   $MAX_ITER"
+[[ "$BUDGET" != "0" ]] && echo "  Budget:     \$$BUDGET"
 echo "  State:      $STATE_FILE"
 echo ""
 
@@ -542,6 +545,18 @@ INSTRUCTIONS
   mkdir -p "$(dirname "${COST_LOG:-.claude/loop-cost.log}")"
   echo "ITER=$iteration COST=\$$ITER_TOTAL_COST CUMULATIVE=\$$CUMULATIVE_COST SUPERVISOR=\$$ITER_SUPERVISOR_COST WORKERS=\$$ITER_WORKER_COST DURATION=${ITER_DURATION}min ELAPSED=${ELAPSED}min TASKS=$task_count" >> "${COST_LOG:-.claude/loop-cost.log}"
   echo "  Cost: \$$ITER_TOTAL_COST this iter (cumulative: \$$CUMULATIVE_COST) | ${ITER_DURATION}min | ${ELAPSED}min elapsed"
+
+  # ── Budget check ───────────────────────────────────────────────────────
+  if [[ "$BUDGET" != "0" ]]; then
+    BUDGET_EXCEEDED=$(python3 -c "print('yes' if $CUMULATIVE_COST >= $BUDGET else 'no')" 2>/dev/null || echo "no")
+    if [[ "$BUDGET_EXCEEDED" == "yes" ]]; then
+      echo ""
+      echo "⚠ Budget exceeded (\$$CUMULATIVE_COST >= \$$BUDGET). Stopping loop."
+      write_progress "budget-exceeded" ""
+      _notify_loop "budget" "⚠ Loop budget exceeded: \$$CUMULATIVE_COST >= \$$BUDGET"
+      break
+    fi
+  fi
 
   echo ""
   echo "  Iteration $iteration complete."
