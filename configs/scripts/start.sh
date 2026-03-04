@@ -220,6 +220,7 @@ _shutdown() {
   exit 130
 }
 trap _shutdown SIGTERM SIGINT
+trap '' PIPE  # Ignore SIGPIPE — prevents death when piped through head/tail
 
 # ─── Feature filtering ────────────────────────────────────────────────────────
 _filter_by_feature() {
@@ -558,13 +559,21 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
     echo "RULES: If you discover a new approach or direction change, write it to BRAINSTORM.md with [AI] prefix. Never modify GOALS.md or VISION.md directly."
   } > .claude/loop-goal.md
 
+  # Calculate remaining budget for inner loop
+  LOOP_BUDGET_ARGS=()
+  if [[ "$BUDGET" -gt 0 ]]; then
+    BUDGET_REMAINING=$(python3 -c "print(max(0, round($BUDGET - $TOTAL_COST, 4)))" 2>/dev/null || echo "$BUDGET")
+    LOOP_BUDGET_ARGS=(--budget "$BUDGET_REMAINING")
+  fi
+
   bash "$SCRIPTS_DIR/loop-runner.sh" .claude/loop-goal.md \
     --model "$SUPERVISOR_MODEL" \
     --worker-model "$WORKER_MODEL" \
     --max-workers "$MAX_WORKERS" \
     --max-iter "$MAX_INNER_ITER" \
     --state .claude/loop-state-start \
-    --log-dir logs/loop 2>&1 | tee -a "logs/loop/start-${SESSION_ID}.log"
+    --log-dir logs/loop \
+    ${LOOP_BUDGET_ARGS[@]+"${LOOP_BUDGET_ARGS[@]}"} 2>&1 | tee -a "logs/loop/start-${SESSION_ID}.log"
 
   _accumulate_cost
   _log "Cumulative cost: \$$TOTAL_COST"
