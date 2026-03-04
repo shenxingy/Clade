@@ -47,6 +47,7 @@ MAX_VERIFY_RETRIES=3
 SUPERVISOR_MODEL="sonnet"
 WORKER_MODEL="sonnet"
 MAX_WORKERS=4
+BATCH_FEEDBACK_PENDING=false
 
 # ─── Argument parsing ─────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -240,6 +241,7 @@ _post_convergence_scan() {
     "$SCRIPTS_DIR/scan-coverage.sh"
     "$SCRIPTS_DIR/scan-deps.sh"
     "$SCRIPTS_DIR/scan-health.sh"
+    "$SCRIPTS_DIR/scan-verify-issues.sh"
   )
 
   for script in "${scan_scripts[@]}"; do
@@ -490,10 +492,26 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
     exit 0
   fi
 
-  # ── Plan: run /orchestrate (skip if verify-fail created fix tasks) ──
+  # ── Check for batch feedback (annotated verify-issues.md) ──
+  if [[ "${VERIFY_FIX_PENDING:-false}" != "true" && -f .claude/verify-issues.md ]] \
+     && grep -qE '\[fix\]' .claude/verify-issues.md 2>/dev/null; then
+    _log "Found [fix] annotations in verify-issues.md — processing batch feedback"
+    local bf_output
+    bf_output=$(bash "$SCRIPTS_DIR/scan-verify-issues.sh" . 2>/dev/null || true)
+    if echo "$bf_output" | grep -q "^===TASK===$"; then
+      echo "$bf_output" > .claude/filtered-tasks.md
+      BATCH_FEEDBACK_PENDING=true
+      CURRENT_FEATURE="batch-feedback"
+    fi
+  fi
+
+  # ── Plan: run /orchestrate (skip if verify-fail or batch-feedback created fix tasks) ──
   if [[ "${VERIFY_FIX_PENDING:-false}" == "true" ]]; then
     _log "Skipping orchestrate — running verify-fail fix tasks"
     VERIFY_FIX_PENDING=false
+  elif [[ "${BATCH_FEEDBACK_PENDING:-false}" == "true" ]]; then
+    _log "Skipping orchestrate — running batch feedback fix tasks"
+    BATCH_FEEDBACK_PENDING=false
   elif [[ -n "$GOAL" ]]; then
     # Targeted mode: skip orchestrate, use goal directly as loop-runner goal
     _log "Targeted mode: using goal '$GOAL'"
@@ -666,7 +684,7 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
   _write_progress "verifying"
   _log "Running /verify..."
 
-  rm -f .claude/playwright-issues.md
+  rm -f .claude/playwright-issues.md .claude/verify-issues.md
   VERIFY_EXIT=0
   MCP_ARGS=()
   [[ -f .claude/mcp.json ]] && MCP_ARGS=(--mcp-config .claude/mcp.json)
