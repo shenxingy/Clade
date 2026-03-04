@@ -361,6 +361,10 @@ _log "Budget: \$$BUDGET | Max iterations: $MAX_OUTER_ITER | Workers: $MAX_WORKER
 
 mkdir -p .claude logs/loop
 
+# Session-wide logging — capture ALL output (including planning failures)
+SESSION_LOG="logs/loop/start-${SESSION_ID}.log"
+exec > >(tee -a "$SESSION_LOG") 2>&1
+
 # Prevent concurrent start.sh instances on the same project
 LOCK_FILE=".claude/start.lock"
 exec 9>"$LOCK_FILE"
@@ -514,7 +518,14 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
         "$(_safe_cat PROGRESS.md)" \
         "$(_safe_cat .claude/skipped.md)" \
         "$(_safe_cat BRAINSTORM.md)")" \
-      > .claude/proposed-tasks.md 2>/dev/null
+      > .claude/proposed-tasks.md 2>.claude/orchestrate-err.log
+    ORCH_EXIT=$?
+
+    # Log diagnostics on failure
+    if [[ $ORCH_EXIT -ne 0 ]]; then
+      _log "⚠ /orchestrate exit code: $ORCH_EXIT"
+      [[ -s .claude/orchestrate-err.log ]] && _log "  stderr: $(head -5 .claude/orchestrate-err.log)"
+    fi
 
     if [[ ! -s .claude/proposed-tasks.md ]] || ! grep -q "^===TASK===$" .claude/proposed-tasks.md 2>/dev/null; then
       _log "⚠ /orchestrate produced no ===TASK=== blocks — retrying with format enforcement..."
@@ -531,7 +542,7 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
           "$(_safe_cat .claude/skipped.md)" \
           "$(_safe_cat BRAINSTORM.md)"
       } | timeout 300s claude -p --dangerously-skip-permissions \
-        > .claude/proposed-tasks.md 2>/dev/null
+        > .claude/proposed-tasks.md 2>.claude/orchestrate-err.log
 
       if grep -q "^===TASK===$" .claude/proposed-tasks.md 2>/dev/null; then
         _log "Retry succeeded — found tasks"
@@ -544,13 +555,16 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
           exit 0
         fi
       else
-        _log "⚠ No tasks after retry — treating as converged"
-        if _post_convergence_scan; then
-          _log "Continuing with post-convergence findings..."
-        else
-          _write_session_report "converged"
-          exit 0
+        # Empty output without explicit CONVERGED — likely a flake/timeout, not real convergence
+        EMPTY_RETRIES=$((${EMPTY_RETRIES:-0} + 1))
+        if [[ "$EMPTY_RETRIES" -ge 3 ]]; then
+          _log "⚠ /orchestrate empty 3 times — giving up"
+          _write_session_report "error-orchestrate"
+          exit 1
         fi
+        _log "⚠ /orchestrate returned empty (attempt $EMPTY_RETRIES/3) — retrying next iteration"
+        [[ -s .claude/orchestrate-err.log ]] && _log "  stderr: $(head -3 .claude/orchestrate-err.log)"
+        continue
       fi
     fi
 
@@ -629,7 +643,7 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
     --max-iter "$MAX_INNER_ITER" \
     --state .claude/loop-state-start \
     --log-dir logs/loop \
-    ${LOOP_BUDGET_ARGS[@]+"${LOOP_BUDGET_ARGS[@]}"} 2>&1 | tee -a "logs/loop/start-${SESSION_ID}.log"
+    ${LOOP_BUDGET_ARGS[@]+"${LOOP_BUDGET_ARGS[@]}"}
 
   _accumulate_cost
   _log "Cumulative cost: \$$TOTAL_COST"
@@ -657,7 +671,7 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
   [[ -f .claude/mcp.json ]] && MCP_ARGS=(--mcp-config .claude/mcp.json)
   timeout 300s claude -p --dangerously-skip-permissions "${MCP_ARGS[@]}" \
     "$(_safe_cat "$HOME/.claude/skills/verify/prompt.md")" \
-    > .claude/verify-output.txt 2>/dev/null || VERIFY_EXIT=$?
+    > .claude/verify-output.txt 2>.claude/verify-err.log || VERIFY_EXIT=$?
 
   if [[ $VERIFY_EXIT -eq 124 ]]; then
     _log "⚠ /verify timed out (300s) — treating as partial"
@@ -790,7 +804,7 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
 
   timeout 120s claude -p --dangerously-skip-permissions \
     "$(_safe_cat "$HOME/.claude/skills/sync/prompt.md")" \
-    > /dev/null 2>&1 || true
+    > /dev/null 2>.claude/sync-err.log || true
 
   # Commit doc updates
   if [[ -n "$(git status --porcelain TODO.md PROGRESS.md 2>/dev/null)" ]]; then
