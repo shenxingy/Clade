@@ -58,9 +58,9 @@ git add -- "$@"
 
 # Show exactly what will be committed
 echo "Staged changes:"
-git diff --cached --stat
+git --no-pager diff --cached --stat
 echo ""
 
 # Commit
-git commit -m "$MSG"
+git --no-pager commit -m "$MSG"
 echo "Committed: $MSG"
