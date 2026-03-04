@@ -411,7 +411,7 @@ Goal: the system must not only build code, but also USE what it builds — inter
 
 - [x] **Run `start.sh` on owlcast** — 66min, $10.48, 21 commits, 6 tasks, CONVERGED at iter 4 (see PROGRESS.md 2026-03-03)
 - [x] **Run `start.sh` on ai-ap-manager** — 22min, $4.21, 7 commits, 5 tasks, CONVERGED at iter 2 (see PROGRESS.md 2026-03-03)
-- [ ] **Run `start.sh` on 1 more real project** — one more project for 3-project baseline
+- [x] **Run `start.sh` on deepfake-platform** — 32min, $12.79, 41 commits, 5 goals → 14 tasks, 5 iterations (see PROGRESS.md 2026-03-03)
 - [x] **Record baselines in PROGRESS.md** — owlcast vs ai-ap-manager comparison table added
 
 #### Bugs found in stress test (fix before more runs)
@@ -426,6 +426,11 @@ Goal: the system must not only build code, but also USE what it builds — inter
 
 - [x] 🔴 **Stale installed scripts** — `install.sh` writes `.kit-source-dir` + `.kit-checksum`; `session-context.sh` warns on mismatch; `start.sh` auto-reinstalls (TTY) or aborts (unattended).
 - [x] 🟡 **Orphaned watchdog sleeps block start.sh** — watchdog/heartbeat trap handlers now kill inner `sleep` PID before exit. Validated in stress test #2b (zero orphaned processes).
+
+#### Bugs found in stress test #3 (deepfake-platform)
+
+- [ ] 🔴 **Budget not enforced by inner loop** — start.sh budget check is at the outer loop level only; loop-runner.sh has no budget awareness. $5 budget → $12.79 actual spend (2.5x overshoot). Fix: pass budget to loop-runner.sh OR check `_accumulate_cost()` between inner iterations.
+- [ ] 🟡 **`head -N` pipe kills start.sh** — piping start.sh output through `head -80` sends SIGPIPE → kills pipeline. Document: never pipe start.sh output through line-limiting commands. Consider `trap '' PIPE` at start.sh top.
 
 ---
 
