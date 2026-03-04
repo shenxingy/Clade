@@ -311,6 +311,9 @@ function connectStatus(sessionId) {
     let msg;
     try { msg = JSON.parse(e.data); } catch { return; }
     if (msg.type === 'status') updateDashboard(msg);
+    else if ((msg.type === 'idea_update' || msg.type === 'idea_message') && window._ideaWsHandler) {
+      window._ideaWsHandler(msg);
+    }
     else if (msg.type === 'suggested_goals') {
       showSuggestedGoals(msg.content, msg.session_id);
     }
