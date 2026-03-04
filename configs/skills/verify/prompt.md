@@ -66,6 +66,49 @@ Anchor test examples:
 - CLI tool → `{tool} --help` should exit 0
 - API endpoint → check route is defined in source code (grep)
 
+### Strategy: UI Interaction (frontend only)
+
+**Conditions** — ALL must be true:
+1. Project type is `web-fullstack` (from CLAUDE.md `## Project Type`)
+2. Playwright MCP tools are available (check if `browser_navigate` is in your available tools list — if not listed, skip)
+
+If conditions are not met, set `INTERACTION_RESULT: skipped` and move on.
+
+**Flow:**
+
+1. Read `CLAUDE.md` for frontend port (look for `Frontend:` line, e.g. `Frontend: Next.js, port 3000`). Default to port 3000 if not specified.
+
+2. Try connecting to `http://localhost:{port}` via `browser_navigate`. If the page fails to load:
+   - Try starting the dev server: look for `npm run dev`, `pnpm dev`, or the start script in package.json
+   - Wait up to 30 seconds for it to become reachable
+   - If still unreachable → set `INTERACTION_RESULT: partial`, write "App unreachable at localhost:{port}" to `.claude/playwright-issues.md`, and move on. Do NOT block the verify.
+
+3. Take a `browser_snapshot` of the home page to get the accessibility tree.
+
+4. Walk up to **5 pages** (home + up to 4 linked pages):
+   - For each page: `browser_snapshot` → identify interactive elements (buttons, forms, links, inputs)
+   - Click/fill key interactive elements → check for errors, broken states, console errors
+   - If a page requires authentication and no test credentials are available in CLAUDE.md, mark as unverifiable — do NOT report login failure as a `[BUG]`
+   - Take another snapshot after interactions to verify state changes
+
+5. Evaluate:
+   - Does navigation work? Are pages rendering content (not blank/error)?
+   - Do interactive elements respond? Are forms submittable?
+   - Any JS errors visible in the page? Any "undefined"/"null"/"NaN" rendering?
+   - Is the UX intuitive? (layout makes sense, text is readable, actions are discoverable)
+
+6. Write findings to `.claude/playwright-issues.md` (overwrite, do not append):
+   - `[BUG]` tag for broken functionality (crashes, errors, broken flows, missing data)
+   - `[UX]` tag for usability issues (confusing layout, missing feedback, accessibility gaps)
+   - Include which page/element was affected
+
+7. Set result:
+   - `INTERACTION_RESULT: pass` — all flows work, no bugs found
+   - `INTERACTION_RESULT: partial` — some flows unverifiable (app didn't start, pages unreachable)
+   - `INTERACTION_RESULT: fail` — broken UI or unexpected errors found (`[BUG]` items exist)
+
+**Bounds:** Max 2 minutes of interaction time. Max 5 pages. If time runs out, report what you found so far.
+
 ### Strategy: Lint/format (optional, lightweight)
 Only if project has linting configured (`.eslintrc`, `ruff.toml`, etc.):
 ```bash
@@ -91,16 +134,20 @@ Write a human-readable summary, then the machine-parseable footer.
 - [anchor-name]: PASS / FAIL (reason) / UNVERIFIABLE (reason)
 - ...
 
+### UI Interaction (frontend only)
+{pass/partial/fail/skipped + details if applicable}
+
 ### Notes
 {any observations, warnings, suggestions}
 ```
 
-### Footer (MUST be the last 3 lines — start.sh greps these):
+### Footer (MUST be the last 4 lines — start.sh greps these):
 
 ```
 VERIFY_RESULT: pass|partial|fail
 FAILED_ANCHORS: anchor-name-1, anchor-name-2
 UNVERIFIABLE: N
+INTERACTION_RESULT: pass|partial|fail|skipped
 ```
 
 **Decision rules for VERIFY_RESULT:**
@@ -111,6 +158,12 @@ UNVERIFIABLE: N
 **FAILED_ANCHORS**: comma-separated list of anchor names that FAIL (not unverifiable — only actual regressions). Use `none` if no failures. NEVER leave blank — blank line breaks grep in start.sh.
 
 **UNVERIFIABLE**: count of anchors that could not be tested (integer). `0` if all anchors were testable.
+
+**INTERACTION_RESULT**: UI interaction test outcome.
+- `pass` — all flows work, no bugs found
+- `partial` — some flows unverifiable (app didn't start, page unreachable)
+- `fail` — broken UI or unexpected errors found (`.claude/playwright-issues.md` has details)
+- `skipped` — not a frontend project or no Playwright MCP available
 
 ## Rules
 
