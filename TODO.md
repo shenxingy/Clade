@@ -409,8 +409,17 @@ Goal: the system must not only build code, but also USE what it builds — inter
 
 ### 12.0 — Stress-Test Prerequisite
 
-- [ ] **Run `start.sh` on 3+ real projects for multi-hour sessions** — collect baseline metrics (autonomous run length, success rate, cost per task), find bugs under sustained load
+- [x] **Run `start.sh` on owlcast** — 66min, $10.48, 21 commits, 6 tasks, CONVERGED at iter 4 (see PROGRESS.md 2026-03-03)
+- [ ] **Run `start.sh` on 2+ more real projects** — ai-ap-manager + one more; collect comparative data
 - [ ] **Record baselines in PROGRESS.md** — fill in the North Star metrics table with real data
+
+#### Bugs found in stress test (fix before more runs)
+
+- [x] 🔴 **Parallel execution broken** — replaced `extract_file_refs()` (prose regex) with `extract_own_files()` (OWN_FILES: only) + `get_task_depends_on()`. Default: parallel. Serialize only on explicit `depends_on:` or `OWN_FILES:` overlap.
+- [x] 🟡 **Default timeout too short for large tasks** — model-aware defaults: haiku=900s (15m), sonnet=1800s (30m), opus=3600s (60m). Explicit `timeout:` still overrides.
+- [x] 🟡 **Disk pressure warning missing** — `_check_startup_health()` in start.sh: ≥95% abort, ≥90% warn+prompt, low memory (<512MB) warn.
+- [x] 🟡 **/orchestrate conversational fallback** — retry once with "CRITICAL: output ONLY ===TASK=== blocks" prepended; check for explicit `STATUS: CONVERGED` before giving up.
+- [x] 🔵 **Cost log delay** — `touch` cost log at loop-runner.sh startup; `_accumulate_cost()` skips python3 when cumulative is 0/empty.
 
 ---
 
