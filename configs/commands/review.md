@@ -292,3 +292,15 @@ For any remaining unfixed Critical/Warning issues:
 2. Add each as `- [ ] 🔴/🟡 [description] (\`file:line\`)`.
 3. Skip items already present. Skip 🔵 Info items.
 4. Report: `TODO.md updated: added N items`.
+
+## After TODO.md: commit and push
+
+Commit all changes made during the review. Split by logical category:
+
+1. **Code fixes** — group by phase or feature area. Use `committer` to stage only the relevant files:
+   - `committer "fix: resolve lint errors" file1 file2 ...`
+   - `committer "refactor: split large file into modules" file1 file2 ...`
+   - `committer "fix: security issues — path traversal, injection" file1 file2 ...`
+2. **Doc updates** — TODO.md, PROGRESS.md, CLAUDE.md changes go in one commit:
+   - `committer "docs: review findings — update TODO + docs" TODO.md PROGRESS.md ...`
+3. **Push** — after all commits: `git push`
