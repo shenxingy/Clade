@@ -462,10 +462,10 @@ Goal: the system must not only build code, but also USE what it builds — inter
 
 ### 12.4 — Batch Feedback + Cross-Project Patrol
 
-- [ ] **Structured issue checklist from `/verify`** — output to `.claude/verify-issues.md`, not one-by-one
-- [ ] **File-based annotation** — user marks `[fix]` / `[skip]` / `[wontfix]` per item in one editing pass
-- [ ] **Auto-task creation** — next loop reads annotations, `[fix]` → tasks, rest → skipped.md
-- [ ] **`start.sh --patrol`** — scan all `~/projects/*/` with `CLAUDE.md`, run task factories per project, aggregate report
+- [x] **Structured issue checklist from `/verify`** — output to `.claude/verify-issues.md`, not one-by-one
+- [x] **File-based annotation** — user marks `[fix]` / `[skip]` / `[wontfix]` per item in one editing pass
+- [x] **Auto-task creation** — `scan-verify-issues.sh` reads annotations, `[fix]` → ===TASK=== blocks, rest → skipped.md; integrated into start.sh as batch-feedback path + post-convergence scan
+- [x] **`start.sh --patrol`** — scan all `~/projects/*/` with `CLAUDE.md`, run task factories per project, aggregate report to `~/.claude/patrol-report-{date}.md`
 
 ---
 
