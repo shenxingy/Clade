@@ -354,10 +354,11 @@ run_claude_task() {
 
   # Stall-detecting heartbeat: track log growth, kill worker if stalled
   local stall_threshold="${STALL_THRESHOLD:-10}"  # consecutive stale checks (10 × 30s = 5min)
-  ( trap 'exit 0' TERM INT
+  ( _hb_sleep_pid=0
+    trap 'kill $_hb_sleep_pid 2>/dev/null; exit 0' TERM INT
     prev_bytes=0; stale_count=0
     while kill -0 "${pgid}" 2>/dev/null; do
-      sleep 30 & wait $! 2>/dev/null || exit 0
+      sleep 30 & _hb_sleep_pid=$!; wait $_hb_sleep_pid 2>/dev/null || exit 0
       if kill -0 "${pgid}" 2>/dev/null; then
         local wt_changes=""
         if [[ -d "$workdir/.git" ]] || [[ -f "$workdir/.git" ]]; then
@@ -385,11 +386,12 @@ run_claude_task() {
   local heartbeat_pid=$!
 
   # Watchdog: SIGTERM after timeout (setsid --wait forwards to child group), then SIGKILL after 30s grace
-  ( trap 'exit 0' TERM INT
-    sleep "${timeout_sec}" & wait $! 2>/dev/null || exit 0
+  ( _wd_sleep_pid=0
+    trap 'kill $_wd_sleep_pid 2>/dev/null; exit 0' TERM INT
+    sleep "${timeout_sec}" & _wd_sleep_pid=$!; wait $_wd_sleep_pid 2>/dev/null || exit 0
     if kill -0 "${pgid}" 2>/dev/null; then
       kill "${pgid}" 2>/dev/null || true
-      sleep 30 & wait $! 2>/dev/null || exit 0
+      sleep 30 & _wd_sleep_pid=$!; wait $_wd_sleep_pid 2>/dev/null || exit 0
       kill -KILL "${pgid}" 2>/dev/null || true
     fi
   ) &

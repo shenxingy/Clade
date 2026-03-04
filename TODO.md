@@ -410,8 +410,9 @@ Goal: the system must not only build code, but also USE what it builds — inter
 ### 12.0 — Stress-Test Prerequisite
 
 - [x] **Run `start.sh` on owlcast** — 66min, $10.48, 21 commits, 6 tasks, CONVERGED at iter 4 (see PROGRESS.md 2026-03-03)
-- [ ] **Run `start.sh` on 2+ more real projects** — ai-ap-manager + one more; collect comparative data
-- [ ] **Record baselines in PROGRESS.md** — fill in the North Star metrics table with real data
+- [x] **Run `start.sh` on ai-ap-manager** — 22min, $4.21, 7 commits, 5 tasks, CONVERGED at iter 2 (see PROGRESS.md 2026-03-03)
+- [ ] **Run `start.sh` on 1 more real project** — one more project for 3-project baseline
+- [x] **Record baselines in PROGRESS.md** — owlcast vs ai-ap-manager comparison table added
 
 #### Bugs found in stress test (fix before more runs)
 
@@ -420,6 +421,11 @@ Goal: the system must not only build code, but also USE what it builds — inter
 - [x] 🟡 **Disk pressure warning missing** — `_check_startup_health()` in start.sh: ≥95% abort, ≥90% warn+prompt, low memory (<512MB) warn.
 - [x] 🟡 **/orchestrate conversational fallback** — retry once with "CRITICAL: output ONLY ===TASK=== blocks" prepended; check for explicit `STATUS: CONVERGED` before giving up.
 - [x] 🔵 **Cost log delay** — `touch` cost log at loop-runner.sh startup; `_accumulate_cost()` skips python3 when cumulative is 0/empty.
+
+#### Bugs found in stress test #2 (ai-ap-manager)
+
+- [ ] 🔴 **Stale installed scripts** — `install.sh` must be re-run after script changes; source (`configs/scripts/`) ≠ installed (`~/.claude/scripts/`). All 5 fixes above were in source but not deployed. Add version/checksum comparison or auto-reinstall.
+- [x] 🟡 **Orphaned watchdog sleeps block start.sh** — watchdog/heartbeat trap handlers now kill inner `sleep` PID before exit. Validated in stress test #2b (zero orphaned processes).
 
 ---
 

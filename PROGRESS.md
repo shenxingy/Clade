@@ -1,6 +1,97 @@
 # Progress Log
 
 ---
+### 2026-03-03 — Stress Test #2b: ai-ap-manager with fixed scripts (parallel validated)
+
+**Re-run after deploying all bug fixes via `install.sh`. All fixes validated.**
+
+**Config:** `start.sh --goal .claude/stress-test-goal-v2.md --budget 5 --max-iter 3 --confirm`
+- 5 goal-level tasks → supervisor decomposed into 20 HORIZONTAL micro-tasks
+- HORIZONTAL mode, MAX_WORKERS=4
+
+**Result:** CONVERGED at iteration 2, **$3.86 total**, **5 minutes**, **20 commits** (+ 18 merge commits).
+
+**All fixes validated:**
+
+| Bug Fix | Status | Evidence |
+|---------|--------|----------|
+| #1 Parallel execution (OWN_FILES) | **PASS** | 20 groups of 1 task each, 4 running simultaneously |
+| #2 Model-aware timeout | **PASS** | Supervisor set explicit timeouts per task |
+| #3 Disk health check | **PASS** | `⚠ Disk usage at 93% — running low.` printed, continued |
+| #5 Cost log at startup | **PASS** | File existed before first iteration completed |
+| #7 Watchdog fd leak | **PASS** | Zero orphaned `sleep` processes after completion, start.sh exited immediately |
+
+**v1 vs v2 comparison (same project):**
+
+| Metric | v1 (stale scripts) | v2 (fixed scripts) |
+|--------|--------------------|--------------------|
+| Parallelism | Serial (1 group) | Parallel (20 groups, 4 workers) |
+| Duration | 22min (12 workers + 10 blocked) | 5min |
+| Cost | $4.21 | $3.86 |
+| start.sh exit | Blocked 10min by orphaned sleeps | Immediate |
+
+**Lessons:**
+- HORIZONTAL mode + 20 micro-tasks completes in 5min vs 22min serial — 4.4x speedup with 4 workers
+- OWN_FILES-based conflict detection is correct: each file-level task gets its own group
+- Watchdog trap fix (`kill $_wd_sleep_pid`) eliminates fd leak completely
+- install.sh re-run is the single most important step — source != installed
+
+---
+### 2026-03-03 — Stress Test #2: start.sh on ai-ap-manager (fullstack FastAPI+Next.js)
+
+**Second stress test, different project type. 5 code-health tasks on ai-ap-manager (319/320 TODOs complete).**
+
+**Config:** `start.sh --goal .claude/stress-test-goal.md --budget 5 --max-iter 3 --confirm`
+- 5 targeted tasks: mypy setup, frontend build/lint, dead code cleanup, security audit, docs review
+- HORIZONTAL mode requested for 5 parallel workers
+
+**Result:** CONVERGED at iteration 2, **$4.21 total**, **22 minutes** (12min workers + 10min blocked by bug), **7 commits**.
+
+| Task | Model | Timeout | Cost | Result | Commit |
+|------|-------|---------|------|--------|--------|
+| 1. Backend mypy setup | sonnet | 1800s | $2.93 | SUCCESS | `6e505b4` |
+| 2. Frontend build/lint | haiku | 900s | $0.07 | SUCCESS (no errors found) | (no changes) |
+| 3. Dead code cleanup | haiku | 900s | $0.38 | SUCCESS | `01c2d8e` |
+| 4. Security audit | haiku | 900s | $0.15 | SUCCESS | `c45cd3b` |
+| 5. CLAUDE.md/README review | haiku | 900s | $0.21 | SUCCESS | `8300c59` |
+| Supervisor (2 iters) | sonnet | — | $0.47 | — | — |
+
+**Comparison with owlcast baseline:**
+
+| Metric | owlcast | ai-ap-manager |
+|--------|---------|---------------|
+| Duration | 66min | 22min |
+| Cost | $10.48 | $4.21 |
+| Tasks | 6 | 5 |
+| Commits | 21 | 7 |
+| $/task | $1.75 | $0.84 |
+| $/commit | $0.50 | $0.60 |
+| Iterations to converge | 4 | 2 |
+| Failures | 1 partial (mypy timeout) | 0 |
+
+**Critical finding: installed scripts are stale!**
+All 5 bug fixes from the pre-run hardening exist in `configs/scripts/` (source) but NOT in `~/.claude/scripts/` (installed). `install.sh` was never re-run after the fixes were committed. Result:
+
+| Bug Fix | Source (configs/) | Installed (~/.claude/) | Impact |
+|---------|-------------------|------------------------|--------|
+| #1 Parallel (OWN_FILES) | Fixed | OLD (extract_file_refs) | All 5 tasks ran serially |
+| #2 Model-aware timeout | Fixed | OLD (flat 1800s) | N/A (supervisor set explicit) |
+| #3 Disk health check | Fixed | MISSING | No warning at 93% |
+| #4 /orchestrate retry | Fixed | OLD | N/A (--goal mode) |
+| #5 Cost log touch | Fixed | MISSING | Cost log created late |
+
+**2 new bugs found:**
+1. **Bug #6: 3-Tier boilerplate causes false file conflicts** — the old `extract_file_refs()` regex picks up `decisions.md`, `skipped.md`, `blockers.md` from the 3-Tier boilerplate appended to EVERY task prompt → all tasks grouped serial. The source already has the OWN_FILES fix, but this shows the old code's failure mode.
+2. **Bug #7: Orphaned watchdog `sleep` processes hold pipe open** — `run-tasks-parallel.sh` spawns `sleep $TIMEOUT` watchdogs per task that inherit the loop-runner stdout fd. When workers finish early, the `sleep` processes keep the pipe open → `tee` never gets EOF → `start.sh` blocks until all sleeps expire (up to 1800s!). Fix needed: redirect watchdog sleep stdout to /dev/null, or kill watchdog when worker exits.
+
+**Lessons:**
+- **install.sh re-run is mandatory after script changes** — source != installed. The 5 bug fixes were "fixed" in git but never deployed. Must add a "stale scripts" check or auto-install on version mismatch.
+- Serial execution penalty: 5 tasks took 12min serial vs estimated ~5min parallel (longest task = sonnet mypy at ~5min). 2.4x slower.
+- Haiku is highly cost-effective for bounded tasks: $0.07-$0.38 vs sonnet's $2.93
+- Frontend build/lint found zero issues — confirms ai-ap-manager's existing code quality
+- Auto-merge worked cleanly: 4 worktree branches merged to main without conflicts, including one that touched the same file as another (backend/app/core/deps.py) — git's merge strategy handled it
+
+---
 ### 2026-03-03 — Fix 5 Stress-Test Bugs (pre-run hardening)
 
 **Fixed all 5 bugs from owlcast stress test in 5 commits:**
