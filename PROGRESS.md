@@ -1,6 +1,64 @@
 # Progress Log
 
 ---
+### 2026-03-03 — Stress Test #3: deepfake-platform (ML monorepo, code health + security)
+
+**Third stress test, different project type. ML monorepo with 5 code health tasks on deepfake-platform (multi-domain detection platform).**
+
+**Config:** `start.sh --goal .claude/stress-test-goal.md --budget 5 --max-iter 3 --confirm`
+- 5 goal tasks: import cleanup, type annotations, dead code detection, security audit of V2, test gap analysis
+- Branch: `alex/kit-stress-test` (work project, PR-only constraints)
+- HORIZONTAL mode, MAX_WORKERS=4
+
+**Result:** Max iterations (5 inner), **$12.79 total**, **32 minutes**, **41 commits** (including merge commits).
+
+| Iteration | Tasks | Duration | Cost | Key Results |
+|-----------|-------|----------|------|-------------|
+| 1 | 4 (parallel) | 6min | $4.38 | Import cleanup (8 files), type annotations (3 files), security fixes (5 vulns), test coverage (evaluation.py) |
+| 2 | 3 (parallel) | 15min | $4.95 | Dead code removal, face_quality_scorer test, more type annotations + merge conflict serial retry |
+| 3 | 3 (parallel) | 3min | $1.24 | More import cleanup (flows/), type annotations, security review (score_history_store, threat_prioritizer) |
+| 4 | 2 (parallel) | 3min | $0.98 | Import cleanup (agentic/), type annotations (remaining helpers) |
+| 5 | 2 (parallel) | 3min | $1.24 | Final security audit (webhook_server, governance) |
+
+**Security findings fixed:**
+- Path traversal via `cycle_id` in governance.py
+- MLflow filter string injection via `expert_name` in drift_detector.py
+- Path traversal + missing env sanitization in sandbox.py
+- Error message leakage (str(e)) in webhook_server.py
+- SECURITY-REVIEW annotations on clean files
+
+**3-project comparison:**
+
+| Metric | owlcast | ai-ap-manager | deepfake-platform |
+|--------|---------|---------------|-------------------|
+| Project type | AI video pipeline | FastAPI+Next.js | ML monorepo |
+| Duration | 66min | 5min (v2) | 32min |
+| Cost | $10.48 | $3.86 (v2) | $12.79 |
+| Commits | 21 | 20 (v2) | 41 |
+| Tasks | 6 | 5 | 5 (expanded to ~14 by supervisor) |
+| $/commit | $0.50 | $0.19 | $0.31 |
+| Iterations | 4 | 2 (v2) | 5 |
+| Failures | 1 partial | 0 | 0 |
+
+**Bugs found:**
+1. **Budget not enforced by inner loop** — start.sh budget check is at the outer loop level; loop-runner.sh has no budget awareness. $5 budget → $12.79 actual spend. Fix needed: pass budget to loop-runner.sh or check between iterations.
+2. **Merge conflict handling works** — `.claude/decisions.md` conflicted (two workers wrote to it simultaneously); auto-serial-retry resolved it correctly.
+3. **`head -N` kills pipeline** — piping start.sh through `head -80` sends SIGPIPE when head exits, killing the entire pipeline. Never pipe start.sh output through line-limiting commands.
+
+**What worked well:**
+- Supervisor task planning was excellent — correctly split 5 high-level goals into granular file-level tasks
+- Security audit found 5 real vulnerabilities (not just speculative hardening)
+- Haiku workers fast and cheap for import cleanup + type annotations ($0.07-0.38/task)
+- 3-tier issue handling: workers logged decisions to `.claude/decisions.md` instead of blocking
+- Dead code detection correctly identified and removed unused `image_attributes.py` module
+
+**Lessons:**
+- ML monorepos work well with start.sh — the flat import layout and large file count are handled correctly by workers in worktrees
+- Budget enforcement gap is a real issue for unattended runs — inner loop can spend 2.5x budget before outer loop checks
+- Supervisor gets progressively more targeted — iter 1 covers broad strokes, later iterations fill remaining gaps
+- `committer` in worktrees works reliably — 41 commits, 0 staging conflicts between workers
+
+---
 ### 2026-03-03 — Stale scripts auto-detection
 
 **Problem:** `install.sh` re-run was mandatory after script changes but nothing caught staleness. All 5 bug fixes were "fixed" in git but never deployed in stress test #2.
