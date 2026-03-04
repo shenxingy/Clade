@@ -312,14 +312,14 @@ if [[ "$MODE" == "morning" ]]; then
     exit 1
   fi
 
-  timeout 300s claude -p --dangerously-skip-permissions \
-    "$(printf '%s\n\n---\n\n## VISION / GOALS\n%s\n\n## TODO\n%s\n\n## PROGRESS\n%s\n\n## BRAINSTORM\n%s\n\n## Recent git log\n%s' \
-      "$(_safe_cat "$BRIEF_PROMPT")" \
-      "$(_safe_cat GOALS.md)$(_safe_cat VISION.md)" \
-      "$(_safe_cat TODO.md)" \
-      "$(_safe_cat PROGRESS.md)" \
-      "$(_safe_cat BRAINSTORM.md)" \
-      "$(git log --oneline -20 2>/dev/null || echo '(no git history)')")" \
+  printf '%s\n\n---\n\n## VISION / GOALS\n%s\n\n## TODO\n%s\n\n## PROGRESS\n%s\n\n## BRAINSTORM\n%s\n\n## Recent git log\n%s' \
+    "$(_safe_cat "$BRIEF_PROMPT")" \
+    "$(_safe_cat GOALS.md)$(_safe_cat VISION.md)" \
+    "$(_safe_cat TODO.md)" \
+    "$(_safe_cat PROGRESS.md)" \
+    "$(_safe_cat BRAINSTORM.md)" \
+    "$(git log --oneline -20 2>/dev/null || echo '(no git history)')" \
+  | timeout 300s claude -p --dangerously-skip-permissions \
     2>/dev/null
 
   exit 0
@@ -509,15 +509,16 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
   else
     _log "Running /orchestrate..."
 
-    timeout 300s claude -p --dangerously-skip-permissions \
-      "$(printf '%s\n\n---\n\n## CLAUDE.md\n%s\n\n## TODO.md\n%s\n\n## GOALS / VISION\n%s\n\n## PROGRESS.md\n%s\n\n## Skipped tasks\n%s\n\n## BRAINSTORM\n%s' \
-        "$(_safe_cat "$HOME/.claude/skills/orchestrate/prompt.md")" \
-        "$(_safe_cat CLAUDE.md)" \
-        "$(_safe_cat TODO.md)" \
-        "$(_safe_cat GOALS.md)$(_safe_cat VISION.md)" \
-        "$(_safe_cat PROGRESS.md)" \
-        "$(_safe_cat .claude/skipped.md)" \
-        "$(_safe_cat BRAINSTORM.md)")" \
+    # Use stdin (pipe) to pass large prompts — avoids CLI hang on >100KB command-line args
+    printf '%s\n\n---\n\n## CLAUDE.md\n%s\n\n## TODO.md\n%s\n\n## GOALS / VISION\n%s\n\n## PROGRESS.md\n%s\n\n## Skipped tasks\n%s\n\n## BRAINSTORM\n%s' \
+      "$(_safe_cat "$HOME/.claude/skills/orchestrate/prompt.md")" \
+      "$(_safe_cat CLAUDE.md)" \
+      "$(_safe_cat TODO.md)" \
+      "$(_safe_cat GOALS.md)$(_safe_cat VISION.md)" \
+      "$(_safe_cat PROGRESS.md)" \
+      "$(_safe_cat .claude/skipped.md)" \
+      "$(_safe_cat BRAINSTORM.md)" \
+    | timeout 300s claude -p --dangerously-skip-permissions \
       > .claude/proposed-tasks.md 2>.claude/orchestrate-err.log
     ORCH_EXIT=$?
 
@@ -669,8 +670,8 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
   VERIFY_EXIT=0
   MCP_ARGS=()
   [[ -f .claude/mcp.json ]] && MCP_ARGS=(--mcp-config .claude/mcp.json)
-  timeout 300s claude -p --dangerously-skip-permissions "${MCP_ARGS[@]}" \
-    "$(_safe_cat "$HOME/.claude/skills/verify/prompt.md")" \
+  _safe_cat "$HOME/.claude/skills/verify/prompt.md" \
+  | timeout 300s claude -p --dangerously-skip-permissions ${MCP_ARGS[@]+"${MCP_ARGS[@]}"} \
     > .claude/verify-output.txt 2>.claude/verify-err.log || VERIFY_EXIT=$?
 
   if [[ $VERIFY_EXIT -eq 124 ]]; then
@@ -802,8 +803,8 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
   _write_progress "syncing"
   _log "Syncing docs..."
 
-  timeout 120s claude -p --dangerously-skip-permissions \
-    "$(_safe_cat "$HOME/.claude/skills/sync/prompt.md")" \
+  _safe_cat "$HOME/.claude/skills/sync/prompt.md" \
+  | timeout 120s claude -p --dangerously-skip-permissions \
     > /dev/null 2>.claude/sync-err.log || true
 
   # Commit doc updates
