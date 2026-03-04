@@ -16,6 +16,7 @@ test -f .design-system.md && echo "FOUND" || echo "NOT FOUND"
 **If `.design-system.md` exists:**
 - Read it fully before proceeding.
 - ALL color, typography, spacing, and component choices MUST use tokens from this file. Do NOT invent new values.
+- Treat `[placeholder]` values as undefined — skip those tokens and apply creative freedom for those dimensions only. If ALL tokens are still `[placeholder]`, note "design system template not filled in" and proceed with full creative freedom.
 - If the design system contradicts general aesthetic guidelines below, **the design system wins**.
 - If only partial tokens are defined (e.g., colors but no typography), use tokens where available and apply creative freedom to the undefined dimensions.
 - The "Differentiation" step changes: instead of picking any aesthetic freely, **create distinction WITHIN the system constraints** — like a chef creating a signature dish from a fixed pantry. Find the most expressive combination of the given tokens.

@@ -1,6 +1,44 @@
 # Progress Log
 
 ---
+### 2026-03-04 — Stress test #4: claude-code-kit self-test + post-test fixes
+
+**Config:** $10 budget, 5 max iterations, sonnet supervisor/workers
+
+**Results:** Converged at iteration 3, $1.64 total, 3 minutes. Phase 12.3 (Design System Constraint) fully implemented by workers — 3 parallel tasks in iter 1, 1 fixup in iter 2 (install.sh update that iter 1 missed), CONVERGED in iter 3. install.sh auto-ran after convergence to deploy changes.
+
+**Issues found & fixed:**
+1. **`claude -p` hangs with command-line args** — passing large prompts as `claude -p "$(printf '...')"` causes T (stopped) state. Stdin pipe (`printf ... | claude -p`) works reliably. Fixed in `e377334` (pre-test). Root cause: likely shell ARG_MAX or claude CLI stdin detection.
+2. **Phantom empty task** — trailing `===TASK===` with no body creates a phantom task that runs with empty prompt. Supervisor in iter 2 output `===TASK===` at EOF; task 2 was empty but "SUCCESS". Fixed: `count_tasks` now uses awk to skip tasks with empty body (both run-tasks.sh + run-tasks-parallel.sh).
+3. **`git diff --cached --stat` pager hang** — committer.sh spawns pager in non-interactive context. Fixed: `git --no-pager diff` + `git --no-pager commit`.
+4. **design-system.md `#` rendering** — template used `#` for instructional comments, rendered as H1 headings in Markdown. Fixed: converted to prose paragraphs + blockquotes.
+5. **frontend-design `[placeholder]` guard missing** — skill prompt didn't handle unfilled `[placeholder]` tokens. Fixed: added explicit skip instruction.
+
+**Worker quality assessment:** All 3 Phase 12.3 workers succeeded, produced correct code. Supervisor correctly identified install.sh gap in iter 2. However, iter 2's install.sh worker (haiku) "succeeded" with 0 commits — the fix was already applied by another path. One phantom empty task (bug #2 above) ran uselessly.
+
+**Lessons:**
+- First stress test where the kit tested itself — meta-level validation
+- Supervisor quality was excellent: correctly decomposed Phase 12.3 into 3 parallel tasks matching the proposed-tasks.md spec, then caught the install.sh gap
+- Post-convergence auto-install (`configs/ changed → running install.sh`) is valuable for self-evolving projects
+- Phantom task bug wasted ~$0.13 on an empty sonnet call — task parsing must validate body
+
+---
+### 2026-03-04 — Loop: loop-goal
+
+**Iterations:** 3
+**Goal file:** .claude/loop-goal.md
+**Commits since start:**
+```
+4fd3e16 Merge branch 'batch/task-3-20260304-124505'
+547d1f7 Merge branch 'batch/task-2-20260304-124505'
+3959334 feat: Phase 12.3 — design system template + orchestrate injection
+0e8fffc feat: Phase 12.3 — frontend-design skill with design system awareness
+77c66b1 chore: Phase 12.3 — mark design system tasks complete
+e377334 fix: use stdin pipe for claude -p calls — prevents hang on large prompts
+```
+
+---
+
 ### 2026-03-04 — Stress test #3 bug fixes + Phase 12.2: Autonomous Work Discovery
 
 **Bug fixes (2):**

@@ -62,7 +62,13 @@ is_new_format() {
 
 count_tasks() {
   if is_new_format; then
-    grep -c '^===TASK===$' "$TASK_FILE"
+    # Count only tasks with non-empty body (skip trailing ===TASK=== with no content)
+    awk '
+      /^===TASK===$/ { if (has_body) valid++; has_body=0; in_meta=1; next }
+      in_meta && /^---$/ { in_meta=0; next }
+      !in_meta && NF { has_body=1 }
+      END { if (has_body) valid++; print valid+0 }
+    ' "$TASK_FILE"
   else
     grep -cvE '^[[:space:]]*(#|$)' "$TASK_FILE"
   fi

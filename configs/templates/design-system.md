@@ -1,11 +1,13 @@
 # Design System
-# Copy this file to your project root as `.design-system.md` and fill in your project's tokens.
-# Workers read this file to inject consistent visual decisions into every frontend task.
-# Leave a section blank or keep `[placeholder]` values → that section will be skipped by orchestrator.
+
+> Copy this file to your project root as `.design-system.md` and fill in your project's tokens.
+> Workers read this file to inject consistent visual decisions into every frontend task.
+> Leave a section blank or keep `[placeholder]` values — that section will be skipped by orchestrator.
 
 ## Color Palette
-# Define all colors as CSS custom properties. Use semantic naming (role, not hue).
-# Example: --color-primary: #3B82F6;  --color-error: #EF4444;
+
+Define all colors as CSS custom properties. Use semantic naming (role, not hue).
+Example: `--color-primary: #3B82F6;  --color-error: #EF4444;`
 
 :root {
   /* Brand */
@@ -29,8 +31,9 @@
 }
 
 ## Typography
-# List every font token workers should use. Do NOT leave workers to choose fonts ad-hoc.
-# Example: --font-display: 'Geist', sans-serif;
+
+List every font token workers should use. Do NOT leave workers to choose fonts ad-hoc.
+Example: `--font-display: 'Geist', sans-serif;`
 
 :root {
   /* Font families */
@@ -61,7 +64,9 @@
 }
 
 ## Spacing & Layout
-# 4px base grid. Workers must use these tokens — no raw px values in components.
+
+4px base grid. Workers must use these tokens — no raw px values in components.
+Exception: breakpoint px values (sm/md/lg/xl/2xl) must appear directly in `@media` queries — CSS custom properties cannot be used in media query conditions.
 
 :root {
   /* Spacing scale (4px base) */
@@ -92,62 +97,68 @@
 /* Gutter:  [placeholder]  — e.g. var(--space-6) */
 
 ## Component Library
-# Specify which component library (if any) workers should use. Prevents mixing libraries.
 
-# Library: [placeholder]
-# Options: shadcn/ui | Radix UI | Material UI | Ant Design | Headless UI | custom | none
+Specify which component library (if any) workers should use. Prevents mixing libraries.
 
-# Key components and their import paths:
-# - Button:   [placeholder]  e.g. import { Button } from '@/components/ui/button'
-# - Input:    [placeholder]
-# - Dialog:   [placeholder]
-# - Select:   [placeholder]
-# - Toast:    [placeholder]
-# - Table:    [placeholder]
-# - Card:     [placeholder]
+Library: [placeholder]
+Options: shadcn/ui | Radix UI | Material UI | Ant Design | Headless UI | custom | none
 
-# Import convention: [placeholder]
-# e.g. "Always import from @/components/ui/*, never from library directly"
-# e.g. "All primitives live in src/components/ui — extend, don't re-implement"
+Key components and their import paths:
+- Button:   [placeholder]  e.g. `import { Button } from '@/components/ui/button'`
+- Input:    [placeholder]
+- Dialog:   [placeholder]
+- Select:   [placeholder]
+- Toast:    [placeholder]
+- Table:    [placeholder]
+- Card:     [placeholder]
+
+Import convention: [placeholder]
+e.g. "Always import from @/components/ui/*, never from library directly"
+e.g. "All primitives live in src/components/ui — extend, don't re-implement"
 
 ## Theme
-# Describe light/dark mode support and CSS variable naming conventions.
 
-# Light/dark mode: [placeholder]
-# Options: light-only | dark-only | system (prefers-color-scheme) | user-toggle
+Describe light/dark mode support and CSS variable naming conventions.
 
-# Dark mode implementation: [placeholder]
-# Options: CSS class (.dark on <html>) | data-theme attribute | media query only
+Light/dark mode: [placeholder]
+Options: light-only | dark-only | system (prefers-color-scheme) | user-toggle
 
-# CSS variable naming convention: [placeholder]
-# e.g. --color-* for colors, --text-* for typography, --space-* for spacing
-# e.g. all tokens in :root, dark overrides in [data-theme="dark"] { ... }
+Dark mode implementation: [placeholder]
+Options: CSS class (.dark on `<html>`) | data-theme attribute | media query only
 
-# Dark mode token overrides (fill in if supporting dark mode):
-# [data-theme="dark"] {
-#   --color-background: [placeholder];
-#   --color-surface: [placeholder];
-#   --color-text: [placeholder];
-#   --color-text-muted: [placeholder];
-#   --color-border: [placeholder];
-# }
+CSS variable naming convention: [placeholder]
+e.g. `--color-*` for colors, `--text-*` for typography, `--space-*` for spacing
+e.g. all tokens in `:root`, dark overrides in `[data-theme="dark"] { ... }`
+
+Dark mode token overrides (fill in if supporting dark mode):
+
+```css
+[data-theme="dark"] {
+  --color-background: [placeholder];
+  --color-surface: [placeholder];
+  --color-text: [placeholder];
+  --color-text-muted: [placeholder];
+  --color-border: [placeholder];
+}
+```
 
 ## Constraints
-# Hard rules workers MUST follow. Violations produce inconsistent UI.
-# Be explicit: list banned choices and required alternatives.
 
-# Banned fonts: [placeholder]
-# e.g. "Never use Arial, Times New Roman, or Comic Sans — use --font-body / --font-display only"
+Hard rules workers MUST follow. Violations produce inconsistent UI.
+Be explicit: list banned choices and required alternatives.
 
-# Banned colors: [placeholder]
-# e.g. "Never hardcode hex values in component files — always reference CSS custom properties"
+Banned fonts: [placeholder]
+e.g. "Never use Arial, Times New Roman, or Comic Sans — use `--font-body` / `--font-display` only"
 
-# Accessibility requirements:
-# - Minimum contrast ratio: [placeholder]  e.g. 4.5:1 for text (WCAG AA)
-# - Focus styles: [placeholder]  e.g. "All interactive elements must show a visible focus ring using --color-primary"
-# - Motion: [placeholder]  e.g. "Respect prefers-reduced-motion — wrap animations in @media (prefers-reduced-motion: no-preference)"
+Banned colors: [placeholder]
+e.g. "Never hardcode hex values in component files — always reference CSS custom properties"
 
-# Other constraints:
-# - [placeholder]  e.g. "No inline styles — use CSS modules or Tailwind utility classes only"
-# - [placeholder]  e.g. "Icon library: lucide-react only — do not import from @heroicons or @radix-ui/icons directly"
-# - [placeholder]  e.g. "Border radius: use rounded-md (6px) by default; rounded-full only for avatars/pills"
+Accessibility requirements:
+- Minimum contrast ratio: [placeholder]  e.g. 4.5:1 for text (WCAG AA)
+- Focus styles: [placeholder]  e.g. "All interactive elements must show a visible focus ring using `--color-primary`"
+- Motion: [placeholder]  e.g. "Respect `prefers-reduced-motion` — wrap animations in `@media (prefers-reduced-motion: no-preference)`"
+
+Other constraints:
+- [placeholder]  e.g. "No inline styles — use CSS modules or Tailwind utility classes only"
+- [placeholder]  e.g. "Icon library: lucide-react only — do not import from @heroicons or @radix-ui/icons directly"
+- [placeholder]  e.g. "Border radius: use rounded-md (6px) by default; rounded-full only for avatars/pills"
