@@ -30,7 +30,11 @@ Check if the user's input contains `--plan`. If yes, follow the **Two-Phase Proc
 
 1. Read the codebase: `CLAUDE.md`, `PROGRESS.md`, key source files relevant to the goal
 2. Ask 2-3 clarifying questions (same as Standard Step 1)
-3. After user answers, write `IMPLEMENTATION_PLAN.md` in the project root:
+3. Check if `.design-system.md` exists in the project directory:
+   - If it exists and contains filled-in tokens (not all `[placeholder]`): read it and plan to inject design token constraints into all frontend tasks. Add to each frontend task: `Design system: .design-system.md — use project tokens for all visual decisions`
+   - If it exists but is empty or still has only `[placeholder]` values: note "design system template not filled in" and skip injection.
+   - If it does not exist, or the project has no frontend: skip silently.
+4. After user answers, write `IMPLEMENTATION_PLAN.md` in the project root:
 
 ```markdown
 # Implementation Plan: {goal title}
@@ -105,6 +109,11 @@ After the user answers, decompose the work into parallel-executable tasks. Each 
 - **Specific**: names exact files to create/edit, patterns to follow, edge cases to handle
 - **Atomic**: one logical unit of work (one feature, one component, one API endpoint)
 
+**Design system injection:** Check if `.design-system.md` exists in the project directory:
+- If it exists and contains filled-in tokens (not all `[placeholder]`): read it and inject its constraints into every frontend task's Implementation section. Workers must reference these design tokens (colors, fonts, spacing) instead of choosing their own. Add to each frontend task: `Design system: .design-system.md — use project tokens for all visual decisions`
+- If it exists but is empty or still has only `[placeholder]` values: note "design system template not filled in" and skip injection.
+- If it does not exist, or the project has no frontend: skip silently.
+
 ### Step 3: Write Tasks to File
 When the user confirms the breakdown, write tasks to `.claude/proposed-tasks.md` in this exact format:
 
@@ -123,6 +132,8 @@ Files to create/edit:
 - [exact file path]
 
 Pattern to follow: [path/to/example.ts] — [what specifically to copy/adapt]
+
+Design system: [path to .design-system.md if exists and filled in, omit this line if not present]
 
 Implementation:
 1. [Specific step with exact function names, class names, variable names]
@@ -175,6 +186,7 @@ All tasks must follow these structure rules (Claude Code-optimized):
 - **Cohesion**: Keep tightly coupled code in one file — fix a bug by reading 1 file, not 3
 - **DAG imports**: Module deps must form a strict DAG (no circular imports)
 - **CSS extraction**: For HTML with inline CSS > 200 lines, extract to separate .css file
+- **Design system**: For frontend/fullstack projects with `.design-system.md` (filled in): all visual tasks must reference the design system. Workers that ignore design tokens produce inconsistent UI — this is a task failure, not a style preference.
 
 ## Rules
 
