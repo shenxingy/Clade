@@ -429,8 +429,8 @@ Goal: the system must not only build code, but also USE what it builds — inter
 
 #### Bugs found in stress test #3 (deepfake-platform)
 
-- [ ] 🔵 **Budget not enforced by inner loop** — start.sh budget check is at outer loop only; loop-runner.sh has no budget awareness. Low priority — Pro subscription usage-based, not per-dollar billing.
-- [ ] 🟡 **`head -N` pipe kills start.sh** — piping start.sh output through `head -80` sends SIGPIPE → kills pipeline. Document: never pipe start.sh output through line-limiting commands. Consider `trap '' PIPE` at start.sh top.
+- [x] 🔵 **Budget not enforced by inner loop** — loop-runner.sh now accepts `--budget` flag; start.sh passes `--budget-remaining` each iteration; loop breaks when cumulative cost exceeds budget
+- [x] 🟡 **`head -N` pipe kills start.sh** — added `trap '' PIPE` after signal handlers; SIGPIPE is now ignored
 
 ---
 
@@ -446,10 +446,10 @@ Goal: the system must not only build code, but also USE what it builds — inter
 
 ### 12.2 — Autonomous Work Discovery
 
-- [ ] **Extract task factories to CLI** — CI watcher, coverage scanner, dep updater as standalone scripts (currently orchestrator-only)
-- [ ] **Post-convergence scan in start.sh** — after feature converges, run task factories before declaring "done"; findings → next iteration
-- [ ] **UX audit as work source** — 12.1 Playwright bugs feed back as tasks; UX improvements feed BRAINSTORM.md
-- [ ] **Code health scan** — dead code, TODO comments, lint warnings, type errors → auto-generated tasks
+- [x] **Extract task factories to CLI** — CI watcher, coverage scanner, dep updater already exist as `configs/scripts/scan-{ci-failures,coverage,deps}.sh` from Phase 8.1
+- [x] **Post-convergence scan in start.sh** — `_post_convergence_scan()` runs all scan scripts after convergence; findings → injected as next iteration tasks (once per session to prevent infinite loops)
+- [x] **UX audit as work source** — already implemented in Phase 12.1: `INTERACTION_RESULT` parsing in start.sh; `[BUG]` → fix tasks, `[UX]` → BRAINSTORM.md
+- [x] **Code health scan** — `configs/scripts/scan-health.sh`: TODO/FIXME comments, mypy/tsc type errors, ruff/eslint lint, large files (>1500 lines); integrated into post-convergence scan
 
 ---
 

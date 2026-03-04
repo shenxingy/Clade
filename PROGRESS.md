@@ -1,6 +1,27 @@
 # Progress Log
 
 ---
+### 2026-03-04 — Stress test #3 bug fixes + Phase 12.2: Autonomous Work Discovery
+
+**Bug fixes (2):**
+1. **SIGPIPE trap** — `trap '' PIPE` added after signal handlers in start.sh. Piping through `head -N` no longer kills the script.
+2. **Budget enforcement in inner loop** — loop-runner.sh accepts `--budget` flag; start.sh passes remaining budget (`BUDGET - TOTAL_COST`) each iteration; loop breaks when cumulative cost exceeds budget. Prevents 2.5x budget overruns seen in stress test #3.
+
+**Phase 12.2 — Autonomous Work Discovery (4 items):**
+1. **Task factories already existed** — scan-ci-failures.sh, scan-coverage.sh, scan-deps.sh were built in Phase 8.1
+2. **scan-health.sh** — new code health scanner: TODO/FIXME comments (grouped by file), mypy/tsc type errors, ruff/eslint lint warnings, large files (>1500 lines). Outputs `===TASK===` blocks.
+3. **Post-convergence scan** — `_post_convergence_scan()` in start.sh runs all 4 scan scripts after feature convergence; if findings exist, injects them as next iteration tasks instead of declaring "done". Runs once per session (`_POST_CONVERGENCE_DONE` flag) to prevent infinite loops.
+4. **UX audit as work source** — already implemented in Phase 12.1 (INTERACTION_RESULT parsing)
+
+**Key design decisions:**
+- Post-convergence scan runs once per session — if scan findings aren't fixed in one pass, they're logged but don't block convergence
+- Budget is passed as remaining amount, not total — inner loop only sees what it's allowed to spend
+- scan-health.sh groups TODOs by file (one task per file) to keep task count manageable
+- `${LOOP_BUDGET_ARGS[@]+"${LOOP_BUDGET_ARGS[@]}"}` pattern avoids `set -u` failure on empty arrays
+
+**Files changed:** `start.sh`, `loop-runner.sh`, `scan-health.sh` (new)
+
+---
 ### 2026-03-03 — Phase 12.1: UI Interaction Testing via Playwright MCP
 
 **What was built:**
