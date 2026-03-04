@@ -1,6 +1,21 @@
 # Progress Log
 
 ---
+### 2026-03-03 — Stale scripts auto-detection
+
+**Problem:** `install.sh` re-run was mandatory after script changes but nothing caught staleness. All 5 bug fixes were "fixed" in git but never deployed in stress test #2.
+
+**Solution:** 3-point detection:
+1. `install.sh` writes `~/.claude/.kit-source-dir` (repo path) + `~/.claude/.kit-checksum` (combined sha256 of all `configs/` files)
+2. `session-context.sh` (SessionStart hook) compares checksums → warns in context if stale
+3. `start.sh` `_check_startup_health()` → TTY: auto-reinstall prompt (15s timeout, default Y); non-TTY: hard abort
+
+**Lessons:**
+- `sha256sum` output includes filenames — must use consistent absolute paths between writer and checker (both use `$KIT_DIR/configs`)
+- `LC_ALL=C sort` ensures deterministic file ordering across locales
+- Three detection points cover all entry paths: interactive session, autonomous run, manual check
+
+---
 ### 2026-03-03 — Stress Test #2b: ai-ap-manager with fixed scripts (parallel validated)
 
 **Re-run after deploying all bug fixes via `install.sh`. All fixes validated.**

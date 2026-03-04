@@ -192,7 +192,15 @@ if [[ -f "$TEMPLATE_CLAUDE" ]]; then
   fi
 fi
 
-# ─── 11. Summary ─────────────────────────────────────────────────────
+# ─── 11. Write staleness detection markers ───────────────────────────
+
+echo "Writing kit version markers..."
+echo "$SCRIPT_DIR" > "$CLAUDE_DIR/.kit-source-dir"
+# Combined checksum of all source configs — session-context.sh and start.sh compare against this
+find "$SCRIPT_DIR/configs" -type f | LC_ALL=C sort | xargs sha256sum 2>/dev/null | sha256sum | cut -d' ' -f1 > "$CLAUDE_DIR/.kit-checksum"
+echo "  Written .kit-source-dir + .kit-checksum for stale-script detection"
+
+# ─── 12. Summary ─────────────────────────────────────────────────────
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

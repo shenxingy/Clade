@@ -359,6 +359,33 @@ _check_startup_health() {
       echo "⚠ Low memory: ${avail_mb}MB available. Workers may OOM."
     fi
   fi
+
+  # Stale kit detection — source configs/ changed since last install.sh
+  local _kit_source="$HOME/.claude/.kit-source-dir"
+  local _kit_checksum="$HOME/.claude/.kit-checksum"
+  if [[ -f "$_kit_source" && -f "$_kit_checksum" ]]; then
+    local _kit_dir _current _installed
+    _kit_dir=$(cat "$_kit_source")
+    if [[ -d "$_kit_dir/configs" ]]; then
+      _current=$(find "$_kit_dir/configs" -type f | LC_ALL=C sort | xargs sha256sum 2>/dev/null | sha256sum | cut -d' ' -f1)
+      _installed=$(cat "$_kit_checksum")
+      if [[ "$_current" != "$_installed" ]]; then
+        echo "⚠ Kit scripts are stale — configs/ changed since last install.sh"
+        if [[ -t 0 ]]; then
+          read -t 15 -p "  Auto-reinstall now? (Y/n, auto-Y in 15s): " _answer || _answer="y"
+          if [[ "${_answer,,}" != "n" ]]; then
+            bash "$_kit_dir/install.sh"
+            echo "✓ Kit reinstalled."
+          else
+            echo "  Continuing with stale scripts (results may be unexpected)."
+          fi
+        else
+          echo "ERROR: Stale kit in unattended mode. Run install.sh first." >&2
+          exit 1
+        fi
+      fi
+    fi
+  fi
 }
 _check_startup_health
 
