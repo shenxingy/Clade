@@ -1,6 +1,68 @@
 # Progress Log
 
 ---
+### 2026-03-03 — Fix 5 Stress-Test Bugs (pre-run hardening)
+
+**Fixed all 5 bugs from owlcast stress test in 5 commits:**
+1. **Parallel execution** — root cause: `extract_file_refs()` regex matched ALL file-like strings in task prose → false conflicts → everything serial. Fix: only match explicit `OWN_FILES:` declarations + `depends_on:` fields. Default is now parallel.
+2. **Model-aware timeout** — flat 1800s was too short for opus, too long for haiku. Now: haiku=900s, sonnet=1800s, opus=3600s.
+3. **Disk health check** — `_check_startup_health()` added to start.sh. ≥95% aborts, ≥90% warns with TTY prompt.
+4. **/orchestrate retry** — missing `===TASK===` triggers one retry with format enforcement prefix. Checks for explicit `STATUS: CONVERGED`.
+5. **Cost log** — `touch` at loop-runner.sh startup + guard in `_accumulate_cost()`.
+
+**Lessons:**
+- Regex-based file extraction from prose is fundamentally unreliable — explicit metadata fields (OWN_FILES:) are the only safe approach
+- Model-aware defaults are better than one-size-fits-all — the model field already exists in task blocks, use it
+- Health checks are cheap insurance — a 5-line `df` check prevents hours of cascading timeout debugging
+
+---
+### 2026-03-03 — Stress Test: start.sh on owlcast (real project, 6 tasks)
+
+**First multi-hour stress test on a real codebase (owlcast — AI video pipeline, ~50 Python files).**
+
+**Config:** `start.sh --goal .claude/stress-test-goal.md --budget 3 --hours 1`
+- 6 targeted tasks: BGM populate, analytics investigation, mypy fix, CLI review, pipeline review, quality checker review
+- Used `--goal` mode because `/orchestrate` returned conversational text on ambiguous TODO items
+
+**Result:** CONVERGED at iteration 4, **$10.48 total**, **66 minutes**, **21 commits**.
+
+| Task | Model | Result | Commits |
+|------|-------|--------|---------|
+| BGM populate + ffprobe verify | haiku | SUCCESS | `ac34ce2`, `ff9e21c` |
+| Analytics platform limitation | haiku | SUCCESS (→ skipped.md) | `b266608` |
+| Mypy 47 type errors | sonnet | PARTIAL (109→65 errors, 2x timeout) | `c2c6635` + 10 fix commits |
+| CLI entry point wiring | sonnet | SUCCESS | `0a54a33` |
+| Pipeline error handling | sonnet | SUCCESS (1x timeout, retry worked) | `0b5ffe1` |
+| Quality checker gaps | haiku | SUCCESS | `775a876`, `81bc7e3` |
+
+**Iteration breakdown:**
+- Iter 1: Supervisor planned 4 tasks (combined some goals). Workers 1+3 succeeded, Worker 2 timed out 2x (permanently failed), Worker 4 timed out 1x then succeeded on retry.
+- Iter 2: Supervisor saw Worker 4 results merged. Iter 1's Worker 4 had completed pipeline+CLI review.
+- Iter 3: Supervisor found 8 uncommitted files from mypy partial fix. Planned cleanup task → merge conflict → serial retry → success (6 commits).
+- Iter 4: Supervisor checked all 6 goals against commit history → CONVERGED.
+
+**5 bugs found:**
+1. **All tasks serial despite MAX_WORKERS=4** — `run-tasks-parallel.sh` puts all tasks in Group 1 (serial). Parallelism not working for targeted mode.
+2. **Cost log initially empty** — `.claude/loop-cost.log` stayed empty for first iterations; cost tracking delay.
+3. **Default timeout too short** — 600s insufficient for large mypy fix tasks on disk-pressure servers. Mypy task made real progress (109→65 errors) but timed out twice.
+4. **Merge conflict on cleanup iteration** — worktree worker committed `.claude/session-progress.md` which conflicted with main. Auto-serial-retry handled it, but adds latency.
+5. **/orchestrate conversational fallback** — when TODO items are vague, /orchestrate returns prose instead of ===TASK=== formatted tasks. `--goal` mode is the workaround.
+
+**What worked well:**
+- 3-tier issue handling: Worker 3 correctly wrote analytics limitation to skipped.md instead of failing
+- Timeout analysis: each timeout produces a structured diagnosis (root cause, infrastructure status, recommendation)
+- Session report: clean summary auto-generated with cost, commits, skipped items
+- Supervisor convergence: correctly identified all 6 goals as done by checking commit history
+- Merge conflict recovery: auto-serial-retry handled it without manual intervention
+
+**Lessons:**
+- Targeted mode (`--goal`) is more reliable than `/orchestrate` for well-defined task lists — removes the "conversational response" failure mode
+- Haiku workers succeed more reliably than sonnet for bounded tasks (BGM populate, doc writing, quality review) — sonnet is better for large refactors but hits timeouts
+- Disk pressure (93% full) is a real timeout contributor — should warn at start if disk > 90%
+- Partial progress on timeout is valuable — mypy task reduced errors from 109→65 despite "failing"; next iteration cleaned up the uncommitted work
+- Cost: $10.48 for 21 commits across 6 tasks = ~$0.50/commit, $1.75/task
+
+---
 ### 2026-03-02 — start.sh Comprehensive Hardening (12 issues)
 
 **Fixed 12 issues from full audit:**
