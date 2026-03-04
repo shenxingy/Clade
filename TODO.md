@@ -2,7 +2,7 @@
 
 > Vision and architecture: see [VISION.md](VISION.md)
 
-Phases 1–10 complete. Phase 11 (Autonomous Lifecycle) is next.
+Phases 1–12 complete. Phase 13 (AI SDE Operating Console) in progress.
 
 ---
 
@@ -469,13 +469,23 @@ Goal: the system must not only build code, but also USE what it builds — inter
 
 ---
 
-## Phase 13 — Orchestrator GUI Redesign (Future)
+## Phase 13 — AI SDE Operating Console
 
-Separated from Phase 12 due to scope — this is a full product redesign.
+Async idea collection, AI evaluation, process management, three-mode UI.
 
-- [ ] **Audit current GUI** — catalog all features, classify as keep/remove/redesign
-- [ ] **Monitoring-first redesign** — worker dashboard, session timeline, blocker queue
-- [ ] **Remove interactive editing** — task editing and prompt input belong in TUI, not GUI
+- [x] **13.1 Ideas data layer** — SQLite tables + IdeasManager CRUD + API routes
+- [x] **13.2 AI evaluation + negotiation** — claude -p haiku eval, discussion messages, WS broadcast
+- [x] **13.3 Process manager** — start.sh control from GUI (StartProcess + ProcessPool)
+- [x] **13.4 Three-mode UI** — Ideas panel + app-ideas.js + plan/execute/ideas switching
+- [x] **13.5 Dashboard process cards** — running processes in Execute mode dashboard
+- [x] **13.6 Mobile responsiveness** — CSS media queries for 768px breakpoint
+- [x] **13.7 Patrol integration** — auto-schedule in status_loop, config settings
+- [x] **Review pass** — fixed security issues, error handling, XSS, input validation
+
+### Tech Debt
+- [ ] Ideas DB connection pooling — each IdeasManager call opens a new connection (`ideas.py:59`)
+- [ ] Track fire-and-forget asyncio.create_task refs for graceful shutdown (`routes/ideas.py:76,106,150`)
+- [ ] ProcessPool shutdown hook — register atexit/FastAPI shutdown event (`process_manager.py:233`)
 
 ---
 
