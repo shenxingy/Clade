@@ -182,6 +182,30 @@ class TaskQueue:
                         created_at REAL
                     )
                 """)
+                # Ideas tables (Phase 13)
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS ideas (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        content TEXT NOT NULL,
+                        status TEXT DEFAULT 'raw',
+                        ai_evaluation TEXT,
+                        priority INTEGER DEFAULT 0,
+                        source TEXT DEFAULT 'human',
+                        project TEXT,
+                        promoted_to TEXT,
+                        created_at TEXT DEFAULT (datetime('now')),
+                        updated_at TEXT DEFAULT (datetime('now'))
+                    )
+                """)
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS idea_messages (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        idea_id INTEGER NOT NULL REFERENCES ideas(id),
+                        role TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        created_at TEXT DEFAULT (datetime('now'))
+                    )
+                """)
                 await db.commit()
             # Migrate from JSON if present
             json_file = self._claude_dir / "task-queue.json"
