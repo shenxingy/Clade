@@ -486,6 +486,7 @@ Async idea collection, AI evaluation, process management, three-mode UI.
 - [ ] Ideas DB connection pooling — each IdeasManager call opens a new connection (`ideas.py:59`) — **SKIP**: matches TaskQueue convention, SQLite local = negligible benefit from pooling
 - [x] Track fire-and-forget asyncio.create_task refs for graceful shutdown (`routes/ideas.py:76,106,150`)
 - [x] ProcessPool shutdown hook — register atexit/FastAPI shutdown event (`process_manager.py:233`)
+- [ ] Async interaction UX — user continuous input + AI sidebar feedback without blocking; current Ideas mode is still submit-wait-reply, not the envisioned "keep typing while AI evaluates in parallel alongside" (`app-ideas.js`, `routes/ideas.py`)
 
 ---
 
