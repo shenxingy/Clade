@@ -14,6 +14,9 @@ from session import registry
 
 logger = logging.getLogger(__name__)
 
+# prevent fire-and-forget tasks from being GC'd (Python docs pattern)
+_bg_tasks: set[asyncio.Task] = set()
+
 router = APIRouter(prefix="/api/ideas", tags=["ideas"])
 
 
@@ -71,7 +74,7 @@ async def batch_ideas(body: dict, session: str = Query(default=None)):
         project = None if isinstance(item, str) else item.get("project")
         idea = await mgr.add_idea(content, source=source, project=project)
         results.append(idea)
-        asyncio.create_task(_eval_and_broadcast(mgr, idea["id"], session))
+        _create_bg_task(_eval_and_broadcast(mgr, idea["id"], session))
     return {"created": len(results), "ideas": results}
 
 
@@ -104,7 +107,7 @@ async def create_idea(body: dict, session: str = Query(default=None)):
     project = body.get("project")
     idea = await mgr.add_idea(content, source=source, project=project)
     if body.get("auto_evaluate", True):
-        asyncio.create_task(_eval_and_broadcast(mgr, idea["id"], session))
+        _create_bg_task(_eval_and_broadcast(mgr, idea["id"], session))
     return idea
 
 
@@ -148,7 +151,7 @@ async def evaluate_idea(idea_id: int, session: str = Query(default=None)):
     idea = await mgr.get_idea(idea_id)
     if not idea:
         raise HTTPException(status_code=404, detail="Idea not found")
-    asyncio.create_task(_eval_and_broadcast(mgr, idea_id, session))
+    _create_bg_task(_eval_and_broadcast(mgr, idea_id, session))
     return {"status": "evaluating", "idea_id": idea_id}
 
 
@@ -182,6 +185,14 @@ async def promote_idea(idea_id: int, body: dict,
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
+
+
+def _create_bg_task(coro) -> asyncio.Task:
+    """Create a background task and prevent it from being GC'd."""
+    task = asyncio.create_task(coro)
+    _bg_tasks.add(task)
+    task.add_done_callback(_bg_tasks.discard)
+    return task
 
 
 async def _eval_and_broadcast(mgr: IdeasManager, idea_id: int,

@@ -68,6 +68,11 @@ async def lifespan(app: FastAPI):
         default_session.start_watch()
     asyncio.create_task(status_loop())
     yield
+    # Shutdown: stop all managed background processes
+    from process_manager import process_pool
+    stopped = await process_pool.stop_all()
+    if stopped:
+        logger.info("Stopped %d background processes on shutdown", stopped)
 
 
 app = FastAPI(title="Claude Code Orchestrator", lifespan=lifespan)
