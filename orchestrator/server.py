@@ -46,12 +46,8 @@ from github_sync import (
     _gh_pull_issues,
     _gh_push_all,
 )
-from worker import (
-    _generate_code_tldr,
-    _score_task,
-    _write_pr_review,
-    _write_progress_entry,
-)
+from worker_tldr import _generate_code_tldr, _score_task
+from worker_review import _write_pr_review, _write_progress_entry
 
 logger = logging.getLogger(__name__)
 
