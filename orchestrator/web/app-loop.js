@@ -596,6 +596,11 @@ async function loadSettings() {
     if (elGhLabel) elGhLabel.value = s.github_issues_label ?? 'orchestrator';
     const elWebhook = document.getElementById('settingWebhook');
     if (elWebhook) elWebhook.value = s.notification_webhook ?? '';
+    // Automation schedule
+    const elPatrolSched = document.getElementById('settingPatrolSchedule');
+    const elResearchSched = document.getElementById('settingResearchSchedule');
+    if (elPatrolSched) elPatrolSched.value = s.patrol_schedule ?? '';
+    if (elResearchSched) elResearchSched.value = s.research_schedule ?? '';
     // Show/hide sync button based on setting
     const syncBtn = document.getElementById('ghSyncBtn');
     if (syncBtn) syncBtn.style.display = s.github_issues_sync ? '' : 'none';
@@ -642,6 +647,8 @@ function saveSettings() {
           github_issues_sync: document.getElementById('settingGhSync')?.checked ?? false,
           github_issues_label: document.getElementById('settingGhLabel')?.value || 'orchestrator',
           notification_webhook: document.getElementById('settingWebhook')?.value || '',
+          patrol_schedule: document.getElementById('settingPatrolSchedule')?.value || '',
+          research_schedule: document.getElementById('settingResearchSchedule')?.value || '',
         }),
       });
       // Update sync button visibility

@@ -79,6 +79,7 @@ _SETTINGS_DEFAULTS = {
     "dep_update_scan": False,
     "patrol_schedule": "",
     "patrol_auto_ideas": False,
+    "research_schedule": "",
 }
 
 
