@@ -144,13 +144,19 @@ class StartProcess:
         return None
 
     def read_cost(self) -> float:
-        """Read total cost from loop-cost.log."""
+        """Read cumulative cost from loop-cost.log (last CUMULATIVE=$N value)."""
         cost_file = self.project_dir / ".claude" / "loop-cost.log"
         if not cost_file.exists():
             return 0.0
         try:
+            import re
             lines = cost_file.read_text().strip().splitlines()
-            return sum(float(l.strip()) for l in lines if l.strip())
+            # Parse last line's CUMULATIVE=$N.NN value
+            for line in reversed(lines):
+                m = re.search(r'CUMULATIVE=\$([0-9.]+)', line)
+                if m:
+                    return float(m.group(1))
+            return 0.0
         except Exception:
             return 0.0
 
