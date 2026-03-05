@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import re
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -61,6 +62,7 @@ class IdeasManager:
         async with self._init_lock:
             if self._initialized:
                 return
+            self._db_path.parent.mkdir(parents=True, exist_ok=True)
             async with aiosqlite.connect(str(self._db_path)) as db:
                 await db.execute("""CREATE TABLE IF NOT EXISTS ideas (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -85,17 +87,18 @@ class IdeasManager:
                 await db.commit()
             self._initialized = True
 
-    async def _db(self) -> aiosqlite.Connection:
+    @asynccontextmanager
+    async def _db(self):
         await self._ensure_tables()
-        db = await aiosqlite.connect(str(self._db_path))
-        db.row_factory = aiosqlite.Row
-        return db
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            db.row_factory = aiosqlite.Row
+            yield db
 
     # ─── CRUD ────────────────────────────────────────────────────────────────
 
     async def add_idea(self, content: str, source: str = "human",
                        project: str | None = None) -> dict:
-        async with await self._db() as db:
+        async with self._db() as db:
             cur = await db.execute(
                 "INSERT INTO ideas (content, source, project) VALUES (?, ?, ?)",
                 (content, source, project),
@@ -116,7 +119,7 @@ class IdeasManager:
             params.append(project)
         where = "WHERE " + " AND ".join(clauses) if clauses else ""
         params += [limit, offset]
-        async with await self._db() as db:
+        async with self._db() as db:
             async with db.execute(
                 f"SELECT * FROM ideas {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
                 params,
@@ -125,7 +128,7 @@ class IdeasManager:
         return [self._row_to_dict(r) for r in rows]
 
     async def get_idea(self, idea_id: int) -> dict | None:
-        async with await self._db() as db:
+        async with self._db() as db:
             async with db.execute("SELECT * FROM ideas WHERE id = ?", (idea_id,)) as cur:
                 row = await cur.fetchone()
             if not row:
@@ -151,7 +154,7 @@ class IdeasManager:
         fields["updated_at"] = datetime.now().isoformat()
         set_clause = ", ".join(f'"{k}" = ?' for k in fields)
         values = list(fields.values()) + [idea_id]
-        async with await self._db() as db:
+        async with self._db() as db:
             await db.execute(f"UPDATE ideas SET {set_clause} WHERE id = ?", values)
             await db.commit()
         return await self.get_idea(idea_id)
@@ -160,7 +163,7 @@ class IdeasManager:
         return await self.update_idea(idea_id, status="archived")
 
     async def add_message(self, idea_id: int, role: str, content: str) -> dict:
-        async with await self._db() as db:
+        async with self._db() as db:
             cur = await db.execute(
                 "INSERT INTO idea_messages (idea_id, role, content) VALUES (?, ?, ?)",
                 (idea_id, role, content),

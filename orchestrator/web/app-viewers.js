@@ -195,7 +195,6 @@ async function retryInterrupted(taskId) {
 }
 
 // ─── Task History (done/failed) ───────────────────────────────────────────────
-let _historyExpanded = false;
 let _lastSuccessRate;
 
 function renderHistory(successRate) {
@@ -223,7 +222,7 @@ function renderHistory(successRate) {
     }
   }
 
-  if (!_historyExpanded) return; // collapsed — only update counts
+  if (!section.open) return; // collapsed <details> — only update counts
 
   listEl.innerHTML = history.map(t => {
     const badge = `<span class="badge ${esc(t.status)}" style="font-size:10px">${esc(t.status)}</span>`;
@@ -240,14 +239,7 @@ function renderHistory(successRate) {
   }).join('');
 }
 
-function toggleHistoryList() {
-  _historyExpanded = !_historyExpanded;
-  const listEl = document.getElementById('historyList');
-  const chevron = document.getElementById('historyChevron');
-  listEl.style.display = _historyExpanded ? '' : 'none';
-  chevron.textContent = _historyExpanded ? '▼' : '▶';
-  if (_historyExpanded) renderHistory(undefined); // re-render with content
-}
+// toggleHistoryList removed — history uses native <details> element
 
 // ─── Scheduler ────────────────────────────────────────────────────────────────
 function updateSchedulerDisplay(schedule) {
