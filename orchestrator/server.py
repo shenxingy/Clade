@@ -1042,7 +1042,8 @@ async def get_code_tldr(session_id: str):
             _generate_code_tldr, str(session.project_dir)
         )
     except Exception as e:
-        tldr = f"(error: {e})"
+        logger.warning("code-tldr generation failed: %s", e)
+        tldr = "(error generating code TLDR)"
     return {"tldr": tldr or "(no code files found)"}
 
 
