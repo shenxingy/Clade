@@ -23,7 +23,8 @@ CREDS_FILE   = Path.home() / ".claude" / ".credentials.json"
 CACHE_FILE   = Path.home() / ".claude" / "usage-watch-cache.json"
 MODE_FILE    = Path.home() / ".claude" / ".statusline-mode"
 THEME_FILE   = Path.home() / ".claude" / ".statusline-theme"
-CACHE_TTL    = 300
+CACHE_TTL       = 300
+CACHE_TTL_STALE = 3600 * 6   # use stale cache for up to 6h if API is unavailable
 TARGET_RATE  = 0.95   # 95% weekly utilization = "excellent"
 
 # ─── Themes ───
@@ -105,10 +106,10 @@ def _fetch(token):
     except Exception:
         return None
 
-def _load_cache():
+def _load_cache(max_age=CACHE_TTL):
     try:
         d = json.loads(CACHE_FILE.read_text())
-        if time.time() - d.get("_at", 0) < CACHE_TTL:
+        if time.time() - d.get("_at", 0) < max_age:
             return d
     except Exception:
         pass
@@ -154,12 +155,16 @@ def run():
     data = _load_cache()
     if not data or "seven_day" not in data:
         token = _load_token()
-        if not token:
-            return
-        data = _fetch(token)
+        if token:
+            fetched = _fetch(token)
+            if fetched and "seven_day" in fetched:
+                data = fetched
+                _save_cache(data)
+        # If fresh fetch failed, try stale cache as fallback
+        if not data or "seven_day" not in data:
+            data = _load_cache(max_age=CACHE_TTL_STALE)
         if not data or "seven_day" not in data:
             return
-        _save_cache(data)
 
     w       = data["seven_day"]
     usage   = w.get("utilization") or 0.0
