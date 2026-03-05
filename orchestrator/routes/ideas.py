@@ -19,6 +19,9 @@ _bg_tasks: set[asyncio.Task] = set()
 
 router = APIRouter(prefix="/api/ideas", tags=["ideas"])
 
+# Serialize idea execution — one at a time per project
+_exec_lock = asyncio.Lock()
+
 
 def _get_session(session_id: str | None = None):
     """Resolve and return the ProjectSession, or raise 404."""
@@ -172,7 +175,7 @@ async def add_message(idea_id: int, body: dict,
 
 @router.post("/{idea_id}/execute")
 async def execute_idea(idea_id: int, session: str = Query(default=None)):
-    """Execute an idea via start.sh --goal."""
+    """Queue an idea for execution (runs one at a time per project)."""
     start_sh = Path.home() / ".claude" / "scripts" / "start.sh"
     if not start_sh.exists():
         raise HTTPException(status_code=400, detail="start.sh not found")
@@ -184,26 +187,12 @@ async def execute_idea(idea_id: int, session: str = Query(default=None)):
     idea = await mgr.get_idea(idea_id)
     if not idea:
         raise HTTPException(status_code=404, detail="Idea not found")
-    await mgr.update_idea(idea_id, status="executing")
-
-    from process_manager import process_pool
-    proc = await process_pool.start(
-        project_dir, mode="--goal", args=["--goal", idea["content"]]
-    )
-
-    async def _monitor():
-        try:
-            while proc.status == "running":
-                await asyncio.sleep(3)
-                if proc.proc and proc.proc.returncode is not None:
-                    break
-            await mgr.update_idea(idea_id, status="done")
-            _broadcast_idea_update(session, await mgr.get_idea(idea_id))
-        except Exception as e:
-            logger.warning("execute_idea monitor(%s) failed: %s", idea_id, e)
-
-    _create_bg_task(_monitor())
-    return {"status": "executing", "idea_id": idea_id, "process": proc.to_dict()}
+    if idea["status"] in ("queued", "executing"):
+        return {"status": idea["status"], "idea_id": idea_id}
+    await mgr.update_idea(idea_id, status="queued")
+    _broadcast_idea_update(session, await mgr.get_idea(idea_id))
+    _create_bg_task(_try_start_next(session))
+    return {"status": "queued", "idea_id": idea_id}
 
 
 @router.post("/{idea_id}/promote")
@@ -218,6 +207,58 @@ async def promote_idea(idea_id: int, body: dict,
     if not idea:
         raise HTTPException(status_code=404, detail="Idea not found")
     return idea
+
+
+# ─── Execution Queue ─────────────────────────────────────────────────────────
+
+
+async def _try_start_next(session_id: str | None) -> None:
+    """If no idea is currently executing, start the oldest queued one."""
+    async with _exec_lock:
+        try:
+            sess = _get_session(session_id)
+            project_dir = sess.project_dir
+            if not project_dir:
+                return
+            start_sh = Path.home() / ".claude" / "scripts" / "start.sh"
+            if not start_sh.exists():
+                return
+            mgr = _get_ideas_mgr(session_id)
+            all_ideas = await mgr.list_ideas(limit=500)
+            if any(i["status"] == "executing" for i in all_ideas):
+                return
+            queued = [i for i in all_ideas if i["status"] == "queued"]
+            if not queued:
+                return
+            queued.sort(key=lambda i: i.get("created_at", ""))
+            next_idea = queued[0]
+            await mgr.update_idea(next_idea["id"], status="executing")
+            _broadcast_idea_update(session_id, await mgr.get_idea(next_idea["id"]))
+
+            from process_manager import process_pool
+            proc = await process_pool.start(
+                project_dir, mode="--goal",
+                args=["--goal", next_idea["content"]],
+            )
+
+            async def _monitor():
+                try:
+                    while proc.status == "running":
+                        await asyncio.sleep(3)
+                        if proc.proc and proc.proc.returncode is not None:
+                            break
+                    await mgr.update_idea(next_idea["id"], status="done")
+                    _broadcast_idea_update(
+                        session_id, await mgr.get_idea(next_idea["id"]))
+                except Exception as e:
+                    logger.warning("idea monitor(%s) failed: %s",
+                                   next_idea["id"], e)
+                # Always try the next queued idea
+                await _try_start_next(session_id)
+
+            _create_bg_task(_monitor())
+        except Exception as e:
+            logger.warning("_try_start_next failed: %s", e)
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────

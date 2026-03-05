@@ -69,7 +69,7 @@ function _ideaStatusBadge(status) {
   const labels = {
     raw: 'New', evaluating: 'Evaluating...', evaluated: 'Evaluated',
     promoting: 'Promoting...', promoted: 'Promoted', archived: 'Archived',
-    executing: 'Executing...', done: 'Done',
+    queued: 'Queued', executing: 'Executing...', done: 'Done',
   };
   return `<span class="badge ${esc(status)}">${labels[status] || esc(status)}</span>`;
 }
@@ -133,7 +133,7 @@ function _renderIdeaDetail(detailEl, idea) {
 
     detailEl.innerHTML = `
       ${statusMsg}
-      ${!isTerminal ? _actionsHtml(idea.id) : ''}
+      ${!isTerminal ? _actionsHtml(idea.id, idea.status) : ''}
     `;
     _bindEvalInput(detailEl, idea.id);
     return;
@@ -176,7 +176,7 @@ function _renderIdeaDetail(detailEl, idea) {
         <button class="btn small" onclick="sendEvalMessage(${idea.id})">Send</button>
       </div>
     </div>
-    ${!isTerminal ? _actionsHtml(idea.id) : ''}
+    ${!isTerminal ? _actionsHtml(idea.id, idea.status) : ''}
   `;
 
   // Scroll messages to bottom
@@ -186,10 +186,13 @@ function _renderIdeaDetail(detailEl, idea) {
   _bindEvalInput(detailEl, idea.id);
 }
 
-function _actionsHtml(ideaId) {
+function _actionsHtml(ideaId, status) {
+  const inFlight = status === 'queued' || status === 'executing';
   return `
     <div class="eval-actions">
-      <button class="btn small success" onclick="executeIdea(${ideaId})">▶ Go</button>
+      <button class="btn small success" onclick="executeIdea(${ideaId})" ${inFlight ? 'disabled' : ''}>
+        ${inFlight ? (status === 'queued' ? '⏳ Queued' : '⚡ Running') : '▶ Go'}
+      </button>
       <button class="btn small" onclick="promoteIdea(${ideaId}, 'todo')">Promote to TODO</button>
       <button class="btn small secondary" onclick="promoteIdea(${ideaId}, 'vision')">Add to VISION</button>
       <button class="btn small danger" onclick="archiveIdea(${ideaId})">Archive</button>
@@ -358,9 +361,10 @@ async function executeIdea(ideaId) {
       showToast(data.detail || 'Failed to execute idea', true);
       return;
     }
-    showToast('Idea executing via start.sh');
+    const data = await res.json();
+    showToast(data.status === 'queued' ? 'Idea queued for execution' : 'Idea executing');
     const idea = _ideas.find(i => i.id === ideaId);
-    if (idea) { idea.status = 'executing'; renderIdeasList(); }
+    if (idea) { idea.status = data.status; renderIdeasList(); }
   } catch (e) {
     showToast('Failed to execute idea: ' + e.message, true);
   }
@@ -414,7 +418,7 @@ function _updateIdeaCard(cardEl, idea) {
     const labels = {
       raw: 'New', evaluating: 'Evaluating...', evaluated: 'Evaluated',
       promoting: 'Promoting...', promoted: 'Promoted', archived: 'Archived',
-      executing: 'Executing...', done: 'Done',
+      queued: 'Queued', executing: 'Executing...', done: 'Done',
     };
     badge.textContent = labels[idea.status] || idea.status;
     badge.className = 'badge ' + (idea.status || 'raw');
