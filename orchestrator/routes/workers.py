@@ -8,7 +8,6 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from config import GLOBAL_SETTINGS
 from session import ProjectSession, _resolve_session, registry
 from worker_tldr import _generate_code_tldr
 

@@ -36,7 +36,6 @@ from session import (
     registry,
     status_loop,
 )
-from task_queue import TaskQueue
 from github_sync import (
     _gh_pull_issues,
     _gh_push_all,
