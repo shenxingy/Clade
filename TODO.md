@@ -481,6 +481,7 @@ Async idea collection, AI evaluation, process management, three-mode UI.
 - [x] **13.6 Mobile responsiveness** — CSS media queries for 768px breakpoint
 - [x] **13.7 Patrol integration** — auto-schedule in status_loop, config settings
 - [x] **Review pass** — fixed security issues, error handling, XSS, input validation
+- [x] **Ideas-first redesign** — left panel = ideas inbox (input + Go cards), right panel = tasks/workers/processes/history only. Removed terminal, loop/swarm/deferred/scheduler/analytics sections, app-loop.js (981 lines). Added execute endpoint + slt-style usage pace.
 
 ### Tech Debt
 - [ ] Ideas DB connection pooling — each IdeasManager call opens a new connection (`ideas.py:59`) — **SKIP**: matches TaskQueue convention, SQLite local = negligible benefit from pooling
