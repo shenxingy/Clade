@@ -51,6 +51,7 @@ async function showCodeTldr() {
   document.getElementById('workerLogModal').classList.remove('hidden');
   try {
     const res = await fetch(`/api/sessions/${activeSessionId}/code-tldr`);
+    if (!res.ok) { document.getElementById('workerLogContent').textContent = 'Error loading TLDR.'; return; }
     const data = await res.json();
     document.getElementById('workerLogContent').textContent = data.tldr || '(empty)';
   } catch(e) {
@@ -68,6 +69,7 @@ async function showInterventions() {
   document.getElementById('workerLogModal').classList.remove('hidden');
   try {
     const res = await fetch(`/api/interventions?session=${activeSessionId}`);
+    if (!res.ok) { document.getElementById('workerLogContent').textContent = 'Error loading interventions.'; return; }
     const data = await res.json();
     if (!data.length) {
       document.getElementById('workerLogContent').textContent = '(no interventions recorded yet)';
@@ -184,6 +186,7 @@ async function retryAllFailed() {
 async function retryInterrupted(taskId) {
   try {
     const res = await fetch(`/api/tasks/${taskId}/retry?session=${activeSessionId}`, { method: 'POST' });
+    if (!res.ok) { showToast('Retry request failed', true); return; }
     const data = await res.json();
     if (data.ok) showToast('Task reset to pending — will auto-start');
     else showToast(data.error || 'Retry failed');
@@ -291,6 +294,7 @@ function formatElapsed(s) {
 async function refreshUsage() {
   try {
     const res = await fetch('/api/usage');
+    if (!res.ok) throw new Error('API error');
     const d = await res.json();
     const paceEl = document.getElementById('usagePace');
     const detailEl = document.getElementById('usageDetail');
@@ -347,6 +351,7 @@ async function loadProjects() {
   list.innerHTML = '<div class="empty">Scanning...</div>';
   try {
     const res = await fetch('/api/projects');
+    if (!res.ok) throw new Error('API error');
     const projects = await res.json();
     if (!projects.length) {
       list.innerHTML = '<div class="empty">No git repos found under home dir</div>';
@@ -390,6 +395,7 @@ async function confirmProjectSwitch() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path }),
     });
+    if (!res.ok) { showToast('Failed to create session', true); return; }
     const data = await res.json();
     if (data.error) { showToast('Error: ' + data.error); return; }
     await loadSessions();
@@ -440,6 +446,7 @@ async function mergeAllDone() {
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Creating PRs…'; }
   try {
     const r = await fetch(`/api/tasks/merge-all-done?session=${activeSessionId}`, { method: 'POST' });
+    if (!r.ok) { showToast('PR creation failed', true); return; }
     const d = await r.json();
     if (d.created === 0) {
       showToast('No eligible workers (need: done + pushed + no PR yet)');
@@ -463,6 +470,7 @@ async function generateAgentsMd() {
   if (!sid) { showToast('No active session'); return; }
   try {
     const r = await fetch(`/api/sessions/${sid}/agents-md`);
+    if (!r.ok) { showToast('Error generating AGENTS.md', true); return; }
     const d = await r.json();
     if (d.agents_md) {
       try { await navigator.clipboard.writeText(d.agents_md); showToast('AGENTS.md copied to clipboard'); }
@@ -476,6 +484,7 @@ async function generateAgentsMd() {
 async function loadSettings() {
   try {
     const r = await fetch('/api/settings');
+    if (!r.ok) throw new Error('API error');
     const s = await r.json();
     const elAutoStart = document.getElementById('settingAutoStart');
     const elAutoPush = document.getElementById('settingAutoPush');
@@ -528,6 +537,7 @@ async function loadSettings() {
     // Load intervention count
     try {
       const ivRes = await fetch(`/api/interventions?session=${activeSessionId}`);
+      if (!ivRes.ok) throw new Error('API error');
       const ivData = await ivRes.json();
       const ivBadge = document.getElementById('interventionCount');
       if (ivBadge && ivData.length > 0) {
@@ -593,8 +603,10 @@ async function ghSync() {
   if (btn) { btn.disabled = true; btn.textContent = '⇅ Syncing...'; }
   try {
     const pullR = await fetch(`/api/issues/sync-pull?session=${activeSessionId}`, { method: 'POST' });
+    if (!pullR.ok) { showToast('Sync pull failed', true); return; }
     const pull = await pullR.json();
     const pushR = await fetch(`/api/issues/sync-push?session=${activeSessionId}`, { method: 'POST' });
+    if (!pushR.ok) { showToast('Sync push failed', true); return; }
     const push = await pushR.json();
     const parts = [];
     if (pull.created) parts.push(`+${pull.created} from GitHub`);
@@ -631,6 +643,7 @@ function togglePortfolio() {
 async function updatePortfolio() {
   try {
     const resp = await fetch('/api/sessions/overview');
+    if (!resp.ok) return;
     const sessionsData = await resp.json();
     if (sessionsData.length < 2) {
       const btnContainer = document.getElementById('portfolioBtnContainer');
