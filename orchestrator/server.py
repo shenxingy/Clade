@@ -1148,13 +1148,45 @@ def _get_usage() -> dict:
     week_messages = sum(e["messages"] for e in daily)
     week_sessions = sum(e["sessions"] for e in daily)
 
-    return {
+    result = {
         "today": today_entry,
         "this_week": {"messages": week_messages, "sessions": week_sessions},
         "daily": sorted(daily, key=lambda e: e["date"]),
         "last_updated": last_updated,
         "total_sessions": total_sessions,
     }
+
+    # slt-style pace data from usage-watch cache
+    pace_file = Path.home() / ".claude" / "usage-watch-cache.json"
+    if pace_file.exists():
+        try:
+            pace_data = json.loads(pace_file.read_text())
+            usage_pct = pace_data.get("usage_pct", 0)
+            elapsed_pct = pace_data.get("elapsed_pct", 0)
+            delta = round(usage_pct - elapsed_pct * 0.95, 1)
+            remaining_d = pace_data.get("remaining_days", 0)
+            # Bird theme symbols: egg/chick/bird/swan
+            symbols = ["🥚", "🐣", "🐥", "🦢"]
+            abs_delta = abs(delta)
+            if abs_delta < 3:
+                symbol = symbols[0]
+            elif abs_delta < 8:
+                symbol = symbols[1]
+            elif abs_delta < 15:
+                symbol = symbols[2]
+            else:
+                symbol = symbols[3]
+            result["pace"] = {
+                "delta": delta,
+                "symbol": symbol,
+                "remaining": f"{remaining_d:.1f}d" if remaining_d else "?",
+                "usage_pct": round(usage_pct, 1),
+                "elapsed_pct": round(elapsed_pct, 1),
+            }
+        except Exception:
+            pass
+
+    return result
 
 
 @app.get("/api/usage")

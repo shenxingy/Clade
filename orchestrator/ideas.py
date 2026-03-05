@@ -141,7 +141,8 @@ class IdeasManager:
                 idea["messages"] = [dict(r) for r in await cur.fetchall()]
         return idea
 
-    _VALID_STATUSES = {"raw", "evaluating", "evaluated", "promoting", "promoted", "archived"}
+    _VALID_STATUSES = {"raw", "evaluating", "evaluated", "promoting", "promoted", "archived",
+                        "executing", "done"}
 
     async def update_idea(self, idea_id: int, **fields) -> dict | None:
         allowed = {"content", "status", "ai_evaluation", "priority",
