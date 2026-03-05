@@ -73,11 +73,14 @@ routes/webhooks.py ← GitHub webhook handler (included by server.py)
 | `session.py` | `ProjectSession`, `SessionRegistry`, `status_loop()` |
 | `server.py` | FastAPI app, all REST + WebSocket routes |
 | `github_sync.py` | GitHub issue create/update/pull/push via `gh` CLI |
+| `ideas.py` | `IdeasManager` — async idea CRUD, AI evaluation, promotion |
+| `process_manager.py` | `ProcessPool`, `StartProcess` — start.sh lifecycle control |
+| `routes/ideas.py` | Ideas API routes (CRUD, evaluate, execute, promote) |
 | `web/index.html` | Single-page UI shell (served at `/web/index.html`) |
-| `web/app-core.js` | Core state, WebSocket, worker card rendering |
-| `web/app-dashboard.js` | Dashboard widgets, session overview |
-| `web/app-loop.js` | Loop control, convergence sparklines |
-| `web/app-viewers.js` | Log viewer, task detail panels |
+| `web/app-core.js` | Core state, WebSocket, session tabs, settings |
+| `web/app-dashboard.js` | Tasks, workers, process cards, queue management |
+| `web/app-viewers.js` | Log viewer, usage bar, history, GitHub sync, portfolio |
+| `web/app-ideas.js` | Ideas inbox UI, evaluation cards, execute/promote actions |
 
 ## Settings
 

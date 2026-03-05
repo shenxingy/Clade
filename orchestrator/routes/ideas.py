@@ -129,8 +129,8 @@ async def update_idea(idea_id: int, body: dict,
     mgr = _get_ideas_mgr(session)
     try:
         idea = await mgr.update_idea(idea_id, **body)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid field or value")
     if not idea:
         raise HTTPException(status_code=404, detail="Idea not found")
     return idea

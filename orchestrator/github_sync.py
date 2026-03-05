@@ -159,7 +159,8 @@ async def _gh_pull_issues(project_dir: Path, task_queue: TaskQueue) -> dict:
             return {"error": err.decode()[:200]}
         issues = json.loads(out.decode())
     except Exception as e:
-        return {"error": str(e)}
+        logger.warning("gh_pull_issues failed: %s", e)
+        return {"error": "GitHub sync failed"}
 
     stats = {"created": 0, "updated": 0, "deleted": 0, "skipped": 0}
     local_tasks = await task_queue.list()
