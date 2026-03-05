@@ -1,6 +1,18 @@
 # Progress Log
 
 ---
+### 2026-03-04 — Async Inbox UX + Automated Research
+
+**What was built:**
+- Async inbox UX: `submitIdea()` no longer calls `selectIdea()` — user stays in input. Multi-line paste auto-splits via `/api/ideas/batch`. WebSocket `idea_update` does targeted DOM card updates (`_updateIdeaCard()`) instead of full `renderIdeasList()`, preventing scroll jumps and focus loss. Fade-in CSS animation on new eval summaries.
+- Automated research scheduling: new `research_schedule` setting in config.py. `--research` mode added to start.sh — auto-generates topic from unchecked TODO/BRAINSTORM items, pipes context + research prompt into `claude -p`. `status_loop()` in session.py triggers research at scheduled time (mirrors patrol pattern). Settings UI in index.html with time inputs for both patrol and research schedules, wired in app-loop.js `loadSettings()`/`saveSettings()`.
+
+**Lessons:**
+- Targeted DOM updates (find card → patch badge/summary/bar) are much better UX than full innerHTML re-render for real-time WS updates — no scroll position loss, no input blur
+- Patrol auto-schedule pattern (getattr flag + midnight reset) is clean and easily clonable for new schedule types
+- Combining the midnight reset into a single `if hour == 0` block is cleaner than N separate reset checks
+
+---
 ### 2026-03-04 — Phase 13: AI SDE Operating Console
 
 **What was built:**
