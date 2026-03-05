@@ -13,12 +13,7 @@
 
 <!-- ─── Header ──────────────────────────────────────────────────────────────── -->
 <header>
-  <h1><span class="logo">⬡</span> Claude Code Orchestrator</h1>
-  <div style="display:flex;gap:4px;margin-left:8px">
-    <button class="mode-btn active" id="modePlanBtn" onclick="setMode('plan')" title="Plan mode: orchestrate tasks">📋 Plan</button>
-    <button class="mode-btn" id="modeExecBtn" onclick="setMode('execute')" title="Execute mode: monitor workers">▶ Execute</button>
-    <button class="mode-btn" id="modeIdeasBtn" onclick="setMode('ideas')" title="Ideas mode: brainstorm + evaluate">💡 Ideas</button>
-  </div>
+  <h1><span class="logo">⬡</span> Orchestrator</h1>
   <button id="projectBadge" onclick="openProjectPicker()" style="
     font-size:12px;color:var(--text2);background:var(--bg3);
     border:1px solid var(--border);border-radius:5px;
@@ -47,22 +42,9 @@
     <span>⚙ Settings</span>
     <span class="settings-close" onclick="toggleSettings()">✕</span>
   </div>
-  <label class="settings-row">
-    <span>Auto-start workers</span>
-    <input type="checkbox" id="settingAutoStart" onchange="document.getElementById('autoStartToggle').checked=this.checked;saveSettings()" />
-  </label>
-  <label class="settings-row">
-    <span>Auto-push commits</span>
-    <input type="checkbox" id="settingAutoPush" onchange="saveSettings()" />
-  </label>
-  <label class="settings-row">
-    <span>Auto-merge PRs</span>
-    <input type="checkbox" id="settingAutoMerge" onchange="saveSettings()" />
-  </label>
-  <label class="settings-row">
-    <span>Auto-review PRs</span>
-    <input type="checkbox" id="settingAutoReview" onchange="saveSettings()" />
-  </label>
+
+  <!-- Core -->
+  <div class="settings-group-label">Core</div>
   <label class="settings-row">
     <span>Default model</span>
     <select id="settingModel" onchange="saveSettings()" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:11px;padding:2px 6px">
@@ -71,97 +53,37 @@
       <option value="opus">Opus (smart)</option>
     </select>
   </label>
-  <label class="settings-row" style="margin-bottom:6px">
+  <label class="settings-row">
     <span>Max workers <span style="color:var(--text2);font-size:10px">(0=∞)</span></span>
     <input type="number" id="settingMaxWorkers" min="0" max="20" value="0" onchange="saveSettings()" oninput="saveSettings()" />
-  </label>
-  <label class="settings-row">
-    <span>Auto-scale workers</span>
-    <input type="checkbox" id="settingAutoScale" onchange="saveSettings()" />
-  </label>
-  <label class="settings-row" style="margin-bottom:6px">
-    <span>Min workers <span style="color:var(--text2);font-size:10px">(auto-scale floor)</span></span>
-    <input type="number" id="settingMinWorkers" min="1" max="16" value="1" style="width:50px" onchange="saveSettings()" oninput="saveSettings()" />
-  </label>
-  <div style="padding:4px 12px;font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:0.5px;border-top:1px solid var(--border);margin-top:2px">Iteration Loop</div>
-  <label class="settings-row">
-    <span>Loop supervisor model</span>
-    <select id="settingLoopModel" onchange="saveSettings()" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:11px;padding:2px 6px">
-      <option value="haiku">Haiku (fast)</option>
-      <option value="sonnet" selected>Sonnet (balanced)</option>
-      <option value="opus">Opus (smart)</option>
-    </select>
-  </label>
-  <label class="settings-row">
-    <span>Loop convergence K <span style="color:var(--text2);font-size:10px">(max changes)</span></span>
-    <input type="number" id="settingLoopK" min="1" max="20" value="2" style="width:50px" onchange="saveSettings()" oninput="saveSettings()" />
-  </label>
-  <label class="settings-row">
-    <span>Loop convergence N <span style="color:var(--text2);font-size:10px">(consecutive iters)</span></span>
-    <input type="number" id="settingLoopN" min="1" max="10" value="3" style="width:50px" onchange="saveSettings()" oninput="saveSettings()" />
-  </label>
-  <label class="settings-row" style="margin-bottom:6px">
-    <span>Loop max iterations <span style="color:var(--text2);font-size:10px">(safety cap)</span></span>
-    <input type="number" id="settingLoopMax" min="5" max="100" value="20" style="width:50px" onchange="saveSettings()" oninput="saveSettings()" />
-  </label>
-  <div style="font-size:10px;font-weight:600;opacity:0.5;text-transform:uppercase;letter-spacing:0.5px;margin-top:10px;margin-bottom:4px;padding:0 12px">File Ownership</div>
-  <label class="settings-row">
-    <span>AGENTS.md</span>
-    <button class="btn small secondary" onclick="generateAgentsMd()">Generate</button>
-  </label>
-  <div style="font-size:10px;font-weight:600;opacity:0.5;text-transform:uppercase;letter-spacing:0.5px;margin-top:10px;margin-bottom:4px;padding:0 12px">Quality Gates</div>
-  <label class="settings-row">
-    <span>Oracle validation (2nd model review)</span>
-    <input type="checkbox" id="settingAutoOracle" onchange="saveSettings()" />
-  </label>
-  <label class="settings-row">
-    <span>Auto model routing by score</span>
-    <input type="checkbox" id="settingAutoModelRouting" onchange="saveSettings()" />
-  </label>
-  <label class="settings-row">
-    <span>Context budget warnings</span>
-    <input type="checkbox" id="settingContextBudget" checked onchange="saveSettings()" />
-  </label>
-  <label class="settings-row">
-    <span>Stuck timeout <span style="color:var(--text2);font-size:10px">(min, 0=off)</span></span>
-    <input type="number" id="settingStuckTimeout" min="0" max="120" value="15" style="width:50px" onchange="saveSettings()" oninput="saveSettings()" />
   </label>
   <label class="settings-row">
     <span>Cost budget $ <span style="color:var(--text2);font-size:10px">(0=off)</span></span>
     <input type="number" id="settingCostBudget" min="0" step="0.5" value="0" style="width:60px" onchange="saveSettings()" oninput="saveSettings()" />
   </label>
-  <div style="font-size:10px;font-weight:600;opacity:0.5;text-transform:uppercase;letter-spacing:0.5px;margin-top:10px;margin-bottom:4px;padding:0 12px">Context Intelligence</div>
   <label class="settings-row">
-    <span>Code TLDR</span>
-    <button class="btn small secondary" onclick="showCodeTldr()">View</button>
+    <span>Auto-push commits</span>
+    <input type="checkbox" id="settingAutoPush" onchange="saveSettings()" />
+  </label>
+
+  <!-- Automation -->
+  <div class="settings-group-label">Automation</div>
+  <label class="settings-row">
+    <span>Auto-start workers</span>
+    <input type="checkbox" id="settingAutoStart" onchange="document.getElementById('autoStartToggle').checked=this.checked;saveSettings()" />
   </label>
   <label class="settings-row">
-    <span>Interventions</span>
-    <span style="display:flex;align-items:center;gap:6px">
-      <span class="badge" id="interventionCount" style="font-size:10px;display:none">0</span>
-      <button class="btn small secondary" onclick="showInterventions()">View</button>
-    </span>
-  </label>
-  <div style="font-size:10px;font-weight:600;opacity:0.5;text-transform:uppercase;letter-spacing:0.5px;margin-top:10px;margin-bottom:4px;padding:0 12px">Experimental</div>
-  <label class="settings-row">
-    <span>Agent Teams (experimental)</span>
-    <input type="checkbox" id="settingAgentTeams" onchange="saveSettings()" />
-  </label>
-  <div style="font-size:10px;font-weight:600;opacity:0.5;text-transform:uppercase;letter-spacing:0.5px;margin-top:10px;margin-bottom:4px;padding:0 12px">GitHub Issues</div>
-  <label class="settings-row">
-    <span>Sync to GitHub Issues</span>
-    <input type="checkbox" id="settingGhSync" onchange="saveSettings()" />
+    <span>Auto-scale workers</span>
+    <input type="checkbox" id="settingAutoScale" onchange="saveSettings()" />
   </label>
   <label class="settings-row">
-    <span>Issue label</span>
-    <input type="text" id="settingGhLabel" value="orchestrator" onchange="saveSettings()" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:11px;padding:2px 6px;width:100px;text-align:right" />
+    <span>Auto-review PRs</span>
+    <input type="checkbox" id="settingAutoReview" onchange="saveSettings()" />
   </label>
-  <div style="font-size:10px;font-weight:600;opacity:0.5;text-transform:uppercase;letter-spacing:0.5px;margin-top:10px;margin-bottom:4px;padding:0 12px">Notifications</div>
   <label class="settings-row">
-    <span>Webhook URL</span>
-    <input type="text" id="settingWebhook" placeholder="https://..." onchange="saveSettings()" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:11px;padding:2px 6px;width:140px;text-align:right" />
+    <span>Auto-merge PRs</span>
+    <input type="checkbox" id="settingAutoMerge" onchange="saveSettings()" />
   </label>
-  <div style="font-size:10px;font-weight:600;opacity:0.5;text-transform:uppercase;letter-spacing:0.5px;margin-top:10px;margin-bottom:4px;padding:0 12px">Automation Schedule</div>
   <label class="settings-row">
     <span>Patrol <small style="color:var(--text2)">(HH:MM)</small></span>
     <input type="time" id="settingPatrolSchedule" onchange="saveSettings()" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:11px;padding:2px 6px;width:90px" />
@@ -170,6 +92,84 @@
     <span>Research <small style="color:var(--text2)">(HH:MM)</small></span>
     <input type="time" id="settingResearchSchedule" onchange="saveSettings()" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:11px;padding:2px 6px;width:90px" />
   </label>
+
+  <!-- Advanced (collapsed) -->
+  <details class="settings-advanced">
+    <summary class="settings-group-label" style="cursor:pointer">Advanced</summary>
+    <label class="settings-row">
+      <span>Oracle validation</span>
+      <input type="checkbox" id="settingAutoOracle" onchange="saveSettings()" />
+    </label>
+    <label class="settings-row">
+      <span>Auto model routing</span>
+      <input type="checkbox" id="settingAutoModelRouting" onchange="saveSettings()" />
+    </label>
+    <label class="settings-row">
+      <span>Context budget warnings</span>
+      <input type="checkbox" id="settingContextBudget" checked onchange="saveSettings()" />
+    </label>
+    <label class="settings-row">
+      <span>Stuck timeout <span style="color:var(--text2);font-size:10px">(min, 0=off)</span></span>
+      <input type="number" id="settingStuckTimeout" min="0" max="120" value="15" style="width:50px" onchange="saveSettings()" oninput="saveSettings()" />
+    </label>
+    <label class="settings-row">
+      <span>Min workers <span style="color:var(--text2);font-size:10px">(auto-scale floor)</span></span>
+      <input type="number" id="settingMinWorkers" min="1" max="16" value="1" style="width:50px" onchange="saveSettings()" oninput="saveSettings()" />
+    </label>
+    <label class="settings-row">
+      <span>Agent Teams</span>
+      <input type="checkbox" id="settingAgentTeams" onchange="saveSettings()" />
+    </label>
+    <label class="settings-row">
+      <span>Sync to GitHub Issues</span>
+      <input type="checkbox" id="settingGhSync" onchange="saveSettings()" />
+    </label>
+    <label class="settings-row">
+      <span>Issue label</span>
+      <input type="text" id="settingGhLabel" value="orchestrator" onchange="saveSettings()" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:11px;padding:2px 6px;width:100px;text-align:right" />
+    </label>
+    <label class="settings-row">
+      <span>Webhook URL</span>
+      <input type="text" id="settingWebhook" placeholder="https://..." onchange="saveSettings()" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:11px;padding:2px 6px;width:140px;text-align:right" />
+    </label>
+    <div class="settings-group-label">Iteration Loop</div>
+    <label class="settings-row">
+      <span>Supervisor model</span>
+      <select id="settingLoopModel" onchange="saveSettings()" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:11px;padding:2px 6px">
+        <option value="haiku">Haiku</option>
+        <option value="sonnet" selected>Sonnet</option>
+        <option value="opus">Opus</option>
+      </select>
+    </label>
+    <label class="settings-row">
+      <span>Convergence K</span>
+      <input type="number" id="settingLoopK" min="1" max="20" value="2" style="width:50px" onchange="saveSettings()" oninput="saveSettings()" />
+    </label>
+    <label class="settings-row">
+      <span>Convergence N</span>
+      <input type="number" id="settingLoopN" min="1" max="10" value="3" style="width:50px" onchange="saveSettings()" oninput="saveSettings()" />
+    </label>
+    <label class="settings-row">
+      <span>Max iterations</span>
+      <input type="number" id="settingLoopMax" min="5" max="100" value="20" style="width:50px" onchange="saveSettings()" oninput="saveSettings()" />
+    </label>
+    <div class="settings-group-label">Context Intelligence</div>
+    <label class="settings-row">
+      <span>AGENTS.md</span>
+      <button class="btn small secondary" onclick="generateAgentsMd()">Generate</button>
+    </label>
+    <label class="settings-row">
+      <span>Code TLDR</span>
+      <button class="btn small secondary" onclick="showCodeTldr()">View</button>
+    </label>
+    <label class="settings-row">
+      <span>Interventions</span>
+      <span style="display:flex;align-items:center;gap:6px">
+        <span class="badge" id="interventionCount" style="font-size:10px;display:none">0</span>
+        <button class="btn small secondary" onclick="showInterventions()">View</button>
+      </span>
+    </label>
+  </details>
 </div>
 
 <!-- ─── Tab Bar ──────────────────────────────────────────────────────────────── -->
@@ -178,20 +178,18 @@
   <button class="tab-add" onclick="openNewTabPicker()" title="Open new project tab">＋</button>
 </div>
 
-<!-- ─── Main Layout ─────────────────────────────────────────────────────────── -->
-<div class="main plan-mode">
+<!-- ─── Main Layout — Always Left+Right ────────────────────────────────────── -->
+<div class="main">
 
-  <!-- Left: Chat Panel -->
-  <div class="chat-panel">
-    <div class="chat-header">
-      <span class="dot yellow" id="chatDot"></span>
+  <!-- Left: Direction + Terminal (40%) -->
+  <div class="left-panel">
+    <div class="goal-row">
       <input class="goal-input" id="goalInput" placeholder="Describe your goal…" autocomplete="off" />
       <button class="btn" id="orchestrateBtn" onclick="sendOrchestrate()" style="white-space:nowrap;font-size:12px;padding:4px 12px">⚡ Orchestrate</button>
-      <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);cursor:pointer;margin-left:8px;white-space:nowrap" title="Auto-start workers when tasks are proposed">
+      <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);cursor:pointer;white-space:nowrap" title="Auto-start workers when tasks are proposed">
         <input type="checkbox" id="autoStartToggle" checked style="cursor:pointer" onchange="document.getElementById('settingAutoStart').checked=this.checked;saveSettings()" />
         Auto-start
       </label>
-      <span style="margin-left:auto;font-size:11px;opacity:0.6">PTY</span>
     </div>
 
     <div class="terminal" id="terminalContainer"></div>
@@ -216,10 +214,10 @@
     </div>
   </div>
 
-  <!-- Right: Dashboard -->
-  <div class="dashboard">
+  <!-- Right: Unified Dashboard (60%) -->
+  <div class="right-panel">
 
-    <!-- Multi-project overview (execute mode, 2+ sessions) -->
+    <!-- Multi-project overview (2+ sessions) -->
     <div class="dashboard-section" id="overviewSection" style="display:none;border-bottom:1px solid var(--border)">
       <div class="section-header">
         <span>All Projects</span>
@@ -228,7 +226,7 @@
       <div id="overviewList" style="max-height:180px;overflow-y:auto"></div>
     </div>
 
-    <!-- Portfolio Panel (header button shows when ≥2 sessions) -->
+    <!-- Portfolio Panel -->
     <div id="portfolioPanel" style="display:none; margin: 8px 0; padding: 8px; border: 1px solid #444; border-radius: 4px; background: #1a1a2e;">
       <h4 style="margin: 0 0 8px 0; color: #7eb8f7;">📊 Portfolio Overview</h4>
       <table style="width:100%; border-collapse: collapse; font-size: 0.85em;">
@@ -241,15 +239,16 @@
       </table>
     </div>
 
-    <!-- Queue Section -->
-    <div class="dashboard-section queue">
-      <div class="section-header">
-        <span>Task Queue <span id="queueCount" style="font-weight:400;color:var(--text2)"></span></span>
-        <button class="btn small success" id="runAllBtn" onclick="runAllTasks()" style="display:none">▶ Run All</button>
-        <button class="btn small secondary" id="ghSyncBtn" onclick="ghSync()" title="Sync with GitHub Issues" style="display:none">⇅ Sync</button>
-        <button class="btn small secondary" id="dagBtn" onclick="toggleDag()" title="Dependency graph view">⬡ DAG</button>
-        <button class="btn small secondary" onclick="toggleAddTask()">+ Add</button>
-      </div>
+    <!-- Tasks -->
+    <details class="dash-section" open>
+      <summary>Tasks <span id="queueCount" style="font-weight:400;color:var(--text2)"></span>
+        <span class="dash-actions">
+          <button class="btn small success" id="runAllBtn" onclick="runAllTasks()" style="display:none">▶ Run All</button>
+          <button class="btn small secondary" id="ghSyncBtn" onclick="ghSync()" title="Sync with GitHub Issues" style="display:none">⇅ Sync</button>
+          <button class="btn small secondary" id="dagBtn" onclick="toggleDag()" title="Dependency graph view">⬡ DAG</button>
+          <button class="btn small secondary" onclick="toggleAddTask()">+ Add</button>
+        </span>
+      </summary>
       <div class="queue-list" id="queueList"></div>
       <div id="dagView"></div>
       <div id="presetCardsRow" style="display:none">
@@ -296,51 +295,135 @@
           <button class="btn small secondary" onclick="importProposedToQueue()">Import Proposed</button>
         </div>
       </div>
-    </div>
+    </details>
 
-    <!-- Workers Section -->
-    <div class="dashboard-section workers">
-      <div class="section-header">
-        <span>Workers <span id="workerCount" style="font-weight:400;color:var(--text2)"></span></span>
-        <div style="display:flex;gap:6px;align-items:center">
-          <button class="btn small danger" id="retryFailedBtn" onclick="retryAllFailed()" style="display:none">↺ Retry Failed</button>
-          <button class="btn small secondary" onclick="openIntervene()" id="interveneBtn" style="display:none">⌨ Intervene</button>
-          <button class="btn small success" id="mergeAllBtn" onclick="mergeAllDone()" style="display:none">⬇ Create PRs</button>
-        </div>
-      </div>
+    <!-- Workers -->
+    <details class="dash-section" open>
+      <summary>Workers <span id="workerCount" style="font-weight:400;color:var(--text2)"></span>
+        <span class="dash-actions">
+          <button class="btn small danger" id="retryFailedBtn" onclick="retryAllFailed()" style="display:none">↺ Retry</button>
+          <button class="btn small secondary" onclick="openIntervene()" id="interveneBtn">⌨ Intervene</button>
+          <button class="btn small success" id="mergeAllBtn" onclick="mergeAllDone()" style="display:none">⬇ PRs</button>
+        </span>
+      </summary>
       <div id="broadcastBar" class="broadcast-bar" style="display:none;margin:6px 12px 0">
         <input id="broadcastInput" type="text" placeholder="Broadcast message to all running workers..."
           onkeydown="if(event.key==='Enter')broadcastAll()" />
         <button class="btn small" id="broadcastBtn" onclick="broadcastAll()">→ All</button>
       </div>
       <div class="workers-list" id="workersList"></div>
-    </div>
+    </details>
 
-    <!-- Task History (done/failed — collapsible) -->
-    <div class="dashboard-section history" id="historySection" style="display:none">
-      <div class="section-header" onclick="toggleHistoryList()" style="cursor:pointer">
-        <span>History <span id="historyCount" style="font-weight:400;color:var(--text2)"></span></span>
-        <span id="historyChevron" style="font-size:11px;color:var(--text2)">▶</span>
-        <span id="successRateLabel" style="font-size:11px;color:var(--text2);margin-left:auto;margin-right:8px"></span>
-      </div>
-      <div class="queue-list" id="historyList" style="display:none"></div>
-    </div>
-
-    <!-- Analytics Section (collapsible) -->
-    <details id="analyticsSection" style="display:none;margin:0 0 2px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;font-size:12px">
-      <summary style="padding:8px 12px;cursor:pointer;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text2)">
-        Analytics <span id="analyticsCostBadge" style="font-weight:400;color:var(--green)"></span>
+    <!-- Ideas (inline — no separate panel) -->
+    <details class="dash-section" id="ideasSection">
+      <summary>Ideas <span id="ideaCount" style="font-weight:400;color:var(--text2)"></span>
+        <span class="dash-actions">
+          <button class="btn small secondary" onclick="syncBrainstorm()">Sync BRAINSTORM</button>
+        </span>
       </summary>
-      <div id="analyticsContent" style="padding:4px 12px 10px">
-        <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
-          <div id="analyticsSummary" style="flex:1;min-width:180px"></div>
-          <canvas id="analyticsDonut" width="80" height="80" style="flex-shrink:0"></canvas>
+      <div class="ideas-inline">
+        <div class="ideas-list" id="ideasList">
+          <div class="empty">No ideas yet — start typing below</div>
         </div>
-        <div id="analyticsModels" style="margin-top:6px"></div>
+        <div class="ideas-input-bar">
+          <textarea id="ideaInput" placeholder="Type an idea... (Enter to submit, Shift+Enter for newline)" rows="2"></textarea>
+          <button class="btn" onclick="submitIdea()">Add</button>
+        </div>
       </div>
     </details>
 
-    <!-- Scheduler Bar (Execute mode) -->
+    <!-- Processes (start.sh) — dynamically created -->
+    <!-- processSection is created in renderProcessCards() when processes exist -->
+
+    <!-- Iteration Loop -->
+    <details class="dash-section" id="loopSection">
+      <summary>Iteration Loop <span id="loopStatusBadge" class="badge idle" style="font-size:10px">idle</span></summary>
+      <div class="loop-content">
+        <!-- Config panel (idle/done) -->
+        <div id="loopConfigPanel">
+          <div class="loop-preset-cards">
+            <button class="loop-preset-card active" data-preset="review" onclick="selectLoopPreset('review')">
+              <span class="loop-preset-icon">🔍</span>
+              <span class="loop-preset-name">Review Fix</span>
+              <span class="loop-preset-desc">Bugs &amp; polish</span>
+            </button>
+            <button class="loop-preset-card" data-preset="build" onclick="selectLoopPreset('build')">
+              <span class="loop-preset-icon">🏗</span>
+              <span class="loop-preset-name">Plan+Build</span>
+              <span class="loop-preset-desc">Goals → code</span>
+            </button>
+            <button class="loop-preset-card" data-preset="polish" onclick="selectLoopPreset('polish')">
+              <span class="loop-preset-icon">✨</span>
+              <span class="loop-preset-name">Polish</span>
+              <span class="loop-preset-desc">No TODOs left</span>
+            </button>
+          </div>
+          <div class="loop-source-row">
+            <span class="loop-source-label" title="File supervisor reads each iteration to find issues">Artifact:</span>
+            <select id="loopSourceSelect" class="loop-source-select" onchange="onLoopSourceChange()">
+              <option value="">— select file —</option>
+            </select>
+            <input id="loopSourceCustom" type="text" class="loop-source-custom" placeholder="absolute path to file…" oninput="saveLoopPrefs()" style="display:none" />
+            <button class="btn small secondary loop-adv-toggle" onclick="toggleLoopAdvanced()" title="Advanced settings">⚙</button>
+            <button class="btn small" id="loopStartBtn" onclick="startLoop()">▶ Start</button>
+          </div>
+          <div class="loop-advanced" id="loopAdvanced" style="display:none">
+            <label class="loop-adv-item">K=<input id="loopK" type="number" value="3" min="1" max="20" style="width:40px" onchange="saveLoopPrefs()" /></label>
+            <label class="loop-adv-item">N=<input id="loopN" type="number" value="6" min="1" max="20" style="width:40px" onchange="saveLoopPrefs()" /></label>
+            <label class="loop-adv-item">Model:
+              <select id="loopAdvModel" onchange="saveLoopPrefs()" style="font-size:11px;padding:2px 4px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text)">
+                <option value="haiku">Haiku</option>
+                <option value="sonnet" selected>Sonnet</option>
+                <option value="opus">Opus</option>
+              </select>
+            </label>
+            <label class="loop-adv-item">Dir:<input id="loopContextDir" type="text" style="font-size:11px;padding:2px 6px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);width:120px;font-family:var(--font-mono)" placeholder="auto" onchange="saveLoopPrefs()" /></label>
+          </div>
+        </div>
+        <!-- Running panel (compact, active loops) -->
+        <div id="loopRunningPanel" style="display:none">
+          <div class="loop-running-bar">
+            <span id="loopRunningPreset" style="font-size:11px;font-weight:600;color:var(--accent)"></span>
+            <span id="loopIterLabel" style="font-size:11px;color:var(--text2);margin-left:6px">Iter 0</span>
+            <span id="loopConvergence" style="font-size:11px;color:var(--text2);margin-left:6px"></span>
+            <canvas id="loopSparkline" width="100" height="16" style="vertical-align:middle;margin-left:6px"></canvas>
+            <div style="margin-left:auto;display:flex;gap:4px">
+              <button class="btn small secondary" onclick="pauseLoop()" id="loopPauseBtn" style="display:none;padding:2px 7px">⏸</button>
+              <button class="btn small secondary" onclick="resumeLoop()" id="loopResumeBtn" style="display:none;padding:2px 7px">▶</button>
+              <button class="btn small danger" onclick="cancelLoop()" id="loopCancelBtn" style="display:none;padding:2px 7px">✕</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <!-- Swarm -->
+    <details class="dash-section" id="swarmSection" style="display:none">
+      <summary>Swarm Mode <span id="swarmStatusBadge" class="badge idle" style="font-size:10px">idle</span></summary>
+      <div class="swarm-content">
+        <div class="swarm-controls">
+          <label class="swarm-inline">Slots: <input id="swarmSlots" type="number" value="3" min="1" max="20" oninput="this._userEdited=true" /></label>
+          <button class="btn small" id="swarmStartBtn" onclick="startSwarm()">▶ Start</button>
+          <button class="btn small secondary" id="swarmStopBtn" onclick="stopSwarm()" style="display:none">Stop</button>
+          <button class="btn small danger" id="swarmForceStopBtn" onclick="forceStopSwarm()" style="display:none">Force Stop</button>
+          <button class="btn small secondary" id="swarmResizeBtn" onclick="resizeSwarm()" style="display:none">Resize</button>
+        </div>
+        <div id="swarmProgress" style="display:none">
+          <span id="swarmMetrics"></span>
+          <span id="swarmElapsed" style="color:var(--text2)"></span>
+        </div>
+      </div>
+    </details>
+
+    <!-- Deferred Items -->
+    <details id="deferredSection" style="display:none">
+      <summary>
+        Deferred Items <span id="deferredCount" class="badge idle" style="font-size:10px">0</span>
+      </summary>
+      <div id="deferredList"></div>
+    </details>
+
+    <!-- Scheduler Bar -->
     <div class="scheduler-bar" id="schedulerBar" style="display:none">
       <span style="font-size:11px;color:var(--text2);flex-shrink:0">⏰ Start at</span>
       <input type="time" id="scheduleTime" style="
@@ -352,95 +435,26 @@
       <span id="scheduleCountdown" style="font-size:11px;color:var(--yellow);margin-left:4px"></span>
     </div>
 
-    <!-- Loop Control Bar (Execute mode) -->
-    <div class="loop-bar" id="loopBar" style="display:none">
-      <!-- Header -->
-      <div class="loop-header">
-        <span class="loop-title">Iteration Loop</span>
-        <span id="loopStatusBadge" class="badge idle" style="font-size:10px">idle</span>
-      </div>
-      <!-- Config panel (idle/done) -->
-      <div id="loopConfigPanel">
-        <div class="loop-preset-cards">
-          <button class="loop-preset-card active" data-preset="review" onclick="selectLoopPreset('review')">
-            <span class="loop-preset-icon">🔍</span>
-            <span class="loop-preset-name">Review Fix</span>
-            <span class="loop-preset-desc">Bugs &amp; polish</span>
-          </button>
-          <button class="loop-preset-card" data-preset="build" onclick="selectLoopPreset('build')">
-            <span class="loop-preset-icon">🏗</span>
-            <span class="loop-preset-name">Plan+Build</span>
-            <span class="loop-preset-desc">Goals → code</span>
-          </button>
-          <button class="loop-preset-card" data-preset="polish" onclick="selectLoopPreset('polish')">
-            <span class="loop-preset-icon">✨</span>
-            <span class="loop-preset-name">Polish</span>
-            <span class="loop-preset-desc">No TODOs left</span>
-          </button>
-        </div>
-        <div class="loop-source-row">
-          <span class="loop-source-label" title="File supervisor reads each iteration to find issues — e.g. TODO.md, VISION.md, or a code file">Artifact:</span>
-          <select id="loopSourceSelect" class="loop-source-select" onchange="onLoopSourceChange()">
-            <option value="">— select file —</option>
-          </select>
-          <input id="loopSourceCustom" type="text" class="loop-source-custom" placeholder="absolute path to file…" oninput="saveLoopPrefs()" style="display:none" />
-          <button class="btn small secondary loop-adv-toggle" onclick="toggleLoopAdvanced()" title="Advanced settings">⚙</button>
-          <button class="btn small" id="loopStartBtn" onclick="startLoop()">▶ Start</button>
-        </div>
-        <div class="loop-advanced" id="loopAdvanced" style="display:none">
-          <label class="loop-adv-item">K=<input id="loopK" type="number" value="3" min="1" max="20" style="width:40px" onchange="saveLoopPrefs()" /></label>
-          <label class="loop-adv-item">N=<input id="loopN" type="number" value="6" min="1" max="20" style="width:40px" onchange="saveLoopPrefs()" /></label>
-          <label class="loop-adv-item">Model:
-            <select id="loopAdvModel" onchange="saveLoopPrefs()" style="font-size:11px;padding:2px 4px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text)">
-              <option value="haiku">Haiku</option>
-              <option value="sonnet" selected>Sonnet</option>
-              <option value="opus">Opus</option>
-            </select>
-          </label>
-          <label class="loop-adv-item">Dir:<input id="loopContextDir" type="text" style="font-size:11px;padding:2px 6px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);width:120px;font-family:var(--font-mono)" placeholder="auto" onchange="saveLoopPrefs()" /></label>
-        </div>
-      </div>
-      <!-- Running panel (compact, active loops) -->
-      <div id="loopRunningPanel" style="display:none">
-        <div class="loop-running-bar">
-          <span id="loopRunningPreset" style="font-size:11px;font-weight:600;color:var(--accent)"></span>
-          <span id="loopIterLabel" style="font-size:11px;color:var(--text2);margin-left:6px">Iter 0</span>
-          <span id="loopConvergence" style="font-size:11px;color:var(--text2);margin-left:6px"></span>
-          <canvas id="loopSparkline" width="100" height="16" style="vertical-align:middle;margin-left:6px"></canvas>
-          <div style="margin-left:auto;display:flex;gap:4px">
-            <button class="btn small secondary" onclick="pauseLoop()" id="loopPauseBtn" style="display:none;padding:2px 7px">⏸</button>
-            <button class="btn small secondary" onclick="resumeLoop()" id="loopResumeBtn" style="display:none;padding:2px 7px">▶</button>
-            <button class="btn small danger" onclick="cancelLoop()" id="loopCancelBtn" style="display:none;padding:2px 7px">✕</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Swarm Control Bar (Execute mode) -->
-    <div class="swarm-bar" id="swarmBar" style="display:none">
-      <div class="section-header" style="padding:0 0 4px">
-        <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Swarm Mode</span>
-        <span id="swarmStatusBadge" class="badge idle" style="font-size:10px">idle</span>
-      </div>
-      <div class="swarm-controls">
-        <label class="swarm-inline">Slots: <input id="swarmSlots" type="number" value="3" min="1" max="20" oninput="this._userEdited=true" /></label>
-        <button class="btn small" id="swarmStartBtn" onclick="startSwarm()">▶ Start</button>
-        <button class="btn small secondary" id="swarmStopBtn" onclick="stopSwarm()" style="display:none">Stop</button>
-        <button class="btn small danger" id="swarmForceStopBtn" onclick="forceStopSwarm()" style="display:none">Force Stop</button>
-        <button class="btn small secondary" id="swarmResizeBtn" onclick="resizeSwarm()" style="display:none">Resize</button>
-      </div>
-      <div id="swarmProgress" style="display:none">
-        <span id="swarmMetrics"></span>
-        <span id="swarmElapsed" style="color:var(--text2)"></span>
-      </div>
-    </div>
-
-    <!-- Deferred Items Accordion (Execute mode) -->
-    <details id="deferredSection" style="display:none">
-      <summary>
-        Deferred Items <span id="deferredCount" class="badge idle" style="font-size:10px">0</span>
+    <!-- History -->
+    <details class="dash-section" id="historySection" style="display:none">
+      <summary>History <span id="historyCount" style="font-weight:400;color:var(--text2)"></span>
+        <span id="successRateLabel" style="font-size:11px;color:var(--text2);margin-left:auto"></span>
       </summary>
-      <div id="deferredList"></div>
+      <div class="queue-list" id="historyList"></div>
+    </details>
+
+    <!-- Analytics -->
+    <details class="dash-section" id="analyticsSection" style="display:none">
+      <summary>
+        Analytics <span id="analyticsCostBadge" style="font-weight:400;color:var(--green)"></span>
+      </summary>
+      <div id="analyticsContent" style="padding:4px 12px 10px">
+        <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+          <div id="analyticsSummary" style="flex:1;min-width:180px"></div>
+          <canvas id="analyticsDonut" width="80" height="80" style="flex-shrink:0"></canvas>
+        </div>
+        <div id="analyticsModels" style="margin-top:6px"></div>
+      </div>
     </details>
 
     <!-- Progress Footer -->
@@ -462,45 +476,9 @@
     </div>
 
   </div>
-
-  <!-- Ideas Panel (ideas mode) -->
-  <div class="ideas-panel" id="ideasPanel" style="display:none">
-    <div class="ideas-input-stream">
-      <div class="ideas-input-header">
-        <h3>Ideas</h3>
-        <button class="btn small secondary" onclick="syncBrainstorm()">Sync BRAINSTORM.md</button>
-      </div>
-      <div class="ideas-list" id="ideasList">
-        <div class="empty">No ideas yet — start typing below</div>
-      </div>
-      <div class="ideas-input-bar">
-        <textarea id="ideaInput" placeholder="Type an idea... (Enter to submit, Shift+Enter for newline)" rows="2"></textarea>
-        <button class="btn" onclick="submitIdea()">Add</button>
-      </div>
-    </div>
-    <div class="ideas-eval-sidebar" id="ideasEvalSidebar">
-      <div class="eval-header">AI Evaluation</div>
-      <div class="eval-content" id="evalContent">
-        <div class="empty">Select an idea to see AI evaluation</div>
-      </div>
-      <div class="eval-chat" id="evalChat" style="display:none">
-        <div class="eval-messages" id="evalMessages"></div>
-        <div class="eval-input-row">
-          <input id="evalInput" placeholder="Discuss with AI..." />
-          <button class="btn small" onclick="sendEvalMessage()">Send</button>
-        </div>
-      </div>
-      <div class="eval-actions" id="evalActions" style="display:none">
-        <button class="btn small success" onclick="promoteIdea('todo')">Promote to TODO</button>
-        <button class="btn small secondary" onclick="promoteIdea('vision')">Add to VISION</button>
-        <button class="btn small danger" onclick="archiveIdea()">Archive</button>
-      </div>
-    </div>
-  </div>
-
 </div>
 
-<!-- Intervene Panel (Execute mode slide-in terminal) -->
+<!-- Intervene Panel (slide-in terminal) -->
 <div class="intervene-panel" id="intervenePanel">
   <div class="intervene-header">
     <span>Intervene — Orchestrator Terminal</span>

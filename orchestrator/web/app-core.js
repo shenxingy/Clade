@@ -330,7 +330,6 @@ function connectStatus(sessionId) {
             .then(() => fetch(`/api/tasks/start-all?session=${sessionId}`, { method: 'POST' }))
             .then(r => { if (!r.ok) throw new Error(`Start-all failed: ${r.status}`); return r.json(); })
             .then(d => {
-              if (sessionId === activeSessionId) setMode('execute');
               showToast(`Auto-started ${d.started} worker${d.started !== 1 ? 's' : ''}`);
             })
             .catch(err => showToast(`Auto-start failed: ${err.message}`, true));
@@ -427,8 +426,9 @@ async function switchTab(sessionId) {
   activeSessionId = sessionId;
   renderTabs();
 
-  // Reload loop prefs/sources for the new session (execute mode only)
-  if (currentMode === 'execute') { applyLoopPrefs(); loadLoopSources(); }
+  // Reload loop prefs/sources for the new session
+  applyLoopPrefs();
+  loadLoopSources();
 
   // Show (lazily open if first visit) the new session's terminal
   showSessionTerminal(sessionId);
