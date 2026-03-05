@@ -461,7 +461,7 @@ async function mergeAllDone() {
     showToast('PR creation failed — check console');
     console.error(e);
   } finally {
-    if (btn) btn.disabled = false;
+    if (btn) { btn.disabled = false; btn.textContent = '⬇ PRs'; }
   }
 }
 
