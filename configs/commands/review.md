@@ -116,6 +116,18 @@ Run the project's build command if it exists (from CLAUDE.md or detected):
 
 Fix all compilation errors before moving to the next phase.
 
+### 3.4 Run Test Suite
+Run the project's test command (from CLAUDE.md or detected):
+- Python: `pytest` or `python -m pytest tests/ -v`
+- TypeScript: `npm test` or `npx jest`
+- Rust: `cargo test`
+- Go: `go test ./...`
+
+Fix all test failures before moving to the next phase. If no test command is found, note it as 🟡 Warning.
+
+### 3.5 CI Workflow Check
+If `.github/workflows/` exists, read the CI config and verify all CI steps would pass locally. The goal: no push should break CI.
+
 ---
 
 ## Phase 4: Comments & Documentation
