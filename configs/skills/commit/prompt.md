@@ -99,9 +99,28 @@ If a commit fails, stop immediately and report the error — don't continue to t
 
 ---
 
+## Step 5.5: CI gate (before push)
+
+Before pushing, run a quick local CI check to ensure GitHub Actions will pass. Read `CLAUDE.md` for the project's verify/test commands. At minimum:
+
+1. **Python projects**: `python -m py_compile` on all changed `.py` files + `pytest` if tests exist
+2. **TypeScript projects**: `tsc --noEmit` if tsconfig exists
+3. **Shell scripts**: `bash -n` on changed `.sh` files
+
+```bash
+# Example for claude-code-kit:
+cd orchestrator && python -m py_compile <changed .py files> && .venv/bin/python -m pytest tests/ -v
+```
+
+- If CI checks pass → proceed to push
+- If CI checks fail → stop, report errors, fix them, then re-run `/commit`
+- Skip this step if `--no-push` was used (no point checking CI if not pushing)
+
+---
+
 ## Step 6: Push (unless --no-push)
 
-After all commits succeed, push by default:
+After all commits succeed and CI checks pass, push by default:
 ```bash
 git push
 ```
