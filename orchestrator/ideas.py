@@ -53,8 +53,40 @@ class IdeasManager:
 
     def __init__(self, db_path: Path):
         self._db_path = db_path
+        self._initialized = False
+        self._init_lock = asyncio.Lock()
+
+    async def _ensure_tables(self) -> None:
+        """Create ideas/idea_messages tables if they don't exist (init-once)."""
+        async with self._init_lock:
+            if self._initialized:
+                return
+            async with aiosqlite.connect(str(self._db_path)) as db:
+                await db.execute("""CREATE TABLE IF NOT EXISTS ideas (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    content TEXT NOT NULL,
+                    source TEXT DEFAULT 'human',
+                    project TEXT,
+                    status TEXT DEFAULT 'raw',
+                    ai_evaluation TEXT,
+                    priority INTEGER DEFAULT 0,
+                    promoted_to TEXT,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    updated_at TEXT DEFAULT (datetime('now'))
+                )""")
+                await db.execute("""CREATE TABLE IF NOT EXISTS idea_messages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    idea_id INTEGER NOT NULL,
+                    role TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY (idea_id) REFERENCES ideas(id)
+                )""")
+                await db.commit()
+            self._initialized = True
 
     async def _db(self) -> aiosqlite.Connection:
+        await self._ensure_tables()
         db = await aiosqlite.connect(str(self._db_path))
         db.row_factory = aiosqlite.Row
         return db

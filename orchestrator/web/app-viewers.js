@@ -604,11 +604,14 @@ setMode(localStorage.getItem('orchestrator_mode') || 'plan');
 // ─── Orchestrate button ───────────────────────────────────────────────────────
 async function sendOrchestrate() {
   const goal = document.getElementById('goalInput').value.trim();
+  if (!goal) { showToast('Enter a goal first', true); return; }
   const st = sessionStates.get(activeSessionId);
-  if (!st || !st.activePaneId) return;
+  if (!st || !st.activePaneId) { showToast('No active session — open a project first', true); return; }
   const pane = st.panes.get(st.activePaneId);
-  if (!pane || !pane.ws || pane.ws.readyState !== WebSocket.OPEN) return;
-  if (!goal) return;
+  if (!pane || !pane.ws || pane.ws.readyState !== WebSocket.OPEN) {
+    showToast('Not connected — waiting for PTY session', true);
+    return;
+  }
 
   // Save goal + PROGRESS.md context to file first, then send a single /orchestrate\r.
   // Previously two rapid PTY sends (goal text + /orchestrate) caused a race:
