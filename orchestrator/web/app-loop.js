@@ -755,9 +755,9 @@ function showSuggestedGoals(content, sessionId) {
     div = document.createElement('div');
     div.id = 'suggestedGoals';
     div.style.cssText = 'margin: 8px 0; padding: 12px; border: 1px solid #5a3e5a; border-radius: 4px; background: #1a0a2e;';
-    const loopPanel = document.getElementById('loopBar') || document.getElementById('loopPanel');
-    if (loopPanel) loopPanel.parentNode.insertBefore(div, loopPanel.nextSibling);
-    else document.body.appendChild(div);
+    const loopSection = document.getElementById('loopSection');
+    if (loopSection) loopSection.parentNode.insertBefore(div, loopSection.nextSibling);
+    else document.querySelector('.right-panel')?.appendChild(div);
   }
   div.innerHTML = `
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">

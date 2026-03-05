@@ -762,6 +762,7 @@
     .badge.raw { background: rgba(138,126,111,0.12); color: var(--text2); }
     .badge.evaluating { background: rgba(196,154,60,0.12); color: var(--yellow); }
     .badge.evaluated { background: rgba(90,154,79,0.12); color: var(--green); }
+    .badge.promoting { background: rgba(155,126,200,0.12); color: var(--purple); }
     .badge.promoted { background: rgba(155,126,200,0.12); color: var(--purple); }
     .badge.archived { background: rgba(138,126,111,0.12); color: var(--text2); }
 

@@ -69,7 +69,7 @@ function renderProcessCards(processes) {
   if (!section) {
     section = document.createElement('div');
     section.id = 'processSection';
-    section.className = 'dashboard-section process-section';
+    section.className = 'dash-section process-section';
     section.innerHTML = `
       <div class="section-header">
         <span>Running Processes <span id="processCount" style="font-weight:400;color:var(--text2)"></span></span>
@@ -77,9 +77,10 @@ function renderProcessCards(processes) {
       </div>
       <div class="process-cards" id="processCards"></div>
     `;
-    // Insert before queue section
-    const queue = document.querySelector('.dashboard-section.queue');
-    if (queue) queue.parentElement.insertBefore(section, queue);
+    // Insert before the first dashboard section (Tasks)
+    const firstSection = document.querySelector('.right-panel > .dash-section');
+    if (firstSection) firstSection.parentElement.insertBefore(section, firstSection);
+    else document.querySelector('.right-panel')?.appendChild(section);
   }
   section.style.display = '';
   const running = processes.filter(p => p.status === 'running');
@@ -238,7 +239,7 @@ function renderWorkers() {
     } else if (w.auto_committed) {
       commitDisplay = `<span style="color:var(--green);font-weight:600">✓ committed${w.auto_pushed ? ' · ✓ pushed' : ''}</span>`;
     } else if (w.last_commit) {
-      commitDisplay = `<span class="hash">${esc(w.last_commit.slice(0,7))}</span> ${esc(w.last_commit.slice(8,60))}`;
+      commitDisplay = `<span class="hash">${esc(w.last_commit.slice(0,7))}</span> ${esc(w.last_commit.slice(7,60))}`;
     } else {
       commitDisplay = '<span style="opacity:0.5">no commits yet</span>';
     }
