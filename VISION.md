@@ -259,8 +259,8 @@ start.sh --resume --hours 8         # resume where it left off
 | 9 | Meta-Intelligence | Session warm-up, loop auto-PROGRESS, pattern detection, /research + /map + /incident | DONE |
 | 10 | Portfolio Mode | Cross-project task routing, priority ranking, goal suggestions | DONE |
 | 11 | Autonomous Lifecycle | /start one-command unattended, /verify testing, 3-tier issues, drift prevention | DONE |
-| 12 | Product Intelligence | UI interaction testing, autonomous work discovery, design constraints, batch feedback | NEXT |
-| 13 | GUI Redesign | Orchestrator cockpit redesign — monitoring-first, remove interactive editing | FUTURE |
+| 12 | Product Intelligence | UI interaction testing, autonomous work discovery, design constraints, batch feedback | DONE |
+| 13 | AI SDE Operating Console | Ideas mode, process manager, three-mode UI, patrol auto-schedule | DONE |
 
 ---
 
@@ -302,21 +302,22 @@ Address "serial feedback" pain point. Interface: **file-based annotation** (CLI-
 
 ---
 
-## Phase 13 — Orchestrator GUI Redesign (Future)
+## Phase 13 — AI SDE Operating Console (DONE)
 
-Separated from Phase 12 due to scope — this is a full product redesign, not a polish task.
+Transformed the orchestrator GUI from a developer debug panel into an AI SDE operating console — async idea collection, AI evaluation, process management, and three-mode UI.
 
-Current GUI has accumulated features without a clear design intent. Redesign with explicit scope:
-- **Keep:** Worker dashboard, multi-project overview, cost analytics, settings panel
-- **Remove/Simplify:** Interactive task editing (use TUI), inline prompt input (use TUI)
-- **Add:** Session timeline (visual history of iterations), blocker queue (one-click resolve)
-- Goal: the GUI is a cockpit for monitoring, not a second IDE
+**What was built:**
+- **Ideas mode** — async idea input (no blocking), AI evaluation sidebar (haiku scores feasibility/impact/risk), discussion threads, promote-to-TODO/VISION workflow, BRAINSTORM.md bidirectional sync
+- **Process manager** — start.sh lifecycle control from GUI: start/stop/view logs, ProcessPool tracks running processes, cross-project dashboard cards show active processes
+- **Three-mode UI** — Plan (task management), Execute (worker dashboard + process cards), Ideas (collection + evaluation); mode switching via top-level tabs
+- **Mobile responsive** — CSS media queries for 768px breakpoint, touch-friendly controls
+- **Patrol auto-schedule** — configurable interval in settings, runs cross-project scan in status_loop
 
 ---
 
 ## Long-Term Direction
 
-Beyond Phase 12, the system's evolution follows the same principle: **reduce human time per unit of output.**
+Beyond Phase 13, the system's evolution follows the same principle: **reduce human time per unit of output.**
 
 Potential directions (not committed — these live in BRAINSTORM.md when ready):
 - **Voice interface** — dictate ideas and direction instead of typing

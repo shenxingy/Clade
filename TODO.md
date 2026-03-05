@@ -2,7 +2,7 @@
 
 > Vision and architecture: see [VISION.md](VISION.md)
 
-Phases 1–12 complete. Phase 13 (AI SDE Operating Console) in progress.
+Phases 1–13 complete.
 
 ---
 
@@ -483,9 +483,14 @@ Async idea collection, AI evaluation, process management, three-mode UI.
 - [x] **Review pass** — fixed security issues, error handling, XSS, input validation
 
 ### Tech Debt
-- [ ] Ideas DB connection pooling — each IdeasManager call opens a new connection (`ideas.py:59`)
-- [ ] Track fire-and-forget asyncio.create_task refs for graceful shutdown (`routes/ideas.py:76,106,150`)
-- [ ] ProcessPool shutdown hook — register atexit/FastAPI shutdown event (`process_manager.py:233`)
+- [ ] Ideas DB connection pooling — each IdeasManager call opens a new connection (`ideas.py:59`) — **SKIP**: matches TaskQueue convention, SQLite local = negligible benefit from pooling
+- [x] Track fire-and-forget asyncio.create_task refs for graceful shutdown (`routes/ideas.py:76,106,150`)
+- [x] ProcessPool shutdown hook — register atexit/FastAPI shutdown event (`process_manager.py:233`)
+
+### Unresolved Design Questions (from BRAINSTORM Phase 13 ideas)
+- [ ] Async interaction UX — user continuous input + AI sidebar feedback; technical approach TBD (WebSocket streaming? dual-pane layout?)
+- [ ] AI evaluation latency — haiku eval takes seconds; explore preloading, streaming output, or optimistic UI
+- [ ] Deployment strategy — Caddy HTTPS? Tailscale? Public internet? Authentication?
 
 ---
 
