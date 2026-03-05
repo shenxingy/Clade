@@ -476,7 +476,7 @@ Async idea collection, AI evaluation, process management, three-mode UI.
 - [x] **13.1 Ideas data layer** — SQLite tables + IdeasManager CRUD + API routes
 - [x] **13.2 AI evaluation + negotiation** — claude -p haiku eval, discussion messages, WS broadcast
 - [x] **13.3 Process manager** — start.sh control from GUI (StartProcess + ProcessPool)
-- [x] **13.4 Three-mode UI** — Ideas panel + app-ideas.js + plan/execute/ideas switching
+- [x] **13.4 Three-mode UI** — ~~Ideas panel + app-ideas.js + plan/execute/ideas switching~~ → Replaced: unified single-page layout (left: direction+terminal, right: collapsible dashboard sections), inline expandable idea cards, no mode switching
 - [x] **13.5 Dashboard process cards** — running processes in Execute mode dashboard
 - [x] **13.6 Mobile responsiveness** — CSS media queries for 768px breakpoint
 - [x] **13.7 Patrol integration** — auto-schedule in status_loop, config settings

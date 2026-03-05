@@ -1,6 +1,23 @@
 # Progress Log
 
 ---
+### 2026-03-04 — Unified Single-Page GUI Redesign
+
+**What was built:**
+- Removed three-mode switching (Plan/Execute/Ideas) — replaced with unified single-page layout: left panel (40%, goal input + terminal) + right panel (60%, all sections as collapsible `<details>` elements)
+- Fixed Ideas API 500 error — `IdeasManager` now self-initializes DB tables with init-once pattern (was relying on TaskQueue to create tables)
+- Fixed silent Orchestrate button failure — added error toasts for missing session / no WebSocket connection
+- Ideas inline expansion — replaced sidebar with expandable cards: click idea card → eval/chat/actions expand inline within the card
+- Settings panel reorganized into Core/Automation/Advanced (collapsed) groups
+- Removed all `currentMode`/`setMode()` logic from 4 JS files; sections always visible, governed by `<details open>`
+
+**Lessons:**
+- **Always test GUI by running it** — the Ideas 500 error was only discoverable via curl, not code review. `_ensure_tables()` pattern should be self-contained in each manager class.
+- `<details>` elements are excellent for collapsible dashboard sections — native browser behavior, no JS toggle logic needed, accessible by default
+- Mode-switching UIs hide features behind tabs — unified layouts where everything is visible (collapsible but not hidden) are more discoverable
+- When refactoring mode logic: trace ALL references to `currentMode` across ALL JS files before starting — the variable was defined in app-viewers.js but referenced in app-dashboard.js, app-loop.js, and app-core.js
+
+---
 ### 2026-03-04 — Async Inbox UX + Automated Research
 
 **What was built:**
