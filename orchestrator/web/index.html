@@ -4,9 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Claude Code Orchestrator</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
-  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
   <link rel="stylesheet" href="/web/styles.css">
 </head>
 <body>
@@ -70,7 +67,7 @@
   <div class="settings-group-label">Automation</div>
   <label class="settings-row">
     <span>Auto-start workers</span>
-    <input type="checkbox" id="settingAutoStart" onchange="document.getElementById('autoStartToggle').checked=this.checked;saveSettings()" />
+    <input type="checkbox" id="settingAutoStart" onchange="saveSettings()" />
   </label>
   <label class="settings-row">
     <span>Auto-scale workers</span>
@@ -181,21 +178,26 @@
 <!-- ─── Main Layout — Always Left+Right ────────────────────────────────────── -->
 <div class="main">
 
-  <!-- Left: Direction + Terminal (40%) -->
+  <!-- Left: Ideas Inbox (40%) -->
   <div class="left-panel">
-    <div class="goal-row">
-      <input class="goal-input" id="goalInput" placeholder="Describe your goal…" autocomplete="off" />
-      <button class="btn" id="orchestrateBtn" onclick="sendOrchestrate()" style="white-space:nowrap;font-size:12px;padding:4px 12px">⚡ Orchestrate</button>
-      <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);cursor:pointer;white-space:nowrap" title="Auto-start workers when tasks are proposed">
-        <input type="checkbox" id="autoStartToggle" checked style="cursor:pointer" onchange="document.getElementById('settingAutoStart').checked=this.checked;saveSettings()" />
-        Auto-start
-      </label>
+    <div class="ideas-header">
+      <span class="ideas-header-title">Ideas Inbox <span id="ideaCount" style="font-weight:400;color:var(--text2)"></span></span>
+      <button class="btn small secondary" onclick="syncBrainstorm()">Sync BRAINSTORM</button>
     </div>
+    <div class="ideas-input-bar">
+      <textarea id="ideaInput" placeholder="Type an idea... (Enter to submit, Shift+Enter for newline)" rows="2"></textarea>
+      <button class="btn" onclick="submitIdea()">Add</button>
+    </div>
+    <div class="ideas-list" id="ideasList">
+      <div class="empty">No ideas yet — start typing above</div>
+    </div>
+  </div>
 
-    <div class="terminal" id="terminalContainer"></div>
+  <!-- Right: Unified Dashboard (60%) -->
+  <div class="right-panel">
 
-    <!-- Proposed Tasks Overlay -->
-    <div class="overlay hidden" id="proposedOverlay">
+    <!-- Proposed Tasks Overlay (modal) -->
+    <div class="overlay hidden" id="proposedOverlay" style="position:fixed;inset:0;z-index:200">
       <div class="overlay-card">
         <h2>Tasks Ready</h2>
         <p class="subtitle">The orchestrator has written task proposals. Review and confirm to start workers.</p>
@@ -208,49 +210,16 @@
       </div>
     </div>
 
-    <div class="chat-input-row" title="Click terminal above to type directly. Use this bar to paste long text.">
-      <input type="text" id="chatInput" placeholder="Paste long text here → Enter to send (or type directly in terminal above)" autocomplete="off" style="font-size:12px;color:var(--text2)" />
-      <button class="btn secondary" onclick="sendChat()" style="white-space:nowrap;font-size:12px">Paste Send</button>
-    </div>
-  </div>
-
-  <!-- Right: Unified Dashboard (60%) -->
-  <div class="right-panel">
-
-    <!-- Multi-project overview (2+ sessions) -->
-    <div class="dashboard-section" id="overviewSection" style="display:none;border-bottom:1px solid var(--border)">
-      <div class="section-header">
-        <span>All Projects</span>
-        <button class="btn small" onclick="startAllQueued()">▶▶ Start All Queued</button>
-      </div>
-      <div id="overviewList" style="max-height:180px;overflow-y:auto"></div>
-    </div>
-
-    <!-- Portfolio Panel -->
-    <div id="portfolioPanel" style="display:none; margin: 8px 0; padding: 8px; border: 1px solid #444; border-radius: 4px; background: #1a1a2e;">
-      <h4 style="margin: 0 0 8px 0; color: #7eb8f7;">📊 Portfolio Overview</h4>
-      <table style="width:100%; border-collapse: collapse; font-size: 0.85em;">
-        <thead><tr style="color: #aaa;">
-          <th style="text-align:left">Session</th>
-          <th>Pending</th><th>Running</th><th>Done</th><th>Failed</th>
-          <th>Cost</th><th>Rate/hr</th><th>ETA</th>
-        </tr></thead>
-        <tbody id="portfolioTable"></tbody>
-      </table>
-    </div>
-
     <!-- Tasks -->
     <details class="dash-section" open>
       <summary>Tasks <span id="queueCount" style="font-weight:400;color:var(--text2)"></span>
         <span class="dash-actions">
           <button class="btn small success" id="runAllBtn" onclick="runAllTasks()" style="display:none">▶ Run All</button>
           <button class="btn small secondary" id="ghSyncBtn" onclick="ghSync()" title="Sync with GitHub Issues" style="display:none">⇅ Sync</button>
-          <button class="btn small secondary" id="dagBtn" onclick="toggleDag()" title="Dependency graph view">⬡ DAG</button>
           <button class="btn small secondary" onclick="toggleAddTask()">+ Add</button>
         </span>
       </summary>
       <div class="queue-list" id="queueList"></div>
-      <div id="dagView"></div>
       <div id="presetCardsRow" style="display:none">
         <div class="preset-cards">
           <div class="preset-card" onclick="applyPreset('test-writer')">
@@ -302,138 +271,14 @@
       <summary>Workers <span id="workerCount" style="font-weight:400;color:var(--text2)"></span>
         <span class="dash-actions">
           <button class="btn small danger" id="retryFailedBtn" onclick="retryAllFailed()" style="display:none">↺ Retry</button>
-          <button class="btn small secondary" onclick="openIntervene()" id="interveneBtn">⌨ Intervene</button>
           <button class="btn small success" id="mergeAllBtn" onclick="mergeAllDone()" style="display:none">⬇ PRs</button>
         </span>
       </summary>
-      <div id="broadcastBar" class="broadcast-bar" style="display:none;margin:6px 12px 0">
-        <input id="broadcastInput" type="text" placeholder="Broadcast message to all running workers..."
-          onkeydown="if(event.key==='Enter')broadcastAll()" />
-        <button class="btn small" id="broadcastBtn" onclick="broadcastAll()">→ All</button>
-      </div>
       <div class="workers-list" id="workersList"></div>
-    </details>
-
-    <!-- Ideas (inline — no separate panel) -->
-    <details class="dash-section" id="ideasSection">
-      <summary>Ideas <span id="ideaCount" style="font-weight:400;color:var(--text2)"></span>
-        <span class="dash-actions">
-          <button class="btn small secondary" onclick="syncBrainstorm()">Sync BRAINSTORM</button>
-        </span>
-      </summary>
-      <div class="ideas-inline">
-        <div class="ideas-list" id="ideasList">
-          <div class="empty">No ideas yet — start typing below</div>
-        </div>
-        <div class="ideas-input-bar">
-          <textarea id="ideaInput" placeholder="Type an idea... (Enter to submit, Shift+Enter for newline)" rows="2"></textarea>
-          <button class="btn" onclick="submitIdea()">Add</button>
-        </div>
-      </div>
     </details>
 
     <!-- Processes (start.sh) — dynamically created -->
     <!-- processSection is created in renderProcessCards() when processes exist -->
-
-    <!-- Iteration Loop -->
-    <details class="dash-section" id="loopSection">
-      <summary>Iteration Loop <span id="loopStatusBadge" class="badge idle" style="font-size:10px">idle</span></summary>
-      <div class="loop-content">
-        <!-- Config panel (idle/done) -->
-        <div id="loopConfigPanel">
-          <div class="loop-preset-cards">
-            <button class="loop-preset-card active" data-preset="review" onclick="selectLoopPreset('review')">
-              <span class="loop-preset-icon">🔍</span>
-              <span class="loop-preset-name">Review Fix</span>
-              <span class="loop-preset-desc">Bugs &amp; polish</span>
-            </button>
-            <button class="loop-preset-card" data-preset="build" onclick="selectLoopPreset('build')">
-              <span class="loop-preset-icon">🏗</span>
-              <span class="loop-preset-name">Plan+Build</span>
-              <span class="loop-preset-desc">Goals → code</span>
-            </button>
-            <button class="loop-preset-card" data-preset="polish" onclick="selectLoopPreset('polish')">
-              <span class="loop-preset-icon">✨</span>
-              <span class="loop-preset-name">Polish</span>
-              <span class="loop-preset-desc">No TODOs left</span>
-            </button>
-          </div>
-          <div class="loop-source-row">
-            <span class="loop-source-label" title="File supervisor reads each iteration to find issues">Artifact:</span>
-            <select id="loopSourceSelect" class="loop-source-select" onchange="onLoopSourceChange()">
-              <option value="">— select file —</option>
-            </select>
-            <input id="loopSourceCustom" type="text" class="loop-source-custom" placeholder="absolute path to file…" oninput="saveLoopPrefs()" style="display:none" />
-            <button class="btn small secondary loop-adv-toggle" onclick="toggleLoopAdvanced()" title="Advanced settings">⚙</button>
-            <button class="btn small" id="loopStartBtn" onclick="startLoop()">▶ Start</button>
-          </div>
-          <div class="loop-advanced" id="loopAdvanced" style="display:none">
-            <label class="loop-adv-item">K=<input id="loopK" type="number" value="3" min="1" max="20" style="width:40px" onchange="saveLoopPrefs()" /></label>
-            <label class="loop-adv-item">N=<input id="loopN" type="number" value="6" min="1" max="20" style="width:40px" onchange="saveLoopPrefs()" /></label>
-            <label class="loop-adv-item">Model:
-              <select id="loopAdvModel" onchange="saveLoopPrefs()" style="font-size:11px;padding:2px 4px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text)">
-                <option value="haiku">Haiku</option>
-                <option value="sonnet" selected>Sonnet</option>
-                <option value="opus">Opus</option>
-              </select>
-            </label>
-            <label class="loop-adv-item">Dir:<input id="loopContextDir" type="text" style="font-size:11px;padding:2px 6px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);width:120px;font-family:var(--font-mono)" placeholder="auto" onchange="saveLoopPrefs()" /></label>
-          </div>
-        </div>
-        <!-- Running panel (compact, active loops) -->
-        <div id="loopRunningPanel" style="display:none">
-          <div class="loop-running-bar">
-            <span id="loopRunningPreset" style="font-size:11px;font-weight:600;color:var(--accent)"></span>
-            <span id="loopIterLabel" style="font-size:11px;color:var(--text2);margin-left:6px">Iter 0</span>
-            <span id="loopConvergence" style="font-size:11px;color:var(--text2);margin-left:6px"></span>
-            <canvas id="loopSparkline" width="100" height="16" style="vertical-align:middle;margin-left:6px"></canvas>
-            <div style="margin-left:auto;display:flex;gap:4px">
-              <button class="btn small secondary" onclick="pauseLoop()" id="loopPauseBtn" style="display:none;padding:2px 7px">⏸</button>
-              <button class="btn small secondary" onclick="resumeLoop()" id="loopResumeBtn" style="display:none;padding:2px 7px">▶</button>
-              <button class="btn small danger" onclick="cancelLoop()" id="loopCancelBtn" style="display:none;padding:2px 7px">✕</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </details>
-
-    <!-- Swarm -->
-    <details class="dash-section" id="swarmSection" style="display:none">
-      <summary>Swarm Mode <span id="swarmStatusBadge" class="badge idle" style="font-size:10px">idle</span></summary>
-      <div class="swarm-content">
-        <div class="swarm-controls">
-          <label class="swarm-inline">Slots: <input id="swarmSlots" type="number" value="3" min="1" max="20" oninput="this._userEdited=true" /></label>
-          <button class="btn small" id="swarmStartBtn" onclick="startSwarm()">▶ Start</button>
-          <button class="btn small secondary" id="swarmStopBtn" onclick="stopSwarm()" style="display:none">Stop</button>
-          <button class="btn small danger" id="swarmForceStopBtn" onclick="forceStopSwarm()" style="display:none">Force Stop</button>
-          <button class="btn small secondary" id="swarmResizeBtn" onclick="resizeSwarm()" style="display:none">Resize</button>
-        </div>
-        <div id="swarmProgress" style="display:none">
-          <span id="swarmMetrics"></span>
-          <span id="swarmElapsed" style="color:var(--text2)"></span>
-        </div>
-      </div>
-    </details>
-
-    <!-- Deferred Items -->
-    <details id="deferredSection" style="display:none">
-      <summary>
-        Deferred Items <span id="deferredCount" class="badge idle" style="font-size:10px">0</span>
-      </summary>
-      <div id="deferredList"></div>
-    </details>
-
-    <!-- Scheduler Bar -->
-    <div class="scheduler-bar" id="schedulerBar" style="display:none">
-      <span style="font-size:11px;color:var(--text2);flex-shrink:0">⏰ Start at</span>
-      <input type="time" id="scheduleTime" style="
-        background:var(--bg3);border:1px solid var(--border);border-radius:5px;
-        color:var(--text);font-size:12px;padding:3px 6px;outline:none;
-      " />
-      <button class="btn small" onclick="setSchedule()" style="padding:3px 10px;font-size:11px">Set</button>
-      <button class="btn small danger" id="cancelScheduleBtn" onclick="cancelSchedule()" style="padding:3px 8px;font-size:11px;display:none">✕</button>
-      <span id="scheduleCountdown" style="font-size:11px;color:var(--yellow);margin-left:4px"></span>
-    </div>
 
     <!-- History -->
     <details class="dash-section" id="historySection" style="display:none">
@@ -441,20 +286,6 @@
         <span id="successRateLabel" style="font-size:11px;color:var(--text2);margin-left:auto"></span>
       </summary>
       <div class="queue-list" id="historyList"></div>
-    </details>
-
-    <!-- Analytics -->
-    <details class="dash-section" id="analyticsSection" style="display:none">
-      <summary>
-        Analytics <span id="analyticsCostBadge" style="font-weight:400;color:var(--green)"></span>
-      </summary>
-      <div id="analyticsContent" style="padding:4px 12px 10px">
-        <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
-          <div id="analyticsSummary" style="flex:1;min-width:180px"></div>
-          <canvas id="analyticsDonut" width="80" height="80" style="flex-shrink:0"></canvas>
-        </div>
-        <div id="analyticsModels" style="margin-top:6px"></div>
-      </div>
     </details>
 
     <!-- Progress Footer -->
@@ -470,21 +301,12 @@
 
     <!-- Usage Bar -->
     <div class="usage-bar" id="usageBar">
-      <span id="usageText" class="usage-text">Loading usage...</span>
+      <span id="usagePace" class="usage-text" style="font-size:13px"></span>
+      <span id="usageDetail" class="usage-text" style="flex:1">Loading usage...</span>
       <button class="btn small secondary" onclick="refreshUsage()" style="padding:2px 8px;font-size:10px">↻</button>
-      <span id="usageUpdated" style="font-size:10px;color:var(--text2);opacity:0.6"></span>
     </div>
 
   </div>
-</div>
-
-<!-- Intervene Panel (slide-in terminal) -->
-<div class="intervene-panel" id="intervenePanel">
-  <div class="intervene-header">
-    <span>Intervene — Orchestrator Terminal</span>
-    <button class="btn small secondary" onclick="closeIntervene()">✕ Close</button>
-  </div>
-  <div class="intervene-terminal" id="interveneTerminal"></div>
 </div>
 
 <!-- Worker Log Modal -->
@@ -547,7 +369,6 @@
 <script src="/web/app-core.js"></script>
 <script src="/web/app-dashboard.js"></script>
 <script src="/web/app-viewers.js"></script>
-<script src="/web/app-loop.js"></script>
 <script src="/web/app-ideas.js"></script>
 </body>
 </html>
