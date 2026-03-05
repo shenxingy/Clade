@@ -69,6 +69,7 @@ function _ideaStatusBadge(status) {
   const labels = {
     raw: 'New', evaluating: 'Evaluating...', evaluated: 'Evaluated',
     promoting: 'Promoting...', promoted: 'Promoted', archived: 'Archived',
+    executing: 'Executing...', done: 'Done',
   };
   return `<span class="badge ${esc(status)}">${labels[status] || esc(status)}</span>`;
 }
@@ -190,6 +191,7 @@ function _renderIdeaDetail(detailEl, idea) {
 function _actionsHtml(ideaId) {
   return `
     <div class="eval-actions">
+      <button class="btn small success" onclick="executeIdea(${ideaId})">▶ Go</button>
       <button class="btn small" onclick="promoteIdea(${ideaId}, 'todo')">Promote to TODO</button>
       <button class="btn small secondary" onclick="promoteIdea(${ideaId}, 'vision')">Add to VISION</button>
       <button class="btn small danger" onclick="archiveIdea(${ideaId})">Archive</button>
@@ -350,6 +352,22 @@ async function archiveIdea(ideaId) {
   }
 }
 
+async function executeIdea(ideaId) {
+  try {
+    const res = await fetch(`/api/ideas/${ideaId}/execute?session=${activeSessionId}`, { method: 'POST' });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      showToast(data.detail || 'Failed to execute idea', true);
+      return;
+    }
+    showToast('Idea executing via start.sh');
+    const idea = _ideas.find(i => i.id === ideaId);
+    if (idea) { idea.status = 'executing'; renderIdeasList(); }
+  } catch (e) {
+    showToast('Failed to execute idea: ' + e.message, true);
+  }
+}
+
 async function syncBrainstorm() {
   try {
     const res = await fetch(`/api/ideas/sync-brainstorm?session=${activeSessionId}`, {
@@ -398,6 +416,7 @@ function _updateIdeaCard(cardEl, idea) {
     const labels = {
       raw: 'New', evaluating: 'Evaluating...', evaluated: 'Evaluated',
       promoting: 'Promoting...', promoted: 'Promoted', archived: 'Archived',
+      executing: 'Executing...', done: 'Done',
     };
     badge.textContent = labels[idea.status] || idea.status;
     badge.className = 'badge ' + (idea.status || 'raw');

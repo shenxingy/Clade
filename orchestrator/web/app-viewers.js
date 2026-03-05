@@ -8,7 +8,6 @@ async function openWorkerLog(id, name) {
   document.getElementById('workerLogTitle').textContent = `#${id} — ${displayName}`;
   document.getElementById('workerLogModal').classList.remove('hidden');
   await refreshWorkerLog();
-  // Auto-refresh every 2s while the worker is still active
   clearInterval(_logRefreshInterval);
   _logRefreshInterval = setInterval(async () => {
     const w = workers.find(w => String(w.id) === String(activeLogWorkerId));
@@ -29,7 +28,7 @@ async function refreshWorkerLog() {
     if (!res.ok) { el.textContent = 'Error loading log.'; return; }
     const data = await res.json();
     el.textContent = data.log || '(empty log)';
-    el.scrollTop = el.scrollHeight;  // always follow latest output
+    el.scrollTop = el.scrollHeight;
   } catch(e) {
     el.textContent = 'Error loading log.';
   }
@@ -110,7 +109,6 @@ document.getElementById('workerChatInput')?.addEventListener('keydown', (e) => {
 
 // ─── Proposed Tasks Overlay ──────────────────────────────────────────────────
 function showProposedOverlay(content) {
-  // Render a simplified preview
   const blocks = content.split('===TASK===').filter(b => b.trim());
   const preview = blocks.map((b, i) => {
     const lines = b.trim().split('\n');
@@ -133,7 +131,6 @@ function skipProposed() {
 async function editProposed() {
   document.getElementById('proposedOverlay').classList.add('hidden');
   document.getElementById('addTaskRow').style.display = 'block';
-  // Populate textarea with the last proposed-tasks content so user can edit inline
   if (window._lastProposedContent) {
     document.getElementById('newTaskDesc').value = window._lastProposedContent;
     showToast('Edit the ===TASK=== blocks, then click Add Task');
@@ -145,7 +142,6 @@ async function editProposed() {
 async function confirmProposed() {
   document.getElementById('proposedOverlay').classList.add('hidden');
   try {
-    // Import then start all
     const importRes = await fetch(`/api/tasks/import-proposed?session=${activeSessionId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -196,6 +192,7 @@ async function retryInterrupted(taskId) {
 
 // ─── Task History (done/failed) ───────────────────────────────────────────────
 let _lastSuccessRate;
+let _historyExpanded = false;
 
 function renderHistory(successRate) {
   if (successRate !== undefined) _lastSuccessRate = successRate;
@@ -222,7 +219,7 @@ function renderHistory(successRate) {
     }
   }
 
-  if (!section.open) return; // collapsed <details> — only update counts
+  if (!section.open) return;
 
   listEl.innerHTML = history.map(t => {
     const badge = `<span class="badge ${esc(t.status)}" style="font-size:10px">${esc(t.status)}</span>`;
@@ -237,57 +234,6 @@ function renderHistory(successRate) {
       ${retryBtn}
     </div>`;
   }).join('');
-}
-
-// toggleHistoryList removed — history uses native <details> element
-
-// ─── Scheduler ────────────────────────────────────────────────────────────────
-function updateSchedulerDisplay(schedule) {
-  _lastSchedule = schedule;
-  const bar = document.getElementById('schedulerBar');
-  const countdown = document.getElementById('scheduleCountdown');
-  const cancelBtn = document.getElementById('cancelScheduleBtn');
-  if (!bar) return;
-  bar.style.display = 'flex';
-  if (!schedule || !schedule.at) {
-    countdown.textContent = '';
-    cancelBtn.style.display = 'none';
-    return;
-  }
-  cancelBtn.style.display = '';
-  if (schedule.triggered) {
-    countdown.textContent = '🚀 Started!';
-  } else if (schedule.in_seconds > 0) {
-    countdown.textContent = `Starting in ${formatElapsed(schedule.in_seconds)}`;
-  } else {
-    countdown.textContent = '⏳ Starting...';
-  }
-}
-
-async function setSchedule() {
-  const t = document.getElementById('scheduleTime').value;
-  if (!t || !activeSessionId) return;
-  const r = await fetch(`/api/sessions/${activeSessionId}/schedule`, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ time: t }),
-  });
-  if (!r.ok) { showToast('Failed to set schedule', true); return; }
-  const d = await r.json();
-  if (d.in_seconds) {
-    showToast(`Scheduled to auto-start in ${formatElapsed(d.in_seconds)}`);
-  }
-}
-
-async function cancelSchedule() {
-  if (!activeSessionId) return;
-  try {
-    const res = await fetch(`/api/sessions/${activeSessionId}/schedule`, { method: 'DELETE' });
-    if (!res.ok) { showToast('Failed to cancel schedule', true); return; }
-    document.getElementById('scheduleCountdown').textContent = '';
-    document.getElementById('cancelScheduleBtn').style.display = 'none';
-    showToast('Schedule cancelled');
-  } catch (e) { showToast('Error: ' + e.message, true); }
 }
 
 // ─── Header status ───────────────────────────────────────────────────────────
@@ -348,29 +294,28 @@ async function refreshUsage() {
   try {
     const res = await fetch('/api/usage');
     const d = await res.json();
+    const paceEl = document.getElementById('usagePace');
+    const detailEl = document.getElementById('usageDetail');
+    if (d.pace) {
+      const sign = d.pace.delta >= 0 ? '+' : '';
+      paceEl.textContent = `${d.pace.symbol} ${sign}${d.pace.delta}% (${d.pace.remaining})`;
+    } else {
+      paceEl.textContent = '';
+    }
     const today = d.today || {};
     const week = d.this_week || {};
-    document.getElementById('usageText').textContent =
-      `Today: ${today.messages||0} msgs · ${today.sessions||0} sessions  |  Week: ${week.messages||0} msgs`;
-    document.getElementById('usageUpdated').textContent = `stats as of ${d.last_updated||'?'}`;
+    detailEl.textContent = `Today: ${today.messages||0} msgs · Week: ${week.messages||0} msgs`;
   } catch(e) {
-    document.getElementById('usageText').textContent = 'Usage unavailable';
+    const detailEl = document.getElementById('usageDetail');
+    if (detailEl) detailEl.textContent = 'Usage unavailable';
   }
 }
 
 // ─── Boot ────────────────────────────────────────────────────────────────────
-// loadSessions() creates session states + connects WS for all sessions
 loadSessions();
 refreshUsage();
+loadIdeas();
 setInterval(refreshUsage, 60000);
-// Check on load whether to show the portfolio button (≥2 sessions)
-updatePortfolio();
-// Restore suggested goals from sessionStorage for current session
-(function restoreSuggestedGoals() {
-  if (!activeSessionId) return;
-  const saved = sessionStorage.getItem('suggestedGoals_' + activeSessionId);
-  if (saved) showSuggestedGoals(saved, null);
-})();
 
 // ─── Project switcher ────────────────────────────────────────────────────────
 function refreshProjectBadge() {
@@ -441,18 +386,11 @@ async function confirmProjectSwitch() {
   if (!path) return;
   closeProjectPicker();
   showToast('Opening new tab...');
-  // Pass current terminal dimensions so the new PTY starts at the correct size
-  const activeState = sessionStates.get(activeSessionId);
-  let rows = 24, cols = 80;
-  if (activeState?.activePaneId) {
-    const p = activeState.panes.get(activeState.activePaneId);
-    if (p) { rows = p.term.rows || 24; cols = p.term.cols || 80; }
-  }
   try {
     const res = await fetch('/api/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path, rows, cols }),
+      body: JSON.stringify({ path }),
     });
     const data = await res.json();
     if (data.error) { showToast('Error: ' + data.error); return; }
@@ -472,55 +410,9 @@ document.getElementById('projectPathInput').addEventListener('keydown', e => {
   if (e.key === 'Escape') closeProjectPicker();
 });
 
-// ─── Pane keyboard shortcuts ─────────────────────────────────────────────────
-// Ctrl+\          → split active pane right
-// Ctrl+|          → split active pane down  (Ctrl+Shift+\)
-// Ctrl+Shift+X    → close active pane
-// Ctrl+Shift+←/→/↑/↓ → navigate panes
+// ─── Keyboard shortcuts ──────────────────────────────────────────────────────
 document.addEventListener('keydown', (e) => {
-  // Don't fire shortcuts when typing in input/textarea
   if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
-
-  // Skip if xterm terminal has focus (canvas inside .xterm container)
-  const xtermEl = document.querySelector('.xterm-helper-textarea');
-  if (xtermEl && (document.activeElement === xtermEl || xtermEl.contains(document.activeElement))) return;
-
-  // Ctrl+\ → split active pane right
-  if (e.ctrlKey && !e.shiftKey && e.key === '\\') {
-    e.preventDefault();
-    if (typeof PaneManager !== 'undefined') PaneManager.splitActive('h');
-    return;
-  }
-
-  // Ctrl+| (Ctrl+Shift+\) → split active pane down
-  // NOTE: Ctrl+- was avoided because it conflicts with browser zoom-out
-  if (e.ctrlKey && e.shiftKey && e.key === '|') {
-    e.preventDefault();
-    if (typeof PaneManager !== 'undefined') PaneManager.splitActive('v');
-    return;
-  }
-
-  // Ctrl+Shift+X → close active pane (only when more than 1 pane exists)
-  // NOTE: Ctrl+Shift+W was avoided because it closes the browser window
-  if (e.ctrlKey && e.shiftKey && e.key === 'X') {
-    e.preventDefault();
-    if (typeof PaneManager !== 'undefined' && PaneManager.panes.size > 1) {
-      PaneManager.removePane(PaneManager.activePaneId);
-    }
-    return;
-  }
-
-  // Ctrl+Shift+Arrow → navigate between panes
-  if (e.ctrlKey && e.shiftKey) {
-    const dirMap = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' };
-    const dir = dirMap[e.key];
-    if (dir) {
-      e.preventDefault();
-      if (typeof PaneManager !== 'undefined') PaneManager.focusNeighbor(dir);
-    }
-  }
-
-  // Escape → close settings panel if open
   if (e.key === 'Escape') {
     const panel = document.getElementById('settingsPanel');
     if (panel && panel.style.display !== 'none') toggleSettings();
@@ -541,85 +433,8 @@ refreshProjectBadge();
 // Poll sessions list every 5 seconds to keep badges current
 setInterval(() => loadSessions(), 5000);
 
-// ─── Init (unified layout — no mode switching) ──────────────────────────────
+// ─── Init ────────────────────────────────────────────────────────────────────
 let _lastSchedule = null;
-let _overviewInterval = null;
-
-// Start overview polling + load loop prefs on boot
-renderOverview();
-_overviewInterval = setInterval(renderOverview, 8000);
-applyLoopPrefs();
-loadLoopSources();
-
-// ─── Orchestrate button ───────────────────────────────────────────────────────
-async function sendOrchestrate() {
-  const goal = document.getElementById('goalInput').value.trim();
-  if (!goal) { showToast('Enter a goal first', true); return; }
-  const st = sessionStates.get(activeSessionId);
-  if (!st || !st.activePaneId) { showToast('No active session — open a project first', true); return; }
-  const pane = st.panes.get(st.activePaneId);
-  if (!pane || !pane.ws || pane.ws.readyState !== WebSocket.OPEN) {
-    showToast('Not connected — waiting for PTY session', true);
-    return;
-  }
-
-  // Save goal + PROGRESS.md context to file first, then send a single /orchestrate\r.
-  // Previously two rapid PTY sends (goal text + /orchestrate) caused a race:
-  // Claude started responding to the goal message before /orchestrate arrived,
-  // leaving /orchestrate queued and requiring a second manual Enter.
-  try {
-    const resp = await fetch(`/api/sessions/${activeSessionId}/set-orchestrate-goal`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ goal })
-    });
-    if (!resp.ok) {
-      console.warn(`set-orchestrate-goal failed (${resp.status}): falling back to direct goal input`);
-      // Fallback: type goal + /orchestrate directly (pre-file-bridge approach)
-      pane.ws.send(JSON.stringify({ type: 'input', data: goal + '\r' }));
-      pane.ws.send(JSON.stringify({ type: 'input', data: '/orchestrate\r' }));
-      pane.term.scrollToBottom();
-      document.getElementById('goalInput').value = '';
-      return;
-    }
-  } catch (_) { /* non-fatal: skill will ask for goal interactively */ }
-
-  // Single PTY send — no race condition, no second Enter needed
-  pane.ws.send(JSON.stringify({ type: 'input', data: '/orchestrate\r' }));
-  pane.term.scrollToBottom();
-  document.getElementById('goalInput').value = '';
-}
-document.getElementById('goalInput')?.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendOrchestrate(); }
-});
-
-// ─── Intervene panel ──────────────────────────────────────────────────────────
-let _intervenedSessionId = null;
-function openIntervene() {
-  if (_intervenedSessionId != null && _intervenedSessionId !== activeSessionId) closeIntervene();
-  _intervenedSessionId = activeSessionId;
-  document.getElementById('intervenePanel').classList.add('open');
-  const st = sessionStates.get(activeSessionId);
-  if (st) {
-    const interveneTerm = document.getElementById('interveneTerminal');
-    interveneTerm.appendChild(st.el);
-    st.el.style.display = 'flex';
-    requestAnimationFrame(() => PaneManager.fitSession(activeSessionId));
-  }
-}
-function closeIntervene() {
-  const sid = _intervenedSessionId || activeSessionId;
-  document.getElementById('intervenePanel').classList.remove('open');
-  const st = sessionStates.get(sid);
-  if (!st || !st.el) { _intervenedSessionId = null; return; }
-  const container = document.getElementById('terminalContainer');
-  if (st && container) {
-    container.appendChild(st.el);
-    st.el.style.display = 'flex';
-    requestAnimationFrame(() => PaneManager.fitSession(sid));
-  }
-  _intervenedSessionId = null;
-}
 
 // ─── Merge All Done → AI PR Pipeline ─────────────────────────────────────────
 async function mergeAllDone() {
@@ -634,7 +449,6 @@ async function mergeAllDone() {
       const autoMsg = d.merged > 0 ? `, ${d.merged} auto-merged` : '';
       showToast(`Created ${d.created} PR${d.created !== 1 ? 's' : ''}${autoMsg}`);
     }
-    // Surface any per-worker errors
     (d.results || []).filter(r => r.error).forEach(r => {
       console.warn(`Worker ${r.worker_id} PR error:`, r.error);
     });
@@ -646,14 +460,13 @@ async function mergeAllDone() {
   }
 }
 
-// ─── Broadcast / Agents.md ────────────────────────────────────────────────────
+// ─── Broadcast ───────────────────────────────────────────────────────────────
 
 async function broadcastAll() {
-  const msg = document.getElementById('broadcastInput')?.value?.trim();
+  const input = document.getElementById('broadcastInput');
+  const msg = input?.value?.trim();
   if (!msg) return;
   const sid = activeSessionId;
-  const btn = document.getElementById('broadcastBtn');
-  if (btn) btn.disabled = true;
   try {
     const r = await fetch(`/api/sessions/${sid}/workers/broadcast`, {
       method: 'POST', headers: {'Content-Type':'application/json'},
@@ -661,9 +474,8 @@ async function broadcastAll() {
     });
     const d = await r.json();
     showToast(d.count > 0 ? `Broadcast sent to ${d.count} worker${d.count!==1?'s':''}` : 'No running workers');
-    if (d.count > 0) document.getElementById('broadcastInput').value = '';
+    if (d.count > 0) input.value = '';
   } catch(e) { showToast('Error: ' + e.message); }
-  finally { if (btn) btn.disabled = false; }
 }
 
 async function generateAgentsMd() {
@@ -679,3 +491,176 @@ async function generateAgentsMd() {
   } catch { showToast('Error generating AGENTS.md'); }
 }
 
+// ─── Settings ─────────────────────────────────────────────────────────────────
+
+async function loadSettings() {
+  try {
+    const r = await fetch('/api/settings');
+    const s = await r.json();
+    const elAutoStart = document.getElementById('settingAutoStart');
+    const elAutoPush = document.getElementById('settingAutoPush');
+    const elAutoMerge = document.getElementById('settingAutoMerge');
+    const elAutoReview = document.getElementById('settingAutoReview');
+    const elModel = document.getElementById('settingModel');
+    const elMaxW = document.getElementById('settingMaxWorkers');
+    if (elAutoStart) elAutoStart.checked = s.auto_start ?? true;
+    if (elAutoPush) elAutoPush.checked = s.auto_push ?? true;
+    if (elAutoMerge) elAutoMerge.checked = s.auto_merge ?? true;
+    if (elAutoReview) elAutoReview.checked = s.auto_review ?? true;
+    if (elModel) elModel.value = s.default_model ?? 'sonnet';
+    if (elMaxW) elMaxW.value = s.max_workers ?? 0;
+    const elAutoScale = document.getElementById('settingAutoScale');
+    const elMinW = document.getElementById('settingMinWorkers');
+    if (elAutoScale) elAutoScale.checked = s.auto_scale ?? false;
+    if (elMinW) elMinW.value = s.min_workers ?? 1;
+    const elLoopModel = document.getElementById('settingLoopModel');
+    const elLoopK = document.getElementById('settingLoopK');
+    const elLoopN = document.getElementById('settingLoopN');
+    const elLoopMax = document.getElementById('settingLoopMax');
+    if (elLoopModel) elLoopModel.value = s.loop_supervisor_model ?? 'sonnet';
+    if (elLoopK) elLoopK.value = s.loop_convergence_k ?? 2;
+    if (elLoopN) elLoopN.value = s.loop_convergence_n ?? 3;
+    if (elLoopMax) elLoopMax.value = s.loop_max_iterations ?? 20;
+    const elAutoOracle = document.getElementById('settingAutoOracle');
+    const elAutoMR = document.getElementById('settingAutoModelRouting');
+    const elCtxBudget = document.getElementById('settingContextBudget');
+    if (elAutoOracle) elAutoOracle.checked = s.auto_oracle ?? false;
+    if (elAutoMR) elAutoMR.checked = s.auto_model_routing ?? false;
+    if (elCtxBudget) elCtxBudget.checked = s.context_budget_warning ?? true;
+    const elStuck = document.getElementById('settingStuckTimeout');
+    if (elStuck) elStuck.value = s.stuck_timeout_minutes ?? 15;
+    const elBudget = document.getElementById('settingCostBudget');
+    if (elBudget) elBudget.value = s.cost_budget ?? 0;
+    const elAgentTeams = document.getElementById('settingAgentTeams');
+    if (elAgentTeams) elAgentTeams.checked = s.agent_teams ?? false;
+    const elGhSync = document.getElementById('settingGhSync');
+    const elGhLabel = document.getElementById('settingGhLabel');
+    if (elGhSync) elGhSync.checked = s.github_issues_sync ?? false;
+    if (elGhLabel) elGhLabel.value = s.github_issues_label ?? 'orchestrator';
+    const elWebhook = document.getElementById('settingWebhook');
+    if (elWebhook) elWebhook.value = s.notification_webhook ?? '';
+    const elPatrolSched = document.getElementById('settingPatrolSchedule');
+    const elResearchSched = document.getElementById('settingResearchSchedule');
+    if (elPatrolSched) elPatrolSched.value = s.patrol_schedule ?? '';
+    if (elResearchSched) elResearchSched.value = s.research_schedule ?? '';
+    const syncBtn = document.getElementById('ghSyncBtn');
+    if (syncBtn) syncBtn.style.display = s.github_issues_sync ? '' : 'none';
+    // Load intervention count
+    try {
+      const ivRes = await fetch(`/api/interventions?session=${activeSessionId}`);
+      const ivData = await ivRes.json();
+      const ivBadge = document.getElementById('interventionCount');
+      if (ivBadge && ivData.length > 0) {
+        ivBadge.textContent = ivData.length;
+        ivBadge.style.display = '';
+      }
+    } catch(e) { console.warn(e); }
+  } catch(e) { console.warn(e); }
+}
+
+let _saveSettingsTimer = null;
+function saveSettings() {
+  clearTimeout(_saveSettingsTimer);
+  _saveSettingsTimer = setTimeout(async () => {
+    try {
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          auto_start: document.getElementById('settingAutoStart')?.checked ?? true,
+          auto_push: document.getElementById('settingAutoPush')?.checked ?? true,
+          auto_merge: document.getElementById('settingAutoMerge')?.checked ?? true,
+          auto_review: document.getElementById('settingAutoReview')?.checked ?? true,
+          default_model: document.getElementById('settingModel')?.value ?? 'sonnet',
+          max_workers: parseInt(document.getElementById('settingMaxWorkers')?.value) || 0,
+          auto_scale: document.getElementById('settingAutoScale')?.checked ?? false,
+          min_workers: parseInt(document.getElementById('settingMinWorkers')?.value) || 1,
+          loop_supervisor_model: document.getElementById('settingLoopModel')?.value ?? 'sonnet',
+          loop_convergence_k: parseInt(document.getElementById('settingLoopK')?.value) || 2,
+          loop_convergence_n: parseInt(document.getElementById('settingLoopN')?.value) || 3,
+          loop_max_iterations: parseInt(document.getElementById('settingLoopMax')?.value) || 20,
+          auto_oracle: document.getElementById('settingAutoOracle')?.checked ?? false,
+          auto_model_routing: document.getElementById('settingAutoModelRouting')?.checked ?? false,
+          context_budget_warning: document.getElementById('settingContextBudget')?.checked ?? true,
+          stuck_timeout_minutes: parseInt(document.getElementById('settingStuckTimeout')?.value) || 0,
+          cost_budget: parseFloat(document.getElementById('settingCostBudget')?.value) || 0,
+          agent_teams: document.getElementById('settingAgentTeams')?.checked ?? false,
+          github_issues_sync: document.getElementById('settingGhSync')?.checked ?? false,
+          github_issues_label: document.getElementById('settingGhLabel')?.value || 'orchestrator',
+          notification_webhook: document.getElementById('settingWebhook')?.value || '',
+          patrol_schedule: document.getElementById('settingPatrolSchedule')?.value || '',
+          research_schedule: document.getElementById('settingResearchSchedule')?.value || '',
+        }),
+      });
+      const syncBtn = document.getElementById('ghSyncBtn');
+      if (syncBtn) syncBtn.style.display = document.getElementById('settingGhSync')?.checked ? '' : 'none';
+    } catch(e) { console.warn(e); }
+  }, 400);
+}
+
+function toggleSettings() {
+  const panel = document.getElementById('settingsPanel');
+  if (!panel) return;
+  const isOpen = panel.style.display !== 'none';
+  panel.style.display = isOpen ? 'none' : '';
+  if (!isOpen) loadSettings();
+}
+
+// ─── GitHub Issues Sync ───────────────────────────────────────────────────────
+
+async function ghSync() {
+  const btn = document.getElementById('ghSyncBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⇅ Syncing...'; }
+  try {
+    const pullR = await fetch(`/api/issues/sync-pull?session=${activeSessionId}`, { method: 'POST' });
+    const pull = await pullR.json();
+    const pushR = await fetch(`/api/issues/sync-push?session=${activeSessionId}`, { method: 'POST' });
+    const push = await pushR.json();
+    const parts = [];
+    if (pull.created) parts.push(`+${pull.created} from GitHub`);
+    if (pull.updated) parts.push(`${pull.updated} updated`);
+    if (pull.deleted) parts.push(`${pull.deleted} removed`);
+    if (push.created) parts.push(`${push.created} pushed`);
+    if (push.updated) parts.push(`${push.updated} synced`);
+    showToast(parts.length ? 'Sync: ' + parts.join(', ') : 'Sync complete — no changes');
+  } catch (e) {
+    showToast('Sync failed: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⇅ Sync'; }
+  }
+}
+
+// ─── Portfolio Panel ──────────────────────────────────────────────────────────
+
+let portfolioInterval = null;
+
+function togglePortfolio() {
+  const panel = document.getElementById('portfolioPanel');
+  if (!panel) return;
+  const visible = panel.style.display !== 'none';
+  panel.style.display = visible ? 'none' : 'block';
+  if (!visible) {
+    updatePortfolio();
+    portfolioInterval = setInterval(updatePortfolio, 5000);
+  } else {
+    clearInterval(portfolioInterval);
+    portfolioInterval = null;
+  }
+}
+
+async function updatePortfolio() {
+  try {
+    const resp = await fetch('/api/sessions/overview');
+    const sessionsData = await resp.json();
+    if (sessionsData.length < 2) {
+      const btnContainer = document.getElementById('portfolioBtnContainer');
+      if (btnContainer) btnContainer.style.display = 'none';
+      return;
+    }
+    const btnContainer = document.getElementById('portfolioBtnContainer');
+    if (btnContainer) btnContainer.style.display = '';
+  } catch (e) { /* fail silently */ }
+}
+
+// Load settings on boot
+loadSettings();

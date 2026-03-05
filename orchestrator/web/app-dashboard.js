@@ -27,9 +27,6 @@ function updateDashboard(data) {
   renderWorkers();
   renderHistory(data.success_rate);
   updateProgress(data.progress_pct || 0, data.eta_seconds || 0);
-  updateSchedulerDisplay(data.schedule);
-  updateLoopUI(data.loop_state || null);
-  updateSwarmUI(data.swarm_state || null);
 
   // Total session cost: DB tasks + live workers
   const dbCost = queue.reduce((s, t) => s + (t.estimated_cost || 0), 0);
@@ -162,7 +159,6 @@ function renderQueue() {
 
   if (pending.length === 0) {
     list.innerHTML = '<div class="empty">No pending tasks</div>';
-    renderDag();
     return;
   }
 
@@ -200,8 +196,6 @@ function renderQueue() {
       </div>
     </div>`;
   }).join('');
-
-  renderDag();
 }
 
 function renderWorkers() {
