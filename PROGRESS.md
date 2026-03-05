@@ -1,6 +1,23 @@
 # Progress Log
 
 ---
+### 2026-03-05 — Ideas-First GUI Redesign
+
+**What was built:**
+- Replaced left panel (goal input + xterm.js terminal + chat) with Ideas Inbox (input bar at top + scrollable AI-evaluated cards with Go button)
+- Removed from right panel: Overview, Portfolio, Ideas section, Loop, Swarm, Deferred, Scheduler, Analytics — kept only Tasks, Workers, Processes, History
+- Added `POST /api/ideas/{id}/execute` endpoint — sets status to "executing", launches start.sh via ProcessPool, background monitors for completion
+- Added slt-style usage pace to `_get_usage()` — reads `~/.claude/usage-watch-cache.json`, computes delta vs 95% target, bird theme symbols
+- Deleted `app-loop.js` (981 lines) — migrated settings/ghSync/portfolio/broadcast to `app-viewers.js`
+- Rewrote `app-core.js` (460→160 lines) — removed terminal, pane manager, chat, keyboard shortcuts
+- Rewrote `styles.css` — removed terminal/loop/swarm/DAG styles, added ideas-header/ideas-input-bar/executing badge with pulse animation
+
+**Lessons:**
+- **Plan cross-file cleanup before deleting code** — the `app-loop.js` deletion required tracing 9 function references across 3 files. The plan's cross-file checklist table (function → called from → action) made this systematic instead of grep-and-pray.
+- **Settings checkbox wiring is easy to miss** — `autoStartToggle` checkbox had an `onchange` referencing a DOM element that was removed with the left panel. Always grep for `getElementById` of removed elements.
+- **Verify HTML structure after large removals** — `dagView` div survived inside Tasks section even after the DAG button was removed.
+
+---
 ### 2026-03-05 — GUI Verification Pass
 
 **What was fixed:**
