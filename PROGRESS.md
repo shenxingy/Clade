@@ -1,6 +1,19 @@
 # Progress Log
 
 ---
+### 2026-03-04 — Split Oversized Files (worker.py, server.py)
+
+**What was done:**
+- Extracted `worker_tldr.py` (192 lines, TLDR + scoring) and `worker_review.py` (154 lines, oracle + PR review) from `worker.py` (1378→1066)
+- Extracted `routes/tasks.py` (252 lines, 13 handlers) and `routes/workers.py` (177 lines, 9 handlers) from `server.py` (1248→849)
+- Left `session.py` (1024 lines) as-is — splitting would create circular imports
+- All 19 tests pass, no import DAG cycles
+
+**Lessons:**
+- **Leaf-first extraction is cleanest** — `worker_tldr.py` and `worker_review.py` have zero internal project imports, making them trivial to extract with no dependency changes
+- **Route extraction needs mock updates** — `tests/conftest.py` must mock new modules (`worker_tldr`, `worker_review`) before they get imported transitively through route modules
+
+---
 ### 2026-03-05 — Ideas-First GUI Redesign
 
 **What was built:**

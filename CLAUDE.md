@@ -5,7 +5,7 @@
 - Frontend: N/A (orchestrator has vanilla JS UI but not the primary interface)
 - Backend: FastAPI (orchestrator/, port 8000) — optional, CLI layer works standalone
 - Test command: cd orchestrator && .venv/bin/python -m pytest tests/ -v
-- Verify command: cd orchestrator && python -m py_compile server.py session.py task_queue.py worker.py
+- Verify command: cd orchestrator && python -m py_compile server.py session.py task_queue.py worker.py worker_tldr.py worker_review.py routes/tasks.py routes/workers.py
 
 ## Features (Behavior Anchors)
 - install.sh: running `./install.sh` copies skills/hooks/scripts/keybindings to ~/.claude/ without errors
@@ -52,16 +52,20 @@ cd orchestrator && python -m py_compile server.py session.py task_queue.py worke
 Key modules (import DAG — leaf → root):
 
 ```
-config.py          ← leaf: constants, settings, utilities
+config.py            ← leaf: constants, settings, utilities
     ↑
-github_sync.py     ← gh CLI wrappers (issues, push, sync)
-task_queue.py      ← SQLite-backed task CRUD
+github_sync.py       ← gh CLI wrappers (issues, push, sync)
+task_queue.py        ← SQLite-backed task CRUD
+worker_tldr.py       ← TLDR generation + scoring (leaf, no project imports)
+worker_review.py     ← oracle + PR review (leaf, no project imports)
     ↑
-worker.py          ← WorkerPool, SwarmManager, scoring, oracle
-session.py         ← ProjectSession, registry, status_loop
+worker.py            ← WorkerPool, SwarmManager
+session.py           ← ProjectSession, registry, status_loop
     ↑
-server.py          ← FastAPI app, all REST routes, WebSocket
-routes/webhooks.py ← GitHub webhook handler (included by server.py)
+server.py            ← FastAPI app, remaining routes, router mounts
+routes/tasks.py      ← Task CRUD + bulk-action routes
+routes/workers.py    ← Worker control + inspection routes
+routes/webhooks.py   ← GitHub webhook handler
 ```
 
 ### Key File Map
@@ -69,12 +73,16 @@ routes/webhooks.py ← GitHub webhook handler (included by server.py)
 |------|---------|
 | `config.py` | `GLOBAL_SETTINGS`, `_ALLOWED_TASK_COLS`, model aliases, cost utils |
 | `task_queue.py` | SQLite CRUD for tasks, loops, messages, interventions |
-| `worker.py` | `WorkerPool`, `SwarmManager`, `_score_task`, `_write_pr_review` |
+| `worker.py` | `WorkerPool`, `SwarmManager`, core execution engine |
+| `worker_tldr.py` | `_generate_code_tldr`, `_score_task` — TLDR + scoring (leaf) |
+| `worker_review.py` | `_write_pr_review`, `_oracle_review`, `_write_progress_entry` (leaf) |
 | `session.py` | `ProjectSession`, `SessionRegistry`, `status_loop()` |
-| `server.py` | FastAPI app, all REST + WebSocket routes |
+| `server.py` | FastAPI app, session/loop/swarm/usage/settings routes, WebSocket |
 | `github_sync.py` | GitHub issue create/update/pull/push via `gh` CLI |
 | `ideas.py` | `IdeasManager` — async idea CRUD, AI evaluation, promotion |
 | `process_manager.py` | `ProcessPool`, `StartProcess` — start.sh lifecycle control |
+| `routes/tasks.py` | Task CRUD + bulk-action routes (13 handlers) |
+| `routes/workers.py` | Worker control + inspection routes (9 handlers) |
 | `routes/ideas.py` | Ideas API routes (CRUD, evaluate, execute, promote) |
 | `web/index.html` | Single-page UI shell (served at `/web/index.html`) |
 | `web/app-core.js` | Core state, WebSocket, session tabs, settings |
