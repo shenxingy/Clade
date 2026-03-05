@@ -487,11 +487,6 @@ Async idea collection, AI evaluation, process management, three-mode UI.
 - [x] Track fire-and-forget asyncio.create_task refs for graceful shutdown (`routes/ideas.py:76,106,150`)
 - [x] ProcessPool shutdown hook — register atexit/FastAPI shutdown event (`process_manager.py:233`)
 
-### Unresolved Design Questions (from BRAINSTORM Phase 13 ideas)
-- [ ] Async interaction UX — user continuous input + AI sidebar feedback; technical approach TBD (WebSocket streaming? dual-pane layout?)
-- [ ] AI evaluation latency — haiku eval takes seconds; explore preloading, streaming output, or optimistic UI
-- [ ] Deployment strategy — Caddy HTTPS? Tailscale? Public internet? Authentication?
-
 ---
 
 ## Design Decisions
