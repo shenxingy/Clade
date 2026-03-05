@@ -83,6 +83,30 @@ async function submitIdea() {
   const content = input.value.trim();
   if (!content) return;
   input.value = '';
+  input.focus();
+
+  // Batch paste: split multi-line input into separate ideas
+  const lines = content.split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length > 1) {
+    try {
+      const res = await fetch(`/api/ideas/batch?session=${activeSessionId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ideas: lines.map(l => ({ content: l, auto_evaluate: true })) }),
+      });
+      if (res.ok) {
+        const created = await res.json();
+        _ideas.unshift(...created);
+        renderIdeasList();
+        showToast(`${created.length} ideas added`);
+      }
+    } catch (e) {
+      showToast('Failed to add ideas: ' + e.message, true);
+    }
+    return;
+  }
+
+  // Single idea
   try {
     const res = await fetch(`/api/ideas?session=${activeSessionId}`, {
       method: 'POST',
@@ -93,7 +117,7 @@ async function submitIdea() {
       const idea = await res.json();
       _ideas.unshift(idea);
       renderIdeasList();
-      selectIdea(idea.id);
+      // Stay in input — don't selectIdea (async inbox UX)
     }
   } catch (e) {
     showToast('Failed to add idea: ' + e.message, true);
@@ -320,7 +344,13 @@ function handleIdeaWsMessage(msg) {
     if (idea) {
       idea.status = msg.status;
       if (msg.evaluation) idea.ai_evaluation_parsed = msg.evaluation;
-      renderIdeasList();
+      // Targeted card update — avoid full re-render (prevents scroll jump + focus loss)
+      const card = document.querySelector(`.idea-card[onclick*="selectIdea(${msg.idea_id})"]`);
+      if (card) {
+        _updateIdeaCard(card, idea);
+      } else {
+        renderIdeasList();
+      }
       if (_selectedIdeaId === msg.idea_id) selectIdea(msg.idea_id);
     } else {
       // New idea from another source — reload
@@ -330,6 +360,67 @@ function handleIdeaWsMessage(msg) {
     if (_selectedIdeaId === msg.idea_id) {
       selectIdea(msg.idea_id);  // reload to show new message
     }
+  }
+}
+
+function _updateIdeaCard(cardEl, idea) {
+  // Update status badge
+  const badge = cardEl.querySelector('.badge');
+  if (badge) {
+    const labels = {
+      raw: 'New', evaluating: 'Evaluating...', evaluated: 'Evaluated',
+      promoting: 'Promoting...', promoted: 'Promoted', archived: 'Archived',
+    };
+    badge.textContent = labels[idea.status] || idea.status;
+    badge.className = 'badge ' + (idea.status || 'raw');
+  }
+
+  const evalParsed = idea.ai_evaluation_parsed;
+
+  // Insert/update summary
+  let summaryEl = cardEl.querySelector('.idea-summary');
+  const summaryText = evalParsed?.summary || '';
+  if (summaryText) {
+    if (!summaryEl) {
+      summaryEl = document.createElement('div');
+      summaryEl.className = 'idea-summary fade-in';
+      const contentEl = cardEl.querySelector('.idea-content');
+      if (contentEl) contentEl.after(summaryEl);
+      else cardEl.appendChild(summaryEl);
+    }
+    summaryEl.textContent = summaryText;
+  }
+
+  // Insert/update feasibility bar
+  const feasibility = evalParsed?.feasibility;
+  let feasBarEl = cardEl.querySelector('.feas-bar');
+  if (feasibility) {
+    const pct = Math.min(100, (feasibility / 5) * 100);
+    const color = feasibility >= 4 ? 'var(--green)' : feasibility >= 3 ? 'var(--yellow)' : 'var(--red)';
+    if (!feasBarEl) {
+      feasBarEl = document.createElement('div');
+      feasBarEl.className = 'feas-bar';
+      feasBarEl.innerHTML = '<div class="feas-fill"></div>';
+      cardEl.appendChild(feasBarEl);
+    }
+    const fill = feasBarEl.querySelector('.feas-fill');
+    if (fill) {
+      fill.style.width = pct + '%';
+      fill.style.background = color;
+    }
+  }
+
+  // Update effort badge
+  const effort = evalParsed?.effort || '';
+  let effortEl = cardEl.querySelector('.idea-effort');
+  if (effort) {
+    if (!effortEl) {
+      effortEl = document.createElement('span');
+      effortEl.className = 'idea-effort';
+      const topRow = cardEl.querySelector('.idea-card-top');
+      if (topRow) topRow.insertBefore(effortEl, topRow.querySelector('.idea-time'));
+    }
+    effortEl.textContent = effort;
   }
 }
 
