@@ -1,6 +1,30 @@
 # Progress Log
 
 ---
+### 2026-03-04 — Phase 13: AI SDE Operating Console
+
+**What was built:**
+- 6 new files: `ideas.py`, `process_manager.py`, `routes/ideas.py`, `routes/process.py`, `app-ideas.js`, `web/styles.css`
+- 8 modified files: `server.py`, `session.py`, `config.py`, `task_queue.py`, `web/index.html`, `app-core.js`, `app-dashboard.js`, `app-viewers.js`
+- Ideas data layer: SQLite tables + IdeasManager CRUD + AI evaluation via claude haiku
+- Process manager: start.sh lifecycle control from GUI (StartProcess + ProcessPool)
+- Three-mode UI: Plan/Execute/Ideas switching with dedicated panels
+- Cross-project dashboard with patrol auto-schedule in status_loop
+- Mobile responsive CSS (768px breakpoint)
+
+**Review pass:** 21 issues fixed across 5 commits:
+- 6 security fixes (shlex.quote for subprocess args, path traversal guards)
+- 2 XSS fixes (HTML escaping in dynamic content)
+- 4 input validation fixes (allowlists for source/status/target fields)
+- Error handling, graceful degradation, race condition guards
+
+**Lessons:**
+- Three-mode UI switching is simpler with CSS class toggles on a container than with JS show/hide per element
+- ProcessPool needs explicit shutdown hooks — fire-and-forget subprocess management leaks processes on server restart
+- `asyncio.create_task()` without holding a reference allows tasks to be GC'd silently — use a module-level `set()` to prevent this
+- IdeasManager per-operation `aiosqlite.connect()` matches TaskQueue's pattern — SQLite connection pooling adds complexity for negligible local benefit
+
+---
 ### 2026-03-04 — Phase 12.4: Batch Feedback + Cross-Project Patrol
 
 **What was built (4 sub-tasks):**
