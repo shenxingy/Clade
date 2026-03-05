@@ -17,7 +17,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Python syntax check
         run: |
@@ -43,6 +43,28 @@ jobs:
         run: |
           chmod +x install.sh
           bash -n install.sh && echo "install.sh syntax OK"
+
+  pytest:
+    name: Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          cd orchestrator
+          pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: |
+          cd orchestrator
+          python -m pytest tests/ -v
 
   shell-tests:
     name: Shell Tests

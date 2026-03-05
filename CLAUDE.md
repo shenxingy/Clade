@@ -111,6 +111,22 @@ committer "type: message" file1 file2 file3
 
 Conventional commit types: `feat` / `fix` / `refactor` / `test` / `chore` / `docs` / `perf`
 
+## CI (GitHub Actions)
+
+Before committing, ensure CI will pass by running locally:
+```bash
+# 1. Python syntax check (all modules)
+cd orchestrator && python -m py_compile server.py session.py task_queue.py worker.py worker_tldr.py worker_review.py config.py github_sync.py ideas.py process_manager.py routes/tasks.py routes/workers.py routes/webhooks.py routes/ideas.py routes/process.py
+
+# 2. Tests
+cd orchestrator && .venv/bin/python -m pytest tests/ -v
+
+# 3. Shell syntax check
+bash -n configs/hooks/*.sh configs/scripts/*.sh install.sh
+```
+
+CI runs 3 jobs on push/PR to main: `syntax-check`, `pytest`, `shell-tests`.
+
 ## Code Rules
 
 - Keep all files < 1500 lines (Read tool default = 2000 lines)
