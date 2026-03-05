@@ -255,8 +255,7 @@ function updateSchedulerDisplay(schedule) {
   const countdown = document.getElementById('scheduleCountdown');
   const cancelBtn = document.getElementById('cancelScheduleBtn');
   if (!bar) return;
-  // Show scheduler bar only in execute mode
-  bar.style.display = currentMode === 'execute' ? 'flex' : 'none';
+  bar.style.display = 'flex';
   if (!schedule || !schedule.at) {
     countdown.textContent = '';
     cancelBtn.style.display = 'none';
@@ -549,57 +548,15 @@ refreshProjectBadge();
 // Poll sessions list every 5 seconds to keep badges current
 setInterval(() => loadSessions(), 5000);
 
-// ─── Mode switching ───────────────────────────────────────────────────────────
-let currentMode = 'plan';
-let _lastSchedule = null;  // cache for scheduler display on mode switch
+// ─── Init (unified layout — no mode switching) ──────────────────────────────
+let _lastSchedule = null;
 let _overviewInterval = null;
 
-function setMode(mode) {
-  currentMode = mode;
-  const main = document.querySelector('.main');
-  main.classList.toggle('plan-mode', mode === 'plan');
-  main.classList.toggle('execute-mode', mode === 'execute');
-  main.classList.toggle('ideas-mode', mode === 'ideas');
-  document.getElementById('modePlanBtn').classList.toggle('active', mode === 'plan');
-  document.getElementById('modeExecBtn').classList.toggle('active', mode === 'execute');
-  document.getElementById('modeIdeasBtn').classList.toggle('active', mode === 'ideas');
-  // Ideas panel visibility
-  const ideasPanel = document.getElementById('ideasPanel');
-  if (ideasPanel) ideasPanel.style.display = mode === 'ideas' ? 'flex' : 'none';
-  const intervBtn = document.getElementById('interveneBtn');
-  if (intervBtn) intervBtn.style.display = mode === 'execute' ? '' : 'none';
-  if (mode === 'plan') {
-    closeIntervene();
-    requestAnimationFrame(() => PaneManager.fitAll());
-    clearInterval(_overviewInterval);
-    _overviewInterval = null;
-  }
-  if (mode === 'execute') {
-    document.getElementById('proposedOverlay')?.classList.add('hidden');
-    renderOverview();
-    if (!_overviewInterval) _overviewInterval = setInterval(renderOverview, 8000);
-  }
-  if (mode === 'ideas' && typeof loadIdeas === 'function') {
-    loadIdeas();
-  }
-  // Sync scheduler bar + loop bar visibility with mode
-  updateSchedulerDisplay(_lastSchedule);
-  const loopBar = document.getElementById('loopBar');
-  if (loopBar) loopBar.style.display = mode === 'execute' ? '' : 'none';
-  if (mode === 'execute') { applyLoopPrefs(); loadLoopSources(); }
-  const swarmBar = document.getElementById('swarmBar');
-  if (swarmBar) swarmBar.style.display = mode === 'execute' ? '' : 'none';
-  const bb = document.getElementById('broadcastBar');
-  if (bb) bb.style.display = mode === 'execute' ? 'flex' : 'none';
-  // Deferred section: only visible in execute mode when there are items
-  if (mode !== 'execute') {
-    const deferredSection = document.getElementById('deferredSection');
-    if (deferredSection) deferredSection.style.display = 'none';
-  }
-  localStorage.setItem('orchestrator_mode', mode);
-}
-// Restore mode on load (or default to plan)
-setMode(localStorage.getItem('orchestrator_mode') || 'plan');
+// Start overview polling + load loop prefs on boot
+renderOverview();
+_overviewInterval = setInterval(renderOverview, 8000);
+applyLoopPrefs();
+loadLoopSources();
 
 // ─── Orchestrate button ───────────────────────────────────────────────────────
 async function sendOrchestrate() {
@@ -665,7 +622,7 @@ function closeIntervene() {
   const container = document.getElementById('terminalContainer');
   if (st && container) {
     container.appendChild(st.el);
-    if (currentMode === 'plan') st.el.style.display = 'flex';
+    st.el.style.display = 'flex';
     requestAnimationFrame(() => PaneManager.fitSession(sid));
   }
   _intervenedSessionId = null;

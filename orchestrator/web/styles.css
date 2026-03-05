@@ -74,23 +74,23 @@
       50% { opacity: 0.4; }
     }
 
-    /* ─── Layout ─────────────────────────────────────────────────── */
+    /* ─── Layout — Always Left+Right ──────────────────────────────── */
     .main {
       display: flex;
       flex: 1;
       overflow: hidden;
     }
 
-    /* ─── Chat Panel (left 60%) ──────────────────────────────────── */
-    .chat-panel {
-      width: 60%;
+    /* ─── Left Panel (40%) — Direction + Terminal ──────────────────── */
+    .left-panel {
+      width: 40%;
       display: flex;
       flex-direction: column;
       border-right: 1px solid var(--border);
       position: relative;
     }
 
-    .chat-header {
+    .goal-row {
       padding: 10px 14px;
       border-bottom: 1px solid var(--border);
       font-size: 12px;
@@ -109,7 +109,6 @@
       padding: 4px 8px;
       position: relative;
     }
-    /* Make xterm canvas fill container */
     #terminalContainer .xterm { height: 100%; }
     #terminalContainer .xterm-viewport { overflow-y: auto !important; }
     #terminalContainer .xterm-viewport::-webkit-scrollbar { width: 6px; }
@@ -225,22 +224,51 @@
       justify-content: flex-end;
     }
 
-    /* ─── Dashboard Panel (right 40%) ───────────────────────────── */
-    .dashboard {
-      width: 40%;
+    /* ─── Right Panel (60%) — Unified Dashboard ───────────────────── */
+    .right-panel {
+      width: 60%;
       display: flex;
       flex-direction: column;
-      overflow: hidden;
+      overflow-y: auto;
     }
+    .right-panel::-webkit-scrollbar { width: 4px; }
+    .right-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
+    /* ─── Collapsible Dashboard Sections ──────────────────────────── */
+    .dash-section {
+      border-bottom: 1px solid var(--border);
+    }
+    .dash-section > summary {
+      padding: 8px 14px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text2);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg2);
+      user-select: none;
+      list-style: none;
+    }
+    .dash-section > summary::-webkit-details-marker { display: none; }
+    .dash-section > summary::before {
+      content: '▸';
+      font-size: 10px;
+      transition: transform 0.15s;
+    }
+    .dash-section[open] > summary::before { transform: rotate(90deg); }
+    .dash-section > summary:hover { background: var(--bg3); color: var(--text); }
+    .dash-actions { margin-left: auto; display: flex; gap: 4px; }
+
+    /* Keep old .dashboard-section and .section-header for processSection compatibility */
     .dashboard-section {
       display: flex;
       flex-direction: column;
       overflow: hidden;
     }
-    .dashboard-section.queue { flex: 0 0 auto; max-height: 40%; border-bottom: 1px solid var(--border); }
-    .dashboard-section.workers { flex: 1; overflow-y: auto; }
-
     .section-header {
       padding: 8px 14px;
       border-bottom: 1px solid var(--border);
@@ -391,6 +419,12 @@
     .badge.failed { background: rgba(192,83,74,0.12); color: var(--red); }
     .badge.interrupted { background: rgba(196,154,60,0.15); color: var(--yellow); }
     .badge.starting { background: rgba(193,95,60,0.12); color: var(--accent); }
+    .badge.idle { background: rgba(138,126,111,0.12); color: var(--text2); }
+    .badge.active { background: rgba(90,154,79,0.12); color: var(--green); }
+    .badge.draining { background: rgba(196,154,60,0.12); color: var(--yellow); }
+    .badge.converged { background: rgba(193,95,60,0.12); color: var(--accent); }
+    .badge.cancelled { background: rgba(192,83,74,0.12); color: var(--red); }
+    .badge.stopped { background: rgba(192,83,74,0.12); color: var(--red); }
 
     .worker-log-tail {
       font-family: var(--font-mono);
@@ -427,7 +461,7 @@
       margin-right: auto;
     }
 
-    /* ─── Chat with Worker Dialog ─────────────────────────────────── */
+    /* ─── Modals ───────────────────────────────────────────────────── */
     .modal-backdrop {
       position: fixed;
       inset: 0;
@@ -473,13 +507,9 @@
       gap: 6px;
       padding: 6px 14px;
       background: var(--bg2);
-      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
       flex-shrink: 0;
     }
-
-    /* ─── Task History section ────────────────────────────────────── */
-    .dashboard-section.history { flex-shrink: 0; max-height: 220px; }
-    .dashboard-section.history .queue-list { max-height: 180px; }
 
     /* ─── Score badge ─────────────────────────────────────────────── */
     .score-badge {
@@ -502,6 +532,7 @@
       align-items: center;
       gap: 10px;
       flex-shrink: 0;
+      margin-top: auto;
     }
     .progress-bar-track {
       flex: 1;
@@ -548,10 +579,6 @@
       color: var(--text2);
       font-size: 12px;
     }
-
-    /* ─── Scrollbar global ───────────────────────────────────────── */
-    .dashboard-section.workers::-webkit-scrollbar { width: 4px; }
-    .dashboard-section.workers::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
     /* ─── Tab Bar ────────────────────────────────────────────────── */
     .tab-bar {
@@ -613,15 +640,6 @@
     }
     .tab-add:hover { border-color: var(--accent); color: var(--accent); }
 
-    /* ─── Mode buttons ───────────────────────────────────────────── */
-    .mode-btn {
-      background: var(--bg3); border: 1px solid var(--border); border-radius: 5px;
-      color: var(--text2); font-size: 12px; font-weight: 600; padding: 4px 12px;
-      cursor: pointer; transition: all 0.15s;
-    }
-    .mode-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-    .mode-btn:hover:not(.active) { border-color: var(--accent); color: var(--text); }
-
     /* ─── Goal input ─────────────────────────────────────────────── */
     .goal-input {
       flex: 1; background: var(--bg3); border: 1px solid var(--border);
@@ -632,45 +650,14 @@
     .goal-input:focus { border-color: var(--accent); }
     .goal-input::placeholder { color: var(--text2); }
 
-    /* ─── Plan / Execute / Ideas layout ──────────────────────────── */
-    .main.execute-mode .chat-panel { display: none; }
-    .main.execute-mode .dashboard { width: 100%; }
-    .main.plan-mode .chat-panel { width: 70%; }
-    .main.plan-mode .dashboard { width: 30%; }
-    .main.ideas-mode .chat-panel { display: none; }
-    .main.ideas-mode .dashboard { display: none; }
-    .main.ideas-mode .ideas-panel { display: flex !important; width: 100%; }
-
-    /* ─── Ideas Panel ────────────────────────────────────────────── */
-    .ideas-panel {
-      display: flex;
-      width: 100%;
-      overflow: hidden;
-    }
-    .ideas-input-stream {
-      flex: 1;
+    /* ─── Ideas Inline (inside dashboard section) ─────────────────── */
+    .ideas-inline {
       display: flex;
       flex-direction: column;
-      border-right: 1px solid var(--border);
-      min-width: 0;
-    }
-    .ideas-input-header {
-      padding: 10px 14px;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      background: var(--bg2);
-      flex-shrink: 0;
-    }
-    .ideas-input-header h3 {
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--text);
     }
     .ideas-list {
-      flex: 1;
       overflow-y: auto;
+      max-height: 300px;
       padding: 8px;
     }
     .ideas-list::-webkit-scrollbar { width: 4px; }
@@ -710,7 +697,7 @@
       transition: border-color 0.15s, box-shadow 0.15s;
     }
     .idea-card:hover { border-color: var(--accent); box-shadow: var(--shadow-sm); }
-    .idea-card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(193,95,60,0.2); }
+    .idea-card.expanded { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(193,95,60,0.2); }
     .idea-card.promoted { opacity: 0.6; }
     .idea-card.archived { opacity: 0.4; }
     .idea-card-top {
@@ -727,6 +714,10 @@
       display: -webkit-box;
       -webkit-line-clamp: 3;
       -webkit-box-orient: vertical;
+    }
+    .idea-card.expanded .idea-content {
+      -webkit-line-clamp: unset;
+      display: block;
     }
     .idea-summary {
       font-size: 11px;
@@ -773,32 +764,15 @@
     .badge.promoted { background: rgba(155,126,200,0.12); color: var(--purple); }
     .badge.archived { background: rgba(138,126,111,0.12); color: var(--text2); }
 
-    /* ─── Evaluation Sidebar ─────────────────────────────────────── */
-    .ideas-eval-sidebar {
-      width: 380px;
-      flex-shrink: 0;
-      display: flex;
-      flex-direction: column;
-      background: var(--bg2);
-      overflow: hidden;
+    /* ─── Inline Idea Detail (replaces sidebar) ───────────────────── */
+    .idea-detail {
+      display: none;
+      padding: 10px 0 0;
+      border-top: 1px solid var(--border);
+      margin-top: 8px;
+      animation: fadeIn 0.2s ease;
     }
-    .eval-header {
-      padding: 10px 14px;
-      font-size: 12px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--text2);
-      border-bottom: 1px solid var(--border);
-      flex-shrink: 0;
-    }
-    .eval-content {
-      flex: 1;
-      overflow-y: auto;
-      padding: 12px 14px;
-    }
-    .eval-content::-webkit-scrollbar { width: 4px; }
-    .eval-content::-webkit-scrollbar-thumb { background: var(--border); }
+    .idea-card.expanded .idea-detail { display: block; }
     .eval-summary {
       font-size: 13px;
       font-weight: 500;
@@ -851,17 +825,20 @@
       padding: 20px;
       animation: pulse 1.5s infinite;
     }
-
-    /* ─── Eval Chat ──────────────────────────────────────────────── */
+    .eval-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+    }
     .eval-chat {
-      flex-direction: column;
+      margin-top: 8px;
       border-top: 1px solid var(--border);
-      max-height: 250px;
+      padding-top: 6px;
     }
     .eval-messages {
-      flex: 1;
       overflow-y: auto;
-      padding: 8px 12px;
+      max-height: 150px;
+      padding: 4px 0;
       font-size: 12px;
     }
     .eval-messages::-webkit-scrollbar { width: 3px; }
@@ -885,9 +862,7 @@
     .eval-input-row {
       display: flex;
       gap: 6px;
-      padding: 8px 12px;
-      border-top: 1px solid var(--border);
-      flex-shrink: 0;
+      margin-top: 6px;
     }
     .eval-input-row input {
       flex: 1;
@@ -902,16 +877,7 @@
     .eval-input-row input:focus { border-color: var(--accent); }
     .eval-input-row input::placeholder { color: var(--text2); }
 
-    /* ─── Eval Actions ───────────────────────────────────────────── */
-    .eval-actions {
-      display: flex;
-      gap: 6px;
-      padding: 8px 12px;
-      border-top: 1px solid var(--border);
-      flex-shrink: 0;
-    }
-
-    /* ─── Process Cards (Execute mode) ───────────────────────────── */
+    /* ─── Process Cards ──────────────────────────────────────────── */
     .process-section {
       padding: 0;
       border-bottom: 1px solid var(--border);
@@ -978,14 +944,26 @@
       display: none; position: fixed; top: 48px; right: 16px;
       background: var(--bg2); border: 1px solid var(--border);
       border-radius: var(--radius); z-index: 200;
-      min-width: 260px; box-shadow: var(--shadow-lg);
-      overflow: hidden;
+      min-width: 280px; max-height: 80vh; overflow-y: auto;
+      box-shadow: var(--shadow-lg);
     }
     .settings-header {
       padding: 8px 12px; font-weight: 600; font-size: 12px;
       border-bottom: 1px solid var(--border);
       display: flex; align-items: center; justify-content: space-between;
+      position: sticky; top: 0; background: var(--bg2); z-index: 1;
     }
+    .settings-group-label {
+      padding: 4px 12px;
+      font-size: 10px;
+      font-weight: 600;
+      opacity: 0.5;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 6px;
+      border-top: 1px solid var(--border);
+    }
+    .settings-advanced > .settings-group-label { border-top: none; }
     .settings-row {
       display: flex; align-items: center; justify-content: space-between;
       padding: 5px 12px; font-size: 12px; gap: 10px; cursor: pointer;
@@ -997,27 +975,10 @@
     }
     .settings-close { font-size: 12px; color: var(--text2); cursor: pointer; }
 
-    /* ─── Loop Bar ──────────────────────────────────────────────── */
-    .loop-bar {
+    /* ─── Loop (inside details section) ───────────────────────────── */
+    .loop-content {
       padding: 6px 14px 6px;
-      background: var(--bg2);
-      border-top: 1px solid var(--border);
-      flex-shrink: 0;
     }
-    .loop-header {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin-bottom: 6px;
-    }
-    .loop-title {
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--text2);
-    }
-    /* Preset cards */
     .loop-preset-cards {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
@@ -1045,7 +1006,6 @@
     .loop-preset-icon { font-size: 14px; line-height: 1; }
     .loop-preset-name { font-size: 11px; font-weight: 600; color: var(--text); }
     .loop-preset-desc { font-size: 10px; color: var(--text2); }
-    /* Source row */
     .loop-source-row {
       display: flex;
       align-items: center;
@@ -1080,7 +1040,6 @@
     }
     .loop-source-custom:focus { border-color: var(--accent); }
     .loop-source-custom::placeholder { color: var(--text2); }
-    /* Advanced panel */
     .loop-advanced {
       display: flex;
       align-items: center;
@@ -1100,33 +1059,15 @@
       color: var(--text2);
       white-space: nowrap;
     }
-    /* Running bar */
     .loop-running-bar {
       display: flex;
       align-items: center;
     }
-    .badge.idle { background: rgba(138,126,111,0.12); color: var(--text2); }
-    .badge.active { background: rgba(90,154,79,0.12); color: var(--green); }
-    .badge.running { background: rgba(90,154,79,0.12); color: var(--green); }
-    .badge.paused { background: rgba(196,154,60,0.12); color: var(--yellow); }
-    .badge.draining { background: rgba(196,154,60,0.12); color: var(--yellow); }
-    .badge.converged { background: rgba(193,95,60,0.12); color: var(--accent); }
-    .loop-bar .badge.done,
-    .swarm-bar .badge.done { background: rgba(193,95,60,0.12); color: var(--accent); }
-    .badge.cancelled { background: rgba(192,83,74,0.12); color: var(--red); }
-    .badge.stopped { background: rgba(192,83,74,0.12); color: var(--red); }
+    .dash-section .badge.done { background: rgba(193,95,60,0.12); color: var(--accent); }
 
-    /* ─── Swarm Bar ──────────────────────────────────────────────── */
-    .swarm-bar {
-      padding: 6px 14px 4px;
-      background: var(--bg2);
-      border-top: 1px solid var(--border);
-      flex-shrink: 0;
-    }
-    .swarm-bar .section-header {
-      border-bottom: none;
-      padding: 0 0 4px;
-      background: transparent;
+    /* ─── Swarm (inside details section) ──────────────────────────── */
+    .swarm-content {
+      padding: 6px 14px 6px;
     }
     .swarm-controls {
       display: flex;
@@ -1164,7 +1105,7 @@
 
     /* ─── Deferred Items ─────────────────────────────────────────── */
     #deferredSection {
-      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
       background: var(--bg2);
       flex-shrink: 0;
     }
@@ -1240,21 +1181,15 @@
     /* ─── Mobile Responsive ──────────────────────────────────────── */
     @media (max-width: 768px) {
       .main { flex-direction: column; }
-      .main.plan-mode .chat-panel { width: 100%; height: 50vh; }
-      .main.plan-mode .dashboard { width: 100%; height: 50vh; overflow-y: auto; }
-      .main.execute-mode .dashboard { width: 100%; }
-      .ideas-panel { flex-direction: column; }
-      .ideas-input-stream { width: 100%; border-right: none; border-bottom: 1px solid var(--border); }
-      .ideas-eval-sidebar { width: 100%; height: auto; max-height: 50vh; }
+      .left-panel { width: 100%; height: 45vh; }
+      .right-panel { width: 100%; height: 55vh; }
       header { flex-wrap: wrap; gap: 4px; padding: 8px 12px; }
       header h1 { font-size: 13px; }
-      .mode-btn { font-size: 11px; padding: 4px 8px; }
       .tab-bar { padding: 3px 8px; }
       .tab { padding: 3px 8px; font-size: 11px; }
       .worker-card { padding: 8px; }
       .process-card { padding: 8px; }
       #settingsPanel { right: 4px; left: 4px; min-width: auto; }
-      /* Prevent iOS zoom on input focus */
       #ideaInput, .eval-input-row input, .chat-input-row input { font-size: 16px; }
       .intervene-panel { width: 100vw; }
     }

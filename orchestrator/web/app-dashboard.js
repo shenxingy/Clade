@@ -210,7 +210,7 @@ function renderWorkers() {
   const mergeable = workers.filter(w => w.status === 'done' && w.auto_pushed && !w.pr_url);
   const mergeBtn = document.getElementById('mergeAllBtn');
   if (mergeBtn) {
-    mergeBtn.style.display = mergeable.length > 0 && currentMode === 'execute' ? '' : 'none';
+    mergeBtn.style.display = mergeable.length > 0 ? '' : 'none';
     mergeBtn.textContent = `⬇ Create PRs (${mergeable.length})`;
   }
 

@@ -298,7 +298,7 @@ function updateLoopUI(loopState) {
 
   // Deferred items
   const deferred = (loopState && loopState.deferred_items) || [];
-  if (deferredSection && currentMode === 'execute') {
+  if (deferredSection) {
     deferredSection.style.display = deferred.length > 0 ? '' : 'none';
     if (deferredCount) deferredCount.textContent = deferred.length;
     if (deferredList) {
@@ -777,7 +777,6 @@ function showSuggestedGoals(content, sessionId) {
 // ─── Multi-project Overview ────────────────────────────────────────────────────
 
 async function renderOverview() {
-  if (currentMode !== 'execute') return;
   try {
     const r = await fetch('/api/sessions/overview');
     const overviewData = await r.json();
