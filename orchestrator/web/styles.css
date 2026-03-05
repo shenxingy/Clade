@@ -761,7 +761,12 @@
       margin-top: 6px;
       overflow: hidden;
     }
-    .feas-fill { height: 100%; transition: width 0.3s; }
+    .feas-fill { height: 100%; transition: width 0.3s, background 0.3s; }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .fade-in { animation: fadeIn 0.3s ease; }
     .badge.raw { background: rgba(138,126,111,0.12); color: var(--text2); }
     .badge.evaluating { background: rgba(196,154,60,0.12); color: var(--yellow); }
     .badge.evaluated { background: rgba(90,154,79,0.12); color: var(--green); }
