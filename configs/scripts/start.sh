@@ -15,6 +15,7 @@
 #   start.sh --resume            Resume from last session-progress.md
 #   start.sh --stop              Write stop sentinel
 #   start.sh --patrol            Cross-project scan (report only, no workers)
+#   start.sh --research          Auto-research based on project context
 #   start.sh --dry-run           Dry run: show plan and exit without executing
 #
 # Architecture:
@@ -67,6 +68,7 @@ while [[ $# -gt 0 ]]; do
     --max-iter)      MAX_OUTER_ITER="$2";  shift 2 ;;
     --max-inner-iter) MAX_INNER_ITER="$2"; shift 2 ;;
     --patrol)        MODE="patrol";        shift ;;
+    --research)      MODE="research";      shift ;;
     --confirm)       CONFIRM=true;         shift ;;
     *)               echo "Unknown flag: $1" >&2; shift ;;
   esac
@@ -398,6 +400,53 @@ _patrol() {
 
 if [[ "$MODE" == "patrol" ]]; then
   _patrol
+  exit 0
+fi
+
+# ─── RESEARCH MODE ──────────────────────────────────────────────────────────
+# Auto-research: gather project context and run /research skill
+if [[ "$MODE" == "research" ]]; then
+  _log "Running automated research..."
+
+  RESEARCH_PROMPT="$SCRIPTS_DIR/../skills/research/prompt.md"
+  [[ -f "$RESEARCH_PROMPT" ]] || RESEARCH_PROMPT="$HOME/.claude/skills/research/prompt.md"
+
+  if [[ ! -f "$RESEARCH_PROMPT" ]]; then
+    echo "Error: research prompt not found" >&2
+    exit 1
+  fi
+
+  # Auto-generate topic from project context
+  TOPIC=$(python3 -c "
+import re
+vision = open('VISION.md', 'r').read() if __import__('os').path.exists('VISION.md') else ''
+goals = open('GOALS.md', 'r').read() if __import__('os').path.exists('GOALS.md') else ''
+todo = open('TODO.md', 'r').read() if __import__('os').path.exists('TODO.md') else ''
+brainstorm = open('BRAINSTORM.md', 'r').read() if __import__('os').path.exists('BRAINSTORM.md') else ''
+# Extract unchecked items as research focus areas
+unchecked = re.findall(r'- \[ \] (.+)', todo + brainstorm)
+if unchecked:
+    print('; '.join(unchecked[:5]))
+elif vision:
+    lines = [l.strip() for l in vision.splitlines() if l.strip() and not l.startswith('#')]
+    print('; '.join(lines[:3]))
+else:
+    print('project improvement opportunities')
+" 2>/dev/null || echo "project improvement opportunities")
+
+  _log "Research topic: $TOPIC"
+
+  # Build context and run research
+  printf '%s\n\n---\n\nResearch topic: %s\n\n## VISION / GOALS\n%s\n\n## TODO\n%s\n\n## BRAINSTORM\n%s\n\n## Recent git log\n%s' \
+    "$(_safe_cat "$RESEARCH_PROMPT")" \
+    "$TOPIC" \
+    "$(_safe_cat GOALS.md)$(_safe_cat VISION.md)" \
+    "$(_safe_cat TODO.md)" \
+    "$(_safe_cat BRAINSTORM.md)" \
+    "$(git log --oneline -20 2>/dev/null || echo '(no git history)')" \
+  | timeout 300s claude -p --dangerously-skip-permissions \
+    2>/dev/null
+
   exit 0
 fi
 

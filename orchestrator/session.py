@@ -804,9 +804,26 @@ async def status_loop():
                                 logger.info("Auto-patrol triggered at %s", _patrol_sched)
                     except Exception as e:
                         logger.warning("Patrol schedule parse error: %s", e)
-                # Reset patrol trigger at midnight
-                if hasattr(session, "_patrol_triggered_today") and datetime.now().hour == 0:
-                    session._patrol_triggered_today = False
+                # Auto-research scheduling (mirrors patrol pattern)
+                _research_sched = GLOBAL_SETTINGS.get("research_schedule", "")
+                if _research_sched and not getattr(session, "_research_triggered_today", False):
+                    try:
+                        now = datetime.now()
+                        hh, mm = _research_sched.split(":")
+                        if now.hour == int(hh) and now.minute == int(mm):
+                            session._research_triggered_today = True
+                            _existing_r = _pp.get(str(session.project_dir))
+                            if not _existing_r or _existing_r.status != "running":
+                                await _pp.start(session.project_dir, mode="--research")
+                                logger.info("Auto-research triggered at %s", _research_sched)
+                    except Exception as e:
+                        logger.warning("Research schedule parse error: %s", e)
+                # Reset patrol + research triggers at midnight
+                if datetime.now().hour == 0:
+                    if hasattr(session, "_patrol_triggered_today"):
+                        session._patrol_triggered_today = False
+                    if hasattr(session, "_research_triggered_today"):
+                        session._research_triggered_today = False
                 await _check_blockers(session)
 
                 # Auto-start tasks whose dependencies just became satisfied
