@@ -194,6 +194,11 @@ class IdeasManager:
                 status="evaluated",
             )
         except asyncio.TimeoutError:
+            try:
+                proc.kill()
+                await proc.wait()
+            except ProcessLookupError:
+                pass
             await self.update_idea(idea_id, status="raw",
                                    ai_evaluation='{"error": "evaluation timed out"}')
         except Exception as e:
@@ -226,6 +231,14 @@ class IdeasManager:
             )
             stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
             ai_reply = stdout.decode().strip()
+        except asyncio.TimeoutError:
+            try:
+                proc.kill()
+                await proc.wait()
+            except ProcessLookupError:
+                pass
+            logger.warning("discuss_idea(%s) timed out", idea_id)
+            ai_reply = "(AI response timed out)"
         except Exception as e:
             logger.warning("discuss_idea(%s) failed: %s", idea_id, e)
             ai_reply = "(AI response unavailable)"

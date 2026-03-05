@@ -96,9 +96,9 @@ function renderProcessCards(processes) {
         <div class="process-detail">${esc(p.mode)} · ${esc(formatElapsed(p.elapsed_s))}</div>
         <div class="process-actions">
           ${p.status === 'running'
-            ? `<button class="btn small danger" onclick="stopProcess('${esc(p.project_dir)}')">Stop</button>`
-            : `<button class="btn small" onclick="restartProcess('${esc(p.project_dir)}', '${esc(p.mode)}')">Restart</button>`}
-          <button class="btn small secondary" onclick="viewProcessReport('${esc(p.project_dir)}')">Report</button>
+            ? `<button class="btn small danger" data-dir="${esc(p.project_dir)}" onclick="stopProcess(this.dataset.dir)">Stop</button>`
+            : `<button class="btn small" data-dir="${esc(p.project_dir)}" data-mode="${esc(p.mode)}" onclick="restartProcess(this.dataset.dir, this.dataset.mode)">Restart</button>`}
+          <button class="btn small secondary" data-dir="${esc(p.project_dir)}" onclick="viewProcessReport(this.dataset.dir)">Report</button>
         </div>
       </div>`;
   }).join('');

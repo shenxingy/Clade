@@ -231,8 +231,12 @@ async function submitIdea() {
         _ideas.unshift(...created);
         renderIdeasList();
         showToast(`${created.length} ideas added`);
+      } else {
+        input.value = content;
+        showToast('Failed to add ideas', true);
       }
     } catch (e) {
+      input.value = content;
       showToast('Failed to add ideas: ' + e.message, true);
     }
     return;
@@ -249,8 +253,12 @@ async function submitIdea() {
       const idea = await res.json();
       _ideas.unshift(idea);
       renderIdeasList();
+    } else {
+      input.value = content;
+      showToast('Failed to add idea', true);
     }
   } catch (e) {
+    input.value = content;
     showToast('Failed to add idea: ' + e.message, true);
   }
 }
@@ -280,8 +288,8 @@ async function sendEvalMessage(ideaId) {
   // Optimistic: show user message + thinking indicator
   const msgsEl = document.getElementById(`eval-msgs-${ideaId}`);
   if (msgsEl) {
-    msgsEl.innerHTML += `<div class="eval-msg human"><span class="eval-msg-role">You</span><span class="eval-msg-content">${esc(content)}</span></div>`;
-    msgsEl.innerHTML += `<div class="eval-msg ai"><span class="eval-msg-role">AI</span><span class="eval-msg-content eval-loading">Thinking...</span></div>`;
+    msgsEl.insertAdjacentHTML('beforeend', `<div class="eval-msg human"><span class="eval-msg-role">You</span><span class="eval-msg-content">${esc(content)}</span></div>`);
+    msgsEl.insertAdjacentHTML('beforeend', `<div class="eval-msg ai"><span class="eval-msg-role">AI</span><span class="eval-msg-content eval-loading">Thinking...</span></div>`);
     msgsEl.scrollTop = msgsEl.scrollHeight;
   }
   try {
@@ -290,16 +298,12 @@ async function sendEvalMessage(ideaId) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content }),
     });
-    if (res.ok) {
-      // Reload detail to show updated messages
-      _loadIdeaDetail(ideaId);
-    }
+    // Always reload to get fresh state (handles both success + error cleanup)
+    _loadIdeaDetail(ideaId);
+    if (!res.ok) showToast('Failed to send message', true);
   } catch (e) {
     showToast('Failed to send message: ' + e.message, true);
-    if (msgsEl) {
-      const thinking = msgsEl.querySelector('.eval-loading');
-      if (thinking) thinking.closest('.eval-msg')?.remove();
-    }
+    _loadIdeaDetail(ideaId);
   }
 }
 
@@ -307,7 +311,8 @@ async function sendEvalMessage(ideaId) {
 
 async function triggerEvaluate(id) {
   try {
-    await fetch(`/api/ideas/${id}/evaluate?session=${activeSessionId}`, { method: 'POST' });
+    const res = await fetch(`/api/ideas/${id}/evaluate?session=${activeSessionId}`, { method: 'POST' });
+    if (!res.ok) { showToast('Failed to start evaluation', true); return; }
     showToast('Evaluation started');
     const idea = _ideas.find(i => i.id === id);
     if (idea) { idea.status = 'evaluating'; renderIdeasList(); }
@@ -335,7 +340,8 @@ async function promoteIdea(ideaId, target) {
 
 async function archiveIdea(ideaId) {
   try {
-    await fetch(`/api/ideas/${ideaId}?session=${activeSessionId}`, { method: 'DELETE' });
+    const res = await fetch(`/api/ideas/${ideaId}?session=${activeSessionId}`, { method: 'DELETE' });
+    if (!res.ok) { showToast('Failed to archive idea', true); return; }
     showToast('Idea archived');
     _expandedIdeaId = null;
     loadIdeas();

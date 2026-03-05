@@ -304,12 +304,12 @@ Address "serial feedback" pain point. Interface: **file-based annotation** (CLI-
 
 ## Phase 13 — AI SDE Operating Console (DONE)
 
-Transformed the orchestrator GUI from a developer debug panel into an AI SDE operating console — async idea collection, AI evaluation, process management, and three-mode UI.
+Transformed the orchestrator GUI from a developer debug panel into an AI SDE operating console — async idea collection, AI evaluation, process management, and unified single-page layout.
 
 **What was built:**
-- **Ideas mode** — async idea input (no blocking), AI evaluation sidebar (haiku scores feasibility/impact/risk), discussion threads, promote-to-TODO/VISION workflow, BRAINSTORM.md bidirectional sync
+- **Ideas (inline)** — async idea input, AI evaluation with inline expandable cards (click to expand eval + chat + actions), promote-to-TODO/VISION workflow, BRAINSTORM.md bidirectional sync
 - **Process manager** — start.sh lifecycle control from GUI: start/stop/view logs, ProcessPool tracks running processes, cross-project dashboard cards show active processes
-- **Three-mode UI** — Plan (task management), Execute (worker dashboard + process cards), Ideas (collection + evaluation); mode switching via top-level tabs
+- **Unified layout** — Left panel (direction + terminal, 40%) + right panel (collapsible dashboard sections, 60%); no mode switching — all sections always visible via `<details>` elements
 - **Mobile responsive** — CSS media queries for 768px breakpoint, touch-friendly controls
 - **Patrol auto-schedule** — configurable interval in settings, runs cross-project scan in status_loop
 

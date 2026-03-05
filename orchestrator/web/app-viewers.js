@@ -26,6 +26,7 @@ async function refreshWorkerLog() {
   const el = document.getElementById('workerLogContent');
   try {
     const res = await fetch(`/api/workers/${activeLogWorkerId}/log?lines=300&session=${activeSessionId}`);
+    if (!res.ok) { el.textContent = 'Error loading log.'; return; }
     const data = await res.json();
     el.textContent = data.log || '(empty log)';
     el.scrollTop = el.scrollHeight;  // always follow latest output
@@ -102,7 +103,7 @@ async function sendWorkerMessage() {
   }
 }
 
-document.getElementById('workerChatInput').addEventListener('keydown', (e) => {
+document.getElementById('workerChatInput')?.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.metaKey) sendWorkerMessage();
   if (e.key === 'Escape') closeWorkerChat();
 });
