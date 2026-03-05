@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -181,12 +182,14 @@ class IdeasManager:
         if not idea:
             return None
         await self.update_idea(idea_id, status="evaluating")
+        _env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
         try:
             proc = await asyncio.create_subprocess_exec(
                 "claude", "-p", "--model", "haiku",
                 _EVAL_PROMPT + idea["content"],
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=_env,
             )
             stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
             raw = stdout.decode().strip()
@@ -227,11 +230,13 @@ class IdeasManager:
             history=history,
             message=message,
         )
+        _env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
         try:
             proc = await asyncio.create_subprocess_exec(
                 "claude", "-p", "--model", "haiku", prompt,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=_env,
             )
             stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
             ai_reply = stdout.decode().strip()
