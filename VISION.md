@@ -153,13 +153,13 @@ Adds what CLI can't provide:
 
 | Capability | What It Does |
 |---|---|
+| Ideas inbox | Async idea input, AI evaluation, one-click execute via start.sh |
 | Worker dashboard | Real-time status, logs, token bars per worker |
-| Task management | Dependency DAG visualization, preset cards, queue overview |
-| Loop control | Start/stop/pause, convergence sparklines, iteration history |
+| Task management | Preset cards, queue overview, add/run/delete tasks |
+| Process manager | Start/stop start.sh processes, view logs and reports |
 | Multi-project view | All sessions at a glance — queue depth, cost rate, health |
 | Settings panel | Zero-click autonomous run configuration |
 | GitHub integration | Webhooks (issue label → task), PR auto-creation |
-| Analytics | Success rate, cost breakdown, model usage distribution |
 
 **Role:** Monitoring + high-level configuration. NOT the daily workflow entry point (that's TUI). The cockpit answers "what's happening across all my projects?" — the TUI answers "get this done."
 
@@ -307,9 +307,9 @@ Address "serial feedback" pain point. Interface: **file-based annotation** (CLI-
 Transformed the orchestrator GUI from a developer debug panel into an AI SDE operating console — async idea collection, AI evaluation, process management, and unified single-page layout.
 
 **What was built:**
+- **Ideas-first layout** — Left panel (ideas inbox, 40%): input bar + AI-evaluated cards with Go button to execute via start.sh. Right panel (60%): tasks, workers, processes, history only
 - **Ideas (inline)** — async idea input, AI evaluation with inline expandable cards (click to expand eval + chat + actions), promote-to-TODO/VISION workflow, BRAINSTORM.md bidirectional sync
 - **Process manager** — start.sh lifecycle control from GUI: start/stop/view logs, ProcessPool tracks running processes, cross-project dashboard cards show active processes
-- **Unified layout** — Left panel (direction + terminal, 40%) + right panel (collapsible dashboard sections, 60%); no mode switching — all sections always visible via `<details>` elements
 - **Mobile responsive** — CSS media queries for 768px breakpoint, touch-friendly controls
 - **Patrol auto-schedule** — configurable interval in settings, runs cross-project scan in status_loop
 

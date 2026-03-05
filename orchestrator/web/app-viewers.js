@@ -261,8 +261,6 @@ function showToast(msg, isError = false) {
 }
 
 // ─── Utilities ───────────────────────────────────────────────────────────────
-function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
-
 function esc(s) {
   return String(s || '')
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
@@ -458,24 +456,6 @@ async function mergeAllDone() {
   } finally {
     if (btn) btn.disabled = false;
   }
-}
-
-// ─── Broadcast ───────────────────────────────────────────────────────────────
-
-async function broadcastAll() {
-  const input = document.getElementById('broadcastInput');
-  const msg = input?.value?.trim();
-  if (!msg) return;
-  const sid = activeSessionId;
-  try {
-    const r = await fetch(`/api/sessions/${sid}/workers/broadcast`, {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ message: msg }),
-    });
-    const d = await r.json();
-    showToast(d.count > 0 ? `Broadcast sent to ${d.count} worker${d.count!==1?'s':''}` : 'No running workers');
-    if (d.count > 0) input.value = '';
-  } catch(e) { showToast('Error: ' + e.message); }
 }
 
 async function generateAgentsMd() {

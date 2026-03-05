@@ -102,8 +102,6 @@ function toggleIdea(id) {
   }
 }
 
-// Alias for backward compat (WS handler uses selectIdea)
-function selectIdea(id) { toggleIdea(id); }
 
 async function _loadIdeaDetail(id) {
   const detail = document.getElementById(`idea-detail-${id}`);
