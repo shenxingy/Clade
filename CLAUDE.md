@@ -5,7 +5,7 @@
 - Frontend: N/A (orchestrator has vanilla JS UI but not the primary interface)
 - Backend: FastAPI (orchestrator/, port 8000) — optional, CLI layer works standalone
 - Test command: cd orchestrator && .venv/bin/python -m pytest tests/ -v
-- Verify command: cd orchestrator && python -m py_compile server.py session.py task_queue.py worker.py worker_tldr.py worker_review.py routes/tasks.py routes/workers.py
+- Verify command: cd orchestrator && python -m py_compile server.py session.py task_queue.py worker.py worker_tldr.py worker_review.py config.py github_sync.py ideas.py process_manager.py routes/tasks.py routes/workers.py routes/webhooks.py routes/ideas.py routes/process.py
 
 ## Features (Behavior Anchors)
 - install.sh: running `./install.sh` copies skills/hooks/scripts/keybindings to ~/.claude/ without errors
@@ -36,8 +36,8 @@ cd orchestrator && uvicorn server:app --reload
 # Run tests
 cd orchestrator && .venv/bin/python -m pytest tests/ -v
 
-# Syntax check
-cd orchestrator && python -m py_compile server.py session.py task_queue.py worker.py
+# Syntax check (all Python modules)
+cd orchestrator && python -m py_compile server.py session.py task_queue.py worker.py worker_tldr.py worker_review.py config.py github_sync.py ideas.py process_manager.py routes/tasks.py routes/workers.py routes/webhooks.py routes/ideas.py routes/process.py
 ```
 
 ## Architecture — Two Layers
@@ -53,11 +53,13 @@ Key modules (import DAG — leaf → root):
 
 ```
 config.py            ← leaf: constants, settings, utilities
+ideas.py             ← leaf: IdeasManager, async idea CRUD (no project imports)
+process_manager.py   ← leaf: ProcessPool, start.sh lifecycle (no project imports)
+worker_tldr.py       ← leaf: TLDR generation + scoring (no project imports)
+worker_review.py     ← leaf: oracle + PR review (no project imports)
     ↑
 github_sync.py       ← gh CLI wrappers (issues, push, sync)
 task_queue.py        ← SQLite-backed task CRUD
-worker_tldr.py       ← TLDR generation + scoring (leaf, no project imports)
-worker_review.py     ← oracle + PR review (leaf, no project imports)
     ↑
 worker.py            ← WorkerPool, SwarmManager
 session.py           ← ProjectSession, registry, status_loop
@@ -66,6 +68,8 @@ server.py            ← FastAPI app, remaining routes, router mounts
 routes/tasks.py      ← Task CRUD + bulk-action routes
 routes/workers.py    ← Worker control + inspection routes
 routes/webhooks.py   ← GitHub webhook handler
+routes/ideas.py      ← Ideas API routes (CRUD, evaluate, execute, promote)
+routes/process.py    ← Process manager API routes
 ```
 
 ### Key File Map

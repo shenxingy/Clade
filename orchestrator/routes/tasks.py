@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import shlex
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 
