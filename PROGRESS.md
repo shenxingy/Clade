@@ -1,6 +1,23 @@
 # Progress Log
 
 ---
+### 2026-03-05 — GUI Verification Pass
+
+**What was fixed:**
+- `IdeasManager._db()` used `await aiosqlite.connect()` then callers used `async with await self._db()` — double-open caused "threads can only be started once". Refactored to `@asynccontextmanager` pattern.
+- Missing `mkdir(parents=True)` in `_ensure_tables()` — DB parent directory not created, causing 500 on first Ideas API call.
+- Process section never rendered — selector `.dashboard-section.queue` didn't match new `.dash-section` class. Fixed to `.right-panel > .dash-section`.
+- Dead `toggleHistoryList()` with null deref on `#historyChevron` — removed, replaced `_historyExpanded` with `section.open` for native `<details>`.
+- Suggested goals appended to `<body>` tail (invisible) — `loopBar`/`loopPanel` IDs didn't exist. Fixed to `#loopSection`.
+- Commit message display off-by-one — `.slice(8,60)` → `.slice(7,60)`.
+- Missing `.badge.promoting` CSS class.
+
+**Lessons:**
+- **`aiosqlite.connect()` is NOT just a constructor** — `await aiosqlite.connect()` starts the background thread; `async with` on the result tries to start it again. Use `@asynccontextmanager` to wrap the full connect+yield+close lifecycle.
+- **After any HTML restructure, grep ALL JS for old class/ID selectors** — `.dashboard-section.queue`, `#historyChevron`, `#loopBar` all went stale when HTML switched to `<details class="dash-section">`.
+- **29/29 API endpoint test + 48 onclick binding audit** caught issues that code review alone missed.
+
+---
 ### 2026-03-04 — Unified Single-Page GUI Redesign
 
 **What was built:**
