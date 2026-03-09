@@ -1,6 +1,29 @@
 # Progress Log
 
 ---
+### 2026-03-09 — Comprehensive Code Review Pass
+
+**What was fixed:**
+- `app-viewers.js:319` — removed stale `loadIdeas()` call at boot. `app-viewers.js` loads before `app-ideas.js`, so the call always threw `ReferenceError` in the browser console. `app-ideas.js:476` already calls `loadIdeas()` at its own load time.
+- `task_queue.py` — added 6 section markers (`# ─── Task CRUD`, `Scheduling`, `Iteration Loops`, `Import from proposed-tasks.md`, `Cross-worker Messages`, `Interventions`, `Swarm Claiming`) for Grep-navigable structure.
+
+**What was clean:**
+- All 19 tests pass
+- All Python syntax checks pass
+- All shell syntax checks pass
+- File sizes all under 1500 lines (max: worker.py 1066)
+- No circular imports
+- XSS: all innerHTML uses esc() properly
+- No hardcoded secrets or credentials
+- No shell injection (shlex.quote + create_subprocess_exec used)
+- No bare except clauses
+- No deprecated asyncio patterns (all using create_task + lifespan)
+- requirements.txt has pinned versions
+
+**Lessons:**
+- **Script load order creates silent runtime errors**: `app-viewers.js` calling `loadIdeas()` at top level threw ReferenceError every page load, but ideas still worked because `app-ideas.js` re-called it. Boot-time function calls should only call functions defined in earlier-loaded scripts.
+
+---
 ### 2026-03-04 — Split Oversized Files (worker.py, server.py)
 
 **What was done:**
