@@ -251,6 +251,8 @@ class TaskQueue:
                 d[key] = []
         return d
 
+    # ─── Task CRUD ───────────────────────────────────────────────────────────
+
     async def list(self) -> list[dict]:
         await self._ensure_db()
         async with aiosqlite.connect(str(self._db_path)) as db:
@@ -347,6 +349,8 @@ class TaskQueue:
                 row = await cur.fetchone()
         return self._row_to_dict(row) if row else None
 
+    # ─── Scheduling ──────────────────────────────────────────────────────────
+
     async def get_schedule(self) -> dict | None:
         await self._ensure_db()
         async with aiosqlite.connect(str(self._db_path)) as db:
@@ -367,6 +371,8 @@ class TaskQueue:
                     (scheduled_at, int(triggered)),
                 )
             await db.commit()
+
+    # ─── Iteration Loops ─────────────────────────────────────────────────────
 
     async def get_loop(self) -> dict | None:
         await self._ensure_db()
@@ -455,6 +461,8 @@ class TaskQueue:
                     await db.commit()
             return await self.get_loop()
 
+    # ─── Import from proposed-tasks.md ───────────────────────────────────────
+
     async def import_from_proposed(self, content: str | None = None) -> tuple[list[dict], dict]:
         """Parse ===TASK=== blocks and add to queue, skipping duplicates.
         Returns (added_tasks, skip_counts) where skip_counts maps status→count."""
@@ -537,6 +545,8 @@ class TaskQueue:
                 added.append(task)
         return added, skip_counts
 
+    # ─── Cross-worker Messages ────────────────────────────────────────────────
+
     async def send_message(self, to_task_id: str, content: str, from_task_id: str | None = None) -> dict:
         await self._ensure_db()
         msg = {"to_task_id": to_task_id, "from_task_id": from_task_id,
@@ -570,6 +580,8 @@ class TaskQueue:
             )
             await db.commit()
             return cur.rowcount
+
+    # ─── Interventions ───────────────────────────────────────────────────────
 
     async def record_intervention(
         self, failure_pattern: str, correction: str,
@@ -626,6 +638,8 @@ class TaskQueue:
                 "SELECT * FROM interventions ORDER BY created_at DESC LIMIT ?", (limit,)
             ) as cur:
                 return [dict(r) for r in await cur.fetchall()]
+
+    # ─── Swarm Claiming ──────────────────────────────────────────────────────
 
     async def claim_next_pending(self, done_ids: set[str]) -> dict | None:
         """Atomically claim the next pending task whose deps are met.
