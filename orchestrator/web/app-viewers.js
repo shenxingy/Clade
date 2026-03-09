@@ -316,7 +316,6 @@ async function refreshUsage() {
 // ─── Boot ────────────────────────────────────────────────────────────────────
 loadSessions();
 refreshUsage();
-loadIdeas();
 setInterval(refreshUsage, 60000);
 
 // ─── Project switcher ────────────────────────────────────────────────────────
