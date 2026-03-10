@@ -65,6 +65,18 @@ if [[ -n "$BRANCH" ]]; then
   CONTEXT="${CONTEXT}Branch: ${BRANCH}\n"
 fi
 
+# SSH server / host info
+if [[ -n "$SSH_CONNECTION" ]]; then
+  CLIENT_IP="${SSH_CONNECTION%% *}"
+  if [[ -n "$CLIENT_IP" ]]; then
+    CONTEXT="${CONTEXT}\nHost: ${HOSTNAME} (SSH from ${CLIENT_IP})\n"
+  else
+    CONTEXT="${CONTEXT}\nHost: ${HOSTNAME} (SSH)\n"
+  fi
+elif [[ -n "$HOSTNAME" ]]; then
+  CONTEXT="${CONTEXT}\nHost: ${HOSTNAME} (local)\n"
+fi
+
 # Running docker containers (if docker is available)
 if command -v docker &>/dev/null; then
   DOCKER=$(docker ps --format '{{.Names}}: {{.Status}}' 2>/dev/null | head -5)
