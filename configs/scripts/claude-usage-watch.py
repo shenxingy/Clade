@@ -14,7 +14,7 @@ Themes (~/.claude/.statusline-theme):  circles | bird | plant
 slt            — cycle mode (symbol → percent → off → symbol)
 slt theme bird — set theme
 """
-import json, time, urllib.request
+import json, locale, os, time, urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -33,6 +33,7 @@ TARGET_RATE  = 0.95   # 95% weekly utilization = "excellent"
 
 THEMES = {
     "circles": ["○",  "◑",  "●",  "◉" ],
+    "plain":   ["--", "-",  "+",  "++"],
     "bird":    ["🥚", "🐣", "🐥", "🦢"],
     "moon":    ["🌑", "🌙", "🌛", "🌝"],
     "weather": ["🌩️", "🌧️", "🌤️", "🌈"],
@@ -42,6 +43,36 @@ THEMES = {
     "ocean":   ["🫧", "🐠", "🐬", "🐋"],
     "dragon":  ["🥚", "🦎", "🐉", "👑"],
 }
+
+# Themes that use only ASCII — always safe to render
+_ASCII_THEMES = {"plain"}
+# Themes that use Unicode symbols (no emoji) — safe on UTF-8 locales
+_UNICODE_THEMES = {"circles"} | _ASCII_THEMES
+
+
+def _emoji_supported() -> bool:
+    """Return False if the environment is unlikely to render emoji correctly."""
+    # Explicit opt-out via env var (e.g. set in .zshrc for problem terminals)
+    if os.environ.get("CLAUDE_SLT_ASCII") == "1":
+        return False
+    # Locale must be UTF-8 for any multi-byte character
+    enc = locale.getpreferredencoding(False).upper().replace("-", "")
+    if enc not in ("UTF8",):
+        return False
+    # $COLORTERM=truecolor / 24bit indicates a modern terminal with emoji support
+    colorterm = os.environ.get("COLORTERM", "").lower()
+    if colorterm in ("truecolor", "24bit"):
+        return True
+    # $TERM_PROGRAM: known terminals with reliable emoji support
+    term_prog = os.environ.get("TERM_PROGRAM", "")
+    if term_prog in ("iTerm.app", "WezTerm", "Hyper", "vscode", "Tabby"):
+        return True
+    # $TERM: basic terminals typically lack emoji font fallback
+    term = os.environ.get("TERM", "")
+    if term in ("dumb", "vt100", "xterm"):
+        return False
+    # Default: assume capable (avoids false negatives on most modern setups)
+    return True
 
 def _mode():
     try:
@@ -53,9 +84,13 @@ def _mode():
 def _theme():
     try:
         t = THEME_FILE.read_text().strip()
-        return t if t in THEMES else "circles"
+        t = t if t in THEMES else "circles"
     except Exception:
-        return "circles"
+        t = "circles"
+    # If the chosen theme uses emoji but the terminal can't render it, fall back
+    if t not in _UNICODE_THEMES and not _emoji_supported():
+        return "plain"
+    return t
 
 def _symbol(delta):
     levels = THEMES[_theme()]

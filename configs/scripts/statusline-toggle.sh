@@ -30,6 +30,7 @@ _def() {
 
 #        name      e0   e1   e2   e3    label0          label1         label2         label3          desc
 _def circles  "○"  "◑"  "●"  "◉"  "far behind"    "a bit behind" "on track"     "crushing it"  "classic circles"
+_def plain    "--" "-"  "+"  "++" "far behind"    "a bit behind" "on track"     "crushing it"  "ASCII compat (no emoji)"
 _def bird     "🥚" "🐣" "🐥" "🦢" "egg"           "hatching"     "duckling"     "swan!"        "ugly duckling → swan"
 _def moon     "🌑" "🌙" "🌛" "🌝" "new moon"      "crescent"     "half moon"    "full moon!"   "new → full moon"
 _def weather  "🌩️" "🌧️" "🌤️" "🌈" "thunderstorm"  "rainy"        "clearing up"  "rainbow!"     "storm → rainbow"
@@ -39,7 +40,7 @@ _def rocket   "🌍" "🚀" "🛸" "⭐" "grounded"      "launched"     "in orbi
 _def ocean    "🫧" "🐠" "🐬" "🐋" "just a ripple" "swimming"     "diving deep"  "whale mode"   "ripple → whale"
 _def dragon   "🥚" "🦎" "🐉" "👑" "egg"           "lizard"       "dragon"       "dragon king!" "egg → dragon king"
 
-VALID_THEMES=(circles bird moon weather mood coffee rocket ocean dragon)
+VALID_THEMES=(circles plain bird moon weather mood coffee rocket ocean dragon)
 
 _get_mode() {
   local m; m=$(cat "$MODE_FILE" 2>/dev/null)
