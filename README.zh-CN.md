@@ -4,7 +4,7 @@
 
 **把 Claude Code 从聊天助手变成自主编码系统。**
 
-一个安装脚本。十个 hooks、五个 agents、十五个 skills、一个安全守卫，以及一个纠正学习循环 — 协同工作，让 Claude 编码更好、自动捕获错误、可以在你睡觉时无人值守地跑通宵。
+一个安装脚本。十个 hooks、五个 agents、二十个 skills、一个安全守卫，以及一个纠正学习循环 — 协同工作，让 Claude 编码更好、自动捕获错误、可以在你睡觉时无人值守地跑通宵。
 
 ## 目录
 
@@ -93,6 +93,13 @@ cd claude-code-kit
 | `/review-pr` | AI 审查 PR diff，发布结构化审查评论 |
 | `/merge-pr` | Squash merge PR 并清理分支 |
 | `/brief` | 早晨简报 — 过夜 commits、队列状态、最近教训、下一步 3 个 TODO |
+| `/start` | 自主会话启动器 — 晨间简报、通宵运行、跨项目巡检、自动调研 |
+| `/start --run` | 完整自主会话：规划 → 循环 → 验证 → 重复，直到完成/阻塞/预算耗尽 |
+| `/start --goal FILE` | 定向运行：使用目标文件（跳过 orchestrate，直接进入 loop） |
+| `/start --patrol` | 跨项目扫描所有 `~/projects/` 中有 CLAUDE.md 的项目（仅报告，不启动 workers） |
+| `/start --research` | 基于项目 TODO/GOALS/BRAINSTORM 上下文自动调研 |
+| `/start --resume` | 恢复中断的自主会话 |
+| `/start --stop` | 写入停止信号，优雅结束运行中的会话 |
 
 ## 什么时候用什么
 
@@ -181,6 +188,15 @@ cd claude-code-kit
 - 分析所有未提交的改动，按模块拆分成逻辑清晰的 commits
 - 默认推送；`--no-push` 跳过推送，`--dry-run` 仅预览拆分计划
 
+**`/start`** — 自主会话入口：
+- 默认（无参数）：晨间简报 — 安全只读，显示发生了什么、下一步做什么
+- `--run`：完整自主会话 — 编排任务、并行执行、验证结果、循环直到完成
+- `--goal goal.md`：定向模式 — 跳过 orchestrate，直接用目标文件驱动 loop
+- `--patrol`：扫描所有项目，找出问题但不做改动
+- `--research`：从 TODO/GOALS/BRAINSTORM 自动生成调研主题
+- 预算（`--budget 10`）、时间（`--hours 8`）和迭代次数（`--max-iter 5`）限制确保安全
+- `--resume` 恢复中断的会话；`--stop` 优雅停止
+
 **`slt`** — 控制状态栏的配额进度指示器：
 - `slt` 循环切换模式：symbol → percent → number → off
 - `slt theme` 列出全部 9 个 emoji 主题；`slt theme <名称>` 切换
@@ -209,14 +225,30 @@ claude-code-kit/
 ├── uninstall.sh                       # 干净卸载
 ├── orchestrator/                      # 并行 agent 编排 Web UI
 │   ├── start.sh                       # 启动脚本（自动安装依赖、打开浏览器）
-│   ├── server.py                      # FastAPI 服务（所有 REST + WebSocket 路由）
+│   ├── server.py                      # FastAPI 服务 — 路由、WebSocket、生命周期
 │   ├── session.py                     # ProjectSession、SessionRegistry、状态循环
-│   ├── worker.py                      # WorkerPool、SwarmManager、评分、oracle
+│   ├── worker.py                      # WorkerPool、SwarmManager、任务执行
+│   ├── worker_tldr.py                 # TLDR 生成 + 任务评分（叶节点）
+│   ├── worker_review.py               # Oracle + PR 审查（叶节点）
 │   ├── task_queue.py                  # SQLite 任务 CRUD
 │   ├── config.py                      # 全局设置、模型别名、工具函数
 │   ├── github_sync.py                 # GitHub API 封装（issues、push）
+│   ├── ideas.py                       # IdeasManager — 异步想法 CRUD + AI 评估
+│   ├── process_manager.py             # ProcessPool — start.sh 生命周期控制
+│   ├── routes/
+│   │   ├── tasks.py                   # 任务 CRUD + 批量操作路由
+│   │   ├── workers.py                 # Worker 控制 + 检查路由
+│   │   ├── webhooks.py                # GitHub webhook 处理
+│   │   ├── ideas.py                   # Ideas API 路由
+│   │   └── process.py                 # 进程管理 API 路由
 │   ├── requirements.txt               # Python 依赖
-│   └── web/index.html                 # 单文件 SPA（聊天 + 仪表盘）
+│   └── web/
+│       ├── index.html                 # SPA 外壳
+│       ├── app-core.js                # 核心状态、WebSocket、会话标签
+│       ├── app-dashboard.js           # 任务、workers、进程卡片
+│       ├── app-viewers.js             # 日志查看器、用量条、历史
+│       ├── app-ideas.js               # Ideas 收件箱 UI、评估卡片
+│       └── styles.css                 # 样式表
 ├── configs/
 │   ├── settings-hooks.json            # Hook 定义（合并到 settings.json）
 │   ├── hooks/
@@ -243,7 +275,6 @@ claude-code-kit/
 │   │   ├── loop/                      # /loop — 目标驱动自主改进循环
 │   │   ├── sync/                      # /sync — 更新 TODO + PROGRESS
 │   │   ├── commit/                    # /commit — 按模块拆分提交
-│   │   ├── review/                    # /review — 技术债务审查
 │   │   ├── audit/                     # /audit — 纠正规则审查
 │   │   ├── research/                  # /research — 深度调研
 │   │   ├── model-research/            # /model-research — 模型数据更新
@@ -253,15 +284,26 @@ claude-code-kit/
 │   │   ├── incident/                  # /incident — 事故响应
 │   │   ├── review-pr/                 # /review-pr — PR 审查
 │   │   ├── merge-pr/                  # /merge-pr — PR 合并
-│   │   └── brief/                     # /brief — 早晨简报
-│   ├── scripts/
-│   │   ├── committer.sh               # 多 agent 安全提交（禁止 git add .）
-│   │   ├── run-tasks.sh               # 串行任务执行器
-│   │   ├── run-tasks-parallel.sh      # 并行执行器（git worktrees）
-│   │   ├── statusline-toggle.sh       # slt — 切换状态栏模式/主题
-│   │   └── claude-usage-watch.py      # 配额进度指示器
-│   └── commands/
-│       └── review.md                  # /review 命令规格
+│   │   ├── brief/                     # /brief — 早晨简报
+│   │   ├── start/                     # /start — 自主会话启动器
+│   │   ├── verify/                    # /verify — 行为锚点验证（内部使用）
+│   │   ├── slt/                       # slt — 状态栏切换控制
+│   │   └── frontend-design/           # /frontend-design — 生产级 UI 生成
+│   └── scripts/
+│       ├── committer.sh               # 多 agent 安全提交（禁止 git add .）
+│       ├── start.sh                   # 自主会话编排器（规划 → 循环 → 验证）
+│       ├── loop-runner.sh             # 内部循环执行器（主管 + 并行 workers）
+│       ├── run-tasks.sh               # 串行任务执行器
+│       ├── run-tasks-parallel.sh      # 并行执行器（git worktrees）
+│       ├── statusline-toggle.sh       # slt — 切换状态栏模式/主题
+│       ├── claude-usage-watch.py      # 配额进度指示器
+│       ├── scan-ci-failures.sh        # 任务工厂：CI 失败扫描
+│       ├── scan-coverage.sh           # 任务工厂：测试覆盖率缺口
+│       ├── scan-deps.sh               # 任务工厂：依赖更新
+│       ├── scan-health.sh             # 任务工厂：代码健康（lint、TODO、大文件）
+│       ├── scan-verify-issues.sh      # 任务工厂：验证问题批量反馈
+│       ├── scan-todos.sh              # TODO 扫描器 CLI
+│       └── tmux-dispatch.sh           # tmux 并行调度器
 ├── templates/
 │   ├── settings.json                  # settings.json 模板（不含密钥）
 │   ├── CLAUDE.md                      # Agent Ground Rules 模板（部署到 ~/.claude/）
