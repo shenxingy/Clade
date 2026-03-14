@@ -25,6 +25,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["tasks"])
 
 
+# ─── Task CRUD ───────────────────────────────────────────────────────────────
+
 @router.get("/api/tasks")
 async def list_tasks(s: ProjectSession = Depends(_resolve_session)):
     return await s.task_queue.list()
@@ -66,6 +68,8 @@ async def import_proposed(
             asyncio.create_task(_gh_create_issue(t, s.project_dir, s.task_queue._db_path))
     return {"imported": len(tasks), "tasks": tasks, "skipped": skip_counts}
 
+
+# ─── Bulk Actions ────────────────────────────────────────────────────────────
 
 @router.post("/api/tasks/start-all")
 async def start_all(s: ProjectSession = Depends(_resolve_session)):
@@ -176,6 +180,8 @@ async def merge_all_done(s: ProjectSession = Depends(_resolve_session)):
     return {"created": created, "merged": merged, "results": results}
 
 
+# ─── Per-Task Operations ─────────────────────────────────────────────────────
+
 # NOTE: This parameterized route must come AFTER all static /api/tasks/<name> routes
 # (import-proposed, start-all, retry-failed, merge-all-done) or FastAPI will
 # match those paths as task_id and return 404.
@@ -237,6 +243,8 @@ async def set_task_depends_on(
     await s.task_queue.update(task_id, depends_on=depends_on)
     return {"ok": True, "depends_on": depends_on}
 
+
+# ─── Cross-Worker Messaging ───────────────────────────────────────────────────
 
 @router.post("/api/tasks/{task_id}/messages")
 async def send_task_message(task_id: str, body: dict, s: ProjectSession = Depends(_resolve_session)):

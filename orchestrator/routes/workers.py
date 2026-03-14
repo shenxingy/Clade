@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["workers"])
 
 
+# ─── Worker Lifecycle ────────────────────────────────────────────────────────
+
 @router.get("/api/workers")
 async def list_workers(s: ProjectSession = Depends(_resolve_session)):
     return [w.to_dict() for w in s.worker_pool.all()]
@@ -71,6 +73,8 @@ async def message_worker(
     )
     return {"new_worker_id": new_worker.id, "new_task_id": new_task["id"]}
 
+
+# ─── Session-Scoped Operations ───────────────────────────────────────────────
 
 @router.post("/api/sessions/{session_id}/workers/broadcast")
 async def broadcast_to_workers(session_id: str, body: dict):
@@ -151,6 +155,8 @@ async def get_code_tldr(session_id: str):
         tldr = "(error generating code TLDR)"
     return {"tldr": tldr or "(no code files found)"}
 
+
+# ─── Inspection ──────────────────────────────────────────────────────────────
 
 @router.get("/api/interventions")
 async def list_interventions(s: ProjectSession = Depends(_resolve_session)):
