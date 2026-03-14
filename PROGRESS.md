@@ -1,6 +1,33 @@
 # Progress Log
 
 ---
+### 2026-03-13 — Review Pass: /start skill + README + section markers
+
+**What was fixed:**
+- Created `configs/skills/start/SKILL.md` — `/start` was fully implemented (start.sh 994 lines + prompt.md + morning-brief.md) but missing SKILL.md registration, so Claude Code didn't expose it as a slash command
+- Created `configs/skills/verify/SKILL.md` — internal skill used by start.sh, also missing registration
+- README.md + README.zh-CN.md: updated repo structure tree to reflect actual codebase:
+  - Added 6 missing orchestrator Python modules (worker_tldr, worker_review, ideas, process_manager, routes/)
+  - Added 5 missing web files (was listed as "single-file SPA" but is 6 files)
+  - Added 3 missing skills (start, slt, frontend-design) to tree
+  - Removed nonexistent `review/` skill and `commands/` directory from tree
+  - Added 7 missing scripts (scan-*, tmux-dispatch, scan-todos)
+  - Updated skill count 15→20 in tagline (both EN/ZH)
+- Added `/start` command documentation: Available Commands table (8 entries), When to Use What section, repo structure
+- Added section markers to `routes/tasks.py` (4 sections) and `routes/workers.py` (3 sections)
+
+**What was clean:**
+- All 19 tests pass, all Python syntax checks pass, all shell syntax checks pass
+- All files under 1500 lines (max: worker.py 1066)
+- No circular imports, no security issues, no dead code
+- XSS: all innerHTML properly escaped with esc()
+- No hardcoded secrets or credentials
+
+**Lessons:**
+- **SKILL.md is the registration mechanism** — without it, a skill's prompt.md and supporting scripts exist but Claude Code won't offer it as `/skill-name`. Always create SKILL.md when adding a new skill.
+- **README repo structure drifts silently** — after splitting files (server.py→routes/, index.html→web/), the repo structure section was never updated. Each file split should include a README update.
+
+---
 ### 2026-03-09 — Comprehensive Code Review Pass
 
 **What was fixed:**
