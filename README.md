@@ -6,7 +6,7 @@
 
 **Turn Claude Code from a chat assistant into an autonomous coding system.**
 
-One install script. Ten hooks, five agents, fifteen skills, a safety guardian, and a correction learning loop — all working together so Claude codes better, catches its own mistakes, and can run unattended overnight while you sleep.
+One install script. Ten hooks, five agents, twenty skills, a safety guardian, and a correction learning loop — all working together so Claude codes better, catches its own mistakes, and can run unattended overnight while you sleep.
 
 > If this saves you time, a star helps others find it — and if something breaks, [open an issue](https://github.com/shenxingy/claude-code-kit/issues/new/choose).
 
@@ -95,6 +95,13 @@ All checks are **opt-in by detection** — if the tool isn't installed or the pr
 | `/review-pr` | AI reviews a PR diff and posts a structured review comment |
 | `/merge-pr` | Squash-merge a PR and clean up the branch |
 | `/brief` | Morning briefing — overnight commits, queue status, recent lessons, next 3 TODO items |
+| `/start` | Autonomous session launcher — morning briefing, overnight runs, cross-project patrol, auto-research |
+| `/start --run` | Full autonomous session: plan → loop → verify → repeat until done/blocked/budget |
+| `/start --goal FILE` | Targeted run using a goal file (skips orchestrate, goes straight to loop) |
+| `/start --patrol` | Cross-project scan of all `~/projects/` with CLAUDE.md (report only, no workers) |
+| `/start --research` | Auto-research based on project TODO/GOALS/BRAINSTORM context |
+| `/start --resume` | Resume an interrupted autonomous session |
+| `/start --stop` | Write stop sentinel to gracefully end a running session |
 
 ## When to Use What
 
@@ -186,6 +193,15 @@ All checks are **opt-in by detection** — if the tool isn't installed or the pr
 - Analyzes all uncommitted changes and splits them into logical commits by module
 - Pushes by default; use `--no-push` to skip, `--dry-run` to preview the plan
 
+**`/start`** — the entry point for autonomous sessions:
+- Default (no args): morning briefing — safe, read-only, shows what happened and what to do next
+- `--run`: full autonomous session — orchestrates tasks, runs workers in parallel, verifies results, repeats
+- `--goal goal.md`: targeted mode — skip orchestrate, use a goal file directly with the loop
+- `--patrol`: scan all your projects for issues without making changes
+- `--research`: auto-generate research topics from your TODO/GOALS/BRAINSTORM
+- Budget (`--budget 10`), time (`--hours 8`), and iteration (`--max-iter 5`) limits for safety
+- Resume interrupted sessions with `--resume`; stop gracefully with `--stop`
+
 **`slt`** — to control the quota pace indicator in the status line:
 - `slt` cycles through modes: symbol → percent → number → off
 - `slt theme` lists all 9 emoji themes; `slt theme <name>` sets one
@@ -212,14 +228,30 @@ claude-code-kit/
 ├── uninstall.sh                       # Clean removal
 ├── orchestrator/                      # Web UI for parallel agent orchestration
 │   ├── start.sh                       # Launch script (installs deps, opens browser)
-│   ├── server.py                      # FastAPI app — all REST + WebSocket routes
+│   ├── server.py                      # FastAPI app — routes, WebSocket, lifespan
 │   ├── session.py                     # ProjectSession, SessionRegistry, status loop
-│   ├── worker.py                      # WorkerPool, SwarmManager, scoring, oracle
+│   ├── worker.py                      # WorkerPool, SwarmManager, task execution
+│   ├── worker_tldr.py                 # TLDR generation + task scoring (leaf)
+│   ├── worker_review.py               # Oracle + PR review (leaf)
 │   ├── task_queue.py                  # SQLite-backed task CRUD
 │   ├── config.py                      # Global settings, model aliases, utilities
 │   ├── github_sync.py                 # GitHub API wrappers (issues, push)
+│   ├── ideas.py                       # IdeasManager — async idea CRUD + AI eval
+│   ├── process_manager.py             # ProcessPool — start.sh lifecycle control
+│   ├── routes/
+│   │   ├── tasks.py                   # Task CRUD + bulk-action routes
+│   │   ├── workers.py                 # Worker control + inspection routes
+│   │   ├── webhooks.py                # GitHub webhook handler
+│   │   ├── ideas.py                   # Ideas API routes
+│   │   └── process.py                 # Process manager API routes
 │   ├── requirements.txt               # Python dependencies
-│   └── web/index.html                 # Single-file SPA (chat + dashboard)
+│   └── web/
+│       ├── index.html                 # SPA shell
+│       ├── app-core.js                # Core state, WebSocket, session tabs
+│       ├── app-dashboard.js           # Tasks, workers, process cards
+│       ├── app-viewers.js             # Log viewer, usage bar, history
+│       ├── app-ideas.js               # Ideas inbox UI, evaluation cards
+│       └── styles.css                 # Stylesheet
 ├── configs/
 │   ├── settings-hooks.json            # Hook definitions (merged into settings.json)
 │   ├── hooks/
@@ -246,7 +278,6 @@ claude-code-kit/
 │   │   ├── loop/                      # /loop — goal-driven autonomous improvement loop
 │   │   ├── sync/                      # /sync — update TODO + PROGRESS
 │   │   ├── commit/                    # /commit — split commits by module
-│   │   ├── review/                    # /review — tech debt review
 │   │   ├── audit/                     # /audit — corrections/rules.md cleanup
 │   │   ├── research/                  # /research — deep research + docs synthesis
 │   │   ├── model-research/            # /model-research — model data update
@@ -256,15 +287,26 @@ claude-code-kit/
 │   │   ├── incident/                  # /incident — incident response + postmortem
 │   │   ├── review-pr/                 # /review-pr — AI PR review
 │   │   ├── merge-pr/                  # /merge-pr — squash-merge + branch cleanup
-│   │   └── brief/                     # /brief — morning briefing
-│   ├── scripts/
-│   │   ├── committer.sh               # Safe commit for parallel agents (no git add .)
-│   │   ├── run-tasks.sh               # Serial task runner
-│   │   ├── run-tasks-parallel.sh      # Parallel runner (git worktrees)
-│   │   ├── statusline-toggle.sh       # slt — cycle status line modes/themes
-│   │   └── claude-usage-watch.py      # Quota pace indicator for status line
-│   └── commands/
-│       └── review.md                  # /review tech debt command spec
+│   │   ├── brief/                     # /brief — morning briefing
+│   │   ├── start/                     # /start — autonomous session launcher
+│   │   ├── verify/                    # /verify — behavior anchor verification (internal)
+│   │   ├── slt/                       # slt — statusline-toggle control
+│   │   └── frontend-design/           # /frontend-design — production-grade UI generation
+│   └── scripts/
+│       ├── committer.sh               # Safe commit for parallel agents (no git add .)
+│       ├── start.sh                   # Autonomous session orchestrator (plan → loop → verify)
+│       ├── loop-runner.sh             # Inner loop runner (supervisor + parallel workers)
+│       ├── run-tasks.sh               # Serial task runner
+│       ├── run-tasks-parallel.sh      # Parallel runner (git worktrees)
+│       ├── statusline-toggle.sh       # slt — cycle status line modes/themes
+│       ├── claude-usage-watch.py      # Quota pace indicator for status line
+│       ├── scan-ci-failures.sh        # Task factory: CI failure scanner
+│       ├── scan-coverage.sh           # Task factory: test coverage gaps
+│       ├── scan-deps.sh               # Task factory: dependency updates
+│       ├── scan-health.sh             # Task factory: code health (lint, TODOs, large files)
+│       ├── scan-verify-issues.sh      # Task factory: batch feedback from verify issues
+│       ├── scan-todos.sh              # TODO scanner CLI
+│       └── tmux-dispatch.sh           # tmux-based parallel dispatcher
 ├── templates/
 │   ├── settings.json                  # settings.json template (no secrets)
 │   ├── CLAUDE.md                      # Agent Ground Rules template (auto-deployed to ~/.claude/)
