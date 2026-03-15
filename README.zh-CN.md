@@ -4,7 +4,7 @@
 
 **把 Claude Code 从聊天助手变成自主编码系统。**
 
-一个安装脚本。十个 hooks、五个 agents、二十个 skills、一个安全守卫，以及一个纠正学习循环 — 协同工作，让 Claude 编码更好、自动捕获错误、可以在你睡觉时无人值守地跑通宵。
+一个安装脚本。十个 hooks、五个 agents、二十三个 skills、一个安全守卫，以及一个纠正学习循环 — 协同工作，让 Claude 编码更好、自动捕获错误、可以在你睡觉时无人值守地跑通宵。
 
 ## 目录
 
@@ -90,6 +90,7 @@ cd claude-code-kit
 | `/research` | 对某个主题深度调研 — 网络搜索、综合信息、保存到 `docs/research/` |
 | `/map` | 生成代码库地图 — 文件归属、模块依赖图、入口点 |
 | `/incident` | 事故响应模式 — 诊断生产问题、写复盘、添加后续任务到 TODO |
+| `/minimax-usage` | 查看 Minimax Coding Plan 用量 — 由 `/usage` 自动检测调用 |
 | `/review-pr` | AI 审查 PR diff，发布结构化审查评论 |
 | `/merge-pr` | Squash merge PR 并清理分支 |
 | `/brief` | 早晨简报 — 过夜 commits、队列状态、最近教训、下一步 3 个 TODO |
@@ -287,6 +288,7 @@ claude-code-kit/
 │   │   ├── brief/                     # /brief — 早晨简报
 │   │   ├── start/                     # /start — 自主会话启动器
 │   │   ├── verify/                    # /verify — 行为锚点验证（内部使用）
+│   │   ├── minimax-usage/              # /minimax-usage — Minimax 用量查看
 │   │   ├── slt/                       # slt — 状态栏切换控制
 │   │   └── frontend-design/           # /frontend-design — 生产级 UI 生成
 │   └── scripts/
@@ -302,6 +304,8 @@ claude-code-kit/
 │       ├── scan-deps.sh               # 任务工厂：依赖更新
 │       ├── scan-health.sh             # 任务工厂：代码健康（lint、TODO、大文件）
 │       ├── scan-verify-issues.sh      # 任务工厂：验证问题批量反馈
+│       ├── minimax-usage.sh            # Minimax Coding Plan 用量查看
+│       ├── usage.sh                   # 自动检测订阅类型 + 显示用量
 │       ├── scan-todos.sh              # TODO 扫描器 CLI
 │       └── tmux-dispatch.sh           # tmux 并行调度器
 ├── templates/

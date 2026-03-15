@@ -6,7 +6,7 @@
 
 **Turn Claude Code from a chat assistant into an autonomous coding system.**
 
-One install script. Ten hooks, five agents, twenty skills, a safety guardian, and a correction learning loop — all working together so Claude codes better, catches its own mistakes, and can run unattended overnight while you sleep.
+One install script. Ten hooks, five agents, twenty-three skills, a safety guardian, and a correction learning loop — all working together so Claude codes better, catches its own mistakes, and can run unattended overnight while you sleep.
 
 > If this saves you time, a star helps others find it — and if something breaks, [open an issue](https://github.com/shenxingy/claude-code-kit/issues/new/choose).
 
@@ -92,6 +92,7 @@ All checks are **opt-in by detection** — if the tool isn't installed or the pr
 | `/research` | Deep research on a topic — web search, synthesize, save findings to `docs/research/` |
 | `/map` | Generate a codebase map — file ownership, module graph, entry points — useful for onboarding new agents |
 | `/incident` | Incident response mode — diagnose a production issue, write a postmortem, add follow-up tasks to TODO |
+| `/minimax-usage` | Check Minimax Coding Plan usage — auto-detected by `/usage` wrapper |
 | `/review-pr` | AI reviews a PR diff and posts a structured review comment |
 | `/merge-pr` | Squash-merge a PR and clean up the branch |
 | `/brief` | Morning briefing — overnight commits, queue status, recent lessons, next 3 TODO items |
@@ -290,6 +291,7 @@ claude-code-kit/
 │   │   ├── brief/                     # /brief — morning briefing
 │   │   ├── start/                     # /start — autonomous session launcher
 │   │   ├── verify/                    # /verify — behavior anchor verification (internal)
+│   │   ├── minimax-usage/              # /minimax-usage — Minimax Coding Plan usage checker
 │   │   ├── slt/                       # slt — statusline-toggle control
 │   │   └── frontend-design/           # /frontend-design — production-grade UI generation
 │   └── scripts/
@@ -305,6 +307,8 @@ claude-code-kit/
 │       ├── scan-deps.sh               # Task factory: dependency updates
 │       ├── scan-health.sh             # Task factory: code health (lint, TODOs, large files)
 │       ├── scan-verify-issues.sh      # Task factory: batch feedback from verify issues
+│       ├── minimax-usage.sh            # Minimax Coding Plan usage checker
+│       ├── usage.sh                   # Auto-detect subscription + show usage
 │       ├── scan-todos.sh              # TODO scanner CLI
 │       └── tmux-dispatch.sh           # tmux-based parallel dispatcher
 ├── templates/
