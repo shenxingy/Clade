@@ -298,6 +298,17 @@ async function refreshUsage() {
     const d = await res.json();
     const paceEl = document.getElementById('usagePace');
     const detailEl = document.getElementById('usageDetail');
+
+    // Handle Minimax provider
+    if (d.provider === 'minimax' && d.minimax) {
+      const mm = d.minimax;
+      const sign = d.pace.delta >= 0 ? '+' : '';
+      paceEl.textContent = `${d.pace.symbol} ${sign}${d.pace.delta}% (${d.pace.remaining})`;
+      detailEl.textContent = `Minimax: ${mm.used}/${mm.total} prompts (${d.pace.usage_pct}%)`;
+      return;
+    }
+
+    // Default: Claude Code usage
     if (d.pace) {
       const sign = d.pace.delta >= 0 ? '+' : '';
       paceEl.textContent = `${d.pace.symbol} ${sign}${d.pace.delta}% (${d.pace.remaining})`;
@@ -527,6 +538,12 @@ async function loadSettings() {
     if (elGhLabel) elGhLabel.value = s.github_issues_label ?? 'orchestrator';
     const elWebhook = document.getElementById('settingWebhook');
     if (elWebhook) elWebhook.value = s.notification_webhook ?? '';
+    const elUsageProvider = document.getElementById('settingUsageProvider');
+    if (elUsageProvider) elUsageProvider.value = s.usage_provider ?? 'claude';
+    const elMinimaxApiKey = document.getElementById('settingMinimaxApiKey');
+    if (elMinimaxApiKey) elMinimaxApiKey.value = s.minimax_api_key ?? '';
+    const elMinimaxGroupId = document.getElementById('settingMinimaxGroupId');
+    if (elMinimaxGroupId) elMinimaxGroupId.value = s.minimax_group_id ?? '';
     const elPatrolSched = document.getElementById('settingPatrolSchedule');
     const elResearchSched = document.getElementById('settingResearchSchedule');
     if (elPatrolSched) elPatrolSched.value = s.patrol_schedule ?? '';
@@ -577,6 +594,9 @@ function saveSettings() {
           github_issues_sync: document.getElementById('settingGhSync')?.checked ?? false,
           github_issues_label: document.getElementById('settingGhLabel')?.value || 'orchestrator',
           notification_webhook: document.getElementById('settingWebhook')?.value || '',
+          usage_provider: document.getElementById('settingUsageProvider')?.value || 'claude',
+          minimax_api_key: document.getElementById('settingMinimaxApiKey')?.value || '',
+          minimax_group_id: document.getElementById('settingMinimaxGroupId')?.value || '',
           patrol_schedule: document.getElementById('settingPatrolSchedule')?.value || '',
           research_schedule: document.getElementById('settingResearchSchedule')?.value || '',
         }),

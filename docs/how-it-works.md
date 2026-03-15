@@ -90,6 +90,8 @@ Claude auto-selects agents. Haiku agents are fast and cheap for mechanical check
 
 **`/merge-pr`** squash-merges a PR and deletes the feature branch.
 
+**`/minimax-usage`** checks your Minimax Coding Plan usage. Configure `MINIMAX_CODING_API_KEY` and `MINIMAX_GROUP_ID` environment variables first.
+
 ## Correction Learning Loop
 
 The most distinctive feature. Here's how it works:

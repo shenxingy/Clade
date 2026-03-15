@@ -80,6 +80,9 @@ _SETTINGS_DEFAULTS = {
     "patrol_schedule": "",
     "patrol_auto_ideas": False,
     "research_schedule": "",
+    "usage_provider": "claude",
+    "minimax_api_key": "",
+    "minimax_group_id": "",
 }
 
 
