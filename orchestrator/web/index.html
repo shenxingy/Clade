@@ -167,6 +167,25 @@
       </span>
     </label>
   </details>
+  <div class="settings-group-label">Usage Provider</div>
+  <label class="settings-row">
+    <span>Provider</span>
+    <select id="settingUsageProvider" style="width:120px">
+      <option value="claude">Claude Code</option>
+      <option value="minimax">Minimax</option>
+    </select>
+  </label>
+  <details class="settings-advanced">
+    <summary class="settings-group-label" style="cursor:pointer">Minimax API</summary>
+    <label class="settings-row">
+      <span>API Key</span>
+      <input type="password" id="settingMinimaxApiKey" placeholder="sk-..." style="width:180px">
+    </label>
+    <label class="settings-row">
+      <span>Group ID</span>
+      <input type="text" id="settingMinimaxGroupId" placeholder="group_xxx" style="width:180px">
+    </label>
+  </details>
 </div>
 
 <!-- ─── Tab Bar ──────────────────────────────────────────────────────────────── -->
