@@ -18,6 +18,7 @@ from fastapi import Body, Depends, FastAPI, HTTPException, Query, WebSocket, Web
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+import httpx
 
 from config import (
     BASE_DIR,
@@ -673,6 +674,60 @@ async def ws_status(websocket: WebSocket, session: str | None = Query(default=No
 # ─── REST: Usage ──────────────────────────────────────────────────────────────
 
 
+async def _get_minimax_usage() -> dict | None:
+    """Fetch usage from Minimax Coding Plan API."""
+    # Prefer settings, fall back to env vars
+    api_key = GLOBAL_SETTINGS.get("minimax_api_key", "") or os.environ.get("MINIMAX_CODING_API_KEY", "")
+    group_id = GLOBAL_SETTINGS.get("minimax_group_id", "") or os.environ.get("MINIMAX_GROUP_ID", "")
+
+    if not api_key or not group_id:
+        return None
+
+    try:
+        url = f"https://platform.minimax.io/v1/api/openplatform/coding_plan/remains?GroupId={group_id}"
+        headers = {
+            "accept": "application/json",
+            "authorization": f"Bearer {api_key}",
+            "referer": "https://platform.minimax.io/user-center/payment/coding-plan",
+        }
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(url, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+
+            # API returns: { "model_remains": [{ "current_interval_total_count": 4500, "current_interval_usage_count": 3087 }] }
+            # IMPORTANT: current_interval_usage_count = REMAINS (not used!)
+            model_remains = data.get("model_remains", [])
+            if model_remains:
+                total = model_remains[0].get("current_interval_total_count", 0)
+                remains = model_remains[0].get("current_interval_usage_count", 0)
+            else:
+                total = data.get("data", {}).get("TOTAL", 0)
+                remains = data.get("data", {}).get("REMAINS", 0)
+
+            used = total - remains
+            usage_pct = (used / total * 100) if total > 0 else 0
+
+            # Calculate pace (assuming monthly billing)
+            now = datetime.now()
+            days_in_month = (date(now.year, now.month % 12 + 1, 1) - timedelta(days=1)).day
+            day_of_month = now.day
+            elapsed_pct = (day_of_month / days_in_month) * 100
+
+            return {
+                "provider": "minimax",
+                "total": total,
+                "used": used,
+                "remaining": remains,
+                "usage_pct": round(usage_pct, 1),
+                "elapsed_pct": round(elapsed_pct, 1),
+                "remaining_days": days_in_month - day_of_month,
+                "last_updated": now.isoformat(),
+            }
+    except Exception:
+        return None
+
+
 def _get_usage() -> dict:
     stats_file = Path.home() / ".claude" / "stats-cache.json"
     today_str = date.today().isoformat()
@@ -791,6 +846,30 @@ def _get_usage() -> dict:
 
 @app.get("/api/usage")
 async def get_usage():
+    provider = GLOBAL_SETTINGS.get("usage_provider", "claude")
+
+    if provider == "minimax":
+        minimax_data = await _get_minimax_usage()
+        if minimax_data:
+            # Build simplified response for Minimax
+            return {
+                "provider": "minimax",
+                "pace": {
+                    "delta": round(minimax_data["usage_pct"] - minimax_data["elapsed_pct"] * 0.95, 1),
+                    "symbol": "💻",
+                    "remaining": f"{minimax_data['remaining_days']}d",
+                    "usage_pct": minimax_data["usage_pct"],
+                    "elapsed_pct": minimax_data["elapsed_pct"],
+                },
+                "minimax": {
+                    "total": minimax_data["total"],
+                    "used": minimax_data["used"],
+                    "remaining": minimax_data["remaining"],
+                },
+                "last_updated": minimax_data["last_updated"],
+            }
+
+    # Default: Claude Code usage
     return await asyncio.to_thread(_get_usage)
 
 # ─── REST: GitHub Issues Sync ─────────────────────────────────────────────────
