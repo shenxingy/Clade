@@ -1,13 +1,13 @@
 ---
-name: usage
+name: minimax-usage
 description: Check your API usage quota (auto-detects Minimax vs Claude Code)
 argument-hint: ''
 user_invocable: true
 ---
 
-# Usage Skill
+# Minimax Usage Skill
 
-Check your API usage quota. Auto-detects Minimax vs Claude Code subscription.
+Check your API usage quota. Auto-detects Minimax or Claude Code subscription.
 
 ## Auto-Detection
 
@@ -17,7 +17,7 @@ Check your API usage quota. Auto-detects Minimax vs Claude Code subscription.
 ## Usage
 
 ```
-/usage
+/minimax-usage
 ```
 
 Shows usage %, pace indicator, and remaining quota.
