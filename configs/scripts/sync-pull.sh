@@ -20,8 +20,9 @@ source "$SYNC_CONFIG"
 
 cd "$SYNC_DIR"
 
-# Only pull from remote in GitHub mode — NFS is already live
-if [[ "$SYNC_BACKEND" == "github" ]]; then
+# Pull from remote if available (GitHub mode, or NFS with GitHub backup remote)
+HAS_REMOTE=$(git remote 2>/dev/null | grep -c origin || true)
+if [[ "$SYNC_BACKEND" == "github" ]] || [[ "$HAS_REMOTE" -gt 0 ]]; then
   git pull --rebase --autostash --quiet 2>/dev/null || {
     echo "sync-pull: git pull failed (offline?), using local cache" >&2
   }

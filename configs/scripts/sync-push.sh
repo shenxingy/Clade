@@ -42,10 +42,10 @@ HAS_REMOTE=$(git remote 2>/dev/null | grep -c origin || true)
 if [[ "$SYNC_BACKEND" == "github" ]] || [[ "$HAS_REMOTE" -gt 0 ]]; then
   # Pull --rebase first to integrate any remote changes
   git pull --rebase --autostash --quiet 2>/dev/null || {
-    # Conflict — keep both versions
+    # Conflict — abort rebase, merge with ours strategy
     git rebase --abort 2>/dev/null || true
-    git merge --no-edit -s recursive -X ours 2>/dev/null || true
-    # Log conflict for awareness
+    REMOTE_BRANCH=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo "origin/master")
+    git merge --no-edit -X ours "$REMOTE_BRANCH" 2>/dev/null || true
     echo "[$(date)] sync conflict on $(hostname) — merged with ours strategy" \
       >> "$CLAUDE_DIR/.sync-conflicts.log"
   }
