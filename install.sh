@@ -226,6 +226,36 @@ for arg in "$@"; do
   fi
 done
 
+# ─── 14. Sync prompt (if not already handled by --sync flag) ─────────────────
+
+_sync_requested=false
+for arg in "$@"; do
+  [[ "$arg" == "--sync" || "$arg" == --sync=* ]] && _sync_requested=true && break
+done
+
+if [[ "$_sync_requested" == false && ! -f "$CLAUDE_DIR/.sync-config" ]]; then
+  # Detect available backend
+  _sync_available=""
+  if [[ -d "$HOME/shared-nfs" ]]; then
+    _sync_available="NFS detected at ~/shared-nfs"
+  elif command -v gh &>/dev/null && gh auth status &>/dev/null 2>&1; then
+    _sync_available="gh CLI detected"
+  fi
+
+  if [[ -n "$_sync_available" ]]; then
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "Sync available ($_sync_available)"
+    echo "Enable memory + skills sync across machines? [y/N] "
+    read -r _sync_reply 2>/dev/null || _sync_reply="n"
+    if [[ "$_sync_reply" =~ ^[Yy]$ ]]; then
+      bash "$SCRIPT_DIR/configs/scripts/sync-setup.sh"
+    else
+      echo "  Skipped. Run './install.sh --sync' anytime to enable."
+    fi
+  fi
+fi
+
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "Installation complete!"
 echo ""
