@@ -1,13 +1,23 @@
 #!/usr/bin/env bash
-# memory-sync.sh — Auto-push after memory file writes (PostToolUse, async)
+# memory-sync.sh — Auto-push after writes to synced ~/.claude/ directories (PostToolUse, async)
 #
-# Triggers sync-push.sh when Claude writes/edits a file under:
-#   ~/.claude/memory/           (global memory)
-#   ~/.claude/projects/*/memory/ (project memory)
+# Triggers sync-push.sh when Claude writes/edits a file under any synced dir:
+#   ~/.claude/memory/             (global memory)
+#   ~/.claude/projects/*/memory/  (project memory)
+#   ~/.claude/skills/             (skills)
+#   ~/.claude/hooks/              (hooks)
+#   ~/.claude/scripts/            (scripts)
+#   ~/.claude/corrections/        (corrections)
 #
 # Non-blocking: runs sync-push in background.
 
 set -euo pipefail
+
+CLAUDE_DIR="$HOME/.claude"
+SYNC_CONFIG="$CLAUDE_DIR/.sync-config"
+
+# Skip entirely if sync not configured
+[[ -f "$SYNC_CONFIG" ]] || exit 0
 
 INPUT=$(cat)
 FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
@@ -17,19 +27,23 @@ FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
 # Expand ~ to $HOME
 FILE_PATH="${FILE_PATH/#\~/$HOME}"
 
-CLAUDE_DIR="$HOME/.claude"
+# ─── Check if file is under a synced directory ───────────────────────────────
 
-# ─── Check if file is under a memory directory ───────────────────────────────
+is_synced_path=false
 
-is_memory_path=false
+for synced_dir in memory skills hooks scripts corrections; do
+  if [[ "$FILE_PATH" == "$CLAUDE_DIR/$synced_dir/"* ]]; then
+    is_synced_path=true
+    break
+  fi
+done
 
-if [[ "$FILE_PATH" == "$CLAUDE_DIR/memory/"* ]]; then
-  is_memory_path=true
-elif [[ "$FILE_PATH" =~ ^$CLAUDE_DIR/projects/[^/]+/memory/ ]]; then
-  is_memory_path=true
+# Also catch project memory paths
+if [[ "$FILE_PATH" =~ ^$CLAUDE_DIR/projects/[^/]+/memory/ ]]; then
+  is_synced_path=true
 fi
 
-[[ "$is_memory_path" == false ]] && exit 0
+[[ "$is_synced_path" == false ]] && exit 0
 
 # ─── Trigger async push ──────────────────────────────────────────────────────
 
