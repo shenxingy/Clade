@@ -203,6 +203,29 @@ echo "  Written .kit-source-dir + .kit-checksum for stale-script detection"
 # ─── 12. Summary ─────────────────────────────────────────────────────
 
 echo ""
+# ─── 13. Optional: set up sync (--sync flag) ─────────────────────────────────
+
+for arg in "$@"; do
+  if [[ "$arg" == "--sync" ]]; then
+    echo ""
+    echo "Setting up sync..."
+    bash "$SCRIPT_DIR/configs/scripts/sync-setup.sh"
+    break
+  fi
+  if [[ "$arg" == --sync=* ]]; then
+    SYNC_BACKEND="${arg#--sync=}"
+    echo ""
+    echo "Setting up sync (backend: $SYNC_BACKEND)..."
+    if [[ "$SYNC_BACKEND" == nfs:* ]]; then
+      NFS_PATH="${SYNC_BACKEND#nfs:}"
+      bash "$SCRIPT_DIR/configs/scripts/sync-setup.sh" --nfs "$NFS_PATH"
+    else
+      bash "$SCRIPT_DIR/configs/scripts/sync-setup.sh" "--$SYNC_BACKEND"
+    fi
+    break
+  fi
+done
+
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "Installation complete!"
 echo ""
@@ -218,4 +241,9 @@ echo "  1. source ~/.zshrc   (or ~/.bashrc) to activate shell aliases"
 echo "  2. Start a new Claude Code session to activate all hooks"
 echo "  3. Use 'cc' to launch Claude Code in fully autonomous mode"
 echo "  4. Run ./orchestrator/start.sh to open the Orchestrator Web UI"
+echo ""
+echo "Optional — enable memory sync across machines:"
+echo "  ./install.sh --sync                       # auto-detect NFS or GitHub"
+echo "  ./install.sh --sync=nfs:/path/to/nfs      # specify NFS path"
+echo "  ./install.sh --sync=github                # force GitHub backend"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
