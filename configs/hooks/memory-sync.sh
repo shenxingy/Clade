@@ -20,27 +20,31 @@ SYNC_CONFIG="$CLAUDE_DIR/.sync-config"
 [[ -f "$SYNC_CONFIG" ]] || exit 0
 
 INPUT=$(cat)
-FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
-
-[[ -z "$FILE_PATH" ]] && exit 0
-
-# Expand ~ to $HOME
-FILE_PATH="${FILE_PATH/#\~/$HOME}"
-
-# ─── Check if file is under a synced directory ───────────────────────────────
+TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
 
 is_synced_path=false
 
-for synced_dir in memory skills hooks scripts corrections; do
-  if [[ "$FILE_PATH" == "$CLAUDE_DIR/$synced_dir/"* ]]; then
-    is_synced_path=true
-    break
-  fi
-done
+if [[ "$TOOL_NAME" == "Write" || "$TOOL_NAME" == "Edit" ]]; then
+  # ─── Write/Edit: check file_path ─────────────────────────────────────────
+  FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
+  [[ -z "$FILE_PATH" ]] && exit 0
+  FILE_PATH="${FILE_PATH/#\~/$HOME}"
 
-# Also catch project memory paths
-if [[ "$FILE_PATH" =~ ^$CLAUDE_DIR/projects/[^/]+/memory/ ]]; then
-  is_synced_path=true
+  for synced_dir in memory skills hooks scripts corrections; do
+    if [[ "$FILE_PATH" == "$CLAUDE_DIR/$synced_dir/"* ]]; then
+      is_synced_path=true; break
+    fi
+  done
+  if [[ "$FILE_PATH" =~ ^$CLAUDE_DIR/projects/[^/]+/memory/ ]]; then
+    is_synced_path=true
+  fi
+
+elif [[ "$TOOL_NAME" == "Bash" ]]; then
+  # ─── Bash: check if command touches a synced directory (covers rm/mv/mkdir) ─
+  COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
+  if echo "$COMMAND" | grep -qE "(~/.claude|$CLAUDE_DIR)/(skills|memory|hooks|scripts|corrections|projects/[^/]+/memory)"; then
+    is_synced_path=true
+  fi
 fi
 
 [[ "$is_synced_path" == false ]] && exit 0
