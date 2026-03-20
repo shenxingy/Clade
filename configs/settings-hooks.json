@@ -10,6 +10,13 @@
             "command": "~/.claude/hooks/session-context.sh",
             "timeout": 10,
             "statusMessage": "Loading project context..."
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/scripts/sync-pull.sh",
+            "async": true,
+            "timeout": 30,
+            "statusMessage": "Syncing memory..."
           }
         ]
       }
@@ -54,6 +61,12 @@
             "command": "~/.claude/hooks/edit-shadow-detector.sh",
             "async": true,
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/memory-sync.sh",
+            "async": true,
+            "timeout": 10
           }
         ]
       }
