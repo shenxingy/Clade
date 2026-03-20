@@ -47,7 +47,7 @@ SYNC_REPO_URL=""
 if [[ "$MODE" == "--nfs" ]]; then
   [[ -z "$NFS_PATH" ]] && echo "ERROR: --nfs requires a path argument" && exit 1
   [[ ! -d "$NFS_PATH" ]] && echo "ERROR: NFS path does not exist: $NFS_PATH" && exit 1
-  SYNC_DIR="$NFS_PATH/dotfiles/claude"
+  SYNC_DIR="$NFS_PATH/claude-dotfiles"
   SYNC_BACKEND="nfs"
   # Also set up GitHub remote as backup if gh is available
   if command -v gh &>/dev/null && gh auth status &>/dev/null 2>&1; then
@@ -57,7 +57,7 @@ if [[ "$MODE" == "--nfs" ]]; then
     if ! gh repo view "$GITHUB_USER/claude-dotfiles" &>/dev/null 2>&1; then
       gh repo create "$GITHUB_USER/claude-dotfiles" \
         --private \
-        --description "Claude Code dotfiles sync (skills, memory, hooks, scripts)" 2>/dev/null || true
+        --description "Claude Code dotfiles sync (skills, memory, hooks, scripts)" || true
       echo "  Created: github.com/$GITHUB_USER/claude-dotfiles"
     fi
   fi
@@ -82,11 +82,7 @@ elif [[ "$MODE" == "--github" ]]; then
     echo "Creating private GitHub repo: $GITHUB_USER/$REPO_NAME ..."
     gh repo create "$GITHUB_USER/$REPO_NAME" \
       --private \
-      --description "Claude Code dotfiles sync (skills, memory, hooks, scripts)" \
-      --confirm 2>/dev/null || \
-    gh repo create "$GITHUB_USER/$REPO_NAME" \
-      --private \
-      --description "Claude Code memory + dotfiles sync"
+      --description "Claude Code dotfiles sync (skills, memory, hooks, scripts)"
     echo "  Created: github.com/$GITHUB_USER/$REPO_NAME"
   else
     echo "  Found existing repo: github.com/$GITHUB_USER/$REPO_NAME"
