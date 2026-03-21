@@ -161,7 +161,7 @@ _check_log_mtime() {
   fi
   local now file_mtime age_sec age_min
   now=$(date +%s)
-  file_mtime=$(stat --format=%Y "$logfile" 2>/dev/null) || {
+  file_mtime=$(stat -f %m "$logfile" 2>/dev/null || stat --format=%Y "$logfile" 2>/dev/null) || {
     echo "DEGRADED: cannot stat log"
     return
   }
