@@ -64,6 +64,14 @@ if [[ -f "$STATS_FILE" ]] && command -v jq &>/dev/null; then
     || rm -f "$TMP_STATS"
 fi
 
+# Determine target rules.md: project-local if in a real project, else global
+RULES_PATH="$HOME/.claude/corrections/rules.md"
+RULES_LIMIT=50
+if [[ "$PROJECT" != "$HOME" ]] && [[ -f "$PROJECT/CLAUDE.md" || -d "$PROJECT/.git" ]]; then
+  RULES_PATH="$PROJECT/.claude/corrections/rules.md"
+  RULES_LIMIT=100
+fi
+
 # Remind Claude to extract a rule with root-cause analysis
 CONTEXT="A user correction was detected in the prompt above. After addressing the user's request:
 1. Extract the lesson (what was wrong, what's correct)
@@ -73,11 +81,11 @@ CONTEXT="A user correction was detected in the prompt above. After addressing th
    - async-race: stale closure, TOCTOU, zombie process, missing lock
    - security: unsanitized input, leaked secrets, missing auth
    - deploy-gap: source ≠ deployed, config ≠ loaded, defined ≠ called
-3. Append a rule to ~/.claude/corrections/rules.md in this format:
+3. Append a rule to $RULES_PATH in this format:
    - [YYYY-MM-DD] <domain> (<root-cause>): <do this> instead of <not this>
    Example: - [2026-02-25] imports (settings-disconnect): Use @/ path aliases and verify tsconfig paths are set — not bare relative paths that break on move
 4. In one sentence: how could you have caught this BEFORE the user pointed it out? (e.g., 'I should have checked cross-platform compat when using shell builtins')
-5. Keep rules.md under 50 lines — remove outdated rules if needed"
+5. Keep rules.md under $RULES_LIMIT lines — remove outdated rules if needed"
 
 jq -n --arg ctx "$CONTEXT" \
   '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":$ctx}}'
