@@ -85,6 +85,9 @@ All checks are **opt-in by detection** — if the tool isn't installed or the pr
 | `/loop --status` | Show current loop state (iteration, convergence, worker results) |
 | `/loop --stop` | Stop a running loop |
 | `/audit` | Audit `corrections/rules.md` — find rules to promote to CLAUDE.md, remove redundant or contradictory entries |
+| `/pipeline` | Snapshot health check of all registered background pipelines — shows HEALTHY / DEGRADED / DEAD per project |
+| `/pipeline <name>` | Same, filtered to projects matching `<name>` |
+| `/pipeline watch` | Show command to run continuous watch mode (alerts on status changes via Telegram) |
 | `/model-research` | Search web for latest Claude model data, show what changed |
 | `/model-research --apply` | Same + update model guide, session context, and batch-tasks configs |
 | `/orchestrate` | Switch to orchestrator mode — ask clarifying questions, decompose goal into tasks, write `proposed-tasks.md` (used by the Web UI) |
@@ -293,6 +296,7 @@ claude-code-kit/
 │   │   ├── verify/                    # /verify — behavior anchor verification (internal)
 │   │   ├── minimax-usage/              # /minimax-usage — Minimax Coding Plan usage checker
 │   │   ├── slt/                       # slt — statusline-toggle control
+│   │   ├── pipeline/                  # /pipeline — health check for background pipelines
 │   │   └── frontend-design/           # /frontend-design — production-grade UI generation
 │   └── scripts/
 │       ├── committer.sh               # Safe commit for parallel agents (no git add .)
@@ -302,6 +306,8 @@ claude-code-kit/
 │       ├── run-tasks-parallel.sh      # Parallel runner (git worktrees)
 │       ├── statusline-toggle.sh       # slt — cycle status line modes/themes
 │       ├── claude-usage-watch.py      # Quota pace indicator for status line
+│       ├── pipeline-check.sh          # Pipeline health check engine (used by /pipeline and watch)
+│       ├── pipeline-watch.sh          # Continuous pipeline monitor — alerts on DEAD/DEGRADED
 │       ├── scan-ci-failures.sh        # Task factory: CI failure scanner
 │       ├── scan-coverage.sh           # Task factory: test coverage gaps
 │       ├── scan-deps.sh               # Task factory: dependency updates
