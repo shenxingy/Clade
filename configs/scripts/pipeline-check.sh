@@ -105,27 +105,36 @@ for line in lines:
         check_lines.append(line)
 
 # Group check_lines into individual check blocks
+# Detect list-item indent dynamically from the first "  - " line
 blocks = []
 current = []
+list_indent = None
 for line in check_lines:
-    # A new check starts with "  - name:" (2-space indent then "- ")
-    if re.match(r'^\s{2}-\s', line) and current:
-        blocks.append(current)
-        current = [line]
-    elif re.match(r'^\s{2}-\s', line):
-        current = [line]
+    m = re.match(r'^(\s+)-\s', line)
+    if m:
+        indent_len = len(m.group(1))
+        if list_indent is None:
+            list_indent = indent_len
+        if indent_len == list_indent:
+            if current:
+                blocks.append(current)
+            current = [line]
+        else:
+            current.append(line)
     else:
         current.append(line)
 if current:
     blocks.append(current)
 
+prop_indent = (list_indent or 2) + 2  # properties are indented 2 more than the list marker
 for block in blocks:
     print('CHECK_START')
     # Flatten the block: first line is "  - name: foo", rest are "    key: val"
     for line in block:
-        # Strip leading "  - " or "    " (4 spaces for subsequent lines)
-        stripped = re.sub(r'^\s{2}-\s', '', line)
-        stripped = re.sub(r'^\s{4}', '', stripped)
+        # Strip leading "  - " or property indent
+        stripped = re.sub(r'^\s+\-\s', '', line, count=1)
+        if stripped == line:  # no "- " found, strip property indent
+            stripped = re.sub(r'^\s{' + str(prop_indent) + r'}', '', line)
         stripped = stripped.rstrip()
         if not stripped:
             continue
@@ -152,7 +161,7 @@ _check_log_mtime() {
   fi
   local now file_mtime age_sec age_min
   now=$(date +%s)
-  file_mtime=$(python3 -c "import os; print(int(os.path.getmtime('$logfile')))" 2>/dev/null) || {
+  file_mtime=$(stat --format=%Y "$logfile" 2>/dev/null) || {
     echo "DEGRADED: cannot stat log"
     return
   }
@@ -193,10 +202,17 @@ _run_check() {
       ;;
 
     port)
-      if curl -sf --max-time 3 "http://localhost:${unit_or_port_or_pattern}" &>/dev/null; then
-        echo "HEALTHY|port $unit_or_port_or_pattern responding"
+      # target is either a port number (http://localhost:PORT) or a full URL
+      local url
+      if [[ "$unit_or_port_or_pattern" =~ ^https?:// ]]; then
+        url="$unit_or_port_or_pattern"
       else
-        echo "DEAD|port $unit_or_port_or_pattern not responding"
+        url="http://localhost:${unit_or_port_or_pattern}"
+      fi
+      if curl -sf --max-time 3 "$url" &>/dev/null; then
+        echo "HEALTHY|$url responding"
+      else
+        echo "DEAD|$url not responding"
       fi
       ;;
 

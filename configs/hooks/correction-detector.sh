@@ -50,11 +50,15 @@ jq -n \
 
 # ─── Auto-increment domain stats ──────────────────────────────────────
 STATS_FILE="$CORRECTIONS_DIR/stats.json"
+# Initialize stats.json on first run
+if [[ ! -f "$STATS_FILE" ]] && command -v jq &>/dev/null; then
+  echo '{"frontend":0,"backend":0,"schema":0,"ml":0,"ios":0,"android":0,"systems":0,"academic":0,"unknown":0}' > "$STATS_FILE"
+fi
 if [[ -f "$STATS_FILE" ]] && command -v jq &>/dev/null; then
-  # Detect domain from recent changes in this project
+  # Detect domain from recent changes in this project (avoid subshell so DOMAIN is set in parent)
   if [[ -d "$PROJECT" ]]; then
     source "$LIBDIR/domain-detect.sh" 2>/dev/null
-    (cd "$PROJECT" && detect_domain) 2>/dev/null
+    pushd "$PROJECT" >/dev/null 2>&1 && detect_domain 2>/dev/null; popd >/dev/null 2>&1
   fi
   DOMAIN="${DOMAIN:-unknown}"
   # Atomically increment the counter for this domain
