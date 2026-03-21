@@ -78,7 +78,7 @@ get_task_prompt() {
         count == n && in_body && /^===TASK===$/ { exit }
         count == n && in_body { print }
         count > n { exit }
-    ' "$TASK_FILE" | sed -e '1{/^$/d}' -e '${/^$/d}'
+    ' "$TASK_FILE" | awk 'NF{p=1} p'
 }
 
 TOTAL=$(count_tasks)

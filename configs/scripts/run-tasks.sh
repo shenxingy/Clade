@@ -27,6 +27,19 @@
 set -uo pipefail
 # NOTE: -e intentionally omitted — we handle errors explicitly in the main loop
 
+# Cross-platform timeout (macOS: gtimeout from coreutils)
+_timeout() {
+  if command -v gtimeout &>/dev/null; then
+    gtimeout "$@"
+  elif command -v timeout &>/dev/null; then
+    timeout "$@"
+  else
+    # No timeout available, run without
+    shift  # remove the timeout duration arg
+    "$@"
+  fi
+}
+
 TASK_FILE="${1:?Usage: run-tasks.sh <task-file> [--dry-run|--safe|--keep-logs]}"
 MODE="${2:-}"
 LOG_DIR="logs/claude-tasks"
@@ -118,7 +131,7 @@ get_task_prompt() {
     count == n && in_body && /^===TASK===$/ { exit }
     count == n && in_body { print }
     count > n { exit }
-  ' "$TASK_FILE" | sed -e '1{/^$/d}' -e '${/^$/d}'
+  ' "$TASK_FILE" | awk 'NF{p=1} p'
 }
 
 get_task_name() {
@@ -420,7 +433,7 @@ PROMPT
 
   local analysis=""
   if command -v claude &>/dev/null; then
-    analysis=$(timeout 90s claude -p --model haiku --dangerously-skip-permissions < "$af" 2>/dev/null \
+    analysis=$(_timeout 90s claude -p --model haiku --dangerously-skip-permissions < "$af" 2>/dev/null \
       || echo "(analysis unavailable)")
   fi
   rm -f "$af"
@@ -447,7 +460,7 @@ run_claude_task() {
   # Write prompt and runner script to temp files (avoids CLAUDE_FLAGS quoting issues)
   local pf runner
   pf=$(mktemp /tmp/claude-task-XXXXXX)
-  runner=$(mktemp /tmp/claude-runner-XXXXXX.sh)
+  runner=$(mktemp /tmp/claude-runner-XXXXXX)
   cat > "$pf"   # read prompt from stdin
   # Use stream-json for real-time output (--verbose alone buffers until exit, lost on kill)
   printf '#!/usr/bin/env bash\ncd "%s" || exit 1\nexec claude -p --model "%s" %s --verbose --output-format stream-json\n' \
