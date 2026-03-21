@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Cross-platform sed -i (macOS needs '' after -i)
+_sed_i() {
+  if [[ "$(uname)" == "Darwin" ]]; then
+    sed -i '' "$@"
+  else
+    sed -i "$@"
+  fi
+}
+
 # ─── Usage ───────────────────────────────────────────────────────────────────
 usage() {
     cat <<'EOF'
@@ -128,7 +137,13 @@ while true; do
     # COUNTER_FILE holds the next available index; .lock is the lock target.
     task_idx=$(
         {
-            flock -x 9
+            if command -v flock &>/dev/null; then
+                flock -x 9
+            else
+                # macOS fallback: mkdir-based atomic lock
+                while ! mkdir "${COUNTER_FILE}.lockdir" 2>/dev/null; do sleep 0.05; done
+                trap 'rmdir "${COUNTER_FILE}.lockdir" 2>/dev/null' EXIT
+            fi
             current=$(cat "$COUNTER_FILE")
             if [[ "$current" -gt "$TOTAL" ]]; then
                 echo ""
@@ -162,8 +177,8 @@ while true; do
 done
 WORKER_TMPL
 
-sed -i "s|@WORK_DIR@|${WORK_DIR}|g" "$WORKER_SCRIPT"
-sed -i "s|@TOTAL@|${TOTAL}|g"       "$WORKER_SCRIPT"
+_sed_i "s|@WORK_DIR@|${WORK_DIR}|g" "$WORKER_SCRIPT"
+_sed_i "s|@TOTAL@|${TOTAL}|g"       "$WORKER_SCRIPT"
 chmod +x "$WORKER_SCRIPT"
 
 # ─── Sequential fallback ──────────────────────────────────────────────────────
