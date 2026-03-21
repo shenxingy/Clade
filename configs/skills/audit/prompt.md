@@ -78,8 +78,13 @@ For CONTRADICT rules:
 
 ### Step 5: Update audit timestamp
 
+Touch the `.last-audit` file in the same directory as `RULES_FILE`. For example, if `RULES_FILE` is `.claude/corrections/rules.md`, run:
 ```bash
-touch $(dirname RULES_FILE)/.last-audit
+touch .claude/corrections/.last-audit
+```
+If `RULES_FILE` is `~/.claude/corrections/rules.md`, run:
+```bash
+touch ~/.claude/corrections/.last-audit
 ```
 
 ### Step 6: Show summary

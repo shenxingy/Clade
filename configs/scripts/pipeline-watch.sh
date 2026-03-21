@@ -68,14 +68,14 @@ _state_get() {
     echo ""
     return
   fi
-  python3 -c "
+  python3 - "$STATE_FILE" "$key" <<'PYEOF' 2>/dev/null || echo ""
 import json, sys
 try:
-    data = json.load(open('$STATE_FILE'))
-    print(data.get('${key}', {}).get('status', ''))
+    data = json.load(open(sys.argv[1]))
+    print(data.get(sys.argv[2], {}).get('status', ''))
 except Exception:
     print('')
-" 2>/dev/null || echo ""
+PYEOF
 }
 
 # Write/update a status entry in state JSON
@@ -141,7 +141,7 @@ Time: ${timestamp}"
 _run_cycle() {
   local check_output prev_status new_status project pipeline detail key
 
-  check_output=$(bash "$CHECK_SCRIPT" "$FILTER" 2>/dev/null) || true
+  check_output=$(bash "$CHECK_SCRIPT" ${FILTER:+"$FILTER"} 2>/dev/null) || true
 
   if [[ -z "$check_output" ]]; then
     return
