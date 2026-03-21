@@ -1,0 +1,50 @@
+# pipeline.yml — Pipeline health check definitions for this project
+#
+# Place this file at: PROJECT/.claude/pipeline.yml
+#
+# Check types:
+#   systemd  — systemctl --user is-active <unit>
+#   port     — HTTP GET http://localhost:<port> (success = healthy)
+#   process  — pgrep -f "<pattern>" (found = healthy)
+#   logfile  — check log file mtime (stale = degraded)
+#
+# For systemd and process checks: if a "log" field is also present,
+# the log mtime is checked as well — alive process + stale log = DEGRADED.
+
+schema_version: 1
+project_name: deepfake-platform
+
+checks:
+  # systemd service check
+  - name: api-server
+    type: systemd
+    unit: deepfake-api.service
+    log: /var/log/deepfake/api.log
+    log_max_age_minutes: 30
+    restart_cmd: "systemctl --user start deepfake-api.service"
+
+  # HTTP port liveness check
+  - name: api-http
+    type: port
+    port: 8080
+
+  # Background worker via process pattern
+  - name: celery-worker
+    type: process
+    pattern: "celery -A deepfake worker"
+    log: /var/log/deepfake/worker.log
+    log_max_age_minutes: 10
+    restart_cmd: "systemctl --user start deepfake-worker.service"
+
+  # Log freshness check (useful for cron jobs or pipelines that write output)
+  - name: inference-pipeline
+    type: logfile
+    log: /var/log/deepfake/inference.log
+    log_max_age_minutes: 60
+    restart_cmd: "bash ~/projects/deepfake-platform/scripts/restart-inference.sh"
+
+  # Another process check without a log
+  - name: redis
+    type: process
+    pattern: "redis-server"
+    restart_cmd: "systemctl --user start redis"

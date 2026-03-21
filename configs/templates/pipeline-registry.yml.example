@@ -1,0 +1,10 @@
+# pipeline-registry.yml — List of projects with pipeline.yml definitions
+#
+# Each entry is an absolute path to a project directory.
+# pipeline-check.sh reads PROJECT/.claude/pipeline.yml from each path.
+#
+# Copy to: ~/.claude/pipeline-registry.yml
+
+projects:
+  - ~/projects/deepfake-platform
+  - ~/projects/my-other-project
