@@ -1,6 +1,32 @@
 # Progress Log
 
 ---
+### 2026-03-21 — macOS Compatibility Pass + Comprehensive Review
+
+**What was fixed:**
+- Merged PR #5 (Waaangjl) — macOS compat for 7 scripts: `_sed_i`, `_timeout`, bash 4 self-upgrade, `flock`→`mkdir` fallback, `stat`/`readlink`/`grep -oP` fixes
+- `tmux-dispatch.sh:177-178` — `sed -i` not using `_sed_i` helper (broke on macOS)
+- `tmux-dispatch.sh:141` — worker template `flock` with no macOS fallback (workers crash on macOS)
+- `start.sh` — added `_timeout` helper; replaced 8× bare `timeout` with `_timeout`
+- `start.sh` — replaced 7× `date -Iseconds` (GNU-only) with `date +"%Y-%m-%dT%H:%M:%S%z"`
+- `scan-verify-issues.sh:38` — `date -Iseconds` → portable format
+- `verify-task-completed.sh:59` — `date -Iseconds` → portable format
+- `tests/test-loop.sh:420,620` — `date -Iseconds` → portable format
+- `tests/test-loop.sh:374` — `grep -oP` (Perl regex, not on macOS) → `grep -oE`
+- README (EN + ZH) — added macOS platform support note with coreutils recommendation
+
+**What was clean:**
+- All 19 tests pass, all Python syntax checks pass, all shell syntax checks pass
+- All files under 1500 lines (max: worker.py 1066)
+- No circular imports, no secrets, no error-message leaks
+- No deprecated asyncio patterns, no bare excepts
+- `ideas.py` connection pattern already centralized via `_db()` context manager (not a bug)
+
+**Lessons:**
+- **GNU-only date/grep/stat spread silently**: `date -Iseconds` was in 9 places across 5 files. The PR fixed the most visible scripts but missed `start.sh`, `scan-verify-issues.sh`, `verify-task-completed.sh`, `tests/test-loop.sh`. Pattern: when adding a compat helper for one script, grep the whole repo for the same pattern immediately.
+- **Worker script templates are opaque**: The `tmux-dispatch.sh` worker template heredoc had `flock` and `sed -i` that the PR reviewer missed because they look like comments/strings, not live code. Always treat heredoc templates that generate scripts as first-class code to review.
+
+---
 ### 2026-03-13 — Review Pass: /start skill + README + section markers
 
 **What was fixed:**
