@@ -31,6 +31,8 @@ cd claude-code-kit
 启动新的 Claude Code 会话即可激活所有功能。
 
 > **依赖：** `jq`（用于合并 settings）。其他一切都是可选的。
+>
+> **平台：** 支持 Linux 和 macOS。macOS 用户：`brew install coreutils bash` 可获得 `gtimeout` 和 bash 4+（不安装也能运行，但 `timeout` 会降级为不限时模式）。
 
 ## 支持的语言和框架
 
