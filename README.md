@@ -35,6 +35,8 @@ cd claude-code-kit
 Start a new Claude Code session to activate everything.
 
 > **Requirements:** `jq` (for settings merge). Everything else is optional.
+>
+> **Platform:** Linux and macOS supported. macOS users: `brew install coreutils bash` adds `gtimeout` and bash 4+ — scripts work without them but `timeout` falls back to no-timeout mode.
 
 ## Supported Languages & Frameworks
 
