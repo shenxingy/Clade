@@ -10,6 +10,8 @@ One install script. Ten hooks, five agents, twenty-three skills, a safety guardi
 
 > If this saves you time, a star helps others find it — and if something breaks, [open an issue](https://github.com/shenxingy/claude-code-kit/issues/new/choose).
 
+> **Blog post:** [Building Claude Code Kit](https://alexshen.dev/en/blog/claude-code-kit) — the motivation, design decisions, and lessons learned.
+
 ## Table of Contents
 
 1. [Install](#install-30-seconds)

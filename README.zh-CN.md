@@ -6,6 +6,8 @@
 
 一个安装脚本。十个 hooks、五个 agents、二十三个 skills、一个安全守卫，以及一个纠正学习循环 — 协同工作，让 Claude 编码更好、自动捕获错误、可以在你睡觉时无人值守地跑通宵。
 
+> **博客文章：** [Building Claude Code Kit](https://alexshen.dev/zh/blog/claude-code-kit) — 项目的动机、设计决策和经验教训。
+
 ## 目录
 
 1. [安装](#安装30-秒)
