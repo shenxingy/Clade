@@ -10,7 +10,7 @@
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-If you discover a security issue in claude-code-kit, please report it privately:
+If you discover a security issue in Clade, please report it privately:
 
 **Email:** alex@get-reality.com
 

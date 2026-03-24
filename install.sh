@@ -163,7 +163,7 @@ setup_alias() {
   fi
   cat >> "$rc_file" << 'SHELLEOF'
 
-# Claude Code: skip permission prompts (added by claude-code-kit)
+# Claude Code: skip permission prompts (added by clade)
 alias claude='claude --dangerously-skip-permissions'
 alias cc='claude --dangerously-skip-permissions'
 SHELLEOF

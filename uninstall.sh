@@ -160,7 +160,7 @@ for rc_file in "$HOME/.zshrc" "$HOME/.bashrc"; do
   [[ -f "$rc_file" ]] || continue
   if grep -q "dangerously-skip-permissions" "$rc_file" 2>/dev/null; then
     # Remove the block added by install.sh (comment + 2 alias lines)
-    sed -i '/# Claude Code: skip permission prompts (added by claude-code-kit)/,/^alias cc=/d' "$rc_file"
+    sed -i '/# Claude Code: skip permission prompts (added by clade)/,/^alias cc=/d' "$rc_file"
     echo "  Removed aliases from $rc_file"
   fi
 done

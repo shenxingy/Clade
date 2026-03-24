@@ -1,16 +1,16 @@
 ---
-name: cck-control
+name: clade-control
 version: 1.0.0
-description: Start, stop, or manage Claude Code Kit autonomous coding loops remotely
+description: Start, stop, or manage Clade autonomous coding loops remotely
 author: alexshen
 tags: [claude-code, orchestrator, automation, devtools, coding-automation]
 requires:
   env:
-    - CCK_BASE_URL
-    - CCK_API_KEY
+    - CLADE_BASE_URL
+    - CLADE_API_KEY
 ---
 
-# Claude Code Kit — Control
+# Clade — Control
 
 Start, stop, or manage autonomous coding loops on a remote machine.
 
@@ -23,11 +23,11 @@ User wants to:
 
 ## API
 
-**Endpoint:** `POST {CCK_BASE_URL}/control`
+**Endpoint:** `POST {CLADE_BASE_URL}/control`
 
 **Headers:**
 ```
-Authorization: Bearer {CCK_API_KEY}
+Authorization: Bearer {CLADE_API_KEY}
 Content-Type: application/json
 ```
 
@@ -124,6 +124,6 @@ Use "status" to check progress.
 ## Error handling
 
 - **Connection refused**: "Monitor is not running."
-- **401 Unauthorized**: "Check your CCK_API_KEY."
+- **401 Unauthorized**: "Check your CLADE_API_KEY."
 - **400 "goal is required"**: Ask the user what they want the AI to work on.
-- **500 "start.sh not found"**: "Claude Code Kit is not installed on the server. Run ./install.sh first."
+- **500 "start.sh not found"**: "Clade is not installed on the server. Run ./install.sh first."

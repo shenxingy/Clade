@@ -1,16 +1,16 @@
 [English](README.md) | **中文**
 
 <p align="center">
-  <img src="assets/banner.svg" alt="Claude Code Kit" width="800" />
+  <img src="assets/banner.svg" alt="Clade" width="800" />
 </p>
 
-# Claude Code Kit
+# Clade
 
-**把 Claude Code 从聊天助手变成自主编码系统。**
+**自主编码，进化而来。**
 
 一个安装脚本。十个 hooks、五个 agents、二十三个 skills、一个安全守卫，以及一个纠正学习循环 — 协同工作，让 Claude 编码更好、自动捕获错误、可以在你睡觉时无人值守地跑通宵。
 
-> **博客文章：** [Building Claude Code Kit](https://alexshen.dev/zh/blog/claude-code-kit) — 项目的动机、设计决策和经验教训。
+> **博客文章：** [Building Clade](https://alexshen.dev/zh/blog/claude-code-kit) — 项目的动机、设计决策和经验教训。
 
 ## 目录
 
@@ -30,8 +30,8 @@
 ## 安装（30 秒）
 
 ```bash
-git clone https://github.com/shenxingy/claude-code-kit.git
-cd claude-code-kit
+git clone https://github.com/shenxingy/clade.git
+cd clade
 ./install.sh
 ```
 
@@ -230,7 +230,7 @@ cd claude-code-kit
 ## 仓库结构
 
 ```
-claude-code-kit/
+clade/
 ├── install.sh                         # 一键部署
 ├── uninstall.sh                       # 干净卸载
 ├── orchestrator/                      # 并行 agent 编排 Web UI
@@ -359,9 +359,9 @@ claude-code-kit/
 
 | Skill | 你说的话 | 触发的操作 |
 |-------|---------|-----------|
-| **cck-status** | "跑到哪了" | 迭代进度、成本、最近提交 |
-| **cck-control** | "开始 loop 修 bug，跑 5 次" | 启动/停止自主循环 |
-| **cck-report** | "昨晚干了什么" | 会话报告、成本明细、阻塞项 |
+| **clade-status** | "跑到哪了" | 迭代进度、成本、最近提交 |
+| **clade-control** | "开始 loop 修 bug，跑 5 次" | 启动/停止自主循环 |
+| **clade-report** | "昨晚干了什么" | 会话报告、成本明细、阻塞项 |
 
 使用方法：启动 `monitor.py`，在 OpenClaw 中安装 skills。详见 [`adapters/openclaw/README.md`](adapters/openclaw/README.md)。
 

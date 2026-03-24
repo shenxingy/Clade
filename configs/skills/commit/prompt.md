@@ -106,7 +106,7 @@ Before pushing, run a quick local CI check to ensure GitHub Actions will pass. R
 3. **Shell scripts**: `bash -n` on changed `.sh` files
 
 ```bash
-# Example for claude-code-kit:
+# Example for clade:
 cd orchestrator && python -m py_compile <changed .py files> && .venv/bin/python -m pytest tests/ -v
 ```
 

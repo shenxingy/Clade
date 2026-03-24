@@ -1,4 +1,4 @@
-# Claude Code Kit — Project Context
+# Clade — Project Context
 
 ## Project Type
 - Type: cli + skill-system

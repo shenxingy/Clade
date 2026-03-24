@@ -1,12 +1,12 @@
 [Unit]
-Description=Claude Code Kit Monitor
+Description=Clade Monitor
 After=network.target
 
 [Service]
 Type=simple
 User=%i
-Environment=CCK_API_KEY=changeme
-ExecStart=/usr/bin/python3 %h/projects/claude-code-kit/adapters/openclaw/monitor.py --project %h/projects/myproject --port 9100
+Environment=CLADE_API_KEY=changeme
+ExecStart=/usr/bin/python3 %h/projects/clade/adapters/openclaw/monitor.py --project %h/projects/myproject --port 9100
 Restart=on-failure
 RestartSec=5
 

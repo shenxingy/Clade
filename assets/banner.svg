@@ -1,197 +1,163 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 200" fill="none">
   <defs>
-    <!-- Sky gradient — deep twilight -->
-    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="200" gradientUnits="userSpaceOnUse">
+    <linearGradient id="bg" x1="0" y1="0" x2="800" y2="200" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#0a0e1a" />
-      <stop offset="60%" stop-color="#0d1525" />
       <stop offset="100%" stop-color="#111d2e" />
     </linearGradient>
-
-    <!-- Firefly glow -->
+    <!-- Branch gradients -->
+    <linearGradient id="branch-g" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#7ee787" stop-opacity="0.8" />
+      <stop offset="100%" stop-color="#7ee787" stop-opacity="0.2" />
+    </linearGradient>
+    <linearGradient id="branch-b" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#79c0ff" stop-opacity="0.7" />
+      <stop offset="100%" stop-color="#79c0ff" stop-opacity="0.15" />
+    </linearGradient>
+    <linearGradient id="branch-o" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#f0883e" stop-opacity="0.6" />
+      <stop offset="100%" stop-color="#f0883e" stop-opacity="0.15" />
+    </linearGradient>
+    <linearGradient id="branch-p" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#d2a8ff" stop-opacity="0.5" />
+      <stop offset="100%" stop-color="#d2a8ff" stop-opacity="0.1" />
+    </linearGradient>
+    <!-- Node glows -->
     <radialGradient id="glow-g">
       <stop offset="0%" stop-color="#7ee787" stop-opacity="0.9" />
-      <stop offset="40%" stop-color="#7ee787" stop-opacity="0.2" />
+      <stop offset="50%" stop-color="#7ee787" stop-opacity="0.15" />
       <stop offset="100%" stop-color="#7ee787" stop-opacity="0" />
     </radialGradient>
     <radialGradient id="glow-b">
-      <stop offset="0%" stop-color="#79c0ff" stop-opacity="0.7" />
-      <stop offset="40%" stop-color="#79c0ff" stop-opacity="0.15" />
+      <stop offset="0%" stop-color="#79c0ff" stop-opacity="0.8" />
+      <stop offset="50%" stop-color="#79c0ff" stop-opacity="0.12" />
       <stop offset="100%" stop-color="#79c0ff" stop-opacity="0" />
     </radialGradient>
     <radialGradient id="glow-o">
-      <stop offset="0%" stop-color="#f0c060" stop-opacity="0.8" />
-      <stop offset="40%" stop-color="#f0c060" stop-opacity="0.2" />
-      <stop offset="100%" stop-color="#f0c060" stop-opacity="0" />
+      <stop offset="0%" stop-color="#f0883e" stop-opacity="0.7" />
+      <stop offset="50%" stop-color="#f0883e" stop-opacity="0.1" />
+      <stop offset="100%" stop-color="#f0883e" stop-opacity="0" />
     </radialGradient>
-    <!-- Kit's glow — larger, warmer -->
-    <radialGradient id="glow-kit">
-      <stop offset="0%" stop-color="#b8e986" stop-opacity="1" />
-      <stop offset="25%" stop-color="#7ee787" stop-opacity="0.5" />
-      <stop offset="60%" stop-color="#7ee787" stop-opacity="0.1" />
+    <radialGradient id="glow-p">
+      <stop offset="0%" stop-color="#d2a8ff" stop-opacity="0.6" />
+      <stop offset="50%" stop-color="#d2a8ff" stop-opacity="0.08" />
+      <stop offset="100%" stop-color="#d2a8ff" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="glow-root">
+      <stop offset="0%" stop-color="#e6edf3" stop-opacity="0.9" />
+      <stop offset="40%" stop-color="#7ee787" stop-opacity="0.2" />
       <stop offset="100%" stop-color="#7ee787" stop-opacity="0" />
     </radialGradient>
-
-    <!-- Soft blur for distant fireflies -->
     <filter id="soft">
       <feGaussianBlur stdDeviation="1.5" />
-    </filter>
-    <filter id="softer">
-      <feGaussianBlur stdDeviation="3" />
     </filter>
   </defs>
 
   <style>
-    /* Breathing animations — staggered phases */
-    @keyframes breathe {
-      0%, 100% { opacity: 0.3 }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.5 }
       50%      { opacity: 1 }
     }
-    @keyframes breatheSlow {
-      0%, 100% { opacity: 0.2 }
-      50%      { opacity: 0.8 }
+    @keyframes drawBranch {
+      0%   { stroke-dashoffset: 200 }
+      100% { stroke-dashoffset: 0 }
     }
-    @keyframes breatheKit {
-      0%, 100% { opacity: 0.7 }
-      50%      { opacity: 1 }
-    }
-    @keyframes drift {
-      0%, 100% { transform: translateY(0px) }
-      50%      { transform: translateY(-3px) }
-    }
-    @keyframes driftKit {
-      0%, 100% { transform: translate(0px, 0px) }
-      33%      { transform: translate(2px, -4px) }
-      66%      { transform: translate(-1px, -2px) }
-    }
-
-    .fly       { animation: breathe 3s ease-in-out infinite }
-    .fly-slow  { animation: breatheSlow 5s ease-in-out infinite }
-    .fly-kit   { animation: breatheKit 4s ease-in-out infinite }
-    .drift     { animation: drift 6s ease-in-out infinite }
-    .drift-kit { animation: driftKit 8s ease-in-out infinite }
-
+    .node { animation: pulse 3s ease-in-out infinite }
     .d1 { animation-delay: 0s }
-    .d2 { animation-delay: 0.5s }
-    .d3 { animation-delay: 1.0s }
-    .d4 { animation-delay: 1.5s }
-    .d5 { animation-delay: 2.0s }
-    .d6 { animation-delay: 2.5s }
-    .d7 { animation-delay: 3.0s }
-    .d8 { animation-delay: 3.5s }
-    .d9 { animation-delay: 0.8s }
-    .d10 { animation-delay: 1.3s }
-    .d11 { animation-delay: 1.8s }
-    .d12 { animation-delay: 2.3s }
-
+    .d2 { animation-delay: 0.4s }
+    .d3 { animation-delay: 0.8s }
+    .d4 { animation-delay: 1.2s }
+    .d5 { animation-delay: 1.6s }
+    .d6 { animation-delay: 2.0s }
+    .d7 { animation-delay: 0.6s }
+    .d8 { animation-delay: 1.0s }
+    .branch {
+      stroke-dasharray: 200;
+      animation: drawBranch 2s ease forwards;
+    }
+    .br1 { animation-delay: 0.2s }
+    .br2 { animation-delay: 0.4s }
+    .br3 { animation-delay: 0.6s }
+    .br4 { animation-delay: 0.8s }
+    .br5 { animation-delay: 1.0s }
+    .br6 { animation-delay: 1.2s }
+    .br7 { animation-delay: 1.4s }
+    .br8 { animation-delay: 1.6s }
     .title {
-      fill: #c9d1d9;
+      fill: #e6edf3;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
-      font-weight: 600;
-      font-size: 28px;
-      letter-spacing: -0.3px;
+      font-weight: 700;
+      font-size: 36px;
+      letter-spacing: -0.5px;
     }
     .tagline {
       fill: #6e7681;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
       font-weight: 400;
-      font-size: 13px;
-      letter-spacing: 2px;
+      font-size: 14px;
+      letter-spacing: 1.5px;
     }
   </style>
 
-  <!-- Night sky -->
-  <rect width="800" height="200" fill="url(#sky)" />
+  <!-- Background -->
+  <rect width="800" height="200" fill="url(#bg)" />
 
-  <!-- Distant stars — tiny, static -->
-  <g opacity="0.15">
-    <circle cx="120" cy="18" r="0.5" fill="#fff" />
-    <circle cx="245" cy="35" r="0.4" fill="#fff" />
-    <circle cx="380" cy="12" r="0.5" fill="#fff" />
-    <circle cx="510" cy="28" r="0.3" fill="#fff" />
-    <circle cx="620" cy="8" r="0.5" fill="#fff" />
-    <circle cx="710" cy="42" r="0.4" fill="#fff" />
-    <circle cx="55" cy="45" r="0.3" fill="#fff" />
-    <circle cx="460" cy="48" r="0.4" fill="#fff" />
-    <circle cx="170" cy="52" r="0.3" fill="#fff" />
-    <circle cx="340" cy="22" r="0.4" fill="#fff" />
-    <circle cx="770" cy="15" r="0.3" fill="#fff" />
-    <circle cx="680" cy="55" r="0.5" fill="#fff" />
+  <!-- Subtle grid -->
+  <g opacity="0.025">
+    <line x1="0" y1="50" x2="800" y2="50" stroke="#e6edf3" />
+    <line x1="0" y1="100" x2="800" y2="100" stroke="#e6edf3" />
+    <line x1="0" y1="150" x2="800" y2="150" stroke="#e6edf3" />
   </g>
 
-  <!-- Treeline silhouette — very subtle -->
-  <path d="M0,185 Q30,170 50,178 Q70,165 90,175 Q120,158 150,172 Q170,162 200,170 Q230,155 260,168 Q290,158 320,165 Q350,150 380,163 Q410,155 440,162 Q470,148 500,160 Q530,152 560,158 Q590,145 620,156 Q650,148 680,155 Q710,142 740,152 Q770,145 800,150 L800,200 L0,200 Z"
-    fill="#080c16" opacity="0.6" />
+  <!-- === CLADOGRAM === -->
+  <!-- Root point (the ancestor — the config file) -->
+  <g transform="translate(520, 100)">
+    <!-- Root glow -->
+    <circle cx="0" cy="0" r="14" fill="url(#glow-root)" class="node d1" />
+    <circle cx="0" cy="0" r="3" fill="#e6edf3" />
 
-  <!-- === FIREFLIES === -->
+    <!-- Main trunk going right -->
+    <line class="branch br1" x1="3" y1="0" x2="40" y2="0" stroke="#7ee787" stroke-width="1.5" stroke-opacity="0.6" />
 
-  <!-- Background fireflies — distant, blurred, blue-ish -->
-  <g filter="url(#softer)">
-    <circle class="fly-slow d1" cx="95" cy="78" r="6" fill="url(#glow-b)" />
-    <circle class="fly-slow d3" cx="720" cy="92" r="5" fill="url(#glow-b)" />
-    <circle class="fly-slow d5" cx="380" cy="65" r="4" fill="url(#glow-b)" />
-    <circle class="fly-slow d7" cx="560" cy="110" r="5" fill="url(#glow-b)" />
-    <circle class="fly-slow d9" cx="200" cy="130" r="4" fill="url(#glow-b)" />
+    <!-- Branch 1: hooks (up-right, green) -->
+    <line class="branch br2" x1="40" y1="0" x2="100" y2="-45" stroke="url(#branch-g)" stroke-width="1.2" />
+    <circle class="node d2" cx="100" cy="-45" r="8" fill="url(#glow-g)" filter="url(#soft)" />
+    <circle cx="100" cy="-45" r="2" fill="#7ee787" />
+    <!-- Sub-branch -->
+    <line class="branch br5" x1="100" y1="-45" x2="145" y2="-65" stroke="#7ee787" stroke-width="0.6" stroke-opacity="0.3" />
+    <circle class="node d5" cx="145" cy="-65" r="5" fill="url(#glow-g)" filter="url(#soft)" />
+    <circle cx="145" cy="-65" r="1.2" fill="#7ee787" opacity="0.8" />
+    <line class="branch br6" x1="100" y1="-45" x2="155" y2="-38" stroke="#7ee787" stroke-width="0.6" stroke-opacity="0.3" />
+    <circle class="node d7" cx="155" cy="-38" r="4" fill="url(#glow-g)" filter="url(#soft)" />
+    <circle cx="155" cy="-38" r="1" fill="#7ee787" opacity="0.7" />
+
+    <!-- Branch 2: skills (right, blue) -->
+    <line class="branch br3" x1="40" y1="0" x2="120" y2="10" stroke="url(#branch-b)" stroke-width="1.2" />
+    <circle class="node d3" cx="120" cy="10" r="9" fill="url(#glow-b)" filter="url(#soft)" />
+    <circle cx="120" cy="10" r="2.2" fill="#79c0ff" />
+    <!-- Sub-branches -->
+    <line class="branch br6" x1="120" y1="10" x2="170" y2="-8" stroke="#79c0ff" stroke-width="0.6" stroke-opacity="0.3" />
+    <circle class="node d6" cx="170" cy="-8" r="4" fill="url(#glow-b)" filter="url(#soft)" />
+    <circle cx="170" cy="-8" r="1" fill="#79c0ff" opacity="0.7" />
+    <line class="branch br7" x1="120" y1="10" x2="175" y2="22" stroke="#79c0ff" stroke-width="0.6" stroke-opacity="0.3" />
+    <circle class="node d8" cx="175" cy="22" r="3.5" fill="url(#glow-b)" filter="url(#soft)" />
+    <circle cx="175" cy="22" r="1" fill="#79c0ff" opacity="0.6" />
+
+    <!-- Branch 3: agents (down-right, orange) -->
+    <line class="branch br4" x1="40" y1="0" x2="110" y2="50" stroke="url(#branch-o)" stroke-width="1.2" />
+    <circle class="node d4" cx="110" cy="50" r="7" fill="url(#glow-o)" filter="url(#soft)" />
+    <circle cx="110" cy="50" r="1.8" fill="#f0883e" />
+    <!-- Sub-branch -->
+    <line class="branch br7" x1="110" y1="50" x2="160" y2="60" stroke="#f0883e" stroke-width="0.6" stroke-opacity="0.3" />
+    <circle class="node d7" cx="160" cy="60" r="4" fill="url(#glow-o)" filter="url(#soft)" />
+    <circle cx="160" cy="60" r="1" fill="#f0883e" opacity="0.7" />
+
+    <!-- Branch 4: orchestrator (far down, purple) -->
+    <line class="branch br5" x1="40" y1="0" x2="85" y2="70" stroke="url(#branch-p)" stroke-width="1" />
+    <circle class="node d6" cx="85" cy="70" r="6" fill="url(#glow-p)" filter="url(#soft)" />
+    <circle cx="85" cy="70" r="1.5" fill="#d2a8ff" />
   </g>
 
-  <!-- Mid-ground fireflies — green -->
-  <g filter="url(#soft)">
-    <g class="drift d2">
-      <circle class="fly d2" cx="155" cy="95" r="8" fill="url(#glow-g)" />
-      <circle cx="155" cy="95" r="1.5" fill="#7ee787" opacity="0.9" />
-    </g>
-    <g class="drift d4">
-      <circle class="fly d4" cx="310" cy="120" r="7" fill="url(#glow-g)" />
-      <circle cx="310" cy="120" r="1.2" fill="#7ee787" opacity="0.8" />
-    </g>
-    <g class="drift d6">
-      <circle class="fly d6" cx="480" cy="80" r="9" fill="url(#glow-g)" />
-      <circle cx="480" cy="80" r="1.5" fill="#7ee787" opacity="0.9" />
-    </g>
-    <g class="drift d8">
-      <circle class="fly d8" cx="640" cy="135" r="7" fill="url(#glow-g)" />
-      <circle cx="640" cy="135" r="1.2" fill="#7ee787" opacity="0.8" />
-    </g>
-    <g class="drift d10">
-      <circle class="fly d10" cx="750" cy="70" r="6" fill="url(#glow-g)" />
-      <circle cx="750" cy="70" r="1" fill="#7ee787" opacity="0.7" />
-    </g>
-  </g>
-
-  <!-- Warm accent fireflies — orange/gold, fewer -->
-  <g filter="url(#soft)">
-    <g class="drift d3">
-      <circle class="fly d3" cx="430" cy="140" r="6" fill="url(#glow-o)" />
-      <circle cx="430" cy="140" r="1" fill="#f0c060" opacity="0.8" />
-    </g>
-    <g class="drift d11">
-      <circle class="fly d11" cx="260" cy="70" r="5" fill="url(#glow-o)" />
-      <circle cx="260" cy="70" r="0.8" fill="#f0c060" opacity="0.7" />
-    </g>
-  </g>
-
-  <!-- Foreground fireflies — bright, close -->
-  <g class="drift d1">
-    <circle class="fly d1" cx="68" cy="135" r="10" fill="url(#glow-g)" />
-    <circle cx="68" cy="135" r="2" fill="#b8e986" />
-  </g>
-  <g class="drift d12">
-    <circle class="fly d12" cx="590" cy="60" r="11" fill="url(#glow-g)" />
-    <circle cx="590" cy="60" r="2" fill="#b8e986" />
-  </g>
-
-  <!-- === KIT — the lead firefly === -->
-  <g class="drift-kit" transform="translate(680, 88)">
-    <!-- Outer glow -->
-    <circle class="fly-kit" cx="0" cy="0" r="22" fill="url(#glow-kit)" />
-    <!-- Inner glow -->
-    <circle cx="0" cy="0" r="8" fill="#7ee787" opacity="0.15" />
-    <!-- Core -->
-    <circle cx="0" cy="0" r="3.5" fill="#b8e986" />
-    <!-- Bright center -->
-    <circle cx="-0.5" cy="-0.5" r="1.5" fill="#e8ffd0" opacity="0.9" />
-  </g>
-
-  <!-- Text — positioned in the clear area -->
-  <text x="400" y="170" text-anchor="middle" class="title">Claude Code Kit</text>
-  <text x="400" y="190" text-anchor="middle" class="tagline">AUTONOMOUS CODING FOR EVERYONE</text>
+  <!-- Text -->
+  <text x="60" y="88" class="title">Clade</text>
+  <text x="60" y="115" class="tagline">AUTONOMOUS CODING, EVOLVED</text>
 </svg>
