@@ -1,133 +1,140 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 280" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 200" fill="none">
+  <defs>
+    <!-- Background gradient -->
+    <linearGradient id="bg" x1="0" y1="0" x2="800" y2="200" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0d1117" />
+      <stop offset="100%" stop-color="#161b22" />
+    </linearGradient>
+
+    <!-- Loop arc gradient -->
+    <linearGradient id="arc1" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#7ee787" stop-opacity="0" />
+      <stop offset="50%" stop-color="#7ee787" stop-opacity="0.6" />
+      <stop offset="100%" stop-color="#79c0ff" stop-opacity="0" />
+    </linearGradient>
+    <linearGradient id="arc2" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#79c0ff" stop-opacity="0" />
+      <stop offset="50%" stop-color="#f0883e" stop-opacity="0.5" />
+      <stop offset="100%" stop-color="#f0883e" stop-opacity="0" />
+    </linearGradient>
+    <linearGradient id="arc3" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#f0883e" stop-opacity="0" />
+      <stop offset="50%" stop-color="#d2a8ff" stop-opacity="0.4" />
+      <stop offset="100%" stop-color="#7ee787" stop-opacity="0" />
+    </linearGradient>
+
+    <!-- Glow filter -->
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <!-- Node glow -->
+    <radialGradient id="nodeGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#7ee787" stop-opacity="0.8" />
+      <stop offset="100%" stop-color="#7ee787" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
   <style>
-    @keyframes typing1 {
-      0%, 15% { width: 0 }
-      35%, 100% { width: 480px }
+    @keyframes orbit1 {
+      0%   { stroke-dashoffset: 220 }
+      100% { stroke-dashoffset: 0 }
     }
-    @keyframes typing2 {
-      0%, 40% { width: 0 }
-      60%, 100% { width: 700px }
+    @keyframes orbit2 {
+      0%   { stroke-dashoffset: 280 }
+      100% { stroke-dashoffset: 0 }
     }
-    @keyframes blink {
-      0%, 49% { opacity: 1 }
-      50%, 100% { opacity: 0 }
+    @keyframes orbit3 {
+      0%   { stroke-dashoffset: 340 }
+      100% { stroke-dashoffset: 0 }
     }
-    @keyframes fadeIn {
-      0%, 65% { opacity: 0 }
-      80%, 100% { opacity: 1 }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.6; r: 4 }
+      50%      { opacity: 1; r: 6 }
     }
-    @keyframes cursorMove {
-      0%, 15%  { transform: translate(32px, 88px) }
-      35%, 40% { transform: translate(512px, 88px) }
-      60%      { transform: translate(732px, 138px) }
-      65%, 100%{ transform: translate(0px, 0px); opacity: 0 }
+    @keyframes fadeUp {
+      0%   { opacity: 0; transform: translateY(8px) }
+      100% { opacity: 1; transform: translateY(0) }
     }
-    @keyframes glowPulse {
-      0%, 100% { opacity: 0.6 }
-      50% { opacity: 1 }
+    .ring1 {
+      stroke-dasharray: 30 190;
+      animation: orbit1 6s linear infinite;
     }
-    .terminal-bg { fill: #0d1117; rx: 12; }
-    .titlebar { fill: #161b22; }
-    .btn-close { fill: #f85149; }
-    .btn-min { fill: #f0c541; }
-    .btn-max { fill: #56d364; }
-    .prompt { fill: #7ee787; font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace; }
-    .command { fill: #e6edf3; font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace; }
-    .comment { fill: #8b949e; font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace; }
-    .accent { fill: #79c0ff; font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace; }
-    .title-text { fill: #f0883e; font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace; font-weight: bold; }
-    .cursor {
+    .ring2 {
+      stroke-dasharray: 40 240;
+      animation: orbit2 8s linear infinite;
+    }
+    .ring3 {
+      stroke-dasharray: 25 315;
+      animation: orbit3 10s linear infinite;
+    }
+    .node {
+      animation: pulse 3s ease-in-out infinite;
+    }
+    .node-delay1 { animation-delay: 1s }
+    .node-delay2 { animation-delay: 2s }
+    .title {
       fill: #e6edf3;
-      animation: blink 1s step-end infinite;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      font-weight: 600;
+      font-size: 32px;
+      letter-spacing: -0.5px;
     }
-    .line1-mask {
-      animation: typing1 4s steps(30, end) forwards;
-      animation-iteration-count: 1;
+    .tagline {
+      fill: #8b949e;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      font-weight: 400;
+      font-size: 14px;
     }
-    .line2-mask {
-      animation: typing2 4s steps(40, end) forwards;
-      animation-iteration-count: 1;
-    }
-    .features {
-      animation: fadeIn 4s ease forwards;
-      animation-iteration-count: 1;
-    }
-    .glow {
-      animation: glowPulse 3s ease-in-out infinite;
-    }
+    .fade1 { animation: fadeUp 0.8s ease both; animation-delay: 0.2s }
+    .fade2 { animation: fadeUp 0.8s ease both; animation-delay: 0.5s }
   </style>
 
-  <!-- Terminal window -->
-  <rect class="terminal-bg" width="800" height="280" />
+  <!-- Background -->
+  <rect width="800" height="200" rx="12" fill="url(#bg)" />
 
-  <!-- Title bar -->
-  <rect class="titlebar" width="800" height="36" rx="12" />
-  <rect class="titlebar" width="800" height="12" y="24" />
-
-  <!-- Window buttons -->
-  <circle class="btn-close" cx="20" cy="18" r="6" />
-  <circle class="btn-min" cx="40" cy="18" r="6" />
-  <circle class="btn-max" cx="60" cy="18" r="6" />
-
-  <!-- Title bar text -->
-  <text x="400" y="22" text-anchor="middle" class="comment" font-size="12">claude-code-kit</text>
-
-  <!-- Line 1: ASCII title with typing effect -->
-  <g>
-    <clipPath id="clip1">
-      <rect x="28" y="50" height="50" class="line1-mask" />
-    </clipPath>
-    <g clip-path="url(#clip1)">
-      <text x="32" y="72" class="prompt" font-size="14">$</text>
-      <text x="52" y="72" class="title-text" font-size="28" letter-spacing="2">Claude Code Kit</text>
-    </g>
+  <!-- Subtle grid pattern -->
+  <g opacity="0.03">
+    <line x1="0" y1="50" x2="800" y2="50" stroke="#e6edf3" />
+    <line x1="0" y1="100" x2="800" y2="100" stroke="#e6edf3" />
+    <line x1="0" y1="150" x2="800" y2="150" stroke="#e6edf3" />
+    <line x1="200" y1="0" x2="200" y2="200" stroke="#e6edf3" />
+    <line x1="400" y1="0" x2="400" y2="200" stroke="#e6edf3" />
+    <line x1="600" y1="0" x2="600" y2="200" stroke="#e6edf3" />
   </g>
 
-  <!-- Line 2: tagline with typing effect -->
-  <g>
-    <clipPath id="clip2">
-      <rect x="28" y="95" height="50" class="line2-mask" />
-    </clipPath>
-    <g clip-path="url(#clip2)">
-      <text x="32" y="115" class="prompt" font-size="14">#</text>
-      <text x="52" y="115" class="comment" font-size="15">Turn Claude Code from a chat assistant into an autonomous coding system</text>
-    </g>
+  <!-- Abstract orbital rings (representing autonomous loop) -->
+  <g transform="translate(660, 100)" filter="url(#glow)">
+    <!-- Ring 1 — inner -->
+    <ellipse class="ring1" cx="0" cy="0" rx="35" ry="35"
+      stroke="url(#arc1)" stroke-width="2" fill="none" />
+    <!-- Ring 2 — mid, tilted -->
+    <ellipse class="ring2" cx="0" cy="0" rx="55" ry="28"
+      stroke="url(#arc2)" stroke-width="1.5" fill="none"
+      transform="rotate(-25)" />
+    <!-- Ring 3 — outer, tilted opposite -->
+    <ellipse class="ring3" cx="0" cy="0" rx="72" ry="22"
+      stroke="url(#arc3)" stroke-width="1" fill="none"
+      transform="rotate(15)" />
+
+    <!-- Center node -->
+    <circle cx="0" cy="0" r="16" fill="url(#nodeGlow)" opacity="0.3" />
+    <circle class="node" cx="0" cy="0" r="4" fill="#7ee787" />
+
+    <!-- Orbiting nodes -->
+    <circle class="node node-delay1" cx="35" cy="0" r="3" fill="#79c0ff" />
+    <circle class="node node-delay2" cx="-20" cy="-26" r="2.5" fill="#f0883e" />
   </g>
 
-  <!-- Cursor -->
-  <rect class="cursor" x="52" y="124" width="8" height="18" />
-
-  <!-- Feature pills - fade in after typing -->
-  <g class="features">
-    <!-- Divider line -->
-    <line x1="32" y1="155" x2="768" y2="155" stroke="#30363d" stroke-width="1" />
-
-    <!-- Feature items -->
-    <text x="32" y="180" class="accent" font-size="13">10 hooks</text>
-    <text x="120" y="180" class="comment" font-size="13">|</text>
-    <text x="138" y="180" class="accent" font-size="13">5 agents</text>
-    <text x="224" y="180" class="comment" font-size="13">|</text>
-    <text x="242" y="180" class="accent" font-size="13">23 skills</text>
-    <text x="340" y="180" class="comment" font-size="13">|</text>
-    <text x="358" y="180" class="accent" font-size="13">safety guardian</text>
-    <text x="508" y="180" class="comment" font-size="13">|</text>
-    <text x="526" y="180" class="accent" font-size="13">correction learning</text>
-
-    <!-- Bottom tagline -->
-    <text x="32" y="210" class="prompt" font-size="13">></text>
-    <text x="50" y="210" class="command" font-size="13">./install.sh</text>
-    <text x="170" y="210" class="comment" font-size="13">  # one command. autonomous overnight coding.</text>
-
-    <!-- Swarm indicator -->
-    <g class="glow">
-      <circle cx="32" cy="242" r="4" fill="#56d364" />
-    </g>
-    <text x="44" y="246" class="comment" font-size="12">swarm: 4 workers active</text>
-    <text x="240" y="246" class="comment" font-size="12">|</text>
-    <text x="256" y="246" class="comment" font-size="12">tasks: 12/15 complete</text>
-    <text x="440" y="246" class="comment" font-size="12">|</text>
-    <text x="456" y="246" class="comment" font-size="12">corrections: 3 learned</text>
-    <text x="650" y="246" class="comment" font-size="12">|</text>
-    <text x="666" y="246" class="comment" font-size="12">cost: $2.14</text>
+  <!-- Text content -->
+  <g class="fade1">
+    <text x="60" y="90" class="title">Claude Code Kit</text>
+  </g>
+  <g class="fade2">
+    <text x="60" y="118" class="tagline">Autonomous coding. Correction learning. Overnight loops.</text>
   </g>
 </svg>
