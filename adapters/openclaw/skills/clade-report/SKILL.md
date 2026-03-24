@@ -1,16 +1,16 @@
 ---
-name: cck-report
+name: clade-report
 version: 1.0.0
-description: Get session reports, cost breakdowns, and blocker details from Claude Code Kit
+description: Get session reports, cost breakdowns, and blocker details from Clade
 author: alexshen
 tags: [claude-code, orchestrator, reporting, devtools, coding-automation]
 requires:
   env:
-    - CCK_BASE_URL
-    - CCK_API_KEY
+    - CLADE_BASE_URL
+    - CLADE_API_KEY
 ---
 
-# Claude Code Kit — Report
+# Clade — Report
 
 Get detailed session reports, cost breakdowns, blockers, and skipped tasks.
 
@@ -25,13 +25,13 @@ User asks about:
 
 ## API
 
-**Endpoint:** `GET {CCK_BASE_URL}/report`
+**Endpoint:** `GET {CLADE_BASE_URL}/report`
 
 **Optional query:** `?project=/path/to/project`
 
 **Headers:**
 ```
-Authorization: Bearer {CCK_API_KEY}
+Authorization: Bearer {CLADE_API_KEY}
 ```
 
 **Response:**
@@ -84,5 +84,5 @@ Last iteration: ${cost} for {tasks} tasks in {duration}
 ## Error handling
 
 - **Connection refused**: "Monitor is not running."
-- **401 Unauthorized**: "Check your CCK_API_KEY."
+- **401 Unauthorized**: "Check your CLADE_API_KEY."
 - **"No session report found"**: "No completed session yet. The loop may still be running — try 'status' instead."

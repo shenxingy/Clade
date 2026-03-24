@@ -1,16 +1,16 @@
 ---
-name: cck-status
+name: clade-status
 version: 1.0.0
-description: Check Claude Code Kit loop progress, worker status, costs, and recent commits
+description: Check Clade loop progress, worker status, costs, and recent commits
 author: alexshen
 tags: [claude-code, orchestrator, monitoring, devtools, coding-automation]
 requires:
   env:
-    - CCK_BASE_URL
-    - CCK_API_KEY
+    - CLADE_BASE_URL
+    - CLADE_API_KEY
 ---
 
-# Claude Code Kit — Status
+# Clade — Status
 
 Check the progress of autonomous coding loops running on a remote machine.
 
@@ -25,13 +25,13 @@ User asks about:
 
 ## API
 
-**Endpoint:** `GET {CCK_BASE_URL}/status`
+**Endpoint:** `GET {CLADE_BASE_URL}/status`
 
 **Optional query:** `?project=/path/to/project` (omit to use default)
 
 **Headers:**
 ```
-Authorization: Bearer {CCK_API_KEY}
+Authorization: Bearer {CLADE_API_KEY}
 ```
 
 **Response:**
@@ -74,12 +74,12 @@ Format as a compact, phone-friendly message:
 Recent commits:
   {each commit on its own line, indented}
 
-{if has_blockers: "⚠️ BLOCKERS detected — run cck-report for details"}
+{if has_blockers: "⚠️ BLOCKERS detected — run clade-report for details"}
 {if last_supervisor not empty: "🧠 Supervisor: \"{first 100 chars}...\""}
 ```
 
 ## Error handling
 
 - **Connection refused**: "Monitor is not running. Start it with: `python monitor.py -p /project`"
-- **401 Unauthorized**: "Check your CCK_API_KEY — it doesn't match the monitor's key."
+- **401 Unauthorized**: "Check your CLADE_API_KEY — it doesn't match the monitor's key."
 - **404 project not found**: "Project path not recognized. Check the --project flag on monitor.py."

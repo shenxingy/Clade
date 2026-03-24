@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Claude Code Kit Monitor — lightweight HTTP bridge for OpenClaw integration.
+"""Clade Monitor — lightweight HTTP bridge for OpenClaw integration.
 
 Reads CLI tool state files (.claude/loop-state, logs/loop/, session reports)
 and exposes them as REST endpoints. No dependency on the orchestrator.
 
 Usage:
-    CCK_API_KEY=secret python monitor.py --project /path/to/project --port 9100
+    CLADE_API_KEY=secret python monitor.py --project /path/to/project --port 9100
     # or monitor multiple projects:
     python monitor.py --project /proj1 --project /proj2
 """
@@ -27,7 +27,7 @@ from aiohttp import web
 # ─── Config ───────────────────────────────────────────────────────────────────
 
 VERSION = "1.0.0"
-API_KEY = os.environ.get("CCK_API_KEY", "")
+API_KEY = os.environ.get("CLADE_API_KEY", "")
 
 
 # ─── Auth Middleware ──────────────────────────────────────────────────────────
@@ -289,7 +289,7 @@ def create_app(projects: list[Path]) -> web.Application:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Claude Code Kit Monitor")
+    parser = argparse.ArgumentParser(description="Clade Monitor")
     parser.add_argument(
         "--project", "-p", action="append", default=[],
         help="Project directory to monitor (can specify multiple)",
@@ -304,11 +304,11 @@ def main():
             parser.error(f"Not a directory: {p}")
 
     app = create_app(projects)
-    print(f"CCK Monitor v{VERSION} — {len(projects)} project(s) on :{args.port}")
+    print(f"Clade Monitor v{VERSION} — {len(projects)} project(s) on :{args.port}")
     if API_KEY:
         print("Auth: Bearer token required")
     else:
-        print("Auth: disabled (set CCK_API_KEY to enable)")
+        print("Auth: disabled (set CLADE_API_KEY to enable)")
     for p in projects:
         print(f"  → {p}")
     web.run_app(app, host=args.host, port=args.port, print=None)

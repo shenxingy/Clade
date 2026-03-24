@@ -1,4 +1,4 @@
-# VISION — Claude Code Kit
+# VISION — Clade
 
 ## What This Is
 

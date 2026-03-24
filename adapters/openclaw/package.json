@@ -1,19 +1,19 @@
 {
-  "name": "cck-openclaw-skills",
+  "name": "clade-openclaw-skills",
   "version": "1.0.0",
-  "description": "OpenClaw skills to monitor and control Claude Code Kit autonomous coding loops from any messaging channel",
+  "description": "OpenClaw skills to monitor and control Clade autonomous coding loops from any messaging channel",
   "author": "alexshen",
   "license": "MIT",
-  "homepage": "https://github.com/shenxingy/claude-code-kit/tree/main/adapters/openclaw",
+  "homepage": "https://github.com/shenxingy/clade/tree/main/adapters/openclaw",
   "repository": {
     "type": "git",
-    "url": "https://github.com/shenxingy/claude-code-kit.git",
+    "url": "https://github.com/shenxingy/clade.git",
     "directory": "adapters/openclaw"
   },
   "keywords": [
     "openclaw",
+    "clade",
     "claude-code",
-    "orchestrator",
     "devtools",
     "mobile-monitoring",
     "autonomous-coding",

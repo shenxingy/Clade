@@ -1,20 +1,20 @@
 **English** | [中文](README.zh-CN.md)
 
 <p align="center">
-  <img src="assets/banner.svg" alt="Claude Code Kit" width="800" />
+  <img src="assets/banner.svg" alt="Clade" width="800" />
 </p>
 
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/shenxingy/claude-code-kit/blob/main/CONTRIBUTING.md) [![good first issue](https://img.shields.io/github/issues/shenxingy/claude-code-kit/good%20first%20issue)](https://github.com/shenxingy/claude-code-kit/labels/good%20first%20issue)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/shenxingy/clade/blob/main/CONTRIBUTING.md) [![good first issue](https://img.shields.io/github/issues/shenxingy/clade/good%20first%20issue)](https://github.com/shenxingy/clade/labels/good%20first%20issue)
 
-# Claude Code Kit
+# Clade
 
-**Turn Claude Code from a chat assistant into an autonomous coding system.**
+**Autonomous coding, evolved.**
 
 One install script. Ten hooks, five agents, twenty-three skills, a safety guardian, and a correction learning loop — all working together so Claude codes better, catches its own mistakes, and can run unattended overnight while you sleep.
 
-> If this saves you time, a star helps others find it — and if something breaks, [open an issue](https://github.com/shenxingy/claude-code-kit/issues/new/choose).
+> If this saves you time, a star helps others find it — and if something breaks, [open an issue](https://github.com/shenxingy/clade/issues/new/choose).
 
-> **Blog post:** [Building Claude Code Kit](https://alexshen.dev/en/blog/claude-code-kit) — the motivation, design decisions, and lessons learned.
+> **Blog post:** [Building Clade](https://alexshen.dev/en/blog/claude-code-kit) — the motivation, design decisions, and lessons learned.
 
 ## Table of Contents
 
@@ -34,8 +34,8 @@ One install script. Ten hooks, five agents, twenty-three skills, a safety guardi
 ## Install (30 seconds)
 
 ```bash
-git clone https://github.com/shenxingy/claude-code-kit.git
-cd claude-code-kit
+git clone https://github.com/shenxingy/clade.git
+cd clade
 ./install.sh
 ```
 
@@ -236,7 +236,7 @@ All checks are **opt-in by detection** — if the tool isn't installed or the pr
 ## Repo Structure
 
 ```
-claude-code-kit/
+clade/
 ├── install.sh                         # One-command deployment
 ├── uninstall.sh                       # Clean removal
 ├── orchestrator/                      # Web UI for parallel agent orchestration
@@ -368,9 +368,9 @@ Three skills included:
 
 | Skill | What you say | What happens |
 |-------|-------------|-------------|
-| **cck-status** | "how's the loop going" | Iteration progress, cost, recent commits |
-| **cck-control** | "start a loop to fix tests, run 5 times" | Starts/stops autonomous loops |
-| **cck-report** | "what did it do overnight" | Session report, cost breakdown, blockers |
+| **clade-status** | "how's the loop going" | Iteration progress, cost, recent commits |
+| **clade-control** | "start a loop to fix tests, run 5 times" | Starts/stops autonomous loops |
+| **clade-report** | "what did it do overnight" | Session report, cost breakdown, blockers |
 
 Setup: start `monitor.py`, install skills in OpenClaw. See [`adapters/openclaw/README.md`](adapters/openclaw/README.md) for details.
 

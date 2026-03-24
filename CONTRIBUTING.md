@@ -1,4 +1,4 @@
-# Contributing to claude-code-kit
+# Contributing to Clade
 
 Thanks for your interest in contributing! This project has 800+ clones and counting — every contribution helps.
 
@@ -16,8 +16,8 @@ Contributions aren't just code:
 
 ```bash
 # 1. Fork and clone
-git clone https://github.com/YOUR_USERNAME/claude-code-kit.git
-cd claude-code-kit
+git clone https://github.com/YOUR_USERNAME/clade.git
+cd clade
 
 # 2. Install (deploys to ~/.claude/)
 ./install.sh
@@ -64,7 +64,7 @@ PRs are squash-merged to keep history clean.
 
 ## Good First Issues
 
-Look for issues labeled [`good first issue`](https://github.com/shenxingy/claude-code-kit/labels/good%20first%20issue) — these are well-scoped and have clear acceptance criteria.
+Look for issues labeled [`good first issue`](https://github.com/shenxingy/clade/labels/good%20first%20issue) — these are well-scoped and have clear acceptance criteria.
 
 Good areas for first contributions:
 - Adding language support to an existing hook (e.g., adding Zig/Julia detection to `post-edit-check.sh`)
@@ -108,8 +108,8 @@ For deeper context, see:
 
 ## Getting Help
 
-- **Questions** → [GitHub Discussions](https://github.com/shenxingy/claude-code-kit/discussions)
-- **Bugs** → [Open an issue](https://github.com/shenxingy/claude-code-kit/issues/new/choose) using the Bug Report template
+- **Questions** → [GitHub Discussions](https://github.com/shenxingy/clade/discussions)
+- **Bugs** → [Open an issue](https://github.com/shenxingy/clade/issues/new/choose) using the Bug Report template
 - **Security** → See [SECURITY.md](SECURITY.md)
 
 ## Labels Reference
