@@ -10,11 +10,11 @@
 
 **Autonomous coding, evolved.**
 
-One install script. Ten hooks, five agents, twenty-three skills, a safety guardian, and a correction learning loop — all working together so Claude codes better, catches its own mistakes, and can run unattended overnight while you sleep.
+One install script. Eleven hooks, five agents, twenty-two skills, a safety guardian, and a correction learning loop — all working together so Claude codes better, catches its own mistakes, and can run unattended overnight while you sleep.
 
 > If this saves you time, a star helps others find it — and if something breaks, [open an issue](https://github.com/shenxingy/clade/issues/new/choose).
 
-> **Blog post:** [Building Clade](https://alexshen.dev/en/blog/claude-code-kit) — the motivation, design decisions, and lessons learned.
+> **Blog post:** [Building Clade](https://alexshen.dev/en/blog/clade) — the motivation, design decisions, and lessons learned.
 
 ## Table of Contents
 
@@ -219,6 +219,46 @@ All checks are **opt-in by detection** — if the tool isn't installed or the pr
 - `slt` cycles through modes: symbol → percent → number → off
 - `slt theme` lists all 9 emoji themes; `slt theme <name>` sets one
 - The indicator shows how far ahead/behind your 95% weekly usage target you are
+
+## Dotfile Sync — Cross-Machine State
+
+Clade includes a sync system that keeps your Claude Code dotfiles (`~/.claude/`) in sync across machines. Your memory, corrections, skills, hooks, and scripts travel with you.
+
+**How it works:**
+
+```
+Machine A writes memory → memory-sync.sh hook fires → sync-push.sh → backend
+Machine B starts session → session-context.sh → sync-pull.sh → latest state
+```
+
+**Setup:**
+
+```bash
+# Auto-detect backend (NFS or GitHub)
+~/.claude/scripts/sync-setup.sh
+
+# Or specify explicitly
+~/.claude/scripts/sync-setup.sh --nfs /path/to/shared-nfs
+~/.claude/scripts/sync-setup.sh --github
+```
+
+**What syncs:**
+
+| Directory | Contents |
+|-----------|----------|
+| `~/.claude/memory/` | Global memory files |
+| `~/.claude/projects/*/memory/` | Per-project memory |
+| `~/.claude/skills/` | Custom skills |
+| `~/.claude/hooks/` | Hook scripts |
+| `~/.claude/scripts/` | Utility scripts |
+| `~/.claude/corrections/` | Learned correction rules |
+
+**Backends:**
+
+- **NFS** — direct shared filesystem (fastest, zero config if `~/shared-nfs` exists)
+- **GitHub** — private repo backend via `gh` CLI (works across networks)
+
+Sync is fully automatic once configured — the `memory-sync.sh` hook pushes after every write, and `sync-pull.sh` pulls at session start. No manual intervention needed.
 
 ## Documentation
 
