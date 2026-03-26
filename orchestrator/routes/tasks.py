@@ -13,7 +13,6 @@ from config import (
     _ALLOWED_TASK_COLS,
     _MODEL_ALIASES,
     _deps_met,
-    _fire_notification,
 )
 from session import ProjectSession, _resolve_session
 from github_sync import _gh_create_issue

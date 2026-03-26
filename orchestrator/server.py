@@ -21,7 +21,6 @@ from fastapi.staticfiles import StaticFiles
 import httpx
 
 from config import (
-    BASE_DIR,
     GLOBAL_SETTINGS,
     PROJECT_DIR,
     WEB_DIR,
@@ -65,9 +64,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Claude Code Orchestrator", lifespan=lifespan)
+_cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:*,http://127.0.0.1:*").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1|100\.\d+\.\d+\.\d+)(:\d+)?",
     allow_methods=["*"],
     allow_headers=["*"],
 )

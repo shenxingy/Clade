@@ -13,7 +13,7 @@ import re
 import shlex
 import time
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 import ptyprocess
@@ -22,7 +22,6 @@ from watchfiles import awatch
 
 from config import (
     GLOBAL_SETTINGS,
-    PROJECT_DIR,
     _MODEL_ALIASES,
     _deps_met,
     _fire_notification,
