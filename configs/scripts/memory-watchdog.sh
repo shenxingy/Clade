@@ -1,24 +1,24 @@
 #!/bin/bash
-# memory-watchdog.sh — 内存压力过高时自动杀掉 claude worker 进程，防止死机
+# memory-watchdog.sh — Auto-kill claude workers under memory pressure to prevent OOM
 #
-# 用法:
-#   启动:  nohup ~/.claude/scripts/memory-watchdog.sh &
-#   停止:  kill $(cat /tmp/memory-watchdog.pid)
+# Usage:
+#   Start:  nohup ~/.claude/scripts/memory-watchdog.sh &
+#   Stop:   kill $(cat /tmp/memory-watchdog.pid)
 #
-# 工作原理:
-#   每 15 秒检查一次内存使用率。
-#   当使用率超过阈值时:
-#     1. 先发 SIGTERM 给最老的 claude -p worker（优雅退出）
-#     2. 等 10 秒，如果内存仍然高，继续杀下一个
-#     3. 如果阈值极高（>95%），直接 SIGKILL
+# How it works:
+#   Checks memory usage every CHECK_INTERVAL seconds.
+#   When usage exceeds thresholds:
+#     1. SIGTERM oldest claude -p worker (graceful shutdown)
+#     2. Wait, if still high, kill next
+#     3. At emergency threshold (>95%), SIGKILL immediately
 #
-# 可通过环境变量覆盖默认值:
-#   MEM_WARN_THRESHOLD=80  — 开始告警的阈值（%）
-#   MEM_KILL_THRESHOLD=88  — 开始杀进程的阈值（%）
-#   MEM_EMERGENCY=95       — 紧急 SIGKILL 阈值（%）
-#   CHECK_INTERVAL=15      — 检查间隔（秒）
+# Environment variables (override defaults):
+#   MEM_WARN_THRESHOLD=80  — warning threshold (%)
+#   MEM_KILL_THRESHOLD=88  — start killing workers (%)
+#   MEM_EMERGENCY=95       — emergency SIGKILL threshold (%)
+#   CHECK_INTERVAL=15      — check interval (seconds)
 
-set -euo pipefail
+set -uo pipefail
 
 MEM_WARN_THRESHOLD="${MEM_WARN_THRESHOLD:-80}"
 MEM_KILL_THRESHOLD="${MEM_KILL_THRESHOLD:-88}"
@@ -27,77 +27,86 @@ CHECK_INTERVAL="${CHECK_INTERVAL:-15}"
 PID_FILE="/tmp/memory-watchdog.pid"
 LOG_FILE="/tmp/memory-watchdog.log"
 
-# 写入 PID 文件
 echo $$ > "$PID_FILE"
 
 log() {
   echo "$(date '+%Y-%m-%d %H:%M:%S') $1" | tee -a "$LOG_FILE"
 }
 
-# 获取内存使用百分比（macOS）
+# ─── Cross-platform memory usage (%) ─────────────────────────────────────────
+
 get_mem_usage() {
-  # vm_stat 输出页面信息，page size 16384 on Apple Silicon
-  local page_size=$(sysctl -n hw.pagesize)
-  local pages_free=$(vm_stat | awk '/Pages free/ {gsub(/\./,"",$3); print $3}')
-  local pages_inactive=$(vm_stat | awk '/Pages inactive/ {gsub(/\./,"",$3); print $3}')
-  local pages_speculative=$(vm_stat | awk '/Pages speculative/ {gsub(/\./,"",$3); print $3}')
-  local mem_total=$(sysctl -n hw.memsize)
-
-  local free_bytes=$(( (pages_free + pages_inactive + pages_speculative) * page_size ))
-  local used_pct=$(( 100 - (free_bytes * 100 / mem_total) ))
-
-  echo "$used_pct"
+  if [[ "$(uname)" == "Darwin" ]]; then
+    # macOS: use vm_stat + sysctl
+    local page_size pages_free pages_inactive pages_speculative mem_total free_bytes
+    page_size=$(sysctl -n hw.pagesize)
+    pages_free=$(vm_stat | awk '/Pages free/ {gsub(/\./,"",$3); print $3}')
+    pages_inactive=$(vm_stat | awk '/Pages inactive/ {gsub(/\./,"",$3); print $3}')
+    pages_speculative=$(vm_stat | awk '/Pages speculative/ {gsub(/\./,"",$3); print $3}')
+    mem_total=$(sysctl -n hw.memsize)
+    free_bytes=$(( (pages_free + pages_inactive + pages_speculative) * page_size ))
+    echo $(( 100 - (free_bytes * 100 / mem_total) ))
+  else
+    # Linux: use /proc/meminfo (MemAvailable is the best indicator)
+    local mem_total mem_available
+    mem_total=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
+    mem_available=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
+    echo $(( 100 - (mem_available * 100 / mem_total) ))
+  fi
 }
 
-# 获取 claude -p worker 的 PID 列表（按启动时间从老到新排序）
+# ─── Worker process management ────────────────────────────────────────────────
+
+# Get claude -p worker PIDs (oldest first)
+# Match: "claude" followed by "-p" as a standalone flag (not --profile etc.)
 get_worker_pids() {
-  pgrep -f "claude.*-p" 2>/dev/null | head -20 || true
+  pgrep -f "claude\s+.*\s-p\s" 2>/dev/null | head -20 || true
 }
 
-# 杀掉最老的一个 worker
+# Kill the oldest worker with given signal
 kill_oldest_worker() {
   local sig="${1:-TERM}"
   local pids
   pids=$(get_worker_pids)
 
   if [[ -z "$pids" ]]; then
-    log "  无 claude worker 进程可杀"
+    log "  No claude worker processes to kill"
     return 1
   fi
 
   local oldest_pid
   oldest_pid=$(echo "$pids" | head -1)
-  log "  发送 SIG${sig} 到 PID $oldest_pid"
+  log "  Sending SIG${sig} to PID $oldest_pid"
   kill -"$sig" "$oldest_pid" 2>/dev/null || true
   return 0
 }
 
-log "=== Memory watchdog 启动 ==="
-log "  告警阈值: ${MEM_WARN_THRESHOLD}%  杀进程: ${MEM_KILL_THRESHOLD}%  紧急: ${MEM_EMERGENCY}%"
-log "  检查间隔: ${CHECK_INTERVAL}s"
-log "  PID: $$"
+# ─── Main loop ────────────────────────────────────────────────────────────────
+
+log "=== Memory watchdog started ==="
+log "  Thresholds — warn: ${MEM_WARN_THRESHOLD}%  kill: ${MEM_KILL_THRESHOLD}%  emergency: ${MEM_EMERGENCY}%"
+log "  Interval: ${CHECK_INTERVAL}s  PID: $$"
 
 while true; do
-  usage=$(get_mem_usage)
+  usage=$(get_mem_usage 2>/dev/null || echo "0")
 
   if (( usage >= MEM_EMERGENCY )); then
-    log "[EMERGENCY] 内存 ${usage}% >= ${MEM_EMERGENCY}%，强制杀进程"
+    log "[EMERGENCY] Memory ${usage}% >= ${MEM_EMERGENCY}%, force-killing worker"
     kill_oldest_worker KILL
     sleep 5
-    # 如果还是高，继续杀
-    usage=$(get_mem_usage)
+    usage=$(get_mem_usage 2>/dev/null || echo "0")
     if (( usage >= MEM_EMERGENCY )); then
-      log "[EMERGENCY] 仍然 ${usage}%，继续杀"
+      log "[EMERGENCY] Still ${usage}%, killing next worker"
       kill_oldest_worker KILL
     fi
 
   elif (( usage >= MEM_KILL_THRESHOLD )); then
-    log "[KILL] 内存 ${usage}% >= ${MEM_KILL_THRESHOLD}%，优雅终止 worker"
+    log "[KILL] Memory ${usage}% >= ${MEM_KILL_THRESHOLD}%, gracefully terminating worker"
     kill_oldest_worker TERM
     sleep 10
 
   elif (( usage >= MEM_WARN_THRESHOLD )); then
-    log "[WARN] 内存 ${usage}% >= ${MEM_WARN_THRESHOLD}%，暂不动作"
+    log "[WARN] Memory ${usage}% >= ${MEM_WARN_THRESHOLD}%, no action yet"
   fi
 
   sleep "$CHECK_INTERVAL"
