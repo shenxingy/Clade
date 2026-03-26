@@ -48,10 +48,29 @@ _timeout() {
   fi
 }
 
+# Memory watchdog — auto-kill workers if memory pressure exceeds threshold
+_WATCHDOG_PID=""
+_start_watchdog() {
+  local watchdog="$SCRIPTS_DIR/memory-watchdog.sh"
+  if [[ -x "$watchdog" ]]; then
+    nohup "$watchdog" >/dev/null 2>&1 &
+    _WATCHDOG_PID=$!
+    echo "🛡 Memory watchdog started (PID: $_WATCHDOG_PID)"
+  fi
+}
+_stop_watchdog() {
+  if [[ -n "$_WATCHDOG_PID" ]] && kill -0 "$_WATCHDOG_PID" 2>/dev/null; then
+    kill "$_WATCHDOG_PID" 2>/dev/null || true
+    echo "🛡 Memory watchdog stopped"
+  fi
+  [[ -f /tmp/memory-watchdog.pid ]] && kill "$(cat /tmp/memory-watchdog.pid)" 2>/dev/null || true
+}
+
 # Graceful shutdown on SIGTERM/SIGINT
 _cleanup() {
   echo ""
   echo "⚠ Loop interrupted (signal). Saving state..."
+  _stop_watchdog
   [[ -n "${STATE_FILE:-}" ]] && state_write INTERRUPTED true
   [[ -n "${PROGRESS_FILE:-}" ]] && write_progress "interrupted" "signal"
   type _notify_loop &>/dev/null && _notify_loop "interrupted" "✗ Loop interrupted: $(basename ${GOAL_FILE:-unknown}) at iter ${iteration:-?}"
@@ -224,8 +243,20 @@ write_progress "running" "init"
 
 EXTRA_CONTEXT=""
 
+# ── Start memory watchdog ─────────────────────────────────────────────────────
+_start_watchdog
+
 # ── Main loop ─────────────────────────────────────────────────────────────────
 while [[ $iteration -lt $MAX_ITER ]]; do
+  # Clean up leftover worktrees from previous iterations
+  git worktree prune 2>/dev/null || true
+  WORKTREE_BASE="../.worktrees-$(basename "$(pwd)")"
+  if [[ -d "$WORKTREE_BASE" ]]; then
+    for wt in "$WORKTREE_BASE"/task-*; do
+      [[ -d "$wt" ]] && git worktree remove "$wt" --force 2>/dev/null || true
+    done
+  fi
+
   # Check for STOP sentinel (allows /loop --stop from another session)
   if [[ "$(state_read STOP false)" == "true" ]]; then
     write_progress "stopped" "user-requested"
@@ -583,6 +614,9 @@ INSTRUCTIONS
   echo ""
   echo "  Iteration $iteration complete."
 done
+
+# ── Stop memory watchdog ──────────────────────────────────────────────────────
+_stop_watchdog
 
 # ── Final ─────────────────────────────────────────────────────────────────────
 if [[ "$(state_read CONVERGED false)" != "true" ]]; then
