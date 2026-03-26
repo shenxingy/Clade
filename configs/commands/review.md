@@ -4,10 +4,32 @@ Perform a comprehensive project review — then **fix every issue found**. Repea
 
 - Read CLAUDE.md first. Follow project conventions exactly.
 - Every finding must cite `file:line`. No guessing.
-- Fix Critical and Warning issues immediately after finding them — don't batch everything to the end.
+- **Fix first, defer never** — fix Critical and Warning issues immediately after finding them. Don't batch to the end, don't defer to TODO.md. The only exceptions are listed in the Defer Rules below.
 - After each fix, verify it didn't break anything nearby.
 - Loop: after completing all phases, re-run a quick scan. If new Critical/Warning issues appear, fix them and scan again. Max 3 full iterations.
 - When a section is clean, say so — don't fabricate issues.
+
+## Defer Rules — What ACTUALLY Requires Human Decision
+
+Only these categories may be deferred to TODO.md instead of fixed immediately:
+
+**Defer (genuinely needs human):**
+- Force-push / rewriting git history (destructive, affects collaborators)
+- Credential rotation (needs access to external services)
+- Deleting data or dropping DB tables
+- Choosing between two fundamentally different architectures (e.g., "rewrite in Rust vs. refactor Python")
+
+**Fix immediately (do NOT defer):**
+- Centralizing hardcoded values → env vars (even across 10+ files — just do it)
+- Replacing raw SQL with parameterized queries
+- Splitting large files
+- Adding missing error handling
+- Fixing injection vectors
+- Creating missing project docs (GOALS.md, PROGRESS.md, etc.)
+- Adding linter config
+- Any code change that doesn't require external credentials or destructive ops
+
+When in doubt: **fix it**. If you're tempted to write "requires human decision" — ask yourself: "Does this actually need information only a human has, or am I just being cautious?" If it's caution, fix it.
 
 ---
 
@@ -259,10 +281,25 @@ For every interactive element (button, form, link, input):
 
 After completing Phases 1–8 and fixing all issues found:
 
-1. Run a **quick re-scan** — search for: remaining `🔴 Critical` patterns, lint errors (re-run linter), compilation errors (re-run build).
-2. If any Critical or Warning issues remain from the fixes themselves (e.g., a split introduced a new import cycle), fix them.
-3. Repeat until: zero Critical, zero Warning from re-scan. OR iteration limit (3 full passes) reached.
-4. On reaching the iteration limit: document remaining issues clearly — don't silently stop.
+1. **Verify all fixable issues are actually fixed** — re-read the issues list. For each "remaining" item, check against the Defer Rules. If it's fixable, go fix it NOW before the re-scan.
+2. Run a **quick re-scan** — search for: remaining `🔴 Critical` patterns, lint errors (re-run linter), compilation errors (re-run build).
+3. If any Critical or Warning issues remain from the fixes themselves (e.g., a split introduced a new import cycle), fix them.
+4. Repeat until: zero Critical, zero Warning from re-scan (excluding Defer Rules items). OR iteration limit (3 full passes) reached.
+5. On reaching the iteration limit: document remaining issues clearly — don't silently stop.
+
+**Anti-pattern to avoid**: Completing one pass, listing 10 "remaining" issues, then committing. If 8 of those 10 are fixable code changes, you should have fixed them and looped — not deferred them.
+
+## Convergence Gate (mandatory before committing)
+
+Before producing the final summary and committing, you MUST pass this gate:
+
+1. **List every remaining unfixed issue** (the ones you plan to put in "Remaining Issues").
+2. **For each item, answer**: "Which Defer Rule does this match?" — write the answer next to it.
+3. **If any item does NOT match a Defer Rule** → go back and fix it. Do NOT proceed to commit.
+4. **Count**: if remaining items > 3, you are likely being too conservative. Re-examine each one.
+5. Only after ALL remaining items are justified by a specific Defer Rule may you produce the summary and commit.
+
+This gate is a hard stop. Skipping it = review is incomplete.
 
 ---
 
@@ -279,11 +316,11 @@ After all iterations, produce a final summary:
 ## What Was Fixed
 - [Brief description of each fix with file:line]
 
-## Remaining Issues (if any)
-### 🔴 Critical (could not fix automatically)
-- [reason it wasn't fixed]
+## Remaining Issues (only items matching Defer Rules — must be empty or near-empty)
+### 🔴 Critical (genuinely needs human — e.g., force push, credential rotation)
+- [reason it wasn't fixed — must cite which Defer Rule applies]
 
-### 🟡 Warning (deferred)
+### 🟡 Warning (deferred — must cite which Defer Rule applies)
 - [brief description + file:line]
 
 ## Clean Sections
