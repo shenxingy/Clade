@@ -154,7 +154,10 @@ async function switchTab(sessionId) {
 
 async function closeTab(sessionId) {
   if (!confirm('Close this project tab?')) return;
-  await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
+  try {
+    const res = await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
+    if (!res.ok) { showToast('Failed to close tab', true); return; }
+  } catch (e) { showToast('Error closing tab: ' + e.message, true); return; }
   destroySessionState(sessionId);
   if (activeSessionId === sessionId) activeSessionId = null;
   await loadSessions();

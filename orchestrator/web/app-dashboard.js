@@ -353,20 +353,22 @@ async function addTask() {
 
   try {
     // If it's ===TASK=== format, send content to server then import
+    let res;
     if (desc.includes('===TASK===')) {
-      await fetch(`/api/tasks/import-proposed?session=${activeSessionId}`, {
+      res = await fetch(`/api/tasks/import-proposed?session=${activeSessionId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: desc }),
       });
     } else {
       const isCritical = document.getElementById('newTaskCritical')?.checked ? 1 : 0;
-      await fetch(`/api/tasks?session=${activeSessionId}`, {
+      res = await fetch(`/api/tasks?session=${activeSessionId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ description: desc, model, is_critical_path: isCritical }),
       });
     }
+    if (!res.ok) { showToast('Failed to add task', true); return; }
     document.getElementById('newTaskDesc').value = '';
     const critEl = document.getElementById('newTaskCritical');
     if (critEl) critEl.checked = false;
