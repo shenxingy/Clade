@@ -24,7 +24,7 @@ CACHE_FILE   = Path.home() / ".claude" / "usage-watch-cache.json"
 MODE_FILE    = Path.home() / ".claude" / ".statusline-mode"
 THEME_FILE   = Path.home() / ".claude" / ".statusline-theme"
 CACHE_TTL       = 300
-CACHE_TTL_STALE = 3600 * 6   # use stale cache for up to 6h if API is unavailable
+CACHE_TTL_STALE = 3600 * 24 * 7  # use stale cache for up to 7d (full period) if API is unavailable
 TARGET_RATE  = 0.95   # 95% weekly utilization = "excellent"
 
 # ─── Themes ───
@@ -204,6 +204,21 @@ def run():
     w       = data["seven_day"]
     usage   = w.get("utilization") or 0.0
     resets  = w.get("resets_at", "")
+
+    # If resets_at is in the past, the cached data is from a previous cycle — stale
+    try:
+        resets_dt = datetime.fromisoformat(resets.replace("Z", "+00:00"))
+        if resets_dt < datetime.now(timezone.utc):
+            # Previous cycle data — show a stale indicator
+            sym = THEMES[_theme()][2]  # on-track symbol as neutral
+            dim = "\033[2m"  # dim
+            if mode == "off":
+                return
+            print(f"{dim}{sym} (?){RESET}", end="")
+            return
+    except Exception:
+        pass
+
     elapsed = _elapsed_pct(resets)
     left    = _remaining(resets)
 

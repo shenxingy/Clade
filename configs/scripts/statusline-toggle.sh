@@ -1,46 +1,41 @@
 #!/usr/bin/env bash
 # statusline-toggle (slt) — control Claude Code status line display.
+# Compatible with Bash 3.2+ (macOS default).
 #
-# MODES   (~/.claude/.statusline-mode):   symbol | percent | off
+# MODES   (~/.claude/.statusline-mode):   symbol | percent | number | off
 # THEMES  (~/.claude/.statusline-theme):  see: slt theme
 #
 # Usage:
-#   slt                   cycle mode: symbol → percent → off → symbol
-#   slt symbol/percent/off  set mode directly
+#   slt                   cycle mode: symbol → percent → number → off → symbol
+#   slt symbol/percent/number/off  set mode directly
 #   slt theme             list all themes
 #   slt theme <name>      set theme + show stage meanings
 
 MODE_FILE="$HOME/.claude/.statusline-mode"
 THEME_FILE="$HOME/.claude/.statusline-theme"
 
-# ─── Theme registry ───
-# Format: name  e0  e1  e2  e3  label0  label1  label2  label3
-#   e0-e3 = emoji for each stage (far-behind / behind / on-track / ahead)
+VALID_THEMES="circles plain bird moon weather mood coffee rocket ocean dragon"
 
-declare -A THEME_E0 THEME_E1 THEME_E2 THEME_E3
-declare -A THEME_L0 THEME_L1 THEME_L2 THEME_L3
-declare -A THEME_DESC
+# ─── Theme data lookup (Bash 3.2 compatible — no associative arrays) ───
 
-_def() {
-  local n=$1
-  THEME_E0[$n]=$2; THEME_E1[$n]=$3; THEME_E2[$n]=$4; THEME_E3[$n]=$5
-  THEME_L0[$n]=$6; THEME_L1[$n]=$7; THEME_L2[$n]=$8; THEME_L3[$n]=$9
-  THEME_DESC[$n]="${10}"
+_theme_data() {
+  # Returns: e0 e1 e2 e3 "label0" "label1" "label2" "label3" "desc"
+  case "$1" in
+    circles) echo '○|◑|●|◉|far behind|a bit behind|on track|crushing it|classic circles' ;;
+    plain)   echo '--|−|+|++|far behind|a bit behind|on track|crushing it|ASCII compat (no emoji)' ;;
+    bird)    echo '🥚|🐣|🐥|🦢|egg|hatching|duckling|swan!|ugly duckling → swan' ;;
+    moon)    echo '🌑|🌙|🌛|🌝|new moon|crescent|half moon|full moon!|new → full moon' ;;
+    weather) echo '🌩️|🌧️|🌤️|🌈|thunderstorm|rainy|clearing up|rainbow!|storm → rainbow' ;;
+    mood)    echo '🫠|😐|😊|🤩|melting|meh|feeling good|on fire!|melting → ecstatic' ;;
+    coffee)  echo '😴|☕|💪|⚡|not awake yet|caffeinated|energized|supercharged|tired → wired' ;;
+    rocket)  echo '🌍|🚀|🛸|⭐|grounded|launched|in orbit|among stars|earth → star' ;;
+    ocean)   echo '🫧|🐠|🐬|🐋|just a ripple|swimming|diving deep|whale mode|ripple → whale' ;;
+    dragon)  echo '🥚|🦎|🐉|👑|egg|lizard|dragon|dragon king!|egg → dragon king' ;;
+  esac
 }
 
-#        name      e0   e1   e2   e3    label0          label1         label2         label3          desc
-_def circles  "○"  "◑"  "●"  "◉"  "far behind"    "a bit behind" "on track"     "crushing it"  "classic circles"
-_def plain    "--" "-"  "+"  "++" "far behind"    "a bit behind" "on track"     "crushing it"  "ASCII compat (no emoji)"
-_def bird     "🥚" "🐣" "🐥" "🦢" "egg"           "hatching"     "duckling"     "swan!"        "ugly duckling → swan"
-_def moon     "🌑" "🌙" "🌛" "🌝" "new moon"      "crescent"     "half moon"    "full moon!"   "new → full moon"
-_def weather  "🌩️" "🌧️" "🌤️" "🌈" "thunderstorm"  "rainy"        "clearing up"  "rainbow!"     "storm → rainbow"
-_def mood     "🫠" "😐" "😊" "🤩" "melting"       "meh"          "feeling good" "on fire!"     "melting → ecstatic"
-_def coffee   "😴" "☕" "💪" "⚡" "not awake yet" "caffeinated"  "energized"    "supercharged" "tired → wired"
-_def rocket   "🌍" "🚀" "🛸" "⭐" "grounded"      "launched"     "in orbit"     "among stars"  "earth → star"
-_def ocean    "🫧" "🐠" "🐬" "🐋" "just a ripple" "swimming"     "diving deep"  "whale mode"   "ripple → whale"
-_def dragon   "🥚" "🦎" "🐉" "👑" "egg"           "lizard"       "dragon"       "dragon king!" "egg → dragon king"
-
-VALID_THEMES=(circles plain bird moon weather mood coffee rocket ocean dragon)
+# Parse pipe-delimited theme data into positional fields
+_field() { echo "$1" | cut -d'|' -f"$2"; }
 
 _get_mode() {
   local m; m=$(cat "$MODE_FILE" 2>/dev/null)
@@ -49,15 +44,20 @@ _get_mode() {
 
 _get_theme() {
   local t; t=$(cat "$THEME_FILE" 2>/dev/null)
-  # validate against known themes
-  for v in "${VALID_THEMES[@]}"; do [[ "$t" == "$v" ]] && echo "$t" && return; done
+  for v in $VALID_THEMES; do [ "$t" = "$v" ] && echo "$t" && return; done
   echo "circles"
 }
 
 _show_theme_stages() {
-  local n=$1
-  local e0=${THEME_E0[$n]} e1=${THEME_E1[$n]} e2=${THEME_E2[$n]} e3=${THEME_E3[$n]}
-  local l0=${THEME_L0[$n]} l1=${THEME_L1[$n]} l2=${THEME_L2[$n]} l3=${THEME_L3[$n]}
+  local data; data=$(_theme_data "$1")
+  local e0; e0=$(_field "$data" 1)
+  local e1; e1=$(_field "$data" 2)
+  local e2; e2=$(_field "$data" 3)
+  local e3; e3=$(_field "$data" 4)
+  local l0; l0=$(_field "$data" 5)
+  local l1; l1=$(_field "$data" 6)
+  local l2; l2=$(_field "$data" 7)
+  local l3; l3=$(_field "$data" 8)
   echo "  $e0  $l0     (delta < -15%)"
   echo "  $e1  $l1     (-15% to -5%)"
   echo "  $e2  $l2     (-5% to +5%)"
@@ -68,18 +68,25 @@ _show_all_themes() {
   local current; current=$(_get_theme)
   echo "Available themes:"
   echo ""
-  for n in "${VALID_THEMES[@]}"; do
-    local marker="  "; [[ "$n" == "$current" ]] && marker="→ "
-    local e0=${THEME_E0[$n]} e1=${THEME_E1[$n]} e2=${THEME_E2[$n]} e3=${THEME_E3[$n]}
-    printf "%s%-9s  %s%s%s%s   %s\n" "$marker" "$n" "$e0" "$e1" "$e2" "$e3" "${THEME_DESC[$n]}"
+  for n in $VALID_THEMES; do
+    local marker="  "; [ "$n" = "$current" ] && marker="→ "
+    local data; data=$(_theme_data "$n")
+    local e0; e0=$(_field "$data" 1)
+    local e1; e1=$(_field "$data" 2)
+    local e2; e2=$(_field "$data" 3)
+    local e3; e3=$(_field "$data" 4)
+    local desc; desc=$(_field "$data" 9)
+    printf "%s%-9s  %s%s%s%s   %s\n" "$marker" "$n" "$e0" "$e1" "$e2" "$e3" "$desc"
   done
   echo ""
   echo "Usage: slt theme <name>"
 }
 
 _mode_preview() {
-  local mode=$1 theme; theme=$(_get_theme)
-  local e2=${THEME_E2[$theme]}
+  local mode=$1
+  local theme; theme=$(_get_theme)
+  local data; data=$(_theme_data "$theme")
+  local e2; e2=$(_field "$data" 3)
   case "$mode" in
     symbol)  echo "  symbol  → $e2 (4d)          emoji only" ;;
     percent) echo "  percent → $e2 +4% (4d)      emoji + delta" ;;
@@ -90,28 +97,33 @@ _mode_preview() {
 
 # ─── Handle: slt theme [name] ───
 
-if [[ "$1" == "theme" ]]; then
-  if [[ -z "$2" || "$2" == "list" ]]; then
+if [ "$1" = "theme" ]; then
+  if [ -z "$2" ] || [ "$2" = "list" ]; then
     _show_all_themes
     exit 0
   fi
   _valid=0
-  for v in "${VALID_THEMES[@]}"; do [[ "$2" == "$v" ]] && _valid=1 && break; done
-  if [[ $_valid -eq 0 ]]; then
+  for v in $VALID_THEMES; do [ "$2" = "$v" ] && _valid=1 && break; done
+  if [ $_valid -eq 0 ]; then
     echo "Unknown theme: $2"
     echo "Run 'slt theme' to see all available themes."
     exit 1
   fi
   echo "$2" > "$THEME_FILE"
-  _e0=${THEME_E0[$2]} _e1=${THEME_E1[$2]} _e2=${THEME_E2[$2]} _e3=${THEME_E3[$2]}
-  echo "Theme: $2  $_e0$_e1$_e2$_e3  — ${THEME_DESC[$2]}"
+  local_data=$(_theme_data "$2")
+  _e0=$(_field "$local_data" 1)
+  _e1=$(_field "$local_data" 2)
+  _e2=$(_field "$local_data" 3)
+  _e3=$(_field "$local_data" 4)
+  _desc=$(_field "$local_data" 9)
+  echo "Theme: $2  $_e0$_e1$_e2$_e3  — $_desc"
   _show_theme_stages "$2"
   exit 0
 fi
 
 # ─── Handle: slt <mode> (direct set) ───
 
-if [[ -n "$1" ]]; then
+if [ -n "$1" ]; then
   case "$1" in
     symbol|percent|number|off)
       echo "$1" > "$MODE_FILE"
@@ -121,7 +133,7 @@ if [[ -n "$1" ]]; then
     *)
       echo "Unknown: $1"
       echo ""
-      echo "Modes:   slt [symbol|percent|off]"
+      echo "Modes:   slt [symbol|percent|number|off]"
       echo "Themes:  slt theme [name]   (run 'slt theme' to see all)"
       exit 1
       ;;
@@ -141,6 +153,10 @@ esac
 
 echo "$next" > "$MODE_FILE"
 theme=$(_get_theme)
-e0=${THEME_E0[$theme]} e1=${THEME_E1[$theme]} e2=${THEME_E2[$theme]} e3=${THEME_E3[$theme]}
+data=$(_theme_data "$theme")
+e0=$(_field "$data" 1)
+e1=$(_field "$data" 2)
+e2=$(_field "$data" 3)
+e3=$(_field "$data" 4)
 echo "Mode: $current → $next   [theme: $theme  $e0$e1$e2$e3]"
 _mode_preview "$next"
