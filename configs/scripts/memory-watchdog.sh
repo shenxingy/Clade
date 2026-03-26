@@ -28,6 +28,7 @@ PID_FILE="/tmp/memory-watchdog.pid"
 LOG_FILE="/tmp/memory-watchdog.log"
 
 echo $$ > "$PID_FILE"
+trap 'rm -f "$PID_FILE"' EXIT INT TERM
 
 log() {
   echo "$(date '+%Y-%m-%d %H:%M:%S') $1" | tee -a "$LOG_FILE"
@@ -38,13 +39,13 @@ log() {
 get_mem_usage() {
   if [[ "$(uname)" == "Darwin" ]]; then
     # macOS: use vm_stat + sysctl
-    local page_size pages_free pages_inactive pages_speculative mem_total free_bytes
+    # vm_stat pages_free already includes speculative on some kernels — use free+inactive only
+    local page_size pages_free pages_inactive mem_total free_bytes
     page_size=$(sysctl -n hw.pagesize)
     pages_free=$(vm_stat | awk '/Pages free/ {gsub(/\./,"",$3); print $3}')
     pages_inactive=$(vm_stat | awk '/Pages inactive/ {gsub(/\./,"",$3); print $3}')
-    pages_speculative=$(vm_stat | awk '/Pages speculative/ {gsub(/\./,"",$3); print $3}')
     mem_total=$(sysctl -n hw.memsize)
-    free_bytes=$(( (pages_free + pages_inactive + pages_speculative) * page_size ))
+    free_bytes=$(( (pages_free + pages_inactive) * page_size ))
     echo $(( 100 - (free_bytes * 100 / mem_total) ))
   else
     # Linux: use /proc/meminfo (MemAvailable is the best indicator)
@@ -60,7 +61,7 @@ get_mem_usage() {
 # Get claude -p worker PIDs (oldest first)
 # Match: "claude" followed by "-p" as a standalone flag (not --profile etc.)
 get_worker_pids() {
-  pgrep -f "claude\s+.*\s-p\s" 2>/dev/null | head -20 || true
+  pgrep -f "claude[[:space:]].*[[:space:]]-p[[:space:]]" 2>/dev/null | head -20 || true
 }
 
 # Kill the oldest worker with given signal
