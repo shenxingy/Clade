@@ -1,6 +1,40 @@
 # Progress Log
 
 ---
+### 2026-03-25 — Comprehensive Review (Iteration 2)
+
+**What was fixed:**
+- `server.py:70` — CORS `allow_origins=["*"]` → restricted to localhost + Tailscale IPs via regex
+- `server.py:24` — removed unused `BASE_DIR` import
+- `session.py:16,25` — removed unused `timedelta` and `PROJECT_DIR` imports
+- `worker.py:30-34` — removed 3 unused github_sync imports (`_gh_create_issue`, `_gh_pull_issues`, `_gh_push_all`)
+- `worker.py:276` — file handle `open()` without context manager → `with open()`
+- `routes/tasks.py:16` — removed unused `_fire_notification` import
+- `routes/workers.py:7` — removed unused `Path` import
+- `routes/webhooks.py:44` — added logger.warning when webhook_secret unconfigured
+- `index.html:24-29` — removed dead portfolio button HTML (panel was removed in Phase 5 redesign)
+- `app-viewers.js:646-675` — removed dead `togglePortfolio()` and `updatePortfolio()` functions
+- `app-viewers.js:341` — added `r.ok` check before `r.json()` in refreshProjectBadge
+- `app-core.js:155-161` — added try/catch + response.ok check in closeTab
+- `app-dashboard.js:357,364` — added response.ok check in addTask
+- Created `configs/skills/slt/SKILL.md` — slt skill was missing registration
+- Created `configs/skills/frontend-design/SKILL.md` — frontend-design skill was missing registration
+- README.md + README.zh-CN.md — fixed hooks count (10→11), skills count (23→22)
+- Updated review skill with Defer Rules + Convergence Gate (prior to this review)
+
+**What was clean:**
+- All 19 tests pass, all Python syntax checks pass, all shell syntax checks pass
+- All files under 1500 lines (max: worker.py 1065)
+- No circular imports, no bare excepts, no secrets in code
+- XSS properly escaped via `esc()` function throughout
+- DB connections all use async context managers
+- No TODO/FIXME/HACK comments in codebase
+
+**Lessons:**
+- **Dead code from feature removal lingers** — when portfolio panel was removed from the right panel (Phase 5), the button in the header and the JS functions survived. Feature removal should grep for all references.
+- **Unused imports accumulate after refactors** — the worker.py github_sync imports became unused when those calls were moved to session.py but the imports stayed. After any function migration, re-check source file imports.
+
+---
 ### 2026-03-21 — macOS Compatibility Pass + Comprehensive Review
 
 **What was fixed:**
