@@ -1,14 +1,20 @@
 **English** | [中文](README.zh-CN.md)
 
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/shenxingy/claude-code-kit/blob/main/CONTRIBUTING.md) [![good first issue](https://img.shields.io/github/issues/shenxingy/claude-code-kit/good%20first%20issue)](https://github.com/shenxingy/claude-code-kit/labels/good%20first%20issue)
+<p align="center">
+  <img src="assets/banner.svg" alt="Clade" width="800" />
+</p>
 
-# Claude Code Kit
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/shenxingy/clade/blob/main/CONTRIBUTING.md) [![good first issue](https://img.shields.io/github/issues/shenxingy/clade/good%20first%20issue)](https://github.com/shenxingy/clade/labels/good%20first%20issue)
 
-**Turn Claude Code from a chat assistant into an autonomous coding system.**
+# Clade
+
+**Autonomous coding, evolved.**
 
 One install script. Ten hooks, five agents, twenty-three skills, a safety guardian, and a correction learning loop — all working together so Claude codes better, catches its own mistakes, and can run unattended overnight while you sleep.
 
-> If this saves you time, a star helps others find it — and if something breaks, [open an issue](https://github.com/shenxingy/claude-code-kit/issues/new/choose).
+> If this saves you time, a star helps others find it — and if something breaks, [open an issue](https://github.com/shenxingy/clade/issues/new/choose).
+
+> **Blog post:** [Building Clade](https://alexshen.dev/en/blog/claude-code-kit) — the motivation, design decisions, and lessons learned.
 
 ## Table of Contents
 
@@ -19,22 +25,25 @@ One install script. Ten hooks, five agents, twenty-three skills, a safety guardi
 5. [When to Use What](#when-to-use-what)
 6. [Documentation](#documentation)
 7. [Repo Structure](#repo-structure)
-8. [Uninstall](#uninstall)
-9. [Contributing](#contributing)
-10. [Known Limitations](#known-limitations)
-11. [License](#license)
+8. [OpenClaw Integration](#openclaw-integration)
+9. [Uninstall](#uninstall)
+10. [Contributing](#contributing)
+11. [Known Limitations](#known-limitations)
+12. [License](#license)
 
 ## Install (30 seconds)
 
 ```bash
-git clone https://github.com/shenxingy/claude-code-kit.git
-cd claude-code-kit
+git clone https://github.com/shenxingy/clade.git
+cd clade
 ./install.sh
 ```
 
 Start a new Claude Code session to activate everything.
 
 > **Requirements:** `jq` (for settings merge). Everything else is optional.
+>
+> **Platform:** Linux and macOS supported. macOS users: `brew install coreutils bash` adds `gtimeout` and bash 4+ — scripts work without them but `timeout` falls back to no-timeout mode.
 
 ## Supported Languages & Frameworks
 
@@ -227,7 +236,7 @@ All checks are **opt-in by detection** — if the tool isn't installed or the pr
 ## Repo Structure
 
 ```
-claude-code-kit/
+clade/
 ├── install.sh                         # One-command deployment
 ├── uninstall.sh                       # Clean removal
 ├── orchestrator/                      # Web UI for parallel agent orchestration
@@ -338,7 +347,32 @@ claude-code-kit/
         ├── power-users.md                     # Patterns from top Claude Code users
         ├── openclaw-dev-velocity-analysis.md  # steipete velocity analysis
         └── solo-dev-velocity-playbook.md      # Actionable solo dev playbook
+├── adapters/
+│   └── openclaw/                              # OpenClaw integration (mobile monitoring)
+│       ├── monitor.py                         # HTTP bridge — reads CLI state files
+│       ├── README.md                          # Setup guide
+│       └── skills/                            # 3 OpenClaw skills (status, control, report)
+└── assets/
+    └── banner.svg                             # README banner
 ```
+
+## OpenClaw Integration
+
+Monitor and control overnight coding loops from your phone via [OpenClaw](https://openclaw.ai) (Telegram, WhatsApp, Slack, etc.).
+
+```
+Phone → Telegram → OpenClaw → monitor.py → reads .claude/loop-state, logs/
+```
+
+Three skills included:
+
+| Skill | What you say | What happens |
+|-------|-------------|-------------|
+| **clade-status** | "how's the loop going" | Iteration progress, cost, recent commits |
+| **clade-control** | "start a loop to fix tests, run 5 times" | Starts/stops autonomous loops |
+| **clade-report** | "what did it do overnight" | Session report, cost breakdown, blockers |
+
+Setup: start `monitor.py`, install skills in OpenClaw. See [`adapters/openclaw/README.md`](adapters/openclaw/README.md) for details.
 
 ## Uninstall
 

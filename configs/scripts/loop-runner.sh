@@ -26,6 +26,28 @@
 
 set -uo pipefail
 
+# Cross-platform sed -i (macOS needs '' after -i)
+_sed_i() {
+  if [[ "$(uname)" == "Darwin" ]]; then
+    sed -i '' "$@"
+  else
+    sed -i "$@"
+  fi
+}
+
+# Cross-platform timeout (macOS: gtimeout from coreutils)
+_timeout() {
+  if command -v gtimeout &>/dev/null; then
+    gtimeout "$@"
+  elif command -v timeout &>/dev/null; then
+    timeout "$@"
+  else
+    # No timeout available, run without
+    shift  # remove the timeout duration arg
+    "$@"
+  fi
+}
+
 # Memory watchdog — auto-kill workers if memory pressure exceeds threshold
 _WATCHDOG_PID=""
 _start_watchdog() {
@@ -136,7 +158,7 @@ state_read() {
 state_write() {
   local key="$1" val="$2"
   if [[ -f "$STATE_FILE" ]] && grep -q "^${key}=" "$STATE_FILE"; then
-    sed -i "s|^${key}=.*|${key}=${val}|" "$STATE_FILE"
+    _sed_i "s|^${key}=.*|${key}=${val}|" "$STATE_FILE"
   else
     echo "${key}=${val}" >> "$STATE_FILE"
   fi
@@ -144,7 +166,7 @@ state_write() {
 
 if ! $RESUME || [[ ! -f "$STATE_FILE" ]]; then
   # Fresh start: reset state (default behavior)
-  { echo "ITERATION=0"; echo "CONVERGED=false"; echo "GOAL=$(realpath "$GOAL_FILE")"; echo "STARTED=$(date -Iseconds)"; echo "STARTED_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo 'HEAD')"; } > "$STATE_FILE"
+  { echo "ITERATION=0"; echo "CONVERGED=false"; echo "GOAL=$(realpath "$GOAL_FILE")"; echo "STARTED=$(date +"%Y-%m-%dT%H:%M:%S%z")"; echo "STARTED_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo 'HEAD')"; } > "$STATE_FILE"
 fi
 
 iteration=$(state_read ITERATION 0)
@@ -279,7 +301,7 @@ while [[ $iteration -lt $MAX_ITER ]]; do
   fi
 
   # ── Build supervisor prompt ───────────────────────────────────────────────
-  PROMPT_FILE=$(mktemp /tmp/loop-supervisor-XXXXXX.md)
+  PROMPT_FILE=$(mktemp /tmp/loop-supervisor-XXXXXX)
   {
     cat << 'HEADER'
 You are a planning+evaluation supervisor for an autonomous improvement loop.
@@ -418,7 +440,7 @@ INSTRUCTIONS
   echo "  Supervisor planning ($SUPERVISOR_MODEL)..."
 
   SUPERVISOR_JSON=$(
-    timeout 300s claude -p \
+    _timeout 300s claude -p \
       --model "$SUPERVISOR_MODEL_ID" \
       --dangerously-skip-permissions \
       --output-format json \
@@ -480,7 +502,7 @@ INSTRUCTIONS
 
   if echo "$SUPERVISOR_OUTPUT" | grep -q "^===TASK===$"; then
     # Supervisor output proper format — use directly, append self-review footer to each task
-    PROCESSED=$(mktemp /tmp/loop-tasks-XXXXXX.txt)
+    PROCESSED=$(mktemp /tmp/loop-tasks-XXXXXX)
     in_body=false
     seen_first_task=false
     while IFS= read -r line; do

@@ -1,4 +1,4 @@
-# TODO — Claude Code Kit
+# TODO — Clade
 
 > Vision and architecture: see [VISION.md](VISION.md)
 

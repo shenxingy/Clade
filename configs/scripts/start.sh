@@ -28,6 +28,17 @@ set -uo pipefail
 # Allow nested claude calls
 unset CLAUDECODE 2>/dev/null || true
 
+# Cross-platform timeout (macOS: gtimeout from coreutils)
+_timeout() {
+  if command -v gtimeout &>/dev/null; then
+    gtimeout "$@"
+  elif command -v timeout &>/dev/null; then
+    timeout "$@"
+  else
+    shift  # remove duration arg, run without timeout
+    "$@"
+  fi
+}
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -171,7 +182,7 @@ _accumulate_cost() {
   # Read cumulative cost from loop-cost.log (loop-runner.sh tracks running total)
   if [[ -f "$COST_LOG" ]]; then
     local cumulative
-    cumulative=$(tail -1 "$COST_LOG" 2>/dev/null | grep -oP 'CUMULATIVE=\$\K[0-9.]+' || echo 0)
+    cumulative=$(tail -1 "$COST_LOG" 2>/dev/null | grep -o 'CUMULATIVE=\$[0-9.]*' | sed 's/CUMULATIVE=\$//' || echo 0)
     # Skip python3 call if cumulative is zero or empty (file exists but no data yet)
     if [[ -n "$cumulative" && "$cumulative" != "0" ]]; then
       TOTAL_COST=$(python3 -c "print(round($TOTAL_COST + $cumulative, 4))" 2>/dev/null || echo "$TOTAL_COST")
@@ -251,7 +262,7 @@ _post_convergence_scan() {
   for script in "${scan_scripts[@]}"; do
     if [[ -x "$script" ]]; then
       local output
-      output=$(timeout 120s bash "$script" . 2>/dev/null || true)
+      output=$(_timeout 120s bash "$script" . 2>/dev/null || true)
       if echo "$output" | grep -q "^===TASK===$"; then
         findings="${findings}${output}"$'\n'
       fi
@@ -341,7 +352,7 @@ _patrol() {
     for script in "${scan_scripts[@]}"; do
       [[ -x "$script" ]] || continue
       local output
-      output=$(timeout 120s bash "$script" "$project_dir" 2>/dev/null || true)
+      output=$(_timeout 120s bash "$script" "$project_dir" 2>/dev/null || true)
       if echo "$output" | grep -q "^===TASK===$"; then
         # Tag tasks with project
         local tagged
@@ -444,7 +455,7 @@ else:
     "$(_safe_cat TODO.md)" \
     "$(_safe_cat BRAINSTORM.md)" \
     "$(git log --oneline -20 2>/dev/null || echo '(no git history)')" \
-  | timeout 300s claude -p --dangerously-skip-permissions \
+  | _timeout 300s claude -p --dangerously-skip-permissions \
     2>/dev/null
 
   exit 0
@@ -469,7 +480,7 @@ if [[ "$MODE" == "morning" ]]; then
     "$(_safe_cat PROGRESS.md)" \
     "$(_safe_cat BRAINSTORM.md)" \
     "$(git log --oneline -20 2>/dev/null || echo '(no git history)')" \
-  | timeout 300s claude -p --dangerously-skip-permissions \
+  | _timeout 300s claude -p --dangerously-skip-permissions \
     2>/dev/null
 
   exit 0
@@ -684,7 +695,7 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
       "$(_safe_cat PROGRESS.md)" \
       "$(_safe_cat .claude/skipped.md)" \
       "$(_safe_cat BRAINSTORM.md)" \
-    | timeout 300s claude -p --dangerously-skip-permissions \
+    | _timeout 300s claude -p --dangerously-skip-permissions \
       > .claude/proposed-tasks.md 2>.claude/orchestrate-err.log
     ORCH_EXIT=$?
 
@@ -708,7 +719,7 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
           "$(_safe_cat PROGRESS.md)" \
           "$(_safe_cat .claude/skipped.md)" \
           "$(_safe_cat BRAINSTORM.md)"
-      } | timeout 300s claude -p --dangerously-skip-permissions \
+      } | _timeout 300s claude -p --dangerously-skip-permissions \
         > .claude/proposed-tasks.md 2>.claude/orchestrate-err.log
 
       if grep -q "^===TASK===$" .claude/proposed-tasks.md 2>/dev/null; then
@@ -837,7 +848,7 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
   MCP_ARGS=()
   [[ -f .claude/mcp.json ]] && MCP_ARGS=(--mcp-config .claude/mcp.json)
   _safe_cat "$HOME/.claude/skills/verify/prompt.md" \
-  | timeout 300s claude -p --dangerously-skip-permissions ${MCP_ARGS[@]+"${MCP_ARGS[@]}"} \
+  | _timeout 300s claude -p --dangerously-skip-permissions ${MCP_ARGS[@]+"${MCP_ARGS[@]}"} \
     > .claude/verify-output.txt 2>.claude/verify-err.log || VERIFY_EXIT=$?
 
   if [[ $VERIFY_EXIT -eq 124 ]]; then
@@ -867,7 +878,7 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
       ;;
     partial)
       _log "⚠ Partial verification — logging gaps"
-      echo "## [$(date -Iseconds)] Partial verify: unverifiable anchors" >> .claude/skipped.md
+      echo "## [$(date +"%Y-%m-%dT%H:%M:%S%z")] Partial verify: unverifiable anchors" >> .claude/skipped.md
       ;;
     fail)
       VERIFY_RETRIES=$((VERIFY_RETRIES + 1))
@@ -875,7 +886,7 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
 
       if [[ $VERIFY_RETRIES -ge $MAX_VERIFY_RETRIES ]]; then
         _log "Max verify retries reached — Tier 2 escalation"
-        echo "## [$(date -Iseconds)] Skipped: verify failed after $MAX_VERIFY_RETRIES retries for feature '$CURRENT_FEATURE'" >> .claude/skipped.md
+        echo "## [$(date +"%Y-%m-%dT%H:%M:%S%z")] Skipped: verify failed after $MAX_VERIFY_RETRIES retries for feature '$CURRENT_FEATURE'" >> .claude/skipped.md
         echo "Failed anchors: $FAILED_ANCHORS" >> .claude/skipped.md
       else
         # Create fix tasks and re-loop
@@ -930,7 +941,7 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
           VERIFY_FIX_PENDING=true
         elif [[ "$bug_items" -eq 0 ]]; then
           _log "⚠ INTERACTION_RESULT=fail but no [BUG] items in playwright-issues.md — treating as partial"
-          echo "## [$(date -Iseconds)] Partial UI interaction: fail reported but no [BUG] items" >> .claude/skipped.md
+          echo "## [$(date +"%Y-%m-%dT%H:%M:%S%z")] Partial UI interaction: fail reported but no [BUG] items" >> .claude/skipped.md
         fi
         # [UX] items → append to BRAINSTORM.md
         ux_items=$(grep "^\[UX\]" .claude/playwright-issues.md 2>/dev/null || true)
@@ -938,17 +949,17 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
           _log "Appending UX suggestions to BRAINSTORM.md"
           {
             echo ""
-            echo "## [AI] UI/UX issues from Playwright testing ($(date -Iseconds))"
+            echo "## [AI] UI/UX issues from Playwright testing ($(date +"%Y-%m-%dT%H:%M:%S%z"))"
             echo "$ux_items" | sed 's/^\[UX\]/- [AI]/'
           } >> BRAINSTORM.md
         fi
       else
         _log "⚠ INTERACTION_RESULT=fail but .claude/playwright-issues.md missing — treating as partial"
-        echo "## [$(date -Iseconds)] Partial UI interaction: fail reported but no issues file" >> .claude/skipped.md
+        echo "## [$(date +"%Y-%m-%dT%H:%M:%S%z")] Partial UI interaction: fail reported but no issues file" >> .claude/skipped.md
       fi
       ;;
     partial)
-      echo "## [$(date -Iseconds)] Partial UI interaction: some flows unverifiable" >> .claude/skipped.md
+      echo "## [$(date +"%Y-%m-%dT%H:%M:%S%z")] Partial UI interaction: some flows unverifiable" >> .claude/skipped.md
       ;;
   esac
 
@@ -958,7 +969,7 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
     VERIFY_RETRIES=$((VERIFY_RETRIES + 1))
     if [[ $VERIFY_RETRIES -ge $MAX_VERIFY_RETRIES ]]; then
       _log "Max verify retries reached (including UI fixes) — skipping"
-      echo "## [$(date -Iseconds)] Skipped: UI interaction fixes exhausted retries" >> .claude/skipped.md
+      echo "## [$(date +"%Y-%m-%dT%H:%M:%S%z")] Skipped: UI interaction fixes exhausted retries" >> .claude/skipped.md
       VERIFY_FIX_PENDING=false
     else
       continue
@@ -970,7 +981,7 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
   _log "Syncing docs..."
 
   _safe_cat "$HOME/.claude/skills/sync/prompt.md" \
-  | timeout 120s claude -p --dangerously-skip-permissions \
+  | _timeout 120s claude -p --dangerously-skip-permissions \
     > /dev/null 2>.claude/sync-err.log || true
 
   # Commit doc updates

@@ -35,7 +35,7 @@ if ! grep -qE '\[(fix|skip|wontfix)\]' "$ISSUES_FILE" 2>/dev/null; then
 fi
 
 TASK_COUNT=0
-TIMESTAMP=$(date -Iseconds)
+TIMESTAMP=$(date +"%Y-%m-%dT%H:%M:%S%z")
 
 # ─── Process [skip] and [wontfix] → skipped.md ───────────────────────────────
 _process_skips() {

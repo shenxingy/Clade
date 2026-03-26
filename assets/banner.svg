@@ -1,0 +1,163 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 200" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="800" y2="200" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0a0e1a" />
+      <stop offset="100%" stop-color="#111d2e" />
+    </linearGradient>
+    <!-- Branch gradients -->
+    <linearGradient id="branch-g" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#7ee787" stop-opacity="0.8" />
+      <stop offset="100%" stop-color="#7ee787" stop-opacity="0.2" />
+    </linearGradient>
+    <linearGradient id="branch-b" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#79c0ff" stop-opacity="0.7" />
+      <stop offset="100%" stop-color="#79c0ff" stop-opacity="0.15" />
+    </linearGradient>
+    <linearGradient id="branch-o" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#f0883e" stop-opacity="0.6" />
+      <stop offset="100%" stop-color="#f0883e" stop-opacity="0.15" />
+    </linearGradient>
+    <linearGradient id="branch-p" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#d2a8ff" stop-opacity="0.5" />
+      <stop offset="100%" stop-color="#d2a8ff" stop-opacity="0.1" />
+    </linearGradient>
+    <!-- Node glows -->
+    <radialGradient id="glow-g">
+      <stop offset="0%" stop-color="#7ee787" stop-opacity="0.9" />
+      <stop offset="50%" stop-color="#7ee787" stop-opacity="0.15" />
+      <stop offset="100%" stop-color="#7ee787" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="glow-b">
+      <stop offset="0%" stop-color="#79c0ff" stop-opacity="0.8" />
+      <stop offset="50%" stop-color="#79c0ff" stop-opacity="0.12" />
+      <stop offset="100%" stop-color="#79c0ff" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="glow-o">
+      <stop offset="0%" stop-color="#f0883e" stop-opacity="0.7" />
+      <stop offset="50%" stop-color="#f0883e" stop-opacity="0.1" />
+      <stop offset="100%" stop-color="#f0883e" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="glow-p">
+      <stop offset="0%" stop-color="#d2a8ff" stop-opacity="0.6" />
+      <stop offset="50%" stop-color="#d2a8ff" stop-opacity="0.08" />
+      <stop offset="100%" stop-color="#d2a8ff" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="glow-root">
+      <stop offset="0%" stop-color="#e6edf3" stop-opacity="0.9" />
+      <stop offset="40%" stop-color="#7ee787" stop-opacity="0.2" />
+      <stop offset="100%" stop-color="#7ee787" stop-opacity="0" />
+    </radialGradient>
+    <filter id="soft">
+      <feGaussianBlur stdDeviation="1.5" />
+    </filter>
+  </defs>
+
+  <style>
+    @keyframes pulse {
+      0%, 100% { opacity: 0.5 }
+      50%      { opacity: 1 }
+    }
+    @keyframes drawBranch {
+      0%   { stroke-dashoffset: 200 }
+      100% { stroke-dashoffset: 0 }
+    }
+    .node { animation: pulse 3s ease-in-out infinite }
+    .d1 { animation-delay: 0s }
+    .d2 { animation-delay: 0.4s }
+    .d3 { animation-delay: 0.8s }
+    .d4 { animation-delay: 1.2s }
+    .d5 { animation-delay: 1.6s }
+    .d6 { animation-delay: 2.0s }
+    .d7 { animation-delay: 0.6s }
+    .d8 { animation-delay: 1.0s }
+    .branch {
+      stroke-dasharray: 200;
+      animation: drawBranch 2s ease forwards;
+    }
+    .br1 { animation-delay: 0.2s }
+    .br2 { animation-delay: 0.4s }
+    .br3 { animation-delay: 0.6s }
+    .br4 { animation-delay: 0.8s }
+    .br5 { animation-delay: 1.0s }
+    .br6 { animation-delay: 1.2s }
+    .br7 { animation-delay: 1.4s }
+    .br8 { animation-delay: 1.6s }
+    .title {
+      fill: #e6edf3;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      font-weight: 700;
+      font-size: 36px;
+      letter-spacing: -0.5px;
+    }
+    .tagline {
+      fill: #6e7681;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      font-weight: 400;
+      font-size: 14px;
+      letter-spacing: 1.5px;
+    }
+  </style>
+
+  <!-- Background -->
+  <rect width="800" height="200" fill="url(#bg)" />
+
+  <!-- Subtle grid -->
+  <g opacity="0.025">
+    <line x1="0" y1="50" x2="800" y2="50" stroke="#e6edf3" />
+    <line x1="0" y1="100" x2="800" y2="100" stroke="#e6edf3" />
+    <line x1="0" y1="150" x2="800" y2="150" stroke="#e6edf3" />
+  </g>
+
+  <!-- === CLADOGRAM === -->
+  <!-- Root point (the ancestor — the config file) -->
+  <g transform="translate(520, 100)">
+    <!-- Root glow -->
+    <circle cx="0" cy="0" r="14" fill="url(#glow-root)" class="node d1" />
+    <circle cx="0" cy="0" r="3" fill="#e6edf3" />
+
+    <!-- Main trunk going right -->
+    <line class="branch br1" x1="3" y1="0" x2="40" y2="0" stroke="#7ee787" stroke-width="1.5" stroke-opacity="0.6" />
+
+    <!-- Branch 1: hooks (up-right, green) -->
+    <line class="branch br2" x1="40" y1="0" x2="100" y2="-45" stroke="url(#branch-g)" stroke-width="1.2" />
+    <circle class="node d2" cx="100" cy="-45" r="8" fill="url(#glow-g)" filter="url(#soft)" />
+    <circle cx="100" cy="-45" r="2" fill="#7ee787" />
+    <!-- Sub-branch -->
+    <line class="branch br5" x1="100" y1="-45" x2="145" y2="-65" stroke="#7ee787" stroke-width="0.6" stroke-opacity="0.3" />
+    <circle class="node d5" cx="145" cy="-65" r="5" fill="url(#glow-g)" filter="url(#soft)" />
+    <circle cx="145" cy="-65" r="1.2" fill="#7ee787" opacity="0.8" />
+    <line class="branch br6" x1="100" y1="-45" x2="155" y2="-38" stroke="#7ee787" stroke-width="0.6" stroke-opacity="0.3" />
+    <circle class="node d7" cx="155" cy="-38" r="4" fill="url(#glow-g)" filter="url(#soft)" />
+    <circle cx="155" cy="-38" r="1" fill="#7ee787" opacity="0.7" />
+
+    <!-- Branch 2: skills (right, blue) -->
+    <line class="branch br3" x1="40" y1="0" x2="120" y2="10" stroke="url(#branch-b)" stroke-width="1.2" />
+    <circle class="node d3" cx="120" cy="10" r="9" fill="url(#glow-b)" filter="url(#soft)" />
+    <circle cx="120" cy="10" r="2.2" fill="#79c0ff" />
+    <!-- Sub-branches -->
+    <line class="branch br6" x1="120" y1="10" x2="170" y2="-8" stroke="#79c0ff" stroke-width="0.6" stroke-opacity="0.3" />
+    <circle class="node d6" cx="170" cy="-8" r="4" fill="url(#glow-b)" filter="url(#soft)" />
+    <circle cx="170" cy="-8" r="1" fill="#79c0ff" opacity="0.7" />
+    <line class="branch br7" x1="120" y1="10" x2="175" y2="22" stroke="#79c0ff" stroke-width="0.6" stroke-opacity="0.3" />
+    <circle class="node d8" cx="175" cy="22" r="3.5" fill="url(#glow-b)" filter="url(#soft)" />
+    <circle cx="175" cy="22" r="1" fill="#79c0ff" opacity="0.6" />
+
+    <!-- Branch 3: agents (down-right, orange) -->
+    <line class="branch br4" x1="40" y1="0" x2="110" y2="50" stroke="url(#branch-o)" stroke-width="1.2" />
+    <circle class="node d4" cx="110" cy="50" r="7" fill="url(#glow-o)" filter="url(#soft)" />
+    <circle cx="110" cy="50" r="1.8" fill="#f0883e" />
+    <!-- Sub-branch -->
+    <line class="branch br7" x1="110" y1="50" x2="160" y2="60" stroke="#f0883e" stroke-width="0.6" stroke-opacity="0.3" />
+    <circle class="node d7" cx="160" cy="60" r="4" fill="url(#glow-o)" filter="url(#soft)" />
+    <circle cx="160" cy="60" r="1" fill="#f0883e" opacity="0.7" />
+
+    <!-- Branch 4: orchestrator (far down, purple) -->
+    <line class="branch br5" x1="40" y1="0" x2="85" y2="70" stroke="url(#branch-p)" stroke-width="1" />
+    <circle class="node d6" cx="85" cy="70" r="6" fill="url(#glow-p)" filter="url(#soft)" />
+    <circle cx="85" cy="70" r="1.5" fill="#d2a8ff" />
+  </g>
+
+  <!-- Text -->
+  <text x="60" y="88" class="title">Clade</text>
+  <text x="60" y="115" class="tagline">AUTONOMOUS CODING, EVOLVED</text>
+</svg>

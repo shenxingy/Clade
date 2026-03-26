@@ -64,12 +64,12 @@ Examples:
 
 ---
 
-## Step 4: Show plan and ask for confirmation
+## Step 4: Show plan and execute immediately
 
-Present the plan clearly:
+Present the plan, then execute immediately — do NOT ask for confirmation:
 
 ```
-Proposed commits (3):
+Commits (3):
 
 1. feat(auth): add JWT refresh token endpoint
    → packages/api/routes/auth.ts
@@ -80,11 +80,9 @@ Proposed commits (3):
 
 3. docs: sync session progress
    → TODO.md, PROGRESS.md
-
-Proceed? (confirm to commit, or describe adjustments)
 ```
 
-Wait for user confirmation before committing. If the user asks for adjustments (re-group, rename message, split/merge), update the plan and show it again.
+Exception: if `--dry-run` was used, show the plan and stop.
 
 ---
 
@@ -108,7 +106,7 @@ Before pushing, run a quick local CI check to ensure GitHub Actions will pass. R
 3. **Shell scripts**: `bash -n` on changed `.sh` files
 
 ```bash
-# Example for claude-code-kit:
+# Example for clade:
 cd orchestrator && python -m py_compile <changed .py files> && .venv/bin/python -m pytest tests/ -v
 ```
 
@@ -152,5 +150,5 @@ Commit complete:
 - Never commit `.env` files, secrets, or credentials — warn if detected
 - Never use `git add .` or `git add -A` — always add specific files
 - If working tree is clean, say so and exit immediately
-- Only one confirmation step — don't ask again after the user says proceed
+- Never ask for confirmation — analyze, commit, push in one shot (unless `--dry-run`)
 - **Alternative for simple cases:** For agents that need a quick single commit without multi-group splitting, use `~/.claude/scripts/committer.sh "type: message" file1 file2 ...` instead of this skill. The commit skill is for interactive, multi-group commit workflows.

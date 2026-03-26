@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
   - name: Ask a Question
-    url: https://github.com/shenxingy/claude-code-kit/discussions
+    url: https://github.com/shenxingy/clade/discussions
     about: Use GitHub Discussions for questions, ideas, and show-and-tell. Issues are for confirmed bugs and concrete feature requests only.

@@ -371,7 +371,7 @@ create_task_file_conflict "$TASK_FILE"
 
 # Test extract_file_refs
 extract_file_refs_test() {
-  echo "$1" | grep -oP '[a-zA-Z0-9_./-]+\.(tsx|ts|jsx|js|py|ipynb|md|json|yaml|yml|sh|css|scss|rs|go|swift|kt|java|cpp|hpp|c|h|tex|bib|rb|lua|zig|dart)' | sort -u
+  echo "$1" | grep -oE '[a-zA-Z0-9_./-]+\.(tsx|ts|jsx|js|py|ipynb|md|json|yaml|yml|sh|css|scss|rs|go|swift|kt|java|cpp|hpp|c|h|tex|bib|rb|lua|zig|dart)' | sort -u
 }
 
 refs1=$(extract_file_refs_test "Fix the login bug in auth.py line 42. Update validate_token.")
@@ -417,7 +417,7 @@ mkdir -p .claude
 STATE_FILE=".claude/loop-state"
 
 # Test fresh state creation
-{ echo "ITERATION=0"; echo "CONVERGED=false"; echo "GOAL=/tmp/goal.md"; echo "STARTED=$(date -Iseconds)"; } > "$STATE_FILE"
+{ echo "ITERATION=0"; echo "CONVERGED=false"; echo "GOAL=/tmp/goal.md"; echo "STARTED=$(date +"%Y-%m-%dT%H:%M:%S%z")"; } > "$STATE_FILE"
 
 assert_file_exists "$STATE_FILE" "state file created"
 assert_file_contains "$STATE_FILE" "ITERATION=0" "initial iteration=0"
@@ -617,7 +617,7 @@ assert_contains "$output" "goal file missing" "reports missing goal file"
 # Test 3: STOP sentinel
 create_goal_file "goal2.md"
 # Pre-set STOP in state
-{ echo "ITERATION=0"; echo "CONVERGED=false"; echo "STOP=true"; echo "GOAL=$(realpath goal2.md)"; echo "STARTED=$(date -Iseconds)"; } > .claude/loop-state3
+{ echo "ITERATION=0"; echo "CONVERGED=false"; echo "STOP=true"; echo "GOAL=$(realpath goal2.md)"; echo "STARTED=$(date +"%Y-%m-%dT%H:%M:%S%z")"; } > .claude/loop-state3
 
 # Make the mock return tasks so the loop would continue if STOP wasn't set
 export MOCK_CLAUDE_RESPONSE="===TASK===

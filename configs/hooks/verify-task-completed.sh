@@ -56,7 +56,7 @@ _track_commit_granularity() {
   ratio=$(echo "scale=2; $commits_made / $files_changed" | bc 2>/dev/null || echo "0")
   stats_file="${CLAUDE_PROJECT_DIR:-$(pwd)}/.claude/stats.jsonl"
   mkdir -p "$(dirname "$stats_file")"
-  echo "{\"date\":\"$(date -Iseconds)\",\"commits\":$commits_made,\"files\":$files_changed,\"ratio\":$ratio}" >> "$stats_file"
+  echo "{\"date\":\"$(date +"%Y-%m-%dT%H:%M:%S%z")\",\"commits\":$commits_made,\"files\":$files_changed,\"ratio\":$ratio}" >> "$stats_file"
 }
 ( _track_commit_granularity ) &
 

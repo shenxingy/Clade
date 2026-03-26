@@ -19,6 +19,31 @@
 
 set -uo pipefail
 
+if [[ "${BASH_VERSINFO[0]}" -lt 4 ]]; then
+  # Try homebrew bash on macOS
+  if [[ -x /opt/homebrew/bin/bash ]]; then
+    exec /opt/homebrew/bin/bash "$0" "$@"
+  elif [[ -x /usr/local/bin/bash ]]; then
+    exec /usr/local/bin/bash "$0" "$@"
+  else
+    echo "ERROR: bash 4+ required. Install with: brew install bash" >&2
+    exit 1
+  fi
+fi
+
+# Cross-platform timeout (macOS: gtimeout from coreutils)
+_timeout() {
+  if command -v gtimeout &>/dev/null; then
+    gtimeout "$@"
+  elif command -v timeout &>/dev/null; then
+    timeout "$@"
+  else
+    # No timeout available, run without
+    shift  # remove the timeout duration arg
+    "$@"
+  fi
+}
+
 TASK_FILE="${1:?Usage: run-tasks-parallel.sh <task-file> [--dry-run|--safe]}"
 MODE="${2:-}"
 MAX_WORKERS="${MAX_WORKERS:-3}"
@@ -97,7 +122,7 @@ get_task_prompt() {
       count == n && in_body && /^===TASK===$/ { exit }
       count == n && in_body { print }
       count > n { exit }
-    ' "$TASK_FILE" | sed -e '1{/^$/d}' -e '${/^$/d}'
+    ' "$TASK_FILE" | awk 'NF{p=1} p'
   else
     grep -cvE '^[[:space:]]*(#|$)' "$TASK_FILE" | sed -n "${n}p"
   fi
@@ -178,7 +203,7 @@ detect_conflicts() {
       local conflict=false
 
       # Source 1: explicit depends_on declaration
-      local deps_j="${TASK_DEPS[$j]}"
+      local deps_j="${TASK_DEPS[$j]:-}"
       if [[ -n "$deps_j" ]]; then
         for dep in $deps_j; do
           if [[ "$dep" == "$i" ]]; then
@@ -190,8 +215,8 @@ detect_conflicts() {
 
       # Source 2: OWN_FILES overlap (both tasks must declare OWN_FILES)
       if ! $conflict; then
-        local files_i="${TASK_OWN_FILES[$i]}"
-        local files_j="${TASK_OWN_FILES[$j]}"
+        local files_i="${TASK_OWN_FILES[$i]:-}"
+        local files_j="${TASK_OWN_FILES[$j]:-}"
         if [[ -n "$files_i" && -n "$files_j" ]]; then
           while IFS= read -r f; do
             [[ -z "$f" ]] && continue
@@ -316,7 +341,7 @@ PROMPT
 
   local analysis=""
   if command -v claude &>/dev/null; then
-    analysis=$(timeout 90s claude -p --model haiku --dangerously-skip-permissions < "$af" 2>/dev/null \
+    analysis=$(_timeout 90s claude -p --model haiku --dangerously-skip-permissions < "$af" 2>/dev/null \
       || echo "(analysis unavailable)")
   fi
   rm -f "$af"
@@ -339,7 +364,7 @@ run_claude_task() {
 
   local pf runner
   pf=$(mktemp /tmp/claude-task-XXXXXX)
-  runner=$(mktemp /tmp/claude-runner-XXXXXX.sh)
+  runner=$(mktemp /tmp/claude-runner-XXXXXX)
   cat > "$pf"
   # Use stream-json for real-time output (--verbose alone buffers until exit, lost on kill)
   printf '#!/usr/bin/env bash\ncd "%s" || exit 1\nexec claude -p --model "%s" %s --verbose --output-format stream-json\n' \
@@ -417,8 +442,16 @@ run_claude_task() {
 
 update_progress() {
   local status="$1" current="${2:-0}" total="${3:-0}" success="${4:-0}" failed="${5:-0}"
+  local _lock_dir="$PROGRESS_FILE.lockdir"
   (
-    flock -x 200
+    # Cross-platform file locking
+    if command -v flock &>/dev/null; then
+      flock -x 200
+    else
+      # macOS fallback: simple retry-based lock using mkdir (atomic)
+      while ! mkdir "$_lock_dir" 2>/dev/null; do sleep 0.1; done
+      trap "rmdir '$_lock_dir' 2>/dev/null" EXIT
+    fi
     cat > "$PROGRESS_FILE" <<EOF
 TIMESTAMP=$TIMESTAMP
 CURRENT=$current

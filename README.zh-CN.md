@@ -1,10 +1,16 @@
 [English](README.md) | **中文**
 
-# Claude Code Kit
+<p align="center">
+  <img src="assets/banner.svg" alt="Clade" width="800" />
+</p>
 
-**把 Claude Code 从聊天助手变成自主编码系统。**
+# Clade
+
+**自主编码，进化而来。**
 
 一个安装脚本。十个 hooks、五个 agents、二十三个 skills、一个安全守卫，以及一个纠正学习循环 — 协同工作，让 Claude 编码更好、自动捕获错误、可以在你睡觉时无人值守地跑通宵。
+
+> **博客文章：** [Building Clade](https://alexshen.dev/zh/blog/claude-code-kit) — 项目的动机、设计决策和经验教训。
 
 ## 目录
 
@@ -15,22 +21,25 @@
 5. [什么时候用什么](#什么时候用什么)
 6. [文档](#文档)
 7. [仓库结构](#仓库结构)
-8. [卸载](#卸载)
-9. [贡献](#贡献)
-10. [已知限制](#已知限制)
-11. [License](#license)
+8. [OpenClaw 集成](#openclaw-集成)
+9. [卸载](#卸载)
+10. [贡献](#贡献)
+11. [已知限制](#已知限制)
+12. [License](#license)
 
 ## 安装（30 秒）
 
 ```bash
-git clone https://github.com/shenxingy/claude-code-kit.git
-cd claude-code-kit
+git clone https://github.com/shenxingy/clade.git
+cd clade
 ./install.sh
 ```
 
 启动新的 Claude Code 会话即可激活所有功能。
 
 > **依赖：** `jq`（用于合并 settings）。其他一切都是可选的。
+>
+> **平台：** 支持 Linux 和 macOS。macOS 用户：`brew install coreutils bash` 可获得 `gtimeout` 和 bash 4+（不安装也能运行，但 `timeout` 会降级为不限时模式）。
 
 ## 支持的语言和框架
 
@@ -221,7 +230,7 @@ cd claude-code-kit
 ## 仓库结构
 
 ```
-claude-code-kit/
+clade/
 ├── install.sh                         # 一键部署
 ├── uninstall.sh                       # 干净卸载
 ├── orchestrator/                      # 并行 agent 编排 Web UI
@@ -329,7 +338,32 @@ claude-code-kit/
         ├── subagents.md               # 自定义 Agent 模式
         ├── openclaw-dev-velocity-analysis.md  # 开发速度分析
         └── solo-dev-velocity-playbook.md      # solo 开发提速手册
+├── adapters/
+│   └── openclaw/                              # OpenClaw 集成（手机监控）
+│       ├── monitor.py                         # HTTP 桥接 — 读取 CLI 状态文件
+│       ├── README.md                          # 安装指南
+│       └── skills/                            # 3 个 OpenClaw skills（状态、控制、报告）
+└── assets/
+    └── banner.svg                             # README banner
 ```
+
+## OpenClaw 集成
+
+通过 [OpenClaw](https://openclaw.ai) 从手机监控和控制通宵编码循环（Telegram、WhatsApp、Slack 等）。
+
+```
+手机 → Telegram → OpenClaw → monitor.py → 读取 .claude/loop-state、logs/
+```
+
+包含三个 skill：
+
+| Skill | 你说的话 | 触发的操作 |
+|-------|---------|-----------|
+| **clade-status** | "跑到哪了" | 迭代进度、成本、最近提交 |
+| **clade-control** | "开始 loop 修 bug，跑 5 次" | 启动/停止自主循环 |
+| **clade-report** | "昨晚干了什么" | 会话报告、成本明细、阻塞项 |
+
+使用方法：启动 `monitor.py`，在 OpenClaw 中安装 skills。详见 [`adapters/openclaw/README.md`](adapters/openclaw/README.md)。
 
 ## 卸载
 

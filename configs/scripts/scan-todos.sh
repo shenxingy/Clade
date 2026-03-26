@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Cross-platform readlink -f (macOS lacks -f flag)
+_readlink_f() {
+  if readlink -f "$1" 2>/dev/null; then return; fi
+  # macOS fallback
+  python3 -c "import os; print(os.path.realpath('$1'))" 2>/dev/null || echo "$1"
+}
+
 # ─── Usage ───────────────────────────────────────────────────────────────────
 
 usage() {
@@ -69,7 +76,7 @@ OUTPUT_FILE=""
 if [[ ! -t 1 ]]; then
   # Try to get the output file path via /proc/self/fd/1
   if [[ -L /proc/self/fd/1 ]]; then
-    fd1_target=$(readlink -f /proc/self/fd/1 2>/dev/null || true)
+    fd1_target=$(_readlink_f /proc/self/fd/1)
     if [[ -f "$fd1_target" ]]; then
       OUTPUT_FILE="$fd1_target"
     fi
