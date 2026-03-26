@@ -42,6 +42,8 @@ async def github_webhook(
     body = await request.body()
     secret = GLOBAL_SETTINGS.get("webhook_secret", "")
 
+    if not secret:
+        logger.warning("webhook_secret not configured — webhook endpoint is unauthenticated")
     if secret and not _verify_signature(body, x_hub_signature_256, secret):
         raise HTTPException(status_code=403, detail="Invalid webhook signature")
 

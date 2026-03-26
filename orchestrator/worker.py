@@ -27,12 +27,7 @@ from config import (
     _parse_token_usage,
 )
 from task_queue import TaskQueue
-from github_sync import (
-    _gh_create_issue,
-    _gh_update_issue_status,
-    _gh_pull_issues,
-    _gh_push_all,
-)
+from github_sync import _gh_update_issue_status
 from worker_tldr import _generate_code_tldr
 from worker_review import _oracle_review
 
@@ -273,8 +268,7 @@ class Worker:
         task_file = await self._build_task_file(task_queue)
         shell_cmd, env = self._build_cmd_and_env(task_file)
 
-        log_fd = open(self._log_path, "w")  # noqa: WPS515
-        try:
+        with open(self._log_path, "w") as log_fd:
             self.proc = await asyncio.create_subprocess_shell(
                 shell_cmd,
                 stdout=log_fd,
@@ -283,8 +277,6 @@ class Worker:
                 env=env,
                 cwd=str(self._project_dir),
             )
-        finally:
-            log_fd.close()
         self.pid = self.proc.pid
         try:
             self.pgid = os.getpgid(self.proc.pid)
