@@ -338,8 +338,11 @@ function refreshProjectBadge() {
     btn.textContent = '📁 ' + active.name;
     btn.title = (active.path || active.name) + '\n(click to add another project)';
   } else {
-    fetch('/api/project').then(r => r.json()).then(d => {
-      if (activeSessionId !== capturedSid) return;
+    fetch('/api/project').then(r => {
+      if (!r.ok) return;
+      return r.json();
+    }).then(d => {
+      if (!d || activeSessionId !== capturedSid) return;
       btn.textContent = '📁 ' + d.name;
       btn.title = d.path + '\n(click to add another project)';
     }).catch(e => { console.warn(e); });
@@ -642,37 +645,6 @@ async function ghSync() {
 }
 
 // ─── Portfolio Panel ──────────────────────────────────────────────────────────
-
-let portfolioInterval = null;
-
-function togglePortfolio() {
-  const panel = document.getElementById('portfolioPanel');
-  if (!panel) return;
-  const visible = panel.style.display !== 'none';
-  panel.style.display = visible ? 'none' : 'block';
-  if (!visible) {
-    updatePortfolio();
-    portfolioInterval = setInterval(updatePortfolio, 5000);
-  } else {
-    clearInterval(portfolioInterval);
-    portfolioInterval = null;
-  }
-}
-
-async function updatePortfolio() {
-  try {
-    const resp = await fetch('/api/sessions/overview');
-    if (!resp.ok) return;
-    const sessionsData = await resp.json();
-    if (sessionsData.length < 2) {
-      const btnContainer = document.getElementById('portfolioBtnContainer');
-      if (btnContainer) btnContainer.style.display = 'none';
-      return;
-    }
-    const btnContainer = document.getElementById('portfolioBtnContainer');
-    if (btnContainer) btnContainer.style.display = '';
-  } catch (e) { /* fail silently */ }
-}
 
 // Load settings on boot
 loadSettings();
