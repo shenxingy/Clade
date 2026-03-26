@@ -8,9 +8,9 @@
 
 **自主编码，进化而来。**
 
-一个安装脚本。十个 hooks、五个 agents、二十三个 skills、一个安全守卫，以及一个纠正学习循环 — 协同工作，让 Claude 编码更好、自动捕获错误、可以在你睡觉时无人值守地跑通宵。
+一个安装脚本。十一个 hooks、五个 agents、二十二个 skills、一个安全守卫，以及一个纠正学习循环 — 协同工作，让 Claude 编码更好、自动捕获错误、可以在你睡觉时无人值守地跑通宵。
 
-> **博客文章：** [Building Clade](https://alexshen.dev/zh/blog/claude-code-kit) — 项目的动机、设计决策和经验教训。
+> **博客文章：** [Building Clade](https://alexshen.dev/zh/blog/clade) — 项目的动机、设计决策和经验教训。
 
 ## 目录
 
@@ -211,6 +211,46 @@ cd clade
 - `slt` 循环切换模式：symbol → percent → number → off
 - `slt theme` 列出全部 9 个 emoji 主题；`slt theme <名称>` 切换
 - 指示器显示你与 95% 周配额目标的差距
+
+## Dotfile 同步 — 跨机器状态
+
+Clade 内置同步系统，让你的 Claude Code dotfiles（`~/.claude/`）在多台机器间保持一致。记忆、纠正规则、skills、hooks、scripts 跟着你走。
+
+**工作原理：**
+
+```
+机器A 写入 memory → memory-sync.sh hook 触发 → sync-push.sh → 后端
+机器B 开始会话 → session-context.sh → sync-pull.sh → 拉取最新状态
+```
+
+**设置：**
+
+```bash
+# 自动检测后端（NFS 或 GitHub）
+~/.claude/scripts/sync-setup.sh
+
+# 或手动指定
+~/.claude/scripts/sync-setup.sh --nfs /path/to/shared-nfs
+~/.claude/scripts/sync-setup.sh --github
+```
+
+**同步内容：**
+
+| 目录 | 内容 |
+|------|------|
+| `~/.claude/memory/` | 全局记忆文件 |
+| `~/.claude/projects/*/memory/` | 项目级记忆 |
+| `~/.claude/skills/` | 自定义 skills |
+| `~/.claude/hooks/` | Hook 脚本 |
+| `~/.claude/scripts/` | 工具脚本 |
+| `~/.claude/corrections/` | 学习到的纠正规则 |
+
+**后端：**
+
+- **NFS** — 直接共享文件系统（最快，`~/shared-nfs` 存在则零配置）
+- **GitHub** — 通过 `gh` CLI 的私有 repo 后端（跨网络可用）
+
+配置完成后完全自动 —— `memory-sync.sh` hook 在每次写入后推送，`sync-pull.sh` 在会话开始时拉取。无需手动干预。
 
 ## 文档
 
