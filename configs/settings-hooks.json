@@ -75,6 +75,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": "~/.claude/hooks/failure-detector.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
             "command": "~/.claude/hooks/memory-sync.sh",
             "async": true,
             "timeout": 10
@@ -86,9 +91,24 @@
       {
         "hooks": [
           {
+            "type": "command",
+            "command": "~/.claude/hooks/iloop-hook.sh",
+            "timeout": 10
+          },
+          {
             "type": "prompt",
             "prompt": "RESPOND WITH ONLY VALID JSON — no preamble, no explanation, no markdown. Your entire response must be exactly one of: {\"ok\": true} or {\"ok\": false, \"reason\": \"brief reason\"}. Any other output will cause a JSON parse error.\n\nReview the conversation transcript. Determine if the assistant completed ALL tasks the user explicitly requested. Check: 1) Every explicit request was addressed 2) No partial implementations left unfinished 3) No obvious errors introduced.\n\nCRITICAL: If the conversation ended due to an API error (500, 502, 503, timeout, rate limit, or any server-side error), ALWAYS return {\"ok\": true}. These are infrastructure issues beyond the assistant's control — blocking the stop would create an infinite retry loop.\n\nBe lenient — only return ok=false if something is clearly unfinished AND automatable by the assistant. If the remaining work requires manual steps (missing CLI tools, interactive prompts, browser actions), return ok=true — the assistant should have already told the user. Context: $ARGUMENTS",
             "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "[PreCompact State Checkpoint]\n\nContext compaction is about to happen. If you are in the middle of an active task, use the Write tool to save your state to .claude/compact-state.md BEFORE compaction.\n\nFormat (keep it short — this file is re-read at session start):\n```\n# Compact State — {ISO timestamp}\n## Active Task\n{1-2 sentences: what you are working on}\n## Progress\n{bullet list: what has been completed}\n## Next Step\n{exactly what to do next — be specific enough to resume without re-reading the conversation}\n## Key Context\n{critical facts that would be lost: file paths, error messages, variable names, architectural decisions}\n```\n\nThen output: > [Compact Checkpoint] State saved to .claude/compact-state.md\n\nIf you are NOT in the middle of an active task (conversation is idle or task is complete), skip this entirely."
           }
         ]
       }
@@ -131,6 +151,16 @@
             "type": "command",
             "command": "~/.claude/hooks/prompt-tracker.sh",
             "async": true,
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "try harder|stop giving|you keep failing|figure it out|why.*not work|stop spinning|still not work|third time|again|\\btry again\\b|别偷懒|又错了|还不行|怎么搞|为什么还不行|你怎么又|换个方法|能不能靠谱|认真点|还不对|重新|try again|不行啊|怎么还",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/frustration-trigger.sh",
             "timeout": 5
           }
         ]
