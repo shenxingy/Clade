@@ -1,6 +1,24 @@
 # Progress Log
 
 ---
+### 2026-03-27 — pua philosophy integration (final state after review)
+
+**What was kept:**
+1. **`failure-detector.sh`** (PostToolUse → Bash) — counts consecutive Bash failures per session; injects escalating debugging guidance at 2/3/4+ failures. Session-isolated via session_id.
+2. **PreCompact hook** — saves task state to `.claude/compact-state.md` before context compaction; `session-context.sh` loads it back at session start.
+3. **Philosophy woven into workers** — loop-runner.sh and batch-tasks workers now get "Close the loop" (verify with evidence, not just claims) + systematic debugging 4-step checklist appended to every task.
+4. **session-context.sh** — lightweight "close the loop" reminder injected at every session start.
+
+**What was removed (initially built, then reconsidered):**
+- `frustration-trigger.sh` — UserPromptSubmit matcher fired against full conversation context, not just the raw user input. Caused repeated false positives on innocent messages. Removed entirely.
+- `/iloop` skill + `iloop-hook.sh` + `setup-iloop.sh` — user wanted the philosophy woven into existing tools, not a separate mechanism. `/loop` already has a supervisor re-evaluation mechanism that serves the same purpose.
+
+**Lessons:**
+- UserPromptSubmit hooks with regex matchers are fragile — the matcher runs against injected system context + history, not just the literal user message. Don't use them unless you can guarantee no false positives.
+- Stop-hook blocking is powerful but redundant if a supervisor loop already handles re-evaluation. Don't add infrastructure for its own sake.
+- Inject philosophy into the execution layer (worker task instructions) rather than new standalone tools — more reliable, no extra surface area.
+
+---
 ### 2026-03-27 — pua repo integration (tanweai/pua analysis + 4 new features)
 
 **What was done:**

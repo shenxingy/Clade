@@ -10,7 +10,7 @@
 
 **Autonomous coding, evolved.**
 
-One install script. Eleven hooks, five agents, twenty-two skills, a safety guardian, and a correction learning loop — all working together so Claude codes better, catches its own mistakes, and can run unattended overnight while you sleep.
+One install script. Twelve hooks, five agents, twenty-two skills, a safety guardian, and a correction learning loop — all working together so Claude codes better, catches its own mistakes, and can run unattended overnight while you sleep.
 
 > If this saves you time, a star helps others find it — and if something breaks, [open an issue](https://github.com/shenxingy/clade/issues/new/choose).
 
