@@ -70,10 +70,10 @@ Before grouping into commits, check if the README needs to be updated to reflect
 
 ### 3.5.1 — Counted artifacts
 
-If the README mentions counts like "N hooks", "M skills", "X agents", etc.:
-- Count the actual files in the corresponding directories
-- If the count changed, update the README line to match
-- Do the same for any translated README (e.g., README.zh-CN.md)
+If the README mentions any numeric counts of project artifacts (e.g., "N hooks", "M skills", "X routes", "Y components", "Z plugins"):
+- Identify the directory or pattern those artifacts live in
+- Count the actual files
+- If the count changed, update every README variant (e.g., README.md, README.zh-CN.md, README.ja.md) to match
 
 ### 3.5.2 — Pipeline flowchart
 
@@ -115,6 +115,52 @@ If any README files were updated in this step:
 
 ---
 
+## Step 3.6: CI gate (BEFORE any git add)
+
+**This is a hard gate. Do not stage or commit anything until CI passes.**
+
+### Discover what CI runs
+
+1. Check `.github/workflows/` — if workflow files exist, read them and extract every `run:` command from jobs that run on push/PR to main. These are the exact commands you must run locally.
+2. If no workflows exist, read `CLAUDE.md` for the project's `verify_cmd`, test command, and build command.
+3. If neither exists, auto-detect by project type (see table below).
+
+### Run ALL discovered commands
+
+Run each command in sequence. Show the actual output (not just "passed"):
+
+```
+CI check (3 steps):
+  [1/3] bash -n configs/hooks/*.sh configs/scripts/*.sh
+        → OK
+  [2/3] cd orchestrator && python -m py_compile server.py ...
+        → OK
+  [3/3] cd orchestrator && .venv/bin/python -m pytest tests/ -v
+        → 19 passed in 2.13s
+✓ All CI checks passed — safe to commit
+```
+
+### Auto-detection fallback (if no CI config or CLAUDE.md commands)
+
+| Project type | How to detect | Commands to run |
+|---|---|---|
+| Python | `*.py` files + `setup.py` / `pyproject.toml` / `requirements.txt` | `python -m py_compile $(find . -name "*.py" -not -path "*/.venv/*" -not -path "*/node_modules/*")` + `pytest` if `tests/` exists |
+| TypeScript/JS | `tsconfig.json` or `package.json` | `npx tsc --noEmit` if tsconfig exists; `npm test` if test script exists |
+| Shell scripts | `.sh` files changed | `bash -n` on ALL `.sh` files in the repo (not just changed ones — a new import could affect existing scripts) |
+| Go | `go.mod` | `go build ./...` + `go test ./...` |
+| Rust | `Cargo.toml` | `cargo check` + `cargo test` |
+
+**Shell check scope:** always run `bash -n` on ALL shell files in the repo, not just changed ones. A change to one file can affect the whole set.
+
+### On failure
+
+- **Stop immediately** — do not commit, do not stage
+- Show the full error output
+- Fix the errors, then restart from Step 1
+- Never suppress or work around CI failures with `--no-verify`
+
+---
+
 ## Step 4: Show plan and execute immediately
 
 Present the plan, then execute immediately — do NOT ask for confirmation:
@@ -145,25 +191,6 @@ For each group in order:
 3. Report result: `✓ <message> (<short-hash>)`
 
 If a commit fails, stop immediately and report the error — don't continue to the next group.
-
----
-
-## Step 5.5: CI gate (before push)
-
-Before pushing, run a quick local CI check to ensure GitHub Actions will pass. Read `CLAUDE.md` for the project's verify/test commands. At minimum:
-
-1. **Python projects**: `python -m py_compile` on all changed `.py` files + `pytest` if tests exist
-2. **TypeScript projects**: `tsc --noEmit` if tsconfig exists
-3. **Shell scripts**: `bash -n` on changed `.sh` files
-
-```bash
-# Example for clade:
-cd orchestrator && python -m py_compile <changed .py files> && .venv/bin/python -m pytest tests/ -v
-```
-
-- If CI checks pass → proceed to push
-- If CI checks fail → stop, report errors, fix them, then re-run `/commit`
-- Skip this step if `--no-push` was used (no point checking CI if not pushing)
 
 ---
 
