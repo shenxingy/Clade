@@ -13,6 +13,7 @@
 
 set -euo pipefail
 command -v jq &>/dev/null || exit 0
+command -v perl &>/dev/null || exit 0
 
 HOOK_INPUT=$(cat)
 STATE_FILE=".claude/iloop.local.md"
