@@ -156,7 +156,7 @@
         ]
       },
       {
-        "matcher": "try harder|stop giving|you keep failing|figure it out|why.*not work|stop spinning|still not work|third time|again|\\btry again\\b|别偷懒|又错了|还不行|怎么搞|为什么还不行|你怎么又|换个方法|能不能靠谱|认真点|还不对|重新|try again|不行啊|怎么还",
+        "matcher": "try harder|stop giving up|you keep failing|figure it out|why.*still not work|stop spinning|still not working|third time|try again|you broke it|别偷懒|又错了|还不行|怎么搞|为什么还不行|你怎么又失败|换个方法|能不能靠谱|认真点|还不对|不行啊|怎么还不行",
         "hooks": [
           {
             "type": "command",
