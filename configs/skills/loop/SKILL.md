@@ -52,17 +52,3 @@ The **supervisor** does the task breakdown — not you.
 /loop --resume goal.md                 # Resume interrupted loop
 ```
 
-## See also: /iloop (in-session loop)
-
-Use `/iloop` instead when you want to stay in the **current session** and iterate interactively:
-
-| | `/loop` | `/iloop` |
-|--|---------|----------|
-| Execution | Background process, parallel workers | Current session, sequential |
-| Worktrees | Yes, isolated per worker | No, works on main tree |
-| Best for | Large parallel improvements | Focused debugging / fixing until passing |
-
-```
-/iloop "Fix all failing pytest tests"
-/iloop "Get CI green" --completion-promise "ALL TESTS PASSING"
-```
