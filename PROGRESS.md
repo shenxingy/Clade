@@ -1,6 +1,27 @@
 # Progress Log
 
 ---
+### 2026-03-27 — pua repo integration (tanweai/pua analysis + 4 new features)
+
+**What was done:**
+Analyzed the pua repo (12k stars, Claude Code skills/hooks system). Integrated 4 genuinely novel mechanisms:
+
+1. **`failure-detector.sh`** (PostToolUse → Bash) — counts consecutive Bash failures per session; injects escalating debugging guidance at 2/3/4+ failures to break spinning patterns. Session-isolated via session_id.
+2. **`frustration-trigger.sh`** (UserPromptSubmit + matcher) — fires on user frustration phrases ("try harder", "还不行", etc.); injects 5-step systematic debugging protocol.
+3. **`iloop-hook.sh`** + **`setup-iloop.sh`** + **`/iloop` skill** — in-session iterative loop using Stop hook blocking. Different from `/loop` (which uses background parallel workers). Supports `<loop-abort>`, `<loop-pause>`, completion promise. Session isolation via session_id binding.
+4. **PreCompact hook** (prompt type, in settings-hooks.json) — prompts Claude to save task state to `.claude/compact-state.md` before context compaction. `session-context.sh` now loads it back at session start.
+
+**What was NOT integrated from pua:**
+- Corporate PUA rhetoric/flavor system — entertaining but not useful for clade's purpose
+- Feedback upload backend (pua-specific API)
+- P7/P9/P10 agent personas — clade already has `orchestrate` skill
+
+**Lessons:**
+- pua's in-session loop (Stop hook blocking) is complementary to clade's background loop — they serve different use cases
+- Session isolation (session_id in state file) is critical for Stop hooks to avoid sub-agent interference
+- PreCompact hook is a genuine gap that no one builds until they hit context loss mid-task
+
+---
 ### 2026-03-25 — Comprehensive Review (Iteration 2)
 
 **What was fixed:**

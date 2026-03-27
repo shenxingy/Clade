@@ -100,6 +100,17 @@ if [[ -d "$HANDOFF_DIR" ]]; then
   fi
 fi
 
+# Auto-load compact-state (saved before context compaction, < 2h old)
+COMPACT_STATE="${HANDOFF_DIR}/compact-state.md"
+if [[ -f "$COMPACT_STATE" ]]; then
+  CS_MTIME=$(stat -c %Y "$COMPACT_STATE" 2>/dev/null || stat -f %m "$COMPACT_STATE" 2>/dev/null || echo 0)
+  CS_AGE_HOURS=$(( ($(date +%s) - CS_MTIME) / 3600 ))
+  if [[ $CS_AGE_HOURS -lt 2 ]]; then
+    COMPACT_CONTENT=$(cat "$COMPACT_STATE" 2>/dev/null)
+    CONTEXT="${CONTEXT}\n## Compact State (context was compacted ${CS_AGE_HOURS}h ago — resume from here)\n${COMPACT_CONTENT}\n"
+  fi
+fi
+
 # Load correction rules (learned preferences)
 RULES_FILE="$HOME/.claude/corrections/rules.md"
 if [[ -f "$RULES_FILE" ]]; then
