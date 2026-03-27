@@ -64,6 +64,57 @@ Examples:
 
 ---
 
+## Step 3.5: README sync (before committing)
+
+Before grouping into commits, check if the README needs to be updated to reflect the changes. This step ensures docs never drift from code.
+
+### 3.5.1 — Counted artifacts
+
+If the README mentions counts like "N hooks", "M skills", "X agents", etc.:
+- Count the actual files in the corresponding directories
+- If the count changed, update the README line to match
+- Do the same for any translated README (e.g., README.zh-CN.md)
+
+### 3.5.2 — Pipeline flowchart
+
+A flowchart is **mandatory** if the repo contains a pipeline — any chain of scripts, workers, queues, or stages that process data in sequence. The flowchart must always reflect the actual code.
+
+**Detect a pipeline:** look for patterns like worker→supervisor loops, task queues, multi-stage processing scripts, webhook→handler→queue chains, or background runner scripts.
+
+**If a flowchart exists in the README** and any changed file touches the pipeline:
+- Re-read the relevant pipeline scripts/code
+- Verify each box and arrow in the diagram matches the actual flow
+- Update any stale edges, renamed stages, or missing new stages
+
+**If no flowchart exists** and the repo has a pipeline:
+- Read the pipeline scripts to understand the actual flow
+- Generate a mermaid diagram (prefer `graph LR` for horizontal flows) that accurately represents it
+- Insert it in the README under the most relevant section (e.g., "Architecture", "How It Works", or right after the intro)
+
+**Mermaid style guide:**
+```
+graph LR
+  A[User Input] --> B[Supervisor]
+  B --> C[Worker 1]
+  B --> D[Worker 2]
+  C --> E[(Task Queue)]
+  D --> E
+  E --> F{Converged?}
+  F -->|no| B
+  F -->|yes| G[Done]
+```
+Use `[label]` for processes, `[(label)]` for storage, `{label}` for decisions, `([label])` for terminal nodes.
+
+**Rule:** If the flowchart would be wrong or absent, fix it now — a stale diagram is worse than no diagram.
+
+### 3.5.3 — Include README changes in commits
+
+If any README files were updated in this step:
+- Add them to the existing `docs:` group (or create one)
+- They are part of this commit run, not a separate follow-up
+
+---
+
 ## Step 4: Show plan and execute immediately
 
 Present the plan, then execute immediately — do NOT ask for confirmation:
