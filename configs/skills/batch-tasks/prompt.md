@@ -158,17 +158,23 @@ Scout Scores:
 
 ## PER-TASK SELF-REVIEW INSTRUCTIONS
 
-Every task prompt written to the task file MUST end with this self-review block (appended automatically during task file generation):
+Every task prompt written to the task file MUST end with this block (appended automatically during task file generation):
 
 ```
-## Self-review (do this before finishing)
-1. Re-read the original requirements above — did you implement everything?
+## Close the loop (required before finishing)
+1. Run the verify command (type-check, compile, lint, or test) and show its output — do not claim success without evidence
 2. Re-read every file you changed — look for logic bugs, edge cases (null, empty arrays, missing imports), typos
 3. If you modified a shared component's interface, verify all callers still work
-4. Run the project's type-check command (e.g., `pnpm type-check` or `npx tsc --noEmit`) and fix any errors
+4. Commit with: committer "type: msg" file1 file2  (NEVER git add .)
+
+## Systematic debugging (if any Bash command fails 2+ times)
+1. Read the error word-by-word — what exactly is it saying?
+2. Search the codebase for the failing symbol/path/key
+3. Form a hypothesis and test ONE change at a time
+4. If still stuck after 3 attempts, log to .claude/skipped.md and move on — don't spin
 ```
 
-This ensures each `claude -p` session validates its own output before exiting.
+This ensures each `claude -p` session verifies its own output (not just claims it's done) before exiting.
 
 ---
 

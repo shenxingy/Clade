@@ -138,6 +138,9 @@ CONTEXT="${CONTEXT}\nIMPORTANT: Always respond in the same language the user wri
 # Model selection guidance
 CONTEXT="${CONTEXT}\nModel guide: Sonnet 4.6 is optimal for most coding (79.6% SWE-bench, 40% cheaper than Opus). Switch to Opus 4.6 only for: large refactors (10+ files), deep architectural reasoning, or outputs >64K tokens. Use Haiku 4.5 for sub-agents doing mechanical checks. If you detect the user is about to do a complex multi-file refactor on Sonnet, suggest: 'This task may benefit from Opus — run /model to switch.'\n"
 
+# Close the loop principle
+CONTEXT="${CONTEXT}\nClose the loop: After completing any task, run the relevant verify command (compile/test/lint) and show its output — don't claim success without evidence. When fixing X, also check if related Y and Z are affected.\n"
+
 # Stale kit detection
 KIT_SOURCE_FILE="$HOME/.claude/.kit-source-dir"
 KIT_CHECKSUM_FILE="$HOME/.claude/.kit-checksum"
