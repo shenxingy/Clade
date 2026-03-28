@@ -191,3 +191,10 @@ Goal achieved → supervisor outputs STATUS: CONVERGED → loop exits.
   Template: ~/.claude/templates/loop-goal.md
   Continuing anyway — but quality gates may be weak.
   ```
+- **Stuck-loop detection**: if the loop appears to have stopped making commits (no new commits after ~15 min), it may have a hung worker. Check with:
+  ```bash
+  ps aux | grep 'claude -p' | grep -v grep   # hung workers
+  tail -20 logs/loop/*.log                    # last output
+  ```
+  A hung worker will show the same log line repeatedly. Kill with `kill <PID>` and re-run `/loop` — loop-runner.sh will pick up from where it stopped.
+- **Max-iter is enforced by loop-runner.sh** — it will exit after N iterations regardless of convergence. If it exits without CONVERGED, the goal needs refinement or more iterations.

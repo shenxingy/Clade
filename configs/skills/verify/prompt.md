@@ -32,17 +32,18 @@ Execute checks based on project type. Run all applicable strategies:
 ### Strategy: Test suite (all project types)
 If a test command is specified in `## Project Type`:
 ```bash
-{test_command}
+timeout 120 {test_command}
 ```
 Record: pass/fail + count of passing/failing tests.
 
 If no test command but common test patterns exist:
-- `pytest` / `python -m pytest` (Python)
-- `npm test` / `npx jest` (Node)
-- `cargo test` (Rust)
-- `go test ./...` (Go)
+- `timeout 120 pytest` / `timeout 120 python -m pytest` (Python)
+- `timeout 120 npm test` / `timeout 120 npx jest` (Node)
+- `timeout 120 cargo test` (Rust)
+- `timeout 120 go test ./...` (Go)
 
 Try the likely command. If it works, report results. If not, skip.
+**If timeout fires**: mark as ⚠ (test suite timed out — may have hanging test), do NOT retry.
 
 ### Strategy: Compile/type check
 - Python: `python -m py_compile {main_files}` or `mypy` if configured
@@ -80,8 +81,8 @@ If conditions are not met, set `INTERACTION_RESULT: skipped` and move on.
 
 2. Try connecting to `http://localhost:{port}` via `browser_navigate`. If the page fails to load:
    - Try starting the dev server: look for `npm run dev`, `pnpm dev`, or the start script in package.json
-   - Wait up to 30 seconds for it to become reachable
-   - If still unreachable → set `INTERACTION_RESULT: partial`, write "App unreachable at localhost:{port}" to `.claude/playwright-issues.md`, and move on. Do NOT block the verify.
+   - Wait up to 30 seconds: `timeout 30 bash -c 'until curl -sf http://localhost:{port} >/dev/null; do sleep 1; done'`
+   - If still unreachable → set `INTERACTION_RESULT: partial`, write "App unreachable at localhost:{port}" to `.claude/playwright-issues.md`, and move on. Do NOT block the verify. Do NOT retry startup.
 
 3. Take a `browser_snapshot` of the home page to get the accessibility tree.
 
@@ -236,6 +237,6 @@ VERIFY_COVERAGE: N_pass/N_total|none
 
 - Run verification commands with `--dangerously-skip-permissions` context (the caller handles this)
 - Never modify project code — this is a read-only verification skill
-- If a test/command takes >60s, kill it and mark as timeout (not failure)
+- Wrap ALL subprocess calls with `timeout N`: test suites `timeout 120`, curl/DB queries `timeout 30`, compile checks `timeout 60`. If timeout fires → mark ⚠, do NOT retry
 - Fail-open on infrastructure errors (can't install deps, missing tools): mark as unverifiable, not fail
 - When in doubt between partial and fail: if you CAN test it and it broke → fail. If you CAN'T test it → partial.

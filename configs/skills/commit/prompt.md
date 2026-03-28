@@ -127,15 +127,17 @@ If any README files were updated in this step:
 
 ### Run ALL discovered commands
 
+Wrap every CI command with `timeout`: syntax checks `timeout 30`, compile `timeout 60`, test suites `timeout 120`. If a command times out → stop, report which command hung, ask user to investigate before committing.
+
 Run each command in sequence. Show the actual output (not just "passed"):
 
 ```
 CI check (3 steps):
-  [1/3] bash -n configs/hooks/*.sh configs/scripts/*.sh
+  [1/3] timeout 30 bash -n configs/hooks/*.sh configs/scripts/*.sh
         → OK
-  [2/3] cd orchestrator && python -m py_compile server.py ...
+  [2/3] timeout 60 cd orchestrator && python -m py_compile server.py ...
         → OK
-  [3/3] cd orchestrator && .venv/bin/python -m pytest tests/ -v
+  [3/3] timeout 120 .venv/bin/python -m pytest tests/ -v
         → 19 passed in 2.13s
 ✓ All CI checks passed — safe to commit
 ```
