@@ -92,6 +92,13 @@ if [[ -f "$CLAUDE_DIR/scripts/statusline-toggle.sh" ]]; then
   echo "  Symlinked statusline-toggle → ~/.local/bin/slt  (usage: slt to cycle modes)"
 fi
 
+if [[ -f "$CLAUDE_DIR/scripts/devmode.sh" ]]; then
+  mkdir -p "$HOME/.local/bin"
+  ln -sf "$CLAUDE_DIR/scripts/devmode.sh" "$HOME/.local/bin/devmode"
+  chmod +x "$CLAUDE_DIR/scripts/devmode.sh"
+  echo "  Symlinked devmode → ~/.local/bin/devmode  (usage: devmode [on|off|status])"
+fi
+
 # ─── 6c. Deploy templates ────────────────────────────────────────────
 
 echo "Installing templates..."
