@@ -38,6 +38,10 @@ DEV_MODE=false
 # Common ORM/migration tools that block or timeout inside Claude Code.
 # (Skipped in dev mode — toggle with: devmode on/off)
 if [[ "$DEV_MODE" == false ]]; then
+# Strip comment-only lines before scanning — prevents false positives when a
+# blocked pattern appears in a shell comment (e.g. "# alembic upgrade head")
+SCANNABLE=$(echo "$COMMAND" | grep -v '^\s*#' || true)
+
 MIGRATION_PATTERNS=(
   "db:push"
   "db:migrate"
@@ -55,7 +59,7 @@ MIGRATION_PATTERNS=(
 )
 
 for pattern in "${MIGRATION_PATTERNS[@]}"; do
-  if echo "$COMMAND" | grep -qF "$pattern"; then
+  if echo "$SCANNABLE" | grep -qF "$pattern"; then
     jq -n \
       --arg reason "Database migration detected: '$pattern' cannot run inside Claude Code (interactive prompts / timeouts). Run manually in your terminal: $COMMAND" \
       '{"decision":"block","reason":$reason}'
@@ -67,11 +71,17 @@ fi  # end dev-mode gate
 # ─── Catastrophic rm -rf on system/home directories ──────────────────
 # Block rm with both -r and -f flags targeting /, ~, $HOME, or critical system paths.
 # Handles any flag order: -rf, -fr, -r -f, -f -r, -rfi, etc.
-DANGEROUS_PATHS='(/[[:space:]]|/\*|~|\$HOME|/home|/etc|/usr|/var|/sys|/proc|/boot)\b'
-if echo "$COMMAND" | grep -qE '\brm\b' \
-  && echo "$COMMAND" | grep -qE '\brm\b.*-[a-zA-Z]*r' \
-  && echo "$COMMAND" | grep -qE '\brm\b.*-[a-zA-Z]*f' \
-  && echo "$COMMAND" | grep -qE "$DANGEROUS_PATHS"; then
+# Root (/) matched with word-boundary-aware pattern: space+slash+(space|end|star)
+DANGEROUS_NAMED_PATHS='(~|\$HOME|/home|/etc|/usr|/var|/sys|/proc|/boot)\b'
+DANGEROUS_ROOT='(^|[[:space:]])/([[:space:]]|$|\*)'
+# Extract only the lines that contain rm — avoid false positives where
+# a dangerous path appears elsewhere in the script (e.g. "cd /home/...")
+RM_LINES=$(echo "$COMMAND" | grep -E '\brm\b' || true)
+if [[ -n "$RM_LINES" ]] \
+  && echo "$RM_LINES" | grep -qE '\brm\b.*-[a-zA-Z]*r' \
+  && echo "$RM_LINES" | grep -qE '\brm\b.*-[a-zA-Z]*f' \
+  && (echo "$RM_LINES" | grep -qE "$DANGEROUS_NAMED_PATHS" \
+    || echo "$RM_LINES" | grep -qE "$DANGEROUS_ROOT"); then
   jq -n \
     --arg cmd "$COMMAND" \
     '{"decision":"block","reason":("Catastrophic rm -rf blocked on system/home directory. Command: " + $cmd + ". If intentional, run manually in your terminal.")}'
