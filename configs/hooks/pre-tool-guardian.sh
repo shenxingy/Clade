@@ -27,9 +27,17 @@ if [[ -z "$COMMAND" ]]; then
   exit 0
 fi
 
+# ─── Dev mode check ───────────────────────────────────────────────────
+# When ~/.claude/.dev-mode exists, skip migration blocking.
+# Run `devmode` to toggle. Catastrophic operations are ALWAYS blocked.
+DEV_MODE=false
+[[ -f "$HOME/.claude/.dev-mode" ]] && DEV_MODE=true
+
 # ─── Database migrations ──────────────────────────────────────────────
 # These require interactive confirmation or long timeouts — must run manually.
 # Common ORM/migration tools that block or timeout inside Claude Code.
+# (Skipped in dev mode — toggle with: devmode on/off)
+if [[ "$DEV_MODE" == false ]]; then
 MIGRATION_PATTERNS=(
   "db:push"
   "db:migrate"
@@ -54,6 +62,7 @@ for pattern in "${MIGRATION_PATTERNS[@]}"; do
     exit 0
   fi
 done
+fi  # end dev-mode gate
 
 # ─── Catastrophic rm -rf on system/home directories ──────────────────
 # Block rm with both -r and -f flags targeting /, ~, $HOME, or critical system paths.
