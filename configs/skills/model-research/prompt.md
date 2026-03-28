@@ -24,7 +24,9 @@ Note the current:
 
 ## Step 2: Research latest information
 
-Run web searches to find the latest data. Search for:
+Run web searches to find the latest data. Run at most 4 searches total. If WebSearch returns no results or is unavailable, proceed using training data and note "⚠ Web search unavailable — results based on training data only". If a WebFetch call fails or times out, skip that URL and continue.
+
+Search for:
 
 1. **New model releases**: `"Claude" new model release site:anthropic.com 2026`
 2. **Pricing updates**: `Claude API pricing models 2026`

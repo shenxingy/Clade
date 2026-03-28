@@ -3,7 +3,7 @@ Research external tools/competitors/approaches for a given topic and write a str
 ## Steps
 
 1. Read `VISION.md`, `TODO.md`, and `BRAINSTORM.md` for project context (understand what already exists before researching)
-2. Use WebSearch with the current year (2026) in the query to find 3-5 relevant tools, competitors, or approaches for the topic: `$ARGUMENTS`
+2. Use WebSearch with the current year (2026) in the query to find 3-5 relevant tools, competitors, or approaches for the topic: `$ARGUMENTS`. Run at most 5 searches. If WebSearch returns no results or fails, proceed with knowledge cutoff data and note "⚠ Web search unavailable — results based on training data only".
 3. For each result: extract key features, pricing/licensing, UX patterns, what they do well, what they do poorly
 4. Compare against current VISION.md — what gaps does this research reveal? what patterns can we borrow?
 5. Append a structured entry to `BRAINSTORM.md`:

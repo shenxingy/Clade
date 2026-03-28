@@ -105,14 +105,25 @@ For every ❌ checkpoint found:
 
 1. **Identify root cause**: read the relevant source files, trace the failure
 2. **Fix the code**: make the minimal change that addresses the root cause
-3. **Re-test the checkpoint**: run the same test again
+3. **Re-test the checkpoint**: run the same test again — always wrap test commands with `timeout 30` (e.g., `timeout 30 curl ...`, `timeout 60 python -m pytest ...`)
 4. **Check for regressions**: if the fix touched shared code, re-test ✅ checkpoints that might be affected
 5. **Update status**:
    - Fix worked + re-test passes → update to ✅
    - Fix worked but regression found → fix regression, re-test both
    - Cannot fix in this session (requires external change, credentials, manual step) → mark ⚠ with note explaining what's needed
 
+**Max-fix-attempts**: Each ❌ checkpoint gets at most **3 fix attempts**. If after 3 attempts the checkpoint still fails:
+- Mark it ⚠ with note: `[3 attempts exhausted: <root cause summary>. Manual fix required.]`
+- Move on — do NOT keep retrying the same failing checkpoint
+- Permanent failures (missing credentials, external service unavailable, requires browser) → mark ⚠ immediately on first attempt, do not retry
+
 **Critical rule**: never mark a checkpoint ✅ without actually testing it. "The code looks correct" is NOT a passing test.
+
+**Anti-hang rules for test commands**:
+- Every `curl`, `httpx`, `psql`, `sqlite3` call: prefix with `timeout 30`
+- Every `pytest`, `npm test`, `go test` call: prefix with `timeout 120`
+- Every server startup wait: `timeout 30 bash -c 'until curl -sf http://localhost:PORT/health; do sleep 1; done'`
+- If a command times out → mark the checkpoint ⚠ (timeout, server may be unavailable) and continue
 
 ---
 
