@@ -116,7 +116,26 @@ Only if project has linting configured (`.eslintrc`, `ruff.toml`, etc.):
 ```
 Report warnings but don't count as failures.
 
-## Step 4: Produce report
+## Step 4: Check VERIFY.md coverage (if present)
+
+If `VERIFY.md` exists in the project root, read it and report coverage status.
+
+This is a **read-only** step — do NOT fix anything here. `/verify` reports; `/review` fixes.
+
+1. Count checkpoints by status: ✅ / ❌ / ⚠ / ⬜
+2. Identify any ❌ checkpoints — these are confirmed regressions
+3. Identify ⬜ checkpoints — these are coverage gaps (untested)
+
+**Impact on VERIFY_RESULT:**
+- Any ❌ checkpoint in VERIFY.md → VERIFY_RESULT = `fail` (confirmed regression)
+- Only ⬜ checkpoints (no ❌) → VERIFY_RESULT = `partial` at most (gaps, not regressions)
+- All ✅ or ⚠ → VERIFY.md does not degrade VERIFY_RESULT
+
+If VERIFY.md does not exist: skip this step silently. Output `VERIFY_COVERAGE: none` in footer.
+
+---
+
+## Step 5: Produce report
 
 Write a human-readable summary, then the machine-parseable footer.
 
@@ -136,6 +155,10 @@ Write a human-readable summary, then the machine-parseable footer.
 
 ### UI Interaction (frontend only)
 {pass/partial/fail/skipped + details if applicable}
+
+### VERIFY.md Coverage
+{N ✅  N ❌  N ⚠  N ⬜ — or "not present"}
+{list any ❌ checkpoint IDs and descriptions}
 
 ### Notes
 {any observations, warnings, suggestions}
@@ -182,23 +205,26 @@ Example: `- [ ] [fix] slt: cycles to wrong mode after "off"`
 
 Unannotated items remain in the file for next review.
 
-### Footer (MUST be the last 4 lines — start.sh greps these):
+### Footer (MUST be the last 5 lines — start.sh greps these):
 
 ```
 VERIFY_RESULT: pass|partial|fail
 FAILED_ANCHORS: anchor-name-1, anchor-name-2
 UNVERIFIABLE: N
 INTERACTION_RESULT: pass|partial|fail|skipped
+VERIFY_COVERAGE: N_pass/N_total|none
 ```
 
 **Decision rules for VERIFY_RESULT:**
-- **pass**: all testable anchors pass, test suite passes (or no test suite), compile succeeds
-- **partial**: some anchors are unverifiable (no test strategy, missing tools, insufficient coverage) BUT no testable anchor is regressing. Also used when: no test suite exists, no anchors defined, or verify command not provided.
-- **fail**: at least one testable anchor is now broken/regressing, OR test suite has new failures, OR compile errors introduced
+- **pass**: all testable anchors pass, test suite passes (or no test suite), compile succeeds, no ❌ in VERIFY.md
+- **partial**: some anchors are unverifiable (no test strategy, missing tools, insufficient coverage) BUT no testable anchor is regressing. Also used when: no test suite exists, no anchors defined, verify command not provided, or VERIFY.md has ⬜ gaps but no ❌ failures.
+- **fail**: at least one testable anchor is now broken/regressing, OR test suite has new failures, OR compile errors introduced, OR VERIFY.md has ❌ checkpoints
 
 **FAILED_ANCHORS**: comma-separated list of anchor names that FAIL (not unverifiable — only actual regressions). Use `none` if no failures. NEVER leave blank — blank line breaks grep in start.sh.
 
 **UNVERIFIABLE**: count of anchors that could not be tested (integer). `0` if all anchors were testable.
+
+**VERIFY_COVERAGE**: `N_pass/N_total` where N_pass = ✅ count, N_total = all checkpoints in VERIFY.md. Use `none` if VERIFY.md does not exist.
 
 **INTERACTION_RESULT**: UI interaction test outcome.
 - `pass` — all flows work, no bugs found

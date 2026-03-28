@@ -492,6 +492,41 @@ Async idea collection, AI evaluation, process management, three-mode UI.
 
 ---
 
+## Phase 14 — Coverage-Driven Review
+
+Goal: review converges reliably because it checks against a project-specific definition of "done", not free-form scanning. Programmer always has an accurate map of what's built, what works, what's unknown.
+
+### 14.1 — VERIFY.md Format + Templates [~30 min agent run]
+
+- [x] **Design VERIFY.md schema** — checkpoints with: description, category, status (✅/❌/⚠/⬜), `last_verified` timestamp. Categories: user journeys, error paths, state coverage, edge cases, API↔DB integration
+- [x] **Template: `configs/templates/VERIFY-frontend.md`** — user journey × error path × UI state × responsive coverage
+- [x] **Template: `configs/templates/VERIFY-backend.md`** — API endpoints × DB operations × auth × error handling × concurrent access
+- [x] **Template: `configs/templates/VERIFY-ai.md`** — model I/O contracts × prompt edge cases × fallback behavior × cost/latency bounds
+- [x] **Self-review of templates** — ran against OWASP, WCAG 2.1 AA, AWS Well-Architected; added Security + Accessibility sections to frontend, Security section to backend, Safety & Output Filtering section to AI
+
+### 14.2 — `/review` skill rewrite [~20 min agent run]
+
+- [x] **Load VERIFY.md** — skill reads project's `VERIFY.md` at start; if missing, offer to generate from nearest template
+- [x] **Systematic checkpoint pass** — iterate every ⬜/❌ checkpoint, test it, update status in-place
+- [x] **Fix-in-loop** — when ❌ found, fix immediately in same session, re-verify before moving on
+- [x] **Converge condition** — all checkpoints ✅ or explicitly ⚠ (known limitation), no ⬜ or ❌ remaining
+- [x] **Append new checkpoints** — when review discovers untested scenario not in VERIFY.md, append it and cover it
+
+### 14.3 — `/verify` skill (lightweight gate) [~10 min agent run]
+
+- [x] **Read-only pass** — runs all checkpoints, updates statuses, reports summary; does NOT fix (used by loop as exit gate)
+- [x] **Exit signal** — outputs `VERIFY_COVERAGE: N/total` in footer for loop-runner.sh to consume
+
+### Design Decisions
+| Decision | Choice | Reason |
+|---|---|---|
+| Coverage level | Behavior/journey (not code branch) | Code-level coverage is unit test territory; we cover user-visible completeness |
+| VERIFY.md location | Project root, committed with code | Project-specific, evolves with the codebase — same as jest.config/Dockerfile |
+| Templates | clade provides per project type | Starter coverage for common patterns; project customizes from there |
+| Dynamic evolution | Agent appends new checkpoints as discovered | VERIFY.md is a living doc, not a one-time spec |
+
+---
+
 ## Design Decisions
 
 | Decision | Choice | Reason |
