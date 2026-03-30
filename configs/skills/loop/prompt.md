@@ -197,4 +197,44 @@ Goal achieved → supervisor outputs STATUS: CONVERGED → loop exits.
   tail -20 logs/loop/*.log                    # last output
   ```
   A hung worker will show the same log line repeatedly. Kill with `kill <PID>` and re-run `/loop` — loop-runner.sh will pick up from where it stopped.
+- **3-strike escalation**: if the loop runs 3+ iterations without any new commits (supervisor keeps planning but workers produce nothing), STOP the loop and surface the issue:
+  ```
+  ⚠ Loop appears stuck — 3 iterations with no commits.
+  Likely causes: goal is too vague, dependencies are missing, or workers are failing silently.
+  Check: tail -50 logs/loop/*.log
+  Recommend: refine the goal file or run /batch-tasks manually to see worker errors.
+  ```
+  Do NOT let a stuck loop consume unlimited iterations — bad work is worse than no work.
 - **Max-iter is enforced by loop-runner.sh** — it will exit after N iterations regardless of convergence. If it exits without CONVERGED, the goal needs refinement or more iterations.
+
+---
+
+## AskUserQuestion format
+
+When you need to ask the user something (goal file issues, resume vs restart decisions, or stuck-loop options), use this structure:
+
+1. **Re-ground** — state the project, current branch (from `git branch --show-current`), and what you're deciding
+2. **Simplify** — plain language, no jargon; assume they haven't been looking at the screen
+3. **RECOMMENDATION** — state your recommendation clearly with `Completeness: N/10` per option
+4. **Lettered options** with dual effort estimates: `(human: ~Xmin / Claude: ~Ymin)`
+
+Example:
+```
+Context: clade, branch: main, deciding whether to resume existing loop state
+
+RECOMMENDATION: Option A — resume, because 3 iterations of work already done.
+
+A. Resume from iteration 3   Completeness: 9/10   (human: ~0min / Claude: ~5min)
+B. Restart from scratch      Completeness: 8/10   (human: ~0min / Claude: ~30min)
+C. Show me what was done first, then decide  (human: ~3min / Claude: ~2min)
+```
+
+---
+
+## Completion Status
+
+End every run with one of:
+- ✅ **DONE** — loop launched (background), status shown
+- ⚠ **DONE_WITH_CONCERNS** — loop launched but goal file lacks verification checklist
+- ❌ **BLOCKED** — goal file missing, script not found, or loop stuck after 3 fruitless iterations; details in `.claude/blockers.md`
+- ❓ **NEEDS_CONTEXT** — goal file path not provided or unreadable
