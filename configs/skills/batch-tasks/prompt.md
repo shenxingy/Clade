@@ -394,3 +394,24 @@ When the user mentions a new task while a batch is running:
 - When running batches, ALWAYS use `run_in_background: true` so the user can keep interacting.
 - **ALWAYS run the PLANNING PHASE** before writing tasks. This is the skill's primary value.
 - When multiple steps are selected, process them in order and combine all tasks into one task file.
+
+---
+
+## AskUserQuestion format
+
+When you need to ask the user something (task selection, conflict analysis, run confirmation), use this structure:
+
+1. **Re-ground** — state the project and what decision is needed
+2. **RECOMMENDATION** — state your recommendation with `Completeness: N/10` per option
+3. **Lettered options** with effort estimates `(human: ~Xmin / Claude: ~Ymin)`
+
+---
+
+## Completion Status
+
+- ✅ **DONE** — task file written and/or batch launched in background
+- ⚠ **DONE_WITH_CONCERNS** — some tasks scored below 80 (flagged as risky) or some were skipped
+- ❌ **BLOCKED** — TODO.md missing, task file unreadable, or runner script not found; write to `.claude/blockers.md`
+- ❓ **NEEDS_CONTEXT** — no TODO.md and no quoted task strings provided
+
+**3-strike rule:** The per-task self-review already enforces this inside each worker — if a worker logs 3 failures to `.claude/skipped.md` without progress, escalate to the user rather than retrying.
