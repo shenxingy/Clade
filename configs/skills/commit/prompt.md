@@ -115,6 +115,33 @@ If any README files were updated in this step:
 
 ---
 
+## Step 3.5b: Scope drift check
+
+Before running CI, do a quick sanity check: do the changes match the current TODO item or stated task?
+
+```bash
+# What's the current open TODO?
+grep -n "^\- \[ \]" TODO.md 2>/dev/null | head -5
+# What branch are we on? (branch name often signals intent)
+git branch --show-current
+```
+
+Compare the changed files against the stated task. If the changes include significant work that wasn't planned (new features, large refactors, unrelated bug fixes), flag it:
+
+```
+⚠ Scope drift detected: current TODO is "[X]" but changes include [Y].
+
+RECOMMENDATION: Option A — commit the planned work first, then open a separate task for the extra work.
+
+A. Split: commit planned work now, add extra work to TODO.md  Completeness: 9/10
+B. Commit all together with a broader message               Completeness: 6/10
+C. Review the extra changes with me before deciding         Completeness: 8/10
+```
+
+If the changes cleanly match the stated task, proceed without flagging.
+
+---
+
 ## Step 3.6: CI gate (BEFORE any git add)
 
 **This is a hard gate. Do not stage or commit anything until CI passes.**
@@ -232,3 +259,13 @@ Commit complete:
 - If working tree is clean, say so and exit immediately
 - Never ask for confirmation — analyze, commit, push in one shot (unless `--dry-run`)
 - **Alternative for simple cases:** For agents that need a quick single commit without multi-group splitting, use `~/.claude/scripts/committer.sh "type: message" file1 file2 ...` instead of this skill. The commit skill is for interactive, multi-group commit workflows.
+
+---
+
+## Completion Status
+
+- ✅ **DONE** — all commits made and pushed
+- ✅ **DONE** (no-push) — all commits made; push skipped
+- ⚠ **DONE_WITH_CONCERNS** — commits made but CI had warnings (not failures)
+- ❌ **BLOCKED** — CI failed; no commits made; fix errors and re-run
+- ❓ **NEEDS_CONTEXT** — working tree is clean and there are no unpushed commits
