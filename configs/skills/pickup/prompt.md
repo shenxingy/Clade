@@ -45,3 +45,15 @@ Picking up at:
 - The goal is zero-friction resumption — the user should not need to re-explain context
 - Trust the handoff document but verify with git — it's ground truth
 - The session that wrote the handoff may have been interrupted; check for half-finished work
+
+
+---
+
+## Completion Status
+
+- ✅ **DONE** — task completed successfully
+- ⚠ **DONE_WITH_CONCERNS** — completed but with caveats to note
+- ❌ **BLOCKED** — cannot proceed; write details to `.claude/blockers.md`
+- ❓ **NEEDS_CONTEXT** — missing information; use AskUserQuestion
+
+**3-strike rule:** If the same approach fails 3 times, switch to BLOCKED — do not retry indefinitely.

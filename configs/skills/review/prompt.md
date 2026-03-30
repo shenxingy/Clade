@@ -200,3 +200,15 @@ If converged:
 - **Never modify VERIFY.md section headers or IDs** — the IDs are stable references
 - **If the server/app is not running**: try to start it (check CLAUDE.md for the start command). If it won't start, diagnose why and fix it before trying to test UI/API checkpoints.
 - **Commit fixes as you go**: after fixing a ❌ checkpoint and confirming ✅, commit with `committer "fix: [description]" [changed files]` — don't batch all fixes into one commit
+
+
+---
+
+## Completion Status
+
+- ✅ **DONE** — task completed successfully
+- ⚠ **DONE_WITH_CONCERNS** — completed but with caveats to note
+- ❌ **BLOCKED** — cannot proceed; write details to `.claude/blockers.md`
+- ❓ **NEEDS_CONTEXT** — missing information; use AskUserQuestion
+
+**3-strike rule:** If the same approach fails 3 times, switch to BLOCKED — do not retry indefinitely.

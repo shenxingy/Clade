@@ -172,3 +172,15 @@ If yes:
 - **Use AI-speed framing** — say "one session" not "a few hours", "/loop run" not "a week of work"
 - **Think in parallel** — always ask "can any of this run simultaneously?" before settling on sequential plans
 - **If no project docs exist** — use `git log` + file structure to infer context, then ask what the project is for before starting
+
+
+---
+
+## Completion Status
+
+- ✅ **DONE** — task completed successfully
+- ⚠ **DONE_WITH_CONCERNS** — completed but with caveats to note
+- ❌ **BLOCKED** — cannot proceed; write details to `.claude/blockers.md`
+- ❓ **NEEDS_CONTEXT** — missing information; use AskUserQuestion
+
+**3-strike rule:** If the same approach fails 3 times, switch to BLOCKED — do not retry indefinitely.

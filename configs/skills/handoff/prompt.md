@@ -54,3 +54,15 @@ After saving, output:
 - Be specific about file paths — the next agent has no memory of this session
 - If you have uncommitted work, mention each file and what state it's in
 - If this session made no progress, say so honestly — it helps diagnose problems
+
+
+---
+
+## Completion Status
+
+- ✅ **DONE** — task completed successfully
+- ⚠ **DONE_WITH_CONCERNS** — completed but with caveats to note
+- ❌ **BLOCKED** — cannot proceed; write details to `.claude/blockers.md`
+- ❓ **NEEDS_CONTEXT** — missing information; use AskUserQuestion
+
+**3-strike rule:** If the same approach fails 3 times, switch to BLOCKED — do not retry indefinitely.

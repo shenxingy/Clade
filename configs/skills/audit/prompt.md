@@ -115,3 +115,15 @@ Audit Results [scope: project | global]:
 - If CLAUDE_TARGET doesn't have a matching section, append to the end under a new `## Auto-Promoted Rules` section
 - Project-mode rules.md: keep under 100 lines; global rules.md: keep under 50 lines — if over, remove oldest KEEP rules first
 - Touch .last-audit even if no changes were made
+
+
+---
+
+## Completion Status
+
+- ✅ **DONE** — task completed successfully
+- ⚠ **DONE_WITH_CONCERNS** — completed but with caveats to note
+- ❌ **BLOCKED** — cannot proceed; write details to `.claude/blockers.md`
+- ❓ **NEEDS_CONTEXT** — missing information; use AskUserQuestion
+
+**3-strike rule:** If the same approach fails 3 times, switch to BLOCKED — do not retry indefinitely.

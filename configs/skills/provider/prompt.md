@@ -67,3 +67,15 @@ The user can add custom providers by editing `~/.claude/providers.json`:
 - The active provider is stored in `~/.claude/providers.json` (`.active` field)
 - The env exports are written to `~/.claude/.provider-env.sh`
 - API keys are NEVER stored in config files — they come from shell env vars only
+
+
+---
+
+## Completion Status
+
+- ✅ **DONE** — task completed successfully
+- ⚠ **DONE_WITH_CONCERNS** — completed but with caveats to note
+- ❌ **BLOCKED** — cannot proceed; write details to `.claude/blockers.md`
+- ❓ **NEEDS_CONTEXT** — missing information; use AskUserQuestion
+
+**3-strike rule:** If the same approach fails 3 times, switch to BLOCKED — do not retry indefinitely.

@@ -176,3 +176,15 @@ Format the output nicely, showing:
 - Always show the exact commands you're running.
 - If something fails, show the error and suggest a fix.
 - Never force-delete branches or worktrees without asking the user first.
+
+
+---
+
+## Completion Status
+
+- ✅ **DONE** — task completed successfully
+- ⚠ **DONE_WITH_CONCERNS** — completed but with caveats to note
+- ❌ **BLOCKED** — cannot proceed; write details to `.claude/blockers.md`
+- ❓ **NEEDS_CONTEXT** — missing information; use AskUserQuestion
+
+**3-strike rule:** If the same approach fails 3 times, switch to BLOCKED — do not retry indefinitely.
