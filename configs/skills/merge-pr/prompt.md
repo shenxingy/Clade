@@ -60,3 +60,15 @@ git checkout main && git pull --ff-only
 - Never force-push or rebase without explicit user instruction
 - Never merge PRs targeting branches other than main/master without confirming with user
 - If `--delete-branch` fails (e.g. branch already deleted), that's fine — continue
+
+
+---
+
+## Completion Status
+
+- ✅ **DONE** — task completed successfully
+- ⚠ **DONE_WITH_CONCERNS** — completed but with caveats to note
+- ❌ **BLOCKED** — cannot proceed; write details to `.claude/blockers.md`
+- ❓ **NEEDS_CONTEXT** — missing information; use AskUserQuestion
+
+**3-strike rule:** If the same approach fails 3 times, switch to BLOCKED — do not retry indefinitely.

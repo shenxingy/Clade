@@ -49,3 +49,15 @@ The session will run until done, blocked, or budget hit.
 - Morning mode is the default (safest — just shows info, no changes)
 - Autonomous mode always runs in background
 - Never run start.sh in foreground — it can take hours
+
+
+---
+
+## Completion Status
+
+- ✅ **DONE** — task completed successfully
+- ⚠ **DONE_WITH_CONCERNS** — completed but with caveats to note
+- ❌ **BLOCKED** — cannot proceed; write details to `.claude/blockers.md`
+- ❓ **NEEDS_CONTEXT** — missing information; use AskUserQuestion
+
+**3-strike rule:** If the same approach fails 3 times, switch to BLOCKED — do not retry indefinitely.

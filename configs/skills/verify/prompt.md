@@ -240,3 +240,15 @@ VERIFY_COVERAGE: N_pass/N_total|none
 - Wrap ALL subprocess calls with `timeout N`: test suites `timeout 120`, curl/DB queries `timeout 30`, compile checks `timeout 60`. If timeout fires → mark ⚠, do NOT retry
 - Fail-open on infrastructure errors (can't install deps, missing tools): mark as unverifiable, not fail
 - When in doubt between partial and fail: if you CAN test it and it broke → fail. If you CAN'T test it → partial.
+
+
+---
+
+## Completion Status
+
+- ✅ **DONE** — task completed successfully
+- ⚠ **DONE_WITH_CONCERNS** — completed but with caveats to note
+- ❌ **BLOCKED** — cannot proceed; write details to `.claude/blockers.md`
+- ❓ **NEEDS_CONTEXT** — missing information; use AskUserQuestion
+
+**3-strike rule:** If the same approach fails 3 times, switch to BLOCKED — do not retry indefinitely.

@@ -92,3 +92,15 @@ If a rule was added:
 4. Write the incident entry to `.claude/incidents.md`
 5. Offer to extract a rule — get user confirmation before appending
 6. Confirm logging is complete
+
+
+---
+
+## Completion Status
+
+- ✅ **DONE** — task completed successfully
+- ⚠ **DONE_WITH_CONCERNS** — completed but with caveats to note
+- ❌ **BLOCKED** — cannot proceed; write details to `.claude/blockers.md`
+- ❓ **NEEDS_CONTEXT** — missing information; use AskUserQuestion
+
+**3-strike rule:** If the same approach fails 3 times, switch to BLOCKED — do not retry indefinitely.

@@ -75,3 +75,15 @@ Print the PR URL and the verdict. Done.
 - Don't praise trivially — "good job" without substance is useless
 - If the diff is too large (>500 lines), focus on the most impactful changes
 - Never approve security-sensitive changes (auth, crypto, SQL) without explicitly flagging them for human review
+
+
+---
+
+## Completion Status
+
+- ✅ **DONE** — task completed successfully
+- ⚠ **DONE_WITH_CONCERNS** — completed but with caveats to note
+- ❌ **BLOCKED** — cannot proceed; write details to `.claude/blockers.md`
+- ❓ **NEEDS_CONTEXT** — missing information; use AskUserQuestion
+
+**3-strike rule:** If the same approach fails 3 times, switch to BLOCKED — do not retry indefinitely.

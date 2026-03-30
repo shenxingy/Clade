@@ -151,3 +151,15 @@ Model research complete:
 - The model guidance in session-context.sh must stay brief (1-2 sentences) — it's injected into every session context.
 - If a search fails or returns outdated info, say so — don't guess or fabricate data.
 - Include source URLs for any new data found.
+
+
+---
+
+## Completion Status
+
+- ✅ **DONE** — task completed successfully
+- ⚠ **DONE_WITH_CONCERNS** — completed but with caveats to note
+- ❌ **BLOCKED** — cannot proceed; write details to `.claude/blockers.md`
+- ❓ **NEEDS_CONTEXT** — missing information; use AskUserQuestion
+
+**3-strike rule:** If the same approach fails 3 times, switch to BLOCKED — do not retry indefinitely.
