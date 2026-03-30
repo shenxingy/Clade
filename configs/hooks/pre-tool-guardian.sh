@@ -38,9 +38,16 @@ DEV_MODE=false
 # Common ORM/migration tools that block or timeout inside Claude Code.
 # (Skipped in dev mode — toggle with: devmode on/off)
 if [[ "$DEV_MODE" == false ]]; then
-# Strip comment-only lines before scanning — prevents false positives when a
-# blocked pattern appears in a shell comment (e.g. "# alembic upgrade head")
-SCANNABLE=$(echo "$COMMAND" | grep -v '^\s*#' || true)
+# Strip comment-only lines AND variable assignment lines before scanning.
+# This prevents false positives when a blocked pattern appears in:
+#   - Shell comments:       # alembic upgrade head
+#   - String assignments:   INPUT='{"command":"alembic upgrade",...}'
+#   - Heredoc data lines:   VAR="alembic upgrade head"
+SCANNABLE=$(echo "$COMMAND" \
+  | grep -v '^\s*#' \
+  | grep -v "^\s*[A-Za-z_][A-Za-z0-9_]*='" \
+  | grep -v '^\s*[A-Za-z_][A-Za-z0-9_]*="' \
+  || true)
 
 MIGRATION_PATTERNS=(
   "db:push"
