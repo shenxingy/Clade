@@ -69,8 +69,12 @@ fi
 # ─── 6. Copy commands ────────────────────────────────────────────────
 
 echo "Installing commands..."
-cp "$SCRIPT_DIR/configs/commands/"*.md "$CLAUDE_DIR/commands/"
-echo "  Installed: $(ls "$SCRIPT_DIR/configs/commands/"*.md | xargs -I{} basename {} | tr '\n' ' ')"
+if compgen -G "$SCRIPT_DIR/configs/commands/*.md" > /dev/null 2>&1; then
+  cp "$SCRIPT_DIR/configs/commands/"*.md "$CLAUDE_DIR/commands/"
+  echo "  Installed: $(ls "$SCRIPT_DIR/configs/commands/"*.md | xargs -I{} basename {} | tr '\n' ' ')"
+else
+  echo "  (no commands to install)"
+fi
 
 # ─── 6b. Symlink committer to ~/.local/bin (for PATH access) ─────────
 
