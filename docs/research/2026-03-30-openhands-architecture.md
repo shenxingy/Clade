@@ -5,12 +5,11 @@ status: reference
 review_date: 2026-03-31
 summary:
   - "OpenHands: EventStream event sourcing, 9 Condenser types, DockerRuntime warm pool, AgentDelegate nested agents"
-integrated_items:
-  - "Event sourcing pattern — not implemented (Clade uses direct state updates)"
-  - "Warm pool for agents — not implemented (Clade spawns fresh workers)"
+integrated_items: []
 needs_work_items:
   - "EventStream architecture — could replace direct state mutations in session.py"
   - "Condenser types for context compression — could enhance worker_tldr.py"
+  - "Warm pool for agents — not implemented (Clade spawns fresh workers per task)"
 reference_items:
   - "9 Condenser types for different compression strategies"
   - "DockerRuntime with action_execution_server"
