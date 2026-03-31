@@ -8,6 +8,13 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Cross-platform sha256 (Linux: sha256sum, macOS: shasum -a 256)
+if command -v sha256sum &>/dev/null; then
+  _SHA256=(sha256sum)
+else
+  _SHA256=(shasum -a 256)
+fi
 CLAUDE_DIR="$HOME/.claude"
 
 echo "Installing Claude Code customizations..."
@@ -208,7 +215,7 @@ fi
 echo "Writing kit version markers..."
 echo "$SCRIPT_DIR" > "$CLAUDE_DIR/.kit-source-dir"
 # Combined checksum of all source configs — session-context.sh and start.sh compare against this
-find "$SCRIPT_DIR/configs" -type f | LC_ALL=C sort | xargs sha256sum 2>/dev/null | sha256sum | cut -d' ' -f1 > "$CLAUDE_DIR/.kit-checksum"
+find "$SCRIPT_DIR/configs" -type f | LC_ALL=C sort | xargs "${_SHA256[@]}" 2>/dev/null | "${_SHA256[@]}" | cut -d' ' -f1 > "$CLAUDE_DIR/.kit-checksum"
 echo "  Written .kit-source-dir + .kit-checksum for stale-script detection"
 
 # ─── 12. Summary ─────────────────────────────────────────────────────

@@ -28,6 +28,13 @@ set -uo pipefail
 # Allow nested claude calls
 unset CLAUDECODE 2>/dev/null || true
 
+# Cross-platform sha256 (Linux: sha256sum, macOS: shasum -a 256)
+if command -v sha256sum &>/dev/null; then
+  _SHA256=(sha256sum)
+else
+  _SHA256=(shasum -a 256)
+fi
+
 # Cross-platform timeout (macOS: gtimeout from coreutils)
 _timeout() {
   if command -v gtimeout &>/dev/null; then
@@ -576,7 +583,7 @@ _check_startup_health() {
     local _kit_dir _current _installed
     _kit_dir=$(cat "$_kit_source")
     if [[ -d "$_kit_dir/configs" ]]; then
-      _current=$(find "$_kit_dir/configs" -type f | LC_ALL=C sort | xargs sha256sum 2>/dev/null | sha256sum | cut -d' ' -f1)
+      _current=$(find "$_kit_dir/configs" -type f | LC_ALL=C sort | xargs "${_SHA256[@]}" 2>/dev/null | "${_SHA256[@]}" | cut -d' ' -f1)
       _installed=$(cat "$_kit_checksum")
       if [[ "$_current" != "$_installed" ]]; then
         echo "⚠ Kit scripts are stale — configs/ changed since last install.sh"

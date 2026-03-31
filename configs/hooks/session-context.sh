@@ -4,6 +4,13 @@
 
 cd "${CLAUDE_PROJECT_DIR:-$(pwd)}" 2>/dev/null || exit 0
 
+# Cross-platform sha256 (Linux: sha256sum, macOS: shasum -a 256)
+if command -v sha256sum &>/dev/null; then
+  _SHA256=(sha256sum)
+else
+  _SHA256=(shasum -a 256)
+fi
+
 # Only run for git repos
 if ! git rev-parse --is-inside-work-tree &>/dev/null; then
   exit 0
@@ -154,7 +161,7 @@ KIT_CHECKSUM_FILE="$HOME/.claude/.kit-checksum"
 if [[ -f "$KIT_SOURCE_FILE" && -f "$KIT_CHECKSUM_FILE" ]]; then
   _KIT_DIR=$(cat "$KIT_SOURCE_FILE")
   if [[ -d "$_KIT_DIR/configs" ]]; then
-    _CURRENT=$(find "$_KIT_DIR/configs" -type f | LC_ALL=C sort | xargs sha256sum 2>/dev/null | sha256sum | cut -d' ' -f1)
+    _CURRENT=$(find "$_KIT_DIR/configs" -type f | LC_ALL=C sort | xargs "${_SHA256[@]}" 2>/dev/null | "${_SHA256[@]}" | cut -d' ' -f1)
     _INSTALLED=$(cat "$KIT_CHECKSUM_FILE")
     if [[ "$_CURRENT" != "$_INSTALLED" ]]; then
       CONTEXT="${CONTEXT}\n⚠ STALE KIT: configs/ changed since last install.sh — run: cd $_KIT_DIR && ./install.sh\n"
