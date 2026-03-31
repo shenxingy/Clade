@@ -37,6 +37,69 @@ logger = logging.getLogger(__name__)
 # ─── Output Truncation Helpers ───────────────────────────────────────────────
 MAX_LINES = 2000
 MAX_BYTES = 50 * 1024  # 50KB
+DISTILL_THRESHOLD = 200 * 1024  # 200KB — distill if output exceeds this
+
+DISTILL_PROMPT = """Extract key facts from this tool output. Focus on:
+- Error messages and their types
+- File paths and line numbers
+- Definite conclusions or results
+- Commands executed and their effects
+
+Respond with ONLY the distilled facts, no commentary. If no errors or key facts, say "No significant output."
+
+---
+{output}
+---"""
+
+
+async def _distill_output(text: str, project_dir: Path) -> str:
+    """Use lightweight LLM to distill large tool output into key facts.
+
+    Saves full output to a .distilled-orig file and returns a summary.
+    This preserves error details and file paths that simple truncation loses.
+    """
+    import tempfile
+    # Save full output to temp file (never lose information)
+    tmp = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".log", prefix="clade-distill-", delete=False
+    )
+    tmp.write(text)
+    tmp.close()
+    tmp_path = tmp.name
+
+    distill_prompt = DISTILL_PROMPT.format(output=text[:180 * 1024])  # limit input to 180KB
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "claude", "-p", distill_prompt,
+            "--model", "claude-haiku-4-5-20251001",
+            "--dangerously-skip-permissions",
+            "--no-input-prompt",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+            cwd=str(project_dir),
+        )
+        stdout_bytes, _ = await asyncio.wait_for(proc.communicate(), timeout=60)
+        summary = stdout_bytes.decode("utf-8", errors="replace").strip()
+
+        if summary and summary != "No significant output.":
+            return (
+                f"{summary}\n\n"
+                f"[Tool output was large ({len(text) // 1024}KB). "
+                f"Full output saved to: {tmp_path}]\n"
+            )
+        else:
+            # Haiku found nothing significant — just return truncated version
+            return _truncate_output(text)
+    except Exception:
+        # On any error (timeout, subprocess failure), fall back to truncation
+        return _truncate_output(text)
+    finally:
+        # Clean up temp file after 1 hour (consumer should copy if needed)
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
 
 
 def _truncate_output(text: str, max_lines: int = MAX_LINES, max_bytes: int = MAX_BYTES) -> str:
@@ -670,6 +733,19 @@ class Worker:
                 self._estimated_cost = _estimate_cost(self._input_tokens, self._output_tokens)
             except Exception:
                 pass
+            # Distill large output: replace log in-place with LLM summary + full output reference
+            # This preserves error details that simple truncation loses
+            if self._project_dir:
+                try:
+                    log_size = self._log_path.stat().st_size
+                    if log_size > DISTILL_THRESHOLD:
+                        raw_text = self._log_path.read_text(errors="replace")
+                        distilled = await _distill_output(raw_text, self._project_dir)
+                        self._log_path.write_text(distilled, encoding="utf-8")
+                        logger.info("Worker %s: distilled %dKB log to %d chars",
+                                     self.id, log_size // 1024, len(distilled))
+                except Exception:
+                    pass
         # Check for handoff file — worker wrote it to signal continuation needed
         handoff_path = self._claude_dir / f"handoff-{self.task_id}.md"
         if handoff_path.exists():
