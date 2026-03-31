@@ -10,12 +10,10 @@ needs_work_items:
   - "Reaction system for GitHub PR review tracking — could enhance github_sync.py"
   - "Activity detection via Claude JSONL — could enhance worker.py"
 reference_items:
-  - "Plugin slot architecture — not implemented (Clade uses flat worker pool, no slot interface)"
-  - "Flat metadata files vs SQLite for state"
-  - "Batch GraphQL optimization"
-reference_items:
-  - "Flat metadata files vs SQLite for state"
-  - "Batch GraphQL optimization"
+  - "Plugin slot architecture — not a gap (Clade is single-agent, no need for swappable agent interfaces)"
+  - "Flat metadata files vs SQLite for state — SQLite better for task history, metadata files better for runtime state (different use cases)"
+  - "Batch GraphQL optimization — relevant at 10+ concurrent workers, not a current gap"
+  - "Prompt layering — explicit prompt composition vs ad hoc strings in worker.py (improvement, not gap)"
 ---
 
 # ComposioHQ/agent-orchestrator — Deep Research
