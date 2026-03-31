@@ -14,7 +14,7 @@ Themes (~/.claude/.statusline-theme):  circles | bird | plant
 slt            — cycle mode (symbol → percent → off → symbol)
 slt theme bird — set theme
 """
-import json, locale, os, time, urllib.request
+import json, locale, os, subprocess, sys, time, urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -125,6 +125,17 @@ def _color(projected):
 # ─── API / cache ───
 
 def _load_token():
+    # macOS: prefer Keychain (Claude Code refreshes tokens there, not in .credentials.json)
+    if sys.platform == "darwin":
+        try:
+            raw = subprocess.check_output(
+                ["security", "find-generic-password", "-s", "Claude Code-credentials", "-w"],
+                text=True, stderr=subprocess.DEVNULL, timeout=5,
+            ).strip()
+            return json.loads(raw)["claudeAiOauth"]["accessToken"]
+        except Exception:
+            pass
+    # Linux / fallback: read from .credentials.json
     try:
         return json.loads(CREDS_FILE.read_text())["claudeAiOauth"]["accessToken"]
     except Exception:
