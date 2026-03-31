@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: hsl(224 71% 4%);
+  --color-foreground: hsl(213 31% 91%);
+  --color-card: hsl(224 71% 4%);
+  --color-card-foreground: hsl(213 31% 91%);
+  --color-primary: hsl(210 40% 98%);
+  --color-primary-foreground: hsl(222 47% 11%);
+  --color-secondary: hsl(222 47% 11%);
+  --color-secondary-foreground: hsl(210 40% 98%);
+  --color-muted: hsl(223 47% 11%);
+  --color-muted-foreground: hsl(215 20% 65%);
+  --color-accent: hsl(216 34% 17%);
+  --color-accent-foreground: hsl(210 40% 98%);
+  --color-destructive: hsl(0 63% 31%);
+  --color-destructive-foreground: hsl(210 40% 98%);
+  --color-border: hsl(216 34% 17%);
+  --color-input: hsl(216 34% 17%);
+  --color-ring: hsl(216 34% 17%);
+  --radius: 0.5rem;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Menlo', monospace;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-mono);
+  }
+}
+
+/* Status colors */
+.status-running  { color: var(--color-green-400); }
+.status-failed   { color: var(--color-red-400); }
+.status-pending  { color: var(--color-yellow-400); }
+.status-done     { color: var(--color-slate-500); }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background-color: var(--color-secondary); }
+::-webkit-scrollbar-thumb { background-color: var(--color-muted-foreground); border-radius: 3px; }
