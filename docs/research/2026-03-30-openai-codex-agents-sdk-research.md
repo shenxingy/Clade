@@ -1,18 +1,20 @@
 ---
 name: 2026-03-30-openai-codex-agents-sdk-research.md
 date: 2026-03-30
-status: reference
+status: needs_work
 review_date: 2026-03-31
 summary:
   - "Codex CLI: Rust rewrite, sandboxing (Landlock/seccomp), MCP server, Agents SDK with handoff pattern"
 integrated_items:
-  - "MCP server implementation — Clade has MCP server in orchestrator/mcp_server.py"
+  - "MCP server — orchestrator/mcp_server.py exposes skills as MCP tools via @list_tools + @call_tool decorators"
 needs_work_items:
-  - "Handoff pattern with input_filter context compression — could enhance /handoff skill"
-  - "Tracing system with span hierarchy — not implemented"
+  - "Typed worker handoffs with input_filter — Agents SDK HandoffInputData enables workers to hand off directly to specialized workers. Clade /handoff is session-level, not task-routing level (no structured context passing between workers)"
+  - "Tracing span hierarchy — Clade has no structured tracing. Agents SDK span-per-task + nested llm_call_span + tool_call_span would improve observability"
+  - "Guardrails (pre/post task validation) — Clade has no input validation before worker dispatch. Pre-task guardrail (is task well-formed?) and post-task guardrail (did worker address the goal?) not implemented"
+  - "MultiProvider per-task routing — Clade /provider is hot-swap (whole session). Prefix-based per-task routing (e.g., haiku for TLDR, sonnet for implement) not implemented"
 reference_items:
-  - "Sandboxing: macOS sandbox-exec, Linux Landlock + seccomp + bubblewrap"
-  - "Codex skills discovery and loading mechanism"
+  - "Sandbox Policy DSL — not applicable (Claude Code has built-in safety boundaries)"
+  - "Codex skills discovery mechanism — different from Clade's skill system"
 ---
 
 # OpenAI Codex CLI + Agents SDK — Deep Research
