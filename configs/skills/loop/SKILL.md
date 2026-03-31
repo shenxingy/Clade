@@ -1,7 +1,7 @@
 ---
 name: loop
-description: Goal-driven autonomous improvement loop — supervisor plans tasks each iteration, workers execute in parallel via batch-tasks, repeats until goal is achieved
-when_to_use: "run loop, autonomous loop, keep fixing, goal file, 自动循环, run until done"
+description: Goal-driven autonomous improvement loop using Blueprint architecture — deterministic pre/post phases + LLM nodes for implementation
+when_to_use: "run loop, autonomous loop, keep fixing until done, goal file, 自动循环, run until converged, iterate on goal"
 argument-hint: 'GOAL_FILE [--model haiku|sonnet|opus] [--worker-model MODEL] [--max-iter N] [--max-workers N] [--dry-run] [--status] [--stop] [--resume]'
 user_invocable: true
 ---
