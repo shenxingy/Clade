@@ -6,7 +6,7 @@ review_date: 2026-03-31
 summary:
   - "Gemini CLI: Plan Mode tool-layer isolation, LoopDetectionService, tool distillation, ChatCompressionService"
 integrated_items:
-  - "Loop detection — Clade has loop_iteration detection in worker.py"
+  - "Loop detection — Clade has consecutive-no-commits + consecutive-failures detection in loop-runner.sh (MAX_CONSECUTIVE_NO_COMMITS=3, MAX_CONSECUTIVE_FAILURES=3)"
 needs_work_items:
   - "ChatCompressionService — could enhance Clade's context management"
   - "Tool distillation for large outputs — not implemented"
