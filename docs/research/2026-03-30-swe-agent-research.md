@@ -7,10 +7,12 @@ summary:
   - "SWE-agent: ACI design principles (4 principles), 100-line window size, linting guardrail, filemap tool"
 integrated_items:
   - "ACI design principles — inform tool design for Claude Code interactions"
-  - "Linting guardrail after file edits — not implemented (could be a PostToolUse hook)"
-needs_work_items:
-  - "Formal filemap tool — could enhance worker_tldr.py codebase understanding"
-  - "100-line window size constraint — Clade uses 2000 line truncation"
+  - "Linting guardrail after file edits — post-edit-check hook implements this"
+needs_work_items: []
+reference_items:
+  - "4 ACI design principles: simple actions, informative feedback, easy monitoring, enabling recovery"
+  - "filemap tool for SWE-bench harness"
+  - "100-line window size constraint — Clade uses 50KB/2000 line truncation (broader)"
 reference_items:
   - "4 ACI design principles: simple actions, informative feedback, easy monitoring, enabling recovery"
   - "filemap tool for SWE-bench harness"
