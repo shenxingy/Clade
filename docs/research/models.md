@@ -1,6 +1,18 @@
 # Claude Model Selection Guide
 
-> Last updated: 2026-02-18
+---
+name: models.md
+date: 2026-02-18
+status: integrated
+review_date: 2026-03-31
+summary:
+  - "Claude model benchmarks, cost-performance analysis, and selection guidelines"
+integrated_items:
+  - "Model selection table (Sonnet/Haiku/Opus) — batch-tasks skill 有完整实现，包含 SWE-bench 基准数据"
+  - "Cost-performance guidance — session-context.sh 有实现（line 153），注入到每次 session"
+  - "Model research skill — configs/skills/model-research/ 存在，研究建议没有这个，Clade 更好"
+needs_work_items: []
+reference_items: []
 
 ## Current Models
 

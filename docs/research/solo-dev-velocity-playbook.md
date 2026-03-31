@@ -1,5 +1,27 @@
 # Solo 开发提速 Playbook
 
+---
+name: solo-dev-velocity-playbook.md
+date: 2026-02-22
+status: integrated
+review_date: 2026-03-31
+summary:
+  - "steipete's solo dev velocity patterns: committer, /handoff+/pickup, parallel agents"
+integrated_items:
+  - "--dangerously-skip-permissions — run-tasks.sh 用于无人值守执行"
+  - "committer script — 防止并行 agent git 冲突，configs/scripts/committer.sh"
+  - "Task queue pattern — batch-tasks skill 队列多个任务"
+  - "/handoff skill — structured Goal/Progress/Decisions/Next Steps format"
+  - "/pickup skill — reads handoff file, verifies git state, resumes"
+  - "Global CLAUDE.md — ~/.claude/CLAUDE.md"
+  - "Ralph (batch supervisor loop) — /loop skill 已覆盖相同功能，无需单独实现"
+needs_work_items: []
+reference_items:
+  - "Oracle (npx @steipete/oracle) — second-model review，但 Clade 有 /review 和 /review-pr 功能类似，且用户可直接调用 npx，不是核心缺口"
+  - "VibeTunnel — macOS only，不适用 Linux 开发"
+
+# Solo 开发提速 Playbook
+
 > 基于 steipete (Peter Steinberger) 的公开工具和博客提炼
 > 适用场景：solo 开发，直接 commit main，没有 PR 流程，瓶颈在 prompt 输入
 > 研究日期：2026-02-22
