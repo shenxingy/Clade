@@ -49,6 +49,7 @@ _timeout() {
 
 # ─── BLUEPRINT HARD LIMITS ──────────────────────────────────────
 readonly MAX_CONSECUTIVE_NO_COMMITS=3   # consecutive empty iters → force stop
+readonly MAX_CONSECUTIVE_FAILURES=3     # consecutive worker failures (ran but no commits) → force stop
 readonly SYNTAX_CHECK_TIMEOUT=30        # syntax check timeout (seconds)
 readonly TEST_SAMPLE_TIMEOUT=120        # verify_cmd timeout (seconds)
 readonly SUPERVISOR_TIMEOUT=120         # supervisor LLM call timeout (seconds)
@@ -62,6 +63,7 @@ SUPERVISOR_MODEL="claude-sonnet-4-6"
 WORKER_MODEL="claude-sonnet-4-6"
 MAX_ITER=10
 MAX_WORKERS=4
+MAX_CONSECUTIVE_FAILURESOverride=""
 CONTEXT_FILE=""
 STATE_FILE=".claude/loop-state.json"
 LOG_DIR="logs/loop"
@@ -94,6 +96,7 @@ parse_args() {
       --worker-model) WORKER_MODEL="$2"; shift 2 ;;
       --max-iter)     MAX_ITER="$2"; shift 2 ;;
       --max-workers)  MAX_WORKERS="$2"; shift 2 ;;
+      --max-consecutive-failures) MAX_CONSECUTIVE_FAILURESOverride="$2"; shift 2 ;;
       --context)      CONTEXT_FILE="$2"; shift 2 ;;
       --state)        STATE_FILE="$2"; shift 2 ;;
       --log-dir)      LOG_DIR="$2"; shift 2 ;;
@@ -103,6 +106,11 @@ parse_args() {
       *) log_warn "Unknown arg: $1"; shift ;;
     esac
   done
+
+  # Apply --max-consecutive-failures override if provided
+  if [ -n "$MAX_CONSECUTIVE_FAILURESOverride" ]; then
+    MAX_CONSECUTIVE_FAILURES="$MAX_CONSECUTIVE_FAILURESOverride"
+  fi
 }
 # ────────────────────────────────────────────────────────────────
 
@@ -207,6 +215,33 @@ node_hydrate_context() {
 }
 # ────────────────────────────────────────────────────────────────
 
+# ─── [DET] NODE: PARSE TODO ──────────────────────────────────────
+# Extracts all unchecked TODO items from goal file for supervisor context.
+node_parse_todo() {
+  log_info "[DET] parse_todo"
+
+  if [ ! -f "$GOAL_FILE" ]; then
+    log_warn "Goal file not found: $GOAL_FILE"
+    return
+  fi
+
+  local open_items
+  open_items=$(grep -c '^\- \[ \]' "$GOAL_FILE" 2>/dev/null || echo "0")
+  local total_items
+  total_items=$(grep -c '^\- \[' "$GOAL_FILE" 2>/dev/null || echo "0")
+
+  log_info "Goal: $open_items open / $total_items total items"
+
+  # Append to context
+  {
+    echo ""
+    echo "## Goal TODO Items (from goal file)"
+    echo "Open: $open_items / Total: $total_items"
+    grep -n '^\- \[' "$GOAL_FILE" 2>/dev/null || echo "(no TODO items)"
+  } >> .claude/loop-context.md
+}
+# ────────────────────────────────────────────────────────────────
+
 # ─── [LLM] NODE: SUPERVISOR ─────────────────────────────────────
 # Plans tasks for this iteration. Returns JSON array or CONVERGED signal.
 node_supervisor() {
@@ -256,28 +291,33 @@ Write to .claude/blockers.md, then stop immediately.
 
 ## Output format
 
-Output EXACTLY ONE of these two formats:
+Output ONLY this format — a JSON array of tasks to execute:
 
-FORMAT 1 — Tasks to execute (JSON array):
+```json
 [
   {
-    \"description\": \"One sentence task with exact file paths and what to do. Include: which file, which function, what to implement, how to verify, commit with committer script.\",
-    \"model\": \"haiku|sonnet|opus\",
-    \"files\": [\"path/to/file.py\"]
+    "description": "One sentence task with exact file paths and what to do. Include: which file, which function, what to implement, how to verify, commit with committer script.",
+    "model": "haiku|sonnet|opus",
+    "files": ["path/to/file.py"]
   }
 ]
+```
 
-FORMAT 2 — Goal achieved (convergence signal):
-{\"status\": \"CONVERGED\", \"reason\": \"All requirements met: ...\"}
+## Convergence is determined by the loop script — not by you
+
+After workers complete, the script checks:
+1. How many unchecked items remain in the goal file
+2. Whether workers committed changes
+
+You output tasks. The script decides convergence. Do NOT output CONVERGED.
 
 ## Rules
-- CONVERGED only when ALL goal requirements are demonstrably met (verify via git history)
 - Max $MAX_WORKERS tasks — pick the highest-value ones
 - Tasks must be INDEPENDENT (no dependency between tasks in same iteration)
 - Model: haiku=mechanical/trivial (<30 lines, rename, delete), sonnet=standard, opus=complex architecture
 - Never repeat a task already in recent commits
-- Workers commit via: committer \"type: msg\" file1 file2 (NEVER git add .)
-- If .claude/blockers.md appears in recent diff, output CONVERGED immediately"
+- Workers commit via: committer "type: msg" file1 file2 (NEVER git add .)
+- If .claude/blockers.md exists, output an empty tasks array []"
 
   local result
   if ! result=$(_timeout "$SUPERVISOR_TIMEOUT" claude --model "$SUPERVISOR_MODEL" -p "$supervisor_prompt" 2>&1); then
@@ -611,7 +651,95 @@ PYTHON_EOF
 }
 # ────────────────────────────────────────────────────────────────
 
-# ─── GENERATE LOOP REPORT ───────────────────────────────────────
+# ─── [LLM] CREATE FIX TASKS ──────────────────────────────────────
+# Called when test_sample fails. Reads verify output and generates fix task.
+_create_fix_tasks() {
+  local task_file="$1"
+  log_info "[LLM] create_fix_tasks → $task_file"
+
+  # Find the most recent verify output
+  local verify_output
+  verify_output=$(ls -t logs/loop/iter-*-verify.txt 2>/dev/null | head -1 || true)
+
+  local failure_context=""
+  if [ -n "$verify_output" ] && [ -f "$verify_output" ]; then
+    failure_context=$(cat "$verify_output" 2>/dev/null | head -100)
+  fi
+
+  local fix_prompt="The main workers completed but test_sample failed.
+Create a single fix task to address the test failures.
+
+## Original Goal
+$(cat "$GOAL_FILE" 2>/dev/null | head -50)
+
+## Failure Context
+$failure_context
+
+## Instructions
+- Create exactly 1 task (JSON array format)
+- Task: fix the specific failing tests or verification checks
+- Use sonnet model for standard fixes
+- Include exact file paths and what to fix
+- Workers commit via: committer \"fix: description\" file1 file2"
+
+  mkdir -p "$(dirname "$task_file")"
+  _timeout "$SUPERVISOR_TIMEOUT" claude --model sonnet -p "$fix_prompt" 2>&1 \
+    | python3 -c "
+import sys, json, re
+text = sys.stdin.read()
+for p in [r'\[[\s\S]*]\]', r'\{[\s\S]*\}']:
+    m = re.findall(p, text)
+    for x in reversed(m):
+        try:
+            parsed = json.loads(x)
+            if isinstance(parsed, list) and len(parsed) > 0:
+                print(json.dumps(parsed)); sys.exit(0)
+        except: pass
+print('[]')
+" > "$task_file" 2>/dev/null || echo "[]" > "$task_file"
+
+  local task_count
+  task_count=$(grep -c '===TASK===' "$task_file" 2>/dev/null || echo "0")
+  log_info "Created $task_count fix task(s)"
+}
+
+# ─── [DET] DETERMINISTIC CONVERGENCE CHECK ──────────────────────
+# Returns 0 (converged, break) or 1 (not converged, continue).
+# Convergence is based on measurable state, NOT LLM judgment.
+_check_convergence() {
+  local iteration="$1"
+
+  # Hard stop: max iterations
+  if [ "$iteration" -ge "$MAX_ITER" ]; then
+    log_warn "Max iterations ($MAX_ITER) reached"
+    exit_reason="max_iterations"
+    return 0
+  fi
+
+  # Hard stop: too many consecutive no-commits
+  if [ "$consecutive_no_commits" -ge "$MAX_CONSECUTIVE_NO_COMMITS" ]; then
+    log_error "$MAX_CONSECUTIVE_NO_COMMITS consecutive iterations with no commits — loop stuck"
+    exit_reason="stuck_no_commits"
+    return 0
+  fi
+
+  # Deterministic convergence: no unchecked items remain in goal file
+  if [ -f "$GOAL_FILE" ]; then
+    local remaining
+    remaining=$(grep -c '^\- \[ \]' "$GOAL_FILE" 2>/dev/null || echo "-1")
+    if [ "$remaining" = "0" ]; then
+      log_success "CONVERGED: 0 unchecked items remain in goal file (deterministic check)"
+      exit_reason="converged"
+      return 0
+    elif [ "$remaining" -gt 0 ]; then
+      log_info "Convergence check: $remaining unchecked items remain — not done yet"
+    fi
+  fi
+
+  return 1  # not converged, continue
+}
+
+# ─── GENERATE LOOP REPORT ────────────────────────────────────────
 generate_loop_report() {
   local total_iterations="$1"
   local exit_reason="$2"
@@ -639,6 +767,7 @@ generate_loop_report() {
 run_blueprint_loop() {
   local iteration=0
   local consecutive_no_commits=0
+  local consecutive_worker_failures=0
   local exit_reason="max_iterations"
 
   mkdir -p "$LOG_DIR"
@@ -646,6 +775,7 @@ run_blueprint_loop() {
   log_info "  Goal:         $GOAL_FILE"
   log_info "  Max iter:     $MAX_ITER"
   log_info "  Max workers:  $MAX_WORKERS"
+  log_info "  Max worker failures: $MAX_CONSECUTIVE_FAILURES"
   log_info "  Supervisor:   $SUPERVISOR_MODEL"
   log_info "  Workers:      $WORKER_MODEL"
   log_info "  State file:   $STATE_FILE"
@@ -672,29 +802,15 @@ run_blueprint_loop() {
     # [DET] hydrate_context
     node_hydrate_context
 
+    # [DET] parse TODO items from goal file
+    node_parse_todo
+
     # [LLM] supervisor
     local tasks_json
     tasks_json=$(node_supervisor "$iteration")
 
-    # Check CONVERGED signal
-    if echo "$tasks_json" | python3 -c "
-import json, sys
-try:
-    d = json.load(sys.stdin)
-    sys.exit(0 if isinstance(d, dict) and d.get('status') == 'CONVERGED' else 1)
-except:
-    sys.exit(1)
-" 2>/dev/null; then
-      local reason
-      reason=$(echo "$tasks_json" | python3 -c "
-import json, sys
-d = json.load(sys.stdin)
-print(d.get('reason', 'goal achieved'))
-" 2>/dev/null || echo "goal achieved")
-      log_success "CONVERGED: $reason"
-      exit_reason="converged"
-      break
-    fi
+    # Supervisor always outputs tasks array (CONVERGED judgment removed — deterministic check comes after commit)
+    # Empty array means supervisor sees no valuable tasks to add (not CONVERGED — script decides)
 
     # [DET] score + write task file
     local task_file
@@ -742,7 +858,42 @@ print(d.get('reason', 'goal achieved'))
     fi
 
     # [DET] test_sample
-    node_test_sample
+    local test_result=0
+    node_test_sample || test_result=$?
+
+    # [LLM] Mid-iteration fix — Stripe pattern: test fails → fix → re-test
+    # One retry only. If it fails again, give up on this iteration (don't commit bad code)
+    if [ $test_result -ne 0 ]; then
+      log_warn "test_sample failed — attempting mid-iteration fix (1 attempt)"
+
+      # Create fix tasks from the failed test context
+      local fix_task_file="$LOG_DIR/iter-${ITERATION}-fix-tasks.txt"
+      _create_fix_tasks "$fix_task_file" || true
+
+      if [ -f "$fix_task_file" ] && [ -s "$fix_task_file" ]; then
+        # Run fix workers
+        node_run_workers "$fix_task_file"
+
+        # Re-run syntax + test to verify fix
+        local fix_syntax_failures
+        fix_syntax_failures=$(node_syntax_check)
+        if [ -n "$fix_syntax_failures" ]; then
+          log_warn "Fix introduced syntax errors — reverting"
+          while IFS= read -r f; do
+            [ -n "$f" ] && git checkout -- "$f" 2>/dev/null || true
+          done < <(printf "%b" "$fix_syntax_failures")
+        fi
+
+        local fix_test_result=0
+        node_test_sample || fix_test_result=$?
+        if [ $fix_test_result -ne 0 ]; then
+          log_warn "Mid-iteration fix failed — skipping commit this iteration"
+          consecutive_worker_failures=$((consecutive_worker_failures + 1))
+          update_state "$iteration" 0
+          # Fall through to convergence_check
+        fi
+      fi
+    fi
 
     # [DET] commit_changes
     local new_commits
@@ -750,25 +901,30 @@ print(d.get('reason', 'goal achieved'))
 
     if [ "${new_commits:-0}" -eq 0 ]; then
       consecutive_no_commits=$((consecutive_no_commits + 1))
-      log_warn "No commits this iteration (consecutive no-commit: $consecutive_no_commits)"
+      # Workers ran but produced nothing — count as worker failure
+      consecutive_worker_failures=$((consecutive_worker_failures + 1))
+      log_warn "No commits this iteration (consecutive no-commit: $consecutive_no_commits, consecutive worker failures: $consecutive_worker_failures)"
+      if [ "$consecutive_worker_failures" -ge "$MAX_CONSECUTIVE_FAILURES" ]; then
+        log_error "$MAX_CONSECUTIVE_FAILURES consecutive worker failures — all workers failed, writing blocker"
+        {
+          echo "## Blocker [$(date '+%Y-%m-%d %H:%M')]"
+          echo "All $MAX_CONSECUTIVE_FAILURES consecutive worker runs produced no commits."
+          echo "Likely causes: workers hitting permission errors, wrong working directory, or unresolvable task conflicts."
+          echo "Iteration: $iteration"
+          echo "Last goal: $GOAL_FILE"
+        } >> .claude/blockers.md
+        exit_reason="all_workers_failed"
+        break
+      fi
     else
       consecutive_no_commits=0
+      consecutive_worker_failures=0
       log_success "Committed $new_commits change(s) in iteration $iteration"
     fi
 
-    # [DET] convergence_check
-    if [ "$iteration" -ge "$MAX_ITER" ]; then
-      log_warn "Max iterations ($MAX_ITER) reached"
-      exit_reason="max_iterations"
-      break
-    fi
-
-    if [ "$consecutive_no_commits" -ge "$MAX_CONSECUTIVE_NO_COMMITS" ]; then
-      log_error "$MAX_CONSECUTIVE_NO_COMMITS consecutive iterations with no commits — loop stuck"
-      exit_reason="stuck_no_commits"
-      break
-    fi
-
+    # [DET] Deterministic convergence_check
+    # Convergence = no more unchecked items in goal file, OR max iterations hit, OR stuck
+    _check_convergence "$iteration" && break
     update_state "$iteration" "${new_commits:-0}"
   done
 
