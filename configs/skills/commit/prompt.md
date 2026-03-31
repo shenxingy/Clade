@@ -154,6 +154,12 @@ If the changes cleanly match the stated task, proceed without flagging.
 
 ### Run ALL discovered commands
 
+**Local adaptation:** CI commands target a clean CI runner (ubuntu, fresh PATH, setup-action-installed toolchains). Before running them locally, adapt for the current machine:
+- Use whichever interpreter/toolchain is actually available locally (e.g., `python3` instead of `python`, project virtualenv instead of global pip, `npx` path differences, etc.).
+- If the project has a virtualenv or local dependency cache (`.venv/`, `node_modules/`, etc.) use it. If it's missing and the check requires installed deps, create/install first — don't skip the check.
+- Skip CI-only setup steps that have no local equivalent (e.g., `actions/checkout`, `actions/setup-python`, `docker login`).
+- The adapted commands must test the **same things** as CI — only paths and toolchain invocations change, never the check itself.
+
 Wrap every CI command with `timeout`: syntax checks `timeout 30`, compile `timeout 60`, test suites `timeout 120`. If a command times out → stop, report which command hung, ask user to investigate before committing.
 
 Run each command in sequence. Show the actual output (not just "passed"):
