@@ -56,6 +56,34 @@ for skill_dir in "$SCRIPT_DIR/configs/skills/"/*/; do
   echo "  Installed skill: $skill_name"
 done
 
+# Generate available_skills.md from installed SKILL.md files
+# This file lists all skills with name + description for LLM auto-discovery
+echo "Generating available_skills.md..."
+{
+  echo "# Available Skills"
+  echo ""
+  echo "These skills are installed. Use them by mentioning their name naturally."
+  echo ""
+  for skill_md in "$CLAUDE_DIR/skills/"*/SKILL.md; do
+    [[ -f "$skill_md" ]] || continue
+    name=$(awk '/^name:/{print $2}' "$skill_md" | tr -d '"' | tr -d "'")
+    description=$(awk '/^description:/{print substr($0, index($0,$2))}' "$skill_md" | sed 's/^["'\''"]//;s/["'\''"]$//')
+    user_invocable=$(awk '/^user_invocable:/{print $2}' "$skill_md" | tr -d '"' | tr -d "'")
+    echo "## $name"
+    echo "$description"
+    if [[ "$user_invocable" == "true" ]]; then
+      echo "(can be invoked with /$name)"
+    fi
+    echo ""
+  done
+} > "$CLAUDE_DIR/available_skills.md"
+echo "  Generated: $CLAUDE_DIR/available_skills.md"
+
+# Install available_skills.md to agents/ so Claude Code includes it in system prompt
+# This enables LLM auto-discovery: Claude knows about skills without needing slash commands
+cp "$CLAUDE_DIR/available_skills.md" "$CLAUDE_DIR/agents/available-skills.md"
+echo "  Installed to agents/ for system prompt inclusion"
+
 # ─── 5. Copy scripts (chmod +x) ──────────────────────────────────────
 
 echo "Installing scripts..."
