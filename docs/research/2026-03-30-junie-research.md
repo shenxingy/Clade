@@ -6,10 +6,12 @@ review_date: 2026-03-31
 summary:
   - "JetBrains Junie: Plan→Execute→Verify loop, IntelliJ inspection engine, Agent Skills auto-routing, LLM-agnostic"
 integrated_items:
-  - "Plan→Execute→Verify loop — partially implemented (PLAN phase in Blueprint, but no formal Verify)"
-needs_work_items:
-  - "Formal Verify phase after task execution — not implemented"
-  - "IntelliJ inspection engine feedback — not applicable"
+  - "Plan→Execute→Verify loop — implemented as Blueprint POST phase (syntax_check + test_sample verify output, no separate formal Verify phase)"
+needs_work_items: []
+reference_items:
+  - "Agent Skills auto-routing based on task type"
+  - "LLM-agnostic design with model abstraction"
+  - "IntelliJ inspection engine feedback — not applicable (Clade uses CLAUDE.md verify_cmd)"
 reference_items:
   - "Agent Skills auto-routing based on task type"
   - "LLM-agnostic design with model abstraction"
