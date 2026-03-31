@@ -13,9 +13,16 @@ CONTEXT=""
 
 # ─── Auto-pull from remote ────────────────────────────────────────────
 # Only pull if: tracking branch exists, working tree is clean, and remote has new commits
+# Throttle fetch to once per 5 minutes to avoid slow session startup
 TRACKING=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null)
 if [[ -n "$TRACKING" ]]; then
-  git fetch --quiet 2>/dev/null
+  _FETCH_TS_FILE=".git/.last-session-fetch"
+  _NOW=$(date +%s)
+  _LAST_FETCH=$(cat "$_FETCH_TS_FILE" 2>/dev/null || echo 0)
+  if [[ $(( _NOW - _LAST_FETCH )) -gt 300 ]]; then
+    git fetch --quiet 2>/dev/null
+    echo "$_NOW" > "$_FETCH_TS_FILE"
+  fi
   BEHIND=$(git rev-list HEAD..@{u} --count 2>/dev/null)
   DIRTY=$(git status --short 2>/dev/null)
 
