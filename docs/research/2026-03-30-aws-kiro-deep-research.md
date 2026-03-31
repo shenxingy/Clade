@@ -1,16 +1,20 @@
 ---
 name: 2026-03-30-aws-kiro-deep-research.md
 date: 2026-03-30
-status: reference
+status: needs_work
 review_date: 2026-03-31
 summary:
   - "Kiro three-file spec system (requirements.md EARS format, design.md, tasks.md), steering files, Blueprint pattern"
 integrated_items:
-  - "Blueprint PRE/LLM CORE/POST pattern — already implemented in Clade loop"
+  - "Blueprint PRE/LLM CORE/POST pattern — implemented in loop/SKILL.md and worker.py"
 needs_work_items:
-  - "EARS format requirements — not used in Clade goal files"
-  - "Steering files with 4 inclusion modes — could enhance goal file format"
+  - "Structured TODO with source tracing — Kiro TODO items have _From: GOALS.md §X.Y links. Clade TODO.md items lack provenance tracing"
+  - "Steering inclusion modes (Pattern 2) — Kiro has CLAUDE.md conditional inclusion by file type. Clade has no conditional inclusion mechanism"
+  - "Enhanced stop hook (Pattern 3) — Kiro agentStop hook triggers security scan, spec sync, coverage check. Clade stop hook could add these"
+  - "Property-based test invariants in VERIFY.md (Pattern 5) — Kiro converts EARS requirements to invariant assertions. Clade has no invariant concept in goal files"
+  - "Worker-scoped steering files (Pattern 6) — Kiro subagents read only relevant steering files. Clade workers inherit full CLAUDE.md context"
 reference_items:
+  - "EARS formal requirements format — different from Clade goal file format, not a gap per se"
   - "10 hook event types in Kiro"
   - "tasks.md with _Requirements: links to requirements.md"
 ---
