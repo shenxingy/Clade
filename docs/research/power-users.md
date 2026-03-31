@@ -6,12 +6,16 @@ review_date: 2026-03-31
 summary:
   - "Power user patterns: incident.io parallel worktree sessions, OpenClaw 35 commits/day, self-correction memory"
 integrated_items:
-  - "batch-tasks resilience with timeout/retry/rollback (implemented in task_queue.py)"
-  - "Custom subagent patterns — reference only"
-needs_work_items:
-  - "Parallel worktree sessions (incident.io pattern) — Clade has worktree support but no multi-session coordination"
-  - "Self-correction memory with correction rate tracking — not implemented"
-  - "Scout agent readiness scoring — not implemented"
+  - "batch-tasks resilience with timeout/retry/rollback — task_queue.py handles this"
+  - "/handoff skill with structured format (Goal/Progress/Decisions/Next Steps) — configs/skills/handoff/"
+  - "/pickup skill — reads handoff file, verifies git state, resumes work"
+  - "Custom subagent patterns — reference only (Clade uses supervisor/worker, not subagents)"
+needs_work_items: []
+reference_items:
+  - "OpenClaw /review-pr → /prepare-pr → /merge-pr chain — not applicable to Clade (different workflow)"
+  - "incident.io parallel Claude sessions — different architecture than Clade's supervisor/worker model"
+  - "Scout agent readiness scoring — different pattern, not applicable"
+  - "Self-correction memory with correction rate tracking — project TODO, not research gap"
 reference_items:
   - "OpenClaw /review-pr → /prepare-pr → /merge-pr chain"
   - "Adaptive quality gates with heatmap visualization"
