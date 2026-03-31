@@ -7,8 +7,7 @@ summary:
   - "E2B Firecracker: 28ms snapshot restore, MAP_PRIVATE lazy loading, 3 isolation tiers (Docker/gVisor/Firecracker)"
 integrated_items:
   - "Sandbox isolation — not applicable (Clade runs on host with Claude Code)"
-needs_work_items:
-  - "None — this is infrastructure research not directly applicable to Clade architecture"
+needs_work_items: []
 reference_items:
   - "Firecracker 28ms snapshot restore benchmark"
   - "MAP_PRIVATE for copy-on-write filesystem"
