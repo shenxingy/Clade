@@ -6,9 +6,10 @@ review_date: 2026-03-31
 summary:
   - "Superset: TerminalHost with Semaphore, headless xterm.js emulator, universal hook injection, notification server"
 integrated_items:
+  - "Universal hook installation via install.sh — Clade uses install.sh for hook installation (vs superset-sh settings.json merge)"
+needs_work_items: []
+reference_items:
   - "Terminal emulation — not applicable (Clade uses worktree subprocesses)"
-  - "Universal hook injection via settings.json merge — Clade uses install.sh for hook installation"
-needs_work_items:
   - "Headless xterm.js emulator — not applicable to Clade architecture"
   - "Notification server with Telegram/Slack integration — not implemented"
 reference_items:
