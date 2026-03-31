@@ -33,6 +33,47 @@ from worker_review import _oracle_review
 
 logger = logging.getLogger(__name__)
 
+# ─── Output Truncation Helpers ───────────────────────────────────────────────
+MAX_LINES = 2000
+MAX_BYTES = 50 * 1024  # 50KB
+
+
+def _truncate_output(text: str, max_lines: int = MAX_LINES, max_bytes: int = MAX_BYTES) -> str:
+    """Truncate output to max_lines and max_bytes, preferring line limit.
+
+    Adds [...truncated...] marker only when actual truncation occurs.
+    """
+    lines = text.splitlines()
+    if len(lines) > max_lines:
+        truncated = "\n".join(lines[:max_lines])
+        marker = f"\n[...truncated {len(lines) - max_lines} lines...]"
+    else:
+        truncated = text
+
+    if len(truncated.encode("utf-8")) > max_bytes:
+        # Find truncation point by byte index
+        encoded = truncated.encode("utf-8")
+        truncated = encoded[:max_bytes].decode("utf-8", errors="replace")
+        marker = f"\n[...truncated to {max_bytes} bytes...]"
+
+    if "truncated" in locals() or "marker" in locals():
+        if len(lines) > max_lines or len(text.encode("utf-8")) > max_bytes:
+            return truncated + marker
+
+    return truncated
+
+
+def _strip_error_context(text: str | None) -> str:
+    """Strip verbose error messages from retry context, keeping summary.
+
+    Removes stack traces, long error output. Keeps first 500 chars of the
+    error message which is enough for LLM to understand the issue.
+    """
+    if not text:
+        return ""
+    # Keep first 500 chars — enough context, not enough to overflow
+    return text[:500].replace("\n", " ").strip()
+
 
 # ─── Worker ───────────────────────────────────────────────────────────────────
 
@@ -99,8 +140,7 @@ class Worker:
         if self._log_path and self._log_path.exists():
             try:
                 text = self._log_path.read_text(errors="replace")
-                non_empty = [l for l in text.splitlines() if l.strip()]
-                log_tail = "\n".join(non_empty[-4:])
+                log_tail = _truncate_output(text, max_lines=4, max_bytes=4096)
             except Exception:
                 pass
         return {
@@ -328,8 +368,7 @@ class Worker:
             if self.status == "failed" and self._log_path and self._log_path.exists():
                 try:
                     text = self._log_path.read_text(errors="replace")
-                    lines = [l for l in text.splitlines() if l.strip()]
-                    self.failure_context = "\n".join(lines[-50:])
+                    self.failure_context = _truncate_output(text)
                 except Exception:
                     pass
             if not self._verify_triggered:
@@ -743,8 +782,7 @@ class WorkerPool:
                 if w._log_path and w._log_path.exists():
                     try:
                         text = w._log_path.read_text(errors="replace")
-                        lines = [l for l in text.splitlines() if l.strip()]
-                        w.failure_context = "\n".join(lines[-50:])
+                        w.failure_context = _truncate_output(text)
                     except Exception:
                         pass
                 await task_queue.update(
@@ -826,10 +864,11 @@ class WorkerPool:
                 # Oracle rejected → re-queue with rejection reason as context
                 if w._oracle_requeue:
                     w._oracle_requeue = False
+                    error_summary = _strip_error_context(w._oracle_requeue_reason)
                     retry_desc = (
                         f"{w.description}\n\n---\n"
                         f"Previous attempt was REJECTED by oracle review:\n"
-                        f"{w._oracle_requeue_reason}\n"
+                        f"{error_summary}\n"
                         f"Fix the issue described above. Do NOT repeat the same approach."
                     )
                     await task_queue.add(retry_desc, w.model,
@@ -838,10 +877,11 @@ class WorkerPool:
                 # File ownership violation → re-queue with violation context
                 if w._ownership_violation:
                     w._ownership_violation = False
+                    error_summary = _strip_error_context(w._ownership_violation_reason)
                     retry_desc = (
                         f"{w.description}\n\n---\n"
                         f"Previous attempt REJECTED — file ownership violation:\n"
-                        f"{w._ownership_violation_reason}\n\n"
+                        f"{error_summary}\n\n"
                         f"You MUST only edit files matching your OWN_FILES patterns. "
                         f"Do NOT touch FORBIDDEN_FILES. Find an alternative approach."
                     )
@@ -849,7 +889,7 @@ class WorkerPool:
                                         own_files=w.own_files, forbidden_files=w.forbidden_files)
                     await task_queue.update(
                         w.task_id,
-                        failed_reason=f"Ownership violation: {(w._ownership_violation_reason or '')[:200]}"
+                        failed_reason=f"Ownership violation: {error_summary[:200]}"
                     )
                     logger.info("Ownership violation task %s — re-queued with reason", w.task_id)
                 # Worker wrote handoff file → create continuation task
