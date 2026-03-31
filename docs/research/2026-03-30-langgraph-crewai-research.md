@@ -6,7 +6,7 @@ review_date: 2026-03-31
 summary:
   - "LangGraph StateGraph checkpointing, CrewAI manager_llm, Send API for map-reduce, interrupt() for human-in-loop"
 integrated_items:
-  - "StateGraph checkpointing — Clade has loop checkpoint in process_manager.py"
+  - "StateGraph checkpointing — Clade has loop checkpoint in loop-runner.sh (checkpoint after each phase, crash recovery)"
   - "Human-in-loop interrupt — not implemented (Clade runs autonomous)"
 needs_work_items:
   - "Send API for map-reduce parallelism — could enhance worker pool dispatch"
