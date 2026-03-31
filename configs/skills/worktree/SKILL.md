@@ -1,7 +1,9 @@
 ---
 name: worktree
 description: Create and manage git worktrees for parallel Claude Code sessions
+when_to_use: "create worktree, parallel session, git worktree, isolated branch"
 argument-hint: '"task prompt" | --list | --merge [branch] | --clean'
+user_invocable: true
 ---
 
 # Worktree Skill

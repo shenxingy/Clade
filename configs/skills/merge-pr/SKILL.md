@@ -1,7 +1,9 @@
 ---
 name: merge-pr
 description: Squash-merge a PR and clean up the branch — parallel to OpenClaw's /merge-pr
+when_to_use: "merge PR, squash merge, close PR, merge pull request"
 argument-hint: '[PR_NUMBER_OR_URL]'
+user_invocable: true
 ---
 
 # Merge PR Skill

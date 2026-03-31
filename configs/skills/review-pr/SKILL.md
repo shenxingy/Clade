@@ -1,7 +1,9 @@
 ---
 name: review-pr
 description: AI reviews a PR diff and posts a structured review comment — parallel to OpenClaw's /review-pr
+when_to_use: "review PR, code review pull request, PR feedback"
 argument-hint: '[PR_NUMBER_OR_URL]'
+user_invocable: true
 ---
 
 # Review PR Skill

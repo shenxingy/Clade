@@ -1,6 +1,7 @@
 ---
 name: start
 description: Autonomous session launcher — morning briefing, unattended overnight runs, cross-project patrol, auto-research
+when_to_use: "start session, morning session, autonomous run, launch agent"
 argument-hint: '[--morning] [--run] [--hours N] [--goal "X"] [--budget N] [--max-iter N] [--patrol] [--research] [--resume] [--stop] [--dry-run]'
 user_invocable: true
 ---

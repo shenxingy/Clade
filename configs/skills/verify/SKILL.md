@@ -1,6 +1,7 @@
 ---
 name: verify
 description: Verify project behavior anchors — compilation, tests, and interaction checks after autonomous runs
+when_to_use: "verify project, run checks, syntax check, build check, verify anchors"
 user_invocable: false
 ---
 

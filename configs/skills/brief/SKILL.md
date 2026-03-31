@@ -1,3 +1,11 @@
+---
+name: brief
+description: Generates a morning briefing — what ran overnight, what it cost, what to do next
+when_to_use: "morning briefing, what happened overnight, overnight activity, daily brief"
+argument-hint: '[--all]'
+user_invocable: true
+---
+
 # Brief Skill
 
 Generates a morning briefing: what ran overnight, what it cost, what to do next.

@@ -1,6 +1,7 @@
 ---
 name: sync
 description: End-of-session documentation sync — updates TODO.md and PROGRESS.md only (run /commit after to commit everything)
+when_to_use: "sync docs, end of session, update TODO PROGRESS, session end"
 argument-hint: ''
 user_invocable: true
 ---

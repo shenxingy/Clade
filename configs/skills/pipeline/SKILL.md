@@ -1,6 +1,7 @@
 ---
 name: pipeline
 description: Check health of registered background pipelines across all projects. Shows HEALTHY/DEGRADED/DEAD status. Run /pipeline [project-name] to filter.
+when_to_use: "check pipeline, pipeline health, background pipeline status"
 argument-hint: '[project-name] [watch]'
 user_invocable: true
 ---
