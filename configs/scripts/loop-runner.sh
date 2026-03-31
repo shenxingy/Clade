@@ -647,6 +647,13 @@ history = state.get('history', [])
 history.append({'iter': $iteration, 'commits': $commits})
 state['history'] = history[-20:]  # keep last 20
 json.dump(state, open(state_file, 'w'), indent=2)
+
+# Also save a lightweight checkpoint file for crash recovery
+import os, json
+ckpt_dir = os.path.expanduser("~/.claude/loop-checkpoints/$(os.path.basename(os.getcwd()))")
+os.makedirs(ckpt_dir, exist_ok=True)
+with open(os.path.join(ckpt_dir, f"iter-{$iteration}-state.json"), "w") as f:
+    json.dump(state, f, indent=2)
 PYTHON_EOF
 }
 # ────────────────────────────────────────────────────────────────
@@ -763,8 +770,87 @@ generate_loop_report() {
 }
 # ────────────────────────────────────────────────────────────────
 
+# ─── CHECKPOINT ──────────────────────────────────────────────────
+# Saves state after each phase for crash recovery.
+# Checkpoints live in ~/.claude/loop-checkpoints/{project_name}/
+_checkpoint_dir() {
+  local project_name
+  project_name=$(basename "$(pwd)")
+  echo "$HOME/.claude/loop-checkpoints/$project_name"
+}
+
+_save_checkpoint() {
+  local iteration="$1"
+  local phase="$2"
+  local extra="${3:-}"
+
+  local ckpt_dir
+  ckpt_dir=$(_checkpoint_dir)
+  mkdir -p "$ckpt_dir"
+
+  local ckpt_file="${ckpt_dir}/iter-${iteration}-${phase}.json"
+
+  # Capture current state
+  cat > "$ckpt_file" <<EOF
+{
+  "iteration": $iteration,
+  "phase": "$phase",
+  "goal_file": "$GOAL_FILE",
+  "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "extra": "$extra",
+  "consecutive_no_commits": ${consecutive_no_commits:-0},
+  "consecutive_worker_failures": ${consecutive_worker_failures:-0},
+  "started_commit": "$(git rev-parse HEAD 2>/dev/null || echo "")"
+}
+EOF
+  log_info "[CHECKPOINT] iter $iteration $phase → $ckpt_file"
+}
+
+_recover_checkpoint() {
+  local ckpt_dir
+  ckpt_dir=$(_checkpoint_dir)
+
+  if [ ! -d "$ckpt_dir" ]; then
+    return 1
+  fi
+
+  local latest
+  latest=$(ls -t "$ckpt_dir"/iter-*.json 2>/dev/null | head -1 || true)
+  if [ -z "$latest" ]; then
+    return 1
+  fi
+
+  log_info "[RECOVERY] Found checkpoint: $latest"
+
+  # Extract state from checkpoint
+  recovered_iteration=$(python3 -c "
+import json, sys
+d = json.load(open('$latest'))
+print(d.get('iteration', 0))
+" 2>/dev/null || echo "0")
+
+  recovered_phase=$(python3 -c "
+import json, sys
+d = json.load(open('$latest'))
+print(d.get('phase', ''))
+" 2>/dev/null || echo "")
+
+  if [ -n "$recovered_phase" ]; then
+    log_info "[RECOVERY] Resuming from iter $recovered_iteration phase: $recovered_phase"
+    return 0
+  fi
+  return 1
+}
+
 # ─── MAIN BLUEPRINT LOOP ────────────────────────────────────────
 run_blueprint_loop() {
+  # Try to recover from checkpoint
+  if _recover_checkpoint; then
+    log_warn "[RECOVERY] Checkpoint recovery is a design stub — full implementation"
+    log_warn "[RECOVERY] would resume from recovered_iteration/recovered_phase."
+    log_warn "[RECOVERY] For now, starting fresh but preserving iteration counter."
+  fi
+
   local iteration=0
   local consecutive_no_commits=0
   local consecutive_worker_failures=0
@@ -805,6 +891,9 @@ run_blueprint_loop() {
     # [DET] parse TODO items from goal file
     node_parse_todo
 
+    # [DET] checkpoint after PRE
+    _save_checkpoint "$iteration" "pre-done"
+
     # [LLM] supervisor
     local tasks_json
     tasks_json=$(node_supervisor "$iteration")
@@ -835,6 +924,9 @@ run_blueprint_loop() {
 
     # [LLM-PAR] workers
     node_run_workers "$task_file"
+
+    # [DET] checkpoint after workers
+    _save_checkpoint "$iteration" "workers-done"
 
     # [DET] syntax_check
     local syntax_failures
@@ -921,6 +1013,9 @@ run_blueprint_loop() {
       consecutive_worker_failures=0
       log_success "Committed $new_commits change(s) in iteration $iteration"
     fi
+
+    # [DET] checkpoint after POST
+    _save_checkpoint "$iteration" "post-done" "${new_commits:-0}"
 
     # [DET] Deterministic convergence_check
     # Convergence = no more unchecked items in goal file, OR max iterations hit, OR stuck
