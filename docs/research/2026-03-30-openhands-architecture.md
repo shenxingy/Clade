@@ -7,12 +7,13 @@ summary:
   - "OpenHands: EventStream event sourcing, 9 Condenser types, DockerRuntime warm pool, AgentDelegate nested agents"
 integrated_items: []
 needs_work_items:
-  - "EventStream architecture — could replace direct state mutations in session.py"
-  - "Condenser types for context compression — could enhance worker_tldr.py"
-  - "Warm pool for agents — not implemented (Clade spawns fresh workers per task)"
+  - "EventStream architecture — Clade loses worker state on server restart. EventStream would allow replay from log. Genuine gap in fault tolerance"
+  - "Condenser types for context compression — OpenHands 9 condenser types for different scenarios. Clade has TLDR but no structured compression strategies"
 reference_items:
-  - "9 Condenser types for different compression strategies"
+  - "Warm pool for agents — not a gap (design choice: Clade spawns fresh workers per task for isolation)"
   - "DockerRuntime with action_execution_server"
+  - "9 Condenser types for different compression strategies"
+  - "PubSub decoupling pattern"
 ---
 
 # OpenHands 深度架构研究
