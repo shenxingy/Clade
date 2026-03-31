@@ -1,6 +1,7 @@
 ---
 name: frontend-design
 description: Create distinctive, production-grade frontend interfaces with high design quality
+when_to_use: "design UI, create component, frontend design, build page, 设计页面"
 user_invocable: true
 ---
 

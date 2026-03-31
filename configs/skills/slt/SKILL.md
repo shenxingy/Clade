@@ -1,6 +1,7 @@
 ---
 name: slt
 description: Toggle the statusline quota pace indicator (mode/theme)
+when_to_use: "statusline, quota indicator, toggle display, slt"
 argument-hint: '[symbol|percent|number|off] [theme [name]]'
 user_invocable: true
 ---

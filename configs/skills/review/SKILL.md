@@ -1,6 +1,7 @@
 ---
 name: review
 description: Coverage-driven review — tests all VERIFY.md checkpoints systematically, fixes failures in-session, converges when full coverage is achieved
+when_to_use: "review everything, test all, full review, VERIFY.md, 全面测试, coverage review"
 user_invocable: true
 ---
 
