@@ -1,18 +1,16 @@
 ---
 name: 2026-03-31-blueprint-loop-patterns.md
 date: 2026-03-31
-status: reference
+status: integrated
 review_date: 2026-03-31
 summary:
   - "Blueprint pattern: PRE/LLM CORE/POST phase separation across 5 systems (Stripe Minions, LangGraph, Composio, OpenHands, mini-swe-agent)"
 integrated_items:
-  - "Blueprint PRE/LLM CORE/POST pattern — already implemented in Clade loop (worker.py PRE/POST phases)"
-needs_work_items:
-  - "Hard loop-back criteria (2-round CI cap) — could enhance loop exit conditions"
-  - "Phase separation recommendations — already partially implemented"
+  - "Blueprint PRE/LLM CORE/POST pattern — loop/SKILL.md documents full Blueprint architecture, worker.py implements pre-hydration hook (Stripe Blueprint pattern)"
+needs_work_items: []
 reference_items:
-  - "Stripe Minions 2-round CI cap for loop termination"
-  - "Mini-swe-agent exception-driven loop termination"
+  - "Stripe Minions 2-round CI cap — Stripe-specific (Clade loop doesn't run CI), not applicable"
+  - "Mini-swe-agent exception-driven loop termination — different architecture, Clade uses deterministic state machine"
 ---
 
 # Blueprint Loop Patterns — Deterministic Pre/Post Phases with LLM Cores
