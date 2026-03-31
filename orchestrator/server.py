@@ -84,8 +84,10 @@ app.include_router(process_router)
 app.include_router(tasks_router)
 app.include_router(workers_router)
 
-# Serve static files (web UI)
-app.mount("/web", StaticFiles(directory=str(WEB_DIR)), name="web")
+# Serve static files (web UI) — prefer React dist/ if built, fallback to legacy
+WEB_DIST = Path(__file__).parent / "web" / "dist"
+_web_static_dir = str(WEB_DIST) if WEB_DIST.exists() else str(WEB_DIR)
+app.mount("/web", StaticFiles(directory=_web_static_dir, html=True), name="web")
 
 # ─── REST: Sessions ───────────────────────────────────────────────────────────
 
