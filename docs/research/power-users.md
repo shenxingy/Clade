@@ -1,7 +1,7 @@
 ---
 name: power-users.md
 date: 2026-02-XX
-status: reference
+status: integrated
 review_date: 2026-03-31
 summary:
   - "Power user patterns: incident.io parallel worktree sessions, OpenClaw 35 commits/day, self-correction memory"
@@ -12,14 +12,11 @@ integrated_items:
   - "Custom subagent patterns — reference only (Clade uses supervisor/worker, not subagents)"
 needs_work_items: []
 reference_items:
-  - "OpenClaw /review-pr → /prepare-pr → /merge-pr chain — not applicable to Clade (different workflow)"
+  - "OpenClaw /review-pr → /prepare-pr → /merge-pr chain — not applicable (Clade has /merge-pr only)"
   - "incident.io parallel Claude sessions — different architecture than Clade's supervisor/worker model"
   - "Scout agent readiness scoring — different pattern, not applicable"
   - "Self-correction memory with correction rate tracking — project TODO, not research gap"
-reference_items:
-  - "OpenClaw /review-pr → /prepare-pr → /merge-pr chain"
-  - "Adaptive quality gates with heatmap visualization"
-  - "incident.io parallel Claude sessions via git worktrees"
+  - "Adaptive quality gates with heatmap visualization — not applicable"
 ---
 
 # Power User Patterns Research
