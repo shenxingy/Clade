@@ -1,6 +1,31 @@
 # Stripe Minions + Pi Coding Agent — Research Findings
 
-**Date**: 2026-03-30  
+---
+name: 2026-03-30-stripe-minions-pi-agent.md
+date: 2026-03-30
+status: integrated
+review_date: 2026-03-31
+summary:
+  - "Stripe Blueprint hybrid nodes + Pi structured compaction + skills discovery"
+integrated_items:
+  - "Blueprint hybrid nodes — /loop skill 有 PRE/LLM CORE/POST phases"
+  - "Structured compaction — /handoff skill 有 Goal/Progress/Decisions/Next Steps format"
+  - "Skills discovery — session-context.sh 注入 skill descriptions 到 system prompt"
+  - "2-round failure cap — --max-consecutive-failures 在 loop skill"
+  - "Tool output truncation (50KB/2000 lines) — worker.py 有实现"
+  - "Pre-hydration hook — worker.py 新增 _pre_hydrate()，在 agent 开始前通过 gh CLI 预先抓取引用的 GitHub issues/PRs 内容并注入 task file"
+  - "Session tree (JSONL) — worker.py 使用 SessionTree class，每次 worker 执行写入 append-only JSONL 文件，支持 branching + replay"
+  - "Curated tool subsets per task type — worker.py 新增 _TOOL_SUBSETS，review 类型自动限制 Edit/Write 工具，fix 类型允许部分限制"
+needs_work_items: []
+reference_items:
+  - "RPC mode for orchestrator — MCP server 已实现 (c1cc435)，研究建议的纯 JSONL RPC 不是优先项"
+  - "Agent definitions as Markdown — Python 定义更类型安全，不是问题"
+  - "Retry: error removed from context before retry — 低优先级"
+  - "Extension hot-reload — skill reload 需要 restart，但不是关键"
+  - "Rule files same format as Cursor — 不是优先项"
+  - "Background lint daemon — post-edit-check hook 部分覆盖"
+
+**Date**: 2026-03-30
 **Sources**:
 - https://stripe.dev/blog/minions-stripes-one-shot-end-to-end-coding-agents
 - https://stripe.dev/blog/minions-stripes-one-shot-end-to-end-coding-agents-part-2

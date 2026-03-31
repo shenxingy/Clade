@@ -1,5 +1,28 @@
 # Batch Tasks Improvement Research
 
+---
+name: batch-tasks.md
+date: 2026-02-19
+status: integrated
+review_date: 2026-03-31
+summary:
+  - "Timeout, retry, rollback, failure reporting + AI diagnostics for batch tasks"
+integrated_items:
+  - "timeout/retry/rollback — run-tasks.sh 有完整实现，ff53250+14fb860"
+  - "Failure reporting (PROGRESS.md + GitHub Issue) — run-tasks.sh 有完整实现，ff53250"
+  - "Per-task metadata (model/timeout/retries) — run-tasks.sh + batch-tasks skill 有完整实现，b461716+64ddac9"
+  - "Stall detection + heartbeat — run-tasks.sh 有实现，01c1918"
+  - "Docker/GPU cleanup — run-tasks.sh 有实现，ff53250"
+  - "setsid --wait zombie prevention — run-tasks.sh 有实现，7c98375"
+  - "Timeout analysis with AI diagnostics — run-tasks.sh 有 analyze_timeout 函数"
+  - "Scout scoring — batch-tasks skill 有完整实现，64ddac9"
+needs_work_items: []
+reference_items:
+  - "Alternative: git worktrees per task — research 认为是 overkill，Clade 判断一致（正确）"
+  - "Alternative: Docker per task — research 认为是 overkill，Clade 判断一致（正确）"
+  - "Alternative approaches (git worktrees per task, Docker per task) — not implemented, verdict was 'overkill for most tasks'"
+---
+
 ## Current Architecture
 
 ```

@@ -1,5 +1,23 @@
 # Hooks System Research
 
+---
+name: hooks.md
+date: 2026-02-XX
+status: integrated
+review_date: 2026-03-31
+summary:
+  - "Claude Code hooks system: lifecycle events, types, exit codes, patterns"
+integrated_items:
+  - "All major lifecycle hooks implemented (SessionStart, PreToolUse, PostToolUse, Stop, PreCompact, TaskCompleted, Notification, UserPromptSubmit) — settings.json 全部有配置"
+  - "Command, prompt, agent 三种 hook type 全部使用"
+  - "Auto-format/lint on edit, block dangerous commands, verify completion patterns — 全部实现"
+needs_work_items: []
+reference_items:
+  - "SubagentStart/SubagentStop hooks — Clade 用 subprocess worker 而非 Claude Code 内置 subagent，场景不匹配"
+  - "SessionEnd hook — Nice to have，但 Clade 的 SessionStart 已注入上下文，SessionEnd 收益不大"
+  - "TeammateIdle hook — 仅适用于 multi-agent team workflow，Clade 用 WorkerPool 模式不适用"
+  - "PermissionRequest hook — Clade 用 --dangerously-skip-permissions，场景不匹配"
+
 ## Overview
 
 Hooks are user-defined shell commands or LLM prompts that execute at specific lifecycle points. They are the **single most impactful** automation feature in Claude Code.

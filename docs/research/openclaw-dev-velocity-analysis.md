@@ -1,5 +1,26 @@
 # OpenClaw 开发速度分析报告
 
+---
+name: openclaw-dev-velocity-analysis.md
+date: 2026-02-22
+status: integrated
+review_date: 2026-03-31
+summary:
+  - "OpenClaw's 153 commits/day via parallel agents + PR automation chain"
+integrated_items:
+  - "CLAUDE.md project context files — implemented"
+  - "Conventional commits format — integrated into committer script"
+  - "Small-granularity commits — committer script 防止 git add ."
+  - "/review-pr skill — configs/skills/review-pr/"
+  - "/merge-pr skill — configs/skills/merge-pr/，包含 CI 检查（Step 2），已覆盖 /prepare-pr 的核心功能"
+  - "Parallel worktree sessions — run-tasks-parallel.sh 已实现完整的多 worktree 并行执行"
+needs_work_items: []
+reference_items:
+  - "Aether AI security bot — 需要独立基础设施，不适用于 Clade scope"
+  - "clawdinator auto-labeling — 类似 GitHub Actions自动化，不是 Clade 优先项"
+
+# OpenClaw 开发速度分析报告
+
 > 研究目标：分析 https://github.com/openclaw/openclaw 异常高频的 commit 节奏，找出其背后的工具和方法，供我们借鉴。
 > 研究日期：2026-02-22
 

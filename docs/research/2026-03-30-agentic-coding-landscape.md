@@ -1,6 +1,31 @@
 # Agentic Coding Landscape — 系统研究报告
 
-**Date**: 2026-03-30  
+---
+name: 2026-03-30-agentic-coding-landscape.md
+date: 2026-03-30
+status: reference
+review_date: 2026-03-31
+summary:
+  - "Full landscape scan: parallel orchestration, context management, sandbox, MCP ecosystem"
+integrated_items:
+  - "Blueprint hybrid nodes — /loop skill 有 PRE/LLM CORE/POST phases"
+  - "2-strike CI discipline — --max-consecutive-failures in loop skill"
+  - "Toolshed MCP pattern — orchestrator 已是 MCP server"
+  - "Git worktree isolation — run-tasks-parallel.sh 使用 worktrees"
+  - "/handoff skill — structured compaction，架构正确"
+  - "JIT context retrieval — session-context.sh 在 session 开始时注入上下文"
+needs_work_items: []
+reference_items:
+  - "Universal Hook Injection — Superset 需要同时驱动多个工具，Clade 只用 Claude Code，需求不存在"
+  - "Shell Ready Marker — 固定 sleep 不优雅但能工作，不是核心缺口"
+  - "Directory-scoped rule files — CLAUDE.md 已覆盖，Stripe 场景不同"
+  - "Planner/Worker/Judge — max-consecutive-failures 隐含了 Judge 的停止决策，研究建议过度设计"
+  - "Priority Semaphore — 代码健壮性问题，不是设计问题，需要但不是研究驱动的"
+  - "Firecracker microVM sandbox — overkill for Clade scope"
+  - "Event sourcing architecture — SQLite 满足当前需求"
+  - "Thread Map visualization — handoff 是线性的，不是优先项"
+
+**Date**: 2026-03-30
 **Scope**: AI Coding Agents 全景扫描 — 并行编排、框架、上下文管理、沙盒、MCP 生态  
 **Purpose**: 提炼可借鉴模式，指导 Clade 下一阶段设计
 
