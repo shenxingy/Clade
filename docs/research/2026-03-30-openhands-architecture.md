@@ -1,7 +1,7 @@
 ---
 name: 2026-03-30-openhands-architecture.md
 date: 2026-03-30
-status: reference
+status: needs_work
 review_date: 2026-03-31
 summary:
   - "OpenHands: EventStream event sourcing, 9 Condenser types, DockerRuntime warm pool, AgentDelegate nested agents"
