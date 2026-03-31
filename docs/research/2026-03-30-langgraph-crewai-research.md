@@ -7,13 +7,13 @@ summary:
   - "LangGraph StateGraph checkpointing, CrewAI manager_llm, Send API for map-reduce, interrupt() for human-in-loop"
 integrated_items:
   - "StateGraph checkpointing — Clade has loop checkpoint in loop-runner.sh (checkpoint after each phase, crash recovery)"
-  - "Human-in-loop interrupt — not implemented (Clade runs autonomous)"
 needs_work_items:
-  - "Send API for map-reduce parallelism — could enhance worker pool dispatch"
-  - "CrewAI hierarchical process — not applicable (different architecture)"
+  - "Human-in-loop interrupt via interrupt() pattern — LangGraph interrupt() pauses graph for human review at breakpoints; Clade has no equivalent (runs fully autonomous)"
+  - "Send API for map-reduce parallelism — could enhance worker pool dispatch (map-reduce pattern for parallel task results)"
 reference_items:
-  - "LangGraph interrupt() for breakpoint-based human review"
-  - "Checkpointing with SQLite/Postgres for state persistence"
+  - "LangGraph interrupt() for breakpoint-based human review — not a gap (autonomous operation is a design choice)"
+  - "Checkpointing with SQLite/Postgres for state persistence — Clade uses loop-runner.sh checkpoint, not a gap"
+  - "CrewAI hierarchical process — not applicable (different agent team architecture)"
 ---
 
 # LangGraph & CrewAI 深度研究报告
