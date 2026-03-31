@@ -1,7 +1,7 @@
 ---
 name: 2026-03-30-langgraph-crewai-research.md
 date: 2026-03-30
-status: reference
+status: needs_work
 review_date: 2026-03-31
 summary:
   - "LangGraph StateGraph checkpointing, CrewAI manager_llm, Send API for map-reduce, interrupt() for human-in-loop"

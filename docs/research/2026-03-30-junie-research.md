@@ -1,7 +1,7 @@
 ---
 name: 2026-03-30-junie-research.md
 date: 2026-03-30
-status: reference
+status: needs_work
 review_date: 2026-03-31
 summary:
   - "JetBrains Junie: Plan→Execute→Verify loop, IntelliJ inspection engine, Agent Skills auto-routing, LLM-agnostic"
