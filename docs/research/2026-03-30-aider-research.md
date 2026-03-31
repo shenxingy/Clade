@@ -1,23 +1,21 @@
 ---
 name: 2026-03-30-aider-research.md
 date: 2026-03-30
-status: reference
+status: needs_work
 review_date: 2026-03-31
 summary:
-  - "Aider: repo map with tree-sitter + PageRank, Architect mode, SEARCH/REPLACE edit format, lint reflection"
-integrated_items: []
+  - "Aider: repo map with tree-sitter + PageRank, Architect mode, SEARCH/REPLACE edit format, lint reflection loop"
+integrated_items:
+  - "Weak model for TLDR — worker_tldr.py uses haiku for code TLDR generation, matches Aider's weak_model pattern"
 needs_work_items:
-  - "Tree-sitter + PageRank codebase indexing — could enhance worker_tldr.py"
-  - "Lint reflection loop — not implemented"
+  - "Reflection Loop (9.1) — Aider injects lint errors back as new message input, retries up to 3x. Clade has post-edit-check hook (reports errors) and fix_syntax (one-shot retry) but NO tight reflection loop with multiple retry cycles"
+  - "ChatChunks message layering (9.2) — Aider L1/L2/L3 context tiers. Clade worker context has no explicit layering (stable vs dynamic split)"
+  - "Personalized PageRank for /map (9.3) — Aider uses PageRank+personalization to select relevant files. Clade /map does full scan without ranking"
+  - "Tree-sitter based codebase indexing — Aider extracts def/ref tags via tree-sitter queries. Clade has no tree-sitter usage"
+  - "Adaptive repo map sizing (9.6) — Aider expands repo map 8x when no files edited. Clade has no equivalent"
 reference_items:
-  - "Repo map / codebase indexing — not implemented (Clade uses worker_tldr.py for codebase understanding)"
-  - "Architect mode: planner/editor separation"
-  - "SEARCH/REPLACE edit format with apply similar changes logic"
-  - "Weak model 分工 (division of labor)"
-reference_items:
-  - "Architect mode: planner/editor separation"
-  - "SEARCH/REPLACE edit format with \"apply similar changes\" logic"
-  - "Weak model 分工 (division of labor)"
+  - "Architect mode (planner/editor separation) — different architecture, not applicable to Claude Code"
+  - "SEARCH/REPLACE edit format with fuzzy fallback — not applicable to Claude Code"
 ---
 
 # Aider Deep Research
