@@ -1,59 +1,70 @@
-Load context from the latest handoff file to resume work seamlessly from the previous session.
+<command-metadata>
+name: pickup
+trigger: user runs /pickup at start of new session, or after /handoff
+completion-status: DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT
+</command-metadata>
 
-## Steps
+Resume work from the most recent handoff file.
 
-1. Look for `.claude/handoff-*.md` files in the current project directory (use Glob: `.claude/handoff-*.md`)
-2. If no handoff files found: say "No handoff file found. Starting fresh — read CLAUDE.md and TODO.md for context." Then stop.
-3. Sort by filename (they're timestamped YYYY-MM-DD-HH-MM), take the most recent one
-4. Read the handoff file completely
-5. Also run `git status -sb` to verify current repo state matches what the handoff describes
+## Execution Steps
 
-## Output
+### Step 1: Find Handoff File
+```bash
+ls -t .claude/handoff-*.md 2>/dev/null | head -5
+```
 
-Present this briefing (concise, actionable):
+If no files found: say "No handoff file found. Starting fresh." and stop.
+
+### Step 2: Read + Parse
+Read the most recent handoff file completely.
+
+Parse these sections:
+- **Goal**: the one-sentence objective
+- **Blocked**: check if "none" or has real blockers
+- **Next Steps**: the ordered action list
+- **Meta**: branch, uncommitted status, build status
+
+### Step 3: Verify Git State
+```bash
+git branch --show-current
+git status -sb
+```
+
+If current branch doesn't match handoff Meta.Branch: warn the user but continue.
+
+### Step 4: Display Briefing (max 20 lines)
 
 ```
-Resuming from: {handoff date and time}
-Age: {X hours ago}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Resuming: {handoff date} ({X hours/days ago})
+Goal: {Goal section content}
 
-What was done:
-  • [bullet 1 from Session Summary]
-  • [bullet 2 from Session Summary]
-  • [bullet 3 — truncate to 3 max]
+Done: {count of Done ✅ items}
+In Progress: {In Progress items if any}
+Blocked: {Blocked content OR "none"}
 
-Current state:
-  Branch: {branch}
-  Git:     {git status -sb output, 1 line}
-
-Blockers needing your input:
-  • [list each blocker OR "none — ready to proceed autonomously"]
-
+Branch: {branch}  Build: {passing|failing|unknown}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Picking up at:
-  → {Step 1 from Next Steps}
-  → {Step 2 from Next Steps}
+→ {Next Steps #1}
+→ {Next Steps #2}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
-## Then
+### Step 5: Resume or Pause
 
-- If blockers exist: list them clearly and ask the user to address them before proceeding
-- If no blockers: immediately start executing Step 1 from the handoff's Next Steps — don't wait for the user to say "go"
-- If the handoff file is older than 24 hours: mention the age prominently before proceeding ("Note: this handoff is {X} hours old — verify the state is still accurate")
-- If git state doesn't match the handoff (e.g., handoff says "uncommitted changes" but git is clean): flag the discrepancy before proceeding
+**If Blocked is "none"**: Immediately start executing Next Steps #1. Do NOT ask "shall I proceed?" — just start.
 
-## Notes
+**If Blocked has items**: List each blocker clearly. Ask user to resolve before continuing autonomously.
 
-- The goal is zero-friction resumption — the user should not need to re-explain context
-- Trust the handoff document but verify with git — it's ground truth
-- The session that wrote the handoff may have been interrupted; check for half-finished work
-
-
----
+**If handoff is >48 hours old**: Flag the age prominently. Ask user to confirm goal is still current before proceeding.
 
 ## Completion Status
 
-- ✅ **DONE** — task completed successfully
-- ⚠ **DONE_WITH_CONCERNS** — completed but with caveats to note
-- ❌ **BLOCKED** — cannot proceed; write details to `.claude/blockers.md`
-- ❓ **NEEDS_CONTEXT** — missing information; use AskUserQuestion
+- **✅ DONE**: Handoff loaded and resumed (or blockers presented)
+- **⚠ DONE_WITH_CONCERNS**: Loaded but git state doesn't match, or handoff >48h old
+- **❌ BLOCKED**: No handoff file found, or file unreadable
+- **❓ NEEDS_CONTEXT**: Ask via AskUserQuestion
 
-**3-strike rule:** If the same approach fails 3 times, switch to BLOCKED — do not retry indefinitely.
+## 3-Strike Rule
+If you fail to complete a step 3 times: write failure details to `.claude/blockers.md` and stop.
