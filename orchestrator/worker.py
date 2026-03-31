@@ -28,6 +28,7 @@ from config import (
 )
 from task_queue import TaskQueue
 from github_sync import _gh_update_issue_status
+from session_tree import SessionTree
 from worker_tldr import _generate_code_tldr
 from worker_review import _oracle_review
 
@@ -75,6 +76,213 @@ def _strip_error_context(text: str | None) -> str:
     return text[:500].replace("\n", " ").strip()
 
 
+# ─── Tool Subsets per Task Type ────────────────────────────────────────────────
+# Stripe Blueprint pattern: different agent types get different tool subsets.
+# Claude Code supports --allowed-tools and --disallowed-tools to constrain tools.
+
+# Tool subset definitions by task type
+_TOOL_SUBSETS: dict[str, tuple[list[str], list[str]]] = {
+    # review: read-only — no editing, no file creation
+    "review": (
+        ["Read", "Grep", "Glob", "Bash", "WebSearch", "WebFetch", "NotebookRead"],
+        ["Edit", "Write", "NotebookEdit", "MultiEdit"],
+    ),
+    # fix: same as implement but focused
+    "fix": (
+        ["Read", "Edit", "Write", "Bash", "Grep", "Glob"],
+        [],
+    ),
+    # implement: full tools (default — no restriction needed)
+    "implement": ([], []),
+    # test: allows test file creation but not broad refactoring
+    "test": (
+        ["Read", "Edit", "Write", "Bash", "Grep", "Glob", "NotebookEdit"],
+        [],
+    ),
+}
+
+
+def _parse_task_type(description: str) -> str | None:
+    """Infer task type from description text.
+
+    Looks for patterns like:
+    - ===TASK=== metadata: "type: review"
+    - Keywords: "review", "fix", "implement", "test"
+    Returns None for implement (default = full tools).
+    """
+    desc_lower = description.lower()
+
+    # Check for metadata format first
+    import re as _re
+
+    meta_match = _re.search(r"type:\s*(\w+)", desc_lower)
+    if meta_match:
+        t = meta_match.group(1)
+        if t in _TOOL_SUBSETS:
+            return t
+
+    # Keyword inference (lower priority than explicit metadata)
+    if any(k in desc_lower for k in ["review", "code review", "static analysis", "audit"]):
+        return "review"
+    if any(k in desc_lower for k in ["fix", "bug", "patch", "hotfix"]):
+        return "fix"
+    if any(k in desc_lower for k in ["test", "spec", "e2e"]):
+        return "test"
+
+    return None  # default: implement (full tools)
+
+
+def _build_tool_flags(task_type: str | None) -> str:
+    """Build --allowed-tools or --disallowed-tools flags for claude -p.
+
+    Returns empty string if task_type is None (default full tools).
+    """
+    if not task_type or task_type not in _TOOL_SUBSETS:
+        return ""
+    allowed, disallowed = _TOOL_SUBSETS[task_type]
+    if allowed:
+        tools_str = ",".join(allowed)
+        return f' --allowed-tools "{tools_str}"'
+    elif disallowed:
+        tools_str = ",".join(disallowed)
+        return f' --disallowed-tools "{tools_str}"'
+    return ""
+
+
+# ─── Pre-hydration ───────────────────────────────────────────────────────────
+# Stripe Blueprint pattern: deterministic MCP pre-fetch of linked resources
+# before the agent starts. Clade does this via gh CLI + URL fetching.
+
+
+def _parse_linked_references(text: str) -> dict[str, list[str]]:
+    """Parse task description for explicit resource references.
+
+    Returns dict with keys: 'issues', 'prs', 'urls'
+    Matches: #123, owner/repo#123, https://github.com/owner/repo/issues/123
+    """
+    refs: dict[str, list[str]] = {"issues": [], "prs": [], "urls": []}
+
+    # GitHub issue/PR references: #123, owner/repo#123
+    issue_refs = re.findall(r"(?:([a-zA-Z0-9_.-]+)/([a-zA-Z0-9_.-]+))?#(\d+)", text)
+    for owner_repo, _, num in issue_refs:
+        ref = f"{owner_repo}#{num}" if owner_repo else f"#{num}"
+        refs["issues"].append(ref)
+
+    # GitHub full URLs: https://github.com/owner/repo/issues/123
+    gh_urls = re.findall(
+        r"https://github\.com/([a-zA-Z0-9_.-]+)/([a-zA-Z0-9_.-]+)/(issues|pull)/(\d+)",
+        text,
+    )
+    for owner, repo, kind, num in gh_urls:
+        if kind == "issues":
+            refs["issues"].append(f"{owner}/{repo}#{num}")
+        elif kind == "pull":
+            refs["prs"].append(f"{owner}/{repo}#{num}")
+
+    # Generic URLs
+    urls = re.findall(r"https?://[^\s\)>\]\"']+", text)
+    refs["urls"] = [u.rstrip(".,;:") for u in urls if u.startswith("http")]
+
+    return refs
+
+
+async def _pre_hydrate(task_description: str, project_dir: Path | None = None) -> str:
+    """Fetch linked resources before agent starts (Stripe Blueprint pre-hydration).
+
+    This is the pre-hydration hook: deterministically fetch content that the agent
+    would otherwise have to retrieve via tools. Saves tokens + latency.
+
+    Returns a markdown block with fetched content, or empty string if nothing found.
+    """
+    refs = _parse_linked_references(task_description)
+    blocks: list[str] = []
+    fetched: set[str] = set()
+
+    # Fetch GitHub issues
+    for ref in refs["issues"]:
+        if ref in fetched:
+            continue
+        try:
+            if "#" in ref:
+                parts = ref.split("#")
+                if len(parts) == 2 and "/" in parts[0]:
+                    owner_repo, num = parts
+                else:
+                    # Local issue #123 — requires gh repo context
+                    num = parts[1]
+                    owner_repo = None
+                    if project_dir:
+                        try:
+                            proc = await asyncio.create_subprocess_exec(
+                                "gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner",
+                                cwd=str(project_dir),
+                                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                            )
+                            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5)
+                            if proc.returncode == 0:
+                                import json
+                                data = json.loads(stdout.decode())
+                                owner_repo = data.get("nameWithOwner")
+                        except Exception:
+                            pass
+                    if not owner_repo:
+                        continue
+                # Fetch issue body
+                proc = await asyncio.create_subprocess_exec(
+                    "gh", "issue", "view", num, "--json", "title,body,state,labels",
+                    cwd=str(project_dir) if project_dir else None,
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
+                if proc.returncode == 0:
+                    import json
+                    data = json.loads(stdout.decode())
+                    labels = [l["name"] for l in data.get("labels", [])]
+                    label_str = f" [{', '.join(labels)}]" if labels else ""
+                    blocks.append(
+                        f"## Pre-hydrated Issue {owner_repo}#{num}{label_str}\n"
+                        f"**State**: {data['state']}\n"
+                        f"**Title**: {data['title']}\n\n"
+                        f"{data.get('body', '(no body)')[:2000]}"
+                    )
+                    fetched.add(ref)
+        except Exception:
+            pass
+
+    # Fetch GitHub PRs
+    for ref in refs["prs"]:
+        if ref in fetched:
+            continue
+        try:
+            parts = ref.split("#")
+            if len(parts) == 2:
+                owner_repo, num = parts
+                proc = await asyncio.create_subprocess_exec(
+                    "gh", "pr", "view", num, "--json", "title,body,state,additions,deletions",
+                    cwd=str(project_dir) if project_dir else None,
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
+                if proc.returncode == 0:
+                    import json
+                    data = json.loads(stdout.decode())
+                    blocks.append(
+                        f"## Pre-hydrated PR {owner_repo}#{num}\n"
+                        f"**State**: {data['state']}\n"
+                        f"**Title**: {data['title']}\n"
+                        f"**Changes**: +{data.get('additions', 0)} -{data.get('deletions', 0)}\n\n"
+                        f"{data.get('body', '(no body)')[:2000]}"
+                    )
+                    fetched.add(ref)
+        except Exception:
+            pass
+
+    if not blocks:
+        return ""
+
+    return "\n\n---\n\n# Pre-hydrated Resources (fetched before agent start)\n\n" + "\n\n---\n\n".join(blocks)
+
+
 # ─── Worker ───────────────────────────────────────────────────────────────────
 
 
@@ -86,12 +294,14 @@ class Worker:
         model: str,
         project_dir: Path,
         claude_dir: Path,
+        task_type: str | None = None,
     ):
         self.id = str(uuid.uuid4())[:8]
         self.task_id = task_id
         self.description = description
         self.model = model
         self._project_dir = project_dir
+        self.task_type = task_type or _parse_task_type(description)
         self._original_project_dir = project_dir  # preserved for restore after worktree cleanup
         self._claude_dir = claude_dir
         self.proc: asyncio.subprocess.Process | None = None
@@ -103,6 +313,7 @@ class Worker:
         self.last_commit: str | None = None
         self.log_file: str | None = None
         self._log_path: Path | None = None
+        self._session_tree: SessionTree | None = None  # Pi-style JSONL session tree
         self.verified: bool = False
         self.auto_committed: bool = False
         self.auto_pushed: bool = False
@@ -260,6 +471,13 @@ class Worker:
                 context_blocks.append(f"# Codebase Structure (auto-generated)\n\n{tldr}")
         except Exception:
             pass
+        # Pre-hydration: fetch linked GitHub issues/PRs before agent starts (Stripe Blueprint pattern)
+        try:
+            hydrate_block = await _pre_hydrate(self.description, self._project_dir)
+            if hydrate_block:
+                context_blocks.append(hydrate_block)
+        except Exception:
+            pass
         if context_blocks:
             effective_description = "\n\n---\n\n".join(context_blocks) + f"\n\n---\n\n# Task\n\n{self.description}"
         # Inject unread messages from other tasks
@@ -290,6 +508,10 @@ class Worker:
         shell_cmd = (
             f'claude -p "$(cat {shlex.quote(str(task_file))})" --model {model} --dangerously-skip-permissions'
         )
+        # Tool subsets per task type (Stripe Blueprint pattern)
+        tool_flags = _build_tool_flags(self.task_type)
+        if tool_flags:
+            shell_cmd += tool_flags
         mcp_config = self._project_dir / ".claude" / "mcp.json"
         if mcp_config.exists():
             shell_cmd += f" --mcp-config {shlex.quote(str(mcp_config))}"
@@ -307,6 +529,19 @@ class Worker:
         await self._setup_worktree()
         task_file = await self._build_task_file(task_queue)
         shell_cmd, env = self._build_cmd_and_env(task_file)
+
+        # Initialize Pi-style JSONL session tree for this worker
+        tree_path = self._log_path.with_suffix(".tree.jsonl")
+        self._session_tree = SessionTree(tree_path)
+        self._session_tree.session_start({
+            "worker_id": self.id,
+            "task_id": self.task_id,
+            "model": self.model,
+            "task_type": self.task_type,
+            "description": self.description[:200],  # truncate for log
+        })
+        # Record the task description as the first user entry
+        root_id = self._session_tree.user(self.description[:5000])
 
         with open(self._log_path, "w") as log_fd:
             self.proc = await asyncio.create_subprocess_shell(
@@ -407,6 +642,22 @@ class Worker:
 
     async def _on_worker_done(self) -> None:
         """Run after process exits: verify+commit while worktree is still alive, then clean up."""
+        # Write session tree completion entry (Pi-style append-only record)
+        if self._session_tree:
+            try:
+                self._session_tree._write({
+                    "type": "worker_done",
+                    "status": self.status,
+                    "verified": self.verified,
+                    "auto_committed": self.auto_committed,
+                    "elapsed_s": round(time.time() - self.started_at, 1),
+                    "input_tokens": getattr(self, "_input_tokens", None),
+                    "output_tokens": getattr(self, "_output_tokens", None),
+                    "estimated_cost": getattr(self, "_estimated_cost", None),
+                    "failure_context": self.failure_context[:500] if self.failure_context else None,
+                })
+            except Exception:
+                pass
         if self.status == "done":
             try:
                 await self.verify_and_commit()
