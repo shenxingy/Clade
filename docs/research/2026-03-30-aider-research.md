@@ -5,11 +5,15 @@ status: reference
 review_date: 2026-03-31
 summary:
   - "Aider: repo map with tree-sitter + PageRank, Architect mode, SEARCH/REPLACE edit format, lint reflection"
-integrated_items:
-  - "Repo map / codebase indexing — not implemented (Clade uses worker_tldr.py for codebase understanding)"
+integrated_items: []
 needs_work_items:
   - "Tree-sitter + PageRank codebase indexing — could enhance worker_tldr.py"
   - "Lint reflection loop — not implemented"
+reference_items:
+  - "Repo map / codebase indexing — not implemented (Clade uses worker_tldr.py for codebase understanding)"
+  - "Architect mode: planner/editor separation"
+  - "SEARCH/REPLACE edit format with apply similar changes logic"
+  - "Weak model 分工 (division of labor)"
 reference_items:
   - "Architect mode: planner/editor separation"
   - "SEARCH/REPLACE edit format with \"apply similar changes\" logic"
