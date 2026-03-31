@@ -1,3 +1,20 @@
+---
+name: 2026-03-30-composio-orchestrator-research.md
+date: 2026-03-30
+status: reference
+review_date: 2026-03-31
+summary:
+  - "Composio: 7 plugin slots, CI reaction system, activity detection, review comment fingerprinting"
+integrated_items:
+  - "Plugin slot architecture — not implemented (Clade uses flat worker pool)"
+needs_work_items:
+  - "Reaction system for GitHub PR review tracking — could enhance github_sync.py"
+  - "Activity detection via Claude JSONL — could enhance worker.py"
+reference_items:
+  - "Flat metadata files vs SQLite for state"
+  - "Batch GraphQL optimization"
+---
+
 # ComposioHQ/agent-orchestrator — Deep Research
 
 **Date**: 2026-03-30

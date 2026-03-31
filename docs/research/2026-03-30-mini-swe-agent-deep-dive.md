@@ -1,3 +1,20 @@
+---
+name: 2026-03-30-mini-swe-agent-deep-dive.md
+date: 2026-03-30
+status: reference
+review_date: 2026-03-31
+summary:
+  - "mini-swe-agent: ~150 lines core logic, single bash tool, output truncation (head+tail 5KB), exception-driven control flow"
+integrated_items:
+  - "Output truncation pattern — Clade uses 50KB/2000 line truncation in worker.py"
+needs_work_items:
+  - "Single bash tool simplicity — Clade has multiple tools via Claude Code"
+  - "Exception-driven control flow — could simplify loop decision logic"
+reference_items:
+  - "head+tail truncation for large outputs"
+  - "Exception-driven loop termination (InterruptAgentFlow)"
+---
+
 # Mini-SWE-Agent 深度研究
 
 > 研究日期：2026-03-30

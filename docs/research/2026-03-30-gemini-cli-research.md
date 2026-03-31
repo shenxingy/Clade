@@ -1,3 +1,20 @@
+---
+name: 2026-03-30-gemini-cli-research.md
+date: 2026-03-30
+status: reference
+review_date: 2026-03-31
+summary:
+  - "Gemini CLI: Plan Mode tool-layer isolation, LoopDetectionService, tool distillation, ChatCompressionService"
+integrated_items:
+  - "Loop detection — Clade has loop_iteration detection in worker.py"
+needs_work_items:
+  - "ChatCompressionService — could enhance Clade's context management"
+  - "Tool distillation for large outputs — not implemented"
+reference_items:
+  - "LoopDetectionService with 3 detection modes"
+  - "4-phase chat compression"
+---
+
 # Gemini CLI 深度研究报告
 
 **日期**: 2026-03-30  

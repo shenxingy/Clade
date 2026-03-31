@@ -1,3 +1,19 @@
+---
+name: subagents.md
+date: 2026-02-XX
+status: reference
+review_date: 2026-03-31
+summary:
+  - "Claude Code custom subagents: YAML frontmatter, persistent memory scopes, auto-delegation via description"
+integrated_items:
+  - "Custom subagent patterns — reference only (Clade uses worker paradigm, not subagents)"
+needs_work_items:
+  - "Subagent-based architecture — not applicable (Clade uses supervisor/worker instead)"
+reference_items:
+  - "Subagent frontmatter fields: name, description, tools, disallowedTools, model, permissionMode, maxTurns, memory, skills, hooks"
+  - "Persistent memory scopes: user (~/.claude/agent-memory/), project (.claude/agent-memory/), local (.claude/agent-memory-local/)"
+---
+
 # Custom Subagents Research
 
 ## Overview

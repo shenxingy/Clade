@@ -1,3 +1,23 @@
+---
+name: power-users.md
+date: 2026-02-XX
+status: reference
+review_date: 2026-03-31
+summary:
+  - "Power user patterns: incident.io parallel worktree sessions, OpenClaw 35 commits/day, self-correction memory"
+integrated_items:
+  - "batch-tasks resilience with timeout/retry/rollback (implemented in task_queue.py)"
+  - "Custom subagent patterns — reference only"
+needs_work_items:
+  - "Parallel worktree sessions (incident.io pattern) — Clade has worktree support but no multi-session coordination"
+  - "Self-correction memory with correction rate tracking — not implemented"
+  - "Scout agent readiness scoring — not implemented"
+reference_items:
+  - "OpenClaw /review-pr → /prepare-pr → /merge-pr chain"
+  - "Adaptive quality gates with heatmap visualization"
+  - "incident.io parallel Claude sessions via git worktrees"
+---
+
 # Power User Patterns Research
 
 ## Sources

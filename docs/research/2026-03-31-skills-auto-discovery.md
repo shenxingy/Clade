@@ -1,5 +1,24 @@
 # Skills/Plugins Auto-Discovery: Cross-Tool Analysis
 
+---
+name: 2026-03-31-skills-auto-discovery.md
+date: 2026-03-31
+status: integrated
+review_date: 2026-03-31
+summary:
+  - "Cross-tool auto-discovery: convention-based, protocol-based, config-driven, manifest-based"
+integrated_items:
+  - "Convention-based skill discovery — install.sh copies skills to ~/.claude/skills/"
+  - "Skill description injection — session-context.sh scans ~/.claude/skills/*/SKILL.md and injects descriptions into system prompt"
+  - "available_skills.md generation — install.sh generates listing of all skills with name/description/invocation"
+needs_work_items:
+  - "Goal file dependencies — goal files referencing other goal files or skill files not implemented"
+  - "Template substitution {{}} syntax — Goose-style recipe dependencies not implemented"
+reference_items:
+  - "MCP tool registration at runtime — not needed for Clade (workers are Python-defined)"
+  - "Composio plugin slot architecture — overkill for Clade scope"
+---
+
 **Date**: 2026-03-31
 **Purpose**: Research how AI coding tools discover and register capabilities without manual configuration
 **Sources**: Composio agent-orchestrator source, Goose source, MCP SDK source, Cursor research, Claude Code skills system
