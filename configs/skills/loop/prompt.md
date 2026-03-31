@@ -24,15 +24,20 @@ Options:
 
 ## ACTION: STATUS (`--status`)
 
+Run: `bash ~/.claude/scripts/loop-runner.sh --status`
+
+Or read directly:
 ```bash
-ls -t logs/loop/*-progress 2>/dev/null | head -1
+cat logs/loop/last-progress 2>/dev/null
+cat .claude/loop-state.json 2>/dev/null
 ```
-Read and display:
+
+Display:
 ```
 Loop Status: running | Iteration 2/10
 Goal:       goal.md
 Supervisor: sonnet → Workers: sonnet (4 parallel)
-Action:     workers-2
+Last exit:  (from last-progress file)
 ```
 If no progress file: "No active loop. Start one with `/loop goal.md`"
 
@@ -40,13 +45,10 @@ If no progress file: "No active loop. Start one with `/loop goal.md`"
 
 ## ACTION: STOP (`--stop`)
 
-1. Check if `.claude/loop-state` exists
-2. If exists: write `STOP=true` to the state file
-   ```bash
-   echo "STOP=true" >> .claude/loop-state
-   ```
-3. Show: "Stop sentinel written. Loop will exit after current iteration completes."
-4. If no state file: "No active loop to stop."
+1. Run: `bash ~/.claude/scripts/loop-runner.sh --stop`
+   (This writes `{"stop": true}` to `.claude/loop-state.json`)
+2. Show: "Stop sentinel written. Loop will exit after current iteration completes."
+3. If no state file: "No active loop to stop."
 
 ---
 
@@ -70,11 +72,35 @@ If no progress file: "No active loop. Start one with `/loop goal.md`"
 
 ## ACTION: LAUNCH (default)
 
+## Blueprint Architecture
+
+The loop runs as a deterministic + LLM hybrid state machine:
+
+```
+[DET] Pre-flight check      — goal file exists, blocker check, no LLM
+[DET] Context hydration     — git log + relevant files → .claude/loop-context.md
+[LLM] Supervisor            — plans tasks for this iteration (≤4 tasks)
+[DET] Task scoring          — skips under-specified tasks (<50 score)
+[LLM] Workers (parallel)    — executes planned tasks via run-tasks-parallel.sh
+[DET] Syntax check          — validates all changed .py / .sh / .ts files
+[LLM] Fix node (if needed)  — one attempt to fix syntax failures
+[DET] Test sample           — runs CLAUDE.md verify_cmd if present
+[DET] Commit changes        — commits all worker output
+[DET] Convergence check     — CONVERGED? max_iter? 3 consecutive empty iters?
+→ Repeat until converged, max_iter reached, or stuck
+```
+
+Hard limits (not overridable by LLM):
+- Max 3 consecutive iterations with zero commits → stops automatically
+- Syntax fix: max 1 LLM attempt; broken files are reverted if still failing
+- Never commits files with syntax errors
+- State file: `.claude/loop-state.json` (JSON format)
+
 ### Step 1: Validate
 
 1. Resolve `GOAL_FILE` to absolute path
 2. Read it — if missing, stop and tell user
-3. Check if `.claude/loop-state` exists:
+3. Check if `.claude/loop-state.json` exists:
    - Exists + no `--resume`: ask user — resume or restart?
    - `--resume`: proceed directly to Step 4 (skip enrichment)
 
@@ -137,24 +163,29 @@ bash ~/.claude/scripts/loop-runner.sh \
   --max-iter {max_iter} \
   --max-workers {max_workers} \
   --context .claude/loop-context.md \
-  --state .claude/loop-state \
+  --state .claude/loop-state.json \
   --log-dir logs/loop
 ```
 
 Show plan:
 ```
-Launching loop:
+Launching Blueprint Loop:
   Goal:        /abs/path/to/goal.md
-  Supervisor:  sonnet — plans tasks each iteration from scratch
+  Supervisor:  sonnet — plans tasks each iteration
   Workers:     sonnet × 4 parallel — execute via run-tasks-parallel.sh
   Max iter:    10
   Context:     .claude/loop-context.md (generated)
-  State:       .claude/loop-state
+  State:       .claude/loop-state.json
 
-Each iteration:
-  1. Supervisor reads goal + git log → plans 1–4 tasks (===TASK=== format)
-  2. Workers run ALL tasks in parallel (worktree isolation)
-  3. Supervisor re-evaluates: goal achieved? re-plan or CONVERGED
+Blueprint iteration flow:
+  [DET] pre-flight → hydrate context
+  [LLM] supervisor plans 1–4 tasks
+  [DET] task scoring → filter low-quality tasks
+  [LLM] workers run in parallel (worktree isolation)
+  [DET] syntax check → fix or revert
+  [DET] test sample (verify_cmd)
+  [DET] commit changes
+  [DET] convergence check → loop or stop
 
 Starting in background...
 ```
