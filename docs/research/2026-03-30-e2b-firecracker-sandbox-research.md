@@ -1,3 +1,20 @@
+---
+name: 2026-03-30-e2b-firecracker-sandbox-research.md
+date: 2026-03-30
+status: reference
+review_date: 2026-03-31
+summary:
+  - "E2B Firecracker: 28ms snapshot restore, MAP_PRIVATE lazy loading, 3 isolation tiers (Docker/gVisor/Firecracker)"
+integrated_items:
+  - "Sandbox isolation — not applicable (Clade runs on host with Claude Code)"
+needs_work_items:
+  - "None — this is infrastructure research not directly applicable to Clade architecture"
+reference_items:
+  - "Firecracker 28ms snapshot restore benchmark"
+  - "MAP_PRIVATE for copy-on-write filesystem"
+  - "E2B SDK pause/resume capability"
+---
+
 # E2B & Firecracker microVM 沙盒技术深度研究
 
 > 研究日期: 2026-03-30  

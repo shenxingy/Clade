@@ -1,3 +1,21 @@
+---
+name: 2026-03-30-superset-sh-research.md
+date: 2026-03-30
+status: reference
+review_date: 2026-03-31
+summary:
+  - "Superset: TerminalHost with Semaphore, headless xterm.js emulator, universal hook injection, notification server"
+integrated_items:
+  - "Terminal emulation — not applicable (Clade uses worktree subprocesses)"
+  - "Universal hook injection via settings.json merge — Clade uses install.sh for hook installation"
+needs_work_items:
+  - "Headless xterm.js emulator — not applicable to Clade architecture"
+  - "Notification server with Telegram/Slack integration — not implemented"
+reference_items:
+  - "TerminalHost with Semaphore for session concurrency control"
+  - "Hook injection via settings.json merge (multi-agent config)"
+---
+
 # superset-sh/superset — Deep Technical Research
 
 **Repository**: https://github.com/superset-sh/superset (~8300 stars)

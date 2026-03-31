@@ -1,3 +1,20 @@
+---
+name: 2026-03-30-aws-kiro-deep-research.md
+date: 2026-03-30
+status: reference
+review_date: 2026-03-31
+summary:
+  - "Kiro three-file spec system (requirements.md EARS format, design.md, tasks.md), steering files, Blueprint pattern"
+integrated_items:
+  - "Blueprint PRE/LLM CORE/POST pattern — already implemented in Clade loop"
+needs_work_items:
+  - "EARS format requirements — not used in Clade goal files"
+  - "Steering files with 4 inclusion modes — could enhance goal file format"
+reference_items:
+  - "10 hook event types in Kiro"
+  - "tasks.md with _Requirements: links to requirements.md"
+---
+
 # AWS Kiro 深度研究报告
 
 **日期**: 2026-03-30  

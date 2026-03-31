@@ -1,3 +1,20 @@
+---
+name: 2026-03-30-openai-codex-agents-sdk-research.md
+date: 2026-03-30
+status: reference
+review_date: 2026-03-31
+summary:
+  - "Codex CLI: Rust rewrite, sandboxing (Landlock/seccomp), MCP server, Agents SDK with handoff pattern"
+integrated_items:
+  - "MCP server implementation — Clade has MCP server in orchestrator/mcp_server.py"
+needs_work_items:
+  - "Handoff pattern with input_filter context compression — could enhance /handoff skill"
+  - "Tracing system with span hierarchy — not implemented"
+reference_items:
+  - "Sandboxing: macOS sandbox-exec, Linux Landlock + seccomp + bubblewrap"
+  - "Codex skills discovery and loading mechanism"
+---
+
 # OpenAI Codex CLI + Agents SDK — Deep Research
 
 **Date**: 2026-03-30

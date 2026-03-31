@@ -1,3 +1,21 @@
+---
+name: 2026-03-31-mcp-ecosystem.md
+date: 2026-03-31
+status: reference
+review_date: 2026-03-31
+summary:
+  - "MCP ecosystem: 3 transport types (Stdio/StreamableHttp/SSE), 3 core primitives (tools/resources/prompts), skills auto-discovery"
+integrated_items:
+  - "MCP server implementation — already implemented in orchestrator/mcp_server.py"
+  - "Skills auto-discovery via convention — already implemented in install.sh"
+needs_work_items:
+  - "Skills advertised as MCP tools — not implemented (skills are text injected, not tools)"
+  - "Dynamic MCP tool discovery at runtime — could enhance current static skill system"
+reference_items:
+  - "MCP protocol specification with JSON-RPC 2.0"
+  - "Server capabilities advertisement via initialize() handshake"
+---
+
 # MCP (Model Context Protocol) Ecosystem — Deep Research
 
 **Date**: 2026-03-31

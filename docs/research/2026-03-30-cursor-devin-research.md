@@ -1,3 +1,20 @@
+---
+name: 2026-03-30-cursor-devin-research.md
+date: 2026-03-30
+status: reference
+review_date: 2026-03-31
+summary:
+  - "Cursor/Devin: Planner/Worker/Judge triad, FastRender 2000 peak agents, Composer MoE, Devin Compound AI System"
+integrated_items:
+  - "Multi-agent coordination — Clade has supervisor/worker but no Judge/Verifier role"
+needs_work_items:
+  - "Judge/Verifier role — not implemented (Clade lacks formal verification step)"
+  - "Parallel worktree isolation — implemented but not coordinated as multi-agent team"
+reference_items:
+  - "Three coordination failures before success pattern"
+  - "FastRender with 2000 peak concurrent agents"
+---
+
 # Cursor 2.0 & Devin 2.0 架构深度研究
 
 **日期**: 2026-03-30  

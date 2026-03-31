@@ -1,3 +1,21 @@
+---
+name: 2026-03-30-goose-research.md
+date: 2026-03-30
+status: reference
+review_date: 2026-03-31
+summary:
+  - "Goose: 5 MCP transport types, Recipe YAML with Jinja2 templates, AGENTS.md subdirectory loading, GooseMode permissions"
+integrated_items:
+  - "MCP server architecture — Clade MCP server implemented in orchestrator/"
+  - "AGENTS.md pattern — Clade uses CLAUDE.md instead"
+needs_work_items:
+  - "Recipe dependency system with Jinja2 templates — could enhance goal file format"
+  - "AGENTS.md subdirectory loading — not implemented (Clade only reads root CLAUDE.md)"
+reference_items:
+  - "5 MCP transports: Stdio, StreamableHttp, Platform, Builtin, InlinePython"
+  - "Recipe YAML format with sub_recipes and value templates"
+---
+
 # Goose (block/goose) Deep Research
 
 **Date**: 2026-03-30  
