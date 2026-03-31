@@ -10,12 +10,10 @@ integrated_items:
   - "Deterministic verify phase — Clade POST phase has syntax_check + test_sample (serves Judge role without separate agent)"
 needs_work_items: []
 reference_items:
-  - "Three coordination failures before success pattern"
-  - "FastRender with 2000 peak concurrent agents"
-  - "Parallel worktree isolation — implemented in run-tasks-parallel.sh"
-reference_items:
-  - "Three coordination failures before success pattern"
-  - "FastRender with 2000 peak concurrent agents"
+  - "Three coordination failures before success pattern — not a gap (Stripe Minions uses 2-strike, Clade uses 3-strike)"
+  - "FastRender with 2000 peak concurrent agents — not applicable (Clade is single-project, different scale)"
+  - "Parallel worktree isolation — implemented in run-tasks-parallel.sh (confirmed integrated)"
+  - "Composer MoE model for agent environments — not applicable (Clade uses standard Claude models)"
 ---
 
 # Cursor 2.0 & Devin 2.0 架构深度研究
