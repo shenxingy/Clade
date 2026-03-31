@@ -11,9 +11,9 @@ integrated_items:
   - "Convention-based skill discovery — install.sh copies skills to ~/.claude/skills/"
   - "Skill description injection — session-context.sh scans ~/.claude/skills/*/SKILL.md and injects descriptions into system prompt"
   - "available_skills.md generation — install.sh generates listing of all skills with name/description/invocation"
-needs_work_items:
-  - "Goal file dependencies — goal files referencing other goal files or skill files not implemented"
-  - "Template substitution {{}} syntax — Goose-style recipe dependencies not implemented"
+  - "Goal file dependencies — resolve-goal-deps.py resolves includes recursively, loop/prompt.md pre-processes goal files before use"
+  - "Template substitution {{}} syntax — resolve-goal-deps.py supports {{variable}} substitution from values: dict per include"
+needs_work_items: []
 reference_items:
   - "MCP tool registration at runtime — not needed for Clade (workers are Python-defined)"
   - "Composio plugin slot architecture — overkill for Clade scope"

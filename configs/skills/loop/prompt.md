@@ -96,17 +96,23 @@ Hard limits (not overridable by LLM):
 - Never commits files with syntax errors
 - State file: `.claude/loop-state.json` (JSON format)
 
-### Step 1: Validate
+### Step 1: Validate and Pre-process
 
 1. Resolve `GOAL_FILE` to absolute path
 2. Read it — if missing, stop and tell user
-3. Check if `.claude/loop-state.json` exists:
+3. **Resolve goal file dependencies** — if the goal file has an `includes:` section in its frontmatter (Goose-style recipe dependencies), resolve them:
+   ```bash
+   python3 ~/.claude/scripts/resolve-goal-deps.py "{goal_file}" > .claude/loop-goal-resolved.md
+   ```
+   - Use `.claude/loop-goal-resolved.md` for all subsequent steps
+   - Pass `.claude/loop-goal-resolved.md` to `loop-runner.sh` instead of the original
+4. Check if `.claude/loop-state.json` exists:
    - Exists + no `--resume`: ask user — resume or restart?
    - `--resume`: proceed directly to Step 4 (skip enrichment)
 
 ### Step 2: Analyze goal
 
-Read the goal file and show:
+Read the resolved goal file and show:
 ```
 Goal: goal.md
 
@@ -154,10 +160,14 @@ Keep under 200 lines. Only include what's directly relevant to the goal.
 
 ### Step 4: Launch
 
-Build the command:
+Build the command (use resolved goal file if dependencies were found):
 ```bash
+_goal_path="{absolute_goal_path}"
+if [ -f .claude/loop-goal-resolved.md ]; then
+  _goal_path=".claude/loop-goal-resolved.md"
+fi
 bash ~/.claude/scripts/loop-runner.sh \
-  "{absolute_goal_path}" \
+  "$_goal_path" \
   --model {supervisor_model} \
   --worker-model {worker_model} \
   --max-iter {max_iter} \
