@@ -6,11 +6,14 @@ review_date: 2026-03-31
 summary:
   - "Goose: 5 MCP transport types, Recipe YAML with Jinja2 templates, AGENTS.md subdirectory loading, GooseMode permissions"
 integrated_items:
-  - "MCP server architecture — Clade MCP server implemented in orchestrator/"
-  - "AGENTS.md pattern — Clade uses CLAUDE.md instead"
-needs_work_items:
-  - "Recipe dependency system with Jinja2 templates — could enhance goal file format"
-  - "AGENTS.md subdirectory loading — not implemented (Clade only reads root CLAUDE.md)"
+  - "MCP server architecture — Clade MCP server implemented in orchestrator/mcp_server.py"
+  - "AGENTS.md pattern — Clade uses CLAUDE.md instead (CLAUDE.md is documented in project root and ~/.claude/)"
+  - "Recipe dependency system with {{}} template substitution — resolve-goal-deps.py implements Goose-style includes with values substitution"
+needs_work_items: []
+reference_items:
+  - "5 MCP transports: Stdio, StreamableHttp, Platform, Builtin, InlinePython"
+  - "Recipe YAML format with sub_recipes and value templates"
+  - "AGENTS.md subdirectory loading — not implemented (Clade only reads root CLAUDE.md, not subdirectory hints)"
 reference_items:
   - "5 MCP transports: Stdio, StreamableHttp, Platform, Builtin, InlinePython"
   - "Recipe YAML format with sub_recipes and value templates"
