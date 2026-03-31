@@ -1,68 +1,114 @@
-Perform an end-of-session handoff. This document will be read by the next session or parallel agent to resume work without losing context.
+<command-metadata>
+name: handoff
+trigger: user runs /handoff, context near full, or ending work session
+completion-status: DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT
+</command-metadata>
 
-## Steps
+Save session state so the next session or parallel agent can resume exactly where you left off.
 
-1. Run `git log --oneline -10` and `git status -sb` to capture current repo state
-2. Read `TODO.md` (if it exists) to understand overall task state
-3. Identify what was accomplished THIS session (compare recent git log vs session start)
-4. Identify any blockers or decisions that require human input
-5. List exact next steps, ordered by priority, with specific file paths
+## When to Run
+- Context window is ~80% full
+- About to stop work for the day
+- Switching to a different task
+- Before running /compact
 
-## Output
+## Execution Steps
 
-Create the directory `.claude/` if it doesn't exist, then save to `.claude/handoff-{YYYY-MM-DD-HH-MM}.md` using today's date and current time.
-
-Use this exact structure:
-
+### Step 1: Collect Data (run in parallel)
+```bash
+git log --oneline -15
+git status -sb
+git diff --stat HEAD~5..HEAD 2>/dev/null
 ```
+Also read TODO.md current state.
+
+### Step 2: Detect Iteration Number
+```bash
+ls .claude/handoff-*.md 2>/dev/null | wc -l
+```
+
+- **First handoff (count = 0)**: Use the INITIAL TEMPLATE below
+- **Subsequent handoffs (count ≥ 1)**: Read the most recent `.claude/handoff-*.md`, then do INCREMENTAL UPDATE:
+  - Keep Goal and Constraints unchanged (only update if user explicitly changed direction)
+  - Move "In Progress" items to "Done ✅" if git log shows they were completed
+  - Append new Done items from this session's commits
+  - Update Next Steps based on current git state and TODO.md
+  - Add new Key Decisions if any were made this session
+
+### Step 3: Write Handoff File
+
+Save to: `.claude/handoff-{YYYY-MM-DD-HH-MM}.md`
+
+**INITIAL TEMPLATE** (use for first handoff):
+
+```markdown
 # Handoff: {YYYY-MM-DD HH:MM}
+<!-- STRUCTURED HANDOFF v2 — preserve all section headers exactly -->
 
-## Session Summary
-- Accomplished: [bullet list with exact file paths changed]
-- Commits made: [from git log this session, or "none"]
+## Goal
+{One sentence: the overall objective of this work session / task}
 
-## Current State
-- Branch: [branch name]
-- Uncommitted changes: [git status -sb output, or "clean"]
-- Build/tests: [passing / failing / unknown]
+## Constraints & Preferences
+- {Technical constraints, stack choices, things explicitly NOT to do}
+- {User preferences discovered this session}
 
-## Blockers (needs human input)
-- [Each item that is stuck waiting on human decision, OR write "none — ready to continue"]
+## Progress
+### Done ✅
+- [x] {Completed item with exact file path} ({short commit hash})
 
-## Next Steps (ordered)
-1. [Specific task with exact file paths and what to do]
-2. [Specific task with exact file paths and what to do]
-3. [...]
+### In Progress 🔄
+- [ ] {Item currently being worked on — what specifically remains to do}
 
-## Gotchas & Discoveries
-- [Important findings about the codebase that the next agent needs to know]
-- [Pitfalls to avoid, configs that matter, non-obvious dependencies]
+### Blocked 🚫
+- {Specific blocker needing human input — OR write "none"}
 
-## TODO.md Status
-- Completed this session: [list or "none"]
-- In progress: [list or "none"]
-- Up next: [next TODO item]
+## Key Decisions
+- **{Decision}**: {Rationale — why this over alternatives}
+
+## Next Steps (ordered by priority)
+1. {Exact next action — specific file, specific change, specific command}
+2. {Second action}
+3. {Third action}
+
+## Critical Context
+- {Non-obvious codebase facts the next agent must know}
+- {Pitfalls discovered, configs that matter, edge cases found}
+- {Anything that took time to figure out — save the next agent that time}
+
+## Files
+<read-files>
+{absolute paths of files READ this session, one per line}
+</read-files>
+
+<modified-files>
+{absolute paths of files MODIFIED this session, one per line}
+</modified-files>
+
+## Meta
+- Branch: {git branch --show-current}
+- Uncommitted: {git status -sb output, or "clean"}
+- Build: {passing | failing | unknown — based on last verify/test run}
+- Session: {approximate duration}
 ```
 
-After saving, output:
-- The file path of the handoff document
-- A 3-bullet summary of what was accomplished
-- Whether any blockers need human attention before the next session can proceed autonomously
+### Step 4: Report
 
-## Notes
+Output:
+```
+Handoff saved: .claude/handoff-{timestamp}.md
 
-- Be specific about file paths — the next agent has no memory of this session
-- If you have uncommitted work, mention each file and what state it's in
-- If this session made no progress, say so honestly — it helps diagnose problems
-
-
----
+Goal: {one sentence}
+Done this session: {N items}
+Blockers: {none / list}
+Next: {Step 1 from Next Steps}
+```
 
 ## Completion Status
 
-- ✅ **DONE** — task completed successfully
-- ⚠ **DONE_WITH_CONCERNS** — completed but with caveats to note
-- ❌ **BLOCKED** — cannot proceed; write details to `.claude/blockers.md`
-- ❓ **NEEDS_CONTEXT** — missing information; use AskUserQuestion
+- **✅ DONE**: Handoff file saved successfully
+- **⚠ DONE_WITH_CONCERNS**: Saved but with uncommitted changes or unresolved blockers
+- **❌ BLOCKED**: Cannot capture state — details to `.claude/blockers.md`
+- **❓ NEEDS_CONTEXT**: Missing information needed to write accurate handoff
 
-**3-strike rule:** If the same approach fails 3 times, switch to BLOCKED — do not retry indefinitely.
+## 3-Strike Rule
+If you fail to complete a step 3 times: write failure details to `.claude/blockers.md` and stop.
