@@ -46,6 +46,28 @@ echo "Installing agents..."
 cp "$SCRIPT_DIR/configs/agents/"*.md "$CLAUDE_DIR/agents/"
 echo "  Installed: $(ls "$SCRIPT_DIR/configs/agents/"*.md | xargs -I{} basename {} | tr '\n' ' ')"
 
+# ─── 4b. Install MCP Server ─────────────────────────────────────────────
+_echo() { printf '%s\n' "$*"; }
+
+# Install mcp package in orchestrator venv (if venv exists)
+ORCH_VENV_PY="$SCRIPT_DIR/orchestrator/.venv/bin/python"
+if [[ -x "$ORCH_VENV_PY" ]]; then
+  "$ORCH_VENV_PY" -m pip install --quiet mcp 2>/dev/null && echo "  Installed: mcp (orchestrator venv)" || true
+fi
+
+# Copy MCP server script
+if [[ -f "$SCRIPT_DIR/orchestrator/mcp_server.py" ]]; then
+  cp "$SCRIPT_DIR/orchestrator/mcp_server.py" "$CLAUDE_DIR/scripts/mcp_server.py"
+  chmod +x "$CLAUDE_DIR/scripts/mcp_server.py"
+  echo "  Installed: MCP server (mcp_server.py)"
+  echo ""
+  echo "  MCP Server setup:"
+  echo "    Add to ~/.claude/settings.json:"
+  echo '    { "mcpServers": { "clade": { "command": "python", "args": ["'"$CLAUDE_DIR/scripts/mcp_server.py"'"] } } }'
+  echo ""
+  echo "  Then restart Claude Code and use skills via MCP tool calls."
+fi
+
 # ─── 4. Copy skills (only repo-managed skills, don't overwrite others) ─
 
 echo "Installing skills..."
