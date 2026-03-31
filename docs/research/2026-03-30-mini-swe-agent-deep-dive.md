@@ -6,12 +6,12 @@ review_date: 2026-03-31
 summary:
   - "mini-swe-agent: ~150 lines core logic, single bash tool, output truncation (head+tail 5KB), exception-driven control flow"
 integrated_items:
-  - "Output truncation pattern — Clade uses 50KB/2000 line truncation in worker.py"
-needs_work_items:
-  - "Single bash tool simplicity — Clade has multiple tools via Claude Code"
-  - "Exception-driven control flow — could simplify loop decision logic"
+  - "Output truncation — worker.py has 50KB/2000 line truncation (upgraded to LLM distillation for >200KB)"
+needs_work_items: []
 reference_items:
-  - "head+tail truncation for large outputs"
+  - "Single bash tool simplicity — design choice, not a gap. Clade uses Claude Code tools"
+  - "Exception-driven control flow (InterruptAgentFlow) — elegant for Python loops, but Clade loop-runner.sh is bash-based. Deterministic state checks are appropriate for bash"
+  - "head+tail truncation for large outputs — Clade uses LLM distillation instead"
   - "Exception-driven loop termination (InterruptAgentFlow)"
 ---
 
