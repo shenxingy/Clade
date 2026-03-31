@@ -33,6 +33,20 @@ set -euo pipefail
 # Allow nested claude calls from within a Claude Code session
 unset CLAUDECODE 2>/dev/null || true
 
+# ─── CROSS-PLATFORM HELPERS ─────────────────────────────────────────
+# macOS lacks GNU timeout; use gtimeout (brew install coreutils) or fallback
+_timeout() {
+  if command -v gtimeout &>/dev/null; then
+    gtimeout "$@"
+  elif command -v timeout &>/dev/null; then
+    timeout "$@"
+  else
+    shift  # remove the timeout duration arg
+    "$@"
+  fi
+}
+# ────────────────────────────────────────────────────────────────────
+
 # ─── BLUEPRINT HARD LIMITS ──────────────────────────────────────
 readonly MAX_CONSECUTIVE_NO_COMMITS=3   # consecutive empty iters → force stop
 readonly SYNTAX_CHECK_TIMEOUT=30        # syntax check timeout (seconds)
@@ -266,7 +280,7 @@ FORMAT 2 — Goal achieved (convergence signal):
 - If .claude/blockers.md appears in recent diff, output CONVERGED immediately"
 
   local result
-  if ! result=$(timeout "$SUPERVISOR_TIMEOUT" claude --model "$SUPERVISOR_MODEL" -p "$supervisor_prompt" 2>&1); then
+  if ! result=$(_timeout "$SUPERVISOR_TIMEOUT" claude --model "$SUPERVISOR_MODEL" -p "$supervisor_prompt" 2>&1); then
     log_error "Supervisor call failed or timed out"
     echo "[]"
     return
@@ -409,13 +423,13 @@ node_run_workers() {
   local worker_total_timeout=$(( WORKER_TIMEOUT * task_count + 60 ))
 
   if [ "$MAX_WORKERS" -gt 1 ]; then
-    MAX_WORKERS="$MAX_WORKERS" timeout "$worker_total_timeout" \
+    MAX_WORKERS="$MAX_WORKERS" _timeout "$worker_total_timeout" \
       bash ~/.claude/scripts/run-tasks-parallel.sh "$task_file" 2>&1 \
       | tee -a "$LOG_DIR/loop.log" || {
         log_warn "Workers returned non-zero exit (some tasks may have failed)"
       }
   else
-    timeout "$worker_total_timeout" \
+    _timeout "$worker_total_timeout" \
       bash ~/.claude/scripts/run-tasks.sh "$task_file" 2>&1 \
       | tee -a "$LOG_DIR/loop.log" || {
         log_warn "Worker returned non-zero exit"
@@ -447,13 +461,13 @@ node_syntax_check() {
     [ -f "$f" ] || continue
     case "$f" in
       *.py)
-        if ! timeout "$SYNTAX_CHECK_TIMEOUT" python3 -m py_compile "$f" 2>/dev/null; then
+        if ! _timeout "$SYNTAX_CHECK_TIMEOUT" python3 -m py_compile "$f" 2>/dev/null; then
           failures="${failures}${f}\n"
           log_warn "Python syntax error: $f"
         fi
         ;;
       *.sh)
-        if ! timeout 10 bash -n "$f" 2>/dev/null; then
+        if ! _timeout 10 bash -n "$f" 2>/dev/null; then
           failures="${failures}${f}\n"
           log_warn "Shell syntax error: $f"
         fi
@@ -461,7 +475,7 @@ node_syntax_check() {
       *.ts|*.tsx)
         # Only check if npx tsc available and tsconfig exists
         if command -v npx &>/dev/null && [ -f "tsconfig.json" ]; then
-          if ! timeout "$SYNTAX_CHECK_TIMEOUT" npx tsc --noEmit 2>/dev/null; then
+          if ! _timeout "$SYNTAX_CHECK_TIMEOUT" npx tsc --noEmit 2>/dev/null; then
             failures="${failures}${f}\n"
             log_warn "TypeScript error: $f"
           fi
@@ -492,7 +506,7 @@ Steps:
 
 Only fix syntax errors. Do not change logic or add features."
 
-  timeout "$SUPERVISOR_TIMEOUT" claude --model "$SUPERVISOR_MODEL" -p "$fix_prompt" \
+  _timeout "$SUPERVISOR_TIMEOUT" claude --model "$SUPERVISOR_MODEL" -p "$fix_prompt" \
     2>&1 | tee -a "$LOG_DIR/loop.log" || {
       log_warn "Fix syntax attempt failed or timed out"
     }
@@ -519,7 +533,7 @@ node_test_sample() {
   fi
 
   log_info "Running verify: $verify_cmd"
-  if timeout "$TEST_SAMPLE_TIMEOUT" bash -c "$verify_cmd" 2>&1 | tee -a "$LOG_DIR/loop.log"; then
+  if _timeout "$TEST_SAMPLE_TIMEOUT" bash -c "$verify_cmd" 2>&1 | tee -a "$LOG_DIR/loop.log"; then
     log_success "Test sample passed"
   else
     log_warn "Test sample failed (workers may have introduced issues — continuing)"
