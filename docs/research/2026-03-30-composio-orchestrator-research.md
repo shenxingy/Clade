@@ -5,11 +5,14 @@ status: reference
 review_date: 2026-03-31
 summary:
   - "Composio: 7 plugin slots, CI reaction system, activity detection, review comment fingerprinting"
-integrated_items:
-  - "Plugin slot architecture — not implemented (Clade uses flat worker pool)"
+integrated_items: []
 needs_work_items:
   - "Reaction system for GitHub PR review tracking — could enhance github_sync.py"
   - "Activity detection via Claude JSONL — could enhance worker.py"
+reference_items:
+  - "Plugin slot architecture — not implemented (Clade uses flat worker pool, no slot interface)"
+  - "Flat metadata files vs SQLite for state"
+  - "Batch GraphQL optimization"
 reference_items:
   - "Flat metadata files vs SQLite for state"
   - "Batch GraphQL optimization"
