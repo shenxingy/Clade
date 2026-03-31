@@ -45,7 +45,7 @@ cc  # 进入完全自主模式，直接告诉它任务
 
 当你同时跑 3-4 个 agent 在同一个 repo，普通 `git add .` 会 stage 所有文件，agent 会互相干扰。`committer` 强制精确指定文件。
 
-把这个脚本放到 `~/.local/bin/committer`（或者 claude-code-kit 的某个公共位置）：
+把这个脚本放到 `~/.local/bin/committer`（或者 clade 的某个公共位置）：
 
 ```bash
 #!/usr/bin/env bash
@@ -138,7 +138,7 @@ steipete 发现：agent 能处理 message queue——你在它跑任务时继续
 
 **问题**：context window 满了，或者你中途停掉了 agent，重新开一个要重新交代所有背景。
 
-在你的 claude-code-kit 的 skills 里加入这两个：
+在你的 clade 的 skills 里加入这两个：
 
 **`/handoff`** — 当前 agent 在结束前输出状态快照：
 ```markdown
