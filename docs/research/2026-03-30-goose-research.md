@@ -7,16 +7,17 @@ summary:
   - "Goose: 5 MCP transport types, Recipe YAML with Jinja2 templates, AGENTS.md subdirectory loading, GooseMode permissions"
 integrated_items:
   - "MCP server architecture — Clade MCP server implemented in orchestrator/mcp_server.py"
-  - "AGENTS.md pattern — Clade uses CLAUDE.md instead (CLAUDE.md is documented in project root and ~/.claude/)"
+  - "AGENTS.md pattern — Clade uses CLAUDE.md instead (cross-agent compatibility via shared convention)"
   - "Recipe dependency system with {{}} template substitution — resolve-goal-deps.py implements Goose-style includes with values substitution"
 needs_work_items: []
 reference_items:
-  - "5 MCP transports: Stdio, StreamableHttp, Platform, Builtin, InlinePython"
-  - "Recipe YAML format with sub_recipes and value templates"
-  - "AGENTS.md subdirectory loading — not implemented (Clade only reads root CLAUDE.md, not subdirectory hints)"
-reference_items:
-  - "5 MCP transports: Stdio, StreamableHttp, Platform, Builtin, InlinePython"
-  - "Recipe YAML format with sub_recipes and value templates"
+  - "5 MCP transports: Stdio, StreamableHttp, Platform, Builtin, InlinePython — Clade uses stdio only (sufficient for current scope)"
+  - "Recipe YAML format with sub_recipes and value templates — Clade uses Markdown goal files (sufficient for current scope)"
+  - "AGENTS.md subdirectory loading — not implemented, not a gap (CLAUDE.md loaded at session start is sufficient)"
+  - "Inline Python MCP extensions — not implemented, not a gap (skills are static Markdown, sufficient for current scope)"
+  - "GooseMode permission levels — not applicable (Claude Code has its own permission system)"
+
+
 ---
 
 # Goose (block/goose) Deep Research
