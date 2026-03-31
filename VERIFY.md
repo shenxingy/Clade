@@ -4,7 +4,7 @@
 
 **Project type:** cli + skill-system + orchestrator (FastAPI)
 **Last full pass:** 2026-03-30
-**Coverage:** 44 ✅, 0 ❌, 3 ⚠, 0 ⬜ untested
+**Coverage:** 49 ✅, 0 ❌, 4 ⚠, 0 ⬜ untested
 
 ---
 
@@ -45,7 +45,7 @@
 | H3 | `pre-tool-guardian.sh` allows `alembic upgrade` when dev-mode is ON | ✅ | 2026-03-30 | |
 | H4 | `pre-tool-guardian.sh` blocks `rm -rf /` regardless of dev-mode | ✅ | 2026-03-30 | |
 | H5 | `pre-tool-guardian.sh` blocks `git push --force origin main` regardless of dev-mode | ✅ | 2026-03-30 | |
-| H6 | All other hooks pass `bash -n` syntax check | ✅ | 2026-03-30 | all 12 hooks pass |
+| H6 | All other hooks pass `bash -n` syntax check | ✅ | 2026-03-30 | all 13 hooks pass (pre-compact.sh added) |
 | H7 | `pre-tool-guardian.sh` does NOT block when migration pattern appears only in a variable assignment string (false-positive fix) | ✅ | 2026-03-30 | `INPUT='...alembic upgrade...'` now allowed |
 
 ## Shell Script Integrity
@@ -53,7 +53,7 @@
 
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
-| SH1 | All `configs/hooks/*.sh` pass `bash -n` | ✅ | 2026-03-30 | all 12 hooks |
+| SH1 | All `configs/hooks/*.sh` pass `bash -n` | ✅ | 2026-03-30 | all 13 hooks (session-context.sh modified today, re-verified) |
 | SH2 | All `configs/scripts/*.sh` pass `bash -n` | ✅ | 2026-03-30 | all 27 scripts pass (incl. provider-switch.sh) |
 | SH3 | `install.sh` passes `bash -n` | ✅ | 2026-03-30 | |
 
@@ -102,6 +102,18 @@
 | KL1 | Guardian false-positive when blocked pattern appears inline with a command (not a pure assignment) | ⚠ | Fixed 2026-03-30: SCANNABLE strips `VAR='...'` and `VAR="..."` lines. Residual edge case: `ENV_VAR="..." migration-cmd` on one line not stripped (rare). Use base64-decode trick for guardian tests. |
 | KL2 | `/commit`, `/loop`, `/start` skills cannot be fully E2E tested without actual uncommitted changes or a running background loop | ⚠ | Skill prompt content verified; runtime behavior requires manual spot-check |
 | KL3 | Orchestrator API endpoint behavior untested (no running server in this review session) | ⚠ | Python syntax + tests pass. API routes require `uvicorn server:app` running |
+| KL4 | Windows not supported — scripts use bash, `~/.claude/` paths, and POSIX tools | ⚠ | WSL2 would work; native Windows CMD/PowerShell is out of scope |
+
+## Cross-Platform Compatibility
+<!-- Scripts must work on both Linux and macOS. -->
+
+| ID | Checkpoint | Status | Verified | Notes |
+|----|-----------|--------|----------|-------|
+| XP1 | `sha256sum` calls have macOS fallback (`shasum -a 256`) in `install.sh`, `session-context.sh`, `start.sh` | ✅ | 2026-03-30 | `_SHA256` bash array pattern used; `xargs "${_SHA256[@]}"` works on both |
+| XP2 | `timeout` calls in `loop-runner.sh` use `_timeout()` cross-platform wrapper (gtimeout → timeout → no-op) | ✅ | 2026-03-30 | matches wrapper already in run-tasks.sh and run-tasks-parallel.sh |
+| XP3 | `sed -i` uses `_sed_i()` wrapper in `tmux-dispatch.sh` | ✅ | 2026-03-30 | macOS requires `sed -i ''` |
+| XP4 | `readlink -f` uses python3 fallback in `scan-todos.sh` | ✅ | 2026-03-30 | macOS lacks GNU readlink -f |
+| XP5 | `stat -c` calls have `stat -f` macOS fallback in session-context.sh and run-tasks*.sh | ✅ | 2026-03-30 | all instances use `|| stat -f` pattern |
 
 ---
 <!-- Add new checkpoints above this line. /review appends discovered scenarios here automatically. -->
