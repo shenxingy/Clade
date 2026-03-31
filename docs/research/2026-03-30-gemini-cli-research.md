@@ -1,20 +1,19 @@
 ---
 name: 2026-03-30-gemini-cli-research.md
 date: 2026-03-30
-status: needs_work
+status: integrated
 review_date: 2026-03-31
 summary:
   - "Gemini CLI: Plan Mode tool-layer isolation, LoopDetectionService, tool distillation, ChatCompressionService"
-integrated_items: []
+integrated_items:
+  - "Tool distillation — implemented in worker.py _distill_output(). When tool output >200KB, uses haiku to extract key facts (errors, file paths, conclusions), preserves full output in temp file. Significantly better than simple truncation"
 needs_work_items:
-  - "Behavioral LoopDetectionService — Gemini detects repeated tool+args≥5, content repetition≥10, LLM self-check≥30. Clade only has convergence detection (consecutive_no_commits), not behavioral loop detection within workers"
-  - "Tool distillation — Gemini uses lightweight LLM to extract key facts from large tool output; Clade uses simple truncation (50KB/2000 lines). LLM distillation is significantly better for preserving error details"
-  - "ChatCompressionService — Gemini has 4-phase proactive compression (50% threshold, tool response truncation, LLM summary, 30% retention). Clade has no active context compression service"
-  - "Skills with resource bundles — Gemini skills can carry resource folders (templates, examples, configs). Clade skills are text-only"
+  - "Behavioral LoopDetectionService — Gemini detects repeated tool+args≥5, content repetition≥10, LLM self-check≥30. Clade has convergence detection (consecutive_no_commits) but not behavioral loop detection within workers"
+  - "ChatCompressionService — Gemini has 4-phase proactive compression. Clade has no active context compression service"
+  - "Skills with resource bundles — Gemini skills can carry resource folders. Clade skills are text-only"
 reference_items:
-  - "Plan Mode tool-layer isolation (ApprovalMode enum) — interesting pattern but different architecture than Clade"
+  - "Plan Mode tool-layer isolation (ApprovalMode enum) — different architecture, not applicable"
   - "LoopDetectionService with 3 detection modes"
-  - "4-phase chat compression"
 ---
 
 # Gemini CLI 深度研究报告
