@@ -1,7 +1,7 @@
 ---
 name: 2026-03-30-composio-orchestrator-research.md
 date: 2026-03-30
-status: reference
+status: needs_work
 review_date: 2026-03-31
 summary:
   - "Composio: 7 plugin slots, CI reaction system, activity detection, review comment fingerprinting"

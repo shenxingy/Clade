@@ -5,8 +5,7 @@ status: reference
 review_date: 2026-03-31
 summary:
   - "E2B Firecracker: 28ms snapshot restore, MAP_PRIVATE lazy loading, 3 isolation tiers (Docker/gVisor/Firecracker)"
-integrated_items:
-  - "Sandbox isolation — not applicable (Clade runs on host with Claude Code)"
+integrated_items: []
 needs_work_items: []
 reference_items:
   - "Firecracker 28ms snapshot restore benchmark"
