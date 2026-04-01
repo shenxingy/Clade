@@ -25,7 +25,8 @@ _ALLOWED_TASK_COLS = {"status", "description", "model", "depends_on", "score",
                       "failed_reason", "score_note", "own_files", "forbidden_files",
                       "gh_issue_number", "is_critical_path",
                       "input_tokens", "output_tokens", "estimated_cost",
-                      "task_type", "source_ref", "parent_task_id", "priority_score"}
+                      "task_type", "source_ref", "parent_task_id", "priority_score",
+                      "handoff_type", "handoff_payload"}
 
 _ALLOWED_LOOP_COLS = {
     "name", "artifact_path", "context_dir", "status", "iteration",
@@ -83,6 +84,36 @@ _SETTINGS_DEFAULTS = {
     "usage_provider": "claude",
     "minimax_api_key": "",
     "minimax_group_id": "",
+    "reactions_enabled": True,
+    "reaction_configs": [
+        {
+            "name": "repeated_tool_failure",
+            "event_type": "error",
+            "event_match": r"(?:tool|command).*failed|exit code [1-9]",
+            "threshold": 3,
+            "window_seconds": 300,
+            "action": "escalate",
+            "action_payload": {"strategy": "suggest_alternative"},
+        },
+        {
+            "name": "same_tool_repeated",
+            "event_type": "tool_call",
+            "event_match": r"^(?:bash|shell|exec):",
+            "threshold": 5,
+            "window_seconds": 180,
+            "action": "warn",
+            "action_payload": {"message": "Same tool called 5+ times — consider alternative approach"},
+        },
+        {
+            "name": "loop_detected",
+            "event_type": "state_change",
+            "event_match": r"loop.*detected",
+            "threshold": 1,
+            "window_seconds": 0,
+            "action": "abort",
+            "action_payload": {"message": "Behavioral loop detected — aborting task"},
+        },
+    ],
 }
 
 
