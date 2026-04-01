@@ -527,6 +527,35 @@ Goal: review converges reliably because it checks against a project-specific def
 
 ---
 
+## Research Gaps — Discovered via EVALUATION-STANDARD (2026-03-30~31)
+
+Priority order. Each identified via bidirectional code-vs-research comparison against 17 deep-dive docs.
+
+### P0 — Core Loop Quality
+
+- [ ] **Reflection Loop** — Aider pattern: inject lint errors as new message input, retry up to 3×. Currently Clade has post-edit-check (reports only) and fix_syntax (one-shot retry). Need: tight retry cycle with error context as input. Likely location: `worker.py` `_on_worker_done()` error handling block.
+- [ ] **Behavioral LoopDetectionService** — Gemini CLI pattern: detect repeated `tool+args ≥5×`, content repetition ≥10×, LLM self-check ≥30 turns. Clade has convergence detection (`consecutive_no_commits`) but NOT behavioral loop detection within workers. Likely location: `worker.py` `_check_loop_detected()`.
+
+### P1 — Context Intelligence
+
+- [ ] **Structured TODO provenance** — Kiro pattern: each TODO item tagged with `_From: GOALS.md §X.Y`. Clade TODO.md items lack source tracing. Likely location: `configs/scripts/todo-provenance.py` or `loop/prompt.md` template.
+- [ ] **EventStream architecture** — OpenHands pattern: immutable event log, worker state replay from log on restart. Clade loses worker state on server restart. Likely location: new `orchestrator/event_log.py` + `task_queue.py` events table.
+- [ ] **9 Condenser types** — OpenHands pattern: `NoOp` / `RecentEvents` / `ObservationMasking` / `BrowserOutput` / `AmortizedForgetting` / `LLMSummarizing` / `LLMAttention` / `StructuredSummary` / `ConversationWindow`. Clade has TLDR but no structured compression strategies. Likely location: `orchestrator/condensers.py`.
+
+### P2 — Supervisor Intelligence
+
+- [ ] **Typed worker handoffs** — Codex Agents SDK pattern: `HandoffInputData` enables workers to hand off directly to specialized workers with structured context. Clade `/handoff` is session-level, not task-routing level. Likely location: `worker.py` `_handoff_to_worker()` + `task_queue.py` handoff protocol.
+- [ ] **Formal Verify phase** — Junie pattern: dedicated Verify node with IntelliJ inspection engine feedback. Clade has `syntax_check` + `test_sample` in POST but no structured verify with detailed inspector output. Likely location: `loop-runner.sh` POST phase + `verify/` skill.
+- [ ] **Interrupt breakpoints** — LangGraph pattern: `interrupt()` pauses graph for human review at breakpoints. Clade runs fully autonomous with no human-in-loop. Likely location: `loop-runner.sh` `--interrupt` flag + `blockers.md` write.
+
+### P3 — Observability
+
+- [ ] **Tracing span hierarchy** — Codex Agents SDK pattern: span-per-task + nested `llm_call_span` + `tool_call_span`. Clade has no structured tracing. Likely location: `orchestrator/tracing.py` (OpenTelemetry).
+- [ ] **Reaction system** — Composio pattern: configurable `ReactionConfig` per event type (ci_failed / review_comments), attempt counting, duration-based escalation. Clade CI handling is hardcoded. Likely location: `github_sync.py` + `config.py` reaction table.
+- [ ] **JSONL activity detection** — Composio pattern: read Claude Code JSONL session files to distinguish `active` vs `waiting_input` vs `blocked`. Clade only knows if worker process is alive. Likely location: `worker.py` `_get_activity_state()`.
+
+---
+
 ## Design Decisions
 
 | Decision | Choice | Reason |
