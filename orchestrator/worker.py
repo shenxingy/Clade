@@ -31,6 +31,7 @@ from github_sync import _gh_update_issue_status
 from session_tree import SessionTree
 from worker_tldr import _generate_code_tldr
 from worker_review import _oracle_review
+from event_stream import EventStream
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +138,279 @@ def _strip_error_context(text: str | None) -> str:
         return ""
     # Keep first 500 chars — enough context, not enough to overflow
     return text[:500].replace("\n", " ").strip()
+
+
+# ─── Reflection Loop (Aider pattern) ─────────────────────────────────────────
+# After worker runs and produces changes, check for lint errors and re-run with
+# error context injected. Up to MAX_REFLECTION_RETRIES rounds.
+# Aider pattern: lint output → inject as message → retry. Not one-shot fix.
+
+MAX_REFLECTION_RETRIES = 3
+
+
+async def _run_lint_check(project_dir: Path) -> str:
+    """Run linters on changed files. Returns formatted lint output or empty string.
+
+    Checks: ruff (Python), shellcheck (Shell), tsc --noEmit (TypeScript/TSX).
+    Runs only on files that were actually modified.
+    """
+    # Get list of changed files via git
+    diff_proc = await asyncio.create_subprocess_exec(
+        "git", "diff", "--name-only", "HEAD",
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+        cwd=str(project_dir),
+    )
+    try:
+        stdout, _ = await asyncio.wait_for(diff_proc.communicate(), timeout=10)
+    except asyncio.TimeoutError:
+        diff_proc.kill()
+        return ""
+    changed = [f.strip() for f in stdout.decode().splitlines() if f.strip()]
+    if not changed:
+        return ""
+
+    lint_lines: list[str] = []
+
+    # Python: ruff (fastest, preferred) or pylint fallback
+    py_files = [f for f in changed if f.endswith(".py")]
+    if py_files:
+        ruff_proc = await asyncio.create_subprocess_exec(
+            "ruff", "check", *py_files,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            cwd=str(project_dir),
+        )
+        try:
+            out, err = await asyncio.wait_for(ruff_proc.communicate(), timeout=30)
+            if ruff_proc.returncode != 0 and out:
+                lint_lines.append("## Ruff (Python)\n")
+                lint_lines.append(out.decode(errors="replace"))
+        except asyncio.TimeoutError:
+            ruff_proc.kill()
+        # If ruff not available, try pylint
+        if not lint_lines:
+            pylint_proc = await asyncio.create_subprocess_exec(
+                "pylint", *py_files[:10],  # cap at 10 files
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                cwd=str(project_dir),
+            )
+            try:
+                out, err = await asyncio.wait_for(pylint_proc.communicate(), timeout=30)
+                if pylint_proc.returncode != 0 and out:
+                    lint_lines.append("## Pylint (Python)\n")
+                    lint_lines.append(out.decode(errors="replace")[:3000])
+            except asyncio.TimeoutError:
+                pylint_proc.kill()
+
+    # Shell: shellcheck
+    sh_files = [f for f in changed if f.endswith((".sh", ".bash"))]
+    if sh_files:
+        sc_proc = await asyncio.create_subprocess_exec(
+            "shellcheck", "-S", "warning", *sh_files,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            cwd=str(project_dir),
+        )
+        try:
+            out, err = await asyncio.wait_for(sc_proc.communicate(), timeout=30)
+            if out:
+                lint_lines.append("## ShellCheck (Shell)\n")
+                lint_lines.append(out.decode(errors="replace"))
+        except asyncio.TimeoutError:
+            sc_proc.kill()
+
+    # TypeScript/TSX: tsc --noEmit
+    ts_files = [f for f in changed if f.endswith((".ts", ".tsx"))]
+    if ts_files:
+        tsc_proc = await asyncio.create_subprocess_exec(
+            "npx", "tsc", "--noEmit",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            cwd=str(project_dir),
+        )
+        try:
+            out, err = await asyncio.wait_for(tsc_proc.communicate(), timeout=30)
+            if tsc_proc.returncode != 0 and (out or err):
+                lint_lines.append("## TypeScript (tsc --noEmit)\n")
+                lint_lines.append((out + err).decode(errors="replace")[:3000])
+        except asyncio.TimeoutError:
+            tsc_proc.kill()
+
+    result = "\n".join(lint_lines)
+    # Only return if there are actual lint errors (non-empty, non-"no errors" output)
+    if result and "error" in result.lower():
+        return result[:5000]  # cap at 5000 chars for context injection
+    return ""
+
+
+class LoopDetectionService:
+    """Detect behavioral loops within a worker run (Gemini CLI pattern).
+
+    Tracks:
+    - tool+args repetition: same tool called with same args ≥5×
+    - content repetition: same output hash seen ≥10×
+    - turn count: total LLM turns ≥30 (signals infinite loop without progress)
+
+    On detection, sets worker status to "blocked" with reason.
+    """
+
+    def __init__(self) -> None:
+        self._tool_args_counts: dict[str, int] = {}
+        self._content_hashes: dict[str, int] = {}
+        self._turn_count: int = 0
+        self._loop_detected: bool = False
+        self._loop_reason: str | None = None
+
+    def track_tool_call(self, tool: str, args: str) -> None:
+        """Record a tool call. Call from session tree or log parsing."""
+        key = f"{tool}:{args[:200]}"
+        self._tool_args_counts[key] = self._tool_args_counts.get(key, 0) + 1
+        if self._tool_args_counts[key] == 5:
+            self._loop_detected = True
+            self._loop_reason = f"repeated_tool_args:{tool} (seen {5} times)"
+
+    def track_content_hash(self, content: str) -> None:
+        """Record output content hash. Call after each tool result."""
+        if not content:
+            return
+        h = str(hash(content[:1000]))
+        self._content_hashes[h] = self._content_hashes.get(h, 0) + 1
+        if self._content_hashes[h] == 10:
+            self._loop_detected = True
+            self._loop_reason = f"repeated_content (same output seen {10} times)"
+
+    def track_turn(self) -> None:
+        """Increment turn counter. Call after each LLM assistant message."""
+        self._turn_count += 1
+        if self._turn_count >= 30 and not self._loop_detected:
+            self._loop_detected = True
+            self._loop_reason = f"excessive_turns:{self._turn_count}"
+
+    @property
+    def is_looping(self) -> bool:
+        return self._loop_detected
+
+    @property
+    def reason(self) -> str | None:
+        return self._loop_reason
+
+
+# ─── Condensers (OpenHands pattern) ──────────────────────────────────────────
+# Context compression strategies for large conversation histories.
+# Clade applies these at distillation time (large tool output) and can apply
+# them to build_task_file context when it grows large.
+
+from abc import ABC, abstractmethod
+
+
+class Condenser(ABC):
+    """Abstract base for context compression strategies."""
+
+    @abstractmethod
+    def condense(self, events: list[dict], **kwargs) -> list[dict]:
+        """Compress event list. Returns compressed list."""
+        ...
+
+
+class NoOpCondenser(Condenser):
+    """Pass through unchanged."""
+    def condense(self, events: list[dict], **kwargs) -> list[dict]:
+        return events
+
+
+class RecentEventsCondenser(Condenser):
+    """Keep only the last N events. Drop older ones."""
+    def __init__(self, keep: int = 50):
+        self.keep = keep
+
+    def condense(self, events: list[dict], **kwargs) -> list[dict]:
+        if len(events) <= self.keep:
+            return events
+        removed = len(events) - self.keep
+        summary = {
+            "type": "summary",
+            "role": "system",
+            "content": f"[{removed} earlier events omitted — showing last {self.keep}]",
+        }
+        return [summary] + events[-self.keep:]
+
+
+class LLMSummarizingCondenser(Condenser):
+    """Summarize older events with LLM. Keep recent events intact."""
+
+    def __init__(self, keep_recent: int = 20, summarize_older: bool = True):
+        self.keep_recent = keep_recent
+        self.summarize_older = summarize_older
+
+    async def _summarize(self, events: list[dict], project_dir: Path) -> str:
+        """Use haiku to summarize a list of events."""
+        import tempfile
+        events_text = "\n".join(
+            f"[{e.get('type','?')}] {e.get('content','')[:300]}"
+            for e in events[:50]
+        )
+        prompt = f"""Summarize this agent conversation history. Return a concise paragraph capturing:
+- What was accomplished
+- What errors or issues were encountered
+- What the current state is
+
+Conversation:\n{events_text[:3000]}\n\nSummary:"""
+
+        tmp = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".txt", prefix="clade-condense-", delete=False
+        )
+        tmp.write(prompt)
+        tmp.close()
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "claude", "-p", prompt,
+                "--model", "claude-haiku-4-5-20251001",
+                "--dangerously-skip-permissions", "--no-input-prompt",
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+                cwd=str(project_dir),
+            )
+            stdout_bytes, _ = await asyncio.wait_for(proc.communicate(), timeout=60)
+            summary = stdout_bytes.decode("utf-8", errors="replace").strip()
+            return summary[:500] if summary else "[no summary]"
+        except Exception:
+            return "[summarization failed]"
+        finally:
+            try:
+                os.unlink(tmp.name)
+            except OSError:
+                pass
+
+    def condense(self, events: list[dict], **kwargs) -> list[dict]:
+        if len(events) <= self.keep_recent:
+            return events
+        project_dir = kwargs.get("project_dir")
+        # Return placeholder — actual LLM summarization is async, call separately
+        older = events[:-self.keep_recent]
+        summary = {
+            "type": "summary",
+            "role": "system",
+            "content": f"[{len(older)} events summarized — async LLM condense pending]",
+        }
+        return [summary] + events[-self.keep_recent:]
+
+
+class ObservationMaskingCondenser(Condenser):
+    """Mask or truncate large observation/tool result content."""
+
+    def __init__(self, max_obs_bytes: int = 2000):
+        self.max_obs_bytes = max_obs_bytes
+
+    def condense(self, events: list[dict], **kwargs) -> list[dict]:
+        result = []
+        for e in events:
+            if e.get("type") in ("tool_result", "observation", "compaction"):
+                content = e.get("content", "")
+                if len(content.encode()) > self.max_obs_bytes:
+                    e = dict(e)
+                    e["content"] = (
+                        content[:self.max_obs_bytes]
+                        + f"\n[...output truncated by condenser ({len(content) - self.max_obs_bytes} bytes omitted)...]\n"
+                    )
+            result.append(e)
+        return result
 
 
 # ─── Tool Subsets per Task Type ────────────────────────────────────────────────
@@ -401,6 +675,9 @@ class Worker:
         self._ownership_violation_reason: str | None = None
         self._stuck_detected: bool = False
         self._terminal_persisted: bool = False
+        self._loop_detector = LoopDetectionService()
+        self._reflection_retries: int = 0
+        self._event_stream = EventStream(worker_id=self.id)
         self._input_tokens: int = 0
         self._output_tokens: int = 0
         self._estimated_cost: float = 0.0
@@ -444,6 +721,8 @@ class Worker:
             "input_tokens": self._input_tokens,
             "output_tokens": self._output_tokens,
             "estimated_cost": self._estimated_cost,
+            "loop_detected": self._loop_detector.is_looping,
+            "loop_reason": self._loop_detector.reason,
         }
 
     def _estimate_tokens(self) -> int:
@@ -503,6 +782,16 @@ class Worker:
         logs.mkdir(parents=True, exist_ok=True)
         self._log_path = logs / f"worker-{self.id}.log"
         self.log_file = str(self._log_path)
+
+        # Initialize EventStream JSONL path for crash-safe event logging
+        jsonl_path = logs / f"events-{self.id}.jsonl"
+        self._event_stream.set_jsonl_path(jsonl_path)
+        self._event_stream.emit(
+            event_type="state_change",
+            event_kind="state_change",
+            source="supervisor",
+            content={"state": "started", "task_id": self.task_id, "model": self.model},
+        )
 
         task_file = self._claude_dir / f"task-{self.id}.md"
         task_file.parent.mkdir(parents=True, exist_ok=True)
@@ -621,11 +910,64 @@ class Worker:
         except ProcessLookupError:
             self.pgid = self.proc.pid
         self.status = "running"
+        self._event_stream.emit(
+            event_type="action",
+            event_kind="tool_call",
+            source="worker",
+            content={"shell_cmd": shell_cmd[:500], "pid": self.pid},
+        )
 
     def is_alive(self) -> bool:
         if self.proc is None:
             return False
         return self.proc.returncode is None
+
+    def _get_activity_state(self) -> str:
+        """Determine activity state by reading Claude Code's JSONL session file.
+
+        Composio pattern: maps JSONL entry types to activity states.
+        Returns: 'active', 'waiting_input', 'blocked', or 'unknown'.
+        """
+        if not self._claude_dir:
+            return "unknown"
+        try:
+            # Claude Code session JSONL lives in ~/.claude/projects/{encoded-path}/
+            # Each session has a .jsonl file we can read
+            projects_dir = self._claude_dir.parent  # typically ~/.claude
+            if not projects_dir.exists():
+                return "unknown"
+            # Find the most recent session .jsonl for this project
+            import glob as _glob
+            session_pattern = str(projects_dir / "projects" / "*" / "sessions" / "*.jsonl")
+            jsonl_files = sorted(
+                _glob.glob(session_pattern),
+                key=lambda p: os.path.getmtime(p),
+                reverse=True,
+            )
+            if not jsonl_files:
+                return "unknown"
+            # Read last entry from most recent session file
+            with open(jsonl_files[0], "rb") as f:
+                f.seek(max(0, os.path.getsize(jsonl_files[0]) - 4096))
+                tail = f.read().decode("utf-8", errors="replace")
+            lines = tail.strip().splitlines()
+            if not lines:
+                return "unknown"
+            last_line = lines[-1]
+            entry = json.loads(last_line)
+            last_type = entry.get("type", "")
+            # Composio mapping
+            if last_type in ("tool_use", "user"):
+                return "active"
+            elif last_type in ("assistant", "summary", "result"):
+                return "waiting_input"
+            elif last_type == "error":
+                return "blocked"
+            elif last_type == "permission_request":
+                return "waiting_input"
+            return "unknown"
+        except Exception:
+            return "unknown"
 
     def pause(self) -> None:
         if self.pgid and self.is_alive():
@@ -688,6 +1030,15 @@ class Worker:
         except Exception:
             pass
 
+        # Track activity state via Claude Code JSONL (Composio pattern)
+        activity = self._get_activity_state()
+        self._event_stream.emit(
+            event_type="observation",
+            event_kind="llm_call",
+            source="worker",
+            content={"activity_state": activity},
+        )
+
     async def _cleanup_worktree(self) -> None:
         if not self._worktree_path:
             return
@@ -721,11 +1072,51 @@ class Worker:
                 })
             except Exception:
                 pass
+        # Emit completion event to EventStream
+        self._event_stream.emit(
+            event_type="state_change",
+            event_kind="state_change",
+            source="supervisor",
+            content={
+                "state": "done",
+                "status": self.status,
+                "verified": self.verified,
+                "elapsed_s": round(time.time() - self.started_at, 1),
+            },
+        )
         if self.status == "done":
             try:
-                await self.verify_and_commit()
+                verified = await self.verify_and_commit()
             except Exception:
                 logger.exception("verify_and_commit failed for worker %s", self.id)
+                verified = False
+            # Reflection loop (Aider pattern): if verification failed, run lint check and retry
+            if not verified and self._reflection_retries < MAX_REFLECTION_RETRIES:
+                try:
+                    lint_output = await _run_lint_check(self._project_dir)
+                    if lint_output:
+                        self._reflection_retries += 1
+                        logger.info(
+                            "Worker %s: reflection retry %d/%d — lint errors found, re-running with context",
+                            self.id, self._reflection_retries, MAX_REFLECTION_RETRIES
+                        )
+                        # Inject lint output as additional context and re-run
+                        retry_context = (
+                            f"\n\n---\n"
+                            f"**IMPORTANT: Previous attempt had lint/verification errors. Fix them.**\n\n"
+                            f"Lint output:\n{_strip_error_context(lint_output)}\n\n"
+                            f"Task: {self.description}\n"
+                        )
+                        # Re-run in the same worktree with lint context
+                        retry_success = await self._run_with_context(retry_context)
+                        if retry_success:
+                            self.status = "done"
+                            self._loop_detector._loop_detected = False  # reset loop detection on retry
+                            self._reflection_retries = 0  # reset on success
+                        else:
+                            self._reflection_retries += 0  # already incremented
+                except Exception:
+                    pass
         # Parse token usage from log
         if self._log_path and self._log_path.exists():
             try:
@@ -976,6 +1367,54 @@ class Worker:
             pass
         return self.auto_committed
 
+    async def _run_with_context(self, extra_context: str) -> bool:
+        """Re-run the worker with additional context injected (used by reflection loop).
+
+        Runs in the SAME worktree with a new task file that appends extra_context.
+        Returns True if the re-run succeeded (commit made).
+        """
+        if not self._project_dir or not self._worktree_path:
+            return False
+        task_file = self._claude_dir / f"task-{self.id}-retry{self._reflection_retries}.md"
+        retry_desc = self.description + f"\n\n{extra_context}"
+        task_file.write_text(retry_desc, encoding="utf-8")
+
+        shell_cmd, env = self._build_cmd_and_env(task_file)
+
+        # Append to existing log
+        log_fd = open(self._log_path, "a") if self._log_path else None
+        try:
+            self.proc = await asyncio.create_subprocess_shell(
+                shell_cmd,
+                stdout=log_fd,
+                stderr=log_fd,
+                preexec_fn=os.setsid,
+                env=env,
+                cwd=str(self._project_dir),
+            )
+            self.pid = self.proc.pid
+            self.status = "running"
+            self._finished_at = None
+            self.started_at = time.time()
+            # Wait for completion (simple wait, no polling)
+            try:
+                await asyncio.wait_for(self.proc.wait(), timeout=self.task_timeout)
+            except asyncio.TimeoutError:
+                self.proc.kill()
+                await self.proc.wait()
+            rc = self.proc.returncode if self.proc else -1
+            self.status = "done" if rc == 0 else "failed"
+            if log_fd:
+                log_fd.close()
+                log_fd = None
+            if self.status == "done":
+                return await self.verify_and_commit()
+            return False
+        except Exception:
+            if log_fd:
+                log_fd.close()
+            return False
+
 # ─── Task Ranking ─────────────────────────────────────────────────────────────
 
 
@@ -1094,6 +1533,62 @@ class WorkerPool:
         await task_queue.update(task["id"], status="running", worker_id=worker.id)
         await worker.start(task_queue=task_queue)
         return worker
+
+    async def _handoff_to_worker(
+        self,
+        parent_task: dict,
+        task_queue: TaskQueue,
+        project_dir: Path,
+        claude_dir: Path,
+    ) -> Worker | None:
+        """Spawn a child worker from a typed handoff (Codex SDK pattern).
+
+        The parent task has handoff_type (str) and handoff_payload (dict) fields.
+        The child worker is spawned with the handoff context injected into its description.
+        """
+        handoff_type = parent_task.get("handoff_type")
+        handoff_payload = parent_task.get("handoff_payload")
+
+        if not handoff_type or not handoff_payload:
+            return None
+
+        # Build typed handoff description
+        handoff_desc = (
+            f"[Handoff: {handoff_type}]\n\n"
+            f"**Handoff Type:** {handoff_type}\n"
+            f"**Handoff Payload:**\n```json\n{json.dumps(handoff_payload, indent=2)}\n```\n\n"
+            f"**Parent Task:** {parent_task.get('description', 'N/A')}\n\n"
+            f"## Instructions\n"
+            f"Process this typed handoff. The payload contains structured context from the parent worker.\n"
+            f"Resume work based on the payload. Use /pickup if available, otherwise continue from the handoff state."
+        )
+
+        # Create continuation task
+        child_desc = (
+            f"{parent_task.get('description', '')}\n\n"
+            f"---\n"
+            f"**Typed Handoff ({handoff_type}):**\n"
+            f"{json.dumps(handoff_payload, indent=2)}\n"
+        )
+
+        model = parent_task.get("model", GLOBAL_SETTINGS.get("default_model", "sonnet"))
+        model = _MODEL_ALIASES.get(model, model)
+
+        # Add as new task
+        new_task_id = await task_queue.add(
+            child_desc,
+            model,
+            own_files=parent_task.get("own_files", []),
+            forbidden_files=parent_task.get("forbidden_files", []),
+            parent_task_id=parent_task.get("id"),
+        )
+
+        # Get the new task and spawn worker
+        new_task = await task_queue.get(new_task_id)
+        if not new_task:
+            return None
+
+        return await self.start_worker(new_task, task_queue, project_dir, claude_dir)
 
     def get(self, worker_id: str) -> Worker | None:
         return self.workers.get(worker_id)
