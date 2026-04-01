@@ -1022,3 +1022,40 @@ Sequential `await verify_and_commit(); await _cleanup_worktree()` completely clo
 - CLI loop vs web UI loop: CLI safer for self-modification (script external to codebase); web UI better for parallel workers + real-time monitoring
 - The skill's context enrichment step is where it adds value over raw bash — the skill session has full codebase context that background `claude -p` calls lack
 - `unset CLAUDECODE` allows nested claude calls from within a Claude Code session
+
+---
+
+### 2026-03-31 — All 11 Research Gaps Implemented
+
+**What was done:**
+Implemented all 11 research gap items discovered via EVALUATION-STANDARD bidirectional code-vs-research comparison across 17 deep-dive docs.
+
+**Files created:**
+- `orchestrator/event_stream.py` — EventStream class, WorkerEvent dataclass, JSONL crash-safe append, causal chain building
+- `orchestrator/tracing.py` — Span, Tracer, TracingService with JSON spans (not OpenTelemetry)
+- `orchestrator/reactions.py` — ReactionConfig, ReactionExecutor, Reaction with threshold/window/cooldown
+
+**Files modified:**
+- `orchestrator/worker.py` (+496 lines): Reflection Loop (`_run_lint_check()`, `_run_with_context()`), LoopDetectionService, Condenser ABC + 4 implementations, `_get_activity_state()` JSONL parsing, EventStream integration
+- `orchestrator/config.py`: `handoff_type`/`handoff_payload` in `_ALLOWED_TASK_COLS`, `reaction_configs` in settings, `reactions_enabled`
+- `orchestrator/task_queue.py`: ALTER TABLE for `handoff_type` + `handoff_payload` columns
+- `orchestrator/server.py`: `POST /api/interrupt` + `POST /api/interrupt/resume` endpoints
+- `configs/scripts/loop-runner.sh` (+187 lines): `node_parse_todo()` with `_From:` provenance, `node_verify()` with JSON parsing, `check_interrupt()` polling breakpoints, `--interrupt` flag
+- `VERIFY.md`: date update
+- `TODO.md`: all 11 research gap items checked off
+
+**Commits (5 total, all pushed):**
+1. `c31a455` feat(orchestrator): add EventStream, Tracing, and Reaction System infrastructure
+2. `94fa8fb` feat(worker): add Reflection Loop, LoopDetectionService, Condensers, JSONL activity, EventStream
+3. `c9ce328` feat(orchestrator): add Typed Worker Handoffs and Interrupt API endpoints
+4. `63569bc` feat(loop): add TODO provenance, Formal Verify phase, and Interrupt breakpoints
+5. `9553f4b` docs: mark all 11 research gaps as completed in TODO.md
+
+**Verification:** 19/19 pytest tests pass, all Python modules compile, all shell scripts pass `bash -n`
+
+**Lessons:**
+- Reflection Loop works best when lint output is specific (file:line:col format) — workers can inject it as precise context
+- EventStream JSONL append is crash-safe: write before appending to `_pending_events` ensures no event loss on crash
+- Condensers are additive over TLDR: TLDR distills output, condensers compress conversation history
+- TracingService uses simple JSON not OpenTelemetry to avoid dep bloat and keep it lightweight
+- Interrupt breakpoints via `.claude/interrupt-state.json` polling is simpler than signal-based approaches
