@@ -32,6 +32,8 @@ from session_tree import SessionTree
 from worker_tldr import _generate_code_tldr
 from worker_review import _oracle_review
 from event_stream import EventStream
+from tracing import TracingService, start_task_span, start_llm_span, end_llm_span, start_tool_span, end_tool_span
+from reactions import ReactionExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -678,9 +680,12 @@ class Worker:
         self._loop_detector = LoopDetectionService()
         self._reflection_retries: int = 0
         self._event_stream = EventStream(worker_id=self.id)
+        self._tracer = TracingService.get_instance().get_or_create_tracer(self.id)
+        self._reaction_executor = ReactionExecutor()
         self._input_tokens: int = 0
         self._output_tokens: int = 0
         self._estimated_cost: float = 0.0
+        self._task_span: Any = None
 
     @property
     def elapsed_s(self) -> int:
@@ -916,6 +921,8 @@ class Worker:
             source="worker",
             content={"shell_cmd": shell_cmd[:500], "pid": self.pid},
         )
+        # Start task span for tracing
+        self._task_span = start_task_span(self.id, self.description, self.task_id)
 
     def is_alive(self) -> bool:
         if self.proc is None:
@@ -1039,6 +1046,21 @@ class Worker:
             content={"activity_state": activity},
         )
 
+        # Track turn for loop detection (Gemini CLI pattern)
+        self._loop_detector.track_turn()
+
+        # Emit activity to reaction executor
+        triggered = self._reaction_executor.record_event(
+            "state_change",
+            event_name=f"poll:{activity}",
+            event_content=activity,
+        )
+        for reaction in triggered:
+            logger.warning(
+                "Worker %s reaction triggered: %s — %s",
+                self.id, reaction.config.name, reaction.message
+            )
+
     async def _cleanup_worktree(self) -> None:
         if not self._worktree_path:
             return
@@ -1084,6 +1106,26 @@ class Worker:
                 "elapsed_s": round(time.time() - self.started_at, 1),
             },
         )
+        # Record completion in reaction executor
+        if self.status == "failed" and self.failure_context:
+            triggered = self._reaction_executor.record_event(
+                "error",
+                event_name="worker_failed",
+                event_content=self.failure_context[:500],
+            )
+            for reaction in triggered:
+                logger.warning("Worker %s reaction: %s — %s", self.id, reaction.config.name, reaction.message)
+        elif self.status == "done":
+            self._reaction_executor.record_event("state_change", event_name="worker_done")
+
+        # End tracing span
+        if self._task_span:
+            svc = TracingService.get_instance()
+            svc.end_span(self.id, self._task_span,
+                         status="ok" if self.status == "done" else "error")
+            svc.write_trace(self.id)
+            self._task_span = None
+
         if self.status == "done":
             try:
                 verified = await self.verify_and_commit()
