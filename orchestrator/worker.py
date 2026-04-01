@@ -662,6 +662,8 @@ class Worker:
         self._oracle_requeue_reason: str | None = None
         self._handoff_requeue: bool = False
         self._handoff_content: str | None = None
+        self._handoff_type: str | None = None   # typed handoff (Codex SDK pattern)
+        self._handoff_payload: dict | None = None
         self.model_score: int | None = None
         self.branch_name: str | None = None
         self.pr_url: str | None = None
@@ -1571,6 +1573,10 @@ class WorkerPool:
         worker.task_timeout = task.get("timeout", 600)
         worker.own_files = task.get("own_files", [])
         worker.forbidden_files = task.get("forbidden_files", [])
+        # Typed handoff fields (Codex SDK pattern)
+        if task.get("handoff_type"):
+            worker._handoff_type = task["handoff_type"]
+            worker._handoff_payload = task.get("handoff_payload")
         self.workers[worker.id] = worker
         await task_queue.update(task["id"], status="running", worker_id=worker.id)
         await worker.start(task_queue=task_queue)
@@ -1768,6 +1774,20 @@ class WorkerPool:
                     await task_queue.add(continuation_desc, w.model,
                                         own_files=w.own_files, forbidden_files=w.forbidden_files)
                     logger.info("Handoff task %s → continuation queued", w.task_id)
+                # Typed worker handoff (Codex SDK pattern) — spawn child worker on completion
+                if w._handoff_type and w._handoff_payload and w.status == "done":
+                    parent_task = await task_queue.get(w.task_id)
+                    if parent_task:
+                        try:
+                            await self._handoff_to_worker(
+                                parent_task, task_queue, w._project_dir, w._claude_dir
+                            )
+                            logger.info(
+                                "Typed handoff %s → child worker spawned for task %s",
+                                w._handoff_type, w.task_id
+                            )
+                        except Exception:
+                            logger.exception("Handoff to worker failed for task %s", w.task_id)
             else:
                 await task_queue.update(
                     w.task_id,
