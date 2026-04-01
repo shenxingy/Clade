@@ -356,6 +356,51 @@ async def cancel_loop(session_id: str):
     return {"ok": True}
 
 
+@app.post("/api/interrupt")
+async def interrupt_loop(payload: dict | None = None):
+    """Write interrupt state file for loop runner to pick up (LangGraph pattern).
+
+    The interrupt-state.json file signals the Blueprint loop to pause at its
+    next checkpoint, write human review context, and wait for a resume signal.
+    """
+    import json
+    from pathlib import Path
+
+    session_id = payload.get("session_id") if payload else None
+    reason = payload.get("reason", "human_review") if payload else "human_review"
+
+    interrupt_path = Path(".claude/interrupt-state.json")
+    interrupt_path.parent.mkdir(parents=True, exist_ok=True)
+
+    state = {
+        "interrupted": True,
+        "reason": reason,
+        "session_id": session_id,
+        "timestamp": time.time(),
+    }
+    interrupt_path.write_text(json.dumps(state, indent=2))
+
+    # Also write a per-session interrupt for the orchestrator loop
+    if session_id:
+        session_interrupt = Path(f".claude/sessions/{session_id}/interrupt.json")
+        session_interrupt.parent.mkdir(parents=True, exist_ok=True)
+        session_interrupt.write_text(json.dumps(state, indent=2))
+
+    return {"ok": True, "interrupt_file": str(interrupt_path)}
+
+
+@app.post("/api/interrupt/resume")
+async def resume_from_interrupt():
+    """Clear interrupt state and signal loop to resume (LangGraph pattern)."""
+    from pathlib import Path
+
+    interrupt_path = Path(".claude/interrupt-state.json")
+    if interrupt_path.exists():
+        interrupt_path.unlink()
+
+    return {"ok": True}
+
+
 @app.get("/api/sessions/{session_id}/loop/sources")
 async def get_loop_sources(session_id: str):
     s = registry.get(session_id)
