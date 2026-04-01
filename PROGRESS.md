@@ -1,6 +1,80 @@
 # Progress Log
 
 ---
+### 2026-03-30 ~ 2026-03-31 — Research Program + Blueprint Loop + Web UI Rewrite
+
+**Two-day intensive: 17 new research docs + 3 feature implementations + full web UI rewrite.**
+
+#### Web UI — React + TypeScript + Vite rewrite (54ebf26 → ba56d1d)
+
+Vanilla JS → React 19 + TypeScript + Vite + Tailwind v4. Zero new functionality, pure quality-of-life improvement for the developer experience.
+
+- **24 new files, 968 lines added, 385 lines removed** (old vanilla JS removed)
+- `server.py`: serves `orchestrator/web/dist/` when available (Vite build), falls back to legacy `web/` — zero downtime, opt-in
+- Typed API client (`lib/api.ts`), full TypeScript types (`lib/types.ts`), Zustand session store
+- WebSocket hook reuses existing `/ws` endpoint, type-safe throughout
+- Layout: Header / Sidebar / UsageBar; Components: TaskBoard / TaskCard / WorkerCard / WorkerList / StatusBadge / ModelBadge
+
+#### Blueprint Loop — loop-runner.sh as state machine (66b33d2 → 41bf9c9)
+
+Complete rewrite of `loop-runner.sh` from sequential script → Blueprint state machine:
+
+```
+[DET] PRE  →  [LLM] supervisor  →  [LLM] workers  →  [DET/LLM] POST
+```
+
+Phase 1 (`66b33d2`): Core state machine structure.
+Phase 2 (`41bf9c9`): PRE deterministic nodes, convergence detection, mid-iteration fix (Stripe pattern — fix → re-test before declaring failure).
+
+#### Orchestrator Features (3 major commits)
+
+**MCP Server** (`c1cc435`): `orchestrator/mcp_server.py` exposes installed skills as MCP tools via Python `mcp` SDK (stdio transport). Skills load from `~/.claude/skills/`, advertised as `clade_<name>`. Execution via `claude -p` subprocess with `--dangerously-skip-permissions`. `install.sh` updated to install `mcp` package and print setup instructions.
+
+**Stripe Blueprint Patterns** (`62a10d3`): Three additions to `worker.py` + new `session_tree.py`:
+- **Pre-hydration** (`_pre_hydrate()`): Before agent starts, deterministically fetch GitHub issues/PRs via `gh CLI` and inject into task file — Stripe Blueprint pattern
+- **Tool subsets** (`_TOOL_SUBSETS`): `review` type restricts Edit/Write tools; `fix` type restricts to targeted toolset — via Claude Code `--allowed-tools` flag
+- **SessionTree** (`session_tree.py`): Append-only JSONL per worker, Pi Coding Agent pattern with `parentId` branching, supports replay and crash recovery
+
+**LLM Output Distillation** (`2e0932c`): When worker output exceeds 200KB, use haiku to extract key facts (errors, file paths, conclusions) instead of truncation. Full output preserved in temp file; distilled summary written to log in-place for supervisor context. Significantly better than head+tail truncation for preserving actionable error details.
+
+#### Goal File Dependencies (748577a)
+
+`configs/scripts/resolve-goal-deps.py`: Goose-style `includes:` with recursive resolution and `{{variable}}` substitution. Frontmatter arrays (`requirements`, `success_criteria`) concatenate across includes; body sections append. Cycle detection via `seen` set, values scoped per-include (no cross-boundary leakage). `loop/prompt.md` pre-processes goal files before use.
+
+#### Research Program — 17 deep-dive docs + taxonomy system
+
+**Added 17 research docs** tagged with: `integrated` / `needs_work` / `reference` (mutually exclusive).
+
+Key finding — **7 genuine gaps** (noted for future implementation):
+1. **Reflection Loop** (Aider) — lint errors injected as new message, retry up to 3x
+2. **Structured TODO provenance** (Kiro) — TODO items with `_From: GOALS.md §X.Y` source links
+3. **Behavioral LoopDetectionService** (Gemini) — detects repeated tool+args ≥5×, content repetition ≥10×
+4. **EventStream architecture** (OpenHands) — crash recovery via event log replay
+5. **9 Condenser types** (OpenHands) — structured context compression strategies
+6. **Typed worker handoffs** (Codex SDK) — task-level structured context passing between workers
+7. **Formal Verify phase** (Junie) — dedicated Verify node with IDE inspection feedback
+
+**EVALUATION-STANDARD** method: bidirectional equality — Clade and research are equals, whoever is better wins. 5-step workflow: verify code → read research → item-by-item comparison → gap confirmed → modify code → verify.
+
+**Status corrections** (7 docs had wrong status/tags):
+- 6 docs had duplicate `reference_items:` YAML blocks → deduplicated
+- 4 docs had `status: reference` but genuine `needs_work_items` → corrected to `needs_work`
+- 1 doc had erroneous `integrated_items` ("Sandbox isolation — not applicable") → removed
+- 1 doc had impression-based `integrated` claim (LoopDetectionService) → corrected after code verification
+
+#### Skills & Scripts
+
+- `install.sh`: generates `available_skills.md` from all installed `SKILL.md` files at install time
+- macOS compatibility: `sha256sum`/`stat`/`timeout` fallbacks added to `session-context.sh`, `loop-runner.sh`, `install.sh`, `start.sh`
+- `claude-usage-watch.py`: reads OAuth token from macOS Keychain
+- `/handoff` skill: upgraded to structured format with Goal / Constraints / Progress (Done/In Progress/Blocked) / Key Decisions / Next Steps
+
+**Lessons:**
+- Research docs processed by subagent (9bd7260) need individual verification — errors propagate
+- Impression-based gap identification ("I think Clade has this") is wrong; always trace specific code before claiming integrated
+- Status must match content: `needs_work` docs had `status: reference` in multiple cases
+
+---
 ### 2026-03-27 — pua philosophy integration (final state after review)
 
 **What was kept:**
