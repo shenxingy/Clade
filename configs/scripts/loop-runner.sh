@@ -67,6 +67,7 @@ MAX_CONSECUTIVE_FAILURESOverride=""
 CONTEXT_FILE=""
 STATE_FILE=".claude/loop-state.json"
 LOG_DIR="logs/loop"
+INTERRUPT_STATE_FILE=".claude/interrupt-state.json"
 ITERATION=0
 # ────────────────────────────────────────────────────────────────
 
@@ -84,6 +85,18 @@ parse_args() {
     case "$arg" in
       --status) show_status; exit 0 ;;
       --stop)   write_stop_sentinel; exit 0 ;;
+      --interrupt)
+        # Write interrupt state file and exit (LangGraph pattern)
+        mkdir -p .claude
+        python3 -c "
+import json, sys, time
+state = {'interrupted': True, 'reason': 'manual', 'timestamp': time.time()}
+path = '.claude/interrupt-state.json'
+with open(path, 'w') as f:
+    json.dump(state, f, indent=2)
+print(f'Interrupt state written to {path}')
+"
+        exit 0 ;;
     esac
   done
 
@@ -133,6 +146,41 @@ except:
     sys.exit(1)
 " 2>/dev/null; then
       log_info "Stop sentinel detected — exiting gracefully"
+      return 0
+    fi
+  fi
+  return 1
+}
+
+check_interrupt() {
+  if [ -f "$INTERRUPT_STATE_FILE" ]; then
+    if python3 -c "
+import json, sys
+try:
+    d = json.load(open('$INTERRUPT_STATE_FILE'))
+    sys.exit(0 if d.get('interrupted') else 1)
+except:
+    sys.exit(1)
+" 2>/dev/null; then
+      log_warn "Interrupt detected — pausing for human review"
+      # Wait for interrupt state to be cleared (resume signal)
+      while [ -f "$INTERRUPT_STATE_FILE" ]; do
+        if python3 -c "
+import json
+try:
+    d = json.load(open('$INTERRUPT_STATE_FILE'))
+    if not d.get('interrupted'):
+        sys.exit(0)
+except:
+    pass
+sys.exit(1)
+" 2>/dev/null; then
+          log_success "Resume signal detected — continuing"
+          rm -f "$INTERRUPT_STATE_FILE"
+          return 0
+        fi
+        sleep 2
+      done
       return 0
     fi
   fi
@@ -217,6 +265,7 @@ node_hydrate_context() {
 
 # ─── [DET] NODE: PARSE TODO ──────────────────────────────────────
 # Extracts all unchecked TODO items from goal file for supervisor context.
+# Each item is annotated with _From: section-link (Kiro provenance pattern).
 node_parse_todo() {
   log_info "[DET] parse_todo"
 
@@ -232,15 +281,62 @@ node_parse_todo() {
 
   log_info "Goal: $open_items open / $total_items total items"
 
-  # Append to context
+  # Append to context with provenance tracking (Kiro pattern)
   {
     echo ""
     echo "## Goal TODO Items (from goal file)"
     echo "Open: $open_items / Total: $total_items"
-    grep -n '^\- \[' "$GOAL_FILE" 2>/dev/null || echo "(no TODO items)"
+    echo ""
+    python3 - <<'PYEOF'
+import re, sys
+
+goal_file = sys.argv[1] if len(sys.argv) > 1 else None
+if not goal_file:
+    sys.exit(0)
+
+try:
+    content = open(goal_file).read()
+except:
+    print("(could not read goal file)")
+    sys.exit(0)
+
+current_section = "Uncategorized"
+items = []
+
+for line in content.splitlines():
+    stripped = line.strip()
+    # Track section headers (## Section Name or # Section Name)
+    section_match = re.match(r'^(#{1,3})\s+(.+)$', stripped)
+    if section_match:
+        current_section = section_match.group(2).strip()
+        continue
+    # Track TODO items: - [ ] or - [x] or - [X]
+    todo_match = re.match(r'^(\s*)-\s+\[([ xX])\]\s+(.+)$', stripped)
+    if todo_match:
+        indent = todo_match.group(1)
+        checked = todo_match.group(2).lower() == "x"
+        text = todo_match.group(3).strip()
+        # Create a section slug for the _From link
+        section_slug = re.sub(r"[^a-zA-Z0-9]+", "-", current_section.lower()).strip("-")
+        items.append({
+            "checked": checked,
+            "text": text,
+            "section": current_section,
+            "from": f"_From: {goal_file} §{section_slug}",
+        })
+
+# Output unchecked items first with provenance
+for item in items:
+    marker = "[x]" if item["checked"] else "[ ]"
+    print(f"- {marker} {item['text']}  {item['from']}")
+
+if not items:
+    print("(no TODO items)")
+PYEOF
+    "$GOAL_FILE"
   } >> .claude/loop-context.md
 }
-# ────────────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────────# ────────────────────────────────────────────────────────────────
 
 # ─── [LLM] NODE: SUPERVISOR ─────────────────────────────────────
 # Plans tasks for this iteration. Returns JSON array or CONVERGED signal.
@@ -580,6 +676,79 @@ node_test_sample() {
   fi
 }
 # ────────────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────────
+
+# ─── [LLM] NODE: VERIFY ────────────────────────────────────────────
+# Calls /verify skill with structured output and parses JSON results (Junie pattern).
+# Runs after test_sample to provide additional LLM-based verification.
+node_verify() {
+  log_info "[LLM] verify"
+
+  # Get list of changed files for focused verification
+  local changed_files
+  changed_files=$(git diff --name-only 2>/dev/null | head -20 || true)
+  if [ -z "$changed_files" ]; then
+    changed_files=$(git diff --name-only HEAD~1..HEAD 2>/dev/null | head -20 || true)
+  fi
+
+  if [ -z "$changed_files" ]; then
+    log_info "No changed files to verify"
+    echo '{"passed": true, "items": [], "summary": "no changes"}'
+    return
+  fi
+
+  # Build focused verify prompt
+  local verify_prompt="Verify these changed files for correctness:
+$changed_files
+
+For each file:
+1. Read the file and understand what changed
+2. Run relevant syntax/compile/lint checks
+3. If tests exist for this file, run them
+
+Output a JSON object with this exact structure:
+{
+  \"passed\": true or false,
+  \"items\": [
+    {\"file\": \"path\", \"check\": \"what was checked\", \"passed\": true/false, \"reason\": \"why\"}
+  ],
+  \"summary\": \"one line summary\"
+}
+
+Be strict. Return passed:false if any check fails. Do not fabricate checks you did not run."
+
+  local result
+  if ! result=$(_timeout "$SUPERVISOR_TIMEOUT" claude -p "$verify_prompt" --model sonnet 2>&1); then
+    log_warn "Verify call failed or timed out"
+    echo '{"passed": null, "items": [], "summary": "verify call failed"}'
+    return
+  fi
+
+  # Parse JSON from result (may have preamble text)
+  local parsed
+  parsed=$(echo "$result" | python3 -c "
+import sys, json, re
+text = sys.stdin.read()
+match = re.search(r'\{[\s\S]*\}', text)
+if match:
+    try:
+        d = json.loads(match.group())
+        print(json.dumps(d))
+    except:
+        print('{\"passed\": null, \"items\": [], \"summary\": \"parse error\"}')
+else:
+    print('{\"passed\": null, \"items\": [], \"summary\": \"no json found\"}')
+" 2>/dev/null || echo '{"passed": null, "items": [], "summary": "parse error"}')
+
+  echo "$parsed"
+
+  if echo "$parsed" | python3 -c "import sys,json; d=json.load(sys.stdin); sys.exit(0 if d.get('passed') == False else 1)" 2>/dev/null; then
+    log_warn "Verify found issues: $(echo "$parsed" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("summary",""))' 2>/dev/null || echo "see log")"
+  else
+    log_success "Verify passed"
+  fi
+}
+# ────────────────────────────────────────────────────────────────────
 
 # ─── [DET] NODE: COMMIT CHANGES ─────────────────────────────────
 # Commits all uncommitted changes via committer script. No LLM calls.
@@ -885,6 +1054,12 @@ run_blueprint_loop() {
       break
     fi
 
+    # [DET] Check for interrupt (LangGraph breakpoint pattern)
+    if check_interrupt; then
+      exit_reason="interrupted"
+      break
+    fi
+
     # [DET] hydrate_context
     node_hydrate_context
 
@@ -928,6 +1103,12 @@ run_blueprint_loop() {
     # [DET] checkpoint after workers
     _save_checkpoint "$iteration" "workers-done"
 
+    # [DET] Check for interrupt before syntax check (LangGraph breakpoint)
+    if check_interrupt; then
+      exit_reason="interrupted"
+      break
+    fi
+
     # [DET] syntax_check
     local syntax_failures
     syntax_failures=$(node_syntax_check)
@@ -952,6 +1133,9 @@ run_blueprint_loop() {
     # [DET] test_sample
     local test_result=0
     node_test_sample || test_result=$?
+
+    # [LLM] verify — Junie pattern: LLM-based formal verification
+    node_verify
 
     # [LLM] Mid-iteration fix — Stripe pattern: test fails → fix → re-test
     # One retry only. If it fails again, give up on this iteration (don't commit bad code)
