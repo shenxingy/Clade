@@ -3,7 +3,7 @@
 <!-- Legend: ✅ pass  ❌ fail  ⚠ known limitation  ⬜ not yet tested -->
 
 **Project type:** cli + skill-system + orchestrator (FastAPI)
-**Last full pass:** 2026-03-30
+**Last full pass:** 2026-03-31
 **Coverage:** 49 ✅, 0 ❌, 4 ⚠, 0 ⬜ untested
 
 ---
