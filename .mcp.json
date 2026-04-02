@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "clade": {
+      "command": "/home/alexshen/projects/clade/orchestrator/.venv/bin/python",
+      "args": ["/home/alexshen/projects/clade/orchestrator/mcp_server.py"]
+    }
+  }
+}
