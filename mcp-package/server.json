@@ -1,0 +1,22 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.shenxingy/clade",
+  "description": "29 AI coding skills as MCP tools — autonomous commits, goal-driven loops, code reviews, incident response, security audits, architecture mapping, and more. Part of the Clade autonomous coding framework.",
+  "repository": {
+    "url": "https://github.com/shenxingy/clade",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "clade-mcp",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "runtime": "python",
+      "runtimeArgs": ["-m", "clade_mcp"]
+    }
+  ]
+}
