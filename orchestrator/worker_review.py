@@ -173,13 +173,15 @@ _ORACLE_CHUNK_SIZE = 2500  # chars per diff chunk (Qodo §Gap3: chunked review f
 _ORACLE_PROMPT_TEMPLATE = (
     "You are an independent code reviewer. Review the diff against the task description.\n"
     "Respond with ONLY a JSON object — no preamble, no markdown. Format:\n"
-    '{{"decision":"APPROVED","dimensions":{{"correctness":"pass","completeness":"pass",'
-    '"code_quality":"pass"}},"fix_guidance":""}}\n'
+    '{{"decision":"APPROVED","confidence":"high",'
+    '"dimensions":{{"correctness":"pass","completeness":"pass","code_quality":"pass"}},'
+    '"fix_guidance":""}}\n'
     "OR for rejection:\n"
-    '{{"decision":"REJECTED","dimensions":{{"correctness":"fail — <why>",'
-    '"completeness":"warn — <what missing>","code_quality":"pass"}},'
-    '"fix_guidance":"<one specific actionable fix>"}}\n\n'
+    '{{"decision":"REJECTED","confidence":"high|medium|low",'
+    '"dimensions":{{"correctness":"fail — <why>","completeness":"warn — <what missing>",'
+    '"code_quality":"pass"}},"fix_guidance":"<one specific actionable fix>"}}\n\n'
     "Dimension values: 'pass', 'fail — <reason>', or 'warn — <reason>'.\n"
+    "confidence: 'high' (clear violation), 'medium' (likely issue), 'low' (style preference).\n"
     "fix_guidance: empty string if APPROVED, else ONE concrete fix instruction.\n\n"
     "Task: {task}\n\nDiff:\n{diff}"
 )
@@ -215,11 +217,13 @@ async def _oracle_review_chunk(
             approved = data.get("decision", "").upper() == "APPROVED"
             fix_guidance = data.get("fix_guidance", "")
             dims = data.get("dimensions", {})
+            confidence = data.get("confidence", "medium")
             if not approved and fix_guidance:
-                reason = fix_guidance[:200]
+                # Include confidence level in reason for prioritization
+                reason = f"[{confidence}] {fix_guidance}"[:200]
             elif not approved:
                 fails = [f"{k}: {v}" for k, v in dims.items() if not str(v).startswith("pass")]
-                reason = "; ".join(fails)[:200] if fails else "oracle rejected"
+                reason = f"[{confidence}] " + "; ".join(fails)[:180] if fails else "oracle rejected"
             else:
                 reason = "approved"
             return approved, reason
@@ -283,18 +287,18 @@ async def _oracle_review(task_description: str, diff_text: str, claude_dir: Path
             out = b""
         raw = out.decode().strip()
 
-        # Try to parse structured JSON response (Self-RAG pattern)
+        # Try to parse structured JSON response (Self-RAG + Qodo confidence pattern)
         try:
             data = json.loads(raw)
             approved = data.get("decision", "").upper() == "APPROVED"
             fix_guidance = data.get("fix_guidance", "")
             dims = data.get("dimensions", {})
+            confidence = data.get("confidence", "medium")
             if not approved and fix_guidance:
-                reason = fix_guidance[:200]
+                reason = f"[{confidence}] {fix_guidance}"[:200]
             elif not approved:
-                # Format dimension failures as compact reason
                 fails = [f"{k}: {v}" for k, v in dims.items() if not str(v).startswith("pass")]
-                reason = "; ".join(fails)[:200] if fails else "oracle rejected"
+                reason = f"[{confidence}] " + "; ".join(fails)[:180] if fails else "oracle rejected"
             else:
                 reason = "approved"
             return approved, reason
