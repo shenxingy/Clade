@@ -178,6 +178,17 @@
                     }
                 ]
             }
+        ],
+        "PermissionRequest": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "~/.claude/hooks/permission-request.sh",
+                        "timeout": 5
+                    }
+                ]
+            }
         ]
     }
 }
