@@ -405,8 +405,8 @@ class Worker:
         # Multi-agent Gap 3: inject task schema (acceptance criteria + contracts) if present.
         _schema_block = _format_task_schema_block(_parse_task_schema(self.description))
 
-        # AutoCodeRover §Gap2: for fix tasks, inject explicit two-phase exploration
-        # directive. Phase 1: read and understand. Phase 2: minimal targeted patch.
+        # AutoCodeRover §Gap2 + ECC strategic-compact: for fix tasks, inject explicit
+        # two-phase directive with phase-boundary checkpoint (not arbitrary token count).
         _fix_two_phase = ""
         if _parse_task_type(self.description) == "fix":
             _fix_two_phase = (
@@ -415,8 +415,10 @@ class Worker:
                 "**Phase 1 — Explore first (make NO code changes):**\n"
                 "1. Read the suspect files identified above\n"
                 "2. Trace the execution path to the root cause\n"
-                "3. Identify the exact 1-5 lines that need to change\n\n"
-                "**Phase 2 — Patch (after exploration):**\n"
+                "3. Identify the exact 1-5 lines that need to change\n"
+                "4. **Phase boundary**: write your findings to `.claude/ctx-checkpoint.md` "
+                "before making any edits (root cause, affected lines, intended fix).\n\n"
+                "**Phase 2 — Patch (after checkpoint written):**\n"
                 "1. Make the minimal targeted change — prefer 1-3 line edits\n"
                 "2. Verify the reproduction test passes (if provided above)\n"
                 "3. Run lint before committing\n"
