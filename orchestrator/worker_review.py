@@ -175,16 +175,53 @@ _ORACLE_PROMPT_TEMPLATE = (
     "Respond with ONLY a JSON object — no preamble, no markdown. Format:\n"
     '{{"decision":"APPROVED","confidence":"high",'
     '"dimensions":{{"correctness":"pass","completeness":"pass","code_quality":"pass"}},'
-    '"fix_guidance":""}}\n'
+    '"findings":[],"fix_guidance":""}}\n'
     "OR for rejection:\n"
     '{{"decision":"REJECTED","confidence":"high|medium|low",'
     '"dimensions":{{"correctness":"fail — <why>","completeness":"warn — <what missing>",'
-    '"code_quality":"pass"}},"fix_guidance":"<one specific actionable fix>"}}\n\n'
+    '"code_quality":"pass"}},'
+    '"findings":['
+    '{{"dimension":"correctness","severity":"error","fix_suggestion":"<specific fix 1>"}},'
+    '{{"dimension":"code_quality","severity":"warning","fix_suggestion":"<specific fix 2>"}}'
+    '],'
+    '"fix_guidance":"<overall summary of changes needed>"}}\n\n'
     "Dimension values: 'pass', 'fail — <reason>', or 'warn — <reason>'.\n"
     "confidence: 'high' (clear violation), 'medium' (likely issue), 'low' (style preference).\n"
-    "fix_guidance: empty string if APPROVED, else ONE concrete fix instruction.\n\n"
+    "findings: ordered list of issues, most critical first. severity: 'error'|'warning'|'info'.\n"
+    "fix_guidance: empty string if APPROVED, else summary of all needed changes.\n\n"
     "Task: {task}\n\nDiff:\n{diff}"
 )
+
+
+def _format_oracle_rejection(
+    confidence: str,
+    fix_guidance: str,
+    dims: dict,
+    findings: list,
+) -> str:
+    """Format oracle rejection into ordered fix list (Qodo §Gap2).
+
+    Produces a numbered list of findings for worker to apply in order.
+    Falls back to fix_guidance string if no findings.
+    """
+    lines: list[str] = [f"[{confidence}] Oracle rejected."]
+    if findings:
+        lines.append("Fix in order:")
+        for i, f in enumerate(findings[:5], 1):
+            sev = f.get("severity", "error")
+            dim = f.get("dimension", "?")
+            fix = f.get("fix_suggestion", "")[:120]
+            if fix:
+                lines.append(f"  {i}. [{sev}/{dim}] {fix}")
+        if fix_guidance:
+            lines.append(f"Summary: {fix_guidance[:120]}")
+    elif fix_guidance:
+        lines.append(fix_guidance[:200])
+    else:
+        fails = [f"{k}: {v}" for k, v in dims.items() if not str(v).startswith("pass")]
+        if fails:
+            lines.append("; ".join(fails)[:200])
+    return "\n".join(lines)[:400]
 
 
 async def _oracle_review_chunk(
@@ -218,12 +255,9 @@ async def _oracle_review_chunk(
             fix_guidance = data.get("fix_guidance", "")
             dims = data.get("dimensions", {})
             confidence = data.get("confidence", "medium")
-            if not approved and fix_guidance:
-                # Include confidence level in reason for prioritization
-                reason = f"[{confidence}] {fix_guidance}"[:200]
-            elif not approved:
-                fails = [f"{k}: {v}" for k, v in dims.items() if not str(v).startswith("pass")]
-                reason = f"[{confidence}] " + "; ".join(fails)[:180] if fails else "oracle rejected"
+            findings = data.get("findings", [])
+            if not approved:
+                reason = _format_oracle_rejection(confidence, fix_guidance, dims, findings)
             else:
                 reason = "approved"
             return approved, reason
@@ -287,18 +321,16 @@ async def _oracle_review(task_description: str, diff_text: str, claude_dir: Path
             out = b""
         raw = out.decode().strip()
 
-        # Try to parse structured JSON response (Self-RAG + Qodo confidence pattern)
+        # Try to parse structured JSON response (Self-RAG + Qodo confidence + per-finding)
         try:
             data = json.loads(raw)
             approved = data.get("decision", "").upper() == "APPROVED"
             fix_guidance = data.get("fix_guidance", "")
             dims = data.get("dimensions", {})
             confidence = data.get("confidence", "medium")
-            if not approved and fix_guidance:
-                reason = f"[{confidence}] {fix_guidance}"[:200]
-            elif not approved:
-                fails = [f"{k}: {v}" for k, v in dims.items() if not str(v).startswith("pass")]
-                reason = f"[{confidence}] " + "; ".join(fails)[:180] if fails else "oracle rejected"
+            findings = data.get("findings", [])
+            if not approved:
+                reason = _format_oracle_rejection(confidence, fix_guidance, dims, findings)
             else:
                 reason = "approved"
             return approved, reason

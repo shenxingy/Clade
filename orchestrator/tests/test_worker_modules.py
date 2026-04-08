@@ -311,3 +311,48 @@ class TestDetectDepCycle:
     def test_no_deps(self):
         tasks = [self._task("a", []), self._task("b", []), self._task("c", [])]
         assert _detect_dep_cycle(tasks) is None
+
+
+# ─── _format_oracle_rejection Tests ──────────────────────────────────────────
+
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from worker_review import _format_oracle_rejection
+
+
+class TestFormatOracleRejection:
+    def test_with_findings(self):
+        findings = [
+            {"dimension": "correctness", "severity": "error", "fix_suggestion": "Add null check"},
+            {"dimension": "code_quality", "severity": "warning", "fix_suggestion": "Rename var"},
+        ]
+        result = _format_oracle_rejection("high", "Fix null and rename", {}, findings)
+        assert "[high]" in result
+        assert "1." in result
+        assert "Add null check" in result
+        assert "Rename var" in result
+
+    def test_with_fix_guidance_no_findings(self):
+        result = _format_oracle_rejection("medium", "Add error handling", {}, [])
+        assert "[medium]" in result
+        assert "Add error handling" in result
+
+    def test_with_dims_fallback(self):
+        dims = {"correctness": "fail — missing branch", "completeness": "pass"}
+        result = _format_oracle_rejection("low", "", dims, [])
+        assert "correctness" in result
+        assert "missing branch" in result
+
+    def test_empty_inputs(self):
+        result = _format_oracle_rejection("medium", "", {}, [])
+        assert "[medium]" in result
+
+    def test_findings_capped_at_5(self):
+        findings = [
+            {"dimension": "d", "severity": "error", "fix_suggestion": f"fix {i}"}
+            for i in range(10)
+        ]
+        result = _format_oracle_rejection("high", "", {}, findings)
+        # Should show items 1-5, not 6-10
+        assert "fix 4" in result
+        assert "fix 9" not in result
