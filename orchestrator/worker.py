@@ -48,7 +48,7 @@ from worker_tldr import (
 )
 from worker_review import _oracle_review, _summarize_worker_completion
 from event_stream import EventStream
-from tracing import TracingService, start_task_span, start_llm_span, end_llm_span, start_tool_span, end_tool_span
+from tracing import TracingService, start_task_span
 from reactions import ReactionExecutor
 from condensers import ObservationMaskingCondenser
 from worker_utils import (

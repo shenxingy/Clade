@@ -5,7 +5,7 @@ import pytest
 from worker_tldr import (
     _extract_tldr_sections, _generate_code_tldr,
     _extract_entity_name, _prune_tldr_to_entities, _parse_fault_entity_names,
-    _keyword_filter_tldr,
+    _keyword_filter_tldr, _span_evict_tldr,
 )
 from condensers import (
     NoOpCondenser,
@@ -598,3 +598,68 @@ class TestFindIntramorphicRegressions:
 
     def test_empty_baseline(self):
         assert _find_intramorphic_regressions({}, {"a::test1": False}) == []
+
+
+# ─── _span_evict_tldr (Moatless §Gap3) ───────────────────────────────────────
+
+_SAMPLE_TLDR = """\
+## src/foo.py
+class Foo:
+    def bar(self) -> None: ...
+
+## src/bar.py
+class Bar:
+    def baz(self, x: int) -> str: ...
+
+## src/qux.py
+def helper() -> None: ...
+"""
+
+
+class TestSpanEvictTldr:
+    def test_no_eviction_when_within_budget(self):
+        evicted, n = _span_evict_tldr(_SAMPLE_TLDR, budget_chars=10000)
+        assert n == 0
+        assert "src/foo.py" in evicted
+        assert "src/bar.py" in evicted
+        assert "src/qux.py" in evicted
+
+    def test_evicts_non_priority_when_over_budget(self):
+        # Budget only fits ~one section; priority = foo.py
+        evicted, n = _span_evict_tldr(_SAMPLE_TLDR, budget_chars=60, priority_files=["src/foo.py"])
+        assert n > 0
+        assert "src/foo.py" in evicted  # priority preserved
+
+    def test_empty_tldr_returns_unchanged(self):
+        evicted, n = _span_evict_tldr("", budget_chars=100)
+        assert evicted == ""
+        assert n == 0
+
+    def test_returns_all_when_no_sections(self):
+        no_sections = "just some text without sections"
+        evicted, n = _span_evict_tldr(no_sections, budget_chars=5)
+        # Falls back to simple truncation
+        assert n == 0
+
+    def test_priority_files_always_kept(self):
+        # Very tight budget — only priority file should survive
+        evicted, n = _span_evict_tldr(_SAMPLE_TLDR, budget_chars=50, priority_files=["src/qux.py"])
+        assert "src/qux.py" in evicted
+        assert n >= 1  # at least one evicted
+
+    def test_no_priority_evicts_in_order(self):
+        # With no priority files, fills budget sequentially
+        # foo.py section is first, so it should be kept if budget allows
+        evicted, n = _span_evict_tldr(_SAMPLE_TLDR, budget_chars=55)
+        # At least some sections kept
+        assert len(evicted) > 0
+
+    def test_zero_budget_evicts_all_non_priority(self):
+        evicted, n = _span_evict_tldr(_SAMPLE_TLDR, budget_chars=0, priority_files=[])
+        # No room for anything
+        assert n == 3  # all 3 sections evicted
+
+    def test_priority_suffix_match(self):
+        # Priority file specified as basename — should match full path
+        evicted, n = _span_evict_tldr(_SAMPLE_TLDR, budget_chars=50, priority_files=["bar.py"])
+        assert "src/bar.py" in evicted
