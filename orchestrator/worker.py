@@ -399,7 +399,25 @@ class Worker:
             "- **FindSnippet `<exact_string>`** → `grep -rn '<exact_string>'`\n"
             "- **FindFile `<pattern>`** → `find . -name '<pattern>' -not -path '*/.*'`\n"
         )
-        task_file.write_text(effective_description + _edit_discipline + _search_conventions)
+        # AutoCodeRover §Gap2: for fix tasks, inject explicit two-phase exploration
+        # directive. Phase 1: read and understand. Phase 2: minimal targeted patch.
+        _fix_two_phase = ""
+        if _parse_task_type(self.description) == "fix":
+            _fix_two_phase = (
+                "\n\n---\n\n"
+                "## Two-Phase Approach (AutoCodeRover §Gap2)\n"
+                "**Phase 1 — Explore first (make NO code changes):**\n"
+                "1. Read the suspect files identified above\n"
+                "2. Trace the execution path to the root cause\n"
+                "3. Identify the exact 1-5 lines that need to change\n\n"
+                "**Phase 2 — Patch (after exploration):**\n"
+                "1. Make the minimal targeted change — prefer 1-3 line edits\n"
+                "2. Verify the reproduction test passes (if provided above)\n"
+                "3. Run lint before committing\n"
+            )
+        task_file.write_text(
+            effective_description + _fix_two_phase + _edit_discipline + _search_conventions
+        )
         return task_file
 
     def _build_cmd_and_env(self, task_file: Path) -> tuple[str, dict]:
