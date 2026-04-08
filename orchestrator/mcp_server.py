@@ -24,6 +24,7 @@ Usage from Claude Code:
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import json
 import os
@@ -166,6 +167,121 @@ def load_skills() -> list[dict]:
     return skills
 
 
+# ─── AST Code Search (AutoCodeRover §Gap1) ────────────────────────────────────
+
+_SKIP_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__", ".mypy_cache", "dist", "build"}
+_MAX_SCAN_FILES = 500
+
+
+def _iter_py_files(root: Path) -> list[Path]:
+    """Walk project directory and return .py files (skipping common noise dirs)."""
+    results: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS]
+        for fname in filenames:
+            if fname.endswith(".py"):
+                results.append(Path(dirpath) / fname)
+                if len(results) >= _MAX_SCAN_FILES:
+                    return results
+    return results
+
+
+def _func_sig(node: Any) -> str:
+    """Simple function signature from an AST FunctionDef/AsyncFunctionDef node."""
+    params = [a.arg for a in node.args.args]
+    prefix = "async def" if isinstance(node, ast.AsyncFunctionDef) else "def"
+    return f"{prefix} {node.name}({', '.join(params)})"
+
+
+def _ast_search_class(class_name: str, root: Path) -> str:
+    """Search for a class definition using AST. Returns file:line + base classes + methods."""
+    hits: list[str] = []
+    for py_file in _iter_py_files(root):
+        try:
+            source = py_file.read_text(errors="replace")
+            tree = ast.parse(source)
+        except Exception:
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef) and node.name == class_name:
+                bases: list[str] = []
+                for b in node.bases:
+                    try:
+                        bases.append(ast.unparse(b))
+                    except Exception:
+                        pass
+                base_str = f"({', '.join(bases)})" if bases else ""
+                methods = [
+                    f"  {_func_sig(item)}"
+                    for item in node.body
+                    if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
+                ]
+                try:
+                    rel = str(py_file.relative_to(root))
+                except ValueError:
+                    rel = str(py_file)
+                hits.append(
+                    f"**{rel}:{node.lineno}** — `class {class_name}{base_str}`\n"
+                    + "\n".join(methods[:30])
+                )
+    return "\n\n".join(hits) if hits else f"Class `{class_name}` not found."
+
+
+def _ast_search_method(method_name: str, class_name: str | None, root: Path) -> str:
+    """Find a method or function by name, optionally scoped to a class."""
+    hits: list[str] = []
+    for py_file in _iter_py_files(root):
+        try:
+            source = py_file.read_text(errors="replace")
+            tree = ast.parse(source)
+        except Exception:
+            continue
+        lines = source.splitlines()
+        try:
+            rel = str(py_file.relative_to(root))
+        except ValueError:
+            rel = str(py_file)
+
+        if class_name:
+            # Scoped search: find method inside matching class
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ClassDef) and node.name == class_name:
+                    for item in node.body:
+                        if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name == method_name:
+                            end = min((item.end_lineno or item.lineno + 20), item.lineno + 40)
+                            snippet = "\n".join(lines[item.lineno - 1:end])
+                            hits.append(f"**{rel}:{item.lineno}** (in `{class_name}`)\n```python\n{snippet}\n```")
+        else:
+            # Unscoped: top-level and class methods alike
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == method_name:
+                    end = min((node.end_lineno or node.lineno + 20), node.lineno + 40)
+                    snippet = "\n".join(lines[node.lineno - 1:end])
+                    hits.append(f"**{rel}:{node.lineno}**\n```python\n{snippet}\n```")
+    return "\n\n".join(hits) if hits else f"Method `{method_name}` not found."
+
+
+def _grep_search_code(snippet: str, root: Path, context: int = 3) -> str:
+    """Search for a code snippet using rg (with grep fallback)."""
+    for cmd in (
+        ["rg", "--no-heading", "-n", f"-C{context}", snippet, str(root)],
+        ["grep", "-rn", f"--context={context}", snippet, str(root)],
+    ):
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+            output = result.stdout.strip()
+            if output:
+                return output[:4000]
+            # grep exits 1 when no match — don't fall through to next cmd
+            if result.returncode in (0, 1):
+                return f"No matches for: {snippet!r}"
+        except FileNotFoundError:
+            continue
+        except Exception as exc:
+            return f"Search failed: {exc}"
+    return f"Neither rg nor grep available; cannot search for: {snippet!r}"
+
+
 # ─── MCP Server ───────────────────────────────────────────────────────────────
 
 app = Server(
@@ -193,6 +309,54 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {},
+            },
+        ),
+        # Code search tools (AutoCodeRover §Gap1)
+        Tool(
+            name="clade_search_class",
+            description=(
+                "Find a class definition in the Python codebase using AST. "
+                "Returns file path, line number, base classes, and method signatures."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "class_name": {"type": "string", "description": "Class name to search for"},
+                    "project_dir": {"type": "string", "description": "Project root (defaults to cwd)"},
+                },
+                "required": ["class_name"],
+            },
+        ),
+        Tool(
+            name="clade_search_method",
+            description=(
+                "Find a method or function definition by name. "
+                "Optionally scope to a specific class. Returns file path, line, and source snippet."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "method_name": {"type": "string", "description": "Method or function name"},
+                    "class_name": {"type": "string", "description": "Class name to scope the search (optional)"},
+                    "project_dir": {"type": "string", "description": "Project root (defaults to cwd)"},
+                },
+                "required": ["method_name"],
+            },
+        ),
+        Tool(
+            name="clade_search_code",
+            description=(
+                "Search for a code pattern or literal snippet in the codebase using grep. "
+                "Returns matching lines with surrounding context."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "snippet": {"type": "string", "description": "Code pattern or literal string to search for"},
+                    "project_dir": {"type": "string", "description": "Project root (defaults to cwd)"},
+                    "context_lines": {"type": "integer", "description": "Lines of context around each match (default: 3)"},
+                },
+                "required": ["snippet"],
             },
         ),
     ]
@@ -232,6 +396,28 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
         return CallToolResult(
             content=[TextContent(type="text", text="\n".join(lines))],
         )
+
+    # Code search tools (AutoCodeRover §Gap1)
+    _search_root = Path(arguments.get("project_dir") or os.getcwd())
+    if name == "clade_search_class":
+        cn = arguments.get("class_name", "").strip()
+        if not cn:
+            return CallToolResult(content=[TextContent(type="text", text="class_name is required")], isError=True)
+        return CallToolResult(content=[TextContent(type="text", text=_ast_search_class(cn, _search_root))])
+
+    if name == "clade_search_method":
+        mn = arguments.get("method_name", "").strip()
+        if not mn:
+            return CallToolResult(content=[TextContent(type="text", text="method_name is required")], isError=True)
+        cn = arguments.get("class_name") or None
+        return CallToolResult(content=[TextContent(type="text", text=_ast_search_method(mn, cn, _search_root))])
+
+    if name == "clade_search_code":
+        sp = arguments.get("snippet", "").strip()
+        if not sp:
+            return CallToolResult(content=[TextContent(type="text", text="snippet is required")], isError=True)
+        ctx = int(arguments.get("context_lines", 3))
+        return CallToolResult(content=[TextContent(type="text", text=_grep_search_code(sp, _search_root, ctx))])
 
     # Handle skill tools
     if not name.startswith("clade_"):
