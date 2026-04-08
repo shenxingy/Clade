@@ -258,3 +258,9 @@ async def send_task_message(task_id: str, body: dict, s: ProjectSession = Depend
 @router.get("/api/tasks/{task_id}/messages")
 async def get_task_messages(task_id: str, s: ProjectSession = Depends(_resolve_session)):
     return await s.task_queue.get_messages(task_id, unread_only=False)
+
+
+@router.get("/api/metrics/pass-at-k")
+async def get_pass_at_k_metrics(s: ProjectSession = Depends(_resolve_session)):
+    """Pass@k success metrics across all completed tasks (ECC eval-harness pattern)."""
+    return await s.task_queue.get_pass_at_k_metrics()

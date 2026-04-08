@@ -1199,10 +1199,8 @@ class WorkerPool:
                 elif score < 50:
                     model = "sonnet"
                     description = (
-                        "⚠ This task scored low on readiness (<50). "
-                        "Ask clarifying questions before writing any code. "
-                        "Do NOT start implementing until requirements are clear.\n\n"
-                        + description
+                        "⚠ Low readiness (<50): ask clarifying questions before coding. "
+                        "Do NOT implement until requirements are clear.\n\n" + description
                     )
                 if task.get("is_critical_path"):
                     model = {"haiku": "sonnet", "sonnet": "opus"}.get(model, model)
@@ -1240,7 +1238,9 @@ class WorkerPool:
             worker._handoff_type = task["handoff_type"]
             worker._handoff_payload = task.get("handoff_payload")
         self.workers[worker.id] = worker
-        await task_queue.update(task["id"], status="running", worker_id=worker.id)
+        _cur_attempts = (task.get("attempt_count") or 0) + 1
+        await task_queue.update(task["id"], status="running", worker_id=worker.id,
+                                attempt_count=_cur_attempts)
         await worker.start(task_queue=task_queue)
         return worker
 
