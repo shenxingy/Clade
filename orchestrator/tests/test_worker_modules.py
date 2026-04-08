@@ -17,6 +17,8 @@ from worker_utils import (
     _strip_error_context,
     _extract_lint_targets,
     LoopDetectionService,
+    _parse_pytest_results,
+    _find_intramorphic_regressions,
     MAX_LINES,
     MAX_BYTES,
 )
@@ -530,3 +532,69 @@ class TestFormatTaskSchemaBlock:
         assert "provides" in block
         assert "AuthService" in block
         assert "requires" in block
+
+
+# ─── Intramorphic Testing ─────────────────────────────────────────────────────
+
+class TestParsePytestResults:
+    SAMPLE_OUTPUT = """\
+tests/test_foo.py::TestBar::test_pass1 PASSED                       [  1%]
+tests/test_foo.py::TestBar::test_pass2 PASSED                       [  2%]
+tests/test_foo.py::TestBar::test_fail1 FAILED                       [  3%]
+tests/test_foo.py::TestBaz::test_error1 ERROR                       [  4%]
+"""
+
+    def test_parses_passed(self):
+        results = _parse_pytest_results(self.SAMPLE_OUTPUT)
+        assert results.get("tests/test_foo.py::TestBar::test_pass1") is True
+        assert results.get("tests/test_foo.py::TestBar::test_pass2") is True
+
+    def test_parses_failed(self):
+        results = _parse_pytest_results(self.SAMPLE_OUTPUT)
+        assert results.get("tests/test_foo.py::TestBar::test_fail1") is False
+
+    def test_parses_error(self):
+        results = _parse_pytest_results(self.SAMPLE_OUTPUT)
+        assert results.get("tests/test_foo.py::TestBaz::test_error1") is False
+
+    def test_empty_output(self):
+        assert _parse_pytest_results("") == {}
+
+    def test_ignores_non_result_lines(self):
+        out = "platform linux -- Python 3.11\n=== 2 passed in 0.5s ===\n"
+        assert _parse_pytest_results(out) == {}
+
+
+class TestFindIntramorphicRegressions:
+    def test_detects_regression(self):
+        baseline = {"a::test1": True, "a::test2": True}
+        post = {"a::test1": True, "a::test2": False}  # test2 now fails
+        regressions = _find_intramorphic_regressions(baseline, post)
+        assert regressions == ["a::test2"]
+
+    def test_no_regression_when_all_pass(self):
+        baseline = {"a::test1": True}
+        post = {"a::test1": True}
+        assert _find_intramorphic_regressions(baseline, post) == []
+
+    def test_preexisting_failure_not_regression(self):
+        # test2 was already failing in baseline
+        baseline = {"a::test1": True, "a::test2": False}
+        post = {"a::test1": True, "a::test2": False}
+        assert _find_intramorphic_regressions(baseline, post) == []
+
+    def test_new_test_in_post_not_regression(self):
+        baseline = {"a::test1": True}
+        post = {"a::test1": True, "a::test2": False}
+        # test2 wasn't in baseline, so not a regression
+        assert _find_intramorphic_regressions(baseline, post) == []
+
+    def test_missing_test_in_post_counts_as_regression(self):
+        # test2 was passing but now doesn't appear (treat as failing)
+        baseline = {"a::test1": True, "a::test2": True}
+        post = {"a::test1": True}  # test2 not in post results
+        regressions = _find_intramorphic_regressions(baseline, post)
+        assert "a::test2" not in regressions  # post.get(tid, True) → True for missing
+
+    def test_empty_baseline(self):
+        assert _find_intramorphic_regressions({}, {"a::test1": False}) == []
