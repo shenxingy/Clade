@@ -4,6 +4,16 @@
 
 ---
 
+## Research Findings (2026-04-08) — OpenHands + SWE-bench 2025
+
+See full doc: docs/research/2026-04-08-openhands-swebench-2025.md
+
+- [AI] OpenHands (Gap 1): Shared TLDR cache across parallel workers — each worker calls `_generate_code_tldr()` independently but there's mtime-based cache; need session-level sharing via `ProjectSession` to avoid re-parsing same files for concurrent workers. Small effort.
+- [AI] OpenHands (Gap 2): Agent-initiated context compression — add `compress` tool to workers that triggers `ObservationMaskingCondenser` mid-session at milestones, not just at 80% context limit. Context-as-a-Tool (CAT) pattern scores +5% on SWE-bench. Prompt engineering + small tool addition.
+- [AI] OpenHands (Gap 3): Intramorphic testing (regression detection without test oracle) — compare output of original vs. modified code on same inputs to catch regressions without ground-truth tests. Medium effort, high value for projects without test suites.
+
+---
+
 ## Research Findings (2026-04-07) — Multi-Agent Coordination Patterns
 
 See full doc: docs/research/2026-04-07-multi-agent-coordination.md
