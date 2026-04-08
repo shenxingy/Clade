@@ -5,6 +5,7 @@ import pytest
 from worker_tldr import (
     _extract_tldr_sections, _generate_code_tldr,
     _extract_entity_name, _prune_tldr_to_entities, _parse_fault_entity_names,
+    _keyword_filter_tldr,
 )
 from condensers import (
     NoOpCondenser,
@@ -437,3 +438,41 @@ class TestParseFaultEntityNames:
     def test_no_backtick_names(self):
         text = "Some plain text with no names"
         assert _parse_fault_entity_names(text) == []
+
+
+# ─── Hybrid keyword TLDR filter tests (Sweep §Gap4) ──────────────────────────
+
+class TestKeywordFilterTldr:
+    _TLDR = """\
+## auth/login.py
+class LoginHandler
+  def authenticate(self, user)
+  def logout(self)
+
+## tasks/worker.py
+class WorkerPool
+  def start_worker(self)
+  def stop_worker(self)
+
+## utils/helpers.py
+def format_date(dt)
+def parse_config(path)"""
+
+    def test_keyword_match(self):
+        result = _keyword_filter_tldr("authenticate the user login", self._TLDR)
+        assert "login" in result or "LoginHandler" in result or "authenticate" in result
+
+    def test_no_keywords_returns_original(self):
+        # No code identifiers (very short/stop words only)
+        result = _keyword_filter_tldr("do it", self._TLDR)
+        assert result == self._TLDR
+
+    def test_few_matches_fallback(self):
+        # Only 1 section matches → < 3 → fall back to original
+        result = _keyword_filter_tldr("xyznonexistentthing", self._TLDR)
+        # Should return original because < 3 sections match
+        assert "WorkerPool" in result
+
+    def test_empty_tldr(self):
+        result = _keyword_filter_tldr("worker task", "")
+        assert result == ""
