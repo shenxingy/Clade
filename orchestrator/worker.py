@@ -117,6 +117,7 @@ class Worker:
         self._reaction_executor = ReactionExecutor()
         self.completion_summary: str | None = None  # 1-sentence summary (multi-agent context archival)
         self._failure_reflections: list[str] = []  # Reflexion pattern: accumulated failure notes
+        self.token_budget: int = 0  # max total tokens (0 = unlimited); multi-agent Gap 2
         self._input_tokens: int = 0
         self._output_tokens: int = 0
         self._estimated_cost: float = 0.0
@@ -611,7 +612,16 @@ class Worker:
                 logger.exception("verify_and_commit failed for worker %s", self.id)
                 verified = False
             # Reflection loop (Aider pattern): if verification failed, run lint check and retry
-            if not verified and self._reflection_retries < MAX_REFLECTION_RETRIES:
+            # Token budget gate: parse current usage first; skip retry if budget exceeded.
+            _current_tokens = 0
+            if self.token_budget > 0 and self._log_path and self._log_path.exists():
+                try:
+                    _in, _out = _parse_token_usage(self._log_path)
+                    _current_tokens = _in + _out
+                except Exception:
+                    pass
+            _budget_ok = (self.token_budget == 0 or _current_tokens < self.token_budget)
+            if not verified and self._reflection_retries < MAX_REFLECTION_RETRIES and _budget_ok:
                 try:
                     lint_output = await _run_lint_check(self._project_dir)
                     if lint_output:
@@ -657,11 +667,22 @@ class Worker:
                             self._reflection_retries += 0  # already incremented
                 except Exception:
                     pass
-        # Parse token usage from log
+        # Parse token usage from log and enforce token budget
         if self._log_path and self._log_path.exists():
             try:
                 self._input_tokens, self._output_tokens = _parse_token_usage(self._log_path)
                 self._estimated_cost = _estimate_cost(self._input_tokens, self._output_tokens)
+                total_tokens = self._input_tokens + self._output_tokens
+                if self.token_budget > 0 and total_tokens > self.token_budget and self.status != "done":
+                    self.status = "failed"
+                    self.failure_context = (
+                        f"Token budget exceeded: {total_tokens:,} tokens used, "
+                        f"budget was {self.token_budget:,}"
+                    )
+                    logger.warning(
+                        "Worker %s: token budget exceeded (%d > %d)",
+                        self.id, total_tokens, self.token_budget
+                    )
             except Exception:
                 pass
             # Distill large output: replace log in-place with LLM summary + full output reference
@@ -1100,6 +1121,10 @@ class WorkerPool:
         worker.task_timeout = task.get("timeout", 600)
         worker.own_files = task.get("own_files", [])
         worker.forbidden_files = task.get("forbidden_files", [])
+        # Per-task token budget (0 = use global setting or unlimited)
+        _per_task_budget = task.get("token_budget") or 0
+        _global_budget = GLOBAL_SETTINGS.get("worker_token_budget", 0)
+        worker.token_budget = _per_task_budget or _global_budget
         # Typed handoff fields (Codex SDK pattern)
         if task.get("handoff_type"):
             worker._handoff_type = task["handoff_type"]

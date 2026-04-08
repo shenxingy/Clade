@@ -172,6 +172,10 @@ class TaskQueue:
                     await db.execute("ALTER TABLE tasks ADD COLUMN completion_summary TEXT")
                 except Exception:
                     pass
+                try:
+                    await db.execute("ALTER TABLE tasks ADD COLUMN token_budget INTEGER DEFAULT 0")
+                except Exception:
+                    pass
                 await db.execute("""
                     CREATE TABLE IF NOT EXISTS worker_messages (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
