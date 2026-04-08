@@ -29,6 +29,60 @@ MAX_BYTES = 50 * 1024          # 50KB soft cap for log truncation
 DISTILL_THRESHOLD = 200 * 1024  # 200KB — distill with LLM if log exceeds this
 MAX_REFLECTION_RETRIES = 3
 
+# ─── Task File Prompt Blocks (moved from worker.py for line-count budget) ─────
+
+EDIT_DISCIPLINE_BLOCK = (
+    "\n\n---\n\n"
+    "## Edit Discipline\n"
+    "- `old_string` must be unique in the file. Include 3+ surrounding lines of context if needed.\n"
+    "- Never include line-number prefixes (e.g. `12\\t`) in `old_string` / `new_string` — strip them first.\n"
+    "- Prefer minimal, targeted edits over large block replacements.\n"
+)
+
+SEARCH_CONVENTIONS_BLOCK = (
+    "\n\n---\n\n"
+    "## Search Conventions\n"
+    "Use these shorthand patterns when navigating the codebase:\n"
+    "- **FindClass `<ClassName>`** → `grep -rn 'class <ClassName>' --include='*.py'`\n"
+    "- **FindFunction `<fn>`** → `grep -rn 'def <fn>' --include='*.py'`\n"
+    "- **FindFunction `<fn>` in `<cls>`** → find method scoped to class\n"
+    "- **FindSnippet `<exact_string>`** → `grep -rn '<exact_string>'`\n"
+    "- **FindFile `<pattern>`** → `find . -name '<pattern>' -not -path '*/.*'`\n"
+    "\n"
+    "**Context Checkpoint (OpenHands CAT pattern)**: when you have finished reading "
+    "files and understood the task, write a 2-3 sentence summary to "
+    "`.claude/ctx-checkpoint.md` before making any edits. "
+    "This helps you stay focused and avoids re-reading files unnecessarily.\n"
+)
+
+COMPLETION_CONTRACT_BLOCK = (
+    "\n\n---\n\n"
+    "## Completion Report\n"
+    "When fully done, end your response with exactly this JSON block:\n"
+    "```json\n"
+    '{"status": "done", "summary": "1-2 sentences: what you did", '
+    '"next_actions": [], "artifacts": ["path/to/changed/file.py"]}\n'
+    "```\n"
+    'Use `"status": "partial"` if you could not finish, `"blocked"` if stuck.\n'
+)
+
+
+def _parse_observation_contract(log_text: str) -> dict | None:
+    """Extract the structured JSON completion report from a worker log.
+
+    Looks for the last ```json ... ``` block containing status/summary keys.
+    Returns the parsed dict or None if not found / invalid.
+    """
+    matches = list(re.finditer(r'```json\s*(\{[^`]+\})\s*```', log_text, re.DOTALL))
+    for m in reversed(matches):
+        try:
+            data = json.loads(m.group(1))
+            if "status" in data and "summary" in data:
+                return data
+        except (json.JSONDecodeError, KeyError):
+            continue
+    return None
+
 DISTILL_PROMPT = """Extract key facts from this tool output. Focus on:
 - Error messages and their types
 - File paths and line numbers
