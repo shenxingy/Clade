@@ -339,7 +339,19 @@ class Worker:
             "- Never include line-number prefixes (e.g. `12\\t`) in `old_string` / `new_string` — strip them first.\n"
             "- Prefer minimal, targeted edits over large block replacements.\n"
         )
-        task_file.write_text(effective_description + _edit_discipline)
+        # Typed search conventions (Moatless Gap 4): named search patterns backed by Bash.
+        # Improves search discipline and makes worker navigation more structured.
+        _search_conventions = (
+            "\n\n---\n\n"
+            "## Search Conventions\n"
+            "Use these shorthand patterns when navigating the codebase:\n"
+            "- **FindClass `<ClassName>`** → `grep -rn 'class <ClassName>' --include='*.py'`\n"
+            "- **FindFunction `<fn>`** → `grep -rn 'def <fn>' --include='*.py'`\n"
+            "- **FindFunction `<fn>` in `<cls>`** → find method scoped to class\n"
+            "- **FindSnippet `<exact_string>`** → `grep -rn '<exact_string>'`\n"
+            "- **FindFile `<pattern>`** → `find . -name '<pattern>' -not -path '*/.*'`\n"
+        )
+        task_file.write_text(effective_description + _edit_discipline + _search_conventions)
         return task_file
 
     def _build_cmd_and_env(self, task_file: Path) -> tuple[str, dict]:

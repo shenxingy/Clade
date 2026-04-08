@@ -13,7 +13,7 @@ See full doc: docs/research/2026-04-07-multi-agent-coordination.md
 - [AI] Multi-agent (Gap 3): Prose handoffs, no validation — task description is unstructured. For swarm tasks, use JSON envelope with input/output contracts. Medium effort.
 - [AI] ~~Multi-agent (Gap 4): No context archival after worker completion~~ — RESOLVED 2026-04-07: `_summarize_worker_completion()` added; `completion_summary` stored in tasks DB; injected into sibling workers via `get_recent_completions()` in `_build_task_file()`.
 - [AI] ~~Multi-agent (Gap 5): SwarmManager sync barrier~~ — RESOLVED 2026-04-07: Code audit confirmed SwarmManager._refill_once() properly polls finished workers before claiming new tasks; barrier is implicit and correct.
-- [AI] Multi-agent (Gap 6): No circular dependency detection — no DAG validation at task decomposition. Add graph check before spawning batch. Small effort.
+- [AI] ~~Multi-agent (Gap 6): No circular dependency detection~~ — RESOLVED 2026-04-08: `_detect_dep_cycle()` (DFS cycle detection) added to `config.py`; wired into `TaskQueue.import_from_proposed()` (warns on import) and `SwarmManager._refill_once()` (sets `done_reason=blocked_cycle:...`).
 
 ---
 
