@@ -43,7 +43,8 @@ from github_sync import _gh_update_issue_status
 from session_tree import SessionTree
 from worker_tldr import (
     _generate_code_tldr, _localize_tldr_for_task, _localize_fault,
-    _prune_tldr_to_entities, _parse_fault_entity_names, _generate_repro_test,
+    _prune_tldr_to_entities, _parse_fault_entity_names,
+    _generate_repro_test, _sbfl_prepass,
 )
 from worker_review import _oracle_review, _summarize_worker_completion
 from event_stream import EventStream
@@ -300,12 +301,17 @@ class Worker:
                 context_blocks.append(f"# Codebase Structure (auto-generated)\n\n{tldr}")
                 if fault_locs:
                     context_blocks.append(fault_locs)
-                # Agentless §6B: generate a failing reproduction test for fix tasks.
-                # The test is injected as a concrete acceptance criterion.
+                # For fix tasks: run repro test generation + SBFL pre-pass concurrently.
                 if task_type == "fix":
-                    repro_test = await _generate_repro_test(
-                        self.description, tldr, self._original_project_dir
+                    repro_task = asyncio.create_task(
+                        _generate_repro_test(self.description, tldr, self._original_project_dir)
                     )
+                    sbfl_task = asyncio.create_task(
+                        _sbfl_prepass(self._original_project_dir)
+                    )
+                    repro_test, sbfl_block = await asyncio.gather(repro_task, sbfl_task)
+                    if sbfl_block:
+                        context_blocks.append(sbfl_block)
                     if repro_test:
                         context_blocks.append(repro_test)
         except Exception:
