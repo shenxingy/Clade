@@ -39,7 +39,7 @@ from task_queue import TaskQueue
 from github_sync import _gh_update_issue_status
 from session_tree import SessionTree
 from worker_tldr import _generate_code_tldr, _localize_tldr_for_task
-from worker_review import _oracle_review
+from worker_review import _oracle_review, _summarize_worker_completion
 from event_stream import EventStream
 from tracing import TracingService, start_task_span, start_llm_span, end_llm_span, start_tool_span, end_tool_span
 from reactions import ReactionExecutor
@@ -115,6 +115,7 @@ class Worker:
         self._event_stream = EventStream(worker_id=self.id)
         self._tracer = TracingService.get_instance().get_or_create_tracer(self.id)
         self._reaction_executor = ReactionExecutor()
+        self.completion_summary: str | None = None  # 1-sentence summary (multi-agent context archival)
         self._input_tokens: int = 0
         self._output_tokens: int = 0
         self._estimated_cost: float = 0.0
@@ -153,6 +154,7 @@ class Worker:
             "worktree_path": str(self._worktree_path) if self._worktree_path else None,
             "oracle_result": self.oracle_result,
             "oracle_reason": self.oracle_reason,
+            "completion_summary": self.completion_summary,
             "model_score": self.model_score,
             "estimated_tokens": self._estimate_tokens(),
             "context_warning": self._estimate_tokens() > 160000,
@@ -638,6 +640,17 @@ class Worker:
                                      self.id, log_size // 1024, len(distilled))
                 except Exception:
                     pass
+        # Generate 1-sentence completion summary for context archival (multi-agent pattern).
+        # Stored in task DB so subsequent workers can read compact history without loading
+        # full logs. Generated in background — non-blocking.
+        if self.auto_committed and self._project_dir:
+            try:
+                self.completion_summary = await _summarize_worker_completion(
+                    self.description, self._log_path, self._project_dir
+                )
+                logger.debug("Worker %s completion summary: %s", self.id, self.completion_summary)
+            except Exception:
+                pass
         # Check for handoff file — worker wrote it to signal continuation needed
         handoff_path = self._claude_dir / f"handoff-{self.task_id}.md"
         if handoff_path.exists():
@@ -1197,6 +1210,12 @@ class WorkerPool:
                             output_tokens=w._output_tokens,
                             estimated_cost=w._estimated_cost,
                         )
+                    # Persist completion summary (multi-agent context archival)
+                    if w.completion_summary:
+                        try:
+                            await task_queue.update(w.task_id, completion_summary=w.completion_summary)
+                        except Exception:
+                            pass
                     if w.status == "failed" and w.failure_context:
                         await task_queue.update(w.task_id, failed_reason=w.failure_context)
                     if w.status == "done":

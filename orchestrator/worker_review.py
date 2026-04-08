@@ -17,6 +17,55 @@ logger = logging.getLogger(__name__)
 # ─── Progress / PR Review / Oracle ────────────────────────────────────────────
 
 
+async def _summarize_worker_completion(
+    task_description: str, log_path: Path | None, project_dir: Path
+) -> str:
+    """Generate a 1-sentence completion summary for a worker (multi-agent context archival).
+
+    Called after verify_and_commit() succeeds. Returns compact summary that subsequent
+    workers can use as context — prevents context rot in long orchestrations.
+    Falls back to first line of task description on any error.
+    """
+    title = task_description.splitlines()[0][:100] if task_description else "Unknown task"
+    log_tail = ""
+    if log_path and log_path.exists():
+        try:
+            text = log_path.read_text(errors="replace")
+            log_tail = "\n".join(text.splitlines()[-30:])
+        except Exception:
+            pass
+
+    fallback = f"Completed: {title[:80]}"
+    if not log_tail:
+        return fallback
+
+    prompt = (
+        f"Task: {title}\n\n"
+        f"Worker log (last 30 lines):\n{log_tail[:2000]}\n\n"
+        "In ONE sentence (max 120 chars), describe what was accomplished. "
+        "Start with an action verb. Example: 'Added OAuth2 flow to auth.py, "
+        "all 12 tests pass.' RESPOND WITH ONLY the sentence."
+    )
+    try:
+        proc = await asyncio.create_subprocess_shell(
+            f'claude -p {shlex.quote(prompt)} --model claude-haiku-4-5-20251001 --no-input-prompt',
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        try:
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
+            return fallback
+        summary = out.decode().strip()
+        # Reject multi-line or empty responses
+        summary = summary.splitlines()[0].strip() if summary else ""
+        return summary[:150] if summary else fallback
+    except Exception:
+        return fallback
+
+
 async def _write_progress_entry(
     task_description: str, log_path: Path | None, project_dir: Path
 ) -> None:

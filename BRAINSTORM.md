@@ -4,6 +4,19 @@
 
 ---
 
+## Research Findings (2026-04-07) — Multi-Agent Coordination Patterns
+
+See full doc: docs/research/2026-04-07-multi-agent-coordination.md
+
+- [AI] Multi-agent (Gap 1): No context versioning — workers share state without version checks; stale context propagates silently. Fix: add `context_version` to task DB, increment after each worker batch. Medium effort.
+- [AI] Multi-agent (Gap 2): No token budget per worker — unlimited token consumption possible. Fix: add `token_budget` field, enforce via existing `_parse_token_usage()`. Small effort.
+- [AI] Multi-agent (Gap 3): Prose handoffs, no validation — task description is unstructured. For swarm tasks, use JSON envelope with input/output contracts. Medium effort.
+- [AI] ~~Multi-agent (Gap 4): No context archival after worker completion~~ — RESOLVED 2026-04-07: `_summarize_worker_completion()` added to `worker_review.py`; `completion_summary` column added to tasks DB; stored in `WorkerPool.poll()` after commit.
+- [AI] Multi-agent (Gap 5): SwarmManager sync barrier — verify all parallel workers are explicitly gathered before synthesis. Small effort — needs code audit.
+- [AI] Multi-agent (Gap 6): No circular dependency detection — no DAG validation at task decomposition. Add graph check before spawning batch. Small effort.
+
+---
+
 ## Research Findings (2026-04-07) — Claude Code Hooks Best Practices
 
 See full doc: docs/research/2026-04-07-claude-hooks.md
@@ -26,7 +39,7 @@ See full doc: docs/research/2026-04-07-claude-hooks.md
 See full doc: docs/research/2026-04-08-moatless-tools.md
 
 - [AI] ~~Research (Moatless): Two-phase search-then-identify missing~~ — RESOLVED 2026-04-07: `_localize_tldr_for_task()` added to `worker_tldr.py`; wired in `worker.py` `_build_task_file()` when TLDR > 4KB.
-- [AI] Research (Moatless): StringReplace discipline in worker system prompt — add uniqueness requirement + line-number strip instruction to task boilerplate. Prompt-only change, no code. See §Gap 2
+- [AI] ~~Research (Moatless): StringReplace discipline in worker system prompt~~ — RESOLVED 2026-04-07: `_edit_discipline` block injected into every task file in `_build_task_file()` (commit 5f1fa30).
 - [AI] Research (Moatless): Span-level FileContext with token budgeting missing — agent gets static context blob; no span eviction, no on-demand retrieval, no token accounting. Medium effort but highest long-term impact for multi-file tasks. See §Gap 3
 - [AI] Research (Moatless): Typed search action names (FindClass, FindFunction, FindSnippet) as prompt conventions backed by Bash — improves search discipline without real index. Medium effort. See §Gap 4
 
