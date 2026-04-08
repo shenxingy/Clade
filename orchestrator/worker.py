@@ -594,13 +594,12 @@ class Worker:
                         )
                         # Inject lint output as additional context and re-run
                         retry_context = (
-                            f"\n\n---\n"
-                            f"**IMPORTANT: Previous attempt had lint/verification errors. Fix them.**\n\n"
-                            f"Lint output:\n{_strip_error_context(lint_output)}\n\n"
-                            f"Task: {self.description}\n"
+                            f"Your previous edit introduced lint/verification errors. Fix them now.\n\n"
+                            f"Lint output:\n{_strip_error_context(lint_output)}\n"
                         )
-                        # Re-run in the same worktree with lint context
-                        retry_success = await self._run_with_context(retry_context)
+                        # AutoCodeRover pattern: use --continue to preserve session context.
+                        # Agent remembers which files it edited, so we only send the error.
+                        retry_success = await self._run_with_context(retry_context, use_continue=True)
                         if retry_success:
                             self.status = "done"
                             self._loop_detector._loop_detected = False  # reset loop detection on retry
@@ -859,19 +858,35 @@ class Worker:
             pass
         return self.auto_committed
 
-    async def _run_with_context(self, extra_context: str) -> bool:
+    async def _run_with_context(self, extra_context: str, use_continue: bool = False) -> bool:
         """Re-run the worker with additional context injected (used by reflection loop).
 
         Runs in the SAME worktree with a new task file that appends extra_context.
+        When use_continue=True, uses --continue to preserve the previous session's
+        context (agent remembers files it read/modified). Falls back to fresh start
+        if --continue fails (AutoCodeRover inline retry pattern).
+
         Returns True if the re-run succeeded (commit made).
         """
         if not self._project_dir or not self._worktree_path:
             return False
         task_file = self._claude_dir / f"task-{self.id}-retry{self._reflection_retries}.md"
-        retry_desc = self.description + f"\n\n{extra_context}"
-        task_file.write_text(retry_desc, encoding="utf-8")
 
-        shell_cmd, env = self._build_cmd_and_env(task_file)
+        if use_continue:
+            # AutoCodeRover pattern: --continue preserves agent context across retries.
+            # Send only the lint error context as a follow-up message, not the full task.
+            task_file.write_text(extra_context.strip(), encoding="utf-8")
+            model = _MODEL_ALIASES.get(self.model, self.model)
+            shell_cmd = (
+                f'claude -p --continue "$(cat {shlex.quote(str(task_file))})"'
+                f" --model {model} --dangerously-skip-permissions"
+            )
+        else:
+            retry_desc = self.description + f"\n\n{extra_context}"
+            task_file.write_text(retry_desc, encoding="utf-8")
+            shell_cmd, _ = self._build_cmd_and_env(task_file)
+
+        _, env = self._build_cmd_and_env(task_file)
 
         # Append to existing log
         log_fd = open(self._log_path, "a") if self._log_path else None
@@ -901,6 +916,10 @@ class Worker:
                 log_fd = None
             if self.status == "done":
                 return await self.verify_and_commit()
+            # If --continue failed (e.g. no prior session), fall back to full restart
+            if use_continue and not self.auto_committed:
+                logger.info("Worker %s: --continue failed, falling back to full restart", self.id)
+                return await self._run_with_context(extra_context, use_continue=False)
             return False
         except Exception:
             if log_fd:
