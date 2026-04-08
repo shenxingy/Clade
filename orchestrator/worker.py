@@ -44,7 +44,7 @@ from session_tree import SessionTree
 from worker_tldr import (
     _generate_code_tldr, _localize_tldr_for_task, _localize_fault,
     _prune_tldr_to_entities, _parse_fault_entity_names,
-    _generate_repro_test, _sbfl_prepass,
+    _generate_repro_test, _sbfl_prepass, _span_evict_tldr,
 )
 from worker_review import _oracle_review, _summarize_worker_completion
 from event_stream import EventStream
@@ -299,7 +299,19 @@ class Worker:
                         )
                         if caller_hints:
                             fault_locs += f"\n\n{caller_hints}"
+                # Moatless §Gap3: span-level FileContext with token budget.
+                # Preserve fault-localized files; evict others. Inject hint
+                # when spans dropped so worker fetches more via MCP tools.
+                span_budget = int(GLOBAL_SETTINGS.get("context_span_budget", 6000))
+                priority_files = re.findall(r'`([^`]+\.(?:py|js|ts|tsx))`', fault_locs) if fault_locs else []
+                tldr, n_evicted = _span_evict_tldr(tldr, span_budget, priority_files)
                 context_blocks.append(f"# Codebase Structure (auto-generated)\n\n{tldr}")
+                if n_evicted > 0:
+                    context_blocks.append(
+                        f"# Context Retrieval\n\n{n_evicted} file span(s) evicted to fit budget. "
+                        f"Use clade_search_class / clade_search_method / clade_search_code "
+                        f"MCP tools to retrieve additional spans on demand."
+                    )
                 if fault_locs:
                     context_blocks.append(fault_locs)
                 # For fix tasks: run repro test generation + SBFL pre-pass concurrently.
@@ -1158,7 +1170,6 @@ class Worker:
 
 # ─── Worker Pool ──────────────────────────────────────────────────────────────
 
-
 class WorkerPool:
     def __init__(self):
         self.workers: dict[str, Worker] = {}
@@ -1388,19 +1399,14 @@ class WorkerPool:
                         t = await task_queue.get(w.task_id)
                         if t:
                             asyncio.create_task(_gh_update_issue_status(t, project_dir))
-                # Oracle rejected → re-queue with rejection reason as context
-                # Agentless §6C: for critical-path tasks, spawn N parallel samples
+                # Oracle rejected → re-queue (Agentless §6C: N parallel samples for critical tasks)
                 if w._oracle_requeue:
                     w._oracle_requeue = False
                     error_summary = _strip_error_context(w._oracle_requeue_reason)
                     n_samples = max(1, int(GLOBAL_SETTINGS.get("parallel_fix_samples", 1)))
-                    # Only use >1 samples for critical-path tasks to contain cost
                     orig_task = await task_queue.get(w.task_id)
-                    is_critical = orig_task.get("is_critical_path", False) if orig_task else False
-                    if not is_critical:
+                    if not (orig_task and orig_task.get("is_critical_path")):
                         n_samples = 1
-
-                    # Diverse exploration hints encourage different solution paths per sample
                     _DIVERSE_HINTS = [
                         "Try a different algorithmic approach than your previous attempt.",
                         "Focus on the root cause rather than symptoms — consider upstream fixes.",

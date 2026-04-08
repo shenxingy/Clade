@@ -352,6 +352,62 @@ def _extract_tldr_sections(tldr: str) -> dict[str, str]:
     return sections
 
 
+# ─── Span-Level FileContext with Token Budgeting (Moatless §Gap3) ────────────
+
+
+def _span_evict_tldr(
+    tldr: str,
+    budget_chars: int,
+    priority_files: list[str] | None = None,
+) -> tuple[str, int]:
+    """Evict low-priority file spans when TLDR exceeds budget_chars.
+
+    Moatless FileContext pattern: treat each file section as a span. Always
+    preserve priority_files (e.g. from fault localization); evict others
+    greedily until within budget.
+
+    Returns (evicted_tldr, n_evicted). When n_evicted > 0, callers should
+    inject a retrieval hint instructing workers to use clade_search_* MCP tools.
+    """
+    if not tldr or len(tldr) <= budget_chars:
+        return tldr, 0
+
+    sections = _extract_tldr_sections(tldr)
+    if not sections:
+        return tldr[:budget_chars], 0
+
+    priority_set: set[str] = set()
+    if priority_files:
+        for pf in priority_files:
+            # Match on basename or suffix to be robust to path differences
+            for key in sections:
+                if key == pf or key.endswith(f"/{pf}") or pf.endswith(f"/{key}"):
+                    priority_set.add(key)
+
+    kept: list[str] = []
+    remaining_budget = budget_chars
+    n_evicted = 0
+
+    # Pass 1: always include priority spans
+    for fname, section_text in sections.items():
+        if fname in priority_set:
+            kept.append(section_text)
+            remaining_budget -= len(section_text) + 1  # +1 for newline separator
+
+    # Pass 2: fill remaining budget with non-priority sections (original order)
+    for fname, section_text in sections.items():
+        if fname in priority_set:
+            continue
+        cost = len(section_text) + 1
+        if remaining_budget >= cost:
+            kept.append(section_text)
+            remaining_budget -= cost
+        else:
+            n_evicted += 1
+
+    return "\n".join(kept), n_evicted
+
+
 async def _localize_tldr_for_task(
     task_description: str, tldr: str, project_dir: Path
 ) -> str:
