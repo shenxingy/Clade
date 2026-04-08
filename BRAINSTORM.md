@@ -57,7 +57,7 @@ See full doc: docs/research/2026-04-08-moatless-tools.md
 
 See full doc: docs/research/2026-04-07-autocoderover.md
 
-- [AI] Research (AutoCodeRover): On-demand AST query APIs missing — Clade injects a one-shot TLDR snapshot but the agent can't ask follow-up structural questions. AutoCodeRover exposes 7 search APIs (search_class, search_method_in_class, search_code, etc.) backed by an AST index. Adoption: MCP tool (`clade_search`) reusing existing `_parse_python_ast` in worker_tldr.py — large effort, high impact for bug-fix tasks. See docs/research/2026-04-07-autocoderover.md §Gap 1
+- [AI] ~~Research (AutoCodeRover): On-demand AST query APIs missing~~ — RESOLVED 2026-04-08: `clade_search_class`, `clade_search_method`, `clade_search_code` added to `mcp_server.py`; AST-backed class/method search + grep code search; exposed as MCP tools for interactive sessions.
 - [AI] ~~Research (AutoCodeRover): Two-phase separation missing~~ — RESOLVED 2026-04-08 (prompt-level): Injected explicit two-phase directive into fix task files ("Phase 1: explore, make NO changes → Phase 2: minimal targeted patch"). Full two-worker separation remains as future work.
 - [AI] ~~Research (AutoCodeRover): SBFL pre-pass missing~~ — RESOLVED 2026-04-08 (simplified): `_sbfl_prepass()` added to `worker_tldr.py`; runs pytest --tb=short, parses failing test tracebacks for frequency-scored suspect functions; injects as "SBFL Pre-pass" block; runs concurrently with repro test generation for fix tasks.
 - [AI] ~~Research (AutoCodeRover): Inline patch retry without subprocess restart~~ — RESOLVED 2026-04-07: `_run_with_context(use_continue=True)` now uses `claude -p --continue` for lint reflection retries, falling back to full restart if --continue fails.
