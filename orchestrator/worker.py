@@ -54,6 +54,7 @@ from condensers import ObservationMaskingCondenser
 from worker_utils import (
     _distill_output, _truncate_output, _strip_error_context,
     _run_lint_check, _extract_lint_targets, _run_project_tests, LoopDetectionService,
+    _capture_test_baseline, _run_intramorphic_check, _rank_tasks,
     MAX_LINES, MAX_BYTES, DISTILL_THRESHOLD, MAX_REFLECTION_RETRIES,
 )
 from worker_hydrate import _pre_hydrate
@@ -435,6 +436,19 @@ class Worker:
             effective_description + _schema_block + _fix_two_phase
             + _edit_discipline + _search_conventions
         )
+
+        # OpenHands §Gap3: capture test baseline before worker edits (fix tasks only).
+        if _parse_task_type(self.description) == "fix" and self._project_dir:
+            try:
+                baseline = await _capture_test_baseline(self._project_dir, timeout=30)
+                if baseline:
+                    (self._claude_dir / "test-baseline.json").write_text(
+                        json.dumps(baseline)
+                    )
+                    logger.debug("Intramorphic baseline: %d tests for %s", len(baseline), self.task_id)
+            except Exception:
+                pass
+
         return task_file
 
     def _build_cmd_and_env(self, task_file: Path) -> tuple[str, dict]:
@@ -819,6 +833,17 @@ class Worker:
                         self.failure_context = f"Post-commit tests failed:\n{test_output[:300]}"
                     elif "test" not in self.failure_context.lower():
                         self.failure_context += f"\nPost-commit tests failed:\n{test_output[:200]}"
+
+                # OpenHands §Gap3: intramorphic regression check
+                reg_warning = await _run_intramorphic_check(
+                    self._project_dir, self._claude_dir, test_output
+                )
+                if reg_warning:
+                    logger.warning("Worker %s: %s", self.id, reg_warning)
+                    self.failure_context = (
+                        f"{self.failure_context}\n{reg_warning}" if self.failure_context
+                        else reg_warning
+                    )
             except Exception:
                 pass
         # Generate 1-sentence completion summary for context archival (multi-agent pattern).
@@ -1129,55 +1154,6 @@ class Worker:
             if log_fd:
                 log_fd.close()
             return False
-
-# ─── Task Ranking ─────────────────────────────────────────────────────────────
-
-
-async def _rank_tasks(task_queue: "TaskQueue", claude_dir: Path) -> None:
-    """Score all unranked pending tasks by impact/urgency using haiku.
-    Updates priority_score (0.0–1.0) in DB. 1.0 = highest priority."""
-    try:
-        all_tasks = await task_queue.list()
-        unranked = [t for t in all_tasks
-                    if t["status"] == "pending" and not (t.get("priority_score") or 0)]
-        if not unranked:
-            return
-        items = unranked[:20]
-        task_lines = "\n".join(
-            f'{t["id"]}: {str(t.get("description") or "")[:120]}'
-            for t in items
-        )
-        prompt = (
-            "Score these tasks by impact and urgency (0.0=low, 1.0=high). "
-            "Return ONLY a JSON array: [{\"id\": \"...\", \"score\": 0.0}, ...]\n\n"
-            + task_lines
-        )
-        proc = await asyncio.wait_for(
-            asyncio.create_subprocess_exec(
-                "claude", "-p", prompt,
-                "--model", "claude-haiku-4-5-20251001",
-                "--dangerously-skip-permissions",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.DEVNULL,
-                cwd=str(claude_dir),
-            ),
-            timeout=60,
-        )
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=60)
-        text = stdout.decode() if stdout else ""
-        # Extract JSON array from response
-        import re as _re
-        m = _re.search(r'\[.*?\]', text, _re.DOTALL)
-        if not m:
-            return
-        scores = json.loads(m.group())
-        for entry in scores:
-            tid = entry.get("id")
-            score = float(entry.get("score", 0.0))
-            if tid:
-                await task_queue.update(tid, priority_score=score)
-    except Exception:
-        pass  # fail-open
 
 
 # ─── Worker Pool ──────────────────────────────────────────────────────────────

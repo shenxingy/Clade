@@ -294,6 +294,116 @@ async def _run_project_tests(project_dir: Path, timeout: int = 60) -> tuple[bool
         return True, f"[test_cmd error: {e}]"
 
 
+# ─── Intramorphic Testing (OpenHands §Gap3) ───────────────────────────────────
+# Compare test results before vs after a fix to detect regressions without a
+# ground-truth test oracle. A test that was PASSING before and is now FAILING
+# is a regression introduced by the fix — not a pre-existing failure.
+
+_PYTEST_RESULT_RE = re.compile(r'^(.+::.+?)\s+(PASSED|FAILED|ERROR)')
+
+
+def _parse_pytest_results(output: str) -> dict[str, bool]:
+    """Parse pytest -v output into {test_id: passed} dict."""
+    results: dict[str, bool] = {}
+    for line in output.splitlines():
+        m = _PYTEST_RESULT_RE.match(line.strip())
+        if m:
+            results[m.group(1).strip()] = m.group(2) == "PASSED"
+    return results
+
+
+def _find_intramorphic_regressions(
+    baseline: dict[str, bool],
+    post_edit: dict[str, bool],
+) -> list[str]:
+    """Return test IDs that were passing before the fix but are now failing."""
+    return [
+        tid for tid, was_passing in baseline.items()
+        if was_passing and not post_edit.get(tid, True)
+    ]
+
+
+async def _run_intramorphic_check(
+    project_dir: Path,
+    claude_dir: Path,
+    test_output: str,
+) -> str:
+    """Compare post-commit test results against pre-fix baseline.
+
+    Reads baseline from {claude_dir}/test-baseline.json (written before worker starts).
+    Returns a regression warning string, or "" if no regressions found.
+    Cleans up the baseline file regardless of outcome.
+    """
+    baseline_file = claude_dir / "test-baseline.json"
+    if not baseline_file.exists() or not test_output:
+        return ""
+    try:
+        baseline = json.loads(baseline_file.read_text())
+        post_results = _parse_pytest_results(test_output)
+        regressions = _find_intramorphic_regressions(baseline, post_results)
+        if regressions:
+            return (
+                f"Intramorphic regression detected — "
+                f"{len(regressions)} test(s) newly failing after fix:\n"
+                + "\n".join(f"  - {t}" for t in regressions[:5])
+            )
+        return ""
+    except Exception as e:
+        logger.debug("_run_intramorphic_check failed: %s", e)
+        return ""
+    finally:
+        baseline_file.unlink(missing_ok=True)
+
+
+async def _capture_test_baseline(project_dir: Path, timeout: int = 30) -> dict[str, bool]:
+    """Run tests on the clean worktree (before worker edits) to capture baseline.
+
+    Returns {test_id: passed} mapping or {} if tests can't be run.
+    Only activates for projects with detectable test commands.
+    Short timeout: must not delay worker startup significantly.
+    """
+    test_cmd: str | None = None
+    config_file = project_dir / ".claude" / "orchestrator.json"
+    if config_file.exists():
+        try:
+            test_cmd = json.loads(config_file.read_text()).get("test_cmd")
+        except Exception:
+            pass
+
+    if not test_cmd:
+        venv_pytest = project_dir / ".venv" / "bin" / "pytest"
+        if venv_pytest.exists():
+            test_cmd = f"{venv_pytest} tests/ -v --tb=no -q 2>&1 | head -300"
+        elif (project_dir / "pytest.ini").exists() or (project_dir / "pyproject.toml").exists():
+            test_cmd = "pytest tests/ -v --tb=no -q 2>&1 | head -300"
+
+    if not test_cmd:
+        return {}
+
+    # Ensure -v for per-test result parsing
+    if "pytest" in test_cmd and " -v" not in test_cmd:
+        test_cmd = test_cmd.replace("pytest ", "pytest -v ", 1)
+
+    try:
+        proc = await asyncio.create_subprocess_shell(
+            test_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            cwd=str(project_dir),
+        )
+        try:
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
+            logger.debug("_capture_test_baseline timed out after %ds", timeout)
+            return {}
+        return _parse_pytest_results(out.decode("utf-8", errors="replace"))
+    except Exception as e:
+        logger.debug("_capture_test_baseline failed: %s", e)
+        return {}
+
+
 # ─── Loop Detection Service (Gemini CLI pattern) ──────────────────────────────
 
 class LoopDetectionService:
@@ -344,3 +454,51 @@ class LoopDetectionService:
     @property
     def reason(self) -> str | None:
         return self._loop_reason
+
+
+# ─── Task Ranking (extracted from worker.py) ──────────────────────────────────
+
+
+async def _rank_tasks(task_queue: Any, claude_dir: Path) -> None:
+    """Score all unranked pending tasks by impact/urgency using haiku.
+    Updates priority_score (0.0–1.0) in DB. 1.0 = highest priority."""
+    try:
+        all_tasks = await task_queue.list()
+        unranked = [t for t in all_tasks
+                    if t["status"] == "pending" and not (t.get("priority_score") or 0)]
+        if not unranked:
+            return
+        items = unranked[:20]
+        task_lines = "\n".join(
+            f'{t["id"]}: {str(t.get("description") or "")[:120]}'
+            for t in items
+        )
+        prompt = (
+            "Score these tasks by impact and urgency (0.0=low, 1.0=high). "
+            "Return ONLY a JSON array: [{\"id\": \"...\", \"score\": 0.0}, ...]\n\n"
+            + task_lines
+        )
+        proc = await asyncio.wait_for(
+            asyncio.create_subprocess_exec(
+                "claude", "-p", prompt,
+                "--model", "claude-haiku-4-5-20251001",
+                "--dangerously-skip-permissions",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+                cwd=str(claude_dir),
+            ),
+            timeout=60,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=60)
+        text = stdout.decode() if stdout else ""
+        m = re.search(r'\[.*?\]', text, re.DOTALL)
+        if not m:
+            return
+        scores = json.loads(m.group())
+        for entry in scores:
+            tid = entry.get("id")
+            score = float(entry.get("score", 0.0))
+            if tid:
+                await task_queue.update(tid, priority_score=score)
+    except Exception:
+        pass  # fail-open
