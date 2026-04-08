@@ -264,6 +264,84 @@ async def _localize_tldr_for_task(
         return tldr
 
 
+# ─── Fault Localization Pre-pass (Agentless §6A pattern) ─────────────────────
+
+
+async def _localize_fault(
+    task_description: str, tldr: str, project_dir: Path
+) -> str:
+    """Structured fault localization pre-pass for bug-fix tasks (Agentless §6A).
+
+    Calls haiku to predict which files and functions are most likely to need
+    changes for the given task. Returns a formatted markdown block injected into
+    the worker's task file to tighten focus before the repair phase.
+
+    Falls back to empty string on any error (non-critical path).
+    Only useful for fix/bug tasks — callers should gate on task type.
+    """
+    if not tldr or not task_description:
+        return ""
+
+    prompt = (
+        "You are a code search expert. Given a bug report and codebase structure, "
+        "identify the specific files and functions most likely to need changes.\n\n"
+        f"Bug/Task:\n{task_description[:500]}\n\n"
+        f"Codebase structure:\n{tldr[:3000]}\n\n"
+        "Respond ONLY with a JSON object — no preamble, no markdown:\n"
+        '{"suspect_files":["path/to/file.py"],'
+        '"suspect_functions":["ClassName.method_name","module.function_name"],'
+        '"reason":"one-sentence explanation of why these locations are likely"}\n'
+        "List at most 3 files and 5 functions. Be specific — prefer exact names over guesses."
+    )
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "claude", "-p", prompt,
+            "--model", "claude-haiku-4-5-20251001",
+            "--dangerously-skip-permissions",
+            "--no-input-prompt",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+            cwd=str(project_dir),
+        )
+        try:
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
+            return ""
+        raw = out.decode("utf-8", errors="replace").strip()
+
+        # Extract JSON from response
+        m = re.search(r'\{.*\}', raw, re.DOTALL)
+        if not m:
+            return ""
+        data = json.loads(m.group())
+
+        files = data.get("suspect_files", [])[:3]
+        funcs = data.get("suspect_functions", [])[:5]
+        reason = data.get("reason", "")
+
+        if not files and not funcs:
+            return ""
+
+        lines = ["## Suspected Change Locations (pre-localized)"]
+        if reason:
+            lines.append(f"> {reason}\n")
+        if files:
+            lines.append("**Files most likely to change:**")
+            for f in files:
+                lines.append(f"- `{f}`")
+        if funcs:
+            lines.append("\n**Functions most likely to change:**")
+            for fn in funcs:
+                lines.append(f"- `{fn}`")
+        lines.append("\n> Focus your changes on the above locations first.")
+        return "\n".join(lines)
+
+    except Exception:
+        return ""
+
+
 # ─── Scout Readiness Scoring ──────────────────────────────────────────────────
 
 

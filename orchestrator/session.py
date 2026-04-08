@@ -28,7 +28,8 @@ from config import (
     _recover_orphaned_tasks,
 )
 from task_queue import TaskQueue
-from worker import SwarmManager, WorkerPool, _rank_tasks
+from swarm import SwarmManager
+from worker import WorkerPool, _rank_tasks
 from worker_tldr import _generate_code_tldr
 
 logger = logging.getLogger(__name__)
