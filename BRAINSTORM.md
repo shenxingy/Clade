@@ -10,7 +10,7 @@ See full doc: docs/research/2026-04-08-openhands-swebench-2025.md
 
 - [AI] ~~OpenHands (Gap 1): Shared TLDR cache across parallel workers~~ — ALREADY RESOLVED: `_tldr_cache` in `worker_tldr.py` is a module-level dict (process singleton). All workers in the same process share the cache via `_original_project_dir` key. mtime-based invalidation already handles freshness.
 - [AI] ~~OpenHands (Gap 2): Agent-initiated context compression~~ — RESOLVED 2026-04-08 (prompt-level): Added "Context Checkpoint" instruction to all task files; workers instructed to write `.claude/ctx-checkpoint.md` summary before making edits (CAT pattern). Full tool-call-based compression remains future work.
-- [AI] OpenHands (Gap 3): Intramorphic testing (regression detection without test oracle) — compare output of original vs. modified code on same inputs to catch regressions without ground-truth tests. Medium effort, high value for projects without test suites.
+- [AI] ~~OpenHands (Gap 3): Intramorphic testing~~ — RESOLVED 2026-04-08: `_capture_test_baseline()` + `_run_intramorphic_check()` added to `worker_utils.py`; baseline captured pre-edit for fix tasks, compared post-commit to detect newly-failing tests; regression warning injected into `failure_context`.
 
 ---
 
