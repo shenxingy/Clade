@@ -837,17 +837,28 @@ class Worker:
                 context_blocks.append(hydrate_block)
         except Exception:
             pass
+        # Apply ObservationMaskingCondenser to truncate any oversized context block before
+        # writing the task file — prevents multi-hundred-KB task files from large GitHub issues
+        # or deeply nested project structures. Each block treated as an observation event.
         if context_blocks:
+            _ctx_condenser = ObservationMaskingCondenser(max_obs_bytes=8192)
+            _ctx_events = [{"type": "observation", "content": b} for b in context_blocks]
+            context_blocks = [e["content"] for e in _ctx_condenser.condense(_ctx_events)]
             effective_description = "\n\n---\n\n".join(context_blocks) + f"\n\n---\n\n# Task\n\n{self.description}"
-        # Inject unread messages from other tasks
+        # Inject unread messages from other tasks — also condense individual messages
+        # to prevent a large tool-output dump from one worker flooding another's context
         if task_queue:
             try:
                 messages = await task_queue.get_messages(self.task_id, unread_only=True)
                 if messages:
+                    _msg_condenser = ObservationMaskingCondenser(max_obs_bytes=2000)
                     msg_block = "\n\n---\n**Messages from other tasks:**\n"
                     for m in messages:
                         sender = m.get("from_task_id") or "human"
-                        msg_block += f"- [{sender}]: {m['content']}\n"
+                        condensed = _msg_condenser.condense(
+                            [{"type": "observation", "content": m["content"]}]
+                        )
+                        msg_block += f"- [{sender}]: {condensed[0]['content']}\n"
                     effective_description += msg_block
                     await task_queue.mark_messages_read(self.task_id)
             except Exception:
