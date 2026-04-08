@@ -5,7 +5,7 @@
 - Frontend: N/A (orchestrator has vanilla JS UI but not the primary interface)
 - Backend: FastAPI (orchestrator/, port 8000) — optional, CLI layer works standalone
 - Test command: cd orchestrator && .venv/bin/python -m pytest tests/ -v
-- Verify command: cd orchestrator && python -m py_compile server.py session.py task_queue.py worker.py swarm.py worker_tldr.py worker_review.py worker_utils.py worker_hydrate.py condensers.py config.py github_sync.py ideas.py process_manager.py routes/tasks.py routes/workers.py routes/webhooks.py routes/ideas.py routes/process.py
+- Verify command: cd orchestrator && python -m py_compile server.py session.py session_tree.py task_queue.py worker.py swarm.py worker_tldr.py worker_review.py worker_utils.py worker_hydrate.py condensers.py config.py github_sync.py ideas.py process_manager.py event_stream.py tracing.py reactions.py routes/tasks.py routes/workers.py routes/webhooks.py routes/ideas.py routes/process.py
 
 ## Features (Behavior Anchors)
 - install.sh: running `./install.sh` copies skills/hooks/scripts/keybindings to ~/.claude/ without errors
@@ -37,7 +37,7 @@ cd orchestrator && uvicorn server:app --reload
 cd orchestrator && .venv/bin/python -m pytest tests/ -v
 
 # Syntax check (all Python modules)
-cd orchestrator && python -m py_compile server.py session.py task_queue.py worker.py swarm.py worker_tldr.py worker_review.py worker_utils.py worker_hydrate.py condensers.py config.py github_sync.py ideas.py process_manager.py routes/tasks.py routes/workers.py routes/webhooks.py routes/ideas.py routes/process.py
+cd orchestrator && python -m py_compile server.py session.py session_tree.py task_queue.py worker.py swarm.py worker_tldr.py worker_review.py worker_utils.py worker_hydrate.py condensers.py config.py github_sync.py ideas.py process_manager.py event_stream.py tracing.py reactions.py routes/tasks.py routes/workers.py routes/webhooks.py routes/ideas.py routes/process.py
 
 # MCP Server — expose skills as MCP tools for external AI coding tools
 # After install.sh, configure in ~/.claude/settings.json:
@@ -143,7 +143,7 @@ Conventional commit types: `feat` / `fix` / `refactor` / `test` / `chore` / `doc
 Before committing, ensure CI will pass by running locally:
 ```bash
 # 1. Python syntax check (all modules)
-cd orchestrator && python -m py_compile server.py session.py task_queue.py worker.py worker_tldr.py worker_review.py config.py github_sync.py ideas.py process_manager.py routes/tasks.py routes/workers.py routes/webhooks.py routes/ideas.py routes/process.py
+cd orchestrator && python -m py_compile server.py session.py session_tree.py task_queue.py worker.py swarm.py worker_tldr.py worker_review.py worker_utils.py worker_hydrate.py condensers.py config.py github_sync.py ideas.py process_manager.py event_stream.py tracing.py reactions.py routes/tasks.py routes/workers.py routes/webhooks.py routes/ideas.py routes/process.py
 
 # 2. Tests
 cd orchestrator && .venv/bin/python -m pytest tests/ -v
