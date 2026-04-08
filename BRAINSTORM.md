@@ -35,7 +35,7 @@ See full doc: docs/research/2026-04-07-claude-hooks.md
 - [AI] ~~Hooks (Gap 2): Extend `pre-tool-guardian.sh` to include `updatedInput` rewrites for safe alternatives~~ — RESOLVED 2026-04-08: `pre-tool-guardian.sh` now returns `updatedInput` rewriting `--force`/`-f` to `--force-with-lease` for non-main/master branches.
 - [AI] ~~Hooks (Gap 3): Add `Stop` hook for false-done prevention~~ — RESOLVED 2026-04-08: `stop-check.sh` added; blocks (exit 2) when uncommitted staged/unstaged files exist or `.claude/blockers.md` has entries; wired into `settings-hooks.json` + live `~/.claude/settings.json`.
 - [AI] Hooks (Gap 4): Add `"if"` field to hook matchers (e.g. `"if": "Bash(rm *|git push*)"`) to skip hook invocation for safe commands. Small effort, reduces overhead. See §Gap 4
-- [AI] Hooks (Gap 5): Use `updatedPermissions` in `PermissionRequest` handler to inject persistent allow rules into `.claude/settings.local.json` after first approval. Small effort. See §Gap 5
+- [AI] ~~Hooks (Gap 5): `updatedPermissions` in PermissionRequest handler~~ — RESOLVED 2026-04-08: `permission-request.sh` created; auto-allows read-only git/file/pytest patterns, injects `updatedPermissions` to persist rule in `localSettings`; wired into `settings-hooks.json` + live `~/.claude/settings.json`.
 - [AI] ~~Hooks (Gap 6): Add `PostToolUseFailure` hook to inject diagnostic context~~ — RESOLVED 2026-04-08: `post-tool-use-failure.sh` created; injects tool-specific recovery hints (git status for Bash, re-read hint for Edit, Glob hint for Read); wired into `settings-hooks.json` + live `~/.claude/settings.json`.
 
 ---
