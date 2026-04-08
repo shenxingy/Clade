@@ -26,7 +26,7 @@ See full doc: docs/research/2026-04-07-claude-hooks.md
 - [AI] Hooks (Gap 3): Add `Stop` hook that runs tests + checks TODO checklist before allowing session end. Highest value for overnight autonomous loops — prevents false-done sessions. Medium effort. See §Gap 3
 - [AI] Hooks (Gap 4): Add `"if"` field to hook matchers (e.g. `"if": "Bash(rm *|git push*)"`) to skip hook invocation for safe commands. Small effort, reduces overhead. See §Gap 4
 - [AI] Hooks (Gap 5): Use `updatedPermissions` in `PermissionRequest` handler to inject persistent allow rules into `.claude/settings.local.json` after first approval. Small effort. See §Gap 5
-- [AI] Hooks (Gap 6): Add `PostToolUseFailure` hook to inject diagnostic context (recent changes, common fixes) when a tool fails. Reduces recovery turns. Small effort. See §Gap 6
+- [AI] ~~Hooks (Gap 6): Add `PostToolUseFailure` hook to inject diagnostic context~~ — RESOLVED 2026-04-08: `post-tool-use-failure.sh` created; injects tool-specific recovery hints (git status for Bash, re-read hint for Edit, Glob hint for Read); wired into `settings-hooks.json` + live `~/.claude/settings.json`.
 
 ---
 
@@ -56,8 +56,8 @@ See full doc: docs/research/2026-04-07-autocoderover.md
 
 See full doc: docs/research/2026-04-08-sweep-ai.md
 
-- [AI] Sweep (Gap 3): Post-worker test runner missing — no functional test execution after commit; only lint check. Add optional `test_cmd` to `.claude/orchestrator.json`; run after `verify_and_commit()`. Small effort, high value.
-- [AI] Sweep (Gap 2): Caller hints for signature changes missing — when fault localization identifies a function, grep for callers and inject as "if you change X, also update these callers" hint. Small effort.
+- [AI] ~~Sweep (Gap 3): Post-worker test runner missing~~ — RESOLVED 2026-04-08: `_run_project_tests()` added to `worker_utils.py`; reads `test_cmd` from `.claude/orchestrator.json`, auto-detects pytest; called in `_on_worker_done()` after successful commit; failures injected into reflection retry.
+- [AI] ~~Sweep (Gap 2): Caller hints for signature changes missing~~ — RESOLVED 2026-04-08: `_find_caller_hints()` added to `worker_tldr.py`; greps for callers of suspect functions from fault localization output; injected as "Caller hints" block in task file for fix tasks.
 - [AI] Sweep (Gap 1): Entity-level TLDR pruning missing — worker sees entire TLDR; filter to only show entities relevant to the task description. Reduces context noise 3-5×. Medium effort.
 - [AI] Sweep (Gap 4): Hybrid context retrieval missing — combine keyword grep + structural haiku selection in `_localize_tldr_for_task`. Medium effort.
 
