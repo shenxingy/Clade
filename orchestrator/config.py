@@ -391,3 +391,70 @@ def _build_tool_flags(task_type: str | None) -> str:
     elif disallowed:
         return f' --disallowed-tools "{",".join(disallowed)}"'
     return ""
+
+
+# ─── Task Schema / JSON Envelope (Multi-agent Gap 3) ─────────────────────────
+
+
+def _format_task_schema_block(task_schema: dict) -> str:
+    """Format a parsed task schema into a markdown block for injection into task files."""
+    if not task_schema:
+        return ""
+    lines = ["\n\n---\n\n## Task Contracts (Multi-agent §Gap3)"]
+    if criteria := task_schema.get("acceptance_criteria"):
+        lines.append("**Acceptance Criteria** (oracle will check these):")
+        for c in criteria:
+            lines.append(f"- {c}")
+    if inputs := task_schema.get("input_files"):
+        lines.append("\n**Expected Input Files:**")
+        for f in inputs:
+            lines.append(f"- `{f}`")
+    if provides := task_schema.get("provides"):
+        lines.append("\n**This task provides:**")
+        for p in provides:
+            lines.append(f"- {p}")
+    if requires := task_schema.get("requires"):
+        lines.append("\n**This task requires:**")
+        for r in requires:
+            lines.append(f"- {r}")
+    return "\n".join(lines)
+
+
+def _parse_task_schema(description: str) -> dict:
+    """Extract optional JSON schema envelope from a task description.
+
+    Multi-agent Gap 3: structured input/output contracts for swarm tasks.
+    Workers that include a JSON block specify explicit acceptance criteria,
+    required input files, and expected output artifacts for the oracle to check.
+
+    Format (embedded JSON block in description):
+    ```json
+    {
+      "acceptance_criteria": ["All auth tests pass", "No imports added"],
+      "input_files": ["src/auth.py"],
+      "provides": ["AuthService class"],
+      "requires": ["UserModel from users.py"]
+    }
+    ```
+
+    Returns parsed dict or {} if no valid JSON block found.
+    """
+    # Look for ```json ... ``` or raw JSON object embedded in description
+    m = re.search(r'```json\s*(\{.*?\})\s*```', description, re.DOTALL)
+    if not m:
+        # Try inline JSON object
+        m = re.search(r'\{[^{}]*"acceptance_criteria"[^{}]*\}', description, re.DOTALL)
+    if not m:
+        return {}
+    try:
+        data = json.loads(m.group(1) if m.lastindex else m.group())
+        if not isinstance(data, dict):
+            return {}
+        # Normalize fields — only keep known keys
+        result: dict = {}
+        for key in ("acceptance_criteria", "input_files", "provides", "requires"):
+            if key in data and isinstance(data[key], list):
+                result[key] = [str(v)[:200] for v in data[key][:10]]
+        return result
+    except (json.JSONDecodeError, AttributeError):
+        return {}
