@@ -33,6 +33,7 @@
                     {
                         "type": "command",
                         "command": "~/.claude/hooks/revert-detector.sh",
+                        "if": "Bash(git *)",
                         "async": true,
                         "timeout": 5
                     }
