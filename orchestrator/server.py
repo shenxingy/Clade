@@ -436,7 +436,7 @@ async def get_loop_sources(session_id: str):
 
 @app.post("/api/sessions/{session_id}/swarm/start")
 async def start_swarm(session_id: str, body: dict):
-    from worker import SwarmManager
+    from swarm import SwarmManager
     s = registry.get(session_id)
     if not s:
         raise HTTPException(status_code=404, detail="Session not found")
