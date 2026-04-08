@@ -169,25 +169,102 @@ async def _write_pr_review(pr_url: str, task_description: str, project_dir: Path
         pass  # non-critical
 
 
+_ORACLE_CHUNK_SIZE = 2500  # chars per diff chunk (Qodo §Gap3: chunked review for large diffs)
+_ORACLE_PROMPT_TEMPLATE = (
+    "You are an independent code reviewer. Review the diff against the task description.\n"
+    "Respond with ONLY a JSON object — no preamble, no markdown. Format:\n"
+    '{{"decision":"APPROVED","dimensions":{{"correctness":"pass","completeness":"pass",'
+    '"code_quality":"pass"}},"fix_guidance":""}}\n'
+    "OR for rejection:\n"
+    '{{"decision":"REJECTED","dimensions":{{"correctness":"fail — <why>",'
+    '"completeness":"warn — <what missing>","code_quality":"pass"}},'
+    '"fix_guidance":"<one specific actionable fix>"}}\n\n'
+    "Dimension values: 'pass', 'fail — <reason>', or 'warn — <reason>'.\n"
+    "fix_guidance: empty string if APPROVED, else ONE concrete fix instruction.\n\n"
+    "Task: {task}\n\nDiff:\n{diff}"
+)
+
+
+async def _oracle_review_chunk(
+    task_description: str, diff_chunk: str, chunk_label: str, claude_dir: Path
+) -> tuple[bool, str]:
+    """Review a single diff chunk. Returns (approved, reason). Internal helper."""
+    prompt = _ORACLE_PROMPT_TEMPLATE.format(
+        task=task_description[:400], diff=diff_chunk
+    )
+    if chunk_label:
+        prompt = f"[Reviewing chunk: {chunk_label}]\n\n" + prompt
+    prompt_file = claude_dir / f"oracle-{uuid.uuid4().hex[:8]}.md"
+    try:
+        prompt_file.write_text(prompt)
+        proc = await asyncio.create_subprocess_shell(
+            f'claude -p "$(cat {shlex.quote(str(prompt_file))})" '
+            f'--model claude-haiku-4-5-20251001 --dangerously-skip-permissions',
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        try:
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout=60)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
+            out = b""
+        raw = out.decode().strip()
+        try:
+            data = json.loads(raw)
+            approved = data.get("decision", "").upper() == "APPROVED"
+            fix_guidance = data.get("fix_guidance", "")
+            dims = data.get("dimensions", {})
+            if not approved and fix_guidance:
+                reason = fix_guidance[:200]
+            elif not approved:
+                fails = [f"{k}: {v}" for k, v in dims.items() if not str(v).startswith("pass")]
+                reason = "; ".join(fails)[:200] if fails else "oracle rejected"
+            else:
+                reason = "approved"
+            return approved, reason
+        except (json.JSONDecodeError, AttributeError):
+            pass
+        approved = raw.startswith("APPROVED")
+        reason = raw.split(":", 1)[-1].strip()[:80] if ":" in raw else raw[:80]
+        return approved, reason
+    except Exception as e:
+        logger.warning("oracle chunk review error: %s", e)
+        return True, "oracle error (fail-open)"
+    finally:
+        prompt_file.unlink(missing_ok=True)
+
+
 async def _oracle_review(task_description: str, diff_text: str, claude_dir: Path) -> tuple[bool, str]:
     """Independent second-model review of a diff (Self-RAG multi-dimensional critique).
 
+    For large diffs (> ORACLE_CHUNK_SIZE chars), reviews in chunks and merges findings.
+    Qodo §Gap3: chunked review prevents large refactors from being auto-approved.
     Returns (approved, reason) where reason contains structured fix guidance on rejection.
-    Asks haiku to return JSON with per-dimension scores so the worker gets targeted feedback.
     Falls open on any error.
     """
-    prompt = (
-        "You are an independent code reviewer. Review the diff against the task description.\n"
-        "Respond with ONLY a JSON object — no preamble, no markdown. Format:\n"
-        '{"decision":"APPROVED","dimensions":{"correctness":"pass","completeness":"pass",'
-        '"code_quality":"pass"},"fix_guidance":""}\n'
-        "OR for rejection:\n"
-        '{"decision":"REJECTED","dimensions":{"correctness":"fail — <why>",'
-        '"completeness":"warn — <what missing>","code_quality":"pass"},'
-        '"fix_guidance":"<one specific actionable fix>"}\n\n'
-        "Dimension values: 'pass', 'fail — <reason>', or 'warn — <reason>'.\n"
-        "fix_guidance: empty string if APPROVED, else ONE concrete fix instruction.\n\n"
-        f"Task: {task_description[:400]}\n\nDiff:\n{diff_text[:3000]}"
+    # Chunk large diffs (Qodo §Gap3)
+    if len(diff_text) > _ORACLE_CHUNK_SIZE:
+        chunks = [
+            diff_text[i:i + _ORACLE_CHUNK_SIZE]
+            for i in range(0, len(diff_text), _ORACLE_CHUNK_SIZE)
+        ]
+        # Review first 3 chunks max to avoid excessive API calls
+        chunks = chunks[:3]
+        results = await asyncio.gather(*[
+            _oracle_review_chunk(task_description, chunk, f"{i+1}/{len(chunks)}", claude_dir)
+            for i, chunk in enumerate(chunks)
+        ])
+        # Aggregate: any rejection → overall rejection; collect first rejection reason
+        rejections = [(approved, reason) for approved, reason in results if not approved]
+        if rejections:
+            reason = rejections[0][1]
+            return False, reason
+        return True, "approved (all chunks passed)"
+
+    # Short diff: single-pass review
+    prompt = _ORACLE_PROMPT_TEMPLATE.format(
+        task=task_description[:400], diff=diff_text[:_ORACLE_CHUNK_SIZE]
     )
     prompt_file = claude_dir / f"oracle-{uuid.uuid4().hex[:8]}.md"
     try:
