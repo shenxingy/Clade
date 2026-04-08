@@ -27,8 +27,8 @@ def _parse_linked_references(text: str) -> dict[str, list[str]]:
 
     # GitHub issue/PR references: #123, owner/repo#123
     issue_refs = re.findall(r"(?:([a-zA-Z0-9_.-]+)/([a-zA-Z0-9_.-]+))?#(\d+)", text)
-    for owner_repo, _, num in issue_refs:
-        ref = f"{owner_repo}#{num}" if owner_repo else f"#{num}"
+    for owner, repo, num in issue_refs:
+        ref = f"{owner}/{repo}#{num}" if owner else f"#{num}"
         refs["issues"].append(ref)
 
     # GitHub full URLs: https://github.com/owner/repo/issues/123
