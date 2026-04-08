@@ -142,10 +142,127 @@ def _generate_code_tldr(project_dir: str) -> str:
             lines.append("")
 
     result = "\n".join(lines)
-    if len(result) > 3000:
-        result = result[:3000] + "\n... (truncated)"
     _tldr_cache[project_dir] = (max_mtime, result)
     return result
+
+
+# ─── Two-Phase Task-Specific TLDR Localization (Moatless pattern) ─────────────
+
+_LOCALIZE_PROMPT = """\
+You are a code navigator. Given a task description and a codebase structure map, \
+identify the top-5 most relevant files for completing the task.
+
+Task:
+{task}
+
+Codebase structure:
+{tldr}
+
+Respond with ONLY a JSON array of file paths (relative paths as shown in the map), \
+most relevant first. Example: ["path/to/file.py", "other/file.ts"]
+No explanation, no markdown, just the JSON array."""
+
+
+def _extract_tldr_sections(tldr: str) -> dict[str, str]:
+    """Parse TLDR into a dict of {filepath: section_text}."""
+    sections: dict[str, str] = {}
+    current_file: str | None = None
+    current_lines: list[str] = []
+    for line in tldr.splitlines():
+        if line.startswith("## "):
+            if current_file is not None:
+                sections[current_file] = "\n".join(current_lines)
+            current_file = line[3:].strip()
+            current_lines = [line]
+        elif current_file is not None:
+            current_lines.append(line)
+    if current_file is not None:
+        sections[current_file] = "\n".join(current_lines)
+    return sections
+
+
+async def _localize_tldr_for_task(
+    task_description: str, tldr: str, project_dir: Path
+) -> str:
+    """Two-phase: pick top-5 relevant files via haiku, return filtered TLDR.
+
+    Moatless pattern: when TLDR is large (>4KB), use haiku to narrow to the
+    files most relevant to the task before injecting into context. Saves tokens
+    and focuses worker attention on the right files.
+
+    Falls back to original TLDR on any error.
+    """
+    sections = _extract_tldr_sections(tldr)
+    if not sections:
+        return tldr
+
+    # Build a compact map for haiku (just file paths + first symbol)
+    compact_lines: list[str] = []
+    for fpath, content in sections.items():
+        first_sym = ""
+        for line in content.splitlines()[1:]:
+            if line.strip():
+                first_sym = line.strip()[:60]
+                break
+        compact_lines.append(f"{fpath}: {first_sym}")
+    compact_map = "\n".join(compact_lines)
+
+    prompt = _LOCALIZE_PROMPT.format(
+        task=task_description[:600],
+        tldr=compact_map[:3000],
+    )
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "claude", "-p", prompt,
+            "--model", "claude-haiku-4-5-20251001",
+            "--dangerously-skip-permissions",
+            "--no-input-prompt",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+            cwd=str(project_dir),
+        )
+        try:
+            stdout_bytes, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
+            return tldr
+
+        output = stdout_bytes.decode("utf-8", errors="replace").strip()
+        # Extract JSON array
+        m = re.search(r'\[.*?\]', output, re.DOTALL)
+        if not m:
+            return tldr
+
+        picked: list[str] = json.loads(m.group())
+        if not isinstance(picked, list):
+            return tldr
+
+        # Build filtered TLDR from picked files (preserve original order)
+        filtered: list[str] = []
+        for fpath in picked[:5]:
+            if fpath in sections:
+                filtered.append(sections[fpath])
+            else:
+                # Fuzzy match — haiku might return slightly different paths
+                for key in sections:
+                    if key.endswith(fpath) or fpath.endswith(key):
+                        filtered.append(sections[key])
+                        break
+
+        if not filtered:
+            return tldr
+
+        result = "\n\n".join(filtered)
+        skipped = len(sections) - len(filtered)
+        if skipped > 0:
+            result += f"\n\n... ({skipped} files omitted — task-localized view)"
+        return result
+
+    except Exception:
+        return tldr
+
 
 # ─── Scout Readiness Scoring ──────────────────────────────────────────────────
 
