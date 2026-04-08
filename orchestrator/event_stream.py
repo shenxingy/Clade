@@ -161,7 +161,7 @@ class EventStream:
         """
         all_events = self._pending_events
         events_as_dicts = [
-            {"type": e.event_type, "content": str(e.data) if isinstance(e.data, dict) else str(e.data)}
+            {"type": e.event_type, "content": e.content}
             for e in all_events
         ]
         if len(events_as_dicts) > max_events:
