@@ -83,6 +83,45 @@ async def test_source_ref_stored(task_queue: TaskQueue):
     assert fetched["source_ref"] == "github/issue/42"
 
 
+# ─── Completion summary / recent completions ──────────────────────────────────
+
+
+async def test_completion_summary_stored(task_queue: TaskQueue):
+    task = await task_queue.add("Task with summary")
+    await task_queue.update(task["id"], status="done", completion_summary="Added auth module, tests pass.")
+    fetched = await task_queue.get(task["id"])
+    assert fetched["completion_summary"] == "Added auth module, tests pass."
+
+
+async def test_get_recent_completions_returns_done_with_summary(task_queue: TaskQueue):
+    t1 = await task_queue.add("Done task with summary")
+    await task_queue.update(t1["id"], status="done", completion_summary="Implemented feature X.")
+    t2 = await task_queue.add("Done task without summary")
+    await task_queue.update(t2["id"], status="done")
+    t3 = await task_queue.add("Pending task")
+
+    results = await task_queue.get_recent_completions()
+    ids = [r["id"] for r in results]
+    assert t1["id"] in ids         # done + has summary → included
+    assert t2["id"] not in ids     # done but no summary → excluded
+    assert t3["id"] not in ids     # pending → excluded
+
+
+async def test_get_recent_completions_excludes_self(task_queue: TaskQueue):
+    t1 = await task_queue.add("Task A")
+    await task_queue.update(t1["id"], status="done", completion_summary="Did A.")
+    results = await task_queue.get_recent_completions(exclude_task_id=t1["id"])
+    assert all(r["id"] != t1["id"] for r in results)
+
+
+async def test_get_recent_completions_respects_limit(task_queue: TaskQueue):
+    for i in range(8):
+        t = await task_queue.add(f"Task {i}")
+        await task_queue.update(t["id"], status="done", completion_summary=f"Done {i}.")
+    results = await task_queue.get_recent_completions(limit=3)
+    assert len(results) <= 3
+
+
 # ─── Priority score ───────────────────────────────────────────────────────────
 
 

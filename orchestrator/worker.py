@@ -116,6 +116,7 @@ class Worker:
         self._tracer = TracingService.get_instance().get_or_create_tracer(self.id)
         self._reaction_executor = ReactionExecutor()
         self.completion_summary: str | None = None  # 1-sentence summary (multi-agent context archival)
+        self._failure_reflections: list[str] = []  # Reflexion pattern: accumulated failure notes
         self._input_tokens: int = 0
         self._output_tokens: int = 0
         self._estimated_cost: float = 0.0
@@ -284,6 +285,21 @@ class Worker:
             _ctx_events = [{"type": "observation", "content": b} for b in context_blocks]
             context_blocks = [e["content"] for e in _ctx_condenser.condense(_ctx_events)]
             effective_description = "\n\n---\n\n".join(context_blocks) + f"\n\n---\n\n# Task\n\n{self.description}"
+        # Inject recent sibling completions (multi-agent context archival).
+        # Workers gain awareness of what was recently accomplished — prevents duplicate
+        # work and allows continuation of previously established patterns.
+        if task_queue:
+            try:
+                recent = await task_queue.get_recent_completions(
+                    exclude_task_id=self.task_id, limit=5, since_seconds=86400
+                )
+                if recent:
+                    lines = ["## Recently Completed Tasks"]
+                    for r in recent:
+                        lines.append(f"- [{r['id']}] {r['completion_summary']}")
+                    effective_description += "\n\n---\n\n" + "\n".join(lines) + "\n"
+            except Exception:
+                pass
         # Inject unread messages from other tasks — also condense individual messages
         # to prevent a large tool-output dump from one worker flooding another's context
         if task_queue:
@@ -604,10 +620,18 @@ class Worker:
                             "Worker %s: reflection retry %d/%d — lint errors found, re-running with context",
                             self.id, self._reflection_retries, MAX_REFLECTION_RETRIES
                         )
-                        # Inject lint output as additional context and re-run
+                        # Reflexion pattern: accumulate failure note and prepend history
+                        stripped = _strip_error_context(lint_output)
+                        failure_note = f"Retry {self._reflection_retries}: {stripped[:300]}"
+                        self._failure_reflections.append(failure_note)
+                        history_lines = "\n".join(
+                            f"  - {n}" for n in self._failure_reflections[-3:]
+                        )
+                        # Inject lint output + episodic failure history as additional context
                         retry_context = (
+                            f"Previous attempts failed:\n{history_lines}\n\n"
                             f"Your previous edit introduced lint/verification errors. Fix them now.\n\n"
-                            f"Lint output:\n{_strip_error_context(lint_output)}\n"
+                            f"Lint output:\n{stripped}\n"
                         )
                         # AutoCodeRover pattern: use --continue to preserve session context.
                         # Agent remembers which files it edited, so we only send the error.
@@ -616,6 +640,7 @@ class Worker:
                             self.status = "done"
                             self._loop_detector._loop_detected = False  # reset loop detection on retry
                             self._reflection_retries = 0  # reset on success
+                            self._failure_reflections.clear()  # clear episodic memory on success
                         else:
                             self._reflection_retries += 0  # already incremented
                 except Exception:
