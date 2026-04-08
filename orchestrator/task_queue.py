@@ -12,13 +12,18 @@ from pathlib import Path
 
 import aiosqlite
 
+import logging
+
 from config import (
     _ALLOWED_LOOP_COLS,
     _ALLOWED_TASK_COLS,
     _MODEL_ALIASES,
     GLOBAL_SETTINGS,
     _deps_met,
+    _detect_dep_cycle,
 )
+
+logger = logging.getLogger(__name__)
 
 # ─── Task Queue (SQLite-backed) ───────────────────────────────────────────────
 
@@ -594,6 +599,16 @@ class TaskQueue:
                     task["depends_on"] = depends_on
                 existing_by_desc[description] = "pending"
                 added.append(task)
+        # Multi-agent Gap 6: circular dependency detection (small effort).
+        # Check newly-added tasks for cycles and log a warning if found.
+        # We don't abort the import — let the swarm detect deadlock and report it.
+        if added:
+            cycle = _detect_dep_cycle(added)
+            if cycle:
+                logger.warning(
+                    "import_from_proposed: circular dependency detected in new tasks: %s",
+                    " → ".join(cycle)
+                )
         return added, skip_counts
 
     # ─── Cross-worker Messages ────────────────────────────────────────────────

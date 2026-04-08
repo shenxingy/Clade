@@ -11,11 +11,13 @@ from condensers import (
 from worker_utils import (
     _truncate_output,
     _strip_error_context,
+    _extract_lint_targets,
     LoopDetectionService,
     MAX_LINES,
     MAX_BYTES,
 )
 from worker_hydrate import _parse_linked_references
+from config import _detect_dep_cycle
 
 
 # ─── condensers ───────────────────────────────────────────────────────────────
@@ -237,3 +239,75 @@ class TestExtractTldrSections:
         content = sections["path/to/file.ts"]
         assert "constructor()" in content
         assert "method()" in content
+
+
+# ─── _extract_lint_targets ────────────────────────────────────────────────────
+
+class TestExtractLintTargets:
+    def test_ruff_style_errors(self):
+        output = (
+            "## Ruff (Python)\n"
+            "app/main.py:42:5: E501 Line too long (89 > 88 characters)\n"
+            "app/utils.py:10:1: F401 'os' imported but unused\n"
+        )
+        targets = _extract_lint_targets(output)
+        assert len(targets) == 2
+        assert "app/main.py:42" in targets[0]
+        assert "app/utils.py:10" in targets[1]
+
+    def test_max_targets_respected(self):
+        lines = "\n".join(f"file.py:{i}:1: E501 error" for i in range(10))
+        targets = _extract_lint_targets(lines, max_targets=3)
+        assert len(targets) == 3
+
+    def test_empty_output(self):
+        assert _extract_lint_targets("") == []
+
+    def test_no_parseable_locations(self):
+        assert _extract_lint_targets("All checks passed!") == []
+
+
+# ─── _detect_dep_cycle ────────────────────────────────────────────────────────
+
+class TestDetectDepCycle:
+    def _task(self, tid: str, deps: list[str]) -> dict:
+        return {"id": tid, "depends_on": deps}
+
+    def test_no_cycle(self):
+        tasks = [
+            self._task("a", []),
+            self._task("b", ["a"]),
+            self._task("c", ["b"]),
+        ]
+        assert _detect_dep_cycle(tasks) is None
+
+    def test_simple_cycle(self):
+        tasks = [
+            self._task("a", ["b"]),
+            self._task("b", ["a"]),
+        ]
+        cycle = _detect_dep_cycle(tasks)
+        assert cycle is not None
+        assert "a" in cycle or "b" in cycle
+
+    def test_three_node_cycle(self):
+        tasks = [
+            self._task("a", ["c"]),
+            self._task("b", ["a"]),
+            self._task("c", ["b"]),
+        ]
+        cycle = _detect_dep_cycle(tasks)
+        assert cycle is not None
+        assert len(cycle) >= 2
+
+    def test_self_loop(self):
+        tasks = [self._task("a", ["a"])]
+        cycle = _detect_dep_cycle(tasks)
+        assert cycle is not None
+
+    def test_empty_tasks(self):
+        assert _detect_dep_cycle([]) is None
+
+    def test_no_deps(self):
+        tasks = [self._task("a", []), self._task("b", []), self._task("c", [])]
+        assert _detect_dep_cycle(tasks) is None

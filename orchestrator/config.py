@@ -174,6 +174,57 @@ def _deps_met(task: dict, done_ids: set) -> bool:
             deps = []
     return all(dep_id in done_ids for dep_id in deps)
 
+
+def _detect_dep_cycle(tasks: list[dict]) -> list[str] | None:
+    """Detect circular dependencies in a task list using DFS.
+
+    Returns a list of task IDs forming the cycle, or None if no cycle found.
+    Used before importing tasks or starting a swarm batch to prevent deadlock.
+    """
+    # Build adjacency: task_id → set of dependency IDs (only within this task set)
+    task_ids = {t["id"] for t in tasks if t.get("id")}
+    adj: dict[str, set[str]] = {}
+    for task in tasks:
+        tid = task.get("id")
+        if not tid:
+            continue
+        deps = task.get("depends_on") or []
+        if isinstance(deps, str):
+            try:
+                deps = json.loads(deps)
+            except Exception:
+                deps = []
+        # Only consider deps that exist in the same batch (intra-batch cycles)
+        adj[tid] = {d for d in deps if d in task_ids}
+
+    # DFS cycle detection (white/grey/black coloring)
+    WHITE, GREY, BLACK = 0, 1, 2
+    color = {tid: WHITE for tid in adj}
+    path: list[str] = []
+
+    def dfs(node: str) -> list[str] | None:
+        color[node] = GREY
+        path.append(node)
+        for neighbor in adj.get(node, set()):
+            if color.get(neighbor) == GREY:
+                # Cycle found — extract the cycle portion of path
+                cycle_start = path.index(neighbor)
+                return path[cycle_start:]
+            if color.get(neighbor) == WHITE:
+                result = dfs(neighbor)
+                if result is not None:
+                    return result
+        path.pop()
+        color[node] = BLACK
+        return None
+
+    for tid in list(adj.keys()):
+        if color[tid] == WHITE:
+            cycle = dfs(tid)
+            if cycle is not None:
+                return cycle
+    return None
+
 # ─── Token/Cost Tracking ─────────────────────────────────────────────────────
 
 _TOKEN_PATTERNS = [

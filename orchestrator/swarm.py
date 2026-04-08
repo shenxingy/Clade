@@ -14,7 +14,7 @@ import logging
 import time
 from typing import Any
 
-from config import GLOBAL_SETTINGS, _deps_met
+from config import GLOBAL_SETTINGS, _deps_met, _detect_dep_cycle
 
 logger = logging.getLogger(__name__)
 
@@ -182,7 +182,13 @@ class SwarmManager:
                 # Pending tasks exist but none were claimable (all blocked by deps)
                 blocked_pending = [t for t in pending if not _deps_met(t, done_ids)]
                 if len(blocked_pending) == len(pending):
-                    # All pending tasks are blocked and nothing is running to unblock them
+                    # All pending tasks are blocked and nothing is running to unblock them.
+                    # Check if a circular dependency is the root cause.
+                    cycle = _detect_dep_cycle(blocked_pending)
+                    if cycle:
+                        logger.warning("SwarmManager: circular dependency detected: %s", " → ".join(cycle))
+                        self._done_reason = f"blocked_cycle:{' → '.join(cycle[:3])}"
+                    else:
+                        self._done_reason = "blocked"
                     self._status = "done"
-                    self._done_reason = "blocked"
                 # else: some tasks have deps met but were claimed by another path — wait
