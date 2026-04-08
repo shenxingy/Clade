@@ -52,6 +52,17 @@ See full doc: docs/research/2026-04-07-autocoderover.md
 - [AI] Research (AutoCodeRover): SBFL pre-pass before patch attempt missing — run pytest --cov before first attempt, compute Ochiai scores per method, inject top-5 suspects as ranked hints into task file. Pre-hydration step, no agent changes needed — large effort, highest impact for bug-fix tasks. See docs/research/2026-04-07-autocoderover.md §Gap 3
 - [AI] ~~Research (AutoCodeRover): Inline patch retry without subprocess restart~~ — RESOLVED 2026-04-07: `_run_with_context(use_continue=True)` now uses `claude -p --continue` for lint reflection retries, falling back to full restart if --continue fails.
 
+## Research Findings (2026-04-08) — Sweep AI
+
+See full doc: docs/research/2026-04-08-sweep-ai.md
+
+- [AI] Sweep (Gap 3): Post-worker test runner missing — no functional test execution after commit; only lint check. Add optional `test_cmd` to `.claude/orchestrator.json`; run after `verify_and_commit()`. Small effort, high value.
+- [AI] Sweep (Gap 2): Caller hints for signature changes missing — when fault localization identifies a function, grep for callers and inject as "if you change X, also update these callers" hint. Small effort.
+- [AI] Sweep (Gap 1): Entity-level TLDR pruning missing — worker sees entire TLDR; filter to only show entities relevant to the task description. Reduces context noise 3-5×. Medium effort.
+- [AI] Sweep (Gap 4): Hybrid context retrieval missing — combine keyword grep + structural haiku selection in `_localize_tldr_for_task`. Medium effort.
+
+---
+
 ## Research Findings (2026-04-08) — Qodo Merge (PR-Agent)
 
 See full doc: docs/research/2026-04-08-qodo-merge.md
