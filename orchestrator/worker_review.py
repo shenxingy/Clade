@@ -6,6 +6,7 @@ Leaf module — no internal project imports.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import shlex
 import uuid
@@ -169,12 +170,23 @@ async def _write_pr_review(pr_url: str, task_description: str, project_dir: Path
 
 
 async def _oracle_review(task_description: str, diff_text: str, claude_dir: Path) -> tuple[bool, str]:
-    """Independent second-model review of a diff. Returns (approved, reason). Fails open."""
+    """Independent second-model review of a diff (Self-RAG multi-dimensional critique).
+
+    Returns (approved, reason) where reason contains structured fix guidance on rejection.
+    Asks haiku to return JSON with per-dimension scores so the worker gets targeted feedback.
+    Falls open on any error.
+    """
     prompt = (
-        "You are an independent code reviewer with no prior context.\n"
-        "Review the diff and task description. Output ONLY one of:\n"
-        "  APPROVED: <one-line reason>\n"
-        "  REJECTED: <one-line reason>\n\n"
+        "You are an independent code reviewer. Review the diff against the task description.\n"
+        "Respond with ONLY a JSON object — no preamble, no markdown. Format:\n"
+        '{"decision":"APPROVED","dimensions":{"correctness":"pass","completeness":"pass",'
+        '"code_quality":"pass"},"fix_guidance":""}\n'
+        "OR for rejection:\n"
+        '{"decision":"REJECTED","dimensions":{"correctness":"fail — <why>",'
+        '"completeness":"warn — <what missing>","code_quality":"pass"},'
+        '"fix_guidance":"<one specific actionable fix>"}\n\n'
+        "Dimension values: 'pass', 'fail — <reason>', or 'warn — <reason>'.\n"
+        "fix_guidance: empty string if APPROVED, else ONE concrete fix instruction.\n\n"
         f"Task: {task_description[:400]}\n\nDiff:\n{diff_text[:3000]}"
     )
     prompt_file = claude_dir / f"oracle-{uuid.uuid4().hex[:8]}.md"
@@ -190,11 +202,31 @@ async def _oracle_review(task_description: str, diff_text: str, claude_dir: Path
             out, _ = await asyncio.wait_for(proc.communicate(), timeout=60)
         except asyncio.TimeoutError:
             proc.kill()
-            await proc.communicate()  # drain stdout/stderr
+            await proc.communicate()
             out = b""
-        result = out.decode().strip()
-        approved = result.startswith("APPROVED")
-        reason = result.split(":", 1)[-1].strip()[:80] if ":" in result else result[:80]
+        raw = out.decode().strip()
+
+        # Try to parse structured JSON response (Self-RAG pattern)
+        try:
+            data = json.loads(raw)
+            approved = data.get("decision", "").upper() == "APPROVED"
+            fix_guidance = data.get("fix_guidance", "")
+            dims = data.get("dimensions", {})
+            if not approved and fix_guidance:
+                reason = fix_guidance[:200]
+            elif not approved:
+                # Format dimension failures as compact reason
+                fails = [f"{k}: {v}" for k, v in dims.items() if not str(v).startswith("pass")]
+                reason = "; ".join(fails)[:200] if fails else "oracle rejected"
+            else:
+                reason = "approved"
+            return approved, reason
+        except (json.JSONDecodeError, AttributeError):
+            pass
+
+        # Fallback: legacy APPROVED/REJECTED text format
+        approved = raw.startswith("APPROVED")
+        reason = raw.split(":", 1)[-1].strip()[:80] if ":" in raw else raw[:80]
         return approved, reason
     except Exception as e:
         logger.warning("oracle review error: %s", e)
