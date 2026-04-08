@@ -56,9 +56,9 @@ See full doc: docs/research/2026-04-07-autocoderover.md
 
 See full doc: docs/research/2026-04-08-qodo-merge.md
 
-- [AI] Qodo (Gap 3): Diff chunking missing — `_oracle_review` truncates diffs at 3000 chars; large refactors auto-approved without seeing full diff. Chunk into 2000-char segments and merge findings. Small effort.
+- [AI] ~~Qodo (Gap 3): Diff chunking~~ — RESOLVED 2026-04-08: `_oracle_review` now chunks large diffs (>2500 chars) into 2000-char segments, reviews in parallel, returns first rejection reason.
 - [AI] Qodo (Gap 2): Per-finding fix suggestions missing — oracle returns single `fix_guidance`; should return `findings: [{dimension, severity, fix_suggestion}]` list. Worker applies fixes in order. Medium effort.
-- [AI] Qodo (Gap 5): Confidence scoring missing — add `confidence` field per dimension (high/medium/low); worker prioritizes fixing high-confidence issues first. Small effort.
+- [AI] ~~Qodo (Gap 5): Confidence scoring~~ — RESOLVED 2026-04-08: `confidence` field (high/medium/low) added to oracle prompt and response parsing; included in rejection reason as `[high] fix_guidance`.
 - [AI] Qodo (Gap 1): Two-pass oracle missing — single haiku call reviews both spec-adherence and quality simultaneously; splitting into sequential spec-check + quality-check catches more issues. Medium effort.
 
 ---
