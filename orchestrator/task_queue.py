@@ -185,6 +185,10 @@ class TaskQueue:
                     await db.execute("ALTER TABLE tasks ADD COLUMN context_version INTEGER DEFAULT 0")
                 except Exception:
                     pass
+                try:
+                    await db.execute("ALTER TABLE tasks ADD COLUMN attempt_count INTEGER DEFAULT 0")
+                except Exception:
+                    pass
                 await db.execute("""
                     CREATE TABLE IF NOT EXISTS worker_messages (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -455,6 +459,33 @@ class TaskQueue:
                 await self.update(row["id"], depends_on=deps)
                 updated += 1
         return updated
+
+    async def get_pass_at_k_metrics(self) -> dict:
+        """Return pass@k style success metrics across all tasks (ECC eval-harness pattern).
+
+        Returns aggregated stats: total tasks, success rate, oracle-pass rate by attempt count.
+        """
+        await self._ensure_db()
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT status, attempt_count FROM tasks WHERE status IN ('done','failed')"
+            ) as cur:
+                rows = await cur.fetchall()
+        total = len(rows)
+        if total == 0:
+            return {"total": 0, "pass_rate": 0.0, "pass_at_1": 0.0, "pass_at_2": 0.0}
+        done = sum(1 for r in rows if r["status"] == "done")
+        pass_at_1 = sum(1 for r in rows if r["status"] == "done" and (r["attempt_count"] or 0) <= 1)
+        pass_at_2 = sum(1 for r in rows if r["status"] == "done" and (r["attempt_count"] or 0) <= 2)
+        return {
+            "total": total,
+            "done": done,
+            "failed": total - done,
+            "pass_rate": round(done / total, 3),
+            "pass_at_1": round(pass_at_1 / total, 3),
+            "pass_at_2": round(pass_at_2 / total, 3),
+        }
 
     # ─── Scheduling ──────────────────────────────────────────────────────────
 

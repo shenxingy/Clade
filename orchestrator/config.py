@@ -27,7 +27,7 @@ _ALLOWED_TASK_COLS = {"status", "description", "model", "depends_on", "score",
                       "input_tokens", "output_tokens", "estimated_cost",
                       "task_type", "source_ref", "parent_task_id", "priority_score",
                       "handoff_type", "handoff_payload", "completion_summary",
-                      "token_budget", "context_version"}
+                      "token_budget", "context_version", "attempt_count"}
 
 _ALLOWED_LOOP_COLS = {
     "name", "artifact_path", "context_dir", "status", "iteration",
