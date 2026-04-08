@@ -9,7 +9,7 @@
 See full doc: docs/research/2026-04-07-multi-agent-coordination.md
 
 - [AI] Multi-agent (Gap 1): No context versioning — workers share state without version checks; stale context propagates silently. Fix: add `context_version` to task DB, increment after each worker batch. Medium effort.
-- [AI] Multi-agent (Gap 2): No token budget per worker — unlimited token consumption possible. Fix: add `token_budget` field, enforce via existing `_parse_token_usage()`. Small effort.
+- [AI] ~~Multi-agent (Gap 2): No token budget per worker~~ — RESOLVED 2026-04-08: `token_budget` INTEGER column added to tasks DB; per-task and global (`worker_token_budget` setting) budgets enforced in reflection retry gate + post-run status check.
 - [AI] Multi-agent (Gap 3): Prose handoffs, no validation — task description is unstructured. For swarm tasks, use JSON envelope with input/output contracts. Medium effort.
 - [AI] ~~Multi-agent (Gap 4): No context archival after worker completion~~ — RESOLVED 2026-04-07: `_summarize_worker_completion()` added; `completion_summary` stored in tasks DB; injected into sibling workers via `get_recent_completions()` in `_build_task_file()`.
 - [AI] ~~Multi-agent (Gap 5): SwarmManager sync barrier~~ — RESOLVED 2026-04-07: Code audit confirmed SwarmManager._refill_once() properly polls finished workers before claiming new tasks; barrier is implicit and correct.
@@ -21,7 +21,7 @@ See full doc: docs/research/2026-04-07-multi-agent-coordination.md
 
 See full doc: docs/research/2026-04-07-claude-hooks.md
 
-- [AI] Hooks (Gap 1): Mark PostToolUse hooks (`post-tool-use-lint.sh`, notification hooks) as `async: true` — currently they block Claude during verify_cmd. Small effort, immediate latency win. See §Gap 1
+- [AI] ~~Hooks (Gap 1): Mark PostToolUse hooks as `async: true`~~ — RESOLVED 2026-04-08: Audit found only `post-edit-check.sh`, `edit-shadow-detector.sh`, and `memory-sync.sh` are async; `post-tool-use-lint.sh` and `failure-detector.sh` must remain sync because they inject feedback Claude needs to act on (exit 2 / hookSpecificOutput).
 - [AI] ~~Hooks (Gap 2): Extend `pre-tool-guardian.sh` to include `updatedInput` rewrites for safe alternatives~~ — RESOLVED 2026-04-08: `pre-tool-guardian.sh` now returns `updatedInput` rewriting `--force`/`-f` to `--force-with-lease` for non-main/master branches.
 - [AI] Hooks (Gap 3): Add `Stop` hook that runs tests + checks TODO checklist before allowing session end. Highest value for overnight autonomous loops — prevents false-done sessions. Medium effort. See §Gap 3
 - [AI] Hooks (Gap 4): Add `"if"` field to hook matchers (e.g. `"if": "Bash(rm *|git push*)"`) to skip hook invocation for safe commands. Small effort, reduces overhead. See §Gap 4
