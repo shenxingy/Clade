@@ -149,6 +149,28 @@ class EventStream:
         """Return all recorded events (in-order)."""
         return list(self._pending_events)
 
+    def get_recent_events(self, max_events: int = 50) -> list[dict]:
+        """Return a condensed view of the most recent events as plain dicts.
+
+        Inlines RecentEvents compression: keeps last max_events, prepends a
+        summary of how many were omitted. Used by callers that need a compact
+        event history (e.g. crash-recovery context injection) without importing
+        the Condenser classes from worker.py (which would create a circular dep).
+
+        Returns list of {"type": str, "content": str} dicts.
+        """
+        all_events = self._pending_events
+        events_as_dicts = [
+            {"type": e.event_type, "content": str(e.data) if isinstance(e.data, dict) else str(e.data)}
+            for e in all_events
+        ]
+        if len(events_as_dicts) > max_events:
+            omitted = len(events_as_dicts) - max_events
+            events_as_dicts = [
+                {"type": "summary", "content": f"[{omitted} earlier events omitted — showing last {max_events}]"}
+            ] + events_as_dicts[-max_events:]
+        return events_as_dicts
+
     def replay(self) -> list[WorkerEvent]:
         """Replay events from JSONL file (for crash recovery).
 
