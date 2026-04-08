@@ -90,6 +90,7 @@ class Worker:
         self.started_at = time.time()
         self._finished_at: float | None = None
         self.status = "starting"  # starting/running/paused/blocked/done/failed
+        self.transition_reason: str = "initialized"  # learn-cc s00a: Query Control Plane
         self.last_commit: str | None = None
         self.log_file: str | None = None
         self._log_path: Path | None = None
@@ -167,6 +168,7 @@ class Worker:
             "worktree_path": str(self._worktree_path) if self._worktree_path else None,
             "oracle_result": self.oracle_result,
             "oracle_reason": self.oracle_reason,
+            "transition_reason": self.transition_reason,
             "completion_summary": self.completion_summary,
             "model_score": self.model_score,
             "estimated_tokens": self._estimate_tokens(),
@@ -500,6 +502,7 @@ class Worker:
         except ProcessLookupError:
             self.pgid = self.proc.pid
         self.status = "running"
+        self.transition_reason = "process_started"
         self._event_stream.emit(
             event_type="action",
             event_kind="tool_call",
@@ -597,6 +600,7 @@ class Worker:
                 self._finished_at = time.time()
             rc = self.proc.returncode if self.proc else -1
             self.status = "done" if rc == 0 else "failed"
+            self.transition_reason = f"process_exited_rc_{rc}"
             if self.status == "failed" and self._log_path and self._log_path.exists():
                 try:
                     text = self._log_path.read_text(errors="replace")
@@ -766,6 +770,7 @@ class Worker:
                         retry_success = await self._run_with_context(retry_context, use_continue=True)
                         if retry_success:
                             self.status = "done"
+                            self.transition_reason = "lint_retry_success"
                             self._loop_detector._loop_detected = False  # reset loop detection on retry
                             self._reflection_retries = 0  # reset on success
                             self._failure_reflections.clear()  # clear episodic memory on success
@@ -781,6 +786,7 @@ class Worker:
                 total_tokens = self._input_tokens + self._output_tokens
                 if self.token_budget > 0 and total_tokens > self.token_budget and self.status != "done":
                     self.status = "failed"
+                    self.transition_reason = "token_budget_exceeded"
                     self.failure_context = (
                         f"Token budget exceeded: {total_tokens:,} tokens used, "
                         f"budget was {self.token_budget:,}"
