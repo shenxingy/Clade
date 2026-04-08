@@ -469,7 +469,17 @@ except:
   # Write task file in ===TASK=== format with scoring
   local output
   output=$(echo "$tasks_json" | python3 -c "
-import json, sys
+import json, sys, os
+
+# Load correction rules if available — inject into each worker task
+_rules_file = os.path.expanduser('~/.claude/corrections/rules.md')
+_correction_section = ''
+if os.path.exists(_rules_file):
+    with open(_rules_file) as _rf:
+        _rules = [l.rstrip() for l in _rf if l.startswith('- [')]
+    _rules = _rules[-10:]  # most recent 10
+    if _rules:
+        _correction_section = '\n## Learned Correction Rules (avoid these known mistakes)\n' + '\n'.join(_rules) + '\n'
 
 tasks = json.load(sys.stdin)
 output_tasks = []
@@ -510,6 +520,10 @@ for task in tasks:
         '---',
         desc,
         '',
+    ]
+    if _correction_section:
+        task_lines.append(_correction_section)
+    task_lines += [
         '## Close the loop (required before finishing)',
         '- Verify your changes pass syntax/compile checks',
         '- Re-read every file you changed — catch logic bugs, null cases, missing imports',
