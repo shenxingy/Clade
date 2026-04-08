@@ -568,3 +568,12 @@ Priority order. Each identified via bidirectional code-vs-research comparison ag
 | Oracle | Off by default | Opt-in quality gate, doesn't break existing flow |
 | Model routing | Off by default | User may want explicit control |
 | CLI loop | Pure bash (loop-runner.sh) | No Python dependency, safe for self-modification |
+
+---
+
+## Tech Debt (2026-04-07)
+
+- [ ] 🟡 `worker.py` at 1982 lines — violates 1500-line limit; extract `Condenser` classes + helpers to `orchestrator/condenser.py` (≈120 lines); also consider extracting `LoopDetectionService` (45 lines) to `orchestrator/loop_detection.py`
+- [ ] 🟡 `Condenser` ABC + 4 implementations never instantiated — dead code at `worker.py:297–415`; must wire `ObservationMaskingCondenser` into `_build_task_file()` for large tool output truncation and `RecentEventsCondenser` into EventStream when log size grows; see BRAINSTORM.md for detail
+- [ ] 🔵 No test coverage for `event_stream.py`, `reactions.py`, `tracing.py`, `session_tree.py` — all were added in 2026-03-30 session without corresponding test files; these are leaf modules with no project imports so they are easy to unit test
+- [ ] 🔵 `worker.py` `Condenser` status is misleading — TODO.md Phase Research Gaps section marks condenser as `[x]` done, but the implementation exists only as dead stubs; should be `[~]` partial
