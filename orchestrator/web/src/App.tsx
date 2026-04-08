@@ -3,13 +3,14 @@ import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
 import { TaskBoard } from './components/tasks/TaskBoard';
 import { WorkerList } from './components/workers/WorkerList';
+import { PaneManager } from './components/terminal/PaneManager';
 import { UsageBar } from './components/layout/UsageBar';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useSessionStore } from './stores/sessionStore';
 import { sessions as sessionsApi } from './lib/api';
 import type { StatusMessage, Session } from './lib/types';
 
-type ActiveTab = 'tasks' | 'workers';
+type ActiveTab = 'tasks' | 'workers' | 'terminal';
 
 export default function App() {
   const {
@@ -57,7 +58,7 @@ export default function App() {
         <main className="flex-1 flex flex-col overflow-hidden">
           {/* Tab bar */}
           <div className="flex border-b border-border px-4 gap-0 shrink-0">
-            {(['tasks', 'workers'] as ActiveTab[]).map(t => (
+            {(['tasks', 'workers', 'terminal'] as ActiveTab[]).map(t => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -77,9 +78,10 @@ export default function App() {
           </div>
 
           {/* Tab content */}
-          <div className="flex-1 overflow-y-auto">
+          <div className={`flex-1 ${tab === 'terminal' ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'}`}>
             {tab === 'tasks' && <TaskBoard />}
             {tab === 'workers' && <WorkerList />}
+            {tab === 'terminal' && <PaneManager />}
           </div>
         </main>
       </div>
