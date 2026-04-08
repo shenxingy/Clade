@@ -322,7 +322,7 @@ Beyond Phase 13, the system's evolution follows the same principle: **reduce hum
 Potential directions (not committed — these live in BRAINSTORM.md when ready):
 - **Voice interface** — dictate ideas and direction instead of typing
 - **Multi-agent specialization** — dedicated agents for frontend, backend, testing (vs current general workers)
-- **Learning from corrections** — intervention patterns auto-generalize into worker pre-prompts (partially started: correction-detector hook + rules.md exist, but no auto-injection into worker prompts yet)
+- **Learning from corrections** — correction-detector hook + rules.md + auto-injection into worker pre-prompts (implemented: `loop-runner.sh` reads `~/.claude/corrections/rules.md` and injects last 10 rules into each task's `===TASK===` block)
 - **Project templates** — `/start --template saas` bootstraps a full project from zero with best-practice structure
 - **Team mode** — multiple humans + AI swarm on the same codebase with coordination protocol
 
