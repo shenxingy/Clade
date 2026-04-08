@@ -84,6 +84,24 @@ See full doc: docs/research/2026-04-08-qodo-merge.md
 
 ---
 
+## Research Findings (2026-04-08) — Community Harness Repos (learn-cc, claude-code-best, everything-cc)
+
+See full doc: docs/research/2026-04-08-community-harness-repos.md
+
+- [AI] ~~Research (community): Linter config protection hook~~ — RESOLVED 2026-04-08: `linter-config-guard.sh` created; blocks `Edit|Write` to `.ruff.toml`, `biome.json`, `.eslintrc*`, `pyrightconfig.json`, `mypy.ini`, `.flake8`, etc.; also detects `[tool.ruff/mypy/pylint]` sections in `pyproject.toml`; wired into `settings-hooks.json` PreToolUse `Edit|Write` + live `~/.claude/settings.json`
+- [AI] Research (community): Structured observation contract — worker final output should be `{status, summary, next_actions, artifacts}` JSON envelope (ECC pattern); currently workers emit freeform prose which the oracle re-parses expensively
+- [AI] Research (community): Explicit `transition_reason` in worker state — `WorkerState` enum transitions should carry a `transition_reason` string (learn-cc s00a Query Control Plane); helps tracing + debugging stalled workers
+- [AI] Research (community): Two-level tool output compaction — `persist_large_output(tool_result, path)` writes large results to `.claude/tool-outputs/`, then `micro_compact(text, max_chars)` summarizes oversized outputs mid-task (learn-cc s06); prevents token bloat from grep/bash output
+- [AI] Research (community): Identity re-injection after compaction — after `/compact` or mid-session context reset, re-inject system prompt section with worker identity, task id, active constraints (learn-cc s17); prevents role drift post-compaction
+- [AI] Research (community): EventBus JSONL lifecycle observability — structured `{event, ts, worker_id, task_id, data}` entries to `.claude/events.jsonl` at key lifecycle points (learn-cc s18); enables post-hoc analysis and replay
+- [AI] Research (community): Phase-boundary compact trigger — trigger `/compact` at end of Phase 1 (explore) before Phase 2 (patch), not at arbitrary token count (ECC strategic-compact); workers already have two-phase instructions, need explicit compaction boundary
+- [AI] Research (community): Hook `id` + `description` fields — all hooks in `settings-hooks.json` should have `"id"` and `"description"` fields (ECC pattern); makes hook debugging and selective disabling much easier
+- [AI] Research (community): Pass@k metrics tracking — track per-task attempt count, oracle-pass rate, and pass@k across sessions; currently no aggregated success metrics (ECC eval-harness)
+- [AI] Research (community): DreamConsolidator memory pruning — 7-gate check before memory writes (staleness, redundancy, specificity, etc.) + 24h cooldown per topic (learn-cc s09); relevant if memory-sync.sh grows; currently writes everything
+- [AI] Research (community): Bidirectional dep clearing — when task completes, clear it from `depends_on` of all sibling tasks atomically; currently clearing is unidirectional (learn-cc s12)
+
+---
+
 ## Research Findings (2026-04-07) — Agentless (UIUC)
 
 See full doc: docs/research/2026-04-07-agentless.md
