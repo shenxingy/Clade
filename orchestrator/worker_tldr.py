@@ -579,6 +579,128 @@ async def _find_caller_hints(fault_locs_text: str, project_dir: Path) -> str:
     return "\n".join(lines)
 
 
+# ─── Reproduction Test Generation (Agentless §6B) ────────────────────────────
+
+_REPRO_TEST_PROMPT = (
+    "Write a minimal Python pytest test that:\n"
+    "1. FAILS with the current buggy code (via assertion error or exception)\n"
+    "2. Would PASS after the bug is correctly fixed\n"
+    "3. Uses only standard library or existing project imports\n"
+    "4. Is 5-20 lines — no boilerplate, no docstrings, just the test function\n\n"
+    "Bug/Task:\n{description}\n\n"
+    "Codebase structure (for import hints):\n{tldr}\n\n"
+    "Respond with ONLY Python code — no markdown fences, no explanation.\n"
+    "Start with import/from statements, then one def test_...() function."
+)
+
+
+async def _generate_repro_test(
+    task_description: str, tldr: str, project_dir: Path
+) -> str:
+    """Generate a failing reproduction test for a bug-fix task (Agentless §6B).
+
+    Asks haiku to write a minimal pytest test that fails with current code.
+    Runs pytest --collect-only to verify syntax, then runs the test to confirm
+    it actually fails (non-zero exit). Returns a formatted context block.
+
+    Falls back to empty string on any error (non-critical path).
+    Only valuable for tasks that describe a concrete, testable bug.
+    """
+    if not task_description or not tldr:
+        return ""
+
+    prompt = _REPRO_TEST_PROMPT.format(
+        description=task_description[:500],
+        tldr=tldr[:2000],
+    )
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "claude", "-p", prompt,
+            "--model", "claude-haiku-4-5-20251001",
+            "--dangerously-skip-permissions",
+            "--no-input-prompt",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+            cwd=str(project_dir),
+        )
+        try:
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout=40)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
+            return ""
+
+        test_code = out.decode("utf-8", errors="replace").strip()
+        if not test_code or "def test_" not in test_code:
+            return ""
+
+        # Strip markdown fences if haiku wrapped anyway
+        if test_code.startswith("```"):
+            lines = test_code.splitlines()
+            test_code = "\n".join(
+                l for l in lines if not l.startswith("```")
+            ).strip()
+
+        # Sanity-check syntax via py_compile
+        import tempfile
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".py", prefix="clade-repro-", delete=False,
+            dir=str(project_dir)
+        ) as tmp:
+            tmp.write(test_code)
+            tmp_path = tmp.name
+
+        try:
+            compile_proc = await asyncio.create_subprocess_exec(
+                "python", "-m", "py_compile", tmp_path,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            try:
+                await asyncio.wait_for(compile_proc.communicate(), timeout=5)
+            except asyncio.TimeoutError:
+                compile_proc.kill()
+                await compile_proc.communicate()
+                return ""
+            if compile_proc.returncode != 0:
+                return ""  # Bad syntax — discard
+
+            # Optionally run test to verify it actually fails
+            # (non-blocking — if it passes or times out, still include as hint)
+            run_proc = await asyncio.create_subprocess_exec(
+                "python", "-m", "pytest", tmp_path, "-x", "-q", "--tb=no",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+                cwd=str(project_dir),
+            )
+            try:
+                run_out, _ = await asyncio.wait_for(run_proc.communicate(), timeout=20)
+                test_output = run_out.decode("utf-8", errors="replace").strip()
+                confirmed_failing = run_proc.returncode != 0
+            except asyncio.TimeoutError:
+                run_proc.kill()
+                await run_proc.communicate()
+                confirmed_failing = None
+                test_output = "(timed out)"
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+        status_line = (
+            "> ✓ Confirmed FAILING with current code — your fix must make this pass."
+            if confirmed_failing
+            else "> Note: test status unconfirmed — verify manually."
+        )
+        return (
+            f"## Reproduction Test (Agentless §6B)\n"
+            f"{status_line}\n"
+            f"> Run with: `python -m pytest <test_file> -v`\n\n"
+            f"```python\n{test_code}\n```"
+        )
+
+    except Exception:
+        return ""
+
+
 # ─── Scout Readiness Scoring ──────────────────────────────────────────────────
 
 
