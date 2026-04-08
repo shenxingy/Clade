@@ -274,3 +274,67 @@ async def _fire_notification(event: str, session: Any, extra: dict | None = None
             await proc.communicate()
     except Exception:
         pass  # fail-open
+
+
+# ─── Tool Subsets per Task Type ────────────────────────────────────────────────
+# Stripe Blueprint pattern: different agent types get different tool subsets.
+# Claude Code supports --allowed-tools and --disallowed-tools to constrain tools.
+
+_TOOL_SUBSETS: dict[str, tuple[list[str], list[str]]] = {
+    # review: read-only — no editing, no file creation
+    "review": (
+        ["Read", "Grep", "Glob", "Bash", "WebSearch", "WebFetch", "NotebookRead"],
+        ["Edit", "Write", "NotebookEdit", "MultiEdit"],
+    ),
+    # fix: same as implement but focused
+    "fix": (
+        ["Read", "Edit", "Write", "Bash", "Grep", "Glob"],
+        [],
+    ),
+    # implement: full tools (default — no restriction needed)
+    "implement": ([], []),
+    # test: allows test file creation but not broad refactoring
+    "test": (
+        ["Read", "Edit", "Write", "Bash", "Grep", "Glob", "NotebookEdit"],
+        [],
+    ),
+}
+
+
+def _parse_task_type(description: str) -> str | None:
+    """Infer task type from description text.
+
+    Looks for patterns like:
+    - ===TASK=== metadata: "type: review"
+    - Keywords: "review", "fix", "implement", "test"
+    Returns None for implement (default = full tools).
+    """
+    desc_lower = description.lower()
+    meta_match = re.search(r"type:\s*(\w+)", desc_lower)
+    if meta_match:
+        t = meta_match.group(1)
+        if t in _TOOL_SUBSETS:
+            return t
+
+    if any(k in desc_lower for k in ["review", "code review", "static analysis", "audit"]):
+        return "review"
+    if any(k in desc_lower for k in ["fix", "bug", "patch", "hotfix"]):
+        return "fix"
+    if any(k in desc_lower for k in ["test", "spec", "e2e"]):
+        return "test"
+    return None  # default: implement (full tools)
+
+
+def _build_tool_flags(task_type: str | None) -> str:
+    """Build --allowed-tools or --disallowed-tools flags for claude -p.
+
+    Returns empty string if task_type is None (default full tools).
+    """
+    if not task_type or task_type not in _TOOL_SUBSETS:
+        return ""
+    allowed, disallowed = _TOOL_SUBSETS[task_type]
+    if allowed:
+        return f' --allowed-tools "{",".join(allowed)}"'
+    elif disallowed:
+        return f' --disallowed-tools "{",".join(disallowed)}"'
+    return ""
