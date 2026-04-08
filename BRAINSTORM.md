@@ -4,6 +4,19 @@
 
 ---
 
+## Research Findings (2026-04-07) — Claude Code Hooks Best Practices
+
+See full doc: docs/research/2026-04-07-claude-hooks.md
+
+- [AI] Hooks (Gap 1): Mark PostToolUse hooks (`post-tool-use-lint.sh`, notification hooks) as `async: true` — currently they block Claude during verify_cmd. Small effort, immediate latency win. See §Gap 1
+- [AI] Hooks (Gap 2): Extend `pre-tool-guardian.sh` to include `updatedInput` rewrites for safe alternatives (e.g. `git push -f` → `--force-with-lease`) instead of only blocking. Small effort. See §Gap 2
+- [AI] Hooks (Gap 3): Add `Stop` hook that runs tests + checks TODO checklist before allowing session end. Highest value for overnight autonomous loops — prevents false-done sessions. Medium effort. See §Gap 3
+- [AI] Hooks (Gap 4): Add `"if"` field to hook matchers (e.g. `"if": "Bash(rm *|git push*)"`) to skip hook invocation for safe commands. Small effort, reduces overhead. See §Gap 4
+- [AI] Hooks (Gap 5): Use `updatedPermissions` in `PermissionRequest` handler to inject persistent allow rules into `.claude/settings.local.json` after first approval. Small effort. See §Gap 5
+- [AI] Hooks (Gap 6): Add `PostToolUseFailure` hook to inject diagnostic context (recent changes, common fixes) when a tool fails. Reduces recovery turns. Small effort. See §Gap 6
+
+---
+
 ## Gap Findings (2026-04-07)
 
 - [AI] ~~Dead code found: Condenser — RESOLVED 2026-04-08~~ `ObservationMaskingCondenser` wired into `_build_task_file()` (context block + message size guard, 8KB/2KB limits). `EventStream.get_recent_events()` added with inline RecentEvents compression. `LLMSummarizingCondenser` still unused — needs async call site.
