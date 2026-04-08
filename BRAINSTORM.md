@@ -50,7 +50,7 @@ See full doc: docs/research/2026-04-08-moatless-tools.md
 
 - [AI] ~~Research (Moatless): Two-phase search-then-identify missing~~ — RESOLVED 2026-04-07: `_localize_tldr_for_task()` added to `worker_tldr.py`; wired in `worker.py` `_build_task_file()` when TLDR > 4KB.
 - [AI] ~~Research (Moatless): StringReplace discipline in worker system prompt~~ — RESOLVED 2026-04-07: `_edit_discipline` block injected into every task file in `_build_task_file()` (commit 5f1fa30).
-- [AI] Research (Moatless): Span-level FileContext with token budgeting missing — agent gets static context blob; no span eviction, no on-demand retrieval, no token accounting. Medium effort but highest long-term impact for multi-file tasks. See §Gap 3
+- [AI] ~~Research (Moatless): Span-level FileContext with token budgeting~~ — RESOLVED 2026-04-08: `_span_evict_tldr(tldr, budget_chars, priority_files)` added to `worker_tldr.py`; always preserves fault-localized files (priority_files), evicts other spans greedily until within `context_span_budget` (default 6000 chars); when n_evicted>0 injects "Context Retrieval" hint instructing workers to use `clade_search_*` MCP tools for on-demand retrieval. Setting added to `config.py:_SETTINGS_DEFAULTS`.
 - [AI] ~~Research (Moatless): Typed search action names~~ — RESOLVED 2026-04-08: `_search_conventions` block injected into every task file with FindClass/FindFunction/FindSnippet/FindFile prompt patterns backed by Bash.
 
 ## Research Findings (2026-04-07) — AutoCodeRover

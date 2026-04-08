@@ -87,6 +87,7 @@ _SETTINGS_DEFAULTS = {
     "minimax_api_key": "",
     "minimax_group_id": "",
     "parallel_fix_samples": 1,  # Agentless §6C: N parallel workers for critical-path oracle rejections (1=sequential)
+    "context_span_budget": 6000,  # Moatless §Gap3: max chars for TLDR span block; excess spans evicted
     "reactions_enabled": True,
     "reaction_configs": [
         {
