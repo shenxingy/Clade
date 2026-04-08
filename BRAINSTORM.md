@@ -52,6 +52,17 @@ See full doc: docs/research/2026-04-07-autocoderover.md
 - [AI] Research (AutoCodeRover): SBFL pre-pass before patch attempt missing — run pytest --cov before first attempt, compute Ochiai scores per method, inject top-5 suspects as ranked hints into task file. Pre-hydration step, no agent changes needed — large effort, highest impact for bug-fix tasks. See docs/research/2026-04-07-autocoderover.md §Gap 3
 - [AI] ~~Research (AutoCodeRover): Inline patch retry without subprocess restart~~ — RESOLVED 2026-04-07: `_run_with_context(use_continue=True)` now uses `claude -p --continue` for lint reflection retries, falling back to full restart if --continue fails.
 
+## Research Findings (2026-04-08) — Qodo Merge (PR-Agent)
+
+See full doc: docs/research/2026-04-08-qodo-merge.md
+
+- [AI] Qodo (Gap 3): Diff chunking missing — `_oracle_review` truncates diffs at 3000 chars; large refactors auto-approved without seeing full diff. Chunk into 2000-char segments and merge findings. Small effort.
+- [AI] Qodo (Gap 2): Per-finding fix suggestions missing — oracle returns single `fix_guidance`; should return `findings: [{dimension, severity, fix_suggestion}]` list. Worker applies fixes in order. Medium effort.
+- [AI] Qodo (Gap 5): Confidence scoring missing — add `confidence` field per dimension (high/medium/low); worker prioritizes fixing high-confidence issues first. Small effort.
+- [AI] Qodo (Gap 1): Two-pass oracle missing — single haiku call reviews both spec-adherence and quality simultaneously; splitting into sequential spec-check + quality-check catches more issues. Medium effort.
+
+---
+
 ## Research Findings (2026-04-07) — Agentless (UIUC)
 
 See full doc: docs/research/2026-04-07-agentless.md
