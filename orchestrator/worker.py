@@ -300,7 +300,17 @@ class Worker:
                     await task_queue.mark_messages_read(self.task_id)
             except Exception:
                 pass
-        task_file.write_text(effective_description)
+        # Append StringReplace discipline note (Moatless pattern):
+        # instruct the agent to use unique old_string with sufficient context
+        # and to strip line-number prefixes before using them in edits.
+        _edit_discipline = (
+            "\n\n---\n\n"
+            "## Edit Discipline\n"
+            "- `old_string` must be unique in the file. Include 3+ surrounding lines of context if needed.\n"
+            "- Never include line-number prefixes (e.g. `12\\t`) in `old_string` / `new_string` — strip them first.\n"
+            "- Prefer minimal, targeted edits over large block replacements.\n"
+        )
+        task_file.write_text(effective_description + _edit_discipline)
         return task_file
 
     def _build_cmd_and_env(self, task_file: Path) -> tuple[str, dict]:

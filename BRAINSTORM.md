@@ -25,7 +25,7 @@ See full doc: docs/research/2026-04-07-claude-hooks.md
 
 See full doc: docs/research/2026-04-08-moatless-tools.md
 
-- [AI] Research (Moatless): Two-phase search-then-identify missing — when TLDR is large, add a haiku distillation call to pick top-5 relevant files before injecting. No index needed. Small effort, immediate value. See docs/research/2026-04-08-moatless-tools.md §Gap 1
+- [AI] ~~Research (Moatless): Two-phase search-then-identify missing~~ — RESOLVED 2026-04-07: `_localize_tldr_for_task()` added to `worker_tldr.py`; wired in `worker.py` `_build_task_file()` when TLDR > 4KB.
 - [AI] Research (Moatless): StringReplace discipline in worker system prompt — add uniqueness requirement + line-number strip instruction to task boilerplate. Prompt-only change, no code. See §Gap 2
 - [AI] Research (Moatless): Span-level FileContext with token budgeting missing — agent gets static context blob; no span eviction, no on-demand retrieval, no token accounting. Medium effort but highest long-term impact for multi-file tasks. See §Gap 3
 - [AI] Research (Moatless): Typed search action names (FindClass, FindFunction, FindSnippet) as prompt conventions backed by Bash — improves search discipline without real index. Medium effort. See §Gap 4
@@ -37,7 +37,7 @@ See full doc: docs/research/2026-04-07-autocoderover.md
 - [AI] Research (AutoCodeRover): On-demand AST query APIs missing — Clade injects a one-shot TLDR snapshot but the agent can't ask follow-up structural questions. AutoCodeRover exposes 7 search APIs (search_class, search_method_in_class, search_code, etc.) backed by an AST index. Adoption: MCP tool (`clade_search`) reusing existing `_parse_python_ast` in worker_tldr.py — large effort, high impact for bug-fix tasks. See docs/research/2026-04-07-autocoderover.md §Gap 1
 - [AI] Research (AutoCodeRover): Two-phase separation (context retrieval → patch generation) missing — Clade uses single end-to-end pass. Two sequential workers with Worker 2 receiving Worker 1's structured bug location report would reduce hallucination and keep patch-phase context lean — medium effort. See docs/research/2026-04-07-autocoderover.md §Gap 2
 - [AI] Research (AutoCodeRover): SBFL pre-pass before patch attempt missing — run pytest --cov before first attempt, compute Ochiai scores per method, inject top-5 suspects as ranked hints into task file. Pre-hydration step, no agent changes needed — large effort, highest impact for bug-fix tasks. See docs/research/2026-04-07-autocoderover.md §Gap 3
-- [AI] Research (AutoCodeRover): Inline patch retry without subprocess restart — reflection loop currently re-runs full claude -p subprocess on lint failure. Could use --continue instead for syntax-only failures, preserving agent context. Small effort. See docs/research/2026-04-07-autocoderover.md §Gap 5
+- [AI] ~~Research (AutoCodeRover): Inline patch retry without subprocess restart~~ — RESOLVED 2026-04-07: `_run_with_context(use_continue=True)` now uses `claude -p --continue` for lint reflection retries, falling back to full restart if --continue fails.
 
 ## Research Findings (2026-04-07) — Agentless (UIUC)
 
