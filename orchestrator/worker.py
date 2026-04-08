@@ -406,6 +406,11 @@ class Worker:
             "- **FindFunction `<fn>` in `<cls>`** → find method scoped to class\n"
             "- **FindSnippet `<exact_string>`** → `grep -rn '<exact_string>'`\n"
             "- **FindFile `<pattern>`** → `find . -name '<pattern>' -not -path '*/.*'`\n"
+            "\n"
+            "**Context Checkpoint (OpenHands CAT pattern)**: when you have finished reading "
+            "files and understood the task, write a 2-3 sentence summary to "
+            "`.claude/ctx-checkpoint.md` before making any edits. "
+            "This helps you stay focused and avoids re-reading files unnecessarily.\n"
         )
         # Multi-agent Gap 3: inject task schema (acceptance criteria + contracts) if present.
         _schema_block = _format_task_schema_block(_parse_task_schema(self.description))
