@@ -1,163 +1,174 @@
 {
-  "_comment": "Hooks section to merge into ~/.claude/settings.json — reference copy",
-  "hooks": {
-    "SessionStart": [
-      {
-        "matcher": "startup",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/session-context.sh",
-            "timeout": 10,
-            "statusMessage": "Loading project context..."
-          },
-          {
-            "type": "command",
-            "command": "~/.claude/scripts/sync-pull.sh",
-            "async": true,
-            "timeout": 30,
-            "statusMessage": "Syncing memory..."
-          }
+    "_comment": "Hooks section to merge into ~/.claude/settings.json — reference copy",
+    "hooks": {
+        "SessionStart": [
+            {
+                "matcher": "startup",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "~/.claude/hooks/session-context.sh",
+                        "timeout": 10,
+                        "statusMessage": "Loading project context..."
+                    },
+                    {
+                        "type": "command",
+                        "command": "~/.claude/scripts/sync-pull.sh",
+                        "async": true,
+                        "timeout": 30,
+                        "statusMessage": "Syncing memory..."
+                    }
+                ]
+            }
+        ],
+        "PreToolUse": [
+            {
+                "matcher": "Bash",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "~/.claude/hooks/pre-tool-guardian.sh",
+                        "timeout": 5
+                    },
+                    {
+                        "type": "command",
+                        "command": "~/.claude/hooks/revert-detector.sh",
+                        "async": true,
+                        "timeout": 5
+                    }
+                ]
+            }
+        ],
+        "PostToolUse": [
+            {
+                "matcher": "Edit|Write",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "~/.claude/hooks/post-edit-check.sh",
+                        "async": true,
+                        "timeout": 180,
+                        "statusMessage": "Running checks..."
+                    },
+                    {
+                        "type": "command",
+                        "command": "~/.claude/hooks/post-tool-use-lint.sh",
+                        "timeout": 30,
+                        "statusMessage": "Running verify_cmd..."
+                    },
+                    {
+                        "type": "command",
+                        "command": "~/.claude/hooks/edit-shadow-detector.sh",
+                        "async": true,
+                        "timeout": 5
+                    },
+                    {
+                        "type": "command",
+                        "command": "~/.claude/hooks/memory-sync.sh",
+                        "async": true,
+                        "timeout": 10
+                    }
+                ]
+            },
+            {
+                "matcher": "Bash",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "~/.claude/hooks/failure-detector.sh",
+                        "timeout": 5
+                    },
+                    {
+                        "type": "command",
+                        "command": "~/.claude/hooks/memory-sync.sh",
+                        "async": true,
+                        "timeout": 10
+                    }
+                ]
+            }
+        ],
+        "Stop": [
+            {
+                "hooks": [
+                    {
+                        "type": "prompt",
+                        "prompt": "RESPOND WITH ONLY VALID JSON — no preamble, no explanation, no markdown. Your entire response must be exactly one of: {\"ok\": true} or {\"ok\": false, \"reason\": \"brief reason\"}. Any other output will cause a JSON parse error.\n\nReview the conversation transcript. Determine if the assistant completed ALL tasks the user explicitly requested. Check: 1) Every explicit request was addressed 2) No partial implementations left unfinished 3) No obvious errors introduced.\n\nCRITICAL: If the conversation ended due to an API error (500, 502, 503, timeout, rate limit, or any server-side error), ALWAYS return {\"ok\": true}. These are infrastructure issues beyond the assistant's control — blocking the stop would create an infinite retry loop.\n\nBe lenient — only return ok=false if something is clearly unfinished AND automatable by the assistant. If the remaining work requires manual steps (missing CLI tools, interactive prompts, browser actions), return ok=true — the assistant should have already told the user. Context: $ARGUMENTS",
+                        "timeout": 30
+                    }
+                ]
+            }
+        ],
+        "PreCompact": [
+            {
+                "hooks": [
+                    {
+                        "type": "prompt",
+                        "prompt": "[PreCompact State Checkpoint]\n\nContext compaction is about to happen. If you are in the middle of an active task, use the Write tool to save your state to .claude/compact-state.md BEFORE compaction.\n\nFormat (keep it short — this file is re-read at session start):\n```\n# Compact State — {ISO timestamp}\n## Active Task\n{1-2 sentences: what you are working on}\n## Progress\n{bullet list: what has been completed}\n## Next Step\n{exactly what to do next — be specific enough to resume without re-reading the conversation}\n## Key Context\n{critical facts that would be lost: file paths, error messages, variable names, architectural decisions}\n```\n\nThen output: > [Compact Checkpoint] State saved to .claude/compact-state.md\n\nIf you are NOT in the middle of an active task (conversation is idle or task is complete), skip this entirely."
+                    }
+                ]
+            },
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "bash ~/.claude/hooks/pre-compact.sh"
+                    }
+                ]
+            }
+        ],
+        "Notification": [
+            {
+                "matcher": "permission_prompt|idle_prompt",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "~/.claude/hooks/notify-telegram.sh",
+                        "async": true,
+                        "timeout": 10
+                    }
+                ]
+            }
+        ],
+        "TaskCompleted": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "~/.claude/hooks/verify-task-completed.sh",
+                        "timeout": 180,
+                        "statusMessage": "Verifying task completion..."
+                    }
+                ]
+            }
+        ],
+        "UserPromptSubmit": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "~/.claude/hooks/correction-detector.sh",
+                        "timeout": 5,
+                        "statusMessage": ""
+                    },
+                    {
+                        "type": "command",
+                        "command": "~/.claude/hooks/prompt-tracker.sh",
+                        "async": true,
+                        "timeout": 5
+                    }
+                ]
+            }
+        ],
+        "PostToolUseFailure": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "~/.claude/hooks/post-tool-use-failure.sh",
+                        "timeout": 5
+                    }
+                ]
+            }
         ]
-      }
-    ],
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/pre-tool-guardian.sh",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/revert-detector.sh",
-            "async": true,
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/post-edit-check.sh",
-            "async": true,
-            "timeout": 180,
-            "statusMessage": "Running checks..."
-          },
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/post-tool-use-lint.sh",
-            "timeout": 30,
-            "statusMessage": "Running verify_cmd..."
-          },
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/edit-shadow-detector.sh",
-            "async": true,
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/memory-sync.sh",
-            "async": true,
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/failure-detector.sh",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/memory-sync.sh",
-            "async": true,
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "prompt",
-            "prompt": "RESPOND WITH ONLY VALID JSON — no preamble, no explanation, no markdown. Your entire response must be exactly one of: {\"ok\": true} or {\"ok\": false, \"reason\": \"brief reason\"}. Any other output will cause a JSON parse error.\n\nReview the conversation transcript. Determine if the assistant completed ALL tasks the user explicitly requested. Check: 1) Every explicit request was addressed 2) No partial implementations left unfinished 3) No obvious errors introduced.\n\nCRITICAL: If the conversation ended due to an API error (500, 502, 503, timeout, rate limit, or any server-side error), ALWAYS return {\"ok\": true}. These are infrastructure issues beyond the assistant's control — blocking the stop would create an infinite retry loop.\n\nBe lenient — only return ok=false if something is clearly unfinished AND automatable by the assistant. If the remaining work requires manual steps (missing CLI tools, interactive prompts, browser actions), return ok=true — the assistant should have already told the user. Context: $ARGUMENTS",
-            "timeout": 30
-          }
-        ]
-      }
-    ],
-    "PreCompact": [
-      {
-        "hooks": [
-          {
-            "type": "prompt",
-            "prompt": "[PreCompact State Checkpoint]\n\nContext compaction is about to happen. If you are in the middle of an active task, use the Write tool to save your state to .claude/compact-state.md BEFORE compaction.\n\nFormat (keep it short — this file is re-read at session start):\n```\n# Compact State — {ISO timestamp}\n## Active Task\n{1-2 sentences: what you are working on}\n## Progress\n{bullet list: what has been completed}\n## Next Step\n{exactly what to do next — be specific enough to resume without re-reading the conversation}\n## Key Context\n{critical facts that would be lost: file paths, error messages, variable names, architectural decisions}\n```\n\nThen output: > [Compact Checkpoint] State saved to .claude/compact-state.md\n\nIf you are NOT in the middle of an active task (conversation is idle or task is complete), skip this entirely."
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.claude/hooks/pre-compact.sh"
-          }
-        ]
-      }
-    ],
-    "Notification": [
-      {
-        "matcher": "permission_prompt|idle_prompt",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/notify-telegram.sh",
-            "async": true,
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "TaskCompleted": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/verify-task-completed.sh",
-            "timeout": 180,
-            "statusMessage": "Verifying task completion..."
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/correction-detector.sh",
-            "timeout": 5,
-            "statusMessage": ""
-          },
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/prompt-tracker.sh",
-            "async": true,
-            "timeout": 5
-          }
-        ]
-      }
-    ]
-  }
+    }
 }
