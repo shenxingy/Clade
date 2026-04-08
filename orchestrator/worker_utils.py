@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -111,6 +112,37 @@ def _strip_error_context(text: str | None) -> str:
     if not text:
         return ""
     return text[:500].replace("\n", " ").strip()
+
+
+# ─── Minimal-Patch Lint Target Extraction (Recursive Debugging pattern) ──────
+
+# Matches ruff/mypy/pylint style: path/to/file.py:42: or path/to/file.py:42:5:
+_LINT_LOCATION_RE = re.compile(
+    r"^(?P<file>[^\s:][^:]*\.(?:py|sh|ts|tsx|js|jsx))"
+    r":(?P<line>\d+)"
+    r"(?::\d+)?:\s*(?P<rest>.+)$"
+)
+
+
+def _extract_lint_targets(lint_output: str, max_targets: int = 5) -> list[str]:
+    """Parse lint output and return up to max_targets 'file:line: message' strings.
+
+    Used to generate targeted fix directives (Recursive Debugging pattern).
+    Handles ruff/pylint output format: 'path/to/file.py:42:5: E501 Line too long'.
+    Returns empty list if no parseable locations found.
+    """
+    targets: list[str] = []
+    seen: set[str] = set()
+    for line in lint_output.splitlines():
+        m = _LINT_LOCATION_RE.match(line.strip())
+        if m:
+            key = f"{m.group('file')}:{m.group('line')}"
+            if key not in seen:
+                seen.add(key)
+                targets.append(f"{key}: {m.group('rest')[:120]}")
+            if len(targets) >= max_targets:
+                break
+    return targets
 
 
 # ─── Reflection Loop (Aider pattern) ─────────────────────────────────────────

@@ -107,6 +107,20 @@ if echo "$COMMAND" | grep -qE 'git[[:space:]]+push[[:space:]]' \
   exit 0
 fi
 
+# ─── Rewrite force push on feature branches ───────────────────────────
+# git push --force / -f on non-main branches is risky — rewrite to --force-with-lease
+# which refuses to overwrite if the remote was updated by someone else.
+if echo "$COMMAND" | grep -qE 'git[[:space:]]+push[[:space:]]' \
+  && echo "$COMMAND" | grep -qE '(--force\b|-f\b)'; then
+  SAFER=$(echo "$COMMAND" \
+    | sed 's/--force\b/--force-with-lease/g' \
+    | sed 's/\(git[[:space:]]*push[[:space:]].*\)-f\b/\1--force-with-lease/g')
+  jq -n \
+    --arg safer "$SAFER" \
+    '{"decision":"allow","updatedInput":{"command":$safer}}'
+  exit 0
+fi
+
 # ─── SQL DROP DATABASE / DROP TABLE ──────────────────────────────────
 # These are irreversible. Redirect to manual execution.
 if echo "$COMMAND" | grep -qiE '\bDROP[[:space:]]+(DATABASE|TABLE|SCHEMA)\b'; then

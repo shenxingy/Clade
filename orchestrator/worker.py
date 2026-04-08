@@ -46,7 +46,7 @@ from reactions import ReactionExecutor
 from condensers import ObservationMaskingCondenser
 from worker_utils import (
     _distill_output, _truncate_output, _strip_error_context,
-    _run_lint_check, LoopDetectionService,
+    _run_lint_check, _extract_lint_targets, LoopDetectionService,
     MAX_LINES, MAX_BYTES, DISTILL_THRESHOLD, MAX_REFLECTION_RETRIES,
 )
 from worker_hydrate import _pre_hydrate
@@ -627,11 +627,23 @@ class Worker:
                         history_lines = "\n".join(
                             f"  - {n}" for n in self._failure_reflections[-3:]
                         )
+                        # Recursive Debugging pattern: parse specific file:line:error locations
+                        # to generate targeted fix directives instead of dumping all lint output.
+                        lint_targets = _extract_lint_targets(lint_output)
+                        if lint_targets:
+                            targeted = (
+                                "Fix ONLY these specific errors (do not modify anything else):\n"
+                                + "\n".join(f"  • {t}" for t in lint_targets)
+                                + "\n"
+                            )
+                        else:
+                            targeted = ""
                         # Inject lint output + episodic failure history as additional context
                         retry_context = (
                             f"Previous attempts failed:\n{history_lines}\n\n"
                             f"Your previous edit introduced lint/verification errors. Fix them now.\n\n"
-                            f"Lint output:\n{stripped}\n"
+                            f"{targeted}"
+                            f"Full lint output:\n{lint_output[:3000]}\n"
                         )
                         # AutoCodeRover pattern: use --continue to preserve session context.
                         # Agent remembers which files it edited, so we only send the error.
