@@ -59,7 +59,7 @@ See full doc: docs/research/2026-04-08-sweep-ai.md
 - [AI] ~~Sweep (Gap 3): Post-worker test runner missing~~ — RESOLVED 2026-04-08: `_run_project_tests()` added to `worker_utils.py`; reads `test_cmd` from `.claude/orchestrator.json`, auto-detects pytest; called in `_on_worker_done()` after successful commit; failures injected into reflection retry.
 - [AI] ~~Sweep (Gap 2): Caller hints for signature changes missing~~ — RESOLVED 2026-04-08: `_find_caller_hints()` added to `worker_tldr.py`; greps for callers of suspect functions from fault localization output; injected as "Caller hints" block in task file for fix tasks.
 - [AI] ~~Sweep (Gap 1): Entity-level TLDR pruning missing~~ — RESOLVED 2026-04-08: `_prune_tldr_to_entities()` + `_extract_entity_name()` + `_parse_fault_entity_names()` added to `worker_tldr.py`; wired in `_build_task_file()` after fault localization extracts suspect functions; 15 tests added.
-- [AI] Sweep (Gap 4): Hybrid context retrieval missing — combine keyword grep + structural haiku selection in `_localize_tldr_for_task`. Medium effort.
+- [AI] ~~Sweep (Gap 4): Hybrid context retrieval missing~~ — RESOLVED 2026-04-08: `_keyword_filter_tldr()` added to `worker_tldr.py`; `_localize_tldr_for_task()` now pre-filters by code identifier keywords before haiku structural selection; 4 tests added.
 
 ---
 

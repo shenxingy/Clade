@@ -267,6 +267,56 @@ def _parse_fault_entity_names(fault_locs_text: str) -> list[str]:
     return pattern.findall(fault_locs_text)
 
 
+# ─── Hybrid Keyword Pre-Filter (Sweep §Gap4) ─────────────────────────────────
+
+
+def _keyword_filter_tldr(
+    task_description: str, tldr: str, max_sections: int = 15
+) -> str:
+    """Pre-filter TLDR sections by keyword matching before haiku structural selection.
+
+    Sweep §Gap4: Hybrid retrieval — keyword grep provides a first-pass signal;
+    haiku then applies structural understanding over the reduced result set.
+    Falls back to full TLDR if fewer than 3 sections match (not enough signal).
+    """
+    # Extract code-like identifiers from task (snake_case, CamelCase, module names)
+    keywords: set[str] = set()
+    for word in re.findall(r'\b[a-zA-Z_][a-zA-Z0-9_]{2,}\b', task_description):
+        keywords.add(word.lower())
+    # Also include quoted strings as exact keywords
+    for quoted in re.findall(r'["\']([a-zA-Z_][a-zA-Z0-9_]{2,})["\']', task_description):
+        keywords.add(quoted.lower())
+
+    if not keywords:
+        return tldr
+
+    sections = _extract_tldr_sections(tldr)
+    if not sections:
+        return tldr
+
+    # Score each section by keyword hit count
+    scored: list[tuple[int, str, str]] = []
+    for fpath, content in sections.items():
+        content_lower = content.lower()
+        score = sum(1 for kw in keywords if kw in content_lower)
+        scored.append((score, fpath, content))
+
+    scored.sort(key=lambda x: -x[0])
+
+    # Keep sections with any keyword match, up to max_sections
+    matching = [(s, fp, c) for s, fp, c in scored if s > 0]
+    if len(matching) < 3:
+        # Too sparse — return original to avoid over-filtering
+        return tldr
+
+    kept = matching[:max_sections]
+    result = "\n\n".join(c for _, _, c in kept)
+    skipped = len(sections) - len(kept)
+    if skipped > 0:
+        result += f"\n\n... ({skipped} files omitted — keyword pre-filtered)"
+    return result
+
+
 # ─── Two-Phase Task-Specific TLDR Localization (Moatless pattern) ─────────────
 
 _LOCALIZE_PROMPT = """\
@@ -305,15 +355,21 @@ def _extract_tldr_sections(tldr: str) -> dict[str, str]:
 async def _localize_tldr_for_task(
     task_description: str, tldr: str, project_dir: Path
 ) -> str:
-    """Two-phase: pick top-5 relevant files via haiku, return filtered TLDR.
+    """Hybrid: keyword pre-filter + haiku structural selection → top-5 relevant files.
 
     Moatless pattern: when TLDR is large (>4KB), use haiku to narrow to the
-    files most relevant to the task before injecting into context. Saves tokens
-    and focuses worker attention on the right files.
+    top-5 most relevant files for this task. Saves tokens and focuses worker.
+
+    Sweep §Gap4: now runs a keyword pre-filter first. If the task contains code
+    identifiers, TLDR is pre-filtered to files that mention them. Haiku then
+    applies structural understanding over the reduced result set — two-signal
+    retrieval improves precision for complex queries.
 
     Falls back to original TLDR on any error.
     """
-    sections = _extract_tldr_sections(tldr)
+    # Sweep §Gap4: keyword pre-filter before haiku (hybrid retrieval)
+    candidate_tldr = _keyword_filter_tldr(task_description, tldr)
+    sections = _extract_tldr_sections(candidate_tldr)
     if not sections:
         return tldr
 
