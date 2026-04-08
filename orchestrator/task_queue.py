@@ -181,6 +181,10 @@ class TaskQueue:
                     await db.execute("ALTER TABLE tasks ADD COLUMN token_budget INTEGER DEFAULT 0")
                 except Exception:
                     pass
+                try:
+                    await db.execute("ALTER TABLE tasks ADD COLUMN context_version INTEGER DEFAULT 0")
+                except Exception:
+                    pass
                 await db.execute("""
                     CREATE TABLE IF NOT EXISTS worker_messages (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -404,6 +408,27 @@ class TaskQueue:
             }
             for row in rows
         ]
+
+    # ─── Context Versioning (Multi-agent Gap 1) ──────────────────────────────
+
+    async def get_context_version(self) -> int:
+        """Return current context version = count of completed tasks.
+
+        Used to detect stale context: if a worker was queued when version=N but
+        N tasks have since completed, the codebase may have changed significantly.
+        Workers receive their context_version at task-file build time.
+        """
+        await self._ensure_db()
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            async with db.execute("SELECT COUNT(*) FROM tasks WHERE status='done'") as cur:
+                row = await cur.fetchone()
+                return row[0] if row else 0
+
+    async def stamp_context_version(self, task_id: str) -> int:
+        """Stamp a task with the current context version. Returns the version stamped."""
+        version = await self.get_context_version()
+        await self.update(task_id, context_version=version)
+        return version
 
     # ─── Scheduling ──────────────────────────────────────────────────────────
 
