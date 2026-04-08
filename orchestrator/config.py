@@ -26,7 +26,8 @@ _ALLOWED_TASK_COLS = {"status", "description", "model", "depends_on", "score",
                       "gh_issue_number", "is_critical_path",
                       "input_tokens", "output_tokens", "estimated_cost",
                       "task_type", "source_ref", "parent_task_id", "priority_score",
-                      "handoff_type", "handoff_payload", "completion_summary"}
+                      "handoff_type", "handoff_payload", "completion_summary",
+                      "token_budget"}
 
 _ALLOWED_LOOP_COLS = {
     "name", "artifact_path", "context_dir", "status", "iteration",
@@ -72,6 +73,7 @@ _SETTINGS_DEFAULTS = {
     "agent_teams": False,
     "stuck_timeout_minutes": 15,
     "cost_budget": 0,
+    "worker_token_budget": 0,  # max tokens per worker (0 = unlimited)
     "notification_webhook": "",
     "auto_scale": False,
     "min_workers": 1,

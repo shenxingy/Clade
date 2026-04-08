@@ -22,7 +22,7 @@ See full doc: docs/research/2026-04-07-multi-agent-coordination.md
 See full doc: docs/research/2026-04-07-claude-hooks.md
 
 - [AI] Hooks (Gap 1): Mark PostToolUse hooks (`post-tool-use-lint.sh`, notification hooks) as `async: true` — currently they block Claude during verify_cmd. Small effort, immediate latency win. See §Gap 1
-- [AI] Hooks (Gap 2): Extend `pre-tool-guardian.sh` to include `updatedInput` rewrites for safe alternatives (e.g. `git push -f` → `--force-with-lease`) instead of only blocking. Small effort. See §Gap 2
+- [AI] ~~Hooks (Gap 2): Extend `pre-tool-guardian.sh` to include `updatedInput` rewrites for safe alternatives~~ — RESOLVED 2026-04-08: `pre-tool-guardian.sh` now returns `updatedInput` rewriting `--force`/`-f` to `--force-with-lease` for non-main/master branches.
 - [AI] Hooks (Gap 3): Add `Stop` hook that runs tests + checks TODO checklist before allowing session end. Highest value for overnight autonomous loops — prevents false-done sessions. Medium effort. See §Gap 3
 - [AI] Hooks (Gap 4): Add `"if"` field to hook matchers (e.g. `"if": "Bash(rm *|git push*)"`) to skip hook invocation for safe commands. Small effort, reduces overhead. See §Gap 4
 - [AI] Hooks (Gap 5): Use `updatedPermissions` in `PermissionRequest` handler to inject persistent allow rules into `.claude/settings.local.json` after first approval. Small effort. See §Gap 5
