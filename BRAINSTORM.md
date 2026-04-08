@@ -98,7 +98,7 @@ See full doc: docs/research/2026-04-08-community-harness-repos.md
 - [AI] ~~Research (community): Hook `id` + `description` fields~~ — RESOLVED 2026-04-08: All 21 hook entries in `settings-hooks.json` and live `~/.claude/settings.json` now have `"id"` (snake_case unique identifier) and `"description"` (human-readable purpose) fields; enables selective disabling and better hook debugging (ECC pattern)
 - [AI] Research (community): Pass@k metrics tracking — track per-task attempt count, oracle-pass rate, and pass@k across sessions; currently no aggregated success metrics (ECC eval-harness)
 - [AI] Research (community): DreamConsolidator memory pruning — 7-gate check before memory writes (staleness, redundancy, specificity, etc.) + 24h cooldown per topic (learn-cc s09); relevant if memory-sync.sh grows; currently writes everything
-- [AI] Research (community): Bidirectional dep clearing — when task completes, clear it from `depends_on` of all sibling tasks atomically; currently clearing is unidirectional (learn-cc s12)
+- [AI] ~~Research (community): Bidirectional dep clearing~~ — RESOLVED 2026-04-08: `TaskQueue.clear_completed_dep(completed_task_id)` added; called in `Worker._on_worker_done()` after auto-commit; atomically removes the completed task ID from `depends_on` lists of all pending/queued sibling tasks (learn-cc s12)
 
 ---
 
