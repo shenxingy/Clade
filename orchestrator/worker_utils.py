@@ -83,6 +83,40 @@ def _parse_observation_contract(log_text: str) -> dict | None:
             continue
     return None
 
+def micro_compact(text: str, max_chars: int = 2000) -> str:
+    """Synchronous micro-compaction for mid-task output (learn-cc s06).
+
+    Truncates text to max_chars with a head+tail window to preserve both
+    the start (import statements, function signatures) and the end (errors,
+    results). Injects a [N chars omitted] marker at the cut point.
+    """
+    if not text or len(text) <= max_chars:
+        return text
+    head = max_chars // 2
+    tail = max_chars - head
+    omitted = len(text) - max_chars
+    return text[:head] + f"\n... [{omitted:,} chars omitted] ...\n" + text[-tail:]
+
+
+def persist_large_output(text: str, output_dir: Path, prefix: str = "tool-output") -> str:
+    """Write large output to a file and return a compact reference string (learn-cc s06).
+
+    When tool output exceeds a threshold, the full content is saved to a file
+    in output_dir so the agent can re-read it on demand. Returns a short
+    reference string with the path and a micro_compact summary.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    import hashlib
+    fname = f"{prefix}-{hashlib.md5(text[:200].encode()).hexdigest()[:8]}.txt"
+    path = output_dir / fname
+    try:
+        path.write_text(text, encoding="utf-8")
+        summary = micro_compact(text, max_chars=800)
+        return f"[Full output saved to {path}]\n{summary}"
+    except Exception:
+        return micro_compact(text, max_chars=1200)
+
+
 DISTILL_PROMPT = """Extract key facts from this tool output. Focus on:
 - Error messages and their types
 - File paths and line numbers
