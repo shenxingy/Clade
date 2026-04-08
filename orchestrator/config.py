@@ -86,6 +86,7 @@ _SETTINGS_DEFAULTS = {
     "usage_provider": "claude",
     "minimax_api_key": "",
     "minimax_group_id": "",
+    "parallel_fix_samples": 1,  # Agentless §6C: N parallel workers for critical-path oracle rejections (1=sequential)
     "reactions_enabled": True,
     "reaction_configs": [
         {
