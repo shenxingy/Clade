@@ -70,7 +70,7 @@ See full doc: docs/research/2026-04-08-qodo-merge.md
 - [AI] ~~Qodo (Gap 3): Diff chunking~~ — RESOLVED 2026-04-08: `_oracle_review` now chunks large diffs (>2500 chars) into 2000-char segments, reviews in parallel, returns first rejection reason.
 - [AI] ~~Qodo (Gap 2): Per-finding fix suggestions missing~~ — RESOLVED 2026-04-08: `_format_oracle_rejection()` added to `worker_review.py`; oracle prompt updated to request `findings: [{dimension, severity, fix_suggestion}]`; rejection reason now ordered numbered list; 5 tests added.
 - [AI] ~~Qodo (Gap 5): Confidence scoring~~ — RESOLVED 2026-04-08: `confidence` field (high/medium/low) added to oracle prompt and response parsing; included in rejection reason as `[high] fix_guidance`.
-- [AI] Qodo (Gap 1): Two-pass oracle missing — single haiku call reviews both spec-adherence and quality simultaneously; splitting into sequential spec-check + quality-check catches more issues. Medium effort.
+- [AI] ~~Qodo (Gap 1): Two-pass oracle missing~~ — RESOLVED 2026-04-08: `_oracle_pass()` helper added; `_oracle_review()` now runs spec-check first (does code match task?), then quality-check (bugs/security?); short-circuits on spec failure; chunked path unchanged.
 
 ---
 

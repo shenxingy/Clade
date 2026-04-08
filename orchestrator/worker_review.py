@@ -193,6 +193,62 @@ _ORACLE_PROMPT_TEMPLATE = (
 )
 
 
+_ORACLE_SPEC_PROMPT = (
+    "You are a spec compliance checker. Does this diff correctly implement the required task?\n"
+    "Focus ONLY on correctness (does it do what was asked?) and completeness (all requirements met?).\n"
+    "Respond with ONLY a JSON object — no preamble, no markdown:\n"
+    '{{"pass":true,"confidence":"high","issues":[]}}\n'
+    "OR:\n"
+    '{{"pass":false,"confidence":"high|medium|low","issues":["<specific spec violation>"]}}\n\n'
+    "Task: {task}\n\nDiff:\n{diff}"
+)
+
+_ORACLE_QUALITY_PROMPT = (
+    "You are a code quality reviewer. Does this diff introduce bugs, security issues, or serious defects?\n"
+    "Focus ONLY on implementation quality — not spec compliance.\n"
+    "Respond with ONLY a JSON object — no preamble, no markdown:\n"
+    '{{"pass":true,"confidence":"high","issues":[]}}\n'
+    "OR:\n"
+    '{{"pass":false,"confidence":"high|medium|low","issues":["<specific quality issue>"]}}\n\n'
+    "Diff:\n{diff}"
+)
+
+
+async def _oracle_pass(
+    prompt: str, claude_dir: Path
+) -> tuple[bool, str, str]:
+    """Run a single oracle pass. Returns (passed, confidence, issues_text). Internal."""
+    prompt_file = claude_dir / f"oracle-{uuid.uuid4().hex[:8]}.md"
+    try:
+        prompt_file.write_text(prompt)
+        proc = await asyncio.create_subprocess_shell(
+            f'claude -p "$(cat {shlex.quote(str(prompt_file))})" '
+            f'--model claude-haiku-4-5-20251001 --dangerously-skip-permissions',
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        try:
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout=45)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
+            return True, "medium", ""  # fail-open on timeout
+        raw = out.decode().strip()
+        try:
+            data = json.loads(raw)
+            passed = bool(data.get("pass", True))
+            confidence = str(data.get("confidence", "medium"))
+            issues = data.get("issues", [])
+            issues_text = "; ".join(str(i)[:100] for i in issues[:3]) if issues else ""
+            return passed, confidence, issues_text
+        except (json.JSONDecodeError, AttributeError):
+            return True, "low", ""
+    except Exception:
+        return True, "medium", ""
+    finally:
+        prompt_file.unlink(missing_ok=True)
+
+
 def _format_oracle_rejection(
     confidence: str,
     fix_guidance: str,
@@ -300,49 +356,23 @@ async def _oracle_review(task_description: str, diff_text: str, claude_dir: Path
             return False, reason
         return True, "approved (all chunks passed)"
 
-    # Short diff: single-pass review
-    prompt = _ORACLE_PROMPT_TEMPLATE.format(
-        task=task_description[:400], diff=diff_text[:_ORACLE_CHUNK_SIZE]
+    # Short diff: two-pass review (Qodo §Gap1 — spec-check first, quality-check second)
+    diff_excerpt = diff_text[:_ORACLE_CHUNK_SIZE]
+    spec_prompt = _ORACLE_SPEC_PROMPT.format(
+        task=task_description[:400], diff=diff_excerpt
     )
-    prompt_file = claude_dir / f"oracle-{uuid.uuid4().hex[:8]}.md"
-    try:
-        prompt_file.write_text(prompt)
-        proc = await asyncio.create_subprocess_shell(
-            f'claude -p "$(cat {shlex.quote(str(prompt_file))})" '
-            f'--model claude-haiku-4-5-20251001 --dangerously-skip-permissions',
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-        try:
-            out, _ = await asyncio.wait_for(proc.communicate(), timeout=60)
-        except asyncio.TimeoutError:
-            proc.kill()
-            await proc.communicate()
-            out = b""
-        raw = out.decode().strip()
+    quality_prompt = _ORACLE_QUALITY_PROMPT.format(diff=diff_excerpt)
 
-        # Try to parse structured JSON response (Self-RAG + Qodo confidence + per-finding)
-        try:
-            data = json.loads(raw)
-            approved = data.get("decision", "").upper() == "APPROVED"
-            fix_guidance = data.get("fix_guidance", "")
-            dims = data.get("dimensions", {})
-            confidence = data.get("confidence", "medium")
-            findings = data.get("findings", [])
-            if not approved:
-                reason = _format_oracle_rejection(confidence, fix_guidance, dims, findings)
-            else:
-                reason = "approved"
-            return approved, reason
-        except (json.JSONDecodeError, AttributeError):
-            pass
+    # Pass 1: spec compliance check
+    spec_passed, spec_conf, spec_issues = await _oracle_pass(spec_prompt, claude_dir)
+    if not spec_passed and spec_conf in ("high", "medium"):
+        reason = f"[{spec_conf}/spec] " + (spec_issues or "spec compliance failed")
+        return False, reason[:300]
 
-        # Fallback: legacy APPROVED/REJECTED text format
-        approved = raw.startswith("APPROVED")
-        reason = raw.split(":", 1)[-1].strip()[:80] if ":" in raw else raw[:80]
-        return approved, reason
-    except Exception as e:
-        logger.warning("oracle review error: %s", e)
-        return True, "oracle error (fail-open)"
-    finally:
-        prompt_file.unlink(missing_ok=True)
+    # Pass 2: quality check (only runs if spec passed)
+    quality_passed, quality_conf, quality_issues = await _oracle_pass(quality_prompt, claude_dir)
+    if not quality_passed and quality_conf in ("high", "medium"):
+        reason = f"[{quality_conf}/quality] " + (quality_issues or "quality check failed")
+        return False, reason[:300]
+
+    return True, "approved (spec+quality passed)"
