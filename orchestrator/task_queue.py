@@ -361,6 +361,41 @@ class TaskQueue:
                 row = await cur.fetchone()
         return self._row_to_dict(row) if row else None
 
+    async def get_recent_completions(
+        self, exclude_task_id: str | None = None, limit: int = 5, since_seconds: int = 86400
+    ) -> list[dict]:
+        """Return recently-done tasks with completion_summary (multi-agent context archival).
+
+        Used by workers on startup to gain awareness of what sibling tasks accomplished.
+        Returns compact dicts: {id, description (first 80 chars), completion_summary}.
+        """
+        await self._ensure_db()
+        cutoff = time.time() - since_seconds
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            db.row_factory = aiosqlite.Row
+            sql = (
+                "SELECT id, description, completion_summary "
+                "FROM tasks "
+                "WHERE status = 'done' AND completion_summary IS NOT NULL "
+                "AND created_at >= ?"
+            )
+            params: list = [cutoff]
+            if exclude_task_id:
+                sql += " AND id != ?"
+                params.append(exclude_task_id)
+            sql += " ORDER BY created_at DESC LIMIT ?"
+            params.append(limit)
+            async with db.execute(sql, params) as cur:
+                rows = await cur.fetchall()
+        return [
+            {
+                "id": row["id"],
+                "description": (row["description"] or "")[:80],
+                "completion_summary": row["completion_summary"],
+            }
+            for row in rows
+        ]
+
     # ─── Scheduling ──────────────────────────────────────────────────────────
 
     async def get_schedule(self) -> dict | None:
