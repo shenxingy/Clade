@@ -30,6 +30,9 @@ _mock_worker_tldr._score_task = AsyncMock(return_value=None)
 _mock_worker_tldr._generate_code_tldr = MagicMock(return_value="")
 _mock_worker_tldr._extract_tldr_sections = _wt_real._extract_tldr_sections
 _mock_worker_tldr._localize_tldr_for_task = AsyncMock(return_value="")
+_mock_worker_tldr._extract_entity_name = _wt_real._extract_entity_name
+_mock_worker_tldr._prune_tldr_to_entities = _wt_real._prune_tldr_to_entities
+_mock_worker_tldr._parse_fault_entity_names = _wt_real._parse_fault_entity_names
 sys.modules.setdefault("worker_tldr", _mock_worker_tldr)
 
 _wr_spec = _ilu.spec_from_file_location(

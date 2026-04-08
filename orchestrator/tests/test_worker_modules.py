@@ -2,7 +2,10 @@
 
 import pytest
 
-from worker_tldr import _extract_tldr_sections, _generate_code_tldr
+from worker_tldr import (
+    _extract_tldr_sections, _generate_code_tldr,
+    _extract_entity_name, _prune_tldr_to_entities, _parse_fault_entity_names,
+)
 from condensers import (
     NoOpCondenser,
     RecentEventsCondenser,
@@ -356,3 +359,81 @@ class TestFormatOracleRejection:
         # Should show items 1-5, not 6-10
         assert "fix 4" in result
         assert "fix 9" not in result
+
+
+# ─── Entity-level TLDR pruning tests (Sweep §Gap1) ────────────────────────────
+
+class TestExtractEntityName:
+    def test_class(self):
+        assert _extract_entity_name("class MyClass(Base)") == "MyClass"
+
+    def test_def(self):
+        assert _extract_entity_name("def my_func(self, x: int)") == "my_func"
+
+    def test_async_def(self):
+        assert _extract_entity_name("async def worker(self)") == "worker"
+
+    def test_not_entity(self):
+        assert _extract_entity_name("  # comment") is None
+        assert _extract_entity_name("x = 42") is None
+
+    def test_js_function(self):
+        assert _extract_entity_name("export function myFn()") == "myFn"
+
+    def test_js_class(self):
+        assert _extract_entity_name("export class MyComp") == "MyComp"
+
+
+class TestPruneTldrToEntities:
+    _TLDR = """\
+## file.py
+class MyClass
+  def method_one(self)
+  def method_two(self)
+class OtherClass
+  def other_method(self)
+def standalone(arg)"""
+
+    def test_prune_by_class_name(self):
+        result = _prune_tldr_to_entities(self._TLDR, ["MyClass"])
+        assert "MyClass" in result
+        assert "method_one" in result
+        assert "OtherClass" not in result or "omitted" in result
+
+    def test_prune_by_method_name(self):
+        result = _prune_tldr_to_entities(self._TLDR, ["other_method"])
+        assert "OtherClass" in result
+        assert "other_method" in result
+
+    def test_dotted_name(self):
+        result = _prune_tldr_to_entities(self._TLDR, ["MyClass.method_one"])
+        assert "MyClass" in result
+
+    def test_no_match_keeps_original(self):
+        # If nothing matches, return original TLDR
+        result = _prune_tldr_to_entities(self._TLDR, ["NonExistent"])
+        assert "MyClass" in result
+        assert "OtherClass" in result
+
+    def test_empty_names(self):
+        result = _prune_tldr_to_entities(self._TLDR, [])
+        assert result == self._TLDR
+
+    def test_standalone_function(self):
+        result = _prune_tldr_to_entities(self._TLDR, ["standalone"])
+        assert "standalone" in result
+
+
+class TestParseFaultEntityNames:
+    def test_simple(self):
+        text = "**Functions most likely to change:**\n- `MyClass.method_name`\n- `standalone_func`"
+        names = _parse_fault_entity_names(text)
+        assert "MyClass.method_name" in names
+        assert "standalone_func" in names
+
+    def test_empty(self):
+        assert _parse_fault_entity_names("") == []
+
+    def test_no_backtick_names(self):
+        text = "Some plain text with no names"
+        assert _parse_fault_entity_names(text) == []

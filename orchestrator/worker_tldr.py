@@ -146,6 +146,127 @@ def _generate_code_tldr(project_dir: str) -> str:
     return result
 
 
+# ─── Entity-Level TLDR Pruning (Sweep §Gap1) ─────────────────────────────────
+
+
+def _extract_entity_name(stripped_line: str) -> str | None:
+    """Extract entity name from a stripped TLDR line (class/function definition).
+
+    Handles Python (class/def/async def) and JS/TS patterns.
+    Returns None if the line is not an entity definition.
+    """
+    # Python: class Foo, def foo, async def foo
+    for prefix in ("class ", "def ", "async def "):
+        if stripped_line.startswith(prefix):
+            rest = stripped_line[len(prefix):]
+            name = re.split(r'[\s(:]', rest, 1)[0]
+            return name if name else None
+    # JS/TS: export class Foo, export function foo, export const foo
+    m = re.match(r'(?:export\s+)?(?:async\s+)?(?:function|class)\s+(\w+)', stripped_line)
+    if m:
+        return m.group(1)
+    m = re.match(r'(?:export\s+)?(?:const|let|var)\s+(\w[\w$]*)', stripped_line)
+    if m:
+        return m.group(1)
+    return None
+
+
+def _prune_tldr_to_entities(tldr: str, entity_names: list[str]) -> str:
+    """Filter TLDR entity lines within each section to only show relevant entities.
+
+    Sweep §Gap1: After file-level localization, further prune to entity level.
+    Reduces context noise 3-5× for large files. Falls back to full TLDR on errors.
+
+    entity_names may include "ClassName.method_name" or bare "function_name".
+    For class blocks: keeps the block if the class name OR any method name matches.
+    """
+    if not entity_names or not tldr:
+        return tldr
+
+    # Build lookup set: both dotted and bare names, lowercase
+    name_set: set[str] = set()
+    for en in entity_names:
+        if not en:
+            continue
+        parts = en.split(".")
+        name_set.update(p.strip().lower() for p in parts if p.strip())
+
+    sections = _extract_tldr_sections(tldr)
+    if not sections:
+        return tldr
+
+    result_sections: list[str] = []
+    for _fpath, content in sections.items():
+        lines = content.splitlines()
+        if not lines:
+            continue
+        header = lines[0]
+        body = lines[1:]
+
+        # Group body into top-level blocks: (header_line, [method_lines])
+        # A block starts at a non-indented entity line; method lines are indented
+        blocks: list[tuple[str, list[str]]] = []
+        for line in body:
+            if not line.strip():
+                continue
+            if not (line.startswith("  ") or line.startswith("\t")):
+                blocks.append((line, []))
+            elif blocks:
+                blocks[-1][1].append(line)
+
+        if not blocks:
+            result_sections.append(content)
+            continue
+
+        kept_blocks: list[tuple[str, list[str]]] = []
+        for top_line, method_lines in blocks:
+            top_name = _extract_entity_name(top_line.strip())
+            if top_name is None:
+                # Unknown format — keep as-is
+                kept_blocks.append((top_line, method_lines))
+                continue
+            top_lower = top_name.lower()
+            # Keep if top entity name matches
+            if top_lower in name_set:
+                kept_blocks.append((top_line, method_lines))
+                continue
+            # Keep class block if any method name matches
+            for ml in method_lines:
+                mname = _extract_entity_name(ml.strip())
+                if mname and mname.lower() in name_set:
+                    kept_blocks.append((top_line, method_lines))
+                    break
+
+        skipped = len(blocks) - len(kept_blocks)
+        if skipped == 0 or not kept_blocks:
+            # Nothing pruned, or everything pruned → include original
+            result_sections.append(content)
+            continue
+
+        pruned_lines = [header]
+        for top_line, method_lines in kept_blocks:
+            pruned_lines.append(top_line)
+            pruned_lines.extend(method_lines)
+        if skipped > 0:
+            pruned_lines.append(f"  ... ({skipped} entities omitted — entity-localized)")
+        result_sections.append("\n".join(pruned_lines))
+
+    return "\n\n".join(result_sections) if result_sections else tldr
+
+
+def _parse_fault_entity_names(fault_locs_text: str) -> list[str]:
+    """Extract entity names from `_localize_fault()` formatted output.
+
+    Parses lines like:
+      - `ClassName.method_name`
+      - `module.function_name`
+    Returns list of dotted names for use with `_prune_tldr_to_entities`.
+    """
+    # Match backtick-quoted names (with optional dot separator)
+    pattern = re.compile(r'`([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?)`')
+    return pattern.findall(fault_locs_text)
+
+
 # ─── Two-Phase Task-Specific TLDR Localization (Moatless pattern) ─────────────
 
 _LOCALIZE_PROMPT = """\

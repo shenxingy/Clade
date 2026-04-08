@@ -39,7 +39,10 @@ from config import (
 from task_queue import TaskQueue
 from github_sync import _gh_update_issue_status
 from session_tree import SessionTree
-from worker_tldr import _generate_code_tldr, _localize_tldr_for_task, _localize_fault
+from worker_tldr import (
+    _generate_code_tldr, _localize_tldr_for_task, _localize_fault,
+    _prune_tldr_to_entities, _parse_fault_entity_names,
+)
 from worker_review import _oracle_review, _summarize_worker_completion
 from event_stream import EventStream
 from tracing import TracingService, start_task_span, start_llm_span, end_llm_span, start_tool_span, end_tool_span
@@ -270,23 +273,31 @@ class Worker:
                     tldr = await _localize_tldr_for_task(
                         self.description, tldr, self._original_project_dir
                     )
-                context_blocks.append(f"# Codebase Structure (auto-generated)\n\n{tldr}")
                 # Fault localization pre-pass (Agentless §6A): for fix/bug tasks,
                 # predict likely change locations to tighten worker focus.
+                # Run before appending TLDR so we can entity-prune it (Sweep §Gap1).
                 task_type = _parse_task_type(self.description)
+                fault_locs = ""
                 if task_type == "fix":
                     fault_locs = await _localize_fault(
                         self.description, tldr, self._original_project_dir
                     )
                     if fault_locs:
+                        # Sweep §Gap1: entity-level TLDR pruning.
+                        # Use suspect_functions from fault localization to filter
+                        # TLDR down to only the relevant entities in each file.
+                        entity_names = _parse_fault_entity_names(fault_locs)
+                        if entity_names:
+                            tldr = _prune_tldr_to_entities(tldr, entity_names)
                         # Sweep §Gap2: add caller hints for suspect functions.
-                        # If a function is likely to change, its callers must also be updated.
                         caller_hints = await _find_caller_hints(
                             fault_locs, self._original_project_dir
                         )
                         if caller_hints:
                             fault_locs += f"\n\n{caller_hints}"
-                        context_blocks.append(fault_locs)
+                context_blocks.append(f"# Codebase Structure (auto-generated)\n\n{tldr}")
+                if fault_locs:
+                    context_blocks.append(fault_locs)
         except Exception:
             pass
         # Pre-hydration: fetch linked GitHub issues/PRs before agent starts (Stripe Blueprint pattern)
