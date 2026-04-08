@@ -131,3 +131,31 @@ async def test_priority_score_default(task_queue: TaskQueue):
     fetched = await task_queue.get(task["id"])
     priority = fetched.get("priority_score")
     assert priority == 0.0
+
+
+# ─── Context versioning ────────────────────────────────────────────────────────
+
+
+async def test_context_version_zero_on_empty(task_queue: TaskQueue):
+    """Context version is 0 when no tasks are done."""
+    version = await task_queue.get_context_version()
+    assert version == 0
+
+
+async def test_context_version_increments_with_completions(task_queue: TaskQueue):
+    t1 = await task_queue.add("Task A")
+    await task_queue.update(t1["id"], status="done")
+    t2 = await task_queue.add("Task B")
+    await task_queue.update(t2["id"], status="done")
+    version = await task_queue.get_context_version()
+    assert version == 2
+
+
+async def test_stamp_context_version(task_queue: TaskQueue):
+    t1 = await task_queue.add("Completed task")
+    await task_queue.update(t1["id"], status="done")
+    t2 = await task_queue.add("Pending task")
+    stamped = await task_queue.stamp_context_version(t2["id"])
+    assert stamped == 1
+    fetched = await task_queue.get(t2["id"])
+    assert fetched.get("context_version") == 1

@@ -119,6 +119,7 @@ class Worker:
         self.completion_summary: str | None = None  # 1-sentence summary (multi-agent context archival)
         self._failure_reflections: list[str] = []  # Reflexion pattern: accumulated failure notes
         self.token_budget: int = 0  # max total tokens (0 = unlimited); multi-agent Gap 2
+        self.context_version: int = 0  # codebase version when task file was built; multi-agent Gap 1
         self._input_tokens: int = 0
         self._output_tokens: int = 0
         self._estimated_cost: float = 0.0
@@ -309,6 +310,27 @@ class Worker:
                     for r in recent:
                         lines.append(f"- [{r['id']}] {r['completion_summary']}")
                     effective_description += "\n\n---\n\n" + "\n".join(lines) + "\n"
+            except Exception:
+                pass
+            # Context versioning (Multi-agent Gap 1): stamp this worker's task file
+            # with the current completion count. If codebase has changed since the task
+            # was queued, inject a staleness warning so the agent knows to re-read key files.
+            try:
+                current_version = await task_queue.get_context_version()
+                task_context_version = 0
+                task = await task_queue.get(self.task_id)
+                if task:
+                    task_context_version = task.get("context_version") or 0
+                self.context_version = current_version
+                await task_queue.stamp_context_version(self.task_id)
+                stale_count = current_version - task_context_version
+                if stale_count > 0:
+                    effective_description += (
+                        f"\n\n---\n\n"
+                        f"⚠ **Context Staleness Warning**: {stale_count} task(s) completed since "
+                        f"this task was queued. Codebase may have changed — re-read key files "
+                        f"before making assumptions about current state.\n"
+                    )
             except Exception:
                 pass
         # Inject unread messages from other tasks — also condense individual messages
