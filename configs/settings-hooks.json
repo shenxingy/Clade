@@ -6,12 +6,16 @@
                 "matcher": "startup",
                 "hooks": [
                     {
+                        "id": "session-context",
+                        "description": "Load project context and compact-state at session start",
                         "type": "command",
                         "command": "~/.claude/hooks/session-context.sh",
                         "timeout": 10,
                         "statusMessage": "Loading project context..."
                     },
                     {
+                        "id": "memory-sync-pull",
+                        "description": "Pull latest memory from remote at session start",
                         "type": "command",
                         "command": "~/.claude/scripts/sync-pull.sh",
                         "async": true,
@@ -26,11 +30,15 @@
                 "matcher": "Bash",
                 "hooks": [
                     {
+                        "id": "pre-tool-guardian",
+                        "description": "Block dangerous Bash commands (force push, rm -rf, drop table, etc.)",
                         "type": "command",
                         "command": "~/.claude/hooks/pre-tool-guardian.sh",
                         "timeout": 5
                     },
                     {
+                        "id": "revert-detector",
+                        "description": "Detect and warn on git revert/reset commands",
                         "type": "command",
                         "command": "~/.claude/hooks/revert-detector.sh",
                         "if": "Bash(git *)",
@@ -43,6 +51,8 @@
                 "matcher": "Edit|Write",
                 "hooks": [
                     {
+                        "id": "linter-config-guard",
+                        "description": "Block edits to linter/formatter/type-checker config files (ECC Plankton pattern)",
                         "type": "command",
                         "command": "~/.claude/hooks/linter-config-guard.sh",
                         "timeout": 5
@@ -55,6 +65,8 @@
                 "matcher": "Edit|Write",
                 "hooks": [
                     {
+                        "id": "post-edit-check",
+                        "description": "Run async checks (type-check, tests) after file edits",
                         "type": "command",
                         "command": "~/.claude/hooks/post-edit-check.sh",
                         "async": true,
@@ -62,18 +74,24 @@
                         "statusMessage": "Running checks..."
                     },
                     {
+                        "id": "post-tool-use-lint",
+                        "description": "Run verify_cmd after file edits and inject lint errors as feedback",
                         "type": "command",
                         "command": "~/.claude/hooks/post-tool-use-lint.sh",
                         "timeout": 30,
                         "statusMessage": "Running verify_cmd..."
                     },
                     {
+                        "id": "edit-shadow-detector",
+                        "description": "Detect edits that shadow or conflict with recent changes",
                         "type": "command",
                         "command": "~/.claude/hooks/edit-shadow-detector.sh",
                         "async": true,
                         "timeout": 5
                     },
                     {
+                        "id": "memory-sync-edit",
+                        "description": "Sync memory changes to remote after file edits",
                         "type": "command",
                         "command": "~/.claude/hooks/memory-sync.sh",
                         "async": true,
@@ -85,11 +103,15 @@
                 "matcher": "Bash",
                 "hooks": [
                     {
+                        "id": "failure-detector",
+                        "description": "Detect Bash command failures and inject diagnostic context",
                         "type": "command",
                         "command": "~/.claude/hooks/failure-detector.sh",
                         "timeout": 5
                     },
                     {
+                        "id": "memory-sync-bash",
+                        "description": "Sync memory changes to remote after Bash commands",
                         "type": "command",
                         "command": "~/.claude/hooks/memory-sync.sh",
                         "async": true,
@@ -102,6 +124,8 @@
             {
                 "hooks": [
                     {
+                        "id": "stop-completeness-check",
+                        "description": "LLM check that all user tasks are complete before stopping",
                         "type": "prompt",
                         "prompt": "RESPOND WITH ONLY VALID JSON — no preamble, no explanation, no markdown. Your entire response must be exactly one of: {\"ok\": true} or {\"ok\": false, \"reason\": \"brief reason\"}. Any other output will cause a JSON parse error.\n\nReview the conversation transcript. Determine if the assistant completed ALL tasks the user explicitly requested. Check: 1) Every explicit request was addressed 2) No partial implementations left unfinished 3) No obvious errors introduced.\n\nCRITICAL: If the conversation ended due to an API error (500, 502, 503, timeout, rate limit, or any server-side error), ALWAYS return {\"ok\": true}. These are infrastructure issues beyond the assistant's control — blocking the stop would create an infinite retry loop.\n\nBe lenient — only return ok=false if something is clearly unfinished AND automatable by the assistant. If the remaining work requires manual steps (missing CLI tools, interactive prompts, browser actions), return ok=true — the assistant should have already told the user. Context: $ARGUMENTS",
                         "timeout": 30
@@ -111,6 +135,8 @@
             {
                 "hooks": [
                     {
+                        "id": "stop-uncommitted-guard",
+                        "description": "Block stop if uncommitted changes or active blockers.md entries exist",
                         "type": "command",
                         "command": "~/.claude/hooks/stop-check.sh",
                         "timeout": 10
@@ -122,6 +148,8 @@
             {
                 "hooks": [
                     {
+                        "id": "precompact-state-save",
+                        "description": "Prompt LLM to save active task state to compact-state.md before context compaction",
                         "type": "prompt",
                         "prompt": "[PreCompact State Checkpoint]\n\nContext compaction is about to happen. If you are in the middle of an active task, use the Write tool to save your state to .claude/compact-state.md BEFORE compaction.\n\nFormat (keep it short — this file is re-read at session start):\n```\n# Compact State — {ISO timestamp}\n## Active Task\n{1-2 sentences: what you are working on}\n## Progress\n{bullet list: what has been completed}\n## Next Step\n{exactly what to do next — be specific enough to resume without re-reading the conversation}\n## Key Context\n{critical facts that would be lost: file paths, error messages, variable names, architectural decisions}\n```\n\nThen output: > [Compact Checkpoint] State saved to .claude/compact-state.md\n\nIf you are NOT in the middle of an active task (conversation is idle or task is complete), skip this entirely."
                     }
@@ -130,6 +158,8 @@
             {
                 "hooks": [
                     {
+                        "id": "precompact-script",
+                        "description": "Run pre-compact shell script (TLDR refresh, context snapshot)",
                         "type": "command",
                         "command": "bash ~/.claude/hooks/pre-compact.sh"
                     }
@@ -141,6 +171,8 @@
                 "matcher": "permission_prompt|idle_prompt",
                 "hooks": [
                     {
+                        "id": "telegram-notify",
+                        "description": "Send Telegram notification on permission prompts or idle state",
                         "type": "command",
                         "command": "~/.claude/hooks/notify-telegram.sh",
                         "async": true,
@@ -153,6 +185,8 @@
             {
                 "hooks": [
                     {
+                        "id": "verify-task-completed",
+                        "description": "Run verify_cmd to confirm task was fully and correctly completed",
                         "type": "command",
                         "command": "~/.claude/hooks/verify-task-completed.sh",
                         "timeout": 180,
@@ -165,12 +199,16 @@
             {
                 "hooks": [
                     {
+                        "id": "correction-detector",
+                        "description": "Detect user corrections and save as feedback memories",
                         "type": "command",
                         "command": "~/.claude/hooks/correction-detector.sh",
                         "timeout": 5,
                         "statusMessage": ""
                     },
                     {
+                        "id": "prompt-tracker",
+                        "description": "Track user prompts for analytics and loop detection",
                         "type": "command",
                         "command": "~/.claude/hooks/prompt-tracker.sh",
                         "async": true,
@@ -183,6 +221,8 @@
             {
                 "hooks": [
                     {
+                        "id": "post-tool-use-failure",
+                        "description": "Inject tool-specific diagnostic hints after tool call failures",
                         "type": "command",
                         "command": "~/.claude/hooks/post-tool-use-failure.sh",
                         "timeout": 5
@@ -194,6 +234,8 @@
             {
                 "hooks": [
                     {
+                        "id": "permission-request",
+                        "description": "Auto-allow safe patterns (read-only git, file inspection, pytest) and persist via updatedPermissions",
                         "type": "command",
                         "command": "~/.claude/hooks/permission-request.sh",
                         "timeout": 5
