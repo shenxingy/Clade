@@ -14,6 +14,7 @@ Imports:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -241,6 +242,56 @@ async def _run_lint_check(project_dir: Path) -> str:
     if result and "error" in result.lower():
         return result[:5000]
     return ""
+
+
+# ─── Post-Commit Test Runner (Sweep §Gap3) ───────────────────────────────────
+
+
+async def _run_project_tests(project_dir: Path, timeout: int = 60) -> tuple[bool, str]:
+    """Run the project's test command after a worker commits (Sweep §Gap3).
+
+    Reads `test_cmd` from `.claude/orchestrator.json`. Falls back to auto-detection:
+    - pytest if .venv/bin/pytest or pytest exists
+    Returns (passed, output_summary). Fails open on any error.
+    """
+    test_cmd: str | None = None
+    config_file = project_dir / ".claude" / "orchestrator.json"
+    if config_file.exists():
+        try:
+            cfg = json.loads(config_file.read_text())
+            test_cmd = cfg.get("test_cmd")
+        except Exception:
+            pass
+
+    if not test_cmd:
+        # Auto-detect: try .venv/bin/pytest first, then system pytest
+        venv_pytest = project_dir / ".venv" / "bin" / "pytest"
+        if venv_pytest.exists():
+            test_cmd = f"{venv_pytest} tests/ -q --tb=short -x 2>&1 | tail -20"
+        elif (project_dir / "pytest.ini").exists() or (project_dir / "pyproject.toml").exists():
+            test_cmd = "pytest tests/ -q --tb=short -x 2>&1 | tail -20"
+
+    if not test_cmd:
+        return True, ""  # no test command configured; skip silently
+
+    try:
+        proc = await asyncio.create_subprocess_shell(
+            test_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            cwd=str(project_dir),
+        )
+        try:
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
+            return True, f"[test_cmd timed out after {timeout}s]"
+        passed = proc.returncode == 0
+        output = out.decode("utf-8", errors="replace").strip()[-1000:]  # last 1KB
+        return passed, output
+    except Exception as e:
+        return True, f"[test_cmd error: {e}]"
 
 
 # ─── Loop Detection Service (Gemini CLI pattern) ──────────────────────────────

@@ -47,7 +47,7 @@ from reactions import ReactionExecutor
 from condensers import ObservationMaskingCondenser
 from worker_utils import (
     _distill_output, _truncate_output, _strip_error_context,
-    _run_lint_check, _extract_lint_targets, LoopDetectionService,
+    _run_lint_check, _extract_lint_targets, _run_project_tests, LoopDetectionService,
     MAX_LINES, MAX_BYTES, DISTILL_THRESHOLD, MAX_REFLECTION_RETRIES,
 )
 from worker_hydrate import _pre_hydrate
@@ -279,6 +279,13 @@ class Worker:
                         self.description, tldr, self._original_project_dir
                     )
                     if fault_locs:
+                        # Sweep §Gap2: add caller hints for suspect functions.
+                        # If a function is likely to change, its callers must also be updated.
+                        caller_hints = await _find_caller_hints(
+                            fault_locs, self._original_project_dir
+                        )
+                        if caller_hints:
+                            fault_locs += f"\n\n{caller_hints}"
                         context_blocks.append(fault_locs)
         except Exception:
             pass
@@ -742,6 +749,24 @@ class Worker:
                                      self.id, log_size // 1024, len(distilled))
                 except Exception:
                     pass
+        # Post-commit test runner (Sweep §Gap3): run project tests after successful commit.
+        # Catches functional regressions that lint check misses. Fail-open: test failures
+        # are logged but don't mark the worker as failed.
+        if self.auto_committed and self._project_dir:
+            try:
+                tests_passed, test_output = await _run_project_tests(self._project_dir)
+                if not tests_passed and test_output:
+                    logger.warning(
+                        "Worker %s: post-commit tests FAILED:\n%s",
+                        self.id, test_output[:500]
+                    )
+                    # Inject test failure into failure_context so it appears in task status
+                    if not self.failure_context:
+                        self.failure_context = f"Post-commit tests failed:\n{test_output[:300]}"
+                    elif "test" not in self.failure_context.lower():
+                        self.failure_context += f"\nPost-commit tests failed:\n{test_output[:200]}"
+            except Exception:
+                pass
         # Generate 1-sentence completion summary for context archival (multi-agent pattern).
         # Stored in task DB so subsequent workers can read compact history without loading
         # full logs. Generated in background — non-blocking.

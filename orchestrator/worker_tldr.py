@@ -342,6 +342,66 @@ async def _localize_fault(
         return ""
 
 
+# ─── Caller Hints (Sweep §Gap2) ──────────────────────────────────────────────
+
+
+async def _find_caller_hints(fault_locs_text: str, project_dir: Path) -> str:
+    """Find callers of suspect functions to warn about cascade changes (Sweep §Gap2).
+
+    Parses `_localize_fault()` output for function names, then greps to find
+    where they're called. Returns a formatted hint block or empty string.
+    Falls back to empty string on any error.
+    """
+    if not fault_locs_text:
+        return ""
+
+    # Extract function names from "- `ClassName.method` or `module.func`" lines
+    fn_pattern = re.compile(r'`(?:[A-Za-z_]\w*\.)?([A-Za-z_]\w+)\(\)`')
+    func_names = fn_pattern.findall(fault_locs_text)[:4]  # max 4 functions to grep
+    if not func_names:
+        return ""
+
+    caller_map: dict[str, list[str]] = {}
+    for fn_name in func_names:
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "grep", "-rn", "--include=*.py", f"\\b{fn_name}\\b",
+                ".",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+                cwd=str(project_dir),
+            )
+            try:
+                out, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.communicate()
+                continue
+            lines = out.decode("utf-8", errors="replace").splitlines()
+            # Filter out the definition line and test files
+            callers = [
+                l for l in lines
+                if f"def {fn_name}" not in l and "test_" not in l
+            ][:5]
+            if callers:
+                caller_map[fn_name] = callers
+        except Exception:
+            pass
+
+    if not caller_map:
+        return ""
+
+    lines = ["**Caller hints** (if you change these functions, update these call sites):"]
+    for fn_name, callers in caller_map.items():
+        lines.append(f"- `{fn_name}` called at:")
+        for c in callers[:3]:
+            # Trim to file:line: prefix
+            parts = c.split(":", 2)
+            if len(parts) >= 2:
+                lines.append(f"  - `{parts[0]}:{parts[1]}`")
+    return "\n".join(lines)
+
+
 # ─── Scout Readiness Scoring ──────────────────────────────────────────────────
 
 
