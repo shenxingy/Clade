@@ -32,9 +32,17 @@ _mock_worker_tldr._extract_tldr_sections = _wt_real._extract_tldr_sections
 _mock_worker_tldr._localize_tldr_for_task = AsyncMock(return_value="")
 sys.modules.setdefault("worker_tldr", _mock_worker_tldr)
 
+_wr_spec = _ilu.spec_from_file_location(
+    "worker_review_real",
+    Path(__file__).parent.parent / "worker_review.py",
+)
+_wr_real = _ilu.module_from_spec(_wr_spec)
+_wr_spec.loader.exec_module(_wr_real)  # type: ignore[union-attr]
+
 _mock_worker_review = MagicMock()
 _mock_worker_review._write_pr_review = AsyncMock(return_value="")
 _mock_worker_review._write_progress_entry = AsyncMock(return_value="")
+_mock_worker_review._format_oracle_rejection = _wr_real._format_oracle_rejection
 sys.modules.setdefault("worker_review", _mock_worker_review)
 
 _mock_worker = MagicMock()
