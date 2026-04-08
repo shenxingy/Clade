@@ -430,6 +430,32 @@ class TaskQueue:
         await self.update(task_id, context_version=version)
         return version
 
+    async def clear_completed_dep(self, completed_task_id: str) -> int:
+        """Remove completed_task_id from depends_on of all pending/queued sibling tasks.
+
+        Called after a task auto-commits to keep dependency lists current (learn-cc s12
+        bidirectional dep clearing). Returns number of tasks updated.
+        """
+        await self._ensure_db()
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT id, depends_on FROM tasks WHERE status IN ('pending','queued')"
+            ) as cur:
+                rows = await cur.fetchall()
+        updated = 0
+        for row in rows:
+            deps_raw = row["depends_on"] or "[]"
+            try:
+                deps = json.loads(deps_raw) if isinstance(deps_raw, str) else (deps_raw or [])
+            except Exception:
+                deps = []
+            if completed_task_id in deps:
+                deps = [d for d in deps if d != completed_task_id]
+                await self.update(row["id"], depends_on=deps)
+                updated += 1
+        return updated
+
     # ─── Scheduling ──────────────────────────────────────────────────────────
 
     async def get_schedule(self) -> dict | None:

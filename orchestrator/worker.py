@@ -121,6 +121,7 @@ class Worker:
         self._ownership_violation_reason: str | None = None
         self._stuck_detected: bool = False
         self._terminal_persisted: bool = False
+        self._task_queue: TaskQueue | None = None  # stored for dep clearing on completion
         self._loop_detector = LoopDetectionService()
         self._reflection_retries: int = 0
         self._event_stream = EventStream(worker_id=self.id)
@@ -472,6 +473,7 @@ class Worker:
         return shell_cmd, env
 
     async def start(self, task_queue: TaskQueue | None = None) -> None:
+        self._task_queue = task_queue
         await self._setup_worktree()
         task_file = await self._build_task_file(task_queue)
         shell_cmd, env = self._build_cmd_and_env(task_file)
@@ -697,7 +699,6 @@ class Worker:
                 "elapsed_s": round(time.time() - self.started_at, 1),
             },
         )
-        # Record completion in reaction executor
         if self.status == "failed" and self.failure_context:
             triggered = self._reaction_executor.record_event(
                 "error",
@@ -709,7 +710,6 @@ class Worker:
         elif self.status == "done":
             self._reaction_executor.record_event("state_change", event_name="worker_done")
 
-        # End tracing span
         if self._task_span:
             svc = TracingService.get_instance()
             svc.end_span(self.id, self._task_span,
@@ -841,9 +841,7 @@ class Worker:
                     )
             except Exception:
                 pass
-        # Parse structured observation contract from worker output (ECC pattern).
-        # If the worker wrote a completion JSON block, extract summary from it directly
-        # (saves a haiku API call). Also captures blocked/partial status.
+        # Parse structured observation contract; extract summary directly if present.
         _obs_summary: str | None = None
         if self._log_path and self._log_path.exists():
             try:
@@ -856,8 +854,7 @@ class Worker:
                         self.failure_context = f"Worker blocked: {_obs_summary}"
             except Exception:
                 pass
-        # Generate 1-sentence completion summary for context archival (multi-agent pattern).
-        # Use obs contract summary if available; otherwise call haiku to summarize log.
+        # Completion summary: prefer obs contract, fall back to haiku summarization.
         if self.auto_committed and self._project_dir:
             try:
                 if _obs_summary:
@@ -869,6 +866,9 @@ class Worker:
                 logger.debug("Worker %s completion summary: %s", self.id, self.completion_summary)
             except Exception:
                 pass
+        if self.auto_committed and self._task_queue:  # bidirectional dep clear (learn-cc s12)
+            try: await self._task_queue.clear_completed_dep(self.task_id)
+            except Exception: pass
         # Check for handoff file — worker wrote it to signal continuation needed
         handoff_path = self._claude_dir / f"handoff-{self.task_id}.md"
         if handoff_path.exists():
