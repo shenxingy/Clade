@@ -38,7 +38,7 @@ from config import (
 from task_queue import TaskQueue
 from github_sync import _gh_update_issue_status
 from session_tree import SessionTree
-from worker_tldr import _generate_code_tldr
+from worker_tldr import _generate_code_tldr, _localize_tldr_for_task
 from worker_review import _oracle_review
 from event_stream import EventStream
 from tracing import TracingService, start_task_span, start_llm_span, end_llm_span, start_tool_span, end_tool_span
@@ -258,6 +258,12 @@ class Worker:
         try:
             tldr = _generate_code_tldr(str(self._original_project_dir))
             if tldr:
+                # Two-phase localization (Moatless pattern): when TLDR is large,
+                # ask haiku to narrow to the top-5 most relevant files for this task.
+                if len(tldr) > 4096:
+                    tldr = await _localize_tldr_for_task(
+                        self.description, tldr, self._original_project_dir
+                    )
                 context_blocks.append(f"# Codebase Structure (auto-generated)\n\n{tldr}")
         except Exception:
             pass

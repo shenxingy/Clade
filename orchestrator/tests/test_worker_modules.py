@@ -1,7 +1,8 @@
-"""Tests for extracted worker modules: condensers, worker_utils, worker_hydrate."""
+"""Tests for extracted worker modules: condensers, worker_utils, worker_hydrate, worker_tldr."""
 
 import pytest
 
+from worker_tldr import _extract_tldr_sections, _generate_code_tldr
 from condensers import (
     NoOpCondenser,
     RecentEventsCondenser,
@@ -207,3 +208,32 @@ class TestParseLinkedReferences:
         assert refs["issues"] == []
         assert refs["prs"] == []
         assert refs["urls"] == []
+
+
+# ─── worker_tldr ──────────────────────────────────────────────────────────────
+
+class TestExtractTldrSections:
+    def test_single_section(self):
+        tldr = "## foo/bar.py\nclass Foo\n  def method()"
+        sections = _extract_tldr_sections(tldr)
+        assert "foo/bar.py" in sections
+        assert "class Foo" in sections["foo/bar.py"]
+
+    def test_multiple_sections(self):
+        tldr = "## a.py\nclass A\n\n## b.py\nclass B\n"
+        sections = _extract_tldr_sections(tldr)
+        assert set(sections.keys()) == {"a.py", "b.py"}
+
+    def test_empty_string(self):
+        assert _extract_tldr_sections("") == {}
+
+    def test_no_sections(self):
+        assert _extract_tldr_sections("no headers here") == {}
+
+    def test_preserves_content(self):
+        tldr = "## path/to/file.ts\nexport class Foo\n  constructor()\n  method()"
+        sections = _extract_tldr_sections(tldr)
+        assert "path/to/file.ts" in sections
+        content = sections["path/to/file.ts"]
+        assert "constructor()" in content
+        assert "method()" in content
