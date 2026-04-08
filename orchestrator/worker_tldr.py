@@ -579,6 +579,95 @@ async def _find_caller_hints(fault_locs_text: str, project_dir: Path) -> str:
     return "\n".join(lines)
 
 
+# ─── SBFL Pre-pass: Failing Test Traceback Analysis (AutoCodeRover §Gap3) ─────
+
+
+async def _sbfl_prepass(project_dir: Path, timeout: int = 30) -> str:
+    """Simplified SBFL pre-pass: run pytest, parse failing test tracebacks.
+
+    AutoCodeRover §Gap3: Inject ranked suspect locations derived from failing tests
+    BEFORE the first patch attempt. Avoids the expensive full Ochiai scoring by
+    using traceback frequency as a lightweight proxy for suspiciousness.
+
+    Process:
+    1. Run pytest --tb=short with short timeout (non-destructive, read-only)
+    2. Parse tracebacks: extract file:line:function triplets
+    3. Score by frequency — functions appearing in most failure tracebacks first
+    4. Return formatted context block with top-5 suspects
+
+    Falls back to empty string if no pytest, no failures, or timeout.
+    Only called for fix tasks with an existing test suite.
+    """
+    # Find pytest
+    venv_pytest = project_dir / ".venv" / "bin" / "pytest"
+    if venv_pytest.exists():
+        pytest_cmd = [str(venv_pytest)]
+    else:
+        pytest_cmd = ["python", "-m", "pytest"]
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *pytest_cmd, "--tb=short", "-q", "--no-header",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            cwd=str(project_dir),
+        )
+        try:
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
+            return ""
+
+        if proc.returncode == 0:
+            return ""  # All tests pass — no suspects needed
+
+        output = out.decode("utf-8", errors="replace")
+    except Exception:
+        return ""
+
+    # Parse tracebacks: match "  File 'path/file.py', line N, in function_name"
+    # and "path/file.py:N: in function_name" (pytest short format)
+    _TRACE_RE = re.compile(
+        r'(?:File ["\'](?P<fpath1>[^"\']+)["\'], line \d+, in (?P<fn1>\w+))'
+        r'|(?:(?P<fpath2>[^\s:][^:]+\.py):(?:\d+): in (?P<fn2>\w+))'
+    )
+    scores: dict[str, int] = {}  # "file:function" → frequency
+    for m in _TRACE_RE.finditer(output):
+        fpath = m.group("fpath1") or m.group("fpath2") or ""
+        fn = m.group("fn1") or m.group("fn2") or ""
+        if fpath and fn and fn not in ("test_", "<module>", "__init__"):
+            # Skip test functions themselves — focus on implementation code
+            if not fn.startswith("test_") and not fpath.startswith("test_"):
+                key = f"{fpath}::{fn}"
+                scores[key] = scores.get(key, 0) + 1
+
+    if not scores:
+        return ""
+
+    # Sort by frequency descending, take top 5
+    top = sorted(scores.items(), key=lambda x: -x[1])[:5]
+
+    # Count failures for context
+    fail_match = re.search(r'(\d+) failed', output)
+    fail_count = fail_match.group(1) if fail_match else "some"
+
+    lines = [
+        f"## SBFL Pre-pass (AutoCodeRover §Gap3)",
+        f"> Found {fail_count} failing test(s). Functions appearing most in tracebacks:",
+        "",
+        "**Ranked suspect functions** (higher = more suspect):",
+    ]
+    for loc, count in top:
+        parts = loc.split("::")
+        fpath_part = parts[0].split("/")[-1] if parts else loc
+        fn_part = parts[1] if len(parts) > 1 else ""
+        lines.append(f"- `{fn_part}` in `{fpath_part}` (appears {count}× in tracebacks)")
+    lines.append("")
+    lines.append("> Investigate these functions first — they're the most likely bug locations.")
+    return "\n".join(lines)
+
+
 # ─── Reproduction Test Generation (Agentless §6B) ────────────────────────────
 
 _REPRO_TEST_PROMPT = (
