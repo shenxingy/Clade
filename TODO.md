@@ -573,7 +573,7 @@ Priority order. Each identified via bidirectional code-vs-research comparison ag
 
 ## Tech Debt (2026-04-07)
 
-- [ ] 🟡 `worker.py` at 1982 lines — violates 1500-line limit; extract `Condenser` classes + helpers to `orchestrator/condenser.py` (≈120 lines); also consider extracting `LoopDetectionService` (45 lines) to `orchestrator/loop_detection.py`
-- [ ] 🟡 `Condenser` ABC + 4 implementations never instantiated — dead code at `worker.py:297–415`; must wire `ObservationMaskingCondenser` into `_build_task_file()` for large tool output truncation and `RecentEventsCondenser` into EventStream when log size grows; see BRAINSTORM.md for detail
+- [x] 🟡 `worker.py` line count — RESOLVED 2026-04-08: `_rank_tasks` moved to `worker_utils.py`; `Condenser` classes extracted to `condensers.py`; `LoopDetectionService` in `worker_utils.py`; now at 1472 lines
+- [x] 🟡 `Condenser` ABC + 4 implementations — RESOLVED 2026-04-08: `ObservationMaskingCondenser` wired into `_build_task_file()` (context block + message condensing); `RecentEventsCondenser` used in `EventStream.get_recent_events()`; `LLMSummarizingCondenser` remains async-only (no call site yet — future work)
 - [x] 🔵 No test coverage for `event_stream.py`, `reactions.py`, `tracing.py`, `session_tree.py` — RESOLVED 2026-04-08: 55 tests added in `tests/test_leaf_modules.py`; also fixed `WorkerEvent.data→.content` bug in `get_recent_events()`
-- [ ] 🔵 `worker.py` `Condenser` status is misleading — TODO.md Phase Research Gaps section marks condenser as `[x]` done, but the implementation exists only as dead stubs; should be `[~]` partial
+- [x] 🔵 `worker.py` `Condenser` status — RESOLVED 2026-04-08: condensers are now live; `ObservationMaskingCondenser` active in `_build_task_file()`
