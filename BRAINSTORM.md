@@ -8,7 +8,7 @@
 
 See full doc: docs/research/2026-04-07-multi-agent-coordination.md
 
-- [AI] Multi-agent (Gap 1): No context versioning — workers share state without version checks; stale context propagates silently. Fix: add `context_version` to task DB, increment after each worker batch. Medium effort.
+- [AI] ~~Multi-agent (Gap 1): No context versioning~~ — RESOLVED 2026-04-08: `context_version` INTEGER column added to tasks DB; `get_context_version()` counts completed tasks; `stamp_context_version()` called in `_build_task_file()`, injects staleness warning when codebase has changed since task was queued.
 - [AI] ~~Multi-agent (Gap 2): No token budget per worker~~ — RESOLVED 2026-04-08: `token_budget` INTEGER column added to tasks DB; per-task and global (`worker_token_budget` setting) budgets enforced in reflection retry gate + post-run status check.
 - [AI] Multi-agent (Gap 3): Prose handoffs, no validation — task description is unstructured. For swarm tasks, use JSON envelope with input/output contracts. Medium effort.
 - [AI] ~~Multi-agent (Gap 4): No context archival after worker completion~~ — RESOLVED 2026-04-07: `_summarize_worker_completion()` added; `completion_summary` stored in tasks DB; injected into sibling workers via `get_recent_completions()` in `_build_task_file()`.
@@ -41,7 +41,7 @@ See full doc: docs/research/2026-04-08-moatless-tools.md
 - [AI] ~~Research (Moatless): Two-phase search-then-identify missing~~ — RESOLVED 2026-04-07: `_localize_tldr_for_task()` added to `worker_tldr.py`; wired in `worker.py` `_build_task_file()` when TLDR > 4KB.
 - [AI] ~~Research (Moatless): StringReplace discipline in worker system prompt~~ — RESOLVED 2026-04-07: `_edit_discipline` block injected into every task file in `_build_task_file()` (commit 5f1fa30).
 - [AI] Research (Moatless): Span-level FileContext with token budgeting missing — agent gets static context blob; no span eviction, no on-demand retrieval, no token accounting. Medium effort but highest long-term impact for multi-file tasks. See §Gap 3
-- [AI] Research (Moatless): Typed search action names (FindClass, FindFunction, FindSnippet) as prompt conventions backed by Bash — improves search discipline without real index. Medium effort. See §Gap 4
+- [AI] ~~Research (Moatless): Typed search action names~~ — RESOLVED 2026-04-08: `_search_conventions` block injected into every task file with FindClass/FindFunction/FindSnippet/FindFile prompt patterns backed by Bash.
 
 ## Research Findings (2026-04-07) — AutoCodeRover
 
