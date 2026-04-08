@@ -1389,18 +1389,40 @@ class WorkerPool:
                         if t:
                             asyncio.create_task(_gh_update_issue_status(t, project_dir))
                 # Oracle rejected → re-queue with rejection reason as context
+                # Agentless §6C: for critical-path tasks, spawn N parallel samples
                 if w._oracle_requeue:
                     w._oracle_requeue = False
                     error_summary = _strip_error_context(w._oracle_requeue_reason)
-                    retry_desc = (
-                        f"{w.description}\n\n---\n"
-                        f"Previous attempt was REJECTED by oracle review:\n"
-                        f"{error_summary}\n"
-                        f"Fix the issue described above. Do NOT repeat the same approach."
-                    )
-                    await task_queue.add(retry_desc, w.model,
-                                        own_files=w.own_files, forbidden_files=w.forbidden_files)
-                    logger.info("Oracle rejected task %s — re-queued with reason", w.task_id)
+                    n_samples = max(1, int(GLOBAL_SETTINGS.get("parallel_fix_samples", 1)))
+                    # Only use >1 samples for critical-path tasks to contain cost
+                    orig_task = await task_queue.get(w.task_id)
+                    is_critical = orig_task.get("is_critical_path", False) if orig_task else False
+                    if not is_critical:
+                        n_samples = 1
+
+                    # Diverse exploration hints encourage different solution paths per sample
+                    _DIVERSE_HINTS = [
+                        "Try a different algorithmic approach than your previous attempt.",
+                        "Focus on the root cause rather than symptoms — consider upstream fixes.",
+                        "Prefer minimal diff — find the smallest correct change.",
+                    ]
+                    for i in range(n_samples):
+                        hint = f"\n{_DIVERSE_HINTS[i % len(_DIVERSE_HINTS)]}" if n_samples > 1 else ""
+                        retry_desc = (
+                            f"{w.description}\n\n---\n"
+                            f"Previous attempt was REJECTED by oracle review:\n"
+                            f"{error_summary}\n"
+                            f"Fix the issue described above. Do NOT repeat the same approach.{hint}"
+                        )
+                        await task_queue.add(retry_desc, w.model,
+                                             own_files=w.own_files, forbidden_files=w.forbidden_files)
+                    if n_samples > 1:
+                        logger.info(
+                            "Oracle rejected critical task %s — spawned %d parallel samples",
+                            w.task_id, n_samples
+                        )
+                    else:
+                        logger.info("Oracle rejected task %s — re-queued with reason", w.task_id)
                 # File ownership violation → re-queue with violation context
                 if w._ownership_violation:
                     w._ownership_violation = False
