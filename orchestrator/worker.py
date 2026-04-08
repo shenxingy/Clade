@@ -1213,13 +1213,13 @@ class WorkerPool:
                 match = await task_queue.find_matching_intervention(failed_reason)
                 if match:
                     description = (
-                        f"{description}\n\n---\n"
-                        f"**Auto-injected correction (from past intervention):**\n"
-                        f"{match['correction']}"
+                        f"{description}\n\n---\n**Auto-injected correction:**\n{match['correction']}"
                     )
             except Exception:
                 pass
         model = _MODEL_ALIASES.get(model, model)
+        # Wire global EventBus JSONL for aggregate lifecycle observability (learn-cc s18)
+        EventStream.set_global_bus_path(claude_dir / "events.jsonl")
         worker = Worker(
             task["id"],
             description,

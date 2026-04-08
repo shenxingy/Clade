@@ -44,7 +44,21 @@ class EventStream:
 
     Events are written to SQLite (via task_queue) and also to a local
     JSONL file for fast append and crash-safe replay.
+
+    Class-level global bus: set_global_bus_path() to aggregate key lifecycle
+    events from all workers into a single .claude/events.jsonl (learn-cc s18).
     """
+
+    _global_bus_path: Path | None = None  # shared across all workers
+
+    @classmethod
+    def set_global_bus_path(cls, path: Path) -> None:
+        """Configure a global JSONL file for aggregate lifecycle events (learn-cc s18 EventBus)."""
+        cls._global_bus_path = path
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
 
     def __init__(self, worker_id: str, db_path: str | Path | None = None):
         self.worker_id = worker_id
@@ -98,19 +112,32 @@ class EventStream:
             timestamp=time.time(),
         )
 
-        # Append to JSONL immediately
+        # Append to per-worker JSONL immediately
+        _record = {
+            "id": event.id,
+            "worker_id": event.worker_id,
+            "event_type": event.event_type,
+            "event_kind": event.event_kind,
+            "source": event.source,
+            "cause_id": event.cause_id,
+            "content": event.content,
+            "timestamp": event.timestamp,
+        }
         if self._jsonl_path:
             try:
                 with open(self._jsonl_path, "a") as f:
+                    f.write(json.dumps(_record) + "\n")
+            except Exception:
+                pass
+        # Also append state_change events to global EventBus (learn-cc s18)
+        if EventStream._global_bus_path and event.event_type == "state_change":
+            try:
+                with open(EventStream._global_bus_path, "a") as f:
                     f.write(json.dumps({
-                        "id": event.id,
+                        "event": event.event_kind,
+                        "ts": event.timestamp,
                         "worker_id": event.worker_id,
-                        "event_type": event.event_type,
-                        "event_kind": event.event_kind,
-                        "source": event.source,
-                        "cause_id": event.cause_id,
-                        "content": event.content,
-                        "timestamp": event.timestamp,
+                        "data": event.content,
                     }) + "\n")
             except Exception:
                 pass
