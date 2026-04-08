@@ -55,7 +55,9 @@ from worker_utils import (
     _distill_output, _truncate_output, _strip_error_context,
     _run_lint_check, _extract_lint_targets, _run_project_tests, LoopDetectionService,
     _capture_test_baseline, _run_intramorphic_check, _rank_tasks,
+    _parse_observation_contract,
     MAX_LINES, MAX_BYTES, DISTILL_THRESHOLD, MAX_REFLECTION_RETRIES,
+    EDIT_DISCIPLINE_BLOCK, SEARCH_CONVENTIONS_BLOCK, COMPLETION_CONTRACT_BLOCK,
 )
 from worker_hydrate import _pre_hydrate
 
@@ -398,33 +400,6 @@ class Worker:
                     await task_queue.mark_messages_read(self.task_id)
             except Exception:
                 pass
-        # Append StringReplace discipline note (Moatless pattern):
-        # instruct the agent to use unique old_string with sufficient context
-        # and to strip line-number prefixes before using them in edits.
-        _edit_discipline = (
-            "\n\n---\n\n"
-            "## Edit Discipline\n"
-            "- `old_string` must be unique in the file. Include 3+ surrounding lines of context if needed.\n"
-            "- Never include line-number prefixes (e.g. `12\\t`) in `old_string` / `new_string` — strip them first.\n"
-            "- Prefer minimal, targeted edits over large block replacements.\n"
-        )
-        # Typed search conventions (Moatless Gap 4): named search patterns backed by Bash.
-        # Improves search discipline and makes worker navigation more structured.
-        _search_conventions = (
-            "\n\n---\n\n"
-            "## Search Conventions\n"
-            "Use these shorthand patterns when navigating the codebase:\n"
-            "- **FindClass `<ClassName>`** → `grep -rn 'class <ClassName>' --include='*.py'`\n"
-            "- **FindFunction `<fn>`** → `grep -rn 'def <fn>' --include='*.py'`\n"
-            "- **FindFunction `<fn>` in `<cls>`** → find method scoped to class\n"
-            "- **FindSnippet `<exact_string>`** → `grep -rn '<exact_string>'`\n"
-            "- **FindFile `<pattern>`** → `find . -name '<pattern>' -not -path '*/.*'`\n"
-            "\n"
-            "**Context Checkpoint (OpenHands CAT pattern)**: when you have finished reading "
-            "files and understood the task, write a 2-3 sentence summary to "
-            "`.claude/ctx-checkpoint.md` before making any edits. "
-            "This helps you stay focused and avoids re-reading files unnecessarily.\n"
-        )
         # Multi-agent Gap 3: inject task schema (acceptance criteria + contracts) if present.
         _schema_block = _format_task_schema_block(_parse_task_schema(self.description))
 
@@ -446,7 +421,7 @@ class Worker:
             )
         task_file.write_text(
             effective_description + _schema_block + _fix_two_phase
-            + _edit_discipline + _search_conventions
+            + EDIT_DISCIPLINE_BLOCK + SEARCH_CONVENTIONS_BLOCK + COMPLETION_CONTRACT_BLOCK
         )
 
         # OpenHands §Gap3: capture test baseline before worker edits (fix tasks only).
@@ -858,14 +833,31 @@ class Worker:
                     )
             except Exception:
                 pass
+        # Parse structured observation contract from worker output (ECC pattern).
+        # If the worker wrote a completion JSON block, extract summary from it directly
+        # (saves a haiku API call). Also captures blocked/partial status.
+        _obs_summary: str | None = None
+        if self._log_path and self._log_path.exists():
+            try:
+                obs = _parse_observation_contract(
+                    self._log_path.read_text(errors="replace")
+                )
+                if obs:
+                    _obs_summary = obs.get("summary", "")[:150] or None
+                    if obs.get("status") == "blocked" and _obs_summary and not self.failure_context:
+                        self.failure_context = f"Worker blocked: {_obs_summary}"
+            except Exception:
+                pass
         # Generate 1-sentence completion summary for context archival (multi-agent pattern).
-        # Stored in task DB so subsequent workers can read compact history without loading
-        # full logs. Generated in background — non-blocking.
+        # Use obs contract summary if available; otherwise call haiku to summarize log.
         if self.auto_committed and self._project_dir:
             try:
-                self.completion_summary = await _summarize_worker_completion(
-                    self.description, self._log_path, self._project_dir
-                )
+                if _obs_summary:
+                    self.completion_summary = _obs_summary
+                else:
+                    self.completion_summary = await _summarize_worker_completion(
+                        self.description, self._log_path, self._project_dir
+                    )
                 logger.debug("Worker %s completion summary: %s", self.id, self.completion_summary)
             except Exception:
                 pass
