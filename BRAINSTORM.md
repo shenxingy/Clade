@@ -6,7 +6,16 @@
 
 ## Gap Findings (2026-04-07)
 
-- [AI] Dead code found: `Condenser` ABC + 4 implementations (`NoOpCondenser`, `RecentEventsCondenser`, `LLMSummarizingCondenser`, `ObservationMaskingCondenser`) defined in `worker.py` lines 297–415 but never instantiated or invoked anywhere. The context window threshold check is missing — no condenser is created or called during worker execution. Fix: wire `ObservationMaskingCondenser` into `_build_task_file()` to truncate large tool outputs, and `RecentEventsCondenser` into the EventStream when log size exceeds threshold.
+- [AI] ~~Dead code found: Condenser — RESOLVED 2026-04-08~~ `ObservationMaskingCondenser` wired into `_build_task_file()` (context block + message size guard, 8KB/2KB limits). `EventStream.get_recent_events()` added with inline RecentEvents compression. `LLMSummarizingCondenser` still unused — needs async call site.
+
+## Research Findings (2026-04-08) — Moatless Tools
+
+See full doc: docs/research/2026-04-08-moatless-tools.md
+
+- [AI] Research (Moatless): Two-phase search-then-identify missing — when TLDR is large, add a haiku distillation call to pick top-5 relevant files before injecting. No index needed. Small effort, immediate value. See docs/research/2026-04-08-moatless-tools.md §Gap 1
+- [AI] Research (Moatless): StringReplace discipline in worker system prompt — add uniqueness requirement + line-number strip instruction to task boilerplate. Prompt-only change, no code. See §Gap 2
+- [AI] Research (Moatless): Span-level FileContext with token budgeting missing — agent gets static context blob; no span eviction, no on-demand retrieval, no token accounting. Medium effort but highest long-term impact for multi-file tasks. See §Gap 3
+- [AI] Research (Moatless): Typed search action names (FindClass, FindFunction, FindSnippet) as prompt conventions backed by Bash — improves search discipline without real index. Medium effort. See §Gap 4
 
 ## Research Findings (2026-04-07) — AutoCodeRover
 
