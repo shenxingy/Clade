@@ -35,6 +35,8 @@ from config import (
     _parse_token_usage,
     _build_tool_flags,
     _parse_task_type,
+    _parse_task_schema,
+    _format_task_schema_block,
 )
 from task_queue import TaskQueue
 from github_sync import _gh_update_issue_status
@@ -399,6 +401,9 @@ class Worker:
             "- **FindSnippet `<exact_string>`** → `grep -rn '<exact_string>'`\n"
             "- **FindFile `<pattern>`** → `find . -name '<pattern>' -not -path '*/.*'`\n"
         )
+        # Multi-agent Gap 3: inject task schema (acceptance criteria + contracts) if present.
+        _schema_block = _format_task_schema_block(_parse_task_schema(self.description))
+
         # AutoCodeRover §Gap2: for fix tasks, inject explicit two-phase exploration
         # directive. Phase 1: read and understand. Phase 2: minimal targeted patch.
         _fix_two_phase = ""
@@ -416,7 +421,8 @@ class Worker:
                 "3. Run lint before committing\n"
             )
         task_file.write_text(
-            effective_description + _fix_two_phase + _edit_discipline + _search_conventions
+            effective_description + _schema_block + _fix_two_phase
+            + _edit_discipline + _search_conventions
         )
         return task_file
 

@@ -476,3 +476,57 @@ def parse_config(path)"""
     def test_empty_tldr(self):
         result = _keyword_filter_tldr("worker task", "")
         assert result == ""
+
+
+# ─── Task schema parsing tests (Multi-agent §Gap3) ────────────────────────────
+
+import sys as _sys
+_sys.path.insert(0, __file__.replace("tests/test_worker_modules.py", ""))
+from config import _parse_task_schema, _format_task_schema_block
+
+
+class TestParseTaskSchema:
+    def test_json_block(self):
+        desc = '''Fix the bug.
+
+```json
+{"acceptance_criteria": ["Test A passes", "Test B passes"], "input_files": ["auth.py"]}
+```'''
+        schema = _parse_task_schema(desc)
+        assert schema["acceptance_criteria"] == ["Test A passes", "Test B passes"]
+        assert schema["input_files"] == ["auth.py"]
+
+    def test_no_json_block(self):
+        schema = _parse_task_schema("Just a plain description")
+        assert schema == {}
+
+    def test_malformed_json(self):
+        desc = '```json\n{bad json here}\n```'
+        schema = _parse_task_schema(desc)
+        assert schema == {}
+
+    def test_caps_list_at_10(self):
+        items = [str(i) for i in range(20)]
+        desc = f'```json\n{{"acceptance_criteria": {items}}}\n```'
+        schema = _parse_task_schema(desc)
+        assert len(schema.get("acceptance_criteria", [])) <= 10
+
+
+class TestFormatTaskSchemaBlock:
+    def test_with_criteria(self):
+        schema = {"acceptance_criteria": ["A passes", "B passes"]}
+        block = _format_task_schema_block(schema)
+        assert "Acceptance Criteria" in block
+        assert "A passes" in block
+        assert "B passes" in block
+
+    def test_empty_schema(self):
+        block = _format_task_schema_block({})
+        assert block == ""
+
+    def test_provides_requires(self):
+        schema = {"provides": ["AuthService"], "requires": ["UserModel"]}
+        block = _format_task_schema_block(schema)
+        assert "provides" in block
+        assert "AuthService" in block
+        assert "requires" in block
