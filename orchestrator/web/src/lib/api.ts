@@ -19,24 +19,23 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
 
 export const sessions = {
   list:   ()                    => req<unknown[]>('GET', '/sessions'),
-  create: (projectDir: string)  => req<unknown>('POST', '/sessions', { project_dir: projectDir }),
+  create: (path: string)        => req<unknown>('POST', '/sessions', { path }),
   delete: (sessionId: string)   => req<void>('DELETE', `/sessions/${sessionId}`),
-  switch: (sessionId: string)   => req<void>('POST', `/sessions/${sessionId}/switch`),
 };
 
-// ─── Tasks ───────────────────────────────────────────────────────
+// ─── Tasks (task IDs are strings, e.g. "85c92be0") ───────────────
 
 export const tasks = {
   list:        (sessionId: string)                     => req<unknown[]>('GET', `/tasks?session_id=${sessionId}`),
   add:         (sessionId: string, data: Record<string, unknown>) => req<unknown>('POST', '/tasks', { ...data, session_id: sessionId }),
-  update:      (taskId: number, data: Record<string, unknown>)    => req<unknown>('POST', `/tasks/${taskId}`, data),
-  delete:      (taskId: number)                        => req<void>('DELETE', `/tasks/${taskId}`),
-  run:         (taskId: number)                        => req<unknown>('POST', `/tasks/${taskId}/run`),
-  retry:       (taskId: number)                        => req<unknown>('POST', `/tasks/${taskId}/retry`),
+  update:      (taskId: string, data: Record<string, unknown>)    => req<unknown>('POST', `/tasks/${taskId}`, data),
+  delete:      (taskId: string)                        => req<void>('DELETE', `/tasks/${taskId}`),
+  run:         (taskId: string)                        => req<unknown>('POST', `/tasks/${taskId}/run`),
+  retry:       (taskId: string)                        => req<unknown>('POST', `/tasks/${taskId}/retry`),
   startAll:    (sessionId: string)                     => req<unknown>('POST', '/tasks/start-all', { session_id: sessionId }),
   retryFailed: (sessionId: string)                     => req<unknown>('POST', '/tasks/retry-failed', { session_id: sessionId }),
   mergeAllDone:(sessionId: string)                     => req<unknown>('POST', '/tasks/merge-all-done', { session_id: sessionId }),
-  sendMessage: (taskId: number, content: string)       => req<unknown>('POST', `/tasks/${taskId}/messages`, { content }),
+  sendMessage: (taskId: string, content: string)       => req<unknown>('POST', `/tasks/${taskId}/messages`, { content }),
 };
 
 // ─── Workers ─────────────────────────────────────────────────────
@@ -62,6 +61,6 @@ export const ideas = {
 // ─── Settings ────────────────────────────────────────────────────
 
 export const settings = {
-  get:    (sessionId: string)                    => req<unknown>('GET', `/sessions/${sessionId}/settings`),
-  update: (sessionId: string, data: unknown)     => req<unknown>('POST', `/sessions/${sessionId}/settings`, data),
+  get:    ()              => req<unknown>('GET', '/settings'),
+  update: (data: unknown) => req<unknown>('POST', '/settings', data),
 };

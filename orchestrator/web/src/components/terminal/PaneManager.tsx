@@ -35,7 +35,6 @@ export function PaneManager() {
     setPanes(prev => {
       const idx = prev.findIndex(p => p.id === paneId);
       const next = prev.filter(p => p.id !== paneId);
-      // Focus previous pane or last
       setActiveId(next[Math.max(0, idx - 1)]?.id ?? null);
       return next;
     });
@@ -54,11 +53,10 @@ export function PaneManager() {
   }, []);
 
   const pickAndAddPane = useCallback(() => {
-    const workerIds = Object.keys(workers);
     const usedIds = new Set(panes.map(p => p.workerId));
-    const next = workerIds.find(id => !usedIds.has(id));
+    const next = workers.find(w => !usedIds.has(w.id));
     if (next) {
-      addPane(next);
+      addPane(next.id);
     } else {
       setShowPicker(true);
     }
@@ -86,12 +84,10 @@ export function PaneManager() {
   }, [activeId, pickAndAddPane, removePane, cyclePanes]);
 
   // ─── Layout helpers ───────────────────────────────────────────
-  // 1 pane: 1-col × 1-row | 2: 2-col × 1-row | 3-4: 2-col × 2-row
   const gridCols = panes.length <= 1 ? 'grid-cols-1' : 'grid-cols-2';
 
-  const runningWorkers: Worker[] = Object.values(workers);
-  const availableWorkers = runningWorkers.filter(
-    w => !panes.some(p => p.workerId === w.worker_id)
+  const availableWorkers: Worker[] = workers.filter(
+    w => !panes.some(p => p.workerId === w.id)
   );
 
   // ─── Empty state ──────────────────────────────────────────────
@@ -102,18 +98,18 @@ export function PaneManager() {
           <p className="text-sm mb-1">No terminal panes open</p>
           <p className="text-xs opacity-60">Ctrl+\ to open a worker · Ctrl+Shift+W to close</p>
         </div>
-        {runningWorkers.length > 0 ? (
+        {workers.length > 0 ? (
           <div className="flex flex-col items-center gap-2">
             <p className="text-xs text-muted-foreground">Open worker terminal:</p>
             <div className="flex flex-wrap gap-2 justify-center max-w-lg">
-              {runningWorkers.map(w => (
+              {workers.map(w => (
                 <button
-                  key={w.worker_id}
-                  onClick={() => addPane(w.worker_id)}
+                  key={w.id}
+                  onClick={() => addPane(w.id)}
                   className="px-2 py-1 text-xs font-mono bg-secondary rounded hover:bg-accent text-foreground transition-colors"
                   title={w.description}
                 >
-                  <span className="text-green-400">{w.worker_id.slice(0, 8)}</span>
+                  <span className="text-green-400">{w.id.slice(0, 8)}</span>
                   <span className="text-muted-foreground ml-1">
                     {w.description.length > 35 ? w.description.slice(0, 35) + '…' : w.description}
                   </span>
@@ -153,11 +149,11 @@ export function PaneManager() {
                 {availableWorkers.length > 0 ? (
                   availableWorkers.map(w => (
                     <button
-                      key={w.worker_id}
-                      onClick={() => { addPane(w.worker_id); setShowPicker(false); }}
+                      key={w.id}
+                      onClick={() => { addPane(w.id); setShowPicker(false); }}
                       className="block w-full text-left px-3 py-1.5 text-xs font-mono hover:bg-secondary transition-colors"
                     >
-                      <span className="text-green-400">{w.worker_id.slice(0, 8)}</span>
+                      <span className="text-green-400">{w.id.slice(0, 8)}</span>
                       <span className="text-muted-foreground ml-2">
                         {w.description.length > 45 ? w.description.slice(0, 45) + '…' : w.description}
                       </span>
@@ -179,7 +175,7 @@ export function PaneManager() {
       <div className={`flex-1 grid ${gridCols} gap-1 p-1 overflow-hidden min-h-0`}
            onClick={() => setShowPicker(false)}>
         {panes.map(pane => {
-          const worker = workers[pane.workerId];
+          const worker = workers.find(w => w.id === pane.workerId);
           return (
             <TerminalPane
               key={pane.id}

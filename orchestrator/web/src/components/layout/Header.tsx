@@ -19,7 +19,7 @@ export function Header({ onSettingsOpen }: Props) {
       {/* Session tabs */}
       <div className="flex items-center gap-1 flex-1 overflow-x-auto">
         {sessions.map(session => {
-          const name = session.project_dir.split('/').pop() ?? session.session_id.slice(0, 8);
+          const name = session.path?.split('/').pop() ?? session.name ?? session.session_id.slice(0, 8);
           return (
             <button
               key={session.session_id}

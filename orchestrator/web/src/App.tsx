@@ -18,7 +18,6 @@ export default function App() {
     setSessions,
     setActiveSession,
     updateFromStatus,
-    appendWorkerLog,
   } = useSessionStore();
 
   const [tab, setTab] = useState<ActiveTab>('tasks');
@@ -35,16 +34,10 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Handle WebSocket status messages
+  // Handle WebSocket status messages (server sends 'queue' for tasks, workers as array)
   const handleStatus = useCallback((msg: StatusMessage) => {
-    updateFromStatus(msg.tasks, msg.workers, msg.settings, msg.cost_total, msg.usage);
-    // Accumulate log deltas
-    Object.entries(msg.workers).forEach(([wid, w]) => {
-      if (w.log_delta && w.log_delta.length > 0) {
-        appendWorkerLog(wid, w.log_delta);
-      }
-    });
-  }, [updateFromStatus, appendWorkerLog]);
+    updateFromStatus(msg.queue, msg.workers);
+  }, [updateFromStatus]);
 
   const { connected } = useWebSocket({ sessionId: activeSessionId, onStatus: handleStatus });
 
