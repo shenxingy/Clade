@@ -4,6 +4,20 @@
 
 ---
 
+## Research Findings (2026-04-10) — Last-Mile Quality / "烂尾" Problem
+
+See full doc: docs/research/2026-04-10-last-mile-quality.md
+
+- [AI] Last-mile (Gap 1): Sprint contracts missing — task files have no pre-negotiated acceptance criteria; worker decides "done" unilaterally. Need `acceptance_criteria` block as a hard gate, not just a hint.
+- [AI] Last-mile (Gap 2): Self-evaluation failure — oracle is same model that generated code. Need a *separate* skeptical evaluator pass (different model or different prompt persona with no access to worker's reasoning).
+- [AI] Last-mile (Gap 3): No iteration cap — workers can loop indefinitely on reflection retries. Research shows quality degrades after 3 iterations. Need `max_reflection_retries` hard cap (currently `MAX_REFLECTION_RETRIES` exists in worker_utils.py — verify it's enforced).
+- [AI] Last-mile (Gap 4): No behavioral verification — tests pass ≠ feature correct. For web tasks, need E2E smoke check (curl / playwright). For orchestrator tasks: need "does the API endpoint return expected shape?" check post-deploy.
+- [AI] Last-mile (Gap 5): Context reset protocol — `/compact` compresses but doesn't reset. Anthropic harness shows clean-context + progress file outperforms compaction. Relevant for long loop runs.
+- [AI] Last-mile (Gap 6): No code health baseline gate — workers spawn on any codebase state. CodeScene research: defect risk 30%+ higher on structurally unhealthy code. Gate: run `scan-health.sh` before spawning worker, warn if health below threshold.
+- [AI] Last-mile (Gap 7): Fix Rate metric missing — only binary pass/fail tracked. SWE-EVO: Fix Rate (% of failing tests repaired) reveals systematic progress. Add to `get_pass_at_k_metrics()`.
+
+---
+
 ## Research Findings (2026-04-08) — OpenHands + SWE-bench 2025
 
 See full doc: docs/research/2026-04-08-openhands-swebench-2025.md
