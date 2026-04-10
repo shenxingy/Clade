@@ -198,6 +198,42 @@ class EventStream:
             ] + events_as_dicts[-max_events:]
         return events_as_dicts
 
+    @classmethod
+    def replay_from_path(cls, path: Path) -> list[WorkerEvent]:
+        """Replay events from an arbitrary JSONL path (for crash recovery without a live instance).
+
+        Allows config.py to read per-worker event logs without circular imports —
+        config.py is a leaf module and cannot import Worker or WorkerPool.
+        """
+        if not path or not path.exists():
+            return []
+        events: list[WorkerEvent] = []
+        try:
+            with open(path) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if obj.get("type") == "session_start":
+                        continue
+                    events.append(WorkerEvent(
+                        id=obj.get("id"),
+                        worker_id=obj.get("worker_id", ""),
+                        event_type=obj.get("event_type", ""),
+                        event_kind=obj.get("event_kind", ""),
+                        source=obj.get("source", ""),
+                        cause_id=obj.get("cause_id"),
+                        content=obj.get("content", ""),
+                        timestamp=obj.get("timestamp", 0),
+                    ))
+        except Exception:
+            pass
+        return events
+
     def replay(self) -> list[WorkerEvent]:
         """Replay events from JSONL file (for crash recovery).
 
