@@ -3,8 +3,8 @@
 <!-- Legend: ✅ pass  ❌ fail  ⚠ known limitation  ⬜ not yet tested -->
 
 **Project type:** cli + skill-system + orchestrator (FastAPI)
-**Last full pass:** 2026-03-31
-**Coverage:** 49 ✅, 0 ❌, 4 ⚠, 0 ⬜ untested
+**Last full pass:** 2026-04-10
+**Coverage:** 48 ✅, 0 ❌, 4 ⚠, 0 ⬜ untested
 
 ---
 
@@ -14,9 +14,9 @@
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
 | I1 | `./install.sh` runs without errors — no missing source files, no broken symlinks | ✅ | 2026-03-30 | 29 config skills + 3 userSettings = 32 total installed |
-| I2 | All skills from `configs/skills/` are installed to `~/.claude/skills/` | ✅ | 2026-03-30 | all 29 skills including 4 new ones (investigate, cso, retro, document-release) |
-| I3 | All hooks from `configs/hooks/` are installed to `~/.claude/hooks/` | ✅ | 2026-03-28 | |
-| I4 | All scripts from `configs/scripts/` are installed to `~/.claude/scripts/` | ✅ | 2026-03-28 | spot-checked key scripts |
+| I2 | All skills from `configs/skills/` are installed to `~/.claude/skills/` | ✅ | 2026-04-10 | 29/29 skills installed |
+| I3 | All hooks from `configs/hooks/` are installed to `~/.claude/hooks/` | ✅ | 2026-04-10 | 17/17 hooks installed (4 new since last review: linter-config-guard, permission-request, revert-detector, post-tool-use-lint) |
+| I4 | All scripts from `configs/scripts/` are installed to `~/.claude/scripts/` | ✅ | 2026-04-10 | 27/27 scripts installed |
 | I5 | All templates from `configs/templates/` are installed to `~/.claude/templates/` | ✅ | 2026-03-28 | |
 | I6 | `~/.local/bin/slt` symlink exists and points to `statusline-toggle.sh` | ✅ | 2026-03-28 | |
 | I7 | `~/.local/bin/committer` symlink exists and points to `committer.sh` | ✅ | 2026-03-28 | |
@@ -27,44 +27,44 @@
 
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
-| B1 | `slt` command runs without error; output changes on repeated calls (symbol→percent→number→off→…) | ✅ | 2026-03-28 | |
+| B1 | `slt` command runs without error; output changes on repeated calls (symbol→percent→number→off→…) | ✅ | 2026-04-10 | cycled percent→number as expected |
 | B2 | `committer "type: msg" file1 file2` stages only the named files and commits — does not stage unstaged files nearby | ✅ | 2026-03-28 | tested with bystander file in temp repo |
-| B3 | `devmode` toggles `~/.claude/.dev-mode` flag; `devmode on/off/status` work as expected | ✅ | 2026-03-28 | |
-| B4 | `/commit` skill prompt contains: analyze → split by module → confirm → commit → push flow | ✅ | 2026-03-28 | all 4 keywords present |
-| B5 | `/loop` skill prompt contains: goal file input → supervisor plans → workers execute → convergence check | ✅ | 2026-03-28 | |
-| B6 | `/review` skill prompt contains: VERIFY.md load → checkpoint loop → fix-in-session → convergence | ✅ | 2026-03-28 | |
-| B7 | `loop-runner.sh` exists, is executable, and passes `bash -n` syntax check | ✅ | 2026-03-28 | |
+| B3 | `devmode` toggles `~/.claude/.dev-mode` flag; `devmode on/off/status` work as expected | ✅ | 2026-04-10 | on/off/status all return correct output |
+| B4 | `/commit` skill prompt contains: analyze → split by module → confirm → commit → push flow | ✅ | 2026-04-10 | committer keyword present |
+| B5 | `/loop` skill prompt contains: goal file input → supervisor plans → workers execute → convergence check | ✅ | 2026-04-10 | |
+| B6 | `/review` skill prompt contains: VERIFY.md load → checkpoint loop → fix-in-session → convergence | ✅ | 2026-04-10 | |
+| B7 | `loop-runner.sh` exists, is executable, and passes `bash -n` syntax check | ✅ | 2026-04-10 | -rwxrwxr-x, syntax OK |
 
 ## Hook Behavior
 <!-- Hooks must fire correctly and not over-block. -->
 
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
-| H1 | `pre-tool-guardian.sh` passes `bash -n` syntax check | ✅ | 2026-03-30 | |
-| H2 | `pre-tool-guardian.sh` blocks `alembic upgrade` when dev-mode is OFF | ✅ | 2026-03-30 | tested via base64-decoded command |
-| H3 | `pre-tool-guardian.sh` allows `alembic upgrade` when dev-mode is ON | ✅ | 2026-03-30 | |
-| H4 | `pre-tool-guardian.sh` blocks `rm -rf /` regardless of dev-mode | ✅ | 2026-03-30 | |
-| H5 | `pre-tool-guardian.sh` blocks `git push --force origin main` regardless of dev-mode | ✅ | 2026-03-30 | |
-| H6 | All other hooks pass `bash -n` syntax check | ✅ | 2026-03-30 | all 13 hooks pass (pre-compact.sh added) |
-| H7 | `pre-tool-guardian.sh` does NOT block when migration pattern appears only in a variable assignment string (false-positive fix) | ✅ | 2026-03-30 | `INPUT='...alembic upgrade...'` now allowed |
+| H1 | `pre-tool-guardian.sh` passes `bash -n` syntax check | ✅ | 2026-04-10 | |
+| H2 | `pre-tool-guardian.sh` blocks `alembic upgrade` when dev-mode is OFF | ✅ | 2026-04-10 | guardian intercepted test command containing pattern — live proof |
+| H3 | `pre-tool-guardian.sh` allows `alembic upgrade` when dev-mode is ON | ✅ | 2026-04-10 | source verified: `if [[ "$DEV_MODE" == false ]]` gate at line 40 |
+| H4 | `pre-tool-guardian.sh` blocks `rm -rf /` regardless of dev-mode | ✅ | 2026-04-10 | source verified: lines 78-96 |
+| H5 | `pre-tool-guardian.sh` blocks `git push --force origin main` regardless of dev-mode | ✅ | 2026-04-10 | source verified: lines 99-108 |
+| H6 | All other hooks pass `bash -n` syntax check | ✅ | 2026-04-10 | all 17 hooks pass (4 new: linter-config-guard, permission-request, revert-detector, post-tool-use-lint) |
+| H7 | `pre-tool-guardian.sh` does NOT block when migration pattern appears only in a variable assignment string (false-positive fix) | ✅ | 2026-04-10 | SCANNABLE strips `VAR='...'` and `VAR="..."` lines (guardian.sh:47-50) |
 
 ## Shell Script Integrity
 <!-- All scripts must be syntactically valid. -->
 
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
-| SH1 | All `configs/hooks/*.sh` pass `bash -n` | ✅ | 2026-03-30 | all 13 hooks (session-context.sh modified today, re-verified) |
-| SH2 | All `configs/scripts/*.sh` pass `bash -n` | ✅ | 2026-03-30 | all 27 scripts pass (incl. provider-switch.sh) |
-| SH3 | `install.sh` passes `bash -n` | ✅ | 2026-03-30 | |
+| SH1 | All `configs/hooks/*.sh` pass `bash -n` | ✅ | 2026-04-10 | all 17 hooks pass |
+| SH2 | All `configs/scripts/*.sh` pass `bash -n` | ✅ | 2026-04-10 | all 27 scripts pass |
+| SH3 | `install.sh` passes `bash -n` | ✅ | 2026-04-10 | |
 
 ## Orchestrator — Python Syntax & Tests
 <!-- The orchestrator Python modules must compile and pass tests. -->
 
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
-| PY1 | All Python modules pass `python -m py_compile` (full list from CLAUDE.md) | ✅ | 2026-03-30 | all 15 modules |
-| PY2 | `pytest tests/` passes with zero failures | ✅ | 2026-03-30 | 19/19 passed in 2.00s |
-| PY3 | No circular imports — `python -c "import server"` runs without ImportError | ✅ | 2026-03-30 | |
+| PY1 | All Python modules pass `python -m py_compile` (full list from CLAUDE.md) | ✅ | 2026-04-10 | all modules compile clean |
+| PY2 | `pytest tests/` passes with zero failures | ✅ | 2026-04-10 | 178/178 passed in 2.78s (was 19 — significant test growth) |
+| PY3 | No circular imports — `python -c "import server"` runs without ImportError | ✅ | 2026-04-10 | |
 
 ## Templates & Assets
 <!-- Required template files must be present and valid markdown. -->
@@ -82,16 +82,16 @@
 
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
-| SK1 | Every dir in `configs/skills/` contains `prompt.md` | ✅ | 2026-03-30 | all 29 skill dirs (incl. 4 new: investigate, cso, retro, document-release) |
-| SK2 | `/review` skill: prompt.md contains all 7 steps and convergence condition | ✅ | 2026-03-30 | |
-| SK3 | `/verify` skill: prompt.md contains VERIFY.md coverage section and `VERIFY_COVERAGE` footer field | ✅ | 2026-03-30 | |
-| SK4 | `/commit` skill: references `committer` script; `git add .` only appears in prohibition rule | ✅ | 2026-03-30 | also has scope drift check (Step 3.5b) |
-| SK5 | `/investigate` skill: contains Iron Law, 3-strike rule, Blast Radius Gate, and structured DEBUG REPORT format | ✅ | 2026-03-30 | |
-| SK6 | `/cso` skill: contains OWASP Top 10, STRIDE threat model, and false-positive filter | ✅ | 2026-03-30 | |
-| SK7 | `/retro` skill: reads git history via parallel bash commands; outputs metrics table + narrative | ✅ | 2026-03-30 | |
-| SK8 | `/document-release` skill: covers README audit, CHANGELOG polish, and cross-doc consistency | ✅ | 2026-03-30 | |
-| SK9 | `/provider` skill: references `provider-switch.sh`; API keys never stored in config files | ✅ | 2026-03-30 | |
-| SK10 | 26/29 workflow skills have Completion Status footer (DONE/BLOCKED/NEEDS_CONTEXT/DONE_WITH_CONCERNS) | ✅ | 2026-03-30 | 3 utility skills exempt: brief, minimax-usage, slt |
+| SK1 | Every dir in `configs/skills/` contains `prompt.md` | ✅ | 2026-04-10 | all 29 skill dirs have prompt.md |
+| SK2 | `/review` skill: prompt.md contains all 7 steps and convergence condition | ✅ | 2026-04-10 | |
+| SK3 | `/verify` skill: prompt.md contains VERIFY.md coverage section and `VERIFY_COVERAGE` footer field | ✅ | 2026-04-10 | |
+| SK4 | `/commit` skill: references `committer` script; `git add .` only appears in prohibition rule | ✅ | 2026-04-10 | |
+| SK5 | `/investigate` skill: contains Iron Law, 3-strike rule, Blast Radius Gate, and structured DEBUG REPORT format | ✅ | 2026-04-10 | |
+| SK6 | `/cso` skill: contains OWASP Top 10, STRIDE threat model, and false-positive filter | ✅ | 2026-04-10 | |
+| SK7 | `/retro` skill: reads git history via parallel bash commands; outputs metrics table + narrative | ✅ | 2026-04-10 | |
+| SK8 | `/document-release` skill: covers README audit, CHANGELOG polish, and cross-doc consistency | ✅ | 2026-04-10 | |
+| SK9 | `/provider` skill: references `provider-switch.sh`; API keys never stored in config files | ✅ | 2026-04-10 | |
+| SK10 | 26/29 workflow skills have Completion Status footer (DONE/BLOCKED/NEEDS_CONTEXT/DONE_WITH_CONCERNS) | ✅ | 2026-04-10 | 0 missing (3 utility skills exempt: brief, minimax-usage, slt) |
 
 ---
 
@@ -109,11 +109,11 @@
 
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
-| XP1 | `sha256sum` calls have macOS fallback (`shasum -a 256`) in `install.sh`, `session-context.sh`, `start.sh` | ✅ | 2026-03-30 | `_SHA256` bash array pattern used; `xargs "${_SHA256[@]}"` works on both |
-| XP2 | `timeout` calls in `loop-runner.sh` use `_timeout()` cross-platform wrapper (gtimeout → timeout → no-op) | ✅ | 2026-03-30 | matches wrapper already in run-tasks.sh and run-tasks-parallel.sh |
-| XP3 | `sed -i` uses `_sed_i()` wrapper in `tmux-dispatch.sh` | ✅ | 2026-03-30 | macOS requires `sed -i ''` |
-| XP4 | `readlink -f` uses python3 fallback in `scan-todos.sh` | ✅ | 2026-03-30 | macOS lacks GNU readlink -f |
-| XP5 | `stat -c` calls have `stat -f` macOS fallback in session-context.sh and run-tasks*.sh | ✅ | 2026-03-30 | all instances use `|| stat -f` pattern |
+| XP1 | `sha256sum` calls have macOS fallback (`shasum -a 256`) in `install.sh`, `session-context.sh`, `start.sh` | ✅ | 2026-04-10 | `_SHA256` bash array pattern present in all 3 files |
+| XP2 | `timeout` calls in `loop-runner.sh` use `_timeout()` cross-platform wrapper (gtimeout → timeout → no-op) | ✅ | 2026-04-10 | gtimeout→timeout fallback present |
+| XP3 | `sed -i` uses `_sed_i()` wrapper in `tmux-dispatch.sh` | ✅ | 2026-04-10 | `_sed_i` wrapper with `sed -i ''` macOS branch present |
+| XP4 | `readlink -f` uses python3 fallback in `scan-todos.sh` | ✅ | 2026-04-10 | `_readlink_f()` with python3 fallback present |
+| XP5 | `stat -c` calls have `stat -f` macOS fallback in session-context.sh and run-tasks*.sh | ✅ | 2026-04-10 | all 5 instances use `|| stat -f` pattern |
 
 ---
 <!-- Add new checkpoints above this line. /review appends discovered scenarios here automatically. -->
