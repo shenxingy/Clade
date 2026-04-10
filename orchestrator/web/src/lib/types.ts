@@ -70,10 +70,22 @@ export interface Idea {
 export interface GlobalSettings {
   max_workers: number;
   default_model: string;
-  cost_budget: number | null;
+  cost_budget: number;
   auto_start: boolean;
-  auto_scale: boolean;
+  auto_push: boolean;
+  auto_merge: boolean;
+  auto_review: boolean;
   auto_oracle: boolean;
+  auto_scale: boolean;
+  auto_model_routing: boolean;
+  stuck_timeout_minutes: number;
+  github_issues_sync: boolean;
+  github_issues_label: string;
+  min_workers: number;
+  loop_supervisor_model: string;
+  loop_max_iterations: number;
+  notification_webhook: string;
+  usage_provider: string;
 }
 
 // ─── WebSocket Message Types ──────────────────────────────────────

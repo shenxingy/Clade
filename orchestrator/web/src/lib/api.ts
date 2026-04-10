@@ -36,6 +36,7 @@ export const tasks = {
   retryFailed: (sessionId: string)                     => req<unknown>('POST', '/tasks/retry-failed', { session_id: sessionId }),
   mergeAllDone:(sessionId: string)                     => req<unknown>('POST', '/tasks/merge-all-done', { session_id: sessionId }),
   sendMessage: (taskId: string, content: string)       => req<unknown>('POST', `/tasks/${taskId}/messages`, { content }),
+  log:         (taskId: string)                        => req<{ log: string; path?: string }>('GET', `/tasks/${taskId}/log`),
 };
 
 // ─── Workers ─────────────────────────────────────────────────────
@@ -45,7 +46,7 @@ export const workers = {
   pause:  (workerId: string)  => req<unknown>('POST', `/workers/${workerId}/pause`),
   resume: (workerId: string)  => req<unknown>('POST', `/workers/${workerId}/resume`),
   stop:   (workerId: string)  => req<unknown>('POST', `/workers/${workerId}/stop`),
-  log:    (workerId: string)  => req<string>('GET', `/workers/${workerId}/log`),
+  log:    (workerId: string)  => req<{ log: string; path?: string }>('GET', `/workers/${workerId}/log`),
 };
 
 // ─── Ideas ───────────────────────────────────────────────────────

@@ -39,6 +39,18 @@
 .status-pending  { color: var(--color-yellow-400); }
 .status-done     { color: var(--color-slate-500); }
 
+/* Reusable form input */
+.input-sm {
+  padding: 2px 6px;
+  font-size: 0.75rem;
+  border-radius: 0.25rem;
+  background-color: var(--color-secondary);
+  border: 1px solid var(--color-border);
+  color: var(--color-foreground);
+  outline: none;
+}
+.input-sm:focus { border-color: var(--color-accent-foreground); }
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background-color: var(--color-secondary); }
