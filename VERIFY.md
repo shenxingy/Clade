@@ -4,7 +4,7 @@
 
 **Project type:** cli + skill-system + orchestrator (FastAPI)
 **Last full pass:** 2026-04-10
-**Coverage:** 48 ✅, 0 ❌, 4 ⚠, 0 ⬜ untested
+**Coverage:** 48 ✅, 3 ❌, 5 ⚠, 0 ⬜ untested
 
 ---
 
@@ -114,6 +114,16 @@
 | XP3 | `sed -i` uses `_sed_i()` wrapper in `tmux-dispatch.sh` | ✅ | 2026-04-10 | `_sed_i` wrapper with `sed -i ''` macOS branch present |
 | XP4 | `readlink -f` uses python3 fallback in `scan-todos.sh` | ✅ | 2026-04-10 | `_readlink_f()` with python3 fallback present |
 | XP5 | `stat -c` calls have `stat -f` macOS fallback in session-context.sh and run-tasks*.sh | ✅ | 2026-04-10 | all 5 instances use `|| stat -f` pattern |
+
+## Research & Backlog Health
+<!-- These checkpoints prevent research from being done but not absorbed. /review must check these. -->
+
+| ID | Checkpoint | Status | Verified | Notes |
+|----|-----------|--------|----------|-------|
+| RH1 | `BRAINSTORM.md` has no unresolved `[AI]` items — all are struck-through (resolved) or explicitly deferred | ❌ | 2026-04-10 | 1 open item: DreamConsolidator memory pruning (memory-sync.sh 7-gate + 24h cooldown) |
+| RH2 | `REFERENCES.md` "Planned" items are either implemented (skill/hook/script exists) or marked DEFERRED | ❌ | 2026-04-10 | Stale: /cso /retro /document-release /investigate show "Planned" but are already DONE. /learn + /ship still genuinely missing. |
+| RH3 | `docs/research/*.md` `needs_work_items` are all addressed (resolved in code) or explicitly marked not-a-gap | ⚠ | 2026-04-10 | 2026-04-07/08 research fully resolved (confirmed via BRAINSTORM). 2026-03-30 landscape docs have remaining needs_work items, most marked "not a gap" in text but not strikethrough-formatted consistently. |
+| RH4 | `docs/plans/*.md` implementation plans have been executed or marked deferred — no "orphaned plans" | ❌ | 2026-04-10 | gstack-learnings.md: preamble template system (_preamble.md + gen-skills.sh) planned but never built. loop-fix-debt3.md / loop-phase10.md need check. |
 
 ---
 <!-- Add new checkpoints above this line. /review appends discovered scenarios here automatically. -->
