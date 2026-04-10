@@ -1,13 +1,24 @@
 import { useSessionStore } from '../../stores/sessionStore';
 import { X, Settings } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { sessions as sessionsApi } from '../../lib/api';
 
 interface Props {
   onSettingsOpen: () => void;
 }
 
 export function Header({ onSettingsOpen }: Props) {
-  const { sessions, activeSessionId, setActiveSession } = useSessionStore();
+  const { sessions, activeSessionId, setActiveSession, setSessions } = useSessionStore();
+
+  const deleteSession = async (e: React.MouseEvent, sessionId: string) => {
+    e.stopPropagation();
+    await sessionsApi.delete(sessionId).catch(console.error);
+    const updated = sessions.filter(s => s.session_id !== sessionId);
+    setSessions(updated);
+    if (activeSessionId === sessionId && updated.length > 0) {
+      setActiveSession(updated[0].session_id);
+    }
+  };
 
   return (
     <header className="h-14 border-b border-border flex items-center px-4 gap-4 shrink-0">
@@ -34,10 +45,8 @@ export function Header({ onSettingsOpen }: Props) {
               <span>{name}</span>
               <span
                 className="text-muted-foreground/50 hover:text-destructive"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  // TODO: delete session
-                }}
+                onClick={(e) => deleteSession(e, session.session_id)}
+                title="Close session"
               >
                 <X size={10} />
               </span>

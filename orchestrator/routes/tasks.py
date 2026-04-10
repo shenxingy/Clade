@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import shlex
+from pathlib import Path
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 
@@ -281,6 +282,26 @@ async def send_task_message(task_id: str, body: dict, s: ProjectSession = Depend
 @router.get("/api/tasks/{task_id}/messages")
 async def get_task_messages(task_id: str, s: ProjectSession = Depends(_resolve_session)):
     return await s.task_queue.get_messages(task_id, unread_only=False)
+
+
+@router.get("/api/tasks/{task_id}/log")
+async def get_task_log(task_id: str, s: ProjectSession = Depends(_resolve_session)):
+    """Return the last 500 lines of a task's log file."""
+    task = await s.task_queue.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    log_file = task.get("log_file")
+    if not log_file:
+        return {"log": "(no log file recorded for this task)"}
+    log_path = Path(log_file)
+    if not log_path.exists():
+        return {"log": f"(log file not found: {log_file})"}
+    try:
+        text = log_path.read_text(errors="replace")
+        tail = "\n".join(text.splitlines()[-500:])
+        return {"log": tail, "path": str(log_path)}
+    except Exception as e:
+        return {"log": f"Error reading log: {e}"}
 
 
 @router.get("/api/metrics/pass-at-k")

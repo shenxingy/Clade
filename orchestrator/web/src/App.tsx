@@ -5,10 +5,11 @@ import { TaskBoard } from './components/tasks/TaskBoard';
 import { WorkerList } from './components/workers/WorkerList';
 import { PaneManager } from './components/terminal/PaneManager';
 import { UsageBar } from './components/layout/UsageBar';
+import { SettingsPanel } from './components/settings/SettingsPanel';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useSessionStore } from './stores/sessionStore';
-import { sessions as sessionsApi } from './lib/api';
-import type { StatusMessage, Session } from './lib/types';
+import { sessions as sessionsApi, settings as settingsApi } from './lib/api';
+import type { StatusMessage, Session, GlobalSettings } from './lib/types';
 
 type ActiveTab = 'tasks' | 'workers' | 'terminal';
 
@@ -17,12 +18,14 @@ export default function App() {
     activeSessionId,
     setSessions,
     setActiveSession,
+    setSettings,
     updateFromStatus,
   } = useSessionStore();
 
   const [tab, setTab] = useState<ActiveTab>('tasks');
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // Load sessions on mount
+  // Load sessions and settings on mount
   useEffect(() => {
     sessionsApi.list().then((data) => {
       const typed = data as Session[];
@@ -31,19 +34,21 @@ export default function App() {
         setActiveSession(typed[0].session_id);
       }
     }).catch(console.error);
+
+    settingsApi.get().then(data => setSettings(data as GlobalSettings)).catch(console.error);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Handle WebSocket status messages (server sends 'queue' for tasks, workers as array)
+  // Handle WebSocket status messages
   const handleStatus = useCallback((msg: StatusMessage) => {
-    updateFromStatus(msg.queue, msg.workers);
+    updateFromStatus(msg.queue, msg.workers, msg.budget_limit);
   }, [updateFromStatus]);
 
   const { connected } = useWebSocket({ sessionId: activeSessionId, onStatus: handleStatus });
 
   return (
     <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
-      <Header onSettingsOpen={() => {}} />
+      <Header onSettingsOpen={() => setSettingsOpen(true)} />
 
       <div className="flex-1 flex overflow-hidden">
         <Sidebar />
@@ -80,6 +85,7 @@ export default function App() {
       </div>
 
       <UsageBar />
+      <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 }

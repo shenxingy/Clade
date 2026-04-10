@@ -42,6 +42,15 @@ async def resume_worker(worker_id: str, s: ProjectSession = Depends(_resolve_ses
     return {"status": w.status}
 
 
+@router.post("/api/workers/{worker_id}/stop")
+async def stop_worker(worker_id: str, s: ProjectSession = Depends(_resolve_session)):
+    w = s.worker_pool.get(worker_id)
+    if not w:
+        raise HTTPException(status_code=404, detail="Worker not found")
+    await w.stop()
+    return {"status": "stopped"}
+
+
 @router.post("/api/workers/{worker_id}/message")
 async def message_worker(
     worker_id: str, body: dict, s: ProjectSession = Depends(_resolve_session)

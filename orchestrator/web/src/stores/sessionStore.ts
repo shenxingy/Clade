@@ -14,6 +14,7 @@ interface SessionState {
 
   // Global settings and usage (fetched separately, not from WS)
   settings: GlobalSettings | null;
+  setSettings: (s: GlobalSettings) => void;
   costTotal: number;
   usage: { used_tokens: number; total_tokens: number; used_cost: number; total_cost: number } | null;
 
@@ -21,7 +22,7 @@ interface SessionState {
   workerLogs: Record<string, string[]>;
 
   // Actions
-  updateFromStatus: (tasks: Task[], workers: Worker[]) => void;
+  updateFromStatus: (tasks: Task[], workers: Worker[], budgetLimit?: number) => void;
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
@@ -33,11 +34,12 @@ export const useSessionStore = create<SessionState>((set) => ({
   tasks: [],
   workers: [],
   settings: null,
+  setSettings: (s) => set({ settings: s }),
   costTotal: 0,
   usage: null,
   workerLogs: {},
 
-  updateFromStatus: (tasks, workers) => {
+  updateFromStatus: (tasks, workers, budgetLimit) => {
     // Rebuild workerLogs from each worker's log_tail snapshot
     const workerLogs: Record<string, string[]> = {};
     for (const w of workers) {
@@ -45,6 +47,19 @@ export const useSessionStore = create<SessionState>((set) => ({
         ? w.log_tail.split('\n').filter(l => l.trim())
         : [];
     }
-    set({ tasks, workers, workerLogs });
+    // Sum estimated cost across all tasks
+    const costTotal = tasks.reduce((sum, t) => sum + (t.estimated_cost ?? 0), 0);
+    const update: Partial<SessionState> = { tasks, workers, workerLogs, costTotal };
+    // If server sends cost_budget in the status message, sync into settings
+    if (budgetLimit !== undefined) {
+      set(state => ({
+        ...update,
+        settings: state.settings
+          ? { ...state.settings, cost_budget: budgetLimit }
+          : state.settings,
+      }));
+    } else {
+      set(update);
+    }
   },
 }));
