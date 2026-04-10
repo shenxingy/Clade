@@ -23,6 +23,26 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["tasks"])
 
+_VALID_PHASES = {"plan", "implement", "test", "review"}
+_VALID_TASK_TYPES = {"review", "fix", "implement", "test", "tldr", "summary", "AUTO"}
+
+
+def _validate_task(body: dict) -> list[str]:
+    """Pre-dispatch validation gate. Returns list of error strings (empty = OK)."""
+    errors: list[str] = []
+    desc = (body.get("description") or "").strip()
+    if not desc:
+        errors.append("description is required")
+    elif len(desc) < 10:
+        errors.append("description must be at least 10 characters")
+    task_type = body.get("task_type")
+    if task_type and task_type not in _VALID_TASK_TYPES:
+        errors.append(f"task_type must be one of: {', '.join(sorted(_VALID_TASK_TYPES))}")
+    phase = body.get("phase")
+    if phase and phase not in _VALID_PHASES:
+        errors.append(f"phase must be one of: {', '.join(sorted(_VALID_PHASES))}")
+    return errors
+
 
 # ─── Task CRUD ───────────────────────────────────────────────────────────────
 
@@ -33,13 +53,16 @@ async def list_tasks(s: ProjectSession = Depends(_resolve_session)):
 
 @router.post("/api/tasks")
 async def create_task(body: dict, s: ProjectSession = Depends(_resolve_session)):
-    description = body.get("description", "").strip()
-    if not description:
-        raise HTTPException(status_code=400, detail="description is required")
+    errors = _validate_task(body)
+    if errors:
+        raise HTTPException(status_code=400, detail=errors)
+    description = body["description"].strip()
     task = await s.task_queue.add(
         description=description,
         model=body.get("model") or GLOBAL_SETTINGS.get("default_model", "sonnet"),
         is_critical_path=bool(body.get("is_critical_path", 0)),
+        task_type=body.get("task_type", "AUTO"),
+        phase=body.get("phase", "implement"),
     )
     asyncio.create_task(
         _score_task(task["id"], task["description"], s.task_queue._db_path, s.claude_dir)
