@@ -189,6 +189,18 @@ class TaskQueue:
                     await db.execute("ALTER TABLE tasks ADD COLUMN attempt_count INTEGER DEFAULT 0")
                 except Exception:
                     pass
+                try:
+                    await db.execute("ALTER TABLE tasks ADD COLUMN phase TEXT DEFAULT 'implement'")
+                except Exception:
+                    pass
+                try:
+                    await db.execute("ALTER TABLE tasks ADD COLUMN oracle_result TEXT")
+                except Exception:
+                    pass
+                try:
+                    await db.execute("ALTER TABLE tasks ADD COLUMN oracle_reason TEXT")
+                except Exception:
+                    pass
                 await db.execute("""
                     CREATE TABLE IF NOT EXISTS worker_messages (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -296,7 +308,8 @@ class TaskQueue:
                   is_critical_path: bool = False,
                   task_type: str = "AUTO",
                   source_ref: str | None = None,
-                  parent_task_id: str | None = None) -> dict:
+                  parent_task_id: str | None = None,
+                  phase: str = "implement") -> dict:
         await self._ensure_db()
         task = {
             "id": str(uuid.uuid4())[:8],
@@ -321,6 +334,7 @@ class TaskQueue:
             "task_type": task_type,
             "source_ref": source_ref,
             "parent_task_id": parent_task_id,
+            "phase": phase,
         }
         async with aiosqlite.connect(str(self._db_path)) as db:
             await db.execute(
@@ -328,8 +342,8 @@ class TaskQueue:
                    (id, description, model, timeout, retries, status, worker_id,
                     started_at, elapsed_s, last_commit, log_file, failed_reason,
                     created_at, depends_on, score, score_note, own_files, forbidden_files,
-                    is_critical_path, task_type, source_ref, parent_task_id)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    is_critical_path, task_type, source_ref, parent_task_id, phase)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     task["id"], task["description"], task["model"],
                     task["timeout"], task["retries"], task["status"],
@@ -339,7 +353,7 @@ class TaskQueue:
                     task["score"], task["score_note"],
                     json.dumps(task["own_files"]), json.dumps(task["forbidden_files"]),
                     task["is_critical_path"], task["task_type"], task["source_ref"],
-                    task["parent_task_id"],
+                    task["parent_task_id"], task["phase"],
                 ),
             )
             await db.commit()

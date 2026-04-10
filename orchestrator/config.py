@@ -27,7 +27,8 @@ _ALLOWED_TASK_COLS = {"status", "description", "model", "depends_on", "score",
                       "input_tokens", "output_tokens", "estimated_cost",
                       "task_type", "source_ref", "parent_task_id", "priority_score",
                       "handoff_type", "handoff_payload", "completion_summary",
-                      "token_budget", "context_version", "attempt_count"}
+                      "token_budget", "context_version", "attempt_count",
+                      "phase", "oracle_result", "oracle_reason"}
 
 _ALLOWED_LOOP_COLS = {
     "name", "artifact_path", "context_dir", "status", "iteration",
@@ -88,6 +89,8 @@ _SETTINGS_DEFAULTS = {
     "minimax_group_id": "",
     "parallel_fix_samples": 1,  # Agentless §6C: N parallel workers for critical-path oracle rejections (1=sequential)
     "context_span_budget": 6000,  # Moatless §Gap3: max chars for TLDR span block; excess spans evicted
+    "task_type_model_routing": {},  # per-task type model override e.g. {"tldr": "haiku", "fix": "sonnet"}
+    "replay_interrupted_on_startup": False,  # re-queue interrupted tasks on server restart (opt-in)
     "reactions_enabled": True,
     "reaction_configs": [
         {
@@ -293,6 +296,100 @@ async def _recover_orphaned_tasks(task_queue: Any) -> int:
         logger.warning("_recover_orphaned_tasks failed (fail-open): %s", e)
         return 0
 
+async def _replay_interrupted_tasks(task_queue: Any, claude_dir: Path) -> list[tuple[str, str]]:
+    """Build resume descriptions for interrupted tasks with prior event context.
+
+    Reads events.jsonl to find workers that started but never completed, then
+    reads per-worker JSONL for the last 3 state changes as resume context.
+    Returns list of (task_id, resume_description) for the caller to re-queue.
+    Only runs when replay_interrupted_on_startup=True.
+    """
+    if not GLOBAL_SETTINGS.get("replay_interrupted_on_startup", False):
+        return []
+    try:
+        await task_queue._ensure_db()
+        async with aiosqlite.connect(str(task_queue._db_path)) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT id, description, worker_id FROM tasks WHERE status = 'interrupted'"
+            ) as cur:
+                interrupted = [dict(r) for r in await cur.fetchall()]
+        if not interrupted:
+            return []
+
+        # Load global events.jsonl to find which worker_ids actually started
+        started_workers: set[str] = set()
+        done_workers: set[str] = set()
+        global_bus = claude_dir / "events.jsonl"
+        if global_bus.exists():
+            try:
+                with open(global_bus) as f:
+                    for line in f:
+                        try:
+                            obj = json.loads(line.strip())
+                        except Exception:
+                            continue
+                        wid = obj.get("worker_id", "")
+                        state = ""
+                        try:
+                            state = json.loads(obj.get("data", "{}")).get("state", "")
+                        except Exception:
+                            pass
+                        if state == "started":
+                            started_workers.add(wid)
+                        elif state in ("done", "failed"):
+                            done_workers.add(wid)
+            except Exception:
+                pass
+
+        results: list[tuple[str, str]] = []
+        for task in interrupted:
+            worker_id = task.get("worker_id") or ""
+            # Skip if worker never started or completed cleanly
+            if worker_id and worker_id in done_workers:
+                continue
+
+            # Read per-worker JSONL for last 3 state_change events
+            prior_context = ""
+            log_dir = claude_dir / "orchestrator-logs"
+            worker_jsonl = log_dir / f"events-{worker_id}.jsonl" if worker_id else None
+            if worker_jsonl and worker_jsonl.exists():
+                state_events: list[str] = []
+                try:
+                    with open(worker_jsonl) as f:
+                        for line in f:
+                            try:
+                                obj = json.loads(line.strip())
+                            except Exception:
+                                continue
+                            if obj.get("event_type") == "state_change":
+                                try:
+                                    content = json.loads(obj.get("content", "{}"))
+                                    state_events.append(
+                                        f"  - {content.get('state', '?')}: {content.get('reason', '')}"
+                                    )
+                                except Exception:
+                                    pass
+                    if state_events:
+                        prior_context = (
+                            "\n\n---\n**Prior execution context (last events before interruption):**\n"
+                            + "\n".join(state_events[-3:])
+                            + "\nCheck git log for any partial commits before continuing."
+                        )
+                except Exception:
+                    pass
+
+            resume_desc = (
+                f"{task['description']}\n\n"
+                f"**Note:** This task was previously interrupted mid-execution and is being resumed."
+                f"{prior_context}"
+            )
+            results.append((task["id"], resume_desc))
+        return results
+    except Exception as e:
+        logger.warning("_replay_interrupted_tasks failed (fail-open): %s", e)
+        return []
+
 # ─── Notifications ────────────────────────────────────────────────────────────
 
 
@@ -377,6 +474,8 @@ def _parse_task_type(description: str) -> str | None:
         return "fix"
     if any(k in desc_lower for k in ["test", "spec", "e2e"]):
         return "test"
+    if any(k in desc_lower for k in ["tldr", "summarize", "summary"]):
+        return "tldr"
     return None  # default: implement (full tools)
 
 
