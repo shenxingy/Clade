@@ -27,6 +27,7 @@ from config import (
     _SETTINGS_DEFAULTS,
     _deps_met,
     _recover_orphaned_tasks,
+    _replay_interrupted_tasks,
     _save_settings,
     scan_projects,
 )
@@ -53,6 +54,17 @@ async def lifespan(app: FastAPI):
         recovered = await _recover_orphaned_tasks(default_session.task_queue)
         if recovered:
             logger.info("Recovered %d orphaned tasks as 'interrupted'", recovered)
+        # Fault-tolerant replay: re-queue interrupted tasks with prior context (opt-in)
+        to_requeue = await _replay_interrupted_tasks(
+            default_session.task_queue, default_session.claude_dir
+        )
+        for _orig_task_id, resume_desc in to_requeue:
+            await default_session.task_queue.add(
+                resume_desc,
+                phase="implement",
+            )
+        if to_requeue:
+            logger.info("Re-queued %d interrupted tasks for replay", len(to_requeue))
         default_session.start_watch()
     asyncio.create_task(status_loop())
     yield
