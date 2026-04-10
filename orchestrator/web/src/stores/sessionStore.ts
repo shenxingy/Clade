@@ -10,17 +10,18 @@ interface SessionState {
 
   // Live data (updated via WebSocket)
   tasks: Task[];
-  workers: Record<string, Worker>;
+  workers: Worker[];          // array, matching server's WS payload
+
+  // Global settings and usage (fetched separately, not from WS)
   settings: GlobalSettings | null;
   costTotal: number;
   usage: { used_tokens: number; total_tokens: number; used_cost: number; total_cost: number } | null;
 
-  // Actions
-  updateFromStatus: (tasks: Task[], workers: Record<string, Worker>, settings: GlobalSettings, costTotal: number, usage?: { used_tokens: number; total_tokens: number; used_cost: number; total_cost: number }) => void;
-
-  // Worker log accumulation
+  // Worker log lines keyed by worker id (populated from log_tail each status tick)
   workerLogs: Record<string, string[]>;
-  appendWorkerLog: (workerId: string, lines: string[]) => void;
+
+  // Actions
+  updateFromStatus: (tasks: Task[], workers: Worker[]) => void;
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
@@ -30,20 +31,20 @@ export const useSessionStore = create<SessionState>((set) => ({
   setSessions: (sessions) => set({ sessions }),
 
   tasks: [],
-  workers: {},
+  workers: [],
   settings: null,
   costTotal: 0,
   usage: null,
-
-  updateFromStatus: (tasks, workers, settings, costTotal, usage) =>
-    set({ tasks, workers, settings, costTotal, usage: usage ?? null }),
-
   workerLogs: {},
-  appendWorkerLog: (workerId, lines) =>
-    set((state) => ({
-      workerLogs: {
-        ...state.workerLogs,
-        [workerId]: [...(state.workerLogs[workerId] ?? []).slice(-500), ...lines],
-      },
-    })),
+
+  updateFromStatus: (tasks, workers) => {
+    // Rebuild workerLogs from each worker's log_tail snapshot
+    const workerLogs: Record<string, string[]> = {};
+    for (const w of workers) {
+      workerLogs[w.id] = w.log_tail
+        ? w.log_tail.split('\n').filter(l => l.trim())
+        : [];
+    }
+    set({ tasks, workers, workerLogs });
+  },
 }));

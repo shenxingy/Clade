@@ -4,20 +4,22 @@ import { ModelBadge } from '../shared/ModelBadge';
 import { formatDuration, formatCost } from '../../lib/utils';
 import { ChevronDown, ChevronUp, Square, PauseCircle } from 'lucide-react';
 import { workers as api } from '../../lib/api';
-import { useSessionStore } from '../../stores/sessionStore';
 
 export function WorkerCard({ worker }: { worker: Worker }) {
   const [expanded, setExpanded] = useState(false);
-  const logLines = useSessionStore(s => s.workerLogs[worker.worker_id] ?? worker.log_tail ?? []);
+  // log_tail is a raw string from the server; split into lines for display
+  const logLines = worker.log_tail
+    ? worker.log_tail.split('\n').filter(l => l.trim())
+    : [];
 
   const handleStop = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    await api.stop(worker.worker_id).catch(console.error);
+    await api.stop(worker.id).catch(console.error);
   };
 
   const handlePause = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    await api.pause(worker.worker_id).catch(console.error);
+    await api.pause(worker.id).catch(console.error);
   };
 
   return (
@@ -27,7 +29,7 @@ export function WorkerCard({ worker }: { worker: Worker }) {
         className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-green-400/10 transition-colors"
         onClick={() => setExpanded(!expanded)}
       >
-        <span className="text-green-400 text-xs font-mono">{worker.worker_id.slice(0, 8)}</span>
+        <span className="text-green-400 text-xs font-mono">{worker.id.slice(0, 8)}</span>
         <ModelBadge model={worker.model} />
         <span className="flex-1 text-sm text-foreground truncate">{worker.description}</span>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">

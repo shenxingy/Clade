@@ -49,7 +49,6 @@ export function TerminalPane({ workerId, workerDesc, isActive, onClick, onClose 
     term.loadAddon(fitAddon);
     term.open(containerRef.current);
 
-    // Defer fit to allow DOM to settle
     requestAnimationFrame(() => {
       try { fitAddon.fit(); } catch (_) { /* ignore */ }
     });
@@ -59,21 +58,20 @@ export function TerminalPane({ workerId, workerDesc, isActive, onClick, onClose 
 
     // Write existing lines
     const existingLogs = useSessionStore.getState().workerLogs[workerId] ?? [];
-    existingLogs.forEach(line => term.writeln(line));
+    existingLogs.forEach((line: string) => term.writeln(line));
     writtenRef.current = existingLogs.length;
 
-    // Subscribe to new log lines (Zustand v5 subscribe: (state, prevState) => void)
+    // Subscribe to new log lines
     const unsub = useSessionStore.subscribe((state, prevState) => {
       const logs = state.workerLogs[workerId] ?? [];
-      const prevLen = (prevState.workerLogs[workerId] ?? []).length;
-      if (logs.length > prevLen) {
+      const prevLogs = prevState.workerLogs[workerId] ?? [];
+      if (logs.length > prevLogs.length) {
         const newLines = logs.slice(writtenRef.current);
-        newLines.forEach(line => term.writeln(line));
+        newLines.forEach((line: string) => term.writeln(line));
         writtenRef.current = logs.length;
       }
     });
 
-    // ResizeObserver for fitAddon
     const ro = new ResizeObserver(() => {
       requestAnimationFrame(() => {
         try { fitAddon.fit(); } catch (_) { /* ignore */ }
@@ -89,7 +87,6 @@ export function TerminalPane({ workerId, workerDesc, isActive, onClick, onClose 
       fitRef.current = null;
       writtenRef.current = 0;
     };
-  // workerId is stable per pane, so no dep needed; re-creating xterm on change is correct
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workerId]);
 

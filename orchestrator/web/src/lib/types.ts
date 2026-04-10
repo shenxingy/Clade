@@ -4,7 +4,7 @@ export type TaskStatus = 'pending' | 'running' | 'done' | 'failed' | 'paused';
 export type TaskType = 'AUTO' | 'HORIZONTAL' | 'VERTICAL';
 
 export interface Task {
-  id: number;
+  id: string;
   description: string;
   model: string;
   timeout: number;
@@ -15,14 +15,14 @@ export interface Task {
   last_commit: string | null;
   log_file: string | null;
   failed_reason: string | null;
-  created_at: string;
-  depends_on: number[];
+  created_at: number;
+  depends_on: string[];
   score: number | null;
   score_note: string | null;
   own_files: string[];
   forbidden_files: string[];
   gh_issue_number: number | null;
-  is_critical_path: boolean;
+  is_critical_path: number | boolean;
   input_tokens: number | null;
   output_tokens: number | null;
   estimated_cost: number | null;
@@ -31,31 +31,30 @@ export interface Task {
 }
 
 export interface Worker {
-  worker_id: string;
-  task_id: number;
+  id: string;
+  task_id: string;
   description: string;
   model: string;
   status: string;
-  log_tail: string[];
-  log_delta?: string[];
+  log_tail: string;           // raw string from server (split on \n to display)
   elapsed_s: number;
   last_commit: string | null;
   estimated_cost: number | null;
   oracle_result: string | null;
   pr_url: string | null;
+  pid?: number | null;
+  verified?: boolean;
+  branch_name?: string | null;
 }
 
 export interface Session {
   session_id: string;
-  project_dir: string;
-  created_at: string;
+  name: string;
+  path: string;               // server sends 'path', not 'project_dir'
   worker_count: number;
-  task_counts: {
-    pending: number;
-    running: number;
-    done: number;
-    failed: number;
-  };
+  running_count: number;
+  alive: boolean;
+  schedule: unknown;
 }
 
 export interface Idea {
@@ -82,17 +81,15 @@ export interface GlobalSettings {
 export interface StatusMessage {
   type: 'status';
   session_id: string;
-  tasks: Task[];
-  workers: Record<string, Worker>;
+  queue: Task[];              // server sends 'queue', not 'tasks'
+  workers: Worker[];          // server sends array, not Record
   loop_state: Record<string, unknown> | null;
-  settings: GlobalSettings;
-  cost_total: number;
-  usage?: {
-    used_tokens: number;
-    total_tokens: number;
-    used_cost: number;
-    total_cost: number;
-  };
+  progress_pct: number;
+  eta_seconds: number;
+  success_rate: number;
+  run_complete: boolean;
+  budget_exceeded: boolean;
+  budget_limit: number;
 }
 
 export type WsMessage = StatusMessage | { type: string; [key: string]: unknown };
