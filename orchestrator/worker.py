@@ -1204,6 +1204,13 @@ class WorkerPool:
                     )
                 if task.get("is_critical_path"):
                     model = {"haiku": "sonnet", "sonnet": "opus"}.get(model, model)
+        # Per-task type model routing (overrides auto_model_routing when configured)
+        routing_map = GLOBAL_SETTINGS.get("task_type_model_routing") or {}
+        if routing_map:
+            inferred_type = _parse_task_type(description) or task.get("task_type") or "AUTO"
+            type_key = inferred_type.lower()
+            if type_key in routing_map:
+                model = routing_map[type_key]
         # Auto-inject past intervention corrections for retried/failed tasks
         failed_reason = task.get("failed_reason")
         if failed_reason:
