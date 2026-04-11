@@ -4,12 +4,14 @@ import { ModelBadge } from '../shared/ModelBadge';
 import { formatDuration, formatCost } from '../../lib/utils';
 import { ChevronDown, ChevronUp, Square, PauseCircle, PlayCircle, ScrollText, X, ExternalLink } from 'lucide-react';
 import { workers as api } from '../../lib/api';
+import { useSessionStore } from '../../stores/sessionStore';
 
 export function WorkerCard({ worker }: { worker: Worker }) {
   const [expanded, setExpanded] = useState(false);
   const [showLog, setShowLog] = useState(false);
   const [fullLog, setFullLog] = useState<string | null>(null);
   const [logLoading, setLogLoading] = useState(false);
+  const activeSessionId = useSessionStore(s => s.activeSessionId) ?? '';
 
   // log_tail is a raw string from the server; split into lines for display
   const logLines = worker.log_tail
@@ -18,17 +20,17 @@ export function WorkerCard({ worker }: { worker: Worker }) {
 
   const handleStop = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    await api.stop(worker.id).catch(console.error);
+    await api.stop(worker.id, activeSessionId).catch(console.error);
   };
 
   const handlePause = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    await api.pause(worker.id).catch(console.error);
+    await api.pause(worker.id, activeSessionId).catch(console.error);
   };
 
   const handleResume = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    await api.resume(worker.id).catch(console.error);
+    await api.resume(worker.id, activeSessionId).catch(console.error);
   };
 
   const handleViewLog = async (e: React.MouseEvent) => {
@@ -36,7 +38,7 @@ export function WorkerCard({ worker }: { worker: Worker }) {
     setShowLog(true);
     if (!fullLog) {
       setLogLoading(true);
-      api.log(worker.id)
+      api.log(worker.id, activeSessionId)
         .then(data => setFullLog(data.log || '(empty log)'))
         .catch(() => setFullLog('(error loading log)'))
         .finally(() => setLogLoading(false));

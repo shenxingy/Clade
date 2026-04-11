@@ -5,6 +5,7 @@ import { ModelBadge } from '../shared/ModelBadge';
 import { formatDuration, formatCost, truncate, cn } from '../../lib/utils';
 import { Trash2, Play, RotateCcw } from 'lucide-react';
 import { tasks as api } from '../../lib/api';
+import { useSessionStore } from '../../stores/sessionStore';
 import { TaskDetailModal } from './TaskDetailModal';
 
 interface Props {
@@ -14,23 +15,24 @@ interface Props {
 
 export function TaskCard({ task, onAction }: Props) {
   const [showDetail, setShowDetail] = useState(false);
+  const activeSessionId = useSessionStore(s => s.activeSessionId) ?? '';
 
   const handleRun = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    await api.run(task.id).catch(console.error);
+    await api.run(task.id, activeSessionId).catch(console.error);
     onAction?.();
   };
 
   const handleRetry = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    await api.retry(task.id).catch(console.error);
+    await api.retry(task.id, activeSessionId).catch(console.error);
     onAction?.();
   };
 
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!confirm('Delete this task?')) return;
-    await api.delete(task.id).catch(console.error);
+    await api.delete(task.id, activeSessionId).catch(console.error);
     onAction?.();
   };
 
@@ -90,7 +92,7 @@ export function TaskCard({ task, onAction }: Props) {
         </div>
       </div>
 
-      <TaskDetailModal task={showDetail ? task : null} onClose={() => setShowDetail(false)} />
+      <TaskDetailModal task={showDetail ? task : null} sessionId={activeSessionId} onClose={() => setShowDetail(false)} />
     </>
   );
 }
