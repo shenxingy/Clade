@@ -11,6 +11,7 @@ module.exports = {
       max_memory_restart: "512M",
       env: {
         PYTHONUNBUFFERED: "1",
+        ORCHESTRATOR_PROJECT_DIR: "/home/alexshen/projects/clade",
       },
       log_date_format: "YYYY-MM-DD HH:mm:ss",
     },
