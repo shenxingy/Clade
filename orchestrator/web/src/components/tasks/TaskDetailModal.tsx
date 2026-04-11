@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, ExternalLink, FileText } from 'lucide-react';
+import { X, FileText } from 'lucide-react';
 import { Task } from '../../lib/types';
 import { StatusBadge } from '../shared/StatusBadge';
 import { ModelBadge } from '../shared/ModelBadge';
