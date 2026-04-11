@@ -123,6 +123,12 @@ if [[ -f "$SCRIPT_DIR/configs/models.env" ]]; then
   echo "  Installed models.env (canonical model IDs)"
 fi
 
+# Deploy global CLAUDE.md (agent ground rules)
+if [[ -f "$SCRIPT_DIR/configs/CLAUDE.md" ]]; then
+  cp "$SCRIPT_DIR/configs/CLAUDE.md" "$CLAUDE_DIR/CLAUDE.md"
+  echo "  Installed CLAUDE.md (agent ground rules)"
+fi
+
 # ─── 6. Copy commands ────────────────────────────────────────────────
 
 echo "Installing commands..."
