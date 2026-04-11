@@ -8,10 +8,11 @@ import { tasks as api } from '../../lib/api';
 
 interface Props {
   task: Task | null;
+  sessionId: string;
   onClose: () => void;
 }
 
-export function TaskDetailModal({ task, onClose }: Props) {
+export function TaskDetailModal({ task, sessionId, onClose }: Props) {
   const [log, setLog] = useState<string | null>(null);
   const [logLoading, setLogLoading] = useState(false);
 
@@ -20,7 +21,7 @@ export function TaskDetailModal({ task, onClose }: Props) {
     // Auto-load log for done/failed/interrupted tasks
     if (['done', 'failed'].includes(task.status) && task.log_file) {
       setLogLoading(true);
-      api.log(task.id)
+      api.log(task.id, sessionId)
         .then(r => setLog(r.log))
         .catch(() => setLog('(error loading log)'))
         .finally(() => setLogLoading(false));
@@ -34,7 +35,7 @@ export function TaskDetailModal({ task, onClose }: Props) {
   const loadLog = () => {
     if (logLoading) return;
     setLogLoading(true);
-    api.log(task.id)
+    api.log(task.id, sessionId)
       .then(r => setLog(r.log))
       .catch(() => setLog('(error loading log)'))
       .finally(() => setLogLoading(false));

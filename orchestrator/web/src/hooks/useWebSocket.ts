@@ -19,7 +19,7 @@ export function useWebSocket({ sessionId, onStatus }: UseWebSocketOptions) {
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
-    const ws = new WebSocket(`${protocol}//${host}/ws/status?session_id=${sessionId}`);
+    const ws = new WebSocket(`${protocol}//${host}/ws/status?session=${sessionId}`);
 
     ws.onopen = () => {
       setConnected(true);

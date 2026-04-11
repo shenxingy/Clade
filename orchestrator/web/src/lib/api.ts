@@ -26,37 +26,37 @@ export const sessions = {
 // ─── Tasks (task IDs are strings, e.g. "85c92be0") ───────────────
 
 export const tasks = {
-  list:        (sessionId: string)                     => req<unknown[]>('GET', `/tasks?session_id=${sessionId}`),
-  add:         (sessionId: string, data: Record<string, unknown>) => req<unknown>('POST', '/tasks', { ...data, session_id: sessionId }),
-  update:      (taskId: string, data: Record<string, unknown>)    => req<unknown>('POST', `/tasks/${taskId}`, data),
-  delete:      (taskId: string)                        => req<void>('DELETE', `/tasks/${taskId}`),
-  run:         (taskId: string)                        => req<unknown>('POST', `/tasks/${taskId}/run`),
-  retry:       (taskId: string)                        => req<unknown>('POST', `/tasks/${taskId}/retry`),
-  startAll:    (sessionId: string)                     => req<unknown>('POST', '/tasks/start-all', { session_id: sessionId }),
-  retryFailed: (sessionId: string)                     => req<unknown>('POST', '/tasks/retry-failed', { session_id: sessionId }),
-  mergeAllDone:(sessionId: string)                     => req<unknown>('POST', '/tasks/merge-all-done', { session_id: sessionId }),
-  sendMessage: (taskId: string, content: string)       => req<unknown>('POST', `/tasks/${taskId}/messages`, { content }),
-  log:         (taskId: string)                        => req<{ log: string; path?: string }>('GET', `/tasks/${taskId}/log`),
+  list:        (sessionId: string)                     => req<unknown[]>('GET', `/tasks?session=${sessionId}`),
+  add:         (sessionId: string, data: Record<string, unknown>) => req<unknown>('POST', `/tasks?session=${sessionId}`, data),
+  update:      (taskId: string, sessionId: string, data: Record<string, unknown>) => req<unknown>('POST', `/tasks/${taskId}?session=${sessionId}`, data),
+  delete:      (taskId: string, sessionId: string)     => req<void>('DELETE', `/tasks/${taskId}?session=${sessionId}`),
+  run:         (taskId: string, sessionId: string)     => req<unknown>('POST', `/tasks/${taskId}/run?session=${sessionId}`),
+  retry:       (taskId: string, sessionId: string)     => req<unknown>('POST', `/tasks/${taskId}/retry?session=${sessionId}`),
+  startAll:    (sessionId: string)                     => req<unknown>('POST', `/tasks/start-all?session=${sessionId}`),
+  retryFailed: (sessionId: string)                     => req<unknown>('POST', `/tasks/retry-failed?session=${sessionId}`),
+  mergeAllDone:(sessionId: string)                     => req<unknown>('POST', `/tasks/merge-all-done?session=${sessionId}`),
+  sendMessage: (taskId: string, sessionId: string, content: string) => req<unknown>('POST', `/tasks/${taskId}/messages?session=${sessionId}`, { content }),
+  log:         (taskId: string, sessionId: string)     => req<{ log: string; path?: string }>('GET', `/tasks/${taskId}/log?session=${sessionId}`),
 };
 
 // ─── Workers ─────────────────────────────────────────────────────
 
 export const workers = {
-  list:   (sessionId: string) => req<unknown[]>('GET', `/workers?session_id=${sessionId}`),
-  pause:  (workerId: string)  => req<unknown>('POST', `/workers/${workerId}/pause`),
-  resume: (workerId: string)  => req<unknown>('POST', `/workers/${workerId}/resume`),
-  stop:   (workerId: string)  => req<unknown>('POST', `/workers/${workerId}/stop`),
-  log:    (workerId: string)  => req<{ log: string; path?: string }>('GET', `/workers/${workerId}/log`),
+  list:   (sessionId: string) => req<unknown[]>('GET', `/workers?session=${sessionId}`),
+  pause:  (workerId: string, sessionId: string)  => req<unknown>('POST', `/workers/${workerId}/pause?session=${sessionId}`),
+  resume: (workerId: string, sessionId: string)  => req<unknown>('POST', `/workers/${workerId}/resume?session=${sessionId}`),
+  stop:   (workerId: string, sessionId: string)  => req<unknown>('POST', `/workers/${workerId}/stop?session=${sessionId}`),
+  log:    (workerId: string, sessionId: string)  => req<{ log: string; path?: string }>('GET', `/workers/${workerId}/log?session=${sessionId}`),
 };
 
 // ─── Ideas ───────────────────────────────────────────────────────
 
 export const ideas = {
-  list:    (sessionId: string)                   => req<unknown[]>('GET', `/ideas?session_id=${sessionId}`),
-  add:     (sessionId: string, content: string)  => req<unknown>('POST', '/ideas', { session_id: sessionId, content }),
-  delete:  (ideaId: number)                      => req<void>('DELETE', `/ideas/${ideaId}`),
-  evaluate:(ideaId: number)                      => req<unknown>('POST', `/ideas/${ideaId}/evaluate`),
-  execute: (ideaId: number)                      => req<unknown>('POST', `/ideas/${ideaId}/execute`),
+  list:    (sessionId: string)                   => req<unknown[]>('GET', `/ideas?session=${sessionId}`),
+  add:     (sessionId: string, content: string)  => req<unknown>('POST', `/ideas?session=${sessionId}`, { content }),
+  delete:  (ideaId: number, sessionId: string)   => req<void>('DELETE', `/ideas/${ideaId}?session=${sessionId}`),
+  evaluate:(ideaId: number, sessionId: string)   => req<unknown>('POST', `/ideas/${ideaId}/evaluate?session=${sessionId}`),
+  execute: (ideaId: number, sessionId: string)   => req<unknown>('POST', `/ideas/${ideaId}/execute?session=${sessionId}`),
 };
 
 // ─── Settings ────────────────────────────────────────────────────
