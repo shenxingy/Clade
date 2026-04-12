@@ -91,61 +91,25 @@ Flag: unpinned major dependencies (e.g., `requests>=2.0.0` instead of `requests=
 
 ## Phase 4: OWASP Top 10 Analysis
 
-Check each category. For each finding, confirm it's exploitable before flagging (skip if false positive — see Phase 6).
+Load `references/owasp-top10.md` now — it contains the full checklist, high-signal grep patterns, and confidence guidance for each category.
 
-| Category | What to check |
-|---|---|
-| **A01 — Broken Access Control** | Authorization checks on every protected route? IDOR: can user N access resource owned by user M? |
-| **A02 — Cryptographic Failures** | Passwords hashed (bcrypt/argon2, not MD5/SHA1)? TLS enforced? Sensitive data encrypted at rest? |
-| **A03 — Injection** | SQL queries use parameterized queries or ORM? Shell commands use subprocess with list args (not string interpolation)? |
-| **A04 — Insecure Design** | Rate limiting on auth endpoints? Account enumeration possible? Password reset flow secure? |
-| **A05 — Security Misconfiguration** | Debug mode off in prod? Error messages reveal stack traces? Default credentials changed? |
-| **A06 — Vulnerable Components** | From Phase 3 — critical/high CVEs with known exploits |
-| **A07 — Auth & Session Failures** | JWT: alg=none accepted? Session tokens regenerated after login? Logout actually invalidates server-side? |
-| **A08 — Software Integrity Failures** | Unpinned GitHub Actions? Unverified 3rd party scripts loaded? |
-| **A09 — Logging Failures** | Auth events logged? Sensitive data (passwords, tokens) NOT in logs? |
-| **A10 — SSRF** | User-controlled URLs fetched by the server? Allowlist of permitted domains? |
+Check each of the 10 categories using that reference. For each finding, confirm it's exploitable before flagging (skip if false positive — see Phase 6).
 
 ---
 
 ## Phase 5: STRIDE Threat Model
 
-For each major component (web server, database, auth service, background workers):
+Load `references/stride.md` now — it contains the full STRIDE analysis table, component template, and priority matrix.
 
-| Threat | Question |
-|---|---|
-| **Spoofing** | Can an attacker impersonate a legitimate user or service? |
-| **Tampering** | Can an attacker modify data in transit or at rest? |
-| **Repudiation** | Are critical actions logged and non-repudiable? |
-| **Info Disclosure** | Can an attacker access data they shouldn't see? |
-| **Denial of Service** | Are there resource exhaustion vectors an attacker could exploit? |
-| **Elevation of Privilege** | Can a regular user gain admin access? |
-
-Only flag items with a plausible attack path for the project's actual threat model.
+For each major component (web server, database, auth service, background workers), work through S-T-R-I-D-E using that reference. Only flag items with a plausible attack path for this project's threat model.
 
 ---
 
 ## Phase 6: False Positive Filter
 
-Before reporting, apply these exclusion rules — auto-discard findings that match:
+Load `references/false-positive-filter.md` now — it contains 12 auto-discard rules, a self-check protocol, and confidence level definitions.
 
-1. **DoS / resource exhaustion** — skip unless it's financial amplification (e.g., LLM API cost bombing by unauthenticated user)
-2. **Missing rate limiting on non-auth endpoints** — skip unless business logic is affected
-3. **Log spoofing** — skip; not a security-critical issue for most apps
-4. **SSRF where attacker controls only the path, not host or protocol** — skip
-5. **User content in the user-message position of an AI conversation** — skip; this is NOT prompt injection
-6. **Regex complexity in code that doesn't process untrusted input** — skip
-7. **CVEs with CVSS < 4.0 and no public exploit** — skip
-8. **Docker issues in `Dockerfile.dev` or `Dockerfile.local`** — skip unless referenced in prod configs
-9. **Missing audit logs** — skip unless compliance requirement
-10. **Insecure randomness in non-security contexts** (UI IDs, colors) — skip
-11. **Files that are only test fixtures** — skip unless imported by non-test code
-12. **Missing hardening best practices** (HSTS, CSP headers) — flag as LOW only if data is sensitive
-
-For each surviving finding, do a quick self-check:
-- Is there an actual attack path from an attacker's perspective?
-- What's the worst realistic outcome?
-- Is this specific to this codebase or a generic warning?
+Apply all 12 rules to every finding. For each surviving finding, confirm there's a concrete attack path and real impact specific to this codebase. Assign a confidence level (HIGH/MEDIUM/LOW) per the reference.
 
 ---
 
@@ -195,3 +159,28 @@ Save report to `.claude/security-reports/YYYY-MM-DD.md`.
 - ❓ **NEEDS_CONTEXT** — need to know threat model or data sensitivity before starting
 
 **Scope note:** This is an AI-assisted audit, not a penetration test. Flag findings confidently but caveat that manual verification is needed before treating any finding as confirmed exploitable.
+
+---
+
+## Deep-Dive Mode (optional)
+
+For HIGH-confidence findings in critical files, spawn the `security-auditor` subagent for line-by-line analysis:
+
+```
+Use the Agent tool with subagent_type="security-auditor":
+  "Audit [file path] for [specific vulnerability category]. Context: [what you already know about this component]"
+```
+
+Merge the subagent's findings into the main report. The subagent has no Write access — it only reads and reports.
+
+---
+
+## Error Handling
+
+| Scenario | Action |
+|----------|--------|
+| Cannot read key source files (permission denied) | Note in report as "Partial audit — [file] unreadable". Continue with what's accessible. |
+| No package manager detected (no requirements.txt, package.json, etc.) | Skip Phase 3, note "Dependency audit skipped — no package manifest found" |
+| Git history unavailable | Skip git-based secret archaeology, note it |
+| Project is non-code (docs-only, config-only) | Output "No attack surface found — this directory contains no executable code" |
+| Ambiguous tech stack | List what was detected, ask user to confirm before proceeding with OWASP analysis |
