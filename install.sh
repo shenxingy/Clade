@@ -74,7 +74,15 @@ echo "Installing skills..."
 for skill_dir in "$SCRIPT_DIR/configs/skills/"/*/; do
   skill_name=$(basename "$skill_dir")
   mkdir -p "$CLAUDE_DIR/skills/$skill_name"
-  cp "$skill_dir"* "$CLAUDE_DIR/skills/$skill_name/"
+  # Copy files at root level
+  cp "$skill_dir"* "$CLAUDE_DIR/skills/$skill_name/" 2>/dev/null || true
+  # Copy subdirectories (references/, assets/, etc.) recursively
+  for sub_dir in "$skill_dir"*/; do
+    [[ -d "$sub_dir" ]] || continue
+    sub_name=$(basename "$sub_dir")
+    mkdir -p "$CLAUDE_DIR/skills/$skill_name/$sub_name"
+    cp -r "$sub_dir"* "$CLAUDE_DIR/skills/$skill_name/$sub_name/" 2>/dev/null || true
+  done
   echo "  Installed skill: $skill_name"
 done
 
