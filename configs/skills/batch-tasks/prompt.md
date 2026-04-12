@@ -54,6 +54,18 @@ Found 3 unchecked items:
 Planning each task...
 ```
 
+### Step 2b: Hard gate — scale check
+
+Count the total number of unchecked tasks before planning:
+
+| Task count | Action |
+|-----------|--------|
+| **1–7** | Proceed normally |
+| **8–14** | ⚠ **WARNING** — Show count and estimated time (`~N tasks × ~10 min = ~Xh`). Ask: "Proceed with all N tasks, or select a subset?" Wait for confirmation before planning. |
+| **15+** | 🛑 **HARD STOP** — Output: `"This batch has N tasks. Running 15+ unattended tasks carries significant cost and time risk (~Xh). Type 'yes proceed' to confirm, or specify a subset."` Do NOT plan until user explicitly types confirmation. |
+
+If the user confirms a large batch, note it in the task file header: `# WARNING: Large batch (N tasks). User confirmed.`
+
 ### Step 3: Plan each task (PLANNING PHASE)
 
 For each unchecked item, run the full planning phase (see PLANNING PHASE section below).
