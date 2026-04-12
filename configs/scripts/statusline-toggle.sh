@@ -39,7 +39,7 @@ _field() { echo "$1" | cut -d'|' -f"$2"; }
 
 _get_mode() {
   local m; m=$(cat "$MODE_FILE" 2>/dev/null)
-  case "$m" in symbol|percent|number|off) echo "$m" ;; *) echo "symbol" ;; esac
+  case "$m" in symbol|percent|number|bar|off) echo "$m" ;; *) echo "symbol" ;; esac
 }
 
 _get_theme() {
