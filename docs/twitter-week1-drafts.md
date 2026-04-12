@@ -4,38 +4,22 @@
 
 ---
 
-## Day 1 — 反直觉 Hook（打第一炮）
+## Day 1 — /slt 介绍（钩子型）
 
 **发布时机：** 周二/周三，美东时间 8-10 AM（北京时间 21:00-23:00）
 
 ```
-Claude Code is incredibly powerful.
+The Claude Code status bar can show you a live quota pace indicator.
 
-It's also incredibly easy to accidentally run `rm -rf` on your project.
+Most people don't know this.
 
-I built a pre-tool guardian that blocks 47 dangerous operations before they execute.
+Mine currently shows 🐉 because I'm ahead of my weekly target.
 
-It's been running in my setup for 3 months. Here's what it's caught 👇
+When I'm behind it shows 🥚 (still an egg).
 
-[thread follows]
-```
+Command: `slt theme dragon`
 
-**Thread 继续（可选展开）：**
-
-```
-The most common catches in my logs:
-
-1. `rm -rf` on wrong directory — 3x
-2. `git push --force` to main — 5x
-3. `DROP TABLE` in migration — 2x
-4. Force-overwriting .env files — 4x
-
-Each one would have been a bad day without the hook.
-
-The guardian runs as a PreToolUse hook. It intercepts every Bash/Edit/Write
-call and pattern-matches against 47 blocked operations.
-
-Code: github.com/shenxingy/clade
+It's part of Clade, my open-source Claude Code toolkit.
 ```
 
 ---
