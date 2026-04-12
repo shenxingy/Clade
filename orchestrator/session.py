@@ -28,6 +28,7 @@ from config import (
     _recover_orphaned_tasks,
 )
 from task_queue import TaskQueue
+from ideas import IdeasManager
 from swarm import SwarmManager
 from worker import WorkerPool, _rank_tasks
 from worker_tldr import _generate_code_tldr
@@ -111,6 +112,7 @@ class ProjectSession:
         self.orchestrator = OrchestratorSession()
         self.worker_pool = WorkerPool()
         self.task_queue = TaskQueue(self.project_dir / ".claude")
+        self.ideas_manager = IdeasManager(self.task_queue._db_path)
         self.created_at = time.time()
         self.status_subscribers: list = []
         self.proposed_tasks_subscribers: list = []

@@ -9,7 +9,6 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
 
-from ideas import IdeasManager
 from session import registry
 
 logger = logging.getLogger(__name__)
@@ -31,9 +30,9 @@ def _get_session(session_id: str | None = None):
     return session
 
 
-def _get_ideas_mgr(session_id: str | None = None) -> IdeasManager:
-    """Resolve session and return its IdeasManager."""
-    return IdeasManager(_get_session(session_id).task_queue._db_path)
+def _get_ideas_mgr(session_id: str | None = None):
+    """Resolve session and return its shared IdeasManager."""
+    return _get_session(session_id).ideas_manager
 
 
 def _get_project_dir(session_id: str | None = None) -> Path | None:

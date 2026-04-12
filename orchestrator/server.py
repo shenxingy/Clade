@@ -68,7 +68,9 @@ async def lifespan(app: FastAPI):
         default_session.start_watch()
     asyncio.create_task(status_loop())
     yield
-    # Shutdown: stop all managed background processes
+    # Shutdown: close shared DB connections and stop background processes
+    for session in registry.all():
+        await session.ideas_manager.close()
     from process_manager import process_pool
     stopped = await process_pool.stop_all()
     if stopped:
