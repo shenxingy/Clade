@@ -4,6 +4,29 @@
 
 ---
 
+## Go-To-Market Strategy (2026-04-11)
+
+See full doc: docs/research/2026-04-11-go-to-market-strategy.md
+
+**Platform priority:** HN Show HN (主攻) → r/ClaudeAI (核心社区) → Twitter/X (持续运营) → Product Hunt (背书) → DEV.to (SEO)
+
+**Recommended HN title:** "Show HN: I built a correction-learning framework on Claude Code – Claude now learns from its own mistakes"
+
+**One-liner:** "Claude Code is powerful. Clade makes it autonomous."
+
+**Unique angles to exploit:**
+- 过夜自主运行（overnight autonomous loops）— 无人做过此角度
+- Correction Learning Loop — 技术新颖，HN 受众会买单
+- `pip install clade-mcp` — Cursor/Windsurf 用户的独立入口
+- Safety Guardian — "Claude 做了什么糟糕的事？" 是天然的故事钩子
+
+**30天时间线:**
+- Week 1: Twitter 预热 + r/ClaudeAI 首帖 + DEV.to 文章
+- Week 2: **Show HN 主攻**（周二 PT 上午）→ Product Hunt 跟进
+- Week 3-4: 持续内容运营，收集数据，迭代
+
+---
+
 ## Research Findings (2026-04-10) — Last-Mile Quality / "烂尾" Problem
 
 See full doc: docs/research/2026-04-10-last-mile-quality.md
