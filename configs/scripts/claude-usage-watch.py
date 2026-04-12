@@ -77,7 +77,7 @@ def _emoji_supported() -> bool:
 def _mode():
     try:
         m = MODE_FILE.read_text().strip()
-        return m if m in ("symbol", "percent", "number", "off") else "symbol"
+        return m if m in ("symbol", "percent", "number", "bar", "off") else "symbol"
     except Exception:
         return "symbol"
 
@@ -248,6 +248,10 @@ def run():
         print(f"{sym} {col}{pct}{RESET} ({left})", end="")
     elif mode == "number":
         print(f"{col}{pct}{RESET} ({left})", end="")
+    elif mode == "bar":
+        filled = min(10, round(usage / 10))
+        bar = "▓" * filled + "░" * (10 - filled)
+        print(f"{col}{bar}{RESET} {pct} ({left})", end="")
     else:  # symbol
         print(f"{sym} ({left})", end="")
 

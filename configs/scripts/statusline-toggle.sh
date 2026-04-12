@@ -88,10 +88,11 @@ _mode_preview() {
   local data; data=$(_theme_data "$theme")
   local e2; e2=$(_field "$data" 3)
   case "$mode" in
-    symbol)  echo "  symbol  → $e2 (4d)          emoji only" ;;
-    percent) echo "  percent → $e2 +4% (4d)      emoji + delta" ;;
-    number)  echo "  number  → +4% (4d)           delta only, no emoji" ;;
-    off)     echo "  off     → (nothing)          no indicator" ;;
+    symbol)  echo "  symbol  → $e2 (4d)                emoji only" ;;
+    percent) echo "  percent → $e2 +4% (4d)            emoji + delta" ;;
+    number)  echo "  number  → +4% (4d)                delta only, no emoji" ;;
+    bar)     echo "  bar     → ▓▓▓▓░░░░░░ +4% (4d)    10-block usage bar" ;;
+    off)     echo "  off     → (nothing)               no indicator" ;;
   esac
 }
 
@@ -125,7 +126,7 @@ fi
 
 if [ -n "$1" ]; then
   case "$1" in
-    symbol|percent|number|off)
+    symbol|percent|number|bar|off)
       echo "$1" > "$MODE_FILE"
       echo "Mode set to: $1"
       _mode_preview "$1"
@@ -133,7 +134,7 @@ if [ -n "$1" ]; then
     *)
       echo "Unknown: $1"
       echo ""
-      echo "Modes:   slt [symbol|percent|number|off]"
+      echo "Modes:   slt [symbol|percent|number|bar|off]"
       echo "Themes:  slt theme [name]   (run 'slt theme' to see all)"
       exit 1
       ;;
@@ -147,7 +148,8 @@ current=$(_get_mode)
 case "$current" in
   symbol)  next="percent" ;;
   percent) next="number"  ;;
-  number)  next="off"     ;;
+  number)  next="bar"     ;;
+  bar)     next="off"     ;;
   *)       next="symbol"  ;;
 esac
 
