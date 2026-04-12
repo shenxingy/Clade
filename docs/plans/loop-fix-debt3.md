@@ -1,4 +1,5 @@
 # Goal: Fix /review Round 3 Tech Debt (2026-03-01)
+<!-- STATUS: DONE 2026-04-12 — R1 (phantom cols removed), R2 (str(e) fixed), R3 (JS extracted to app-*.js), R4 (--dangerously-skip-permissions added) all verified -->
 
 ## Context
 

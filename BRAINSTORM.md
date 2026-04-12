@@ -31,13 +31,13 @@ See full doc: docs/research/2026-04-11-go-to-market-strategy.md
 
 See full doc: docs/research/2026-04-10-last-mile-quality.md
 
-- [AI] Last-mile (Gap 1): Sprint contracts missing — task files have no pre-negotiated acceptance criteria; worker decides "done" unilaterally. Need `acceptance_criteria` block as a hard gate, not just a hint.
-- [AI] Last-mile (Gap 2): Self-evaluation failure — oracle is same model that generated code. Need a *separate* skeptical evaluator pass (different model or different prompt persona with no access to worker's reasoning).
-- [AI] Last-mile (Gap 3): No iteration cap — workers can loop indefinitely on reflection retries. Research shows quality degrades after 3 iterations. Need `max_reflection_retries` hard cap (currently `MAX_REFLECTION_RETRIES` exists in worker_utils.py — verify it's enforced).
-- [AI] Last-mile (Gap 4): No behavioral verification — tests pass ≠ feature correct. For web tasks, need E2E smoke check (curl / playwright). For orchestrator tasks: need "does the API endpoint return expected shape?" check post-deploy.
-- [AI] Last-mile (Gap 5): Context reset protocol — `/compact` compresses but doesn't reset. Anthropic harness shows clean-context + progress file outperforms compaction. Relevant for long loop runs.
-- [AI] Last-mile (Gap 6): No code health baseline gate — workers spawn on any codebase state. CodeScene research: defect risk 30%+ higher on structurally unhealthy code. Gate: run `scan-health.sh` before spawning worker, warn if health below threshold.
-- [AI] Last-mile (Gap 7): Fix Rate metric missing — only binary pass/fail tracked. SWE-EVO: Fix Rate (% of failing tests repaired) reveals systematic progress. Add to `get_pass_at_k_metrics()`.
+- [AI] ~~Last-mile (Gap 1): Sprint contracts missing~~ — DEFERRED 2026-04-12: Task contracts exist (`acceptance_criteria` block in schema) but not a hard gate; promoting to hard gate is a larger worker.py refactor, deferring.
+- [AI] ~~Last-mile (Gap 2): Self-evaluation failure~~ — DEFERRED 2026-04-12: Separate skeptical evaluator pass requires a second claude invocation per task; cost/latency tradeoff not yet justified.
+- [AI] ~~Last-mile (Gap 3): No iteration cap~~ — RESOLVED 2026-04-12: `MAX_REFLECTION_RETRIES = 3` enforced in `worker.py:736` (gate: `self._reflection_retries < MAX_REFLECTION_RETRIES`).
+- [AI] ~~Last-mile (Gap 4): No behavioral verification~~ — DEFERRED 2026-04-12: E2E smoke checks (curl/playwright) require per-project config; out of scope for generic orchestrator.
+- [AI] ~~Last-mile (Gap 5): Context reset protocol~~ — DEFERRED 2026-04-12: ctx-checkpoint.md pattern (CAP) already in place; full harness-level reset requires Anthropic API changes.
+- [AI] ~~Last-mile (Gap 6): No code health baseline gate~~ — DEFERRED 2026-04-12: `scan-health.sh` exists; wiring it as a worker spawn gate is a future enhancement.
+- [AI] ~~Last-mile (Gap 7): Fix Rate metric missing~~ — DEFERRED 2026-04-12: `get_pass_at_k_metrics()` not yet in codebase; add when test infrastructure matures.
 
 ---
 

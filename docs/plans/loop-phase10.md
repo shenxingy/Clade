@@ -1,4 +1,5 @@
 # Goal: Phase 10 — Portfolio Mode
+<!-- STATUS: DEFERRED 2026-04-12 — portfolioPanel UI + cross-project cost API not yet implemented; defer until orchestrator has ≥2 active projects in regular use -->
 
 ## Context
 
