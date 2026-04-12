@@ -55,45 +55,51 @@ class IdeasManager:
 
     def __init__(self, db_path: Path):
         self._db_path = db_path
-        self._initialized = False
-        self._init_lock = asyncio.Lock()
+        self._conn: aiosqlite.Connection | None = None
+        self._lock = asyncio.Lock()
 
-    async def _ensure_tables(self) -> None:
-        """Create ideas/idea_messages tables if they don't exist (init-once)."""
-        async with self._init_lock:
-            if self._initialized:
-                return
+    async def _get_conn(self) -> aiosqlite.Connection:
+        """Return the shared persistent connection, opening+initializing it on first call."""
+        async with self._lock:
+            if self._conn is not None:
+                return self._conn
             self._db_path.parent.mkdir(parents=True, exist_ok=True)
-            async with aiosqlite.connect(str(self._db_path)) as db:
-                await db.execute("""CREATE TABLE IF NOT EXISTS ideas (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    content TEXT NOT NULL,
-                    source TEXT DEFAULT 'human',
-                    project TEXT,
-                    status TEXT DEFAULT 'raw',
-                    ai_evaluation TEXT,
-                    priority INTEGER DEFAULT 0,
-                    promoted_to TEXT,
-                    created_at TEXT DEFAULT (datetime('now')),
-                    updated_at TEXT DEFAULT (datetime('now'))
-                )""")
-                await db.execute("""CREATE TABLE IF NOT EXISTS idea_messages (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    idea_id INTEGER NOT NULL,
-                    role TEXT NOT NULL,
-                    content TEXT NOT NULL,
-                    created_at TEXT DEFAULT (datetime('now')),
-                    FOREIGN KEY (idea_id) REFERENCES ideas(id)
-                )""")
-                await db.commit()
-            self._initialized = True
+            conn = await aiosqlite.connect(str(self._db_path))
+            conn.row_factory = aiosqlite.Row
+            await conn.execute("""CREATE TABLE IF NOT EXISTS ideas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                content TEXT NOT NULL,
+                source TEXT DEFAULT 'human',
+                project TEXT,
+                status TEXT DEFAULT 'raw',
+                ai_evaluation TEXT,
+                priority INTEGER DEFAULT 0,
+                promoted_to TEXT,
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+            )""")
+            await conn.execute("""CREATE TABLE IF NOT EXISTS idea_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                idea_id INTEGER NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (idea_id) REFERENCES ideas(id)
+            )""")
+            await conn.commit()
+            self._conn = conn
+            return self._conn
+
+    async def close(self) -> None:
+        """Close the shared connection (call on server shutdown)."""
+        async with self._lock:
+            if self._conn is not None:
+                await self._conn.close()
+                self._conn = None
 
     @asynccontextmanager
     async def _db(self):
-        await self._ensure_tables()
-        async with aiosqlite.connect(str(self._db_path)) as db:
-            db.row_factory = aiosqlite.Row
-            yield db
+        yield await self._get_conn()
 
     # ─── CRUD ────────────────────────────────────────────────────────────────
 
