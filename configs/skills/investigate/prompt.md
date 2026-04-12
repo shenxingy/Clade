@@ -169,3 +169,29 @@ End every run with one of:
 - Skip the regression test
 - Leave debugging logs in the code
 - Treat a passing test as proof — verify the specific failure scenario
+
+---
+
+## Deep-Dive Mode (optional)
+
+For complex bugs requiring multi-file execution tracing, spawn the `debug-specialist` subagent:
+
+```
+Use the Agent tool with subagent_type="debug-specialist":
+  "Trace the root cause of: [symptom]. Entry point: [file:function]. Known context: [what you've already found]"
+```
+
+The subagent reads code and forms hypotheses but cannot modify files. Merge its root cause finding into your Phase 6 fix.
+
+---
+
+## Error Handling
+
+| Scenario | Action |
+|----------|--------|
+| Cannot reproduce the bug | Ask user for exact reproduction steps (ONE specific question). Do not guess. |
+| Symptom is too vague ("it's slow", "it crashes sometimes") | Ask for a concrete example: specific error message, specific input, specific timing |
+| Files implicated are very large (>2000 lines) | Use Grep to locate the specific section before reading; use offset/limit on Read |
+| Bug is in a dependency (not this codebase) | Identify the exact dependency version + CVE or issue, recommend upgrade. Do not patch the dependency. |
+| Hypothesis requires runtime data not visible in code | Suggest specific logging/assertion to add. Output as NEEDS_CONTEXT with exact location and what to log. |
+| 3 hypotheses exhausted, still no root cause | Output BLOCKED — write to `.claude/blockers.md` with what was tried and what's needed |
