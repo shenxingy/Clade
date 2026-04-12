@@ -1,4 +1,5 @@
 # gstack Learnings — What Clade Can Adopt
+<!-- STATUS: DEFERRED 2026-04-12 — _preamble.md + gen-skills.sh template system not built; 29 skills hand-maintained; defer until skill count grows enough to justify the tooling -->
 
 **Date:** 2026-03-30
 **Source:** https://github.com/garrytan/gstack (57k★, Garry Tan / YC CEO)
