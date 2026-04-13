@@ -476,6 +476,8 @@ Present the completed article with a summary:
 - Resolve [INTERNAL-LINK] placeholders with actual URLs
 - Add internal links to your existing content
 - Run `/blog analyze <file>` to verify quality score
+- **Run `/blog-seo-check <file>` — validate on-page SEO** (title, meta, headings, links)
+- **Run `/blog geo <file>` — AI citation readiness audit** (ChatGPT, Perplexity, AI Overviews)
 - Generate VideoObject schema: `/blog schema <file>` (includes video markup)
 - Generate audio narration: `/blog audio generate <file>` (optional)
 ```
