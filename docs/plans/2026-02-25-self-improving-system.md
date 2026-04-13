@@ -1,4 +1,5 @@
 # Plan: Self-Improving Claude Code System
+<!-- STATUS: DEFERRED 2026-04-12 — correction-detector + stats.json basics implemented; session-scorecard, edit-shadow-detector loop closure, and full automated learning cycle not built -->
 
 **Date**: 2026-02-25
 **Status**: Draft → Ready for implementation
