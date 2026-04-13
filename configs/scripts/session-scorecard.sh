@@ -75,6 +75,39 @@ PENALTY=$(awk "BEGIN {
 }")
 SCORE=$(awk "BEGIN { printf \"%.2f\", 1.0 - $PENALTY }")
 
+# ─── Rule effectiveness tracking ─────────────────────────────────────
+# For domains with rules but no corrections this session → record hits
+LIBDIR="$(cd "$(dirname "$0")/../hooks/lib" 2>/dev/null && pwd)"
+if [[ -f "$LIBDIR/rule-effectiveness.sh" && -f "$LIBDIR/rule-utils.sh" ]]; then
+  source "$LIBDIR/rule-utils.sh" 2>/dev/null
+  source "$LIBDIR/rule-effectiveness.sh" 2>/dev/null
+
+  # Get domains that had corrections this session
+  CORRECTION_DOMAINS=""
+  if [[ -f "$HISTORY_FILE" ]] && command -v jq &>/dev/null; then
+    CORRECTION_DOMAINS=$(jq -r --arg since "$SINCE" '
+      select(.timestamp >= $since) | .domain // "unknown"
+    ' "$HISTORY_FILE" 2>/dev/null | sort -u)
+  fi
+
+  # Check rules in both global and project-local
+  for rf in "$HOME/.claude/corrections/rules.md" "${CLAUDE_PROJECT_DIR:-.}/.claude/corrections/rules.md"; do
+    [[ -f "$rf" ]] || continue
+    parse_rules "$rf" 2>/dev/null || continue
+
+    for (( _i=0; _i<${#RULE_DOMAINS[@]}; _i++ )); do
+      local_domain="${RULE_DOMAINS[$_i]}"
+      local_hash=$(rule_hash "${RULE_TEXTS[$_i]}" 2>/dev/null)
+      [[ -z "$local_hash" ]] && continue
+
+      # If this domain had no corrections → rule is working (hit)
+      if ! echo "$CORRECTION_DOMAINS" | grep -qF "$local_domain" 2>/dev/null; then
+        record_rule_hit "$local_hash" 2>/dev/null
+      fi
+    done
+  done
+fi
+
 # ─── Write scorecard ─────────────────────────────────────────────────
 jq -n \
   --arg ts "$NOW" \

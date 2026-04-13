@@ -33,7 +33,7 @@ Read the user's argument:
    - "architecture" / "layer" / "component" / "structure" → `architecture`
    - "library" / "tool" / "package" / "cli" → `tool`
    - Default → `pattern`
-3. Set `confidence` to 75 if not specified.
+3. Set `confidence` to 75 if not specified. (Note: learnings with confidence ≥ 80 are automatically promoted to rules.md at next session start.)
 4. Generate `id` = first 8 chars of `uuid4()` equivalent (use `python3 -c "import uuid; print(str(uuid.uuid4())[:8])"` or timestamp hex).
 5. Append to `.claude/learnings.jsonl`:
    ```bash

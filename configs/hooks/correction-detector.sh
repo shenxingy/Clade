@@ -76,6 +76,26 @@ if [[ "$PROJECT" != "$HOME" ]] && [[ -f "$PROJECT/CLAUDE.md" || -d "$PROJECT/.gi
   RULES_LIMIT=100
 fi
 
+# ─── Effectiveness tracking: check if existing rules should have prevented this ───
+source "$LIBDIR/rule-effectiveness.sh" 2>/dev/null || true
+source "$LIBDIR/rule-utils.sh" 2>/dev/null || true
+
+# Check if a rule already exists for this domain → rule miss
+for rf in "$HOME/.claude/corrections/rules.md" "$PROJECT/.claude/corrections/rules.md"; do
+  [[ -f "$rf" ]] || continue
+  parse_rules "$rf" 2>/dev/null || continue
+  for (( _i=0; _i<${#RULE_DOMAINS[@]}; _i++ )); do
+    if [[ "${RULE_DOMAINS[$_i]}" == "$DOMAIN" ]]; then
+      local_hash=$(rule_hash "${RULE_TEXTS[$_i]}" 2>/dev/null)
+      [[ -n "$local_hash" ]] && record_rule_miss "$local_hash" 2>/dev/null
+    fi
+  done
+done
+
+# ─── Cross-project rule tracking ──────────────────────────────────────
+# Log to cross-project-rules.jsonl so auto-audit can detect multi-project patterns
+CROSS_FILE="$HOME/.claude/corrections/cross-project-rules.jsonl"
+
 # Remind Claude to extract a rule with root-cause analysis
 CONTEXT="A user correction was detected in the prompt above. After addressing the user's request:
 1. Extract the lesson (what was wrong, what's correct)
@@ -90,6 +110,19 @@ CONTEXT="A user correction was detected in the prompt above. After addressing th
    Example: - [2026-02-25] imports (settings-disconnect): Use @/ path aliases and verify tsconfig paths are set — not bare relative paths that break on move
 4. In one sentence: how could you have caught this BEFORE the user pointed it out? (e.g., 'I should have checked cross-platform compat when using shell builtins')
 5. Keep rules.md under $RULES_LIMIT lines — remove outdated rules if needed"
+
+# Write cross-project marker for auto-audit aggregation
+if [[ -n "$CROSS_FILE" ]] && command -v jq &>/dev/null; then
+  RULE_TEXT_PREVIEW=$(echo "$PROMPT" | head -c 120)
+  CROSS_HASH=$(echo -n "${DOMAIN}:${RULE_TEXT_PREVIEW}" | shasum -a 256 2>/dev/null | cut -c1-8)
+  jq -nc \
+    --arg ts "$TIMESTAMP" \
+    --arg domain "$DOMAIN" \
+    --arg text "$RULE_TEXT_PREVIEW" \
+    --arg project "$PROJECT" \
+    --arg hash "$CROSS_HASH" \
+    '{timestamp:$ts, domain:$domain, rule_text:$text, project:$project, rule_hash:$hash}' >> "$CROSS_FILE" 2>/dev/null
+fi
 
 jq -n --arg ctx "$CONTEXT" \
   '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":$ctx}}'

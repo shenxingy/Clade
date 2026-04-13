@@ -125,16 +125,35 @@ if [[ -f "$COMPACT_STATE" ]]; then
   fi
 fi
 
-# Load correction rules (learned preferences)
-RULES_FILE="$HOME/.claude/corrections/rules.md"
-if [[ -f "$RULES_FILE" ]]; then
-  RULES=$(tail -50 "$RULES_FILE" 2>/dev/null)
-  if [[ -n "$RULES" ]]; then
-    CONTEXT="${CONTEXT}\nCorrection rules (learned from past feedback):\n${RULES}\n"
+# ─── Self-Improvement Pipeline ────────────────────────────────────────
+
+HOOKS_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Load correction rules (global + project-local)
+GLOBAL_RULES="$HOME/.claude/corrections/rules.md"
+PROJECT_RULES="${CLAUDE_PROJECT_DIR:-.}/.claude/corrections/rules.md"
+COMBINED_RULES=""
+if [[ -f "$PROJECT_RULES" && "$PROJECT_RULES" != "$GLOBAL_RULES" ]]; then
+  COMBINED_RULES=$(tail -25 "$PROJECT_RULES" 2>/dev/null)
+  [[ -n "$COMBINED_RULES" ]] && COMBINED_RULES="${COMBINED_RULES}\n"
+fi
+if [[ -f "$GLOBAL_RULES" ]]; then
+  COMBINED_RULES="${COMBINED_RULES}$(tail -25 "$GLOBAL_RULES" 2>/dev/null)"
+fi
+if [[ -n "$COMBINED_RULES" ]]; then
+  CONTEXT="${CONTEXT}\nCorrection rules (learned from past feedback):\n${COMBINED_RULES}\n"
+fi
+
+# Learning → Rule promotion (convert high-confidence learnings to rules)
+if [[ -f "$HOOKS_DIR/learning-to-rule.sh" ]]; then
+  source "$HOOKS_DIR/learning-to-rule.sh" 2>/dev/null
+  run_learning_promotion "${CLAUDE_PROJECT_DIR:-$(pwd)}" 2>/dev/null
+  if [[ -n "${LEARNING_SUMMARY:-}" ]]; then
+    CONTEXT="${CONTEXT}\n${LEARNING_SUMMARY}\n"
   fi
 fi
 
-# Audit nudge (if corrections haven't been audited in 7+ days)
+# Auto-audit (promote mature rules, archive stale ones, cross-project aggregation)
 LAST_AUDIT_FILE="$HOME/.claude/corrections/.last-audit"
 if [[ -f "$LAST_AUDIT_FILE" ]]; then
   AUDIT_MTIME=$(stat -c %Y "$LAST_AUDIT_FILE" 2>/dev/null || stat -f %m "$LAST_AUDIT_FILE" 2>/dev/null || echo 0)
@@ -142,8 +161,38 @@ if [[ -f "$LAST_AUDIT_FILE" ]]; then
 else
   AUDIT_AGE_DAYS=999
 fi
-if [[ $AUDIT_AGE_DAYS -ge 7 ]]; then
-  CONTEXT="${CONTEXT}\nAudit reminder: Correction rules haven't been audited in ${AUDIT_AGE_DAYS}+ days. Run /audit to graduate mature rules to CLAUDE.md and clean up stale ones.\n"
+
+if [[ $AUDIT_AGE_DAYS -ge 7 ]] && [[ -f "$HOOKS_DIR/auto-audit.sh" ]]; then
+  source "$HOOKS_DIR/auto-audit.sh" 2>/dev/null
+  # Run global auto-audit
+  run_auto_audit "global" 2>/dev/null
+  # Run project-local auto-audit if applicable
+  if [[ -d "${CLAUDE_PROJECT_DIR:-.}/.claude/corrections" ]]; then
+    run_auto_audit "${CLAUDE_PROJECT_DIR:-$(pwd)}" 2>/dev/null
+  fi
+  if [[ -n "${AUDIT_SUMMARY:-}" ]]; then
+    CONTEXT="${CONTEXT}\n${AUDIT_SUMMARY}\n"
+  fi
+else
+  if [[ $AUDIT_AGE_DAYS -ge 7 ]]; then
+    CONTEXT="${CONTEXT}\nAudit reminder: Correction rules haven't been audited in ${AUDIT_AGE_DAYS}+ days. Run /audit for deep analysis.\n"
+  fi
+fi
+
+# Contradiction detection
+if [[ -f "$HOOKS_DIR/lib/contradiction-detect.sh" ]]; then
+  source "$HOOKS_DIR/lib/contradiction-detect.sh" 2>/dev/null
+  for rf in "$GLOBAL_RULES" "$PROJECT_RULES"; do
+    [[ -f "$rf" ]] || continue
+    detect_contradictions "$rf" 2>/dev/null
+    if [[ ${#CONTRADICTIONS[@]} -gt 0 ]]; then
+      CONTEXT="${CONTEXT}\n⚠ Contradicting rules detected:"
+      for c in "${CONTRADICTIONS[@]}"; do
+        CONTEXT="${CONTEXT}\n  - ${c}"
+      done
+      CONTEXT="${CONTEXT}\nRun /audit to resolve.\n"
+    fi
+  done
 fi
 
 # Language constraint
