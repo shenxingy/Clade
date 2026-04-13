@@ -10,3 +10,7 @@ user_invocable: true
 
 Full release pipeline: tests → coverage → review gate → version bump → CHANGELOG → commit → PR.
 Each step is a hard gate — failure stops the pipeline and reports clearly.
+
+## After shipping
+
+Run `/document-release` to sync README, CHANGELOG, and docs with the new release.
