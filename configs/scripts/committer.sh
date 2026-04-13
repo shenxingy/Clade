@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
 # committer — Safe commit script for multi-agent parallel development
 #
-# Usage: committer "feat: message" file1 file2 ...
+# Usage: committer "feat: message" file1 file2 ... [--no-push]
 #
 # Why: When running 3-4 parallel Claude Code sessions on the same repo,
 # `git add .` stages ALL files and causes agents to interfere with each other.
 # This script forces explicit file specification, preventing cross-agent contamination.
 #
 # Convention: conventional commit format required (feat/fix/refactor/test/chore/docs/perf)
+# Push: enabled by default. Pass --no-push to skip (e.g. parallel agent worktrees).
 
 set -euo pipefail
 
 MSG="${1:-}"
 if [[ -z "$MSG" ]]; then
-  echo "Usage: committer <message> <file> [file2...]" >&2
+  echo "Usage: committer <message> <file> [file2...] [--no-push]" >&2
   echo "" >&2
   echo "  Message format: conventional commits" >&2
   echo "  Examples:" >&2
@@ -22,9 +23,22 @@ if [[ -z "$MSG" ]]; then
   echo "    committer \"chore: update deps\" package.json pnpm-lock.yaml" >&2
   echo "" >&2
   echo "  Prefixes: feat fix refactor test chore docs perf style ci build" >&2
+  echo "  Flags:    --no-push  skip git push after commit" >&2
   exit 1
 fi
 shift
+
+# Parse --no-push flag from remaining args
+DO_PUSH=true
+FILTERED_ARGS=()
+for arg in "$@"; do
+  if [[ "$arg" == "--no-push" ]]; then
+    DO_PUSH=false
+  else
+    FILTERED_ARGS+=("$arg")
+  fi
+done
+set -- "${FILTERED_ARGS[@]}"
 
 if [[ $# -eq 0 ]]; then
   echo "Error: must specify files explicitly." >&2
@@ -64,3 +78,8 @@ echo ""
 # Commit
 git --no-pager commit -m "$MSG"
 echo "Committed: $MSG"
+
+# Push
+if [[ "$DO_PUSH" == true ]]; then
+  git push
+fi
