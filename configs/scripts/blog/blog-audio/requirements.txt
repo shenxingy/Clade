@@ -1,0 +1,5 @@
+# Blog Audio Skill Dependencies
+# Installed in the skill's local .venv via run.py
+
+# Google Gemini SDK for TTS generation
+google-genai>=1.0.0
