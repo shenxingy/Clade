@@ -128,5 +128,15 @@
 | SEO8 | Schema markup present on homepage (minimum: Organization or WebSite JSON-LD) | ⬜ | — | run /seo schema <url> |
 | SEO9 | GEO readiness: key pages have structured headings, quotable fact blocks, author/date info | ⬜ | — | run /seo geo <url> |
 
+## Paid Ads Infrastructure
+<!-- Only applicable if running paid ads campaigns. Skip section if organic-only project. -->
+
+| ID | Checkpoint | Status | Verified | Notes |
+|----|-----------|--------|----------|-------|
+| ADS1 | Tracking pixel fires on page load (Meta Pixel, Google Tag, TikTok Pixel) | ⬜ | — | check browser network tab or `/ads audit` |
+| ADS2 | Conversion events fire correctly on key actions (signup, purchase, lead) | ⬜ | — | |
+| ADS3 | UTM parameters preserved through redirect chains and landing pages | ⬜ | — | |
+| ADS4 | Landing page matches ad promise — headline/CTA consistent with ad copy | ⬜ | — | run /ads landing <url> |
+
 ---
 <!-- Add new checkpoints above this line. /review appends discovered scenarios here automatically. -->
