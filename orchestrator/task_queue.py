@@ -110,97 +110,35 @@ class TaskQueue:
                         plan_phase TEXT DEFAULT 'plan'
                     )
                 """)
-                # Migration: add mode column for existing DBs that predate this column
-                try:
-                    await db.execute("ALTER TABLE iteration_loops ADD COLUMN mode TEXT DEFAULT 'review'")
-                except Exception:
-                    pass  # column already exists
-                try:
-                    await db.execute("ALTER TABLE iteration_loops ADD COLUMN plan_phase TEXT DEFAULT 'plan'")
-                except Exception:
-                    pass  # column already exists
-                # Migration: add file ownership columns for existing DBs
-                try:
-                    await db.execute("ALTER TABLE tasks ADD COLUMN own_files TEXT DEFAULT '[]'")
-                except Exception:
-                    pass
-                try:
-                    await db.execute("ALTER TABLE tasks ADD COLUMN forbidden_files TEXT DEFAULT '[]'")
-                except Exception:
-                    pass
-                try:
-                    await db.execute("ALTER TABLE tasks ADD COLUMN gh_issue_number INTEGER")
-                except Exception:
-                    pass
-                try:
-                    await db.execute("ALTER TABLE tasks ADD COLUMN is_critical_path INTEGER DEFAULT 0")
-                except Exception:
-                    pass
-                # Token/cost tracking columns
-                try:
-                    await db.execute("ALTER TABLE tasks ADD COLUMN input_tokens INTEGER")
-                except Exception:
-                    pass
-                try:
-                    await db.execute("ALTER TABLE tasks ADD COLUMN output_tokens INTEGER")
-                except Exception:
-                    pass
-                try:
-                    await db.execute("ALTER TABLE tasks ADD COLUMN estimated_cost REAL")
-                except Exception:
-                    pass
-                try:
-                    await db.execute("ALTER TABLE tasks ADD COLUMN task_type TEXT DEFAULT 'AUTO'")
-                except Exception:
-                    pass
-                try:
-                    await db.execute("ALTER TABLE tasks ADD COLUMN source_ref TEXT")
-                except Exception:
-                    pass
-                try:
-                    await db.execute("ALTER TABLE tasks ADD COLUMN parent_task_id TEXT")
-                except Exception:
-                    pass
-                try:
-                    await db.execute("ALTER TABLE tasks ADD COLUMN priority_score REAL DEFAULT 0.0")
-                except Exception:
-                    pass
-                try:
-                    await db.execute("ALTER TABLE tasks ADD COLUMN handoff_type TEXT")
-                except Exception:
-                    pass
-                try:
-                    await db.execute("ALTER TABLE tasks ADD COLUMN handoff_payload TEXT DEFAULT '{}'")
-                except Exception:
-                    pass
-                try:
-                    await db.execute("ALTER TABLE tasks ADD COLUMN completion_summary TEXT")
-                except Exception:
-                    pass
-                try:
-                    await db.execute("ALTER TABLE tasks ADD COLUMN token_budget INTEGER DEFAULT 0")
-                except Exception:
-                    pass
-                try:
-                    await db.execute("ALTER TABLE tasks ADD COLUMN context_version INTEGER DEFAULT 0")
-                except Exception:
-                    pass
-                try:
-                    await db.execute("ALTER TABLE tasks ADD COLUMN attempt_count INTEGER DEFAULT 0")
-                except Exception:
-                    pass
-                try:
-                    await db.execute("ALTER TABLE tasks ADD COLUMN phase TEXT DEFAULT 'implement'")
-                except Exception:
-                    pass
-                try:
-                    await db.execute("ALTER TABLE tasks ADD COLUMN oracle_result TEXT")
-                except Exception:
-                    pass
-                try:
-                    await db.execute("ALTER TABLE tasks ADD COLUMN oracle_reason TEXT")
-                except Exception:
-                    pass
+                # ─── Migrations (ALTER TABLE — safe to re-run, duplicate column = ignored) ───
+                async def _migrate(sql: str) -> None:
+                    try:
+                        await db.execute(sql)
+                    except Exception:
+                        pass  # column already exists
+
+                await _migrate("ALTER TABLE iteration_loops ADD COLUMN mode TEXT DEFAULT 'review'")
+                await _migrate("ALTER TABLE iteration_loops ADD COLUMN plan_phase TEXT DEFAULT 'plan'")
+                await _migrate("ALTER TABLE tasks ADD COLUMN own_files TEXT DEFAULT '[]'")
+                await _migrate("ALTER TABLE tasks ADD COLUMN forbidden_files TEXT DEFAULT '[]'")
+                await _migrate("ALTER TABLE tasks ADD COLUMN gh_issue_number INTEGER")
+                await _migrate("ALTER TABLE tasks ADD COLUMN is_critical_path INTEGER DEFAULT 0")
+                await _migrate("ALTER TABLE tasks ADD COLUMN input_tokens INTEGER")
+                await _migrate("ALTER TABLE tasks ADD COLUMN output_tokens INTEGER")
+                await _migrate("ALTER TABLE tasks ADD COLUMN estimated_cost REAL")
+                await _migrate("ALTER TABLE tasks ADD COLUMN task_type TEXT DEFAULT 'AUTO'")
+                await _migrate("ALTER TABLE tasks ADD COLUMN source_ref TEXT")
+                await _migrate("ALTER TABLE tasks ADD COLUMN parent_task_id TEXT")
+                await _migrate("ALTER TABLE tasks ADD COLUMN priority_score REAL DEFAULT 0.0")
+                await _migrate("ALTER TABLE tasks ADD COLUMN handoff_type TEXT")
+                await _migrate("ALTER TABLE tasks ADD COLUMN handoff_payload TEXT DEFAULT '{}'")
+                await _migrate("ALTER TABLE tasks ADD COLUMN completion_summary TEXT")
+                await _migrate("ALTER TABLE tasks ADD COLUMN token_budget INTEGER DEFAULT 0")
+                await _migrate("ALTER TABLE tasks ADD COLUMN context_version INTEGER DEFAULT 0")
+                await _migrate("ALTER TABLE tasks ADD COLUMN attempt_count INTEGER DEFAULT 0")
+                await _migrate("ALTER TABLE tasks ADD COLUMN phase TEXT DEFAULT 'implement'")
+                await _migrate("ALTER TABLE tasks ADD COLUMN oracle_result TEXT")
+                await _migrate("ALTER TABLE tasks ADD COLUMN oracle_reason TEXT")
                 await db.execute("""
                     CREATE TABLE IF NOT EXISTS worker_messages (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
