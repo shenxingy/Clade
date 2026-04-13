@@ -1,5 +1,5 @@
 # Plan: Self-Improving Claude Code System
-<!-- STATUS: DEFERRED 2026-04-12 — correction-detector + stats.json basics implemented; session-scorecard, edit-shadow-detector loop closure, and full automated learning cycle not built -->
+<!-- STATUS: IMPLEMENTED 2026-04-13 — Full pipeline: auto-audit, learning→rule, cross-project aggregation, effectiveness tracking, contradiction detection, hook generation skill. See configs/hooks/{auto-audit,learning-to-rule,lib/rule-{utils,effectiveness},lib/contradiction-detect}.sh -->
 
 **Date**: 2026-02-25
 **Status**: Draft → Ready for implementation

@@ -29,6 +29,8 @@ If scorecards.jsonl doesn't exist or has <4 entries, show "Not enough data for t
 1. Read `RULES_FILE` — the learned rules for this scope
 2. Read `CLAUDE_TARGET` — the config that rules will be promoted into
 3. Read `~/.claude/hooks/` script names and their purposes (from comments)
+4. Read `~/.claude/corrections/rule-effectiveness.json` — hit/miss data per rule (if exists)
+5. Read `~/.claude/corrections/cross-project-rules.jsonl` — rules that recur across projects (if exists)
 
 ### Step 2: Cluster similar rules
 
@@ -57,8 +59,16 @@ For each rule in RULES_FILE:
 - The rule says to do X, but CLAUDE_TARGET or a hook says to do Y
 - Action: Flag for human decision
 
+#### INEFFECTIVE — Rule exists but corrections still happen in its domain
+- Check `rule-effectiveness.json`: if miss rate > 60% with 3+ events, flag for rewrite
+- The rule may be too vague, too specific, or addressing the wrong root cause
+
 #### KEEP — Rule is still relevant and not yet ready to promote
 - Recent rule (< 14 days) or context-specific
+
+#### CROSS-PROJECT — Rule recurs across 2+ projects
+- Check `cross-project-rules.jsonl` for rules with same hash in different projects
+- These are strong candidates for global CLAUDE.md promotion
 
 ### Step 4: Execute promotions
 
