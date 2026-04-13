@@ -53,3 +53,8 @@ Read steps from TODO.md, auto-plan implementation details, and run them sequenti
 7. Each task runs with a timeout; on failure, working tree is rolled back and the task is retried
 8. Logs go to `logs/claude-tasks/` with timestamps (per attempt)
 9. After all tasks complete: success/failure summary, failures logged to PROGRESS.md + GitHub Issue
+
+## After batch-tasks completes
+
+Run `/commit` to push worker output (tasks run in-tree; changes may not be committed yet).
+Run `/review` to verify behavior anchors still pass after autonomous changes.
