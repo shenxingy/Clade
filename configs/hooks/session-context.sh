@@ -109,7 +109,7 @@ if [[ -d "$HANDOFF_DIR" ]]; then
     AGE_HOURS=$(( (NOW - FILE_MTIME) / 3600 ))
     if [[ $AGE_HOURS -lt 24 ]]; then
       HANDOFF_CONTENT=$(cat "$LATEST_HANDOFF" 2>/dev/null)
-      CONTEXT="${CONTEXT}\n## Handoff from previous session (${AGE_HOURS}h ago)\n${HANDOFF_CONTENT}\nRun /pickup to resume from this handoff.\n"
+      CONTEXT="${CONTEXT}\n## Handoff from previous session (${AGE_HOURS}h ago)\n${HANDOFF_CONTENT}\n⚠️ IMPORTANT: Before doing anything else, run \`/pickup\` to restore the exact session state. Do NOT start new work until pickup completes.\n"
     fi
   fi
 fi
