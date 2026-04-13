@@ -4,7 +4,7 @@
 
 **Project type:** cli + skill-system + orchestrator (FastAPI)
 **Last full pass:** 2026-04-12
-**Coverage:** 67 ✅, 0 ❌, 5 ⚠, 0 ⬜ untested
+**Coverage:** 69 ✅, 0 ❌, 5 ⚠, 0 ⬜ untested
 
 ---
 
@@ -13,14 +13,14 @@
 
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
-| I1 | `./install.sh` runs without errors — no missing source files, no broken symlinks | ✅ | 2026-03-30 | 29 config skills + 3 userSettings = 32 total installed |
-| I2 | All skills from `configs/skills/` are installed to `~/.claude/skills/` | ✅ | 2026-04-10 | 29/29 skills installed |
+| I1 | `./install.sh` runs without errors — no missing source files, no broken symlinks | ✅ | 2026-04-12 | 90 skills + 3 userSettings = 93 total installed (was 29; seo-*, ads-*, blog-* added) |
+| I2 | All skills from `configs/skills/` are installed to `~/.claude/skills/` | ✅ | 2026-04-12 | 90/90 skills installed |
 | I3 | All hooks from `configs/hooks/` are installed to `~/.claude/hooks/` | ✅ | 2026-04-10 | 17/17 hooks installed (4 new since last review: linter-config-guard, permission-request, revert-detector, post-tool-use-lint) |
-| I4 | All scripts from `configs/scripts/` are installed to `~/.claude/scripts/` | ✅ | 2026-04-10 | 27/27 scripts installed |
-| I5 | All templates from `configs/templates/` are installed to `~/.claude/templates/` | ✅ | 2026-03-28 | |
-| I6 | `~/.local/bin/slt` symlink exists and points to `statusline-toggle.sh` | ✅ | 2026-03-28 | |
-| I7 | `~/.local/bin/committer` symlink exists and points to `committer.sh` | ✅ | 2026-03-28 | |
-| I8 | `~/.local/bin/devmode` symlink exists and points to `devmode.sh` | ✅ | 2026-03-28 | |
+| I4 | All scripts from `configs/scripts/` are installed to `~/.claude/scripts/` | ✅ | 2026-04-12 | 27/27 .sh scripts + subdirs seo/, ads/, blog/ Python scripts installed |
+| I5 | All templates from `configs/templates/` are installed to `~/.claude/templates/` | ✅ | 2026-04-12 | |
+| I6 | `~/.local/bin/slt` symlink exists and points to `statusline-toggle.sh` | ✅ | 2026-04-12 | |
+| I7 | `~/.local/bin/committer` symlink exists and points to `committer.sh` | ✅ | 2026-04-12 | |
+| I8 | `~/.local/bin/devmode` symlink exists and points to `devmode.sh` | ✅ | 2026-04-12 | |
 
 ## Behavior Anchors (CLAUDE.md `## Features`)
 <!-- Each anchor must work end-to-end. -->
@@ -28,7 +28,7 @@
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
 | B1 | `slt` command runs without error; output changes on repeated calls (symbol→percent→number→bar→off→…) | ✅ | 2026-04-12 | full cycle verified: off→symbol→percent→number→bar→off; bar mode renders ▓▓▓▓░░░░░░ |
-| B2 | `committer "type: msg" file1 file2` stages only the named files and commits — does not stage unstaged files nearby | ✅ | 2026-03-28 | tested with bystander file in temp repo |
+| B2 | `committer "type: msg" file1 file2` stages only the named files and commits — does not stage unstaged files nearby | ✅ | 2026-04-12 | tested with bystander file in temp repo |
 | B3 | `devmode` toggles `~/.claude/.dev-mode` flag; `devmode on/off/status` work as expected | ✅ | 2026-04-10 | on/off/status all return correct output |
 | B4 | `/commit` skill prompt contains: analyze → split by module → confirm → commit → push flow | ✅ | 2026-04-10 | committer keyword present |
 | B5 | `/loop` skill prompt contains: goal file input → supervisor plans → workers execute → convergence check | ✅ | 2026-04-10 | |
@@ -53,17 +53,17 @@
 
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
-| SH1 | All `configs/hooks/*.sh` pass `bash -n` | ✅ | 2026-04-10 | all 17 hooks pass |
-| SH2 | All `configs/scripts/*.sh` pass `bash -n` | ✅ | 2026-04-10 | all 27 scripts pass |
-| SH3 | `install.sh` passes `bash -n` | ✅ | 2026-04-10 | |
+| SH1 | All `configs/hooks/*.sh` pass `bash -n` | ✅ | 2026-04-12 | all 17 hooks pass |
+| SH2 | All `configs/scripts/*.sh` pass `bash -n` | ✅ | 2026-04-12 | all 27 scripts pass |
+| SH3 | `install.sh` passes `bash -n` | ✅ | 2026-04-12 | |
 
 ## Orchestrator — Python Syntax & Tests
 <!-- The orchestrator Python modules must compile and pass tests. -->
 
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
-| PY1 | All Python modules pass `python -m py_compile` (full list from CLAUDE.md) | ✅ | 2026-04-10 | all modules compile clean |
-| PY2 | `pytest tests/` passes with zero failures | ✅ | 2026-04-10 | 178/178 passed in 2.78s (was 19 — significant test growth) |
+| PY1 | All Python modules pass `python -m py_compile` (full list from CLAUDE.md) | ✅ | 2026-04-12 | all modules compile clean |
+| PY2 | `pytest tests/` passes with zero failures | ✅ | 2026-04-12 | 178/178 passed in 3.09s |
 | PY3 | No circular imports — `python -c "import server"` runs without ImportError | ✅ | 2026-04-10 | |
 
 ## Templates & Assets
@@ -71,18 +71,18 @@
 
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
-| T1 | `configs/templates/VERIFY-frontend.md` exists and contains all 6 required sections | ✅ | 2026-03-28 | |
-| T2 | `configs/templates/VERIFY-backend.md` exists and contains all 6 required sections | ✅ | 2026-03-28 | |
+| T1 | `configs/templates/VERIFY-frontend.md` exists and contains all 6 required sections | ✅ | 2026-04-12 | 12 sections now (added SEO & Discoverability SEO1–SEO9 and Paid Ads ADS1–ADS4) |
+| T2 | `configs/templates/VERIFY-backend.md` exists and contains all 6 required sections | ✅ | 2026-04-12 | 9 sections |
 | T3 | `configs/templates/VERIFY-ai.md` exists and contains all 6 required sections | ✅ | 2026-03-28 | |
-| T4 | `configs/templates/loop-goal.md` exists (loop skill depends on it) | ✅ | 2026-03-28 | |
-| T5 | `configs/templates/CLAUDE.md` project template exists | ✅ | 2026-03-28 | |
+| T4 | `configs/templates/loop-goal.md` exists (loop skill depends on it) | ✅ | 2026-04-12 | |
+| T5 | `configs/templates/CLAUDE.md` project template exists | ✅ | 2026-04-12 | |
 
 ## Skills Quality
 <!-- Each skill must have a valid prompt.md and SKILL.md. -->
 
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
-| SK1 | Every dir in `configs/skills/` contains `prompt.md` | ✅ | 2026-04-10 | all 29 skill dirs have prompt.md |
+| SK1 | Every dir in `configs/skills/` contains `prompt.md` | ✅ | 2026-04-12 | all 90 skill dirs have prompt.md |
 | SK2 | `/review` skill: prompt.md contains all 7 steps and convergence condition | ✅ | 2026-04-10 | |
 | SK3 | `/verify` skill: prompt.md contains VERIFY.md coverage section and `VERIFY_COVERAGE` footer field | ✅ | 2026-04-10 | |
 | SK4 | `/commit` skill: references `committer` script; `git add .` only appears in prohibition rule | ✅ | 2026-04-10 | |
@@ -91,7 +91,7 @@
 | SK7 | `/retro` skill: reads git history via parallel bash commands; outputs metrics table + narrative | ✅ | 2026-04-10 | |
 | SK8 | `/document-release` skill: covers README audit, CHANGELOG polish, and cross-doc consistency | ✅ | 2026-04-10 | |
 | SK9 | `/provider` skill: references `provider-switch.sh`; API keys never stored in config files | ✅ | 2026-04-10 | |
-| SK10 | 26/29 workflow skills have Completion Status footer (DONE/BLOCKED/NEEDS_CONTEXT/DONE_WITH_CONCERNS) | ✅ | 2026-04-10 | 0 missing (3 utility skills exempt: brief, minimax-usage, slt) |
+| SK10 | 26/29 workflow skills have Completion Status footer (DONE/BLOCKED/NEEDS_CONTEXT/DONE_WITH_CONCERNS) | ✅ | 2026-04-12 | 26/26 original workflow skills pass (brief/minimax-usage/slt exempt); seo-*/ads-*/blog-* are external integrations, exempt |
 
 ---
 
@@ -147,6 +147,8 @@
 | SC14 | `next/SKILL.md` when_to_use contains "NOT for external research (use /research)" | ✅ | 2026-04-12 | added this session |
 | SC15 | `review/SKILL.md` when_to_use contains "NOT for post-iteration anchor checks in autonomous loops (use /verify)" | ✅ | 2026-04-12 | added this session |
 | SC16 | `orchestrate/SKILL.md` when_to_use contains "NOT for running tasks" | ✅ | 2026-04-12 | |
+| SC17 | `blog/SKILL.md` when_to_use contains "NOT for site-wide SEO audit" | ✅ | 2026-04-12 | blog↔seo disambiguation |
+| SC18 | `ship/SKILL.md` contains "blog audit" as post-ship step | ✅ | 2026-04-12 | /ship chains to /blog audit for blog projects |
 
 ---
 <!-- Add new checkpoints above this line. /review appends discovered scenarios here automatically. -->
