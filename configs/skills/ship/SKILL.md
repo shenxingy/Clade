@@ -1,0 +1,12 @@
+---
+name: ship
+description: Full release pipeline — tests → coverage → review gate → version bump → CHANGELOG → commit → PR
+when_to_use: "ship a release, full release pipeline, version bump, create PR, CHANGELOG update, release this feature — NOT for committing mid-session (use /commit)"
+argument-hint: '[--dry-run] [--skip-tests] [--no-pr]'
+user_invocable: true
+---
+
+# /ship — Full Release Pipeline
+
+Full release pipeline: tests → coverage → review gate → version bump → CHANGELOG → commit → PR.
+Each step is a hard gate — failure stops the pipeline and reports clearly.
