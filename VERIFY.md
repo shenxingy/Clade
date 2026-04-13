@@ -4,7 +4,7 @@
 
 **Project type:** cli + skill-system + orchestrator (FastAPI)
 **Last full pass:** 2026-04-12
-**Coverage:** 51 ✅, 0 ❌, 5 ⚠, 0 ⬜ untested
+**Coverage:** 67 ✅, 0 ❌, 5 ⚠, 0 ⬜ untested
 
 ---
 
@@ -124,6 +124,29 @@
 | RH2 | `REFERENCES.md` "Planned" items are either implemented (skill/hook/script exists) or marked DEFERRED | ✅ | 2026-04-12 | 0 "Planned" items remain; /cso /retro /document-release /investigate all ✅ DONE; /learn + /ship marked TODO |
 | RH3 | `docs/research/*.md` `needs_work_items` are all addressed (resolved in code) or explicitly marked not-a-gap | ⚠ | 2026-04-10 | 2026-04-07/08 research fully resolved (confirmed via BRAINSTORM). 2026-03-30 landscape docs have remaining needs_work items, most marked "not a gap" in text but not strikethrough-formatted consistently. |
 | RH4 | `docs/plans/*.md` implementation plans have been executed or marked deferred — no "orphaned plans" | ✅ | 2026-04-12 | loop-fix-debt3: DONE (R1-R4 all verified). loop-phase10: DEFERRED. gstack-learnings: DEFERRED. All 5 plan files have STATUS header. |
+
+## Skill Coordination
+<!-- Verifies that skills chain correctly: next-step guidance exists, when_to_use has NOT-for disambiguation, no dead-ends. -->
+<!-- HOW TO VERIFY: grep for the quoted string in the cited file. ✅ if found, ❌ if missing. -->
+
+| ID | Checkpoint | Status | Verified | Notes |
+|----|-----------|--------|----------|-------|
+| SC1 | `sync/SKILL.md` description contains "run /commit after" | ✅ | 2026-04-12 | bidirectional sync↔commit chain |
+| SC2 | `commit/SKILL.md` when_to_use contains "after /sync" | ✅ | 2026-04-12 | |
+| SC3 | `ship/SKILL.md` contains "document-release" as next step | ✅ | 2026-04-12 | "After shipping" section added |
+| SC4 | `loop/SKILL.md` contains "After convergence" section with "/commit" | ✅ | 2026-04-12 | added this session |
+| SC5 | `orchestrate/SKILL.md` contains "After Orchestrating" section with "/batch-tasks" or "/loop" | ✅ | 2026-04-12 | added this session |
+| SC6 | `batch-tasks/SKILL.md` contains "After batch-tasks" section with "/commit" | ✅ | 2026-04-12 | added this session |
+| SC7 | `loop/SKILL.md` when_to_use contains "NOT for TODO.md tasks (use /batch-tasks)" | ✅ | 2026-04-12 | |
+| SC8 | `batch-tasks/SKILL.md` when_to_use contains "NOT for goal-file loops (use /loop)" | ✅ | 2026-04-12 | |
+| SC9 | `sync/SKILL.md` when_to_use contains "NOT for post-release doc sync (use /document-release)" | ✅ | 2026-04-12 | |
+| SC10 | `document-release/SKILL.md` when_to_use contains "NOT for session-end" | ✅ | 2026-04-12 | |
+| SC11 | `commit/SKILL.md` when_to_use contains "NOT for releases (use /ship)" | ✅ | 2026-04-12 | |
+| SC12 | `ship/SKILL.md` when_to_use contains "NOT for committing mid-session (use /commit)" | ✅ | 2026-04-12 | |
+| SC13 | `research/SKILL.md` when_to_use contains "NOT for internal priorities (use /next)" | ✅ | 2026-04-12 | |
+| SC14 | `next/SKILL.md` when_to_use contains "NOT for external research (use /research)" | ✅ | 2026-04-12 | added this session |
+| SC15 | `review/SKILL.md` when_to_use contains "NOT for post-iteration anchor checks in autonomous loops (use /verify)" | ✅ | 2026-04-12 | added this session |
+| SC16 | `orchestrate/SKILL.md` when_to_use contains "NOT for running tasks" | ✅ | 2026-04-12 | |
 
 ---
 <!-- Add new checkpoints above this line. /review appends discovered scenarios here automatically. -->
