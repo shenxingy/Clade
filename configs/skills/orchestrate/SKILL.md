@@ -16,3 +16,9 @@ Act as a project orchestrator, not a code writer. Your job is to understand the 
 - **`--plan`**: Two-phase mode — first write `IMPLEMENTATION_PLAN.md` (architecture, risks, steps), then decompose into `proposed-tasks.md` with `OWN_FILES`/`FORBIDDEN_FILES` per task
 
 See `prompt.md` for full instructions.
+
+## After Orchestrating
+
+Once `proposed-tasks.md` is ready:
+- Run `/batch-tasks` to execute tasks as parallel worktree workers (independent tasks)
+- Run `/loop <goal-file>` to run iterative supervisor+worker cycles (dependent/sequential goals)

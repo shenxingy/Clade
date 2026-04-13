@@ -1,7 +1,7 @@
 ---
 name: commit
 description: Analyze uncommitted changes, split into logical commits by module, commit and push by default
-when_to_use: "commit, push, ship code, 提交, 推送, done with changes, save work"
+when_to_use: "commit, push, ship code, 提交, 推送, done with changes, save work, after /sync — NOT for releases (use /ship)"
 argument-hint: '[--no-push] [--dry-run]'
 user_invocable: true
 ---
