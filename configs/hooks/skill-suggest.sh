@@ -4,68 +4,92 @@
 # PostToolUse hook (Edit|Write) — checks what was just edited and suggests
 # relevant skills the user might want to run next.
 #
-# This is SUGGESTION only — never auto-invokes skills.
-# Integrates with the self-improvement pipeline by tracking which suggestions
-# the user follows (via prompt-tracker.sh) → recurring patterns become rules.
+# Covers: blog, API routes, security, infra/CI, frontend components,
+# DB migrations, ML configs, LaTeX, schema, sitemap, tests, meta.
 
 INPUT=$(cat)
-TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty')
 FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
 
 [[ -z "$FILE_PATH" ]] && exit 0
 
-# ─── Blog content detection ──────────────────────────────────────────
-# After editing blog content → suggest SEO check + GEO audit
-BLOG_SUGGEST=""
-if echo "$FILE_PATH" | grep -qiE '(blog|posts|articles|content)/.*\.(md|mdx|html)$'; then
-  BLOG_SUGGEST="Blog content edited. Consider running:
-  - /blog-seo-check $FILE_PATH — validate on-page SEO (title, meta, headings, links)
-  - /blog geo $FILE_PATH — AI citation readiness audit (ChatGPT, Perplexity, AI Overviews)"
-fi
-
-# ─── Schema/structured data detection ────────────────────────────────
-SCHEMA_SUGGEST=""
-if echo "$FILE_PATH" | grep -qiE '(schema|structured-data|json-ld|markup)' \
-   || grep -q 'application/ld+json' "$FILE_PATH" 2>/dev/null; then
-  SCHEMA_SUGGEST="Schema markup edited. Consider: /seo schema <url> — validate structured data"
-fi
-
-# ─── Sitemap detection ───────────────────────────────────────────────
-SITEMAP_SUGGEST=""
-if echo "$FILE_PATH" | grep -qiE 'sitemap.*\.xml'; then
-  SITEMAP_SUGGEST="Sitemap edited. Consider: /seo sitemap <url> — validate XML sitemap"
-fi
-
-# ─── CLAUDE.md / VERIFY.md detection ─────────────────────────────────
-REVIEW_SUGGEST=""
-if echo "$FILE_PATH" | grep -qE '(CLAUDE|VERIFY)\.md$'; then
-  REVIEW_SUGGEST="Project config updated. Consider: /review — re-test VERIFY.md checkpoints"
-fi
-
-# ─── Hook/skill editing (meta) ───────────────────────────────────────
-META_SUGGEST=""
-if echo "$FILE_PATH" | grep -qE 'configs/(hooks|skills)/'; then
-  META_SUGGEST="Clade config edited. Run: ./install.sh to deploy changes"
-fi
-
-# ─── Test file detection ─────────────────────────────────────────────
-TEST_SUGGEST=""
-if echo "$FILE_PATH" | grep -qiE '(test|spec|_test)\.(py|ts|js|go|rs)$'; then
-  TEST_SUGGEST="Test file edited. Consider running the test suite to verify"
-fi
-
-# ─── Build suggestion output ─────────────────────────────────────────
 SUGGESTIONS=""
-for s in "$BLOG_SUGGEST" "$SCHEMA_SUGGEST" "$SITEMAP_SUGGEST" "$REVIEW_SUGGEST" "$META_SUGGEST" "$TEST_SUGGEST"; do
-  [[ -n "$s" ]] && SUGGESTIONS="${SUGGESTIONS}${s}\n"
-done
+
+# ─── Blog content ────────────────────────────────────────────────────
+if echo "$FILE_PATH" | grep -qiE '(blog|posts|articles)/.*\.(md|mdx|html)$'; then
+  SUGGESTIONS="${SUGGESTIONS}Blog content edited. Consider: /blog-seo-check and /blog geo for SEO + AI citation audit\n"
+fi
+
+# ─── API route / endpoint ───────────────────────────────────────────
+if echo "$FILE_PATH" | grep -qiE '(routes|views|controllers|endpoints|handlers|api)/.*\.(py|ts|js|go|rs|rb)$' \
+   || echo "$FILE_PATH" | grep -qiE '(router|handler|controller|endpoint)\.(py|ts|js|go|rs|rb)$'; then
+  SUGGESTIONS="${SUGGESTIONS}API route edited. Consider: /verify to test endpoints, /cso if auth-related\n"
+fi
+
+# ─── Security-sensitive files ────────────────────────────────────────
+if echo "$FILE_PATH" | grep -qiE '(auth|crypto|password|secret|token|credential|jwt|oauth|session|middleware.auth|security)'; then
+  SUGGESTIONS="${SUGGESTIONS}Security-sensitive file edited. Run /cso for security audit\n"
+fi
+
+# ─── Infrastructure / CI ────────────────────────────────────────────
+if echo "$FILE_PATH" | grep -qiE '(Dockerfile|docker-compose|\.github/workflows|\.gitlab-ci|Jenkinsfile|\.circleci|\.tf$|terraform|k8s|kubernetes|helm)'; then
+  SUGGESTIONS="${SUGGESTIONS}Infrastructure config edited. Run /verify to validate deployment pipeline\n"
+fi
+
+# ─── Frontend components ────────────────────────────────────────────
+if echo "$FILE_PATH" | grep -qiE '\.(tsx|jsx|vue|svelte)$' \
+   && ! echo "$FILE_PATH" | grep -qiE '(test|spec|story)'; then
+  SUGGESTIONS="${SUGGESTIONS}UI component edited. Consider browser testing or /review for visual verification\n"
+fi
+
+# ─── Database migrations ────────────────────────────────────────────
+if echo "$FILE_PATH" | grep -qiE '(migration|migrate|alembic|drizzle/|prisma/migrations|knex)'; then
+  SUGGESTIONS="${SUGGESTIONS}DB migration edited. Run /verify — check migration tests and rollback strategy\n"
+fi
+
+# ─── ML / notebook ──────────────────────────────────────────────────
+if echo "$FILE_PATH" | grep -qiE '\.(ipynb)$' \
+   || echo "$FILE_PATH" | grep -qiE '(training|hyperparameter|experiment|model.config)'; then
+  SUGGESTIONS="${SUGGESTIONS}ML artifact edited. Verify model pipeline and check resource usage\n"
+fi
+
+# ─── LaTeX / academic ───────────────────────────────────────────────
+if echo "$FILE_PATH" | grep -qiE '\.(tex|bib|cls|sty)$'; then
+  SUGGESTIONS="${SUGGESTIONS}LaTeX edited. Run latexmk to rebuild, chktex for lint\n"
+fi
+
+# ─── Schema / structured data ───────────────────────────────────────
+if echo "$FILE_PATH" | grep -qiE '(schema|structured-data|json-ld)' \
+   || grep -q 'application/ld+json' "$FILE_PATH" 2>/dev/null; then
+  SUGGESTIONS="${SUGGESTIONS}Schema markup edited. Run /seo schema <url> to validate\n"
+fi
+
+# ─── Sitemap ─────────────────────────────────────────────────────────
+if echo "$FILE_PATH" | grep -qiE 'sitemap.*\.xml'; then
+  SUGGESTIONS="${SUGGESTIONS}Sitemap edited. Run /seo sitemap <url> to validate\n"
+fi
+
+# ─── CLAUDE.md / VERIFY.md ──────────────────────────────────────────
+if echo "$FILE_PATH" | grep -qE '(CLAUDE|VERIFY)\.md$'; then
+  SUGGESTIONS="${SUGGESTIONS}Project config updated. Run /review to re-test VERIFY.md checkpoints\n"
+fi
+
+# ─── Hook/skill editing (meta) ──────────────────────────────────────
+if echo "$FILE_PATH" | grep -qE 'configs/(hooks|skills)/'; then
+  SUGGESTIONS="${SUGGESTIONS}Clade config edited. Run ./install.sh to deploy changes\n"
+fi
+
+# ─── Test files ──────────────────────────────────────────────────────
+if echo "$FILE_PATH" | grep -qiE '(test|spec|_test)\.(py|ts|js|go|rs|rb)$'; then
+  SUGGESTIONS="${SUGGESTIONS}Test file edited. Run the test suite to verify\n"
+fi
 
 [[ -z "$SUGGESTIONS" ]] && exit 0
 
-# Throttle: don't suggest for the same file type more than once per 5 minutes
+# ─── Throttle by suggestion category (not file extension) ───────────
 THROTTLE_DIR="/tmp/claude-skill-suggest"
 mkdir -p "$THROTTLE_DIR"
-CATEGORY=$(echo "$FILE_PATH" | sed 's/.*\.//' | tr '[:upper:]' '[:lower:]')
+# Use first matched suggestion type as throttle key
+CATEGORY=$(echo -n "$SUGGESTIONS" | head -1 | cut -d' ' -f1-2 | tr ' /' '_' | tr '[:upper:]' '[:lower:]')
 THROTTLE_FILE="$THROTTLE_DIR/$CATEGORY"
 
 if [[ -f "$THROTTLE_FILE" ]]; then

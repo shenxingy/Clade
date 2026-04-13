@@ -80,17 +80,27 @@ fi
 source "$LIBDIR/rule-effectiveness.sh" 2>/dev/null || true
 source "$LIBDIR/rule-utils.sh" 2>/dev/null || true
 
-# Check if a rule already exists for this domain → rule miss
+# Check if a rule already exists for this domain → rule miss (only the best match)
+# Only record one miss per correction to avoid inflating miss rates for busy domains
+_BEST_MATCH_HASH=""
+_BEST_MATCH_SCORE=0
 for rf in "$HOME/.claude/corrections/rules.md" "$PROJECT/.claude/corrections/rules.md"; do
   [[ -f "$rf" ]] || continue
   parse_rules "$rf" 2>/dev/null || continue
   for (( _i=0; _i<${#RULE_DOMAINS[@]}; _i++ )); do
     if [[ "${RULE_DOMAINS[$_i]}" == "$DOMAIN" ]]; then
-      local_hash=$(rule_hash "${RULE_TEXTS[$_i]}" 2>/dev/null)
-      [[ -n "$local_hash" ]] && record_rule_miss "$local_hash" 2>/dev/null
+      # Score: count overlapping words between rule text and correction prompt
+      _rule_words=$(echo "${RULE_TEXTS[$_i]}" | tr '[:upper:]' '[:lower:]' | tr -cs '[:alpha:]' '\n' | sort -u)
+      _prompt_words=$(echo "$PROMPT" | tr '[:upper:]' '[:lower:]' | tr -cs '[:alpha:]' '\n' | sort -u)
+      _overlap=$(comm -12 <(echo "$_rule_words") <(echo "$_prompt_words") 2>/dev/null | wc -l | tr -d ' ')
+      if [[ "${_overlap:-0}" -gt "$_BEST_MATCH_SCORE" ]]; then
+        _BEST_MATCH_SCORE="$_overlap"
+        _BEST_MATCH_HASH=$(rule_hash "${RULE_TEXTS[$_i]}" 2>/dev/null)
+      fi
     fi
   done
 done
+[[ -n "$_BEST_MATCH_HASH" ]] && record_rule_miss "$_BEST_MATCH_HASH" 2>/dev/null
 
 # ─── Cross-project rule tracking ──────────────────────────────────────
 # Log to cross-project-rules.jsonl so auto-audit can detect multi-project patterns
