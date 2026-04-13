@@ -154,28 +154,35 @@ if [[ -f "$HOOKS_DIR/learning-to-rule.sh" ]]; then
 fi
 
 # Auto-audit (promote mature rules, archive stale ones, cross-project aggregation)
-LAST_AUDIT_FILE="$HOME/.claude/corrections/.last-audit"
-if [[ -f "$LAST_AUDIT_FILE" ]]; then
-  AUDIT_MTIME=$(stat -c %Y "$LAST_AUDIT_FILE" 2>/dev/null || stat -f %m "$LAST_AUDIT_FILE" 2>/dev/null || echo 0)
-  AUDIT_AGE_DAYS=$(( ($(date +%s) - AUDIT_MTIME) / 86400 ))
-else
-  AUDIT_AGE_DAYS=999
-fi
-
-if [[ $AUDIT_AGE_DAYS -ge 7 ]] && [[ -f "$HOOKS_DIR/auto-audit.sh" ]]; then
+# Global and project-local audits check their own .last-audit independently
+if [[ -f "$HOOKS_DIR/auto-audit.sh" ]]; then
   source "$HOOKS_DIR/auto-audit.sh" 2>/dev/null
-  # Run global auto-audit
+
+  # Global auto-audit (checks its own .last-audit internally)
   run_auto_audit "global" 2>/dev/null
-  # Run project-local auto-audit if applicable
-  if [[ -d "${CLAUDE_PROJECT_DIR:-.}/.claude/corrections" ]]; then
-    run_auto_audit "${CLAUDE_PROJECT_DIR:-$(pwd)}" 2>/dev/null
-  fi
   if [[ -n "${AUDIT_SUMMARY:-}" ]]; then
     CONTEXT="${CONTEXT}\n${AUDIT_SUMMARY}\n"
   fi
+
+  # Project-local auto-audit (independent timing from global)
+  AUDIT_SUMMARY=""
+  if [[ -d "${CLAUDE_PROJECT_DIR:-.}/.claude/corrections" ]]; then
+    run_auto_audit "${CLAUDE_PROJECT_DIR:-$(pwd)}" 2>/dev/null
+    if [[ -n "${AUDIT_SUMMARY:-}" ]]; then
+      CONTEXT="${CONTEXT}\n${AUDIT_SUMMARY}\n"
+    fi
+  fi
 else
+  # Fallback: show nudge if auto-audit.sh not available
+  LAST_AUDIT_FILE="$HOME/.claude/corrections/.last-audit"
+  if [[ -f "$LAST_AUDIT_FILE" ]]; then
+    AUDIT_MTIME=$(stat -c %Y "$LAST_AUDIT_FILE" 2>/dev/null || stat -f %m "$LAST_AUDIT_FILE" 2>/dev/null || echo 0)
+    AUDIT_AGE_DAYS=$(( ($(date +%s) - AUDIT_MTIME) / 86400 ))
+  else
+    AUDIT_AGE_DAYS=999
+  fi
   if [[ $AUDIT_AGE_DAYS -ge 7 ]]; then
-    CONTEXT="${CONTEXT}\nAudit reminder: Correction rules haven't been audited in ${AUDIT_AGE_DAYS}+ days. Run /audit for deep analysis.\n"
+    CONTEXT="${CONTEXT}\nAudit reminder: rules haven't been audited in ${AUDIT_AGE_DAYS}+ days. Run /audit.\n"
   fi
 fi
 
@@ -232,23 +239,54 @@ fi
 # Detect project context and suggest the most relevant skills upfront
 SKILL_ROUTE=""
 
-# Blog project → suggest SEO/GEO workflow
-if ls blog/ posts/ articles/ content/ 2>/dev/null | head -1 &>/dev/null; then
-  SKILL_ROUTE="${SKILL_ROUTE}Blog project detected. After writing/editing posts, run: /blog-seo-check <file> → /blog geo <file> → /blog schema <file>\n"
+# Blog/content project
+if [[ -d "blog" || -d "posts" || -d "articles" ]]; then
+  SKILL_ROUTE="${SKILL_ROUTE}Blog project: /blog-seo-check + /blog geo after writing, /review includes SEO+GEO audit\n"
 fi
 
-# Web project with publish URL → suggest /review (includes SEO audit)
-if grep -qiE 'publish.url|live.url|https://' CLAUDE.md 2>/dev/null; then
-  SKILL_ROUTE="${SKILL_ROUTE}Published site detected. Run /review for full coverage including SEO + GEO audit.\n"
+# Web project with publish URL (only if web framework detected)
+if grep -qiE '## (Publish|Live|Site) URL' CLAUDE.md 2>/dev/null \
+   && { [[ -f "package.json" ]] || [[ -f "vercel.json" ]] || [[ -f "netlify.toml" ]] || compgen -G "*.html" >/dev/null 2>&1; }; then
+  SKILL_ROUTE="${SKILL_ROUTE}Published web site: /review includes full SEO + GEO audit\n"
 fi
 
-# Python/Node project → suggest /verify after changes
-if [[ -f "pyproject.toml" || -f "requirements.txt" || -f "package.json" ]]; then
-  SKILL_ROUTE="${SKILL_ROUTE}Use /verify after code changes, /review for comprehensive testing.\n"
+# Auth/security code detected
+if grep -rqlE '(jwt|oauth|bcrypt|argon2|@login_required|@requires_auth|passport\.)' . --include='*.py' --include='*.ts' --include='*.js' --include='*.go' --include='*.rs' --include='*.rb' 2>/dev/null | head -1 &>/dev/null; then
+  SKILL_ROUTE="${SKILL_ROUTE}Auth code detected: /cso for security audit after auth changes\n"
+fi
+
+# Infrastructure / CI
+if [[ -f "Dockerfile" || -f "docker-compose.yml" || -f "docker-compose.yaml" || -d ".github/workflows" || -f ".gitlab-ci.yml" ]]; then
+  SKILL_ROUTE="${SKILL_ROUTE}CI/Docker: /verify after infra changes\n"
+fi
+
+# Mobile — iOS
+if compgen -G "*.xcodeproj" >/dev/null 2>&1 || [[ -f "Podfile" ]]; then
+  SKILL_ROUTE="${SKILL_ROUTE}iOS project: run xcodebuild tests after Swift changes\n"
+fi
+
+# Mobile — Android
+if [[ -f "build.gradle" || -f "build.gradle.kts" || -f "settings.gradle" || -f "settings.gradle.kts" ]]; then
+  SKILL_ROUTE="${SKILL_ROUTE}Android project: ./gradlew test after Kotlin/Java changes\n"
+fi
+
+# ML/AI
+if grep -rqlE '(import torch|import tensorflow|from transformers|import sklearn|import jax)' . --include='*.py' 2>/dev/null | head -1 &>/dev/null; then
+  SKILL_ROUTE="${SKILL_ROUTE}ML/AI project: /verify after model changes, check GPU with nvidia-smi\n"
+fi
+
+# LaTeX / academic
+if compgen -G "*.tex" >/dev/null 2>&1; then
+  SKILL_ROUTE="${SKILL_ROUTE}LaTeX project: latexmk to rebuild, chktex for lint\n"
+fi
+
+# Generic: any project with tests
+if [[ -f "pyproject.toml" || -f "requirements.txt" || -f "package.json" || -f "Cargo.toml" || -f "go.mod" || -f "Gemfile" ]]; then
+  SKILL_ROUTE="${SKILL_ROUTE}Use /verify after code changes, /review for comprehensive testing\n"
 fi
 
 if [[ -n "$SKILL_ROUTE" ]]; then
-  CONTEXT="${CONTEXT}\nRecommended skill workflow:\n${SKILL_ROUTE}"
+  CONTEXT="${CONTEXT}\nRecommended workflow:\n${SKILL_ROUTE}"
 fi
 
 # ─── Skills Directory ───────────────────────────────────────────

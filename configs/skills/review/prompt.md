@@ -23,14 +23,21 @@ Store the result as `PUBLISH_URL` (empty string if nothing found). This determin
 **If VERIFY.md does not exist:**
 
 1. Detect project type from CLAUDE.md `## Project Type`, or auto-detect:
-   - `package.json` with next/react/vue → frontend
+   - `package.json` with next/react/vue/angular/svelte → frontend
    - `requirements.txt` / `pyproject.toml` with fastapi/flask/django → backend
-   - ML libraries (torch, transformers, sklearn) → ai
+   - `go.mod` / `Cargo.toml` with http/server/handler patterns → backend
+   - `Gemfile` with rails/sinatra → backend
+   - ML libraries (torch, transformers, sklearn, jax) → ai
+   - `*.xcodeproj` / `Podfile` / `build.gradle` → mobile
+   - `Dockerfile` / `.github/workflows` / `*.tf` → infra
+   - `*.tex` / `*.bib` → academic
+   - CLI with main/cmd/ and no web server → cli
    - Mixed → pick the dominant type; note the other
 2. Copy the matching template:
-   - frontend → `configs/templates/VERIFY-frontend.md` (or `~/.claude/templates/VERIFY-frontend.md`)
-   - backend → `configs/templates/VERIFY-backend.md`
-   - ai → `configs/templates/VERIFY-ai.md`
+   - frontend → `~/.claude/templates/VERIFY-frontend.md`
+   - backend → `~/.claude/templates/VERIFY-backend.md`
+   - ai → `~/.claude/templates/VERIFY-ai.md`
+   - No template for your type? Generate a minimal VERIFY.md with checkpoints for: compilation, test suite, key features from CLAUDE.md `## Features`, and lint/format
 3. Scan the codebase and customize the template:
    - Replace generic route placeholders with actual routes from the project
    - For frontend: list actual page paths from `pages/` or `app/` directory
