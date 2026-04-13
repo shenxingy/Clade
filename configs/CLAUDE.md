@@ -18,6 +18,8 @@ These rules enable autonomous, unattended operation across all projects.
 ## Autonomy
 - Proceed WITHOUT asking for: file edits, test runs, builds, type-checks, lint
 - Ask the user BEFORE: deleting files, modifying .env, running migrations, force-pushing
+- **Bug fix without permission**: When bugs are clearly identified with a concrete fix and no destructive side effects — implement immediately. "Should we fix?" creates an unnecessary round-trip. Ask only when the fix is ambiguous, destructive, or has architectural tradeoffs.
+- **Deployment topology**: Before checking localhost, scan for known deployment URLs (Tailscale internal domain, env vars like SITE_URL, INTERNAL_HOST). Default-to-localhost assumption produces wrong-context reads when the real service is remote.
 
 ## Context Management
 - Context window ~80% full → run `/handoff` to save state, then start a new session with `/pickup`
