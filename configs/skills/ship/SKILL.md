@@ -15,3 +15,4 @@ Each step is a hard gate — failure stops the pipeline and reports clearly.
 
 Run `/document-release` to sync README, CHANGELOG, and docs with the new release.
 For web projects: run `/seo audit <url>` to verify no SEO regression from the release.
+If running paid ads: run `/ads audit` to verify tracking pixels and conversion events still fire correctly after the release.
