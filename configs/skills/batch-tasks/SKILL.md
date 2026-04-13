@@ -1,7 +1,7 @@
 ---
 name: batch-tasks
 description: Execute TODO.md steps via unattended Claude Code sessions
-when_to_use: "run tasks, execute TODO, batch execute, 批量执行, run steps"
+when_to_use: "execute TODO.md steps, run specific tasks from a list, batch execute named tasks, 批量执行, run steps from TODO — NOT for goal-file loops (use /loop) or task planning (use /orchestrate)"
 argument-hint: '[step2 step4 ...] | "task1" "task2" ... | --run [file] | --dry-run [file] | --parallel [file]'
 user_invocable: true
 ---

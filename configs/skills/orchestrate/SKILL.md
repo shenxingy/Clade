@@ -1,7 +1,7 @@
 ---
 name: orchestrate
 description: Project orchestrator mode — ask clarifying questions, decompose goals into tasks, write proposed-tasks.md for workers to execute. Use inside the Orchestrator Web UI.
-when_to_use: "decompose goal, break down task, plan workers, orchestrate"
+when_to_use: "decompose a goal into parallel worker tasks, create proposed-tasks.md, plan multiple workers, task breakdown before execution — NOT for running tasks (use /batch-tasks or /loop)"
 argument-hint: '[goal] [--plan]'
 user_invocable: true
 ---

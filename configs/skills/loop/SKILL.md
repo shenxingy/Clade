@@ -1,7 +1,7 @@
 ---
 name: loop
 description: Goal-driven autonomous improvement loop using Blueprint architecture — deterministic pre/post phases + LLM nodes for implementation
-when_to_use: "run loop, autonomous loop, keep fixing until done, goal file, 自动循环, run until converged, iterate on goal"
+when_to_use: "run loop with goal file, autonomous supervisor+worker loop, keep fixing until tests pass, iterate until converged, goal.md, Blueprint loop, 自动循环, run until converged — NOT for TODO.md tasks (use /batch-tasks) or task decomposition (use /orchestrate)"
 argument-hint: 'GOAL_FILE [--model haiku|sonnet|opus] [--worker-model MODEL] [--max-iter N] [--max-workers N] [--dry-run] [--status] [--stop] [--resume]'
 user_invocable: true
 ---
