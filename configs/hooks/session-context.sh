@@ -91,11 +91,26 @@ elif [[ -n "$HOSTNAME" ]]; then
   CONTEXT="${CONTEXT}\nHost: ${HOSTNAME} (local)\n"
 fi
 
-# Running docker containers (if docker is available)
+# Running docker containers — filtered to current project only
 if command -v docker &>/dev/null; then
-  DOCKER=$(docker ps --format '{{.Names}}: {{.Status}}' 2>/dev/null | head -5)
+  # Determine project slug: try docker compose name, fall back to dirname
+  _PROJECT_SLUG=""
+  if [[ -f "docker-compose.yml" || -f "docker-compose.yaml" || -f "compose.yml" || -f "compose.yaml" ]]; then
+    _COMPOSE_NAME=$(docker compose config --format json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('name',''))" 2>/dev/null)
+    if [[ -n "$_COMPOSE_NAME" ]]; then
+      _PROJECT_SLUG="$_COMPOSE_NAME"
+    fi
+  fi
+  # Fall back to normalized dirname (underscores → hyphens, lowercase)
+  if [[ -z "$_PROJECT_SLUG" ]]; then
+    _PROJECT_SLUG=$(basename "$PWD" | tr '[:upper:]' '[:lower:]' | tr '_' '-')
+  fi
+
+  # Filter containers by project slug (name contains slug)
+  DOCKER=$(docker ps --format '{{.Names}}: {{.Status}}' 2>/dev/null \
+    | grep -i "$_PROJECT_SLUG" | head -8)
   if [[ -n "$DOCKER" ]]; then
-    CONTEXT="${CONTEXT}\nRunning containers:\n${DOCKER}"
+    CONTEXT="${CONTEXT}\nRunning containers (${_PROJECT_SLUG}):\n${DOCKER}"
   fi
 fi
 
