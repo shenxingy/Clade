@@ -89,6 +89,12 @@ Work through the queue in order (Priority 1 first). For each checkpoint:
 **Behavior Anchors** (all projects):
 - Run the same checks as `/verify` skill for each anchor in `## Features`
 
+**Skill Coordination (SC checkpoints)** — only present in Clade / skill-system projects:
+- Each SC checkpoint says: `"file/SKILL.md" contains "quoted string"`
+- Verify by running: `grep -q "quoted string" configs/skills/file/SKILL.md && echo ✅ || echo ❌`
+- If missing: edit the SKILL.md to add the quoted string (when_to_use disambiguation or next-step section)
+- Fix = add the missing text; re-test = re-run the grep; update status to ✅
+
 ### Record the result:
 
 After testing, the checkpoint is one of:
