@@ -228,6 +228,29 @@ if [[ "${TOTAL_COUNT:-0}" -gt 10 && "${REVERT_COUNT:-0}" -gt 0 ]]; then
   fi
 fi
 
+# ─── Context-Aware Skill Routing ──────────────────────────────────────
+# Detect project context and suggest the most relevant skills upfront
+SKILL_ROUTE=""
+
+# Blog project → suggest SEO/GEO workflow
+if ls blog/ posts/ articles/ content/ 2>/dev/null | head -1 &>/dev/null; then
+  SKILL_ROUTE="${SKILL_ROUTE}Blog project detected. After writing/editing posts, run: /blog-seo-check <file> → /blog geo <file> → /blog schema <file>\n"
+fi
+
+# Web project with publish URL → suggest /review (includes SEO audit)
+if grep -qiE 'publish.url|live.url|https://' CLAUDE.md 2>/dev/null; then
+  SKILL_ROUTE="${SKILL_ROUTE}Published site detected. Run /review for full coverage including SEO + GEO audit.\n"
+fi
+
+# Python/Node project → suggest /verify after changes
+if [[ -f "pyproject.toml" || -f "requirements.txt" || -f "package.json" ]]; then
+  SKILL_ROUTE="${SKILL_ROUTE}Use /verify after code changes, /review for comprehensive testing.\n"
+fi
+
+if [[ -n "$SKILL_ROUTE" ]]; then
+  CONTEXT="${CONTEXT}\nRecommended skill workflow:\n${SKILL_ROUTE}"
+fi
+
 # ─── Skills Directory ───────────────────────────────────────────
 # Inject available skills into every session so Claude can suggest the right skill
 SKILLS_DIR="$HOME/.claude/skills"

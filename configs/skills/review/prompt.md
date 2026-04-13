@@ -234,14 +234,42 @@ If README needs substantive rewrites, make the minimal additions rather than rew
 
 ---
 
+### C. GEO / AI Citation Audit (if blog content detected)
+
+If the project contains blog content (scan for `blog/`, `posts/`, `articles/`, `content/` directories with `.md` or `.mdx` files):
+
+1. Pick the 3 most recently modified blog posts
+2. For each, run `/blog-geo <file>` to get an AI Citation Readiness Score (0-100)
+3. Fix issues scoring below 60:
+   - Add self-contained answer paragraphs (134-167 words) after each H2
+   - Add comparison tables with `<thead>` where appropriate
+   - Ensure H2 headings use question format (60-70% target)
+   - Add source attribution for statistics
+4. Commit fixes: `committer "fix: geo - improve AI citability for <post>" <files>`
+
+If `PUBLISH_URL` is available, also run `/seo-geo <PUBLISH_URL>` for site-level GEO scoring.
+
+### D. Feed findings to self-improvement system
+
+After all review steps, extract learnings:
+
+1. If any pattern recurred across 2+ checkpoints (same type of fix needed repeatedly):
+   - Write to `.claude/learnings.jsonl`: `{"type":"pitfall","content":"<pattern>","confidence":85}`
+   - This auto-promotes to rules.md via the learning-to-rule pipeline
+2. If a VERIFY.md checkpoint failed that has a matching rule in rules.md:
+   - The rule didn't prevent the issue → tracked as a "miss" by effectiveness system
+3. Update `~/.claude/corrections/stats.json` domain counters based on checkpoint categories
+
 ### Output for Step 5.5
 
-After both sub-steps, output a brief summary:
+After all sub-steps, output a brief summary:
 
 ```
 SEO_REVIEW:
   website: ✅ audit complete, N critical fixed, M issues → ACTION-PLAN.md
          | ⚠ no published URL
+  geo:     ✅ 3 posts audited, avg score 72/100, 1 improved
+         | ⚠ no blog content detected
   github:  ✅ description ✅ topics ✅ homepage ⚠ social preview (manual) ✅ license ✅ README
          | fixed: [list of what was changed]
 ```

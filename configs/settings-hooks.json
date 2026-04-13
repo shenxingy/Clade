@@ -96,6 +96,14 @@
                         "command": "~/.claude/hooks/memory-sync.sh",
                         "async": true,
                         "timeout": 10
+                    },
+                    {
+                        "id": "skill-suggest",
+                        "description": "Suggest relevant skills after file edits (blog→SEO/GEO, schema→validate, etc.)",
+                        "type": "command",
+                        "command": "~/.claude/hooks/skill-suggest.sh",
+                        "async": true,
+                        "timeout": 5
                     }
                 ]
             },
