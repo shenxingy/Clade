@@ -38,9 +38,8 @@ Tracks what's been posted, metrics, and what to post next.
 
 ## Pending / Drafts
 
-### Reply to otter_goat (r/ClaudeAI)
-> Just shipped it — `slt bar` gives you `▓▓▓▓▓░░░░░ -8% (3d)`.  
-> 10 blocks = absolute usage this week. The % is pace delta vs. your 95% weekly target. Color goes red→green based on projected end-of-week pace.
+### ~~Reply to otter_goat (r/ClaudeAI)~~ — DONE 2026-04-12
+Shipped. Reply posted with `slt bar` demo + explanation.
 
 ---
 
