@@ -18,18 +18,25 @@
 
 ## Hooks (automatic behaviors)
 
-| Hook | Trigger | Model cost |
-|------|---------|-----------|
-| `session-context.sh` | SessionStart | None (shell only) |
-| `pre-tool-guardian.sh` | PreToolUse (Bash) | None (shell only) |
-| `revert-detector.sh` | PreToolUse (Bash) | None (shell only) |
-| `post-edit-check.sh` | PostToolUse (Edit/Write) | None (shell only) |
-| `post-tool-use-lint.sh` | PostToolUse (Edit/Write) | None (shell only) |
-| `edit-shadow-detector.sh` | PostToolUse (Edit/Write) | None (shell only) |
-| `correction-detector.sh` | UserPromptSubmit | None (shell only) |
-| `verify-task-completed.sh` | TaskCompleted | None (shell only) |
-| `notify-telegram.sh` | Notification | None (shell only) |
-| `prompt-tracker.sh` | UserPromptSubmit | None (shell only) |
+| Hook | Trigger | What it does |
+|------|---------|-------------|
+| `session-context.sh` | SessionStart | Injects git state, model guidance, correction rules into context |
+| `pre-tool-guardian.sh` | PreToolUse (Bash) | Blocks dangerous commands (force-push, rm -rf, migrations outside dev mode) |
+| `linter-config-guard.sh` | PreToolUse (Edit/Write) | Guards linter config files from accidental overwrite |
+| `revert-detector.sh` | PreToolUse (Bash) | Detects git revert/reset attempts and warns |
+| `permission-request.sh` | PermissionRequest | Handles elevated permission requests |
+| `post-edit-check.sh` | PostToolUse (Edit/Write) | Runs verify_cmd after edits; injects lint errors on failure |
+| `post-tool-use-lint.sh` | PostToolUse (Edit/Write) | Runs project verify_cmd; exits 2 on failure so Claude fixes it |
+| `post-tool-use-failure.sh` | PostToolUse (failure) | Logs tool failures for pattern tracking |
+| `edit-shadow-detector.sh` | PostToolUse (Edit/Write) | Detects when edits shadow other files |
+| `failure-detector.sh` | PostToolUse (Bash) | Tracks consecutive Bash failures; injects debugging pressure |
+| `memory-sync.sh` | PostToolUse (Write/Edit) | Syncs memory files to NFS/GitHub when written |
+| `correction-detector.sh` | UserPromptSubmit | Detects correction patterns; saves rules to corrections/rules.md |
+| `prompt-tracker.sh` | UserPromptSubmit | Tracks prompts for correction learning stats |
+| `pre-compact.sh` | PreCompact | Saves session state before context compression |
+| `stop-check.sh` | Stop | Blocks stop if uncommitted changes or blockers.md has entries |
+| `verify-task-completed.sh` | TaskCompleted | Runs quality gate after task completion |
+| `notify-telegram.sh` | Notification | Forwards Claude notifications to Telegram |
 
 All hooks are shell scripts — zero API cost, sub-second execution.
 
@@ -49,6 +56,8 @@ Common values: `"tsc --noEmit"` (TypeScript), `"python3 -m py_compile <file>"` (
 |-------|-------|----------|
 | `code-reviewer` | Sonnet | Code review with persistent memory |
 | `paper-reviewer` | Sonnet | Academic paper review — structured critique for LaTeX papers before submission |
+| `debug-specialist` | Sonnet | Root cause analysis — traces execution paths, reads call chains, forms testable hypotheses. Spawned by `/investigate` |
+| `security-auditor` | Sonnet | Deep security analysis of a file/module — OWASP Top 10, injection vectors, auth flaws. Spawned by `/cso` |
 | `verify-app` | Sonnet | Runtime verification — adapts to project type (web, Rust, Go, Swift, Gradle, LaTeX) |
 | `type-checker` | Haiku | Fast type/compilation check — auto-detects language (TS, Python, Rust, Go, Swift, Kotlin, LaTeX) |
 | `test-runner` | Haiku | Test execution — auto-detects framework (pytest, jest, cargo test, go test, swift test, gradle, make) |
@@ -135,10 +144,12 @@ Four modes — cycle with `slt`, or set directly:
 | `symbol` (default) | `🐥 (4d)` | Glance at emoji + color |
 | `percent` | `🐥 +4% (4d)` | Emoji + delta vs 95% target |
 | `number` | `+4% (4d)` | Delta only, no emoji |
+| `bar` | `▓▓▓▓▓░░░░░ -8% (3d)` | 10-block usage bar + delta |
 | `off` | *(nothing)* | Hide completely |
 
 ```bash
-slt              # cycle: symbol → percent → number → off → symbol
+slt              # cycle: symbol → percent → number → bar → off → symbol
+slt bar          # set bar mode
 slt percent      # set specific mode
 slt symbol
 slt off
