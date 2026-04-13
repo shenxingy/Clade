@@ -70,3 +70,7 @@ The **supervisor** does the task breakdown — not you.
 /loop --resume goal.md                       # Resume interrupted loop
 ```
 
+## After convergence
+
+Run `/commit` to push any remaining uncommitted changes from workers.
+Run `/review` to verify all behavior anchors still pass after autonomous changes.
