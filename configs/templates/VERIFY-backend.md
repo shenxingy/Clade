@@ -95,5 +95,16 @@
 | SEC4 | CORS: allowed origins explicitly listed — not `*` on authenticated endpoints | ⬜ | — | |
 | SEC5 | SQL queries use parameterized statements / ORM — no string interpolation | ⬜ | — | |
 
+## SEO Infrastructure
+<!-- Backend requirements for crawlability and AI search indexing -->
+
+| ID | Checkpoint | Status | Verified | Notes |
+|----|-----------|--------|----------|-------|
+| SEO1 | `/robots.txt` returns 200 with valid directives — `curl -s /robots.txt` | ⬜ | — | |
+| SEO2 | `/sitemap.xml` returns valid XML and lists production URLs | ⬜ | — | |
+| SEO3 | Pages return 200 for valid content; no redirect chains > 2 deep | ⬜ | — | |
+| SEO4 | Canonical URL set on all rendered pages (header or meta tag) | ⬜ | — | |
+| SEO5 | Server-side rendering for key pages (content visible without JS execution) | ⬜ | — | required for AI crawler indexing |
+
 ---
 <!-- Add new checkpoints above this line. /review appends discovered scenarios here automatically. -->

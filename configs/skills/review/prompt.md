@@ -89,6 +89,14 @@ Work through the queue in order (Priority 1 first). For each checkpoint:
 **Behavior Anchors** (all projects):
 - Run the same checks as `/verify` skill for each anchor in `## Features`
 
+**SEO / Discoverability (SEO checkpoints)** — present in web/frontend/backend projects:
+- For source-based checks (SEO1–SEO8): `curl -s <base-url>/<path>` and grep the output for the expected tag/pattern
+- If no live server: inspect the template source files for the relevant HTML patterns (e.g. `grep -r '<title>' src/`)
+- For `/seo page <url>` checks: invoke the seo skill if a live URL is available
+- For schema checks (SEO8): run `/seo schema <url>` or grep source for `application/ld+json`
+- For GEO checks (SEO9): run `/seo geo <url>` or check page structure manually
+- Fix = add the missing tag/route to the appropriate template or layout file; re-test = re-run the grep or curl
+
 **Skill Coordination (SC checkpoints)** — only present in Clade / skill-system projects:
 - Each SC checkpoint says: `"file/SKILL.md" contains "quoted string"`
 - Verify by running: `grep -q "quoted string" configs/skills/file/SKILL.md && echo ✅ || echo ❌`
