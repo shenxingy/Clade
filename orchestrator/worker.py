@@ -868,7 +868,7 @@ class Worker:
                 pass
         if self.auto_committed and self._task_queue:  # bidirectional dep clear (learn-cc s12)
             try: await self._task_queue.clear_completed_dep(self.task_id)
-            except Exception: pass
+            except Exception as e: logger.warning("Worker %s dep clear failed: %s", self.id, e)
         # Check for handoff file — worker wrote it to signal continuation needed
         handoff_path = self._claude_dir / f"handoff-{self.task_id}.md"
         if handoff_path.exists():
