@@ -14,3 +14,4 @@ Each step is a hard gate — failure stops the pipeline and reports clearly.
 ## After shipping
 
 Run `/document-release` to sync README, CHANGELOG, and docs with the new release.
+For web projects: run `/seo audit <url>` to verify no SEO regression from the release.

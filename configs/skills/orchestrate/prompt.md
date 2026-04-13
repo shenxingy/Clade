@@ -114,6 +114,13 @@ After the user answers, decompose the work into parallel-executable tasks. Each 
 - If it exists but is empty or still has only `[placeholder]` values: note "design system template not filled in" and skip injection.
 - If it does not exist, or the project has no frontend: skip silently.
 
+**SEO injection (web projects only):** If the project has a frontend (web app, marketing site, SaaS, e-commerce), automatically include these SEO foundation tasks alongside the feature tasks — unless the user says "no SEO" or it's clearly an internal tool:
+1. **SEO foundation task** (if building a new site/app): meta tags layout, robots.txt, sitemap.xml, Organization schema on homepage — assign to haiku, ~200 lines, reference existing layout file
+2. **GEO readiness task** (if content-heavy): structure key pages with H2 headers, quotable fact blocks, author metadata — enables ChatGPT/Perplexity citation
+3. Skip if: internal dashboard, admin tool, API-only, or user explicitly opts out
+
+Add to any SEO task: `SEO note: run /seo page <url> after deploy to verify, /seo geo for AI search readiness`
+
 ### Step 3: Write Tasks to File
 When the user confirms the breakdown, write tasks to `.claude/proposed-tasks.md` in this exact format:
 

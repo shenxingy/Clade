@@ -113,5 +113,20 @@
 | A11Y3 | Page has logical heading hierarchy (h1 → h2 → h3, no skips) | ⬜ | — | |
 | A11Y4 | Focus indicator visible on all interactive elements (not just outline: none) | ⬜ | — | |
 
+## SEO & Discoverability
+<!-- Verify with: curl -s <url> | grep -i '<title\|meta\|og:' or run /seo page <url> if server is running -->
+
+| ID | Checkpoint | Status | Verified | Notes |
+|----|-----------|--------|----------|-------|
+| SEO1 | `<title>` tag present, unique per page, ≤60 chars — verify in page source | ⬜ | — | |
+| SEO2 | `<meta name="description">` present and ≤160 chars | ⬜ | — | |
+| SEO3 | Open Graph tags present: og:title, og:description, og:image, og:url | ⬜ | — | |
+| SEO4 | `/robots.txt` accessible and returns 200 | ⬜ | — | curl -s /robots.txt |
+| SEO5 | `/sitemap.xml` accessible, valid XML, and lists key routes | ⬜ | — | curl -s /sitemap.xml |
+| SEO6 | Content images have descriptive alt text; decorative images use alt="" | ⬜ | — | A11Y crossover |
+| SEO7 | Each page has exactly one `<h1>` heading | ⬜ | — | |
+| SEO8 | Schema markup present on homepage (minimum: Organization or WebSite JSON-LD) | ⬜ | — | run /seo schema <url> |
+| SEO9 | GEO readiness: key pages have structured headings, quotable fact blocks, author/date info | ⬜ | — | run /seo geo <url> |
+
 ---
 <!-- Add new checkpoints above this line. /review appends discovered scenarios here automatically. -->
