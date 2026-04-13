@@ -125,6 +125,15 @@ for f in "$SCRIPT_DIR/configs/scripts/"*.py; do
 done
 echo "  Installed: $(ls "$SCRIPT_DIR/configs/scripts/"*.sh "$SCRIPT_DIR/configs/scripts/"*.py 2>/dev/null | xargs -I{} basename {} | tr '\n' ' ')"
 
+# Copy scripts/ subdirectories (e.g. seo/)
+for sub_dir in "$SCRIPT_DIR/configs/scripts/"/*/; do
+  [[ -d "$sub_dir" ]] || continue
+  sub_name=$(basename "$sub_dir")
+  mkdir -p "$CLAUDE_DIR/scripts/$sub_name"
+  cp -r "$sub_dir"* "$CLAUDE_DIR/scripts/$sub_name/" 2>/dev/null || true
+  echo "  Installed scripts/$sub_name/: $(ls "$sub_dir" | wc -l | tr -d ' ') files"
+done
+
 # Deploy models.env (canonical model IDs)
 if [[ -f "$SCRIPT_DIR/configs/models.env" ]]; then
   cp "$SCRIPT_DIR/configs/models.env" "$CLAUDE_DIR/models.env"
