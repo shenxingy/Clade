@@ -222,6 +222,7 @@ Check each signal and fix inline:
 | Social preview | `openGraphImageUrl` is not the default GitHub avatar (contains `/u/` path) | Manual: Settings → Social Preview → upload image — mark ⚠ |
 | LICENSE file | `licenseInfo` is not null | Create `LICENSE` file if missing (ask user which license) |
 | README quality | README.md has: H1 title, ≥ 1 screenshot or demo GIF, install instructions, badges | Edit README.md directly |
+| Claimed counts | Any "N skills/hooks/agents/scripts" claim in README matches the actual on-disk count (±1) | Count dirs under `configs/skills/`, `configs/hooks/`, `configs/agents/`, `configs/scripts/` (or equivalent for this project); update README if off by >10% |
 | Visibility | `isPrivate: false` for a published project | Mark ⚠ if private — note that private repos aren't indexed |
 
 For each failing signal:
@@ -236,6 +237,7 @@ For each failing signal:
 - Quick install / usage instructions
 - Badges (build status, version, license) — improves scannability
 - Link to the published URL (if applicable)
+- Any quantitative claims (e.g. "29 skills", "14 hooks") must match the actual count. To verify: count the relevant files/dirs and compare. Update any stale numbers before finishing.
 
 If README needs substantive rewrites, make the minimal additions rather than rewriting from scratch.
 
