@@ -14,7 +14,7 @@
 
 **Autonomous coding, evolved.**
 
-29 skills, 14 hooks, 5 agents, a safety guardian, and a correction learning loop — all working together so Claude codes better, catches its own mistakes, and can run unattended overnight while you sleep.
+93 skills, 20 hooks, 35 agents, a safety guardian, and a correction learning loop — all working together so Claude codes better, catches its own mistakes, and can run unattended overnight while you sleep.
 
 > If this saves you time, a star helps others find it. Something broken? [Open an issue](https://github.com/shenxingy/clade/issues/new/choose).
 
@@ -25,7 +25,7 @@
 1. [Install](#install)
 2. [MCP Server](#mcp-server--use-skills-in-any-ai-editor)
 3. [What It Does](#what-it-does)
-4. [Skills](#skills-29)
+4. [Skills](#skills-93)
 5. [Hooks](#hooks-14)
 6. [Supported Languages](#supported-languages)
 7. [Documentation](#documentation)
@@ -58,7 +58,7 @@ See [MCP Server](#mcp-server--use-skills-in-any-ai-editor) below for configurati
 
 ## MCP Server — Use Skills in Any AI Editor
 
-The MCP server exposes all 29 Clade skills as callable tools via the [Model Context Protocol](https://modelcontextprotocol.io). Works with any MCP-compatible client.
+The MCP server exposes all 93 Clade skills as callable tools via the [Model Context Protocol](https://modelcontextprotocol.io). Works with any MCP-compatible client.
 
 **Claude Desktop / Claude Code:**
 ```json
@@ -90,9 +90,9 @@ The MCP server exposes all 29 Clade skills as callable tools via the [Model Cont
 | You correct Claude | `correction-detector.sh` | Logs correction, prompts Claude to save a reusable rule |
 | Claude marks task done | `verify-task-completed.sh` | Adaptive quality gate: compile + lint, build + test in strict mode |
 
-See [How It Works](docs/how-it-works.md) for the full hook reference (14 hooks).
+See [How It Works](docs/how-it-works.md) for the full hook reference (20 hooks).
 
-## Skills (29)
+## Skills (93)
 
 ### Core Workflow
 
@@ -146,6 +146,36 @@ See [How It Works](docs/how-it-works.md) for the full hook reference (14 hooks).
 | `/pipeline` | Health check for background pipelines |
 | `/provider` | Switch LLM provider |
 | `slt` | Toggle statusline quota pace indicator |
+
+### Blog & Content (22 skills)
+
+| Skill | What it does |
+|-------|-------------|
+| `/blog` | Full lifecycle — brief → outline → write → SEO check |
+| `/blog-write` | Write SERP-informed articles from scratch |
+| `/blog-rewrite` | Optimize existing posts for quality and SEO |
+| `/blog-audit` | Full-site health scan (thin content, meta, cannibalization) |
+| + 18 more | analyze · audio · brief · calendar · chart · factcheck · geo · google · image · notebooklm · outline · persona · repurpose · schema · seo-check · strategy · taxonomy · cannibalization |
+
+### SEO (19 skills)
+
+| Skill | What it does |
+|-------|-------------|
+| `/seo` | Full SEO audit suite |
+| `/seo-technical` | Crawlability, indexability, Core Web Vitals |
+| `/seo-page` | Deep single-page analysis |
+| `/seo-content` | E-E-A-T and content quality scoring |
+| + 15 more | audit · backlinks · competitor-pages · dataforseo · geo · google · hreflang · image-gen · images · local · maps · plan · programmatic · schema · sitemap |
+
+### Paid Ads (18 skills)
+
+| Skill | What it does |
+|-------|-------------|
+| `/ads` | Multi-platform ads audit suite |
+| `/ads-google` | Google Ads — Quality Score, PMax, bidding |
+| `/ads-meta` | Meta Ads — Pixel/CAPI, creative fatigue, Advantage+ |
+| `/ads-create` | Create new ad campaigns from brief |
+| + 14 more | apple · audit · budget · competitor · creative · dna · generate · landing · linkedin · microsoft · photoshoot · plan · tiktok · youtube |
 
 See [When to Use What](docs/when-to-use-what.md) for detailed usage guidance.
 
@@ -201,10 +231,10 @@ clade/
 │   ├── mcp_server.py        # MCP server (local dev version)
 │   └── web/                 # Single-page dashboard
 ├── configs/
-│   ├── skills/              # 29 skill definitions (SKILL.md + prompt.md)
-│   ├── hooks/               # 14 event hooks + lib/
-│   ├── agents/              # 5 agent definitions
-│   └── scripts/             # 30 shell + Python utilities
+│   ├── skills/              # 93 skill definitions (SKILL.md + prompt.md)
+│   ├── hooks/               # 20 event hooks + lib/
+│   ├── agents/              # 35 agent definitions
+│   └── scripts/             # 27 shell + Python utilities
 ├── adapters/openclaw/       # OpenClaw integration (mobile monitoring)
 ├── templates/               # Settings, CLAUDE.md, corrections templates
 └── docs/                    # Guides and research
