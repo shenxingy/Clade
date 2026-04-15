@@ -176,6 +176,62 @@ Do NOT add generic or theoretical checkpoints. Only add what you actually encoun
 
 ---
 
+## Step 5.4: E2E Interrupt Testing (user-facing apps)
+
+Run this step when the project has **user-facing features** (auth, payments, or any long-running operation like upload / processing / generation).
+
+### Load the interaction matrix
+
+Read `~/.claude/skills/review/e2e-interactions.md` (installed from `configs/skills/review/e2e-interactions.md`).
+It defines: Auth States (S0–S4), Feature States (F0–F3), Atomic Actions (A*, N*), and scenario tables (I-*, P-*, T-*, SEQ-*).
+
+### Map the project onto the matrix
+
+1. **Identify long-running operations** — what is the core F1 operation? (face-swap, video processing, file upload, AI generation, etc.)
+2. **Identify auth flows** — does the project have login/logout/delete account?
+3. **Identify payment flows** — are there credits, subscriptions, or purchases?
+
+### Determine test scope
+
+| Project has | Test scope |
+|------------|------------|
+| Long-running operation + auth | All CRITICAL + HIGH rows from the Interrupt Matrix (I-*) and Auth Transitions (T-*) |
+| Payment flow | All CRITICAL + HIGH rows from Payment Flow Interrupts (P-*) |
+| Multi-step journeys | SEQ-01 through SEQ-06 minimum; add SEQ-07 if delete-account exists |
+| No auth, no payments | Skip this step — mark ⚠ "no auth/payment flows detected" |
+
+### Execute each scenario
+
+For each in-scope scenario:
+
+1. Use **Playwright MCP** (`browser_navigate`, `browser_click`, `browser_snapshot`) if available
+2. Execute the exact sequence described in the scenario
+3. Assert the Expected Outcome — especially:
+   - No double-charge / double-job
+   - No broken UI state (blank screen, spinner stuck, unhandled error)
+   - Auth invariant: protected pages unreachable after logout/delete
+   - Data invariant: results accessible after re-login
+4. Record ✅ / ❌ / ⚠ per scenario
+
+If Playwright is not available: inspect the source for the relevant handlers (navigation guards, beforeunload, unload, payment webhook idempotency keys, job status polling). Mark ⚠ with "requires browser — checked code path only" if no live test possible.
+
+### Add to VERIFY.md
+
+For each scenario tested, add a row to the `## E2E Interrupts` section (create it if missing):
+
+```
+| ID | Scenario | Status | Verified | Notes |
+|----|----------|--------|----------|-------|
+| I-01 | Navigate away during operation | ✅ | 2026-04-15 | polling resumes on return |
+```
+
+### Fix failures
+
+Same rules as Step 4: fix immediately, re-test, commit with `committer "fix: e2e - <scenario>" <files>`.
+Common fixes: add `beforeunload` guard, add idempotency key to payment intent, fix WebSocket reconnect logic, add job dedup check.
+
+---
+
 ## Step 5.5: SEO Review (web/publish projects and GitHub repos)
 
 This step runs **after** all VERIFY.md checkpoints are processed and **before** the final VERIFY.md update. It is two independent checks.
