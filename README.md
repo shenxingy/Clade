@@ -14,7 +14,7 @@
 
 **Autonomous coding, evolved.**
 
-93 skills, 20 hooks, 35 agents, a safety guardian, and a correction learning loop — all working together so Claude codes better, catches its own mistakes, and can run unattended overnight while you sleep.
+93 skills, 21 hooks, 35 agents, a safety guardian, and a correction learning loop — all working together so Claude codes better, catches its own mistakes, and can run unattended overnight while you sleep.
 
 > If this saves you time, a star helps others find it. Something broken? [Open an issue](https://github.com/shenxingy/clade/issues/new/choose).
 
@@ -90,7 +90,7 @@ The MCP server exposes all 93 Clade skills as callable tools via the [Model Cont
 | You correct Claude | `correction-detector.sh` | Logs correction, prompts Claude to save a reusable rule |
 | Claude marks task done | `verify-task-completed.sh` | Adaptive quality gate: compile + lint, build + test in strict mode |
 
-See [How It Works](docs/how-it-works.md) for the full hook reference (20 hooks).
+See [How It Works](docs/how-it-works.md) for the full hook reference (21 hooks).
 
 ## Skills (93)
 
@@ -232,7 +232,7 @@ clade/
 │   └── web/                 # Single-page dashboard
 ├── configs/
 │   ├── skills/              # 93 skill definitions (SKILL.md + prompt.md)
-│   ├── hooks/               # 20 event hooks + lib/
+│   ├── hooks/               # 21 event hooks + lib/
 │   ├── agents/              # 35 agent definitions
 │   └── scripts/             # 27 shell + Python utilities
 ├── adapters/openclaw/       # OpenClaw integration (mobile monitoring)

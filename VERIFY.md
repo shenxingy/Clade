@@ -4,7 +4,7 @@
 
 **Project type:** cli + skill-system + orchestrator (FastAPI)
 **Last full pass:** 2026-04-15
-**Coverage:** 70 ✅, 0 ❌, 6 ⚠, 0 ⬜ untested
+**Coverage:** 74 ✅, 0 ❌, 4 ⚠, 0 ⬜ untested
 
 ---
 
@@ -15,7 +15,7 @@
 |----|-----------|--------|----------|-------|
 | I1 | `./install.sh` runs without errors — no missing source files, no broken symlinks | ✅ | 2026-04-15 | 91 source skills + 2 user-added (companyos-*) = 93 total installed; generate-hook moved to source since last pass |
 | I2 | All skills from `configs/skills/` are installed to `~/.claude/skills/` | ✅ | 2026-04-15 | 91/91 skills installed; e2e-interactions.md confirmed in review skill dir |
-| I3 | All hooks from `configs/hooks/` are installed to `~/.claude/hooks/` | ✅ | 2026-04-10 | 17/17 hooks installed (4 new since last review: linter-config-guard, permission-request, revert-detector, post-tool-use-lint) |
+| I3 | All hooks from `configs/hooks/` are installed to `~/.claude/hooks/` | ✅ | 2026-04-15 | 21/21 hooks installed; session-baseline.sh added this pass (companion to session-scoped stop-check) |
 | I4 | All scripts from `configs/scripts/` are installed to `~/.claude/scripts/` | ✅ | 2026-04-12 | 27/27 .sh scripts + subdirs seo/, ads/, blog/ Python scripts installed |
 | I5 | All templates from `configs/templates/` are installed to `~/.claude/templates/` | ✅ | 2026-04-12 | |
 | I6 | `~/.local/bin/slt` symlink exists and points to `statusline-toggle.sh` | ✅ | 2026-04-12 | |
@@ -45,15 +45,19 @@
 | H3 | `pre-tool-guardian.sh` allows `alembic upgrade` when dev-mode is ON | ✅ | 2026-04-10 | source verified: `if [[ "$DEV_MODE" == false ]]` gate at line 40 |
 | H4 | `pre-tool-guardian.sh` blocks `rm -rf /` regardless of dev-mode | ✅ | 2026-04-10 | source verified: lines 78-96 |
 | H5 | `pre-tool-guardian.sh` blocks `git push --force origin main` regardless of dev-mode | ✅ | 2026-04-10 | source verified: lines 99-108 |
-| H6 | All other hooks pass `bash -n` syntax check | ✅ | 2026-04-15 | all 20 hooks pass (was 17; auto-audit, correction-detector, learning-to-rule added since) |
+| H6 | All other hooks pass `bash -n` syntax check | ✅ | 2026-04-15 | all 21 hooks pass (session-baseline.sh added + stop-check.sh rewritten this pass) |
 | H7 | `pre-tool-guardian.sh` does NOT block when migration pattern appears only in a variable assignment string (false-positive fix) | ✅ | 2026-04-10 | SCANNABLE strips `VAR='...'` and `VAR="..."` lines (guardian.sh:47-50) |
+| H8 | `session-baseline.sh` captures sorted `git status --porcelain` output keyed by `session_id` at SessionStart, excluding `.claude/` paths | ✅ | 2026-04-15 | tested in /tmp repo: baseline file written to `.claude/sessions/<sid>.baseline`, `.claude/` paths filtered out |
+| H9 | `stop-check.sh` ignores pre-existing dirty files (present in baseline) and blocks only on session-produced changes — prevents deadlock between parallel CC sessions on same repo | ✅ | 2026-04-15 | tested: preexisting dirt → exit 0 silent; new session file → exit 2 with filename in output |
+| H10 | `stop-check.sh` circuit breaker: exits 0 when `stop_hook_active=true` (Claude Code retry) AND after 2 consecutive attempt-counter blocks | ✅ | 2026-04-15 | both escape paths verified — prevents LLM from being trapped in stop-hook loop |
+| H11 | `pre-tool-guardian.sh` blocks env-prefixed migrations (`DATABASE_URL="..." alembic upgrade`) and compound statements (`VAR=x && alembic upgrade`) while still allowing pure assignment lines containing the pattern | ✅ | 2026-04-15 | 9/9 regression+new tests pass (/tmp/guardian-tests.sh). Fix: strip regex now anchors to end-of-line — pure assignments stripped, env-prefix commands scanned. Resolves former KL1 false-negative. |
 
 ## Shell Script Integrity
 <!-- All scripts must be syntactically valid. -->
 
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
-| SH1 | All `configs/hooks/*.sh` pass `bash -n` | ✅ | 2026-04-15 | all 20 hooks pass |
+| SH1 | All `configs/hooks/*.sh` pass `bash -n` | ✅ | 2026-04-15 | all 21 hooks pass |
 | SH2 | All `configs/scripts/*.sh` pass `bash -n` | ✅ | 2026-04-15 | all 27 scripts pass |
 | SH3 | `install.sh` passes `bash -n` | ✅ | 2026-04-15 | |
 
@@ -65,6 +69,7 @@
 | PY1 | All Python modules pass `python -m py_compile` (full list from CLAUDE.md) | ✅ | 2026-04-15 | all modules compile clean |
 | PY2 | `pytest tests/` passes with zero failures | ✅ | 2026-04-15 | 178/178 passed in 0.84s |
 | PY3 | No circular imports — `python -c "import server"` runs without ImportError | ✅ | 2026-04-10 | |
+| PY4 | Orchestrator API returns 200 + valid JSON on core GET routes (`/api/projects`, `/api/sessions`, `/api/sessions/overview`, `/api/tasks`, `/api/ideas`, `/api/processes`, `/api/metrics/pass-at-k`) | ✅ | 2026-04-15 | tested against running instance on :8010 — 7/7 endpoints 200, all parse as valid JSON (29 projects, 1 session, 38 tasks, 10 ideas, pass_rate=1.0). Resolves former KL3. |
 
 ## Templates & Assets
 <!-- Required template files must be present and valid markdown. -->
@@ -99,9 +104,7 @@
 
 | ID | Checkpoint | Status | Notes |
 |----|-----------|--------|-------|
-| KL1 | Guardian false-positive when blocked pattern appears inline with a command (not a pure assignment) | ⚠ | Fixed 2026-03-30: SCANNABLE strips `VAR='...'` and `VAR="..."` lines. Residual edge case: `ENV_VAR="..." migration-cmd` on one line not stripped (rare). Use base64-decode trick for guardian tests. |
 | KL2 | `/commit`, `/loop`, `/start` skills cannot be fully E2E tested without actual uncommitted changes or a running background loop | ⚠ | Skill prompt content verified; runtime behavior requires manual spot-check |
-| KL3 | Orchestrator API endpoint behavior untested (no running server in this review session) | ⚠ | Python syntax + tests pass. API routes require `uvicorn server:app` running |
 | KL4 | Windows not supported — scripts use bash, `~/.claude/` paths, and POSIX tools | ⚠ | WSL2 would work; native Windows CMD/PowerShell is out of scope |
 
 ## Cross-Platform Compatibility
