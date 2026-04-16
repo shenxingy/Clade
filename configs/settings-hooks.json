@@ -6,6 +6,13 @@
                 "matcher": "startup",
                 "hooks": [
                     {
+                        "id": "session-baseline",
+                        "description": "Capture git dirty baseline for session-scoped stop-check",
+                        "type": "command",
+                        "command": "~/.claude/hooks/session-baseline.sh",
+                        "timeout": 5
+                    },
+                    {
                         "id": "session-context",
                         "description": "Load project context and compact-state at session start",
                         "type": "command",
@@ -145,7 +152,7 @@
                 "hooks": [
                     {
                         "id": "stop-uncommitted-guard",
-                        "description": "Block stop if uncommitted changes or active blockers.md entries exist",
+                        "description": "Block stop on session-scoped uncommitted changes (ignores pre-existing dirt from parallel CC sessions on the same repo); self-escapes via stop_hook_active + attempt counter to prevent LLM deadlock",
                         "type": "command",
                         "command": "~/.claude/hooks/stop-check.sh",
                         "timeout": 10
