@@ -38,15 +38,22 @@ DEV_MODE=false
 # Common ORM/migration tools that block or timeout inside Claude Code.
 # (Skipped in dev mode — toggle with: devmode on/off)
 if [[ "$DEV_MODE" == false ]]; then
-# Strip comment-only lines AND variable assignment lines before scanning.
-# This prevents false positives when a blocked pattern appears in:
+# Strip comment-only lines AND pure-assignment lines before scanning.
+# A "pure assignment" is a line whose ENTIRE content is a single variable
+# assignment (optionally followed by `;`). Lines like
+#   DATABASE_URL="..." alembic upgrade head
+# are NOT stripped — the assignment is a prefix, and the rest is a real
+# command that must be scanned. (Earlier revisions over-stripped these,
+# allowing env-prefixed migrations to slip past the guardian — KL1.)
+#
+# Prevented false positives (still stripped):
 #   - Shell comments:       # alembic upgrade head
 #   - String assignments:   INPUT='{"command":"alembic upgrade",...}'
 #   - Heredoc data lines:   VAR="alembic upgrade head"
 SCANNABLE=$(echo "$COMMAND" \
   | grep -v '^\s*#' \
-  | grep -v "^\s*[A-Za-z_][A-Za-z0-9_]*='" \
-  | grep -v '^\s*[A-Za-z_][A-Za-z0-9_]*="' \
+  | grep -vE "^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*='[^']*'[[:space:]]*;?[[:space:]]*$" \
+  | grep -vE '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*="[^"]*"[[:space:]]*;?[[:space:]]*$' \
   || true)
 
 MIGRATION_PATTERNS=(
