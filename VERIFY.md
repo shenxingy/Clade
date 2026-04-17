@@ -3,8 +3,8 @@
 <!-- Legend: ✅ pass  ❌ fail  ⚠ known limitation  ⬜ not yet tested -->
 
 **Project type:** cli + skill-system + orchestrator (FastAPI)
-**Last full pass:** 2026-04-15
-**Coverage:** 74 ✅, 0 ❌, 4 ⚠, 0 ⬜ untested
+**Last full pass:** 2026-04-17
+**Coverage:** 78 ✅, 0 ❌, 4 ⚠, 0 ⬜ untested
 
 ---
 
@@ -13,8 +13,8 @@
 
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
-| I1 | `./install.sh` runs without errors — no missing source files, no broken symlinks | ✅ | 2026-04-15 | 91 source skills + 2 user-added (companyos-*) = 93 total installed; generate-hook moved to source since last pass |
-| I2 | All skills from `configs/skills/` are installed to `~/.claude/skills/` | ✅ | 2026-04-15 | 91/91 skills installed; e2e-interactions.md confirmed in review skill dir |
+| I1 | `./install.sh` runs without errors — no missing source files, no broken symlinks | ✅ | 2026-04-17 | 94 source skills (added poke/status/go this pass); install completes clean |
+| I2 | All skills from `configs/skills/` are installed to `~/.claude/skills/` | ✅ | 2026-04-17 | 94/94 skills installed; poke/status/go present in both source and installed dirs |
 | I3 | All hooks from `configs/hooks/` are installed to `~/.claude/hooks/` | ✅ | 2026-04-15 | 21/21 hooks installed; session-baseline.sh added this pass (companion to session-scoped stop-check) |
 | I4 | All scripts from `configs/scripts/` are installed to `~/.claude/scripts/` | ✅ | 2026-04-12 | 27/27 .sh scripts + subdirs seo/, ads/, blog/ Python scripts installed |
 | I5 | All templates from `configs/templates/` are installed to `~/.claude/templates/` | ✅ | 2026-04-12 | |
@@ -87,7 +87,7 @@
 
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
-| SK1 | Every dir in `configs/skills/` contains `prompt.md` | ✅ | 2026-04-15 | all 91 skill dirs have prompt.md |
+| SK1 | Every dir in `configs/skills/` contains `prompt.md` | ✅ | 2026-04-17 | 94/94 skill dirs have prompt.md — poke/status/go initially had SKILL.md only; prompt.md split from SKILL.md body this pass. Fix committed. |
 | SK2 | `/review` skill: prompt.md contains all 7 steps and convergence condition | ✅ | 2026-04-15 | 9 steps total; original Steps 1-7 all present + new 5.4 (E2E) + 5.5 (SEO) |
 | SK3 | `/verify` skill: prompt.md contains VERIFY.md coverage section and `VERIFY_COVERAGE` footer field | ✅ | 2026-04-10 | |
 | SK4 | `/commit` skill: references `committer` script; `git add .` only appears in prohibition rule | ✅ | 2026-04-10 | |
@@ -96,7 +96,7 @@
 | SK7 | `/retro` skill: reads git history via parallel bash commands; outputs metrics table + narrative | ✅ | 2026-04-10 | |
 | SK8 | `/document-release` skill: covers README audit, CHANGELOG polish, and cross-doc consistency | ✅ | 2026-04-10 | |
 | SK9 | `/provider` skill: references `provider-switch.sh`; API keys never stored in config files | ✅ | 2026-04-10 | |
-| SK10 | 26/29 workflow skills have Completion Status footer (DONE/BLOCKED/NEEDS_CONTEXT/DONE_WITH_CONCERNS) | ✅ | 2026-04-15 | 27/27 eligible workflow skills pass (brief/minimax-usage/slt exempt); generate-hook added 2026-04-13, has Completion Status; seo-*/ads-*/blog-* exempt |
+| SK10 | Eligible workflow skills have Completion Status footer (DONE/BLOCKED/NEEDS_CONTEXT/DONE_WITH_CONCERNS) | ✅ | 2026-04-17 | 32/32 eligible workflow skills pass (brief/minimax-usage/slt exempt; seo-*/ads-*/blog-* exempt). Count grew from 27 on 2026-04-15 — +3 for poke/status/go/learn visibility + generate-hook moved inside scope. |
 
 ---
 
@@ -152,6 +152,10 @@
 | SC16 | `orchestrate/SKILL.md` when_to_use contains "NOT for running tasks" | ✅ | 2026-04-12 | |
 | SC17 | `blog/SKILL.md` when_to_use contains "NOT for site-wide SEO audit" | ✅ | 2026-04-12 | blog↔seo disambiguation |
 | SC18 | `ship/SKILL.md` contains "blog audit" as post-ship step | ✅ | 2026-04-12 | /ship chains to /blog audit for blog projects |
+| SC19 | `loop/SKILL.md` description contains "NOT the Claude Code built-in /loop" — disambiguates from CC runtime's interval-polling skill of same name | ✅ | 2026-04-17 | added 2026-04-17 to resolve LLM routing ambiguity after discovering both skills share the `loop` name |
+| SC20 | `review/SKILL.md` description contains "NOT the Claude Code built-in /review" — disambiguates from CC runtime's PR-review skill of same name | ✅ | 2026-04-17 | added 2026-04-17; routes users to `/review-pr` for PR reviews, keeps this skill scoped to VERIFY.md coverage |
+| SC21 | `audit/SKILL.md` when_to_use contains "NOT for SEO audit (use /seo-audit)" — routes domain audits to specialized skills | ✅ | 2026-04-17 | added 2026-04-17; `/audit` is scoped to `corrections/rules.md` meta-audit only — domain audits go to /seo-audit, /blog-audit, /ads-audit, /cso |
+| SC22 | `status/SKILL.md` mentions `/poke`, `/brief`, AND `/pickup` in its scope-differentiator section so LLM doesn't mis-route between session-state skills | ✅ | 2026-04-17 | all three present: `grep -c` returns /poke=1, /brief=3, /pickup=3; table at top distinguishes heartbeat / dashboard / overnight / handoff-resume |
 
 ## E2E Interrupts
 <!-- Step 5.4 E2E interrupt testing results. Applies only to user-facing apps with auth/payment/long-running ops. -->
