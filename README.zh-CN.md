@@ -78,6 +78,9 @@ cd clade
 |------|------|
 | `/handoff` | 保存会话状态到 `.claude/handoff-*.md` — 支持通宵运行和 agent 间上下文接力 |
 | `/pickup` | 加载最新 handoff 并立即恢复工作 — 新会话零摩擦启动 |
+| `/poke` | 你按 esc 后的心跳检查 — 3 行汇报状态，进展正常就自动继续，不重新规划 |
+| `/status` | 当前会话仪表盘 — 后台 agents、`/loop` 状态、worktrees、未推送 commits、orchestrator workers |
+| `/go` | 直接执行你最近一条 A/B/C 选项里的"推荐项"，不再问 — 对应"按推荐的来" |
 | `/batch-tasks` | 解析 TODO.md，自动规划每个任务，通过 `claude -p` 执行（串行或并行） |
 | `/batch-tasks step2 step4` | 规划 + 执行指定 TODO 步骤 |
 | `/batch-tasks --parallel` | 通过 git worktrees 并行执行 |
