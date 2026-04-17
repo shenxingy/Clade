@@ -7,3 +7,12 @@ orchestrator/caddy.log
 *.pyo
 .claude/
 orchestrator/.claude/
+
+# Build artifacts
+mcp-package/dist/
+mcp-package/*.egg-info/
+mcp-package/build/
+
+# Type checker cache
+.mypy_cache/
+**/.mypy_cache/
