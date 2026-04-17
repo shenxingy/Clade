@@ -37,9 +37,10 @@ For most day-to-day work — bug fixes, small features, refactoring, codebase qu
 - `--apply` updates the model guide, session context, and batch-tasks configs automatically
 
 ### `/next`
-**When:** Stuck on priorities or unsure where to focus.
-- Multi-angle questioning session — asks probing questions from different perspectives
-- Surfaces the best next move when the path isn't obvious
+**When:** Wondering what to work on next.
+- **Fast mode (default):** reads docs + git state, gives a one-shot top-pick + runner-up in ≤15 lines, no questions asked. Right for casual "下一步做什么" / "what's next?" queries.
+- **Deep mode (`/next deep`):** multi-round interview from different angles — surfaces the best move when priorities are genuinely unclear and you want to think it through.
+- Default to fast; escalate to deep only if the fast pick doesn't feel right.
 
 ### `/orchestrate`
 **When:** Using the Orchestrator Web UI to plan large work.
@@ -129,6 +130,24 @@ For most day-to-day work — bug fixes, small features, refactoring, codebase qu
 - Reads the latest handoff file and presents a concise briefing
 - Verifies git state matches the handoff
 - Immediately starts executing the first Next Step
+
+### `/poke`
+**When:** You hit `esc` during a long generation and want to confirm Claude isn't stuck.
+- Prints a 3-line heartbeat: state (progressing/waiting/stuck/done), what it was doing, what's next
+- Auto-continues if `progressing`; surfaces the block if `stuck` — never replans on its own
+- Triggered by phrases like "卡住了吗" / "still working" / "are you stuck"
+
+### `/status`
+**When:** You started a background task / loop / agent earlier and want to check on it mid-session.
+- Compact dashboard: in-conversation background handles, git state, orchestrator workers, recent PRs
+- Different from `/brief` (overnight summary) and `/pickup` (resume from handoff) — `/status` is the "right now" view
+- Triggered by "现在啥情况了" / "what's going on" / "session dashboard"
+
+### `/go`
+**When:** Claude offered enumerated options (A/B/C, 1/2/3) with a recommendation, and you want to accept the recommendation without re-reading every option.
+- Scans the most recent assistant message for a recommendation marker, then executes immediately
+- One-line confirmation, then act — saves you from typing "按推荐的来" each time
+- Still confirms once for destructive actions (file delete, `git reset --hard`, force-push, migrations)
 
 ### `/commit`
 **When:** Ready to commit.

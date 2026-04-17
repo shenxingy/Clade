@@ -58,7 +58,7 @@ See [MCP Server](#mcp-server--use-skills-in-any-ai-editor) below for configurati
 
 ## MCP Server — Use Skills in Any AI Editor
 
-The MCP server exposes all 93 Clade skills as callable tools via the [Model Context Protocol](https://modelcontextprotocol.io). Works with any MCP-compatible client.
+The MCP server exposes all 94 Clade skills as callable tools via the [Model Context Protocol](https://modelcontextprotocol.io). Works with any MCP-compatible client.
 
 **Claude Desktop / Claude Code:**
 ```json
@@ -114,6 +114,9 @@ See [How It Works](docs/how-it-works.md) for the full hook reference (21 hooks).
 | `/handoff` | Save session state for context relay between agents |
 | `/pickup` | Resume from previous handoff — zero-friction restart |
 | `/worktree` | Create git worktrees for parallel sessions |
+| `/poke` | Heartbeat after `esc` — 3-line status, auto-continues if still progressing |
+| `/status` | Session dashboard — background agents, loops, worktrees, unpushed commits |
+| `/go` | Execute the recommendation from your most recent A/B/C option set |
 
 ### Code Quality
 
@@ -132,7 +135,7 @@ See [How It Works](docs/how-it-works.md) for the full hook reference (21 hooks).
 |-------|-------------|
 | `/research TOPIC` | Deep web research, synthesize to docs/research/ |
 | `/model-research` | Latest Claude model data + auto-update configs |
-| `/next` | Multi-angle priority session — surface best next move |
+| `/next` | "What's next?" — fast 1-shot recommendation (default); `/next deep` for multi-round interview |
 | `/brief` | Morning briefing — overnight commits, costs, next steps |
 | `/retro` | Engineering retrospective from git history |
 | `/frontend-design` | Create production-grade frontend interfaces |
