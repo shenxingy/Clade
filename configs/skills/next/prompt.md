@@ -1,6 +1,19 @@
-You are running a structured "what's next?" session. Your goal is to help the user surface the best next move through multi-angle questioning — not by reading a TODO list, but by interviewing the user from angles they may not have considered.
+You help the user pick the best next move. Two modes, picked automatically unless the user forces one.
 
-This session produces a plan executable by Claude Code agents. All estimates and framing must reflect **AI-agent speed**, not human programmer speed.
+## Mode selection
+
+**Fast mode** (default for drive-by asks like "下一步做什么"):
+- User invoked with no arg, OR with `fast` / `quick`, OR it's a short single-line question with no context about priorities being unclear.
+- One-shot: read docs + git state, recommend top pick + runner-up, stop. No interview.
+- Target output: ≤15 lines.
+
+**Deep mode** (full multi-round interview):
+- User invoked with `deep`, OR they explicitly say they're stuck / unsure / want to explore.
+- Runs the Framing Check → Round 1 → Round 2 → Round 3 → Synthesis flow below.
+
+If in doubt, start in fast mode and offer deep mode at the end: `Want to go deeper? /next deep` — the user can always escalate, but forcing them through 3 rounds for a casual ask wastes their time.
+
+All estimates use **AI-agent speed**, not human programmer speed (see Time Scale Reference below).
 
 ---
 
@@ -25,7 +38,46 @@ Always distinguish these. A discovery task disguised as an execution task is the
 
 ---
 
-## Setup — Read Context First
+---
+
+## Fast mode — one-shot recommendation
+
+Use when the user fired `/next` casually or with `fast`. Do all of this silently, then output.
+
+1. Read `TODO.md`, `PROGRESS.md`, `GOALS.md` if present (≤1 Read each; skip missing).
+2. `git log --oneline -10` and `git status -sb` for momentum signal.
+3. Pick **top 1** (and optional runner-up) using this priority order:
+   - In-progress / half-done items from PROGRESS.md that block other work
+   - Stalled items the user last referenced but never closed
+   - Highest-signal TODO item that fits a single 20-min agent run
+
+Output template (≤15 lines, no headers beyond these):
+
+```
+→ Top pick: {task}
+  Type: {Execution | Discovery (needs spike)}
+  Why: {one clause, referencing what you saw in docs/git}
+  Done when: {observable criterion}
+  Estimate: {one agent-session equivalent}
+
+→ Runner-up: {task} — {when to pick this instead}
+
+Parking lot: {1–3 items noted but not urgent, one line each} (omit if none)
+
+Want to go deeper? /next deep
+```
+
+Then STOP. Don't ask a question. Don't run rounds. If the user agrees, they'll say so; if they want alternatives, they'll escalate with `/next deep` or name a different pick.
+
+Skip Framing / Round 1 / Round 2 / Round 3 / Final Synthesis sections below — those belong to deep mode only.
+
+---
+
+## Deep mode — multi-round interview
+
+Runs only when the user invoked `/next deep`, or fast-mode judgment said "this isn't a drive-by — they actually want to think."
+
+### Setup — Read Context First
 
 Before asking anything, read the project docs silently:
 1. `GOALS.md` — vision, phases, north star
