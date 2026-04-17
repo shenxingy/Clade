@@ -240,6 +240,7 @@ Goal: maximize autonomous run hours. Minimize human intervention. System knows w
 - [x] 🟡 `priority_score` column added but nothing writes to it — Phase 10 priority ranker is a schema-only stub with no scoring logic (`orchestrator/worker.py`)
 - [x] 🟡 No CORS middleware on FastAPI app — mobile/remote access via Caddy HTTPS (stated in VISION) will fail with CORS errors (`orchestrator/server.py:72`)
 - [x] 🔵 `schedule` endpoint error message incorrect — said "ISO 8601" but parser only accepts `HH:MM`; fixed to "Use HH:MM (24h), e.g. 09:00" (`orchestrator/server.py:471`)
+- [ ] 🟡 Skill name collision with Claude Code built-ins — Clade's `/loop` (Blueprint goal-loop) and `/review` (VERIFY.md coverage) share names with CC built-in skills (`/loop` interval-poller, `/review` PR-reviewer). Descriptions now disambiguate (2026-04-17) but a full rename was deferred due to ~37+34 cross-file references (orchestrator/server.py, loop-runner.sh, tests/test-loop.sh, adapters/, mcp-package/, 20+ docs). Spike first (~15 min): enumerate every string reference and classify Clade-vs-CC semantic. Then decide between `/loop → /converge` + `/review → /verify-all`, or keeping the shared names permanently.
 
 ---
 
