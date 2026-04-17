@@ -1,7 +1,7 @@
 ---
 name: loop
-description: Goal-driven autonomous improvement loop using Blueprint architecture — deterministic pre/post phases + LLM nodes for implementation
-when_to_use: "run loop, autonomous loop, keep fixing until done, goal file, 自动循环, run until converged, iterate on goal"
+description: Clade goal-driven autonomous improvement loop (Blueprint architecture — deterministic pre/post phases + LLM supervisor/worker nodes, converges when goal met or max-iter hit). NOT the Claude Code built-in /loop (which polls a prompt on an interval like `/loop 5m /foo`) — if the user wants interval polling, route to the built-in.
+when_to_use: "run loop with goal file, autonomous supervisor+worker loop, keep fixing until tests pass, iterate until converged, goal.md, Blueprint loop, 自动循环, run until converged — NOT for TODO.md tasks (use /batch-tasks), NOT for task decomposition (use /orchestrate), NOT for interval polling a prompt (that's the CC built-in /loop)"
 argument-hint: 'GOAL_FILE [--model haiku|sonnet|opus] [--worker-model MODEL] [--max-iter N] [--max-workers N] [--dry-run] [--status] [--stop] [--resume]'
 user_invocable: true
 ---
@@ -70,3 +70,7 @@ The **supervisor** does the task breakdown — not you.
 /loop --resume goal.md                       # Resume interrupted loop
 ```
 
+## After convergence
+
+Run `/commit` to push any remaining uncommitted changes from workers.
+Run `/review` to verify all behavior anchors still pass after autonomous changes.

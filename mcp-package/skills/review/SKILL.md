@@ -1,7 +1,7 @@
 ---
 name: review
-description: Coverage-driven review — tests all VERIFY.md checkpoints systematically, fixes failures in-session, converges when full coverage is achieved
-when_to_use: "review everything, test all, full review, VERIFY.md, 全面测试, coverage review"
+description: Clade coverage-driven project review — walks every VERIFY.md checkpoint, fixes failures in-session, converges when all checkpoints pass. NOT the Claude Code built-in /review (which reviews a single pull request diff) — if the user wants a PR review, route to /review-pr (Clade's PR reviewer) or the CC built-in.
+when_to_use: "review everything, test all, full review, VERIFY.md, 全面测试, coverage review — NOT for post-iteration anchor checks in autonomous loops (use /verify), NOT for PR review (use /review-pr or the CC built-in /review)"
 user_invocable: true
 ---
 
