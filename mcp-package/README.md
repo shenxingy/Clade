@@ -1,6 +1,6 @@
 # clade-mcp
 
-MCP server that exposes **29 AI coding skills** as callable tools — autonomous commits, goal-driven loops, code reviews, incident response, security audits, and more.
+MCP server that exposes **32 AI coding skills** as callable tools — autonomous commits, goal-driven loops, code reviews, incident response, security audits, and more.
 
 Part of the [Clade](https://github.com/shenxingy/clade) autonomous coding framework.
 
@@ -46,13 +46,13 @@ clade-mcp  # starts the MCP server (stdio transport)
 - **Claude Code CLI** installed and in PATH ([install guide](https://docs.anthropic.com/en/docs/claude-code))
   - Skills execute via `claude -p`, so the CLI must be available
 
-## Available Skills (29)
+## Available Skills (32)
 
 | Skill | Description |
 |-------|-------------|
 | **commit** | Analyze changes, split into logical commits by module, push |
-| **loop** | Goal-driven autonomous improvement loop (Blueprint architecture) |
-| **review** | Coverage-driven review — test all VERIFY.md checkpoints |
+| **loop** | Clade goal-driven Blueprint loop (NOT the CC built-in interval poller) |
+| **review** | Coverage-driven VERIFY.md review (NOT a PR review — use review-pr) |
 | **review-pr** | AI-powered PR code review with structured feedback |
 | **investigate** | Root cause analysis — no fix without confirmed hypothesis |
 | **incident** | Incident response — diagnose, postmortem, follow-up tasks |
@@ -68,10 +68,10 @@ clade-mcp  # starts the MCP server (stdio transport)
 | **document-release** | Post-ship documentation sync |
 | **brief** | Morning briefing — overnight activity, costs, next steps |
 | **retro** | Engineering retrospective from git history |
-| **next** | Multi-angle "what's next?" priority session |
+| **next** | "What's next?" — fast 1-shot recommendation by default; `/next deep` for multi-round interview |
 | **orchestrate** | Decompose goals into tasks for worker execution |
 | **frontend-design** | Create production-grade frontend interfaces |
-| **audit** | Audit correction rules for promotion/cleanup |
+| **audit** | Audit correction rules meta-file (NOT a domain audit — use seo-audit/blog-audit/ads-audit) |
 | **merge-pr** | Squash-merge PR and clean up branch |
 | **worktree** | Create git worktrees for parallel sessions |
 | **pipeline** | Check health of background pipelines |
@@ -79,6 +79,9 @@ clade-mcp  # starts the MCP server (stdio transport)
 | **slt** | Toggle statusline display mode |
 | **model-research** | Research latest Claude models |
 | **minimax-usage** | Check API usage quota |
+| **poke** | Heartbeat after esc — 3-line status, continue if progressing |
+| **status** | Session dashboard — background agents, loops, worktrees, unpushed commits |
+| **go** | Execute the recommendation from your most recent A/B/C option set |
 
 ## How It Works
 
