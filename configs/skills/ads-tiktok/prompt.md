@@ -1,6 +1,6 @@
 ---
 name: ads-tiktok
-description: "TikTok Ads deep analysis covering creative quality, tracking, bidding, campaign structure, and TikTok Shop. Evaluates 25 checks with emphasis on creative-first strategy, safe zone compliance, and Smart+ campaigns. Use when user says TikTok Ads, TikTok marketing, TikTok Shop, Spark Ads, Smart+, or TikTok campaign."
+description: "TikTok Ads deep analysis covering creative quality, tracking, bidding, campaign structure, and TikTok Shop. Evaluates 28 checks with emphasis on creative-first strategy, safe zone compliance, and Smart+ campaigns. Use when user says TikTok Ads, TikTok marketing, TikTok Shop, Spark Ads, Smart+, or TikTok campaign."
 user-invokable: false
 ---
 
@@ -9,7 +9,7 @@ user-invokable: false
 ## Process
 
 1. Collect TikTok Ads data (Ads Manager export, Pixel/Events API status)
-2. Read `ads/references/tiktok-audit.md` for full 25-check audit
+2. Read `ads/references/tiktok-audit.md` for full 28-check audit
 3. Read `ads/references/benchmarks.md` for TikTok-specific benchmarks
 4. Read `ads/references/platform-specs.md` for creative specifications
 5. Read `ads/references/scoring-system.md` for weighted scoring algorithm
@@ -36,6 +36,7 @@ user-invokable: false
 ### Technical Setup (25% weight)
 - TikTok Pixel installed and firing on all pages (T01)
 - Events API + ttclid passback active (T02)
+- Events API Gateway evaluated for server-side integration
 - Standard events configured (ViewContent, AddToCart, Purchase, CompleteRegistration)
 - Advanced matching parameters configured
 
@@ -48,7 +49,7 @@ user-invokable: false
 ### Structure & Settings (15% weight)
 - Separate campaigns for prospecting vs retargeting (T03)
 - Smart+ campaigns tested: 42% adoption, 1.41-1.67 ROAS (T04)
-- Search Ads Toggle enabled (T14)
+- Search Ads Toggle enabled (20% conversion uplift combined with In-Feed; 57% of users use search) (T14)
 - Placement selection reviewed: TikTok, Pangle, etc. (T15)
 - Dayparting aligned with audience activity (T16)
 
@@ -110,9 +111,25 @@ If e-commerce, evaluate TikTok Shop setup:
 
 - 42% of advertisers have adopted Smart+ (TikTok's automated campaign type)
 - Average ROAS: 1.41-1.67
+- **Modular control (2025):** Lock targeting, creative, budget, or placement independently
 - Best for: e-commerce with product feed, app installs
 - Evaluate: is the advertiser testing Smart+ alongside manual campaigns?
 - Compare Smart+ performance vs manual for same objectives
+- Check which modules are locked vs automated
+
+## GMV Max (Shop Ads)
+
+Mandatory for all Shop Ads since July 2025. Evaluate:
+- GMV Max campaign active for all TikTok Shop products
+- Product feed quality and completeness
+- Shop Ads performance vs standard in-feed campaigns
+
+## Symphony Automation
+
+AI-powered creative variations generated from product URLs.
+- Evaluate whether account uses Symphony-generated vs original creatives
+- Assess impact on creative refresh cadence (Symphony can accelerate testing)
+- Monitor quality of AI-generated variations vs manual creatives
 
 ## TikTok Context
 
@@ -151,7 +168,7 @@ Performance:       XX/100  ████████░░  (10%)
 ```
 
 ### Deliverables
-- `TIKTOK-ADS-REPORT.md`: Full 25-check findings with pass/warning/fail
+- `TIKTOK-ADS-REPORT.md`: Full 28-check findings with pass/warning/fail
 - Creative scorecard per ad (hook quality, safe zone, native feel)
 - Smart+ vs manual performance comparison
 - TikTok Shop readiness assessment (if e-commerce)

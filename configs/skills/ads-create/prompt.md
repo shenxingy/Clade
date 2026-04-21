@@ -187,3 +187,11 @@ The following section headings are a **parsing contract**; agents downstream dep
 - **Platform fit**: concepts targeting TikTok must acknowledge vertical-only format and sound-on context
 - **Offer anchoring**: if the user provided a specific offer, at least 1 concept must lead with it
 - **Image briefs**: every concept must have at least one image brief per requested platform
+
+## Meta Andromeda Optimization
+
+For Meta campaigns: recommend diverse creative concepts (different motivators, visual styles, messaging angles) to maximize Andromeda retrieval. Similarity Score >60% between ads triggers clustering and suppression.
+
+## Platform Character Limits
+
+Verify platform character limits are current. Meta reduced headline display length on mobile in 2025.

@@ -1,15 +1,18 @@
 ---
 name: ads-linkedin
-description: "LinkedIn Ads deep analysis for B2B advertising. Evaluates 25 checks across technical setup, audience targeting, creative quality, lead gen forms, and bidding strategy. Includes Thought Leader Ads, ABM, and predictive audiences. Use when user says LinkedIn Ads, B2B ads, sponsored content, lead gen forms, InMail, or LinkedIn campaign."
+description: "LinkedIn Ads deep analysis for B2B advertising. Evaluates 27 checks across technical setup, audience targeting, creative quality, lead gen forms, and bidding strategy. Includes Thought Leader Ads, ABM, and predictive audiences. Use when user says LinkedIn Ads, B2B ads, sponsored content, lead gen forms, InMail, or LinkedIn campaign."
 user-invokable: false
 ---
 
 # LinkedIn Ads Deep Analysis
 
+**Terminology note (Oct 2025):** Campaign Groups are now called Campaigns, and
+Campaigns are now called Ad Sets. This skill uses the new terminology.
+
 ## Process
 
 1. Collect LinkedIn Ads data (Campaign Manager export, Insight Tag status)
-2. Read `ads/references/linkedin-audit.md` for full 25-check audit
+2. Read `ads/references/linkedin-audit.md` for full 27-check audit
 3. Read `ads/references/benchmarks.md` for LinkedIn-specific benchmarks
 4. Read `ads/references/scoring-system.md` for weighted scoring
 5. Evaluate all applicable checks as PASS, WARNING, or FAIL
@@ -23,6 +26,7 @@ user-invokable: false
 - Conversions API (CAPI) active, launched 2025 (L02)
 - Conversion events configured for full funnel
 - Revenue attribution tracking enabled
+- Salesforce/HubSpot CRM integration (June 2025) enables closed-loop impression-to-revenue reporting
 
 ### Audience Targeting (25% weight)
 - Job title targeting uses specific titles, not just functions (L03)
@@ -47,7 +51,7 @@ user-invokable: false
 - Message ad frequency ≤1 per 30-45 days (L20)
 
 ### Bidding & Budget (15% weight)
-- Bid strategy: CPS for Messages, Max Delivery for Content (L16)
+- Bid strategy: Start with Manual CPC. Maximum Delivery is the most expensive option. (L16)
 - Daily budget ≥$50 for Sponsored Content (L17)
 - CTR ≥0.44% for Sponsored Content (L21)
 - CPC within benchmark: $5-7 average, senior $6.40+ (L22)
@@ -57,9 +61,13 @@ user-invokable: false
 
 ## Thought Leader Ads (TLA) Assessment
 
-Thought Leader Ads use employee/executive personal posts as sponsored content:
+Thought Leader Ads use employee/executive personal posts as sponsored content.
+Non-employee members eligible since March 2025. 2-5x higher engagement than
+standard Sponsored Content.
+
 - CPC typically $2.29-$4.14 vs $13.23 for standard Sponsored Content
 - CTR typically 2-3x higher than corporate-branded ads
+- 2-5x higher engagement (includes non-employee member TLAs since March 2025)
 - Best for: B2B thought leadership, brand awareness, engagement
 
 Evaluate:
@@ -67,6 +75,20 @@ Evaluate:
 - Are they getting ≥30% of total LinkedIn budget?
 - Are the right employees selected (industry credibility, active posters)?
 - Is post content authentic and valuable (not salesy)?
+
+## Ad Format Benchmarks
+
+| Format | Key Metric |
+|--------|-----------|
+| Document Ads | 7.00% engagement rate |
+| Conversation Ads | 50-60% open rate |
+
+**Note:** EU Sponsored Messaging (InMail/Conversation Ads) discontinued since Jan 2022.
+
+## LinkedIn Audience Network
+
+Expert consensus is OFF. Quality is poor, and it dilutes campaign performance data.
+Disable LinkedIn Audience Network unless specifically testing with isolated budget.
 
 ## ABM Strategy Assessment
 
@@ -112,7 +134,7 @@ Budget & Bidding:  XX/100  ████████░░  (15%)
 ```
 
 ### Deliverables
-- `LINKEDIN-ADS-REPORT.md`: Full 25-check findings with pass/warning/fail
+- `LINKEDIN-ADS-REPORT.md`: Full 27-check findings with pass/warning/fail
 - TLA adoption roadmap (if not using)
 - ABM strategy recommendations (for B2B)
 - Lead Gen Form optimization priorities

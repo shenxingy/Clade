@@ -106,6 +106,14 @@ Score each axis 1-10 using these heuristics:
 | Customer testimonials lead | rational_emotional → emotional (+2) |
 | Industry awards, "trusted by X" | traditional_innovative → traditional (-1) |
 
+### Confidence Scoring
+Each voice axis gets a confidence rating based on signal count:
+- **High** (3+ signals): strong evidence for axis position
+- **Medium** (2 signals): moderate evidence, may need validation
+- **Low** (1 signal): weak evidence, treat as estimate
+
+Also extract structured data when available: schema.org markup, Open Graph tags (og:title, og:description, og:image), Twitter Card metadata.
+
 **Imagery style** (from og:image and any visible hero image descriptions):
 - Photography vs. illustration vs. flat design
 - Subject matter (people, product, abstract, data)

@@ -1,6 +1,6 @@
 ---
 name: ads-microsoft
-description: "Microsoft/Bing Ads deep analysis covering search, Performance Max, Audience Network, and Copilot integration. Evaluates 20 checks with focus on Google import validation, unique Microsoft features, and cost advantage assessment. Use when user says Microsoft Ads, Bing Ads, Bing PPC, Copilot ads, or Microsoft campaign."
+description: "Microsoft/Bing Ads deep analysis covering search, Performance Max, Audience Network, and Copilot integration. Evaluates 24 checks with focus on Google import validation, unique Microsoft features, and cost advantage assessment. Use when user says Microsoft Ads, Bing Ads, Bing PPC, Copilot ads, or Microsoft campaign."
 user-invokable: false
 ---
 
@@ -9,7 +9,7 @@ user-invokable: false
 ## Process
 
 1. Collect Microsoft Ads data (account export, UET tag status, import results)
-2. Read `ads/references/microsoft-audit.md` for full 20-check audit
+2. Read `ads/references/microsoft-audit.md` for full 24-check audit
 3. Read `ads/references/benchmarks.md` for Microsoft-specific benchmarks
 4. Read `ads/references/scoring-system.md` for weighted scoring
 5. Evaluate all applicable checks as PASS, WARNING, or FAIL
@@ -27,6 +27,7 @@ user-invokable: false
 - Search partner network reviewed, low-performers excluded (MS04)
 - Audience Network enabled only if testing intentionally (MS05)
 - Bid targets 20-35% lower than Google (CPC advantage) (MS06)
+- PMax: 300 campaigns/account (vs 100 Google), LinkedIn profile data available, no video support
 - Target New Customers enabled for PMax, Beta 2026 (MS07)
 
 ### Campaign Structure (20% weight)
@@ -68,6 +69,7 @@ Most Microsoft Ads accounts start as Google Ads imports. Critical validation:
 
 ### Import Schedule
 - Auto-import: useful but review changes monthly
+- **Warning:** Scheduled imports can re-enable paused campaigns. Deactivate scheduled imports after initial setup.
 - Manual import: more control, recommended for large accounts
 - Never import without post-import audit
 
@@ -80,6 +82,7 @@ Microsoft's AI assistant creates unique ad opportunities:
 - 73% CTR lift reported in chat placement
 - Copilot Checkout launched Jan 2026 (in-chat purchase)
 - Natural language ad delivery (conversational context)
+- Copilot ads show beneath AI responses with Sponsored labels
 
 ### How to Evaluate
 - Is Copilot placement enabled? (If not, HIGH priority for PMax)
@@ -93,11 +96,14 @@ These features are exclusive to Microsoft Ads; evaluate adoption:
 
 | Feature | Description | Priority |
 |---------|-------------|----------|
+| CTV Ads | Netflix, Max, Hulu, Roku, discovery+. 30-second non-skippable. | Medium |
 | Multimedia Ads | Image-rich search ads with visual elements | Medium |
 | Action Extension | CTA button directly in search ad | Medium |
 | Filter Link Extension | Filterable category links in ad | Low |
 | LinkedIn Profile Targeting | Target by company, industry, job function | High (B2B) |
 | Copilot Chat Placement | Ads within Copilot conversations | High |
+| Auto-generated RSA | Enabled by default Jan 2026, 5% CTR increase | Medium |
+| 9:16 Vertical Video | Vertical video ads (Apr 2025), 90-second max duration | Medium |
 
 ## Bing Demographic Context
 
@@ -138,7 +144,7 @@ Settings:          XX/100  ████████░░  (15%)
 ```
 
 ### Deliverables
-- `MICROSOFT-ADS-REPORT.md`: Full 20-check findings with pass/warning/fail
+- `MICROSOFT-ADS-REPORT.md`: Full 24-check findings with pass/warning/fail
 - Google import validation results
 - Copilot integration readiness assessment
 - Cost advantage analysis (CPC savings vs Google)

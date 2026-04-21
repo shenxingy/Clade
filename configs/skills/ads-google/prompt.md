@@ -1,6 +1,6 @@
 ---
 name: ads-google
-description: "Google Ads deep analysis covering Search, Performance Max, Display, YouTube, and Demand Gen campaigns. Evaluates 74 checks across conversion tracking, wasted spend, account structure, keywords, ads, and settings. Use when user says Google Ads, Google PPC, search ads, PMax, Performance Max, or Google campaign."
+description: "Google Ads deep analysis covering Search, Performance Max, Display, YouTube, and Demand Gen campaigns. Evaluates 80 checks across conversion tracking, wasted spend, account structure, keywords, ads, and settings. Use when user says Google Ads, Google PPC, search ads, PMax, Performance Max, or Google campaign."
 user-invokable: false
 ---
 
@@ -10,11 +10,11 @@ user-invokable: false
 
 1. Collect Google Ads account data (export, Change History, Search Terms Report)
 2. **Validate**: confirm data covers ≥30 days and includes Search Terms Report before proceeding
-3. Read `ads/references/google-audit.md` for full 74-check audit
+3. Read `ads/references/google-audit.md` for full 80-check audit
 4. Read `ads/references/benchmarks.md` for Google-specific benchmarks
 5. Read `ads/references/scoring-system.md` for weighted scoring
 6. Evaluate all applicable checks as PASS, WARNING, or FAIL
-7. **Validate**: confirm all 74 checks evaluated before calculating score
+7. **Validate**: confirm all 80 checks evaluated before calculating score
 8. Calculate Google Ads Health Score (0-100)
 9. Generate findings report with action plan
 
@@ -73,6 +73,7 @@ user-invokable: false
 - Ad copy includes CTA, value proposition, differentiators
 
 ### Settings (10% weight)
+- ECPC (Enhanced CPC) flagged as deprecated. Migrate to full Smart Bidding (tCPA/tROAS/Maximize)
 - Bid strategy appropriate for campaign maturity and goals
 - Budget pacing: no campaigns limited by budget (unless intentional)
 - Ad schedule aligned with business hours/conversion patterns
@@ -110,18 +111,36 @@ If Performance Max campaigns exist, additionally evaluate:
 - Asset group diversity (text, images, video, feeds)
 - Audience signals configured (custom segments, lists, demographics)
 - URL expansion settings reviewed (opt-out of irrelevant pages)
-- Brand exclusions applied (prevent cannibalizing brand search)
+- Brand exclusions applied (prevent cannibalizing brand search), available for all advertisers
+- Campaign-level negative keywords now available for ALL advertisers
 - Search themes utilized (2024 feature)
 - Final URL expansion: enabled or disabled with justification
 - Insights tab reviewed (search categories, audience segments)
 
 ## AI Max for Search (2026)
 
+AI Max layers broad match + keywordless targeting on existing Search campaigns.
+14% avg conversion lift. DSA likely consolidated into AI Max Q2 2026.
+Requires strong negative keyword lists.
+
 If AI Max for Search is available/active:
 - Broad Match + AI Max integration evaluated
 - Auto-generated headline performance monitored
 - Search term categories reviewed for relevance
 - Budget impact assessed (AI Max can shift spend)
+- Negative keyword lists reviewed for completeness (AI Max broadens reach significantly)
+- DSA migration path assessed (consolidation expected Q2 2026)
+
+## Demand Gen Campaigns
+
+Replaced Video Action Campaigns (April 2026). Video + image = 20% more conversions.
+Frequency capping NOT supported.
+
+If Demand Gen campaigns exist, evaluate:
+- Video + image asset mix present (combined format drives 20% more conversions)
+- Audience signals configured (custom segments, lookalikes)
+- Conversion tracking aligned with upper/mid-funnel goals
+- Note: frequency capping is not available. Monitor reach vs frequency manually
 
 ## Key Thresholds
 
@@ -151,7 +170,7 @@ Settings:            XX/100  ██████████  (10%)
 ```
 
 ### Deliverables
-- `GOOGLE-ADS-REPORT.md`: Full 74-check findings with pass/warning/fail
+- `GOOGLE-ADS-REPORT.md`: Full 80-check findings with pass/warning/fail
 - Wasted spend estimate (monthly $ value)
 - Quick Wins sorted by impact
 - PMax-specific recommendations (if applicable)

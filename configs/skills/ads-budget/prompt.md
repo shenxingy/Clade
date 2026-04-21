@@ -4,6 +4,8 @@ description: "Budget allocation and bidding strategy review across all ad platfo
 user-invokable: false
 ---
 
+<!-- Updated: 2026-04-13 | v1.5 -->
+
 # Budget Allocation & Bidding Strategy
 
 ## Process
@@ -34,7 +36,7 @@ user-invokable: false
 | Local Service | Google Search, Google LSA | Meta | Microsoft, YouTube |
 | B2B Enterprise | LinkedIn, Google Search | Meta | Microsoft, TikTok |
 | Info Products | Meta, YouTube | Google Search | TikTok |
-| Mobile App | Meta, Google UAC | TikTok | Apple Search Ads |
+| Mobile App | Meta, Google UAC | TikTok | Apple Ads |
 | Real Estate | Google Search, Meta | YouTube | Microsoft |
 | Healthcare | Google Search | Meta | Microsoft, YouTube |
 | Finance | Google Search, Meta | LinkedIn | Microsoft |
@@ -79,8 +81,9 @@ Start
 
 ### LinkedIn Bidding
 - **Cost Per Send (CPS)**: for Message Ads
-- **Maximum Delivery**: for Sponsored Content (recommended)
-- **Manual CPC**: for tight budget control
+- **Manual CPC**: recommended starting point for cost control
+- **Cost Cap**: efficiency at scale with predictable CPA
+- **Maximum Delivery**: highest volume, most expensive. Use only for scale with established data
 - **Target Cost**: for predictable CPA
 
 ### TikTok Bidding
@@ -91,8 +94,34 @@ Start
 
 ### Microsoft Bidding
 - Mirror Google strategy but bid 20-35% lower
-- Enhanced CPC for manual campaigns
-- Target CPA / Target ROAS for automated
+- Manual CPC for low-volume campaigns (Enhanced CPC deprecated on Google March 2025; verify Microsoft availability before recommending)
+- Target CPA / Target ROAS for automated (requires 15+ conversions/30 days)
+
+## v1.5 Bidding Innovations
+
+### Google AI Max for Search
+- 14% conversion lift in early testing
+- Requires strong negative keyword lists (AI Max casts a wider net)
+- DSA likely consolidated into AI Max by Q2 2026
+- Best for: accounts with mature conversion tracking and keyword history
+
+### TikTok Smart+ Modular Control (2025)
+- Lock targeting, creative, budget, or placement independently (mix of manual and AI)
+- ROAS performance: 1.41-1.67x in early adopter data
+- Replaces all-or-nothing automation approach
+- Best for: advertisers wanting partial AI control without full black-box
+
+### Apple Ads Maximize Conversions
+- GA: February 26, 2026. AI-powered auto-bidder for Apple Ads
+- Target CPA based on weekly average (not per-conversion)
+- Daily budget must be >=5x target CPA for stable performance
+- Two-week learning phase required; avoid changes during learning
+- Currently supports installs only (not post-install events)
+
+### Meta Advantage+ Bidding
+- Automatic optimization across all placements within Advantage+ Sales campaigns
+- Budget automatically shifts to highest-performing placements in real time
+- Best combined with broad targeting and high creative volume
 
 ## Scaling Assessment
 
