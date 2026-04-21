@@ -15,7 +15,7 @@ license: MIT
 compatibility: "Requires DataForSEO MCP server"
 metadata:
   author: AgriciDaniel
-  version: "1.8.2"
+  version: "1.9.0"
   category: seo
 ---
 
@@ -45,6 +45,29 @@ DataForSEO charges per API call. Be efficient:
 - Use default parameters (US, English) unless user specifies otherwise
 - Cache results mentally within a session; don't re-fetch the same data
 - Warn user before running expensive operations (full backlink crawls, large keyword lists)
+
+## Cost Guardrails
+
+**Before every DataForSEO MCP call**, run cost estimation:
+```
+python scripts/dataforseo_costs.py check <endpoint> [--count N]
+```
+
+- If `"status": "approved"` → proceed with the API call
+- If `"status": "needs_approval"` → show the cost estimate to the user and ask for confirmation before proceeding
+- If `"status": "blocked"` → inform the user that the daily budget limit would be exceeded; do NOT proceed
+
+**After each API call completes**, log the cost:
+```
+python scripts/dataforseo_costs.py log <endpoint> <actual_cost>
+```
+
+**User commands for cost management:**
+- `/seo dataforseo costs today` → show today's spending breakdown
+- `/seo dataforseo costs summary` → show 7-day spending history
+- `/seo dataforseo costs config --mode threshold --threshold 0.50` → configure approval mode
+
+Load `references/cost-tiers.md` for the full pricing table, budget presets, and cost reduction tips.
 
 ## Quick Reference
 
