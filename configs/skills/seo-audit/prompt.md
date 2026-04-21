@@ -1,12 +1,12 @@
 ---
 name: seo-audit
-description: "Full website SEO audit with parallel subagent delegation. Crawls up to 500 pages, detects business type, delegates to 10 specialists (7 core + 3 conditional), generates health score. Use when user says audit, full SEO check, analyze my site, or website health check."
+description: "Full website SEO audit with parallel subagent delegation. Crawls up to 500 pages, detects business type, delegates to up to 15 specialists (8 always + 7 conditional), generates health score. Use when user says audit, full SEO check, analyze my site, or website health check."
 user-invokable: true
 argument-hint: "[url]"
 license: MIT
 metadata:
   author: AgriciDaniel
-  version: "1.8.2"
+  version: "1.9.0"
   category: seo
 ---
 
@@ -29,6 +29,10 @@ metadata:
    - `seo-maps` -- Geo-grid rank tracking, GBP audit, review intelligence, competitor radius mapping (spawn when Local Service detected AND DataForSEO MCP available)
    - `seo-google` -- CWV field data (CrUX), URL indexation (GSC), organic traffic (GA4) (spawn when Google API credentials detected via `python scripts/google_auth.py --check`)
    - `seo-backlinks` -- Backlink profile data: DA/PA, referring domains, anchor text, toxic links (spawn when Moz or Bing API credentials detected via `python scripts/backlinks_auth.py --check`, or always include Common Crawl domain-level metrics)
+   - `seo-cluster` -- Semantic clustering analysis (spawn when content strategy signals detected: blog, pillar pages, topic clusters)
+   - `seo-sxo` -- Search experience analysis: page-type mismatch, user stories, persona scoring (always include in full audits)
+   - `seo-drift` -- Drift analysis: compare against stored baseline (spawn when drift baseline exists for the URL via `python scripts/drift_history.py <url>`)
+   - `seo-ecommerce` -- Product schema, marketplace intelligence (spawn when E-commerce industry detected)
 5. **Score** -- aggregate into SEO Health Score (0-100)
 6. **Report** -- generate prioritized action plan
 
