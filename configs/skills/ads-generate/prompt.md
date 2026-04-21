@@ -28,6 +28,8 @@ profile. Uses banana-claude as the image generation provider.
 If banana-claude is not installed, this skill will display setup instructions
 and stop. It will never fail silently.
 
+If banana-claude is unavailable, alternatives include: OpenAI gpt-image-1 ($0.040/image), Stability SD 3.5 ($0.065), or Replicate FLUX.1 Pro ($0.055). Configure via ADS_IMAGE_PROVIDER env var.
+
 ## Process
 
 ### Step 1: Verify banana-claude
@@ -106,6 +108,12 @@ with `context: fork` to validate dimensions and report missing formats.
 Use Claude vision to assess each generated image against the brief (score 1 to 10
 on brand alignment, composition, platform fit). If any image scores below 6,
 regenerate once with an adjusted prompt.
+
+Quality Gate Rubric:
+- 9-10: Professional quality, brand-aligned, platform-optimized, no issues
+- 7-8: Good quality, minor composition or brand alignment improvements possible
+- 5-6: Acceptable but needs regeneration. Text readability issues, poor composition, or brand mismatch
+- Below 5: Reject. Regenerate with adjusted prompt
 
 ### Step 9: Aggregate Costs
 

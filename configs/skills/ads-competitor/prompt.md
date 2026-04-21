@@ -1,8 +1,10 @@
 ---
 name: ads-competitor
-description: "Competitor ad intelligence analysis across Google, Meta, LinkedIn, TikTok, and Microsoft. Analyzes competitor ad copy, creative strategy, keyword targeting, estimated spend, and identifies competitive gaps and opportunities. Use when user says competitor ads, ad spy, competitive analysis, competitor PPC, or ad intelligence."
+description: "Competitor ad intelligence analysis across Google, Meta, LinkedIn, TikTok, Microsoft, and Apple Ads. Analyzes competitor ad copy, creative strategy, keyword targeting, estimated spend, and identifies competitive gaps and opportunities. Use when user says competitor ads, ad spy, competitive analysis, competitor PPC, or ad intelligence."
 user-invokable: false
 ---
+
+<!-- Updated: 2026-04-13 | v1.5 -->
 
 # Competitor Ad Intelligence
 
@@ -26,6 +28,7 @@ user-invokable: false
 | LinkedIn Ad Library | LinkedIn | Active ads from company pages |
 | TikTok Creative Center | TikTok | Top ads, trending creative, hashtags |
 | Microsoft Ads | Microsoft | Limited: use auction insights |
+| Apple Ads (App Store) | Apple | Search tab ads, Today tab ads, product page creatives |
 
 ### Google Ads Auction Insights
 Available from the user's own Google Ads account:
@@ -53,9 +56,46 @@ Available from the user's own Google Ads account:
 - Limited data compared to Meta Ad Library
 
 #### TikTok
-- Creative Center: top-performing ads by industry, country, objective
+- Creative Center 2.0: top-performing ads by industry, country, objective with enhanced filtering
 - Hashtag analytics: trending sounds and hashtags
+- TikTok Shop: review competitor storefronts, catalogs, reviews, and live shopping
 - No per-advertiser library; use Creative Center for industry trends
+
+#### Apple Ads
+- App Store search: search competitor brand terms to see their Search tab ads
+- Today tab ads: check competitor presence on App Store homepage
+- Custom Product Pages: analyze competitor CPP variants via App Store listings
+
+## 2025-2026 Platform Updates
+
+### Meta
+- **Andromeda creative clustering** (launched October 2025): ads with >60% similarity are suppressed. Competitor creative analysis must assess genuine conceptual diversity, not just volume
+- **Advantage+ Sales** (renamed from ASC): unified shopping campaign type. Check if competitors are running Advantage+ Sales vs manual campaigns
+
+### Google
+- **Demand Gen replaced VAC** (April 2026): Video Action Campaigns fully deprecated. Analyze competitor Demand Gen adoption (multi-format video+image)
+- **AI Max for Search**: AI-powered campaign type with 14% conversion lift. Check competitor adoption via Ads Transparency Center
+- **Expanded Ads Transparency Center**: richer data on competitor ad history, formats, and targeting regions
+
+### TikTok
+- **Creative Center 2.0**: enhanced industry benchmarking, top ads filtering by objective and format
+- **Symphony AI variations** (2025): AI-generated creative at scale. Assess whether competitors use Symphony-generated vs original content
+- **TikTok Shop competitor analysis**: review competitor Shop tabs, product catalogs, reviews, and live shopping activity
+
+### LinkedIn
+- **Thought Leader Ads expansion** (March 2025): now supports non-employee creators and influencers. Check if competitors sponsor external thought leaders
+- **CRM integration** (June 2025): enhanced audience matching. Competitors with CRM integration show more precise targeting patterns
+
+### Microsoft
+- **Copilot ads in conversations**: new placement in Microsoft Copilot chat. Check if competitors appear in conversational ad placements
+- **CTV inventory**: ads on Netflix, Max, Hulu, and Roku via Microsoft Advertising. Assess competitor presence on connected TV
+
+### Apple Ads
+- **Rebranded to "Apple Ads"** (April 2025): formerly Apple Search Ads. All references updated
+- **Custom Product Page (CPP) competitive analysis**: competitors can run different product page variants per ad group. Analyze CPP strategies
+- **Maximize Conversions bidding**: AI auto-bidder (GA February 2026). Check if competitors have adopted automated bidding
+
+> **MCP Integration**: For live API access to competitor data sources, see `ads/references/mcp-integration.md`.
 
 ## Competitive Analysis Framework
 
@@ -85,7 +125,7 @@ Categorize competitor messaging into themes:
 | Trust/Authority | ✅ Primary | ✅ Primary | ? |
 | Innovation | ❌ | ⚠️ Secondary | ? |
 
-### 4. Keyword Intelligence (Google/Microsoft)
+### 4. Keyword Intelligence (Google/Microsoft/Apple Ads)
 - Brand keyword bidding: are competitors bidding on your brand?
 - Keyword overlap: which non-brand terms do you both target?
 - Keyword gaps: terms competitors rank for that you don't target

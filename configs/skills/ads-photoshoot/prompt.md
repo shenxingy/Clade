@@ -98,7 +98,7 @@ intentional negative space, editorial food photography style"
 ```
 
 **Composition:** Top-down, product in center, ingredients fanning out.
-**Output sizes:** 1080×1080 (optimal for this style)
+**Output sizes:** 1080×1080 (optimal for this style). Also generate 9:16 vertical for TikTok/Reels/Stories placements.
 
 #### Style 4: In Use
 Authentic usage context.
@@ -130,6 +130,10 @@ product clearly visible and prominent"
 **Composition:** Environmental context, product as hero element within the scene.
 **Output sizes:** 1080×1080, 1080×1920
 
+### Iterative Refinement
+
+For iterative refinement: if initial generation doesn't match brand expectations, adjust the prompt by specifying: lighting direction, color temperature, background texture, or product angle before regenerating.
+
 ### Step 5: Generate Images
 
 **Domain mode selection per style:**
@@ -160,6 +164,7 @@ Track results. If a generation fails, retry once with a simplified prompt.
     product-floating-1080x1920.png
   ingredient/
     product-ingredient-1080x1080.png
+    product-ingredient-1080x1920.png
   in-use/
     product-in-use-1080x1080.png
     product-in-use-1080x1920.png
@@ -174,7 +179,7 @@ Track results. If a generation fails, retry once with a simplified prompt.
 
   Studio:     ./product-photos/studio/ (2 sizes)
   Floating:   ./product-photos/floating/ (2 sizes)
-  Ingredient: ./product-photos/ingredient/ (1 size; square only)
+  Ingredient: ./product-photos/ingredient/ (2 sizes)
   In Use:     ./product-photos/in-use/ (2 sizes)
   Lifestyle:  ./product-photos/lifestyle/ (2 sizes)
 

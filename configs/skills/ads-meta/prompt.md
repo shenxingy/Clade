@@ -1,15 +1,23 @@
 ---
 name: ads-meta
-description: "Meta Ads deep analysis covering Facebook and Instagram advertising. Evaluates 46 checks across Pixel/CAPI health, creative diversity and fatigue, account structure, and audience targeting. Includes Advantage+ assessment. Use when user says Meta Ads, Facebook Ads, Instagram Ads, Advantage+, or Meta campaign."
+description: "Meta Ads deep analysis covering Facebook and Instagram advertising. Evaluates 50 checks across Pixel/CAPI health, creative diversity and fatigue, account structure, and audience targeting. Includes Advantage+ assessment. Use when user says Meta Ads, Facebook Ads, Instagram Ads, Advantage+, or Meta campaign."
 user-invokable: false
 ---
 
 # Meta Ads Deep Analysis
 
+## Andromeda AI Engine
+
+Meta's Andromeda AI engine (Oct 2025) filters ads using 10,000x more complex models.
+Creative diversity is now the #1 performance lever. Ads with Similarity Score >60%
+get retrieval suppression. The algorithm clusters near-identical creatives and limits
+their delivery. 100 minor variations perform no better than 10. Prioritize genuinely
+distinct concepts, angles, and formats over volume of similar variants.
+
 ## Process
 
 1. Collect Meta Ads data (Ads Manager export, Events Manager screenshot, EMQ scores)
-2. Read `ads/references/meta-audit.md` for full 46-check audit
+2. Read `ads/references/meta-audit.md` for full 50-check audit
 3. Read `ads/references/benchmarks.md` for Meta-specific benchmarks
 4. Read `ads/references/scoring-system.md` for weighted scoring
 5. Evaluate all applicable checks as PASS, WARNING, or FAIL
@@ -42,13 +50,13 @@ user-invokable: false
 
 ### Account Structure (20% weight)
 - Campaign Budget Optimization (CBO) vs Ad Set Budget (ABO) intentional
-- Campaign consolidation: ≤5 active campaigns per objective type
+- Campaign consolidation: 1-3 campaigns total recommended
 - Learning phase health: <30% ad sets in "Learning Limited" (FAIL >50%)
 - Budget per ad set: ≥5x target CPA (minimum for learning phase exit)
 - Ad set audience overlap <30% (Audience Overlap tool)
 - Campaign naming conventions consistent and descriptive
-- Advantage+ Shopping Campaigns (ASC) active for e-commerce
-- Simplified campaign structure (fewer, larger ad sets preferred)
+- Advantage+ Sales Campaigns active for e-commerce
+- Simplified campaign structure: 1-3 campaigns total (fewer, larger ad sets preferred)
 
 ### Audience & Targeting (20% weight)
 - Prospecting frequency (7-day): <3.0 (WARNING 3-5, FAIL >5)
@@ -63,7 +71,7 @@ user-invokable: false
 ## Advantage+ Assessment
 
 If Advantage+ features are in use:
-- **ASC (Shopping Campaigns)**: catalog connected, existing customer cap set
+- **Advantage+ Sales Campaigns**: catalog connected, existing customer cap set
 - **Advantage+ Audience**: performance vs manual audience compared
 - **Advantage+ Creative**: enhancements enabled (text, brightness, music)
 - **Advantage+ Placements**: enabled (let Meta optimize placement mix)
@@ -119,8 +127,16 @@ Audience:            XX/100  █████░░░░░  (20%)
 ```
 
 ### Deliverables
-- `META-ADS-REPORT.md`: Full 46-check findings with pass/warning/fail
+- `META-ADS-REPORT.md`: Full 50-check findings with pass/warning/fail
 - EMQ improvement roadmap
 - Creative fatigue alerts (any creative with CTR declining >20%)
 - Quick Wins sorted by impact
 - Advantage+ adoption recommendations
+
+## Threads Placement
+
+Threads placement GA Jan 2026, 400M+ MAU. Lower CPMs than Feed/Stories.
+Currently ~0.04% of total spend. Emerging channel. Evaluate:
+- Is Threads placement enabled in Advantage+ Placements?
+- Monitor CPM and engagement vs other placements
+- Early-mover advantage for brands with active Threads presence

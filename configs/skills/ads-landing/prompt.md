@@ -4,6 +4,8 @@ description: "Landing page quality assessment for paid advertising campaigns. Ev
 user-invokable: false
 ---
 
+<!-- Updated: 2026-04-13 | v1.5 -->
+
 # Landing Page Quality for Ad Campaigns
 
 ## Process
@@ -42,7 +44,7 @@ Slow pages kill conversion rates. For every 1s delay, CVR drops ~7%.
 | Metric | Pass | Warning | Fail |
 |--------|------|---------|------|
 | LCP | <2.5s | 2.5-4.0s | >4.0s |
-| FID/INP | <100ms | 100-200ms | >200ms |
+| INP | <200ms | 200-500ms | >500ms |
 | CLS | <0.1 | 0.1-0.25 | >0.25 |
 | Time to Interactive | <3.0s | 3.0-5.0s | >5.0s |
 | Page weight | <2MB | 2-5MB | >5MB |
@@ -102,6 +104,34 @@ Slow pages kill conversion rates. For every 1s delay, CVR drops ~7%.
 - Error messages are clear and helpful
 - Submit button text is specific ("Get My Free Quote" not "Submit")
 - Thank you page has clear next steps
+
+## Landing Page Health Score Algorithm
+
+```
+Landing Page Health Score = (Message Match x 0.25) + (Page Speed x 0.25) + (Mobile x 0.20) + (Trust x 0.15) + (Form x 0.15)
+```
+
+Each component is scored 0-100, then weighted. Final score maps to grade: A (90-100), B (75-89), C (60-74), D (40-59), F (<40).
+
+## Consent Banner Impact
+
+Flag if any of the following are true:
+- Consent banner covers the primary CTA on load
+- Consent banner delays form interaction by >1 second
+- Consent banner pushes critical content (headline, offer, CTA) below the fold
+- Banner cannot be dismissed on mobile without scrolling
+
+> **Consent Mode V2**: Verify Consent Mode V2 implementation for EU/EEA traffic to ensure tracking data quality. Without Consent Mode V2, conversion modeling is degraded and remarketing audiences shrink significantly.
+
+## Quick Wins
+
+| Priority | Fix | Expected Impact |
+|----------|-----|-----------------|
+| 1 | Move primary CTA above the fold on all devices | +15-25% CVR |
+| 2 | Reduce form fields to essential only (name, email, one qualifier) | +10-20% CVR |
+| 3 | Add trust badges near CTA (security, guarantee, reviews) | +5-15% CVR |
+| 4 | Optimize hero image (WebP/AVIF, <200KB, proper dimensions) | -1-2s load time |
+| 5 | Fix mobile tap targets (>=48x48px with >=8px spacing) | +5-10% mobile CVR |
 
 ## Ad-Specific Landing Page Elements
 

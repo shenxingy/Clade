@@ -15,7 +15,7 @@
 
 | Platform | Role | Budget % | Why |
 |----------|------|----------|-----|
-| Meta (FB/IG) | Primary | 50-68% | Prospecting + Advantage+ Shopping Campaigns, highest scale for DTC |
+| Meta (FB/IG) | Primary | 50-68% | Prospecting + Advantage+ Sales Campaigns, highest scale for DTC |
 | Google Shopping/PMax | Secondary | 23-30% | High-intent product searches, Shopping ads |
 | TikTok | Secondary | 5-15% | Product discovery, UGC, TikTok Shop |
 | Email | Supporting | 5% | Retention, repeat purchase, owned audience |
@@ -37,7 +37,7 @@ Account; Google
 └── Search; Non-Brand (category terms)
 
 Account; Meta
-├── Advantage+ Shopping Campaign (ASC)
+├── Advantage+ Sales Campaign (formerly ASC)
 │   └── 150+ creatives (image + video + UGC mix)
 ├── Prospecting; Interest/Lookalike
 │   ├── Ad Set: Top Performers lookalike
@@ -69,7 +69,7 @@ Account; TikTok
 ### Creative Volume Requirements
 | Platform | Min Active Creatives | Refresh Cadence |
 |----------|---------------------|-----------------|
-| Meta ASC | 150+ in campaign | 2-4 weeks |
+| Meta Advantage+ Sales | 150+ in campaign | 2-4 weeks |
 | Meta Standard | 5+ per ad set | 2-4 weeks |
 | TikTok | 6+ per ad group | 5-7 days |
 | Google PMax | Text + 20 images + 5 videos per asset group | 4-8 weeks |
@@ -109,7 +109,7 @@ Account; TikTok
 | Google Search CTR | 4.13% |
 | Google ROAS | 3.68 |
 | Meta CPC | $0.70-$1.32 (seasonal) |
-| Meta ROAS | 2.19 (median), 4.52 (ASC) |
+| Meta ROAS | 2.19 (median), 4.52 (Advantage+ Sales) |
 | TikTok CPM | $3.21-$10 |
 | TikTok Shop CVR | >10% |
 | CPA (Triple Whale) | $23.74 (median, +12.35% YoY) |

@@ -4,6 +4,8 @@ description: "Cross-platform creative quality audit covering ad copy, video, ima
 user-invokable: false
 ---
 
+<!-- Updated: 2026-04-13 | v1.5 -->
+
 # Cross-Platform Creative Quality Audit
 
 ## Process
@@ -76,10 +78,10 @@ user-invokable: false
 ### Refresh Cadence by Platform
 | Platform | Recommended Refresh |
 |----------|-------------------|
-| Google Search | Every 8-12 weeks |
-| Meta | Every 2-4 weeks |
+| TikTok | Every 7-10 days (fastest fatigue) |
+| Meta | Every 14-21 days |
 | LinkedIn | Every 4-6 weeks |
-| TikTok | Every 5-7 days (fastest fatigue) |
+| Google Search | Every 8-12 weeks |
 | Microsoft | Every 8-12 weeks |
 | YouTube | Every 4-8 weeks |
 
@@ -90,11 +92,63 @@ Evaluate which formats are active per platform:
 | Format | Google | Meta | LinkedIn | TikTok | Microsoft |
 |--------|--------|------|----------|--------|-----------|
 | Static Image | RSA image ext | ✅ | ✅ | ❌ | Multimedia |
-| Video | YouTube, PMax | ✅ | ✅ | ✅ (required) | ❌ |
+| Video | YouTube, PMax | ✅ | ✅ | ✅ (required) | ✅ (9:16 vertical, April 2025) |
 | Carousel | ❌ | ✅ | ✅ | ❌ | ❌ |
 | Collection | ❌ | ✅ | ❌ | ❌ | ❌ |
 | Document | ❌ | ❌ | ✅ | ❌ | ❌ |
 | Shopping | PMax, Shopping | Catalog | ❌ | Shop | Shopping |
+
+**Apple Ads Format Support:**
+
+| Format | Apple Ads |
+|--------|-----------|
+| Static Image | ✅ (Custom Product Pages) |
+| Video | ✅ (App preview videos) |
+| Search Tab | ✅ (banner) |
+| Today Tab | ✅ (editorial-style) |
+
+## Andromeda Creative Similarity Score (Meta)
+
+Meta's Andromeda engine (launched October 2025) clusters ads with >60% similarity and suppresses delivery
+of near-identical creatives. 100 minor variations (color swaps, small text changes)
+perform no better than 10 genuinely distinct creatives. Evaluate:
+- Are creatives genuinely diverse in concept, angle, and format?
+- Flag accounts relying on iterative variations rather than distinct concepts
+- Recommend testing fundamentally different hooks, formats, and value propositions
+
+## Symphony Automation Awareness (TikTok, 2025)
+
+TikTok's Symphony AI (2025) generates creative variations from product URLs. Assess:
+- Whether account uses AI-generated vs original creatives
+- Quality and performance comparison of Symphony vs manual creatives
+- Impact on creative refresh strategy (Symphony can accelerate iteration)
+
+## Creative Health Scoring Weights
+
+```
+Format Diversity:      25%  ████████░░
+Fatigue Signals:       25%  ████████░░
+Platform Compliance:   20%  ██████░░░░
+Refresh Cadence:       15%  █████░░░░░
+Volume:                15%  █████░░░░░
+```
+
+Grade: A (90-100), B (75-89), C (60-74), D (40-59), F (<40).
+
+## Creative Check IDs
+
+| ID | Check | Severity |
+|----|-------|----------|
+| CR-01 | Format diversity: >=3 formats per platform | High |
+| CR-02 | Creative volume: meets platform minimums | High |
+| CR-03 | Fatigue detection: CTR/engagement declining past thresholds | Critical |
+| CR-04 | Refresh cadence: within platform-recommended cycle | High |
+| CR-05 | Platform compliance: specs, safe zones, text limits | Critical |
+| CR-06 | Hook quality: first 1-5s engagement (video) or headline impact (static) | High |
+| CR-07 | UGC ratio: UGC/testimonial content tested on Meta and TikTok | Medium |
+| CR-08 | Video specs: codec, resolution, aspect ratio per platform | Medium |
+| CR-09 | Safe zone compliance: critical elements within 900x1000px usable area | Medium |
+| CR-10 | Andromeda diversity: genuinely distinct concepts, not iterative variations (Meta) | High |
 
 ## Universal Creative Best Practices
 

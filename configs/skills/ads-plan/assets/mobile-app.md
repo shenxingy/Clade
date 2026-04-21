@@ -15,7 +15,7 @@
 
 | Platform | Role | Budget % | Why |
 |----------|------|----------|-----|
-| Apple Search Ads | Primary | 25-30% | High-intent (searching App Store), iOS-specific, best CVR |
+| Apple Ads | Primary | 25-30% | High-intent (searching App Store), iOS-specific, best CVR |
 | Google App (UAC) | Primary | 25-30% | Cross-network reach (Search, Play, YouTube, Display) |
 | Meta App Installs | Primary | 20-25% | Precise targeting, Advantage+ App Campaigns |
 | TikTok | Secondary | 15-20% | High engagement, young demographics, low CPM |
@@ -48,7 +48,7 @@ Account; Google
 │   └── Target ROAS on in-app purchases
 └── UAC; Pre-Registration (if applicable)
 
-Account; Apple Search Ads
+Account; Apple Ads
 ├── Brand
 │   └── Exact match on app name
 ├── Category
@@ -85,7 +85,7 @@ Account; TikTok
 | Meta | Video (9:16 + 1:1) | 15-30s | Multiple aspect ratios required |
 | Google UAC | Video + image + HTML5 | 15-30s video | Provide 20+ creative assets |
 | TikTok | Vertical video (9:16) | 15-30s | Native-looking, not polished |
-| Apple Search Ads | App Store screenshots | N/A | Custom Product Pages recommended |
+| Apple Ads | App Store screenshots | N/A | Custom Product Pages recommended |
 
 ### App Store Creative Alignment
 - Ad creative should match App Store listing (message match)
@@ -106,7 +106,7 @@ Account; TikTok
 - **Control levers**: creative assets, bid strategy, geography, language
 - **Budget**: minimum $50/day for algorithm learning
 
-### Apple Search Ads
+### Apple Ads
 - **Exact match**: high-intent category keywords, competitor names
 - **Broad match + Search Match**: keyword discovery
 - **Custom Product Pages**: match search intent to landing experience
@@ -124,7 +124,7 @@ Account; TikTok
 | Meta CPI (iOS) | $3-$8 |
 | Meta CPI (Android) | $1-$4 |
 | Google UAC CPI | $1-$5 |
-| Apple Search Ads CPI | $2-$5 |
+| Apple Ads CPI | $2-$5 |
 | TikTok CPI | $1-$3 |
 | Meta CPA (subscription) | $15-$50 |
 | Cost per subscriber | 3-5x CPI |

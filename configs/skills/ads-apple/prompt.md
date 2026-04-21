@@ -1,14 +1,17 @@
 ---
 name: ads-apple
-description: "Apple Search Ads (ASA) deep analysis for mobile app advertisers. Evaluates campaign structure, bid health, Creative Sets, MMP attribution, budget pacing, TAP coverage (Today/Search/Product Pages), and goal CPA benchmarks by country. Use when user says Apple Search Ads, ASA, App Store ads, Apple ads, Search Ads, or is advertising a mobile app on iOS."
+description: "Apple Ads (formerly Apple Search Ads) deep analysis for mobile app advertisers. Evaluates campaign structure, bid health, Custom Product Pages (CPPs), MMP attribution, budget pacing, TAP coverage (Today/Search/Product Pages), Maximize Conversions bidding, and goal CPA benchmarks by country. Use when user says Apple Ads, Apple Search Ads, ASA, App Store ads, Apple ads, Search Ads, or is advertising a mobile app on iOS."
 user-invokable: false
 ---
 
-# Apple Search Ads (ASA) Deep Analysis
+# Apple Ads (formerly Apple Search Ads) Deep Analysis
+
+<!-- Updated: 2026-04-13 | v1.5: Maximize Conversions, CPP-only (Creative Sets deprecated), AdAttributionKit, rebrand -->
+<!-- Note: Apple rebranded "Apple Search Ads" to "Apple Ads" in April 2025 -->
 
 ## Process
 
-1. Collect ASA account data (exports from Apple Search Ads dashboard or pasted metrics)
+1. Collect Apple Ads account data (exports from Apple Ads dashboard or pasted metrics)
 2. Identify active placement types (Search Results, Search Tab, Today Tab, Product Pages)
 3. Evaluate all applicable checks as PASS, WARNING, or FAIL
 4. Calculate ASA Health Score (0-100)
@@ -42,7 +45,8 @@ user-invokable: false
 - CPT/CPG (Cost Per Goal): compare against target CPI/CPA from MMP
 
 **Bid Strategy:**
-- Manual CPT bidding appropriate? (Or use Apple's CPA Goals auto-bidding for scaled accounts)
+- Manual CPT bidding appropriate for small/new accounts
+- **Maximize Conversions** (GA February 26, 2026): AI-powered auto-bidder using Search Match that sets optimal bids per search query in real time. Target CPA (weekly average target) replaces CPA Cap (being deprecated). Recommended daily budget: at least 5x target CPA. Two-week learning period minimum. **Current limitation**: only optimizes for installs, NOT post-install events (no trial, subscription, or ROAS optimization yet)
 - CPA Goals available at campaign level; evaluate if conversion volume supports it (>100 installs/month per campaign)
 - Are bids differentiated by match type? (Brand Exact > Category Exact > Search Match)
 - Keyword-level CPT bids set, not just ad group default?
@@ -52,13 +56,17 @@ user-invokable: false
 - Low-performing keywords paused or bid reduced (TTR <1% + high CPT)
 - High-volume generic terms checked for intent quality (avoid "free apps" type queries)
 
-### Creative Sets (15% weight)
+### Custom Product Pages (15% weight)
+
+> **Creative Sets fully deprecated.** CPPs are now the sole ad variation mechanism. CPP limit doubled to **70** in October 2025.
 
 **Custom Product Pages (CPP):**
-- Custom Product Pages created in App Store Connect? (ASA Creative Sets pull from CPPs)
+- CPPs created in App Store Connect? (up to 70 per app as of Oct 2025)
 - At least 3 CPP variants tested per campaign type (different value props per audience)
-- Creative Sets assigned to high-spend ad groups
-- Screenshot/preview variations aligned with keyword intent (e.g. fitness keywords → fitness screenshots)
+- CPP assets aligned with ad group keyword themes (e.g. fitness keywords → fitness screenshots)
+- CPPs increase conversion rates ~8% for games, ~6.6% for non-gaming apps (AppTweak data)
+- SoundCloud case study: CPPs in competitor campaigns led to 58% CR increase, 39% CPI reduction
+- **Critical**: 78% of App Store search volume comes from devices with Personalized Ads off. Use creative-based targeting (CPP asset alignment) rather than demographic audience filters
 
 **Default (Store Listing) Creative:**
 - App icon, subtitle, and first 3 screenshots optimized; these show in ads by default
@@ -66,24 +74,29 @@ user-invokable: false
 - Preview video present (strongly recommended for TTR improvement)
 
 **Creative Testing:**
-- Are different Creative Sets being A/B tested within ad groups?
-- CPP performance compared: which Creative Set has highest TTR and lowest CPI?
+- CPP performance compared: which variant has highest TTR and lowest CPI?
+- Deep links in CPPs available on iOS/iPadOS 18+ (test for re-engagement)
+- CPPs can now be assigned organic keywords (WWDC 2025), bridging paid/organic optimization
 
 ### Attribution & MMP Health (15% weight)
 
 **MMP Integration (Critical):**
-- MMP (AppsFlyer / Adjust / Branch / Singular) integrated with ASA via SKAdNetwork + ATT
-- ASA is properly connected as a partner in MMP dashboard
-- In-app events being sent back to ASA (enables CPA Goals and ROAS optimization)
+- MMP (AppsFlyer / Adjust / Branch / Singular) integrated with Apple Ads via AdAttributionKit + ATT
+- Apple Ads properly connected as a partner in MMP dashboard
+- In-app events being sent back to Apple Ads (enables Maximize Conversions and ROAS optimization)
 - Post-install event quality: are purchase, subscription_start, or other revenue events tracked?
 
-**SKAdNetwork & ATT:**
+**AdAttributionKit & Dual Attribution (April 10, 2025):**
+- Apple Ads registered with AdAttributionKit (SKAN v1-3), creating dual attribution for the first time
+- Installs now report through BOTH SKAN/AAK postbacks AND the AdServices API
+- WWDC 2025: configurable attribution windows, overlapping re-engagement windows, and country codes in postbacks
 - SKAdNetwork conversion values configured in MMP (maps user actions to conversion windows)
-- ATT opt-in rate monitored (low ATT rate = less MMP data, more reliance on SKAN)
-- Privacy threshold considerations: are campaigns getting SKAN postbacks or null reports?
+- ATT opt-in rate monitored (low ATT rate = less MMP data, more reliance on SKAN/AAK)
+- Privacy threshold considerations: are campaigns getting postbacks or null reports?
 
 **Attribution Windows:**
-- Default ASA attribution: 30-day click, 1-day view; appropriate for app install goals?
+- Default Apple Ads attribution: 30-day click, 1-day view; appropriate for app install goals?
+- WWDC 2025 added configurable windows and overlapping re-engagement windows
 - For re-engagement or subscription goals: evaluate longer lookback windows
 
 ### Budget Pacing (10% weight)
@@ -134,10 +147,34 @@ ASA offers 4 placement types; evaluate coverage and performance:
 - CPI trend over 30 days (improving or worsening?)
 - Revenue events: is ROAS positive within MMP attribution window?
 
+### Overall Benchmarks (2025 SplitMetrics data)
+
+| Metric | Search Results Average |
+|--------|-----------------------|
+| TTR (Tap-Through Rate) | 9.7% |
+| Conversion Rate | 66.2% |
+| CPT (Cost Per Tap) | $2.25 |
+| CPA (Cost Per Acquisition) | $3.76 |
+
+- US is the highest-cost market
+- AMEI (Africa/Middle East/India) is most cost-efficient and stable
+- **International markets often deliver 3-5x better CPI than US** with comparable LTV for subscription apps
+
+### Platform Changes (v1.5)
+
+| ID | Check | Severity | Notes |
+|----|-------|----------|-------|
+| ASA-MA1 | Multiple ads per query readiness | Medium | Rolling out March 2026: up to 2 ads per search query (was 1). Changes competitive dynamics: more search results real estate available. Evaluate bid strategy for increased competition |
+
+**Deprecated:**
+- Creative Sets: fully deprecated. Only CPPs now (up to 70 per app)
+- CPA Cap: being retired in favor of Target CPA via Maximize Conversions
+- Demographic audience targeting as primary strategy: 78% of App Store search volume comes from devices with Personalized Ads off
+
 ## Output Format
 
 ```
-## Apple Search Ads Audit
+## Apple Ads Audit
 
 **ASA Health Score: [X]/100**
 
@@ -168,7 +205,7 @@ PASS/WARNING/FAIL for each check category
 |----------|--------|
 | Campaign Structure | 25% |
 | Bid Health | 20% |
-| Creative Sets | 15% |
+| Custom Product Pages | 15% |
 | Attribution & MMP | 15% |
 | Budget Pacing | 10% |
 | TAP Coverage | 10% |
