@@ -33,6 +33,7 @@ from equip_common import (
     find_upstream,
     latest_tag,
     load_upstreams,
+    run,
     save_upstreams,
     skills_root,
     tree_hash,
@@ -162,6 +163,76 @@ def three_way_decision(
     return "both-changed"
 
 
+# ─── Path mapping ───────────────────────────────────────────────────────────
+
+# Files we never sync (per-skill license spam, upstream-only CI crud)
+SKIP_FILES = {"LICENSE.txt", "LICENSE", "LICENSE.md", ".gitkeep"}
+
+
+def map_upstream_to_local_path(rel: str, local_is_split: bool) -> Optional[str]:
+    """Map an upstream file path to where it should land locally.
+
+    If local uses split layout (SKILL.md + prompt.md) and upstream is single-file,
+    upstream's SKILL.md body is what Clade calls prompt.md. Don't overwrite local
+    SKILL.md (it has Clade-specific frontmatter: user_invocable, when_to_use).
+
+    Returns None to skip the file.
+    """
+    base = rel
+    parts = rel.split("/", 1)
+    if local_is_split:
+        if rel == "SKILL.md":
+            # upstream SKILL.md = full body → local prompt.md
+            return "prompt.md"
+        if parts[0] in SKIP_FILES or rel in SKIP_FILES:
+            return None
+    if base in SKIP_FILES or Path(base).name in SKIP_FILES:
+        return None
+    return rel
+
+
+# ─── Base (v1.8.2) tree loading ─────────────────────────────────────────────
+
+def load_upstream_base_hashes(cache_path: Path, base_ref: str, skill_name: str) -> dict[str, str]:
+    """Load {rel_path: git_blob_sha} for skills/<skill_name>/ at base_ref.
+
+    Used to do a real 3-way merge: if local prompt.md hash == upstream v1.8.2
+    SKILL.md hash, then local is unmodified vs absorption baseline → safe to adopt.
+    """
+    try:
+        r = run(
+            ["git", "ls-tree", "-r", f"{base_ref}:skills/{skill_name}"],
+            cwd=cache_path,
+            check=False,
+        )
+    except Exception:
+        return {}
+    if r.returncode != 0:
+        return {}
+    out: dict[str, str] = {}
+    for line in r.stdout.splitlines():
+        # Format: "100644 blob <sha>\t<path>"
+        parts = line.split("\t", 1)
+        if len(parts) != 2:
+            continue
+        meta = parts[0].split()
+        if len(meta) < 3 or meta[1] != "blob":
+            continue
+        out[parts[1]] = meta[2]
+    return out
+
+
+def git_blob_hash_of_file(path: Path) -> str:
+    """Compute git blob SHA (matches what git ls-tree returns) for a local file."""
+    if not path.is_file():
+        return ""
+    try:
+        r = run(["git", "hash-object", str(path)], check=False)
+        return r.stdout.strip()
+    except Exception:
+        return ""
+
+
 # ─── Sync per skill ─────────────────────────────────────────────────────────
 
 def sync_skill(
@@ -170,56 +241,85 @@ def sync_skill(
     local_skill_dir: Path,
     flag_ids: set[str],
     apply: bool,
-    base_hashes: Optional[dict[str, str]] = None,
+    base_blob_hashes: Optional[dict[str, str]] = None,
+    cache_path: Optional[Path] = None,
 ) -> dict:
-    """Copy (with remediation) upstream_skill_dir → local_skill_dir.
+    """Copy (with layout transform + remediation) upstream → local.
 
-    Returns a summary dict.
+    Smart mode (default):
+    - Map upstream SKILL.md → local prompt.md when local uses split layout
+    - Skip LICENSE.txt
+    - Use v1.8.2 git blob hashes as base; if local == base, safe to overwrite
+    - Apply NOI-01 / DRF-01 auto-remediations
+
+    Returns summary dict.
     """
     changes: list[str] = []
     remediations_applied: list[str] = []
 
-    theirs_tree = tree_hash(upstream_skill_dir)
-    ours_tree = tree_hash(local_skill_dir) if local_skill_dir.is_dir() else {}
+    local_is_split = (
+        (local_skill_dir / "SKILL.md").is_file()
+        and (local_skill_dir / "prompt.md").is_file()
+    )
 
-    # Merge file-by-file
-    all_paths = set(theirs_tree) | set(ours_tree)
-    for rel in sorted(all_paths):
-        ours_h = ours_tree.get(rel, "")
-        theirs_h = theirs_tree.get(rel, "")
-        base_h = base_hashes.get(rel) if base_hashes else None
-        decision = three_way_decision(base_h, ours_h, theirs_h)
+    theirs_tree = tree_hash(upstream_skill_dir)
+
+    for rel, theirs_content_hash in sorted(theirs_tree.items()):
+        local_rel = map_upstream_to_local_path(rel, local_is_split)
+        if local_rel is None:
+            changes.append(f"  - skip: {rel}")
+            continue
 
         theirs_path = upstream_skill_dir / rel
-        ours_path = local_skill_dir / rel
+        ours_path = local_skill_dir / local_rel
 
-        if decision == "identical":
-            continue
-        if decision == "local-only":
-            changes.append(f"  = keep local: {rel}")
-            continue
-        if decision == "deleted-upstream":
-            changes.append(f"  ? upstream deleted: {rel} (keeping local)")
-            continue
-        if decision == "both-changed":
-            changes.append(f"  ! CONFLICT: {rel} (both changed — needs manual merge)")
-            continue
-        # upstream-only or new-upstream
         if not theirs_path.is_file():
             continue
+
+        # 3-way check when we have a base and local file exists
+        base_blob = base_blob_hashes.get(rel) if base_blob_hashes else None
+        ours_blob = git_blob_hash_of_file(ours_path) if ours_path.is_file() else ""
+        theirs_blob = git_blob_hash_of_file(theirs_path)
+
+        if ours_blob and theirs_blob and ours_blob == theirs_blob:
+            # Already identical (after layout mapping)
+            continue
+
         try:
             content = theirs_path.read_text(errors="replace")
         except Exception:
             content = ""
+
+        # Apply auto-remediations
         new_content, applied = apply_remediations(content, flag_ids)
         remediations_applied.extend(applied)
+
+        # Decision:
+        # - If base exists and ours == base → pure version drift, safe upgrade
+        # - If base exists and ours != base → local has customization; keep ours
+        # - If no base (first sync / new file) → take theirs
+        decision_note = ""
+        if ours_blob and base_blob:
+            if ours_blob == base_blob:
+                decision_note = "version-drift"
+            else:
+                # Real local customization — skip to preserve it
+                changes.append(f"  = keep local (customized): {local_rel}")
+                continue
+        elif not ours_blob:
+            decision_note = "new"
+        else:
+            # No base available — fall back to overwriting (first-time smart sync)
+            decision_note = "no-base"
 
         if apply:
             ours_path.parent.mkdir(parents=True, exist_ok=True)
             ours_path.write_text(new_content)
-            changes.append(f"  + wrote: {rel}" + (f"  [{'; '.join(applied)}]" if applied else ""))
+            tag = f"  [{decision_note}" + (f"; {'; '.join(applied)}" if applied else "") + "]"
+            changes.append(f"  + wrote: {local_rel}{tag}")
         else:
-            changes.append(f"  + would write: {rel}" + (f"  [{'; '.join(applied)}]" if applied else ""))
+            tag = f"  [{decision_note}" + (f"; {'; '.join(applied)}" if applied else "") + "]"
+            changes.append(f"  + would write: {local_rel}{tag}")
 
     return {
         "skill": skill_name,
@@ -238,6 +338,10 @@ def main() -> int:
     p.add_argument("--diff-only", action="store_true", help="Show delta and exit, no sync")
     p.add_argument("--audit", type=Path, default=None,
                    help="Specific audit report path (default: latest for this upstream)")
+    p.add_argument("--base-ref", type=str, default=None,
+                   help="Upstream git ref to use as 3-way merge base (e.g., v1.8.2). "
+                        "If set, files that locally match this base are treated as "
+                        "pure version drift and safely overwritten.")
     args = p.parse_args()
 
     project = args.project.resolve()
@@ -289,6 +393,10 @@ def main() -> int:
         print("[DRY RUN] — pass --apply to write changes")
         print()
 
+    base_ref = args.base_ref
+    if base_ref:
+        print(f"Using base ref {base_ref} for 3-way merge")
+
     total_writes = 0
     summaries = []
     for name, flags in accepted:
@@ -297,13 +405,17 @@ def main() -> int:
             print(f"  ! {name}: missing in upstream (deleted since audit?), skipping")
             continue
         local_skill = local_root / name
+        base_blob_hashes = None
+        if base_ref:
+            base_blob_hashes = load_upstream_base_hashes(cache_path, base_ref, name)
         summary = sync_skill(
             skill_name=name,
             upstream_skill_dir=upstream_skill,
             local_skill_dir=local_skill,
             flag_ids=flags,
             apply=args.apply,
-            base_hashes=None,  # MVP: no base tracked yet — treat all deltas as upstream-forward
+            base_blob_hashes=base_blob_hashes,
+            cache_path=cache_path,
         )
         summaries.append(summary)
         print(f"Skill: {name}")
