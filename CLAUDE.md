@@ -37,7 +37,13 @@ cd orchestrator && uvicorn server:app --reload
 cd orchestrator && .venv/bin/python -m pytest tests/ -v
 
 # Syntax check (all Python modules)
-cd orchestrator && python -m py_compile server.py session.py session_tree.py task_queue.py worker.py swarm.py worker_tldr.py worker_review.py worker_utils.py worker_hydrate.py condensers.py config.py github_sync.py ideas.py process_manager.py event_stream.py tracing.py reactions.py routes/tasks.py routes/workers.py routes/webhooks.py routes/ideas.py routes/process.py
+cd orchestrator && python -m py_compile server.py session.py session_tree.py task_queue.py worker.py swarm.py worker_tldr.py worker_review.py worker_utils.py worker_hydrate.py condensers.py config.py github_sync.py ideas.py process_manager.py event_stream.py tracing.py reactions.py usage_tracker.py routes/tasks.py routes/workers.py routes/webhooks.py routes/ideas.py routes/process.py routes/usage.py
+
+# Multi-machine usage tracking — see orchestrator/usage_tracker.py
+#   Hub:  start orchestrator normally, optionally set usage_ingest_token in ~/.claude/orchestrator-settings.json
+#   Node (no orchestrator): python3 configs/scripts/usage-agent.py --hub http://hub:8000 [--token X] [--once]
+#   Dashboard: http://hub:8000/web/usage.html
+# Per-machine ccusage data is stored in ~/.claude/orchestrator/usage.db.
 
 # MCP Server — expose skills as MCP tools for external AI coding tools
 # After install.sh, configure in ~/.claude/settings.json:
