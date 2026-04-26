@@ -91,6 +91,54 @@ elif [[ -n "$HOSTNAME" ]]; then
   CONTEXT="${CONTEXT}\nHost: ${HOSTNAME} (local)\n"
 fi
 
+# ─── Environment Fingerprint ──────────────────────────────────────────
+# Structured per-host facts that prevent wrong-context assumptions
+# (e.g. "is Aries this machine?", "what's already running locally?").
+# Cached for 1h since most checks are stable per session-day.
+FP_CACHE_FILE="$HOME/.claude/.env-fingerprint"
+FP_TTL=3600
+_NOW=$(date +%s)
+FP_MTIME=$(stat -c %Y "$FP_CACHE_FILE" 2>/dev/null || stat -f %m "$FP_CACHE_FILE" 2>/dev/null || echo 0)
+if [[ $(( _NOW - FP_MTIME )) -gt $FP_TTL || ! -s "$FP_CACHE_FILE" ]]; then
+  {
+    # Tailscale IP (so the agent can match user-mentioned LAN IPs to this box)
+    if command -v tailscale &>/dev/null; then
+      TS_IP=$(timeout 2 tailscale ip -4 2>/dev/null | head -1)
+      [[ -n "$TS_IP" ]] && echo "Tailscale IP: $TS_IP"
+    fi
+    # Sibling projects on this host (so "the faker-100 brand" registers as local)
+    if [[ -d "$HOME/projects" ]]; then
+      SIBS=$(ls -d "$HOME/projects/"*/ 2>/dev/null | xargs -n1 basename 2>/dev/null | tr '\n' ' ' | sed 's/ $//')
+      [[ -n "$SIBS" ]] && echo "Sibling projects on this host: $SIBS"
+    fi
+    # Listening dev ports (so "localhost:3000" claims can be verified)
+    if command -v ss &>/dev/null; then
+      LISTENING=$(ss -tln 2>/dev/null | awk 'NR>1 {print $4}' | grep -oE ':[0-9]+$' | tr -d ':' | sort -un | grep -E '^(3000|3001|4000|5000|5173|5432|6379|8000|8080|8888|9000)$' | tr '\n' ' ' | sed 's/ $//')
+      [[ -n "$LISTENING" ]] && echo "Listening dev ports: $LISTENING"
+    fi
+    # Auth identities (so the agent doesn't guess which account is active)
+    if command -v gh &>/dev/null; then
+      GH_USER=$(timeout 2 gh api user --jq .login 2>/dev/null)
+      [[ -n "$GH_USER" ]] && echo "gh auth: $GH_USER"
+    fi
+    if command -v gcloud &>/dev/null; then
+      GCLOUD_ACCT=$(timeout 2 gcloud config get-value account 2>/dev/null | grep -v '^(unset)$')
+      [[ -n "$GCLOUD_ACCT" ]] && echo "gcloud: $GCLOUD_ACCT"
+    fi
+  } > "$FP_CACHE_FILE" 2>/dev/null
+fi
+if [[ -s "$FP_CACHE_FILE" ]]; then
+  FP_CONTENT=$(cat "$FP_CACHE_FILE" 2>/dev/null)
+  CONTEXT="${CONTEXT}\n## Environment Fingerprint (this host)\n${FP_CONTENT}\nIf the user names a machine, cross-reference Host:/Tailscale IP/sibling projects above before assuming it's remote.\n"
+fi
+
+# Project Profile (project-specific topology and verification commands)
+PROJECT_PROFILE="${CLAUDE_PROJECT_DIR:-$(pwd)}/.claude/PROJECT_PROFILE.md"
+if [[ -f "$PROJECT_PROFILE" ]]; then
+  PROFILE_CONTENT=$(cat "$PROJECT_PROFILE" 2>/dev/null)
+  CONTEXT="${CONTEXT}\n## Project Profile\n${PROFILE_CONTENT}\n"
+fi
+
 # Running docker containers — filtered to current project only
 if command -v docker &>/dev/null; then
   # Determine project slug: try docker compose name, fall back to dirname
