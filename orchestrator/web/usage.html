@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Clade — Usage by Machine</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { font-family: -apple-system, system-ui, sans-serif; background: #0d0f12; color: #d8dde4; margin: 0; padding: 24px 28px; }
+    h1 { margin: 0 0 4px; font-size: 22px; font-weight: 600; }
+    .sub { color: #7a8290; font-size: 13px; margin-bottom: 22px; }
+    .controls { display: flex; gap: 12px; align-items: center; margin-bottom: 18px; flex-wrap: wrap; }
+    .controls label { font-size: 12px; color: #8b95a4; }
+    .controls input, .controls select { background: #1a1d22; color: #e3e7ed; border: 1px solid #2a2f37; border-radius: 6px; padding: 6px 10px; font-size: 13px; }
+    .controls button { background: #2563eb; color: #fff; border: 0; border-radius: 6px; padding: 7px 14px; font-size: 13px; font-weight: 500; cursor: pointer; }
+    .controls button:hover { background: #1d4fd0; }
+    .controls button.ghost { background: #1a1d22; color: #d8dde4; border: 1px solid #2a2f37; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }
+    .card { background: #14171c; border: 1px solid #20242b; border-radius: 8px; padding: 16px 18px; }
+    .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; color: #8b95a4; margin: 0 0 12px; font-weight: 600; }
+    .totals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-bottom: 22px; }
+    .totals .card .num { font-size: 26px; font-weight: 600; color: #fff; }
+    .totals .card .label { font-size: 11px; color: #7a8290; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; color: #8b95a4; font-weight: 500; padding: 6px 10px; border-bottom: 1px solid #20242b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; }
+    td { padding: 7px 10px; border-bottom: 1px solid #181c21; }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .machine-tag { background: #1a2540; color: #93b4ff; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+    .err { color: #ef6868; font-size: 12px; margin-top: 6px; }
+    .empty { color: #555c68; padding: 18px; text-align: center; font-size: 13px; }
+    @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } .totals { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <h1>Claude Code Usage by Machine</h1>
+  <div class="sub">Aggregated from <code>ccusage</code> across all machines pushing to this hub.</div>
+
+  <div class="controls">
+    <label>Since: <input type="date" id="since"></label>
+    <label>Machine: <select id="machine"><option value="">all</option></select></label>
+    <button id="refresh">Refresh</button>
+    <button id="poll" class="ghost" title="Run ccusage on this server now">Poll local now</button>
+    <span id="status" class="sub" style="margin-left: auto;"></span>
+  </div>
+
+  <div class="totals">
+    <div class="card"><div class="num" id="t-cost">$0.00</div><div class="label">Total cost</div></div>
+    <div class="card"><div class="num" id="t-tokens">0</div><div class="label">Total tokens</div></div>
+    <div class="card"><div class="num" id="t-machines">0</div><div class="label">Machines</div></div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>By Machine</h2>
+      <table><thead><tr><th>Machine</th><th class="num">Tokens</th><th class="num">Cost</th></tr></thead>
+        <tbody id="t-machine"></tbody></table>
+    </div>
+    <div class="card">
+      <h2>By Model</h2>
+      <table><thead><tr><th>Model</th><th class="num">Tokens</th><th class="num">Cost</th></tr></thead>
+        <tbody id="t-model"></tbody></table>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom: 22px;">
+    <h2>Daily totals (last 60 days)</h2>
+    <table><thead><tr><th>Date</th><th class="num">Tokens</th><th class="num">Cost</th></tr></thead>
+      <tbody id="t-day"></tbody></table>
+  </div>
+
+  <div class="card">
+    <h2>Recent (top 200 rows)</h2>
+    <table><thead><tr><th>Date</th><th>Machine</th><th>Model</th><th class="num">Tokens</th><th class="num">Cost</th></tr></thead>
+      <tbody id="t-recent"></tbody></table>
+  </div>
+
+<script>
+const fmt = n => (n ?? 0).toLocaleString();
+const cost = n => "$" + (n ?? 0).toFixed(2);
+const $ = id => document.getElementById(id);
+
+async function load() {
+  const since = $("since").value;
+  const machine = $("machine").value;
+  $("status").textContent = "loading...";
+  const qs = new URLSearchParams();
+  if (since) qs.set("since", since);
+  if (machine) qs.set("machine_id", machine);
+  try {
+    const [sRes, mRes] = await Promise.all([
+      fetch("/api/usage/summary?" + qs).then(r => r.json()),
+      fetch("/api/usage/machines").then(r => r.json()),
+    ]);
+    render(sRes, mRes);
+    $("status").textContent = "updated " + new Date().toLocaleTimeString();
+  } catch (e) {
+    $("status").innerHTML = '<span class="err">load failed: ' + e + '</span>';
+  }
+}
+
+function render(s, m) {
+  const t = s.totals || {};
+  $("t-cost").textContent = cost(t.cost_usd);
+  $("t-tokens").textContent = fmt(t.total_tokens);
+  $("t-machines").textContent = t.machines ?? 0;
+
+  const sel = $("machine");
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">all</option>' + (m.machines || [])
+    .map(x => `<option value="${x.machine_id}" ${cur === x.machine_id ? 'selected' : ''}>${x.machine_id}${x.hostname && x.hostname !== x.machine_id ? ' ('+x.hostname+')' : ''}</option>`).join("");
+
+  const rowsMachine = (s.by_machine || []).map(x =>
+    `<tr><td><span class="machine-tag">${x.machine_id}</span></td><td class="num">${fmt(x.total_tokens)}</td><td class="num">${cost(x.cost_usd)}</td></tr>`).join("");
+  $("t-machine").innerHTML = rowsMachine || '<tr><td colspan="3" class="empty">no data — run "Poll local now" or push from an agent</td></tr>';
+
+  $("t-model").innerHTML = (s.by_model || []).map(x =>
+    `<tr><td>${x.model_name}</td><td class="num">${fmt(x.total_tokens)}</td><td class="num">${cost(x.cost_usd)}</td></tr>`).join("") || '<tr><td colspan="3" class="empty">—</td></tr>';
+
+  $("t-day").innerHTML = (s.by_day || []).map(x =>
+    `<tr><td>${x.date}</td><td class="num">${fmt(x.total_tokens)}</td><td class="num">${cost(x.cost_usd)}</td></tr>`).join("") || '<tr><td colspan="3" class="empty">—</td></tr>';
+
+  $("t-recent").innerHTML = (s.recent || []).map(x =>
+    `<tr><td>${x.date}</td><td><span class="machine-tag">${x.machine_id}</span></td><td>${x.model_name}</td><td class="num">${fmt(x.total_tokens)}</td><td class="num">${cost(x.cost_usd)}</td></tr>`).join("") || '<tr><td colspan="5" class="empty">—</td></tr>';
+}
+
+$("refresh").onclick = load;
+$("since").onchange = load;
+$("machine").onchange = load;
+$("poll").onclick = async () => {
+  $("status").textContent = "polling ccusage...";
+  $("poll").disabled = true;
+  try {
+    const r = await fetch("/api/usage/poll", { method: "POST" }).then(r => r.json());
+    $("status").textContent = `polled ${r.machine_id}: ${r.rows} rows`;
+    await load();
+  } catch (e) {
+    $("status").innerHTML = '<span class="err">poll failed: ' + e + '</span>';
+  } finally {
+    $("poll").disabled = false;
+  }
+};
+
+// Default since = 30 days ago
+const d = new Date(); d.setDate(d.getDate() - 30);
+$("since").value = d.toISOString().slice(0, 10);
+load();
+setInterval(load, 60000);
+</script>
+</body>
+</html>
