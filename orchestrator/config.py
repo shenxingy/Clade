@@ -91,6 +91,13 @@ _SETTINGS_DEFAULTS = {
     "context_span_budget": 6000,  # Moatless §Gap3: max chars for TLDR span block; excess spans evicted
     "task_type_model_routing": {},  # per-task type model override e.g. {"tldr": "haiku", "fix": "sonnet"}
     "replay_interrupted_on_startup": False,  # re-queue interrupted tasks on server restart (opt-in)
+    # Usage tracking (multi-machine ccusage aggregation — see usage_tracker.py)
+    "usage_poll_enabled": True,         # poll ccusage on this machine and store locally
+    "usage_poll_interval_sec": 900,     # 15 min default; min 60s
+    "usage_poll_since_days": 7,         # only poll/push last N days each cycle (0 = all-time)
+    "usage_hub_url": "",                # if set, push to this orchestrator (e.g. http://hub:8000)
+    "usage_hub_token": "",              # bearer token shared with hub for ingest auth
+    "usage_ingest_token": "",           # hub-side: required Bearer token for /api/usage/ingest (empty = open)
     "reactions_enabled": True,
     "reaction_configs": [
         {

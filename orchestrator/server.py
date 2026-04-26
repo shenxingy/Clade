@@ -67,6 +67,18 @@ async def lifespan(app: FastAPI):
             logger.info("Re-queued %d interrupted tasks for replay", len(to_requeue))
         default_session.start_watch()
     asyncio.create_task(status_loop())
+    # Multi-machine usage poller — opt-out via setting
+    if GLOBAL_SETTINGS.get("usage_poll_enabled", True):
+        import usage_tracker
+        usage_tracker.start_poller(
+            interval_sec=int(GLOBAL_SETTINGS.get("usage_poll_interval_sec", 900)),
+            hub_url=str(GLOBAL_SETTINGS.get("usage_hub_url", "")),
+            hub_token=str(GLOBAL_SETTINGS.get("usage_hub_token", "")),
+            since_days=int(GLOBAL_SETTINGS.get("usage_poll_since_days", 7)),
+        )
+        logger.info("Usage poller started (interval=%ss, hub=%s)",
+                    GLOBAL_SETTINGS.get("usage_poll_interval_sec"),
+                    GLOBAL_SETTINGS.get("usage_hub_url") or "local-only")
     yield
     # Shutdown: close shared DB connections and stop background processes
     for session in registry.all():
@@ -75,6 +87,9 @@ async def lifespan(app: FastAPI):
     stopped = await process_pool.stop_all()
     if stopped:
         logger.info("Stopped %d background processes on shutdown", stopped)
+    with __import__("contextlib").suppress(Exception):
+        import usage_tracker
+        await usage_tracker.stop_poller()
 
 
 app = FastAPI(title="Claude Code Orchestrator", lifespan=lifespan)
@@ -92,11 +107,13 @@ from routes.ideas import router as ideas_router  # noqa: E402
 from routes.process import router as process_router  # noqa: E402
 from routes.tasks import router as tasks_router  # noqa: E402
 from routes.workers import router as workers_router  # noqa: E402
+from routes.usage import router as usage_router  # noqa: E402
 app.include_router(webhooks_router)
 app.include_router(ideas_router)
 app.include_router(process_router)
 app.include_router(tasks_router)
 app.include_router(workers_router)
+app.include_router(usage_router)
 
 # Serve static files (web UI) — prefer React dist/ if built, fallback to legacy
 WEB_DIST = Path(__file__).parent / "web" / "dist"
