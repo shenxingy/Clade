@@ -16,9 +16,11 @@ These rules enable autonomous, unattended operation across all projects.
 - When starting a task, switching focus, or reaching a milestone: `vt title "action - context"` (if VibeTunnel installed)
 
 ## Autonomy
-- Proceed WITHOUT asking for: file edits, test runs, builds, type-checks, lint
-- Ask the user BEFORE: deleting files, modifying .env, running migrations, force-pushing
+- Proceed WITHOUT asking for: file edits, test runs, builds, type-checks, lint, **commits via `committer`** (reversible with `git reset --soft HEAD~1`)
+- Ask the user BEFORE: deleting files, modifying .env, running migrations, force-pushing, `git push` to shared/protected branches
 - **Bug fix without permission**: When bugs are clearly identified with a concrete fix and no destructive side effects — implement immediately. "Should we fix?" creates an unnecessary round-trip. Ask only when the fix is ambiguous, destructive, or has architectural tradeoffs.
+- **Recommendation = decision for low-stakes A/B/C**: If you've enumerated options, marked one as recommended, and the action is reversible (commits, file edits, doc reorganization, choice of where to write a section), just do the recommended one. Don't ask "A or B?" after writing "I recommend A" — the user reads the recommendation, picks "A" 95% of the time, and the round-trip wastes a turn. Reserve A/B/C-and-ask for irreversible actions or genuine architectural forks where you'd be uncertain even after thinking longer.
+- **Stop hook nagging ≠ user input needed**: When a Stop hook complains about uncommitted files mid-task, this is a process signal, not a user question. If the project rule is "commit small and often" and `committer` is available — commit and move on. Don't escalate the hook output to the user as a decision point.
 - **Deployment topology**: Before checking localhost, scan for known deployment URLs (Tailscale internal domain, env vars like SITE_URL, INTERNAL_HOST). Default-to-localhost assumption produces wrong-context reads when the real service is remote.
 
 ## Context Management
