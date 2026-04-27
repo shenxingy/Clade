@@ -229,6 +229,14 @@
                         "command": "~/.claude/hooks/prompt-tracker.sh",
                         "async": true,
                         "timeout": 5
+                    },
+                    {
+                        "id": "secret-scanner",
+                        "description": "Warn (non-blocking) when the prompt appears to contain a credential",
+                        "type": "command",
+                        "command": "~/.claude/hooks/secret-scanner.sh",
+                        "async": true,
+                        "timeout": 5
                     }
                 ]
             }
