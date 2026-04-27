@@ -51,6 +51,7 @@ from event_stream import EventStream
 from tracing import TracingService, start_task_span
 from reactions import ReactionExecutor
 from condensers import ObservationMaskingCondenser
+from error_classifier import classify as _classify_error, summarize as _summarize_error
 from worker_utils import (
     _distill_output, _truncate_output, _strip_error_context,
     _run_lint_check, _extract_lint_targets, _run_project_tests, LoopDetectionService,
@@ -113,6 +114,10 @@ class Worker:
         self._verify_triggered: bool = False
         self.task_timeout: int = 600  # default 10 min
         self.failure_context: str | None = None
+        # One-line classified summary of subprocess failures (set by error_classifier).
+        # Kept distinct from failure_context (which is the raw log tail) so the UI
+        # can show "[rate_limit] retry+30s — 429 …" without repeating the body.
+        self.failure_class: str | None = None
         self._worktree_path: Path | None = None
         self._branch_name: str | None = None
         self.own_files: list[str] = []
@@ -166,6 +171,7 @@ class Worker:
             "pr_merged": self.pr_merged,
             "log_tail": log_tail,
             "failure_context": self.failure_context,
+            "failure_class": self.failure_class,
             "worktree_path": str(self._worktree_path) if self._worktree_path else None,
             "oracle_result": self.oracle_result,
             "oracle_reason": self.oracle_reason,
@@ -609,6 +615,16 @@ class Worker:
                 try:
                     text = self._log_path.read_text(errors="replace")
                     self.failure_context = _truncate_output(text)
+                    # Classify for richer failure_reason — pure logging, never
+                    # changes retry control flow. Wrapped so any classifier
+                    # exception falls back to plain failure_context.
+                    try:
+                        err = _classify_error(text, exit_code=rc)
+                        self.failure_class = _summarize_error(err)
+                        logger.info("Worker %s classified failure: %s",
+                                    self.id, self.failure_class)
+                    except Exception:
+                        logger.debug("classify_error raised", exc_info=True)
                 except Exception:
                     pass
             if not self._verify_triggered:
@@ -1322,6 +1338,12 @@ class WorkerPool:
                     try:
                         text = w._log_path.read_text(errors="replace")
                         w.failure_context = _truncate_output(text)
+                        # Forced wall-clock timeout — let the classifier tag it as such.
+                        try:
+                            err = _classify_error(text, timed_out=True)
+                            w.failure_class = _summarize_error(err)
+                        except Exception:
+                            pass
                     except Exception:
                         pass
                 await task_queue.update(
@@ -1331,7 +1353,13 @@ class WorkerPool:
                     last_commit=w.last_commit,
                 )
                 if w.failure_context:
-                    await task_queue.update(w.task_id, failed_reason=w.failure_context)
+                    # Prefix the persisted reason with the classifier verdict so
+                    # downstream UI / interventions see the structured tag first.
+                    reason = (
+                        f"[{w.failure_class}] {w.failure_context}"
+                        if w.failure_class else w.failure_context
+                    )
+                    await task_queue.update(w.task_id, failed_reason=reason)
                 if project_dir and GLOBAL_SETTINGS.get("github_issues_sync"):
                     t = await task_queue.get(w.task_id)
                     if t:
@@ -1396,7 +1424,11 @@ class WorkerPool:
                         except Exception:
                             pass
                     if w.status == "failed" and w.failure_context:
-                        await task_queue.update(w.task_id, failed_reason=w.failure_context)
+                        reason = (
+                            f"[{w.failure_class}] {w.failure_context}"
+                            if w.failure_class else w.failure_context
+                        )
+                        await task_queue.update(w.task_id, failed_reason=reason)
                     if w.status == "done":
                         try:
                             await task_queue.mark_intervention_success(w.task_id)
