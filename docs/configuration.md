@@ -36,6 +36,28 @@ Set these in `~/.claude/settings.json` under `"env"`:
 |------|-------------|
 | `~/.claude/corrections/rules.md` | Add/edit correction rules directly |
 | `~/.claude/corrections/stats.json` | Adjust error rates per domain (0-1) to control quality gate strictness |
+| `~/.claude/orchestrator-settings.json` | Override orchestrator defaults — model, worker pool, GitHub sync, auto-retry, etc. |
+
+### Orchestrator settings
+
+After running `./install.sh`, a reference copy of every supported orchestrator
+key lives at `~/.claude/orchestrator-settings.example.json`. To override a
+default:
+
+```bash
+# Copy only the keys you want to change into the real settings file.
+# Defaults from orchestrator/config.py:_SETTINGS_DEFAULTS apply for unset keys.
+cat > ~/.claude/orchestrator-settings.json <<'EOF'
+{
+  "max_workers": 4,
+  "auto_classify_retry": true
+}
+EOF
+```
+
+The `.example.json` is overwritten by every `./install.sh` run so it always
+matches the current `_SETTINGS_DEFAULTS`; your real `orchestrator-settings.json`
+is never touched.
 
 ## Add a correction rule manually
 
