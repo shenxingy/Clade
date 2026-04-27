@@ -88,6 +88,14 @@ _SETTINGS_DEFAULTS = {
     "minimax_api_key": "",
     "minimax_group_id": "",
     "parallel_fix_samples": 1,  # Agentless §6C: N parallel workers for critical-path oracle rejections (1=sequential)
+    # ── Auto retry on classified API failures (Hermes-inspired error_classifier)
+    # Default OFF — opt-in to avoid surprising existing users with retry storms.
+    "auto_classify_retry": False,
+    "auto_classify_retry_max": 2,        # total attempts (initial + retries combined)
+    "auto_classify_retry_model_fallback": {  # model downgrade when classifier asks for compression / fallback
+        "opus": "sonnet",
+        "sonnet": "haiku",
+    },
     "context_span_budget": 6000,  # Moatless §Gap3: max chars for TLDR span block; excess spans evicted
     "task_type_model_routing": {},  # per-task type model override e.g. {"tldr": "haiku", "fix": "sonnet"}
     "replay_interrupted_on_startup": False,  # re-queue interrupted tasks on server restart (opt-in)

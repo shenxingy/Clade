@@ -208,6 +208,126 @@ def classify(
     )
 
 
+# ─── Retry decision (drives swarm-level re-queueing) ─────────────────────────
+
+@dataclass
+class RetryDecision:
+    """What the orchestrator should do with a failed task next.
+
+    `None` from `derive_retry_decision()` means "don't auto-retry — leave the
+    task in failed state". A non-None decision tells the caller to enqueue a
+    fresh task with these parameters.
+    """
+    new_description_prefix: str   # e.g. "[AUTO-RETRY 2/3]" — caller prepends to original desc
+    hint_block: str               # extra context block to append to the new description
+    model: str                    # may be downgraded from the original model
+    backoff_seconds: float        # caller can use to delay enqueue if it wants
+
+
+def derive_retry_decision(
+    err: ClassifiedError,
+    *,
+    attempt: int,
+    max_attempts: int,
+    current_model: str,
+    model_fallback: dict | None = None,
+) -> "RetryDecision | None":
+    """Decide whether this failure should auto-spawn a retry task.
+
+    Pure function — no IO, fully unit-testable. Returns None when:
+    - the classifier said abort or non-retryable
+    - we're already at or past max_attempts (1-indexed: attempt=2 means
+      2 attempts have been made, so retry would be the 3rd)
+    - the failure class is one we explicitly skip (auth needs human action,
+      billing means out of credits, format_error means our request is malformed)
+
+    The hint_block tells the next worker *why* it's retrying so it can
+    behave differently (be more concise on context_overflow, etc).
+    """
+    if err.abort or not err.retryable:
+        return None
+    if attempt >= max_attempts:
+        return None
+    # Hard-skip classes: retry won't help.
+    if err.reason in (
+        FailoverReason.auth,                # human must rotate/fix the token
+        FailoverReason.auth_permanent,
+        FailoverReason.billing,             # account-level — retry is wasteful
+        FailoverReason.format_error,        # bug in the request, not transient
+        FailoverReason.process_killed,      # user/system intent
+    ):
+        return None
+
+    next_attempt = attempt + 1
+    prefix = f"[AUTO-RETRY {next_attempt}/{max_attempts}]"
+
+    # Per-class hint to the next worker
+    if err.reason is FailoverReason.context_overflow:
+        hint = (
+            "Previous attempt failed: context overflow. "
+            "Be more concise. Avoid re-reading large files; "
+            "use Grep with narrow patterns instead of Read on whole files."
+        )
+    elif err.reason is FailoverReason.payload_too_large:
+        hint = (
+            "Previous attempt failed: payload too large. "
+            "Drop large attachments / file dumps; summarize instead."
+        )
+    elif err.reason is FailoverReason.long_context_tier:
+        hint = (
+            "Previous attempt failed: long-context tier gate. "
+            "Trim context aggressively; the request must fit in 200k tokens."
+        )
+    elif err.reason in (FailoverReason.rate_limit, FailoverReason.overloaded):
+        hint = (
+            f"Previous attempt failed: {err.reason.value}. "
+            "The provider was busy — retry should succeed shortly."
+        )
+    elif err.reason is FailoverReason.timeout:
+        hint = (
+            "Previous attempt timed out. "
+            "Make smaller progress steps; commit incrementally."
+        )
+    elif err.reason is FailoverReason.model_not_found:
+        hint = "Previous attempt: model unavailable. Retry with fallback model."
+    else:
+        hint = f"Previous attempt failed ({err.reason.value}). Retry with same approach."
+
+    # Model fallback for compress / fallback signals
+    new_model = current_model
+    if (err.should_fallback_model or err.should_compress) and model_fallback:
+        new_model = model_fallback.get(current_model, current_model)
+
+    return RetryDecision(
+        new_description_prefix=prefix,
+        hint_block=hint,
+        model=new_model,
+        backoff_seconds=err.backoff_seconds,
+    )
+
+
+# ─── Description prefix parsing — caller uses to enforce attempt cap ─────────
+
+_RETRY_PREFIX_RE = re.compile(r"^\[AUTO-RETRY\s+(\d+)\s*/\s*(\d+)\]\s*", re.IGNORECASE)
+
+
+def parse_retry_prefix(description: str) -> tuple[int, int] | None:
+    """Return (current_attempt, max_attempts) if description carries our prefix.
+
+    Used by the orchestrator to detect that a failed task is *itself* a
+    retry, so the new attempt number is 'current_attempt' rather than 1.
+    """
+    if not description:
+        return None
+    m = _RETRY_PREFIX_RE.match(description)
+    if not m:
+        return None
+    try:
+        return int(m.group(1)), int(m.group(2))
+    except (TypeError, ValueError):
+        return None
+
+
 def summarize(err: ClassifiedError) -> str:
     """One-line human-readable summary for logs / UI."""
     parts = [f"[{err.reason.value}]"]

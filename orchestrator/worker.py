@@ -51,7 +51,12 @@ from event_stream import EventStream
 from tracing import TracingService, start_task_span
 from reactions import ReactionExecutor
 from condensers import ObservationMaskingCondenser
-from error_classifier import classify as _classify_error, summarize as _summarize_error
+from error_classifier import (
+    classify as _classify_error,
+    summarize as _summarize_error,
+    derive_retry_decision as _derive_retry_decision,
+    parse_retry_prefix as _parse_retry_prefix,
+)
 from worker_utils import (
     _distill_output, _truncate_output, _strip_error_context,
     _run_lint_check, _extract_lint_targets, _run_project_tests, LoopDetectionService,
@@ -118,6 +123,11 @@ class Worker:
         # Kept distinct from failure_context (which is the raw log tail) so the UI
         # can show "[rate_limit] retry+30s — 429 …" without repeating the body.
         self.failure_class: str | None = None
+        # Full ClassifiedError preserved so swarm-level retry logic can read
+        # retryable / should_compress / should_fallback_model / backoff_seconds.
+        # Kept Any-typed in the annotation to avoid introducing a hard import
+        # cycle in the worker.py header (error_classifier is already imported).
+        self._failure_classified: Any = None
         self._worktree_path: Path | None = None
         self._branch_name: str | None = None
         self.own_files: list[str] = []
@@ -620,6 +630,7 @@ class Worker:
                     # exception falls back to plain failure_context.
                     try:
                         err = _classify_error(text, exit_code=rc)
+                        self._failure_classified = err
                         self.failure_class = _summarize_error(err)
                         logger.info("Worker %s classified failure: %s",
                                     self.id, self.failure_class)
@@ -1184,6 +1195,85 @@ class Worker:
             return False
 
 
+# ─── Auto-classify retry helper ───────────────────────────────────────────────
+
+async def _maybe_enqueue_classify_retry(
+    w: "Worker",
+    task_queue: "TaskQueue",
+) -> bool:
+    """If `auto_classify_retry` is on and this worker's failure is auto-retryable,
+    enqueue a fresh task with the classifier's hint and (possibly) a downgraded
+    model. Returns True if a retry task was enqueued.
+
+    Skip rules (in order, all must pass):
+      1. setting `auto_classify_retry` is True
+      2. worker has a classified error object (not just a free-form failure)
+      3. description is not a Loop/Plan/STUCK-RETRY descendant — those have their
+         own retry pipelines
+      4. attempt count parsed from existing `[AUTO-RETRY n/N]` prefix < N
+      5. classifier's `derive_retry_decision()` returns non-None
+
+    Failure modes are all logged-and-swallowed: a classifier crash must never
+    block the normal failure persistence path.
+    """
+    try:
+        if not GLOBAL_SETTINGS.get("auto_classify_retry", False):
+            return False
+        err = getattr(w, "_failure_classified", None)
+        if err is None:
+            return False
+
+        desc = w.description or ""
+        # Don't auto-retry tasks owned by other retry pipelines.
+        for marker in ("[Loop-", "[Plan-", "[STUCK-RETRY]"):
+            if desc.startswith(marker):
+                return False
+
+        # Parse existing retry prefix to know which attempt this is.
+        parsed = _parse_retry_prefix(desc)
+        if parsed is not None:
+            attempt, max_attempts = parsed
+        else:
+            attempt = 1
+            max_attempts = max(1, int(GLOBAL_SETTINGS.get("auto_classify_retry_max", 2)))
+
+        decision = _derive_retry_decision(
+            err,
+            attempt=attempt,
+            max_attempts=max_attempts,
+            current_model=w.model,
+            model_fallback=GLOBAL_SETTINGS.get("auto_classify_retry_model_fallback") or {},
+        )
+        if decision is None:
+            return False
+
+        # Strip any existing AUTO-RETRY prefix before re-prefixing.
+        stripped = desc
+        if parsed is not None:
+            from error_classifier import _RETRY_PREFIX_RE  # local import — leaf reuse
+            stripped = _RETRY_PREFIX_RE.sub("", desc, count=1)
+
+        retry_desc = (
+            f"{decision.new_description_prefix} {stripped}\n\n---\n"
+            f"{decision.hint_block}"
+        )
+        await task_queue.add(
+            retry_desc,
+            decision.model,
+            own_files=w.own_files,
+            forbidden_files=w.forbidden_files,
+        )
+        logger.info(
+            "Auto-classify retry: task %s [%s] → enqueued retry (model=%s, attempt=%d/%d)",
+            w.task_id, err.reason.value if hasattr(err, "reason") else "?",
+            decision.model, attempt + 1, max_attempts,
+        )
+        return True
+    except Exception:
+        logger.exception("auto-classify retry helper raised; skipping retry")
+        return False
+
+
 # ─── Worker Pool ──────────────────────────────────────────────────────────────
 
 class WorkerPool:
@@ -1341,6 +1431,7 @@ class WorkerPool:
                         # Forced wall-clock timeout — let the classifier tag it as such.
                         try:
                             err = _classify_error(text, timed_out=True)
+                            w._failure_classified = err
                             w.failure_class = _summarize_error(err)
                         except Exception:
                             pass
@@ -1360,6 +1451,8 @@ class WorkerPool:
                         if w.failure_class else w.failure_context
                     )
                     await task_queue.update(w.task_id, failed_reason=reason)
+                # Opt-in: auto-retry on classified API errors.
+                await _maybe_enqueue_classify_retry(w, task_queue)
                 if project_dir and GLOBAL_SETTINGS.get("github_issues_sync"):
                     t = await task_queue.get(w.task_id)
                     if t:
@@ -1429,6 +1522,10 @@ class WorkerPool:
                             if w.failure_class else w.failure_context
                         )
                         await task_queue.update(w.task_id, failed_reason=reason)
+                        # Opt-in: auto-retry on classified API errors. No-op when
+                        # the setting is off, when no classifier object exists,
+                        # or when the failure class is non-retryable.
+                        await _maybe_enqueue_classify_retry(w, task_queue)
                     if w.status == "done":
                         try:
                             await task_queue.mark_intervention_success(w.task_id)
