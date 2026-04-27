@@ -211,6 +211,16 @@ if [[ ! -f "$CLAUDE_DIR/corrections/stats.json" ]]; then
   cp "$SCRIPT_DIR/templates/corrections/stats.json" "$CLAUDE_DIR/corrections/"
 fi
 
+# ─── 7b. Deploy orchestrator-settings.example.json (reference copy) ──
+# Always overwrites the .example file so it tracks _SETTINGS_DEFAULTS.
+# The real ~/.claude/orchestrator-settings.json is left untouched — users
+# copy keys they want to override out of the .example.
+if [[ -f "$SCRIPT_DIR/templates/orchestrator-settings.example.json" ]]; then
+  cp "$SCRIPT_DIR/templates/orchestrator-settings.example.json" \
+     "$CLAUDE_DIR/orchestrator-settings.example.json"
+  echo "  Installed orchestrator-settings.example.json (reference; copy keys to orchestrator-settings.json to override)"
+fi
+
 # ─── 8. Merge hooks into settings.json ───────────────────────────────
 
 echo "Configuring settings.json..."
