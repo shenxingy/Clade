@@ -46,6 +46,13 @@ class TaskQueue:
             if self._initialized:
                 return
             self._claude_dir.mkdir(parents=True, exist_ok=True)
+            # tasks.db can hold task descriptions / GH issue bodies / commit
+            # messages with embedded credentials. Owner-only is a low-cost guard.
+            try:
+                import os as _os
+                _os.chmod(self._claude_dir, 0o700)
+            except (OSError, NotImplementedError):
+                pass
             async with aiosqlite.connect(str(self._db_path)) as db:
                 await db.execute("""
                     CREATE TABLE IF NOT EXISTS tasks (
@@ -186,6 +193,13 @@ class TaskQueue:
                     )
                 """)
                 await db.commit()
+            # Restrict tasks.db to owner-only — see _ensure_db comment above.
+            try:
+                import os as _os
+                if self._db_path.exists():
+                    _os.chmod(self._db_path, 0o600)
+            except (OSError, NotImplementedError):
+                pass
             # Migrate from JSON if present
             json_file = self._claude_dir / "task-queue.json"
             if json_file.exists():
