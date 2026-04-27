@@ -141,9 +141,29 @@ def _load_settings() -> dict:
     return defaults
 
 
+def _secure_file(path: Path, mode: int = 0o600) -> None:
+    """Restrict a file to the owner. No-op on platforms without chmod."""
+    try:
+        if path.exists():
+            os.chmod(path, mode)
+    except (OSError, NotImplementedError):
+        pass
+
+
+def _secure_dir(path: Path, mode: int = 0o700) -> None:
+    """Restrict a directory to the owner. No-op on platforms without chmod."""
+    try:
+        os.chmod(path, mode)
+    except (OSError, NotImplementedError):
+        pass
+
+
 def _save_settings(s: dict) -> None:
     _settings_file.parent.mkdir(parents=True, exist_ok=True)
     _settings_file.write_text(json.dumps(s, indent=2))
+    # settings.json holds secrets (webhook_secret, hub_token, minimax_api_key) —
+    # tighten to owner-only after every write.
+    _secure_file(_settings_file)
 
 
 GLOBAL_SETTINGS: dict = _load_settings()
