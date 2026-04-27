@@ -14,7 +14,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from error_classifier import (  # noqa: E402
     ClassifiedError,
     FailoverReason,
+    RetryDecision,
     classify,
+    derive_retry_decision,
+    parse_retry_prefix,
     summarize,
 )
 
@@ -127,6 +130,122 @@ def test_empty_stderr_no_exit() -> None:
 def test_status_extraction() -> None:
     err = classify("status: 429 — too fast")
     assert err.status_code == 429
+
+
+# ─── Retry decision (drives swarm-level requeueing) ────────────────────────
+
+_FALLBACK = {"opus": "sonnet", "sonnet": "haiku"}
+
+
+def _decide(stderr: str, *, attempt=1, max_attempts=2, model="sonnet", **kw):
+    err = classify(stderr, **kw)
+    return derive_retry_decision(
+        err, attempt=attempt, max_attempts=max_attempts,
+        current_model=model, model_fallback=_FALLBACK,
+    )
+
+
+def test_retry_rate_limit_returns_decision() -> None:
+    d = _decide("429 Too Many Requests")
+    assert d is not None
+    assert d.new_description_prefix == "[AUTO-RETRY 2/2]"
+    assert "rate_limit" in d.hint_block
+    # rate_limit doesn't trigger model fallback
+    assert d.model == "sonnet"
+
+
+def test_retry_overloaded_returns_decision() -> None:
+    d = _decide("503 Service Unavailable: overloaded")
+    assert d is not None and "overloaded" in d.hint_block
+
+
+def test_retry_timeout_returns_decision() -> None:
+    d = _decide("", timed_out=True)
+    assert d is not None and "timed out" in d.hint_block.lower()
+
+
+def test_retry_context_overflow_compresses_and_downgrades() -> None:
+    d = _decide("prompt is too long: 215000 tokens", model="sonnet")
+    assert d is not None
+    assert d.model == "haiku"  # fallback because should_compress=True
+    assert "concise" in d.hint_block.lower()
+
+
+def test_retry_long_context_tier_downgrades() -> None:
+    d = _decide("requires long-context tier", model="opus")
+    assert d is not None and d.model == "sonnet"
+
+
+def test_retry_model_not_found_downgrades() -> None:
+    d = _decide("HTTP 404: model claude-foo not found", model="opus")
+    assert d is not None and d.model == "sonnet"
+
+
+def test_no_retry_on_auth() -> None:
+    """Auth errors need a human — never auto-retry."""
+    assert _decide("401 Unauthorized: invalid api key") is None
+
+
+def test_no_retry_on_billing() -> None:
+    assert _decide("402 Payment Required: out of credits") is None
+
+
+def test_no_retry_on_format_error() -> None:
+    """Bad request = our request is malformed. Retrying won't fix it."""
+    assert _decide("400 Bad Request: malformed body") is None
+
+
+def test_no_retry_on_killed() -> None:
+    assert _decide("Process killed by SIGKILL") is None
+
+
+def test_no_retry_when_at_max_attempts() -> None:
+    assert _decide("503 overloaded", attempt=2, max_attempts=2) is None
+
+
+def test_no_retry_when_past_max_attempts() -> None:
+    assert _decide("503 overloaded", attempt=5, max_attempts=2) is None
+
+
+def test_retry_when_under_max_attempts() -> None:
+    d = _decide("503 overloaded", attempt=1, max_attempts=3)
+    assert d is not None and d.new_description_prefix == "[AUTO-RETRY 2/3]"
+
+
+def test_retry_unknown_failures_are_retried() -> None:
+    """Unknown class is retryable but conservative — single retry."""
+    d = _decide("unknown weirdness", exit_code=1)
+    assert d is not None  # process_crashed is retryable
+
+
+def test_retry_decision_no_fallback_map() -> None:
+    """Caller may pass empty/None fallback — model stays put."""
+    err = classify("prompt is too long")
+    d = derive_retry_decision(err, attempt=1, max_attempts=2,
+                              current_model="opus", model_fallback={})
+    assert d is not None
+    assert d.model == "opus"  # no downgrade without map
+
+
+# ─── parse_retry_prefix ────────────────────────────────────────────────────
+
+def test_parse_prefix_basic() -> None:
+    assert parse_retry_prefix("[AUTO-RETRY 2/3] hello") == (2, 3)
+
+
+def test_parse_prefix_extra_whitespace() -> None:
+    assert parse_retry_prefix("[AUTO-RETRY  10 / 20]  task body") == (10, 20)
+
+
+def test_parse_prefix_no_match() -> None:
+    assert parse_retry_prefix("hello world") is None
+    assert parse_retry_prefix("") is None
+    assert parse_retry_prefix("[STUCK-RETRY] foo") is None
+
+
+def test_parse_prefix_only_at_start() -> None:
+    """Must be a prefix — embedded mention doesn't count."""
+    assert parse_retry_prefix("did [AUTO-RETRY 1/2] in middle") is None
 
 
 def test_summarize_format() -> None:
