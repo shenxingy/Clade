@@ -1,0 +1,44 @@
+{
+  "_comment": "Example orchestrator settings — copy to ~/.claude/orchestrator-settings.json. Only override the keys you care about; defaults live in orchestrator/config.py:_SETTINGS_DEFAULTS. Never commit this file with real secrets.",
+
+  "max_workers": 0,
+  "auto_start": true,
+  "auto_push": true,
+  "auto_merge": true,
+  "auto_review": true,
+
+  "default_model": "sonnet",
+  "loop_supervisor_model": "sonnet",
+
+  "loop_convergence_k": 2,
+  "loop_convergence_n": 3,
+  "loop_max_iterations": 20,
+
+  "auto_oracle": false,
+  "auto_model_routing": false,
+  "context_budget_warning": true,
+
+  "github_issues_sync": false,
+  "github_issues_label": "orchestrator",
+
+  "stuck_timeout_minutes": 15,
+
+  "cost_budget": 0,
+  "worker_token_budget": 0,
+
+  "_comment_secrets": "The keys below should be set on your local machine only — do not commit a copy with real values.",
+  "webhook_secret": "",
+  "notification_webhook": "",
+  "minimax_api_key": "",
+  "minimax_group_id": "",
+  "usage_hub_url": "",
+  "usage_hub_token": "",
+  "usage_ingest_token": "",
+
+  "usage_provider": "claude",
+  "usage_poll_enabled": true,
+  "usage_poll_interval_sec": 900,
+  "usage_poll_since_days": 7,
+
+  "reactions_enabled": true
+}
