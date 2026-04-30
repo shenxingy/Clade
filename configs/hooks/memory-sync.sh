@@ -87,7 +87,10 @@ if [[ "$_is_memory_path" == true && "$TOOL_NAME" != "Bash" ]]; then
 
   # Gate 4: Confidence — hedged/uncertain content (3+ hedging words = skip)
   if [[ -f "$FILE_PATH" ]]; then
-    _hedge_count=$(grep -ioE '\b(might|probably|unsure|maybe|not sure|could be|possibly)\b' "$FILE_PATH" 2>/dev/null | wc -l || echo 0)
+    # `set -o pipefail` + grep-no-match would trip the `|| echo 0` and
+    # produce "0\n0", breaking the numeric compare. Brace-group with `|| true`
+    # absorbs grep's exit before the pipe to wc.
+    _hedge_count=$({ grep -ioE '\b(might|probably|unsure|maybe|not sure|could be|possibly)\b' "$FILE_PATH" 2>/dev/null || true; } | wc -l)
     if [[ "$_hedge_count" -ge 3 ]]; then
       exit 0
     fi
