@@ -28,6 +28,13 @@
                         "async": true,
                         "timeout": 30,
                         "statusMessage": "Syncing memory..."
+                    },
+                    {
+                        "id": "sync-health",
+                        "description": "Detect dotfiles sync drift (missing config, broken symlinks, unreachable SYNC_DIR)",
+                        "type": "command",
+                        "command": "~/.claude/hooks/sync-health.sh",
+                        "timeout": 5
                     }
                 ]
             }
