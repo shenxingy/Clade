@@ -14,7 +14,7 @@
 
 **Autonomous coding, evolved.**
 
-93 skills, 21 hooks, 35 agents, a safety guardian, and a correction learning loop — all working together so Claude codes better, catches its own mistakes, and can run unattended overnight while you sleep.
+103 skills, 24 hooks, 34 agents, a safety guardian, and a correction learning loop — all working together so Claude codes better, catches its own mistakes, and can run unattended overnight while you sleep.
 
 > If this saves you time, a star helps others find it. Something broken? [Open an issue](https://github.com/shenxingy/clade/issues/new/choose).
 
@@ -26,7 +26,7 @@
 2. [MCP Server](#mcp-server--use-skills-in-any-ai-editor)
 3. [What It Does](#what-it-does)
 4. [Commit Lessons](#commit-lessons--learn-from-your-git-history)
-5. [Skills](#skills-93)
+5. [Skills](#skills-103)
 5. [Hooks](#hooks-14)
 6. [Supported Languages](#supported-languages)
 7. [Documentation](#documentation)
@@ -59,7 +59,7 @@ See [MCP Server](#mcp-server--use-skills-in-any-ai-editor) below for configurati
 
 ## MCP Server — Use Skills in Any AI Editor
 
-The MCP server exposes all 94 Clade skills as callable tools via the [Model Context Protocol](https://modelcontextprotocol.io). Works with any MCP-compatible client.
+The MCP server exposes all 103 Clade skills as callable tools via the [Model Context Protocol](https://modelcontextprotocol.io). Works with any MCP-compatible client.
 
 **Claude Desktop / Claude Code:**
 ```json
@@ -92,7 +92,7 @@ The MCP server exposes all 94 Clade skills as callable tools via the [Model Cont
 | You correct Claude | `correction-detector.sh` | Logs correction, prompts Claude to save a reusable rule |
 | Claude marks task done | `verify-task-completed.sh` | Adaptive quality gate: compile + lint, build + test in strict mode |
 
-See [How It Works](docs/how-it-works.md) for the full hook reference (21 hooks).
+See [How It Works](docs/how-it-works.md) for the full hook reference (24 hooks).
 
 ## Commit Lessons — learn from your git history
 
@@ -124,7 +124,38 @@ To verify on any project: `cd <repo> && bash ~/.claude/scripts/commit-archeology
 
 If nothing prints: repo has <5 commits in window, or no pattern hit ≥3 occurrences. Both are fine — silent no-op is the design.
 
-## Skills (93)
+## Doc Align — keep counts and facts in sync across all docs
+
+Every project has shared facts that drift: skill counts in README, version numbers in landing pages, trial periods in marketing copy. Manual sync is a losing game — `git log` already shows multiple "update README counts" commits in this repo alone.
+
+`docs/facts.json` is the **single source of truth**. `doc-align.py` checks every `*.md` against it.
+
+```json
+{
+  "facts": [
+    {
+      "name": "skills",
+      "value": 103,
+      "derive": {"type": "count_glob", "pattern": "configs/skills/*/"},
+      "patterns": ["^## Skills\\s*\\((\\d+)\\)", "^(\\d+) skills,"]
+    }
+  ]
+}
+```
+
+**Modes:**
+- `doc-align.py check` — report drift, exit non-zero if any
+- `doc-align.py apply` — auto-rewrite drifting values in-place
+- `doc-align.py refresh` — re-derive auto-derivable facts (counts from filesystem)
+- `doc-align.py sync` — refresh + apply (one-shot)
+
+**`derive` types (V1):** `count_glob` (count files/dirs matching glob). More to come (`http_get_json`, `count_lines`, etc.) when needed. No shell-injection surface — safe primitives only.
+
+**Auto-runs on every install.** `install.sh` calls `refresh` so `facts.json` always reflects the filesystem (skill/hook/agent/script counts). `apply` is opt-in (you decide when to rewrite docs).
+
+**Universal:** lives in `~/.claude/scripts/doc-align.py` after install — works on any project that has a `docs/facts.json`. Repos without one are silent no-ops.
+
+## Skills (103)
 
 ### Core Workflow
 

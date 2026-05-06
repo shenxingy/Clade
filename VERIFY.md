@@ -58,7 +58,7 @@
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
 | SH1 | All `configs/hooks/*.sh` pass `bash -n` | ✅ | 2026-04-15 | all 21 hooks pass |
-| SH2 | All `configs/scripts/*.sh` pass `bash -n` | ✅ | 2026-04-15 | all 27 scripts pass |
+| SH2 | All `configs/scripts/*.sh` pass `bash -n` | ✅ | 2026-04-15 | all 28 scripts pass |
 | SH3 | `install.sh` passes `bash -n` | ✅ | 2026-04-15 | |
 
 ## Orchestrator — Python Syntax & Tests
