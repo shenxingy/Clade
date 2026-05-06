@@ -25,7 +25,8 @@
 1. [Install](#install)
 2. [MCP Server](#mcp-server--use-skills-in-any-ai-editor)
 3. [What It Does](#what-it-does)
-4. [Skills](#skills-93)
+4. [Commit Lessons](#commit-lessons--learn-from-your-git-history)
+5. [Skills](#skills-93)
 5. [Hooks](#hooks-14)
 6. [Supported Languages](#supported-languages)
 7. [Documentation](#documentation)
@@ -85,12 +86,43 @@ The MCP server exposes all 94 Clade skills as callable tools via the [Model Cont
 | When | What fires | Effect |
 |------|-----------|--------|
 | Session opens in a git repo | `session-context.sh` | Loads git context, handoff state, correction rules, model guidance |
+| Session opens in a git repo | `commit-archeology.sh` | Mines `git log` for recurring fix patterns (wiring/deploy/compat gaps, Claude-overridden) — injects top 4 |
 | Claude runs a bash command | `pre-tool-guardian.sh` | **Blocks** dangerous ops: migrations, `rm -rf`, force push, `DROP TABLE` |
 | Claude edits code | `post-edit-check.sh` | Async type-check (tsc, pyright, cargo check, go vet, etc.) |
 | You correct Claude | `correction-detector.sh` | Logs correction, prompts Claude to save a reusable rule |
 | Claude marks task done | `verify-task-completed.sh` | Adaptive quality gate: compile + lint, build + test in strict mode |
 
 See [How It Works](docs/how-it-works.md) for the full hook reference (21 hooks).
+
+## Commit Lessons — learn from your git history
+
+Every project's `git log` is a record of mistakes you (or Claude) already made. Clade mines it.
+
+At every session start, `commit-archeology.sh` scans the last 60 days of commits for **recurring** patterns and injects the top 4 as context:
+
+```
+## 🧠 Commit Lessons (this repo, last 60d)
+- 5× wiring-gap (last ef6ef76 on 2026-04-11) → fix: ... wire sessionId to all API calls
+- 8× compat-gap (last 9d8afb1 on 2026-03-30) → fix(commit): cross-platform CI guidance
+- 3× deploy-gap (last 1f32dd8 on 2026-04-27) → fix(install): deploy orchestrator-settings.example.json
+- 12× claude-overridden (last 700b952) → 12 Claude commits whose files later got a non-Claude fix
+```
+
+**Detectors (all run locally, never upload):**
+- `wiring-gap` — fix commits with "wire / hook up / not registered / not called"
+- `deploy-gap` — fix commits referencing install.sh or "missing from"
+- `compat-gap` — fix commits about macOS / bash / cross-platform fallbacks
+- `disambiguate` — naming collisions / built-in conflicts
+- `claude-overridden` — Claude-authored commits whose files later got a human-only fix (uses `Co-Authored-By: Claude` trailer)
+- `mass-fix-day-*` — any single day with ≥10 fix commits (noisy initial pass signal)
+
+**Works in any Claude Code frontend** (TUI, desktop, IDE) — the hook is in `~/.claude/settings.json`, fires regardless of UI. Web (claude.ai/code) is the only exception (it can't read your local git).
+
+**Tunable via env vars:** `COMMIT_ARCH_WINDOW=60` (days), `COMMIT_ARCH_TOP_N=4` (lines injected), `COMMIT_ARCH_MIN=3` (min occurrences), `COMMIT_ARCH_CACHE_HOURS=24` (rescan throttle).
+
+To verify on any project: `cd <repo> && bash ~/.claude/scripts/commit-archeology.sh --inject --force`.
+
+If nothing prints: repo has <5 commits in window, or no pattern hit ≥3 occurrences. Both are fine — silent no-op is the design.
 
 ## Skills (93)
 
