@@ -120,6 +120,14 @@
                         "timeout": 10
                     },
                     {
+                        "id": "doc-align-check",
+                        "description": "Real-time doc-drift guard: after .md edits, check docs/facts.json and warn if the edited file now disagrees with declared facts",
+                        "type": "command",
+                        "command": "~/.claude/hooks/doc-align-check.sh",
+                        "async": true,
+                        "timeout": 10
+                    },
+                    {
                         "id": "skill-suggest",
                         "description": "Suggest relevant skills after file edits (blog→SEO/GEO, schema→validate, etc.)",
                         "type": "command",
