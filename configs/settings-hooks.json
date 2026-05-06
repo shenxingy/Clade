@@ -35,6 +35,14 @@
                         "type": "command",
                         "command": "~/.claude/hooks/sync-health.sh",
                         "timeout": 5
+                    },
+                    {
+                        "id": "commit-archeology",
+                        "description": "Inject recurring commit-pattern lessons (wiring/deploy/compat gaps, Claude-overridden, mass-fix days) mined from this repo's git log",
+                        "type": "command",
+                        "command": "~/.claude/hooks/commit-archeology.sh",
+                        "timeout": 15,
+                        "statusMessage": "Reading commit lessons..."
                     }
                 ]
             }
