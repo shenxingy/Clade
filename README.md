@@ -25,9 +25,8 @@
 1. [Install](#install)
 2. [MCP Server](#mcp-server--use-skills-in-any-ai-editor)
 3. [What It Does](#what-it-does)
-4. [Commit Lessons](#commit-lessons--learn-from-your-git-history)
+4. [Self-Learning Mechanisms](#self-learning-mechanisms)
 5. [Skills](#skills-103)
-5. [Hooks](#hooks-14)
 6. [Supported Languages](#supported-languages)
 7. [Documentation](#documentation)
 8. [Repo Structure](#repo-structure)
@@ -94,66 +93,16 @@ The MCP server exposes all 103 Clade skills as callable tools via the [Model Con
 
 See [How It Works](docs/how-it-works.md) for the full hook reference (24 hooks).
 
-## Commit Lessons — learn from your git history
+## Self-Learning Mechanisms
 
-Every project's `git log` is a record of mistakes you (or Claude) already made. Clade mines it.
+Two mechanisms keep Clade aligned with reality without manual upkeep:
 
-At every session start, `commit-archeology.sh` scans the last 60 days of commits for **recurring** patterns and injects the top 4 as context:
+- **Commit Lessons** *(reactive)* — `commit-archeology.sh` mines `git log` for recurring fix patterns (wiring-gap, deploy-gap, compat-gap, **claude-overridden**) and injects the top 4 at every session start.
+- **Doc Align** *(preventive)* — `doc-align.py` declares shared facts in `docs/facts.json` (auto-derived from filesystem); checks/auto-fixes drift across every `*.md`. A PostToolUse hook flags drift the moment you edit a doc, so stale counts never reach commit.
 
-```
-## 🧠 Commit Lessons (this repo, last 60d)
-- 5× wiring-gap (last ef6ef76 on 2026-04-11) → fix: ... wire sessionId to all API calls
-- 8× compat-gap (last 9d8afb1 on 2026-03-30) → fix(commit): cross-platform CI guidance
-- 3× deploy-gap (last 1f32dd8 on 2026-04-27) → fix(install): deploy orchestrator-settings.example.json
-- 12× claude-overridden (last 700b952) → 12 Claude commits whose files later got a non-Claude fix
-```
+Both work on any project Claude Code is run in (universal, in `~/.claude/scripts/`). Both are silent no-ops on repos that haven't opted in.
 
-**Detectors (all run locally, never upload):**
-- `wiring-gap` — fix commits with "wire / hook up / not registered / not called"
-- `deploy-gap` — fix commits referencing install.sh or "missing from"
-- `compat-gap` — fix commits about macOS / bash / cross-platform fallbacks
-- `disambiguate` — naming collisions / built-in conflicts
-- `claude-overridden` — Claude-authored commits whose files later got a human-only fix (uses `Co-Authored-By: Claude` trailer)
-- `mass-fix-day-*` — any single day with ≥10 fix commits (noisy initial pass signal)
-
-**Works in any Claude Code frontend** (TUI, desktop, IDE) — the hook is in `~/.claude/settings.json`, fires regardless of UI. Web (claude.ai/code) is the only exception (it can't read your local git).
-
-**Tunable via env vars:** `COMMIT_ARCH_WINDOW=60` (days), `COMMIT_ARCH_TOP_N=4` (lines injected), `COMMIT_ARCH_MIN=3` (min occurrences), `COMMIT_ARCH_CACHE_HOURS=24` (rescan throttle).
-
-To verify on any project: `cd <repo> && bash ~/.claude/scripts/commit-archeology.sh --inject --force`.
-
-If nothing prints: repo has <5 commits in window, or no pattern hit ≥3 occurrences. Both are fine — silent no-op is the design.
-
-## Doc Align — keep counts and facts in sync across all docs
-
-Every project has shared facts that drift: skill counts in README, version numbers in landing pages, trial periods in marketing copy. Manual sync is a losing game — `git log` already shows multiple "update README counts" commits in this repo alone.
-
-`docs/facts.json` is the **single source of truth**. `doc-align.py` checks every `*.md` against it.
-
-```json
-{
-  "facts": [
-    {
-      "name": "skills",
-      "value": 103,
-      "derive": {"type": "count_glob", "pattern": "configs/skills/*/"},
-      "patterns": ["^## Skills\\s*\\((\\d+)\\)", "^(\\d+) skills,"]
-    }
-  ]
-}
-```
-
-**Modes:**
-- `doc-align.py check` — report drift, exit non-zero if any
-- `doc-align.py apply` — auto-rewrite drifting values in-place
-- `doc-align.py refresh` — re-derive auto-derivable facts (counts from filesystem)
-- `doc-align.py sync` — refresh + apply (one-shot)
-
-**`derive` types (V1):** `count_glob` (count files/dirs matching glob). More to come (`http_get_json`, `count_lines`, etc.) when needed. No shell-injection surface — safe primitives only.
-
-**Auto-runs on every install.** `install.sh` calls `refresh` so `facts.json` always reflects the filesystem (skill/hook/agent/script counts). `apply` is opt-in (you decide when to rewrite docs).
-
-**Universal:** lives in `~/.claude/scripts/doc-align.py` after install — works on any project that has a `docs/facts.json`. Repos without one are silent no-ops.
+See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, detectors, schemas, and tunable env vars.
 
 ## Skills (103)
 
