@@ -1,0 +1,41 @@
+{
+  "_comment": "Single source of truth for cross-doc facts. Auto-refreshed on install via doc-align.py refresh. Run `doc-align.py check` to find drift; `apply` to fix in-place.",
+  "facts": [
+    {
+      "name": "skills",
+      "value": 103,
+      "derive": {"type": "count_glob", "pattern": "configs/skills/*/"},
+      "patterns": [
+        "^## Skills\\s*\\((\\d+)\\)",
+        "^(\\d+) skills,",
+        "all (\\d+) Clade skills",
+        "\\[Skills\\]\\(#skills-(\\d+)\\)"
+      ]
+    },
+    {
+      "name": "hooks",
+      "value": 24,
+      "derive": {"type": "count_glob", "pattern": "configs/hooks/*.sh"},
+      "patterns": [
+        "^\\d+ skills,\\s+(\\d+) hooks",
+        "hook reference \\((\\d+) hooks\\)"
+      ]
+    },
+    {
+      "name": "agents",
+      "value": 34,
+      "derive": {"type": "count_glob", "pattern": "configs/agents/*.md"},
+      "patterns": [
+        "^\\d+ skills,\\s+\\d+ hooks,\\s+(\\d+) agents"
+      ]
+    },
+    {
+      "name": "scripts",
+      "value": 28,
+      "derive": {"type": "count_glob", "pattern": "configs/scripts/*.sh"},
+      "patterns": [
+        "all (\\d+) scripts pass"
+      ]
+    }
+  ]
+}

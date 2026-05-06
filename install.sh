@@ -293,6 +293,13 @@ if [[ -f "$TEMPLATE_CLAUDE" ]]; then
   fi
 fi
 
+# ─── 10b. Refresh doc-align facts ────────────────────────────────────
+# Auto-update derived facts (skill/hook/agent/script counts in docs/facts.json)
+# so docs stay aligned with reality. Silent if facts.json or python3 missing.
+if [[ -f "$SCRIPT_DIR/docs/facts.json" ]] && command -v python3 &>/dev/null; then
+  python3 "$CLAUDE_DIR/scripts/doc-align.py" refresh --root "$SCRIPT_DIR" --quiet 2>/dev/null || true
+fi
+
 # ─── 11. Write staleness detection markers ───────────────────────────
 
 echo "Writing kit version markers..."
