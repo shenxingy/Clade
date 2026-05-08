@@ -45,10 +45,11 @@ cd orchestrator && python -m py_compile server.py session.py session_tree.py tas
 #   Dashboard: http://hub:8000/web/usage.html
 # Per-machine ccusage data is stored in ~/.claude/orchestrator/usage.db.
 
-# MCP Server — expose skills as MCP tools for external AI coding tools
-# After install.sh, configure in ~/.claude/settings.json:
-# { "mcpServers": { "clade": { "command": "python", "args": ["/path/to/orchestrator/mcp_server.py"] } } }
-# Then restart Claude Code. Skills appear as `clade_<name>` MCP tools.
+# MCP Server — exposes skills as MCP tools for EXTERNAL AI coding tools (Cursor, Cline, etc.)
+# Inside Claude Code, skills are already native (/blog-write, /commit) — no MCP needed.
+# Config lives at mcp/clade.mcp.json (NOT .mcp.json at repo root — that auto-spawned in CC and
+# duplicated every skill, overflowing the system prompt). External clients should point at
+# orchestrator/mcp_server.py directly. See mcp/README.md.
 ```
 
 ## Architecture — Two Layers
