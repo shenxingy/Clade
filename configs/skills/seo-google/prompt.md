@@ -14,7 +14,7 @@ argument-hint: "[command] [url|property]"
 license: MIT
 metadata:
   author: AgriciDaniel
-  version: "1.9.0"
+  version: "1.9.9"
   category: seo
 ---
 

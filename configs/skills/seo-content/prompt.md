@@ -9,7 +9,7 @@ argument-hint: "[url]"
 license: MIT
 metadata:
   author: AgriciDaniel
-  version: "1.9.0"
+  version: "1.9.9"
   category: seo
 ---
 
@@ -174,3 +174,7 @@ If DataForSEO MCP tools are available, use `kw_data_google_ads_search_volume` fo
 | URL unreachable (DNS failure, connection refused) | Report the error clearly. Do not guess page content. Suggest the user verify the URL and try again. |
 | Content behind paywall (402/403, login wall) | Report that the content is not publicly accessible. Analyze only the visible portion (meta tags, headers) and note the limitation. |
 | Thin content (fewer than 100 words retrievable) | Report the findings as-is rather than guessing. Flag the page as potentially JavaScript-rendered or gated, and suggest the user provide the full text directly. |
+
+## FLOW Framework Integration
+
+For prompt-guided content optimization, use `/seo flow optimize <url>` and `/seo flow win <url>` — FLOW's optimize and win prompts provide structured E-E-A-T improvement and BOFU conversion workflows.

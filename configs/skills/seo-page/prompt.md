@@ -10,7 +10,7 @@ argument-hint: "[url]"
 license: MIT
 metadata:
   author: AgriciDaniel
-  version: "1.9.0"
+  version: "1.9.9"
   category: seo
 ---
 
@@ -52,7 +52,7 @@ metadata:
 - File size: flag >200KB (warning), >500KB (critical)
 - Format: recommend WebP/AVIF over JPEG/PNG
 - Dimensions: width/height set for CLS prevention
-- Lazy loading: loading="lazy" on below-fold images
+- Lazy loading: report `lazy_method` per image (native | perfmatters | ewww | js-generic | none). Do not flag "not lazy-loaded" when JS lazy-loaders (Perfmatters, EWWW, lazysizes) are detected — they intentionally strip the native `loading="lazy"` attribute and use `data-src` placeholders
 
 ### Core Web Vitals (reference only, not measurable from HTML alone)
 - Flag potential LCP issues (huge hero images, render-blocking resources)

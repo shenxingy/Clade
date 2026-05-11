@@ -13,7 +13,7 @@ argument-hint: "[url]"
 license: MIT
 metadata:
   author: AgriciDaniel
-  version: "1.9.0"
+  version: "1.9.9"
   category: seo
 ---
 
@@ -249,3 +249,7 @@ If DataForSEO MCP tools are available, use `ai_optimization_chat_gpt_scraper` to
 | AI crawlers blocked by robots.txt | Report exactly which crawlers are blocked and which are allowed. Provide specific robots.txt directives to add for enabling AI search visibility. |
 | No llms.txt found | Note the absence and provide a ready-to-use llms.txt template based on the site's content structure. |
 | No structured data detected | Report the gap and provide specific schema recommendations (Article, Organization, Person) for improving AI discoverability. |
+
+## FLOW Framework Integration
+
+For prompt-guided AI content optimization, use `/seo flow optimize <url>` — FLOW's 21 optimize-stage prompts complement GEO's citability and structure analysis with evidence-led AI prompts.

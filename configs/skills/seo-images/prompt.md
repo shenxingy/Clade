@@ -12,7 +12,7 @@ argument-hint: "[url]"
 license: MIT
 metadata:
   author: AgriciDaniel
-  version: "1.9.0"
+  version: "1.9.9"
   category: seo
 ---
 
@@ -103,6 +103,23 @@ In November 2025, Google's Chromium team reversed its 2022 decision and announce
 <!-- Above fold - eager load (default) -->
 <img src="hero.jpg" alt="Hero image">
 ```
+
+#### Detected lazy-loader methods (`lazy_method` field)
+
+`scripts/parse_html.py` classifies each image's lazy-loading mechanism via the
+`lazy_method` field on every image entry. Five values:
+
+| `lazy_method` | Signal detected | Common stack |
+|---|---|---|
+| `native` | `loading="lazy"` HTML attribute | Modern browsers, plain HTML |
+| `perfmatters` | `data-perfmatters-src`/`-srcset` OR class `perfmatters-lazy` | WordPress + Perfmatters plugin |
+| `ewww` | `data-ewww-src` / `data-eio` OR class `lazyload-eio` | WordPress + EWWW Image Optimizer |
+| `js-generic` | `data-src` / `data-lazy-src` / `data-original` / `data-srcset` OR class `lazyload`/`lazyloaded`/`lazy` | Lazysizes, vanilla-lazyload, jQuery plugins |
+| `none` | Neither attribute nor class signal | Page is not lazy-loading this image |
+
+When auditing image SEO, report `lazy_method` alongside `loading` so users know
+whether their site is using a JS-driven lazy-loader (in which case the native
+`loading="lazy"` attribute is intentionally absent — that is not a regression).
 
 ### `fetchpriority="high"` for LCP Images
 

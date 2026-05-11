@@ -14,7 +14,7 @@ license: MIT
 metadata:
   author: AgriciDaniel
   original_author: "Lutfiya Miller (Pro Hub Challenge Winner)"
-  version: "1.9.0"
+  version: "1.9.9"
   category: seo
 ---
 
@@ -316,3 +316,7 @@ After cluster planning or execution completes, offer:
 - No credentials stored or transmitted
 - Output files contain no PII or API keys
 - DataForSEO cost checks run before every API call
+
+## FLOW Framework Integration
+
+For prompt-guided keyword research and gap analysis, use `/seo flow find [url|topic]` — FLOW's 5 find-stage prompts complement the SERP-overlap clustering methodology with structured discovery prompts.

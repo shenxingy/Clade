@@ -15,7 +15,7 @@ argument-hint: "[url]"
 license: MIT
 metadata:
   author: AgriciDaniel
-  version: "1.9.0"
+  version: "1.9.9"
   category: seo
 ---
 
@@ -311,3 +311,7 @@ If DataForSEO MCP tools are available, use `local_business_data` for live GBP da
 | NAP not found in page HTML | Check schema and meta tags. If still absent, flag as Critical issue. Recommend adding visible NAP to footer and contact page. |
 | Industry vertical unclear | Present the top two detected verticals with supporting signals. Ask the user to confirm before applying industry-specific recommendations. |
 | Multi-location with 50+ location pages | Apply the quality gates from seo orchestrator: WARNING at 30+ pages (enforce 60%+ unique), HARD STOP at 50+ pages (require user justification before continuing). |
+
+## FLOW Framework Integration
+
+For prompt-guided local optimization, use `/seo flow local <url>` — FLOW's 11 local-stage prompts cover GBP optimization, meta descriptions, title tags, and structured local audit workflows.

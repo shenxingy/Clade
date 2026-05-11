@@ -13,7 +13,7 @@ license: MIT
 metadata:
   author: AgriciDaniel
   original_author: "Florian Schmitz (Pro Hub Challenge)"
-  version: "1.9.0"
+  version: "1.9.9"
   category: seo
 ---
 
