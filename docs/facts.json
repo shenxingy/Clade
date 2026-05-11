@@ -3,8 +3,11 @@
   "facts": [
     {
       "name": "skills",
-      "value": 103,
-      "derive": {"type": "count_glob", "pattern": "configs/skills/*/"},
+      "value": 110,
+      "derive": {
+        "type": "count_glob",
+        "pattern": "configs/skills/*/"
+      },
       "patterns": [
         "^## Skills\\s*\\((\\d+)\\)",
         "^(\\d+) skills,",
@@ -14,8 +17,11 @@
     },
     {
       "name": "hooks",
-      "value": 24,
-      "derive": {"type": "count_glob", "pattern": "configs/hooks/*.sh"},
+      "value": 25,
+      "derive": {
+        "type": "count_glob",
+        "pattern": "configs/hooks/*.sh"
+      },
       "patterns": [
         "^\\d+ skills,\\s+(\\d+) hooks",
         "hook reference \\((\\d+) hooks\\)"
@@ -24,7 +30,10 @@
     {
       "name": "agents",
       "value": 34,
-      "derive": {"type": "count_glob", "pattern": "configs/agents/*.md"},
+      "derive": {
+        "type": "count_glob",
+        "pattern": "configs/agents/*.md"
+      },
       "patterns": [
         "^\\d+ skills,\\s+\\d+ hooks,\\s+(\\d+) agents"
       ]
@@ -32,7 +41,10 @@
     {
       "name": "scripts",
       "value": 28,
-      "derive": {"type": "count_glob", "pattern": "configs/scripts/*.sh"},
+      "derive": {
+        "type": "count_glob",
+        "pattern": "configs/scripts/*.sh"
+      },
       "patterns": [
         "all (\\d+) scripts pass"
       ]
