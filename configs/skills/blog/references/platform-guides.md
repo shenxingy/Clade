@@ -4,6 +4,19 @@ Adapt blog output to each platform's requirements. Detect the platform
 from project structure (see `SKILL.md` Platform Detection table) and apply
 the corresponding format rules below.
 
+## Contents
+
+- [Next.js / MDX](#nextjs--mdx)
+- [Astro](#astro)
+- [Hugo](#hugo)
+- [Jekyll](#jekyll)
+- [WordPress](#wordpress)
+- [Ghost](#ghost)
+- [11ty (Eleventy)](#11ty-eleventy)
+- [Gatsby](#gatsby)
+- [HTML / Static](#html--static)
+- [Platform Selection Quick Reference](#platform-selection-quick-reference)
+
 ---
 
 ## Next.js / MDX

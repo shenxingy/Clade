@@ -703,18 +703,32 @@ def generate_report(report_type, data, domain, output_dir, output_format="pdf"):
     body = "\n".join(sections)
     html_content = f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><style>{css}</style></head><body>{body}</body></html>"""
 
-    # Output
-    safe_domain = domain.replace(":", "_").replace("/", "_")
+    # Output (closes audit VULN-014 path traversal on --domain)
+    # Whitelist: alphanumerics + dot + underscore + hyphen. Anything else
+    # (incl. "..", "/", "\\", NUL, Windows drive letters) becomes "_".
+    import re
+    safe_domain = re.sub(r"[^A-Za-z0-9._-]", "_", domain)[:128] or "report"
     base_name = f"Google-SEO-Report-{safe_domain}-{report_type}"
 
+    # Re-resolve and assert containment inside output_dir (defense in depth).
+    out_root = Path(output_dir).resolve()
+
+    def _safe_path(name: str) -> Path:
+        candidate = (out_root / name).resolve()
+        if out_root != candidate.parent and out_root not in candidate.parents:
+            raise ValueError(
+                f"Refusing to write outside output_dir: {candidate}"
+            )
+        return candidate
+
     if output_format in ("html", "both"):
-        html_path = output_dir / f"{base_name}.html"
+        html_path = _safe_path(f"{base_name}.html")
         with open(html_path, "w") as f:
             f.write(html_content)
         result["files"].append(str(html_path))
 
     if output_format in ("pdf", "both"):
-        pdf_path = output_dir / f"{base_name}.pdf"
+        pdf_path = _safe_path(f"{base_name}.pdf")
         try:
             HTML(string=html_content).write_pdf(str(pdf_path))
             result["files"].append(str(pdf_path))

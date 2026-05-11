@@ -1,5 +1,16 @@
 # Technical AI Visibility -- Crawler Access & Rendering
 
+## Contents
+
+- [robots.txt Template for AI Crawlers](#robotstxt-template-for-ai-crawlers)
+- [Cloudflare AI Crawl Control -- CRITICAL](#cloudflare-ai-crawl-control----critical)
+- [llms.txt Implementation](#llmstxt-implementation)
+- [Server-Side Rendering Requirements](#server-side-rendering-requirements)
+- [Performance Requirements](#performance-requirements)
+- [Testing AI Crawler Visibility](#testing-ai-crawler-visibility)
+- [AI Crawler Traffic Growth](#ai-crawler-traffic-growth)
+- [AI Crawler Checklist](#ai-crawler-checklist)
+
 ## robots.txt Template for AI Crawlers
 
 Allow all known AI crawlers explicitly. Most AI crawlers default to respecting

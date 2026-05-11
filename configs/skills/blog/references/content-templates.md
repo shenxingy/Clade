@@ -5,6 +5,17 @@ templates are structural blueprints that `/blog write` uses to generate
 consistently optimized content. This reference explains when to use each
 template, how the template system works, and how to customize it.
 
+## Contents
+
+- [Why Templates Matter](#why-templates-matter)
+- [Template Selection Guide](#template-selection-guide)
+- [Template Structure Anatomy](#template-structure-anatomy)
+- [Template Details](#template-details)
+- [How `/blog write` Uses Templates](#how-blog-write-uses-templates)
+- [Template and Scoring Integration](#template-and-scoring-integration)
+- [Customization](#customization)
+- [FAQ Section Guidelines (All Templates)](#faq-section-guidelines-all-templates)
+
 ---
 
 ## Why Templates Matter

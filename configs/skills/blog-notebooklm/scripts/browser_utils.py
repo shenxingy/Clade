@@ -6,10 +6,37 @@ Handles browser launching, stealth features, and common interactions
 import json
 import time
 import random
+from pathlib import Path
 from typing import Optional, List
 
 from patchright.sync_api import Playwright, BrowserContext, Page
 from config import BROWSER_PROFILE_DIR, STATE_FILE, BROWSER_ARGS, USER_AGENT
+
+
+def _harden_perms(path) -> None:
+    """Set restrictive permissions on a credential file or directory.
+
+    Files: 0o600 (owner read/write only).
+    Dirs: 0o700 (owner traverse only).
+    Recursively applies to all children of dirs.
+    Best-effort: failures are swallowed silently (Windows fs may lack POSIX mode bits).
+
+    Duplicated here (also lives in auth_manager) to avoid an import cycle:
+    auth_manager already imports browser_utils.
+    """
+    p = Path(path)
+    try:
+        if p.is_dir():
+            p.chmod(0o700)
+            for child in p.rglob("*"):
+                try:
+                    child.chmod(0o600 if child.is_file() else 0o700)
+                except OSError:
+                    pass
+        elif p.is_file():
+            p.chmod(0o600)
+    except OSError:
+        pass
 
 
 class BrowserFactory:
@@ -35,6 +62,10 @@ class BrowserFactory:
             user_agent=USER_AGENT,
             args=BROWSER_ARGS
         )
+
+        # Harden the persistent profile dir recursively (VULN-004 mitigation).
+        # Patchright writes cookies, tokens, and cache here under default 0o755.
+        _harden_perms(user_data_dir)
 
         # Cookie Workaround for Playwright bug #36139
         # Session cookies (expires=-1) don't persist in user_data_dir automatically
@@ -72,7 +103,7 @@ class StealthUtils:
             # Try waiting if not immediately found
             try:
                 element = page.wait_for_selector(selector, timeout=2000)
-            except:
+            except Exception:
                 pass
         
         if not element:

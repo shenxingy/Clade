@@ -116,13 +116,23 @@ def main() -> int:
             mcp.get("command", "(missing)"),
         ))
 
-        # 5. Package is correct
+        # 5. Package is correct (accepts pinned versions like @ycse/nanobanana-mcp@1.1.1)
         args = mcp.get("args", [])
-        has_pkg = "@ycse/nanobanana-mcp" in args
+        has_pkg = any(
+            isinstance(a, str) and a.startswith("@ycse/nanobanana-mcp")
+            for a in args
+        )
+        is_pinned = any(
+            isinstance(a, str) and a.startswith("@ycse/nanobanana-mcp@")
+            for a in args
+        )
+        pkg_detail = str(args)
+        if has_pkg and not is_pinned:
+            pkg_detail += " (WARNING: not version-pinned -- supply chain risk)"
         results.append(check(
             "Package is @ycse/nanobanana-mcp",
             has_pkg,
-            str(args),
+            pkg_detail,
         ))
 
         # 6. API key present
@@ -138,10 +148,12 @@ def main() -> int:
                 f"{key} (env var placeholder - ensure this variable is exported in your shell)",
             ))
         else:
+            # Closes audit VULN-032: length-only display, no prefix/suffix leak.
+            display = f"<{len(key)} chars, set>" if key_set else "(empty)"
             results.append(check(
                 "GOOGLE_AI_API_KEY is set",
                 key_set,
-                f"{key[:8]}...{key[-4:]}" if len(key) > 12 else key or "(empty)",
+                display,
             ))
 
         # 7. Model configured (optional - package has a default)

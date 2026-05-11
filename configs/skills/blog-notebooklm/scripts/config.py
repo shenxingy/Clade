@@ -3,6 +3,7 @@ Configuration for NotebookLM Skill
 Centralizes constants, selectors, and paths
 """
 
+import os
 from pathlib import Path
 
 # Paths
@@ -28,13 +29,20 @@ RESPONSE_SELECTORS = [
 ]
 
 # Browser Configuration
+# Note: "--no-sandbox" intentionally removed (VULN-009 mitigation). Enabling
+# sandbox-disabled mode without container isolation gives the renderer
+# process full host access. If running inside a container that requires it
+# (e.g. Docker without a non-root user), set env PATCHRIGHT_NO_SANDBOX=1
+# and the launcher will append it conditionally.
 BROWSER_ARGS = [
     '--disable-blink-features=AutomationControlled',  # Patches navigator.webdriver
     '--disable-dev-shm-usage',
-    '--no-sandbox',
     '--no-first-run',
     '--no-default-browser-check'
 ]
+
+if os.environ.get('PATCHRIGHT_NO_SANDBOX') == '1':
+    BROWSER_ARGS.append('--no-sandbox')
 
 USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
 

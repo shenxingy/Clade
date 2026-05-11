@@ -2,13 +2,18 @@
 name: blog-rewrite
 description: >
   Rewrite and optimize existing blog posts for Google rankings (December 2025
-  Core Update, E-E-A-T) and AI citations (GEO/AEO). Replaces fabricated statistics
-  with sourced data, applies answer-first formatting, adds Pixabay/Unsplash
-  images, generates built-in SVG charts, injects FAQ schema, performs
-  AI content detection, adds citation capsules and information gain markers,
-  and updates freshness signals. Works with any blog format (MDX, markdown, HTML).
-  Use when user says "rewrite blog", "optimize blog", "update blog",
+  Core Update, E-E-A-T) and AI citations (GEO/AEO). Full rewrite for both
+  Google rankings AND AI citations. For AI-citation-only audit (no Google
+  work), use blog-geo instead. Replaces fabricated statistics with sourced
+  data, applies answer-first formatting, adds Pixabay/Unsplash images,
+  generates built-in SVG charts, injects FAQ schema, performs AI content
+  detection, adds citation capsules and information gain markers, and
+  updates freshness signals. Works with any blog format (MDX, markdown,
+  HTML). Use when user says "rewrite blog", "optimize blog", "update blog",
   "improve blog", "fix blog", "refresh blog post", "blog optimization".
+user-invokable: true
+argument-hint: "<file-path>"
+license: MIT
 ---
 
 # Blog Rewriter -- Optimize Existing Posts
@@ -22,6 +27,10 @@ and AI citation platforms. Preserves the author's voice while applying the
 - `references/eeat-signals.md` - Experience, expertise, authority, trust markers
 - `references/internal-linking.md` - Linking strategy and anchor text rules
 - `references/visual-media.md` - Image sourcing and chart styling
+
+## Cross-reference
+
+For 21 evidence-led optimization prompts (AI-detector test, CTR audit, schema, PAA rewording, technical audit, ChatGPT visibility) directly applicable to rewrite work, see `/blog flow optimize`.
 
 ## Workflow
 

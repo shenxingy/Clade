@@ -24,6 +24,10 @@ Query Google NotebookLM notebooks directly from Claude Code for citation-backed
 answers from Gemini. Each question opens a headless browser session, retrieves
 the answer exclusively from your uploaded documents, and closes. Responses are
 Tier 1 quality (user's own primary sources) -- zero hallucination risk.
+Answers satisfy the FLOW evidence triple: use the returned source title as the
+inline citation and the notebook URL plus retrieval date as the bibliography
+entry. This is the highest-confidence path to meeting the "verified source"
+bar that FLOW requires before any statistic goes public.
 
 ## Quick Reference
 

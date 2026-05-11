@@ -1,5 +1,22 @@
 # Complete Blog Schema Reference
 
+## Contents
+
+- [Why Schema Matters](#why-schema-matters)
+- [BlogPosting Schema](#blogposting-schema)
+- [Person Schema](#person-schema)
+- [Organization Schema](#organization-schema)
+- [BreadcrumbList Schema](#breadcrumblist-schema)
+- [FAQPage Schema](#faqpage-schema)
+- [ImageObject Schema](#imageobject-schema)
+- [VideoObject Schema](#videoobject-schema)
+- [Speakable Schema](#speakable-schema)
+- [Stable @id Patterns](#stable-id-patterns)
+- [Deprecated Schema Types -- NEVER Use](#deprecated-schema-types----never-use)
+- [ProfilePage Schema (Author Pages)](#profilepage-schema-author-pages)
+- [JSON-LD @graph Pattern](#json-ld-graph-pattern)
+- [Schema Validation Checklist](#schema-validation-checklist)
+
 ## Why Schema Matters
 
 72% of first-page results use structured data markup. Pages using 3+ schema

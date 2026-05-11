@@ -1,5 +1,19 @@
 # Internal Link Architecture
 
+## Contents
+
+- [Why Internal Links Matter](#why-internal-links-matter)
+- [Link Density Targets](#link-density-targets)
+- [Anchor Text Distribution](#anchor-text-distribution)
+- [Link Placement Strategy](#link-placement-strategy)
+- [Bidirectional Linking](#bidirectional-linking)
+- [Hub-and-Spoke Model](#hub-and-spoke-model)
+- [Orphan Page Detection](#orphan-page-detection)
+- [Topic Cannibalization Detection](#topic-cannibalization-detection)
+- [Internal Link Audit Checklist](#internal-link-audit-checklist)
+- [Link Velocity Guidelines](#link-velocity-guidelines)
+- [Internal Link Tracking](#internal-link-tracking)
+
 ## Why Internal Links Matter
 
 Internal links are the primary mechanism for distributing page authority across

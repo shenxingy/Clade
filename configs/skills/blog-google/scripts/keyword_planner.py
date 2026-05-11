@@ -28,6 +28,7 @@ Note: Accounts without active ad spend receive bucketed volume ranges
 
 import argparse
 import json
+import os
 import sys
 from typing import Optional
 
@@ -41,7 +42,6 @@ except ImportError:
 try:
     from google_auth import load_config
 except ImportError:
-    import os
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from google_auth import load_config
 
@@ -50,7 +50,8 @@ def _build_ads_client() -> Optional[object]:
     """Build Google Ads client from config."""
     if not HAS_GOOGLE_ADS:
         print(
-            "Error: google-ads library required. Install with: pip install google-ads",
+            "Error: google-ads library required. Install with: "
+            "pip install 'claude-blog[ads]' (or pip install google-ads).",
             file=sys.stderr,
         )
         return None

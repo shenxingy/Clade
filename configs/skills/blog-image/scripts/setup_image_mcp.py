@@ -2,15 +2,15 @@
 """
 Setup script for nanobanana-mcp in claude-blog.
 
-Configures @ycse/nanobanana-mcp in the project's .mcp.json (default)
-or Claude Code's global settings.json (with --global flag).
+Configures @ycse/nanobanana-mcp in Claude Code's global settings.json
+(default) or the project's .mcp.json (with --project flag).
 
 Usage:
-    python3 setup_image_mcp.py                    # Interactive (prompts for key)
+    python3 setup_image_mcp.py                    # Interactive (writes global)
     python3 setup_image_mcp.py --key YOUR_KEY     # Non-interactive
     python3 setup_image_mcp.py --check            # Verify existing setup
     python3 setup_image_mcp.py --remove           # Remove MCP config
-    python3 setup_image_mcp.py --global           # Write to ~/.claude/settings.json
+    python3 setup_image_mcp.py --project          # Write to project .mcp.json (env-expansion only)
     python3 setup_image_mcp.py --help             # Show usage
 """
 
@@ -22,30 +22,31 @@ from pathlib import Path
 MCP_NAME = "nanobanana-mcp"
 MCP_PACKAGE = "@ycse/nanobanana-mcp"
 DEFAULT_MODEL = "gemini-3.1-flash-image-preview"
+PINNED_PACKAGE = "@ycse/nanobanana-mcp@1.1.1"  # latest stable as of 2026-04-27
+ENV_PLACEHOLDER = "${GOOGLE_AI_API_KEY}"
+PLUGIN_NAME = "claude-blog"
 GLOBAL_SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
 
 
 def find_project_mcp_json() -> Path:
-    """Find the project-level .mcp.json by looking for .claude-plugin/plugin.json."""
-    current = Path(__file__).resolve().parent
-    for _ in range(10):  # Max 10 levels up
-        candidate = current / ".claude-plugin" / "plugin.json"
-        if candidate.exists():
-            return current / ".mcp.json"
-        parent = current.parent
-        if parent == current:
-            break
-        current = parent
-    # Fallback: look from cwd
-    current = Path.cwd()
-    for _ in range(10):
-        candidate = current / ".claude-plugin" / "plugin.json"
-        if candidate.exists():
-            return current / ".mcp.json"
-        parent = current.parent
-        if parent == current:
-            break
-        current = parent
+    """Find the project-level .mcp.json by locating .claude-plugin/plugin.json with name=='claude-blog'."""
+    def matches(plugin_path: Path) -> bool:
+        try:
+            import json as _json
+            with open(plugin_path) as f:
+                return _json.load(f).get("name") == PLUGIN_NAME
+        except (OSError, _json.JSONDecodeError):
+            return False
+    for start in (Path(__file__).resolve().parent, Path.cwd()):
+        current = start
+        for _ in range(5):
+            candidate = current / ".claude-plugin" / "plugin.json"
+            if candidate.exists() and matches(candidate):
+                return current / ".mcp.json"
+            parent = current.parent
+            if parent == current:
+                break
+            current = parent
     return None
 
 
@@ -70,12 +71,29 @@ def load_config(path: Path) -> dict:
 
 
 def save_config(path: Path, config: dict) -> None:
-    """Save config file."""
+    """Save config file. Sets restrictive permissions if the file may contain secrets."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
         json.dump(config, f, indent=2)
         f.write("\n")
+    os.chmod(path, 0o600)  # belt-and-braces if file pre-existed
     print(f"Config saved to {path}")
+
+
+def _is_git_tracked(path: Path) -> bool:
+    """Return True if path is tracked by git in its containing repo."""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", path.name],
+            cwd=path.parent,
+            capture_output=True,
+            text=True,
+        )
+        return result.returncode == 0
+    except (OSError, FileNotFoundError):
+        return False
 
 
 def check_setup(use_global: bool) -> bool:
@@ -94,7 +112,8 @@ def check_setup(use_global: bool) -> bool:
         if MCP_NAME in servers:
             env = servers[MCP_NAME].get("env", {})
             key = env.get("GOOGLE_AI_API_KEY", "")
-            masked = key[:8] + "..." + key[-4:] if len(key) > 12 else "(not set)"
+            # Closes audit VULN-032: don't leak last-4 of API key. Length-only.
+            masked = f"<{len(key)} chars, set>" if key else "(not set)"
             print(f"MCP server '{MCP_NAME}' found in {label}.")
             print(f"  Path:    {path}")
             print(f"  Package: {MCP_PACKAGE}")
@@ -121,39 +140,62 @@ def remove_mcp(use_global: bool) -> None:
 
 
 def setup_mcp(api_key: str, use_global: bool) -> None:
-    """Configure MCP server."""
+    """Configure MCP server. Project mode uses env-expansion only (never literal key)."""
     if not api_key or not api_key.strip():
         print("Error: API key cannot be empty.")
         sys.exit(1)
-
     api_key = api_key.strip()
     path = get_config_path(use_global)
-    config = load_config(path)
 
-    if "mcpServers" not in config:
-        config["mcpServers"] = {}
+    # Safety: project mode must never write a literal key into a tracked file.
+    if not use_global and _is_git_tracked(path):
+        gitignore = path.parent / ".gitignore"
+        ignored = ".mcp.json" in gitignore.read_text() if gitignore.exists() else False
+        if not ignored:
+            print(f"REFUSING: {path} is tracked by git and .gitignore does not exclude .mcp.json.")
+            print("Either:")
+            print(f"  1. Add '.mcp.json' to {gitignore} and run: git rm --cached .mcp.json")
+            print(f"  2. Use --global to write to ~/.claude/settings.json instead (recommended).")
+            sys.exit(2)
+
+    config = load_config(path)
+    config.setdefault("mcpServers", {})
+
+    # Project mode: env-expansion only. Global mode: literal value (file is user-private + chmod 600).
+    key_value = ENV_PLACEHOLDER if not use_global else api_key
 
     config["mcpServers"][MCP_NAME] = {
         "command": "npx",
-        "args": ["-y", MCP_PACKAGE],
+        "args": ["-y", PINNED_PACKAGE],
         "env": {
-            "GOOGLE_AI_API_KEY": api_key,
+            "GOOGLE_AI_API_KEY": key_value,
             "NANOBANANA_MODEL": DEFAULT_MODEL,
         },
     }
-
     save_config(path, config)
+
     print(f"\nMCP server '{MCP_NAME}' configured successfully!")
-    print(f"  Package: {MCP_PACKAGE}")
+    print(f"  Package: {PINNED_PACKAGE}")
     print(f"  Model:   {DEFAULT_MODEL}")
     print(f"  Config:  {path}")
-    print(f"\nRestart Claude Code for changes to take effect.")
-    print(f"Generated images will be saved to: ~/Documents/nanobanana_generated/")
+    if not use_global:
+        print()
+        print("Project mode uses env-expansion (never writes literal key).")
+        print("Add this line to your shell rc (~/.bashrc or ~/.zshrc):")
+        print(f"  export GOOGLE_AI_API_KEY={api_key}")
+        print("Then restart your shell + Claude Code.")
+    else:
+        print()
+        print(f"File mode set to 0600 (user-private).")
+        print("Restart Claude Code for changes to take effect.")
+    print(f"Generated images saved to: ~/Documents/nanobanana_generated/")
 
 
 def main() -> None:
     args = sys.argv[1:]
-    use_global = "--global" in args
+    # Safer default: --global (writes user-private ~/.claude/settings.json).
+    # --project opts in to project-local config (with safety guards).
+    use_global = "--project" not in args
 
     if "--help" in args or "-h" in args:
         print("Usage: python3 setup_image_mcp.py [OPTIONS]")
@@ -162,7 +204,7 @@ def main() -> None:
         print("  --key KEY        Provide API key non-interactively")
         print("  --check          Verify existing setup")
         print("  --remove         Remove MCP configuration")
-        print("  --global         Write to ~/.claude/settings.json (default: project .mcp.json)")
+        print("  --project        Write to project .mcp.json (default: ~/.claude/settings.json)")
         print("  --help, -h       Show this help message")
         print()
         print("Get a free API key at: https://aistudio.google.com/apikey")

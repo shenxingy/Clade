@@ -1,5 +1,25 @@
 # Content Structure Rules -- Dual Optimization
 
+## Contents
+
+- [Answer-First Formatting (Strong AI Citation Improvement)](#answer-first-formatting-strong-ai-citation-improvement)
+- [Title Optimization](#title-optimization)
+- [Summary Box Requirement](#summary-box-requirement)
+- [Heading Hierarchy](#heading-hierarchy)
+- [Sentence Rules](#sentence-rules)
+- [Paragraph Rules](#paragraph-rules)
+- [Readability Targets](#readability-targets)
+- [Visual Content Rules](#visual-content-rules)
+- [Anti-Pattern Detection](#anti-pattern-detection)
+- [Content Length Guidelines](#content-length-guidelines)
+- [Citation & Statistics Rules (GEO)](#citation--statistics-rules-geo)
+- [Information Gain -- The Key Differentiator](#information-gain----the-key-differentiator)
+- [Meta Description Formula](#meta-description-formula)
+- [Citation Format](#citation-format)
+- [Citation Tiers](#citation-tiers)
+- [Self-Promotion Rules](#self-promotion-rules)
+- [Internal Linking](#internal-linking)
+
 ## Answer-First Formatting (Strong AI Citation Improvement)
 
 The most impactful single optimization. Every H2 section must open with a
@@ -252,6 +272,14 @@ any single optimization tactic by 5.5%.
 Always attribute statistics: `[Number]% [claim] ([Source](url), [Year])`.
 Unattributed statistics damage E-E-A-T trust signals and are flagged as
 fabrication risks in quality scoring.
+
+**FLOW evidence triple format (drafting requirement):**
+
+- Year anchor in prose: "In 2026, [Source] found..." (NOT: "...found ... (Source, 2026).")
+- Inline citation: publisher AND title, e.g. "Ahrefs, AI Overviews CTR update".
+- Source block: full URL plus `retrieved YYYY-MM-DD` for every cited source.
+
+Drop unverifiable stats. Replace contradicted stats with verified alternatives. See `flow-alignment.md`.
 
 ## Information Gain -- The Key Differentiator
 

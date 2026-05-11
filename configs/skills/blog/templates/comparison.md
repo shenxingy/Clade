@@ -99,6 +99,8 @@
 
 [INFO-GAIN: original benchmark] If you ran your own performance tests, note the methodology in a footnote below the table.
 
+**Benchmark data sourcing.** Every stat in a comparison table must follow the FLOW evidence triple: year anchor (preferably in the row caption or surrounding paragraph), inline citation in the source column or as a footnote, and URL plus retrieval date in the source block at the bottom of the post. See `skills/blog/references/flow-alignment.md`.
+
 ---
 
 ### Category 1: Which Has Better [Core Feature]? (150-200 words)

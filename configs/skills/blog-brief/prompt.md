@@ -9,6 +9,9 @@ description: >
   Briefs are optimized for Google rankings and AI citations (GEO/AEO). Use
   when user says "content brief", "blog brief", "write brief", "outline blog",
   "plan blog post", "blog outline", "content outline".
+user-invokable: true
+argument-hint: "<topic>"
+license: MIT
 ---
 
 # Blog Brief Generator -- Content Planning
@@ -20,6 +23,10 @@ Reference documents:
 - `references/content-templates.md` -- template selection criteria
 - `references/distribution-playbook.md` -- channel-specific distribution tactics
 - `references/internal-linking.md` -- link architecture patterns
+
+## Cross-reference
+
+For evidence-led keyword discovery, audience-avatar prompts, and content prioritization (directly upstream of brief generation), see `/blog flow find`.
 
 ## Workflow
 

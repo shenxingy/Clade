@@ -34,6 +34,8 @@ Score each blog post against this checklist. Used by `/blog analyze`.
 | Trust indicators (contact, about, transparency) | 4 | Site has contact page, about page, editorial policy |
 | Experience signals (first-person markers) | 3 | "When we tested...", "In our experience...", original photos/data |
 
+**Source citations gating rule:** Sources must follow the FLOW evidence triple: year anchor in prose, inline citation with publisher and title, AND URL with retrieval date in the source block. Sources without retrieval dates do not pass this criterion. Reference: `flow-alignment.md`.
+
 ## Technical Elements (15 points)
 
 | Check | Points | Pass Criteria |

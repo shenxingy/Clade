@@ -18,7 +18,9 @@ Usage:
 import argparse
 import json
 import os
+import secrets
 import sys
+import tempfile
 import time
 from typing import Optional
 
@@ -43,12 +45,49 @@ SERVICE_AUTH = {
     "ga4": "oauth_or_sa",
 }
 
-OAUTH_SCOPES = (
-    "https://www.googleapis.com/auth/indexing "
-    "https://www.googleapis.com/auth/webmasters "
-    "https://www.googleapis.com/auth/analytics.readonly"
-)
-OAUTH_REDIRECT_URI = "http://localhost:8085"
+OAUTH_REDIRECT_URI = "http://127.0.0.1:8085"
+
+
+def _write_secret_atomic(path: str, content: str) -> None:
+    """Atomically write `content` to `path` with mode 0o600.
+
+    Uses tempfile in same dir + os.replace for atomicity (no partial writes
+    on crash). Sets restrictive file mode before writing payload.
+    """
+    # Bare-filename safety: os.path.dirname returns "" if path has no dir
+    # component. Pass that to mkstemp(dir="") and it errors with FileNotFoundError.
+    parent = os.path.dirname(path) or "."
+    os.makedirs(parent, mode=0o700, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=parent, prefix=".tmp-")
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(content)
+        os.replace(tmp, path)
+        os.chmod(path, 0o600)  # belt-and-braces if file pre-existed
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def _scopes_for(services: list = None) -> str:
+    """Build OAuth scope string for the requested services.
+
+    Defaults to a read-only set so OAuth-without-flag grants minimal scopes.
+    """
+    if services is None:
+        # Safer default: read-only scopes only.
+        services = ["gsc_readonly", "ga4"]
+    scope_urls = []
+    for s in services:
+        if s in SCOPES:
+            scope_urls.append(SCOPES[s])
+        else:
+            raise ValueError(f"Unknown scope service: {s}")
+    return " ".join(scope_urls)
 
 # Human-readable service names
 SERVICE_NAMES = {
@@ -171,10 +210,8 @@ def _load_oauth_token() -> Optional[dict]:
 
 
 def _save_oauth_token(token_data: dict):
-    """Save OAuth token to TOKEN_PATH."""
-    os.makedirs(os.path.dirname(TOKEN_PATH), exist_ok=True)
-    with open(TOKEN_PATH, "w") as f:
-        json.dump(token_data, f, indent=2)
+    """Save OAuth token to TOKEN_PATH with mode 0o600 and atomic write."""
+    _write_secret_atomic(TOKEN_PATH, json.dumps(token_data, indent=2))
 
 
 def _refresh_oauth_token(client: dict, token_data: dict) -> Optional[dict]:
@@ -198,6 +235,8 @@ def _refresh_oauth_token(client: dict, token_data: dict) -> Optional[dict]:
             new_data = json.loads(resp.read())
         token_data["access_token"] = new_data["access_token"]
         token_data["expires_at"] = time.time() + new_data.get("expires_in", 3600)
+        if "refresh_token" in new_data:  # Google now sometimes rotates these
+            token_data["refresh_token"] = new_data["refresh_token"]
         _save_oauth_token(token_data)
         return token_data
     except Exception as e:
@@ -250,7 +289,7 @@ def get_oauth_credentials(scopes: list):
     return get_service_account_credentials(scopes)
 
 
-def run_oauth_flow(creds_path: str):
+def run_oauth_flow(creds_path: str, services: list = None):
     """
     Run OAuth browser-based authentication flow.
 
@@ -259,6 +298,8 @@ def run_oauth_flow(creds_path: str):
 
     Args:
         creds_path: Path to the OAuth client_secret JSON file.
+        services: Optional list of scope service keys (see SCOPES). Defaults to
+            the read-only set built by `_scopes_for(None)`.
     """
     import http.server
     import urllib.parse
@@ -270,13 +311,22 @@ def run_oauth_flow(creds_path: str):
         print("Error: Could not load OAuth client credentials.", file=sys.stderr)
         sys.exit(1)
 
+    state_token = secrets.token_urlsafe(32)
+    scopes_str = _scopes_for(services)
+
+    auth_params = {
+        "client_id": client["client_id"],
+        "redirect_uri": OAUTH_REDIRECT_URI,
+        "response_type": "code",
+        "scope": scopes_str,
+        "access_type": "offline",
+        "prompt": "consent",
+        "state": state_token,
+        "include_granted_scopes": "true",
+    }
     auth_url = (
         f"{client.get('auth_uri', 'https://accounts.google.com/o/oauth2/auth')}"
-        f"?client_id={client['client_id']}"
-        f"&redirect_uri={urllib.parse.quote(OAUTH_REDIRECT_URI)}"
-        f"&response_type=code"
-        f"&scope={urllib.parse.quote(OAUTH_SCOPES)}"
-        f"&access_type=offline&prompt=consent"
+        f"?{urllib.parse.urlencode(auth_params)}"
     )
 
     auth_code = [None]
@@ -284,19 +334,26 @@ def run_oauth_flow(creds_path: str):
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
             params = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            received_state = params.get("state", [""])[0]
+            if received_state != state_token:
+                self.send_response(403)
+                self.send_header("Content-Type", "text/plain")
+                self.end_headers()
+                self.wfile.write(b"State mismatch -- possible CSRF. Aborted.")
+                return
             if "code" in params:
                 auth_code[0] = params["code"][0]
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html")
                 self.end_headers()
-                self.wfile.write(b"<h1>Authentication successful!</h1><p>Close this tab.</p>")
+                self.wfile.write(b"<html><body><h1>Authorization complete.</h1>You can close this tab.</body></html>")
             else:
                 self.send_response(400)
                 self.end_headers()
         def log_message(self, *a):
             pass
 
-    server = http.server.HTTPServer(("localhost", 8085), Handler)
+    server = http.server.HTTPServer(("127.0.0.1", 8085), Handler)
     server.timeout = 300
 
     print(f"\nOpen this URL in your browser:\n\n{auth_url}\n")
@@ -312,7 +369,7 @@ def run_oauth_flow(creds_path: str):
 
     if not auth_code[0]:
         print("\nAuthentication failed or timed out.", file=sys.stderr)
-        print("If the browser showed 'localhost refused to connect', copy the full URL")
+        print("If the browser showed '127.0.0.1 refused to connect', copy the full URL")
         print("from the browser address bar and run:")
         print(f"  python scripts/google_auth.py --exchange --creds {creds_path} --code 'THE_CODE'")
         sys.exit(1)
@@ -670,6 +727,14 @@ def main():
         "--code",
         help="Authorization code to exchange (for --exchange)",
     )
+    parser.add_argument(
+        "--scopes",
+        help=(
+            "Comma-separated scope service keys for --auth (e.g. "
+            "'gsc_readonly,ga4' or 'indexing,gsc_write'). Defaults to a "
+            "read-only set: gsc_readonly,ga4."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -677,7 +742,20 @@ def main():
         if not args.creds:
             print("Error: --creds is required with --auth", file=sys.stderr)
             sys.exit(1)
-        run_oauth_flow(args.creds)
+        services = None
+        if args.scopes:
+            services = [s.strip() for s in args.scopes.split(",") if s.strip()]
+        try:
+            run_oauth_flow(args.creds, services=services)
+        except ValueError as e:
+            # _scopes_for raises ValueError for unknown service keys.
+            # Surface a clean error instead of a stack trace.
+            print(f"Error: {e}", file=sys.stderr)
+            print(
+                f"Valid scope keys: {', '.join(sorted(SCOPES.keys()))}",
+                file=sys.stderr,
+            )
+            sys.exit(2)
         return
 
     if args.exchange:

@@ -141,6 +141,14 @@ Do NOT use this template for:
 - Include enough detail that another researcher could evaluate (not necessarily reproduce) the study
 - State exclusion criteria explicitly - readers will ask about selection bias
 
+**FLOW evidence triple (required for every statistic in this template):**
+
+- Year anchor in prose: write "In 2026, ..." or "As of Q1 2026, ..." BEFORE the number, not in a parenthetical.
+- Inline citation: name the publisher AND the document or report title.
+- Source block at the bottom: include the full URL plus `retrieved YYYY-MM-DD` for every cited source.
+
+Drop unverifiable stats. Replace contradicted stats with verified alternatives. Reference: `skills/blog/references/flow-alignment.md`.
+
 ---
 
 ### Finding Sections (300-400 words each, 4 findings)

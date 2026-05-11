@@ -8,6 +8,9 @@ description: >
   authority and AI citation freshness requirements (30-day update cycles).
   Use when user says "editorial calendar", "content calendar", "blog calendar",
   "publishing schedule", "blog plan", "content plan", "what should I write".
+user-invokable: true
+argument-hint: "[<niche>]"
+license: MIT
 ---
 
 # Blog Calendar -- Editorial Planning
@@ -16,6 +19,12 @@ Generates editorial calendars with topic clusters, publishing cadence,
 freshness update schedules, content decay detection, template recommendations,
 distribution planning, and seasonal hooks. Optimized for building topical
 authority (Google) and maintaining citation freshness (AI platforms).
+
+## Cross-reference
+
+This skill operates at the FLOW Find stage. Before selecting topics, run
+`/blog flow find` for keyword discovery, content prioritization, and audience
+avatar prompts that should inform cluster selection and topic sequencing.
 
 ## Workflow
 

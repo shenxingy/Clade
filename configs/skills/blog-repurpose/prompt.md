@@ -6,6 +6,9 @@ description: >
   discussion posts, email newsletter excerpts. Adapts tone for each platform.
   Use when user says "repurpose", "blog repurpose", "share blog", "social media",
   "twitter thread", "linkedin post", "youtube script", "reddit post".
+user-invokable: true
+argument-hint: "<file-path>"
+license: MIT
 ---
 
 # Blog Repurpose -- Cross-Platform Content Adaptation
@@ -13,6 +16,8 @@ description: >
 Transforms blog posts into platform-optimized content for social media, email,
 video, and community channels. Each output adapts tone, format, and length to
 match platform conventions and audience expectations.
+
+**FLOW dual-surface thinking (when applicable).** When the original blog post targets a query that also surfaces in a community (Reddit thread, YouTube comment, LinkedIn discussion), repurpose for the community in a way that reinforces the blog. Cross-link both directions: the blog references the community discussion as social proof; the community post references the blog as the canonical long-form answer. This is FLOW surface 5 in action. See `skills/blog/references/flow-alignment.md` and `/blog flow win` for the dual-surface scorecard.
 
 ## Workflow
 

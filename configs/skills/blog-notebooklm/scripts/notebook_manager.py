@@ -311,14 +311,33 @@ def main():
 
     subparsers = parser.add_subparsers(dest='command', help='Commands')
 
+    # Closes audit VULN-037: input length caps on CLI string args.
+    # `add_notebook` derives notebook_id = name.lower().replace(' ', '-')
+    # with no length limit, so an unbounded --name becomes a giant filesystem
+    # key in library.json.
+    def _bounded(max_len: int):
+        def _check(s: str) -> str:
+            if len(s) > max_len:
+                raise argparse.ArgumentTypeError(
+                    f"value too long ({len(s)} chars, max {max_len})"
+                )
+            return s
+        return _check
+
     # Add command
     add_parser = subparsers.add_parser('add', help='Add a notebook')
-    add_parser.add_argument('--url', required=True, help='NotebookLM URL')
-    add_parser.add_argument('--name', required=True, help='Display name')
-    add_parser.add_argument('--description', required=True, help='Description')
-    add_parser.add_argument('--topics', required=True, help='Comma-separated topics')
-    add_parser.add_argument('--use-cases', help='Comma-separated use cases')
-    add_parser.add_argument('--tags', help='Comma-separated tags')
+    add_parser.add_argument('--url', required=True, type=_bounded(2000),
+                            help='NotebookLM URL (max 2000 chars)')
+    add_parser.add_argument('--name', required=True, type=_bounded(200),
+                            help='Display name (max 200 chars)')
+    add_parser.add_argument('--description', required=True, type=_bounded(2000),
+                            help='Description (max 2000 chars)')
+    add_parser.add_argument('--topics', required=True, type=_bounded(1000),
+                            help='Comma-separated topics (max 1000 chars)')
+    add_parser.add_argument('--use-cases', type=_bounded(1000),
+                            help='Comma-separated use cases (max 1000 chars)')
+    add_parser.add_argument('--tags', type=_bounded(500),
+                            help='Comma-separated tags (max 500 chars)')
 
     # List command
     subparsers.add_parser('list', help='List all notebooks')

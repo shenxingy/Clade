@@ -10,6 +10,9 @@ description: >
   markdown, HTML, URL). Use when user says "analyze blog", "audit blog",
   "blog score", "check blog quality", "blog review", "rate this blog",
   "blog health check".
+user-invokable: true
+argument-hint: "<file-path>"
+license: MIT
 ---
 
 # Blog Analyzer -- Quality Audit & Scoring
@@ -91,6 +94,8 @@ score differential). Average US adult reads at 7th-8th grade level.
 | Source citations (tier 1-3, inline) | 4 | 8+ unique stats, zero fabricated |
 | Trust indicators | 4 | Contact page, about page, editorial policy |
 | Experience signals | 3 | "When we tested...", original photos/data |
+
+When scoring source citations under E-E-A-T, evaluate whether each public statistic carries the FLOW evidence triple: year anchor in prose, inline citation with publisher and title, URL with retrieval date in the source block. Posts that cite tier 1-3 sources but lack retrieval dates score lower on this subcategory than posts that include the full triple. See `skills/blog/references/flow-alignment.md` for the standard.
 
 #### Technical Elements (15 points)
 | Check | Points | Pass Criteria |

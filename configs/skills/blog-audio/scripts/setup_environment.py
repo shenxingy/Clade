@@ -17,6 +17,9 @@ class SkillEnvironment:
     def __init__(self):
         self.skill_dir = Path(__file__).parent.parent
         self.venv_dir = self.skill_dir / ".venv"
+        # Prefer the lock file (hash-verified). Fall back to loose
+        # requirements.txt if no lock present (closes audit VULN-006).
+        self.lock_file = self.skill_dir / "scripts" / "requirements.lock"
         self.requirements_file = self.skill_dir / "scripts" / "requirements.txt"
 
         if os.name == 'nt':
@@ -39,25 +42,32 @@ class SkillEnvironment:
                 print(f"Failed to create venv: {e}")
                 return False
 
-        if self.requirements_file.exists():
-            print("Installing dependencies...")
-            try:
-                subprocess.run(
-                    [str(self.venv_pip), "install", "--upgrade", "pip"],
-                    check=True, capture_output=True, text=True,
-                )
-                subprocess.run(
-                    [str(self.venv_pip), "install", "-r", str(self.requirements_file)],
-                    check=True, capture_output=True, text=True,
-                )
-                print("Dependencies installed")
-                return True
-            except subprocess.CalledProcessError as e:
-                print(f"Failed to install dependencies: {e}")
-                return False
+        # Use lock file when available (hash-verified, reproducible).
+        if self.lock_file.exists():
+            install_args = ["install", "--require-hashes", "-r", str(self.lock_file)]
+            install_label = "lock file (hash-verified)"
+        elif self.requirements_file.exists():
+            install_args = ["install", "-r", str(self.requirements_file)]
+            install_label = "requirements.txt (no hash verification)"
         else:
-            print("No requirements.txt found, skipping dependency installation")
+            print("No requirements.txt or requirements.lock found; skipping install")
             return True
+
+        print(f"Installing dependencies from {install_label}...")
+        try:
+            subprocess.run(
+                [str(self.venv_pip), "install", "--upgrade", "pip"],
+                check=True, capture_output=True, text=True,
+            )
+            subprocess.run(
+                [str(self.venv_pip)] + install_args,
+                check=True, capture_output=True, text=True,
+            )
+            print("Dependencies installed")
+            return True
+        except subprocess.CalledProcessError as e:
+            print(f"Failed to install dependencies: {e}")
+            return False
 
     def is_in_skill_venv(self) -> bool:
         """Check if running in the skill's venv"""

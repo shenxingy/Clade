@@ -10,6 +10,7 @@ description: >
   "tag suggestions", "sync tags", "WordPress tags", "Shopify tags".
 user-invokable: true
 argument-hint: "[suggest|sync|audit] [file-or-cms]"
+license: MIT
 ---
 
 # Blog Taxonomy

@@ -1,5 +1,13 @@
 # Visual Media Integration -- Images, Charts & Cover Images
 
+## Contents
+
+- [Cover Images & OG Images](#cover-images--og-images)
+- [Image Sourcing](#image-sourcing)
+- [Image Format Optimization](#image-format-optimization)
+- [SVG Chart Integration (Built-In)](#svg-chart-integration-built-in)
+- [YouTube Video Embeds](#youtube-video-embeds)
+
 ## Cover Images & OG Images
 
 Every blog post should have a cover image for social sharing and blog listings.

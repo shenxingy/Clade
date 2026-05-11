@@ -1,5 +1,11 @@
 # Blog Google Skill Dependencies
 # Installed in the skill's local .venv via run.py
+#
+# For reproducible installs with hash verification, use the lock file:
+#   pip install --require-hashes -r requirements.lock
+# This requirements.txt declares acceptable version ranges; the lock file
+# pins exact versions + sha256 hashes for every transitive dep (closes
+# audit VULN-006 supply-chain detection gap).
 
 # Core Google API client
 google-api-python-client>=2.100.0,<3.0.0

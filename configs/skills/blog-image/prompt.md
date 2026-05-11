@@ -247,12 +247,15 @@ For `/blog image setup`:
 
 1. Run `python3 scripts/setup_image_mcp.py` (interactive)
    - Or: `python3 scripts/setup_image_mcp.py --key YOUR_KEY` (non-interactive)
-   - Writes to project `.mcp.json` by default
-   - Use `--global` flag for `~/.claude/settings.json`
+   - Default writes to `~/.claude/settings.json` (user-private, mode 0600)
+   - `--project` flag opts into project `.mcp.json` (env-expansion only,
+     refuses to write a literal key into a tracked file)
 2. Verify: `python3 scripts/validate_image_setup.py`
 3. Requires:
    - Node.js 18+ (npx)
    - Google AI API key (free at https://aistudio.google.com/apikey)
+4. The script pins the package to `@ycse/nanobanana-mcp@1.1.1`. Update the
+   pin in `setup_image_mcp.py` (constant `PINNED_PACKAGE`) when bumping.
 
 ## Safety Filter Auto-Rephrase
 

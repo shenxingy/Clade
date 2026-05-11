@@ -6,6 +6,9 @@ description: >
   Spawns parallel subagents for comprehensive analysis. Produces per-post scores
   and a prioritized action queue. Use when user says "audit blog", "blog audit",
   "site audit", "blog health", "audit all posts", "check all blogs".
+user-invokable: true
+argument-hint: "[directory]"
+license: MIT
 ---
 
 # Blog Audit -- Full-Site Health Assessment
@@ -205,3 +208,7 @@ After saving, inform the user:
 - Summary of findings (total posts, average score, critical issues count)
 - Suggest running `/blog analyze <file>` on the lowest-scoring post first
 - Suggest running `/blog geo <file>` for AI citation optimization on key posts
+
+## Cross-reference
+
+For evidence-led audit prompts beyond this site-wide health pass, see `/blog flow optimize` (visibility, CTR, schema, extraction audits) and `/blog flow win` (dual-surface scorecard, conversion audit).

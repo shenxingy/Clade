@@ -95,7 +95,7 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
                 if query_element:
                     print(f"  ✓ Found input: {selector}")
                     break
-            except:
+            except Exception:
                 continue
 
         if not query_element:
@@ -131,7 +131,7 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
                 if thinking_element and thinking_element.is_visible():
                     time.sleep(1)
                     continue
-            except:
+            except Exception:
                 pass
 
             # Try to find response with MCP selectors
@@ -152,7 +152,7 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
                             else:
                                 stable_count = 0
                                 last_text = text
-                except:
+                except Exception:
                     continue
 
             if answer:
@@ -169,9 +169,12 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
         return answer + FOLLOW_UP_REMINDER
 
     except Exception as e:
-        print(f"  ❌ Error: {e}")
-        import traceback
-        traceback.print_exc()
+        # Closes audit VULN-021: don't dump full traceback (leaks local paths
+        # to caller / log). Gate verbose trace behind BLOG_DEBUG env.
+        print(f"  ❌ Error: {type(e).__name__}: {e}", file=sys.stderr)
+        if os.environ.get("BLOG_DEBUG"):
+            import traceback
+            traceback.print_exc()
         return None
 
     finally:
@@ -179,20 +182,33 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
         if context:
             try:
                 context.close()
-            except:
+            except Exception:
                 pass
 
         if playwright:
             try:
                 playwright.stop()
-            except:
+            except Exception:
                 pass
 
 
 def main():
     parser = argparse.ArgumentParser(description='Ask NotebookLM a question')
 
-    parser.add_argument('--question', required=True, help='Question to ask')
+    def _bounded(max_len: int):
+        # Closes audit VULN-037: cap CLI string args. Multi-MB --question
+        # would be typed character-by-character into the NotebookLM textarea,
+        # blowing up browser memory and orchestrator log volume.
+        def _check(s: str) -> str:
+            if len(s) > max_len:
+                raise argparse.ArgumentTypeError(
+                    f"value too long ({len(s)} chars, max {max_len})"
+                )
+            return s
+        return _check
+
+    parser.add_argument('--question', required=True, type=_bounded(8000),
+                        help='Question to ask (max 8000 chars)')
     parser.add_argument('--notebook-url', help='NotebookLM notebook URL')
     parser.add_argument('--notebook-id', help='Notebook ID from library')
     parser.add_argument('--show-browser', action='store_true', help='Show browser')

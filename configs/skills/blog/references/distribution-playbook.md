@@ -9,6 +9,18 @@ citation rates.
 Most companies allocate 90/10 -- this is wrong for GEO. Off-site presence
 is the dominant factor in whether AI systems cite your content.
 
+## Contents
+
+- [Reddit (Highest Growth Channel for AI Visibility)](#reddit-highest-growth-channel-for-ai-visibility)
+- [YouTube (Strongest AI Visibility Correlation)](#youtube-strongest-ai-visibility-correlation)
+- [LinkedIn](#linkedin)
+- [Twitter / X](#twitter--x)
+- [Email Newsletter](#email-newsletter)
+- [Review Platforms (B2B)](#review-platforms-b2b)
+- [Wikipedia and Wikidata](#wikipedia-and-wikidata)
+- [Distribution Timeline](#distribution-timeline)
+- [Measurement Framework](#measurement-framework)
+
 ---
 
 ## Reddit (Highest Growth Channel for AI Visibility)

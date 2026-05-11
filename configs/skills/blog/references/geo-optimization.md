@@ -215,6 +215,8 @@ Princeton GEO paper (KDD 2024) findings on readability-related tactics:
 - **Fluency + Statistics combined** outperforms any single tactic by 5.5%
 - Keyword stuffing performs -10% WORSE than baseline
 
+**FLOW evidence triple is mandatory for AI-citation readiness.** AI assistants extract claims that have year anchor in prose, inline publisher + title, and URL with retrieval date. Stats without the triple are less likely to surface in citations. See `flow-alignment.md`.
+
 ### Schema & Structure for AI Citation
 - Comparison tables with proper HTML (`<thead>`, `<tbody>`) = **47% higher**
   AI citation rates (attributed to SEL; primary source unlocatable — treat as directional)

@@ -9,6 +9,9 @@ description: >
   prioritized fix list with specific recommendations. Use when user says "seo check",
   "check seo", "validate seo", "blog seo", "seo validation", "on-page seo",
   "title tag check", "meta description check", "heading check", "link audit".
+user-invokable: true
+argument-hint: "<file-path>"
+license: MIT
 ---
 
 # Blog SEO Check -- Post-Writing Validation
@@ -106,6 +109,16 @@ links per page.
 | Rel attributes | External links have appropriate rel attributes (nofollow for sponsored/UGC) |
 | Link count | At least 3 external links to authoritative sources |
 | No competitor links | Not linking to direct competitors unnecessarily |
+
+### FLOW evidence triple (citations)
+
+For every public statistic in the post, verify all three components:
+
+- Year anchor appears in prose ("In 2026," or "As of Q1 2026,") BEFORE the statistic, not buried in parentheses.
+- Inline citation names the publisher AND the document title (or report name).
+- Source block at the bottom of the post includes the URL plus `retrieved YYYY-MM-DD` for each cited source.
+
+Posts that fail any of the three either drop the unverifiable claim or replace it with a verified alternative. See `skills/blog/references/flow-alignment.md`. For a one-shot prompt-driven check, see `/blog flow optimize`.
 
 ### Step 7: Canonical URL
 

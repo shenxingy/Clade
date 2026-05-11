@@ -10,6 +10,7 @@ description: >
   keywords", "cannibalize".
 user-invokable: true
 argument-hint: "[directory] [--api]"
+license: MIT
 ---
 
 # Blog Cannibalization - Keyword Overlap Detection

@@ -18,7 +18,12 @@ class SkillEnvironment:
         # Skill directory paths
         self.skill_dir = Path(__file__).parent.parent
         self.venv_dir = self.skill_dir / ".venv"
-        self.requirements_file = self.skill_dir / "requirements.txt"
+        # Bug fix: requirements.txt actually lives in scripts/, not the skill
+        # root. Prior path looked at skill_dir/requirements.txt which never
+        # existed. Now also prefer the lock file when present (closes audit
+        # VULN-006 supply-chain detection gap).
+        self.lock_file = self.skill_dir / "scripts" / "requirements.lock"
+        self.requirements_file = self.skill_dir / "scripts" / "requirements.txt"
 
         # Python executable in venv
         if os.name == 'nt':  # Windows
@@ -46,9 +51,18 @@ class SkillEnvironment:
                 print(f"❌ Failed to create venv: {e}")
                 return False
 
-        # Install/update dependencies
-        if self.requirements_file.exists():
-            print("📦 Installing dependencies...")
+        # Install/update dependencies. Prefer lock file when present.
+        if self.lock_file.exists():
+            install_args = ["install", "--require-hashes", "-r", str(self.lock_file)]
+            install_label = "lock file (hash-verified)"
+        elif self.requirements_file.exists():
+            install_args = ["install", "-r", str(self.requirements_file)]
+            install_label = "requirements.txt (no hash verification)"
+        else:
+            install_args = None
+
+        if install_args:
+            print(f"📦 Installing dependencies from {install_label}...")
             try:
                 # Upgrade pip first
                 subprocess.run(
@@ -58,9 +72,9 @@ class SkillEnvironment:
                     text=True
                 )
 
-                # Install requirements
+                # Install requirements (lock or .txt)
                 result = subprocess.run(
-                    [str(self.venv_pip), "install", "-r", str(self.requirements_file)],
+                    [str(self.venv_pip)] + install_args,
                     check=True,
                     capture_output=True,
                     text=True

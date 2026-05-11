@@ -10,6 +10,7 @@ description: >
   "factcheck", "source verification".
 user-invokable: true
 argument-hint: "[file]"
+license: MIT
 ---
 
 # Blog Fact-Check
@@ -120,6 +121,10 @@ When invoked from the analyzer, only claims scoring below 0.7 are flagged in the
 analysis report.
 
 Standalone usage: `/blog factcheck path/to/post.md`
+
+## Cross-reference
+
+claude-blog inherits FLOW's evidence triple (year anchor in prose, inline citation with publisher and title, URL with retrieval date). See `skills/blog-flow/references/flow-framework.md` and `/blog flow` for the full framework.
 
 ## Limitations
 

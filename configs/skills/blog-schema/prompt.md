@@ -6,6 +6,9 @@ description: >
   against Google requirements and warns about deprecated types. Use when user
   says "schema", "blog schema", "json-ld", "structured data", "schema markup",
   "generate schema".
+user-invokable: true
+argument-hint: "<file-path>"
+license: MIT
 ---
 
 # Blog Schema -- JSON-LD Structured Data Generation

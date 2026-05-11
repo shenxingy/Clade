@@ -28,6 +28,31 @@ from config import BROWSER_STATE_DIR, STATE_FILE, AUTH_INFO_FILE, DATA_DIR
 from browser_utils import BrowserFactory
 
 
+def _harden_perms(path) -> None:
+    """Set restrictive permissions on a credential file or directory.
+
+    Files: 0o600 (owner read/write only).
+    Dirs: 0o700 (owner traverse only).
+    Recursively applies to all children of dirs.
+    Best-effort: failures are swallowed silently (Windows fs may lack POSIX mode bits).
+    """
+    import os
+    from pathlib import Path
+    p = Path(path)
+    try:
+        if p.is_dir():
+            p.chmod(0o700)
+            for child in p.rglob("*"):
+                try:
+                    child.chmod(0o600 if child.is_file() else 0o700)
+                except OSError:
+                    pass
+        elif p.is_file():
+            p.chmod(0o600)
+    except OSError:
+        pass  # Windows / readonly fs / etc.
+
+
 class AuthManager:
     """
     Manages authentication and browser state for NotebookLM
@@ -162,6 +187,9 @@ class AuthManager:
         try:
             # Save storage state (cookies, localStorage)
             context.storage_state(path=str(self.state_file))
+            # Harden permissions on credential file and parent dir (VULN-004 mitigation)
+            _harden_perms(self.state_file)
+            _harden_perms(self.browser_state_dir)
             print(f"  💾 Saved browser state to: {self.state_file}")
         except Exception as e:
             print(f"  ❌ Failed to save browser state: {e}")
@@ -176,6 +204,8 @@ class AuthManager:
             }
             with open(self.auth_info_file, 'w') as f:
                 json.dump(info, f, indent=2)
+            # Harden permissions on auth info file (VULN-004 mitigation)
+            _harden_perms(self.auth_info_file)
         except Exception:
             pass  # Non-critical
 

@@ -5,10 +5,13 @@ description: >
   posts. Supports horizontal bar, grouped bar, donut, line, lollipop, area,
   and radar charts with automatic platform detection (HTML vs JSX/MDX).
   Enforces chart type diversity, accessible markup (role=img, aria-label),
-  source attribution, and transparent backgrounds. Use when user says
-  "blog chart", "generate chart", "data visualization", "svg chart",
-  "blog graph", "visualize data", or when the blog-write workflow identifies
-  chart-worthy data points (3+ comparable metrics, trends, before/after data).
+  source attribution, and transparent backgrounds. Use whenever the user
+  mentions data visualization, charts, graphs, comparison tables that need
+  to be visualized, or wants to embed inline SVG visualizations in a blog
+  post, even if not invoking blog-write. Use when user says "blog chart",
+  "generate chart", "data visualization", "svg chart", "blog graph",
+  "visualize data", or when the blog-write workflow identifies chart-worthy
+  data points (3+ comparable metrics, trends, before/after data).
 user-invokable: false
 ---
 
