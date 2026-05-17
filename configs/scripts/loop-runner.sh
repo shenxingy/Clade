@@ -287,7 +287,7 @@ node_parse_todo() {
     echo "## Goal TODO Items (from goal file)"
     echo "Open: $open_items / Total: $total_items"
     echo ""
-    python3 - <<'PYEOF'
+    python3 - "$GOAL_FILE" <<'PYEOF'
 import re, sys
 
 goal_file = sys.argv[1] if len(sys.argv) > 1 else None
@@ -333,7 +333,6 @@ for item in items:
 if not items:
     print("(no TODO items)")
 PYEOF
-    "$GOAL_FILE"
   } >> .claude/loop-context.md
 }
 # ────────────────────────────────────────────────────────────────────# ────────────────────────────────────────────────────────────────
@@ -353,8 +352,13 @@ node_supervisor() {
   local state_content
   state_content=$(cat "$STATE_FILE" 2>/dev/null || echo "none")
 
+  # Use unquoted heredoc: $var/$(cmd) expand, but literal ``` must be \`\`\`
+  # and inner " do NOT toggle string boundaries (heredoc, not double-quoted string).
+  # Prior double-quoted form collapsed to "" because of literal ``` + inner "
+  # being parsed as bash command substitution + string-boundary toggle.
   local supervisor_prompt
-  supervisor_prompt="You are the supervisor for iteration $iteration of an autonomous improvement loop.
+  supervisor_prompt=$(cat <<EOF
+You are the supervisor for iteration $iteration of an autonomous improvement loop.
 Read the goal and context, then plan at most $MAX_WORKERS tasks for this iteration.
 
 ## GOAL FILE: $GOAL_FILE
@@ -389,7 +393,7 @@ Write to .claude/blockers.md, then stop immediately.
 
 Output ONLY this format — a JSON array of tasks to execute:
 
-```json
+\`\`\`json
 [
   {
     "description": "One sentence task with exact file paths and what to do. Include: which file, which function, what to implement, how to verify, commit with committer script.",
@@ -397,7 +401,7 @@ Output ONLY this format — a JSON array of tasks to execute:
     "files": ["path/to/file.py"]
   }
 ]
-```
+\`\`\`
 
 ## Convergence is determined by the loop script — not by you
 
@@ -413,7 +417,9 @@ You output tasks. The script decides convergence. Do NOT output CONVERGED.
 - Model: haiku=mechanical/trivial (<30 lines, rename, delete), sonnet=standard, opus=complex architecture
 - Never repeat a task already in recent commits
 - Workers commit via: committer "type: msg" file1 file2 (NEVER git add .)
-- If .claude/blockers.md exists, output an empty tasks array []"
+- If .claude/blockers.md exists, output an empty tasks array []
+EOF
+)
 
   local result
   if ! result=$(_timeout "$SUPERVISOR_TIMEOUT" claude --model "$SUPERVISOR_MODEL" -p "$supervisor_prompt" 2>&1); then
@@ -811,9 +817,18 @@ update_state() {
   local iteration="$1"
   local commits="$2"
   mkdir -p "$(dirname "$STATE_FILE")"
-  python3 - <<PYTHON_EOF
+  # Quoted heredoc + argv passthrough: bash leaves $(...) and $var alone,
+  # python receives values via sys.argv. Prior unquoted heredoc tried to
+  # bash-evaluate $(os.path.basename(os.getcwd())), silently corrupting
+  # the checkpoint path.
+  python3 - "$STATE_FILE" "$iteration" "$commits" "$GOAL_FILE" <<'PYTHON_EOF'
 import json, os, sys
-state_file = "$STATE_FILE"
+
+state_file = sys.argv[1]
+iteration = int(sys.argv[2])
+commits = int(sys.argv[3])
+goal_file = sys.argv[4]
+
 try:
     state = json.load(open(state_file)) if os.path.exists(state_file) else {}
 except Exception:
@@ -823,19 +838,18 @@ except Exception:
 if state.get('stop'):
     sys.exit(0)
 
-state['iteration'] = $iteration
-state['commits_this_iter'] = $commits
-state['goal_file'] = "$GOAL_FILE"
+state['iteration'] = iteration
+state['commits_this_iter'] = commits
+state['goal_file'] = goal_file
 history = state.get('history', [])
-history.append({'iter': $iteration, 'commits': $commits})
+history.append({'iter': iteration, 'commits': commits})
 state['history'] = history[-20:]  # keep last 20
 json.dump(state, open(state_file, 'w'), indent=2)
 
 # Also save a lightweight checkpoint file for crash recovery
-import os, json
-ckpt_dir = os.path.expanduser("~/.claude/loop-checkpoints/$(os.path.basename(os.getcwd()))")
+ckpt_dir = os.path.expanduser(f"~/.claude/loop-checkpoints/{os.path.basename(os.getcwd())}")
 os.makedirs(ckpt_dir, exist_ok=True)
-with open(os.path.join(ckpt_dir, f"iter-{$iteration}-state.json"), "w") as f:
+with open(os.path.join(ckpt_dir, f"iter-{iteration}-state.json"), "w") as f:
     json.dump(state, f, indent=2)
 PYTHON_EOF
 }
