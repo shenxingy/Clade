@@ -73,10 +73,12 @@ For each rule in RULES_FILE:
 ### Step 4: Execute promotions
 
 For PROMOTE rules, **automatically**:
-1. Append the rule text to the appropriate section in `CLAUDE_TARGET`, tagged with `[auto-promoted YYYY-MM-DD]`
-   - CSS/UI rules → under "# Coding Standards" or "# Full Stack Specific"
-   - Shell/deploy rules → under "# Agent Ground Rules"
-   - Workflow rules → under "# Workflow Preferences"
+1. Append the rule text to `CLAUDE_TARGET`, tagged with `[auto-promoted YYYY-MM-DD]`.
+   Route by matching the rule's domain to an **existing** heading in `CLAUDE_TARGET` —
+   read its headings first; section names vary per project, so do not assume fixed names:
+   - shell / deploy / commit / autonomy rules → the agent-rules section (e.g. "# Agent Ground Rules")
+   - code-structure / architecture / standards rules → the architecture or engineering-values section
+   - if no existing section is a clear fit → append under `## Auto-Promoted Rules` (create it if absent)
 2. Remove the promoted rule(s) from `RULES_FILE`
 
 For REDUNDANT rules, **automatically**:
