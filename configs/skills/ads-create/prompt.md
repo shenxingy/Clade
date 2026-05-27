@@ -2,12 +2,20 @@
 name: ads-create
 description: "Campaign concept and copy brief generator for paid advertising. Reads brand-profile.json and optional audit results to produce structured campaign concepts, messaging pillars, and copy briefs. Outputs campaign-brief.md to the current directory. Run after /ads dna and before /ads generate. Triggers on: create campaign, campaign brief, ad concepts, write ad copy, campaign strategy, ad messaging, creative brief, generate concepts."
 user-invokable: false
+tested_date: 2026-05-17
+tested_with: claude-code v2.x
 ---
 
 # Ads Create: Campaign Concept & Copy Brief Generator
 
 Generates structured campaign concepts and platform-specific copy from your brand
 profile and optional audit data. Outputs `campaign-brief.md` for use by `/ads generate`.
+
+Operates under the **10-Principle Thinking Framework** (see
+`ads/references/thinking-framework.md`). LISTEN to the brand voice before
+typing; FEEL the emotional resonance of every headline and CTA; CREATE
+the deliverable — do not hedge concepts so heavily that the next person
+has to do the work. Spec compliance without emotional pull is a fail.
 
 ## Quick Reference
 

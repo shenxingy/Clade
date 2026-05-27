@@ -1,7 +1,9 @@
 ---
 name: ads-creative
-description: "Cross-platform creative quality audit covering ad copy, video, image, and format diversity across all platforms. Detects creative fatigue, evaluates platform-native compliance, and provides production priorities. Use when user says creative audit, ad creative, creative fatigue, ad copy, ad design, or creative review."
+description: "Cross-platform creative quality audit covering ad copy, video, image, and format diversity across all platforms. Detects creative fatigue, evaluates platform-native compliance, scores creative diversity for Andromeda Entity-ID retrieval, and provides production priorities. Use when user says creative audit, ad creative, creative fatigue, creative diversity score, ad variation audit, ad copy, ad design, or creative review."
 user-invokable: false
+tested_date: 2026-05-17
+tested_with: claude-code v2.x
 ---
 
 <!-- Updated: 2026-04-13 | v1.5 -->
@@ -110,8 +112,8 @@ Evaluate which formats are active per platform:
 ## Andromeda Creative Similarity Score (Meta)
 
 Meta's Andromeda engine (launched October 2025) clusters ads with >60% similarity and suppresses delivery
-of near-identical creatives. 100 minor variations (color swaps, small text changes)
-perform no better than 10 genuinely distinct creatives. Evaluate:
+of near-identical creatives ([Confect](https://confect.io/tactics/meta-andromeda-2026); [Meta Engineering](https://engineering.fb.com/2024/12/02/production-engineering/meta-andromeda-advantage-automation-next-gen-personalized-ads-retrieval-engine/)).
+100 minor variations (color swaps, small text changes) perform no better than 10 genuinely distinct creatives. Evaluate:
 - Are creatives genuinely diverse in concept, angle, and format?
 - Flag accounts relying on iterative variations rather than distinct concepts
 - Recommend testing fundamentally different hooks, formats, and value propositions

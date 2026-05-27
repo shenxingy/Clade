@@ -2,6 +2,8 @@
 name: ads-budget
 description: "Budget allocation and bidding strategy review across all ad platforms. Evaluates spend distribution, bidding strategy appropriateness, scaling readiness, and identifies campaigns to kill or scale. Uses 70/20/10 rule, 3x Kill Rule, and 20% scaling rule. Use when user says budget allocation, bidding strategy, ad spend, ROAS target, media budget, or scaling."
 user-invokable: false
+tested_date: 2026-05-17
+tested_with: claude-code v2.x
 ---
 
 <!-- Updated: 2026-04-13 | v1.5 -->
@@ -100,15 +102,16 @@ Start
 ## v1.5 Bidding Innovations
 
 ### Google AI Max for Search
-- 14% conversion lift in early testing
+- 14% avg conversion lift for non-retail brands at similar CPA/ROAS, up to 27% for exact/phrase-match-heavy campaigns ([Google Ads blog, May 2025](https://blog.google/products/ads-commerce/google-ai-max-for-search-campaigns/))
+- Independent data is more conservative: median +13% revenue / +16% CPA across 250+ campaigns ([ALM Corp](https://almcorp.com/blog/google-ai-max-search-campaigns-performance-cpa-revenue-study/))
 - Requires strong negative keyword lists (AI Max casts a wider net)
 - DSA likely consolidated into AI Max by Q2 2026
 - Best for: accounts with mature conversion tracking and keyword history
 
 ### TikTok Smart+ Modular Control (2025)
 - Lock targeting, creative, budget, or placement independently (mix of manual and AI)
-- ROAS performance: 1.41-1.67x in early adopter data
-- Replaces all-or-nothing automation approach
+- TikTok platform median ROAS 1.41-1.67 in 2025; Smart+ delivers ~53% lift over standard campaigns ([TikTok for Business](https://ads.tiktok.com/business/en-US/blog/smart-plus-ai-performance-solution))
+- October 2025 update added module-by-module control after early-2025 control complaints
 - Best for: advertisers wanting partial AI control without full black-box
 
 ### Apple Ads Maximize Conversions

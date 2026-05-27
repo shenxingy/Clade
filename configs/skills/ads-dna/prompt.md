@@ -2,12 +2,20 @@
 name: ads-dna
 description: "Brand DNA extractor for paid advertising. Scans a website URL to extract visual identity, tone of voice, color palette, typography, and imagery style. Outputs brand-profile.json to the current directory. Run before /ads create or /ads generate for brand-consistent creative. Triggers on: brand DNA, brand profile, extract brand, brand identity, brand colors, what is the brand voice, analyze brand, brand style guide."
 user-invokable: false
+tested_date: 2026-05-17
+tested_with: claude-code v2.x
 ---
 
 # Ads DNA: Brand DNA Extractor
 
 Extracts brand identity from a website and saves it as `brand-profile.json`
 for use by `/ads create`, `/ads generate`, and `/ads photoshoot`.
+
+Brand DNA extraction is OBSERVE and LISTEN made concrete (see the
+**10-Principle Thinking Framework** in `ads/references/thinking-framework.md`).
+The website is the input; the brand profile is what the site is *saying*
+about itself when no one is curating the message. Listen to the voice
+before you label it. Observe the visual choices before you classify them.
 
 ## Quick Reference
 

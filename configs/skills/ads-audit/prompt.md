@@ -1,10 +1,18 @@
 ---
 name: ads-audit
-description: "Full multi-platform paid advertising audit with parallel subagent delegation. Analyzes Google Ads, Meta Ads, LinkedIn Ads, TikTok Ads, and Microsoft Ads accounts. Generates health score per platform and aggregate score. Use when user says audit, full ad check, analyze my ads, account health check, or PPC audit."
+description: "Full multi-platform paid advertising audit with parallel subagent delegation. Analyzes Google Ads, Meta Ads, LinkedIn Ads, TikTok Ads, Microsoft Ads, and Apple Ads accounts via 6 parallel audit agents. Amazon Ads, cross-platform attribution, and server-side tracking are covered by their standalone sub-skills (ads-amazon, ads-attribution, ads-server-side-tracking) — Wave 3 will add their paired agents so they can dispatch in parallel here. Generates health score per platform and aggregate score (0-100). Use when user says audit, full ad check, analyze my ads, account health check, paid media audit, paid advertising audit, ad spend audit, advertising audit, or PPC audit."
 user-invokable: false
+tested_date: 2026-05-17
+tested_with: claude-code v2.x
 ---
 
 # Full Multi-Platform Ads Audit
+
+This audit operates under the **10-Principle Thinking Framework** (see
+`ads/references/thinking-framework.md`). OBSERVE (External + Internal)
+dominates data collection, THINK + CONNECT (Lateral) dominate analysis,
+CONNECT (System) + ACCEPT dominate synthesis and prioritization. If the
+audit feels mechanical, you are skipping a principle.
 
 ## Process
 
@@ -13,8 +21,8 @@ user-invokable: false
 3. **Detect business type**: analyze account signals per ads orchestrator
 4. **Identify active platforms**: determine which platforms are in use
 5. **Delegate to subagents** (if available, otherwise run inline sequentially):
-   - `audit-google`: Conversion tracking, wasted spend, structure, keywords, ads, settings (G01-G74)
-   - `audit-meta`: Pixel/CAPI health, creative fatigue, structure, audience (M01-M46)
+   - `audit-google`: Conversion tracking, wasted spend, structure, keywords, ads, settings (80 checks; G01-G61 + 19 hyphenated v1.5+ IDs incl. AI Max)
+   - `audit-meta`: Pixel/CAPI health, creative fatigue, structure, audience (50 checks; M01-M40 + 10 hyphenated v1.5+ IDs incl. Andromeda)
    - `audit-creative`: LinkedIn, TikTok, Microsoft creative checks + cross-platform synthesis
    - `audit-tracking`: LinkedIn, TikTok, Microsoft tracking + cross-platform tracking health
    - `audit-budget`: LinkedIn, TikTok, Microsoft budget/bidding + cross-platform allocation

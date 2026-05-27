@@ -1,7 +1,9 @@
 ---
 name: ads-google
-description: "Google Ads deep analysis covering Search, Performance Max, Display, YouTube, and Demand Gen campaigns. Evaluates 80 checks across conversion tracking, wasted spend, account structure, keywords, ads, and settings. Use when user says Google Ads, Google PPC, search ads, PMax, Performance Max, or Google campaign."
+description: "Google Ads deep analysis covering Search, Performance Max, AI Max, Display, YouTube, and Demand Gen campaigns. Evaluates 80 checks across conversion tracking, wasted spend, account structure, keywords, ads, and settings. Includes AI Max (search-term-matching, AI Brief, text customization, FUE, brand exclusions) and Smart Bidding signals. Use when user says Google Ads, Google PPC, search ads, PMax, Performance Max, AI Max, AI Brief, broad match audit, Quality Score check, search terms audit, Smart Bidding, or Google campaign."
 user-invokable: false
+tested_date: 2026-05-17
+tested_with: claude-code v2.x
 ---
 
 # Google Ads Deep Analysis
@@ -120,24 +122,102 @@ If Performance Max campaigns exist, additionally evaluate:
 ## AI Max for Search (2026)
 
 AI Max layers broad match + keywordless targeting on existing Search campaigns.
-14% avg conversion lift. DSA likely consolidated into AI Max Q2 2026.
-Requires strong negative keyword lists.
+14% avg conversion lift for non-retail brands at similar CPA/ROAS ([Google Ads blog, May 2025](https://blog.google/products/ads-commerce/google-ai-max-for-search-campaigns/)).
+**DSA, ACA, and campaign-level broad match auto-migrate into AI Max by end of
+September 2026**; new DSA campaign creation via the Google Ads API ends Sept
+2026. Strong negative keyword lists are a hard prerequisite. Independent data
+across 250+ campaigns shows more conservative real-world results (+13% median
+revenue, +16% median CPA) — set expectations accordingly.
 
-If AI Max for Search is available/active:
-- Broad Match + AI Max integration evaluated
-- Auto-generated headline performance monitored
-- Search term categories reviewed for relevance
-- Budget impact assessed (AI Max can shift spend)
-- Negative keyword lists reviewed for completeness (AI Max broadens reach significantly)
-- DSA migration path assessed (consolidation expected Q2 2026)
+### Detection & API field
+
+AI Max is enabled per-campaign via `ai_max_setting.enable_ai_max` (Google Ads
+API v21+). Check the campaign's `ai_max_setting` resource for current state.
+
+### Audit checklist
+
+If AI Max for Search is available or active:
+- **Field check**: `campaign.ai_max_setting.enable_ai_max = true` for eligible
+  Search campaigns (or documented opt-out reason)
+- **Broad Match + Smart Bidding combo verified** — AI Max effectively forces broad
+  match expansion; without Smart Bidding (tCPA/tROAS/Maximize Conv) it bleeds spend
+- **Search Term Matching** — review the `search_term_matching_type` distribution
+  in the Search Terms Report (close variants vs broader matches); FAIL if the
+  broader-match share exceeds 60% on a non-Smart-Bidding campaign
+- **AI Brief configured** — Google's new structured brand context input. Audit
+  for: business name, value prop (≤200 chars), target audience descriptor,
+  forbidden topics / off-brand language list, regional / legal disclaimers
+- **Text customization rules** — AI Max generates headline + description variants
+  from the brief. Audit for: locked legal phrases, banned competitor names,
+  approved disclaimer text, pin discipline on must-include claims
+- **Final URL Expansion (FUE)** controls — confirm URL include/exclude lists
+  prevent AI Max routing traffic to checkout-skip pages, password-gated pages,
+  or 404s. Audit `url_expansion_opt_out` if you've explicitly disabled FUE
+- **Brand exclusions applied** — campaign-level brand exclusion list to prevent
+  cannibalizing brand search; same mechanism as PMax brand exclusions
+- **Text disclaimers** (rolling out May 2026+) — if your vertical requires
+  disclaimers (health, finance, legal, crypto), confirm Google's new structured
+  text disclaimer field is populated
+- **Budget impact** — AI Max can shift spend ±30% in the first 7 days. Confirm
+  budget pacing rules and shared budgets won't starve adjacent campaigns
+- **Negative keyword coverage** — AI Max broadens reach 3-5x; existing negative
+  lists must scale. Reuse the negative keyword rules from the Wasted Spend section
+  but apply at 3x the historical volume
+
+### DSA Migration Pre-Flight Checklist
+
+The Sept 2026 auto-migration moves Dynamic Search Ads, Automatically Created
+Assets (ACA), and campaign-level broad-match Search campaigns into AI Max
+whether or not the advertiser is ready. Run this pre-flight before the
+migration deadline:
+
+- [ ] **Inventory DSA campaigns** — query `campaign.advertising_channel_sub_type
+      IN (SEARCH_DYNAMIC, ...)`. List campaign IDs, monthly spend, conversion
+      volume so the migration can be staged by risk
+- [ ] **Inventory ACA-enabled campaigns** — `campaign.ad_strength_settings`
+      with auto-generated headlines enabled
+- [ ] **Inventory campaign-level broad-match Search campaigns** without AI Max
+      yet enabled — these will migrate by default
+- [ ] **Tracking template audit** — DSAs often use `{lpurl}` ValueTrack
+      parameters. Confirm tracking templates resolve correctly when AI Max
+      generates a different final URL via FUE. Re-test parameter substitution
+      with a synthetic AI Max landing URL
+- [ ] **Negative keyword pre-staging** — pull the last 90 days of DSA search
+      terms; pre-stage the irrelevant ones as Exact/Phrase negatives on a
+      Shared Negative List before migration
+- [ ] **AI Brief drafted** — write a draft Brief for each migrating campaign
+      so Google has structured brand context at migration time, not generic
+      crawled content
+- [ ] **URL controls staged** — Final URL Expansion include/exclude lists
+      prepared per campaign (especially for /careers, /admin, /thank-you,
+      /404 paths that DSAs typically excluded by URL pattern rules)
+- [ ] **Brand exclusion lists prepared** — campaign-level brand exclusion
+      file (same format as PMax)
+- [ ] **Bidding strategy migration** — Manual CPC and ECPC DSA campaigns
+      MUST move to Smart Bidding before AI Max migration. Pre-stage tCPA or
+      tROAS targets per migrating campaign
+- [ ] **Conversion tracking pre-flight** — AI Max attribution relies heavily
+      on Enhanced Conversions + Consent Mode V2; confirm both are active and
+      verified per the Conversion Tracking section before migration
+- [ ] **Reporting baseline** — capture 28-day pre-migration metrics (CTR,
+      CVR, CPA, ROAS, Search Lost IS by rank/budget) so post-migration impact
+      can be measured cleanly
+
+Document the migration risk per campaign as **LOW** (Smart Bidding + strong
+negatives + good AI Brief), **MEDIUM** (Smart Bidding but weak negatives or
+no Brief), or **HIGH** (Manual CPC, weak negatives, generic Brief). Stage
+migrations starting LOW → HIGH and pause MEDIUM/HIGH if conversion volume
+drops >25% in the first 7 days.
 
 ## Demand Gen Campaigns
 
-Replaced Video Action Campaigns (April 2026). Video + image = 20% more conversions.
+Replaced Video Action Campaigns (auto-upgrade began July 2025). Adding image
+assets to a video-only campaign drives 20% more conversions at the same CPA
+([Google Ads blog](https://blog.google/products/ads-commerce/video-action-campaigns-demand-gen-upgrade/)).
 Frequency capping NOT supported.
 
 If Demand Gen campaigns exist, evaluate:
-- Video + image asset mix present (combined format drives 20% more conversions)
+- Video + image asset mix present (combined format drives 20% more conversions vs video-only at same CPA)
 - Audience signals configured (custom segments, lookalikes)
 - Conversion tracking aligned with upper/mid-funnel goals
 - Note: frequency capping is not available. Monitor reach vs frequency manually

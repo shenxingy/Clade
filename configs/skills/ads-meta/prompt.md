@@ -1,18 +1,102 @@
 ---
 name: ads-meta
-description: "Meta Ads deep analysis covering Facebook and Instagram advertising. Evaluates 50 checks across Pixel/CAPI health, creative diversity and fatigue, account structure, and audience targeting. Includes Advantage+ assessment. Use when user says Meta Ads, Facebook Ads, Instagram Ads, Advantage+, or Meta campaign."
+description: "Meta Ads deep analysis covering Facebook, Instagram, and Threads advertising in the Andromeda + GEM + Lattice era. Evaluates 50 checks across Pixel/CAPI health, creative diversity and Entity-ID clustering risk, account structure, ASC/AAC defaults for Sales/Leads/App, and audience targeting. Includes Advantage+ assessment and creative-as-targeting scoring. Use when user says Meta Ads, Facebook Ads, Instagram Ads, Threads ads, Advantage+, ASC, AAC, Andromeda, GEM, Lattice, Entity-ID clustering, creative diversity, Sales optimization, Leads optimization, App optimization, or Meta campaign."
 user-invokable: false
+tested_date: 2026-05-17
+tested_with: claude-code v2.x
 ---
 
 # Meta Ads Deep Analysis
 
-## Andromeda AI Engine
+## Andromeda + GEM + Lattice (2026)
 
-Meta's Andromeda AI engine (Oct 2025) filters ads using 10,000x more complex models.
-Creative diversity is now the #1 performance lever. Ads with Similarity Score >60%
-get retrieval suppression. The algorithm clusters near-identical creatives and limits
-their delivery. 100 minor variations perform no better than 10. Prioritize genuinely
-distinct concepts, angles, and formats over volume of similar variants.
+Meta's delivery stack was rebuilt across three releases:
+
+- **Andromeda** (Oct 2025) — ad-retrieval ranking model with 10,000× more
+  model capacity than the previous funnel ([Meta Engineering, Dec 2024](https://engineering.fb.com/2024/12/02/production-engineering/meta-andromeda-advantage-automation-next-gen-personalized-ads-retrieval-engine/)).
+  Filters the candidate creative set before the auction layer ever sees it.
+- **GEM** (Generative Embedding Model, late 2025) — replaces the feature
+  pipeline. Creative *content* embeds directly into the targeting space, which
+  is why "creative is the new targeting" is now mechanical truth not slogan.
+- **Lattice** (rolled out late 2025 / early 2026) — sequence-aware optimizer
+  on top of GEM that uses user-action sequences to rank candidate ads.
+
+Net effect: creative diversity is now the #1 performance lever. Ads with
+Similarity Score >60% (per [Confect's measured threshold](https://confect.io/tactics/meta-andromeda-2026))
+get retrieval suppression — the algorithm clusters near-identical creatives
+and silently limits their delivery. **100 minor variations perform no better than 10
+genuinely distinct ones.** Prioritize concept / angle / format diversity over
+variant volume.
+
+### Creative-as-targeting scoring rubric
+
+When auditing a creative library against Andromeda's retrieval logic, score
+across these 5 axes (each 0-2, total 0-10):
+
+| Axis | 0 (Risk) | 1 (OK) | 2 (Strong) |
+|------|----------|--------|------------|
+| Concept diversity | Single core message / value prop across all assets | 2 distinct messages | 3+ distinct angles (problem-led, social proof, comparison, …) |
+| Format diversity | One format (e.g. all static image) | 2 formats | 3+ (image, video, carousel, collection) |
+| Visual diversity | One palette / one model / one composition | 2 distinct visual treatments | 3+ visually distinct treatments |
+| Hook diversity (video) | All hooks ≤3s look alike | 2 hook patterns | 3+ hook patterns (UGC POV, question, claim, demo, …) |
+| Headline diversity | All headlines paraphrase the same line | 2 headline structures | 3+ structures (number-led, question, claim, comparison) |
+
+Score 8-10 = LOW Entity-ID clustering risk. Score 4-7 = MEDIUM risk (some
+suppression likely). Score 0-3 = HIGH risk (significant retrieval ticket loss).
+
+### Entity-ID Clustering Predictor (pre-launch)
+
+Before launch, predict which creatives Meta will cluster. Cluster-mates
+share retrieval tickets — only one wins per impression opportunity.
+
+**Predictor heuristics (apply to every pair of creatives in the launch set):**
+
+1. **Visual fingerprint** — same product hero, same model, same backdrop,
+   same lighting → **likely cluster**. Different products or different
+   visual identities → likely *not* a cluster.
+2. **Headline fingerprint** — same first 4 tokens → likely cluster
+   (e.g. "Save 30% on" + "Save 30% off" + "Save 30% — limited time").
+3. **Body copy fingerprint** — same opening sentence, same CTA verb → likely
+   cluster regardless of middle-body differences.
+4. **Video hook fingerprint** — same 0-3s shot, same voiceover pattern →
+   likely cluster even if the rest of the video diverges.
+5. **Format mismatch wins** — if pair is (static + video) AND visual fingerprint
+   differs, they are *not* clustered. Crossing format AND visual is a strong
+   diversity signal.
+
+**Output**: produce a `creative-cluster-risk.md` deliverable that groups the
+launch set into predicted clusters, recommends which creative in each cluster
+should ship and which should be cut or rebuilt, and reports the final pre-
+launch diversity score (target ≥8/10).
+
+### MAPI v25 ASC/AAC Deprecation Detector
+
+Meta Marketing API v25 deprecates the explicit Advantage Shopping Campaigns
+(ASC) and Advantage App Campaigns (AAC) creation paths — those campaign types
+are folded into standard Sales / Leads / App objectives where ASC behavior
+becomes the *default* configuration. Detection:
+
+- If the account uses MAPI v23 or earlier: ASC/AAC API endpoints will return
+  deprecation warnings before the v25 cutover. Capture and flag them.
+- If the account uses MAPI v25+: confirm that previously-ASC campaigns have
+  been migrated to the new objective-default model with the equivalent
+  catalog + budget + existing-customer cap settings preserved.
+- If creating new campaigns: use the Sales / Leads / App objective + ASC
+  defaults rather than the legacy ASC/AAC endpoints.
+
+### ASC defaults for Sales / Leads / App (2026 behavior)
+
+When Sales / Leads / App objectives are selected, ASC behaviors are now the
+default. Audit confirms:
+
+- **Catalog connection** (Sales): product catalog linked and feed health green
+- **Existing customer cap** (Sales): set to 10-25% (default may be too high
+  for high-LTV brands)
+- **Advantage+ Audience** (all three objectives): on by default; only override
+  with manual interest stacks for highly restricted categories
+- **Advantage+ Creative** (all three): text / brightness / music enhancements
+  on by default; if your brand-safety policy requires off, document the
+  exception per ad set
 
 ## Process
 

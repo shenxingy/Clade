@@ -2,9 +2,18 @@
 name: ads-plan
 description: "Strategic paid advertising planning with industry-specific templates. Covers platform selection, campaign architecture, budget planning, creative strategy, and phased implementation roadmap. Use when user says ad plan, ad strategy, campaign planning, media plan, PPC strategy, or advertising plan."
 user-invokable: false
+tested_date: 2026-05-17
+tested_with: claude-code v2.x
 ---
 
 # Strategic Paid Advertising Plan
+
+Strategic planning is where the **10-Principle Thinking Framework** (see
+`ads/references/thinking-framework.md`) earns its weight. THINK and
+CONNECT (Lateral) dominate — first-principles unit economics combined
+with cross-platform leverage are what make a plan strategic rather than
+prescriptive. FEEL gates the messaging and audience choices; ACCEPT
+gates the constraints (budget, timeline, team capacity).
 
 ## Process
 

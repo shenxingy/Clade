@@ -1,7 +1,9 @@
 ---
 name: ads-apple
-description: "Apple Ads (formerly Apple Search Ads) deep analysis for mobile app advertisers. Evaluates campaign structure, bid health, Custom Product Pages (CPPs), MMP attribution, budget pacing, TAP coverage (Today/Search/Product Pages), Maximize Conversions bidding, and goal CPA benchmarks by country. Use when user says Apple Ads, Apple Search Ads, ASA, App Store ads, Apple ads, Search Ads, or is advertising a mobile app on iOS."
+description: "Apple Ads (formerly Apple Search Ads) deep analysis for mobile app advertisers. Evaluates campaign structure, bid health, Custom Product Pages (CPPs), AdAttributionKit (view-through attribution 24h post-impression), MMP attribution, budget pacing, TAP coverage (Today/Search/Product Pages), Maximize Conversions bidding, and goal CPA benchmarks by country. Use when user says Apple Ads, Apple Search Ads, ASA, App Store ads, Apple ads, Search Ads, AdAttributionKit, view-through attribution, or is advertising a mobile app on iOS."
 user-invokable: false
+tested_date: 2026-05-17
+tested_with: claude-code v2.x
 ---
 
 # Apple Ads (formerly Apple Search Ads) Deep Analysis
@@ -64,9 +66,9 @@ user-invokable: false
 - CPPs created in App Store Connect? (up to 70 per app as of Oct 2025)
 - At least 3 CPP variants tested per campaign type (different value props per audience)
 - CPP assets aligned with ad group keyword themes (e.g. fitness keywords → fitness screenshots)
-- CPPs increase conversion rates ~8% for games, ~6.6% for non-gaming apps (AppTweak data)
-- SoundCloud case study: CPPs in competitor campaigns led to 58% CR increase, 39% CPI reduction
-- **Critical**: 78% of App Store search volume comes from devices with Personalized Ads off. Use creative-based targeting (CPP asset alignment) rather than demographic audience filters
+- CPPs increase conversion rates ~8% for games, ~6.6% for non-gaming apps (per [AppTweak CPP guide](https://www.apptweak.com/en/aso-blog/guide-to-custom-product-pages-cpp))
+- SoundCloud case study: CPPs in competitor campaigns led to 58% CR increase, 39% CPI reduction ([AppTweak case study](https://www.apptweak.com/en/case-studies/soundcloud))
+- **Critical**: 78% of App Store search volume comes from devices with Personalized Ads off (per Apple's Q1 2022 internal data, [9to5Mac](https://9to5mac.com/2022/05/11/ios-15-users-opt-out-of-personalized-ads/)). Use creative-based targeting (CPP asset alignment) rather than demographic audience filters
 
 **Default (Store Listing) Creative:**
 - App icon, subtitle, and first 3 screenshots optimized; these show in ads by default
@@ -89,14 +91,14 @@ user-invokable: false
 **AdAttributionKit & Dual Attribution (April 10, 2025):**
 - Apple Ads registered with AdAttributionKit (SKAN v1-3), creating dual attribution for the first time
 - Installs now report through BOTH SKAN/AAK postbacks AND the AdServices API
-- WWDC 2025: configurable attribution windows, overlapping re-engagement windows, and country codes in postbacks
+- WWDC 2025: configurable attribution windows, overlapping re-engagement windows, attribution cooldowns, and country codes in postbacks ([Apple Developer, WWDC25 session 221](https://developer.apple.com/videos/play/wwdc2025/221/); [Singular recap](https://www.singular.net/blog/wwdc-2025-aak/))
 - SKAdNetwork conversion values configured in MMP (maps user actions to conversion windows)
 - ATT opt-in rate monitored (low ATT rate = less MMP data, more reliance on SKAN/AAK)
 - Privacy threshold considerations: are campaigns getting postbacks or null reports?
 
 **Attribution Windows:**
 - Default Apple Ads attribution: 30-day click, 1-day view; appropriate for app install goals?
-- WWDC 2025 added configurable windows and overlapping re-engagement windows
+- WWDC 2025 added configurable windows and overlapping re-engagement windows (iOS 18.4+, requires `EligibleForAdAttributionKitOverlappingConversions=YES` in Info.plist; see [WWDC25 session 221](https://developer.apple.com/videos/play/wwdc2025/221/))
 - For re-engagement or subscription goals: evaluate longer lookback windows
 
 ### Budget Pacing (10% weight)
@@ -169,7 +171,7 @@ ASA offers 4 placement types; evaluate coverage and performance:
 **Deprecated:**
 - Creative Sets: fully deprecated. Only CPPs now (up to 70 per app)
 - CPA Cap: being retired in favor of Target CPA via Maximize Conversions
-- Demographic audience targeting as primary strategy: 78% of App Store search volume comes from devices with Personalized Ads off
+- Demographic audience targeting as primary strategy: 78% of App Store search volume comes from devices with Personalized Ads off (Apple's Q1 2022 internal data; conversion rate is nearly identical between opted-in and opted-out users — 62.1% vs 62.5%)
 
 ## Output Format
 
