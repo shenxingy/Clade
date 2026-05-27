@@ -38,12 +38,18 @@ run_auto_audit() {
   count_rules "$RULES_FILE"
   [[ "$RULE_COUNT" -lt 10 ]] && return 0
 
+  # Timer gates PROMOTE/ARCHIVE/cross-project (mutating, churn-prone). REDUNDANT
+  # dedup is idempotent cleanup and runs every session regardless — so duplicates
+  # leaked by the LLM /audit skill (which promotes to CLAUDE.md but may skip its
+  # remove-from-rules.md step) get garbage-collected on the next session instead
+  # of lingering up to 7 days until the next promote pass.
+  local timer_elapsed=1
   if [[ -f "$LAST_AUDIT_FILE" ]]; then
     local audit_mtime now age_days
     audit_mtime=$(stat -c %Y "$LAST_AUDIT_FILE" 2>/dev/null || stat -f %m "$LAST_AUDIT_FILE" 2>/dev/null || echo 0)
     now=$(date +%s)
     age_days=$(( (now - audit_mtime) / 86400 ))
-    [[ "$age_days" -lt 7 ]] && return 0
+    [[ "$age_days" -lt 7 ]] && timer_elapsed=0
   fi
 
   # Parse all rules
@@ -76,8 +82,8 @@ run_auto_audit() {
       continue
     fi
 
-    # PROMOTE: 14+ days old, not already in target
-    if [[ "$age" -ge 14 ]]; then
+    # PROMOTE: 14+ days old, not already in target (only on 7-day cadence)
+    if [[ "$timer_elapsed" -eq 1 && "$age" -ge 14 ]]; then
       # Append to CLAUDE.md under ## Auto-Promoted Rules
       if [[ -f "$CLAUDE_TARGET" ]]; then
         if ! grep -q "## Auto-Promoted Rules" "$CLAUDE_TARGET" 2>/dev/null; then
@@ -91,8 +97,8 @@ run_auto_audit() {
       continue
     fi
 
-    # ARCHIVE: 60+ days old and not promoted
-    if [[ "$age" -ge 60 ]]; then
+    # ARCHIVE: 60+ days old and not promoted (only on 7-day cadence)
+    if [[ "$timer_elapsed" -eq 1 && "$age" -ge 60 ]]; then
       echo "$line [archived $(date +%Y-%m-%d)]" >> "$ARCHIVE_FILE"
       lines_to_remove+=("$line")
       archived=$((archived + 1))
@@ -107,10 +113,14 @@ run_auto_audit() {
     tmp=$(mktemp)
     cp "$RULES_FILE" "$tmp"
     for line in "${lines_to_remove[@]}"; do
-      # Escape special regex chars in the line for grep -v
-      local escaped
-      escaped=$(printf '%s\n' "$line" | sed 's/[[\.*^$()+?{|]/\\&/g')
-      grep -vF "$line" "$tmp" > "${tmp}.new" 2>/dev/null && mv "${tmp}.new" "$tmp"
+      # `--` ends option parsing: every rule line starts with "- ", so without it
+      # grep reads the leading dash as a flag, errors out (hidden by 2>/dev/null),
+      # the old `&&` short-circuited, and NOTHING was ever removed (the root cause
+      # of rules.md accumulating already-promoted duplicates). Exit 0 (some lines
+      # kept) and 1 (all lines matched → empty output) both apply; only a real
+      # grep error (exit 2) skips the swap.
+      grep -vF -- "$line" "$tmp" > "${tmp}.new" 2>/dev/null
+      if [[ $? -le 1 ]]; then mv "${tmp}.new" "$tmp"; else rm -f "${tmp}.new"; fi
     done
     mv "$tmp" "$RULES_FILE"
   fi
@@ -118,7 +128,7 @@ run_auto_audit() {
   # ─── Cross-project aggregation ───────────────────────────────────
   local cross_promoted=0
   local CROSS_FILE="$HOME/.claude/corrections/cross-project-rules.jsonl"
-  if [[ -f "$CROSS_FILE" ]] && command -v jq &>/dev/null; then
+  if [[ "$timer_elapsed" -eq 1 ]] && [[ -f "$CROSS_FILE" ]] && command -v jq &>/dev/null; then
     # Find rule_hashes appearing in 2+ projects
     local multi_project_hashes
     multi_project_hashes=$(jq -r '.rule_hash' "$CROSS_FILE" 2>/dev/null \
@@ -141,7 +151,10 @@ run_auto_audit() {
       if ! grep -q "## Cross-Project Rules" "$global_claude" 2>/dev/null; then
         printf '\n## Cross-Project Rules\n\n' >> "$global_claude"
       fi
-      printf '- %s [cross-project %s]\n' "$rule_text" "$(date +%Y-%m-%d)" >> "$global_claude"
+      # Format string must NOT start with "-" or bash printf parses it as an
+      # option ("invalid option" → nothing written). Keep "%s\n" as the format
+      # and build the dash-prefixed line as the argument.
+      printf '%s\n' "- $rule_text [cross-project $(date +%Y-%m-%d)]" >> "$global_claude"
       cross_promoted=$((cross_promoted + 1))
     done
   fi
@@ -180,7 +193,9 @@ run_auto_audit() {
   fi
 
   # ─── Touch last-audit ───────────────────────────────────────────
-  touch "$LAST_AUDIT_FILE"
+  # Only when the promote/archive pass actually ran — dedup-only sessions must
+  # NOT reset the timer, or the 7-day promotion cadence would never elapse.
+  [[ "$timer_elapsed" -eq 1 ]] && touch "$LAST_AUDIT_FILE"
 
   # ─── Build summary ──────────────────────────────────────────────
   local summary=""
