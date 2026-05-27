@@ -10,7 +10,7 @@ argument-hint: "[url]"
 license: MIT
 metadata:
   author: AgriciDaniel
-  version: "1.9.9"
+  version: "2.0.0"
   category: seo
 ---
 
@@ -132,6 +132,35 @@ Google updated its JavaScript SEO documentation in December 2025 with critical c
 - Check if site supports IndexNow for Bing, Yandex, Naver
 - Supported by search engines other than Google
 - Recommend implementation for faster indexing on non-Google engines
+
+## Agent-Friendly Pages (forward-looking)
+
+AI agents (not just AI summarizers) increasingly read sites through three
+channels: vision models on screenshots, raw HTML/DOM, and the **accessibility
+tree** (the cleanest signal). Audit criteria — semantic HTML (real `<button>`
+and `<a>`, not `<div onclick>`), label associations, interactive target sizing,
+layout stability across templates, `cursor: pointer` correctness — live in
+`references/agent-friendly-pages.md`.
+
+### Audit command
+
+```bash
+# Render with Playwright + capture accessibility tree, then score
+python scripts/agent_ux_check.py https://example.com --json
+```
+
+The scanner outputs an Agent-UX score (0-100) plus itemized issues:
+- HTML findings: real buttons / anchors, `<div onclick>` widgets, semantic
+  landmarks, inputs without `<label for>`, inputs without ARIA labels
+- Accessibility tree findings: total nodes, interactive nodes, unnamed
+  interactive elements, `role="generic"` ratio
+
+The accessibility-tree snapshot uses Playwright's
+`page.accessibility.snapshot(interesting_only=False)`. To capture the tree
+without scoring, use `python scripts/render_page.py <url> --a11y-tree --json`.
+
+Surface findings as **opportunities**, not failures. The standards (WebMCP,
+agent UX heuristics) are early — don't gate audits on a sub-100 score.
 
 ## Output
 

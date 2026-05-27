@@ -9,11 +9,29 @@ argument-hint: "[url]"
 license: MIT
 metadata:
   author: AgriciDaniel
-  version: "1.9.9"
+  version: "2.0.0"
   category: seo
 ---
 
 # Content Quality & E-E-A-T Analysis
+
+## Google's "Who / How / Why" Test (canonical heuristic)
+
+Before scoring E-E-A-T sub-factors, every page audit should pass Google's
+own three-question heuristic from the helpful-content guide:
+
+| Question | What to look for |
+|---|---|
+| **Who** created it? | Visible byline, author bio page, professional credentials. Required where readers expect it; non-negotiable for YMYL. |
+| **How** was it created? | Process disclosure where readers would reasonably ask — especially for AI-assisted content. Original research / first-hand evidence / lived experience. |
+| **Why** does it exist? | "To help people" rather than "to attract search clicks." Watch for niche entry without expertise, content churn for freshness signals, content written to a word-count target. |
+
+Primary source:
+https://developers.google.com/search/docs/fundamentals/creating-helpful-content
+
+When all three answers are weak, the page is at risk under the core ranking
+system's helpfulness signals (formerly the standalone Helpful Content System,
+merged into core during the March 2024 update).
 
 ## E-E-A-T Framework (updated Sept 2025 QRG)
 
@@ -138,7 +156,7 @@ Optimize for AI search engines (ChatGPT, Perplexity, Google AI Overviews):
 - **Multi-platform tracking:** Monitor visibility across Google AI Overviews, AI Mode, ChatGPT, Perplexity, and Bing Copilot, not just traditional rankings. Treat AI citation as a standalone KPI alongside organic rankings and traffic.
 
 **Generative Engine Optimization (GEO):**
-GEO is the emerging discipline of optimizing content specifically for AI-generated answers. Key GEO signals include: quotability (clear, concise extractable facts), attribution (source citations within your content), structure (well-organized heading hierarchy), and freshness (regularly updated data). Cross-reference the `seo-geo` skill for detailed GEO workflows.
+Per Google's AI optimization guide, "AEO" and "GEO" are rebranded labels for SEO — AI Overviews and AI Mode are grounded in the same ranking and quality systems as classic Search. The optimization signals that matter (quotability, attribution, heading hierarchy, freshness) are SEO fundamentals applied to AI-search surfaces, not a separate discipline. Cross-reference the `seo-geo` skill for detailed workflows; both surfaces share the primary-source synthesis in `skills/seo-geo/references/google-ai-optimization-guide.md`.
 
 ## Content Freshness
 

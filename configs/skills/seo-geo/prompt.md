@@ -13,11 +13,28 @@ argument-hint: "[url]"
 license: MIT
 metadata:
   author: AgriciDaniel
-  version: "1.9.9"
+  version: "2.0.0"
   category: seo
 ---
 
-# AI Search / GEO Optimization (February 2026)
+# AI Search / GEO Optimization (May 2026)
+
+## Primary Source: Google's AI Optimization Guide
+
+Google's official position, published under Search Central docs:
+
+> "Optimizing for generative AI search is **still SEO** from Google's
+> perspective. AEO and GEO are rebranded labels for the same work."
+
+Read `references/google-ai-optimization-guide.md` for the full synthesis,
+myth-busting list (`llms.txt`, chunking, AI-rephrasing, mention-farming —
+all rejected by Google as ineffective), and the Who/How/Why test for
+content quality.
+
+Audits should frame GEO findings as **SEO fundamentals applied to AI-search
+surfaces**, not as a separate optimization discipline. When community
+recommendations contradict Google's primary source, defer to Google and note
+the contradiction in the report.
 
 ## Key Statistics
 
@@ -145,6 +162,8 @@ Check `robots.txt` for these AI crawlers:
 ---
 
 ## llms.txt Standard
+
+Read `references/llmstxt-evidence.md` for the primary-source evidence (Mueller, Illyes, SE Ranking 300k-domain study, OtterlyAI server-log audit) on why `/llms.txt` is not currently a citation lever for major AI search systems. claude-seo reports presence but assigns no citation-ranking weight.
 
 The emerging **llms.txt** standard provides AI crawlers with structured content guidance.
 

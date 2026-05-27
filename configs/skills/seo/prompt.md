@@ -6,7 +6,7 @@ argument-hint: "[command] [url]"
 license: MIT
 metadata:
   author: AgriciDaniel
-  version: "1.9.9"
+  version: "2.0.0"
   category: seo
 ---
 
@@ -68,11 +68,34 @@ When the user invokes `/seo audit`, delegate to subagents in parallel:
 10. If drift baseline exists for this URL (`python scripts/drift_history.py <url>`), also spawn seo-drift agent
 11. Always include seo-sxo in full audits (search experience applies to all sites)
 12. Collect results and generate unified report with SEO Health Score (0-100)
-13. Create prioritized action plan (Critical -> High -> Medium -> Low)
-14. **Offer PDF report**: "Generate a professional PDF report? Use `/seo google report full`"
+13. **Synthesize via the 10-principle framework** (see "Synthesis Methodology" below) — walk PERCEIVE → ANALYZE → VALIDATE → ACT before bucketing findings into Critical / High / Medium / Low
+14. Create prioritized action plan with dependency sequencing + falsifiability per recommendation
+15. **Offer PDF report**: "Generate a professional PDF report? Use `/seo google report full`"
 
 For individual commands, load the relevant sub-skill directly.
 After any analysis command completes, offer to generate a PDF report via `scripts/google_report.py`.
+
+## Synthesis Methodology
+
+Audits are not just findings — they are findings synthesized into a coherent
+strategy. claude-seo uses a 10-principle thinking framework grouped into four
+phases: **PERCEIVE** (observe-external · observe-internal · listen),
+**ANALYZE** (think · connect-lateral · connect-system), **VALIDATE** (feel ·
+accept), **ACT** (create · grow).
+
+Full audits (`/seo audit`, `/seo page`) walk every phase before emitting the
+action plan. Narrower commands (`/seo schema`, `/seo images`, etc.) pass at
+least THINK + ACCEPT before emitting (sound first principle, surfaced
+falsifiability). The Critical / High / Medium / Low priority buckets are the
+**output** of validation, not a substitute for it.
+
+Full methodology + per-principle SEO mapping: `references/thinking-framework.md`.
+
+Each emitted recommendation should carry:
+- The first-principle observation it rests on (THINK)
+- The dependency on / unblock relationship to other recommendations (CONNECT-system)
+- An explicit "how would we know this failed?" check (ACCEPT)
+- A leading indicator the user can monitor without re-running the audit (GROW)
 
 ## Industry Detection
 

@@ -14,7 +14,7 @@ compatibility: "Enhanced with DataForSEO Merchant API (optional)"
 metadata:
   author: AgriciDaniel
   original_author: "Matej Marjanovic (Pro Hub Challenge)"
-  version: "1.9.9"
+  version: "2.0.0"
   category: seo
 ---
 
@@ -290,11 +290,40 @@ Validate and generate Product schema following Google's current requirements.
 | Skill | Integration Point |
 |-------|------------------|
 | **seo-schema** | Delegates Product schema generation; reuses validation logic |
-| **seo-images** | Product image audit (alt text, format, dimensions) |
+| **seo-images** | Product image audit (alt text, format, dimensions) — plus `DigitalSourceType: TrainedAlgorithmicMedia` IPTC label for AI-generated product images (Merchant Center requirement) |
 | **seo-content** | Product description E-E-A-T and uniqueness analysis |
 | **seo-dataforseo** | Organic keyword rankings for gap analysis |
 | **seo-technical** | Core Web Vitals for product pages (LCP on hero image) |
 | **seo-google** | Google Merchant Center feed validation via GSC |
+
+## UCP — Universal Commerce Protocol (forward-looking)
+
+Google-led standard (co-developed with Shopify, Etsy, Walmart, Wayfair, Visa,
+Mastercard, etc.) for letting AI agents discover, negotiate, and transact with
+merchants without one-off integrations. Already powers direct buying from AI
+Mode and Gemini.
+
+Merchants already on **Google Merchant Center** with clean Product schema can
+declare a UCP profile at `/.well-known/ucp` listing capabilities
+(`dev.ucp.shopping.checkout`, `.fulfillment`, `.discount`). See
+`references/ucp-universal-commerce-protocol.md` for audit criteria,
+capability examples, and the relationship to AP2 (Agent Payments Protocol).
+
+### Audit command
+
+```bash
+# Discover and validate the UCP profile
+python scripts/ucp_check.py https://store.example.com --json
+
+# With endpoint reachability probes (HEAD each declared capability)
+python scripts/ucp_check.py https://store.example.com --probe-endpoints --json
+```
+
+The script returns: profile presence, version, declared capabilities,
+structural issues (missing fields, unknown capability IDs), and (with
+`--probe-endpoints`) per-endpoint reachability. SSRF-blocked endpoints are
+reported explicitly. Missing profile is reported as opportunity, not failure
+— UCP adoption is early.
 
 ---
 
