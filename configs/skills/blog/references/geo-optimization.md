@@ -1,4 +1,4 @@
-# GEO/AEO Optimization -- AI Citation Strategies
+# GEO/AEO Optimization: AI Citation Strategies
 
 ## Core GEO Research
 
@@ -98,7 +98,7 @@ freshness-dependent platform. Content older than 1 week sees sharp citation drop
 
 **Review Platforms (B2B)**:
 - G2 accounts for 22-23% of review-platform citations (Radix via G2's own blog;
-  self-reported — Hall.com's independent analysis found G2 at only 8.25% of B2B
+  self-reported - Hall.com's independent analysis found G2 at only 8.25% of B2B
   software citations in ChatGPT)
 - 33% of review citations come from G2 (Profound via G2's blog; treat as directional)
 - Multi-platform presence: 4.6-6.3 citations vs 1.8 without (2.6-3.5x multiplier)
@@ -219,7 +219,7 @@ Princeton GEO paper (KDD 2024) findings on readability-related tactics:
 
 ### Schema & Structure for AI Citation
 - Comparison tables with proper HTML (`<thead>`, `<tbody>`) = **47% higher**
-  AI citation rates (attributed to SEL; primary source unlocatable — treat as directional)
+  AI citation rates (attributed to SEL; primary source unlocatable - treat as directional)
 - SearchVIU confirmed ChatGPT, Claude, Perplexity, and Gemini all process
   Schema Markup during citation selection
 

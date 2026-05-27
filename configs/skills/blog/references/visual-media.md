@@ -1,4 +1,4 @@
-# Visual Media Integration -- Images, Charts & Cover Images
+# Visual Media Integration: Images, Charts & Cover Images
 
 ## Contents
 

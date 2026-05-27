@@ -12,8 +12,8 @@
 | CrUX History API | 150 QPM (shared with CrUX) | Unlimited | Free | API Key | Per project |
 | Indexing API | 380 RPM total, 180 read/min | 200 publish/day | Free | Service Account | Per project |
 | GA4 Data API | 10 concurrent (50 for 360) | 200,000 Core Tokens/day (std); 2M (360) | Free | Service Account | Per property/project |
-| Knowledge Graph | -- | 100,000 QPD | Free | API Key | Per project |
-| Custom Search | -- | 10,000 QPD max | 100 free, $5/1K | API Key | Per project |
+| Knowledge Graph |: | 100,000 QPD | Free | API Key | Per project |
+| Custom Search |: | 10,000 QPD max | 100 free, $5/1K | API Key | Per project |
 | Web Risk | 6,000 QPM | 100K/month | Free tier | API Key | Per project |
 
 **Key distinction:** "Per site" quotas are scoped to a specific GSC property. "Per project" quotas are shared across all properties in a GCP project. "Per user" quotas are per authenticated user (service account).

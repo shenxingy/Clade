@@ -16,7 +16,7 @@ argument-hint: "<topic>"
 license: MIT
 ---
 
-# Blog Outline Generator -- SERP-Informed Structure Planning
+# Blog Outline Generator: SERP-Informed Structure Planning
 
 Generates skeletal blog post outlines informed by SERP analysis. A lighter
 alternative to a full content brief - produces heading hierarchy, section

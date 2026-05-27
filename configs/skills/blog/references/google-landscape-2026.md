@@ -1,4 +1,4 @@
-# SEO Landscape 2026 -- Google Updates & E-E-A-T
+# SEO Landscape 2026: Google Updates & E-E-A-T
 
 ## December 2025 Core Update
 
@@ -27,7 +27,7 @@ John Mueller has stated in multiple Google Office Hours sessions that Google's s
 evaluate content quality regardless of origin. AI as a research tool is fine; AI as sole
 content creator without human expertise and oversight is not.
 
-### Post-Update Analysis -- Winners & Losers
+### Post-Update Analysis: Winners & Losers
 
 Post-December 2025 core update visibility shifts:
 - Sites with original testing, case studies, and first-hand experience gained visibility
@@ -90,12 +90,12 @@ Identifies content from forums, social media, niche blogs where people share
 - BlogPosting, Article
 - Organization, LocalBusiness
 - FAQPage (keep answers 40-60 words; note: rich results only shown for government/health
-  sites since Aug 2023 — still valuable for AI citation, not for Google rich snippets)
+  sites since Aug 2023 - still valuable for AI citation, not for Google rich snippets)
 - BreadcrumbList
 - Person (author credentials)
 - Product, SoftwareApplication
 - AggregateRating, Review (only supported on eligible types: Product, Recipe,
-  SoftwareApplication, LocalBusiness, Movie, Book — NOT on BlogPosting directly)
+  SoftwareApplication, LocalBusiness, Movie, Book - NOT on BlogPosting directly)
 
 ### Deprecated (Never Recommend)
 - HowTo (Sept 2023)

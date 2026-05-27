@@ -14,7 +14,7 @@ argument-hint: "<file-path>"
 license: MIT
 ---
 
-# Blog SEO Check -- Post-Writing Validation
+# Blog SEO Check: Post-Writing Validation
 
 Runs a comprehensive on-page SEO validation against a completed blog post and
 generates a pass/fail checklist with specific fixes for each failure. Designed

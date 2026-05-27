@@ -201,7 +201,7 @@ def query_search_analytics(
                     "impressions": row.get("impressions", 0),
                     "clicks": row.get("clicks", 0),
                     "ctr": round(row.get("ctr", 0) * 100, 2),
-                    "opportunity": "Position 4-10 with high impressions -- small ranking improvement yields significant traffic gain",
+                    "opportunity": "Position 4-10 with high impressions - small ranking improvement yields significant traffic gain",
                 })
 
         result["quick_wins"] = result["quick_wins"][:20]

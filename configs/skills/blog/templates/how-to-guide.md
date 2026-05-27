@@ -7,7 +7,7 @@
 ## When to Use This Template
 
 - **Content Goals:** Drive organic traffic from instructional queries, establish topical authority, earn featured snippets for step-based queries
-- **Search Intent:** Informational / Transactional hybrid -- the reader has a specific problem and wants a clear solution *right now*
+- **Search Intent:** Informational / Transactional hybrid: the reader has a specific problem and wants a clear solution *right now*
 - **Best For:** Process explanations, software tutorials, setup guides, configuration walkthroughs, skill-building content
 - **Avoid When:** The topic lacks a clear sequential process or has fewer than 3 meaningful steps
 
@@ -34,7 +34,7 @@
 
 ### Introduction (150-200 words)
 
-[ANSWER-FIRST] Open with the single most compelling statistic or fact that validates *why* this process matters. Not a vague claim -- a specific number.
+[ANSWER-FIRST] Open with the single most compelling statistic or fact that validates *why* this process matters. Not a vague claim: a specific number.
 
 **Structure:**
 1. **Problem statement** (1-2 sentences): What pain point does the reader have?
@@ -44,10 +44,10 @@
 
 [STAT: Industry statistic that quantifies the problem this guide solves]
 
-[INFO-GAIN: personal experience] Share a specific, brief anecdote about encountering this problem yourself -- when, what happened, what the stakes were.
+[INFO-GAIN: personal experience] Share a specific, brief anecdote about encountering this problem yourself: when, what happened, what the stakes were.
 
 **Example opening:**
-> "[STAT: 73% of deployments fail due to misconfigured pipelines (Source, Year).] If you've ever pushed code on a Friday and spent the weekend firefighting, you already know the pain. This guide walks you through setting up a bulletproof CI/CD pipeline in under an hour -- the same process we used to reduce deployment failures by 90% across 12 projects."
+> "[STAT: 73% of deployments fail due to misconfigured pipelines (Source, Year).] If you've ever pushed code on a Friday and spent the weekend firefighting, you already know the pain. This guide walks you through setting up a bulletproof CI/CD pipeline in under an hour: the same process we used to reduce deployment failures by 90% across 12 projects."
 
 [INTERNAL-LINK] Link to a related foundational concept post (e.g., "If you're new to [topic], start with our [Beginner's Guide to X]").
 
@@ -78,7 +78,7 @@
 
 ### Step 1: [Action Verb] + [Specific Object] (200-300 words)
 
-[ANSWER-FIRST] Open with what the reader will have accomplished by the end of this step -- the micro-outcome.
+[ANSWER-FIRST] Open with what the reader will have accomplished by the end of this step: the micro-outcome.
 
 **Structure for EVERY step section:**
 1. **Micro-outcome statement** (1 sentence): "By the end of this step, you'll have [specific result]."
@@ -88,7 +88,7 @@
 
 [IMAGE] Screenshot showing the expected state after completing this step.
 
-[INFO-GAIN: specific configuration or setting] Share a non-obvious detail -- a specific config value, flag, or option that makes a difference and isn't in the official docs.
+[INFO-GAIN: specific configuration or setting] Share a non-obvious detail: a specific config value, flag, or option that makes a difference and isn't in the official docs.
 
 **Formatting rules:**
 - Use H2 for the step heading: `## Step 1: Install and Configure the CLI`
@@ -144,7 +144,7 @@
 
 [VISUAL: before-after] Side-by-side comparison showing before (Step 1) and after (Step 6) state.
 
-**Note:** Not every guide needs exactly 6 steps. Use 4-8 steps depending on the complexity of the process. Each step should represent a meaningful, testable milestone -- not a trivial action.
+**Note:** Not every guide needs exactly 6 steps. Use 4-8 steps depending on the complexity of the process. Each step should represent a meaningful, testable milestone: not a trivial action.
 
 ---
 
@@ -159,7 +159,7 @@
 2. **Why it happens** (1 sentence): The underlying cause or misconception
 3. **The fix** (1 sentence): What to do instead
 
-[INFO-GAIN: original observation] Include at least one mistake that comes from your direct experience -- something not commonly listed in other guides.
+[INFO-GAIN: original observation] Include at least one mistake that comes from your direct experience: something not commonly listed in other guides.
 
 [STAT: Failure rate or error frequency for the most common mistake]
 
@@ -230,7 +230,7 @@
 **Structure:**
 1. **Recap** (1 sentence): Summarize what they accomplished.
 2. **Reinforce value** (1 sentence): Restate the benefit with the key metric.
-3. **CTA** (1-2 sentences): Clear next action -- share the post, subscribe, try a related guide, leave a comment with their results.
+3. **CTA** (1-2 sentences): Clear next action: share the post, subscribe, try a related guide, leave a comment with their results.
 
 [INTERNAL-LINK] Link to 2-3 related posts for continued reading.
 

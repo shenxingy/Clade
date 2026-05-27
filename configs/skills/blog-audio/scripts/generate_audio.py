@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Blog Audio Generator -- Gemini TTS
+Blog Audio Generator - Gemini TTS
 Converts prepared text to speech using Google's Gemini TTS models.
 
 Usage:
@@ -250,7 +250,7 @@ def main():
         output_result(result, args.json)
         return 1
 
-    # Dry run -- estimate only
+    # Dry run - estimate only
     if args.dry_run:
         est = estimate_cost(text, args.model)
         result = {

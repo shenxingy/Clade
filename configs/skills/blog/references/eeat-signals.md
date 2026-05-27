@@ -27,7 +27,7 @@ and AI systems.
 | "Staff" | Indistinguishable from auto-generated |
 | "Team" | No individual accountability |
 | "Editor" | Not an author signal |
-| No byline | Worst case -- page appears authorless |
+| No byline | Worst case: page appears authorless |
 
 ### Required
 
@@ -65,13 +65,13 @@ and AI systems.
 ### Bad Examples (Anti-Patterns)
 
 > "John is passionate about helping businesses grow through innovative digital
-> solutions." -- Vague, no credentials, sounds like marketing copy.
+> solutions.": Vague, no credentials, sounds like marketing copy.
 
 > "Our team of experts delivers world-class content marketing services."
-> -- Not a person, promotional, no specific expertise.
+>: Not a person, promotional, no specific expertise.
 
 > "Jane is the CEO of GrowthMax Inc., the leading AI-powered marketing
-> platform." -- Sales pitch disguised as bio.
+> platform.": Sales pitch disguised as bio.
 
 ---
 

@@ -1,4 +1,4 @@
-# Content Distribution Strategy -- Playbook for AI Visibility
+# Content Distribution Strategy: Playbook for AI Visibility
 
 88-92% of AI citations come from off-site signals, not on-page optimization
 alone (Seer Interactive, 2025). This playbook covers channel-by-channel
@@ -6,7 +6,7 @@ distribution tactics to maximize both traditional search rankings and AI
 citation rates.
 
 **Budget allocation**: 40% owned content / 60% earned media and distribution.
-Most companies allocate 90/10 -- this is wrong for GEO. Off-site presence
+Most companies allocate 90/10: this is wrong for GEO. Off-site presence
 is the dominant factor in whether AI systems cite your content.
 
 ## Contents
@@ -26,7 +26,7 @@ is the dominant factor in whether AI systems cite your content.
 ## Reddit (Highest Growth Channel for AI Visibility)
 
 **Platform change (June 2023):** Reddit's API became paid ($0.24/1,000 calls). Free API
-access is gone. All Reddit strategy must rely on **organic participation only** — no
+access is gone. All Reddit strategy must rely on **organic participation only** - no
 programmatic posting, scraping, or API-driven automation without a paid plan.
 
 ### Why Reddit Matters for AI
@@ -67,13 +67,13 @@ content. For every 1 promotional post, you need 9 genuine contributions
 **Format that works on Reddit**:
 - Lead with an insight or question, not a link
 - Share specific data points and findings in the post body
-- Provide standalone value -- the post should be useful without clicking any link
+- Provide standalone value: the post should be useful without clicking any link
 - Place your blog link in context within the post, not as the sole purpose
 - Use formatting: bold for key stats, bullet points for lists, TL;DR at top
 
 **Example post structure**:
 ```
-Title: [Specific finding] -- [context/data point]
+Title: [Specific finding] - [context/data point]
 
 TL;DR: [2-3 sentence summary with key stats]
 
@@ -83,7 +83,7 @@ TL;DR: [2-3 sentence summary with key stats]
 
 [Paragraph 3: What you can do about it]
 
-I wrote a more detailed breakdown here: [link] -- but the key takeaways
+I wrote a more detailed breakdown here: [link]: but the key takeaways
 are all above.
 
 [Paragraph 4: Ask a question to drive discussion]
@@ -161,9 +161,9 @@ transcript with proper keyword usage is a ranking signal.
 
 ### YouTube Description Template
 ```
-[First 2 lines appear before "Show more" -- use them wisely]
+[First 2 lines appear before "Show more": use them wisely]
 
-[Key stat from blog] -- in this video, I break down [topic].
+[Key stat from blog]: in this video, I break down [topic].
 
 Chapters:
 0:00 Introduction
@@ -193,7 +193,7 @@ Resources mentioned:
 
 **Algorithm change (late 2025):** YouTube Shorts' recommendation engine was fully decoupled
 from long-form video. Shorts no longer directly boost long-form channel authority or
-subscriber counts. Treat Shorts as a **separate discovery surface** with its own metrics —
+subscriber counts. Treat Shorts as a **separate discovery surface** with its own metrics -
 do not rely on Shorts to cross-promote your long-form content or blog. Use Shorts for
 top-of-funnel awareness only.
 
@@ -204,7 +204,7 @@ top-of-funnel awareness only.
 **Algorithm change (360Brew, late 2024-2025):** LinkedIn replaced its recommendation
 algorithm with an AI system called 360Brew. Impact: views down ~50%, engagement down ~25%
 industry-wide. External links are penalized ~60% in reach. **Native content strongly
-outperforms link posts** — text posts, native documents (carousels), and native video
+outperforms link posts** - text posts, native documents (carousels), and native video
 dramatically outreach posts with external URLs.
 
 ### Content Adaptation
@@ -257,14 +257,14 @@ Here's what the data shows:
 - [Key finding 2 with stat]
 - [Key finding 3 with stat]
 
-[2-3 sentences of analysis -- your unique take]
+[2-3 sentences of analysis: your unique take]
 
-[What this means for the reader -- actionable insight]
+[What this means for the reader: actionable insight]
 
 [Question to drive engagement]
 
 ---
-[Hashtags: #topic1 #topic2 -- max 3-5]
+[Hashtags: #topic1 #topic2: max 3-5]
 ```
 
 ---
@@ -284,7 +284,7 @@ Convert blog posts into Twitter threads (7-9 tweets) for maximum reach:
 
 | Guideline | Rule |
 |-----------|------|
-| Hook tweet | Must stop the scroll -- use a surprising stat or counterintuitive claim |
+| Hook tweet | Must stop the scroll: use a surprising stat or counterintuitive claim |
 | Insight tweets | Each must deliver value independently |
 | Stats per tweet | Include one specific data point |
 | Length | 200-280 characters per tweet (not maximum, but substantive) |
@@ -364,7 +364,7 @@ and early traffic signals that benefit both traditional and AI search.
 
 ---
 
-*What are you seeing in your own data? Reply to this email -- I read every response.*
+*What are you seeing in your own data? Reply to this email. I read every response.*
 ```
 
 ### Email Performance Benchmarks
@@ -384,7 +384,7 @@ and early traffic signals that benefit both traditional and AI search.
 - Multi-platform review presence gives 2.6-3.5x citation multiplier
   (Authoritas, 2025)
 - G2 accounts for 22-23% of review-platform citations (Radix via G2's own blog;
-  self-reported — Hall.com independent analysis found only 8.25%)
+  self-reported - Hall.com independent analysis found only 8.25%)
 - 33% of all review citations come from G2 (Profound via G2's blog; treat as directional)
 - Companies with profiles on 3+ platforms: 4.6-6.3 citations vs 1.8
   without (2.6-3.5x multiplier)
@@ -437,7 +437,7 @@ sources. You cannot create a Wikipedia page for self-promotion.
 2. Ensure coverage is substantive (not just mentions)
 3. Create a Wikidata entry for your organization (lower notability bar)
 4. If notable, an independent editor may create a Wikipedia article
-5. Never edit your own Wikipedia page -- this violates Wikipedia policy
+5. Never edit your own Wikipedia page: this violates Wikipedia policy
 
 ### Wikidata Entry
 ```

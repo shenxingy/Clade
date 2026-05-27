@@ -16,7 +16,7 @@ argument-hint: "<file-path>"
 license: MIT
 ---
 
-# Blog Rewriter -- Optimize Existing Posts
+# Blog Rewriter: Optimize Existing Posts
 
 Rewrites and optimizes existing blog posts for dual ranking: Google search
 and AI citation platforms. Preserves the author's voice while applying the
@@ -27,6 +27,8 @@ and AI citation platforms. Preserves the author's voice while applying the
 - `references/eeat-signals.md` - Experience, expertise, authority, trust markers
 - `references/internal-linking.md` - Linking strategy and anchor text rules
 - `references/visual-media.md` - Image sourcing and chart styling
+- `skills/blog/references/synthesis-contract.md` - 6 LAWs for re-citation hygiene during rewrite (v1.8.0; cross-skill ref lives in the orchestrator's references dir)
+- `skills/blog/references/research-quality.md` - cross-source clustering for replacement-statistic research (v1.8.0)
 
 ## Cross-reference
 
@@ -64,6 +66,25 @@ For 21 evidence-led optimization prompts (AI-detector test, CTR audit, schema, P
    - **AI content percentage estimate** - Based on burstiness, phrase density, and
      TTR, estimate what percentage of the content reads as AI-generated (0-100%).
      Report as: "AI content estimate: ~X%"
+   - **Second-order structural reflex scan** (v1.8.0) - The first-order checks above
+     are vocabulary-level. The second-order pass catches what survives them: structural
+     and rhythmic tics LLMs default to after the obvious words are replaced. Run against
+     `skills/blog/references/ai-slop-detection.md`. Flag at minimum:
+     - Question-cadence H2s above 70% of headings
+     - Three or more "Here..." paragraph openers
+     - Three-clause sentence rhythm above 50% in any 200-word window
+     - More than 2 hedge words ("may," "often," "typically," "generally") in any 20-word span
+     - Symmetric-list bloat (list-item word-count SD below 5)
+     - More than 2 wrap-up rhetorical questions ("What does this mean for...?")
+     - More than half of H2 openers starting with a transition word
+     - "The key insight is..." or "What's important here is..." as sentence openers
+     - Listicle pre-list intro above 250 words
+     - Opening-word repetition: top three first-words above 25% share
+     - Paragraph-shape SD below 25 (visual monotony)
+     A draft is only "AI-detection clean" when both passes are clean. The two-namespace
+     terminology (first-order/second-order for slop-detection vs Tier 1/2/3 for source
+     authority) is intentional: see `skills/blog/references/ai-slop-detection.md` for
+     why the labels diverged in v1.8.1.
 4. **Video embed check**:
    - Count existing YouTube embeds in the post
    - If 0 embeds, flag: "No video embeds. YouTube has the strongest AI visibility correlation (0.737)"
@@ -327,6 +348,20 @@ After rewriting, verify all quality gates pass:
 - `/blog analyze <file>` to verify final score
 - Publishing / deploying
 ```
+
+## Phase 5.5: Delivery Contract Enforcement (v1.9.0)
+
+Before presenting the rewritten draft, run the 5-gate delivery contract per `skills/blog/references/blog-delivery-contract.md`. The contract applies to rewrites the same way it applies to new posts: the user is never the first reviewer.
+
+Steps:
+
+1. **Hero check**: if the existing post already has a hero image referenced and still on disk, keep it. If the rewrite changed the topic substantially OR the hero is missing, regenerate via `python scripts/generate_hero.py --topic "<new title>" --tags "<tags>" --out <folder>`.
+2. **Re-render**: run `python scripts/blog_render.py --md <slug>.md --out-dir <folder>` to refresh the `.html` and `.pdf` from the updated `.md`.
+3. **Reviewer dispatch**: dispatch the `blog-reviewer` agent against the rendered `.html`. Threshold: score 90/100 or higher AND zero P0 issues.
+4. **Preflight**: run `python scripts/blog_preflight.py --draft <folder> --strict`. Exit 0 = ship; exit 1 = block.
+5. **Iterate on failure**: maximum 3 iterations. After the 3rd failure, STOP and present the diagnostic from `<folder>/preflight-report.json`.
+
+Rewrites have a higher implicit threshold because the existing draft was presumably already published. Re-presenting something worse than the original is not acceptable. If the rewritten score is lower than the original score, that itself is a P0 condition.
 
 ## Update Mode
 

@@ -14,15 +14,21 @@ argument-hint: "<topic>"
 license: MIT
 ---
 
-# Blog Brief Generator -- Content Planning
+# Blog Brief Generator: Content Planning
 
 Generates comprehensive content briefs that guide blog writing for maximum
 impact on both Google rankings and AI citation platforms.
 
 Reference documents:
-- `references/content-templates.md` -- template selection criteria
-- `references/distribution-playbook.md` -- channel-specific distribution tactics
-- `references/internal-linking.md` -- link architecture patterns
+- `references/content-templates.md`: template selection criteria
+- `references/distribution-playbook.md`: channel-specific distribution tactics
+- `references/internal-linking.md`: link architecture patterns
+- `skills/blog/references/research-quality.md` - 5-dim quality rubric, pre-flight trap classes, freshness floors (v1.8.0; cross-skill ref lives in the orchestrator's references dir)
+- `skills/blog/references/synthesis-contract.md` - 6 LAWs for synthesis output (v1.8.0)
+
+## Auto-loaded inputs (v1.8.0)
+
+When `DISCOURSE.md` is present at the project root (produced by `/blog discourse`), load it before starting brief generation. Use the discourse brief's "What's NEW" themes, "Consensus" themes, and "Contrarian takes" sections to enrich the competitive landscape and information-gain sections of this brief. Cite from DISCOURSE.md using the same inline `[name](url)` pattern. If DISCOURSE.md is absent, behavior is unchanged.
 
 ## Cross-reference
 
@@ -35,19 +41,19 @@ For evidence-led keyword discovery, audience-avatar prompts, and content priorit
 Gather from the user:
 1. **Topic or keyword** (required)
 2. **Target audience** (who reads this?)
-3. **Search intent** -- Informational, commercial, transactional, navigational
-4. **Business context** -- What does the company do? What's the CTA?
+3. **Search intent**: Informational, commercial, transactional, navigational
+4. **Business context**: What does the company do? What's the CTA?
 
 If only a topic is given, infer the rest from context.
 
 ### Step 2: Keyword Research
 
 Using WebSearch:
-1. Search for the target keyword -- analyze what currently ranks
+1. Search for the target keyword; analyze what currently ranks
 2. Identify **primary keyword** (exact match target)
 3. Identify **3-5 secondary keywords** (related terms, long-tail)
 4. Identify **3-5 question queries** (People Also Ask style)
-5. Note the **search intent** -- what do searchers actually want?
+5. Note the **search intent**: what do searchers actually want?
 
 ### Step 2.5: Template Recommendation
 
@@ -81,13 +87,13 @@ criteria.
 ### Step 3: Competitive Analysis
 
 Analyze the top 3-5 ranking pages for the target keyword:
-1. **Content length** -- What's the average word count?
-2. **Heading structure** -- How many H2s? What topics do they cover?
-3. **Visual elements** -- Do competitors use charts, images, videos?
-4. **Content gaps** -- What do all competitors miss?
-5. **Freshness** -- How recently were they updated?
-6. **Schema** -- Do they use FAQ or other rich results? (Note: HowTo deprecated Sept 2023)
-7. **Template pattern** -- What content format do top results use?
+1. **Content length**: What's the average word count?
+2. **Heading structure**: How many H2s? What topics do they cover?
+3. **Visual elements**: Do competitors use charts, images, videos?
+4. **Content gaps**: What do all competitors miss?
+5. **Freshness**: How recently were they updated?
+6. **Schema**: Do they use FAQ or other rich results? (Note: HowTo deprecated Sept 2023)
+7. **Template pattern**: What content format do top results use?
 
 ### Step 4: Statistics Research
 
@@ -106,16 +112,16 @@ Output format:
 # Content Brief: [Title Suggestion]
 
 ## Template
-**Recommended**: [template-name] -- [1-sentence rationale]
+**Recommended**: [template-name]: [1-sentence rationale]
 **Template file**: `templates/[type].md`
 
 ## Target Keywords
-- **Primary**: [keyword] -- [estimated monthly search volume if available]
+- **Primary**: [keyword]: [estimated monthly search volume if available]
 - **Secondary**: [keyword 1], [keyword 2], [keyword 3]
 - **Questions**: [question 1], [question 2], [question 3]
 
 ## Search Intent
-[Informational/Commercial/Transactional] -- [1-2 sentence explanation of
+[Informational/Commercial/Transactional]: [1-2 sentence explanation of
 what the searcher wants]
 
 ## Content Parameters
@@ -139,14 +145,14 @@ Alternative titles:
 
 ## TL;DR Draft
 > **TL;DR:** [40-60 word summary with key finding + 1 statistic + source.
-> Should be self-contained -- a reader who only reads this box gets the
+> Should be self-contained; a reader who only reads this box gets the
 > core value of the article.]
 
 ## Information Gain Opportunities
 - **[ORIGINAL DATA]**: [Suggestion for proprietary data, survey, experiment,
   or benchmark the author can produce to differentiate this post]
 - **[PERSONAL EXPERIENCE]**: [Suggestion for first-hand observation, test
-  result, or case study to include -- "When we tested X, we found Y"]
+  result, or case study to include: "When we tested X, we found Y"]
 - **[UNIQUE INSIGHT]**: [Suggestion for contrarian take, novel analysis,
   or non-obvious connection that competitors have not covered]
 
@@ -173,9 +179,9 @@ Alternative titles:
 [... repeat for 6-8 sections ...]
 
 ### FAQ Section (3-5 items)
-1. [Question] -- Answer with [stat + source]
-2. [Question] -- Answer with [stat + source]
-3. [Question] -- Answer with [stat + source]
+1. [Question]: Answer with [stat + source]
+2. [Question]: Answer with [stat + source]
+3. [Question]: Answer with [stat + source]
 
 ### Conclusion (100-150 words)
 - Key takeaways (bulleted)
@@ -221,21 +227,21 @@ claim that can stand alone when quoted.
 ## Competitive Gaps to Exploit
 1. [What competitors miss that we should cover]
 2. [Unique angle or original data we can provide]
-3. [Format advantage -- charts/visuals competitors lack]
+3. [Format advantage: charts/visuals competitors lack]
 
 ## Internal Link Architecture
 - **Link TO** (from this new post to existing pages):
-  1. [Page title/URL] -- anchor text: "[descriptive anchor]"
-  2. [Page title/URL] -- anchor text: "[descriptive anchor]"
-  3. [Page title/URL] -- anchor text: "[descriptive anchor]"
-  4. [Page title/URL] -- anchor text: "[descriptive anchor]"
-  5. [Page title/URL] -- anchor text: "[descriptive anchor]"
+  1. [Page title/URL] - anchor text: "[descriptive anchor]"
+  2. [Page title/URL] - anchor text: "[descriptive anchor]"
+  3. [Page title/URL] - anchor text: "[descriptive anchor]"
+  4. [Page title/URL] - anchor text: "[descriptive anchor]"
+  5. [Page title/URL] - anchor text: "[descriptive anchor]"
 - **Link FROM** (update these existing pages to link to this new post):
-  1. [Page title/URL] -- anchor text: "[descriptive anchor]"
-  2. [Page title/URL] -- anchor text: "[descriptive anchor]"
-  3. [Page title/URL] -- anchor text: "[descriptive anchor]"
-  4. [Page title/URL] -- anchor text: "[descriptive anchor]"
-  5. [Page title/URL] -- anchor text: "[descriptive anchor]"
+  1. [Page title/URL] - anchor text: "[descriptive anchor]"
+  2. [Page title/URL] - anchor text: "[descriptive anchor]"
+  3. [Page title/URL] - anchor text: "[descriptive anchor]"
+  4. [Page title/URL] - anchor text: "[descriptive anchor]"
+  5. [Page title/URL] - anchor text: "[descriptive anchor]"
 - **Pillar connection**: [Which pillar page this belongs to, if applicable]
 - **Cluster position**: [Hub / Spoke / Standalone]
 

@@ -119,7 +119,7 @@ python scripts/google_auth.py --check
 |-------|-----|
 | `403 Forbidden` on GSC | Service account email not added to property, or wrong permission level |
 | `403 Forbidden` on GA4 | Service account not added as Viewer in GA4 property |
-| `404 Not Found` on GSC | Wrong property URL format -- use `sc-domain:` or include trailing slash |
+| `404 Not Found` on GSC | Wrong property URL format: use `sc-domain:` or include trailing slash |
 | `404 Not Found` on CrUX | Site has insufficient Chrome traffic (not a credentials issue) |
 | `429 Rate Limit` | Wait and retry with backoff. See rate-limits-quotas.md |
 | `API not enabled` | Enable the specific API in GCP Console > APIs & Services > Library |

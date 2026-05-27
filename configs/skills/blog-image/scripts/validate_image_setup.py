@@ -128,7 +128,7 @@ def main() -> int:
         )
         pkg_detail = str(args)
         if has_pkg and not is_pinned:
-            pkg_detail += " (WARNING: not version-pinned -- supply chain risk)"
+            pkg_detail += " (WARNING: not version-pinned - supply chain risk)"
         results.append(check(
             "Package is @ycse/nanobanana-mcp",
             has_pkg,

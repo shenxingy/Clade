@@ -15,7 +15,7 @@ license: MIT
 compatibility: Requires Claude Code and claude-blog (provides blog-write, blog-chart, blog-image)
 metadata:
   author: AgriciDaniel
-  version: "1.7.0"
+  version: "1.9.1"
   category: blog
 user-invokable: true
 argument-hint: "[plan|execute] [seed-keyword|cluster-plan.json]"

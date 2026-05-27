@@ -15,7 +15,7 @@ description: >
 user-invokable: false
 ---
 
-# Blog Chart -- Built-In SVG Data Visualization
+# Blog Chart: Built-In SVG Data Visualization
 
 Generates dark-mode-compatible inline SVG charts for blog posts. Invoked
 internally by `blog-write` and `blog-rewrite` when chart-worthy data is

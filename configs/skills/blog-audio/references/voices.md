@@ -80,7 +80,7 @@ multi-speaker turn-taking. Use Pro when audio quality is the priority.
 ## Language Notes
 
 - All 30 voices support 80+ languages via automatic detection
-- Pass text in any supported language -- no language parameter needed
+- Pass text in any supported language: no language parameter needed
 - Voice characteristics (Bright, Firm, etc.) carry across languages
 - For best results with non-English text, test voice-language combinations
 - BCP-47 language codes are auto-detected from input text

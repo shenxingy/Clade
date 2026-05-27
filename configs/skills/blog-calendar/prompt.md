@@ -13,7 +13,7 @@ argument-hint: "[<niche>]"
 license: MIT
 ---
 
-# Blog Calendar -- Editorial Planning
+# Blog Calendar: Editorial Planning
 
 Generates editorial calendars with topic clusters, publishing cadence,
 freshness update schedules, content decay detection, template recommendations,
@@ -31,11 +31,11 @@ avatar prompts that should inform cluster selection and topic sequencing.
 ### Step 1: Understand the Blog
 
 Gather context:
-1. **Niche/industry** -- What is the blog about?
-2. **Existing content** -- Scan for existing blog posts (Glob for *.md, *.mdx, *.html)
-3. **Publishing cadence** -- How often can they publish? (default: 2x/week)
-4. **Timeframe** -- Monthly or quarterly calendar?
-5. **Business goals** -- What should the blog drive? (traffic, leads, authority)
+1. **Niche/industry**: What is the blog about?
+2. **Existing content**: Scan for existing blog posts (Glob for *.md, *.mdx, *.html)
+3. **Publishing cadence**: How often can they publish? (default: 2x/week)
+4. **Timeframe**: Monthly or quarterly calendar?
+5. **Business goals**: What should the blog drive? (traffic, leads, authority)
 
 ### Step 2: Topic Cluster Design
 
@@ -82,10 +82,10 @@ Output a decay report:
 ```
 
 Priority levels:
-- **Critical**: High-traffic post stale >30 days -- refresh immediately
-- **High**: Any post stale beyond its threshold -- schedule this month
-- **Medium**: Posts approaching their threshold -- schedule this quarter
-- **Low**: Posts within threshold -- no action needed
+- **Critical**: High-traffic post stale >30 days: refresh immediately
+- **High**: Any post stale beyond its threshold: schedule this month
+- **Medium**: Posts approaching their threshold: schedule this quarter
+- **Low**: Posts within threshold: no action needed
 
 ### Step 3: Freshness Update Schedule
 
@@ -100,10 +100,10 @@ Plan update cycles:
 ### Step 4: Seasonal & Trending Hooks
 
 Research seasonal opportunities:
-1. **Industry events** -- Conferences, product launches, algorithm updates
-2. **Seasonal trends** -- Use WebSearch to check Google Trends for the niche
-3. **Annual reports** -- When do major studies release new data?
-4. **Algorithm updates** -- Google core updates (typically 3-4 per year)
+1. **Industry events**: Conferences, product launches, algorithm updates
+2. **Seasonal trends**: Use WebSearch to check Google Trends for the niche
+3. **Annual reports**: When do major studies release new data?
+4. **Algorithm updates**: Google core updates (typically 3-4 per year)
 
 #### Seasonal Trends Integration
 
@@ -160,7 +160,7 @@ Reference: `references/content-templates.md` for full template details.
 | Day | Type | Title | Template | Cluster | Target Keyword | Status |
 |-----|------|-------|----------|---------|---------------|--------|
 | Mon | New | [Title] | how-to-guide | [Cluster] | [keyword] | Draft |
-| Thu | Update | [Existing post] | -- | [Cluster] | [keyword] | Refresh |
+| Thu | Update | [Existing post] | - | [Cluster] | [keyword] | Refresh |
 
 ### Week 2: [Date Range]
 | Day | Type | Title | Template | Cluster | Target Keyword | Status |
@@ -207,7 +207,7 @@ Reference: `references/content-templates.md` for full template details.
 | Week | Type | Title | Template | Cluster | Keyword |
 |------|------|-------|----------|---------|---------|
 | W1 | New | ... | how-to-guide | ... | ... |
-| W1 | Update | ... | -- | ... | ... |
+| W1 | Update | ... | - | ... | ... |
 | W2 | New | ... | comparison | ... | ... |
 [...]
 

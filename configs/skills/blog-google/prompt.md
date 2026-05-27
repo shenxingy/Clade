@@ -15,7 +15,7 @@ argument-hint: "[setup|pagespeed|crux|crux-history|gsc|inspect|index|ga4|nlp|you
 license: MIT
 metadata:
   author: AgriciDaniel
-  version: "1.0.0"
+  version: "1.9.1"
   category: blog
 ---
 
@@ -64,7 +64,7 @@ Always communicate the detected tier before running commands.
 
 | Command | What it does | Tier |
 |---------|-------------|------|
-| `/blog google setup` | Check/configure API credentials | -- |
+| `/blog google setup` | Check/configure API credentials |: |
 | `/blog google pagespeed <url>` | PSI Lighthouse + CrUX field data | 0 |
 | `/blog google crux <url>` | CrUX field data only (p75 metrics) | 0 |
 | `/blog google crux-history <url>` | 25-week CWV trend analysis | 0 |
@@ -75,8 +75,8 @@ Always communicate the detected tier before running commands.
 | `/blog google index <url>` | Submit URL to Indexing API | 1 |
 | `/blog google ga4 [property-id]` | GA4 organic traffic report | 2 |
 | `/blog google keywords <seed>` | Keyword ideas from Google Ads Keyword Planner | 3 |
-| `/blog google report <type>` | PDF/HTML performance report | -- |
-| `/blog google quotas` | Show rate limits for all APIs | -- |
+| `/blog google report <type>` | PDF/HTML performance report |: |
+| `/blog google quotas` | Show rate limits for all APIs |: |
 
 ---
 
@@ -236,8 +236,8 @@ Falls back to HTML if weasyprint is unavailable.
 | GSC URL Inspection | 600 QPM | 2,000 QPD/site | Service Account |
 | Indexing API | 380 RPM | 200 publish/day | Service Account |
 | GA4 Data API | 10 concurrent (50 for 360) | 200K Core Tokens/day (2M for 360) | Service Account |
-| YouTube Data | -- | 10,000 units/day | API Key |
-| NLP API | -- | 5,000 units/month | API Key (billing) |
+| YouTube Data |: | 10,000 units/day | API Key |
+| NLP API |: | 5,000 units/month | API Key (billing) |
 
 Read `references/rate-limits-quotas.md` for detailed quota management.
 

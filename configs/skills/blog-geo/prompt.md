@@ -16,7 +16,7 @@ argument-hint: "<file-path>"
 license: MIT
 ---
 
-# Blog GEO -- AI Citation Optimization Audit
+# Blog GEO: AI Citation Optimization Audit
 
 Scores blog posts for AI citation readiness across ChatGPT, Perplexity, and
 Google AI Overviews. Generates citation capsules and a 0-100 AI Citation
@@ -147,7 +147,7 @@ Evaluate the post for each AI platform's citation preferences:
 #### ChatGPT
 - Favors "Best X" listicles (43.8% of citations)
 - Prefers well-cited, authoritative content
-- Recency matters -- recent updates get priority
+- Recency matters: recent updates get priority
 - Domain authority influences citation likelihood
 
 #### Perplexity
@@ -200,10 +200,10 @@ Map the 15-point subcategory scores to a 0-100 display score:
 | **Total** | **/15** | | **100** |
 
 Rating thresholds:
-- 90-100: Excellent -- highly citable by AI systems
-- 70-89: Good -- citable with minor improvements
-- 50-69: Needs Work -- significant gaps in citability
-- Below 50: Poor -- major restructuring needed
+- 90-100: Excellent: highly citable by AI systems
+- 70-89: Good: citable with minor improvements
+- 50-69: Needs Work: significant gaps in citability
+- Below 50: Poor: major restructuring needed
 
 ### Step 10: Generate Report
 
@@ -212,7 +212,7 @@ Output the following report:
 ```
 ## AI Citation Readiness Report: [Title]
 
-**AI Citation Readiness Score: [X]/100** -- [Rating]
+**AI Citation Readiness Score: [X]/100**: [Rating]
 
 ### Score Breakdown
 | Category | Raw | Display | Max |

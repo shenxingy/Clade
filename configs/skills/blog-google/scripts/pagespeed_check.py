@@ -374,7 +374,7 @@ def query_crux(
         if p75 is None:
             continue
 
-        # CLS is string-encoded in CrUX -- parse carefully
+        # CLS is string-encoded in CrUX - parse carefully
         if metric_name == "cumulative_layout_shift":
             try:
                 p75_val = float(str(p75))

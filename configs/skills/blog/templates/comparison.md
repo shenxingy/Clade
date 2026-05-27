@@ -7,7 +7,7 @@
 ## When to Use This Template
 
 - **Content Goals:** Capture high-intent "[A] vs [B]" search traffic, help readers make confident purchase/adoption decisions, build authority as a fair evaluator, rank in "People Also Ask" boxes
-- **Search Intent:** Commercial investigation -- the reader has narrowed their options to 2-3 choices and needs help making the final decision
+- **Search Intent:** Commercial investigation: the reader has narrowed their options to 2-3 choices and needs help making the final decision
 - **Best For:** Software comparisons, tool evaluations, framework decisions, platform migrations, methodology debates, service provider comparisons
 - **Avoid When:** The two options aren't genuinely comparable (different categories), one option is clearly obsolete, or you need to evaluate more than 3 options (use the Listicle template instead)
 
@@ -31,7 +31,7 @@
 - Include a differentiating phrase that signals what the comparison covers
 - Include the year for freshness signals
 - Keep under 65 characters if possible
-- Never use "Which is Better?" -- be more specific about the dimension of comparison
+- Never use "Which is Better?": be more specific about the dimension of comparison
 
 ---
 
@@ -47,7 +47,7 @@
 3. **Decision rule** (1 sentence): "Choose [A] if [X]. Choose [B] if [Y]."
 
 **Example:**
-> **TL;DR:** Astro wins for content-heavy sites -- it's faster out of the box and ships zero JS by default. Next.js wins for interactive web applications where you need server-side rendering, API routes, and a mature ecosystem. Choose Astro if your site is mostly content. Choose Next.js if your site is mostly application.
+> **TL;DR:** Astro wins for content-heavy sites: it's faster out of the box and ships zero JS by default. Next.js wins for interactive web applications where you need server-side rendering, API routes, and a mature ecosystem. Choose Astro if your site is mostly content. Choose Next.js if your site is mostly application.
 
 ---
 
@@ -61,9 +61,9 @@
 3. **Scope statement** (1 sentence): What specific dimensions will this comparison cover?
 4. **Credibility anchor** (1 sentence): What qualifies you to make this comparison? (testing methodology, experience with both, etc.)
 
-[STAT: Market context statistic -- adoption rates, npm downloads, GitHub stars, survey data that frames both options]
+[STAT: Market context statistic: adoption rates, npm downloads, GitHub stars, survey data that frames both options]
 
-[INFO-GAIN: hands-on experience] Briefly state your direct experience with both options -- what you built, how long you used them, at what scale.
+[INFO-GAIN: hands-on experience] Briefly state your direct experience with both options: what you built, how long you used them, at what scale.
 
 [INTERNAL-LINK] Link to individual deep-dive posts on each product: "For standalone reviews, see our [Product A Guide] and [Product B Guide]."
 
@@ -90,10 +90,10 @@
 | **Our Verdict** | [Win/Lose/Tie per row] | [Win/Lose/Tie per row] |
 
 **Rules:**
-- Use specific, measurable values -- never "Good" or "Fast"
+- Use specific, measurable values: never "Good" or "Fast"
 - Bold the winner in each row
 - Include a "Best For" row at the top and "Our Verdict" row at the bottom
-- Keep to 8-12 rows -- enough to be comprehensive, not so many that it's overwhelming
+- Keep to 8-12 rows: enough to be comprehensive, not so many that it's overwhelming
 
 [STAT: Include at least one benchmark or metric in the table that you measured yourself]
 
@@ -123,11 +123,11 @@
 **Example:**
 > ## Which Has Better Build Performance?
 >
-> **Astro wins on build speed** -- building our 500-page test site in 4.2 seconds compared to Next.js's 18.7 seconds.
+> **Astro wins on build speed**: building our 500-page test site in 4.2 seconds compared to Next.js's 18.7 seconds.
 >
 > Astro's build pipeline is optimized for static content. It processes Markdown files in parallel and only bundles JavaScript for components explicitly marked as interactive. Our test site with 500 MDX pages and 12 interactive islands built in 4.2 seconds consistently.
 >
-> Next.js processes every page through its full rendering pipeline, including server component resolution. The same 500 pages took 18.7 seconds. However, Next.js's incremental static regeneration means subsequent builds only reprocess changed pages -- after the first build, adding a single page took 1.1 seconds.
+> Next.js processes every page through its full rendering pipeline, including server component resolution. The same 500 pages took 18.7 seconds. However, Next.js's incremental static regeneration means subsequent builds only reprocess changed pages: after the first build, adding a single page took 1.1 seconds.
 >
 > **Verdict: Astro wins for full builds. Next.js wins for incremental updates in large, frequently-changing sites.**
 
@@ -195,7 +195,7 @@
 1. **Direct cost comparison** (2-3 sentences): Side-by-side pricing for the most common tier or usage pattern.
 2. **Free tier analysis** (1-2 sentences): What's actually usable in each free tier? What are the real limits?
 3. **Scaling costs** (2-3 sentences): How does pricing change as usage grows? Where are the inflection points?
-4. **Hidden costs** (1-2 sentences): Any costs not immediately obvious -- migration effort, required add-ons, lock-in implications.
+4. **Hidden costs** (1-2 sentences): Any costs not immediately obvious: migration effort, required add-ons, lock-in implications.
 5. **Value verdict** (bold, 1 sentence): Which provides better value and for whom.
 
 [VISUAL: pricing-comparison-table] A simple table showing pricing tiers side by side.
@@ -208,7 +208,7 @@
 
 [STAT: Total cost of ownership for a specific scenario (e.g., "For a 10-person team with 100K monthly users")]
 
-[INFO-GAIN: hidden cost insight] Share a pricing detail that isn't obvious from the pricing page -- something you discovered during actual usage (overage charges, required add-ons, support tier limitations).
+[INFO-GAIN: hidden cost insight] Share a pricing detail that isn't obvious from the pricing page: something you discovered during actual usage (overage charges, required add-ons, support tier limitations).
 
 ---
 
@@ -233,7 +233,7 @@
 >
 > **Agencies managing multiple client sites:** Choose Astro for marketing/content sites, Next.js for web applications. Most agencies end up using both.
 >
-> If neither fits -- you need a full-stack framework with batteries included -- look at Remix or SvelteKit.
+> If neither fits: you need a full-stack framework with batteries included: look at Remix or SvelteKit.
 
 ---
 
@@ -304,7 +304,7 @@ Before publishing, verify:
 
 - [ ] Title includes both product names, a differentiator, and the current year
 - [ ] TL;DR box delivers a clear verdict in under 60 words
-- [ ] Introduction establishes timeliness -- why this comparison matters *now*
+- [ ] Introduction establishes timeliness: why this comparison matters *now*
 - [ ] Quick comparison table uses specific metrics, not vague ratings
 - [ ] Every category section opens by naming the winner (answer-first)
 - [ ] Every category section evaluates both products with comparable depth and fairness
@@ -319,5 +319,5 @@ Before publishing, verify:
 - [ ] Verdict table summarizes category winners clearly
 - [ ] All [INTERNAL-LINK] zones have contextual links to related content
 - [ ] Word count falls within 1,500-2,000 range
-- [ ] Both products are treated fairly -- no strawman arguments
+- [ ] Both products are treated fairly: no strawman arguments
 - [ ] Meta description written (under 160 characters, includes both product names)

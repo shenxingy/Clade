@@ -15,22 +15,32 @@ argument-hint: "<file-path>"
 license: MIT
 ---
 
-# Blog Analyzer -- Quality Audit & Scoring
+# Blog Analyzer: Quality Audit & Scoring
 
 Scores blog posts on a 0-100 scale across 5 categories and provides prioritized
 improvement recommendations. Includes AI content detection analysis. Works with
 local files or published URLs.
 
-Reference documents:
-- `references/quality-scoring.md` -- full scoring checklist
-- `references/eeat-signals.md` -- E-E-A-T evaluation criteria
+Reference documents (paths from repo root):
+- `skills/blog/references/quality-scoring.md`: full scoring checklist
+- `skills/blog/references/eeat-signals.md`: E-E-A-T evaluation criteria
+- `skills/blog/references/ai-slop-detection.md`: two-tier reflex methodology (v1.8.0)
+- `skills/blog/references/editorial-heuristics.md`: ordinal 0-4 rubric, P0-P3 severity (v1.8.0, used with `--rubric`)
+- `skills/blog/references/cognitive-load.md`: per-section concept density (v1.8.0, used with `--cognitive-load`)
 
 ## Input Handling
 
 - **Local file**: Read the file directly
 - **URL**: Fetch with WebFetch, extract content
 - **Directory**: Scan for blog files, audit all (batch mode)
-- **Flags**: `--format json|table`, `--batch`, `--sort score`
+- **Flags**: `--format json|table`, `--batch`, `--sort score`, `--rubric`, `--cognitive-load`
+
+### Optional Modes (v1.8.0)
+
+- `--rubric`: in addition to the 100-point score, emit the ordinal 0-4 editorial-heuristics rubric with P0-P3 severity tags. See `skills/blog/references/editorial-heuristics.md`. The 100-point JSON schema is preserved; the rubric is added as a sibling `rubric` field.
+- `--cognitive-load`: run `scripts/cognitive_load.py` against the post and embed the per-section load heatmap as a sibling `cognitive_load` field. See `skills/blog/references/cognitive-load.md`.
+
+Both modes are additive. The default behavior (no flags) is unchanged from v1.7.1.
 
 ## Scoring Process
 
@@ -126,7 +136,7 @@ Analyze the post for AI-generated content risk:
 - AI writing: low variance (consistently medium-length sentences)
 - Score: 0-10 scale (10 = very human-like burstiness)
 
-**Known AI Phrase Detection** -- flag occurrences of these 17 phrases:
+**Known AI Phrase Detection**: flag occurrences of these 17 phrases:
 1. "It's important to note"
 2. "In today's digital landscape"
 3. "Delve into"
@@ -166,6 +176,36 @@ Analyze the post for AI-generated content risk:
 | 60-69 | Below Standard | Significant rework required |
 | < 60 | Rewrite | Fundamental issues, start from outline |
 
+### Step 4.5: Optional Ordinal Rubric (--rubric)
+
+When `--rubric` is passed, additionally score the post on the 10 editorial heuristics defined in `skills/blog/references/editorial-heuristics.md`. Each heuristic gets a 0-4 score and a severity tag (P0 / P1 / P2 / P3 / none).
+
+The rubric does NOT replace the 100-point score. It runs alongside and surfaces which findings are blocking versus which are polish.
+
+Output the rubric as either:
+- Markdown table (default) appended to the main report under a `### Editorial Heuristics Rubric` heading.
+- JSON `rubric` field when `--format json` is in use.
+
+Rubric JSON schema:
+```json
+{
+  "rubric": {
+    "heuristics": [
+      { "id": 1, "name": "Visibility of intent", "score": 3, "severity": "P2", "note": "Summary box generic" },
+      ...
+    ],
+    "p0_count": 0,
+    "p1_count": 1,
+    "p2_count": 2,
+    "p3_count": 3
+  }
+}
+```
+
+### Step 4.6: Optional Cognitive Load Heatmap (--cognitive-load)
+
+When `--cognitive-load` is passed, run `scripts/cognitive_load.py <file> --format json` and embed the result under a `cognitive_load` field in JSON output, or append a `### Cognitive Load Heatmap` markdown section in markdown output. See `skills/blog/references/cognitive-load.md` for thresholds and interpretation.
+
 ### Step 5: Generate Report
 
 Default output format (Markdown):
@@ -173,7 +213,7 @@ Default output format (Markdown):
 ```
 ## Blog Quality Report: [Title]
 
-**Score: [X]/100** -- [Rating]
+**Score: [X]/100** - [Rating]
 
 ### Score Breakdown
 | Category | Score | Max | Notes |
@@ -189,7 +229,7 @@ Default output format (Markdown):
 - **Burstiness score**: [X]/10 ([human-like / moderate / flat])
 - **AI phrases detected**: [N] ([list phrases found])
 - **Vocabulary diversity (TTR)**: [X] ([high / acceptable / low])
-- **AI probability**: [X]% -- [No concern / Review recommended / High risk]
+- **AI probability**: [X]% - [No concern / Review recommended / High risk]
 - **Flagged passages**: [quote specific flat or formulaic sections, if any]
 
 ### Issues Found
@@ -219,7 +259,7 @@ Default output format (Markdown):
 - OG/social tags: [present/missing]
 
 ### Recommended Actions
-1. [Most impactful fix -- Critical items first]
+1. [Most impactful fix: Critical items first]
 2. [Second most impactful]
 3. [Third]
 
@@ -283,9 +323,9 @@ summary table. Use `--sort score` to order by score (ascending by default).
 | post-3.md | 71 | Acceptable | 20/30 | 16/25 | 10/15 | 12/15 | 13/15 | 25% | No answer-first |
 
 ### Priority Queue (Lowest Scoring First)
-1. post-2.md (42) -- Full rewrite needed, high AI content risk
-2. post-3.md (71) -- Answer-first formatting + stats needed
-3. post-1.md (85) -- Add OG tags, minor polish
+1. post-2.md (42): Full rewrite needed, high AI content risk
+2. post-3.md (71): Answer-first formatting + stats needed
+3. post-1.md (85): Add OG tags, minor polish
 
 Run `/blog rewrite <file>` on each, starting from lowest score.
 ```

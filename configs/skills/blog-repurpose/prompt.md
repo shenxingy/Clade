@@ -11,7 +11,7 @@ argument-hint: "<file-path>"
 license: MIT
 ---
 
-# Blog Repurpose -- Cross-Platform Content Adaptation
+# Blog Repurpose: Cross-Platform Content Adaptation
 
 Transforms blog posts into platform-optimized content for social media, email,
 video, and community channels. Each output adapts tone, format, and length to

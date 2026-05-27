@@ -1,4 +1,4 @@
-# Content Structure Rules -- Dual Optimization
+# Content Structure Rules: Dual Optimization
 
 ## Contents
 
@@ -13,7 +13,7 @@
 - [Anti-Pattern Detection](#anti-pattern-detection)
 - [Content Length Guidelines](#content-length-guidelines)
 - [Citation & Statistics Rules (GEO)](#citation--statistics-rules-geo)
-- [Information Gain -- The Key Differentiator](#information-gain----the-key-differentiator)
+- [Information Gain: The Key Differentiator](#information-gain----the-key-differentiator)
 - [Meta Description Formula](#meta-description-formula)
 - [Citation Format](#citation-format)
 - [Citation Tiers](#citation-tiers)
@@ -281,7 +281,7 @@ fabrication risks in quality scoring.
 
 Drop unverifiable stats. Replace contradicted stats with verified alternatives. See `flow-alignment.md`.
 
-## Information Gain -- The Key Differentiator
+## Information Gain: The Key Differentiator
 
 Google's Information Gain patent (US11354342B2, 2022) rewards content with
 novel data points beyond what top-ranking results cover. AI synthesizes

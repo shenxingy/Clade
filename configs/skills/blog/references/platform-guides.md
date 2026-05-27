@@ -271,7 +271,7 @@ Use standard HTML attributes (not camelCase) in `.astro` and `.md` files:
 ```
 
 ### Key Configuration Notes
-- Static output by default (SSG) -- ideal for AI crawlers without JS execution
+- Static output by default (SSG): ideal for AI crawlers without JS execution
 - Markdown files support raw HTML/SVG natively (no unsafe config needed)
 - For MDX support: add `@astrojs/mdx` integration
 - Sitemap: add `@astrojs/sitemap` integration with `site` config
@@ -449,7 +449,7 @@ Jekyll uses the kramdown renderer, which passes through raw HTML:
 </figure>
 ```
 
-No special configuration needed -- kramdown does not strip HTML by default.
+No special configuration needed: kramdown does not strip HTML by default.
 
 ### Liquid Templates
 
@@ -573,9 +573,9 @@ Use the Custom HTML block:
 
 ### Custom Fields for Structured Data
 Use ACF (Advanced Custom Fields) or native custom fields:
-- `last_updated` -- for dateModified in schema
-- `author_bio` -- for E-E-A-T author section
-- `faq_items` -- for FAQ schema generation
+- `last_updated`: for dateModified in schema
+- `author_bio`: for E-E-A-T author section
+- `faq_items`: for FAQ schema generation
 
 ### Featured Image
 Set via the "Featured Image" panel in the post editor sidebar. This image
@@ -699,7 +699,7 @@ taxonomies:
 
 ### Key Configuration Notes
 - Ghost handles structured data (JSON-LD) automatically
-- Default output is server-rendered HTML -- AI crawlers can access content
+- Default output is server-rendered HTML: AI crawlers can access content
 - Newsletters: Ghost has built-in email sending for subscriber lists
 - Membership: tiers and paid content built-in
 - Themes: install via Ghost Admin > Settings > Design
@@ -733,9 +733,9 @@ JavaScript (`.11ty.js`), and more. Nunjucks is the most common choice.
 
 ### Data Cascade
 11ty merges data from multiple sources (highest to lowest priority):
-1. **File data** -- frontmatter in the content file
-2. **Directory data** -- `blog.json` in the content directory
-3. **Global data** -- files in `_data/` directory
+1. **File data**: frontmatter in the content file
+2. **Directory data**: `blog.json` in the content directory
+3. **Global data**: files in `_data/` directory
 
 ```json
 // blog/blog.json (applies to all files in blog/)
@@ -796,7 +796,7 @@ module.exports = function(eleventyConfig) {
 ```
 
 ### Key Configuration Notes
-- Static output by default -- ideal for AI crawlers
+- Static output by default: ideal for AI crawlers
 - No build-step JS unless explicitly added (fast pages)
 - Collections: use `tags` in frontmatter to group content
 - Filters: add custom Nunjucks filters in `.eleventy.js` for date formatting
@@ -923,12 +923,12 @@ exports.createPages = async ({ graphql, actions }) => {
 ```
 
 ### Key Configuration Notes
-- Static output at build time -- AI crawlers get full HTML
+- Static output at build time: AI crawlers get full HTML
 - Use `gatsby-plugin-sitemap` for sitemap generation
 - Use `gatsby-plugin-robots-txt` for robots.txt configuration
 - `gatsby-plugin-react-helmet` or Gatsby Head API for meta tags
 - JSON-LD: use `gatsby-plugin-schema-snapshot` or inline in Head component
-- Build can be slow for large sites -- consider incremental builds
+- Build can be slow for large sites: consider incremental builds
 
 ---
 
@@ -1092,7 +1092,7 @@ Place in `<head>` for FAQPage:
 ```
 
 ### Key Configuration Notes
-- No framework dependency -- works with any hosting
+- No framework dependency: works with any hosting
 - AI crawlers can read static HTML without JS execution
 - Manually manage OG/Twitter meta tags in `<head>`
 - Use `loading="lazy"` and `decoding="async"` on images for performance
@@ -1116,10 +1116,10 @@ Place in `<head>` for FAQPage:
 
 ### Universal Requirements (All Platforms)
 
-1. **Static or server-rendered HTML** -- AI crawlers cannot execute JavaScript
-2. **TTFB under 200ms** -- AI crawlers timeout at 3-5 seconds
-3. **Schema in HTML source** -- not injected via client-side JS
-4. **robots.txt allowing AI crawlers** -- GPTBot, ClaudeBot, PerplexityBot
-5. **Sitemap at /sitemap.xml** -- helps all crawlers discover content
-6. **OG meta tags** -- required for social sharing previews
-7. **dateModified in schema** -- critical for freshness signals
+1. **Static or server-rendered HTML**: AI crawlers cannot execute JavaScript
+2. **TTFB under 200ms**: AI crawlers timeout at 3-5 seconds
+3. **Schema in HTML source**: not injected via client-side JS
+4. **robots.txt allowing AI crawlers**: GPTBot, ClaudeBot, PerplexityBot
+5. **Sitemap at /sitemap.xml**: helps all crawlers discover content
+6. **OG meta tags**: required for social sharing previews
+7. **dateModified in schema**: critical for freshness signals

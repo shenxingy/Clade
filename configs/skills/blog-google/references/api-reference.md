@@ -52,7 +52,7 @@ for Lighthouse lab scores.
 
 Same request format as CrUX API. Returns up to **40 weekly collection periods** (~10 months)
 as timeseries arrays (`p75s[]`, `densities[]`). Default is 25; configurable via
-`collectionPeriodCount` parameter (range: 1–40).
+`collectionPeriodCount` parameter (range: 1-40).
 
 - Updated **Mondays** ~04:00 UTC.
 - Each period = 28-day rolling average ending on a Sunday.
@@ -72,7 +72,7 @@ Current as of March 2026. INP replaced FID on March 12, 2024.
 | **INP** | ≤ 200ms | 200-500ms | > 500ms |
 | **CLS** | ≤ 0.1 | 0.1-0.25 | > 0.25 |
 
-**Diagnostic metrics (not CWV — informational only):**
+**Diagnostic metrics (not CWV - informational only):**
 
 | Metric | Good | Needs Improvement | Poor |
 |--------|------|-------------------|------|

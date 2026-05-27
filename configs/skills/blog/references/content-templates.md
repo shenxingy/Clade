@@ -34,7 +34,7 @@ optimization elements get forgotten, and writing takes longer.
 
 A well-followed template naturally produces content that scores 75+ on the
 quality scoring checklist (see `references/quality-scoring.md`). Templates
-do not constrain creativity -- they ensure the structural foundations are
+do not constrain creativity: they ensure the structural foundations are
 in place so the writer can focus on delivering unique value.
 
 ---
@@ -91,14 +91,14 @@ guide the writer (and `/blog write`) on what content each section needs.
 Every template, regardless of content type, follows this outer structure:
 
 ```
-# [Title -- Question Format with Primary Keyword]
+# [Title: Question Format with Primary Keyword]
 
 ## Introduction (100-150 words)
 - Hook: [Surprising stat or counterintuitive finding]
 - Problem/opportunity: [Why the reader should care]
 - Promise: [What they'll learn by reading]
 
-## H2: [Section -- usually Question Format] (word count)
+## H2: [Section: usually Question Format] (word count)
 [ANSWER-FIRST]: 40-60 words, stat + source, direct answer
 [CONTENT]: Topic coverage guidance
 [INFO-GAIN]: Where unique perspective is needed
@@ -253,7 +253,7 @@ H2: [Core Subtopic 3] [ANSWER-FIRST] [IMAGE] [INTERNAL-LINK]
 H2: [Core Subtopic 4] [ANSWER-FIRST] [VISUAL: donut-chart]
 H2: [Advanced Topic] [INFO-GAIN: expert-insight] [INTERNAL-LINK]
 H2: Tools and Resources [STAT]
-H2: FAQ [FAQ] (5-8 items -- more than standard)
+H2: FAQ [FAQ] (5-8 items: more than standard)
 Conclusion (learning path + next steps)
 ```
 
@@ -374,7 +374,7 @@ credibility and E-E-A-T trust.
 ### news-analysis
 
 **When to use**: Timely commentary on industry events, algorithm updates,
-and announcements. Speed matters -- publish within 24-48 hours.
+and announcements. Speed matters: publish within 24-48 hours.
 
 **Structure**:
 ```
@@ -414,7 +414,7 @@ Conclusion (summary of findings + data access)
 ```
 
 **Visual plan**: 3-4 charts (data visualizations are central to this type).
-Charts ARE the content -- they should be the primary focus of each finding section.
+Charts ARE the content: they should be the primary focus of each finding section.
 
 **Differentiator**: Original data is the entire value proposition. B2B SaaS
 websites conducting original research saw 25.1% average increase in top-10
@@ -446,7 +446,7 @@ Conclusion (additional resources + [INTERNAL-LINK])
 structure itself provides the value.
 
 **Special requirements**: Every answer must contain a specific statistic.
-FAQPage schema is critical for this type -- it directly impacts SERP features
+FAQPage schema is critical for this type: it directly impacts SERP features
 and AI citation rates (+28%, per sponsored SEL article).
 
 ---
@@ -516,7 +516,7 @@ of the scoring rubric. The template ensures nothing is forgotten.
 ### Modifying an Existing Template
 
 Templates are editable markdown files in `~/.claude/skills/templates/`.
-Changes take effect immediately -- no restart needed.
+Changes take effect immediately: no restart needed.
 
 1. Open the template file you want to modify
 2. Adjust section structure, word count targets, or marker placement

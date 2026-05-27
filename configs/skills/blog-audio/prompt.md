@@ -14,10 +14,10 @@ argument-hint: "[generate|voices|setup] [file-or-text] [--mode summary|full|dial
 license: MIT
 metadata:
   author: AgriciDaniel
-  version: "1.0.0"
+  version: "1.9.1"
 ---
 
-# Blog Audio -- Gemini TTS Narration for Blog Posts
+# Blog Audio: Gemini TTS Narration for Blog Posts
 
 Generate professional audio narration of blog content using Google's Gemini TTS.
 Three modes: summary (200-300 word spoken overview), full article read-aloud,
@@ -59,7 +59,7 @@ echo $GOOGLE_AI_API_KEY
 - If not set: guide the user:
   "Audio generation requires a Google AI API key. Get one free at https://aistudio.google.com/apikey
    Then set it: `export GOOGLE_AI_API_KEY=your-key`
-   This is the same key used by `/blog image` -- if image generation works, audio works too."
+   This is the same key used by `/blog image`: if image generation works, audio works too."
 - **When called internally** (from blog-write): return silently if key is missing.
   Never block the writing workflow.
 
@@ -175,11 +175,11 @@ python3 scripts/run.py generate_audio.py \
 ### Step 6: Deliver
 
 Present the result to the user:
-1. **File path** -- where the audio was saved
-2. **Duration** -- human-readable (e.g., "3:42")
-3. **Embed code** -- ready-to-paste HTML5 audio tag
-4. **Cost** -- estimated API cost
-5. **Placement suggestion** -- where to insert the embed in the blog post
+1. **File path**: where the audio was saved
+2. **Duration**: human-readable (e.g., "3:42")
+3. **Embed code**: ready-to-paste HTML5 audio tag
+4. **Cost**: estimated API cost
+5. **Placement suggestion**: where to insert the embed in the blog post
 
 ## Embedding Guide
 
@@ -241,9 +241,9 @@ blog-write because audio generation is unavailable.
 | Text too long (>32k tokens) | Split into sections, generate separately |
 | Unknown voice name | Run `/blog audio voices` to see valid options |
 | API error | Check key validity, model availability (preview models) |
-| API key missing (internal call) | Return silently -- writing workflow continues |
+| API key missing (internal call) | Return silently: writing workflow continues |
 
 ## Reference Documentation
 
-Load on-demand -- do NOT load all at startup:
-- `references/voices.md` -- Full 30-voice catalog, recommendations by content type, dialogue pairings
+Load on-demand: do NOT load all at startup:
+- `references/voices.md`: Full 30-voice catalog, recommendations by content type, dialogue pairings

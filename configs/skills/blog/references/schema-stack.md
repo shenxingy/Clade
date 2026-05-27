@@ -12,7 +12,7 @@
 - [VideoObject Schema](#videoobject-schema)
 - [Speakable Schema](#speakable-schema)
 - [Stable @id Patterns](#stable-id-patterns)
-- [Deprecated Schema Types -- NEVER Use](#deprecated-schema-types----never-use)
+- [Deprecated Schema Types: NEVER Use](#deprecated-schema-types----never-use)
 - [ProfilePage Schema (Author Pages)](#profilepage-schema-author-pages)
 - [JSON-LD @graph Pattern](#json-ld-graph-pattern)
 - [Schema Validation Checklist](#schema-validation-checklist)
@@ -21,7 +21,7 @@
 
 72% of first-page results use structured data markup. Pages using 3+ schema
 types have approximately 13% higher likelihood of AI citation. Schema must
-appear in HTML source -- not injected via JavaScript -- because most AI crawlers
+appear in HTML source: not injected via JavaScript: because most AI crawlers
 do not execute JS.
 
 ---
@@ -33,7 +33,7 @@ metadata in a single structured entity.
 
 ### Full Property Reference
 
-**Note:** Google states "there are no required properties" for BlogPosting — all properties
+**Note:** Google states "there are no required properties" for BlogPosting - all properties
 below are recommended. `@context` and `@type` are required by the JSON-LD spec itself.
 
 | Property | Status | Type | Description |
@@ -251,7 +251,7 @@ Each breadcrumb item requires `@type`, `position`, `name`, and `item` (URL).
 
 **Important**: Since August 2023, Google restricted FAQ rich results to government and health
 authority websites only. For all other sites, **no FAQ rich results will appear in Google
-Search** — the markup produces no visual search enhancement.
+Search** - the markup produces no visual search enhancement.
 
 However, the markup is still worth including for AI citation reasons: LLMs parse your page's
 **visible FAQ text** (not the JSON-LD) and Q&A-formatted content improves extractability for
@@ -493,7 +493,7 @@ Instead of embedding a full Person object in every BlogPosting, reference the
 
 ---
 
-## Deprecated Schema Types -- NEVER Use
+## Deprecated Schema Types: NEVER Use
 
 These types have been deprecated by Google. Using them does not cause penalties
 but wastes implementation effort and may trigger rich result validation warnings.
@@ -503,9 +503,9 @@ but wastes implementation effort and may trigger rich result validation warnings
 | HowTo | Yes | September 2023 | Rich results removed entirely |
 | SpecialAnnouncement | Yes | July 2025 | COVID-era, no longer processed |
 | ClaimReview | Yes | June 2025 | Google structured data simplification; no longer generates rich results |
-| Practice Problem | Yes | -- | Educational, no longer generates rich results |
-| Dataset | Yes | -- | For general search; still works in Google Dataset Search |
-| Sitelinks Search Box | Yes | -- | Google generates these algorithmically now |
+| Practice Problem | Yes |: | Educational, no longer generates rich results |
+| Dataset | Yes |: | For general search; still works in Google Dataset Search |
+| Sitelinks Search Box | Yes |: | Google generates these algorithmically now |
 | Q&A | Yes | January 2026 | Replaced by community forum features |
 
 ### What to Use Instead

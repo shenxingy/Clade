@@ -2,7 +2,7 @@
 
 Complete CLI documentation for all NotebookLM skill scripts.
 
-## run.py -- Universal Script Runner
+## run.py: Universal Script Runner
 
 Always use `run.py` to execute any script. It handles venv creation,
 dependency installation, Chrome setup, and proper execution.
@@ -11,7 +11,7 @@ dependency installation, Chrome setup, and proper execution.
 python3 scripts/run.py <script_name>.py [arguments]
 ```
 
-## ask_question.py -- Query Interface
+## ask_question.py: Query Interface
 
 Ask questions to NotebookLM notebooks with automated browser interaction.
 
@@ -55,7 +55,7 @@ python3 scripts/run.py ask_question.py --question "..." --show-browser
 
 **Returns:** Answer text with follow-up prompt. Timeout: 120 seconds.
 
-## notebook_manager.py -- Library Management
+## notebook_manager.py: Library Management
 
 CRUD operations for the notebook library.
 
@@ -102,7 +102,7 @@ python3 scripts/run.py ask_question.py \
 # Then use discovered info for the add command
 ```
 
-## auth_manager.py -- Authentication
+## auth_manager.py: Authentication
 
 Handle Google authentication and browser state.
 
@@ -121,11 +121,11 @@ python3 scripts/run.py auth_manager.py clear    # Clear all auth data
 | `reauth` | Clear and re-setup authentication |
 | `clear` | Remove all authentication data |
 
-**Auth architecture:** Hybrid approach -- persistent browser profile for
+**Auth architecture:** Hybrid approach: persistent browser profile for
 fingerprint consistency + manual cookie injection from state.json
 (Playwright bug #36139 workaround).
 
-## cleanup_manager.py -- Data Cleanup
+## cleanup_manager.py: Data Cleanup
 
 Clean skill data with preservation options.
 

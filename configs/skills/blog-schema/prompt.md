@@ -11,7 +11,7 @@ argument-hint: "<file-path>"
 license: MIT
 ---
 
-# Blog Schema -- JSON-LD Structured Data Generation
+# Blog Schema: JSON-LD Structured Data Generation
 
 Generates complete, validated JSON-LD schema markup for blog posts using the
 @graph pattern. Combines multiple schema types into a single script tag with

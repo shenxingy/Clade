@@ -60,7 +60,7 @@ Use `--show-browser` to visually debug.
 
 ### Rate limit exceeded (50 queries/day)
 
-**Option 1: Wait** -- resets at midnight PST
+**Option 1: Wait**: resets at midnight PST
 
 **Option 2: Switch accounts**
 ```bash
@@ -85,7 +85,7 @@ python3 scripts/run.py notebook_manager.py activate --id correct-id
 ## Virtual Environment Issues
 
 ### ModuleNotFoundError
-**Always use `run.py`** -- it handles venv automatically:
+**Always use `run.py`**: it handles venv automatically:
 ```bash
 python3 scripts/run.py [any_script].py   # Creates .venv if needed
 ```

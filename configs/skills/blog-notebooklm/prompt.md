@@ -14,16 +14,16 @@ argument-hint: "[ask|discover|library|setup|status|cleanup] [question-or-url]"
 license: MIT
 metadata:
   author: AgriciDaniel
-  version: "1.0.0"
+  version: "1.9.1"
   source: "https://github.com/PleasePrompto/notebooklm-skill"
 ---
 
-# Blog NotebookLM -- Source-Grounded Research from Your Documents
+# Blog NotebookLM: Source-Grounded Research from Your Documents
 
 Query Google NotebookLM notebooks directly from Claude Code for citation-backed
 answers from Gemini. Each question opens a headless browser session, retrieves
 the answer exclusively from your uploaded documents, and closes. Responses are
-Tier 1 quality (user's own primary sources) -- zero hallucination risk.
+Tier 1 quality (user's own primary sources): zero hallucination risk.
 Answers satisfy the FLOW evidence triple: use the returned source title as the
 inline citation and the notebook URL plus retrieval date as the bibliography
 entry. This is the highest-confidence path to meeting the "verified source"
@@ -133,12 +133,12 @@ python3 scripts/run.py ask_question.py --question "..." --show-browser
 
 ### Step 4: Analyze and Follow Up
 Every response ends with a follow-up prompt. **Required behavior:**
-1. **STOP** -- do not immediately respond to the user
-2. **ANALYZE** -- compare the answer to the user's original request
-3. **IDENTIFY GAPS** -- determine if more information is needed
-4. **ASK FOLLOW-UP** -- if gaps exist, immediately ask a follow-up question
-5. **REPEAT** -- continue until information is complete
-6. **SYNTHESIZE** -- combine all answers before responding to the user
+1. **STOP**: do not immediately respond to the user
+2. **ANALYZE**: compare the answer to the user's original request
+3. **IDENTIFY GAPS**: determine if more information is needed
+4. **ASK FOLLOW-UP**: if gaps exist, immediately ask a follow-up question
+5. **REPEAT**: continue until information is complete
+6. **SYNTHESIZE**: combine all answers before responding to the user
 
 ## Smart Discovery Workflow
 
@@ -198,7 +198,7 @@ When invoked as a Task subagent from blog-write or blog-researcher:
 - `context`: "internal" (signals graceful fallback mode)
 
 **Process:**
-1. Check auth status -- if not authenticated, return empty result silently
+1. Check auth status: if not authenticated, return empty result silently
 2. Query the notebook with the research question
 3. Parse and return structured response
 
@@ -218,9 +218,9 @@ Never block blog-write or blog-rewrite because NotebookLM is unavailable.
 ## Data Storage
 
 All data stored inside the skill directory:
-- `scripts/data/library.json` -- Notebook metadata and library
-- `scripts/data/auth_info.json` -- Authentication status
-- `scripts/data/browser_state/` -- Chrome profile with cookies
+- `scripts/data/library.json`: Notebook metadata and library
+- `scripts/data/auth_info.json`: Authentication status
+- `scripts/data/browser_state/`: Chrome profile with cookies
 
 **Security:** All data directories are gitignored. Never commit auth or browser state.
 
@@ -234,7 +234,7 @@ All data stored inside the skill directory:
 | Rate limit (50/day) | Wait until midnight PST or switch Google account |
 | Notebook not found | Check with `notebook_manager.py list` |
 | Query timeout (120s) | Retry with simpler question or `--show-browser` to debug |
-| MCP unavailable (internal) | Return silently -- writing workflow uses WebSearch |
+| MCP unavailable (internal) | Return silently: writing workflow uses WebSearch |
 
 ## Limitations
 
@@ -246,6 +246,6 @@ All data stored inside the skill directory:
 
 ## Reference Documentation
 
-Load on-demand -- do NOT load all at startup:
-- `references/commands.md` -- Full CLI commands, parameters, and workflow patterns
-- `references/troubleshooting.md` -- Error solutions, recovery procedures, debugging
+Load on-demand: do NOT load all at startup:
+- `references/commands.md`: Full CLI commands, parameters, and workflow patterns
+- `references/troubleshooting.md`: Error solutions, recovery procedures, debugging

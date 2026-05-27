@@ -81,6 +81,21 @@ def save_config(path: Path, config: dict) -> None:
     print(f"Config saved to {path}")
 
 
+def _mask_api_key(key: str) -> str:
+    """Mask an API key for safe display (VULN-S01).
+
+    Shows the first 4 and last 4 chars with stars between. For short keys
+    (<10 chars), returns a length-only placeholder so we never reveal more
+    than half the key. Terminal scrollback, tmux logs, and screen recordings
+    all preserve stdout; this helper keeps the literal key out of the echo.
+    """
+    if not key:
+        return "(not set)"
+    if len(key) < 10:
+        return f"<{len(key)} chars>"
+    return f"{key[:4]}****{key[-4:]}"
+
+
 def _is_git_tracked(path: Path) -> bool:
     """Return True if path is tracked by git in its containing repo."""
     import subprocess
@@ -181,8 +196,14 @@ def setup_mcp(api_key: str, use_global: bool) -> None:
     if not use_global:
         print()
         print("Project mode uses env-expansion (never writes literal key).")
-        print("Add this line to your shell rc (~/.bashrc or ~/.zshrc):")
-        print(f"  export GOOGLE_AI_API_KEY={api_key}")
+        print("Add this line to your shell rc (~/.bashrc or ~/.zshrc),")
+        print("substituting the API key you just entered for <YOUR_KEY>:")
+        # VULN-S01 (v1.9.1): do NOT echo the literal key. Terminal scrollback,
+        # tmux logs, and recording sessions all preserve stdout. Mask the
+        # value; the user already entered it, so a placeholder + first/last
+        # 4-char hint is enough to confirm the intended export.
+        masked = _mask_api_key(api_key)
+        print(f"  export GOOGLE_AI_API_KEY=<YOUR_KEY>   # hint: {masked}")
         print("Then restart your shell + Claude Code.")
     else:
         print()

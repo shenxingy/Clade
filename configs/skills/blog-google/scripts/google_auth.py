@@ -237,6 +237,9 @@ def _refresh_oauth_token(client: dict, token_data: dict) -> Optional[dict]:
         token_data["expires_at"] = time.time() + new_data.get("expires_in", 3600)
         if "refresh_token" in new_data:  # Google now sometimes rotates these
             token_data["refresh_token"] = new_data["refresh_token"]
+        # AUTH-001 (v1.9.1): strip client_secret on every save so older
+        # token files migrate forward the first time they're refreshed.
+        token_data.pop("client_secret", None)
         _save_oauth_token(token_data)
         return token_data
     except Exception as e:
@@ -275,12 +278,27 @@ def get_oauth_credentials(scopes: list):
         if token_data and token_data.get("access_token"):
             try:
                 from google.oauth2.credentials import Credentials
+                # AUTH-001 (v1.9.1): client_secret is no longer stored in
+                # the token file. Re-read from config["oauth_client_path"]
+                # so the long-lived app credential stays in its own
+                # 0o600 file (and is referenced, not duplicated).
+                # Backwards-compat: legacy token files still containing
+                # client_secret are honored (token_data.get fallback)
+                # until v1.10.0 makes oauth_client_path mandatory.
+                client_secret = None
+                oauth_creds_path = config.get("oauth_client_path")
+                if oauth_creds_path:
+                    client = _load_oauth_client(os.path.expanduser(oauth_creds_path))
+                    if client:
+                        client_secret = client.get("client_secret")
+                if client_secret is None:
+                    client_secret = token_data.get("client_secret")  # legacy compat
                 return Credentials(
                     token=token_data["access_token"],
                     refresh_token=token_data.get("refresh_token"),
                     token_uri="https://oauth2.googleapis.com/token",
                     client_id=token_data.get("client_id"),
-                    client_secret=token_data.get("client_secret"),
+                    client_secret=client_secret,
                 )
             except ImportError:
                 print("Error: google-auth required. Install with: pip install google-auth", file=sys.stderr)
@@ -339,7 +357,7 @@ def run_oauth_flow(creds_path: str, services: list = None):
                 self.send_response(403)
                 self.send_header("Content-Type", "text/plain")
                 self.end_headers()
-                self.wfile.write(b"State mismatch -- possible CSRF. Aborted.")
+                self.wfile.write(b"State mismatch - possible CSRF. Aborted.")
                 return
             if "code" in params:
                 auth_code[0] = params["code"][0]
@@ -399,7 +417,12 @@ def _exchange_code(client: dict, code: str):
             token_data = json.loads(resp.read())
         token_data["expires_at"] = time.time() + token_data.get("expires_in", 3600)
         token_data["client_id"] = client["client_id"]
-        token_data["client_secret"] = client["client_secret"]
+        # AUTH-001 (v1.9.1): client_secret is NO LONGER stored in the token
+        # file. Co-locating the long-lived app credential with the
+        # short-lived access token expands blast radius if the token file
+        # leaks. Refresh paths re-read client_secret from
+        # config["oauth_client_path"] instead. See get_oauth_credentials.
+        token_data.pop("client_secret", None)
         _save_oauth_token(token_data)
         print("OAuth token saved successfully!")
 
@@ -647,7 +670,7 @@ Google SEO API Setup Instructions
    - Web Search Indexing API (for Indexing API)
    - Google Analytics Data API (for GA4)
 
-3. CREATE AN API KEY (for PSI, CrUX -- free, no service account needed)
+3. CREATE AN API KEY (for PSI, CrUX - free, no service account needed)
    - APIs & Services > Credentials > Create Credentials > API key
    - Restrict to: PageSpeed Insights API, Chrome UX Report API
 
@@ -776,7 +799,7 @@ def main():
         if args.json:
             print(json.dumps(tier_info, indent=2))
         else:
-            print(f"Credential Tier: {tier_info['tier']} -- {tier_info['description']}")
+            print(f"Credential Tier: {tier_info['tier']} - {tier_info['description']}")
             if tier_info["capabilities"]:
                 print(f"Available APIs: {', '.join(tier_info['capabilities'])}")
             if tier_info["missing"]:
@@ -803,7 +826,7 @@ def main():
             print(json.dumps(output, indent=2))
         else:
             tier_info = detect_tier()
-            print(f"Credential Tier: {tier_info['tier']} -- {tier_info['description']}")
+            print(f"Credential Tier: {tier_info['tier']} - {tier_info['description']}")
             print()
             for svc, result in results.items():
                 status = "OK" if result["available"] else "MISSING"
@@ -822,7 +845,7 @@ def main():
     if args.json:
         print(json.dumps(tier_info, indent=2))
     else:
-        print(f"Credential Tier: {tier_info['tier']} -- {tier_info['description']}")
+        print(f"Credential Tier: {tier_info['tier']} - {tier_info['description']}")
         if tier_info["missing"]:
             print(f"Run --setup for configuration instructions.")
 
