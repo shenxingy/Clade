@@ -14,7 +14,7 @@
 
 **Autonomous coding, evolved.**
 
-103 skills, 24 hooks, 34 agents, a safety guardian, and a correction learning loop — all working together so Claude codes better, catches its own mistakes, and can run unattended overnight while you sleep.
+122 skills, 25 hooks, 34 agents, a safety guardian, and a correction learning loop — all working together so Claude codes better, catches its own mistakes, and can run unattended overnight while you sleep.
 
 > If this saves you time, a star helps others find it. Something broken? [Open an issue](https://github.com/shenxingy/clade/issues/new/choose).
 
@@ -26,7 +26,7 @@
 2. [MCP Server](#mcp-server--use-skills-in-any-ai-editor)
 3. [What It Does](#what-it-does)
 4. [Self-Learning Mechanisms](#self-learning-mechanisms)
-5. [Skills](#skills-103)
+5. [Skills](#skills-122)
 6. [Supported Languages](#supported-languages)
 7. [Documentation](#documentation)
 8. [Repo Structure](#repo-structure)
@@ -58,7 +58,7 @@ See [MCP Server](#mcp-server--use-skills-in-any-ai-editor) below for configurati
 
 ## MCP Server — Use Skills in Any AI Editor
 
-The MCP server exposes all 103 Clade skills as callable tools via the [Model Context Protocol](https://modelcontextprotocol.io). Works with any MCP-compatible client.
+The MCP server exposes all 122 Clade skills as callable tools via the [Model Context Protocol](https://modelcontextprotocol.io). Works with any MCP-compatible client.
 
 **Claude Desktop / Claude Code:**
 ```json
@@ -91,7 +91,7 @@ The MCP server exposes all 103 Clade skills as callable tools via the [Model Con
 | You correct Claude | `correction-detector.sh` | Logs correction, prompts Claude to save a reusable rule |
 | Claude marks task done | `verify-task-completed.sh` | Adaptive quality gate: compile + lint, build + test in strict mode |
 
-See [How It Works](docs/how-it-works.md) for the full hook reference (24 hooks).
+See [How It Works](docs/how-it-works.md) for the full hook reference (25 hooks).
 
 ## Self-Learning Mechanisms
 
@@ -104,7 +104,7 @@ Both work on any project Claude Code is run in (universal, in `~/.claude/scripts
 
 See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, detectors, schemas, and tunable env vars.
 
-## Skills (103)
+## Skills (122)
 
 ### Core Workflow
 
