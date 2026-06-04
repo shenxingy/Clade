@@ -1,6 +1,8 @@
-# Migrating from Hermes Agent
+**English**（中文版尚未提供 — [README 中文版](../README.zh-CN.md)）
 
-[← Back to README](../README.md)
+← Back to [README](../README.md)
+
+# Migrating from Hermes Agent
 
 This page is for users who have been running [Hermes Agent](https://github.com/NousResearch/hermes-agent) and want to add Clade to their setup, or vice versa.
 

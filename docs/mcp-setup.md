@@ -1,3 +1,7 @@
+**English**（中文版尚未提供 — [README 中文版](../README.zh-CN.md)）
+
+← Back to [README](../README.md)
+
 # MCP Setup Guide
 
 Model Context Protocol (MCP) servers extend Claude workers with additional capabilities: web search, browser automation, filesystem access, database queries, and more.

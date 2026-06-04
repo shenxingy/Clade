@@ -1,4 +1,4 @@
-**English** | [中文](when-to-use-what.zh-CN.md)
+**English**（中文版尚未提供 — [README 中文版](../README.zh-CN.md)）
 
 [Back to README](../README.md)
 

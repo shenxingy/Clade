@@ -1,4 +1,4 @@
-[English](throughput.md) | [中文](throughput.zh-CN.md)
+**English**（中文版尚未提供 — [README 中文版](../README.zh-CN.md)）
 
 ← Back to [README](../README.md)
 
