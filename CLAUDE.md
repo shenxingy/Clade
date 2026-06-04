@@ -2,13 +2,13 @@
 
 ## Project Type
 - Type: cli + skill-system
-- Frontend: N/A (orchestrator has vanilla JS UI but not the primary interface)
+- Frontend: Vite + React + TypeScript UI under orchestrator/web/src/ (served from web/dist; not the primary interface)
 - Backend: FastAPI (orchestrator/, port 8000) — optional, CLI layer works standalone
 - Test command: cd orchestrator && .venv/bin/python -m pytest tests/ -v
-- Verify command: cd orchestrator && python -m py_compile server.py session.py session_tree.py task_queue.py worker.py swarm.py worker_tldr.py worker_review.py worker_utils.py worker_hydrate.py condensers.py config.py github_sync.py ideas.py process_manager.py event_stream.py tracing.py reactions.py routes/tasks.py routes/workers.py routes/webhooks.py routes/ideas.py routes/process.py
+- Verify command: cd orchestrator && find . \( -name .venv -o -name node_modules -o -name __pycache__ \) -prune -o -name "*.py" -print | xargs -n1 python -m py_compile
 
 ## Features (Behavior Anchors)
-- install.sh: running `./install.sh` copies skills/hooks/scripts/keybindings to ~/.claude/ without errors
+- install.sh: running `./install.sh` copies skills/hooks/scripts/agents to ~/.claude/ without errors
 - slt: running `slt` cycles the statusline mode (symbol → percent → number → off)
 - /commit: analyzes uncommitted changes, splits into logical commits by module, pushes by default
 - /loop: given a goal file, runs supervisor+worker iterations until converged or max-iter
@@ -25,7 +25,7 @@ A two-layer automation toolkit on top of Claude Code CLI:
 ## Key Commands
 
 ```bash
-# Install CLI layer (skills, hooks, keybindings)
+# Install CLI layer (skills, hooks, scripts, agents)
 ./install.sh
 
 # slt — statusline-toggle (quota pace indicator). See /slt skill.
@@ -36,8 +36,8 @@ cd orchestrator && uvicorn server:app --reload
 # Run tests
 cd orchestrator && .venv/bin/python -m pytest tests/ -v
 
-# Syntax check (all Python modules)
-cd orchestrator && python -m py_compile server.py session.py session_tree.py task_queue.py worker.py swarm.py worker_tldr.py worker_review.py worker_utils.py worker_hydrate.py condensers.py config.py github_sync.py ideas.py process_manager.py event_stream.py tracing.py reactions.py usage_tracker.py routes/tasks.py routes/workers.py routes/webhooks.py routes/ideas.py routes/process.py routes/usage.py
+# Syntax check (all Python modules — same find-based sweep CI runs)
+cd orchestrator && find . \( -name .venv -o -name node_modules -o -name __pycache__ \) -prune -o -name "*.py" -print | xargs -n1 python -m py_compile
 
 # Multi-machine usage tracking — see orchestrator/usage_tracker.py
 #   Hub:  start orchestrator normally, optionally set usage_ingest_token in ~/.claude/orchestrator-settings.json
@@ -56,54 +56,49 @@ cd orchestrator && python -m py_compile server.py session.py session_tree.py tas
 
 ### CLI Layer (`configs/`)
 - `skills/` — skill prompts invoked via `/skill-name` in Claude Code
-- `hooks/` — pre/post hooks for Claude Code events
+- `hooks/` — pre/post hooks for Claude Code events (wired via `settings-hooks.json`)
 - `scripts/` — shell utilities (e.g., `committer.sh`)
-- `keybindings.json` — Claude Code keyboard shortcuts
+- `agents/` — subagent definitions for the Agent tool
 
 ### Orchestrator Layer (`orchestrator/`)
 Key modules (import DAG — leaf → root):
 
 ```
-config.py            ← leaf: constants, settings, utilities
-ideas.py             ← leaf: IdeasManager, async idea CRUD (no project imports)
-process_manager.py   ← leaf: ProcessPool, start.sh lifecycle (no project imports)
-worker_tldr.py       ← leaf: TLDR generation + scoring (no project imports)
-worker_review.py     ← leaf: oracle + PR review (no project imports)
+# Leaves (no project imports)
+config.py            ← constants, settings, utilities
+ideas.py             ← IdeasManager, async idea CRUD
+process_manager.py   ← ProcessPool, start.sh lifecycle
+worker_tldr.py       ← TLDR generation, localization, fault location, scoring
+worker_review.py     ← oracle + PR review
+worker_utils.py      ← output helpers, lint reflection, LoopDetectionService
+worker_hydrate.py    ← _pre_hydrate (GitHub issue/PR pre-hydration)
+condensers.py        ← Condenser ABC + implementations
+event_stream.py      ← crash-safe JSONL event logging
+tracing.py           ← TracingService, task spans
+reactions.py         ← ReactionExecutor
+error_classifier.py  ← error classify/summarize + retry decisions
+session_tree.py      ← SessionTree
+usage_tracker.py     ← multi-machine ccusage ingestion (used by routes/usage.py)
+compression_feedback.py ← compression UX feedback (consumed by /handoff skill)
     ↑
+# Mid-tier
 github_sync.py       ← gh CLI wrappers (issues, push, sync)
 task_queue.py        ← SQLite-backed task CRUD
+swarm.py             ← SwarmManager (extracted from worker.py)
+worker_taskfile.py   ← build_task_file: task file construction + context injection
     ↑
-worker.py            ← WorkerPool, SwarmManager
-session.py           ← ProjectSession, registry, status_loop
+worker.py            ← Worker, WorkerPool — core execution engine
+session.py           ← ProjectSession, registry, status_loop (lazy-imports task_factory/)
     ↑
-server.py            ← FastAPI app, remaining routes, router mounts
-mcp_server.py        ← MCP server exposing skills as MCP tools (stdio transport)
+# Roots
+server.py            ← FastAPI app, remaining routes, mounts all routes/* routers
+mcp_server.py        ← standalone MCP entrypoint exposing skills (stdio transport)
 routes/tasks.py      ← Task CRUD + bulk-action routes
 routes/workers.py    ← Worker control + inspection routes
 routes/webhooks.py   ← GitHub webhook handler
 routes/ideas.py      ← Ideas API routes (CRUD, evaluate, execute, promote)
 routes/process.py    ← Process manager API routes
-```
-
-```
-config.py            ← leaf: constants, settings, utilities
-ideas.py             ← leaf: IdeasManager, async idea CRUD (no project imports)
-process_manager.py   ← leaf: ProcessPool, start.sh lifecycle (no project imports)
-worker_tldr.py       ← leaf: TLDR generation + scoring (no project imports)
-worker_review.py     ← leaf: oracle + PR review (no project imports)
-    ↑
-github_sync.py       ← gh CLI wrappers (issues, push, sync)
-task_queue.py        ← SQLite-backed task CRUD
-    ↑
-worker.py            ← WorkerPool, SwarmManager
-session.py           ← ProjectSession, registry, status_loop
-    ↑
-server.py            ← FastAPI app, remaining routes, router mounts
-routes/tasks.py      ← Task CRUD + bulk-action routes
-routes/workers.py    ← Worker control + inspection routes
-routes/webhooks.py   ← GitHub webhook handler
-routes/ideas.py      ← Ideas API routes (CRUD, evaluate, execute, promote)
-routes/process.py    ← Process manager API routes
+routes/usage.py      ← Usage dashboard API routes
 ```
 
 ### Key File Map
@@ -111,22 +106,25 @@ routes/process.py    ← Process manager API routes
 |------|---------|
 | `config.py` | `GLOBAL_SETTINGS`, `_ALLOWED_TASK_COLS`, model aliases, cost utils |
 | `task_queue.py` | SQLite CRUD for tasks, loops, messages, interventions |
-| `worker.py` | `WorkerPool`, `SwarmManager`, core execution engine |
+| `worker.py` | `Worker`, `WorkerPool` — core execution engine |
+| `swarm.py` | `SwarmManager` (extracted from worker.py; re-exported there) |
+| `worker_taskfile.py` | `build_task_file` — task file construction + context injection |
 | `worker_tldr.py` | `_generate_code_tldr`, `_score_task` — TLDR + scoring (leaf) |
 | `worker_review.py` | `_write_pr_review`, `_oracle_review`, `_write_progress_entry` (leaf) |
+| `worker_utils.py` | Output helpers, lint reflection, `LoopDetectionService` (leaf) |
 | `session.py` | `ProjectSession`, `SessionRegistry`, `status_loop()` |
 | `server.py` | FastAPI app, session/loop/swarm/usage/settings routes, WebSocket |
 | `github_sync.py` | GitHub issue create/update/pull/push via `gh` CLI |
 | `ideas.py` | `IdeasManager` — async idea CRUD, AI evaluation, promotion |
 | `process_manager.py` | `ProcessPool`, `StartProcess` — start.sh lifecycle control |
+| `usage_tracker.py` | Multi-machine ccusage ingestion (`~/.claude/orchestrator/usage.db`) |
 | `routes/tasks.py` | Task CRUD + bulk-action routes (13 handlers) |
 | `routes/workers.py` | Worker control + inspection routes (9 handlers) |
 | `routes/ideas.py` | Ideas API routes (CRUD, evaluate, execute, promote) |
-| `web/index.html` | Single-page UI shell (served at `/web/index.html`) |
-| `web/app-core.js` | Core state, WebSocket, session tabs, settings |
-| `web/app-dashboard.js` | Tasks, workers, process cards, queue management |
-| `web/app-viewers.js` | Log viewer, usage bar, history, GitHub sync, portfolio |
-| `web/app-ideas.js` | Ideas inbox UI, evaluation cards, execute/promote actions |
+| `routes/usage.py` | Usage dashboard API routes |
+| `web/src/` | Vite + React + TypeScript UI source (App.tsx, components/, stores/, hooks/, lib/) |
+| `web/index.html` | Vite shell (`<div id="root">` + main.tsx); server serves `web/dist` build when present |
+| `web/usage.html` | Standalone usage dashboard (served at `/web/usage.html`) |
 
 ## Settings
 
@@ -149,8 +147,8 @@ Conventional commit types: `feat` / `fix` / `refactor` / `test` / `chore` / `doc
 
 Before committing, ensure CI will pass by running locally:
 ```bash
-# 1. Python syntax check (all modules)
-cd orchestrator && python -m py_compile server.py session.py session_tree.py task_queue.py worker.py swarm.py worker_tldr.py worker_review.py worker_utils.py worker_hydrate.py condensers.py config.py github_sync.py ideas.py process_manager.py event_stream.py tracing.py reactions.py routes/tasks.py routes/workers.py routes/webhooks.py routes/ideas.py routes/process.py
+# 1. Python syntax check (all modules — same find-based sweep CI runs)
+cd orchestrator && find . \( -name .venv -o -name node_modules -o -name __pycache__ \) -prune -o -name "*.py" -print | xargs -n1 python -m py_compile
 
 # 2. Tests
 cd orchestrator && .venv/bin/python -m pytest tests/ -v
