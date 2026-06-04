@@ -141,10 +141,24 @@ if [[ -f "$SCRIPT_DIR/configs/models.env" ]]; then
   echo "  Installed models.env (canonical model IDs)"
 fi
 
-# Deploy global CLAUDE.md (agent ground rules)
+# Deploy global CLAUDE.md (agent ground rules).
+# Preserve learning-system sections appended locally by auto-audit.sh
+# (## Cross-Project Rules) — a plain cp would clobber them on every install.
 if [[ -f "$SCRIPT_DIR/configs/CLAUDE.md" ]]; then
+  _XPR_TMP=""
+  if [[ -f "$CLAUDE_DIR/CLAUDE.md" ]] && grep -q '^## Cross-Project Rules' "$CLAUDE_DIR/CLAUDE.md"; then
+    _XPR_TMP=$(mktemp)
+    awk '/^## Cross-Project Rules/{found=1} found' "$CLAUDE_DIR/CLAUDE.md" > "$_XPR_TMP"
+  fi
   cp "$SCRIPT_DIR/configs/CLAUDE.md" "$CLAUDE_DIR/CLAUDE.md"
-  echo "  Installed CLAUDE.md (agent ground rules)"
+  if [[ -n "$_XPR_TMP" && -s "$_XPR_TMP" ]]; then
+    printf '\n' >> "$CLAUDE_DIR/CLAUDE.md"
+    cat "$_XPR_TMP" >> "$CLAUDE_DIR/CLAUDE.md"
+    rm -f "$_XPR_TMP"
+    echo "  Installed CLAUDE.md (agent ground rules; preserved Cross-Project Rules)"
+  else
+    echo "  Installed CLAUDE.md (agent ground rules)"
+  fi
 fi
 
 # ─── 6. Copy commands ────────────────────────────────────────────────
