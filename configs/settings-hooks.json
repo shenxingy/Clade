@@ -162,6 +162,17 @@
             {
                 "hooks": [
                     {
+                        "id": "iloop-continue",
+                        "description": "In-session iterative loop: when .claude/iloop.local.md is active, block exit and re-feed the task prompt (see /iloop skill)",
+                        "type": "command",
+                        "command": "~/.claude/hooks/iloop-hook.sh",
+                        "timeout": 10
+                    }
+                ]
+            },
+            {
+                "hooks": [
+                    {
                         "id": "stop-completeness-check",
                         "description": "LLM check that all user tasks are complete before stopping",
                         "type": "prompt",
