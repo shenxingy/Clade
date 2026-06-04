@@ -894,7 +894,8 @@ async def status_loop():
                 if GLOBAL_SETTINGS.get("auto_scale", False) and not _swarm_active:
                     _running_now = sum(1 for w in session.worker_pool.all() if w.status == "running")
                     _pending_now = len([t for t in _auto_tasks if t["status"] == "pending"])
-                    _max_w = GLOBAL_SETTINGS.get("max_workers", 8) or 8
+                    # max_workers=0 means "no global cap" — auto-scaling still caps at 8 for safety
+                    _max_w = GLOBAL_SETTINGS.get("max_workers", 0) or 8
                     _spawn_cooldown = getattr(session, '_last_autoscale', 0)
                     if _global_max > 0 and _global_running >= _global_max:
                         pass  # skip auto-scaling, global cap hit

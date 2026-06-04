@@ -7,6 +7,7 @@ Extracted modules (keep worker.py under 1500 lines):
 - condensers.py      — Condenser ABC + 4 implementations
 - worker_utils.py    — output helpers, lint reflection, LoopDetectionService
 - worker_hydrate.py  — _pre_hydrate (Stripe Blueprint pre-hydration)
+- worker_taskfile.py — build_task_file (task file construction + context injection)
 - config.py          — _build_tool_flags, _parse_task_type, _TOOL_SUBSETS
 - worker_tldr.py     — _generate_code_tldr, _score_task
 - worker_review.py   — _oracle_review, _write_pr_review
@@ -35,22 +36,15 @@ from config import (
     _parse_token_usage,
     _build_tool_flags,
     _parse_task_type,
-    _parse_task_schema,
-    _format_task_schema_block,
 )
 from task_queue import TaskQueue
 from github_sync import _gh_update_issue_status
 from session_tree import SessionTree
-from worker_tldr import (
-    _generate_code_tldr, _localize_tldr_for_task, _localize_fault,
-    _prune_tldr_to_entities, _parse_fault_entity_names,
-    _generate_repro_test, _sbfl_prepass, _span_evict_tldr,
-)
 from worker_review import _oracle_review, _summarize_worker_completion
+from worker_taskfile import build_task_file
 from event_stream import EventStream
 from tracing import TracingService, start_task_span
 from reactions import ReactionExecutor
-from condensers import ObservationMaskingCondenser
 from error_classifier import (
     classify as _classify_error,
     summarize as _summarize_error,
@@ -60,12 +54,10 @@ from error_classifier import (
 from worker_utils import (
     _distill_output, _truncate_output, _strip_error_context,
     _run_lint_check, _extract_lint_targets, _run_project_tests, LoopDetectionService,
-    _capture_test_baseline, _run_intramorphic_check, _rank_tasks,
+    _run_intramorphic_check, _rank_tasks,
     _parse_observation_contract,
     MAX_LINES, MAX_BYTES, DISTILL_THRESHOLD, MAX_REFLECTION_RETRIES,
-    EDIT_DISCIPLINE_BLOCK, SEARCH_CONVENTIONS_BLOCK, COMPLETION_CONTRACT_BLOCK,
 )
-from worker_hydrate import _pre_hydrate
 
 logger = logging.getLogger(__name__)
 
@@ -249,215 +241,8 @@ class Worker:
             self._worktree_path = None
 
     async def _build_task_file(self, task_queue: TaskQueue | None) -> Path:
-        """Set up log path and write the task file with injected context. Returns task file path."""
-        logs = self._claude_dir / "orchestrator-logs"
-        logs.mkdir(parents=True, exist_ok=True)
-        self._log_path = logs / f"worker-{self.id}.log"
-        self.log_file = str(self._log_path)
-
-        # Initialize EventStream JSONL path for crash-safe event logging
-        jsonl_path = logs / f"events-{self.id}.jsonl"
-        self._event_stream.set_jsonl_path(jsonl_path)
-        self._event_stream.emit(
-            event_type="state_change",
-            event_kind="state_change",
-            source="supervisor",
-            content={"state": "started", "task_id": self.task_id, "model": self.model},
-        )
-
-        task_file = self._claude_dir / f"task-{self.id}.md"
-        task_file.parent.mkdir(parents=True, exist_ok=True)
-
-        # Prepend project CLAUDE.md + AGENTS.md for context injection
-        effective_description = self.description
-        context_blocks = []
-        claude_md = self._claude_dir / "CLAUDE.md"
-        if claude_md.exists():
-            try:
-                claude_content = claude_md.read_text(errors="replace").strip()
-                if claude_content:
-                    context_blocks.append(f"# Project Context (from .claude/CLAUDE.md)\n\n{claude_content}")
-            except Exception:
-                pass
-        agents_md = self._claude_dir / "AGENTS.md"
-        if not agents_md.exists():
-            agents_md = self._project_dir / "AGENTS.md"
-        if agents_md.exists():
-            try:
-                agents_content = agents_md.read_text(errors="replace").strip()
-                if agents_content:
-                    context_blocks.append(f"# File Ownership (from AGENTS.md)\n\n{agents_content}")
-            except Exception:
-                pass
-        try:
-            tldr = _generate_code_tldr(str(self._original_project_dir))
-            if tldr:
-                # Two-phase localization (Moatless pattern): when TLDR is large,
-                # ask haiku to narrow to the top-5 most relevant files for this task.
-                if len(tldr) > 4096:
-                    tldr = await _localize_tldr_for_task(
-                        self.description, tldr, self._original_project_dir
-                    )
-                # Fault localization pre-pass (Agentless §6A): for fix/bug tasks,
-                # predict likely change locations to tighten worker focus.
-                # Run before appending TLDR so we can entity-prune it (Sweep §Gap1).
-                task_type = _parse_task_type(self.description)
-                fault_locs = ""
-                if task_type == "fix":
-                    fault_locs = await _localize_fault(
-                        self.description, tldr, self._original_project_dir
-                    )
-                    if fault_locs:
-                        # Sweep §Gap1: entity-level TLDR pruning.
-                        # Use suspect_functions from fault localization to filter
-                        # TLDR down to only the relevant entities in each file.
-                        entity_names = _parse_fault_entity_names(fault_locs)
-                        if entity_names:
-                            tldr = _prune_tldr_to_entities(tldr, entity_names)
-                        # Sweep §Gap2: add caller hints for suspect functions.
-                        caller_hints = await _find_caller_hints(
-                            fault_locs, self._original_project_dir
-                        )
-                        if caller_hints:
-                            fault_locs += f"\n\n{caller_hints}"
-                # Moatless §Gap3: span-level FileContext with token budget.
-                # Preserve fault-localized files; evict others. Inject hint
-                # when spans dropped so worker fetches more via MCP tools.
-                span_budget = int(GLOBAL_SETTINGS.get("context_span_budget", 6000))
-                priority_files = re.findall(r'`([^`]+\.(?:py|js|ts|tsx))`', fault_locs) if fault_locs else []
-                tldr, n_evicted = _span_evict_tldr(tldr, span_budget, priority_files)
-                context_blocks.append(f"# Codebase Structure (auto-generated)\n\n{tldr}")
-                if n_evicted > 0:
-                    context_blocks.append(
-                        f"# Context Retrieval\n\n{n_evicted} file span(s) evicted to fit budget. "
-                        f"Use clade_search_class / clade_search_method / clade_search_code "
-                        f"MCP tools to retrieve additional spans on demand."
-                    )
-                if fault_locs:
-                    context_blocks.append(fault_locs)
-                # For fix tasks: run repro test generation + SBFL pre-pass concurrently.
-                if task_type == "fix":
-                    repro_task = asyncio.create_task(
-                        _generate_repro_test(self.description, tldr, self._original_project_dir)
-                    )
-                    sbfl_task = asyncio.create_task(
-                        _sbfl_prepass(self._original_project_dir)
-                    )
-                    repro_test, sbfl_block = await asyncio.gather(repro_task, sbfl_task)
-                    if sbfl_block:
-                        context_blocks.append(sbfl_block)
-                    if repro_test:
-                        context_blocks.append(repro_test)
-        except Exception:
-            pass
-        # Pre-hydration: fetch linked GitHub issues/PRs before agent starts (Stripe Blueprint pattern)
-        try:
-            hydrate_block = await _pre_hydrate(self.description, self._project_dir)
-            if hydrate_block:
-                context_blocks.append(hydrate_block)
-        except Exception:
-            pass
-        # Apply ObservationMaskingCondenser to truncate any oversized context block before
-        # writing the task file — prevents multi-hundred-KB task files from large GitHub issues
-        # or deeply nested project structures. Each block treated as an observation event.
-        if context_blocks:
-            _ctx_condenser = ObservationMaskingCondenser(max_obs_bytes=8192)
-            _ctx_events = [{"type": "observation", "content": b} for b in context_blocks]
-            context_blocks = [e["content"] for e in _ctx_condenser.condense(_ctx_events)]
-            effective_description = "\n\n---\n\n".join(context_blocks) + f"\n\n---\n\n# Task\n\n{self.description}"
-        # Inject recent sibling completions (multi-agent context archival).
-        # Workers gain awareness of what was recently accomplished — prevents duplicate
-        # work and allows continuation of previously established patterns.
-        if task_queue:
-            try:
-                recent = await task_queue.get_recent_completions(
-                    exclude_task_id=self.task_id, limit=5, since_seconds=86400
-                )
-                if recent:
-                    lines = ["## Recently Completed Tasks"]
-                    for r in recent:
-                        lines.append(f"- [{r['id']}] {r['completion_summary']}")
-                    effective_description += "\n\n---\n\n" + "\n".join(lines) + "\n"
-            except Exception:
-                pass
-            # Context versioning (Multi-agent Gap 1): stamp this worker's task file
-            # with the current completion count. If codebase has changed since the task
-            # was queued, inject a staleness warning so the agent knows to re-read key files.
-            try:
-                current_version = await task_queue.get_context_version()
-                task_context_version = 0
-                task = await task_queue.get(self.task_id)
-                if task:
-                    task_context_version = task.get("context_version") or 0
-                self.context_version = current_version
-                await task_queue.stamp_context_version(self.task_id)
-                stale_count = current_version - task_context_version
-                if stale_count > 0:
-                    effective_description += (
-                        f"\n\n---\n\n"
-                        f"⚠ **Context Staleness Warning**: {stale_count} task(s) completed since "
-                        f"this task was queued. Codebase may have changed — re-read key files "
-                        f"before making assumptions about current state.\n"
-                    )
-            except Exception:
-                pass
-        # Inject unread messages from other tasks — also condense individual messages
-        # to prevent a large tool-output dump from one worker flooding another's context
-        if task_queue:
-            try:
-                messages = await task_queue.get_messages(self.task_id, unread_only=True)
-                if messages:
-                    _msg_condenser = ObservationMaskingCondenser(max_obs_bytes=2000)
-                    msg_block = "\n\n---\n**Messages from other tasks:**\n"
-                    for m in messages:
-                        sender = m.get("from_task_id") or "human"
-                        condensed = _msg_condenser.condense(
-                            [{"type": "observation", "content": m["content"]}]
-                        )
-                        msg_block += f"- [{sender}]: {condensed[0]['content']}\n"
-                    effective_description += msg_block
-                    await task_queue.mark_messages_read(self.task_id)
-            except Exception:
-                pass
-        # Multi-agent Gap 3: inject task schema (acceptance criteria + contracts) if present.
-        _schema_block = _format_task_schema_block(_parse_task_schema(self.description))
-
-        # AutoCodeRover §Gap2 + ECC strategic-compact: for fix tasks, inject explicit
-        # two-phase directive with phase-boundary checkpoint (not arbitrary token count).
-        _fix_two_phase = ""
-        if _parse_task_type(self.description) == "fix":
-            _fix_two_phase = (
-                "\n\n---\n\n"
-                "## Two-Phase Approach (AutoCodeRover §Gap2)\n"
-                "**Phase 1 — Explore first (make NO code changes):**\n"
-                "1. Read the suspect files identified above\n"
-                "2. Trace the execution path to the root cause\n"
-                "3. Identify the exact 1-5 lines that need to change\n"
-                "4. **Phase boundary**: write your findings to `.claude/ctx-checkpoint.md` "
-                "before making any edits (root cause, affected lines, intended fix).\n\n"
-                "**Phase 2 — Patch (after checkpoint written):**\n"
-                "1. Make the minimal targeted change — prefer 1-3 line edits\n"
-                "2. Verify the reproduction test passes (if provided above)\n"
-                "3. Run lint before committing\n"
-            )
-        task_file.write_text(
-            effective_description + _schema_block + _fix_two_phase
-            + EDIT_DISCIPLINE_BLOCK + SEARCH_CONVENTIONS_BLOCK + COMPLETION_CONTRACT_BLOCK
-        )
-
-        # OpenHands §Gap3: capture test baseline before worker edits (fix tasks only).
-        if _parse_task_type(self.description) == "fix" and self._project_dir:
-            try:
-                baseline = await _capture_test_baseline(self._project_dir, timeout=30)
-                if baseline:
-                    (self._claude_dir / "test-baseline.json").write_text(
-                        json.dumps(baseline)
-                    )
-                    logger.debug("Intramorphic baseline: %d tests for %s", len(baseline), self.task_id)
-            except Exception:
-                pass
-
-        return task_file
+        """Write the task file with injected context (see worker_taskfile.py)."""
+        return await build_task_file(self, task_queue)
 
     def _build_cmd_and_env(self, task_file: Path) -> tuple[str, dict]:
         """Resolve model alias, build shell command, and prepare env dict."""
