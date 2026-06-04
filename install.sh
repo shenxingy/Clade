@@ -98,7 +98,8 @@ echo "Generating available_skills.md..."
     [[ -f "$skill_md" ]] || continue
     name=$(awk '/^name:/{print $2}' "$skill_md" | tr -d '"' | tr -d "'")
     description=$(awk '/^description:/{print substr($0, index($0,$2))}' "$skill_md" | sed 's/^["'\''"]//;s/["'\''"]$//')
-    user_invocable=$(awk '/^user_invocable:/{print $2}' "$skill_md" | tr -d '"' | tr -d "'")
+    # Accept both spellings: first-party skills use user_invocable, upstream-synced ones user-invokable
+    user_invocable=$(awk '/^user_invocable:|^user-invokable:/{print $2}' "$skill_md" | tr -d '"' | tr -d "'")
     echo "## $name"
     echo "$description"
     if [[ "$user_invocable" == "true" ]]; then
