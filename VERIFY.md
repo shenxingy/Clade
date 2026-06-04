@@ -13,10 +13,10 @@
 
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
-| I1 | `./install.sh` runs without errors — no missing source files, no broken symlinks | ✅ | 2026-04-17 | 94 source skills (added poke/status/go this pass); install completes clean |
-| I2 | All skills from `configs/skills/` are installed to `~/.claude/skills/` | ✅ | 2026-04-17 | 94/94 skills installed; poke/status/go present in both source and installed dirs |
-| I3 | All hooks from `configs/hooks/` are installed to `~/.claude/hooks/` | ✅ | 2026-04-15 | 21/21 hooks installed; session-baseline.sh added this pass (companion to session-scoped stop-check) |
-| I4 | All scripts from `configs/scripts/` are installed to `~/.claude/scripts/` | ✅ | 2026-04-12 | 27/27 .sh scripts + subdirs seo/, ads/, blog/ Python scripts installed |
+| I1 | `./install.sh` runs without errors — no missing source files, no broken symlinks | ✅ | 2026-06-04 | 123 source skills (added iloop this pass); install completes clean |
+| I2 | All skills from `configs/skills/` are installed to `~/.claude/skills/` | ✅ | 2026-06-04 | 123/123 skills installed; iloop backported into configs/ this pass |
+| I3 | All hooks from `configs/hooks/` are installed to `~/.claude/hooks/` | ✅ | 2026-06-04 | 26/26 hooks installed; iloop-hook.sh added this pass (Stop hook for /iloop) |
+| I4 | All scripts from `configs/scripts/` are installed to `~/.claude/scripts/` | ✅ | 2026-06-04 | 29/29 .sh scripts + .py scripts + subdirs seo/, ads/, blog/ installed |
 | I5 | All templates from `configs/templates/` are installed to `~/.claude/templates/` | ✅ | 2026-04-12 | |
 | I6 | `~/.local/bin/slt` symlink exists and points to `statusline-toggle.sh` | ✅ | 2026-04-12 | |
 | I7 | `~/.local/bin/committer` symlink exists and points to `committer.sh` | ✅ | 2026-04-12 | |
@@ -45,7 +45,7 @@
 | H3 | `pre-tool-guardian.sh` allows `alembic upgrade` when dev-mode is ON | ✅ | 2026-04-10 | source verified: `if [[ "$DEV_MODE" == false ]]` gate at line 40 |
 | H4 | `pre-tool-guardian.sh` blocks `rm -rf /` regardless of dev-mode | ✅ | 2026-04-10 | source verified: lines 78-96 |
 | H5 | `pre-tool-guardian.sh` blocks `git push --force origin main` regardless of dev-mode | ✅ | 2026-04-10 | source verified: lines 99-108 |
-| H6 | All other hooks pass `bash -n` syntax check | ✅ | 2026-04-15 | all 21 hooks pass (session-baseline.sh added + stop-check.sh rewritten this pass) |
+| H6 | All other hooks pass `bash -n` syntax check | ✅ | 2026-06-04 | all 26 hooks pass (iloop-hook.sh added this pass) |
 | H7 | `pre-tool-guardian.sh` does NOT block when migration pattern appears only in a variable assignment string (false-positive fix) | ✅ | 2026-04-10 | SCANNABLE strips `VAR='...'` and `VAR="..."` lines (guardian.sh:47-50) |
 | H8 | `session-baseline.sh` captures sorted `git status --porcelain` output keyed by `session_id` at SessionStart, excluding `.claude/` paths | ✅ | 2026-04-15 | tested in /tmp repo: baseline file written to `.claude/sessions/<sid>.baseline`, `.claude/` paths filtered out |
 | H9 | `stop-check.sh` ignores pre-existing dirty files (present in baseline) and blocks only on session-produced changes — prevents deadlock between parallel CC sessions on same repo | ✅ | 2026-04-15 | tested: preexisting dirt → exit 0 silent; new session file → exit 2 with filename in output |
@@ -57,9 +57,9 @@
 
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
-| SH1 | All `configs/hooks/*.sh` pass `bash -n` | ✅ | 2026-04-15 | all 21 hooks pass |
-| SH2 | All `configs/scripts/*.sh` pass `bash -n` | ✅ | 2026-04-15 | all 28 scripts pass |
-| SH3 | `install.sh` passes `bash -n` | ✅ | 2026-04-15 | |
+| SH1 | All `configs/hooks/*.sh` pass `bash -n` | ✅ | 2026-06-04 | all 26 hooks pass |
+| SH2 | All `configs/scripts/*.sh` pass `bash -n` | ✅ | 2026-06-04 | all 29 scripts pass (setup-iloop.sh added this pass) |
+| SH3 | `install.sh` + `uninstall.sh` pass `bash -n` | ✅ | 2026-06-04 | uninstall.sh rewritten to derive removal lists from configs/ |
 
 ## Orchestrator — Python Syntax & Tests
 <!-- The orchestrator Python modules must compile and pass tests. -->
@@ -83,11 +83,11 @@
 | T5 | `configs/templates/CLAUDE.md` project template exists | ✅ | 2026-04-12 | |
 
 ## Skills Quality
-<!-- Each skill must have a valid prompt.md and SKILL.md. -->
+<!-- Each skill must have a valid SKILL.md. First-party skills also carry prompt.md; upstream-synced skills (email-*, some ads-*/blog-*/seo-*) are SKILL.md-only by design. -->
 
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
-| SK1 | Every dir in `configs/skills/` contains `prompt.md` | ✅ | 2026-04-17 | 94/94 skill dirs have prompt.md — poke/status/go initially had SKILL.md only; prompt.md split from SKILL.md body this pass. Fix committed. |
+| SK1 | Every dir in `configs/skills/` contains `SKILL.md` | ✅ | 2026-06-04 | 123/123 skill dirs have SKILL.md. 28 upstream-synced skills are SKILL.md-only (no prompt.md) by design — invariant updated from prompt.md to SKILL.md this pass. |
 | SK2 | `/review` skill: prompt.md contains all 7 steps and convergence condition | ✅ | 2026-04-15 | 9 steps total; original Steps 1-7 all present + new 5.4 (E2E) + 5.5 (SEO) |
 | SK3 | `/verify` skill: prompt.md contains VERIFY.md coverage section and `VERIFY_COVERAGE` footer field | ✅ | 2026-04-10 | |
 | SK4 | `/commit` skill: references `committer` script; `git add .` only appears in prohibition rule | ✅ | 2026-04-10 | |
