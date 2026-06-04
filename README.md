@@ -91,7 +91,7 @@ The MCP server exposes all 123 Clade skills as callable tools via the [Model Con
 | You correct Claude | `correction-detector.sh` | Logs correction, prompts Claude to save a reusable rule |
 | Claude marks task done | `verify-task-completed.sh` | Adaptive quality gate: compile + lint, build + test in strict mode |
 
-See [How It Works](docs/how-it-works.md) for the full hook reference (25 hooks).
+See [How It Works](docs/how-it-works.md) for the full hook reference (26 hooks).
 
 ## Self-Learning Mechanisms
 
