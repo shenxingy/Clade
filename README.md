@@ -14,7 +14,7 @@
 
 **Autonomous coding, evolved.**
 
-122 skills, 25 hooks, 34 agents, a safety guardian, and a correction learning loop — all working together so Claude codes better, catches its own mistakes, and can run unattended overnight while you sleep.
+123 skills, 26 hooks, 34 agents, a safety guardian, and a correction learning loop — all working together so Claude codes better, catches its own mistakes, and can run unattended overnight while you sleep.
 
 > If this saves you time, a star helps others find it. Something broken? [Open an issue](https://github.com/shenxingy/clade/issues/new/choose).
 
@@ -26,7 +26,7 @@
 2. [MCP Server](#mcp-server--use-skills-in-any-ai-editor)
 3. [What It Does](#what-it-does)
 4. [Self-Learning Mechanisms](#self-learning-mechanisms)
-5. [Skills](#skills-122)
+5. [Skills](#skills-123)
 6. [Supported Languages](#supported-languages)
 7. [Documentation](#documentation)
 8. [Repo Structure](#repo-structure)
@@ -58,7 +58,7 @@ See [MCP Server](#mcp-server--use-skills-in-any-ai-editor) below for configurati
 
 ## MCP Server — Use Skills in Any AI Editor
 
-The MCP server exposes all 122 Clade skills as callable tools via the [Model Context Protocol](https://modelcontextprotocol.io). Works with any MCP-compatible client.
+The MCP server exposes all 123 Clade skills as callable tools via the [Model Context Protocol](https://modelcontextprotocol.io). Works with any MCP-compatible client.
 
 **Claude Desktop / Claude Code:**
 ```json
@@ -104,7 +104,7 @@ Both work on any project Claude Code is run in (universal, in `~/.claude/scripts
 
 See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, detectors, schemas, and tunable env vars.
 
-## Skills (122)
+## Skills (123)
 
 ### Core Workflow
 
@@ -121,6 +121,7 @@ See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, de
 |-------|-------------|
 | `/start` | Autonomous session launcher — morning brief, overnight runs, cross-project patrol |
 | `/loop GOAL` | Goal-driven improvement loop — supervisor plans, workers execute in parallel |
+| `/iloop TASK` | In-session iterative loop — Stop hook re-prompts until done (no background workers) |
 | `/batch-tasks` | Execute TODO steps via unattended sessions (serial or parallel) |
 | `/orchestrate` | Decompose goals into tasks for worker execution |
 | `/handoff` | Save session state for context relay between agents |
@@ -162,7 +163,7 @@ See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, de
 | `/provider` | Switch LLM provider |
 | `slt` | Toggle statusline quota pace indicator |
 
-### Blog & Content (22 skills)
+### Blog & Content (30 skills)
 
 | Skill | What it does |
 |-------|-------------|
@@ -170,9 +171,9 @@ See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, de
 | `/blog-write` | Write SERP-informed articles from scratch |
 | `/blog-rewrite` | Optimize existing posts for quality and SEO |
 | `/blog-audit` | Full-site health scan (thin content, meta, cannibalization) |
-| + 18 more | analyze · audio · brief · calendar · chart · factcheck · geo · google · image · notebooklm · outline · persona · repurpose · schema · seo-check · strategy · taxonomy · cannibalization |
+| + 26 more | analyze · audio · brand · brief · calendar · cannibalization · chart · cluster · discourse · factcheck · flow · geo · google · image · locale-audit · localize · multilingual · notebooklm · outline · persona · repurpose · schema · seo-check · strategy · taxonomy · translate |
 
-### SEO (19 skills)
+### SEO (25 skills)
 
 | Skill | What it does |
 |-------|-------------|
@@ -180,9 +181,9 @@ See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, de
 | `/seo-technical` | Crawlability, indexability, Core Web Vitals |
 | `/seo-page` | Deep single-page analysis |
 | `/seo-content` | E-E-A-T and content quality scoring |
-| + 15 more | audit · backlinks · competitor-pages · dataforseo · geo · google · hreflang · image-gen · images · local · maps · plan · programmatic · schema · sitemap |
+| + 21 more | audit · backlinks · cluster · competitor-pages · content-brief · dataforseo · drift · ecommerce · flow · geo · google · hreflang · image-gen · images · local · maps · plan · programmatic · schema · sitemap · sxo |
 
-### Paid Ads (18 skills)
+### Paid Ads (23 skills)
 
 | Skill | What it does |
 |-------|-------------|
@@ -190,7 +191,16 @@ See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, de
 | `/ads-google` | Google Ads — Quality Score, PMax, bidding |
 | `/ads-meta` | Meta Ads — Pixel/CAPI, creative fatigue, Advantage+ |
 | `/ads-create` | Create new ad campaigns from brief |
-| + 14 more | apple · audit · budget · competitor · creative · dna · generate · landing · linkedin · microsoft · photoshoot · plan · tiktok · youtube |
+| + 19 more | amazon · apple · attribution · audit · budget · competitor · creative · dna · generate · landing · linkedin · math · microsoft · photoshoot · plan · server-side-tracking · test · tiktok · youtube |
+
+### Email (6 skills)
+
+| Skill | What it does |
+|-------|-------------|
+| `/email-write` | Compose high-converting emails (PAS, AIDA, BAB frameworks) |
+| `/email-audit` | Deliverability audit — SPF, DKIM, DMARC, blacklists, health score |
+| `/email-sequence` | Design automation sequences (welcome, nurture, re-engagement) |
+| + 3 more | check · plan · review |
 
 See [When to Use What](docs/when-to-use-what.md) for detailed usage guidance.
 
@@ -244,12 +254,12 @@ clade/
 │   ├── worker.py            # WorkerPool, SwarmManager
 │   ├── task_queue.py        # SQLite-backed task CRUD
 │   ├── mcp_server.py        # MCP server (local dev version)
-│   └── web/                 # Single-page dashboard
+│   └── web/                 # React + Vite dashboard (web/src/, served from web/dist)
 ├── configs/
-│   ├── skills/              # 93 skill definitions (SKILL.md + prompt.md)
-│   ├── hooks/               # 21 event hooks + lib/
-│   ├── agents/              # 35 agent definitions
-│   └── scripts/             # 27 shell + Python utilities
+│   ├── skills/              # 123 skill definitions (SKILL.md + prompt.md)
+│   ├── hooks/               # 26 event hooks + lib/
+│   ├── agents/              # 34 agent definitions
+│   └── scripts/             # 38 shell + Python utilities
 ├── adapters/openclaw/       # OpenClaw integration (mobile monitoring)
 ├── templates/               # Settings, CLAUDE.md, corrections templates
 └── docs/                    # Guides and research

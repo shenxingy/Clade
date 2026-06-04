@@ -3,7 +3,7 @@
   "facts": [
     {
       "name": "skills",
-      "value": 122,
+      "value": 123,
       "derive": {
         "type": "count_glob",
         "pattern": "configs/skills/*/"
@@ -17,7 +17,7 @@
     },
     {
       "name": "hooks",
-      "value": 25,
+      "value": 26,
       "derive": {
         "type": "count_glob",
         "pattern": "configs/hooks/*.sh"
@@ -40,7 +40,7 @@
     },
     {
       "name": "scripts",
-      "value": 28,
+      "value": 29,
       "derive": {
         "type": "count_glob",
         "pattern": "configs/scripts/*.sh"
