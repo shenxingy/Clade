@@ -1,4 +1,4 @@
-Research external tools/competitors/approaches for a given topic and write a structured analysis to BRAINSTORM.md.
+Research external tools/competitors/approaches for a given topic and write a structured analysis to BRAINSTORM.md (project-scoped topics) or `~/.claude/research/` (personal topics — see Rules).
 
 ## Capability Detection (run first)
 
@@ -41,6 +41,7 @@ Test by attempting a `WebSearch` call. If it fails or returns no results → fal
 - Be specific and actionable — "add OAuth2 login flow like tool X's 2-click setup" not "add authentication"
 - Mark entries as `[Research]` (not `[AI]`) so they're distinguishable in BRAINSTORM.md
 - Do NOT auto-process into GOALS.md or TODO.md — just write to BRAINSTORM.md inbox
+- **Personal-topic routing**: if the topic is the user's own infrastructure/accounts/hardware/life decisions rather than this project's domain, write the report to `~/.claude/research/{YYYY-MM-DD}-{slug}.md` INSTEAD of BRAINSTORM.md — personal context must never land in a git-tracked project file (apply the "stranger clones the repo, learns nothing about the user" test)
 
 
 ---
