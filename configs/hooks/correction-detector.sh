@@ -13,6 +13,12 @@ if [[ -z "$PROMPT" ]]; then
   exit 0
 fi
 
+# Prompts starting with markup are harness-injected (<task-notification>) or
+# pasted HTML dumps — not user corrections; they pollute the rule pipeline
+if [[ "$PROMPT" == \<* ]]; then
+  exit 0
+fi
+
 # Correction patterns (Chinese + English)
 # Matches: don't/别用/不要/错了/改回/wrong/revert/undo/actually...instead/should have/应该
 PATTERNS=(

@@ -129,10 +129,12 @@ run_auto_audit() {
   local cross_promoted=0
   local CROSS_FILE="$HOME/.claude/corrections/cross-project-rules.jsonl"
   if [[ "$timer_elapsed" -eq 1 ]] && [[ -f "$CROSS_FILE" ]] && command -v jq &>/dev/null; then
-    # Find rule_hashes appearing in 2+ projects
+    # Find rule_hashes appearing in 2+ DISTINCT projects. Counting raw
+    # occurrences let same-project repeats qualify (a prompt pasted twice in
+    # one repo promoted verbatim into global CLAUDE.md — the 2026-06 noise).
     local multi_project_hashes
-    multi_project_hashes=$(jq -r '.rule_hash' "$CROSS_FILE" 2>/dev/null \
-      | sort | uniq -c | sort -rn \
+    multi_project_hashes=$(jq -r '"\(.rule_hash)\t\(.project)"' "$CROSS_FILE" 2>/dev/null \
+      | sort -u | cut -f1 | uniq -c | sort -rn \
       | awk '$1 >= 2 {print $2}')
 
     local global_claude="$HOME/.claude/CLAUDE.md"
@@ -141,6 +143,10 @@ run_auto_audit() {
       local rule_text
       rule_text=$(jq -r --arg h "$hash" 'select(.rule_hash == $h) | .rule_text' "$CROSS_FILE" 2>/dev/null | head -1)
       [[ -z "$rule_text" ]] && continue
+
+      # Markup means pasted HTML or harness-injected <task-notification>,
+      # never a promotable rule
+      [[ "$rule_text" == \<* ]] && continue
 
       # Skip if already in global CLAUDE.md
       if rule_exists_in_file "$rule_text" "$global_claude"; then
