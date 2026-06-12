@@ -191,6 +191,9 @@ _ORACLE_PROMPT_TEMPLATE = (
     "decision MUST be 'APPROVED' unless at least one finding has severity 'error'. "
     "warning/info findings NEVER justify rejection — include them as findings with "
     "decision 'APPROVED'; they are logged as follow-ups, not discarded.\n"
+    "Each finding's fix_suggestion must cite concrete file:line evidence from the diff.\n"
+    "Do NOT reject for: style preferences, pre-existing issues this diff does not touch, "
+    "or issues outside the task scope.\n"
     "fix_guidance: empty string if APPROVED, else summary of all needed changes.\n\n"
     "Task: {task}\n\nDiff:\n{diff}"
 )
@@ -199,22 +202,53 @@ _ORACLE_PROMPT_TEMPLATE = (
 _ORACLE_SPEC_PROMPT = (
     "You are a spec compliance checker. Does this diff correctly implement the required task?\n"
     "Focus ONLY on correctness (does it do what was asked?) and completeness (all requirements met?).\n"
+    "For EACH acceptance criterion (when listed): verdict 'satisfied' is allowed ONLY with concrete\n"
+    "evidence from the diff (cite file:line or the relevant hunk); otherwise add a specific\n"
+    "violation to issues.\n"
+    "Do NOT fail for: style preferences, pre-existing issues this diff does not touch,\n"
+    "hypothetical edge cases outside the task scope, or missing tests for unrelated code.\n"
     "Respond with ONLY a JSON object — no preamble, no markdown:\n"
-    '{{"pass":true,"confidence":"high","issues":[]}}\n'
+    '{{"pass":true,"confidence":"high","issues":[],'
+    '"criteria":[{{"criterion":"<text>","verdict":"satisfied","evidence":"<file:line>"}}]}}\n'
     "OR:\n"
-    '{{"pass":false,"confidence":"high|medium|low","issues":["<specific spec violation>"]}}\n\n'
+    '{{"pass":false,"confidence":"high|medium|low","issues":["<specific spec violation>"],'
+    '"criteria":[{{"criterion":"<text>","verdict":"violated","evidence":"<what is missing>"}}]}}\n\n'
     "Task: {task}\n\nDiff:\n{diff}"
 )
 
 _ORACLE_QUALITY_PROMPT = (
     "You are a code quality reviewer. Does this diff introduce bugs, security issues, or serious defects?\n"
     "Focus ONLY on implementation quality — not spec compliance.\n"
+    "Every reported issue must cite concrete evidence from the diff (file:line or hunk).\n"
+    "Do NOT fail for: style preferences, pre-existing issues this diff does not touch,\n"
+    "or hypothetical edge cases with no evidence in the diff.\n"
     "Respond with ONLY a JSON object — no preamble, no markdown:\n"
     '{{"pass":true,"confidence":"high","issues":[]}}\n'
     "OR:\n"
     '{{"pass":false,"confidence":"high|medium|low","issues":["<specific quality issue>"]}}\n\n'
     "Diff:\n{diff}"
 )
+
+
+_ORACLE_TASK_DESC_CAP = 4000  # full task context for the grader (was 400 — criteria never reached the oracle)
+
+
+def _build_oracle_task_block(
+    task_description: str, acceptance_criteria: list[str] | None
+) -> str:
+    """Build the task block injected into oracle prompts.
+
+    claude-cookbooks rubric: the grader must see the FULL task description and
+    the parsed acceptance criteria — the old 400-char truncation silently
+    dropped both, reducing 'spec compliance' to a title check.
+    """
+    block = task_description[:_ORACLE_TASK_DESC_CAP]
+    if acceptance_criteria:
+        lines = ["", "", "Acceptance criteria (give a verdict for EACH):"]
+        for i, criterion in enumerate(acceptance_criteria[:10], 1):
+            lines.append(f"{i}. {str(criterion)[:200]}")
+        block += "\n".join(lines)
+    return block
 
 
 async def _oracle_pass(
@@ -327,8 +361,9 @@ async def _oracle_review_chunk(
     infra_error=True means the chunk was NOT reviewed (timeout, subprocess
     failure, unparseable output) — never report that as an approval.
     """
+    # Caller passes a pre-built task block (description + criteria); cap defensively.
     prompt = _ORACLE_PROMPT_TEMPLATE.format(
-        task=task_description[:400], diff=diff_chunk
+        task=task_description[:_ORACLE_TASK_DESC_CAP + 2500], diff=diff_chunk
     )
     if chunk_label:
         prompt = f"[Reviewing chunk: {chunk_label}]\n\n" + prompt
@@ -390,16 +425,24 @@ async def _oracle_review_chunk(
         prompt_file.unlink(missing_ok=True)
 
 
-async def _oracle_review(task_description: str, diff_text: str, claude_dir: Path) -> tuple[bool, str, bool]:
+async def _oracle_review(
+    task_description: str,
+    diff_text: str,
+    claude_dir: Path,
+    acceptance_criteria: list[str] | None = None,
+) -> tuple[bool, str, bool]:
     """Independent second-model review of a diff (Self-RAG multi-dimensional critique).
 
     For large diffs (> ORACLE_CHUNK_SIZE chars), reviews in chunks and merges findings.
     Qodo §Gap3: chunked review prevents large refactors from being auto-approved.
+    acceptance_criteria (claude-cookbooks rubric): parsed task-schema criteria the
+    grader must verdict one-by-one; injected with the FULL task description.
     Returns (approved, reason, infra_error) where reason contains structured fix
     guidance on rejection. infra_error=True means the diff was NOT (fully)
     reviewed — callers must tag the result 'unreviewed', never 'approved'
     (lovesegfault: fail-open must not masquerade as a review).
     """
+    task_block = _build_oracle_task_block(task_description, acceptance_criteria)
     # Chunk large diffs (Qodo §Gap3)
     if len(diff_text) > _ORACLE_CHUNK_SIZE:
         chunks = [
@@ -409,7 +452,7 @@ async def _oracle_review(task_description: str, diff_text: str, claude_dir: Path
         # Review first 3 chunks max to avoid excessive API calls
         chunks = chunks[:3]
         results = await asyncio.gather(*[
-            _oracle_review_chunk(task_description, chunk, f"{i+1}/{len(chunks)}", claude_dir)
+            _oracle_review_chunk(task_block, chunk, f"{i+1}/{len(chunks)}", claude_dir)
             for i, chunk in enumerate(chunks)
         ])
         # Aggregate: any real rejection → overall rejection (review DID happen);
@@ -426,7 +469,7 @@ async def _oracle_review(task_description: str, diff_text: str, claude_dir: Path
     # Short diff: two-pass review (Qodo §Gap1 — spec-check first, quality-check second)
     diff_excerpt = diff_text[:_ORACLE_CHUNK_SIZE]
     spec_prompt = _ORACLE_SPEC_PROMPT.format(
-        task=task_description[:400], diff=diff_excerpt
+        task=task_block, diff=diff_excerpt
     )
     quality_prompt = _ORACLE_QUALITY_PROMPT.format(diff=diff_excerpt)
 

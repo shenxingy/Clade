@@ -496,7 +496,7 @@ class TestRunOracleGate:
     async def test_infra_error_tags_unreviewed_not_approved(self, gate_worker, monkeypatch):
         monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "auto_oracle", True)
 
-        async def fake_review(desc, diff, cdir):
+        async def fake_review(desc, diff, cdir, acceptance_criteria=None):
             return True, "oracle timeout (45s)", True
 
         monkeypatch.setattr(wmod, "_oracle_review", fake_review)
@@ -513,7 +513,7 @@ class TestRunOracleGate:
         monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "notification_webhook", "http://h/x")
         escalations: list[tuple] = []
 
-        async def fake_review(desc, diff, cdir):
+        async def fake_review(desc, diff, cdir, acceptance_criteria=None):
             return True, "oracle subprocess error", True
 
         async def fake_escalate(project_dir, claude_dir, webhook, streak):
@@ -531,7 +531,7 @@ class TestRunOracleGate:
         monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "auto_oracle", True)
         escalations: list[int] = []
 
-        async def fake_review(desc, diff, cdir):
+        async def fake_review(desc, diff, cdir, acceptance_criteria=None):
             return True, "oracle subprocess error", True
 
         async def fake_escalate(*args):
@@ -548,7 +548,7 @@ class TestRunOracleGate:
     async def test_rejection_undoes_commit_and_flags_requeue(self, gate_worker, monkeypatch):
         monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "auto_oracle", True)
 
-        async def fake_review(desc, diff, cdir):
+        async def fake_review(desc, diff, cdir, acceptance_criteria=None):
             return False, "[high] Oracle rejected.", False
 
         monkeypatch.setattr(wmod, "_oracle_review", fake_review)
@@ -566,7 +566,7 @@ class TestRunOracleGate:
         monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "auto_oracle", True)
         resets: list[Path] = []
 
-        async def fake_review(desc, diff, cdir):
+        async def fake_review(desc, diff, cdir, acceptance_criteria=None):
             return True, "approved (spec+quality passed)", False
 
         monkeypatch.setattr(wmod, "_oracle_review", fake_review)
@@ -575,3 +575,147 @@ class TestRunOracleGate:
         assert await gate_worker._run_oracle_gate() is True
         assert gate_worker.oracle_result == "approved"
         assert len(resets) == 1
+
+
+# ─── Criteria injection + rubric (claude-cookbooks) ──────────────────────────
+
+
+class TestBuildOracleTaskBlock:
+    def test_full_description_not_truncated_at_400(self):
+        desc = "x" * 399 + "MARKER_BEYOND_400" + "y" * 500
+        block = wr._build_oracle_task_block(desc, None)
+        assert "MARKER_BEYOND_400" in block
+
+    def test_caps_at_task_desc_cap(self):
+        desc = "x" * (wr._ORACLE_TASK_DESC_CAP + 1000)
+        block = wr._build_oracle_task_block(desc, None)
+        assert len(block) == wr._ORACLE_TASK_DESC_CAP
+
+    def test_criteria_rendered_as_numbered_list(self):
+        block = wr._build_oracle_task_block(
+            "do the thing", ["All auth tests pass", "No new imports"]
+        )
+        assert "Acceptance criteria (give a verdict for EACH):" in block
+        assert "1. All auth tests pass" in block
+        assert "2. No new imports" in block
+
+    def test_no_criteria_no_header(self):
+        block = wr._build_oracle_task_block("do the thing", None)
+        assert "Acceptance criteria" not in block
+        assert block == "do the thing"
+
+    def test_criteria_capped_at_ten(self):
+        block = wr._build_oracle_task_block("t", [f"c{i}" for i in range(15)])
+        assert "10. c9" in block
+        assert "11." not in block
+
+
+class TestCriteriaReachTheOracle:
+    async def test_two_pass_spec_prompt_contains_criteria_and_full_desc(
+        self, tmp_path, monkeypatch
+    ):
+        prompts: list[str] = []
+
+        async def fake_pass(prompt, cdir):
+            prompts.append(prompt)
+            return True, "high", "", False
+
+        monkeypatch.setattr(wr, "_oracle_pass", fake_pass)
+        desc = "Implement the feature. " + "detail " * 100  # > 400 chars
+        await wr._oracle_review(
+            desc, "small diff", tmp_path,
+            acceptance_criteria=["All 12 tests pass", "API unchanged"],
+        )
+        spec_prompt = prompts[0]
+        assert "All 12 tests pass" in spec_prompt
+        assert "API unchanged" in spec_prompt
+        assert desc[:wr._ORACLE_TASK_DESC_CAP][-50:] in spec_prompt  # beyond old 400 cap
+
+    async def test_chunked_path_receives_criteria(self, tmp_path, monkeypatch):
+        seen_tasks: list[str] = []
+
+        async def fake_chunk(task, chunk, label, cdir):
+            seen_tasks.append(task)
+            return True, "approved", False
+
+        monkeypatch.setattr(wr, "_oracle_review_chunk", fake_chunk)
+        await wr._oracle_review(
+            "big refactor", "x" * 9000, tmp_path,
+            acceptance_criteria=["No circular imports"],
+        )
+        assert seen_tasks and all("No circular imports" in t for t in seen_tasks)
+
+
+class TestOraclePromptFixtures:
+    def test_spec_prompt_keeps_parser_contract(self):
+        # _oracle_pass parses pass/confidence/issues — the rewrite must keep them
+        assert '"pass":true' in wr._ORACLE_SPEC_PROMPT
+        assert '"pass":false' in wr._ORACLE_SPEC_PROMPT
+        assert '"confidence"' in wr._ORACLE_SPEC_PROMPT
+        assert '"issues"' in wr._ORACLE_SPEC_PROMPT
+
+    def test_spec_prompt_has_per_criterion_verdicts_and_evidence(self):
+        assert '"criteria"' in wr._ORACLE_SPEC_PROMPT
+        assert '"verdict"' in wr._ORACLE_SPEC_PROMPT
+        assert "file:line" in wr._ORACLE_SPEC_PROMPT
+
+    def test_spec_prompt_has_no_fire_list(self):
+        assert "Do NOT fail for" in wr._ORACLE_SPEC_PROMPT
+        assert "style preferences" in wr._ORACLE_SPEC_PROMPT
+        assert "pre-existing issues" in wr._ORACLE_SPEC_PROMPT
+
+    def test_quality_prompt_has_no_fire_list_and_contract(self):
+        assert "Do NOT fail for" in wr._ORACLE_QUALITY_PROMPT
+        assert '"pass":true' in wr._ORACLE_QUALITY_PROMPT
+
+    def test_chunk_template_has_evidence_and_no_fire_list(self):
+        assert "file:line evidence" in wr._ORACLE_PROMPT_TEMPLATE
+        assert "Do NOT reject for" in wr._ORACLE_PROMPT_TEMPLATE
+
+    def test_spec_prompt_formats_cleanly(self):
+        # {task}/{diff} placeholders survive the rewrite ({{ }} escapes intact)
+        rendered = wr._ORACLE_SPEC_PROMPT.format(task="T", diff="D")
+        assert "Task: T" in rendered and "Diff:\nD" in rendered
+        rendered = wr._ORACLE_PROMPT_TEMPLATE.format(task="T", diff="D")
+        assert "Task: T" in rendered
+
+
+class TestGatePassesCriteria:
+    async def test_gate_extracts_schema_criteria(self, tmp_path, monkeypatch):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _init_git_repo(repo)
+        claude_dir = repo / ".claude"
+        claude_dir.mkdir()
+        desc = (
+            "Implement auth\n\n```json\n"
+            '{"acceptance_criteria": ["All auth tests pass"]}\n```\n'
+        )
+        w = wmod.Worker(
+            task_id="task-crit1", description=desc, model="haiku",
+            project_dir=repo, claude_dir=claude_dir,
+        )
+        monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "auto_oracle", True)
+        captured: dict = {}
+
+        async def fake_review(desc_, diff, cdir, acceptance_criteria=None):
+            captured["criteria"] = acceptance_criteria
+            return True, "approved", False
+
+        monkeypatch.setattr(wmod, "_oracle_review", fake_review)
+        monkeypatch.setattr(wmod, "_reset_oracle_infra_streak", lambda d: None)
+        assert await w._run_oracle_gate() is True
+        assert captured["criteria"] == ["All auth tests pass"]
+
+    async def test_gate_passes_none_without_schema(self, gate_worker, monkeypatch):
+        monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "auto_oracle", True)
+        captured: dict = {"criteria": "sentinel"}
+
+        async def fake_review(desc_, diff, cdir, acceptance_criteria=None):
+            captured["criteria"] = acceptance_criteria
+            return True, "approved", False
+
+        monkeypatch.setattr(wmod, "_oracle_review", fake_review)
+        monkeypatch.setattr(wmod, "_reset_oracle_infra_streak", lambda d: None)
+        assert await gate_worker._run_oracle_gate() is True
+        assert captured["criteria"] is None

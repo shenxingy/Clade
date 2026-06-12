@@ -36,6 +36,7 @@ from config import (
     _parse_token_usage,
     _build_tool_flags,
     _parse_task_type,
+    _parse_task_schema,
 )
 from task_queue import TaskQueue
 from github_sync import _gh_update_issue_status
@@ -901,8 +902,11 @@ class Worker:
                 cwd=str(self._project_dir),
             )
             diff_out, _ = await asyncio.wait_for(diff_proc.communicate(), timeout=15)
+            # Inject parsed acceptance criteria so the grader checks them one-by-one
+            criteria = _parse_task_schema(self.description).get("acceptance_criteria") or None
             approved, reason, infra_error = await _oracle_review(
-                self.description, diff_out.decode(), self._claude_dir
+                self.description, diff_out.decode(), self._claude_dir,
+                acceptance_criteria=criteria,
             )
         except Exception:
             approved, reason, infra_error = True, "oracle gate error", True
