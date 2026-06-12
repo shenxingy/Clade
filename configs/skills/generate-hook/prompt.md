@@ -83,6 +83,18 @@ Produce the JSON snippet to add to `~/.claude/settings.json`:
 3. Remind user: "Run `./install.sh` to deploy, or manually add to `~/.claude/settings.json`"
 4. Mark the hook as **warn-only** by default — user must manually change to blocking
 
+### Step 6: Retire the source rule
+
+A rule that is now hook-enforced must not keep burning prompt context as prose:
+
+1. Locate the source rule line in its origin file (`rules.md` or `CLAUDE.md` — whichever scope it came from in Step 1)
+2. Append it to the retired-rules archive (`~/.claude/corrections/retired-rules.md` for global rules, `.claude/corrections/retired-rules.md` for project rules; create if absent):
+   ```
+   - [retired YYYY-MM-DD] {original rule line} → enforced by ~/.claude/hooks/{hook-name}.sh
+   ```
+3. Remove the rule line from the origin file — the hook is now the enforcement layer; keeping the prose duplicates it
+4. **Partial coverage exception:** if the hook only enforces part of the rule (the regex catches the command pattern but not the judgment call around it), keep the prose rule in place and annotate it with `[partially enforced by {hook-name}.sh]` instead of retiring
+
 ## Rules
 
 - Always generate warn-only hooks (exit 0 with warning) — never blocking by default
@@ -90,12 +102,13 @@ Produce the JSON snippet to add to `~/.claude/settings.json`:
 - Use `jq` for JSON parsing of hook input
 - Include the original rule text as a comment for traceability
 - Don't auto-install — always require user to run install.sh
+- Retirement (Step 6) is part of the job — a generated hook without the prose rule retired leaves double enforcement and the context bloat in place
 
 ---
 
 ## Completion Status
 
-- ✅ **DONE** — hook script generated and instructions provided
+- ✅ **DONE** — hook script generated, instructions provided, source rule retired (or annotated as partially enforced)
 - ⚠ **DONE_WITH_CONCERNS** — hook generated but rule may not be fully enforceable via regex
 - ❌ **BLOCKED** — rule is too abstract for automated enforcement
 - ❓ **NEEDS_CONTEXT** — need user to select a rule

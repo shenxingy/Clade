@@ -93,6 +93,10 @@ jobs:
       - name: Run commit-path checks tests
         run: bash tests/test-checks.sh
 
+      # Nth-strike escalation: 3+-hit rules become REQUIRED hook conversions
+      - name: Run auto-audit escalation tests
+        run: bash tests/test-audit.sh
+
   install-test:
     name: Install Test
     runs-on: ubuntu-latest

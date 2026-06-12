@@ -183,7 +183,10 @@ run_auto_audit() {
     done
   fi
 
-  # ─── Hook generation suggestions ────────────────────────────────
+  # ─── Structural escalation (3+ hits → REQUIRED hook conversion) ──
+  # Nth-strike doctrine: a rule that had to hold the line 3+ times is
+  # load-bearing — prose is the wrong enforcement layer. Not an advisory:
+  # the session is expected to act on it (convert to hook, retire prose).
   local hook_suggestions=""
   local effective_hashes
   effective_hashes=$(get_effective_rules 2>/dev/null)
@@ -193,7 +196,7 @@ run_auto_audit() {
       data=$(jq -r --arg h "$hash" '.[$h] | "\(.hits)+\(.misses)"' "$EFFECTIVENESS_FILE" 2>/dev/null)
       local hits="${data%%+*}"
       if [[ "${hits:-0}" -ge 3 ]]; then
-        hook_suggestions="${hook_suggestions}  - Rule hash $hash has ${hits}+ hits. Run /generate-hook to automate enforcement.\n"
+        hook_suggestions="${hook_suggestions}  - [REQUIRED] Rule hash $hash: ${hits} hits — 3rd strike. Run /generate-hook to convert it to a hook, then retire the prose rule to retired-rules.md with a pointer to the hook.\n"
       fi
     done
   fi
@@ -227,7 +230,7 @@ run_auto_audit() {
   fi
 
   if [[ -n "$hook_suggestions" ]]; then
-    summary="${summary}\nHook generation candidates:\n${hook_suggestions}"
+    summary="${summary}\nREQUIRED — escalate to structural enforcement (act on this now, not later):\n${hook_suggestions}"
   fi
 
   AUDIT_SUMMARY="$summary"
