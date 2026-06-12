@@ -47,6 +47,38 @@ SERVER_VERSION = "0.1.0"
 
 SKILLS_DIR = Path(os.path.expanduser("~/.claude/skills"))
 
+# ─── Compact Mode (claude-cookbooks) ──────────────────────────────────────────
+# Default ON: expose search-then-load (clade_list_skills / clade_search_skills /
+# clade_run_skill) instead of enumerating ~95 per-skill tool definitions — the
+# same system-prompt overflow Clade diagnosed in itself via the repo-root
+# .mcp.json incident, now hitting Cursor/Cline users.
+# Set CLADE_MCP_COMPACT=0 to restore full per-skill enumeration.
+
+
+def _compact_mode() -> bool:
+    return os.environ.get("CLADE_MCP_COMPACT", "1").strip().lower() not in (
+        "0", "false", "no", "off"
+    )
+
+
+def search_skills(query: str, skills: list[dict], limit: int = 20) -> list[dict]:
+    """Keyword search over skill name + description.
+
+    Each whitespace-separated term that appears in name+description scores a
+    point; results sorted by score (desc) then name. Empty query → [].
+    """
+    terms = [t for t in query.lower().split() if t]
+    if not terms:
+        return []
+    scored: list[tuple[int, dict]] = []
+    for skill in skills:
+        hay = f"{skill['name']} {skill['description']}".lower()
+        score = sum(1 for t in terms if t in hay)
+        if score:
+            scored.append((score, skill))
+    scored.sort(key=lambda pair: (-pair[0], pair[1]["name"]))
+    return [skill for _, skill in scored[:limit]]
+
 
 def _load_frontmatter_module():
     """Load the ONE shared SKILL.md frontmatter parser (skill_frontmatter.py).
@@ -286,9 +318,11 @@ app = Server(
 
 @app.list_tools()
 async def list_tools() -> list[Tool]:
-    """Advertise all installed Clade skills as MCP tools."""
-    skills = load_skills()
+    """Advertise Clade skills as MCP tools.
 
+    Compact mode (default): 3 skill tools (list/search/run) + code search.
+    Enumeration mode (CLADE_MCP_COMPACT=0): one tool per installed skill.
+    """
     # Always include a "list skills" tool
     tools = [
         Tool(
@@ -349,7 +383,44 @@ async def list_tools() -> list[Tool]:
         ),
     ]
 
-    for skill in skills:
+    if _compact_mode():
+        # Search-then-load: 2 extra tools replace the ~95 per-skill definitions
+        tools.append(Tool(
+            name="clade_search_skills",
+            description=(
+                "Keyword-search installed Clade skills by name and description. "
+                "Returns matching skills with argument hints. "
+                "Execute one with clade_run_skill."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string",
+                              "description": "Keywords, e.g. 'blog seo audit'"},
+                },
+                "required": ["query"],
+            },
+        ))
+        tools.append(Tool(
+            name="clade_run_skill",
+            description=(
+                "Execute an installed Clade skill by name. Discover names via "
+                "clade_list_skills or clade_search_skills."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string",
+                             "description": "Skill name, e.g. 'commit'"},
+                    "args": {"type": "string",
+                             "description": "Arguments appended to the skill prompt (optional)"},
+                },
+                "required": ["name"],
+            },
+        ))
+        return tools
+
+    for skill in load_skills():
         if not skill["prompt_content"]:
             continue  # Skip skills without prompts (no-op)
 
@@ -363,6 +434,19 @@ async def list_tools() -> list[Tool]:
         ))
 
     return tools
+
+
+def _format_args(arguments: dict[str, Any]) -> str:
+    """Render a tool-arguments dict as a CLI-style string for the skill prompt."""
+    args_str = ""
+    for key, value in (arguments or {}).items():
+        if isinstance(value, bool) and value:
+            args_str += f" --{key}"
+        elif isinstance(value, str) and value:
+            args_str += f" --{key} {shlex.quote(value)}"
+        elif value is not None:
+            args_str += f" --{key} {shlex.quote(str(value))}"
+    return args_str
 
 
 @app.call_tool()
@@ -379,11 +463,45 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
         for s in sorted(skills, key=lambda x: x["name"]):
             hint = f" — args: {s['argument_hint']}" if s["argument_hint"] else ""
             lines.append(f"- **{s['name']}**: {s['description']}{hint}")
-        lines.append("\nTo invoke a skill, use the tool named `clade_<name>` "
-                     "(e.g. clade_commit for /commit).")
+        if _compact_mode():
+            lines.append("\nRun a skill with clade_run_skill(name=..., args=...).")
+        else:
+            lines.append("\nTo invoke a skill, use the tool named `clade_<name>` "
+                         "(e.g. clade_commit for /commit).")
         return CallToolResult(
             content=[TextContent(type="text", text="\n".join(lines))],
         )
+
+    if name == "clade_search_skills":
+        query = str(arguments.get("query", "")).strip()
+        if not query:
+            return CallToolResult(
+                content=[TextContent(type="text", text="query is required")],
+                isError=True,
+            )
+        matches = search_skills(query, load_skills())
+        if not matches:
+            return CallToolResult(content=[TextContent(
+                type="text",
+                text=f"No skills match {query!r}. Try clade_list_skills for the full catalog.",
+            )])
+        lines = [f"# Skills matching {query!r} ({len(matches)})\n"]
+        for s in matches:
+            hint = f" — args: {s['argument_hint']}" if s["argument_hint"] else ""
+            lines.append(f"- **{s['name']}**: {s['description']}{hint}")
+        lines.append("\nRun one with clade_run_skill(name=..., args=...).")
+        return CallToolResult(content=[TextContent(type="text", text="\n".join(lines))])
+
+    if name == "clade_run_skill":
+        skill_name = str(arguments.get("name", "")).strip()
+        if not skill_name:
+            return CallToolResult(
+                content=[TextContent(type="text", text="name is required")],
+                isError=True,
+            )
+        raw_args = arguments.get("args", "")
+        args_str = raw_args.strip() if isinstance(raw_args, str) else _format_args(raw_args or {})
+        return await _execute_skill(skill_name, args_str)
 
     # Code search tools (AutoCodeRover §Gap1)
     _search_root = Path(arguments.get("project_dir") or os.getcwd())
@@ -407,16 +525,20 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
         ctx = int(arguments.get("context_lines", 3))
         return CallToolResult(content=[TextContent(type="text", text=_grep_search_code(sp, _search_root, ctx))])
 
-    # Handle skill tools
+    # Handle per-skill tools (enumeration mode names; kept working in compact
+    # mode too so clients with cached tool lists don't break)
     if not name.startswith("clade_"):
         return CallToolResult(
             content=[TextContent(type="text", text=f"Unknown tool: {name}")],
             isError=True,
         )
 
-    skill_name = name[len("clade_"):]
+    return await _execute_skill(name[len("clade_"):], _format_args(arguments))
 
-    # Load the skill
+
+async def _execute_skill(skill_name: str, args_str: str) -> CallToolResult:
+    """Run a skill's prompt via `claude -p` (shared by per-skill tools and the
+    compact-mode clade_run_skill dispatcher)."""
     skills = {s["name"]: s for s in load_skills()}
     if skill_name not in skills:
         return CallToolResult(
@@ -425,21 +547,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
         )
 
     skill = skills[skill_name]
-    prompt = skill["prompt_content"]
-
-    # Build arguments string to append to prompt
-    args_str = ""
-    if arguments:
-        for key, value in arguments.items():
-            if isinstance(value, bool) and value:
-                args_str += f" --{key}"
-            elif isinstance(value, str) and value:
-                args_str += f" --{key} {shlex.quote(value)}"
-            elif value is not None:
-                args_str += f" --{key} {shlex.quote(str(value))}"
 
     # Append arguments to prompt
-    exec_prompt = prompt
+    exec_prompt = skill["prompt_content"]
     if args_str:
         exec_prompt += f"\n\n## Skill Arguments\nReceived: {args_str}\n"
 
