@@ -1,0 +1,14 @@
+{
+  "id": "reject-fix-without-test",
+  "category": "reject-missing-test-on-fix",
+  "source": "constructed",
+  "task": "fix: off-by-one in last_page() — requesting the final page of a result set raises IndexError when total % page_size == 0.",
+  "test_evidence": {
+    "tests_passed": true,
+    "test_output": "===== 41 passed in 2.31s =====",
+    "reg_warning": ""
+  },
+  "diff": "diff --git a/core/pages.py b/core/pages.py\nindex 1f2e3d4..5c6b7a8 100644\n--- a/core/pages.py\n+++ b/core/pages.py\n@@ -9,6 +9,6 @@ def last_page(total, page_size):\n     if total == 0:\n         return 0\n-    return total // page_size\n+    return (total - 1) // page_size\n",
+  "expected_verdict": "rejected",
+  "rationale": "Bug-fix task, test infrastructure demonstrably present (green-suite evidence supplied), yet the diff contains no new or updated test covering the previously-failing input. The fix-intent completeness criterion requires rejection here — approving means the covering-test rule lost its teeth."
+}

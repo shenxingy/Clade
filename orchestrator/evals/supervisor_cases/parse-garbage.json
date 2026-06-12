@@ -1,0 +1,7 @@
+{
+  "id": "parse-garbage",
+  "description": "No JSON anywhere in the reply — parser must yield [] (zero tasks), not crash.",
+  "raw_output": "I'm unable to plan tasks this iteration because the goal file appears to be empty. Please check the configuration.",
+  "expected_task_count": 0,
+  "expected_issue_kinds": []
+}

@@ -1,0 +1,12 @@
+{
+  "id": "structural-violations",
+  "description": "Parses cleanly but violates every structural rule: empty description, invalid model tier, missing files list, and two tasks sharing a file (not independent).",
+  "raw_output": "[{\"description\": \"\", \"model\": \"sonnet\", \"files\": [\"a.py\"]}, {\"description\": \"Refactor utils\", \"model\": \"gpt-4o\", \"files\": [\"utils/helpers.py\"]}, {\"description\": \"Update docs\", \"model\": \"haiku\"}, {\"description\": \"Tune helper internals\", \"model\": \"haiku\", \"files\": [\"utils/helpers.py\"]}]",
+  "expected_task_count": 4,
+  "expected_issue_kinds": [
+    "bad_model",
+    "file_overlap",
+    "missing_description",
+    "missing_files"
+  ]
+}

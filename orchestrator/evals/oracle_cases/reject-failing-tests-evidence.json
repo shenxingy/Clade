@@ -1,0 +1,18 @@
+{
+  "id": "reject-failing-tests-evidence",
+  "category": "reject-spec-violation",
+  "source": "constructed",
+  "task": "fix: paginate() returns an empty final page when total is an exact multiple of page_size.\n\n```json\n{\"acceptance_criteria\": [\"paginate() never yields an empty trailing page\", \"All pagination tests pass\"]}\n```",
+  "acceptance_criteria": [
+    "paginate() never yields an empty trailing page",
+    "All pagination tests pass"
+  ],
+  "test_evidence": {
+    "tests_passed": false,
+    "test_output": "FAILED tests/test_pagination.py::test_exact_multiple - AssertionError: got empty page\nFAILED tests/test_pagination.py::test_last_page_len - IndexError\n===== 2 failed, 39 passed in 2.02s =====",
+    "reg_warning": ""
+  },
+  "diff": "diff --git a/core/pagination.py b/core/pagination.py\nindex 5f6a7b8..9c0d1e2 100644\n--- a/core/pagination.py\n+++ b/core/pagination.py\n@@ -4,8 +4,8 @@ def paginate(items, page_size):\n     pages = []\n-    for i in range(0, len(items) + 1, page_size):\n+    for i in range(0, max(len(items), 1), page_size):\n         pages.append(items[i:i + page_size])\n     return pages\ndiff --git a/tests/test_pagination.py b/tests/test_pagination.py\nindex 8b9c0d1..2e3f4a5 100644\n--- a/tests/test_pagination.py\n+++ b/tests/test_pagination.py\n@@ -15,3 +15,8 @@ def test_basic_split():\n     assert len(paginate(list(range(10)), 3)) == 4\n+\n+\n+def test_exact_multiple():\n+    assert paginate(list(range(9)), 3) == [[0, 1, 2], [3, 4, 5], [6, 7, 8]]\n",
+  "expected_verdict": "rejected",
+  "rationale": "Evidence-grounded rejection: the threaded test results show the suite FAILED — including the very test added for this fix — and an explicit criterion says all pagination tests pass. A grader ignoring the evidence block and judging the diff text alone false-approves. (In production failing tests never reach the oracle; this probes evidence weighting directly.)"
+}

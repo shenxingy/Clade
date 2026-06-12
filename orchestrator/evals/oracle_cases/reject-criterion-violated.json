@@ -1,0 +1,19 @@
+{
+  "id": "reject-criterion-violated",
+  "category": "reject-spec-violation",
+  "source": "constructed",
+  "task": "refactor: finish removing the deprecated --legacy CLI flag from tool/cli.py.\n\n```json\n{\"acceptance_criteria\": [\"--legacy is no longer accepted by the argument parser\", \"The LEGACY_MODE constant is deleted\", \"Help text no longer mentions legacy mode\"]}\n```",
+  "acceptance_criteria": [
+    "--legacy is no longer accepted by the argument parser",
+    "The LEGACY_MODE constant is deleted",
+    "Help text no longer mentions legacy mode"
+  ],
+  "test_evidence": {
+    "tests_passed": true,
+    "test_output": "===== 41 passed in 2.31s =====",
+    "reg_warning": ""
+  },
+  "diff": "diff --git a/tool/cli.py b/tool/cli.py\nindex 3c4d5e6..7f8a9b0 100644\n--- a/tool/cli.py\n+++ b/tool/cli.py\n@@ -8,14 +8,13 @@ LEGACY_MODE = \"legacy\"\n\n def build_parser():\n     p = argparse.ArgumentParser(\n-        description=\"Tool runner (use --legacy for the pre-2.0 pipeline)\",\n+        description=\"Tool runner\",\n     )\n     p.add_argument(\"--input\", required=True)\n-    p.add_argument(\"--legacy\", action=\"store_true\",\n-                   help=\"run the deprecated pre-2.0 pipeline\")\n+    p.add_argument(\"--legacy\", action=\"store_true\", help=argparse.SUPPRESS)\n     p.add_argument(\"--verbose\", action=\"store_true\")\n     return p\n",
+  "expected_verdict": "rejected",
+  "rationale": "Two of three acceptance criteria are violated with evidence visible in the diff: --legacy is still accepted (merely hidden via SUPPRESS) and LEGACY_MODE still exists in the context lines. Per-criterion verdicts must catch a half-done removal that superficially looks complete."
+}

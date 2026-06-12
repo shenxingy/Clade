@@ -1,0 +1,14 @@
+{
+  "id": "reject-wrong-scope",
+  "category": "reject-spec-violation",
+  "source": "constructed",
+  "task": "feat: add retry with exponential backoff (3 attempts) to fetch_user() in client/api.py — it currently fails hard on transient 502s from the upstream gateway.",
+  "test_evidence": {
+    "tests_passed": true,
+    "test_output": "===== 41 passed in 2.31s =====",
+    "reg_warning": ""
+  },
+  "diff": "diff --git a/client/logging_setup.py b/client/logging_setup.py\nindex 4d5e6f7..8a9b0c1 100644\n--- a/client/logging_setup.py\n+++ b/client/logging_setup.py\n@@ -5,9 +5,9 @@ import logging\n\n-def configure_logging(level=logging.INFO):\n-    fmt = \"%(asctime)s %(levelname)s %(message)s\"\n+def configure_logging(level=logging.DEBUG):\n+    fmt = \"%(asctime)s %(levelname)s %(name)s %(message)s\"\n     logging.basicConfig(level=level, format=fmt)\n-    logging.getLogger(\"urllib3\").setLevel(logging.WARNING)\n+    logging.getLogger(\"urllib3\").setLevel(logging.DEBUG)\n",
+  "expected_verdict": "rejected",
+  "rationale": "Clear spec violation: the task demands retry logic in client/api.py:fetch_user(); the diff only fiddles with logging verbosity in a different file. fetch_user is untouched. Approving this is the canonical false-approve."
+}

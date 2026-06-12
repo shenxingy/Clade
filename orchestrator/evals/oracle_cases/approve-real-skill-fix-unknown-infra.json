@@ -1,0 +1,9 @@
+{
+  "id": "approve-real-skill-fix-unknown-infra",
+  "category": "clear-approve",
+  "source": "git:0d943d8",
+  "task": "fix: /research routes personal-topic findings to ~/.claude/research/, not repo BRAINSTORM.md",
+  "diff": "diff --git a/configs/skills/research/prompt.md b/configs/skills/research/prompt.md\nindex 3a56b8e..d31fd93 100644\n--- a/configs/skills/research/prompt.md\n+++ b/configs/skills/research/prompt.md\n@@ -1,4 +1,4 @@\n-Research external tools/competitors/approaches for a given topic and write a structured analysis to BRAINSTORM.md.\n+Research external tools/competitors/approaches for a given topic and write a structured analysis to BRAINSTORM.md (project-scoped topics) or `~/.claude/research/` (personal topics — see Rules).\n \n ## Capability Detection (run first)\n \n@@ -41,6 +41,7 @@ Test by attempting a `WebSearch` call. If it fails or returns no results → fal\n - Be specific and actionable — \"add OAuth2 login flow like tool X's 2-click setup\" not \"add authentication\"\n - Mark entries as `[Research]` (not `[AI]`) so they're distinguishable in BRAINSTORM.md\n - Do NOT auto-process into GOALS.md or TODO.md — just write to BRAINSTORM.md inbox\n+- **Personal-topic routing**: if the topic is the user's own infrastructure/accounts/hardware/life decisions rather than this project's domain, write the report to `~/.claude/research/{YYYY-MM-DD}-{slug}.md` INSTEAD of BRAINSTORM.md — personal context must never land in a git-tracked project file (apply the \"stranger clones the repo, learns nothing about the user\" test)\n \n \n ---\n",
+  "expected_verdict": "approved",
+  "rationale": "Real clade commit (0d943d8): a fix: task touching only a skill prompt.md, with NO test_evidence supplied. Fix-intent fires, but infra=unknown — per the criterion the missing test must be reported as a warning, not a rejection. Probes the unknown-infra branch of the covering-test rule."
+}

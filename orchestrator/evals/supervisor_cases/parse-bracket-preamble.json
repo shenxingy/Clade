@@ -1,0 +1,9 @@
+{
+  "id": "parse-bracket-preamble",
+  "description": "KNOWN PARSER WEAKNESS (documented behavior, update if parser improves): bracketed text in the preamble makes the greedy array regex span from the preamble '[' to the final ']', JSON parse fails, and the object-pattern fallback returns a single task dict — which downstream counts as 0 tasks. A structurally valid plan is silently dropped.",
+  "raw_output": "Plan [iteration 3]: one task below.\n[{\"description\": \"Fix the off-by-one in core/pages.py:last_page() (total % page_size == 0 raises IndexError); add a covering test in tests/test_pages.py; run pytest; commit with committer.\", \"model\": \"sonnet\", \"files\": [\"core/pages.py\", \"tests/test_pages.py\"]}]",
+  "expected_task_count": 0,
+  "expected_issue_kinds": [
+    "not_a_list"
+  ]
+}

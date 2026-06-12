@@ -1,0 +1,9 @@
+{
+  "id": "parse-object-not-array",
+  "description": "KNOWN PARSER WEAKNESS (documented behavior, update if parser improves): a single task OBJECT instead of an array. The greedy array regex matches the inner files list, so the parser emits ['core/pages.py'] — one bogus string 'task' that downstream scoring chokes on.",
+  "raw_output": "{\"description\": \"Fix the off-by-one in core/pages.py:last_page(); add a covering test; commit with committer.\", \"model\": \"sonnet\", \"files\": [\"core/pages.py\"]}",
+  "expected_task_count": 1,
+  "expected_issue_kinds": [
+    "task_not_object"
+  ]
+}

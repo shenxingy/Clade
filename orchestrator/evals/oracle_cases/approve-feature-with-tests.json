@@ -1,0 +1,14 @@
+{
+  "id": "approve-feature-with-tests",
+  "category": "clear-approve",
+  "source": "constructed",
+  "task": "feat: add slugify() helper to utils/text.py — lowercase the input, convert runs of whitespace to single hyphens, strip all other non-alphanumeric characters. Include unit tests covering unicode input and the empty string.",
+  "test_evidence": {
+    "tests_passed": true,
+    "test_output": "===== 41 passed in 2.31s =====",
+    "reg_warning": ""
+  },
+  "diff": "diff --git a/utils/text.py b/utils/text.py\nindex 3f1c2aa..9b04d11 100644\n--- a/utils/text.py\n+++ b/utils/text.py\n@@ -1,5 +1,18 @@\n \"\"\"Small text utilities shared by the report generators.\"\"\"\n\n+import re\n+import unicodedata\n+\n+\n+def slugify(value: str) -> str:\n+    \"\"\"Lowercase, whitespace runs -> single hyphen, drop other punctuation.\"\"\"\n+    value = unicodedata.normalize(\"NFKD\", value)\n+    value = value.encode(\"ascii\", \"ignore\").decode(\"ascii\")\n+    value = value.lower()\n+    value = re.sub(r\"\\s+\", \"-\", value.strip())\n+    return re.sub(r\"[^a-z0-9-]\", \"\", value)\n+\n\n def truncate(value: str, limit: int) -> str:\n     return value if len(value) <= limit else value[: limit - 1] + \"\\u2026\"\ndiff --git a/tests/test_text.py b/tests/test_text.py\nindex 77aa210..c1d9e02 100644\n--- a/tests/test_text.py\n+++ b/tests/test_text.py\n@@ -8,3 +8,17 @@ def test_truncate_long():\n     assert truncate(\"abcdef\", 4) == \"abc\\u2026\"\n+\n+\n+def test_slugify_basic():\n+    assert slugify(\"Hello  World!\") == \"hello-world\"\n+\n+\n+def test_slugify_unicode():\n+    assert slugify(\"Caf\\u00e9 con  Leche\") == \"cafe-con-leche\"\n+\n+\n+def test_slugify_empty():\n+    assert slugify(\"\") == \"\"\n",
+  "expected_verdict": "approved",
+  "rationale": "Textbook approval: feature task fully implemented, tests included for the asked-for edge cases (unicode, empty string), evidence shows the suite green. Any rejection here is a false-reject regression."
+}

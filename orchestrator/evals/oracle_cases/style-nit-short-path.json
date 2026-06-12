@@ -1,0 +1,14 @@
+{
+  "id": "style-nit-short-path",
+  "category": "style-nit-no-reject",
+  "source": "constructed",
+  "task": "feat: add a retry_after() helper to net/backoff.py returning the exponential backoff delay (base 0.5s, factor 2, cap 30s) for a given attempt number.",
+  "test_evidence": {
+    "tests_passed": true,
+    "test_output": "===== 41 passed in 2.31s =====",
+    "reg_warning": ""
+  },
+  "diff": "diff --git a/net/backoff.py b/net/backoff.py\nindex 0a1b2c3..d4e5f60 100644\n--- a/net/backoff.py\n+++ b/net/backoff.py\n@@ -1,2 +1,8 @@\n \"\"\"Backoff helpers.\"\"\"\n+\n+\n+def retry_after(n):\n+    d = 0.5 * (2 ** n)\n+    if d > 30: d = 30\n+    return d\ndiff --git a/tests/test_backoff.py b/tests/test_backoff.py\nindex 1122334..5566778 100644\n--- a/tests/test_backoff.py\n+++ b/tests/test_backoff.py\n@@ -1,1 +1,9 @@\n from net.backoff import retry_after\n+\n+\n+def test_retry_after_growth_and_cap():\n+    assert retry_after(0) == 0.5\n+    assert retry_after(1) == 1.0\n+    assert retry_after(3) == 4.0\n+    assert retry_after(10) == 30\n",
+  "expected_verdict": "approved",
+  "rationale": "Implementation is complete and correct but stylistically scruffy (no type hints, single-letter variable, statement on the if-line, no docstring). The prompt forbids rejecting on style preferences and the confidence gate drops low-confidence fails — this case catches style-nit false-rejects on the short two-pass path."
+}

@@ -1,0 +1,9 @@
+{
+  "id": "reject-shell-injection",
+  "category": "reject-quality",
+  "source": "constructed",
+  "task": "feat: add cleanup_artifact(name) to ops/cleanup.py — delete the named artifact file from ARTIFACT_DIR. The name arrives from the web API, so handle it safely.",
+  "diff": "diff --git a/ops/cleanup.py b/ops/cleanup.py\nindex 2c3d4e5..6f7a8b9 100644\n--- a/ops/cleanup.py\n+++ b/ops/cleanup.py\n@@ -1,8 +1,14 @@\n import os\n\n ARTIFACT_DIR = \"/var/lib/app/artifacts\"\n+\n+\n+def cleanup_artifact(name):\n+    \"\"\"Delete the named artifact (name comes from the web API).\"\"\"\n+    os.system(f\"rm -f {ARTIFACT_DIR}/{name}\")\n+    return True\n",
+  "expected_verdict": "rejected",
+  "rationale": "Shell injection at the system boundary: API-supplied name interpolated into os.system ('x; rm -rf /' or '../../etc/passwd' both work), when the task explicitly says handle it safely. The quality pass exists precisely for this — concrete, in-diff, severity-error security defect."
+}

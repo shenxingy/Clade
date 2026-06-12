@@ -1,0 +1,14 @@
+{
+  "id": "approve-preexisting-issue-untouched",
+  "category": "style-nit-no-reject",
+  "source": "constructed",
+  "task": "fix: load_config() crashes with KeyError when the optional 'proxy' key is absent — default it to None. Add a test for a config file without the proxy key.",
+  "test_evidence": {
+    "tests_passed": true,
+    "test_output": "===== 41 passed in 2.31s =====",
+    "reg_warning": ""
+  },
+  "diff": "diff --git a/core/config_loader.py b/core/config_loader.py\nindex 9f8e7d6..5c4b3a2 100644\n--- a/core/config_loader.py\n+++ b/core/config_loader.py\n@@ -18,11 +18,11 @@ def load_config(path):\n     try:\n         raw = json.loads(Path(path).read_text())\n     except Exception:\n         raw = {}  # pre-existing: swallows malformed JSON silently\n     return Config(\n         host=raw[\"host\"],\n         port=raw[\"port\"],\n-        proxy=raw[\"proxy\"],\n+        proxy=raw.get(\"proxy\"),\n     )\ndiff --git a/tests/test_config_loader.py b/tests/test_config_loader.py\nindex 2b3c4d5..6e7f8a9 100644\n--- a/tests/test_config_loader.py\n+++ b/tests/test_config_loader.py\n@@ -22,3 +22,10 @@ def test_load_config_full(tmp_path):\n     assert cfg.proxy == \"http://p:3128\"\n+\n+\n+def test_load_config_without_proxy_key(tmp_path):\n+    p = tmp_path / \"c.json\"\n+    p.write_text('{\"host\": \"h\", \"port\": 1}')\n+    cfg = load_config(p)\n+    assert cfg.proxy is None\n",
+  "expected_verdict": "approved",
+  "rationale": "The context lines expose a pre-existing bare 'except Exception: raw = {}' that this diff does NOT touch. The prompt forbids rejecting for pre-existing issues outside the change — flagging it as a warning/follow-up is fine, rejecting is a false-reject. Fix-intent is satisfied by the new covering test."
+}

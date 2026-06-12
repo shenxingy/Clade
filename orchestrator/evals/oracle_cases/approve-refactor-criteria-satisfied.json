@@ -1,0 +1,19 @@
+{
+  "id": "approve-refactor-criteria-satisfied",
+  "category": "clear-approve",
+  "source": "constructed",
+  "task": "refactor: rename Worker.poll() to Worker.poll_once() to stop shadowing the module-level poll() helper.\n\n```json\n{\"acceptance_criteria\": [\"Worker.poll is renamed to poll_once\", \"All three call sites in scheduler.py use poll_once\", \"No behavior change\"]}\n```",
+  "acceptance_criteria": [
+    "Worker.poll is renamed to poll_once",
+    "All three call sites in scheduler.py use poll_once",
+    "No behavior change"
+  ],
+  "test_evidence": {
+    "tests_passed": true,
+    "test_output": "===== 41 passed in 2.31s =====",
+    "reg_warning": ""
+  },
+  "diff": "diff --git a/pool/worker.py b/pool/worker.py\nindex 88cc012..41ab9f3 100644\n--- a/pool/worker.py\n+++ b/pool/worker.py\n@@ -42,7 +42,7 @@ class Worker:\n\n-    def poll(self) -> Status:\n+    def poll_once(self) -> Status:\n         \"\"\"Single status sweep; never blocks.\"\"\"\n         return self._read_status_file()\ndiff --git a/pool/scheduler.py b/pool/scheduler.py\nindex 19fa220..7c3d501 100644\n--- a/pool/scheduler.py\n+++ b/pool/scheduler.py\n@@ -31,7 +31,7 @@ class Scheduler:\n     def tick(self):\n         for w in self.workers:\n-            status = w.poll()\n+            status = w.poll_once()\n             self._record(status)\n@@ -58,12 +58,12 @@ class Scheduler:\n     def drain(self):\n         while self.pending:\n-            if self.workers and self.workers[0].poll().done:\n+            if self.workers and self.workers[0].poll_once().done:\n                 self.pending.pop()\n\n     def snapshot(self):\n-        return {w.id: w.poll().name for w in self.workers}\n+        return {w.id: w.poll_once().name for w in self.workers}\n",
+  "expected_verdict": "approved",
+  "rationale": "All three explicit acceptance criteria are satisfiable directly from the diff (rename + exactly three call sites updated, no logic change). Exercises criteria threading end-to-end on the approval side."
+}

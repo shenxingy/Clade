@@ -1,0 +1,10 @@
+{
+  "id": "infra-garbage-output",
+  "category": "infra-error",
+  "source": "constructed",
+  "task": "docs: bump the version string in README.md to 1.0.3.",
+  "diff": "diff --git a/README.md b/README.md\nindex 1a2b3c4..5d6e7f8 100644\n--- a/README.md\n+++ b/README.md\n@@ -1,3 +1,3 @@\n # App\n-Version 1.0.2\n+Version 1.0.3\n",
+  "simulate": "garbage_output",
+  "expected_verdict": "unreviewed",
+  "rationale": "Oracle liveness (lovesegfault): claude -p returns an API error string instead of JSON. _oracle_review must return infra_error=True so the caller tags the commit 'unreviewed' — surfacing this as 'approved' would be a fail-open masquerading as a review. Replayed with a stubbed subprocess layer in BOTH offline and live modes (never an API call)."
+}

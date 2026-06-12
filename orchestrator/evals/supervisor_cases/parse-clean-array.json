@@ -1,0 +1,7 @@
+{
+  "id": "parse-clean-array",
+  "description": "Well-behaved supervisor reply: bare JSON array, valid models, independent files.",
+  "raw_output": "[\n  {\n    \"description\": \"Add a --dry-run flag to scripts/sweep.sh that prints planned deletions without executing them; verify with bash -n and tests/test-sweep.sh; commit with committer.\",\n    \"model\": \"haiku\",\n    \"files\": [\n      \"scripts/sweep.sh\"\n    ]\n  },\n  {\n    \"description\": \"Fix the off-by-one in core/pages.py:last_page() (total % page_size == 0 raises IndexError); add a covering test in tests/test_pages.py; run pytest; commit with committer.\",\n    \"model\": \"sonnet\",\n    \"files\": [\n      \"core/pages.py\",\n      \"tests/test_pages.py\"\n    ]\n  }\n]",
+  "expected_task_count": 2,
+  "expected_issue_kinds": []
+}

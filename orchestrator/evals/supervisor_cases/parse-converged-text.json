@@ -1,0 +1,7 @@
+{
+  "id": "parse-converged-text",
+  "description": "Supervisor disobeys ('Do NOT output CONVERGED') and replies with plain CONVERGED text. Parser yields [] — the script, not the model, decides convergence.",
+  "raw_output": "CONVERGED — all goal items are complete and the test suite is green.",
+  "expected_task_count": 0,
+  "expected_issue_kinds": []
+}

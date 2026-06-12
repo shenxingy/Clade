@@ -1,0 +1,14 @@
+{
+  "id": "reject-introduced-bug",
+  "category": "reject-quality",
+  "source": "constructed",
+  "task": "fix: guard pick() in core/selector.py against out-of-range indexes — return None instead of raising IndexError. Add a test for the out-of-range case.",
+  "test_evidence": {
+    "tests_passed": true,
+    "test_output": "===== 41 passed in 2.31s =====",
+    "reg_warning": ""
+  },
+  "diff": "diff --git a/core/selector.py b/core/selector.py\nindex 7a8b9c0..1d2e3f4 100644\n--- a/core/selector.py\n+++ b/core/selector.py\n@@ -6,5 +6,7 @@ def pick(items, idx):\n-    return items[idx]\n+    if idx <= len(items):\n+        return items[idx]\n+    return None\ndiff --git a/tests/test_selector.py b/tests/test_selector.py\nindex 3e4f5a6..7b8c9d0 100644\n--- a/tests/test_selector.py\n+++ b/tests/test_selector.py\n@@ -7,3 +7,7 @@ def test_pick_first():\n     assert pick([1, 2, 3], 0) == 1\n+\n+\n+def test_pick_out_of_range_far():\n+    assert pick([1, 2, 3], 99) is None\n",
+  "expected_verdict": "rejected",
+  "rationale": "The guard is wrong: idx <= len(items) still admits idx == len(items), so pick([1,2,3], 3) raises the very IndexError the task says to eliminate (and negative idx silently wraps). The added test only checks idx=99 and misses the boundary. Quality pass must catch a concretely-evidenced introduced bug."
+}
