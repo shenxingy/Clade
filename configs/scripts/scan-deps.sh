@@ -37,68 +37,12 @@ if [[ -f "pyproject.toml" || -f "setup.py" || -f "requirements.txt" ]]; then
     OUTDATED=$(pip list --outdated --format=json 2>/dev/null || echo "[]")
 
     if [[ "$OUTDATED" != "[]" ]]; then
-      python3 <<'PYTHON_SCRIPT'
-import json
-import re
-import sys
-import os
-
-MAX_TASKS = int(os.environ.get('MAX_TASKS', 10))
-OUTDATED_JSON = os.environ.get('OUTDATED_JSON', '[]')
-
-try:
-  packages = json.loads(OUTDATED_JSON)
-except:
-  sys.exit(0)
-
-task_count = 0
-
-for pkg in packages:
-  if task_count >= MAX_TASKS:
-    break
-
-  name = pkg.get('name', '')
-  current = pkg.get('version', '')
-  latest = pkg.get('latest_version', '')
-
-  if not name or not current or not latest:
-    continue
-
-  # Parse versions: skip major bumps (e.g., 1.x -> 2.x)
-  current_major = current.split('.')[0]
-  latest_major = latest.split('.')[0]
-
-  if current_major != latest_major:
-    continue  # Skip major version updates
-
-  print(f"""===TASK===
-model: haiku
-TYPE: HORIZONTAL
-source_ref: dep_python_{name}
----
-chore: upgrade {name} {current} → {latest}
-
-## Context
-Current version: {current}
-Latest version: {latest}
-Update type: {"patch" if current.split(".")[1] == latest.split(".")[1] else "minor"}
-
-## What to do
-1. Update {name}: \`pip install --upgrade {name}=={latest}\`
-2. Run tests to verify compatibility
-3. Update requirements.txt / pyproject.toml with new version
-4. Commit with \`committer "chore: upgrade {name} {current} → {latest}"\` when done
-5. If the upgrade exposes a bug in {name} itself: dependency-bug doctrine (/investigate Phase 6b) — minimal repro, then upstream patch > pin with linked issue > documented workaround. Never a silent workaround.
-
-""")
-  task_count += 1
-PYTHON_SCRIPT
-
-      # Get the OUTDATED as JSON
+      # Export BEFORE the heredoc runs — the script reads these from env.
+      # (A previous copy ran an identical heredoc before this export: it
+      # always saw OUTDATED_JSON='[]' and emitted nothing — dead code.)
       export OUTDATED_JSON="$OUTDATED"
       export MAX_TASKS="$MAX_TASKS"
 
-      # Re-run Python script with env
       python3 <<'PYTHON_EXEC'
 import json
 import os
@@ -149,10 +93,10 @@ Current version: {current}
 Latest version: {latest}
 
 ## What to do
-1. Update {name}: \`pip install --upgrade {name}=={latest}\`
+1. Update {name}: `pip install --upgrade {name}=={latest}`
 2. Run tests to verify compatibility
 3. Update requirements.txt or pyproject.toml
-4. Commit with \`committer "chore: upgrade {name} {current} → {latest}"\` when done
+4. Commit with `committer "chore: upgrade {name} {current} → {latest}"` when done
 5. If the upgrade exposes a bug in {name} itself: dependency-bug doctrine (/investigate Phase 6b) — minimal repro, then upstream patch > pin with linked issue > documented workaround. Never a silent workaround.
 
 """)
@@ -170,10 +114,18 @@ if [[ -f "package.json" ]]; then
   if ! command -v npm &>/dev/null; then
     echo "Warning: npm not found" >&2
   else
-    # Get outdated packages as JSON
-    OUTDATED_JSON=$(npm outdated --json 2>/dev/null || echo "{}")
+    # Get outdated packages as JSON. npm outdated exits 1 when packages ARE
+    # outdated — '|| echo "{}"' would APPEND {} to the valid JSON and break
+    # the parse, so capture first and only fall back when output is empty.
+    OUTDATED_JSON=$(npm outdated --json 2>/dev/null) || true
+    [[ -z "$OUTDATED_JSON" ]] && OUTDATED_JSON="{}"
 
     if [[ "$OUTDATED_JSON" != "{}" ]]; then
+      # Export BEFORE the heredoc — without it the script reads env default
+      # '{}' and emits nothing on npm-only projects (pip branch never ran).
+      export OUTDATED_JSON
+      export MAX_TASKS
+
       python3 <<'NODE_SCRIPT'
 import json
 import os
@@ -225,10 +177,10 @@ Latest version: {latest}
 Wanted version: {wanted}
 
 ## What to do
-1. Update {name}: \`npm install {name}@{target_version}\`
+1. Update {name}: `npm install {name}@{target_version}`
 2. Run tests to verify compatibility
 3. Verify package-lock.json is updated
-4. Commit with \`committer "chore: upgrade {name} {current} → {target_version}"\` when done
+4. Commit with `committer "chore: upgrade {name} {current} → {target_version}"` when done
 5. If the upgrade exposes a bug in {name} itself: dependency-bug doctrine (/investigate Phase 6b) — minimal repro, then upstream patch > pin with linked issue > documented workaround. Never a silent workaround.
 
 """)
