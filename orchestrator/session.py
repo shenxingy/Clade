@@ -23,6 +23,8 @@ from watchfiles import awatch
 from config import (
     GLOBAL_SETTINGS,
     _MODEL_ALIASES,
+    HAIKU_MODEL,
+    SONNET_MODEL,
     _deps_met,
     _fire_notification,
     _recover_orphaned_tasks,
@@ -223,7 +225,7 @@ class ProjectSession:
                 return
 
             model_short = loop_state.get("supervisor_model", "sonnet")
-            model = _MODEL_ALIASES.get(model_short, "claude-sonnet-4-6")
+            model = _MODEL_ALIASES.get(model_short, SONNET_MODEL)
 
             prompt = (
                 "Review the following artifact. Output ONLY a JSON array, no prose.\n"
@@ -444,7 +446,7 @@ class ProjectSession:
             return
 
         model_short = loop_state.get("supervisor_model", "sonnet")
-        model = _MODEL_ALIASES.get(model_short, "claude-sonnet-4-6")
+        model = _MODEL_ALIASES.get(model_short, SONNET_MODEL)
         context_dir = loop_state.get("context_dir") or str(self.project_dir)
         artifact_path = loop_state["artifact_path"]
         plan_path = Path(context_dir) / "IMPLEMENTATION_PLAN.md"
@@ -702,7 +704,7 @@ async def _decompose_horizontal(task: dict, session) -> None:
     desc = task.get("description", "")
     try:
         proc = await asyncio.create_subprocess_exec(
-            "claude", "--dangerously-skip-permissions", "--model", "claude-haiku-4-5-20251001", "-p",
+            "claude", "--dangerously-skip-permissions", "--model", HAIKU_MODEL, "-p",
             f"List the source files that need changes for this task. Output one file path per line, no explanation:\n{desc}",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
@@ -762,7 +764,7 @@ async def _suggest_next_goals(session: "ProjectSession") -> None:
         proc = await asyncio.wait_for(
             asyncio.create_subprocess_exec(
                 "claude", "-p", prompt,
-                "--model", "claude-haiku-4-5-20251001",
+                "--model", HAIKU_MODEL,
                 "--dangerously-skip-permissions",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,

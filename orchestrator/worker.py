@@ -32,6 +32,9 @@ from typing import Any
 from config import (
     GLOBAL_SETTINGS,
     _MODEL_ALIASES,
+    HAIKU_MODEL,
+    SONNET_MODEL,
+    OPUS_MODEL,
     _estimate_cost,
     _parse_token_usage,
     _build_tool_flags,
@@ -41,6 +44,10 @@ from config import (
 from task_queue import TaskQueue
 from github_sync import _gh_update_issue_status
 from session_tree import SessionTree
+import condensers
+import worker_review
+import worker_tldr
+import worker_utils
 from worker_review import (
     _oracle_review, _summarize_worker_completion,
     _record_oracle_infra_error, _reset_oracle_infra_streak,
@@ -67,6 +74,12 @@ from worker_utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Documented leaf modules cannot import config — thread the pinned haiku
+# snapshot into them here (they default to the 'haiku' alias when imported
+# standalone). config.py is the single source of truth for dated model IDs.
+for _leaf_mod in (condensers, worker_review, worker_tldr, worker_utils):
+    _leaf_mod.HAIKU_MODEL = HAIKU_MODEL
 
 # ─── Worker ───────────────────────────────────────────────────────────────────
 
@@ -257,12 +270,11 @@ class Worker:
     def _build_cmd_and_env(self, task_file: Path) -> tuple[str, dict]:
         """Resolve model alias, build shell command, and prepare env dict."""
         _ALLOWED_MODELS = {
-            "claude-opus-4-6", "claude-sonnet-4-6",
-            "claude-haiku-4-5-20251001",
+            OPUS_MODEL, SONNET_MODEL, HAIKU_MODEL,
             "claude-opus-4-5", "claude-sonnet-4-5", "claude-haiku-4-5",
         }
         model = _MODEL_ALIASES.get(self.model, self.model)
-        model = model if model in _ALLOWED_MODELS else "claude-sonnet-4-6"
+        model = model if model in _ALLOWED_MODELS else SONNET_MODEL
         shell_cmd = (
             f'claude -p "$(cat {shlex.quote(str(task_file))})" --model {model} --dangerously-skip-permissions'
         )
@@ -733,7 +745,7 @@ class Worker:
         verify_file.write_text(verify_prompt)
         try:
             verify_proc = await asyncio.create_subprocess_shell(
-                f'claude -p "$(cat {shlex.quote(str(verify_file))})" --model claude-haiku-4-5-20251001 --dangerously-skip-permissions',
+                f'claude -p "$(cat {shlex.quote(str(verify_file))})" --model {HAIKU_MODEL} --dangerously-skip-permissions',
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
                 cwd=str(self._project_dir),
             )

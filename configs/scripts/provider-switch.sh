@@ -26,7 +26,7 @@ if [[ ! -f "$PROVIDERS_FILE" ]]; then
       "name": "Anthropic Claude",
       "base_url": null,
       "api_key_env": "ANTHROPIC_API_KEY_CLAUDE",
-      "models": ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5-20251001"],
+      "models": ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5"],
       "note": "Max subscription: leave unset; use claude login. Optional API key: set ANTHROPIC_API_KEY_CLAUDE in ~/.zshrc"
     },
     "minimax": {

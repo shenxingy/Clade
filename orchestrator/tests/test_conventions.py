@@ -15,11 +15,16 @@ Covers:
   3. 500-response hygiene: no caught exception text flows into
      HTTPException / JSONResponse bodies with a 5xx status in server.py or
      routes/*.py.
+  4. Model-ID single source: dated model snapshots (claude-*-YYYYMMDD) live
+     only in config.py (_MODEL_ALIASES / HAIKU_MODEL etc.) — everywhere else
+     imports them or has them threaded in (documented leaf modules), so a
+     model rotation is a one-line change instead of a repo-wide grep.
 """
 
 from __future__ import annotations
 
 import ast
+import re
 import subprocess
 from pathlib import Path
 
@@ -283,5 +288,53 @@ def test_no_exception_text_in_5xx_responses() -> None:
     assert not violations, (
         "CLAUDE.md Code Rules: never return error.message in 500 responses "
         "(leaks internals). Use a generic message and log the exception:\n"
+        + "\n".join(violations)
+    )
+
+
+# ─── 4. Model-ID single source ───────────────────────────────────────────────
+
+# Dated model snapshot, e.g. claude-haiku-<major>-<minor>-<YYYYMMDD>. Undated
+# ids (claude-sonnet-4-6) and aliases (haiku) deliberately do not match.
+_DATED_MODEL_ID = re.compile(r"claude-[a-z0-9.-]*-20\d{6}")
+
+# The single source of truth for dated model IDs. This set must not grow:
+# new code imports HAIKU_MODEL / SONNET_MODEL / OPUS_MODEL from config (or,
+# for documented leaf modules, gets them threaded in by worker.py).
+DATED_MODEL_ID_ALLOWED = {"orchestrator/config.py"}
+
+
+def test_dated_model_ids_live_only_in_config() -> None:
+    scanned = [
+        rel for rel in _tracked_source_files()
+        if (rel.suffix == ".py" and rel.parts[0] == "orchestrator")
+        or (
+            rel.suffix == ".sh"
+            and rel.parts[:2] in {("configs", "scripts"), ("configs", "hooks")}
+        )
+    ]
+    assert len(scanned) > 20, "model-id scan looks hollow — filter is eating everything"
+
+    allowed_hits = 0
+    violations: list[str] = []
+    for rel in scanned:
+        text = (REPO_ROOT / rel).read_text(errors="replace")
+        if not _DATED_MODEL_ID.search(text):
+            continue
+        if str(rel) in DATED_MODEL_ID_ALLOWED:
+            allowed_hits += 1
+            continue
+        for lineno, line in enumerate(text.splitlines(), 1):
+            if _DATED_MODEL_ID.search(line):
+                violations.append(f"{rel}:{lineno}: {line.strip()[:100]}")
+
+    assert allowed_hits, (
+        "config.py no longer contains a dated model id — _MODEL_ALIASES moved? "
+        "Update DATED_MODEL_ID_ALLOWED to the new single source."
+    )
+    assert not violations, (
+        "Hardcoded dated model IDs outside config.py rot silently when models "
+        "rotate. Import HAIKU_MODEL/SONNET_MODEL/OPUS_MODEL from config "
+        "(leaf modules: thread it in from worker.py instead):\n"
         + "\n".join(violations)
     )

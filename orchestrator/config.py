@@ -42,6 +42,15 @@ _MODEL_ALIASES = {
     "opus": "claude-opus-4-6",
 }
 
+# Canonical model IDs — single source of truth. Dated model snapshots may
+# appear ONLY in this file (enforced by tests/test_conventions.py). Non-leaf
+# modules import these; documented leaf modules (worker_review, worker_tldr,
+# worker_utils, condensers) must not import config, so worker.py threads
+# HAIKU_MODEL into them at import time (they default to the 'haiku' alias).
+HAIKU_MODEL = _MODEL_ALIASES["haiku"]
+SONNET_MODEL = _MODEL_ALIASES["sonnet"]
+OPUS_MODEL = _MODEL_ALIASES["opus"]
+
 # ─── Paths ────────────────────────────────────────────────────────────────────
 
 BASE_DIR = Path(__file__).parent

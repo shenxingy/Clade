@@ -32,6 +32,12 @@ MAX_BYTES = 50 * 1024          # 50KB soft cap for log truncation
 DISTILL_THRESHOLD = 200 * 1024  # 200KB — distill with LLM if log exceeds this
 MAX_REFLECTION_RETRIES = 3
 
+# Model for distill/lint-reflection claude calls. This is a documented leaf
+# (no module-level project imports), so worker.py overwrites this at import
+# time with config.HAIKU_MODEL (the pinned dated snapshot). The alias
+# fallback keeps standalone imports (tests, REPL) working via the claude CLI.
+HAIKU_MODEL = "haiku"
+
 # ─── Task File Prompt Blocks (moved from worker.py for line-count budget) ─────
 
 EDIT_DISCIPLINE_BLOCK = (
@@ -192,7 +198,7 @@ async def _distill_output(text: str, project_dir: Path) -> str:
     try:
         proc = await asyncio.create_subprocess_exec(
             "claude", "-p", distill_prompt,
-            "--model", "claude-haiku-4-5-20251001",
+            "--model", HAIKU_MODEL,
             "--dangerously-skip-permissions",
             "--no-input-prompt",
             stdout=asyncio.subprocess.PIPE,
@@ -610,7 +616,7 @@ async def _rank_tasks(task_queue: Any, claude_dir: Path) -> None:
         proc = await asyncio.wait_for(
             asyncio.create_subprocess_exec(
                 "claude", "-p", prompt,
-                "--model", "claude-haiku-4-5-20251001",
+                "--model", HAIKU_MODEL,
                 "--dangerously-skip-permissions",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,

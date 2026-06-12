@@ -18,6 +18,12 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
+# Model for TLDR/localization/scoring claude calls. This is a documented leaf
+# (no project imports — config included), so worker.py overwrites this at
+# import time with config.HAIKU_MODEL (the pinned dated snapshot). The alias
+# fallback keeps standalone imports (tests, REPL) working via the claude CLI.
+HAIKU_MODEL = "haiku"
+
 # ─── Semantic Code TLDR ──────────────────────────────────────────────────────
 
 _tldr_cache: dict[str, tuple[float, str]] = {}  # dir -> (max_mtime, tldr_text)
@@ -448,7 +454,7 @@ async def _localize_tldr_for_task(
     try:
         proc = await asyncio.create_subprocess_exec(
             "claude", "-p", prompt,
-            "--model", "claude-haiku-4-5-20251001",
+            "--model", HAIKU_MODEL,
             "--dangerously-skip-permissions",
             "--no-input-prompt",
             stdout=asyncio.subprocess.PIPE,
@@ -529,7 +535,7 @@ async def _localize_fault(
     try:
         proc = await asyncio.create_subprocess_exec(
             "claude", "-p", prompt,
-            "--model", "claude-haiku-4-5-20251001",
+            "--model", HAIKU_MODEL,
             "--dangerously-skip-permissions",
             "--no-input-prompt",
             stdout=asyncio.subprocess.PIPE,
@@ -761,7 +767,7 @@ async def _generate_repro_test(
     try:
         proc = await asyncio.create_subprocess_exec(
             "claude", "-p", prompt,
-            "--model", "claude-haiku-4-5-20251001",
+            "--model", HAIKU_MODEL,
             "--dangerously-skip-permissions",
             "--no-input-prompt",
             stdout=asyncio.subprocess.PIPE,
@@ -863,7 +869,7 @@ async def _score_task(task_id: str, description: str, db_path: Path, claude_dir:
     try:
         score_file.write_text(score_prompt)
         proc = await asyncio.create_subprocess_shell(
-            f'claude -p "$(cat {shlex.quote(str(score_file))})" --model claude-haiku-4-5-20251001 --dangerously-skip-permissions',
+            f'claude -p "$(cat {shlex.quote(str(score_file))})" --model {HAIKU_MODEL} --dangerously-skip-permissions',
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
         )

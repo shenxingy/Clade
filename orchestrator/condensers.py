@@ -18,6 +18,12 @@ import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 
+# Model for LLM summarization calls. This is a documented leaf (no project
+# imports — config included), so worker.py overwrites this at import time
+# with config.HAIKU_MODEL (the pinned dated snapshot). The alias fallback
+# keeps standalone imports (tests, REPL) working via the claude CLI.
+HAIKU_MODEL = "haiku"
+
 
 # ─── Abstract Base ────────────────────────────────────────────────────────────
 
@@ -86,7 +92,7 @@ class LLMSummarizingCondenser(Condenser):
         try:
             proc = await asyncio.create_subprocess_exec(
                 "claude", "-p", prompt,
-                "--model", "claude-haiku-4-5-20251001",
+                "--model", HAIKU_MODEL,
                 "--dangerously-skip-permissions", "--no-input-prompt",
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
                 cwd=str(project_dir),

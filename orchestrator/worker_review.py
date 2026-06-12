@@ -16,6 +16,12 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# Model for review/oracle/progress claude calls. This is a documented leaf
+# (no project imports — config included), so worker.py overwrites this at
+# import time with config.HAIKU_MODEL (the pinned dated snapshot). The alias
+# fallback keeps standalone imports (tests, REPL) working via the claude CLI.
+HAIKU_MODEL = "haiku"
+
 # ─── Progress / PR Review / Oracle ────────────────────────────────────────────
 
 
@@ -50,7 +56,7 @@ async def _summarize_worker_completion(
     )
     try:
         proc = await asyncio.create_subprocess_shell(
-            f'claude -p {shlex.quote(prompt)} --model claude-haiku-4-5-20251001 --no-input-prompt',
+            f'claude -p {shlex.quote(prompt)} --model {HAIKU_MODEL} --no-input-prompt',
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
         )
@@ -92,7 +98,7 @@ async def _write_progress_entry(
     )
     try:
         proc = await asyncio.create_subprocess_shell(
-            f'claude -p {shlex.quote(prompt)} --model claude-haiku-4-5-20251001',
+            f'claude -p {shlex.quote(prompt)} --model {HAIKU_MODEL}',
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
         )
@@ -142,7 +148,7 @@ async def _write_pr_review(pr_url: str, task_description: str, project_dir: Path
             "RESPOND WITH ONLY the review markdown, no preamble."
         )
         review_proc = await asyncio.create_subprocess_shell(
-            f'claude -p {shlex.quote(prompt)} --model claude-haiku-4-5-20251001',
+            f'claude -p {shlex.quote(prompt)} --model {HAIKU_MODEL}',
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
         )
@@ -312,7 +318,7 @@ async def _oracle_pass(
         prompt_file.write_text(prompt)
         proc = await asyncio.create_subprocess_shell(
             f'claude -p "$(cat {shlex.quote(str(prompt_file))})" '
-            f'--model claude-haiku-4-5-20251001 --dangerously-skip-permissions',
+            f'--model {HAIKU_MODEL} --dangerously-skip-permissions',
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
         )
@@ -419,7 +425,7 @@ async def _oracle_review_chunk(
         prompt_file.write_text(prompt)
         proc = await asyncio.create_subprocess_shell(
             f'claude -p "$(cat {shlex.quote(str(prompt_file))})" '
-            f'--model claude-haiku-4-5-20251001 --dangerously-skip-permissions',
+            f'--model {HAIKU_MODEL} --dangerously-skip-permissions',
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
         )
