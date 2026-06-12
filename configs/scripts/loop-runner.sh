@@ -625,9 +625,13 @@ node_run_workers() {
         log_warn "Workers returned non-zero exit (some tasks may have failed)"
       }
   else
+    # --keep-logs: run-tasks.sh's success auto-cleanup otherwise deletes the
+    # caller-owned iter task file + worker logs (the loop's audit trail, and
+    # what tests/test-loop-real.sh asserts). run-tasks-parallel.sh never
+    # garbage-collects them — keep both paths consistent.
     CLADE_WORKER_TASK_ID="loop-iter${ITERATION}" \
       _timeout "$worker_total_timeout" \
-      bash "$(_sibling_script run-tasks.sh)" "$task_file" 2>&1 \
+      bash "$(_sibling_script run-tasks.sh)" "$task_file" --keep-logs 2>&1 \
       | tee -a "$LOG_DIR/loop.log" || {
         log_warn "Worker returned non-zero exit"
       }

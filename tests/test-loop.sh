@@ -1009,6 +1009,12 @@ else
   pass "worker invocation keeps user settings (no --setting-sources)"
 fi
 unset MOCK_CLAUDE_ARGS_LOG
+
+# Loop audit trail: run-tasks.sh's success auto-cleanup must not delete the
+# loop-owned iter task file (loop-runner passes --keep-logs; without it, a
+# fully-successful worker run erased logs/loop/iter-1-tasks.txt — the exact
+# artifact test-loop-real.sh asserts).
+assert_file_exists "logs/loop/iter-1-tasks.txt" "iter task file survives successful worker run (--keep-logs)"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════
