@@ -68,7 +68,9 @@ if [ -z "$BASELINE_FILE" ] || [ ! -f "$BASELINE_FILE" ]; then
   exit 0
 fi
 
-NEW_DIRTY=$(comm -13 "$BASELINE_FILE" <(echo "$CURRENT"))
+# LC_ALL=C: both inputs were sorted under C collation (session-baseline.sh and
+# CURRENT above); comm under a UTF-8 locale rejects C-sorted input as unsorted.
+NEW_DIRTY=$(LC_ALL=C comm -13 "$BASELINE_FILE" <(echo "$CURRENT"))
 
 # ─── Build issue list ────────────────────────────────────────────────
 issues=()
