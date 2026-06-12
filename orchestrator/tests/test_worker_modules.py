@@ -214,12 +214,40 @@ class TestParseLinkedReferences:
         assert refs["issues"] == []
         assert refs["prs"] == []
         assert refs["urls"] == []
+        assert refs["ci_runs"] == []
 
     def test_no_references(self):
         refs = _parse_linked_references("no links here at all")
         assert refs["issues"] == []
         assert refs["prs"] == []
         assert refs["urls"] == []
+        assert refs["ci_runs"] == []
+
+    def test_actions_run_url(self):
+        refs = _parse_linked_references(
+            "CI failed: https://github.com/acme/myrepo/actions/runs/987654"
+        )
+        assert "acme/myrepo#987654" in refs["ci_runs"]
+
+    def test_actions_run_url_with_job_suffix(self):
+        refs = _parse_linked_references(
+            "see https://github.com/acme/myrepo/actions/runs/123/job/456"
+        )
+        assert "acme/myrepo#123" in refs["ci_runs"]
+
+    def test_actions_workflow_url_not_matched(self):
+        refs = _parse_linked_references(
+            "workflow at https://github.com/acme/myrepo/actions/workflows/ci.yml"
+        )
+        assert refs["ci_runs"] == []
+
+    def test_actions_run_url_does_not_pollute_issues(self):
+        refs = _parse_linked_references(
+            "https://github.com/acme/myrepo/actions/runs/555 and issue #12"
+        )
+        assert refs["ci_runs"] == ["acme/myrepo#555"]
+        assert "#12" in refs["issues"]
+        assert all("555" not in i for i in refs["issues"])
 
 
 # ─── worker_tldr ──────────────────────────────────────────────────────────────

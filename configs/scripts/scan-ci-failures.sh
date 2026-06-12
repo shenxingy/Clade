@@ -68,8 +68,14 @@ while IFS= read -r run_obj; do
 
   STEP_NAME="${FAILED_STEP:-$FAILED_JOB}"
 
-  # Get run logs (last 20 lines for context)
   LOG_URL=$(echo "$RUN_DETAILS" | jq -r '.url')
+
+  # Failed-log tail — the worker must see the actual error text, not just a
+  # URL it cannot click. Fail-open: a log-fetch failure degrades to a pointer.
+  LOG_TAIL=$(gh run view "$RUN_ID" --log-failed 2>/dev/null | tail -40 || true)
+  if [[ -z "$LOG_TAIL" ]]; then
+    LOG_TAIL="(log tail unavailable — fetch manually: gh run view $RUN_ID --log-failed)"
+  fi
 
   # Generate task block
   cat <<EOF
@@ -87,11 +93,20 @@ fix: CI failure in "$STEP_NAME" on branch $BRANCH
 - Branch: $BRANCH
 - Logs: $LOG_URL
 
+### Failed log tail (last 40 lines)
+\`\`\`
+$LOG_TAIL
+\`\`\`
+
 ## What to do
-1. Review the failed CI run logs
+1. Review the failed log tail above (full log: \`gh run view $RUN_ID --log-failed\`)
 2. Identify root cause
 3. Fix the code and ensure the step passes locally
 4. Run \`git commit -m "fix: resolve CI failure in $STEP_NAME"\` when done
+
+## Guardrails
+- Do NOT conclude the failure is CI infrastructure — assume this repo's code or config is at fault until the log proves otherwise.
+- Do NOT fix by downgrading or pinning dependencies — fix the code that broke.
 
 EOF
 
