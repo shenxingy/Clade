@@ -139,12 +139,18 @@ exit "${MOCK_CLAUDE_EXIT:-0}"
 MOCKEOF
 chmod +x "$MOCK_BIN/claude"
 
-# Mock committer
+# Mock committer — enforces the same conventional-commit regex as the real
+# committer (checks.sh CONVENTIONAL_RE), so callers passing non-conventional
+# subjects (e.g. the old "loop: iter N changes") fail here like in production.
 cat > "$MOCK_BIN/committer" <<'MOCKEOF'
 #!/usr/bin/env bash
-# Mock committer — just make a git commit
 msg="${1:-batch commit}"
 shift
+CONVENTIONAL_RE='^(feat|fix|refactor|test|chore|docs|perf|style|ci|build)(\(.+\))?: .+'
+if ! printf '%s\n' "$msg" | head -1 | grep -qE "$CONVENTIONAL_RE"; then
+  echo "checks: commit message must follow conventional commit format." >&2
+  exit 1
+fi
 git add "$@" 2>/dev/null
 git commit -m "$msg" --allow-empty --no-verify 2>/dev/null
 MOCKEOF
@@ -619,6 +625,13 @@ unset MOCK_CLAUDE_TOUCH
 assert_contains "$output" "Blueprint Loop" "banner displayed"
 assert_contains "$output" "CONVERGED" "reports convergence"
 assert_file_contains "logs/loop/last-progress" "Exit: converged" "progress file records converged exit"
+
+# Leftover-commit regression: the subject must use a conventional type — the
+# real committer rejects "loop:" subjects (checks.sh CONVENTIONAL_RE), which
+# silently routed every leftover commit into the log_warn path.
+leftover_subject=$(git log -1 --format=%s)
+assert_contains "$leftover_subject" "chore:" "leftover commit subject uses a conventional type"
+assert_not_contains "$output" "committer failed" "committer accepted the leftover commit message"
 
 # Test 2: Missing goal file
 rm -f nonexistent.md

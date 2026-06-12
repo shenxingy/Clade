@@ -817,10 +817,18 @@ node_commit_changes() {
   local files_to_commit
   files_to_commit=$(git diff --name-only 2>/dev/null | tr '\n' ' ')
 
+  # Conventional-commit subject — committer's checks.sh CONVENTIONAL_RE rejects
+  # a "loop:" type, which made every leftover commit fall into the log_warn
+  # path. Loop context goes in the body instead.
+  local commit_msg="chore: commit loop iteration $ITERATION leftover changes
+
+Swept by loop-runner node_commit_changes: changes left uncommitted by
+workers during iteration $ITERATION of goal $GOAL_FILE."
+
   if command -v committer &>/dev/null; then
     # shellcheck disable=SC2086
     # tee to stderr — this function's stdout is captured (new_commits=$(...))
-    committer "loop: iter $ITERATION changes" $files_to_commit 2>&1 | tee -a "$LOG_DIR/loop.log" >&2 || {
+    committer "$commit_msg" $files_to_commit 2>&1 | tee -a "$LOG_DIR/loop.log" >&2 || {
       log_warn "committer failed — changes remain uncommitted"
       echo 0
       return
@@ -829,7 +837,7 @@ node_commit_changes() {
     # Fallback: direct git commit
     # shellcheck disable=SC2086
     git add $files_to_commit
-    git commit -m "loop: iter $ITERATION changes" 2>&1 | tee -a "$LOG_DIR/loop.log" >&2 || {
+    git commit -m "$commit_msg" 2>&1 | tee -a "$LOG_DIR/loop.log" >&2 || {
       log_warn "git commit failed"
       echo 0
       return
