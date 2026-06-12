@@ -71,7 +71,7 @@ _timeout() {
 # WORKER invocations (node_run_workers → run-tasks*.sh) and the syntax
 # FIXER (node_fix_syntax — edits files, commits) deliberately KEEP full
 # user settings: commit-discipline hooks are core value.
-readonly PURE_JUDGE_FLAGS=(--setting-sources "")
+readonly PURE_JUDGE_FLAGS=(--setting-sources "" --disallowed-tools Edit,Write,Bash)
 # ────────────────────────────────────────────────────────────────
 
 # ─── BLUEPRINT HARD LIMITS ──────────────────────────────────────
@@ -575,6 +575,12 @@ for task in tasks:
         '- Use committer \"type: msg\" file1 file2 to commit (NEVER git add .)',
         '- Substantive commits (feat/fix/refactor/perf) need a 2-4 line body after the subject: mechanism, hazard avoided or root cause, constraint honored — committer accepts multi-line messages',
         '- Do NOT modify the goal file',
+        '',
+        '## Friction Log',
+        'If a tool or harness feature fights you (wrong output, unexpected workaround needed, blocks progress),',
+        'append ≤2 lines to BRAINSTORM.md under `## [AI] Friction Log`:',
+        '  [YYYY-MM-DD] tool: <what happened> / workaround: <what you did>',
+        'Skip if nothing noteworthy.',
         '',
     ]
     output_tasks.append('\n'.join(task_lines))

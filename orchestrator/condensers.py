@@ -30,6 +30,9 @@ HAIKU_MODEL = "haiku"
 # {"ok":true} reply replaces it (see config.SETTING_SOURCES_NONE, commit
 # 386a862). worker.py re-asserts this at import time (leaf module).
 SETTING_SOURCES_NONE = '--setting-sources ""'
+# Judges must not mutate files — denies Edit, Write, Bash. Leaf default mirrors
+# config.DISALLOWED_TOOLS_JUDGE; worker.py re-asserts at import time.
+DISALLOWED_TOOLS_JUDGE = "--disallowed-tools Edit,Write,Bash"
 
 
 # ─── Abstract Base ────────────────────────────────────────────────────────────
@@ -102,6 +105,7 @@ class LLMSummarizingCondenser(Condenser):
                 "--model", HAIKU_MODEL,
                 "--dangerously-skip-permissions", "--no-input-prompt",
                 *shlex.split(SETTING_SOURCES_NONE),
+                *shlex.split(DISALLOWED_TOOLS_JUDGE),
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
                 cwd=str(project_dir),
             )

@@ -31,6 +31,9 @@ HAIKU_MODEL = "haiku"
 # import time (leaf module — cannot import config). Exec-argv sites expand it
 # via shlex.split().
 SETTING_SOURCES_NONE = '--setting-sources ""'
+# Judges must not mutate files — denies Edit, Write, Bash. Leaf default mirrors
+# config.DISALLOWED_TOOLS_JUDGE; worker.py re-asserts at import time.
+DISALLOWED_TOOLS_JUDGE = "--disallowed-tools Edit,Write,Bash"
 
 # ─── Semantic Code TLDR ──────────────────────────────────────────────────────
 
@@ -466,6 +469,7 @@ async def _localize_tldr_for_task(
             "--dangerously-skip-permissions",
             "--no-input-prompt",
             *shlex.split(SETTING_SOURCES_NONE),
+            *shlex.split(DISALLOWED_TOOLS_JUDGE),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
             cwd=str(project_dir),
@@ -548,6 +552,7 @@ async def _localize_fault(
             "--dangerously-skip-permissions",
             "--no-input-prompt",
             *shlex.split(SETTING_SOURCES_NONE),
+            *shlex.split(DISALLOWED_TOOLS_JUDGE),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
             cwd=str(project_dir),
@@ -781,6 +786,7 @@ async def _generate_repro_test(
             "--dangerously-skip-permissions",
             "--no-input-prompt",
             *shlex.split(SETTING_SOURCES_NONE),
+            *shlex.split(DISALLOWED_TOOLS_JUDGE),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
             cwd=str(project_dir),
@@ -880,7 +886,7 @@ async def _score_task(task_id: str, description: str, db_path: Path, claude_dir:
     try:
         score_file.write_text(score_prompt)
         proc = await asyncio.create_subprocess_shell(
-            f'claude -p "$(cat {shlex.quote(str(score_file))})" --model {HAIKU_MODEL} --dangerously-skip-permissions {SETTING_SOURCES_NONE}',
+            f'claude -p "$(cat {shlex.quote(str(score_file))})" --model {HAIKU_MODEL} --dangerously-skip-permissions {SETTING_SOURCES_NONE} {DISALLOWED_TOOLS_JUDGE}',
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
         )

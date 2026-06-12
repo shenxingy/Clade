@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 # test-loop-real.sh — key-gated REAL-API tier for the loop harness
 #
+# ─── FLAKE-VERDICT POLICY ────────────────────────────────────────────────────
+# One SUCCESS   = image good; the scenario ran correctly — stop here.
+# Three identical failures = content must change; the model consistently
+#   rejects the current prompt/task shape — update the test scenario, not
+#   the retry count.
+# Never chase a single flake; a lone failure with no reproduction is noise —
+#   re-run once; if it passes, discard it; if it fails identically, apply the
+#   three-failure rule above.
+# ─────────────────────────────────────────────────────────────────────────────
+#
 # Two-tier pattern: tests/test-loop.sh runs the full mock suites for free on
 # every push; this tier runs EXACTLY ONE cheap live scenario against the real
 # claude CLI (trivial goal, haiku supervisor, max-iter 1, ~$0.05) to catch

@@ -63,6 +63,8 @@ OPUS_MODEL = _MODEL_ALIASES["opus"]
 # import time so this constant stays authoritative.
 # Shell-string sites embed it verbatim; exec-argv sites use shlex.split().
 SETTING_SOURCES_NONE = '--setting-sources ""'
+# Judges must not mutate files — denies Edit, Write, Bash on all judge invocations.
+DISALLOWED_TOOLS_JUDGE = "--disallowed-tools Edit,Write,Bash"
 
 # ─── Paths ────────────────────────────────────────────────────────────────────
 
