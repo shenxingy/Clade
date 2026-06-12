@@ -69,6 +69,7 @@ For each rule in RULES_FILE:
 - Check `rule-effectiveness.json`: any rule with **3+ hits**, OR 3+ events on the same invariant (same domain + root-cause recurring across rules)
 - A rule that has had to hold the line 3+ times is load-bearing — it deserves mechanical enforcement, not another re-read every session. This is the cap on unbounded prose-rule accumulation.
 - Action (executed in Step 4): run the `/generate-hook` flow inline, then retire the prose rule to the retired-rules archive with a pointer to the enforcing hook
+- For code-level structural closes (delete re-implementation, make function total, single emit chokepoint, newtype split, precondition→postcondition contract), see **[docs/structural-close-ladder.md](../../docs/structural-close-ladder.md)**
 
 #### KEEP — Rule is still relevant and not yet ready to promote
 - Recent rule (< 14 days) or context-specific

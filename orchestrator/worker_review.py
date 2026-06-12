@@ -28,6 +28,9 @@ HAIKU_MODEL = "haiku"
 # 386a862). Default mirrors config.SETTING_SOURCES_NONE; worker.py re-asserts
 # it at import time (leaf module — cannot import config).
 SETTING_SOURCES_NONE = '--setting-sources ""'
+# Judges must not mutate files — denies Edit, Write, Bash. Leaf default mirrors
+# config.DISALLOWED_TOOLS_JUDGE; worker.py re-asserts at import time.
+DISALLOWED_TOOLS_JUDGE = "--disallowed-tools Edit,Write,Bash"
 
 # ─── Progress / PR Review / Oracle ────────────────────────────────────────────
 
@@ -63,7 +66,7 @@ async def _summarize_worker_completion(
     )
     try:
         proc = await asyncio.create_subprocess_shell(
-            f'claude -p {shlex.quote(prompt)} --model {HAIKU_MODEL} --no-input-prompt {SETTING_SOURCES_NONE}',
+            f'claude -p {shlex.quote(prompt)} --model {HAIKU_MODEL} --no-input-prompt {SETTING_SOURCES_NONE} {DISALLOWED_TOOLS_JUDGE}',
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
         )
@@ -105,7 +108,7 @@ async def _write_progress_entry(
     )
     try:
         proc = await asyncio.create_subprocess_shell(
-            f'claude -p {shlex.quote(prompt)} --model {HAIKU_MODEL} {SETTING_SOURCES_NONE}',
+            f'claude -p {shlex.quote(prompt)} --model {HAIKU_MODEL} {SETTING_SOURCES_NONE} {DISALLOWED_TOOLS_JUDGE}',
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
         )
@@ -155,7 +158,7 @@ async def _write_pr_review(pr_url: str, task_description: str, project_dir: Path
             "RESPOND WITH ONLY the review markdown, no preamble."
         )
         review_proc = await asyncio.create_subprocess_shell(
-            f'claude -p {shlex.quote(prompt)} --model {HAIKU_MODEL} {SETTING_SOURCES_NONE}',
+            f'claude -p {shlex.quote(prompt)} --model {HAIKU_MODEL} {SETTING_SOURCES_NONE} {DISALLOWED_TOOLS_JUDGE}',
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
         )
@@ -381,7 +384,7 @@ async def _oracle_pass(
         #   dir; stdin closed (CC otherwise waits 3s for piped input).
         proc = await asyncio.create_subprocess_shell(
             f'claude -p "$(cat {shlex.quote(str(prompt_file))})" '
-            f'--model {HAIKU_MODEL} {SETTING_SOURCES_NONE} '
+            f'--model {HAIKU_MODEL} {SETTING_SOURCES_NONE} {DISALLOWED_TOOLS_JUDGE} '
             f'--append-system-prompt {shlex.quote(_ORACLE_JUDGE_SYSTEM_PROMPT)}',
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
@@ -494,7 +497,7 @@ async def _oracle_review_chunk(
         # cwd, closed stdin).
         proc = await asyncio.create_subprocess_shell(
             f'claude -p "$(cat {shlex.quote(str(prompt_file))})" '
-            f'--model {HAIKU_MODEL} {SETTING_SOURCES_NONE} '
+            f'--model {HAIKU_MODEL} {SETTING_SOURCES_NONE} {DISALLOWED_TOOLS_JUDGE} '
             f'--append-system-prompt {shlex.quote(_ORACLE_JUDGE_SYSTEM_PROMPT)}',
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,

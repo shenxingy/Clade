@@ -37,7 +37,7 @@ wr = _load_real("worker_review.py", "_real_worker_review_flags")
 import condensers as cd  # noqa: E402 — not mocked by conftest
 import worker_utils as wu  # noqa: E402 — not mocked by conftest
 import session as ss  # noqa: E402
-from config import SETTING_SOURCES_NONE  # noqa: E402
+from config import SETTING_SOURCES_NONE, DISALLOWED_TOOLS_JUDGE  # noqa: E402
 
 # conftest replaces `worker` in sys.modules with a MagicMock — load the real
 # module by path for the spawn-command assertion (test_oracle_integrity pattern).
@@ -46,11 +46,20 @@ w = _load_real("worker.py", "_real_worker_flags")
 FLAG_STR = '--setting-sources ""'
 FLAG_ARGV = shlex.split(FLAG_STR)  # ["--setting-sources", ""]
 
+DISALLOWED_FLAG_STR = "--disallowed-tools Edit,Write,Bash"
+DISALLOWED_FLAG_ARGV = shlex.split(DISALLOWED_FLAG_STR)  # ["--disallowed-tools", "Edit,Write,Bash"]
+
 
 def _assert_argv_has_flag(argv: list):
     assert "--setting-sources" in argv, argv
     idx = argv.index("--setting-sources")
     assert argv[idx + 1] == "", f"--setting-sources value not empty: {argv}"
+
+
+def _assert_argv_has_disallowed(argv: list):
+    assert "--disallowed-tools" in argv, f"--disallowed-tools missing from judge argv: {argv}"
+    idx = argv.index("--disallowed-tools")
+    assert argv[idx + 1] == "Edit,Write,Bash", f"unexpected --disallowed-tools value: {argv[idx + 1]}"
 
 
 # ─── Capture plumbing (same shape as test_oracle_integrity) ───────────────────
@@ -99,6 +108,10 @@ def test_config_constant_matches_oracle_precedent():
     assert SETTING_SOURCES_NONE == FLAG_STR
 
 
+def test_config_disallowed_tools_constant():
+    assert DISALLOWED_TOOLS_JUDGE == DISALLOWED_FLAG_STR
+
+
 def test_leaf_module_defaults_match_config():
     # Leaves cannot import config — their literal defaults must stay in sync
     # (worker.py re-asserts at import time, but standalone imports rely on these).
@@ -106,6 +119,9 @@ def test_leaf_module_defaults_match_config():
     assert wr.SETTING_SOURCES_NONE == SETTING_SOURCES_NONE
     assert wu.SETTING_SOURCES_NONE == SETTING_SOURCES_NONE
     assert cd.SETTING_SOURCES_NONE == SETTING_SOURCES_NONE
+    assert wt.DISALLOWED_TOOLS_JUDGE == DISALLOWED_TOOLS_JUDGE
+    assert wr.DISALLOWED_TOOLS_JUDGE == DISALLOWED_TOOLS_JUDGE
+    assert cd.DISALLOWED_TOOLS_JUDGE == DISALLOWED_TOOLS_JUDGE
 
 
 # ─── worker_tldr: TLDR localization / fault / repro / scoring ─────────────────
@@ -308,3 +324,53 @@ async def test_ideas_calls_carry_flag(tmp_path, monkeypatch):
     await mgr.discuss_idea(idea["id"], "what do you think?")
     assert captured
     _assert_argv_has_flag(captured[0]["argv"])
+
+
+# ─── --disallowed-tools: judge calls include it, worker spawns do not ─────────
+
+
+@pytest.mark.asyncio
+async def test_judge_localize_tldr_has_disallowed(tmp_path, monkeypatch):
+    captured: list = []
+    monkeypatch.setattr(wt, "asyncio", _capture_proxy(captured))
+    await wt._localize_tldr_for_task("pick files", "## a.py\n  def f()", tmp_path)
+    assert captured, "claude was not invoked"
+    _assert_argv_has_disallowed(captured[0]["argv"])
+
+
+@pytest.mark.asyncio
+async def test_judge_localize_fault_has_disallowed(tmp_path, monkeypatch):
+    captured: list = []
+    monkeypatch.setattr(wt, "asyncio", _capture_proxy(captured))
+    await wt._localize_fault("fix the bug", "## a.py\n  def f()", tmp_path)
+    assert captured
+    _assert_argv_has_disallowed(captured[0]["argv"])
+
+
+@pytest.mark.asyncio
+async def test_judge_summarize_completion_has_disallowed(tmp_path, monkeypatch):
+    captured: list = []
+    monkeypatch.setattr(wr, "asyncio", _capture_proxy(captured))
+    log = tmp_path / "worker.log"
+    log.write_text("did things\n")
+    await wr._summarize_worker_completion("task", log, tmp_path)
+    assert captured
+    assert DISALLOWED_FLAG_STR in captured[0]["cmd"]
+
+
+@pytest.mark.asyncio
+async def test_judge_llm_condenser_has_disallowed(tmp_path, monkeypatch):
+    captured: list = []
+    monkeypatch.setattr(cd, "asyncio", _capture_proxy(captured))
+    await cd.LLMSummarizingCondenser()._summarize(
+        [{"type": "msg", "content": "hello"}], tmp_path
+    )
+    assert captured
+    _assert_argv_has_disallowed(captured[0]["argv"])
+
+
+def test_worker_spawn_no_disallowed_tools(tmp_path):
+    """Workers EDIT files — --disallowed-tools must NOT appear in the main spawn."""
+    wk = w.Worker("t1", "do work", "sonnet", tmp_path, tmp_path)
+    cmd, _env = wk._build_cmd_and_env(tmp_path / "task.md")
+    assert "--disallowed-tools" not in cmd

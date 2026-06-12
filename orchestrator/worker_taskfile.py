@@ -42,6 +42,17 @@ logger = logging.getLogger(__name__)
 # History carries the payload: workers commit via committer.sh, and the body
 # is the only place mechanism/root-cause survives for future debugging — the
 # task file and worker log are ephemeral, git history is not.
+FRICTION_LOG_BLOCK = (
+    "\n\n---\n\n"
+    "## Friction Log\n"
+    "If a tool or harness feature fights you (wrong output, unexpected workaround needed, "
+    "blocks progress), append ≤2 lines to `BRAINSTORM.md` under `## [AI] Friction Log`:\n"
+    "```\n"
+    "[YYYY-MM-DD] tool: <what happened> / workaround: <what you did>\n"
+    "```\n"
+    "One entry per incident, max 2 lines. Skip if nothing noteworthy.\n"
+)
+
 COMMIT_GUIDANCE_BLOCK = (
     "\n\n---\n\n"
     "## Commit Messages\n"
@@ -285,7 +296,7 @@ async def build_task_file(w: Any, task_queue: Any | None) -> Path:
     task_file.write_text(
         effective_description + _schema_block + _fix_two_phase
         + EDIT_DISCIPLINE_BLOCK + SEARCH_CONVENTIONS_BLOCK
-        + COMMIT_GUIDANCE_BLOCK + COMPLETION_CONTRACT_BLOCK
+        + COMMIT_GUIDANCE_BLOCK + FRICTION_LOG_BLOCK + COMPLETION_CONTRACT_BLOCK
     )
 
     # OpenHands §Gap3: capture test baseline before worker edits (fix tasks only).

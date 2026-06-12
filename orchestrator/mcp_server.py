@@ -395,8 +395,11 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string",
-                              "description": "Keywords, e.g. 'blog seo audit'"},
+                    "query": {
+                        "type": "string",
+                        "description": "Keywords, e.g. 'blog seo audit'",
+                        "examples": ["blog seo audit", "commit push", "code review", "email write"],
+                    },
                 },
                 "required": ["query"],
             },
@@ -410,10 +413,16 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string",
-                             "description": "Skill name, e.g. 'commit'"},
-                    "args": {"type": "string",
-                             "description": "Arguments appended to the skill prompt (optional)"},
+                    "name": {
+                        "type": "string",
+                        "description": "Skill name, e.g. 'commit'",
+                        "examples": ["commit", "blog-write", "seo-audit", "review-pr", "code-review"],
+                    },
+                    "args": {
+                        "type": "string",
+                        "description": "Arguments appended to the skill prompt (optional)",
+                        "examples": ["--fix", "--comment", "low", "high", "ultra"],
+                    },
                 },
                 "required": ["name"],
             },

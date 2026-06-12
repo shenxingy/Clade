@@ -36,7 +36,7 @@ unset CLAUDECODE 2>/dev/null || true
 # blocks, verify parses garbage; see commits 386a862 / a6d076a).
 # WORKERS (spawned via loop-runner.sh → run-tasks*.sh) deliberately keep full
 # user settings — commit-discipline hooks are core value.
-PURE_JUDGE_FLAGS=(--setting-sources "")
+PURE_JUDGE_FLAGS=(--setting-sources "" --disallowed-tools Edit,Write,Bash)
 
 # Cross-platform sha256 (Linux: sha256sum, macOS: shasum -a 256)
 if command -v sha256sum &>/dev/null; then

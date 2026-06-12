@@ -36,6 +36,7 @@ from config import (
     SONNET_MODEL,
     OPUS_MODEL,
     SETTING_SOURCES_NONE,
+    DISALLOWED_TOOLS_JUDGE,
     _estimate_cost,
     _parse_token_usage,
     _build_tool_flags,
@@ -84,6 +85,7 @@ logger = logging.getLogger(__name__)
 for _leaf_mod in (condensers, worker_review, worker_tldr, worker_utils):
     _leaf_mod.HAIKU_MODEL = HAIKU_MODEL
     _leaf_mod.SETTING_SOURCES_NONE = SETTING_SOURCES_NONE
+    _leaf_mod.DISALLOWED_TOOLS_JUDGE = DISALLOWED_TOOLS_JUDGE
 
 # ─── Worker ───────────────────────────────────────────────────────────────────
 
