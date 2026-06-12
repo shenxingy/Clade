@@ -552,6 +552,7 @@ for task in tasks:
     task_lines += [
         '## Close the loop (required before finishing)',
         '- Verify your changes pass syntax/compile checks',
+        '- Run test/build/verify commands via quiet-run (bash ~/.claude/scripts/quiet-run.sh <cmd>) when installed — full output goes to .claude/logs/, only the verdict + failure tail enters your context, exit code is mirrored',
         '- Re-read every file you changed — catch logic bugs, null cases, missing imports',
         '- Use committer \"type: msg\" file1 file2 to commit (NEVER git add .)',
         '- Substantive commits (feat/fix/refactor/perf) need a 2-4 line body after the subject: mechanism, hazard avoided or root cause, constraint honored — committer accepts multi-line messages',

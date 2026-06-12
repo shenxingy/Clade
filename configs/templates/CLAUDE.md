@@ -5,6 +5,11 @@
 - Test command: [e.g. pytest tests/ -v]
 - Verify command: [e.g. ./scripts/smoke-test.sh, or N/A]
 
+# Context hygiene for test/verify runs:
+# Run long test/build/verify commands via `bash ~/.claude/scripts/quiet-run.sh <cmd>` —
+# full output lands in .claude/logs/quiet-*.log, stdout carries only the verdict +
+# failure tail, and the underlying exit code is preserved.
+
 # Features (Behavior Anchors)
 # Used by /verify to check that key behaviors still hold after each loop iteration.
 # Format: - [Feature name]: [what happens when user does X]

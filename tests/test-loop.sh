@@ -1227,6 +1227,66 @@ fi
 fi
 
 # ═══════════════════════════════════════════════════════════════════════
+# TEST SUITE 16: quiet-run.sh
+# ═══════════════════════════════════════════════════════════════════════
+
+if should_run "quiet-run"; then
+section "quiet-run.sh"
+
+QUIET_RUN="$ORIG_DIR/configs/scripts/quiet-run.sh"
+REPO_DIR=$(setup_test_repo)
+cd "$REPO_DIR"
+
+# Success path: exit 0 mirrored, raw output logged — not streamed to stdout.
+# The marker is computed at runtime so it appears in the command OUTPUT but
+# not in the command TEXT (the verdict line echoes the command itself).
+out=$(bash "$QUIET_RUN" bash -c 'echo "marker-$((40+2))"; echo line-two')
+rc=$?
+assert_exit_code 0 "$rc" "quiet-run mirrors exit 0"
+assert_contains "$out" "quiet-run: OK" "success prints OK verdict"
+assert_not_contains "$out" "marker-42" "success output stays out of stdout"
+
+# Full output captured in the log file (and .claude/logs was auto-created)
+log_file=$(echo "$out" | grep -oE '[^ ]+\.log' | head -1)
+assert_file_exists "$log_file" "log file created under .claude/logs"
+assert_file_contains "$log_file" "marker-42" "full output captured in log file"
+
+# Failure path: exit code mirrored, summary contains the failure tail
+out=$(bash "$QUIET_RUN" bash -c 'echo ok-part; echo bad-error-line; exit 3')
+rc=$?
+assert_exit_code 3 "$rc" "quiet-run mirrors exit 3 (never swallows failure)"
+assert_contains "$out" "FAILED (exit 3" "failure verdict includes exit code"
+assert_contains "$out" "bad-error-line" "failure summary contains output tail"
+
+# Failed-test names (pytest-style summary lines) are surfaced
+out=$(bash "$QUIET_RUN" bash -c 'echo "FAILED tests/test_x.py::test_y - AssertionError"; exit 1')
+rc=$?
+assert_exit_code 1 "$rc" "quiet-run mirrors exit 1"
+assert_contains "$out" "tests/test_x.py::test_y" "failed-test name surfaced in summary"
+
+# Tail is capped at QUIET_RUN_TAIL lines
+out=$(QUIET_RUN_TAIL=5 bash "$QUIET_RUN" bash -c 'for i in $(seq 1 200); do echo "TL$i"; done; exit 1')
+assert_contains "$out" "TL200" "tail includes last line"
+assert_not_contains "$out" "TL100" "tail capped at QUIET_RUN_TAIL lines"
+
+# Command not found: 127 mirrored
+bash "$QUIET_RUN" /nonexistent-cmd-quiet-run-test >/dev/null 2>&1
+rc=$?
+assert_exit_code 127 "$rc" "quiet-run mirrors 127 for missing command"
+
+# No arguments: usage error, exit 2
+bash "$QUIET_RUN" >/dev/null 2>&1
+rc=$?
+assert_exit_code 2 "$rc" "quiet-run with no args exits 2"
+
+# Uncreatable log dir falls back to temp dir instead of dying
+out=$(QUIET_RUN_LOG_DIR=/proc/no-such-dir/logs bash "$QUIET_RUN" bash -c 'echo fallback-ok')
+rc=$?
+assert_exit_code 0 "$rc" "uncreatable log dir falls back, run still succeeds"
+assert_contains "$out" "quiet-run: OK" "fallback run prints OK verdict"
+fi
+
+# ═══════════════════════════════════════════════════════════════════════
 # Summary
 # ═══════════════════════════════════════════════════════════════════════
 

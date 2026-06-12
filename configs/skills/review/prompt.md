@@ -153,6 +153,7 @@ For every ❌ checkpoint found:
 **Anti-hang rules for test commands**:
 - Every `curl`, `httpx`, `psql`, `sqlite3` call: prefix with `timeout 30`
 - Every `pytest`, `npm test`, `go test` call: prefix with `timeout 120`
+- Test-suite runs: prefer `bash ~/.claude/scripts/quiet-run.sh <test cmd>` (if installed) — full output lands in `.claude/logs/quiet-*.log`, only the verdict + failure tail enters your context, and the exit code is mirrored
 - Every server startup wait: `timeout 30 bash -c 'until curl -sf http://localhost:PORT/health; do sleep 1; done'`
 - If a command times out → mark the checkpoint ⚠ (timeout, server may be unavailable) and continue
 

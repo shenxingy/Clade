@@ -36,6 +36,13 @@ timeout 120 {test_command}
 ```
 Record: pass/fail + count of passing/failing tests.
 
+**Context hygiene**: if `~/.claude/scripts/quiet-run.sh` is installed, wrap the command:
+```bash
+timeout 130 bash ~/.claude/scripts/quiet-run.sh {test_command}
+```
+Full output lands in `.claude/logs/quiet-*.log`; only the verdict line + failure tail
+enters the transcript. The exit code is mirrored, so pass/fail detection is unchanged.
+
 If no test command but common test patterns exist:
 - `timeout 120 pytest` / `timeout 120 python -m pytest` (Python)
 - `timeout 120 npm test` / `timeout 120 npx jest` (Node)
