@@ -17,10 +17,14 @@
 
 ## Overview
 
-The fastest way to go from idea to parallel execution. One chat session with an AI orchestrator decomposes your goal into tasks; a dashboard shows N workers executing them simultaneously.
+**Observability + gates + execution adapter.** The orchestrator sits between your CLI work and the outside world. It watches parallel workers execute tasks, enforces quality gates before pushing, routes work via GitHub, and provides a web UI dashboard.
+
+The **web UI** is a read-only observation window — you watch workers run, monitor costs, and adjust settings. All execution happens via CLI workers (`start.sh`, `loop-runner.sh`) in your terminal or background.
+
+Fastest way to go from idea to parallel execution: one chat session with the orchestrator decomposes your goal into tasks; a dashboard shows N workers executing them in parallel.
 
 ```bash
-./orchestrator/start.sh
+cd orchestrator && ./start.sh
 # → Opens http://localhost:8765 in your browser
 ```
 

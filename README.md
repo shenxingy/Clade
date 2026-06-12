@@ -16,6 +16,8 @@
 
 124 skills, 27 hooks, 36 agents, a safety guardian, and a correction learning loop — all working together so Claude codes better, catches its own mistakes, and can run unattended overnight while you sleep.
 
+Two layers: **CLI** (product center — skills, hooks, scripts you live in) + **Orchestrator** (observability + gates + execution adapter — watch parallel workers, verify quality gates, route work).
+
 > If this saves you time, a star helps others find it. Something broken? [Open an issue](https://github.com/shenxingy/clade/issues/new/choose).
 
 > **Blog post:** [Building Clade](https://alexshen.dev/en/blog/clade) — motivation, design decisions, and lessons learned.
@@ -242,27 +244,31 @@ Keep `~/.claude/` in sync across machines — memory, corrections, skills, hooks
 
 Fully automatic once configured. See [Configuration](docs/configuration.md) for details.
 
-## Repo Structure
+## Architecture
+
+**CLI layer** (`configs/` → installed to `~/.claude/`): Product center. Skills, hooks, scripts you invoke daily. Works standalone, no server needed.
+
+**Orchestrator** (`orchestrator/`): Observability + gates + execution adapter. Watches parallel workers, enforces quality gates, routes tasks, provides web UI for multi-project oversight. Optional — CLI works independently.
+
+**Web UI** (`orchestrator/web/`): Read-only observation window. Task queue, worker status, cost dashboard, settings. No production logic — all executes via CLI.
 
 ```
 clade/
 ├── install.sh               # One-command deployment
-├── uninstall.sh             # Clean removal
-├── mcp-package/             # PyPI package (clade-mcp)
-├── orchestrator/            # FastAPI web UI + worker pool + task queue
-│   ├── server.py            # App, routes, WebSocket
-│   ├── worker.py            # WorkerPool, SwarmManager
-│   ├── task_queue.py        # SQLite-backed task CRUD
-│   ├── mcp_server.py        # MCP server (local dev version)
-│   └── web/                 # React + Vite dashboard (web/src/, served from web/dist)
-├── configs/
-│   ├── skills/              # 123 skill definitions (SKILL.md + prompt.md)
-│   ├── hooks/               # 26 event hooks + lib/
-│   ├── agents/              # 34 agent definitions
+├── configs/                 # ← THE PRODUCT CENTER
+│   ├── skills/              # 124 skill definitions
+│   ├── hooks/               # 27 event hooks
+│   ├── agents/              # 36 agent definitions
 │   └── scripts/             # 38 shell + Python utilities
+├── orchestrator/            # ← THE EXECUTION ADAPTER
+│   ├── server.py            # FastAPI app, routes, WebSocket
+│   ├── worker.py            # WorkerPool, SwarmManager, task dispatch
+│   ├── task_queue.py        # SQLite task queue + CRUD
+│   └── web/                 # ← THE OBSERVATION WINDOW
+│       └── src/             # React + Vite UI (served from dist/)
+├── docs/                    # Guides and research
 ├── adapters/openclaw/       # OpenClaw integration (mobile monitoring)
-├── templates/               # Settings, CLAUDE.md, corrections templates
-└── docs/                    # Guides and research
+└── templates/               # Settings, CLAUDE.md templates
 ```
 
 ## OpenClaw Integration
