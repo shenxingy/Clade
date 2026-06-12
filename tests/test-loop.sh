@@ -151,6 +151,9 @@ if ! printf '%s\n' "$msg" | head -1 | grep -qE "$CONVENTIONAL_RE"; then
   echo "checks: commit message must follow conventional commit format." >&2
   exit 1
 fi
+# Like the real committer: clear any pre-staged files (e.g. run-tasks.sh's
+# git add -A checkpoint), then stage ONLY the named files.
+git restore --staged :/ 2>/dev/null || true
 git add "$@" 2>/dev/null
 git commit -m "$msg" --allow-empty --no-verify 2>/dev/null
 MOCKEOF
@@ -632,6 +635,27 @@ assert_file_contains "logs/loop/last-progress" "Exit: converged" "progress file 
 leftover_subject=$(git log -1 --format=%s)
 assert_contains "$leftover_subject" "chore:" "leftover commit subject uses a conventional type"
 assert_not_contains "$output" "committer failed" "committer accepted the leftover commit message"
+
+# Untracked-sweep regression: a file CREATED by a worker (untracked) must be
+# swept into the leftover commit (old `git diff --name-only` only saw tracked
+# modifications), while the loop's own bookkeeping (.claude/ state, log dir)
+# must NOT be committed — sweeping the state file every iteration would defeat
+# the consecutive-no-commit stuck detection.
+printf '# Goal: converge again\n\n- [x] already done\n' > goal-untracked.md
+mkdir -p logs/loop-untracked  # log_* tee into $LOG_DIR — must exist before the first top-level log line
+export MOCK_CLAUDE_TOUCH="$REPO_DIR/created-by-worker.txt"
+output=$(
+  exec 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- 2>/dev/null
+  timeout --kill-after=5s 90s bash "$SCRIPTS_DIR/loop-runner.sh" "goal-untracked.md" --max-iter 3 --max-workers 1 --state .claude/loop-state-untracked --log-dir logs/loop-untracked 2>&1
+) || true
+unset MOCK_CLAUDE_TOUCH
+assert_contains "$output" "CONVERGED" "untracked-sweep run converges"
+tracked_now=$(git ls-files)
+assert_contains "$tracked_now" "created-by-worker.txt" "worker-created untracked file swept into leftover commit"
+assert_not_contains "$tracked_now" ".claude/loop-state-untracked" "loop state file NOT committed"
+assert_not_contains "$tracked_now" "logs/loop-untracked" "loop log dir NOT committed"
+still_dirty=$(git status --porcelain -- created-by-worker.txt)
+assert_eq "" "$still_dirty" "worker-created file fully committed (status clean)"
 
 # Test 2: Missing goal file
 rm -f nonexistent.md

@@ -804,9 +804,34 @@ else:
 node_commit_changes() {
   log_info "[DET] commit_changes"
 
-  local uncommitted
-  uncommitted=$(git diff --name-only 2>/dev/null | wc -l | tr -d ' ')
-  uncommitted=${uncommitted:-0}
+  # git status --porcelain sees modified, staged AND worker-CREATED untracked
+  # files (git diff --name-only missed untracked entirely, so new files were
+  # never swept). .gitignore is respected by porcelain. -uall lists untracked
+  # files individually — without it an entirely-untracked directory collapses
+  # to "dir/" and the per-file exclusions below cannot match. The loop's own
+  # bookkeeping ($STATE_FILE, $LOG_DIR, .claude/) is excluded: update_state
+  # dirties $STATE_FILE every iteration, so sweeping it would make every
+  # iteration "commit something" and defeat the consecutive-no-commit stuck
+  # detection. cut strips the 2-char status + space; sed handles renames
+  # ("old -> new" keeps new) and strips porcelain quoting.
+  local changed_files="" f
+  local uncommitted=0
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    case "$f" in
+      "${LOG_DIR%/}"/*|"$STATE_FILE"|.claude/*) continue ;;
+    esac
+    # Skip staged-then-deleted transients (run-tasks.sh checkpoints via
+    # `git add -A`, cleanup then rm's the files — porcelain still lists the
+    # phantom index entry and `git add` on the dead pathspec would abort the
+    # whole commit). A path is real if it exists on disk, or is tracked in
+    # HEAD (a genuine worker deletion, which git add stages correctly).
+    if [ ! -e "$f" ] && ! git cat-file -e "HEAD:$f" 2>/dev/null; then
+      continue
+    fi
+    changed_files="${changed_files}${f} "
+    uncommitted=$((uncommitted + 1))
+  done < <(git status --porcelain -uall 2>/dev/null | cut -c4- | sed -e 's/.* -> //' -e 's/^"\(.*\)"$/\1/')
 
   if [ "$uncommitted" -eq 0 ]; then
     log_info "No uncommitted changes"
@@ -815,7 +840,7 @@ node_commit_changes() {
   fi
 
   local files_to_commit
-  files_to_commit=$(git diff --name-only 2>/dev/null | tr '\n' ' ')
+  files_to_commit="$changed_files"
 
   # Conventional-commit subject — committer's checks.sh CONVENTIONAL_RE rejects
   # a "loop:" type, which made every leftover commit fall into the log_warn
@@ -834,7 +859,11 @@ workers during iteration $ITERATION of goal $GOAL_FILE."
       return
     }
   else
-    # Fallback: direct git commit
+    # Fallback: direct git commit. Mirror committer.sh semantics: clear any
+    # pre-staged index first (run-tasks.sh checkpoints via `git add -A`, and
+    # `git commit` would otherwise sweep that whole index in), then stage
+    # ONLY the filtered file list.
+    git restore --staged :/ 2>/dev/null || true
     # shellcheck disable=SC2086
     git add $files_to_commit
     git commit -m "$commit_msg" 2>&1 | tee -a "$LOG_DIR/loop.log" >&2 || {
