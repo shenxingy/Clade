@@ -163,3 +163,139 @@ class TestMergeAllDonePrCreate:
         assert out["created"] == 0
         assert out["results"][0]["error"]
         assert w.pr_url is None
+
+
+# ─── merge_all_done: auto-merge + do-not-merge escape hatch ─────────────────
+
+
+def _no_labels() -> FakeProc:
+    return FakeProc(stdout=b'{"labels": []}')
+
+
+class TestMergeAllDoneAutoMerge:
+    def _patch(self, monkeypatch, fake_shell):
+        monkeypatch.setattr(rt, "asyncio", AsyncioProxy(create_subprocess_shell=fake_shell))
+        monkeypatch.setitem(rt.GLOBAL_SETTINGS, "auto_review", False)
+        monkeypatch.setitem(rt.GLOBAL_SETTINGS, "auto_merge", True)
+
+    async def test_auto_merge_preferred_over_immediate(self, tmp_path, monkeypatch):
+        w = FakeWorker()
+        calls, fake_shell = _shell_dispatcher([
+            ("gh pr create", FakeProc(PR_URL)),
+            ("gh pr view", _no_labels()),
+            ("--auto", FakeProc()),  # auto-merge supported
+        ])
+        self._patch(monkeypatch, fake_shell)
+
+        out = await rt.merge_all_done(s=_fake_session([w], tmp_path))
+
+        assert out["auto_merge_queued"] == 1
+        assert out["merged"] == 0  # CI is the gate now — not merged yet
+        assert w.pr_merged is False
+        merge_cmds = [c for c in calls if "gh pr merge" in c]
+        assert len(merge_cmds) == 1 and "--auto" in merge_cmds[0]
+        assert out["results"][0]["auto_merge"] is True
+
+    async def test_falls_back_to_immediate_merge(self, tmp_path, monkeypatch):
+        w = FakeWorker()
+        calls, fake_shell = _shell_dispatcher([
+            ("gh pr create", FakeProc(PR_URL)),
+            ("gh pr view", _no_labels()),
+            ("--auto", FakeProc(stderr=b"auto-merge is not allowed", returncode=1)),
+            ("gh pr merge", FakeProc()),  # plain merge succeeds
+        ])
+        self._patch(monkeypatch, fake_shell)
+
+        out = await rt.merge_all_done(s=_fake_session([w], tmp_path))
+
+        assert out["auto_merge_queued"] == 0
+        assert out["merged"] == 1
+        assert w.pr_merged is True
+        merge_cmds = [c for c in calls if "gh pr merge" in c]
+        assert len(merge_cmds) == 2
+        assert "--auto" in merge_cmds[0] and "--auto" not in merge_cmds[1]
+
+    async def test_do_not_merge_label_skips_merge(self, tmp_path, monkeypatch):
+        w = FakeWorker()
+        calls, fake_shell = _shell_dispatcher([
+            ("gh pr create", FakeProc(PR_URL)),
+            ("gh pr view", FakeProc(stdout=b'{"labels": [{"name": "do-not-merge"}]}')),
+        ])
+        self._patch(monkeypatch, fake_shell)
+
+        out = await rt.merge_all_done(s=_fake_session([w], tmp_path))
+
+        assert out["merged"] == 0 and out["auto_merge_queued"] == 0
+        assert w.pr_merged is False
+        assert not any("gh pr merge" in c for c in calls)
+        assert "do-not-merge" in out["results"][0]["skipped"]
+
+    async def test_label_check_failure_skips_merge_fail_safe(self, tmp_path, monkeypatch):
+        w = FakeWorker()
+        calls, fake_shell = _shell_dispatcher([
+            ("gh pr create", FakeProc(PR_URL)),
+            ("gh pr view", FakeProc(stderr=b"network down", returncode=1)),
+        ])
+        self._patch(monkeypatch, fake_shell)
+
+        out = await rt.merge_all_done(s=_fake_session([w], tmp_path))
+
+        # gh error → that PR's merge is skipped; the endpoint still returns 200
+        # shape with no exception text leaking through.
+        assert out["merged"] == 0 and out["auto_merge_queued"] == 0
+        assert not any("gh pr merge" in c for c in calls)
+        assert out["results"][0]["skipped"] == "label check failed — merge skipped"
+
+    async def test_both_merge_attempts_fail_records_error(self, tmp_path, monkeypatch):
+        w = FakeWorker()
+        calls, fake_shell = _shell_dispatcher([
+            ("gh pr create", FakeProc(PR_URL)),
+            ("gh pr view", _no_labels()),
+            ("gh pr merge", FakeProc(stderr=b"merge conflict", returncode=1)),
+        ])
+        self._patch(monkeypatch, fake_shell)
+
+        out = await rt.merge_all_done(s=_fake_session([w], tmp_path))
+
+        assert out["merged"] == 0 and out["auto_merge_queued"] == 0
+        assert w.pr_merged is False
+        assert out["results"][0]["error"] == "gh pr merge failed"
+
+    async def test_non_orchestrator_branch_never_merged(self, tmp_path, monkeypatch):
+        w = FakeWorker(branch_name="feature/manual-work")
+        calls, fake_shell = _shell_dispatcher([("gh pr create", FakeProc(PR_URL))])
+        self._patch(monkeypatch, fake_shell)
+
+        out = await rt.merge_all_done(s=_fake_session([w], tmp_path))
+
+        assert out["created"] == 1 and out["merged"] == 0
+        assert not any("gh pr merge" in c or "gh pr view" in c for c in calls)
+
+
+# ─── helper unit tests ───────────────────────────────────────────────────────
+
+
+class TestGhHelpers:
+    async def test_pr_labels_parses_names(self, tmp_path, monkeypatch):
+        _, fake_shell = _shell_dispatcher([
+            ("gh pr view", FakeProc(stdout=b'{"labels": [{"name": "a"}, {"name": "b"}]}')),
+        ])
+        monkeypatch.setattr(rt, "asyncio", AsyncioProxy(create_subprocess_shell=fake_shell))
+        assert await rt._gh_pr_labels("https://x/pull/1", tmp_path) == ["a", "b"]
+
+    async def test_pr_labels_bad_json_is_none(self, tmp_path, monkeypatch):
+        _, fake_shell = _shell_dispatcher([("gh pr view", FakeProc(stdout=b"not json"))])
+        monkeypatch.setattr(rt, "asyncio", AsyncioProxy(create_subprocess_shell=fake_shell))
+        assert await rt._gh_pr_labels("https://x/pull/1", tmp_path) is None
+
+    async def test_pr_labels_subprocess_exception_is_none(self, tmp_path, monkeypatch):
+        async def _boom(*a, **k):
+            raise OSError("gh not installed")
+        monkeypatch.setattr(rt, "asyncio", AsyncioProxy(create_subprocess_shell=_boom))
+        assert await rt._gh_pr_labels("https://x/pull/1", tmp_path) is None
+
+    async def test_merge_pr_exception_is_false(self, tmp_path, monkeypatch):
+        async def _boom(*a, **k):
+            raise OSError("gh not installed")
+        monkeypatch.setattr(rt, "asyncio", AsyncioProxy(create_subprocess_shell=_boom))
+        assert await rt._gh_merge_pr("https://x/pull/1", tmp_path, auto=True) is False

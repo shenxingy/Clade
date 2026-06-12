@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import shlex
 from pathlib import Path
@@ -176,6 +177,57 @@ def _pr_title(description: str | None) -> str:
     return (first[0][:72] if first else "") or "Orchestrator task"
 
 
+# Human escape hatch (domdomegg): label a PR 'do-not-merge' and unattended
+# merge runs will leave it alone.
+_DO_NOT_MERGE_LABEL = "do-not-merge"
+
+
+async def _gh_pr_labels(pr_url: str, project_dir: Path) -> list[str] | None:
+    """Label names on a PR, or None when gh fails. Fail-safe: callers must
+    treat None as 'cannot verify the escape hatch — skip the merge', never
+    as 'no labels'."""
+    try:
+        proc = await asyncio.create_subprocess_shell(
+            f'gh pr view {shlex.quote(pr_url)} --json labels',
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            cwd=str(project_dir),
+        )
+        try:
+            out, _err = await asyncio.wait_for(proc.communicate(), timeout=60)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
+            return None
+        if proc.returncode != 0:
+            return None
+        data = json.loads(out.decode())
+        return [lbl.get("name", "") for lbl in data.get("labels", [])]
+    except Exception as e:
+        logger.warning("gh pr view labels failed for %s: %s", pr_url, e)
+        return None
+
+
+async def _gh_merge_pr(pr_url: str, project_dir: Path, auto: bool) -> bool:
+    """Run gh pr merge (with --auto when requested). False on any failure."""
+    flag = "--auto " if auto else ""
+    try:
+        proc = await asyncio.create_subprocess_shell(
+            f'gh pr merge {shlex.quote(pr_url)} {flag}--squash --delete-branch',
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            cwd=str(project_dir),
+        )
+        try:
+            await asyncio.wait_for(proc.communicate(), timeout=60)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
+            return False
+        return proc.returncode == 0
+    except Exception as e:
+        logger.warning("gh pr merge%s failed for %s: %s", " --auto" if auto else "", pr_url, e)
+        return False
+
+
 @router.post("/api/tasks/merge-all-done")
 async def merge_all_done(s: ProjectSession = Depends(_resolve_session)):
     """Create PRs for done+pushed workers. Auto-merge orchestrator branches."""
@@ -186,6 +238,7 @@ async def merge_all_done(s: ProjectSession = Depends(_resolve_session)):
     results = []
     created = 0
     merged = 0
+    auto_merge_queued = 0
     for w in eligible:
         branch = w.branch_name or f"orchestrator/task-{w.task_id}"
         try:
@@ -212,19 +265,35 @@ async def merge_all_done(s: ProjectSession = Depends(_resolve_session)):
             if GLOBAL_SETTINGS.get("auto_review", True):
                 asyncio.create_task(_write_pr_review(pr_url, w.description, s.project_dir))
             if branch.startswith("orchestrator/task-") and GLOBAL_SETTINGS.get("auto_merge", True):
-                merge_proc = await asyncio.create_subprocess_shell(
-                    f'gh pr merge {pr_url} --squash --delete-branch',
-                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-                    cwd=str(s.project_dir),
-                )
-                try:
-                    await asyncio.wait_for(merge_proc.communicate(), timeout=60)
-                except asyncio.TimeoutError:
-                    merge_proc.kill()
-                    await merge_proc.communicate()
-                    results.append({"worker_id": w.id, "error": "gh pr merge timed out"})
+                labels = await _gh_pr_labels(pr_url, s.project_dir)
+                if labels is None:
+                    logger.warning(
+                        "merge_all_done: label check failed for %s — merge skipped", pr_url
+                    )
+                    results.append({
+                        "worker_id": w.id, "pr_url": pr_url,
+                        "skipped": "label check failed — merge skipped",
+                    })
                     continue
-                if merge_proc.returncode == 0:
+                if _DO_NOT_MERGE_LABEL in labels:
+                    logger.info(
+                        "merge_all_done: %s carries '%s' — merge skipped",
+                        pr_url, _DO_NOT_MERGE_LABEL,
+                    )
+                    results.append({
+                        "worker_id": w.id, "pr_url": pr_url,
+                        "skipped": f"'{_DO_NOT_MERGE_LABEL}' label",
+                    })
+                    continue
+                # Prefer auto-merge: on repos with branch protection + required
+                # checks the target repo's own CI becomes the merge gate
+                # (domdomegg) — gh refuses --auto where unsupported, so fall
+                # back to the immediate merge below.
+                if await _gh_merge_pr(pr_url, s.project_dir, auto=True):
+                    auto_merge_queued += 1
+                    results.append({"worker_id": w.id, "pr_url": pr_url, "auto_merge": True})
+                    continue
+                if await _gh_merge_pr(pr_url, s.project_dir, auto=False):
                     w.pr_merged = True
                     merged += 1
                     asyncio.create_task(_write_progress_entry(
@@ -232,11 +301,17 @@ async def merge_all_done(s: ProjectSession = Depends(_resolve_session)):
                         log_path=w._log_path,
                         project_dir=s.project_dir,
                     ))
+                else:
+                    results.append({"worker_id": w.id, "pr_url": pr_url, "error": "gh pr merge failed"})
+                    continue
             results.append({"worker_id": w.id, "pr_url": pr_url})
         except Exception as e:
             logger.warning("merge_all_done worker %s failed: %s", w.id, e)
             results.append({"worker_id": w.id, "error": "PR merge failed"})
-    return {"created": created, "merged": merged, "results": results}
+    return {
+        "created": created, "merged": merged,
+        "auto_merge_queued": auto_merge_queued, "results": results,
+    }
 
 
 # ─── Per-Task Operations ─────────────────────────────────────────────────────
