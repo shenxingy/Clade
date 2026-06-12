@@ -752,3 +752,36 @@ class TestFallbackCommitCmd:
         result = self._run(repo, _fallback_commit_cmd("fix: rotate leaked key", "leak.txt"))
         assert result.returncode == 0
         assert _commit_count(repo) == 3
+
+    def test_trailers_with_task_id(self, tmp_path):
+        repo = _init_repo(tmp_path)
+        (repo / "file.txt").write_text("plain content\n")
+        result = self._run(
+            repo, _fallback_commit_cmd("feat: add file", "file.txt", task_id="task-7")
+        )
+        assert result.returncode == 0
+        body = subprocess.run(
+            ["git", "-C", str(repo), "log", "-1", "--format=%B"],
+            capture_output=True, text=True, check=True,
+        ).stdout
+        assert "Co-Authored-By: Claude <noreply@anthropic.com>" in body
+        assert "X-Clade-Task: task-7" in body
+        # git must parse it as a real trailer, not loose body text
+        trailer = subprocess.run(
+            ["git", "-C", str(repo), "log", "-1",
+             "--format=%(trailers:key=X-Clade-Task,valueonly)"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        assert trailer == "task-7"
+
+    def test_no_trailers_without_task_id(self, tmp_path):
+        repo = _init_repo(tmp_path)
+        (repo / "file.txt").write_text("plain content\n")
+        result = self._run(repo, _fallback_commit_cmd("feat: add file", "file.txt"))
+        assert result.returncode == 0
+        body = subprocess.run(
+            ["git", "-C", str(repo), "log", "-1", "--format=%B"],
+            capture_output=True, text=True, check=True,
+        ).stdout
+        assert "Co-Authored-By" not in body
+        assert "X-Clade-Task" not in body

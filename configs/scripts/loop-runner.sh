@@ -600,14 +600,18 @@ node_run_workers() {
 
   local worker_total_timeout=$(( WORKER_TIMEOUT * task_count + 60 ))
 
+  # CLADE_WORKER_TASK_ID → committer.sh appends attribution trailers
+  # (Co-Authored-By + X-Clade-Task) so loop commits segment as agent-authored
   if [ "$MAX_WORKERS" -gt 1 ]; then
-    MAX_WORKERS="$MAX_WORKERS" _timeout "$worker_total_timeout" \
+    CLADE_WORKER_TASK_ID="loop-iter${ITERATION}" MAX_WORKERS="$MAX_WORKERS" \
+      _timeout "$worker_total_timeout" \
       bash "$(_sibling_script run-tasks-parallel.sh)" "$task_file" 2>&1 \
       | tee -a "$LOG_DIR/loop.log" || {
         log_warn "Workers returned non-zero exit (some tasks may have failed)"
       }
   else
-    _timeout "$worker_total_timeout" \
+    CLADE_WORKER_TASK_ID="loop-iter${ITERATION}" \
+      _timeout "$worker_total_timeout" \
       bash "$(_sibling_script run-tasks.sh)" "$task_file" 2>&1 \
       | tee -a "$LOG_DIR/loop.log" || {
         log_warn "Worker returned non-zero exit"

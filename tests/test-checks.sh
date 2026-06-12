@@ -210,6 +210,51 @@ assert_eq 2 "$(commit_count "$D")" "clean commit landed"
 ( cd "$D" && bash "$COMMITTER" "not-a-type: nope" file.txt --no-push ) >/dev/null 2>&1
 assert_eq 1 $? "committer still rejects non-conventional messages (via checks.sh)"
 
+# ─── committer.sh attribution trailers (CLADE_WORKER_TASK_ID) ────────
+echo "── committer.sh attribution trailers ──"
+
+D="$(make_repo)"
+echo "agent change" > "$D/agent.txt"
+( cd "$D" && CLADE_WORKER_TASK_ID=42 bash "$COMMITTER" "feat: agent change" agent.txt --no-push ) >/dev/null 2>&1
+BODY="$(git -C "$D" log -1 --format=%B)"
+assert_contains "$BODY" "Co-Authored-By: Claude <noreply@anthropic.com>" "worker commit carries Co-Authored-By trailer"
+assert_contains "$BODY" "X-Clade-Task: 42" "worker commit carries X-Clade-Task trailer"
+TRAILER_VAL="$(git -C "$D" log -1 --format='%(trailers:key=X-Clade-Task,valueonly)' | tr -d '\n')"
+assert_eq "42" "$TRAILER_VAL" "git parses X-Clade-Task as a real trailer (single -m block)"
+
+echo "human change" > "$D/human.txt"
+( cd "$D" && bash "$COMMITTER" "feat: human change" human.txt --no-push ) >/dev/null 2>&1
+BODY="$(git -C "$D" log -1 --format=%B)"
+assert_not_contains "$BODY" "Co-Authored-By" "interactive commit stays trailer-free"
+assert_not_contains "$BODY" "X-Clade-Task" "interactive commit has no task trailer"
+
+# ─── commit-archeology.sh agent segmentation ─────────────────────────
+echo "── commit-archeology.sh agent segmentation ──"
+
+ARCH="$REPO_ROOT/configs/scripts/commit-archeology.sh"
+D="$(make_repo)"
+for i in 1 2 3; do
+  echo "a$i" > "$D/a$i.txt"
+  ( cd "$D" && CLADE_WORKER_TASK_ID="$i" bash "$COMMITTER" "fix: agent fix $i" "a$i.txt" --no-push ) >/dev/null 2>&1
+done
+echo "h1" > "$D/h1.txt"
+( cd "$D" && bash "$COMMITTER" "feat: human feature" h1.txt --no-push ) >/dev/null 2>&1
+
+FAKE_HOME="$(mktemp -d /tmp/clade-arch-home.XXXXXX)"
+CLEANUP_DIRS+=("$FAKE_HOME")
+( cd "$D" && CLAUDE_DIR="$FAKE_HOME/.claude" CLAUDE_PROJECT_DIR="$D" COMMIT_ARCH_MIN=3 \
+    bash "$ARCH" --scan ) >/dev/null 2>&1
+LESSONS_FILE="$FAKE_HOME/.claude/commit-lessons/$(echo "$D" | sed 's|/|-|g').jsonl"
+TESTS_RUN=$((TESTS_RUN + 1))
+if [[ -s "$LESSONS_FILE" ]]; then
+  pass "archeology --scan wrote a lessons file"
+else
+  fail "archeology --scan wrote a lessons file" "missing: $LESSONS_FILE"
+fi
+LESSONS="$(cat "$LESSONS_FILE" 2>/dev/null || true)"
+assert_contains "$LESSONS" "agent-author-share" "segmentation row present (trailer-derived)"
+assert_contains "$LESSONS" "agent fix-rate 100% (3/3) vs human 0% (0/2)" "fix-rate split segments agent vs human"
+
 # ─── Summary ─────────────────────────────────────────────────────────
 echo ""
 if [[ $TESTS_FAILED -eq 0 ]]; then

@@ -276,6 +276,9 @@ class Worker:
         # Unset CLAUDECODE so workers can launch even when the orchestrator itself
         # is started from inside a Claude Code session (prevents "nested session" error)
         env.pop("CLAUDECODE", None)
+        # Attribution: committer.sh appends Co-Authored-By + X-Clade-Task trailers
+        # when this is set, letting commit-archeology segment agent vs human commits
+        env["CLADE_WORKER_TASK_ID"] = str(self.task_id)
         if GLOBAL_SETTINGS.get("agent_teams"):
             env["CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"] = "1"
 
@@ -817,11 +820,13 @@ class Worker:
         else:
             # Bare-git fallback runs the same staged-secret scan committer.sh
             # gets from checks.sh (fail-closed, CLADE_ALLOW_SECRETS=1 overrides)
-            commit_cmd = _fallback_commit_cmd(commit_msg, files_arg)
+            commit_cmd = _fallback_commit_cmd(commit_msg, files_arg, str(self.task_id))
         commit_proc = await asyncio.create_subprocess_shell(
             commit_cmd,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
             cwd=str(self._project_dir),
+            # committer.sh adds attribution trailers when this is set
+            env={**os.environ, "CLADE_WORKER_TASK_ID": str(self.task_id)},
         )
         try:
             c_out, c_err = await asyncio.wait_for(commit_proc.communicate(), timeout=30)

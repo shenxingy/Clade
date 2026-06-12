@@ -78,14 +78,23 @@ _SECRET_ERE = (
 )
 
 
-def _fallback_commit_cmd(commit_msg: str, files_arg: str) -> str:
+def _fallback_commit_cmd(commit_msg: str, files_arg: str, task_id: str | None = None) -> str:
     """Bare-git commit command used when committer.sh is not installed.
 
     Mirrors committer.sh's pre-commit gate: stage, scan ADDED staged-diff
     lines for secrets (fail-closed — CLADE_ALLOW_SECRETS=1 overrides), then
     commit. Exits 65 on a secret hit so callers can tell a policy abort from
     an ordinary git failure; the stage is reset so nothing is left half-done.
+
+    When task_id is given, attribution trailers (Co-Authored-By + X-Clade-Task,
+    one -m so git parses a single trailer block) mark the commit agent-authored
+    for commit-archeology's agent/human segmentation.
     """
+    trailers = ""
+    if task_id:
+        trailers = " -m " + shlex.quote(
+            f"Co-Authored-By: Claude <noreply@anthropic.com>\nX-Clade-Task: {task_id}"
+        )
     return (
         f"git add {files_arg} && "
         f'if [ "${{CLADE_ALLOW_SECRETS:-0}}" != "1" ] && '
@@ -93,7 +102,7 @@ def _fallback_commit_cmd(commit_msg: str, files_arg: str) -> str:
         f"grep -qE -e {shlex.quote(_SECRET_ERE)}; then "  # -e: pattern starts with '-'
         f'echo "checks: staged secret detected — commit aborted" >&2; '
         f"git reset -q; exit 65; fi && "
-        f"git commit -m {shlex.quote(commit_msg)}"
+        f"git commit -m {shlex.quote(commit_msg)}{trailers}"
     )
 
 

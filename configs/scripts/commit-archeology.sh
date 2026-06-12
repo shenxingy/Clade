@@ -21,6 +21,8 @@
 #   compat-gap       fix commits with "macOS / bash 3 / cross-plat / compat / fallback"
 #   disambiguate     commits with "disambiguate / collision / name clash / built-in"
 #   claude-overridden     Claude-authored commits whose files later get a non-Claude fix
+#   agent-author-share    agent vs human commit share + fix-rate split
+#                         (agent = X-Clade-Task or Co-Authored-By: Claude trailer)
 #   mass-fix-day-YYYY-MM-DD  any single day with ≥10 fix(*) commits
 #
 # Safe to run anywhere: no-ops outside git repos, on small repos, or first-run.
@@ -77,23 +79,29 @@ detect_fix_keyword() {
   printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$label" "$count" "$last_sha" "$last_msg" "$last_date" "$sha_list"
 }
 
+# Agent-authorship test shared by detectors below: a commit is agent-authored
+# when it carries an X-Clade-Task trailer (committer.sh adds it whenever
+# CLADE_WORKER_TASK_ID is set) or a Co-Authored-By: Claude trailer.
+_AGENT_TRAILER_FMT='%(trailers:key=X-Clade-Task,valueonly,separator=;)%x09%(trailers:key=Co-Authored-By,valueonly,separator=;)'
+
 # Detector: Claude-authored commit whose files later get a non-Claude fix
 detect_claude_overridden() {
   local claude_shas hits=0 last_sha="" last_msg="" last_date="" sha_list=""
   claude_shas=$(git log --since="${WINDOW_DAYS}.days.ago" \
-                  --pretty=format:'%H%x09%(trailers:key=Co-Authored-By,valueonly,separator=;)' 2>/dev/null \
-                | awk -F'\t' 'tolower($2) ~ /claude/ {print $1}')
+                  --pretty=format:"%H%x09${_AGENT_TRAILER_FMT}" 2>/dev/null \
+                | awk -F'\t' '$2 != "" || tolower($3) ~ /claude/ {print $1}')
   [[ -z "$claude_shas" ]] && return 0
   while IFS= read -r csha; do
     [[ -z "$csha" ]] && continue
-    local files next_sha next_co
+    local files next_sha next_is_agent
     files=$(git diff-tree --no-commit-id --name-only -r "$csha" 2>/dev/null)
     [[ -z "$files" ]] && continue
     # next commit on those files (oldest in csha..HEAD range)
     next_sha=$(git log "${csha}..HEAD" --pretty=format:'%H' -- $files 2>/dev/null | tail -1)
     [[ -z "$next_sha" ]] && continue
-    next_co=$(git log -1 --pretty=format:'%(trailers:key=Co-Authored-By,valueonly)' "$next_sha" 2>/dev/null)
-    if ! echo "$next_co" | grep -qi claude; then
+    next_is_agent=$(git log -1 --pretty=format:"${_AGENT_TRAILER_FMT}" "$next_sha" 2>/dev/null \
+                    | awk -F'\t' '{ print ($1 != "" || tolower($2) ~ /claude/) ? "yes" : "no" }')
+    if [[ "$next_is_agent" != "yes" ]]; then
       hits=$((hits+1))
       sha_list+="${csha:0:7},"
       last_sha="${next_sha:0:7}"
@@ -103,6 +111,32 @@ detect_claude_overridden() {
   done <<< "$claude_shas"
   [[ "$hits" -lt "$MIN_OCCURRENCES" ]] && return 0
   printf 'claude-overridden\t%s\t%s\t%s\t%s\t%s\n' "$hits" "$last_sha" "$last_msg" "$last_date" "${sha_list%,}"
+}
+
+# Detector: agent-vs-human segmentation by attribution trailer. Emits one
+# row whose message column carries the fix-rate split per author class —
+# the revert/fix-rate-by-author signal /audit consumes. Count column =
+# number of agent-authored commits in the window.
+detect_agent_segmentation() {
+  git log --since="${WINDOW_DAYS}.days.ago" \
+      --pretty=format:"%h%x09%ad%x09%s%x09${_AGENT_TRAILER_FMT}" \
+      --date=short 2>/dev/null \
+    | awk -F'\t' -v min="$MIN_OCCURRENCES" '{
+        agent = ($4 != "" || tolower($5) ~ /claude/)
+        fix = ($3 ~ /^fix/)
+        if (agent) {
+          a++; if (fix) af++
+          if (a == 1) { lsha = $1; ldate = $2 }
+          if (a <= 10) shas = shas $1 ","
+        } else { h++; if (fix) hf++ }
+      } END {
+        if (a < min) exit
+        arate = int(af * 100 / a)
+        hrate = (h > 0) ? int(hf * 100 / h) : 0
+        msg = sprintf("agent fix-rate %d%% (%d/%d) vs human %d%% (%d/%d)", arate, af, a, hrate, hf, h)
+        sub(/,$/, "", shas)
+        printf "agent-author-share\t%d\t%s\t%s\t%s\t%s\n", a, lsha, msg, ldate, shas
+      }'
 }
 
 # Detector: any day with ≥10 fix commits → noisy initial pass
@@ -130,6 +164,7 @@ scan() {
     detect_fix_keyword "compat-gap"   'macos|bash 3|cross-plat|compat|fallback'
     detect_fix_keyword "disambiguate" 'disambiguate|collision|name clash|built-in'
     detect_claude_overridden
+    detect_agent_segmentation
     detect_mass_fix_spree
   ) 2>/dev/null )
 
