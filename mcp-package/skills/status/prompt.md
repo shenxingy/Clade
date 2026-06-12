@@ -38,6 +38,11 @@ Probe `http://localhost:8000/health` (or project-specific port). If reachable:
 - Active workers
 - Running loops
 - Recent task completions (last hour)
+- **Stale-process check**: compare `GET /api/version` `running_commit` against
+  `git rev-parse HEAD` in the orchestrator repo. If they differ, the process is
+  running old code — report it with the fix: `pm2 restart clade-orchestrator`
+  (or however it's supervised). A long-lived process once sat 9 days stale;
+  no file-watcher restarts it.
 
 Skip silently if orchestrator isn't running — it's optional.
 
