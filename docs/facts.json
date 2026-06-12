@@ -3,7 +3,7 @@
   "facts": [
     {
       "name": "skills",
-      "value": 123,
+      "value": 124,
       "derive": {
         "type": "count_glob",
         "pattern": "configs/skills/*/"
@@ -17,7 +17,7 @@
     },
     {
       "name": "hooks",
-      "value": 26,
+      "value": 27,
       "derive": {
         "type": "count_glob",
         "pattern": "configs/hooks/*.sh"
@@ -29,7 +29,7 @@
     },
     {
       "name": "agents",
-      "value": 34,
+      "value": 36,
       "derive": {
         "type": "count_glob",
         "pattern": "configs/agents/*.md"
@@ -40,7 +40,7 @@
     },
     {
       "name": "scripts",
-      "value": 29,
+      "value": 32,
       "derive": {
         "type": "count_glob",
         "pattern": "configs/scripts/*.sh"
