@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shlex
 from abc import ABC, abstractmethod
 from pathlib import Path
 
@@ -23,6 +24,12 @@ from pathlib import Path
 # with config.HAIKU_MODEL (the pinned dated snapshot). The alias fallback
 # keeps standalone imports (tests, REPL) working via the claude CLI.
 HAIKU_MODEL = "haiku"
+
+# Pure-judge containment: the LLM-summarize claude -p call's stdout IS the
+# summary — user settings must not load, or a prompt-type Stop hook's
+# {"ok":true} reply replaces it (see config.SETTING_SOURCES_NONE, commit
+# 386a862). worker.py re-asserts this at import time (leaf module).
+SETTING_SOURCES_NONE = '--setting-sources ""'
 
 
 # ─── Abstract Base ────────────────────────────────────────────────────────────
@@ -94,6 +101,7 @@ class LLMSummarizingCondenser(Condenser):
                 "claude", "-p", prompt,
                 "--model", HAIKU_MODEL,
                 "--dangerously-skip-permissions", "--no-input-prompt",
+                *shlex.split(SETTING_SOURCES_NONE),
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
                 cwd=str(project_dir),
             )

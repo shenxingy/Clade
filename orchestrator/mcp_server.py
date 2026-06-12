@@ -556,7 +556,9 @@ async def _execute_skill(skill_name: str, args_str: str) -> CallToolResult:
     # Determine project dir (wherever the user invoked from)
     project_dir = os.getcwd()
 
-    # Build claude command
+    # Build claude command. Skill executions are worker-style (skills may edit
+    # files / commit), so they keep full user settings deliberately — pure
+    # judges drop them via --setting-sources "" (see config.SETTING_SOURCES_NONE).
     cmd = [
         "claude", "-p", exec_prompt,
         "--project", project_dir,

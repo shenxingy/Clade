@@ -51,6 +51,19 @@ HAIKU_MODEL = _MODEL_ALIASES["haiku"]
 SONNET_MODEL = _MODEL_ALIASES["sonnet"]
 OPUS_MODEL = _MODEL_ALIASES["opus"]
 
+# Pure-judge containment flag — single source of truth for the Python layer.
+# Nested `claude -p` calls whose stdout is PARSED (oracle, TLDR/localize,
+# scoring, distill, condense, supervisor/planner, idea eval) must NOT load
+# user settings: a prompt-type Stop hook's {"ok":true} decision is printed as
+# the -p result instead of the model reply (see worker_review._oracle_pass,
+# commit 386a862), poisoning every JSON-extraction pipeline downstream.
+# WORKER spawns (worker.py Worker.start / _run_with_context) keep full user
+# settings deliberately — commit-discipline hooks are core value. Leaf modules
+# carry the same literal as a module default; worker.py re-asserts it at
+# import time so this constant stays authoritative.
+# Shell-string sites embed it verbatim; exec-argv sites use shlex.split().
+SETTING_SOURCES_NONE = '--setting-sources ""'
+
 # ─── Paths ────────────────────────────────────────────────────────────────────
 
 BASE_DIR = Path(__file__).parent

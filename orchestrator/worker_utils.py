@@ -38,6 +38,12 @@ MAX_REFLECTION_RETRIES = 3
 # fallback keeps standalone imports (tests, REPL) working via the claude CLI.
 HAIKU_MODEL = "haiku"
 
+# Pure-judge containment: distill/rank claude -p calls have their stdout
+# parsed — user settings must not load, or a prompt-type Stop hook's
+# {"ok":true} reply replaces the real answer (see config.SETTING_SOURCES_NONE,
+# commit 386a862). worker.py re-asserts this at import time (leaf module).
+SETTING_SOURCES_NONE = '--setting-sources ""'
+
 # ─── Task File Prompt Blocks (moved from worker.py for line-count budget) ─────
 
 EDIT_DISCIPLINE_BLOCK = (
@@ -201,6 +207,7 @@ async def _distill_output(text: str, project_dir: Path) -> str:
             "--model", HAIKU_MODEL,
             "--dangerously-skip-permissions",
             "--no-input-prompt",
+            *shlex.split(SETTING_SOURCES_NONE),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
             cwd=str(project_dir),
@@ -618,6 +625,7 @@ async def _rank_tasks(task_queue: Any, claude_dir: Path) -> None:
                 "claude", "-p", prompt,
                 "--model", HAIKU_MODEL,
                 "--dangerously-skip-permissions",
+                *shlex.split(SETTING_SOURCES_NONE),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,
                 cwd=str(claude_dir),

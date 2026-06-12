@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import re
+import shlex
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -17,6 +18,13 @@ from pathlib import Path
 import aiosqlite
 
 logger = logging.getLogger(__name__)
+
+# Pure-judge containment: both claude -p calls here have their stdout consumed
+# (eval JSON parsed, discuss reply stored as the AI message) — user settings
+# must not load, or a prompt-type Stop hook's {"ok":true} reply replaces the
+# real answer (see config.SETTING_SOURCES_NONE, commit 386a862). Module-level
+# literal kept in sync with config.py (leaf module — no project imports).
+SETTING_SOURCES_NONE = '--setting-sources ""'
 
 # ─── AI Evaluation Prompt ────────────────────────────────────────────────────
 
@@ -192,6 +200,7 @@ class IdeasManager:
         try:
             proc = await asyncio.create_subprocess_exec(
                 "claude", "-p", "--model", "haiku",
+                *shlex.split(SETTING_SOURCES_NONE),
                 _EVAL_PROMPT + idea["content"],
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -239,7 +248,8 @@ class IdeasManager:
         _env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
         try:
             proc = await asyncio.create_subprocess_exec(
-                "claude", "-p", "--model", "haiku", prompt,
+                "claude", "-p", "--model", "haiku",
+                *shlex.split(SETTING_SOURCES_NONE), prompt,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 env=_env,

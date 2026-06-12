@@ -24,6 +24,14 @@ logger = logging.getLogger(__name__)
 # fallback keeps standalone imports (tests, REPL) working via the claude CLI.
 HAIKU_MODEL = "haiku"
 
+# Pure-judge containment: every claude -p call in this module has its stdout
+# parsed (JSON / code extraction) — user settings must not load, or a
+# prompt-type Stop hook's {"ok":true} reply replaces the real answer (see
+# config.SETTING_SOURCES_NONE, commit 386a862). worker.py re-asserts this at
+# import time (leaf module — cannot import config). Exec-argv sites expand it
+# via shlex.split().
+SETTING_SOURCES_NONE = '--setting-sources ""'
+
 # ─── Semantic Code TLDR ──────────────────────────────────────────────────────
 
 _tldr_cache: dict[str, tuple[float, str]] = {}  # dir -> (max_mtime, tldr_text)
@@ -457,6 +465,7 @@ async def _localize_tldr_for_task(
             "--model", HAIKU_MODEL,
             "--dangerously-skip-permissions",
             "--no-input-prompt",
+            *shlex.split(SETTING_SOURCES_NONE),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
             cwd=str(project_dir),
@@ -538,6 +547,7 @@ async def _localize_fault(
             "--model", HAIKU_MODEL,
             "--dangerously-skip-permissions",
             "--no-input-prompt",
+            *shlex.split(SETTING_SOURCES_NONE),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
             cwd=str(project_dir),
@@ -770,6 +780,7 @@ async def _generate_repro_test(
             "--model", HAIKU_MODEL,
             "--dangerously-skip-permissions",
             "--no-input-prompt",
+            *shlex.split(SETTING_SOURCES_NONE),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
             cwd=str(project_dir),
@@ -869,7 +880,7 @@ async def _score_task(task_id: str, description: str, db_path: Path, claude_dir:
     try:
         score_file.write_text(score_prompt)
         proc = await asyncio.create_subprocess_shell(
-            f'claude -p "$(cat {shlex.quote(str(score_file))})" --model {HAIKU_MODEL} --dangerously-skip-permissions',
+            f'claude -p "$(cat {shlex.quote(str(score_file))})" --model {HAIKU_MODEL} --dangerously-skip-permissions {SETTING_SOURCES_NONE}',
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
         )

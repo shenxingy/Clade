@@ -35,6 +35,7 @@ from config import (
     HAIKU_MODEL,
     SONNET_MODEL,
     OPUS_MODEL,
+    SETTING_SOURCES_NONE,
     _estimate_cost,
     _parse_token_usage,
     _build_tool_flags,
@@ -76,10 +77,12 @@ from worker_utils import (
 logger = logging.getLogger(__name__)
 
 # Documented leaf modules cannot import config — thread the pinned haiku
-# snapshot into them here (they default to the 'haiku' alias when imported
-# standalone). config.py is the single source of truth for dated model IDs.
+# snapshot and the pure-judge settings flag into them here (they default to
+# the 'haiku' alias / the same flag literal when imported standalone).
+# config.py is the single source of truth for both.
 for _leaf_mod in (condensers, worker_review, worker_tldr, worker_utils):
     _leaf_mod.HAIKU_MODEL = HAIKU_MODEL
+    _leaf_mod.SETTING_SOURCES_NONE = SETTING_SOURCES_NONE
 
 # ─── Worker ───────────────────────────────────────────────────────────────────
 
@@ -275,6 +278,9 @@ class Worker:
         }
         model = _MODEL_ALIASES.get(self.model, self.model)
         model = model if model in _ALLOWED_MODELS else SONNET_MODEL
+        # Worker spawn keeps full user settings deliberately (NO --setting-sources ""):
+        # commit-discipline hooks (post-edit-check etc.) are core value. Pure judges
+        # drop them — see config.SETTING_SOURCES_NONE (Stop-hook -p poisoning, 386a862).
         shell_cmd = (
             f'claude -p "$(cat {shlex.quote(str(task_file))})" --model {model} --dangerously-skip-permissions'
         )
@@ -744,8 +750,10 @@ class Worker:
         verify_file = self._claude_dir / f"verify-{self.id}.md"
         verify_file.write_text(verify_prompt)
         try:
+            # Pure judge (VERIFIED_OK/FAIL parsed from stdout) — drop user settings.
             verify_proc = await asyncio.create_subprocess_shell(
-                f'claude -p "$(cat {shlex.quote(str(verify_file))})" --model {HAIKU_MODEL} --dangerously-skip-permissions',
+                f'claude -p "$(cat {shlex.quote(str(verify_file))})" --model {HAIKU_MODEL} '
+                f'--dangerously-skip-permissions {SETTING_SOURCES_NONE}',
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
                 cwd=str(self._project_dir),
             )
@@ -930,6 +938,7 @@ class Worker:
             # Send only the lint error context as a follow-up message, not the full task.
             task_file.write_text(extra_context.strip(), encoding="utf-8")
             model = _MODEL_ALIASES.get(self.model, self.model)
+            # Worker retry spawn — keeps user hooks deliberately (see _build_cmd_and_env).
             shell_cmd = (
                 f'claude -p --continue "$(cat {shlex.quote(str(task_file))})"'
                 f" --model {model} --dangerously-skip-permissions"
