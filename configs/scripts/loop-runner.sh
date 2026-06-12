@@ -1188,6 +1188,10 @@ run_blueprint_loop() {
         exit_reason="stuck_no_tasks"
         break
       fi
+      # Empty iterations must still honor max-iter and goal convergence —
+      # without this the continue bypassed _check_convergence entirely, so
+      # an empty-task loop could run past --max-iter (max_iter+1 bypass).
+      _check_convergence "$iteration" && break
       update_state "$iteration" 0
       continue
     fi

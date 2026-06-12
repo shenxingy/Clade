@@ -657,6 +657,32 @@ assert_not_contains "$tracked_now" "logs/loop-untracked" "loop log dir NOT commi
 still_dirty=$(git status --porcelain -- created-by-worker.txt)
 assert_eq "" "$still_dirty" "worker-created file fully committed (status clean)"
 
+# Max-iter bypass regression: empty-task iterations used to `continue` past
+# _check_convergence, so an all-empty loop ran until the consecutive-empty
+# breaker (3) regardless of --max-iter — max_iter+1 iterations or more.
+printf '# Goal: never done\n\n- [ ] unchecked forever\n' > goal-empty.md
+mkdir -p logs/loop-empty
+export MOCK_CLAUDE_RESPONSE='[]'
+output=$(
+  exec 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- 2>/dev/null
+  timeout --kill-after=5s 60s bash "$SCRIPTS_DIR/loop-runner.sh" "goal-empty.md" --max-iter 1 --max-workers 1 --state .claude/loop-state-empty --log-dir logs/loop-empty 2>&1
+) || true
+assert_contains "$output" "Iteration 1" "empty-task loop ran iteration 1"
+assert_not_contains "$output" "Iteration 2" "empty-task loop does NOT run past --max-iter 1"
+assert_contains "$output" "Max iterations" "empty-task loop reports max iterations"
+assert_file_contains "logs/loop-empty/last-progress" "Exit: max_iterations" "empty-task loop records max_iterations exit"
+
+# Companion: an empty-task iteration must also see goal convergence — a fully
+# checked goal converges on iteration 1 instead of looping to the breaker.
+printf '# Goal: all done\n\n- [x] finished\n' > goal-empty-done.md
+mkdir -p logs/loop-empty-done
+output=$(
+  exec 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- 2>/dev/null
+  timeout --kill-after=5s 60s bash "$SCRIPTS_DIR/loop-runner.sh" "goal-empty-done.md" --max-iter 5 --max-workers 1 --state .claude/loop-state-empty-done --log-dir logs/loop-empty-done 2>&1
+) || true
+assert_not_contains "$output" "Iteration 2" "converged-goal empty loop stops at iteration 1"
+assert_file_contains "logs/loop-empty-done/last-progress" "Exit: converged" "converged-goal empty loop records converged exit"
+
 # Test 2: Missing goal file
 rm -f nonexistent.md
 output=$(bash "$SCRIPTS_DIR/loop-runner.sh" "nonexistent.md" --max-iter 1 --state .claude/loop-state2 --log-dir logs/loop 2>&1) || true
