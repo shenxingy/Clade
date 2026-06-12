@@ -98,3 +98,36 @@ def test_worker_build_cmd_and_env(tmp_path: Path) -> None:
     # attribution: committer.sh appends Co-Authored-By + X-Clade-Task trailers
     # when this is set, so every worker-session commit is agent-segmentable
     assert env["CLADE_WORKER_TASK_ID"] == "task-xyz"
+
+
+# ─── Delegation to worker_utils (wave-2 extraction for the 1500-line cap) ─────
+
+
+def test_check_file_ownership_delegates_to_worker_utils(worker: Worker) -> None:
+    """Worker._check_file_ownership is a thin delegate over the moved glob logic."""
+    worker.own_files = ["src/**"]
+    worker.forbidden_files = ["secrets/**"]
+
+    ok, reason = worker._check_file_ownership(["src/a.py"])
+    assert ok is True
+    assert reason == ""
+
+    ok, reason = worker._check_file_ownership(["other/b.py"])
+    assert ok is False
+    assert "OWN_FILES" in reason
+
+    ok, reason = worker._check_file_ownership(["secrets/key.pem"])
+    assert ok is False
+    assert "FORBIDDEN_FILES" in reason
+
+
+def test_get_activity_state_delegates(worker: Worker) -> None:
+    """No session JSONL under tmp claude_dir → 'unknown' via the moved helper."""
+    assert worker._get_activity_state() == "unknown"
+
+
+def test_classify_retry_helper_is_reexported_from_worker_utils() -> None:
+    """Pure move + re-export: worker exposes the worker_utils function object."""
+    import worker_utils
+
+    assert _mod._maybe_enqueue_classify_retry is worker_utils._maybe_enqueue_classify_retry

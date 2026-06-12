@@ -14,12 +14,14 @@ Imports:
 from __future__ import annotations
 
 import asyncio
+import fnmatch
 import json
 import logging
 import os
 import re
 import shlex
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -629,3 +631,191 @@ async def _rank_tasks(task_queue: Any, claude_dir: Path) -> None:
                 await task_queue.update(tid, priority_score=score)
     except Exception:
         pass  # fail-open
+
+
+# ─── Worker-state helpers (moved from worker.py for line-count budget) ────────
+
+
+def _compute_activity_state(claude_dir: Path | None) -> str:
+    """Determine activity state by reading Claude Code's JSONL session file.
+
+    Composio pattern: maps JSONL entry types to activity states.
+    Returns: 'active', 'waiting_input', 'blocked', or 'unknown'.
+    """
+    if not claude_dir:
+        return "unknown"
+    try:
+        # Claude Code session JSONL lives in ~/.claude/projects/{encoded-path}/
+        # Each session has a .jsonl file we can read
+        projects_dir = claude_dir.parent  # typically ~/.claude
+        if not projects_dir.exists():
+            return "unknown"
+        # Find the most recent session .jsonl for this project
+        import glob as _glob
+        session_pattern = str(projects_dir / "projects" / "*" / "sessions" / "*.jsonl")
+        jsonl_files = sorted(
+            _glob.glob(session_pattern),
+            key=lambda p: os.path.getmtime(p),
+            reverse=True,
+        )
+        if not jsonl_files:
+            return "unknown"
+        # Read last entry from most recent session file
+        with open(jsonl_files[0], "rb") as f:
+            f.seek(max(0, os.path.getsize(jsonl_files[0]) - 4096))
+            tail = f.read().decode("utf-8", errors="replace")
+        lines = tail.strip().splitlines()
+        if not lines:
+            return "unknown"
+        last_line = lines[-1]
+        entry = json.loads(last_line)
+        last_type = entry.get("type", "")
+        # Composio mapping
+        if last_type in ("tool_use", "user"):
+            return "active"
+        elif last_type in ("assistant", "summary", "result"):
+            return "waiting_input"
+        elif last_type == "error":
+            return "blocked"
+        elif last_type == "permission_request":
+            return "waiting_input"
+        return "unknown"
+    except Exception:
+        return "unknown"
+
+
+def _check_file_ownership(
+    changed_files: list[str],
+    own_files: list[str],
+    forbidden_files: list[str],
+) -> tuple[bool, str]:
+    """Check changed files against own_files/forbidden_files globs. Returns (ok, reason)."""
+    if not own_files and not forbidden_files:
+        return True, ""
+
+    def _matches(filepath: str, patterns: list[str]) -> bool:
+        for pat in patterns:
+            if pat.endswith("/**"):
+                prefix = pat[:-3]  # "src/db/**" → "src/db"
+                if filepath == prefix or filepath.startswith(prefix + "/"):
+                    return True
+            if fnmatch.fnmatch(filepath, pat):
+                return True
+        return False
+
+    # Check forbidden files
+    for f in changed_files:
+        if forbidden_files and _matches(f, forbidden_files):
+            return False, f"File '{f}' matches FORBIDDEN_FILES pattern"
+
+    # Check own files (if set, every changed file must match at least one pattern)
+    if own_files:
+        for f in changed_files:
+            if not _matches(f, own_files):
+                return False, f"File '{f}' not in OWN_FILES patterns"
+
+    return True, ""
+
+
+async def _undo_last_commit(project_dir: Path) -> None:
+    """git reset HEAD~1 — undo the just-made commit so it cannot be pushed later."""
+    try:
+        reset_proc = await asyncio.create_subprocess_exec(
+            "git", "reset", "HEAD~1",
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+            cwd=str(project_dir),
+        )
+        try:
+            await asyncio.wait_for(reset_proc.communicate(), timeout=10)
+        except asyncio.TimeoutError:
+            reset_proc.kill()
+            await reset_proc.communicate()
+    except Exception:
+        pass
+
+
+async def _maybe_enqueue_classify_retry(
+    w: Any,
+    task_queue: Any,
+) -> bool:
+    """If `auto_classify_retry` is on and this worker's failure is auto-retryable,
+    enqueue a fresh task with the classifier's hint and (possibly) a downgraded
+    model. Returns True if a retry task was enqueued.
+
+    Skip rules (in order, all must pass):
+      1. setting `auto_classify_retry` is True
+      2. worker has a classified error object (not just a free-form failure)
+      3. description is not a Loop/Plan/STUCK-RETRY descendant — those have their
+         own retry pipelines
+      4. attempt count parsed from existing `[AUTO-RETRY n/N]` prefix < N
+      5. classifier's `derive_retry_decision()` returns non-None
+
+    Failure modes are all logged-and-swallowed: a classifier crash must never
+    block the normal failure persistence path.
+    """
+    try:
+        # Lazy imports — worker_utils is a documented leaf module (stdlib-only
+        # at module level); config/error_classifier are leaves too, but the
+        # conventions gate counts module-level project imports.
+        from config import GLOBAL_SETTINGS
+        from error_classifier import (
+            derive_retry_decision as _derive_retry_decision,
+            parse_retry_prefix as _parse_retry_prefix,
+        )
+
+        if not GLOBAL_SETTINGS.get("auto_classify_retry", False):
+            return False
+        err = getattr(w, "_failure_classified", None)
+        if err is None:
+            return False
+
+        desc = w.description or ""
+        # Don't auto-retry tasks owned by other retry pipelines.
+        for marker in ("[Loop-", "[Plan-", "[STUCK-RETRY]"):
+            if desc.startswith(marker):
+                return False
+
+        # Parse existing retry prefix to know which attempt this is.
+        parsed = _parse_retry_prefix(desc)
+        if parsed is not None:
+            attempt, max_attempts = parsed
+        else:
+            attempt = 1
+            max_attempts = max(1, int(GLOBAL_SETTINGS.get("auto_classify_retry_max", 2)))
+
+        decision = _derive_retry_decision(
+            err,
+            attempt=attempt,
+            max_attempts=max_attempts,
+            current_model=w.model,
+            model_fallback=GLOBAL_SETTINGS.get("auto_classify_retry_model_fallback") or {},
+        )
+        if decision is None:
+            return False
+
+        # Strip any existing AUTO-RETRY prefix before re-prefixing.
+        stripped = desc
+        if parsed is not None:
+            from error_classifier import _RETRY_PREFIX_RE  # local import — leaf reuse
+            stripped = _RETRY_PREFIX_RE.sub("", desc, count=1)
+
+        retry_desc = (
+            f"{decision.new_description_prefix} {stripped}\n\n---\n"
+            f"{decision.hint_block}"
+        )
+        await task_queue.add(
+            retry_desc,
+            decision.model,
+            own_files=w.own_files,
+            forbidden_files=w.forbidden_files,
+        )
+        logger.info(
+            "Auto-classify retry: task %s [%s] → enqueued retry (model=%s, attempt=%d/%d)",
+            w.task_id, err.reason.value if hasattr(err, "reason") else "?",
+            decision.model, attempt + 1, max_attempts,
+        )
+        return True
+    except Exception:
+        logger.exception("auto-classify retry helper raised; skipping retry")
+        return False

@@ -70,7 +70,7 @@ ideas.py             ← IdeasManager, async idea CRUD
 process_manager.py   ← ProcessPool, start.sh lifecycle
 worker_tldr.py       ← TLDR generation, localization, fault location, scoring
 worker_review.py     ← oracle + PR review
-worker_utils.py      ← output helpers, lint reflection, LoopDetectionService
+worker_utils.py      ← output helpers, lint reflection, LoopDetectionService, worker-state helpers
 worker_hydrate.py    ← _pre_hydrate (GitHub issue/PR pre-hydration)
 condensers.py        ← Condenser ABC + implementations
 event_stream.py      ← crash-safe JSONL event logging
@@ -111,7 +111,7 @@ routes/usage.py      ← Usage dashboard API routes
 | `worker_taskfile.py` | `build_task_file` — task file construction + context injection |
 | `worker_tldr.py` | `_generate_code_tldr`, `_score_task` — TLDR + scoring (leaf) |
 | `worker_review.py` | `_write_pr_review`, `_oracle_review`, `_write_progress_entry` (leaf) |
-| `worker_utils.py` | Output helpers, lint reflection, `LoopDetectionService` (leaf) |
+| `worker_utils.py` | Output helpers, lint reflection, `LoopDetectionService`, worker-state helpers (leaf) |
 | `session.py` | `ProjectSession`, `SessionRegistry`, `status_loop()` |
 | `server.py` | FastAPI app, session/loop/swarm/usage/settings routes, WebSocket |
 | `github_sync.py` | GitHub issue create/update/pull/push via `gh` CLI |

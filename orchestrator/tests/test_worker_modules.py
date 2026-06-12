@@ -23,6 +23,9 @@ from worker_utils import (
     LoopDetectionService,
     _parse_pytest_results,
     _find_intramorphic_regressions,
+    _check_file_ownership,
+    _compute_activity_state,
+    _maybe_enqueue_classify_retry,
     MAX_LINES,
     MAX_BYTES,
 )
@@ -849,3 +852,165 @@ class TestCommitGuidanceBlock:
             assert needle in COMMIT_GUIDANCE_BLOCK
         # trivial commits stay subject-only — the mandate must not inflate chores
         assert "subject-only" in COMMIT_GUIDANCE_BLOCK
+
+
+# ─── worker_utils: helpers moved from worker.py (1500-line budget) ────────────
+
+class TestCheckFileOwnership:
+    def test_no_patterns_allows_everything(self):
+        ok, reason = _check_file_ownership(["a.py", "b/c.sh"], [], [])
+        assert ok is True
+        assert reason == ""
+
+    def test_forbidden_glob_blocks(self):
+        ok, reason = _check_file_ownership(["src/secret.env"], [], ["src/*.env"])
+        assert ok is False
+        assert "FORBIDDEN_FILES" in reason
+
+    def test_own_files_mismatch_blocks(self):
+        ok, reason = _check_file_ownership(["docs/readme.md"], ["src/*.py"], [])
+        assert ok is False
+        assert "OWN_FILES" in reason
+
+    def test_double_star_prefix_matches_subtree(self):
+        ok, _ = _check_file_ownership(["src/db/deep/file.py"], ["src/db/**"], [])
+        assert ok is True
+
+    def test_forbidden_wins_over_own(self):
+        ok, reason = _check_file_ownership(["src/db/x.py"], ["src/db/**"], ["src/db/**"])
+        assert ok is False
+        assert "FORBIDDEN_FILES" in reason
+
+class TestComputeActivityState:
+    def test_none_dir_unknown(self):
+        assert _compute_activity_state(None) == "unknown"
+
+    def test_missing_parent_unknown(self, tmp_path):
+        assert _compute_activity_state(tmp_path / "nope" / ".claude") == "unknown"
+
+    def test_no_sessions_unknown(self, tmp_path):
+        claude_dir = tmp_path / "orchestrator"
+        claude_dir.mkdir()
+        assert _compute_activity_state(claude_dir) == "unknown"
+
+    def test_maps_last_jsonl_entry_types(self, tmp_path):
+        sessions = tmp_path / "projects" / "p1" / "sessions"
+        sessions.mkdir(parents=True)
+        jsonl = sessions / "s1.jsonl"
+        claude_dir = tmp_path / "orchestrator"  # parent → tmp_path
+        claude_dir.mkdir()
+        for entry_type, expected in (
+            ("tool_use", "active"),
+            ("assistant", "waiting_input"),
+            ("error", "blocked"),
+            ("permission_request", "waiting_input"),
+            ("something_else", "unknown"),
+        ):
+            jsonl.write_text('{"type": "%s"}\n' % entry_type)
+            assert _compute_activity_state(claude_dir) == expected
+
+    def test_garbage_jsonl_unknown(self, tmp_path):
+        sessions = tmp_path / "projects" / "p1" / "sessions"
+        sessions.mkdir(parents=True)
+        (sessions / "s1.jsonl").write_text("not json at all\n")
+        claude_dir = tmp_path / "orchestrator"
+        claude_dir.mkdir()
+        assert _compute_activity_state(claude_dir) == "unknown"
+
+
+class TestUndoLastCommit:
+    async def test_resets_head_one_commit_keeps_worktree(self, tmp_path):
+        from worker_utils import _undo_last_commit
+        repo = tmp_path / "r"
+        repo.mkdir()
+
+        def g(*args):
+            subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
+
+        g("init", "-q")
+        g("config", "user.email", "t@t.co")
+        g("config", "user.name", "t")
+        (repo / "a.txt").write_text("1")
+        g("add", "a.txt")
+        g("commit", "-qm", "first")
+        (repo / "a.txt").write_text("2")
+        g("add", "a.txt")
+        g("commit", "-qm", "second")
+
+        await _undo_last_commit(repo)
+
+        log = subprocess.run(
+            ["git", "log", "--format=%s"], cwd=repo, capture_output=True, text=True
+        ).stdout
+        assert log.strip() == "first"
+        assert (repo / "a.txt").read_text() == "2"  # mixed reset keeps the work
+
+
+class _QueueStub:
+    def __init__(self):
+        self.added = []
+
+    async def add(self, desc, model, own_files=None, forbidden_files=None):
+        self.added.append((desc, model))
+        return "new-task-id"
+
+
+class TestMaybeEnqueueClassifyRetry:
+    @staticmethod
+    def _worker_stub(desc="fix the thing", model="sonnet", err=None):
+        import types
+        return types.SimpleNamespace(
+            description=desc, model=model, task_id="t1",
+            own_files=[], forbidden_files=[],
+            _failure_classified=err,
+        )
+
+    async def test_setting_off_returns_false(self, monkeypatch):
+        import config
+        from error_classifier import ClassifiedError, FailoverReason
+        monkeypatch.setitem(config.GLOBAL_SETTINGS, "auto_classify_retry", False)
+        q = _QueueStub()
+        w = self._worker_stub(err=ClassifiedError(reason=FailoverReason.rate_limit))
+        assert await _maybe_enqueue_classify_retry(w, q) is False
+        assert q.added == []
+
+    async def test_no_classified_error_returns_false(self, monkeypatch):
+        import config
+        monkeypatch.setitem(config.GLOBAL_SETTINGS, "auto_classify_retry", True)
+        q = _QueueStub()
+        w = self._worker_stub(err=None)
+        assert await _maybe_enqueue_classify_retry(w, q) is False
+        assert q.added == []
+
+    async def test_loop_owned_tasks_skipped(self, monkeypatch):
+        import config
+        from error_classifier import ClassifiedError, FailoverReason
+        monkeypatch.setitem(config.GLOBAL_SETTINGS, "auto_classify_retry", True)
+        q = _QueueStub()
+        for marker in ("[Loop-7] task", "[Plan-3] task", "[STUCK-RETRY] task"):
+            w = self._worker_stub(desc=marker, err=ClassifiedError(reason=FailoverReason.rate_limit))
+            assert await _maybe_enqueue_classify_retry(w, q) is False
+        assert q.added == []
+
+    async def test_retryable_failure_enqueues_with_prefix_and_hint(self, monkeypatch):
+        import config
+        from error_classifier import ClassifiedError, FailoverReason
+        monkeypatch.setitem(config.GLOBAL_SETTINGS, "auto_classify_retry", True)
+        monkeypatch.setitem(config.GLOBAL_SETTINGS, "auto_classify_retry_max", 2)
+        q = _QueueStub()
+        w = self._worker_stub(err=ClassifiedError(reason=FailoverReason.rate_limit))
+        assert await _maybe_enqueue_classify_retry(w, q) is True
+        assert len(q.added) == 1
+        desc, model = q.added[0]
+        assert desc.startswith("[AUTO-RETRY 2/2]")
+        assert "rate_limit" in desc  # hint block names the failure class
+        assert model == "sonnet"
+
+    async def test_auth_failure_not_retried(self, monkeypatch):
+        import config
+        from error_classifier import ClassifiedError, FailoverReason
+        monkeypatch.setitem(config.GLOBAL_SETTINGS, "auto_classify_retry", True)
+        q = _QueueStub()
+        w = self._worker_stub(err=ClassifiedError(reason=FailoverReason.auth))
+        assert await _maybe_enqueue_classify_retry(w, q) is False
+        assert q.added == []
