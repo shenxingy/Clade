@@ -54,6 +54,7 @@ For each group, generate a message:
 - Scope: optional module name (e.g., `auth`, `dashboard`, `api`)
 - Description: imperative, present tense, ≤72 chars
 - **Never add Co-Authored-By lines**
+- **Body mandate (substantive commits):** `feat`/`fix`/`refactor`/`perf` commits get a 2-4 line body after a blank line covering the **mechanism** (how the change works), the **hazard avoided or root cause** (for fixes), and any **constraint honored**. History carries the payload — a future reader debugging a regression gets the "why" from `git log`, not just the "what". Trivial `chore`/`docs` commits may stay subject-only.
 
 Examples:
 - `feat(auth): add JWT refresh token endpoint`
@@ -61,6 +62,16 @@ Examples:
 - `db: add sessions table for token storage`
 - `chore: add auto-pull to session-context hook`
 - `docs: sync session progress and TODO updates`
+
+Body example:
+
+```
+fix(dashboard): correct activity chart date range
+
+Root cause: the range picker emitted local-midnight ISO strings while the
+API compared UTC — off-by-one-day at negative UTC offsets. Now converts to
+UTC before the query; hazard avoided: silent empty charts for US users.
+```
 
 ---
 
@@ -222,7 +233,7 @@ Exception: if `--dry-run` was used, show the plan and stop.
 
 For each group in order:
 1. Stage only those files: `git add <file1> <file2> ...`
-2. Commit: `git commit -m "<message>"`
+2. Commit: `git commit -m "<subject>" -m "<body>"` (second `-m` carries the Step 3 body; omit it only for trivial chore/docs commits)
 3. Report result: `✓ <message> (<short-hash>)`
 
 If a commit fails, stop immediately and report the error — don't continue to the next group.

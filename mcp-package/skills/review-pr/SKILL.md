@@ -1,6 +1,6 @@
 ---
 name: review-pr
-description: AI reviews a PR diff and posts a structured review comment — parallel to OpenClaw's /review-pr
+description: AI checks out a PR into a worktree, runs the project's CI commands, and posts a structured review with execution evidence — parallel to OpenClaw's /review-pr
 when_to_use: "review PR, code review pull request, PR feedback"
 argument-hint: '[PR_NUMBER_OR_URL]'
 user_invocable: true
@@ -8,7 +8,7 @@ user_invocable: true
 
 # Review PR Skill
 
-Reads the diff of a PR, writes a structured review (summary, risks, suggestions), and posts it as a PR comment via `gh`.
+Checks out the PR into a worktree, discovers and runs the project's CI commands, writes a structured review (summary, evidence, risks, suggestions), and posts it as a PR comment via `gh`. The verdict is grounded in the Evidence section — tests that fail force ❌, and a review that couldn't execute the change never posts ✅.
 
 ## Usage
 

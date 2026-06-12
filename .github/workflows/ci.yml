@@ -55,6 +55,19 @@ jobs:
       - name: Validate skill registry
         run: python3 configs/scripts/validate-skills.py configs/skills
 
+      # mcp-package/skills/ is a DERIVED copy of configs/skills/ (curated by
+      # mcp-package/skills.list, bundled into the clade-mcp wheel). Regenerate
+      # into a tmpdir and diff — editing configs/skills/ without re-running the
+      # regenerator ships a stale/broken skill copy to PyPI.
+      - name: mcp-package skills drift gate
+        run: |
+          tmp="$(mktemp -d)"
+          bash configs/scripts/regen-mcp-package.sh "$tmp"
+          if ! diff -r "$tmp" mcp-package/skills; then
+            echo "::error::mcp-package/skills/ drifted from configs/skills/ — run: configs/scripts/regen-mcp-package.sh (then commit the result)"
+            exit 1
+          fi
+
   pytest:
     name: Tests
     runs-on: ubuntu-latest

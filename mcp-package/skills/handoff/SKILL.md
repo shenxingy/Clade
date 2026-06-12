@@ -9,61 +9,60 @@ user_invocable: true
 
 When context is ~80% full (or before stopping), output a structured handoff document so the next session can resume exactly where this one left off — no re-explanation needed.
 
-## Handoff Format
+## Handoff Format (STRUCTURED HANDOFF v2)
 
-Copy and fill in every section below. Do NOT skip sections — each exists for a reason.
+The authoritative template lives in `prompt.md` (Step 3) — this is the shape it produces.
+Saved to `.claude/handoff-{YYYY-MM-DD-HH-MM}.md`; `/pickup` parses these exact section headers.
 
 ```markdown
+# Handoff: {YYYY-MM-DD HH:MM}
+<!-- STRUCTURED HANDOFF v2 — preserve all section headers exactly -->
+
 ## Goal
-What is this project/feature trying to achieve? One paragraph maximum.
+One sentence: the overall objective of this work session / task.
 
 ## Constraints & Preferences
-- **Tech stack**: <language, framework, key libraries>
-- **Code style**: <conventions this project follows>
-- **What NOT to do**: <known anti-patterns or avoided approaches>
-- **Project-specific rules**: <from CLAUDE.md, .claude/rules.d/, AGENTS.md>
+- <technical constraints, stack choices, things explicitly NOT to do>
+- <user preferences discovered this session>
 
-## Progress (since last handoff or session start)
+## Progress
+### Done ✅
+- [x] <completed item with exact file path> (<short commit hash>)
 
-### Done
-- <completed feature/changes with file paths>
-- <verified working: what was tested>
+### In Progress 🔄
+- [ ] <item currently being worked on — what specifically remains>
 
-### In Progress
-- <partially complete, needs continuation>
-- <where to pick up, what to check first>
+### Blocked 🚫
+- <specific blocker needing human input — OR "none">
 
-### Blocked
-- <stuck on X, reason, what would unblock it>
+## Key Decisions
+- **<Decision>**: <rationale — why this over alternatives>
 
-## Key Decisions + Rationale
-- **<Decision>**: Chose <A> over <B> because <reason>
-- **<Decision>**: <what was decided> — <why this approach>
-
-## Next Steps
-1. <immediate next action>
-2. <follow-up after that>
-3. <optional: what a third session would do>
+## Next Steps (ordered by priority)
+1. <exact next action — specific file, specific change, specific command>
+2. <second action>
 
 ## Critical Context
-Any state the next session MUST know:
-- <running processes, background jobs>
-- <open PRs, pending reviews>
-- <recent failures, known issues>
+- <non-obvious codebase facts, pitfalls, configs that matter>
 - <API keys or secrets needed (mention only location, never paste values)>
 
-## Read These Files
+## Files
 <read-files>
-- path/to/critical-file-1.md
-- path/to/critical-file-2.py
+<absolute paths of files READ this session, one per line>
 </read-files>
 
-## Recently Modified
 <modified-files>
-- src/feature_x.py (added handle_user function)
-- tests/test_x.py (3 new edge case tests)
+<absolute paths of files MODIFIED this session, one per line>
 </modified-files>
+
+## Meta
+- Branch: <git branch --show-current>
+- Uncommitted: <git status -sb output, or "clean">
+- Build: <passing | failing | unknown>
+- Session: <approximate duration>
 ```
+
+Subsequent handoffs are incremental: keep Goal/Constraints, move completed In-Progress items to Done ✅, update Next Steps (see prompt.md Step 2).
 
 ## Rules
 

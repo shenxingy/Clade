@@ -80,6 +80,35 @@ Remember: Claude is capable of extraordinary creative work. Don't hold back, sho
 
 ---
 
+## SEO Requirements
+
+Every page or layout component generated **must include** the following by default (omit only if user explicitly says "no SEO"):
+
+```html
+<!-- Required in <head> -->
+<title>[Page title — unique, ≤60 chars]</title>
+<meta name="description" content="[Page description — ≤160 chars]">
+<meta property="og:title" content="[Same as title]">
+<meta property="og:description" content="[Same as description]">
+<meta property="og:image" content="[Absolute URL to OG image]">
+<meta property="og:url" content="[Canonical URL]">
+<link rel="canonical" href="[Canonical URL]">
+
+<!-- For homepage/landing pages — add Organization or WebSite schema -->
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebSite","name":"[Site name]","url":"[URL]"}
+</script>
+```
+
+- For React/Next.js: use `<Head>` or `metadata` export
+- For Vue: use `useHead()` / vue-meta
+- For raw HTML: inline in `<head>`
+- For components that aren't full pages: skip, but note "add to parent layout"
+
+After implementation, note: `Run /seo page <url> to audit, /seo geo <url> for AI search readiness`
+
+---
+
 ## Output Requirements
 
 **Start every response with a `## Design Decisions` section** before any code:

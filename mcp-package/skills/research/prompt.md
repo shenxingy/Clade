@@ -1,9 +1,21 @@
-Research external tools/competitors/approaches for a given topic and write a structured analysis to BRAINSTORM.md.
+Research external tools/competitors/approaches for a given topic and write a structured analysis to BRAINSTORM.md (project-scoped topics) or `~/.claude/research/` (personal topics — see Rules).
+
+## Capability Detection (run first)
+
+Detect available research tools before starting:
+
+| Tier | Tools available | What you can do |
+|------|----------------|----------------|
+| **Tier 0** — Training data only | No MCP tools, WebSearch unavailable | Use knowledge cutoff (Aug 2025). Mark all results with `⚠ Training data only — verify current status`. |
+| **Tier 1** — WebSearch available | `WebSearch` tool responds | Search with current year (2026) for up-to-date data. Max 5 searches. |
+| **Tier 2** — WebSearch + WebFetch | Both tools available | Search for results, then fetch primary sources for depth. |
+
+Test by attempting a `WebSearch` call. If it fails or returns no results → fall back to Tier 0 and note it prominently in the output.
 
 ## Steps
 
 1. Read `VISION.md`, `TODO.md`, and `BRAINSTORM.md` for project context (understand what already exists before researching)
-2. Use WebSearch with the current year (2026) in the query to find 3-5 relevant tools, competitors, or approaches for the topic: `$ARGUMENTS`. Run at most 5 searches. If WebSearch returns no results or fails, proceed with knowledge cutoff data and note "⚠ Web search unavailable — results based on training data only".
+2. Detect research tier (see above). Run WebSearch with current year (2026) for 3-5 relevant tools/approaches. Max 5 searches.
 3. For each result: extract key features, pricing/licensing, UX patterns, what they do well, what they do poorly
 4. Compare against current VISION.md — what gaps does this research reveal? what patterns can we borrow?
 5. Append a structured entry to `BRAINSTORM.md`:
@@ -29,6 +41,7 @@ Research external tools/competitors/approaches for a given topic and write a str
 - Be specific and actionable — "add OAuth2 login flow like tool X's 2-click setup" not "add authentication"
 - Mark entries as `[Research]` (not `[AI]`) so they're distinguishable in BRAINSTORM.md
 - Do NOT auto-process into GOALS.md or TODO.md — just write to BRAINSTORM.md inbox
+- **Personal-topic routing**: if the topic is the user's own infrastructure/accounts/hardware/life decisions rather than this project's domain, write the report to `~/.claude/research/{YYYY-MM-DD}-{slug}.md` INSTEAD of BRAINSTORM.md — personal context must never land in a git-tracked project file (apply the "stranger clones the repo, learns nothing about the user" test)
 
 
 ---

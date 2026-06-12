@@ -65,6 +65,11 @@ For each rule in RULES_FILE:
 - Check `rule-effectiveness.json`: if miss rate > 60% with 3+ events, flag for rewrite
 - The rule may be too vague, too specific, or addressing the wrong root cause
 
+#### ESCALATE-TO-STRUCTURAL — 3rd strike on the same invariant: prose is the wrong enforcement layer
+- Check `rule-effectiveness.json`: any rule with **3+ hits**, OR 3+ events on the same invariant (same domain + root-cause recurring across rules)
+- A rule that has had to hold the line 3+ times is load-bearing — it deserves mechanical enforcement, not another re-read every session. This is the cap on unbounded prose-rule accumulation.
+- Action (executed in Step 4): run the `/generate-hook` flow inline, then retire the prose rule to the retired-rules archive with a pointer to the enforcing hook
+
 #### KEEP — Rule is still relevant and not yet ready to promote
 - Recent rule (< 14 days) or context-specific
 
@@ -85,6 +90,14 @@ For PROMOTE rules, **automatically**:
 
 For REDUNDANT rules, **automatically**:
 1. Remove from `RULES_FILE`
+
+For ESCALATE-TO-STRUCTURAL rules, **automatically**:
+1. Run the `/generate-hook` flow inline (its Steps 2–6): choose the hook type, generate the warn-only hook script, show the settings.json entry
+2. Move the prose rule out of `RULES_FILE` (and out of `CLAUDE_TARGET` if it was already promoted) into the retired-rules archive — `~/.claude/corrections/retired-rules.md` in global mode, `.claude/corrections/retired-rules.md` in project mode (create if absent):
+   ```
+   - [retired YYYY-MM-DD] {original rule line} → enforced by ~/.claude/hooks/{hook-name}.sh
+   ```
+3. **Partial coverage exception:** if the hook can only enforce part of the rule (the regex catches the pattern but not the judgment call around it), generate the hook for the checkable part but KEEP the prose rule, annotated `[partially enforced by {hook-name}.sh]` — never retire what the hook doesn't cover
 
 For CONTRADICT rules:
 1. Show both the rule and the conflicting config
@@ -116,16 +129,20 @@ Audit Results [scope: project | global]:
 
   CONTRADICT (0): (none)
 
+  ESCALATED (1):
+    - [2026-01-30] shell: Quote all paths in rm/mv → hook quote-paths.sh generated, prose retired to retired-rules.md
+
   KEEP (3):
     - [2026-02-22] frontend: Prefer server components → Too recent
 
-  Rules: 10 → 6 (promoted 2, removed 1 redundant, 1 cluster generalized)
+  Rules: 10 → 5 (promoted 2, removed 1 redundant, 1 cluster generalized, 1 escalated to hook)
   Next audit nudge: 7 days from now
 ```
 
 ## Rules
 
 - Always execute promotions and removals automatically — don't just suggest
+- Retired rules keep their pointer line in retired-rules.md permanently — it's the audit trail from prose to hook
 - If CLAUDE_TARGET doesn't have a matching section, append to the end under a new `## Auto-Promoted Rules` section
 - Project-mode rules.md: keep under 100 lines; global rules.md: keep under 50 lines — if over, remove oldest KEEP rules first
 - Touch .last-audit even if no changes were made

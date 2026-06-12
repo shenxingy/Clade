@@ -10,17 +10,34 @@ Read in order:
 1. `CLAUDE.md` — project type, test command, verify command, behavior anchors
 2. `VERIFY.md` in the project root — the coverage matrix to drive this review
 
+**Detect published URL** (used in Step 5.5):
+
+Look for a published URL in this order (stop at first hit):
+1. `CLAUDE.md` — scan for lines matching `## Publish URL`, `## Live URL`, `## URL`, `## Site`, `## Production`, or a bare `https://` under a `## Deploy` / `## Links` section
+2. `package.json` — `"homepage"` field
+3. Deployment config files: `vercel.json` (check `alias`), `netlify.toml` (check `[context.production]`), `.github/workflows/*.yml` (grep for `url:` or `CNAME`)
+4. `gh repo view --json homepageUrl --jq '.homepageUrl'` — GitHub repo homepage URL
+
+Store the result as `PUBLISH_URL` (empty string if nothing found). This determines whether Step 5.5 runs the website SEO phase.
+
 **If VERIFY.md does not exist:**
 
 1. Detect project type from CLAUDE.md `## Project Type`, or auto-detect:
-   - `package.json` with next/react/vue → frontend
+   - `package.json` with next/react/vue/angular/svelte → frontend
    - `requirements.txt` / `pyproject.toml` with fastapi/flask/django → backend
-   - ML libraries (torch, transformers, sklearn) → ai
+   - `go.mod` / `Cargo.toml` with http/server/handler patterns → backend
+   - `Gemfile` with rails/sinatra → backend
+   - ML libraries (torch, transformers, sklearn, jax) → ai
+   - `*.xcodeproj` / `Podfile` / `build.gradle` → mobile
+   - `Dockerfile` / `.github/workflows` / `*.tf` → infra
+   - `*.tex` / `*.bib` → academic
+   - CLI with main/cmd/ and no web server → cli
    - Mixed → pick the dominant type; note the other
 2. Copy the matching template:
-   - frontend → `configs/templates/VERIFY-frontend.md` (or `~/.claude/templates/VERIFY-frontend.md`)
-   - backend → `configs/templates/VERIFY-backend.md`
-   - ai → `configs/templates/VERIFY-ai.md`
+   - frontend → `~/.claude/templates/VERIFY-frontend.md`
+   - backend → `~/.claude/templates/VERIFY-backend.md`
+   - ai → `~/.claude/templates/VERIFY-ai.md`
+   - No template for your type? Generate a minimal VERIFY.md with checkpoints for: compilation, test suite, key features from CLAUDE.md `## Features`, and lint/format
 3. Scan the codebase and customize the template:
    - Replace generic route placeholders with actual routes from the project
    - For frontend: list actual page paths from `pages/` or `app/` directory
@@ -89,6 +106,20 @@ Work through the queue in order (Priority 1 first). For each checkpoint:
 **Behavior Anchors** (all projects):
 - Run the same checks as `/verify` skill for each anchor in `## Features`
 
+**SEO / Discoverability (SEO checkpoints)** — present in web/frontend/backend projects:
+- For source-based checks (SEO1–SEO8): `curl -s <base-url>/<path>` and grep the output for the expected tag/pattern
+- If no live server: inspect the template source files for the relevant HTML patterns (e.g. `grep -r '<title>' src/`)
+- For `/seo page <url>` checks: invoke the seo skill if a live URL is available
+- For schema checks (SEO8): run `/seo schema <url>` or grep source for `application/ld+json`
+- For GEO checks (SEO9): run `/seo geo <url>` or check page structure manually
+- Fix = add the missing tag/route to the appropriate template or layout file; re-test = re-run the grep or curl
+
+**Skill Coordination (SC checkpoints)** — only present in Clade / skill-system projects:
+- Each SC checkpoint says: `"file/SKILL.md" contains "quoted string"`
+- Verify by running: `grep -q "quoted string" configs/skills/file/SKILL.md && echo ✅ || echo ❌`
+- If missing: edit the SKILL.md to add the quoted string (when_to_use disambiguation or next-step section)
+- Fix = add the missing text; re-test = re-run the grep; update status to ✅
+
 ### Record the result:
 
 After testing, the checkpoint is one of:
@@ -122,6 +153,7 @@ For every ❌ checkpoint found:
 **Anti-hang rules for test commands**:
 - Every `curl`, `httpx`, `psql`, `sqlite3` call: prefix with `timeout 30`
 - Every `pytest`, `npm test`, `go test` call: prefix with `timeout 120`
+- Test-suite runs: prefer `bash ~/.claude/scripts/quiet-run.sh <test cmd>` (if installed) — full output lands in `.claude/logs/quiet-*.log`, only the verdict + failure tail enters your context, and the exit code is mirrored
 - Every server startup wait: `timeout 30 bash -c 'until curl -sf http://localhost:PORT/health; do sleep 1; done'`
 - If a command times out → mark the checkpoint ⚠ (timeout, server may be unavailable) and continue
 
@@ -142,6 +174,171 @@ Examples of when to add:
 - You find a bug in a code path that has no corresponding checkpoint
 
 Do NOT add generic or theoretical checkpoints. Only add what you actually encountered.
+
+---
+
+## Step 5.4: E2E Interrupt Testing (user-facing apps)
+
+Run this step when the project has **user-facing features** (auth, payments, or any long-running operation like upload / processing / generation).
+
+### Load the interaction matrix
+
+Read `~/.claude/skills/review/e2e-interactions.md` (installed from `configs/skills/review/e2e-interactions.md`).
+It defines: Auth States (S0–S4), Feature States (F0–F3), Atomic Actions (A*, N*), and scenario tables (I-*, P-*, T-*, SEQ-*).
+
+### Map the project onto the matrix
+
+1. **Identify long-running operations** — what is the core F1 operation? (face-swap, video processing, file upload, AI generation, etc.)
+2. **Identify auth flows** — does the project have login/logout/delete account?
+3. **Identify payment flows** — are there credits, subscriptions, or purchases?
+
+### Determine test scope
+
+| Project has | Test scope |
+|------------|------------|
+| Long-running operation + auth | All CRITICAL + HIGH rows from the Interrupt Matrix (I-*) and Auth Transitions (T-*) |
+| Payment flow | All CRITICAL + HIGH rows from Payment Flow Interrupts (P-*) |
+| Multi-step journeys | SEQ-01 through SEQ-06 minimum; add SEQ-07 if delete-account exists |
+| No auth, no payments | Skip this step — mark ⚠ "no auth/payment flows detected" |
+
+### Execute each scenario
+
+For each in-scope scenario:
+
+1. Use **Playwright MCP** (`browser_navigate`, `browser_click`, `browser_snapshot`) if available
+2. Execute the exact sequence described in the scenario
+3. Assert the Expected Outcome — especially:
+   - No double-charge / double-job
+   - No broken UI state (blank screen, spinner stuck, unhandled error)
+   - Auth invariant: protected pages unreachable after logout/delete
+   - Data invariant: results accessible after re-login
+4. Record ✅ / ❌ / ⚠ per scenario
+
+If Playwright is not available: inspect the source for the relevant handlers (navigation guards, beforeunload, unload, payment webhook idempotency keys, job status polling). Mark ⚠ with "requires browser — checked code path only" if no live test possible.
+
+### Add to VERIFY.md
+
+For each scenario tested, add a row to the `## E2E Interrupts` section (create it if missing):
+
+```
+| ID | Scenario | Status | Verified | Notes |
+|----|----------|--------|----------|-------|
+| I-01 | Navigate away during operation | ✅ | 2026-04-15 | polling resumes on return |
+```
+
+### Fix failures
+
+Same rules as Step 4: fix immediately, re-test, commit with `committer "fix: e2e - <scenario>" <files>`.
+Common fixes: add `beforeunload` guard, add idempotency key to payment intent, fix WebSocket reconnect logic, add job dedup check.
+
+---
+
+## Step 5.5: SEO Review (web/publish projects and GitHub repos)
+
+This step runs **after** all VERIFY.md checkpoints are processed and **before** the final VERIFY.md update. It is two independent checks.
+
+---
+
+### A. Website SEO Audit (only if `PUBLISH_URL` is non-empty)
+
+Run a full SEO audit on the published site:
+
+```
+/seo-audit <PUBLISH_URL>
+```
+
+This invokes the `seo-audit` skill inline, which delegates to specialist subagents covering:
+technical SEO, content quality, schema, sitemap, performance (CWV), visual/mobile, GEO/AI-readiness, and (conditionally) local SEO, backlinks, Google API data.
+
+After the audit completes:
+- Findings are in `FULL-AUDIT-REPORT.md` and `ACTION-PLAN.md`
+- Fix **Critical** and **High** issues that are source-code-fixable in this session (e.g. missing meta tags, broken canonical URLs, missing sitemap entry, bad schema)
+- Issues requiring external action (Google Search Console setup, third-party perf budget, DNS changes) → note in VERIFY.md as ⚠ with the specific action needed
+- Commit any source fixes: `committer "fix: seo - <issue>" <changed files>`
+
+If `PUBLISH_URL` is empty: skip this sub-step, note "no published URL detected" in output.
+
+---
+
+### B. GitHub Repo SEO Audit (always, if this is a git repo)
+
+GitHub repos are indexed by Google and appear in GitHub search — their discoverability matters.
+
+Run:
+```bash
+gh repo view --json name,description,repositoryTopics,homepageUrl,openGraphImageUrl,isPrivate,licenseInfo
+```
+
+Check each signal and fix inline:
+
+| Signal | Pass condition | Fix command |
+|--------|---------------|-------------|
+| Description | Set, ≥ 15 chars, includes keywords | `gh repo edit --description "..."` |
+| Topics/tags | ≥ 3 topics set | `gh repo edit --add-topic tag1 --add-topic tag2` |
+| Homepage URL | Matches `PUBLISH_URL` (or set if blank) | `gh repo edit --homepage "<url>"` |
+| Social preview | `openGraphImageUrl` is not the default GitHub avatar (contains `/u/` path) | Manual: Settings → Social Preview → upload image — mark ⚠ |
+| LICENSE file | `licenseInfo` is not null | Create `LICENSE` file if missing (ask user which license) |
+| README quality | README.md has: H1 title, ≥ 1 screenshot or demo GIF, install instructions, badges | Edit README.md directly |
+| Claimed counts | Any "N skills/hooks/agents/scripts" claim in README matches the actual on-disk count (±1) | Count dirs under `configs/skills/`, `configs/hooks/`, `configs/agents/`, `configs/scripts/` (or equivalent for this project); update README if off by >10% |
+| Visibility | `isPrivate: false` for a published project | Mark ⚠ if private — note that private repos aren't indexed |
+
+For each failing signal:
+1. Apply the fix (use `gh repo edit` for metadata, edit files for README/LICENSE)
+2. Verify the fix by re-running the relevant command
+3. Log what was fixed in the session output
+
+**README quality details**: A good repo README for SEO/discoverability has:
+- `# Project Name` — exact H1 at the top
+- A 2–3 sentence description with primary keywords
+- At least one screenshot, demo GIF, or live demo link
+- Quick install / usage instructions
+- Badges (build status, version, license) — improves scannability
+- Link to the published URL (if applicable)
+- Any quantitative claims (e.g. "29 skills", "14 hooks") must match the actual count. To verify: count the relevant files/dirs and compare. Update any stale numbers before finishing.
+
+If README needs substantive rewrites, make the minimal additions rather than rewriting from scratch.
+
+---
+
+### C. GEO / AI Citation Audit (if blog content detected)
+
+If the project contains blog content (scan for `blog/`, `posts/`, `articles/`, `content/` directories with `.md` or `.mdx` files):
+
+1. Pick the 3 most recently modified blog posts
+2. For each, run `/blog-geo <file>` to get an AI Citation Readiness Score (0-100)
+3. Fix issues scoring below 60:
+   - Add self-contained answer paragraphs (134-167 words) after each H2
+   - Add comparison tables with `<thead>` where appropriate
+   - Ensure H2 headings use question format (60-70% target)
+   - Add source attribution for statistics
+4. Commit fixes: `committer "fix: geo - improve AI citability for <post>" <files>`
+
+If `PUBLISH_URL` is available, also run `/seo-geo <PUBLISH_URL>` for site-level GEO scoring.
+
+### D. Feed findings to self-improvement system
+
+After all review steps, extract learnings:
+
+1. If any pattern recurred across 2+ checkpoints (same type of fix needed repeatedly):
+   - Write to `.claude/learnings.jsonl`: `{"type":"pitfall","content":"<pattern>","confidence":85}`
+   - This auto-promotes to rules.md via the learning-to-rule pipeline
+2. If a VERIFY.md checkpoint failed that has a matching rule in rules.md:
+   - The rule didn't prevent the issue → tracked as a "miss" by effectiveness system
+3. Update `~/.claude/corrections/stats.json` domain counters based on checkpoint categories
+
+### Output for Step 5.5
+
+After all sub-steps, output a brief summary:
+
+```
+SEO_REVIEW:
+  website: ✅ audit complete, N critical fixed, M issues → ACTION-PLAN.md
+         | ⚠ no published URL
+  geo:     ✅ 3 posts audited, avg score 72/100, 1 improved
+         | ⚠ no blog content detected
+  github:  ✅ description ✅ topics ✅ homepage ⚠ social preview (manual) ✅ license ✅ README
+         | fixed: [list of what was changed]
+```
 
 ---
 

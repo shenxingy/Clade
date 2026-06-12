@@ -126,6 +126,21 @@ Rules:
 
 ---
 
+## Phase 6b: Root Cause Is in a Dependency
+
+If tracing landed in a third-party package (not this codebase), the Iron Law still applies — and a recording law joins it: **a dependency bug handled silently is a bug planted for the next person.**
+
+1. **Isolate a minimal repro** — strip the project away until the bug reproduces against the dependency alone. Save it as `.claude/repro/<dep>-<issue>.py` (or as an xfail/skipped test in `tests/` referencing the upstream issue).
+2. **Search the upstream tracker** — `gh search issues --repo <upstream> "<symptom>"` or WebSearch. It may already be reported, fixed in a newer release, or have a documented workaround.
+3. **Resolve in strict preference order:**
+   - **a. Upstream patch PR** — fix it at the source; link the PR in your commit body
+   - **b. Pin the version + linked issue** — pin to the last good version, add a TODO.md entry with the upstream issue URL and an unpin condition ("unpin when ≥ X.Y.Z ships the fix")
+   - **c. Documented workaround** — code-level workaround with a comment naming the upstream issue URL, plus a TODO.md entry
+4. **Never silent.** Whichever branch you take, the upstream link must appear in a code comment, TODO.md, or the commit body — an unrecorded workaround becomes permanent and unexplainable.
+5. **Never monkey-patch the installed copy** — edits inside `.venv/` or `node_modules/` evaporate on the next install.
+
+---
+
 ## Phase 7: Verify & Report
 
 Run the full test suite after fixing:
@@ -169,3 +184,29 @@ End every run with one of:
 - Skip the regression test
 - Leave debugging logs in the code
 - Treat a passing test as proof — verify the specific failure scenario
+
+---
+
+## Deep-Dive Mode (optional)
+
+For complex bugs requiring multi-file execution tracing, spawn the `debug-specialist` subagent:
+
+```
+Use the Agent tool with subagent_type="debug-specialist":
+  "Trace the root cause of: [symptom]. Entry point: [file:function]. Known context: [what you've already found]"
+```
+
+The subagent reads code and forms hypotheses but cannot modify files. Merge its root cause finding into your Phase 6 fix.
+
+---
+
+## Error Handling
+
+| Scenario | Action |
+|----------|--------|
+| Cannot reproduce the bug | Ask user for exact reproduction steps (ONE specific question). Do not guess. |
+| Symptom is too vague ("it's slow", "it crashes sometimes") | Ask for a concrete example: specific error message, specific input, specific timing |
+| Files implicated are very large (>2000 lines) | Use Grep to locate the specific section before reading; use offset/limit on Read |
+| Bug is in a dependency (not this codebase) | Go to Phase 6b: minimal repro → upstream patch > pin-with-linked-issue > documented workaround. Never patch the installed copy in-place. |
+| Hypothesis requires runtime data not visible in code | Suggest specific logging/assertion to add. Output as NEEDS_CONTEXT with exact location and what to log. |
+| 3 hypotheses exhausted, still no root cause | Output BLOCKED — write to `.claude/blockers.md` with what was tried and what's needed |

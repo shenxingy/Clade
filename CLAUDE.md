@@ -155,9 +155,15 @@ cd orchestrator && .venv/bin/python -m pytest tests/ -v
 
 # 3. Shell syntax check
 bash -n configs/hooks/*.sh configs/scripts/*.sh install.sh
+
+# 4. mcp-package derived-copy drift gate — mcp-package/skills/ is generated
+#    from configs/skills/ via the mcp-package/skills.list manifest. After
+#    editing any skill shipped in the package, regenerate and commit:
+configs/scripts/regen-mcp-package.sh
 ```
 
-CI runs 3 jobs on push/PR to main: `syntax-check`, `pytest`, `shell-tests`.
+CI runs 4 jobs on push/PR to main: `syntax-check` (includes the mcp-package
+skills drift gate), `pytest`, `shell-tests`, `install-test`.
 
 ## Code Rules
 

@@ -1,7 +1,7 @@
 ---
 name: batch-tasks
 description: Execute TODO.md steps via unattended Claude Code sessions
-when_to_use: "run tasks, execute TODO, batch execute, 批量执行, run steps"
+when_to_use: "execute TODO.md steps, run specific tasks from a list, batch execute named tasks, 批量执行, run steps from TODO — NOT for goal-file loops (use /loop) or task planning (use /orchestrate)"
 argument-hint: '[step2 step4 ...] | "task1" "task2" ... | --run [file] | --dry-run [file] | --parallel [file]'
 user_invocable: true
 ---
@@ -53,3 +53,8 @@ Read steps from TODO.md, auto-plan implementation details, and run them sequenti
 7. Each task runs with a timeout; on failure, working tree is rolled back and the task is retried
 8. Logs go to `logs/claude-tasks/` with timestamps (per attempt)
 9. After all tasks complete: success/failure summary, failures logged to PROGRESS.md + GitHub Issue
+
+## After batch-tasks completes
+
+Run `/commit` to push worker output (tasks run in-tree; changes may not be committed yet).
+Run `/review` to verify behavior anchors still pass after autonomous changes.

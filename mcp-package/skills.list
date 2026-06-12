@@ -1,0 +1,40 @@
+# mcp-package/skills.list — curated manifest of skills shipped in the clade-mcp
+# PyPI package. mcp-package/skills/ is a DERIVED copy of configs/skills/:
+# edit skills under configs/skills/, then run:
+#
+#   configs/scripts/regen-mcp-package.sh
+#
+# CI diffs a fresh regeneration against the committed copy and fails on drift.
+# One skill directory name per line; blank lines and # comments are ignored.
+audit
+batch-tasks
+brief
+commit
+cso
+document-release
+frontend-design
+go
+handoff
+incident
+investigate
+loop
+map
+merge-pr
+minimax-usage
+model-research
+next
+orchestrate
+pickup
+pipeline
+poke
+provider
+research
+retro
+review
+review-pr
+slt
+start
+status
+sync
+verify
+worktree
