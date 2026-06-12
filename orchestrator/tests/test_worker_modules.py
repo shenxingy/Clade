@@ -1,5 +1,8 @@
 """Tests for extracted worker modules: condensers, worker_utils, worker_hydrate, worker_tldr."""
 
+import os
+import subprocess
+
 import pytest
 
 from worker_tldr import (
@@ -16,6 +19,7 @@ from worker_utils import (
     _truncate_output,
     _strip_error_context,
     _extract_lint_targets,
+    _fallback_commit_cmd,
     LoopDetectionService,
     _parse_pytest_results,
     _find_intramorphic_regressions,
@@ -663,3 +667,88 @@ class TestSpanEvictTldr:
         # Priority file specified as basename — should match full path
         evicted, n = _span_evict_tldr(_SAMPLE_TLDR, budget_chars=50, priority_files=["bar.py"])
         assert "src/bar.py" in evicted
+
+
+# ─── _fallback_commit_cmd (bare-git secret gate) ──────────────────────────────
+
+def _init_repo(tmp_path):
+    """Throwaway git repo with one initial commit (gpg signing off)."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    for k, v in (
+        ("user.email", "test@example.com"),
+        ("user.name", "Test"),
+        ("commit.gpgsign", "false"),
+    ):
+        subprocess.run(["git", "-C", str(repo), "config", k, v], check=True)
+    (repo / "README.md").write_text("init\n")
+    subprocess.run(["git", "-C", str(repo), "add", "README.md"], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "commit", "-qm", "chore: init"], check=True
+    )
+    return repo
+
+
+def _commit_count(repo) -> int:
+    out = subprocess.run(
+        ["git", "-C", str(repo), "rev-list", "--count", "HEAD"],
+        capture_output=True, text=True, check=True,
+    )
+    return int(out.stdout.strip())
+
+
+class TestFallbackCommitCmd:
+    # Built by concatenation so this source file never contains a contiguous
+    # scannable key literal (the commit gate itself would flag it).
+    FAKE_AKIA = "AKIA" + "IOSFODNN7EXAMPLE"
+
+    def _run(self, repo, cmd: str, allow_secrets: bool = False):
+        # sh -c matches the runtime (asyncio.create_subprocess_shell uses /bin/sh)
+        env = {**os.environ, "CLADE_ALLOW_SECRETS": "1" if allow_secrets else "0"}
+        return subprocess.run(
+            ["sh", "-c", cmd], cwd=repo, env=env, capture_output=True, text=True
+        )
+
+    def test_secret_aborts_with_exit_65(self, tmp_path):
+        repo = _init_repo(tmp_path)
+        (repo / "config.txt").write_text(f"aws_key = {self.FAKE_AKIA}\n")
+        result = self._run(repo, _fallback_commit_cmd("feat: add config", "config.txt"))
+        assert result.returncode == 65
+        assert "commit aborted" in result.stderr
+        assert _commit_count(repo) == 1  # nothing landed
+        staged = subprocess.run(
+            ["git", "-C", str(repo), "diff", "--cached", "--name-only"],
+            capture_output=True, text=True,
+        ).stdout.strip()
+        assert staged == ""  # stage reset on abort
+
+    def test_allow_secrets_override(self, tmp_path):
+        repo = _init_repo(tmp_path)
+        (repo / "config.txt").write_text(f"aws_key = {self.FAKE_AKIA}\n")
+        result = self._run(
+            repo, _fallback_commit_cmd("feat: add config", "config.txt"),
+            allow_secrets=True,
+        )
+        assert result.returncode == 0
+        assert _commit_count(repo) == 2
+
+    def test_clean_commit_succeeds(self, tmp_path):
+        repo = _init_repo(tmp_path)
+        (repo / "file.txt").write_text("plain content\n")
+        result = self._run(repo, _fallback_commit_cmd("feat: add file", "file.txt"))
+        assert result.returncode == 0
+        assert _commit_count(repo) == 2
+
+    def test_secret_removal_not_blocked(self, tmp_path):
+        # Only ADDED lines are scanned — cleaning up a leak must not be blocked
+        repo = _init_repo(tmp_path)
+        (repo / "leak.txt").write_text(f"aws_key = {self.FAKE_AKIA}\n")
+        self._run(
+            repo, _fallback_commit_cmd("chore: simulate old leak", "leak.txt"),
+            allow_secrets=True,
+        )
+        (repo / "leak.txt").write_text("rotated\n")
+        result = self._run(repo, _fallback_commit_cmd("fix: rotate leaked key", "leak.txt"))
+        assert result.returncode == 0
+        assert _commit_count(repo) == 3

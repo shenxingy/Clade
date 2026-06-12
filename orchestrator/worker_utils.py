@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import re
+import shlex
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -65,6 +66,35 @@ COMPLETION_CONTRACT_BLOCK = (
     "```\n"
     'Use `"status": "partial"` if you could not finish, `"blocked"` if stuck.\n'
 )
+
+# ─── Fallback Commit (bare git when committer.sh is not installed) ────────────
+# POSIX-ERE secret patterns mirroring configs/scripts/checks.sh. The fallback
+# path exists precisely because ~/.claude/scripts is not deployed, so the
+# staged-secret scan is inlined here instead of shelling out to checks.sh.
+_SECRET_ERE = (
+    "-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}"
+    "|gh[pousr]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{22}"
+    "|sk-ant-[A-Za-z0-9_-]{40}|AIza[0-9A-Za-z_-]{35}|xox[baprs]-[A-Za-z0-9-]{10}"
+)
+
+
+def _fallback_commit_cmd(commit_msg: str, files_arg: str) -> str:
+    """Bare-git commit command used when committer.sh is not installed.
+
+    Mirrors committer.sh's pre-commit gate: stage, scan ADDED staged-diff
+    lines for secrets (fail-closed — CLADE_ALLOW_SECRETS=1 overrides), then
+    commit. Exits 65 on a secret hit so callers can tell a policy abort from
+    an ordinary git failure; the stage is reset so nothing is left half-done.
+    """
+    return (
+        f"git add {files_arg} && "
+        f'if [ "${{CLADE_ALLOW_SECRETS:-0}}" != "1" ] && '
+        f'git diff --cached | grep -E "^\\+" | grep -vE "^\\+\\+\\+" | '
+        f"grep -qE -e {shlex.quote(_SECRET_ERE)}; then "  # -e: pattern starts with '-'
+        f'echo "checks: staged secret detected — commit aborted" >&2; '
+        f"git reset -q; exit 65; fi && "
+        f"git commit -m {shlex.quote(commit_msg)}"
+    )
 
 
 def _parse_observation_contract(log_text: str) -> dict | None:

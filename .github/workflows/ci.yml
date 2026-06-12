@@ -39,6 +39,14 @@ jobs:
             bash -n "$f" && echo "OK: $f" || exit 1
           done
 
+      # Same script committer.sh runs locally before every commit — one gate,
+      # shared local/CI (checks.sh skips silently when shellcheck is missing,
+      # so install it explicitly to keep this a hard gate here)
+      - name: Shellcheck gate (shared checks.sh)
+        run: |
+          command -v shellcheck >/dev/null || sudo apt-get install -y shellcheck
+          bash configs/scripts/checks.sh shellcheck configs/hooks/*.sh configs/scripts/*.sh install.sh
+
       - name: Install test (dry run)
         run: |
           chmod +x install.sh
@@ -80,6 +88,10 @@ jobs:
       # no warning-swallow — that combination hid 11 real failures for weeks)
       - name: Run loop system tests
         run: bash tests/test-loop.sh
+
+      # Commit-path gate: checks.sh secret scan + committer.sh wiring
+      - name: Run commit-path checks tests
+        run: bash tests/test-checks.sh
 
   install-test:
     name: Install Test

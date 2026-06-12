@@ -61,7 +61,7 @@ from worker_utils import (
     _distill_output, _truncate_output, _strip_error_context,
     _run_lint_check, _extract_lint_targets, _run_project_tests, LoopDetectionService,
     _run_intramorphic_check, _rank_tasks,
-    _parse_observation_contract,
+    _parse_observation_contract, _fallback_commit_cmd,
     MAX_LINES, MAX_BYTES, DISTILL_THRESHOLD, MAX_REFLECTION_RETRIES,
 )
 
@@ -815,7 +815,9 @@ class Worker:
                 f'{shlex.quote(commit_msg)} {files_arg}'
             )
         else:
-            commit_cmd = f'git add {files_arg} && git commit -m {shlex.quote(commit_msg)}'
+            # Bare-git fallback runs the same staged-secret scan committer.sh
+            # gets from checks.sh (fail-closed, CLADE_ALLOW_SECRETS=1 overrides)
+            commit_cmd = _fallback_commit_cmd(commit_msg, files_arg)
         commit_proc = await asyncio.create_subprocess_shell(
             commit_cmd,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
