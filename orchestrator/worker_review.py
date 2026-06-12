@@ -10,7 +10,7 @@ import json
 import logging
 import shlex
 import uuid
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -216,8 +216,13 @@ _ORACLE_QUALITY_PROMPT = (
 
 async def _oracle_pass(
     prompt: str, claude_dir: Path
-) -> tuple[bool, str, str]:
-    """Run a single oracle pass. Returns (passed, confidence, issues_text). Internal."""
+) -> tuple[bool, str, str, bool]:
+    """Run a single oracle pass. Returns (passed, confidence, issues_text, infra_error).
+
+    infra_error=True means NO review happened (timeout, subprocess failure,
+    unparseable output). Callers must surface that as 'unreviewed' — a fail-open
+    approval is not a review (lovesegfault: oracle liveness).
+    """
     prompt_file = claude_dir / f"oracle-{uuid.uuid4().hex[:8]}.md"
     try:
         prompt_file.write_text(prompt)
@@ -232,7 +237,7 @@ async def _oracle_pass(
         except asyncio.TimeoutError:
             proc.kill()
             await proc.communicate()
-            return True, "medium", ""  # fail-open on timeout
+            return True, "none", "oracle timeout (45s)", True
         raw = out.decode().strip()
         try:
             data = json.loads(raw)
@@ -240,11 +245,11 @@ async def _oracle_pass(
             confidence = str(data.get("confidence", "medium"))
             issues = data.get("issues", [])
             issues_text = "; ".join(str(i)[:100] for i in issues[:3]) if issues else ""
-            return passed, confidence, issues_text
+            return passed, confidence, issues_text, False
         except (json.JSONDecodeError, AttributeError):
-            return True, "low", ""
+            return True, "none", "oracle returned unparseable output", True
     except Exception:
-        return True, "medium", ""
+        return True, "none", "oracle subprocess error", True
     finally:
         prompt_file.unlink(missing_ok=True)
 
@@ -282,8 +287,12 @@ def _format_oracle_rejection(
 
 async def _oracle_review_chunk(
     task_description: str, diff_chunk: str, chunk_label: str, claude_dir: Path
-) -> tuple[bool, str]:
-    """Review a single diff chunk. Returns (approved, reason). Internal helper."""
+) -> tuple[bool, str, bool]:
+    """Review a single diff chunk. Returns (approved, reason, infra_error).
+
+    infra_error=True means the chunk was NOT reviewed (timeout, subprocess
+    failure, unparseable output) — never report that as an approval.
+    """
     prompt = _ORACLE_PROMPT_TEMPLATE.format(
         task=task_description[:400], diff=diff_chunk
     )
@@ -303,7 +312,7 @@ async def _oracle_review_chunk(
         except asyncio.TimeoutError:
             proc.kill()
             await proc.communicate()
-            out = b""
+            return True, "oracle timeout (60s)", True
         raw = out.decode().strip()
         try:
             data = json.loads(raw)
@@ -316,26 +325,31 @@ async def _oracle_review_chunk(
                 reason = _format_oracle_rejection(confidence, fix_guidance, dims, findings)
             else:
                 reason = "approved"
-            return approved, reason
+            return approved, reason, False
         except (json.JSONDecodeError, AttributeError):
             pass
-        approved = raw.startswith("APPROVED")
-        reason = raw.split(":", 1)[-1].strip()[:80] if ":" in raw else raw[:80]
-        return approved, reason
+        # Legacy plain-text verdicts ("APPROVED: ..." / "REJECTED: ...")
+        if raw.startswith(("APPROVED", "REJECTED")):
+            reason = raw.split(":", 1)[-1].strip()[:80] if ":" in raw else raw[:80]
+            return raw.startswith("APPROVED"), reason, False
+        # Anything else (empty output, API error text) is not a review
+        return True, "oracle returned unparseable output", True
     except Exception as e:
         logger.warning("oracle chunk review error: %s", e)
-        return True, "oracle error (fail-open)"
+        return True, "oracle subprocess error", True
     finally:
         prompt_file.unlink(missing_ok=True)
 
 
-async def _oracle_review(task_description: str, diff_text: str, claude_dir: Path) -> tuple[bool, str]:
+async def _oracle_review(task_description: str, diff_text: str, claude_dir: Path) -> tuple[bool, str, bool]:
     """Independent second-model review of a diff (Self-RAG multi-dimensional critique).
 
     For large diffs (> ORACLE_CHUNK_SIZE chars), reviews in chunks and merges findings.
     Qodo §Gap3: chunked review prevents large refactors from being auto-approved.
-    Returns (approved, reason) where reason contains structured fix guidance on rejection.
-    Falls open on any error.
+    Returns (approved, reason, infra_error) where reason contains structured fix
+    guidance on rejection. infra_error=True means the diff was NOT (fully)
+    reviewed — callers must tag the result 'unreviewed', never 'approved'
+    (lovesegfault: fail-open must not masquerade as a review).
     """
     # Chunk large diffs (Qodo §Gap3)
     if len(diff_text) > _ORACLE_CHUNK_SIZE:
@@ -349,12 +363,16 @@ async def _oracle_review(task_description: str, diff_text: str, claude_dir: Path
             _oracle_review_chunk(task_description, chunk, f"{i+1}/{len(chunks)}", claude_dir)
             for i, chunk in enumerate(chunks)
         ])
-        # Aggregate: any rejection → overall rejection; collect first rejection reason
-        rejections = [(approved, reason) for approved, reason in results if not approved]
+        # Aggregate: any real rejection → overall rejection (review DID happen);
+        # otherwise any infra error → unreviewed; else approved.
+        rejections = [reason for approved, reason, infra in results if not approved and not infra]
         if rejections:
-            reason = rejections[0][1]
-            return False, reason
-        return True, "approved (all chunks passed)"
+            return False, rejections[0], False
+        infra_reasons = [reason for _, reason, infra in results if infra]
+        if infra_reasons:
+            reason = f"oracle infra error on {len(infra_reasons)}/{len(results)} chunks: {infra_reasons[0]}"
+            return True, reason[:300], True
+        return True, "approved (all chunks passed)", False
 
     # Short diff: two-pass review (Qodo §Gap1 — spec-check first, quality-check second)
     diff_excerpt = diff_text[:_ORACLE_CHUNK_SIZE]
@@ -364,15 +382,85 @@ async def _oracle_review(task_description: str, diff_text: str, claude_dir: Path
     quality_prompt = _ORACLE_QUALITY_PROMPT.format(diff=diff_excerpt)
 
     # Pass 1: spec compliance check
-    spec_passed, spec_conf, spec_issues = await _oracle_pass(spec_prompt, claude_dir)
+    spec_passed, spec_conf, spec_issues, spec_infra = await _oracle_pass(spec_prompt, claude_dir)
+    if spec_infra:
+        return True, f"oracle infra error (spec pass): {spec_issues}"[:300], True
     if not spec_passed and spec_conf in ("high", "medium"):
         reason = f"[{spec_conf}/spec] " + (spec_issues or "spec compliance failed")
-        return False, reason[:300]
+        return False, reason[:300], False
 
     # Pass 2: quality check (only runs if spec passed)
-    quality_passed, quality_conf, quality_issues = await _oracle_pass(quality_prompt, claude_dir)
+    quality_passed, quality_conf, quality_issues, quality_infra = await _oracle_pass(quality_prompt, claude_dir)
+    if quality_infra:
+        return True, f"oracle infra error (quality pass): {quality_issues}"[:300], True
     if not quality_passed and quality_conf in ("high", "medium"):
         reason = f"[{quality_conf}/quality] " + (quality_issues or "quality check failed")
-        return False, reason[:300]
+        return False, reason[:300], False
 
-    return True, "approved (spec+quality passed)"
+    return True, "approved (spec+quality passed)", False
+
+
+# ─── Oracle Liveness (lovesegfault) ──────────────────────────────────────────
+# Infra failures must surface as 'unreviewed', never as approvals. A streak of
+# consecutive infra errors means the oracle is effectively dead — escalate
+# loudly (webhook + .claude/blockers.md) instead of rubber-stamping commits.
+
+_ORACLE_INFRA_THRESHOLD = 3
+_oracle_infra_streaks: dict[str, int] = {}  # str(claude_dir) → consecutive infra errors
+
+
+def _record_oracle_infra_error(claude_dir: Path) -> int:
+    """Increment and return the consecutive infra-error streak for this session."""
+    key = str(claude_dir)
+    _oracle_infra_streaks[key] = _oracle_infra_streaks.get(key, 0) + 1
+    return _oracle_infra_streaks[key]
+
+
+def _reset_oracle_infra_streak(claude_dir: Path) -> None:
+    """A real review completed — clear the consecutive infra-error streak."""
+    _oracle_infra_streaks.pop(str(claude_dir), None)
+
+
+async def _escalate_oracle_outage(
+    project_dir: Path, claude_dir: Path, webhook: str, streak: int
+) -> None:
+    """Oracle is dead — write a blocker entry + fire the notification webhook.
+
+    blockers.md is watched by session.py:_check_blockers, so this also pauses
+    the newest running worker. Fail-open: escalation must never break commits.
+    """
+    try:
+        blockers = claude_dir / "blockers.md"
+        entry = (
+            f"\n## Blocker [{datetime.now().isoformat(timespec='seconds')}]\n"
+            f"Oracle review infrastructure failing — {streak} consecutive infra errors. "
+            f"Commits are being tagged 'unreviewed' (oracle dead — approvals are not reviews).\n"
+            f"Tried: claude -p oracle subprocess (timeout/error/unparseable output each attempt). "
+            f"Check Claude CLI availability and quota; the streak resets on the next successful review.\n"
+        )
+        existing = blockers.read_text(errors="replace") if blockers.exists() else ""
+        blockers.write_text(existing + entry)
+    except Exception:
+        pass
+    if not webhook:
+        return
+    try:
+        payload = json.dumps({
+            "event": "oracle_outage",
+            "project_path": str(project_dir),
+            "consecutive_infra_errors": streak,
+        })
+        proc = await asyncio.create_subprocess_exec(
+            "curl", "-s", "-X", "POST", "--max-time", "10",
+            "-H", "Content-Type: application/json",
+            "-d", payload, webhook,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        try:
+            await asyncio.wait_for(proc.communicate(), timeout=15)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
+    except Exception:
+        pass  # fail-open

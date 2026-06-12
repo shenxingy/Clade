@@ -40,7 +40,11 @@ from config import (
 from task_queue import TaskQueue
 from github_sync import _gh_update_issue_status
 from session_tree import SessionTree
-from worker_review import _oracle_review, _summarize_worker_completion
+from worker_review import (
+    _oracle_review, _summarize_worker_completion,
+    _record_oracle_infra_error, _reset_oracle_infra_streak,
+    _escalate_oracle_outage, _ORACLE_INFRA_THRESHOLD,
+)
 from worker_taskfile import build_task_file
 from event_stream import EventStream
 from tracing import TracingService, start_task_span
@@ -845,40 +849,9 @@ class Worker:
             if commit_proc.returncode == 0:
                 self.auto_committed = True
 
-                # Oracle validation gate
-                if GLOBAL_SETTINGS.get("auto_oracle", False):
-                    try:
-                        diff_proc = await asyncio.create_subprocess_exec(
-                            "git", "diff", "HEAD~1", "HEAD",
-                            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
-                            cwd=str(self._project_dir),
-                        )
-                        diff_out, _ = await asyncio.wait_for(diff_proc.communicate(), timeout=15)
-                        approved, reason = await _oracle_review(
-                            self.description, diff_out.decode(), self._claude_dir
-                        )
-                        self.oracle_result = "approved" if approved else "rejected"
-                        self.oracle_reason = reason
-                        if not approved:
-                            # Undo the commit so rejected work is not accidentally pushed later
-                            reset_proc = await asyncio.create_subprocess_exec(
-                                "git", "reset", "HEAD~1",
-                                stdout=asyncio.subprocess.DEVNULL,
-                                stderr=asyncio.subprocess.DEVNULL,
-                                cwd=str(self._project_dir),
-                            )
-                            try:
-                                await asyncio.wait_for(reset_proc.communicate(), timeout=10)
-                            except asyncio.TimeoutError:
-                                reset_proc.kill()
-                                await reset_proc.communicate()
-                            self.auto_committed = False
-                            # Flag for requeue — poll_all will pick this up
-                            self._oracle_requeue = True
-                            self._oracle_requeue_reason = reason
-                            return False
-                    except Exception:
-                        pass  # fail-open
+                # Oracle validation gate (rejection requeues; infra errors tag 'unreviewed')
+                if not await self._run_oracle_gate():
+                    return False
 
                 branch = f"orchestrator/task-{self.task_id}"
                 self.branch_name = branch
@@ -910,6 +883,68 @@ class Worker:
         except asyncio.TimeoutError:
             pass
         return self.auto_committed
+
+    async def _run_oracle_gate(self) -> bool:
+        """Oracle validation gate. Returns False when the commit was rejected (undone + flagged for requeue).
+
+        Oracle liveness (lovesegfault): infra failures (timeout/subprocess error/
+        unparseable output) tag oracle_result='unreviewed' — never a silent
+        approval. After _ORACLE_INFRA_THRESHOLD consecutive infra errors, the
+        outage escalates via notification webhook + .claude/blockers.md.
+        """
+        if not GLOBAL_SETTINGS.get("auto_oracle", False):
+            return True
+        try:
+            diff_proc = await asyncio.create_subprocess_exec(
+                "git", "diff", "HEAD~1", "HEAD",
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+                cwd=str(self._project_dir),
+            )
+            diff_out, _ = await asyncio.wait_for(diff_proc.communicate(), timeout=15)
+            approved, reason, infra_error = await _oracle_review(
+                self.description, diff_out.decode(), self._claude_dir
+            )
+        except Exception:
+            approved, reason, infra_error = True, "oracle gate error", True
+        if infra_error:
+            # Fail-open (commit survives) but visibly unreviewed, with escalation
+            self.oracle_result = "unreviewed"
+            self.oracle_reason = reason
+            try:
+                streak = _record_oracle_infra_error(self._claude_dir)
+                if streak and streak % _ORACLE_INFRA_THRESHOLD == 0:
+                    await _escalate_oracle_outage(
+                        self._project_dir, self._claude_dir,
+                        GLOBAL_SETTINGS.get("notification_webhook", ""), streak,
+                    )
+            except Exception:
+                pass  # escalation must never break the commit flow
+            return True
+        _reset_oracle_infra_streak(self._claude_dir)
+        self.oracle_result = "approved" if approved else "rejected"
+        self.oracle_reason = reason
+        if approved:
+            return True
+        # Undo the commit so rejected work is not accidentally pushed later
+        try:
+            reset_proc = await asyncio.create_subprocess_exec(
+                "git", "reset", "HEAD~1",
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+                cwd=str(self._project_dir),
+            )
+            try:
+                await asyncio.wait_for(reset_proc.communicate(), timeout=10)
+            except asyncio.TimeoutError:
+                reset_proc.kill()
+                await reset_proc.communicate()
+        except Exception:
+            pass
+        self.auto_committed = False
+        # Flag for requeue — poll_all will pick this up
+        self._oracle_requeue = True
+        self._oracle_requeue_reason = reason
+        return False
 
     async def _run_with_context(self, extra_context: str, use_continue: bool = False) -> bool:
         """Re-run the worker with additional context injected (used by reflection loop).
