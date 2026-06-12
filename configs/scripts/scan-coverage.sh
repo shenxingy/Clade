@@ -85,8 +85,8 @@ Target: 80%
 ## What to do
 1. Review {file_path} and identify untested code paths
 2. Write unit tests to cover missing paths
-3. Run \`pytest --cov {file_path}\` to verify coverage improved
-4. Commit with \`committer "test: add tests for {module_name}"\` when done
+3. Run `pytest --cov {file_path}` to verify coverage improved
+4. Commit with `committer "test: add tests for {module_name}"` when done
 
 EOF
 """
@@ -154,8 +154,8 @@ Target: 80%
 ## What to do
 1. Review {file_path} and identify untested code paths
 2. Write unit tests to cover missing branches
-3. Run \`npm run test:coverage -- {file_path}\` to verify
-4. Commit with \`committer "test: add tests for {module_name}"\` when done
+3. Run `npm run test:coverage -- {file_path}` to verify
+4. Commit with `committer "test: add tests for {module_name}"` when done
 
 """)
 NODE_SCRIPT
