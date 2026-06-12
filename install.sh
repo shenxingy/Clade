@@ -86,28 +86,41 @@ for skill_dir in "$SCRIPT_DIR/configs/skills/"/*/; do
   echo "  Installed skill: $skill_name"
 done
 
+# Preflight: validate skill frontmatter (warn-only — CI is the hard gate)
+if command -v python3 &>/dev/null; then
+  python3 "$SCRIPT_DIR/configs/scripts/validate-skills.py" "$SCRIPT_DIR/configs/skills" --quiet \
+    || echo "  WARNING: skill frontmatter validation failed (run configs/scripts/validate-skills.py --fix)"
+fi
+
 # Generate available_skills.md from installed SKILL.md files
-# This file lists all skills with name + description for LLM auto-discovery
+# This file lists all skills with name + description for LLM auto-discovery.
+# Uses the shared parser (skill_frontmatter.py — same one mcp_server.py and
+# validate-skills.py use); the awk path is a python3-less fallback only.
 echo "Generating available_skills.md..."
-{
-  echo "# Available Skills"
-  echo ""
-  echo "These skills are installed. Use them by mentioning their name naturally."
-  echo ""
-  for skill_md in "$CLAUDE_DIR/skills/"*/SKILL.md; do
-    [[ -f "$skill_md" ]] || continue
-    name=$(awk '/^name:/{print $2}' "$skill_md" | tr -d '"' | tr -d "'")
-    description=$(awk '/^description:/{print substr($0, index($0,$2))}' "$skill_md" | sed 's/^["'\''"]//;s/["'\''"]$//')
-    # Accept both spellings: first-party skills use user_invocable, upstream-synced ones user-invokable
-    user_invocable=$(awk '/^user_invocable:|^user-invokable:/{print $2}' "$skill_md" | tr -d '"' | tr -d "'")
-    echo "## $name"
-    echo "$description"
-    if [[ "$user_invocable" == "true" ]]; then
-      echo "(can be invoked with /$name)"
-    fi
+if command -v python3 &>/dev/null; then
+  python3 "$SCRIPT_DIR/configs/scripts/skill_frontmatter.py" catalog "$CLAUDE_DIR/skills" \
+    > "$CLAUDE_DIR/available_skills.md"
+else
+  {
+    echo "# Available Skills"
     echo ""
-  done
-} > "$CLAUDE_DIR/available_skills.md"
+    echo "These skills are installed. Use them by mentioning their name naturally."
+    echo ""
+    for skill_md in "$CLAUDE_DIR/skills/"*/SKILL.md; do
+      [[ -f "$skill_md" ]] || continue
+      name=$(awk '/^name:/{print $2}' "$skill_md" | tr -d '"' | tr -d "'")
+      description=$(awk '/^description:/{print substr($0, index($0,$2))}' "$skill_md" | sed 's/^["'\''"]//;s/["'\''"]$//')
+      # Accept both spellings: first-party skills use user_invocable, upstream-synced ones user-invokable
+      user_invocable=$(awk '/^user_invocable:|^user-invokable:/{print $2}' "$skill_md" | tr -d '"' | tr -d "'")
+      echo "## $name"
+      echo "$description"
+      if [[ "$user_invocable" == "true" ]]; then
+        echo "(can be invoked with /$name)"
+      fi
+      echo ""
+    done
+  } > "$CLAUDE_DIR/available_skills.md"
+fi
 echo "  Generated: $CLAUDE_DIR/available_skills.md"
 
 # Install available_skills.md to agents/ so Claude Code includes it in system prompt
@@ -272,10 +285,13 @@ echo "Configuring shell aliases..."
 
 setup_alias() {
   local rc_file="$1"
-  [[ -f "$rc_file" ]] || return
+  # return 0, not bare return: under `set -e` a missing rc file (fresh
+  # machine without ~/.zshrc) would otherwise abort the whole install here,
+  # silently skipping ground rules, doc-align, and kit version markers.
+  [[ -f "$rc_file" ]] || return 0
   if grep -q "dangerously-skip-permissions" "$rc_file" 2>/dev/null; then
     echo "  Aliases already in $rc_file — skipping"
-    return
+    return 0
   fi
   cat >> "$rc_file" << 'SHELLEOF'
 
