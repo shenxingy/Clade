@@ -1,14 +1,6 @@
 ---
 name: blog-multilingual
-description: >
-  One-command multilingual blog creation. Writes a blog post, translates it
-  into user-specified languages, applies cultural adaptation, and emits
-  hreflang tags, sitemap entries, and a CMS-ready language map. The complete
-  write-to-publish pipeline for international content. Orchestrates blog-write,
-  blog-translate, blog-localize, and (optionally) seo-hreflang.
-  Use when user says "multilingual blog", "blog multilingual", "write in
-  multiple languages", "international blog", "mehrsprachiger Blog", "blog
-  multilingue", "blog multilingue", "create blog in German and French".
+description: One-command multilingual blog creation. Writes a blog post, translates it into user-specified languages, applies cultural adaptation, and emits hreflang tags, sitemap entries, and a CMS-ready language map. The complete write-to-publish pipeline for international content. Orchestrates blog-write, blog-translate, blog-localize, and (optionally) seo-hreflang. Use when user says "multilingual blog", "blog multilingual", "write in multiple languages", "international blog", "mehrsprachiger Blog", "blog multilingue", "blog multilingue", "create blog in German and French".
 user-invokable: true
 argument-hint: "<topic> --languages <comma-separated-codes>"
 license: MIT

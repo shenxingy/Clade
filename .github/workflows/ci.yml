@@ -44,6 +44,9 @@ jobs:
           chmod +x install.sh
           bash -n install.sh && echo "install.sh syntax OK"
 
+      - name: Validate skill registry
+        run: python3 configs/scripts/validate-skills.py configs/skills
+
   pytest:
     name: Tests
     runs-on: ubuntu-latest
@@ -73,11 +76,20 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
 
+      # Hard gate: a failing shell test fails the build (no continue-on-error,
+      # no warning-swallow — that combination hid 11 real failures for weeks)
       - name: Run loop system tests
-        run: |
-          if [[ -f tests/test-loop.sh ]]; then
-            bash tests/test-loop.sh || echo "::warning::Some tests failed — see output above"
-          else
-            echo "No shell tests found, skipping"
-          fi
-        continue-on-error: true
+        run: bash tests/test-loop.sh
+
+  install-test:
+    name: Install Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+
+      # Executes install.sh against a throwaway $HOME under /tmp and asserts
+      # what it ships: hooks executable, skill catalog generated, learned
+      # Cross-Project Rules surviving reinstall, settings merge, symlinks
+      - name: Run install test
+        run: bash tests/test-install.sh

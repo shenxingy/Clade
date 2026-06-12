@@ -1,12 +1,6 @@
 ---
 name: seo-ecommerce
-description: >
-  E-commerce SEO analysis: Google Shopping visibility, Amazon marketplace
-  intelligence, product schema validation, competitor pricing analysis, and
-  marketplace keyword gaps. Combines on-page product SEO with marketplace data
-  from DataForSEO Merchant API. Use when user says "ecommerce SEO", "product SEO",
-  "Google Shopping", "marketplace SEO", "product schema", "Amazon SEO",
-  "product listings", "shopping ads", or "merchant SEO".
+description: "E-commerce SEO analysis: Google Shopping visibility, Amazon marketplace intelligence, product schema validation, competitor pricing analysis, and marketplace keyword gaps. Combines on-page product SEO with marketplace data from DataForSEO Merchant API. Use when user says \"ecommerce SEO\", \"product SEO\", \"Google Shopping\", \"marketplace SEO\", \"product schema\", \"Amazon SEO\", \"product listings\", \"shopping ads\", or \"merchant SEO\"."
 user-invokable: true
 argument-hint: "<url or keyword>"
 license: MIT

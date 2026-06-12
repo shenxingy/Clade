@@ -1,13 +1,6 @@
 ---
 name: blog-locale-audit
-description: >
-  Audit a directory of multilingual blog content for completeness, consistency,
-  hreflang correctness, meta-tag parity, and freshness. Builds a translation
-  coverage matrix, flags stale translations, validates hreflang and schema,
-  and emits a prioritized report with runnable fix commands.
-  Use when user says "locale audit", "blog locale-audit", "check translations",
-  "multilingual audit", "translation check", "hreflang check",
-  "Uebersetzungen pruefen".
+description: Audit a directory of multilingual blog content for completeness, consistency, hreflang correctness, meta-tag parity, and freshness. Builds a translation coverage matrix, flags stale translations, validates hreflang and schema, and emits a prioritized report with runnable fix commands. Use when user says "locale audit", "blog locale-audit", "check translations", "multilingual audit", "translation check", "hreflang check", "Uebersetzungen pruefen".
 user-invokable: true
 argument-hint: "<directory>"
 license: MIT

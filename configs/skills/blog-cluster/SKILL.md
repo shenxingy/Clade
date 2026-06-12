@@ -1,16 +1,6 @@
 ---
 name: blog-cluster
-description: >
-  Semantic topic cluster planning and automated execution engine for claude-blog.
-  Performs SERP-based keyword research, groups keywords by search intent and
-  SERP overlap, builds a hub-and-spoke cluster architecture, generates an
-  interactive SVG cluster map, and executes the full cluster by orchestrating
-  blog-write calls with shared cluster context and automatic internal-link
-  injection. Fills the strategy-to-execution gap: blog-strategy plans the
-  blueprint, blog-cluster builds the house.
-  Use when user says "blog cluster", "topic cluster", "content cluster",
-  "cluster plan", "cluster execute", "pillar content", "hub and spoke",
-  "content ecosystem", "cluster map".
+description: "Semantic topic cluster planning and automated execution engine for claude-blog. Performs SERP-based keyword research, groups keywords by search intent and SERP overlap, builds a hub-and-spoke cluster architecture, generates an interactive SVG cluster map, and executes the full cluster by orchestrating blog-write calls with shared cluster context and automatic internal-link injection. Fills the strategy-to-execution gap: blog-strategy plans the blueprint, blog-cluster builds the house. Use when user says \"blog cluster\", \"topic cluster\", \"content cluster\", \"cluster plan\", \"cluster execute\", \"pillar content\", \"hub and spoke\", \"content ecosystem\", \"cluster map\"."
 license: MIT
 compatibility: Requires Claude Code and claude-blog (provides blog-write, blog-chart, blog-image)
 metadata:

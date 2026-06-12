@@ -48,6 +48,40 @@ SERVER_VERSION = "0.1.0"
 SKILLS_DIR = Path(os.path.expanduser("~/.claude/skills"))
 
 
+def _load_frontmatter_module():
+    """Load the ONE shared SKILL.md frontmatter parser (skill_frontmatter.py).
+
+    Candidate locations:
+      - same dir as this file        (installed: ~/.claude/scripts/)
+      - ../configs/scripts/          (repo: orchestrator/mcp_server.py)
+    install.sh deploys both files to ~/.claude/scripts/, so the sibling copy
+    is always present on installed setups. Do NOT inline a fallback parser
+    here — the whole point is a single parser (see validate-skills.py).
+    """
+    import importlib.util
+
+    here = Path(__file__).resolve().parent
+    candidates = [
+        here / "skill_frontmatter.py",
+        here.parent / "configs" / "scripts" / "skill_frontmatter.py",
+    ]
+    for path in candidates:
+        if path.is_file():
+            spec = importlib.util.spec_from_file_location("clade_skill_frontmatter", path)
+            assert spec and spec.loader
+            mod = importlib.util.module_from_spec(spec)
+            sys.modules["clade_skill_frontmatter"] = mod
+            spec.loader.exec_module(mod)
+            return mod
+    raise ImportError(
+        "skill_frontmatter.py not found next to mcp_server.py or in configs/scripts/ "
+        "— re-run install.sh (it deploys both to ~/.claude/scripts/)"
+    )
+
+
+skill_frontmatter = _load_frontmatter_module()
+
+
 def parse_argument_hint(hint: str) -> dict[str, Any]:
     """Parse SKILL.md argument-hint into a JSON Schema.
 
@@ -95,61 +129,15 @@ def parse_argument_hint(hint: str) -> dict[str, Any]:
 
 
 def load_skills() -> list[dict]:
-    """Load all skills from ~/.claude/skills/."""
+    """Load all skills from ~/.claude/skills/ via the shared frontmatter parser."""
     skills = []
 
-    if not SKILLS_DIR.exists():
-        return skills
-
-    for skill_path in SKILLS_DIR.iterdir():
-        if not skill_path.is_dir():
-            continue
-
-        skill_md = skill_path / "SKILL.md"
-        prompt_md = skill_path / "prompt.md"
-
-        if not skill_md.exists():
-            continue
-
-        # Parse frontmatter
-        name = None
-        description = None
-        argument_hint = None
-        user_invocable = False
-
-        try:
-            content = skill_md.read_text()
-        except Exception:
-            continue
-
-        in_frontmatter = False
-        frontmatter_text = ""
-
-        for line in content.splitlines():
-            if line.strip() == "---":
-                if not in_frontmatter:
-                    in_frontmatter = True
-                elif in_frontmatter:
-                    in_frontmatter = False
-                    break
-            elif in_frontmatter:
-                frontmatter_text += line + "\n"
-
-        for line in frontmatter_text.splitlines():
-            if line.startswith("name:"):
-                name = line.split(":", 1)[1].strip().strip('"').strip("'")
-            elif line.startswith("description:"):
-                description = line.split(":", 1)[1].strip().strip('"').strip("'")
-            elif line.startswith("argument-hint:"):
-                argument_hint = line.split(":", 1)[1].strip().strip('"').strip("'")
-            elif line.startswith("user_invocable:"):
-                user_invocable = line.split(":", 1)[1].strip().lower() in ("true", "1", "yes")
-
-        if not name:
-            name = skill_path.name
+    for parsed in skill_frontmatter.iter_skills(SKILLS_DIR):
+        name = parsed["name"]
 
         # Load prompt content (for execution)
         prompt_content = ""
+        prompt_md = SKILLS_DIR / name / "prompt.md"
         if prompt_md.exists():
             try:
                 prompt_content = prompt_md.read_text()
@@ -158,10 +146,10 @@ def load_skills() -> list[dict]:
 
         skills.append({
             "name": name,
-            "description": description or f"Clade skill: {name}",
-            "argument_hint": argument_hint or "",
+            "description": parsed["description"] or f"Clade skill: {name}",
+            "argument_hint": parsed["argument_hint"],
             "prompt_content": prompt_content,
-            "user_invocable": user_invocable,
+            "user_invocable": parsed["user_invocable"],
         })
 
     return skills

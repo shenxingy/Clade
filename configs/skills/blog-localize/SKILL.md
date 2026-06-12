@@ -1,18 +1,6 @@
 ---
 name: blog-localize
-description: >
-  Cultural adaptation for translated content. Run AFTER blog-translate
-  completes. Adjusts brand examples, CTAs, legal references, and formality
-  for the target market (German, French, Japanese, Spanish, etc.).
-  Deep cultural adaptation of translated blog posts. Goes beyond translation
-  to swap brand examples, adapt CTAs, substitute legal references, localize
-  statistic sources where possible, and adjust formality (Sie/du, tu/vous,
-  formal/informal). Built-in profiles for DACH, Francophone, Hispanic, and
-  Japanese markets, plus a custom-locale template. Makes content feel
-  locally authored, not translated.
-  Use when user says "localize blog", "blog localize", "cultural adaptation",
-  "adapt for Germany", "adapt for France", "lokalisieren", "localiser",
-  "adaptar".
+description: Cultural adaptation for translated content. Run AFTER blog-translate completes. Adjusts brand examples, CTAs, legal references, and formality for the target market (German, French, Japanese, Spanish, etc.). Deep cultural adaptation of translated blog posts. Goes beyond translation to swap brand examples, adapt CTAs, substitute legal references, localize statistic sources where possible, and adjust formality (Sie/du, tu/vous, formal/informal). Built-in profiles for DACH, Francophone, Hispanic, and Japanese markets, plus a custom-locale template. Makes content feel locally authored, not translated. Use when user says "localize blog", "blog localize", "cultural adaptation", "adapt for Germany", "adapt for France", "lokalisieren", "localiser", "adaptar".
 user-invokable: true
 argument-hint: "<file> --locale <locale-code>"
 license: MIT
