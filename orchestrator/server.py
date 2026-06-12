@@ -9,9 +9,10 @@ import asyncio
 import json
 import logging
 import os
+import subprocess
 import time
 from contextlib import asynccontextmanager
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import Body, Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
@@ -119,6 +120,32 @@ app.include_router(usage_router)
 WEB_DIST = Path(__file__).parent / "web" / "dist"
 _web_static_dir = str(WEB_DIST) if WEB_DIST.exists() else str(WEB_DIR)
 app.mount("/web", StaticFiles(directory=_web_static_dir, html=True), name="web")
+
+# ─── REST: Version (stale-process guard) ──────────────────────────────────────
+
+# Captured once at import: the commit this process is actually running. A
+# long-lived orchestrator silently runs stale code after `git pull` (it sat 9
+# days behind once — PM2 doesn't watch files). /status compares this against
+# repo HEAD and tells the user to restart.
+def _capture_running_commit() -> str:
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=Path(__file__).parent, capture_output=True, text=True, timeout=5,
+        )
+        return out.stdout.strip() if out.returncode == 0 else "unknown"
+    except Exception:
+        return "unknown"
+
+
+RUNNING_COMMIT = _capture_running_commit()
+STARTED_AT = datetime.now(timezone.utc).isoformat()
+
+
+@app.get("/api/version")
+async def get_version():
+    return {"running_commit": RUNNING_COMMIT, "started_at": STARTED_AT}
+
 
 # ─── REST: Sessions ───────────────────────────────────────────────────────────
 
