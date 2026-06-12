@@ -242,6 +242,18 @@ If a commit fails, stop immediately and report the error — don't continue to t
 
 ## Step 6: Push (unless --no-push)
 
+**Optional oracle gate (opt-in):** if `CLADE_ORACLE_GATE=1` is set in the
+environment, cross-check the outgoing commits with a second model before
+pushing — this breaks the same-model blind spot (you wrote the diff, you
+shouldn't be its only reviewer):
+```bash
+~/.claude/scripts/oracle-review.sh --task "<one-line summary of the commits>" --range @{upstream}...HEAD
+```
+- Exit 0 → proceed. Exit 1 → present the rejection reason to the user, do NOT
+  push (they decide: fix or override). Exit 2 → warn that the diff is
+  **unreviewed** (judge infra error) and proceed — never report it as approved.
+- Skip silently when the env var is unset or the script is missing.
+
 After all commits succeed and CI checks pass, push by default:
 ```bash
 git push

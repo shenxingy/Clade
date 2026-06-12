@@ -93,6 +93,7 @@ session.py           ← ProjectSession, registry, status_loop (lazy-imports tas
 # Roots
 server.py            ← FastAPI app, remaining routes, mounts all routes/* routers
 mcp_server.py        ← standalone MCP entrypoint exposing skills (stdio transport)
+oracle_cli.py        ← standalone oracle gate CLI (strangler extraction; shim configs/scripts/oracle-review.sh)
 routes/tasks.py      ← Task CRUD + bulk-action routes
 routes/workers.py    ← Worker control + inspection routes
 routes/webhooks.py   ← GitHub webhook handler
@@ -111,6 +112,7 @@ routes/usage.py      ← Usage dashboard API routes
 | `worker_taskfile.py` | `build_task_file` — task file construction + context injection |
 | `worker_tldr.py` | `_generate_code_tldr`, `_score_task` — TLDR + scoring (leaf) |
 | `worker_review.py` | `_write_pr_review`, `_oracle_review`, `_write_progress_entry` (leaf) |
+| `oracle_cli.py` | Standalone oracle gate — same judge as the orchestrator, no server needed (`oracle-review.sh` shim; opt-in `/commit` gate via `CLADE_ORACLE_GATE=1`) |
 | `worker_utils.py` | Output helpers, lint reflection, `LoopDetectionService`, worker-state helpers (leaf) |
 | `session.py` | `ProjectSession`, `SessionRegistry`, `status_loop()` |
 | `server.py` | FastAPI app, session/loop/swarm/usage/settings routes, WebSocket |
