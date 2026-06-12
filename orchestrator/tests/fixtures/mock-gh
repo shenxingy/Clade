@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# State-backed mock gh for the offline recovery e2e suite
+# (orchestrator/tests/test_recovery_e2e.py).
+#
+# All state is plain files under $GH_STATE_DIR (default ./.gh-state), seeded by
+# the test and mutated only by call counters — no network, no real gh:
+#   name-with-owner    reply for `gh repo view --json nameWithOwner`
+#                      (default: acme/widget)
+#   issue-<n>.json     reply for `gh issue view <n> --json ...`
+#                      (missing file -> exit 1, like a 404)
+#   pr-<n>.json        reply for `gh pr view <n> --json ...`
+#                      (missing file -> exit 1)
+#   run-<id>.<k>.log   reply for the k-th `gh run view <id> --log-failed` call.
+#                      A missing file means the run now PASSES (--log-failed
+#                      prints nothing, exit 0) — so seeding only run-<id>.1.log
+#                      scripts a failing-then-passing CI run.
+#   run-<id>.calls     call counter (written by this mock)
+#   calls.log          every invocation, one line per call, for assertions
+set -u
+
+state="${GH_STATE_DIR:-.gh-state}"
+mkdir -p "$state"
+printf '%s\n' "$*" >> "$state/calls.log"
+
+cmd="${1:-}"
+sub="${2:-}"
+
+case "$cmd $sub" in
+  "repo view")
+    if [ -f "$state/name-with-owner" ]; then
+      cat "$state/name-with-owner"
+    else
+      echo "acme/widget"
+    fi
+    exit 0
+    ;;
+  "issue view")
+    f="$state/issue-${3:?issue number required}.json"
+    if [ -f "$f" ]; then cat "$f"; exit 0; fi
+    echo "mock-gh: no such issue state file: $f" >&2
+    exit 1
+    ;;
+  "pr view")
+    f="$state/pr-${3:?pr number required}.json"
+    if [ -f "$f" ]; then cat "$f"; exit 0; fi
+    echo "mock-gh: no such pr state file: $f" >&2
+    exit 1
+    ;;
+  "run view")
+    run_id="${3:?run id required}"
+    cf="$state/run-$run_id.calls"
+    n=$(( $(cat "$cf" 2>/dev/null || echo 0) + 1 ))
+    echo "$n" > "$cf"
+    log="$state/run-$run_id.$n.log"
+    if [ -f "$log" ]; then cat "$log"; fi
+    exit 0
+    ;;
+  *)
+    echo "mock-gh: unhandled invocation: $*" >&2
+    exit 1
+    ;;
+esac

@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+# Turn-counting mock claude for the offline recovery e2e suite
+# (orchestrator/tests/test_recovery_e2e.py).
+#
+# Follows the MOCK_CLAUDE_* env-var convention from tests/test-loop.sh's mock,
+# extended for the orchestrator worker pipeline where ONE worker run fans out
+# into several different `claude -p` calls (worker run, VERIFIED_OK check,
+# oracle two-pass review, completion summary). Calls are classified by prompt
+# content so verify/oracle/summary calls never consume worker turns.
+#
+# Env contract:
+#   MOCK_CLAUDE_STATE_DIR        required — turn counter, call log, captured
+#                                prompts (prompt-<n>-<kind>.txt) live here.
+#   MOCK_CLAUDE_WORKER_SCRIPT_<n> bash script run for the n-th worker-run call,
+#                                cwd = the worker's worktree. Its stdout becomes
+#                                claude's stdout (-> worker log) and its exit
+#                                code becomes claude's exit code. The highest
+#                                defined n <= current turn is reused, so a
+#                                single SCRIPT_1 serves every attempt.
+#   MOCK_CLAUDE_VERIFY_RESPONSE  reply for the VERIFIED_OK check
+#                                (default: VERIFIED_OK).
+#   MOCK_CLAUDE_ORACLE_MODE      approve | reject | garbage (default approve).
+#                                JSON matches the short-diff two-pass schema
+#                                ({"pass": ...}); keep planted diffs < 2500
+#                                chars so the chunked path is not taken.
+#   MOCK_CLAUDE_EXIT             fallback exit code when no worker script is
+#                                defined (default 0), mirroring test-loop.sh.
+#
+# NOTE: never read stdin here — the orchestrator passes prompts via argv and
+# may leave stdin attached to the parent process (a blocking `cat` would hang).
+set -u
+
+# ─── Extract the prompt from argv (skip value-taking flags) ───────────────────
+PROMPT=""
+prev=""
+for a in "$@"; do
+  case "$prev" in
+    --model|--append-system-prompt|--setting-sources|--mcp-config|--allowed-tools|--allowedTools|--disallowed-tools|--add-dir)
+      prev=""
+      continue
+      ;;
+  esac
+  case "$a" in
+    -p|--continue|--dangerously-skip-permissions|--no-input-prompt)
+      prev=""
+      ;;
+    --model|--append-system-prompt|--setting-sources|--mcp-config|--allowed-tools|--allowedTools|--disallowed-tools|--add-dir)
+      prev="$a"
+      ;;
+    *)
+      if [ -z "$PROMPT" ]; then PROMPT="$a"; fi
+      prev=""
+      ;;
+  esac
+done
+
+state="${MOCK_CLAUDE_STATE_DIR:?MOCK_CLAUDE_STATE_DIR is required}"
+mkdir -p "$state"
+
+# ─── Classify the call by prompt content ──────────────────────────────────────
+case "$PROMPT" in
+  *"output exactly: VERIFIED_OK"*) kind="verify" ;;
+  *"spec compliance checker"*|*"code quality reviewer"*|*"independent code reviewer"*) kind="oracle" ;;
+  *"In ONE sentence"*) kind="summarize" ;;
+  *"Extract key facts"*) kind="distill" ;;
+  *) kind="worker" ;;
+esac
+
+n=$(( $(cat "$state/ncalls" 2>/dev/null || echo 0) + 1 ))
+echo "$n" > "$state/ncalls"
+printf '%s\n' "$PROMPT" > "$state/prompt-$n-$kind.txt"
+echo "$kind" >> "$state/calls.log"
+
+case "$kind" in
+  verify)
+    printf '%s\n' "${MOCK_CLAUDE_VERIFY_RESPONSE:-VERIFIED_OK}"
+    exit 0
+    ;;
+  oracle)
+    case "${MOCK_CLAUDE_ORACLE_MODE:-approve}" in
+      approve) echo '{"pass": true, "confidence": "high", "issues": []}' ;;
+      reject)  echo '{"pass": false, "confidence": "high", "issues": ["PLANTED_ORACLE_REJECTION: square() must validate its input"]}' ;;
+      garbage) echo "I'm sorry, the reviewer service is unavailable right now." ;;
+      *) echo "mock-claude: unknown MOCK_CLAUDE_ORACLE_MODE" >&2; exit 1 ;;
+    esac
+    exit 0
+    ;;
+  summarize)
+    echo "Completed the task."
+    exit 0
+    ;;
+  distill)
+    echo "No significant output."
+    exit 0
+    ;;
+  worker)
+    turn=$(( $(cat "$state/worker-turns" 2>/dev/null || echo 0) + 1 ))
+    echo "$turn" > "$state/worker-turns"
+    script=""
+    k="$turn"
+    while [ "$k" -ge 1 ]; do
+      v="MOCK_CLAUDE_WORKER_SCRIPT_$k"
+      if [ -n "${!v:-}" ]; then
+        script="${!v}"
+        break
+      fi
+      k=$((k - 1))
+    done
+    if [ -n "$script" ]; then
+      bash "$script"
+      exit $?
+    fi
+    echo "mock worker output"
+    exit "${MOCK_CLAUDE_EXIT:-0}"
+    ;;
+esac
