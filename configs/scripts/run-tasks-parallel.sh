@@ -468,6 +468,83 @@ EOF
   ) 200>"$PROGRESS_FILE.lock"
 }
 
+# ─── Worktree env bootstrap ───────────────────────────────────────────
+# Heavy env dirs (.venv, node_modules) are gitignored, so a fresh worktree
+# lacks them — a worker there cannot run `.venv/bin/python -m pytest` at all.
+# Order: the project's optional 'Env bootstrap:' command (from CLAUDE.md)
+# runs first, then any env dir the worktree still lacks is symlinked from
+# the main checkout (absolute paths). Every step warns and continues on
+# failure — a worker without env is the pre-bootstrap status quo, so env
+# setup must never fail the task spawn.
+
+get_env_bootstrap_cmd() {
+  # Optional '- Env bootstrap: <command>' line in the project CLAUDE.md.
+  # Template placeholders ([...]) and N/A are treated as absent.
+  local claude_md="$REPO_ROOT/CLAUDE.md" cmd
+  [[ -f "$claude_md" ]] || return 0
+  cmd=$(sed -n 's/^[-*[:space:]]*Env bootstrap:[[:space:]]*//p' "$claude_md" | head -1)
+  case "$cmd" in
+    ""|"N/A"|"["*) return 0 ;;
+  esac
+  echo "$cmd"
+}
+
+# Symlinks created in the current worktree. They MUST be removed before the
+# post-task auto-commit: gitignore patterns with trailing slashes (`.venv/`,
+# `node_modules/` — the common style) match directories only, NOT symlinks,
+# so `git add -A` would commit the links and the merge would replace the main
+# checkout's real env dir with a symlink pointing at itself.
+_ENV_LINKS_CREATED=""
+
+bootstrap_worktree_env() {
+  local task_idx="$1" wt_dir="$2" log_file="$3"
+  _ENV_LINKS_CREATED=""
+
+  # 1. Project-defined bootstrap first; dirs it creates are left untouched
+  #    by the symlink pass below (so it can replace the symlinks entirely).
+  local bootstrap_cmd
+  bootstrap_cmd=$(get_env_bootstrap_cmd)
+  if [[ -n "$bootstrap_cmd" ]]; then
+    echo "[$task_idx] Env bootstrap: $bootstrap_cmd"
+    if ! (cd "$wt_dir" && _timeout 300 bash -c "$bootstrap_cmd") >> "$log_file" 2>&1; then
+      echo "[$task_idx] WARNING: Env bootstrap failed (continuing without it — see log)"
+    fi
+  fi
+
+  # 2. Symlink heavy env dirs from the main checkout, at repo root and one
+  #    level down (e.g. orchestrator/.venv). Skip anything the worktree
+  #    already has — never clobber a bootstrap-created or checked-in dir.
+  local src rel target
+  while IFS= read -r src; do
+    [[ -z "$src" ]] && continue
+    rel="${src#"$REPO_ROOT"/}"
+    target="$wt_dir/$rel"
+    if [[ -e "$target" || -L "$target" ]]; then
+      continue
+    fi
+    mkdir -p "$(dirname "$target")" 2>/dev/null || true
+    if ln -s "$src" "$target" 2>/dev/null; then
+      echo "[$task_idx] Linked env: $rel → main checkout"
+      _ENV_LINKS_CREATED+="$target"$'\n'
+    else
+      echo "[$task_idx] WARNING: could not symlink $rel into worktree (continuing)"
+    fi
+  done < <(find "$REPO_ROOT" -maxdepth 2 -name .git -prune -o \
+             -type d \( -name .venv -o -name node_modules \) -prune -print 2>/dev/null)
+
+  return 0
+}
+
+remove_env_links() {
+  # Drop bootstrap-created symlinks so the auto-commit can't pick them up.
+  local link
+  while IFS= read -r link; do
+    [[ -n "$link" && -L "$link" ]] && rm -f "$link"
+  done <<< "$_ENV_LINKS_CREATED"
+  _ENV_LINKS_CREATED=""
+  return 0
+}
+
 # ─── Worker: execute one task in a worktree ───────────────────────────
 
 run_task_in_worktree() {
@@ -499,14 +576,20 @@ run_task_in_worktree() {
     return 1
   fi
 
+  # Give the worker a usable env (symlinked .venv/node_modules, optional
+  # project bootstrap). Best-effort by design — never blocks the spawn.
+  bootstrap_worktree_env "$task_idx" "$wt_dir" "$log_file"
+
   local succeeded=false
   for attempt in $(seq 1 "$max_attempts"); do
     if [[ $attempt -gt 1 ]]; then
       # Exponential backoff on timeout (like TCP congestion control)
       task_timeout=$(( task_timeout * 3 / 2 ))
       echo "[$task_idx] Retry $attempt/$max_attempts (timeout: ${task_timeout}s)..."
-      # Reset worktree on retry
+      # Reset worktree on retry (git clean -fd also strips the env symlinks —
+      # they're untracked, not ignored — so bootstrap again afterwards)
       (cd "$wt_dir" && git checkout . && git clean -fd) 2>/dev/null
+      bootstrap_worktree_env "$task_idx" "$wt_dir" "$log_file"
     fi
 
     record_task_start_state
@@ -516,7 +599,9 @@ run_task_in_worktree() {
 
     if [[ $exit_code -eq 0 ]]; then
       succeeded=true
-      # Commit changes in worktree
+      # Commit changes in worktree (env symlinks removed first — trailing-slash
+      # gitignore patterns don't cover symlinks, so add -A would stage them)
+      remove_env_links
       (cd "$wt_dir" && git add -A && git diff --cached --quiet) 2>/dev/null
       if [[ $? -ne 0 ]]; then
         (cd "$wt_dir" && git commit -m "batch: $task_name" --no-verify) 2>/dev/null

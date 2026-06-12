@@ -4,6 +4,15 @@
 - Backend: [framework + port, or N/A]
 - Test command: [e.g. pytest tests/ -v]
 - Verify command: [e.g. ./scripts/smoke-test.sh, or N/A]
+- Env bootstrap: [optional shell command, or N/A — e.g. python3 -m venv .venv && .venv/bin/pip install -e .]
+
+# Env bootstrap: used by run-tasks-parallel.sh worktree workers. Runs inside each
+# fresh worktree BEFORE .venv/node_modules are symlinked in from the main checkout;
+# dirs it creates are left untouched (the symlink pass skips existing dirs), and a
+# failure only warns — the worker still spawns. Omit (or leave N/A) to get symlinks only.
+# Worktree cwd caveat: verify_cmd in .claude/orchestrator.json must also work from a
+# fresh worktree — use paths relative to the project root (env dirs are symlinked in)
+# or absolute tool paths; never hard-code the main checkout's location.
 
 # Context hygiene for test/verify runs:
 # Run long test/build/verify commands via `bash ~/.claude/scripts/quiet-run.sh <cmd>` —

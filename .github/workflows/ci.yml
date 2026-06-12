@@ -97,6 +97,11 @@ jobs:
       - name: Run auto-audit escalation tests
         run: bash tests/test-audit.sh
 
+      # Worktree env bootstrap (run-tasks-parallel.sh) + per-file post-edit
+      # lint fast path (post-tool-use-lint.sh)
+      - name: Run worktree env tests
+        run: bash tests/test-worktree-env.sh
+
   install-test:
     name: Install Test
     runs-on: ubuntu-latest
