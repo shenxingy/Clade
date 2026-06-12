@@ -299,6 +299,12 @@ class Worker:
         # Attribution: committer.sh appends Co-Authored-By + X-Clade-Task trailers
         # when this is set, letting commit-archeology segment agent vs human commits
         env["CLADE_WORKER_TASK_ID"] = str(self.task_id)
+        # Non-interactive git (mic92): rebase/amend/merge must never park an
+        # unattended worker on an editor; `cat` accepts the default sequence and
+        # prints it, so the rebase plan lands in the worker log.
+        env.setdefault("GIT_EDITOR", "cat")
+        env.setdefault("GIT_SEQUENCE_EDITOR", "cat")
+        env.setdefault("GIT_PAGER", "cat")
         if GLOBAL_SETTINGS.get("agent_teams"):
             env["CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"] = "1"
 

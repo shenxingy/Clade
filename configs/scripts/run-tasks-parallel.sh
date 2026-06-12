@@ -371,7 +371,8 @@ run_claude_task() {
   cat > "$pf"
   # Use stream-json for real-time output (--verbose alone buffers until exit, lost on kill).
   # Workers keep user hooks deliberately (commit discipline); pure judges drop them — see analyze_timeout.
-  printf '#!/usr/bin/env bash\ncd "%s" || exit 1\nexec claude -p --model "%s" %s --verbose --output-format stream-json\n' \
+  # GIT_EDITOR=cat (mic92): rebase/amend never hangs an unattended worker on an editor.
+  printf '#!/usr/bin/env bash\ncd "%s" || exit 1\nexport GIT_EDITOR=cat GIT_SEQUENCE_EDITOR=cat GIT_PAGER=cat\nexec claude -p --model "%s" %s --verbose --output-format stream-json\n' \
     "$workdir" "$model" "$CLAUDE_FLAGS" > "$runner"
   chmod +x "$runner"
 
