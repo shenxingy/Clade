@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Worker } from '../../lib/types';
 import { ModelBadge } from '../shared/ModelBadge';
 import { formatDuration, formatCost } from '../../lib/utils';
-import { ChevronDown, ChevronUp, Square, PauseCircle, PlayCircle, ScrollText, X, ExternalLink } from 'lucide-react';
+import { ChevronDown, ChevronUp, ScrollText, X, ExternalLink } from 'lucide-react';
 import { workers as api } from '../../lib/api';
 import { useSessionStore } from '../../stores/sessionStore';
 
@@ -17,21 +17,6 @@ export function WorkerCard({ worker }: { worker: Worker }) {
   const logLines = worker.log_tail
     ? worker.log_tail.split('\n').filter(l => l.trim())
     : [];
-
-  const handleStop = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    await api.stop(worker.id, activeSessionId).catch(console.error);
-  };
-
-  const handlePause = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    await api.pause(worker.id, activeSessionId).catch(console.error);
-  };
-
-  const handleResume = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    await api.resume(worker.id, activeSessionId).catch(console.error);
-  };
 
   const handleViewLog = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -77,18 +62,6 @@ export function WorkerCard({ worker }: { worker: Worker }) {
           <div className="flex gap-1" onClick={e => e.stopPropagation()}>
             <button onClick={handleViewLog} className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground" title="Full log">
               <ScrollText size={14} />
-            </button>
-            {isPaused ? (
-              <button onClick={handleResume} className="p-1 rounded hover:bg-green-400/20 text-muted-foreground hover:text-green-400" title="Resume">
-                <PlayCircle size={14} />
-              </button>
-            ) : (
-              <button onClick={handlePause} className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground" title="Pause">
-                <PauseCircle size={14} />
-              </button>
-            )}
-            <button onClick={handleStop} className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-red-400" title="Kill">
-              <Square size={14} />
             </button>
           </div>
           {expanded ? <ChevronUp size={14} className="text-muted-foreground" /> : <ChevronDown size={14} className="text-muted-foreground" />}

@@ -1,42 +1,13 @@
-import { useState } from 'react';
 import { useSessionStore } from '../../stores/sessionStore';
-import { X, Settings, Plus } from 'lucide-react';
+import { Settings } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import { sessions as sessionsApi } from '../../lib/api';
-import type { Session } from '../../lib/types';
 
 interface Props {
   onSettingsOpen: () => void;
 }
 
 export function Header({ onSettingsOpen }: Props) {
-  const { sessions, activeSessionId, setActiveSession, setSessions } = useSessionStore();
-  const [adding, setAdding] = useState(false);
-  const [newPath, setNewPath] = useState('');
-
-  const deleteSession = async (e: React.MouseEvent, sessionId: string) => {
-    e.stopPropagation();
-    await sessionsApi.delete(sessionId).catch(console.error);
-    const updated = sessions.filter(s => s.session_id !== sessionId);
-    setSessions(updated);
-    if (activeSessionId === sessionId && updated.length > 0) {
-      setActiveSession(updated[0].session_id);
-    }
-  };
-
-  const addSession = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newPath.trim()) return;
-    try {
-      const s = await sessionsApi.create(newPath.trim()) as Session;
-      setSessions([...sessions, s]);
-      setActiveSession(s.session_id);
-      setNewPath('');
-      setAdding(false);
-    } catch (err) {
-      console.error(err);
-    }
-  };
+  const { sessions, activeSessionId, setActiveSession } = useSessionStore();
 
   return (
     <header className="h-14 border-b border-border flex items-center px-4 gap-4 shrink-0">
@@ -61,41 +32,9 @@ export function Header({ onSettingsOpen }: Props) {
               )}
             >
               <span>{name}</span>
-              <span
-                className="text-muted-foreground/50 hover:text-destructive"
-                onClick={(e) => deleteSession(e, session.session_id)}
-                title="Close session"
-              >
-                <X size={10} />
-              </span>
             </button>
           );
         })}
-
-        {/* Add session */}
-        {adding ? (
-          <form onSubmit={addSession} className="flex items-center gap-1">
-            <input
-              autoFocus
-              type="text"
-              value={newPath}
-              onChange={e => setNewPath(e.target.value)}
-              onKeyDown={e => e.key === 'Escape' && setAdding(false)}
-              placeholder="/path/to/project"
-              className="px-2 py-0.5 text-xs rounded bg-secondary border border-border focus:outline-none focus:border-accent text-foreground placeholder:text-muted-foreground w-48"
-            />
-            <button type="submit" className="px-2 py-0.5 text-xs rounded bg-accent hover:bg-accent/80 text-foreground">Add</button>
-            <button type="button" onClick={() => setAdding(false)} className="px-1.5 py-0.5 text-xs rounded hover:bg-secondary text-muted-foreground">✕</button>
-          </form>
-        ) : (
-          <button
-            onClick={() => setAdding(true)}
-            className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-            title="Add project session"
-          >
-            <Plus size={10} />
-          </button>
-        )}
       </div>
 
       <button onClick={onSettingsOpen} className="p-2 rounded hover:bg-secondary text-muted-foreground hover:text-foreground">
