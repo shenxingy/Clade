@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import shlex
 from pathlib import Path
 
@@ -379,6 +380,73 @@ async def set_task_depends_on(
 
 
 # ─── Cross-Worker Messaging ───────────────────────────────────────────────────
+#
+# Two delivery channels share the worker_messages table:
+#
+#   1. AT-SPAWN (worker_taskfile.py): unread DB rows are injected into the task
+#      file when a worker spawns, then marked read. Durable — a message sent
+#      while no worker is running waits for the next spawn.
+#   2. MID-FLIGHT (_write_worker_inbox + configs/hooks/mailbox-drain.sh): when
+#      the target task has a RUNNING worker, the message is *additionally*
+#      written to <worker project dir>/.claude/worker-inbox-<task_id>.md.
+#      The worker's PostToolUse hook drains that file (atomic mv-then-read,
+#      at most once per file) and injects it as additionalContext on the
+#      worker's next tool call. The hook is keyed on CLADE_WORKER_TASK_ID,
+#      which worker.py exports into the worker env.
+#
+# Semantics: at-least-once overall. The DB row stays unread after a mid-flight
+# drain, so a requeued worker may see the same message again at spawn —
+# steering messages must be idempotent guidance, not one-shot commands.
+# A message written after the worker's final tool call is never drained
+# mid-flight; the stale inbox file is removed at the next spawn
+# (worker_taskfile.py) and the DB row delivers it via the at-spawn channel.
+
+
+def _write_worker_inbox(
+    worker_pool, task_id: str, content: str, from_task_id: str | None
+) -> bool:
+    """Best-effort mid-flight delivery: write the inbox file for a RUNNING worker.
+
+    Returns True if an inbox file was written. Write is atomic (tmp file +
+    os.replace) so the drain hook's mv-then-read never sees a half-written
+    file. If the hook drains between our read-existing and replace, the prior
+    content is re-delivered alongside the new message (duplicate, never loss).
+    """
+    try:
+        worker = next(
+            (
+                w for w in worker_pool.workers.values()
+                if w.task_id == task_id and w.status == "running"
+            ),
+            None,
+        )
+        if worker is None:
+            return False
+        # Worktree-aware: _project_dir is the worker's actual cwd (the git
+        # worktree when isolation succeeded), which is where the worker's
+        # Claude Code session resolves $CLAUDE_PROJECT_DIR.
+        claude_dir = Path(worker._project_dir) / ".claude"
+        claude_dir.mkdir(parents=True, exist_ok=True)
+        # Filename uses the worker's own task_id (pool-sourced, matches the
+        # CLADE_WORKER_TASK_ID env the drain hook keys on) — never interpolate
+        # the raw URL path param into a filesystem path.
+        inbox = claude_dir / f"worker-inbox-{worker.task_id}.md"
+        sender = from_task_id or "supervisor"
+        block = f"[from {sender}] {content.rstrip()}\n"
+        existing = ""
+        try:
+            existing = inbox.read_text()
+        except OSError:
+            existing = ""
+        tmp = inbox.with_name(inbox.name + f".tmp-{os.getpid()}")
+        tmp.write_text(existing + block)
+        os.replace(tmp, inbox)
+        return True
+    except Exception:
+        # Mid-flight delivery is best-effort — the DB row (at-spawn channel)
+        # remains the durable fallback, so never fail the request over this.
+        return False
+
 
 @router.post("/api/tasks/{task_id}/messages")
 async def send_task_message(task_id: str, body: dict, s: ProjectSession = Depends(_resolve_session)):
@@ -387,6 +455,7 @@ async def send_task_message(task_id: str, body: dict, s: ProjectSession = Depend
         raise HTTPException(status_code=400, detail="content is required")
     from_task_id = body.get("from_task_id")
     msg = await s.task_queue.send_message(task_id, content, from_task_id=from_task_id)
+    msg["midflight"] = _write_worker_inbox(s.worker_pool, task_id, content, from_task_id)
     return msg
 
 

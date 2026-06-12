@@ -125,6 +125,11 @@ jobs:
       - name: Run rule-injector tests
         run: bash tests/test-rule-injector.sh
 
+      # Mid-flight worker steering (mailbox-drain.sh): drain + at-most-once,
+      # sanitizer/symlink rails, byte cap, concurrent-drain atomicity
+      - name: Run mailbox-drain tests
+        run: bash tests/test-mailbox-drain.sh
+
   install-test:
     name: Install Test
     runs-on: ubuntu-latest

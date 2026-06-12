@@ -54,6 +54,22 @@ COMMIT_GUIDANCE_BLOCK = (
 )
 
 
+def _clear_stale_inbox(w: Any) -> None:
+    """Remove a leftover mid-flight inbox file from a previous spawn of this task.
+
+    The file's messages are still unread in the worker_messages table (a drain
+    never marks them read), so the at-spawn injection in build_task_file has
+    already delivered them — leaving the file would double-deliver on this
+    spawn's first tool call. Worktree spawns get a fresh _project_dir, where
+    this is a no-op; shared-project-dir spawns are the case that matters.
+    """
+    try:
+        inbox = Path(w._project_dir) / ".claude" / f"worker-inbox-{w.task_id}.md"
+        inbox.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 async def build_task_file(w: Any, task_queue: Any | None) -> Path:
     """Set up log path and write the task file with injected context. Returns task file path.
 
@@ -228,6 +244,14 @@ async def build_task_file(w: Any, task_queue: Any | None) -> Path:
                 await task_queue.mark_messages_read(w.task_id)
         except Exception:
             pass
+    # Mid-flight steering hygiene: the unread-message injection above is the
+    # AT-SPAWN channel; .claude/worker-inbox-<task_id>.md (written by
+    # routes/tasks.py:_write_worker_inbox, drained by mailbox-drain.sh) is the
+    # MID-FLIGHT channel. Both read from the same worker_messages rows, so an
+    # inbox file the previous spawn never drained (worker exited before its
+    # next tool call) was already re-delivered above — remove the stale file
+    # so this spawn's first tool call doesn't deliver it a second time.
+    _clear_stale_inbox(w)
     # Multi-agent Gap 3: inject task schema (acceptance criteria + contracts) if present.
     _schema_block = _format_task_schema_block(_parse_task_schema(w.description))
 

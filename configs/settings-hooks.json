@@ -164,6 +164,18 @@
                         "timeout": 10
                     }
                 ]
+            },
+            {
+                "matcher": "*",
+                "hooks": [
+                    {
+                        "id": "mailbox-drain",
+                        "description": "Mid-flight worker steering: drain .claude/worker-inbox-<task>.md into context after any tool call (orchestrator workers only — no-op unless CLADE_WORKER_TASK_ID is set)",
+                        "type": "command",
+                        "command": "~/.claude/hooks/mailbox-drain.sh",
+                        "timeout": 5
+                    }
+                ]
             }
         ],
         "Stop": [

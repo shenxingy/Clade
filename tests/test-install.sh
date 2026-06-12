@@ -117,6 +117,11 @@ fi
   && pass "rule-injector.sh installed and executable" \
   || fail "rule-injector.sh installed and executable"
 
+# Mid-flight worker steering: mailbox-drain.sh ships with the hook set
+[[ -x "$CLAUDE_DIR/hooks/mailbox-drain.sh" ]] \
+  && pass "mailbox-drain.sh installed and executable" \
+  || fail "mailbox-drain.sh installed and executable"
+
 agent_count=$(ls "$CLAUDE_DIR/agents/"*.md 2>/dev/null | wc -l | tr -d ' ')
 [[ "$agent_count" -gt 0 ]] && pass "agents installed ($agent_count)" || fail "agents installed"
 
@@ -214,6 +219,13 @@ if command -v jq &>/dev/null; then
     pass "rule-injector wired into PostToolUse hooks"
   else
     fail "rule-injector wired into PostToolUse hooks"
+  fi
+
+  if jq -e '[.hooks.PostToolUse[].hooks[].id] | index("mailbox-drain")' \
+      "$CLAUDE_DIR/settings.json" >/dev/null 2>&1; then
+    pass "mailbox-drain wired into PostToolUse hooks"
+  else
+    fail "mailbox-drain wired into PostToolUse hooks"
   fi
 else
   echo "  (jq not available — skipping settings merge checks)"
