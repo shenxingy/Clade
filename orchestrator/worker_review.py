@@ -188,6 +188,9 @@ _ORACLE_PROMPT_TEMPLATE = (
     "Dimension values: 'pass', 'fail — <reason>', or 'warn — <reason>'.\n"
     "confidence: 'high' (clear violation), 'medium' (likely issue), 'low' (style preference).\n"
     "findings: ordered list of issues, most critical first. severity: 'error'|'warning'|'info'.\n"
+    "decision MUST be 'APPROVED' unless at least one finding has severity 'error'. "
+    "warning/info findings NEVER justify rejection — include them as findings with "
+    "decision 'APPROVED'; they are logged as follow-ups, not discarded.\n"
     "fix_guidance: empty string if APPROVED, else summary of all needed changes.\n\n"
     "Task: {task}\n\nDiff:\n{diff}"
 )
@@ -285,6 +288,37 @@ def _format_oracle_rejection(
     return "\n".join(lines)[:400]
 
 
+def _append_followup_findings(claude_dir: Path, findings: list, source_label: str) -> None:
+    """Persist non-blocking (warning/info) oracle findings as follow-ups.
+
+    domdomegg: optional findings become follow-ups in .claude/skipped.md —
+    neither lost (discarded on approval) nor fatal (a style-preference REJECTED
+    on a single chunk nuking a whole commit). Fail-open: never break review.
+    """
+    try:
+        non_blocking = [
+            f for f in findings
+            if isinstance(f, dict) and f.get("severity") in ("warning", "info")
+            and str(f.get("fix_suggestion", "")).strip()
+        ]
+        if not non_blocking:
+            return
+        path = claude_dir / "skipped.md"
+        lines: list[str] = []
+        if not path.exists():
+            lines.append("# Skipped / Follow-up Findings\n")
+        stamp = date.today().isoformat()
+        for f in non_blocking[:5]:
+            sev = f.get("severity", "info")
+            dim = f.get("dimension", "?")
+            fix = str(f.get("fix_suggestion", ""))[:200]
+            lines.append(f"- [AI][{stamp}] oracle follow-up ({source_label}): [{sev}/{dim}] {fix}")
+        with open(path, "a") as fh:
+            fh.write("\n".join(lines) + "\n")
+    except Exception:
+        pass
+
+
 async def _oracle_review_chunk(
     task_description: str, diff_chunk: str, chunk_label: str, claude_dir: Path
 ) -> tuple[bool, str, bool]:
@@ -321,10 +355,25 @@ async def _oracle_review_chunk(
             dims = data.get("dimensions", {})
             confidence = data.get("confidence", "medium")
             findings = data.get("findings", [])
+            if not isinstance(findings, list):
+                findings = []
+            # Severity gate (domdomegg, mirrors the two-pass confidence gate):
+            # REJECTED requires >=1 severity:error finding. A rejection backed
+            # only by warning/info findings is demoted to approval and the
+            # findings are logged as follow-ups. Findings-less rejections keep
+            # their decision (legacy fix_guidance/dimensions-only responses).
+            has_error = any(
+                isinstance(f, dict) and f.get("severity") == "error" for f in findings
+            )
+            label = f"chunk {chunk_label}" if chunk_label else "chunk 1/1"
+            if not approved and findings and not has_error:
+                _append_followup_findings(claude_dir, findings, label)
+                return True, "approved (non-blocking findings logged as follow-ups)", False
             if not approved:
                 reason = _format_oracle_rejection(confidence, fix_guidance, dims, findings)
             else:
                 reason = "approved"
+                _append_followup_findings(claude_dir, findings, label)
             return approved, reason, False
         except (json.JSONDecodeError, AttributeError):
             pass

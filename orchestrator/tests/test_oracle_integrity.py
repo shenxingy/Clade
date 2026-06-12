@@ -178,6 +178,117 @@ class TestOracleChunkLiveness:
         assert infra is True
 
 
+# ─── Chunked-path severity gate (domdomegg) ──────────────────────────────────
+
+
+def _chunk_json(decision: str, findings: list, fix_guidance: str = "") -> bytes:
+    return json.dumps({
+        "decision": decision,
+        "confidence": "medium",
+        "dimensions": {"correctness": "pass", "completeness": "pass", "code_quality": "warn — nits"},
+        "findings": findings,
+        "fix_guidance": fix_guidance,
+    }).encode()
+
+
+class TestChunkSeverityGate:
+    async def test_rejected_with_only_warnings_is_demoted(self, tmp_path, monkeypatch):
+        findings = [
+            {"dimension": "code_quality", "severity": "warning", "fix_suggestion": "rename var x"},
+            {"dimension": "code_quality", "severity": "info", "fix_suggestion": "add docstring"},
+        ]
+        monkeypatch.setattr(
+            wr, "asyncio",
+            AsyncioProxy(create_subprocess_shell=_shell_returning(
+                FakeProc(_chunk_json("REJECTED", findings)))),
+        )
+        approved, reason, infra = await wr._oracle_review_chunk("task", "diff", "1/2", tmp_path)
+        assert (approved, infra) == (True, False)
+        assert "follow-ups" in reason
+        content = (tmp_path / "skipped.md").read_text()
+        assert "[AI]" in content
+        assert "rename var x" in content
+        assert "chunk 1/2" in content
+
+    async def test_rejected_with_error_finding_stays_rejected(self, tmp_path, monkeypatch):
+        findings = [
+            {"dimension": "correctness", "severity": "error", "fix_suggestion": "null deref in auth.py"},
+            {"dimension": "code_quality", "severity": "warning", "fix_suggestion": "rename var"},
+        ]
+        monkeypatch.setattr(
+            wr, "asyncio",
+            AsyncioProxy(create_subprocess_shell=_shell_returning(
+                FakeProc(_chunk_json("REJECTED", findings, "fix the null deref")))),
+        )
+        approved, reason, infra = await wr._oracle_review_chunk("task", "diff", "", tmp_path)
+        assert (approved, infra) == (False, False)
+        assert "null deref" in reason
+
+    async def test_rejected_with_no_findings_keeps_decision(self, tmp_path, monkeypatch):
+        # Legacy fix_guidance-only rejection: decision is honored (no findings to gate on)
+        monkeypatch.setattr(
+            wr, "asyncio",
+            AsyncioProxy(create_subprocess_shell=_shell_returning(
+                FakeProc(_chunk_json("REJECTED", [], "rework the approach")))),
+        )
+        approved, reason, infra = await wr._oracle_review_chunk("task", "diff", "", tmp_path)
+        assert (approved, infra) == (False, False)
+
+    async def test_approved_with_warnings_logs_followups(self, tmp_path, monkeypatch):
+        findings = [
+            {"dimension": "code_quality", "severity": "warning", "fix_suggestion": "extract helper"},
+        ]
+        monkeypatch.setattr(
+            wr, "asyncio",
+            AsyncioProxy(create_subprocess_shell=_shell_returning(
+                FakeProc(_chunk_json("APPROVED", findings)))),
+        )
+        approved, reason, infra = await wr._oracle_review_chunk("task", "diff", "2/3", tmp_path)
+        assert (approved, infra) == (True, False)
+        assert "extract helper" in (tmp_path / "skipped.md").read_text()
+
+    def test_prompt_template_contains_severity_rule(self):
+        assert "severity 'error'" in wr._ORACLE_PROMPT_TEMPLATE
+        assert "NEVER justify rejection" in wr._ORACLE_PROMPT_TEMPLATE
+
+
+class TestAppendFollowupFindings:
+    def test_creates_file_with_header(self, tmp_path):
+        wr._append_followup_findings(
+            tmp_path,
+            [{"dimension": "code_quality", "severity": "warning", "fix_suggestion": "do X"}],
+            "chunk 1/1",
+        )
+        content = (tmp_path / "skipped.md").read_text()
+        assert content.startswith("# Skipped / Follow-up Findings")
+        assert "[warning/code_quality] do X" in content
+
+    def test_appends_without_duplicate_header(self, tmp_path):
+        for fix in ("first", "second"):
+            wr._append_followup_findings(
+                tmp_path,
+                [{"dimension": "x", "severity": "info", "fix_suggestion": fix}],
+                "chunk 1/1",
+            )
+        content = (tmp_path / "skipped.md").read_text()
+        assert content.count("# Skipped / Follow-up Findings") == 1
+        assert "first" in content and "second" in content
+
+    def test_error_findings_not_written(self, tmp_path):
+        wr._append_followup_findings(
+            tmp_path,
+            [{"dimension": "correctness", "severity": "error", "fix_suggestion": "fatal"}],
+            "chunk 1/1",
+        )
+        assert not (tmp_path / "skipped.md").exists()
+
+    def test_malformed_findings_fail_open(self, tmp_path):
+        wr._append_followup_findings(
+            tmp_path, [None, "a string", {"severity": "warning"}], "chunk 1/1"
+        )  # must not raise; nothing useful to write
+        assert not (tmp_path / "skipped.md").exists()
+
+
 # ─── _oracle_review aggregation ──────────────────────────────────────────────
 
 
