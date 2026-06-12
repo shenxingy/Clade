@@ -85,12 +85,12 @@ local subprocess pool becomes ONE backend, not THE architecture:
 
 ## Convergence criteria (ALL must hold)
 
-- [ ] `execution_backend.py` exists; worker spawn/kill routes through it;
+- [x] `execution_backend.py` exists; worker spawn/kill routes through it;
       `execution_backend` setting in `_SETTINGS_DEFAULTS`; backend tests pass
-- [ ] Web UI has no mutation controls and `npm run build` succeeds
-- [ ] All 5 round-2 candidates landed (judge --disallowed-tools asserted by a
+- [x] Web UI has no mutation controls and `npm run build` succeeds
+- [x] All 5 round-2 candidates landed (judge --disallowed-tools asserted by a
       mock test; friction-log block present in task files; input_examples in
       mcp_server; ladder doc linked from /audit; flake note in test-loop-real)
-- [ ] README/VISION repositioned; README ≤300 lines
-- [ ] Full local CI passes: pytest, py_compile sweep, bash -n, mcp-package
+- [x] README/VISION repositioned; README ≤300 lines
+- [x] Full local CI passes: pytest, py_compile sweep, bash -n, mcp-package
       drift gate clean
