@@ -28,6 +28,16 @@ set -uo pipefail
 # Allow nested claude calls
 unset CLAUDECODE 2>/dev/null || true
 
+# ─── Pure-judge containment ──────────────────────────────────────────────────
+# Every direct `claude -p` call in this script (orchestrate/verify/sync/
+# research/brief) has its stdout captured or parsed — user settings must NOT
+# load, or a prompt-type Stop hook in ~/.claude/settings.json prints its own
+# {"ok":true} decision as the -p result (orchestrate then sees 0 ===TASK===
+# blocks, verify parses garbage; see commits 386a862 / a6d076a).
+# WORKERS (spawned via loop-runner.sh → run-tasks*.sh) deliberately keep full
+# user settings — commit-discipline hooks are core value.
+PURE_JUDGE_FLAGS=(--setting-sources "")
+
 # Cross-platform sha256 (Linux: sha256sum, macOS: shasum -a 256)
 if command -v sha256sum &>/dev/null; then
   _SHA256=(sha256sum)
@@ -463,7 +473,7 @@ else:
     "$(_safe_cat TODO.md)" \
     "$(_safe_cat BRAINSTORM.md)" \
     "$(git log --oneline -20 2>/dev/null || echo '(no git history)')" \
-  | _timeout 300s claude -p --dangerously-skip-permissions \
+  | _timeout 300s claude -p --dangerously-skip-permissions "${PURE_JUDGE_FLAGS[@]}" \
     2>/dev/null
 
   exit 0
@@ -488,7 +498,7 @@ if [[ "$MODE" == "morning" ]]; then
     "$(_safe_cat PROGRESS.md)" \
     "$(_safe_cat BRAINSTORM.md)" \
     "$(git log --oneline -20 2>/dev/null || echo '(no git history)')" \
-  | _timeout 300s claude -p --dangerously-skip-permissions \
+  | _timeout 300s claude -p --dangerously-skip-permissions "${PURE_JUDGE_FLAGS[@]}" \
     2>/dev/null
 
   exit 0
@@ -725,7 +735,7 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
       "$(_safe_cat PROGRESS.md)" \
       "$(_safe_cat .claude/skipped.md)" \
       "$(_safe_cat BRAINSTORM.md)" \
-    | _timeout 300s claude -p --dangerously-skip-permissions \
+    | _timeout 300s claude -p --dangerously-skip-permissions "${PURE_JUDGE_FLAGS[@]}" \
       > .claude/proposed-tasks.md 2>.claude/orchestrate-err.log
     ORCH_EXIT=$?
 
@@ -749,7 +759,7 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
           "$(_safe_cat PROGRESS.md)" \
           "$(_safe_cat .claude/skipped.md)" \
           "$(_safe_cat BRAINSTORM.md)"
-      } | _timeout 300s claude -p --dangerously-skip-permissions \
+      } | _timeout 300s claude -p --dangerously-skip-permissions "${PURE_JUDGE_FLAGS[@]}" \
         > .claude/proposed-tasks.md 2>.claude/orchestrate-err.log
 
       if grep -q "^===TASK===$" .claude/proposed-tasks.md 2>/dev/null; then
@@ -878,7 +888,7 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
   MCP_ARGS=()
   [[ -f .claude/mcp.json ]] && MCP_ARGS=(--mcp-config .claude/mcp.json)
   _safe_cat "$HOME/.claude/skills/verify/prompt.md" \
-  | _timeout 300s claude -p --dangerously-skip-permissions ${MCP_ARGS[@]+"${MCP_ARGS[@]}"} \
+  | _timeout 300s claude -p --dangerously-skip-permissions "${PURE_JUDGE_FLAGS[@]}" ${MCP_ARGS[@]+"${MCP_ARGS[@]}"} \
     > .claude/verify-output.txt 2>.claude/verify-err.log || VERIFY_EXIT=$?
 
   if [[ $VERIFY_EXIT -eq 124 ]]; then
@@ -1011,7 +1021,7 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
   _log "Syncing docs..."
 
   _safe_cat "$HOME/.claude/skills/sync/prompt.md" \
-  | _timeout 120s claude -p --dangerously-skip-permissions \
+  | _timeout 120s claude -p --dangerously-skip-permissions "${PURE_JUDGE_FLAGS[@]}" \
     > /dev/null 2>.claude/sync-err.log || true
 
   # Commit doc updates

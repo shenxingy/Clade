@@ -433,7 +433,10 @@ PROMPT
 
   local analysis=""
   if command -v claude &>/dev/null; then
-    analysis=$(_timeout 90s claude -p --model haiku --dangerously-skip-permissions < "$af" 2>/dev/null \
+    # Pure judge (stdout captured for the diagnostic box) — drop user settings,
+    # or a prompt-type Stop hook prints {"ok":true} instead of the diagnosis
+    # (see PURE_JUDGE_FLAGS in loop-runner.sh / start.sh).
+    analysis=$(_timeout 90s claude -p --model haiku --dangerously-skip-permissions --setting-sources "" < "$af" 2>/dev/null \
       || echo "(analysis unavailable)")
   fi
   rm -f "$af"
@@ -462,7 +465,8 @@ run_claude_task() {
   pf=$(mktemp /tmp/claude-task-XXXXXX)
   runner=$(mktemp /tmp/claude-runner-XXXXXX)
   cat > "$pf"   # read prompt from stdin
-  # Use stream-json for real-time output (--verbose alone buffers until exit, lost on kill)
+  # Use stream-json for real-time output (--verbose alone buffers until exit, lost on kill).
+  # Workers keep user hooks deliberately (commit discipline); pure judges drop them — see analyze_timeout.
   printf '#!/usr/bin/env bash\ncd "%s" || exit 1\nexec claude -p --model "%s" %s --verbose --output-format stream-json\n' \
     "$workdir" "$model" "$CLAUDE_FLAGS" > "$runner"
   chmod +x "$runner"

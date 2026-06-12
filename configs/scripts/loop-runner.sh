@@ -60,6 +60,18 @@ _timeout() {
 }
 # ────────────────────────────────────────────────────────────────────
 
+# ─── PURE-JUDGE CONTAINMENT ─────────────────────────────────────
+# Nested `claude -p` calls whose stdout is PARSED (supervisor JSON task
+# array, verify JSON, fix-task JSON) must NOT load user settings: a
+# prompt-type Stop hook in ~/.claude/settings.json prints its own
+# {"ok":true} decision as the -p result, so the supervisor extracts 0
+# tasks and verify parses garbage (see commits 386a862 / a6d076a).
+# WORKER invocations (node_run_workers → run-tasks*.sh) and the syntax
+# FIXER (node_fix_syntax — edits files, commits) deliberately KEEP full
+# user settings: commit-discipline hooks are core value.
+readonly PURE_JUDGE_FLAGS=(--setting-sources "")
+# ────────────────────────────────────────────────────────────────
+
 # ─── BLUEPRINT HARD LIMITS ──────────────────────────────────────
 readonly MAX_CONSECUTIVE_NO_COMMITS=3   # consecutive empty iters → force stop
 readonly MAX_CONSECUTIVE_FAILURES=3     # consecutive worker failures (ran but no commits) → force stop
@@ -442,7 +454,7 @@ EOF
 )
 
   local result
-  if ! result=$(_timeout "$SUPERVISOR_TIMEOUT" claude --model "$SUPERVISOR_MODEL" -p "$supervisor_prompt" 2>&1); then
+  if ! result=$(_timeout "$SUPERVISOR_TIMEOUT" claude --model "$SUPERVISOR_MODEL" "${PURE_JUDGE_FLAGS[@]}" -p "$supervisor_prompt" 2>&1); then
     log_error "Supervisor call failed or timed out"
     echo "[]"
     return
@@ -603,7 +615,8 @@ node_run_workers() {
   local worker_total_timeout=$(( WORKER_TIMEOUT * task_count + 60 ))
 
   # CLADE_WORKER_TASK_ID → committer.sh appends attribution trailers
-  # (Co-Authored-By + X-Clade-Task) so loop commits segment as agent-authored
+  # (Co-Authored-By + X-Clade-Task) so loop commits segment as agent-authored.
+  # Workers keep user hooks deliberately; pure judges drop them — see PURE_JUDGE_FLAGS.
   if [ "$MAX_WORKERS" -gt 1 ]; then
     CLADE_WORKER_TASK_ID="loop-iter${ITERATION}" MAX_WORKERS="$MAX_WORKERS" \
       _timeout "$worker_total_timeout" \
@@ -690,6 +703,8 @@ Steps:
 
 Only fix syntax errors. Do not change logic or add features."
 
+  # Fixer edits files + commits → keeps user hooks deliberately (no PURE_JUDGE_FLAGS);
+  # its stdout is only tee'd to the log, never parsed.
   _timeout "$SUPERVISOR_TIMEOUT" claude --model "$SUPERVISOR_MODEL" -p "$fix_prompt" \
     2>&1 | tee -a "$LOG_DIR/loop.log" || {
       log_warn "Fix syntax attempt failed or timed out"
@@ -766,7 +781,7 @@ Output a JSON object with this exact structure:
 Be strict. Return passed:false if any check fails. Do not fabricate checks you did not run."
 
   local result
-  if ! result=$(_timeout "$SUPERVISOR_TIMEOUT" claude -p "$verify_prompt" --model sonnet 2>&1); then
+  if ! result=$(_timeout "$SUPERVISOR_TIMEOUT" claude -p "$verify_prompt" --model sonnet "${PURE_JUDGE_FLAGS[@]}" 2>&1); then
     log_warn "Verify call failed or timed out"
     echo '{"passed": null, "items": [], "summary": "verify call failed"}'
     return
@@ -953,7 +968,7 @@ $failure_context
 - Workers commit via: committer \"fix: description\" file1 file2"
 
   mkdir -p "$(dirname "$task_file")"
-  _timeout "$SUPERVISOR_TIMEOUT" claude --model sonnet -p "$fix_prompt" 2>&1 \
+  _timeout "$SUPERVISOR_TIMEOUT" claude --model sonnet "${PURE_JUDGE_FLAGS[@]}" -p "$fix_prompt" 2>&1 \
     | python3 -c "
 import sys, json, re
 text = sys.stdin.read()

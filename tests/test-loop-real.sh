@@ -16,12 +16,16 @@
 #   - no real `claude` on PATH                          → SKIP, exit 0
 #   - no ANTHROPIC_API_KEY and no ~/.claude/.credentials.json → SKIP, exit 0
 #
-# KNOWN INTERFERENCE (machines with Clade hooks deployed): a Stop hook of
-# type "prompt" makes nested `claude -p` print the hook's own evaluation
-# (e.g. {"ok":true}) as the final message instead of the model reply, so the
-# supervisor task array never reaches loop-runner. A supervisor-leg failure
-# on such a machine is a REAL local finding (overnight /loop supervisor calls
-# are equally affected) — not CLI drift. Bare CI runners are unaffected.
+# INTERFERENCE — FIXED (was: KNOWN): on machines with Clade hooks deployed, a
+# Stop hook of type "prompt" made nested `claude -p` print the hook's own
+# evaluation (e.g. {"ok":true}) as the final message instead of the model
+# reply, so the supervisor task array never reached loop-runner and this tier
+# false-failed locally. Since the pure-judge containment fix, loop-runner's
+# supervisor/verify/fix-task calls pass `--setting-sources ""` (see
+# PURE_JUDGE_FLAGS in loop-runner.sh) and are immune to user-level hooks.
+# Worker legs still load user settings deliberately (commit-discipline hooks)
+# — harmless here because worker stdout is never parsed. If the supervisor
+# leg fails on a hook-deployed machine now, treat it as REAL CLI/output drift.
 
 set -uo pipefail
 
@@ -141,12 +145,14 @@ else
   fail "exit reason unrecognized" "last-progress says: '${exit_line:-<missing>}'"
 fi
 
-# Diagnostic hint for the known Stop-prompt-hook interference (header note)
+# Diagnostic hint (header note): Stop-prompt-hook poisoning of the supervisor
+# leg is fixed — loop-runner passes --setting-sources "" on parsed-output calls.
 if echo "$output" | grep -q "Supervisor returned no tasks"; then
-  echo "  (hint) supervisor replied but no task array was extracted — on a machine"
-  echo "         with Clade's Stop prompt-hook deployed, nested claude -p prints the"
-  echo "         hook evaluation ({\"ok\":true}) instead of the model reply. That is a"
-  echo "         real local finding (overnight /loop is equally affected), not CLI drift."
+  echo "  (hint) supervisor replied but no task array was extracted. The old cause"
+  echo "         (deployed Stop prompt-hook printing {\"ok\":true} as the -p reply) is"
+  echo "         fixed via --setting-sources \"\" on supervisor calls — so this is now"
+  echo "         likely REAL CLI/output-framing drift, or the model ignored the JSON"
+  echo "         task-array protocol. Inspect logs/loop/loop.log."
 fi
 
 # Informational only (LLM-dependent — never fails the tier): worker efficacy
