@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "clade-mcp"
 version = "0.1.0"
-description = "MCP server exposing 29 AI coding skills — autonomous commits, loops, reviews, incident response, and more"
+description = "MCP server exposing 32 AI coding skills — autonomous commits, loops, reviews, incident response, and more"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
