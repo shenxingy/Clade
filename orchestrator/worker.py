@@ -45,6 +45,7 @@ from config import (
 from task_queue import TaskQueue
 from github_sync import _gh_update_issue_status
 from session_tree import SessionTree
+from execution_backend import LocalSubprocessBackend, get_execution_backend
 import condensers
 import worker_review
 import worker_tldr
@@ -108,6 +109,14 @@ class Worker:
         self.proc: asyncio.subprocess.Process | None = None
         self.pgid: int | None = None
         self.pid: int | None = None
+        # Execution backend (spawn/kill adapter). Resolved from the
+        # `execution_backend` setting; defaults to LocalSubprocessBackend
+        # (OS subprocess + setsid). A reserved/unbuilt backend falls back to
+        # the local default so a typo'd setting never strands the pool.
+        try:
+            self._backend = get_execution_backend()
+        except NotImplementedError:
+            self._backend = LocalSubprocessBackend()
         self.started_at = time.time()
         self._finished_at: float | None = None
         self.status = "starting"  # starting/running/paused/blocked/done/failed
@@ -330,11 +339,10 @@ class Worker:
         root_id = self._session_tree.user(self.description[:5000])
 
         with open(self._log_path, "w") as log_fd:
-            self.proc = await asyncio.create_subprocess_shell(
+            self.proc = await self._backend.spawn(
                 shell_cmd,
                 stdout=log_fd,
                 stderr=log_fd,
-                preexec_fn=os.setsid,
                 env=env,
                 cwd=str(self._project_dir),
             )
@@ -355,9 +363,7 @@ class Worker:
         self._task_span = start_task_span(self.id, self.description, self.task_id)
 
     def is_alive(self) -> bool:
-        if self.proc is None:
-            return False
-        return self.proc.returncode is None
+        return self._backend.is_alive(self.proc)
 
     def _get_activity_state(self) -> str:
         """Activity state from Claude Code's session JSONL (Composio pattern).
@@ -385,13 +391,13 @@ class Worker:
 
     async def stop(self) -> None:
         if self.pgid and self.is_alive():
-            try:
-                os.killpg(self.pgid, signal.SIGTERM)
-                await asyncio.sleep(0.5)
-                if self.is_alive():
-                    os.killpg(self.pgid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
+            # kill path routes through the execution backend; LocalSubprocessBackend
+            # swallows ProcessLookupError (group already reaped) exactly as the
+            # historical inline try/except did.
+            self._backend.kill(self.pgid, signal.SIGTERM)
+            await asyncio.sleep(0.5)
+            if self.is_alive():
+                self._backend.kill(self.pgid, signal.SIGKILL)
         if self._finished_at is None:
             self._finished_at = time.time()
         self._verify_triggered = True  # prevent _on_worker_done from running after forced stop

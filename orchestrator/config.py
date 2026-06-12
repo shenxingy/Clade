@@ -121,6 +121,7 @@ _SETTINGS_DEFAULTS = {
     "context_span_budget": 6000,  # Moatless §Gap3: max chars for TLDR span block; excess spans evicted
     "task_type_model_routing": {},  # per-task type model override e.g. {"tldr": "haiku", "fix": "sonnet"}
     "replay_interrupted_on_startup": False,  # re-queue interrupted tasks on server restart (opt-in)
+    "execution_backend": "local",  # how workers spawn: "local" (OS subprocess+setsid). See execution_backend.py.
     # Usage tracking (multi-machine ccusage aggregation — see usage_tracker.py)
     "usage_poll_enabled": True,         # poll ccusage on this machine and store locally
     "usage_poll_interval_sec": 900,     # 15 min default; min 60s
