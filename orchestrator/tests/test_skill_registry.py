@@ -137,7 +137,8 @@ def test_iter_skills_empty_dir(tmp_path: Path) -> None:
 
 # ─── validate_skill_dir ──────────────────────────────────────────────────────
 
-GOOD = "---\nname: {n}\ndescription: A fine single-line description.\nuser_invocable: true\n---\nBody.\n"
+# ≥40 chars — validate-skills warns on suspiciously short descriptions (1a5d09d)
+GOOD = "---\nname: {n}\ndescription: A fine single-line description for testing.\nuser_invocable: true\n---\nBody.\n"
 
 
 def test_validator_accepts_good_skill(tmp_path: Path) -> None:
@@ -207,8 +208,8 @@ def _strict_yaml_ok(skill_md: Path) -> None:
 def test_fix_folds_block_scalar_description(tmp_path: Path) -> None:
     d = _write_skill(
         tmp_path, "folded",
-        "---\nname: folded\ndescription: >\n  Line one of text.\n"
-        "  Line two of text.\nuser_invocable: true\n---\nBody stays.\n",
+        "---\nname: folded\ndescription: >\n  Line one of folded text here.\n"
+        "  Line two of folded text here.\nuser_invocable: true\n---\nBody stays.\n",
     )
     errors, _ = vs.validate_skill_dir(d)
     assert errors  # red before fix
@@ -218,7 +219,7 @@ def test_fix_folds_block_scalar_description(tmp_path: Path) -> None:
     assert any("fixed" in w for w in warnings)
 
     text = (d / "SKILL.md").read_text()
-    assert "description: Line one of text. Line two of text.\n" in text
+    assert "description: Line one of folded text here. Line two of folded text here.\n" in text
     assert text.endswith("Body stays.\n")  # body + trailing newline preserved
     assert vs.validate_skill_dir(d) == ([], [])  # green after fix
     _strict_yaml_ok(d / "SKILL.md")
