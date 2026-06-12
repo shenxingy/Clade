@@ -104,6 +104,14 @@
                         "statusMessage": "Running verify_cmd..."
                     },
                     {
+                        "id": "rule-injector",
+                        "description": "Inject path-scoped rules (.claude/rules/*.md + ~/.claude/rules/*.md) when the edited file matches their paths: frontmatter — once per session per rule",
+                        "type": "command",
+                        "command": "~/.claude/hooks/rule-injector.sh",
+                        "timeout": 5,
+                        "statusMessage": "Checking path-scoped rules..."
+                    },
+                    {
                         "id": "edit-shadow-detector",
                         "description": "Detect edits that shadow or conflict with recent changes",
                         "type": "command",

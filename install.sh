@@ -25,7 +25,7 @@ echo ""
 # ─── 1. Create directories ───────────────────────────────────────────
 
 echo "Creating directories..."
-mkdir -p "$CLAUDE_DIR"/{hooks/lib,agents,skills,scripts,corrections,commands,templates}
+mkdir -p "$CLAUDE_DIR"/{hooks/lib,agents,skills,scripts,corrections,commands,templates,rules}
 
 # ─── 2. Copy hooks (chmod +x) ────────────────────────────────────────
 

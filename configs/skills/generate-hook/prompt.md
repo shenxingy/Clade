@@ -18,9 +18,29 @@ If no argument, scan for candidates:
 
 If argument given, use that rule directly.
 
-### Step 2: Determine hook type
+### Step 2: Determine the enforcement layer
 
-Based on the rule's domain and content, choose:
+**Not every rule needs a hook.** If the rule is advisory (a judgment call — no
+mechanically checkable pattern) AND scoped to a file domain (only matters when
+editing `*.css`, `*.sh`, `web/src/**`, ...), generate a **path-scoped rule
+file** instead of a hook — write `.claude/rules/<domain>.md` (project rule) or
+`~/.claude/rules/<domain>.md` (global rule):
+
+```
+---
+paths: **/*.css
+---
+{rule text}
+```
+
+The rule-injector hook (PostToolUse on Edit|Write, already installed) injects
+the body only when an edited file matches `paths:`, once per session. Then run
+Step 6 to retire the prose rule, with the pointer line
+`→ moved to .claude/rules/{domain}.md (path-scoped)` instead of a hook pointer,
+and skip Steps 3–5.
+
+Otherwise — the rule IS mechanically checkable — choose the hook type by the
+rule's domain and content:
 
 | Rule Pattern | Hook Type | Matcher |
 |-------------|-----------|---------|
@@ -108,7 +128,7 @@ A rule that is now hook-enforced must not keep burning prompt context as prose:
 
 ## Completion Status
 
-- ✅ **DONE** — hook script generated, instructions provided, source rule retired (or annotated as partially enforced)
+- ✅ **DONE** — hook script generated (or path-scoped rule file written), instructions provided, source rule retired (or annotated as partially enforced)
 - ⚠ **DONE_WITH_CONCERNS** — hook generated but rule may not be fully enforceable via regex
-- ❌ **BLOCKED** — rule is too abstract for automated enforcement
+- ❌ **BLOCKED** — rule is too abstract for automated enforcement and has no file-domain scope (session-wide judgment rules stay as prose in CLAUDE.md)
 - ❓ **NEEDS_CONTEXT** — need user to select a rule

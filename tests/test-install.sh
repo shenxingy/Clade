@@ -109,6 +109,14 @@ else
   fail "all installed hooks are executable" "$hook_count hooks, $nonexec not executable"
 fi
 
+# Path-scoped rules: rule-injector.sh ships and its global rules dir exists
+[[ -d "$CLAUDE_DIR/rules" ]] \
+  && pass "global rules dir created (~/.claude/rules)" \
+  || fail "global rules dir created (~/.claude/rules)"
+[[ -x "$CLAUDE_DIR/hooks/rule-injector.sh" ]] \
+  && pass "rule-injector.sh installed and executable" \
+  || fail "rule-injector.sh installed and executable"
+
 agent_count=$(ls "$CLAUDE_DIR/agents/"*.md 2>/dev/null | wc -l | tr -d ' ')
 [[ "$agent_count" -gt 0 ]] && pass "agents installed ($agent_count)" || fail "agents installed"
 
@@ -200,6 +208,13 @@ if command -v jq &>/dev/null; then
   [[ "$hooks_type" == "object" ]] \
     && pass "settings.json has hooks after merge" \
     || fail "settings.json has hooks after merge" "hooks type='$hooks_type'"
+
+  if jq -e '[.hooks.PostToolUse[].hooks[].id] | index("rule-injector")' \
+      "$CLAUDE_DIR/settings.json" >/dev/null 2>&1; then
+    pass "rule-injector wired into PostToolUse hooks"
+  else
+    fail "rule-injector wired into PostToolUse hooks"
+  fi
 else
   echo "  (jq not available — skipping settings merge checks)"
 fi

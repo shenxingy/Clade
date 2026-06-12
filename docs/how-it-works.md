@@ -28,6 +28,7 @@
 | `post-edit-check.sh` | PostToolUse (Edit/Write) | Runs verify_cmd after edits; injects lint errors on failure |
 | `post-tool-use-lint.sh` | PostToolUse (Edit/Write) | Runs project verify_cmd; exits 2 on failure so Claude fixes it |
 | `post-tool-use-failure.sh` | PostToolUse (failure) | Logs tool failures for pattern tracking |
+| `rule-injector.sh` | PostToolUse (Edit/Write) | Injects path-scoped rules from `.claude/rules/` + `~/.claude/rules/` when the edited file matches their `paths:` frontmatter (once per session per rule) |
 | `edit-shadow-detector.sh` | PostToolUse (Edit/Write) | Detects when edits shadow other files |
 | `failure-detector.sh` | PostToolUse (Bash) | Tracks consecutive Bash failures; injects debugging pressure |
 | `memory-sync.sh` | PostToolUse (Write/Edit) | Syncs memory files to NFS/GitHub when written |

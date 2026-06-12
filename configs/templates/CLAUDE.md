@@ -23,6 +23,21 @@
 # Used by /verify to check that key behaviors still hold after each loop iteration.
 # Format: - [Feature name]: [what happens when user does X]
 
+# Path-Scoped Rules (.claude/rules/)
+# Rules that only matter when editing certain files belong in `.claude/rules/*.md`
+# (project) or `~/.claude/rules/*.md` (global) — NOT in CLAUDE.md. The
+# rule-injector hook (PostToolUse on Edit|Write) injects a rule's body only when
+# an edited file matches its `paths:` frontmatter, once per session per rule —
+# keeping base context lean as the rule corpus grows. Format:
+#   ---
+#   paths: orchestrator/**/*.py, tests/*.py
+#   ---
+#   Rule body (markdown). Injected when an edited file matches a glob above.
+# `paths:` accepts a comma-separated line or a YAML list (`- glob` lines).
+# Glob semantics (gitignore-style): patterns with '/' match the project-relative
+# path; bare patterns (e.g. *.css) match the basename anywhere; '**' crosses
+# directories, '*' and '?' do not. Files without `paths:` frontmatter are ignored.
+
 # FROZEN Sections Convention
 # Sections marked with `# FROZEN` should NOT be modified by AI agents.
 # This is a strong convention (prompt-enforced, ~90% effective), not a filesystem lock.

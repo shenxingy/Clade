@@ -120,6 +120,11 @@ jobs:
       - name: Run worktree env tests
         run: bash tests/test-worktree-env.sh
 
+      # Path-scoped rule injection (rule-injector.sh): glob match, dedup,
+      # missing-dir and malformed-frontmatter failure paths
+      - name: Run rule-injector tests
+        run: bash tests/test-rule-injector.sh
+
   install-test:
     name: Install Test
     runs-on: ubuntu-latest

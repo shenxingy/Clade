@@ -80,13 +80,30 @@ For each rule in RULES_FILE:
 ### Step 4: Execute promotions
 
 For PROMOTE rules, **automatically**:
-1. Append the rule text to `CLAUDE_TARGET`, tagged with `[auto-promoted YYYY-MM-DD]`.
+1. **Route by scope first — file-domain rules do NOT go into `CLAUDE_TARGET`.**
+   If the rule only applies when editing files matching a glob (css rules → `**/*.css`,
+   shell quoting → `**/*.sh`, frontend components → `web/src/**`), write it as a
+   path-scoped rule file instead: `.claude/rules/<domain>.md` (project mode) or
+   `~/.claude/rules/<domain>.md` (global mode), with `paths:` frontmatter:
+   ```
+   ---
+   paths: **/*.css
+   ---
+   - {rule text} [auto-promoted YYYY-MM-DD]
+   ```
+   The rule-injector hook (PostToolUse on Edit|Write) injects these only when a
+   matching file is edited, once per session — a promoted rule that never leaves
+   its file domain must not burn base context in every session. If
+   `.claude/rules/<domain>.md` already exists, append the rule line to its body
+   (and widen `paths:` if needed) rather than creating a second file.
+2. Rules that apply to **every session regardless of file** (process, commit,
+   communication, autonomy): append to `CLAUDE_TARGET`, tagged with `[auto-promoted YYYY-MM-DD]`.
    Route by matching the rule's domain to an **existing** heading in `CLAUDE_TARGET` —
    read its headings first; section names vary per project, so do not assume fixed names:
    - shell / deploy / commit / autonomy rules → the agent-rules section (e.g. "# Agent Ground Rules")
    - code-structure / architecture / standards rules → the architecture or engineering-values section
    - if no existing section is a clear fit → append under `## Auto-Promoted Rules` (create it if absent)
-2. Remove the promoted rule(s) from `RULES_FILE`
+3. Remove the promoted rule(s) from `RULES_FILE`
 
 For REDUNDANT rules, **automatically**:
 1. Remove from `RULES_FILE`
@@ -122,7 +139,7 @@ Audit Results [scope: project | global]:
 
   PROMOTE (2):
     - [2026-02-10] shell: Cross-platform stat → Added to CLAUDE.md "Agent Ground Rules"
-    - Cluster "css" (3 rules) → Generalized and added to "Auto-Promoted Rules"
+    - Cluster "css" (3 rules) → Generalized → .claude/rules/css.md (path-scoped: **/*.css)
 
   REDUNDANT (1):
     - [2026-02-15] git: Use committer script → Already in CLAUDE.md
@@ -144,6 +161,7 @@ Audit Results [scope: project | global]:
 - Always execute promotions and removals automatically — don't just suggest
 - Retired rules keep their pointer line in retired-rules.md permanently — it's the audit trail from prose to hook
 - If CLAUDE_TARGET doesn't have a matching section, append to the end under a new `## Auto-Promoted Rules` section
+- File-domain rules go to `.claude/rules/` (path-scoped), never to CLAUDE_TARGET — when in doubt, ask "does this rule matter in a session that never touches files matching its glob?" If no → path-scoped
 - Project-mode rules.md: keep under 100 lines; global rules.md: keep under 50 lines — if over, remove oldest KEEP rules first
 - Touch .last-audit even if no changes were made
 
