@@ -142,6 +142,40 @@ async def retry_failed(s: ProjectSession = Depends(_resolve_session)):
     return {"retried": len(retried), "task_ids": retried}
 
 
+def _build_pr_body(w) -> str:
+    """Structured PR body from data the worker already carries (controversial +
+    felixrieseberg: history carries the payload — task, evidence, verdict,
+    authorship — not just `--fill`'s commit subject)."""
+    sections = ["## Task\n" + ((w.description or "").strip() or "(no task description)")]
+    if getattr(w, "completion_summary", None):
+        sections.append(f"## Completion Summary\n{w.completion_summary.strip()}")
+    verdict = getattr(w, "oracle_result", None)
+    if verdict:
+        line = f"**Oracle review:** {verdict}"
+        reason = (getattr(w, "oracle_reason", None) or "").strip()
+        if reason:
+            line += f" — {reason[:400]}"
+        sections.append(line)
+    else:
+        sections.append("**Oracle review:** not run")
+    evidence = (getattr(w, "test_evidence", "") or "").strip()
+    if evidence:
+        sections.append(f"## Test Evidence (pre-push)\n```\n{evidence[:1500]}\n```")
+    else:
+        sections.append("**Test Evidence:** no pre-push test run recorded")
+    sections.append(
+        f"---\n_Authored by Clade worker {w.id} (task {w.task_id}); "
+        "oracle-reviewed in the orchestrator pipeline._"
+    )
+    return "\n\n".join(sections)
+
+
+def _pr_title(description: str | None) -> str:
+    """First line of the task description, length-capped for the PR title."""
+    first = (description or "").strip().splitlines()
+    return (first[0][:72] if first else "") or "Orchestrator task"
+
+
 @router.post("/api/tasks/merge-all-done")
 async def merge_all_done(s: ProjectSession = Depends(_resolve_session)):
     """Create PRs for done+pushed workers. Auto-merge orchestrator branches."""
@@ -156,7 +190,9 @@ async def merge_all_done(s: ProjectSession = Depends(_resolve_session)):
         branch = w.branch_name or f"orchestrator/task-{w.task_id}"
         try:
             pr_proc = await asyncio.create_subprocess_shell(
-                f'gh pr create --head {shlex.quote(branch)} --base main --fill',
+                f'gh pr create --head {shlex.quote(branch)} --base main '
+                f'--title {shlex.quote(_pr_title(w.description))} '
+                f'--body {shlex.quote(_build_pr_body(w))}',
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
                 cwd=str(s.project_dir),
             )

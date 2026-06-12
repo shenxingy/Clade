@@ -104,6 +104,7 @@ class Worker:
         self.auto_pushed: bool = False
         self.oracle_result: str | None = None
         self.oracle_reason: str | None = None
+        self.test_evidence: str = ""  # pre-push test results (shown in PR body)
         self._oracle_requeue: bool = False
         self._oracle_requeue_reason: str | None = None
         self._test_requeue: bool = False
@@ -862,6 +863,7 @@ class Worker:
                         )
                 except Exception:
                     pass  # fail-open: a broken test runner must not block commits
+                self.test_evidence = test_evidence  # surfaced later in the PR body
 
                 # Oracle validation gate (rejection requeues; infra errors tag 'unreviewed')
                 if not await self._run_oracle_gate(test_evidence):
