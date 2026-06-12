@@ -258,6 +258,20 @@ def _strip_json_fence(raw: str) -> str:
     m = _JSON_FENCE_RE.match(raw.strip())
     return m.group(1).strip() if m else raw
 
+
+# Judge framing (live eval 2026-06-12, second finding): without this, the CC
+# coding-agent system prompt makes the grader treat "Task: ... Diff: ..." as a
+# work order — it hunts for the files, tries to apply fixes, and replies with
+# prose ("I don't see tool/cli.py...") instead of the JSON verdict. Combined
+# with NOT passing --dangerously-skip-permissions (mutating tools are auto-
+# denied in non-interactive -p mode), the grader becomes a pure judge.
+_ORACLE_JUDGE_SYSTEM_PROMPT = (
+    "You are a non-interactive code-review oracle. You have NO repository or "
+    "filesystem access: judge ONLY from the task description and diff text "
+    "given in the prompt. Never use tools, never try to fix the code, never "
+    "ask questions. Respond with ONLY the requested JSON object."
+)
+
 # Fix-intent detection (controversial + felixrieseberg): bug-fix tasks get an
 # extra completeness criterion — a fix with no test covering the failing input
 # is incomplete history (the regression can silently return).
@@ -335,14 +349,21 @@ async def _oracle_pass(
     try:
         prompt_file.write_text(prompt)
         # Grader containment: the oracle is a pure judge — everything it needs
-        # is in the prompt — but `claude -p --dangerously-skip-permissions` is
-        # fully agentic. On 2026-06-12 live-eval graders implemented a fixture's
-        # stub function in the repo, invented hooks/tests, committed, and
-        # pushed. cwd is pinned to the .claude scratch dir so stray tool use
-        # cannot touch the project repo.
+        # is in the prompt. Live eval 2026-06-12 findings, each flag earned:
+        # - NO --dangerously-skip-permissions: skip-permissions graders
+        #   implemented a fixture's stub function in the repo, invented
+        #   hooks/tests, committed, and pushed (mutating tools stay denied).
+        # - --setting-sources "": user-level hooks hijack -p output — a
+        #   prompt-type Stop hook's {"ok":...} decision got printed as the
+        #   reply, and user CLAUDE.md ground rules made the grader act as an
+        #   autonomous worker instead of a judge.
+        # - judge system prompt appended; cwd pinned to the .claude scratch
+        #   dir; stdin closed (CC otherwise waits 3s for piped input).
         proc = await asyncio.create_subprocess_shell(
             f'claude -p "$(cat {shlex.quote(str(prompt_file))})" '
-            f'--model {HAIKU_MODEL} --dangerously-skip-permissions',
+            f'--model {HAIKU_MODEL} --setting-sources "" '
+            f'--append-system-prompt {shlex.quote(_ORACLE_JUDGE_SYSTEM_PROMPT)}',
+            stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
             cwd=str(claude_dir),
@@ -448,11 +469,14 @@ async def _oracle_review_chunk(
     prompt_file = claude_dir / f"oracle-{uuid.uuid4().hex[:8]}.md"
     try:
         prompt_file.write_text(prompt)
-        # Grader containment — see _oracle_pass: cwd pinned to the scratch dir
-        # so an agentic grader cannot write into the project repo.
+        # Grader containment — see _oracle_pass: pure judge (no skip-
+        # permissions, no user settings/hooks, judge system prompt, scratch
+        # cwd, closed stdin).
         proc = await asyncio.create_subprocess_shell(
             f'claude -p "$(cat {shlex.quote(str(prompt_file))})" '
-            f'--model {HAIKU_MODEL} --dangerously-skip-permissions',
+            f'--model {HAIKU_MODEL} --setting-sources "" '
+            f'--append-system-prompt {shlex.quote(_ORACLE_JUDGE_SYSTEM_PROMPT)}',
+            stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
             cwd=str(claude_dir),

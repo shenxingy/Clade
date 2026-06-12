@@ -209,7 +209,7 @@ class TestOracleChunkLiveness:
         captured: dict = {}
 
         async def _capturing_shell(cmd, **kwargs):
-            captured.update(kwargs)
+            captured.update(kwargs, cmd=cmd)
             return FakeProc(out)
 
         monkeypatch.setattr(
@@ -217,12 +217,16 @@ class TestOracleChunkLiveness:
         )
         await wr._oracle_pass("prompt", tmp_path)
         assert captured.get("cwd") == str(tmp_path)
+        assert "--dangerously-skip-permissions" not in captured["cmd"]
+        assert "--append-system-prompt" in captured["cmd"]
+        assert "code-review oracle" in captured["cmd"]
+        assert '--setting-sources ""' in captured["cmd"]
 
         captured.clear()
         chunk_out = json.dumps({"decision": "APPROVED", "findings": []}).encode()
 
         async def _capturing_shell_chunk(cmd, **kwargs):
-            captured.update(kwargs)
+            captured.update(kwargs, cmd=cmd)
             return FakeProc(chunk_out)
 
         monkeypatch.setattr(
@@ -230,6 +234,9 @@ class TestOracleChunkLiveness:
         )
         await wr._oracle_review_chunk("task", "diff", "", tmp_path)
         assert captured.get("cwd") == str(tmp_path)
+        assert "--dangerously-skip-permissions" not in captured["cmd"]
+        assert "--append-system-prompt" in captured["cmd"]
+        assert '--setting-sources ""' in captured["cmd"]
 
     def test_strip_json_fence_edge_cases(self):
         assert wr._strip_json_fence('```json\n{"pass":true}\n```') == '{"pass":true}'

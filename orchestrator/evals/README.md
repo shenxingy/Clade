@@ -62,14 +62,26 @@ replays are never part of CI or the default test suite.
 - Grader model is haiku (`worker_review.HAIKU_MODEL`), same tier production
   uses; `--model` pins a dated snapshot when comparing across model bumps.
 
-**Safety**: the grader runs `claude -p --dangerously-skip-permissions`, which
-is fully agentic — on the first live run (2026-06-12) graders treated fixture
-tasks as work orders: one implemented a fixture's stub function in the repo,
-others invented hooks/tests, committed, and pushed (4 commits reverted).
-`worker_review.py` now pins the grader subprocess cwd to the `.claude`
-scratch dir (eval runs use a per-case tempdir), so stray tool use cannot
-reach the project repo. If you see fixture-flavored commits appear during a
-live run, a containment regression has occurred — check `git log` first.
+**Safety / grader isolation** — the first live runs (2026-06-12) found three
+ways a `claude -p` grader is NOT a judge by default; `worker_review.py` now
+guards each, and `tests/test_oracle_integrity.py` pins the command contract:
+
+1. **Agentic graders**: with `--dangerously-skip-permissions`, graders
+   treated fixture tasks as work orders — one implemented a fixture's stub
+   function in the repo, others invented hooks/tests, committed, and pushed
+   (4 commits reverted). Fix: flag removed, cwd pinned to the `.claude`
+   scratch dir (eval runs use a per-case tempdir).
+2. **User hooks hijack output**: a prompt-type Stop hook's `{"ok":...}`
+   decision got printed as the grader's reply, and user CLAUDE.md ground
+   rules re-framed the grader as an autonomous worker. Fix:
+   `--setting-sources ""` + an appended judge system prompt.
+3. **Fenced JSON**: haiku wraps verdicts in ```` ```json ```` fences despite
+   "no markdown" — strict `json.loads` read every healthy review as an infra
+   error (oracle dead, fail-open `unreviewed` on all commits). Fix:
+   `_strip_json_fence` before parsing.
+
+If fixture-flavored commits appear during a live run, containment has
+regressed — check `git log` first.
 
 ## Thresholds
 
