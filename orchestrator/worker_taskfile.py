@@ -39,6 +39,20 @@ from worker_hydrate import _pre_hydrate
 
 logger = logging.getLogger(__name__)
 
+# History carries the payload: workers commit via committer.sh, and the body
+# is the only place mechanism/root-cause survives for future debugging — the
+# task file and worker log are ephemeral, git history is not.
+COMMIT_GUIDANCE_BLOCK = (
+    "\n\n---\n\n"
+    "## Commit Messages\n"
+    "- Commit via `committer \"type: subject\" file1 file2` (NEVER `git add .`).\n"
+    "- Substantive commits (feat/fix/refactor/perf) need a 2-4 line body after "
+    "the subject: the **mechanism** (how the change works), the **hazard avoided "
+    "or root cause** (for fixes), and any **constraint honored**. Put it in the "
+    "same quoted message — committer accepts multi-line messages.\n"
+    "- Trivial chore/docs commits may stay subject-only.\n"
+)
+
 
 async def build_task_file(w: Any, task_queue: Any | None) -> Path:
     """Set up log path and write the task file with injected context. Returns task file path.
@@ -237,7 +251,8 @@ async def build_task_file(w: Any, task_queue: Any | None) -> Path:
         )
     task_file.write_text(
         effective_description + _schema_block + _fix_two_phase
-        + EDIT_DISCIPLINE_BLOCK + SEARCH_CONVENTIONS_BLOCK + COMPLETION_CONTRACT_BLOCK
+        + EDIT_DISCIPLINE_BLOCK + SEARCH_CONVENTIONS_BLOCK
+        + COMMIT_GUIDANCE_BLOCK + COMPLETION_CONTRACT_BLOCK
     )
 
     # OpenHands §Gap3: capture test baseline before worker edits (fix tasks only).

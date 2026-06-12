@@ -785,3 +785,39 @@ class TestFallbackCommitCmd:
         ).stdout
         assert "Co-Authored-By" not in body
         assert "X-Clade-Task" not in body
+
+
+# ─── worker_taskfile commit guidance ──────────────────────────────────────────
+
+class TestCommitGuidanceBlock:
+    async def test_build_task_file_includes_commit_guidance(self, tmp_path):
+        """Every worker task file carries the commit-body mandate — git history
+        is the only durable place mechanism/root-cause survives."""
+        from unittest.mock import MagicMock
+        from worker_taskfile import build_task_file, COMMIT_GUIDANCE_BLOCK
+
+        w = MagicMock()
+        w._claude_dir = tmp_path / ".claude"
+        w._claude_dir.mkdir()
+        w._project_dir = tmp_path
+        w._original_project_dir = tmp_path
+        w.description = "feat: add a small thing to the module"
+        w.id = "w1"
+        w.task_id = "t1"
+        w.model = "sonnet"
+        w._event_stream = MagicMock()
+
+        task_file = await build_task_file(w, None)
+        text = task_file.read_text()
+        assert COMMIT_GUIDANCE_BLOCK in text
+        assert "## Commit Messages" in text
+        assert "2-4 line body" in text
+        assert "NEVER `git add .`" in text
+
+    def test_block_demands_mechanism_hazard_root_cause(self):
+        from worker_taskfile import COMMIT_GUIDANCE_BLOCK
+
+        for needle in ("mechanism", "hazard avoided", "root cause", "constraint honored"):
+            assert needle in COMMIT_GUIDANCE_BLOCK
+        # trivial commits stay subject-only — the mandate must not inflate chores
+        assert "subject-only" in COMMIT_GUIDANCE_BLOCK

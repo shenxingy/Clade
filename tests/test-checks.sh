@@ -47,24 +47,37 @@ assert_eq() {
   fi
 }
 
+# Here-strings, not `echo | grep -q`: under pipefail, grep -q exits at the
+# first match and can SIGPIPE the echo of a large haystack — the pipeline
+# then reports failure even though the needle WAS found.
 assert_contains() {
   local haystack="$1" needle="$2" msg="$3"
   TESTS_RUN=$((TESTS_RUN + 1))
-  if echo "$haystack" | grep -qF "$needle"; then
+  if grep -qF "$needle" <<< "$haystack"; then
     pass "$msg"
   else
     fail "$msg" "output does not contain '$needle'"
-    [[ "$VERBOSE" == "-v" ]] && echo "    output: $(echo "$haystack" | head -5)"
+    [[ "$VERBOSE" == "-v" ]] && echo "    output: $(head -5 <<< "$haystack")"
   fi
 }
 
 assert_not_contains() {
   local haystack="$1" needle="$2" msg="$3"
   TESTS_RUN=$((TESTS_RUN + 1))
-  if echo "$haystack" | grep -qF "$needle"; then
+  if grep -qF "$needle" <<< "$haystack"; then
     fail "$msg" "output unexpectedly contains '$needle'"
   else
     pass "$msg"
+  fi
+}
+
+assert_file_contains() {
+  local path="$1" needle="$2" msg="$3"
+  TESTS_RUN=$((TESTS_RUN + 1))
+  if grep -qF "$needle" "$path" 2>/dev/null; then
+    pass "$msg"
+  else
+    fail "$msg" "'$needle' not found in $path"
   fi
 }
 
@@ -254,6 +267,16 @@ fi
 LESSONS="$(cat "$LESSONS_FILE" 2>/dev/null || true)"
 assert_contains "$LESSONS" "agent-author-share" "segmentation row present (trailer-derived)"
 assert_contains "$LESSONS" "agent fix-rate 100% (3/3) vs human 0% (0/2)" "fix-rate split segments agent vs human"
+
+# ─── commit-body mandate wiring (mechanism/hazard/root-cause in bodies) ──
+echo "── commit-body mandate wiring ──"
+
+assert_file_contains "$REPO_ROOT/configs/scripts/loop-runner.sh" \
+  "2-4 line body" "loop-runner worker instructions carry the body mandate"
+assert_file_contains "$REPO_ROOT/configs/skills/commit/prompt.md" \
+  "Body mandate" "/commit skill Step 3 carries the body mandate"
+assert_file_contains "$REPO_ROOT/orchestrator/worker_taskfile.py" \
+  "## Commit Messages" "worker task-file guidance carries the body mandate"
 
 # ─── Summary ─────────────────────────────────────────────────────────
 echo ""
