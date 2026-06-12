@@ -86,9 +86,20 @@ for skill_dir in "$SCRIPT_DIR/configs/skills/"/*/; do
   echo "  Installed skill: $skill_name"
 done
 
+# Python resolution: on Windows, `python3` resolves to the Microsoft Store
+# stub — it EXISTS on PATH but exits "Permission denied", so `command -v`
+# alone is not enough. Probe with an actual run; real Windows installs ship
+# `python`, not `python3`.
+PYTHON=""
+if python3 -c pass &>/dev/null; then
+  PYTHON="python3"
+elif python -c pass &>/dev/null; then
+  PYTHON="python"
+fi
+
 # Preflight: validate skill frontmatter (warn-only — CI is the hard gate)
-if command -v python3 &>/dev/null; then
-  python3 "$SCRIPT_DIR/configs/scripts/validate-skills.py" "$SCRIPT_DIR/configs/skills" --quiet \
+if [[ -n "$PYTHON" ]]; then
+  "$PYTHON" "$SCRIPT_DIR/configs/scripts/validate-skills.py" "$SCRIPT_DIR/configs/skills" --quiet \
     || echo "  WARNING: skill frontmatter validation failed (run configs/scripts/validate-skills.py --fix)"
 fi
 
@@ -97,8 +108,8 @@ fi
 # Uses the shared parser (skill_frontmatter.py — same one mcp_server.py and
 # validate-skills.py use); the awk path is a python3-less fallback only.
 echo "Generating available_skills.md..."
-if command -v python3 &>/dev/null; then
-  python3 "$SCRIPT_DIR/configs/scripts/skill_frontmatter.py" catalog "$CLAUDE_DIR/skills" \
+if [[ -n "$PYTHON" ]]; then
+  "$PYTHON" "$SCRIPT_DIR/configs/scripts/skill_frontmatter.py" catalog "$CLAUDE_DIR/skills" \
     > "$CLAUDE_DIR/available_skills.md"
 else
   {
@@ -326,9 +337,9 @@ fi
 
 # ─── 10b. Refresh doc-align facts ────────────────────────────────────
 # Auto-update derived facts (skill/hook/agent/script counts in docs/facts.json)
-# so docs stay aligned with reality. Silent if facts.json or python3 missing.
-if [[ -f "$SCRIPT_DIR/docs/facts.json" ]] && command -v python3 &>/dev/null; then
-  python3 "$CLAUDE_DIR/scripts/doc-align.py" refresh --root "$SCRIPT_DIR" --quiet 2>/dev/null || true
+# so docs stay aligned with reality. Silent if facts.json or python missing.
+if [[ -f "$SCRIPT_DIR/docs/facts.json" ]] && [[ -n "$PYTHON" ]]; then
+  "$PYTHON" "$CLAUDE_DIR/scripts/doc-align.py" refresh --root "$SCRIPT_DIR" --quiet 2>/dev/null || true
 fi
 
 # ─── 11. Write staleness detection markers ───────────────────────────
