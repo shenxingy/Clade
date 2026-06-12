@@ -34,6 +34,19 @@ set -euo pipefail
 unset CLAUDECODE 2>/dev/null || true
 
 # ─── CROSS-PLATFORM HELPERS ─────────────────────────────────────────
+# Resolve a companion script (run-tasks.sh etc.) next to THIS copy of
+# loop-runner.sh first — repo checkouts and CI have no deployed
+# ~/.claude/scripts, and a repo-run loop must not silently execute a stale
+# deployed runner (deploy-gap). Falls back to the deployed location.
+_SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_sibling_script() {
+  if [ -f "$_SELF_DIR/$1" ]; then
+    echo "$_SELF_DIR/$1"
+  else
+    echo "$HOME/.claude/scripts/$1"
+  fi
+}
+
 # macOS lacks GNU timeout; use gtimeout (brew install coreutils) or fallback
 _timeout() {
   if command -v gtimeout &>/dev/null; then
@@ -72,9 +85,14 @@ ITERATION=0
 # ────────────────────────────────────────────────────────────────
 
 # ─── LOGGING ────────────────────────────────────────────────────
-log_info()    { echo "[$(date '+%H:%M:%S')] [INFO]  $*" | tee -a "$LOG_DIR/loop.log"; }
-log_success() { echo "[$(date '+%H:%M:%S')] [OK]    $*" | tee -a "$LOG_DIR/loop.log"; }
-log_warn()    { echo "[$(date '+%H:%M:%S')] [WARN]  $*" | tee -a "$LOG_DIR/loop.log"; }
+# Console copies go to STDERR (like log_error): several node functions return
+# values via stdout command substitution — tasks_json=$(node_supervisor ...),
+# task_file=$(node_score_and_write ...), new_commits=$(node_commit_changes) —
+# and stdout log lines were captured into those values, corrupting the JSON
+# task pipeline (supervisor tasks never parsed → every iteration "no tasks").
+log_info()    { echo "[$(date '+%H:%M:%S')] [INFO]  $*" | tee -a "$LOG_DIR/loop.log" >&2; }
+log_success() { echo "[$(date '+%H:%M:%S')] [OK]    $*" | tee -a "$LOG_DIR/loop.log" >&2; }
+log_warn()    { echo "[$(date '+%H:%M:%S')] [WARN]  $*" | tee -a "$LOG_DIR/loop.log" >&2; }
 log_error()   { echo "[$(date '+%H:%M:%S')] [ERROR] $*" | tee -a "$LOG_DIR/loop.log" >&2; }
 # ────────────────────────────────────────────────────────────────
 
@@ -142,7 +160,7 @@ import json, sys
 try:
     d = json.load(open('$STATE_FILE'))
     sys.exit(0 if d.get('stop') else 1)
-except:
+except Exception:
     sys.exit(1)
 " 2>/dev/null; then
       log_info "Stop sentinel detected — exiting gracefully"
@@ -159,19 +177,19 @@ import json, sys
 try:
     d = json.load(open('$INTERRUPT_STATE_FILE'))
     sys.exit(0 if d.get('interrupted') else 1)
-except:
+except Exception:
     sys.exit(1)
 " 2>/dev/null; then
       log_warn "Interrupt detected — pausing for human review"
       # Wait for interrupt state to be cleared (resume signal)
       while [ -f "$INTERRUPT_STATE_FILE" ]; do
         if python3 -c "
-import json
+import json, sys
 try:
     d = json.load(open('$INTERRUPT_STATE_FILE'))
     if not d.get('interrupted'):
         sys.exit(0)
-except:
+except Exception:
     pass
 sys.exit(1)
 " 2>/dev/null; then
@@ -198,7 +216,7 @@ import json, sys
 try:
     d = json.load(open('$STATE_FILE'))
     print('Loop state:', json.dumps(d, indent=2))
-except:
+except Exception:
     print('State file unreadable: $STATE_FILE')
 " 2>/dev/null || echo "State file unreadable."
   else
@@ -275,9 +293,11 @@ node_parse_todo() {
   fi
 
   local open_items
-  open_items=$(grep -c '^\- \[ \]' "$GOAL_FILE" 2>/dev/null || echo "0")
+  open_items=$(grep -c '^\- \[ \]' "$GOAL_FILE" 2>/dev/null || true)
+  open_items=${open_items:-0}
   local total_items
-  total_items=$(grep -c '^\- \[' "$GOAL_FILE" 2>/dev/null || echo "0")
+  total_items=$(grep -c '^\- \[' "$GOAL_FILE" 2>/dev/null || true)
+  total_items=${total_items:-0}
 
   log_info "Goal: $open_items open / $total_items total items"
 
@@ -296,7 +316,7 @@ if not goal_file:
 
 try:
     content = open(goal_file).read()
-except:
+except Exception:
     print("(could not read goal file)")
     sys.exit(0)
 
@@ -440,7 +460,7 @@ for pattern in [r'\[[\s\S]*\]', r'\{[\s\S]*\}']:
             parsed = json.loads(m)
             print(json.dumps(parsed))
             sys.exit(0)
-        except:
+        except Exception:
             pass
 print('[]')
 " 2>/dev/null || echo "[]"
@@ -462,7 +482,7 @@ import json, sys
 try:
     t = json.load(sys.stdin)
     print(len(t) if isinstance(t, list) else 0)
-except:
+except Exception:
     print(0)
 " 2>/dev/null || echo "0")
 
@@ -553,7 +573,9 @@ print('\n'.join(output_tasks))
 
   mkdir -p "$LOG_DIR"
   echo "$output" > "$task_file"
-  log_info "Wrote $(grep -c '===TASK===' "$task_file" 2>/dev/null || echo 0) task(s) to $task_file"
+  local written_count
+  written_count=$(grep -c '===TASK===' "$task_file" 2>/dev/null || true)
+  log_info "Wrote ${written_count:-0} task(s) to $task_file"
   echo "$task_file"
 }
 # ────────────────────────────────────────────────────────────────
@@ -570,7 +592,7 @@ node_run_workers() {
   fi
 
   local task_count
-  task_count=$(grep -c '===TASK===' "$task_file" 2>/dev/null || echo "0")
+  task_count=$(grep -c '===TASK===' "$task_file" 2>/dev/null || true)
   log_info "Executing $task_count task(s) with up to $MAX_WORKERS workers"
 
   # Clean up leftover worktrees from previous iterations
@@ -580,13 +602,13 @@ node_run_workers() {
 
   if [ "$MAX_WORKERS" -gt 1 ]; then
     MAX_WORKERS="$MAX_WORKERS" _timeout "$worker_total_timeout" \
-      bash ~/.claude/scripts/run-tasks-parallel.sh "$task_file" 2>&1 \
+      bash "$(_sibling_script run-tasks-parallel.sh)" "$task_file" 2>&1 \
       | tee -a "$LOG_DIR/loop.log" || {
         log_warn "Workers returned non-zero exit (some tasks may have failed)"
       }
   else
     _timeout "$worker_total_timeout" \
-      bash ~/.claude/scripts/run-tasks.sh "$task_file" 2>&1 \
+      bash "$(_sibling_script run-tasks.sh)" "$task_file" 2>&1 \
       | tee -a "$LOG_DIR/loop.log" || {
         log_warn "Worker returned non-zero exit"
       }
@@ -754,7 +776,7 @@ if match:
     try:
         d = json.loads(match.group())
         print(json.dumps(d))
-    except:
+    except Exception:
         print('{\"passed\": null, \"items\": [], \"summary\": \"parse error\"}')
 else:
     print('{\"passed\": null, \"items\": [], \"summary\": \"no json found\"}')
@@ -791,7 +813,8 @@ node_commit_changes() {
 
   if command -v committer &>/dev/null; then
     # shellcheck disable=SC2086
-    committer "loop: iter $ITERATION changes" $files_to_commit 2>&1 | tee -a "$LOG_DIR/loop.log" || {
+    # tee to stderr — this function's stdout is captured (new_commits=$(...))
+    committer "loop: iter $ITERATION changes" $files_to_commit 2>&1 | tee -a "$LOG_DIR/loop.log" >&2 || {
       log_warn "committer failed — changes remain uncommitted"
       echo 0
       return
@@ -800,7 +823,7 @@ node_commit_changes() {
     # Fallback: direct git commit
     # shellcheck disable=SC2086
     git add $files_to_commit
-    git commit -m "loop: iter $ITERATION changes" 2>&1 | tee -a "$LOG_DIR/loop.log" || {
+    git commit -m "loop: iter $ITERATION changes" 2>&1 | tee -a "$LOG_DIR/loop.log" >&2 || {
       log_warn "git commit failed"
       echo 0
       return
@@ -898,12 +921,12 @@ for p in [r'\[[\s\S]*]\]', r'\{[\s\S]*\}']:
             parsed = json.loads(x)
             if isinstance(parsed, list) and len(parsed) > 0:
                 print(json.dumps(parsed)); sys.exit(0)
-        except: pass
+        except Exception: pass
 print('[]')
 " > "$task_file" 2>/dev/null || echo "[]" > "$task_file"
 
   local task_count
-  task_count=$(grep -c '===TASK===' "$task_file" 2>/dev/null || echo "0")
+  task_count=$(grep -c '===TASK===' "$task_file" 2>/dev/null || true)
   log_info "Created $task_count fix task(s)"
 }
 
@@ -930,7 +953,8 @@ _check_convergence() {
   # Deterministic convergence: no unchecked items remain in goal file
   if [ -f "$GOAL_FILE" ]; then
     local remaining
-    remaining=$(grep -c '^\- \[ \]' "$GOAL_FILE" 2>/dev/null || echo "-1")
+    remaining=$(grep -c '^\- \[ \]' "$GOAL_FILE" 2>/dev/null || true)
+    remaining=${remaining:--1}
     if [ "$remaining" = "0" ]; then
       log_success "CONVERGED: 0 unchecked items remain in goal file (deterministic check)"
       exit_reason="converged"
@@ -1110,7 +1134,7 @@ run_blueprint_loop() {
 
     local task_count=0
     if [ -n "$task_file" ] && [ -f "$task_file" ]; then
-      task_count=$(grep -c '===TASK===' "$task_file" 2>/dev/null || echo "0")
+      task_count=$(grep -c '===TASK===' "$task_file" 2>/dev/null || true)
     fi
 
     if [ "$task_count" -eq 0 ]; then
