@@ -53,7 +53,7 @@ EXCLUDE_DIRS = {"node_modules", "__pycache__", ".venv", ".git", "dist", "build",
 def load_facts(path: Path):
     if not path.exists():
         return None
-    return json.loads(path.read_text())
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def save_facts(path: Path, facts: dict) -> None:
@@ -98,7 +98,7 @@ def find_drifts(facts: dict, repo_root: Path):
                 continue
             for md in md_files:
                 try:
-                    content = md.read_text(errors="ignore")
+                    content = md.read_text(encoding="utf-8", errors="ignore")
                 except Exception:
                     continue
                 for m in rx.finditer(content):
@@ -139,7 +139,7 @@ def cmd_check(facts: dict, repo_root: Path, fix: bool = False) -> int:
         for d in drifts:
             by_file.setdefault(d["abs_path"], []).append(d)
         for path, ds in by_file.items():
-            content = path.read_text()
+            content = path.read_text(encoding="utf-8")
             ds.sort(key=lambda d: -d["group_start"])
             for d in ds:
                 content = content[: d["group_start"]] + str(d["expected"]) + content[d["group_end"]:]

@@ -102,8 +102,10 @@ def load_skill(skill_md: Path) -> dict | None:
     directory name; missing description falls back to "".
     """
     try:
-        text = skill_md.read_text()
-    except OSError:
+        # Explicit utf-8: Windows Python defaults read_text() to cp1252
+        # ('charmap'), which crashes on the Chinese text in skill descriptions.
+        text = skill_md.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
         return None
     fm_text, _body = split_frontmatter(text)
     fields = parse_frontmatter(fm_text) if fm_text is not None else {}

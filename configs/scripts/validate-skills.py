@@ -105,7 +105,7 @@ def validate_skill_dir(skill_dir: Path, fix: bool = False) -> tuple[list[str], l
     if not skill_md.is_file():
         return [f"{name}: SKILL.md missing"], []
 
-    text = skill_md.read_text()
+    text = skill_md.read_text(encoding="utf-8")
     fm_text, _body = sf.split_frontmatter(text)
     if fm_text is None:
         return [f"{name}: no --- frontmatter block"], []
