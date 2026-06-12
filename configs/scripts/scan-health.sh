@@ -3,7 +3,8 @@
 #
 # Usage: bash scan-health.sh [project-dir]
 #
-# Checks: TODO/FIXME comments, lint warnings, type errors, large files.
+# Checks: TODO/FIXME comments, lint warnings, type errors, large files,
+# verify/test suite runtime (slow suites erode loop clock speed).
 # Output format: ===TASK=== blocks (compatible with batch-tasks / start.sh)
 #
 # Why: Continuous code health — auto-detect issues and generate worker-friendly
@@ -265,10 +266,68 @@ EOF
   done <<< "$large_files"
 }
 
+# ─── Test Suite Runtime (slow suite erodes loop clock speed) ─────────────────
+_scan_test_runtime() {
+  # loop-runner.sh caps its verify node at TEST_SAMPLE_TIMEOUT=120s — a verify
+  # command slower than ~100s silently degrades every loop iteration, so a slow
+  # suite is a health finding, not a nit. This probe RUNS the real suite once
+  # (bounded by threshold+80s); skip with SCAN_HEALTH_SKIP_RUNTIME=1.
+  [[ "${SCAN_HEALTH_SKIP_RUNTIME:-0}" == "1" ]] && return
+
+  local threshold="${TEST_RUNTIME_THRESHOLD:-100}"
+  local probe_timeout=$((threshold + 80))
+
+  # Resolve the command the same way loop-runner.sh's verify node does:
+  # verify_cmd: → Verify command: — then fall back to Test command:
+  local cmd=""
+  if [[ -f "CLAUDE.md" ]]; then
+    cmd=$(grep -m1 'verify_cmd:' CLAUDE.md 2>/dev/null | sed 's/.*verify_cmd:[[:space:]]*//' || true)
+    [[ -z "$cmd" ]] && cmd=$(grep -m1 'Verify command:' CLAUDE.md 2>/dev/null | sed 's/.*Verify command:[[:space:]]*//' || true)
+    [[ -z "$cmd" ]] && cmd=$(grep -m1 'Test command:' CLAUDE.md 2>/dev/null | sed 's/.*Test command:[[:space:]]*//' || true)
+  fi
+  # Template placeholders ("[e.g. pytest ...]") and N/A are not runnable
+  case "$cmd" in ""|"N/A"|"["*) return ;; esac
+
+  local start_ts end_ts duration rc=0
+  start_ts=$(date +%s)
+  timeout "$probe_timeout" bash -c "$cmd" >/dev/null 2>&1 || rc=$?
+  end_ts=$(date +%s)
+  duration=$((end_ts - start_ts))
+
+  [[ "$duration" -le "$threshold" ]] && return
+
+  local timeout_note=""
+  [[ "$rc" -eq 124 ]] && timeout_note=" (killed at ${probe_timeout}s probe timeout)"
+
+  cat <<EOF
+===TASK===
+model: sonnet
+timeout: 1800
+source_ref: health_slow_tests
+---
+perf: verify/test suite took ${duration}s${timeout_note} — over the ${threshold}s loop budget, run /trim-tests
+
+## Context
+Command: ${cmd}
+Measured: ${duration}s (threshold: ${threshold}s, exit code: ${rc})${timeout_note}
+loop-runner.sh caps its verify node at 120s (TEST_SAMPLE_TIMEOUT) — a suite slower
+than ~100s silently degrades every loop iteration's verification.
+
+## What to do
+1. Run the /trim-tests skill (prompt: ~/.claude/skills/trim-tests/prompt.md), scoped to the slowest test files
+2. Consolidate near-identical tests into table-driven cases; delete trivial / mock-only / brittle ones
+3. Re-run the suite and confirm runtime is back under ${threshold}s
+4. Include the skill's "Coverage intentionally given up" section in the commit body
+
+EOF
+  TASK_COUNT=$((TASK_COUNT + 1))
+}
+
 # ─── Run all scans ──────────────────────────────────────────────────────────
 _scan_todos
 _scan_type_errors
 _scan_lint
 _scan_large_files
+_scan_test_runtime
 
 echo "# scan-health: found ${TASK_COUNT} issue(s)" >&2

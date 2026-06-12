@@ -1287,6 +1287,78 @@ assert_contains "$out" "quiet-run: OK" "fallback run prints OK verdict"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════
+# TEST SUITE 17: scan-health.sh test-runtime probe
+# ═══════════════════════════════════════════════════════════════════════
+
+if should_run "healthprobe"; then
+section "scan-health.sh test-runtime probe"
+
+SCAN_HEALTH="$ORIG_DIR/configs/scripts/scan-health.sh"
+
+# Slow suite: threshold forced to 0 so a 1s sleep trips the probe
+REPO_DIR=$(setup_test_repo)
+cd "$REPO_DIR"
+cat > CLAUDE.md <<'CLAUDE_EOF'
+# Project Type
+- Type: cli
+- Verify command: sleep 1
+CLAUDE_EOF
+out=$(TEST_RUNTIME_THRESHOLD=0 bash "$SCAN_HEALTH" . 2>/dev/null)
+assert_contains "$out" "health_slow_tests" "slow verify_cmd emits a runtime task"
+assert_contains "$out" "/trim-tests" "runtime task points at the trim-tests skill"
+assert_contains "$out" "sleep 1" "runtime task names the probed command"
+
+# Fast suite at default threshold (100s): no runtime task
+cat > CLAUDE.md <<'CLAUDE_EOF'
+# Project Type
+- Type: cli
+- Verify command: true
+CLAUDE_EOF
+out=$(bash "$SCAN_HEALTH" . 2>/dev/null)
+assert_not_contains "$out" "health_slow_tests" "fast suite emits no runtime task"
+
+# No verify/test command in CLAUDE.md: probe skipped silently
+cat > CLAUDE.md <<'CLAUDE_EOF'
+# Project Type
+- Type: cli
+CLAUDE_EOF
+out=$(bash "$SCAN_HEALTH" . 2>/dev/null)
+rc=$?
+assert_exit_code 0 "$rc" "probe without verify_cmd exits clean"
+assert_not_contains "$out" "health_slow_tests" "no verify_cmd → no runtime task"
+
+# Template placeholder ("[e.g. ...]") is not runnable: probe skipped
+cat > CLAUDE.md <<'CLAUDE_EOF'
+# Project Type
+- Type: cli
+- Verify command: [e.g. ./scripts/smoke-test.sh, or N/A]
+CLAUDE_EOF
+out=$(TEST_RUNTIME_THRESHOLD=0 bash "$SCAN_HEALTH" . 2>/dev/null)
+assert_not_contains "$out" "health_slow_tests" "template placeholder skipped"
+
+# SCAN_HEALTH_SKIP_RUNTIME=1 opts out even for a slow suite
+cat > CLAUDE.md <<'CLAUDE_EOF'
+# Project Type
+- Type: cli
+- Verify command: sleep 1
+CLAUDE_EOF
+out=$(SCAN_HEALTH_SKIP_RUNTIME=1 TEST_RUNTIME_THRESHOLD=0 bash "$SCAN_HEALTH" . 2>/dev/null)
+assert_not_contains "$out" "health_slow_tests" "SCAN_HEALTH_SKIP_RUNTIME=1 skips probe"
+
+# Failing-but-slow command still reports (exit code captured, not swallowed)
+cat > CLAUDE.md <<'CLAUDE_EOF'
+# Project Type
+- Type: cli
+- Verify command: sleep 1 && false
+CLAUDE_EOF
+out=$(TEST_RUNTIME_THRESHOLD=0 bash "$SCAN_HEALTH" . 2>/dev/null)
+rc=$?
+assert_exit_code 0 "$rc" "failing verify_cmd does not kill scan-health"
+assert_contains "$out" "health_slow_tests" "slow failing suite still emits runtime task"
+assert_contains "$out" "exit code: 1" "task records the suite exit code"
+fi
+
+# ═══════════════════════════════════════════════════════════════════════
 # Summary
 # ═══════════════════════════════════════════════════════════════════════
 
