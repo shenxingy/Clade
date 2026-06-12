@@ -293,6 +293,18 @@ _FIX_INTENT_CRITERION = (
     "a warning-level issue instead of failing the review."
 )
 
+# Verifier one step removed (lovesegfault REVIEW.md r25: 8/12 regressions were
+# introduced BY fixes that were only verified against the original claim).
+_FIX_ONE_STEP_CRITERION = (
+    "Verify one step removed from the reported case — do not stop at the original "
+    "claim. Walk a concrete example (not a yes/no) through each of: "
+    "(a) the inverse input case of the fixed path, "
+    "(b) the next state or lifecycle transition after the fixed path, "
+    "(c) one sibling consumer of the changed code. "
+    "If the diff predicts a failure mode it does not fix, report it as an issue, "
+    "not a side note."
+)
+
 
 def _detect_fix_intent(task_description: str) -> bool:
     """True when the task is a bug fix (fix:/bug/regression/hotfix in the description)."""
@@ -322,6 +334,7 @@ def _build_oracle_task_block(
         block += "\n\n" + _FIX_INTENT_CRITERION.format(
             infra="yes" if test_evidence else "unknown"
         )
+        block += "\n\n" + _FIX_ONE_STEP_CRITERION
     if test_evidence:
         block += f"\n\nTest results (run before this review):\n{test_evidence[:800]}"
     return block

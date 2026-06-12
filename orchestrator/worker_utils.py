@@ -79,6 +79,9 @@ COMPLETION_CONTRACT_BLOCK = (
     '"next_actions": [], "artifacts": ["path/to/changed/file.py"]}\n'
     "```\n"
     'Use `"status": "partial"` if you could not finish, `"blocked"` if stuck.\n'
+    "In `summary`, also declare negative scope (controversial): anything you "
+    "deliberately excluded, and anything you are uncertain about — reviewers "
+    "should learn the weak spots from you, not discover them.\n"
 )
 
 # ─── Fallback Commit (bare git when committer.sh is not installed) ────────────

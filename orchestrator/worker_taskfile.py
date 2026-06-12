@@ -271,7 +271,16 @@ async def build_task_file(w: Any, task_queue: Any | None) -> Path:
             "**Phase 2 — Patch (after checkpoint written):**\n"
             "1. Make the minimal targeted change — prefer 1-3 line edits\n"
             "2. Verify the reproduction test passes (if provided above)\n"
-            "3. Run lint before committing\n"
+            "3. Run lint before committing\n\n"
+            "**Phase 3 — Structural close (lovesegfault; after the patch works):**\n"
+            "1. Sibling sweep: grep for the same defective shape elsewhere — cover "
+            "the whole edited file plus ±50 lines around each edit, and the rest of "
+            "the module. Fix every hit or list the ones you deliberately left.\n"
+            "2. Dead-code sweep: remove state, branches, or comments the fix "
+            "obsoleted.\n"
+            "3. End your completion summary with a `Done-gate:` line listing the "
+            "literal grep/test commands that verify sweeps 1-2 — the reviewer runs "
+            "them, so they must be copy-pasteable.\n"
         )
     task_file.write_text(
         effective_description + _schema_block + _fix_two_phase

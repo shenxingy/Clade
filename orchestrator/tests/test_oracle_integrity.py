@@ -1008,6 +1008,18 @@ class TestFixIntentCriterion:
         block = wr._build_oracle_task_block("implement exports feature", None)
         assert "bug-fix task" not in block
 
+    def test_fix_task_gets_one_step_removed_criterion(self):
+        # lovesegfault r25: fixes verified only against the original claim
+        # introduced 8/12 of the next round's regressions.
+        block = wr._build_oracle_task_block("fix: crash on empty input", None)
+        assert "one step removed" in block
+        assert "inverse input case" in block
+        assert "sibling consumer" in block
+
+    def test_non_fix_task_has_no_one_step_criterion(self):
+        block = wr._build_oracle_task_block("implement exports feature", None)
+        assert "one step removed" not in block
+
     async def test_criterion_reaches_spec_prompt(self, tmp_path, monkeypatch):
         prompts: list[str] = []
 

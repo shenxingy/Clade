@@ -854,6 +854,42 @@ class TestCommitGuidanceBlock:
         assert "subject-only" in COMMIT_GUIDANCE_BLOCK
 
 
+class TestFixTaskStructuralClose:
+    @staticmethod
+    def _mock_worker(tmp_path, description):
+        from unittest.mock import MagicMock
+
+        w = MagicMock()
+        w._claude_dir = tmp_path / ".claude"
+        w._claude_dir.mkdir(exist_ok=True)
+        w._project_dir = tmp_path
+        w._original_project_dir = tmp_path
+        w.description = description
+        w.id = "w1"
+        w.task_id = "t1"
+        w.model = "sonnet"
+        w._event_stream = MagicMock()
+        return w
+
+    async def test_fix_task_gets_structural_close_phase(self, tmp_path):
+        """Fix tasks carry Phase 3 (lovesegfault): sibling sweep + dead-code
+        sweep + a Done-gate line of literal commands the reviewer can run."""
+        from worker_taskfile import build_task_file
+
+        w = self._mock_worker(tmp_path, "fix: crash when input list is empty")
+        text = (await build_task_file(w, None)).read_text()
+        assert "Structural close" in text
+        assert "Sibling sweep" in text
+        assert "Done-gate:" in text
+
+    async def test_non_fix_task_has_no_structural_close(self, tmp_path):
+        from worker_taskfile import build_task_file
+
+        w = self._mock_worker(tmp_path, "implement exports feature")
+        text = (await build_task_file(w, None)).read_text()
+        assert "Structural close" not in text
+
+
 # ─── worker_utils: helpers moved from worker.py (1500-line budget) ────────────
 
 class TestCheckFileOwnership:
