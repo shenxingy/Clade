@@ -662,7 +662,7 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
   if [[ "${VERIFY_FIX_PENDING:-false}" != "true" && -f .claude/verify-issues.md ]] \
      && grep -qE '\[fix\]' .claude/verify-issues.md 2>/dev/null; then
     _log "Found [fix] annotations in verify-issues.md — processing batch feedback"
-    local bf_output
+    # NOTE: top-level loop, not a function — `local` here is a bash error (SC2168)
     bf_output=$(bash "$SCRIPTS_DIR/scan-verify-issues.sh" . 2>/dev/null || true)
     if echo "$bf_output" | grep -q "^===TASK===$"; then
       echo "$bf_output" > .claude/filtered-tasks.md
