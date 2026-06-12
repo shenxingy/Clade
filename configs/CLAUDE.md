@@ -57,6 +57,7 @@ These guide all judgment calls — apply them when choosing between approaches:
 - **Engineered enough**: Not fragile/hacky, not premature-abstraction. Match complexity to actual requirements.
 - **Edge cases over speed**: Thoughtfulness > velocity. Handle empty DB, first run, null input, concurrent access.
 - **Explicit over clever**: Readable in 6 months > clever today. Name things clearly, avoid magic.
+- **Dependency bugs**: Minimal repro first, then upstream patch > pin-with-linked-issue > documented workaround with upstream link. Silent workarounds are forbidden — see `/investigate` Phase 6b.
 
 ## Plan Mode
 

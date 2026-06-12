@@ -88,6 +88,7 @@ Update type: {"patch" if current.split(".")[1] == latest.split(".")[1] else "min
 2. Run tests to verify compatibility
 3. Update requirements.txt / pyproject.toml with new version
 4. Commit with \`committer "chore: upgrade {name} {current} → {latest}"\` when done
+5. If the upgrade exposes a bug in {name} itself: dependency-bug doctrine (/investigate Phase 6b) — minimal repro, then upstream patch > pin with linked issue > documented workaround. Never a silent workaround.
 
 """)
   task_count += 1
@@ -152,6 +153,7 @@ Latest version: {latest}
 2. Run tests to verify compatibility
 3. Update requirements.txt or pyproject.toml
 4. Commit with \`committer "chore: upgrade {name} {current} → {latest}"\` when done
+5. If the upgrade exposes a bug in {name} itself: dependency-bug doctrine (/investigate Phase 6b) — minimal repro, then upstream patch > pin with linked issue > documented workaround. Never a silent workaround.
 
 """)
   task_count += 1
@@ -227,6 +229,7 @@ Wanted version: {wanted}
 2. Run tests to verify compatibility
 3. Verify package-lock.json is updated
 4. Commit with \`committer "chore: upgrade {name} {current} → {target_version}"\` when done
+5. If the upgrade exposes a bug in {name} itself: dependency-bug doctrine (/investigate Phase 6b) — minimal repro, then upstream patch > pin with linked issue > documented workaround. Never a silent workaround.
 
 """)
   task_count += 1
