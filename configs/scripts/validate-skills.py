@@ -16,6 +16,9 @@ Checks (errors fail CI, warnings don't):
   - only known frontmatter keys (KNOWN_KEYS in skill_frontmatter.py)
   - warning: non-canonical invocable spelling (canonical: user_invocable;
     user-invokable / user-invocable tolerated for upstream-synced skills)
+  - warning: description looks truncated (ends with '...'/'…' or under 40
+    chars) — guard against the ~200-char clipping that hit 36 ads-*/seo-*
+    skills (restored 851abdb); restore full text from the skill's prompt.md
 
 --fix rewrites only the description line(s): folds multi-line values to a
 single line, strips inline/block `>` `|` markers, and quotes when needed.
@@ -141,6 +144,13 @@ def validate_skill_dir(skill_dir: Path, fix: bool = False) -> tuple[list[str], l
         return errors, warnings
     if len(desc) > MAX_DESCRIPTION_LEN:
         errors.append(f"{name}: description too long ({len(desc)} > {MAX_DESCRIPTION_LEN})")
+    if desc.rstrip("'\"").endswith(("...", "…")):
+        warnings.append(
+            f"{name}: description looks truncated (ends with '...') — "
+            "restore full text from the skill's prompt.md"
+        )
+    elif len(desc) < 40:
+        warnings.append(f"{name}: description suspiciously short ({len(desc)} chars)")
 
     start, end = span
     raw = fm_lines[start].split(":", 1)[1].strip()
