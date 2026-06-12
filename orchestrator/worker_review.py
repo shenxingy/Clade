@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import shlex
 import uuid
 from datetime import date, datetime
@@ -233,6 +234,25 @@ _ORACLE_QUALITY_PROMPT = (
 
 _ORACLE_TASK_DESC_CAP = 4000  # full task context for the grader (was 400 — criteria never reached the oracle)
 
+# Fix-intent detection (controversial + felixrieseberg): bug-fix tasks get an
+# extra completeness criterion — a fix with no test covering the failing input
+# is incomplete history (the regression can silently return).
+_FIX_INTENT_RE = re.compile(r"(?:^|\n)\s*fix:|\b(?:bug|bugfix|regression|hotfix)\b", re.IGNORECASE)
+
+_FIX_INTENT_CRITERION = (
+    "Additional completeness criterion (bug-fix task): the diff must include a NEW or "
+    "UPDATED test covering the previously-failing input. "
+    "Test infrastructure present in this project: {infra}. "
+    "If no covering test is in the diff: when test infrastructure is present, mark "
+    "completeness as violated (add a specific issue); when it is unknown, report it as "
+    "a warning-level issue instead of failing the review."
+)
+
+
+def _detect_fix_intent(task_description: str) -> bool:
+    """True when the task is a bug fix (fix:/bug/regression/hotfix in the description)."""
+    return bool(_FIX_INTENT_RE.search(task_description or ""))
+
 
 def _build_oracle_task_block(
     task_description: str,
@@ -252,6 +272,11 @@ def _build_oracle_task_block(
         for i, criterion in enumerate(acceptance_criteria[:10], 1):
             lines.append(f"{i}. {str(criterion)[:200]}")
         block += "\n".join(lines)
+    if _detect_fix_intent(task_description):
+        # Bug-fix tasks: require a covering test (test infra known via evidence)
+        block += "\n\n" + _FIX_INTENT_CRITERION.format(
+            infra="yes" if test_evidence else "unknown"
+        )
     if test_evidence:
         block += f"\n\nTest results (run before this review):\n{test_evidence[:800]}"
     return block

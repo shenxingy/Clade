@@ -881,6 +881,75 @@ class TestVerifyAndCommitTestGate:
         assert gate_calls == [""]  # no fake green-suite claim
 
 
+# ─── Fix-intent completeness criterion (item 15 part 1) ─────────────────────
+
+
+class TestDetectFixIntent:
+    @pytest.mark.parametrize("desc", [
+        "fix: login crash on empty password",
+        "Fix the bug in auth flow",
+        "regression in parser since v2",
+        "hotfix for prod outage",
+        "BUG: dates render off-by-one",
+    ])
+    def test_fix_intent_detected(self, desc):
+        assert wr._detect_fix_intent(desc) is True
+
+    @pytest.mark.parametrize("desc", [
+        "implement new feature for exports",
+        "debug logging improvements",     # 'debug' must not match 'bug'
+        "prefix: rename the config keys",  # 'prefix:' must not match 'fix:'
+        "refactor module layout",
+        "",
+    ])
+    def test_no_fix_intent(self, desc):
+        assert wr._detect_fix_intent(desc) is False
+
+
+class TestFixIntentCriterion:
+    def test_fix_task_gets_covering_test_criterion(self):
+        block = wr._build_oracle_task_block("fix: crash on empty input", None)
+        assert "bug-fix task" in block
+        assert "test covering the previously-failing input" in block
+
+    def test_infra_yes_with_evidence(self):
+        block = wr._build_oracle_task_block(
+            "fix: crash on empty input", None,
+            test_evidence="Project tests PASSED.\n3 passed",
+        )
+        assert "Test infrastructure present in this project: yes" in block
+
+    def test_infra_unknown_without_evidence(self):
+        block = wr._build_oracle_task_block("fix: crash on empty input", None)
+        assert "Test infrastructure present in this project: unknown" in block
+
+    def test_non_fix_task_has_no_criterion(self):
+        block = wr._build_oracle_task_block("implement exports feature", None)
+        assert "bug-fix task" not in block
+
+    async def test_criterion_reaches_spec_prompt(self, tmp_path, monkeypatch):
+        prompts: list[str] = []
+
+        async def fake_pass(prompt, cdir):
+            prompts.append(prompt)
+            return True, "high", "", False
+
+        monkeypatch.setattr(wr, "_oracle_pass", fake_pass)
+        await wr._oracle_review("fix: crash on empty input", "small diff", tmp_path)
+        assert "bug-fix task" in prompts[0]
+
+    async def test_criterion_reaches_chunked_path(self, tmp_path, monkeypatch):
+        seen: list[str] = []
+
+        async def fake_chunk(task, chunk, label, cdir):
+            seen.append(task)
+            return True, "approved", False
+
+        monkeypatch.setattr(wr, "_oracle_review_chunk", fake_chunk)
+        await wr._oracle_review("fix: regression in worker pool", "x" * 9000, tmp_path)
+        assert seen and all("bug-fix task" in t for t in seen)
+
+
 async def test_poll_all_requeues_on_pre_push_test_failure(task_queue, tmp_path):
     pool = wmod.WorkerPool()
     claude_dir = tmp_path / ".claude"
