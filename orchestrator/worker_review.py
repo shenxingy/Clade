@@ -226,6 +226,7 @@ _ORACLE_QUALITY_PROMPT = (
     '{{"pass":true,"confidence":"high","issues":[]}}\n'
     "OR:\n"
     '{{"pass":false,"confidence":"high|medium|low","issues":["<specific quality issue>"]}}\n\n'
+    "{evidence}"
     "Diff:\n{diff}"
 )
 
@@ -234,13 +235,16 @@ _ORACLE_TASK_DESC_CAP = 4000  # full task context for the grader (was 400 — cr
 
 
 def _build_oracle_task_block(
-    task_description: str, acceptance_criteria: list[str] | None
+    task_description: str,
+    acceptance_criteria: list[str] | None,
+    test_evidence: str = "",
 ) -> str:
     """Build the task block injected into oracle prompts.
 
     claude-cookbooks rubric: the grader must see the FULL task description and
     the parsed acceptance criteria — the old 400-char truncation silently
     dropped both, reducing 'spec compliance' to a title check.
+    test_evidence (mic92): pre-push test results so verdicts rest on evidence.
     """
     block = task_description[:_ORACLE_TASK_DESC_CAP]
     if acceptance_criteria:
@@ -248,7 +252,25 @@ def _build_oracle_task_block(
         for i, criterion in enumerate(acceptance_criteria[:10], 1):
             lines.append(f"{i}. {str(criterion)[:200]}")
         block += "\n".join(lines)
+    if test_evidence:
+        block += f"\n\nTest results (run before this review):\n{test_evidence[:800]}"
     return block
+
+
+def _build_test_evidence(tests_passed: bool, test_output: str, reg_warning: str) -> str:
+    """Compact evidence block from the pre-push test run for oracle prompts.
+
+    Returns "" when nothing ran (no test command configured) — the prompts
+    then carry no test section rather than implying a green suite.
+    """
+    if not test_output and not reg_warning:
+        return ""
+    parts = [f"Project tests {'PASSED' if tests_passed else 'FAILED'}."]
+    if test_output:
+        parts.append(test_output[-600:])
+    if reg_warning:
+        parts.append(reg_warning[:200])
+    return "\n".join(parts)
 
 
 async def _oracle_pass(
@@ -430,6 +452,7 @@ async def _oracle_review(
     diff_text: str,
     claude_dir: Path,
     acceptance_criteria: list[str] | None = None,
+    test_evidence: str = "",
 ) -> tuple[bool, str, bool]:
     """Independent second-model review of a diff (Self-RAG multi-dimensional critique).
 
@@ -437,12 +460,13 @@ async def _oracle_review(
     Qodo §Gap3: chunked review prevents large refactors from being auto-approved.
     acceptance_criteria (claude-cookbooks rubric): parsed task-schema criteria the
     grader must verdict one-by-one; injected with the FULL task description.
+    test_evidence (mic92): pre-push test results threaded into every prompt.
     Returns (approved, reason, infra_error) where reason contains structured fix
     guidance on rejection. infra_error=True means the diff was NOT (fully)
     reviewed — callers must tag the result 'unreviewed', never 'approved'
     (lovesegfault: fail-open must not masquerade as a review).
     """
-    task_block = _build_oracle_task_block(task_description, acceptance_criteria)
+    task_block = _build_oracle_task_block(task_description, acceptance_criteria, test_evidence)
     # Chunk large diffs (Qodo §Gap3)
     if len(diff_text) > _ORACLE_CHUNK_SIZE:
         chunks = [
@@ -471,7 +495,11 @@ async def _oracle_review(
     spec_prompt = _ORACLE_SPEC_PROMPT.format(
         task=task_block, diff=diff_excerpt
     )
-    quality_prompt = _ORACLE_QUALITY_PROMPT.format(diff=diff_excerpt)
+    evidence_block = (
+        f"Test results (run before this review):\n{test_evidence[:800]}\n\n"
+        if test_evidence else ""
+    )
+    quality_prompt = _ORACLE_QUALITY_PROMPT.format(diff=diff_excerpt, evidence=evidence_block)
 
     # Pass 1: spec compliance check
     spec_passed, spec_conf, spec_issues, spec_infra = await _oracle_pass(spec_prompt, claude_dir)

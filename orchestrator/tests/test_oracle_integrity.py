@@ -496,7 +496,7 @@ class TestRunOracleGate:
     async def test_infra_error_tags_unreviewed_not_approved(self, gate_worker, monkeypatch):
         monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "auto_oracle", True)
 
-        async def fake_review(desc, diff, cdir, acceptance_criteria=None):
+        async def fake_review(desc, diff, cdir, **kwargs):
             return True, "oracle timeout (45s)", True
 
         monkeypatch.setattr(wmod, "_oracle_review", fake_review)
@@ -513,7 +513,7 @@ class TestRunOracleGate:
         monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "notification_webhook", "http://h/x")
         escalations: list[tuple] = []
 
-        async def fake_review(desc, diff, cdir, acceptance_criteria=None):
+        async def fake_review(desc, diff, cdir, **kwargs):
             return True, "oracle subprocess error", True
 
         async def fake_escalate(project_dir, claude_dir, webhook, streak):
@@ -531,7 +531,7 @@ class TestRunOracleGate:
         monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "auto_oracle", True)
         escalations: list[int] = []
 
-        async def fake_review(desc, diff, cdir, acceptance_criteria=None):
+        async def fake_review(desc, diff, cdir, **kwargs):
             return True, "oracle subprocess error", True
 
         async def fake_escalate(*args):
@@ -548,7 +548,7 @@ class TestRunOracleGate:
     async def test_rejection_undoes_commit_and_flags_requeue(self, gate_worker, monkeypatch):
         monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "auto_oracle", True)
 
-        async def fake_review(desc, diff, cdir, acceptance_criteria=None):
+        async def fake_review(desc, diff, cdir, **kwargs):
             return False, "[high] Oracle rejected.", False
 
         monkeypatch.setattr(wmod, "_oracle_review", fake_review)
@@ -566,7 +566,7 @@ class TestRunOracleGate:
         monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "auto_oracle", True)
         resets: list[Path] = []
 
-        async def fake_review(desc, diff, cdir, acceptance_criteria=None):
+        async def fake_review(desc, diff, cdir, **kwargs):
             return True, "approved (spec+quality passed)", False
 
         monkeypatch.setattr(wmod, "_oracle_review", fake_review)
@@ -698,7 +698,7 @@ class TestGatePassesCriteria:
         monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "auto_oracle", True)
         captured: dict = {}
 
-        async def fake_review(desc_, diff, cdir, acceptance_criteria=None):
+        async def fake_review(desc_, diff, cdir, acceptance_criteria=None, **kwargs):
             captured["criteria"] = acceptance_criteria
             return True, "approved", False
 
@@ -711,7 +711,7 @@ class TestGatePassesCriteria:
         monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "auto_oracle", True)
         captured: dict = {"criteria": "sentinel"}
 
-        async def fake_review(desc_, diff, cdir, acceptance_criteria=None):
+        async def fake_review(desc_, diff, cdir, acceptance_criteria=None, **kwargs):
             captured["criteria"] = acceptance_criteria
             return True, "approved", False
 
@@ -719,3 +719,187 @@ class TestGatePassesCriteria:
         monkeypatch.setattr(wmod, "_reset_oracle_infra_streak", lambda d: None)
         assert await gate_worker._run_oracle_gate() is True
         assert captured["criteria"] is None
+
+
+# ─── Evidence before verdict (mic92) ─────────────────────────────────────────
+
+
+class TestBuildTestEvidence:
+    def test_empty_when_nothing_ran(self):
+        assert wr._build_test_evidence(True, "", "") == ""
+
+    def test_passed_with_output(self):
+        ev = wr._build_test_evidence(True, "5 passed in 1.2s", "")
+        assert ev.startswith("Project tests PASSED.")
+        assert "5 passed" in ev
+
+    def test_failed_with_output(self):
+        ev = wr._build_test_evidence(False, "2 failed, 3 passed", "")
+        assert ev.startswith("Project tests FAILED.")
+        assert "2 failed" in ev
+
+    def test_regression_warning_included(self):
+        ev = wr._build_test_evidence(False, "1 failed", "Intramorphic regression detected — 1 test(s)")
+        assert "Intramorphic regression" in ev
+
+
+class TestEvidenceReachesPrompts:
+    async def test_two_pass_prompts_carry_evidence(self, tmp_path, monkeypatch):
+        prompts: list[str] = []
+
+        async def fake_pass(prompt, cdir):
+            prompts.append(prompt)
+            return True, "high", "", False
+
+        monkeypatch.setattr(wr, "_oracle_pass", fake_pass)
+        await wr._oracle_review(
+            "task", "small diff", tmp_path,
+            test_evidence="Project tests PASSED.\n12 passed in 2.1s",
+        )
+        assert len(prompts) == 2
+        for p in prompts:  # spec AND quality pass both see the evidence
+            assert "Test results (run before this review):" in p
+            assert "12 passed" in p
+
+    async def test_chunked_path_carries_evidence(self, tmp_path, monkeypatch):
+        seen: list[str] = []
+
+        async def fake_chunk(task, chunk, label, cdir):
+            seen.append(task)
+            return True, "approved", False
+
+        monkeypatch.setattr(wr, "_oracle_review_chunk", fake_chunk)
+        await wr._oracle_review(
+            "task", "x" * 9000, tmp_path,
+            test_evidence="Project tests FAILED.\n1 failed",
+        )
+        assert seen and all("Project tests FAILED." in t for t in seen)
+
+    def test_quality_prompt_formats_with_evidence_placeholder(self):
+        rendered = wr._ORACLE_QUALITY_PROMPT.format(diff="D", evidence="EVIDENCE\n\n")
+        assert "EVIDENCE" in rendered and "Diff:\nD" in rendered
+        rendered = wr._ORACLE_QUALITY_PROMPT.format(diff="D", evidence="")
+        assert "Diff:\nD" in rendered
+
+
+class TestVerifyAndCommitTestGate:
+    """Pre-push test gate inside verify_and_commit: tests run BEFORE the oracle
+    gate and BEFORE auto_push; failure undoes the commit and flags requeue."""
+
+    @pytest.fixture(autouse=True)
+    def _real_evidence_builder(self, monkeypatch):
+        # conftest mocks the worker_review module — restore the real builder
+        monkeypatch.setattr(wmod, "_build_test_evidence", wr._build_test_evidence)
+
+    def _make_worker(self, tmp_path, test_cmd: str):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _init_git_repo(repo)
+        claude_dir = repo / ".claude"
+        claude_dir.mkdir()
+        (claude_dir / "orchestrator.json").write_text(json.dumps({"test_cmd": test_cmd}))
+        w = wmod.Worker(
+            task_id="task-ev1", description="implement feature",
+            model="haiku", project_dir=repo, claude_dir=claude_dir,
+        )
+        # Dirty the tree so verify_and_commit sees changed files
+        (repo / "file0.txt").write_text("modified content\n")
+        return w
+
+    def _fake_shell_sequence(self, calls: list[str]):
+        """1st shell call = haiku verify (VERIFIED_OK), 2nd = commit (rc 0)."""
+        async def fake_shell(cmd, *args, **kwargs):
+            calls.append(cmd)
+            return FakeProc(b"VERIFIED_OK" if len(calls) == 1 else b"")
+        return fake_shell
+
+    async def test_failure_skips_push_and_requeues(self, tmp_path, monkeypatch):
+        w = self._make_worker(tmp_path, "echo FAILING_TEST_OUTPUT; exit 1")
+        calls: list[str] = []
+        monkeypatch.setattr(
+            wmod, "asyncio",
+            AsyncioProxy(create_subprocess_shell=self._fake_shell_sequence(calls)),
+        )
+        gate_calls: list[str] = []
+
+        async def fake_gate(self_, test_evidence=""):
+            gate_calls.append(test_evidence)
+            return True
+
+        monkeypatch.setattr(wmod.Worker, "_run_oracle_gate", fake_gate)
+
+        assert await w.verify_and_commit() is False
+        assert w._test_requeue is True
+        assert "FAILING_TEST_OUTPUT" in w._test_requeue_reason
+        assert w.auto_committed is False
+        assert "Pre-push tests failed" in w.failure_context
+        assert gate_calls == []           # oracle gate never reached
+        assert len(calls) == 2            # verify + commit only — no push
+        assert _commit_count(w._project_dir) == 1  # commit undone
+
+    async def test_pass_reaches_gate_with_evidence_then_push_skipped(self, tmp_path, monkeypatch):
+        w = self._make_worker(tmp_path, "echo TESTS_OK")
+        calls: list[str] = []
+        monkeypatch.setattr(
+            wmod, "asyncio",
+            AsyncioProxy(create_subprocess_shell=self._fake_shell_sequence(calls)),
+        )
+        monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "auto_push", False)
+        gate_calls: list[str] = []
+
+        async def fake_gate(self_, test_evidence=""):
+            gate_calls.append(test_evidence)
+            return True
+
+        monkeypatch.setattr(wmod.Worker, "_run_oracle_gate", fake_gate)
+
+        assert await w.verify_and_commit() is True
+        assert w._test_requeue is False
+        # Tests ran BEFORE the gate, and the gate saw their output as evidence
+        assert len(gate_calls) == 1
+        assert "Project tests PASSED." in gate_calls[0]
+        assert "TESTS_OK" in gate_calls[0]
+
+    async def test_no_test_cmd_gate_gets_empty_evidence(self, tmp_path, monkeypatch):
+        w = self._make_worker(tmp_path, "")
+        (w._claude_dir / "orchestrator.json").unlink()  # no test_cmd, no auto-detect
+        calls: list[str] = []
+        monkeypatch.setattr(
+            wmod, "asyncio",
+            AsyncioProxy(create_subprocess_shell=self._fake_shell_sequence(calls)),
+        )
+        monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "auto_push", False)
+        gate_calls: list[str] = []
+
+        async def fake_gate(self_, test_evidence=""):
+            gate_calls.append(test_evidence)
+            return True
+
+        monkeypatch.setattr(wmod.Worker, "_run_oracle_gate", fake_gate)
+
+        assert await w.verify_and_commit() is True
+        assert gate_calls == [""]  # no fake green-suite claim
+
+
+async def test_poll_all_requeues_on_pre_push_test_failure(task_queue, tmp_path):
+    pool = wmod.WorkerPool()
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir(exist_ok=True)
+    w = wmod.Worker(
+        task_id="task-tf1", description="implement feature X",
+        model="haiku", project_dir=tmp_path, claude_dir=claude_dir,
+    )
+    w.status = "done"
+    w._terminal_persisted = True
+    w._test_requeue = True
+    w._test_requeue_reason = "Project tests FAILED.\n2 failed, 1 passed"
+    pool.workers[w.id] = w
+
+    await pool.poll_all(task_queue, None)
+
+    assert w._test_requeue is False
+    tasks = await task_queue.list()
+    retries = [t for t in tasks if "FAILED the project test suite" in t["description"]]
+    assert len(retries) == 1
+    assert "2 failed" in retries[0]["description"]
+    assert "implement feature X" in retries[0]["description"]

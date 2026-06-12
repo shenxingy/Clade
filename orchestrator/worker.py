@@ -45,6 +45,7 @@ from worker_review import (
     _oracle_review, _summarize_worker_completion,
     _record_oracle_infra_error, _reset_oracle_infra_streak,
     _escalate_oracle_outage, _ORACLE_INFRA_THRESHOLD,
+    _build_test_evidence,
 )
 from worker_taskfile import build_task_file
 from event_stream import EventStream
@@ -105,6 +106,8 @@ class Worker:
         self.oracle_reason: str | None = None
         self._oracle_requeue: bool = False
         self._oracle_requeue_reason: str | None = None
+        self._test_requeue: bool = False
+        self._test_requeue_reason: str | None = None
         self._handoff_requeue: bool = False
         self._handoff_content: str | None = None
         self._handoff_type: str | None = None   # typed handoff (Codex SDK pattern)
@@ -629,35 +632,8 @@ class Worker:
                                      self.id, log_size // 1024, len(distilled))
                 except Exception:
                     pass
-        # Post-commit test runner (Sweep §Gap3): run project tests after successful commit.
-        # Catches functional regressions that lint check misses. Fail-open: test failures
-        # are logged but don't mark the worker as failed.
-        if self.auto_committed and self._project_dir:
-            try:
-                tests_passed, test_output = await _run_project_tests(self._project_dir)
-                if not tests_passed and test_output:
-                    logger.warning(
-                        "Worker %s: post-commit tests FAILED:\n%s",
-                        self.id, test_output[:500]
-                    )
-                    # Inject test failure into failure_context so it appears in task status
-                    if not self.failure_context:
-                        self.failure_context = f"Post-commit tests failed:\n{test_output[:300]}"
-                    elif "test" not in self.failure_context.lower():
-                        self.failure_context += f"\nPost-commit tests failed:\n{test_output[:200]}"
-
-                # OpenHands §Gap3: intramorphic regression check
-                reg_warning = await _run_intramorphic_check(
-                    self._project_dir, self._claude_dir, test_output
-                )
-                if reg_warning:
-                    logger.warning("Worker %s: %s", self.id, reg_warning)
-                    self.failure_context = (
-                        f"{self.failure_context}\n{reg_warning}" if self.failure_context
-                        else reg_warning
-                    )
-            except Exception:
-                pass
+        # NOTE: project tests + intramorphic check moved INTO verify_and_commit
+        # (mic92: evidence before verdict — they now run before oracle gate + push).
         # Parse structured observation contract; extract summary directly if present.
         _obs_summary: str | None = None
         if self._log_path and self._log_path.exists():
@@ -850,8 +826,38 @@ class Worker:
             if commit_proc.returncode == 0:
                 self.auto_committed = True
 
+                # Evidence before verdict (mic92): run project tests + intramorphic
+                # regression check BEFORE the oracle gate and BEFORE auto_push.
+                # On failure: undo the commit, skip push, requeue with the output.
+                test_evidence = ""
+                try:
+                    tests_passed, test_output = await _run_project_tests(self._project_dir)
+                    reg_warning = await _run_intramorphic_check(
+                        self._project_dir, self._claude_dir, test_output
+                    )
+                    test_evidence = _build_test_evidence(tests_passed, test_output, reg_warning)
+                    if not tests_passed:
+                        logger.warning(
+                            "Worker %s: pre-push tests FAILED — commit undone, push skipped:\n%s",
+                            self.id, test_output[:500]
+                        )
+                        await self._undo_commit()
+                        self.auto_committed = False
+                        self.failure_context = f"Pre-push tests failed:\n{test_output[:300]}"
+                        self._test_requeue = True
+                        self._test_requeue_reason = test_evidence or test_output
+                        return False
+                    if reg_warning:
+                        logger.warning("Worker %s: %s", self.id, reg_warning)
+                        self.failure_context = (
+                            f"{self.failure_context}\n{reg_warning}" if self.failure_context
+                            else reg_warning
+                        )
+                except Exception:
+                    pass  # fail-open: a broken test runner must not block commits
+
                 # Oracle validation gate (rejection requeues; infra errors tag 'unreviewed')
-                if not await self._run_oracle_gate():
+                if not await self._run_oracle_gate(test_evidence):
                     return False
 
                 branch = f"orchestrator/task-{self.task_id}"
@@ -885,13 +891,31 @@ class Worker:
             pass
         return self.auto_committed
 
-    async def _run_oracle_gate(self) -> bool:
+    async def _undo_commit(self) -> None:
+        """git reset HEAD~1 — undo the just-made commit so it cannot be pushed later."""
+        try:
+            reset_proc = await asyncio.create_subprocess_exec(
+                "git", "reset", "HEAD~1",
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+                cwd=str(self._project_dir),
+            )
+            try:
+                await asyncio.wait_for(reset_proc.communicate(), timeout=10)
+            except asyncio.TimeoutError:
+                reset_proc.kill()
+                await reset_proc.communicate()
+        except Exception:
+            pass
+
+    async def _run_oracle_gate(self, test_evidence: str = "") -> bool:
         """Oracle validation gate. Returns False when the commit was rejected (undone + flagged for requeue).
 
         Oracle liveness (lovesegfault): infra failures (timeout/subprocess error/
         unparseable output) tag oracle_result='unreviewed' — never a silent
         approval. After _ORACLE_INFRA_THRESHOLD consecutive infra errors, the
         outage escalates via notification webhook + .claude/blockers.md.
+        test_evidence (mic92): pre-push test results shown to the grader.
         """
         if not GLOBAL_SETTINGS.get("auto_oracle", False):
             return True
@@ -906,7 +930,7 @@ class Worker:
             criteria = _parse_task_schema(self.description).get("acceptance_criteria") or None
             approved, reason, infra_error = await _oracle_review(
                 self.description, diff_out.decode(), self._claude_dir,
-                acceptance_criteria=criteria,
+                acceptance_criteria=criteria, test_evidence=test_evidence,
             )
         except Exception:
             approved, reason, infra_error = True, "oracle gate error", True
@@ -930,20 +954,7 @@ class Worker:
         if approved:
             return True
         # Undo the commit so rejected work is not accidentally pushed later
-        try:
-            reset_proc = await asyncio.create_subprocess_exec(
-                "git", "reset", "HEAD~1",
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
-                cwd=str(self._project_dir),
-            )
-            try:
-                await asyncio.wait_for(reset_proc.communicate(), timeout=10)
-            except asyncio.TimeoutError:
-                reset_proc.kill()
-                await reset_proc.communicate()
-        except Exception:
-            pass
+        await self._undo_commit()
         self.auto_committed = False
         # Flag for requeue — poll_all will pick this up
         self._oracle_requeue = True
@@ -1389,6 +1400,23 @@ class WorkerPool:
                         )
                     else:
                         logger.info("Oracle rejected task %s — re-queued with reason", w.task_id)
+                # Pre-push test failure → re-queue with test output (mic92: evidence before verdict)
+                if w._test_requeue:
+                    w._test_requeue = False
+                    error_summary = _strip_error_context(w._test_requeue_reason)
+                    retry_desc = (
+                        f"{w.description}\n\n---\n"
+                        f"Previous attempt FAILED the project test suite (commit undone, never pushed):\n"
+                        f"{error_summary}\n"
+                        f"Fix the failures, run the project tests locally, then complete the task."
+                    )
+                    await task_queue.add(retry_desc, w.model,
+                                         own_files=w.own_files, forbidden_files=w.forbidden_files)
+                    await task_queue.update(
+                        w.task_id,
+                        failed_reason=f"Pre-push tests failed: {error_summary[:200]}"
+                    )
+                    logger.info("Pre-push tests failed for task %s — re-queued with test output", w.task_id)
                 # File ownership violation → re-queue with violation context
                 if w._ownership_violation:
                     w._ownership_violation = False
