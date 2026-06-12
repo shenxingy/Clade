@@ -62,6 +62,15 @@ replays are never part of CI or the default test suite.
 - Grader model is haiku (`worker_review.HAIKU_MODEL`), same tier production
   uses; `--model` pins a dated snapshot when comparing across model bumps.
 
+**Safety**: the grader runs `claude -p --dangerously-skip-permissions`, which
+is fully agentic — on the first live run (2026-06-12) graders treated fixture
+tasks as work orders: one implemented a fixture's stub function in the repo,
+others invented hooks/tests, committed, and pushed (4 commits reverted).
+`worker_review.py` now pins the grader subprocess cwd to the `.claude`
+scratch dir (eval runs use a per-case tempdir), so stray tool use cannot
+reach the project repo. If you see fixture-flavored commits appear during a
+live run, a containment regression has occurred — check `git log` first.
+
 ## Thresholds
 
 Default pass-rate gate: **0.75** (15/20). Haiku grading is stochastic; the

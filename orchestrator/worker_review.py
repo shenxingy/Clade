@@ -240,6 +240,24 @@ _ORACLE_QUALITY_PROMPT = (
 
 _ORACLE_TASK_DESC_CAP = 4000  # full task context for the grader (was 400 — criteria never reached the oracle)
 
+# Haiku routinely wraps its JSON verdict in a markdown fence despite the
+# "no markdown" instruction. Strict json.loads(raw) then misread every
+# healthy review as an infra error — the 2026-06-12 live eval run
+# (orchestrator/evals/) scored 17/17 live cases 'unreviewed' because of this:
+# the oracle was effectively dead in production, fail-open on every commit.
+_JSON_FENCE_RE = re.compile(r"^```(?:json)?\s*\n(.*?)\n?\s*```\s*$", re.DOTALL)
+
+
+def _strip_json_fence(raw: str) -> str:
+    """Unwrap a full-string markdown code fence around a JSON reply.
+
+    Only a fence spanning the whole (stripped) reply is unwrapped; anything
+    else returns unchanged, so legacy plain-text verdicts ("APPROVED: ...")
+    and true garbage keep their existing handling.
+    """
+    m = _JSON_FENCE_RE.match(raw.strip())
+    return m.group(1).strip() if m else raw
+
 # Fix-intent detection (controversial + felixrieseberg): bug-fix tasks get an
 # extra completeness criterion — a fix with no test covering the failing input
 # is incomplete history (the regression can silently return).
@@ -316,11 +334,18 @@ async def _oracle_pass(
     prompt_file = claude_dir / f"oracle-{uuid.uuid4().hex[:8]}.md"
     try:
         prompt_file.write_text(prompt)
+        # Grader containment: the oracle is a pure judge — everything it needs
+        # is in the prompt — but `claude -p --dangerously-skip-permissions` is
+        # fully agentic. On 2026-06-12 live-eval graders implemented a fixture's
+        # stub function in the repo, invented hooks/tests, committed, and
+        # pushed. cwd is pinned to the .claude scratch dir so stray tool use
+        # cannot touch the project repo.
         proc = await asyncio.create_subprocess_shell(
             f'claude -p "$(cat {shlex.quote(str(prompt_file))})" '
             f'--model {HAIKU_MODEL} --dangerously-skip-permissions',
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
+            cwd=str(claude_dir),
         )
         try:
             out, _ = await asyncio.wait_for(proc.communicate(), timeout=45)
@@ -330,7 +355,7 @@ async def _oracle_pass(
             return True, "none", "oracle timeout (45s)", True
         raw = out.decode().strip()
         try:
-            data = json.loads(raw)
+            data = json.loads(_strip_json_fence(raw))
             passed = bool(data.get("pass", True))
             confidence = str(data.get("confidence", "medium"))
             issues = data.get("issues", [])
@@ -423,11 +448,14 @@ async def _oracle_review_chunk(
     prompt_file = claude_dir / f"oracle-{uuid.uuid4().hex[:8]}.md"
     try:
         prompt_file.write_text(prompt)
+        # Grader containment — see _oracle_pass: cwd pinned to the scratch dir
+        # so an agentic grader cannot write into the project repo.
         proc = await asyncio.create_subprocess_shell(
             f'claude -p "$(cat {shlex.quote(str(prompt_file))})" '
             f'--model {HAIKU_MODEL} --dangerously-skip-permissions',
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
+            cwd=str(claude_dir),
         )
         try:
             out, _ = await asyncio.wait_for(proc.communicate(), timeout=60)
@@ -437,7 +465,7 @@ async def _oracle_review_chunk(
             return True, "oracle timeout (60s)", True
         raw = out.decode().strip()
         try:
-            data = json.loads(raw)
+            data = json.loads(_strip_json_fence(raw))
             approved = data.get("decision", "").upper() == "APPROVED"
             fix_guidance = data.get("fix_guidance", "")
             dims = data.get("dimensions", {})

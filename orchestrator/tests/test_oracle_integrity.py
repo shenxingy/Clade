@@ -133,6 +133,22 @@ class TestOraclePassLiveness:
         assert infra is False
         assert "missing null check" in issues
 
+    async def test_fenced_json_is_parsed_not_infra(self, tmp_path, monkeypatch):
+        """Haiku fences its JSON despite 'no markdown' — caught live 2026-06-12.
+
+        A fenced verdict must parse as a real review, never an infra error
+        (before the fix, a healthy oracle was 100% 'unreviewed' in production).
+        """
+        payload = json.dumps({"pass": False, "confidence": "high", "issues": ["bad guard"]})
+        out = f"```json\n{payload}\n```".encode()
+        monkeypatch.setattr(
+            wr, "asyncio",
+            AsyncioProxy(create_subprocess_shell=_shell_returning(FakeProc(out))),
+        )
+        passed, conf, issues, infra = await wr._oracle_pass("prompt", tmp_path)
+        assert (passed, infra) == (False, False)
+        assert "bad guard" in issues
+
 
 # ─── _oracle_review_chunk liveness ───────────────────────────────────────────
 
@@ -167,6 +183,64 @@ class TestOracleChunkLiveness:
         approved, reason, infra = await wr._oracle_review_chunk("task", "diff", "", tmp_path)
         assert (approved, infra) == (False, False)
         assert "wrong file" in reason
+
+    async def test_fenced_chunk_json_is_parsed_not_infra(self, tmp_path, monkeypatch):
+        """The chunked path must also unwrap fenced verdicts (live 2026-06-12)."""
+        payload = json.dumps({
+            "decision": "REJECTED", "confidence": "high",
+            "findings": [{"dimension": "correctness", "severity": "error",
+                          "fix_suggestion": "guard the index at api.py:10"}],
+            "fix_guidance": "fix the bounds check",
+        })
+        out = f"```json\n{payload}\n```".encode()
+        monkeypatch.setattr(
+            wr, "asyncio",
+            AsyncioProxy(create_subprocess_shell=_shell_returning(FakeProc(out))),
+        )
+        approved, reason, infra = await wr._oracle_review_chunk("task", "diff", "", tmp_path)
+        assert (approved, infra) == (False, False)
+        assert "Oracle rejected" in reason
+
+    async def test_grader_cwd_confined_to_scratch_dir(self, tmp_path, monkeypatch):
+        """Agentic-grader containment (live eval 2026-06-12: graders wrote to
+        the repo, committed, and pushed). Both grader entry points must pin
+        the subprocess cwd to the .claude scratch dir."""
+        out = json.dumps({"pass": True, "confidence": "high", "issues": []}).encode()
+        captured: dict = {}
+
+        async def _capturing_shell(cmd, **kwargs):
+            captured.update(kwargs)
+            return FakeProc(out)
+
+        monkeypatch.setattr(
+            wr, "asyncio", AsyncioProxy(create_subprocess_shell=_capturing_shell)
+        )
+        await wr._oracle_pass("prompt", tmp_path)
+        assert captured.get("cwd") == str(tmp_path)
+
+        captured.clear()
+        chunk_out = json.dumps({"decision": "APPROVED", "findings": []}).encode()
+
+        async def _capturing_shell_chunk(cmd, **kwargs):
+            captured.update(kwargs)
+            return FakeProc(chunk_out)
+
+        monkeypatch.setattr(
+            wr, "asyncio", AsyncioProxy(create_subprocess_shell=_capturing_shell_chunk)
+        )
+        await wr._oracle_review_chunk("task", "diff", "", tmp_path)
+        assert captured.get("cwd") == str(tmp_path)
+
+    def test_strip_json_fence_edge_cases(self):
+        assert wr._strip_json_fence('```json\n{"pass":true}\n```') == '{"pass":true}'
+        assert wr._strip_json_fence('```\n{"pass":true}\n```') == '{"pass":true}'
+        assert wr._strip_json_fence('  ```json\n{"a":1}\n```  ') == '{"a":1}'
+        # untouched: bare JSON, legacy text verdicts, partial fences, garbage
+        assert wr._strip_json_fence('{"pass":true}') == '{"pass":true}'
+        assert wr._strip_json_fence("APPROVED: looks good") == "APPROVED: looks good"
+        assert wr._strip_json_fence("prefix ```json\n{}\n```") == "prefix ```json\n{}\n```"
+        assert wr._strip_json_fence("Error: rate limited") == "Error: rate limited"
+        assert wr._strip_json_fence("") == ""
 
     async def test_garbage_output_is_infra(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
