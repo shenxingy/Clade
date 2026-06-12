@@ -24,6 +24,8 @@
 #   --worker-model MODEL  worker model (default: same as supervisor)
 #   --max-iter N          max iterations (default: 10)
 #   --max-workers N       max parallel workers (default: 4)
+#   --supervisor-timeout N  supervisor LLM timeout in seconds (default: 120;
+#                           raise for multi-workstream goals)
 #   --context FILE        pre-generated context file (passed to supervisor)
 #   --state FILE          state file (default: .claude/loop-state.json)
 #   --log-dir DIR         log directory (default: logs/loop)
@@ -77,7 +79,10 @@ readonly MAX_CONSECUTIVE_NO_COMMITS=3   # consecutive empty iters → force stop
 readonly MAX_CONSECUTIVE_FAILURES=3     # consecutive worker failures (ran but no commits) → force stop
 readonly SYNTAX_CHECK_TIMEOUT=30        # syntax check timeout (seconds)
 readonly TEST_SAMPLE_TIMEOUT=120        # verify_cmd timeout (seconds)
-readonly SUPERVISOR_TIMEOUT=120         # supervisor LLM call timeout (seconds)
+# Supervisor timeout is NOT readonly: complex multi-workstream goals need more
+# than the 120s default to plan (align-elites goal hit 3×120s timeouts →
+# stuck_no_tasks). Override with --supervisor-timeout N.
+SUPERVISOR_TIMEOUT=120                  # supervisor LLM call timeout (seconds)
 readonly WORKER_TIMEOUT=600             # per-worker timeout (seconds)
 readonly MAX_FIX_ATTEMPTS=1             # syntax fix: max 1 LLM call per iter
 # ────────────────────────────────────────────────────────────────
@@ -139,6 +144,7 @@ print(f'Interrupt state written to {path}')
       --worker-model) WORKER_MODEL="$2"; shift 2 ;;
       --max-iter)     MAX_ITER="$2"; shift 2 ;;
       --max-workers)  MAX_WORKERS="$2"; shift 2 ;;
+      --supervisor-timeout) SUPERVISOR_TIMEOUT="$2"; shift 2 ;;
       --max-consecutive-failures) MAX_CONSECUTIVE_FAILURESOverride="$2"; shift 2 ;;
       --context)      CONTEXT_FILE="$2"; shift 2 ;;
       --state)        STATE_FILE="$2"; shift 2 ;;
