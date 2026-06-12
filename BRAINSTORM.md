@@ -12,6 +12,59 @@ Past resolved/deferred items live in [`docs/archive/BRAINSTORM-resolved.md`](doc
 
 ---
 
+## [Research] 2026-06-12 — Elite workflows ROUND 2 (deeper re-sweep, same 6 sources)
+
+User question: 再学习一轮他们，看看我们的学习成果和他们的是否还有gap. Round 2 dug below round 1's surface: actual dotfiles/.claude/pi-extension internals (Mic92, lovesegfault), project repos as machine-operations manuals (felixrieseberg), fleet-automation mechanics + blog doctrine (domdomegg), merged-PR craft threads (controversial), plus Anthropic engineering blog 2025-26, claude-code official hook/subagent docs, and the claude_agent_sdk + CMA cookbooks. ~70 new mechanisms surveyed; every candidate verified against the codebase before a verdict.
+
+> **RESOLVED 2026-06-12** — 4 confirmed gaps, all landed same turn with covering tests (suite 517→521): non-interactive git env `d01a8d7`; fix-task Phase-3 structural close + oracle one-step-removed + negative-scope completion contract `adf98db`. Wave-1/2 deploy-gap audit: zero gaps (details below).
+
+### Confirmed gaps (landed same turn)
+
+1. **[S/medium] Non-interactive git env** (Mic92 `git-rebase-env.ts`): nothing set `GIT_EDITOR` — a worker hitting rebase/amend parks on an editor forever. Now `GIT_EDITOR/GIT_SEQUENCE_EDITOR/GIT_PAGER=cat` in worker.py spawn env (setdefault) + both shell runners' generated runner scripts. `d01a8d7`
+2. **[S/medium] Fix-task structural close** (lovesegfault REVIEW.md): fix template stopped at "patch + lint" — no sibling sweep, no dead-code sweep, no done-gate. Phase 3 added to `_fix_two_phase`: sweep whole file ±50 lines + module, remove obsoleted state, end completion summary with a literal `Done-gate:` command line. `adf98db`
+3. **[S/medium] Verifier one step removed** (lovesegfault r25: 8/12 regressions were introduced BY fixes verified only against the original claim): oracle now walks inverse input / next lifecycle transition / sibling consumer with concrete examples on fix-intent tasks (`_FIX_ONE_STEP_CRITERION`). `adf98db`
+4. **[S/low] Negative-scope declaration** (controversial): completion contract now demands deliberate exclusions + uncertainties in `summary`, which already flows into structured PR bodies — reviewers learn weak spots from the author. `adf98db`
+
+### Parity confirmed with round-2 evidence (查过了，不是照搬)
+
+- SHA-pinned CI actions with version comments → ci.yml already pins all `uses:` to full SHAs (cookbooks devsec discipline, verified)
+- Numeric narration bound to source keys (lovesegfault census ratchet) → `docs/facts.json` + doc-align.py check/apply is the same mechanism
+- Tool scoping as capability security (cookbooks `disallowed_tools`) → `config._TOOL_SUBSETS` per task type (review = read-only) already does this for workers
+- Fail-open-toward-stopping loop hooks → official ralph-wiggum plugin validates Clade's existing stop-hook circuit-breaker doctrine
+- `setting_sources` judge/worker split → SDK notebook 01 documents the exact contract behind this week's 386a862/9fd1720 fixes
+- Conflict handling: run-tasks-parallel aborts the merge and reruns the task serially on updated main — deterministic, never LLM-guessed conflict resolution; judged BETTER than mic92's resolve-doctrine at this topology (different_not_deficient)
+- File-claim locks / fresh-context respawn / 1-2k distilled subagent summaries (C-compiler + multi-agent blog) → OWN_FILES + loop-runner re-spawn + worker TLDR
+- Immutable feature list anti-reward-hacking (Nov-25 blog) → VERIFY.md checkpoints + fix-intent test criterion cover the same failure
+- Friction logs / model self-reported feedback (domdomegg) → partial parity via BRAINSTORM [AI] inbox + skipped.md routing
+
+### Rejected (different ≠ deficient / N-A)
+
+- pueue job queue (mic92) — CC harness background tasks + Monitor cover it; smart-caveman register = personal style
+- One-ruleset-many-harnesses + private claude.md repo (mic92) — single-tool scope (round-1 precedent); /btw tangent-strip + autoCompact-off = harness layer, unreachable from skill layer
+- nostr-walkie phone steering — Telegram notify + web UI + worker mailbox cover the capability
+- CMA platform features (outcome-grader event, session pods, transcript fork, FUSE memory, HITL webhooks, coordinator threads, sandbox workers) — hosted-platform topology; Clade is local-first; outcome-grader spirit = oracle
+- WIF keyless auth / GCP secret brokerage — no cloud secret fleet; CI already key-gated + SHA-pinned
+- nbdime (no notebooks), formal Quint/Kani/MBT layer (cost/scope), BASH_ENV direnv shim (no direnv here; .venv symlink bootstrap covers), tracey (re-confirmed round-1: VERIFY.md equivalent), two-stage permission classifier (CC ships auto mode at harness level)
+
+### Noted, not landed (candidates for a future wave)
+
+- [ ] Mutation testing as run-over-run missed-count diff ratchet, narrow high-signal targets first (lovesegfault mutants.toml) [M/medium — patrol-lane experiment]
+- [ ] Judge hardening: pure judges could add `--disallowed-tools` belt-and-braces (cookbooks: allowed gates prompting, disallowed gates availability) [S/low]
+- [ ] Standing friction-log instruction for workers (append harness pain to BRAINSTORM [AI]) [S/low]
+- [ ] `input_examples` on mcp_server tool definitions (advanced-tool-use blog: 72%→90% complex-param accuracy) [S/low]
+- [ ] Strike-ladder N=4..7 structural-close templates as /audit reference doc (delete-reimplementation, make-function-total, single-emit-chokepoint) [S/low prose]
+- [ ] Flake-verdict policy doc for test-loop-real (felixrieseberg: "one SUCCESS = good, three identical failures = content must change") [S/low]
+
+### Wave-1/2 deploy-gap audit (this repo's recurring failure class — checked deliberately)
+
+All 15 spot-checked round-1 adoptions are wired end-to-end: oracle liveness returns `infra_error` flags; tests run BEFORE oracle gate and auto_push (worker.py:800); quiet-run.sh referenced by /verify, /review, loop-runner; rule-injector + mailbox-drain registered in settings-hooks.json; checks.sh called from committer.sh AND ci.yml; validate-skills in ci.yml AND install.sh; ensure_repo_invariants fired from session init; merge --auto + do-not-merge in routes/tasks.py; evals/ present (its README notes it already caught a 17/17 'unreviewed' misparse on day one); MCP compact default-on; commit-body mandate in /commit. **Zero deploy-gaps found.**
+
+### Correction to round 1
+
+domdomegg's npm publishing is NOT npm trusted publishing — it's GCP Workload Identity Federation token brokerage (GitHub OIDC → gcloud secrets access → masked `npm publish`); only his MCP-registry publishing is true OIDC. Still N-A for Clade (no package fleet), but the round-1 ledger term "OIDC secrets" was imprecise.
+
+---
+
 ## [Research] 2026-06-12 — Elite workflows study (claude-cookbooks + 5 profiles)
 
 User question: 完整的学习他们的工作流，看看凭什么他们能又高质量又快。 Six sources swept, every practice adversarially verified against Clade's codebase (verdicts: confirmed_gap / parity / different_not_deficient / N-A). 21 adopt-now gaps, 3 bigger bets, 31 parity confirmations, 28 rejections.

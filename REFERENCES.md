@@ -53,7 +53,7 @@ Resources Clade has learned from — design patterns, architectural decisions, a
 
 **What it is:** Cross-study of [anthropics/claude-cookbooks](https://github.com/anthropics/claude-cookbooks) and five elite practitioners — [Mic92](https://github.com/Mic92) (Jörg Thalheim, NixOS infra), [felixrieseberg](https://github.com/felixrieseberg) (Claude Code Desktop lead), [domdomegg](https://github.com/domdomegg) (Adam Jones, ~172 repos at near-zero marginal cost), [lovesegfault](https://github.com/lovesegfault) (Bernardo Meurer, best public `.claude/` toolkit observed), [controversial](https://github.com/controversial) (Luke Deen Taylor, Claude-authored PRs merged into zed in <4h). Four of the five work at Anthropic.
 
-**Studied:** 2026-06-12. Full ledger: 87 practices → 48 adopted (waves 1+2, ~50 commits `e038bc4..`), 31 parity-confirmed, 26 rejected with reasons (2 original rejections overturned on audit). Research entry + per-item dispositions in [BRAINSTORM.md](BRAINSTORM.md) (archived to `docs/archive/BRAINSTORM-resolved.md` on next cleanup).
+**Studied:** 2026-06-12. Full ledger: 87 practices → 48 adopted (waves 1+2, ~50 commits `e038bc4..`), 31 parity-confirmed, 26 rejected with reasons (2 original rejections overturned on audit). **Round 2 (same day, deeper re-sweep of dotfiles/.claude internals, engineering blog, official docs, SDK/CMA cookbooks):** ~70 further mechanisms → 4 confirmed gaps landed same turn (`d01a8d7`, `adf98db`), 9 parity confirmations with new evidence, rest rejected as topology/N-A; wave-1/2 deploy-gap audit found zero broken wiring. Research entries + per-item dispositions in [BRAINSTORM.md](BRAINSTORM.md) (archived to `docs/archive/BRAINSTORM-resolved.md` on next cleanup).
 
 **The meta-answer (凭什么又快又好):** quality made machine-checkable collapses review into verification; CI duration is the system's clock speed; default-allow with a surgical deny list; done = merged with green CI and failures route back into the gate, not a human inbox; setup paid once, amortized fleet-wide; small reversible units with evidence attached buy merge speed; every failure debugged at most once (3rd strike → structural fix); AI multiplies output — winners spend the multiplier on depth, not breadth.
 
@@ -78,6 +78,10 @@ Resources Clade has learned from — design patterns, architectural decisions, a
 | lovesegfault | Frozen schema behind a blessed-regeneration snapshot | ✅ test_schema_frozen.py `d1b8cfb` |
 | controversial | Bug-fix without a covering test doesn't pass review | ✅ fix-intent oracle criterion `a8f34b6` |
 | controversial | Dependency bugs: repro → upstream patch > pin-with-link, never silent | ✅ /investigate Phase 6b `042976e` |
+| Mic92 (R2) | Non-interactive git: GIT_EDITOR=cat so rebase never parks an agent, plan prints to the log | ✅ worker env + runner scripts `d01a8d7` |
+| lovesegfault (R2) | Structural close per fix: sibling sweep + dead-code sweep + literal Done-gate commands | ✅ fix-task Phase 3 `adf98db` |
+| lovesegfault (R2) | Verify one step removed — fixes checked only against the original claim caused 8/12 next-round regressions | ✅ oracle fix-intent criterion `adf98db` |
+| controversial (R2) | Negative scope declared by the author — reviewers learn weak spots from the PR body, not by discovery | ✅ completion contract → PR body `adf98db` |
 
 **Key insight:** Fast AND good is the same multiplier spent twice — once on the artifact, once on the gates that keep it cheap to change. The configuration layer (CLAUDE.md, rules, skills) is the surface; the differentiator is what's NOT prompt files: machine gates, fast CI, templates, and the nerve to invert approval defaults because the gates are real.
 
