@@ -52,6 +52,88 @@ def _gh_label() -> str:
     return GLOBAL_SETTINGS.get("github_issues_label", "orchestrator")
 
 
+# ─── Repo Invariants Preflight (domdomegg) ────────────────────────────────────
+
+_STATUS_LABELS = ("pending", "running", "done", "failed")
+
+
+async def _run_gh(cmd: str, project_dir: Path, timeout: int = 20) -> tuple[int, str, str]:
+    """Run a gh command. Returns (returncode, stdout, stderr); rc=-1 with the
+    failure reason in stderr on timeout/spawn errors — callers stay fail-open."""
+    try:
+        proc = await asyncio.create_subprocess_shell(
+            cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            cwd=str(project_dir),
+        )
+        try:
+            out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
+            return -1, "", "timeout"
+        return proc.returncode or 0, out.decode(), err.decode()
+    except Exception as e:  # gh missing, fork failure, …
+        return -1, "", str(e)
+
+
+async def ensure_repo_invariants(
+    project_dir: Path, *, ensure_labels: bool = True, check_merge: bool = True
+) -> dict:
+    """Preflight the GitHub-facing invariants the orchestrator relies on.
+
+    - ensure_labels: `gh label create --force` for the orchestrator label +
+      pending/running/done/failed (idempotent). Without these, Issues sync is
+      silently DOA on fresh repos — every fail-open label call returns None.
+    - check_merge: `gh repo view --json viewerPermission,squashMergeAllowed`
+      so missing push rights / disabled squash merge surface before a run.
+
+    Fail-open by design: every gh failure lands in findings["warnings"] with a
+    logged warning, never raised. On machines without gh auth or network this
+    is a harmless no-op that only records warnings.
+    """
+    findings: dict = {
+        "labels_ensured": [], "warnings": [],
+        "viewer_permission": None, "squash_merge_allowed": None,
+    }
+    if ensure_labels:
+        for label in (_gh_label(), *_STATUS_LABELS):
+            rc, _out, err = await _run_gh(
+                f'gh label create {shlex.quote(label)} --force', project_dir
+            )
+            if rc == 0:
+                findings["labels_ensured"].append(label)
+            else:
+                findings["warnings"].append(
+                    f"label '{label}': {err.strip()[:120] or 'gh failed'}"
+                )
+    if check_merge:
+        rc, out, err = await _run_gh(
+            'gh repo view --json viewerPermission,squashMergeAllowed', project_dir
+        )
+        if rc != 0:
+            findings["warnings"].append(
+                f"gh repo view: {err.strip()[:120] or 'gh failed'}"
+            )
+        else:
+            try:
+                data = json.loads(out)
+                findings["viewer_permission"] = data.get("viewerPermission")
+                findings["squash_merge_allowed"] = data.get("squashMergeAllowed")
+                if findings["viewer_permission"] not in ("WRITE", "MAINTAIN", "ADMIN"):
+                    findings["warnings"].append(
+                        f"viewerPermission={findings['viewer_permission']} — push/merge will fail"
+                    )
+                if findings["squash_merge_allowed"] is False:
+                    findings["warnings"].append(
+                        "squash merge disabled — gh pr merge --squash will fail"
+                    )
+            except Exception:
+                findings["warnings"].append("gh repo view returned unparseable JSON")
+    for warning in findings["warnings"]:
+        logger.warning("repo invariants preflight: %s", warning)
+    return findings
+
+
 async def _gh_create_issue(task: dict, project_dir: Path, db_path: Path) -> int | None:
     """Create GitHub Issue from task. Returns issue number or None."""
     if not GLOBAL_SETTINGS.get("github_issues_sync"):

@@ -229,6 +229,7 @@ $(if [[ -f ".claude/blockers.md" ]]; then cat .claude/blockers.md; else echo "No
 ### Iterations: ${OUTER_ITER}
 
 ### Feature: ${CURRENT_FEATURE:-unknown}
+$(if [[ -n "${REPO_INVARIANT_WARNING:-}" ]]; then echo ""; echo "### Repo preflight: ${REPO_INVARIANT_WARNING}"; fi)
 EOF
 
   _log "Session report written to ${REPORT_DIR}/session-report-${SESSION_ID}.md"
@@ -574,6 +575,28 @@ _check_startup_health() {
     if [[ -n "$avail_mb" && "$avail_mb" -lt 512 ]]; then
       echo "⚠ Low memory: ${avail_mb}MB available. Workers may OOM."
     fi
+  fi
+
+  # Repo-invariants preflight (domdomegg) — warn-only, fail-open.
+  # Checks the GitHub assumptions unattended runs rely on (push rights,
+  # squash merge); label creation stays in the orchestrator layer.
+  REPO_INVARIANT_WARNING=""
+  if command -v gh &>/dev/null && git rev-parse --is-inside-work-tree &>/dev/null; then
+    local _repo_perms
+    _repo_perms=$(gh repo view --json viewerPermission,squashMergeAllowed \
+      --jq '"\(.viewerPermission) \(.squashMergeAllowed)"' 2>/dev/null) || _repo_perms=""
+    if [[ -n "$_repo_perms" ]]; then
+      local _viewer="${_repo_perms%% *}" _squash="${_repo_perms##* }"
+      if [[ "$_viewer" != "ADMIN" && "$_viewer" != "MAINTAIN" && "$_viewer" != "WRITE" ]]; then
+        REPO_INVARIANT_WARNING="viewerPermission=${_viewer} — pushes/PR merges will fail"
+      elif [[ "$_squash" == "false" ]]; then
+        REPO_INVARIANT_WARNING="squash merge disabled — auto-merge (--squash) will fail"
+      fi
+    fi
+    # no gh auth / no network / non-GitHub remote → silent skip (fail-open)
+  fi
+  if [[ -n "$REPO_INVARIANT_WARNING" && -t 0 ]]; then
+    echo "⚠ Repo preflight: $REPO_INVARIANT_WARNING"
   fi
 
   # Stale kit detection — source configs/ changed since last install.sh

@@ -136,6 +136,30 @@ class ProjectSession:
         self._coverage_scan_last: float = 0.0
         self._dep_update_last: float = 0.0
         self._priority_rank_last: float = 0.0
+        # Repo-invariants preflight (domdomegg): labels + merge perms, fail-open
+        self._schedule_repo_preflight()
+
+    def _schedule_repo_preflight(self) -> None:
+        """Fire-and-forget ensure_repo_invariants when GitHub features are on.
+
+        Labels are only ensured when Issues sync is enabled; merge permissions
+        only checked when auto-merge is enabled. The task itself is fail-open
+        (logged warnings, no raises) — machines without gh auth or network are
+        unaffected.
+        """
+        sync_on = bool(GLOBAL_SETTINGS.get("github_issues_sync"))
+        merge_on = bool(GLOBAL_SETTINGS.get("auto_merge", True))
+        if not (sync_on or merge_on):
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return  # constructed outside an event loop (tests/CLI) — skip preflight
+        from github_sync import ensure_repo_invariants  # lazy: keep import DAG light
+
+        loop.create_task(ensure_repo_invariants(
+            self.project_dir, ensure_labels=sync_on, check_merge=merge_on,
+        ))
 
     @property
     def name(self) -> str:
