@@ -130,10 +130,10 @@ The system has implicit roles, not explicit microservices. Each role maps to exi
 
 ## Two Pillars
 
-### CLI Layer — The Engine
+### CLI Layer — The Product Center
 `configs/` → installed to `~/.claude/` via `install.sh`
 
-Works everywhere: SSH, tmux, CI, phone via Tailscale. No server required.
+**The interface you live in.** Where work actually happens: `/commit`, `/loop`, `/verify`, `/orchestrate`. Works everywhere: SSH, tmux, CI, phone via Tailscale. No server required.
 
 | Category | Components |
 |---|---|
@@ -144,28 +144,31 @@ Works everywhere: SSH, tmux, CI, phone via Tailscale. No server required.
 
 **Strengths:** Scriptable, composable, safe for self-modification (scripts external to codebase), works in any environment, zero-dependency.
 
-**Limitations:** No real-time visualization, no mobile dashboard, no multi-project overview at a glance.
+### Orchestrator Layer — Observability + Gates + Execution Adapter
+`orchestrator/` (Python FastAPI server)
 
-### Orchestrator Layer — The Cockpit
-`orchestrator/` (Python FastAPI + vanilla JS web UI)
+**Three separate roles:**
+- **Observability** (metrics, dashboards, cost tracking) — "What's happening across all my projects?"
+- **Gates** (quality checks, oracle validation, threshold enforcement) — Enforces standards before pushing
+- **Execution adapter** (task dispatch, worker pool, GitHub sync) — Routes work to CLI workers, collects results
 
-Adds what CLI can't provide:
+**Web UI** (`orchestrator/web/`): Read-only observation window. Displays task queue, worker status, cost dashboards, settings. All execution happens via CLI workers — the UI is a window into that work, not an executor itself.
 
 | Capability | What It Does |
 |---|---|
 | Ideas inbox | Async idea input, AI evaluation, one-click execute via start.sh |
 | Worker dashboard | Real-time status, logs, token bars per worker |
-| Task management | Preset cards, queue overview, add/run/delete tasks |
+| Quality gates | Oracle validation, model routing, context budget enforcement |
+| Task management | Queue overview, add/run/delete/prioritize tasks |
 | Process manager | Start/stop start.sh processes, view logs and reports |
 | Multi-project view | All sessions at a glance — queue depth, cost rate, health |
-| Settings panel | Zero-click autonomous run configuration |
-| GitHub integration | Webhooks (issue label → task), PR auto-creation |
+| GitHub integration | Webhooks (issue label → task), PR auto-creation, sync |
 
-**Role:** Monitoring + high-level configuration. NOT the daily workflow entry point (that's TUI). The cockpit answers "what's happening across all my projects?" — the TUI answers "get this done."
+**Role:** Provides oversight + constraints. NOT the daily workflow entry point (that's TUI/CLI). The orchestrator answers "what's happening and is it safe?" — the CLI answers "get this done."
 
 ### Mutual Exclusion
 
-Both layers can run autonomous loops (CLI: `start.sh` / `loop-runner.sh`, GUI: orchestrator iteration loop). **Only one loop per project at a time.** `start.sh` uses `flock` on `.claude/start.lock`; orchestrator should check the same lock. Running both simultaneously on the same project will cause worktree and commit conflicts.
+Both layers can run autonomous loops (CLI: `start.sh` / `loop-runner.sh`, Orchestrator: iteration loop). **Only one loop per project at a time.** `start.sh` uses `flock` on `.claude/start.lock`; orchestrator should check the same lock. Running both simultaneously on the same project will cause worktree and commit conflicts.
 
 ---
 
