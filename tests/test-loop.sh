@@ -11,13 +11,26 @@
 #   STOP sentinel, resume, error handling, worktree lifecycle.
 #
 # Usage:
-#   bash tests/test-loop.sh           # Run all tests
+#   bash tests/test-loop.sh           # Run all tests (mocked claude — free)
 #   bash tests/test-loop.sh -v        # Verbose mode
 #   bash tests/test-loop.sh PATTERN   # Run tests matching pattern
+#   bash tests/test-loop.sh --real    # Key-gated REAL-API tier (delegates to
+#                                     # tests/test-loop-real.sh): one cheap live
+#                                     # claude CLI scenario (~$0.05). Without a
+#                                     # real claude CLI + credentials it prints
+#                                     # SKIP and exits 0 (two-tier pattern —
+#                                     # push CI stays free and deterministic).
 
 set -uo pipefail
 
 # ─── Test framework ──────────────────────────────────────────────────
+# REAL-API tier lives in its own script (1500-line cap on this one): the mock
+# suites below never spend money; --real runs exactly one live-CLI scenario.
+if [[ "${1:-}" == "--real" ]]; then
+  shift
+  exec bash "$(cd "$(dirname "$0")" && pwd)/test-loop-real.sh" "$@"
+fi
+
 TESTS_RUN=0
 TESTS_PASSED=0
 TESTS_FAILED=0

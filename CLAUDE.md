@@ -163,7 +163,10 @@ configs/scripts/regen-mcp-package.sh
 ```
 
 CI runs 4 jobs on push/PR to main: `syntax-check` (includes the mcp-package
-skills drift gate), `pytest`, `shell-tests`, `install-test`.
+skills drift gate), `pytest`, `shell-tests`, `install-test`. A fifth key-gated
+job (`real-api-loop`) runs only on workflow_dispatch/weekly schedule: one live
+claude CLI loop scenario (~$0.05) via `bash tests/test-loop.sh --real` —
+without claude CLI + credentials it prints SKIP and exits 0.
 
 ## Code Rules
 

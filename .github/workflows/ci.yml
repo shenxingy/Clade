@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Real-API tier (job `real-api-loop` below): manual or weekly only —
+  # push/PR CI stays free and deterministic on mocked claude.
+  workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * 1"  # Mondays 06:17 UTC
 
 jobs:
   syntax-check:
@@ -127,3 +132,24 @@ jobs:
       # Cross-Project Rules surviving reinstall, settings merge, symlinks
       - name: Run install test
         run: bash tests/test-install.sh
+
+  # Key-gated REAL-API tier (two-tier pattern): one cheap live-CLI loop
+  # scenario (~$0.05) that catches mock-vs-real claude drift — flag changes,
+  # `claude -p` output format, supervisor JSON extraction. Never runs on
+  # push/PR; the script self-gates on credentials (no ANTHROPIC_API_KEY →
+  # prints SKIP and exits 0, so forks and keyless runs stay green).
+  real-api-loop:
+    name: Real-API Loop Tier (key-gated)
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Run real-API loop tier
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: bash tests/test-loop.sh --real
