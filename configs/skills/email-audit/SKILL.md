@@ -1,7 +1,7 @@
 ---
 name: email-audit
 description: Audits email domain deliverability setup (SPF, DKIM, DMARC, MX records, blacklists, TLS) and generates health score (0-100) with prioritized fix list. Checks bulk sender compliance against Google/Yahoo/Microsoft 2024-2026 requirements. Provides DNS records to add/update. Use when user asks to audit, check, or analyze email deliverability, domain health, or inbox placement.
-user-invocable: false
+user_invocable: false
 allowed-tools:
   - Read
   - Bash

@@ -1,7 +1,7 @@
 ---
 name: email-review
 description: Pre-send email quality review and scoring across 5 dimensions (subject line, copy quality, technical/HTML, deliverability, compliance). Analyzes subject lines, body copy, HTML structure, spam triggers, and CAN-SPAM compliance. Scores 0-100 with detailed recommendations for improvement. Use when user wants to review an email before sending, check email quality, or validate marketing email best practices.
-user-invocable: false
+user_invocable: false
 allowed-tools:
   - Read
   - Bash

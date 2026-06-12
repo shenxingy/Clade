@@ -1,7 +1,7 @@
 ---
 name: seo-content-brief
 description: Generate competitive SEO content briefs with per-section word counts, competitor scoring, keyword density guidance, and page-type templates. Supports both new page briefs and improve-existing-page briefs. Use when user says "content brief", "write a brief", "content outline", "blog brief", "service page brief", "brief for", "writing brief", "content plan", or "outline for".
-user-invokable: true
+user_invocable: true
 argument-hint: "[url-or-keyword] [page-type]"
 license: MIT
 metadata:

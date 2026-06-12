@@ -1,7 +1,7 @@
 ---
 name: email-check
 description: Intelligent inbox triage that connects to Gmail or Outlook, scores emails by importance (0-100) using sender recognition, urgency keywords, thread depth, time sensitivity, and business relevance, categorizes into Urgent/Important/Routine/Archive, and generates reply suggestions for top priority items. Use when the user wants to check email, review inbox, triage messages, see what's urgent, or get reply suggestions. Triggers on check email, inbox triage, what's important, email summary, unread emails, priority inbox.
-user-invocable: false
+user_invocable: false
 allowed-tools:
   - Read
   - Grep

@@ -1,7 +1,7 @@
 ---
 name: email-sequence
 description: Designs complete email automation sequences with timing, subject lines, copy, and conditional logic. Supports welcome series, nurture campaigns, re-engagement, abandoned cart, post-purchase, review requests, and custom sequences. Adapts sequence type, cadence, frameworks, and conditional branching to business context. Use when user wants to create an automated email series triggered by subscriber actions or time intervals.
-user-invocable: false
+user_invocable: false
 allowed-tools:
   - Read
   - Write

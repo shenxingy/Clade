@@ -1,7 +1,7 @@
 ---
 name: blog-translate
 description: "Translate existing blog posts into one or more target languages with SEO-optimized localization. Produces native-quality translations that preserve markdown structure, frontmatter, schema JSON-LD, image and chart embeds, and citation capsules. Localizes keywords, meta tags, numbers, dates, currencies, and quote styles per locale. Flags machine-translation artifacts for review. Run BEFORE blog-localize: this handles language conversion; localize handles cultural adaptation after translation completes. Use when user says \"translate blog\", \"blog translate\", \"uebersetzen\", \"traduire\", \"traducir\", \"translate post\", \"blog auf Deutsch\", \"blog en espanol\"."
-user-invokable: true
+user_invocable: true
 argument-hint: "<file> --to <comma-separated-codes>"
 license: MIT
 compatibility: Standalone within claude-blog. Invoked by blog-multilingual.

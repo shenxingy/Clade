@@ -1,7 +1,7 @@
 ---
 name: email-plan
 description: Generate comprehensive email marketing strategy with 90-day implementation roadmap. Analyzes business type (local-business, saas, ecommerce, creator, agency) to deliver industry-specific segmentation plans, automation sequences, content calendars, KPI targets, platform recommendations, and week-by-week rollout schedule. Use when building email program from scratch or restructuring existing strategy.
-user-invocable: false
+user_invocable: false
 allowed-tools:
   - Read
   - Write

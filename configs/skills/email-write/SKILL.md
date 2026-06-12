@@ -1,7 +1,7 @@
 ---
 name: email-write
 description: Compose high-converting emails using proven copy frameworks (PAS, AIDA, BAB, FAB, 4Ps). Generates subject line variants with scores, responsive HTML templates with dark mode support, plain-text fallback, and preheader recommendations. Optimized for cold outreach, newsletters, product launches, promotions, and transactional emails. Adapts to user context from email-profile.md.
-user-invocable: false
+user_invocable: false
 allowed-tools:
   - Read
   - Write
