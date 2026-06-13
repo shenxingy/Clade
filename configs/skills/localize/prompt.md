@@ -121,10 +121,73 @@ Hard rules every translation agent gets:
 - Idiomatic, register-correct, market-correct prose: zh-CN mainland vs zh-TW Taiwan conventions,
   pt-BR, neutral es, MSA Arabic, fr vouvoiement, German compound length. "Yes/No/Limited" data
   cells → natural target words.
+- **Pick ONE register per locale and hold it everywhere** — tú vs usted (es), du vs Sie (de),
+  你 vs 您 (zh), tu vs vous (fr), です/ます (ja), 합니다체 (ko). A flip between pages/sections (e.g.
+  pricing page in usted while the homepage is tú) is a defect a user feels when they click through.
+- **Localize numbers, not just digits.** Decimal/thousands separators and currency placement are
+  locale-specific: `98.2%` → `98,2 %` (de/fr/es/pt/id), `$0.05` → `0,05 $` (de/fr). Apply
+  consistently — a later edit (e.g. bumping an accuracy figure) often leaves ONE outlier in the
+  wrong format; sweep for it.
+- **"billion"/"million"/"trillion" are FALSE FRIENDS — translate the word.** In es/pt/fr/de a
+  *billion* is 10¹² (English billion = 10⁹). Leaving the English word both reads as untranslated
+  AND states a figure 1000× too large: `$40 billion` → `40 milliards/Mrd./mil millones/bilhões`.
+  Likewise localize standard regulation/term abbreviations the market expects (GDPR → RGPD fr /
+  DSGVO de; "AI" → IA es/pt/fr / KI de) while keeping brand + other acronyms verbatim.
+- **One term per concept, sitewide.** The same feature must use the same word on the homepage and
+  its product page (voice-clone term drift, detection 検出/検知, deepfake left in Latin on one page
+  and localized on another are classic homepage→subpage defects). Capitalization: **only English
+  Title-Cases headings** — German/French/etc. sentence-case; don't copy English Title Case.
 - Output must have the EXACT same key structure as the source (every leaf, none added/removed).
+  Wrap nothing: return `{ "<namespace>": {…} }`, NOT `{ "<namespace>": { "<namespace>": {…} } }`.
 
 Agents that hit a usage/rate limit may have **already written their files** before the error —
 check `/tmp` before re-spawning. For any locale an agent couldn't finish, translate it yourself.
+
+---
+
+## Phase 2.5 — Independent revision & MQM review (do NOT skip — this is the proofread step)
+
+Mechanical checks (parity, build, leak, viewport) prove a string *renders*; they say nothing about
+whether it *means the right thing*. The "billion" 1000×-error, a register flip, terminology drift,
+and a false-friend mistranslation all pass every Phase-4 gate. ISO 17100 requires a **second
+linguist** who did not translate the text; emulate that.
+
+- **Generator ≠ reviewer.** Spawn a FRESH agent per locale, told it did NOT do the translation and
+  to be **adversarial — assume errors exist and find them**. One agent reviewing its own output
+  rubber-stamps it.
+- **Back-translation as evidence.** The reviewer back-translates each flagged string (and the ~15
+  most-visible strings — hero, nav, CTAs, pricing — as a confidence check) to English so the
+  defect is verifiable, not asserted.
+- **Score with MQM** (categories: Accuracy, Fluency, Terminology, Locale-convention, Style, Verity,
+  Design, Internationalization; severity weights minor 1 / major 5 / critical 10). Return a 0–100
+  per locale + a structured issue list `{key, severity, sourceText, currentTranslation,
+  backTranslation, problem, suggestedFix}`. Reviewers write `/tmp/review-<locale>.json`; they do
+  NOT edit the repo.
+- **Hunt the [Semantic defect taxonomy](#semantic-defect-taxonomy) below** explicitly — these are
+  the classes that slip past mechanical checks.
+- **Apply fixes with per-locale fixer agents** — each owns ONE message file (disjoint → no write
+  conflicts), applies critical+major+clearly-correct-minor fixes by exact-string Edit, and
+  re-validates its own JSON + key count. Skip subjective/risky minors; preserve brand/ICU/tags.
+- Report the MQM scores; a locale scoring < ~80 usually has a systemic issue (register, format, or
+  a whole namespace machine-default) worth a second pass.
+
+---
+
+## Semantic defect taxonomy
+
+The error classes that pass build + leak + viewport but are real defects — the reviewer's checklist:
+
+| Class | Smell | Example seen in the wild |
+|---|---|---|
+| **False-friend number** | English "billion/million" left in target prose | `$40 billion` in es/pt/fr/de = 1000× too large; fix → milliards/Mrd./mil millones |
+| **Number/format drift** | dot-decimal in a comma-decimal locale, or one outlier | `98.2%` vs `98,2 %`; a single comma instance left by a later figure-bump |
+| **Register flip** | usted/Sie/您/vous on some pages, informal on others | es pricing+solutions in usted while the rest is tú |
+| **Terminology drift** | same concept, different word across pages | voice-clone 音声/ボイス, 検出/検知, deepfake Latin on homepage only |
+| **False-friend mistranslation** | a word translated by sound/cognate, not meaning | "forensic"→médico-légal, "honeypot"→isco(bait), "catfishing"→猫腻(fishy) |
+| **English Title Case copied** | Every Word Capitalized in a sentence-case language | German/French headings title-cased |
+| **Un-localized standard abbrev.** | global reg/term kept English where market localizes | GDPR (vs RGPD/DSGVO), AI (vs IA/KI) |
+| **Highlight/emphasis moved** | rich-tag accent lands on the wrong word after reorder | accent span on "threats" instead of "defense" |
+| **Partial coverage** | a whole namespace localized in some locales, not others | SEO `seoMeta` translated for 5/10 locales |
 
 ---
 
@@ -163,6 +226,24 @@ check `/tmp` before re-spawning. For any locale an agent couldn't finish, transl
    Note: below-fold sections often use scroll-reveal (`opacity:0` until in-view); a static element
    screenshot shows them empty — scroll the page first (`mouse.wheel` loop), then assert
    `getComputedStyle(row).opacity === "1"` before concluding anything is broken.
+   - **Chrome (nav/footer/switcher) is the highest-risk layout — audit it per-locale explicitly.**
+     Variable-width elements that were fine in English blow out in long locales: a language switcher
+     showing full names ("Bahasa Indonesia" ≈150px vs "English" ≈90px) and German/French nav labels
+     + CTAs ("Réserver une démo") overflow a single-row nav. Fixes: **compact, fixed-width chrome**
+     (globe + short code in the bar, full names in the dropdown), group logo+nav so the menu can't
+     center-collapse onto the logo under a 3-way `justify-between`, and collapse the search to an
+     icon below `xl`. **Measure the tightest case: the longest locale at the minimum desktop width
+     (1024)** — assert per-group bounding boxes don't touch (gap ≥ ~16px) and `nav.scrollWidth ≤
+     nav.clientWidth` (no overflow/clipped CTA).
+   - **Measurement gotchas:** wait for CSS to apply before measuring — `domcontentloaded` fires
+     before stylesheets, so the nav reads as block-stacked (full-width boxes); `waitForFunction(()
+     => getComputedStyle(nav).display === "flex")` first. If `header nav` is suddenly null or a
+     route's `[locale]` JS chunk 400s, you're on a STALE server (see landmine) — the served chunk
+     hash won't match disk.
+5. **Localized SEO metadata.** `<title>` and `meta[name=description]` must render in the target
+   language, not fall back to English — translate the SEO namespace (titles + meta descriptions per
+   route), and curl a couple of `/<loc>/...` pages asserting the `<title>` is localized. Watch for
+   **partial coverage** (a whole SEO namespace present in some locales, missing in others).
 
 ### Validation script (drop-in)
 ```js
@@ -206,6 +287,14 @@ for(const loc of LOCALES){const d=JSON.parse(fs.readFileSync(`/tmp/${loc}.json`)
   (`/ScamAI(?![A-Za-z0-9_])/`) and verify with tsc + a build.
 - **Agents told "don't edit the shared JSON" sometimes do anyway** — and concurrent writers can
   clobber. Have them RETURN JSON; you merge. Always re-validate the merged file parses.
+- **Double-wrapped agent output.** An agent asked for the `seoMeta` namespace may return
+  `{ "seoMeta": {…} }`; a naive `msg.seoMeta = loaded` then produces `seoMeta.seoMeta.*` — every key
+  both missing AND extra (parity drops by the namespace size). On merge, unwrap when the loaded
+  object has a single top-level key equal to the namespace. The parity validator's *extra-keys*
+  check (not just missing) is what catches this — always check both directions.
+- **False-friend numbers / un-reviewed semantics ship green.** "billion" left in es/pt/fr/de passes
+  build, leak, and viewport while stating a figure 1000× too large. Mechanical gates can't catch
+  meaning — the Phase 2.5 independent MQM review is the only thing that does. Don't skip it.
 
 ---
 
