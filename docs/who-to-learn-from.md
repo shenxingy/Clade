@@ -6,6 +6,8 @@
 
 A curated, **vetted** watch-list of the people, companies, blogs, and repos worth studying to keep Clade at the frontier of agentic coding. This is an *index*, not a dump — every entry is here because it directly improves how we build loops, orchestration, skills, and harnesses. Where we already have a deep-dive, it links to `docs/research/`.
 
+> **Companion doc:** [`docs/research/README.md`](research/README.md) is the other half — the **deep-dives we've already completed** plus a consolidated, effort-sorted **gap backlog**. This file = *who to study*; that file = *what we've studied + what's left to build*.
+
 > **三人行必有我师** — everyone on this list has *something*. But the tiers below are an honest editorial call about who is a **benchmark** for Clade's specific niche (autonomous loop + supervisor/worker orchestration on top of Claude Code) versus who is good-but-adjacent. Read Tier 1 first.
 
 - **Last reviewed:** 2026-06-13
@@ -117,7 +119,7 @@ Things my training memory (≤2026-01) had wrong, confirmed via web June 2026:
 
 ## Actionable gaps for Clade
 
-Not just reading — concrete, reversible things this sweep surfaced. (Not yet executed; pick and go.)
+Not just reading — concrete, reversible things this sweep surfaced. (Not yet executed; pick and go.) For the **full prioritized backlog** distilled from all 17 deep-dives, see [`research/README.md` → Open-gap backlog](research/README.md#open-gap-backlog-by-effort); the hottest cluster is **fault localization / context retrieval** (5 sources converge on it).
 
 1. **PR-body craft** — adopt OpenHands' pattern in `worker_review.py`: reviewer-facing rationale + **runnable test-plan command** in the body, and emit self-corrections (lint fixes) as a *distinct labeled commit* rather than amending.
 2. **Agent-authorship metric** — extend the existing fix-rate tracking into an Aider-style "% of release written by Clade workers" (git-blame at merge), surfaced in PROGRESS.md.
