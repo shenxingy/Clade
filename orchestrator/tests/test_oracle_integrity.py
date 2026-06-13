@@ -381,7 +381,7 @@ class TestOracleReviewAggregation:
             (True, "approved", False),
         ])
 
-        async def fake_chunk(task, chunk, label, cdir):
+        async def fake_chunk(task, chunk, label, cdir, constitution=""):
             return next(results)
 
         monkeypatch.setattr(wr, "_oracle_review_chunk", fake_chunk)
@@ -390,7 +390,7 @@ class TestOracleReviewAggregation:
         assert "rejected" in reason.lower()
 
     async def test_chunked_infra_only_is_unreviewed(self, tmp_path, monkeypatch):
-        async def fake_chunk(task, chunk, label, cdir):
+        async def fake_chunk(task, chunk, label, cdir, constitution=""):
             return True, "oracle timeout (60s)", True
 
         monkeypatch.setattr(wr, "_oracle_review_chunk", fake_chunk)
@@ -399,7 +399,7 @@ class TestOracleReviewAggregation:
         assert "infra" in reason
 
     async def test_chunked_all_approved(self, tmp_path, monkeypatch):
-        async def fake_chunk(task, chunk, label, cdir):
+        async def fake_chunk(task, chunk, label, cdir, constitution=""):
             return True, "approved", False
 
         monkeypatch.setattr(wr, "_oracle_review_chunk", fake_chunk)
@@ -715,7 +715,7 @@ class TestCriteriaReachTheOracle:
     async def test_chunked_path_receives_criteria(self, tmp_path, monkeypatch):
         seen_tasks: list[str] = []
 
-        async def fake_chunk(task, chunk, label, cdir):
+        async def fake_chunk(task, chunk, label, cdir, constitution=""):
             seen_tasks.append(task)
             return True, "approved", False
 
@@ -845,7 +845,7 @@ class TestEvidenceReachesPrompts:
     async def test_chunked_path_carries_evidence(self, tmp_path, monkeypatch):
         seen: list[str] = []
 
-        async def fake_chunk(task, chunk, label, cdir):
+        async def fake_chunk(task, chunk, label, cdir, constitution=""):
             seen.append(task)
             return True, "approved", False
 
@@ -1034,7 +1034,7 @@ class TestFixIntentCriterion:
     async def test_criterion_reaches_chunked_path(self, tmp_path, monkeypatch):
         seen: list[str] = []
 
-        async def fake_chunk(task, chunk, label, cdir):
+        async def fake_chunk(task, chunk, label, cdir, constitution=""):
             seen.append(task)
             return True, "approved", False
 
@@ -1065,3 +1065,87 @@ async def test_poll_all_requeues_on_pre_push_test_failure(task_queue, tmp_path):
     assert len(retries) == 1
     assert "2 failed" in retries[0]["description"]
     assert "implement feature X" in retries[0]["description"]
+
+
+# ─── Constitutional check (reflection-agents §Gap4) ───────────────────────────
+
+
+class TestReadConstitution:
+    """_read_constitution extracts the CLAUDE.md 'Code Rules' section, fail-open."""
+
+    def test_extracts_code_rules_section(self, tmp_path):
+        (tmp_path / "CLAUDE.md").write_text(
+            "# Project\n\nintro\n\n"
+            "## Code Rules\n\n- Keep files < 1500 lines\n- No circular imports\n\n"
+            "## Next Section\n\n- unrelated\n",
+            encoding="utf-8",
+        )
+        rules = wr._read_constitution(tmp_path)
+        assert "Keep files < 1500 lines" in rules
+        assert "No circular imports" in rules
+        # bounded: must NOT bleed into the following section
+        assert "unrelated" not in rules
+
+    def test_no_claude_md_returns_empty(self, tmp_path):
+        assert wr._read_constitution(tmp_path) == ""
+
+    def test_claude_md_without_code_rules_returns_empty(self, tmp_path):
+        (tmp_path / "CLAUDE.md").write_text(
+            "# Project\n\n## Architecture\n\n- modules\n", encoding="utf-8"
+        )
+        assert wr._read_constitution(tmp_path) == ""
+
+    def test_section_is_capped(self, tmp_path):
+        big = "\n".join(f"- rule {i}" for i in range(500))
+        (tmp_path / "CLAUDE.md").write_text(
+            f"## Code Rules\n\n{big}\n", encoding="utf-8"
+        )
+        assert len(wr._read_constitution(tmp_path)) <= 1500
+
+
+class TestConstitutionInjection:
+    """The constitution must reach the grader on BOTH oracle routes, and never
+    leak a header when no rules are declared."""
+
+    _SENTINEL = "Keep files < 1500 lines (sentinel-XYZ)"
+
+    async def test_constitution_reaches_quality_pass_short_diff(self, tmp_path, monkeypatch):
+        captured: list[str] = []
+
+        async def fake_pass(prompt, claude_dir):
+            captured.append(prompt)
+            return True, "high", "", False  # passed, conf, issues, infra
+
+        monkeypatch.setattr(wr, "_oracle_pass", fake_pass)
+        approved, reason, infra = await wr._oracle_review(
+            "task", "small diff", tmp_path, constitution=self._SENTINEL
+        )
+        assert approved and not infra
+        # spec pass (captured[0]) is task-only; quality pass (captured[1]) carries it
+        assert any("PROJECT CODE RULES" in p and self._SENTINEL in p for p in captured)
+
+    async def test_no_constitution_no_header_leak(self, tmp_path, monkeypatch):
+        captured: list[str] = []
+
+        async def fake_pass(prompt, claude_dir):
+            captured.append(prompt)
+            return True, "high", "", False
+
+        monkeypatch.setattr(wr, "_oracle_pass", fake_pass)
+        await wr._oracle_review("task", "small diff", tmp_path, constitution="")
+        assert all("PROJECT CODE RULES" not in p for p in captured)
+
+    async def test_constitution_threaded_to_chunks_large_diff(self, tmp_path, monkeypatch):
+        captured: dict = {}
+
+        async def fake_chunk(task, chunk, label, claude_dir, constitution=""):
+            captured["constitution"] = constitution
+            return True, "ok", False  # approved, reason, infra
+
+        monkeypatch.setattr(wr, "_oracle_review_chunk", fake_chunk)
+        big_diff = "+x\n" * (wr._ORACLE_CHUNK_SIZE)  # well over one chunk
+        approved, reason, infra = await wr._oracle_review(
+            "task", big_diff, tmp_path, constitution=self._SENTINEL
+        )
+        assert approved and not infra
+        assert captured.get("constitution") == self._SENTINEL

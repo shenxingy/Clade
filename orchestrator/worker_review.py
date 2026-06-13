@@ -247,6 +247,19 @@ _ORACLE_QUALITY_PROMPT = (
     "Diff:\n{diff}"
 )
 
+# Constitutional AI for code (reflection-agents §Gap4): the generic quality pass
+# checks for bugs/security, but never sees the project's own declared rules, so an
+# agent can drift from them undetected. Inject the project's CLAUDE.md "Code Rules"
+# as a binding constitution; violations surface as ordinary issues and ride the
+# existing findings → fix → requeue path. Reused by both the two-pass (quality) and
+# chunked oracle routes so coverage does not depend on diff size.
+_ORACLE_CONSTITUTION_HEADER = (
+    "PROJECT CODE RULES (constitution) — the diff MUST comply with these "
+    "project-declared rules. Flag any hunk that violates one as an issue, citing "
+    "file:line evidence. Do NOT flag pre-existing code the diff does not touch:\n"
+    "{rules}\n\n"
+)
+
 
 _ORACLE_TASK_DESC_CAP = 4000  # full task context for the grader (was 400 — criteria never reached the oracle)
 
@@ -476,7 +489,8 @@ def _append_followup_findings(claude_dir: Path, findings: list, source_label: st
 
 
 async def _oracle_review_chunk(
-    task_description: str, diff_chunk: str, chunk_label: str, claude_dir: Path
+    task_description: str, diff_chunk: str, chunk_label: str, claude_dir: Path,
+    constitution: str = "",
 ) -> tuple[bool, str, bool]:
     """Review a single diff chunk. Returns (approved, reason, infra_error).
 
@@ -487,6 +501,8 @@ async def _oracle_review_chunk(
     prompt = _ORACLE_PROMPT_TEMPLATE.format(
         task=task_description[:_ORACLE_TASK_DESC_CAP + 2500], diff=diff_chunk
     )
+    if constitution:
+        prompt = _ORACLE_CONSTITUTION_HEADER.format(rules=constitution) + prompt
     if chunk_label:
         prompt = f"[Reviewing chunk: {chunk_label}]\n\n" + prompt
     prompt_file = claude_dir / f"oracle-{uuid.uuid4().hex[:8]}.md"
@@ -553,12 +569,37 @@ async def _oracle_review_chunk(
         prompt_file.unlink(missing_ok=True)
 
 
+_CODE_RULES_RE = re.compile(
+    r"^#{1,3}[ \t]+Code Rules[ \t]*$(.*?)(?=^#{1,3}[ \t]|\Z)",
+    re.MULTILINE | re.DOTALL,
+)
+
+
+def _read_constitution(project_dir: Path) -> str:
+    """Extract the project's binding code rules from CLAUDE.md (Constitutional AI).
+
+    Returns the body of the '## Code Rules' section (capped), or '' if there is no
+    CLAUDE.md or no such section. Fail-open by design: any read/parse error yields
+    '' so the oracle behaves exactly as it did before this check existed. Project-
+    agnostic — repos without a Code Rules section are simply un-gated on rules.
+    """
+    try:
+        md = (project_dir / "CLAUDE.md").read_text(encoding="utf-8")
+    except Exception:
+        return ""
+    m = _CODE_RULES_RE.search(md)
+    if not m:
+        return ""
+    return m.group(1).strip()[:1500]
+
+
 async def _oracle_review(
     task_description: str,
     diff_text: str,
     claude_dir: Path,
     acceptance_criteria: list[str] | None = None,
     test_evidence: str = "",
+    constitution: str = "",
 ) -> tuple[bool, str, bool]:
     """Independent second-model review of a diff (Self-RAG multi-dimensional critique).
 
@@ -582,7 +623,8 @@ async def _oracle_review(
         # Review first 3 chunks max to avoid excessive API calls
         chunks = chunks[:3]
         results = await asyncio.gather(*[
-            _oracle_review_chunk(task_block, chunk, f"{i+1}/{len(chunks)}", claude_dir)
+            _oracle_review_chunk(task_block, chunk, f"{i+1}/{len(chunks)}", claude_dir,
+                                 constitution=constitution)
             for i, chunk in enumerate(chunks)
         ])
         # Aggregate: any real rejection → overall rejection (review DID happen);
@@ -605,6 +647,10 @@ async def _oracle_review(
         f"Test results (run before this review):\n{test_evidence[:800]}\n\n"
         if test_evidence else ""
     )
+    # Constitution rides the quality pass (project rules are a quality concern, not
+    # a spec one) via its evidence slot — reflection-agents §Gap4.
+    if constitution:
+        evidence_block += _ORACLE_CONSTITUTION_HEADER.format(rules=constitution)
     quality_prompt = _ORACLE_QUALITY_PROMPT.format(diff=diff_excerpt, evidence=evidence_block)
 
     # Pass 1: spec compliance check

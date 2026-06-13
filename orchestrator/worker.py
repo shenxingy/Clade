@@ -52,7 +52,7 @@ import worker_review
 import worker_tldr
 import worker_utils
 from worker_review import (
-    _oracle_review, _summarize_worker_completion,
+    _oracle_review, _read_constitution, _summarize_worker_completion,
     _record_oracle_infra_error, _reset_oracle_infra_streak,
     _escalate_oracle_outage, _ORACLE_INFRA_THRESHOLD,
     _build_test_evidence,
@@ -900,9 +900,13 @@ class Worker:
             diff_out, _ = await asyncio.wait_for(diff_proc.communicate(), timeout=15)
             # Inject parsed acceptance criteria so the grader checks them one-by-one
             criteria = _parse_task_schema(self.description).get("acceptance_criteria") or None
+            # Constitutional AI (reflection-agents §Gap4): the target repo's own
+            # CLAUDE.md "Code Rules" become binding constraints the grader enforces.
+            constitution = _read_constitution(self._project_dir)
             approved, reason, infra_error = await _oracle_review(
                 self.description, diff_out.decode(), self._claude_dir,
                 acceptance_criteria=criteria, test_evidence=test_evidence,
+                constitution=constitution,
             )
         except Exception:
             approved, reason, infra_error = True, "oracle gate error", True
