@@ -29,6 +29,8 @@ Each deep-dive in this folder has YAML frontmatter (`status`, `summary`, `integr
 
 The gaps cluster into 5 themes. This is the strategic read — *where the most external lessons point at the same Clade weakness.*
 
+> ⚠️ **2026-06-13 code-audit reconciliation.** The themes below were drafted from the April research docs. A grep+spot-check audit of `orchestrator/` found **most small/medium items already implemented** (several carry gap-citing docstrings like `(Sweep §Gap2)` / `Multi-agent Gap 3` — prior loop work that never got back-filled here). The heat ratings describe where the *lessons* converge, not where Clade is still weak today. **Genuinely-open items are the short list in the [backlog callout](#open-gap-backlog-by-effort) below — trust that, not the per-theme "start here" notes.**
+
 | Theme | Our gap (in one line) | Sources pushing on it | Heat |
 |-------|----------------------|----------------------|------|
 | **Fault localization / context retrieval** | Clade injects one flat TLDR blob; no ranked "suspect files→methods→lines", no iterative narrowing, no semantic search | Aider (PageRank+tree-sitter), Agentless (hierarchical JSON localize), AutoCodeRover (AST search APIs + SBFL), Moatless (typed search, span budgeting), Sweep (AST bipartite) | 🔥🔥🔥 hottest — 5 sources, our biggest deficit vs SWE-bench scaffolds |
@@ -79,7 +81,21 @@ Grouped by [watch-list](../who-to-learn-from.md) tier. `Gaps` = count of open `n
 
 ## Open-gap backlog (by effort)
 
-Every effort-tagged `needs_work_item`, cheapest first. Pick from the top for quick wins. Untagged items (Aider/Kiro/OpenHands/Composio/LangGraph) need a sizing pass — listed last.
+> ✅ **Reconciled against code 2026-06-13.** A direct audit of `orchestrator/` found the overwhelming majority of the small + medium items below **already implemented** — episodic failure memory, minimal-patch retry, acceptance-criteria checklist, post-worker test runner, caller hints, diff chunking, confidence scoring, two-pass oracle, entity-level TLDR pruning, all four hook items, and more (many cite their source gap in-code). **Do not build from the lists below without re-grepping first — they predate the audit.**
+>
+> **Confirmed STILL OPEN (verified absent in code today):**
+> | Item | Source | Effort | Note |
+> |------|--------|--------|------|
+> | **Constitutional check vs CLAUDE.md** | Reflection §G4 | 🟢 small | Oracle reviews generic quality but never loads the project's own Code Rules. Cleanest build: inject CLAUDE.md rules into the existing oracle *quality* pass → reuses findings→fix→requeue. |
+> | **Reproduction-test filter** | Agentless | 🟡 medium | *Highest fix-quality lever in the cluster.* Generate a repro test for the bug, use it to filter/validate the patch. Touches `verify_and_commit` (critical path). |
+> | **Split retrieve(P1)/patch(P2) phases** | AutoCodeRover | 🟡 medium | Freeze context before patching. Partial today (method-granularity search exists). |
+> | **Localize→Repair→Validate as explicit phases** | Agentless | 🔴 large | We run one end-to-end worker pass. Architectural. |
+> | **7 callable AST search APIs** | AutoCodeRover | 🔴 large | Partial — `clade_search_*` MCP tools exist; not the full 7-API surface. |
+> | **Embedding semantic index (FAISS+Voyage)** | Moatless | 🔴 large | No vector retrieval. Architectural. |
+>
+> *(SBFL/Ochiai and SWE-bench-harness greps were inconclusive — re-verify before trusting.)*
+
+The lists below are the **pre-audit** backlog, kept for provenance. Cheapest first; re-grep each before building.
 
 ### 🟢 Small (cheap wins — start here), grouped by sub-theme
 
