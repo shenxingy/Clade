@@ -232,6 +232,7 @@ All checks are opt-in by detection — if the tool isn't installed, the hook sil
 | [How It Works](docs/how-it-works.md) | Hooks, agents, skills internals, correction learning, model selection |
 | [Configuration](docs/configuration.md) | Settings, thresholds, adding custom hooks/agents/skills |
 | [When to Use What](docs/when-to-use-what.md) | Detailed usage guidance for every skill |
+| [Who to Learn From](docs/who-to-learn-from.md) | Vetted watch-list of the agentic-coding frontier — people, repos, bot behavior, reviewed quarterly |
 
 ## Dotfile Sync
 
