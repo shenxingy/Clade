@@ -86,8 +86,8 @@ Grouped by [watch-list](../who-to-learn-from.md) tier. `Gaps` = count of open `n
 > **Confirmed STILL OPEN (verified absent in code today):**
 > | Item | Source | Effort | Note |
 > |------|--------|--------|------|
-> | **Constitutional check vs CLAUDE.md** | Reflection §G4 | 🟢 small | Oracle reviews generic quality but never loads the project's own Code Rules. Cleanest build: inject CLAUDE.md rules into the existing oracle *quality* pass → reuses findings→fix→requeue. |
-> | **Reproduction-test filter** | Agentless | 🟡 medium | *Highest fix-quality lever in the cluster.* Generate a repro test for the bug, use it to filter/validate the patch. Touches `verify_and_commit` (critical path). |
+> | ~~Constitutional check vs CLAUDE.md~~ | Reflection §G4 | ✅ done | **DONE 2026-06-13 (a56d921)** — project CLAUDE.md "Code Rules" injected into the oracle quality + chunked passes; rides findings→fix→requeue. |
+> | **Reproduction-test filter** | Agentless | 🟡 medium | *Highest fix-quality lever in the cluster.* Generate a repro test for the bug, use it to filter/validate the patch. Touches `verify_and_commit` (critical path). **← recommended next build.** |
 > | **Split retrieve(P1)/patch(P2) phases** | AutoCodeRover | 🟡 medium | Freeze context before patching. Partial today (method-granularity search exists). |
 > | **Localize→Repair→Validate as explicit phases** | Agentless | 🔴 large | We run one end-to-end worker pass. Architectural. |
 > | **7 callable AST search APIs** | AutoCodeRover | 🔴 large | Partial — `clade_search_*` MCP tools exist; not the full 7-API surface. |

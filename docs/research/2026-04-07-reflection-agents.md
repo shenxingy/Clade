@@ -17,6 +17,7 @@ needs_work_items:
   - item: Episodic failure memory / Reflexion (§Gap 1) — highest value, smallest effort
     gap: Each retry is stateless — only lint output is injected, not a reasoning about WHY it failed. Add a structured "Failure Analysis" block (previous attempt / why it failed / what to do differently) to the retry prompt; haiku generates it from lint/oracle output.
     effort: small
+    status: VERIFIED-DONE 2026-06-13 — worker.py:563-569 accumulates _failure_reflections and prepends history on retry.
   - item: Minimal-patch reflection loop (§Gap 3)
     gap: The reflection loop re-runs the full agent and often rewrites large sections. Parse lint output for specific file:line, then --continue with "fix this specific error only, change nothing else" to constrain the edit.
     effort: small
@@ -26,9 +27,15 @@ needs_work_items:
   - item: Targeted per-dimension oracle fixes (§Gap 2) — partially integrated
     gap: Oracle now returns dimension scores, but the worker still handles rejection monolithically. Feed each failing dimension back as a targeted fix directive. Overlaps Qodo §Gap 2 (per-finding fixes) — do together.
     effort: medium
+integrated_items:
   - item: Constitutional check after generation (§Gap 4)
-    gap: CLAUDE.md rules are injected once at prompt start; the agent drifts. After verify_and_commit() produces a diff, run a haiku check against CLAUDE.md "Code Rules"; inject violations as high-priority fix context before committing.
-    effort: medium
+    clade_location: >-
+      worker_review.py:_read_constitution + _ORACLE_CONSTITUTION_HEADER — the target
+      repo's CLAUDE.md "Code Rules" section is injected into the oracle QUALITY pass
+      (and chunked path) as a binding constitution; violations ride the existing
+      findings→fix→requeue path. Wired in worker.py:_run_oracle_gate. Done 2026-06-13
+      (a56d921). NOTE: implemented inside the existing oracle rather than as a
+      separate haiku call (the doc's original suggestion) — DRYer, no extra subprocess.
 reference_items:
   - "Self-RAG reflection tokens (ISREL/ISSUP/ISUSE) — informs the dimension schema, not a separate build"
   - "Recursive debugging bounded loop — actionable slice is the minimal-patch gap above"
