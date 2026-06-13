@@ -119,7 +119,7 @@ Things my training memory (≤2026-01) had wrong, confirmed via web June 2026:
 
 ## Actionable gaps for Clade
 
-Not just reading — concrete, reversible things this sweep surfaced. (Not yet executed; pick and go.) For the **full prioritized backlog** distilled from all 17 deep-dives, see [`research/README.md` → Open-gap backlog](research/README.md#open-gap-backlog-by-effort); the hottest cluster is **fault localization / context retrieval** (5 sources converge on it).
+Not just reading — concrete, reversible things this sweep surfaced. (Not yet executed; pick and go.) For the **full prioritized backlog** distilled from all 16 deep-dives, see [`research/README.md` → Open-gap backlog](research/README.md#open-gap-backlog-by-effort); the hottest cluster is **fault localization / context retrieval** (5 sources converge on it).
 
 1. **PR-body craft** — adopt OpenHands' pattern in `worker_review.py`: reviewer-facing rationale + **runnable test-plan command** in the body, and emit self-corrections (lint fixes) as a *distinct labeled commit* rather than amending.
 2. **Agent-authorship metric** — extend the existing fix-rate tracking into an Aider-style "% of release written by Clade workers" (git-blame at merge), surfaced in PROGRESS.md.

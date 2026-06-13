@@ -6,6 +6,32 @@ sources:
   - https://arxiv.org/abs/2303.11366  # Reflexion (Shinn et al. 2023)
   - https://arxiv.org/abs/2310.11511  # Self-RAG (Asai et al. 2023)
   - https://arxiv.org/html/2602.02584  # Constitutional Spec-Driven Dev
+integrated_items:
+  - item: Oracle review (second-model diff review) — now returns structured dimension JSON
+    clade_location: orchestrator/worker_review.py (_oracle_review)
+  - item: Lint reflection loop (reactive, surface-level)
+    clade_location: orchestrator/worker.py
+  - item: --continue retries preserving agent context
+    clade_location: orchestrator/worker.py
+needs_work_items:
+  - item: Episodic failure memory / Reflexion (§Gap 1) — highest value, smallest effort
+    gap: Each retry is stateless — only lint output is injected, not a reasoning about WHY it failed. Add a structured "Failure Analysis" block (previous attempt / why it failed / what to do differently) to the retry prompt; haiku generates it from lint/oracle output.
+    effort: small
+  - item: Minimal-patch reflection loop (§Gap 3)
+    gap: The reflection loop re-runs the full agent and often rewrites large sections. Parse lint output for specific file:line, then --continue with "fix this specific error only, change nothing else" to constrain the edit.
+    effort: small
+  - item: Spec-driven acceptance-criteria checklist (§Gap 5)
+    gap: Workers derive intent from the task description only. For pre-hydrated GitHub issues, extract "Acceptance Criteria"/"Definition of Done" as a checklist appended to the task file so the agent knows when it has succeeded.
+    effort: small
+  - item: Targeted per-dimension oracle fixes (§Gap 2) — partially integrated
+    gap: Oracle now returns dimension scores, but the worker still handles rejection monolithically. Feed each failing dimension back as a targeted fix directive. Overlaps Qodo §Gap 2 (per-finding fixes) — do together.
+    effort: medium
+  - item: Constitutional check after generation (§Gap 4)
+    gap: CLAUDE.md rules are injected once at prompt start; the agent drifts. After verify_and_commit() produces a diff, run a haiku check against CLAUDE.md "Code Rules"; inject violations as high-priority fix context before committing.
+    effort: medium
+reference_items:
+  - "Self-RAG reflection tokens (ISREL/ISSUP/ISUSE) — informs the dimension schema, not a separate build"
+  - "Recursive debugging bounded loop — actionable slice is the minimal-patch gap above"
 ---
 
 [English] | [Back to README](../../README.md)

@@ -32,12 +32,12 @@ The gaps cluster into 5 themes. This is the strategic read — *where the most e
 | Theme | Our gap (in one line) | Sources pushing on it | Heat |
 |-------|----------------------|----------------------|------|
 | **Fault localization / context retrieval** | Clade injects one flat TLDR blob; no ranked "suspect files→methods→lines", no iterative narrowing, no semantic search | Aider (PageRank+tree-sitter), Agentless (hierarchical JSON localize), AutoCodeRover (AST search APIs + SBFL), Moatless (typed search, span budgeting), Sweep (AST bipartite) | 🔥🔥🔥 hottest — 5 sources, our biggest deficit vs SWE-bench scaffolds |
-| **Reflection / retry loop** | Clade retries one-shot (re-runs whole subprocess); no multi-cycle lint reflection, no repro-test patch filter, no cheap LLM-only retry | Aider (3× reflection), Agentless (repro-test filter), AutoCodeRover (LLM-only retry), Reflexion/Self-RAG (academic) | 🔥🔥 |
+| **Reflection / retry loop** | Clade retries one-shot (re-runs whole subprocess); no failure-mode memory, no repro-test patch filter, no minimal-patch targeting, no constitutional re-check | Aider (3× reflection), Agentless (repro-test filter), AutoCodeRover (cheap LLM-only retry), Reflexion/Self-RAG (episodic memory, minimal patch, constitutional, spec checklist), Sweep (test runner) | 🔥🔥🔥 most 🟢 cheap wins — start here for momentum |
 | **Context compression / layering** | TLDR only; no structured condenser strategies, no L1/L2/L3 tiers, no per-span token budget | OpenHands (9 condensers), Aider (ChatChunks layering), Moatless (token budgeting) | 🔥🔥 |
-| **Stop-hook / spec scaffolding** | Stop hook is a cleanliness gate; no security-scan/spec-sync/coverage triggers, no source-traced TODOs, no VERIFY invariants | Kiro (enhanced stop hook, EARS invariants, traced TODOs) | 🔥 |
-| **PR-review craft / fault tolerance** | PR bodies are plain; worker state lost on restart (no event replay) | Qodo Merge (review agents), Composio (reaction system), OpenHands (EventStream) | 🔥 |
+| **Hooks / spec scaffolding** | Hooks don't rewrite-on-block, aren't matcher-scoped, don't persist allow-rules; no source-traced TODOs / VERIFY invariants (Stop + PostToolUseFailure hooks now exist) | Kiro (enhanced stop hook, EARS invariants, traced TODOs), Claude Code hook docs (input rewrite, async, matcher if) | 🔥🔥 |
+| **PR-review / oracle craft** | Oracle is single-pass; large diffs truncated at 3000 chars (auto-approve risk); no per-finding fixes or confidence; worker state lost on restart (no event replay) | Qodo Merge (diff chunking, 2-pass, per-finding, confidence), Reflection (per-dimension fixes), Composio (reaction system), OpenHands (EventStream) | 🔥🔥 |
 
-**Takeaway:** if we "actually start learning," **fault localization** is where the field has converged most and we've moved least — start there.
+**Takeaway:** strategically, **fault localization** is the deepest deficit (5 sources, needs a real index) — the high-value bet. Tactically, **reflection/retry** and **hooks** hold the most 🟢 cheap wins — start there for momentum, then commit to the fault-localization track.
 
 ## Index of deep-dives
 
@@ -61,7 +61,7 @@ Grouped by [watch-list](../who-to-learn-from.md) tier. `Gaps` = count of open `n
 | **Agentless** | 🔨 | 4 | Localize→Repair→Validate as explicit phases; 40-patch sampling + repro-test filter | [→](2026-04-07-agentless.md) |
 | **AutoCodeRover** | 🔨 | 6 | 7 callable AST search APIs; SBFL pre-pass; cheap LLM-only retry | [→](2026-04-07-autocoderover.md) |
 | **Moatless Tools** | 🔨 | 7 | Typed search actions; span-level FileContext + token budgeting; semantic index | [→](2026-04-08-moatless-tools.md) |
-| **Sweep AI** | 🔨 | body | AST bipartite graph; topological diff propagation; hybrid retrieval | [→](2026-04-08-sweep-ai.md) |
+| **Sweep AI** | 🔨 | 4 | AST bipartite graph; topological diff propagation; entity pruning; caller hints | [→](2026-04-08-sweep-ai.md) |
 
 *NB: the AutoCodeRover team now leads **Sonar Foundation Agent** (79.2% SWE-bench Verified, open-source w/ traces) — see watch-list bot-behavior section. Re-read this cluster alongside that.*
 
@@ -69,33 +69,57 @@ Grouped by [watch-list](../who-to-learn-from.md) tier. `Gaps` = count of open `n
 | Source | Status | Gaps | Core lesson | Doc |
 |--------|--------|------|-------------|-----|
 | **LangGraph / CrewAI** | 🔨 | 2 | StateGraph checkpointing; interrupt() human-in-loop; Send API map-reduce | [→](2026-03-30-langgraph-crewai-research.md) |
-| **Reflection agents** | 🔨 | body | Reflexion / Self-RAG — verbal self-critique fed back as next input | [→](2026-04-07-reflection-agents.md) |
+| **Reflection agents** | 🔨 | 5 | Reflexion episodic memory; minimal-patch; constitutional check; spec checklist | [→](2026-04-07-reflection-agents.md) |
 
 ### Craft: PR review & hooks
 | Source | Status | Gaps | Core lesson | Doc |
 |--------|--------|------|-------------|-----|
-| **Qodo Merge (PR-Agent)** | 🔨 | body | Multi-agent PR review; structured review output | [→](2026-04-08-qodo-merge.md) |
-| **Claude Code hooks** | 🔨 | body | Official hook event taxonomy + patterns | [→](2026-04-07-claude-hooks.md) |
+| **Qodo Merge (PR-Agent)** | 🔨 | 5 | Diff chunking; 2-pass oracle; per-finding fixes; confidence scoring | [→](2026-04-08-qodo-merge.md) |
+| **Claude Code hooks** | 🔨 | 4 | Input rewrite; async hooks; matcher `if`; persistent perms *(Stop + PostToolUseFailure already closed)* | [→](2026-04-07-claude-hooks.md) |
 
 ## Open-gap backlog (by effort)
 
-Every `needs_work_item` with an effort tag, cheapest first. Pick from the top for quick wins. (Items without an effort tag — Aider/Kiro/OpenHands/Composio/LangGraph — are listed under "untagged" and need a sizing pass.)
+Every effort-tagged `needs_work_item`, cheapest first. Pick from the top for quick wins. Untagged items (Aider/Kiro/OpenHands/Composio/LangGraph) need a sizing pass — listed last.
 
-### 🟢 Small (cheap wins — start here)
-- **[AutoCodeRover]** Patch-validation retry budget — retry only the *patch-gen LLM call* (≤3×), not the whole Claude Code subprocess. Much cheaper per retry. → `worker.py` reflection loop.
-- **[AutoCodeRover]** Explicit exploration cap + LLM-declared "sufficient context" signal before patching (AutoCodeRover caps at 10 rounds). → worker prompt + loop guard.
-- **[Moatless]** Two-phase search-then-identify — fire a secondary (haiku) LLM to distill large search result sets before injecting. → `worker_tldr.py`.
-- **[Moatless]** StringReplace edit-validation discipline (uniqueness check + line-number stripping) in the worker **system prompt** — no code change needed.
+### 🟢 Small (cheap wins — start here), grouped by sub-theme
+
+**Reflection / retry**
+- ⭐ **[Reflection]** Episodic failure memory — a "Failure Analysis" block (what was tried / why it failed / what to change) in the retry prompt, haiku-generated from lint+oracle output. *Flagged highest-value-smallest-effort.* → `worker.py`.
+- **[Reflection]** Minimal-patch reflection — parse lint for `file:line`, then `--continue` with "fix this specific error only, change nothing else." Stops needless full rewrites.
+- **[Reflection]** Spec-driven acceptance-criteria checklist — extract "Acceptance Criteria"/"Definition of Done" from pre-hydrated issues, append to the task file. → `_pre_hydrate`.
+
+**Fault localization / retrieval**
+- **[AutoCodeRover]** Patch-validation retry budget — retry only the patch-gen LLM call (≤3×), not the whole subprocess. → `worker.py`.
+- **[AutoCodeRover]** Explicit exploration cap + LLM "sufficient context" signal before patching (caps at 10 rounds).
+- **[Moatless]** Two-phase search-then-identify — secondary haiku distills large result sets before injection. → `worker_tldr.py`.
+- **[Moatless]** StringReplace edit-validation discipline (uniqueness + line-number stripping) in the worker **system prompt** — no code change.
+- **[Sweep]** Post-worker functional test runner — `test_cmd` in orchestrator config, run after commit, feed failures into retry.
+- **[Sweep]** Call-site dependency hints — grep callers of changed functions → "if you change X, also update these." Plain Bash.
+
+**Oracle / PR review**
+- **[Qodo]** Diff chunking for diffs >3000 chars — prevents truncated large refactors from auto-approving. → `_oracle_review`.
+- **[Qodo]** Confidence-scored findings (high/medium/low per dimension) so the worker fixes high-confidence first.
+
+**Hooks**
+- **[Claude-hooks]** Async PostToolUse — `async:true` on formatting/notification hooks to kill per-edit latency (verify current flag).
+- **[Claude-hooks]** Input rewriting (`git push -f` → `--force-with-lease`) via `updatedInput` instead of a hard block.
+- **[Claude-hooks]** Matcher `if` to skip `pre-tool-guardian.sh` on safe Bash calls.
+- **[Claude-hooks]** Persistent allow-rules via `updatedPermissions` to stop reprompting known-safe patterns.
 
 ### 🟡 Medium
-- **[Agentless]** Hierarchical localization as **structured JSON** ("suspect files→classes→lines") before repair. → new pre-pass.
-- **[Agentless]** Patch sampling + majority-vote re-ranking (generate N candidates with haiku, pick via oracle).
-- **[Agentless]** Reproduction-test generation as a patch filter (highest fix-quality lever in the cluster). → `worker.py` verify.
+- **[Agentless]** Hierarchical localization as **structured JSON** ("suspect files→classes→lines") before repair.
+- **[Agentless]** Patch sampling + majority-vote re-ranking (N haiku candidates, pick via oracle).
+- **[Agentless]** Reproduction-test generation as a patch filter — *highest fix-quality lever in the cluster.* → `worker.py` verify.
 - **[AutoCodeRover]** Split context-retrieval (Phase 1) from patch-gen (Phase 2) — freeze context before patching.
-- **[AutoCodeRover]** Method-granularity search (full bodies ±3 lines on demand) vs our signature-only TLDR.
+- **[AutoCodeRover]** Method-granularity search (full bodies ±3 lines) vs signature-only TLDR.
 - **[Moatless]** Span-level FileContext with per-span token budgeting + eviction.
-- **[Moatless]** Typed search actions (FindClass/FindFunction/SemanticSearch) described in worker system prompt.
-- **[Moatless]** `max_tokens_per_worker` budget — orchestrator currently doesn't observe worker token usage. → `config.py`.
+- **[Moatless]** Typed search actions (FindClass/FindFunction/SemanticSearch) in worker system prompt.
+- **[Moatless]** `max_tokens_per_worker` budget — orchestrator doesn't observe worker token usage. → `config.py`.
+- **[Sweep]** Entity-level TLDR pruning — filter TLDR to issue-relevant entities (3-5× less noise).
+- **[Sweep]** Hybrid context retrieval — keyword grep + structural haiku in `_localize_tldr_for_task`.
+- **[Qodo + Reflection]** Per-finding / per-dimension targeted fixes — `findings:[{dimension,severity,fix_suggestion}]`; worker applies in order. *(These two overlap — build once.)*
+- **[Qodo]** Two-pass oracle — spec-adherence check then quality/bug check, reconciled.
+- **[Reflection]** Constitutional check after generation — haiku validates the diff against CLAUDE.md "Code Rules" before commit.
 
 ### 🔴 Large (architectural)
 - **[Agentless]** Localize→Repair→Validate as explicit first-class phases (we run one end-to-end worker pass).
@@ -104,13 +128,16 @@ Every `needs_work_item` with an effort tag, cheapest first. Pick from the top fo
 - **[Moatless]** Embedding-based semantic search index (FAISS + tree-sitter + Voyage).
 - **[Moatless]** SWE-bench evaluation harness (no benchmark harness today → can't measure worker quality).
 
+### 🔵 Low (deprioritized)
+- **[Qodo]** PR-review audience differentiation (author vs reviewer comments) — author flagged low priority for autonomous flows.
+
 ### ⚪ Untagged (need a sizing pass)
+*Many cluster into the themes above — Aider reflection → reflection theme, OpenHands condensers → context-compression, Kiro stop hook → hooks.*
 - **[Aider]** multi-cycle reflection loop · L1/L2/L3 ChatChunks layering · PageRank `/map` · tree-sitter indexing · adaptive repo-map sizing
 - **[Kiro]** source-traced TODOs (`_From: GOALS.md §X.Y`) · conditional CLAUDE.md inclusion by file type · enhanced stop hook (security/spec/coverage) · VERIFY.md invariants · worker-scoped steering files
 - **[OpenHands]** EventStream replayable state (fault tolerance) · structured condenser strategies
 - **[Composio]** PR-review reaction system (→ `github_sync.py`) · activity detection via Claude JSONL
 - **[LangGraph]** interrupt() human-in-loop breakpoints · Send API map-reduce dispatch
-- **[Sweep / Qodo / Claude-hooks / Reflection-agents]** gaps live in doc bodies, not yet lifted to frontmatter — **frontmatter normalization pass needed**.
 
 ## Research backlog — watch-list entries not yet deep-dived
 
