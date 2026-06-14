@@ -78,9 +78,11 @@ Anchor test examples:
 
 **Conditions** — ALL must be true:
 1. Project type is `web-fullstack` (from CLAUDE.md `## Project Type`)
-2. Playwright MCP tools are available (check if `browser_navigate` is in your available tools list — if not listed, skip)
+2. Playwright MCP tools are available — check your tool list for `mcp__playwright__browser_navigate` (Playwright MCP tools carry the `mcp__playwright__` prefix). If absent, the browser MCP is not wired in — skip.
 
 If conditions are not met, set `INTERACTION_RESULT: skipped` and move on.
+
+> Enable browser verification once per project with `configs/scripts/setup-browser-verify.sh <project_dir>` — it adds the Playwright MCP to `.claude/mcp.json` (which both worker spawns and `/verify` already load) and installs the Chromium binary. Below, `browser_navigate`/`browser_snapshot`/etc. are shorthand for the `mcp__playwright__`-prefixed tools.
 
 **Flow:**
 

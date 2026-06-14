@@ -504,16 +504,19 @@ _TOOL_SUBSETS: dict[str, tuple[list[str], list[str]]] = {
         ["Read", "Grep", "Glob", "Bash", "WebSearch", "WebFetch", "NotebookRead"],
         ["Edit", "Write", "NotebookEdit", "MultiEdit"],
     ),
-    # fix: same as implement but focused
+    # fix: same as implement but focused. mcp__playwright allows browser
+    # end-to-end verification when the Playwright MCP is wired in (no-op
+    # otherwise — the tool simply does not exist). See setup-browser-verify.sh.
     "fix": (
-        ["Read", "Edit", "Write", "Bash", "Grep", "Glob"],
+        ["Read", "Edit", "Write", "Bash", "Grep", "Glob", "mcp__playwright"],
         [],
     ),
     # implement: full tools (default — no restriction needed)
     "implement": ([], []),
-    # test: allows test file creation but not broad refactoring
+    # test: allows test file creation but not broad refactoring. mcp__playwright
+    # lets a test task drive a real browser for end-to-end verification.
     "test": (
-        ["Read", "Edit", "Write", "Bash", "Grep", "Glob", "NotebookEdit"],
+        ["Read", "Edit", "Write", "Bash", "Grep", "Glob", "NotebookEdit", "mcp__playwright"],
         [],
     ),
 }

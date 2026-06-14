@@ -85,6 +85,32 @@ Edit `~/.claude/corrections/stats.json`:
 
 `> 0.3` triggers strict mode (adds build + test checks). `< 0.1` triggers relaxed mode (basic checks only). Domains: `frontend`, `backend`, `ml`, `ios`, `android`, `systems` (Rust/Go), `academic` (LaTeX), `schema`.
 
+## Enable end-to-end browser verification
+
+`/verify` ships a **UI Interaction** strategy that drives a real browser (navigate
+the running app, snapshot pages, click/fill, flag console errors and broken flows)
+— the only verification that proves a frontend change actually works rather than
+just compiles. It runs only when the Playwright MCP is wired in. Enable it per
+project:
+
+```bash
+configs/scripts/setup-browser-verify.sh /path/to/project       # merge config + install Chromium
+configs/scripts/setup-browser-verify.sh /path/to/project --remove   # disable
+```
+
+This merges the Microsoft Playwright MCP (`@playwright/mcp`) into the project's
+`.claude/mcp.json` — the file both orchestrator worker spawns (`worker.py`) and
+`/verify` (`start.sh`) already load via `--mcp-config` — and installs the Chromium
+binary. Existing MCP servers in the file are preserved. Requires Node (`npx`),
+which Claude Code already provides.
+
+Once enabled: `fix`/`test` worker tasks can reach the browser tools (allow-listed
+as `mcp__playwright` in `config.py:_TOOL_SUBSETS`), and `/verify` emits
+`INTERACTION_RESULT: pass|partial|fail` plus `[BUG]`/`[UX]` findings to
+`.claude/playwright-issues.md`, which the loop consumes. Cost note: every worker
+on that project then launches a Playwright MCP subprocess — run `--remove` for
+projects with no frontend.
+
 ## Add a new hook
 
 1. Create `configs/hooks/your-hook.sh`
