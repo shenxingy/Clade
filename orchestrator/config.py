@@ -91,6 +91,12 @@ _SETTINGS_DEFAULTS = {
     "loop_convergence_n": 3,
     "loop_max_iterations": 20,
     "auto_oracle": False,
+    # Reproduction-test filter (Agentless §6B validation half). When a fix task's
+    # generated repro test was confirmed FAILING pre-fix, re-run it post-fix: its
+    # result always flows into oracle evidence. With this True, a still-failing
+    # repro ALSO hard-blocks the commit (undo + requeue); default False keeps it
+    # advisory (oracle decides) to avoid false-blocks from an imperfect repro.
+    "repro_test_gate": False,
     "auto_model_routing": False,
     "context_budget_warning": True,
     "github_issues_sync": False,

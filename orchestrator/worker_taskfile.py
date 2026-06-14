@@ -174,7 +174,9 @@ async def build_task_file(w: Any, task_queue: Any | None) -> Path:
             # For fix tasks: run repro test generation + SBFL pre-pass concurrently.
             if task_type == "fix":
                 repro_task = asyncio.create_task(
-                    _generate_repro_test(w.description, tldr, w._original_project_dir)
+                    _generate_repro_test(
+                        w.description, tldr, w._original_project_dir, w._claude_dir
+                    )
                 )
                 sbfl_task = asyncio.create_task(
                     _sbfl_prepass(w._original_project_dir)

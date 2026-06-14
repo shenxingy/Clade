@@ -761,13 +761,20 @@ _REPRO_TEST_PROMPT = (
 
 
 async def _generate_repro_test(
-    task_description: str, tldr: str, project_dir: Path
+    task_description: str, tldr: str, project_dir: Path,
+    claude_dir: Path | None = None,
 ) -> str:
     """Generate a failing reproduction test for a bug-fix task (Agentless §6B).
 
     Asks haiku to write a minimal pytest test that fails with current code.
     Runs pytest --collect-only to verify syntax, then runs the test to confirm
     it actually fails (non-zero exit). Returns a formatted context block.
+
+    When claude_dir is given AND the test is confirmed failing pre-fix, the test
+    code is persisted to {claude_dir}/repro-test.py so the validation half
+    (_run_repro_filter) can re-run it after the fix to prove the bug is resolved.
+    Only confirmed-failing repros are persisted — a test that passes on buggy
+    code is a bad test and must never gate.
 
     Falls back to empty string on any error (non-critical path).
     Only valuable for tasks that describe a concrete, testable bug.
@@ -852,6 +859,15 @@ async def _generate_repro_test(
                 test_output = "(timed out)"
         finally:
             Path(tmp_path).unlink(missing_ok=True)
+
+        # Persist confirmed-failing repros so the validation half can re-run them
+        # post-fix (Agentless §6B). Only confirmed-failing — a repro that passes on
+        # buggy code is a bad test and must never gate a commit.
+        if confirmed_failing and claude_dir is not None:
+            try:
+                (claude_dir / "repro-test.py").write_text(test_code, encoding="utf-8")
+            except Exception:
+                pass  # persistence is best-effort; context hint still returned
 
         status_line = (
             "> ✓ Confirmed FAILING with current code — your fix must make this pass."

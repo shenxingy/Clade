@@ -68,7 +68,7 @@ from error_classifier import (
 from worker_utils import (
     _distill_output, _truncate_output, _strip_error_context,
     _run_lint_check, _extract_lint_targets, _run_project_tests, LoopDetectionService,
-    _run_intramorphic_check, _rank_tasks,
+    _run_intramorphic_check, _run_repro_filter, _rank_tasks,
     _parse_observation_contract, _fallback_commit_cmd,
     _compute_activity_state, _undo_last_commit,
     _check_file_ownership as _check_ownership_globs,
@@ -819,7 +819,20 @@ class Worker:
                     reg_warning = await _run_intramorphic_check(
                         self._project_dir, self._claude_dir, test_output
                     )
+                    # Agentless §6B validation half: re-run the confirmed-failing repro
+                    # against the fix. The project suite can't catch an unfixed bug it
+                    # has no test for; the repro can. Result always feeds oracle evidence;
+                    # hard-block only when repro_test_gate is set (default off, advisory).
+                    repro_passed, repro_output = await _run_repro_filter(
+                        self._project_dir, self._claude_dir
+                    )
                     test_evidence = _build_test_evidence(tests_passed, test_output, reg_warning)
+                    if repro_passed is not None:
+                        test_evidence += (
+                            "\nReproduction test: "
+                            + ("PASSED ✓ (bug verified fixed)" if repro_passed
+                               else "STILL FAILING ✗ (fix did not resolve the bug)")
+                        )
                     if not tests_passed:
                         logger.warning(
                             "Worker %s: pre-push tests FAILED — commit undone, push skipped:\n%s",
@@ -830,6 +843,19 @@ class Worker:
                         self.failure_context = f"Pre-push tests failed:\n{test_output[:300]}"
                         self._test_requeue = True
                         self._test_requeue_reason = test_evidence or test_output
+                        return False
+                    if repro_passed is False and GLOBAL_SETTINGS.get("repro_test_gate", False):
+                        logger.warning(
+                            "Worker %s: reproduction test STILL FAILING after fix — commit undone",
+                            self.id
+                        )
+                        await self._undo_commit()
+                        self.auto_committed = False
+                        self.failure_context = (
+                            f"Reproduction test still failing after fix:\n{repro_output[:300]}"
+                        )
+                        self._test_requeue = True
+                        self._test_requeue_reason = test_evidence
                         return False
                     if reg_warning:
                         logger.warning("Worker %s: %s", self.id, reg_warning)

@@ -500,6 +500,58 @@ async def _run_intramorphic_check(
         baseline_file.unlink(missing_ok=True)
 
 
+async def _run_repro_filter(
+    project_dir: Path, claude_dir: Path, timeout: int = 30
+) -> tuple[bool | None, str]:
+    """Re-run the persisted reproduction test against the fixed code (Agentless §6B).
+
+    _generate_repro_test persists a repro to {claude_dir}/repro-test.py ONLY when
+    it was confirmed failing on the buggy code. Re-running it after the fix is the
+    executable proof the bug is actually resolved: it must now PASS. The existing
+    project suite can't catch an unfixed bug it has no test for — this closes that
+    gap. Returns (passed, output):
+      - (True,  ...)  repro now passes — fix verified
+      - (False, ...)  repro still fails — the fix did NOT resolve the bug
+      - (None,  "")   no repro persisted / couldn't run — fail-open, no signal
+
+    Runs the test inside project_dir (the worktree) so imports resolve against the
+    FIXED code. Cleans up the persisted repro + temp file regardless of outcome.
+    """
+    repro_file = claude_dir / "repro-test.py"
+    if not repro_file.exists():
+        return None, ""
+    import tempfile
+    tmp_path: str | None = None
+    try:
+        test_code = repro_file.read_text(encoding="utf-8")
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".py", prefix="clade-reprofilter-", delete=False,
+            dir=str(project_dir),
+        ) as tmp:
+            tmp.write(test_code)
+            tmp_path = tmp.name
+        proc = await asyncio.create_subprocess_exec(
+            "python", "-m", "pytest", tmp_path, "-x", "-q", "--tb=short",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+            cwd=str(project_dir),
+        )
+        try:
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
+            return None, "(repro filter timed out)"
+        output = out.decode("utf-8", errors="replace").strip()
+        return (proc.returncode == 0), output
+    except Exception as e:
+        logger.debug("_run_repro_filter failed: %s", e)
+        return None, ""
+    finally:
+        if tmp_path:
+            Path(tmp_path).unlink(missing_ok=True)
+        repro_file.unlink(missing_ok=True)
+
+
 async def _capture_test_baseline(project_dir: Path, timeout: int = 30) -> dict[str, bool]:
     """Run tests on the clean worktree (before worker edits) to capture baseline.
 
