@@ -93,7 +93,7 @@ def _read_project_claude_md(w) -> str:
 
 def _is_frontend_project(claude_md: str) -> bool:
     """True when CLAUDE.md marks a renderable frontend: a web-fullstack/web-frontend
-    Type, or a 'Frontend:' line that isn't N/A. Pure — drives the visual-verify gate."""
+    Type, or a 'Frontend:' line that isn't N/A. Pure — the CLAUDE.md text signal."""
     if not claude_md:
         return False
     if "web-fullstack" in claude_md.lower() or "web-frontend" in claude_md.lower():
@@ -103,6 +103,38 @@ def _is_frontend_project(claude_md: str) -> bool:
         if s.startswith("frontend:"):
             val = s.split(":", 1)[1].strip()
             return bool(val) and "n/a" not in val and "none" not in val
+    return False
+
+
+# Frontend framework deps — the authoritative signal. Real projects describe their
+# stack in CLAUDE.md prose ("Built with Next.js"), not the template's structured
+# 'Frontend:' line, so package.json is the reliable detector (found live on
+# scamai-landing, whose CLAUDE.md text signal alone returned False).
+_FRONTEND_DEPS = frozenset({
+    "next", "react", "react-dom", "vue", "nuxt", "svelte", "@sveltejs/kit",
+    "vite", "astro", "@remix-run/react", "remix", "solid-js", "preact",
+    "gatsby", "@angular/core",
+})
+
+
+def _project_is_frontend(w) -> bool:
+    """Combined frontend gate: the CLAUDE.md text signal OR a frontend framework in
+    package.json (root or worktree). package.json is authoritative — it catches
+    projects whose CLAUDE.md doesn't use the structured 'Frontend:' line."""
+    if _is_frontend_project(_read_project_claude_md(w)):
+        return True
+    for d in (getattr(w, "_project_dir", None), getattr(w, "_original_project_dir", None)):
+        if not d:
+            continue
+        try:
+            pj = Path(d) / "package.json"
+            if pj.exists():
+                data = json.loads(pj.read_text(errors="replace"))
+                deps = {**data.get("dependencies", {}), **data.get("devDependencies", {})}
+                if _FRONTEND_DEPS & set(deps):
+                    return True
+        except Exception:
+            pass
     return False
 
 
@@ -335,9 +367,7 @@ async def build_task_file(w: Any, task_queue: Any | None) -> Path:
 
     # Anthropic visual feedback loop: frontend projects get the visual self-verify
     # directive so the worker checks its UI in a real browser as it builds.
-    _frontend_visual = (
-        FRONTEND_VISUAL_BLOCK if _is_frontend_project(_read_project_claude_md(w)) else ""
-    )
+    _frontend_visual = FRONTEND_VISUAL_BLOCK if _project_is_frontend(w) else ""
     # AutoCodeRover §Gap2 + ECC strategic-compact: for fix tasks, inject explicit
     # two-phase directive with phase-boundary checkpoint (not arbitrary token count).
     _fix_two_phase = ""

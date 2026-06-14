@@ -38,6 +38,40 @@ class TestIsFrontendProject:
         assert not wtf._is_frontend_project("")
 
 
+class TestProjectIsFrontend:
+    """The combined gate: CLAUDE.md text signal OR package.json framework dep.
+    package.json is the authoritative signal for real projects."""
+
+    def _w(self, tmp_path):
+        class W:
+            _project_dir = tmp_path
+            _original_project_dir = tmp_path
+            _claude_dir = tmp_path / ".claude"
+        return W()
+
+    def test_detects_via_package_json_when_claude_md_is_prose(self, tmp_path):
+        # Regression: scamai-landing's CLAUDE.md says "Built with Next.js 15" in
+        # prose (no structured 'Frontend:' line) — text signal alone returns False.
+        (tmp_path / "CLAUDE.md").write_text("# Project\nBuilt with Next.js 15 (App Router).\n")
+        (tmp_path / "package.json").write_text(
+            '{"dependencies": {"next": "15.0.0", "react": "18.0.0"}}'
+        )
+        assert wtf._is_frontend_project((tmp_path / "CLAUDE.md").read_text()) is False
+        assert wtf._project_is_frontend(self._w(tmp_path)) is True  # package.json catches it
+
+    def test_detects_via_claude_md_when_no_package_json(self, tmp_path):
+        (tmp_path / "CLAUDE.md").write_text("- Frontend: Vite + React\n")
+        assert wtf._project_is_frontend(self._w(tmp_path)) is True
+
+    def test_backend_only_python_project_is_not_frontend(self, tmp_path):
+        (tmp_path / "CLAUDE.md").write_text("- Type: api-only\n- Frontend: N/A\n")
+        (tmp_path / "package.json").write_text('{"dependencies": {"express": "4.0.0"}}')
+        assert wtf._project_is_frontend(self._w(tmp_path)) is False
+
+    def test_no_signals_is_not_frontend(self, tmp_path):
+        assert wtf._project_is_frontend(self._w(tmp_path)) is False
+
+
 class TestReadProjectClaudeMd:
     def test_reads_repo_root_claude_md(self, tmp_path):
         (tmp_path / "CLAUDE.md").write_text("- Type: web-fullstack\n")
