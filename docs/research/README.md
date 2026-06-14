@@ -83,17 +83,22 @@ Grouped by [watch-list](../who-to-learn-from.md) tier. `Gaps` = count of open `n
 
 > ✅ **Reconciled against code 2026-06-13.** A direct audit of `orchestrator/` found the overwhelming majority of the small + medium items below **already implemented** — episodic failure memory, minimal-patch retry, acceptance-criteria checklist, post-worker test runner, caller hints, diff chunking, confidence scoring, two-pass oracle, entity-level TLDR pruning, all four hook items, and more (many cite their source gap in-code). **Do not build from the lists below without re-grepping first — they predate the audit.**
 >
-> **Confirmed STILL OPEN (verified absent in code today):**
-> | Item | Source | Effort | Note |
-> |------|--------|--------|------|
-> | ~~Constitutional check vs CLAUDE.md~~ | Reflection §G4 | ✅ done | **DONE 2026-06-13 (a56d921)** — project CLAUDE.md "Code Rules" injected into the oracle quality + chunked passes; rides findings→fix→requeue. |
-> | **Reproduction-test filter** | Agentless | 🟡 medium | *Highest fix-quality lever in the cluster.* Generate a repro test for the bug, use it to filter/validate the patch. Touches `verify_and_commit` (critical path). **← recommended next build.** |
-> | **Split retrieve(P1)/patch(P2) phases** | AutoCodeRover | 🟡 medium | Freeze context before patching. Partial today (method-granularity search exists). |
-> | **Localize→Repair→Validate as explicit phases** | Agentless | 🔴 large | We run one end-to-end worker pass. Architectural. |
-> | **7 callable AST search APIs** | AutoCodeRover | 🔴 large | Partial — `clade_search_*` MCP tools exist; not the full 7-API surface. |
-> | **Embedding semantic index (FAISS+Voyage)** | Moatless | 🔴 large | No vector retrieval. Architectural. |
+> **Final dispositions after deep study (2026-06-14, 4 parallel study agents + code review):**
+> | Item | Source | Disposition |
+> |------|--------|-------------|
+> | Constitutional check vs CLAUDE.md | Reflection §G4 | ✅ **DONE** (a56d921 + 7d50b0c) — CLAUDE.md "Code Rules" injected into oracle quality + chunked passes; wired in both `_run_oracle_gate` and `oracle_cli.py`. |
+> | Reproduction-test filter | Agentless §6B | ✅ **DONE** (601bd9b + 7d50b0c) — Clade already *generated* a confirmed-failing repro then threw it away; now persisted (task-id namespaced) + re-run post-fix, result feeds oracle evidence, hard-block behind `repro_test_gate`. |
+> | Split retrieve(P1)/patch(P2) | AutoCodeRover | ❌ **SKIP different-not-deficient** — soft two-phase directive already injected (`worker_taskfile.py:269`); hard process-split forces context re-hydration the native single-context loop avoids. |
+> | Localize→Repair→Validate phases | Agentless | ❌ **SKIP different-not-deficient** — localize + validate already deterministic phases; making *repair* non-agentic discards the native navigate/edit/verify loop (Agentless's split only existed to stop weak models distracting themselves). |
+> | 7 callable AST search APIs | AutoCodeRover | ❌ **SKIP already-equivalent** — `clade_search_class/method/code` exist + wired (`mcp_server.py:337`); the residual 4 are file-scoped variants subsumed by native Grep/Read-with-path. |
+> | Embedding semantic index (FAISS+Voyage) | Moatless | ❌ **SKIP different-not-deficient** — paid API + doubled deps + stale-on-every-commit for negligible gain at <500-file scale (doc's own words: "overkill"); 3/4 search actions already exist as tools. |
+> | SBFL / Ochiai pre-pass | AutoCodeRover | ✅ **ALREADY-DONE** — `_sbfl_prepass` (traceback-frequency proxy, `worker_tldr.py:659`); prior grep was a false negative. |
+> | SWE-bench eval harness | Moatless | ❌ **SKIP different-not-deficient** — Clade-shaped eval already exists (`evals/run_oracle_eval.py`); SWE-bench measures the wrong thing for a general loop tool. |
 >
-> *(SBFL/Ochiai and SWE-bench-harness greps were inconclusive — re-verify before trusting.)*
+> **Net: of 7 studied items, 2 were genuinely deficient and are now built; 5 were already-done or different-not-deficient.** Newly-found genuine gaps (separate from this cluster):
+> - 🟡 **`test-baseline.json` shares the same swarm race** the repro filter just fixed — `_capture_test_baseline` / `_run_intramorphic_check` use a fixed `claude_dir` filename; concurrent fix workers clobber each other's baseline. Namespace by task_id (same fix pattern as `repro-test-{id}.py`).
+> - 🟡 **Parallel patch-sampling + majority-vote re-rank** (Agentless Opp. C) — a cost/quality lever (`swarm.py` is the vehicle), not fault-localization. Evaluate on its own merits; token-cost tradeoff = a real fork, not a clear win.
+> - ⚪ `_sbfl_prepass` has no unit test (only residue from the SBFL slice).
 
 The lists below are the **pre-audit** backlog, kept for provenance. Cheapest first; re-grep each before building.
 
