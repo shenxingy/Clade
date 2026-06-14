@@ -762,7 +762,7 @@ _REPRO_TEST_PROMPT = (
 
 async def _generate_repro_test(
     task_description: str, tldr: str, project_dir: Path,
-    claude_dir: Path | None = None,
+    claude_dir: Path | None = None, task_id=None,
 ) -> str:
     """Generate a failing reproduction test for a bug-fix task (Agentless §6B).
 
@@ -862,10 +862,13 @@ async def _generate_repro_test(
 
         # Persist confirmed-failing repros so the validation half can re-run them
         # post-fix (Agentless §6B). Only confirmed-failing — a repro that passes on
-        # buggy code is a bad test and must never gate a commit.
-        if confirmed_failing and claude_dir is not None:
+        # buggy code is a bad test and must never gate a commit. Namespaced by
+        # task_id: claude_dir is shared across concurrent swarm workers.
+        if confirmed_failing and claude_dir is not None and task_id is not None:
             try:
-                (claude_dir / "repro-test.py").write_text(test_code, encoding="utf-8")
+                (claude_dir / f"repro-test-{task_id}.py").write_text(
+                    test_code, encoding="utf-8"
+                )
             except Exception:
                 pass  # persistence is best-effort; context hint still returned
 

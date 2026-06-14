@@ -590,7 +590,11 @@ def _read_constitution(project_dir: Path) -> str:
     m = _CODE_RULES_RE.search(md)
     if not m:
         return ""
-    return m.group(1).strip()[:1500]
+    text = m.group(1).strip()
+    if len(text) > 1500:
+        # Truncate on a line boundary so the grader never sees a half-rule.
+        text = text[:1500].rsplit("\n", 1)[0]
+    return text
 
 
 async def _oracle_review(

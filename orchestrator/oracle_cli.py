@@ -91,8 +91,13 @@ def run(argv: list[str] | None = None) -> int:
         else ""
     )
 
+    # Constitutional check (reflection-agents §Gap4): the /commit gate + loop-runner
+    # go through this CLI, so the constitution must be loaded here too — not only in
+    # the orchestrator's _run_oracle_gate.
+    constitution = worker_review._read_constitution(project_dir)
     approved, reason, infra_error = asyncio.run(
-        _oracle_review(task, diff_text, claude_dir, test_evidence=test_evidence)
+        _oracle_review(task, diff_text, claude_dir, test_evidence=test_evidence,
+                       constitution=constitution)
     )
     verdict = "unreviewed" if infra_error else ("approved" if approved else "rejected")
     print(json.dumps({"verdict": verdict, "reason": reason}))

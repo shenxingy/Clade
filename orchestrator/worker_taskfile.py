@@ -175,7 +175,8 @@ async def build_task_file(w: Any, task_queue: Any | None) -> Path:
             if task_type == "fix":
                 repro_task = asyncio.create_task(
                     _generate_repro_test(
-                        w.description, tldr, w._original_project_dir, w._claude_dir
+                        w.description, tldr, w._original_project_dir,
+                        w._claude_dir, w.task_id,
                     )
                 )
                 sbfl_task = asyncio.create_task(

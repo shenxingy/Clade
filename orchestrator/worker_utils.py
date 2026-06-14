@@ -20,6 +20,7 @@ import logging
 import os
 import re
 import shlex
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -500,38 +501,41 @@ async def _run_intramorphic_check(
         baseline_file.unlink(missing_ok=True)
 
 
+def _project_python(project_dir: Path) -> str:
+    """Interpreter to run a project's tests with: the project venv if present,
+    else the orchestrator's own interpreter (which has pytest). Never bare
+    'python' — that may be py2 or lack the deps the repro test imports."""
+    venv_py = project_dir / ".venv" / "bin" / "python"
+    return str(venv_py) if venv_py.exists() else sys.executable
+
+
 async def _run_repro_filter(
-    project_dir: Path, claude_dir: Path, timeout: int = 30
+    project_dir: Path, claude_dir: Path, task_id, timeout: int = 30
 ) -> tuple[bool | None, str]:
     """Re-run the persisted reproduction test against the fixed code (Agentless §6B).
 
-    _generate_repro_test persists a repro to {claude_dir}/repro-test.py ONLY when
-    it was confirmed failing on the buggy code. Re-running it after the fix is the
-    executable proof the bug is actually resolved: it must now PASS. The existing
-    project suite can't catch an unfixed bug it has no test for — this closes that
-    gap. Returns (passed, output):
+    _generate_repro_test persists a repro to {claude_dir}/repro-test-{task_id}.py
+    ONLY when it was confirmed failing on the buggy code. Re-running it after the
+    fix is the executable proof the bug is actually resolved: it must now PASS. The
+    existing project suite can't catch an unfixed bug it has no test for — this
+    closes that gap. Returns (passed, output):
       - (True,  ...)  repro now passes — fix verified
       - (False, ...)  repro still fails — the fix did NOT resolve the bug
       - (None,  "")   no repro persisted / couldn't run — fail-open, no signal
 
-    Runs the test inside project_dir (the worktree) so imports resolve against the
-    FIXED code. Cleans up the persisted repro + temp file regardless of outcome.
+    The repro file is namespaced by task_id (claude_dir is shared across concurrent
+    swarm workers — an un-namespaced file would race). It is run directly with
+    cwd=project_dir (the worktree) so imports resolve against the FIXED code; no
+    temp copy is written into the worktree. The persisted repro is removed in
+    `finally` regardless of outcome.
     """
-    repro_file = claude_dir / "repro-test.py"
+    repro_file = claude_dir / f"repro-test-{task_id}.py"
     if not repro_file.exists():
         return None, ""
-    import tempfile
-    tmp_path: str | None = None
     try:
-        test_code = repro_file.read_text(encoding="utf-8")
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".py", prefix="clade-reprofilter-", delete=False,
-            dir=str(project_dir),
-        ) as tmp:
-            tmp.write(test_code)
-            tmp_path = tmp.name
         proc = await asyncio.create_subprocess_exec(
-            "python", "-m", "pytest", tmp_path, "-x", "-q", "--tb=short",
+            _project_python(project_dir), "-m", "pytest", str(repro_file),
+            "-x", "-q", "--tb=short",
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
             cwd=str(project_dir),
         )
@@ -547,8 +551,6 @@ async def _run_repro_filter(
         logger.debug("_run_repro_filter failed: %s", e)
         return None, ""
     finally:
-        if tmp_path:
-            Path(tmp_path).unlink(missing_ok=True)
         repro_file.unlink(missing_ok=True)
 
 

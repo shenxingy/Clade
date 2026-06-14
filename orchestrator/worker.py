@@ -824,7 +824,7 @@ class Worker:
                     # has no test for; the repro can. Result always feeds oracle evidence;
                     # hard-block only when repro_test_gate is set (default off, advisory).
                     repro_passed, repro_output = await _run_repro_filter(
-                        self._project_dir, self._claude_dir
+                        self._project_dir, self._claude_dir, self.task_id
                     )
                     test_evidence = _build_test_evidence(tests_passed, test_output, reg_warning)
                     if repro_passed is not None:

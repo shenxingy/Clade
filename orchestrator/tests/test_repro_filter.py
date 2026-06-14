@@ -78,37 +78,42 @@ async def _timeout_wait_for(coro, timeout=None):
 
 
 class TestRunReproFilter:
+    _TID = 42  # task_id namespaces the file (claude_dir is shared across workers)
+
+    def _repro(self, d):
+        return d / f"repro-test-{self._TID}.py"
+
     async def test_no_repro_file_returns_none(self, tmp_path):
         """No persisted repro → no signal, fail-open. Never touches a subprocess."""
-        passed, output = await wu._run_repro_filter(tmp_path, tmp_path)
+        passed, output = await wu._run_repro_filter(tmp_path, tmp_path, self._TID)
         assert passed is None
         assert output == ""
 
     async def test_repro_passes_after_fix(self, tmp_path, monkeypatch):
-        (tmp_path / "repro-test.py").write_text("def test_x():\n    assert True\n")
+        self._repro(tmp_path).write_text("def test_x():\n    assert True\n")
         monkeypatch.setattr(
             wu, "asyncio",
             AsyncioProxy(create_subprocess_exec=_exec_returning(FakeProc(b"1 passed", 0))),
         )
-        passed, output = await wu._run_repro_filter(tmp_path, tmp_path)
+        passed, output = await wu._run_repro_filter(tmp_path, tmp_path, self._TID)
         assert passed is True
         assert "passed" in output
         # persisted repro is cleaned up regardless of outcome
-        assert not (tmp_path / "repro-test.py").exists()
+        assert not self._repro(tmp_path).exists()
 
     async def test_repro_still_failing_after_fix(self, tmp_path, monkeypatch):
-        (tmp_path / "repro-test.py").write_text("def test_x():\n    assert False\n")
+        self._repro(tmp_path).write_text("def test_x():\n    assert False\n")
         monkeypatch.setattr(
             wu, "asyncio",
             AsyncioProxy(create_subprocess_exec=_exec_returning(FakeProc(b"1 failed", 1))),
         )
-        passed, output = await wu._run_repro_filter(tmp_path, tmp_path)
+        passed, output = await wu._run_repro_filter(tmp_path, tmp_path, self._TID)
         assert passed is False
         assert "failed" in output
-        assert not (tmp_path / "repro-test.py").exists()
+        assert not self._repro(tmp_path).exists()
 
     async def test_timeout_is_none_and_cleans_up(self, tmp_path, monkeypatch):
-        (tmp_path / "repro-test.py").write_text("def test_x():\n    assert True\n")
+        self._repro(tmp_path).write_text("def test_x():\n    assert True\n")
         monkeypatch.setattr(
             wu, "asyncio",
             AsyncioProxy(
@@ -116,19 +121,31 @@ class TestRunReproFilter:
                 wait_for=_timeout_wait_for,
             ),
         )
-        passed, output = await wu._run_repro_filter(tmp_path, tmp_path)
+        passed, output = await wu._run_repro_filter(tmp_path, tmp_path, self._TID)
         assert passed is None  # timeout = no signal, not a failure
-        assert not (tmp_path / "repro-test.py").exists()
+        assert not self._repro(tmp_path).exists()
 
-    async def test_temp_file_not_left_in_project_dir(self, tmp_path, monkeypatch):
-        (tmp_path / "repro-test.py").write_text("def test_x():\n    assert True\n")
+    async def test_no_temp_file_written_into_worktree(self, tmp_path, monkeypatch):
+        """The persisted repro is run directly — nothing is written into project_dir."""
+        self._repro(tmp_path).write_text("def test_x():\n    assert True\n")
         monkeypatch.setattr(
             wu, "asyncio",
             AsyncioProxy(create_subprocess_exec=_exec_returning(FakeProc(b"1 passed", 0))),
         )
-        await wu._run_repro_filter(tmp_path, tmp_path)
-        leaked = list(tmp_path.glob("clade-reprofilter-*.py"))
-        assert leaked == []
+        await wu._run_repro_filter(tmp_path, tmp_path, self._TID)
+        assert list(tmp_path.glob("clade-reprofilter-*.py")) == []
+
+    async def test_other_workers_repro_not_touched(self, tmp_path, monkeypatch):
+        """Namespacing: filtering task 42 must not read or delete task 99's repro."""
+        self._repro(tmp_path).write_text("def test_x():\n    assert True\n")
+        other = tmp_path / "repro-test-99.py"
+        other.write_text("def test_y():\n    assert True\n")
+        monkeypatch.setattr(
+            wu, "asyncio",
+            AsyncioProxy(create_subprocess_exec=_exec_returning(FakeProc(b"1 passed", 0))),
+        )
+        await wu._run_repro_filter(tmp_path, tmp_path, self._TID)
+        assert other.exists()  # untouched
 
 
 # ─── _generate_repro_test persistence gate ────────────────────────────────────
@@ -154,21 +171,21 @@ class TestReproPersistence:
     async def test_persists_when_confirmed_failing(self, tmp_path, monkeypatch):
         self._proxy(monkeypatch, run_returncode=1)  # test fails on buggy code → confirmed
         block = await wt._generate_repro_test(
-            "fix the crash", "## a.py\n  def buggy()", tmp_path, tmp_path
+            "fix the crash", "## a.py\n  def buggy()", tmp_path, tmp_path, task_id=7
         )
         assert "Reproduction Test" in block
-        assert (tmp_path / "repro-test.py").exists()
-        assert b"test_repro" in (tmp_path / "repro-test.py").read_bytes()
+        assert (tmp_path / "repro-test-7.py").exists()
+        assert b"test_repro" in (tmp_path / "repro-test-7.py").read_bytes()
 
     async def test_does_not_persist_when_test_passes_on_buggy_code(self, tmp_path, monkeypatch):
         self._proxy(monkeypatch, run_returncode=0)  # passes on buggy code → bad repro
         await wt._generate_repro_test(
-            "fix the crash", "## a.py\n  def buggy()", tmp_path, tmp_path
+            "fix the crash", "## a.py\n  def buggy()", tmp_path, tmp_path, task_id=7
         )
-        assert not (tmp_path / "repro-test.py").exists()
+        assert not (tmp_path / "repro-test-7.py").exists()
 
     async def test_no_persist_without_claude_dir(self, tmp_path, monkeypatch):
         self._proxy(monkeypatch, run_returncode=1)
         # claude_dir omitted → back-compat path, nothing persisted
         await wt._generate_repro_test("fix the crash", "## a.py\n  def buggy()", tmp_path)
-        assert not (tmp_path / "repro-test.py").exists()
+        assert list(tmp_path.glob("repro-test-*.py")) == []

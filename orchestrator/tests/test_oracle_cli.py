@@ -12,7 +12,8 @@ import oracle_cli
 
 
 def _stub_review(approved, reason, infra):
-    async def stub(task, diff, claude_dir, acceptance_criteria=None, test_evidence=""):
+    async def stub(task, diff, claude_dir, acceptance_criteria=None, test_evidence="",
+                   constitution=""):
         return approved, reason, infra
     return stub
 

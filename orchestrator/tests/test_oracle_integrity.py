@@ -1123,6 +1123,9 @@ class TestConstitutionInjection:
         assert approved and not infra
         # spec pass (captured[0]) is task-only; quality pass (captured[1]) carries it
         assert any("PROJECT CODE RULES" in p and self._SENTINEL in p for p in captured)
+        # constitution is a quality concern, NOT a spec concern — must not leak
+        # into the spec pass (captured[0]).
+        assert "PROJECT CODE RULES" not in captured[0]
 
     async def test_no_constitution_no_header_leak(self, tmp_path, monkeypatch):
         captured: list[str] = []
