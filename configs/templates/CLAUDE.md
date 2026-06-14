@@ -83,6 +83,10 @@ Structure code for efficient Claude Code tool usage:
 - **DAG imports**: Module dependency graph must be a strict DAG (no circular imports). Use lazy imports or duck typing (`Any`) to break potential cycles.
 - **CSS extraction**: For HTML files with inline CSS > 200 lines, extract to separate `.css` file. Keep JS inline if tightly coupled (SPA globals, no module system).
 
+## Frontend Verification
+
+- For any change that renders or alters UI, verify it in a real browser before claiming done — compiling is not proof it works. Use the Playwright MCP (`mcp__playwright__*`; enable with `setup-browser-verify.sh`): navigate → screenshot → compare to intent → check console errors → fix and iterate. Show the evidence in your summary.
+
 ## Pre-Code Reflection
 
 Before writing or modifying code, consider these failure patterns (learned from cross-project audits):

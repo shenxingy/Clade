@@ -42,6 +42,70 @@ logger = logging.getLogger(__name__)
 # History carries the payload: workers commit via committer.sh, and the body
 # is the only place mechanism/root-cause survives for future debugging — the
 # task file and worker log are ephemeral, git history is not.
+# Anthropic's canonical UI verification = the agent self-verifies visually AS IT
+# WORKS (implement → screenshot → compare to intent → list diffs → fix, 2-3×),
+# not a post-hoc gate and NOT a screenshot-on-every-edit hook (Anthropic advises
+# against the latter — visual judgment isn't deterministic). This directive bakes
+# that loop into every frontend worker. Browser tools are already wired (Playwright
+# MCP via setup-browser-verify.sh; allow-listed for fix/test in config.py). Self-
+# gating: a no-op for backend-only tasks in a fullstack project.
+FRONTEND_VISUAL_BLOCK = (
+    "\n\n---\n\n"
+    "## Visual Self-Verification (do this AS you work, not after)\n"
+    "If your change renders or alters ANY UI, code that compiles is NOT proof it "
+    "works — you MUST see it in a real browser before claiming done:\n"
+    "1. Make the change, then ensure the app is running (start the dev server if "
+    "needed — check package.json / CLAUDE.md for the port, default 3000).\n"
+    "2. Open the affected page(s) with the Playwright MCP tools "
+    "(`mcp__playwright__browser_navigate`, `mcp__playwright__browser_snapshot`, "
+    "`mcp__playwright__browser_take_screenshot`).\n"
+    "3. Compare what you see against the intended result (the task, plus any design "
+    "mock/screenshot provided) — list the concrete differences.\n"
+    "4. Check the browser console for errors and for `undefined`/`null`/`NaN` "
+    "rendering or broken layout.\n"
+    "5. Fix and repeat (up to 3 iterations) until the page matches intent and the "
+    "console is clean.\n"
+    "6. In your completion summary, show evidence — pages checked, console clean, "
+    "screenshot path — do not just assert it works.\n"
+    "If the `mcp__playwright__*` tools are not in your tool list, browser "
+    "verification is not wired in (see `setup-browser-verify.sh`): say so and fall "
+    "back to the most thorough check available.\n"
+)
+
+def _read_project_claude_md(w) -> str:
+    """Read the project's CLAUDE.md (where '## Project Type' lives), trying the
+    repo root first then the .claude scratch copy. '' if none/unreadable."""
+    for p in (
+        getattr(w, "_project_dir", None),
+        getattr(w, "_original_project_dir", None),
+        getattr(w, "_claude_dir", None),
+    ):
+        if not p:
+            continue
+        try:
+            f = Path(p) / "CLAUDE.md"
+            if f.exists():
+                return f.read_text(errors="replace")
+        except Exception:
+            pass
+    return ""
+
+
+def _is_frontend_project(claude_md: str) -> bool:
+    """True when CLAUDE.md marks a renderable frontend: a web-fullstack/web-frontend
+    Type, or a 'Frontend:' line that isn't N/A. Pure — drives the visual-verify gate."""
+    if not claude_md:
+        return False
+    if "web-fullstack" in claude_md.lower() or "web-frontend" in claude_md.lower():
+        return True
+    for line in claude_md.splitlines():
+        s = line.strip().lstrip("-* ").lower()
+        if s.startswith("frontend:"):
+            val = s.split(":", 1)[1].strip()
+            return bool(val) and "n/a" not in val and "none" not in val
+    return False
+
+
 FRICTION_LOG_BLOCK = (
     "\n\n---\n\n"
     "## Friction Log\n"
@@ -269,6 +333,11 @@ async def build_task_file(w: Any, task_queue: Any | None) -> Path:
     # Multi-agent Gap 3: inject task schema (acceptance criteria + contracts) if present.
     _schema_block = _format_task_schema_block(_parse_task_schema(w.description))
 
+    # Anthropic visual feedback loop: frontend projects get the visual self-verify
+    # directive so the worker checks its UI in a real browser as it builds.
+    _frontend_visual = (
+        FRONTEND_VISUAL_BLOCK if _is_frontend_project(_read_project_claude_md(w)) else ""
+    )
     # AutoCodeRover §Gap2 + ECC strategic-compact: for fix tasks, inject explicit
     # two-phase directive with phase-boundary checkpoint (not arbitrary token count).
     _fix_two_phase = ""
@@ -297,7 +366,7 @@ async def build_task_file(w: Any, task_queue: Any | None) -> Path:
             "them, so they must be copy-pasteable.\n"
         )
     task_file.write_text(
-        effective_description + _schema_block + _fix_two_phase
+        effective_description + _schema_block + _fix_two_phase + _frontend_visual
         + EDIT_DISCIPLINE_BLOCK + SEARCH_CONVENTIONS_BLOCK
         + COMMIT_GUIDANCE_BLOCK + FRICTION_LOG_BLOCK + COMPLETION_CONTRACT_BLOCK
     )
