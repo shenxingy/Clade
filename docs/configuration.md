@@ -111,6 +111,18 @@ as `mcp__playwright` in `config.py:_TOOL_SUBSETS`), and `/verify` emits
 on that project then launches a Playwright MCP subprocess — run `--remove` for
 projects with no frontend.
 
+**Troubleshooting** (seen live on a real Next.js project):
+- The Chromium install may print a Playwright version-mismatch box and `Removing
+  unused browser at …chromium-NNNN` — this is normal: `npx playwright install`
+  resolves a different Playwright version than `@playwright/mcp` bundles, so it
+  swaps the browser build. The setup still succeeds; verify with
+  `ls ~/.cache/ms-playwright/` (a `chromium-*` dir present = good).
+- The `/verify` browser step (and the worker visual-verify directive) only fires
+  when the project is detected as a frontend — detection reads the project's
+  `package.json` for a frontend framework (`next`/`react`/`vue`/`svelte`/…) **or**
+  a `## Project Type` / `Frontend:` line in CLAUDE.md. A frontend project whose
+  CLAUDE.md only describes the stack in prose is still detected via package.json.
+
 ## Add a new hook
 
 1. Create `configs/hooks/your-hook.sh`
