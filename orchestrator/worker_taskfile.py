@@ -307,7 +307,10 @@ async def build_task_file(w: Any, task_queue: Any | None) -> Path:
         try:
             baseline = await _capture_test_baseline(w._project_dir, timeout=30)
             if baseline:
-                (w._claude_dir / "test-baseline.json").write_text(
+                # Namespaced by task_id: claude_dir is shared across concurrent
+                # swarm workers — a fixed filename races (one worker's baseline
+                # clobbers another's, producing bogus regression warnings).
+                (w._claude_dir / f"test-baseline-{w.task_id}.json").write_text(
                     json.dumps(baseline)
                 )
                 logger.debug("Intramorphic baseline: %d tests for %s", len(baseline), w.task_id)

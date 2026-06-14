@@ -817,7 +817,7 @@ class Worker:
                 try:
                     tests_passed, test_output = await _run_project_tests(self._project_dir)
                     reg_warning = await _run_intramorphic_check(
-                        self._project_dir, self._claude_dir, test_output
+                        self._project_dir, self._claude_dir, test_output, self.task_id
                     )
                     # Agentless §6B validation half: re-run the confirmed-failing repro
                     # against the fix. The project suite can't catch an unfixed bug it

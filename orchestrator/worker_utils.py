@@ -473,14 +473,17 @@ async def _run_intramorphic_check(
     project_dir: Path,
     claude_dir: Path,
     test_output: str,
+    task_id=None,
 ) -> str:
     """Compare post-commit test results against pre-fix baseline.
 
-    Reads baseline from {claude_dir}/test-baseline.json (written before worker starts).
-    Returns a regression warning string, or "" if no regressions found.
-    Cleans up the baseline file regardless of outcome.
+    Reads baseline from {claude_dir}/test-baseline-{task_id}.json (written before
+    the worker starts). Namespaced by task_id because claude_dir is shared across
+    concurrent swarm workers — a fixed filename races. Returns a regression
+    warning string, or "" if no regressions found. Cleans up the baseline file
+    regardless of outcome.
     """
-    baseline_file = claude_dir / "test-baseline.json"
+    baseline_file = claude_dir / f"test-baseline-{task_id}.json"
     if not baseline_file.exists() or not test_output:
         return ""
     try:

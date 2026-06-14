@@ -189,3 +189,30 @@ class TestReproPersistence:
         # claude_dir omitted → back-compat path, nothing persisted
         await wt._generate_repro_test("fix the crash", "## a.py\n  def buggy()", tmp_path)
         assert list(tmp_path.glob("repro-test-*.py")) == []
+
+
+# ─── Intramorphic baseline namespacing (same shared-claude_dir race) ───────────
+
+
+class TestIntramorphicNamespacing:
+    """test-baseline.json had the same swarm race as repro-test.py: a fixed
+    filename in the shared claude_dir is clobbered by concurrent workers."""
+
+    async def test_missing_own_baseline_is_no_op(self, tmp_path):
+        # No baseline for task 42 → no regression signal (fail-open).
+        warning = await wu._run_intramorphic_check(tmp_path, tmp_path, "1 passed", 42)
+        assert warning == ""
+
+    async def test_does_not_read_or_delete_another_tasks_baseline(self, tmp_path):
+        # Worker 99 wrote its baseline; worker 42's check must not touch it.
+        other = tmp_path / "test-baseline-99.json"
+        other.write_text('{"tests/test_x.py::test_a": true}')
+        warning = await wu._run_intramorphic_check(tmp_path, tmp_path, "1 passed", 42)
+        assert warning == ""
+        assert other.exists()  # untouched — no cross-worker clobber
+
+    async def test_consumes_and_cleans_up_own_baseline(self, tmp_path):
+        mine = tmp_path / "test-baseline-42.json"
+        mine.write_text('{"tests/test_x.py::test_a": true}')
+        await wu._run_intramorphic_check(tmp_path, tmp_path, "1 passed", 42)
+        assert not mine.exists()  # own baseline cleaned up after the check
