@@ -980,6 +980,7 @@ async def status_loop():
                             from task_factory.mutation_scan import check_mutation_survivors
                             asyncio.create_task(check_mutation_survivors(
                                 session.task_queue, str(session.project_dir),
+                                targets=GLOBAL_SETTINGS.get("mutation_targets") or None,
                                 claude_dir=str(session.claude_dir),
                             ))
                         except Exception as e:

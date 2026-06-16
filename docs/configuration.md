@@ -131,14 +131,18 @@ never asserted — the real risk for agent-written tests):
 
 ```jsonc
 // ~/.claude/orchestrator-settings.json
-{ "mutation_scan": true }
+{
+  "mutation_scan": true,
+  "mutation_targets": ["orchestrator/worker_review.py", "orchestrator/error_classifier.py"]
+}
 ```
 
 Requires `mutmut` (`pip install mutmut`); absent → the lane logs a hint and
-no-ops. It runs every ~6h (mutmut runs the whole suite once per mutant, so it is
-the most expensive lane — never a commit gate), scoped to high-signal modules
-(`worker_review.py`, `error_classifier.py`, `worker_utils.py` — override via the
-`targets` arg). **Ratchet:** the first run seeds a survivor baseline at
+no-ops. `mutation_targets` (project-relative paths) is **required** — mutation
+targets are project-specific, so with none configured the lane no-ops. It runs
+every ~6h (mutmut runs the whole suite once per mutant, so it is the most
+expensive lane — never a commit gate); pick a few high-signal modules where a
+silently hollow test is most dangerous. **Ratchet:** the first run seeds a survivor baseline at
 `.claude/mutation-baseline.json` and creates **no** tasks; later runs create a
 `test`-type task only for *newly*-surviving mutants (a regression in test quality),
 capped at 10/run. Killed mutants drop from the baseline automatically.

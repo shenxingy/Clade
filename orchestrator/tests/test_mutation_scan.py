@@ -108,3 +108,12 @@ class TestCheckMutationSurvivors:
         created = await check_mutation_survivors(q, str(tmp_path))
         assert created == []
         assert q.added == []  # never touches the queue
+
+    async def test_no_op_when_no_targets_configured(self, tmp_path, monkeypatch):
+        # mutmut present but no targets → must not run mutmut or touch the queue.
+        import task_factory.mutation_scan as ms
+        monkeypatch.setattr(ms.shutil, "which", lambda _: "/usr/bin/mutmut")
+        q = FakeQueue()
+        created = await check_mutation_survivors(q, str(tmp_path), targets=[])
+        assert created == []
+        assert q.added == []

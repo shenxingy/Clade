@@ -27,9 +27,12 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# High-signal targets first: the oracle/judge + retry logic where a silently
-# hollow test is most dangerous. Override via the `targets` arg.
-_MUTATION_TARGETS = ["worker_review.py", "error_classifier.py", "worker_utils.py"]
+# Mutation targets are inherently project-specific (you mutate a few high-signal
+# modules, not the whole tree) — there is no sane universal default, so this is
+# empty and the lane no-ops until `mutation_targets` is configured in settings.
+# Example for Clade's own repo: ["orchestrator/worker_review.py",
+# "orchestrator/error_classifier.py"].
+_MUTATION_TARGETS: list[str] = []
 
 _MAX_TASKS_PER_RUN = 10  # never flood the queue from one scan
 
@@ -93,7 +96,9 @@ def _ratchet_new_survivors(current: set[str], baseline_path: Path) -> set[str]:
     if existed:
         try:
             prev = set(json.loads(baseline_path.read_text()).get("survivors", []))
-        except Exception:
+        except Exception as e:
+            logger.warning("mutation_scan: corrupt baseline %s, treating as empty: %s",
+                           baseline_path, e)
             prev = set()
     try:
         baseline_path.parent.mkdir(parents=True, exist_ok=True)
@@ -118,9 +123,13 @@ async def check_mutation_survivors(
         logger.info("mutation_scan: mutmut not installed (pip install mutmut) — skipping")
         return created
 
+    if not targets:
+        logger.info("mutation_scan: no mutation_targets configured — skipping")
+        return created
+
     paths = ",".join(t for t in targets if (project / t).exists())
     if not paths:
-        logger.info("mutation_scan: no target files present — skipping")
+        logger.info("mutation_scan: configured targets not found under %s — skipping", project)
         return created
 
     try:
@@ -146,7 +155,13 @@ async def check_mutation_survivors(
             cwd=project_dir,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
         )
-        out, _ = await asyncio.wait_for(res.communicate(), timeout=60)
+        try:
+            out, _ = await asyncio.wait_for(res.communicate(), timeout=60)
+        except asyncio.TimeoutError:
+            res.kill()
+            await res.communicate()  # reap + close the stdout pipe
+            logger.warning("mutation_scan: mutmut results timed out — skipping")
+            return created
     except Exception as e:
         logger.warning("mutation_scan: mutmut results failed: %s", e)
         return created

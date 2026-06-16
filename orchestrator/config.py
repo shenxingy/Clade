@@ -112,6 +112,7 @@ _SETTINGS_DEFAULTS = {
     "coverage_scan": False,
     "dep_update_scan": False,
     "mutation_scan": False,  # patrol lane: mutmut survivors → test-gap tasks (ratchet)
+    "mutation_targets": [],  # paths to mutate (project-relative); empty = lane no-ops
     "patrol_schedule": "",
     "patrol_auto_ideas": False,
     "research_schedule": "",
