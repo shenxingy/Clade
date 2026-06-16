@@ -95,10 +95,10 @@ Grouped by [watch-list](../who-to-learn-from.md) tier. `Gaps` = count of open `n
 > | SBFL / Ochiai pre-pass | AutoCodeRover | ✅ **ALREADY-DONE** — `_sbfl_prepass` (traceback-frequency proxy, `worker_tldr.py:659`); prior grep was a false negative. |
 > | SWE-bench eval harness | Moatless | ❌ **SKIP different-not-deficient** — Clade-shaped eval already exists (`evals/run_oracle_eval.py`); SWE-bench measures the wrong thing for a general loop tool. |
 >
-> **Net: of 7 studied items, 2 were genuinely deficient and are now built; 5 were already-done or different-not-deficient.** Newly-found genuine gaps (separate from this cluster):
-> - 🟡 **`test-baseline.json` shares the same swarm race** the repro filter just fixed — `_capture_test_baseline` / `_run_intramorphic_check` use a fixed `claude_dir` filename; concurrent fix workers clobber each other's baseline. Namespace by task_id (same fix pattern as `repro-test-{id}.py`).
-> - 🟡 **Parallel patch-sampling + majority-vote re-rank** (Agentless Opp. C) — a cost/quality lever (`swarm.py` is the vehicle), not fault-localization. Evaluate on its own merits; token-cost tradeoff = a real fork, not a clear win.
-> - ⚪ `_sbfl_prepass` has no unit test (only residue from the SBFL slice).
+> **Net: of 7 studied items, 2 were genuinely deficient and are now built; 5 were already-done or different-not-deficient.** Newly-found gaps (separate from this cluster) — all now resolved:
+> - ✅ **`test-baseline.json` swarm race** — FIXED (be1e980): namespaced to `test-baseline-{task_id}.json`, same pattern as the repro filter.
+> - ✅ **`_sbfl_prepass` had no unit test** — ADDED (94a77ab); the test caught a real bug (traceback regex matched newlines → suspect-ranking corrupted across keys), fixed in the same commit.
+> - ❌ **Parallel patch-sampling + majority-vote re-rank** (Agentless Opp. C) — **SKIP, different-not-deficient + cost.** Agentless sampled 40 patches for a one-shot benchmark with a weak base model maximizing pass@1. Clade has a strong base model that already *iterates* (reflection retry w/ episodic memory + minimal-patch targeting) and *verifies* (oracle gate → requeue, repro-test filter) — covering sampling's core benefit (escaping one bad attempt) without the N× per-task token cost. `swarm.py` is a worker-pool manager, not a candidate sampler. Revisit only if we observe tasks where sequential iteration *plateaus* on the same wrong approach — then a diverse multi-angle attempt (judge-panel pattern) is the lever, as an opt-in for hard tasks, not a default.
 
 The lists below are the **pre-audit** backlog, kept for provenance. Cheapest first; re-grep each before building.
 
