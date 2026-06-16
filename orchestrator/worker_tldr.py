@@ -707,7 +707,11 @@ async def _sbfl_prepass(project_dir: Path, timeout: int = 30) -> str:
     # and "path/file.py:N: in function_name" (pytest short format)
     _TRACE_RE = re.compile(
         r'(?:File ["\'](?P<fpath1>[^"\']+)["\'], line \d+, in (?P<fn1>\w+))'
-        r'|(?:(?P<fpath2>[^\s:][^:]+\.py):(?:\d+): in (?P<fn2>\w+))'
+        # fpath2 must be a single whitespace-free token: [^:]+ also matched
+        # newlines, so adjacent frames captured the preceding code line into the
+        # path ("return a / b\nsrc/foo.py"), splitting one function across keys
+        # and corrupting the frequency ranking.
+        r'|(?:(?P<fpath2>[^\s:][^:\s]*\.py):(?:\d+): in (?P<fn2>\w+))'
     )
     scores: dict[str, int] = {}  # "file:function" → frequency
     for m in _TRACE_RE.finditer(output):
