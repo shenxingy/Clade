@@ -343,7 +343,11 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "class_name": {"type": "string", "description": "Class name to search for"},
+                    "class_name": {
+                        "type": "string",
+                        "description": "Class name to search for",
+                        "examples": ["Worker", "TaskQueue", "SwarmManager"],
+                    },
                     "project_dir": {"type": "string", "description": "Project root (defaults to cwd)"},
                 },
                 "required": ["class_name"],
@@ -358,8 +362,16 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "method_name": {"type": "string", "description": "Method or function name"},
-                    "class_name": {"type": "string", "description": "Class name to scope the search (optional)"},
+                    "method_name": {
+                        "type": "string",
+                        "description": "Method or function name",
+                        "examples": ["verify_and_commit", "_oracle_review", "build_task_file"],
+                    },
+                    "class_name": {
+                        "type": "string",
+                        "description": "Class name to scope the search (optional)",
+                        "examples": ["Worker", "WorkerPool"],
+                    },
                     "project_dir": {"type": "string", "description": "Project root (defaults to cwd)"},
                 },
                 "required": ["method_name"],
@@ -374,9 +386,17 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "snippet": {"type": "string", "description": "Code pattern or literal string to search for"},
+                    "snippet": {
+                        "type": "string",
+                        "description": "Code pattern or literal string to search for",
+                        "examples": ["GLOBAL_SETTINGS.get(", "async def _run", "raise HTTPException"],
+                    },
                     "project_dir": {"type": "string", "description": "Project root (defaults to cwd)"},
-                    "context_lines": {"type": "integer", "description": "Lines of context around each match (default: 3)"},
+                    "context_lines": {
+                        "type": "integer",
+                        "description": "Lines of context around each match (default: 3)",
+                        "examples": [3, 5],
+                    },
                 },
                 "required": ["snippet"],
             },
