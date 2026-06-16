@@ -111,6 +111,7 @@ _SETTINGS_DEFAULTS = {
     "webhook_secret": "",
     "coverage_scan": False,
     "dep_update_scan": False,
+    "mutation_scan": False,  # patrol lane: mutmut survivors → test-gap tasks (ratchet)
     "patrol_schedule": "",
     "patrol_auto_ideas": False,
     "research_schedule": "",

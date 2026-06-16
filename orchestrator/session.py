@@ -138,6 +138,7 @@ class ProjectSession:
         self._ci_watcher_last: float = 0.0
         self._coverage_scan_last: float = 0.0
         self._dep_update_last: float = 0.0
+        self._mutation_scan_last: float = 0.0
         self._priority_rank_last: float = 0.0
         # Repo-invariants preflight (domdomegg): labels + merge perms, fail-open
         self._schedule_repo_preflight()
@@ -970,6 +971,19 @@ async def status_loop():
                             asyncio.create_task(check_outdated_deps(session.task_queue, str(session.project_dir)))
                         except Exception as e:
                             logger.warning("Dep update error: %s", e)
+                if GLOBAL_SETTINGS.get("mutation_scan", False):
+                    # 6h cadence: mutmut runs the whole suite once per mutant, so this
+                    # is the most expensive lane — keep it infrequent.
+                    if _factory_now - getattr(session, '_mutation_scan_last', 0) > 21600:
+                        session._mutation_scan_last = _factory_now
+                        try:
+                            from task_factory.mutation_scan import check_mutation_survivors
+                            asyncio.create_task(check_mutation_survivors(
+                                session.task_queue, str(session.project_dir),
+                                claude_dir=str(session.claude_dir),
+                            ))
+                        except Exception as e:
+                            logger.warning("Mutation scan error: %s", e)
 
                 # Complete grouped parents when all children are done
                 _grouped = [t for t in _auto_tasks if t["status"] == "grouped"]
