@@ -272,6 +272,11 @@ node_hydrate_context() {
   mkdir -p .claude
 
   {
+    # Surface a failing baseline first so the supervisor repairs before adding work.
+    if [ -f .claude/health-warning.md ]; then
+      cat .claude/health-warning.md
+      echo ""
+    fi
     echo "# Loop Context: $(date '+%Y-%m-%d %H:%M')"
     echo "## Goal File: $GOAL_FILE"
     echo ""
@@ -728,31 +733,112 @@ Only fix syntax errors. Do not change logic or add features."
 }
 # ────────────────────────────────────────────────────────────────
 
+# ─── Shared: read verify_cmd from CLAUDE.md (YAML or inline label) ──
+_read_verify_cmd() {
+  local vc
+  vc=$(grep -m1 'verify_cmd:' CLAUDE.md 2>/dev/null | sed 's/.*verify_cmd:[[:space:]]*//' || true)
+  if [ -z "$vc" ]; then
+    vc=$(grep -m1 'Verify command:' CLAUDE.md 2>/dev/null | sed 's/.*Verify command:[[:space:]]*//' || true)
+  fi
+  printf '%s' "$vc"
+}
+
+# ─── #3: parse pytest-style "N failed" from verify output (best-effort) ──
+# Echoes the failed+error count, or nothing if the output isn't parseable.
+# Always exits 0 (pipefail-safe: grep returns non-zero on no match).
+_parse_failed_count() {
+  local out="$1" n
+  n=$(printf '%s' "$out" | grep -oE '[0-9]+ (failed|error)' 2>/dev/null \
+        | grep -oE '^[0-9]+' 2>/dev/null | awk '{s+=$1} END{if(NR)print s}') || true
+  # No failure tokens, but a recognizable test summary → 0 failed (suite is green).
+  if [ -z "$n" ] && printf '%s' "$out" | grep -qE '[0-9]+ passed'; then
+    n=0
+  fi
+  printf '%s' "$n"
+}
+
+# ─── [DET] NODE: HEALTH CHECK (Anthropic: repair broken baseline first) ──
+# Runs the verify_cmd at the START of an iteration so the supervisor repairs a
+# broken baseline before planning new work. Iteration 1 runs fresh; later
+# iterations reuse the prior iteration's test_sample result (no double run).
+# On failure, writes .claude/health-warning.md, which node_hydrate_context folds
+# into the supervisor's context.
+node_health_check() {
+  local verify_cmd; verify_cmd=$(_read_verify_cmd)
+  rm -f .claude/health-warning.md
+  if [ -z "$verify_cmd" ]; then
+    return 0  # no verify_cmd → nothing to check
+  fi
+
+  local broken=0 out=""
+  if [ "${ITERATION:-1}" -le 1 ]; then
+    log_info "[DET] health_check (baseline, iter 1)"
+    out=$(_timeout "$TEST_SAMPLE_TIMEOUT" bash -c "$verify_cmd" 2>&1) || broken=1
+  else
+    # Reuse the previous iteration's result — avoids a second full test run.
+    [ "${LAST_TEST_RESULT:-0}" -ne 0 ] && broken=1
+    out="${LAST_TEST_OUTPUT:-}"
+  fi
+
+  if [ "$broken" -ne 0 ]; then
+    mkdir -p .claude
+    {
+      echo "## ⚠️ BASELINE HEALTH: FAILING"
+      echo "The project's verify_cmd is currently failing. **Repair the broken"
+      echo "baseline before planning any new feature work** (Anthropic harness lever)."
+      echo '```'
+      printf '%s\n' "$out" | tail -30
+      echo '```'
+    } > .claude/health-warning.md
+    log_warn "[DET] health_check: baseline FAILING — supervisor will repair first"
+  else
+    log_success "[DET] health_check: baseline healthy"
+  fi
+  return 0
+}
+# ────────────────────────────────────────────────────────────────
+
 # ─── [DET] NODE: TEST SAMPLE ────────────────────────────────────
 # Runs the project's verify_cmd from CLAUDE.md. No LLM calls.
 node_test_sample() {
   log_info "[DET] test_sample"
 
-  # Try reading verify_cmd from CLAUDE.md (handles both YAML front-matter and inline)
-  local verify_cmd
-  verify_cmd=$(grep -m1 'verify_cmd:' CLAUDE.md 2>/dev/null | sed 's/.*verify_cmd:[[:space:]]*//' || true)
-
-  if [ -z "$verify_cmd" ]; then
-    # Also try the "Verify command:" label style
-    verify_cmd=$(grep -m1 'Verify command:' CLAUDE.md 2>/dev/null | sed 's/.*Verify command:[[:space:]]*//' || true)
-  fi
-
+  local verify_cmd; verify_cmd=$(_read_verify_cmd)
   if [ -z "$verify_cmd" ]; then
     log_info "No verify_cmd in CLAUDE.md — skipping test sample"
-    return
+    return 0
   fi
 
   log_info "Running verify: $verify_cmd"
-  if _timeout "$TEST_SAMPLE_TIMEOUT" bash -c "$verify_cmd" 2>&1 | tee -a "$LOG_DIR/loop.log"; then
+  local tmp_out rc=0
+  tmp_out=$(mktemp "${TMPDIR:-/tmp}/loop-verify.XXXXXX")
+  _timeout "$TEST_SAMPLE_TIMEOUT" bash -c "$verify_cmd" >"$tmp_out" 2>&1 || rc=$?
+  tee -a "$LOG_DIR/loop.log" < "$tmp_out" >&2
+
+  # Carry the result forward so the next iteration's health_check can reuse it
+  # rather than running the whole suite a second time.
+  LAST_TEST_OUTPUT=$(cat "$tmp_out")
+  LAST_TEST_RESULT=$rc
+
+  # #3: per-iteration fix-rate — log the failed-count delta vs the prior iteration.
+  local cur_failed; cur_failed=$(_parse_failed_count "$LAST_TEST_OUTPUT")
+  if [ -n "$cur_failed" ]; then
+    if [ -n "${PREV_FAILED:-}" ]; then
+      local repaired=$((PREV_FAILED - cur_failed))
+      printf '%s\t%s\t%s\t%s\n' "${ITERATION:-0}" "$PREV_FAILED" "$cur_failed" "$repaired" \
+        >> "$LOG_DIR/fix-rate.tsv"
+      log_info "[METRIC] iter ${ITERATION:-0} fix-rate: failed ${PREV_FAILED}→${cur_failed} (repaired ${repaired})"
+    fi
+    PREV_FAILED=$cur_failed
+  fi
+
+  rm -f "$tmp_out"
+  if [ "$rc" -eq 0 ]; then
     log_success "Test sample passed"
   else
     log_warn "Test sample failed (workers may have introduced issues — continuing)"
   fi
+  return "$rc"
 }
 # ────────────────────────────────────────────────────────────────
 # ────────────────────────────────────────────────────────────────────
@@ -1052,6 +1138,15 @@ generate_loop_report() {
   log_info "  Iterations:   $total_iterations"
   log_info "  Exit reason:  $exit_reason"
   log_info "  Goal file:    $GOAL_FILE"
+
+  # #3: per-iteration fix-rate summary (failed-test repairs over the run).
+  local fixrate_summary=""
+  if [ -f "$LOG_DIR/fix-rate.tsv" ]; then
+    fixrate_summary=$(awk -F'\t' '{repaired+=$4} END{
+      if(NR) printf "%d failed-tests repaired across %d measured iterations", repaired, NR}' \
+      "$LOG_DIR/fix-rate.tsv")
+    [ -n "$fixrate_summary" ] && log_info "  Fix-rate:     $fixrate_summary"
+  fi
   log_info "═══════════════════════════════════════════════"
 
   # Write last-progress file for --status command
@@ -1061,6 +1156,7 @@ generate_loop_report() {
     echo "Iterations: $total_iterations"
     echo "Exit: $exit_reason"
     echo "Goal: $GOAL_FILE"
+    [ -n "$fixrate_summary" ] && echo "Fix-rate: $fixrate_summary"
   } > "$LOG_DIR/last-progress"
 }
 # ────────────────────────────────────────────────────────────────
@@ -1185,6 +1281,10 @@ run_blueprint_loop() {
       exit_reason="interrupted"
       break
     fi
+
+    # [DET] health_check — Anthropic lever: repair a broken baseline before
+    # planning new work. Writes .claude/health-warning.md (folded into context).
+    node_health_check
 
     # [DET] hydrate_context
     node_hydrate_context
