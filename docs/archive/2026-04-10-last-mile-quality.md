@@ -1,15 +1,18 @@
 ---
 title: "Last-Mile Quality in AI-Assisted Development"
 date: 2026-04-10
-status: processed
+reconciled: 2026-06-18
+status: needs_work
+integrated_items:
+  - "Sprint contracts (pre-negotiated done criteria) — DONE: config.py:595 _parse_task_schema parses acceptance_criteria; injected into task file at worker_taskfile.py:366 and threaded to oracle grader at worker_review.py:332"
+  - "Behavioral (E2E) verification — DONE: configs/scripts/setup-browser-verify.sh wires Playwright MCP; worker_taskfile.py:52 FRONTEND_VISUAL_BLOCK injects browser self-verify for frontend projects; configs/agents/verify-app.md"
+reference_items:
+  - "Separate evaluator agent — SKIP: oracle is same-model by design (worker_review.py), but cross-vendor skeptical evaluators exist as configs/agents/second-opinion-codex.md + second-opinion-gemini.md ('breaks the generator/reviewer same-vendor blind spot'). On-demand cross-vendor agent vs always-on harness evaluator — different mechanism, adequate."
+  - "Iteration cap at 3 with human checkpoint — SKIP: hard cap exists — MAX_REFLECTION_RETRIES=3 (worker_utils.py:34, worker.py:554) on the reflection loop; loop skill enforces 'max 3 consecutive empty iterations → stop' + 3-strike human-checkpoint escalation (configs/skills/loop/prompt.md:94,241). Original 'stuck_timeout only' claim is stale."
+  - "Context reset protocol over compaction — SKIP: /handoff (clean progress doc) + /pickup pattern is recommended before /compact (configs/skills/handoff/prompt.md:13); compression_feedback.py counters context-anxiety; session_tree.py records compaction boundaries. Handoff-doc-then-fresh-session IS reset-over-compaction."
+  - "Code Health baseline gate — SKIP: test-pass baseline captured pre-edit via _capture_test_baseline (worker_taskfile.py:404) + intramorphic regression block (worker_utils.py:461). Behavioral baseline-before-agent + regression gate vs CodeScene's static Code-Health≥9.4 score — different metric, same don't-regress purpose."
 needs_work_items:
-  - "Sprint contracts (pre-negotiated done criteria) — not yet in Clade worker task files"
-  - "Separate evaluator agent — oracle exists but is same-model; external skeptical evaluator missing"
-  - "Iteration cap at 3 with human checkpoint — no hard cap today (stuck_timeout_minutes only)"
-  - "Behavioral (E2E) verification — unit tests only; no browser/live-env check"
-  - "Context reset protocol over compaction — agents show 'context anxiety' near limit"
-  - "Code Health baseline gate — no pre-agentic health check before spawning workers"
-  - "Fix Rate metric (not binary pass/fail) — only Resolved Rate tracked today"
+  - "Fix Rate metric — per-iteration % of FAIL_TO_PASS tests repaired (SWE-EVO partial credit) not computed; only binary verified/regressed + commit-archeology fix-commit-share by author exist (🟢)"
 ---
 
 # Last-Mile Quality in AI-Assisted Development

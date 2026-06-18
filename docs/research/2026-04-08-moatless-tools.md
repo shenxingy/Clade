@@ -3,7 +3,7 @@ title: Moatless Tools — Lightweight Code Navigation for LLM Agents
 date: 2026-04-08
 review_date: 2026-04-08
 reconciled: 2026-06-18
-status: needs_work
+status: integrated
 integrated_items:
   - item: AST-based code signature extraction (classes, functions, methods)
     clade_location: orchestrator/worker_tldr.py (_parse_python_ast, _parse_js_ts_regex)
@@ -14,14 +14,12 @@ integrated_items:
   - "Two-phase search-then-identify (secondary haiku distills large TLDR) — DONE: orchestrator/worker_tldr.py:428 (_localize_tldr_for_task), wired orchestrator/worker_taskfile.py:230"
   - "Span-level FileContext + per-span token budgeting + eviction — DONE: orchestrator/worker_tldr.py:375 (_span_evict_tldr) + config.py:131 (context_span_budget), wired orchestrator/worker_taskfile.py:258-260"
   - "max_tokens_per_worker budget — DONE: config.py:107 (worker_token_budget), enforced orchestrator/worker.py:547-553 (gate) and 607-616 (kill on exceed, reason token_budget_exceeded)"
+  - "StringReplace edit-discipline — DONE: worker_utils.py:50 `EDIT_DISCIPLINE_BLOCK` (old_string uniqueness + line-number-prefix stripping + minimal edits), wired worker_taskfile.py:400"
 reference_items:
   - "Typed search actions (FindClass/FindFunction/FindCodeSnippet) — SKIP: already-equivalent — clade_search_class/method/code are real MCP tools (mcp_server.py:338,357,381); only SemanticSearch (embedding) absent"
   - "Embedding semantic index (FAISS + tree-sitter + Voyage) — SKIP: different-not-deficient — paid API + doubled deps + stale-on-commit, negligible gain at <500-file scale; 3/4 search actions already exist as tools"
   - "SWE-bench evaluation harness — SKIP: different-not-deficient — Clade-shaped eval already exists (orchestrator/evals/run_oracle_eval.py)"
-needs_work_items:
-  - item: StringReplace-style edit validation guidance in worker prompts
-    gap: Clade workers use Claude Code's native Edit tool. Moatless's StringReplace adds explicit uniqueness validation + line-number stripping. The worker system prompt could enforce this discipline without code changes.
-    effort: small
+needs_work_items: []
 ---
 
 # Moatless Tools — Span-Based Code Navigation and Tool-First Agent Design

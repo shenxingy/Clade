@@ -2,7 +2,7 @@
 topic: Qodo Merge (PR-Agent) — Multi-Agent PR Review Patterns (2025)
 date: 2026-04-08
 reconciled: 2026-06-18
-status: needs_work
+status: integrated
 sources:
   - https://github.com/qodo-ai/pr-agent
   - https://qodo-merge-docs.qodo.ai/
@@ -13,11 +13,9 @@ integrated_items:
   - "Confidence-scored findings (§Gap 5) — DONE: orchestrator/worker_review.py:206 (high/medium/low), :664,:672 (confidence gate on reject)"
   - "Per-finding fix suggestions (§Gap 2) — DONE: orchestrator/worker_review.py:200-211 (findings:[{dimension,severity,fix_suggestion}]), :433-446 (_format_oracle_rejection numbered list)"
   - "Two-pass oracle (§Gap 1) — DONE: orchestrator/worker_review.py:645-676 (pass 1 spec-adherence, pass 2 quality/bug, reconciled)"
-needs_work_items:
-  - item: PR-review audience differentiation (§Gap 4) (LOW)
-    gap: One review comment aimed at reviewers. Could post author-facing (fix suggestions) + reviewer-facing (effort/risk) separately. Author flagged low priority for autonomous flows. Verified still open 2026-06-18 — _write_pr_review (worker_review.py:133) posts a single undifferentiated Summary/Correctness/Risks comment.
-    effort: low
+needs_work_items: []
 reference_items:
+  - "PR-review author/reviewer audience differentiation — SKIP different-not-deficient: autonomous flows have no human author/reviewer split; one evidence-based review comment is correct for the unattended loop"
   - "Parallel specialized review agents + judge reconciliation — SKIP: full multi-agent panel is heavier than needed; distilled into the two-pass + per-finding work now integrated above"
 ---
 

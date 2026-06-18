@@ -3,7 +3,7 @@ topic: Reflection Agents and Self-Critique Patterns for Code Generation (2025)
 date: 2026-04-07
 review_date: 2026-06-14
 reconciled: 2026-06-18
-status: needs_work
+status: integrated
 sources:
   - https://arxiv.org/abs/2303.11366  # Reflexion (Shinn et al. 2023)
   - https://arxiv.org/abs/2310.11511  # Self-RAG (Asai et al. 2023)
@@ -16,11 +16,8 @@ integrated_items:
   - "Minimal-patch reflection loop (§Gap 3) — DONE: worker.py:572-578 + worker_utils.py:266-274 (_extract_lint_targets parses file.py:42:5: lint locations, injects 'Fix ONLY these specific errors, do not modify anything else')"
   - "Targeted per-dimension oracle fixes (§Gap 2) — DONE: worker_review.py:201,431-457 (findings carry per-'dimension'+severity fix_suggestion; _format_oracle_findings feeds an ordered per-finding fix list back to the worker)"
   - "Constitutional check after generation (§Gap 4) — DONE: worker_review.py:256-257,504-505,578 + oracle_cli.py:97-100 (CLAUDE.md 'Code Rules' read via _read_constitution, injected as _ORACLE_CONSTITUTION_HEADER into both oracle paths; violations ride the findings→fix→requeue path. Inside the existing oracle, not a separate haiku call — DRYer)"
-needs_work_items:
-  - item: Spec-driven acceptance-criteria checklist (§Gap 5)
-    gap: Workers derive intent from the task description only. For pre-hydrated GitHub issues, extract "Acceptance Criteria"/"Definition of Done" as a checklist appended to the task file so the agent knows when it has succeeded.
-    effort: small
-    status: OPEN 2026-06-18 — _parse_task_schema (config.py:595) parses an explicit embedded JSON block (acceptance_criteria key) supplied in the task description; it does NOT extract free-text "Acceptance Criteria"/"Definition of Done" markdown sections from pre-hydrated GitHub issue bodies (worker_hydrate.py:115-118 dumps issue body raw, no criteria parse). Different mechanism, genuinely deficient for the hydrated-issue case.
+  - "Acceptance-criteria extraction from hydrated issues (§Gap5) — DONE: worker_hydrate.py `_extract_acceptance_criteria` (commit 2c034eb); lifts 'Acceptance Criteria'/'Definition of Done' out of the issue body into a contract callout"
+needs_work_items: []
 reference_items:
   - "Self-RAG reflection tokens (ISREL/ISSUP/ISUSE) — SKIP: informs the dimension schema (worker_review.py:194-207), not a separate build"
   - "Recursive debugging bounded loop — SKIP: actionable slice is the minimal-patch gap, now integrated (worker.py:570-578)"

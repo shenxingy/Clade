@@ -48,7 +48,7 @@ Grouped by [watch-list](../who-to-learn-from.md) tier. `Gaps` = count of open `n
 ### Peer harnesses (watch-list Tier 2)
 | Source | Status | Gaps | Core lesson | Doc |
 |--------|--------|------|-------------|-----|
-| **Aider** | 🔨 | 1 | repo-map = tree-sitter + PageRank; lint reflection loop; weak-model for cheap work | [→](2026-03-30-aider-research.md) |
+| **Aider** | ✅ | 0 | repo-map = tree-sitter + PageRank; lint reflection loop; weak-model for cheap work | [→](2026-03-30-aider-research.md) |
 | **OpenHands** | ✅ | 0 | EventStream event-sourcing (replayable state); 9 condenser types | [→](2026-03-30-openhands-architecture.md) |
 | **Cursor / Devin** | 📘 | 0 | Planner/Worker/Judge triad; deterministic verify phase (we cover via POST) | [→](2026-03-30-cursor-devin-research.md) |
 | **SWE-agent** | 📘 | 0 | ACI design principles; lint guardrail after edits (we have this) | [→](2026-03-30-swe-agent-research.md) |
@@ -62,7 +62,7 @@ Grouped by [watch-list](../who-to-learn-from.md) tier. `Gaps` = count of open `n
 |--------|--------|------|-------------|-----|
 | **Agentless** | ✅ | 0 | Localize→Repair→Validate as explicit phases; 40-patch sampling + repro-test filter | [→](2026-04-07-agentless.md) |
 | **AutoCodeRover** | ✅ | 0 | 7 callable AST search APIs; SBFL pre-pass; cheap LLM-only retry | [→](2026-04-07-autocoderover.md) |
-| **Moatless Tools** | 🔨 | 1 | Typed search actions; span-level FileContext + token budgeting; semantic index | [→](2026-04-08-moatless-tools.md) |
+| **Moatless Tools** | ✅ | 0 | Typed search actions; span-level FileContext + token budgeting; semantic index | [→](2026-04-08-moatless-tools.md) |
 | **Sweep AI** | ✅ | 0 | AST bipartite graph; topological diff propagation; entity pruning; caller hints | [→](2026-04-08-sweep-ai.md) |
 
 *NB: the AutoCodeRover team now leads **Sonar Foundation Agent** (79.2% SWE-bench Verified, open-source w/ traces) — see watch-list bot-behavior section. Re-read this cluster alongside that.*
@@ -71,28 +71,44 @@ Grouped by [watch-list](../who-to-learn-from.md) tier. `Gaps` = count of open `n
 | Source | Status | Gaps | Core lesson | Doc |
 |--------|--------|------|-------------|-----|
 | **LangGraph / CrewAI** | ✅ | 0 | StateGraph checkpointing; interrupt() human-in-loop; Send API map-reduce | [→](2026-03-30-langgraph-crewai-research.md) |
-| **Reflection agents** | 🔨 | 1 | Reflexion episodic memory; minimal-patch; constitutional check; spec checklist | [→](2026-04-07-reflection-agents.md) |
+| **Reflection agents** | ✅ | 0 | Reflexion episodic memory; minimal-patch; constitutional check; spec checklist | [→](2026-04-07-reflection-agents.md) |
 
 ### Craft: PR review & hooks
 | Source | Status | Gaps | Core lesson | Doc |
 |--------|--------|------|-------------|-----|
-| **Qodo Merge (PR-Agent)** | 🔨 | 1 | Diff chunking; 2-pass oracle; per-finding fixes; confidence scoring | [→](2026-04-08-qodo-merge.md) |
+| **Qodo Merge (PR-Agent)** | ✅ | 0 | Diff chunking; 2-pass oracle; per-finding fixes; confidence scoring | [→](2026-04-08-qodo-merge.md) |
 | **Claude Code hooks** | ✅ | 0 | Input rewrite; async hooks; matcher `if`; persistent perms *(Stop + PostToolUseFailure already closed)* | [→](2026-04-07-claude-hooks.md) |
+
+### Frontier sources (studied 2026-06-18 — cleared the research backlog)
+| Source | Status | Gaps | Core lesson | Doc |
+|--------|--------|------|-------------|-----|
+| **Anthropic — Effective Harnesses** | 🔨 | 1 | Iteration-start health check; generator≠judge; acceptance-contract grading (we cover most) | [→](2026-06-18-anthropic-effective-harnesses.md) |
+| **Sonar Foundation Agent** | ✅ | 0 | Ex-AutoCodeRover team dropped rigid scaffolding for 1 agent + 3 tools — *endorses* Clade's iterating loop | [→](2026-06-18-sonar-foundation-agent.md) |
+| **SST opencode** | 🔨 | 1 | Client/server split + session model (we have both); static command deny-list (low-pri) | [→](2026-06-18-sst-opencode.md) |
+| **Huntley Ralph / CURSED** | 📘 | 0 | `while:; do cat PROMPT \| claude; done` — confirms Ralph ≈ /loop; our convergence detection is stronger | [→](2026-06-18-huntley-ralph-cursed.md) |
+| **12-Factor Agents** | ✅ | 0 | 11/12 covered + bonus factor 13; Factor-7 inline human-contact is different-by-design | [→](2026-06-18-12-factor-agents.md) |
+| **Agent Fingerprint** | 🔨 | 1 | Commit-type bug FIXED (uncorrupts fix-rate); test-inclusion signal deferred | [→](2026-06-18-agent-fingerprint.md) |
 
 ## Open-gap backlog (by effort)
 
-> ### ✅ 2026-06-18 — full per-source reconciliation (12 parallel study agents, re-grepped vs code)
+> ### ✅ 2026-06-18 — full reconciliation + cleared the research backlog (19 study agents)
 >
-> Every remaining `needs_work` deep-dive had its frontmatter re-verified item-by-item against `orchestrator/` + `configs/`. **Net: 51 tracked "gaps" across 12 docs → 4 genuinely open.** 8 docs flipped to ✅ **integrated** (OpenHands, Kiro, Composio, LangGraph, Agentless, AutoCodeRover, Sweep, Claude-hooks) — the work was done in prior loop iterations and never back-filled here (most cite `§GapN` in-code). Source of truth = each doc's frontmatter (now stamped `reconciled: 2026-06-18`); this index rolls it up.
+> Two sweeps in one session: (1) re-verified every `needs_work` deep-dive item-by-item against `orchestrator/` + `configs/` (51 tracked "gaps" across 12 docs → most were already built in prior loop work, never back-filled); (2) deep-dived all **6 remaining watch-list frontier sources** so the research backlog is now empty.
 >
-> **The 4 genuinely-open gaps — everything else is built or different-not-deficient:**
+> **What got built this sweep** (concrete, reversible, tested — commit `2c034eb`):
+> - **Worker commit-type classifier** (`config._infer_commit_type` + `worker.py`) — stop hardcoding `feat:`; a real bug that *zeroed the agent fix-rate metric* (`commit-archeology.sh` keys `fix` off `/^fix/`, so every agent fix counted as a feat → `0/N`). [Agent-Fingerprint]
+> - **Acceptance-criteria extraction** (`worker_hydrate._extract_acceptance_criteria`) — lift "Acceptance Criteria"/"Definition of Done" out of a hydrated issue body into a first-class contract callout. [Reflection §G5]
 >
-> | Gap | Source | Size | Where |
-> |-----|--------|------|-------|
-> | **StringReplace edit-validation discipline** (uniqueness + line-number stripping) — missing from the worker **system prompt** | Moatless | 🟢 no-code | prompt text only; cheapest open item |
-> | **Acceptance-criteria extraction from hydrated GitHub issues** — `_pre_hydrate` dumps the issue body raw; doesn't lift "Acceptance Criteria"/"Definition of Done" into the task file | Reflection §G5 | 🟢 small | `worker_hydrate.py` |
-> | **tree-sitter AST indexing** — no AST-query layer; Clade localizes via TLDR text-extraction + grep | Aider | 🔴 large | only deep architectural gap left |
-> | **PR-review author/reviewer audience differentiation** — one undifferentiated comment | Qodo | 🔵 low | author-flagged LOW for autonomous flows |
+> **Closed as already-built / different-not-deficient:** Moatless StringReplace discipline (false open — `EDIT_DISCIPLINE_BLOCK` worker_utils.py:50 already wired); Aider tree-sitter index (on-demand `clade_search_*` + grep cover it at <500-file scale; Sonar validates simple-tools-win); Qodo audience-diff (autonomous = no author/reviewer split); 12-Factor Factor-7 (outer-loop human contact already exists). Sonar + Ralph + 12-Factor land as **endorsements** of Clade's design, not gaps.
+>
+> **Deliberately deferred — 4 real items, each touches loop-control-flow or metric infra (build as focused, separately-tested follow-ups; a loop was running during this sweep):**
+>
+> | Gap | Source | Size |
+> |-----|--------|------|
+> | Iteration-start health check (run `test_cmd` before the supervisor node, repair broken state first) | Anthropic | 🟡 |
+> | Test-inclusion signal (PR body + a commit-archeology dimension) | Agent-Fingerprint | 🟢 |
+> | Fix-Rate per-iteration metric (% FAIL_TO_PASS repaired, SWE-EVO style) | last-mile-quality | 🟢 |
+> | Static command deny-list on nested judge `claude -p` spawns | opencode | 🔵 |
 >
 > Also fixed in-doc during the sweep: a latent YAML duplicate-key bug in `reflection-agents.md` (two `integrated_items:` blocks — the second silently clobbered the first 3 baseline items).
 >
@@ -179,14 +195,16 @@ The lists below are the **pre-audit** backlog, kept for provenance. Cheapest fir
 
 ## Research backlog — watch-list entries not yet deep-dived
 
-High-value [watch-list](../who-to-learn-from.md) sources with **no deep-dive yet** (candidates for `/deep-research` → a new file here):
+✅ **Empty as of 2026-06-18.** The 6 frontier sources that previously lived here were all deep-dived this sweep — see the [Frontier sources](#frontier-sources-studied-2026-06-18--cleared-the-research-backlog) table above:
 
-- **Anthropic "Effective harnesses for long-running agents"** (Tier 1) — diff against our loop primitives.
-- **Sonar Foundation Agent** — top open SWE-bench scaffold w/ traces (pairs with the localization cluster).
-- **SST opencode** — most architecturally similar peer; session model.
-- **Geoffrey Huntley — Ralph/CURSED** — loop convergence & goal-framing.
-- **12-Factor Agents** — factor-by-factor audit of Clade.
-- **Agent Fingerprint study** — empirical agent commit/PR features (→ worker commit hygiene).
+- ✅ **Anthropic "Effective harnesses for long-running agents"** (Tier 1) → [doc](2026-06-18-anthropic-effective-harnesses.md) · 1 deferred gap (iteration-start health check).
+- ✅ **Sonar Foundation Agent** → [doc](2026-06-18-sonar-foundation-agent.md) · 0 gaps — endorses Clade's iterating-loop design.
+- ✅ **SST opencode** → [doc](2026-06-18-sst-opencode.md) · 1 deferred low gap (judge deny-list).
+- ✅ **Geoffrey Huntley — Ralph/CURSED** → [doc](2026-06-18-huntley-ralph-cursed.md) · 0 gaps — confirms Ralph ≈ /loop.
+- ✅ **12-Factor Agents** → [doc](2026-06-18-12-factor-agents.md) · 0 gaps — 11/12 + bonus covered.
+- ✅ **Agent Fingerprint study** → [doc](2026-06-18-agent-fingerprint.md) · commit-type bug fixed; test-inclusion deferred.
+
+New frontier candidates land on the [watch-list](../who-to-learn-from.md); pull one here when it's worth a `/deep-research`.
 
 ## How to use this for a study session
 

@@ -1,7 +1,7 @@
 ---
 name: 2026-03-30-aider-research.md
 date: 2026-03-30
-status: needs_work
+status: integrated
 review_date: 2026-03-31
 reconciled: 2026-06-18
 summary:
@@ -9,9 +9,9 @@ summary:
 integrated_items:
   - "Weak model for TLDR — worker_tldr.py uses haiku for code TLDR generation, matches Aider's weak_model pattern"
   - "Reflection Loop (9.1) — DONE: worker.py:554 (MAX_REFLECTION_RETRIES=3 at worker_utils.py:34) — up to 3 retry cycles, lint errors re-injected as context via _run_with_context(use_continue=True)"
-needs_work_items:
-  - "Tree-sitter based codebase indexing — Aider extracts def/ref tags via tree-sitter queries. Clade has no tree-sitter usage"
+needs_work_items: []
 reference_items:
+  - "tree-sitter AST indexing — SKIP different-not-deficient: on-demand AST symbol search already exists (clade_search_class/method/code, mcp_server.py:216/250/381) + TLDR + grep; a persistent tree-sitter/PageRank index is overkill at <500-file scale (same logic as the Moatless FAISS SKIP), and the Sonar Foundation Agent — current SWE-bench leader — validates simple-tools-over-heavy-indexing. Revisit only past a few-thousand-file scale"
   - "Architect mode (planner/editor separation) — different architecture, not applicable to Claude Code"
   - "SEARCH/REPLACE edit format with fuzzy fallback — not applicable to Claude Code"
   - "ChatChunks message layering (9.2) — SKIP: Aider's L1/L2/L3 is a message-array scheme for prompt caching in a multi-turn chat-completion API loop. Clade drives the `claude` CLI subprocess with a single task file (build_task_file), not a raw message array — no message-layering surface to cache. Clade still splits stable (CLAUDE.md/AGENTS.md prepend) vs dynamic (per-task localized TLDR + task desc) context and preserves session via --continue. Mechanism N/A for single-tool CLI scope"
