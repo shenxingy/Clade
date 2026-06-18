@@ -112,6 +112,25 @@ def _is_test_file(path: str) -> bool:
     return bool(_TEST_FILE_RE.search(p) or _TEST_DIR_RE.search(p))
 
 
+ORACLE_REJECT_MARKER = "REJECTED by oracle review"
+
+
+def oracle_retry_sample_count(description: str, is_critical: bool, configured_n: int) -> int:
+    """How many retry samples to spawn after an oracle rejection (Agentless §6C).
+
+    Plateau escape (audit 2026-06-18): sequential `--continue` retry refines the
+    SAME approach, so a fundamentally-wrong first attempt never escapes it. The
+    first rejection gets ONE sequential retry (cheap, usually enough). If that is
+    ALSO rejected — the lineage carries `ORACLE_REJECT_MARKER` once per prior
+    rejection, so depth>=1 — the approach is plateauing: fan out `configured_n`
+    DIVERSE attempts instead. Critical-path tasks fan out on the first rejection.
+    Bounded to fire once (depth<2) so re-queues can't blow up exponentially.
+    """
+    depth = description.count(ORACLE_REJECT_MARKER)
+    diverse = (depth >= 1 or is_critical) and depth < 2
+    return max(1, configured_n) if diverse else 1
+
+
 def _fallback_commit_cmd(commit_msg: str, files_arg: str, task_id: str | None = None) -> str:
     """Bare-git commit command used when committer.sh is not installed.
 

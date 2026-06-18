@@ -71,6 +71,7 @@ from worker_utils import (
     _run_lint_check, _extract_lint_targets, _run_project_tests, LoopDetectionService,
     _run_intramorphic_check, _run_repro_filter, _rank_tasks,
     _parse_observation_contract, _fallback_commit_cmd, _is_test_file,
+    oracle_retry_sample_count, ORACLE_REJECT_MARKER,
     _compute_activity_state, _undo_last_commit,
     _check_file_ownership as _check_ownership_globs,
     _maybe_enqueue_classify_retry,  # re-export: moved to worker_utils (leaf)
@@ -1304,14 +1305,23 @@ class WorkerPool:
                         t = await task_queue.get(w.task_id)
                         if t:
                             asyncio.create_task(_gh_update_issue_status(t, project_dir))
-                # Oracle rejected → re-queue (Agentless §6C: N parallel samples for critical tasks)
+                # Oracle rejected → re-queue. Plateau escape (audit 2026-06-18):
+                # sequential `--continue` retry refines the SAME approach, so a
+                # fundamentally-wrong first attempt never escapes. Count prior
+                # rejections in the lineage (each retry embeds the marker below);
+                # once the first sequential retry is ALSO rejected (depth>=1), fan
+                # out N DIVERSE attempts instead — Agentless's diverse-sampling
+                # benefit without 40× cost (only the genuinely-stuck tasks pay).
+                # Bounded: fan out at most once (depth<2), so no exponential blowup.
                 if w._oracle_requeue:
                     w._oracle_requeue = False
                     error_summary = _strip_error_context(w._oracle_requeue_reason)
-                    n_samples = max(1, int(GLOBAL_SETTINGS.get("parallel_fix_samples", 1)))
                     orig_task = await task_queue.get(w.task_id)
-                    if not (orig_task and orig_task.get("is_critical_path")):
-                        n_samples = 1
+                    is_critical = bool(orig_task and orig_task.get("is_critical_path"))
+                    n_samples = oracle_retry_sample_count(
+                        w.description, is_critical,
+                        int(GLOBAL_SETTINGS.get("parallel_fix_samples", 3)),
+                    )
                     _DIVERSE_HINTS = [
                         "Try a different algorithmic approach than your previous attempt.",
                         "Focus on the root cause rather than symptoms — consider upstream fixes.",
@@ -1321,7 +1331,7 @@ class WorkerPool:
                         hint = f"\n{_DIVERSE_HINTS[i % len(_DIVERSE_HINTS)]}" if n_samples > 1 else ""
                         retry_desc = (
                             f"{w.description}\n\n---\n"
-                            f"Previous attempt was REJECTED by oracle review:\n"
+                            f"Previous attempt was {ORACLE_REJECT_MARKER}:\n"
                             f"{error_summary}\n"
                             f"Fix the issue described above. Do NOT repeat the same approach.{hint}"
                         )
@@ -1329,11 +1339,11 @@ class WorkerPool:
                                              own_files=w.own_files, forbidden_files=w.forbidden_files)
                     if n_samples > 1:
                         logger.info(
-                            "Oracle rejected critical task %s — spawned %d parallel samples",
+                            "Oracle rejected task %s — plateau, spawned %d diverse samples",
                             w.task_id, n_samples
                         )
                     else:
-                        logger.info("Oracle rejected task %s — re-queued with reason", w.task_id)
+                        logger.info("Oracle rejected task %s — re-queued (sequential retry)", w.task_id)
                 # Pre-push test failure → re-queue with test output (mic92: evidence before verdict)
                 if w._test_requeue:
                     w._test_requeue = False

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from config import _infer_commit_type
 from worker_hydrate import _extract_acceptance_criteria
-from worker_utils import _is_test_file
+from worker_utils import _is_test_file, oracle_retry_sample_count, ORACLE_REJECT_MARKER
 
 
 # ─── _infer_commit_type ──────────────────────────────────────────────────────
@@ -118,3 +118,34 @@ class TestIsTestFile:
         assert not _is_test_file("README.md")
         assert not _is_test_file("contest.py")   # "test" substring, not a test file
         assert not _is_test_file("latest_changes.py")
+
+
+# ─── oracle_retry_sample_count (Agentless §6C plateau escape) ────────────────
+
+def _desc(n_rejections: int) -> str:
+    """A task description carrying n prior oracle rejections in its lineage."""
+    base = "Fix the login bug"
+    return base + "".join(f"\n--- Previous attempt was {ORACLE_REJECT_MARKER}: ..." for _ in range(n_rejections))
+
+
+class TestOracleRetrySampleCount:
+    def test_first_rejection_is_sequential(self):
+        # depth 0, non-critical → ONE sequential retry (cheap, often enough)
+        assert oracle_retry_sample_count(_desc(0), is_critical=False, configured_n=3) == 1
+
+    def test_second_rejection_fans_out(self):
+        # depth 1 (sequential retry also rejected) → plateau → diverse fan-out
+        assert oracle_retry_sample_count(_desc(1), is_critical=False, configured_n=3) == 3
+
+    def test_bounded_no_blowup(self):
+        # depth 2 (a diverse sample rejected) → back to sequential, no re-fanout
+        assert oracle_retry_sample_count(_desc(2), is_critical=False, configured_n=3) == 1
+        assert oracle_retry_sample_count(_desc(5), is_critical=False, configured_n=3) == 1
+
+    def test_critical_path_fans_out_immediately(self):
+        assert oracle_retry_sample_count(_desc(0), is_critical=True, configured_n=3) == 3
+
+    def test_disabled_when_configured_one(self):
+        # parallel_fix_samples=1 disables fan-out entirely
+        assert oracle_retry_sample_count(_desc(1), is_critical=False, configured_n=1) == 1
+        assert oracle_retry_sample_count(_desc(0), is_critical=True, configured_n=1) == 1
