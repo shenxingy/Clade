@@ -26,6 +26,7 @@ from config import (
     HAIKU_MODEL,
     SONNET_MODEL,
     SETTING_SOURCES_NONE,
+    DISALLOWED_TOOLS_JUDGE,
     _deps_met,
     _fire_notification,
     _recover_orphaned_tasks,
@@ -250,7 +251,7 @@ class ProjectSession:
                     f'claude -p "$(cat {shlex.quote(str(prompt_file))})" '
                     # Pure judge — stdout is parsed; user settings must not load
                     # (Stop-hook -p poisoning, see config.SETTING_SOURCES_NONE).
-                    f'--model {model} --dangerously-skip-permissions {SETTING_SOURCES_NONE}',
+                    f'--model {model} --dangerously-skip-permissions {SETTING_SOURCES_NONE} {DISALLOWED_TOOLS_JUDGE}',
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.DEVNULL,
                     env=_env,
@@ -507,7 +508,7 @@ class ProjectSession:
                     f'claude -p "$(cat {shlex.quote(str(prompt_file))})" '
                     # Pure judge — stdout is parsed; user settings must not load
                     # (Stop-hook -p poisoning, see config.SETTING_SOURCES_NONE).
-                    f'--model {model} --dangerously-skip-permissions {SETTING_SOURCES_NONE}',
+                    f'--model {model} --dangerously-skip-permissions {SETTING_SOURCES_NONE} {DISALLOWED_TOOLS_JUDGE}',
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.DEVNULL,
                     env=_env,
@@ -712,6 +713,7 @@ async def _decompose_horizontal(task: dict, session) -> None:
         proc = await asyncio.create_subprocess_exec(
             "claude", "--dangerously-skip-permissions", "--model", HAIKU_MODEL,
             *shlex.split(SETTING_SOURCES_NONE),  # pure judge — stdout parsed
+            *shlex.split(DISALLOWED_TOOLS_JUDGE),  # read-only judge: no Edit/Write/Bash
             "-p",
             f"List the source files that need changes for this task. Output one file path per line, no explanation:\n{desc}",
             stdout=asyncio.subprocess.PIPE,
@@ -775,6 +777,7 @@ async def _suggest_next_goals(session: "ProjectSession") -> None:
                 "--model", HAIKU_MODEL,
                 "--dangerously-skip-permissions",
                 *shlex.split(SETTING_SOURCES_NONE),  # stdout becomes suggested-goals.md
+                *shlex.split(DISALLOWED_TOOLS_JUDGE),  # read-only judge: no Edit/Write/Bash
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,
                 cwd=str(session.project_dir),

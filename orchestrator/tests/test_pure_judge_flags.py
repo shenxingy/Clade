@@ -124,6 +124,29 @@ def test_leaf_module_defaults_match_config():
     assert cd.DISALLOWED_TOOLS_JUDGE == DISALLOWED_TOOLS_JUDGE
 
 
+# ─── 2026-06-18: read-only judge hardening (opencode) ────────────────────────
+# DISALLOWED_TOOLS_JUDGE was defined + applied to the leaf judges but NOT to the
+# worker verify judge or the session.py supervisor/decompose/suggest judges — a
+# defined-≠-wired gap. These guard the now-wired spawns.
+
+
+def test_worker_verify_judge_disallows_tools():
+    """The pre-commit verify judge (worker.py) reads an embedded git-diff stat
+    and emits VERIFIED_OK/FAIL — it must not retain Edit/Write/Bash."""
+    src = (_ORCH / "worker.py").read_text()
+    assert "--dangerously-skip-permissions {SETTING_SOURCES_NONE} {DISALLOWED_TOOLS_JUDGE}" in src
+
+
+def test_session_pure_judges_disallow_tools():
+    """The supervisor / horizontal-decompose / suggest-goals judges in session.py
+    are pure stdout-parsed verdicts and must disallow Edit/Write/Bash. The
+    interactive PTY session at the top of session.py is NOT a judge — it keeps
+    full tools and must stay excluded."""
+    src = (_ORCH / "session.py").read_text()
+    assert src.count("{SETTING_SOURCES_NONE} {DISALLOWED_TOOLS_JUDGE}") >= 2  # 2 shell supervisor judges
+    assert src.count("shlex.split(DISALLOWED_TOOLS_JUDGE)") >= 2              # decompose + suggest-goals
+
+
 # ─── worker_tldr: TLDR localization / fault / repro / scoring ─────────────────
 
 

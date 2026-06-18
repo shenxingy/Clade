@@ -96,6 +96,22 @@ _SECRET_ERE = (
 )
 
 
+_TEST_FILE_RE = re.compile(
+    r"(^|/)(test_[^/]+\.py"          # pytest: test_foo.py
+    r"|[^/]+_test\.(py|go)"          # foo_test.py / foo_test.go
+    r"|[^/]+\.(test|spec)\.[jt]sx?)$"  # JS/TS: foo.test.ts / foo.spec.tsx
+)
+_TEST_DIR_RE = re.compile(r"(^|/)(tests?|__tests__|spec)/")
+
+
+def _is_test_file(path: str) -> bool:
+    """True when a changed path is a test file (Agent-Fingerprint: test inclusion
+    is both a quality signal and a merge-rate lever). Matches pytest/JS/TS/Go
+    naming conventions and conventional test directories."""
+    p = path.strip().replace("\\", "/")
+    return bool(_TEST_FILE_RE.search(p) or _TEST_DIR_RE.search(p))
+
+
 def _fallback_commit_cmd(commit_msg: str, files_arg: str, task_id: str | None = None) -> str:
     """Bare-git commit command used when committer.sh is not installed.
 

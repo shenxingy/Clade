@@ -165,6 +165,13 @@ def _build_pr_body(w) -> str:
         sections.append(f"## Test Evidence (pre-push)\n```\n{evidence[:1500]}\n```")
     else:
         sections.append("**Test Evidence:** no pre-push test run recorded")
+    # Agent-Fingerprint: test-inclusion signal (a quality + merge-rate lever).
+    tests_added = getattr(w, "tests_added", None) or []
+    if tests_added:
+        shown = "\n".join(f"- `{f}`" for f in tests_added[:10])
+        sections.append(f"## Tests\nAdded/modified {len(tests_added)} test file(s):\n{shown}")
+    else:
+        sections.append("**Tests:** ⚠️ no test files added or modified in this change")
     sections.append(
         f"---\n_Authored by Clade worker {w.id} (task {w.task_id}); "
         "oracle-reviewed in the orchestrator pipeline._"

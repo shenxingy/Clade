@@ -70,7 +70,7 @@ from worker_utils import (
     _distill_output, _truncate_output, _strip_error_context,
     _run_lint_check, _extract_lint_targets, _run_project_tests, LoopDetectionService,
     _run_intramorphic_check, _run_repro_filter, _rank_tasks,
-    _parse_observation_contract, _fallback_commit_cmd,
+    _parse_observation_contract, _fallback_commit_cmd, _is_test_file,
     _compute_activity_state, _undo_last_commit,
     _check_file_ownership as _check_ownership_globs,
     _maybe_enqueue_classify_retry,  # re-export: moved to worker_utils (leaf)
@@ -134,6 +134,7 @@ class Worker:
         self.oracle_result: str | None = None
         self.oracle_reason: str | None = None
         self.test_evidence: str = ""  # pre-push test results (shown in PR body)
+        self.tests_added: list[str] = []  # test files in the diff (Agent-Fingerprint signal)
         self._oracle_requeue: bool = False
         self._oracle_requeue_reason: str | None = None
         self._test_requeue: bool = False
@@ -715,6 +716,10 @@ class Worker:
         if not changed_files:
             return False
 
+        # Agent-Fingerprint: record whether the diff includes test files (a
+        # quality + merge-rate signal, surfaced in the PR body).
+        self.tests_added = [f for f in changed_files if _is_test_file(f)]
+
         # File ownership enforcement
         ok, reason = self._check_file_ownership(changed_files)
         if not ok:
@@ -768,7 +773,7 @@ class Worker:
             # Pure judge (VERIFIED_OK/FAIL parsed from stdout) — drop user settings.
             verify_proc = await asyncio.create_subprocess_shell(
                 f'claude -p "$(cat {shlex.quote(str(verify_file))})" --model {HAIKU_MODEL} '
-                f'--dangerously-skip-permissions {SETTING_SOURCES_NONE}',
+                f'--dangerously-skip-permissions {SETTING_SOURCES_NONE} {DISALLOWED_TOOLS_JUDGE}',
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
                 cwd=str(self._project_dir),
             )

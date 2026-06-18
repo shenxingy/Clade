@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from config import _infer_commit_type
 from worker_hydrate import _extract_acceptance_criteria
+from worker_utils import _is_test_file
 
 
 # ─── _infer_commit_type ──────────────────────────────────────────────────────
@@ -87,3 +88,33 @@ class TestExtractAcceptanceCriteria:
     def test_truncates_long_section(self):
         body = "## Acceptance Criteria\n" + ("x" * 2000)
         assert len(_extract_acceptance_criteria(body)) <= 800
+
+
+# ─── _is_test_file (Agent-Fingerprint test-inclusion signal) ─────────────────
+
+class TestIsTestFile:
+    def test_pytest_names(self):
+        assert _is_test_file("test_foo.py")
+        assert _is_test_file("orchestrator/tests/test_recovery_e2e.py")
+
+    def test_suffix_names(self):
+        assert _is_test_file("pkg/foo_test.py")
+        assert _is_test_file("pkg/foo_test.go")
+        assert _is_test_file("src/app.test.ts")
+        assert _is_test_file("src/app.spec.tsx")
+        assert _is_test_file("src/button.test.jsx")
+
+    def test_test_directories(self):
+        assert _is_test_file("tests/helpers.py")
+        assert _is_test_file("__tests__/foo.js")
+        assert _is_test_file("a/b/spec/thing.rb")
+
+    def test_windows_separators(self):
+        assert _is_test_file("tests\\test_foo.py")
+
+    def test_non_test_files(self):
+        assert not _is_test_file("worker.py")
+        assert not _is_test_file("src/app.ts")
+        assert not _is_test_file("README.md")
+        assert not _is_test_file("contest.py")   # "test" substring, not a test file
+        assert not _is_test_file("latest_changes.py")

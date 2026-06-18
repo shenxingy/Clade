@@ -139,6 +139,33 @@ detect_agent_segmentation() {
       }'
 }
 
+# Detector: share of agent-authored commits that add/touch a test file
+# (Agent-Fingerprint 2026-06-18: test inclusion = quality + merge-rate signal,
+# the mirror of the fix-rate split). Count column = agent commits in the window.
+detect_agent_test_inclusion() {
+  git log --since="${WINDOW_DAYS}.days.ago" \
+      --pretty=format:"@@C@@%x09%h%x09%ad%x09%s%x09${_AGENT_TRAILER_FMT}" \
+      --name-only --date=short 2>/dev/null \
+    | awk -F'\t' -v min="$MIN_OCCURRENCES" '
+        /^@@C@@\t/ {
+          if (seen) { a += in_agent; at += (in_agent && had_test) }
+          seen = 1
+          in_agent = ($5 != "" || tolower($6) ~ /claude/) ? 1 : 0
+          had_test = 0
+          if (in_agent) { lsha = $2; ldate = $3 }
+          next
+        }
+        in_agent && ($0 ~ /(^|\/)(test_[^\/]+\.py|[^\/]+_test\.(py|go)|[^\/]+\.(test|spec)\.[jt]sx?)$/ \
+                     || $0 ~ /(^|\/)(tests?|__tests__|spec)\//) { had_test = 1 }
+        END {
+          if (seen) { a += in_agent; at += (in_agent && had_test) }
+          if (a < min) exit
+          rate = int(at * 100 / a)
+          msg = sprintf("agent test-inclusion %d%% (%d/%d agent commits add/touch a test)", rate, at, a)
+          printf "agent-test-inclusion\t%d\t%s\t%s\t%s\t%s\n", a, lsha, msg, ldate, ""
+        }'
+}
+
 # Detector: any day with ≥10 fix commits → noisy initial pass
 detect_mass_fix_spree() {
   git log --since="${WINDOW_DAYS}.days.ago" --pretty=format:'%h%x09%ad%x09%s' --date=short 2>/dev/null \
@@ -165,6 +192,7 @@ scan() {
     detect_fix_keyword "disambiguate" 'disambiguate|collision|name clash|built-in'
     detect_claude_overridden
     detect_agent_segmentation
+    detect_agent_test_inclusion
     detect_mass_fix_spree
   ) 2>/dev/null )
 
