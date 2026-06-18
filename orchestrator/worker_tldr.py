@@ -133,14 +133,16 @@ def _parse_js_ts_regex(source: str) -> list[str]:
 # language's grammar isn't installed the file falls back (regex for js/ts, skip
 # otherwise), so CI / fresh installs without these wheels keep working unchanged.
 
+# Languages that were previously BLIND (no TLDR at all). JS/TS deliberately stay
+# on the tuned regex (_parse_js_ts_regex) — it catches the `export const x = …`
+# idiom (schemas, arrow fns) that a function/class/interface node-set misses.
 _TS_EXT_TO_MODULE = {
     ".go": "tree_sitter_go", ".rs": "tree_sitter_rust", ".java": "tree_sitter_java",
     ".rb": "tree_sitter_ruby", ".c": "tree_sitter_c", ".h": "tree_sitter_c",
     ".cpp": "tree_sitter_cpp", ".cc": "tree_sitter_cpp", ".hpp": "tree_sitter_cpp",
-    ".cs": "tree_sitter_c_sharp", ".php": "tree_sitter_php", ".rb ": "tree_sitter_ruby",
-    ".ts": "tree_sitter_typescript", ".tsx": "tree_sitter_typescript",
-    ".js": "tree_sitter_javascript", ".jsx": "tree_sitter_javascript",
+    ".cs": "tree_sitter_c_sharp", ".php": "tree_sitter_php",
 }
+_JS_TS_EXTS = (".js", ".ts", ".tsx", ".jsx")
 # Exact tree-sitter node types that denote a top-level definition (across grammars).
 _TS_DEF_NODE_TYPES = {
     "function_declaration", "function_definition", "function_item", "method_declaration",
@@ -228,7 +230,7 @@ def _generate_code_tldr(project_dir: str) -> str:
             dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS and not d.startswith(".")]
             for fname in filenames:
                 ext = Path(fname).suffix.lower()
-                if ext == ".py" or ext in _TS_EXT_TO_MODULE:
+                if ext == ".py" or ext in _JS_TS_EXTS or ext in _TS_EXT_TO_MODULE:
                     fpath = Path(dirpath) / fname
                     try:
                         mt = fpath.stat().st_mtime
@@ -258,7 +260,7 @@ def _generate_code_tldr(project_dir: str) -> str:
             # to the JS/TS regex when tree-sitter/grammar is absent (graceful).
             sigs = _parse_with_treesitter(source, ext)
             if sigs is None:
-                sigs = _parse_js_ts_regex(source) if ext in (".js", ".ts", ".tsx", ".jsx") else []
+                sigs = _parse_js_ts_regex(source) if ext in _JS_TS_EXTS else []
         if sigs:
             lines.append(f"## {rel}")
             lines.extend(sigs)
