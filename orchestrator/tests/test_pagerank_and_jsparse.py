@@ -107,3 +107,39 @@ class TestJsTsParse:
         out = wt._parse_js_ts_regex(src)
         assert not any(line.startswith("if") or line.startswith("for") or line.startswith("return")
                        for line in out)
+
+
+# ─── tree-sitter multi-language (B; audit 2026-06-18) ────────────────────────
+
+import pytest  # noqa: E402
+
+_HAS_GO = wt._get_ts_parser("tree_sitter_go") is not None
+
+
+class TestTreeSitterParse:
+    def test_unknown_ext_returns_none(self):
+        # .py is handled by the stdlib ast path, not tree-sitter → None here.
+        assert wt._parse_with_treesitter("def f(): pass", ".py") is None
+
+    def test_graceful_when_grammar_absent(self):
+        # A never-installed grammar must degrade to None, not raise.
+        assert wt._parse_with_treesitter("x", ".nonexistent-lang") is None
+
+    @pytest.mark.skipif(not _HAS_GO, reason="tree-sitter-go not installed")
+    def test_go_definitions(self):
+        src = ("package main\nfunc Handle(w int) error { return nil }\n"
+               "type Server struct{ Port int }\nfunc (s Server) Start() {}\n")
+        sigs = wt._parse_with_treesitter(src, ".go")
+        joined = "\n".join(sigs)
+        assert "func Handle(w int) error" in joined
+        assert "type Server struct" in joined
+        assert "func (s Server) Start()" in joined
+        # bare keyword nodes filtered out
+        assert "struct" not in sigs and "func" not in sigs
+
+    @pytest.mark.skipif(not _HAS_GO, reason="tree-sitter not installed")
+    def test_generate_tldr_includes_go(self, tmp_path):
+        (tmp_path / "svc.go").write_text("package main\nfunc Ping() string { return \"ok\" }\n")
+        tldr = wt._generate_code_tldr(str(tmp_path))
+        assert "## svc.go" in tldr
+        assert "func Ping() string" in tldr

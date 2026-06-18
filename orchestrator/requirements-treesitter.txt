@@ -1,0 +1,20 @@
+# Optional: multi-language TLDR/localization via tree-sitter (audit 2026-06-18).
+#
+# Clade's structure map uses the stdlib `ast` for Python and a regex fallback for
+# JS/TS. Installing these grammars upgrades JS/TS to real AST and adds Go/Rust/
+# Java/Ruby/C/C++/C#/PHP — `worker_tldr._parse_with_treesitter` lazy-imports each
+# and degrades gracefully when absent, so this file is NOT required to run Clade.
+#
+#   pip install -r requirements-treesitter.txt
+#
+tree-sitter>=0.25,<0.26
+tree-sitter-go
+tree-sitter-rust
+tree-sitter-java
+tree-sitter-ruby
+tree-sitter-c
+tree-sitter-cpp
+tree-sitter-c-sharp
+tree-sitter-php
+tree-sitter-typescript
+tree-sitter-javascript

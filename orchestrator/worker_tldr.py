@@ -126,6 +126,95 @@ def _parse_js_ts_regex(source: str) -> list[str]:
     return results
 
 
+# ─── Multi-language AST via tree-sitter (audit 2026-06-18; multi-lang unlock) ──
+# Python uses the stdlib `ast`; JS/TS have a regex fallback. For Go/Rust/Java/etc.
+# Clade was BLIND (no TLDR at all). tree-sitter gives real AST for ~any language.
+# OPTIONAL by design: each `tree_sitter_<lang>` package is lazy-imported; if a
+# language's grammar isn't installed the file falls back (regex for js/ts, skip
+# otherwise), so CI / fresh installs without these wheels keep working unchanged.
+
+_TS_EXT_TO_MODULE = {
+    ".go": "tree_sitter_go", ".rs": "tree_sitter_rust", ".java": "tree_sitter_java",
+    ".rb": "tree_sitter_ruby", ".c": "tree_sitter_c", ".h": "tree_sitter_c",
+    ".cpp": "tree_sitter_cpp", ".cc": "tree_sitter_cpp", ".hpp": "tree_sitter_cpp",
+    ".cs": "tree_sitter_c_sharp", ".php": "tree_sitter_php", ".rb ": "tree_sitter_ruby",
+    ".ts": "tree_sitter_typescript", ".tsx": "tree_sitter_typescript",
+    ".js": "tree_sitter_javascript", ".jsx": "tree_sitter_javascript",
+}
+# Exact tree-sitter node types that denote a top-level definition (across grammars).
+_TS_DEF_NODE_TYPES = {
+    "function_declaration", "function_definition", "function_item", "method_declaration",
+    "method_definition", "method", "constructor_declaration", "function_signature_item",
+    "class_declaration", "class_definition", "class_specifier", "class",
+    "struct_item", "struct_specifier", "struct_declaration",
+    "interface_declaration", "trait_item", "enum_declaration", "enum_item",
+    "enum_specifier", "type_declaration", "type_alias_declaration", "type_item",
+    "impl_item", "mod_item", "module", "namespace_definition",
+}
+_TS_BARE_KEYWORDS = {
+    "class", "struct", "impl", "module", "method", "interface", "enum",
+    "trait", "type", "func", "fn", "def", "namespace",
+}
+_ts_parser_cache: dict[str, Any] = {}  # module_name → Parser | None
+
+
+def _get_ts_parser(module_name: str) -> Any:
+    """Lazily build + cache a tree-sitter Parser for a language module. Returns
+    None when tree-sitter or the grammar package isn't installed (graceful)."""
+    if module_name in _ts_parser_cache:
+        return _ts_parser_cache[module_name]
+    parser = None
+    try:
+        import importlib
+        import tree_sitter as ts
+        mod = importlib.import_module(module_name)
+        # Most expose language(); typescript/php export language_<variant>().
+        lang_fn = getattr(mod, "language", None)
+        if lang_fn is None:
+            for attr in dir(mod):
+                if attr.startswith("language") and callable(getattr(mod, attr)):
+                    lang_fn = getattr(mod, attr)
+                    break
+        parser = ts.Parser(ts.Language(lang_fn())) if lang_fn else None
+    except Exception:
+        parser = None
+    _ts_parser_cache[module_name] = parser
+    return parser
+
+
+def _parse_with_treesitter(source: str, ext: str) -> list[str] | None:
+    """Extract definition signatures (one line each) via tree-sitter AST.
+    Returns None when no parser is available for `ext` (caller falls back)."""
+    module_name = _TS_EXT_TO_MODULE.get(ext)
+    if not module_name:
+        return None
+    parser = _get_ts_parser(module_name)
+    if parser is None:
+        return None
+    try:
+        data = source.encode("utf-8", errors="replace")
+        tree = parser.parse(data)
+    except Exception:
+        return None
+    sigs: list[str] = []
+    seen: set[str] = set()
+
+    def walk(node: Any) -> None:
+        if node.type in _TS_DEF_NODE_TYPES:
+            first_line = data[node.start_byte:node.end_byte].split(b"\n", 1)[0]
+            sig = first_line.decode("utf-8", errors="replace").strip().rstrip("{").strip()[:120]
+            # Skip bare keyword nodes (a `class`/`struct` token shares the node
+            # type name with a real definition in some grammars).
+            if sig and sig.lower() not in _TS_BARE_KEYWORDS and sig not in seen:
+                seen.add(sig)
+                sigs.append(sig)
+        for child in node.children:
+            walk(child)
+
+    walk(tree.root_node)
+    return sigs
+
+
 def _generate_code_tldr(project_dir: str) -> str:
     root = Path(project_dir)
     if not root.is_dir():
@@ -139,7 +228,7 @@ def _generate_code_tldr(project_dir: str) -> str:
             dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS and not d.startswith(".")]
             for fname in filenames:
                 ext = Path(fname).suffix.lower()
-                if ext in (".py", ".js", ".ts", ".tsx", ".jsx"):
+                if ext == ".py" or ext in _TS_EXT_TO_MODULE:
                     fpath = Path(dirpath) / fname
                     try:
                         mt = fpath.stat().st_mtime
@@ -165,7 +254,11 @@ def _generate_code_tldr(project_dir: str) -> str:
         if ext == ".py":
             sigs = _parse_python_ast(source)
         else:
-            sigs = _parse_js_ts_regex(source)
+            # Prefer real AST (tree-sitter) for any installed grammar; fall back
+            # to the JS/TS regex when tree-sitter/grammar is absent (graceful).
+            sigs = _parse_with_treesitter(source, ext)
+            if sigs is None:
+                sigs = _parse_js_ts_regex(source) if ext in (".js", ".ts", ".tsx", ".jsx") else []
         if sigs:
             lines.append(f"## {rel}")
             lines.extend(sigs)
