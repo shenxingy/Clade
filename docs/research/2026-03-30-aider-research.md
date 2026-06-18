@@ -9,6 +9,7 @@ summary:
 integrated_items:
   - "Weak model for TLDR — worker_tldr.py uses haiku for code TLDR generation, matches Aider's weak_model pattern"
   - "Reflection Loop (9.1) — DONE: worker.py:554 (MAX_REFLECTION_RETRIES=3 at worker_utils.py:34) — up to 3 retry cycles, lint errors re-injected as context via _run_with_context(use_continue=True)"
+  - "PageRank repo-map (audit re-review) — DONE (d389ed0): the 'LLM selection ≈ PageRank' claim was cruder (non-deterministic haiku + keyword-substring, no graph centrality). Now deterministic import-graph PageRank centrality boosts central-but-keyword-poor files. JS/TS parse also widened from regex (interface/type/enum/arrow/export/methods)."
 needs_work_items: []
 reference_items:
   - "tree-sitter AST indexing — SKIP different-not-deficient: on-demand AST symbol search already exists (clade_search_class/method/code, mcp_server.py:216/250/381) + TLDR + grep; a persistent tree-sitter/PageRank index is overkill at <500-file scale (same logic as the Moatless FAISS SKIP), and the Sonar Foundation Agent — current SWE-bench leader — validates simple-tools-over-heavy-indexing. Revisit only past a few-thousand-file scale"

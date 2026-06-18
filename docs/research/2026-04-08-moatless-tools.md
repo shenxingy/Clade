@@ -15,6 +15,8 @@ integrated_items:
   - "Span-level FileContext + per-span token budgeting + eviction — DONE: orchestrator/worker_tldr.py:375 (_span_evict_tldr) + config.py:131 (context_span_budget), wired orchestrator/worker_taskfile.py:258-260"
   - "max_tokens_per_worker budget — DONE: config.py:107 (worker_token_budget), enforced orchestrator/worker.py:547-553 (gate) and 607-616 (kill on exceed, reason token_budget_exceeded)"
   - "StringReplace edit-discipline — DONE: worker_utils.py:50 `EDIT_DISCIPLINE_BLOCK` (old_string uniqueness + line-number-prefix stripping + minimal edits), wired worker_taskfile.py:400"
+  - "Resolve-rate eval (audit re-review) — DONE (a1272c2): `evals/run_resolve_eval.py` SWE-bench-Lite pipeline + dry-run self-test. The earlier 'run_oracle_eval already covers it' SKIP was wrong — that measures judge accuracy, not end-to-end resolution. Real parity still needs a live run."
+  - "Localizer window (audit re-review) — DONE (d389ed0): the localizer's `tldr[:3000]` truncation (real exposure, not the FAISS absence) widened to 8000."
 reference_items:
   - "Typed search actions (FindClass/FindFunction/FindCodeSnippet) — SKIP: already-equivalent — clade_search_class/method/code are real MCP tools (mcp_server.py:338,357,381); only SemanticSearch (embedding) absent"
   - "Embedding semantic index (FAISS + tree-sitter + Voyage) — SKIP: different-not-deficient — paid API + doubled deps + stale-on-commit, negligible gain at <500-file scale; 3/4 search actions already exist as tools"

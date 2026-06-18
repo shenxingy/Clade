@@ -7,6 +7,7 @@ status: integrated
 integrated_items:
   - "SBFL pre-pass ranked suspect hints — DONE: worker_tldr.py:662 (_sbfl_prepass, traceback-frequency proxy for Ochiai)"
   - "Patch retry budget — only the LLM call, capped 3× — DONE: worker.py:588-590 (--continue reflection retry, MAX_REFLECTION_RETRIES=3 at worker.py:554; _run_with_context use_continue=True at worker.py:967)"
+  - "SBFL honesty (audit re-review) — DONE (d389ed0): the prepass was traceback-FREQUENCY mislabeled as SBFL/Ochiai. Now counts DISTINCT failing tests per function (failing-test coverage) with an honest label — recursion no longer inflates one function."
 reference_items:
   - "Structured AST search APIs exposed to the agent — SKIP: clade_search_class/clade_search_method/clade_search_code wired in mcp_server.py:337-403; residual file-scoped variants subsumed by native Grep/Read (already-equivalent)"
   - "Iterative context retrieval split from patch phase — SKIP: soft two-phase directive with phase-boundary checkpoint injected at worker_taskfile.py:372-383; hard process-split forces context re-hydration the native loop avoids (different-not-deficient)"

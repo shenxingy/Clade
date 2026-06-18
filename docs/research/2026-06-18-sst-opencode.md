@@ -27,6 +27,7 @@ integrated_items:
   - "Commit-level undo — _undo_commit / git reset HEAD~1 on failed gate (orchestrator/worker.py:905-959) is Clade's revert primitive."
   - "Model aliases resolve a friendly name to a dated snapshot (orchestrator/config.py:39-52), the same indirection as opencode's models record aliasing."
   - "Read-only judge hardening — DONE (commit 49af13e): wired `DISALLOWED_TOOLS_JUDGE` (--disallowed-tools Edit,Write,Bash) to the worker verify judge + the session.py supervisor/decompose/suggest judges (was defined-but-not-called). Removes Bash from pure stdout-parsed judges — stronger than a deny-list, since they keep Read for verification"
+  - "Blocked-task recovery (audit re-review) — DONE (f0c519a): tangential bug found while auditing the human-in-loop ruling — `_check_blockers` set status=blocked which no path could requeue (orphaned forever); retry now accepts blocked."
 needs_work_items: []
 reference_items:
   - "Single-provider lock-in — SKIP different-by-scope: Clade is Claude-orchestration by design; FastAPI /docs already exposes the API — a generated client SDK is low-value for an autonomous tool"

@@ -115,6 +115,22 @@ Grouped by [watch-list](../who-to-learn-from.md) tier. `Gaps` = count of open `n
 >
 > **Net for the whole sweep: 0 open gaps across all 23 deep-dives.** Two latent bugs caught and fixed along the way: the always-`feat:` commit type (zeroed the fix-rate metric), and a YAML duplicate-key in `reflection-agents.md` (second `integrated_items:` block clobbered the first). +19 new tests, full suite green (623).
 >
+> ### 🔬 2026-06-18 — adversarial re-review of the "different-not-deficient" rulings
+>
+> The sweep above had a confirmation bias: agents incentivized to *close* gaps tend to rationalize SKIPs. So 4 adversarial agents re-attacked every "different-not-deficient" ruling — verify the claimed alternative is actually *in code*, then steelman the expert. Most held (Localize→Repair→Validate, Qodo audience, provider scope, warm-pool, ChatChunks, greenfield init — genuinely different). But the review **overturned 3 rationalizations, found 1 bug, and corrected several over-claims** — all now built:
+>
+> | Finding | Was claimed | Reality (audit) | Fix |
+> |---------|-------------|-----------------|-----|
+> | **SWE-bench eval** | "`run_oracle_eval` already covers it" | FALSE — that measures judge *accuracy* + parser robustness, **zero** end-to-end resolution. The whole study's parity was *reasoning, not measurement*; the SKIP protected it from being tested. | `evals/run_resolve_eval.py` — SWE-bench-Lite pipeline + dry-run self-test (`a1272c2`). **Run it for a real number.** |
+> | **Patch-sampling** | "iterate covers sampling's benefit" | Rationalization — in-process retry is **lint-only**, the diverse-sample escape shipped **disabled** (`parallel_fix_samples=1`) AND **unreachable** (`is_critical_path` never auto-set), no selection. | plateau-triggered diverse fan-out on the 2nd oracle rejection (`8e47313`). |
+> | **PageRank repo-map** | "LLM selection ≈ PageRank" | Cruder — non-deterministic haiku + keyword-substring, no graph centrality; central-but-keyword-poor files missed. | deterministic import-graph PageRank centrality (`d389ed0`). |
+> | **`blocked` task** (bug) | — | `_check_blockers` set `blocked`, which **no path could requeue** → orphaned forever. | retry accepts `blocked` (`f0c519a`). |
+> | over-claim: "SBFL" | spectrum/Ochiai | traceback-*frequency* | now counts **distinct failing tests** + honest label (`d389ed0`). |
+> | over-claim: localizer window | covers the repo | `tldr[:3000]` truncated the relevant file out | 3000→8000 (`d389ed0`). |
+> | over-claim: AST search | covers the codebase | Python AST real, **JS/TS was regex** | widened JS/TS parse: interface/type/enum/arrow/export/methods (`d389ed0`). |
+>
+> **Honest bottom line:** "0 open gaps" is now backed by *builds + a real eval harness*, not just reasoning — but **true parity with the experts is still unproven until `run_resolve_eval.py` is run on real SWE-bench instances** (needs the claude CLI + per-instance Docker envs). The number, not the argument, is the last mile.
+>
 > ---
 >
 > ✅ **Reconciled against code 2026-06-13.** A direct audit of `orchestrator/` found the overwhelming majority of the small + medium items below **already implemented** — episodic failure memory, minimal-patch retry, acceptance-criteria checklist, post-worker test runner, caller hints, diff chunking, confidence scoring, two-pass oracle, entity-level TLDR pruning, all four hook items, and more (many cite their source gap in-code). **Do not build from the lists below without re-grepping first — they predate the audit.**
