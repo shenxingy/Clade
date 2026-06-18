@@ -1,0 +1,16 @@
+{
+  "instance_id": "synthetic-resolved",
+  "repo": "clade/synthetic",
+  "base_commit": "0000000000000000000000000000000000000000",
+  "problem_statement": "calc.add returns the difference instead of the sum. add(2, 3) should return 5 but returns -1. Fix calc.add so it adds its two arguments.",
+  "FAIL_TO_PASS": ["tests/test_calc.py::test_add"],
+  "PASS_TO_PASS": ["tests/test_calc.py::test_mul"],
+  "test_cmd": "python -m pytest -p no:cacheprovider --no-header -q",
+  "synthetic": {
+    "repo_files": {
+      "calc.py": "def add(a, b):\n    # BUG: subtracts instead of adding\n    return a - b\n\n\ndef mul(a, b):\n    return a * b\n",
+      "tests/test_calc.py": "from calc import add, mul\n\n\ndef test_add():\n    assert add(2, 3) == 5\n    assert add(-1, 1) == 0\n\n\ndef test_mul():\n    assert mul(2, 3) == 6\n"
+    },
+    "canned_patch": "--- a/calc.py\n+++ b/calc.py\n@@ -1,6 +1,6 @@\n def add(a, b):\n-    # BUG: subtracts instead of adding\n-    return a - b\n+    # FIXED: add the two arguments\n+    return a + b\n \n \n def mul(a, b):\n"
+  }
+}
