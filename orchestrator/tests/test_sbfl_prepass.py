@@ -69,7 +69,7 @@ E   ZeroDivisionError
 
 
 class TestSbflPrepass:
-    async def test_ranks_suspects_by_traceback_frequency(self, tmp_path, monkeypatch):
+    async def test_ranks_suspects_by_failing_test_coverage(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
             wt, "asyncio",
             AsyncioProxy(create_subprocess_exec=_exec_returning(FakeProc(_FAILING_OUTPUT, 1))),
@@ -77,9 +77,11 @@ class TestSbflPrepass:
         block = await wt._sbfl_prepass(tmp_path)
         assert "SBFL Pre-pass" in block
         assert "2 failing test" in block
-        # divide appears 2x, validate 1x → divide must rank above validate
+        # divide is implicated by BOTH failing tests (test_divide + test_chain),
+        # validate by only one → divide must rank above validate. Distinct-test
+        # coverage (audit 2026-06-18), not raw frame frequency.
         assert block.index("divide") < block.index("validate")
-        assert "appears 2" in block  # divide seen twice — frequency surfaced
+        assert "implicated by 2 failing test" in block
 
     async def test_skips_test_functions(self, tmp_path, monkeypatch):
         monkeypatch.setattr(

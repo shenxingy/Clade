@@ -87,11 +87,21 @@ def _parse_python_ast(source: str) -> list[str]:
     return results
 
 
+# Control-flow keywords the indented-method pattern must not mistake for a method.
+_JS_KEYWORDS = {
+    "if", "for", "while", "switch", "catch", "return", "function", "await",
+    "typeof", "new", "else", "do", "with", "yield", "constructor",
+}
 _JS_PATTERNS = [
-    re.compile(r'^\s*(?:export\s+)?class\s+(\w+)'),
-    re.compile(r'^\s*(?:export\s+)?(?:async\s+)?function\s+(\w[\w$]*)'),
-    re.compile(r'^\s*(?:export\s+)?(?:const|let|var)\s+(\w[\w$]*)\s*=\s*(?:async\s+)?\('),
-    re.compile(r'^\s*(?:export\s+default\s+)?(?:async\s+)?function\s*\('),
+    re.compile(r'^\s*(?:export\s+(?:default\s+)?)?(?:abstract\s+)?class\s+(\w+)'),
+    re.compile(r'^\s*(?:export\s+)?interface\s+(\w+)'),           # TS interface
+    re.compile(r'^\s*(?:export\s+)?type\s+(\w+)\s*='),            # TS type alias
+    re.compile(r'^\s*(?:export\s+)?(?:const\s+)?enum\s+(\w+)'),   # TS enum
+    re.compile(r'^\s*(?:export\s+(?:default\s+)?)?(?:async\s+)?function\s*\*?\s*(\w[\w$]*)'),
+    # const/let/var X = ...  (arrow w/ or w/o parens, or a top-level value)
+    re.compile(r'^\s*(?:export\s+(?:default\s+)?)?(?:const|let|var)\s+(\w[\w$]*)'),
+    # indented class method:  name(args) {  /  name(args): Ret {  (keyword-guarded)
+    re.compile(r'^\s+(?:public\s+|private\s+|protected\s+|readonly\s+|static\s+|async\s+|get\s+|set\s+)*(\w[\w$]*)\s*\([^;]*\)\s*[:{]'),
 ]
 
 
@@ -99,11 +109,14 @@ def _parse_js_ts_regex(source: str) -> list[str]:
     results = []
     for line in source.splitlines():
         stripped = line.strip()
-        if not stripped or stripped.startswith("//") or stripped.startswith("/*"):
+        if not stripped or stripped.startswith("//") or stripped.startswith("/*") or stripped.startswith("*"):
             continue
         for pat in _JS_PATTERNS:
             m = pat.match(line)
             if m:
+                # Guard: skip control-flow that looks like a method call.
+                if m.groups() and m.group(1) in _JS_KEYWORDS:
+                    continue
                 # Trim to reasonable length
                 sig = stripped[:120]
                 if sig.endswith("{"):
@@ -287,8 +300,101 @@ def _parse_fault_entity_names(fault_locs_text: str) -> list[str]:
 # ─── Hybrid Keyword Pre-Filter (Sweep §Gap4) ─────────────────────────────────
 
 
+# ─── Deterministic repo-map centrality (Aider PageRank; audit 2026-06-18) ────
+# Keyword + LLM localization misses central-but-keyword-poor files (a base class
+# everything inherits, a shared config). PageRank over the import graph surfaces
+# them — deterministic, reproducible, no LLM call. mtime-cached like the TLDR.
+
+_pagerank_cache: dict[str, tuple[float, dict[str, float]]] = {}
+
+
+def _pagerank(graph: dict[str, set[str]], damping: float = 0.85, iters: int = 20) -> dict[str, float]:
+    """Power-iteration PageRank. Edge A→B means 'A imports B', so B accrues rank
+    and widely-imported files score highest. Scores normalized to 0..1 (max=1)."""
+    nodes = list(graph)
+    n = len(nodes)
+    if n == 0:
+        return {}
+    incoming: dict[str, list[str]] = {x: [] for x in nodes}
+    outdeg: dict[str, int] = {x: len(graph[x]) for x in nodes}
+    for src, dsts in graph.items():
+        for d in dsts:
+            if d in incoming:
+                incoming[d].append(src)
+    rank = {x: 1.0 / n for x in nodes}
+    base = (1.0 - damping) / n
+    for _ in range(iters):
+        dangling = damping * sum(rank[x] for x in nodes if outdeg[x] == 0) / n
+        rank = {
+            x: base + dangling + damping * sum(
+                rank[s] / outdeg[s] for s in incoming[x] if outdeg[s]
+            )
+            for x in nodes
+        }
+    mx = max(rank.values()) if rank else 0.0
+    return {x: (rank[x] / mx if mx > 0 else 0.0) for x in nodes}
+
+
+def _pagerank_centrality(project_dir: str, max_files: int = 1200) -> dict[str, float]:
+    """Build the Python import graph and rank files by PageRank centrality.
+
+    Returns {posix_relpath: score 0..1}. Empty on a missing dir, a JS-only repo,
+    or one larger than max_files (where a heavyweight scan isn't worth it)."""
+    root = Path(project_dir)
+    if not root.is_dir():
+        return {}
+    py: list[Path] = []
+    max_mtime = 0.0
+    try:
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS and not d.startswith(".")]
+            for fn in filenames:
+                if fn.endswith(".py"):
+                    p = Path(dirpath) / fn
+                    try:
+                        max_mtime = max(max_mtime, p.stat().st_mtime)
+                    except OSError:
+                        continue
+                    py.append(p)
+    except OSError:
+        return {}
+    if not py or len(py) > max_files:
+        return {}
+
+    cached = _pagerank_cache.get(project_dir)
+    if cached and cached[0] >= max_mtime:
+        return cached[1]
+
+    rel = {p.relative_to(root).as_posix(): p for p in py}
+    stem_to_rel: dict[str, str] = {}
+    for r in rel:
+        stem_to_rel.setdefault(r[:-3].replace("/", "."), r)   # dotted module path
+        stem_to_rel.setdefault(r[:-3].rsplit("/", 1)[-1], r)  # bare module name
+    graph: dict[str, set[str]] = {r: set() for r in rel}
+    for r, p in rel.items():
+        try:
+            tree = ast.parse(p.read_text(errors="replace"))
+        except Exception:
+            continue
+        for node in ast.walk(tree):
+            mods: list[str] = []
+            if isinstance(node, ast.Import):
+                mods = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                mods = [node.module]
+            for m in mods:
+                tgt = stem_to_rel.get(m) or stem_to_rel.get(m.rsplit(".", 1)[-1])
+                if tgt and tgt != r:
+                    graph[r].add(tgt)
+
+    scores = _pagerank(graph)
+    _pagerank_cache[project_dir] = (max_mtime, scores)
+    return scores
+
+
 def _keyword_filter_tldr(
-    task_description: str, tldr: str, max_sections: int = 15
+    task_description: str, tldr: str, max_sections: int = 15,
+    centrality: dict[str, float] | None = None,
 ) -> str:
     """Pre-filter TLDR sections by keyword matching before haiku structural selection.
 
@@ -311,23 +417,26 @@ def _keyword_filter_tldr(
     if not sections:
         return tldr
 
-    # Score each section by keyword hit count
-    scored: list[tuple[int, str, str]] = []
+    # Score each section by keyword hits, boosted by PageRank centrality so a
+    # central-but-keyword-poor file (base class, shared config) still surfaces.
+    scored: list[tuple[float, int, float, str, str]] = []
     for fpath, content in sections.items():
         content_lower = content.lower()
-        score = sum(1 for kw in keywords if kw in content_lower)
-        scored.append((score, fpath, content))
+        kw = sum(1 for kwd in keywords if kwd in content_lower)
+        cen = centrality.get(fpath.replace("\\", "/"), 0.0) if centrality else 0.0
+        scored.append((kw + 2.0 * cen, kw, cen, fpath, content))
 
     scored.sort(key=lambda x: -x[0])
 
-    # Keep sections with any keyword match, up to max_sections
-    matching = [(s, fp, c) for s, fp, c in scored if s > 0]
+    # Keep sections with a keyword hit OR high centrality (deterministic safety
+    # net — a top-central file is never pruned just for missing the keywords).
+    matching = [t for t in scored if t[1] > 0 or t[2] >= 0.5]
     if len(matching) < 3:
         # Too sparse — return original to avoid over-filtering
         return tldr
 
     kept = matching[:max_sections]
-    result = "\n\n".join(c for _, _, c in kept)
+    result = "\n\n".join(t[4] for t in kept)
     skipped = len(sections) - len(kept)
     if skipped > 0:
         result += f"\n\n... ({skipped} files omitted — keyword pre-filtered)"
@@ -335,6 +444,11 @@ def _keyword_filter_tldr(
 
 
 # ─── Two-Phase Task-Specific TLDR Localization (Moatless pattern) ─────────────
+
+# Localizer prompt window. Was 3000 (~750 tokens) — the audit (2026-06-18) found
+# that on a few-hundred-file repo the relevant file is often past the cutoff, so
+# the localizer never sees it. 8000 (~2k tokens) is still cheap for haiku.
+_LOCALIZE_MAP_CHARS = 8000
 
 _LOCALIZE_PROMPT = """\
 You are a code navigator. Given a task description and a codebase structure map, \
@@ -440,8 +554,11 @@ async def _localize_tldr_for_task(
 
     Falls back to original TLDR on any error.
     """
-    # Sweep §Gap4: keyword pre-filter before haiku (hybrid retrieval)
-    candidate_tldr = _keyword_filter_tldr(task_description, tldr)
+    # Sweep §Gap4: keyword pre-filter before haiku (hybrid retrieval), now
+    # boosted by deterministic PageRank centrality (audit 2026-06-18) so central
+    # files survive the keyword filter even when keyword-poor.
+    centrality = _pagerank_centrality(str(project_dir))
+    candidate_tldr = _keyword_filter_tldr(task_description, tldr, centrality=centrality)
     sections = _extract_tldr_sections(candidate_tldr)
     if not sections:
         return tldr
@@ -459,7 +576,7 @@ async def _localize_tldr_for_task(
 
     prompt = _LOCALIZE_PROMPT.format(
         task=task_description[:600],
-        tldr=compact_map[:3000],
+        tldr=compact_map[:_LOCALIZE_MAP_CHARS],
     )
 
     try:
@@ -538,7 +655,7 @@ async def _localize_fault(
         "You are a code search expert. Given a bug report and codebase structure, "
         "identify the specific files and functions most likely to need changes.\n\n"
         f"Bug/Task:\n{task_description[:500]}\n\n"
-        f"Codebase structure:\n{tldr[:3000]}\n\n"
+        f"Codebase structure:\n{tldr[:_LOCALIZE_MAP_CHARS]}\n\n"
         "Respond ONLY with a JSON object — no preamble, no markdown:\n"
         '{"suspect_files":["path/to/file.py"],'
         '"suspect_functions":["ClassName.method_name","module.function_name"],'
@@ -713,15 +830,26 @@ async def _sbfl_prepass(project_dir: Path, timeout: int = 30) -> str:
         # and corrupting the frequency ranking.
         r'|(?:(?P<fpath2>[^\s:][^:\s]*\.py):(?:\d+): in (?P<fn2>\w+))'
     )
-    scores: dict[str, int] = {}  # "file:function" → frequency
-    for m in _TRACE_RE.finditer(output):
-        fpath = m.group("fpath1") or m.group("fpath2") or ""
-        fn = m.group("fn1") or m.group("fn2") or ""
-        if fpath and fn and fn not in ("test_", "<module>", "__init__"):
-            # Skip test functions themselves — focus on implementation code
-            if not fn.startswith("test_") and not fpath.startswith("test_"):
-                key = f"{fpath}::{fn}"
-                scores[key] = scores.get(key, 0) + 1
+    # Count DISTINCT failing tests per function, not raw frame frequency (audit
+    # 2026-06-18): split on pytest's per-failure underscore headers so a function
+    # deep in one test's recursion no longer outranks one implicated by many
+    # separate failures. This is "failing-test coverage" — a real suspiciousness
+    # signal, not Ochiai (we have no passing-test coverage to subtract).
+    blocks = re.split(r'\n_{5,}.*\n', output)
+    if len(blocks) < 2:
+        blocks = [output]
+    scores: dict[str, int] = {}  # "file::function" → # of distinct failing tests
+    for block in blocks:
+        seen: set[str] = set()
+        for m in _TRACE_RE.finditer(block):
+            fpath = m.group("fpath1") or m.group("fpath2") or ""
+            fn = m.group("fn1") or m.group("fn2") or ""
+            if fpath and fn and fn not in ("<module>", "__init__"):
+                # Skip test functions themselves — focus on implementation code
+                if not fn.startswith("test_") and not fpath.startswith("test_"):
+                    seen.add(f"{fpath}::{fn}")
+        for key in seen:
+            scores[key] = scores.get(key, 0) + 1
 
     if not scores:
         return ""
@@ -743,7 +871,8 @@ async def _sbfl_prepass(project_dir: Path, timeout: int = 30) -> str:
         parts = loc.split("::")
         fpath_part = parts[0].split("/")[-1] if parts else loc
         fn_part = parts[1] if len(parts) > 1 else ""
-        lines.append(f"- `{fn_part}` in `{fpath_part}` (appears {count}× in tracebacks)")
+        plural = "s" if count != 1 else ""
+        lines.append(f"- `{fn_part}` in `{fpath_part}` (implicated by {count} failing test{plural})")
     lines.append("")
     lines.append("> Investigate these functions first — they're the most likely bug locations.")
     return "\n".join(lines)
