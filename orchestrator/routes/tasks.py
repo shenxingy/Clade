@@ -340,12 +340,16 @@ async def update_task(task_id: str, body: dict, s: ProjectSession = Depends(_res
 
 @router.post("/api/tasks/{task_id}/retry")
 async def retry_task(task_id: str, s: ProjectSession = Depends(_resolve_session)):
-    """Reset an interrupted or failed task back to pending for retry."""
+    """Reset an interrupted, failed, or blocked task back to pending for retry.
+
+    `blocked` is included so a human who resolved a `.claude/blockers.md` halt can
+    resume that task — otherwise it is orphaned forever (claim_next_pending only
+    takes `pending`, and crash-replay only resets running/starting)."""
     task = await s.task_queue.get(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    if task["status"] not in ("interrupted", "failed"):
-        return {"error": f"Task status is '{task['status']}', can only retry interrupted/failed"}
+    if task["status"] not in ("interrupted", "failed", "blocked"):
+        return {"error": f"Task status is '{task['status']}', can only retry interrupted/failed/blocked"}
     await s.task_queue.update(
         task_id, status="pending", worker_id=None,
         started_at=None, elapsed_s=0, failed_reason=None,

@@ -36,6 +36,31 @@ async def test_update_status_transitions(task_queue: TaskQueue):
     assert updated["status"] == "done"
 
 
+async def test_retry_task_accepts_blocked(task_queue: TaskQueue):
+    """A `blocked` task (from a resolved blockers.md halt) must be retryable —
+    otherwise it is orphaned forever (claim_next_pending only takes `pending`,
+    crash-replay only resets running/starting). Audit finding 2026-06-18."""
+    from types import SimpleNamespace
+    from routes.tasks import retry_task
+
+    task = await task_queue.add("blocked work")
+    await task_queue.update(task["id"], status="blocked")
+    result = await retry_task(task["id"], s=SimpleNamespace(task_queue=task_queue))
+    assert result.get("ok") is True
+    assert (await task_queue.get(task["id"]))["status"] == "pending"
+
+
+async def test_retry_task_rejects_running(task_queue: TaskQueue):
+    """Guard the allow-list: a live `running` task must not be resettable."""
+    from types import SimpleNamespace
+    from routes.tasks import retry_task
+
+    task = await task_queue.add("active work")
+    await task_queue.update(task["id"], status="running")
+    result = await retry_task(task["id"], s=SimpleNamespace(task_queue=task_queue))
+    assert "error" in result
+
+
 async def test_delete_removes_task(task_queue: TaskQueue):
     task = await task_queue.add("Task to delete")
     task_id = task["id"]
