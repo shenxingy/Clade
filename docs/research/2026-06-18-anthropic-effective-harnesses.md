@@ -1,7 +1,7 @@
 ---
 name: Anthropic — Effective Harnesses for Long-Running Agents (Tier-1)
 date: 2026-06-18
-status: needs_work
+status: integrated
 review_date: 2026-06-18
 reconciled: 2026-06-18
 summary: >
@@ -34,8 +34,8 @@ integrated_items:
   - "Stopping conditions / anti-premature-completion (Anthropic: feature-list prevents false 'done') — loop-runner.sh:1010 _check_convergence: supervisor returns CONVERGED, max_iter (config.py:92 loop_max_iterations=20), 3× consecutive-no-commits (loop-runner.sh:78) + 3× consecutive-failures (loop-runner.sh:79); k-of-n convergence (config.py:90-91)"
   - "Broken-state recovery on restart (Anthropic: detect broken state, fix before new work) — config.py:352 _recover_orphaned_tasks relabels interrupted tasks on session start (server.py:55); per-worker --continue resume with full-restart fallback (worker.py:1025)"
   - "Token-budget / context-anxiety guard (Anthropic: 'context anxiety' premature wrap) — worker_token_budget kill + token-budget cap; reflection retry capped 3× (auto_classify_retry_max, worker_utils.py:859)"
-needs_work_items:
-  - "Iteration-start health check — run `test_cmd` at loop start before the supervisor node and repair broken state first (🟡 DEFERRED — touches the loop-runner.sh blueprint state machine; a loop is currently running, so build as a focused, separately-tested follow-up)"
+  - "Iteration-start health check — DONE (commit 32556fd): loop-runner.sh `node_health_check` runs verify_cmd at iteration start (fresh on iter 1, reuses prior result after), writes `.claude/health-warning.md` which `node_hydrate_context` folds into the supervisor context so a broken baseline is repaired before new work"
+needs_work_items: []
 reference_items:
   - "Initializer agent (one-time env setup: write init.sh + seed feature-list.json + initial commit) — N/A by scope: Anthropic builds greenfield apps from a 1-4 sentence prompt; Clade operates on EXISTING <500-file repos with a human-authored goal file + CLAUDE.md + start.sh already present. The 'set up the environment from scratch' step has no input in Clade's problem space. The durable half (machine-readable task inventory) is covered by the goal file + task_queue."
   - "feature-list.json with mandatory `passes` field + 'unacceptable to remove tests' prompt language — different-not-deficient: Clade's equivalent is the SQLite task_queue (per-task status) + VERIFY.md anchor checkpoints (review skill, convergence when all ✅/⚠) + acceptance-criteria schema. Clade's anti-tamper guard is structural (DB rows the worker cannot edit; oracle is a pure judge with no FS access, worker_review.py:292) rather than a prompt admonition over a JSON file — a stronger guarantee, not a weaker one."

@@ -1,7 +1,7 @@
 ---
 topic: Agent Fingerprint — Distinguishing AI-Agent Commits/PRs from Human Ones (2026)
 date: 2026-06-18
-status: needs_work
+status: integrated
 review_date: 2026-06-18
 reconciled: 2026-06-18
 summary: >
@@ -30,8 +30,8 @@ integrated_items:
   - "Fix-rate fingerprint ALREADY measured (agent vs human) — configs/scripts/commit-archeology.sh:120 (detect_agent_segmentation)"
   - "Attribution trailers segment agent vs human commits — configs/scripts/committer.sh (X-Clade-Task / Co-Authored-By when CLADE_WORKER_TASK_ID set)"
   - "Conventional commit-type classification — DONE: config.py `_infer_commit_type` + worker.py (commit 2c034eb); uncorrupts the agent fix-rate metric that keys off /^fix/"
-needs_work_items:
-  - "Test-inclusion signal in PR body + commit-archeology dimension (🟢 DEFERRED — reporting infra; build as a focused, separately-tested follow-up)"
+  - "Test-inclusion signal — DONE (commit 49af13e): worker records `tests_added` (via worker_utils `_is_test_file`), `_build_pr_body` surfaces it in the PR body, and commit-archeology.sh `detect_agent_test_inclusion` reports the agent test-inclusion rate"
+needs_work_items: []
 reference_items:
   - "Per-agent style signatures (Codex multiline 67.5%, Cursor bullets/hyperlinks, Copilot long descriptions) — N/A: these identify WHICH agent, not commit QUALITY; Clade wants to avoid the tells, not match a vendor profile."
   - "Symbol-churn / time-to-removal longitudinal tracking (3 vs 34 days) — N/A as enforcement: it is an after-the-fact quality outcome, already proxied by the oracle gate + pre-push tests that catch the low-quality diffs upstream."

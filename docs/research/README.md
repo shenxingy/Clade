@@ -82,12 +82,12 @@ Grouped by [watch-list](../who-to-learn-from.md) tier. `Gaps` = count of open `n
 ### Frontier sources (studied 2026-06-18 — cleared the research backlog)
 | Source | Status | Gaps | Core lesson | Doc |
 |--------|--------|------|-------------|-----|
-| **Anthropic — Effective Harnesses** | 🔨 | 1 | Iteration-start health check; generator≠judge; acceptance-contract grading (we cover most) | [→](2026-06-18-anthropic-effective-harnesses.md) |
+| **Anthropic — Effective Harnesses** | ✅ | 0 | Iteration-start health check (now built); generator≠judge; acceptance-contract grading | [→](2026-06-18-anthropic-effective-harnesses.md) |
 | **Sonar Foundation Agent** | ✅ | 0 | Ex-AutoCodeRover team dropped rigid scaffolding for 1 agent + 3 tools — *endorses* Clade's iterating loop | [→](2026-06-18-sonar-foundation-agent.md) |
-| **SST opencode** | 🔨 | 1 | Client/server split + session model (we have both); static command deny-list (low-pri) | [→](2026-06-18-sst-opencode.md) |
+| **SST opencode** | ✅ | 0 | Client/server split + session model (we have both); read-only judge hardening (now wired) | [→](2026-06-18-sst-opencode.md) |
 | **Huntley Ralph / CURSED** | 📘 | 0 | `while:; do cat PROMPT \| claude; done` — confirms Ralph ≈ /loop; our convergence detection is stronger | [→](2026-06-18-huntley-ralph-cursed.md) |
 | **12-Factor Agents** | ✅ | 0 | 11/12 covered + bonus factor 13; Factor-7 inline human-contact is different-by-design | [→](2026-06-18-12-factor-agents.md) |
-| **Agent Fingerprint** | 🔨 | 1 | Commit-type bug FIXED (uncorrupts fix-rate); test-inclusion signal deferred | [→](2026-06-18-agent-fingerprint.md) |
+| **Agent Fingerprint** | ✅ | 0 | Commit-type bug FIXED (uncorrupts fix-rate); test-inclusion signal now built | [→](2026-06-18-agent-fingerprint.md) |
 
 ## Open-gap backlog (by effort)
 
@@ -95,22 +95,25 @@ Grouped by [watch-list](../who-to-learn-from.md) tier. `Gaps` = count of open `n
 >
 > Two sweeps in one session: (1) re-verified every `needs_work` deep-dive item-by-item against `orchestrator/` + `configs/` (51 tracked "gaps" across 12 docs → most were already built in prior loop work, never back-filled); (2) deep-dived all **6 remaining watch-list frontier sources** so the research backlog is now empty.
 >
-> **What got built this sweep** (concrete, reversible, tested — commit `2c034eb`):
-> - **Worker commit-type classifier** (`config._infer_commit_type` + `worker.py`) — stop hardcoding `feat:`; a real bug that *zeroed the agent fix-rate metric* (`commit-archeology.sh` keys `fix` off `/^fix/`, so every agent fix counted as a feat → `0/N`). [Agent-Fingerprint]
-> - **Acceptance-criteria extraction** (`worker_hydrate._extract_acceptance_criteria`) — lift "Acceptance Criteria"/"Definition of Done" out of a hydrated issue body into a first-class contract callout. [Reflection §G5]
+> **What got built this sweep** (6 items, all tested — commits `2c034eb`, `32556fd`, `49af13e`):
+> - **Worker commit-type classifier** (`config._infer_commit_type`) — stop hardcoding `feat:`; a real bug that *zeroed the agent fix-rate metric* (`commit-archeology.sh` keys `fix` off `/^fix/`, so every agent fix counted as a feat → `0/N`). [Agent-Fingerprint]
+> - **Acceptance-criteria extraction** (`worker_hydrate._extract_acceptance_criteria`) — lift done-criteria out of a hydrated issue body into a first-class contract callout. [Reflection §G5]
+> - **Loop iteration-start health check** + **per-iteration fix-rate metric** (loop-runner.sh). [Anthropic · last-mile]
+> - **Test-inclusion signal** (PR body + commit-archeology dimension). [Agent-Fingerprint]
+> - **Read-only judge hardening** — wired `DISALLOWED_TOOLS_JUDGE` to 5 judge spawns that had it defined-but-not-called. [opencode]
 >
 > **Closed as already-built / different-not-deficient:** Moatless StringReplace discipline (false open — `EDIT_DISCIPLINE_BLOCK` worker_utils.py:50 already wired); Aider tree-sitter index (on-demand `clade_search_*` + grep cover it at <500-file scale; Sonar validates simple-tools-win); Qodo audience-diff (autonomous = no author/reviewer split); 12-Factor Factor-7 (outer-loop human contact already exists). Sonar + Ralph + 12-Factor land as **endorsements** of Clade's design, not gaps.
 >
-> **Deliberately deferred — 4 real items, each touches loop-control-flow or metric infra (build as focused, separately-tested follow-ups; a loop was running during this sweep):**
+> **Then built the last 4 too (commits `32556fd`, `49af13e`) — backlog is now empty:**
 >
-> | Gap | Source | Size |
+> | Gap | Source | What shipped |
 > |-----|--------|------|
-> | Iteration-start health check (run `test_cmd` before the supervisor node, repair broken state first) | Anthropic | 🟡 |
-> | Test-inclusion signal (PR body + a commit-archeology dimension) | Agent-Fingerprint | 🟢 |
-> | Fix-Rate per-iteration metric (% FAIL_TO_PASS repaired, SWE-EVO style) | last-mile-quality | 🟢 |
-> | Static command deny-list on nested judge `claude -p` spawns | opencode | 🔵 |
+> | Iteration-start health check | Anthropic | `node_health_check` in loop-runner.sh — verify_cmd at iteration start, broken baseline folded into supervisor context for repair-first |
+> | Test-inclusion signal | Agent-Fingerprint | `tests_added` → PR body (`_build_pr_body`) + `detect_agent_test_inclusion` in commit-archeology.sh |
+> | Fix-Rate per-iteration metric | last-mile | pytest failed-count delta per iteration → `fix-rate.tsv`, summarized in the loop report |
+> | Read-only judge hardening | opencode | wired `DISALLOWED_TOOLS_JUDGE` to the verify + session supervisor/decompose/suggest judges (was defined-but-not-called) — stronger than a deny-list |
 >
-> Also fixed in-doc during the sweep: a latent YAML duplicate-key bug in `reflection-agents.md` (two `integrated_items:` blocks — the second silently clobbered the first 3 baseline items).
+> **Net for the whole sweep: 0 open gaps across all 23 deep-dives.** Two latent bugs caught and fixed along the way: the always-`feat:` commit type (zeroed the fix-rate metric), and a YAML duplicate-key in `reflection-agents.md` (second `integrated_items:` block clobbered the first). +19 new tests, full suite green (623).
 >
 > ---
 >
@@ -197,12 +200,12 @@ The lists below are the **pre-audit** backlog, kept for provenance. Cheapest fir
 
 ✅ **Empty as of 2026-06-18.** The 6 frontier sources that previously lived here were all deep-dived this sweep — see the [Frontier sources](#frontier-sources-studied-2026-06-18--cleared-the-research-backlog) table above:
 
-- ✅ **Anthropic "Effective harnesses for long-running agents"** (Tier 1) → [doc](2026-06-18-anthropic-effective-harnesses.md) · 1 deferred gap (iteration-start health check).
+- ✅ **Anthropic "Effective harnesses for long-running agents"** (Tier 1) → [doc](2026-06-18-anthropic-effective-harnesses.md) · 0 gaps — iteration-start health check now built.
 - ✅ **Sonar Foundation Agent** → [doc](2026-06-18-sonar-foundation-agent.md) · 0 gaps — endorses Clade's iterating-loop design.
-- ✅ **SST opencode** → [doc](2026-06-18-sst-opencode.md) · 1 deferred low gap (judge deny-list).
+- ✅ **SST opencode** → [doc](2026-06-18-sst-opencode.md) · 0 gaps — read-only judge hardening now wired.
 - ✅ **Geoffrey Huntley — Ralph/CURSED** → [doc](2026-06-18-huntley-ralph-cursed.md) · 0 gaps — confirms Ralph ≈ /loop.
 - ✅ **12-Factor Agents** → [doc](2026-06-18-12-factor-agents.md) · 0 gaps — 11/12 + bonus covered.
-- ✅ **Agent Fingerprint study** → [doc](2026-06-18-agent-fingerprint.md) · commit-type bug fixed; test-inclusion deferred.
+- ✅ **Agent Fingerprint study** → [doc](2026-06-18-agent-fingerprint.md) · 0 gaps — commit-type bug fixed + test-inclusion signal built.
 
 New frontier candidates land on the [watch-list](../who-to-learn-from.md); pull one here when it's worth a `/deep-research`.
 

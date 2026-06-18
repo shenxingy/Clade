@@ -1,7 +1,7 @@
 ---
 name: SST opencode — Peer Harness Deep-Dive
 date: 2026-06-18
-status: needs_work
+status: integrated
 review_date: 2026-06-18
 reconciled: 2026-06-18
 summary: >
@@ -26,8 +26,8 @@ integrated_items:
   - "Event-sourced worker state — immutable action→observation log with causal cause_id (orchestrator/event_stream.py:2-117) parallels opencode's SSE bus + event store."
   - "Commit-level undo — _undo_commit / git reset HEAD~1 on failed gate (orchestrator/worker.py:905-959) is Clade's revert primitive."
   - "Model aliases resolve a friendly name to a dated snapshot (orchestrator/config.py:39-52), the same indirection as opencode's models record aliasing."
-needs_work_items:
-  - "Static command deny-list on nested judge `claude -p` spawns (🔵 DEFERRED low — defense-in-depth; judges are short read-only Haiku verifiers so risk is low, build deliberately)"
+  - "Read-only judge hardening — DONE (commit 49af13e): wired `DISALLOWED_TOOLS_JUDGE` (--disallowed-tools Edit,Write,Bash) to the worker verify judge + the session.py supervisor/decompose/suggest judges (was defined-but-not-called). Removes Bash from pure stdout-parsed judges — stronger than a deny-list, since they keep Read for verification"
+needs_work_items: []
 reference_items:
   - "Single-provider lock-in — SKIP different-by-scope: Clade is Claude-orchestration by design; FastAPI /docs already exposes the API — a generated client SDK is low-value for an autonomous tool"
   - "No generated SDK — SKIP different-by-scope: Clade is Claude-orchestration by design; FastAPI /docs already exposes the API — a generated client SDK is low-value for an autonomous tool"
