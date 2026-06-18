@@ -550,6 +550,42 @@ def _parse_task_type(description: str) -> str | None:
     return None  # default: implement (full tools)
 
 
+def _infer_commit_type(description: str) -> str:
+    """Infer a conventional-commit type from a task description.
+
+    The worker previously hardcoded `feat:` for every auto-commit. That
+    (a) mislabels fixes/refactors/tests/docs and (b) silently zeroes the
+    agent fix-rate metric — `commit-archeology.sh` keys `fix` off `/^fix/`,
+    so an agent fix committed as `feat:` never counts (the `agent fix-rate
+    0% (0/N)` you see in the statusline). Order matters: fix before feat.
+    Returns a bare conventional type; always falls back to `feat`.
+    """
+    d = description.lower()
+    # Honor an explicit conventional prefix already in the task text.
+    m = re.search(r"\b(fix|feat|refactor|test|docs|perf|chore)\b\s*[:(]", d)
+    if m:
+        return m.group(1)
+
+    # Word-boundary match so e.g. "patch" doesn't fire inside "dispatch".
+    def _has(words: list[str]) -> bool:
+        return re.search(r"\b(?:" + "|".join(words) + r")\b", d) is not None
+
+    # Order matters: fix outranks feat so the fix-rate metric counts it.
+    if _has(["fix", "bug", "bugfix", "hotfix", "patch", "regression", "broken", "crash"]):
+        return "fix"
+    if _has(["refactor", "restructure", "cleanup", "clean up", "extract", "rename"]):
+        return "refactor"
+    if _has(["perf", "performance", "optimize", "optimise", "speed up", "latency"]):
+        return "perf"
+    if _has(["document", "documentation", "readme", "docstring", "docs", "comment"]):
+        return "docs"
+    if _has(["bump", "dependency", "dependencies", "chore", "lint"]):
+        return "chore"
+    if _has(["test", "tests", "coverage", "spec", "e2e", "pytest"]):
+        return "test"
+    return "feat"
+
+
 def _build_tool_flags(task_type: str | None) -> str:
     """Build --allowed-tools or --disallowed-tools flags for claude -p.
 

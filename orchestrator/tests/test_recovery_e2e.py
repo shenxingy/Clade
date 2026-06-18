@@ -343,7 +343,11 @@ async def test_planted_test_failure_requeues_with_evidence_then_retry_succeeds(
     assert w2.completion_summary == "Added square() helper to app.py"
     branch = f"orchestrator/task-{w2.task_id}"
     assert "return n * n" in h.git_show(branch, "app.py")
-    assert h.branch_subject(branch).startswith("feat: add square(n) helper")
+    # The retry's task description ends with "Fix the failures …", so the
+    # commit-type classifier (config._infer_commit_type) lands it as `fix:` —
+    # a retry that repairs a failing suite is a fix, not a feat. (A first-pass
+    # "Add square(n)" attempt with no failure evidence commits as `feat:`.)
+    assert h.branch_subject(branch).startswith("fix: add square(n) helper")
     assert not await h.pending_tasks()  # chain converged — nothing requeued
 
     # The retry worker actually SAW the failure evidence in its task file.

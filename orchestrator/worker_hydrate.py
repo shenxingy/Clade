@@ -18,6 +18,28 @@ import re
 from pathlib import Path
 
 
+def _extract_acceptance_criteria(body: str) -> str:
+    """Lift an 'Acceptance Criteria' / 'Definition of Done' section out of a
+    GitHub issue body (Reflection §G5 / Agentless spec-checklist).
+
+    The full body is already injected (truncated), but a done-criteria section
+    buried in 2 KB of prose is easy for the worker to skim past and the oracle
+    never sees as an explicit contract. Pulling it into its own callout makes it
+    a first-class acceptance gate. Returns '' when no such section exists.
+    """
+    if not body:
+        return ""
+    m = re.search(
+        r"(?ims)^[#>*\s]*"
+        r"(?:acceptance\s+criteria|definition\s+of\s+done|acceptance\s+tests|done\s+when)"
+        r"[:\-*]*[ \t]*\n(.*?)(?=\n[ \t]*#{1,6}\s|\n[ \t]*\*\*|\Z)",
+        body,
+    )
+    if not m:
+        return ""
+    return m.group(1).strip()[:800]
+
+
 def _parse_linked_references(text: str) -> dict[str, list[str]]:
     """Parse task description for explicit resource references.
 
@@ -111,11 +133,18 @@ async def _pre_hydrate(task_description: str, project_dir: Path | None = None) -
                     data = json.loads(stdout.decode())
                     labels = [lb["name"] for lb in data.get("labels", [])]
                     label_str = f" [{', '.join(labels)}]" if labels else ""
+                    body = data.get("body") or "(no body)"
+                    ac = _extract_acceptance_criteria(body)
+                    ac_block = (
+                        f"\n**✅ Acceptance Criteria (from issue — oracle will check these):**\n{ac}\n"
+                        if ac else ""
+                    )
                     blocks.append(
                         f"## Pre-hydrated Issue {owner_repo}#{num}{label_str}\n"
                         f"**State**: {data['state']}\n"
-                        f"**Title**: {data['title']}\n\n"
-                        f"{data.get('body', '(no body)')[:2000]}"
+                        f"**Title**: {data['title']}\n"
+                        f"{ac_block}\n"
+                        f"{body[:2000]}"
                     )
                     fetched.add(ref)
         except Exception:

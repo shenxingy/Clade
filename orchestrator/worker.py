@@ -42,6 +42,7 @@ from config import (
     _build_tool_flags,
     _parse_task_type,
     _parse_task_schema,
+    _infer_commit_type,
 )
 from task_queue import TaskQueue
 from github_sync import _gh_update_issue_status
@@ -786,7 +787,7 @@ class Worker:
 
         self.verified = True
 
-        commit_msg = f"feat: {task_first_line.lower()}"
+        commit_msg = f"{_infer_commit_type(self.description)}: {task_first_line.lower()}"
         files_arg = " ".join(shlex.quote(f) for f in changed_files[:20])
         committer_path = Path.home() / ".claude/scripts/committer.sh"
         if committer_path.exists():
