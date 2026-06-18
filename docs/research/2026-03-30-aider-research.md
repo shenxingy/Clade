@@ -3,19 +3,20 @@ name: 2026-03-30-aider-research.md
 date: 2026-03-30
 status: needs_work
 review_date: 2026-03-31
+reconciled: 2026-06-18
 summary:
   - "Aider: repo map with tree-sitter + PageRank, Architect mode, SEARCH/REPLACE edit format, lint reflection loop"
 integrated_items:
   - "Weak model for TLDR — worker_tldr.py uses haiku for code TLDR generation, matches Aider's weak_model pattern"
+  - "Reflection Loop (9.1) — DONE: worker.py:554 (MAX_REFLECTION_RETRIES=3 at worker_utils.py:34) — up to 3 retry cycles, lint errors re-injected as context via _run_with_context(use_continue=True)"
 needs_work_items:
-  - "Reflection Loop (9.1) — Aider injects lint errors back as new message input, retries up to 3x. Clade has post-edit-check hook (reports errors) and fix_syntax (one-shot retry) but NO tight reflection loop with multiple retry cycles"
-  - "ChatChunks message layering (9.2) — Aider L1/L2/L3 context tiers. Clade worker context has no explicit layering (stable vs dynamic split)"
-  - "Personalized PageRank for /map (9.3) — Aider uses PageRank+personalization to select relevant files. Clade /map does full scan without ranking"
   - "Tree-sitter based codebase indexing — Aider extracts def/ref tags via tree-sitter queries. Clade has no tree-sitter usage"
-  - "Adaptive repo map sizing (9.6) — Aider expands repo map 8x when no files edited. Clade has no equivalent"
 reference_items:
   - "Architect mode (planner/editor separation) — different architecture, not applicable to Claude Code"
   - "SEARCH/REPLACE edit format with fuzzy fallback — not applicable to Claude Code"
+  - "ChatChunks message layering (9.2) — SKIP: Aider's L1/L2/L3 is a message-array scheme for prompt caching in a multi-turn chat-completion API loop. Clade drives the `claude` CLI subprocess with a single task file (build_task_file), not a raw message array — no message-layering surface to cache. Clade still splits stable (CLAUDE.md/AGENTS.md prepend) vs dynamic (per-task localized TLDR + task desc) context and preserves session via --continue. Mechanism N/A for single-tool CLI scope"
+  - "Personalized PageRank for /map (9.3) — SKIP: the intent (select task-relevant files vs dump-everything) is implemented via _localize_tldr_for_task (worker_tldr.py:428) — keyword pre-filter on task-mentioned identifiers + haiku structural selection → top-5 relevant files, plus _prune_tldr_to_entities and SBFL ranking. Personalization-by-mentioned-symbols equivalent, achieved via LLM structural selection rather than NetworkX PageRank. /map stays a full architecture-diagram generator by design"
+  - "Adaptive repo map sizing (9.6) — SKIP: Aider expands the map 8x when no chat files. Clade's analog: when no files localize, _localize_tldr_for_task returns the full TLDR (worker_tldr.py:447); entity/span pruning only kicks in once relevant entities are known. Same 'no known files → broader overview, known files → pruned' effect via fallback-to-full rather than an explicit 8x multiplier"
 ---
 
 # Aider Deep Research

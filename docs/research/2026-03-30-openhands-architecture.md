@@ -1,18 +1,19 @@
 ---
 name: 2026-03-30-openhands-architecture.md
 date: 2026-03-30
-status: needs_work
+status: integrated
 review_date: 2026-03-31
+reconciled: 2026-06-18
 summary:
   - "OpenHands: EventStream event sourcing, 9 Condenser types, DockerRuntime warm pool, AgentDelegate nested agents"
-integrated_items: []
-needs_work_items:
-  - "EventStream architecture — Clade loses worker state on server restart. EventStream would allow replay from log. Genuine gap in fault tolerance"
-  - "Condenser types for context compression — OpenHands 9 condenser types for different scenarios. Clade has TLDR but no structured compression strategies"
+integrated_items:
+  - "EventStream architecture — DONE: orchestrator/event_stream.py + worker.py:171,1096 + worker_taskfile.py:192 (per-worker crash-safe JSONL); restart replay wired at server.py:55-68 → config.py:367 _replay_interrupted_tasks (grep: EventStream|replay_interrupted_on_startup)"
+  - "Condenser types for context compression — DONE: orchestrator/condensers.py (Condenser ABC + 4 strategies) applied at worker_taskfile.py:299,345 (grep: ObservationMaskingCondenser|Condenser)"
+needs_work_items: []
 reference_items:
   - "Warm pool for agents — not a gap (design choice: Clade spawns fresh workers per task for isolation)"
   - "DockerRuntime with action_execution_server"
-  - "9 Condenser types for different compression strategies"
+  - "9 Condenser types for different compression strategies — SKIP: different-not-deficient; Clade ships the structured-compression pattern (4 condensers) wired at runtime, OpenHands' exact 9-type taxonomy is a count mismatch not a capability gap"
   - "PubSub decoupling pattern"
 ---
 

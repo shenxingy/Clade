@@ -1,44 +1,29 @@
 ---
 topic: Reflection Agents and Self-Critique Patterns for Code Generation (2025)
 date: 2026-04-07
+review_date: 2026-06-14
+reconciled: 2026-06-18
 status: needs_work
 sources:
   - https://arxiv.org/abs/2303.11366  # Reflexion (Shinn et al. 2023)
   - https://arxiv.org/abs/2310.11511  # Self-RAG (Asai et al. 2023)
   - https://arxiv.org/html/2602.02584  # Constitutional Spec-Driven Dev
 integrated_items:
-  - item: Oracle review (second-model diff review) — now returns structured dimension JSON
-    clade_location: orchestrator/worker_review.py (_oracle_review)
-  - item: Lint reflection loop (reactive, surface-level)
-    clade_location: orchestrator/worker.py
-  - item: --continue retries preserving agent context
-    clade_location: orchestrator/worker.py
+  - "Oracle review (second-model diff review) — DONE: worker_review.py:_oracle_review (structured dimension JSON, worker_review.py:194-207)"
+  - "Lint reflection loop (reactive, surface-level) — DONE: worker.py:554-600"
+  - "--continue retries preserving agent context — DONE: worker.py:_run_with_context use_continue=True (worker.py:590)"
+  - "Episodic failure memory / Reflexion (§Gap 1) — DONE: worker.py:175,565-583,595-596 (_failure_reflections accumulates failure notes, prepends 'Previous attempts failed' history on retry)"
+  - "Minimal-patch reflection loop (§Gap 3) — DONE: worker.py:572-578 + worker_utils.py:266-274 (_extract_lint_targets parses file.py:42:5: lint locations, injects 'Fix ONLY these specific errors, do not modify anything else')"
+  - "Targeted per-dimension oracle fixes (§Gap 2) — DONE: worker_review.py:201,431-457 (findings carry per-'dimension'+severity fix_suggestion; _format_oracle_findings feeds an ordered per-finding fix list back to the worker)"
+  - "Constitutional check after generation (§Gap 4) — DONE: worker_review.py:256-257,504-505,578 + oracle_cli.py:97-100 (CLAUDE.md 'Code Rules' read via _read_constitution, injected as _ORACLE_CONSTITUTION_HEADER into both oracle paths; violations ride the findings→fix→requeue path. Inside the existing oracle, not a separate haiku call — DRYer)"
 needs_work_items:
-  - item: Episodic failure memory / Reflexion (§Gap 1) — highest value, smallest effort
-    gap: Each retry is stateless — only lint output is injected, not a reasoning about WHY it failed. Add a structured "Failure Analysis" block (previous attempt / why it failed / what to do differently) to the retry prompt; haiku generates it from lint/oracle output.
-    effort: small
-    status: VERIFIED-DONE 2026-06-13 — worker.py:563-569 accumulates _failure_reflections and prepends history on retry.
-  - item: Minimal-patch reflection loop (§Gap 3)
-    gap: The reflection loop re-runs the full agent and often rewrites large sections. Parse lint output for specific file:line, then --continue with "fix this specific error only, change nothing else" to constrain the edit.
-    effort: small
   - item: Spec-driven acceptance-criteria checklist (§Gap 5)
     gap: Workers derive intent from the task description only. For pre-hydrated GitHub issues, extract "Acceptance Criteria"/"Definition of Done" as a checklist appended to the task file so the agent knows when it has succeeded.
     effort: small
-  - item: Targeted per-dimension oracle fixes (§Gap 2) — partially integrated
-    gap: Oracle now returns dimension scores, but the worker still handles rejection monolithically. Feed each failing dimension back as a targeted fix directive. Overlaps Qodo §Gap 2 (per-finding fixes) — do together.
-    effort: medium
-integrated_items:
-  - item: Constitutional check after generation (§Gap 4)
-    clade_location: >-
-      worker_review.py:_read_constitution + _ORACLE_CONSTITUTION_HEADER — the target
-      repo's CLAUDE.md "Code Rules" section is injected into the oracle QUALITY pass
-      (and chunked path) as a binding constitution; violations ride the existing
-      findings→fix→requeue path. Wired in worker.py:_run_oracle_gate. Done 2026-06-13
-      (a56d921). NOTE: implemented inside the existing oracle rather than as a
-      separate haiku call (the doc's original suggestion) — DRYer, no extra subprocess.
+    status: OPEN 2026-06-18 — _parse_task_schema (config.py:595) parses an explicit embedded JSON block (acceptance_criteria key) supplied in the task description; it does NOT extract free-text "Acceptance Criteria"/"Definition of Done" markdown sections from pre-hydrated GitHub issue bodies (worker_hydrate.py:115-118 dumps issue body raw, no criteria parse). Different mechanism, genuinely deficient for the hydrated-issue case.
 reference_items:
-  - "Self-RAG reflection tokens (ISREL/ISSUP/ISUSE) — informs the dimension schema, not a separate build"
-  - "Recursive debugging bounded loop — actionable slice is the minimal-patch gap above"
+  - "Self-RAG reflection tokens (ISREL/ISSUP/ISUSE) — SKIP: informs the dimension schema (worker_review.py:194-207), not a separate build"
+  - "Recursive debugging bounded loop — SKIP: actionable slice is the minimal-patch gap, now integrated (worker.py:570-578)"
 ---
 
 [English] | [Back to README](../../README.md)

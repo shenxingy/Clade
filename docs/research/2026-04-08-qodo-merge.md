@@ -1,32 +1,24 @@
 ---
 topic: Qodo Merge (PR-Agent) — Multi-Agent PR Review Patterns (2025)
 date: 2026-04-08
+reconciled: 2026-06-18
 status: needs_work
 sources:
   - https://github.com/qodo-ai/pr-agent
   - https://qodo-merge-docs.qodo.ai/
   - https://www.qodo.ai/blog/introducing-qodo-2-0-agentic-code-review/
 integrated_items:
-  - item: Structured oracle review with dimension scores
-    clade_location: orchestrator/worker_review.py (_oracle_review) — already returns JSON with correctness/completeness/code_quality (still single-pass; see gaps)
+  - "Structured oracle review with dimension scores — DONE: orchestrator/worker_review.py:194 (dimensions correctness/completeness/code_quality)"
+  - "Diff chunking for large changes (§Gap 3) — DONE: orchestrator/worker_review.py:189 (_ORACLE_CHUNK_SIZE=2500), :622-643 (chunk + merge in _oracle_review)"
+  - "Confidence-scored findings (§Gap 5) — DONE: orchestrator/worker_review.py:206 (high/medium/low), :664,:672 (confidence gate on reject)"
+  - "Per-finding fix suggestions (§Gap 2) — DONE: orchestrator/worker_review.py:200-211 (findings:[{dimension,severity,fix_suggestion}]), :433-446 (_format_oracle_rejection numbered list)"
+  - "Two-pass oracle (§Gap 1) — DONE: orchestrator/worker_review.py:645-676 (pass 1 spec-adherence, pass 2 quality/bug, reconciled)"
 needs_work_items:
-  - item: Diff chunking for large changes (§Gap 3)
-    gap: _oracle_review truncates the diff at 3000 chars, so a 500-line refactor is reviewed blind and can auto-approve. Chunk diffs >3000 chars into ~2000-char segments, review each via the existing haiku call, merge findings.
-    effort: small
-  - item: Confidence-scored findings (§Gap 5)
-    gap: Oracle decision is binary. Add a per-dimension confidence field (high/medium/low) so the worker fixes high-confidence issues first.
-    effort: small
-  - item: Per-finding fix suggestions (§Gap 2)
-    gap: Rejection returns one fix_guidance string. Return findings:[{dimension,severity,fix_suggestion}] so the worker applies fixes in order instead of redoing everything. Overlaps Reflection §Gap 2 — do together.
-    effort: medium
-  - item: Two-pass oracle (§Gap 1)
-    gap: Single-pass review. Split into (1) spec-adherence check then (2) quality/bug check, then reconcile. ~2 haiku calls (~$0.002) catch more.
-    effort: medium
-  - item: PR-review audience differentiation (§Gap 4)
-    gap: One review comment aimed at reviewers. Could post author-facing (fix suggestions) + reviewer-facing (effort/risk) separately. Author flagged low priority for autonomous flows.
+  - item: PR-review audience differentiation (§Gap 4) (LOW)
+    gap: One review comment aimed at reviewers. Could post author-facing (fix suggestions) + reviewer-facing (effort/risk) separately. Author flagged low priority for autonomous flows. Verified still open 2026-06-18 — _write_pr_review (worker_review.py:133) posts a single undifferentiated Summary/Correctness/Risks comment.
     effort: low
 reference_items:
-  - "Parallel specialized review agents + judge reconciliation — full multi-agent panel is heavier than needed; distilled into the two-pass + per-finding gaps above"
+  - "Parallel specialized review agents + judge reconciliation — SKIP: full multi-agent panel is heavier than needed; distilled into the two-pass + per-finding work now integrated above"
 ---
 
 [English] | [Back to README](../../README.md)

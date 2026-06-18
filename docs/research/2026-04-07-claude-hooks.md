@@ -1,7 +1,8 @@
 ---
 topic: Claude Code Hooks Best Practices & Patterns (2025)
 date: 2026-04-07
-status: needs_work
+reconciled: 2026-06-18
+status: integrated
 sources:
   - https://code.claude.com/docs/en/hooks-guide
   - https://code.claude.com/docs/en/hooks
@@ -15,20 +16,11 @@ integrated_items:
     clade_location: configs/hooks/stop-check.sh — Stop hook exists; verify which checks it runs (tests/TODO/lint) before deepening
   - item: PostToolUseFailure recovery context (§Gap 6 — CLOSED since doc written)
     clade_location: configs/hooks/post-tool-use-failure.sh (wired in configs/settings-hooks.json)
-needs_work_items:
-  - item: Async PostToolUse hooks (§Gap 1)
-    gap: post-tool-use-lint.sh blocks Claude while verify runs. Mark formatting/notification PostToolUse hooks async:true to remove the per-edit latency spike. Verify the current async flag first.
-    effort: small
-  - item: Input rewriting via updatedInput (§Gap 2)
-    gap: pre-tool-guardian.sh blocks dangerous commands but doesn't rewrite them. Add updatedInput for patterns like git push -f → --force-with-lease so Claude self-corrects without a denial round-trip.
-    effort: small
-  - item: Matcher "if" optimization (§Gap 4)
-    gap: pre-tool-guardian.sh runs on ALL Bash calls. Add an "if" matcher (rm */git push*/DROP*) so the hook is skipped for safe commands, cutting per-call overhead.
-    effort: small
-  - item: Persistent permission rules via updatedPermissions (§Gap 5)
-    gap: After auto-approving a known-safe pattern, inject a persistent allow rule to settings.local.json to avoid reprompting identical future calls.
-    effort: small
+  - "Async PostToolUse hooks (§Gap 1) — DONE: configs/settings-hooks.json:94,119,127,135,143,163 (formatting/notification hooks carry async:true; the blocking post-tool-use-lint at :102 is intentionally sync to inject verify_cmd feedback Claude must read)"
+  - "Input rewriting via updatedInput (§Gap 2) — DONE: configs/hooks/pre-tool-guardian.sh:122-127 (git push --force/-f → --force-with-lease via {decision:allow, updatedInput})"
+  - "Persistent permission rules via updatedPermissions (§Gap 5) — DONE: configs/hooks/permission-request.sh:28,77,117,146 emit updatedPermissions; wired as PermissionRequest hook in configs/settings-hooks.json:311-322"
 reference_items:
+  - "Matcher \"if\" optimization (§Gap 4) — SKIP: the if-matcher pattern IS integrated (configs/settings-hooks.json:66 \"if\": \"Bash(git *)\" on revert-detector). Applying it to pre-tool-guardian itself would be wrong — the guardian MUST inspect every Bash call to catch rm -rf / DROP / force-push; gating it on a 'safe' allowlist would create a bypass. Different placement, not a deficiency."
   - "24 hook event types, exit-code 2 = blocking, 4 handler types (command/http/prompt/agent) — reference taxonomy; see docs/how-it-works.md hook list"
   - "HTTP audit hook + agent-based Stop verification — patterns to reach for if an external audit/verification need arises"
 ---

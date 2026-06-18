@@ -1,7 +1,9 @@
 ---
 title: Agentless — UIUC 2024
 date: 2026-04-07
-status: needs_work
+review_date: 2026-06-14
+reconciled: 2026-06-18
+status: integrated
 integrated_items:
   - item: Pre-hydration context fetch before worker starts (_pre_hydrate in worker.py)
     clade_location: orchestrator/worker.py:528 — fetches linked GitHub issues/PRs into task prompt
@@ -11,19 +13,11 @@ integrated_items:
     clade_location: orchestrator/worker.py — reflection loop retries (up to MAX_REFLECTION_RETRIES) with lint context
   - item: Patch validation with test filtering
     clade_location: orchestrator/worker.py — verify_and_commit() + oracle review (_oracle_review in worker_review.py)
-needs_work_items:
-  - item: Three-phase pipeline as explicit first-class objects (Localize → Repair → Validate nodes)
-    gap: Clade runs as a single worker prompt — no explicit Localize phase before Repair. Worker gets the whole task prompt and is expected to self-navigate. Agentless separates these into three deterministic phases with LLM calls at each boundary.
-    effort: large
-  - item: Hierarchical file localization as structured JSON output
-    gap: Clade uses TLDR (function signatures) as context injection but does not produce structured JSON of "suspected files → classes → lines" before the repair phase. Agentless produces a ranked list of suspect locations that constrains the repair LLM.
-    effort: medium
-  - item: Patch sampling + majority-vote re-ranking
-    gap: Clade reflection loop retries sequentially (up to 3×). Agentless generates 40 patches (4 location sets × 10 samples) and picks the best via test re-ranking. Clade could generate N candidate patches with haiku and pick via oracle.
-    effort: medium
-  - item: Reproduction test generation as patch filter
-    gap: Agentless generates a reproduction test for the original issue, uses it to filter candidate patches. Clade has _run_lint_check() but no reproduction test generation. This would significantly improve fix quality.
-    effort: medium
+  - item: "Hierarchical file localization as structured JSON output — DONE: orchestrator/worker_tldr.py:522 (_localize_fault produces JSON {suspect_files, suspect_functions}, wired worker_taskfile.py:237-269; _sbfl_prepass worker_tldr.py:662 adds traceback-ranked suspects)"
+  - item: "Reproduction test generation as patch filter — DONE: commits 601bd9b + 7d50b0c (_generate_repro_test worker_tldr.py:767 persists confirmed-failing repro task-id-namespaced, re-run post-fix via _run_repro_filter worker.py:826, behind repro_test_gate config.py:99)"
+reference_items:
+  - item: "Three-phase pipeline as explicit first-class objects (Localize → Repair → Validate nodes) — SKIP different-not-deficient: localize (_localize_fault/_sbfl_prepass) and validate (verify_and_commit + repro filter + oracle) are already deterministic phases; making repair non-agentic would discard the native agent loop that a strong base model uses to iterate+verify"
+  - item: "Patch sampling + majority-vote re-ranking — SKIP different-not-deficient + cost: strong base model already iterates+verifies within the reflection loop; swarm.py is a worker-pool manager, not a candidate sampler, so 40-patch majority-vote adds 40× cost for marginal gain over a model that self-corrects"
 ---
 
 # Agentless — UIUC 2024 Research Notes

@@ -1,14 +1,15 @@
 ---
 name: 2026-03-30-composio-orchestrator-research.md
 date: 2026-03-30
-status: needs_work
+status: integrated
 review_date: 2026-03-31
+reconciled: 2026-06-18
 summary:
   - "Composio: 7 plugin slots, CI reaction system, activity detection, review comment fingerprinting"
-integrated_items: []
-needs_work_items:
-  - "Reaction system for GitHub PR review tracking — could enhance github_sync.py"
-  - "Activity detection via Claude JSONL — could enhance worker.py"
+integrated_items:
+  - "Reaction system (attempt-counted event escalation) — DONE: orchestrator/reactions.py:72 (ReactionExecutor), wired in worker.py:173,464,521"
+  - "Activity detection via Claude JSONL — DONE: worker_utils.py:713 (_compute_activity_state), called from worker.py:370,452"
+needs_work_items: []
 reference_items:
   - "Plugin slot architecture — not a gap (Clade is single-agent, no need for swappable agent interfaces)"
   - "Flat metadata files vs SQLite for state — SQLite better for task history, metadata files better for runtime state (different use cases)"

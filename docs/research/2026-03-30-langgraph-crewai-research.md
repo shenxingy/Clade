@@ -1,17 +1,18 @@
 ---
 name: 2026-03-30-langgraph-crewai-research.md
 date: 2026-03-30
-status: needs_work
+status: integrated
 review_date: 2026-03-31
+reconciled: 2026-06-18
 summary:
   - "LangGraph StateGraph checkpointing, CrewAI manager_llm, Send API for map-reduce, interrupt() for human-in-loop"
 integrated_items:
   - "StateGraph checkpointing — Clade has loop checkpoint in loop-runner.sh (checkpoint after each phase, crash recovery)"
-needs_work_items:
-  - "Human-in-loop interrupt via interrupt() pattern — LangGraph interrupt() pauses graph for human review at breakpoints; Clade has no equivalent (runs fully autonomous)"
-  - "Send API for map-reduce parallelism — could enhance worker pool dispatch (map-reduce pattern for parallel task results)"
+  - "Human-in-loop interrupt via interrupt() pattern — DONE: orchestrator/server.py:417 (POST /api/interrupt writes interrupt-state.json so the Blueprint loop pauses at its next checkpoint for human review) + server.py:450 (POST /api/interrupt/resume clears it) — both explicitly the LangGraph pattern; reinforced by worker.py:378 pause()/resume(), interventions table (task_queue.py:160,700) injected via routes/workers.py:70, and DEFERRED hand-off in session.py:344"
+needs_work_items: []
 reference_items:
   - "LangGraph interrupt() for breakpoint-based human review — not a gap (autonomous operation is a design choice)"
+  - "Send API for map-reduce parallelism — SKIP: adequate equivalent. Worker pool already fans out to N concurrent slots (swarm.py:147-171) and reduces results (swarm.py:121-124 stats + dependency-gated completion); oracle-reject path spawns N diverse parallel samples (worker.py:1301-1328). Map-reduce by a different mechanism, not deficient."
   - "Checkpointing with SQLite/Postgres for state persistence — Clade uses loop-runner.sh checkpoint, not a gap"
   - "CrewAI hierarchical process — not applicable (different agent team architecture)"
 ---

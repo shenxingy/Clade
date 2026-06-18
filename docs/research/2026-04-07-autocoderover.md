@@ -1,27 +1,18 @@
 ---
 title: AutoCodeRover — AST-Based Fault Localization for Automated Patch Generation
 date: 2026-04-07
-status: needs_work
-integrated_items: []
-needs_work_items:
-  - item: Structured AST search APIs exposed to the agent
-    gap: Clade provides a flat code TLDR injected once at task-file build time. AutoCodeRover gives the agent seven callable APIs (search_class, search_method_in_file, search_code, etc.) so it can iteratively narrow context across up to 10 rounds before committing to a patch location.
-    effort: large
-  - item: Iterative context retrieval loop (pre-patch phase separated from patch phase)
-    gap: Clade runs Claude Code in a single end-to-end pass. AutoCodeRover splits into two sequential LLM phases — Phase 1 collects context iteratively, Phase 2 generates the patch from frozen context.
-    effort: medium
-  - item: Spectrum-based fault localization (SBFL) as a pre-pass hint
-    gap: Clade's reflection loop fires only after a failed verification pass. AutoCodeRover runs SBFL before any patch attempt — executes test suite, assigns Ochiai suspiciousness scores at method granularity, surfaces top-N suspect methods as ranked hints.
-    effort: large
-  - item: Patch syntax validation with inline retry budget
-    gap: Clade re-runs the entire Claude Code subprocess on lint failure. AutoCodeRover retries only the patch generation LLM call (up to 3×) without re-running Phase 1. Cost per retry is much lower.
-    effort: small
-  - item: Method-granularity search vs. file-granularity TLDR
-    gap: Clade's _generate_code_tldr emits signatures only, truncated at 3000 chars. AutoCodeRover's search_method_in_class returns full implementation bodies with ±3 lines context on demand.
-    effort: medium
-  - item: Explicit iteration cap with LLM-declared sufficiency signal
-    gap: Clade has no cap on the exploration phase. AutoCodeRover limits context retrieval to 10 rounds and requires the agent to explicitly declare "sufficient context" before Phase 2 begins.
-    effort: small
+review_date: 2026-06-14
+reconciled: 2026-06-18
+status: integrated
+integrated_items:
+  - "SBFL pre-pass ranked suspect hints — DONE: worker_tldr.py:662 (_sbfl_prepass, traceback-frequency proxy for Ochiai)"
+  - "Patch retry budget — only the LLM call, capped 3× — DONE: worker.py:588-590 (--continue reflection retry, MAX_REFLECTION_RETRIES=3 at worker.py:554; _run_with_context use_continue=True at worker.py:967)"
+reference_items:
+  - "Structured AST search APIs exposed to the agent — SKIP: clade_search_class/clade_search_method/clade_search_code wired in mcp_server.py:337-403; residual file-scoped variants subsumed by native Grep/Read (already-equivalent)"
+  - "Iterative context retrieval split from patch phase — SKIP: soft two-phase directive with phase-boundary checkpoint injected at worker_taskfile.py:372-383; hard process-split forces context re-hydration the native loop avoids (different-not-deficient)"
+  - "Method-granularity full-body search vs signature-only TLDR — SKIP: clade_search_method returns full method bodies on demand (mcp_server.py:250, _ast_search_method); TLDR stays signature-only by design (compact one-shot snapshot), on-demand bodies subsume the gap"
+  - "Explicit iteration cap + LLM-declared sufficiency signal — SKIP: replaced by phase-boundary checkpoint gate (worker_taskfile.py:372-383, 'not arbitrary token count'); native agent loop has no fixed round budget by design (different-not-deficient)"
+needs_work_items: []
 ---
 
 # AutoCodeRover — AST-Based Fault Localization for Automated Patch Generation

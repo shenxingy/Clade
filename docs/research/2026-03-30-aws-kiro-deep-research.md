@@ -1,22 +1,23 @@
 ---
 name: 2026-03-30-aws-kiro-deep-research.md
 date: 2026-03-30
-status: needs_work
+status: integrated
 review_date: 2026-03-31
+reconciled: 2026-06-18
 summary:
   - "Kiro three-file spec system (requirements.md EARS format, design.md, tasks.md), steering files, Blueprint pattern"
 integrated_items:
   - "Blueprint PRE/LLM CORE/POST pattern — implemented in loop/SKILL.md and worker.py"
-needs_work_items:
-  - "Structured TODO with source tracing — Kiro TODO items have _From: GOALS.md §X.Y links. Clade TODO.md items lack provenance tracing"
-  - "Steering inclusion modes (Pattern 2) — Kiro has CLAUDE.md conditional inclusion by file type. Clade has no conditional inclusion mechanism"
-  - "Enhanced stop hook (Pattern 3) — Kiro agentStop hook triggers security scan, spec sync, coverage check. Clade stop hook could add these"
-  - "Property-based test invariants in VERIFY.md (Pattern 5) — Kiro converts EARS requirements to invariant assertions. Clade has no invariant concept in goal files"
-  - "Worker-scoped steering files (Pattern 6) — Kiro subagents read only relevant steering files. Clade workers inherit full CLAUDE.md context"
+  - "Structured TODO with source tracing — DONE: configs/skills/batch-tasks/prompt.md:189-208 (every task block carries '# Source: TODO.md Step N' provenance + '## Original TODO item' linkback)"
+  - "Steering inclusion modes (conditional inclusion by file type) — DONE: configs/hooks/rule-injector.sh:1-30 (PostToolUse Edit|Write, settings-hooks.json:107; injects .claude/rules/*.md only when edited file matches their paths: glob)"
+  - "Worker-scoped steering files — DONE: orchestrator/worker_taskfile.py:228-260 (_localize_tldr_for_task narrows TLDR to top-5 relevant files, entity-prunes to suspect functions, span-evicts to token budget — workers get scoped context, not full CLAUDE.md dump)"
+needs_work_items: []
 reference_items:
   - "EARS formal requirements format — different from Clade goal file format, not a gap per se"
   - "10 hook event types in Kiro"
   - "tasks.md with _Requirements: links to requirements.md"
+  - "Enhanced stop hook (security scan / spec sync / coverage check) — SKIP: Clade routes these to event-appropriate hooks rather than one mega-Stop hook — secret-scanner.sh on UserPromptSubmit (settings-hooks.json:288), verify-task-completed.sh coverage gate on TaskCompleted (:258); Stop runs LLM completeness check + uncommitted guard (stop-check.sh). Deliberate event-routing design, not deficient"
+  - "Property-based test invariants in VERIFY.md — SKIP: Clade's verify skill uses behavior-anchor checks (configs/skills/verify/prompt.md:64-67, Features list → PASS/FAIL) plus auth/data/billing invariants in the review skill (review/prompt.md:213). Different verification model (anchor-based vs property-based fuzzing), adequate for goal-file verification — no hypothesis/fuzz dep anywhere in repo"
 ---
 
 # AWS Kiro 深度研究报告

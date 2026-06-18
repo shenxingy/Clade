@@ -11,7 +11,7 @@ The two docs work as a pair:
 
 Each deep-dive in this folder has YAML frontmatter (`status`, `summary`, `integrated_items`, `needs_work_items`). This index rolls that up so you don't re-read 30 KB to find what's left to do. **Source of truth is each doc's frontmatter** — when you close a gap, update the doc, then refresh this index.
 
-- **Last reviewed:** 2026-06-13 · **Cadence:** refresh when a deep-dive's `status` changes or a new one lands.
+- **Last reviewed:** 2026-06-18 · **Cadence:** refresh when a deep-dive's `status` changes or a new one lands.
 
 **Status:** ✅ integrated (absorbed) · 📘 reference (studied, nothing to build) · 🔨 needs_work (open gaps)
 
@@ -48,39 +48,56 @@ Grouped by [watch-list](../who-to-learn-from.md) tier. `Gaps` = count of open `n
 ### Peer harnesses (watch-list Tier 2)
 | Source | Status | Gaps | Core lesson | Doc |
 |--------|--------|------|-------------|-----|
-| **Aider** | 🔨 | 5 | repo-map = tree-sitter + PageRank; lint reflection loop; weak-model for cheap work | [→](2026-03-30-aider-research.md) |
-| **OpenHands** | 🔨 | 2 | EventStream event-sourcing (replayable state); 9 condenser types | [→](2026-03-30-openhands-architecture.md) |
+| **Aider** | 🔨 | 1 | repo-map = tree-sitter + PageRank; lint reflection loop; weak-model for cheap work | [→](2026-03-30-aider-research.md) |
+| **OpenHands** | ✅ | 0 | EventStream event-sourcing (replayable state); 9 condenser types | [→](2026-03-30-openhands-architecture.md) |
 | **Cursor / Devin** | 📘 | 0 | Planner/Worker/Judge triad; deterministic verify phase (we cover via POST) | [→](2026-03-30-cursor-devin-research.md) |
 | **SWE-agent** | 📘 | 0 | ACI design principles; lint guardrail after edits (we have this) | [→](2026-03-30-swe-agent-research.md) |
 | **mini-swe-agent** | 📘 | 0 | ~150-line core; single bash tool; output truncation (we distill instead) | [→](2026-03-30-mini-swe-agent-deep-dive.md) |
-| **Composio** | 🔨 | 2 | CI reaction system; activity detection via Claude JSONL | [→](2026-03-30-composio-orchestrator-research.md) |
-| **Kiro (AWS)** | 🔨 | 5 | 3-file spec system (EARS); steering files; enhanced agentStop hook | [→](2026-03-30-aws-kiro-deep-research.md) |
+| **Composio** | ✅ | 0 | CI reaction system; activity detection via Claude JSONL | [→](2026-03-30-composio-orchestrator-research.md) |
+| **Kiro (AWS)** | ✅ | 0 | 3-file spec system (EARS); steering files; enhanced agentStop hook | [→](2026-03-30-aws-kiro-deep-research.md) |
 | **Community CC harnesses** | ✅ | 0 | Query Control Plane (QueryParams vs QueryState + TransitionReason) | [→](2026-04-08-community-harness-repos.md) |
 
 ### SWE-bench localization scaffolds (watch-list Tier 2)
 | Source | Status | Gaps | Core lesson | Doc |
 |--------|--------|------|-------------|-----|
-| **Agentless** | 🔨 | 4 | Localize→Repair→Validate as explicit phases; 40-patch sampling + repro-test filter | [→](2026-04-07-agentless.md) |
-| **AutoCodeRover** | 🔨 | 6 | 7 callable AST search APIs; SBFL pre-pass; cheap LLM-only retry | [→](2026-04-07-autocoderover.md) |
-| **Moatless Tools** | 🔨 | 7 | Typed search actions; span-level FileContext + token budgeting; semantic index | [→](2026-04-08-moatless-tools.md) |
-| **Sweep AI** | 🔨 | 4 | AST bipartite graph; topological diff propagation; entity pruning; caller hints | [→](2026-04-08-sweep-ai.md) |
+| **Agentless** | ✅ | 0 | Localize→Repair→Validate as explicit phases; 40-patch sampling + repro-test filter | [→](2026-04-07-agentless.md) |
+| **AutoCodeRover** | ✅ | 0 | 7 callable AST search APIs; SBFL pre-pass; cheap LLM-only retry | [→](2026-04-07-autocoderover.md) |
+| **Moatless Tools** | 🔨 | 1 | Typed search actions; span-level FileContext + token budgeting; semantic index | [→](2026-04-08-moatless-tools.md) |
+| **Sweep AI** | ✅ | 0 | AST bipartite graph; topological diff propagation; entity pruning; caller hints | [→](2026-04-08-sweep-ai.md) |
 
 *NB: the AutoCodeRover team now leads **Sonar Foundation Agent** (79.2% SWE-bench Verified, open-source w/ traces) — see watch-list bot-behavior section. Re-read this cluster alongside that.*
 
 ### Orchestration & academic patterns (watch-list Tier 3 / foundational)
 | Source | Status | Gaps | Core lesson | Doc |
 |--------|--------|------|-------------|-----|
-| **LangGraph / CrewAI** | 🔨 | 2 | StateGraph checkpointing; interrupt() human-in-loop; Send API map-reduce | [→](2026-03-30-langgraph-crewai-research.md) |
-| **Reflection agents** | 🔨 | 5 | Reflexion episodic memory; minimal-patch; constitutional check; spec checklist | [→](2026-04-07-reflection-agents.md) |
+| **LangGraph / CrewAI** | ✅ | 0 | StateGraph checkpointing; interrupt() human-in-loop; Send API map-reduce | [→](2026-03-30-langgraph-crewai-research.md) |
+| **Reflection agents** | 🔨 | 1 | Reflexion episodic memory; minimal-patch; constitutional check; spec checklist | [→](2026-04-07-reflection-agents.md) |
 
 ### Craft: PR review & hooks
 | Source | Status | Gaps | Core lesson | Doc |
 |--------|--------|------|-------------|-----|
-| **Qodo Merge (PR-Agent)** | 🔨 | 5 | Diff chunking; 2-pass oracle; per-finding fixes; confidence scoring | [→](2026-04-08-qodo-merge.md) |
-| **Claude Code hooks** | 🔨 | 4 | Input rewrite; async hooks; matcher `if`; persistent perms *(Stop + PostToolUseFailure already closed)* | [→](2026-04-07-claude-hooks.md) |
+| **Qodo Merge (PR-Agent)** | 🔨 | 1 | Diff chunking; 2-pass oracle; per-finding fixes; confidence scoring | [→](2026-04-08-qodo-merge.md) |
+| **Claude Code hooks** | ✅ | 0 | Input rewrite; async hooks; matcher `if`; persistent perms *(Stop + PostToolUseFailure already closed)* | [→](2026-04-07-claude-hooks.md) |
 
 ## Open-gap backlog (by effort)
 
+> ### ✅ 2026-06-18 — full per-source reconciliation (12 parallel study agents, re-grepped vs code)
+>
+> Every remaining `needs_work` deep-dive had its frontmatter re-verified item-by-item against `orchestrator/` + `configs/`. **Net: 51 tracked "gaps" across 12 docs → 4 genuinely open.** 8 docs flipped to ✅ **integrated** (OpenHands, Kiro, Composio, LangGraph, Agentless, AutoCodeRover, Sweep, Claude-hooks) — the work was done in prior loop iterations and never back-filled here (most cite `§GapN` in-code). Source of truth = each doc's frontmatter (now stamped `reconciled: 2026-06-18`); this index rolls it up.
+>
+> **The 4 genuinely-open gaps — everything else is built or different-not-deficient:**
+>
+> | Gap | Source | Size | Where |
+> |-----|--------|------|-------|
+> | **StringReplace edit-validation discipline** (uniqueness + line-number stripping) — missing from the worker **system prompt** | Moatless | 🟢 no-code | prompt text only; cheapest open item |
+> | **Acceptance-criteria extraction from hydrated GitHub issues** — `_pre_hydrate` dumps the issue body raw; doesn't lift "Acceptance Criteria"/"Definition of Done" into the task file | Reflection §G5 | 🟢 small | `worker_hydrate.py` |
+> | **tree-sitter AST indexing** — no AST-query layer; Clade localizes via TLDR text-extraction + grep | Aider | 🔴 large | only deep architectural gap left |
+> | **PR-review author/reviewer audience differentiation** — one undifferentiated comment | Qodo | 🔵 low | author-flagged LOW for autonomous flows |
+>
+> Also fixed in-doc during the sweep: a latent YAML duplicate-key bug in `reflection-agents.md` (two `integrated_items:` blocks — the second silently clobbered the first 3 baseline items).
+>
+> ---
+>
 > ✅ **Reconciled against code 2026-06-13.** A direct audit of `orchestrator/` found the overwhelming majority of the small + medium items below **already implemented** — episodic failure memory, minimal-patch retry, acceptance-criteria checklist, post-worker test runner, caller hints, diff chunking, confidence scoring, two-pass oracle, entity-level TLDR pruning, all four hook items, and more (many cite their source gap in-code). **Do not build from the lists below without re-grepping first — they predate the audit.**
 >
 > **Final dispositions after deep study (2026-06-14, 4 parallel study agents + code review):**
