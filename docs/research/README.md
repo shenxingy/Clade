@@ -131,6 +131,16 @@ Grouped by [watch-list](../who-to-learn-from.md) tier. `Gaps` = count of open `n
 >
 > **Honest bottom line:** "0 open gaps" is now backed by *builds + a real eval harness*, not just reasoning — but **true parity with the experts is still unproven until `run_resolve_eval.py` is run on real SWE-bench instances** (needs the claude CLI + per-instance Docker envs). The number, not the argument, is the last mile.
 >
+> ### 🎯 2026-06-18 — live resolve runs (first real datapoints) + multi-language unlock
+>
+> First end-to-end resolve runs of Clade's worker loop on **real sibling repos** (planted bug → worker `claude -p` → score against FAIL_TO_PASS/PASS_TO_PASS, neither touched a test file):
+> - **owlcast (Python)** — planted `_pick_video_file` selection bug → **RESOLVED in 33s** (worker re-derived the exact correct one-liner).
+> - **faker-100 (TypeScript)** — planted `classifyPlatform` `&&`→`||` bug → **RESOLVED in 86s** (auto-committed the fix).
+>
+> Honest scope: both are *easy 1-line bugs* and prove the **loop works end-to-end on a real codebase**, not a SWE-bench-comparable resolve-rate. Notable finding: Clade's Python scaffolding (SBFL/repro) **didn't contribute** — SBFL is blind to *assertion* failures (no impl frame in the traceback), and the haiku localizer fell back to the full map. The worker won on the model's own navigation + a clear symptom + the TLDR.
+>
+> **Multi-language unlock (B):** Clade was BLIND on non-Python/JS repos (empty TLDR). Now `worker_tldr._parse_with_treesitter` gives real AST signatures for Go/Rust/Java/Ruby/C/C++/C#/PHP via lazy tree-sitter grammars (optional + graceful; `requirements-treesitter.txt`), JS/TS stay on the tuned regex. Verified on real sibling code (companyOS TS schemas, Go AST). This is the audit's "for a multi-lang shop, tree-sitter is the real answer" — now built (`efabb1e`/`0755765`).
+>
 > ---
 >
 > ✅ **Reconciled against code 2026-06-13.** A direct audit of `orchestrator/` found the overwhelming majority of the small + medium items below **already implemented** — episodic failure memory, minimal-patch retry, acceptance-criteria checklist, post-worker test runner, caller hints, diff chunking, confidence scoring, two-pass oracle, entity-level TLDR pruning, all four hook items, and more (many cite their source gap in-code). **Do not build from the lists below without re-grepping first — they predate the audit.**
