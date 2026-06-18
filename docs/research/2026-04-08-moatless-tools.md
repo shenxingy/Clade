@@ -1,6 +1,8 @@
 ---
 title: Moatless Tools — Lightweight Code Navigation for LLM Agents
 date: 2026-04-08
+review_date: 2026-04-08
+reconciled: 2026-06-18
 status: needs_work
 integrated_items:
   - item: AST-based code signature extraction (classes, functions, methods)
@@ -9,28 +11,17 @@ integrated_items:
     clade_location: orchestrator/worker.py (_pre_hydrate, lines 529-622)
   - item: Task readiness scoring via small model
     clade_location: orchestrator/worker_tldr.py (_score_task)
+  - "Two-phase search-then-identify (secondary haiku distills large TLDR) — DONE: orchestrator/worker_tldr.py:428 (_localize_tldr_for_task), wired orchestrator/worker_taskfile.py:230"
+  - "Span-level FileContext + per-span token budgeting + eviction — DONE: orchestrator/worker_tldr.py:375 (_span_evict_tldr) + config.py:131 (context_span_budget), wired orchestrator/worker_taskfile.py:258-260"
+  - "max_tokens_per_worker budget — DONE: config.py:107 (worker_token_budget), enforced orchestrator/worker.py:547-553 (gate) and 607-616 (kill on exceed, reason token_budget_exceeded)"
+reference_items:
+  - "Typed search actions (FindClass/FindFunction/FindCodeSnippet) — SKIP: already-equivalent — clade_search_class/method/code are real MCP tools (mcp_server.py:338,357,381); only SemanticSearch (embedding) absent"
+  - "Embedding semantic index (FAISS + tree-sitter + Voyage) — SKIP: different-not-deficient — paid API + doubled deps + stale-on-commit, negligible gain at <500-file scale; 3/4 search actions already exist as tools"
+  - "SWE-bench evaluation harness — SKIP: different-not-deficient — Clade-shaped eval already exists (orchestrator/evals/run_oracle_eval.py)"
 needs_work_items:
-  - item: Two-phase search-then-identify (secondary LLM distills large result sets)
-    gap: When search returns many hits, Moatless fires a secondary LLM call to select the most relevant spans. Clade injects the full TLDR blob; no secondary distillation pass when context is too large.
-    effort: small
   - item: StringReplace-style edit validation guidance in worker prompts
     gap: Clade workers use Claude Code's native Edit tool. Moatless's StringReplace adds explicit uniqueness validation + line-number stripping. The worker system prompt could enforce this discipline without code changes.
     effort: small
-  - item: Span-level FileContext object with token budgeting
-    gap: Clade has no per-span token tracking. Agent gets a static blob assembled at task start; no eviction, no on-demand span retrieval, no CleanupContext. Central mechanism for Moatless's context quality advantage.
-    effort: medium
-  - item: Typed search actions (FindClass, FindFunction, SemanticSearch, FindCodeSnippet) in worker system prompt
-    gap: Clade workers use unstructured Bash/Grep. Typed tool descriptions in the system prompt would improve search discipline, even without a real index backend.
-    effort: medium
-  - item: Token-limited message history per worker session
-    gap: Clade's orchestrator does not observe or control token usage within a worker session. No max_tokens_per_worker budget in config.
-    effort: medium
-  - item: Embedding-based semantic search index (FAISS + tree-sitter + Voyage AI)
-    gap: Clade's TLDR is a flat text signature map; no vector similarity search, no span-level retrieval on demand. Required for FindFunction/SemanticSearch to be real tools.
-    effort: large
-  - item: SWE-bench evaluation harness
-    gap: Clade has no benchmark harness to measure worker quality on standard benchmarks.
-    effort: large
 ---
 
 # Moatless Tools — Span-Based Code Navigation and Tool-First Agent Design
