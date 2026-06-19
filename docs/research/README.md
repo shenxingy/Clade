@@ -141,6 +141,16 @@ Grouped by [watch-list](../who-to-learn-from.md) tier. `Gaps` = count of open `n
 >
 > **Multi-language unlock (B):** Clade was BLIND on non-Python/JS repos (empty TLDR). Now `worker_tldr._parse_with_treesitter` gives real AST signatures for Go/Rust/Java/Ruby/C/C++/C#/PHP via lazy tree-sitter grammars (optional + graceful; `requirements-treesitter.txt`), JS/TS stay on the tuned regex. Verified on real sibling code (companyOS TS schemas, Go AST). This is the audit's "for a multi-lang shop, tree-sitter is the real answer" — now built (`efabb1e`/`0755765`).
 >
+> ### 🌍 2026-06-19 — localization scaffolding completed to fully multi-language
+>
+> The TLDR was multi-language (B) but **SBFL/PageRank were still Python-only** (live-run finding). Now closed:
+> - **Assertion-aware SBFL** (`6d2785e`) — fixes the owlcast blind spot: an `assert foo(x)==y` failure leaves no impl frame, so SBFL surfaced nothing. Now parses the failing test's AST for the impl symbols it asserts on. Benefits Python *and* generalizes.
+> - **Multi-language SBFL** (`422e761`) — new `fault_localize` leaf: detect the runner (orchestrator.json `test_cmd` / sniff), parse Go panics + JS/TS stack frames (vitest/jest/node:test) + language-agnostic assertion fallback. Live-verified on node:test.
+> - **Multi-language PageRank** (`f4f7a5d`, `270c86e`) — cross-language import graph (Python/Go/Rust/JS-TS/Java, + tsconfig `@/` path aliases) so central files surface in non-Python repos.
+> - **Adversarial review** (35-agent workflow) found **30 verified issues; 24 fixed** (`9069763`) — Go-generics + a real ReDoS in the panic-frame regex, test-file detection by naming convention (not the "test" substring), unittest/assert-helper filtering, Rust grouped/crate-only imports, commented-import stripping, cache-invalidation-on-delete, Python-repo-with-package.json misroute. The ~6 deferred are perf micro-opts + rare edge cases. **679 tests green.**
+>
+> Honest scope: this strengthens localization on *hard* non-Python bugs. The two live resolve runs (easy 1-line bugs) didn't exercise it — the SWE-bench-comparable resolve-rate (run `evals/run_resolve_eval.py`) remains the real parity proof.
+>
 > ---
 >
 > ✅ **Reconciled against code 2026-06-13.** A direct audit of `orchestrator/` found the overwhelming majority of the small + medium items below **already implemented** — episodic failure memory, minimal-patch retry, acceptance-criteria checklist, post-worker test runner, caller hints, diff chunking, confidence scoring, two-pass oracle, entity-level TLDR pruning, all four hook items, and more (many cite their source gap in-code). **Do not build from the lists below without re-grepping first — they predate the audit.**
