@@ -436,57 +436,145 @@ def _pagerank(graph: dict[str, set[str]], damping: float = 0.85, iters: int = 20
     return {x: (rank[x] / mx if mx > 0 else 0.0) for x in nodes}
 
 
-def _pagerank_centrality(project_dir: str, max_files: int = 1200) -> dict[str, float]:
-    """Build the Python import graph and rank files by PageRank centrality.
+# ─── Multi-language import extraction for PageRank (audit 2026-06-19) ─────────
+# Imports are simple top-of-file syntax, so regex extraction of the module STRING
+# is reliable and dependency-free (tree-sitter's value is in TLDR signatures, not
+# import strings). The resolver maps each module string to an in-repo file.
+_PAGERANK_EXTS = (".py", ".go", ".rs", ".ts", ".tsx", ".js", ".jsx", ".java")
+_RS_USE_RE = re.compile(r'\buse\s+([\w:]+)')
+_JS_IMPORT_RE = re.compile(
+    r'''(?:\bfrom\s*|\brequire\(\s*|\bimport\(\s*|^\s*import\s*)['"]([^'"]+)['"]''', re.M)
+_JAVA_IMPORT_RE = re.compile(r'^\s*import\s+(?:static\s+)?([\w.]+)\s*;', re.M)
+_GO_MOD_RE = re.compile(r'^\s*module\s+(\S+)', re.M)
 
-    Returns {posix_relpath: score 0..1}. Empty on a missing dir, a JS-only repo,
-    or one larger than max_files (where a heavyweight scan isn't worth it)."""
+
+def _imports_go(text: str) -> set[str]:
+    out: set[str] = set()
+    for m in re.finditer(r'^\s*import\s+(?:[\w.]+\s+)?"([^"]+)"', text, re.M):
+        out.add(m.group(1))
+    for blk in re.finditer(r'import\s*\((.*?)\)', text, re.S):
+        out.update(re.findall(r'"([^"]+)"', blk.group(1)))
+    return out
+
+
+def _resolve_import(spec: str, ext: str, src_rel: str,
+                    relset: set[str], go_module: str | None) -> set[str]:
+    """Map one import specifier to in-repo target relpaths (best-effort, lossy)."""
+    targets: set[str] = set()
+    if ext == ".go":
+        if go_module and spec.startswith(go_module):
+            sub = spec[len(go_module):].strip("/")
+            for r in relset:
+                if r.endswith(".go") and r.rsplit("/", 1)[0] == sub:
+                    targets.add(r)
+    elif ext == ".rs":
+        parts = [p for p in spec.split("::") if p not in ("crate", "self", "super", "")]
+        if parts:
+            mod = "/".join(parts)
+            for cand in (f"src/{mod}.rs", f"src/{mod}/mod.rs", f"src/{'/'.join(parts[:-1])}.rs", f"{mod}.rs"):
+                if cand in relset:
+                    targets.add(cand)
+    elif ext in (".ts", ".tsx", ".js", ".jsx"):
+        if spec.startswith("."):  # relative only — bare specifiers are deps, skip
+            base = os.path.normpath(os.path.join(os.path.dirname(src_rel), spec)).replace("\\", "/")
+            for cand in (base, *(f"{base}{e}" for e in (".ts", ".tsx", ".js", ".jsx")),
+                         *(f"{base}/index{e}" for e in (".ts", ".tsx", ".js", ".jsx"))):
+                if cand in relset:
+                    targets.add(cand)
+    elif ext == ".java":
+        tail = spec.replace(".", "/") + ".java"
+        for r in relset:
+            if r.endswith(tail):
+                targets.add(r)
+    return targets
+
+
+def _file_import_targets(text: str, ext: str, src_rel: str,
+                         relset: set[str], py_stem_to_rel: dict[str, str],
+                         go_module: str | None) -> set[str]:
+    """All in-repo files imported by one source file."""
+    targets: set[str] = set()
+    if ext == ".py":
+        try:
+            tree = ast.parse(text)
+        except Exception:
+            return targets
+        for node in ast.walk(tree):
+            mods = ([a.name for a in node.names] if isinstance(node, ast.Import)
+                    else [node.module] if isinstance(node, ast.ImportFrom) and node.module else [])
+            for m in mods:
+                tgt = py_stem_to_rel.get(m) or py_stem_to_rel.get(m.rsplit(".", 1)[-1])
+                if tgt:
+                    targets.add(tgt)
+        return targets
+    if ext == ".go":
+        specs = _imports_go(text)
+    elif ext == ".rs":
+        specs = set(_RS_USE_RE.findall(text))
+    elif ext in (".ts", ".tsx", ".js", ".jsx"):
+        specs = set(_JS_IMPORT_RE.findall(text))
+    elif ext == ".java":
+        specs = set(_JAVA_IMPORT_RE.findall(text))
+    else:
+        specs = set()
+    for spec in specs:
+        targets |= _resolve_import(spec, ext, src_rel, relset, go_module)
+    return targets
+
+
+def _pagerank_centrality(project_dir: str, max_files: int = 1200) -> dict[str, float]:
+    """Build a MULTI-LANGUAGE import graph and rank files by PageRank centrality.
+
+    Imports across Python/Go/Rust/JS/TS/Java are extracted and resolved to repo
+    files; widely-imported files (base classes, shared config) score high.
+    Returns {posix_relpath: score 0..1}. Empty on a missing/too-large repo."""
     root = Path(project_dir)
     if not root.is_dir():
         return {}
-    py: list[Path] = []
+    files: list[Path] = []
     max_mtime = 0.0
     try:
         for dirpath, dirnames, filenames in os.walk(root):
             dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS and not d.startswith(".")]
             for fn in filenames:
-                if fn.endswith(".py"):
+                if fn.endswith(_PAGERANK_EXTS):
                     p = Path(dirpath) / fn
                     try:
                         max_mtime = max(max_mtime, p.stat().st_mtime)
                     except OSError:
                         continue
-                    py.append(p)
+                    files.append(p)
     except OSError:
         return {}
-    if not py or len(py) > max_files:
+    if not files or len(files) > max_files:
         return {}
 
     cached = _pagerank_cache.get(project_dir)
     if cached and cached[0] >= max_mtime:
         return cached[1]
 
-    rel = {p.relative_to(root).as_posix(): p for p in py}
-    stem_to_rel: dict[str, str] = {}
+    rel = {p.relative_to(root).as_posix(): p for p in files}
+    relset = set(rel)
+    py_stem_to_rel: dict[str, str] = {}
     for r in rel:
-        stem_to_rel.setdefault(r[:-3].replace("/", "."), r)   # dotted module path
-        stem_to_rel.setdefault(r[:-3].rsplit("/", 1)[-1], r)  # bare module name
+        if r.endswith(".py"):
+            py_stem_to_rel.setdefault(r[:-3].replace("/", "."), r)
+            py_stem_to_rel.setdefault(r[:-3].rsplit("/", 1)[-1], r)
+    go_module = None
+    gomod = root / "go.mod"
+    if gomod.exists():
+        m = _GO_MOD_RE.search(gomod.read_text(errors="replace"))
+        go_module = m.group(1) if m else None
+
     graph: dict[str, set[str]] = {r: set() for r in rel}
     for r, p in rel.items():
         try:
-            tree = ast.parse(p.read_text(errors="replace"))
-        except Exception:
+            text = p.read_text(errors="replace")
+        except OSError:
             continue
-        for node in ast.walk(tree):
-            mods: list[str] = []
-            if isinstance(node, ast.Import):
-                mods = [a.name for a in node.names]
-            elif isinstance(node, ast.ImportFrom) and node.module:
-                mods = [node.module]
-            for m in mods:
-                tgt = stem_to_rel.get(m) or stem_to_rel.get(m.rsplit(".", 1)[-1])
-                if tgt and tgt != r:
-                    graph[r].add(tgt)
+        for tgt in _file_import_targets(text, p.suffix, r, relset, py_stem_to_rel, go_module):
+            if tgt != r and tgt in graph:
+                graph[r].add(tgt)
 
     scores = _pagerank(graph)
     _pagerank_cache[project_dir] = (max_mtime, scores)

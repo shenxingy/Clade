@@ -143,3 +143,41 @@ class TestTreeSitterParse:
         tldr = wt._generate_code_tldr(str(tmp_path))
         assert "## svc.go" in tldr
         assert "func Ping() string" in tldr
+
+
+# ─── Multi-language PageRank import graphs (audit 2026-06-19) ─────────────────
+
+class TestMultiLangPageRank:
+    def _top(self, scores):
+        return max(scores, key=scores.get) if scores else None
+
+    def test_go_module_import_graph(self, tmp_path):
+        (tmp_path / "go.mod").write_text("module example.com/app\n")
+        (tmp_path / "base").mkdir()
+        (tmp_path / "base" / "base.go").write_text("package base\nfunc Core() {}\n")
+        (tmp_path / "a.go").write_text('package main\nimport "example.com/app/base"\nfunc A(){}\n')
+        (tmp_path / "b.go").write_text('package main\nimport ( "example.com/app/base" )\nfunc B(){}\n')
+        scores = wt._pagerank_centrality(str(tmp_path))
+        assert self._top(scores) == "base/base.go"
+
+    def test_ts_relative_import_graph(self, tmp_path):
+        (tmp_path / "util.ts").write_text("export const u = 1\n")
+        (tmp_path / "x.ts").write_text("import { u } from './util'\n")
+        (tmp_path / "y.ts").write_text("import { u } from './util.ts'\n")
+        scores = wt._pagerank_centrality(str(tmp_path))
+        assert self._top(scores) == "util.ts"
+
+    def test_ts_bare_specifier_is_not_an_edge(self, tmp_path):
+        # bare 'react' is a dep, not a repo file — must not create an edge
+        (tmp_path / "a.ts").write_text("import React from 'react'\nimport {u} from './u'\n")
+        (tmp_path / "u.ts").write_text("export const u = 1\n")
+        scores = wt._pagerank_centrality(str(tmp_path))
+        assert self._top(scores) == "u.ts"
+
+    def test_rust_use_import_graph(self, tmp_path):
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "config.rs").write_text("pub struct Cfg;\n")
+        (tmp_path / "src" / "a.rs").write_text("use crate::config::Cfg;\n")
+        (tmp_path / "src" / "b.rs").write_text("use crate::config::Cfg;\n")
+        scores = wt._pagerank_centrality(str(tmp_path))
+        assert self._top(scores) == "src/config.rs"
