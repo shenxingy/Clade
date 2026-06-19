@@ -22,8 +22,12 @@ source "$SYNC_CONFIG"
 # ─── Lock: prevent concurrent pushes ─────────────────────────────────────────
 
 LOCK_FILE="/tmp/claude-sync-push.lock"
-exec 9>"$LOCK_FILE"
-flock -n 9 || exit 0  # another push is already running, skip
+# flock is absent on Git Bash / minimal envs; guard so `set -e` doesn't abort the
+# push there. Concurrent pushes are rare and git's own index lock is the backstop.
+if command -v flock >/dev/null 2>&1; then
+  exec 9>"$LOCK_FILE"
+  flock -n 9 || exit 0  # another push is already running, skip
+fi
 
 # ─── Stage + commit ──────────────────────────────────────────────────────────
 

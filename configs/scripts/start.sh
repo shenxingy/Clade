@@ -546,13 +546,18 @@ exec > >(tee -a "$SESSION_LOG") 2>&1
 
 # Prevent concurrent start.sh instances on the same project
 LOCK_FILE=".claude/start.lock"
-exec 9>"$LOCK_FILE"
-if ! flock -n 9; then
-  echo "Error: another start.sh is already running in this project." >&2
-  echo "  (lock: $LOCK_FILE)" >&2
-  exit 1
+# flock is absent on Git Bash / minimal envs; without this guard `set -euo pipefail`
+# makes start.sh die at launch on Windows. Skip the concurrency guard where flock
+# is unavailable (single-user dev boxes rarely race two launches anyway).
+if command -v flock >/dev/null 2>&1; then
+  exec 9>"$LOCK_FILE"
+  if ! flock -n 9; then
+    echo "Error: another start.sh is already running in this project." >&2
+    echo "  (lock: $LOCK_FILE)" >&2
+    exit 1
+  fi
+  # Lock released automatically on exit (fd 9 closes)
 fi
-# Lock released automatically on exit (fd 9 closes)
 
 # ── Startup health check (disk/memory) ──
 _check_startup_health() {

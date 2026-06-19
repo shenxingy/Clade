@@ -130,7 +130,7 @@ CONTEXT="A user correction was detected in the prompt above. After addressing th
 # Write cross-project marker for auto-audit aggregation
 if [[ -n "$CROSS_FILE" ]] && command -v jq &>/dev/null; then
   RULE_TEXT_PREVIEW=$(echo "$PROMPT" | head -c 120)
-  CROSS_HASH=$(echo -n "${DOMAIN}:${RULE_TEXT_PREVIEW}" | shasum -a 256 2>/dev/null | cut -c1-8)
+  CROSS_HASH=$(echo -n "${DOMAIN}:${RULE_TEXT_PREVIEW}" | { command -v sha256sum >/dev/null 2>&1 && sha256sum || shasum -a 256; } 2>/dev/null | cut -c1-8)
   jq -nc \
     --arg ts "$TIMESTAMP" \
     --arg domain "$DOMAIN" \

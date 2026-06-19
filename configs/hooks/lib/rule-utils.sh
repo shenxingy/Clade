@@ -65,7 +65,7 @@ rule_age_days() {
 # Generate a short hash of rule text for dedup
 rule_hash() {
   local text="${1:-}"
-  echo -n "$text" | shasum -a 256 2>/dev/null | cut -c1-8
+  echo -n "$text" | { command -v sha256sum >/dev/null 2>&1 && sha256sum || shasum -a 256; } 2>/dev/null | cut -c1-8
 }
 
 # ─── rule_exists_in_file ────────────────────────────────────────────
