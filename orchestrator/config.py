@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 
+DEFAULT_LOG_FORMAT = "%(levelname)-8s %(name)s:%(filename)s:%(lineno)d %(message)s"
+
 _ALLOWED_TASK_COLS = {"status", "description", "model", "depends_on", "score",
                       "worker_id", "started_at", "elapsed_s", "last_commit", "log_file",
                       "failed_reason", "score_note", "own_files", "forbidden_files",
