@@ -260,6 +260,23 @@ if [[ -f "$SCRIPT_DIR/templates/orchestrator-settings.example.json" ]]; then
   echo "  Installed orchestrator-settings.example.json (reference; copy keys to orchestrator-settings.json to override)"
 fi
 
+# ─── 8a. Windows (Git Bash) hook-command shim detection ──────────────
+# On Unix, Claude Code expands ~ and runs hook commands via /bin/sh, so a bare
+# "~/.claude/hooks/x.sh" works. On Windows the hook runs via cmd.exe, which can
+# neither expand ~ nor execute a .sh — so every hook silently no-ops. Detect
+# Git Bash (MSYS/MINGW) and, in §8 below, rewrite each command to run through
+# bash.exe as `-c "exec ~/..."` (bash -c DOES expand ~; `bash ~/x.sh` would NOT,
+# because the script-path argument is not tilde-expanded). Unix is unaffected.
+HOOK_BASH=""
+case "$(uname -s 2>/dev/null)" in
+  MINGW*|MSYS*|CYGWIN*)
+    if command -v cygpath &>/dev/null && command -v bash &>/dev/null; then
+      HOOK_BASH="$(cygpath -w "$(command -v bash)" 2>/dev/null)"
+    fi
+    [[ -n "$HOOK_BASH" ]] && echo "  Windows/Git Bash detected — hooks will run via: $HOOK_BASH"
+    ;;
+esac
+
 # ─── 8. Merge hooks into settings.json ───────────────────────────────
 
 echo "Configuring settings.json..."
@@ -269,8 +286,22 @@ if ! command -v jq &>/dev/null; then
   echo "Please install jq and re-run, or manually copy hooks from configs/settings-hooks.json."
 else
   HOOKS=$(jq '.hooks' "$SCRIPT_DIR/configs/settings-hooks.json")
-
   STATUSLINE='{"type":"command","command":"bash ~/.claude/statusline-command.sh"}'
+
+  # Git Bash (Windows): rewrite every hook + statusLine command to run via
+  # bash.exe so cmd.exe doesn't choke on bare "~/.claude/..." .sh commands (§8a).
+  if [[ -n "$HOOK_BASH" ]]; then
+    HOOKS=$(printf '%s' "$HOOKS" | jq --arg bash "$HOOK_BASH" '
+      walk(
+        if type == "object" and has("command") then
+          .command |= ( (if startswith("bash ") then .[5:] else . end) as $i
+                        | "\"\($bash)\" -c \"exec \($i)\"" )
+        else . end
+      )')
+    STATUSLINE=$(jq -n --arg bash "$HOOK_BASH" \
+      '{type:"command", command:("\"\($bash)\" -c \"exec ~/.claude/statusline-command.sh\"")}')
+    echo "  Rewrote hook + statusLine commands to run via Git Bash"
+  fi
 
   if [[ -f "$CLAUDE_DIR/settings.json" ]]; then
     # Merge: update hooks + statusLine, preserve everything else
