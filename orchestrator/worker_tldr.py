@@ -871,6 +871,103 @@ async def _find_caller_hints(fault_locs_text: str, project_dir: Path) -> str:
 # ─── SBFL Pre-pass: Failing Test Traceback Analysis (AutoCodeRover §Gap3) ─────
 
 
+# ─── Assertion-aware SBFL (audit 2026-06-18; found blind in the owlcast run) ──
+# A pure assertion failure (`assert foo(x) == y`, foo returns the wrong value
+# with NO exception) leaves only the TEST frame in the traceback — the impl
+# symbol lives only in the assert SOURCE LINE, invisible to a frame-frequency
+# parser. So: parse the failing test's source, find the enclosing test function,
+# extract the impl symbols it calls (nearest the failing line first), and resolve
+# them to suspect files. Language-agnostic in spirit — the test names its target.
+
+_PY_NONIMPL = {
+    "len", "str", "int", "list", "dict", "set", "tuple", "print", "range", "sorted",
+    "enumerate", "zip", "map", "filter", "isinstance", "getattr", "setattr", "super",
+    "repr", "type", "abs", "min", "max", "sum", "any", "all", "open", "format", "bool",
+    "float", "approx", "raises", "fixture", "mark", "fail", "skip", "warns",
+}
+_SRC_EXTS = (".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".rs", ".java", ".rb",
+             ".c", ".cpp", ".cs", ".php")
+_DEF_GREP_RE = re.compile(r'(?:^|[^.\w])(?:def|function|func|fn|fun|sub)\s+([A-Za-z_]\w+)')
+
+
+def _build_symbol_index(project_dir: Path, max_files: int = 1500) -> dict[str, str]:
+    """Map a defined symbol name → the first non-test source file that defines it.
+    Language-agnostic (def/function/func/fn/fun/sub). Bounded + skip-dir filtered."""
+    index: dict[str, str] = {}
+    n = 0
+    for dirpath, dirnames, filenames in os.walk(project_dir):
+        dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS and not d.startswith(".")]
+        for fname in filenames:
+            if not fname.endswith(_SRC_EXTS) or "test" in fname.lower():
+                continue
+            n += 1
+            if n > max_files:
+                return index
+            p = Path(dirpath) / fname
+            try:
+                text = p.read_text(errors="replace")
+            except OSError:
+                continue
+            rel = str(p.relative_to(project_dir))
+            for m in _DEF_GREP_RE.finditer(text):
+                index.setdefault(m.group(1), rel)
+    return index
+
+
+def _assertion_suspects(output: str, project_dir: Path, blocks: list[str]) -> dict[str, int]:
+    """Suspects inferred from the failing test's SOURCE when the traceback has no
+    impl frame (assertion failures). Returns {file::symbol: distinct_failing_tests}."""
+    suspects: dict[str, int] = {}
+    frame_re = re.compile(r'(?P<fpath>[^\s:][^:\s]*\.py):(?P<line>\d+): in (?P<fn>\w+)')
+    index: dict[str, str] | None = None
+    for block in blocks:
+        frames = list(frame_re.finditer(block))
+        # The assert site is the last TEST frame in the block.
+        test_frames = [
+            m for m in frames
+            if m.group("fn").startswith("test_") or "test" in m.group("fpath").rsplit("/", 1)[-1]
+        ]
+        if not test_frames:
+            continue
+        tf = test_frames[-1]
+        fail_line = int(tf.group("line"))
+        try:
+            tree = ast.parse((project_dir / tf.group("fpath")).read_text(errors="replace"))
+        except Exception:
+            continue
+        enc = None  # innermost test function containing the failing line
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if node.lineno <= fail_line <= (node.end_lineno or node.lineno):
+                    if enc is None or node.lineno > enc.lineno:
+                        enc = node
+        if enc is None:
+            continue
+        calls: list[tuple[int, str]] = []
+        for n in ast.walk(enc):
+            if isinstance(n, ast.Call):
+                name = (n.func.id if isinstance(n.func, ast.Name)
+                        else n.func.attr if isinstance(n.func, ast.Attribute) else None)
+                if name and len(name) >= 2 and not name.startswith("test_") and name not in _PY_NONIMPL:
+                    calls.append((abs((n.lineno or fail_line) - fail_line), name))
+        if not calls:
+            continue
+        calls.sort()
+        if index is None:
+            index = _build_symbol_index(project_dir)
+        chosen: set[str] = set()
+        for _, name in calls:
+            if name in chosen:
+                continue
+            chosen.add(name)
+            f = index.get(name)
+            if f:
+                suspects[f"{f}::{name}"] = suspects.get(f"{f}::{name}", 0) + 1
+            if len(chosen) >= 3:
+                break
+    return suspects
+
+
 async def _sbfl_prepass(project_dir: Path, timeout: int = 30) -> str:
     """Simplified SBFL pre-pass: run pytest, parse failing test tracebacks.
 
@@ -946,11 +1043,21 @@ async def _sbfl_prepass(project_dir: Path, timeout: int = 30) -> str:
         for key in seen:
             scores[key] = scores.get(key, 0) + 1
 
+    # Assertion-aware pass: when the traceback had no impl frame (assert failures),
+    # infer suspects from the failing test's source (the A1 blind-spot fix).
+    traceback_keys = set(scores)
+    try:
+        for key, cnt in _assertion_suspects(output, project_dir, blocks).items():
+            scores[key] = scores.get(key, 0) + cnt
+    except Exception:
+        pass
+
     if not scores:
         return ""
 
-    # Sort by frequency descending, take top 5
-    top = sorted(scores.items(), key=lambda x: -x[1])[:5]
+    # Rank by distinct-failing-test count; on ties, direct traceback evidence
+    # outranks assertion-inferred suspects.
+    top = sorted(scores.items(), key=lambda kv: (-kv[1], kv[0] not in traceback_keys, kv[0]))[:5]
 
     # Count failures for context
     fail_match = re.search(r'(\d+) failed', output)
@@ -958,7 +1065,7 @@ async def _sbfl_prepass(project_dir: Path, timeout: int = 30) -> str:
 
     lines = [
         f"## SBFL Pre-pass (AutoCodeRover §Gap3)",
-        f"> Found {fail_count} failing test(s). Functions appearing most in tracebacks:",
+        f"> Found {fail_count} failing test(s). Functions implicated by failing tests (traceback + assertion analysis):",
         "",
         "**Ranked suspect functions** (higher = more suspect):",
     ]

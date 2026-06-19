@@ -116,3 +116,55 @@ class TestSbflPrepass:
             ),
         )
         assert await wt._sbfl_prepass(tmp_path) == ""
+
+
+# ─── Assertion-aware SBFL (audit 2026-06-18; the owlcast blind-spot fix) ──────
+
+class TestAssertionAwareSbfl:
+    def _proj(self, tmp_path):
+        (tmp_path / "src").mkdir()
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "src" / "videos.py").write_text(
+            "def _pick_video_file(files):\n    return files[-1]\n")
+        (tmp_path / "tests" / "test_videos.py").write_text(
+            "from src import videos\n\n"
+            "def test_pick_smallest():\n"
+            "    files = ['a', 'b']\n"
+            "    assert videos._pick_video_file(files) == 'a'\n")
+        return tmp_path
+
+    def test_assert_only_failure_finds_impl_symbol(self, tmp_path):
+        """An assertion failure (no impl frame in the traceback) must still
+        surface the impl function the test asserts on — the A1 blind spot."""
+        d = self._proj(tmp_path)
+        out = ("==== FAILURES ====\n_____ test_pick_smallest _____\n"
+               "tests/test_videos.py:5: in test_pick_smallest\n"
+               "    assert videos._pick_video_file(files) == 'a'\n"
+               "E   AssertionError\n==== 1 failed ====\n")
+        import re as _re
+        blocks = _re.split(r'\n_{5,}.*\n', out)
+        suspects = wt._assertion_suspects(out, d, blocks)
+        assert suspects == {"src/videos.py::_pick_video_file": 1}
+
+    def test_call_above_failing_line_is_found(self, tmp_path):
+        """The asserted impl call may be on the line ABOVE the assert."""
+        d = self._proj(tmp_path)
+        (d / "tests" / "test_videos.py").write_text(
+            "from src import videos\n\n"
+            "def test_two_step():\n"
+            "    got = videos._pick_video_file(['a', 'b'])\n"
+            "    assert got == 'a'\n")
+        out = ("_____ test_two_step _____\n"
+               "tests/test_videos.py:5: in test_two_step\n    assert got == 'a'\nE AssertionError\n")
+        import re as _re
+        suspects = wt._assertion_suspects(out, d, _re.split(r'\n_{5,}.*\n', out))
+        assert "src/videos.py::_pick_video_file" in suspects
+
+    def test_builtins_filtered(self, tmp_path):
+        d = self._proj(tmp_path)
+        (d / "tests" / "test_videos.py").write_text(
+            "def test_only_builtins():\n    assert len([1, 2]) == 3\n")
+        out = ("_____ test_only_builtins _____\n"
+               "tests/test_videos.py:2: in test_only_builtins\n    assert len([1,2])==3\nE AssertionError\n")
+        import re as _re
+        assert wt._assertion_suspects(out, d, _re.split(r'\n_{5,}.*\n', out)) == {}
