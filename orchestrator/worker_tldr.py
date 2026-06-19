@@ -457,6 +457,37 @@ def _strip_c_comments(text: str) -> str:
     return _LINE_COMMENT_RE.sub('', _BLOCK_COMMENT_RE.sub('', text))
 
 
+def _read_ts_aliases(root: Path) -> dict[str, list[str]]:
+    """Parse tsconfig/jsconfig `compilerOptions.paths` + `baseUrl` into
+    {alias_prefix: [target_dir_prefix]} so `@/x` imports resolve to real files."""
+    aliases: dict[str, list[str]] = {}
+    for fn in ("tsconfig.json", "jsconfig.json"):
+        f = root / fn
+        if not f.exists():
+            continue
+        try:
+            raw = _strip_c_comments(f.read_text(errors="replace"))
+            raw = re.sub(r',(\s*[}\]])', r'\1', raw)  # tolerate trailing commas (jsonc)
+            cfg = json.loads(raw)
+        except Exception:
+            continue
+        co = cfg.get("compilerOptions", {}) or {}
+        base = (co.get("baseUrl") or ".").strip("/")
+        for k, v in (co.get("paths") or {}).items():
+            if not isinstance(v, list) or not v:
+                continue
+            key = k.rstrip("*").rstrip("/")
+            vals = []
+            for t in v:
+                t = str(t).rstrip("*").rstrip("/")
+                if base not in (".", ""):
+                    t = os.path.normpath(os.path.join(base, t)).replace("\\", "/")
+                vals.append(t.lstrip("./"))
+            if key:
+                aliases[key] = vals
+    return aliases
+
+
 def _imports_go(text: str) -> set[str]:
     text = _strip_c_comments(text)
     out: set[str] = set()
@@ -467,8 +498,15 @@ def _imports_go(text: str) -> set[str]:
     return out
 
 
-def _resolve_import(spec: str, ext: str, src_rel: str,
-                    relset: set[str], go_module: str | None) -> set[str]:
+def _ts_file_candidates(base: str, relset: set[str], targets: set[str]) -> None:
+    for cand in (base, *(f"{base}{e}" for e in (".ts", ".tsx", ".js", ".jsx")),
+                 *(f"{base}/index{e}" for e in (".ts", ".tsx", ".js", ".jsx"))):
+        if cand in relset:
+            targets.add(cand)
+
+
+def _resolve_import(spec: str, ext: str, src_rel: str, relset: set[str],
+                    go_module: str | None, ts_aliases: dict[str, list[str]] | None = None) -> set[str]:
     """Map one import specifier to in-repo target relpaths (best-effort, lossy)."""
     targets: set[str] = set()
     if ext == ".go":
@@ -489,12 +527,16 @@ def _resolve_import(spec: str, ext: str, src_rel: str,
                 if cand in relset:
                     targets.add(cand)
     elif ext in (".ts", ".tsx", ".js", ".jsx"):
-        if spec.startswith("."):  # relative only — bare specifiers are deps, skip
+        if spec.startswith("."):  # relative
             base = os.path.normpath(os.path.join(os.path.dirname(src_rel), spec)).replace("\\", "/")
-            for cand in (base, *(f"{base}{e}" for e in (".ts", ".tsx", ".js", ".jsx")),
-                         *(f"{base}/index{e}" for e in (".ts", ".tsx", ".js", ".jsx"))):
-                if cand in relset:
-                    targets.add(cand)
+            _ts_file_candidates(base, relset, targets)
+        elif ts_aliases:  # tsconfig path alias, e.g. @/x → src/x
+            for prefix, tdirs in ts_aliases.items():
+                if spec == prefix or spec.startswith(prefix + "/"):
+                    rest = spec[len(prefix):].lstrip("/")
+                    for td in tdirs:
+                        _ts_file_candidates(f"{td}/{rest}".strip("/") if rest else td, relset, targets)
+                    break
     elif ext == ".java":
         if spec.endswith(".*"):  # wildcard import → all files in that package dir
             pkgdir = spec[:-2].replace(".", "/")
@@ -511,7 +553,8 @@ def _resolve_import(spec: str, ext: str, src_rel: str,
 
 def _file_import_targets(text: str, ext: str, src_rel: str,
                          relset: set[str], py_stem_to_rel: dict[str, str],
-                         go_module: str | None) -> set[str]:
+                         go_module: str | None,
+                         ts_aliases: dict[str, list[str]] | None = None) -> set[str]:
     """All in-repo files imported by one source file."""
     targets: set[str] = set()
     if ext == ".py":
@@ -547,7 +590,7 @@ def _file_import_targets(text: str, ext: str, src_rel: str,
     else:
         specs = set()
     for spec in specs:
-        targets |= _resolve_import(spec, ext, src_rel, relset, go_module)
+        targets |= _resolve_import(spec, ext, src_rel, relset, go_module, ts_aliases)
     return targets
 
 
@@ -595,6 +638,7 @@ def _pagerank_centrality(project_dir: str, max_files: int = 1200) -> dict[str, f
     if gomod.exists():
         m = _GO_MOD_RE.search(gomod.read_text(errors="replace"))
         go_module = m.group(1) if m else None
+    ts_aliases = _read_ts_aliases(root)
 
     graph: dict[str, set[str]] = {r: set() for r in rel}
     for r, p in rel.items():
@@ -602,7 +646,7 @@ def _pagerank_centrality(project_dir: str, max_files: int = 1200) -> dict[str, f
             text = p.read_text(errors="replace")
         except OSError:
             continue
-        for tgt in _file_import_targets(text, p.suffix, r, relset, py_stem_to_rel, go_module):
+        for tgt in _file_import_targets(text, p.suffix, r, relset, py_stem_to_rel, go_module, ts_aliases):
             if tgt != r and tgt in graph:
                 graph[r].add(tgt)
 

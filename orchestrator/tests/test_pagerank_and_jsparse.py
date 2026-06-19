@@ -239,3 +239,14 @@ class TestImportResolverFixes:
         (tmp_path / "b.py").unlink()  # delete a file (max_mtime may not change)
         s2 = wt._pagerank_centrality(str(tmp_path))
         assert "b.py" not in s2  # stale cache would still contain it
+
+    def test_ts_path_alias_resolves(self, tmp_path):
+        import json as _json
+        (tmp_path / "tsconfig.json").write_text(
+            _json.dumps({"compilerOptions": {"baseUrl": ".", "paths": {"@/*": ["src/*"]}}}))
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "util.ts").write_text("export const u = 1\n")
+        (tmp_path / "src" / "x.ts").write_text("import { u } from '@/util'\n")
+        (tmp_path / "src" / "y.ts").write_text("import { u } from '@/util'\n")
+        scores = wt._pagerank_centrality(str(tmp_path))
+        assert self._top(scores) == "src/util.ts"
