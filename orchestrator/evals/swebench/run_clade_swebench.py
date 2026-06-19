@@ -32,7 +32,10 @@ sys.path.insert(0, str(_ORCH))
 import worker_tldr as wt          # noqa: E402
 import worker_review as wr        # noqa: E402
 
-SRC_ONLY = "':(exclude)*test*' ':(exclude)tests' ':(exclude).claude' ':(exclude).clade-task.md'"
+# never exclude '*test*' — it matches src/_pytest/ etc. (the "test" substring).
+SRC_ONLY = ("':(exclude)tests' ':(exclude)testing' ':(glob,exclude)**/test_*.py' "
+            "':(glob,exclude)**/*_test.py' ':(exclude)conftest.py' ':(exclude).claude' "
+            "':(exclude).clade-task.md'")
 REPO_URL = {
     "psf/requests": "https://github.com/psf/requests",
     "pytest-dev/pytest": "https://github.com/pytest-dev/pytest",
