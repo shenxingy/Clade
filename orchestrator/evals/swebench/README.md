@@ -46,16 +46,27 @@ First real, comparable numbers for Clade — **replacing reasoning with measurem
 
 | run | subset | resolved | note |
 |-----|--------|----------|------|
-| single-shot | psf/requests ×6 | **1/6** | one sonnet pass + TLDR context |
-| oracle-loop | psf/requests ×6 | **1/6** | + oracle gate + reflection (N=3) |
+| single-shot | psf/requests ×6 | **1/6 (17%)** | one sonnet pass + TLDR context |
+| oracle-loop | psf/requests ×6 | **1/6 (17%)** | + oracle gate + reflection (N=3) |
+| **test-driven** | pytest ×5 | **2/5 (40%)** | + in-env repro + regression gate driving iteration |
 
-**Key finding:** on this subset the oracle loop did **not** beat single-shot. Per-instance
-analysis showed why: the oracle (a model reviewing the diff) **approved wrong patches**
-(model judgment ≠ ground truth), and on `requests-1963` reflection **over-edited**
-(3 iterations → 7 files / 6 KB, still wrong). **Without a real test signal, oracle + iteration
-≈ single-shot.** SWE-bench's real lever is **test-driven** iteration (run the failing
-test → fix to green) — which Clade has (repro filter + test gate + requeue) but which the
-`requests` subset can't measure faithfully (its tests hit the network → flaky feedback).
+(reference, full 300 + full loops: Moatless **39%**, Sonar **79.2%**.)
+
+**Key findings:**
+1. **Oracle-without-tests ≈ single-shot.** On requests the oracle loop didn't beat
+   single-shot: the oracle (a model reviewing the diff) **approved wrong patches**
+   (model judgment ≠ ground truth), and on `requests-1963` reflection **over-edited**
+   (3 iters → 7 files, still wrong).
+2. **Test-driven iteration is the lever.** On pytest, running a generated repro +
+   regression sample **in the instance's real env** (via `docker cp` into the container)
+   to drive iteration resolved **40%** — Moatless territory, and the first evidence the
+   loop moves the needle. (Caveat: different subset from the requests runs, so not a
+   perfectly controlled A/B; tiny N; 1 instance excluded for a capture bug.)
+
+The test-driven runner mounts/cp's host edits into the instance's Docker env so the loop's
+test feedback is real (`run_clade_swebench_testdriven.py`). NB: never exclude `*test*` from
+the patch diff — it matches `src/_pytest/` (the "test" substring); use precise test-file
+globs.
 
 ## Honest scope
 
