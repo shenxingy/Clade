@@ -168,3 +168,19 @@ class TestAssertionAwareSbfl:
                "tests/test_videos.py:2: in test_only_builtins\n    assert len([1,2])==3\nE AssertionError\n")
         import re as _re
         assert wt._assertion_suspects(out, d, _re.split(r'\n_{5,}.*\n', out)) == {}
+
+    def test_unittest_assert_helpers_dont_crowd_out_impl(self, tmp_path):
+        """unittest assertEqual/assertTrue etc. must not fill the symbol cap and
+        hide the real impl call (audit 2026-06-19 review)."""
+        d = self._proj(tmp_path)
+        (d / "tests" / "test_videos.py").write_text(
+            "import unittest\nfrom src import videos\n\n"
+            "class T(unittest.TestCase):\n"
+            "    def test_pick(self):\n"
+            "        self.assertEqual(videos._pick_video_file(['a','b']), 'a')\n")
+        out = ("_____ T.test_pick _____\n"
+               "tests/test_videos.py:6: in test_pick\n"
+               "    self.assertEqual(videos._pick_video_file(['a','b']), 'a')\nE AssertionError\n")
+        import re as _re
+        s = wt._assertion_suspects(out, d, _re.split(r'\n_{5,}.*\n', out))
+        assert s == {"src/videos.py::_pick_video_file": 1}  # assertEqual filtered out

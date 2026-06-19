@@ -20,7 +20,7 @@ import aiosqlite
 # worker_tldr standalone-importable. Shared scan constants + symbol index live
 # there so the multi-language SBFL path and the Python path agree.
 from fault_localize import (  # noqa: E402
-    _SKIP_DIRS, _SRC_EXTS, _build_symbol_index,
+    _SKIP_DIRS, _SRC_EXTS, _build_symbol_index, _is_test_file_name,
     detect_test_runner, run_runner_sbfl,
 )
 
@@ -248,8 +248,9 @@ def _generate_code_tldr(project_dir: str) -> str:
     except OSError:
         return ""
 
+    sig = (max_mtime, len(files_to_scan))  # count → invalidate on deletion too
     cached = _tldr_cache.get(project_dir)
-    if cached and cached[0] >= max_mtime:
+    if cached and cached[0] == sig:
         return cached[1]
 
     lines: list[str] = []
@@ -273,7 +274,7 @@ def _generate_code_tldr(project_dir: str) -> str:
             lines.append("")
 
     result = "\n".join(lines)
-    _tldr_cache[project_dir] = (max_mtime, result)
+    _tldr_cache[project_dir] = (sig, result)
     return result
 
 
@@ -441,14 +442,23 @@ def _pagerank(graph: dict[str, set[str]], damping: float = 0.85, iters: int = 20
 # is reliable and dependency-free (tree-sitter's value is in TLDR signatures, not
 # import strings). The resolver maps each module string to an in-repo file.
 _PAGERANK_EXTS = (".py", ".go", ".rs", ".ts", ".tsx", ".js", ".jsx", ".java")
-_RS_USE_RE = re.compile(r'\buse\s+([\w:]+)')
+_RS_USE_RE = re.compile(r'\buse\s+((?:crate|self|super|\w+)(?:::\w+)*(?:::\{[^}]*\})?)')
 _JS_IMPORT_RE = re.compile(
     r'''(?:\bfrom\s*|\brequire\(\s*|\bimport\(\s*|^\s*import\s*)['"]([^'"]+)['"]''', re.M)
-_JAVA_IMPORT_RE = re.compile(r'^\s*import\s+(?:static\s+)?([\w.]+)\s*;', re.M)
+_JAVA_IMPORT_RE = re.compile(r'^\s*import\s+(?:static\s+)?([\w.*]+)\s*;', re.M)
 _GO_MOD_RE = re.compile(r'^\s*module\s+(\S+)', re.M)
+_LINE_COMMENT_RE = re.compile(r'//[^\n]*')
+_BLOCK_COMMENT_RE = re.compile(r'/\*.*?\*/', re.S)
+
+
+def _strip_c_comments(text: str) -> str:
+    """Drop // and /* */ comments so commented-out imports don't create phantom
+    edges. (Lossy on // inside string literals — acceptable for import scanning.)"""
+    return _LINE_COMMENT_RE.sub('', _BLOCK_COMMENT_RE.sub('', text))
 
 
 def _imports_go(text: str) -> set[str]:
+    text = _strip_c_comments(text)
     out: set[str] = set()
     for m in re.finditer(r'^\s*import\s+(?:[\w.]+\s+)?"([^"]+)"', text, re.M):
         out.add(m.group(1))
@@ -468,6 +478,10 @@ def _resolve_import(spec: str, ext: str, src_rel: str,
                 if r.endswith(".go") and r.rsplit("/", 1)[0] == sub:
                     targets.add(r)
     elif ext == ".rs":
+        # Only crate-relative paths refer to in-project modules; a bare `use foo`
+        # is an external crate (2018+ edition) — don't collide with a local `foo`.
+        if not spec.startswith(("crate::", "self::", "super::")):
+            return targets
         parts = [p for p in spec.split("::") if p not in ("crate", "self", "super", "")]
         if parts:
             mod = "/".join(parts)
@@ -482,10 +496,16 @@ def _resolve_import(spec: str, ext: str, src_rel: str,
                 if cand in relset:
                     targets.add(cand)
     elif ext == ".java":
-        tail = spec.replace(".", "/") + ".java"
-        for r in relset:
-            if r.endswith(tail):
-                targets.add(r)
+        if spec.endswith(".*"):  # wildcard import → all files in that package dir
+            pkgdir = spec[:-2].replace(".", "/")
+            for r in relset:
+                if r.endswith(".java") and r.rsplit("/", 1)[0].endswith(pkgdir):
+                    targets.add(r)
+        else:
+            tail = spec.replace(".", "/") + ".java"
+            for r in relset:
+                if r.endswith(tail):
+                    targets.add(r)
     return targets
 
 
@@ -510,9 +530,18 @@ def _file_import_targets(text: str, ext: str, src_rel: str,
     if ext == ".go":
         specs = _imports_go(text)
     elif ext == ".rs":
-        specs = set(_RS_USE_RE.findall(text))
+        specs = set()
+        for s in _RS_USE_RE.findall(text):
+            if "{" in s:  # use crate::a::{b, c::D} → crate::a::b, crate::a::c
+                prefix, _, grp = s.partition("{")
+                for member in grp.rstrip("}").split(","):
+                    seg = member.strip().split("::", 1)[0].strip()
+                    if seg and seg not in ("*", "self"):
+                        specs.add(prefix + seg)
+            else:
+                specs.add(s)
     elif ext in (".ts", ".tsx", ".js", ".jsx"):
-        specs = set(_JS_IMPORT_RE.findall(text))
+        specs = set(_JS_IMPORT_RE.findall(_strip_c_comments(text)))
     elif ext == ".java":
         specs = set(_JAVA_IMPORT_RE.findall(text))
     else:
@@ -549,8 +578,9 @@ def _pagerank_centrality(project_dir: str, max_files: int = 1200) -> dict[str, f
     if not files or len(files) > max_files:
         return {}
 
+    sig = (max_mtime, len(files))  # count → invalidate on deletion too
     cached = _pagerank_cache.get(project_dir)
-    if cached and cached[0] >= max_mtime:
+    if cached and cached[0] == sig:
         return cached[1]
 
     rel = {p.relative_to(root).as_posix(): p for p in files}
@@ -577,7 +607,7 @@ def _pagerank_centrality(project_dir: str, max_files: int = 1200) -> dict[str, f
                 graph[r].add(tgt)
 
     scores = _pagerank(graph)
-    _pagerank_cache[project_dir] = (max_mtime, scores)
+    _pagerank_cache[project_dir] = (sig, scores)
     return scores
 
 
@@ -978,6 +1008,9 @@ _PY_NONIMPL = {
     "enumerate", "zip", "map", "filter", "isinstance", "getattr", "setattr", "super",
     "repr", "type", "abs", "min", "max", "sum", "any", "all", "open", "format", "bool",
     "float", "approx", "raises", "fixture", "mark", "fail", "skip", "warns",
+    # unittest / mock helpers (assert*/expect* also filtered by prefix below)
+    "setUp", "tearDown", "patch", "Mock", "MagicMock", "mock_open", "monkeypatch",
+    "caplog", "capsys", "call", "ANY", "sentinel", "subTest", "addCleanup",
 }
 # _SRC_EXTS / _build_symbol_index now live in fault_localize (imported above) so the
 # Python and multi-language SBFL paths share one cross-language symbol resolver.
@@ -991,17 +1024,21 @@ def _assertion_suspects(output: str, project_dir: Path, blocks: list[str]) -> di
     index: dict[str, str] | None = None
     for block in blocks:
         frames = list(frame_re.finditer(block))
-        # The assert site is the last TEST frame in the block.
+        # The assert site is the last TEST frame in the block (test_ function or
+        # a test/conftest file by naming convention — not the "test" substring).
         test_frames = [
             m for m in frames
-            if m.group("fn").startswith("test_") or "test" in m.group("fpath").rsplit("/", 1)[-1]
+            if m.group("fn").startswith("test_")
+            or _is_test_file_name(m.group("fpath").rsplit("/", 1)[-1])
         ]
         if not test_frames:
             continue
         tf = test_frames[-1]
         fail_line = int(tf.group("line"))
+        fpath = tf.group("fpath")
+        test_file = Path(fpath) if Path(fpath).is_absolute() else project_dir / fpath
         try:
-            tree = ast.parse((project_dir / tf.group("fpath")).read_text(errors="replace"))
+            tree = ast.parse(test_file.read_text(errors="replace"))
         except Exception:
             continue
         enc = None  # innermost test function containing the failing line
@@ -1017,7 +1054,8 @@ def _assertion_suspects(output: str, project_dir: Path, blocks: list[str]) -> di
             if isinstance(n, ast.Call):
                 name = (n.func.id if isinstance(n.func, ast.Name)
                         else n.func.attr if isinstance(n.func, ast.Attribute) else None)
-                if name and len(name) >= 2 and not name.startswith("test_") and name not in _PY_NONIMPL:
+                if (name and len(name) >= 2 and not name.startswith(("test_", "assert", "expect"))
+                        and name not in _PY_NONIMPL):
                     calls.append((abs((n.lineno or fail_line) - fail_line), name))
         if not calls:
             continue

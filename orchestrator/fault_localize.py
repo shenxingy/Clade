@@ -46,19 +46,33 @@ _NONIMPL = {
     "afterAll", "assert", "strictEqual", "deepEqual", "equal", "ok", "toBe",
     "toEqual", "Array", "Object", "Number", "String", "Boolean", "JSON", "Math",
     "require", "console", "Promise", "Error",
+    # unittest / mock helpers (assert* handled by the regex below)
+    "setUp", "tearDown", "patch", "Mock", "MagicMock", "mock_open", "monkeypatch",
+    "caplog", "capsys", "call", "ANY", "sentinel", "assertRaises", "subTest",
 }
+# A call that is never the impl-under-test (assertEqual, assert_called_once, …).
+_ASSERT_HELPER_RE = re.compile(r'^(?:assert|expect)')
+
+# Match real TEST files by naming CONVENTION (not the substring "test", which
+# would wrongly drop attestation.py / latest.py / contest.py).
+_TEST_NAME_RE = re.compile(r'(^|[._-])test([._-]|$)|_test\.|\.test\.|\.spec\.|^conftest\.', re.I)
+
+
+def _is_test_file_name(name: str) -> bool:
+    return bool(_TEST_NAME_RE.search(name))
 
 
 def _build_symbol_index(project_dir: Path, max_files: int = 1500) -> dict[str, str]:
     """Map a defined symbol name → the first non-test source file that defines it.
-    Language-agnostic (def/function/func/fn/fun/sub). Bounded + skip-dir filtered."""
+    Language-agnostic (def/function/func/fn/fun/sub). Bounded + skip-dir filtered.
+    Walk order is sorted for deterministic multi-definition resolution."""
     import os
     index: dict[str, str] = {}
     n = 0
     for dirpath, dirnames, filenames in os.walk(project_dir):
-        dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS and not d.startswith(".")]
-        for fname in filenames:
-            if not fname.endswith(_SRC_EXTS) or "test" in fname.lower():
+        dirnames[:] = sorted(d for d in dirnames if d not in _SKIP_DIRS and not d.startswith("."))
+        for fname in sorted(filenames):
+            if not fname.endswith(_SRC_EXTS) or _is_test_file_name(fname):
                 continue
             n += 1
             if n > max_files:
@@ -110,8 +124,12 @@ def detect_test_runner(project_dir: Path) -> dict | None:
             return {"lang": "js", "kind": "jest", "cmd": cmd}
         if "--test" in low or "node:test" in low:
             return {"lang": "js", "kind": "nodetest", "cmd": cmd}
-    # File-presence sniff
-    if (project_dir / ".venv" / "bin" / "pytest").exists() or (project_dir / "pyproject.toml").exists():
+    # File-presence sniff. Python markers checked first + broadly so a Python repo
+    # that merely ships a package.json (docs site, tooling) isn't misrouted to JS.
+    _py_markers = ("pyproject.toml", "setup.py", "setup.cfg", "tox.ini",
+                   "requirements.txt", "Pipfile", "conftest.py")
+    if ((project_dir / ".venv" / "bin" / "pytest").exists()
+            or any((project_dir / m).exists() for m in _py_markers)):
         return {"lang": "python", "kind": "pytest", "cmd": cmd}
     if (project_dir / "go.mod").exists():
         return {"lang": "go", "kind": "gotest", "cmd": cmd or "go test ./..."}
@@ -136,36 +154,47 @@ def detect_test_runner(project_dir: Path) -> dict | None:
 
 # ─── Failure parsers (per language) ──────────────────────────────────────────
 
-# Go panic frame pairs: `pkg/path.Func(args)\n\t/abs/file.go:LINE +0xHEX`
+# Go panic frame pairs: `pkg/path.Func[...](args)\n\t/abs/file.go:LINE +0xHEX`.
+# A single greedy `\S+` (no two overlapping quantifiers → no quadratic ReDoS)
+# backtracks to the last `(` that opens the arglist — works for free funcs,
+# methods `(*Type).M`, and generics `Func[...]` alike. `_func_tail` strips the
+# `[...]` type-param suffix.
 _GO_FRAME_RE = re.compile(
-    r'^(?P<func>[\w./*()\[\]-]+(?:\.[\w*]+)+)\([^\n]*\)\n'
+    r'^(?P<func>\S+)\([^\n]*\)\n'
     r'\s+(?P<file>[\w./@+-]+\.go):(?P<line>\d+)', re.M)
 _GO_FAIL_RE = re.compile(r'^--- FAIL: (?P<test>\S+)', re.M)
 _GO_ASSERT_RE = re.compile(r'^\s+(?P<file>[\w./-]+_test\.go):(?P<line>\d+):', re.M)
 
-# JS/TS V8 stack frame (vitest ❯ / jest+node `at` / node:test file:// URLs):
+# JS/TS V8 stack frame (vitest ❯ / jest+node `at` / node:test file:// URLs).
+# Two forms: paren-wrapped `fn (path:l:c)` (path may contain spaces/backslashes)
+# and bare `path:l:c`.
 _JS_FRAME_RE = re.compile(
     r'^\s*(?:at\s+(?:async\s+)?)?(?:❯\s+)?'
-    r'(?:(?P<func>[\w$.<>\[\] ]+?)\s+)?\(?(?:file://)?'
-    r'(?P<path>[^\s():]+?\.(?:[cm]?[jt]sx?)):(?P<line>\d+):(?P<col>\d+)\)?\s*$', re.M)
+    r'(?:(?P<func>[\w$.<>\[\] ]+?)\s+)?'
+    r'(?:\((?:file://)?(?P<ppath>[^\n]+?):(?P<pline>\d+):(?P<pcol>\d+)\)'
+    r'|(?:file://)?(?P<path>[^\s():]+?\.(?:[cm]?[jt]sx?)):(?P<line>\d+):(?P<col>\d+))\s*$', re.M)
 
 
 def _is_test_path(path: str) -> bool:
-    base = path.rsplit("/", 1)[-1]
-    return bool(re.search(r'\.(test|spec)\.[cm]?[jt]sx?$', path)
-                or "__tests__/" in path or base.startswith("test")
-                or path.endswith("_test.go"))
+    base = path.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+    return bool("__tests__/" in path or "/tests/" in path or path.endswith("_test.go")
+                or _is_test_file_name(base))
 
 
 def _is_noise_path(path: str) -> bool:
     return ("node_modules/" in path or path.startswith("node:")
+            or "/pkg/mod/" in path or "/go/src/" in path or "/goroot/" in path
             or "/src/runtime/" in path or "/src/testing/" in path or "/src/reflect/" in path
             or any(s in path for s in ("vitest/dist", "@vitest", "jest-", "expect/build", "@jest")))
 
 
 def _func_tail(func: str) -> str:
     """Bare function name from a dotted/qualified frame label."""
-    func = func.strip().split("[as ")[-1].rstrip("]").strip() if "[as " in func else func.strip()
+    func = func.strip()
+    if "[as " in func:                       # `Service.prop [as fmt]` → fmt
+        func = func.split("[as ")[-1].rstrip("]").strip()
+    func = re.sub(r'^(?:new|async|get|set)\s+', '', func)  # `new OrderService` → OrderService
+    func = re.sub(r'\[[^\]]*\]', '', func)                 # drop generic type-params `[...]`
     tail = func.rsplit("/", 1)[-1].rsplit(".", 1)[-1]
     return tail.strip("()*").strip()
 
@@ -175,11 +204,16 @@ def _stack_frame_suspects(output: str, lang: str) -> dict[str, int]:
     scores: dict[str, int] = {}
     rx = _GO_FRAME_RE if lang == "go" else _JS_FRAME_RE
     for m in rx.finditer(output):
-        path, func = m.group("file" if lang == "go" else "path"), m.group("func") or ""
+        if lang == "go":
+            path = m.group("file")
+        else:
+            path = m.group("ppath") or m.group("path")
+        func = m.group("func") or ""
         if not path or _is_test_path(path) or _is_noise_path(path):
             continue
         fn = _func_tail(func)
-        if not fn or fn in _NONIMPL or fn.startswith("test"):
+        # Reject non-identifiers (`<anonymous>`, `<computed>`) + test scaffolding.
+        if not re.fullmatch(r'[A-Za-z_$][\w$]*', fn) or fn in _NONIMPL or _ASSERT_HELPER_RE.match(fn):
             continue
         key = f"{path.lstrip('./')}::{fn}"
         scores[key] = scores.get(key, 0) + 1
@@ -198,8 +232,10 @@ def _test_source_suspects(output: str, lang: str, project_dir: Path,
             sites.append((m.group("file"), int(m.group("line"))))
     else:  # js/ts
         for m in _JS_FRAME_RE.finditer(output):
-            if _is_test_path(m.group("path")) and not _is_noise_path(m.group("path")):
-                sites.append((m.group("path"), int(m.group("line"))))
+            p = m.group("ppath") or m.group("path")
+            ln = m.group("pline") or m.group("line")
+            if p and _is_test_path(p) and not _is_noise_path(p):
+                sites.append((p, int(ln)))
         for m in re.finditer(r"location:\s*'([^']+\.[cm]?[jt]sx?):(\d+):\d+'", output):
             sites.append((m.group(1), int(m.group(2))))
     for raw_path, fail_line in dict.fromkeys(sites):  # dedup (path, line)

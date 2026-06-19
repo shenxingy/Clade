@@ -181,3 +181,61 @@ class TestMultiLangPageRank:
         (tmp_path / "src" / "b.rs").write_text("use crate::config::Cfg;\n")
         scores = wt._pagerank_centrality(str(tmp_path))
         assert self._top(scores) == "src/config.rs"
+
+
+# ─── Import-resolver review fixes (audit 2026-06-19 adversarial review) ───────
+
+class TestImportResolverFixes:
+    def _top(self, scores):
+        return max(scores, key=scores.get) if scores else None
+
+    def test_rust_grouped_imports(self, tmp_path):
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "a.rs").write_text("pub struct A;\n")
+        (tmp_path / "src" / "b.rs").write_text("pub struct B;\n")
+        (tmp_path / "src" / "user.rs").write_text("use crate::{a::A, b::B};\n")
+        scores = wt._pagerank_centrality(str(tmp_path))
+        # both a.rs and b.rs receive an edge from user.rs
+        assert scores.get("src/a.rs", 0) > 0 and scores.get("src/b.rs", 0) > 0
+
+    def test_rust_external_crate_not_resolved(self, tmp_path):
+        # bare `use serde::X` is an external crate even if a local serde.rs exists
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "serde.rs").write_text("pub struct Local;\n")
+        (tmp_path / "src" / "user.rs").write_text("use serde::Deserialize;\n")
+        # no crate:: prefix → no edge to the local serde.rs
+        targets = wt._file_import_targets("use serde::Deserialize;\n", ".rs", "src/user.rs",
+                                          {"src/serde.rs", "src/user.rs"}, {}, None)
+        assert targets == set()
+
+    def test_go_commented_import_no_phantom_edge(self, tmp_path):
+        (tmp_path / "go.mod").write_text("module ex.com/app\n")
+        (tmp_path / "real").mkdir()
+        (tmp_path / "real" / "r.go").write_text("package real\nfunc R(){}\n")
+        (tmp_path / "main.go").write_text(
+            'package main\nimport (\n\t"ex.com/app/real"\n\t// "ex.com/app/ghost"\n)\n')
+        specs = wt._imports_go((tmp_path / "main.go").read_text())
+        assert "ex.com/app/real" in specs and "ex.com/app/ghost" not in specs
+
+    def test_js_commented_import_no_phantom_edge(self):
+        text = "import {a} from './real'\n// import {b} from './ghost'\n/* import './blk' */\n"
+        targets = wt._file_import_targets(text, ".ts", "x.ts", {"real.ts", "x.ts"}, {}, None)
+        assert "real.ts" in targets
+
+    def test_java_wildcard_import(self, tmp_path):
+        (tmp_path / "com" / "x").mkdir(parents=True)
+        (tmp_path / "com" / "x" / "A.java").write_text("package com.x; class A {}\n")
+        (tmp_path / "com" / "x" / "B.java").write_text("package com.x; class B {}\n")
+        targets = wt._file_import_targets("import com.x.*;\n", ".java", "Main.java",
+                                          {"com/x/A.java", "com/x/B.java", "Main.java"}, {}, None)
+        assert targets == {"com/x/A.java", "com/x/B.java"}
+
+    def test_cache_invalidates_on_deletion(self, tmp_path):
+        (tmp_path / "base.py").write_text("class B: pass\n")
+        (tmp_path / "a.py").write_text("from base import B\n")
+        (tmp_path / "b.py").write_text("from base import B\n")
+        s1 = wt._pagerank_centrality(str(tmp_path))
+        assert "b.py" in s1
+        (tmp_path / "b.py").unlink()  # delete a file (max_mtime may not change)
+        s2 = wt._pagerank_centrality(str(tmp_path))
+        assert "b.py" not in s2  # stale cache would still contain it

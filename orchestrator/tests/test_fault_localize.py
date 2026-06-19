@@ -122,3 +122,36 @@ def test_run_runner_sbfl_live_nodetest(tmp_path):
               "cmd": "node --experimental-strip-types --no-warnings --test tests/p.test.ts"}
     block = asyncio.run(fl.run_runner_sbfl(tmp_path, runner, timeout=60))
     assert "classify" in block and "platform.ts" in block
+
+
+# ─── Parser review fixes (audit 2026-06-19 adversarial review) ───────────────
+
+class TestParserReviewFixes:
+    def test_go_generic_free_function(self):
+        out = "github.com/x/col.Map[...]({0x1})\n\t/home/u/col/collection.go:55 +0x88\n"
+        s = fl._stack_frame_suspects(out, "go")
+        assert any(k.endswith("collection.go::Map") for k in s), s
+
+    def test_go_generic_method(self):
+        out = "github.com/x/col.(*Tree[...]).Insert(0x1)\n\t/home/u/col/tree.go:7 +0x1\n"
+        s = fl._stack_frame_suspects(out, "go")
+        assert any(k.endswith("tree.go::Insert") for k in s), s
+
+    def test_go_redos_long_line_is_fast(self):
+        import time
+        t0 = time.time()
+        fl._stack_frame_suspects("a" + ".a" * 40000 + "\n", "go")
+        assert time.time() - t0 < 1.0  # was ~56s before the fix
+
+    def test_js_new_and_anonymous_frames(self):
+        out = ("at new OrderService (/app/src/order.ts:9:5)\n"
+               "at <anonymous> (/app/src/x.ts:3:1)\n")
+        s = fl._stack_frame_suspects(out, "js")
+        assert any(k.endswith("order.ts::OrderService") for k in s)  # 'new ' stripped
+        assert not any("anonymous" in k for k in s)                  # junk dropped
+
+    def test_test_name_predicate_word_boundary(self):
+        for non in ("attestation.py", "latest.py", "contest.py", "fastest.go"):
+            assert not fl._is_test_file_name(non), non
+        for yes in ("test_x.py", "x_test.go", "x.test.ts", "foo.spec.tsx", "conftest.py"):
+            assert fl._is_test_file_name(yes), yes
