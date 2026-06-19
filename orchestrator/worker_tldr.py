@@ -16,6 +16,14 @@ from pathlib import Path
 
 import aiosqlite
 
+# fault_localize is a stdlib-only leaf (lower in the DAG); importing it keeps
+# worker_tldr standalone-importable. Shared scan constants + symbol index live
+# there so the multi-language SBFL path and the Python path agree.
+from fault_localize import (  # noqa: E402
+    _SKIP_DIRS, _SRC_EXTS, _build_symbol_index,
+    detect_test_runner, run_runner_sbfl,
+)
+
 logger = logging.getLogger(__name__)
 
 # Model for TLDR/localization/scoring claude calls. This is a documented leaf
@@ -39,8 +47,6 @@ DISALLOWED_TOOLS_JUDGE = "--disallowed-tools Edit,Write,Bash"
 
 _tldr_cache: dict[str, tuple[float, str]] = {}  # dir -> (max_mtime, tldr_text)
 
-_SKIP_DIRS = {".git", ".hg", ".svn", "node_modules", "__pycache__", "dist", "build",
-              ".venv", "venv", ".tox", ".mypy_cache", ".pytest_cache", ".next", ".nuxt"}
 
 
 def _python_func_sig(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
@@ -885,33 +891,8 @@ _PY_NONIMPL = {
     "repr", "type", "abs", "min", "max", "sum", "any", "all", "open", "format", "bool",
     "float", "approx", "raises", "fixture", "mark", "fail", "skip", "warns",
 }
-_SRC_EXTS = (".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".rs", ".java", ".rb",
-             ".c", ".cpp", ".cs", ".php")
-_DEF_GREP_RE = re.compile(r'(?:^|[^.\w])(?:def|function|func|fn|fun|sub)\s+([A-Za-z_]\w+)')
-
-
-def _build_symbol_index(project_dir: Path, max_files: int = 1500) -> dict[str, str]:
-    """Map a defined symbol name → the first non-test source file that defines it.
-    Language-agnostic (def/function/func/fn/fun/sub). Bounded + skip-dir filtered."""
-    index: dict[str, str] = {}
-    n = 0
-    for dirpath, dirnames, filenames in os.walk(project_dir):
-        dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS and not d.startswith(".")]
-        for fname in filenames:
-            if not fname.endswith(_SRC_EXTS) or "test" in fname.lower():
-                continue
-            n += 1
-            if n > max_files:
-                return index
-            p = Path(dirpath) / fname
-            try:
-                text = p.read_text(errors="replace")
-            except OSError:
-                continue
-            rel = str(p.relative_to(project_dir))
-            for m in _DEF_GREP_RE.finditer(text):
-                index.setdefault(m.group(1), rel)
-    return index
+# _SRC_EXTS / _build_symbol_index now live in fault_localize (imported above) so the
+# Python and multi-language SBFL paths share one cross-language symbol resolver.
 
 
 def _assertion_suspects(output: str, project_dir: Path, blocks: list[str]) -> dict[str, int]:
@@ -983,7 +964,15 @@ async def _sbfl_prepass(project_dir: Path, timeout: int = 30) -> str:
 
     Falls back to empty string if no pytest, no failures, or timeout.
     Only called for fix tasks with an existing test suite.
+
+    Multi-language (2026-06-19): non-Python projects (Go/Rust/JS/TS detected via
+    .claude/orchestrator.json test_cmd or file sniff) route to fault_localize's
+    runner-specific SBFL. The Python path below is unchanged.
     """
+    runner = detect_test_runner(Path(project_dir))
+    if runner and runner["kind"] != "pytest":
+        return await run_runner_sbfl(Path(project_dir), runner, timeout=max(timeout, 60))
+
     # Find pytest
     venv_pytest = project_dir / ".venv" / "bin" / "pytest"
     if venv_pytest.exists():

@@ -66,9 +66,10 @@ Key modules (import DAG — leaf → root):
 ```
 # Leaves (no project imports)
 config.py            ← constants, settings, utilities
+fault_localize.py    ← multi-language SBFL: test-runner detection, go/js failure parsers, cross-lang symbol index (stdlib-only leaf; worker_tldr imports it)
 ideas.py             ← IdeasManager, async idea CRUD
 process_manager.py   ← ProcessPool, start.sh lifecycle
-worker_tldr.py       ← TLDR generation, localization, fault location, scoring
+worker_tldr.py       ← TLDR generation, localization, fault location, scoring (imports fault_localize)
 worker_review.py     ← oracle + PR review
 worker_utils.py      ← output helpers, lint reflection, LoopDetectionService, worker-state helpers
 worker_hydrate.py    ← _pre_hydrate (GitHub issue/PR pre-hydration)
