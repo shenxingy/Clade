@@ -47,7 +47,7 @@ HISTORY_FILE="$CORRECTIONS_DIR/history.jsonl"
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 PROJECT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 
-jq -n \
+jq -nc \
   --arg ts "$TIMESTAMP" \
   --arg prompt "$PROMPT" \
   --arg project "$PROJECT" \
@@ -126,6 +126,28 @@ CONTEXT="A user correction was detected in the prompt above. After addressing th
    Example: - [2026-02-25] imports (settings-disconnect): Use @/ path aliases and verify tsconfig paths are set — not bare relative paths that break on move
 4. In one sentence: how could you have caught this BEFORE the user pointed it out? (e.g., 'I should have checked cross-platform compat when using shell builtins')
 5. Keep rules.md under $RULES_LIMIT lines — remove outdated rules if needed"
+
+# ─── Concrete signal: the actual change that was rejected (the labeled pair) ──
+# Gate: we only reach here on an EXPLICIT correction. Silent reverts/edits stay
+# data-only in their async hooks; here we ground the rule in the real files behind
+# "that's wrong" (from revert-detector's reverted_files + the edit-shadow log),
+# not only the user's words. Empty → nothing appended (no noise).
+source "$LIBDIR/correction-pair.sh" 2>/dev/null || true
+if command -v jq &>/dev/null; then
+  _recent_files=""
+  declare -f cp_recent_files >/dev/null 2>&1 && _recent_files=$(cp_recent_files "$(cp_session_key "$INPUT")" 8)
+  _reverted=""
+  [[ -f "$HISTORY_FILE" ]] && _reverted=$(tail -n 200 "$HISTORY_FILE" 2>/dev/null \
+    | jq -r --arg proj "$PROJECT" 'select(.type=="implicit-revert" and .project==$proj) | (.reverted_files // [])[]' 2>/dev/null)
+  _combined=$(printf '%s\n%s\n' "$_reverted" "$_recent_files" | awk 'NF' | sort -u | head -10)
+  if [[ -n "$_combined" ]]; then
+    _bullets=$(while IFS= read -r _p; do [[ -n "$_p" ]] && printf '  - %s\n' "$_p"; done <<< "$_combined")
+    CONTEXT="${CONTEXT}
+
+Concrete signal — files behind this correction (base the rule on the real diff, not only the words):
+${_bullets}Inspect what was rejected with: git diff -- <file> (or git log -p -1 -- <file>). The lesson is the (what-Claude-did → what's-correct) delta on these files."
+  fi
+fi
 
 # Write cross-project marker for auto-audit aggregation
 if [[ -n "$CROSS_FILE" ]] && command -v jq &>/dev/null; then

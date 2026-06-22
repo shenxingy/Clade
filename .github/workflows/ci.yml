@@ -130,6 +130,11 @@ jobs:
       - name: Run mailbox-drain tests
         run: bash tests/test-mailbox-drain.sh
 
+      # Correction PAIRING (edit-shadow + revert + correction-detector): the
+      # "AI did X → rejected" pair, repeat flag, and the gate (no signal → no inject)
+      - name: Run correction-pairing tests
+        run: bash tests/test-correction-pairing.sh
+
   install-test:
     name: Install Test
     runs-on: ubuntu-latest
