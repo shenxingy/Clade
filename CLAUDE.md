@@ -60,6 +60,13 @@ cd orchestrator && find . \( -name .venv -o -name node_modules -o -name __pycach
 - `scripts/` — shell utilities (e.g., `committer.sh`)
 - `agents/` — subagent definitions for the Agent tool
 
+**Correction-pairing pipeline** (the learn-from-corrections loop — captures the "AI did X → it got rejected" pair so a rule is grounded in the real diff, not just words):
+- `edit-shadow-detector.sh` (PostToolUse, async) logs files Claude writes → session-keyed shadow at `/tmp/claude-edit-shadows/session-<session_id>.jsonl`
+- `revert-detector.sh` (PreToolUse Bash, async) on `git revert/reset/restore` cross-refs that shadow → writes `reverted_files` + `repeat` into `~/.claude/corrections/history.jsonl`
+- `correction-detector.sh` (UserPromptSubmit, **sync**) on an explicit "that's wrong" surfaces those rejected files into the rule-extraction context
+- **The gate is the wiring, not code:** the two silent-signal hooks are `async` (output never fed back) → a bare revert stays data-only; only an explicit correction (sync hook) escalates to context. `repeat=true` is stored for auto-audit but never auto-writes a rule (avoids noise).
+- Shared helpers: `hooks/lib/correction-pair.sh` (session key + shadow read). `history.jsonl`/shadow are compact JSONL (one object per line). Tests: `tests/test-correction-pairing.sh`.
+
 ### Orchestrator Layer (`orchestrator/`)
 Key modules (import DAG — leaf → root):
 
