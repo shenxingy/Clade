@@ -98,6 +98,56 @@ def test_worker_build_cmd_and_env(tmp_path: Path) -> None:
     # attribution: committer.sh appends Co-Authored-By + X-Clade-Task trailers
     # when this is set, so every worker-session commit is agent-segmentable
     assert env["CLADE_WORKER_TASK_ID"] == "task-xyz"
+    # gap C: overload failover is OFF by default (no flag leaks into the spawn)
+    assert "--fallback-model" not in cmd
+
+
+# ─── Overload failover (gap C) + spawn-env denylist (security sliver) ─────────
+
+import config  # noqa: E402 — real config module shared with the worker under test
+
+
+def _worker(tmp_path: Path, model: str = "sonnet") -> Worker:
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir(exist_ok=True)
+    return Worker(task_id="t", description="d", model=model,
+                  project_dir=tmp_path, claude_dir=claude_dir)
+
+
+def test_fallback_model_explicit_alias(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setitem(config.GLOBAL_SETTINGS, "worker_fallback_model", "haiku")
+    cmd, _ = _worker(tmp_path, model="opus")._build_cmd_and_env(tmp_path / "t.md")
+    assert f"--fallback-model {config._MODEL_ALIASES['haiku']}" in cmd
+
+
+def test_fallback_model_auto_downgrades_per_worker(tmp_path: Path, monkeypatch) -> None:
+    # "auto" derives from auto_classify_retry_model_fallback: sonnet → haiku
+    monkeypatch.setitem(config.GLOBAL_SETTINGS, "worker_fallback_model", "auto")
+    cmd, _ = _worker(tmp_path, model="sonnet")._build_cmd_and_env(tmp_path / "t.md")
+    assert f"--fallback-model {config._MODEL_ALIASES['haiku']}" in cmd
+
+
+def test_fallback_model_auto_haiku_has_no_target(tmp_path: Path, monkeypatch) -> None:
+    # haiku is the floor of the downgrade map → no fallback flag emitted
+    monkeypatch.setitem(config.GLOBAL_SETTINGS, "worker_fallback_model", "auto")
+    cmd, _ = _worker(tmp_path, model="haiku")._build_cmd_and_env(tmp_path / "t.md")
+    assert "--fallback-model" not in cmd
+
+
+def test_env_denylist_pops_keys(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("CLADE_TEST_SECRET", "leak-me")
+    monkeypatch.setenv("CLADE_TEST_KEEP", "ok")
+    monkeypatch.setitem(config.GLOBAL_SETTINGS, "worker_env_deny", ["CLADE_TEST_SECRET"])
+    _, env = _worker(tmp_path)._build_cmd_and_env(tmp_path / "t.md")
+    assert "CLADE_TEST_SECRET" not in env      # denied secret dropped from worker env
+    assert env.get("CLADE_TEST_KEEP") == "ok"  # unrelated vars still pass through
+
+
+def test_env_denylist_empty_is_noop(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("CLADE_TEST_KEEP", "ok")
+    monkeypatch.setitem(config.GLOBAL_SETTINGS, "worker_env_deny", [])
+    _, env = _worker(tmp_path)._build_cmd_and_env(tmp_path / "t.md")
+    assert env.get("CLADE_TEST_KEEP") == "ok"
 
 
 # ─── Delegation to worker_utils (wave-2 extraction for the 1500-line cap) ─────

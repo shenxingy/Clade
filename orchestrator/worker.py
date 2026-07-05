@@ -40,6 +40,7 @@ from config import (
     _estimate_cost,
     _parse_token_usage,
     _build_tool_flags,
+    _fallback_flag,
     _parse_task_type,
     _parse_task_schema,
     _infer_commit_type,
@@ -298,6 +299,9 @@ class Worker:
         shell_cmd = (
             f'claude -p "$(cat {shlex.quote(str(task_file))})" --model {model} --dangerously-skip-permissions'
         )
+        # Native overload failover (gap C): switch model for an overloaded turn
+        # only, lossless & in-process. Off unless worker_fallback_model is set.
+        shell_cmd += _fallback_flag(self.model)
         # Tool subsets per task type (Stripe Blueprint pattern)
         tool_flags = _build_tool_flags(self.task_type)
         if tool_flags:
@@ -310,6 +314,11 @@ class Worker:
         # Unset CLAUDECODE so workers can launch even when the orchestrator itself
         # is started from inside a Claude Code session (prevents "nested session" error)
         env.pop("CLAUDECODE", None)
+        # Spawn-time env denylist (Round 3 security sliver): drop secrets that an
+        # unattended --dangerously-skip-permissions worker hydrating untrusted
+        # GitHub text has no business reading. Off by default (empty list).
+        for _deny_key in (GLOBAL_SETTINGS.get("worker_env_deny") or []):
+            env.pop(str(_deny_key), None)
         # Attribution: committer.sh appends Co-Authored-By + X-Clade-Task trailers
         # when this is set, letting commit-archeology segment agent vs human commits
         env["CLADE_WORKER_TASK_ID"] = str(self.task_id)
@@ -936,10 +945,13 @@ class Worker:
             # Constitutional AI (reflection-agents §Gap4): the target repo's own
             # CLAUDE.md "Code Rules" become binding constraints the grader enforces.
             constitution = _read_constitution(self._project_dir)
+            # Judge non-determinism mitigation (gap B): resample the verdict K×
+            # and require a clean majority to approve. Default 1 = single-shot.
+            verdict_samples = int(GLOBAL_SETTINGS.get("oracle_verdict_samples", 1) or 1)
             approved, reason, infra_error = await _oracle_review(
                 self.description, diff_out.decode(), self._claude_dir,
                 acceptance_criteria=criteria, test_evidence=test_evidence,
-                constitution=constitution,
+                constitution=constitution, verdict_samples=verdict_samples,
             )
         except Exception:
             approved, reason, infra_error = True, "oracle gate error", True
@@ -993,6 +1005,7 @@ class Worker:
             shell_cmd = (
                 f'claude -p --continue "$(cat {shlex.quote(str(task_file))})"'
                 f" --model {model} --dangerously-skip-permissions"
+                f"{_fallback_flag(self.model)}"
             )
         else:
             retry_desc = self.description + f"\n\n{extra_context}"

@@ -107,6 +107,12 @@ _SETTINGS_DEFAULTS = {
     "stuck_timeout_minutes": 15,
     "cost_budget": 0,
     "worker_token_budget": 0,  # max tokens per worker (0 = unlimited)
+    # Spawn-time env denylist (prompt-injection exfil hardening — Round 3 sliver).
+    # Workers run --dangerously-skip-permissions with full env passthrough while
+    # hydrating untrusted GitHub issue/PR text; every key listed here is popped
+    # from the worker's env before spawn. Default [] = off. Workers still need
+    # ANTHROPIC_* / gh creds to function, so deny only truly worker-irrelevant secrets.
+    "worker_env_deny": [],
     "notification_webhook": "",
     "auto_scale": False,
     "min_workers": 1,
@@ -122,6 +128,13 @@ _SETTINGS_DEFAULTS = {
     "minimax_api_key": "",
     "minimax_group_id": "",
     "parallel_fix_samples": 3,  # Agentless §6C: diverse samples spawned on PLATEAU (the 2nd oracle rejection, where sequential retry has demonstrably failed) or critical-path. Escapes a wrong first approach. 1=disable.
+    # Oracle verdict resampling (judge non-determinism — Round 3 gap B). LLM judges
+    # flip on identical inputs; run each oracle pass K× and require a CLEAN MAJORITY
+    # to APPROVE (safe bias: disagreement → reject). This is GENERATOR-independent —
+    # distinct from parallel_fix_samples (diverse generation). Default 1 = single-shot
+    # (today's behavior, no extra cost). Use an ODD value (3 recommended); when >1 it
+    # applies to every oracle review, so weigh the Haiku cost (K× per pass).
+    "oracle_verdict_samples": 1,
     # ── Auto retry on classified API failures (Hermes-inspired error_classifier)
     # Default OFF — opt-in to avoid surprising existing users with retry storms.
     "auto_classify_retry": False,
@@ -130,6 +143,14 @@ _SETTINGS_DEFAULTS = {
         "opus": "sonnet",
         "sonnet": "haiku",
     },
+    # Native overload failover (Round 3 gap C). When set, worker spawns pass
+    # --fallback-model so a mid-turn 529/overload switches model for THAT TURN
+    # ONLY (lossless, in-process) instead of exhausting retries → process exit →
+    # a whole-fresh-task requeue (new session, in-session progress lost). Values:
+    # "" = off; "auto" = derive per-worker from auto_classify_retry_model_fallback
+    # (opus→sonnet, sonnet→haiku; haiku has no fallback); or an explicit alias/id
+    # ("haiku"/"sonnet"/full id) used for every worker. Default off.
+    "worker_fallback_model": "",
     "context_span_budget": 6000,  # Moatless §Gap3: max chars for TLDR span block; excess spans evicted
     "task_type_model_routing": {},  # per-task type model override e.g. {"tldr": "haiku", "fix": "sonnet"}
     "replay_interrupted_on_startup": False,  # re-queue interrupted tasks on server restart (opt-in)
@@ -601,6 +622,40 @@ def _build_tool_flags(task_type: str | None) -> str:
     elif disallowed:
         return f' --disallowed-tools "{",".join(disallowed)}"'
     return ""
+
+
+def _resolve_fallback_model(requested_model: str) -> str | None:
+    """Resolve the native --fallback-model target for a worker spawn (Round 3 gap C).
+
+    Reads the `worker_fallback_model` setting:
+      "" (default) → None (feature off)
+      "auto"       → per-worker downgrade via auto_classify_retry_model_fallback
+                     (opus→sonnet, sonnet→haiku; haiku has no fallback → None)
+      else         → an explicit alias/id used for every worker
+    Aliases are resolved to full model ids; unknown values pass through unchanged.
+    """
+    setting = str(GLOBAL_SETTINGS.get("worker_fallback_model", "") or "").strip()
+    if not setting:
+        return None
+    if setting.lower() != "auto":
+        return _MODEL_ALIASES.get(setting, setting)
+    # auto: reduce the requested model to its short alias, then map-derive.
+    alias = requested_model
+    if alias not in _MODEL_ALIASES:  # a full id → recover its short alias
+        for a, full in _MODEL_ALIASES.items():
+            if full == requested_model:
+                alias = a
+                break
+    fb_alias = (GLOBAL_SETTINGS.get("auto_classify_retry_model_fallback") or {}).get(alias)
+    if not fb_alias:
+        return None
+    return _MODEL_ALIASES.get(fb_alias, fb_alias)
+
+
+def _fallback_flag(requested_model: str) -> str:
+    """--fallback-model flag string for a worker spawn, or '' when disabled/none."""
+    fb = _resolve_fallback_model(requested_model)
+    return f" --fallback-model {fb}" if fb else ""
 
 
 # ─── Task Schema / JSON Envelope (Multi-agent Gap 3) ─────────────────────────

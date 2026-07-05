@@ -381,7 +381,7 @@ class TestOracleReviewAggregation:
             (True, "approved", False),
         ])
 
-        async def fake_chunk(task, chunk, label, cdir, constitution=""):
+        async def fake_chunk(task, chunk, label, cdir, constitution="", samples=1):
             return next(results)
 
         monkeypatch.setattr(wr, "_oracle_review_chunk", fake_chunk)
@@ -390,7 +390,7 @@ class TestOracleReviewAggregation:
         assert "rejected" in reason.lower()
 
     async def test_chunked_infra_only_is_unreviewed(self, tmp_path, monkeypatch):
-        async def fake_chunk(task, chunk, label, cdir, constitution=""):
+        async def fake_chunk(task, chunk, label, cdir, constitution="", samples=1):
             return True, "oracle timeout (60s)", True
 
         monkeypatch.setattr(wr, "_oracle_review_chunk", fake_chunk)
@@ -399,7 +399,7 @@ class TestOracleReviewAggregation:
         assert "infra" in reason
 
     async def test_chunked_all_approved(self, tmp_path, monkeypatch):
-        async def fake_chunk(task, chunk, label, cdir, constitution=""):
+        async def fake_chunk(task, chunk, label, cdir, constitution="", samples=1):
             return True, "approved", False
 
         monkeypatch.setattr(wr, "_oracle_review_chunk", fake_chunk)
@@ -407,7 +407,7 @@ class TestOracleReviewAggregation:
         assert (approved, infra) == (True, False)
 
     async def test_two_pass_spec_infra_is_unreviewed(self, tmp_path, monkeypatch):
-        async def fake_pass(prompt, cdir):
+        async def fake_pass(prompt, cdir, samples=1):
             return True, "none", "oracle timeout (45s)", True
 
         monkeypatch.setattr(wr, "_oracle_pass", fake_pass)
@@ -418,7 +418,7 @@ class TestOracleReviewAggregation:
     async def test_two_pass_quality_infra_is_unreviewed(self, tmp_path, monkeypatch):
         calls = []
 
-        async def fake_pass(prompt, cdir):
+        async def fake_pass(prompt, cdir, samples=1):
             calls.append(prompt)
             if len(calls) == 1:
                 return True, "high", "", False
@@ -430,7 +430,7 @@ class TestOracleReviewAggregation:
         assert "quality pass" in reason
 
     async def test_two_pass_real_rejection_not_infra(self, tmp_path, monkeypatch):
-        async def fake_pass(prompt, cdir):
+        async def fake_pass(prompt, cdir, samples=1):
             return False, "high", "spec violation", False
 
         monkeypatch.setattr(wr, "_oracle_pass", fake_pass)
@@ -438,7 +438,7 @@ class TestOracleReviewAggregation:
         assert (approved, infra) == (False, False)
 
     async def test_two_pass_both_pass_approved(self, tmp_path, monkeypatch):
-        async def fake_pass(prompt, cdir):
+        async def fake_pass(prompt, cdir, samples=1):
             return True, "high", "", False
 
         monkeypatch.setattr(wr, "_oracle_pass", fake_pass)
@@ -697,7 +697,7 @@ class TestCriteriaReachTheOracle:
     ):
         prompts: list[str] = []
 
-        async def fake_pass(prompt, cdir):
+        async def fake_pass(prompt, cdir, samples=1):
             prompts.append(prompt)
             return True, "high", "", False
 
@@ -715,7 +715,7 @@ class TestCriteriaReachTheOracle:
     async def test_chunked_path_receives_criteria(self, tmp_path, monkeypatch):
         seen_tasks: list[str] = []
 
-        async def fake_chunk(task, chunk, label, cdir, constitution=""):
+        async def fake_chunk(task, chunk, label, cdir, constitution="", samples=1):
             seen_tasks.append(task)
             return True, "approved", False
 
@@ -828,7 +828,7 @@ class TestEvidenceReachesPrompts:
     async def test_two_pass_prompts_carry_evidence(self, tmp_path, monkeypatch):
         prompts: list[str] = []
 
-        async def fake_pass(prompt, cdir):
+        async def fake_pass(prompt, cdir, samples=1):
             prompts.append(prompt)
             return True, "high", "", False
 
@@ -845,7 +845,7 @@ class TestEvidenceReachesPrompts:
     async def test_chunked_path_carries_evidence(self, tmp_path, monkeypatch):
         seen: list[str] = []
 
-        async def fake_chunk(task, chunk, label, cdir, constitution=""):
+        async def fake_chunk(task, chunk, label, cdir, constitution="", samples=1):
             seen.append(task)
             return True, "approved", False
 
@@ -1023,7 +1023,7 @@ class TestFixIntentCriterion:
     async def test_criterion_reaches_spec_prompt(self, tmp_path, monkeypatch):
         prompts: list[str] = []
 
-        async def fake_pass(prompt, cdir):
+        async def fake_pass(prompt, cdir, samples=1):
             prompts.append(prompt)
             return True, "high", "", False
 
@@ -1034,7 +1034,7 @@ class TestFixIntentCriterion:
     async def test_criterion_reaches_chunked_path(self, tmp_path, monkeypatch):
         seen: list[str] = []
 
-        async def fake_chunk(task, chunk, label, cdir, constitution=""):
+        async def fake_chunk(task, chunk, label, cdir, constitution="", samples=1):
             seen.append(task)
             return True, "approved", False
 
@@ -1112,7 +1112,7 @@ class TestConstitutionInjection:
     async def test_constitution_reaches_quality_pass_short_diff(self, tmp_path, monkeypatch):
         captured: list[str] = []
 
-        async def fake_pass(prompt, claude_dir):
+        async def fake_pass(prompt, claude_dir, samples=1):
             captured.append(prompt)
             return True, "high", "", False  # passed, conf, issues, infra
 
@@ -1130,7 +1130,7 @@ class TestConstitutionInjection:
     async def test_no_constitution_no_header_leak(self, tmp_path, monkeypatch):
         captured: list[str] = []
 
-        async def fake_pass(prompt, claude_dir):
+        async def fake_pass(prompt, claude_dir, samples=1):
             captured.append(prompt)
             return True, "high", "", False
 
@@ -1141,7 +1141,7 @@ class TestConstitutionInjection:
     async def test_constitution_threaded_to_chunks_large_diff(self, tmp_path, monkeypatch):
         captured: dict = {}
 
-        async def fake_chunk(task, chunk, label, claude_dir, constitution=""):
+        async def fake_chunk(task, chunk, label, claude_dir, constitution="", samples=1):
             captured["constitution"] = constitution
             return True, "ok", False  # approved, reason, infra
 
@@ -1152,3 +1152,103 @@ class TestConstitutionInjection:
         )
         assert approved and not infra
         assert captured.get("constitution") == self._SENTINEL
+
+
+# ─── Verdict resampling / majority vote (Round 3 gap B) ──────────────────────
+
+
+class TestOracleVerdictResampling:
+    """Judge non-determinism mitigation: resample K× and require a CLEAN MAJORITY
+    to APPROVE (safe bias — a false-approve gates auto-merge; a false-reject only
+    costs a retry). Default samples=1 stays single-shot (no extra cost)."""
+
+    # _aggregate_oracle_votes truth table (pure function)
+    def test_aggregate_all_pass(self):
+        P = (True, "high", "", False)
+        assert wr._aggregate_oracle_votes([P, P, P]) == (True, "high", "", False)
+
+    def test_aggregate_all_fail_surfaces_issue(self):
+        F = (False, "medium", "bug", False)
+        passed, conf, issues, infra = wr._aggregate_oracle_votes([F, F, F])
+        assert (passed, infra, issues) == (False, False, "bug")
+
+    def test_aggregate_majority_pass(self):
+        P, F = (True, "high", "", False), (False, "high", "x", False)
+        assert wr._aggregate_oracle_votes([P, P, F])[0] is True
+
+    def test_aggregate_majority_fail(self):
+        P, F = (True, "high", "", False), (False, "high", "x", False)
+        assert wr._aggregate_oracle_votes([P, F, F])[0] is False
+
+    def test_aggregate_tie_biases_to_reject(self):
+        # no clean majority → safe direction (reject)
+        P, F = (True, "high", "", False), (False, "low", "x", False)
+        assert wr._aggregate_oracle_votes([P, F])[0] is False
+
+    def test_aggregate_all_infra_is_unreviewed(self):
+        I = (True, "none", "boom", True)
+        assert wr._aggregate_oracle_votes([I, I, I])[3] is True
+
+    def test_aggregate_ignores_infra_samples(self):
+        I, F = (True, "none", "boom", True), (False, "high", "x", False)
+        # 2 non-reviews + 1 real fail → the one valid vote decides: fail
+        assert wr._aggregate_oracle_votes([I, I, F]) == (False, "high", "x", False)
+
+    # _oracle_pass resampling wrapper
+    async def test_pass_samples_resamples_and_votes(self, tmp_path, monkeypatch):
+        seq = iter([
+            (True, "high", "", False),
+            (True, "medium", "", False),
+            (False, "high", "spurious", False),  # lone flip loses the vote
+        ])
+        async def fake_once(prompt, cdir):
+            return next(seq)
+        monkeypatch.setattr(wr, "_oracle_pass_once", fake_once)
+        passed, conf, issues, infra = await wr._oracle_pass("p", tmp_path, samples=3)
+        assert (passed, infra) == (True, False)
+
+    async def test_pass_samples_1_is_single_shot(self, tmp_path, monkeypatch):
+        calls = []
+        async def fake_once(prompt, cdir):
+            calls.append(1)
+            return (True, "high", "", False)
+        monkeypatch.setattr(wr, "_oracle_pass_once", fake_once)
+        await wr._oracle_pass("p", tmp_path, samples=1)
+        assert len(calls) == 1  # default path runs once — no extra Haiku cost
+
+    # _oracle_review_chunk resampling wrapper (side effects applied ONCE)
+    async def test_chunk_samples_majority_writes_followups_once(self, tmp_path, monkeypatch):
+        seq = iter([
+            (True, "approved", False, [{"severity": "info", "fix_suggestion": "x"}], True),
+            (True, "approved", False, [{"severity": "info", "fix_suggestion": "y"}], True),
+            (False, "[high] rejected", False, [], False),
+        ])
+        async def fake_once(prompt, cdir):
+            return next(seq)
+        writes = []
+        monkeypatch.setattr(wr, "_oracle_review_chunk_once", fake_once)
+        monkeypatch.setattr(wr, "_append_followup_findings",
+                            lambda cdir, findings, label: writes.append(findings))
+        approved, reason, infra = await wr._oracle_review_chunk("t", "d", "1/1", tmp_path, samples=3)
+        assert (approved, infra) == (True, False)
+        assert len(writes) == 1  # exactly one follow-up write despite 3 samples
+
+    async def test_chunk_samples_majority_reject(self, tmp_path, monkeypatch):
+        seq = iter([
+            (False, "[high] a", False, [], False),
+            (False, "[high] b", False, [], False),
+            (True, "approved", False, [], True),
+        ])
+        async def fake_once(prompt, cdir):
+            return next(seq)
+        monkeypatch.setattr(wr, "_oracle_review_chunk_once", fake_once)
+        monkeypatch.setattr(wr, "_append_followup_findings", lambda *a, **k: None)
+        approved, reason, infra = await wr._oracle_review_chunk("t", "d", "", tmp_path, samples=3)
+        assert (approved, infra) == (False, False)
+
+    async def test_chunk_samples_all_infra_is_unreviewed(self, tmp_path, monkeypatch):
+        async def fake_once(prompt, cdir):
+            return (True, "oracle timeout (60s)", True, [], False)
+        monkeypatch.setattr(wr, "_oracle_review_chunk_once", fake_once)
+        approved, reason, infra = await wr._oracle_review_chunk("t", "d", "", tmp_path, samples=3)
+        assert infra is True

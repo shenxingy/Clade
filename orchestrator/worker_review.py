@@ -372,7 +372,49 @@ def _build_test_evidence(tests_passed: bool, test_output: str, reg_warning: str)
     return "\n".join(parts)
 
 
+_CONF_ORDER = {"none": 0, "low": 1, "medium": 2, "high": 3}
+
+
+def _aggregate_oracle_votes(
+    votes: list[tuple[bool, str, str, bool]],
+) -> tuple[bool, str, str, bool]:
+    """Majority-vote K oracle samples with a SAFE bias (Round 3 gap B).
+
+    Each vote is (passed, confidence, issues_text, infra_error). LLM judges flip
+    on identical inputs, so we resample and require a CLEAN MAJORITY of valid
+    (non-infra) samples to PASS — a tie or disagreement resolves to FAIL, because
+    a false-approve gates auto-merge while a false-reject only costs a retry.
+    All samples infra → unreviewed (the streak logic upstream handles it).
+    """
+    valid = [v for v in votes if not v[3]]
+    if not valid:
+        issues = next((v[2] for v in votes if v[2]), "oracle infra error")
+        return True, "none", issues, True
+    pass_votes = [v for v in valid if v[0]]
+    passed = len(pass_votes) * 2 > len(valid)  # strict majority; odd K avoids ties
+    agreeing = pass_votes if passed else [v for v in valid if not v[0]]
+    confidence = max((v[1] for v in agreeing), key=lambda c: _CONF_ORDER.get(c, 0))
+    issues = "" if passed else next((v[2] for v in agreeing if v[2]), "")
+    return passed, confidence, issues, False
+
+
 async def _oracle_pass(
+    prompt: str, claude_dir: Path, samples: int = 1
+) -> tuple[bool, str, str, bool]:
+    """Run an oracle pass, optionally resampled K× with majority vote (gap B).
+
+    samples<=1 is the single-shot path (unchanged, no extra cost). samples>1 runs
+    K concurrent passes and aggregates via _aggregate_oracle_votes (safe bias).
+    Returns (passed, confidence, issues_text, infra_error).
+    """
+    n = max(1, int(samples or 1))
+    if n == 1:
+        return await _oracle_pass_once(prompt, claude_dir)
+    votes = await asyncio.gather(*[_oracle_pass_once(prompt, claude_dir) for _ in range(n)])
+    return _aggregate_oracle_votes(list(votes))
+
+
+async def _oracle_pass_once(
     prompt: str, claude_dir: Path
 ) -> tuple[bool, str, str, bool]:
     """Run a single oracle pass. Returns (passed, confidence, issues_text, infra_error).
@@ -490,12 +532,14 @@ def _append_followup_findings(claude_dir: Path, findings: list, source_label: st
 
 async def _oracle_review_chunk(
     task_description: str, diff_chunk: str, chunk_label: str, claude_dir: Path,
-    constitution: str = "",
+    constitution: str = "", samples: int = 1,
 ) -> tuple[bool, str, bool]:
     """Review a single diff chunk. Returns (approved, reason, infra_error).
 
     infra_error=True means the chunk was NOT reviewed (timeout, subprocess
     failure, unparseable output) — never report that as an approval.
+    samples>1 (gap B) resamples the judge and requires a CLEAN MAJORITY to
+    APPROVE; follow-up findings are written exactly once, for the winning sample.
     """
     # Caller passes a pre-built task block (description + criteria); cap defensively.
     prompt = _ORACLE_PROMPT_TEMPLATE.format(
@@ -505,10 +549,42 @@ async def _oracle_review_chunk(
         prompt = _ORACLE_CONSTITUTION_HEADER.format(rules=constitution) + prompt
     if chunk_label:
         prompt = f"[Reviewing chunk: {chunk_label}]\n\n" + prompt
+    label = f"chunk {chunk_label}" if chunk_label else "chunk 1/1"
+
+    n = max(1, int(samples or 1))
+    results = await asyncio.gather(*[
+        _oracle_review_chunk_once(prompt, claude_dir) for _ in range(n)
+    ])
+    # results: list of (approved, reason, infra, findings, log_findings)
+    valid = [r for r in results if not r[2]]
+    if not valid:  # every sample was a non-review → unreviewed
+        reason = next((r[1] for r in results if r[1]), "oracle infra error")
+        return True, reason[:300], True
+    approve_votes = [r for r in valid if r[0]]
+    approved = len(approve_votes) * 2 > len(valid)  # strict majority; safe bias
+    if approved:
+        rep = approve_votes[0]
+        if rep[4]:  # log_findings — write the winning sample's follow-ups ONCE
+            _append_followup_findings(claude_dir, rep[3], label)
+        return True, rep[1], False
+    rep = next(r for r in valid if not r[0])
+    return False, rep[1], False
+
+
+async def _oracle_review_chunk_once(
+    prompt: str, claude_dir: Path
+) -> tuple[bool, str, bool, list, bool]:
+    """One chunk-review subprocess, NO side effects (gap B resampling core).
+
+    Returns (approved, reason, infra_error, findings, log_findings). The severity
+    gate (domdomegg) is applied here so `approved` is the effective decision, but
+    follow-up findings are NOT written — the caller writes them once for the
+    sample that wins the vote, avoiding K× duplicate skipped.md entries.
+    """
     prompt_file = claude_dir / f"oracle-{uuid.uuid4().hex[:8]}.md"
     try:
         prompt_file.write_text(prompt)
-        # Grader containment — see _oracle_pass: pure judge (no skip-
+        # Grader containment — see _oracle_pass_once: pure judge (no skip-
         # permissions, no user settings/hooks, judge system prompt, scratch
         # cwd, closed stdin).
         proc = await asyncio.create_subprocess_shell(
@@ -525,7 +601,7 @@ async def _oracle_review_chunk(
         except asyncio.TimeoutError:
             proc.kill()
             await proc.communicate()
-            return True, "oracle timeout (60s)", True
+            return True, "oracle timeout (60s)", True, [], False
         raw = out.decode().strip()
         try:
             data = json.loads(_strip_json_fence(raw))
@@ -538,33 +614,29 @@ async def _oracle_review_chunk(
                 findings = []
             # Severity gate (domdomegg, mirrors the two-pass confidence gate):
             # REJECTED requires >=1 severity:error finding. A rejection backed
-            # only by warning/info findings is demoted to approval and the
+            # only by warning/info findings is demoted to approval and its
             # findings are logged as follow-ups. Findings-less rejections keep
             # their decision (legacy fix_guidance/dimensions-only responses).
             has_error = any(
                 isinstance(f, dict) and f.get("severity") == "error" for f in findings
             )
-            label = f"chunk {chunk_label}" if chunk_label else "chunk 1/1"
             if not approved and findings and not has_error:
-                _append_followup_findings(claude_dir, findings, label)
-                return True, "approved (non-blocking findings logged as follow-ups)", False
+                return True, "approved (non-blocking findings logged as follow-ups)", False, findings, True
             if not approved:
                 reason = _format_oracle_rejection(confidence, fix_guidance, dims, findings)
-            else:
-                reason = "approved"
-                _append_followup_findings(claude_dir, findings, label)
-            return approved, reason, False
+                return False, reason, False, [], False
+            return True, "approved", False, findings, True
         except (json.JSONDecodeError, AttributeError):
             pass
         # Legacy plain-text verdicts ("APPROVED: ..." / "REJECTED: ...")
         if raw.startswith(("APPROVED", "REJECTED")):
             reason = raw.split(":", 1)[-1].strip()[:80] if ":" in raw else raw[:80]
-            return raw.startswith("APPROVED"), reason, False
+            return raw.startswith("APPROVED"), reason, False, [], False
         # Anything else (empty output, API error text) is not a review
-        return True, "oracle returned unparseable output", True
+        return True, "oracle returned unparseable output", True, [], False
     except Exception as e:
         logger.warning("oracle chunk review error: %s", e)
-        return True, "oracle subprocess error", True
+        return True, "oracle subprocess error", True, [], False
     finally:
         prompt_file.unlink(missing_ok=True)
 
@@ -604,6 +676,7 @@ async def _oracle_review(
     acceptance_criteria: list[str] | None = None,
     test_evidence: str = "",
     constitution: str = "",
+    verdict_samples: int = 1,
 ) -> tuple[bool, str, bool]:
     """Independent second-model review of a diff (Self-RAG multi-dimensional critique).
 
@@ -628,7 +701,7 @@ async def _oracle_review(
         chunks = chunks[:3]
         results = await asyncio.gather(*[
             _oracle_review_chunk(task_block, chunk, f"{i+1}/{len(chunks)}", claude_dir,
-                                 constitution=constitution)
+                                 constitution=constitution, samples=verdict_samples)
             for i, chunk in enumerate(chunks)
         ])
         # Aggregate: any real rejection → overall rejection (review DID happen);
@@ -658,7 +731,7 @@ async def _oracle_review(
     quality_prompt = _ORACLE_QUALITY_PROMPT.format(diff=diff_excerpt, evidence=evidence_block)
 
     # Pass 1: spec compliance check
-    spec_passed, spec_conf, spec_issues, spec_infra = await _oracle_pass(spec_prompt, claude_dir)
+    spec_passed, spec_conf, spec_issues, spec_infra = await _oracle_pass(spec_prompt, claude_dir, verdict_samples)
     if spec_infra:
         return True, f"oracle infra error (spec pass): {spec_issues}"[:300], True
     if not spec_passed and spec_conf in ("high", "medium"):
@@ -666,7 +739,7 @@ async def _oracle_review(
         return False, reason[:300], False
 
     # Pass 2: quality check (only runs if spec passed)
-    quality_passed, quality_conf, quality_issues, quality_infra = await _oracle_pass(quality_prompt, claude_dir)
+    quality_passed, quality_conf, quality_issues, quality_infra = await _oracle_pass(quality_prompt, claude_dir, verdict_samples)
     if quality_infra:
         return True, f"oracle infra error (quality pass): {quality_issues}"[:300], True
     if not quality_passed and quality_conf in ("high", "medium"):
