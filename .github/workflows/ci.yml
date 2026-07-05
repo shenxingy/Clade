@@ -135,6 +135,11 @@ jobs:
       - name: Run correction-pairing tests
         run: bash tests/test-correction-pairing.sh
 
+      # Post-compaction re-injection (SessionStart source=compact): goal re-inject,
+      # rule-sentinel re-arm, source guard, staleness guard, silent-when-empty
+      - name: Run post-compact-reinject tests
+        run: bash tests/test-post-compact-reinject.sh
+
   install-test:
     name: Install Test
     runs-on: ubuntu-latest

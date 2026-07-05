@@ -45,6 +45,19 @@
                         "statusMessage": "Reading commit lessons..."
                     }
                 ]
+            },
+            {
+                "matcher": "compact",
+                "hooks": [
+                    {
+                        "id": "post-compact-reinject",
+                        "description": "Re-inject the pinned task goal/state after context compaction — the startup matcher never fires on source=compact, so the PreCompact-saved goal was silently lost after auto-compaction",
+                        "type": "command",
+                        "command": "~/.claude/hooks/post-compact-reinject.sh",
+                        "timeout": 5,
+                        "statusMessage": "Restoring task context after compaction..."
+                    }
+                ]
             }
         ],
         "PreToolUse": [
