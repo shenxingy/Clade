@@ -152,6 +152,12 @@ jobs:
       - name: Run ensure-dev-server tests
         run: bash tests/test-ensure-dev-server.sh
 
+      # Per-line timestamped log + exit-code fidelity (Round-4, Thorsten Ball
+      # log-merging pattern — /verify appends browser console output to this
+      # same file tagged [browser])
+      - name: Run quiet-run tests
+        run: bash tests/test-quiet-run.sh
+
   install-test:
     name: Install Test
     runs-on: ubuntu-latest

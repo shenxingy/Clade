@@ -40,8 +40,12 @@ Record: pass/fail + count of passing/failing tests.
 ```bash
 timeout 130 bash ~/.claude/scripts/quiet-run.sh {test_command}
 ```
-Full output lands in `.claude/logs/quiet-*.log`; only the verdict line + failure tail
-enters the transcript. The exit code is mirrored, so pass/fail detection is unchanged.
+Full output lands in `.claude/logs/quiet-*.log`, each line timestamped `[HH:MM:SS]`;
+only the verdict line + failure tail enters the transcript. The exit code is
+mirrored, so pass/fail detection is unchanged. **Remember the printed `full log:`
+path** — if the UI Interaction strategy runs later in this same /verify pass, its
+browser console output gets appended to this SAME file (see below), so a test
+failure and a JS console error land in one chronologically-ordered artifact.
 
 If no test command but common test patterns exist:
 - `timeout 120 pytest` / `timeout 120 python -m pytest` (Python)
@@ -100,18 +104,30 @@ If conditions are not met, set `INTERACTION_RESULT: skipped` and move on.
    - If a page requires authentication and no test credentials are available in CLAUDE.md, mark as unverifiable — do NOT report login failure as a `[BUG]`
    - Take another snapshot after interactions to verify state changes
 
-6. Evaluate:
+6. Call `browser_console_messages` once (after the page walk, not per-page — this
+   is a summary read, not a live stream). If it returns any `error`/`warning`
+   entries AND you remembered a `quiet-run` log path from the Test-suite strategy
+   above, append them to that SAME file (Thorsten Ball: merged, time-correlatable
+   log) — one line per message, timestamped and tagged so it sorts naturally
+   alongside the test-run output:
+   ```bash
+   printf '[%s] [browser] %s\n' "$(date +%H:%M:%S)" "<message text>" >> <remembered log path>
+   ```
+   If no quiet-run log path exists (no test command / quiet-run not used), skip the
+   append — the console findings still feed into `.claude/playwright-issues.md` below.
+
+7. Evaluate:
    - Does navigation work? Are pages rendering content (not blank/error)?
    - Do interactive elements respond? Are forms submittable?
    - Any JS errors visible in the page? Any "undefined"/"null"/"NaN" rendering?
    - Is the UX intuitive? (layout makes sense, text is readable, actions are discoverable)
 
-7. Write findings to `.claude/playwright-issues.md` (overwrite, do not append):
+8. Write findings to `.claude/playwright-issues.md` (overwrite, do not append):
    - `[BUG]` tag for broken functionality (crashes, errors, broken flows, missing data)
    - `[UX]` tag for usability issues (confusing layout, missing feedback, accessibility gaps)
    - Include which page/element was affected
 
-8. Set result:
+9. Set result:
    - `INTERACTION_RESULT: pass` — all flows work, no bugs found
    - `INTERACTION_RESULT: partial` — some flows unverifiable (app didn't start, pages unreachable)
    - `INTERACTION_RESULT: fail` — broken UI or unexpected errors found (`[BUG]` items exist)
