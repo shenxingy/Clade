@@ -317,6 +317,8 @@ class Worker:
         _deny = GLOBAL_SETTINGS.get("worker_env_deny") or []
         if isinstance(_deny, str):  # a bare string would iterate per-character
             _deny = [_deny]
+        elif not isinstance(_deny, (list, tuple, set)):
+            _deny = []  # scalar/dict misconfig → no-op, never crash the spawn
         for _deny_key in _deny:
             env.pop(str(_deny_key), None)
         # Attribution: committer.sh appends Co-Authored-By + X-Clade-Task trailers

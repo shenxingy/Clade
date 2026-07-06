@@ -164,6 +164,15 @@ def test_env_denylist_string_value_coerced(tmp_path: Path, monkeypatch) -> None:
     assert "CLADE_ONE_SECRET" not in env
 
 
+@pytest.mark.parametrize("bad", [5, True, 3.14, {"a": 1}])
+def test_env_denylist_non_list_value_degrades_not_crashes(tmp_path: Path, monkeypatch, bad) -> None:
+    # a scalar/dict misconfig must degrade to a no-op denylist, never crash the
+    # spawn (iterating an int raises TypeError → would brick every worker)
+    monkeypatch.setitem(config.GLOBAL_SETTINGS, "worker_env_deny", bad)
+    cmd, env = _worker(tmp_path)._build_cmd_and_env(tmp_path / "t.md")  # must not raise
+    assert "--dangerously-skip-permissions" in cmd
+
+
 def test_env_denylist_pops_keys(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("CLADE_TEST_SECRET", "leak-me")
     monkeypatch.setenv("CLADE_TEST_KEEP", "ok")

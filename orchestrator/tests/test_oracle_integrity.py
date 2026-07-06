@@ -1228,16 +1228,22 @@ class TestOracleVerdictResampling:
 
     # _oracle_pass resampling wrapper
     async def test_pass_samples_resamples_and_votes(self, tmp_path, monkeypatch):
+        # LOSING verdict FIRST: a single-shot degradation returns the first _once
+        # result (reject) and would FAIL this assertion — only real resample+vote
+        # (2 of 3 pass) yields approve. This pins the resample-and-vote wiring.
         seq = iter([
+            (False, "high", "spurious", False),  # first sample flips — loses the vote
             (True, "high", "", False),
             (True, "medium", "", False),
-            (False, "high", "spurious", False),  # lone flip loses the vote
         ])
+        calls = []
         async def fake_once(prompt, cdir):
+            calls.append(1)
             return next(seq)
         monkeypatch.setattr(wr, "_oracle_pass_once", fake_once)
         passed, conf, issues, infra = await wr._oracle_pass("p", tmp_path, samples=3)
         assert (passed, infra) == (True, False)
+        assert len(calls) == 3  # actually resampled K times, not single-shot
 
     async def test_pass_samples_1_is_single_shot(self, tmp_path, monkeypatch):
         calls = []
@@ -1250,12 +1256,16 @@ class TestOracleVerdictResampling:
 
     # _oracle_review_chunk resampling wrapper (side effects applied ONCE)
     async def test_chunk_samples_majority_writes_followups_once(self, tmp_path, monkeypatch):
+        # LOSING verdict FIRST (reject) so a single-shot degradation returns reject
+        # and FAILS the (True,False) assertion — only real resample+vote approves.
         seq = iter([
+            (False, "[high] rejected", False, [], False),  # first sample loses the vote
             (True, "approved", False, [{"severity": "info", "fix_suggestion": "x"}], True),
             (True, "approved", False, [{"severity": "info", "fix_suggestion": "y"}], True),
-            (False, "[high] rejected", False, [], False),
         ])
+        calls = []
         async def fake_once(prompt, cdir):
+            calls.append(1)
             return next(seq)
         writes = []
         monkeypatch.setattr(wr, "_oracle_review_chunk_once", fake_once)
@@ -1263,6 +1273,7 @@ class TestOracleVerdictResampling:
                             lambda cdir, findings, label: writes.append(findings))
         approved, reason, infra = await wr._oracle_review_chunk("t", "d", "1/1", tmp_path, samples=3)
         assert (approved, infra) == (True, False)
+        assert len(calls) == 3  # actually resampled, not single-shot
         assert len(writes) == 1  # exactly one follow-up write despite 3 samples
         # ...and it is the WINNING (first approve) sample's payload, not a loser's
         assert writes[0] == [{"severity": "info", "fix_suggestion": "x"}]
@@ -1304,10 +1315,12 @@ class TestOracleVerdictResampling:
         assert seen and all(s == 3 for s in seen)
 
     async def test_chunk_samples_majority_reject(self, tmp_path, monkeypatch):
+        # LOSING verdict FIRST (approve) so single-shot would wrongly approve;
+        # only real resample+vote (2 of 3 reject) yields reject.
         seq = iter([
+            (True, "approved", False, [], True),  # first sample loses the vote
             (False, "[high] a", False, [], False),
             (False, "[high] b", False, [], False),
-            (True, "approved", False, [], True),
         ])
         async def fake_once(prompt, cdir):
             return next(seq)
