@@ -340,6 +340,43 @@ async def test_poll_all_requeues_below_reject_cap(task_queue, tmp_path, monkeypa
     assert len(retries) >= 1  # requeued as usual
 
 
+async def test_poll_all_skips_oracle_requeue_for_loop_managed_tasks(task_queue, tmp_path, monkeypatch):
+    # Adversarial-review finding (correctness, HIGH): loop/plan-managed tasks have
+    # their OWN retry pipeline (session.py's plan-drift guard re-spawns "[Plan-N+1]"
+    # next iteration) — spawning an untracked handle_oracle_requeue retry too would
+    # race a second worker against the plan/loop's own tracked one on the same item.
+    # Mirrors the pre-existing guard on the stuck-worker requeue path (worker.py ~1302).
+    monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "oracle_max_reject_rounds", 5)
+    pool = wmod.WorkerPool()
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir(exist_ok=True)
+    for prefix in ("[Loop-3]", "[Plan-2]"):
+        w = wmod.Worker(
+            task_id=f"task-{prefix}", description=f"{prefix} implement feature X",
+            model="haiku", project_dir=tmp_path, claude_dir=claude_dir,
+        )
+        w.status = "done"
+        w._terminal_persisted = True
+        w._oracle_requeue = True
+        w._oracle_requeue_reason = "[high] still wrong"
+        pool.workers[w.id] = w
+
+    handled = []
+
+    async def fake_handle(*a, **k):
+        handled.append(a)
+
+    monkeypatch.setattr(wmod, "handle_oracle_requeue", fake_handle)
+
+    await pool.poll_all(task_queue, None)
+
+    assert handled == []  # neither loop- nor plan-prefixed task calls handle_oracle_requeue
+    for w in pool.workers.values():
+        assert w._oracle_requeue is False  # flag still cleared, just no requeue spawned
+    tasks = await task_queue.list()
+    assert not any("Previous attempt was" in t["description"] for t in tasks)
+
+
 async def test_poll_all_escalates_instead_of_requeuing_at_reject_cap(task_queue, tmp_path, monkeypatch):
     monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "oracle_max_reject_rounds", 3)
     pool = wmod.WorkerPool()

@@ -41,7 +41,7 @@ from config import (
     _parse_token_usage,
     ALLOWED_MODEL_IDS,
     _build_tool_flags,
-    _fallback_flag,
+    _fallback_flag, _resolve_fallback_model,
     _parse_task_type, _parse_task_class,
     _parse_task_schema,
     _infer_commit_type,
@@ -322,12 +322,24 @@ class Worker:
         # Attribution: committer.sh appends Co-Authored-By + X-Clade-Task trailers
         # when this is set, letting commit-archeology segment agent vs human commits
         env["CLADE_WORKER_TASK_ID"] = str(self.task_id)
-        # Model provenance (Round-4 gap, Yegge pattern): record which model actually
-        # produced this spawn's commits — worker_fallback_model can silently swap
-        # the model mid-run (gap C), so CLADE_WORKER_TASK_ID alone can't tell you
-        # which model wrote a given commit. committer.sh appends an Agent-Signature
-        # trailer from this.
+        # Model provenance (Round-4 gap, Yegge pattern): record the primary model
+        # for this spawn — CLADE_WORKER_TASK_ID alone can't tell you which model
+        # wrote a given commit. committer.sh appends an Agent-Signature trailer
+        # from this.
+        # Adversarial-review finding (concurrency, MEDIUM): --fallback-model is a
+        # NATIVE claude CLI behavior, switching model for an individual overloaded
+        # TURN entirely inside the long-lived `claude -p` process — invisible to
+        # this orchestrator. If a fallback fires on the exact turn that produces a
+        # commit, the fallback model (not `model` below) actually wrote it, and
+        # there is no hook available to know which turn that was. Disclose the
+        # uncertainty in the trailer value itself rather than silently asserting
+        # a single model name that may be wrong.
         env["CLADE_WORKER_MODEL"] = model
+        _fb_model = _resolve_fallback_model(self.model)
+        if _fb_model:
+            env["CLADE_WORKER_MODEL"] = (
+                f"{model} (fallback-configured: {_fb_model}, exact per-commit model not tracked)"
+            )
         # Non-interactive git (mic92): rebase/amend/merge must never park an
         # unattended worker on an editor; `cat` accepts the default sequence and
         # prints it, so the rebase plan lands in the worker log.
@@ -1363,14 +1375,27 @@ class WorkerPool:
                 # Oracle rejected → re-queue (diverse fan-out on plateau, or escalate
                 # past the reject-round cap). Logic lives in worker_review.py's
                 # handle_oracle_requeue — extracted to stay under the 1500-line cap.
+                # Loop/plan-managed tasks have their OWN retry pipeline (session.py's
+                # plan-drift guard re-spawns "[Plan-N+1]" next iteration, bounded by
+                # max_iterations) — same skip as the stuck-worker requeue above;
+                # spawning an untracked retry here too would race a second worker
+                # against the plan/loop's own tracked one on the same item.
                 if w._oracle_requeue:
                     w._oracle_requeue = False
-                    await handle_oracle_requeue(
-                        w, task_queue,
-                        int(GLOBAL_SETTINGS.get("oracle_max_reject_rounds", 5) or 0),
-                        GLOBAL_SETTINGS.get("notification_webhook", ""),
-                        int(GLOBAL_SETTINGS.get("parallel_fix_samples", 3)),
-                    )
+                    _is_loop_task = w.description.startswith("[Loop-") or w.description.startswith("[Plan-")
+                    if not _is_loop_task:
+                        await handle_oracle_requeue(
+                            w, task_queue,
+                            int(GLOBAL_SETTINGS.get("oracle_max_reject_rounds", 5) or 0),
+                            GLOBAL_SETTINGS.get("notification_webhook", ""),
+                            int(GLOBAL_SETTINGS.get("parallel_fix_samples", 3)),
+                        )
+                    else:
+                        logger.info(
+                            "Worker %s oracle-rejected but is loop/plan-managed — "
+                            "not requeuing via handle_oracle_requeue (has its own retry pipeline)",
+                            w.task_id,
+                        )
                 # Pre-push test failure → re-queue with test output (mic92: evidence before verdict)
                 if w._test_requeue:
                     w._test_requeue = False

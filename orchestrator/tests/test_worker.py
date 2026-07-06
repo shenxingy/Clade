@@ -125,6 +125,28 @@ def test_fallback_model_explicit_alias(tmp_path: Path, monkeypatch) -> None:
     assert f"--fallback-model {config._MODEL_ALIASES['haiku']}" in cmd
 
 
+def test_agent_signature_discloses_fallback_when_configured(tmp_path: Path, monkeypatch) -> None:
+    # Adversarial-review finding (concurrency, MEDIUM): --fallback-model swaps
+    # models for a single overloaded TURN entirely inside the claude CLI process,
+    # invisible to the orchestrator — CLADE_WORKER_MODEL cannot promise it names
+    # the model that wrote any specific commit once a fallback is configured.
+    # The trailer value must disclose that uncertainty rather than silently
+    # asserting a single (possibly wrong) model name.
+    monkeypatch.setitem(config.GLOBAL_SETTINGS, "worker_fallback_model", "haiku")
+    _, env = _worker(tmp_path, model="opus")._build_cmd_and_env(tmp_path / "t.md")
+    assert env["CLADE_WORKER_MODEL"].startswith(config._MODEL_ALIASES["opus"])
+    assert "fallback-configured" in env["CLADE_WORKER_MODEL"]
+    assert config._MODEL_ALIASES["haiku"] in env["CLADE_WORKER_MODEL"]
+
+
+def test_agent_signature_no_disclosure_when_fallback_disabled(tmp_path: Path) -> None:
+    # No worker_fallback_model configured (the default) — plain resolved model,
+    # no parenthetical, matching pre-existing behavior exactly.
+    _, env = _worker(tmp_path, model="haiku")._build_cmd_and_env(tmp_path / "t.md")
+    assert env["CLADE_WORKER_MODEL"] == config._MODEL_ALIASES["haiku"]
+    assert "fallback" not in env["CLADE_WORKER_MODEL"]
+
+
 def test_fallback_model_auto_downgrades_per_worker(tmp_path: Path, monkeypatch) -> None:
     # "auto" derives from auto_classify_retry_model_fallback: sonnet → haiku
     monkeypatch.setitem(config.GLOBAL_SETTINGS, "worker_fallback_model", "auto")
