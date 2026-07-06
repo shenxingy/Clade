@@ -6,6 +6,7 @@ These modules have no project-level imports and are easy to unit test.
 from __future__ import annotations
 
 import json
+import logging
 import time
 from pathlib import Path
 
@@ -107,6 +108,50 @@ class TestEventStreamJsonl:
         assert len(replayed) == 2
         assert replayed[0].event_kind == "tool_call"
         assert replayed[1].event_kind == "error"
+
+    def test_replay_logs_and_skips_corrupt_line(self, tmp_path, caplog):
+        path = tmp_path / "events.jsonl"
+        good1 = {
+            "id": 1, "worker_id": "w1", "event_type": "action", "event_kind": "tool_call",
+            "source": "worker", "cause_id": None, "content": "first", "timestamp": 1.0,
+        }
+        good2 = {
+            "id": 2, "worker_id": "w1", "event_type": "observation", "event_kind": "error",
+            "source": "worker", "cause_id": None, "content": "second", "timestamp": 2.0,
+        }
+        path.write_text(
+            json.dumps(good1) + "\n"
+            + "{this is not valid json\n"
+            + json.dumps(good2) + "\n"
+        )
+
+        es = EventStream("w1")
+        es._jsonl_path = path  # bypass set_jsonl_path's own session_start write
+
+        with caplog.at_level(logging.WARNING):
+            replayed = es.replay()
+
+        # Behavior unchanged: valid entries still come through in order, corrupt line skipped
+        assert len(replayed) == 2
+        assert replayed[0].event_kind == "tool_call"
+        assert replayed[1].event_kind == "error"
+        # Corruption is now surfaced via a warning log (not silently swallowed)
+        assert any("corrupt" in rec.getMessage().lower() for rec in caplog.records)
+
+    def test_replay_from_path_logs_and_skips_corrupt_line(self, tmp_path, caplog):
+        path = tmp_path / "events2.jsonl"
+        good = {
+            "id": 1, "worker_id": "w1", "event_type": "action", "event_kind": "tool_call",
+            "source": "worker", "cause_id": None, "content": "first", "timestamp": 1.0,
+        }
+        path.write_text(json.dumps(good) + "\n" + "not json at all\n")
+
+        with caplog.at_level(logging.WARNING):
+            replayed = EventStream.replay_from_path(path)
+
+        assert len(replayed) == 1
+        assert replayed[0].event_kind == "tool_call"
+        assert any("corrupt" in rec.getMessage().lower() for rec in caplog.records)
 
 
 class TestBuildCausalChain:
@@ -296,6 +341,41 @@ class TestSessionTree:
         assert tree.entries() == []
         assert tree.root_id() is None
         assert tree.latest_id() is None
+
+    def test_entries_logs_and_skips_corrupt_line(self, tmp_path, caplog):
+        path = tmp_path / "session.jsonl"
+        tree = SessionTree(path)
+        sid = tree.session_start({"project": "clade"})
+        uid = tree.user("hello", parent_id=sid)
+        with open(path, "a", encoding="utf-8") as f:
+            f.write("{not valid json\n")
+        tree.user("world", parent_id=uid)
+
+        with caplog.at_level(logging.WARNING):
+            entries = tree.entries()
+
+        # Behavior unchanged: the 3 valid entries still load, corrupt line skipped
+        assert [e["type"] for e in entries] == ["session_start", "user", "user"]
+        # Corruption is now surfaced via a warning log (not silently swallowed)
+        assert any("corrupt" in rec.getMessage().lower() for rec in caplog.records)
+
+    def test_get_entry_logs_and_skips_corrupt_line(self, tmp_path, caplog):
+        path = tmp_path / "session.jsonl"
+        # Corrupt line goes first so get_entry's scan must pass over it
+        # before reaching the valid target entry (a match on the first line
+        # would return early and never exercise the parse-failure path).
+        path.write_text("not valid json at all\n")
+        tree = SessionTree(path)
+        uid = tree.user("hello")
+
+        # Fresh instance so get_entry must read from disk (not the in-memory index)
+        tree2 = SessionTree(path)
+        with caplog.at_level(logging.WARNING):
+            entry = tree2.get_entry(uid)
+
+        assert entry is not None
+        assert entry["content"] == "hello"
+        assert any("corrupt" in rec.getMessage().lower() for rec in caplog.records)
 
 
 # ─── Tracing Tests ────────────────────────────────────────────────────────────

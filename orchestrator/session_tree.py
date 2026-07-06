@@ -17,10 +17,13 @@ Entry types:
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class SessionTree:
@@ -142,13 +145,16 @@ class SessionTree:
             return []
         entries = []
         with open(self.path, encoding="utf-8") as f:
-            for line in f:
+            for line_no, line in enumerate(f, 1):
                 line = line.strip()
                 if not line:
                     continue
                 try:
                     entry = json.loads(line)
-                except json.JSONDecodeError:
+                except json.JSONDecodeError as e:
+                    logger.warning(
+                        "skipping corrupt line %d in %s: %s", line_no, self.path, e
+                    )
                     continue
                 if type_filter and entry.get("type") != type_filter:
                     continue
@@ -162,13 +168,16 @@ class SessionTree:
         if not self.path.exists():
             return None
         with open(self.path, encoding="utf-8") as f:
-            for line in f:
+            for line_no, line in enumerate(f, 1):
                 try:
                     entry = json.loads(line.strip())
                     if entry.get("id") == entry_id:
                         self._entry_index[entry_id] = entry
                         return entry
-                except json.JSONDecodeError:
+                except json.JSONDecodeError as e:
+                    logger.warning(
+                        "skipping corrupt line %d in %s: %s", line_no, self.path, e
+                    )
                     continue
         return None
 

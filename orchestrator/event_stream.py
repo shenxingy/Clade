@@ -210,13 +210,16 @@ class EventStream:
         events: list[WorkerEvent] = []
         try:
             with open(path) as f:
-                for line in f:
+                for line_no, line in enumerate(f, 1):
                     line = line.strip()
                     if not line:
                         continue
                     try:
                         obj = json.loads(line)
-                    except json.JSONDecodeError:
+                    except json.JSONDecodeError as e:
+                        logger.warning(
+                            "skipping corrupt line %d in %s: %s", line_no, path, e
+                        )
                         continue
                     if obj.get("type") == "session_start":
                         continue
@@ -246,13 +249,19 @@ class EventStream:
         events = []
         try:
             with open(self._jsonl_path) as f:
-                for line in f:
+                for line_no, line in enumerate(f, 1):
                     line = line.strip()
                     if not line:
                         continue
                     try:
                         obj = json.loads(line)
-                    except json.JSONDecodeError:
+                    except json.JSONDecodeError as e:
+                        logger.warning(
+                            "skipping corrupt line %d in %s: %s",
+                            line_no,
+                            self._jsonl_path,
+                            e,
+                        )
                         continue
                     if obj.get("type") == "session_start":
                         continue
