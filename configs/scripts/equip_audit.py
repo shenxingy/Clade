@@ -21,17 +21,21 @@ from typing import Optional
 
 from equip_common import (
     Upstream,
+    agents_root,
     audits_dir,
     cache_dir,
+    classify_tool_permission,
     clone_or_update_cache,
     current_commit,
     detect_layout,
+    detect_upstream_agents_dir,
     detect_upstream_skills_dir,
     ensure_equipment_dir,
     file_hash,
     find_upstream,
     latest_tag,
     load_upstreams,
+    read_frontmatter,
     save_upstreams,
     skills_root,
 )
@@ -136,6 +140,31 @@ def check_quality(skill_dir: Path, flags: list[Flag]) -> None:
                               remediation="SKILL.md missing required frontmatter"))
 
 
+def check_tool_consent(md_path: Path, flags: list[Flag]) -> None:
+    """Flag a wildcard/broad tool grant declared in frontmatter.
+
+    Agents declare `tools:` (Claude Code subagent convention); Clade skills
+    declare `allowed-tools:`. A wildcard grant (e.g. `tools: "*"`) is a hard
+    "block" — it must not silently pass as ADOPT, it needs an explicit human
+    check-the-box. An unusually broad allowlist (6+ tools, no wildcard token)
+    is a softer "warn".
+    """
+    front = read_frontmatter(md_path)
+    perm = classify_tool_permission(front)
+    if perm is None:
+        return
+    raw = front.get("tools", front.get("allowed-tools"))
+    snippet = str(raw)[:120]
+    if perm == "wildcard":
+        flags.append(Flag(id="PERM-01", severity="block", line=None,
+                          snippet=snippet,
+                          remediation="Wildcard tool grant — requires explicit human consent before adoption"))
+    elif perm == "broad":
+        flags.append(Flag(id="PERM-02", severity="warn", line=None,
+                          snippet=snippet,
+                          remediation="Unusually broad tool allowlist — review before adoption"))
+
+
 # ─── Per-skill audit ────────────────────────────────────────────────────────
 
 @dataclass
@@ -185,12 +214,43 @@ def audit_skill(skill_dir: Path, local_skill_dir: Optional[Path]) -> SkillAudit:
     check_bloat(skill_dir / "prompt.md", a.flags)
     # Quality heuristics
     check_quality(skill_dir, a.flags)
+    # Wildcard/broad tool-permission check (skill convention: allowed-tools:)
+    check_tool_consent(skill_dir / "SKILL.md", a.flags)
     # Overlap with local
     if local_skill_dir and local_skill_dir.is_dir():
         a.local_exists = True
         # Check if local differs from upstream
         from equip_scan import combined_hash
         if combined_hash(local_skill_dir) != combined_hash(skill_dir):
+            a.local_modified = True
+    return a
+
+
+def audit_agent(agent_path: Path, local_mirror: Optional[Path]) -> SkillAudit:
+    """Audit a single agent .md file — a flat file, not a skill directory.
+
+    Runs the same red-flag pattern scan + bloat check as audit_skill, plus
+    the wildcard/broad tool-permission check (agent convention: `tools:`) and
+    a frontmatter completeness check (name/description).
+    """
+    a = SkillAudit(name=agent_path.stem, path=str(agent_path))
+    try:
+        text = agent_path.read_text(errors="replace")
+    except Exception:
+        text = ""
+    a.flags.extend(scan_text_for_flags(text))
+    check_bloat(agent_path, a.flags)
+    check_tool_consent(agent_path, a.flags)
+    front = read_frontmatter(agent_path)
+    required = ["name", "description"]
+    missing = [r for r in required if r not in front]
+    if missing:
+        a.flags.append(Flag(id="QLT-03", severity="warn", line=None,
+                            snippet=", ".join(missing),
+                            remediation="Agent frontmatter missing required field(s)"))
+    if local_mirror is not None and local_mirror.is_file():
+        a.local_exists = True
+        if file_hash(local_mirror) != file_hash(agent_path):
             a.local_modified = True
     return a
 
@@ -207,6 +267,15 @@ def decision_icon(d: str) -> str:
     return {"ADOPT": "[x]", "NEEDS-REVIEW": "[ ]", "SKIP": "[ ]"}.get(d, "[ ]")
 
 
+def format_agent_line(a: SkillAudit) -> str:
+    mod_tag = " [MODIFIED-LOCALLY]" if a.local_modified else ""
+    line = f"- `{a.name}` — **{a.decision}** (score {a.score:.1f}/10){mod_tag}"
+    if a.flags:
+        flag_ids = ", ".join(sorted({f.id for f in a.flags}))
+        line += f"\n  flags: {flag_ids}"
+    return line
+
+
 def build_report(
     upstream_id: str,
     upstream_repo: str,
@@ -214,6 +283,7 @@ def build_report(
     upstream_version: Optional[str],
     audits: list[SkillAudit],
     native_names: set[str],
+    agent_audits: Optional[list[SkillAudit]] = None,
 ) -> str:
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     adopt = [a for a in audits if a.decision == "ADOPT"]
@@ -259,6 +329,19 @@ def build_report(
     section("ADOPT (safe, or adopt with auto-remediation)", adopt)
     section("NEEDS-REVIEW (block-severity flags or ≥3 warnings — human decision required)", review)
     section("SKIP (defaults — flip to `[x]` to override)", skip)
+
+    if agent_audits:
+        a_adopt = [a for a in agent_audits if a.decision == "ADOPT"]
+        a_review = [a for a in agent_audits if a.decision == "NEEDS-REVIEW"]
+        a_skip = [a for a in agent_audits if a.decision == "SKIP"]
+        lines.append("## Agents (informational — not yet wired to `/equip sync`)")
+        lines.append("")
+        lines.append(f"- **Agents evaluated:** {len(agent_audits)}")
+        lines.append(f"- **Decisions:** {len(a_adopt)} ADOPT · {len(a_review)} NEEDS-REVIEW · {len(a_skip)} SKIP")
+        lines.append("")
+        for a in agent_audits:
+            lines.append(format_agent_line(a))
+        lines.append("")
 
     return "\n".join(lines)
 
@@ -351,6 +434,21 @@ def main() -> int:
         a.compute_decision(overlap_native=overlap)
         audits.append(a)
 
+    # Agent audit (mirrors the skill audit above; agents are flat .md files,
+    # not directories, so there's no upstream-skills-dir style discovery step
+    # — just glob *.md directly under whichever agents dir applies).
+    agent_local_root = agents_root(project)
+    agent_audit_root = agent_local_root if target == "." else detect_upstream_agents_dir(cache_path)
+
+    agent_audits: list[SkillAudit] = []
+    if agent_audit_root and agent_audit_root.is_dir():
+        print(f"Auditing agents under: {agent_audit_root}")
+        for agent_file in sorted(agent_audit_root.glob("*.md")):
+            local_mirror = agent_local_root / agent_file.name
+            aa = audit_agent(agent_file, local_mirror if (target != "." and local_mirror.is_file()) else None)
+            aa.compute_decision(overlap_native=False)
+            agent_audits.append(aa)
+
     # Write report
     today = date.today().isoformat()
     report_path = audits_dir(project) / f"{upstream_id}-{today}.md"
@@ -361,6 +459,7 @@ def main() -> int:
         upstream_version=upstream_version if target != "." else None,
         audits=audits,
         native_names=native_names,
+        agent_audits=agent_audits,
     )
     report_path.write_text(report)
 
@@ -373,6 +472,9 @@ def main() -> int:
     print(f"  ADOPT:        {adopt_n}")
     print(f"  NEEDS-REVIEW: {review_n}")
     print(f"  SKIP:         {skip_n}")
+    if agent_audits:
+        agent_review_n = sum(1 for a in agent_audits if a.decision == "NEEDS-REVIEW")
+        print(f"  Agents evaluated: {len(agent_audits)} ({agent_review_n} NEEDS-REVIEW)")
     print()
     if review_n:
         print("Top needs-review items:")

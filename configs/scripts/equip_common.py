@@ -50,6 +50,10 @@ class Upstream:
     id: str
     repo: str                           # "owner/repo"
     branch: str = "main"
+    # If set, sync/scan/audit checkout this exact commit/tag (detached HEAD)
+    # instead of tracking `branch` HEAD — for reproducible absorption. Unset
+    # (None) preserves the original branch-tracking behavior.
+    pinned_ref: Optional[str] = None
     last_synced_commit: Optional[str] = None
     last_synced_version: Optional[str] = None
     last_synced_at: Optional[str] = None
@@ -63,6 +67,7 @@ class Upstream:
             id=d["id"],
             repo=d["repo"],
             branch=d.get("branch", "main"),
+            pinned_ref=d.get("pinned_ref"),
             last_synced_commit=d.get("last_synced_commit"),
             last_synced_version=d.get("last_synced_version"),
             last_synced_at=d.get("last_synced_at"),
@@ -76,6 +81,7 @@ class Upstream:
             "id": self.id,
             "repo": self.repo,
             "branch": self.branch,
+            "pinned_ref": self.pinned_ref,
             "last_synced_commit": self.last_synced_commit,
             "last_synced_version": self.last_synced_version,
             "last_synced_at": self.last_synced_at,
@@ -164,6 +170,13 @@ def scripts_root(project: Path, layout: Optional[str] = None) -> Path:
     return project / "scripts"
 
 
+def hooks_root(project: Path, layout: Optional[str] = None) -> Path:
+    layout = layout or detect_layout(project)
+    if layout == LAYOUT_A:
+        return project / "configs" / "hooks"
+    return project / "hooks"
+
+
 # ─── Hashing ────────────────────────────────────────────────────────────────
 
 def file_hash(path: Path) -> str:
@@ -243,6 +256,11 @@ def run(cmd: list[str], cwd: Optional[Path] = None, check: bool = True, capture:
 def clone_or_update_cache(project: Path, upstream: Upstream) -> Path:
     """Shallow-clone the upstream into cache, or pull latest if already there.
 
+    If `upstream.pinned_ref` is set, checks out that exact commit/tag
+    (detached HEAD) instead of tracking `upstream.branch` HEAD — trading
+    "always latest" for reproducibility. Unset (None, the default) preserves
+    the original branch-tracking behavior.
+
     Returns the cache path for this upstream.
     """
     cache = cache_dir(project) / upstream.id
@@ -251,17 +269,32 @@ def clone_or_update_cache(project: Path, upstream: Upstream) -> Path:
     if not url.startswith(("http://", "https://", "git@")):
         url = f"https://github.com/{upstream.repo}.git"
 
+    ref = upstream.pinned_ref or upstream.branch
+
     if cache.is_dir() and (cache / ".git").is_dir():
         # Update
         try:
-            run(["git", "fetch", "--depth", "1", "origin", upstream.branch], cwd=cache)
-            run(["git", "reset", "--hard", f"origin/{upstream.branch}"], cwd=cache)
+            run(["git", "fetch", "--depth", "1", "origin", ref], cwd=cache)
+            if upstream.pinned_ref:
+                run(["git", "checkout", "--detach", "FETCH_HEAD"], cwd=cache)
+            else:
+                run(["git", "reset", "--hard", f"origin/{ref}"], cwd=cache)
         except subprocess.CalledProcessError as e:
             print(f"WARNING: fetch failed for {upstream.id}: {e.stderr}", file=sys.stderr)
     else:
         if cache.exists():
             shutil.rmtree(cache)
-        run(["git", "clone", "--depth", "1", "--branch", upstream.branch, url, str(cache)])
+        if upstream.pinned_ref:
+            # Clone the repo shallowly, then fetch+checkout the pinned ref
+            # specifically (it may not be on the default branch's tip).
+            run(["git", "clone", "--depth", "1", url, str(cache)])
+            try:
+                run(["git", "fetch", "--depth", "1", "origin", ref], cwd=cache)
+                run(["git", "checkout", "--detach", "FETCH_HEAD"], cwd=cache)
+            except subprocess.CalledProcessError as e:
+                print(f"WARNING: could not fetch pinned ref {ref!r} for {upstream.id}: {e.stderr}", file=sys.stderr)
+        else:
+            run(["git", "clone", "--depth", "1", "--branch", ref, url, str(cache)])
     return cache
 
 
@@ -284,12 +317,96 @@ def latest_tag(repo_path: Path) -> Optional[str]:
 
 # ─── Layout detection of upstream ───────────────────────────────────────────
 
-def detect_upstream_skills_dir(upstream_root: Path) -> Optional[Path]:
-    """Find where skills live in a cloned upstream repo."""
-    for candidate in ("skills", "configs/skills"):
+def detect_upstream_dir(upstream_root: Path, candidates: list[str]) -> Optional[Path]:
+    """Find the first existing candidate subdir in a cloned upstream repo."""
+    for candidate in candidates:
         p = upstream_root / candidate
         if p.is_dir():
             return p
+    return None
+
+
+def detect_upstream_skills_dir(upstream_root: Path) -> Optional[Path]:
+    """Find where skills live in a cloned upstream repo."""
+    return detect_upstream_dir(upstream_root, ["skills", "configs/skills"])
+
+
+def detect_upstream_agents_dir(upstream_root: Path) -> Optional[Path]:
+    """Find where agent definitions live in a cloned upstream repo."""
+    return detect_upstream_dir(upstream_root, ["agents", "configs/agents"])
+
+
+def detect_upstream_scripts_dir(upstream_root: Path) -> Optional[Path]:
+    """Find where scripts live in a cloned upstream repo."""
+    return detect_upstream_dir(upstream_root, ["scripts", "configs/scripts"])
+
+
+def detect_upstream_hooks_dir(upstream_root: Path) -> Optional[Path]:
+    """Find where hooks live in a cloned upstream repo."""
+    return detect_upstream_dir(upstream_root, ["hooks", "configs/hooks"])
+
+
+# ─── Frontmatter + tool-permission classification ──────────────────────────
+
+FRONTMATTER_RE = re.compile(r"^---[ \t]*\n(.*?\n)---[ \t]*(?:\n|$)", re.DOTALL)
+
+# Tokens that grant unrestricted tool access outright.
+WILDCARD_TOOL_TOKENS = {"*", "all"}
+# 6+ distinct tools declared counts as an "unusually broad" allowlist — worth
+# a human glance even without an explicit wildcard token.
+BROAD_TOOL_THRESHOLD = 6
+
+
+def read_frontmatter(path: Path) -> dict[str, Any]:
+    """Parse the leading `---\\n...\\n---` YAML frontmatter block of a markdown file.
+
+    Returns {} if the file is missing, has no frontmatter, or it fails to parse
+    (never raises — this is a best-effort scan helper).
+    """
+    if not path.is_file():
+        return {}
+    try:
+        text = path.read_text(errors="replace")
+    except Exception:
+        return {}
+    m = FRONTMATTER_RE.match(text)
+    if not m:
+        return {}
+    try:
+        data = yaml.safe_load(m.group(1))
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def classify_tool_permission(front: dict[str, Any]) -> Optional[str]:
+    """Inspect parsed frontmatter for a wildcard or unusually broad tool grant.
+
+    Checks `tools` (subagent convention — Claude Code grants ALL tools when
+    this key is absent, so this function only judges what's *declared*) and
+    `allowed-tools` (Clade skill convention). Both may be a comma-separated
+    string or a YAML list.
+
+    Returns "wildcard", "broad", or None.
+    """
+    raw = front.get("tools")
+    if raw is None:
+        raw = front.get("allowed-tools")
+    if raw is None:
+        return None
+
+    if isinstance(raw, str):
+        items = [t.strip() for t in raw.split(",") if t.strip()]
+    elif isinstance(raw, list):
+        items = [str(t).strip() for t in raw if str(t).strip()]
+    else:
+        return None
+
+    normalized = {i.strip("'\"").lower() for i in items}
+    if normalized & WILDCARD_TOOL_TOKENS:
+        return "wildcard"
+    if len(normalized) >= BROAD_TOOL_THRESHOLD:
+        return "broad"
     return None
 
 
