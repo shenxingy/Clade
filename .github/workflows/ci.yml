@@ -158,6 +158,12 @@ jobs:
       - name: Run quiet-run tests
         run: bash tests/test-quiet-run.sh
 
+      # Adversarial-review finding (wiring/deploy-gap): this suite existed since
+      # commit cea7729/c61e4c2 (MCP context-budget audit, Round-4/tw93) but was
+      # never added here — 27 real test cases silently not running in CI.
+      - name: Run scan-health tests
+        run: bash tests/test-scan-health.sh
+
   install-test:
     name: Install Test
     runs-on: ubuntu-latest
