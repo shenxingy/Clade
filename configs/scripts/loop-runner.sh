@@ -29,6 +29,7 @@
 #   --context FILE        pre-generated context file (passed to supervisor)
 #   --state FILE          state file (default: .claude/loop-state.json)
 #   --log-dir DIR         log directory (default: logs/loop)
+#   --dry-run             preview plan, no claude calls (see run_dry_run_preview)
 
 set -euo pipefail
 
@@ -99,6 +100,7 @@ STATE_FILE=".claude/loop-state.json"
 LOG_DIR="logs/loop"
 INTERRUPT_STATE_FILE=".claude/interrupt-state.json"
 ITERATION=0
+DRY_RUN=false
 # ────────────────────────────────────────────────────────────────
 
 # ─── LOGGING ────────────────────────────────────────────────────
@@ -152,6 +154,7 @@ print(f'Interrupt state written to {path}')
       --resume)       shift ;;  # no-op: Blueprint loop always resumes from state
       --budget)       shift 2 ;;  # accepted but not used in Blueprint mode
       --exit-gate)    shift 2 ;;  # accepted but not used in Blueprint mode
+      --dry-run)      DRY_RUN=true; shift ;;
       *) log_warn "Unknown arg: $1"; shift ;;
     esac
   done
@@ -1233,6 +1236,31 @@ print(d.get('phase', ''))
   return 1
 }
 
+# ─── DRY RUN: preview plan, no claude calls, no state writes ────
+run_dry_run_preview() {
+  [ -f "$GOAL_FILE" ] || { echo "ERROR: Goal file not found: $GOAL_FILE" >&2; return 1; }
+  local open total verify plan est
+  open=$(grep -c '^\- \[ \]' "$GOAL_FILE" 2>/dev/null || true); open=${open:-0}
+  total=$(grep -c '^\- \[' "$GOAL_FILE" 2>/dev/null || true); total=${total:-0}
+  verify=$(_read_verify_cmd)
+  est=$(( (open + MAX_WORKERS - 1) / MAX_WORKERS )); [ "$est" -gt "$MAX_ITER" ] && est=$MAX_ITER
+  if [ "$total" -eq 0 ]; then plan="freeform (no checklist items in goal file)"
+  elif [ "$open" -eq 0 ]; then plan="0 -- goal already converged (0 unchecked items)"
+  else plan="up to $MAX_WORKERS/iteration, ~$est iteration(s) for $open open item(s) (capped at --max-iter $MAX_ITER)"
+  fi
+  cat <<EOF
+[DRY RUN] Blueprint Loop preview -- no claude calls, no loop-state written
+  Goal file:      $GOAL_FILE
+  Goal items:     $open open / $total total (unchecked '- [ ]' items)
+  Models:         supervisor=$SUPERVISOR_MODEL worker=$WORKER_MODEL
+  Iter/workers:   max-iter=$MAX_ITER max-workers=$MAX_WORKERS
+  State/log:      $STATE_FILE (would NOT be written) / $LOG_DIR
+  Verify cmd:     ${verify:-(none declared in CLAUDE.md)}
+  Planned tasks:  $plan
+EOF
+}
+# ────────────────────────────────────────────────────────────────
+
 # ─── MAIN BLUEPRINT LOOP ────────────────────────────────────────
 run_blueprint_loop() {
   # Try to recover from checkpoint
@@ -1458,8 +1486,11 @@ main() {
     echo "  --context FILE        pre-generated context file"
     echo "  --state FILE          state file (default: .claude/loop-state.json)"
     echo "  --log-dir DIR         log directory (default: logs/loop)"
+    echo "  --dry-run             preview iteration plan, no claude calls"
     exit 1
   fi
+
+  if [ "$DRY_RUN" = "true" ]; then run_dry_run_preview; exit $?; fi
 
   run_blueprint_loop
 }

@@ -760,6 +760,20 @@ export MOCK_CLAUDE_RESPONSE="STATUS: CONVERGED"
 output=$(bash "$SCRIPTS_DIR/loop-runner.sh" "goal.md" --max-iter 10 --state .claude/loop-state7 --log-dir logs/loop 2>&1) || true
 # Fresh start (no --resume) should reset to iteration 0, so first iteration is 1
 assert_contains "$output" "Iteration 1" "fresh start resets to iteration 1"
+create_goal_file "goal-dry.md"; rm -rf .claude/loop-state-dry logs/loop-dry  # Test 8: --dry-run spawns zero subprocesses/state writes
+export MOCK_CLAUDE_ARGS_LOG="$TEST_DIR/claude-args-dry-$$.log"; dry_run_args_log="$MOCK_CLAUDE_ARGS_LOG"; rm -f "$MOCK_CLAUDE_ARGS_LOG"  # captured before unset (set -u safe)
+export MOCK_CLAUDE_RESPONSE='[{"description": "Should never run: dry-run must not spawn claude", "model": "haiku", "files": ["should-not-exist.txt"]}]'
+output=$(bash "$SCRIPTS_DIR/loop-runner.sh" "goal-dry.md" --dry-run --max-iter 5 --max-workers 2 --state .claude/loop-state-dry --log-dir logs/loop-dry 2>&1); ec=$?; unset MOCK_CLAUDE_ARGS_LOG MOCK_CLAUDE_RESPONSE
+assert_exit_code "0" "$ec" "dry-run exits 0"
+assert_contains "$output" "DRY RUN" "dry-run preview banner shown"; assert_contains "$output" "goal-dry.md" "dry-run shows goal file"
+assert_contains "$output" "claude-sonnet-4-6" "dry-run shows model routing"; assert_contains "$output" "3 open / 3 total" "dry-run shows goal item counts"
+assert_contains "$output" "up to 2/iteration" "dry-run shows max-workers task cap"; assert_contains "$output" "capped at --max-iter 5" "dry-run shows max-iter cap"
+assert_not_contains "$output" "Blueprint Loop Complete" "dry-run does not run the real loop"
+TESTS_RUN=$((TESTS_RUN + 1)); if [[ -f "$dry_run_args_log" ]]; then fail "dry-run spawned a claude subprocess" "$(cat "$dry_run_args_log" 2>/dev/null)"; else pass "dry-run spawned zero claude subprocesses"; fi
+TESTS_RUN=$((TESTS_RUN + 1)); if [[ -e ".claude/loop-state-dry" ]]; then fail "dry-run wrote a loop-state file"; else pass "dry-run does not write loop-state"; fi
+TESTS_RUN=$((TESTS_RUN + 1)); if [[ -e "logs/loop-dry" ]]; then fail "dry-run created a log directory"; else pass "dry-run does not create a log directory"; fi
+output=$(bash "$SCRIPTS_DIR/loop-runner.sh" "nonexistent-dry.md" --dry-run 2>&1) || true  # companion: missing goal file, same error as a real run
+assert_contains "$output" "Goal file not found" "dry-run reports missing goal file"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════
