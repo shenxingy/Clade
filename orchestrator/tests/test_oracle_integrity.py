@@ -1148,6 +1148,28 @@ class TestFixIntentCriterion:
         await wr._oracle_review("fix: regression in worker pool", "x" * 9000, tmp_path)
         assert seen and all("bug-fix task" in t for t in seen)
 
+    def test_fix_task_gets_test_integrity_criterion(self):
+        # Kent Beck: a diff that reaches "tests pass" by weakening/deleting the
+        # failing assertion is not a fix — the oracle must check for that too.
+        block = wr._build_oracle_task_block("fix: crash on empty input", None)
+        assert "WEAKENING OR DELETING" in block
+        assert "test that got weaker to pass" in block
+
+    def test_non_fix_task_has_no_test_integrity_criterion(self):
+        block = wr._build_oracle_task_block("implement exports feature", None)
+        assert "WEAKENING OR DELETING" not in block
+
+    async def test_test_integrity_criterion_reaches_spec_prompt(self, tmp_path, monkeypatch):
+        prompts: list[str] = []
+
+        async def fake_pass(prompt, cdir, samples=1):
+            prompts.append(prompt)
+            return True, "high", "", False
+
+        monkeypatch.setattr(wr, "_oracle_pass", fake_pass)
+        await wr._oracle_review("fix: off-by-one in pagination", "small diff", tmp_path)
+        assert "WEAKENING OR DELETING" in prompts[0]
+
 
 # ─── Magnitude-anomaly skepticism for perf claims (Round-4, Mitchell Hashimoto) ──
 

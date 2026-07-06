@@ -330,6 +330,23 @@ _FIX_ONE_STEP_CRITERION = (
     "not a side note."
 )
 
+# Test-assertion-integrity check (Kent Beck: TDD discipline — a test that gets
+# WEAKER to pass is not a fix). Repro-test generation/gating (worker_taskfile.py
+# _generate_repro_test) is already superset-level solid, but nothing checked the
+# opposite failure mode: a diff that reaches "tests pass" by weakening or
+# deleting the failing assertion instead of fixing the underlying code.
+_TEST_INTEGRITY_CRITERION = (
+    "Additional integrity criterion: check whether the diff reaches a passing test "
+    "suite by WEAKENING OR DELETING an existing test rather than fixing the "
+    "underlying code. Red flags: removed assertions, loosened assertion values "
+    "(exact equality relaxed to a range, a strict check replaced with a truthy check), "
+    "deleted test cases, newly skipped/xfail/disabled tests, or a test rewritten to "
+    "match the (buggy) new behavior instead of the originally-intended expected "
+    "behavior. If the diff touches test code, verify the change preserves or "
+    "tightens the assertion's strength — a test that got weaker to pass is a "
+    "violation, not a fix, even if the stated result is 'tests now pass'."
+)
+
 
 def _detect_fix_intent(task_description: str) -> bool:
     """True when the task is a bug fix (fix:/bug/regression/hotfix in the description)."""
@@ -393,6 +410,7 @@ def _build_oracle_task_block(
             infra="yes" if test_evidence else "unknown"
         )
         block += "\n\n" + _FIX_ONE_STEP_CRITERION
+        block += "\n\n" + _TEST_INTEGRITY_CRITERION
     if _detect_perf_intent(task_description):
         block += "\n\n" + _PERF_MAGNITUDE_CRITERION
     if test_evidence:
