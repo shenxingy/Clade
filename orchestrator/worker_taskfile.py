@@ -285,9 +285,17 @@ async def build_task_file(w: Any, task_queue: Any | None) -> Path:
                     context_blocks.append(repro_test)
     except Exception:
         pass
-    # Pre-hydration: fetch linked GitHub issues/PRs before agent starts (Stripe Blueprint pattern)
+    # Pre-hydration: fetch linked GitHub issues/PRs before agent starts (Stripe
+    # Blueprint pattern). distill=hydration_distillation (default False, gap B
+    # — clean-room hydration distillation) routes fetched text through a
+    # pinned Haiku judge before it reaches this --dangerously-skip-permissions
+    # worker session; claude_dir is the judge's scratch cwd.
     try:
-        hydrate_block = await _pre_hydrate(w.description, w._project_dir)
+        hydrate_block = await _pre_hydrate(
+            w.description, w._project_dir,
+            claude_dir=w._claude_dir,
+            distill=bool(GLOBAL_SETTINGS.get("hydration_distillation", False)),
+        )
         if hydrate_block:
             context_blocks.append(hydrate_block)
     except Exception:

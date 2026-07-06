@@ -54,6 +54,7 @@ import condensers
 import worker_review
 import worker_tldr
 import worker_utils
+import worker_hydrate
 from worker_review import (
     _oracle_review, _read_constitution, _summarize_worker_completion,
     _record_oracle_infra_error, _reset_oracle_infra_streak,
@@ -87,7 +88,7 @@ logger = logging.getLogger(__name__)
 # snapshot and the pure-judge settings flag into them here (they default to
 # the 'haiku' alias / the same flag literal when imported standalone).
 # config.py is the single source of truth for both.
-for _leaf_mod in (condensers, worker_review, worker_tldr, worker_utils):
+for _leaf_mod in (condensers, worker_review, worker_tldr, worker_utils, worker_hydrate):
     _leaf_mod.HAIKU_MODEL = HAIKU_MODEL
     _leaf_mod.SETTING_SOURCES_NONE = SETTING_SOURCES_NONE
     _leaf_mod.DISALLOWED_TOOLS_JUDGE = DISALLOWED_TOOLS_JUDGE

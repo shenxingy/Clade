@@ -188,6 +188,16 @@ _SETTINGS_DEFAULTS = {
     "usage_hub_url": "",                # if set, push to this orchestrator (e.g. http://hub:8000)
     "usage_hub_token": "",              # bearer token shared with hub for ingest auth
     "usage_ingest_token": "",           # hub-side: required Bearer token for /api/usage/ingest (empty = open)
+    # Clean-room hydration distillation (Round-4 study, Salvatore Sanfilippo).
+    # When True, untrusted GitHub issue/PR text is first passed through a
+    # pinned, contained Haiku judge (same containment as the oracle —
+    # worker_review._oracle_pass_once) that produces a compact, neutral
+    # factual summary and strips anything that reads as an embedded
+    # instruction to the coding agent, BEFORE it reaches the SAME
+    # --dangerously-skip-permissions session that runs shell. Default False =
+    # today's behavior (raw text hydrated verbatim). Fail-open: a distillation
+    # error/timeout falls back to the raw text — this never blocks hydration.
+    "hydration_distillation": False,
     "reactions_enabled": True,
     "reaction_configs": [
         {
