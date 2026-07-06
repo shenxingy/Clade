@@ -185,6 +185,11 @@ without claude CLI + credentials it prints SKIP and exits 0.
 - Settings → `config.py:_SETTINGS_DEFAULTS` only
 - DB migrations → try/except ALTER TABLE in `_ensure_db()`
 - Never return `error.message` in 500 responses
+- If you fan out your own Task-tool subagents within one task: **serialize any
+  subagent that writes/builds/runs tests** (they race on the same worktree's
+  build artifacts and test state); reads (grep/analysis/research) may run in
+  parallel freely. Geoffrey Huntley: uncoordinated parallel writers to shared
+  build/test state is a real race, not a hypothetical one.
 
 ## Auto-Promoted Rules
 <!-- Promoted from .claude/corrections/rules.md via /audit. Each rule lists its original recording date. -->
