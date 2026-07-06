@@ -32,10 +32,12 @@ User question: 找新大佬 — Anthropic 之外的公司/组织/独立开发者
 
 **Weak/watch-list (not added)**: Factory.ai founders (vendor marketing, thin repo), 2 Amp Inc engineers with genuinely good content but stale (>2mo) dates, Shopify (hallucinated evidence — see process note).
 
-### Not yet decided (pending user call)
+### Decided 2026-07-06
 
-- [ ] Scope: fold the 17 individual-shaped entries (old-guard + independent) into the ongoing tracked roster now (same shape as existing 6)? Treat the 11 org-level entries as one-time targeted mining pulls instead of permanent trackees? Keep the 2 aggregators as recon-only?
-- [ ] Whether/when to run a Round-4-style deep-mining pass (find concrete adoptable mechanisms, adversarially verify against Clade's own code) on whichever subset is approved.
+- [x] **Scope: roster EXPANDED.** The 17 individual-shaped entries (10 old-guard + 7 independent) are now full ongoing tracked-experts members, same standing as the original 6 (Mic92, felixrieseberg, domdomegg, lovesegfault, controversial, claude-cookbooks) — future rounds re-scan their blogs/repos. The 11 org-level entries (Warp, Replit, Cloudflare, Grab, Block/Goose, OpenHands, Mercari, Samsung, Ben Balter, plus Amp Inc's Gerold/Cheek folded into org context) are one-time targeted mining pulls, not re-scanned indefinitely. The 2 aggregators (Pragmatic Engineer, Latent Space) stay recon-only — used to surface next round's candidates, never mined directly.
+- [x] **Full deep-mining pass authorized NOW** on all 17 individuals — see the Round-4-style study immediately below.
+
+**Updated tracked-experts roster (as of this entry): Mic92, felixrieseberg, domdomegg, lovesegfault, controversial, claude-cookbooks + Steve Yegge, Thorsten Ball, Simon Willison, Armin Ronacher, antirez, Peter Steinberger, Mitchell Hashimoto, DHH, Guillermo Rauch, Kent Beck, Geoffrey Huntley, Pieter Levels, Matt Pocock, tw93, fennu2333, Takanori Sano, minorun365 (23 total).**
 
 ## [Research] 2026-07-05 — Elite workflows ROUND 3 (what's NEW since 2026-06-12)
 
