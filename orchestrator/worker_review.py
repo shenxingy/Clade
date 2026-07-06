@@ -336,6 +336,39 @@ def _detect_fix_intent(task_description: str) -> bool:
     return bool(_FIX_INTENT_RE.search(task_description or ""))
 
 
+# Magnitude-anomaly skepticism (Mitchell Hashimoto: "agent psychosis" — models
+# routinely overstate self-reported wins). The oracle already gates bug-fix
+# tasks with _FIX_ONE_STEP_CRITERION but had no equivalent skepticism for
+# perf/optimization claims — a huge before/after ratio was graded at face value.
+_PERF_INTENT_RE = re.compile(
+    r"\bperf(?:ormance)?\b|\boptimiz\w*\b|\bspeed\s*up\b|\bsped\s*up\b|"
+    r"\bfaster\b|\blatency\b|\bthroughput\b|\bbenchmark\w*\b",
+    re.IGNORECASE,
+)
+
+_PERF_MAGNITUDE_CRITERION = (
+    "Additional completeness criterion (performance/optimization task): treat a large "
+    "self-reported improvement with skepticism — models routinely overstate wins "
+    "('agent psychosis'). Before accepting an order-of-magnitude or larger claimed "
+    "improvement (e.g. 10x+, '99% faster', a huge before/after ratio), verify from the "
+    "diff and any reported numbers: "
+    "(a) the benchmark methodology is sound (same workload/environment, warm-up "
+    "accounted for, not a degenerate or trivially-small input); "
+    "(b) the diff explains a REAL mechanism for the speedup and does not simply skip "
+    "the work being measured (caching that bypasses the correctness path, a smaller "
+    "test input, dead-code elimination that removes the very thing benchmarked); "
+    "(c) correctness is preserved for the ORIGINAL input space, not just the fast path. "
+    "If a claimed number cannot be independently justified from the diff and the "
+    "reported methodology, report it as an issue and require re-verification — never "
+    "accept a magnitude claim at face value just because it is large."
+)
+
+
+def _detect_perf_intent(task_description: str) -> bool:
+    """True when the task claims a performance/optimization win worth extra scrutiny."""
+    return bool(_PERF_INTENT_RE.search(task_description or ""))
+
+
 def _build_oracle_task_block(
     task_description: str,
     acceptance_criteria: list[str] | None,
@@ -360,6 +393,8 @@ def _build_oracle_task_block(
             infra="yes" if test_evidence else "unknown"
         )
         block += "\n\n" + _FIX_ONE_STEP_CRITERION
+    if _detect_perf_intent(task_description):
+        block += "\n\n" + _PERF_MAGNITUDE_CRITERION
     if test_evidence:
         block += f"\n\nTest results (run before this review):\n{test_evidence[:800]}"
     return block

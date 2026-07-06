@@ -1149,6 +1149,71 @@ class TestFixIntentCriterion:
         assert seen and all("bug-fix task" in t for t in seen)
 
 
+# ─── Magnitude-anomaly skepticism for perf claims (Round-4, Mitchell Hashimoto) ──
+
+
+class TestDetectPerfIntent:
+    @pytest.mark.parametrize("desc", [
+        "perf: cut request latency in half",
+        "optimize the hot path in the parser",
+        "speed up the ingest pipeline 10x",
+        "sped up cold start by removing sync IO",
+        "benchmark and improve throughput",
+        "reduce latency on the search endpoint",
+    ])
+    def test_perf_intent_detected(self, desc):
+        assert wr._detect_perf_intent(desc) is True
+
+    @pytest.mark.parametrize("desc", [
+        "implement new feature for exports",
+        "fix: crash on empty input",
+        "refactor module layout",
+        "",
+    ])
+    def test_no_perf_intent(self, desc):
+        assert wr._detect_perf_intent(desc) is False
+
+
+class TestPerfMagnitudeCriterion:
+    def test_perf_task_gets_magnitude_criterion(self):
+        block = wr._build_oracle_task_block("optimize: cut latency 10x", None)
+        assert "performance/optimization task" in block
+        assert "agent psychosis" in block
+        assert "magnitude claim at face value" in block
+
+    def test_non_perf_task_has_no_criterion(self):
+        block = wr._build_oracle_task_block("implement exports feature", None)
+        assert "performance/optimization task" not in block
+
+    def test_fix_and_perf_criteria_can_coexist(self):
+        # a task can be both a fix and a perf claim (e.g. "fix: N+1 query, 50x faster")
+        block = wr._build_oracle_task_block("fix: N+1 query, now 50x faster", None)
+        assert "bug-fix task" in block
+        assert "performance/optimization task" in block
+
+    async def test_criterion_reaches_spec_prompt(self, tmp_path, monkeypatch):
+        prompts: list[str] = []
+
+        async def fake_pass(prompt, cdir, samples=1):
+            prompts.append(prompt)
+            return True, "high", "", False
+
+        monkeypatch.setattr(wr, "_oracle_pass", fake_pass)
+        await wr._oracle_review("optimize: cut latency 10x", "small diff", tmp_path)
+        assert "performance/optimization task" in prompts[0]
+
+    async def test_criterion_reaches_chunked_path(self, tmp_path, monkeypatch):
+        seen: list[str] = []
+
+        async def fake_chunk(task, chunk, label, cdir, constitution="", samples=1):
+            seen.append(task)
+            return True, "approved", False
+
+        monkeypatch.setattr(wr, "_oracle_review_chunk", fake_chunk)
+        await wr._oracle_review("optimize: reduce p99 latency", "x" * 9000, tmp_path)
+        assert seen and all("performance/optimization task" in t for t in seen)
+
+
 async def test_poll_all_requeues_on_pre_push_test_failure(task_queue, tmp_path):
     pool = wmod.WorkerPool()
     claude_dir = tmp_path / ".claude"
