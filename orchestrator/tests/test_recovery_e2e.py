@@ -593,3 +593,29 @@ async def test_ci_failure_prehydrated_then_passing_run_drops_block(
     run_calls = [c for c in calls if c.startswith("run view 4242")]
     assert len(run_calls) == 2
     assert (h.gh_state / "run-4242.calls").read_text().strip() == "2"
+
+
+# ─── 8. pgid persisted at spawn (Round-4, Guillermo Rauch) ────────────────────
+
+TRIVIAL_DONE_SCRIPT = """\
+echo "did the trivial thing" >> notes.md
+echo '```json'
+echo '{"status": "done", "summary": "trivial", "next_actions": [], "artifacts": []}'
+echo '```'
+"""
+
+
+async def test_pgid_persisted_at_spawn(harness: RecoveryHarness) -> None:
+    """A server restart loses every in-memory Worker object, but the spawned OS
+    process group (setsid) survives — config._recover_orphaned_tasks needs the
+    persisted pgid to find and reap it. Prior bug: pgid lived only on the
+    Worker instance and was never written to the task row."""
+    h = harness
+    h.worker_script(1, TRIVIAL_DONE_SCRIPT)
+
+    w = await h.spawn("Do the trivial thing")
+    assert w.pgid is not None
+    await h.finish(w)  # lets the fire-and-forget persist task run to completion
+
+    row = await h.tq.get(w.task_id)
+    assert row["pgid"] == w.pgid

@@ -146,6 +146,7 @@ class TaskQueue:
                 await _migrate("ALTER TABLE tasks ADD COLUMN phase TEXT DEFAULT 'implement'")
                 await _migrate("ALTER TABLE tasks ADD COLUMN oracle_result TEXT")
                 await _migrate("ALTER TABLE tasks ADD COLUMN oracle_reason TEXT")
+                await _migrate("ALTER TABLE tasks ADD COLUMN pgid INTEGER")
                 await db.execute("""
                     CREATE TABLE IF NOT EXISTS worker_messages (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,

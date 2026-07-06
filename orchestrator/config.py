@@ -11,6 +11,7 @@ import logging
 import os
 import re
 import shlex
+import signal
 import time
 from pathlib import Path
 from typing import Any
@@ -31,7 +32,7 @@ _ALLOWED_TASK_COLS = {"status", "description", "model", "depends_on", "score",
                       "task_type", "source_ref", "parent_task_id", "priority_score",
                       "handoff_type", "handoff_payload", "completion_summary",
                       "token_budget", "context_version", "attempt_count",
-                      "phase", "oracle_result", "oracle_reason"}
+                      "phase", "oracle_result", "oracle_reason", "pgid"}
 
 _ALLOWED_LOOP_COLS = {
     "name", "artifact_path", "context_dir", "status", "iteration",
@@ -382,11 +383,67 @@ def _estimate_cost(input_tokens: int, output_tokens: int) -> float:
 # ─── Session Recovery ─────────────────────────────────────────────────────────
 
 
+def _pgid_alive_and_claude_like(pgid: int) -> bool:
+    """Best-effort (Linux /proc) check that `pgid` is still a live claude-worker
+    process before it gets killed. PIDs are reused by the OS, so after a
+    restart a remembered pgid could — in the worst case — belong to a totally
+    unrelated process by the time recovery runs; killing on cmdline content is
+    a cheap extra check, not a guarantee. Returns True (safe to kill) whenever
+    the check can't be performed (non-Linux, unreadable /proc, already gone —
+    killpg's own ProcessLookupError handles that case) so recovery still
+    reaps real orphans on platforms without /proc."""
+    cmdline_path = Path(f"/proc/{pgid}/cmdline")
+    try:
+        if not cmdline_path.exists():
+            return True  # no /proc (non-Linux) or already exited — proceed
+        cmdline = cmdline_path.read_bytes().replace(b"\x00", b" ").decode(errors="replace")
+        return "claude" in cmdline
+    except Exception:
+        return True  # unreadable — proceed rather than silently never-reap
+
+
 async def _recover_orphaned_tasks(task_queue: Any) -> int:
-    """Mark running/starting tasks as interrupted after server restart. Fail-open."""
+    """Mark running/starting tasks as interrupted after server restart.
+
+    A worker's OS process group (setsid) survives the orchestrator's own exit
+    — the in-memory Worker object is gone, but the subprocess keeps running.
+    Guillermo Rauch (open-agents): check-and-kill the persisted pgid BEFORE
+    marking the task interrupted, so a fresh retry can never race a still-alive
+    process into the same branch/worktree (the old bug: this only relabeled
+    DB rows and left the real process running). Fail-open throughout — a
+    machine where killpg isn't permitted must not block recovery.
+    """
     try:
         await task_queue._ensure_db()
         async with aiosqlite.connect(str(task_queue._db_path)) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT id, pgid FROM tasks WHERE status IN ('running', 'starting')"
+            ) as cur:
+                rows = [dict(r) for r in await cur.fetchall()]
+            for row in rows:
+                pgid = row.get("pgid")
+                if not pgid:
+                    continue
+                if not _pgid_alive_and_claude_like(pgid):
+                    logger.warning(
+                        "_recover_orphaned_tasks: pgid %d (task %s) no longer looks like "
+                        "a claude worker — skipping kill (likely PID reuse)", pgid, row["id"],
+                    )
+                    continue
+                try:
+                    os.killpg(pgid, signal.SIGTERM)
+                    logger.warning(
+                        "_recover_orphaned_tasks: killed orphaned process group %d (task %s)",
+                        pgid, row["id"],
+                    )
+                except ProcessLookupError:
+                    pass  # already dead — nothing to reap
+                except Exception as e:
+                    logger.warning(
+                        "_recover_orphaned_tasks: killpg(%d) failed for task %s: %s",
+                        pgid, row["id"], e,
+                    )
             cursor = await db.execute(
                 "UPDATE tasks SET status = 'interrupted' WHERE status IN ('running', 'starting')"
             )

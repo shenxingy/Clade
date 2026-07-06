@@ -367,6 +367,13 @@ class Worker:
             self.pgid = os.getpgid(self.proc.pid)
         except ProcessLookupError:
             self.pgid = self.proc.pid
+        # Persist pgid so a server restart can find and reap this OS process
+        # group even though the in-memory Worker object is gone (setsid means
+        # the subprocess survives the orchestrator's own exit — see
+        # config._recover_orphaned_tasks). Fire-and-forget: losing this write
+        # only degrades reaping on the NEXT restart, never blocks the worker.
+        if self._task_queue:
+            asyncio.create_task(self._task_queue.update(self.task_id, pgid=self.pgid))
         self.status = "running"
         self.transition_reason = "process_started"
         self._event_stream.emit(

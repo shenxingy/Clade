@@ -94,7 +94,7 @@ CREATE TABLE tasks (
                         forbidden_files TEXT DEFAULT '[]',
                         gh_issue_number INTEGER,
                         is_critical_path INTEGER DEFAULT 0
-                    , input_tokens INTEGER, output_tokens INTEGER, estimated_cost REAL, task_type TEXT DEFAULT 'AUTO', source_ref TEXT, parent_task_id TEXT, priority_score REAL DEFAULT 0.0, handoff_type TEXT, handoff_payload TEXT DEFAULT '{}', completion_summary TEXT, token_budget INTEGER DEFAULT 0, context_version INTEGER DEFAULT 0, attempt_count INTEGER DEFAULT 0, phase TEXT DEFAULT 'implement', oracle_result TEXT, oracle_reason TEXT);
+                    , input_tokens INTEGER, output_tokens INTEGER, estimated_cost REAL, task_type TEXT DEFAULT 'AUTO', source_ref TEXT, parent_task_id TEXT, priority_score REAL DEFAULT 0.0, handoff_type TEXT, handoff_payload TEXT DEFAULT '{}', completion_summary TEXT, token_budget INTEGER DEFAULT 0, context_version INTEGER DEFAULT 0, attempt_count INTEGER DEFAULT 0, phase TEXT DEFAULT 'implement', oracle_result TEXT, oracle_reason TEXT, pgid INTEGER);
 
 -- table worker_messages
 CREATE TABLE worker_messages (
