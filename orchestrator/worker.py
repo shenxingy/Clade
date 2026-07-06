@@ -322,6 +322,12 @@ class Worker:
         # Attribution: committer.sh appends Co-Authored-By + X-Clade-Task trailers
         # when this is set, letting commit-archeology segment agent vs human commits
         env["CLADE_WORKER_TASK_ID"] = str(self.task_id)
+        # Model provenance (Round-4 gap, Yegge pattern): record which model actually
+        # produced this spawn's commits — worker_fallback_model can silently swap
+        # the model mid-run (gap C), so CLADE_WORKER_TASK_ID alone can't tell you
+        # which model wrote a given commit. committer.sh appends an Agent-Signature
+        # trailer from this.
+        env["CLADE_WORKER_MODEL"] = model
         # Non-interactive git (mic92): rebase/amend/merge must never park an
         # unattended worker on an editor; `cat` accepts the default sequence and
         # prints it, so the rebase plan lands in the worker log.

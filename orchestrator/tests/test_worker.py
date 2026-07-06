@@ -98,6 +98,11 @@ def test_worker_build_cmd_and_env(tmp_path: Path) -> None:
     # attribution: committer.sh appends Co-Authored-By + X-Clade-Task trailers
     # when this is set, so every worker-session commit is agent-segmentable
     assert env["CLADE_WORKER_TASK_ID"] == "task-xyz"
+    # model provenance (Round-4 gap): committer.sh appends an Agent-Signature
+    # trailer from this — must be the resolved model actually used for the
+    # --model flag, not the raw alias ("haiku" → "claude-haiku...")
+    assert env["CLADE_WORKER_MODEL"] == config._MODEL_ALIASES["haiku"]
+    assert env["CLADE_WORKER_MODEL"] in cmd
     # gap C: overload failover is OFF by default (no flag leaks into the spawn)
     assert "--fallback-model" not in cmd
 
