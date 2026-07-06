@@ -599,7 +599,12 @@ class ProjectSession:
 
             iteration = loop_state.get("iteration", 1)
             max_iter = loop_state.get("max_iterations", 20)
-            if iteration >= max_iter:
+            # Adversarial-review finding (correctness, MEDIUM): `>` not `>=` — this
+            # must give max_iterations REAL attempts, same as _run_supervisor
+            # (which increments THEN checks the ceiling AFTER doing that
+            # iteration's work). `>=` consumed the final allowed iteration's
+            # budget with zero work done whenever iteration == max_iter exactly.
+            if iteration > max_iter:
                 # task_line_idx is NOT None here — an unchecked checklist item
                 # remains. Hitting the iteration ceiling while work is still open
                 # is a distinct outcome from "converged" (Pieter Levels): the plan

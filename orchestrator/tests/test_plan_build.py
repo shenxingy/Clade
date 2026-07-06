@@ -100,9 +100,10 @@ class TestConvergedVsExhausted:
         await s.task_queue.upsert_loop(
             status="running", plan_phase="build", context_dir=str(tmp_path),
             artifact_path=str(tmp_path / "artifact.md"),
-            # Ceiling already hit (iteration >= max_iterations) with an
+            # Genuinely PAST the ceiling (iteration > max_iterations) — all
+            # max_iterations=2 real attempts have already happened, with an
             # unchecked item still in the plan.
-            iteration=2, max_iterations=2, supervisor_model="sonnet",
+            iteration=3, max_iterations=2, supervisor_model="sonnet",
         )
 
         start_worker = AsyncMock()
@@ -112,14 +113,49 @@ class TestConvergedVsExhausted:
 
         loop_state = await s.task_queue.get_loop()
         assert loop_state["status"] == "exhausted"
-        start_worker.assert_not_called()  # ceiling check happens before spawn
+        start_worker.assert_not_called()  # already past every allowed iteration
 
         fired = [c.args[0] for c in sess_mod._fire_notification.call_args_list]
         assert fired == ["loop_exhausted"]
         assert "loop_converged" not in fired
 
-        # the open item must be left untouched — the plan did not finish
+        # ceiling hit with zero attempts made this pass — item stays untouched
         assert "- [ ] still open" in plan_path.read_text()
+
+    async def test_final_allowed_iteration_still_spawns_a_worker(self, tmp_path, monkeypatch):
+        # Adversarial-review finding (correctness, MEDIUM): the ceiling check
+        # used to fire on iteration == max_iterations (not just iteration >
+        # max_iterations), silently consuming the LAST allowed iteration's
+        # budget with zero work done — inconsistent with _run_supervisor
+        # (review-mode), which does that iteration's work first and only
+        # checks the ceiling afterward, giving exactly max_iterations real
+        # attempts. iteration == max_iterations must still be a real attempt.
+        import session as sess_mod
+
+        monkeypatch.setattr(sess_mod, "_fire_notification", AsyncMock())
+        monkeypatch.setattr(sess_mod, "_suggest_next_goals", AsyncMock())
+
+        plan_path = tmp_path / "IMPLEMENTATION_PLAN.md"
+        plan_path.write_text("# Plan\n\n- [ ] still open\n")
+
+        s = sess_mod.ProjectSession(str(tmp_path))
+        await s.task_queue.upsert_loop(
+            status="running", plan_phase="build", context_dir=str(tmp_path),
+            artifact_path=str(tmp_path / "artifact.md"),
+            iteration=2, max_iterations=2, supervisor_model="sonnet",
+        )
+
+        async def _fake_start_worker(task, *a, **k):
+            await s.task_queue.update(task["id"], status="done")
+
+        start_worker = AsyncMock(side_effect=_fake_start_worker)
+        monkeypatch.setattr(s.worker_pool, "start_worker", start_worker)
+
+        await s._run_plan_build()
+
+        start_worker.assert_called_once()  # the final allowed iteration IS attempted
+        # the attempt succeeded — the item IS marked done, unlike the exhausted case
+        assert "- [x] still open" in plan_path.read_text()
 
     async def test_all_items_done_is_converged_even_at_ceiling(self, tmp_path, monkeypatch):
         """If the checklist is actually empty, that's a genuine finish — even
