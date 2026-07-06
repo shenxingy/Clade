@@ -12,6 +12,33 @@ Past resolved/deferred items live in [`docs/archive/BRAINSTORM-resolved.md`](doc
 
 ---
 
+## [Research] 2026-07-06 — Round 4: deep-mining the 17 newly-tracked experts
+
+89 agents, 5.8M tok, 1387 tool calls. Mined 3-6 mechanisms per person (83 raw) → triage-dedup → 70 distinct candidates → adversarial verify (4-check framework: deficient-not-different / capabilities-not-names / single-tool-local-first scope / mechanism equivalence). Result: **25 confirmed_gap (36%), 15 parity, 28 different-not-deficient, 2 N/A.** Confirmed-gap rate meaningfully higher than prior rounds — verification surfaced 3 genuine LIVE BUGS in Clade's own shipped code (not "adopt an external pattern"), found only because checking each candidate against the real code forced a close read of adjacent logic.
+
+**3 confirmed live bugs (fix under the bug-fix-without-permission rule, no separate ask needed):**
+- [ ] Plan-drift: `oracle_result`/`oracle_reason` computed in `worker.py` but never persisted to the DB; `session.py:_run_plan_build` marks a checklist item `[x]` the instant status hits ANY terminal value — before the test/oracle gate resolves. A rejected/reverted commit still shows checked off.
+- [ ] Dead code: `context_budget_warning` writes `context-warning-<id>.md`; zero readers exist (confirmed via grep) since it was introduced.
+- [ ] Orphan-process safety hole: workers `setsid` (survive orchestrator restart); `_recover_orphaned_tasks()` only relabels DB rows without checking/killing the still-alive process; `retry_task` can silently collide into a shared worktree.
+
+**22 external-pattern-adoption gaps, prioritized (leverage desc, effort asc — full prose + per-item source/mechanism in workflow transcript wf_06e7a1a3-f1f):**
+
+*High/S (6):* cost-transparency PR line item (Simon Willison) · AGENTS.md honeypot canary for unreviewed AI PRs (Mitchell Hashimoto) · oracle magnitude-anomaly criterion for perf claims (Hashimoto) · oracle test-assertion-integrity criterion (Kent Beck) · domain-model skill: living glossary + gated ADRs (Matt Pocock) · risk-based oracle dispatch classifier (Takanori Sano)
+
+*High/M (5, incl. the pgid bug + plan-drift bug already listed above):* idempotent ensure-dev-server.sh + shared discovery JSON (Thorsten Ball) · tagged log-merge incl. browser console (Ball) · qa-explore skill: git-log-scoped exploratory regression hunt (antirez)
+
+*Medium/S (10, excl. context_budget_warning wiring already listed above):* Agent-Signature commit trailer / model provenance (Steve Yegge) · epistemic caveat on hydrated GitHub content (Armin Ronacher) · steer-now-vs-follow-up message mode (Ronacher/Pi) · corrupt-JSONL-line logging instead of silent swallow (Ronacher) · clean-room hydration distillation pass (antirez) · --dry-run for loop-runner.sh + oracle_cli.py (Peter Steinberger) · Vouch-style trusted-contributor gate (Hashimoto) · serialize-build/test-subagents CLAUDE.md bullet (Geoffrey Huntley) · converged-vs-hit-max-iter status distinction (Pieter Levels) · /equip audit scope extension + wildcard-consent + pinned-ref (tw93)
+
+*Medium/M (2):* task-class-aware resampling (Ronacher) · quantified MCP/tool-schema context-budget audit (tw93)
+
+**1 uncertain**: #32 RUBRIC.md-style agent-usability CI check (DHH) — its verification record is a placeholder ("reasoning": "test"), never actually adjudicated; re-verify before trusting its different_not_deficient label.
+
+**2 N/A**: Release Gate Map (Yegge, presupposes multi-branch release-train topology Clade doesn't have) · pre-warm worktree provisioning (Rauch, targets VM/sandbox cold-boot latency Clade doesn't have).
+
+> **LANDING IN PROGRESS 2026-07-06** — tracked via TaskCreate #1-10. Batch 1 (3 bugs + oracle-hardening bundle + domain-model skill) landing now; batches 2-4 (remaining 19 external-pattern gaps) to follow; convergence self-review loop at the end given the scale and the oracle-adjacent surface touched (Round 3's equivalent loop caught a HIGH RCE — same discipline applies here).
+
+---
+
 ## [Research] 2026-07-06 — New elite-learnings candidates discovery (external ecosystem)
 
 User question: 找新大佬 — Anthropic 之外的公司/组织/独立开发者/古法程序员拥抱 AI 时代的样本。7-angle sweep (43 agents, ~2.3M tok) → 43 raw candidates → dedup → 34 distinct → adversarial skeptical verify (each independently re-fetched URLs/dates, did not trust scout summaries) → **30 CONFIRMED_ADD, 4 WEAK_EVIDENCE**.
