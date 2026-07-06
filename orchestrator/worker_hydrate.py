@@ -42,11 +42,11 @@ HAIKU_MODEL = "haiku"
 SETTING_SOURCES_NONE = '--setting-sources ""'
 DISALLOWED_TOOLS_JUDGE = "--disallowed-tools Edit,Write,Bash"
 
-# Gap A: unconditional epistemic caveat on every hydrated GitHub issue/PR
-# block — the fetched body is the reporter's own account/hypothesis, not a
-# confirmed root cause. Previously only ever injected (nowhere, in fact — no
-# fix-intent gate existed in this module); now always present regardless of
-# task type.
+# Gap A: unconditional epistemic caveat on every hydrated GitHub issue/PR/CI-run
+# block — the fetched content is the reporter's own account (or, for CI logs,
+# the PR's own untrusted program output), not a confirmed root cause.
+# Previously only ever injected (nowhere, in fact — no fix-intent gate existed
+# in this module); now always present regardless of task type.
 _EPISTEMIC_CAVEAT = (
     "*Note: the above is the reporter's own account/hypothesis, not a "
     "confirmed root cause — verify independently before treating it as fact.*"
@@ -312,9 +312,16 @@ async def _pre_hydrate(
                 tail = "\n".join(
                     stdout.decode(errors="replace").splitlines()[-60:]
                 )
+                # Same clean-room protections as the issue/PR blocks above (gap A/B
+                # review finding: this raw log tail is program output from the PR's
+                # OWN code — at least as attacker-controlled as an issue body, and
+                # was previously the one hydration path with neither the caveat nor
+                # the optional distillation pass).
+                if distill:
+                    tail = await _distill_github_text(tail, claude_dir)
                 blocks.append(
                     f"## Pre-hydrated CI run {owner_repo} run {run_id} "
-                    f"(failed-step log tail)\n```\n{tail}\n```"
+                    f"(failed-step log tail)\n{_EPISTEMIC_CAVEAT}\n```\n{tail}\n```"
                 )
                 fetched.add(ref)
         except Exception:

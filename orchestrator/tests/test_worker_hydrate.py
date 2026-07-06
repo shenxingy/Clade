@@ -74,15 +74,19 @@ def _pr_json(body: str = PR_BODY) -> bytes:
     }).encode()
 
 
+CI_LOG_TAIL = "FAILED tests/test_x.py::test_y\nAssertionError: expected 2, got 1\n"
+
+
 def _make_gh_and_claude_fake(
     issue_body: str = ISSUE_BODY,
     pr_body: str = PR_BODY,
+    ci_log: str = CI_LOG_TAIL,
     claude_response: bytes = b"DISTILLED: reporter claims a crash on save.",
     claude_returncode: int = 0,
     claude_raises: bool = False,
     calls: list | None = None,
 ):
-    """Fake asyncio.create_subprocess_exec serving gh issue/pr view + claude -p."""
+    """Fake asyncio.create_subprocess_exec serving gh issue/pr/run view + claude -p."""
 
     async def _fake(*args, **kwargs):
         if calls is not None:
@@ -92,6 +96,8 @@ def _make_gh_and_claude_fake(
                 return FakeProc(_issue_json(issue_body))
             if len(args) > 2 and args[1] == "pr" and args[2] == "view":
                 return FakeProc(_pr_json(pr_body))
+            if len(args) > 2 and args[1] == "run" and args[2] == "view":
+                return FakeProc(ci_log.encode())
             return FakeProc(b"{}", returncode=1)
         if args[0] == "claude":
             if claude_raises:
@@ -134,6 +140,19 @@ async def test_no_hydration_no_caveat_emitted() -> None:
     """No linked references → empty hydrate block, nothing to caveat."""
     result = await wh._pre_hydrate("just a plain task with no links", project_dir=None)
     assert result == ""
+
+
+async def test_caveat_present_on_ci_run_block(monkeypatch):
+    # Adversarial-review finding (security, HIGH): the CI-run log-tail block was
+    # the one hydration path with neither the caveat nor optional distillation —
+    # program output from the PR's own (possibly attacker-controlled) code is at
+    # least as untrusted as an issue/PR body.
+    monkeypatch.setattr(wh.asyncio, "create_subprocess_exec", _make_gh_and_claude_fake())
+    result = await wh._pre_hydrate(
+        "see https://github.com/acme/myrepo/actions/runs/999", project_dir=None
+    )
+    assert wh._EPISTEMIC_CAVEAT in result
+    assert "Pre-hydrated CI run" in result
 
 
 # ─── Gap B: distillation default-off ───────────────────────────────────────────
@@ -195,6 +214,31 @@ async def test_distillation_on_applies_to_pr_block_too(monkeypatch):
     )
     assert "DISTILLED: reporter claims a crash on save." in result
     assert "adding a null check" not in result
+
+
+async def test_distillation_off_by_default_ci_log_passes_through_raw(monkeypatch):
+    calls: list = []
+    monkeypatch.setattr(
+        wh.asyncio, "create_subprocess_exec",
+        _make_gh_and_claude_fake(calls=calls),
+    )
+    result = await wh._pre_hydrate(
+        "see https://github.com/acme/myrepo/actions/runs/999", project_dir=None
+    )
+    assert "AssertionError: expected 2, got 1" in result  # raw log tail verbatim
+    assert not any(c[0] == "claude" for c in calls), (
+        "distillation must not spawn the judge subprocess for CI logs when off"
+    )
+
+
+async def test_distillation_on_applies_to_ci_run_block_too(monkeypatch):
+    monkeypatch.setattr(wh.asyncio, "create_subprocess_exec", _make_gh_and_claude_fake())
+    result = await wh._pre_hydrate(
+        "see https://github.com/acme/myrepo/actions/runs/999",
+        project_dir=None, distill=True,
+    )
+    assert "DISTILLED: reporter claims a crash on save." in result
+    assert "AssertionError: expected 2, got 1" not in result
 
 
 # ─── Gap B: fail-open ──────────────────────────────────────────────────────────
