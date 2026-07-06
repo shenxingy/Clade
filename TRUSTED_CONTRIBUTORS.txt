@@ -1,0 +1,15 @@
+# TRUSTED_CONTRIBUTORS.txt — Vouch-style trust list (Mitchell Hashimoto pattern)
+#
+# One GitHub username per line. Anyone listed here is treated as a vouched
+# contributor by .github/workflows/vouch-gate.yml: their issues and PRs are
+# never auto-closed by that gate, even without repo write access.
+#
+# Existing collaborators (OWNER/MEMBER/COLLABORATOR on GitHub) are ALREADY
+# trusted via repo permissions and do not need to be listed here — this file
+# is specifically for external contributors a maintainer wants to vouch for
+# without granting them write access.
+#
+# To vouch for someone: a maintainer adds their username below in a normal PR
+# (this file is not gated by itself — don't create a chicken-and-egg lock-out).
+#
+# Lines starting with # are comments and blank lines are ignored.

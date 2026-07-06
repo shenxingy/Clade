@@ -1,0 +1,80 @@
+name: Vouch Gate
+
+# Round-4 gap (Mitchell Hashimoto). Clade's repo had zero author-identity
+# gating — confirmed via a real low-trust unsolicited PR that landed. This
+# auto-closes issues/PRs from authors who are neither existing collaborators
+# (OWNER/MEMBER/COLLABORATOR — already trusted via repo permissions) nor
+# explicitly vouched for in TRUSTED_CONTRIBUTORS.txt. The trust decision
+# itself lives in configs/scripts/vouch_check.py (testable, not buried in
+# inline JS) — this workflow just wires its exit code to a close+comment.
+#
+# Tradeoff to weigh before enabling: this also auto-closes GENUINE bug reports
+# and first-time PRs from anyone not yet vouched, not just spam/low-effort AI
+# submissions — it trades community-engagement breadth for submission quality
+# control. Leaves a path forward (comment explains how to get vouched) rather
+# than silently rejecting.
+#
+# pull_request_target (not pull_request) so a fork PR's workflow run still has
+# write access to comment/close — safe here because we only read event
+# metadata (author, association) and TRUSTED_CONTRIBUTORS.txt from the BASE
+# branch; the PR's own (untrusted) code is never checked out or executed.
+on:
+  issues:
+    types: [opened]
+  pull_request_target:
+    types: [opened]
+
+permissions:
+  issues: write
+  pull-requests: write
+  contents: read
+
+jobs:
+  vouch-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout base branch (never the PR's own untrusted code)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Check author trust
+        id: vouch
+        env:
+          AUTHOR: ${{ github.event.issue.user.login || github.event.pull_request.user.login }}
+          ASSOCIATION: ${{ github.event.issue.author_association || github.event.pull_request.author_association }}
+        run: |
+          if python3 configs/scripts/vouch_check.py \
+              --author "$AUTHOR" --association "$ASSOCIATION" \
+              --trusted-file TRUSTED_CONTRIBUTORS.txt; then
+            echo "trusted=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "trusted=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Close + comment when untrusted
+        if: steps.vouch.outputs.trusted == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const isPR = !!context.payload.pull_request;
+            const number = (context.payload.issue || context.payload.pull_request).number;
+            const author = (context.payload.issue || context.payload.pull_request).user.login;
+            const kind = isPR ? 'PR' : 'issue';
+            const body = `Hi @${author} — thanks for opening this. This repo requires contributors to be ` +
+              `either an existing collaborator or explicitly vouched for in \`TRUSTED_CONTRIBUTORS.txt\` ` +
+              `before a ${kind} gets picked up, to keep low-effort/spam submissions manageable. A maintainer ` +
+              `can add you to that list to unblock this — feel free to comment if you believe this ${kind} ` +
+              `should be reviewed anyway. Auto-closing for now; this isn't a judgment on the content.`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: number,
+              body,
+            });
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: number,
+              state: 'closed',
+            });
