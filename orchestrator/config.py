@@ -171,6 +171,14 @@ _SETTINGS_DEFAULTS = {
     "worker_fallback_model": "",
     "context_span_budget": 6000,  # Moatless §Gap3: max chars for TLDR span block; excess spans evicted
     "task_type_model_routing": {},  # per-task type model override e.g. {"tldr": "haiku", "fix": "sonnet"}
+    # Task-class-aware resampling (Round-4, Armin Ronacher). oracle_verdict_samples
+    # is a bare global with zero content-awareness, and the one task-aware resampler
+    # (oracle_retry_sample_count) is reactive — only kicks in AFTER a rejection.
+    # This decides resample count BEFORE the first failure, by content class:
+    # e.g. {"generate": 3, "transform": 1} gives judgment-heavy tasks (new logic,
+    # design decisions) more oracle scrutiny up front than mechanical ones (rename,
+    # reformat, move). Empty dict = no override (oracle_verdict_samples alone decides).
+    "task_class_resampling": {},
     "replay_interrupted_on_startup": False,  # re-queue interrupted tasks on server restart (opt-in)
     "execution_backend": "local",  # how workers spawn: "local" (OS subprocess+setsid). See execution_backend.py.
     # Usage tracking (multi-machine ccusage aggregation — see usage_tracker.py)
@@ -645,6 +653,33 @@ def _parse_task_type(description: str) -> str | None:
     if any(k in desc_lower for k in ["tldr", "summarize", "summary"]):
         return "tldr"
     return None  # default: implement (full tools)
+
+
+# Mechanical/low-judgment vs. creative/judgment-heavy — deliberately coarse
+# (2 buckets), the same granularity task_class_resampling routes on.
+_TASK_CLASS_TRANSFORM_KEYWORDS = (
+    "rename", "reformat", "reorganize", "move ", "extract ", "cleanup",
+    "lint", "typo", "formatting", "dedupe", "de-duplicate",
+)
+_TASK_CLASS_GENERATE_KEYWORDS = (
+    "implement", "design", "add feature", "create", "build", "new endpoint",
+    "new feature",
+)
+
+
+def _parse_task_class(description: str) -> str | None:
+    """Classify a task as 'transform' (mechanical, low-judgment) or 'generate'
+    (creative/judgment-heavy) for content-aware oracle resampling. None when
+    ambiguous — the caller falls back to the base oracle_verdict_samples."""
+    desc_lower = description.lower()
+    meta_match = re.search(r"class:\s*(\w+)", desc_lower)
+    if meta_match and meta_match.group(1) in ("transform", "generate"):
+        return meta_match.group(1)
+    if any(k in desc_lower for k in _TASK_CLASS_TRANSFORM_KEYWORDS):
+        return "transform"
+    if any(k in desc_lower for k in _TASK_CLASS_GENERATE_KEYWORDS):
+        return "generate"
+    return None
 
 
 def _infer_commit_type(description: str) -> str:

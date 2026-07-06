@@ -590,6 +590,69 @@ class TestRunOracleGate:
         assert await gate_worker._run_oracle_gate() is True
         assert captured.get("verdict_samples") == 3
 
+    async def test_task_class_resampling_overrides_verdict_samples(self, gate_worker, monkeypatch):
+        # Round-4 (Armin Ronacher): a judgment-heavy 'generate' task gets more
+        # scrutiny up front than the base oracle_verdict_samples would give it.
+        gate_worker.description = "implement a new caching layer for the API"
+        monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "auto_oracle", True)
+        monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "oracle_verdict_samples", 1)
+        monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "task_class_resampling", {"generate": 5})
+        captured: dict = {}
+
+        async def fake_review(desc, diff, cdir, **kwargs):
+            captured.update(kwargs)
+            return True, "approved", False
+
+        monkeypatch.setattr(wmod, "_oracle_review", fake_review)
+        assert await gate_worker._run_oracle_gate() is True
+        assert captured.get("verdict_samples") == 5
+
+    async def test_task_class_resampling_empty_map_no_override(self, gate_worker, monkeypatch):
+        gate_worker.description = "implement a new caching layer for the API"
+        monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "auto_oracle", True)
+        monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "oracle_verdict_samples", 2)
+        monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "task_class_resampling", {})  # default
+        captured: dict = {}
+
+        async def fake_review(desc, diff, cdir, **kwargs):
+            captured.update(kwargs)
+            return True, "approved", False
+
+        monkeypatch.setattr(wmod, "_oracle_review", fake_review)
+        assert await gate_worker._run_oracle_gate() is True
+        assert captured.get("verdict_samples") == 2  # base setting alone decides
+
+    async def test_task_class_resampling_ambiguous_task_no_override(self, gate_worker, monkeypatch):
+        # gate_worker's own description ("fix: the login bug") doesn't match any
+        # transform/generate keyword — task_class_resampling must not fire on it.
+        monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "auto_oracle", True)
+        monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "oracle_verdict_samples", 2)
+        monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "task_class_resampling", {"generate": 5, "transform": 1})
+        captured: dict = {}
+
+        async def fake_review(desc, diff, cdir, **kwargs):
+            captured.update(kwargs)
+            return True, "approved", False
+
+        monkeypatch.setattr(wmod, "_oracle_review", fake_review)
+        assert await gate_worker._run_oracle_gate() is True
+        assert captured.get("verdict_samples") == 2  # ambiguous class → base setting wins
+
+    async def test_task_class_resampling_bad_value_falls_back(self, gate_worker, monkeypatch):
+        gate_worker.description = "implement a new caching layer for the API"
+        monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "auto_oracle", True)
+        monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "oracle_verdict_samples", 2)
+        monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "task_class_resampling", {"generate": "bogus"})
+        captured: dict = {}
+
+        async def fake_review(desc, diff, cdir, **kwargs):
+            captured.update(kwargs)
+            return True, "approved", False
+
+        monkeypatch.setattr(wmod, "_oracle_review", fake_review)
+        assert await gate_worker._run_oracle_gate() is True  # must not raise
+        assert captured.get("verdict_samples") == 2  # bad override value → base setting survives
+
     async def test_bad_verdict_samples_degrades_not_crashes_gate(self, gate_worker, monkeypatch):
         # gap B robustness: a non-numeric misconfig must degrade to single-shot,
         # NOT crash the gate into a fail-open 'unreviewed' (silently disabling review).

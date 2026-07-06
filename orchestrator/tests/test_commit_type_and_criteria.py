@@ -11,7 +11,9 @@
 
 from __future__ import annotations
 
-from config import _infer_commit_type
+import pytest
+
+from config import _infer_commit_type, _parse_task_class
 from worker_hydrate import _extract_acceptance_criteria
 from worker_utils import (
     _is_test_file, oracle_retry_sample_count, ORACLE_REJECT_MARKER, oracle_reject_depth,
@@ -171,3 +173,49 @@ class TestOracleRejectDepth:
         for n in (0, 1, 2, 5):
             depth = oracle_reject_depth(_desc(n))
             assert depth == n
+
+
+# ─── _parse_task_class (Round-4, Armin Ronacher: task-class-aware resampling) ──
+
+
+class TestParseTaskClass:
+    @pytest.mark.parametrize("desc", [
+        "rename the config keys across the module",
+        "reformat this file to match the style guide",
+        "reorganize the imports alphabetically",
+        "move the helper function to utils.py",
+        "extract this block into its own function",
+        "cleanup unused imports",
+        "fix a typo in the docstring",
+        "de-duplicate the two near-identical blocks",
+    ])
+    def test_transform_keywords_detected(self, desc):
+        assert _parse_task_class(desc) == "transform"
+
+    @pytest.mark.parametrize("desc", [
+        "implement the new billing webhook handler",
+        "design a caching layer for the API",
+        "add feature: dark mode toggle",
+        "create a new onboarding flow",
+        "build the notification system",
+        "add a new endpoint for user preferences",
+    ])
+    def test_generate_keywords_detected(self, desc):
+        assert _parse_task_class(desc) == "generate"
+
+    def test_explicit_class_metadata_wins(self):
+        # "class: generate" in the description overrides keyword sniffing —
+        # same precedence convention as _parse_task_type's "type: X" metadata.
+        assert _parse_task_class("class: generate\nrename the variable") == "generate"
+        assert _parse_task_class("class: transform\nimplement a new feature") == "transform"
+
+    def test_invalid_explicit_class_falls_back_to_keywords(self):
+        assert _parse_task_class("class: bogus\nrename the variable") == "transform"
+
+    def test_ambiguous_description_returns_none(self):
+        assert _parse_task_class("update the README") is None
+        assert _parse_task_class("") is None
+
+    def test_case_insensitive(self):
+        assert _parse_task_class("RENAME the Config Keys") == "transform"
+        assert _parse_task_class("IMPLEMENT the new feature") == "generate"

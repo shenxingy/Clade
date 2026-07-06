@@ -42,7 +42,7 @@ from config import (
     ALLOWED_MODEL_IDS,
     _build_tool_flags,
     _fallback_flag,
-    _parse_task_type,
+    _parse_task_type, _parse_task_class,
     _parse_task_schema,
     _infer_commit_type,
 )
@@ -965,14 +965,23 @@ class Worker:
             # Constitutional AI (reflection-agents §Gap4): the target repo's own
             # CLAUDE.md "Code Rules" become binding constraints the grader enforces.
             constitution = _read_constitution(self._project_dir)
-            # Judge non-determinism mitigation (gap B): resample the verdict K×
-            # and require a clean majority to approve. Default 1 = single-shot.
-            # A bad config value must degrade to single-shot, NOT crash the gate
-            # into a fail-open 'unreviewed' (that would silently disable auto-review).
+            # Resample the verdict K× and require a clean majority to approve; a bad
+            # config value degrades to single-shot rather than crashing to fail-open.
             try:
                 verdict_samples = max(1, int(GLOBAL_SETTINGS.get("oracle_verdict_samples", 1) or 1))
             except (TypeError, ValueError):
                 verdict_samples = 1
+            # Task-class-aware override (judgment-heavy 'generate' tasks get more
+            # scrutiny up front than mechanical 'transform' ones), same precedence
+            # pattern as task_type_model_routing — only applies when configured.
+            class_map = GLOBAL_SETTINGS.get("task_class_resampling") or {}
+            if class_map:
+                task_class = _parse_task_class(self.description)
+                if task_class in class_map:
+                    try:
+                        verdict_samples = max(1, int(class_map[task_class]))
+                    except (TypeError, ValueError):
+                        pass
             approved, reason, infra_error = await _oracle_review(
                 self.description, diff_out.decode(), self._claude_dir,
                 acceptance_criteria=criteria, test_evidence=test_evidence,
