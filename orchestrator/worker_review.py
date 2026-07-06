@@ -196,6 +196,34 @@ async def _write_pr_review(pr_url: str, task_description: str, project_dir: Path
 
 
 _ORACLE_CHUNK_SIZE = 2500  # chars per diff chunk (Qodo §Gap3: chunked review for large diffs)
+
+# Risk-based dispatch (Takanori Sano: 6-agent diff-risk-routed review). Review
+# depth today is SIZE-only (_ORACLE_CHUNK_SIZE) — a 1-line change to a
+# security/data-sensitive path gets the same shallow single-shot review as a
+# docstring typo. This is a cheap, no-LLM path/keyword classifier that forces
+# extra resample votes on risky diffs regardless of size.
+_RISK_PATH_RE = re.compile(
+    r"(?:^|[/\\])(?:billing|payment\w*|auth\w*|security|secrets?|credentials?|"
+    r"permissions?|migrations?|schema\w*|crypto\w*|password\w*|token\w*|acl|iam)"
+    r"(?:[/\\]|\.\w+|$)",
+    re.IGNORECASE | re.MULTILINE,
+)
+_RISK_KEYWORD_RE = re.compile(
+    r"drop\s+table|delete\s+from\b|rm\s+-rf|\bsudo\b|eval\(|exec\(|"
+    r"os\.system|shell\s*=\s*true|chmod\s+777|--force\b|--no-verify\b|"
+    r"disable\w*\s+auth|skip\w*\s+permission",
+    re.IGNORECASE,
+)
+
+
+def _classify_diff_risk(diff_text: str) -> bool:
+    """True when the diff touches a security/data-sensitive surface (path or
+    keyword match) and should get extra scrutiny regardless of its size."""
+    if not diff_text:
+        return False
+    return bool(_RISK_PATH_RE.search(diff_text) or _RISK_KEYWORD_RE.search(diff_text))
+
+
 _ORACLE_PROMPT_TEMPLATE = (
     "You are an independent code reviewer. Review the diff against the task description.\n"
     "Respond with ONLY a JSON object — no preamble, no markdown. Format:\n"
@@ -753,6 +781,12 @@ async def _oracle_review(
     (lovesegfault: fail-open must not masquerade as a review).
     """
     task_block = _build_oracle_task_block(task_description, acceptance_criteria, test_evidence)
+    # Risk-based dispatch (Takanori Sano): a diff touching a security/data-
+    # sensitive surface gets extra resample votes regardless of its size — a
+    # 1-line change to billing/auth code must not get the same single-shot
+    # scrutiny as a docstring typo just because it's small.
+    if _classify_diff_risk(diff_text) and verdict_samples < 3:
+        verdict_samples = 3
     # Chunk large diffs (Qodo §Gap3)
     if len(diff_text) > _ORACLE_CHUNK_SIZE:
         chunks = [
