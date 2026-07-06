@@ -26,6 +26,12 @@ _w_spec = importlib.util.spec_from_file_location("_real_worker_oracle_criteria",
 wmod = importlib.util.module_from_spec(_w_spec)
 _w_spec.loader.exec_module(wmod)  # type: ignore[union-attr]
 
+# worker.py's own `from worker_review import handle_oracle_requeue` resolved
+# against conftest's mocked sys.modules['worker_review'] at exec time (a whole
+# separate fake module from the real `wr` loaded above), not our real `wr` —
+# rebind so poll_all's requeue path exercises the real implementation.
+wmod.handle_oracle_requeue = wr.handle_oracle_requeue
+
 
 # ─── Fix-intent completeness criterion (item 15 part 1) ─────────────────────
 
@@ -299,7 +305,7 @@ async def test_poll_all_requeues_on_pre_push_test_failure(task_queue, tmp_path):
 
 
 def _rejected_desc(n_rejections: int) -> str:
-    marker = wmod.ORACLE_REJECT_MARKER
+    marker = wr.ORACLE_REJECT_MARKER
     return "implement feature X" + "".join(f"\n--- Previous attempt was {marker}: ..." for _ in range(n_rejections))
 
 
@@ -323,7 +329,7 @@ async def test_poll_all_requeues_below_reject_cap(task_queue, tmp_path, monkeypa
     async def fake_escalate(*a, **k):
         escalated.append(a)
 
-    monkeypatch.setattr(wmod, "_escalate_oracle_reject_plateau", fake_escalate)
+    monkeypatch.setattr(wr, "_escalate_oracle_reject_plateau", fake_escalate)
 
     await pool.poll_all(task_queue, None)
 
@@ -354,7 +360,7 @@ async def test_poll_all_escalates_instead_of_requeuing_at_reject_cap(task_queue,
     async def fake_escalate(project_dir, cdir, webhook, task_id, rounds):
         escalated.append((task_id, rounds))
 
-    monkeypatch.setattr(wmod, "_escalate_oracle_reject_plateau", fake_escalate)
+    monkeypatch.setattr(wr, "_escalate_oracle_reject_plateau", fake_escalate)
 
     tasks_before = await task_queue.list()
 
@@ -388,7 +394,7 @@ async def test_reject_cap_zero_disables_the_breaker(task_queue, tmp_path, monkey
     async def fake_escalate(*a, **k):
         escalated.append(a)
 
-    monkeypatch.setattr(wmod, "_escalate_oracle_reject_plateau", fake_escalate)
+    monkeypatch.setattr(wr, "_escalate_oracle_reject_plateau", fake_escalate)
 
     await pool.poll_all(task_queue, None)
 

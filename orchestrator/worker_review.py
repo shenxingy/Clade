@@ -13,6 +13,16 @@ import shlex
 import uuid
 from datetime import date, datetime
 from pathlib import Path
+from typing import Any
+
+# Leaf-to-leaf import (worker_utils.py is itself a leaf, no project imports —
+# same precedent as worker_tldr.py importing fault_localize.py). Settings-derived
+# values still come in as explicit params from worker.py, never via GLOBAL_SETTINGS
+# here, to keep this module's "no config.py" invariant intact.
+from worker_utils import (
+    oracle_reject_depth, oracle_retry_sample_count, ORACLE_REJECT_MARKER,
+    _strip_error_context,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -966,3 +976,49 @@ async def _escalate_oracle_reject_plateau(
             await proc.communicate()
     except Exception:
         pass  # fail-open
+
+
+async def handle_oracle_requeue(
+    w: Any, task_queue: Any,
+    max_reject_rounds: int, notification_webhook: str, parallel_fix_samples: int,
+) -> None:
+    """Fan out retry/diverse-sample tasks after an oracle rejection, or escalate
+    instead once the reject-round cap is hit (fennu2333: an unbounded lineage
+    could otherwise requeue forever). Moved out of WorkerPool.poll_all to keep
+    worker.py under the 1500-line convention cap — pure extraction, same logic.
+    """
+    error_summary = _strip_error_context(w._oracle_requeue_reason)
+    orig_task = await task_queue.get(w.task_id)
+    is_critical = bool(orig_task and orig_task.get("is_critical_path"))
+    depth = oracle_reject_depth(w.description)
+    if max_reject_rounds > 0 and depth >= max_reject_rounds:
+        logger.warning(
+            "Oracle rejected task %s — hit reject-round cap (%d rounds), "
+            "escalating instead of requeuing again", w.task_id, max_reject_rounds,
+        )
+        try:
+            await _escalate_oracle_reject_plateau(
+                w._project_dir, w._claude_dir, notification_webhook, w.task_id, depth,
+            )
+        except Exception:
+            pass  # escalation must never break poll_all
+        return
+    n_samples = oracle_retry_sample_count(w.description, is_critical, parallel_fix_samples)
+    _diverse_hints = [
+        "Try a different algorithmic approach than your previous attempt.",
+        "Focus on the root cause rather than symptoms — consider upstream fixes.",
+        "Prefer minimal diff — find the smallest correct change.",
+    ]
+    for i in range(n_samples):
+        hint = f"\n{_diverse_hints[i % len(_diverse_hints)]}" if n_samples > 1 else ""
+        retry_desc = (
+            f"{w.description}\n\n---\n"
+            f"Previous attempt was {ORACLE_REJECT_MARKER}:\n"
+            f"{error_summary}\n"
+            f"Fix the issue described above. Do NOT repeat the same approach.{hint}"
+        )
+        await task_queue.add(retry_desc, w.model, own_files=w.own_files, forbidden_files=w.forbidden_files)
+    if n_samples > 1:
+        logger.info("Oracle rejected task %s — plateau, spawned %d diverse samples", w.task_id, n_samples)
+    else:
+        logger.info("Oracle rejected task %s — re-queued (sequential retry)", w.task_id)

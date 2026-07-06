@@ -202,8 +202,10 @@ def test_import_graph_is_a_strict_dag() -> None:
 
 def test_documented_leaf_modules_import_no_project_code() -> None:
     """CLAUDE.md's module map declares these as leaves (no project imports except
-    config and fault_localize — both stdlib-only constants/primitive modules lower
-    in the DAG)."""
+    config, fault_localize, and worker_utils — all stdlib-only constants/primitive
+    modules lower in the DAG that other leaves may depend on without becoming
+    non-leaves themselves; worker_review -> worker_utils mirrors the pre-existing
+    worker_tldr -> fault_localize precedent)."""
     leaves = {
         "ideas", "process_manager", "worker_tldr", "worker_review",
         "worker_utils", "worker_hydrate", "condensers", "event_stream",
@@ -216,7 +218,7 @@ def test_documented_leaf_modules_import_no_project_code() -> None:
         if leaf not in graph:
             violations.append(f"{leaf}: missing — update CLAUDE.md module map")
             continue
-        heavy = graph[leaf] - {"config", "fault_localize"}
+        heavy = graph[leaf] - {"config", "fault_localize", "worker_utils"}
         if heavy:
             violations.append(f"{leaf}: imports {sorted(heavy)} at module level")
     assert not violations, (

@@ -59,7 +59,7 @@ from worker_review import (
     _oracle_review, _read_constitution, _summarize_worker_completion,
     _record_oracle_infra_error, _reset_oracle_infra_streak,
     _escalate_oracle_outage, _ORACLE_INFRA_THRESHOLD,
-    _escalate_oracle_reject_plateau,
+    handle_oracle_requeue,
     _build_test_evidence,
 )
 from worker_taskfile import build_task_file
@@ -75,7 +75,6 @@ from worker_utils import (
     _run_lint_check, _extract_lint_targets, _run_project_tests, LoopDetectionService,
     _run_intramorphic_check, _run_repro_filter, _rank_tasks,
     _parse_observation_contract, _fallback_commit_cmd, _is_test_file,
-    oracle_retry_sample_count, ORACLE_REJECT_MARKER, oracle_reject_depth,
     _compute_activity_state, _undo_last_commit,
     _check_file_ownership as _check_ownership_globs,
     _maybe_enqueue_classify_retry,  # re-export: moved to worker_utils (leaf)
@@ -1361,63 +1360,17 @@ class WorkerPool:
                         t = await task_queue.get(w.task_id)
                         if t:
                             asyncio.create_task(_gh_update_issue_status(t, project_dir))
-                # Oracle rejected → re-queue. Plateau escape (audit 2026-06-18):
-                # sequential `--continue` retry refines the SAME approach, so a
-                # fundamentally-wrong first attempt never escapes. Count prior
-                # rejections in the lineage (each retry embeds the marker below);
-                # once the first sequential retry is ALSO rejected (depth>=1), fan
-                # out N DIVERSE attempts instead — Agentless's diverse-sampling
-                # benefit without 40× cost (only the genuinely-stuck tasks pay).
-                # Bounded: fan out at most once (depth<2), so no exponential blowup.
+                # Oracle rejected → re-queue (diverse fan-out on plateau, or escalate
+                # past the reject-round cap). Logic lives in worker_review.py's
+                # handle_oracle_requeue — extracted to stay under the 1500-line cap.
                 if w._oracle_requeue:
                     w._oracle_requeue = False
-                    error_summary = _strip_error_context(w._oracle_requeue_reason)
-                    orig_task = await task_queue.get(w.task_id)
-                    is_critical = bool(orig_task and orig_task.get("is_critical_path"))
-                    # Reject-round circuit breaker (fennu2333): sample_count bounds fan-out
-                    # WIDTH, not total ROUND count — an unbounded lineage could requeue forever.
-                    depth = oracle_reject_depth(w.description)
-                    max_rounds = int(GLOBAL_SETTINGS.get("oracle_max_reject_rounds", 5) or 0)
-                    if max_rounds > 0 and depth >= max_rounds:
-                        logger.warning(
-                            "Oracle rejected task %s — hit reject-round cap (%d rounds), "
-                            "escalating instead of requeuing again", w.task_id, max_rounds,
-                        )
-                        try:
-                            await _escalate_oracle_reject_plateau(
-                                w._project_dir, w._claude_dir,
-                                GLOBAL_SETTINGS.get("notification_webhook", ""),
-                                w.task_id, depth,
-                            )
-                        except Exception:
-                            pass  # escalation must never break poll_all
-                    else:
-                        n_samples = oracle_retry_sample_count(
-                            w.description, is_critical,
-                            int(GLOBAL_SETTINGS.get("parallel_fix_samples", 3)),
-                        )
-                        _DIVERSE_HINTS = [
-                            "Try a different algorithmic approach than your previous attempt.",
-                            "Focus on the root cause rather than symptoms — consider upstream fixes.",
-                            "Prefer minimal diff — find the smallest correct change.",
-                        ]
-                        for i in range(n_samples):
-                            hint = f"\n{_DIVERSE_HINTS[i % len(_DIVERSE_HINTS)]}" if n_samples > 1 else ""
-                            retry_desc = (
-                                f"{w.description}\n\n---\n"
-                                f"Previous attempt was {ORACLE_REJECT_MARKER}:\n"
-                                f"{error_summary}\n"
-                                f"Fix the issue described above. Do NOT repeat the same approach.{hint}"
-                            )
-                            await task_queue.add(retry_desc, w.model,
-                                                 own_files=w.own_files, forbidden_files=w.forbidden_files)
-                        if n_samples > 1:
-                            logger.info(
-                                "Oracle rejected task %s — plateau, spawned %d diverse samples",
-                                w.task_id, n_samples
-                            )
-                        else:
-                            logger.info("Oracle rejected task %s — re-queued (sequential retry)", w.task_id)
+                    await handle_oracle_requeue(
+                        w, task_queue,
+                        int(GLOBAL_SETTINGS.get("oracle_max_reject_rounds", 5) or 0),
+                        GLOBAL_SETTINGS.get("notification_webhook", ""),
+                        int(GLOBAL_SETTINGS.get("parallel_fix_samples", 3)),
+                    )
                 # Pre-push test failure → re-queue with test output (mic92: evidence before verdict)
                 if w._test_requeue:
                     w._test_requeue = False

@@ -61,9 +61,14 @@ def _load_worker_review():
 
     Bypasses any sys.modules mock (tests/conftest.py replaces worker_review
     with a MagicMock) — the whole point of this harness is to exercise the
-    live module, not a test double. worker_review is a documented leaf
-    (stdlib-only imports), so this load is side-effect free.
+    live module, not a test double. worker_review is a documented leaf (only
+    stdlib + worker_utils, itself a stdlib-only leaf), so this load is side-
+    effect free — but its `from worker_utils import ...` needs orchestrator/
+    on sys.path to resolve, since spec_from_file_location doesn't add the
+    loaded file's own directory the way a normal package import would.
     """
+    if str(ORCHESTRATOR_DIR) not in sys.path:
+        sys.path.insert(0, str(ORCHESTRATOR_DIR))
     spec = importlib.util.spec_from_file_location(
         "_eval_worker_review", ORCHESTRATOR_DIR / "worker_review.py"
     )
