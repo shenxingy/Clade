@@ -38,6 +38,7 @@ _ALLOWED_LOOP_COLS = {
     "name", "artifact_path", "context_dir", "status", "iteration",
     "changes_history", "deferred_items", "convergence_k", "convergence_n",
     "max_iterations", "supervisor_model", "mode", "plan_phase", "updated_at",
+    "plan_item_reject_streak",
 }
 
 _MODEL_ALIASES = {

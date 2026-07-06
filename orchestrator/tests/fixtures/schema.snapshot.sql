@@ -62,7 +62,8 @@ CREATE TABLE iteration_loops (
                         created_at TEXT,
                         updated_at TEXT,
                         mode TEXT DEFAULT 'review',
-                        plan_phase TEXT DEFAULT 'plan'
+                        plan_phase TEXT DEFAULT 'plan',
+                        plan_item_reject_streak INTEGER DEFAULT 0
                     );
 
 -- table schedule

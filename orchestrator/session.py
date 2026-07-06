@@ -36,6 +36,7 @@ from ideas import IdeasManager
 from swarm import SwarmManager
 from worker import WorkerPool, _rank_tasks
 from worker_tldr import _generate_code_tldr
+from worker_review import _escalate_oracle_reject_plateau
 
 logger = logging.getLogger(__name__)
 
@@ -639,17 +640,45 @@ class ProjectSession:
             # undone the commit (worker.py:_run_oracle_gate persists the verdict
             # to this same task row). A rejected item must NOT be checked off;
             # leaving it "- [ ]" makes the next BUILD iteration retry the exact
-            # same checklist line (worker.py's oracle-reject requeue already
-            # spawns a separate diverse-retry task; this only stops the plan
-            # from lying about completion). "unreviewed"/None still count as
-            # done — the commit DID survive (oracle fail-open), matching
-            # _run_oracle_gate's own fail-open semantics.
+            # same checklist line. Loop/plan-managed tasks are exempt from
+            # worker.py's handle_oracle_requeue (this IS their retry pipeline —
+            # a separate untracked task would race this one), so THIS is the
+            # only place their reject depth is tracked; "unreviewed"/None still
+            # count as done — the commit DID survive (oracle fail-open),
+            # matching _run_oracle_gate's own fail-open semantics.
             if (t or {}).get("oracle_result") == "rejected":
-                logger.warning(
-                    "plan_build: task %s oracle-rejected — leaving checklist item "
-                    "unmarked so the next iteration retries it", task["id"]
+                # Adversarial-review finding (regression, MEDIUM): exempting
+                # loop/plan tasks from handle_oracle_requeue also silently
+                # dropped the reject-round-cap escalation (blockers.md +
+                # webhook) for them — and since each iteration regenerates a
+                # fresh description with no marker to count, that escalation
+                # was actually UNREACHABLE for this task class, not merely
+                # skipped once. Track consecutive rejections of the SAME
+                # front-of-plan item here instead (reset to 0 on any success).
+                streak = loop_state.get("plan_item_reject_streak", 0) + 1
+                max_rounds = int(GLOBAL_SETTINGS.get("oracle_max_reject_rounds", 5) or 0)
+                if max_rounds > 0 and streak >= max_rounds:
+                    logger.warning(
+                        "plan_build: task %s hit reject-round cap (%d) — escalating",
+                        task["id"], max_rounds,
+                    )
+                    try:
+                        await _escalate_oracle_reject_plateau(
+                            self.project_dir, self.claude_dir,
+                            GLOBAL_SETTINGS.get("notification_webhook", ""),
+                            task["id"], streak,
+                        )
+                    except Exception:
+                        pass  # escalation must never break the loop
+                    streak = 0  # avoid re-escalating every iteration on the same item
+                else:
+                    logger.warning(
+                        "plan_build: task %s oracle-rejected — leaving checklist item "
+                        "unmarked so the next iteration retries it", task["id"]
+                    )
+                await self.task_queue.upsert_loop(
+                    iteration=iteration + 1, plan_item_reject_streak=streak
                 )
-                await self.task_queue.upsert_loop(iteration=iteration + 1)
                 continue
 
             # Mark item done in the plan (- [ ] → - [x])
@@ -663,7 +692,9 @@ class ProjectSession:
                 await self.task_queue.upsert_loop(status="cancelled")
                 return
 
-            await self.task_queue.upsert_loop(iteration=iteration + 1)
+            await self.task_queue.upsert_loop(
+                iteration=iteration + 1, plan_item_reject_streak=0
+            )
 
 # ─── Session Registry ─────────────────────────────────────────────────────────
 

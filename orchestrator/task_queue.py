@@ -114,7 +114,8 @@ class TaskQueue:
                         created_at TEXT,
                         updated_at TEXT,
                         mode TEXT DEFAULT 'review',
-                        plan_phase TEXT DEFAULT 'plan'
+                        plan_phase TEXT DEFAULT 'plan',
+                        plan_item_reject_streak INTEGER DEFAULT 0
                     )
                 """)
                 # ─── Migrations (ALTER TABLE — safe to re-run, duplicate column = ignored) ───
@@ -126,6 +127,7 @@ class TaskQueue:
 
                 await _migrate("ALTER TABLE iteration_loops ADD COLUMN mode TEXT DEFAULT 'review'")
                 await _migrate("ALTER TABLE iteration_loops ADD COLUMN plan_phase TEXT DEFAULT 'plan'")
+                await _migrate("ALTER TABLE iteration_loops ADD COLUMN plan_item_reject_streak INTEGER DEFAULT 0")
                 await _migrate("ALTER TABLE tasks ADD COLUMN own_files TEXT DEFAULT '[]'")
                 await _migrate("ALTER TABLE tasks ADD COLUMN forbidden_files TEXT DEFAULT '[]'")
                 await _migrate("ALTER TABLE tasks ADD COLUMN gh_issue_number INTEGER")

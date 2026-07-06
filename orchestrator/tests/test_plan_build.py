@@ -79,6 +79,102 @@ class TestPlanDriftGuard:
         assert "- [x] do the thing" in text
 
 
+class TestPlanItemRejectStreakEscalation:
+    """Round-2 adversarial-review finding (regression, MEDIUM): exempting loop/
+    plan tasks from worker.py's handle_oracle_requeue also silently dropped the
+    reject-round-cap escalation for them — and since each BUILD iteration
+    regenerates a fresh task description with no marker to count, that
+    escalation was actually UNREACHABLE for this task class, not merely
+    skipped once. session.py now tracks consecutive rejections of the
+    front-of-plan item itself (plan_item_reject_streak) and escalates via the
+    same _escalate_oracle_reject_plateau at the same configured cap.
+    """
+
+    async def test_escalates_at_the_configured_cap_then_exhausts(self, tmp_path, monkeypatch):
+        import session as sess_mod
+
+        monkeypatch.setitem(sess_mod.GLOBAL_SETTINGS, "github_issues_sync", False)
+        monkeypatch.setitem(sess_mod.GLOBAL_SETTINGS, "auto_merge", False)
+        monkeypatch.setitem(sess_mod.GLOBAL_SETTINGS, "oracle_max_reject_rounds", 3)
+        monkeypatch.setattr(sess_mod, "_fire_notification", AsyncMock())
+        monkeypatch.setattr(sess_mod, "_suggest_next_goals", AsyncMock())
+
+        escalated = []
+
+        async def fake_escalate(project_dir, claude_dir, webhook, task_id, streak):
+            escalated.append((task_id, streak))
+
+        monkeypatch.setattr(sess_mod, "_escalate_oracle_reject_plateau", fake_escalate)
+
+        plan_path = tmp_path / "IMPLEMENTATION_PLAN.md"
+        plan_path.write_text("# Plan\n\n- [ ] genuinely stuck item\n")
+
+        s = sess_mod.ProjectSession(str(tmp_path))
+        # max_iterations == oracle_max_reject_rounds: escalation fires on the
+        # LAST real attempt, then the very next check exhausts — no infinite loop.
+        await s.task_queue.upsert_loop(
+            status="running", plan_phase="build", context_dir=str(tmp_path),
+            artifact_path=str(tmp_path / "artifact.md"),
+            iteration=1, max_iterations=3, supervisor_model="sonnet",
+        )
+
+        async def _always_rejected(task, task_queue, project_dir, claude_dir):
+            await task_queue.update(task["id"], status="done", oracle_result="rejected", oracle_reason="no")
+
+        monkeypatch.setattr(s.worker_pool, "start_worker", _always_rejected)
+
+        await s._run_plan_build()
+
+        assert len(escalated) == 1
+        assert escalated[0][1] == 3  # streak reached the configured cap
+
+        loop_state = await s.task_queue.get_loop()
+        assert loop_state["status"] == "exhausted"
+        assert loop_state["plan_item_reject_streak"] == 0  # reset after escalating
+
+        # the item stays unmarked — none of this was a real completion
+        assert "- [ ] genuinely stuck item" in plan_path.read_text()
+
+    async def test_streak_resets_on_success_after_rejections(self, tmp_path, monkeypatch):
+        import session as sess_mod
+
+        monkeypatch.setitem(sess_mod.GLOBAL_SETTINGS, "github_issues_sync", False)
+        monkeypatch.setitem(sess_mod.GLOBAL_SETTINGS, "auto_merge", False)
+        monkeypatch.setitem(sess_mod.GLOBAL_SETTINGS, "oracle_max_reject_rounds", 5)
+        monkeypatch.setattr(sess_mod, "_fire_notification", AsyncMock())
+        monkeypatch.setattr(sess_mod, "_suggest_next_goals", AsyncMock())
+
+        escalated = []
+
+        async def fake_escalate(*a, **k):
+            escalated.append(a)
+
+        monkeypatch.setattr(sess_mod, "_escalate_oracle_reject_plateau", fake_escalate)
+
+        plan_path = tmp_path / "IMPLEMENTATION_PLAN.md"
+        plan_path.write_text("# Plan\n\n- [ ] flaky then fixed\n")
+
+        s = sess_mod.ProjectSession(str(tmp_path))
+        await s.task_queue.upsert_loop(
+            status="running", plan_phase="build", context_dir=str(tmp_path),
+            artifact_path=str(tmp_path / "artifact.md"),
+            iteration=1, max_iterations=10, supervisor_model="sonnet",
+            plan_item_reject_streak=2,  # 2 prior rejections already recorded
+        )
+
+        async def _approved(task, task_queue, project_dir, claude_dir):
+            await task_queue.update(task["id"], status="done", oracle_result="approved", oracle_reason="ok")
+
+        monkeypatch.setattr(s.worker_pool, "start_worker", _approved)
+
+        await s._run_plan_build()
+
+        assert escalated == []  # well below the cap, and this attempt succeeded
+        loop_state = await s.task_queue.get_loop()
+        assert loop_state["plan_item_reject_streak"] == 0
+        assert "- [x] flaky then fixed" in plan_path.read_text()
+
+
 class TestConvergedVsExhausted:
     """Round-4 gap: distinguish 'genuinely nothing left to do' (converged) from
     'hit max_iterations while items are still open' (exhausted) — Pieter Levels.
