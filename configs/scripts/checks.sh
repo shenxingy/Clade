@@ -10,6 +10,13 @@
 #   checks.sh shellcheck FILE...  shellcheck --severity=error; skips with a
 #                                 notice when shellcheck is not installed
 #                                 (CI installs it; local machines may not)
+#   checks.sh pr-body "BODY"      AGENTS.md honeypot check (see AGENTS.md) —
+#                                 flags PRs whose body echoes the compliance
+#                                 token verbatim, a signal of a fully-
+#                                 unsupervised AI submission nobody read
+#                                 before opening. Called by the PR honeypot
+#                                 CI workflow, not by committer.sh (this is a
+#                                 PR-description check, not a commit check).
 #
 # Escape hatches:
 #   CLADE_ALLOW_SECRETS=1     skip the staged-secret scan (known-fake fixtures)
@@ -83,6 +90,26 @@ check_shellcheck() {
   shellcheck --severity=error "$@"
 }
 
+# AGENTS.md honeypot (Mitchell Hashimoto/Ghostty pattern): unlike the secret
+# scanner above, PRESENCE of this token is the bad signal, not absence — a
+# human who actually read/wrote their own PR text is very unlikely to blindly
+# echo a "confirm you read this" token into it; a fully-unsupervised AI
+# mechanically following AGENTS.md's instructions will. Flag, don't reject —
+# this is a maintainer-attention signal, not proof of a bad PR.
+HONEYPOT_TOKEN='CLD-AGENTS-7f2b91e4'
+
+check_pr_body_honeypot() {
+  local body="${1:-}"
+  if printf '%s' "$body" | grep -qF "$HONEYPOT_TOKEN"; then
+    echo "checks: PR body contains the AGENTS.md compliance token verbatim." >&2
+    echo "  Likely signal: a fully-unsupervised AI agent generated this PR and no" >&2
+    echo "  human read its own description before submission. Flagging for a" >&2
+    echo "  maintainer to look closer — not an automatic rejection." >&2
+    return 1
+  fi
+  return 0
+}
+
 check_commit_msg() {
   local msg="${1:-}"
   if ! printf '%s\n' "$msg" | head -1 | grep -qE "$CONVENTIONAL_RE"; then
@@ -120,8 +147,11 @@ case "${1:-}" in
     shift
     check_shellcheck "$@" || exit 1
     ;;
+  pr-body)
+    check_pr_body_honeypot "${2:-}" || exit 1
+    ;;
   *)
-    echo "Usage: checks.sh staged | commit-msg \"MSG\" | shellcheck FILE..." >&2
+    echo "Usage: checks.sh staged | commit-msg \"MSG\" | shellcheck FILE... | pr-body \"BODY\"" >&2
     exit 2
     ;;
 esac

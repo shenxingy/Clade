@@ -1,0 +1,67 @@
+name: PR Honeypot Check
+
+# Round-4 gap (Mitchell Hashimoto/Ghostty): this repo has received real
+# external PRs generated end-to-end by an AI agent with no human ever reading
+# the PR's own description before submitting. AGENTS.md plants a "confirm you
+# read this" compliance token; a human who genuinely read/wrote their PR text
+# themselves is unlikely to blindly echo it back, but a fully-unsupervised
+# agent mechanically following AGENTS.md's instructions will. Presence of the
+# token is therefore a maintainer-attention SIGNAL, not proof of a bad PR —
+# this workflow flags it with a comment, it never auto-closes or blocks.
+#
+# pull_request_target (not pull_request) so a fork PR's workflow run still has
+# write access to comment — safe here ONLY because we never check out or
+# execute the PR's own (untrusted) branch content, just read the PR body
+# string from the event payload and run checks.sh from the BASE branch.
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  honeypot-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout base branch (never the PR's own untrusted code)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Check PR body for the AGENTS.md compliance token
+        id: honeypot
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if bash configs/scripts/checks.sh pr-body "$PR_BODY"; then
+            echo "flagged=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "flagged=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Comment when flagged
+        if: steps.honeypot.outputs.flagged == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = '<!-- clade-pr-honeypot-check -->';
+            const body = `${marker}\n**Maintainer note:** this PR's description contains the ` +
+              '`AGENTS.md` compliance token verbatim. That usually means an AI agent generated ' +
+              'this PR with no human reading its own text before submission — worth a closer ' +
+              'look before merging. This is an informational flag, not a rejection.';
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            if (comments.some(c => c.body && c.body.includes(marker))) {
+              return; // already flagged this PR — avoid duplicate comments on synchronize
+            }
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
