@@ -77,3 +77,75 @@ class TestPlanDriftGuard:
         # auto_oracle off entirely (oracle_result stays None/absent) — unaffected.
         text = await _run_one_iteration(tmp_path, monkeypatch, None)
         assert "- [x] do the thing" in text
+
+
+class TestConvergedVsExhausted:
+    """Round-4 gap: distinguish 'genuinely nothing left to do' (converged) from
+    'hit max_iterations while items are still open' (exhausted) — Pieter Levels.
+    Before this fix both BUILD-phase termination sites set status="converged"
+    and fired the identical loop_converged notification, so a stuck loop was
+    indistinguishable from a clean finish in the DB/UI.
+    """
+
+    async def test_max_iter_with_open_item_is_exhausted(self, tmp_path, monkeypatch):
+        import session as sess_mod
+
+        monkeypatch.setattr(sess_mod, "_fire_notification", AsyncMock())
+        monkeypatch.setattr(sess_mod, "_suggest_next_goals", AsyncMock())
+
+        plan_path = tmp_path / "IMPLEMENTATION_PLAN.md"
+        plan_path.write_text("# Plan\n\n- [ ] still open\n")
+
+        s = sess_mod.ProjectSession(str(tmp_path))
+        await s.task_queue.upsert_loop(
+            status="running", plan_phase="build", context_dir=str(tmp_path),
+            artifact_path=str(tmp_path / "artifact.md"),
+            # Ceiling already hit (iteration >= max_iterations) with an
+            # unchecked item still in the plan.
+            iteration=2, max_iterations=2, supervisor_model="sonnet",
+        )
+
+        start_worker = AsyncMock()
+        monkeypatch.setattr(s.worker_pool, "start_worker", start_worker)
+
+        await s._run_plan_build()
+
+        loop_state = await s.task_queue.get_loop()
+        assert loop_state["status"] == "exhausted"
+        start_worker.assert_not_called()  # ceiling check happens before spawn
+
+        fired = [c.args[0] for c in sess_mod._fire_notification.call_args_list]
+        assert fired == ["loop_exhausted"]
+        assert "loop_converged" not in fired
+
+        # the open item must be left untouched — the plan did not finish
+        assert "- [ ] still open" in plan_path.read_text()
+
+    async def test_all_items_done_is_converged_even_at_ceiling(self, tmp_path, monkeypatch):
+        """If the checklist is actually empty, that's a genuine finish — even
+        when iteration happens to already be >= max_iterations, it must stay
+        "converged", not "exhausted" (the task_line_idx-is-None check runs
+        before the max_iter check)."""
+        import session as sess_mod
+
+        monkeypatch.setattr(sess_mod, "_fire_notification", AsyncMock())
+        monkeypatch.setattr(sess_mod, "_suggest_next_goals", AsyncMock())
+
+        plan_path = tmp_path / "IMPLEMENTATION_PLAN.md"
+        plan_path.write_text("# Plan\n\n- [x] already done\n")
+
+        s = sess_mod.ProjectSession(str(tmp_path))
+        await s.task_queue.upsert_loop(
+            status="running", plan_phase="build", context_dir=str(tmp_path),
+            artifact_path=str(tmp_path / "artifact.md"),
+            iteration=2, max_iterations=2, supervisor_model="sonnet",
+        )
+
+        await s._run_plan_build()
+
+        loop_state = await s.task_queue.get_loop()
+        assert loop_state["status"] == "converged"
+
+        fired = [c.args[0] for c in sess_mod._fire_notification.call_args_list]
+        assert fired == ["loop_converged"]
+        assert "loop_exhausted" not in fired
