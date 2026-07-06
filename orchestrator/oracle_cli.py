@@ -11,9 +11,11 @@ Usage:
   oracle_cli.py --task "fix: handle empty input" --staged
   oracle_cli.py --task-file task.md --range origin/main...HEAD
   git diff | oracle_cli.py --task "..." --diff-file -
+  oracle_cli.py --task "..." --staged --dry-run   # preview only, no API call
 
-Exit codes: 0 approved (or empty diff), 1 rejected, 2 unreviewed (infra
-error — a dead judge must read as "unreviewed", never "approved").
+Exit codes: 0 approved (or empty diff, or --dry-run), 1 rejected, 2
+unreviewed (infra error — a dead judge must read as "unreviewed", never
+"approved").
 """
 
 from __future__ import annotations
@@ -51,6 +53,41 @@ def _read_diff(args: argparse.Namespace, project_dir: Path) -> str:
     return _git_diff(project_dir, staged=args.staged, git_range=args.git_range)
 
 
+def _resolve_oracle_plan(diff_text: str) -> dict:
+    """Compute what `_oracle_review` WOULD do for this diff, without calling it.
+
+    Mirrors worker_review._oracle_review's own chunking/resampling decisions
+    exactly (same _ORACLE_CHUNK_SIZE constant, same _classify_diff_risk call)
+    so the preview can never drift from the real invocation it describes.
+    acceptance_criteria is always 0 here: oracle_cli has no --criteria flag
+    (unlike the orchestrator's worker.py caller), so every real call from this
+    CLI passes acceptance_criteria=None too — the preview reports that
+    honestly rather than implying a capability the CLI doesn't have.
+    """
+    diff_size = len(diff_text)
+    chunk_size = worker_review._ORACLE_CHUNK_SIZE
+    risk_flagged = worker_review._classify_diff_risk(diff_text)
+    verdict_samples = 3 if risk_flagged else 1
+    if diff_size > chunk_size:
+        total_chunks = -(-diff_size // chunk_size)  # ceil division, no float
+        reviewed_chunks = min(total_chunks, 3)  # _oracle_review caps at 3 chunks
+        strategy = (
+            f"chunked ({reviewed_chunks}/{total_chunks} chunk(s) would be "
+            f"reviewed, {chunk_size} chars/chunk)"
+        )
+    else:
+        strategy = "two-pass (spec-check then quality-check, single shot)"
+    return {
+        "verdict": "dry-run",
+        "model": worker_review.HAIKU_MODEL,
+        "diff_chars": diff_size,
+        "criteria_count": 0,
+        "risk_flagged": risk_flagged,
+        "verdict_samples": verdict_samples,
+        "strategy": strategy,
+    }
+
+
 def run(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--task", help="task description text")
@@ -68,6 +105,15 @@ def run(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--test-evidence-file", help="pre-run test output to thread into prompts")
     p.add_argument("--model", help="override judge model (default: haiku alias)")
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=(
+            "print the resolved oracle invocation (model, diff size, criteria "
+            "count, chunking decision) and exit 0 — spawns no oracle "
+            "subprocess, spends no API call"
+        ),
+    )
     args = p.parse_args(argv)
 
     task = args.task or (Path(args.task_file).read_text() if args.task_file else "")
@@ -78,9 +124,16 @@ def run(argv: list[str] | None = None) -> int:
 
     project_dir = Path(args.project_dir).resolve()
     claude_dir = project_dir / ".claude"
-    claude_dir.mkdir(exist_ok=True)
 
     diff_text = _read_diff(args, project_dir)
+
+    if args.dry_run:
+        # No claude_dir.mkdir, no _oracle_review call — a preview must have
+        # zero side effects, same bar as the real empty-diff short-circuit.
+        print(json.dumps(_resolve_oracle_plan(diff_text)))
+        return 0
+
+    claude_dir.mkdir(exist_ok=True)
     if not diff_text.strip():
         print(json.dumps({"verdict": "empty", "reason": "no diff to review"}))
         return 0
