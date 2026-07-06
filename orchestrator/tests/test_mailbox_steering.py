@@ -136,6 +136,92 @@ class TestSendMessageMidflight:
         assert len(rows) == 1
 
 
+# ─── send_task_message: deliver="steer" vs "followup" ─────────────────────────
+
+
+class TestDeliverMode:
+    async def test_default_deliver_is_steer(self, task_queue, tmp_path):
+        # Omitting "deliver" entirely must behave exactly like the pre-existing
+        # unconditional-inbox-write behavior (default preserves prior behavior).
+        w = _fake_worker(tmp_path)
+        s = _fake_session(task_queue, [w])
+
+        msg = await rt.send_task_message("t1", {"content": "steer left"}, s=s)
+
+        assert msg["midflight"] is True
+        assert _inbox(tmp_path).exists()
+
+    async def test_explicit_steer_writes_inbox(self, task_queue, tmp_path):
+        w = _fake_worker(tmp_path)
+        s = _fake_session(task_queue, [w])
+
+        msg = await rt.send_task_message(
+            "t1", {"content": "steer left", "deliver": "steer"}, s=s
+        )
+
+        assert msg["midflight"] is True
+        assert "steer left" in _inbox(tmp_path).read_text()
+
+    async def test_followup_skips_inbox_even_with_running_worker(self, task_queue, tmp_path):
+        # A worker IS running for this task, but the caller explicitly asked
+        # to queue for the next spawn instead of interrupting it now.
+        w = _fake_worker(tmp_path)
+        s = _fake_session(task_queue, [w])
+
+        msg = await rt.send_task_message(
+            "t1", {"content": "queue for later", "deliver": "followup"}, s=s
+        )
+
+        assert msg["midflight"] is False
+        assert not _inbox(tmp_path).exists()
+        # DB row (durable, at-spawn channel) is still written
+        rows = await task_queue.get_messages("t1", unread_only=True)
+        assert len(rows) == 1 and rows[0]["content"] == "queue for later"
+
+    async def test_followup_never_touches_existing_inbox_file(self, task_queue, tmp_path):
+        # A prior "steer" message already created the inbox file. A subsequent
+        # "followup" message must not append to it or otherwise modify it.
+        w = _fake_worker(tmp_path)
+        s = _fake_session(task_queue, [w])
+
+        await rt.send_task_message("t1", {"content": "first steer"}, s=s)
+        before = _inbox(tmp_path).read_text()
+
+        msg = await rt.send_task_message(
+            "t1", {"content": "second, deferred", "deliver": "followup"}, s=s
+        )
+
+        assert msg["midflight"] is False
+        assert _inbox(tmp_path).read_text() == before
+
+    async def test_invalid_deliver_value_rejected(self, task_queue, tmp_path):
+        w = _fake_worker(tmp_path)
+        s = _fake_session(task_queue, [w])
+
+        with pytest.raises(HTTPException) as exc:
+            await rt.send_task_message(
+                "t1", {"content": "bad mode", "deliver": "later"}, s=s
+            )
+        assert exc.value.status_code == 400
+        # Rejected before any side effect — no DB row, no inbox file.
+        assert not _inbox(tmp_path).exists()
+        rows = await task_queue.get_messages("t1", unread_only=True)
+        assert len(rows) == 0
+
+    async def test_followup_with_no_running_worker(self, task_queue, tmp_path):
+        # Same DB-only outcome as "steer" when nothing is running, but via the
+        # explicit followup path rather than the "no worker found" fallback.
+        s = _fake_session(task_queue, [])
+
+        msg = await rt.send_task_message(
+            "t1", {"content": "queued, nobody home", "deliver": "followup"}, s=s
+        )
+
+        assert msg["midflight"] is False
+        rows = await task_queue.get_messages("t1", unread_only=True)
+        assert len(rows) == 1
+
+
 # ─── _write_worker_inbox unit behavior ────────────────────────────────────────
 
 

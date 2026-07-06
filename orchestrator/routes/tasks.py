@@ -419,6 +419,13 @@ async def set_task_depends_on(
 # A message written after the worker's final tool call is never drained
 # mid-flight; the stale inbox file is removed at the next spawn
 # (worker_taskfile.py) and the DB row delivers it via the at-spawn channel.
+#
+# Caller-selectable mode (send_task_message body["deliver"]):
+#   - "steer" (default, preserves prior behavior): write the DB row AND
+#     attempt the mid-flight inbox write if a worker is currently running.
+#   - "followup": write ONLY the DB row — never touch the inbox file, even
+#     if a worker is running. Use this to queue guidance for the worker's
+#     NEXT spawn without interrupting the one running right now.
 
 
 def _write_worker_inbox(
@@ -472,9 +479,18 @@ async def send_task_message(task_id: str, body: dict, s: ProjectSession = Depend
     content = (body.get("content") or "").strip()
     if not content:
         raise HTTPException(status_code=400, detail="content is required")
+    deliver = body.get("deliver") or "steer"
+    if deliver not in ("steer", "followup"):
+        raise HTTPException(status_code=400, detail="deliver must be one of: steer, followup")
     from_task_id = body.get("from_task_id")
     msg = await s.task_queue.send_message(task_id, content, from_task_id=from_task_id)
-    msg["midflight"] = _write_worker_inbox(s.worker_pool, task_id, content, from_task_id)
+    if deliver == "followup":
+        # Caller explicitly asked to queue this for the worker's NEXT spawn —
+        # skip the mid-flight inbox write entirely so a running worker is
+        # never interrupted. The DB row (at-spawn channel) is already durable.
+        msg["midflight"] = False
+    else:
+        msg["midflight"] = _write_worker_inbox(s.worker_pool, task_id, content, from_task_id)
     return msg
 
 
