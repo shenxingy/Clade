@@ -1022,3 +1022,67 @@ async def handle_oracle_requeue(
         logger.info("Oracle rejected task %s — plateau, spawned %d diverse samples", w.task_id, n_samples)
     else:
         logger.info("Oracle rejected task %s — re-queued (sequential retry)", w.task_id)
+
+
+async def handle_test_requeue(w: Any, task_queue: Any, is_loop_task: bool) -> None:
+    """Pre-push test failure → re-queue with test output (mic92: evidence
+    before verdict). Loop/plan-managed tasks are exempt from spawning an
+    untracked retry (same rationale as handle_oracle_requeue) — the
+    diagnostic failed_reason update still happens regardless, since it only
+    annotates the existing row rather than creating a new one."""
+    error_summary = _strip_error_context(w._test_requeue_reason)
+    if not is_loop_task:
+        retry_desc = (
+            f"{w.description}\n\n---\n"
+            f"Previous attempt FAILED the project test suite (commit undone, never pushed):\n"
+            f"{error_summary}\n"
+            f"Fix the failures, run the project tests locally, then complete the task."
+        )
+        await task_queue.add(retry_desc, w.model,
+                             own_files=w.own_files, forbidden_files=w.forbidden_files)
+    await task_queue.update(
+        w.task_id, failed_reason=f"Pre-push tests failed: {error_summary[:200]}"
+    )
+    logger.info("Pre-push tests failed for task %s — re-queued with test output", w.task_id)
+
+
+async def handle_ownership_requeue(w: Any, task_queue: Any, is_loop_task: bool) -> None:
+    """File ownership violation → re-queue with violation context. Same
+    loop/plan exemption as handle_test_requeue."""
+    error_summary = _strip_error_context(w._ownership_violation_reason)
+    if not is_loop_task:
+        retry_desc = (
+            f"{w.description}\n\n---\n"
+            f"Previous attempt REJECTED — file ownership violation:\n"
+            f"{error_summary}\n\n"
+            f"You MUST only edit files matching your OWN_FILES patterns. "
+            f"Do NOT touch FORBIDDEN_FILES. Find an alternative approach."
+        )
+        await task_queue.add(retry_desc, w.model,
+                            own_files=w.own_files, forbidden_files=w.forbidden_files)
+    await task_queue.update(
+        w.task_id, failed_reason=f"Ownership violation: {error_summary[:200]}"
+    )
+    logger.info("Ownership violation task %s — re-queued with reason", w.task_id)
+
+
+async def handle_handoff_requeue(w: Any, task_queue: Any, is_loop_task: bool) -> None:
+    """Worker wrote a handoff file → create a continuation task. Same
+    loop/plan exemption as handle_oracle_requeue — no diagnostic update here
+    (unlike test/ownership) since there is nothing to annotate on the row."""
+    if not is_loop_task:
+        continuation_desc = (
+            f"{w.description}\n\n---\n"
+            f"**Continuation — previous session handed off:**\n"
+            f"{w._handoff_content}\n\n"
+            f"Run /pickup if available, then continue from where the previous worker left off."
+        )
+        await task_queue.add(continuation_desc, w.model,
+                            own_files=w.own_files, forbidden_files=w.forbidden_files)
+        logger.info("Handoff task %s → continuation queued", w.task_id)
+    else:
+        logger.info(
+            "Worker %s handed off but is loop/plan-managed — not "
+            "spawning a continuation task (has its own retry pipeline)",
+            w.task_id,
+        )

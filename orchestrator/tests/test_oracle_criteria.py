@@ -31,6 +31,9 @@ _w_spec.loader.exec_module(wmod)  # type: ignore[union-attr]
 # separate fake module from the real `wr` loaded above), not our real `wr` —
 # rebind so poll_all's requeue path exercises the real implementation.
 wmod.handle_oracle_requeue = wr.handle_oracle_requeue
+wmod.handle_test_requeue = wr.handle_test_requeue
+wmod.handle_ownership_requeue = wr.handle_ownership_requeue
+wmod.handle_handoff_requeue = wr.handle_handoff_requeue
 
 
 # ─── Fix-intent completeness criterion (item 15 part 1) ─────────────────────
@@ -375,6 +378,111 @@ async def test_poll_all_skips_oracle_requeue_for_loop_managed_tasks(task_queue, 
         assert w._oracle_requeue is False  # flag still cleared, just no requeue spawned
     tasks = await task_queue.list()
     assert not any("Previous attempt was" in t["description"] for t in tasks)
+
+
+async def test_poll_all_skips_test_requeue_for_loop_managed_tasks(task_queue, tmp_path):
+    # Round-2 adversarial-review finding (correctness, HIGH): the loop/plan guard
+    # above only covered the oracle-requeue site — this sibling site (pre-push
+    # test failure) reproduced the identical untracked-duplicate-task bug.
+    # failed_reason is still recorded (pure diagnostic on the existing row, no
+    # new task, so no race) — only the task_queue.add() spawn is skipped.
+    pool = wmod.WorkerPool()
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir(exist_ok=True)
+    task = await task_queue.add("[Plan-2] implement feature X", "haiku")
+    w = wmod.Worker(
+        task_id=task["id"], description="[Plan-2] implement feature X",
+        model="haiku", project_dir=tmp_path, claude_dir=claude_dir,
+    )
+    w.status = "done"
+    w._terminal_persisted = True
+    w._test_requeue = True
+    w._test_requeue_reason = "Project tests FAILED.\n2 failed, 1 passed"
+    pool.workers[w.id] = w
+
+    await pool.poll_all(task_queue, None)
+
+    assert w._test_requeue is False
+    tasks = await task_queue.list()
+    assert not any("FAILED the project test suite" in t["description"] for t in tasks)
+    row = await task_queue.get(task["id"])
+    assert "Pre-push tests failed" in (row.get("failed_reason") or "")
+
+
+async def test_poll_all_skips_ownership_requeue_for_loop_managed_tasks(task_queue, tmp_path):
+    pool = wmod.WorkerPool()
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir(exist_ok=True)
+    task = await task_queue.add("[Loop-4] implement feature X", "haiku")
+    w = wmod.Worker(
+        task_id=task["id"], description="[Loop-4] implement feature X",
+        model="haiku", project_dir=tmp_path, claude_dir=claude_dir,
+    )
+    w.status = "done"
+    w._terminal_persisted = True
+    w._ownership_violation = True
+    w._ownership_violation_reason = "edited forbidden.py"
+    pool.workers[w.id] = w
+
+    await pool.poll_all(task_queue, None)
+
+    assert w._ownership_violation is False
+    tasks = await task_queue.list()
+    assert not any("file ownership violation" in t["description"] for t in tasks)
+    row = await task_queue.get(task["id"])
+    assert "Ownership violation" in (row.get("failed_reason") or "")
+
+
+async def test_poll_all_skips_handoff_requeue_for_loop_managed_tasks(task_queue, tmp_path):
+    pool = wmod.WorkerPool()
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir(exist_ok=True)
+    w = wmod.Worker(
+        task_id="task-plan-ho", description="[Plan-1] implement feature X",
+        model="haiku", project_dir=tmp_path, claude_dir=claude_dir,
+    )
+    w.status = "done"
+    w._terminal_persisted = True
+    w._handoff_requeue = True
+    w._handoff_content = "ran out of context, see notes.md"
+    pool.workers[w.id] = w
+
+    await pool.poll_all(task_queue, None)
+
+    assert w._handoff_requeue is False
+    tasks = await task_queue.list()
+    assert not any("previous session handed off" in t["description"] for t in tasks)
+
+
+async def test_poll_all_still_requeues_all_three_siblings_for_non_loop_tasks(task_queue, tmp_path):
+    # Regression guard: the shared _is_loop_task hoist must not accidentally
+    # disable these paths for ordinary (non-loop/plan) tasks.
+    pool = wmod.WorkerPool()
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir(exist_ok=True)
+    specs = [
+        ("task-tf", "_test_requeue", "_test_requeue_reason", "tests failed", "FAILED the project test suite"),
+        ("task-ov", "_ownership_violation", "_ownership_violation_reason", "bad edit", "file ownership violation"),
+        ("task-ho", "_handoff_requeue", "_handoff_content", "handoff notes", "previous session handed off"),
+    ]
+    for task_id, flag, reason_attr, reason_val, expect_substr in specs:
+        w = wmod.Worker(
+            task_id=task_id, description="implement feature X (no prefix)",
+            model="haiku", project_dir=tmp_path, claude_dir=claude_dir,
+        )
+        w.status = "done"
+        w._terminal_persisted = True
+        setattr(w, flag, True)
+        setattr(w, reason_attr, reason_val)
+        pool.workers[w.id] = w
+
+    await pool.poll_all(task_queue, None)
+
+    tasks = await task_queue.list()
+    for _, _, _, _, expect_substr in specs:
+        assert any(expect_substr in t["description"] for t in tasks), (
+            f"expected a requeued task containing {expect_substr!r}"
+        )
 
 
 async def test_poll_all_escalates_instead_of_requeuing_at_reject_cap(task_queue, tmp_path, monkeypatch):

@@ -59,7 +59,7 @@ from worker_review import (
     _oracle_review, _read_constitution, _summarize_worker_completion,
     _record_oracle_infra_error, _reset_oracle_infra_streak,
     _escalate_oracle_outage, _ORACLE_INFRA_THRESHOLD,
-    handle_oracle_requeue,
+    handle_oracle_requeue, handle_test_requeue, handle_ownership_requeue, handle_handoff_requeue,
     _build_test_evidence,
 )
 from worker_taskfile import build_task_file
@@ -1372,17 +1372,21 @@ class WorkerPool:
                         t = await task_queue.get(w.task_id)
                         if t:
                             asyncio.create_task(_gh_update_issue_status(t, project_dir))
+                # Loop/plan-managed tasks have their OWN retry pipeline (session.py's
+                # plan-drift guard re-spawns "[Plan-N+1]" next iteration, bounded by
+                # max_iterations) — same skip as the stuck-worker requeue above, and
+                # shared by ALL FOUR requeue paths below (oracle/test/ownership/
+                # handoff): spawning an untracked retry for any of them would race a
+                # second worker against the plan/loop's own tracked one on the same
+                # item (adversarial-review finding, HIGH — the first pass of this
+                # fix only covered the oracle-requeue site, missing 3 siblings that
+                # reproduce the identical bug).
+                _is_loop_task = w.description.startswith("[Loop-") or w.description.startswith("[Plan-")
                 # Oracle rejected → re-queue (diverse fan-out on plateau, or escalate
                 # past the reject-round cap). Logic lives in worker_review.py's
                 # handle_oracle_requeue — extracted to stay under the 1500-line cap.
-                # Loop/plan-managed tasks have their OWN retry pipeline (session.py's
-                # plan-drift guard re-spawns "[Plan-N+1]" next iteration, bounded by
-                # max_iterations) — same skip as the stuck-worker requeue above;
-                # spawning an untracked retry here too would race a second worker
-                # against the plan/loop's own tracked one on the same item.
                 if w._oracle_requeue:
                     w._oracle_requeue = False
-                    _is_loop_task = w.description.startswith("[Loop-") or w.description.startswith("[Plan-")
                     if not _is_loop_task:
                         await handle_oracle_requeue(
                             w, task_queue,
@@ -1396,53 +1400,19 @@ class WorkerPool:
                             "not requeuing via handle_oracle_requeue (has its own retry pipeline)",
                             w.task_id,
                         )
-                # Pre-push test failure → re-queue with test output (mic92: evidence before verdict)
+                # Pre-push test failure / ownership violation / handoff → re-queue with
+                # context (mic92: evidence before verdict). Logic lives in
+                # worker_review.py alongside handle_oracle_requeue — extracted to
+                # stay under the 1500-line cap.
                 if w._test_requeue:
                     w._test_requeue = False
-                    error_summary = _strip_error_context(w._test_requeue_reason)
-                    retry_desc = (
-                        f"{w.description}\n\n---\n"
-                        f"Previous attempt FAILED the project test suite (commit undone, never pushed):\n"
-                        f"{error_summary}\n"
-                        f"Fix the failures, run the project tests locally, then complete the task."
-                    )
-                    await task_queue.add(retry_desc, w.model,
-                                         own_files=w.own_files, forbidden_files=w.forbidden_files)
-                    await task_queue.update(
-                        w.task_id,
-                        failed_reason=f"Pre-push tests failed: {error_summary[:200]}"
-                    )
-                    logger.info("Pre-push tests failed for task %s — re-queued with test output", w.task_id)
-                # File ownership violation → re-queue with violation context
+                    await handle_test_requeue(w, task_queue, _is_loop_task)
                 if w._ownership_violation:
                     w._ownership_violation = False
-                    error_summary = _strip_error_context(w._ownership_violation_reason)
-                    retry_desc = (
-                        f"{w.description}\n\n---\n"
-                        f"Previous attempt REJECTED — file ownership violation:\n"
-                        f"{error_summary}\n\n"
-                        f"You MUST only edit files matching your OWN_FILES patterns. "
-                        f"Do NOT touch FORBIDDEN_FILES. Find an alternative approach."
-                    )
-                    await task_queue.add(retry_desc, w.model,
-                                        own_files=w.own_files, forbidden_files=w.forbidden_files)
-                    await task_queue.update(
-                        w.task_id,
-                        failed_reason=f"Ownership violation: {error_summary[:200]}"
-                    )
-                    logger.info("Ownership violation task %s — re-queued with reason", w.task_id)
-                # Worker wrote handoff file → create continuation task
+                    await handle_ownership_requeue(w, task_queue, _is_loop_task)
                 if w._handoff_requeue:
                     w._handoff_requeue = False
-                    continuation_desc = (
-                        f"{w.description}\n\n---\n"
-                        f"**Continuation — previous session handed off:**\n"
-                        f"{w._handoff_content}\n\n"
-                        f"Run /pickup if available, then continue from where the previous worker left off."
-                    )
-                    await task_queue.add(continuation_desc, w.model,
-                                        own_files=w.own_files, forbidden_files=w.forbidden_files)
-                    logger.info("Handoff task %s → continuation queued", w.task_id)
+                    await handle_handoff_requeue(w, task_queue, _is_loop_task)
                 # Typed worker handoff (Codex SDK pattern) — spawn child worker on completion
                 if w._handoff_type and w._handoff_payload and w.status == "done":
                     parent_task = await task_queue.get(w.task_id)
