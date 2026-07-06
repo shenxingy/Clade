@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import logging
 import sys
 from pathlib import Path
 
@@ -280,3 +281,77 @@ async def test_context_budget_warning_keyed_by_task_id(tmp_path: Path, monkeypat
 
     assert (claude_dir / f"context-warning-{w.task_id}.md").exists()
     assert not (claude_dir / f"context-warning-{w.id}.md").exists()
+
+
+# ─── Typed handoff logging accuracy (Round-4 adversarial-review finding) ──────
+# _handoff_to_worker can return None on two clean, non-exceptional paths (no
+# handoff_type/payload on the row; the newly-added child task can't be
+# re-fetched) — poll_all used to log a "child worker spawned" success message
+# unconditionally regardless of the return value.
+
+
+async def test_typed_handoff_noop_does_not_log_success(tmp_path: Path, monkeypatch, caplog) -> None:
+    from unittest.mock import AsyncMock
+
+    from task_queue import TaskQueue
+
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    tq = TaskQueue(claude_dir)
+    task = await tq.add("do the thing")
+    # handoff_type/handoff_payload left at their schema defaults (None / '{}') —
+    # _handoff_to_worker's own internal check (parent_task.get("handoff_type"))
+    # will be falsy, so it returns None with no child task created.
+
+    w = Worker(
+        task_id=task["id"], description="do the thing", model="sonnet",
+        project_dir=tmp_path, claude_dir=claude_dir,
+    )
+    w.status = "done"
+    w._terminal_persisted = True
+    w._handoff_type = "some-type"
+    w._handoff_payload = {"k": "v"}
+    monkeypatch.setattr(w, "poll", AsyncMock())
+
+    pool = _mod.WorkerPool()
+    pool.workers[w.id] = w
+
+    with caplog.at_level(logging.INFO):
+        await pool.poll_all(tq)
+
+    tasks = await tq.list()
+    assert len(tasks) == 1  # no child task was created
+    assert not any("child worker spawned" in r.message for r in caplog.records)
+    assert any("did not spawn a child worker" in r.message for r in caplog.records)
+
+
+async def test_typed_handoff_success_logs_success(tmp_path: Path, monkeypatch, caplog) -> None:
+    from unittest.mock import AsyncMock
+
+    from task_queue import TaskQueue
+
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    tq = TaskQueue(claude_dir)
+    task = await tq.add("do the thing")
+
+    w = Worker(
+        task_id=task["id"], description="do the thing", model="sonnet",
+        project_dir=tmp_path, claude_dir=claude_dir,
+    )
+    w.status = "done"
+    w._terminal_persisted = True
+    w._handoff_type = "some-type"
+    w._handoff_payload = {"k": "v"}
+    monkeypatch.setattr(w, "poll", AsyncMock())
+
+    pool = _mod.WorkerPool()
+    pool.workers[w.id] = w
+    # Isolate the logging-accuracy fix from _handoff_to_worker's own internals
+    # (a separate concern) — a real spawn is simulated by a non-None return.
+    monkeypatch.setattr(pool, "_handoff_to_worker", AsyncMock(return_value=object()))
+
+    with caplog.at_level(logging.INFO):
+        await pool.poll_all(tq)
+
+    assert any("child worker spawned" in r.message for r in caplog.records)

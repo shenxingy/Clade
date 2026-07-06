@@ -1418,13 +1418,21 @@ class WorkerPool:
                     parent_task = await task_queue.get(w.task_id)
                     if parent_task:
                         try:
-                            await self._handoff_to_worker(
+                            child = await self._handoff_to_worker(
                                 parent_task, task_queue, w._project_dir, w._claude_dir
                             )
-                            logger.info(
-                                "Typed handoff %s → child worker spawned for task %s",
-                                w._handoff_type, w.task_id
-                            )
+                            if child is not None:
+                                logger.info(
+                                    "Typed handoff %s → child worker spawned for task %s",
+                                    w._handoff_type, w.task_id
+                                )
+                            else:
+                                logger.warning(
+                                    "Typed handoff %s for task %s did not spawn a child worker "
+                                    "(missing handoff fields on the row, or the new task "
+                                    "row could not be re-fetched)",
+                                    w._handoff_type, w.task_id
+                                )
                         except Exception:
                             logger.exception("Handoff to worker failed for task %s", w.task_id)
             else:
