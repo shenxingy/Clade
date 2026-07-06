@@ -140,6 +140,11 @@ jobs:
       - name: Run post-compact-reinject tests
         run: bash tests/test-post-compact-reinject.sh
 
+      # Context-budget warning delivery (Round-4 dead-code fix): drain +
+      # at-most-once, task-id sanitizer, symlink refusal, no-env/no-file no-ops
+      - name: Run context-warning-drain tests
+        run: bash tests/test-context-warning-drain.sh
+
   install-test:
     name: Install Test
     runs-on: ubuntu-latest

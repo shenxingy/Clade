@@ -220,3 +220,36 @@ def test_classify_retry_helper_is_reexported_from_worker_utils() -> None:
     import worker_utils
 
     assert _mod._maybe_enqueue_classify_retry is worker_utils._maybe_enqueue_classify_retry
+
+
+# ─── context_budget_warning delivery (Round-4 dead-code fix) ──────────────────
+# The warning file used to be keyed by the Worker's own internal `.id` — but the
+# ONLY identifier available inside the worker's own hook environment is
+# CLADE_WORKER_TASK_ID (task_id). context-warning-drain.sh looks the file up by
+# task_id, so the write site must key by the same value or delivery can never
+# find it.
+
+
+async def test_context_budget_warning_keyed_by_task_id(tmp_path: Path, monkeypatch) -> None:
+    from unittest.mock import AsyncMock
+
+    from task_queue import TaskQueue
+
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    w = Worker(
+        task_id="task-abc123", description="x" * 700_000, model="sonnet",
+        project_dir=tmp_path, claude_dir=claude_dir,
+    )
+    w.status = "running"
+    w.task_timeout = 0
+    monkeypatch.setattr(w, "poll", AsyncMock())  # no real subprocess to poll here
+
+    pool = _mod.WorkerPool()
+    pool.workers[w.id] = w
+    tq = TaskQueue(claude_dir)
+
+    await pool.poll_all(tq)
+
+    assert (claude_dir / f"context-warning-{w.task_id}.md").exists()
+    assert not (claude_dir / f"context-warning-{w.id}.md").exists()

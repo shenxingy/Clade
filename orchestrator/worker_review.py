@@ -182,8 +182,17 @@ async def _write_pr_review(pr_url: str, task_description: str, project_dir: Path
             except asyncio.TimeoutError:
                 comment_proc.kill()
                 await comment_proc.communicate()  # drain stdout/stderr
-    except Exception:
-        pass  # non-critical
+        else:
+            # Non-critical (no comment posted), but must not be SILENT — a bare
+            # `pass` here left zero trace that a review was supposed to happen
+            # and didn't (diff fetch timeout, review-gen timeout, or an empty
+            # model reply all land here).
+            logger.warning(
+                "PR review skipped for %s — no review text generated "
+                "(diff/review subprocess timeout or empty reply)", pr_url,
+            )
+    except Exception as e:
+        logger.warning("PR review post failed for %s: %s", pr_url, e)
 
 
 _ORACLE_CHUNK_SIZE = 2500  # chars per diff chunk (Qodo §Gap3: chunked review for large diffs)

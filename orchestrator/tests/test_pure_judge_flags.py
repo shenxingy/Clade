@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import logging
 import shlex
 from pathlib import Path
 
@@ -221,6 +222,45 @@ async def test_write_pr_review_claude_cmd_has_flag(tmp_path, monkeypatch):
     # gh calls must NOT get the claude-only flag
     gh_cmds = [c["cmd"] for c in captured if c["cmd"].startswith("gh ")]
     assert all(FLAG_STR not in c for c in gh_cmds)
+
+
+@pytest.mark.asyncio
+async def test_write_pr_review_empty_review_logs_not_silent(tmp_path, monkeypatch, caplog):
+    # Round-4 fix: an empty review (timeout/empty reply) used to be a bare
+    # `pass` — zero trace anywhere that a review was supposed to post and didn't.
+    # NOTE: wr is loaded under a synthetic module name via importlib (see
+    # _load_real above), so its logger is NOT named "worker_review" — filter by
+    # level only, not logger name.
+    captured: list = []
+    monkeypatch.setattr(wr, "asyncio", _capture_proxy(captured, stdout=b""))
+    with caplog.at_level(logging.WARNING):
+        await wr._write_pr_review("https://github.com/x/y/pull/1", "task", tmp_path)
+    assert any("PR review skipped" in r.message for r in caplog.records)
+    # and no gh comment call was made with nothing to post
+    gh_cmds = [c["cmd"] for c in captured if c["cmd"].startswith("gh pr comment")]
+    assert gh_cmds == []
+
+
+@pytest.mark.asyncio
+async def test_write_pr_review_nonempty_review_posts_no_warning(tmp_path, monkeypatch, caplog):
+    captured: list = []
+    monkeypatch.setattr(wr, "asyncio", _capture_proxy(captured, stdout=b"- Summary: looks fine\n"))
+    with caplog.at_level(logging.WARNING):
+        await wr._write_pr_review("https://github.com/x/y/pull/1", "task", tmp_path)
+    assert not any("PR review skipped" in r.message for r in caplog.records)
+    gh_cmds = [c["cmd"] for c in captured if c["cmd"].startswith("gh pr comment")]
+    assert len(gh_cmds) == 1
+
+
+@pytest.mark.asyncio
+async def test_write_pr_review_exception_logs_not_silent(tmp_path, monkeypatch, caplog):
+    async def _boom(*a, **kw):
+        raise OSError("no gh binary")
+
+    monkeypatch.setattr(wr, "asyncio", _AsyncioProxy(create_subprocess_shell=_boom))
+    with caplog.at_level(logging.WARNING):
+        await wr._write_pr_review("https://github.com/x/y/pull/1", "task", tmp_path)
+    assert any("PR review post failed" in r.message for r in caplog.records)
 
 
 # ─── worker_utils: distill + rank ─────────────────────────────────────────────

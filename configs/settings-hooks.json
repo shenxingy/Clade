@@ -187,6 +187,13 @@
                         "type": "command",
                         "command": "~/.claude/hooks/mailbox-drain.sh",
                         "timeout": 5
+                    },
+                    {
+                        "id": "context-warning-drain",
+                        "description": "Deliver the ~80%-context-budget nudge worker.py writes to .claude/context-warning-<task>.md (orchestrator workers only — no-op unless CLADE_WORKER_TASK_ID is set)",
+                        "type": "command",
+                        "command": "~/.claude/hooks/context-warning-drain.sh",
+                        "timeout": 5
                     }
                 ]
             }

@@ -1456,7 +1456,11 @@ class WorkerPool:
                 if w.status == "running":
                     tokens = w._estimate_tokens()
                     if tokens > 160000:
-                        warn_file = w._claude_dir / f"context-warning-{w.id}.md"
+                        # Keyed by task_id (not the worker's own internal id) —
+                        # CLADE_WORKER_TASK_ID is the only identifier the worker's
+                        # OWN hook environment has access to; context-warning-drain.sh
+                        # looks the file up by that same env var to deliver it.
+                        warn_file = w._claude_dir / f"context-warning-{w.task_id}.md"
                         if not warn_file.exists():
                             warn_file.write_text(
                                 "CONTEXT WARNING: ~80% context window used. "
