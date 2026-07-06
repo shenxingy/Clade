@@ -40,8 +40,12 @@ Record: pass/fail + count of passing/failing tests.
 ```bash
 timeout 130 bash ~/.claude/scripts/quiet-run.sh {test_command}
 ```
-Full output lands in `.claude/logs/quiet-*.log`; only the verdict line + failure tail
-enters the transcript. The exit code is mirrored, so pass/fail detection is unchanged.
+Full output lands in `.claude/logs/quiet-*.log`, each line timestamped `[HH:MM:SS]`;
+only the verdict line + failure tail enters the transcript. The exit code is
+mirrored, so pass/fail detection is unchanged. **Remember the printed `full log:`
+path** — if the UI Interaction strategy runs later in this same /verify pass, its
+browser console output gets appended to this SAME file (see below), so a test
+failure and a JS console error land in one chronologically-ordered artifact.
 
 If no test command but common test patterns exist:
 - `timeout 120 pytest` / `timeout 120 python -m pytest` (Python)
@@ -86,33 +90,54 @@ If conditions are not met, set `INTERACTION_RESULT: skipped` and move on.
 
 **Flow:**
 
-1. Read `CLAUDE.md` for frontend port (look for `Frontend:` line, e.g. `Frontend: Next.js, port 3000`). Default to port 3000 if not specified.
+1. Run `configs/scripts/ensure-dev-server.sh` (no args needed — it reads `CLAUDE.md`'s `Frontend: ... port NNNN` line itself, defaulting to 3000). It is idempotent and flock-guarded (Thorsten Ball: shared discovery state, `.claude/dev-server.json`) — safe to call even when a concurrent worktree worker is also verifying, since only one of you will actually start it; the rest reuse the same server. Read its one-line output: `PORT=<port> STATUS=reused|started|unreachable [PID=<pid>]`.
 
-2. Try connecting to `http://localhost:{port}` via `browser_navigate`. If the page fails to load:
-   - Try starting the dev server: look for `npm run dev`, `pnpm dev`, or the start script in package.json
-   - Wait up to 30 seconds: `timeout 30 bash -c 'until curl -sf http://localhost:{port} >/dev/null; do sleep 1; done'`
-   - If still unreachable → set `INTERACTION_RESULT: partial`, write "App unreachable at localhost:{port}" to `.claude/playwright-issues.md`, and move on. Do NOT block the verify. Do NOT retry startup.
+2. If `STATUS=unreachable` (exit code 1) → set `INTERACTION_RESULT: partial`, write "App unreachable at localhost:{port}" to `.claude/playwright-issues.md`, and move on. Do NOT block the verify. Do NOT retry startup yourself — the script already tried for 30s.
 
-3. Take a `browser_snapshot` of the home page to get the accessibility tree.
+3. Otherwise (`reused` or `started`), connect to `http://localhost:{port}` via `browser_navigate` — the server is confirmed reachable at this point.
 
-4. Walk up to **5 pages** (home + up to 4 linked pages):
+4. Take a `browser_snapshot` of the home page to get the accessibility tree.
+
+5. Walk up to **5 pages** (home + up to 4 linked pages):
    - For each page: `browser_snapshot` → identify interactive elements (buttons, forms, links, inputs)
    - Click/fill key interactive elements → check for errors, broken states, console errors
    - If a page requires authentication and no test credentials are available in CLAUDE.md, mark as unverifiable — do NOT report login failure as a `[BUG]`
    - Take another snapshot after interactions to verify state changes
 
-5. Evaluate:
+6. Call `browser_console_messages` once (after the page walk, not per-page — this
+   is a summary read, not a live stream). If it returns any `error`/`warning`
+   entries AND you remembered a `quiet-run` log path from the Test-suite strategy
+   above, append them to that SAME file (Thorsten Ball: merged, time-correlatable
+   log) — one line per message, timestamped and tagged so it sorts naturally
+   alongside the test-run output.
+
+   **Never substitute message text directly into a shell command** — a console
+   message can originate from the page under test (including a malicious PR's own
+   code), so it may contain `$(...)`, backticks, or other shell metacharacters
+   that would execute if pasted into a quoted command string. Instead, for each
+   message: write it verbatim to a scratch file with the **Write tool** (not
+   shell-interpreted, so no escaping is needed), then append using only paths/
+   fixed text in the shell command, never the message content itself:
+   ```bash
+   printf '[%s] [browser] ' "$(date +%H:%M:%S)" >> <remembered log path>
+   cat <scratch file path> >> <remembered log path>
+   printf '\n' >> <remembered log path>
+   ```
+   If no quiet-run log path exists (no test command / quiet-run not used), skip the
+   append — the console findings still feed into `.claude/playwright-issues.md` below.
+
+7. Evaluate:
    - Does navigation work? Are pages rendering content (not blank/error)?
    - Do interactive elements respond? Are forms submittable?
    - Any JS errors visible in the page? Any "undefined"/"null"/"NaN" rendering?
    - Is the UX intuitive? (layout makes sense, text is readable, actions are discoverable)
 
-6. Write findings to `.claude/playwright-issues.md` (overwrite, do not append):
+8. Write findings to `.claude/playwright-issues.md` (overwrite, do not append):
    - `[BUG]` tag for broken functionality (crashes, errors, broken flows, missing data)
    - `[UX]` tag for usability issues (confusing layout, missing feedback, accessibility gaps)
    - Include which page/element was affected
 
-7. Set result:
+9. Set result:
    - `INTERACTION_RESULT: pass` — all flows work, no bugs found
    - `INTERACTION_RESULT: partial` — some flows unverifiable (app didn't start, pages unreachable)
    - `INTERACTION_RESULT: fail` — broken UI or unexpected errors found (`[BUG]` items exist)
