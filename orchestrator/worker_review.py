@@ -85,9 +85,15 @@ async def _summarize_worker_completion(
 
 
 async def _write_progress_entry(
-    task_description: str, log_path: Path | None, project_dir: Path
+    task_description: str, log_path: Path | None, project_dir: Path,
+    estimated_cost: float | None = None,
 ) -> None:
-    """After merge: summarize worker log and append a lesson entry to PROGRESS.md."""
+    """After merge: summarize worker log and append a lesson entry to PROGRESS.md.
+
+    estimated_cost (Simon Willison: cost-logged agent releases) is appended
+    deterministically to the model-written entry rather than asked of the
+    model itself — a dollar figure is exact data, not something to paraphrase.
+    """
     title = task_description.splitlines()[0][:80] if task_description else "Unknown task"
     log_tail = ""
     if log_path and log_path.exists():
@@ -120,6 +126,8 @@ async def _write_progress_entry(
             out = b""
         entry = out.decode().strip()
         if entry:
+            if estimated_cost:
+                entry = entry.rstrip() + f"\n- Cost: ${estimated_cost:.4f}"
             progress_file = project_dir / "PROGRESS.md"
             existing = await asyncio.to_thread(progress_file.read_text, errors="replace") if progress_file.exists() else "# Progress Log\n"
             lines = existing.splitlines(keepends=True)

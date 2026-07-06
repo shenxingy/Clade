@@ -212,6 +212,25 @@ async def test_write_progress_entry_cmd_has_flag(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_write_progress_entry_appends_cost_line(tmp_path, monkeypatch):
+    entry = "### [2026-07-06] Task: widget\n- What worked: it just did\n- Watch out for: nothing"
+    monkeypatch.setattr(wr, "asyncio", _capture_proxy([], stdout=entry.encode()))
+    await wr._write_progress_entry("task", None, tmp_path, estimated_cost=0.0512)
+    written = (tmp_path / "PROGRESS.md").read_text()
+    assert "- Cost: $0.0512" in written
+    assert "Watch out for: nothing\n- Cost:" in written  # appended after the model's entry
+
+
+@pytest.mark.asyncio
+async def test_write_progress_entry_no_cost_line_when_cost_none(tmp_path, monkeypatch):
+    entry = "### [2026-07-06] Task: widget\n- What worked: it just did\n- Watch out for: nothing"
+    monkeypatch.setattr(wr, "asyncio", _capture_proxy([], stdout=entry.encode()))
+    await wr._write_progress_entry("task", None, tmp_path)
+    written = (tmp_path / "PROGRESS.md").read_text()
+    assert "Cost:" not in written
+
+
+@pytest.mark.asyncio
 async def test_write_pr_review_claude_cmd_has_flag(tmp_path, monkeypatch):
     captured: list = []
     monkeypatch.setattr(wr, "asyncio", _capture_proxy(captured))

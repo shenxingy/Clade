@@ -78,6 +78,7 @@ class FakeWorker:
         self.oracle_reason = kw.get("oracle_reason")
         self.test_evidence = kw.get("test_evidence", "")
         self._log_path = None
+        self._estimated_cost = kw.get("_estimated_cost", 0.0)
 
 
 def _fake_session(workers: list[FakeWorker], tmp_path: Path):
@@ -121,6 +122,16 @@ class TestBuildPrBody:
         body = rt._build_pr_body(w)
         assert "x" * 400 in body
         assert "x" * 401 not in body
+
+    def test_cost_line_shown_when_nonzero(self):
+        w = FakeWorker(_estimated_cost=0.1234)
+        body = rt._build_pr_body(w)
+        assert "**Cost:** $0.1234" in body
+
+    def test_cost_line_omitted_when_zero(self):
+        w = FakeWorker(_estimated_cost=0.0)
+        body = rt._build_pr_body(w)
+        assert "**Cost:**" not in body
 
     def test_pr_title_first_line_capped(self):
         assert rt._pr_title("fix: thing\nmore lines") == "fix: thing"

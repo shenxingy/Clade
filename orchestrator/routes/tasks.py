@@ -172,6 +172,13 @@ def _build_pr_body(w) -> str:
         sections.append(f"## Tests\nAdded/modified {len(tests_added)} test file(s):\n{shown}")
     else:
         sections.append("**Tests:** ⚠️ no test files added or modified in this change")
+    # Cost transparency (Simon Willison: a dollar-denominated cost log makes
+    # agent-driven work auditable, not just its diff). Cost is fully computed
+    # by worker.py but used to dead-end in the private dashboard — surface it
+    # on the artifact a human actually reviews.
+    cost = getattr(w, "_estimated_cost", 0.0) or 0.0
+    if cost > 0:
+        sections.append(f"**Cost:** ${cost:.4f}")
     sections.append(
         f"---\n_Authored by Clade worker {w.id} (task {w.task_id}); "
         "oracle-reviewed in the orchestrator pipeline._"
@@ -308,6 +315,7 @@ async def merge_all_done(s: ProjectSession = Depends(_resolve_session)):
                         task_description=w.description,
                         log_path=w._log_path,
                         project_dir=s.project_dir,
+                        estimated_cost=getattr(w, "_estimated_cost", 0.0),
                     ))
                 else:
                     results.append({"worker_id": w.id, "pr_url": pr_url, "error": "gh pr merge failed"})
