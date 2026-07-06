@@ -109,9 +109,19 @@ If conditions are not met, set `INTERACTION_RESULT: skipped` and move on.
    entries AND you remembered a `quiet-run` log path from the Test-suite strategy
    above, append them to that SAME file (Thorsten Ball: merged, time-correlatable
    log) — one line per message, timestamped and tagged so it sorts naturally
-   alongside the test-run output:
+   alongside the test-run output.
+
+   **Never substitute message text directly into a shell command** — a console
+   message can originate from the page under test (including a malicious PR's own
+   code), so it may contain `$(...)`, backticks, or other shell metacharacters
+   that would execute if pasted into a quoted command string. Instead, for each
+   message: write it verbatim to a scratch file with the **Write tool** (not
+   shell-interpreted, so no escaping is needed), then append using only paths/
+   fixed text in the shell command, never the message content itself:
    ```bash
-   printf '[%s] [browser] %s\n' "$(date +%H:%M:%S)" "<message text>" >> <remembered log path>
+   printf '[%s] [browser] ' "$(date +%H:%M:%S)" >> <remembered log path>
+   cat <scratch file path> >> <remembered log path>
+   printf '\n' >> <remembered log path>
    ```
    If no quiet-run log path exists (no test command / quiet-run not used), skip the
    append — the console findings still feed into `.claude/playwright-issues.md` below.
