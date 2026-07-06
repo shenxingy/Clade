@@ -115,6 +115,17 @@ def _is_test_file(path: str) -> bool:
 ORACLE_REJECT_MARKER = "REJECTED by oracle review"
 
 
+def oracle_reject_depth(description: str) -> int:
+    """How many times this task's lineage has already been oracle-rejected.
+
+    Each requeue appends ORACLE_REJECT_MARKER to the retry description, so the
+    count accumulates across the whole retry chain. Shared by
+    oracle_retry_sample_count (fan-out width) and the reject-round cap
+    (worker.py: total rounds before escalating instead of requeuing again).
+    """
+    return description.count(ORACLE_REJECT_MARKER)
+
+
 def oracle_retry_sample_count(description: str, is_critical: bool, configured_n: int) -> int:
     """How many retry samples to spawn after an oracle rejection (Agentless §6C).
 
@@ -126,7 +137,7 @@ def oracle_retry_sample_count(description: str, is_critical: bool, configured_n:
     DIVERSE attempts instead. Critical-path tasks fan out on the first rejection.
     Bounded to fire once (depth<2) so re-queues can't blow up exponentially.
     """
-    depth = description.count(ORACLE_REJECT_MARKER)
+    depth = oracle_reject_depth(description)
     diverse = (depth >= 1 or is_critical) and depth < 2
     return max(1, configured_n) if diverse else 1
 

@@ -139,6 +139,13 @@ _SETTINGS_DEFAULTS = {
     "minimax_api_key": "",
     "minimax_group_id": "",
     "parallel_fix_samples": 3,  # Agentless §6C: diverse samples spawned on PLATEAU (the 2nd oracle rejection, where sequential retry has demonstrably failed) or critical-path. Escapes a wrong first approach. 1=disable.
+    # Reject-round circuit breaker (Round-4, fennu2333/Chorus). oracle_retry_sample_count
+    # bounds the FAN-OUT WIDTH on plateau but not the TOTAL round count — a legitimately
+    # persistent rejection (the task is genuinely wrong/impossible as scoped) could requeue
+    # forever with no ceiling. Once a task's reject depth reaches this many rounds, stop
+    # requeuing and escalate instead (blockers.md + notification_webhook), mirroring the
+    # oracle-infra-outage escalation pattern. 0 = disabled (unbounded, prior behavior).
+    "oracle_max_reject_rounds": 5,
     # Oracle verdict resampling (judge non-determinism — Round 3 gap B). LLM judges
     # flip on identical inputs; run each oracle pass K× and require a CLEAN MAJORITY
     # to APPROVE (safe bias: disagreement → reject). This is GENERATOR-independent —

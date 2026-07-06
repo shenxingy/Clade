@@ -292,6 +292,159 @@ async def test_poll_all_requeues_on_pre_push_test_failure(task_queue, tmp_path):
     assert "implement feature X" in retries[0]["description"]
 
 
+# ─── Reject-round circuit breaker (Round-4, fennu2333/Chorus) ────────────────
+# oracle_retry_sample_count bounds the FAN-OUT WIDTH on plateau but not the
+# TOTAL round count. A task's oracle-reject depth hitting oracle_max_reject_rounds
+# must stop requeuing and escalate instead — never requeue forever.
+
+
+def _rejected_desc(n_rejections: int) -> str:
+    marker = wmod.ORACLE_REJECT_MARKER
+    return "implement feature X" + "".join(f"\n--- Previous attempt was {marker}: ..." for _ in range(n_rejections))
+
+
+async def test_poll_all_requeues_below_reject_cap(task_queue, tmp_path, monkeypatch):
+    monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "oracle_max_reject_rounds", 5)
+    pool = wmod.WorkerPool()
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir(exist_ok=True)
+    w = wmod.Worker(
+        task_id="task-cap1", description=_rejected_desc(2),  # depth 2 < cap 5
+        model="haiku", project_dir=tmp_path, claude_dir=claude_dir,
+    )
+    w.status = "done"
+    w._terminal_persisted = True
+    w._oracle_requeue = True
+    w._oracle_requeue_reason = "[high] still wrong"
+    pool.workers[w.id] = w
+
+    escalated = []
+
+    async def fake_escalate(*a, **k):
+        escalated.append(a)
+
+    monkeypatch.setattr(wmod, "_escalate_oracle_reject_plateau", fake_escalate)
+
+    await pool.poll_all(task_queue, None)
+
+    assert w._oracle_requeue is False
+    assert escalated == []  # below the cap — no escalation
+    tasks = await task_queue.list()
+    retries = [t for t in tasks if "Previous attempt was" in t["description"]]
+    assert len(retries) >= 1  # requeued as usual
+
+
+async def test_poll_all_escalates_instead_of_requeuing_at_reject_cap(task_queue, tmp_path, monkeypatch):
+    monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "oracle_max_reject_rounds", 3)
+    pool = wmod.WorkerPool()
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir(exist_ok=True)
+    w = wmod.Worker(
+        task_id="task-cap2", description=_rejected_desc(3),  # depth 3 == cap 3
+        model="haiku", project_dir=tmp_path, claude_dir=claude_dir,
+    )
+    w.status = "done"
+    w._terminal_persisted = True
+    w._oracle_requeue = True
+    w._oracle_requeue_reason = "[high] fundamentally wrong approach"
+    pool.workers[w.id] = w
+
+    escalated = []
+
+    async def fake_escalate(project_dir, cdir, webhook, task_id, rounds):
+        escalated.append((task_id, rounds))
+
+    monkeypatch.setattr(wmod, "_escalate_oracle_reject_plateau", fake_escalate)
+
+    tasks_before = await task_queue.list()
+
+    await pool.poll_all(task_queue, None)
+
+    assert w._oracle_requeue is False
+    assert escalated == [("task-cap2", 3)]
+    tasks_after = await task_queue.list()
+    # No new task was added — escalation replaces the requeue, not adds to it.
+    assert len(tasks_after) == len(tasks_before)
+
+
+async def test_reject_cap_zero_disables_the_breaker(task_queue, tmp_path, monkeypatch):
+    # 0 = unbounded (prior behavior) — even a very deep lineage still requeues.
+    monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "oracle_max_reject_rounds", 0)
+    pool = wmod.WorkerPool()
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir(exist_ok=True)
+    w = wmod.Worker(
+        task_id="task-cap3", description=_rejected_desc(50),
+        model="haiku", project_dir=tmp_path, claude_dir=claude_dir,
+    )
+    w.status = "done"
+    w._terminal_persisted = True
+    w._oracle_requeue = True
+    w._oracle_requeue_reason = "[high] still wrong"
+    pool.workers[w.id] = w
+
+    escalated = []
+
+    async def fake_escalate(*a, **k):
+        escalated.append(a)
+
+    monkeypatch.setattr(wmod, "_escalate_oracle_reject_plateau", fake_escalate)
+
+    await pool.poll_all(task_queue, None)
+
+    assert escalated == []
+    tasks = await task_queue.list()
+    retries = [t for t in tasks if "Previous attempt was" in t["description"]]
+    assert len(retries) >= 1
+
+
+class TestEscalateOracleRejectPlateau:
+    async def test_writes_blockers_md(self, tmp_path):
+        claude_dir = tmp_path / ".claude"
+        claude_dir.mkdir()
+        await wr._escalate_oracle_reject_plateau(tmp_path, claude_dir, "", "task-1", 5)
+        blockers = (claude_dir / "blockers.md").read_text()
+        assert "task-1" in blockers
+        assert "5 times" in blockers
+        assert "Blocker" in blockers
+
+    async def test_no_webhook_skips_http(self, tmp_path, monkeypatch):
+        claude_dir = tmp_path / ".claude"
+        claude_dir.mkdir()
+
+        async def fail_if_called(*a, **k):
+            raise AssertionError("must not attempt a webhook POST when webhook=''")
+
+        monkeypatch.setattr(wr.asyncio, "create_subprocess_exec", fail_if_called)
+        await wr._escalate_oracle_reject_plateau(tmp_path, claude_dir, "", "task-1", 5)  # must not raise
+
+    async def test_fires_webhook_with_distinct_event_name(self, tmp_path, monkeypatch):
+        claude_dir = tmp_path / ".claude"
+        claude_dir.mkdir()
+        captured = {}
+
+        class _FakeProc:
+            async def communicate(self):
+                return b"", b""
+            def kill(self):
+                pass
+
+        async def fake_exec(*args, **kwargs):
+            captured["args"] = args
+            return _FakeProc()
+
+        monkeypatch.setattr(wr.asyncio, "create_subprocess_exec", fake_exec)
+        await wr._escalate_oracle_reject_plateau(tmp_path, claude_dir, "http://h/x", "task-1", 5)
+        payload = captured["args"][captured["args"].index("-d") + 1]
+        assert '"event": "oracle_reject_plateau"' in payload
+        assert '"task_id": "task-1"' in payload
+
+    async def test_escalation_failure_does_not_raise(self, tmp_path, monkeypatch):
+        # blockers.md write itself fails (e.g. read-only claude_dir) — fail-open.
+        claude_dir = tmp_path / "nonexistent-dir-that-cannot-be-written"
+        await wr._escalate_oracle_reject_plateau(tmp_path, claude_dir, "", "task-1", 5)  # must not raise
+
+
 # ─── Constitutional check (reflection-agents §Gap4) ───────────────────────────
 
 

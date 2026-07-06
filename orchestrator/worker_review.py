@@ -917,3 +917,52 @@ async def _escalate_oracle_outage(
             await proc.communicate()
     except Exception:
         pass  # fail-open
+
+
+async def _escalate_oracle_reject_plateau(
+    project_dir: Path, claude_dir: Path, webhook: str, task_id: str, rounds: int
+) -> None:
+    """Reject-round circuit breaker (Round-4, fennu2333): a task's oracle-reject
+    depth hit the configured ceiling — the requeue loop is NOT infinite, so this
+    fires instead of another requeue. Distinct event name from
+    _escalate_oracle_outage (this is a real, LIVE oracle repeatedly rejecting the
+    same lineage — the opposite failure mode from a dead/unreachable oracle).
+    Fail-open: escalation must never raise into the caller's requeue logic.
+    """
+    try:
+        blockers = claude_dir / "blockers.md"
+        entry = (
+            f"\n## Blocker [{datetime.now().isoformat(timespec='seconds')}]\n"
+            f"Oracle has rejected task {task_id} {rounds} times in a row — hit the "
+            f"reject-round cap (oracle_max_reject_rounds). Requeuing stopped; this task "
+            f"likely needs a human to re-scope it (the approach may be fundamentally "
+            f"wrong, or the task as described may not be achievable).\n"
+            f"Tried: sequential retry + diverse-sample fan-out on plateau, both rejected.\n"
+        )
+        existing = blockers.read_text(errors="replace") if blockers.exists() else ""
+        blockers.write_text(existing + entry)
+    except Exception:
+        pass
+    if not webhook:
+        return
+    try:
+        payload = json.dumps({
+            "event": "oracle_reject_plateau",
+            "project_path": str(project_dir),
+            "task_id": task_id,
+            "reject_rounds": rounds,
+        })
+        proc = await asyncio.create_subprocess_exec(
+            "curl", "-s", "-X", "POST", "--max-time", "10",
+            "-H", "Content-Type: application/json",
+            "-d", payload, webhook,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        try:
+            await asyncio.wait_for(proc.communicate(), timeout=15)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
+    except Exception:
+        pass  # fail-open

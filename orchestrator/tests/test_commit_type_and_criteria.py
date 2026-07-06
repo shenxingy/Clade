@@ -13,7 +13,9 @@ from __future__ import annotations
 
 from config import _infer_commit_type
 from worker_hydrate import _extract_acceptance_criteria
-from worker_utils import _is_test_file, oracle_retry_sample_count, ORACLE_REJECT_MARKER
+from worker_utils import (
+    _is_test_file, oracle_retry_sample_count, ORACLE_REJECT_MARKER, oracle_reject_depth,
+)
 
 
 # ─── _infer_commit_type ──────────────────────────────────────────────────────
@@ -149,3 +151,23 @@ class TestOracleRetrySampleCount:
         # parallel_fix_samples=1 disables fan-out entirely
         assert oracle_retry_sample_count(_desc(1), is_critical=False, configured_n=1) == 1
         assert oracle_retry_sample_count(_desc(0), is_critical=True, configured_n=1) == 1
+
+
+class TestOracleRejectDepth:
+    """oracle_reject_depth is the extracted helper shared by oracle_retry_sample_count
+    (fan-out width) and the Round-4 reject-round cap (worker.py, total round count)."""
+
+    def test_no_rejections_is_depth_zero(self):
+        assert oracle_reject_depth(_desc(0)) == 0
+
+    def test_depth_matches_marker_count(self):
+        assert oracle_reject_depth(_desc(1)) == 1
+        assert oracle_reject_depth(_desc(3)) == 3
+        assert oracle_reject_depth(_desc(7)) == 7
+
+    def test_used_internally_by_sample_count_consistently(self):
+        # oracle_retry_sample_count's own depth-based branching must still see
+        # exactly what oracle_reject_depth reports — same source of truth.
+        for n in (0, 1, 2, 5):
+            depth = oracle_reject_depth(_desc(n))
+            assert depth == n

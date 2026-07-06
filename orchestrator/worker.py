@@ -58,6 +58,7 @@ from worker_review import (
     _oracle_review, _read_constitution, _summarize_worker_completion,
     _record_oracle_infra_error, _reset_oracle_infra_streak,
     _escalate_oracle_outage, _ORACLE_INFRA_THRESHOLD,
+    _escalate_oracle_reject_plateau,
     _build_test_evidence,
 )
 from worker_taskfile import build_task_file
@@ -73,7 +74,7 @@ from worker_utils import (
     _run_lint_check, _extract_lint_targets, _run_project_tests, LoopDetectionService,
     _run_intramorphic_check, _run_repro_filter, _rank_tasks,
     _parse_observation_contract, _fallback_commit_cmd, _is_test_file,
-    oracle_retry_sample_count, ORACLE_REJECT_MARKER,
+    oracle_retry_sample_count, ORACLE_REJECT_MARKER, oracle_reject_depth,
     _compute_activity_state, _undo_last_commit,
     _check_file_ownership as _check_ownership_globs,
     _maybe_enqueue_classify_retry,  # re-export: moved to worker_utils (leaf)
@@ -296,8 +297,7 @@ class Worker:
         shell_cmd = (
             f'claude -p "$(cat {shlex.quote(str(task_file))})" --model {model} --dangerously-skip-permissions'
         )
-        # Native overload failover (gap C): switch model for an overloaded turn
-        # only, lossless & in-process. Off unless worker_fallback_model is set.
+        # Native lossless overload failover, off unless worker_fallback_model is set.
         shell_cmd += _fallback_flag(self.model)
         # Tool subsets per task type (Stripe Blueprint pattern)
         tool_flags = _build_tool_flags(self.task_type)
@@ -311,9 +311,7 @@ class Worker:
         # Unset CLAUDECODE so workers can launch even when the orchestrator itself
         # is started from inside a Claude Code session (prevents "nested session" error)
         env.pop("CLAUDECODE", None)
-        # Spawn-time env denylist (Round 3 security sliver): drop secrets that an
-        # unattended --dangerously-skip-permissions worker hydrating untrusted
-        # GitHub text has no business reading. Off by default (empty list).
+        # Spawn-time env denylist: strips secrets an untrusted-text worker shouldn't read. Off by default.
         _deny = GLOBAL_SETTINGS.get("worker_env_deny") or []
         if isinstance(_deny, str):  # a bare string would iterate per-character
             _deny = [_deny]
@@ -367,11 +365,8 @@ class Worker:
             self.pgid = os.getpgid(self.proc.pid)
         except ProcessLookupError:
             self.pgid = self.proc.pid
-        # Persist pgid so a server restart can find and reap this OS process
-        # group even though the in-memory Worker object is gone (setsid means
-        # the subprocess survives the orchestrator's own exit — see
-        # config._recover_orphaned_tasks). Fire-and-forget: losing this write
-        # only degrades reaping on the NEXT restart, never blocks the worker.
+        # Persist pgid (survives a restart via setsid) so config._recover_orphaned_tasks
+        # can reap it later; fire-and-forget, losing this write is non-fatal.
         if self._task_queue:
             asyncio.create_task(self._task_queue.update(self.task_id, pgid=self.pgid))
         self.status = "running"
@@ -1363,32 +1358,50 @@ class WorkerPool:
                     error_summary = _strip_error_context(w._oracle_requeue_reason)
                     orig_task = await task_queue.get(w.task_id)
                     is_critical = bool(orig_task and orig_task.get("is_critical_path"))
-                    n_samples = oracle_retry_sample_count(
-                        w.description, is_critical,
-                        int(GLOBAL_SETTINGS.get("parallel_fix_samples", 3)),
-                    )
-                    _DIVERSE_HINTS = [
-                        "Try a different algorithmic approach than your previous attempt.",
-                        "Focus on the root cause rather than symptoms — consider upstream fixes.",
-                        "Prefer minimal diff — find the smallest correct change.",
-                    ]
-                    for i in range(n_samples):
-                        hint = f"\n{_DIVERSE_HINTS[i % len(_DIVERSE_HINTS)]}" if n_samples > 1 else ""
-                        retry_desc = (
-                            f"{w.description}\n\n---\n"
-                            f"Previous attempt was {ORACLE_REJECT_MARKER}:\n"
-                            f"{error_summary}\n"
-                            f"Fix the issue described above. Do NOT repeat the same approach.{hint}"
+                    # Reject-round circuit breaker (fennu2333): sample_count bounds fan-out
+                    # WIDTH, not total ROUND count — an unbounded lineage could requeue forever.
+                    depth = oracle_reject_depth(w.description)
+                    max_rounds = int(GLOBAL_SETTINGS.get("oracle_max_reject_rounds", 5) or 0)
+                    if max_rounds > 0 and depth >= max_rounds:
+                        logger.warning(
+                            "Oracle rejected task %s — hit reject-round cap (%d rounds), "
+                            "escalating instead of requeuing again", w.task_id, max_rounds,
                         )
-                        await task_queue.add(retry_desc, w.model,
-                                             own_files=w.own_files, forbidden_files=w.forbidden_files)
-                    if n_samples > 1:
-                        logger.info(
-                            "Oracle rejected task %s — plateau, spawned %d diverse samples",
-                            w.task_id, n_samples
-                        )
+                        try:
+                            await _escalate_oracle_reject_plateau(
+                                w._project_dir, w._claude_dir,
+                                GLOBAL_SETTINGS.get("notification_webhook", ""),
+                                w.task_id, depth,
+                            )
+                        except Exception:
+                            pass  # escalation must never break poll_all
                     else:
-                        logger.info("Oracle rejected task %s — re-queued (sequential retry)", w.task_id)
+                        n_samples = oracle_retry_sample_count(
+                            w.description, is_critical,
+                            int(GLOBAL_SETTINGS.get("parallel_fix_samples", 3)),
+                        )
+                        _DIVERSE_HINTS = [
+                            "Try a different algorithmic approach than your previous attempt.",
+                            "Focus on the root cause rather than symptoms — consider upstream fixes.",
+                            "Prefer minimal diff — find the smallest correct change.",
+                        ]
+                        for i in range(n_samples):
+                            hint = f"\n{_DIVERSE_HINTS[i % len(_DIVERSE_HINTS)]}" if n_samples > 1 else ""
+                            retry_desc = (
+                                f"{w.description}\n\n---\n"
+                                f"Previous attempt was {ORACLE_REJECT_MARKER}:\n"
+                                f"{error_summary}\n"
+                                f"Fix the issue described above. Do NOT repeat the same approach.{hint}"
+                            )
+                            await task_queue.add(retry_desc, w.model,
+                                                 own_files=w.own_files, forbidden_files=w.forbidden_files)
+                        if n_samples > 1:
+                            logger.info(
+                                "Oracle rejected task %s — plateau, spawned %d diverse samples",
+                                w.task_id, n_samples
+                            )
+                        else:
+                            logger.info("Oracle rejected task %s — re-queued (sequential retry)", w.task_id)
                 # Pre-push test failure → re-queue with test output (mic92: evidence before verdict)
                 if w._test_requeue:
                     w._test_requeue = False
@@ -1463,10 +1476,7 @@ class WorkerPool:
                 if w.status == "running":
                     tokens = w._estimate_tokens()
                     if tokens > 160000:
-                        # Keyed by task_id (not the worker's own internal id) —
-                        # CLADE_WORKER_TASK_ID is the only identifier the worker's
-                        # OWN hook environment has access to; context-warning-drain.sh
-                        # looks the file up by that same env var to deliver it.
+                        # Keyed by task_id — the only id context-warning-drain.sh's hook env has.
                         warn_file = w._claude_dir / f"context-warning-{w.task_id}.md"
                         if not warn_file.exists():
                             warn_file.write_text(
