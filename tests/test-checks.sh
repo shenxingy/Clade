@@ -234,12 +234,26 @@ assert_contains "$BODY" "Co-Authored-By: Claude <noreply@anthropic.com>" "worker
 assert_contains "$BODY" "X-Clade-Task: 42" "worker commit carries X-Clade-Task trailer"
 TRAILER_VAL="$(git -C "$D" log -1 --format='%(trailers:key=X-Clade-Task,valueonly)' | tr -d '\n')"
 assert_eq "42" "$TRAILER_VAL" "git parses X-Clade-Task as a real trailer (single -m block)"
+# no CLADE_WORKER_MODEL set → Agent-Signature falls back to the unknown-model placeholder
+assert_contains "$BODY" "Agent-Signature: unknown-model" "worker commit without a model falls back to unknown-model"
 
 echo "human change" > "$D/human.txt"
 ( cd "$D" && bash "$COMMITTER" "feat: human change" human.txt --no-push ) >/dev/null 2>&1
 BODY="$(git -C "$D" log -1 --format=%B)"
 assert_not_contains "$BODY" "Co-Authored-By" "interactive commit stays trailer-free"
 assert_not_contains "$BODY" "X-Clade-Task" "interactive commit has no task trailer"
+assert_not_contains "$BODY" "Agent-Signature" "interactive commit has no model-provenance trailer"
+
+# ─── committer.sh Agent-Signature trailer (CLADE_WORKER_MODEL) ───────
+echo "── committer.sh Agent-Signature trailer ──"
+
+echo "agent model change" > "$D/agent-model.txt"
+( cd "$D" && CLADE_WORKER_TASK_ID=7 CLADE_WORKER_MODEL="claude-opus-4-6" \
+    bash "$COMMITTER" "feat: agent model change" agent-model.txt --no-push ) >/dev/null 2>&1
+BODY="$(git -C "$D" log -1 --format=%B)"
+assert_contains "$BODY" "Agent-Signature: claude-opus-4-6" "worker commit records the resolved model as Agent-Signature"
+SIG_VAL="$(git -C "$D" log -1 --format='%(trailers:key=Agent-Signature,valueonly)' | tr -d '\n')"
+assert_eq "claude-opus-4-6" "$SIG_VAL" "git parses Agent-Signature as a real trailer (single -m block)"
 
 # ─── commit-archeology.sh agent segmentation ─────────────────────────
 echo "── commit-archeology.sh agent segmentation ──"

@@ -100,11 +100,16 @@ echo ""
 # Commit — autonomous workers (orchestrator / loop-runner export
 # CLADE_WORKER_TASK_ID) get attribution trailers so learning loops can
 # segment agent vs human commits; interactive sessions stay trailer-free.
-# Both trailers share one -m so git parses them as a single trailer block.
+# Agent-Signature records model provenance (Round-4 gap, Yegge pattern):
+# worker_fallback_model can silently swap a worker onto a different model
+# mid-run, so X-Clade-Task alone can't tell you which model wrote a given
+# commit — CLADE_WORKER_MODEL (set by worker.py's _build_cmd_and_env) does.
+# All trailers share one -m so git parses them as a single trailer block.
 COMMIT_ARGS=(-m "$MSG")
 if [[ -n "${CLADE_WORKER_TASK_ID:-}" ]]; then
   COMMIT_ARGS+=(-m "Co-Authored-By: Claude <noreply@anthropic.com>
-X-Clade-Task: ${CLADE_WORKER_TASK_ID}")
+X-Clade-Task: ${CLADE_WORKER_TASK_ID}
+Agent-Signature: ${CLADE_WORKER_MODEL:-unknown-model}")
 fi
 git --no-pager commit "${COMMIT_ARGS[@]}"
 echo "Committed: $MSG"
