@@ -690,6 +690,80 @@ class TestRunOracleGate:
         assert len(resets) == 1
 
 
+# ─── oracle_result/oracle_reason persistence (Round-4 plan-drift bug) ────────
+# Prior bug: these were computed as in-memory Worker attrs and never written to
+# the DB row, so session.py:_run_plan_build had no way to tell "worker process
+# exited cleanly" from "the oracle rejected and undid the commit" — a rejected
+# item still got checked off in the plan. _persist_oracle_result() closes that.
+
+
+class TestPersistOracleResult:
+    async def _tracked_worker(self, gate_worker):
+        from task_queue import TaskQueue
+        tq = TaskQueue(gate_worker._claude_dir)
+        row = await tq.add(gate_worker.description, gate_worker.model)
+        gate_worker.task_id = row["id"]
+        gate_worker._task_queue = tq
+        return tq
+
+    async def test_rejection_persists_to_db(self, gate_worker, monkeypatch):
+        monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "auto_oracle", True)
+        tq = await self._tracked_worker(gate_worker)
+
+        async def fake_review(desc, diff, cdir, **kwargs):
+            return False, "[high] Oracle rejected.", False
+
+        monkeypatch.setattr(wmod, "_oracle_review", fake_review)
+        monkeypatch.setattr(wmod, "_reset_oracle_infra_streak", lambda d: None)
+
+        assert await gate_worker._run_oracle_gate() is False
+        row = await tq.get(gate_worker.task_id)
+        assert row["oracle_result"] == "rejected"
+        assert row["oracle_reason"] == "[high] Oracle rejected."
+
+    async def test_approval_persists_to_db(self, gate_worker, monkeypatch):
+        monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "auto_oracle", True)
+        tq = await self._tracked_worker(gate_worker)
+
+        async def fake_review(desc, diff, cdir, **kwargs):
+            return True, "approved (spec+quality passed)", False
+
+        monkeypatch.setattr(wmod, "_oracle_review", fake_review)
+        monkeypatch.setattr(wmod, "_reset_oracle_infra_streak", lambda d: None)
+
+        assert await gate_worker._run_oracle_gate() is True
+        row = await tq.get(gate_worker.task_id)
+        assert row["oracle_result"] == "approved"
+
+    async def test_infra_error_persists_unreviewed_to_db(self, gate_worker, monkeypatch):
+        monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "auto_oracle", True)
+        tq = await self._tracked_worker(gate_worker)
+
+        async def fake_review(desc, diff, cdir, **kwargs):
+            return True, "oracle timeout (45s)", True
+
+        monkeypatch.setattr(wmod, "_oracle_review", fake_review)
+        monkeypatch.setattr(wmod, "_record_oracle_infra_error", lambda d: 1)
+        monkeypatch.setattr(wmod, "_ORACLE_INFRA_THRESHOLD", 3)
+
+        assert await gate_worker._run_oracle_gate() is True
+        row = await tq.get(gate_worker.task_id)
+        assert row["oracle_result"] == "unreviewed"
+
+    async def test_no_task_queue_is_a_noop_not_a_crash(self, gate_worker, monkeypatch):
+        # Worker never had .start() called (no _task_queue set) — must not raise.
+        monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "auto_oracle", True)
+
+        async def fake_review(desc, diff, cdir, **kwargs):
+            return True, "approved (spec+quality passed)", False
+
+        monkeypatch.setattr(wmod, "_oracle_review", fake_review)
+        monkeypatch.setattr(wmod, "_reset_oracle_infra_streak", lambda d: None)
+
+        assert gate_worker._task_queue is None
+        assert await gate_worker._run_oracle_gate() is True  # does not raise
+
+
 # ─── Criteria injection + rubric (claude-cookbooks) ──────────────────────────
 
 

@@ -592,6 +592,24 @@ class ProjectSession:
                     break
                 await asyncio.sleep(3)
 
+            # Plan-drift guard: the worker's process-level status alone doesn't
+            # mean the commit stuck — the oracle gate may have rejected it and
+            # undone the commit (worker.py:_run_oracle_gate persists the verdict
+            # to this same task row). A rejected item must NOT be checked off;
+            # leaving it "- [ ]" makes the next BUILD iteration retry the exact
+            # same checklist line (worker.py's oracle-reject requeue already
+            # spawns a separate diverse-retry task; this only stops the plan
+            # from lying about completion). "unreviewed"/None still count as
+            # done — the commit DID survive (oracle fail-open), matching
+            # _run_oracle_gate's own fail-open semantics.
+            if (t or {}).get("oracle_result") == "rejected":
+                logger.warning(
+                    "plan_build: task %s oracle-rejected — leaving checklist item "
+                    "unmarked so the next iteration retries it", task["id"]
+                )
+                await self.task_queue.upsert_loop(iteration=iteration + 1)
+                continue
+
             # Mark item done in the plan (- [ ] → - [x])
             lines[task_line_idx] = re.sub(
                 r'^(\s*-\s*)\[ \]', r'\1[x]', lines[task_line_idx]

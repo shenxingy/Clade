@@ -924,6 +924,22 @@ class Worker:
         """git reset HEAD~1 — undo the just-made commit so it cannot be pushed later."""
         await _undo_last_commit(self._project_dir)
 
+    async def _persist_oracle_result(self) -> None:
+        """Write oracle_result/oracle_reason to the DB row the moment they're
+        computed. poll_all's terminal-persist block runs synchronously right
+        after the subprocess exits and can complete BEFORE this async oracle
+        gate finishes, so persistence can't be deferred to that block — a
+        consumer (session.py:_run_plan_build) reads this column to decide
+        whether a plan checklist item may be marked done."""
+        if not self._task_queue:
+            return
+        try:
+            await self._task_queue.update(
+                self.task_id, oracle_result=self.oracle_result, oracle_reason=self.oracle_reason,
+            )
+        except Exception:
+            pass
+
     async def _run_oracle_gate(self, test_evidence: str = "") -> bool:
         """Oracle validation gate. Returns False when the commit was rejected (undone + flagged for requeue).
 
@@ -966,6 +982,7 @@ class Worker:
             # Fail-open (commit survives) but visibly unreviewed, with escalation
             self.oracle_result = "unreviewed"
             self.oracle_reason = reason
+            await self._persist_oracle_result()
             try:
                 streak = _record_oracle_infra_error(self._claude_dir)
                 if streak and streak % _ORACLE_INFRA_THRESHOLD == 0:
@@ -979,6 +996,7 @@ class Worker:
         _reset_oracle_infra_streak(self._claude_dir)
         self.oracle_result = "approved" if approved else "rejected"
         self.oracle_reason = reason
+        await self._persist_oracle_result()
         if approved:
             return True
         # Undo the commit so rejected work is not accidentally pushed later
