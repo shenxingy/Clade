@@ -184,3 +184,40 @@ async def test_stamp_context_version(task_queue: TaskQueue):
     assert stamped == 1
     fetched = await task_queue.get(t2["id"])
     assert fetched.get("context_version") == 1
+
+
+# ─── upsert_loop ──────────────────────────────────────────────────────────────
+
+
+async def test_upsert_loop_insert_branch_uses_column_defaults(task_queue: TaskQueue):
+    # No prior loop row — takes the INSERT branch. Columns not passed should
+    # get their schema defaults, not None/crash.
+    row = await task_queue.upsert_loop(status="running", iteration=1)
+    assert row["status"] == "running"
+    assert row["iteration"] == 1
+    assert row["plan_item_reject_streak"] == 0
+    assert row["mode"] == "review"
+    assert row["plan_phase"] == "plan"
+
+
+async def test_upsert_loop_insert_branch_honors_explicit_plan_item_reject_streak(
+    task_queue: TaskQueue,
+):
+    # Adversarial-review finding (regression, MEDIUM): the INSERT branch's
+    # hand-written column list omitted plan_item_reject_streak, so an explicit
+    # value passed on the VERY FIRST upsert_loop call (no existing row yet)
+    # was silently discarded in favor of the column default (0) — mode/
+    # plan_phase were correctly threaded through when THEY were added; this
+    # one was not. Verified by reproduction: the pre-fix code returned 0 here.
+    row = await task_queue.upsert_loop(
+        status="running", iteration=1, plan_item_reject_streak=2
+    )
+    assert row["plan_item_reject_streak"] == 2
+
+
+async def test_upsert_loop_update_branch_still_honors_plan_item_reject_streak(
+    task_queue: TaskQueue,
+):
+    await task_queue.upsert_loop(status="running", iteration=1)
+    row = await task_queue.upsert_loop(plan_item_reject_streak=3)
+    assert row["plan_item_reject_streak"] == 3

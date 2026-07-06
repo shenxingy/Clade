@@ -531,6 +531,7 @@ class TaskQueue:
                     "supervisor_model": "sonnet",
                     "mode": "review",
                     "plan_phase": "plan",
+                    "plan_item_reject_streak": 0,
                     "created_at": now,
                     "updated_at": now,
                 }
@@ -540,8 +541,9 @@ class TaskQueue:
                         """INSERT INTO iteration_loops
                            (name, artifact_path, context_dir, status, iteration,
                             changes_history, deferred_items, convergence_k, convergence_n,
-                            max_iterations, supervisor_model, mode, plan_phase, created_at, updated_at)
-                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                            max_iterations, supervisor_model, mode, plan_phase,
+                            plan_item_reject_streak, created_at, updated_at)
+                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                         (
                             fields["name"], fields["artifact_path"], fields["context_dir"],
                             fields["status"], fields["iteration"], fields["changes_history"],
@@ -549,6 +551,7 @@ class TaskQueue:
                             fields["convergence_n"], fields["max_iterations"],
                             fields["supervisor_model"], fields.get("mode", "review"),
                             fields.get("plan_phase", "plan"),
+                            fields.get("plan_item_reject_streak", 0),
                             fields["created_at"], fields["updated_at"],
                         ),
                     )

@@ -155,6 +155,12 @@ class TestPlanItemRejectStreakEscalation:
         plan_path.write_text("# Plan\n\n- [ ] flaky then fixed\n")
 
         s = sess_mod.ProjectSession(str(tmp_path))
+        # This is the FIRST upsert_loop call for this session (no prior loop
+        # row), so seeding plan_item_reject_streak here exercises upsert_loop's
+        # INSERT branch, not just UPDATE — a real bug once dropped exactly this
+        # kwarg on that branch (see test_task_queue.py's dedicated coverage),
+        # which would have made this test pass for the wrong reason (starting
+        # from an already-0 streak instead of genuinely resetting one).
         await s.task_queue.upsert_loop(
             status="running", plan_phase="build", context_dir=str(tmp_path),
             artifact_path=str(tmp_path / "artifact.md"),

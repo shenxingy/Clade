@@ -10,6 +10,7 @@ MagicMock (same pattern as test_oracle_integrity.py).
 from __future__ import annotations
 
 import importlib.util
+import logging
 from pathlib import Path
 
 import pytest
@@ -380,7 +381,7 @@ async def test_poll_all_skips_oracle_requeue_for_loop_managed_tasks(task_queue, 
     assert not any("Previous attempt was" in t["description"] for t in tasks)
 
 
-async def test_poll_all_skips_test_requeue_for_loop_managed_tasks(task_queue, tmp_path):
+async def test_poll_all_skips_test_requeue_for_loop_managed_tasks(task_queue, tmp_path, caplog):
     # Round-2 adversarial-review finding (correctness, HIGH): the loop/plan guard
     # above only covered the oracle-requeue site — this sibling site (pre-push
     # test failure) reproduced the identical untracked-duplicate-task bug.
@@ -400,16 +401,21 @@ async def test_poll_all_skips_test_requeue_for_loop_managed_tasks(task_queue, tm
     w._test_requeue_reason = "Project tests FAILED.\n2 failed, 1 passed"
     pool.workers[w.id] = w
 
-    await pool.poll_all(task_queue, None)
+    with caplog.at_level(logging.INFO):
+        await pool.poll_all(task_queue, None)
 
     assert w._test_requeue is False
     tasks = await task_queue.list()
     assert not any("FAILED the project test suite" in t["description"] for t in tasks)
     row = await task_queue.get(task["id"])
     assert "Pre-push tests failed" in (row.get("failed_reason") or "")
+    # Round-3 finding (LOW): the log must not claim a requeue happened when
+    # task_queue.add() was actually skipped.
+    assert not any("re-queued with test output" in r.message for r in caplog.records)
+    assert any("not requeuing" in r.message for r in caplog.records)
 
 
-async def test_poll_all_skips_ownership_requeue_for_loop_managed_tasks(task_queue, tmp_path):
+async def test_poll_all_skips_ownership_requeue_for_loop_managed_tasks(task_queue, tmp_path, caplog):
     pool = wmod.WorkerPool()
     claude_dir = tmp_path / ".claude"
     claude_dir.mkdir(exist_ok=True)
@@ -424,11 +430,14 @@ async def test_poll_all_skips_ownership_requeue_for_loop_managed_tasks(task_queu
     w._ownership_violation_reason = "edited forbidden.py"
     pool.workers[w.id] = w
 
-    await pool.poll_all(task_queue, None)
+    with caplog.at_level(logging.INFO):
+        await pool.poll_all(task_queue, None)
 
     assert w._ownership_violation is False
     tasks = await task_queue.list()
     assert not any("file ownership violation" in t["description"] for t in tasks)
+    assert not any("re-queued with reason" in r.message for r in caplog.records)
+    assert any("not requeuing" in r.message for r in caplog.records)
     row = await task_queue.get(task["id"])
     assert "Ownership violation" in (row.get("failed_reason") or "")
 

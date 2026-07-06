@@ -1043,7 +1043,13 @@ async def handle_test_requeue(w: Any, task_queue: Any, is_loop_task: bool) -> No
     await task_queue.update(
         w.task_id, failed_reason=f"Pre-push tests failed: {error_summary[:200]}"
     )
-    logger.info("Pre-push tests failed for task %s — re-queued with test output", w.task_id)
+    if not is_loop_task:
+        logger.info("Pre-push tests failed for task %s — re-queued with test output", w.task_id)
+    else:
+        logger.info(
+            "Pre-push tests failed for task %s — loop/plan-managed, not requeuing "
+            "(failed_reason recorded on the existing row)", w.task_id,
+        )
 
 
 async def handle_ownership_requeue(w: Any, task_queue: Any, is_loop_task: bool) -> None:
@@ -1063,7 +1069,13 @@ async def handle_ownership_requeue(w: Any, task_queue: Any, is_loop_task: bool) 
     await task_queue.update(
         w.task_id, failed_reason=f"Ownership violation: {error_summary[:200]}"
     )
-    logger.info("Ownership violation task %s — re-queued with reason", w.task_id)
+    if not is_loop_task:
+        logger.info("Ownership violation task %s — re-queued with reason", w.task_id)
+    else:
+        logger.info(
+            "Ownership violation task %s — loop/plan-managed, not requeuing "
+            "(failed_reason recorded on the existing row)", w.task_id,
+        )
 
 
 async def handle_handoff_requeue(w: Any, task_queue: Any, is_loop_task: bool) -> None:
