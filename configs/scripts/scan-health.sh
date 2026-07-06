@@ -323,11 +323,150 @@ EOF
   TASK_COUNT=$((TASK_COUNT + 1))
 }
 
+# ─── MCP Server Context-Budget Audit (tw93/Waza pattern) ────────────────────
+# Every configured MCP server's tool schemas load into the system prompt on
+# EVERY turn — an unbounded server list silently eats context budget the same
+# way an unbounded log tail does (worker.py's estimate is reused conceptually
+# here: len(text) // 4 chars-to-tokens). Reachability IS a live probe: stdio
+# servers are checked via `command -v` on PATH; http/sse servers get a short
+# connection check. The token cost is NOT a live measurement — introspecting
+# each server's REAL tool list would mean spawning it (network installs via
+# npx/uvx, docker pulls, required credentials), which is unsafe and slow for a
+# fast, side-effect-free scan. Instead it's a documented flat per-server
+# placeholder (a typical server exposes ~5-15 tools at ~150-300 tokens each
+# once serialized) — override with MCP_TOOL_TOKEN_ESTIMATE if you have better
+# data for your fleet. Threshold override: MCP_TOKEN_BUDGET_THRESHOLD.
+_scan_mcp_budget() {
+  local mcp_config=".claude/mcp.json"
+  [[ -f "$mcp_config" ]] || return 0
+  command -v python3 &>/dev/null || return 0
+
+  local per_server_est budget_threshold
+  per_server_est="${MCP_TOOL_TOKEN_ESTIMATE:-2500}"
+  budget_threshold="${MCP_TOKEN_BUDGET_THRESHOLD:-20000}"
+
+  # name<TAB>transport(stdio|http)<TAB>target(command|url) — one server per line
+  local servers
+  servers=$(python3 - "$mcp_config" <<'PYEOF' 2>/dev/null
+import json, sys
+
+try:
+    with open(sys.argv[1]) as fh:
+        data = json.load(fh)
+except Exception:
+    sys.exit(0)
+
+for name, entry in (data.get("mcpServers") or {}).items():
+    if not isinstance(entry, dict):
+        continue
+    url = entry.get("url")
+    if url:
+        print(f"{name}\thttp\t{url}")
+    else:
+        print(f"{name}\tstdio\t{entry.get('command', '')}")
+PYEOF
+) || true
+
+  [[ -z "$servers" ]] && return
+
+  local total_tokens=0 server_count=0
+  local unreachable="" breakdown=""
+
+  while IFS=$'\t' read -r name transport target; do
+    [[ -z "$name" ]] && continue
+    server_count=$((server_count + 1))
+    total_tokens=$((total_tokens + per_server_est))
+
+    local reachable="unknown"
+    if [[ "$transport" == "stdio" ]]; then
+      if [[ -n "$target" ]] && command -v "$target" &>/dev/null; then
+        reachable="reachable"
+      else
+        reachable="unreachable"
+      fi
+    elif [[ "$transport" == "http" ]]; then
+      if command -v curl &>/dev/null; then
+        if curl -s -o /dev/null --max-time 3 "$target" 2>/dev/null; then
+          reachable="reachable"
+        else
+          reachable="unreachable"
+        fi
+      fi
+    fi
+
+    breakdown="${breakdown}  - ${name} (${transport}): ~${per_server_est} tokens, ${reachable}"$'\n'
+    if [[ "$reachable" == "unreachable" ]]; then
+      unreachable="${unreachable}  - ${name} (${transport}): ${target:-<missing command/url>}"$'\n'
+    fi
+  done <<< "$servers"
+
+  # Finding 1: unreachable server(s) — always reported, independent of budget
+  if [[ -n "$unreachable" ]]; then
+    cat <<EOF
+===TASK===
+model: haiku
+timeout: 600
+source_ref: health_mcp_unreachable
+---
+fix: unreachable MCP server(s) in ${mcp_config}
+
+## Context
+${server_count} MCP server(s) configured in ${mcp_config}. The following
+failed a live reachability probe (stdio: binary on PATH via \`command -v\`;
+http/sse: short-timeout connection check):
+
+${unreachable}
+## What to do
+1. Confirm each server's command/binary is installed, or its URL is reachable
+   from this machine
+2. Fix or remove the broken entry in ${mcp_config}
+3. Re-run \`bash configs/scripts/scan-health.sh\` to verify
+4. Commit with: committer "fix: repair unreachable MCP server config" ${mcp_config}
+
+EOF
+    TASK_COUNT=$((TASK_COUNT + 1))
+  fi
+
+  # Finding 2: tool-schema token budget exceeded
+  if [[ "$total_tokens" -gt "$budget_threshold" ]]; then
+    cat <<EOF
+===TASK===
+model: sonnet
+timeout: 900
+source_ref: health_mcp_budget
+---
+perf: MCP tool-schema context budget exceeded (~${total_tokens} tokens across ${server_count} server(s), threshold ${budget_threshold})
+
+## Context
+Every configured MCP server's tool schemas load into the system prompt on
+EVERY turn. ${mcp_config} configures ${server_count} server(s):
+
+${breakdown}
+Estimate: ~${per_server_est} tokens/server (documented flat placeholder — a
+typical server exposes ~5-15 tools at ~150-300 tokens each once serialized;
+live introspection of arbitrary MCP servers was out of scope for this fast,
+side-effect-free scan). Total: ~${total_tokens} tokens vs a ${budget_threshold}
+token budget.
+
+## What to do
+1. Review ${mcp_config} and drop MCP servers not actively used by this project
+2. For occasionally-needed servers, pass --mcp-config per-invocation instead
+   of keeping them in the standing project config
+3. Re-run \`bash configs/scripts/scan-health.sh\` to confirm the estimate is
+   back under budget
+4. Commit with: committer "perf: trim MCP server context budget" ${mcp_config}
+
+EOF
+    TASK_COUNT=$((TASK_COUNT + 1))
+  fi
+}
+
 # ─── Run all scans ──────────────────────────────────────────────────────────
 _scan_todos
 _scan_type_errors
 _scan_lint
 _scan_large_files
 _scan_test_runtime
+_scan_mcp_budget
 
 echo "# scan-health: found ${TASK_COUNT} issue(s)" >&2
