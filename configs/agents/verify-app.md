@@ -35,8 +35,9 @@ Detect the project type from these markers:
 Based on what files changed and the project type, run the appropriate checks:
 
 ### Web apps (Node.js / TypeScript / Python web)
-- **API routes** (`**/api/**`, `**/routes/**`, `**/actions/**`): Start dev server if needed, test routes with curl
-- **Pages/components** (`**/app/**`, `**/components/**`): Check dev server responds, test affected pages
+- **Dev server**: Run `configs/scripts/ensure-dev-server.sh` before any of the checks below — do NOT hand-roll your own start/reuse logic. It's idempotent and flock-guarded (safe alongside a concurrent worktree worker also verifying), reads `CLAUDE.md`'s `Frontend: ... port NNNN` line itself, and prints `PORT=<port> STATUS=reused|started|unreachable`. If `STATUS=unreachable` (exit 1), mark the affected checks below as unverifiable rather than reporting a false `[BUG]`.
+- **API routes** (`**/api/**`, `**/routes/**`, `**/actions/**`): test routes with curl against the ensured port
+- **Pages/components** (`**/app/**`, `**/components/**`): test affected pages against the ensured port
 - **Schema/migrations**: Run dry-run migration check (e.g., `pnpm db:push --dry-run`, `alembic check`)
 - **Build**: Run type-check, then full build
 

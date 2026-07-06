@@ -145,6 +145,13 @@ jobs:
       - name: Run context-warning-drain tests
         run: bash tests/test-context-warning-drain.sh
 
+      # Idempotent dev-server discovery/start (Round-4, Thorsten Ball): cold
+      # start, fast reuse, 4-way concurrent-caller race (exactly one real
+      # process), unreachable/no-dev-script, CLAUDE.md port parsing, reuse of
+      # an untracked external server. Skips gracefully if node/curl/jq missing.
+      - name: Run ensure-dev-server tests
+        run: bash tests/test-ensure-dev-server.sh
+
   install-test:
     name: Install Test
     runs-on: ubuntu-latest
