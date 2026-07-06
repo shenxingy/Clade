@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import time
 from pathlib import Path
 from typing import Any
@@ -52,6 +53,15 @@ _MODEL_ALIASES = {
 HAIKU_MODEL = _MODEL_ALIASES["haiku"]
 SONNET_MODEL = _MODEL_ALIASES["sonnet"]
 OPUS_MODEL = _MODEL_ALIASES["opus"]
+
+# Every model id a worker (or its fallback) may run — the allowlist for values
+# spliced into the `claude -p ... --model/--fallback-model` shell command. A
+# user-controlled setting must never reach the shell as an arbitrary string, so
+# both the primary model (worker.py) and the fallback (_resolve_fallback_model)
+# validate against this set.
+ALLOWED_MODEL_IDS = set(_MODEL_ALIASES.values()) | {
+    "claude-opus-4-5", "claude-sonnet-4-5", "claude-haiku-4-5",
+}
 
 # Pure-judge containment flag — single source of truth for the Python layer.
 # Nested `claude -p` calls whose stdout is PARSED (oracle, TLDR/localize,
@@ -638,24 +648,31 @@ def _resolve_fallback_model(requested_model: str) -> str | None:
     if not setting:
         return None
     if setting.lower() != "auto":
-        return _MODEL_ALIASES.get(setting, setting)
-    # auto: reduce the requested model to its short alias, then map-derive.
-    alias = requested_model
-    if alias not in _MODEL_ALIASES:  # a full id → recover its short alias
-        for a, full in _MODEL_ALIASES.items():
-            if full == requested_model:
-                alias = a
-                break
-    fb_alias = (GLOBAL_SETTINGS.get("auto_classify_retry_model_fallback") or {}).get(alias)
-    if not fb_alias:
-        return None
-    return _MODEL_ALIASES.get(fb_alias, fb_alias)
+        candidate = _MODEL_ALIASES.get(setting, setting)
+    else:
+        # auto: reduce the requested model to its short alias, then map-derive.
+        alias = requested_model
+        if alias not in _MODEL_ALIASES:  # a full id → recover its short alias
+            for a, full in _MODEL_ALIASES.items():
+                if full == requested_model:
+                    alias = a
+                    break
+        fb_alias = (GLOBAL_SETTINGS.get("auto_classify_retry_model_fallback") or {}).get(alias)
+        if not fb_alias:
+            return None
+        candidate = _MODEL_ALIASES.get(fb_alias, fb_alias)
+    # Security: the resolved id is spliced into the worker shell command, so it
+    # must be a KNOWN model, never a user-controlled arbitrary string (mirrors
+    # the primary --model whitelist in worker._build_cmd_and_env).
+    return candidate if candidate in ALLOWED_MODEL_IDS else None
 
 
 def _fallback_flag(requested_model: str) -> str:
     """--fallback-model flag string for a worker spawn, or '' when disabled/none."""
     fb = _resolve_fallback_model(requested_model)
-    return f" --fallback-model {fb}" if fb else ""
+    # _resolve_fallback_model already guarantees fb ∈ ALLOWED_MODEL_IDS; shlex.quote
+    # is belt-and-suspenders so the splice can never break the shell command.
+    return f" --fallback-model {shlex.quote(fb)}" if fb else ""
 
 
 # ─── Task Schema / JSON Envelope (Multi-agent Gap 3) ─────────────────────────
