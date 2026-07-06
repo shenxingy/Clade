@@ -12,6 +12,31 @@ Past resolved/deferred items live in [`docs/archive/BRAINSTORM-resolved.md`](doc
 
 ---
 
+## [Research] 2026-07-06 — New elite-learnings candidates discovery (external ecosystem)
+
+User question: 找新大佬 — Anthropic 之外的公司/组织/独立开发者/古法程序员拥抱 AI 时代的样本。7-angle sweep (43 agents, ~2.3M tok) → 43 raw candidates → dedup → 34 distinct → adversarial skeptical verify (each independently re-fetched URLs/dates, did not trust scout summaries) → **30 CONFIRMED_ADD, 4 WEAK_EVIDENCE**.
+
+**Key structural fact the sweep surfaced**: all 6 currently-tracked names (Mic92, felixrieseberg, domdomegg, lovesegfault, controversial, claude-cookbooks) are Anthropic-affiliated. Every one of the 30 new confirmed candidates is external. This is a real scope fork (roster stays Anthropic-insider-only vs. broadens to "who's doing serious agentic-coding practice, period") — not decided yet, flagged to the user for a call rather than assumed.
+
+**Process note**: verification caught a scout hallucination — "Shopify" candidate cited dense `Claude Opus 4.8` commit trailers that do not exist in the real commit history, and invented a non-existent model name. Downgraded to WEAK_EVIDENCE/flagged rather than silently trusted. Validates the mandatory adversarial-verify-with-refetch step (do not skip it as a formality).
+
+### Confirmed adds by category (30 total; full evidence/URLs in workflow transcript, not reproduced here)
+
+**Old-guard veterans (10, all high)** — deep systems/PL cred + dated 2026 agentic-era evidence: Steve Yegge (Sourcegraph/Amp; Beads/gastown), Thorsten Ball (Amp Inc co-founder; "Writing An Interpreter/Compiler In Go" author; AGENTS.md/headless-agent notes), Simon Willison (Django co-creator; cost-logged agent-driven OSS releases), Armin Ronacher/mitsuhiko (Flask/Jinja2; "The Coming Loop" harness critique), Salvatore Sanfilippo/antirez (Redis; independently re-derives Claude Code's Edit-tool design space), Peter Steinberger/steipete (OpenAI; OpenClaw; shipped prompt-injection-defense PR), Mitchell Hashimoto (HashiCorp; Ghostty AGENTS.md honeypot for undisclosed AI PRs), DHH (Rails/37signals; tmux dual-model workflow), Guillermo Rauch (Vercel; open-agents tool-approval-gating), Kent Beck (XP/TDD; "prefer MCP tools over eval" lesson).
+
+**Independent builders (7, all high)** — incl. non-English-language: Geoffrey Huntley (originated the "Ralph Wiggum" loop pattern), Pieter Levels/@levelsio (ships via Claude Code `/goal` autonomous background on prod VPS), Matt Pocock (skill-authoring failure-mode taxonomy, 158k★ repo), tw93 (Chinese; Waza turns personal heuristics into Claude-runnable skills), fennu2333 (Chorus-AIDLC; isolated Reviewer-Agent anti-self-review-bias pattern — direct analog to `oracle_cli.py`), Takanori Sano / 4q_sano (Japan; 6-agent diff-risk-routed review orchestrator), minorun365 (Japan; spec-driven PLAN/SPEC/TODO/KNOWLEDGE.md automation pattern).
+
+**Other company/org (11, 10 high + Ben Balter medium)** — one-shot mining tickets, not ongoing roster shape: Warp (Zach Lloyd, "Oz" agent-orchestration platform), Replit (Amjad Masad, nightly trace→PR→A/B-gate self-improvement loop), Amp Inc co-founders Nicolay Gerold + Camden Cheek (Handoff feature, `Amp-Thread-ID` commit provenance), Cloudflare (agent-think autonomous issue-fixer), Grab ("Entrypoint Skill" — 400 services, 100+ MRs/1.5mo), Block/Goose (multi-model co-authorship provenance at Fortune-500 scale), All Hands AI/OpenHands (self-hosted agentic SDLC), Mercari (long agentic pair-sessions with granular trailers), Samsung (embedded/systems-level agentic bug-fixing, post gen-AI-ban reversal), Ben Balter/GitHub (single-prompt issue→PR demo).
+
+**Aggregator/meta-sources (2)** — recon-only, re-scan periodically rather than mine directly: The Pragmatic Engineer (Gergely Orosz; profiles a new named engineer almost every issue — Boris Cherny/Claude-Code-creator flagged as a standalone future deep-dive anchor), Latent Space (swyx + Alessio; Omnigent/multi-harness episode).
+
+**Weak/watch-list (not added)**: Factory.ai founders (vendor marketing, thin repo), 2 Amp Inc engineers with genuinely good content but stale (>2mo) dates, Shopify (hallucinated evidence — see process note).
+
+### Not yet decided (pending user call)
+
+- [ ] Scope: fold the 17 individual-shaped entries (old-guard + independent) into the ongoing tracked roster now (same shape as existing 6)? Treat the 11 org-level entries as one-time targeted mining pulls instead of permanent trackees? Keep the 2 aggregators as recon-only?
+- [ ] Whether/when to run a Round-4-style deep-mining pass (find concrete adoptable mechanisms, adversarially verify against Clade's own code) on whichever subset is approved.
+
 ## [Research] 2026-07-05 — Elite workflows ROUND 3 (what's NEW since 2026-06-12)
 
 User question: 看看最近从大佬们那是否有别的可以学的东西. First round that targets the ~3-week *delta* rather than re-sweeping the 6 sources. 4-phase workflow (35 agents, ~2M tok): 8 parallel web scouts (CC releases Feb–Jul 2026, new cookbooks/blog, Agent SDK+MCP, the 6 experts' recent public work, rival frameworks, eval/verifier, context/memory) → 49 raw findings → triage-dedup vs the two prior rounds' ledger → 25 candidates → one adversarial verifier each (default stance: already-covered/N-A) → synthesis. Result: **3 confirmed gaps, 22 parity/different/N-A.** Most "papers" this round were future-dated/likely-synthetic; the surviving gaps are grounded in Clade's OWN code, not the papers.
