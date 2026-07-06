@@ -204,7 +204,19 @@ class ProjectSession:
             )
 
     async def _run_supervisor(self) -> None:
-        """Iterative review-fix loop (Ralph-style supervisor)."""
+        """Iterative review-fix loop (Ralph-style supervisor).
+
+        Terminal loop_state["status"] values relevant here (idle/running/paused/
+        cancelled cover the rest of the lifecycle, set via the /loop REST routes):
+          - "converged": genuinely nothing left to do — either the supervisor's
+            own CONVERGED self-report, or the dual (count/semantic) diff-activity
+            heuristic below detected the artifact has quiesced.
+          - "exhausted": max_iterations was hit while work was still open (diff
+            activity had NOT quiesced). Distinct from "converged" so a stuck/
+            never-finishing loop cannot be mistaken for a clean finish downstream
+            (Pieter Levels) — see the matching split in _run_plan_build.
+        Each fires its own notification event (loop_converged / loop_exhausted).
+        """
         consecutive_empty = 0
         while True:
             loop_state = await self.task_queue.get_loop()
@@ -229,8 +241,15 @@ class ProjectSession:
 
             model_short = loop_state.get("supervisor_model", "sonnet")
             model = _MODEL_ALIASES.get(model_short, SONNET_MODEL)
+            max_iter_for_prompt = loop_state.get("max_iterations", 20)
 
             prompt = (
+                f"[Budget context: this is iteration {iteration} of {max_iter_for_prompt} "
+                "maximum. This is informational only, for prioritizing which issues to "
+                "raise first — it must NOT influence your CONVERGED judgment. Report "
+                "CONVERGED only when the artifact genuinely has no significant issues "
+                "remaining; never report CONVERGED merely because iterations are running "
+                "low, and never withhold CONVERGED merely because iterations remain.]\n\n"
                 "Review the following artifact. Output ONLY a JSON array, no prose.\n"
                 "Each element must be exactly one of:\n"
                 '  {"type":"FIXABLE","description":"...","task":"imperative task description for a worker"}\n'
@@ -420,12 +439,26 @@ class ProjectSession:
             )
             is_converged = count_converged or semantic_converged
 
-            if is_converged or iteration >= max_iter:
+            # Genuine convergence (diff activity has quiesced) takes priority even
+            # if it happens to land on the same iteration the ceiling is hit — only
+            # an UNconverged loop that runs out of iterations is "exhausted" (Pieter
+            # Levels: hitting max_iter with items still open is NOT the same outcome
+            # as actually finishing, and must be distinguishable downstream).
+            if is_converged:
                 await self.task_queue.upsert_loop(
                     changes_history=changes_history,
                     status="converged",
                 )
                 asyncio.create_task(_fire_notification("loop_converged", self))
+                asyncio.create_task(_suggest_next_goals(self))
+                return
+
+            if iteration >= max_iter:
+                await self.task_queue.upsert_loop(
+                    changes_history=changes_history,
+                    status="exhausted",
+                )
+                asyncio.create_task(_fire_notification("loop_exhausted", self))
                 asyncio.create_task(_suggest_next_goals(self))
                 return
 
@@ -567,8 +600,12 @@ class ProjectSession:
             iteration = loop_state.get("iteration", 1)
             max_iter = loop_state.get("max_iterations", 20)
             if iteration >= max_iter:
-                await self.task_queue.upsert_loop(status="converged")
-                asyncio.create_task(_fire_notification("loop_converged", self))
+                # task_line_idx is NOT None here — an unchecked checklist item
+                # remains. Hitting the iteration ceiling while work is still open
+                # is a distinct outcome from "converged" (Pieter Levels): the plan
+                # did not finish, it was cut off. Keep that legible downstream.
+                await self.task_queue.upsert_loop(status="exhausted")
+                asyncio.create_task(_fire_notification("loop_exhausted", self))
                 asyncio.create_task(_suggest_next_goals(self))
                 return
 
