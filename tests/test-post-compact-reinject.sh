@@ -119,6 +119,14 @@ rm -f "$STATE"
 OUT5=$(compact_in "$SID" "compact" | CLAUDE_PROJECT_DIR="$PROJ" bash "$HOOK")
 assert_empty "$OUT5" "missing compact-state.md produces no output"
 
+# ─── 6. empty/absent source still proceeds (belt-and-braces) ─────────
+section "no-source input still injects (documented fallback)"
+write_state
+OUT6=$(echo '{}' | CLAUDE_PROJECT_DIR="$PROJ" bash "$HOOK")
+CTX6=$(ctx_of <<< "$OUT6")
+assert_contains "$CTX6" "Post-compaction restore" "empty-source input still injects the restore header"
+assert_contains "$CTX6" "GOAL-42" "empty-source input carries the saved goal"
+
 # ─── Summary ─────────────────────────────────────────────────────────
 echo ""
 echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

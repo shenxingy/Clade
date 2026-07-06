@@ -574,6 +574,38 @@ class TestRunOracleGate:
         assert await gate_worker._run_oracle_gate() is True
         assert gate_worker.oracle_result is None
 
+    async def test_verdict_samples_setting_forwarded_to_review(self, gate_worker, monkeypatch):
+        # gap B end-to-end wiring: the setting is read at the gate and threaded
+        # into _oracle_review(verdict_samples=). Without this the whole feature is
+        # inert — a wired setting that never reaches the code path it controls.
+        monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "auto_oracle", True)
+        monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "oracle_verdict_samples", 3)
+        captured: dict = {}
+
+        async def fake_review(desc, diff, cdir, **kwargs):
+            captured.update(kwargs)
+            return True, "approved", False
+
+        monkeypatch.setattr(wmod, "_oracle_review", fake_review)
+        assert await gate_worker._run_oracle_gate() is True
+        assert captured.get("verdict_samples") == 3
+
+    async def test_bad_verdict_samples_degrades_not_crashes_gate(self, gate_worker, monkeypatch):
+        # gap B robustness: a non-numeric misconfig must degrade to single-shot,
+        # NOT crash the gate into a fail-open 'unreviewed' (silently disabling review).
+        monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "auto_oracle", True)
+        monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "oracle_verdict_samples", "two")
+        captured: dict = {}
+
+        async def fake_review(desc, diff, cdir, **kwargs):
+            captured.update(kwargs)
+            return True, "approved", False
+
+        monkeypatch.setattr(wmod, "_oracle_review", fake_review)
+        assert await gate_worker._run_oracle_gate() is True
+        assert gate_worker.oracle_result == "approved"   # gate ran — not crashed to 'unreviewed'
+        assert captured.get("verdict_samples") == 1      # bad value → single-shot
+
     async def test_infra_error_tags_unreviewed_not_approved(self, gate_worker, monkeypatch):
         monkeypatch.setitem(wmod.GLOBAL_SETTINGS, "auto_oracle", True)
 
@@ -1232,6 +1264,44 @@ class TestOracleVerdictResampling:
         approved, reason, infra = await wr._oracle_review_chunk("t", "d", "1/1", tmp_path, samples=3)
         assert (approved, infra) == (True, False)
         assert len(writes) == 1  # exactly one follow-up write despite 3 samples
+        # ...and it is the WINNING (first approve) sample's payload, not a loser's
+        assert writes[0] == [{"severity": "info", "fix_suggestion": "x"}]
+
+    async def test_chunk_samples_mixed_infra_excluded_from_denominator(self, tmp_path, monkeypatch):
+        # [approve(valid), infra, infra] → the lone valid vote decides: approve.
+        # Guards the chunk denominator (len(valid), not len(results)): a regression
+        # to len(results) would flip 1*2>1 (approve) to 1*2>3 (reject).
+        seq = iter([
+            (True, "approved", False, [], False),
+            (True, "oracle timeout (60s)", True, [], False),
+            (True, "oracle timeout (60s)", True, [], False),
+        ])
+        async def fake_once(prompt, cdir):
+            return next(seq)
+        monkeypatch.setattr(wr, "_oracle_review_chunk_once", fake_once)
+        monkeypatch.setattr(wr, "_append_followup_findings", lambda *a, **k: None)
+        approved, reason, infra = await wr._oracle_review_chunk("t", "d", "", tmp_path, samples=3)
+        assert (approved, infra) == (True, False)
+
+    # _oracle_review threads verdict_samples down to the pass/chunk functions
+    async def test_review_threads_samples_to_two_pass(self, tmp_path, monkeypatch):
+        seen = []
+        async def fake_pass(prompt, cdir, samples=1):
+            seen.append(samples)
+            return True, "high", "", False
+        monkeypatch.setattr(wr, "_oracle_pass", fake_pass)
+        await wr._oracle_review("task", "small diff", tmp_path, verdict_samples=3)
+        assert seen == [3, 3]  # spec + quality passes both get samples=3
+
+    async def test_review_threads_samples_to_chunks(self, tmp_path, monkeypatch):
+        seen = []
+        async def fake_chunk(task, chunk, label, cdir, constitution="", samples=1):
+            seen.append(samples)
+            return True, "ok", False
+        monkeypatch.setattr(wr, "_oracle_review_chunk", fake_chunk)
+        big = "+x\n" * wr._ORACLE_CHUNK_SIZE  # forces the chunked path
+        await wr._oracle_review("task", big, tmp_path, verdict_samples=3)
+        assert seen and all(s == 3 for s in seen)
 
     async def test_chunk_samples_majority_reject(self, tmp_path, monkeypatch):
         seq = iter([
