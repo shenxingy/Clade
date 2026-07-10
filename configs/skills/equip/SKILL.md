@@ -1,7 +1,7 @@
 ---
 name: equip
-description: Equipment manager for Claude Code projects — inventory local skills/agents/scripts, audit external upstream repos (intelligent review with red-flag detection), and sync selectively after user approval. Project-agnostic.
-when_to_use: "equip, upstream, absorb skill, update skill from github, review external skill, sync skill, inventory skills, 装备, 更新外部技能, 审核上游, 管理插件来源 — NOT for first-party feature development (just write code)"
+description: Equipment manager for Claude Code projects — inventory local skills/agents/scripts, audit external upstream repos (red-flag + prompt-injection screening), and sync selectively after user approval. Absorbs container-layout skill repos AND single-skill-at-root repos (e.g. a company design-system repo). Project-agnostic.
+when_to_use: "equip, upstream, absorb skill, absorb a design-system repo, update skill from github, review external skill, sync skill, inventory skills, 装备, 更新外部技能, 审核上游, 管理插件来源 — NOT for first-party feature development (just write code)"
 argument-hint: '<command> [args]  # inventory | audit <repo|id> | sync <id> [--apply] | diff <id> | list | add <repo> | remove <id>'
 user_invocable: true
 ---

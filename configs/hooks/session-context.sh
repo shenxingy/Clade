@@ -313,6 +313,11 @@ if grep -qiE '## (Publish|Live|Site) URL' CLAUDE.md 2>/dev/null \
   SKILL_ROUTE="${SKILL_ROUTE}Published web site: /review includes full SEO + GEO audit\n"
 fi
 
+# Design system present (token sheet, skill-repo, or full spec)
+if [[ -f ".design-system.md" || -f "design-system/SKILL.md" || -f "DESIGN.md" ]]; then
+  SKILL_ROUTE="${SKILL_ROUTE}Design system detected: /frontend-design enforces its hard rules + review checklist for any UI work\n"
+fi
+
 # Auth/security code detected
 if grep -rqlE '(jwt|oauth|bcrypt|argon2|@login_required|@requires_auth|passport\.)' . --include='*.py' --include='*.ts' --include='*.js' --include='*.go' --include='*.rs' --include='*.rb' 2>/dev/null | head -1 &>/dev/null; then
   SKILL_ROUTE="${SKILL_ROUTE}Auth code detected: /cso for security audit after auth changes\n"

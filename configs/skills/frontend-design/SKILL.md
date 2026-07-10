@@ -1,7 +1,7 @@
 ---
 name: frontend-design
-description: Create distinctive, production-grade frontend interfaces with high design quality
-when_to_use: "design UI, create component, frontend design, build page, 设计页面"
+description: Create distinctive, production-grade frontend interfaces with high design quality. Detects and enforces the project's design system (.design-system.md, design-system skill repo, or DESIGN.md) — hard-rule grep checks, review checklist, decisions log; can also author a new design system (SKILL.md + DESIGN.md + assets).
+when_to_use: "design UI, create component, frontend design, build page, apply the design system, follow brand guidelines, author a design system, 设计页面, 按设计系统, 品牌规范"
 user_invocable: true
 ---
 
