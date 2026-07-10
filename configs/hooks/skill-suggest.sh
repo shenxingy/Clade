@@ -86,7 +86,8 @@ fi
 [[ -z "$SUGGESTIONS" ]] && exit 0
 
 # ─── Throttle by suggestion category (not file extension) ───────────
-THROTTLE_DIR="/tmp/claude-skill-suggest"
+# Overridable for tests (tests/test-skill-routing.sh)
+THROTTLE_DIR="${SKILL_SUGGEST_THROTTLE_DIR:-/tmp/claude-skill-suggest}"
 mkdir -p "$THROTTLE_DIR"
 # Use first matched suggestion type as throttle key
 CATEGORY=$(echo -n "$SUGGESTIONS" | head -1 | cut -d' ' -f1-2 | tr ' /' '_' | tr '[:upper:]' '[:lower:]')

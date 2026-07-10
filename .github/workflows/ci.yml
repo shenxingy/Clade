@@ -111,6 +111,12 @@ jobs:
       - name: Run commit-path checks tests
         run: bash tests/test-checks.sh
 
+      # Skill routing (shell side): domain-detect classification, skill-suggest
+      # PostToolUse hints + throttle, session-context project-aware routing +
+      # no-catalog-reinjection regression guard
+      - name: Run skill-routing tests
+        run: bash tests/test-skill-routing.sh
+
       # Nth-strike escalation: 3+-hit rules become REQUIRED hook conversions
       - name: Run auto-audit escalation tests
         run: bash tests/test-audit.sh
