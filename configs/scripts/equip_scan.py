@@ -30,7 +30,7 @@ from equip_common import (
     detect_upstream_agents_dir,
     detect_upstream_hooks_dir,
     detect_upstream_scripts_dir,
-    detect_upstream_skills_dir,
+    upstream_skill_dirs,
     dump_yaml,
     ensure_equipment_dir,
     file_hash,
@@ -79,16 +79,13 @@ def scan_upstream_skill_hashes(project: Path, upstreams: list[Upstream]) -> dict
                 clone_or_update_cache(project, u)
             except Exception:
                 pass
-        upstream_skills = detect_upstream_skills_dir(cache)
-        if not upstream_skills:
+        skill_dirs = upstream_skill_dirs(cache)
+        if not skill_dirs:
             continue
         skill_map: dict[str, str] = {}
-        for skill_dir in sorted(upstream_skills.iterdir()):
-            if not skill_dir.is_dir():
-                continue
+        for skill_dir in skill_dirs:
             # Combined hash of all files under this skill
-            h = combined_hash(skill_dir)
-            skill_map[skill_dir.name] = h
+            skill_map[skill_dir.name] = combined_hash(skill_dir)
         out[u.id] = skill_map
     return out
 

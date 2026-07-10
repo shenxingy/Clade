@@ -63,15 +63,43 @@ Similar to Layout B but the project root is an Obsidian vault.
 
 **Signal**: `WIKI.md` at root AND `skills/` dir.
 
+### Layout E: "Skill-at-root" (upstream-only; e.g., scamai/design-system)
+
+```
+<repo>/
+  SKILL.md          ← agent-facing rules (the skill entrypoint)
+  DESIGN.md         ← optional deep spec the SKILL.md links to
+  tokens.css, components/, brand/, ...   ← assets shipped with the skill
+```
+
+The repo IS one skill — SKILL.md at the root, assets beside it. Typical for
+company overlay repos (a design system, a workflow pack) meant to be dropped
+into any product and handed to an AI assistant.
+
+**Signal**: `SKILL.md` at repo root AND no `skills/` / `configs/skills/` dir
+(`equip_common.py:is_single_skill_repo()`).
+
+**Absorption**: the whole repo maps to one local skill dir named after the
+upstream id (`upstream_skill_dirs()` returns the repo root; the cache dir is
+named by upstream id, so `design-system` → `configs/skills/design-system/`).
+`.git/` is always excluded from hashing/sync. `--base-ref` 3-way merge is
+unsupported for this layout (it assumes `skills/<name>` paths) and degrades
+to the no-base behavior.
+
 ## Detection algorithm
 
-Used by `equip_common.py:detect_layout()`:
+Used by `equip_common.py:detect_layout()` (LOCAL project side — Layout E is
+an upstream shape and is detected separately, see below):
 
 1. If `configs/skills/` exists → **Layout A**
 2. Else if `skills/` exists AND (`install.sh` OR `plugin.json`) → **Layout B**
 3. Else if path is under `~/.claude/` → **Layout C**
 4. Else if `WIKI.md` AND `skills/` → **Layout D**
 5. Fallback: ask user
+
+Upstream side, `equip_common.py:upstream_skill_dirs()` resolves the skill
+list: container dir children for A/B/D, or `[repo root]` for **Layout E**
+(root `SKILL.md`, no container).
 
 ## Path mapping for sync
 

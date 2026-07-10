@@ -27,7 +27,7 @@ from equip_common import (
     clone_or_update_cache,
     current_commit,
     detect_layout,
-    detect_upstream_skills_dir,
+    upstream_skill_dirs,
     ensure_equipment_dir,
     file_hash,
     find_upstream,
@@ -357,19 +357,18 @@ def main() -> int:
         print(f"Fetching {upstream.repo}...")
         clone_or_update_cache(project, upstream)
 
-    upstream_skills = detect_upstream_skills_dir(cache_path)
-    if not upstream_skills:
-        print(f"ERROR: no skills dir in {upstream.repo}", file=sys.stderr)
+    skill_dirs = upstream_skill_dirs(cache_path)
+    if not skill_dirs:
+        print(f"ERROR: no skills dir (and no root SKILL.md) in {upstream.repo}", file=sys.stderr)
         return 2
+    upstream_by_name = {d.name: d for d in skill_dirs}
 
     local_root = skills_root(project)
 
     # --diff-only mode
     if args.diff_only:
         print(f"Diff: {upstream.repo} @ {current_commit(cache_path)[:7]} vs local")
-        for skill_dir in sorted(upstream_skills.iterdir()):
-            if not skill_dir.is_dir():
-                continue
+        for skill_dir in skill_dirs:
             local = local_root / skill_dir.name
             theirs = tree_hash(skill_dir)
             ours = tree_hash(local) if local.is_dir() else {}
@@ -400,8 +399,8 @@ def main() -> int:
     total_writes = 0
     summaries = []
     for name, flags in accepted:
-        upstream_skill = upstream_skills / name
-        if not upstream_skill.is_dir():
+        upstream_skill = upstream_by_name.get(name)
+        if upstream_skill is None or not upstream_skill.is_dir():
             print(f"  ! {name}: missing in upstream (deleted since audit?), skipping")
             continue
         local_skill = local_root / name

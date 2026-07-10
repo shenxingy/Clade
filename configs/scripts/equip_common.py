@@ -191,14 +191,20 @@ def file_hash(path: Path) -> str:
 
 
 def tree_hash(root: Path) -> dict[str, str]:
-    """Map relative-path → sha256 for every file under root."""
+    """Map relative-path → sha256 for every file under root.
+
+    Skips `.git/` — a single-skill upstream repo's root IS the skill dir,
+    and its git internals must never be hashed or synced as skill content.
+    """
     if not root.is_dir():
         return {}
     out: dict[str, str] = {}
     for p in sorted(root.rglob("*")):
         if p.is_file():
-            rel = str(p.relative_to(root))
-            out[rel] = file_hash(p)
+            rel_parts = p.relative_to(root).parts
+            if ".git" in rel_parts:
+                continue
+            out["/".join(rel_parts)] = file_hash(p)
     return out
 
 
@@ -329,6 +335,37 @@ def detect_upstream_dir(upstream_root: Path, candidates: list[str]) -> Optional[
 def detect_upstream_skills_dir(upstream_root: Path) -> Optional[Path]:
     """Find where skills live in a cloned upstream repo."""
     return detect_upstream_dir(upstream_root, ["skills", "configs/skills"])
+
+
+def is_single_skill_repo(upstream_root: Path) -> bool:
+    """True when the repo IS one skill: SKILL.md at root, no skills container.
+
+    Layout E ("skill-at-root") — e.g. a company design-system repo packaging
+    SKILL.md + tokens + components + brand assets as one portable skill.
+    """
+    return (
+        (upstream_root / "SKILL.md").is_file()
+        and detect_upstream_skills_dir(upstream_root) is None
+    )
+
+
+def upstream_skill_dirs(upstream_root: Path) -> list[Path]:
+    """Every skill directory in a cloned upstream repo.
+
+    Container layouts (skills/, configs/skills/) yield the container's
+    subdirectories; a single-skill repo (Layout E) yields the repo root
+    itself — its dir name is the cache dir name, which equals the upstream
+    id, so `dir.name` stays a valid skill name in both cases.
+    """
+    container = detect_upstream_skills_dir(upstream_root)
+    if container:
+        return [
+            p for p in sorted(container.iterdir())
+            if p.is_dir() and not p.name.startswith(".")
+        ]
+    if is_single_skill_repo(upstream_root):
+        return [upstream_root]
+    return []
 
 
 def detect_upstream_agents_dir(upstream_root: Path) -> Optional[Path]:

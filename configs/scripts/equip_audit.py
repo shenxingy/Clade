@@ -30,6 +30,7 @@ from equip_common import (
     detect_layout,
     detect_upstream_agents_dir,
     detect_upstream_skills_dir,
+    upstream_skill_dirs,
     ensure_equipment_dir,
     file_hash,
     find_upstream,
@@ -376,6 +377,10 @@ def main() -> int:
         except Exception:
             upstream_ref = "workdir"
         audit_root = skills_root(project)
+        skill_dirs = [
+            p for p in sorted(audit_root.iterdir())
+            if p.is_dir() and not p.name.startswith(".")
+        ] if audit_root.is_dir() else []
         upstream_version = None
     else:
         # Is it a registered id, or a new repo?
@@ -394,11 +399,12 @@ def main() -> int:
 
         print(f"Fetching {upstream.repo}...")
         cache_path = clone_or_update_cache(project, upstream)
-        skills_dir = detect_upstream_skills_dir(cache_path)
-        if not skills_dir:
-            print(f"ERROR: no skills/ or configs/skills/ dir in {upstream.repo}", file=sys.stderr)
+        skill_dirs = upstream_skill_dirs(cache_path)
+        if not skill_dirs:
+            print(f"ERROR: no skills/ or configs/skills/ dir (and no root SKILL.md) in {upstream.repo}", file=sys.stderr)
             return 2
-        audit_root = skills_dir
+        # Container dir for the log line; a skill-at-root repo has none.
+        audit_root = detect_upstream_skills_dir(cache_path) or cache_path
         upstream_id = upstream.id
         upstream_repo = upstream.repo
         upstream_ref = current_commit(cache_path)[:7]
@@ -425,9 +431,7 @@ def main() -> int:
     local_root = skills_root(project)
     audits: list[SkillAudit] = []
     print(f"Auditing skills under: {audit_root}")
-    for skill_dir in sorted(audit_root.iterdir()):
-        if not skill_dir.is_dir() or skill_dir.name.startswith("."):
-            continue
+    for skill_dir in skill_dirs:
         local_mirror = local_root / skill_dir.name
         a = audit_skill(skill_dir, local_mirror if local_mirror.is_dir() else None)
         overlap = a.name in native_names and target != "."

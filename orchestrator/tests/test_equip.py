@@ -396,3 +396,93 @@ def test_equip_audit_main_self_audit_includes_agent_section(tmp_path, monkeypatc
     assert "## Agents (informational" in text
     assert "`wild`" in text
     assert "PERM-01" in text
+
+
+# ─── Layout E: single-skill-at-root upstream repos (scamai/design-system) ───
+
+def _make_single_skill_repo(path: Path) -> None:
+    """A repo that IS one skill: SKILL.md at root + assets, no skills/ dir."""
+    path.mkdir(parents=True, exist_ok=True)
+    (path / "SKILL.md").write_text("---\nname: design-system\ndescription: d\n---\nrules\n")
+    (path / "tokens.css").write_text(":root { --radius: 0; }\n")
+    (path / "components").mkdir()
+    (path / "components" / "button.tsx").write_text("export const Button = 1\n")
+
+
+def test_is_single_skill_repo_true_for_root_skill(tmp_path):
+    repo = tmp_path / "design-system"
+    _make_single_skill_repo(repo)
+    assert ec.is_single_skill_repo(repo) is True
+
+
+def test_is_single_skill_repo_false_when_container_exists(tmp_path):
+    repo = tmp_path / "kit"
+    (repo / "skills" / "foo").mkdir(parents=True)
+    (repo / "SKILL.md").write_text("---\nname: x\ndescription: d\n---\n")
+    assert ec.is_single_skill_repo(repo) is False
+
+
+def test_upstream_skill_dirs_container_layout(tmp_path):
+    repo = tmp_path / "plugin"
+    for name in ("bar", "foo"):
+        (repo / "skills" / name).mkdir(parents=True)
+    (repo / "skills" / ".hidden").mkdir()
+    dirs = ec.upstream_skill_dirs(repo)
+    assert [d.name for d in dirs] == ["bar", "foo"]
+
+
+def test_upstream_skill_dirs_single_skill_repo_yields_root(tmp_path):
+    repo = tmp_path / "design-system"
+    _make_single_skill_repo(repo)
+    dirs = ec.upstream_skill_dirs(repo)
+    assert dirs == [repo]
+    # dir name doubles as the skill name (cache dirs are named by upstream id)
+    assert dirs[0].name == "design-system"
+
+
+def test_upstream_skill_dirs_empty_when_neither_shape(tmp_path):
+    repo = tmp_path / "not-a-skill-repo"
+    (repo / "src").mkdir(parents=True)
+    assert ec.upstream_skill_dirs(repo) == []
+
+
+def test_tree_hash_skips_git_internals(tmp_path):
+    root = tmp_path / "repo"
+    _make_single_skill_repo(root)
+    (root / ".git" / "objects").mkdir(parents=True)
+    (root / ".git" / "config").write_text("[core]\n")
+    (root / ".git" / "objects" / "aa").write_text("blob\n")
+    th = ec.tree_hash(root)
+    assert "SKILL.md" in th
+    assert "components/button.tsx" in th
+    assert not any(k == ".git" or k.startswith(".git/") for k in th)
+
+
+def test_equip_sync_diff_only_handles_single_skill_upstream(tmp_path, monkeypatch, capsys):
+    """End-to-end: /equip sync --diff-only against a Layout E upstream lists
+    the repo itself as one skill instead of erroring 'no skills dir'."""
+    import equip_sync as esync
+
+    project = tmp_path / "proj"
+    (project / "configs" / "skills").mkdir(parents=True)
+    ec.ensure_equipment_dir(project)
+    upstreams = [ec.Upstream(id="design-system", repo="scamai/design-system")]
+    ec.save_upstreams(project, upstreams)
+
+    # Pre-seed the cache as a git repo so clone_or_update_cache is bypassed
+    cache = ec.cache_dir(project) / "design-system"
+    _make_single_skill_repo(cache)
+    _init_repo(cache)
+    _git(["add", "-A"], cwd=cache)
+    _git(["commit", "-q", "-m", "init"], cwd=cache)
+
+    monkeypatch.setattr(
+        sys, "argv",
+        ["equip_sync.py", "--project", str(project), "--upstream", "design-system", "--diff-only"],
+    )
+    rc = esync.main()
+    assert rc == 0
+    out = capsys.readouterr().out
+    # The repo root shows up as ONE new skill named after the upstream id
+    assert "NEW" in out and "design-system" in out
+    assert "no skills dir" not in out
