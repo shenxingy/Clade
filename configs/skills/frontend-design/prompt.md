@@ -6,36 +6,57 @@ The user provides frontend requirements: a component, page, application, or inte
 
 ## Design System Integration
 
-**Before making ANY visual choices**, check if `.design-system.md` exists in the project root:
+**Before making ANY visual choices**, look for a project design system — first hit wins:
 
 ```bash
-# Check for design system
-test -f .design-system.md && echo "FOUND" || echo "NOT FOUND"
+# Detection cascade
+test -f .design-system.md && echo "FOUND: .design-system.md (token sheet)"
+test -f design-system/SKILL.md && echo "FOUND: design-system skill repo"
+test -f DESIGN.md && echo "FOUND: DESIGN.md (full spec)"
 ```
 
-**If `.design-system.md` exists:**
+1. **`.design-system.md`** — token-sheet convention (this skill's original format).
+2. **`design-system/SKILL.md`** — a design system packaged as a skill and dropped into the project: agent-facing rules + paste-ready assets (tokens.css, components/, brand/). Read SKILL.md fully; open the deep spec it links (usually `DESIGN.md`) only when a rule needs rationale. Use the shipped components/assets directly — never re-implement them.
+3. **`DESIGN.md`** at project root — a full design spec without the skill wrapper.
+
+**If a design system is found:**
 - Read it fully before proceeding.
-- ALL color, typography, spacing, and component choices MUST use tokens from this file. Do NOT invent new values.
+- ALL color, typography, spacing, and component choices MUST use tokens from it. Do NOT invent new values.
 - Treat `[placeholder]` values as undefined — skip those tokens and apply creative freedom for those dimensions only. If ALL tokens are still `[placeholder]`, note "design system template not filled in" and proceed with full creative freedom.
 - If the design system contradicts general aesthetic guidelines below, **the design system wins**.
 - If only partial tokens are defined (e.g., colors but no typography), use tokens where available and apply creative freedom to the undefined dimensions.
 - The "Differentiation" step changes: instead of picking any aesthetic freely, **create distinction WITHIN the system constraints** — like a chef creating a signature dish from a fixed pantry. Find the most expressive combination of the given tokens.
 
-**If `.design-system.md` does not exist:**
+**If no design system exists:**
 - Proceed with full creative freedom (existing behavior below).
+
+### Obligations when working under a design system
+
+- **Hard rules are law.** If the system declares HARD RULES — typically grep-able patterns ("never `rounded-*`", "no `border-*`") — grep every file you wrote for the banned patterns before finishing. Run the system's review checklist if it ships one.
+- **Record decisions, especially rejections.** If the spec has a Decisions Log, append significant choices with date + rationale — including experiments you tried and reverted ("dot-texture fills tried, rejected"). A recorded failure stops the next agent from re-trying it.
+- **Offer enforcement once.** When hard rules are grep-able and you saw (or made) a violation, suggest `/generate-hook` to turn them into a PostToolUse warn hook — checkable patterns are one command away from mechanical enforcement.
+
+### Authoring a design system (when asked to create one)
+
+Structure it as two layers plus assets, so it works both as agent context and human reference:
+
+- **`SKILL.md`** (agent-facing, ≤100 lines): aesthetic in one sentence; HARD RULES stated as grep-able patterns; token summary; component pointers; a short review checklist.
+- **`DESIGN.md`** (deep spec): full tokens/typography/components with rationale; adopted heuristics written as "**Principle** — statement → *how we apply it here*" (not bare principle names); a **Decisions Log** table (date | decision | rationale) that also records rejected experiments; note the biggest live tension between principles and the current design honestly.
+- **Paste-ready assets** beside the docs (tokens.css, components) — ship code, don't describe it in prose.
 
 ---
 
 ## Component Library Awareness
 
-If the design system (`.design-system.md`) specifies a component library:
+If the design system specifies or ships a component library:
+- **Design-system skill repo with components/** → import its shipped components (Button, icons, Logo…) — never rebuild or re-render what it ships (brand marks especially: use the SVG assets, never re-render from a font)
 - **shadcn/ui** → use shadcn components (`Button`, `Card`, `Input`, etc.) instead of building from scratch
 - **MUI / Material UI** → use MUI components with `sx` prop or `styled()`
 - **Ant Design** → use antd components with `theme` token overrides
 - **Radix UI** → use Radix primitives with custom CSS
 - **Other** → import from the specified library; do not rebuild what already exists
 
-If no component library is specified in the design system, fall back to raw HTML/CSS using the design tokens from `.design-system.md`.
+If no component library is specified in the design system, fall back to raw HTML/CSS using the design system's tokens.
 
 If no design system exists at all, build from scratch with full creative freedom.
 
@@ -116,7 +137,8 @@ After implementation, note: `Run /seo page <url> to audit, /seo geo <url> for AI
 ```markdown
 ## Design Decisions
 
-- **Design system**: [Found `.design-system.md` — using tokens: <list key tokens used>] OR [No `.design-system.md` found — full creative freedom applied]
+- **Design system**: [Found <source: .design-system.md / design-system/SKILL.md / DESIGN.md> — using tokens: <list key tokens used>] OR [No design system found — full creative freedom applied]
+- **Hard-rule check**: [Grepped output for banned patterns: <patterns> — clean] OR [N/A — no hard rules declared]
 - **Component library**: [Using <library> as specified in design system] OR [No library specified — building from raw HTML/CSS] OR [N/A — no design system]
 - **Aesthetic direction**: [1-sentence description of the chosen aesthetic]
 - **Differentiation**: [What makes this memorable — the one thing users will remember]

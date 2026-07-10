@@ -15,4 +15,9 @@ Guides creation of distinctive, production-grade frontend interfaces that avoid 
 /frontend-design        # Start with interactive requirements gathering
 ```
 
-Respects `.design-system.md` if present in the project root.
+Respects the project's design system if present — `.design-system.md` (token
+sheet), `design-system/SKILL.md` (design system packaged as a skill, with
+tokens/components/brand assets), or `DESIGN.md` (full spec). Enforces its hard
+rules, runs its review checklist, and records decisions (including rejected
+experiments) in its Decisions Log. Can also author a new design system in the
+two-layer SKILL.md + DESIGN.md + assets structure.
