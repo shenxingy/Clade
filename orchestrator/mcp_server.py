@@ -62,17 +62,19 @@ def _compact_mode() -> bool:
 
 
 def search_skills(query: str, skills: list[dict], limit: int = 20) -> list[dict]:
-    """Keyword search over skill name + description.
+    """Keyword search over skill name + description + when_to_use.
 
-    Each whitespace-separated term that appears in name+description scores a
+    Each whitespace-separated term that appears in the haystack scores a
     point; results sorted by score (desc) then name. Empty query → [].
+    when_to_use matters: several families (blog-*) keep their trigger
+    phrases there rather than in description.
     """
     terms = [t for t in query.lower().split() if t]
     if not terms:
         return []
     scored: list[tuple[int, dict]] = []
     for skill in skills:
-        hay = f"{skill['name']} {skill['description']}".lower()
+        hay = f"{skill['name']} {skill['description']} {skill.get('when_to_use', '')}".lower()
         score = sum(1 for t in terms if t in hay)
         if score:
             scored.append((score, skill))
@@ -179,6 +181,7 @@ def load_skills() -> list[dict]:
         skills.append({
             "name": name,
             "description": parsed["description"] or f"Clade skill: {name}",
+            "when_to_use": parsed["when_to_use"],
             "argument_hint": parsed["argument_hint"],
             "prompt_content": prompt_content,
             "user_invocable": parsed["user_invocable"],

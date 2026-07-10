@@ -163,3 +163,23 @@ class TestCallToolCompact:
         monkeypatch.setattr(mcp_server.subprocess, "run", _fake_run)
         result = await mcp_server.call_tool("clade_beta", {})
         assert result.content[0].text == "ok"
+
+
+class TestSearchSkillsWhenToUse:
+    SKILLS = [
+        {"name": "blog-analyze", "description": "Audit and score blog posts",
+         "when_to_use": "analyze blog post, score blog quality, grade blog content"},
+        {"name": "commit", "description": "Analyze changes, commit and push"},
+    ]
+
+    def test_when_to_use_terms_match(self):
+        # blog-* families keep trigger phrases in when_to_use, not description
+        out = mcp_server.search_skills("grade blog", self.SKILLS)
+        assert out and out[0]["name"] == "blog-analyze"
+
+    def test_missing_when_to_use_key_is_tolerated(self):
+        assert [s["name"] for s in mcp_server.search_skills("commit", self.SKILLS)] == ["commit"]
+
+    def test_load_skills_exposes_when_to_use(self, skills_dir):
+        skills = mcp_server.load_skills()
+        assert skills and all("when_to_use" in s for s in skills)
