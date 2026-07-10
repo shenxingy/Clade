@@ -156,6 +156,7 @@
 | SC20 | `review/SKILL.md` description contains "NOT the Claude Code built-in /review" — disambiguates from CC runtime's PR-review skill of same name | ✅ | 2026-04-17 | added 2026-04-17; routes users to `/review-pr` for PR reviews, keeps this skill scoped to VERIFY.md coverage |
 | SC21 | `audit/SKILL.md` when_to_use contains "NOT for SEO audit (use /seo-audit)" — routes domain audits to specialized skills | ✅ | 2026-04-17 | added 2026-04-17; `/audit` is scoped to `corrections/rules.md` meta-audit only — domain audits go to /seo-audit, /blog-audit, /ads-audit, /cso |
 | SC22 | `status/SKILL.md` mentions `/poke`, `/brief`, AND `/pickup` in its scope-differentiator section so LLM doesn't mis-route between session-state skills | ✅ | 2026-04-17 | all three present: `grep -c` returns /poke=1, /brief=3, /pickup=3; table at top distinguishes heartbeat / dashboard / overnight / handoff-resume |
+| SC23 | `verify/SKILL.md` frontmatter keeps `user_invocable: false` — the typed-`/verify`-hits-the-built-in safety argument (2026-07-10 rename spike verdict: keep shared names) rests entirely on this flag | ✅ | 2026-07-10 | `grep '^user_invocable: false' configs/skills/verify/SKILL.md`; if this flips to true, typed `/verify` becomes ambiguous with the CC built-in and the won't-rename verdict must be revisited |
 
 ## E2E Interrupts
 <!-- Step 5.4 E2E interrupt testing results. Applies only to user-facing apps with auth/payment/long-running ops. -->
