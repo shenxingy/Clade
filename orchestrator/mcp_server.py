@@ -61,20 +61,31 @@ def _compact_mode() -> bool:
     )
 
 
+# Negative-routing clauses ("… — NOT for the corrections-rules meta-audit
+# (use /audit)") must not score as positive triggers: before this strip,
+# "audit corrections rules" ranked ads-audit ABOVE audit because the sibling
+# skills carry the negated vocabulary verbatim. Uppercase NOT is the
+# frontmatter disambiguation convention, so match it case-sensitively BEFORE
+# lowercasing; the clause runs to the next delimiter (, ; . —).
+_NEGATIVE_CLAUSE_RE = re.compile(r"NOT (?:for|the)\b[^,;.—]*")
+
+
 def search_skills(query: str, skills: list[dict], limit: int = 20) -> list[dict]:
     """Keyword search over skill name + description + when_to_use.
 
     Each whitespace-separated term that appears in the haystack scores a
     point; results sorted by score (desc) then name. Empty query → [].
     when_to_use matters: several families (blog-*) keep their trigger
-    phrases there rather than in description.
+    phrases there rather than in description. "NOT for X (use /Y)"
+    disambiguation clauses are stripped so they can't outrank /X itself.
     """
     terms = [t for t in query.lower().split() if t]
     if not terms:
         return []
     scored: list[tuple[int, dict]] = []
     for skill in skills:
-        hay = f"{skill['name']} {skill['description']} {skill.get('when_to_use', '')}".lower()
+        raw = f"{skill['name']} {skill['description']} {skill.get('when_to_use', '')}"
+        hay = _NEGATIVE_CLAUSE_RE.sub(" ", raw).lower()
         score = sum(1 for t in terms if t in hay)
         if score:
             scored.append((score, skill))
