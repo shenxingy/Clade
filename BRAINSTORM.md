@@ -12,6 +12,37 @@ Past resolved/deferred items live in [`docs/archive/BRAINSTORM-resolved.md`](doc
 
 ---
 
+## [Research] 2026-07-09 — "cue" mystery + 2026-H1 agentic concepts (queue-vs-loop, native workflows, skills ecosystem)
+
+Trigger: user heard people online saying "cue", not just "loop". **Verdict: no tool named
+Cue exists** (ghuntley.com/cue is a 404; no "Cue" coding agent in any 2026 roundup). The
+word is **"queue"** — the Beads/Gas Town discourse: "don't just run a loop, keep a durable
+work queue." Same session also surveyed what else is new in 2026 H1.
+
+### Tools/concepts surveyed
+| Concept | What it is | Verdict for Clade |
+|---|---|---|
+| **Beads** (Yegge, Oct 2025, 23k★, MIT) | Git-versioned agent work ledger — every task/fix/note is a queryable, durable "bead"; widely adopted standalone as agent memory | **Different-not-deficient.** Clade covers the capability: `task_queue.py` (SQLite CRUD), TODO/PROGRESS/handoff files (git-tracked ledger), `github_sync.py` (issues = portable cross-machine ledger). Watch item: beads' "agent files a note-to-itself as a first-class queue item" mechanic |
+| **Gas Town** (Yegge, Jan 1 2026, MIT) | Multi-agent orchestration atop Beads — Mayor (coordinator), Polecats (workers), Refinery (merge serialization), Witness (monitor); "Kubernetes for agents" | **Capability parity**: WorkerPool/SwarmManager ≈ Polecats, oracle+supervisor ≈ Mayor, serialize-writers rule + worktrees ≈ Refinery, LoopDetectionService/status_loop ≈ Witness. Counter-voices (Parsons "Your Agent Orchestrator Is Too Clever", bitter-lesson argument; Mike Mason "coherence through orchestration, not autonomy") independently validate Clade's VISION choice of sequential focus |
+| **Ralph loop consensus** (2026) | "Every AI coding harness is just a Ralph loop"; Anthropic/OpenAI/Stripe all shipped loop-shaped features; progress lives in files+git, not context | Parity — /loop + goal files + handoff IS this pattern; recorded for terminology |
+| **Claude Code native absorption** (Jun 2026, Code w/ Claude Tokyo) | **Dynamic Workflows** (harness writes deterministic JS orchestration scripts, parallel subagents), **Routines** (cron/webhook-triggered agents), Desktop, Deployments | **Strategic overlap with Clade's orchestrator layer** — parallel fan-out and scheduling are becoming table stakes in the harness itself. Clade's moat is what the harness does NOT do: oracle gate, corrections-learning loop, cross-machine usage tracking, GitHub-issue sync, /equip curation |
+| **Agent Skills open standard** (agentskills.io, spec published Dec 18 2025) | SKILL.md is now cross-vendor (~40 products incl. Codex, Copilot, Cursor, Gemini CLI); 490k+ skills on SkillsMP/Skills.sh/ClawHub | Clade's format is already conformant (name/description core + extra keys). Distribution is solved; **curation is the scarce thing** — /equip's curate-first trust model is the right bet |
+| **ToxicSkills / skills security crisis** (Snyk 2026) | Audit of 22,511 marketplace skills → 140,963 issues; **prompt injection in 36% of skills tested** | **Confirmed gap → FIXED this session**: equip_audit had SEC/NOI/DRF/BLT/QLT/PERM but zero injection screening. Added INJ-01..04 (override/concealment=block, zero-width chars=warn, exfil-sinks=warn, base64 blob=info), backtick mention-exemption, zero-FP corpus gate test (commit 0272dc7) |
+| **Design-system-as-skill** | Company design systems shipped as SKILL.md+assets repos (scamai/design-system is one instance of a real trend) | **Integrated this session**: /equip Layout E skill-at-root absorption (d9cc03b) + frontend-design detection cascade/hard-rules/decisions-log (cd078e7) |
+
+### Gaps vs current VISION
+- **Native Dynamic Workflows/Routines eat the orchestrator's undifferentiated middle.** VISION's "cockpit" pillar should double down on oracle-gated quality + learning loop + fleet/usage view, and consider *delegating* raw fan-out to the harness where available.
+- No durable-ledger gap confirmed (queue ≠ missing; it's already SQLite+files+issues) — do not build a beads clone.
+
+### Recommended additions to TODO.md (not auto-added)
+- [ ] Positioning review: which orchestrator features are now harness table-stakes (parallel fan-out, cron) vs Clade moat (oracle, corrections, usage, sync) — update VISION.md accordingly
+- [ ] Watch beads' agent-filed note-to-self mechanic; if loop-runner workers start losing cross-iteration context, that's the trigger to adopt
+- [ ] Consider running INJ screening at /equip **sync** time too (audit gates adoption, but a later upstream update could introduce injection between audit and sync)
+
+Sources: [ghuntley.com/loop](https://ghuntley.com/loop/) (cue→404), [yegge.ai/gastown](https://yegge.ai/gastown), [Gas Town HN thread](https://news.ycombinator.com/item?id=46734302), [Parsons — orchestrator too clever](https://www.chrismdp.com/your-agent-orchestrator-is-too-clever/), [Mason — coherence through orchestration](https://mikemason.ca/writing/ai-coding-agents-jan-2026/), [InfoQ — Dynamic Workflows](https://www.infoq.com/news/2026/06/dynamic-workflows-claude-code/), [Anthropic — introducing dynamic workflows](https://claude.com/blog/introducing-dynamic-workflows-in-claude-code), [Agentman — skills ecosystem 2026](https://agentman.ai/blog/agent-skills-ecosystem-report-2026), [Register — Ralph Wiggum loops](https://www.theregister.com/2026/01/27/ralph_wiggum_claude_loops/), [Medium — every harness is a Ralph loop](https://medium.com/ai-all-in/every-ai-coding-harness-is-just-a-ralph-loop-69690dc69e7c)
+
+---
+
 ## [Research] 2026-07-06 — Round 4: deep-mining the 17 newly-tracked experts
 
 89 agents, 5.8M tok, 1387 tool calls. Mined 3-6 mechanisms per person (83 raw) → triage-dedup → 70 distinct candidates → adversarial verify (4-check framework: deficient-not-different / capabilities-not-names / single-tool-local-first scope / mechanism equivalence). Result: **25 confirmed_gap (36%), 15 parity, 28 different-not-deficient, 2 N/A.** Confirmed-gap rate meaningfully higher than prior rounds — verification surfaced 3 genuine LIVE BUGS in Clade's own shipped code (not "adopt an external pattern"), found only because checking each candidate against the real code forced a close read of adjacent logic.
