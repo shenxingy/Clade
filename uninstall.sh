@@ -70,7 +70,7 @@ for src in "$SCRIPT_DIR/configs/skills/"*/; do
     removed=$((removed + 1))
   fi
 done
-rm -f "$CLAUDE_DIR/available_skills.md"
+rm -f "$CLAUDE_DIR/available_skills.md" "$CLAUDE_DIR/agents/available-skills.md"
 echo "  Removed: $removed skills (+ available_skills.md)"
 
 # ─── 4. Remove scripts + symlinks (mirror of install.sh §5, §6b) ─────

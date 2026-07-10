@@ -134,10 +134,11 @@ else
 fi
 echo "  Generated: $CLAUDE_DIR/available_skills.md"
 
-# Install available_skills.md to agents/ so Claude Code includes it in system prompt
-# This enables LLM auto-discovery: Claude knows about skills without needing slash commands
-cp "$CLAUDE_DIR/available_skills.md" "$CLAUDE_DIR/agents/available-skills.md"
-echo "  Installed to agents/ for system prompt inclusion"
+# Migration (2026-07-10): we used to copy available_skills.md into agents/
+# hoping Claude Code would include it in the system prompt. It never did —
+# agents/*.md without agent frontmatter are ignored, and native skill
+# discovery already surfaces name/description/when_to_use. Remove stale copy.
+rm -f "$CLAUDE_DIR/agents/available-skills.md"
 
 # ─── 5. Copy scripts (chmod +x) ──────────────────────────────────────
 

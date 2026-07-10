@@ -62,7 +62,8 @@ if [[ -f ".claude/loop-state" ]]; then
 fi
 
 # Next TODO item
-NEXT_TODO=$(grep -m1 "^\- \[ \]" TODO.md 2>/dev/null | sed 's/- \[ \] \*\*//' | sed 's/\*\*.*//' | xargs)
+# trim with sed, not bare xargs — xargs errors on unmatched quotes in TODO text
+NEXT_TODO=$(grep -m1 "^\- \[ \]" TODO.md 2>/dev/null | sed 's/- \[ \] \*\*//' | sed 's/\*\*.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 if [[ -n "$NEXT_TODO" ]]; then
   CONTEXT="${CONTEXT}\nNext TODO: ${NEXT_TODO}\n"
 fi
@@ -358,50 +359,13 @@ if [[ -n "$SKILL_ROUTE" ]]; then
 fi
 
 # ─── Skills Directory ───────────────────────────────────────────
-# Inject available skills into every session so Claude can suggest the right skill
-SKILLS_DIR="$HOME/.claude/skills"
-if [ -d "$SKILLS_DIR" ]; then
-  skills_xml="<available_skills>\n"
-  found_any=false
-
-  for skill_dir in "$SKILLS_DIR"/*/; do
-    skill_md="$skill_dir/SKILL.md"
-    [ -f "$skill_md" ] || continue
-
-    # Parse frontmatter fields
-    name=$(grep '^name:' "$skill_md" 2>/dev/null | head -1 | sed 's/^name:[[:space:]]*//')
-    desc=$(grep '^description:' "$skill_md" 2>/dev/null | head -1 | sed 's/^description:[[:space:]]*//')
-    invocable=$(grep '^user_invocable:' "$skill_md" 2>/dev/null | head -1 | sed 's/^user_invocable:[[:space:]]*//')
-    hint=$(grep '^argument-hint:' "$skill_md" 2>/dev/null | head -1 | sed 's/^argument-hint:[[:space:]]*//')
-    when=$(grep '^when_to_use:' "$skill_md" 2>/dev/null | head -1 | sed 's/^when_to_use:[[:space:]]*//' | tr -d '"')
-
-    # Only include user-invocable skills
-    [ "$invocable" = "true" ] || continue
-    [ -z "$name" ] && continue
-
-    found_any=true
-
-    # Build usage string
-    if [ -n "$hint" ]; then
-      usage="/$name $hint"
-    else
-      usage="/$name"
-    fi
-
-    # Add XML entry
-    if [ -n "$when" ]; then
-      skills_xml+="  <skill name=\"$name\" when_to_use=\"$when\">\n    $desc. Usage: $usage\n  </skill>\n"
-    else
-      skills_xml+="  <skill name=\"$name\">\n    $desc. Usage: $usage\n  </skill>\n"
-    fi
-  done
-
-  skills_xml+="</available_skills>"
-
-  if [ "$found_any" = "true" ]; then
-    CONTEXT="${CONTEXT}\n## Available Skills\nUse /skill-name [args] to invoke. When user describes a need, suggest the matching skill.\n$(printf "$skills_xml")\n"
-  fi
-fi
+# (removed 2026-07-10) The <available_skills> XML injection duplicated Claude
+# Code's native skill discovery, which already surfaces name + description +
+# when_to_use for every ~/.claude/skills/*/SKILL.md in the system prompt.
+# Worse, the ~20KB block pushed total hook output past the harness inline
+# limit (30.8KB observed), so the whole additionalContext was persisted to a
+# file instead of entering context — the injection was dead weight that also
+# knocked out the useful sections above. Routing hints stay; catalog goes.
 
 if [[ -n "$CONTEXT" ]]; then
   jq -n --arg ctx "$CONTEXT" \
