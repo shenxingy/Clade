@@ -80,7 +80,49 @@ PATTERNS: list[tuple[str, str, str, re.Pattern[str], str]] = [
     ("DRF-03", "block", "drift",
      re.compile(r"/v1/complete\b"),
      "Rewrite deprecated /v1/complete to /v1/messages"),
+    # Prompt injection (skill-borne) — ToxicSkills-class attacks: a third of
+    # marketplace skills carry instruction-override, concealment, exfil, or
+    # obfuscated payloads. Phrasing calibrated against Clade's own 95 skills
+    # for zero false positives ("without asking the user" is legit autonomy
+    # phrasing → deliberately NOT matched).
+    ("INJ-01", "block", "injection",
+     re.compile(
+         r"\b(?:ignore|disregard|forget)\s+(?:all\s+|any\s+)?(?:previous|prior|above|earlier)\s+(?:instructions|rules|guidance)\b"
+         r"|\bdo\s+not\s+(?:tell|inform|mention)(?:\s+this)?\s+to\s+the\s+user\b"
+         r"|\bwithout\s+(?:telling|informing|notifying)\s+the\s+user\b"
+         r"|\bhide\s+this\s+from\s+the\s+user\b"
+         r"|\bdo\s+not\s+reveal\s+(?:this|these\s+instructions)\b",
+         re.IGNORECASE),
+     "Instruction-override/concealment phrasing — classic prompt injection; reject or hand-review"),
+    ("INJ-02", "warn", "injection",
+     # Zero-width space / word joiner anywhere; BOM only when NOT at file
+     # start (a leading BOM is a Windows-editor artifact, not an attack).
+     # \u escapes keep this source file ASCII-only (no invisible literals).
+     re.compile(r"[\u200b\u2060]|[\s\S]\ufeff"),
+     "Invisible zero-width characters — possible hidden instructions; strip and diff-review"),
+    ("INJ-03", "warn", "injection",
+     re.compile(
+         r"\b(?:post|send|upload|forward|transmit|curl)\b[^\n]{0,60}"
+         r"\b(?:webhook\.site|discord(?:app)?\.com/api|hooks\.slack\.com|api\.telegram\.org"
+         r"|pastebin\.com|requestbin|ngrok\.(?:io|app)|burpcollaborator|oastify\.com|interact\.sh)",
+         re.IGNORECASE),
+     "Instructs the agent to transmit data to a known exfil sink — potential exfiltration"),
+    ("INJ-04", "info", "injection",
+     re.compile(r"(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{120,}={0,2}"),
+     "Large base64-looking blob in prompt — possible obfuscated payload; decode and review"),
 ]
+
+
+# Phrase-shaped injection rules skip matches inside inline backtick spans:
+# a doc that QUOTES "ignore previous instructions" as a pattern-to-scan-for
+# is mention, not use. Code-shaped rules (SEC-02 curl|bash …) must still
+# fire inside backticks — that's exactly where the payload lives.
+_MENTION_EXEMPT = {"INJ-01", "INJ-03"}
+
+
+def _inside_inline_code(text: str, pos: int) -> bool:
+    line_start = text.rfind("\n", 0, pos) + 1
+    return text.count("`", line_start, pos) % 2 == 1
 
 
 def scan_text_for_flags(text: str) -> list[Flag]:
@@ -88,6 +130,16 @@ def scan_text_for_flags(text: str) -> list[Flag]:
     flags: list[Flag] = []
     for flag_id, severity, _cat, rx, remediation in PATTERNS:
         for m in rx.finditer(text):
+            # Exempt when the match starts OR ends inside a backtick span —
+            # doc labels like "Transmit-to-exfil-sink: `…webhook.site…`" put
+            # the verb outside and the sink inside. A determined attacker can
+            # evade by backticking the payload, but these are warn-level
+            # heuristics feeding a human NEEDS-REVIEW, not a hard gate.
+            if flag_id in _MENTION_EXEMPT and (
+                _inside_inline_code(text, m.start())
+                or _inside_inline_code(text, max(m.start(), m.end() - 1))
+            ):
+                continue
             # Compute line number
             line = text.count("\n", 0, m.start()) + 1
             snippet = text[max(0, m.start() - 10):m.end() + 30].replace("\n", "\\n")

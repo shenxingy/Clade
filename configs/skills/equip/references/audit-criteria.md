@@ -79,6 +79,20 @@ This file drives the `equip_audit.py` scorer. Each rule has a pattern (regex or 
 | QLT-02 | Empty or trivial `prompt.md` (<20 lines) | info |
 | QLT-03 | SKILL.md missing required frontmatter (`name`, `description`, `when_to_use`) | warn |
 
+### 9. Prompt injection (skill-borne, ToxicSkills-class)
+
+Marketplace-scale audits (Snyk ToxicSkills, 2026) found injection patterns in
+~36% of published skills — an absorb-external-skills tool MUST screen for them.
+Phrasing is calibrated against Clade's own skill corpus for zero false
+positives ("without asking the user" is legit autonomy phrasing — not matched).
+
+| ID | Pattern | Severity | Remediation |
+|---|---|---|---|
+| INJ-01 | Instruction override/concealment: `ignore/disregard/forget previous instructions`, `do not tell/inform the user`, `without telling/informing/notifying the user`, `hide this from the user`, `do not reveal this` | block | Classic prompt injection — reject or hand-review |
+| INJ-02 | Invisible zero-width characters (U+200B, U+2060) anywhere, or U+FEFF not at file start | warn | Possible hidden instructions — strip and diff-review |
+| INJ-03 | Transmit-to-exfil-sink: `post/send/upload/curl … webhook.site / discord.com/api / hooks.slack.com / api.telegram.org / pastebin / requestbin / ngrok / burpcollaborator / oastify / interact.sh` | warn | Potential exfiltration — review the destination |
+| INJ-04 | Base64-looking blob ≥120 chars in prompt | info | Possible obfuscated payload — decode and review |
+
 ---
 
 ## Decision matrix
