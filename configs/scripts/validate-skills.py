@@ -50,6 +50,7 @@ import skill_frontmatter as sf  # noqa: E402
 
 MAX_DESCRIPTION_LEN = 1024
 MAX_BODY_WORDS = 5000  # SKILL.md + prompt.md combined (invocation-time load)
+MAX_SKILL_MD_LINES = 500  # Agent Skills spec: keep SKILL.md under 500 lines
 _RESERVED_NAME_WORDS = ("claude", "anthropic")
 # Fields whose values are emitted verbatim into the catalog / MCP search.
 _CATALOG_FIELDS = ("name", "description", "when_to_use")
@@ -153,6 +154,14 @@ def validate_skill_dir(skill_dir: Path, fix: bool = False) -> tuple[list[str], l
     # top-level README.md breaks claude.ai upload validation
     if (skill_dir / "README.md").is_file():
         errors.append(f"{name}: top-level README.md (move content into SKILL.md or references/)")
+
+    # Agent Skills spec: SKILL.md itself should stay under 500 lines
+    skill_md_lines = text.count("\n") + 1
+    if skill_md_lines > MAX_SKILL_MD_LINES:
+        warnings.append(
+            f"{name}: SKILL.md is {skill_md_lines} lines (> {MAX_SKILL_MD_LINES}, "
+            "Agent Skills spec) — move detail into prompt.md or references/"
+        )
 
     # invocation-time context load: SKILL.md body + prompt.md
     body_words = len(text.split())
