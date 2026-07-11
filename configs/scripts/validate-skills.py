@@ -14,6 +14,15 @@ Checks (errors fail CI, warnings don't):
     starts with a YAML indicator character (`>`, `|`, `&`, `*`, ...)
   - description length <= 1024 chars
   - only known frontmatter keys (KNOWN_KEYS in skill_frontmatter.py)
+  - no `<`/`>` in name/description/when_to_use — these fields land verbatim
+    in the system-prompt catalog and MCP search, so angle brackets are an
+    injection surface (Agent Skills standard forbids them; argument-hint
+    is exempt: `<arg>` placeholders are CLI convention, not catalog text)
+  - name does not contain "claude"/"anthropic" (reserved by the standard)
+  - no top-level README.md inside the skill folder (breaks claude.ai upload;
+    nested references/**/README.md is fine)
+  - warning: SKILL.md + prompt.md combined > 5000 words (invocation-time
+    context load — the standard's guidance for one skill's full body)
   - warning: non-canonical invocable spelling (canonical: user_invocable;
     user-invokable / user-invocable tolerated for upstream-synced skills)
   - warning: description looks truncated (ends with '...'/'…' or under 40
@@ -40,6 +49,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import skill_frontmatter as sf  # noqa: E402
 
 MAX_DESCRIPTION_LEN = 1024
+MAX_BODY_WORDS = 5000  # SKILL.md + prompt.md combined (invocation-time load)
+_RESERVED_NAME_WORDS = ("claude", "anthropic")
+# Fields whose values are emitted verbatim into the catalog / MCP search.
+_CATALOG_FIELDS = ("name", "description", "when_to_use")
 
 # YAML indicator chars that make an unquoted plain scalar unsafe at position 0
 _YAML_INDICATORS = set(">|&*!%@`\"'#-?:,[]{}")
@@ -120,11 +133,37 @@ def validate_skill_dir(skill_dir: Path, fix: bool = False) -> tuple[list[str], l
     elif fm_name != name:
         errors.append(f"{name}: name '{fm_name}' != directory name")
 
+    # reserved name words (Agent Skills standard)
+    for word in _RESERVED_NAME_WORDS:
+        if word in fm_name.lower():
+            errors.append(f"{name}: name contains reserved word '{word}'")
+
     # unknown keys (column-0 only)
     for line in fm_lines:
         m = sf._KEY_RE.match(line)
         if m and m.group(1) not in sf.KNOWN_KEYS:
             errors.append(f"{name}: unknown frontmatter key '{m.group(1)}'")
+
+    # angle brackets in catalog-bound fields (injection surface)
+    for key in _CATALOG_FIELDS:
+        value = fields.get(key, "")
+        if "<" in value or ">" in value:
+            errors.append(f"{name}: '{key}' contains angle brackets (injection surface)")
+
+    # top-level README.md breaks claude.ai upload validation
+    if (skill_dir / "README.md").is_file():
+        errors.append(f"{name}: top-level README.md (move content into SKILL.md or references/)")
+
+    # invocation-time context load: SKILL.md body + prompt.md
+    body_words = len(text.split())
+    prompt_md = skill_dir / "prompt.md"
+    if prompt_md.is_file():
+        body_words += len(prompt_md.read_text(encoding="utf-8").split())
+    if body_words > MAX_BODY_WORDS:
+        warnings.append(
+            f"{name}: SKILL.md + prompt.md is {body_words} words (> {MAX_BODY_WORDS}) — "
+            "move detail into references/"
+        )
 
     # non-canonical invocable spelling
     for key in ("user-invokable", "user-invocable"):
