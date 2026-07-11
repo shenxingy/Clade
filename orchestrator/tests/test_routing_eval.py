@@ -82,6 +82,7 @@ GOLDEN_TOP3: list[tuple[str, str]] = [
     ("diagnose root cause of a bug", "investigate"),
     ("review pull request feedback", "review-pr"),
     ("audit external upstream skill repo", "equip"),
+    ("scaffold a new skill with triggers", "skill-new"),
     ("create git worktree parallel session", "worktree"),
     ("decompose goal into parallel worker tasks", "orchestrate"),
     ("verify behavior anchors after autonomous run", "verify"),
@@ -114,6 +115,7 @@ GOLDEN_TOP3: list[tuple[str, str]] = [
     ("批量执行", "batch-tasks"),
     ("报错 修复", "investigate"),
     ("保存 交接", "handoff"),
+    ("新建技能", "skill-new"),
 ]
 
 
@@ -146,6 +148,14 @@ DISAMBIGUATION_RANK1: list[tuple[str, str]] = [
     ("goal file converge background", "loop"),
     # full-site crawl audit, NOT the /seo umbrella or /seo-page
     ("site seo health score crawl", "seo-audit"),
+    # scaffolding a first-party skill, NOT /generate-hook (hooks) and NOT
+    # /equip (absorbing external skill repos) — both named in skill-new's
+    # NOT-for clauses, which scoring strips. ("create a new skill" can only
+    # TIE frontend-design — its description legitimately contains "create"
+    # and "skill" — and ties break alphabetically, so use queries skill-new
+    # wins outright.)
+    ("add a new skill", "skill-new"),
+    ("write a new slash command", "skill-new"),
 ]
 
 
