@@ -159,9 +159,14 @@ else
   pass "catalog has no mangled '>' description lines"
 fi
 
-cmp -s "$CATALOG" "$CLAUDE_DIR/agents/available-skills.md" \
-  && pass "catalog mirrored into agents/ for system prompt" \
-  || fail "catalog mirrored into agents/ for system prompt"
+# Migration (2026-07-10): the agents/ mirror was dropped — CC native skill
+# discovery replaced it and the 20KB copy overflowed the hook inline limit.
+# install.sh now removes any stale copy; assert the cleanup actually runs.
+if [[ -e "$CLAUDE_DIR/agents/available-skills.md" ]]; then
+  fail "stale agents/available-skills.md mirror removed by install"
+else
+  pass "stale agents/available-skills.md mirror removed by install"
+fi
 
 # ─── Suite 3: Reinstall preserves learned rules + settings ────────────
 
@@ -182,12 +187,21 @@ if command -v jq &>/dev/null; then
     && mv "$CLAUDE_DIR/settings.json.new" "$CLAUDE_DIR/settings.json"
 fi
 
+# Seed a stale pre-migration mirror so the reinstall exercises the cleanup path
+echo "stale pre-2026-07-10 mirror" > "$CLAUDE_DIR/agents/available-skills.md"
+
 install_log2="$SANDBOX/install-2.log"
 if bash "$SRC/install.sh" </dev/null >"$install_log2" 2>&1; then
   pass "second install.sh run exits 0 (idempotent)"
 else
   fail "second install.sh run exits 0 (idempotent)" "see $install_log2"
   tail -30 "$install_log2"
+fi
+
+if [[ -e "$CLAUDE_DIR/agents/available-skills.md" ]]; then
+  fail "reinstall migrates away stale agents/available-skills.md"
+else
+  pass "reinstall migrates away stale agents/available-skills.md"
 fi
 
 # Regression for ab06c33: plain cp used to clobber the learned-rules section
