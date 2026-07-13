@@ -9,7 +9,7 @@
             "command": "python3 \"${PLUGIN_ROOT}/hooks/session_context.py\"",
             "commandWindows": "py -3 \"%PLUGIN_ROOT%\\hooks\\session_context.py\"",
             "timeout": 10,
-            "statusMessage": "Loading Clade project context"
+            "statusMessage": "Loading Clade usage and project context"
           }
         ]
       }
