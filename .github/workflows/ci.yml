@@ -78,9 +78,6 @@ jobs:
       - name: Codex plugin skills drift gate
         run: python3 configs/scripts/regen-codex-plugin.py --check
 
-      - name: Codex session hook tests
-        run: python3 -m unittest tests/test_codex_session_context.py -v
-
   pytest:
     name: Tests
     runs-on: ubuntu-latest
