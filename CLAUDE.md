@@ -17,9 +17,11 @@
 
 ## What This Project Is
 
-A two-layer automation toolkit on top of Claude Code CLI:
+A multi-surface coding automation toolkit:
 
 - **CLI layer** (`configs/`) — skills, hooks, scripts installed via `./install.sh`
+- **Codex plugin** (`plugins/clade/`) — 20 generated native skills plus Codex hooks, distributed by `.agents/plugins/marketplace.json`
+- **MCP package** (`mcp-package/`) — provider-selectable Claude/Codex execution for external MCP clients
 - **Orchestrator layer** (`orchestrator/`) — FastAPI web server with worker pool, task queue, GitHub sync, iteration loops
 
 ## Key Commands
@@ -45,14 +47,18 @@ cd orchestrator && find . \( -name .venv -o -name node_modules -o -name __pycach
 #   Dashboard: http://hub:8000/web/usage.html
 # Per-machine ccusage data is stored in ~/.claude/orchestrator/usage.db.
 
-# MCP Server — exposes skills as MCP tools for EXTERNAL AI coding tools (Cursor, Cline, etc.)
+# MCP server — exposes skills to external AI coding tools (Cursor, Cline, etc.)
 # Inside Claude Code, skills are already native (/blog-write, /commit) — no MCP needed.
-# Config lives at mcp/clade.mcp.json (NOT .mcp.json at repo root — that auto-spawned in CC and
-# duplicated every skill, overflowing the system prompt). External clients should point at
-# orchestrator/mcp_server.py directly. See mcp/README.md.
+# The distributable mcp-package supports CLADE_RUNTIME=claude|codex. Do not add
+# it inside Claude Code or Codex when native skills are installed: that duplicates
+# every skill and spawns nested agent sessions. See mcp-package/README.md.
+
+# Native Codex plugin — regenerate after changing a shipped canonical skill
+python3 configs/scripts/regen-codex-plugin.py
+python3 configs/scripts/regen-codex-plugin.py --check
 ```
 
-## Architecture — Two Layers
+## Architecture — Surfaces and Layers
 
 ### CLI Layer (`configs/`)
 - `skills/` — skill prompts invoked via `/skill-name` in Claude Code

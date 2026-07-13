@@ -1,0 +1,447 @@
+---
+name: review
+description: "Clade coverage-driven project review — walks every VERIFY.md checkpoint, fixes failures in-session, converges when all checkpoints pass. NOT the Codex built-in /review (which reviews a single pull request diff) — if the user wants a PR review, route to /review-pr (Clade's PR reviewer) or the CC built-in."
+---
+
+# Clade for Codex
+
+This workflow runs **directly in Codex**. Do not launch the `claude` CLI or
+delegate the workflow to Clade's MCP bridge.
+
+Codex compatibility rules:
+
+- Read the nearest `AGENTS.md` files for repository instructions. If a project
+  has only `CLAUDE.md`, treat it as legacy project guidance and read it too.
+- Store new Clade working state under `.clade/` (or `~/.clade/` for personal
+  state). Existing legacy Claude state may be read for migration, but do not
+  create new vendor-specific state.
+- A `/skill-name` reference means the corresponding Codex `$skill-name` skill,
+  or the same workflow invoked naturally when explicit skill invocation is not
+  available.
+- Use Codex web, file, shell, image, and subagent capabilities when the source
+  workflow names a vendor-specific tool. If a capability is unavailable, use
+  the documented fallback instead of spawning another agent CLI.
+- Paths such as `<plugin-root>/...` are relative to the installed Clade plugin
+  containing this `SKILL.md`; resolve that root before invoking a helper.
+
+## Canonical Clade workflow
+
+You are the Review skill. Your job is to systematically test every checkpoint in `VERIFY.md` and fix failures in the same session. You do not stop until all checkpoints are ✅ or ⚠.
+
+This is NOT a free-form code review. You follow the coverage matrix defined in VERIFY.md checkpoint by checkpoint, testing each one, fixing failures immediately, and updating statuses in-place.
+
+---
+
+## Step 1: Load context
+
+Read in order:
+1. `AGENTS.md` — project type, test command, verify command, behavior anchors
+2. `VERIFY.md` in the project root — the coverage matrix to drive this review
+
+**Detect published URL** (used in Step 5.5):
+
+Look for a published URL in this order (stop at first hit):
+1. `AGENTS.md` — scan for lines matching `## Publish URL`, `## Live URL`, `## URL`, `## Site`, `## Production`, or a bare `https://` under a `## Deploy` / `## Links` section
+2. `package.json` — `"homepage"` field
+3. Deployment config files: `vercel.json` (check `alias`), `netlify.toml` (check `[context.production]`), `.github/workflows/*.yml` (grep for `url:` or `CNAME`)
+4. `gh repo view --json homepageUrl --jq '.homepageUrl'` — GitHub repo homepage URL
+
+Store the result as `PUBLISH_URL` (empty string if nothing found). This determines whether Step 5.5 runs the website SEO phase.
+
+**If VERIFY.md does not exist:**
+
+1. Detect project type from AGENTS.md `## Project Type`, or auto-detect:
+   - `package.json` with next/react/vue/angular/svelte → frontend
+   - `requirements.txt` / `pyproject.toml` with fastapi/flask/django → backend
+   - `go.mod` / `Cargo.toml` with http/server/handler patterns → backend
+   - `Gemfile` with rails/sinatra → backend
+   - ML libraries (torch, transformers, sklearn, jax) → ai
+   - `*.xcodeproj` / `Podfile` / `build.gradle` → mobile
+   - `Dockerfile` / `.github/workflows` / `*.tf` → infra
+   - `*.tex` / `*.bib` → academic
+   - CLI with main/cmd/ and no web server → cli
+   - Mixed → pick the dominant type; note the other
+2. Copy the matching template:
+   - frontend → `~/.clade/templates/VERIFY-frontend.md`
+   - backend → `~/.clade/templates/VERIFY-backend.md`
+   - ai → `~/.clade/templates/VERIFY-ai.md`
+   - No template for your type? Generate a minimal VERIFY.md with checkpoints for: compilation, test suite, key features from AGENTS.md `## Features`, and lint/format
+3. Scan the codebase and customize the template:
+   - Replace generic route placeholders with actual routes from the project
+   - For frontend: list actual page paths from `pages/` or `app/` directory
+   - For backend: list actual API endpoints from route files
+   - For AI: describe the actual model/pipeline being used
+   - Remove rows that clearly don't apply; mark app-specific rows with `— app-specific`
+4. Write customized VERIFY.md to project root
+5. Tell the user: "Created VERIFY.md from [type] template with [N] checkpoints. Starting review."
+
+---
+
+## Step 2: Determine what to test this round
+
+From VERIFY.md, collect the work queue:
+
+**Priority 1 (must test):**
+- All ⬜ checkpoints — never tested
+- All ❌ checkpoints — previously failed
+
+**Priority 2 (should re-test if time permits):**
+- ✅ checkpoints where `Verified` date is more than 7 days ago
+- ✅ checkpoints in categories touched by recent code changes (check `git diff --stat HEAD~5`)
+
+**Skip:**
+- ⚠ checkpoints — known limitation, skip unless user explicitly asks to re-test
+
+Count the queue. If queue is empty (all ✅/⚠), the review has converged — go to Step 6.
+
+---
+
+## Step 3: Test each checkpoint
+
+Work through the queue in order (Priority 1 first). For each checkpoint:
+
+### Determine test strategy by checkpoint category + project type:
+
+**User Journeys / Navigation / UI States / Form Behavior / Design** (frontend):
+- Use Playwright MCP if available (`browser_navigate`, `browser_snapshot`, `browser_click`)
+- Navigate to the relevant page/URL
+- Perform the described user action
+- Take a snapshot and verify the expected outcome
+- If Playwright not available: examine the source code for the relevant component, check for the expected behavior in logic, mark ⚠ (requires manual UI test)
+
+**Error Paths / Edge Cases** (frontend):
+- For API error simulation: check the component's error handling code — does it catch errors? Does it render an error state?
+- For network offline: check if there's an error boundary or offline handler
+- For form validation: read the form component and verify validation logic exists and covers the case
+
+**API Endpoints / Authentication / Input Validation / Error Responses** (backend):
+- Use `curl` or `python -c "import httpx; ..."` to make actual requests to the running server
+- Check if server is running first: look for the port in AGENTS.md `## Project Type`
+- If server not running: try to start it with the dev command from AGENTS.md
+- For auth tests: use a valid token from .env or AGENTS.md test credentials
+- Verify both the status code AND the response body structure
+
+**Database Operations** (backend):
+- Query the DB directly using the appropriate CLI (psql, sqlite3, mysql)
+- For transaction tests: check the code for BEGIN/COMMIT/ROLLBACK or ORM transaction blocks
+- For constraint tests: attempt a constraint-violating operation and verify the error
+
+**Model I/O / Output Validation / Fallback** (ai):
+- Run the model pipeline with a test input (use the test script if one exists)
+- Verify the output schema matches expectations
+- For fallback tests: mock the model as unavailable if possible; check the error handler
+
+**Behavior Anchors** (all projects):
+- Run the same checks as `/verify` skill for each anchor in `## Features`
+
+**SEO / Discoverability (SEO checkpoints)** — present in web/frontend/backend projects:
+- For source-based checks (SEO1–SEO8): `curl -s <base-url>/<path>` and grep the output for the expected tag/pattern
+- If no live server: inspect the template source files for the relevant HTML patterns (e.g. `grep -r '<title>' src/`)
+- For `/seo page <url>` checks: invoke the seo skill if a live URL is available
+- For schema checks (SEO8): run `/seo schema <url>` or grep source for `application/ld+json`
+- For GEO checks (SEO9): run `/seo geo <url>` or check page structure manually
+- Fix = add the missing tag/route to the appropriate template or layout file; re-test = re-run the grep or curl
+
+**Skill Coordination (SC checkpoints)** — only present in Clade / skill-system projects:
+- Each SC checkpoint says: `"file/SKILL.md" contains "quoted string"`
+- Verify by running: `grep -q "quoted string" configs/skills/file/SKILL.md && echo ✅ || echo ❌`
+- If missing: edit the SKILL.md to add the quoted string (when_to_use disambiguation or next-step section)
+- Fix = add the missing text; re-test = re-run the grep; update status to ✅
+
+### Record the result:
+
+After testing, the checkpoint is one of:
+- **✅** — tested, works as described
+- **❌** — tested, does NOT work as described (bug found)
+- **⚠** — cannot test with available tools (Playwright not available, server not running and won't start, external service required) — note the reason
+- Keep ⬜ only if you haven't tested it yet (don't write ⬜ after a test attempt)
+
+---
+
+## Step 4: Fix failures immediately
+
+For every ❌ checkpoint found:
+
+1. **Identify root cause**: read the relevant source files, trace the failure
+2. **Fix the code**: make the minimal change that addresses the root cause
+3. **Re-test the checkpoint**: run the same test again — always wrap test commands with `timeout 30` (e.g., `timeout 30 curl ...`, `timeout 60 python -m pytest ...`)
+4. **Check for regressions**: if the fix touched shared code, re-test ✅ checkpoints that might be affected
+5. **Update status**:
+   - Fix worked + re-test passes → update to ✅
+   - Fix worked but regression found → fix regression, re-test both
+   - Cannot fix in this session (requires external change, credentials, manual step) → mark ⚠ with note explaining what's needed
+
+**Max-fix-attempts**: Each ❌ checkpoint gets at most **3 fix attempts**. If after 3 attempts the checkpoint still fails:
+- Mark it ⚠ with note: `[3 attempts exhausted: <root cause summary>. Manual fix required.]`
+- Move on — do NOT keep retrying the same failing checkpoint
+- Permanent failures (missing credentials, external service unavailable, requires browser) → mark ⚠ immediately on first attempt, do not retry
+
+**Critical rule**: never mark a checkpoint ✅ without actually testing it. "The code looks correct" is NOT a passing test.
+
+**Anti-hang rules for test commands**:
+- Every `curl`, `httpx`, `psql`, `sqlite3` call: prefix with `timeout 30`
+- Every `pytest`, `npm test`, `go test` call: prefix with `timeout 120`
+- Test-suite runs: prefer `bash ~/.clade/scripts/quiet-run.sh <test cmd>` (if installed) — full output lands in `.clade/logs/quiet-*.log`, only the verdict + failure tail enters your context, and the exit code is mirrored
+- Every server startup wait: `timeout 30 bash -c 'until curl -sf http://localhost:PORT/health; do sleep 1; done'`
+- If a command times out → mark the checkpoint ⚠ (timeout, server may be unavailable) and continue
+
+---
+
+## Step 5: Discover and append new checkpoints
+
+While testing, you will encounter scenarios not in VERIFY.md. When you find one:
+
+1. Add a new row to the appropriate section with ⬜ status
+2. Add it to the work queue for this round
+3. Test it before the round ends
+
+Examples of when to add:
+- You notice a UI interaction path not covered by any checkpoint
+- You find an error case the current matrix doesn't cover
+- Testing one checkpoint reveals a related scenario that should also be tested
+- You find a bug in a code path that has no corresponding checkpoint
+
+Do NOT add generic or theoretical checkpoints. Only add what you actually encountered.
+
+---
+
+## Step 5.4: E2E Interrupt Testing (user-facing apps)
+
+Run this step when the project has **user-facing features** (auth, payments, or any long-running operation like upload / processing / generation).
+
+### Load the interaction matrix
+
+Read `~/.clade/skills/review/e2e-interactions.md` (installed from `configs/skills/review/e2e-interactions.md`).
+It defines: Auth States (S0–S4), Feature States (F0–F3), Atomic Actions (A*, N*), and scenario tables (I-*, P-*, T-*, SEQ-*).
+
+### Map the project onto the matrix
+
+1. **Identify long-running operations** — what is the core F1 operation? (face-swap, video processing, file upload, AI generation, etc.)
+2. **Identify auth flows** — does the project have login/logout/delete account?
+3. **Identify payment flows** — are there credits, subscriptions, or purchases?
+
+### Determine test scope
+
+| Project has | Test scope |
+|------------|------------|
+| Long-running operation + auth | All CRITICAL + HIGH rows from the Interrupt Matrix (I-*) and Auth Transitions (T-*) |
+| Payment flow | All CRITICAL + HIGH rows from Payment Flow Interrupts (P-*) |
+| Multi-step journeys | SEQ-01 through SEQ-06 minimum; add SEQ-07 if delete-account exists |
+| No auth, no payments | Skip this step — mark ⚠ "no auth/payment flows detected" |
+
+### Execute each scenario
+
+For each in-scope scenario:
+
+1. Use **Playwright MCP** (`browser_navigate`, `browser_click`, `browser_snapshot`) if available
+2. Execute the exact sequence described in the scenario
+3. Assert the Expected Outcome — especially:
+   - No double-charge / double-job
+   - No broken UI state (blank screen, spinner stuck, unhandled error)
+   - Auth invariant: protected pages unreachable after logout/delete
+   - Data invariant: results accessible after re-login
+4. Record ✅ / ❌ / ⚠ per scenario
+
+If Playwright is not available: inspect the source for the relevant handlers (navigation guards, beforeunload, unload, payment webhook idempotency keys, job status polling). Mark ⚠ with "requires browser — checked code path only" if no live test possible.
+
+### Add to VERIFY.md
+
+For each scenario tested, add a row to the `## E2E Interrupts` section (create it if missing):
+
+```
+| ID | Scenario | Status | Verified | Notes |
+|----|----------|--------|----------|-------|
+| I-01 | Navigate away during operation | ✅ | 2026-04-15 | polling resumes on return |
+```
+
+### Fix failures
+
+Same rules as Step 4: fix immediately, re-test, commit with `committer "fix: e2e - <scenario>" <files>`.
+Common fixes: add `beforeunload` guard, add idempotency key to payment intent, fix WebSocket reconnect logic, add job dedup check.
+
+---
+
+## Step 5.5: SEO Review (web/publish projects and GitHub repos)
+
+This step runs **after** all VERIFY.md checkpoints are processed and **before** the final VERIFY.md update. It is two independent checks.
+
+---
+
+### A. Website SEO Audit (only if `PUBLISH_URL` is non-empty)
+
+Run a full SEO audit on the published site:
+
+```
+/seo-audit <PUBLISH_URL>
+```
+
+This invokes the `seo-audit` skill inline, which delegates to specialist subagents covering:
+technical SEO, content quality, schema, sitemap, performance (CWV), visual/mobile, GEO/AI-readiness, and (conditionally) local SEO, backlinks, Google API data.
+
+After the audit completes:
+- Findings are in `FULL-AUDIT-REPORT.md` and `ACTION-PLAN.md`
+- Fix **Critical** and **High** issues that are source-code-fixable in this session (e.g. missing meta tags, broken canonical URLs, missing sitemap entry, bad schema)
+- Issues requiring external action (Google Search Console setup, third-party perf budget, DNS changes) → note in VERIFY.md as ⚠ with the specific action needed
+- Commit any source fixes: `committer "fix: seo - <issue>" <changed files>`
+
+If `PUBLISH_URL` is empty: skip this sub-step, note "no published URL detected" in output.
+
+---
+
+### B. GitHub Repo SEO Audit (always, if this is a git repo)
+
+GitHub repos are indexed by Google and appear in GitHub search — their discoverability matters.
+
+Run:
+```bash
+gh repo view --json name,description,repositoryTopics,homepageUrl,openGraphImageUrl,isPrivate,licenseInfo
+```
+
+Check each signal and fix inline:
+
+| Signal | Pass condition | Fix command |
+|--------|---------------|-------------|
+| Description | Set, ≥ 15 chars, includes keywords | `gh repo edit --description "..."` |
+| Topics/tags | ≥ 3 topics set | `gh repo edit --add-topic tag1 --add-topic tag2` |
+| Homepage URL | Matches `PUBLISH_URL` (or set if blank) | `gh repo edit --homepage "<url>"` |
+| Social preview | `openGraphImageUrl` is not the default GitHub avatar (contains `/u/` path) | Manual: Settings → Social Preview → upload image — mark ⚠ |
+| LICENSE file | `licenseInfo` is not null | Create `LICENSE` file if missing (ask user which license) |
+| README quality | README.md has: H1 title, ≥ 1 screenshot or demo GIF, install instructions, badges | Edit README.md directly |
+| Claimed counts | Any "N skills/hooks/agents/scripts" claim in README matches the actual on-disk count (±1) | Count dirs under `configs/skills/`, `configs/hooks/`, `configs/agents/`, `configs/scripts/` (or equivalent for this project); update README if off by >10% |
+| Visibility | `isPrivate: false` for a published project | Mark ⚠ if private — note that private repos aren't indexed |
+
+For each failing signal:
+1. Apply the fix (use `gh repo edit` for metadata, edit files for README/LICENSE)
+2. Verify the fix by re-running the relevant command
+3. Log what was fixed in the session output
+
+**README quality details**: A good repo README for SEO/discoverability has:
+- `# Project Name` — exact H1 at the top
+- A 2–3 sentence description with primary keywords
+- At least one screenshot, demo GIF, or live demo link
+- Quick install / usage instructions
+- Badges (build status, version, license) — improves scannability
+- Link to the published URL (if applicable)
+- Any quantitative claims (e.g. "29 skills", "14 hooks") must match the actual count. To verify: count the relevant files/dirs and compare. Update any stale numbers before finishing.
+
+If README needs substantive rewrites, make the minimal additions rather than rewriting from scratch.
+
+---
+
+### C. GEO / AI Citation Audit (if blog content detected)
+
+If the project contains blog content (scan for `blog/`, `posts/`, `articles/`, `content/` directories with `.md` or `.mdx` files):
+
+1. Pick the 3 most recently modified blog posts
+2. For each, run `/blog-geo <file>` to get an AI Citation Readiness Score (0-100)
+3. Fix issues scoring below 60:
+   - Add self-contained answer paragraphs (134-167 words) after each H2
+   - Add comparison tables with `<thead>` where appropriate
+   - Ensure H2 headings use question format (60-70% target)
+   - Add source attribution for statistics
+4. Commit fixes: `committer "fix: geo - improve AI citability for <post>" <files>`
+
+If `PUBLISH_URL` is available, also run `/seo-geo <PUBLISH_URL>` for site-level GEO scoring.
+
+### D. Feed findings to self-improvement system
+
+After all review steps, extract learnings:
+
+1. If any pattern recurred across 2+ checkpoints (same type of fix needed repeatedly):
+   - Write to `.clade/learnings.jsonl`: `{"type":"pitfall","content":"<pattern>","confidence":85}`
+   - This auto-promotes to rules.md via the learning-to-rule pipeline
+2. If a VERIFY.md checkpoint failed that has a matching rule in rules.md:
+   - The rule didn't prevent the issue → tracked as a "miss" by effectiveness system
+3. Update `~/.clade/corrections/stats.json` domain counters based on checkpoint categories
+
+### Output for Step 5.5
+
+After all sub-steps, output a brief summary:
+
+```
+SEO_REVIEW:
+  website: ✅ audit complete, N critical fixed, M issues → ACTION-PLAN.md
+         | ⚠ no published URL
+  geo:     ✅ 3 posts audited, avg score 72/100, 1 improved
+         | ⚠ no blog content detected
+  github:  ✅ description ✅ topics ✅ homepage ⚠ social preview (manual) ✅ license ✅ README
+         | fixed: [list of what was changed]
+```
+
+---
+
+## Step 6: Update VERIFY.md
+
+After completing the work queue, update VERIFY.md:
+
+1. Update each tested checkpoint's Status and Verified columns
+2. Update the header coverage count:
+   ```
+   **Coverage:** N ✅, N ❌, N ⚠, N ⬜ untested
+   ```
+3. If all checkpoints are ✅ or ⚠, update:
+   ```
+   **Last full pass:** YYYY-MM-DD HH:MM
+   ```
+
+Format for Verified column: `YYYY-MM-DD`
+Format for Notes: brief, factual — what was observed, what was fixed, what limitation exists.
+
+---
+
+## Step 7: Convergence check and output
+
+**Converged** = zero ❌ and zero ⬜ in VERIFY.md.
+
+If NOT converged (any ❌ or ⬜ remain):
+- List remaining ❌ and ⬜ checkpoints
+- Explain why each couldn't be resolved this round (server not running, Playwright unavailable, etc.)
+- Output:
+  ```
+  REVIEW_RESULT: partial
+  REMAINING: [comma-separated IDs of ❌/⬜ checkpoints]
+  COVERAGE: N/total ✅
+  ```
+
+If converged:
+- Output a summary: what was tested, what was fixed, what is now known ⚠
+- Output:
+  ```
+  REVIEW_RESULT: pass
+  REMAINING: none
+  COVERAGE: N/N ✅ (M ⚠ known limitations)
+  ```
+
+---
+
+## Rules
+
+- **Fix in session**: when you find a bug, fix it now — don't document and defer
+- **Test, don't assume**: "the code looks right" does not count as ✅
+- **Update VERIFY.md as you go**: don't batch all updates to the end — if the session is interrupted, partial progress should be saved
+- **One checkpoint at a time**: complete test → fix → re-test → update before moving to next
+- **Stale ✅ are not failures**: if a checkpoint was verified 8 days ago, re-test it, but start from a neutral stance
+- **⚠ means untestable with current tools, not "probably fine"**: the reason for ⚠ must be specific (e.g., "requires Playwright MCP, not available in this session")
+- **Never modify VERIFY.md section headers or IDs** — the IDs are stable references
+- **If the server/app is not running**: try to start it (check AGENTS.md for the start command). If it won't start, diagnose why and fix it before trying to test UI/API checkpoints.
+- **Commit fixes as you go**: after fixing a ❌ checkpoint and confirming ✅, commit with `committer "fix: [description]" [changed files]` — don't batch all fixes into one commit
+
+
+---
+
+## Completion Status
+
+- ✅ **DONE** — task completed successfully
+- ⚠ **DONE_WITH_CONCERNS** — completed but with caveats to note
+- ❌ **BLOCKED** — cannot proceed; write details to `.clade/blockers.md`
+- ❓ **NEEDS_CONTEXT** — missing information; use AskUserQuestion
+
+**3-strike rule:** If the same approach fails 3 times, switch to BLOCKED — do not retry indefinitely.
+
+## Additional skill reference
+
+# Review Skill
+
+Performs a systematic, coverage-driven review of the project by working through every checkpoint in `VERIFY.md`. Unlike a free-form code review, this skill tests specific scenarios end-to-end, fixes failures immediately, and only declares convergence when all checkpoints are ✅ or ⚠.
+
+**Convergence condition**: all checkpoints in VERIFY.md are ✅ (pass) or ⚠ (known limitation). No ⬜ (untested) or ❌ (fail) remaining.

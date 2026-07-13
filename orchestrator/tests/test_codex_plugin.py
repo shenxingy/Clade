@@ -1,0 +1,99 @@
+"""Codex-native plugin distribution and hook compatibility tests."""
+
+from __future__ import annotations
+
+import importlib.util
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+PLUGIN_ROOT = REPO_ROOT / "plugins" / "clade"
+
+
+def _load_module(name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_codex_plugin_manifest_and_marketplace_are_wired() -> None:
+    manifest = json.loads((PLUGIN_ROOT / ".codex-plugin" / "plugin.json").read_text())
+    marketplace = json.loads(
+        (REPO_ROOT / ".agents" / "plugins" / "marketplace.json").read_text()
+    )
+    assert manifest["name"] == "clade"
+    assert manifest["skills"] == "./skills/"
+    assert manifest["interface"]["category"] == "Developer Tools"
+    entry = next(plugin for plugin in marketplace["plugins"] if plugin["name"] == "clade")
+    assert entry["source"]["path"] == "./plugins/clade"
+    assert entry["policy"]["installation"] == "AVAILABLE"
+
+
+def test_codex_plugin_skills_are_generated_and_provider_native() -> None:
+    result = subprocess.run(
+        [sys.executable, "configs/scripts/regen-codex-plugin.py", "--check"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    skills = list((PLUGIN_ROOT / "skills").glob("*/SKILL.md"))
+    assert len(skills) == 20
+    merged = "\n".join(path.read_text(encoding="utf-8") for path in skills).lower()
+    for forbidden in ("claude -p", "--dangerously-skip-permissions", "~/.claude/", ".claude/"):
+        assert forbidden not in merged
+    assert "agents.md (or claude.md" not in merged
+    assert "&& claude" not in merged
+
+
+def test_codex_guardian_denies_and_rewrites_supported_commands() -> None:
+    guardian = _load_module(
+        "clade_codex_guardian", PLUGIN_ROOT / "hooks" / "pre_tool_guardian.py"
+    )
+    denied = guardian.evaluate("git push --force origin main")
+    assert denied["hookSpecificOutput"]["permissionDecision"] == "deny"
+    rewritten = guardian.evaluate("git push --force origin feature/native-codex")
+    output = rewritten["hookSpecificOutput"]
+    assert output["permissionDecision"] == "allow"
+    assert "--force-with-lease" in output["updatedInput"]["command"]
+    assert "--force-with-lease-with-lease" not in output["updatedInput"]["command"]
+    assert guardian.evaluate("git push --force-with-lease origin feature/native-codex") is None
+    lease_to_main = guardian.evaluate("git push --force-with-lease origin main")
+    assert lease_to_main["hookSpecificOutput"]["permissionDecision"] == "deny"
+    recursive_home = guardian.evaluate('rm --recursive --force "$HOME"')
+    assert recursive_home["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert guardian.evaluate("git status --short") is None
+
+
+def test_codex_hooks_use_supported_command_handlers() -> None:
+    hooks = json.loads((PLUGIN_ROOT / "hooks" / "hooks.json").read_text())["hooks"]
+    assert set(hooks) == {"SessionStart", "PreToolUse"}
+    for groups in hooks.values():
+        for group in groups:
+            for hook in group["hooks"]:
+                assert hook["type"] == "command"
+                assert "${PLUGIN_ROOT}" in hook["command"]
+
+
+def test_codex_session_context_emits_read_only_repository_guidance(tmp_path) -> None:
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / "AGENTS.md").write_text("# Test guidance\n", encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, str(PLUGIN_ROOT / "hooks" / "session_context.py")],
+        input=json.dumps({"cwd": str(tmp_path)}),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    output = json.loads(result.stdout)["hookSpecificOutput"]
+    assert output["hookEventName"] == "SessionStart"
+    assert "AGENTS.md" in output["additionalContext"]
+    assert "Uncommitted changes" in output["additionalContext"]
+    assert not (tmp_path / ".clade").exists()

@@ -14,7 +14,7 @@
 
 **自主编码，进化而来。**
 
-123 个 skills、26 个 hooks、34 个 agents、一个安全守卫，以及一个纠正学习循环 — 协同工作，让 Claude 编码更好、自动捕获错误、可以在你睡觉时无人值守地跑通宵。
+128 个 skills、30 个 hooks、36 个 agents、一个安全守卫，以及一个纠正学习循环。Clade 现在同时提供 Claude Code 完整框架、Codex 原生插件，以及面向其他编辑器的 provider-neutral MCP bridge。
 
 > 如果它帮你省了时间，点个 star 能帮更多人找到它。出问题了？[提 issue](https://github.com/shenxingy/clade/issues/new/choose)。
 
@@ -26,7 +26,7 @@
 2. [MCP Server](#mcp-server--在任何-ai-编辑器中使用-skills)
 3. [它做什么](#它做什么)
 4. [自学习机制](#自学习机制)
-5. [Skills](#skills-124)
+5. [Skills](#skills-128)
 6. [支持的语言](#支持的语言)
 7. [文档](#文档)
 8. [仓库结构](#仓库结构)
@@ -35,7 +35,7 @@
 
 ## 安装
 
-### 完整框架（推荐）
+### Claude Code — 完整框架
 
 ```bash
 git clone https://github.com/shenxingy/clade.git
@@ -46,9 +46,22 @@ cd clade && ./install.sh
 
 > **依赖：** `jq`。**平台：** Linux 和 macOS。
 
+### Codex — 原生插件
+
+```bash
+codex plugin marketplace add shenxingy/Clade
+codex plugin add clade@clade
+```
+
+安装后启动新的 Codex thread，并通过 `$review`、`$verify`、`$investigate`
+等技能直接运行 Clade。首次使用时打开 `/hooks`，检查并信任 Clade 的
+session context 和危险命令防护 hooks。原生插件无需安装 Claude Code。
+
+完整说明与兼容边界见 [Codex 原生支持](docs/codex.md)。
+
 ### 仅 MCP Server
 
-如果只想在 Cursor、Windsurf、Claude Desktop 或任意 MCP 客户端里使用 skills：
+如果希望在其他 MCP 客户端里使用 Clade skills：
 
 ```bash
 pip install clade-mcp
@@ -58,7 +71,8 @@ pip install clade-mcp
 
 ## MCP Server — 在任何 AI 编辑器中使用 Skills
 
-MCP server 通过 [Model Context Protocol](https://modelcontextprotocol.io) 把全部 123 个 Clade skills 暴露为可调用工具。兼容任何 MCP 客户端。
+MCP package 通过 [Model Context Protocol](https://modelcontextprotocol.io)
+暴露 32 个内置 Clade skills，并可选择通过 Claude 或 Codex 执行。
 
 **Claude Desktop / Claude Code：**
 ```json
@@ -73,12 +87,16 @@ MCP server 通过 [Model Context Protocol](https://modelcontextprotocol.io) 把�
 ```json
 {
   "mcpServers": {
-    "clade": { "command": "clade-mcp" }
+    "clade": {
+      "command": "clade-mcp",
+      "env": { "CLADE_RUNTIME": "codex" }
+    }
   }
 }
 ```
 
-> **前置条件：** 需要安装 [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) — skills 通过 `claude -p` 执行。
+`CLADE_RUNTIME` 支持 `claude`（兼容旧版本的默认值）、`codex` 和 `auto`。
+在 Codex 自身内部应优先使用原生插件，避免重复加载 skills 和启动嵌套 agent。
 
 ## 它做什么
 
@@ -91,7 +109,7 @@ MCP server 通过 [Model Context Protocol](https://modelcontextprotocol.io) 把�
 | 你纠正 Claude | `correction-detector.sh` | 记录纠正，提示 Claude 保存可复用的规则 |
 | Claude 标记任务完成 | `verify-task-completed.sh` | 自适应质量门禁：compile + lint，严格模式额外 build + test |
 
-完整 hook 参考（26 个 hooks）见 [How It Works](docs/how-it-works.md)。
+完整 hook 参考（30 个 hooks）见 [How It Works](docs/how-it-works.md)。
 
 ## 自学习机制
 
@@ -104,7 +122,7 @@ MCP server 通过 [Model Context Protocol](https://modelcontextprotocol.io) 把�
 
 详见 [Self-Learning Mechanisms](docs/learning-mechanisms.md)。
 
-## Skills (124)
+## Skills (128)
 
 ### 核心工作流
 
@@ -251,6 +269,8 @@ clade/
 ├── install.sh               # 一键部署
 ├── uninstall.sh             # 干净卸载
 ├── mcp-package/             # PyPI 包（clade-mcp）
+├── plugins/clade/           # Codex 原生插件（20 个核心 skills + hooks）
+├── .agents/plugins/         # Codex marketplace manifest
 ├── orchestrator/            # FastAPI Web UI + worker 池 + 任务队列
 │   ├── server.py            # 应用、路由、WebSocket
 │   ├── worker.py            # Worker、WorkerPool
@@ -258,10 +278,10 @@ clade/
 │   ├── mcp_server.py        # MCP server（本地开发版）
 │   └── web/                 # React + Vite 仪表盘（web/src/，从 web/dist 提供服务）
 ├── configs/
-│   ├── skills/              # 123 个 skill 定义（SKILL.md + prompt.md）
-│   ├── hooks/               # 26 个事件 hooks + lib/
-│   ├── agents/              # 34 个 agent 定义
-│   └── scripts/             # 38 个 shell + Python 工具
+│   ├── skills/              # 128 个 skill 定义
+│   ├── hooks/               # 30 个事件 hooks + lib/
+│   ├── agents/              # 36 个 agent 定义
+│   └── scripts/             # 35 个 shell + 13 个 Python 工具
 ├── adapters/openclaw/       # OpenClaw 集成（手机监控）
 ├── templates/               # settings、CLAUDE.md、corrections 模板
 └── docs/                    # 指南与研究

@@ -4,15 +4,15 @@ build-backend = "hatchling.build"
 
 [project]
 name = "clade-mcp"
-version = "0.1.0"
-description = "MCP server exposing 32 AI coding skills — autonomous commits, loops, reviews, incident response, and more"
+version = "0.2.0"
+description = "Provider-neutral MCP server exposing Clade coding workflows through Claude or Codex"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
 authors = [
     { name = "Xingy Shen", email = "shenxingy@users.noreply.github.com" },
 ]
-keywords = ["mcp", "claude", "ai", "coding", "skills", "automation", "claude-code"]
+keywords = ["mcp", "claude", "codex", "ai", "coding", "skills", "automation", "claude-code"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",

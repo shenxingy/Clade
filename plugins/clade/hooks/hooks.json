@@ -1,0 +1,32 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${PLUGIN_ROOT}/hooks/session_context.py\"",
+            "commandWindows": "py -3 \"%PLUGIN_ROOT%\\hooks\\session_context.py\"",
+            "timeout": 10,
+            "statusMessage": "Loading Clade project context"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${PLUGIN_ROOT}/hooks/pre_tool_guardian.py\"",
+            "commandWindows": "py -3 \"%PLUGIN_ROOT%\\hooks\\pre_tool_guardian.py\"",
+            "timeout": 5,
+            "statusMessage": "Checking command safety"
+          }
+        ]
+      }
+    ]
+  }
+}

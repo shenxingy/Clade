@@ -1,0 +1,20 @@
+{
+  "name": "clade",
+  "interface": {
+    "displayName": "Clade"
+  },
+  "plugins": [
+    {
+      "name": "clade",
+      "source": {
+        "source": "local",
+        "path": "./plugins/clade"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

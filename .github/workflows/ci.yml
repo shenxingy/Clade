@@ -73,6 +73,11 @@ jobs:
             exit 1
           fi
 
+      # Codex executes SKILL.md directly, so the native plugin combines each
+      # curated canonical SKILL.md + prompt.md into a generated distribution.
+      - name: Codex plugin skills drift gate
+        run: python3 configs/scripts/regen-codex-plugin.py --check
+
   pytest:
     name: Tests
     runs-on: ubuntu-latest

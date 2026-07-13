@@ -14,9 +14,9 @@
 
 **Autonomous coding, evolved.**
 
-124 skills, 27 hooks, 36 agents, a safety guardian, and a correction learning loop — all working together so Claude codes better, catches its own mistakes, and can run unattended overnight while you sleep.
+128 skills, 30 hooks, 36 agents, a safety guardian, and a correction learning loop — with native distributions for Claude Code and Codex, plus a provider-neutral MCP bridge for other editors.
 
-Two layers: **CLI** (product center — skills, hooks, scripts you live in) + **Orchestrator** (observability + gates + execution adapter — watch parallel workers, verify quality gates, route work).
+Three ways to use Clade: the full **Claude CLI framework**, the native **Codex plugin**, or the provider-neutral **MCP bridge**. Add the optional **Orchestrator** for multi-worker observability, quality gates, and task routing.
 
 > If this saves you time, a star helps others find it. Something broken? [Open an issue](https://github.com/shenxingy/clade/issues/new/choose).
 
@@ -28,7 +28,7 @@ Two layers: **CLI** (product center — skills, hooks, scripts you live in) + **
 2. [MCP Server](#mcp-server--use-skills-in-any-ai-editor)
 3. [What It Does](#what-it-does)
 4. [Self-Learning Mechanisms](#self-learning-mechanisms)
-5. [Skills](#skills-124)
+5. [Skills](#skills-128)
 6. [Supported Languages](#supported-languages)
 7. [Documentation](#documentation)
 8. [Repo Structure](#repo-structure)
@@ -37,7 +37,7 @@ Two layers: **CLI** (product center — skills, hooks, scripts you live in) + **
 
 ## Install
 
-### Full Framework (recommended)
+### Claude Code — Full Framework
 
 ```bash
 git clone https://github.com/shenxingy/clade.git
@@ -48,9 +48,24 @@ Installs skills, hooks, agents, scripts, and safety guardian. Start a new Claude
 
 > **Requires:** `jq`. **Platform:** Linux and macOS.
 
+### Codex — Native Plugin
+
+```bash
+codex plugin marketplace add shenxingy/Clade
+codex plugin add clade@clade
+```
+
+Start a new Codex thread, then invoke a workflow naturally or explicitly with
+`$review`, `$verify`, `$investigate`, and the other bundled skills. Open `/hooks`
+once to review and trust Clade's session-context and command-safety hooks.
+
+The native plugin runs directly in Codex and does **not** require Claude Code.
+It currently ships 20 provider-native core workflows; Claude-specific overnight
+orchestration remains in the full framework. See [Native Codex Support](docs/codex.md).
+
 ### MCP Server Only
 
-If you just want the skills in Cursor, Windsurf, Claude Desktop, or any MCP client:
+If you want Clade tools in another MCP client:
 
 ```bash
 pip install clade-mcp
@@ -60,7 +75,9 @@ See [MCP Server](#mcp-server--use-skills-in-any-ai-editor) below for configurati
 
 ## MCP Server — Use Skills in Any AI Editor
 
-The MCP server exposes all 124 Clade skills as callable tools via the [Model Context Protocol](https://modelcontextprotocol.io). Works with any MCP-compatible client.
+The MCP package exposes 32 bundled Clade skills, plus compatible user-installed
+skills, as callable tools via the [Model Context Protocol](https://modelcontextprotocol.io).
+It can execute them with either Claude or Codex.
 
 **Claude Desktop / Claude Code:**
 ```json
@@ -75,12 +92,17 @@ The MCP server exposes all 124 Clade skills as callable tools via the [Model Con
 ```json
 {
   "mcpServers": {
-    "clade": { "command": "clade-mcp" }
+    "clade": {
+      "command": "clade-mcp",
+      "env": { "CLADE_RUNTIME": "codex" }
+    }
   }
 }
 ```
 
-> **Prerequisite:** [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) must be installed — skills execute via `claude -p`.
+`CLADE_RUNTIME` accepts `claude` (the backwards-compatible default), `codex`, or
+`auto`. Prefer the native Codex plugin inside Codex itself; adding the MCP server
+there would duplicate skills and spawn nested agent sessions.
 
 ## What It Does
 
@@ -93,7 +115,7 @@ The MCP server exposes all 124 Clade skills as callable tools via the [Model Con
 | You correct Claude | `correction-detector.sh` | Logs correction, prompts Claude to save a reusable rule |
 | Claude marks task done | `verify-task-completed.sh` | Adaptive quality gate: compile + lint, build + test in strict mode |
 
-See [How It Works](docs/how-it-works.md) for the full hook reference (27 hooks).
+See [How It Works](docs/how-it-works.md) for the full hook reference (30 hooks).
 
 ## Self-Learning Mechanisms
 
@@ -106,7 +128,7 @@ Both work on any project Claude Code is run in (universal, in `~/.claude/scripts
 
 See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, detectors, schemas, and tunable env vars.
 
-## Skills (124)
+## Skills (128)
 
 ### Core Workflow
 
@@ -226,6 +248,7 @@ All checks are opt-in by detection — if the tool isn't installed, the hook sil
 
 | Guide | Contents |
 |-------|----------|
+| [Native Codex Support](docs/codex.md) | Plugin installation, native skills/hooks, MCP runtime selection, compatibility boundaries |
 | [Maximize Throughput](docs/throughput.md) | Skip permissions, batch tasks, parallel worktrees, terminal + voice |
 | [Orchestrator Web UI](docs/orchestrator.md) | Chat-to-plan, worker dashboard, settings, iteration loop |
 | [Overnight Operation](docs/autonomous-operation.md) | Task queue, parallel sessions, context relay, safety |
@@ -247,7 +270,9 @@ Fully automatic once configured. See [Configuration](docs/configuration.md) for 
 
 ## Architecture
 
-**CLI layer** (`configs/` → installed to `~/.claude/`): Product center. Skills, hooks, scripts you invoke daily. Works standalone, no server needed.
+**Claude CLI layer** (`configs/` → installed to `~/.claude/`): Full skill, hook, script, and agent framework.
+
+**Codex plugin** (`plugins/clade/`): Generated provider-native core skills plus Codex lifecycle hooks. Distributed through `.agents/plugins/marketplace.json`.
 
 **Orchestrator** (`orchestrator/`): Observability + gates + execution adapter. Watches parallel workers, enforces quality gates, routes tasks, provides web UI for multi-project oversight. Optional — CLI works independently.
 
@@ -257,10 +282,12 @@ Fully automatic once configured. See [Configuration](docs/configuration.md) for 
 clade/
 ├── install.sh               # One-command deployment
 ├── configs/                 # ← THE PRODUCT CENTER
-│   ├── skills/              # 124 skill definitions
-│   ├── hooks/               # 27 event hooks
+│   ├── skills/              # 128 skill definitions
+│   ├── hooks/               # 30 event hooks
 │   ├── agents/              # 36 agent definitions
-│   └── scripts/             # 38 shell + Python utilities
+│   └── scripts/             # 35 shell + 13 Python utilities
+├── plugins/clade/           # Native Codex plugin (20 generated core skills + hooks)
+├── .agents/plugins/         # Codex marketplace manifest
 ├── orchestrator/            # ← THE EXECUTION ADAPTER
 │   ├── server.py            # FastAPI app, routes, WebSocket
 │   ├── worker.py            # WorkerPool, SwarmManager, task dispatch

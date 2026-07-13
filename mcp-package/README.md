@@ -1,6 +1,6 @@
 # clade-mcp
 
-MCP server that exposes **32 AI coding skills** as callable tools — autonomous commits, goal-driven loops, code reviews, incident response, security audits, and more.
+Provider-neutral MCP server that exposes **32 AI coding skills** as callable tools — autonomous commits, reviews, incident response, security audits, and more. Skill prompts can run through Claude or Codex.
 
 Part of the [Clade](https://github.com/shenxingy/clade) autonomous coding framework.
 
@@ -27,7 +27,8 @@ Add to your MCP configuration:
 {
   "mcpServers": {
     "clade": {
-      "command": "clade-mcp"
+      "command": "clade-mcp",
+      "env": { "CLADE_RUNTIME": "codex" }
     }
   }
 }
@@ -40,11 +41,17 @@ pip install clade-mcp
 clade-mcp  # starts the MCP server (stdio transport)
 ```
 
-## Prerequisites
+## Runtime Selection
 
 - **Python 3.10+**
-- **Claude Code CLI** installed and in PATH ([install guide](https://docs.anthropic.com/en/docs/claude-code))
-  - Skills execute via `claude -p`, so the CLI must be available
+- One supported agent CLI installed and authenticated:
+  - `CLADE_RUNTIME=claude` — backwards-compatible default; executes with `claude -p`
+  - `CLADE_RUNTIME=codex` — executes with `codex exec --json`
+  - `CLADE_RUNTIME=auto` — prefers Claude when installed, otherwise Codex
+
+Codex execution defaults to the `workspace-write` sandbox. Operators can set
+`CLADE_CODEX_SANDBOX=read-only|workspace-write|danger-full-access`. The stronger
+`CLADE_CODEX_BYPASS_PERMISSIONS=1` escape hatch is intentionally opt-in.
 
 ## Available Skills (32)
 
@@ -87,10 +94,10 @@ clade-mcp  # starts the MCP server (stdio transport)
 
 1. On startup, the server loads all bundled skill definitions
 2. Each skill is registered as an MCP tool with auto-generated JSON Schema
-3. When a tool is called, the skill prompt is executed via `claude -p` in your project directory
+3. When a tool is called, the skill prompt is executed by the selected runtime in your project directory
 4. Results are returned through the MCP protocol
 
-Skills from `~/.claude/skills/` (installed via Clade's `install.sh`) are also loaded and merged.
+Skills from `~/.claude/skills/` (installed by the legacy full framework) are also loaded and merged. Native Codex users should prefer the Clade plugin rather than mounting this MCP server inside Codex.
 
 ## Full Clade Framework
 

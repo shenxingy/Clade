@@ -1,0 +1,27 @@
+# Native Codex skills shipped by the Clade plugin.
+#
+# These are derived from configs/skills/ by:
+#   python3 configs/scripts/regen-codex-plugin.py
+#
+# Keep runtime-specific orchestration skills (loop/start/status/provider/etc.)
+# out until their subprocess and session semantics have Codex implementations.
+commit
+cso
+document-release
+frontend-design
+go
+handoff
+incident
+investigate
+map
+merge-pr
+next
+orchestrate
+pickup
+research
+retro
+review
+review-pr
+sync
+verify
+worktree

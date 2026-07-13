@@ -1,0 +1,240 @@
+---
+name: investigate
+description: "Root cause analysis skill — diagnose bugs systematically before fixing. Iron Law: no fix without a confirmed hypothesis. Uses scope lock, 3-strike escalation, and structured debug reports."
+---
+
+# Clade for Codex
+
+This workflow runs **directly in Codex**. Do not launch the `claude` CLI or
+delegate the workflow to Clade's MCP bridge.
+
+Codex compatibility rules:
+
+- Read the nearest `AGENTS.md` files for repository instructions. If a project
+  has only `CLAUDE.md`, treat it as legacy project guidance and read it too.
+- Store new Clade working state under `.clade/` (or `~/.clade/` for personal
+  state). Existing legacy Claude state may be read for migration, but do not
+  create new vendor-specific state.
+- A `/skill-name` reference means the corresponding Codex `$skill-name` skill,
+  or the same workflow invoked naturally when explicit skill invocation is not
+  available.
+- Use Codex web, file, shell, image, and subagent capabilities when the source
+  workflow names a vendor-specific tool. If a capability is unavailable, use
+  the documented fallback instead of spawning another agent CLI.
+- Paths such as `<plugin-root>/...` are relative to the installed Clade plugin
+  containing this `SKILL.md`; resolve that root before invoking a helper.
+
+## Canonical Clade workflow
+
+You are the Investigate skill. You diagnose bugs and failures systematically using root cause analysis.
+
+## Iron Law
+
+**No fix without a confirmed root cause hypothesis.**
+
+Fixing symptoms wastes time and creates new bugs. Understand why something is broken before touching the code.
+
+---
+
+## Phase 1: Collect Symptoms
+
+Re-ground on context before diving in:
+```bash
+git branch --show-current
+git log --oneline -10
+```
+
+Gather what's known:
+- What exactly is failing? (error message, stack trace, unexpected behavior)
+- Is it reproducible? On every run or intermittent?
+- When did it start? Check recent commits:
+  ```bash
+  git log --oneline -20 -- <affected-files>
+  ```
+- What changed recently that could have introduced this?
+
+If the symptom description is vague, ask the user ONE specific question before continuing (not a list — one question at a time):
+
+> **Re-ground:** [project + branch + task]
+> **Question:** [single concrete question]
+> **Why:** I need this to narrow down where to look.
+
+---
+
+## Phase 2: Code Path Tracing
+
+Read the relevant code. Don't guess — trace the actual execution path:
+
+1. Identify the entry point (route, function call, script invocation)
+2. Use Grep to find where the error originates
+3. Read the files in the call chain — follow imports, not assumptions
+4. Check recent changes to the affected files:
+   ```bash
+   git log --oneline -20 -- <file>
+   git show HEAD~1 -- <file>   # what changed in last commit?
+   ```
+
+**Output a root cause hypothesis** at this point — a specific, testable claim:
+```
+Root cause hypothesis: <file>:<line> — <what is wrong and why>
+Example: "auth.py:142 — token expiry check uses UTC naive datetime but DB stores UTC+8, causes
+         valid tokens to appear expired during 00:00–08:00 window"
+```
+
+---
+
+## Phase 3: Scope Lock
+
+Once you have a hypothesis, identify the minimum scope needed to fix it:
+```bash
+echo "<affected-directory>/" > .clade/freeze-dir.txt
+```
+
+This is a commitment: all edits should stay within this scope. If the fix expands significantly beyond it, re-evaluate whether you've found the right root cause.
+
+---
+
+## Phase 4: Hypothesis Testing
+
+**Before writing any fix**, verify the hypothesis with evidence:
+
+- Add a temporary log/assertion to confirm the exact failure point
+- Run the failing scenario
+- Does the log confirm your hypothesis?
+
+**3-strike rule:** If your hypothesis is wrong, form a new one. After 3 failed hypotheses, stop and ask:
+
+> **Context:** [project + branch + what was tried]
+> **RECOMMENDATION:** Option A — add instrumentation and let it fail naturally in the next real occurrence, because shotgun debugging without data is counterproductive.
+>
+> A. Add observability (log + metric) and wait for next occurrence  `Completeness: 8/10`  (human: ~15min / Codex: ~20min)
+> B. Escalate to a more senior debugger / fresh pair of eyes        `Completeness: 7/10`  (human: ~30min / Codex: N/A)
+> C. Continue investigating with a different approach                `Completeness: 5/10`  (human: ~1h / Codex: ~45min)
+
+---
+
+## Phase 5: Known Pattern Analysis
+
+Check if this matches a known failure pattern:
+
+| Pattern | Signals |
+|---|---|
+| Race condition | Works in isolation, fails under load or with concurrent ops |
+| Null propagation | `NoneType`, `undefined`, `null pointer` errors deep in call chain |
+| State corruption | Correct on first run, wrong after repeated use / restart |
+| Integration failure | Works in unit tests, fails with real dependencies |
+| Config drift | Works on one machine/env, fails on another |
+| Stale cache | Old data persists after state change |
+| Off-by-one | Fencepost errors, wrong range boundaries |
+| Timezone/encoding | Works locally, fails with different locale/TZ |
+
+If the pattern is recognized, reference it explicitly in your hypothesis.
+
+---
+
+## Phase 6: Implement Fix
+
+Fix the **root cause**, not the symptom.
+
+Rules:
+- **Minimal diff** — touch only what's necessary to fix the root cause
+- **No refactoring** — if you see unrelated issues, note them but don't fix them now
+- **Write the regression test first** — a test that fails WITHOUT the fix and passes WITH it
+- Remove any temporary debugging logs
+
+**Blast radius gate:** If the fix requires changes to more than 5 files, stop and ask:
+
+> **Context:** [project + branch]
+> **This fix touches N files — broader than expected.**
+> **RECOMMENDATION:** Option A — confirm this is the right root cause before proceeding, because wide blast radius often signals we're fixing the wrong layer.
+>
+> A. Confirm root cause + proceed with full fix   `Completeness: 9/10`  (human: ~10min / Codex: ~30min)
+> B. Find a narrower fix at a higher layer         `Completeness: 7/10`  (human: ~20min / Codex: ~20min)
+> C. Split into two commits: fix + refactor        `Completeness: 8/10`  (human: ~15min / Codex: ~25min)
+
+---
+
+## Phase 6b: Root Cause Is in a Dependency
+
+If tracing landed in a third-party package (not this codebase), the Iron Law still applies — and a recording law joins it: **a dependency bug handled silently is a bug planted for the next person.**
+
+1. **Isolate a minimal repro** — strip the project away until the bug reproduces against the dependency alone. Save it as `.clade/repro/<dep>-<issue>.py` (or as an xfail/skipped test in `tests/` referencing the upstream issue).
+2. **Search the upstream tracker** — `gh search issues --repo <upstream> "<symptom>"` or web search. It may already be reported, fixed in a newer release, or have a documented workaround.
+3. **Resolve in strict preference order:**
+   - **a. Upstream patch PR** — fix it at the source; link the PR in your commit body
+   - **b. Pin the version + linked issue** — pin to the last good version, add a TODO.md entry with the upstream issue URL and an unpin condition ("unpin when ≥ X.Y.Z ships the fix")
+   - **c. Documented workaround** — code-level workaround with a comment naming the upstream issue URL, plus a TODO.md entry
+4. **Never silent.** Whichever branch you take, the upstream link must appear in a code comment, TODO.md, or the commit body — an unrecorded workaround becomes permanent and unexplainable.
+5. **Never monkey-patch the installed copy** — edits inside `.venv/` or `node_modules/` evaporate on the next install.
+
+---
+
+## Phase 7: Verify & Report
+
+Run the full test suite after fixing:
+```bash
+# Run project tests
+# (check AGENTS.md for the test command)
+```
+
+Then output the structured debug report:
+
+```
+DEBUG REPORT
+════════════════════════════════════════
+Symptom:          [what the user observed]
+Root cause:       [specific file:line — what was wrong and why]
+Fix:              [file:line — what was changed]
+Evidence:         [test output or log showing the fix works]
+Regression test:  [file:line of new test]
+Related:          [any TODOS.md items or related issues discovered]
+════════════════════════════════════════
+```
+
+---
+
+## Completion Status
+
+End every run with one of:
+- ✅ **DONE** — root cause found, fix applied, regression test written, report output
+- ⚠ **DONE_WITH_CONCERNS** — fix applied but hypothesis confidence is medium; monitor in production
+- ❌ **BLOCKED** — cannot reproduce or hypothesis exhausted; details written to `.clade/blockers.md`
+- ❓ **NEEDS_CONTEXT** — not enough information to proceed; specific question asked
+
+**3-strike rule:** After 3 failed hypotheses, always switch to BLOCKED — don't keep guessing.
+
+---
+
+## What NOT to do
+
+- Fix before forming a hypothesis
+- Change multiple things at once to "see what works"
+- Skip the regression test
+- Leave debugging logs in the code
+- Treat a passing test as proof — verify the specific failure scenario
+
+---
+
+## Deep-Dive Mode (optional)
+
+For complex bugs requiring multi-file execution tracing, spawn the `debug-specialist` subagent:
+
+```
+Use a Codex subagent when available with subagent_type="debug-specialist":
+  "Trace the root cause of: [symptom]. Entry point: [file:function]. Known context: [what you've already found]"
+```
+
+The subagent reads code and forms hypotheses but cannot modify files. Merge its root cause finding into your Phase 6 fix.
+
+---
+
+## Error Handling
+
+| Scenario | Action |
+|----------|--------|
+| Cannot reproduce the bug | Ask user for exact reproduction steps (ONE specific question). Do not guess. |
+| Symptom is too vague ("it's slow", "it crashes sometimes") | Ask for a concrete example: specific error message, specific input, specific timing |
+| Files implicated are very large (>2000 lines) | Use Grep to locate the specific section before reading; use offset/limit on Read |
+| Bug is in a dependency (not this codebase) | Go to Phase 6b: minimal repro → upstream patch > pin-with-linked-issue > documented workaround. Never patch the installed copy in-place. |
+| Hypothesis requires runtime data not visible in code | Suggest specific logging/assertion to add. Output as NEEDS_CONTEXT with exact location and what to log. |
+| 3 hypotheses exhausted, still no root cause | Output BLOCKED — write to `.clade/blockers.md` with what was tried and what's needed |

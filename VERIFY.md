@@ -4,7 +4,7 @@
 
 **Project type:** cli + skill-system + orchestrator (FastAPI)
 **Last full pass:** 2026-04-17
-**Coverage:** 78 ✅, 0 ❌, 4 ⚠, 0 ⬜ untested
+**Coverage:** 83 ✅, 0 ❌, 4 ⚠, 0 ⬜ untested
 
 ---
 
@@ -13,14 +13,24 @@
 
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
-| I1 | `./install.sh` runs without errors — no missing source files, no broken symlinks | ✅ | 2026-06-04 | 123 source skills (added iloop this pass); install completes clean |
-| I2 | All skills from `configs/skills/` are installed to `~/.claude/skills/` | ✅ | 2026-06-04 | 123/123 skills installed; iloop backported into configs/ this pass |
-| I3 | All hooks from `configs/hooks/` are installed to `~/.claude/hooks/` | ✅ | 2026-06-04 | 26/26 hooks installed; iloop-hook.sh added this pass (Stop hook for /iloop) |
-| I4 | All scripts from `configs/scripts/` are installed to `~/.claude/scripts/` | ✅ | 2026-06-04 | 29/29 .sh scripts + .py scripts + subdirs seo/, ads/, blog/ installed |
+| I1 | `./install.sh` runs without errors — no missing source files, no broken symlinks | ✅ | 2026-07-13 | fresh and idempotent installs pass in an isolated HOME |
+| I2 | All skills from `configs/skills/` are installed to `~/.claude/skills/` | ✅ | 2026-07-13 | 128/128 skills installed and validated |
+| I3 | All hooks from `configs/hooks/` are installed to `~/.claude/hooks/` | ✅ | 2026-07-13 | 30/30 hooks installed and executable |
+| I4 | All scripts from `configs/scripts/` are installed to `~/.claude/scripts/` | ✅ | 2026-07-13 | 35 shell scripts plus Python helpers installed |
 | I5 | All templates from `configs/templates/` are installed to `~/.claude/templates/` | ✅ | 2026-04-12 | |
 | I6 | `~/.local/bin/slt` symlink exists and points to `statusline-toggle.sh` | ✅ | 2026-04-12 | |
 | I7 | `~/.local/bin/committer` symlink exists and points to `committer.sh` | ✅ | 2026-04-12 | |
 | I8 | `~/.local/bin/devmode` symlink exists and points to `devmode.sh` | ✅ | 2026-04-12 | |
+
+## Native Codex Distribution
+<!-- Codex runs Clade skills directly from a native plugin; external MCP clients can select Codex as their execution runtime. -->
+
+| ID | Checkpoint | Status | Verified | Notes |
+|----|-----------|--------|----------|-------|
+| CX1 | `.agents/plugins/marketplace.json` installs `plugins/clade/` as a valid Codex plugin | ✅ | 2026-07-13 | validated and installed locally as `clade@clade` |
+| CX2 | All 20 curated Codex skills match their canonical sources and contain no nested `claude -p` execution | ✅ | 2026-07-13 | deterministic generator and CI drift gate pass |
+| CX3 | Native lifecycle hooks inject read-only session context and guard destructive Bash commands | ✅ | 2026-07-13 | regression tests cover force-push rewriting/blocking and recursive deletion |
+| CX4 | `clade-mcp` selects Claude, Codex, or auto runtime without changing the backwards-compatible default | ✅ | 2026-07-13 | unit tests and MCP initialization handshake pass |
 
 ## Behavior Anchors (CLAUDE.md `## Features`)
 <!-- Each anchor must work end-to-end. -->
@@ -45,7 +55,7 @@
 | H3 | `pre-tool-guardian.sh` allows `alembic upgrade` when dev-mode is ON | ✅ | 2026-04-10 | source verified: `if [[ "$DEV_MODE" == false ]]` gate at line 40 |
 | H4 | `pre-tool-guardian.sh` blocks `rm -rf /` regardless of dev-mode | ✅ | 2026-04-10 | source verified: lines 78-96 |
 | H5 | `pre-tool-guardian.sh` blocks `git push --force origin main` regardless of dev-mode | ✅ | 2026-04-10 | source verified: lines 99-108 |
-| H6 | All other hooks pass `bash -n` syntax check | ✅ | 2026-06-04 | all 26 hooks pass (iloop-hook.sh added this pass) |
+| H6 | All other hooks pass `bash -n` syntax check | ✅ | 2026-07-13 | all 30 hooks pass |
 | H7 | `pre-tool-guardian.sh` does NOT block when migration pattern appears only in a variable assignment string (false-positive fix) | ✅ | 2026-04-10 | SCANNABLE strips `VAR='...'` and `VAR="..."` lines (guardian.sh:47-50) |
 | H8 | `session-baseline.sh` captures sorted `git status --porcelain` output keyed by `session_id` at SessionStart, excluding `.claude/` paths | ✅ | 2026-04-15 | tested in /tmp repo: baseline file written to `.claude/sessions/<sid>.baseline`, `.claude/` paths filtered out |
 | H9 | `stop-check.sh` ignores pre-existing dirty files (present in baseline) and blocks only on session-produced changes — prevents deadlock between parallel CC sessions on same repo | ✅ | 2026-04-15 | tested: preexisting dirt → exit 0 silent; new session file → exit 2 with filename in output |
@@ -57,8 +67,8 @@
 
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
-| SH1 | All `configs/hooks/*.sh` pass `bash -n` | ✅ | 2026-06-04 | all 26 hooks pass |
-| SH2 | All `configs/scripts/*.sh` pass `bash -n` | ✅ | 2026-06-04 | all 32 scripts pass (setup-iloop.sh added this pass) |
+| SH1 | All `configs/hooks/*.sh` pass `bash -n` | ✅ | 2026-07-13 | all 30 hooks pass |
+| SH2 | All `configs/scripts/*.sh` pass `bash -n` | ✅ | 2026-07-13 | all 35 scripts pass |
 | SH3 | `install.sh` + `uninstall.sh` pass `bash -n` | ✅ | 2026-06-04 | uninstall.sh rewritten to derive removal lists from configs/ |
 
 ## Orchestrator — Python Syntax & Tests
@@ -66,8 +76,8 @@
 
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
-| PY1 | All Python modules pass `python -m py_compile` (full list from CLAUDE.md) | ✅ | 2026-04-15 | all modules compile clean |
-| PY2 | `pytest tests/` passes with zero failures | ✅ | 2026-04-15 | 178/178 passed in 0.84s |
+| PY1 | All Python modules pass `python -m py_compile` (full list from CLAUDE.md) | ✅ | 2026-07-13 | all orchestrator modules compile clean |
+| PY2 | `pytest tests/` passes with zero failures | ✅ | 2026-07-13 | 967 passed, 2 skipped |
 | PY3 | No circular imports — `python -c "import server"` runs without ImportError | ✅ | 2026-04-10 | |
 | PY4 | Orchestrator API returns 200 + valid JSON on core GET routes (`/api/projects`, `/api/sessions`, `/api/sessions/overview`, `/api/tasks`, `/api/ideas`, `/api/processes`, `/api/metrics/pass-at-k`) | ✅ | 2026-04-15 | tested against running instance on :8010 — 7/7 endpoints 200, all parse as valid JSON (29 projects, 1 session, 38 tasks, 10 ideas, pass_rate=1.0). Resolves former KL3. |
 
@@ -87,7 +97,7 @@
 
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
-| SK1 | Every dir in `configs/skills/` contains `SKILL.md` | ✅ | 2026-06-04 | 123/123 skill dirs have SKILL.md. 28 upstream-synced skills are SKILL.md-only (no prompt.md) by design — invariant updated from prompt.md to SKILL.md this pass. |
+| SK1 | Every dir in `configs/skills/` contains `SKILL.md` | ✅ | 2026-07-13 | 128/128 skill dirs pass `validate-skills.py` with zero warnings |
 | SK2 | `/review` skill: prompt.md contains all 7 steps and convergence condition | ✅ | 2026-04-15 | 9 steps total; original Steps 1-7 all present + new 5.4 (E2E) + 5.5 (SEO) |
 | SK3 | `/verify` skill: prompt.md contains VERIFY.md coverage section and `VERIFY_COVERAGE` footer field | ✅ | 2026-04-10 | |
 | SK4 | `/commit` skill: references `committer` script; `git add .` only appears in prohibition rule | ✅ | 2026-04-10 | |

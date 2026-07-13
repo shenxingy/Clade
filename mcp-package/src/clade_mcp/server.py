@@ -15,22 +15,22 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import re
 import shlex
-import subprocess
-import sys
 from pathlib import Path
+from subprocess import TimeoutExpired
 from typing import Any
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent, CallToolResult
 
+from .runtime import get_runtime
+
 # ─── Server Info ────────────────────────────────────────────────────────────────
 SERVER_NAME = "clade"
-SERVER_VERSION = "0.1.0"
+SERVER_VERSION = "0.2.0"
 
 # ─── Skill Discovery ───────────────────────────────────────────────────────────
 
@@ -210,12 +210,16 @@ async def list_tools() -> list[Tool]:
 
 @app.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
-    """Execute a Clade skill tool via `claude -p`."""
+    """Execute a Clade skill with the configured agent runtime."""
 
     # Built-in: list skills
     if name == "clade_list_skills":
         skills = load_skills()
-        lines = [f"# Available Clade Skills ({len(skills)} installed)\n"]
+        runtime_name = get_runtime().name
+        lines = [
+            f"# Available Clade Skills ({len(skills)} installed)\n",
+            f"Execution runtime: **{runtime_name}** (`CLADE_RUNTIME`)\n",
+        ]
         for s in sorted(skills, key=lambda x: x["name"]):
             hint = f" — args: {s['argument_hint']}" if s["argument_hint"] else ""
             lines.append(f"- **{s['name']}**: {s['description']}{hint}")
@@ -263,54 +267,37 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
 
     project_dir = os.getcwd()
 
-    cmd = [
-        "claude", "-p", exec_prompt,
-        "--project", project_dir,
-        "--dangerously-skip-permissions",
-        "--output-format", "json",
-    ]
-
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=300,
-            env={**os.environ, "CLAUDE_CODE_EXPERIMENTAL_SKIP_INJECT": "1"},
+        runtime = get_runtime()
+        result = runtime.execute(exec_prompt, Path(project_dir), timeout=300)
+        if result.ok:
+            return CallToolResult(
+                content=[TextContent(type="text", text=result.text)],
+            )
+        return CallToolResult(
+            content=[TextContent(
+                type="text",
+                text=f"Skill '{skill_name}' failed in {runtime.name} runtime "
+                     f"(exit {result.returncode}):\n{result.error[:500]}",
+            )],
+            isError=True,
         )
-
-        if result.returncode == 0:
-            try:
-                output = json.loads(result.stdout)
-                if isinstance(output, dict):
-                    summary = output.get("summary", result.stdout[:500])
-                else:
-                    summary = str(output)[:500]
-            except (json.JSONDecodeError, ValueError):
-                summary = result.stdout[:500] if result.stdout else "(no output)"
-
-            return CallToolResult(
-                content=[TextContent(type="text", text=summary)],
-            )
-        else:
-            return CallToolResult(
-                content=[TextContent(
-                    type="text",
-                    text=f"Skill '{skill_name}' failed (exit {result.returncode}):\n{result.stderr[:500]}"
-                )],
-                isError=True,
-            )
-
-    except subprocess.TimeoutExpired:
+    except TimeoutExpired:
         return CallToolResult(
             content=[TextContent(type="text", text=f"Skill '{skill_name}' timed out after 300s")],
             isError=True,
         )
+    except ValueError as exc:
+        return CallToolResult(
+            content=[TextContent(type="text", text=str(exc))],
+            isError=True,
+        )
     except FileNotFoundError:
+        runtime_name = os.environ.get("CLADE_RUNTIME", "claude")
         return CallToolResult(
             content=[TextContent(
                 type="text",
-                text="claude CLI not found. Install Claude Code first: https://docs.anthropic.com/en/docs/claude-code"
+                text=f"{runtime_name} CLI not found. Install it or select another CLADE_RUNTIME."
             )],
             isError=True,
         )
