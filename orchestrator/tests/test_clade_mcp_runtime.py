@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -14,7 +15,19 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 MCP_SRC = REPO_ROOT / "mcp-package" / "src"
 sys.path.insert(0, str(MCP_SRC))
 
-from clade_mcp import runtime  # noqa: E402
+from clade_mcp import __version__, runtime  # noqa: E402
+from clade_mcp.server import SERVER_VERSION  # noqa: E402
+
+
+def test_release_version_surfaces_are_aligned() -> None:
+    expected = "0.2.0"
+    server_manifest = json.loads(
+        (REPO_ROOT / "mcp-package" / "server.json").read_text(encoding="utf-8")
+    )
+    assert __version__ == expected
+    assert SERVER_VERSION == expected
+    assert server_manifest["version"] == expected
+    assert server_manifest["packages"][0]["version"] == expected
 
 
 def test_runtime_selection_is_backwards_compatible() -> None:

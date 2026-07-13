@@ -68,10 +68,13 @@ orchestration remains in the full framework. See [Native Codex Support](docs/cod
 If you want Clade tools in another MCP client:
 
 ```bash
-pip install clade-mcp
+pip install --upgrade clade-mcp
 ```
 
-See [MCP Server](#mcp-server--use-skills-in-any-ai-editor) below for configuration.
+Version 0.2.0 adds the Codex execution runtime while keeping Claude as the
+backwards-compatible default. See [MCP Server](#mcp-server--use-skills-in-any-ai-editor)
+below for configuration and the [MCP package guide](mcp-package/README.md) for
+all runtime and sandbox options.
 
 ## MCP Server — Use Skills in Any AI Editor
 
@@ -79,7 +82,7 @@ The MCP package exposes 32 bundled Clade skills, plus compatible user-installed
 skills, as callable tools via the [Model Context Protocol](https://modelcontextprotocol.io).
 It can execute them with either Claude or Codex.
 
-**Claude Desktop / Claude Code:**
+**Claude Desktop or another client using Claude as its runtime:**
 ```json
 {
   "mcpServers": {
@@ -102,7 +105,8 @@ It can execute them with either Claude or Codex.
 
 `CLADE_RUNTIME` accepts `claude` (the backwards-compatible default), `codex`, or
 `auto`. Prefer the native Codex plugin inside Codex itself; adding the MCP server
-there would duplicate skills and spawn nested agent sessions.
+there would duplicate skills and spawn nested agent sessions. The same applies
+inside the full Claude Code framework, where Clade skills are already native.
 
 ## What It Does
 
@@ -249,6 +253,9 @@ All checks are opt-in by detection — if the tool isn't installed, the hook sil
 | Guide | Contents |
 |-------|----------|
 | [Native Codex Support](docs/codex.md) | Plugin installation, native skills/hooks, MCP runtime selection, compatibility boundaries |
+| [MCP Package](mcp-package/README.md) | clade-mcp 0.2.0 installation, runtime selection, sandbox and skill catalog |
+| [0.2.0 Release Notes](docs/releases/v0.2.0.md) | Native Codex support, MCP changes, upgrade steps, and validation results |
+| [Changelog](CHANGELOG.md) | Release history and upgrade notes |
 | [Maximize Throughput](docs/throughput.md) | Skip permissions, batch tasks, parallel worktrees, terminal + voice |
 | [Orchestrator Web UI](docs/orchestrator.md) | Chat-to-plan, worker dashboard, settings, iteration loop |
 | [Overnight Operation](docs/autonomous-operation.md) | Task queue, parallel sessions, context relay, safety |

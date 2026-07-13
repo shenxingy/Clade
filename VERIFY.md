@@ -77,7 +77,7 @@
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
 | PY1 | All Python modules pass `python -m py_compile` (full list from CLAUDE.md) | ✅ | 2026-07-13 | all orchestrator modules compile clean |
-| PY2 | `pytest tests/` passes with zero failures | ✅ | 2026-07-13 | 967 passed, 2 skipped |
+| PY2 | `pytest tests/` passes with zero failures | ✅ | 2026-07-13 | 968 passed, 2 skipped |
 | PY3 | No circular imports — `python -c "import server"` runs without ImportError | ✅ | 2026-04-10 | |
 | PY4 | Orchestrator API returns 200 + valid JSON on core GET routes (`/api/projects`, `/api/sessions`, `/api/sessions/overview`, `/api/tasks`, `/api/ideas`, `/api/processes`, `/api/metrics/pass-at-k`) | ✅ | 2026-04-15 | tested against running instance on :8010 — 7/7 endpoints 200, all parse as valid JSON (29 projects, 1 session, 38 tasks, 10 ideas, pass_rate=1.0). Resolves former KL3. |
 

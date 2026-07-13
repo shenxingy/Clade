@@ -57,24 +57,26 @@ codex plugin add clade@clade
 等技能直接运行 Clade。首次使用时打开 `/hooks`，检查并信任 Clade 的
 session context 和危险命令防护 hooks。原生插件无需安装 Claude Code。
 
-完整说明与兼容边界见 [Codex 原生支持](docs/codex.md)。
+完整说明与兼容边界见 [Codex 原生支持](docs/codex.zh-CN.md)。
 
 ### 仅 MCP Server
 
 如果希望在其他 MCP 客户端里使用 Clade skills：
 
 ```bash
-pip install clade-mcp
+pip install --upgrade clade-mcp
 ```
 
-配置见下方 [MCP Server](#mcp-server--在任何-ai-编辑器中使用-skills)。
+0.2.0 新增 Codex execution runtime，同时继续以 Claude 作为向后兼容的默认值。
+配置见下方 [MCP Server](#mcp-server--在任何-ai-编辑器中使用-skills)，完整参数见
+[MCP package 中文指南](mcp-package/README.zh-CN.md)。
 
 ## MCP Server — 在任何 AI 编辑器中使用 Skills
 
 MCP package 通过 [Model Context Protocol](https://modelcontextprotocol.io)
 暴露 32 个内置 Clade skills，并可选择通过 Claude 或 Codex 执行。
 
-**Claude Desktop / Claude Code：**
+**Claude Desktop，或使用 Claude runtime 的其他客户端：**
 ```json
 {
   "mcpServers": {
@@ -96,7 +98,8 @@ MCP package 通过 [Model Context Protocol](https://modelcontextprotocol.io)
 ```
 
 `CLADE_RUNTIME` 支持 `claude`（兼容旧版本的默认值）、`codex` 和 `auto`。
-在 Codex 自身内部应优先使用原生插件，避免重复加载 skills 和启动嵌套 agent。
+在 Codex 自身内部应优先使用原生插件，避免重复加载 skills 和启动嵌套 agent；
+Claude Code 完整框架已经原生安装 Clade skills，也不应重复挂载 MCP server。
 
 ## 它做什么
 
@@ -240,10 +243,12 @@ MCP package 通过 [Model Context Protocol](https://modelcontextprotocol.io)
 
 ## 文档
 
-详细文档暂为英文，欢迎 PR 翻译。
-
 | 指南 | 内容 |
 |------|------|
+| [Codex 原生支持](docs/codex.zh-CN.md) | Plugin 安装、原生 skills/hooks、MCP runtime 与兼容边界 |
+| [MCP Package](mcp-package/README.zh-CN.md) | clade-mcp 0.2.0 安装、runtime、sandbox 与 skills 列表 |
+| [0.2.0 Release Notes](docs/releases/v0.2.0.md#中文说明) | Codex 原生支持、MCP 变更、升级步骤与验证结果 |
+| [更新记录](CHANGELOG.zh-CN.md) | Release 历史与升级说明 |
 | [最大化产出](docs/throughput.md) | 跳过权限确认、批量任务、并行 worktrees、终端与语音 |
 | [编排 Web UI](docs/orchestrator.md) | 聊天规划、worker 仪表盘、设置、迭代循环 |
 | [通宵自主运行](docs/autonomous-operation.md) | 任务队列、并行会话、上下文接力、安全保障 |

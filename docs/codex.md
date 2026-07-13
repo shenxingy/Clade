@@ -1,4 +1,4 @@
-**English**（中文版尚未提供 — [README 中文版](../README.zh-CN.md)）
+**English** | [中文](codex.zh-CN.md)
 
 ← Back to [README](../README.md)
 
@@ -70,7 +70,7 @@ $review the whole project and fix failures until clean
 
 Natural-language activation works too.
 
-## MCP Runtime Selection
+## MCP 0.2.0 Runtime Selection
 
 For Cursor, Windsurf, or another MCP client that should delegate Clade skills to
 Codex, configure the `clade-mcp` server with:
@@ -101,6 +101,9 @@ Supported runtime settings:
 Do not configure this MCP server inside Codex when the native plugin is enabled.
 Doing so duplicates tool descriptions and turns a native workflow into a nested
 `codex exec` session.
+
+See the [MCP package guide](../mcp-package/README.md) for the complete bundled
+skill catalog and upgrade instructions.
 
 ## Compatibility Boundary
 

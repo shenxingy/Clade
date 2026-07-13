@@ -1,12 +1,29 @@
-# clade-mcp
+**English** | [中文](https://github.com/shenxingy/Clade/blob/main/mcp-package/README.zh-CN.md)
+
+# clade-mcp 0.2.0
 
 Provider-neutral MCP server that exposes **32 AI coding skills** as callable tools — autonomous commits, reviews, incident response, security audits, and more. Skill prompts can run through Claude or Codex.
 
 Part of the [Clade](https://github.com/shenxingy/clade) autonomous coding framework.
 
+## What's New in 0.2.0
+
+- Native Codex execution through `codex exec --json`, selected with
+  `CLADE_RUNTIME=codex`
+- Conservative `auto` runtime selection: Claude when available, otherwise Codex
+- Configurable Codex sandbox with an explicit, opt-in permission bypass
+- 32 bundled workflows, up from 29 in 0.1.0
+- Runtime name reported by `clade_list_skills` for configuration diagnostics
+
+Upgrade with:
+
+```bash
+pip install --upgrade clade-mcp
+```
+
 ## Quick Start
 
-### With Claude Desktop / Claude Code
+### Claude runtime
 
 Add to your MCP configuration:
 
@@ -21,7 +38,7 @@ Add to your MCP configuration:
 }
 ```
 
-### With Cursor / Windsurf / other MCP clients
+### Codex runtime
 
 ```json
 {
@@ -34,24 +51,32 @@ Add to your MCP configuration:
 }
 ```
 
+Use either configuration in Claude Desktop, Cursor, Windsurf, or another MCP
+client. Do not mount this server inside Codex when the native Clade plugin is
+enabled, or inside Claude Code when the full Clade framework is installed; both
+already load Clade workflows directly.
+
 ### Install manually
 
 ```bash
-pip install clade-mcp
+pip install --upgrade clade-mcp
 clade-mcp  # starts the MCP server (stdio transport)
 ```
 
 ## Runtime Selection
 
 - **Python 3.10+**
-- One supported agent CLI installed and authenticated:
-  - `CLADE_RUNTIME=claude` — backwards-compatible default; executes with `claude -p`
-  - `CLADE_RUNTIME=codex` — executes with `codex exec --json`
-  - `CLADE_RUNTIME=auto` — prefers Claude when installed, otherwise Codex
+- At least one supported agent CLI installed and authenticated
 
-Codex execution defaults to the `workspace-write` sandbox. Operators can set
-`CLADE_CODEX_SANDBOX=read-only|workspace-write|danger-full-access`. The stronger
-`CLADE_CODEX_BYPASS_PERMISSIONS=1` escape hatch is intentionally opt-in.
+| Variable | Default | Values and behavior |
+|----------|---------|---------------------|
+| `CLADE_RUNTIME` | `claude` | `claude` executes with `claude -p`; `codex` uses `codex exec --json`; `auto` prefers Claude when installed, otherwise Codex |
+| `CLADE_CODEX_SANDBOX` | `workspace-write` | `read-only`, `workspace-write`, or `danger-full-access` |
+| `CLADE_CODEX_BYPASS_PERMISSIONS` | unset | Set to `1` only inside an externally isolated environment |
+
+The permission bypass takes precedence over the sandbox setting and passes
+Codex's `--dangerously-bypass-approvals-and-sandbox` flag. It is intentionally
+never enabled by default.
 
 ## Available Skills (32)
 
@@ -103,9 +128,11 @@ Skills from `~/.claude/skills/` (installed by the legacy full framework) are als
 
 This MCP server is one part of Clade. The full framework includes:
 
-- **22 hooks** — safety guardian, correction learning, type-checking, session context
-- **30 scripts** — committer, loop-runner, parallel task execution, health scanning
-- **5 agents** — code-reviewer, test-runner, type-checker, paper-reviewer, verify-app
+- **128 skills** — coding, research, SEO, content, paid ads, and email workflows
+- **30 hooks** — safety guardian, correction learning, type-checking, session context
+- **35 shell scripts + 13 Python utilities** — commits, loops, parallel tasks, health scanning
+- **36 agents** — code, security, compliance, marketing, research, and verification specialists
+- **Native Codex plugin** — 20 core workflows and lifecycle safety hooks
 - **Orchestrator** — FastAPI web UI with task queue, worker pool, GitHub sync
 
 Install the full framework:
@@ -118,3 +145,6 @@ cd clade && ./install.sh
 ## License
 
 MIT
+
+See the project [changelog](https://github.com/shenxingy/Clade/blob/main/CHANGELOG.md)
+for release and upgrade details.
