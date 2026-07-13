@@ -15,12 +15,12 @@ the TUI footer without replacing existing status-line fields.
 ## Usage
 
 ```text
-/codex-usage
-/codex-usage setup minimal
-/codex-usage style icon
-/codex-usage theme
-/codex-usage theme bird
-/codex-usage --json
+$codex-usage
+$codex-usage setup minimal
+$codex-usage style icon
+$codex-usage theme
+$codex-usage theme bird
+$codex-usage --json
 ```
 
 The helper talks to `codex app-server`; it does not read or print Codex login
