@@ -28,6 +28,7 @@ def test_codex_plugin_manifest_and_marketplace_are_wired() -> None:
         (REPO_ROOT / ".agents" / "plugins" / "marketplace.json").read_text()
     )
     assert manifest["name"] == "clade"
+    assert manifest["version"] == "0.3.0"
     assert manifest["skills"] == "./skills/"
     assert manifest["interface"]["category"] == "Developer Tools"
     entry = next(plugin for plugin in marketplace["plugins"] if plugin["name"] == "clade")
@@ -45,7 +46,7 @@ def test_codex_plugin_skills_are_generated_and_provider_native() -> None:
     )
     assert result.returncode == 0, result.stderr
     skills = list((PLUGIN_ROOT / "skills").glob("*/SKILL.md"))
-    assert len(skills) == 20
+    assert len(skills) == 21
     merged = "\n".join(path.read_text(encoding="utf-8") for path in skills).lower()
     for forbidden in ("claude -p", "--dangerously-skip-permissions", "~/.claude/", ".claude/"):
         assert forbidden not in merged

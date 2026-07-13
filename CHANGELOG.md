@@ -5,6 +5,15 @@ versioning for the `clade-mcp` Python package and tagged public releases.
 
 [中文](CHANGELOG.zh-CN.md)
 
+## Unreleased
+
+### Added
+
+- Native `$codex-usage` workflow with Clade's 95%-target pace view
+- Credential-safe rate-limit reads through the authenticated Codex app-server
+- Idempotent setup for Codex's native five-hour and weekly status-line fields
+- Minimal, optional-icon, and detailed styles; ten themes; and JSON output
+
 ## [0.2.0] — 2026-07-13
 
 ### Added

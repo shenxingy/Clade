@@ -14,7 +14,7 @@
 
 **Autonomous coding, evolved.**
 
-128 skills, 30 hooks, 36 agents, a safety guardian, and a correction learning loop — with native distributions for Claude Code and Codex, plus a provider-neutral MCP bridge for other editors.
+129 skills, 30 hooks, 36 agents, a safety guardian, and a correction learning loop — with native distributions for Claude Code and Codex, plus a provider-neutral MCP bridge for other editors.
 
 Three ways to use Clade: the full **Claude CLI framework**, the native **Codex plugin**, or the provider-neutral **MCP bridge**. Add the optional **Orchestrator** for multi-worker observability, quality gates, and task routing.
 
@@ -28,7 +28,7 @@ Three ways to use Clade: the full **Claude CLI framework**, the native **Codex p
 2. [MCP Server](#mcp-server--use-skills-in-any-ai-editor)
 3. [What It Does](#what-it-does)
 4. [Self-Learning Mechanisms](#self-learning-mechanisms)
-5. [Skills](#skills-128)
+5. [Skills](#skills-129)
 6. [Supported Languages](#supported-languages)
 7. [Documentation](#documentation)
 8. [Repo Structure](#repo-structure)
@@ -59,8 +59,12 @@ Start a new Codex thread, then invoke a workflow naturally or explicitly with
 `$review`, `$verify`, `$investigate`, and the other bundled skills. Open `/hooks`
 once to review and trust Clade's session-context and command-safety hooks.
 
+Run `$codex-usage setup minimal` for a compact native footer. `$codex-usage`
+defaults to the equally compact `project(branch)-9% (6d)` pace view; icon and
+detail styles are optional. It never reads or exposes Codex credentials.
+
 The native plugin runs directly in Codex and does **not** require Claude Code.
-It currently ships 20 provider-native core workflows; Claude-specific overnight
+It currently ships 21 provider-native core workflows; Claude-specific overnight
 orchestration remains in the full framework. See [Native Codex Support](docs/codex.md).
 
 ### MCP Server Only
@@ -132,7 +136,7 @@ Both work on any project Claude Code is run in (universal, in `~/.claude/scripts
 
 See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, detectors, schemas, and tunable env vars.
 
-## Skills (128)
+## Skills (129)
 
 ### Core Workflow
 
@@ -289,11 +293,11 @@ Fully automatic once configured. See [Configuration](docs/configuration.md) for 
 clade/
 ├── install.sh               # One-command deployment
 ├── configs/                 # ← THE PRODUCT CENTER
-│   ├── skills/              # 128 skill definitions
+│   ├── skills/              # 129 skill definitions
 │   ├── hooks/               # 30 event hooks
 │   ├── agents/              # 36 agent definitions
 │   └── scripts/             # 35 shell + 13 Python utilities
-├── plugins/clade/           # Native Codex plugin (20 generated core skills + hooks)
+├── plugins/clade/           # Native Codex plugin (21 generated core skills + hooks)
 ├── .agents/plugins/         # Codex marketplace manifest
 ├── orchestrator/            # ← THE EXECUTION ADAPTER
 │   ├── server.py            # FastAPI app, routes, WebSocket

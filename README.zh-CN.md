@@ -14,7 +14,7 @@
 
 **自主编码，进化而来。**
 
-128 个 skills、30 个 hooks、36 个 agents、一个安全守卫，以及一个纠正学习循环。Clade 现在同时提供 Claude Code 完整框架、Codex 原生插件，以及面向其他编辑器的 provider-neutral MCP bridge。
+129 个 skills、30 个 hooks、36 个 agents、一个安全守卫，以及一个纠正学习循环。Clade 现在同时提供 Claude Code 完整框架、Codex 原生插件，以及面向其他编辑器的 provider-neutral MCP bridge。
 
 > 如果它帮你省了时间，点个 star 能帮更多人找到它。出问题了？[提 issue](https://github.com/shenxingy/clade/issues/new/choose)。
 
@@ -26,7 +26,7 @@
 2. [MCP Server](#mcp-server--在任何-ai-编辑器中使用-skills)
 3. [它做什么](#它做什么)
 4. [自学习机制](#自学习机制)
-5. [Skills](#skills-128)
+5. [Skills](#skills-129)
 6. [支持的语言](#支持的语言)
 7. [文档](#文档)
 8. [仓库结构](#仓库结构)
@@ -56,6 +56,10 @@ codex plugin add clade@clade
 安装后启动新的 Codex thread，并通过 `$review`、`$verify`、`$investigate`
 等技能直接运行 Clade。首次使用时打开 `/hooks`，检查并信任 Clade 的
 session context 和危险命令防护 hooks。原生插件无需安装 Claude Code。
+
+运行 `$codex-usage setup minimal` 使用极简原生 footer。`$codex-usage` 默认
+显示同样极简的 `project(branch)-9% (6d)` 节奏；图标和详细模式均为可选，
+而且不会读取或暴露 Codex 登录凭证。
 
 完整说明与兼容边界见 [Codex 原生支持](docs/codex.zh-CN.md)。
 
@@ -125,7 +129,7 @@ Claude Code 完整框架已经原生安装 Clade skills，也不应重复挂载 
 
 详见 [Self-Learning Mechanisms](docs/learning-mechanisms.md)。
 
-## Skills (128)
+## Skills (129)
 
 ### 核心工作流
 
@@ -274,7 +278,7 @@ clade/
 ├── install.sh               # 一键部署
 ├── uninstall.sh             # 干净卸载
 ├── mcp-package/             # PyPI 包（clade-mcp）
-├── plugins/clade/           # Codex 原生插件（20 个核心 skills + hooks）
+├── plugins/clade/           # Codex 原生插件（21 个核心 skills + hooks）
 ├── .agents/plugins/         # Codex marketplace manifest
 ├── orchestrator/            # FastAPI Web UI + worker 池 + 任务队列
 │   ├── server.py            # 应用、路由、WebSocket
@@ -283,7 +287,7 @@ clade/
 │   ├── mcp_server.py        # MCP server（本地开发版）
 │   └── web/                 # React + Vite 仪表盘（web/src/，从 web/dist 提供服务）
 ├── configs/
-│   ├── skills/              # 128 个 skill 定义
+│   ├── skills/              # 129 个 skill 定义
 │   ├── hooks/               # 30 个事件 hooks + lib/
 │   ├── agents/              # 36 个 agent 定义
 │   └── scripts/             # 35 个 shell + 13 个 Python 工具

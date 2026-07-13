@@ -1,7 +1,7 @@
 {
   "name": "clade",
-  "version": "0.2.0",
-  "description": "Native Codex workflows and safety hooks from the Clade autonomous coding toolkit.",
+  "version": "0.3.0",
+  "description": "Native Codex workflows, usage visibility, and safety hooks from the Clade autonomous coding toolkit.",
   "author": {
     "name": "Xingy Shen",
     "url": "https://github.com/shenxingy"
@@ -20,7 +20,7 @@
   "interface": {
     "displayName": "Clade",
     "shortDescription": "Autonomous coding workflows for Codex",
-    "longDescription": "Run Clade's review, verification, investigation, release, research, and handoff workflows directly in Codex, with native session context and destructive-command guardrails.",
+    "longDescription": "Run Clade's review, verification, investigation, release, research, usage, and handoff workflows directly in Codex, with native session context and destructive-command guardrails.",
     "developerName": "Xingy Shen",
     "category": "Developer Tools",
     "capabilities": [
@@ -32,7 +32,8 @@
     "defaultPrompt": [
       "Use Clade to verify this project's behavior anchors.",
       "Use Clade to investigate this failure before fixing it.",
-      "Use Clade to review this project and converge on a clean result."
+      "Use Clade to review this project and converge on a clean result.",
+      "Use Clade to show my Codex usage pace and configure the status line."
     ]
   }
 }

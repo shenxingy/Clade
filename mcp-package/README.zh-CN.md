@@ -125,11 +125,11 @@ Permission bypass 优先于 sandbox 设置，并向 Codex 传递
 
 MCP server 只是 Clade 的一个入口。完整框架还包含：
 
-- 128 个 skills
+- 129 个 skills
 - 30 个 hooks
 - 35 个 shell scripts + 13 个 Python utilities
 - 36 个专业 agents
-- 带 20 个核心 workflows 与安全 hooks 的 Codex 原生 plugin
+- 带 21 个核心 workflows、usage visibility 与安全 hooks 的 Codex 原生 plugin
 - FastAPI orchestrator、task queue、worker pool 与 GitHub sync
 
 ```bash

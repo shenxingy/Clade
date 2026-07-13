@@ -14,7 +14,7 @@
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
 | I1 | `./install.sh` runs without errors — no missing source files, no broken symlinks | ✅ | 2026-07-13 | fresh and idempotent installs pass in an isolated HOME |
-| I2 | All skills from `configs/skills/` are installed to `~/.claude/skills/` | ✅ | 2026-07-13 | 128/128 skills installed and validated |
+| I2 | All skills from `configs/skills/` are installed to `~/.claude/skills/` | ✅ | 2026-07-13 | 129/129 skills installed and validated |
 | I3 | All hooks from `configs/hooks/` are installed to `~/.claude/hooks/` | ✅ | 2026-07-13 | 30/30 hooks installed and executable |
 | I4 | All scripts from `configs/scripts/` are installed to `~/.claude/scripts/` | ✅ | 2026-07-13 | 35 shell scripts plus Python helpers installed |
 | I5 | All templates from `configs/templates/` are installed to `~/.claude/templates/` | ✅ | 2026-04-12 | |
@@ -28,9 +28,10 @@
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
 | CX1 | `.agents/plugins/marketplace.json` installs `plugins/clade/` as a valid Codex plugin | ✅ | 2026-07-13 | validated and installed locally as `clade@clade` |
-| CX2 | All 20 curated Codex skills match their canonical sources and contain no nested `claude -p` execution | ✅ | 2026-07-13 | deterministic generator and CI drift gate pass |
+| CX2 | All 21 curated Codex skills match their canonical sources and contain no nested `claude -p` execution | ✅ | 2026-07-13 | deterministic generator and CI drift gate pass |
 | CX3 | Native lifecycle hooks inject read-only session context and guard destructive Bash commands | ✅ | 2026-07-13 | regression tests cover force-push rewriting/blocking and recursive deletion |
 | CX4 | `clade-mcp` selects Claude, Codex, or auto runtime without changing the backwards-compatible default | ✅ | 2026-07-13 | unit tests and MCP initialization handshake pass |
+| CX5 | `$codex-usage` reads authenticated rate-limit snapshots without opening credentials and safely merges native footer fields | ✅ | 2026-07-13 | unit tests cover protocol messages, pace calculation, config preservation, idempotence, and malformed config |
 
 ## Behavior Anchors (CLAUDE.md `## Features`)
 <!-- Each anchor must work end-to-end. -->
@@ -77,7 +78,7 @@
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
 | PY1 | All Python modules pass `python -m py_compile` (full list from CLAUDE.md) | ✅ | 2026-07-13 | all orchestrator modules compile clean |
-| PY2 | `pytest tests/` passes with zero failures | ✅ | 2026-07-13 | 968 passed, 2 skipped |
+| PY2 | `pytest tests/` passes with zero failures | ✅ | 2026-07-13 | 974 passed, 2 skipped |
 | PY3 | No circular imports — `python -c "import server"` runs without ImportError | ✅ | 2026-04-10 | |
 | PY4 | Orchestrator API returns 200 + valid JSON on core GET routes (`/api/projects`, `/api/sessions`, `/api/sessions/overview`, `/api/tasks`, `/api/ideas`, `/api/processes`, `/api/metrics/pass-at-k`) | ✅ | 2026-04-15 | tested against running instance on :8010 — 7/7 endpoints 200, all parse as valid JSON (29 projects, 1 session, 38 tasks, 10 ideas, pass_rate=1.0). Resolves former KL3. |
 
@@ -97,7 +98,7 @@
 
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
-| SK1 | Every dir in `configs/skills/` contains `SKILL.md` | ✅ | 2026-07-13 | 128/128 skill dirs pass `validate-skills.py` with zero warnings |
+| SK1 | Every dir in `configs/skills/` contains `SKILL.md` | ✅ | 2026-07-13 | 129/129 skill dirs pass `validate-skills.py` with zero warnings |
 | SK2 | `/review` skill: prompt.md contains all 7 steps and convergence condition | ✅ | 2026-04-15 | 9 steps total; original Steps 1-7 all present + new 5.4 (E2E) + 5.5 (SEO) |
 | SK3 | `/verify` skill: prompt.md contains VERIFY.md coverage section and `VERIFY_COVERAGE` footer field | ✅ | 2026-04-10 | |
 | SK4 | `/commit` skill: references `committer` script; `git add .` only appears in prohibition rule | ✅ | 2026-04-10 | |

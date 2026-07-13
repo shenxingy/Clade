@@ -153,11 +153,17 @@ def _render_skill(name: str) -> str:
 
 def _copy_resources(source_dir: Path, dest_dir: Path) -> None:
     for child in sorted(source_dir.iterdir()):
-        if child.name in {"SKILL.md", "prompt.md", "README.md"}:
+        if child.name in {"SKILL.md", "prompt.md", "README.md", "__pycache__"}:
+            continue
+        if child.suffix in {".pyc", ".pyo"}:
             continue
         target = dest_dir / child.name
         if child.is_dir():
-            shutil.copytree(child, target)
+            shutil.copytree(
+                child,
+                target,
+                ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"),
+            )
         elif child.is_file():
             shutil.copy2(child, target)
 

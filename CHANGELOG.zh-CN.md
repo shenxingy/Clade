@@ -5,6 +5,15 @@ semantic versioning。
 
 [English](CHANGELOG.md)
 
+## Unreleased
+
+### 新增
+
+- 原生 `$codex-usage` workflow，显示 Clade 的 95% 目标使用节奏
+- 通过已认证的 Codex app-server 安全读取 rate limits，不打开凭证文件
+- 幂等配置 Codex 原生 five-hour 与 weekly status-line fields
+- 极简、可选图标、详细三种 styles，十种 themes，以及 JSON 输出
+
 ## [0.2.0] — 2026-07-13
 
 ### 新增

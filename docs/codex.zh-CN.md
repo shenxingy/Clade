@@ -29,7 +29,7 @@ codex plugin add clade@clade
 
 `plugins/clade/` 包含：
 
-- 20 个核心 workflows：commit、安全审查、release 文档、frontend design、
+- 21 个核心 workflows：commit、Codex usage pace、安全审查、release 文档、frontend design、
   handoff/pickup、incident、investigation、architecture map、PR review/merge、
   research、retro、项目 review、sync、verification、worktree 与决策辅助流程
 - `SessionStart` hook：只读注入 branch、recent commits、dirty tree、handoff 和
@@ -65,6 +65,40 @@ $review the whole project and fix failures until clean
 
 自然语言也可以触发相应 workflow。
 
+## Codex Usage 与 Status Line
+
+Clade 0.3 新增原生 `$codex-usage` workflow。它通过已认证的
+`codex app-server` protocol 读取 rate-limit snapshot，不会打开或输出
+`~/.codex/auth.json`。
+
+```text
+$codex-usage
+$codex-usage setup minimal
+$codex-usage style icon
+$codex-usage style detail
+$codex-usage theme bird
+$codex-usage --json
+```
+
+默认 `minimal` 视图刻意保持极简：
+
+```text
+xingyushen(main)-9% (6d)
+```
+
+其中包含 project、branch、相对 95% utilization 目标的节奏与重置时间。
+`style icon` 插入所选主题图标，`style detail` 展开所有 Codex limit buckets
+与百分比。普通 `setup` 会把原生 `five-hour-limit`、`weekly-limit` 安全合并到
+`~/.codex/config.toml`；`setup minimal` 只保留 directory、branch 与 weekly
+limit；`setup full` 还显示 model、context 与两个 limit windows。只有显式选择
+layout 时才会替换已有 `status_line` array。
+
+Codex 自带 `/usage` 查看 account usage、`/status` 查看当前 session，亦可通过
+`/statusline` 交互配置 footer。修改 footer 后请启动新的 Codex session。
+Codex 原生 footer 只接受固定 fields，不支持 Claude Code 那种任意 formatter
+command；因此完全一致的极简字符串由 `$codex-usage` 输出，常驻 footer 使用
+最接近的原生 field 组合。
+
 ## MCP 0.2.0 Runtime
 
 如果要在 Cursor、Windsurf 或其他 MCP 客户端中把 Clade skills 委托给
@@ -98,10 +132,9 @@ Codex，配置：
 
 ## 兼容边界
 
-完整 overnight orchestrator、Claude-specific agents、status line、provider
-switcher、quota integrations 与 correction-learning hooks 仍依赖 Claude CLI
-layer。首个原生 plugin release 刻意不包含这些能力，避免表面原生、实际偷偷
-调用 Claude。
+完整 overnight orchestrator、Claude-specific agents、provider switcher、
+跨机器 usage aggregation 与 correction-learning hooks 仍依赖 Claude CLI
+layer。这些能力继续留在原生 plugin 之外，避免表面原生、实际偷偷调用 Claude。
 
 MCP package 已具备真正的 Codex runtime，但 FastAPI worker orchestrator
 仍使用 Claude-specific session streaming 和 model routing。未来的 runtime

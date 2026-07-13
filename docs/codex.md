@@ -30,7 +30,7 @@ codex plugin add clade@clade
 
 The plugin under `plugins/clade/` contains:
 
-- 20 core workflows: commit, security review, release documentation, frontend
+- 21 core workflows: commit, Codex usage pace, security review, release documentation, frontend
   design, handoff/pickup, incident response, investigation, architecture maps,
   PR review/merge, research, retrospectives, project review, sync, verification,
   worktrees, and supporting decision workflows.
@@ -70,6 +70,42 @@ $review the whole project and fix failures until clean
 
 Natural-language activation works too.
 
+## Codex Usage and Status Line
+
+Clade 0.3 adds a native `$codex-usage` workflow. It reads rate-limit snapshots
+through the authenticated `codex app-server` protocol, so it never opens or
+prints `~/.codex/auth.json`.
+
+```text
+$codex-usage
+$codex-usage setup minimal
+$codex-usage style icon
+$codex-usage style detail
+$codex-usage theme bird
+$codex-usage --json
+```
+
+The default `minimal` view is deliberately terse:
+
+```text
+xingyushen(main)-9% (6d)
+```
+
+It contains project, branch, pace versus a 95% utilization target, and reset
+time. `style icon` inserts the selected theme symbol; `style detail` expands all
+available Codex limit buckets and percentages. Plain `setup` safely merges the
+native `five-hour-limit` and `weekly-limit` footer fields into
+`~/.codex/config.toml`. `setup minimal` selects only directory, branch, and the
+weekly limit; `setup full` also shows model, context, and both limit windows.
+Only the explicit layout commands replace the existing `status_line` array.
+
+Codex also provides `/usage` for its built-in account view, `/status` for the
+current session, and `/statusline` for interactive footer configuration. Start
+a new Codex session after changing the footer. Codex's native footer accepts a
+fixed list of fields rather than an arbitrary formatter command, so the exact
+Clade compact string is produced by `$codex-usage`; the persistent footer uses
+the closest native field combination.
+
 ## MCP 0.2.0 Runtime Selection
 
 For Cursor, Windsurf, or another MCP client that should delegate Clade skills to
@@ -107,10 +143,10 @@ skill catalog and upgrade instructions.
 
 ## Compatibility Boundary
 
-The full overnight orchestrator, Claude-specific agents, status line, provider
-switcher, quota integrations, and correction-learning hooks still depend on the
-Claude CLI layer. They are deliberately excluded from the first native plugin
-release rather than presented as native while secretly invoking Claude.
+The full overnight orchestrator, Claude-specific agents, provider switcher,
+cross-machine usage aggregation, and correction-learning hooks still depend on
+the Claude CLI layer. They remain outside the native plugin rather than being
+presented as native while secretly invoking Claude.
 
 The MCP package now has a real Codex runtime, but the FastAPI worker orchestrator
 still uses Claude-specific session streaming and model routing. A future
