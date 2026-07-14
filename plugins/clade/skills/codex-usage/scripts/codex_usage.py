@@ -30,7 +30,12 @@ FULL_STATUS_LINE = [
     "git-branch",
     "current-dir",
 ]
-MINIMAL_STATUS_LINE = ["current-dir", "git-branch", "weekly-limit"]
+# `project-name` (short repo name) instead of `current-dir` (full path): the
+# Codex footer truncates from the right, and a long working-directory path pushes
+# the weekly-limit usage field off-screen. Keeping the location field compact and
+# the usage field last preserves the `project · branch · usage` reading order while
+# leaving the important pace figure visible on narrow panes.
+MINIMAL_STATUS_LINE = ["project-name", "git-branch", "weekly-limit"]
 USAGE_ITEMS = ("five-hour-limit", "weekly-limit")
 STYLES = ("minimal", "icon", "detail")
 THEMES = {
@@ -371,7 +376,15 @@ def _merge_status_line(text: str, layout: str = "merge") -> tuple[str, bool]:
 
     if layout == "merge":
         merged = list(items)
-        insert_at = merged.index("current-dir") if "current-dir" in merged else len(merged)
+        # Insert the usage fields before whichever location field appears first
+        # (`current-dir` or `project-name`) so a long path can be truncated on the
+        # right without hiding the usage percentages; otherwise append at the end.
+        location_positions = [
+            merged.index(field)
+            for field in ("current-dir", "project-name")
+            if field in merged
+        ]
+        insert_at = min(location_positions, default=len(merged))
         for item in USAGE_ITEMS:
             if item not in merged:
                 merged.insert(insert_at, item)

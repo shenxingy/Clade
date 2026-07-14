@@ -95,9 +95,12 @@ It contains project, branch, pace versus a 95% utilization target, and reset
 time. `style icon` inserts the selected theme symbol; `style detail` expands all
 available Codex limit buckets and percentages. Plain `setup` safely merges the
 native `five-hour-limit` and `weekly-limit` footer fields into
-`~/.codex/config.toml`. `setup minimal` selects only directory, branch, and the
-weekly limit; `setup full` also shows model, context, and both limit windows.
-Only the explicit layout commands replace the existing `status_line` array.
+`~/.codex/config.toml`. `setup minimal` selects the short project name, branch,
+and the weekly limit; `setup full` also shows model, context, and both limit
+windows. The project name is used instead of the full working-directory path
+because the Codex footer truncates from the right, and a long path would push the
+weekly-limit usage figure off-screen. Only the explicit layout commands replace
+the existing `status_line` array.
 
 Codex also provides `/usage` for its built-in account view, `/status` for the
 current session, and `/statusline` for interactive footer configuration. Start
