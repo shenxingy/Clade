@@ -1,0 +1,29 @@
+---
+# Run-contract schema version. Only version 1 is currently supported.
+version: 1
+# Maximum workers that may run concurrently.
+max_concurrency: 4
+# Classified-failure retry policy (max_attempts includes the first attempt).
+retry:
+  enabled: true
+  max_attempts: 3
+# Declared exponential-backoff policy for run schedulers.
+backoff:
+  initial_seconds: 2
+  max_seconds: 30
+  multiplier: 2
+# A loop converges after convergence_n iterations with <= convergence_k changes.
+convergence_k: 2
+convergence_n: 3
+max_iterations: 20
+# Commands that must pass before the run is considered verified.
+verify_commands:
+  - python3 -m pytest -q
+  - python3 -m py_compile orchestrator/*.py
+# required = oracle gate; advisory = review without a hard gate; disabled = no oracle/review.
+oracle_posture: required
+# Whether successful, approved work may be merged automatically.
+auto_merge: false
+---
+
+This optional file is the single source of truth for a deployment's autonomous-run policy. Copy it to `CLADE_WORKFLOW.md`, review it like code, and commit it so each run can record the exact Git blob SHA of the policy it used.
