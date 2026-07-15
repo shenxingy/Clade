@@ -28,12 +28,21 @@ Then STOP. Do not attempt to answer the question yourself.
 2. Run the question through Codex, read-only:
 
 ```bash
-codex exec --sandbox read-only "<the question, verbatim>"
+codex exec --sandbox read-only "<the question, verbatim>" < /dev/null
 ```
 
 - ALWAYS use `--sandbox read-only`. Never escalate the sandbox, never pass
   flags that allow writes or command execution.
-- For long questions or diffs, pipe via stdin or a heredoc instead of inlining.
+- **ALWAYS redirect stdin** (`< /dev/null`, or a heredoc). Run non-interactively
+  by Claude Code's Bash, `codex exec` otherwise BLOCKS waiting for stdin EOF even
+  when the prompt is passed as an argument — the invocation hangs until timeout.
+- For long questions or diffs, feed the prompt via a heredoc — it closes stdin, so
+  no separate redirect is needed:
+  ```bash
+  codex exec --sandbox read-only <<'EOF'
+  <the question / diff, verbatim>
+  EOF
+  ```
 
 3. Relay the output verbatim under a `## Codex says` heading. Do not edit,
    summarize, soften, or blend in your own judgment — the caller wants the
