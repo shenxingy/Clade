@@ -10,7 +10,7 @@ A curated, **vetted** watch-list of the people, companies, blogs, and repos wort
 
 > **三人行必有我师** — everyone on this list has *something*. But the tiers below are an honest editorial call about who is a **benchmark** for Clade's specific niche (autonomous loop + supervisor/worker orchestration on top of Claude Code) versus who is good-but-adjacent. Read Tier 1 first.
 
-- **Last reviewed:** 2026-06-13
+- **Last reviewed:** 2026-07-15 (OpenAI repos + members + frontier re-sweep; prior full sweep 2026-06-13)
 - **Review cadence:** re-sweep quarterly, or whenever a frontier model drops. Update "Last reviewed", append to the [Changelog](#changelog), and re-tier as the field moves.
 - **How to use it:** pick one Tier-1 entry per session, read its canonical piece, then ask *"what does Clade do here, and is it deficient or just different?"* (see [How we vet what we absorb](#how-we-vet-what-we-absorb)). Confirmed gaps → fix in code immediately, don't TODO them.
 
@@ -51,6 +51,10 @@ These map 1:1 onto decisions in `worker.py`, `loop-runner.sh`, the `/loop` skill
 Closest-architecture peers and adjacent craft (evals, PR hygiene, TUI). Many already deep-dived locally.
 
 **Peer harnesses / tools**
+- ✅ **OpenAI Codex + codex-plugin-cc** ([codex](https://github.com/openai/codex) · [codex-plugin-cc](https://github.com/openai/codex-plugin-cc) · [deep-dive](research/2026-07-15-openai-agentic-repos.md)) — the coding agent Clade drives + the official CC↔Codex companion plugin (app-server broker, resumable named jobs, `ALLOW|BLOCK` stop-review gate). **Deep-dived 2026-07-15**: our Codex backend is knowingly incomplete — steal their companion adapter + the `codex exec --json` / `--output-schema` worker protocol.
+- 📋 **ACP / Block Goose** ([goose](https://github.com/aaif-goose/goose)) — Agent Client Protocol is becoming the session/control-plane boundary (Goose v1.43 fully migrated: capability discovery, cancellation, durable session state, per-message cost telemetry; OpenHands + OpenCode ACP-facing). Watch for compat.
+- 📋 **Warp "cloud software factories"** ([skill-optimization loop](https://www.warp.dev/blog/building-a-skill-optimization-loop)) — evaluator-driven skill improvement (held-out tasks + a separate grader) + spec/triage/validation skill pipelines. Strongest new source for making skills *testable*, not static prompts.
+- 📋 **Vercel AI SDK Harness** ([vercel/ai](https://github.com/vercel/ai)) — multi-harness adapter layer (Codex / Claude Code / OpenCode under one stream + sandbox + approval contract); reference for keeping the supervisor protocol separate from provider adapters.
 - ✅ **SST opencode** ([opencode.ai](https://opencode.ai) · [deep-dive](research/2026-06-18-sst-opencode.md)) — **most architecturally similar project to Clade.** Deep-dived 2026-06-18: client/server split + session model already present; its judge-hardening idea drove wiring `DISALLOWED_TOOLS_JUDGE` to 5 read-only judges (now built). Interactive-first vs our autonomous-first → most headline features different-not-deficient.
 - ✅ **OpenHands / All Hands AI** ([deep-dive](research/2026-03-30-openhands-architecture.md)) — open supervisor + Plan/Code-mode split, cloud. Also see its **bot PR stream** below.
 - ✅ **Aider** ([deep-dive](research/2026-03-30-aider-research.md)) — repo-map + git-native commit-per-change. Self-reports AI-authorship % (see bot section).
@@ -138,4 +142,5 @@ Concrete, reversible things this study program surfaced. For the **full record**
 
 ## Changelog
 
+- **2026-07-15** — OpenAI sweep + frontier re-check (4 parallel **codex** workers, orchestrated). New deep-dives: [OpenAI Codex & agent-framework repos](research/2026-07-15-openai-agentic-repos.md) (🔨 — make Codex workers first-class, a CC↔Codex companion adapter, schema-validated handoff envelopes, an end-to-end loop eval corpus, oracle calibration), [OpenAI member workflows](research/2026-07-15-openai-people-workflows.md) (seratch/GrantBirki/hbagdi), [Frontier update](research/2026-07-15-frontier-update.md). New watch-list entries: ACP/Goose (control-plane), Warp cloud-software-factories, Vercel AI SDK Harness, Factory Incident Response. Surfaced Anthropic "Harness design for long-running apps" (clean reset + structured handoff beats compaction).
 - **2026-06-13** — Initial list created and web-verified (3 parallel research agents, June 2026). Added Tier structure, bot-behavior section, multi-agent debate, currency notes. Corrected: Roo Code dead, Windsurf→Devin, Gemini CLI→Antigravity, Goose→LF. New entries: Addy Osmani (Loop Engineering), Boris Cherny, Peter Steinberger, Anthropic "Effective harnesses for long-running agents", Agent Fingerprint study, Sonar Foundation Agent.
