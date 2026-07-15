@@ -30,15 +30,17 @@ sources:
   - https://ampcode.com/news/agents-in-orbs
   - https://github.com/vercel/ai
 integrated_items: []
+# Loop status 2026-07-15: 3 built + 1 partial (PRs #16-#18); 4 deferred as
+# research-ops/design-heavy (need live benchmarking or an architecture decision).
 needs_work_items:
-  - "Reset-with-structured-handoff as a first-class loop mode (clean context reset + typed handoff > compaction for long runs); measure marginal lift of evaluator stages per model (Anthropic harness-design, Mar 2026)"
-  - "ACP watch/compat: mirror explicit capability discovery, cancellation, durable session state, and per-message cost telemetry (Goose v1.43 / OpenHands / OpenCode)"
-  - "Model-topology optimization: benchmark lead + cheaper-sidekick delegation mixes on Clade's OWN tasks, not lead-model token price (Cognition Fable+sidekick: $1.86/60.7 vs Opus $2.04/54.6)"
-  - "Evaluator-driven skill-optimization loop: held-out tasks + a separate grader iteratively improve a skill, vs treating skills as static prompts (Warp)"
-  - "Run budgets + trace attribution (repo+harness+model) + interrupt endpoint + bounded tool concurrency as orchestration primitives (OpenHands 1.11.0)"
-  - "Judge independence/diversity (tests + static checks + a different model or constrained rubric) to break correlated writer/reviewer blind spots + machine-checkable stop criteria for unattended goals (Addy Osmani)"
-  - "Handoffs/skills must preserve architecture vocabulary, invariants, and ownership rationale — not just a progress log + next action (Armin Ronacher, The Tower Keeps Rising)"
-  - "Agent-ready reproducible worktree image + proof-producing browser/test tooling as a prerequisite for scalable background workers (Amp Orbs / Factory)"
+  - "[DONE #18] Reset-with-structured-handoff as a first-class loop mode (clean context reset + typed handoff > compaction for long runs); measure marginal lift of evaluator stages per model (Anthropic harness-design, Mar 2026) — loop_context_mode shipped; per-model marginal-lift measurement is a separate research task"
+  - "[DEFERRED research-ops] ACP watch/compat: mirror explicit capability discovery, cancellation, durable session state, and per-message cost telemetry (Goose v1.43 / OpenHands / OpenCode)"
+  - "[DEFERRED research-ops] Model-topology optimization: benchmark lead + cheaper-sidekick delegation mixes on Clade's OWN tasks, not lead-model token price (Cognition Fable+sidekick: $1.86/60.7 vs Opus $2.04/54.6)"
+  - "[DEFERRED research-ops] Evaluator-driven skill-optimization loop: held-out tasks + a separate grader iteratively improve a skill, vs treating skills as static prompts (Warp)"
+  - "[DONE #17] Run budgets + trace attribution (repo+harness+model) + interrupt endpoint + bounded tool concurrency as orchestration primitives (OpenHands 1.11.0) — budget ceiling + attribution shipped; interrupt endpoint + concurrency cap are incremental follow-ups"
+  - "[DONE #16] Judge independence/diversity (tests + static checks + a different model or constrained rubric) to break correlated writer/reviewer blind spots + machine-checkable stop criteria for unattended goals (Addy Osmani) — deterministic judge_diversity shipped; machine-checkable stop is the #17 run-budget terminal reason"
+  - "[PARTIAL #14/#18] Handoffs/skills must preserve architecture vocabulary, invariants, and ownership rationale — not just a progress log + next action (Armin Ronacher, The Tower Keeps Rising) — handoff registry validates/projects typed fields and the reset seed carries invariants; the prompt-design 'preserve vocabulary/ownership rationale' half is still open"
+  - "[DEFERRED design-heavy] Agent-ready reproducible worktree image + proof-producing browser/test tooling as a prerequisite for scalable background workers (Amp Orbs / Factory)"
 ---
 
 <!-- Research by 1 codex worker, 2026-07-15. Only NEW-since-2026-06-13 items; "no notable change" sources omitted from the needs_work rollup. -->
