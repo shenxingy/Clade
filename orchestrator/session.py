@@ -38,8 +38,19 @@ from worker import WorkerPool, _rank_tasks
 from worker_tldr import _generate_code_tldr
 from worker_review import _escalate_oracle_reject_plateau
 from run_budget import budget_from_settings, check_budget
+from reset_handoff import build_handoff_seed, render_seed
+from worker_envelope import build_from_worker
 
 logger = logging.getLogger(__name__)
+
+
+def _with_reset_seed(description: str, prior_envelope: dict | None) -> str:
+    if GLOBAL_SETTINGS.get("loop_context_mode", "carry") != "reset":
+        return description
+    seed = render_seed(build_handoff_seed(prior_envelope or {}))
+    # Keep the [Loop-N]/[Plan-N] prefix first: retry/budget policies classify
+    # loop-owned tasks from that prefix while build_task_file reorders the seed.
+    return f"{description}\n\n---\n\n{seed}"
 
 # ─── Orchestrator Session (PTY) ───────────────────────────────────────────────
 
@@ -252,6 +263,7 @@ class ProjectSession:
         Each fires its own notification event (loop_converged / loop_exhausted).
         """
         consecutive_empty = 0
+        prior_envelope: dict | None = None
         while True:
             loop_state = await self.task_queue.get_loop()
             if not loop_state or loop_state["status"] != "running":
@@ -370,6 +382,7 @@ class ProjectSession:
                         f"[Loop-{iteration}] "
                         f"{finding.get('task', finding.get('description', ''))}"
                     )
+                    task_desc = _with_reset_seed(task_desc, prior_envelope)
                     task = await self.task_queue.add(task_desc, model_short)
                     spawned_task_ids.append(task["id"])
                     _max_w = GLOBAL_SETTINGS.get("max_workers", 0)
@@ -386,6 +399,7 @@ class ProjectSession:
                         f"the codebase at {context_dir}.\n"
                         f"Report what you find. Do NOT modify any files.\nQuery: {query}"
                     )
+                    task_desc = _with_reset_seed(task_desc, prior_envelope)
                     task = await self.task_queue.add(task_desc, model_short)
                     spawned_task_ids.append(task["id"])
                     _max_w = GLOBAL_SETTINGS.get("max_workers", 0)
@@ -423,6 +437,17 @@ class ProjectSession:
                     if all_done:
                         break
                     await asyncio.sleep(3)
+
+            if GLOBAL_SETTINGS.get("loop_context_mode", "carry") == "reset":
+                # Select the last spawned worker's versioned terminal contract.
+                workers_by_task = {
+                    worker.task_id: worker for worker in self.worker_pool.workers.values()
+                    if worker.task_id in spawned_task_ids
+                }
+                for task_id in reversed(spawned_task_ids):
+                    if task_id in workers_by_task:
+                        prior_envelope = build_from_worker(workers_by_task[task_id]).to_dict()
+                        break
 
             changes_this_iter = len(spawned_task_ids)
 
