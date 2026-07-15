@@ -3,18 +3,9 @@ Orchestrator worker — execution engine.
 Worker, WorkerPool.
 SwarmManager is in swarm.py.
 
-Extracted modules (keep worker.py under 1500 lines):
-- condensers.py      — Condenser ABC + 4 implementations
-- worker_utils.py    — output helpers, lint reflection, LoopDetectionService,
-                       activity-state/ownership/undo-commit/classify-retry helpers
-- worker_hydrate.py  — _pre_hydrate (Stripe Blueprint pre-hydration)
-- worker_taskfile.py — build_task_file (task file construction + context injection)
-- config.py          — _build_tool_flags, _parse_task_type, _TOOL_SUBSETS
-- worker_tldr.py     — _generate_code_tldr, _score_task
-- worker_review.py   — _oracle_review, _write_pr_review
-- github_sync.py     — GitHub CLI wrappers
+Supporting concerns are extracted into sibling ``worker_*`` and service modules
+(see CLADE.md "Key File Map"); keep this file under 1500 lines.
 """
-
 from __future__ import annotations
 
 import asyncio
@@ -66,6 +57,7 @@ from worker_review import (
 from worker_taskfile import build_task_file
 from event_stream import EventStream
 from worker_envelope import build_from_worker
+from worker_phase_graph import record_transition, validate_transition
 from handoff_registry import project_handoff, validate_handoff
 from tracing import TracingService, start_task_span
 from reactions import ReactionExecutor
@@ -390,15 +382,23 @@ class Worker:
         # can reap it later; fire-and-forget, losing this write is non-fatal.
         if self._task_queue:
             asyncio.create_task(self._task_queue.update(self.task_id, pgid=self.pgid))
+        _phase_from = self.status
         self.status = "running"
         self.transition_reason = "process_started"
+        _phase_extra = {"worker_id": self.id}
+        if GLOBAL_SETTINGS.get("phase_graph_validate", False):
+            _phase_ok, _phase_reason = validate_transition(_phase_from, self.status)
+            if not _phase_ok:
+                _phase_extra.update(illegal=True, reason=_phase_reason)
+                logger.warning("Illegal phase transition for task %s: %s", self.task_id, _phase_reason)
+        _emit_phase = lambda event: self._event_stream.emit("state_change", "phase_transition", source="system", content=event)  # noqa: E731
+        record_transition(_emit_phase, self.task_id, _phase_from, self.status, extra=_phase_extra)
         self._event_stream.emit(
             event_type="action",
             event_kind="tool_call",
             source="worker",
             content={"shell_cmd": shell_cmd[:500], "pid": self.pid},
         )
-        # Start task span for tracing
         self._task_span = start_task_span(self.id, self.description, self.task_id)
 
     def is_alive(self) -> bool:

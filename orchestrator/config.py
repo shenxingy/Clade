@@ -108,6 +108,9 @@ _SETTINGS_DEFAULTS = {
     "run_budget_usd": 0.0,  # max cost per autonomous run (0 = unlimited)
     "run_budget_tokens": 0,  # max tokens per autonomous run (0 = unlimited)
     "auto_oracle": False,
+    # Additive lifecycle observability. False records declared phase transitions
+    # without inspecting legality; True tags/logs illegal edges but never blocks.
+    "phase_graph_validate": False,
     # Independent, non-LLM review evidence recorded alongside the oracle verdict.
     # Advisory by default; the separate block flag promotes only the dangerous
     # oracle-approved/deterministic-failed disagreement to a hard gate.
