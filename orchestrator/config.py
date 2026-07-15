@@ -233,13 +233,34 @@ _SETTINGS_DEFAULTS = {
 
 
 def _load_settings() -> dict:
-    defaults = dict(_SETTINGS_DEFAULTS)
-    if _settings_file.exists():
-        try:
-            defaults.update(json.loads(_settings_file.read_text()))
-        except Exception:
-            pass
-    return defaults
+    settings = dict(_SETTINGS_DEFAULTS)
+    if not _settings_file.exists():
+        return settings
+    try:
+        loaded = json.loads(_settings_file.read_text())
+    except Exception as exc:
+        # Fail open to defaults, but never silently: a corrupt settings file
+        # would otherwise revert every setting with no signal at all.
+        logger.warning(
+            "orchestrator-settings.json is unreadable (%s); using defaults", exc
+        )
+        return settings
+    if not isinstance(loaded, dict):
+        logger.warning(
+            "orchestrator-settings.json is not a JSON object; using defaults"
+        )
+        return settings
+    # Surface unknown keys (like Codex's deny_unknown_fields): a typo'd setting
+    # is otherwise merged-but-ignored, silently disabling the feature it meant
+    # to configure. Warn only — keep merging so behavior is unchanged.
+    unknown = sorted(k for k in loaded if k not in _SETTINGS_DEFAULTS)
+    if unknown:
+        logger.warning(
+            "orchestrator-settings.json has unknown setting keys (ignored): %s",
+            ", ".join(unknown),
+        )
+    settings.update(loaded)
+    return settings
 
 
 def _secure_file(path: Path, mode: int = 0o600) -> None:
