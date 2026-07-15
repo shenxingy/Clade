@@ -485,7 +485,7 @@ Async idea collection, AI evaluation, process management, three-mode UI.
 - [x] **Ideas-first redesign** — left panel = ideas inbox (input + Go cards), right panel = tasks/workers/processes/history only. Removed terminal, loop/swarm/deferred/scheduler/analytics sections, app-loop.js (981 lines). Added execute endpoint + slt-style usage pace.
 
 ### Tech Debt
-- [ ] Ideas DB connection pooling — each IdeasManager call opens a new connection (`ideas.py:59`) — **SKIP**: matches TaskQueue convention, SQLite local = negligible benefit from pooling
+- [x] Ideas DB connection pooling — RESOLVED (doc was stale): IdeasManager uses a shared persistent connection (`_get_conn` caches `self._conn`; closed on shutdown, `server.py:86`), NOT per-operation connect. Regression-tested in `tests/test_ideas_manager.py` (asserts reuse). NB: diverges from TaskQueue's per-op `aiosqlite.connect()` pattern.
 - [x] Track fire-and-forget asyncio.create_task refs for graceful shutdown (`routes/ideas.py:76,106,150`)
 - [x] ProcessPool shutdown hook — register atexit/FastAPI shutdown event (`process_manager.py:233`)
 - [x] Async interaction UX — inbox-style rapid input: batch paste, no selectIdea after submit, targeted WS card updates with fade-in animation (`app-ideas.js`, `styles.css`)
