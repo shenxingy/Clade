@@ -1,0 +1,8 @@
+{
+  "name": "config-lower-cap-escalates-early",
+  "description": "Threshold sensitivity: with oracle_max_reject_rounds lowered to 2, the cap escalates at depth 2 (the 3rd rejection) instead of depth 5.",
+  "is_critical": false,
+  "config": {"oracle_max_reject_rounds": 2},
+  "verdicts": ["reject", "reject", "reject"],
+  "expected": {"terminal": "escalated", "attempts": 3, "fanout_per_attempt": [1, 3, 0]}
+}

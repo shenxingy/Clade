@@ -1,0 +1,7 @@
+{
+  "name": "critical-fanout-first-rejection",
+  "description": "Critical-path task fans out diverse samples on the FIRST rejection (no cheap sequential step), then converges.",
+  "is_critical": true,
+  "verdicts": ["reject", "approve"],
+  "expected": {"terminal": "converged", "attempts": 2, "fanout_per_attempt": [3, 0]}
+}
