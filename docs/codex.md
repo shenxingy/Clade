@@ -144,15 +144,46 @@ Doing so duplicates tool descriptions and turns a native workflow into a nested
 See the [MCP package guide](../mcp-package/README.md) for the complete bundled
 skill catalog and upgrade instructions.
 
+## Codex as a Worker Provider (orchestrator)
+
+The FastAPI orchestrator can run its pool workers on `codex exec` as a
+first-class backend, not just via manual orchestration. `worker_provider.py`
+abstracts *which* agent CLI a worker runs (parallel to `execution_backend.py`,
+which abstracts *how* a process is spawned). Because a worker's completion is
+process exit and its results come from `git diff` of the worktree — both
+provider-agnostic — a Codex worker flows through the same WorkerPool, oracle
+gate, and `WorkerEnvelope` pipeline as a Claude worker.
+
+Select it globally or per task:
+
+| Where | Key | Values |
+|-------|-----|--------|
+| `~/.claude/orchestrator-settings.json` | `worker_provider` | `claude` (default) · `codex` |
+| task row | `provider` | overrides the setting for one task |
+
+The Codex worker runs `codex exec --dangerously-bypass-approvals-and-sandbox
+"$(cat <task>)" < /dev/null` (the worktree is throwaway and the oracle gate
+still guards every merge; `< /dev/null` is mandatory — `codex exec` otherwise
+blocks on stdin EOF and hangs). An explicit Codex model id (`gpt-*`, `o4-*`,
+`codex-*`) is passed with `-m`; a Claude alias means "use the `~/.codex`
+default". The default `claude` path is byte-identical to before — verified by
+`tests/test_worker_provider.py`.
+
+**Phase 2 (not yet wired):** consume `codex exec --json` JSONL (persist
+`thread_id` from `thread.started`), enforce `--output-schema` on the result and
+capture it into `completion_summary`, and resume a thread by id on retry instead
+of a fresh run. Cancellation already works (the process-group kill is
+provider-agnostic) and per-machine usage is tracked separately by `ccusage`.
+
 ## Compatibility Boundary
 
-The full overnight orchestrator, Claude-specific agents, provider switcher,
-cross-machine usage aggregation, and correction-learning hooks still depend on
-the Claude CLI layer. They remain outside the native plugin rather than being
-presented as native while secretly invoking Claude.
+Claude-specific agents, the provider switcher, cross-machine usage aggregation,
+and correction-learning hooks still depend on the Claude CLI layer. They remain
+outside the native plugin rather than being presented as native while secretly
+invoking Claude.
 
-The MCP package now has a real Codex runtime, but the FastAPI worker orchestrator
-still uses Claude-specific session streaming and model routing. A future
-orchestrator runtime adapter must cover command construction, resume semantics,
-JSONL events, model aliases, usage accounting, and cancellation together before
-that layer can honestly be called provider-neutral.
+Worker **command construction, model resolution, and cancellation** are now
+provider-neutral (see above); the remaining Codex-worker gaps before the
+orchestrator layer is fully provider-neutral are **JSONL event streaming,
+thread resume semantics, and structured-result/usage accounting** — tracked as
+Phase 2 in `worker_provider.py`.
