@@ -70,6 +70,30 @@ reject-round-cap gate, `parallel_fix_samples`, or `oracle_max_reject_rounds`.
 `_ORACLE_SPEC_PROMPT`, `_ORACLE_QUALITY_PROMPT`, `_FIX_INTENT_CRITERION`,
 `_build_oracle_task_block`, the severity gate, or the confidence gate.
 
+### Oracle calibration (`run_oracle_calibration.py`)
+
+Pass rate treats false-approves and false-rejects equally; calibration makes the
+dangerous side explicit. A **false-approve** is a predicted `approve` for a
+fixture whose ground-truth label is `rejected`; its rate is calculated over all
+ground-truth rejects. The harness also reports the confusion matrix, both
+classes' precision/recall, false-reject rate, and a deterministic bootstrap CI.
+`unreviewed` infra fixtures are excluded and named in the output.
+
+```bash
+# Offline by default: a small recorded sample, no API calls.
+python3 evals/run_oracle_calibration.py
+
+# Calibrate a recorded oracle run (JSONL: {"case": "fixture-id", "predicted": "approve|reject"}).
+python3 evals/run_oracle_calibration.py --predictions predictions.jsonl --false-approve-ceiling 0.05 --json
+
+# Live replay is manual/scheduled only under the same cost policy as the oracle eval.
+python3 evals/run_oracle_calibration.py --live --false-approve-ceiling 0.05
+```
+
+The optional ceiling is an auto-merge gate: the command exits 1 when the
+false-approve rate exceeds it. Default operation remains offline; never add
+`--live` to per-push CI.
+
 ## Cost policy
 
 - One full live run ≈ **31 haiku calls** (14 short-path cases × 2 passes +
