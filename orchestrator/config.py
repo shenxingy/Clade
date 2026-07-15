@@ -105,6 +105,11 @@ _SETTINGS_DEFAULTS = {
     "loop_convergence_n": 3,
     "loop_max_iterations": 20,
     "auto_oracle": False,
+    # Independent, non-LLM review evidence recorded alongside the oracle verdict.
+    # Advisory by default; the separate block flag promotes only the dangerous
+    # oracle-approved/deterministic-failed disagreement to a hard gate.
+    "judge_diversity_enabled": False,
+    "judge_diversity_block": False,
     # Reproduction-test filter (Agentless §6B validation half). When a fix task's
     # generated repro test was confirmed FAILING pre-fix, re-run it post-fix: its
     # result always flows into oracle evidence. With this True, a still-failing
