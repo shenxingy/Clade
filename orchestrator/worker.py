@@ -64,6 +64,7 @@ from worker_review import (
 )
 from worker_taskfile import build_task_file
 from event_stream import EventStream
+from worker_envelope import build_from_worker
 from tracing import TracingService, start_task_span
 from reactions import ReactionExecutor
 from error_classifier import (
@@ -704,6 +705,12 @@ class Worker:
                 logger.info("Handoff file found for task %s — flagging for continuation", self.task_id)
             except Exception:
                 pass
+        self._event_stream.emit(
+            event_type="state_change",
+            event_kind="worker_envelope",
+            source="worker",
+            content=build_from_worker(self).to_dict(),
+        )
         await self._cleanup_worktree()
 
     def _check_file_ownership(self, changed_files: list[str]) -> tuple[bool, str]:
