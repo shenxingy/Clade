@@ -42,6 +42,13 @@ from github_sync import (
     _gh_pull_issues,
     _gh_push_all,
 )
+from run_contract import (
+    contract_fingerprint,
+    effective_settings,
+    load_run_contract,
+    validate_run_contract,
+)
+from tracing import TracingService
 
 logger = logging.getLogger(__name__)
 
@@ -320,10 +327,20 @@ async def start_loop(session_id: str, body: dict):
     if not artifact_path:
         raise HTTPException(status_code=400, detail="artifact_path required")
     context_dir = body.get("context_dir") or None
+    # Repository contract is opt-in. Keep the historical GLOBAL_SETTINGS path
+    # literally unchanged when CLADE_WORKFLOW.md is absent.
+    contract = load_run_contract(s.project_dir)
+    run_settings = GLOBAL_SETTINGS
+    contract_sha = None
+    if contract is not None:
+        for warning in validate_run_contract(contract):
+            logger.warning("CLADE_WORKFLOW.md: %s", warning)
+        run_settings = effective_settings(contract, GLOBAL_SETTINGS)
+        contract_sha = contract_fingerprint(s.project_dir)
     try:
-        convergence_k = int(body.get("convergence_k", GLOBAL_SETTINGS.get("loop_convergence_k", 2)))
-        convergence_n = int(body.get("convergence_n", GLOBAL_SETTINGS.get("loop_convergence_n", 3)))
-        max_iterations = int(body.get("max_iterations", GLOBAL_SETTINGS.get("loop_max_iterations", 20)))
+        convergence_k = int(body.get("convergence_k", run_settings.get("loop_convergence_k", 2)))
+        convergence_n = int(body.get("convergence_n", run_settings.get("loop_convergence_n", 3)))
+        max_iterations = int(body.get("max_iterations", run_settings.get("loop_max_iterations", 20)))
     except (ValueError, TypeError):
         raise HTTPException(status_code=400, detail="convergence_k, convergence_n, max_iterations must be integers")
     supervisor_model = body.get("supervisor_model", GLOBAL_SETTINGS.get("loop_supervisor_model", "sonnet"))
@@ -354,7 +371,28 @@ async def start_loop(session_id: str, body: dict):
         mode=mode,
     )
 
-    s._loop_task = asyncio.create_task(s._run_supervisor())
+    async def _run_with_contract_trace() -> None:
+        trace_key = f"loop-{s.session_id}"
+        span = TracingService.get_instance().start_span(
+            trace_key,
+            "autonomous loop",
+            span_type="run",
+            attributes={
+                "run_contract_version": contract.get("version"),
+                "run_contract_sha": contract_sha,
+            },
+        )
+        try:
+            await s._run_supervisor()
+        finally:
+            service = TracingService.get_instance()
+            service.end_span(trace_key, span)
+            service.write_trace(trace_key)
+
+    if contract is None:
+        s._loop_task = asyncio.create_task(s._run_supervisor())
+    else:
+        s._loop_task = asyncio.create_task(_run_with_contract_trace())
     return await s.task_queue.get_loop()
 
 
