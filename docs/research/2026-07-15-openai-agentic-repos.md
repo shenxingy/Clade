@@ -36,10 +36,11 @@ integrated_items:
   - "Typed child-worker handoff fields (handoff_type/handoff_payload) + _handoff_to_worker; JSONL event causality (event_stream.py); TracingService span tree"
   - "Skills system with a CC<->Codex generator (configs/skills, plugins/clade/skills, skills.list) — more complete than openai/skills' now-deprecated catalog"
   - "Oracle fixtures (20 live-oracle + supervisor-parser) + SWE-bench runners (orchestrator/evals/) — judge-level eval exists; the gap is the loop-level corpus"
-# Loop status 2026-07-15: 7/9 built as opt-in additive primitives (PRs #11-#15,#19);
-# 2 deferred as design-heavy (need architecture decisions, not a single additive module).
+# Loop status 2026-07-15: 8/9 built (PRs #11-#15,#19,#20); Codex-first-class phase 1
+# shipped (#20: provider abstraction, native spawn, byte-identical claude default);
+# 1 deferred (CC<->Codex adapter). #20 phase-2 (JSONL/thread-resume/output-schema) open.
 needs_work_items:
-  - "[DEFERRED design-heavy] Codex backend as first-class worker: consume `codex exec --json` (persist thread_id from thread.started) + require an `--output-schema` result {status,summary,tests,changed_files,blocker}; add resume/cancel/usage before advertising Codex-native /loop (openai/codex)"
+  - "[DONE #20 phase-1] Codex backend as first-class worker: consume `codex exec --json` (persist thread_id from thread.started) + require an `--output-schema` result {status,summary,tests,changed_files,blocker}; add resume/cancel/usage before advertising Codex-native /loop (openai/codex) — worker_provider.py ships native spawn (opt-in worker_provider setting + per-task provider col, byte-identical claude default); cancel already provider-agnostic; JSONL/thread_id/--output-schema/resume are the documented phase 2"
   - "[DEFERRED design-heavy] CC<->Codex companion adapter: app-server broker + workspace state {job_id,codex_thread_id,session_id,phase,log,final} + resumable named jobs (--resume-last keyed by repo) + a stop-review gate whose review output has a machine-parseable ALLOW|BLOCK first line, run once per changed head (openai/codex-plugin-cc)"
   - "[DONE #14] Handoff registry {type -> JSON Schema/validator, redaction/allowlist, payload-version}: validate before task insert, keep raw payload in events, build the child prompt from a typed projection (openai-agents-python)"
   - "[DONE #15] Optional versioned repo-owned run contract (CLADE_WORKFLOW.md: intake states, concurrency, retry/backoff, worktree hooks, verify commands, oracle/auto-merge posture, worker template); record its git SHA in the task/event span (openai/symphony)"
