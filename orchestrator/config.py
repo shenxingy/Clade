@@ -104,6 +104,8 @@ _SETTINGS_DEFAULTS = {
     "loop_convergence_k": 2,
     "loop_convergence_n": 3,
     "loop_max_iterations": 20,
+    "run_budget_usd": 0.0,  # max cost per autonomous run (0 = unlimited)
+    "run_budget_tokens": 0,  # max tokens per autonomous run (0 = unlimited)
     "auto_oracle": False,
     # Independent, non-LLM review evidence recorded alongside the oracle verdict.
     # Advisory by default; the separate block flag promotes only the dangerous

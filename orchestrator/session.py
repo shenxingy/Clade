@@ -37,6 +37,7 @@ from swarm import SwarmManager
 from worker import WorkerPool, _rank_tasks
 from worker_tldr import _generate_code_tldr
 from worker_review import _escalate_oracle_reject_plateau
+from run_budget import budget_from_settings, check_budget
 
 logger = logging.getLogger(__name__)
 
@@ -203,6 +204,38 @@ class ProjectSession:
             self._watch_task = asyncio.create_task(
                 _watch_session_proposed_tasks(self)
             )
+
+    async def _stop_if_run_budget_exceeded(self, loop_state: dict) -> bool:
+        """Stop the active loop when its opt-in per-run cost/token cap is reached."""
+        budget = budget_from_settings(GLOBAL_SETTINGS)
+        if budget.max_usd is None and budget.max_tokens is None:
+            return False
+
+        try:
+            run_started = datetime.fromisoformat(loop_state["created_at"]).timestamp()
+        except (KeyError, TypeError, ValueError):
+            run_started = self.created_at
+        tasks = await self.task_queue.list()
+        run_tasks = [
+            task for task in tasks
+            if (task.get("created_at") or 0) >= run_started
+            and str(task.get("description") or "").startswith(("[Loop-", "[Plan-"))
+        ]
+        spent_usd = sum(float(task.get("estimated_cost") or 0) for task in run_tasks)
+        spent_tokens = sum(
+            int(task.get("input_tokens") or 0) + int(task.get("output_tokens") or 0)
+            for task in run_tasks
+        )
+        exceeded, reason = check_budget(spent_usd, spent_tokens, budget)
+        if not exceeded:
+            return False
+
+        await self.task_queue.upsert_loop(status="budget_exceeded")
+        logger.warning(
+            "Loop stopped: %s (spent_usd=%.6f, spent_tokens=%d)",
+            reason, spent_usd, spent_tokens,
+        )
+        return True
 
     async def _run_supervisor(self) -> None:
         """Iterative review-fix loop (Ralph-style supervisor).
@@ -393,6 +426,12 @@ class ProjectSession:
 
             changes_this_iter = len(spawned_task_ids)
 
+            # Usage is persisted by worker.py; this policy gate only aggregates
+            # the current run's worker records at the iteration boundary.
+            loop_state = await self.task_queue.get_loop()
+            if loop_state and await self._stop_if_run_budget_exceeded(loop_state):
+                return
+
             # Compute semantic diff hash for oscillation detection
             semantic_hash = ""
             try:
@@ -571,6 +610,9 @@ class ProjectSession:
         while True:
             loop_state = await self.task_queue.get_loop()
             if not loop_state or loop_state["status"] != "running":
+                return
+
+            if await self._stop_if_run_budget_exceeded(loop_state):
                 return
 
             if not plan_path.exists():
