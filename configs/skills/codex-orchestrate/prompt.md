@@ -18,12 +18,16 @@ You are the **orchestrator**. Codex workers are the hands; you are the verificat
    ```
    The worktree has no `.venv` (gitignored) — tell the worker to verify with the main repo's interpreter: `<repo>/orchestrator/.venv/bin/python -m pytest`.
 4. **Write a tight prompt** (one file, fed via stdin). Scope it to ONE gap, name the exact files to study + build, demand **additive** changes (no deleting existing writes), require the worker to run py_compile + the new test + (for core-engine code) the FULL suite, and forbid `git commit` (leave it in the worktree for your review).
-5. **Dispatch — headless, network/writes on, stdin closed, tracked background:**
+5. **Dispatch — headless, network/writes on, stdin closed, detached + polled:**
    ```bash
-   codex exec -C <worktree> --dangerously-bypass-approvals-and-sandbox \
-     -o <last-msg-file> < <prompt-file> > <log> 2>&1
+   setsid nohup bash -c '
+     codex exec -C <worktree> --dangerously-bypass-approvals-and-sandbox \
+       -o <last-msg-file> < <prompt-file> > <log> 2>&1
+     echo "rc=$?" > <done-flag>
+   ' >/dev/null 2>&1 &
+   disown
    ```
-   Run this as a `run_in_background: true` Bash call so completion notifies you. `--dangerously-bypass-approvals-and-sandbox` is safe here: the worktree is throwaway and nothing merges without your review (bubblewrap can't create user namespaces on some hosts anyway, so the plain sandbox degrades).
+   Then launch a **separate** `run_in_background: true` poll that waits for `<done-flag>` to appear (loop `sleep 20; [ -f <done-flag> ] && break`). Why detached, not codex-as-the-tracked-command: a worker that runs many minutes as the *foreground process of a tracked background Bash task* can be **reclaimed by the harness at a turn boundary** — observed killing a codex worker twice at ~1–4 min while it was still in its study phase. `setsid nohup … & disown` runs codex in its own session so it survives turn/session boundaries; the lightweight flag-poll is what gets tracked. `--dangerously-bypass-approvals-and-sandbox` is safe here: the worktree is throwaway and nothing merges without your review (bubblewrap can't create user namespaces on some hosts anyway, so the plain sandbox degrades).
 6. **Verify (验收) — adversarially, independently:** see the checklist below.
 7. **PR + merge** the ones that pass; **fix or re-dispatch** the ones that don't. For core-engine work, merge **sequentially** (each next worktree cut off the just-updated main) so PRs don't conflict on shared files.
 8. **Loop** to the next work item. Report progress per merge.
@@ -31,7 +35,7 @@ You are the **orchestrator**. Codex workers are the hands; you are the verificat
 ## Dispatch gotchas (each is a real failure, not hypothetical)
 
 - **`< /dev/null`** — `codex exec "<prompt>"` in a non-interactive shell (your Bash tool, or a subagent) BLOCKS reading stdin until EOF even though the prompt is an argument. Always redirect stdin (or use a heredoc, which closes it). Symptom: the worker "hangs", the foreground call times out at 120s. This also affects any agent that shells out to codex (`second-opinion-codex` needs it too).
-- **Track your dispatch** — launch each worker with `run_in_background: true`, not `codex exec … &` buried inside a combined command. A bare `&` orphans the process; you never get the completion notification and have to poll by hand.
+- **Detach long workers; poll a flag — don't run codex as the tracked foreground.** A codex worker that runs many minutes as the foreground process of a `run_in_background` Bash task can be reclaimed by the harness mid-run (observed: killed twice at 1–4 min, still in the study phase). Fully detach it (`setsid nohup … & disown`) so it lives in its own session, write a `rc=$?` flag on exit, and track a *separate* lightweight poll that waits for the flag. A quick (<~60s) worker can run as a tracked foreground fine; the detach matters for the long ones. (A bare `codex exec … &` buried in a combined command also survives — it orphans — but then you have no flag and must poll by hand; the `setsid`+flag form is the clean version.)
 - **Worktree, not the live checkout** — never let a worker edit the repo you're standing in, and never let two writers share one worktree/build dir. Cut a fresh worktree per worker off `origin/main`.
 
 ## Verification checklist (do NOT skip — this is the whole point)
