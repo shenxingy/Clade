@@ -1,0 +1,66 @@
+{
+  "bounded-fanout-fires-once": {
+    "attempts": 5,
+    "fanout_per_attempt": [
+      1,
+      3,
+      1,
+      1,
+      0
+    ],
+    "terminal": "converged"
+  },
+  "config-lower-cap-escalates-early": {
+    "attempts": 3,
+    "fanout_per_attempt": [
+      1,
+      3,
+      0
+    ],
+    "terminal": "escalated"
+  },
+  "converge-first-approve": {
+    "attempts": 1,
+    "fanout_per_attempt": [
+      0
+    ],
+    "terminal": "converged"
+  },
+  "critical-fanout-first-rejection": {
+    "attempts": 2,
+    "fanout_per_attempt": [
+      3,
+      0
+    ],
+    "terminal": "converged"
+  },
+  "plateau-fanout-then-converge": {
+    "attempts": 3,
+    "fanout_per_attempt": [
+      1,
+      3,
+      0
+    ],
+    "terminal": "converged"
+  },
+  "reject-cap-escalates": {
+    "attempts": 6,
+    "fanout_per_attempt": [
+      1,
+      3,
+      1,
+      1,
+      1,
+      0
+    ],
+    "terminal": "escalated"
+  },
+  "sequential-retry-then-converge": {
+    "attempts": 2,
+    "fanout_per_attempt": [
+      1,
+      0
+    ],
+    "terminal": "converged"
+  }
+}

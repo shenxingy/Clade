@@ -20,8 +20,10 @@ the **live** code path, read the pass-rate delta.
 evals/
 ├── run_oracle_eval.py     # replays oracle_cases/ through the LIVE _oracle_review
 ├── supervisor_eval.py     # offline structural eval of the LIVE node_supervisor parser
+├── run_loop_eval.py       # offline: drives the LIVE oracle retry/convergence fns over verdict sequences
 ├── oracle_cases/          # 20 fixtures: task + diff + expected verdict + rationale
-└── supervisor_cases/      # 7 fixtures: recorded supervisor replies + structural expectations
+├── supervisor_cases/      # 7 fixtures: recorded supervisor replies + structural expectations
+└── loop_cases/            # 7 fixtures: oracle-verdict SEQUENCES + expected fan-out/terminal (+ _baseline.json)
 ```
 
 ## Running
@@ -35,6 +37,7 @@ cd orchestrator
 # stubbed subprocess layer. Safe anywhere, runs in <2s.
 python3 evals/run_oracle_eval.py --offline
 python3 evals/supervisor_eval.py            # offline by nature
+python3 evals/run_loop_eval.py               # offline: oracle retry/convergence loop (fan-out + reject-cap)
 
 # Live — real `claude -p` (haiku) calls through the exact worker code path.
 # Manual or scheduled ONLY (see cost policy). Exits 1 below threshold.
@@ -46,6 +49,22 @@ python3 evals/run_oracle_eval.py --model claude-haiku-4-5   # pin a snapshot
 
 pytest (`tests/test_evals.py`) runs **only the offline layer** — live API
 replays are never part of CI or the default test suite.
+
+### Loop-review eval (`run_loop_eval.py` + `loop_cases/`)
+
+`oracle_cases/` grade a single *verdict*; `loop_cases/` grade the retry *loop*
+around it — over a SEQUENCE of verdicts: does a rejection get one cheap
+sequential retry vs. a diverse fan-out (plateau escape at reject-depth ≥ 1), and
+does the reject-round cap escalate instead of requeuing forever? It drives the
+live `worker_utils.oracle_reject_depth` + `oracle_retry_sample_count` (the
+reject-cap gate is a documented **mirror** of the `worker.py` site — keep in
+sync; see the SYNC comment). Pure/offline, < 1 s, wired into CI via
+`tests/test_loop_eval.py`. `--json` emits per-attempt JSONL traces;
+`--update-baseline` refreshes `loop_cases/_baseline.json` (a snapshot so any
+behavior drift shows as a reviewable diff).
+
+**Run it before merging any change to** `oracle_retry_sample_count`, the
+reject-round-cap gate, `parallel_fix_samples`, or `oracle_max_reject_rounds`.
 
 **Run the live eval before merging any change to** `_ORACLE_PROMPT_TEMPLATE`,
 `_ORACLE_SPEC_PROMPT`, `_ORACLE_QUALITY_PROMPT`, `_FIX_INTENT_CRITERION`,

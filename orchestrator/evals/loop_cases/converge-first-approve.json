@@ -1,0 +1,7 @@
+{
+  "name": "converge-first-approve",
+  "description": "Oracle approves the first attempt: loop converges immediately, no retry.",
+  "is_critical": false,
+  "verdicts": ["approve"],
+  "expected": {"terminal": "converged", "attempts": 1, "fanout_per_attempt": [0]}
+}

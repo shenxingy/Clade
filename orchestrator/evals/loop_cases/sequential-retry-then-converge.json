@@ -1,0 +1,7 @@
+{
+  "name": "sequential-retry-then-converge",
+  "description": "First rejection (depth 0, non-critical) gets ONE cheap sequential retry; the retry is approved.",
+  "is_critical": false,
+  "verdicts": ["reject", "approve"],
+  "expected": {"terminal": "converged", "attempts": 2, "fanout_per_attempt": [1, 0]}
+}

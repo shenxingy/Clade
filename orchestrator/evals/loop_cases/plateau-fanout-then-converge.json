@@ -1,0 +1,7 @@
+{
+  "name": "plateau-fanout-then-converge",
+  "description": "Sequential retry ALSO rejected (depth 1 = plateau): fan out parallel_fix_samples diverse attempts (Agentless plateau escape), then converge.",
+  "is_critical": false,
+  "verdicts": ["reject", "reject", "approve"],
+  "expected": {"terminal": "converged", "attempts": 3, "fanout_per_attempt": [1, 3, 0]}
+}
