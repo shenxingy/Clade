@@ -11,7 +11,7 @@ The two docs work as a pair:
 
 Each deep-dive in this folder has YAML frontmatter (`status`, `summary`, `integrated_items`, `needs_work_items`). This index rolls that up so you don't re-read 30 KB to find what's left to do. **Source of truth is each doc's frontmatter** — when you close a gap, update the doc, then refresh this index.
 
-- **Last reviewed:** 2026-06-18 · **Cadence:** refresh when a deep-dive's `status` changes or a new one lands.
+- **Last reviewed:** 2026-07-15 (OpenAI + frontier sweep added 3 deep-dives; prior 2026-06-18) · **Cadence:** refresh when a deep-dive's `status` changes or a new one lands.
 
 **Status:** ✅ integrated (absorbed) · 📘 reference (studied, nothing to build) · 🔨 needs_work (open gaps)
 
@@ -44,6 +44,13 @@ The gaps cluster into 5 themes. This is the strategic read — *where the most e
 ## Index of deep-dives
 
 Grouped by [watch-list](../who-to-learn-from.md) tier. `Gaps` = count of open `needs_work_items`.
+
+### OpenAI + frontier sweep (2026-07-15)
+| Source | Status | Gaps | Core lesson | Doc |
+|--------|--------|------|-------------|-----|
+| **OpenAI Codex + frameworks** | 🔨 | 9 | Make Codex workers first-class (`codex exec --json` / `--output-schema`); a CC↔Codex companion adapter (app-server broker, resumable jobs, `ALLOW\|BLOCK` gate); schema handoff envelopes; end-to-end loop eval corpus; oracle calibration (false-approve rate) | [→](2026-07-15-openai-agentic-repos.md) |
+| **OpenAI member workflows** | 📘 | 2 | seratch (debuggable orchestration); GrantBirki (supervised PR/issue commands = worker→approval→action); hbagdi (declarative plan/apply/verify + drift) | [→](2026-07-15-openai-people-workflows.md) |
+| **Frontier update (since 06-13)** | 🔨 | 8 | reset+handoff > compaction (Anthropic); ACP as control-plane (Goose); lead+cheaper-sidekick topology (Cognition); evaluator-driven skill loop (Warp); run-budgets/interrupt/bounded-concurrency (OpenHands) | [→](2026-07-15-frontier-update.md) |
 
 ### Peer harnesses (watch-list Tier 2)
 | Source | Status | Gaps | Core lesson | Doc |
