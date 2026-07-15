@@ -55,6 +55,7 @@ import worker_review
 import worker_tldr
 import worker_utils
 import worker_hydrate
+import judge_diversity
 from worker_review import (
     _oracle_review, _read_constitution, _summarize_worker_completion,
     _record_oracle_infra_error, _reset_oracle_infra_streak,
@@ -1034,7 +1035,28 @@ class Worker:
         self.oracle_result = "approved" if approved else "rejected"
         self.oracle_reason = reason
         await self._persist_oracle_result()
+        agreement = None
+        if GLOBAL_SETTINGS.get("judge_diversity_enabled", False):
+            try:
+                diversity = await asyncio.to_thread(
+                    judge_diversity.deterministic_checks, self._project_dir,
+                    judge_diversity.changed_files_from_diff(diff_out.decode()))
+            except Exception as exc:
+                diversity = judge_diversity.check_error(exc)
+            agreement = judge_diversity.oracle_agreement(approved, diversity)
+            logger.info("Worker %s judge diversity: agreement=%s evidence=%s", self.id, agreement, diversity)
+            self._event_stream.emit(
+                event_type="state_change", event_kind="judge_diversity", source="system",
+                content={"oracle_result": self.oracle_result, "agreement": agreement,
+                         "diversity": diversity})
         if approved:
+            if GLOBAL_SETTINGS.get("judge_diversity_block", False) and agreement == "oracle-lenient":
+                block_reason = "Deterministic review failed despite oracle approval"
+                await self._undo_commit()
+                self.auto_committed = False
+                self._oracle_requeue = True
+                self._oracle_requeue_reason = block_reason
+                return False
             return True
         # Undo the commit so rejected work is not accidentally pushed later
         await self._undo_commit()
