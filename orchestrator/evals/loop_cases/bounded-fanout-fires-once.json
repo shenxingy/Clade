@@ -1,0 +1,7 @@
+{
+  "name": "bounded-fanout-fires-once",
+  "description": "Fan-out is bounded to fire once (depth<2): after the plateau fan-out, deeper rejections drop back to sequential retry so re-queues can't blow up exponentially.",
+  "is_critical": false,
+  "verdicts": ["reject", "reject", "reject", "reject", "approve"],
+  "expected": {"terminal": "converged", "attempts": 5, "fanout_per_attempt": [1, 3, 1, 1, 0]}
+}

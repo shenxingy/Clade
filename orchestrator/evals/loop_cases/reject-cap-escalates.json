@@ -1,0 +1,7 @@
+{
+  "name": "reject-cap-escalates",
+  "description": "Persistent rejection: after oracle_max_reject_rounds (5) prior rejections, the reject-round cap escalates instead of requeuing forever (fennu2333 circuit breaker).",
+  "is_critical": false,
+  "verdicts": ["reject", "reject", "reject", "reject", "reject", "reject"],
+  "expected": {"terminal": "escalated", "attempts": 6, "fanout_per_attempt": [1, 3, 1, 1, 1, 0]}
+}
