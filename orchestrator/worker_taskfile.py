@@ -36,6 +36,7 @@ from worker_utils import (
     EDIT_DISCIPLINE_BLOCK, SEARCH_CONVENTIONS_BLOCK, COMPLETION_CONTRACT_BLOCK,
 )
 from worker_hydrate import _pre_hydrate
+from reset_handoff import build_handoff_seed, render_seed
 
 logger = logging.getLogger(__name__)
 
@@ -202,7 +203,9 @@ async def build_task_file(w: Any, task_queue: Any | None) -> Path:
 
     # Prepend project CLAUDE.md + AGENTS.md for context injection
     effective_description = w.description
+    task_description = w.description
     context_blocks = []
+    reset_context = GLOBAL_SETTINGS.get("loop_context_mode", "carry") == "reset"
     claude_md = w._claude_dir / "CLAUDE.md"
     if claude_md.exists():
         try:
@@ -300,6 +303,25 @@ async def build_task_file(w: Any, task_queue: Any | None) -> Path:
             context_blocks.append(hydrate_block)
     except Exception:
         pass
+    if reset_context:
+        # A continuation/loop coordinator may attach the terminal envelope and
+        # a short progress tail to the next worker.  Missing input is safe: a
+        # reset deliberately starts from the minimal typed seed, never from the
+        # accumulated blocks assembled above.
+        reset_marker = "\n\n---\n\n# Clean Reset Handoff"
+        if reset_marker in w.description:
+            task_description, seed_block = w.description.split(reset_marker, 1)
+            context_blocks = ["# Clean Reset Handoff" + seed_block]
+        else:
+            prior_envelope = getattr(w, "_prior_envelope", None)
+            if not isinstance(prior_envelope, dict):
+                prior_envelope = {}
+            progress_tail = getattr(w, "_progress_tail", "")
+            if not isinstance(progress_tail, str):
+                progress_tail = ""
+            context_blocks = [
+                render_seed(build_handoff_seed(prior_envelope, progress_tail))
+            ]
     # Apply ObservationMaskingCondenser to truncate any oversized context block before
     # writing the task file — prevents multi-hundred-KB task files from large GitHub issues
     # or deeply nested project structures. Each block treated as an observation event.
@@ -307,11 +329,14 @@ async def build_task_file(w: Any, task_queue: Any | None) -> Path:
         _ctx_condenser = ObservationMaskingCondenser(max_obs_bytes=8192)
         _ctx_events = [{"type": "observation", "content": b} for b in context_blocks]
         context_blocks = [e["content"] for e in _ctx_condenser.condense(_ctx_events)]
-        effective_description = "\n\n---\n\n".join(context_blocks) + f"\n\n---\n\n# Task\n\n{w.description}"
+        effective_description = (
+            "\n\n---\n\n".join(context_blocks)
+            + f"\n\n---\n\n# Task\n\n{task_description}"
+        )
     # Inject recent sibling completions (multi-agent context archival).
     # Workers gain awareness of what was recently accomplished — prevents duplicate
     # work and allows continuation of previously established patterns.
-    if task_queue:
+    if task_queue and not reset_context:
         try:
             recent = await task_queue.get_recent_completions(
                 exclude_task_id=w.task_id, limit=5, since_seconds=86400
@@ -346,7 +371,7 @@ async def build_task_file(w: Any, task_queue: Any | None) -> Path:
             pass
     # Inject unread messages from other tasks — also condense individual messages
     # to prevent a large tool-output dump from one worker flooding another's context
-    if task_queue:
+    if task_queue and not reset_context:
         try:
             messages = await task_queue.get_messages(w.task_id, unread_only=True)
             if messages:
