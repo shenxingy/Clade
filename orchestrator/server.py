@@ -49,6 +49,7 @@ from run_contract import (
     validate_run_contract,
 )
 from tracing import TracingService
+from run_budget import attribution
 
 logger = logging.getLogger(__name__)
 
@@ -380,6 +381,11 @@ async def start_loop(session_id: str, body: dict):
             attributes={
                 "run_contract_version": contract.get("version"),
                 "run_contract_sha": contract_sha,
+                **attribution(
+                    str(s.project_dir),
+                    "clade-orchestrator",
+                    supervisor_model,
+                ),
             },
         )
         try:
