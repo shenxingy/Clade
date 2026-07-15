@@ -24,15 +24,11 @@ from config import (
     GLOBAL_SETTINGS,
     _MODEL_ALIASES,
     HAIKU_MODEL,
-    SONNET_MODEL,
-    OPUS_MODEL,
     SETTING_SOURCES_NONE,
     DISALLOWED_TOOLS_JUDGE,
     _estimate_cost,
     _parse_token_usage,
-    ALLOWED_MODEL_IDS,
-    _build_tool_flags,
-    _fallback_flag, _resolve_fallback_model,
+    _resolve_fallback_model,
     _parse_task_type, _parse_task_class,
     _parse_task_schema,
     _infer_commit_type,
@@ -41,6 +37,7 @@ from task_queue import TaskQueue
 from github_sync import _gh_update_issue_status
 from session_tree import SessionTree
 from execution_backend import LocalSubprocessBackend, get_execution_backend
+from worker_provider import get_worker_provider
 import condensers
 import worker_review
 import worker_tldr
@@ -99,6 +96,7 @@ class Worker:
         project_dir: Path,
         claude_dir: Path,
         task_type: str | None = None,
+        provider: str | None = None,
     ):
         self.id = str(uuid.uuid4())[:8]
         self.task_id = task_id
@@ -119,6 +117,11 @@ class Worker:
             self._backend = get_execution_backend()
         except NotImplementedError:
             self._backend = LocalSubprocessBackend()
+        # Execution provider (which agent CLI: claude vs codex). Completion (process
+        # exit) + results (git diff) stay provider-agnostic, so a codex worker is a
+        # first-class member of the same pool. See worker_provider.py.
+        self._provider = get_worker_provider(provider)
+        self.provider = self._provider.name
         self.started_at = time.time()
         self._finished_at: float | None = None
         self.status = "starting"  # starting/running/paused/blocked/done/failed
@@ -283,24 +286,20 @@ class Worker:
         return await build_task_file(self, task_queue)
 
     def _build_cmd_and_env(self, task_file: Path) -> tuple[str, dict]:
-        """Resolve model alias, build shell command, and prepare env dict."""
-        model = _MODEL_ALIASES.get(self.model, self.model)
-        model = model if model in ALLOWED_MODEL_IDS else SONNET_MODEL
-        # Worker spawn keeps full user settings deliberately (NO --setting-sources ""):
-        # commit-discipline hooks (post-edit-check etc.) are core value. Pure judges
-        # drop them — see config.SETTING_SOURCES_NONE (Stop-hook -p poisoning, 386a862).
-        shell_cmd = (
-            f'claude -p "$(cat {shlex.quote(str(task_file))})" --model {model} --dangerously-skip-permissions'
-        )
-        # Native lossless overload failover, off unless worker_fallback_model is set.
-        shell_cmd += _fallback_flag(self.model)
-        # Tool subsets per task type (Stripe Blueprint pattern)
-        tool_flags = _build_tool_flags(self.task_type)
-        if tool_flags:
-            shell_cmd += tool_flags
+        """Build the worker shell command (via the resolved provider) + env dict.
+
+        Worker spawn keeps full user settings deliberately (NO --setting-sources ""):
+        commit-discipline hooks (post-edit-check etc.) are core value. Pure judges
+        drop them — see config.SETTING_SOURCES_NONE (Stop-hook -p poisoning, 386a862).
+        The claude provider reproduces the historical inline command byte-for-byte.
+        """
         mcp_config = self._project_dir / ".claude" / "mcp.json"
-        if mcp_config.exists():
-            shell_cmd += f" --mcp-config {shlex.quote(str(mcp_config))}"
+        shell_cmd = self._provider.build_command(
+            task_file=task_file,
+            requested_model=self.model,
+            task_type=self.task_type,
+            mcp_config=mcp_config,
+        )
 
         env = {**os.environ}
         # Unset CLAUDECODE so workers can launch even when the orchestrator itself
@@ -329,6 +328,7 @@ class Worker:
         # there is no hook available to know which turn that was. Disclose the
         # uncertainty in the trailer value itself rather than silently asserting
         # a single model name that may be wrong.
+        model = self._provider.resolve_model(self.model) or self.model
         env["CLADE_WORKER_MODEL"] = model
         _fb_model = _resolve_fallback_model(self.model)
         if _fb_model:
@@ -1080,17 +1080,16 @@ class Worker:
             return False
         task_file = self._claude_dir / f"task-{self.id}-retry{self._reflection_retries}.md"
 
-        if use_continue:
-            # AutoCodeRover pattern: --continue preserves agent context across retries.
-            # Send only the lint error context as a follow-up message, not the full task.
+        _continue_cmd = (
+            self._provider.build_continue_command(task_file=task_file, requested_model=self.model)
+            if use_continue else None
+        )
+        if _continue_cmd is not None:
+            # --continue preserves agent context; send only the follow-up context, not
+            # the full task. Providers without a continue equivalent (codex) return
+            # None -> a fresh retry with the full task + context (the else branch).
             task_file.write_text(extra_context.strip(), encoding="utf-8")
-            model = _MODEL_ALIASES.get(self.model, self.model)
-            # Worker retry spawn — keeps user hooks deliberately (see _build_cmd_and_env).
-            shell_cmd = (
-                f'claude -p --continue "$(cat {shlex.quote(str(task_file))})"'
-                f" --model {model} --dangerously-skip-permissions"
-                f"{_fallback_flag(self.model)}"
-            )
+            shell_cmd = _continue_cmd
         else:
             retry_desc = self.description + f"\n\n{extra_context}"
             task_file.write_text(retry_desc, encoding="utf-8")
@@ -1204,6 +1203,7 @@ class WorkerPool:
             model,
             project_dir,
             claude_dir,
+            provider=task.get("provider"),
         )
         worker.model_score = task.get("score")
         worker.task_timeout = task.get("timeout", 600)
