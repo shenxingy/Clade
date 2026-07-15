@@ -65,6 +65,7 @@ from worker_review import (
 from worker_taskfile import build_task_file
 from event_stream import EventStream
 from worker_envelope import build_from_worker
+from handoff_registry import project_handoff, validate_handoff
 from tracing import TracingService, start_task_span
 from reactions import ReactionExecutor
 from error_classifier import (
@@ -1219,11 +1220,18 @@ class WorkerPool:
         if not handoff_type or not handoff_payload:
             return None
 
+        for validation_message in validate_handoff(handoff_type, handoff_payload):
+            logger.warning(
+                "Typed handoff validation warning for task %s: %s",
+                parent_task.get("id"), validation_message,
+            )
+        prompt_payload = project_handoff(handoff_type, handoff_payload)
+
         # Build typed handoff description
         handoff_desc = (
             f"[Handoff: {handoff_type}]\n\n"
             f"**Handoff Type:** {handoff_type}\n"
-            f"**Handoff Payload:**\n```json\n{json.dumps(handoff_payload, indent=2)}\n```\n\n"
+            f"**Handoff Payload:**\n```json\n{json.dumps(prompt_payload, indent=2)}\n```\n\n"
             f"**Parent Task:** {parent_task.get('description', 'N/A')}\n\n"
             f"## Instructions\n"
             f"Process this typed handoff. The payload contains structured context from the parent worker.\n"
@@ -1235,7 +1243,7 @@ class WorkerPool:
             f"{parent_task.get('description', '')}\n\n"
             f"---\n"
             f"**Typed Handoff ({handoff_type}):**\n"
-            f"{json.dumps(handoff_payload, indent=2)}\n"
+            f"{json.dumps(prompt_payload, indent=2)}\n"
         )
 
         model = parent_task.get("model", GLOBAL_SETTINGS.get("default_model", "sonnet"))
