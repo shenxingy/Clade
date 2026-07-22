@@ -8,6 +8,9 @@
   "auto_review": true,
 
   "default_model": "sonnet",
+  "worker_provider": "claude",
+  "codex_cheap_model": "gpt-5.6-terra",
+  "codex_strong_model": "gpt-5.6-sol",
   "loop_supervisor_model": "sonnet",
 
   "loop_convergence_k": 2,

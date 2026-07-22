@@ -63,7 +63,9 @@ async def message_worker(
     failure_ctx = w.failure_context or ""
     await w.stop()
     new_desc = f"{original_desc}\n\n---\n**Additional context from user:**\n{user_message}"
-    new_task = await s.task_queue.add(new_desc, w.model)
+    new_task = await s.task_queue.add(
+        new_desc, w.model, provider=w.provider, effort=w.effort
+    )
     # Record intervention for future auto-injection
     try:
         if failure_ctx:
@@ -98,7 +100,9 @@ async def broadcast_to_workers(session_id: str, body: dict):
             original_desc = worker.description
             await worker.stop()
             new_desc = f"{original_desc}\n\n---\n**Broadcast message:** {message}"
-            new_task = await session.task_queue.add(new_desc, worker.model)
+            new_task = await session.task_queue.add(
+                new_desc, worker.model, provider=worker.provider, effort=worker.effort
+            )
             await session.worker_pool.start_worker(
                 new_task, session.task_queue, session.project_dir, session.claude_dir
             )

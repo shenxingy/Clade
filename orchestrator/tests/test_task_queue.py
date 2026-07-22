@@ -17,6 +17,32 @@ async def test_add_returns_task(task_queue: TaskQueue):
     assert task["status"] == "pending"
 
 
+async def test_add_persists_provider_effort_and_route_reason(task_queue: TaskQueue):
+    task = await task_queue.add(
+        "Run a bounded implementation", provider="codex", effort="medium"
+    )
+    await task_queue.update(task["id"], route_reason="explicit bounded task")
+    fetched = await task_queue.get(task["id"])
+    assert fetched["provider"] == "codex"
+    assert fetched["effort"] == "medium"
+    assert fetched["route_reason"] == "explicit bounded task"
+
+
+async def test_update_route_rejects_invalid_provider_and_effort(task_queue: TaskQueue):
+    from types import SimpleNamespace
+    from fastapi import HTTPException
+    from routes.tasks import update_task
+
+    task = await task_queue.add("Validate routing updates")
+    session = SimpleNamespace(task_queue=task_queue)
+    with pytest.raises(HTTPException) as provider_error:
+        await update_task(task["id"], {"provider": "shell"}, s=session)
+    assert provider_error.value.status_code == 400
+    with pytest.raises(HTTPException) as effort_error:
+        await update_task(task["id"], {"effort": "infinite"}, s=session)
+    assert effort_error.value.status_code == 400
+
+
 async def test_list_all_tasks(task_queue: TaskQueue):
     await task_queue.add("Task one")
     await task_queue.add("Task two")

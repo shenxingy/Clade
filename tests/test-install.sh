@@ -125,6 +125,15 @@ fi
 agent_count=$(ls "$CLAUDE_DIR/agents/"*.md 2>/dev/null | wc -l | tr -d ' ')
 [[ "$agent_count" -gt 0 ]] && pass "agents installed ($agent_count)" || fail "agents installed"
 
+CODEX_DIR="$HOME/.codex"
+codex_agent_count=$(ls "$CODEX_DIR/agents/"*.toml 2>/dev/null | wc -l | tr -d ' ')
+[[ "$codex_agent_count" -eq 2 ]] \
+  && pass "Codex cheap-tier agents installed ($codex_agent_count)" \
+  || fail "Codex cheap-tier agents installed" "found $codex_agent_count, want 2"
+grep -q '^## Adaptive Delegation$' "$CODEX_DIR/AGENTS.md" \
+  && pass "Codex adaptive-delegation instructions installed" \
+  || fail "Codex adaptive-delegation instructions installed"
+
 script_count=$(ls "$CLAUDE_DIR/scripts/"*.sh 2>/dev/null | wc -l | tr -d ' ')
 [[ "$script_count" -gt 0 ]] && pass "scripts installed ($script_count)" || fail "scripts installed"
 
@@ -173,6 +182,7 @@ fi
 section "Reinstall preserves Cross-Project Rules and settings"
 
 SENTINEL_RULE="learned-rule-sentinel-7f3a"
+CODEX_SENTINEL="codex-user-rule-sentinel-28c1"
 {
   cat "$CLAUDE_DIR/CLAUDE.md"
   echo ""
@@ -180,6 +190,7 @@ SENTINEL_RULE="learned-rule-sentinel-7f3a"
   echo "- $SENTINEL_RULE: never delete me"
 } > "$CLAUDE_DIR/CLAUDE.md.new"
 mv "$CLAUDE_DIR/CLAUDE.md.new" "$CLAUDE_DIR/CLAUDE.md"
+printf '\n## User Rules\n- %s\n' "$CODEX_SENTINEL" >> "$CODEX_DIR/AGENTS.md"
 
 if command -v jq &>/dev/null; then
   jq '. + {model: "sentinel-model-keep"}' "$CLAUDE_DIR/settings.json" \
@@ -216,6 +227,15 @@ fi
 grep -q "Agent Ground Rules" "$CLAUDE_DIR/CLAUDE.md" \
   && pass "Agent Ground Rules present after reinstall" \
   || fail "Agent Ground Rules present after reinstall"
+
+codex_sentinel_count=$(grep -c "$CODEX_SENTINEL" "$CODEX_DIR/AGENTS.md" 2>/dev/null || true)
+codex_block_count=$(grep -c '<!-- BEGIN CLADE ADAPTIVE DELEGATION -->' "$CODEX_DIR/AGENTS.md" 2>/dev/null || true)
+[[ "$codex_sentinel_count" -eq 1 ]] \
+  && pass "Codex user instructions survive reinstall" \
+  || fail "Codex user instructions survive reinstall" "sentinel found $codex_sentinel_count times"
+[[ "$codex_block_count" -eq 1 ]] \
+  && pass "Codex managed instructions remain idempotent" \
+  || fail "Codex managed instructions remain idempotent" "block found $codex_block_count times"
 
 if command -v jq &>/dev/null; then
   model_val=$(jq -r '.model // ""' "$CLAUDE_DIR/settings.json" 2>/dev/null)

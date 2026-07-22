@@ -160,6 +160,8 @@ Select it globally or per task:
 |-------|-----|--------|
 | `~/.claude/orchestrator-settings.json` | `worker_provider` | `claude` (default) · `codex` |
 | task row | `provider` | overrides the setting for one task |
+| task row | `effort` | `low`, `medium`, `high`, `xhigh`, or `max` |
+| task row | `route_reason` | resolved audit reason, written at worker start |
 
 The Codex worker runs `codex exec --dangerously-bypass-approvals-and-sandbox
 "$(cat <task>)" < /dev/null` (the worktree is throwaway and the oracle gate
@@ -167,7 +169,23 @@ still guards every merge; `< /dev/null` is mandatory — `codex exec` otherwise
 blocks on stdin EOF and hangs). An explicit Codex model id (`gpt-*`, `o4-*`,
 `codex-*`) is passed with `-m`; a Claude alias means "use the `~/.codex`
 default". The default `claude` path is byte-identical to before — verified by
-`tests/test_worker_provider.py`.
+`tests/test_worker_provider.py`. Codex effort is passed as
+`-c 'model_reasoning_effort="…"'`; Claude uses `--effort` and omits it for
+Haiku, which does not support the control.
+
+With `auto_model_routing` enabled, high-readiness Codex tasks use
+`codex_cheap_model` (`gpt-5.6-terra` by default), while critical-path or
+low-readiness tasks use `codex_strong_model` (`gpt-5.6-sol` by default).
+Routing remains off by default until replay evaluation demonstrates that both
+verified success per dollar and per wall-hour hold for a task class.
+
+`./install.sh` also installs two native profiles under `~/.codex/agents/` and
+merges an idempotent adaptive-delegation block into `~/.codex/AGENTS.md` without
+replacing user instructions. The lead keeps architecture and ambiguous/high-risk
+work, delegates bounded read-only discovery to `clade_cheap_explorer`, and uses
+`clade_cheap_worker` only with explicit file ownership and a deterministic
+verifier. Spark is not assumed or installed as the cheap tier because its
+availability is plan-dependent.
 
 **Phase 2 (not yet wired):** consume `codex exec --json` JSONL (persist
 `thread_id` from `thread.started`), enforce `--output-schema` on the result and

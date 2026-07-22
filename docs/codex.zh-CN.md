@@ -130,13 +130,26 @@ Codex，配置：
 
 完整 MCP 说明见 [MCP package 中文指南](../mcp-package/README.zh-CN.md)。
 
+## Codex 作为 Orchestrator Worker
+
+FastAPI orchestrator 已能把 `codex exec` 当作一等 worker provider。全局可在
+`~/.claude/orchestrator-settings.json` 设置 `worker_provider: "codex"`，单个 task
+也可用 `provider` 覆盖，并指定 `effort`。Codex effort 会通过
+`model_reasoning_effort` 传入；任务会记录最终 `model`、`provider`、`effort` 与
+`route_reason` 供审计。
+
+开启 `auto_model_routing` 后，只有高 readiness 任务才使用默认廉价层
+`gpt-5.6-terra`；low readiness 或 critical-path 任务升级到默认强层
+`gpt-5.6-sol`。该开关仍默认关闭，需 routing replay eval 证明质量/美元和
+质量/总时间都不退化后再考虑默认开启。
+
+`./install.sh` 会把 `clade_cheap_explorer` 与 `clade_cheap_worker` 安装到
+`~/.codex/agents/`，并在不覆盖用户内容的前提下幂等合并全局委派规则。架构、
+含糊、高风险或不可机械验收的工作仍由主模型完成；写入小弟必须有明确文件所有权
+和 verifier。Spark 因套餐可用性不同，不作为默认廉价层。
+
 ## 兼容边界
 
-完整 overnight orchestrator、Claude-specific agents、provider switcher、
-跨机器 usage aggregation 与 correction-learning hooks 仍依赖 Claude CLI
-layer。这些能力继续留在原生 plugin 之外，避免表面原生、实际偷偷调用 Claude。
-
-MCP package 已具备真正的 Codex runtime，但 FastAPI worker orchestrator
-仍使用 Claude-specific session streaming 和 model routing。未来的 runtime
-adapter 必须同时覆盖 command construction、resume semantics、JSONL events、
-model aliases、usage accounting 与 cancellation，才能称为 provider-neutral。
+完整的 Codex JSONL event streaming、thread resume、structured result 与精确
+usage accounting 仍是 Phase 2。跨厂自动委派也没有伪装成已支持：Claude ↔ Codex
+目前只走用户显式 task 或只读 second-opinion relay。

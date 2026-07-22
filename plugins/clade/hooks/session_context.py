@@ -25,7 +25,17 @@ def main() -> int:
     if _git(cwd, "rev-parse", "--is-inside-work-tree") != "true":
         return 0
 
-    parts: list[str] = ["Clade native Codex context:"]
+    parts: list[str] = [
+        "Clade native Codex context:",
+        (
+            "Adaptive delegation: decide before broad reads. Keep architecture, ambiguous, "
+            "security-sensitive, migration, broad-refactor, or unverifiable work in the lead. "
+            "Use clade_cheap_explorer for bounded read-only discovery and clade_cheap_worker "
+            "for one low-risk change with explicit file ownership plus a deterministic verifier, "
+            "when those profiles are installed. Never overlap writers, never recurse, allow one "
+            "cheap retry, and have the lead review all evidence. Cross-vendor calls are explicit-only."
+        ),
+    ]
     branch = _git(cwd, "branch", "--show-current")
     if branch:
         parts.append(f"Branch: {branch}")

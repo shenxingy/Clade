@@ -96,5 +96,7 @@ def test_codex_session_context_emits_read_only_repository_guidance(tmp_path) -> 
     output = json.loads(result.stdout)["hookSpecificOutput"]
     assert output["hookEventName"] == "SessionStart"
     assert "AGENTS.md" in output["additionalContext"]
+    assert "Adaptive delegation" in output["additionalContext"]
+    assert "Cross-vendor calls are explicit-only" in output["additionalContext"]
     assert "Uncommitted changes" in output["additionalContext"]
     assert not (tmp_path / ".clade").exists()
