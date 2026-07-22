@@ -12,6 +12,204 @@ Past resolved/deferred items live in [`docs/archive/BRAINSTORM-resolved.md`](doc
 
 ---
 
+## [Research] 2026-07-21 — 弱/便宜模型多轮 vs 强模型高 effort：token、时间、成本的 break-even
+
+用户问题：是否已有研究比较“能力较弱但便宜的模型反复跑多轮”与“强模型单次高
+reasoning effort”的总 token 和总时间。**结论：有相邻且相当直接的研究，但没有一个
+跨模型、跨 coding-agent 工作流都成立的固定倍率。** 研究一致支持按任务动态分配
+test-time compute；不支持“便宜模型多跑几次天然更便宜/更快”。
+
+### 先拆开三种不同方案
+
+| 方案 | token 规律 | 墙钟时间规律 | 什么时候可能赢 |
+|---|---|---|---|
+| 弱模型独立采样 `k` 次 + verifier 选优 | 总生成 token 近似线性 `k×`；共享 prompt/KV cache 只能降低算力或计费，不能把生成 token 变没 | 全串行近似 `k×`；足够并发时接近 `max(单次延迟)+verifier` | 可自动验证（测试、编译、形式证明），各次尝试有真实多样性，弱模型单次成功率不接近 0 |
+| 弱模型串行 critique/revise `k` 轮 | 输出至少线性增长；若每轮重放完整历史，输入 token 最坏呈二次增长 | 必须等待上一轮，延迟相加，通常最慢 | 初稿已接近正确，反馈提供了新证据；适合容易/中等题，不适合模型根本不会的题 |
+| 弱→强级联/路由 | 容易题只付弱模型成本；难题付弱+强，路由错误是主要损失 | 容易题快；升级题多一次弱模型延迟，可并行 shadow-call 缓解 | 请求难度分布很宽，能可靠估计置信度/失败，强模型只处理尾部难题 |
+
+“多 agent 互相讨论”是第四种、通常更差的情况：它既不是独立采样，也不一定产生
+新证据，还会复制完整 peer rationale，容易形成相关错误和上下文膨胀。
+
+### 研究证据
+
+| 研究 | 主要结果 | 对本问题的含义 |
+|---|---|---|
+| [Snell et al., *Scaling LLM Test-Time Compute Optimally*](https://arxiv.org/abs/2408.03314) | 按题目难度动态选 revision/search，能以最多约 `4×` 更少 test-time compute 超过朴素 best-of-N；在基座模型已有非平凡成功率时，小模型可在 FLOPs-matched 条件下胜过约 `14×` 大模型；最难题上追加 inference compute 收益很小 | “小模型多算”可以赢，但前提是**按难度分配 + 有 verifier/受训 revision**，不是盲目重试；模型能力地板仍存在 |
+| [Brown et al., *Large Language Monkeys*](https://arxiv.org/abs/2407.21787) | DeepSeek-Coder-V2 在 SWE-bench Lite 从单样本 `15.9%` 提升到 250 样本覆盖率 `56%`，超过当时单样本 SOTA `43%`；无自动 verifier 时，投票/奖励模型在数百样本后平台化 | coding 有测试时 repeated sampling 很强，但这个胜利付出了最多 250 份候选的生成计算；“any sample solved”不等于现实中能低成本选出它 |
+| [Zhu et al., *Scaling Test-time Compute for LLM Agents*](https://arxiv.org/abs/2506.12928) | agent 的并行采样、串行 revision、verifier、trajectory merge 都能扩展；关键是只在合适时 reflect、使用 list-wise 选择，并增加 rollout 多样性 | Clade 应优化“何时重试、怎样合并、怎样制造独立性”，而不是固定轮数 |
+| [Bertalanič & Fortuna, *The Cost of Consensus*](https://arxiv.org/abs/2605.00914) | 10 个同质 7–8B agent、3 轮 debate 比独立 self-correction 多耗 `2.1–3.4×` token（最高每题 28,631），准确率相同或更低；观察到从众、正确答案被推翻等相关失败 | 烂模型互相讨论不会把十个弱判断变成一个强判断；无结构同质多轮应默认禁用 |
+| [RouteLLM](https://arxiv.org/abs/2406.18665) | 学习型 router 在部分设置下保持质量同时把成本降低 `>2×` | 更稳健的省钱方式是“默认便宜，预测困难才升级强模型”，不是让弱模型无限自救 |
+| [FrugalGPT](https://arxiv.org/abs/2305.05176) | 模型 cascade 在其 benchmark 上可匹配最佳单模型并最多降本 `98%`，或同成本准确率高 4% | 证明级联有巨大潜力，但数字来自较早的 QA/API 组合，不能直接外推到长时 coding agent |
+| [Chen et al., *The Price Reversal Phenomenon*](https://www.microsoft.com/en-us/research/publication/the-price-reversal-phenomenon-when-cheaper-reasoning-models-end-up-costing-more/) | 8 个 2026 frontier reasoning models、9 类任务中，`21.8%` 的模型对出现“标价更低但总成本更高”，反转最高 `28×`；thinking-token 差异最高 `900%`，同题重复运行 thinking token 可差 `9.7×` | 不可用“每百万 token 单价”或模型档位代替实测总成本；高-effort 强模型也可能因更短、更少重试而更便宜 |
+
+### 可计算的 break-even（比“便宜/贵”标签可靠）
+
+设弱模型单次通过率为 `p_w`，强模型高-effort 通过率为 `p_s`。若弱模型的 `k` 次
+尝试近似独立、且 verifier 能识别正确结果，则弱方案达到强方案成功率所需：
+
+```text
+k >= ceil(log(1 - p_s) / log(1 - p_w))
+
+weak total tokens = k * (fresh input + output) + verifier tokens
+strong total tokens = strong input + reasoning/output tokens
+```
+
+例如 `p_w=0.30`、`p_s=0.80`，至少要 `k=5` 才能达到 `83.2%` 的“至少一次成功”
+覆盖率。弱方案只有在“单次全量成本 + verifier 摊销”小于强方案约五分之一时才更
+便宜。若五次错误高度相关，独立假设失效，真实收益会远低于 `83.2%`；若 verifier
+分不出对错，覆盖率也无法转化为最终正确率。
+
+时间必须与 token 分开算：
+
+```text
+serial latency   ~= sum(all attempts) + verifier
+parallel latency ~= max(all attempts) + verifier + queue/startup overhead
+```
+
+所以并行弱模型可能“墙钟更快、总 token 更多”；串行多轮通常“墙钟更慢、总 token
+也更多”。这是 #21 中“只有异步/并行才有 speedup”的机制基础，但公开论文大多报告
+accuracy-vs-compute/token，**很少报告真实 coding workflow 的端到端 elapsed time**。
+
+### 对 Clade 当前成本模型的校正
+
+- `codex-orchestrate` 的“实测总 token ~4×、orchestrator context ~3× less”可以保留为
+  一次真实运行的 telemetry，不能升级成普适 scaling law。文献支持方向，不支持固定倍率。
+- Clade 的目标函数不应是 token 最少，而应是
+  `oracle-approved completions / wall-clock hour / dollar`，并同时记录失败重试和人类接管。
+- CI/test 是天然低价 verifier：可验证 coding task 最适合 `N` 个独立候选并行；设计、
+  架构和模糊需求没有可靠 verifier，更应直接用强模型，避免弱模型多轮共识幻觉。
+- 最优默认不是二选一，而是 **cascade**：弱模型先做低风险/高可验证任务；一次失败、
+  低置信度、无进展或高风险任务立即升级强模型。不要让弱模型连续自我解释 3–5 轮。
+- 需要“多样化重试”而非“重复重试”：不同 decomposition/prompt/tool evidence，隔离上下文；
+  否则错误相关性使 `1-(1-p)^k` 的理论收益不存在。
+
+### Follow-up：让 Codex / Claude Code 高阶主 session 自主选择“自己做还是叫小弟”
+
+**Verdict：两边原生都可行，值得拿进 Clade；但应采用“高阶 lead 做一次受约束的
+route decision + policy/CI 硬边界”，不能让 lead 无限制自由 fan-out。** 先用原生
+subagent profile 落地，再把相同 decision contract 接入 Clade 的跨 provider worker。
+
+#### 2026-07-21 官方能力核对
+
+| 主 session | 已有原生能力 | 可指定的小弟配置 | 关键限制 |
+|---|---|---|---|
+| Codex | Work mode 的 Ultra 能在并行确实改善速度/质量时主动委派；普通本地 Codex 在用户、`AGENTS.md` 或 skill 要求委派时执行 | `.codex/agents/*.toml` 可分别指定 `model`、`model_reasoning_effort`、tools/sandbox；未 pin 时 Codex 也可按任务平衡 intelligence/speed/price | subagent 总 token 高于单 agent；Spark 是 Pro-only research preview、偏 near-instant text-only，不应作为通用写代码 worker；本地普通档位不是无条件 proactive router |
+| Claude Code | 内置 Explore 已自动用 Haiku 做便宜只读搜索；custom subagent 会按 request、`description` 和当前上下文自动触发，`use proactively` 可增强主动委派；`ultracode` 会对 substantive task 编排 dynamic workflow | subagent frontmatter 支持 `model`、`effort`、`background`、`maxTurns`、`isolation: worktree`；每次调用也可覆盖 model | Haiku 不支持当前 effort 档位，不要给它伪造 effort；agent teams 仍是 experimental、显著多耗 token，而且创建 team 需要用户确认；日常自动路由应优先 subagent，不是 team |
+
+Sources: [Codex Subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents),
+[Codex Speed / Spark](https://learn.chatgpt.com/docs/agent-configuration/speed),
+[Claude Code subagents](https://code.claude.com/docs/en/sub-agents),
+[Claude Code model/effort](https://code.claude.com/docs/en/model-config),
+[Claude Code agent teams](https://code.claude.com/docs/en/agent-teams).
+
+#### 推荐的统一 routing contract
+
+主模型只接收 task brief、风险标签、可用 verifier、预估文件范围，不先通读整个 repo；
+否则它读完十个文件再委派，节省上下文/时间的 option value 已经消失。
+
+```json
+{
+  "action": "self | delegate | fanout",
+  "reason_code": "ambiguous | bounded | parallelizable | verifier_available | high_risk",
+  "provider": "native | codex | claude",
+  "role": "explorer | implementer | tester | reviewer",
+  "model": "provider model id or alias",
+  "effort": "low | medium | high | xhigh | max",
+  "parallelism": 1,
+  "verifier": "test command / CI / oracle / none",
+  "escalate_on": ["no_diff", "test_fail", "same_error_twice", "scope_expansion"]
+}
+```
+
+同一个 contract 在两个交互式主 session 中由主模型自己输出/执行；在 unattended
+orchestrator 中先经过 deterministic guardrail，再转成 task 的 provider/model/effort。
+
+#### 决策边界（lead 可判断，policy 不可绕过）
+
+| Action | 适用条件 | 默认 worker |
+|---|---|---|
+| `self` | 需求含糊、架构/接口决策、跨层强耦合、没有可靠 verifier、安全/迁移/数据风险、只有一个很短的 critical path | 当前高阶模型，high/xhigh；真正极难才 max |
+| `delegate` | 边界清楚、低风险、可运行 test/CI、只读搜索、日志归纳、机械变换、已有明确 repro | 同厂原生小弟优先：Codex Terra low/medium（Spark 仅显式 opt-in）；Claude Explore/Haiku，或 Sonnet medium 写代码 |
+| `fanout` | 至少 2 个独立只读假设/审查维度，并行时间收益大于协调成本 | 2–3 个有不同任务/证据源的只读小弟；v1 不允许同一任务多写者，也不声称 orchestrator 已有候选合并 |
+
+强制升级到 lead 的条件：cheap worker 无 diff、CI/测试失败、连续两次同类错误、发现
+scope 比 brief 大、verifier 不可靠、触及 forbidden/high-risk 文件。**最多一次 cheap retry**；
+第二次不是“再想一遍”，而是换强模型或换独立解法。
+
+#### 同厂原生 vs 跨厂调用
+
+- 主 session 默认叫**同厂原生 subagent**：启动/回传开销低，权限、thread、steering、
+  background completion 都由各自 harness 管理。
+- Codex 主 session 叫 Claude、或 Claude 主 session 叫 Codex 时，v1 只允许用户显式创建
+  Clade task/调用现有 second-opinion relay；不把跨厂 lifecycle 假装成原生自动委派。
+  `WorkerProvider` + worktree + oracle/CI gate 可执行显式 provider task，但 native session →
+  cross-provider task 的自动桥接仍是后续工作。
+- 不让小弟递归叫小弟：第一版 depth=1。递归 fan-out 会让成本归因、取消、文件所有权和
+  convergence 都变得不可预测。
+
+#### Clade 当前差距（代码核对）
+
+- `tasks.provider` 和 `WorkerProvider(claude|codex)` 已有，完成结果/工作树/oracle 也已
+  provider-neutral；这是很好的底座。
+- `auto_model_routing` 目前只是 worker spawn 前按静态 `score`/critical-path 换
+  haiku/sonnet/opus；不判断 `self/delegate/fanout`，也不根据 verifier/risk/失败历史决策。
+- task schema 没有 `effort`/`delegation_action`；`ClaudeProvider` 未传现成的 `--effort`，
+  `CodexProvider` 也未用 CLI 已支持的 `-c model_reasoning_effort=...`。
+- `CodexProvider` retry 仍是 fresh session，尚未持久化 thread id；在此之前不应给 cheap
+  Codex worker 多轮 retry，否则每轮冷读上下文抵消省下的模型成本。
+- 现有 `test_routing_eval.py` 测的是“用户 query → skill 搜索”而非模型/provider/effort
+  routing；不能当成本方案的 eval。
+
+#### 2026-07-22 实现复核与落地
+
+原计划不能原样实现：WorkerPool 明确禁止同一 task 同时启动第二个 worker，现有
+`parallel_fix_samples` 只在 oracle plateau/critical path 上创建独立 retry task；因此若直接增加
+`fanout` 字段，只会产生“schema 说支持、runtime 不执行”的 deploy gap。v1 已收敛并实现为：
+
+1. Claude 全局规则 + `bounded-implementer`，以及 Codex 全局 `AGENTS.md` managed block +
+   `clade_cheap_{explorer,worker}` profiles，让正在跑的高阶 session 在广泛读 repo 前做同厂决策。
+2. 只读任务最多 3 个真正独立小弟；写任务必须单一文件 owner。小弟禁止递归委派，lead
+   强制 review diff/verifier，cheap retry 最多一次。
+3. task/worker/SQLite/API/UI 已贯通 `provider`、`model`、`effort`、`route_reason`；Claude 透传
+   `--effort`（Haiku 自动省略），Codex 透传 `model_reasoning_effort`。所有 requeue/handoff 保留
+   provider/effort。
+4. `auto_model_routing` 现在 provider-aware：高 readiness 才进 Claude Haiku / Codex Terra；
+   low readiness 或 critical path 进强 tier。默认仍关闭，等 replay eval 后才考虑 default-on。
+5. 没有加入无运行语义的 `delegation_action` / `parent_session_provider`，也没有自动跨厂 bridge、
+   同任务多写者或 Spark 默认。它们分别需要 lifecycle、候选选择/合并和 entitlement 检测。
+
+#### 后续实施顺序
+
+1. **Eval before default-on**：用前述 30–50 个历史任务比较 high-self、high→native-cheap、
+   high→cross-provider；只有 success/$ 和 success/wall-hour 都不退化的 task class 才自动开启。
+2. **Learned routing last**：先收真实 telemetry；样本不足时使用明确规则，不让一个未经校准的
+   LLM confidence 直接决定成本和质量。
+
+### Gaps vs current VISION
+
+- 已有 task token/cost/duration 字段，但还不能按 `(task class, model, effort, attempt index)`
+  计算首次通过率、级联升级率、verified success per dollar/hour；因此当前 router 无法学习
+  真正的 break-even。
+- 当前 model routing 主要按静态 task score 选 tier，缺少运行时升级条件：测试失败、
+  无 diff、重复同类错误、verifier disagreement、首轮置信度低。
+- 没有 A/B replay corpus 比较 `cheap×N`、`strong/high-effort×1`、`cheap→strong cascade`；
+  只看某次运行的 token 倍率会把任务难度差误认为模型差。
+- session report 应同时展示 total tokens、wall-clock critical path、并发度、美元成本和
+  oracle-approved completion；任何单指标都会误导。
+
+### Recommended additions to TODO.md（不自动添加）
+
+- [ ] 建立 30–50 个真实历史任务的 routing eval：固定输入/commit/CI oracle，三臂对照
+  `cheap×N parallel`、`strong high-effort×1`、`cheap→strong cascade`，至少重复 3 次估计方差
+- [ ] 记录 `attempt_index`、`parent_attempt`、`effort`、`queue_ms`、`inference_ms`、
+  `verify_ms`、`final_oracle`，按任务类型输出 pass@1、pass@k、success/$、success/wall-hour
+- [ ] 把 router 改成 verifier-aware cascade：低风险可验证任务先便宜模型；首轮失败或
+  高风险/无自动 verifier 直接强模型；设置最多一次 cheap retry，避免无界串行反思
+- [ ] 用历史 telemetry 拟合每类任务的 empirical break-even，而不是在 prompt 中硬编码
+  `4×`；数据不足时明确显示样本数与置信区间
+
+---
+
 ## [Research] 2026-07-09 — "cue" mystery + 2026-H1 agentic concepts (queue-vs-loop, native workflows, skills ecosystem)
 
 Trigger: user heard people online saying "cue", not just "loop". **Verdict: no tool named
