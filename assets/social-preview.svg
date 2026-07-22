@@ -126,5 +126,5 @@
   <text x="140" y="420" fill="#c9d1d9" font-family="Consolas, 'Liberation Mono', monospace" font-size="16">pip install clade-mcp</text>
 
   <!-- Bottom tagline -->
-  <text x="100" y="490" fill="#484f58" font-family="Helvetica, Arial, sans-serif" font-weight="400" font-size="16">Turn Claude Code from a chat assistant into an autonomous coding system</text>
+  <text x="100" y="490" fill="#484f58" font-family="Helvetica, Arial, sans-serif" font-weight="400" font-size="16">Turn Claude Code and Codex from chat assistants into autonomous coding systems</text>
 </svg>
