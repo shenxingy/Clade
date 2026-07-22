@@ -1017,7 +1017,11 @@ async def handle_oracle_requeue(
             f"{error_summary}\n"
             f"Fix the issue described above. Do NOT repeat the same approach.{hint}"
         )
-        await task_queue.add(retry_desc, w.model, own_files=w.own_files, forbidden_files=w.forbidden_files)
+        await task_queue.add(
+            retry_desc, w.model, own_files=w.own_files,
+            forbidden_files=w.forbidden_files,
+            provider=getattr(w, "provider", None), effort=getattr(w, "effort", None),
+        )
     if n_samples > 1:
         logger.info("Oracle rejected task %s — plateau, spawned %d diverse samples", w.task_id, n_samples)
     else:
@@ -1039,7 +1043,9 @@ async def handle_test_requeue(w: Any, task_queue: Any, is_loop_task: bool) -> No
             f"Fix the failures, run the project tests locally, then complete the task."
         )
         await task_queue.add(retry_desc, w.model,
-                             own_files=w.own_files, forbidden_files=w.forbidden_files)
+                             own_files=w.own_files, forbidden_files=w.forbidden_files,
+                             provider=getattr(w, "provider", None),
+                             effort=getattr(w, "effort", None))
     await task_queue.update(
         w.task_id, failed_reason=f"Pre-push tests failed: {error_summary[:200]}"
     )
@@ -1065,7 +1071,9 @@ async def handle_ownership_requeue(w: Any, task_queue: Any, is_loop_task: bool) 
             f"Do NOT touch FORBIDDEN_FILES. Find an alternative approach."
         )
         await task_queue.add(retry_desc, w.model,
-                            own_files=w.own_files, forbidden_files=w.forbidden_files)
+                            own_files=w.own_files, forbidden_files=w.forbidden_files,
+                            provider=getattr(w, "provider", None),
+                            effort=getattr(w, "effort", None))
     await task_queue.update(
         w.task_id, failed_reason=f"Ownership violation: {error_summary[:200]}"
     )
@@ -1090,7 +1098,9 @@ async def handle_handoff_requeue(w: Any, task_queue: Any, is_loop_task: bool) ->
             f"Run /pickup if available, then continue from where the previous worker left off."
         )
         await task_queue.add(continuation_desc, w.model,
-                            own_files=w.own_files, forbidden_files=w.forbidden_files)
+                            own_files=w.own_files, forbidden_files=w.forbidden_files,
+                            provider=getattr(w, "provider", None),
+                            effort=getattr(w, "effort", None))
         logger.info("Handoff task %s → continuation queued", w.task_id)
     else:
         logger.info(

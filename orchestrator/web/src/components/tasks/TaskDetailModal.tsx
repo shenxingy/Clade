@@ -57,6 +57,8 @@ export function TaskDetailModal({ task, sessionId, onClose }: Props) {
         {/* Metadata grid */}
         <div className="px-4 py-3 grid grid-cols-2 gap-x-6 gap-y-1.5 border-b border-border shrink-0">
           <Meta label="Model"><ModelBadge model={task.model} /></Meta>
+          {task.provider && <Meta label="Provider">{task.provider}</Meta>}
+          {task.effort && <Meta label="Effort">{task.effort}</Meta>}
           <Meta label="Task ID"><span className="font-mono text-xs">{task.id}</span></Meta>
           {task.elapsed_s != null && <Meta label="Duration">{formatDuration(task.elapsed_s)}</Meta>}
           {task.estimated_cost != null && <Meta label="Cost">{formatCost(task.estimated_cost)}</Meta>}
@@ -83,6 +85,7 @@ export function TaskDetailModal({ task, sessionId, onClose }: Props) {
           {task.worker_id && (
             <Meta label="Worker"><span className="font-mono text-xs">{task.worker_id.slice(0, 8)}</span></Meta>
           )}
+          {task.route_reason && <Meta label="Route">{task.route_reason}</Meta>}
         </div>
 
         {/* Scrollable body */}

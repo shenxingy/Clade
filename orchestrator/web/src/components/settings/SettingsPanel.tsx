@@ -95,6 +95,23 @@ export function SettingsPanel({ open, onClose }: Props) {
                   {MODEL_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
               </Row>
+              <Row label="Worker provider">
+                <select value={f.worker_provider ?? 'claude'}
+                  onChange={e => patch('worker_provider', e.target.value)} className="input-sm">
+                  <option value="claude">claude</option>
+                  <option value="codex">codex</option>
+                </select>
+              </Row>
+              <Row label="Codex cheap model">
+                <input type="text" value={f.codex_cheap_model ?? 'gpt-5.6-terra'}
+                  onChange={e => patch('codex_cheap_model', e.target.value)}
+                  className="input-sm w-32" />
+              </Row>
+              <Row label="Codex strong model">
+                <input type="text" value={f.codex_strong_model ?? 'gpt-5.6-sol'}
+                  onChange={e => patch('codex_strong_model', e.target.value)}
+                  className="input-sm w-32" />
+              </Row>
               <Row label="Stuck timeout (min)">
                 <input type="number" min={1} value={f.stuck_timeout_minutes ?? 15}
                   onChange={e => patch('stuck_timeout_minutes', parseInt(e.target.value) || 15)}

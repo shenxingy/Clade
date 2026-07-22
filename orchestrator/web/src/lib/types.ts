@@ -7,6 +7,9 @@ export interface Task {
   id: string;
   description: string;
   model: string;
+  provider: 'claude' | 'codex' | null;
+  effort: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | null;
+  route_reason: string | null;
   timeout: number;
   status: TaskStatus;
   worker_id: string | null;
@@ -35,6 +38,9 @@ export interface Worker {
   task_id: string;
   description: string;
   model: string;
+  provider?: 'claude' | 'codex';
+  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | null;
+  route_reason?: string | null;
   status: string;
   log_tail: string;           // raw string from server (split on \n to display)
   elapsed_s: number;
@@ -86,6 +92,9 @@ export interface GlobalSettings {
   loop_max_iterations: number;
   notification_webhook: string;
   usage_provider: string;
+  worker_provider?: 'claude' | 'codex';
+  codex_cheap_model?: string;
+  codex_strong_model?: string;
 }
 
 // ─── WebSocket Message Types ──────────────────────────────────────

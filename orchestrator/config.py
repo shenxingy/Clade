@@ -32,7 +32,8 @@ _ALLOWED_TASK_COLS = {"status", "description", "model", "depends_on", "score",
                       "task_type", "source_ref", "parent_task_id", "priority_score",
                       "handoff_type", "handoff_payload", "completion_summary",
                       "token_budget", "context_version", "attempt_count",
-                      "phase", "oracle_result", "oracle_reason", "pgid", "provider"}
+                      "phase", "oracle_result", "oracle_reason", "pgid", "provider",
+                      "effort", "route_reason"}
 
 _ALLOWED_LOOP_COLS = {
     "name", "artifact_path", "context_dir", "status", "iteration",
@@ -194,6 +195,8 @@ _SETTINGS_DEFAULTS = {
     "replay_interrupted_on_startup": False,  # re-queue interrupted tasks on server restart (opt-in)
     "execution_backend": "local",  # how workers spawn: "local" (OS subprocess+setsid). See execution_backend.py.
     "worker_provider": "claude",  # which agent CLI a worker runs: "claude" | "codex". Per-task `provider` overrides. See worker_provider.py.
+    "codex_cheap_model": "gpt-5.6-terra",  # cheap bounded-task tier; Spark remains an explicit opt-in
+    "codex_strong_model": "gpt-5.6-sol",  # low-readiness / critical-path tier
     # Usage tracking (multi-machine ccusage aggregation — see usage_tracker.py)
     "usage_poll_enabled": True,         # poll ccusage on this machine and store locally
     "usage_poll_interval_sec": 900,     # 15 min default; min 60s
