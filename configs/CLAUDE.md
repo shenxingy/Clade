@@ -23,6 +23,14 @@ These rules enable autonomous, unattended operation across all projects.
 - **Stop hook nagging ≠ user input needed**: When a Stop hook complains about uncommitted files mid-task, this is a process signal, not a user question. If the project rule is "commit small and often" and `committer` is available — commit and move on. Don't escalate the hook output to the user as a decision point.
 - **Deployment topology**: Before checking localhost, scan for known deployment URLs (Tailscale internal domain, env vars like SITE_URL, INTERNAL_HOST). Default-to-localhost assumption produces wrong-context reads when the real service is remote.
 
+## Adaptive Delegation
+- Decide before broad repository reads whether the lead should solve the task or use one direct subagent.
+- Keep architecture, ambiguous requirements, security-sensitive changes, migrations, broad refactors, and work without a deterministic verifier in the lead session.
+- Use `Explore` for bounded read-heavy discovery and `bounded-implementer` for one low-risk change only when file ownership and a deterministic verifier are explicit.
+- Use at most three agents for genuinely independent read-only work. Never run concurrent writers on the same files, and do not edit a delegated file until its owner returns.
+- Subagents must not delegate recursively. Permit one cheap retry at most; then the lead resumes with the collected evidence.
+- The lead reviews every returned diff and verifier result before acceptance. Cross-vendor delegation remains explicit-only.
+
 ## Context Management
 - Context window ~80% full → run `/handoff` to save state, then start a new session with `/pickup`
 - If `.claude/handoff-*.md` exists at session start → it is auto-loaded; run `/pickup` to activate
