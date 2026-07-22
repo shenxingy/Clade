@@ -64,6 +64,28 @@ def test_claude_continue_command_uses_continue_flag():
     assert f"--model {SONNET_MODEL}" in cmd
 
 
+def test_claude_effort_is_passed_but_omitted_for_haiku():
+    sonnet = ClaudeProvider().build_command(
+        task_file=TASK, requested_model="sonnet", task_type=None,
+        mcp_config=NO_MCP, effort="high",
+    )
+    haiku = ClaudeProvider().build_command(
+        task_file=TASK, requested_model="haiku", task_type=None,
+        mcp_config=NO_MCP, effort="high",
+    )
+    assert "--effort high" in sonnet
+    assert "--effort" not in haiku
+
+
+def test_claude_rejects_unknown_effort_at_command_boundary():
+    cmd = ClaudeProvider().build_command(
+        task_file=TASK, requested_model="sonnet", task_type=None,
+        mcp_config=NO_MCP, effort="high; echo injected",
+    )
+    assert "--effort" not in cmd
+    assert "injected" not in cmd
+
+
 # ─── CodexProvider: well-formed codex exec, no claude-only flags ──────────────
 def test_codex_command_shape_with_default_model():
     cmd = CodexProvider().build_command(
@@ -86,6 +108,18 @@ def test_codex_command_passes_explicit_codex_model():
         task_file=TASK, requested_model="gpt-5.6-sol", task_type=None, mcp_config=NO_MCP
     )
     assert "-m gpt-5.6-sol" in cmd
+
+
+def test_codex_command_passes_reasoning_effort_as_config():
+    cmd = CodexProvider().build_command(
+        task_file=TASK, requested_model="gpt-5.6-sol", task_type=None,
+        mcp_config=NO_MCP, effort="medium",
+    )
+    parts = shlex.split(cmd)
+    effort_index = parts.index("-c")
+    assert parts[effort_index:effort_index + 2] == [
+        "-c", 'model_reasoning_effort="medium"'
+    ]
 
 
 def test_codex_resolve_model_only_accepts_codex_ids():

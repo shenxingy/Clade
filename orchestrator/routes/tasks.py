@@ -21,6 +21,7 @@ from session import ProjectSession, _resolve_session
 from github_sync import _gh_create_issue
 from worker_tldr import _score_task
 from worker_review import _write_pr_review, _write_progress_entry
+from worker_routing import VALID_EFFORTS, VALID_PROVIDERS
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,12 @@ def _validate_task(body: dict) -> list[str]:
     phase = body.get("phase")
     if phase and phase not in _VALID_PHASES:
         errors.append(f"phase must be one of: {', '.join(sorted(_VALID_PHASES))}")
+    provider = body.get("provider")
+    if provider and str(provider).lower() not in VALID_PROVIDERS:
+        errors.append(f"provider must be one of: {', '.join(sorted(VALID_PROVIDERS))}")
+    effort = body.get("effort")
+    if effort and str(effort).lower() not in VALID_EFFORTS:
+        errors.append(f"effort must be one of: {', '.join(sorted(VALID_EFFORTS))}")
     return errors
 
 
@@ -66,6 +73,8 @@ async def create_task(body: dict, s: ProjectSession = Depends(_resolve_session))
         is_critical_path=bool(body.get("is_critical_path", 0)),
         task_type=body.get("task_type", "AUTO"),
         phase=body.get("phase", "implement"),
+        provider=str(body["provider"]).lower() if body.get("provider") else None,
+        effort=str(body["effort"]).lower() if body.get("effort") else None,
     )
     asyncio.create_task(
         _score_task(task["id"], task["description"], s.task_queue._db_path, s.claude_dir)
@@ -139,7 +148,9 @@ async def retry_failed(s: ProjectSession = Depends(_resolve_session)):
                 "Do NOT repeat the same approach. Analyze the error above and try a different strategy."
             )
         model = _MODEL_ALIASES.get(t.get("model", "sonnet"), t.get("model", "sonnet"))
-        new_task = await s.task_queue.add(retry_desc, model)
+        new_task = await s.task_queue.add(
+            retry_desc, model, provider=t.get("provider"), effort=t.get("effort")
+        )
         retried.append(new_task["id"])
     return {"retried": len(retried), "task_ids": retried}
 
@@ -343,6 +354,18 @@ async def update_task(task_id: str, body: dict, s: ProjectSession = Depends(_res
     updates = {k: v for k, v in body.items() if k in _ALLOWED_TASK_COLS}
     if not updates:
         return task
+    provider = updates.get("provider")
+    if provider is not None:
+        provider = str(provider).lower()
+        if provider not in VALID_PROVIDERS:
+            raise HTTPException(status_code=400, detail="invalid provider")
+        updates["provider"] = provider
+    effort = updates.get("effort")
+    if effort is not None:
+        effort = str(effort).lower()
+        if effort and effort not in VALID_EFFORTS:
+            raise HTTPException(status_code=400, detail="invalid effort")
+        updates["effort"] = effort or None
     return await s.task_queue.update(task_id, **updates)
 
 

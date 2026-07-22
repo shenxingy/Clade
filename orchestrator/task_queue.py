@@ -150,6 +150,8 @@ class TaskQueue:
                 await _migrate("ALTER TABLE tasks ADD COLUMN oracle_reason TEXT")
                 await _migrate("ALTER TABLE tasks ADD COLUMN pgid INTEGER")
                 await _migrate("ALTER TABLE tasks ADD COLUMN provider TEXT")
+                await _migrate("ALTER TABLE tasks ADD COLUMN effort TEXT")
+                await _migrate("ALTER TABLE tasks ADD COLUMN route_reason TEXT")
                 await db.execute("""
                     CREATE TABLE IF NOT EXISTS worker_messages (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -266,7 +268,8 @@ class TaskQueue:
                   source_ref: str | None = None,
                   parent_task_id: str | None = None,
                   phase: str = "implement",
-                  provider: str | None = None) -> dict:
+                  provider: str | None = None,
+                  effort: str | None = None) -> dict:
         await self._ensure_db()
         task = {
             "id": str(uuid.uuid4())[:8],
@@ -293,6 +296,8 @@ class TaskQueue:
             "parent_task_id": parent_task_id,
             "phase": phase,
             "provider": provider,
+            "effort": effort,
+            "route_reason": None,
         }
         async with aiosqlite.connect(str(self._db_path)) as db:
             await db.execute(
@@ -301,8 +306,8 @@ class TaskQueue:
                     started_at, elapsed_s, last_commit, log_file, failed_reason,
                     created_at, depends_on, score, score_note, own_files, forbidden_files,
                     is_critical_path, task_type, source_ref, parent_task_id, phase,
-                    provider)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    provider, effort, route_reason)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     task["id"], task["description"], task["model"],
                     task["timeout"], task["retries"], task["status"],
@@ -313,6 +318,7 @@ class TaskQueue:
                     json.dumps(task["own_files"]), json.dumps(task["forbidden_files"]),
                     task["is_critical_path"], task["task_type"], task["source_ref"],
                     task["parent_task_id"], task["phase"], task["provider"],
+                    task["effort"], task["route_reason"],
                 ),
             )
             await db.commit()

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install.sh — Deploy Claude Code customizations to ~/.claude/
+# install.sh — Deploy Claude Code and Codex customizations to user config dirs.
 #
 # Idempotent: safe to run multiple times.
 # Does NOT overwrite user data (corrections/rules.md, corrections/history.jsonl).
@@ -16,6 +16,7 @@ else
   _SHA256=(shasum -a 256)
 fi
 CLAUDE_DIR="$HOME/.claude"
+CODEX_DIR="$HOME/.codex"
 
 echo "Installing Claude Code customizations..."
 echo "Source: $SCRIPT_DIR"
@@ -26,6 +27,7 @@ echo ""
 
 echo "Creating directories..."
 mkdir -p "$CLAUDE_DIR"/{hooks/lib,agents,skills,scripts,corrections,commands,templates,rules}
+mkdir -p "$CODEX_DIR/agents"
 
 # ─── 2. Copy hooks (chmod +x) ────────────────────────────────────────
 
@@ -45,6 +47,39 @@ fi
 echo "Installing agents..."
 cp "$SCRIPT_DIR/configs/agents/"*.md "$CLAUDE_DIR/agents/"
 echo "  Installed: $(ls "$SCRIPT_DIR/configs/agents/"*.md | xargs -I{} basename {} | tr '\n' ' ')"
+
+echo "Installing Codex agents..."
+cp "$SCRIPT_DIR/configs/codex-agents/"*.toml "$CODEX_DIR/agents/"
+echo "  Installed: $(ls "$SCRIPT_DIR/configs/codex-agents/"*.toml | xargs -I{} basename {} | tr '\n' ' ')"
+
+# Merge the Clade-managed adaptive-delegation block without replacing any
+# user-authored global Codex instructions.
+CODEX_AGENTS="$CODEX_DIR/AGENTS.md"
+CODEX_BEGIN='<!-- BEGIN CLADE ADAPTIVE DELEGATION -->'
+CODEX_END='<!-- END CLADE ADAPTIVE DELEGATION -->'
+CODEX_TMP="$(mktemp)"
+if [[ -f "$CODEX_AGENTS" ]]; then
+  _codex_begin_count=$(grep -Fxc "$CODEX_BEGIN" "$CODEX_AGENTS" || true)
+  _codex_end_count=$(grep -Fxc "$CODEX_END" "$CODEX_AGENTS" || true)
+  if [[ "$_codex_begin_count" -eq 1 && "$_codex_end_count" -eq 1 ]]; then
+    awk -v begin="$CODEX_BEGIN" -v end="$CODEX_END" '
+      $0 == begin { skip=1; next }
+      $0 == end { skip=0; next }
+      !skip { print }
+    ' "$CODEX_AGENTS" > "$CODEX_TMP"
+  else
+    # Malformed/user-authored marker text must never cause content loss.
+    cat "$CODEX_AGENTS" > "$CODEX_TMP"
+  fi
+fi
+{
+  cat "$CODEX_TMP"
+  [[ ! -s "$CODEX_TMP" ]] || printf '\n'
+  printf '%s\n' "$CODEX_BEGIN"
+  cat "$SCRIPT_DIR/configs/CODEX_AGENTS.md"
+  printf '%s\n' "$CODEX_END"
+} > "$CODEX_AGENTS"
+rm -f "$CODEX_TMP"
 
 # ─── 4b. Install MCP Server ─────────────────────────────────────────────
 _echo() { printf '%s\n' "$*"; }
@@ -444,6 +479,7 @@ echo ""
 echo "Installed components:"
 echo "  Hooks:    $(ls "$CLAUDE_DIR/hooks/"*.sh 2>/dev/null | wc -l) scripts"
 echo "  Agents:   $(ls "$CLAUDE_DIR/agents/"*.md 2>/dev/null | wc -l) definitions"
+echo "  Codex:    $(ls "$CODEX_DIR/agents/"*.toml 2>/dev/null | wc -l) agent definitions"
 echo "  Skills:   $(ls -d "$CLAUDE_DIR/skills/"*/ 2>/dev/null | wc -l) skills"
 echo "  Scripts:  $(ls "$CLAUDE_DIR/scripts/"*.sh 2>/dev/null | wc -l) scripts"
 echo "  Commands: $(ls "$CLAUDE_DIR/commands/"*.md 2>/dev/null | wc -l) commands"

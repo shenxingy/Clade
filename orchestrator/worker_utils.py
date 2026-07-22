@@ -929,6 +929,8 @@ async def _maybe_enqueue_classify_retry(
             decision.model,
             own_files=w.own_files,
             forbidden_files=w.forbidden_files,
+            provider=getattr(w, "provider", None),
+            effort=getattr(w, "effort", None),
         )
         logger.info(
             "Auto-classify retry: task %s [%s] → enqueued retry (model=%s, attempt=%d/%d)",

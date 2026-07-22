@@ -38,6 +38,7 @@ from github_sync import _gh_update_issue_status
 from session_tree import SessionTree
 from execution_backend import LocalSubprocessBackend, get_execution_backend
 from worker_provider import get_worker_provider
+from worker_routing import resolve_worker_route
 import condensers
 import worker_review
 import worker_tldr
@@ -97,6 +98,8 @@ class Worker:
         claude_dir: Path,
         task_type: str | None = None,
         provider: str | None = None,
+        effort: str | None = None,
+        route_reason: str | None = None,
     ):
         self.id = str(uuid.uuid4())[:8]
         self.task_id = task_id
@@ -122,6 +125,8 @@ class Worker:
         # first-class member of the same pool. See worker_provider.py.
         self._provider = get_worker_provider(provider)
         self.provider = self._provider.name
+        self.effort = effort
+        self.route_reason = route_reason
         self.started_at = time.time()
         self._finished_at: float | None = None
         self.status = "starting"  # starting/running/paused/blocked/done/failed
@@ -201,6 +206,9 @@ class Worker:
             "task_id": self.task_id,
             "description": self.description[:80],
             "model": self.model,
+            "provider": self.provider,
+            "effort": self.effort,
+            "route_reason": self.route_reason,
             "status": self.status,
             "pid": self.pid,
             "elapsed_s": self.elapsed_s,
@@ -299,6 +307,7 @@ class Worker:
             requested_model=self.model,
             task_type=self.task_type,
             mcp_config=mcp_config,
+            effort=self.effort,
         )
 
         env = {**os.environ}
@@ -359,6 +368,7 @@ class Worker:
             "worker_id": self.id,
             "task_id": self.task_id,
             "model": self.model,
+            "provider": self.provider, "effort": self.effort, "route_reason": self.route_reason,
             "task_type": self.task_type,
             "description": self.description[:200],  # truncate for log
         })
@@ -1081,7 +1091,9 @@ class Worker:
         task_file = self._claude_dir / f"task-{self.id}-retry{self._reflection_retries}.md"
 
         _continue_cmd = (
-            self._provider.build_continue_command(task_file=task_file, requested_model=self.model)
+            self._provider.build_continue_command(
+                task_file=task_file, requested_model=self.model, effort=self.effort
+            )
             if use_continue else None
         )
         if _continue_cmd is not None:
@@ -1160,29 +1172,15 @@ class WorkerPool:
         )
         if existing:
             return existing
-        model = task.get("model", GLOBAL_SETTINGS.get("default_model", "sonnet"))
-        model = _MODEL_ALIASES.get(model, model)
         description = task["description"]
-        if GLOBAL_SETTINGS.get("auto_model_routing", False):
-            score = task.get("score")
-            if score is not None:
-                if score >= 80:
-                    model = "haiku"
-                elif score < 50:
-                    model = "sonnet"
-                    description = (
-                        "⚠ Low readiness (<50): ask clarifying questions before coding. "
-                        "Do NOT implement until requirements are clear.\n\n" + description
-                    )
-                if task.get("is_critical_path"):
-                    model = {"haiku": "sonnet", "sonnet": "opus"}.get(model, model)
-        # Per-task type model routing (overrides auto_model_routing when configured)
-        routing_map = GLOBAL_SETTINGS.get("task_type_model_routing") or {}
-        if routing_map:
-            inferred_type = _parse_task_type(description) or task.get("task_type") or "AUTO"
-            type_key = inferred_type.lower()
-            if type_key in routing_map:
-                model = routing_map[type_key]
+        route_task = dict(task)
+        route_task["task_type"] = _parse_task_type(description) or task.get("task_type") or "AUTO"
+        route = resolve_worker_route(route_task, GLOBAL_SETTINGS)
+        if route.needs_clarification:
+            description = (
+                "⚠ Low readiness (<50): ask clarifying questions before coding. "
+                "Do NOT implement until requirements are clear.\n\n" + description
+            )
         # Auto-inject past intervention corrections for retried/failed tasks
         failed_reason = task.get("failed_reason")
         if failed_reason:
@@ -1194,16 +1192,17 @@ class WorkerPool:
                     )
             except Exception:
                 pass
-        model = _MODEL_ALIASES.get(model, model)
         # Wire global EventBus JSONL for aggregate lifecycle observability (learn-cc s18)
         EventStream.set_global_bus_path(claude_dir / "events.jsonl")
         worker = Worker(
             task["id"],
             description,
-            model,
+            route.model,
             project_dir,
             claude_dir,
-            provider=task.get("provider"),
+            provider=route.provider,
+            effort=route.effort,
+            route_reason=route.reason,
         )
         worker.model_score = task.get("score")
         worker.task_timeout = task.get("timeout", 600)
@@ -1219,8 +1218,11 @@ class WorkerPool:
             worker._handoff_payload = task.get("handoff_payload")
         self.workers[worker.id] = worker
         _cur_attempts = (task.get("attempt_count") or 0) + 1
-        await task_queue.update(task["id"], status="running", worker_id=worker.id,
-                                attempt_count=_cur_attempts)
+        await task_queue.update(
+            task["id"], status="running", worker_id=worker.id,
+            attempt_count=_cur_attempts, model=route.model, provider=route.provider,
+            effort=route.effort, route_reason=route.reason,
+        )
         await worker.start(task_queue=task_queue)
         return worker
 
@@ -1272,18 +1274,15 @@ class WorkerPool:
         model = _MODEL_ALIASES.get(model, model)
 
         # Add as new task
-        new_task_id = await task_queue.add(
+        new_task = await task_queue.add(
             child_desc,
             model,
             own_files=parent_task.get("own_files", []),
             forbidden_files=parent_task.get("forbidden_files", []),
             parent_task_id=parent_task.get("id"),
+            provider=parent_task.get("provider"),
+            effort=parent_task.get("effort"),
         )
-
-        # Get the new task and spawn worker
-        new_task = await task_queue.get(new_task_id)
-        if not new_task:
-            return None
 
         return await self.start_worker(new_task, task_queue, project_dir, claude_dir)
 
@@ -1352,7 +1351,8 @@ class WorkerPool:
                         if not w.description.startswith("[STUCK-RETRY]") and not _is_loop_task:
                             retry_desc = f"[STUCK-RETRY] {w.description}"
                             await task_queue.add(retry_desc, w.model,
-                                                 own_files=w.own_files, forbidden_files=w.forbidden_files)
+                                                 own_files=w.own_files, forbidden_files=w.forbidden_files,
+                                                 provider=w.provider, effort=w.effort)
                         else:
                             logger.warning("Worker %s stuck — not re-queuing (retry=%s, loop=%s)",
                                            w.id, w.description.startswith("[STUCK-RETRY]"), _is_loop_task)

@@ -58,6 +58,12 @@ from config import (
 #: else (a Claude alias like ``sonnet``) means "use the ``~/.codex/config.toml``
 #: default", so we omit ``-m`` rather than force a Claude id onto Codex.
 _CODEX_MODEL_PREFIXES: Final = ("gpt-", "gpt5", "o1", "o3", "o4", "codex")
+_ALLOWED_EFFORTS: Final = frozenset({"low", "medium", "high", "xhigh", "max"})
+
+
+def _safe_effort(value: str | None) -> str | None:
+    effort = str(value or "").strip().lower()
+    return effort if effort in _ALLOWED_EFFORTS else None
 
 
 # ─── WorkerProvider ABC ──────────────────────────────────────────────────────
@@ -83,11 +89,12 @@ class WorkerProvider(ABC):
         requested_model: str | None,
         task_type: str | None,
         mcp_config: Path | None,
+        effort: str | None = None,
     ) -> str:
         """Build the full shell command string for this worker."""
 
     def build_continue_command(
-        self, *, task_file: Path, requested_model: str | None
+        self, *, task_file: Path, requested_model: str | None, effort: str | None = None
     ) -> str | None:
         """A retry command that resumes prior CLI context, or None if unsupported."""
         return None
@@ -110,12 +117,16 @@ class ClaudeProvider(WorkerProvider):
         requested_model: str | None,
         task_type: str | None,
         mcp_config: Path | None,
+        effort: str | None = None,
     ) -> str:
         model = self.resolve_model(requested_model)
         cmd = (
             f'claude -p "$(cat {shlex.quote(str(task_file))})" '
             f"--model {model} --dangerously-skip-permissions"
         )
+        effort = _safe_effort(effort)
+        if effort and model != _MODEL_ALIASES["haiku"]:
+            cmd += f" --effort {effort}"
         # Native lossless overload failover, off unless worker_fallback_model is set.
         cmd += _fallback_flag(requested_model)
         # Tool subsets per task type (Stripe Blueprint pattern).
@@ -127,16 +138,20 @@ class ClaudeProvider(WorkerProvider):
         return cmd
 
     def build_continue_command(
-        self, *, task_file: Path, requested_model: str | None
+        self, *, task_file: Path, requested_model: str | None, effort: str | None = None
     ) -> str:
         # AutoCodeRover pattern: --continue preserves agent context across retries;
         # the caller sends only the follow-up context as the task file.
         model = self.resolve_model(requested_model)
-        return (
+        cmd = (
             f'claude -p --continue "$(cat {shlex.quote(str(task_file))})"'
             f" --model {model} --dangerously-skip-permissions"
             f"{_fallback_flag(requested_model)}"
         )
+        effort = _safe_effort(effort)
+        if effort and model != _MODEL_ALIASES["haiku"]:
+            cmd += f" --effort {effort}"
+        return cmd
 
 
 # ─── CodexProvider ────────────────────────────────────────────────────────────
@@ -159,11 +174,15 @@ class CodexProvider(WorkerProvider):
         requested_model: str | None,
         task_type: str | None,
         mcp_config: Path | None,
+        effort: str | None = None,
     ) -> str:
         model = self.resolve_model(requested_model)
         parts = ["codex exec", "--dangerously-bypass-approvals-and-sandbox"]
         if model:
             parts.append(f"-m {shlex.quote(model)}")
+        effort = _safe_effort(effort)
+        if effort:
+            parts.append(f"-c {shlex.quote(f'model_reasoning_effort=\"{effort}\"')}")
         parts.append(f'"$(cat {shlex.quote(str(task_file))})"')
         # CRITICAL: codex exec blocks reading stdin to EOF even with a positional
         # prompt — close stdin so a headless worker never hangs until timeout.

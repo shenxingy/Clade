@@ -986,8 +986,9 @@ class _QueueStub:
     def __init__(self):
         self.added = []
 
-    async def add(self, desc, model, own_files=None, forbidden_files=None):
-        self.added.append((desc, model))
+    async def add(self, desc, model, own_files=None, forbidden_files=None,
+                  provider=None, effort=None):
+        self.added.append((desc, model, provider, effort))
         return "new-task-id"
 
 
@@ -997,7 +998,7 @@ class TestMaybeEnqueueClassifyRetry:
         import types
         return types.SimpleNamespace(
             description=desc, model=model, task_id="t1",
-            own_files=[], forbidden_files=[],
+            own_files=[], forbidden_files=[], provider="codex", effort="medium",
             _failure_classified=err,
         )
 
@@ -1037,10 +1038,11 @@ class TestMaybeEnqueueClassifyRetry:
         w = self._worker_stub(err=ClassifiedError(reason=FailoverReason.rate_limit))
         assert await _maybe_enqueue_classify_retry(w, q) is True
         assert len(q.added) == 1
-        desc, model = q.added[0]
+        desc, model, provider, effort = q.added[0]
         assert desc.startswith("[AUTO-RETRY 2/2]")
         assert "rate_limit" in desc  # hint block names the failure class
         assert model == "sonnet"
+        assert (provider, effort) == ("codex", "medium")
 
     async def test_auth_failure_not_retried(self, monkeypatch):
         import config

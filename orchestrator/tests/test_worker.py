@@ -108,6 +108,29 @@ def test_worker_build_cmd_and_env(tmp_path: Path) -> None:
     assert "--fallback-model" not in cmd
 
 
+def test_codex_worker_threads_effort_into_command_and_status(tmp_path: Path) -> None:
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    worker = Worker(
+        task_id="task-codex",
+        description="Implement the bounded change",
+        model="gpt-5.6-terra",
+        project_dir=tmp_path,
+        claude_dir=claude_dir,
+        provider="codex",
+        effort="medium",
+        route_reason="high readiness: cheap Codex tier",
+    )
+    task_file = tmp_path / "task.md"
+    task_file.write_text("do the bounded thing")
+    cmd, _ = worker._build_cmd_and_env(task_file)
+    status = worker.to_dict()
+    assert 'model_reasoning_effort="medium"' in cmd
+    assert status["provider"] == "codex"
+    assert status["effort"] == "medium"
+    assert "cheap Codex" in status["route_reason"]
+
+
 # ─── Overload failover (gap C) + spawn-env denylist (security sliver) ─────────
 
 import config  # noqa: E402 — real config module shared with the worker under test
