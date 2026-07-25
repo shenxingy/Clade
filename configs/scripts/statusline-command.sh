@@ -26,6 +26,20 @@ if command -v python3 >/dev/null 2>&1 && [ -f "$_usage_script" ]; then
   usage_segment=" $(python3 "$_usage_script" 2>/dev/null)"
 fi
 
+# ─── Extra segments (drop-in scripts) ───
+# Other tools (e.g. amsg) that want a statusLine segment install an
+# executable here instead of overwriting settings.json's statusLine.command
+# wholesale, which would silently hide this script's output (dir/git/usage).
+extra_segment=""
+extra_dir="$HOME/.claude/statusline-extra.d"
+if [ -d "$extra_dir" ]; then
+  for f in "$extra_dir"/*; do
+    [ -x "$f" ] || continue
+    seg=$("$f" 2>/dev/null)
+    [ -n "$seg" ] && extra_segment+=" ${seg}"
+  done
+fi
+
 # ─── Build output ───
 
 output=""
@@ -40,5 +54,8 @@ fi
 
 # Usage pace: +3% (4.4d)
 output+="${usage_segment}"
+
+# Extra (drop-in) segments
+output+="${extra_segment}"
 
 printf "%b" "$output"
