@@ -959,6 +959,22 @@ The design question is:
 > branch ownership model, and review policy, what Git actions are safe,
 > authorized, recoverable, and useful?
 
+Two requirements are non-negotiable:
+
+1. **Adapt before acting.** Clade must resolve the target repository's trusted
+   instructions, Git/forge policy, current event, branch ownership, and runtime
+   capabilities before choosing a workflow. Claude Code and Codex receive the
+   same policy decision, but their adapters may execute different transitions.
+2. **Preserve useful work promptly.** Research, code, tests, and design decisions
+   must not accumulate indefinitely as an uncommitted working tree. Once a
+   coherent, reviewable slice exists, the agent creates a checkpoint commit in
+   writable Git contexts. A detached/managed runtime must create a reachable
+   commit or runtime snapshot; a genuinely non-committable context must export
+   a patch/bundle and report why it could not commit.
+
+The second rule is about recoverability, not publication. A checkpoint commit
+does not imply permission to push, open a PR, merge, or delete a branch.
+
 This pass prioritizes current agent implementations over generic Git advice.
 Repository snapshots inspected on 2026-07-27:
 
@@ -1364,15 +1380,72 @@ Before committing, discover repository-native requirements:
 Do not universally add README diagrams, TODO updates, attribution trailers, or
 Conventional Commit prefixes. Those are repository policy decisions.
 
-At any normal session boundary, completed modifications must be in one of four
-explicit states:
+Checkpointing is mandatory in writable Git contexts. Create a checkpoint as
+soon as the current result is coherent and independently describable, and
+always before:
+
+- changing to a materially different research question or implementation slice;
+- handing work to another agent, provider, worktree, or human;
+- context compaction, planned interruption, or normal session end;
+- risky history, branch, worktree, or integration operations;
+- a long validation/deployment phase after the files needed for that phase are
+  already reviewable.
+
+Do not checkpoint merely because a timer elapsed, and do not create commits
+that knowingly leave the repository syntactically broken when a coherent
+boundary is available. Repository rules still determine message format,
+signing, hooks, and whether generated files belong in the same unit. Full
+candidate CI is not a prerequisite for a checkpoint; record the narrower
+verification that actually ran.
+
+At every normal boundary, modifications must be in one of four explicit
+states:
 
 - committed on an owned branch;
-- intentionally preserved as a runtime snapshot/detached worktree;
+- committed at detached HEAD with a runtime-preserved reference, or
+  intentionally preserved as a runtime snapshot;
 - exported as a patch/bundle because commit/push is unavailable;
 - reported as blocked with exact dirty files and reason.
 
-"Done, with uncommitted changes" is not a valid state.
+The fallback states are for environments where a commit is technically or
+explicitly prohibited; they are not excuses to defer a normal commit. "Done,
+with uncommitted changes" is not a valid state.
+
+### Repository and runtime adaptation precedence
+
+Clade must resolve behavior in this order:
+
+1. hard safety boundaries and the user's explicit authorization;
+2. trusted target-repository policy, including the closest applicable
+   `AGENTS.md`/`CLAUDE.md`, contribution guide, hooks, signing/DCO rules, forge
+   rulesets, required checks, and configured merge methods;
+3. current event and ownership, such as issue, agent PR, human PR, fork PR,
+   closed PR, owned branch, shared branch, or detached worktree;
+4. runtime capabilities exposed by Claude Code, Codex, MCP, CI, or a cloud
+   agent;
+5. Clade's conservative portable defaults.
+
+Lower layers may select a compatible mechanism but may not weaken a higher
+layer. For example:
+
+- Codex may preserve a detached checkpoint and attach a branch only when
+  publication is requested;
+- Claude Code in a normal owned checkout may checkpoint directly on the task
+  branch;
+- Claude Code Action may reuse an open agent PR head but must not execute
+  instructions supplied by an untrusted PR head;
+- a repository that requires signed commits or a specific message format
+  overrides Clade's default commit mechanism;
+- lack of `gh` selects another forge adapter or a local patch/bundle path; it
+  does not turn a non-GitHub repository into an error;
+- an unknown policy or ownership result becomes a safe stop for the affected
+  external mutation, not implicit permission.
+
+Provider parity therefore means equal policy outcomes for equal inputs, not
+byte-identical shell commands. Cross-provider fixture tests should assert the
+decision (`checkpoint`, `publish`, `open/update PR`, `integrate`, or `stop`) and
+allow the Claude Code and Codex adapters to use their native preservation and
+handoff mechanisms.
 
 ### PR policy for agents
 
@@ -1507,6 +1580,12 @@ The redesign should be tested against scenarios, not prose compliance:
 
 - completed agent task cannot finish dirty without an explicit preservation
   artifact;
+- a coherent research or implementation slice triggers a checkpoint before
+  the agent changes direction or crosses a session/provider boundary;
+- checkpoint creation does not silently authorize push, PR creation, merge, or
+  branch deletion;
+- repository policy wins over Clade defaults while Claude Code and Codex reach
+  the same authorization decision through runtime-native mechanisms;
 - direct default-branch push is denied unless the user explicitly requested it
   and repository policy allows it;
 - open PR work updates the correct head without creating a duplicate;
