@@ -1,28 +1,18 @@
 ---
 name: commit
-description: Analyze uncommitted changes, split into logical commits by module, commit and push by default
-when_to_use: "commit, push, ship code, 提交, 推送, done with changes, save work, after /sync — NOT for releases (use /ship)"
-argument-hint: '[--no-push] [--dry-run]'
+description: Create repository-adaptive checkpoint commits for coherent work; publication is separately authorized
+when_to_use: "commit, checkpoint, save work, 提交, preserve progress, done with a coherent slice — NOT release aggregation (use /ship)"
+argument-hint: '[--publish] [--candidate] [--dry-run]'
 user_invocable: true
 ---
 
-# Commit Skill
+# Commit
 
-Analyzes all uncommitted changes, groups them by logical module/feature, and creates well-organized commits — following the convention of splitting by feature rather than one big commit.
+Create one or more truthful checkpoint commits on an owned delivery branch.
+Discover repository message, signing, DCO, hook, and verification policy before
+committing. A commit preserves work; it does not automatically authorize push,
+PR publication, merge, or branch deletion.
 
-## What it does
-
-1. Analyzes all staged and unstaged changes
-2. Groups files into logical commits (schema, API, frontend, config, docs, etc.)
-3. Generates appropriate commit messages for each group
-4. Shows the plan for confirmation
-5. Executes commits in sequence
-6. Pushes by default
-
-## Usage
-
-```
-/commit                   # Analyze + plan + confirm + commit + push (default)
-/commit --no-push         # Commit only, skip push
-/commit --dry-run         # Show plan only, don't commit
-```
+This skill is the BUILD/checkpoint operation of `$delivery`. Run the shared
+delivery context probe and use its active record rather than assuming
+`origin/main`, GitHub, branch ownership, or a writable attached checkout.
