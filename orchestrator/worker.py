@@ -33,13 +33,12 @@ from config import (
     _parse_task_schema,
     _infer_commit_type,
 )
-from agent_runtime import AgentRuntimeSelectionError
 from task_queue import TaskQueue
 from github_sync import _gh_update_issue_status
 from session_tree import SessionTree
 from execution_backend import LocalSubprocessBackend, get_execution_backend
 from worker_provider import get_agent_runtime
-from worker_routing import resolve_worker_route
+from worker_runtime import resolve_runtime_route
 import condensers
 import worker_review
 import worker_tldr
@@ -1151,8 +1150,7 @@ class Worker:
             return False
 
 
-# ─── Auto-classify retry helper ───────────────────────────────────────────────
-# _maybe_enqueue_classify_retry moved to worker_utils.py (re-exported above).
+# Auto-classify retry helper lives in worker_utils.py and is re-exported above.
 
 
 # ─── Worker Pool ──────────────────────────────────────────────────────────────
@@ -1176,20 +1174,7 @@ class WorkerPool:
         if existing:
             return existing
         description = task["description"]
-        route_task = dict(task)
-        route_task["task_type"] = _parse_task_type(description) or task.get("task_type") or "AUTO"
-        try:
-            route = resolve_worker_route(route_task, GLOBAL_SETTINGS)
-        except AgentRuntimeSelectionError as exc:
-            # Persist a terminal, actionable outcome so auto-start does not
-            # retry the same invalid selection on every status-loop tick.
-            await task_queue.update(
-                task["id"],
-                status="failed",
-                failed_reason=str(exc),
-                route_reason="agent runtime selection failed",
-            )
-            raise
+        route = await resolve_runtime_route(task, GLOBAL_SETTINGS, task_queue)
         if route.needs_clarification:
             description = (
                 "⚠ Low readiness (<50): ask clarifying questions before coding. "

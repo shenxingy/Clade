@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from agent_runtime import AgentRuntimeSelectionError
 
 # ─── Load real Worker module bypassing conftest mock ──────────────────────────
 # conftest.py patches sys.modules["worker"] with a MagicMock to prevent
@@ -154,7 +155,7 @@ async def test_worker_pool_invalid_runtime_fails_before_spawn_and_marks_task(
     }
 
     with pytest.raises(
-        _mod.AgentRuntimeSelectionError, match="Unsupported agent runtime"
+        AgentRuntimeSelectionError, match="Unsupported agent runtime"
     ):
         await pool.start_worker(
             task, queue, tmp_path, tmp_path / ".claude"

@@ -364,10 +364,10 @@ async def update_task(task_id: str, body: dict, s: ProjectSession = Depends(_res
         return task
     provider = updates.get("provider")
     if provider is not None:
-        provider = str(provider).lower()
-        if provider not in VALID_PROVIDERS:
-            raise HTTPException(status_code=400, detail="invalid provider")
-        updates["provider"] = provider
+        try:
+            updates["provider"] = normalize_agent_runtime(provider)
+        except AgentRuntimeSelectionError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     effort = updates.get("effort")
     if effort is not None:
         effort = str(effort).lower()
