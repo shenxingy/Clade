@@ -1934,3 +1934,428 @@ Adapters translate these values into `settings.json`, `config.toml`,
 environment variables, API calls, or managed-service configuration only at
 the boundary. Clade should never make one runtime's config file its canonical
 cross-runtime schema.
+
+### One status intent, several native renderers
+
+Status parity should begin with a provider-neutral snapshot, not a shared shell
+script:
+
+```yaml
+schema_version: clade.status/v1
+observed_at: 2026-07-27T16:00:00Z
+task:
+  state: working
+  progress:
+    completed: 5
+    total: 8
+    source: delivery_state
+git:
+  branch: research/universal-harness-contract
+  dirty: false
+  checkpoint_sha: 97d61b6
+execution:
+  runtime: claude-code
+  provider: minimax
+  model: MiniMax-M2.7
+limits:
+  - window: 5h
+    used_percent: 31
+    resets_at: 2026-07-27T19:00:00Z
+freshness:
+  limits: native_event
+  progress: orchestrator
+```
+
+Every field needs source, observation time, and unknown handling. A cached
+value must be visibly stale; absence must not render as zero. Task progress
+must come from durable delivery/task state, not from elapsed wall time or the
+number of lines emitted by a model.
+
+The portable user preference should describe desired information and density:
+
+```yaml
+status:
+  density: compact
+  show: [task_progress, model, context, usage, git]
+  usage_style: percent
+  color: auto
+```
+
+Each surface then provides the strongest native rendering it can:
+
+| Surface | Native mechanism | Clade adapter behavior |
+| --- | --- | --- |
+| Claude Code terminal | command receives JSON stdin and prints arbitrary text | merge runtime JSON with the Clade snapshot, then render the requested theme |
+| Codex terminal | ordered native `tui.status_line` item list | map supported intent to native item IDs; expose unsupported Clade fields in a companion status command/panel |
+| Codex app/cloud | product-owned UI with surface-dependent controls | publish the same snapshot where the surface API permits; never claim terminal-only customization |
+| Kimi Code | runtime/provider capability-dependent UI | use a Kimi surface adapter and declared status capabilities |
+| MCP/headless | no guaranteed persistent footer | expose a `clade_status` resource/tool and structured event, with a compact text fallback |
+| CI/GitHub Action | log and check-run summaries | render phase transitions, checkpoint SHA, degradation, and final outcome |
+
+Claude Code's arbitrary renderer is strictly more flexible than Codex's native
+item list. Equal experience therefore means equal truth and discoverability,
+not pixel-identical output. On Codex, Clade should preserve native TUI behavior
+and offer a companion view for unsupported task-progress fields. It must not
+install a fake shell footer that fights the runtime.
+
+The existing `slt`, `claude-usage-watch`, and `codex-usage` behaviors should
+become compatibility entry points into one semantic `status` / `usage`
+capability:
+
+```text
+/clade:status setup
+/clade:status show
+/clade:status style percent
+/clade:status diagnose
+```
+
+The command resolver selects the surface adapter. Existing names can remain as
+deprecated aliases for one release cycle. Help output must say which requested
+fields are native, emulated, stale, unavailable, or shown elsewhere.
+
+Claude's private OAuth/cache usage fallback should be isolated as a versioned
+legacy adapter, disabled unless native rate-limit data is unavailable and the
+user opts in. Native runtime events or documented provider APIs are preferred
+over scraping private credential stores.
+
+### Skills: one semantic package, explicit surface overlays
+
+Canonical skills should be organized into three layers:
+
+```text
+skills/
+  core/
+    commit/
+    create-pr/
+    merge-pr/
+    status/
+    provider/
+  surfaces/
+    claude-code/
+    codex/
+    kimi-code/
+    mcp/
+  providers/
+    anthropic/
+    openai/
+    minimax/
+    moonshot/
+```
+
+- `core` owns provider-neutral intent, safety invariants, state transitions,
+  expected output, and deterministic helper contracts.
+- `surfaces` owns instruction-file discovery, trust behavior, native config,
+  approval representation, status UI, and runtime command syntax.
+- `providers` owns documented protocol quirks, model discovery, usage sources,
+  and control translation.
+
+A built package is a declared composition such as:
+
+```yaml
+package: codex-openai
+core_contract: clade/v1
+surface_adapter: codex/v1
+provider_adapter: openai-responses/v1
+capabilities:
+  status:
+    native: [model, context, usage, git]
+    companion: [task_progress, checkpoint]
+```
+
+Generated packages should contain provenance and contract versions. They should
+not be created by global replacements of "Claude" with "Codex" or
+`CLAUDE.md` with `AGENTS.md`. Template substitution remains acceptable for
+mechanical names only when the generated output is validated against a
+surface-specific golden fixture.
+
+Claude Code, Codex, and MCP distributions should expose the same core lifecycle
+states: inspect, implement, test, checkpoint, publish, review, integrate, and
+clean. A distribution may represent a state with a runtime-native command,
+tool, prompt, or UI action, but it cannot silently omit the state. Package
+manifests need a parity test over semantic capabilities rather than identical
+file lists.
+
+Provider switching must become connection selection. A `provider` skill should
+never rewrite secrets or silently edit another runtime's native settings. It
+should:
+
+1. list configured local connection identities and discovered capabilities;
+2. resolve a profile against the current runtime/surface;
+3. preview native configuration changes and degradations;
+4. apply only through the selected surface adapter;
+5. run a non-destructive connection/capability probe;
+6. report the resolved execution envelope.
+
+### Model controls and aliases
+
+Portable profiles such as `fast`, `balanced`, and `strong` are preferences, not
+model aliases. The resolver chooses among user-configured candidates and logs
+the result. `sonnet`, `opus`, `gpt-*`, `MiniMax-*`, and `kimi-*` remain
+provider-scoped model identifiers.
+
+Reasoning controls also require translation:
+
+```yaml
+portable_intent:
+  reasoning: strong
+adapter_result:
+  claude-code/anthropic:
+    effort: high
+  codex/openai:
+    reasoning_effort: high
+  claude-code/kimi:
+    effort: high
+    mapped_provider_effort: high
+  minimax-anthropic:
+    control: provider_default
+    degradation: exact portable effort unavailable
+```
+
+Adapters must validate values against the resolved runtime/model. Unsupported
+controls are not passed through optimistically. Provider-specific extras can
+be supplied in a namespaced `native` section and are preserved round-trip:
+
+```yaml
+native:
+  codex:
+    model_reasoning_summary: auto
+  claude_code:
+    extended_context: true
+```
+
+The common schema should allow extension without pretending to understand a
+new option. Unknown namespaced values are retained for their owning adapter;
+unknown universal fields fail schema validation.
+
+### Runtime lifecycle contract
+
+All agent runtimes should implement the same observable lifecycle even when
+their session APIs differ:
+
+```text
+probe → resolve → start → observe → checkpoint* → verify
+                                     ↘ suspend/resume
+                               → publish? → integrate? → clean
+```
+
+Required runtime operations:
+
+- `probe`: version, available commands, surface, trust state, capabilities;
+- `start`: launch with the immutable envelope and least required authority;
+- `observe`: structured state/events without parsing decorative terminal text;
+- `cancel`: stop without losing already durable checkpoints;
+- `handoff`: persist context needed by another compatible runtime;
+- `resume`: native resume when available, otherwise a declared reconstructed
+  handoff with reduced-fidelity metadata;
+- `finalize`: verify repository state and emit a terminal task outcome.
+
+If a runtime does not support native resume, Clade should say
+`resume=reconstructed`; it must not fabricate a session ID or claim continuity.
+Permission bypass flags are runtime-specific high-risk capabilities, never
+portable defaults.
+
+### Integrating the Git delivery contract
+
+The earlier adaptive checkpoint and PR design becomes a peer of model
+resolution, not a model-specific prompt:
+
+- repository/forge facts are probed before the model is selected;
+- a branch/worktree lease belongs to the Clade run, not the provider;
+- coherent research and implementation slices checkpoint regardless of which
+  model produced them;
+- switching runtime/provider is a checkpoint trigger because it is a handoff
+  boundary;
+- checkpoint does not imply push, PR, or merge authorization;
+- the execution envelope and delivery state record which runtime/provider made
+  each checkpoint without adding generated attribution to the commit message;
+- PR creation and merge remain forge/policy decisions and are never inferred
+  from model confidence;
+- review must use the exact candidate/head SHA; integration must verify that
+  SHA and repository merge policy.
+
+This ensures a task can begin in Claude Code, be reviewed in Codex, and be
+integrated by a headless Clade worker without changing its delivery invariants.
+
+### Experience contract
+
+For the same task, every supported surface must provide:
+
+1. the same resolved task intent and repository safety decision;
+2. a visible runtime/provider/model identity;
+3. explicit capability degradations before irreversible work;
+4. durable progress/checkpoint truth;
+5. access to current usage/context when the provider exposes it;
+6. the same verification and delivery gates;
+7. a clear native path to provider-specific power features;
+8. a truthful explanation when a surface cannot provide an equivalent.
+
+Discoverability may be native:
+
+- a Claude Code slash command;
+- a Codex skill or config entry;
+- a Kimi Code agent/command;
+- an MCP tool/resource;
+- a CI summary.
+
+Command spelling is secondary. The semantic input/output and quality bar are
+the compatibility contract.
+
+### Conformance and end-to-end matrix
+
+Every adapter must pass shared contract fixtures plus pair-specific
+integration tests. The minimum release matrix is:
+
+| Scenario | Contract to verify |
+| --- | --- |
+| Claude Code + Anthropic | native tools, model/effort, native rate-limit event, command status renderer |
+| Claude Code + MiniMax Anthropic API | supported tools, unsupported image/document behavior, ignored controls, current endpoint/model discovery |
+| Claude Code + Kimi coding API | resolved identity differs from display alias, effort mapping, context/compaction behavior |
+| Codex CLI + OpenAI | Responses provider, model-specific reasoning validation, native status item mapping |
+| Codex CLI + custom Responses gateway | user-scoped provider/auth, opaque model ID, no closed allowlist |
+| Codex cloud task | project/runtime limitations represented as capabilities, no local-config assumptions |
+| Kimi Code + Moonshot | declared model/context/capabilities and Kimi-native lifecycle |
+| MCP unknown client | structured status tool/resource, no persistent-footer assumption |
+| headless/CI | no interactive UI, deterministic event/status summary |
+| offline/stale catalog | pinned fallback is marked stale and required unknown capabilities block |
+
+Cross-cutting fixtures:
+
+- invalid runtime/provider/protocol/model never falls back to another target;
+- missing, null, extra, and newer status-event fields do not crash renderers;
+- stale usage is visibly distinct from zero usage;
+- unsupported required capability fails before token spend or repository write;
+- unsupported preferred capability produces an envelope degradation;
+- project config cannot change provider endpoints, credential sources, or
+  permission authority;
+- model aliases resolve differently per connection without changing the
+  portable profile;
+- provider/model changes force a new envelope and checkpoint handoff;
+- Claude, Codex, Kimi, and MCP packages expose every core lifecycle state;
+- generator output contains no false surface claims;
+- a coherent slice cannot end dirty without a checkpoint, patch/snapshot, or
+  explicit blocker;
+- exact candidate SHA, tests, PR head, merge result, and branch cleanup remain
+  traceable end to end.
+
+Contract tests should use recorded, sanitized adapter fixtures. Live smoke tests
+run only when credentials are intentionally available and report skipped
+coverage per provider. Clade should not require every contributor or CI job to
+hold credentials for every vendor.
+
+### Observability and compatibility rules
+
+Every adapter event should carry:
+
+- schema and adapter version;
+- execution/run ID;
+- surface/runtime/provider/protocol/model identities;
+- source timestamp and receipt timestamp;
+- freshness;
+- requested and resolved values;
+- named degradations;
+- secret-redacted configuration provenance.
+
+Public event schemas use additive evolution. Consumers ignore unknown fields,
+but required semantic changes increment the schema version. Adapter
+compatibility is a tested range, not an assertion of "OpenAI compatible" or
+"Anthropic compatible."
+
+Clade should emit one diagnostic bundle that answers:
+
+- what did the user ask for?
+- which config layers participated?
+- what runtime/provider/model was actually selected?
+- which capabilities were probed, declared, unknown, or degraded?
+- which native files would be or were changed?
+- what status and usage sources are active?
+- what checkpoint/PR/merge state is durable?
+
+The bundle must redact credentials, authorization headers, private endpoint
+query strings, and secret-bearing environment values by construction.
+
+### Migration plan
+
+#### Phase 0 — Correct names and fail closed
+
+- introduce `agent_runtime`, `inference_provider`, `wire_protocol`, and
+  `connection` internally while reading current config as deprecated aliases;
+- reject unknown worker runtimes instead of falling back to Claude;
+- stop presenting Claude model aliases as the universal model catalog;
+- mark the current MiniMax bootstrap metadata deprecated/stale;
+- log a resolved envelope for existing Claude and Codex workers;
+- add regression tests before changing settings UI or package names.
+
+#### Phase 1 — Semantic contracts
+
+- define versioned `ExecutionEnvelope`, `CapabilitySet`, `StatusSnapshot`, and
+  typed resolution/degradation errors;
+- add Claude Code and Codex runtime/surface adapters around current launchers;
+- split usage collection into documented native, provider API, and opt-in
+  legacy adapters;
+- make task progress consume durable delivery state.
+
+#### Phase 2 — Native status and package composition
+
+- create one `status` semantic skill with Claude command-renderer, Codex
+  native-item/companion, MCP resource, and headless summary adapters;
+- replace global Codex word replacement with explicit package compositions;
+- add lifecycle-capability parity tests for Claude, Codex, and MCP manifests;
+- ship deprecated command aliases with exact migration output.
+
+#### Phase 3 — Provider/model registry
+
+- add user-scoped connections, live model discovery, TTL/pinned fallback, and
+  model capability declarations;
+- implement Anthropic, OpenAI Responses, MiniMax Anthropic, and Moonshot/Kimi
+  adapters;
+- replace provider-specific top-level model fields with task profiles and
+  ordered candidates;
+- migrate the settings UI to the resolver vocabulary.
+
+#### Phase 4 — Full runtime matrix
+
+- add Kimi Code and headless runtime adapters;
+- exercise cloud/CI limitations and reconstructed handoff behavior;
+- enforce conformance fixtures in generated-package CI;
+- add credential-gated live smoke tests without making them merge blockers for
+  contributors lacking vendor accounts.
+
+#### Phase 5 — Remove compatibility shims
+
+- remove deprecated `worker_provider`, `usage_provider`, Claude-only default
+  model semantics, legacy command names, and string-replacement generation only
+  after migration telemetry/tests show no supported path depends on them;
+- retain versioned import tooling and clear errors for old configs.
+
+### Non-goals
+
+- Clade will not make different models produce identical prose or performance.
+- Clade will not emulate unsupported provider features by silently changing
+  models.
+- Clade will not store cross-vendor secrets in repositories.
+- Clade will not promise pixel-identical status lines across unrelated UI
+  systems.
+- Clade will not treat protocol compatibility as proof of tool, image,
+  reasoning, caching, context, usage, or billing compatibility.
+- Clade will not make model selection responsible for Git authorization.
+
+### Acceptance decisions
+
+The following are architecture invariants, not optional implementation ideas:
+
+- common semantic core plus native adapters;
+- separate runtime, inference provider, protocol, model, surface, and policy;
+- explicit capability negotiation with `unknown` and typed degradation;
+- immutable resolved execution envelope;
+- no unknown-target fallback;
+- portable repository intent, user-scoped provider connections and secrets;
+- one truthful status snapshot with surface-native renderers;
+- semantic skill/package parity instead of identical files or global text
+  replacement;
+- adaptive checkpoints across runtime/provider handoffs;
+- exact-SHA Git delivery and repository-owned merge policy;
+- conformance fixtures for every supported adapter pair.
+
+Implementation should proceed in the ordered phases above. Updating individual
+model IDs or adding another `if provider == ...` branch before Phase 0 would
+extend the current coupling and should be rejected in review.
