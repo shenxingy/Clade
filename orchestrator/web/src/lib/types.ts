@@ -38,6 +38,8 @@ export interface Worker {
   task_id: string;
   description: string;
   model: string;
+  agent_runtime?: 'claude' | 'codex';
+  /** @deprecated Compatibility alias for agent_runtime. */
   provider?: 'claude' | 'codex';
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | null;
   route_reason?: string | null;
