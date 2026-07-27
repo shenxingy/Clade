@@ -14,7 +14,7 @@
 
 **Autonomous coding, evolved.**
 
-131 skills, 30 hooks, 36 agents, a safety guardian, and a correction learning loop — with native distributions for Claude Code and Codex, plus a provider-neutral MCP bridge for other editors.
+131 skills, 30 hooks, 37 agents, a safety guardian, and a correction learning loop — with native distributions for Claude Code and Codex, plus a provider-neutral MCP bridge for other editors.
 
 Three ways to use Clade: the full **Claude CLI framework**, the native **Codex plugin**, or the provider-neutral **MCP bridge**. Add the optional **Orchestrator** for multi-worker observability, quality gates, and task routing.
 
@@ -28,7 +28,7 @@ Three ways to use Clade: the full **Claude CLI framework**, the native **Codex p
 2. [MCP Server](#mcp-server--use-skills-in-any-ai-editor)
 3. [What It Does](#what-it-does)
 4. [Self-Learning Mechanisms](#self-learning-mechanisms)
-5. [Skills](#skills-129)
+5. [Skills](#skills-131)
 6. [Supported Languages](#supported-languages)
 7. [Documentation](#documentation)
 8. [Repo Structure](#repo-structure)
@@ -136,7 +136,7 @@ Both work on any project Claude Code is run in (universal, in `~/.claude/scripts
 
 See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, detectors, schemas, and tunable env vars.
 
-## Skills (129)
+## Skills (131)
 
 ### Core Workflow
 
