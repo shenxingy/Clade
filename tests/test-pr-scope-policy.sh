@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Regression guard for atomic PR delivery across planning, commit, PR creation,
-# review, release, and merge workflows.
+# Regression guard for adaptive atomic delivery across planning, checkpoint,
+# PR creation, review, integration, cleanup, and every distribution.
 
 set -uo pipefail
 
@@ -10,7 +10,7 @@ FAILED=0
 
 assert_contains() {
   local file="$1" needle="$2" label="$3"
-  if grep -qF "$needle" "$ROOT/$file"; then
+  if grep -qF -- "$needle" "$ROOT/$file"; then
     PASSED=$((PASSED + 1))
     printf '  ✓ %s\n' "$label"
   else
@@ -26,33 +26,57 @@ assert_contains \
   "create-pr" \
   "native plugin ships create-pr"
 assert_contains \
+  "plugins/clade/skills.list" \
+  "delivery" \
+  "native plugin ships delivery controller"
+assert_contains \
+  "mcp-package/skills.list" \
+  "create-pr" \
+  "MCP distribution ships create-pr"
+assert_contains \
+  "mcp-package/skills.list" \
+  "delivery" \
+  "MCP distribution ships delivery controller"
+assert_contains \
   "configs/skills/create-pr/SKILL.md" \
   "One PR = one independently reviewable and reversible delivery unit." \
   "create-pr defines the invariant"
 assert_contains \
-  "configs/skills/create-pr/SKILL.md" \
-  "Each PR targets its immediate predecessor." \
+  "configs/skills/create-pr/prompt.md" \
+  "Each stacked PR targets its" \
   "create-pr defines stacked bases"
 assert_contains \
-  "configs/skills/create-pr/SKILL.md" \
-  "Each branch must have its own evidence" \
+  "configs/skills/create-pr/prompt.md" \
+  "owns its own candidate/remote evidence" \
   "create-pr requires per-branch verification"
 assert_contains \
   "configs/skills/orchestrate/prompt.md" \
   "Treat each \`VERTICAL\` task as one pull-request delivery unit." \
   "orchestrate maps tasks to PRs"
 assert_contains \
-  "configs/skills/commit/prompt.md" \
-  "splitting commits is not enough" \
-  "commit distinguishes commits from PR boundaries"
+  "configs/skills/commit/SKILL.md" \
+  "A commit preserves work; it does not automatically authorize push" \
+  "commit separates preservation from publication"
 assert_contains \
   "configs/skills/review-pr/prompt.md" \
-  "verdict is **❌ Needs changes**" \
+  "Independent behavior is Needs changes" \
   "review rejects multi-scope PRs"
 assert_contains \
   "configs/skills/merge-pr/prompt.md" \
   "Never merge a multi-feature PR" \
   "merge blocks multi-feature PRs"
+assert_contains \
+  "configs/skills/merge-pr/prompt.md" \
+  "--match-head-commit <reviewed-head-sha>" \
+  "merge locks reviewed head SHA"
+assert_contains \
+  "configs/skills/merge-pr/prompt.md" \
+  "Block—not warn" \
+  "merge blocks pending and failed gates"
+assert_contains \
+  "configs/skills/delivery/prompt.md" \
+  "verify-clean --id" \
+  "delivery makes cleanup a verified transition"
 assert_contains \
   "configs/skills/ship/prompt.md" \
   "features already reviewed in" \

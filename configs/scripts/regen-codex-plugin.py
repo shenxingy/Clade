@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Generate the native Codex plugin skills from Clade's canonical skills.
+"""Compose native Codex plugin skills from Clade's canonical skills.
 
 Clade's Claude distribution executes ``prompt.md`` while Codex executes the
-body of ``SKILL.md`` directly.  This generator combines both files, applies a
-small compatibility layer, and copies references/assets into the plugin.
+body of ``SKILL.md`` directly. This generator combines both files and copies
+references/assets into the plugin. Delivery lifecycle skills use an explicit
+Codex surface overlay; legacy skills still use the bounded compatibility layer
+until they migrate to the same semantic composition contract.
 """
 
 from __future__ import annotations
@@ -44,6 +46,22 @@ Codex compatibility rules:
 - Paths such as `<plugin-root>/...` are relative to the installed Clade plugin
   containing this `SKILL.md`; resolve that root before invoking a helper.
 
+"""
+
+NATIVE_CORE_SKILLS = frozenset(
+    {"commit", "create-pr", "delivery", "merge-pr", "review-pr", "worktree"}
+)
+NATIVE_HEADER = """# Clade for Codex
+
+This package composes the provider-neutral Clade core contract with the native
+Codex surface adapter. Run the workflow directly in Codex; do not launch
+another agent CLI or route it through Clade MCP.
+
+Package provenance:
+
+- core contract: `clade.delivery/v1`
+- surface adapter: `codex/v1`
+- generated from: `configs/skills/<name>`
 """
 
 REPLACEMENTS = (
@@ -130,20 +148,35 @@ def _render_skill(name: str) -> str:
     if not canonical:
         raise ValueError(f"{name}: no executable instructions")
 
+    native_core = name in NATIVE_CORE_SKILLS
+    adapt = (lambda value: value) if native_core else _adapt
+    header = NATIVE_HEADER if native_core else COMPATIBILITY_HEADER
     sections = [
         "---",
         f"name: {name}",
-        f"description: {json.dumps(_adapt(description), ensure_ascii=False)}",
+        f"description: {json.dumps(adapt(description), ensure_ascii=False)}",
         "---",
         "",
-        COMPATIBILITY_HEADER.rstrip(),
+        header.rstrip(),
         "",
         "## Canonical Clade workflow",
         "",
-        _adapt(canonical),
+        adapt(canonical),
     ]
+    if native_core:
+        overlay = source_dir / "surfaces" / "codex.md"
+        if not overlay.is_file():
+            overlay = SOURCE_ROOT / "delivery" / "surfaces" / "codex.md"
+        sections.extend(
+            (
+                "",
+                "## Codex surface adapter",
+                "",
+                overlay.read_text(encoding="utf-8").strip(),
+            )
+        )
     if prompt_body and reference_body:
-        sections.extend(("", "## Additional skill reference", "", _adapt(reference_body)))
+        sections.extend(("", "## Additional skill reference", "", adapt(reference_body)))
     rendered = "\n".join(sections).rstrip() + "\n"
     for forbidden in FORBIDDEN_NATIVE_TEXT:
         if forbidden.lower() in rendered.lower():

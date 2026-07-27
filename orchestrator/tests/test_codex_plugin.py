@@ -46,12 +46,40 @@ def test_codex_plugin_skills_are_generated_and_provider_native() -> None:
     )
     assert result.returncode == 0, result.stderr
     skills = list((PLUGIN_ROOT / "skills").glob("*/SKILL.md"))
-    assert len(skills) == 22
+    assert len(skills) == 23
     merged = "\n".join(path.read_text(encoding="utf-8") for path in skills).lower()
     for forbidden in ("claude -p", "--dangerously-skip-permissions", "~/.claude/", ".claude/"):
         assert forbidden not in merged
     assert "agents.md (or claude.md" not in merged
     assert "&& claude" not in merged
+    lifecycle = {"commit", "create-pr", "delivery", "merge-pr", "review-pr", "worktree"}
+    assert lifecycle <= {path.parent.name for path in skills}
+    for name in lifecycle:
+        text = (PLUGIN_ROOT / "skills" / name / "SKILL.md").read_text()
+        assert "core contract: `clade.delivery/v1`" in text
+        assert "surface adapter: `codex/v1`" in text
+
+
+def test_delivery_lifecycle_has_semantic_parity_across_distributions() -> None:
+    lifecycle = {"commit", "create-pr", "delivery", "merge-pr", "review-pr", "worktree"}
+    codex = {
+        line.strip()
+        for line in (PLUGIN_ROOT / "skills.list").read_text().splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+    mcp = {
+        line.strip()
+        for line in (REPO_ROOT / "mcp-package" / "skills.list").read_text().splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+    canonical = {
+        path.name
+        for path in (REPO_ROOT / "configs" / "skills").iterdir()
+        if path.is_dir()
+    }
+    assert lifecycle <= codex
+    assert lifecycle <= mcp
+    assert lifecycle <= canonical
 
 
 def test_codex_guardian_denies_and_rewrites_supported_commands() -> None:

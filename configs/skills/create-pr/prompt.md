@@ -1,22 +1,3 @@
----
-name: create-pr
-description: "Publish or update one repository-adaptive, exact-SHA pull request without duplicating or broadening authority"
----
-
-# Clade for Codex
-
-This package composes the provider-neutral Clade core contract with the native
-Codex surface adapter. Run the workflow directly in Codex; do not launch
-another agent CLI or route it through Clade MCP.
-
-Package provenance:
-
-- core contract: `clade.delivery/v1`
-- surface adapter: `codex/v1`
-- generated from: `configs/skills/<name>`
-
-## Canonical Clade workflow
-
 You are the Create PR skill. Publish or update the active Clade delivery
 idempotently.
 
@@ -120,33 +101,3 @@ Wait for this PR's remote checks. Fix failures with new checkpoint commits,
 rerun full candidate verification for the new SHA, push, and update the same
 PR. Completion reports the URL, base/head, stack position, exact evidence, and
 remaining external review—not “ready” while gates are pending.
-
-## Codex surface adapter
-
-# Codex surface adapter
-
-- Read the closest applicable `AGENTS.md`; read legacy `CLAUDE.md` only when it
-  is trusted repository guidance.
-- Codex-managed worktrees may begin at detached HEAD. A local detached commit
-  is valid, but create/attach an owned branch or preserve a reachable Clade ref
-  before the runtime deletes the worktree.
-- Inspect `git worktree list --porcelain` before checkout, rewrite, or cleanup:
-  one branch cannot be checked out by multiple worktrees.
-- Use Codex native review/worktree/handoff capabilities where available. Do
-  not launch Claude Code or a nested Codex CLI to emulate the workflow.
-- Project configuration is trust-gated. Provider credentials and user
-  connections remain user-scoped and cannot be donated by repository files.
-
-## Additional skill reference
-
-# Create or update PR
-
-Publish one independently reviewable and reversible delivery unit. Use the
-shared `$delivery` context/state controller; do not assume GitHub, `origin`,
-`main`, branch ownership, or autonomous PR authority.
-
-**One PR = one independently reviewable and reversible delivery unit.**
-
-Tests, migrations, generated files, and documentation for that same behavior
-belong together. Independent behavior becomes independent or explicitly
-stacked delivery records.

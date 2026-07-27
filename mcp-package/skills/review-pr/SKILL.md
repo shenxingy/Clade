@@ -1,19 +1,14 @@
 ---
 name: review-pr
-description: AI checks out a PR into a worktree, runs the project's CI commands, and posts a structured review with execution evidence — parallel to OpenClaw's /review-pr
-when_to_use: "review PR, code review pull request, PR feedback"
+description: Review an exact PR head in isolation using trusted-base instructions and execution evidence
+when_to_use: "review PR, code review pull request, PR feedback, validate candidate"
 argument-hint: '[PR_NUMBER_OR_URL]'
 user_invocable: true
 ---
 
-# Review PR Skill
+# Review PR
 
-Checks out the PR into a worktree, discovers and runs the project's CI commands, writes a structured review (summary, evidence, risks, suggestions), and posts it as a PR comment via `gh`. The verdict is grounded in the Evidence section — tests that fail force ❌, and a review that couldn't execute the change never posts ✅.
-
-## Usage
-
-```
-/review-pr          # Review the PR for the current branch
-/review-pr 42       # Review PR #42
-/review-pr https://github.com/owner/repo/pull/42
-```
+Review one exact pull-request candidate in an isolated checkout. Resolve trusted
+base instructions before executing head code, run repository-required evidence,
+bind findings to base/head SHAs, and never count the author's own review as an
+independent approval.
