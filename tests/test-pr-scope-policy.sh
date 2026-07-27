@@ -61,6 +61,14 @@ assert_contains \
   "plugins/clade/skills/create-pr/SKILL.md" \
   "One PR = one independently reviewable and reversible delivery unit." \
   "generated Codex skill carries policy"
+assert_contains \
+  "configs/CLAUDE.md" \
+  "Multiple commits do not make a multi-feature branch acceptable." \
+  "installed global rules carry PR invariant"
+assert_contains \
+  "templates/CLAUDE.md" \
+  "use stacked PRs and require each branch" \
+  "project template carries stacked-PR rule"
 
 echo ""
 echo "── Results: $PASSED/$((PASSED + FAILED)) passed ──"
