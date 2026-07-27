@@ -175,6 +175,12 @@ TYPE: HORIZONTAL
 
 **Feature tag:** Every task MUST have a `Feature:` line mapping to a phase or goal name from TODO.md. This enables start.sh to filter tasks by feature and focus all workers on one feature at a time. If TODO.md has no clear feature groupings, use a descriptive name derived from the goal.
 
+**PR boundary:** Treat each `VERTICAL` task as one pull-request delivery unit.
+Do not plan “implement the whole roadmap, then open one PR.” If tasks depend on
+each other, specify a stacked order (`main <- task A <- task B`) and require
+each task branch to pass its own tests before opening its PR. Tests, migration,
+generated contracts, and docs for one feature stay with that feature.
+
 ### Step 4: Notify User
 After writing the file, say exactly:
 > "Tasks written to `.claude/proposed-tasks.md`. Click **Confirm** in the UI to start workers."
@@ -201,6 +207,8 @@ All tasks must follow these structure rules (Claude Code-optimized):
 - Do NOT suggest vague tasks like "improve the auth flow". Every task must name specific files.
 - Do NOT write more than 6 tasks at once. If the project is larger, plan the first phase.
 - Tasks should be executable by a single `claude -p` session in under 10 minutes.
+- One vertical task maps to one independently reviewable PR by default. Never
+  combine multiple Feature tags into a final aggregate feature PR.
 - Include `Pattern to follow:` in every task that touches existing code — this is the most important field for quality.
 - For greenfield tasks, reference similar patterns from well-known frameworks (e.g., "follow Next.js App Router conventions").
 

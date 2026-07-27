@@ -82,6 +82,15 @@ If a command fails or hangs, keep the failing output (tail ~20 lines) — that I
 
 ## Step 5: Analyze the diff
 
+First run a scope-cohesion gate. Map the diff to user-visible behaviors, TODO
+Feature tags, bug root causes, or independently deployable capabilities.
+Tests, migrations, generated files, and docs for one behavior count as that
+same scope.
+
+If more than one independent scope is present, verdict is **❌ Needs changes**
+even when CI passes: request separate or stacked PRs. Multiple commits are not
+evidence of independent reviewability.
+
 Read the full diff carefully. Write a structured review covering:
 
 **Summary** — What does this PR do? (2-3 sentences max)
@@ -153,7 +162,10 @@ Print the PR URL and the verdict. Done.
 - Be direct and specific — vague comments are noise
 - Don't praise trivially — "good job" without substance is useless
 - Evidence is not optional: every review posts what was executed and what happened, even when the answer is "nothing could be executed"
-- If the diff is too large (>500 lines), focus on the most impactful changes — but still run the full CI commands
+- If a diff exceeds 500 changed lines, require an atomic-scope justification
+  and focus on the most impactful changes while still running full CI. Over
+  1,000 lines defaults to Needs changes unless generated files or one
+  inseparable foundation explain the size.
 - Never approve security-sensitive changes (auth, crypto, SQL) without explicitly flagging them for human review
 - Never leave the worktree behind — clean up in Step 7 even on BLOCKED
 
