@@ -9,6 +9,25 @@ Parse the argument (if any):
 
 If no PR found, say so and exit. If PR state is already `MERGED` or `CLOSED`, say so and exit.
 
+## Step 1.5: Scope gate
+
+Inspect PR metadata and diff before checking CI:
+
+```bash
+gh pr view {PR_NUMBER_OR_URL} --json title,body,additions,deletions,changedFiles,commits,baseRefName,headRefName
+gh pr diff {PR_NUMBER_OR_URL}
+```
+
+Map the diff to independently useful features, TODO Feature tags, bug root
+causes, or roadmap phases. If it contains more than one independent delivery
+unit, stop and require separate or stacked PRs. Passing CI and multiple clean
+commits do not override this gate.
+
+Allow tests, migrations, generated contracts, and documentation that support
+the same feature. For diffs over 500 lines require explicit atomic-scope
+justification; over 1,000 lines defaults to stop unless generated files or a
+single inseparable foundation dominate.
+
 ## Step 2: Check CI status
 
 ```bash
@@ -59,6 +78,7 @@ git checkout main && git pull --ff-only
 
 - Never force-push or rebase without explicit user instruction
 - Never merge PRs targeting branches other than main/master without confirming with user
+- Never merge a multi-feature PR; split it with `/create-pr` first
 - If `--delete-branch` fails (e.g. branch already deleted), that's fine — continue
 
 
