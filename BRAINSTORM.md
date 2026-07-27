@@ -939,3 +939,585 @@ open a duplicate PR.
 6. **Measure outcomes:** stale branch age, uncommitted task exits, PR cycle
    time, base-drift reruns, cleanup failures, and revert success—not raw commit
    count or lines changed.
+
+---
+
+## [Research] 2026-07-27 — Agent-native Git delivery across repositories
+
+### Scope correction
+
+The earlier Git governance studies treated Clade as the repository being
+governed. That is too narrow. Clade ships `commit`, `create-pr`, `merge-pr`,
+`review-pr`, and `worktree` workflows that run inside arbitrary repositories,
+through Claude Code, Codex, and the MCP distribution. The product is therefore
+a portable Git delivery control plane, not a copy of Clade's own preferred
+workflow.
+
+The design question is:
+
+> Given an unknown repository, host, event, agent runtime, permission set,
+> branch ownership model, and review policy, what Git actions are safe,
+> authorized, recoverable, and useful?
+
+This pass prioritizes current agent implementations over generic Git advice.
+Repository snapshots inspected on 2026-07-27:
+
+- `anthropics/claude-code-action` at
+  `be7b93b1907a4abad570368f3c74b6fe3807510b`;
+- `anthropics/claude-code` at
+  `7ef6eec9d9ba84ea6f233f26c45f1df5c5991843`;
+- `openai/codex-action` at
+  `dd78cb653811af44014baa08fe954e28d32c1bf9`;
+- `openai/codex` at
+  `bd2de422aa287b97b06ca6425a10935bcf1b3731`.
+
+### What current agent systems actually do
+
+#### Anthropic: Claude Code Action
+
+Sources:
+
+- [repository](https://github.com/anthropics/claude-code-action);
+- [capabilities and limitations](https://github.com/anthropics/claude-code-action/blob/main/docs/capabilities-and-limitations.md);
+- [security model](https://github.com/anthropics/claude-code-action/blob/main/docs/security.md);
+- [`branch.ts`](https://github.com/anthropics/claude-code-action/blob/main/src/github/operations/branch.ts);
+- [`branch-cleanup.ts`](https://github.com/anthropics/claude-code-action/blob/main/src/github/operations/branch-cleanup.ts);
+- [`restore-config.ts`](https://github.com/anthropics/claude-code-action/blob/main/src/github/operations/restore-config.ts).
+
+Its branch behavior is event-dependent, not one universal sequence:
+
+- issue trigger → create a new branch from an API-resolved base/default branch;
+- open PR trigger → fetch and update that PR's existing head branch;
+- closed or merged PR trigger → create a new branch;
+- cross-repository PR → fetch through the pull ref rather than assuming the
+  head exists on `origin`;
+- empty agent-created branch → delete it;
+- dirty agent branch with no commit → make a recovery commit and push it rather
+  than losing completed work.
+
+Its default authority boundary is deliberately narrower than its technical
+ability:
+
+- only write-capable actors may trigger it by default;
+- bot allowlists are explicit;
+- it may create branches and push commits;
+- it does not approve PRs;
+- it does not merge, rebase, or perform general branch operations;
+- by default it gives the user a prefilled PR-creation link rather than opening
+  the PR automatically, preserving a human publication decision;
+- optional GitHub API commit signing trades away complex Git operations, while
+  SSH signing retains normal Git behavior.
+
+The most important modern behavior is its untrusted-PR boundary. Before running
+Claude against a PR head, it restores executable/configuration inputs such as
+`.claude/`, `CLAUDE.md`, `.mcp.json`, `.gitmodules`, hooks, and ripgrep config
+from the trusted base branch. It preserves the PR-authored versions only for
+inspection. A PR may propose changes to agent instructions; it may not redefine
+the reviewer that is evaluating it.
+
+#### Anthropic: autonomy, containment, and long-running work
+
+Sources:
+
+- [Claude Code auto mode](https://www.anthropic.com/engineering/claude-code-auto-mode);
+- [How we contain Claude](https://www.anthropic.com/engineering/how-we-contain-claude);
+- [Effective harnesses for long-running agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents);
+- [Harness design for long-running application development](https://www.anthropic.com/engineering/harness-design-long-running-apps);
+- [Scaling Managed Agents](https://www.anthropic.com/engineering/managed-agents);
+- [parallel Claude compiler experiment](https://www.anthropic.com/engineering/building-c-compiler);
+- [Agent Skills](https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills).
+
+The current lessons differ materially from older "ask before every shell
+command" workflows:
+
+1. User intent defines authorization. Auto mode permits normal pushes to the
+   session's working branch, while treating direct pushes to main,
+   force-overwriting history, remote branch deletion, bypassing review, and
+   edits to permission configuration as separate high-risk actions.
+2. Hard containment beats repeated prompts. Approval fatigue makes per-command
+   confirmation weak; the filesystem, network, credential, repository, and
+   branch boundaries should constrain what the agent can do.
+3. Credentials stay outside the agent sandbox. Managed Agents proxy Git and MCP
+   access so `pull`/`push` work without making raw tokens readable to generated
+   code.
+4. Git is durable agent memory. Long-running agents begin by reading history
+   and structured progress, implement one tractable slice, verify it, and end
+   with a commit plus progress update. A session that ends with undocumented
+   dirty work harms the next agent.
+5. Harness assumptions expire. Managed Agents explicitly separates stable
+   interfaces—append-only session, replaceable harness, isolated sandbox—from
+   model-specific prompting tricks that may become dead weight.
+6. Parallel agents need ownership and integration control. Anthropic's compiler
+   experiment gave every agent a fresh clone, used Git-visible task locks,
+   forced synchronization before push, and strengthened CI so one agent could
+   not silently break the shared result. It also reports frequent conflicts,
+   so its shared-upstream prototype is evidence for isolation, not a template
+   to copy literally.
+7. Skills should package deterministic scripts and references, not grow into
+   one enormous prose prompt. Agent Skills are now a cross-platform format;
+   provider-neutral behavior belongs in the canonical skill itself.
+
+#### Codex: current product and action model
+
+Sources:
+
+- current Codex manual, fetched 2026-07-27;
+- [Codex Action](https://github.com/openai/codex-action);
+- [Codex Action security](https://github.com/openai/codex-action/blob/main/docs/security.md);
+- [Codex worktrees](https://learn.chatgpt.com/docs/environments/git-worktrees);
+- [Codex skills](https://learn.chatgpt.com/docs/build-skills);
+- [AGENTS.md guidance](https://learn.chatgpt.com/docs/agent-configuration/agents-md).
+
+Current Codex behavior further invalidates a fixed Claude-oriented flow:
+
+- Codex-managed worktrees normally start at detached HEAD, create branches only
+  when the user chooses to preserve/publish the work, snapshot work before
+  automatic worktree deletion, and support handoff between background and local
+  environments.
+- A branch can be checked out in only one worktree. A portable skill must
+  inspect worktree ownership instead of assuming it can checkout/delete any
+  local branch.
+- `AGENTS.md` carries repository guidance; skills carry reusable workflows;
+  hooks or CI enforce mechanical rules. These are complementary layers, not
+  interchangeable prompt text.
+- `openai/codex-action` defaults to write-access actors, least-privilege
+  permission profiles, no persisted checkout credentials, and review of the
+  PR's synthetic merge commit. It treats PR bodies, commit messages,
+  screenshots, and repository instruction files as untrusted prompt-injection
+  surfaces.
+- The action recommends running the agent as the last step in a job or passing
+  sanitized output to a fresh job, because the agent may mutate processes,
+  hooks, or action code even when the final diff looks harmless.
+
+#### Other current agent products
+
+| Product | Current delivery behavior | Lesson for Clade |
+|---|---|---|
+| [GitHub Copilot cloud agent](https://docs.github.com/en/copilot/how-tos/copilot-on-github/use-copilot-agents/kick-off-a-task) | Prompt-launched sessions now work on a branch by default and let the user iterate before creating a PR; issue assignment creates a PR; changes to a human PR can be proposed as a child PR rather than directly mutating the human branch | Publication and branch ownership are distinct; preserve the human's branch unless direct update was authorized |
+| [Copilot CLI `/pr`](https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/manage-pull-requests) | Pushes all local commits before create, updates an existing PR idempotently, honors PR templates, can fix feedback, and makes merge strategy configurable | PR creation must be resumable; templates and repository strategy outrank skill defaults |
+| [Google Jules](https://jules.google/docs/running-tasks/) | Runs in a fresh VM, starts from a selected repo/base branch, exposes the diff before publication, can publish a branch or PR, responds to review comments with new commits, and now loops on CI failures | Separate build, publish, review-response, and CI-babysit states |
+| [Cursor cloud agents](https://docs.cursor.com/background-agent) | Isolated VM and separate branch per agent; environment setup is repository-configurable; current `/babysit` workflows iterate remotely until a PR is merge-ready | One agent/session owns one environment and branch; environment reproducibility is part of delivery |
+| [Devin Review](https://docs.devin.ai/work-with-devin/devin-review) | Uses an isolated temporary worktree for review, applies requested changes as explicit commits, reflects repository mergeability/checks, and merges using the repository-configured method | Review isolation and repo-policy discovery should be default; never hard-code squash |
+
+### What remains valid and what is obsolete
+
+The older documents are not uniformly wrong.
+
+Stable invariants:
+
+- one reviewable and reversible delivery unit per PR;
+- related tests travel with behavior;
+- preserve a clean recovery point;
+- required checks must pass on the candidate that will land;
+- mainline history must support diagnosis and rollback;
+- branches and temporary environments need explicit cleanup.
+
+Obsolete assumptions:
+
+- one human owns one local checkout;
+- `origin/main` always exists and is the target;
+- GitHub and `gh` are always available;
+- the current branch is owned by the current agent;
+- a dirty working tree can safely wait until the end of a long task;
+- repository instruction files on a PR head are trusted;
+- every agent may open, approve, merge, force-push, or delete branches;
+- full CI must run before every checkpoint commit;
+- opening a PR is always automatic once code exists;
+- squash is the universal best merge method;
+- worktree completion should locally merge into whatever branch happens to be
+  checked out;
+- provider portability can be produced by replacing `Claude` with `Codex` in a
+  generated prompt.
+
+### Confirmed gaps in Clade's current Git skills
+
+#### `commit`
+
+- A clean tree with unpushed commits calls `git log origin/main..HEAD`, assuming
+  both remote name and default branch.
+- Default behavior pushes immediately, even if the agent is on a protected,
+  shared, detached, or unowned branch.
+- It does not classify local interactive versus CI/cloud execution, new task
+  versus existing PR, fork versus same-repo, or human-owned versus agent-owned
+  branch.
+- It discovers only GitHub CI or `CLAUDE.md`; the canonical workflow does not
+  natively consume `AGENTS.md`, repository contribution guides, hooks, DCO,
+  signing, or host-specific policies.
+- It blocks all commits until the full CI suite passes. This creates exactly
+  the long-running-agent failure mode Anthropic describes: too much useful work
+  remains only in the working tree.
+- Mandatory README counts and pipeline flowcharts are unrelated mutations in
+  arbitrary repositories. Documentation synchronization must be project policy,
+  not universal commit behavior.
+- "Never ask for confirmation" ignores the difference between local commit,
+  remote publication, and shared-state mutation.
+
+#### `create-pr`
+
+- It assumes GitHub and `gh`; there is no GitLab, Bitbucket, forge API, or local
+  patch fallback.
+- It can reconstruct multiple branches by cherry-pick without first proving
+  branch ownership, remote write authority, signing requirements, fork
+  topology, or stacked-PR support.
+- It reads `CLAUDE.md` directly from the current checkout, which is unsafe for
+  untrusted PR review contexts.
+- It has no event-aware rule for open, closed, merged, fork, or human-authored
+  PRs.
+- It is shipped to Claude and Codex, but is absent from the MCP skills
+  manifest, so Clade's provider-neutral distribution lacks the PR creation half
+  of its delivery workflow.
+
+#### `merge-pr`
+
+- It hard-codes squash and `main/master`.
+- It allows pending checks to proceed and treats failed checks as bypassable by
+  a conversational confirmation.
+- It uses an unsupported `gh pr merge --yes`.
+- It does not inspect repository merge policy, required reviews,
+  CODEOWNERS/rulesets, merge queue, auto-merge, commit signing, or live child
+  PRs.
+- It conflates author and integrator authority. Current Anthropic Action does
+  not merge at all; other agents surface merge only through repository
+  protections and explicit user action.
+- It has no head-SHA lock, actor/branch ownership check, or trusted-base
+  handling.
+
+#### `worktree`
+
+- It immediately creates a branch, while Codex-managed worktrees intentionally
+  begin detached and snapshot disposable work.
+- It assumes sibling filesystem paths and a new `claude`/`codex` process,
+  instead of adapting to managed worktrees, containers, CI checkouts, or cloud
+  VMs.
+- It writes tracked `TASK.md` into an arbitrary repository.
+- Completion locally merges branches into the current checkout instead of
+  routing independently reviewable changes through that repository's normal
+  integration path.
+- It cannot prove another session no longer owns a branch before checkout,
+  merge, or deletion.
+
+#### Distribution architecture
+
+- Claude instructions are canonical; Codex instructions are generated through
+  broad string replacements such as `CLAUDE.md` → `AGENTS.md` and
+  `.claude/` → `.clade/`.
+- Text replacement cannot express platform semantics such as Codex detached
+  worktrees, Claude Action event routing, or distinct permission systems.
+- The same policy is duplicated across long prompts instead of being backed by
+  a deterministic repository/forge capability probe.
+
+### Target architecture: policy negotiation, not one recipe
+
+Every Git delivery skill should begin with the same three stages.
+
+#### 1. Context probe
+
+A deterministic helper should emit a machine-readable profile without changing
+state:
+
+```yaml
+runtime:
+  surface: local-interactive | managed-worktree | cloud-vm | ci-action
+  provider: claude | codex | other
+  trusted_checkout: true | false | unknown
+task:
+  source: prompt | issue | open-pr | closed-pr | review | automation
+  requested_actions: [edit, commit, push, open-pr]
+repository:
+  root: <path>
+  forge: github | gitlab | bitbucket | other | none
+  remote: origin
+  default_branch: main
+  current_branch: <name> | null
+  detached: false
+  dirty: false
+  instructions: [AGENTS.md, CLAUDE.md, CONTRIBUTING.md]
+branch:
+  protected: false | true | unknown
+  owner: session | user | shared | unknown
+  upstream: <ref> | null
+  worktree_owner: <path> | null
+pull_request:
+  number: 123 | null
+  state: open | closed | merged | null
+  same_repository: true | false | null
+  base: main | null
+policy:
+  merge_methods: [squash, rebase, merge]
+  required_checks: [...]
+  signing: required | optional | unknown
+  dco: required | optional | unknown
+capabilities:
+  commit: true
+  push_current_branch: true
+  open_pr: true
+  merge_pr: false
+  delete_remote_branch: false
+```
+
+Unknown is a first-class result. The skill must not convert an API failure into
+permission.
+
+#### 2. Authorization envelope
+
+Classify actions independently:
+
+**Normally autonomous inside an owned workspace**
+
+- inspect status, history, worktrees, remotes, instructions, and policy;
+- edit within task scope;
+- run local verification;
+- create a new task branch/worktree from the resolved base;
+- commit explicit task files on the session-owned branch;
+- push the session-owned branch when publication was requested or repository
+  policy declares agent branch publication automatic.
+
+**Require explicit task authority or repository automation policy**
+
+- push to an existing human/shared PR branch;
+- open a public PR;
+- retarget or close a PR;
+- force-with-lease after a restack;
+- enable auto-merge or enter a merge queue;
+- merge;
+- delete remote branches;
+- modify workflows, hooks, agent instructions, permissions, or signing config.
+
+**Never infer**
+
+- direct push to a protected/default branch;
+- plain `--force`;
+- bypassing CI, hooks, reviews, DCO, signing, or branch protection;
+- approving the agent's own PR;
+- executing PR-authored agent config in a privileged review environment;
+- expanding token, repository, organization, or network scope to finish a task.
+
+#### 3. Resumable delivery state
+
+Persist state outside tracked project files, preferably under a path resolved
+through `git rev-parse --git-path`, with a schema that can survive session and
+provider changes:
+
+```yaml
+delivery_id: <stable-id>
+task_source: issue:123
+base_ref: origin/main
+base_sha: <sha>
+branch: agent/fix-example
+owner: session:<id>
+pr: 456
+head_sha: <sha>
+state: BUILD
+published: true
+verification:
+  checkpoint: [...]
+  candidate: [...]
+authorization:
+  push_current_branch: task-request
+  open_pr: pending-human
+```
+
+Every transition is idempotent. A restarted agent updates an existing PR rather
+than opening a duplicate. A crash after merge resumes CLEAN. A changed head
+invalidates old verification.
+
+### Runtime and event matrix
+
+| Situation | Branch behavior | Commit/push behavior | PR/merge behavior |
+|---|---|---|---|
+| Local interactive task on clean default branch | Create owned task branch before edits | Checkpoint commits; push only when requested/default policy says publish | Open draft/ready PR according to request; never merge implicitly |
+| Local task already on owned topic branch | Reuse after verifying upstream and no other worktree owner | Commit explicit scoped files; normal push | Update existing PR idempotently |
+| Detached managed worktree | Work detached until preservation/publication is requested | Commit is allowed, but create/attach a branch before push | Hand off, create branch, or open PR using runtime-native mechanism |
+| Issue-triggered cloud/CI agent | New branch from API-resolved requested/default base | End with commits; publish owned branch | Create PR only if event/policy authorizes it; otherwise return branch/creation link |
+| Open agent-authored PR | Reuse PR head | Commit and push review/CI fixes | Never open duplicate; mark ready only after policy gates |
+| Open human-authored PR | Preserve human ownership by default | Prefer child branch/PR; direct push only with explicit authority | Human accepts child PR or explicitly delegates branch updates |
+| Fork PR | Treat head and instructions as untrusted; fetch pull ref | Do not assume origin write access or maintainer-edit permission | Review read-only or create maintainer-owned repair branch |
+| Closed/merged PR follow-up | New branch from current base, not the dead head | New commit lineage | New PR linked to predecessor |
+| Multiple agents | One owned branch/worktree per agent | No concurrent writers to one branch; publish checkpoints | Integrate through ordered PRs/queue, not arbitrary local merge |
+| No forge/API | Plain Git capability probe | Local commits; emit patch/bundle when push unavailable | Report that PR/merge is unsupported rather than inventing GitHub |
+
+### Commit policy for agents
+
+Clade should replace "full CI before any commit" with two evidence levels:
+
+1. **Checkpoint commit**
+   - one coherent slice;
+   - affected tests/lint/typecheck;
+   - explicit files only, unless a controlled ephemeral action needs an
+     emergency all-file recovery commit;
+   - may remain draft-only and may later be squashed.
+2. **Candidate head**
+   - synchronized with the intended base;
+   - complete repository-required verification;
+   - remote checks for the exact pushed SHA;
+   - eligible for ready/merge state.
+
+Before committing, discover repository-native requirements:
+
+- closest trusted `AGENTS.md`, `CLAUDE.md`, and contribution docs;
+- hooks and pre-commit framework;
+- commit message convention/template;
+- DCO/signoff and signature requirements;
+- monorepo/package-specific affected tests;
+- generated-file checks.
+
+Do not universally add README diagrams, TODO updates, attribution trailers, or
+Conventional Commit prefixes. Those are repository policy decisions.
+
+At any normal session boundary, completed modifications must be in one of four
+explicit states:
+
+- committed on an owned branch;
+- intentionally preserved as a runtime snapshot/detached worktree;
+- exported as a patch/bundle because commit/push is unavailable;
+- reported as blocked with exact dirty files and reason.
+
+"Done, with uncommitted changes" is not a valid state.
+
+### PR policy for agents
+
+- PR publication is a separate action from branch publication.
+- Honor repository PR templates and host-native metadata.
+- Open draft early only when requested or policy allows autonomous PR creation;
+  otherwise return a branch and creation link.
+- Existing branch PR creation is idempotent: update the same PR.
+- Review comments and CI failures create new checkpoint commits; do not rewrite
+  reviewed history unless the branch is owned and restack policy permits it.
+- An authoring agent cannot count its own review as independent approval.
+- PR descriptions record agent/runtime identity, base/head SHAs, scope,
+  evidence, residual risk, and whether commits are checkpoints intended for
+  squash.
+- Untrusted instruction changes are displayed for review but evaluated using
+  trusted-base instructions.
+
+### Merge policy for agents
+
+`merge-pr` should become an integrator workflow, not the automatic tail of
+every authoring workflow.
+
+1. Require explicit user instruction or repository automation policy.
+2. Re-fetch the PR and repository rules immediately before merge.
+3. Require all configured checks/reviews/conversations; do not offer a
+   conversational bypass for a red or pending protected gate.
+4. Lock the reviewed head SHA.
+5. Prefer repository-configured merge strategy or auto-merge/merge queue.
+6. If several methods remain available, choose from history semantics and
+   explain the choice; never hard-code squash.
+7. Detect live child PRs before rewriting parent ancestry.
+8. Never approve the agent's own PR.
+9. Clean only session-owned branches/worktrees; remote deletion follows repo
+   policy or explicit authority.
+10. Verify the landed commit, updated default branch, descendant state, and
+    absence of dirty work before declaring Done.
+
+### Multi-agent policy
+
+- One session owns one mutable branch reference.
+- Use separate worktrees, clones, containers, or detached snapshots for
+  parallel work.
+- Record branch/worktree ownership and refuse to mutate a ref owned by another
+  live session.
+- Split tasks by non-overlapping delivery unit; use explicit dependencies where
+  overlap is unavoidable.
+- Agents publish through PRs or a controlled integration branch/queue.
+- A merge agent is a separate role from author and reviewer.
+- Final integration tests the combined current base plus candidate, not merely
+  each stale agent head.
+- Progress/log artifacts belong in delivery state or an explicitly
+  repository-approved location, not an unconditional tracked `TASK.md`.
+
+### Proposed Clade skill architecture
+
+```text
+git-context probe (deterministic, read-only)
+        │
+        ├── trusted-instruction resolver
+        ├── forge adapter: GitHub | GitLab | Bitbucket | plain Git
+        ├── runtime adapter: local | managed worktree | cloud | CI
+        └── policy/permission/ownership profile
+                         │
+                 delivery state machine
+        ┌────────────────┼────────────────┐
+      commit          create/update PR   integrate
+        │                  │                │
+   checkpoint/candidate  review/CI loop   merge/cleanup
+```
+
+Canonical Agent Skills should be provider-neutral. Claude Code and Codex
+packages should add only thin surface adapters:
+
+- how to locate trusted instructions;
+- how the runtime exposes worktrees/snapshots/handoffs;
+- how approval and sandbox capabilities are represented;
+- how to call the shared deterministic scripts.
+
+Do not generate semantic behavior through global word replacement. Ship
+`create-pr` in the MCP manifest so the provider-neutral lifecycle is not
+missing a state.
+
+### Implementation plan
+
+#### Phase 1 — Stop unsafe universal assumptions
+
+- Remove automatic `origin/main` assumptions.
+- Refuse commit/push on detached, default, protected, shared, or unknown-owned
+  branches until the runtime-specific path is resolved.
+- Remove universal README/flowchart mutation from `commit`.
+- Split checkpoint verification from candidate verification.
+- Make `merge-pr` respect repository strategy, block pending/red required
+  checks, and lock head SHA.
+- Remove unsupported `--yes`.
+
+#### Phase 2 — Shared capability probe
+
+- Add a deterministic `git-context` script with JSON output.
+- Detect remotes/default branch/worktrees/detached state/upstream/dirty state.
+- Add GitHub adapter first; represent absent CLI, auth, API failures, and
+  unknown protection explicitly.
+- Add fixture tests for local-only, GitHub, fork PR, detached worktree, existing
+  PR, protected default, and shared branch.
+
+#### Phase 3 — Resumable delivery and event routing
+
+- Persist delivery state outside tracked project files.
+- Route issue/open PR/closed PR/new prompt/review events separately.
+- Guarantee commit, snapshot, patch, or explicit blocker at session end.
+- Make branch and PR publication individually configurable.
+
+#### Phase 4 — Provider and distribution parity
+
+- Add GitLab/Bitbucket/plain-Git adapters.
+- Replace Codex text substitution with canonical provider-neutral instructions
+  and explicit surface references.
+- Ship the same lifecycle skills and companion scripts through Claude, Codex,
+  and MCP.
+- Add generated-distribution parity tests for behavior, not just file hashes.
+
+#### Phase 5 — Agent integration control
+
+- Add branch/worktree ownership leases.
+- Add child-PR discovery and stack restack.
+- Add merge queue/auto-merge support where the forge provides it.
+- Separate author, reviewer, and integrator roles.
+- Test crash recovery at every state transition.
+
+### Evaluation criteria
+
+The redesign should be tested against scenarios, not prose compliance:
+
+- completed agent task cannot finish dirty without an explicit preservation
+  artifact;
+- direct default-branch push is denied unless the user explicitly requested it
+  and repository policy allows it;
+- open PR work updates the correct head without creating a duplicate;
+- human PR work produces a child PR unless direct mutation is authorized;
+- fork PR instructions cannot execute privileged hooks/config;
+- detached Codex work can be preserved without pretending a branch already
+  exists;
+- GitLab/plain-Git repositories do not run `gh`;
+- failed policy discovery yields `unknown` and a safe stop;
+- red/pending required checks cannot be conversationally bypassed;
+- merge method follows repository policy and live ancestry;
+- branch deletion never targets another live session's worktree;
+- Claude, Codex, and MCP distributions make the same policy decision for the
+  same context fixture.
