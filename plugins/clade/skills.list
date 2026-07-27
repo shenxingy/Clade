@@ -6,6 +6,7 @@
 # Keep runtime-specific orchestration skills (loop/start/status/provider/etc.)
 # out until their subprocess and session semantics have Codex implementations.
 commit
+create-pr
 codex-usage
 cso
 document-release

@@ -3,6 +3,11 @@
 Full release pipeline: tests → coverage → review gate → version bump → CHANGELOG → commit → PR.
 Each step is a hard gate — failure stops the pipeline and reports clearly.
 
+`/ship` is a release-aggregation exception, not a way to bypass atomic feature
+review. The release branch may aggregate only features already reviewed in
+their own PRs. If unreviewed independent features are present, stop and route
+them through `/create-pr` first.
+
 **Flags:** `--no-bump` (skip version bump + CHANGELOG), `--no-pr` (skip PR creation), `--dry-run` (show plan only, no changes)
 
 ---
@@ -17,6 +22,9 @@ Each step is a hard gate — failure stops the pipeline and reports clearly.
    - Python: `pyproject.toml` or `setup.py`
    - Node: `package.json`
    - Other: report "no version file found" and skip Step 4-5
+4. Inspect commits since the release base and confirm each independent feature
+   has an already-reviewed PR. If not, STOP with BLOCKED and list the scopes
+   that must go through `/create-pr`.
 
 ### Step 2: Run Tests
 
