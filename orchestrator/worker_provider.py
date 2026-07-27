@@ -8,9 +8,9 @@ worker.py, so once the command + env are right a Codex worker is a first-class
 member of the same WorkerPool / oracle-gate / WorkerEnvelope pipeline as a
 Claude worker — not a bolt-on special case.
 
-Leaf module (import DAG): stdlib + ``config.py`` (itself a leaf) only. It MUST
-NOT import worker.py / session.py at module scope — those import this module,
-and a top-level back-edge would create an import cycle.
+Leaf module (import DAG): stdlib + ``agent_runtime.py`` + ``config.py`` only.
+It MUST NOT import worker.py / session.py at module scope — those import this
+module, and a top-level back-edge would create an import cycle.
 
 Runtime adapters
 ----------------
