@@ -1,5 +1,8 @@
 """Provider-aware model/effort routing stays conservative and auditable."""
 
+import pytest
+
+from agent_runtime import AgentRuntimeSelectionError, normalize_agent_runtime
 from config import _MODEL_ALIASES
 from worker_routing import normalize_effort, normalize_provider, resolve_worker_route
 
@@ -85,9 +88,34 @@ def test_auto_routing_off_preserves_requested_envelope():
     assert route.effort == "xhigh"
 
 
-def test_invalid_boundary_values_degrade_safely():
-    assert normalize_provider("shell; rm", "codex") == "codex"
-    assert normalize_provider(None, "also-bad") == "claude"
+def test_runtime_boundary_normalizes_known_values_and_uses_explicit_default():
+    assert normalize_agent_runtime(" CODEX ") == "codex"
+    assert normalize_provider(None, "codex") == "codex"
+
+
+@pytest.mark.parametrize(
+    ("task", "settings"),
+    [
+        ({"provider": "shell; rm"}, BASE),
+        ({}, {**BASE, "worker_provider": "also-bad"}),
+        ({"provider": ""}, BASE),
+    ],
+)
+def test_invalid_runtime_boundary_fails_closed(task, settings):
+    with pytest.raises(AgentRuntimeSelectionError, match="Unsupported agent runtime"):
+        resolve_worker_route(task, settings)
+
+
+def test_valid_task_runtime_override_does_not_use_invalid_default():
+    route = resolve_worker_route(
+        {"provider": "codex", "model": "gpt-5.6-sol"},
+        {**BASE, "worker_provider": "also-bad"},
+    )
+    assert route.agent_runtime == "codex"
+    assert route.provider == "codex"  # legacy compatibility property
+
+
+def test_invalid_effort_still_degrades_without_shell_injection():
     assert normalize_effort("medium") == "medium"
     assert normalize_effort("high; echo nope") is None
 

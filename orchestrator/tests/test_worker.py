@@ -19,6 +19,7 @@ _spec = importlib.util.spec_from_file_location("_real_worker", _WORKER_FILE)
 _mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)  # type: ignore[union-attr]
 Worker = _mod.Worker
+WorkerPool = _mod.WorkerPool
 
 
 # ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -126,9 +127,53 @@ def test_codex_worker_threads_effort_into_command_and_status(tmp_path: Path) -> 
     cmd, _ = worker._build_cmd_and_env(task_file)
     status = worker.to_dict()
     assert 'model_reasoning_effort="medium"' in cmd
+    assert status["agent_runtime"] == "codex"
     assert status["provider"] == "codex"
     assert status["effort"] == "medium"
     assert "cheap Codex" in status["route_reason"]
+
+
+@pytest.mark.asyncio
+async def test_worker_pool_invalid_runtime_fails_before_spawn_and_marks_task(
+    tmp_path: Path,
+) -> None:
+    class RecordingTaskQueue:
+        def __init__(self):
+            self.updates = []
+
+        async def update(self, task_id, **values):
+            self.updates.append((task_id, values))
+
+    queue = RecordingTaskQueue()
+    pool = WorkerPool()
+    task = {
+        "id": "task-invalid-runtime",
+        "description": "Implement a bounded change",
+        "model": "sonnet",
+        "provider": "claud",
+    }
+
+    with pytest.raises(
+        _mod.AgentRuntimeSelectionError, match="Unsupported agent runtime"
+    ):
+        await pool.start_worker(
+            task, queue, tmp_path, tmp_path / ".claude"
+        )
+
+    assert pool.all() == []
+    assert queue.updates == [
+        (
+            "task-invalid-runtime",
+            {
+                "status": "failed",
+                "failed_reason": (
+                    "Unsupported agent runtime 'claud'. "
+                    "Supported runtimes: claude, codex."
+                ),
+                "route_reason": "agent runtime selection failed",
+            },
+        )
+    ]
 
 
 # ─── Overload failover (gap C) + spawn-env denylist (security sliver) ─────────

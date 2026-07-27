@@ -1,4 +1,4 @@
-"""Worker execution provider — abstracts WHICH agent CLI a worker runs.
+"""Worker agent-runtime adapters — abstract WHICH agent CLI a worker runs.
 
 Parallel to ``execution_backend.py`` (which abstracts *how* a process is
 spawned / torn down), this abstracts *what command* runs inside it: the
@@ -12,8 +12,8 @@ Leaf module (import DAG): stdlib + ``config.py`` (itself a leaf) only. It MUST
 NOT import worker.py / session.py at module scope — those import this module,
 and a top-level back-edge would create an import cycle.
 
-Providers
----------
+Runtime adapters
+----------------
 * :class:`ClaudeProvider` (default) — reproduces byte-for-byte the historical
   ``claude -p "$(cat <task>)" --model <m> --dangerously-skip-permissions`` +
   ``--fallback-model`` + tool-subset + ``--mcp-config`` command worker.py built
@@ -28,9 +28,10 @@ Providers
 
 Selection
 ---------
-The ``worker_provider`` setting (default ``"claude"``) or a per-task ``provider``
-column. Unknown / empty values resolve to Claude — a typo must never strand the
-pool on an unrunnable command.
+The legacy ``worker_provider`` setting (default ``"claude"``) or per-task
+``provider`` column selects an **agent runtime**, not an inference provider.
+Unknown and empty values fail before command construction. They must never run
+Claude accidentally with the wrong credentials, model, or billing account.
 
 Phase-2 (documented, not yet wired): consume ``codex exec --json`` JSONL
 (persist ``thread_id`` from ``thread.started``), enforce ``--output-schema`` on
@@ -45,6 +46,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Final
 
+from agent_runtime import normalize_agent_runtime
 from config import (
     ALLOWED_MODEL_IDS,
     SONNET_MODEL,
@@ -68,9 +70,9 @@ def _safe_effort(value: str | None) -> str | None:
 
 # ─── WorkerProvider ABC ──────────────────────────────────────────────────────
 class WorkerProvider(ABC):
-    """Strategy for building the shell command a worker's process runs."""
+    """Legacy-named strategy for one agent runtime's worker command."""
 
-    #: Stable identifier matched against the ``worker_provider`` setting / task col.
+    #: Stable agent-runtime id matched against legacy config/task fields.
     name: str = "base"
 
     @abstractmethod
@@ -190,24 +192,30 @@ class CodexProvider(WorkerProvider):
         return " ".join(parts)
 
 
-# ─── Factory ──────────────────────────────────────────────────────────────────
-_PROVIDERS: dict[str, type[WorkerProvider]] = {
+# ─── Runtime factory ──────────────────────────────────────────────────────────
+_RUNTIMES: dict[str, type[WorkerProvider]] = {
     "claude": ClaudeProvider,
     "codex": CodexProvider,
 }
 
 
-def get_worker_provider(name: str | None = None) -> WorkerProvider:
-    """Resolve a :class:`WorkerProvider` by name.
+def get_agent_runtime(name: str | None = None) -> WorkerProvider:
+    """Resolve an agent-runtime adapter by name.
 
-    ``name`` comes from a per-task ``provider`` value or the ``worker_provider``
-    setting (read lazily when ``None`` to keep this module a leaf). Unknown /
-    empty names fall back to :class:`ClaudeProvider` so a misconfiguration can
-    never strand the pool on an unrunnable command.
+    ``name`` comes from the legacy per-task ``provider`` value or
+    ``worker_provider`` setting (read lazily when ``None``). Unsupported,
+    missing, and empty configured values fail closed before a subprocess can
+    start.
     """
     if name is None:
         from config import GLOBAL_SETTINGS  # lazy: keep this module a leaf
 
-        name = GLOBAL_SETTINGS.get("worker_provider") or "claude"
-    provider_cls = _PROVIDERS.get(str(name).strip().lower(), ClaudeProvider)
-    return provider_cls()
+        name = GLOBAL_SETTINGS.get("worker_provider")
+    runtime = normalize_agent_runtime(name)
+    return _RUNTIMES[runtime]()
+
+
+def get_worker_provider(name: str | None = None) -> WorkerProvider:
+    """Backward-compatible alias for :func:`get_agent_runtime`."""
+
+    return get_agent_runtime(name)

@@ -33,11 +33,12 @@ from config import (
     _parse_task_schema,
     _infer_commit_type,
 )
+from agent_runtime import AgentRuntimeSelectionError
 from task_queue import TaskQueue
 from github_sync import _gh_update_issue_status
 from session_tree import SessionTree
 from execution_backend import LocalSubprocessBackend, get_execution_backend
-from worker_provider import get_worker_provider
+from worker_provider import get_agent_runtime
 from worker_routing import resolve_worker_route
 import condensers
 import worker_review
@@ -120,11 +121,12 @@ class Worker:
             self._backend = get_execution_backend()
         except NotImplementedError:
             self._backend = LocalSubprocessBackend()
-        # Execution provider (which agent CLI: claude vs codex). Completion (process
-        # exit) + results (git diff) stay provider-agnostic, so a codex worker is a
-        # first-class member of the same pool. See worker_provider.py.
-        self._provider = get_worker_provider(provider)
-        self.provider = self._provider.name
+        # Agent runtime (which CLI owns the loop: Claude Code vs Codex). The
+        # `provider` argument/attribute remains as a compatibility alias for the
+        # persisted task schema; it does not mean inference provider.
+        self._runtime_adapter = get_agent_runtime(provider)
+        self.agent_runtime = self._runtime_adapter.name
+        self.provider = self.agent_runtime
         self.effort = effort
         self.route_reason = route_reason
         self.started_at = time.time()
@@ -206,6 +208,7 @@ class Worker:
             "task_id": self.task_id,
             "description": self.description[:80],
             "model": self.model,
+            "agent_runtime": self.agent_runtime,
             "provider": self.provider,
             "effort": self.effort,
             "route_reason": self.route_reason,
@@ -294,15 +297,15 @@ class Worker:
         return await build_task_file(self, task_queue)
 
     def _build_cmd_and_env(self, task_file: Path) -> tuple[str, dict]:
-        """Build the worker shell command (via the resolved provider) + env dict.
+        """Build the worker shell command (via the runtime adapter) + env dict.
 
         Worker spawn keeps full user settings deliberately (NO --setting-sources ""):
         commit-discipline hooks (post-edit-check etc.) are core value. Pure judges
         drop them — see config.SETTING_SOURCES_NONE (Stop-hook -p poisoning, 386a862).
-        The claude provider reproduces the historical inline command byte-for-byte.
+        The Claude adapter reproduces the historical inline command byte-for-byte.
         """
         mcp_config = self._project_dir / ".claude" / "mcp.json"
-        shell_cmd = self._provider.build_command(
+        shell_cmd = self._runtime_adapter.build_command(
             task_file=task_file,
             requested_model=self.model,
             task_type=self.task_type,
@@ -337,7 +340,7 @@ class Worker:
         # there is no hook available to know which turn that was. Disclose the
         # uncertainty in the trailer value itself rather than silently asserting
         # a single model name that may be wrong.
-        model = self._provider.resolve_model(self.model) or self.model
+        model = self._runtime_adapter.resolve_model(self.model) or self.model
         env["CLADE_WORKER_MODEL"] = model
         _fb_model = _resolve_fallback_model(self.model)
         if _fb_model:
@@ -1091,7 +1094,7 @@ class Worker:
         task_file = self._claude_dir / f"task-{self.id}-retry{self._reflection_retries}.md"
 
         _continue_cmd = (
-            self._provider.build_continue_command(
+            self._runtime_adapter.build_continue_command(
                 task_file=task_file, requested_model=self.model, effort=self.effort
             )
             if use_continue else None
@@ -1175,7 +1178,18 @@ class WorkerPool:
         description = task["description"]
         route_task = dict(task)
         route_task["task_type"] = _parse_task_type(description) or task.get("task_type") or "AUTO"
-        route = resolve_worker_route(route_task, GLOBAL_SETTINGS)
+        try:
+            route = resolve_worker_route(route_task, GLOBAL_SETTINGS)
+        except AgentRuntimeSelectionError as exc:
+            # Persist a terminal, actionable outcome so auto-start does not
+            # retry the same invalid selection on every status-loop tick.
+            await task_queue.update(
+                task["id"],
+                status="failed",
+                failed_reason=str(exc),
+                route_reason="agent runtime selection failed",
+            )
+            raise
         if route.needs_clarification:
             description = (
                 "⚠ Low readiness (<50): ask clarifying questions before coding. "
@@ -1200,7 +1214,7 @@ class WorkerPool:
             route.model,
             project_dir,
             claude_dir,
-            provider=route.provider,
+            provider=route.agent_runtime,
             effort=route.effort,
             route_reason=route.reason,
         )

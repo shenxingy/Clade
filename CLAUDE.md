@@ -79,6 +79,7 @@ Key modules (import DAG — leaf → root):
 ```
 # Leaves (no project imports)
 config.py            ← constants, settings, utilities
+agent_runtime.py     ← agent-runtime ids + fail-closed validation
 fault_localize.py    ← multi-language SBFL: test-runner detection, go/js failure parsers, cross-lang symbol index (stdlib-only leaf; worker_tldr imports it)
 ideas.py             ← IdeasManager, async idea CRUD
 process_manager.py   ← ProcessPool, start.sh lifecycle
@@ -120,6 +121,7 @@ routes/usage.py      ← Usage dashboard API routes
 | File | Purpose |
 |------|---------|
 | `config.py` | `GLOBAL_SETTINGS`, `_ALLOWED_TASK_COLS`, model aliases, cost utils |
+| `agent_runtime.py` | Agent-runtime identity and fail-closed selection shared by routing/settings/factory |
 | `task_queue.py` | SQLite CRUD for tasks, loops, messages, interventions |
 | `worker.py` | `Worker`, `WorkerPool` — core execution engine |
 | `swarm.py` | `SwarmManager` (extracted from worker.py; re-exported there) |
