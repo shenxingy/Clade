@@ -23,7 +23,8 @@ fi
 usage_segment=""
 _usage_script="$HOME/.claude/scripts/claude-usage-watch.py"
 if command -v python3 >/dev/null 2>&1 && [ -f "$_usage_script" ]; then
-  usage_segment=" $(python3 "$_usage_script" 2>/dev/null)"
+  usage_segment=" $(printf '%s' "$input" \
+    | python3 "$_usage_script" --statusline-input 2>/dev/null)"
 fi
 
 # ─── Extra segments (drop-in scripts) ───

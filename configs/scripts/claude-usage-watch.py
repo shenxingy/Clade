@@ -168,6 +168,28 @@ def _save_cache(d):
     except Exception:
         pass
 
+def _load_statusline_input():
+    """Adapt Claude Code's native rate-limit input to the legacy API shape."""
+    try:
+        data = json.load(sys.stdin)
+        native = data["rate_limits"]["seven_day"]
+        usage = native["used_percentage"]
+        resets_at = native["resets_at"]
+        if usage is None or resets_at is None:
+            return None
+        if isinstance(resets_at, (int, float)):
+            resets_at = datetime.fromtimestamp(
+                resets_at, timezone.utc
+            ).isoformat()
+        return {
+            "seven_day": {
+                "utilization": float(usage),
+                "resets_at": resets_at,
+            }
+        }
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+
 # ─── Calculations ───
 
 def _elapsed_pct(resets_at_str, days=7):
@@ -198,7 +220,13 @@ def run():
     if mode == "off":
         return
 
-    data = _load_cache()
+    data = (
+        _load_statusline_input()
+        if "--statusline-input" in sys.argv[1:]
+        else None
+    )
+    if not data:
+        data = _load_cache()
     if not data or "seven_day" not in data:
         token = _load_token()
         if token:

@@ -331,6 +331,21 @@ if command -v python3 &>/dev/null; then
   else
     fail "installed validate-skills.py passes on installed skills"
   fi
+
+  # Claude Code >=2.1.80 supplies authoritative rate-limit data in the
+  # status-line JSON. The installed command must prefer it over its own
+  # OAuth/cache fallback so the display tracks the current API response.
+  printf 'percent\n' > "$CLAUDE_DIR/.statusline-mode"
+  reset_epoch=$(( $(date +%s) + 5 * 86400 ))
+  statusline_out=$(printf \
+    '{"cwd":"%s","rate_limits":{"seven_day":{"used_percentage":80,"resets_at":%s}}}\n' \
+    "$SRC" "$reset_epoch" | bash "$CLAUDE_DIR/statusline-command.sh")
+  if [[ "$statusline_out" == *"+53%"* && "$statusline_out" == *"(5d)"* ]]; then
+    pass "installed status line prefers native weekly rate-limit data"
+  else
+    fail "installed status line prefers native weekly rate-limit data" \
+      "expected native +53% (5d), got '$statusline_out'"
+  fi
 else
   echo "  (python3 not available — skipping installed-script smoke runs)"
 fi
