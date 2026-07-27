@@ -179,6 +179,24 @@ C. Review the extra changes with me before deciding         Completeness: 8/10
 
 If the changes cleanly match the stated task, proceed without flagging.
 
+### Step 3.5c: Delivery boundary check
+
+Commit boundaries and PR boundaries must agree. Before declaring a branch
+ready to ship, compare all commits and changed files since the target base:
+
+```bash
+git log --oneline <base>..HEAD
+git diff --stat <base>...HEAD
+```
+
+If the branch contains multiple independent features, TODO Feature tags, or
+roadmap phases, splitting commits is not enough. Report that the branch needs
+stacked PRs and route PR creation through `/create-pr`. Do not describe one
+aggregate PR as ready for review.
+
+One feature may include its tests, migration, generated files, and docs. Do not
+split those merely to reduce line count.
+
 ---
 
 ## Step 3.6: CI gate (BEFORE any git add)
@@ -315,6 +333,8 @@ Commit complete:
 - Never use `git add .` or `git add -A` — always add specific files
 - If working tree is clean, say so and exit immediately
 - Never ask for confirmation — analyze, commit, push in one shot (unless `--dry-run`)
+- One independently reviewable feature per PR. Multiple logical commits on one
+  branch do not satisfy this rule; use `/create-pr` to split or stack delivery.
 - **Alternative for simple cases:** For agents that need a quick single commit without multi-group splitting, use `~/.clade/scripts/committer.sh "type: message" file1 file2 ...` instead of this skill. The commit skill is for interactive, multi-group commit workflows.
 
 ---

@@ -122,6 +122,11 @@ jobs:
       - name: Run skill-routing tests
         run: bash tests/test-skill-routing.sh
 
+      # Delivery scope: one independently reviewable feature per PR, enforced
+      # consistently from orchestration through review and merge.
+      - name: Run PR scope-policy tests
+        run: bash tests/test-pr-scope-policy.sh
+
       # Nth-strike escalation: 3+-hit rules become REQUIRED hook conversions
       - name: Run auto-audit escalation tests
         run: bash tests/test-audit.sh
