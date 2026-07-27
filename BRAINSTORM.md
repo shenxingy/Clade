@@ -515,3 +515,161 @@ User question: 完整的学习他们的工作流，看看凭什么他们能又�
 [2026-06-12] loop-runner: commits stay local — no push phase, fleet sync silently deployed stale HEAD / workaround: manual git push before node pulls; consider a [DET] push node after commit_changes
 [2026-06-14] browser-verify: `npx playwright install chromium` resolves a different playwright version than `@playwright/mcp` bundles → "Removing unused browser" + version-mismatch box on first setup / workaround: it still lands the right chromium build (verified chromium-1223 present + MCP launched); documented as expected in configuration.md. Cleaner fix: pin the browser install to @playwright/mcp's bundled version.
 [2026-06-14] frontend-detect: real projects (scamai-landing) describe their stack in CLAUDE.md prose ("Built with Next.js 15"), not the template's structured `Frontend:` line — _is_frontend_project returned False, visual-verify directive would never inject / FIXED a1e807d: _project_is_frontend now also reads package.json deps. Lesson: don't gate on a doc format real projects don't follow (deploy-gap).
+
+---
+
+## [Research] 2026-07-27 — Branch-to-merge delivery lifecycle and merge strategy
+
+Trigger: the statusline fix exposed a gap between Clade's individual skills.
+The task started on a branch stacked over an unmerged PR; code and tests were
+completed but the first handoff stopped with an uncommitted working tree. After
+the commit, the parent branch was amended, so the child branch and its remote
+base diverged. Recovering required merging the parent PR, rebasing the single
+statusline commit onto the new `main`, force-pushing with lease, rerunning the
+candidate branch's complete CI, opening an atomic PR, and deleting stale refs.
+
+### Practices surveyed
+
+| Source | Operating model | What Clade should borrow |
+|---|---|---|
+| [Google Engineering Practices — Small CLs](https://google.github.io/eng-practices/review/developer/small-cls.html) | One self-contained change per CL; related tests stay in the same CL; dependent changes may be stacked; every submitted layer must keep the build working | Plan the branch/PR slices before editing, attach tests to each behavior slice, and keep every preserved commit/PR green |
+| [Google — CL descriptions](https://google.github.io/eng-practices/review/developer/cl-descriptions.html) | The permanent record must explain both what changed and why; review the description again before submit | Keep mechanism, root cause, constraints, evidence, and rollback in the commit/PR record |
+| [Trunk Based Development — short-lived branches](https://trunkbaseddevelopment.com/short-lived-feature-branches/) | Task branches start from trunk, live roughly a couple of days, are brought up to date before landing, then are deleted | Branch at task start, record the base, sync before ready-for-review, and make post-merge cleanup part of Done |
+| [GitHub — PR merge methods](https://docs.github.com/en/pull-requests/reference/pull-request-merges) | Merge commit preserves commits and an explicit boundary; squash collapses fixups into one logical change; rebase keeps clear commits in linear history | Select a merge method from commit quality and ancestry needs; never hard-code squash globally |
+| [GitLab — merge methods](https://docs.gitlab.com/user/project/merge_requests/methods/) | Merge, semi-linear merge, fast-forward, and squash are separate policy choices; semi-linear requires an up-to-date branch before merge | Separate the "branch is current and tested" gate from the repository's history-shape policy |
+| [Gerrit — changes and submit strategies](https://gerrit-review.googlesource.com/Documentation/concept-changes.html) | Review iterations are patch sets of one change; only the latest patch set lands; dependent changes are explicit relation chains | Model a delivery unit independently from its WIP revisions and make stack parentage first-class metadata |
+| [Graphite — stack merge](https://graphite.com/docs/merge-pull-requests) and [sync/restack](https://graphite.com/docs/sync-with-a-remote-repo) | Merge stacks bottom-up; after each lower PR lands, sync trunk, delete the merged branch, restack upper branches, and rerun affected checks | A stacked-PR feature is incomplete without an automatic post-merge restack/retarget operation |
+
+### What the strong workflows agree on
+
+1. **Start with the delivery boundary, not with edits.** Resolve trunk or the
+   explicit parent PR, create a short-lived branch/worktree, and record the
+   intended base before changing files.
+2. **Commit at coherent green checkpoints.** "Commit small and often" does not
+   mean arbitrary time slices. A preserved commit should express one useful
+   step, include its related tests, and pass the relevant fast gate. A failing
+   TDD test can exist transiently, but should not survive as a mainline commit
+   unless the PR will squash it away.
+3. **Open review early enough to expose drift.** After the first coherent green
+   checkpoint, push and open a draft PR (or an explicit stack relation). Mark
+   it ready only after the full exact-head CI and scope gate pass.
+4. **Test at two cadences.** Run focused tests after each code slice and before
+   each checkpoint commit; run the complete project CI on the exact candidate
+   branch after final base alignment and before ready/merge. Requiring the full
+   suite before every small commit makes "commit often" economically
+   contradictory.
+5. **A stack is a live dependency graph.** Merge bottom-up. When a parent lands,
+   every open child must be restacked/retargeted, force-pushed with lease, and
+   retested. A final aggregate branch's green result is not evidence for its
+   reconstructed layers.
+6. **Done includes repository hygiene.** After merge: update local trunk with
+   `--ff-only`, delete local and remote topic branches, prune remote-tracking
+   refs, restack surviving children, and verify the worktree is clean.
+
+### Merge strategy decision matrix
+
+| Situation | Preferred method | Reason |
+|---|---|---|
+| One atomic PR; commits are WIP/fixups or not independently green | **Squash merge** | Produces one truthful historical unit and removes misleading intermediate states |
+| One atomic PR; every commit is meaningful, ordered, independently green; linear history desired | **Rebase merge** | Preserves useful commit granularity without merge bubbles |
+| Exact commit identity/topology matters, or a manually managed stack relies on shared ancestry | **Merge commit** | Preserves branch boundary and ancestor SHAs; avoids the parent-SHA replacement that forces children to restack |
+| Stack managed by tooling that automatically syncs/restacks children | Repository default, often squash or rebase | Rewritten ancestry is acceptable only because the tool repairs every upper branch and reruns CI |
+| Long-running/shared feature branch | Avoid; split into short-lived PRs first | All three merge methods become harder to review, align, roll back, and clean up |
+
+**Decision for Clade PR #24:** squash was appropriate because the PR contained
+one already-curated commit and represented one historical bug-fix unit. No
+meaningful intermediate commit was lost. This does **not** validate the current
+`merge-pr` rule that unconditionally squashes every PR.
+
+**Recommended Clade default:** `merge-pr --strategy auto`.
+
+- Respect a repository-configured explicit strategy first.
+- Single commit or fixup-heavy atomic PR → squash.
+- Multiple meaningful, green commits → rebase merge when linear history is
+  desired; merge commit when preserving a branch boundary is the repo norm.
+- Open stacked children + no reliable restack automation → prefer merge commit,
+  or stop and require the user to choose. Never silently squash a stack parent.
+- Record the selected strategy and reason in the merge report.
+
+### Confirmed Clade gaps
+
+1. **No delivery transaction at task entry.** `worktree` can create isolation,
+   `commit` can commit, `create-pr` can scope-check, and `merge-pr` can merge,
+   but nothing owns the complete state machine. An investigation can implement
+   a fix and still report Done before commit/PR.
+2. **Branch intent is not an invariant.** An explicit "open a new branch" was
+   treated as workspace organization rather than authorization and obligation
+   to deliver commits on that branch.
+3. **Commit cadence conflicts with its CI gate.** `commit` says "small and
+   often" but requires every discovered CI command before every commit. That
+   encourages one late mega-checkpoint instead of focused green checkpoints.
+4. **PRs are opened too late.** `create-pr` only describes a final passing PR;
+   it lacks an early draft mode triggered automatically after the first green
+   checkpoint, so parent/base drift stays invisible until delivery.
+5. **Stack creation exists; stack maintenance does not.** `create-pr` recommends
+   stacks, while `merge-pr` squash-merges the parent and never restacks,
+   retargets, force-pushes-with-lease, or retests children. These policies are
+   internally inconsistent.
+6. **Merge strategy is hard-coded.** `merge-pr` always uses `--squash`, without
+   inspecting whether commits are meaningful or whether child PRs depend on
+   their SHAs.
+7. **The documented CLI command is not portable.** The installed `gh` rejected
+   `gh pr merge --yes`; supported non-interactive flags plus
+   `--match-head-commit` are safer and protect against a head changing after
+   review.
+8. **Cleanup is partial.** Local branch deletion and `main` pull are mentioned,
+   but remote deletion verification, `fetch --prune`, clean-worktree proof, and
+   upstack repair are not one atomic post-merge step.
+9. **Per-PR evidence is present but not lifecycle-linked.** The new scope gate
+   correctly requires exact-branch CI, yet no parent workflow automatically
+   invokes commit → align → verify → create PR → wait checks → merge → cleanup.
+
+### Proposed delivery state machine
+
+```text
+START
+  fetch/prune → resolve trunk or stack parent → require clean tree
+  → create short-lived branch/worktree → record base SHA + delivery scope
+
+BUILD
+  write/adjust regression test → implement one behavior slice
+  → focused test/lint → commit coherent green checkpoint → push
+  → create/update draft PR and stack metadata
+
+READY
+  sync/restack onto exact base → scope gate
+  → full CI on reconstructed head → push with lease if rewritten
+  → mark PR ready → wait for remote required checks
+
+MERGE
+  inspect commit quality + child ancestry + repository policy
+  → choose squash | rebase | merge commit with recorded reason
+  → lock reviewed head SHA → merge bottom-up
+
+CLEAN
+  checkout trunk → pull --ff-only → delete local/remote merged branch
+  → fetch --prune → restack/retarget/retest children
+  → prove clean tree + local/remote alignment → DONE
+```
+
+### Recommended additions to TODO.md
+
+- [ ] Add a `delivery` skill/state machine that starts a clean task
+  branch/worktree before edits and owns the lifecycle through merged PR and
+  cleanup; changing code on a created task branch cannot end at "uncommitted".
+- [ ] Split verification into `checkpoint` (focused affected tests before each
+  commit) and `candidate` (full CI after final base alignment); require each
+  preserved commit to be green.
+- [ ] Add automatic early draft-PR creation/update after the first pushed green
+  checkpoint, including base SHA, stack parent, scope, and evidence fields.
+- [ ] Add `restack` to stacked delivery: after a parent merges, sync trunk,
+  rebuild/retarget every child, push with lease, and rerun that child's CI.
+- [ ] Replace unconditional squash with `merge-pr --strategy
+  auto|squash|rebase|merge`; detect child PRs and repository policy, lock the
+  reviewed head SHA, and explain the choice.
+- [ ] Make post-merge cleanup a verified gate: local/remote branch absent,
+  remote refs pruned, main equals origin/main, no dirty files, children
+  restacked.
+- [ ] Add an end-to-end regression fixture for the exact failure reproduced
+  here: child branch from open PR → parent amended/squash-merged → child
+  restacked → own CI → own PR → merge → branch cleanup.
