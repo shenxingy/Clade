@@ -26,7 +26,7 @@
 2. [MCP Server](#mcp-server--在任何-ai-编辑器中使用-skills)
 3. [它做什么](#它做什么)
 4. [自学习机制](#自学习机制)
-5. [Skills](#skills-129)
+5. [Skills](#skills-131)
 6. [支持的语言](#支持的语言)
 7. [文档](#文档)
 8. [仓库结构](#仓库结构)
@@ -129,7 +129,7 @@ Claude Code 完整框架已经原生安装 Clade skills，也不应重复挂载 
 
 详见 [Self-Learning Mechanisms](docs/learning-mechanisms.md)。
 
-## Skills (129)
+## Skills (131)
 
 ### 核心工作流
 
