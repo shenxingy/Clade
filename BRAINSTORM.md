@@ -673,3 +673,269 @@ CLEAN
 - [ ] Add an end-to-end regression fixture for the exact failure reproduced
   here: child branch from open PR → parent amended/squash-merged → child
   restacked → own CI → own PR → merge → branch cleanup.
+
+---
+
+## [Research] 2026-07-27 — Git delivery governance deep dive
+
+This is a governance addendum to the lifecycle study above. The first study
+identified the missing delivery transaction. This pass separates the four
+layers that must agree for the transaction to be reliable:
+
+1. contributor instructions;
+2. local CLI/skill behavior;
+3. GitHub repository enforcement;
+4. the permanent history retained on `main`.
+
+Good intentions in one layer do not compensate for missing enforcement in
+another.
+
+### Additional operating models surveyed
+
+| Source | Relevant operating rule | Clade implication |
+|---|---|---|
+| [Git's own `gitworkflows`](https://git-scm.com/docs/gitworkflows) | Develop independent work on topic branches; use explicitly disposable integration branches to test interactions, and never base durable work on those branches | Distinguish deliverable topic/stack branches from throw-away aggregate test branches; never mistake aggregate CI for per-PR evidence |
+| [GitHub protected branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches) | Reviews, required checks, conversation resolution, signed commits, linear history, and merge queues are repository-enforced choices | The delivery skill should inspect repository rules, but critical invariants must also be enabled server-side |
+| [GitHub merge queue](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue) | Test a temporary merge-group SHA containing current trunk and earlier queued PRs, not merely the author's old head SHA | Exact-head PR CI is necessary but not sufficient in a busy repository; final integration state also needs validation |
+| [GitLab squash guidance](https://docs.gitlab.com/user/project/merge_requests/squash_and_merge/) | Squash turns small work commits into one meaningful integration unit, but is a poor fit for a branch that continues after merge because its ancestry diverges | Squash is a mainline-history policy, not an instruction to avoid checkpoint commits; never keep developing on a squashed source branch without restacking |
+| [Graphite restack](https://graphite.com/docs/restack-branches) and [manual stack merge](https://graphite.com/docs/merge-stack-prs-github) | Track explicit parent relationships, merge bottom-up, sync trunk, restack descendants, resubmit, and repeat | Stacking cannot be declared supported until Clade owns descendant discovery and repair |
+| [GitHub rebase safety](https://docs.github.com/en/get-started/using-git/about-git-rebase) | Rebasing rewrites history and is unsafe when other people consume the pushed branch | Force-with-lease may be automated only for an owned task/stack branch with a verified remote head; never for trunk or an unverified shared branch |
+
+### Clade configuration snapshot
+
+Read-only inspection on 2026-07-27 found:
+
+- default branch: `main`;
+- merge commit, squash merge, and rebase merge: all enabled;
+- automatic source-branch deletion after merge: disabled;
+- `main` branch protection: absent;
+- repository rulesets: none;
+- CI runs for PRs targeting `main` and for pushes to `main`, but the repository
+  does not currently require those checks before merge;
+- recent PR history is predominantly squash-style one-parent commits, while
+  older batch work also introduced merge commits and direct commits remain
+  possible.
+
+Therefore Clade currently has conventions, not enforced governance. An actor
+can push directly to `main`, merge without required checks, choose any history
+shape, or leave merged branches behind.
+
+### The key distinction: working history versus integration history
+
+The apparent conflict between "commit while you work" and "squash on merge"
+disappears when the two histories are treated separately.
+
+**Working history** protects ongoing work and makes review iterations
+observable:
+
+- commit after a coherent behavior or evidence checkpoint;
+- push after a locally green checkpoint;
+- keep review fixes visible while the PR is open;
+- allow fixup commits when they honestly describe review activity;
+- never leave completed work only in the working tree.
+
+**Integration history** is the durable debugging and rollback interface:
+
+- squash if the PR, rather than its intermediate commits, is the smallest
+  truthful reversible unit;
+- rebase-merge if every commit is independently useful, ordered, and green;
+- merge-commit if preserving topology or exact ancestry is an explicit
+  requirement.
+
+The integration method is chosen at READY/MERGE time. It must not weaken the
+BUILD-time obligation to commit and push checkpoints.
+
+### Branch classes and allowed operations
+
+| Branch class | Lifetime and base | Rewrite rule | Merge rule | Cleanup |
+|---|---|---|---|---|
+| `fix/*`, `feat/*`, `docs/*`, `research/*` | Short-lived; normally from current `origin/main` | Rebase/force-with-lease allowed only while singly owned and after verifying remote head | Strategy selected from commit quality; atomic PR required | Delete local and remote immediately after merge |
+| Stack child | Short-lived; base is an explicit parent PR/branch | Restack with lease after any parent rewrite or merge | Merge bottom-up only; retest each reconstructed child | Delete each landed layer; repair all descendants |
+| Shared collaboration branch | Explicitly declared shared; no implicit ownership | Do not rewrite after publication | Prefer merge commits or coordinated new commits | Delete only after all consumers confirm |
+| Throw-away integration branch | Re-creatable aggregate from known topic heads | Freely rebuild; nobody may base durable work on it | Never merge as a product change | Always delete after interaction testing |
+| Release/hotfix branch | Created only for a declared supported release policy | Policy-specific; never inferred by an agent | Backports are separately reviewed and traceable | Retain only for the documented support window |
+
+Clade should not introduce a long-lived `develop` branch. Its present delivery
+model fits a protected trunk plus short-lived topic branches.
+
+### Lifecycle invariants
+
+#### START
+
+- Fetch and prune before selecting a base.
+- Refuse to create a task branch from an accidental topic branch unless an
+  explicit stack parent is recorded.
+- Refuse to start with unrelated dirty files; preserve them in their existing
+  worktree or ask for disposition.
+- Record: task identifier, branch, base ref, base SHA, optional stack parent,
+  owner, and intended delivery unit.
+
+#### BUILD
+
+- A branch request is a delivery obligation, not merely namespace
+  organization.
+- After each coherent slice: run affected tests, commit named files through
+  `committer`, and push.
+- A red TDD commit may exist locally or in an explicitly squash-bound draft,
+  but cannot be advertised as independently releasable.
+- Open a draft PR after the first pushed green slice so base errors, scope
+  growth, and stack relationships are visible early.
+
+#### READY
+
+- Re-resolve the PR base and compare it with the recorded base.
+- If the base changed, sync/restack first; any resulting SHA invalidates old
+  local and remote evidence.
+- Run the full repository gate on the exact final head.
+- Require a structured PR description: problem/root cause, scope, excluded
+  scope, stack parent/children, test evidence, risk, rollback, and proposed
+  merge strategy.
+- Lock the reviewed head SHA when invoking merge.
+
+#### MERGE
+
+- Block on failed or pending required checks; a generic "user asked to merge"
+  must not silently waive repository health.
+- For stacks, merge only the lowest ready layer.
+- Select and record the history strategy; do not infer "squash" solely from
+  repository availability.
+- On a busy repository, validate the combined result with a merge queue or
+  equivalent serial integration gate.
+
+#### CLEAN
+
+- Update `main` with `--ff-only`.
+- Verify the expected integration commit/PR reached `main`.
+- Delete the local and remote topic branch and prune tracking refs.
+- Discover open children of the merged branch; retarget/restack, push with
+  lease, and invalidate/re-run their CI.
+- Finish only after: clean worktree, no stale topic ref, and
+  `main...origin/main == 0 0`.
+
+### Recommended merge policy for Clade
+
+**Repository default:** squash atomic, unstacked PRs. This matches Clade's
+recent history and makes one PR one simple revert unit.
+
+Exceptions must be explicit:
+
+- **Rebase merge:** a deliberately curated commit series where every commit
+  passes its required gate and each commit message explains a durable step.
+- **Merge commit:** a shared branch or live manually managed stack whose
+  ancestry must be preserved. This exception is incompatible with enforcing a
+  globally linear history.
+- **Stop instead of guessing:** a stack parent has open children but no safe
+  restack path; commits mix multiple delivery units; the branch is shared but
+  ownership is unknown; or repository rules conflict with the requested
+  method.
+
+Until descendant-restack automation exists, Clade must either:
+
+1. use a merge commit for a parent with live children; or
+2. squash/rebase the parent, then synchronously restack, retarget, push with
+   lease, and retest every child before claiming completion.
+
+The second path preserves the preferred linear mainline but requires the full
+repair transaction.
+
+### Repository enforcement recommendations
+
+Immediate, low-complexity changes:
+
+- protect `main` and require changes through pull requests;
+- require the four deterministic CI jobs before merge;
+- require conversations to be resolved;
+- disallow force pushes and deletion of `main`;
+- enable automatic deletion of merged source branches;
+- keep squash as the default UI choice, while leaving rebase/merge available
+  for documented exceptions until stack automation settles the policy;
+- add CODEOWNERS/reviewer requirements only where a real responsible owner
+  exists, rather than manufacturing ceremonial approval.
+
+Do not enable "require linear history" yet if merge commits remain the safety
+valve for live manual stacks. Enable it only after Clade can reliably restack
+children or after the project forbids stacked branches.
+
+GitHub's native merge queue is useful when change volume and repository
+ownership make it available. For the current personal repository, Clade should
+first implement an equivalent serialized final gate:
+
+1. fetch current `origin/main`;
+2. ensure PR base/head still match reviewed values;
+3. verify required checks for the exact head;
+4. use `--match-head-commit`;
+5. merge one PR;
+6. fetch/prune and repair descendants before selecting the next PR.
+
+### Force-push policy
+
+`--force-with-lease` is a concurrency control, not blanket permission.
+
+Allow it only when all are true:
+
+- target is a non-protected topic/stack branch;
+- the delivery record names the current actor as owner;
+- the remote SHA was fetched immediately before the rewrite;
+- the lease uses that expected SHA;
+- no unknown/shared consumer is based on the branch, or descendant branches
+  are part of the same restack transaction;
+- affected PR checks and approvals are intentionally invalidated and rerun.
+
+Otherwise stop. Never use plain `--force`.
+
+### Rollback policy
+
+- The unit selected for mainline history must also be the unit operators can
+  safely revert.
+- A squashed PR reverts as one commit.
+- A rebase-merged series may be reverted commit-by-commit only if dependency
+  ordering remains valid; otherwise revert the series together.
+- A merge commit reverts with its mainline parent selected and retains the
+  branch boundary.
+- Reverting a parent in a stack requires evaluating or reverting all landed
+  descendants.
+- A rollback is a new reviewed PR; do not rewrite published `main`.
+
+### Proposed automation contract
+
+One `delivery` controller should persist a small machine-readable record:
+
+```yaml
+branch: fix/example
+base_ref: main
+base_sha: <sha>
+owner: <actor>
+pr: 123
+parent_pr: null
+children: []
+head_sha: <sha>
+state: BUILD
+verification:
+  checkpoint: [<command/result>]
+  candidate: [<command/result/head_sha>]
+merge:
+  strategy: squash
+  reason: atomic PR; intermediate commits are review checkpoints
+```
+
+Transitions should be idempotent and resumable. Re-running CLEAN must safely
+confirm already-deleted branches; re-running READY after a head change must
+discard stale evidence; a crash after merge must resume cleanup rather than
+open a duplicate PR.
+
+### Suggested rollout
+
+1. **Enforce the server boundary:** protect `main`, require current CI, and
+   auto-delete merged branches.
+2. **Repair existing commands:** remove unsupported `--yes`, add
+   `--match-head-commit`, wait for checks, verify cleanup, and support explicit
+   merge strategies.
+3. **Unify lifecycle state:** introduce the resumable delivery record and make
+   branch creation imply commit/push/PR obligations.
+4. **Complete stack support:** discover descendants, merge bottom-up, and
+   automate retarget/restack/retest.
+5. **Add integration serialization:** use a native merge queue when available
+   or a repository lock/queue that tests current trunk plus the candidate.
+6. **Measure outcomes:** stale branch age, uncommitted task exits, PR cycle
+   time, base-drift reruns, cleanup failures, and revert success—not raw commit
+   count or lines changed.
