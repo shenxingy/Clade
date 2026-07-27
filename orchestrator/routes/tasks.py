@@ -11,6 +11,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 
+from agent_runtime import AgentRuntimeSelectionError, normalize_agent_runtime
 from config import (
     GLOBAL_SETTINGS,
     _ALLOWED_TASK_COLS,
@@ -21,7 +22,7 @@ from session import ProjectSession, _resolve_session
 from github_sync import _gh_create_issue
 from worker_tldr import _score_task
 from worker_review import _write_pr_review, _write_progress_entry
-from worker_routing import VALID_EFFORTS, VALID_PROVIDERS
+from worker_routing import VALID_EFFORTS
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +47,11 @@ def _validate_task(body: dict) -> list[str]:
     if phase and phase not in _VALID_PHASES:
         errors.append(f"phase must be one of: {', '.join(sorted(_VALID_PHASES))}")
     provider = body.get("provider")
-    if provider and str(provider).lower() not in VALID_PROVIDERS:
-        errors.append(f"provider must be one of: {', '.join(sorted(VALID_PROVIDERS))}")
+    if provider is not None:
+        try:
+            normalize_agent_runtime(provider)
+        except AgentRuntimeSelectionError as exc:
+            errors.append(str(exc))
     effort = body.get("effort")
     if effort and str(effort).lower() not in VALID_EFFORTS:
         errors.append(f"effort must be one of: {', '.join(sorted(VALID_EFFORTS))}")
@@ -73,7 +77,11 @@ async def create_task(body: dict, s: ProjectSession = Depends(_resolve_session))
         is_critical_path=bool(body.get("is_critical_path", 0)),
         task_type=body.get("task_type", "AUTO"),
         phase=body.get("phase", "implement"),
-        provider=str(body["provider"]).lower() if body.get("provider") else None,
+        provider=(
+            normalize_agent_runtime(body["provider"])
+            if body.get("provider") is not None
+            else None
+        ),
         effort=str(body["effort"]).lower() if body.get("effort") else None,
     )
     asyncio.create_task(
@@ -356,10 +364,10 @@ async def update_task(task_id: str, body: dict, s: ProjectSession = Depends(_res
         return task
     provider = updates.get("provider")
     if provider is not None:
-        provider = str(provider).lower()
-        if provider not in VALID_PROVIDERS:
-            raise HTTPException(status_code=400, detail="invalid provider")
-        updates["provider"] = provider
+        try:
+            updates["provider"] = normalize_agent_runtime(provider)
+        except AgentRuntimeSelectionError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     effort = updates.get("effort")
     if effort is not None:
         effort = str(effort).lower()

@@ -79,6 +79,7 @@ Key modules (import DAG — leaf → root):
 ```
 # Leaves (no project imports)
 config.py            ← constants, settings, utilities
+agent_runtime.py     ← agent-runtime ids + fail-closed validation
 fault_localize.py    ← multi-language SBFL: test-runner detection, go/js failure parsers, cross-lang symbol index (stdlib-only leaf; worker_tldr imports it)
 ideas.py             ← IdeasManager, async idea CRUD
 process_manager.py   ← ProcessPool, start.sh lifecycle
@@ -100,6 +101,7 @@ github_sync.py       ← gh CLI wrappers (issues, push, sync)
 task_queue.py        ← SQLite-backed task CRUD
 swarm.py             ← SwarmManager (extracted from worker.py)
 worker_taskfile.py   ← build_task_file: task file construction + context injection
+worker_runtime.py    ← runtime-route resolution + durable selection failure
     ↑
 worker.py            ← Worker, WorkerPool — core execution engine
 session.py           ← ProjectSession, registry, status_loop (lazy-imports task_factory/)
@@ -120,10 +122,12 @@ routes/usage.py      ← Usage dashboard API routes
 | File | Purpose |
 |------|---------|
 | `config.py` | `GLOBAL_SETTINGS`, `_ALLOWED_TASK_COLS`, model aliases, cost utils |
+| `agent_runtime.py` | Agent-runtime identity and fail-closed selection shared by routing/settings/factory |
 | `task_queue.py` | SQLite CRUD for tasks, loops, messages, interventions |
 | `worker.py` | `Worker`, `WorkerPool` — core execution engine |
 | `swarm.py` | `SwarmManager` (extracted from worker.py; re-exported there) |
 | `worker_taskfile.py` | `build_task_file` — task file construction + context injection |
+| `worker_runtime.py` | Runtime route resolution and fail-closed task outcome persistence |
 | `worker_tldr.py` | `_generate_code_tldr`, `_score_task` — TLDR + scoring (leaf) |
 | `worker_review.py` | `_write_pr_review`, `_oracle_review`, `_write_progress_entry` (leaf) |
 | `oracle_cli.py` | Standalone oracle gate — same judge as the orchestrator, no server needed (`oracle-review.sh` shim; opt-in `/commit` gate via `CLADE_ORACLE_GATE=1`) |

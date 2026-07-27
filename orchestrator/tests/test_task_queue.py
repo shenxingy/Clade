@@ -41,6 +41,10 @@ async def test_update_route_rejects_invalid_provider_and_effort(task_queue: Task
     with pytest.raises(HTTPException) as effort_error:
         await update_task(task["id"], {"effort": "infinite"}, s=session)
     assert effort_error.value.status_code == 400
+    updated = await update_task(
+        task["id"], {"provider": " CODEX "}, s=session
+    )
+    assert updated["provider"] == "codex"
 
 
 async def test_list_all_tasks(task_queue: TaskQueue):

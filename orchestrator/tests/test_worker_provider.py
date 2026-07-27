@@ -9,11 +9,15 @@ flags and with stdin closed so a headless worker cannot hang.
 import shlex
 from pathlib import Path
 
+import pytest
+
+from agent_runtime import AgentRuntimeSelectionError
 from config import SONNET_MODEL, _MODEL_ALIASES, _build_tool_flags, _fallback_flag
 from worker_provider import (
     ClaudeProvider,
     CodexProvider,
     WorkerProvider,
+    get_agent_runtime,
     get_worker_provider,
 )
 
@@ -135,27 +139,41 @@ def test_codex_has_no_continue_command():
     assert CodexProvider().build_continue_command(task_file=TASK, requested_model=None) is None
 
 
-# ─── Factory / selection ──────────────────────────────────────────────────────
-def test_factory_resolves_known_providers():
-    assert isinstance(get_worker_provider("claude"), ClaudeProvider)
+# ─── Agent-runtime factory / selection ────────────────────────────────────────
+def test_factory_resolves_known_agent_runtimes():
+    assert isinstance(get_agent_runtime("claude"), ClaudeProvider)
+    assert isinstance(get_agent_runtime("codex"), CodexProvider)
+    assert get_agent_runtime("codex").name == "codex"
+    assert isinstance(get_agent_runtime("CODEX"), CodexProvider)  # normalized
+
+
+@pytest.mark.parametrize("invalid", ["bogus", "", "shell; rm -rf /"])
+def test_factory_unknown_runtime_fails_closed(invalid):
+    with pytest.raises(AgentRuntimeSelectionError, match="Unsupported agent runtime"):
+        get_agent_runtime(invalid)
+
+
+def test_legacy_factory_alias_has_same_fail_closed_contract():
     assert isinstance(get_worker_provider("codex"), CodexProvider)
-    assert get_worker_provider("codex").name == "codex"
+    with pytest.raises(AgentRuntimeSelectionError):
+        get_worker_provider("bogus")
 
 
-def test_factory_unknown_name_falls_back_to_claude():
-    # A typo'd provider must never strand the pool on an unrunnable command.
-    assert isinstance(get_worker_provider("bogus"), ClaudeProvider)
-    assert isinstance(get_worker_provider(""), ClaudeProvider)
-    assert isinstance(get_worker_provider("CODEX"), CodexProvider)  # case-insensitive
-
-
-def test_factory_none_reads_global_setting(monkeypatch):
+def test_factory_none_reads_global_runtime_setting(monkeypatch):
     import config
 
     monkeypatch.setitem(config.GLOBAL_SETTINGS, "worker_provider", "codex")
-    assert isinstance(get_worker_provider(None), CodexProvider)
+    assert isinstance(get_agent_runtime(None), CodexProvider)
     monkeypatch.setitem(config.GLOBAL_SETTINGS, "worker_provider", "claude")
-    assert isinstance(get_worker_provider(None), ClaudeProvider)
+    assert isinstance(get_agent_runtime(None), ClaudeProvider)
+
+
+def test_factory_invalid_global_runtime_fails_closed(monkeypatch):
+    import config
+
+    monkeypatch.setitem(config.GLOBAL_SETTINGS, "worker_provider", "")
+    with pytest.raises(AgentRuntimeSelectionError, match="<empty>"):
+        get_agent_runtime(None)
 
 
 def test_all_providers_are_workerprovider_subclasses():

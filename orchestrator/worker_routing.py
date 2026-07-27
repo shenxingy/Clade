@@ -1,9 +1,9 @@
-"""Pure provider-aware worker routing.
+"""Pure agent-runtime-aware worker routing.
 
 This module decides the execution envelope before a worker reads the repository:
-provider, model, effort, and a compact audit reason.  It deliberately does not
-decide whether an interactive lead should delegate; native Claude/Codex agents
-own that lifecycle and Clade only routes tasks that have already been queued.
+agent runtime, model, effort, and a compact audit reason. It deliberately does
+not decide whether an interactive lead should delegate; native Claude/Codex
+agents own that lifecycle and Clade only routes tasks already queued.
 """
 
 from __future__ import annotations
@@ -11,29 +11,38 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping
 
+from agent_runtime import (
+    SUPPORTED_AGENT_RUNTIMES,
+    normalize_agent_runtime,
+)
 from config import _MODEL_ALIASES
 
 
-VALID_PROVIDERS = frozenset({"claude", "codex"})
+# Backward-compatible export for callers that have not migrated terminology.
+VALID_PROVIDERS = SUPPORTED_AGENT_RUNTIMES
 VALID_EFFORTS = frozenset({"low", "medium", "high", "xhigh", "max"})
 _CODEX_MODEL_PREFIXES = ("gpt-", "gpt5", "o1", "o3", "o4", "codex")
 
 
 @dataclass(frozen=True)
 class WorkerRoute:
-    provider: str
+    agent_runtime: str
     model: str
     effort: str | None
     reason: str
     needs_clarification: bool = False
 
+    @property
+    def provider(self) -> str:
+        """Legacy task/API field for the resolved agent runtime."""
+
+        return self.agent_runtime
+
 
 def normalize_provider(value: Any, default: str = "claude") -> str:
-    candidate = str(value or "").strip().lower()
-    if candidate in VALID_PROVIDERS:
-        return candidate
-    fallback = str(default or "claude").strip().lower()
-    return fallback if fallback in VALID_PROVIDERS else "claude"
+    """Backward-compatible alias for :func:`normalize_agent_runtime`."""
+
+    return normalize_agent_runtime(value, default)
 
 
 def normalize_effort(value: Any) -> str | None:
@@ -49,7 +58,10 @@ def resolve_worker_route(task: Mapping[str, Any], settings: Mapping[str, Any]) -
     the strong tier at high effort; only high-readiness work gets the cheap
     tier. A middle-score or unscored task keeps the configured/default model.
     """
-    provider = normalize_provider(task.get("provider"), settings.get("worker_provider", "claude"))
+    agent_runtime = normalize_agent_runtime(
+        task.get("provider"),
+        settings.get("worker_provider", "claude"),
+    )
     requested_model = str(task.get("model") or settings.get("default_model") or "sonnet").strip()
     effort = normalize_effort(task.get("effort"))
     score = task.get("score")
@@ -58,7 +70,7 @@ def resolve_worker_route(task: Mapping[str, Any], settings: Mapping[str, Any]) -
     needs_clarification = score is not None and score < 50
     reason = "task override" if task.get("provider") or task.get("model") or effort else "configured default"
 
-    if provider == "claude":
+    if agent_runtime == "claude":
         model = next(
             (alias for alias, concrete in _MODEL_ALIASES.items() if concrete == requested_model),
             requested_model,
@@ -94,19 +106,23 @@ def resolve_worker_route(task: Mapping[str, Any], settings: Mapping[str, Any]) -
         candidate = str(routing_map[task_type])
         if critical and auto:
             reason += f"; ignored task-type override on critical task ({task_type})"
-        elif provider == "codex" and not candidate.lower().startswith(_CODEX_MODEL_PREFIXES):
+        elif agent_runtime == "codex" and not candidate.lower().startswith(_CODEX_MODEL_PREFIXES):
             reason += f"; ignored incompatible Codex task-type override ({task_type})"
         else:
-            model = _MODEL_ALIASES.get(candidate, candidate) if provider == "claude" else candidate
+            model = (
+                _MODEL_ALIASES.get(candidate, candidate)
+                if agent_runtime == "claude"
+                else candidate
+            )
             reason += f"; task-type override ({task_type})"
 
     # Claude Haiku does not support the effort control. Apply this after every
     # model override so the stored audit envelope matches the command actually run.
-    if provider == "claude" and model == _MODEL_ALIASES["haiku"]:
+    if agent_runtime == "claude" and model == _MODEL_ALIASES["haiku"]:
         effort = None
 
     return WorkerRoute(
-        provider=provider,
+        agent_runtime=agent_runtime,
         model=model,
         effort=effort,
         reason=reason,

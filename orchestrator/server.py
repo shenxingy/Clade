@@ -17,10 +17,11 @@ from pathlib import Path
 
 from fastapi import Body, Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 import httpx
 
+from agent_runtime import AgentRuntimeSelectionError, normalize_agent_runtime
 from config import (
     GLOBAL_SETTINGS,
     PROJECT_DIR,
@@ -102,6 +103,15 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Claude Code Orchestrator", lifespan=lifespan)
+
+
+@app.exception_handler(AgentRuntimeSelectionError)
+async def agent_runtime_selection_error(_request, exc: AgentRuntimeSelectionError):
+    """Expose configuration mistakes as typed client errors, never HTTP 500."""
+
+    return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+
 _cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:*,http://127.0.0.1:*").split(",")
 app.add_middleware(
     CORSMiddleware,
@@ -1051,7 +1061,15 @@ async def get_settings():
 @app.post("/api/settings")
 async def post_settings(body: dict = Body(...)):
     valid_keys = set(_SETTINGS_DEFAULTS.keys())
-    for k, v in body.items():
+    updates = dict(body)
+    if "worker_provider" in body:
+        try:
+            updates["worker_provider"] = normalize_agent_runtime(
+                body["worker_provider"]
+            )
+        except AgentRuntimeSelectionError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    for k, v in updates.items():
         if k in valid_keys:
             GLOBAL_SETTINGS[k] = v
     snapshot = dict(GLOBAL_SETTINGS)
