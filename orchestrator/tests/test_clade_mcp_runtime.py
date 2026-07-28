@@ -16,6 +16,7 @@ MCP_SRC = REPO_ROOT / "mcp-package" / "src"
 sys.path.insert(0, str(MCP_SRC))
 
 from clade_mcp import __version__, runtime  # noqa: E402
+from clade_mcp import server  # noqa: E402
 from clade_mcp.server import SERVER_VERSION  # noqa: E402
 
 
@@ -28,6 +29,30 @@ def test_release_version_surfaces_are_aligned() -> None:
     assert SERVER_VERSION == expected
     assert server_manifest["version"] == expected
     assert server_manifest["packages"][0]["version"] == expected
+
+
+def test_editable_install_resolves_curated_bundled_skills() -> None:
+    expected = REPO_ROOT / "mcp-package" / "skills"
+    assert server.BUNDLED_SKILLS_DIR == expected
+    assert len(list(server.BUNDLED_SKILLS_DIR.glob("*/SKILL.md"))) == 34
+    for name in ("delivery", "provider", "status"):
+        assert (server.BUNDLED_SKILLS_DIR / name / "SKILL.md").is_file()
+
+
+def test_bundled_skill_resolution_prefers_wheel_then_editable(tmp_path) -> None:
+    module_file = tmp_path / "src" / "clade_mcp" / "server.py"
+    module_file.parent.mkdir(parents=True)
+    module_file.touch()
+
+    editable_skill = tmp_path / "skills" / "delivery"
+    editable_skill.mkdir(parents=True)
+    (editable_skill / "SKILL.md").write_text("---\nname: delivery\n---\n")
+    assert server.resolve_bundled_skills_dir(module_file) == tmp_path / "skills"
+
+    wheel_skill = module_file.parent / "skills" / "status"
+    wheel_skill.mkdir(parents=True)
+    (wheel_skill / "SKILL.md").write_text("---\nname: status\n---\n")
+    assert server.resolve_bundled_skills_dir(module_file) == module_file.parent / "skills"
 
 
 def test_runtime_selection_is_backwards_compatible() -> None:
