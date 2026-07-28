@@ -243,6 +243,70 @@ def test_publish_does_not_infer_pr_authority(git_repo: Path) -> None:
     assert "not authorized" in result["error"]
 
 
+def test_restack_updates_ancestry_with_head_lease(git_repo: Path) -> None:
+    _start(git_repo)
+    (git_repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    _git(git_repo, "add", "feature.txt")
+    _git(git_repo, "commit", "-q", "-m", "feature")
+    old_head = _git(git_repo, "rev-parse", "HEAD")
+    _delivery(
+        git_repo,
+        "checkpoint",
+        "--id",
+        "fixture",
+        "--command",
+        "focused tests",
+        "--result",
+        "passed",
+    )
+
+    _git(git_repo, "switch", "-q", "main")
+    _git(git_repo, "switch", "-q", "-c", "agent/parent")
+    (git_repo / "parent.txt").write_text("parent\n", encoding="utf-8")
+    _git(git_repo, "add", "parent.txt")
+    _git(git_repo, "commit", "-q", "-m", "parent")
+    _git(git_repo, "switch", "-q", "agent/fixture")
+    _git(git_repo, "rebase", "agent/parent")
+
+    restacked = _delivery(
+        git_repo,
+        "restack",
+        "--id",
+        "fixture",
+        "--previous-head",
+        old_head,
+        "--base",
+        "agent/parent",
+        "--parent",
+        "parent-delivery",
+    )
+
+    assert restacked["base_ref"] == "agent/parent"
+    assert restacked["base_sha"] == _git(git_repo, "rev-parse", "agent/parent")
+    assert restacked["head_sha"] == _git(git_repo, "rev-parse", "HEAD")
+    assert restacked["parent"] == "parent-delivery"
+    assert restacked["verification"]["candidate"] is None
+    assert restacked["restacks"][-1]["previous_head_sha"] == old_head
+
+
+def test_restack_rejects_stale_head_lease(git_repo: Path) -> None:
+    _start(git_repo)
+
+    result = _delivery(
+        git_repo,
+        "restack",
+        "--id",
+        "fixture",
+        "--previous-head",
+        "not-the-recorded-head",
+        "--base",
+        "main",
+        expected=2,
+    )
+
+    assert "restack lease mismatch" in result["error"]
+
+
 def test_export_patch_preserves_tracked_and_untracked_changes(
     git_repo: Path,
 ) -> None:

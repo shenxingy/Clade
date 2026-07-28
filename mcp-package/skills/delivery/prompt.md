@@ -163,6 +163,19 @@ python3 "$DELIVERY_PY" candidate \
 Any new commit invalidates this candidate automatically. Never reuse evidence
 from an aggregate branch, an earlier SHA, or a child branch.
 
+After rebasing or restacking an owned branch, update its durable ancestry with
+the previous recorded head as a lease:
+
+```bash
+python3 "$DELIVERY_PY" restack \
+  --id "<id>" --previous-head "<old-recorded-head>" \
+  --base "<new-base-ref>" --parent "<parent-delivery-id>"
+```
+
+This requires a clean checkout and proves the new base is an ancestor of HEAD.
+For a published stack, retarget the PR first and pass `--pr-base-updated`.
+Restacking always invalidates candidate evidence.
+
 ## 6. Publish or update idempotently
 
 PR publication is distinct from branch publication. Honor templates and
