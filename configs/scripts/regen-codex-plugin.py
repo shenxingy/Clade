@@ -32,14 +32,16 @@ delegate the workflow to Clade's MCP bridge.
 
 Codex compatibility rules:
 
+- Plugin skills are namespaced. Invoke this workflow explicitly as
+  `$clade:{name}`; a bare `$name` does not select the installed Clade plugin.
 - Read the nearest `AGENTS.md` files for repository instructions. If a project
   has only `CLAUDE.md`, treat it as legacy project guidance and read it too.
 - Store new Clade working state under `.clade/` (or `~/.clade/` for personal
   state). Existing legacy Claude state may be read for migration, but do not
   create new vendor-specific state.
-- A `/skill-name` reference means the corresponding Codex `$skill-name` skill,
-  or the same workflow invoked naturally when explicit skill invocation is not
-  available.
+- A `/skill-name` reference means the corresponding Codex
+  `$clade:skill-name` plugin skill, or the same workflow invoked naturally when
+  explicit skill invocation is not available.
 - Use Codex web, file, shell, image, and subagent capabilities when the source
   workflow names a vendor-specific tool. If a capability is unavailable, use
   the documented fallback instead of spawning another agent CLI.
@@ -70,6 +72,7 @@ Package provenance:
 
 - core contract: `{contract}`
 - surface adapter: `codex/v1`
+- explicit invocation: `$clade:{name}`
 - generated from: `configs/skills/<name>`
 """
 
@@ -146,6 +149,15 @@ def _adapt(text: str) -> str:
     return text
 
 
+def _namespace_plugin_skill_refs(text: str) -> str:
+    for skill_name in _read_manifest():
+        text = text.replace(
+            f"`${skill_name}`",
+            f"`$clade:{skill_name}`",
+        )
+    return text
+
+
 def _render_skill(name: str) -> str:
     source_dir = SOURCE_ROOT / name
     skill_md = source_dir / "SKILL.md"
@@ -163,11 +175,18 @@ def _render_skill(name: str) -> str:
         raise ValueError(f"{name}: no executable instructions")
 
     native_core = name in NATIVE_CORE_SKILLS
-    adapt = (lambda value: value) if native_core else _adapt
+    base_adapt = (lambda value: value) if native_core else _adapt
+
+    def adapt(value: str) -> str:
+        return _namespace_plugin_skill_refs(base_adapt(value))
+
     header = (
-        NATIVE_HEADER.format(contract=CORE_CONTRACTS.get(name, "clade.delivery/v1"))
+        NATIVE_HEADER.format(
+            contract=CORE_CONTRACTS.get(name, "clade.delivery/v1"),
+            name=name,
+        )
         if native_core
-        else COMPATIBILITY_HEADER
+        else COMPATIBILITY_HEADER.format(name=name)
     )
     sections = [
         "---",

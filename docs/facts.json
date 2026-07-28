@@ -11,8 +11,11 @@
       "patterns": [
         "^## Skills\\s*\\((\\d+)\\)",
         "^(\\d+) skills,",
+        "^(\\d+) 个 skills、",
         "all (\\d+) Clade skills",
-        "\\[Skills\\]\\(#skills-(\\d+)\\)"
+        "\\[Skills\\]\\(#skills-(\\d+)\\)",
+        "skills/\\s+# (\\d+) skill definitions",
+        "skills/\\s+# (\\d+) 个 skill 定义"
       ]
     },
     {
@@ -35,7 +38,10 @@
         "pattern": "configs/agents/*.md"
       },
       "patterns": [
-        "^\\d+ skills,\\s+\\d+ hooks,\\s+(\\d+) agents"
+        "^\\d+ skills,\\s+\\d+ hooks,\\s+(\\d+) agents",
+        "^\\d+ 个 skills、\\d+ 个 hooks、(\\d+) 个 agents",
+        "agents/\\s+# (\\d+) agent definitions",
+        "agents/\\s+# (\\d+) 个 agent 定义"
       ]
     },
     {
@@ -47,6 +53,33 @@
       },
       "patterns": [
         "all (\\d+) scripts pass"
+      ]
+    },
+    {
+      "name": "codex_plugin_skills",
+      "value": 25,
+      "derive": {
+        "type": "count_glob",
+        "pattern": "plugins/clade/skills/*/"
+      },
+      "patterns": [
+        "ships (\\d+) provider-native core workflows",
+        "plugin \\((\\d+) generated core skills",
+        "plugin（(\\d+) 个核心 skills",
+        "^- (\\d+) core workflows:",
+        "^- (\\d+) 个核心 workflows："
+      ]
+    },
+    {
+      "name": "mcp_skills",
+      "value": 34,
+      "derive": {
+        "type": "count_glob",
+        "pattern": "mcp-package/skills/*/"
+      },
+      "patterns": [
+        "exposes (\\d+) bundled Clade skills",
+        "暴露 (\\d+) 个内置 Clade skills"
       ]
     }
   ]

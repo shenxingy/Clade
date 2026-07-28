@@ -14,7 +14,7 @@
 
 **自主编码，进化而来。**
 
-129 个 skills、30 个 hooks、36 个 agents、一个安全守卫，以及一个纠正学习循环。Clade 现在同时提供 Claude Code 完整框架、Codex 原生插件，以及面向其他编辑器的 provider-neutral MCP bridge。
+132 个 skills、30 个 hooks、37 个 agents、一个安全守卫，以及一个纠正学习循环。Clade 现在同时提供 Claude Code 完整框架、Codex 原生插件，以及面向其他编辑器的 provider-neutral MCP bridge。
 
 > 如果它帮你省了时间，点个 star 能帮更多人找到它。出问题了？[提 issue](https://github.com/shenxingy/clade/issues/new/choose)。
 
@@ -53,13 +53,14 @@ codex plugin marketplace add shenxingy/Clade
 codex plugin add clade@clade
 ```
 
-安装后启动新的 Codex thread，并通过 `$review`、`$verify`、`$investigate`
-等技能直接运行 Clade。首次使用时打开 `/hooks`，检查并信任 Clade 的
-session context 和危险命令防护 hooks。原生插件无需安装 Claude Code。
+安装后启动新的 Codex thread，并通过插件限定名 `$clade:review`、
+`$clade:verify`、`$clade:investigate` 等技能直接运行 Clade。首次使用时
+打开 `/hooks`，检查并信任 Clade 的 session context 和危险命令防护 hooks。
+原生插件无需安装 Claude Code。
 
-运行 `$codex-usage setup minimal` 使用极简原生 footer。`$codex-usage` 默认
-显示同样极简的 `project(branch)-9% (6d)` 节奏；图标和详细模式均为可选，
-而且不会读取或暴露 Codex 登录凭证。
+运行 `$clade:codex-usage setup minimal` 使用极简原生 footer。
+`$clade:codex-usage` 默认显示同样极简的 `project(branch)-9% (6d)` 节奏；
+图标和详细模式均为可选，而且不会读取或暴露 Codex 登录凭证。
 
 完整说明与兼容边界见 [Codex 原生支持](docs/codex.zh-CN.md)。
 
@@ -78,7 +79,7 @@ pip install --upgrade clade-mcp
 ## MCP Server — 在任何 AI 编辑器中使用 Skills
 
 MCP package 通过 [Model Context Protocol](https://modelcontextprotocol.io)
-暴露 32 个内置 Clade skills，并可选择通过 Claude 或 Codex 执行。
+暴露 34 个内置 Clade skills，并可选择通过 Claude 或 Codex 执行。
 
 **Claude Desktop，或使用 Claude runtime 的其他客户端：**
 ```json
@@ -278,7 +279,7 @@ clade/
 ├── install.sh               # 一键部署
 ├── uninstall.sh             # 干净卸载
 ├── mcp-package/             # PyPI 包（clade-mcp）
-├── plugins/clade/           # Codex 原生插件（21 个核心 skills + hooks）
+├── plugins/clade/           # Codex 原生插件（25 个核心 skills + hooks）
 ├── .agents/plugins/         # Codex marketplace manifest
 ├── orchestrator/            # FastAPI Web UI + worker 池 + 任务队列
 │   ├── server.py            # 应用、路由、WebSocket
@@ -287,9 +288,9 @@ clade/
 │   ├── mcp_server.py        # MCP server（本地开发版）
 │   └── web/                 # React + Vite 仪表盘（web/src/，从 web/dist 提供服务）
 ├── configs/
-│   ├── skills/              # 129 个 skill 定义
+│   ├── skills/              # 132 个 skill 定义
 │   ├── hooks/               # 30 个事件 hooks + lib/
-│   ├── agents/              # 36 个 agent 定义
+│   ├── agents/              # 37 个 agent 定义
 │   └── scripts/             # 35 个 shell + 13 个 Python 工具
 ├── adapters/openclaw/       # OpenClaw 集成（手机监控）
 ├── templates/               # settings、CLAUDE.md、corrections 模板

@@ -58,6 +58,10 @@ def test_codex_plugin_skills_are_generated_and_provider_native() -> None:
         text = (PLUGIN_ROOT / "skills" / name / "SKILL.md").read_text()
         assert "core contract: `clade.delivery/v1`" in text
         assert "surface adapter: `codex/v1`" in text
+        assert f"explicit invocation: `$clade:{name}`" in text
+    assert "`$clade:delivery`" in (
+        PLUGIN_ROOT / "skills" / "commit" / "SKILL.md"
+    ).read_text()
     assert "core contract: `clade.execution/v1`" in (
         PLUGIN_ROOT / "skills" / "provider" / "SKILL.md"
     ).read_text()

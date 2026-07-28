@@ -29,7 +29,7 @@ codex plugin add clade@clade
 
 `plugins/clade/` 包含：
 
-- 21 个核心 workflows：commit、Codex usage pace、安全审查、release 文档、frontend design、
+- 25 个核心 workflows：commit、Codex usage pace、安全审查、release 文档、frontend design、
   handoff/pickup、incident、investigation、architecture map、PR review/merge、
   research、retro、项目 review、sync、verification、worktree 与决策辅助流程
 - `SessionStart` hook：只读注入 branch、recent commits、dirty tree、handoff 和
@@ -58,26 +58,26 @@ python3 configs/scripts/regen-codex-plugin.py --check
 显式调用使用 Codex 的 `$skill-name` 形式：
 
 ```text
-$investigate why the integration test hangs
-$verify all behavior anchors
-$review the whole project and fix failures until clean
+$clade:investigate why the integration test hangs
+$clade:verify all behavior anchors
+$clade:review the whole project and fix failures until clean
 ```
 
 自然语言也可以触发相应 workflow。
 
 ## Codex Usage 与 Status Line
 
-Clade 0.3 新增原生 `$codex-usage` workflow。它通过已认证的
+Clade 0.3 新增原生 `$clade:codex-usage` workflow。它通过已认证的
 `codex app-server` protocol 读取 rate-limit snapshot，不会打开或输出
 `~/.codex/auth.json`。
 
 ```text
-$codex-usage
-$codex-usage setup minimal
-$codex-usage style icon
-$codex-usage style detail
-$codex-usage theme bird
-$codex-usage --json
+$clade:codex-usage
+$clade:codex-usage setup minimal
+$clade:codex-usage style icon
+$clade:codex-usage style detail
+$clade:codex-usage theme bird
+$clade:codex-usage --json
 ```
 
 默认 `minimal` 视图刻意保持极简：
@@ -96,7 +96,7 @@ layout 时才会替换已有 `status_line` array。
 Codex 自带 `/usage` 查看 account usage、`/status` 查看当前 session，亦可通过
 `/statusline` 交互配置 footer。修改 footer 后请启动新的 Codex session。
 Codex 原生 footer 只接受固定 fields，不支持 Claude Code 那种任意 formatter
-command；因此完全一致的极简字符串由 `$codex-usage` 输出，常驻 footer 使用
+command；因此完全一致的极简字符串由 `$clade:codex-usage` 输出，常驻 footer 使用
 最接近的原生 field 组合。
 
 ## MCP 0.2.0 Runtime
