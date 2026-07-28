@@ -3,8 +3,7 @@
 # These are derived from configs/skills/ by:
 #   python3 configs/scripts/regen-codex-plugin.py
 #
-# Keep runtime-specific orchestration skills (loop/start/status/provider/etc.)
-# out until their subprocess and session semantics have Codex implementations.
+# Runtime-specific orchestration stays excluded until it has a native adapter.
 commit
 create-pr
 codex-usage
@@ -21,10 +20,12 @@ merge-pr
 next
 orchestrate
 pickup
+provider
 research
 retro
 review
 review-pr
+status
 sync
 verify
 worktree

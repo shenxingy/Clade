@@ -49,7 +49,16 @@ Codex compatibility rules:
 """
 
 NATIVE_CORE_SKILLS = frozenset(
-    {"commit", "create-pr", "delivery", "merge-pr", "review-pr", "worktree"}
+    {
+        "commit",
+        "create-pr",
+        "delivery",
+        "merge-pr",
+        "provider",
+        "review-pr",
+        "status",
+        "worktree",
+    }
 )
 NATIVE_HEADER = """# Clade for Codex
 
@@ -59,10 +68,15 @@ another agent CLI or route it through Clade MCP.
 
 Package provenance:
 
-- core contract: `clade.delivery/v1`
+- core contract: `{contract}`
 - surface adapter: `codex/v1`
 - generated from: `configs/skills/<name>`
 """
+
+CORE_CONTRACTS = {
+    "provider": "clade.execution/v1",
+    "status": "clade.status/v1",
+}
 
 REPLACEMENTS = (
     ("`claude -p` session", "Codex session"),
@@ -150,7 +164,11 @@ def _render_skill(name: str) -> str:
 
     native_core = name in NATIVE_CORE_SKILLS
     adapt = (lambda value: value) if native_core else _adapt
-    header = NATIVE_HEADER if native_core else COMPATIBILITY_HEADER
+    header = (
+        NATIVE_HEADER.format(contract=CORE_CONTRACTS.get(name, "clade.delivery/v1"))
+        if native_core
+        else COMPATIBILITY_HEADER
+    )
     sections = [
         "---",
         f"name: {name}",

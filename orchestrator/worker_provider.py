@@ -42,24 +42,25 @@ by id on retry instead of a fresh run.
 from __future__ import annotations
 
 import shlex
+import shutil
+import subprocess
+import os
+import tempfile
 from abc import ABC, abstractmethod
+from functools import lru_cache
 from pathlib import Path
 from typing import Final
 
 from agent_runtime import normalize_agent_runtime
 from config import (
-    ALLOWED_MODEL_IDS,
     SONNET_MODEL,
     _MODEL_ALIASES,
     _build_tool_flags,
     _fallback_flag,
 )
+from execution_envelope import CapabilitySet, CapabilityState, validate_model_id
 
 
-#: Codex model ids look like ``gpt-5.6-sol`` / ``o4-mini`` / ``codex-*``; anything
-#: else (a Claude alias like ``sonnet``) means "use the ``~/.codex/config.toml``
-#: default", so we omit ``-m`` rather than force a Claude id onto Codex.
-_CODEX_MODEL_PREFIXES: Final = ("gpt-", "gpt5", "o1", "o3", "o4", "codex")
 _ALLOWED_EFFORTS: Final = frozenset({"low", "medium", "high", "xhigh", "max"})
 
 
@@ -68,12 +69,45 @@ def _safe_effort(value: str | None) -> str | None:
     return effort if effort in _ALLOWED_EFFORTS else None
 
 
+@lru_cache(maxsize=None)
+def _probe_runtime_version(executable: str) -> str | None:
+    """Probe each installed runtime once per process.
+
+    Envelope construction happens for every task, so repeated subprocess
+    probes would otherwise add latency and make runtime availability racey
+    within one orchestrator process.
+    """
+
+    probe_env = {
+        key: value
+        for key, value in os.environ.items()
+        if key in {"PATH", "LANG", "LC_ALL", "SYSTEMROOT", "WINDIR"}
+    }
+    try:
+        with tempfile.TemporaryDirectory(prefix="clade-runtime-probe-") as probe_dir:
+            result = subprocess.run(
+                [executable, "--version"],
+                text=True,
+                capture_output=True,
+                stdin=subprocess.DEVNULL,
+                cwd=probe_dir,
+                env=probe_env,
+                timeout=2,
+                check=False,
+            )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    version = result.stdout.strip() or result.stderr.strip()
+    return version[:120] or None
+
+
 # ─── WorkerProvider ABC ──────────────────────────────────────────────────────
 class WorkerProvider(ABC):
     """Legacy-named strategy for one agent runtime's worker command."""
 
     #: Stable agent-runtime id matched against legacy config/task fields.
     name: str = "base"
+    adapter_version: str = "1"
 
     @abstractmethod
     def resolve_model(self, requested: str | None) -> str | None:
@@ -101,6 +135,29 @@ class WorkerProvider(ABC):
         """A retry command that resumes prior CLI context, or None if unsupported."""
         return None
 
+    def capabilities(self) -> CapabilitySet:
+        """Capabilities implemented by this Clade runtime adapter."""
+
+        return CapabilitySet()
+
+    def runtime_version(self) -> str | None:
+        """Best-effort CLI version; absence remains unknown."""
+
+        executable = shutil.which(self.name)
+        if not executable:
+            return None
+        return _probe_runtime_version(executable)
+
+    def resolve_effort(
+        self, requested: str | None, resolved_model: str | None
+    ) -> tuple[str | None, str | None]:
+        """Return (wire effort, degradation reason)."""
+
+        effort = _safe_effort(requested)
+        if requested and effort is None:
+            return None, f"unsupported effort {requested!r}"
+        return effort, None
+
 
 # ─── ClaudeProvider (default) ─────────────────────────────────────────────────
 class ClaudeProvider(WorkerProvider):
@@ -110,7 +167,32 @@ class ClaudeProvider(WorkerProvider):
 
     def resolve_model(self, requested: str | None) -> str:
         model = _MODEL_ALIASES.get(requested, requested)
-        return model if model in ALLOWED_MODEL_IDS else SONNET_MODEL
+        return validate_model_id(model, allow_none=True) or SONNET_MODEL
+
+    def capabilities(self) -> CapabilitySet:
+        source = f"claude-code-adapter@{self.adapter_version}"
+        states = {
+            "tools": CapabilityState.SUPPORTED,
+            "repository_read": CapabilityState.SUPPORTED,
+            "repository_write": CapabilityState.SUPPORTED,
+            "structured_events": CapabilityState.UNKNOWN,
+            "native_resume": CapabilityState.SUPPORTED,
+            "subagents": CapabilityState.SUPPORTED,
+            "hooks": CapabilityState.SUPPORTED,
+            "status_renderer": CapabilityState.SUPPORTED,
+            "native_rate_limits": CapabilityState.CONDITIONAL,
+            "image_input": CapabilityState.CONDITIONAL,
+            "reasoning_control": CapabilityState.CONDITIONAL,
+        }
+        return CapabilitySet(states, {name: source for name in states})
+
+    def resolve_effort(
+        self, requested: str | None, resolved_model: str | None
+    ) -> tuple[str | None, str | None]:
+        effort, degradation = super().resolve_effort(requested, resolved_model)
+        if effort and resolved_model == _MODEL_ALIASES["haiku"]:
+            return None, "selected Claude Haiku model does not accept effort control"
+        return effort, degradation
 
     def build_command(
         self,
@@ -124,11 +206,11 @@ class ClaudeProvider(WorkerProvider):
         model = self.resolve_model(requested_model)
         cmd = (
             f'claude -p "$(cat {shlex.quote(str(task_file))})" '
-            f"--model {model} --dangerously-skip-permissions"
+            f"--model {shlex.quote(model)} --dangerously-skip-permissions"
         )
-        effort = _safe_effort(effort)
-        if effort and model != _MODEL_ALIASES["haiku"]:
-            cmd += f" --effort {effort}"
+        wire_effort, _ = self.resolve_effort(effort, model)
+        if wire_effort:
+            cmd += f" --effort {wire_effort}"
         # Native lossless overload failover, off unless worker_fallback_model is set.
         cmd += _fallback_flag(requested_model)
         # Tool subsets per task type (Stripe Blueprint pattern).
@@ -147,12 +229,12 @@ class ClaudeProvider(WorkerProvider):
         model = self.resolve_model(requested_model)
         cmd = (
             f'claude -p --continue "$(cat {shlex.quote(str(task_file))})"'
-            f" --model {model} --dangerously-skip-permissions"
+            f" --model {shlex.quote(model)} --dangerously-skip-permissions"
             f"{_fallback_flag(requested_model)}"
         )
-        effort = _safe_effort(effort)
-        if effort and model != _MODEL_ALIASES["haiku"]:
-            cmd += f" --effort {effort}"
+        wire_effort, _ = self.resolve_effort(effort, model)
+        if wire_effort:
+            cmd += f" --effort {wire_effort}"
         return cmd
 
 
@@ -164,10 +246,28 @@ class CodexProvider(WorkerProvider):
 
     def resolve_model(self, requested: str | None) -> str | None:
         model = (requested or "").strip()
-        if model and model.lower().startswith(_CODEX_MODEL_PREFIXES):
-            return model
-        # A Claude alias (sonnet/opus/haiku) or empty -> use codex's own default.
-        return None
+        # Preserve legacy behavior for Claude aliases while accepting every
+        # other opaque model id (custom Responses gateways included).
+        if not model or model in _MODEL_ALIASES:
+            return None
+        return validate_model_id(model)
+
+    def capabilities(self) -> CapabilitySet:
+        source = f"codex-adapter@{self.adapter_version}"
+        states = {
+            "tools": CapabilityState.SUPPORTED,
+            "repository_read": CapabilityState.SUPPORTED,
+            "repository_write": CapabilityState.SUPPORTED,
+            "structured_events": CapabilityState.UNSUPPORTED,
+            "native_resume": CapabilityState.UNSUPPORTED,
+            "subagents": CapabilityState.CONDITIONAL,
+            "hooks": CapabilityState.SUPPORTED,
+            "status_renderer": CapabilityState.CONDITIONAL,
+            "native_rate_limits": CapabilityState.CONDITIONAL,
+            "image_input": CapabilityState.CONDITIONAL,
+            "reasoning_control": CapabilityState.SUPPORTED,
+        }
+        return CapabilitySet(states, {name: source for name in states})
 
     def build_command(
         self,

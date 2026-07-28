@@ -6,11 +6,21 @@ worker execution engine.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Mapping
 
 from agent_runtime import AgentRuntimeSelectionError
 from config import _parse_task_type
+from execution_envelope import ExecutionEnvelope, ExecutionResolutionError
+from execution_resolver import resolve_execution
+from worker_provider import get_agent_runtime
 from worker_routing import WorkerRoute, resolve_worker_route
+
+
+@dataclass(frozen=True)
+class WorkerExecutionPlan:
+    route: WorkerRoute
+    envelope: ExecutionEnvelope
 
 
 async def resolve_runtime_route(
@@ -36,5 +46,42 @@ async def resolve_runtime_route(
             status="failed",
             failed_reason=str(exc),
             route_reason="agent runtime selection failed",
+        )
+        raise
+
+
+async def resolve_worker_execution(
+    task: Mapping[str, Any],
+    settings: Mapping[str, Any],
+    task_queue: Any,
+) -> WorkerExecutionPlan:
+    """Resolve route + immutable envelope or persist one preflight failure."""
+
+    try:
+        route = await resolve_runtime_route(task, settings, task_queue)
+        adapter = get_agent_runtime(route.agent_runtime)
+        envelope = resolve_execution(
+            task=task,
+            settings=settings,
+            route=route,
+            adapter=adapter,
+        )
+        await task_queue.update(
+            task["id"],
+            agent_runtime=route.agent_runtime,
+            provider=route.agent_runtime,
+            execution_envelope=envelope.to_dict(),
+            route_reason=route.reason,
+        )
+        return WorkerExecutionPlan(route=route, envelope=envelope)
+    except AgentRuntimeSelectionError:
+        # resolve_runtime_route already persisted the typed failure.
+        raise
+    except ExecutionResolutionError as exc:
+        await task_queue.update(
+            task["id"],
+            status="failed",
+            failed_reason=str(exc),
+            route_reason="execution capability resolution failed",
         )
         raise

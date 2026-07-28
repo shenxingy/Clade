@@ -131,10 +131,10 @@ def test_task_type_override_is_provider_specific_and_audited():
     assert "task-type override (test)" in route.reason
 
 
-def test_claude_alias_override_is_ignored_for_codex_provider():
+def test_task_type_model_override_is_opaque_for_codex_connection():
     route = resolve_worker_route(
         {"provider": "codex", "model": "gpt-5.6-sol", "task_type": "test"},
         {**BASE, "task_type_model_routing": {"test": "haiku"}},
     )
-    assert route.model == "gpt-5.6-sol"
-    assert "ignored incompatible Codex" in route.reason
+    assert route.model == "haiku"
+    assert "task-type override (test)" in route.reason

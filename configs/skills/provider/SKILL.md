@@ -1,7 +1,11 @@
 ---
 name: provider
-description: Switch the active LLM provider for Claude Code (claude, minimax, or any configured provider). Shows current provider and available alternatives. Changes take effect after restarting Claude Code.
-when_to_use: "switch provider, use minimax, use claude, change model provider"
-argument-hint: '[provider-name]  e.g. minimax | claude'
-user_invocable: true
+description: Inspect or select a Clade execution connection while keeping agent runtime, inference provider, wire protocol, and model distinct. Use for Claude/Codex runtime selection, Anthropic/OpenAI/MiniMax/Kimi/custom gateways, model routing, or connection troubleshooting.
 ---
+
+# Provider
+
+Manage secret-free connection identities and produce a
+`clade.execution/v1` preview before changing execution selection. Read
+`prompt.md` for the semantic workflow and only the matching file under
+`surfaces/` for native configuration mechanics.

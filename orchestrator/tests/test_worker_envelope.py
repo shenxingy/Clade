@@ -21,6 +21,7 @@ def test_worker_envelope_round_trip():
         },
         "next_handoff": {"type": "review", "payload": {"priority": 2}},
         "blockers": [],
+        "execution": None,
     }
 
     envelope = WorkerEnvelope.from_dict(raw)
@@ -49,6 +50,7 @@ def test_worker_envelope_rejects_version_mismatch_and_malformed(mutate):
         "artifacts": {},
         "next_handoff": None,
         "blockers": [],
+        "execution": None,
     }
     malformed = deepcopy(raw)
     mutate(malformed)
@@ -91,4 +93,22 @@ def test_build_from_worker_projects_existing_terminal_fields():
         },
         next_handoff={"type": "repair", "payload": {"focus": "validation"}},
         blockers=["Missing malformed-input coverage."],
+        execution=None,
     )
+
+
+def test_legacy_v1_envelope_migrates_to_v2_with_unknown_execution():
+    raw = {
+        "v": 1,
+        "task_id": "task-legacy",
+        "status": "done",
+        "summary": "Completed before execution envelopes existed.",
+        "artifacts": {},
+        "next_handoff": None,
+        "blockers": [],
+    }
+
+    migrated = WorkerEnvelope.from_dict(raw)
+
+    assert migrated.v == SCHEMA_VERSION
+    assert migrated.execution is None

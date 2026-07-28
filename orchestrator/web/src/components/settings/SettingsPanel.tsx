@@ -9,7 +9,15 @@ interface Props {
   onClose: () => void;
 }
 
-const MODEL_OPTIONS = ['sonnet', 'opus', 'haiku'];
+const MODEL_SUGGESTIONS = [
+  'sonnet',
+  'opus',
+  'haiku',
+  'gpt-5.6-sol',
+  'gpt-5.6-terra',
+  'MiniMax-M2.5',
+  'kimi-k2.5',
+];
 
 export function SettingsPanel({ open, onClose }: Props) {
   const { settings, setSettings } = useSessionStore();
@@ -54,6 +62,19 @@ export function SettingsPanel({ open, onClose }: Props) {
   };
 
   const f = form;
+  const selectedRuntime = f?.agent_runtime ?? f?.worker_provider ?? 'claude';
+  const selectedConnectionId = f?.runtime_connections?.[selectedRuntime] ?? '';
+  const selectedConnection = selectedConnectionId
+    ? f?.connections?.[selectedConnectionId]
+    : undefined;
+
+  const patchRuntimeConnection = (connectionId: string) => {
+    if (!f) return;
+    patch('runtime_connections', {
+      ...f.runtime_connections,
+      [selectedRuntime]: connectionId,
+    });
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -90,18 +111,40 @@ export function SettingsPanel({ open, onClose }: Props) {
                   className="input-sm w-20" />
               </Row>
               <Row label="Default model">
-                <select value={f.default_model} onChange={e => patch('default_model', e.target.value)}
-                  className="input-sm">
-                  {MODEL_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
-                </select>
+                <input list="clade-model-suggestions" type="text"
+                  value={f.default_model}
+                  onChange={e => patch('default_model', e.target.value)}
+                  className="input-sm w-36" />
+                <datalist id="clade-model-suggestions">
+                  {MODEL_SUGGESTIONS.map(m => <option key={m} value={m} />)}
+                </datalist>
               </Row>
-              <Row label="Worker provider">
-                <select value={f.worker_provider ?? 'claude'}
-                  onChange={e => patch('worker_provider', e.target.value)} className="input-sm">
+              <Row label="Agent runtime">
+                <select value={selectedRuntime}
+                  onChange={e => patch('agent_runtime', e.target.value)} className="input-sm">
                   <option value="claude">claude</option>
                   <option value="codex">codex</option>
                 </select>
               </Row>
+              <Row label="Connection">
+                <input list="clade-connection-suggestions" type="text"
+                  value={selectedConnectionId}
+                  onChange={e => patchRuntimeConnection(e.target.value)}
+                  className="input-sm w-36" />
+                <datalist id="clade-connection-suggestions">
+                  {Object.entries(f.connections ?? {})
+                    .filter(([, connection]) => connection.agent_runtime === selectedRuntime)
+                    .map(([id]) => <option key={id} value={id} />)}
+                </datalist>
+              </Row>
+              {selectedConnection && (
+                <div className="mb-2 rounded border border-border bg-secondary/40 px-2 py-1.5 text-[11px] text-muted-foreground">
+                  <div>{selectedConnection.inference_provider} · {selectedConnection.wire_protocol}</div>
+                  <div className="truncate" title={selectedConnection.endpoint_identity}>
+                    {selectedConnection.endpoint_identity}
+                  </div>
+                </div>
+              )}
               <Row label="Codex cheap model">
                 <input type="text" value={f.codex_cheap_model ?? 'gpt-5.6-terra'}
                   onChange={e => patch('codex_cheap_model', e.target.value)}
