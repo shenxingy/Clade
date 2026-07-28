@@ -18,7 +18,12 @@ def _load_module(name: str, path: Path):
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
-    spec.loader.exec_module(module)
+    previous = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = previous
     return module
 
 
@@ -128,6 +133,7 @@ def test_codex_guardian_denies_and_rewrites_supported_commands() -> None:
     recursive_home = guardian.evaluate('rm --recursive --force "$HOME"')
     assert recursive_home["hookSpecificOutput"]["permissionDecision"] == "deny"
     assert guardian.evaluate("git status --short") is None
+    assert not (PLUGIN_ROOT / "hooks" / "__pycache__").exists()
 
 
 def test_codex_hooks_use_supported_command_handlers() -> None:
