@@ -1,6 +1,6 @@
 ---
 name: commit
-description: Create repository-adaptive checkpoint commits for coherent work; publication is separately authorized
+description: Create repository-adaptive checkpoint commits for coherent work, including requests to split changes into commits and push; publication remains separately authorized
 when_to_use: "commit, checkpoint, save work, 提交, preserve progress, done with a coherent slice — NOT release aggregation (use /ship)"
 argument-hint: '[--publish] [--candidate] [--dry-run]'
 user_invocable: true

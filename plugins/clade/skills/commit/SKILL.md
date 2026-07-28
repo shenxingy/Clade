@@ -1,6 +1,6 @@
 ---
 name: commit
-description: "Create repository-adaptive checkpoint commits for coherent work; publication is separately authorized"
+description: "Create repository-adaptive checkpoint commits for coherent work, including requests to split changes into commits and push; publication remains separately authorized"
 ---
 
 # Clade for Codex
