@@ -1,6 +1,6 @@
 ---
 name: status
-description: "Show a provider-neutral, freshness-aware snapshot of active Agent work, Git delivery, execution identity, and usage limits. Use when the user asks what is running, whether progress is updating, which runtime/provider/model is active, or whether work is stuck."
+description: "Show a provider-neutral, freshness-aware snapshot of active Agent work, Git delivery, execution identity, and usage limits. Use for “what's going on right now”, what is running, progress updates, active runtime/provider/model, or stuck-work checks."
 ---
 
 # Clade for Codex

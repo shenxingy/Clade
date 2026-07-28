@@ -44,6 +44,8 @@ from __future__ import annotations
 import shlex
 import shutil
 import subprocess
+import os
+import tempfile
 from abc import ABC, abstractmethod
 from functools import lru_cache
 from pathlib import Path
@@ -76,14 +78,23 @@ def _probe_runtime_version(executable: str) -> str | None:
     within one orchestrator process.
     """
 
+    probe_env = {
+        key: value
+        for key, value in os.environ.items()
+        if key in {"PATH", "LANG", "LC_ALL", "SYSTEMROOT", "WINDIR"}
+    }
     try:
-        result = subprocess.run(
-            [executable, "--version"],
-            text=True,
-            capture_output=True,
-            timeout=2,
-            check=False,
-        )
+        with tempfile.TemporaryDirectory(prefix="clade-runtime-probe-") as probe_dir:
+            result = subprocess.run(
+                [executable, "--version"],
+                text=True,
+                capture_output=True,
+                stdin=subprocess.DEVNULL,
+                cwd=probe_dir,
+                env=probe_env,
+                timeout=2,
+                check=False,
+            )
     except (OSError, subprocess.TimeoutExpired):
         return None
     version = result.stdout.strip() or result.stderr.strip()

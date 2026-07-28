@@ -7,6 +7,7 @@ flags and with stdin closed so a headless worker cannot hang.
 """
 
 import shlex
+import stat
 from pathlib import Path
 
 import pytest
@@ -20,6 +21,7 @@ from worker_provider import (
     get_agent_runtime,
     get_worker_provider,
 )
+from worker_provider import _probe_runtime_version
 
 TASK = Path("/tmp/task-abc.md")
 NO_MCP = Path("/nonexistent/.claude/mcp.json")
@@ -198,3 +200,24 @@ def test_factory_invalid_global_runtime_fails_closed(monkeypatch):
 def test_all_providers_are_workerprovider_subclasses():
     assert issubclass(ClaudeProvider, WorkerProvider)
     assert issubclass(CodexProvider, WorkerProvider)
+
+
+def test_runtime_version_probe_isolated_from_repository_and_stdin(
+    tmp_path, monkeypatch
+):
+    runtime = tmp_path / "probe-runtime"
+    runtime.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -eu\n"
+        "test ! -t 0\n"
+        "echo polluted > should-not-reach-repository.txt\n"
+        "echo runtime-v1\n",
+        encoding="utf-8",
+    )
+    runtime.chmod(runtime.stat().st_mode | stat.S_IXUSR)
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    monkeypatch.chdir(repository)
+
+    assert _probe_runtime_version(str(runtime)) == "runtime-v1"
+    assert not (repository / "should-not-reach-repository.txt").exists()
