@@ -14,7 +14,7 @@
 
 **Autonomous coding, evolved.**
 
-131 skills, 30 hooks, 37 agents, a safety guardian, and a correction learning loop — with native distributions for Claude Code and Codex, plus a provider-neutral MCP bridge for other editors.
+132 skills, 30 hooks, 37 agents, a safety guardian, and a correction learning loop — with native distributions for Claude Code and Codex, plus a provider-neutral MCP bridge for other editors.
 
 Three ways to use Clade: the full **Claude CLI framework**, the native **Codex plugin**, or the provider-neutral **MCP bridge**. Add the optional **Orchestrator** for multi-worker observability, quality gates, and task routing.
 

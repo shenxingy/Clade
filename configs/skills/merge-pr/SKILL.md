@@ -1,19 +1,14 @@
 ---
 name: merge-pr
-description: Squash-merge a PR and clean up the branch — parallel to OpenClaw's /merge-pr
-when_to_use: "merge PR, squash merge, close PR, merge pull request"
-argument-hint: '[PR_NUMBER_OR_URL]'
+description: Integrate an exact reviewed PR under repository policy, choose truthful history semantics, and verify cleanup
+when_to_use: "merge PR, integrate pull request, squash/rebase/merge PR, clean merged branch"
+argument-hint: '[PR_NUMBER_OR_URL] [--strategy auto|squash|rebase|merge]'
 user_invocable: true
 ---
 
-# Merge PR Skill
+# Merge PR
 
-Squash-merges a PR, deletes the remote branch, and cleans up the local branch. Parallel to OpenClaw's `/merge-pr`.
-
-## Usage
-
-```
-/merge-pr           # Merge the PR for the current branch
-/merge-pr 42        # Merge PR #42
-/merge-pr https://github.com/owner/repo/pull/42
-```
+Integrator workflow for an already reviewed Clade delivery. It never treats
+authorship as merge authority, never bypasses pending/red gates, locks the
+reviewed head SHA, respects repository merge policy and live child ancestry,
+and does not finish until mainline/branch cleanup is verified.

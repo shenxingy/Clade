@@ -1,136 +1,160 @@
 ---
 name: merge-pr
-description: "Squash-merge a PR and clean up the branch — parallel to OpenClaw's /merge-pr"
+description: "Integrate an exact reviewed PR under repository policy, choose truthful history semantics, and verify cleanup"
 ---
 
 # Clade for Codex
 
-This workflow runs **directly in Codex**. Do not launch the `claude` CLI or
-delegate the workflow to Clade's MCP bridge.
+This package composes the provider-neutral Clade core contract with the native
+Codex surface adapter. Run the workflow directly in Codex; do not launch
+another agent CLI or route it through Clade MCP.
 
-Codex compatibility rules:
+Package provenance:
 
-- Read the nearest `AGENTS.md` files for repository instructions. If a project
-  has only `CLAUDE.md`, treat it as legacy project guidance and read it too.
-- Store new Clade working state under `.clade/` (or `~/.clade/` for personal
-  state). Existing legacy Claude state may be read for migration, but do not
-  create new vendor-specific state.
-- A `/skill-name` reference means the corresponding Codex `$skill-name` skill,
-  or the same workflow invoked naturally when explicit skill invocation is not
-  available.
-- Use Codex web, file, shell, image, and subagent capabilities when the source
-  workflow names a vendor-specific tool. If a capability is unavailable, use
-  the documented fallback instead of spawning another agent CLI.
-- Paths such as `<plugin-root>/...` are relative to the installed Clade plugin
-  containing this `SKILL.md`; resolve that root before invoking a helper.
+- core contract: `clade.delivery/v1`
+- surface adapter: `codex/v1`
+- generated from: `configs/skills/<name>`
 
 ## Canonical Clade workflow
 
-You are the Merge PR skill. You squash-merge a PR and clean up its branch.
+You are the Merge PR integrator. Use the shared `delivery` controller and the
+target forge's live policy. Do not hard-code squash, GitHub, `main/master`, or
+remote branch deletion.
 
-## Step 1: Resolve the PR
+## Arguments
 
-Parse the argument (if any):
-- No argument → use current branch: `gh pr view --json number,url,state` to get the PR
-- Number (e.g. `42`) → PR #42 in current repo
-- Full URL → use directly
+- PR number/URL or current branch PR
+- `--strategy auto|squash|rebase|merge` (default `auto`)
 
-If no PR found, say so and exit. If PR state is already `MERGED` or `CLOSED`, say so and exit.
+## 1. Re-probe and resolve the delivery
 
-## Step 1.5: Scope gate
+Locate/read the sibling `delivery` skill and relevant surface overlay. Run its
+context and state commands. Re-query the live PR and repository immediately
+before integration.
 
-Inspect PR metadata and diff before checking CI:
+Require explicit merge authority in the active delivery or repository
+automation policy. An authoring agent cannot count its own review as
+independent approval and cannot infer integration authority from “ship”,
+“commit”, or “open a PR”.
+
+If no matching delivery exists, construct a read-only context and require the
+same exact-SHA/candidate evidence before creating a state record. Never weaken
+the gates just because the PR predates Clade state.
+
+## 2. Atomic scope and repository gates
+
+Inspect the PR diff, commits, base/head, reviews, conversations, rulesets,
+required checks, merge queue/auto-merge policy, and live child PRs.
+
+Never merge a multi-feature PR; split it with `$create-pr` first. Supporting
+tests/migrations/generated files/docs remain with their behavior.
+
+Block—not warn—when:
+
+- any required check is pending, failing, cancelled, or unavailable;
+- required review/CODEOWNERS/conversation gates are unresolved;
+- PR is draft, conflicting, closed, or not mergeable;
+- base/head changed after candidate/review evidence;
+- branch/rules policy discovery fails for an external mutation;
+- the requested merge method is disabled;
+- parent ancestry would be rewritten while live children lack a safe restack.
+
+There is no conversational override for a red/pending protected gate. Do not
+use admin bypasses, `--no-verify`, or unsupported confirmation flags.
+
+## 3. Lock READY and choose history semantics
+
+Run:
 
 ```bash
-gh pr view {PR_NUMBER_OR_URL} --json title,body,additions,deletions,changedFiles,commits,baseRefName,headRefName
-gh pr diff {PR_NUMBER_OR_URL}
+python3 "$DELIVERY_PY" ready \
+  --id "<id>" --pr "<number-or-url>" \
+  --strategy auto|squash|rebase|merge
 ```
 
-Map the diff to independently useful features, TODO Feature tags, bug root
-causes, or roadmap phases. If it contains more than one independent delivery
-unit, stop and require separate or stacked PRs. Passing CI and multiple clean
-commits do not override this gate.
+The controller verifies the recorded candidate SHA equals the current PR head,
+requires completed successful checks, discovers enabled methods and child PRs,
+and emits one exact command containing:
 
-Allow tests, migrations, generated contracts, and documentation that support
-the same feature. For diffs over 500 lines require explicit atomic-scope
-justification; over 1,000 lines defaults to stop unless generated files or a
-single inseparable foundation dominate.
+```text
+--match-head-commit <reviewed-head-sha>
+```
 
-## Step 2: Check CI status
+`auto` chooses:
+
+- **squash**: atomic unstacked PR; working commits are checkpoint/review
+  history and one integration commit is the truthful revert unit;
+- **rebase**: explicitly curated independently green commits whose individual
+  mainline value should remain, when repository policy permits;
+- **merge commit**: shared/live stack ancestry must be preserved or repository
+  policy requires topology;
+- **stop**: no safe compatible strategy.
+
+Merge queues and auto-merge are repository integrations, not bypasses. Use the
+native queue when required; otherwise execute exactly the emitted strategy and
+head lock.
+
+## 4. Record and repair descendants
+
+After forge confirmation, retrieve the actual landed commit and record:
 
 ```bash
-gh pr checks {PR_NUMBER_OR_URL}
+python3 "$DELIVERY_PY" merged \
+  --id "<id>" --head-sha "<locked-head>" \
+  --merge-sha "<landed-sha>" --strategy "<actual-strategy>"
 ```
 
-If any required checks are **failing**, report them and ask the user to confirm before proceeding. Don't merge a broken PR silently.
+For stacks, merge bottom-up. If a parent was squash/rebase merged, every child
+must be retargeted/restacked onto current base, pushed only with an explicit
+force-with-lease matching freshly fetched remote SHA on its owned branch, and
+fully retested. Never claim the stack healthy based on pre-parent evidence.
 
-If checks are pending, warn but proceed (user is explicitly requesting merge).
+## 5. Cleanup is part of completion
 
-## Step 3: Squash merge
+Resolve the real default branch and remote; do not assume names.
+
+1. Switch to default branch only after confirming the current checkout is clean.
+2. Fetch/prune and update with `--ff-only`.
+3. Verify the landed PR/commit is reachable.
+4. Remove only this delivery's worktree/local branch.
+5. Delete the remote branch only under explicit/repository authority.
+6. Repair/retest children.
+7. Run:
 
 ```bash
-gh pr merge {PR_NUMBER_OR_URL} --squash --delete-branch --yes
+python3 "$DELIVERY_PY" verify-clean --id "<id>"
 ```
 
-`--squash` — combine all commits into one clean commit on main
-`--delete-branch` — delete the remote branch after merge
-`--yes` — skip interactive confirmation
+If squash/rebase makes the source branch not an ancestor of default, an exact
+force-delete is allowed only after the forge reports merged, the landed diff is
+verified, and the branch lease belongs to this delivery. Report that it was
+deleted after squash rather than pretending safe `-d` ancestry applies.
 
-If merge fails (conflicts, branch protection, etc.), report the error clearly and stop.
+Completion requires clean tree, default branch checked out, local/remote
+default exactly aligned, no local/remote topic branch, descendants repaired,
+and the delivery state `CLEAN`.
 
-## Step 4: Clean up local branch (if applicable)
+## Codex surface adapter
 
-If the merged branch exists locally:
-```bash
-git branch -d {branch_name}
-```
+# Codex surface adapter
 
-Use `-d` (safe delete), not `-D`. If it fails because it's not fully merged, that's expected and fine — skip.
-
-Pull main to stay current:
-```bash
-git checkout main && git pull --ff-only
-```
-
-(Only run checkout/pull if we're not currently on main or if the user would benefit.)
-
-## Step 5: Report
-
-```
-✓ Merged PR #{number}: {title}
-  Branch: {branch_name} → deleted
-  Squash commit on main: {short_hash}
-```
-
-## Rules
-
-- Never force-push or rebase without explicit user instruction
-- Never merge PRs targeting branches other than main/master without confirming with user
-- Never merge a multi-feature PR; split it with `/create-pr` first
-- If `--delete-branch` fails (e.g. branch already deleted), that's fine — continue
-
-
----
-
-## Completion Status
-
-- ✅ **DONE** — task completed successfully
-- ⚠ **DONE_WITH_CONCERNS** — completed but with caveats to note
-- ❌ **BLOCKED** — cannot proceed; write details to `.clade/blockers.md`
-- ❓ **NEEDS_CONTEXT** — missing information; use AskUserQuestion
-
-**3-strike rule:** If the same approach fails 3 times, switch to BLOCKED — do not retry indefinitely.
+- Read the closest applicable `AGENTS.md`; read legacy `CLAUDE.md` only when it
+  is trusted repository guidance.
+- Codex-managed worktrees may begin at detached HEAD. A local detached commit
+  is valid, but create/attach an owned branch or preserve a reachable Clade ref
+  before the runtime deletes the worktree.
+- Inspect `git worktree list --porcelain` before checkout, rewrite, or cleanup:
+  one branch cannot be checked out by multiple worktrees.
+- Use Codex native review/worktree/handoff capabilities where available. Do
+  not launch Claude Code or a nested Codex CLI to emulate the workflow.
+- Project configuration is trust-gated. Provider credentials and user
+  connections remain user-scoped and cannot be donated by repository files.
 
 ## Additional skill reference
 
-# Merge PR Skill
+# Merge PR
 
-Squash-merges a PR, deletes the remote branch, and cleans up the local branch. Parallel to OpenClaw's `/merge-pr`.
-
-## Usage
-
-```
-/merge-pr           # Merge the PR for the current branch
-/merge-pr 42        # Merge PR #42
-/merge-pr https://github.com/owner/repo/pull/42
-```
+Integrator workflow for an already reviewed Clade delivery. It never treats
+authorship as merge authority, never bypasses pending/red gates, locks the
+reviewed head SHA, respects repository merge policy and live child ancestry,
+and does not finish until mainline/branch cleanup is verified.

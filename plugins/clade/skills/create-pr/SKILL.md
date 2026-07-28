@@ -1,159 +1,152 @@
 ---
 name: create-pr
-description: "Create an atomic, tested pull request; split multi-feature branches into stacked PRs before opening them"
+description: "Publish or update one repository-adaptive, exact-SHA pull request without duplicating or broadening authority"
 ---
 
 # Clade for Codex
 
-This workflow runs **directly in Codex**. Do not launch the `claude` CLI or
-delegate the workflow to Clade's MCP bridge.
+This package composes the provider-neutral Clade core contract with the native
+Codex surface adapter. Run the workflow directly in Codex; do not launch
+another agent CLI or route it through Clade MCP.
 
-Codex compatibility rules:
+Package provenance:
 
-- Read the nearest `AGENTS.md` files for repository instructions. If a project
-  has only `CLAUDE.md`, treat it as legacy project guidance and read it too.
-- Store new Clade working state under `.clade/` (or `~/.clade/` for personal
-  state). Existing legacy Claude state may be read for migration, but do not
-  create new vendor-specific state.
-- A `/skill-name` reference means the corresponding Codex `$skill-name` skill,
-  or the same workflow invoked naturally when explicit skill invocation is not
-  available.
-- Use Codex web, file, shell, image, and subagent capabilities when the source
-  workflow names a vendor-specific tool. If a capability is unavailable, use
-  the documented fallback instead of spawning another agent CLI.
-- Paths such as `<plugin-root>/...` are relative to the installed Clade plugin
-  containing this `SKILL.md`; resolve that root before invoking a helper.
+- core contract: `clade.delivery/v1`
+- surface adapter: `codex/v1`
+- generated from: `configs/skills/<name>`
 
 ## Canonical Clade workflow
 
-# Create PR
+You are the Create PR skill. Publish or update the active Clade delivery
+idempotently.
 
-Create a reviewable pull request whose diff contains one feature, bug fix,
-refactor, or other independently reversible behavior change. Tests, migrations,
-generated contracts, and documentation for that same behavior belong in the
-same PR.
+## 1. Resolve policy and authority
 
-## Invariant
+Locate/read the sibling `delivery` skill, relevant surface overlay, and active
+delivery state. Run its context probe again immediately before publication.
+
+Stop or choose a non-PR fallback when:
+
+- no authenticated forge adapter exists;
+- PR publication authority is pending;
+- current branch is default/shared/unknown-owned/detached;
+- a fork/human-owned PR cannot be updated safely;
+- trusted repository PR policy/template cannot be resolved.
+
+GitHub uses `gh`; GitLab/Bitbucket use their available adapters; plain Git
+returns a pushed branch, request-pull, or patch/bundle. Never invoke `gh` in a
+non-GitHub repository.
+
+## 2. Scope and exact candidate gate
+
+Inspect the complete diff/commits from the resolved PR base. Map every file to
+one behavior/root cause. Multiple commits do not make a multi-feature branch
+acceptable.
+
+- Tests, migrations, generated contracts, and docs for one behavior are one
+  scope.
+- Independent endpoints, roadmap phases, refactors, provider integrations, or
+  “while here” fixes are separate scopes.
+- Over 500 changed lines requires an explicit atomicity explanation.
+- Over 1,000 defaults to split unless generated output or one inseparable
+  foundation explains it.
+
+For multiple scopes, preserve the source branch, then create independent or
+stacked delivery records in isolated worktrees. Each stacked PR targets its
+immediate parent and owns its own candidate/remote evidence. Never close or
+rewrite the recovery branch before replacements are reachable.
+
+Require complete candidate evidence for the exact current head:
+
+```bash
+python3 "$DELIVERY_PY" show --id "<id>"
+git rev-parse HEAD
+```
+
+If evidence is absent/stale, align the base, run full repository checks, and
+record `delivery candidate` before publication.
+
+## 3. Reuse existing PR
+
+Query the forge for an open PR with this exact head branch before creating one.
+
+- Existing agent-owned PR: update title/body/draft state as needed.
+- Open human-owned PR: create a child repair branch/PR unless direct-update
+  authority was explicit.
+- Closed/merged predecessor: create a new PR from current base and link it.
+- Fork PR: do not assume write access to its head.
+
+PR creation is idempotent. Never open a duplicate because a previous process
+crashed after the forge write but before local state recording.
+
+## 4. Build repository-native metadata
+
+Honor the repository PR template, required labels/reviewers, contribution
+token/instructions, and forge conventions. The body records:
+
+- problem/root cause and one scope;
+- out-of-scope adjacent work;
+- stack parent/children and merge order;
+- exact base and head SHAs;
+- exact local verification and remote-check status;
+- risk and rollback;
+- proposed merge strategy and why;
+- whether intermediate commits are review checkpoints;
+- required agent/runtime disclosure.
+
+Do not include secrets, raw auth endpoints, machine-private paths, or claims of
+independent human approval.
+
+Draft only when requested, repository policy opens drafts early, or remote CI
+must run before ready.
+
+## 5. Publish and record
+
+Push with an explicit same-name refspec/upstream only under recorded push
+authority. Then create or update the PR through the selected forge adapter.
+
+Record the result:
+
+```bash
+python3 "$DELIVERY_PY" publish \
+  --id "<id>" --pr <number> --url "<url>" \
+  --base "<resolved-base>" --head-sha "$(git rev-parse HEAD)" [--draft]
+```
+
+If recording fails after PR creation, re-query by head and repair the existing
+record; do not create another PR.
+
+Wait for this PR's remote checks. Fix failures with new checkpoint commits,
+rerun full candidate verification for the new SHA, push, and update the same
+PR. Completion reports the URL, base/head, stack position, exact evidence, and
+remaining external review—not “ready” while gates are pending.
+
+## Codex surface adapter
+
+# Codex surface adapter
+
+- Read the closest applicable `AGENTS.md`; read legacy `CLAUDE.md` only when it
+  is trusted repository guidance.
+- Codex-managed worktrees may begin at detached HEAD. A local detached commit
+  is valid, but create/attach an owned branch or preserve a reachable Clade ref
+  before the runtime deletes the worktree.
+- Inspect `git worktree list --porcelain` before checkout, rewrite, or cleanup:
+  one branch cannot be checked out by multiple worktrees.
+- Use Codex native review/worktree/handoff capabilities where available. Do
+  not launch Claude Code or a nested Codex CLI to emulate the workflow.
+- Project configuration is trust-gated. Provider credentials and user
+  connections remain user-scoped and cannot be donated by repository files.
+
+## Additional skill reference
+
+# Create or update PR
+
+Publish one independently reviewable and reversible delivery unit. Use the
+shared `$delivery` context/state controller; do not assume GitHub, `origin`,
+`main`, branch ownership, or autonomous PR authority.
 
 **One PR = one independently reviewable and reversible delivery unit.**
 
-Multiple commits do not make a multi-feature branch acceptable. A completed
-roadmap, multiple TODO phases, or several independently valuable capabilities
-must become separate PRs. Use stacked PRs when later work depends on earlier
-work.
-
-Do not use a raw line limit as the sole decision. A coherent foundation can be
-large; a 50-line diff can still mix unrelated features. Diff size is a review
-risk signal:
-
-- over 500 changed lines: explain why the unit is still atomic;
-- over 1,000 changed lines: default to splitting unless generated files or a
-  single inseparable foundation dominate the diff.
-
-## Step 1: Resolve repository state
-
-1. Read the nearest `AGENTS.md`/project instructions and current TODO.
-2. Resolve the default or requested base branch.
-3. Inspect:
-
-```bash
-git status --short
-git log --oneline <base>..HEAD
-git diff --stat <base>...HEAD
-git diff --name-only <base>...HEAD
-```
-
-Stop if unrelated uncommitted changes overlap the PR. Use an isolated worktree
-when branch reconstruction could disturb user changes.
-
-## Step 2: Scope gate
-
-Build a scope map before creating a PR:
-
-1. Identify each user-visible behavior, TODO Feature/phase, bug root cause, or
-   independently deployable capability in the diff.
-2. Assign every changed file and commit to one scope. Shared scaffolding belongs
-   to the earliest scope that requires it.
-3. Verify the candidate PR has exactly one scope and one primary reason to
-   change.
-
-Treat these as separate PR scopes:
-
-- independently usable endpoints or products;
-- separate roadmap phases;
-- unrelated fixes discovered while implementing a feature;
-- infrastructure that can land without the feature;
-- provider integrations that can be reviewed or rolled back separately.
-
-Do not split tests, migrations, generated schemas, or documentation away from
-the behavior they validate.
-
-## Step 3: Split multi-scope branches
-
-If the scope map has more than one delivery unit, do not open one aggregate PR.
-
-1. Preserve the original branch as a recovery reference.
-2. Start from the latest base in an isolated worktree.
-3. Rebuild one branch per scope using explicit cherry-picks or patches.
-4. For independent scopes, target the default branch.
-5. For dependent scopes, create a stack:
-
-```text
-main <- feature-a <- feature-b <- feature-c
-```
-
-Each PR targets its immediate predecessor. Its diff must show only that scope.
-Record stack position and dependency in every PR body.
-
-Never force-push or close an existing PR until all replacement branches are
-pushed and recoverable.
-
-## Step 4: Per-PR verification
-
-For every candidate branch, discover and run the project's CI commands using
-the same rules as `/commit`. Each branch must have its own evidence:
-
-- tests for the behavior and failure paths;
-- lint/typecheck/build as applicable;
-- migrations/contracts if changed;
-- generated-file drift checks;
-- remote CI after opening the PR.
-
-A later branch passing does not prove an earlier branch passes. Do not reuse an
-aggregate branch's result as the only evidence for every split PR.
-
-## Step 5: Create the PR
-
-Create one PR per passing scope. The body must include:
-
-- **Scope:** the one behavior delivered;
-- **Out of scope:** adjacent work deliberately excluded;
-- **Stack:** position, base PR/branch, and merge order when stacked;
-- **Evidence:** exact commands and results;
-- **Risk/rollback:** the main hazard and how to revert or disable it.
-
-Use draft status only when explicitly requested or when remote CI cannot yet
-run. After creation, wait for required checks. Fix failures on that PR's branch.
-
-## Step 6: Supersede an oversized PR safely
-
-When replacing an existing multi-feature PR:
-
-1. Create and push every replacement branch.
-2. Create every replacement PR and verify its base/head pair.
-3. Comment on the old PR with the ordered replacement links.
-4. Close the old PR without deleting its branch until the stack is accepted.
-
-## Completion
-
-Report the ordered PR list, base/head relationships, per-PR test status, and
-any remaining human review or external gates.
-
-## Rules
-
-- Never represent split commits inside one PR as independent delivery.
-- Never mix “while here” fixes into the current PR.
-- Never merge the stack out of order.
-- Never claim a PR is ready while its own required CI is pending or failing.
-- A release PR may aggregate only changes already reviewed independently; use
-  `/ship` for that explicit workflow.
+Tests, migrations, generated files, and documentation for that same behavior
+belong together. Independent behavior becomes independent or explicitly
+stacked delivery records.

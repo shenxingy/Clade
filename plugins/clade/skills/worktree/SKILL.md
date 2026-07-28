@@ -1,255 +1,123 @@
 ---
 name: worktree
-description: "Create and manage git worktrees for parallel Codex sessions"
+description: "Create or inspect runtime-adaptive isolated Git workspaces with explicit ownership and delivery routing"
 ---
 
 # Clade for Codex
 
-This workflow runs **directly in Codex**. Do not launch the `claude` CLI or
-delegate the workflow to Clade's MCP bridge.
+This package composes the provider-neutral Clade core contract with the native
+Codex surface adapter. Run the workflow directly in Codex; do not launch
+another agent CLI or route it through Clade MCP.
 
-Codex compatibility rules:
+Package provenance:
 
-- Read the nearest `AGENTS.md` files for repository instructions. If a project
-  has only `CLAUDE.md`, treat it as legacy project guidance and read it too.
-- Store new Clade working state under `.clade/` (or `~/.clade/` for personal
-  state). Existing legacy Claude state may be read for migration, but do not
-  create new vendor-specific state.
-- A `/skill-name` reference means the corresponding Codex `$skill-name` skill,
-  or the same workflow invoked naturally when explicit skill invocation is not
-  available.
-- Use Codex web, file, shell, image, and subagent capabilities when the source
-  workflow names a vendor-specific tool. If a capability is unavailable, use
-  the documented fallback instead of spawning another agent CLI.
-- Paths such as `<plugin-root>/...` are relative to the installed Clade plugin
-  containing this `SKILL.md`; resolve that root before invoking a helper.
+- core contract: `clade.delivery/v1`
+- surface adapter: `codex/v1`
+- generated from: `configs/skills/<name>`
 
 ## Canonical Clade workflow
 
-You are the Worktree skill. You manage git worktrees to enable parallel Codex sessions without file conflicts.
+You are the Worktree skill. Use the shared `delivery` context/state controller
+and the current runtime surface overlay.
 
-## Parse the command
+## Invariants
 
-The user's input after `/worktree` determines the action:
+- One mutable branch per live session; one branch cannot be checked out in two
+  worktrees.
+- Parallel writers receive separate worktrees/clones/containers/detached
+  snapshots and non-overlapping delivery units.
+- Do not write tracked `TASK.md` or other Clade bookkeeping into an arbitrary
+  repository. Task/ownership/progress live in Git-common delivery state.
+- Completion publishes/reviews through repository policy; it does not locally
+  merge every worktree into whichever branch happens to be active.
+- Remove only a worktree and branch owned by the selected terminal delivery.
 
-- **No flags, just a quoted string** → CREATE a new worktree (e.g., `/worktree "Fix padding in settings"`)
-- **`--list`** → LIST all active worktrees
-- **`--merge <branch>`** → MERGE a specific worktree branch into the current branch
-- **`--merge --all`** → MERGE all worktree branches (prefix `wt/`)
-- **`--clean`** → REMOVE all worktrees and delete their branches
+## Create
 
----
+1. Run `delivery context` and inspect `git worktree list --porcelain`.
+2. Resolve the real base/default branch and ensure the source tree has no
+   unrelated dirty changes.
+3. Choose the runtime-native isolation:
+   - normal local Git: explicit worktree path plus owned topic branch;
+   - Codex-managed worktree: detached start is valid; attach a branch only for
+     preservation/publication;
+   - cloud/CI: runtime-provided clone/container;
+   - unsupported client: report required isolation instead of sharing a branch.
+4. Create a delivery record containing task source, base SHA, owner, optional
+   stack parent, runtime, surface, and publication authorities.
+5. Pass the task through runtime-native context/handoff, not a tracked project
+   file.
 
-## ACTION: CREATE
+Before filesystem creation, resolve an explicit safe destination outside the
+repository root. Never derive a destructive target from an empty variable,
+home directory, workspace root, or broad glob.
 
-When the user provides a task prompt (e.g., `/worktree "Fix padding in settings pages"`):
+## List
 
-### Step 1: Determine project info
+Combine:
 
-```bash
-basename "$(git rev-parse --show-toplevel)"    # e.g., "companyOS"
-git rev-parse --abbrev-ref HEAD                # current branch name
-```
+- `git worktree list --porcelain`;
+- active `delivery list`;
+- each worktree's branch/detached HEAD, dirty state, owner, delivery state,
+  base/head SHA, and last checkpoint.
 
-### Step 2: Generate branch name
+Mark stale/prunable/unknown ownership; do not mutate it during list.
 
-Convert the user's prompt into a short kebab-case slug (3-5 words max):
-- "Fix padding in settings pages" → `wt/fix-padding-settings`
-- "Add rate limiting to API routes" → `wt/add-rate-limiting-api`
-- Always prefix with `wt/`
+## Preserve/handoff
 
-### Step 3: Find the next worktree number
+Before runtime termination, context switch, compaction, or provider handoff:
 
-```bash
-# Count existing worktrees with the project name pattern
-ls -d ../$(basename $(pwd))-wt-* 2>/dev/null | wc -l
-```
-Use the next number (1, 2, 3...).
+- commit coherent work and record focused checkpoint evidence;
+- for detached committed work, run `delivery preserve-ref`;
+- when commits are prohibited, run `delivery export-patch`;
+- record reduced-fidelity handoff when native session resume is unavailable.
 
-### Step 4: Create the worktree
+No worktree may be auto-removed while its head is unreachable or dirty state
+lacks a patch/blocker.
 
-```bash
-git worktree add ../<project>-wt-<N> -b <branch-name>
-```
+## Integrate
 
-For example:
-```bash
-git worktree add ../companyOS-wt-1 -b wt/fix-padding-settings
-```
+Route the worktree's independently reviewable result through `$create-pr`,
+`$review-pr`, and `$merge-pr`. A throw-away integration worktree may test
+several candidate heads, but durable work must never be based on it and it is
+never itself merged as a product change.
 
-If the command fails because the branch already exists, inform the user and suggest a different name.
+For explicit stacks, record parent relationships, merge bottom-up, and restack
+each child after parent ancestry changes.
 
-### Step 5: Write TASK.md
+## Clean
 
-Write a `TASK.md` file in the root of the new worktree. This file will be automatically visible to a new Codex session opened in that directory.
+1. Re-probe worktrees and active delivery state.
+2. Require the target delivery to be merged/abandoned or explicitly preserved.
+3. Verify no dirty/unreachable work and no other live owner.
+4. Remove the exact worktree path.
+5. Delete only its exact owned local branch; delete remote only with authority.
+6. prune stale metadata and run delivery cleanup verification where applicable.
 
-The TASK.md should contain:
+Never use broad `--clean all`, branch-prefix glob deletion, or force removal
+without resolving every target and its recovery state.
 
-```markdown
-# Task
+## Codex surface adapter
 
-<the user's original prompt>
+# Codex surface adapter
 
-## Context
-
-- Branch: `<branch-name>`
-- Created from: `<source-branch>` at commit `<short-hash>`
-- Main project: `../<project>/`
-
-## Rules
-
-- Only modify files related to the task above
-- Do NOT modify shared config files (e.g., globals.css, layout.tsx, package.json) unless specifically asked
-- Commit your changes to this branch when done
-- When finished, go back to the main project and run: `/worktree --merge <branch-name>`
-
-## Getting started
-
-Read the relevant files first, understand the existing patterns, then make changes.
-```
-
-### Step 6: Output to user
-
-Print a clear message:
-
-```
-Worktree created:
-  Directory: ../<project>-wt-<N>
-  Branch:    <branch-name>
-
-Start a new Codex session:
-  cd ../<project>-wt-<N> && codex
-
-When done, come back here and run:
-  /worktree --merge <branch-name>
-```
-
----
-
-## ACTION: LIST
-
-Run:
-```bash
-git worktree list
-```
-
-Format the output nicely, showing:
-- Path
-- Branch name
-- Whether it has uncommitted changes (run `git -C <path> status --porcelain` for each)
-
----
-
-## ACTION: MERGE
-
-### Single branch (`--merge <branch>`)
-
-1. Check for uncommitted changes in the current worktree:
-   ```bash
-   git status --porcelain
-   ```
-   If there are changes, warn the user and ask whether to continue.
-
-2. Merge the branch:
-   ```bash
-   git merge <branch-name>
-   ```
-
-3. If merge succeeds, suggest cleanup:
-   ```
-   Merged <branch-name> successfully.
-   Run `/worktree --clean` to remove the worktree, or keep it for more work.
-   ```
-
-4. If there are merge conflicts, show the conflicting files and help resolve them.
-
-### All branches (`--merge --all`)
-
-1. List all branches with `wt/` prefix:
-   ```bash
-   git branch --list "wt/*"
-   ```
-2. Merge each one sequentially
-3. Stop and report if any merge has conflicts
-
----
-
-## ACTION: CLEAN
-
-1. List all worktrees (excluding the main one):
-   ```bash
-   git worktree list --porcelain
-   ```
-
-2. For each non-main worktree:
-   - Check for uncommitted changes
-   - If there are uncommitted changes, warn the user and ask for confirmation
-   - Remove the worktree:
-     ```bash
-     git worktree remove <path>
-     ```
-   - Delete the branch if it's been merged:
-     ```bash
-     git branch -d <branch-name>
-     ```
-   - If the branch hasn't been merged, warn the user and ask if they want to force delete (`-D`)
-
-3. Report what was cleaned up.
-
----
-
-## General rules
-
-- Be concise. This is a utility, not a conversation.
-- Always show the exact commands you're running.
-- If something fails, show the error and suggest a fix.
-- Never force-delete branches or worktrees without asking the user first.
-
-
----
-
-## Completion Status
-
-- ✅ **DONE** — task completed successfully
-- ⚠ **DONE_WITH_CONCERNS** — completed but with caveats to note
-- ❌ **BLOCKED** — cannot proceed; write details to `.clade/blockers.md`
-- ❓ **NEEDS_CONTEXT** — missing information; use AskUserQuestion
-
-**3-strike rule:** If the same approach fails 3 times, switch to BLOCKED — do not retry indefinitely.
+- Read the closest applicable `AGENTS.md`; read legacy `CLAUDE.md` only when it
+  is trusted repository guidance.
+- Codex-managed worktrees may begin at detached HEAD. A local detached commit
+  is valid, but create/attach an owned branch or preserve a reachable Clade ref
+  before the runtime deletes the worktree.
+- Inspect `git worktree list --porcelain` before checkout, rewrite, or cleanup:
+  one branch cannot be checked out by multiple worktrees.
+- Use Codex native review/worktree/handoff capabilities where available. Do
+  not launch Claude Code or a nested Codex CLI to emulate the workflow.
+- Project configuration is trust-gated. Provider credentials and user
+  connections remain user-scoped and cannot be donated by repository files.
 
 ## Additional skill reference
 
-# Worktree Skill
+# Worktree
 
-Quickly spin up isolated git worktrees so you can open parallel Codex sessions without conflicts. Each worktree gets its own branch and a TASK.md describing what to work on.
-
-## Usage
-
-### Create a new worktree
-```
-/worktree "Fix all padding issues in settings pages"
-```
-Creates a worktree, branch, and TASK.md. Prints the command to start a new Codex session in it.
-
-### List active worktrees
-```
-/worktree --list
-```
-
-### Merge a worktree branch back
-```
-/worktree --merge wt/fix-padding-settings
-/worktree --merge --all
-```
-
-### Clean up all worktrees
-```
-/worktree --clean
-```
-
-## How it works
-
-1. **Create**: Makes a sibling directory `../<project>-wt-<n>` with a new branch `wt/<slug>`
-2. **TASK.md**: Written to the worktree root so the new Codex session auto-reads it
-3. **Merge**: Merges the worktree branch into your current branch
-4. **Clean**: Removes worktree directories and deletes merged branches
+Create or manage isolated agent workspaces without assuming every runtime uses
+a sibling directory plus immediate branch. Worktree ownership is recorded in
+the shared `$delivery` state; independently reviewable work integrates through
+the target repository's PR/queue policy, not an arbitrary local merge.

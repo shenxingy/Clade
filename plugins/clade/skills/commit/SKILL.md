@@ -1,371 +1,173 @@
 ---
 name: commit
-description: "Analyze uncommitted changes, split into logical commits by module, commit and push by default"
+description: "Create repository-adaptive checkpoint commits for coherent work, including requests to split changes into commits and push; publication remains separately authorized"
 ---
 
 # Clade for Codex
 
-This workflow runs **directly in Codex**. Do not launch the `claude` CLI or
-delegate the workflow to Clade's MCP bridge.
+This package composes the provider-neutral Clade core contract with the native
+Codex surface adapter. Run the workflow directly in Codex; do not launch
+another agent CLI or route it through Clade MCP.
 
-Codex compatibility rules:
+Package provenance:
 
-- Read the nearest `AGENTS.md` files for repository instructions. If a project
-  has only `CLAUDE.md`, treat it as legacy project guidance and read it too.
-- Store new Clade working state under `.clade/` (or `~/.clade/` for personal
-  state). Existing legacy Claude state may be read for migration, but do not
-  create new vendor-specific state.
-- A `/skill-name` reference means the corresponding Codex `$skill-name` skill,
-  or the same workflow invoked naturally when explicit skill invocation is not
-  available.
-- Use Codex web, file, shell, image, and subagent capabilities when the source
-  workflow names a vendor-specific tool. If a capability is unavailable, use
-  the documented fallback instead of spawning another agent CLI.
-- Paths such as `<plugin-root>/...` are relative to the installed Clade plugin
-  containing this `SKILL.md`; resolve that root before invoking a helper.
+- core contract: `clade.delivery/v1`
+- surface adapter: `codex/v1`
+- generated from: `configs/skills/<name>`
 
 ## Canonical Clade workflow
 
-You are the Commit skill. You analyze all uncommitted changes and create well-organized commits split by logical module, following the project convention of one commit per independent unit of change.
+You are the Commit skill. Create repository-adaptive checkpoint commits for the
+current coherent delivery slice.
 
-## Parse the command
+## Arguments
 
-- **No arguments** → Analyze, plan, confirm, commit, push (default)
-- **`--no-push`** → Commit only, skip push
-- **`--dry-run`** → Show plan only, don't commit
+- default: checkpoint locally; publish only when the active delivery record or
+  repository policy already authorizes it
+- `--publish`: user explicitly requests publishing the owned branch after green
+  checkpoints
+- `--candidate`: run complete candidate verification and bind it to exact HEAD
+- `--dry-run`: show scope, verification, commit, and publication decisions only
 
----
+## 1. Enter the shared delivery workflow
 
-## Step 1: Analyze changes
+Locate the sibling `delivery` skill and read its prompt plus the relevant
+surface overlay. Run its deterministic `context` and `list` commands.
 
-```bash
-git status --short
-git diff --stat
-git diff --cached --stat
-```
+Do not commit until:
 
-Collect ALL changed files — both staged and unstaged.
+- the current branch/detached checkout is identified;
+- an active delivery owns the branch, or detached preservation is selected;
+- unrelated dirty files are separated or explicitly dispositioned;
+- trusted repository instructions and contribution policy are read.
 
-If nothing is changed, check for unpushed commits:
-```bash
-git log origin/main..HEAD --oneline
-```
-- Unpushed commits exist AND `--no-push` was NOT used → push immediately, report result, exit
-- No unpushed commits either → say "Nothing to commit or push" and exit
+If no record exists for a user-requested coding task, initialize one through
+`delivery start`. Do not manufacture ownership from a branch-name prefix.
 
----
+## 2. Scope the checkpoint
 
-## Step 2: Group by logical module
+Inspect staged, unstaged, untracked, and commits since the resolved base. Group
+files by coherent behavior/evidence slice—not merely file type.
 
-Group files into commits using these heuristics. Use judgment — logical cohesion matters more than rigid categories. Files that clearly serve the same feature go in one commit regardless of type.
+One commit should leave a useful recovery point. Cross-layer behavior, its
+tests, generated contracts, migrations, and supporting documentation normally
+belong together. Unrelated fixes require another commit and usually another
+delivery/PR.
 
-**Category signals (first match is a hint, not a rule):**
+Never make unrelated universal mutations such as adding README counts,
+flowcharts, TODO entries, attribution trailers, or Conventional Commit syntax
+unless the target repository requires them.
 
-| Category | File patterns | Commit prefix |
-|----------|--------------|---------------|
-| Database/Schema | `*schema*`, `*migration*`, `*drizzle*`, `*prisma*`, `*.sql` | `db:` |
-| API/Backend | `**/api/**`, `**/routes/**`, `**/handlers/**`, `**/services/**` | `feat:` / `fix:` |
-| Frontend/UI | `**/components/**`, `**/pages/**`, `**/app/**`, `**/*.css`, `**/styles/**` | `feat:` / `fix:` |
-| Config/Infra | `**/.env*`, `**/config/**`, `**/docker*`, `**/*.yml`, `**/settings*` | `config:` |
-| Tests | `**/test*`, `**/__tests__/**`, `**/*.test.*`, `**/*.spec.*` | `test:` |
-| Docs | `README*`, `TODO.md`, `PROGRESS.md`, `VISION.md`, `AGENTS.md`, `**/docs/**` | `docs:` |
-| Scripts/Tools | `**/scripts/**`, `**/*.sh`, `**/hooks/**`, `**/skills/**`, `**/commands/**` | `chore:` |
+Check secret risk and refuse credentials, raw provider endpoints with secrets,
+private keys, token files, or machine-local state.
 
-**Cross-cutting rule:** If schema + API + frontend changes all implement the same feature (e.g., "add users table + CRUD routes + UI"), group them into ONE `feat:` commit — don't split what belongs together.
+## 3. Discover commit policy
 
----
+Resolve, in precedence order:
 
-## Step 3: Generate commit messages
+1. explicit user constraints and hard safety;
+2. trusted closest `AGENTS.md`/`CLAUDE.md`;
+3. `CONTRIBUTING*`, commit templates, hooks, pre-commit config, DCO/signing;
+4. package/monorepo affected-test conventions;
+5. conservative Clade defaults.
 
-For each group, generate a message:
-- Format: `<type>(<scope>): <description>`
-- Scope: optional module name (e.g., `auth`, `dashboard`, `api`)
-- Description: imperative, present tense, ≤72 chars
-- **Never add Co-Authored-By lines**
-- **Body mandate (substantive commits):** `feat`/`fix`/`refactor`/`perf` commits get a 2-4 line body after a blank line covering the **mechanism** (how the change works), the **hazard avoided or root cause** (for fixes), and any **constraint honored**. History carries the payload — a future reader debugging a regression gets the "why" from `git log`, not just the "what". Trivial `chore`/`docs` commits may stay subject-only.
+Do not bypass hooks with `--no-verify`. Do not invent Conventional Commits,
+signoff, or signatures where the repository does not require them.
 
-Examples:
-- `feat(auth): add JWT refresh token endpoint`
-- `fix(dashboard): correct activity chart date range`
-- `db: add sessions table for token storage`
-- `chore: add auto-pull to session-context hook`
-- `docs: sync session progress and TODO updates`
+**Body mandate:** when the repository uses Conventional Commits, give
+substantive `feat`/`fix`/`refactor`/`perf` commits a short body after a blank
+line. Record the mechanism, the hazard avoided or root cause, and material
+constraints honored. Trivial `chore`/`docs` commits may remain subject-only.
+Never add attribution trailers unless repository policy requires them.
 
-Body example:
+## 4. Verify at the right evidence level
 
-```
-fix(dashboard): correct activity chart date range
+For a normal checkpoint, run affected syntax/tests/lint/typecheck sufficient to
+show this slice is coherent. Full CI is not a prerequisite for preserving
+useful work.
 
-Root cause: the range picker emitted local-midnight ISO strings while the
-API compared UTC — off-by-one-day at negative UTC offsets. Now converts to
-UTC before the query; hazard avoided: silent empty charts for US users.
-```
+For `--candidate`, first align/restack against the resolved intended base, then
+run every repository-required build/test/generated-file gate on exact HEAD.
 
----
+Show actual command and result. A known syntactically broken checkpoint is not
+coherent; fix it or preserve an explicit patch/blocker.
 
-## Step 3.5: README sync (before committing)
+## 5. Commit explicit files
 
-Before grouping into commits, check if the README needs to be updated to reflect the changes. This step ensures docs never drift from code.
+Present the file grouping, then execute unless `--dry-run`.
 
-### 3.5.1 — Counted artifacts
+- Stage named paths only; never `git add .` or `git add -A`.
+- Use the repository's message/body convention.
+- Preserve review/fixup history honestly while a PR is open.
+- Do not rewrite published/shared history without verified owned restack
+  authority and explicit force-with-lease.
 
-If the README mentions any numeric counts of project artifacts (e.g., "N hooks", "M skills", "X routes", "Y components", "Z plugins"):
-- Identify the directory or pattern those artifacts live in
-- Count the actual files
-- If the count changed, update every README variant (e.g., README.md, README.zh-CN.md, README.ja.md) to match
-
-### 3.5.2 — Pipeline flowchart
-
-A flowchart is **mandatory** if the repo contains a pipeline — any chain of scripts, workers, queues, or stages that process data in sequence. The flowchart must always reflect the actual code.
-
-**Detect a pipeline:** look for patterns like worker→supervisor loops, task queues, multi-stage processing scripts, webhook→handler→queue chains, or background runner scripts.
-
-**If a flowchart exists in the README** and any changed file touches the pipeline:
-- Re-read the relevant pipeline scripts/code
-- Verify each box and arrow in the diagram matches the actual flow
-- Update any stale edges, renamed stages, or missing new stages
-
-**If no flowchart exists** and the repo has a pipeline:
-- Read the pipeline scripts to understand the actual flow
-- Generate a mermaid diagram (prefer `graph LR` for horizontal flows) that accurately represents it
-- Insert it in the README under the most relevant section (e.g., "Architecture", "How It Works", or right after the intro)
-
-**Mermaid style guide:**
-```
-graph LR
-  A[User Input] --> B[Supervisor]
-  B --> C[Worker 1]
-  B --> D[Worker 2]
-  C --> E[(Task Queue)]
-  D --> E
-  E --> F{Converged?}
-  F -->|no| B
-  F -->|yes| G[Done]
-```
-Use `[label]` for processes, `[(label)]` for storage, `{label}` for decisions, `([label])` for terminal nodes.
-
-**Rule:** If the flowchart would be wrong or absent, fix it now — a stale diagram is worse than no diagram.
-
-### 3.5.3 — Include README changes in commits
-
-If any README files were updated in this step:
-- Add them to the existing `docs:` group (or create one)
-- They are part of this commit run, not a separate follow-up
-
----
-
-## Step 3.5b: Scope drift check
-
-Before running CI, do a quick sanity check: do the changes match the current TODO item or stated task?
+After each successful commit, record focused evidence through:
 
 ```bash
-# What's the current open TODO?
-grep -n "^\- \[ \]" TODO.md 2>/dev/null | head -5
-# What branch are we on? (branch name often signals intent)
-git branch --show-current
+python3 "$DELIVERY_PY" checkpoint \
+  --id "<id>" --command "<command>" --result "<result>"
 ```
 
-Compare the changed files against the stated task. If the changes include significant work that wasn't planned (new features, large refactors, unrelated bug fixes), flag it:
-
-```
-⚠ Scope drift detected: current TODO is "[X]" but changes include [Y].
-
-RECOMMENDATION: Option A — commit the planned work first, then open a separate task for the extra work.
-
-A. Split: commit planned work now, add extra work to TODO.md  Completeness: 9/10
-B. Commit all together with a broader message               Completeness: 6/10
-C. Review the extra changes with me before deciding         Completeness: 8/10
-```
-
-If the changes cleanly match the stated task, proceed without flagging.
-
-### Step 3.5c: Delivery boundary check
-
-Commit boundaries and PR boundaries must agree. Before declaring a branch
-ready to ship, compare all commits and changed files since the target base:
+When `--candidate` is requested, record complete evidence after the final
+commit:
 
 ```bash
-git log --oneline <base>..HEAD
-git diff --stat <base>...HEAD
+python3 "$DELIVERY_PY" candidate \
+  --id "<id>" --head-sha "$(git rev-parse HEAD)" \
+  --command "<full commands>" --result "<result>"
 ```
 
-If the branch contains multiple independent features, TODO Feature tags, or
-roadmap phases, splitting commits is not enough. Report that the branch needs
-stacked PRs and route PR creation through `/create-pr`. Do not describe one
-aggregate PR as ready for review.
+Any subsequent commit invalidates candidate evidence.
 
-One feature may include its tests, migration, generated files, and docs. Do not
-split those merely to reduce line count.
+## 6. Publish only when authorized
 
----
+`--publish` is task authority to push the current owned topic branch, not to
+push a default/shared/protected branch, open a PR, merge, or delete anything.
 
-## Step 3.6: CI gate (BEFORE any git add)
+Without `--publish`, push only if the active delivery already records
+`task-request`/`repository-policy`. Otherwise report the local checkpoint and
+the exact publication action still pending.
 
-**This is a hard gate. Do not stage or commit anything until CI passes.**
+Before push, verify remote name, upstream, branch ownership, and remote head.
+Use an explicit refspec when setting a new upstream. Never let `git push`
+default to the tracked default branch. Never plain-force.
 
-### Discover what CI runs
+If the checkout cannot commit, use delivery `preserve-ref` or `export-patch`
+and report why. “Done with uncommitted changes” is not a completion state.
 
-1. Check `.github/workflows/` — if workflow files exist, read them and extract every `run:` command from jobs that run on push/PR to main. These are the exact commands you must run locally.
-2. If no workflows exist, read `AGENTS.md` for the project's `verify_cmd`, test command, and build command.
-3. If neither exists, auto-detect by project type (see table below).
+## Output
 
-### Run ALL discovered commands
+Report commit SHA/message, files, focused/candidate evidence, branch/upstream,
+whether publication occurred and under what authority, active delivery id, and
+the next required transition. Do not claim PR-ready without exact candidate
+evidence and remote checks.
 
-**Local adaptation:** CI commands target a clean CI runner (ubuntu, fresh PATH, setup-action-installed toolchains). Before running them locally, adapt for the current machine:
-- Use whichever interpreter/toolchain is actually available locally (e.g., `python3` instead of `python`, project virtualenv instead of global pip, `npx` path differences, etc.).
-- If the project has a virtualenv or local dependency cache (`.venv/`, `node_modules/`, etc.) use it. If it's missing and the check requires installed deps, create/install first — don't skip the check.
-- Skip CI-only setup steps that have no local equivalent (e.g., `actions/checkout`, `actions/setup-python`, `docker login`).
-- The adapted commands must test the **same things** as CI — only paths and toolchain invocations change, never the check itself.
+## Codex surface adapter
 
-Wrap every CI command with `timeout`: syntax checks `timeout 30`, compile `timeout 60`, test suites `timeout 120`. If a command times out → stop, report which command hung, ask user to investigate before committing.
+# Codex surface adapter
 
-Run each command in sequence. Show the actual output (not just "passed"):
-
-```
-CI check (3 steps):
-  [1/3] timeout 30 bash -n configs/hooks/*.sh configs/scripts/*.sh
-        → OK
-  [2/3] timeout 60 cd orchestrator && python -m py_compile server.py ...
-        → OK
-  [3/3] timeout 120 .venv/bin/python -m pytest tests/ -v
-        → 19 passed in 2.13s
-✓ All CI checks passed — safe to commit
-```
-
-### Auto-detection fallback (if no CI config or AGENTS.md commands)
-
-| Project type | How to detect | Commands to run |
-|---|---|---|
-| Python | `*.py` files + `setup.py` / `pyproject.toml` / `requirements.txt` | `python -m py_compile $(find . -name "*.py" -not -path "*/.venv/*" -not -path "*/node_modules/*")` + `pytest` if `tests/` exists |
-| TypeScript/JS | `tsconfig.json` or `package.json` | `npx tsc --noEmit` if tsconfig exists; `npm test` if test script exists |
-| Shell scripts | `.sh` files changed | `bash -n` on ALL `.sh` files in the repo (not just changed ones — a new import could affect existing scripts) |
-| Go | `go.mod` | `go build ./...` + `go test ./...` |
-| Rust | `Cargo.toml` | `cargo check` + `cargo test` |
-
-**Shell check scope:** always run `bash -n` on ALL shell files in the repo, not just changed ones. A change to one file can affect the whole set.
-
-### On failure
-
-- **Stop immediately** — do not commit, do not stage
-- Show the full error output
-- Fix the errors, then restart from Step 1
-- Never suppress or work around CI failures with `--no-verify`
-
----
-
-## Step 4: Show plan and execute immediately
-
-Present the plan, then execute immediately — do NOT ask for confirmation:
-
-```
-Commits (3):
-
-1. feat(auth): add JWT refresh token endpoint
-   → packages/api/routes/auth.ts
-   → packages/api/services/jwt.ts
-
-2. db: add sessions table for token storage
-   → packages/db/schema.ts
-
-3. docs: sync session progress
-   → TODO.md, PROGRESS.md
-```
-
-Exception: if `--dry-run` was used, show the plan and stop.
-
----
-
-## Step 5: Execute commits
-
-For each group in order:
-1. Stage only those files: `git add <file1> <file2> ...`
-2. Commit: `git commit -m "<subject>" -m "<body>"` (second `-m` carries the Step 3 body; omit it only for trivial chore/docs commits)
-3. Report result: `✓ <message> (<short-hash>)`
-
-If a commit fails, stop immediately and report the error — don't continue to the next group.
-
----
-
-## Step 6: Push (unless --no-push)
-
-**Optional oracle gate (opt-in):** if `CLADE_ORACLE_GATE=1` is set in the
-environment, cross-check the outgoing commits with a second model before
-pushing — this breaks the same-model blind spot (you wrote the diff, you
-shouldn't be its only reviewer):
-```bash
-~/.clade/scripts/oracle-review.sh --task "<one-line summary of the commits>" --range @{upstream}...HEAD
-```
-- Exit 0 → proceed. Exit 1 → present the rejection reason to the user, do NOT
-  push (they decide: fix or override). Exit 2 → warn that the diff is
-  **unreviewed** (judge infra error) and proceed — never report it as approved.
-- Skip silently when the env var is unset or the script is missing.
-
-After all commits succeed and CI checks pass, push by default:
-```bash
-git push
-```
-
-Report the result.
-
----
-
-## Step 7: Summary
-
-```
-Commit complete:
-  ✓ feat(auth): add JWT refresh token endpoint (abc1234)
-  ✓ db: add sessions table (def5678)
-  ✓ docs: sync session progress (ghi9012)
-  ✓ Pushed to origin/main
-```
-
-Or if `--no-push` was used:
-```
-Commit complete:
-  ✓ 3 commits. Run `git push` to push, or `/commit` next time (pushes by default).
-```
-
----
-
-## General rules
-
-- Never commit `.env` files, secrets, or credentials — warn if detected
-- Never use `git add .` or `git add -A` — always add specific files
-- If working tree is clean, say so and exit immediately
-- Never ask for confirmation — analyze, commit, push in one shot (unless `--dry-run`)
-- One independently reviewable feature per PR. Multiple logical commits on one
-  branch do not satisfy this rule; use `/create-pr` to split or stack delivery.
-- **Alternative for simple cases:** For agents that need a quick single commit without multi-group splitting, use `~/.clade/scripts/committer.sh "type: message" file1 file2 ...` instead of this skill. The commit skill is for interactive, multi-group commit workflows.
-
----
-
-## Completion Status
-
-- ✅ **DONE** — all commits made and pushed
-- ✅ **DONE** (no-push) — all commits made; push skipped
-- ⚠ **DONE_WITH_CONCERNS** — commits made but CI had warnings (not failures)
-- ❌ **BLOCKED** — CI failed; no commits made; fix errors and re-run
-- ❓ **NEEDS_CONTEXT** — working tree is clean and there are no unpushed commits
+- Read the closest applicable `AGENTS.md`; read legacy `CLAUDE.md` only when it
+  is trusted repository guidance.
+- Codex-managed worktrees may begin at detached HEAD. A local detached commit
+  is valid, but create/attach an owned branch or preserve a reachable Clade ref
+  before the runtime deletes the worktree.
+- Inspect `git worktree list --porcelain` before checkout, rewrite, or cleanup:
+  one branch cannot be checked out by multiple worktrees.
+- Use Codex native review/worktree/handoff capabilities where available. Do
+  not launch Claude Code or a nested Codex CLI to emulate the workflow.
+- Project configuration is trust-gated. Provider credentials and user
+  connections remain user-scoped and cannot be donated by repository files.
 
 ## Additional skill reference
 
-# Commit Skill
+# Commit
 
-Analyzes all uncommitted changes, groups them by logical module/feature, and creates well-organized commits — following the convention of splitting by feature rather than one big commit.
+Create one or more truthful checkpoint commits on an owned delivery branch.
+Discover repository message, signing, DCO, hook, and verification policy before
+committing. A commit preserves work; it does not automatically authorize push,
+PR publication, merge, or branch deletion.
 
-## What it does
-
-1. Analyzes all staged and unstaged changes
-2. Groups files into logical commits (schema, API, frontend, config, docs, etc.)
-3. Generates appropriate commit messages for each group
-4. Shows the plan for confirmation
-5. Executes commits in sequence
-6. Pushes by default
-
-## Usage
-
-```
-/commit                   # Analyze + plan + confirm + commit + push (default)
-/commit --no-push         # Commit only, skip push
-/commit --dry-run         # Show plan only, don't commit
-```
+This skill is the BUILD/checkpoint operation of `$delivery`. Run the shared
+delivery context probe and use its active record rather than assuming
+`origin/main`, GitHub, branch ownership, or a writable attached checkout.
