@@ -623,7 +623,7 @@ MODEL_OPUS="claude-opus-4-6"
 EOF
 # Create in the parent of SCRIPTS_DIR (configs/) if it's inside a temp dir, not the real source
 _models_target="$(dirname "$SCRIPTS_DIR")/models.env"
-if [[ "$_models_target" == /tmp/* ]]; then
+if [[ "$_models_target" == /tmp/* && ! -f "$_models_target" ]]; then
   mkdir -p "$(dirname "$SCRIPTS_DIR")"
   cp models.env "$_models_target" 2>/dev/null || true
 fi
