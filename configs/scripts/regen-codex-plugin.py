@@ -76,6 +76,23 @@ Package provenance:
 - generated from: `configs/skills/<name>`
 """
 
+DELIVERY_COMPLETION_FOOTER = """## Delivery completion
+
+If this workflow changes files or external state:
+
+- Inspect the real final state before responding, including `git status` for a
+  repository task.
+- Never report `DONE` while task-owned changes are uncommitted. Use or continue
+  `$clade:delivery` and create a repository-compliant checkpoint or preserve
+  the work when committing is unavailable.
+- When the user request or trusted repository policy makes publication,
+  deployment, or live verification part of the task, do not silently downgrade
+  the result to local-only work.
+- If a required delivery transition lacks authority, credentials, a destination,
+  or reachable external state, report `BLOCKED` or `NEEDS_CONTEXT` rather than
+  appending a "not committed/pushed/deployed" caveat after `DONE`.
+"""
+
 CORE_CONTRACTS = {
     "provider": "clade.execution/v1",
     "status": "clade.status/v1",
@@ -214,6 +231,7 @@ def _render_skill(name: str) -> str:
         )
     if prompt_body and reference_body:
         sections.extend(("", "## Additional skill reference", "", adapt(reference_body)))
+    sections.extend(("", DELIVERY_COMPLETION_FOOTER.strip()))
     rendered = "\n".join(sections).rstrip() + "\n"
     for forbidden in FORBIDDEN_NATIVE_TEXT:
         if forbidden.lower() in rendered.lower():

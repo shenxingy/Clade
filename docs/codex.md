@@ -35,7 +35,8 @@ The plugin under `plugins/clade/` contains:
   PR review/merge, research, retrospectives, project review, sync, verification,
   worktrees, and supporting decision workflows.
 - A `SessionStart` hook that injects concise branch, recent-commit, dirty-tree,
-  handoff, and repository-guidance context without mutating the repository.
+  handoff, repository-guidance, and delivery-completion context without mutating
+  the repository.
 - A `PreToolUse` safety hook that blocks catastrophic deletion, destructive SQL,
   migrations, and force-pushes to shared branches. Feature-branch force pushes
   are rewritten to `--force-with-lease`.
@@ -59,6 +60,12 @@ Native Codex workflows read `AGENTS.md` first and fall back to `CLAUDE.md` for
 older Clade-enabled repositories. New runtime state is written under `.clade/`
 or `~/.clade/`; native workflows may read legacy Claude state when migrating an
 existing project but do not create new vendor-specific state.
+
+Every generated native skill also ends with the same delivery boundary: a
+writable task cannot report `DONE` with task-owned uncommitted changes, and a
+live-URL or deployed-service request cannot be silently downgraded to local-only
+work. Missing publication/deployment authority is reported as a blocker rather
+than a completion caveat.
 
 Explicit native skill invocation uses Codex's `$skill-name` form, for example:
 
@@ -180,12 +187,13 @@ Routing remains off by default until replay evaluation demonstrates that both
 verified success per dollar and per wall-hour hold for a task class.
 
 `./install.sh` also installs two native profiles under `~/.codex/agents/` and
-merges an idempotent adaptive-delegation block into `~/.codex/AGENTS.md` without
-replacing user instructions. The lead keeps architecture and ambiguous/high-risk
-work, delegates bounded read-only discovery to `clade_cheap_explorer`, and uses
-`clade_cheap_worker` only with explicit file ownership and a deterministic
-verifier. Spark is not assumed or installed as the cheap tier because its
-availability is plan-dependent.
+merges an idempotent managed block into `~/.codex/AGENTS.md` without replacing
+user instructions. The block carries both adaptive-delegation rules and the
+delivery-completion invariant. The lead keeps architecture and
+ambiguous/high-risk work, delegates bounded read-only discovery to
+`clade_cheap_explorer`, and uses `clade_cheap_worker` only with explicit file
+ownership and a deterministic verifier. Spark is not assumed or installed as
+the cheap tier because its availability is plan-dependent.
 
 **Phase 2 (not yet wired):** consume `codex exec --json` JSONL (persist
 `thread_id` from `thread.started`), enforce `--output-schema` on the result and

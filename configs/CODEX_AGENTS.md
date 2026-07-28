@@ -20,3 +20,22 @@ lead or one direct subagent.
 
 Use `gpt-5.6-terra` as the default cheap Codex tier. Spark is opt-in only because
 availability depends on the user's plan; never assume it exists.
+
+## Delivery Completion
+
+For any task that changes files or external state:
+
+- Before the final response, inspect the real final state (at minimum
+  `git status`) and enter `$clade:delivery` when it is installed and a
+  repository delivery is in scope. Otherwise follow the repository's native
+  checkpoint and publication process.
+- Never report `DONE` while task-owned changes are uncommitted. Create a
+  repository-compliant commit or preserve the work through the delivery
+  workflow when committing is unavailable.
+- Use the user request and trusted repository policy to decide whether push,
+  PR, merge, deployment, or live verification is required. Never silently
+  downgrade a live-URL or deployed-service task to local-only work.
+- If a required publication or deployment cannot be completed because
+  authority, credentials, destination, or external state is missing, report
+  `BLOCKED` or `NEEDS_CONTEXT` instead of declaring completion with a
+  commit/push/deploy caveat.

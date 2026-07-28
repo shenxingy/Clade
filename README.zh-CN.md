@@ -136,7 +136,7 @@ Claude Code 完整框架已经原生安装 Clade skills，也不应重复挂载 
 
 | Skill | 功能 |
 |-------|------|
-| `/commit` | 按模块拆分逻辑 commits，默认推送 |
+| `/commit` | 创建适配仓库的 checkpoint commits；已有授权时发布 |
 | `/sync` | 勾掉完成的 TODO，追加会话总结到 PROGRESS.md |
 | `/review` | 8 阶段覆盖式审查 — 发现并修复问题，循环到干净为止 |
 | `/verify` | 验证项目行为锚点（compile、test、lint） |

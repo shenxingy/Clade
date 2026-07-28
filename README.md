@@ -144,7 +144,7 @@ See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, de
 
 | Skill | What it does |
 |-------|-------------|
-| `/commit` | Split changes into logical commits by module, push by default |
+| `/commit` | Create repository-adaptive checkpoint commits; publish when authorized |
 | `/sync` | Check off completed TODOs, append session summary to PROGRESS.md |
 | `/review` | 8-phase coverage review — finds AND fixes issues, loops until clean |
 | `/verify` | Verify project behavior anchors (compile, test, lint) |

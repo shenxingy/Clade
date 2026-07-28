@@ -10,7 +10,7 @@
 ## Features (Behavior Anchors)
 - install.sh: running `./install.sh` copies skills/hooks/scripts/agents to ~/.claude/ without errors
 - slt: running `slt` cycles the statusline mode (symbol → percent → number → off)
-- /commit: analyzes uncommitted changes, splits into logical commits by module, pushes by default
+- /commit: creates repository-adaptive checkpoint commits and publishes when the active delivery or repository policy authorizes it
 - /loop: given a goal file, runs supervisor+worker iterations until converged or max-iter
 - committer: `committer "type: msg" file1 file2` stages only named files and commits
 - loop-runner.sh: runs background loop — supervisor plans tasks, workers execute in parallel via worktrees

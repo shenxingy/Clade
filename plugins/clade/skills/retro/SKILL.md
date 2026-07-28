@@ -244,3 +244,19 @@ Next week focus: [1-3 concrete suggestions based on the data]
 - ⚠ **DONE_WITH_CONCERNS** — limited git history for the period (fewer than 3 commits)
 - ❌ **BLOCKED** — not in a git repository
 - ❓ **NEEDS_CONTEXT** — specify a time range (e.g., `/retro 14d`)
+
+## Delivery completion
+
+If this workflow changes files or external state:
+
+- Inspect the real final state before responding, including `git status` for a
+  repository task.
+- Never report `DONE` while task-owned changes are uncommitted. Use or continue
+  `$clade:delivery` and create a repository-compliant checkpoint or preserve
+  the work when committing is unavailable.
+- When the user request or trusted repository policy makes publication,
+  deployment, or live verification part of the task, do not silently downgrade
+  the result to local-only work.
+- If a required delivery transition lacks authority, credentials, a destination,
+  or reachable external state, report `BLOCKED` or `NEEDS_CONTEXT` rather than
+  appending a "not committed/pushed/deployed" caveat after `DONE`.

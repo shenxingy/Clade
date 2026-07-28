@@ -75,7 +75,7 @@ Claude auto-selects agents. Haiku agents are fast and cheap for mechanical check
 
 **`/sync`** reviews recent git history, checks off completed TODO items, and appends a session summary to PROGRESS.md. Does not commit — run `/commit` after to commit everything.
 
-**`/commit`** analyzes all uncommitted changes, groups files into logical commits by module (schema, API, frontend, config, docs, etc.), generates commit messages, shows the plan for confirmation, then executes and pushes by default. `--no-push` skips push; `--dry-run` shows the plan only.
+**`/commit`** creates repository-adaptive checkpoint commits for coherent work. It discovers branch ownership and repository policy through the shared delivery workflow, verifies the affected slice, and commits explicit files. `--publish` authorizes publishing the owned branch after green checkpoints; an active delivery or repository policy can also supply that authority. `--candidate` binds complete verification to the exact final SHA; `--dry-run` reports the plan without changing state.
 
 **`/orchestrate`** now includes:
 - **Step 0**: reads `PROGRESS.md` (last 3000 chars) + `.claude/AGENTS.md` before planning — avoids past mistakes and respects existing file ownership

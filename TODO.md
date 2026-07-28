@@ -209,6 +209,9 @@ Goal: maximize autonomous run hours. Minimize human intervention. System knows w
 
 ## Tech Debt
 
+- [ ] 🟡 Migrate the orchestrator MCP servers to the Python SDK v2 API, then
+  remove the `mcp<2` compatibility bound
+  ([upstream v2 breaking-change context](https://github.com/modelcontextprotocol/python-sdk/issues/1068))
 - [x] 🔴 `TaskQueue.add()` missing `task_type`/`source_ref`/`parent_task_id` params — `_decompose_horizontal()` and task factories will TypeError at runtime (`orchestrator/task_queue.py:234`)
 - [x] 🔴 `httpx` not in requirements.txt but imported by ci_watcher — `ModuleNotFoundError` at import time (`orchestrator/task_factory/ci_watcher.py:9`)
 - [x] 🔴 Task factories never called — ci_watcher/coverage_scan/dep_update created but never imported or wired into `status_loop()` (dead code)
