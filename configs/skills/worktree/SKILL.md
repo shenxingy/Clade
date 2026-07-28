@@ -1,42 +1,14 @@
 ---
 name: worktree
-description: Create and manage git worktrees for parallel Claude Code sessions
-when_to_use: "create worktree, parallel session, git worktree, isolated branch"
-argument-hint: '"task prompt" | --list | --merge [branch] | --clean'
+description: Create or inspect runtime-adaptive isolated Git workspaces with explicit ownership and delivery routing
+when_to_use: "create worktree, isolated branch, parallel session, managed worktree, list or clean worktrees"
+argument-hint: '"task prompt" | --list | --preserve | --clean <delivery-id>'
 user_invocable: true
 ---
 
-# Worktree Skill
+# Worktree
 
-Quickly spin up isolated git worktrees so you can open parallel Claude Code sessions without conflicts. Each worktree gets its own branch and a TASK.md describing what to work on.
-
-## Usage
-
-### Create a new worktree
-```
-/worktree "Fix all padding issues in settings pages"
-```
-Creates a worktree, branch, and TASK.md. Prints the command to start a new Claude session in it.
-
-### List active worktrees
-```
-/worktree --list
-```
-
-### Merge a worktree branch back
-```
-/worktree --merge wt/fix-padding-settings
-/worktree --merge --all
-```
-
-### Clean up all worktrees
-```
-/worktree --clean
-```
-
-## How it works
-
-1. **Create**: Makes a sibling directory `../<project>-wt-<n>` with a new branch `wt/<slug>`
-2. **TASK.md**: Written to the worktree root so the new Claude session auto-reads it
-3. **Merge**: Merges the worktree branch into your current branch
-4. **Clean**: Removes worktree directories and deletes merged branches
+Create or manage isolated agent workspaces without assuming every runtime uses
+a sibling directory plus immediate branch. Worktree ownership is recorded in
+the shared `$delivery` state; independently reviewable work integrates through
+the target repository's PR/queue policy, not an arbitrary local merge.

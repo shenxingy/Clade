@@ -60,7 +60,9 @@ for skill in "${SKILLS[@]}"; do
     echo "ERROR: manifest entry '$skill' has no source dir at $SRC_DIR/$skill" >&2
     exit 1
   fi
-  rsync -a --delete "$SRC_DIR/$skill/" "$DEST_DIR/$skill/"
+  rsync -a --delete --delete-excluded \
+    --exclude '__pycache__/' --exclude '*.pyc' --exclude '*.pyo' \
+    "$SRC_DIR/$skill/" "$DEST_DIR/$skill/"
 done
 
 # Remove skill dirs present in dest but absent from the manifest
