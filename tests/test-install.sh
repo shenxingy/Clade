@@ -2,8 +2,8 @@
 # test-install.sh — CI executes what install.sh actually ships.
 #
 # Runs install.sh against a THROWAWAY $HOME under /tmp (never the real home)
-# from a THROWAWAY copy of the repo (install.sh's doc-align step writes into
-# the source tree). Covers: clean install, idempotent re-run, executable
+# from a THROWAWAY copy of the repo. Covers: clean install, source immutability,
+# bytecode exclusion, idempotent re-run, executable
 # hooks, generated skill catalog, Cross-Project Rules preservation across
 # reinstall (regression for commit ab06c33), settings.json hook-merge
 # preserving unrelated keys, and symlink resolution.
@@ -64,8 +64,8 @@ fi
 cleanup() { rm -rf "$SANDBOX"; }
 trap cleanup EXIT
 
-# install.sh's doc-align step writes into the source tree, so run from a
-# throwaway copy of the repo (working tree, so uncommitted changes count).
+# Run from a throwaway copy of the repo (working tree, so uncommitted changes
+# count) and seed artifacts that must never be deployed.
 SRC="$SANDBOX/repo"
 mkdir -p "$SRC"
 tar -C "$REPO_ROOT" \
@@ -74,6 +74,25 @@ tar -C "$REPO_ROOT" \
   --exclude='node_modules' \
   --exclude='__pycache__' \
   -cf - . | tar -xf - -C "$SRC"
+
+mkdir -p "$SRC/configs/scripts/__pycache__"
+mkdir -p "$SRC/configs/skills/delivery/scripts/__pycache__"
+printf 'stale bytecode\n' > "$SRC/configs/scripts/__pycache__/stale.cpython-312.pyc"
+printf 'stale bytecode\n' > "$SRC/configs/skills/delivery/scripts/__pycache__/stale.cpython-312.pyc"
+
+# A local install may diagnose stale repository facts, but must never rewrite
+# the checkout. Make the copied fact intentionally stale to exercise that path.
+python3 - "$SRC/docs/facts.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+data = json.loads(path.read_text())
+data["facts"][0]["value"] = 0
+path.write_text(json.dumps(data, indent=2) + "\n")
+PY
+cp "$SRC/docs/facts.json" "$SANDBOX/facts-before-install.json"
 
 echo "Sandbox: $SANDBOX"
 echo "Fake HOME: $HOME"
@@ -136,6 +155,20 @@ grep -q '^## Adaptive Delegation$' "$CODEX_DIR/AGENTS.md" \
 
 script_count=$(ls "$CLAUDE_DIR/scripts/"*.sh 2>/dev/null | wc -l | tr -d ' ')
 [[ "$script_count" -gt 0 ]] && pass "scripts installed ($script_count)" || fail "scripts installed"
+
+if find "$CLAUDE_DIR/scripts" "$CLAUDE_DIR/skills" \
+    \( -type d -name __pycache__ -o -type f \( -name '*.pyc' -o -name '*.pyo' \) \) \
+    -print -quit | grep -q .; then
+  fail "install excludes Python bytecode caches"
+else
+  pass "install excludes Python bytecode caches"
+fi
+
+if cmp -s "$SRC/docs/facts.json" "$SANDBOX/facts-before-install.json"; then
+  pass "install leaves source checkout facts unchanged"
+else
+  fail "install leaves source checkout facts unchanged"
+fi
 
 # ─── Suite 2: Generated skill catalog ────────────────────────────────
 

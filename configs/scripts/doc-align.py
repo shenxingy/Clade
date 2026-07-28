@@ -8,6 +8,7 @@ Silent no-op for repos that haven't opted in.
 Usage:
   doc-align.py check                  # Report drift, exit non-zero if any
   doc-align.py apply                  # Rewrite drifting values in-place
+  doc-align.py verify                 # Check derived facts + doc references without writing
   doc-align.py refresh                # Re-derive auto-derivable facts (counts from filesystem)
   doc-align.py sync                   # refresh + apply (one-shot)
   doc-align.py --root <dir> <mode>    # Operate on a specific repo
@@ -177,6 +178,25 @@ def cmd_refresh(facts: dict, facts_path: Path, repo_root: Path) -> int:
     return 0
 
 
+def cmd_verify(facts: dict, repo_root: Path) -> int:
+    stale = []
+    for fact in facts.get("facts", []):
+        spec = fact.get("derive")
+        if not spec:
+            continue
+        derived = derive_value(spec, repo_root)
+        if derived is not None and derived != fact.get("value"):
+            stale.append((fact["name"], fact.get("value"), derived))
+
+    if stale:
+        print(f"doc-align: {len(stale)} stale derived fact(s):")
+        for name, recorded, derived in stale:
+            print(f"  {name}: recorded={recorded!r}, derived={derived!r}")
+
+    drift_result = cmd_check(facts, repo_root, fix=False)
+    return 1 if stale or drift_result else 0
+
+
 def cmd_sync(facts: dict, facts_path: Path, repo_root: Path) -> int:
     cmd_refresh(facts, facts_path, repo_root)
     facts = load_facts(facts_path)  # reload after refresh
@@ -186,7 +206,7 @@ def cmd_sync(facts: dict, facts_path: Path, repo_root: Path) -> int:
 # ─── Entrypoint ────────────────────────────────────────────────────────
 def main() -> int:
     ap = argparse.ArgumentParser(description="Doc drift checker against docs/facts.json")
-    ap.add_argument("mode", choices=["check", "apply", "refresh", "sync"])
+    ap.add_argument("mode", choices=["check", "verify", "apply", "refresh", "sync"])
     ap.add_argument("--root", default=".", help="Repo root (default: cwd)")
     ap.add_argument("--facts", default="docs/facts.json", help="Path to facts file relative to --root")
     ap.add_argument("--quiet", action="store_true", help="Suppress 'no facts file' message")
@@ -205,6 +225,8 @@ def main() -> int:
 
     if args.mode == "check":
         return cmd_check(facts, repo_root, fix=False)
+    if args.mode == "verify":
+        return cmd_verify(facts, repo_root)
     if args.mode == "apply":
         return cmd_check(facts, repo_root, fix=True)
     if args.mode == "refresh":

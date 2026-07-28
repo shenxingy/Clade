@@ -1,5 +1,5 @@
 {
-  "_comment": "Single source of truth for cross-doc facts. Auto-refreshed on install via doc-align.py refresh. Run `doc-align.py check` to find drift; `apply` to fix in-place.",
+  "_comment": "Single source of truth for cross-doc facts. Install verifies without writing. Run `doc-align.py refresh` after source changes, then `check` or `apply` for referenced docs.",
   "facts": [
     {
       "name": "skills",

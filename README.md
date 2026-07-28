@@ -28,7 +28,7 @@ Three ways to use Clade: the full **Claude CLI framework**, the native **Codex p
 2. [MCP Server](#mcp-server--use-skills-in-any-ai-editor)
 3. [What It Does](#what-it-does)
 4. [Self-Learning Mechanisms](#self-learning-mechanisms)
-5. [Skills](#skills-131)
+5. [Skills](#skills-132)
 6. [Supported Languages](#supported-languages)
 7. [Documentation](#documentation)
 8. [Repo Structure](#repo-structure)
@@ -136,7 +136,7 @@ Both work on any project Claude Code is run in (universal, in `~/.claude/scripts
 
 See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, detectors, schemas, and tunable env vars.
 
-## Skills (131)
+## Skills (132)
 
 ### Core Workflow
 
