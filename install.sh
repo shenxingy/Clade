@@ -115,9 +115,14 @@ for skill_dir in "$SCRIPT_DIR/configs/skills/"/*/; do
   for sub_dir in "$skill_dir"*/; do
     [[ -d "$sub_dir" ]] || continue
     sub_name=$(basename "$sub_dir")
+    [[ "$sub_name" == "__pycache__" ]] && continue
     mkdir -p "$CLAUDE_DIR/skills/$skill_name/$sub_name"
     cp -r "$sub_dir"* "$CLAUDE_DIR/skills/$skill_name/$sub_name/" 2>/dev/null || true
   done
+  # Never deploy interpreter caches from a developer checkout. Python will
+  # recreate valid bytecode for the installed source when useful.
+  find "$CLAUDE_DIR/skills/$skill_name" -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
+  find "$CLAUDE_DIR/skills/$skill_name" -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete 2>/dev/null || true
   echo "  Installed skill: $skill_name"
 done
 
@@ -190,8 +195,11 @@ echo "  Installed: $(ls "$SCRIPT_DIR/configs/scripts/"*.sh "$SCRIPT_DIR/configs/
 for sub_dir in "$SCRIPT_DIR/configs/scripts/"/*/; do
   [[ -d "$sub_dir" ]] || continue
   sub_name=$(basename "$sub_dir")
+  [[ "$sub_name" == "__pycache__" ]] && continue
   mkdir -p "$CLAUDE_DIR/scripts/$sub_name"
   cp -r "$sub_dir"* "$CLAUDE_DIR/scripts/$sub_name/" 2>/dev/null || true
+  find "$CLAUDE_DIR/scripts/$sub_name" -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
+  find "$CLAUDE_DIR/scripts/$sub_name" -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete 2>/dev/null || true
   echo "  Installed scripts/$sub_name/: $(ls "$sub_dir" | wc -l | tr -d ' ') files"
 done
 
@@ -402,11 +410,11 @@ if [[ -f "$TEMPLATE_CLAUDE" ]]; then
   fi
 fi
 
-# ─── 10b. Refresh doc-align facts ────────────────────────────────────
-# Auto-update derived facts (skill/hook/agent/script counts in docs/facts.json)
-# so docs stay aligned with reality. Silent if facts.json or python missing.
+# ─── 10b. Verify doc-align facts ─────────────────────────────────────
+# Installation must not mutate its source checkout. Report stale derived
+# facts, but leave repository updates to the normal branch/commit/PR flow.
 if [[ -f "$SCRIPT_DIR/docs/facts.json" ]] && [[ -n "$PYTHON" ]]; then
-  "$PYTHON" "$CLAUDE_DIR/scripts/doc-align.py" refresh --root "$SCRIPT_DIR" --quiet 2>/dev/null || true
+  "$PYTHON" "$CLAUDE_DIR/scripts/doc-align.py" verify --root "$SCRIPT_DIR" --quiet 2>/dev/null || true
 fi
 
 # ─── 11. Write staleness detection markers ───────────────────────────
@@ -414,7 +422,10 @@ fi
 echo "Writing kit version markers..."
 echo "$SCRIPT_DIR" > "$CLAUDE_DIR/.kit-source-dir"
 # Combined checksum of all source configs — session-context.sh and start.sh compare against this
-find "$SCRIPT_DIR/configs" -type f | LC_ALL=C sort | xargs "${_SHA256[@]}" 2>/dev/null | "${_SHA256[@]}" | cut -d' ' -f1 > "$CLAUDE_DIR/.kit-checksum"
+find "$SCRIPT_DIR/configs" -type f \
+  ! -path '*/__pycache__/*' ! -name '*.pyc' ! -name '*.pyo' \
+  | LC_ALL=C sort | xargs "${_SHA256[@]}" 2>/dev/null \
+  | "${_SHA256[@]}" | cut -d' ' -f1 > "$CLAUDE_DIR/.kit-checksum"
 echo "  Written .kit-source-dir + .kit-checksum for stale-script detection"
 
 # ─── 12. Summary ─────────────────────────────────────────────────────

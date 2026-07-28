@@ -34,8 +34,27 @@ SERVER_VERSION = "0.2.0"
 
 # ─── Skill Discovery ───────────────────────────────────────────────────────────
 
-# Bundled skills shipped with the package
-BUNDLED_SKILLS_DIR = Path(__file__).parent / "skills"
+def _has_skill_definitions(path: Path) -> bool:
+    return path.is_dir() and any(path.glob("*/SKILL.md"))
+
+
+def resolve_bundled_skills_dir(module_file: Path = Path(__file__)) -> Path:
+    """Resolve wheel-bundled skills, with an editable-checkout fallback."""
+    packaged = module_file.resolve().parent / "skills"
+    if _has_skill_definitions(packaged):
+        return packaged
+
+    # hatch's force-include places skills beside this package in a wheel, but
+    # an editable install imports from mcp-package/src/clade_mcp instead. In
+    # that layout the curated source directory is two parents above the module.
+    editable = module_file.resolve().parents[2] / "skills"
+    if _has_skill_definitions(editable):
+        return editable
+    return packaged
+
+
+# Bundled skills shipped with the package or sourced from an editable checkout.
+BUNDLED_SKILLS_DIR = resolve_bundled_skills_dir()
 
 # User-installed skills (from install.sh)
 USER_SKILLS_DIR = Path(os.path.expanduser("~/.claude/skills"))

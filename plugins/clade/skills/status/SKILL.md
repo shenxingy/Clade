@@ -13,6 +13,7 @@ Package provenance:
 
 - core contract: `clade.status/v1`
 - surface adapter: `codex/v1`
+- explicit invocation: `$clade:status`
 - generated from: `configs/skills/<name>`
 
 ## Canonical Clade workflow
@@ -82,10 +83,12 @@ commit, push, or merge from this read-only skill.
 
 # Codex status adapter
 
+- Invoke the installed plugin workflow explicitly as `$clade:status`; bare
+  `$status` is not the Clade plugin identity.
 - Use Codex task/tool activity exposed in the current conversation.
 - Codex TUI status-line configuration is an ordered list of native fields, not
   an arbitrary command renderer. Do not claim Claude-style custom rendering.
-- Use `$codex-usage --json` when installed for authenticated native limit
+- Use `$clade:codex-usage --json` when installed for authenticated native limit
   observations; otherwise report limits as unavailable/unknown.
 - Read applicable `AGENTS.md` and trusted legacy `CLAUDE.md` guidance before
   interpreting repository-specific progress.

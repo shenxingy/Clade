@@ -1,5 +1,7 @@
 # Codex connection adapter
 
+- Invoke the installed plugin workflow explicitly as `$clade:provider`; bare
+  `$provider` is not the Clade plugin identity.
 - Use user-scoped Codex `model_provider`/model configuration and its native
   credential mechanism. Project config is trust-gated and must not donate
   credentials.

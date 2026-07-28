@@ -13,6 +13,7 @@ Package provenance:
 
 - core contract: `clade.delivery/v1`
 - surface adapter: `codex/v1`
+- explicit invocation: `$clade:merge-pr`
 - generated from: `configs/skills/<name>`
 
 ## Canonical Clade workflow
@@ -46,7 +47,7 @@ the gates just because the PR predates Clade state.
 Inspect the PR diff, commits, base/head, reviews, conversations, rulesets,
 required checks, merge queue/auto-merge policy, and live child PRs.
 
-Never merge a multi-feature PR; split it with `$create-pr` first. Supporting
+Never merge a multi-feature PR; split it with `$clade:create-pr` first. Supporting
 tests/migrations/generated files/docs remain with their behavior.
 
 Block—not warn—when:
@@ -138,6 +139,8 @@ and the delivery state `CLEAN`.
 
 # Codex surface adapter
 
+- Installed Clade plugin skills are namespaced. Invoke this workflow as
+  `$clade:delivery`, and use `$clade:<skill-name>` for companion workflows.
 - Read the closest applicable `AGENTS.md`; read legacy `CLAUDE.md` only when it
   is trusted repository guidance.
 - Codex-managed worktrees may begin at detached HEAD. A local detached commit

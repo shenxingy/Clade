@@ -2,7 +2,7 @@
 
 # clade-mcp 0.2.0
 
-Provider-neutral MCP server that exposes **32 AI coding skills** as callable tools — autonomous commits, reviews, incident response, security audits, and more. Skill prompts can run through Claude or Codex.
+Provider-neutral MCP server that exposes **34 AI coding skills** as callable tools — autonomous commits, reviews, incident response, security audits, and more. Skill prompts can run through Claude or Codex.
 
 Part of the [Clade](https://github.com/shenxingy/clade) autonomous coding framework.
 
@@ -12,7 +12,7 @@ Part of the [Clade](https://github.com/shenxingy/clade) autonomous coding framew
   `CLADE_RUNTIME=codex`
 - Conservative `auto` runtime selection: Claude when available, otherwise Codex
 - Configurable Codex sandbox with an explicit, opt-in permission bypass
-- 32 bundled workflows, up from 29 in 0.1.0
+- 34 bundled workflows, up from 29 in 0.1.0
 - Runtime name reported by `clade_list_skills` for configuration diagnostics
 
 Upgrade with:
@@ -78,7 +78,7 @@ The permission bypass takes precedence over the sandbox setting and passes
 Codex's `--dangerously-bypass-approvals-and-sandbox` flag. It is intentionally
 never enabled by default.
 
-## Available Skills (32)
+## Available Skills (34)
 
 | Skill | Description |
 |-------|-------------|
@@ -128,11 +128,11 @@ Skills from `~/.claude/skills/` (installed by the legacy full framework) are als
 
 This MCP server is one part of Clade. The full framework includes:
 
-- **129 skills** — coding, research, SEO, content, paid ads, and email workflows
+- **132 skills** — coding, research, SEO, content, paid ads, and email workflows
 - **30 hooks** — safety guardian, correction learning, type-checking, session context
 - **35 shell scripts + 13 Python utilities** — commits, loops, parallel tasks, health scanning
-- **36 agents** — code, security, compliance, marketing, research, and verification specialists
-- **Native Codex plugin** — 21 core workflows, usage visibility, and lifecycle safety hooks
+- **37 agents** — code, security, compliance, marketing, research, and verification specialists
+- **Native Codex plugin** — 25 core workflows, usage visibility, and lifecycle safety hooks
 - **Orchestrator** — FastAPI web UI with task queue, worker pool, GitHub sync
 
 Install the full framework:

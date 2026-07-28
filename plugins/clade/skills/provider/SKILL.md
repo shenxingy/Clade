@@ -13,6 +13,7 @@ Package provenance:
 
 - core contract: `clade.execution/v1`
 - surface adapter: `codex/v1`
+- explicit invocation: `$clade:provider`
 - generated from: `configs/skills/<name>`
 
 ## Canonical Clade workflow
@@ -94,6 +95,8 @@ exports, and machine-specific credential paths in the native user store.
 
 # Codex connection adapter
 
+- Invoke the installed plugin workflow explicitly as `$clade:provider`; bare
+  `$provider` is not the Clade plugin identity.
 - Use user-scoped Codex `model_provider`/model configuration and its native
   credential mechanism. Project config is trust-gated and must not donate
   credentials.

@@ -13,6 +13,7 @@ Package provenance:
 
 - core contract: `clade.delivery/v1`
 - surface adapter: `codex/v1`
+- explicit invocation: `$clade:commit`
 - generated from: `configs/skills/<name>`
 
 ## Canonical Clade workflow
@@ -147,6 +148,8 @@ evidence and remote checks.
 
 # Codex surface adapter
 
+- Installed Clade plugin skills are namespaced. Invoke this workflow as
+  `$clade:delivery`, and use `$clade:<skill-name>` for companion workflows.
 - Read the closest applicable `AGENTS.md`; read legacy `CLAUDE.md` only when it
   is trusted repository guidance.
 - Codex-managed worktrees may begin at detached HEAD. A local detached commit
@@ -168,6 +171,6 @@ Discover repository message, signing, DCO, hook, and verification policy before
 committing. A commit preserves work; it does not automatically authorize push,
 PR publication, merge, or branch deletion.
 
-This skill is the BUILD/checkpoint operation of `$delivery`. Run the shared
+This skill is the BUILD/checkpoint operation of `$clade:delivery`. Run the shared
 delivery context probe and use its active record rather than assuming
 `origin/main`, GitHub, branch ownership, or a writable attached checkout.

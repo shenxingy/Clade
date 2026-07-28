@@ -30,7 +30,7 @@ codex plugin add clade@clade
 
 The plugin under `plugins/clade/` contains:
 
-- 21 core workflows: commit, Codex usage pace, security review, release documentation, frontend
+- 25 core workflows: commit, Codex usage pace, security review, release documentation, frontend
   design, handoff/pickup, incident response, investigation, architecture maps,
   PR review/merge, research, retrospectives, project review, sync, verification,
   worktrees, and supporting decision workflows.
@@ -63,26 +63,26 @@ existing project but do not create new vendor-specific state.
 Explicit native skill invocation uses Codex's `$skill-name` form, for example:
 
 ```text
-$investigate why the integration test hangs
-$verify all behavior anchors
-$review the whole project and fix failures until clean
+$clade:investigate why the integration test hangs
+$clade:verify all behavior anchors
+$clade:review the whole project and fix failures until clean
 ```
 
 Natural-language activation works too.
 
 ## Codex Usage and Status Line
 
-Clade 0.3 adds a native `$codex-usage` workflow. It reads rate-limit snapshots
+Clade 0.3 adds a native `$clade:codex-usage` workflow. It reads rate-limit snapshots
 through the authenticated `codex app-server` protocol, so it never opens or
 prints `~/.codex/auth.json`.
 
 ```text
-$codex-usage
-$codex-usage setup minimal
-$codex-usage style icon
-$codex-usage style detail
-$codex-usage theme bird
-$codex-usage --json
+$clade:codex-usage
+$clade:codex-usage setup minimal
+$clade:codex-usage style icon
+$clade:codex-usage style detail
+$clade:codex-usage theme bird
+$clade:codex-usage --json
 ```
 
 The default `minimal` view is deliberately terse:
@@ -106,7 +106,7 @@ Codex also provides `/usage` for its built-in account view, `/status` for the
 current session, and `/statusline` for interactive footer configuration. Start
 a new Codex session after changing the footer. Codex's native footer accepts a
 fixed list of fields rather than an arbitrary formatter command, so the exact
-Clade compact string is produced by `$codex-usage`; the persistent footer uses
+Clade compact string is produced by `$clade:codex-usage`; the persistent footer uses
 the closest native field combination.
 
 ## MCP 0.2.0 Runtime Selection
