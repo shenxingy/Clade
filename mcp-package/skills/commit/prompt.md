@@ -55,6 +55,12 @@ Resolve, in precedence order:
 Do not bypass hooks with `--no-verify`. Do not invent Conventional Commits,
 signoff, or signatures where the repository does not require them.
 
+**Body mandate:** when the repository uses Conventional Commits, give
+substantive `feat`/`fix`/`refactor`/`perf` commits a short body after a blank
+line. Record the mechanism, the hazard avoided or root cause, and material
+constraints honored. Trivial `chore`/`docs` commits may remain subject-only.
+Never add attribution trailers unless repository policy requires them.
+
 ## 4. Verify at the right evidence level
 
 For a normal checkpoint, run affected syntax/tests/lint/typecheck sufficient to
