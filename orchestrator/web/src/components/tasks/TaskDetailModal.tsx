@@ -57,7 +57,19 @@ export function TaskDetailModal({ task, sessionId, onClose }: Props) {
         {/* Metadata grid */}
         <div className="px-4 py-3 grid grid-cols-2 gap-x-6 gap-y-1.5 border-b border-border shrink-0">
           <Meta label="Model"><ModelBadge model={task.model} /></Meta>
-          {task.provider && <Meta label="Provider">{task.provider}</Meta>}
+          {(task.agent_runtime || task.provider) && (
+            <Meta label="Agent runtime">{task.agent_runtime || task.provider}</Meta>
+          )}
+          {task.execution_envelope?.resolved.inference && (
+            <>
+              <Meta label="Connection">
+                {task.execution_envelope.resolved.inference.connection}
+              </Meta>
+              <Meta label="Inference">
+                {task.execution_envelope.resolved.inference.provider}
+              </Meta>
+            </>
+          )}
           {task.effort && <Meta label="Effort">{task.effort}</Meta>}
           <Meta label="Task ID"><span className="font-mono text-xs">{task.id}</span></Meta>
           {task.elapsed_s != null && <Meta label="Duration">{formatDuration(task.elapsed_s)}</Meta>}
@@ -86,6 +98,11 @@ export function TaskDetailModal({ task, sessionId, onClose }: Props) {
             <Meta label="Worker"><span className="font-mono text-xs">{task.worker_id.slice(0, 8)}</span></Meta>
           )}
           {task.route_reason && <Meta label="Route">{task.route_reason}</Meta>}
+          {task.execution_envelope?.degradations.length ? (
+            <Meta label="Degraded">
+              {task.execution_envelope.degradations.map(d => d.capability).join(', ')}
+            </Meta>
+          ) : null}
         </div>
 
         {/* Scrollable body */}

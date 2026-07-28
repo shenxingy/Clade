@@ -1198,16 +1198,22 @@ async def status_loop():
                 total = len(tasks)
                 done_count = sum(1 for t in tasks if t["status"] in ("done", "failed"))
                 success_count = sum(1 for t in tasks if t["status"] == "done")
-                progress_pct = int(done_count / total * 100) if total > 0 else 0
-                success_rate = int(success_count / done_count * 100) if done_count > 0 else 0
+                progress_pct = int(done_count / total * 100) if total > 0 else None
+                success_rate = (
+                    int(success_count / done_count * 100)
+                    if done_count > 0
+                    else None
+                )
 
                 done_workers = [w for w in session.worker_pool.all() if w.status in ("done", "failed")]
-                avg_s = (
-                    sum(w.elapsed_s for w in done_workers) / len(done_workers)
-                    if done_workers else 300
-                )
                 remaining = total - done_count
-                eta_seconds = int(avg_s * remaining) if remaining > 0 else 0
+                if total > 0 and remaining == 0:
+                    eta_seconds = 0
+                elif done_workers and remaining > 0:
+                    avg_s = sum(w.elapsed_s for w in done_workers) / len(done_workers)
+                    eta_seconds = int(avg_s * remaining)
+                else:
+                    eta_seconds = None
 
                 swarm_state = session._swarm.to_dict() if session._swarm else None
                 from process_manager import process_pool as _pp2

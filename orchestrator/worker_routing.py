@@ -21,7 +21,6 @@ from config import _MODEL_ALIASES
 # Backward-compatible export for callers that have not migrated terminology.
 VALID_PROVIDERS = SUPPORTED_AGENT_RUNTIMES
 VALID_EFFORTS = frozenset({"low", "medium", "high", "xhigh", "max"})
-_CODEX_MODEL_PREFIXES = ("gpt-", "gpt5", "o1", "o3", "o4", "codex")
 
 
 @dataclass(frozen=True)
@@ -58,10 +57,17 @@ def resolve_worker_route(task: Mapping[str, Any], settings: Mapping[str, Any]) -
     the strong tier at high effort; only high-readiness work gets the cheap
     tier. A middle-score or unscored task keeps the configured/default model.
     """
-    agent_runtime = normalize_agent_runtime(
-        task.get("provider"),
-        settings.get("worker_provider", "claude"),
+    task_runtime = (
+        task.get("agent_runtime")
+        if task.get("agent_runtime") is not None
+        else task.get("provider")
     )
+    default_runtime = (
+        settings.get("agent_runtime")
+        if settings.get("agent_runtime") is not None
+        else settings.get("worker_provider", "claude")
+    )
+    agent_runtime = normalize_agent_runtime(task_runtime, default_runtime)
     requested_model = str(task.get("model") or settings.get("default_model") or "sonnet").strip()
     effort = normalize_effort(task.get("effort"))
     score = task.get("score")
@@ -106,9 +112,9 @@ def resolve_worker_route(task: Mapping[str, Any], settings: Mapping[str, Any]) -
         candidate = str(routing_map[task_type])
         if critical and auto:
             reason += f"; ignored task-type override on critical task ({task_type})"
-        elif agent_runtime == "codex" and not candidate.lower().startswith(_CODEX_MODEL_PREFIXES):
-            reason += f"; ignored incompatible Codex task-type override ({task_type})"
         else:
+            # Model ids are opaque inside their resolved connection. Runtime
+            # adapters validate/translate them; prefixes are not capabilities.
             model = (
                 _MODEL_ALIASES.get(candidate, candidate)
                 if agent_runtime == "claude"

@@ -1,121 +1,102 @@
 #!/usr/bin/env bash
-# provider-switch.sh — Switch the active LLM provider for Claude Code
-#
-# Usage: provider-switch.sh [provider-name]
-#        provider-switch.sh          → show current provider
-#        provider-switch.sh minimax  → switch to minimax
-#        provider-switch.sh claude   → switch to claude (default)
-#
-# Writes ~/.claude/.provider-env.sh with ANTHROPIC_BASE_URL and optionally
-# ANTHROPIC_API_KEY (only when a provider key is set — Max subscription uses
-# claude login without API key). ~/.zshrc should source that file.
+# Claude Code compatibility adapter for a user-maintained providers.json.
+# The universal Clade source of truth is a secret-free connection identity;
+# this script intentionally knows nothing about current vendors or model IDs.
 
 set -euo pipefail
 
-PROVIDERS_FILE="$HOME/.claude/providers.json"
-ENV_FILE="$HOME/.claude/.provider-env.sh"
+providers_file="${CLADE_CLAUDE_PROVIDERS_FILE:-${HOME}/.claude/providers.json}"
+env_file="${CLADE_CLAUDE_PROVIDER_ENV_FILE:-${HOME}/.claude/.provider-env.sh}"
+target="${1:-}"
 
-# ─── Bootstrap providers.json if missing ────────────────────────────
-
-if [[ ! -f "$PROVIDERS_FILE" ]]; then
-  cat > "$PROVIDERS_FILE" << 'PROVIDERS_EOF'
-{
-  "active": "claude",
-  "providers": {
-    "claude": {
-      "name": "Anthropic Claude",
-      "base_url": null,
-      "api_key_env": "ANTHROPIC_API_KEY_CLAUDE",
-      "models": ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5"],
-      "note": "Max subscription: leave unset; use claude login. Optional API key: set ANTHROPIC_API_KEY_CLAUDE in ~/.zshrc"
-    },
-    "minimax": {
-      "name": "Minimax",
-      "base_url": "https://api.minimax.chat/v1",
-      "api_key_env": "MINIMAX_CODING_API_KEY",
-      "models": ["MiniMax-Text-01", "abab6.5s-chat"],
-      "note": "Set MINIMAX_CODING_API_KEY in ~/.zshrc"
-    }
-  }
-}
-PROVIDERS_EOF
-  echo "Created $PROVIDERS_FILE"
+if ! command -v jq >/dev/null 2>&1; then
+  echo "provider-switch: jq is required" >&2
+  exit 2
+fi
+if [[ ! -f "$providers_file" ]]; then
+  echo "provider-switch: no trusted user provider registry at $providers_file" >&2
+  echo "Create it explicitly; Clade will not bootstrap stale endpoints, models, or credentials." >&2
+  exit 2
+fi
+if ! jq -e '
+  type == "object"
+  and (.providers | type == "object")
+  and all(.providers[];
+    type == "object"
+    and (.runtime // "claude") == "claude"
+    and (.name | type == "string")
+    and (.models | type == "array")
+    and all(.models[]; type == "string")
+    and ((.base_url // null) == null or (.base_url | type == "string"))
+    and ((.api_key_env // null) == null or (.api_key_env | type == "string"))
+  )
+' "$providers_file" >/dev/null; then
+  echo "provider-switch: invalid registry schema" >&2
+  exit 2
 fi
 
-# ─── Parse args ──────────────────────────────────────────────────────
-
-TARGET="${1:-}"
-
-# Show status if no arg
-if [[ -z "$TARGET" ]]; then
-  ACTIVE=$(jq -r '.active' "$PROVIDERS_FILE")
-  echo "Active provider: $ACTIVE"
-  echo ""
-  echo "Available providers:"
-  jq -r '.providers | to_entries[] | "  \(.key): \(.value.name) — models: \(.value.models | join(", "))"' "$PROVIDERS_FILE"
-  echo ""
-  if [[ -f "$ENV_FILE" ]]; then
-    echo "Current env ($ENV_FILE):"
-    cat "$ENV_FILE"
-  else
-    echo "No env file yet. Run: provider-switch.sh <provider>"
-  fi
+if [[ -z "$target" ]]; then
+  active="$(jq -r '.active // "unknown"' "$providers_file")"
+  echo "Active Claude connection: $active"
+  jq -r '
+    .providers | to_entries[] |
+    "  \(.key): \(.value.name) — models: \(.value.models | join(", "))"
+  ' "$providers_file"
   exit 0
 fi
 
-# Validate provider exists
-if ! jq -e --arg p "$TARGET" '.providers[$p]' "$PROVIDERS_FILE" > /dev/null 2>&1; then
-  echo "ERROR: Unknown provider '$TARGET'"
-  echo "Available: $(jq -r '.providers | keys | join(", ")' "$PROVIDERS_FILE")"
-  exit 1
+if ! jq -e --arg id "$target" '.providers[$id] != null' "$providers_file" >/dev/null; then
+  echo "provider-switch: unknown connection '$target'" >&2
+  echo "Available: $(jq -r '.providers | keys | join(", ")' "$providers_file")" >&2
+  exit 2
 fi
 
-# ─── Switch provider ─────────────────────────────────────────────────
+base_url="$(jq -r --arg id "$target" '.providers[$id].base_url // ""' "$providers_file")"
+api_key_env="$(jq -r --arg id "$target" '.providers[$id].api_key_env // ""' "$providers_file")"
+primary_model="$(jq -r --arg id "$target" '.providers[$id].models[0] // ""' "$providers_file")"
+provider_name="$(jq -r --arg id "$target" '.providers[$id].name' "$providers_file")"
 
-PROVIDER_NAME=$(jq -r --arg p "$TARGET" '.providers[$p].name' "$PROVIDERS_FILE")
-BASE_URL=$(jq -r --arg p "$TARGET" '.providers[$p].base_url // "null"' "$PROVIDERS_FILE")
-API_KEY_ENV=$(jq -r --arg p "$TARGET" '.providers[$p].api_key_env // "ANTHROPIC_API_KEY_CLAUDE"' "$PROVIDERS_FILE")
-MODELS=$(jq -r --arg p "$TARGET" '.providers[$p].models | join(", ")' "$PROVIDERS_FILE")
-PRIMARY_MODEL=$(jq -r --arg p "$TARGET" '.providers[$p].models[0]' "$PROVIDERS_FILE")
+if [[ -z "$primary_model" ]]; then
+  echo "provider-switch: connection '$target' has no model" >&2
+  exit 2
+fi
+case "$primary_model" in
+  *[!A-Za-z0-9._:/+-]*)
+    echo "provider-switch: model is not a valid opaque identifier" >&2
+    exit 2
+    ;;
+esac
+if [[ -n "$api_key_env" && ! "$api_key_env" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+  echo "provider-switch: api_key_env must be an environment variable name" >&2
+  exit 2
+fi
 
-# Write env file
-# For Anthropic (no proxy): do not export empty ANTHROPIC_API_KEY — that breaks
-# Max subscription auth (`claude login`). Only export when a key env is set.
+env_dir="$(dirname "$env_file")"
+mkdir -p "$env_dir"
+tmp_env="$(mktemp "${env_dir}/.provider-env.XXXXXX")"
+tmp_registry="$(mktemp "$(dirname "$providers_file")/.providers.XXXXXX")"
+trap 'rm -f "$tmp_env" "$tmp_registry"' EXIT
+chmod 600 "$tmp_env"
 {
-  echo "# Auto-generated by provider-switch.sh — do not edit manually"
-  echo "# Provider: $PROVIDER_NAME"
-  echo "# Switch with: provider-switch.sh <provider>"
-  echo ""
-  if [[ "$BASE_URL" == "null" ]]; then
-    echo "unset ANTHROPIC_BASE_URL 2>/dev/null || true"
+  echo "# Generated by provider-switch.sh for connection: $target"
+  if [[ -n "$base_url" ]]; then
+    printf 'export ANTHROPIC_BASE_URL=%q\n' "$base_url"
   else
-    echo "export ANTHROPIC_BASE_URL=\"$BASE_URL\""
+    echo "unset ANTHROPIC_BASE_URL 2>/dev/null || true"
   fi
-  echo "_key=\"\${${API_KEY_ENV}:-\${ANTHROPIC_API_KEY:-}}\""
-  echo "if [[ -n \"\$_key\" ]]; then"
-  echo "  export ANTHROPIC_API_KEY=\"\$_key\""
-  echo "else"
-  echo "  unset ANTHROPIC_API_KEY 2>/dev/null || true"
-  echo "fi"
-  echo "unset _key"
-} > "$ENV_FILE"
+  if [[ -n "$api_key_env" ]]; then
+    printf 'if [[ -n "${%s:-}" ]]; then export ANTHROPIC_API_KEY="${%s}"; else unset ANTHROPIC_API_KEY 2>/dev/null || true; fi\n' "$api_key_env" "$api_key_env"
+  else
+    echo "unset ANTHROPIC_API_KEY 2>/dev/null || true"
+  fi
+  printf 'export ANTHROPIC_MODEL=%q\n' "$primary_model"
+} > "$tmp_env"
+mv "$tmp_env" "$env_file"
 
-# Update active in providers.json
-TMP=$(mktemp)
-jq --arg p "$TARGET" '.active = $p' "$PROVIDERS_FILE" > "$TMP" && mv "$TMP" "$PROVIDERS_FILE"
+jq --arg id "$target" '.active = $id' "$providers_file" > "$tmp_registry"
+chmod --reference="$providers_file" "$tmp_registry" 2>/dev/null || chmod 600 "$tmp_registry"
+mv "$tmp_registry" "$providers_file"
 
-# Also update model in settings.json so Claude Code picks it up
-SETTINGS_FILE="$HOME/.claude/settings.json"
-if [[ -f "$SETTINGS_FILE" ]]; then
-  TMP2=$(mktemp)
-  jq --arg m "$PRIMARY_MODEL" '.model = $m' "$SETTINGS_FILE" > "$TMP2" && mv "$TMP2" "$SETTINGS_FILE"
-fi
-
-echo "Switched to: $PROVIDER_NAME"
-echo "Models: $MODELS"
-echo ""
-echo "Written: $ENV_FILE"
-echo "Updated: $SETTINGS_FILE (model → $PRIMARY_MODEL)"
-echo ""
-echo "Restart Claude Code to apply — or run:"
-echo "  source $ENV_FILE && claude"
+echo "Selected Claude connection: $target ($provider_name)"
+echo "Model: $primary_model"
+echo "Start a new Claude Code session, or source: $env_file"

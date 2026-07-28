@@ -1,90 +1,60 @@
 <command-metadata>
 name: status
-trigger: user asks "现在啥情况了" / "what's going on" mid-session — usually after starting a background task and coming back to check
+contract: clade.status/v1
 completion-status: DONE | DONE_WITH_CONCERNS | BLOCKED
 </command-metadata>
 
-Show a compact dashboard of everything currently active in this session and its surroundings. Focus on **things the user started and forgot about**, not on docs or priorities.
+Build one compact status snapshot from sources available on the current
+surface. Keep collection read-only.
 
-## When this fires vs. related skills
+## Required semantic fields
 
-| Skill | Scope |
-|---|---|
-| `/poke` | Heartbeat — "are you stuck right now?" (≤3 lines) |
-| `/status` | Dashboard — "what's running in the background?" (this skill) |
-| `/brief` | Overnight summary — "what ran while I was asleep?" |
-| `/pickup` | New session — "resume the last handoff" |
+- `observed_at`
+- task identity/state and progress `{completed,total,source}`
+- Git branch, dirty state, checkpoint SHA, upstream divergence
+- execution runtime, connection, inference provider, wire model, degradations
+- usage/rate-limit observations with source and observed/reset timestamps
+- freshness per source
 
-Don't invoke `/next`, `/brief`, or `/pickup` from here — they're separate flows.
+Unknown is a first-class value:
 
-## What to check (in order — stop early if nothing active)
+- Never render missing progress or quota data as `0`, `0%`, unlimited, or done.
+- Never infer a provider from a model prefix or a model from the runtime name.
+- Mark estimates explicitly and show the evidence behind them.
+- Distinguish stale data, unreachable sources, unsupported capabilities, and
+  authoritative zero values.
 
-### 1. In-conversation background handles
-- Background `Bash` processes launched with `run_in_background: true` this session
-- `Agent` calls launched with `run_in_background: true`
-- Active `/loop` or `/batch-tasks` invocations in this conversation
+## Collection order
 
-Check via the conversation history — these handles surface in prior tool results.
+1. Read conversation/runtime activity exposed by this surface.
+2. Inspect local Git without mutation. Prefer the delivery controller's
+   `git_context.py` when installed; otherwise use read-only Git commands.
+3. Read Clade worker `status_snapshot` / `execution_envelope` if an
+   orchestrator is reachable.
+4. Query forge/CI only when a related PR is in scope.
+5. Query native usage data only through the current surface adapter.
 
-### 2. Local git state
-```bash
-git status -sb
-git log --oneline @{upstream}..HEAD 2>/dev/null | head -5   # unpushed
-git worktree list
+## Output
+
+Keep the human view under 20 lines unless the user asks for JSON. Show:
+
+```text
+Work:       state · factual progress or unknown · freshness
+Git:        branch · dirty/clean/unknown · checkpoint/upstream
+Execution:  runtime · connection · inference provider · wire model
+Limits:     authoritative windows, or unknown/unavailable with reason
+Delivery:   PR/checks/merge state when in scope
+Concern:    stale/hung/degraded evidence, if any
+Next:       one concrete recommendation
 ```
 
-### 3. Orchestrator layer (if running on this machine)
-Probe `http://localhost:8000/health` (or project-specific port). If reachable:
-- Active workers
-- Running loops
-- Recent task completions (last hour)
-- **Stale-process check**: compare `GET /api/version` `running_commit` against
-  `git rev-parse HEAD` in the orchestrator repo. If they differ, the process is
-  running old code — report it with the fix: `pm2 restart clade-orchestrator`
-  (or however it's supervised). A long-lived process once sat 9 days stale;
-  no file-watcher restarts it.
+Call work “hung” only when a source provides timestamps and no relevant change
+has occurred past the repository/runtime threshold. Do not kill, restart,
+commit, push, or merge from this read-only skill.
 
-Skip silently if orchestrator isn't running — it's optional.
+## Completion
 
-### 4. GitHub (only if user mentioned a PR recently)
-```bash
-gh pr list --author "@me" --state open --limit 5
-gh run list --limit 3   # recent CI runs
-```
-
-Skip if no recent PR context in conversation.
-
-## Output format
-
-```
-━━━ Session Status ━━━
-Background here:
-  • {handle} — {what it's doing} ({elapsed})
-  • ... or "none"
-
-Local git:
-  Branch: {name} ({N ahead / M behind} upstream)
-  Dirty:  {N files} | Worktrees: {count}
-  Unpushed: {count}
-
-Orchestrator: {N workers, M loops active | not running}
-
-GitHub: {open PRs, CI state | skipped}
-━━━━━━━━━━━━━━━━━━━━━━━
-→ {one-line recommendation: continue watching X / poke loop Y / resume your last task}
-```
-
-## Rules
-
-- If everything is `none / clean / not running`: say so in one line, don't pad the dashboard.
-- Keep total output ≤20 lines. This is a glance, not a report.
-- Do NOT summarize commits, TODOs, or goals — that's `/brief` or `/pickup`.
-- Do NOT kill, restart, or modify any background process unless the user explicitly asks.
-- If a background agent finished since the user last saw it, highlight the result in the "Background here" row (e.g. `• worker-3 — DONE 12m ago: tests passed`).
-- If a background process appears **hung** (no progress in 5+ minutes for an active-looking task): flag it explicitly; don't kill it unprompted.
-
-## Completion Status
-
-- ✅ **DONE**: Dashboard shown; user has a clear picture of active work.
-- ⚠ **DONE_WITH_CONCERNS**: Some sources unreachable (e.g. orchestrator down) — noted in output.
-- ❌ **BLOCKED**: Unable to read git or conversation state — surface the failure.
+- `DONE`: snapshot is clear and all relevant sources were observed.
+- `DONE_WITH_CONCERNS`: one or more sources are stale, unavailable, or
+  degraded; name them.
+- `BLOCKED`: even local/runtime state cannot be read; show the exact failure.

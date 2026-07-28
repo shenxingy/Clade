@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Any, Literal, TypedDict
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 WorkerStatus = Literal["done", "rejected", "failed", "blocked"]
 
 
@@ -35,6 +35,7 @@ class WorkerEnvelope:
     artifacts: WorkerArtifacts
     next_handoff: WorkerHandoff | None
     blockers: list[str]
+    execution: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable copy of the envelope."""
@@ -46,6 +47,7 @@ class WorkerEnvelope:
             "artifacts": deepcopy(self.artifacts),
             "next_handoff": deepcopy(self.next_handoff),
             "blockers": list(self.blockers),
+            "execution": deepcopy(self.execution),
         }
 
     @classmethod
@@ -54,15 +56,17 @@ class WorkerEnvelope:
         if not isinstance(data, dict):
             raise TypeError("worker envelope must be an object")
 
-        required = {
+        legacy_required = {
             "v", "task_id", "status", "summary", "artifacts",
             "next_handoff", "blockers",
         }
+        version = data.get("v")
+        required = legacy_required | ({"execution"} if version == SCHEMA_VERSION else set())
         if set(data) != required:
             missing = required - set(data)
             extra = set(data) - required
             raise ValueError(f"invalid worker envelope fields: missing={missing}, extra={extra}")
-        if type(data["v"]) is not int or data["v"] != SCHEMA_VERSION:
+        if type(version) is not int or version not in {1, SCHEMA_VERSION}:
             raise ValueError(f"unsupported worker envelope version: {data['v']!r}")
         if not isinstance(data["task_id"], str) or not data["task_id"]:
             raise ValueError("task_id must be a non-empty string")
@@ -95,6 +99,12 @@ class WorkerEnvelope:
         blockers = data["blockers"]
         if not _is_string_list(blockers):
             raise TypeError("blockers must be a list of strings")
+        execution = data.get("execution")
+        if execution is not None:
+            if not isinstance(execution, dict):
+                raise TypeError("execution must be an object")
+            if execution.get("schema_version") != "clade.execution/v1":
+                raise ValueError("execution has an unsupported schema")
 
         return cls(
             v=SCHEMA_VERSION,
@@ -104,6 +114,7 @@ class WorkerEnvelope:
             artifacts=deepcopy(artifacts),
             next_handoff=deepcopy(next_handoff),
             blockers=list(blockers),
+            execution=deepcopy(execution),
         )
 
 
@@ -179,4 +190,9 @@ def build_from_worker(w: Any) -> WorkerEnvelope:
         artifacts=artifacts,
         next_handoff=next_handoff,
         blockers=blockers,
+        execution=(
+            getattr(w, "execution_envelope").to_dict()
+            if getattr(w, "execution_envelope", None)
+            else None
+        ),
     )

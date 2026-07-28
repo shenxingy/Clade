@@ -23,6 +23,11 @@ from github_sync import _gh_create_issue
 from worker_tldr import _score_task
 from worker_review import _write_pr_review, _write_progress_entry
 from worker_routing import VALID_EFFORTS
+from execution_envelope import (
+    InvalidExecutionConfig,
+    parse_requirements,
+    resolve_connection,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -46,12 +51,48 @@ def _validate_task(body: dict) -> list[str]:
     phase = body.get("phase")
     if phase and phase not in _VALID_PHASES:
         errors.append(f"phase must be one of: {', '.join(sorted(_VALID_PHASES))}")
-    provider = body.get("provider")
-    if provider is not None:
+    legacy_runtime = body.get("provider")
+    canonical_runtime = body.get("agent_runtime")
+    selected_runtime = (
+        canonical_runtime if canonical_runtime is not None else legacy_runtime
+    )
+    if selected_runtime is not None:
         try:
-            normalize_agent_runtime(provider)
+            normalized = normalize_agent_runtime(selected_runtime)
+            if (
+                canonical_runtime is not None
+                and legacy_runtime is not None
+                and normalize_agent_runtime(legacy_runtime) != normalized
+            ):
+                errors.append("agent_runtime conflicts with legacy provider")
+            connection = body.get("connection")
+            if connection is not None:
+                resolve_connection(
+                    connection_id=str(connection),
+                    runtime_id=normalized,
+                    connections=GLOBAL_SETTINGS.get("connections") or {},
+                )
         except AgentRuntimeSelectionError as exc:
             errors.append(str(exc))
+        except InvalidExecutionConfig as exc:
+            errors.append(str(exc))
+    elif body.get("connection") is not None:
+        try:
+            runtime = normalize_agent_runtime(
+                GLOBAL_SETTINGS.get("agent_runtime"),
+                GLOBAL_SETTINGS.get("worker_provider", "claude"),
+            )
+            resolve_connection(
+                connection_id=str(body["connection"]),
+                runtime_id=runtime,
+                connections=GLOBAL_SETTINGS.get("connections") or {},
+            )
+        except (AgentRuntimeSelectionError, InvalidExecutionConfig) as exc:
+            errors.append(str(exc))
+    try:
+        parse_requirements(body.get("execution_requirements"))
+    except InvalidExecutionConfig as exc:
+        errors.append(str(exc))
     effort = body.get("effort")
     if effort and str(effort).lower() not in VALID_EFFORTS:
         errors.append(f"effort must be one of: {', '.join(sorted(VALID_EFFORTS))}")
@@ -71,17 +112,26 @@ async def create_task(body: dict, s: ProjectSession = Depends(_resolve_session))
     if errors:
         raise HTTPException(status_code=400, detail=errors)
     description = body["description"].strip()
+    runtime_value = (
+        body["agent_runtime"]
+        if body.get("agent_runtime") is not None
+        else body.get("provider")
+    )
+    agent_runtime = (
+        normalize_agent_runtime(runtime_value)
+        if runtime_value is not None
+        else None
+    )
     task = await s.task_queue.add(
         description=description,
         model=body.get("model") or GLOBAL_SETTINGS.get("default_model", "sonnet"),
         is_critical_path=bool(body.get("is_critical_path", 0)),
         task_type=body.get("task_type", "AUTO"),
         phase=body.get("phase", "implement"),
-        provider=(
-            normalize_agent_runtime(body["provider"])
-            if body.get("provider") is not None
-            else None
-        ),
+        agent_runtime=agent_runtime,
+        connection=body.get("connection"),
+        execution_profile=body.get("execution_profile"),
+        execution_requirements=body.get("execution_requirements"),
         effort=str(body["effort"]).lower() if body.get("effort") else None,
     )
     asyncio.create_task(
@@ -362,11 +412,47 @@ async def update_task(task_id: str, body: dict, s: ProjectSession = Depends(_res
     updates = {k: v for k, v in body.items() if k in _ALLOWED_TASK_COLS}
     if not updates:
         return task
-    provider = updates.get("provider")
-    if provider is not None:
+    legacy_runtime = updates.get("provider")
+    canonical_runtime = updates.get("agent_runtime")
+    selected_runtime = (
+        canonical_runtime if canonical_runtime is not None else legacy_runtime
+    )
+    if selected_runtime is not None:
         try:
-            updates["provider"] = normalize_agent_runtime(provider)
+            normalized = normalize_agent_runtime(selected_runtime)
+            if (
+                canonical_runtime is not None
+                and legacy_runtime is not None
+                and normalize_agent_runtime(legacy_runtime) != normalized
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail="agent_runtime conflicts with legacy provider",
+                )
+            updates["agent_runtime"] = normalized
+            updates["provider"] = normalized
         except AgentRuntimeSelectionError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if "execution_requirements" in updates:
+        try:
+            parse_requirements(updates["execution_requirements"])
+        except InvalidExecutionConfig as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if "connection" in updates and updates["connection"] is not None:
+        try:
+            runtime = normalize_agent_runtime(
+                updates.get("agent_runtime")
+                or task.get("agent_runtime")
+                or task.get("provider"),
+                GLOBAL_SETTINGS.get("agent_runtime")
+                or GLOBAL_SETTINGS.get("worker_provider", "claude"),
+            )
+            resolve_connection(
+                connection_id=str(updates["connection"]),
+                runtime_id=runtime,
+                connections=GLOBAL_SETTINGS.get("connections") or {},
+            )
+        except (AgentRuntimeSelectionError, InvalidExecutionConfig) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
     effort = updates.get("effort")
     if effort is not None:
