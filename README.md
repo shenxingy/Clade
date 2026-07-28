@@ -297,7 +297,7 @@ clade/
 │   ├── hooks/               # 30 event hooks
 │   ├── agents/              # 36 agent definitions
 │   └── scripts/             # 35 shell + 13 Python utilities
-├── plugins/clade/           # Native Codex plugin (21 generated core skills + hooks)
+├── plugins/clade/           # Native Codex plugin (25 generated core skills + hooks)
 ├── .agents/plugins/         # Codex marketplace manifest
 ├── orchestrator/            # ← THE EXECUTION ADAPTER
 │   ├── server.py            # FastAPI app, routes, WebSocket

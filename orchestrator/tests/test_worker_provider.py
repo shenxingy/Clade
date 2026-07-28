@@ -7,6 +7,7 @@ flags and with stdin closed so a headless worker cannot hang.
 """
 
 import shlex
+import stat
 from pathlib import Path
 
 import pytest
@@ -20,6 +21,7 @@ from worker_provider import (
     get_agent_runtime,
     get_worker_provider,
 )
+from worker_provider import _probe_runtime_version
 
 TASK = Path("/tmp/task-abc.md")
 NO_MCP = Path("/nonexistent/.claude/mcp.json")
@@ -52,13 +54,31 @@ def test_claude_appends_mcp_config_only_when_present(tmp_path):
     assert "--mcp-config" not in without
 
 
-def test_claude_resolve_model_maps_aliases_and_falls_back():
+def test_claude_resolve_model_maps_aliases_and_preserves_opaque_ids():
     p = ClaudeProvider()
     assert p.resolve_model("sonnet") == _MODEL_ALIASES["sonnet"]
     assert p.resolve_model("opus") == _MODEL_ALIASES["opus"]
-    # An unknown/garbage model degrades to the sonnet default, never crashes.
-    assert p.resolve_model("gpt-5.6-sol") == SONNET_MODEL
+    # Model IDs belong to the selected connection, not a Clade allowlist.
+    assert p.resolve_model("MiniMax-M2.5") == "MiniMax-M2.5"
+    assert p.resolve_model("kimi-k2.5") == "kimi-k2.5"
     assert p.resolve_model(None) == SONNET_MODEL
+
+
+def test_claude_shell_quotes_opaque_model_and_rejects_whitespace():
+    cmd = ClaudeProvider().build_command(
+        task_file=TASK,
+        requested_model="vendor/model+2026.07",
+        task_type=None,
+        mcp_config=NO_MCP,
+    )
+    assert f"--model {shlex.quote('vendor/model+2026.07')}" in cmd
+    with pytest.raises(ValueError, match="opaque identifier"):
+        ClaudeProvider().build_command(
+            task_file=TASK,
+            requested_model="model; echo injected",
+            task_type=None,
+            mcp_config=NO_MCP,
+        )
 
 
 def test_claude_continue_command_uses_continue_flag():
@@ -126,10 +146,11 @@ def test_codex_command_passes_reasoning_effort_as_config():
     ]
 
 
-def test_codex_resolve_model_only_accepts_codex_ids():
+def test_codex_resolve_model_accepts_connection_scoped_opaque_ids():
     p = CodexProvider()
     assert p.resolve_model("gpt-5.6-sol") == "gpt-5.6-sol"
     assert p.resolve_model("o4-mini") == "o4-mini"
+    assert p.resolve_model("custom/minimax-m2.5") == "custom/minimax-m2.5"
     assert p.resolve_model("sonnet") is None  # claude alias -> codex default
     assert p.resolve_model("") is None
     assert p.resolve_model(None) is None
@@ -179,3 +200,24 @@ def test_factory_invalid_global_runtime_fails_closed(monkeypatch):
 def test_all_providers_are_workerprovider_subclasses():
     assert issubclass(ClaudeProvider, WorkerProvider)
     assert issubclass(CodexProvider, WorkerProvider)
+
+
+def test_runtime_version_probe_isolated_from_repository_and_stdin(
+    tmp_path, monkeypatch
+):
+    runtime = tmp_path / "probe-runtime"
+    runtime.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -eu\n"
+        "test ! -t 0\n"
+        "echo polluted > should-not-reach-repository.txt\n"
+        "echo runtime-v1\n",
+        encoding="utf-8",
+    )
+    runtime.chmod(runtime.stat().st_mode | stat.S_IXUSR)
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    monkeypatch.chdir(repository)
+
+    assert _probe_runtime_version(str(runtime)) == "runtime-v1"
+    assert not (repository / "should-not-reach-repository.txt").exists()

@@ -22,6 +22,11 @@ from fastapi.staticfiles import StaticFiles
 import httpx
 
 from agent_runtime import AgentRuntimeSelectionError, normalize_agent_runtime
+from execution_envelope import (
+    ExecutionResolutionError,
+    InvalidExecutionConfig,
+    resolve_connection,
+)
 from config import (
     GLOBAL_SETTINGS,
     PROJECT_DIR,
@@ -108,6 +113,13 @@ app = FastAPI(title="Claude Code Orchestrator", lifespan=lifespan)
 @app.exception_handler(AgentRuntimeSelectionError)
 async def agent_runtime_selection_error(_request, exc: AgentRuntimeSelectionError):
     """Expose configuration mistakes as typed client errors, never HTTP 500."""
+
+    return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+
+@app.exception_handler(ExecutionResolutionError)
+async def execution_resolution_error(_request, exc: ExecutionResolutionError):
+    """Preflight failures are typed client errors, never hidden server errors."""
 
     return JSONResponse(status_code=422, content={"detail": str(exc)})
 
@@ -1061,17 +1073,59 @@ async def get_settings():
 @app.post("/api/settings")
 async def post_settings(body: dict = Body(...)):
     valid_keys = set(_SETTINGS_DEFAULTS.keys())
+    unknown = sorted(set(body) - valid_keys)
+    if unknown:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown settings: {', '.join(unknown)}",
+        )
     updates = dict(body)
-    if "worker_provider" in body:
+    canonical = body.get("agent_runtime")
+    legacy = body.get("worker_provider")
+    if "agent_runtime" in body or "worker_provider" in body:
         try:
-            updates["worker_provider"] = normalize_agent_runtime(
-                body["worker_provider"]
+            normalized = normalize_agent_runtime(
+                canonical if "agent_runtime" in body else legacy
             )
+            if (
+                canonical is not None
+                and legacy is not None
+                and normalize_agent_runtime(legacy) != normalized
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail="agent_runtime conflicts with legacy worker_provider",
+                )
+            updates["agent_runtime"] = normalized
+            updates["worker_provider"] = normalized
         except AgentRuntimeSelectionError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+    merged_connections = updates.get(
+        "connections", GLOBAL_SETTINGS.get("connections") or {}
+    )
+    runtime_connections = updates.get(
+        "runtime_connections",
+        GLOBAL_SETTINGS.get("runtime_connections") or {},
+    )
+    if not isinstance(merged_connections, dict):
+        raise HTTPException(status_code=422, detail="connections must be an object")
+    if not isinstance(runtime_connections, dict):
+        raise HTTPException(
+            status_code=422,
+            detail="runtime_connections must be an object",
+        )
+    try:
+        for runtime, connection_id in runtime_connections.items():
+            normalized_runtime = normalize_agent_runtime(runtime)
+            resolve_connection(
+                connection_id=str(connection_id),
+                runtime_id=normalized_runtime,
+                connections=merged_connections,
+            )
+    except (AgentRuntimeSelectionError, InvalidExecutionConfig) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     for k, v in updates.items():
-        if k in valid_keys:
-            GLOBAL_SETTINGS[k] = v
+        GLOBAL_SETTINGS[k] = v
     snapshot = dict(GLOBAL_SETTINGS)
     await asyncio.to_thread(_save_settings, snapshot)
     return GLOBAL_SETTINGS
@@ -1088,7 +1142,7 @@ async def get_status(s: ProjectSession = Depends(_resolve_session)):
     return {
         "workers": workers,
         "queue": tasks,
-        "progress_pct": int(done / total * 100) if total > 0 else 0,
+        "progress_pct": int(done / total * 100) if total > 0 else None,
         "orchestrator_alive": s.orchestrator.is_alive(),
         "session_id": s.session_id,
         "schedule": s._schedule_dict(),

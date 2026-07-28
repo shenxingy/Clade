@@ -14,6 +14,8 @@ import shlex
 import signal
 import time
 from pathlib import Path
+
+from execution_envelope import InvalidExecutionConfig, validate_model_id
 from typing import Any
 
 import aiosqlite
@@ -33,6 +35,8 @@ _ALLOWED_TASK_COLS = {"status", "description", "model", "depends_on", "score",
                       "handoff_type", "handoff_payload", "completion_summary",
                       "token_budget", "context_version", "attempt_count",
                       "phase", "oracle_result", "oracle_reason", "pgid", "provider",
+                      "agent_runtime", "connection", "execution_profile",
+                      "execution_requirements", "execution_envelope",
                       "effort", "route_reason"}
 
 _ALLOWED_LOOP_COLS = {
@@ -57,11 +61,10 @@ HAIKU_MODEL = _MODEL_ALIASES["haiku"]
 SONNET_MODEL = _MODEL_ALIASES["sonnet"]
 OPUS_MODEL = _MODEL_ALIASES["opus"]
 
-# Every model id a worker (or its fallback) may run — the allowlist for values
-# spliced into the `claude -p ... --model/--fallback-model` shell command. A
-# user-controlled setting must never reach the shell as an arbitrary string, so
-# both the primary model (worker.py) and the fallback (_resolve_fallback_model)
-# validate against this set.
+# Pinned built-in Claude metadata retained for aliases, routing defaults, and
+# offline tests. This is not a universal model allowlist: gateways and custom
+# providers use opaque model IDs validated and shell-quoted at the adapter
+# boundary.
 ALLOWED_MODEL_IDS = set(_MODEL_ALIASES.values()) | {
     "claude-opus-4-5", "claude-sonnet-4-5", "claude-haiku-4-5",
 }
@@ -198,6 +201,31 @@ _SETTINGS_DEFAULTS = {
     # agent loop), NOT the inference provider. Per-task `provider` is the
     # legacy override until the persisted schema migrates.
     "worker_provider": "claude",
+    "agent_runtime": "claude",
+    # Secret-free connection identities. Native runtime/provider configuration
+    # owns endpoints and credentials; envelopes record only these identities.
+    "runtime_connections": {
+        "claude": "claude-default",
+        "codex": "codex-default",
+    },
+    "connections": {
+        "claude-default": {
+            "agent_runtime": "claude",
+            "inference_provider": "runtime-default",
+            "wire_protocol": "runtime-native",
+            "endpoint_identity": "claude-user-config",
+            "models": {},
+            "capabilities": {},
+        },
+        "codex-default": {
+            "agent_runtime": "codex",
+            "inference_provider": "runtime-default",
+            "wire_protocol": "runtime-native",
+            "endpoint_identity": "codex-user-config",
+            "models": {},
+            "capabilities": {},
+        },
+    },
     "codex_cheap_model": "gpt-5.6-terra",  # cheap bounded-task tier; Spark remains an explicit opt-in
     "codex_strong_model": "gpt-5.6-sol",  # low-readiness / critical-path tier
     # Usage tracking (multi-machine ccusage aggregation — see usage_tracker.py)
@@ -278,6 +306,12 @@ def _load_settings() -> dict:
             ", ".join(unknown),
         )
     settings.update(loaded)
+    # Bidirectional compatibility during the deprecation window. Canonical
+    # agent_runtime wins when both are present; old files migrate in memory.
+    if "agent_runtime" in loaded:
+        settings["worker_provider"] = loaded["agent_runtime"]
+    elif "worker_provider" in loaded:
+        settings["agent_runtime"] = loaded["worker_provider"]
     return settings
 
 
@@ -810,18 +844,22 @@ def _resolve_fallback_model(requested_model: str) -> str | None:
         if not fb_alias:
             return None
         candidate = _MODEL_ALIASES.get(fb_alias, fb_alias)
-    # Security: the resolved id is spliced into the worker shell command, so it
-    # must be a KNOWN model, never a user-controlled arbitrary string (mirrors
-    # the primary --model whitelist in worker._build_cmd_and_env).
-    return candidate if candidate in ALLOWED_MODEL_IDS else None
+    # Model ids are provider-scoped and opaque. The command adapter validates
+    # control characters and shell-quotes this value before execution.
+    return candidate or None
 
 
 def _fallback_flag(requested_model: str) -> str:
     """--fallback-model flag string for a worker spawn, or '' when disabled/none."""
     fb = _resolve_fallback_model(requested_model)
-    # _resolve_fallback_model already guarantees fb ∈ ALLOWED_MODEL_IDS; shlex.quote
-    # is belt-and-suspenders so the splice can never break the shell command.
-    return f" --fallback-model {shlex.quote(fb)}" if fb else ""
+    if not fb:
+        return ""
+    try:
+        validated = validate_model_id(fb, allow_none=False)
+    except InvalidExecutionConfig:
+        return ""
+    assert validated is not None
+    return f" --fallback-model {shlex.quote(validated)}"
 
 
 # ─── Task Schema / JSON Envelope (Multi-agent Gap 3) ─────────────────────────

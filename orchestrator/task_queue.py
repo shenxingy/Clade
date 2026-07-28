@@ -150,6 +150,11 @@ class TaskQueue:
                 await _migrate("ALTER TABLE tasks ADD COLUMN oracle_reason TEXT")
                 await _migrate("ALTER TABLE tasks ADD COLUMN pgid INTEGER")
                 await _migrate("ALTER TABLE tasks ADD COLUMN provider TEXT")
+                await _migrate("ALTER TABLE tasks ADD COLUMN agent_runtime TEXT")
+                await _migrate("ALTER TABLE tasks ADD COLUMN connection TEXT")
+                await _migrate("ALTER TABLE tasks ADD COLUMN execution_profile TEXT")
+                await _migrate("ALTER TABLE tasks ADD COLUMN execution_requirements TEXT DEFAULT '{}'")
+                await _migrate("ALTER TABLE tasks ADD COLUMN execution_envelope TEXT")
                 await _migrate("ALTER TABLE tasks ADD COLUMN effort TEXT")
                 await _migrate("ALTER TABLE tasks ADD COLUMN route_reason TEXT")
                 await db.execute("""
@@ -239,15 +244,27 @@ class TaskQueue:
 
     def _row_to_dict(self, row) -> dict:
         d = dict(row)
-        for key in ("depends_on", "own_files", "forbidden_files"):
+        for key in (
+            "depends_on",
+            "own_files",
+            "forbidden_files",
+            "execution_requirements",
+            "execution_envelope",
+        ):
             raw = d.get(key)
             if isinstance(raw, str):
                 try:
                     d[key] = json.loads(raw)
                 except Exception:
-                    d[key] = []
+                    d[key] = (
+                        []
+                        if key in {"depends_on", "own_files", "forbidden_files"}
+                        else None
+                    )
             elif raw is None:
-                d[key] = []
+                d[key] = (
+                    [] if key in {"depends_on", "own_files", "forbidden_files"} else None
+                )
         return d
 
     # ─── Task CRUD ───────────────────────────────────────────────────────────
@@ -268,7 +285,11 @@ class TaskQueue:
                   source_ref: str | None = None,
                   parent_task_id: str | None = None,
                   phase: str = "implement",
+                  agent_runtime: str | None = None,
                   provider: str | None = None,
+                  connection: str | None = None,
+                  execution_profile: str | None = None,
+                  execution_requirements: dict | None = None,
                   effort: str | None = None) -> dict:
         await self._ensure_db()
         task = {
@@ -295,7 +316,12 @@ class TaskQueue:
             "source_ref": source_ref,
             "parent_task_id": parent_task_id,
             "phase": phase,
-            "provider": provider,
+            "agent_runtime": agent_runtime or provider,
+            "provider": agent_runtime or provider,
+            "connection": connection,
+            "execution_profile": execution_profile,
+            "execution_requirements": execution_requirements or {},
+            "execution_envelope": None,
             "effort": effort,
             "route_reason": None,
         }
@@ -306,8 +332,9 @@ class TaskQueue:
                     started_at, elapsed_s, last_commit, log_file, failed_reason,
                     created_at, depends_on, score, score_note, own_files, forbidden_files,
                     is_critical_path, task_type, source_ref, parent_task_id, phase,
-                    provider, effort, route_reason)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    agent_runtime, provider, connection, execution_profile,
+                    execution_requirements, execution_envelope, effort, route_reason)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     task["id"], task["description"], task["model"],
                     task["timeout"], task["retries"], task["status"],
@@ -317,8 +344,10 @@ class TaskQueue:
                     task["score"], task["score_note"],
                     json.dumps(task["own_files"]), json.dumps(task["forbidden_files"]),
                     task["is_critical_path"], task["task_type"], task["source_ref"],
-                    task["parent_task_id"], task["phase"], task["provider"],
-                    task["effort"], task["route_reason"],
+                    task["parent_task_id"], task["phase"], task["agent_runtime"],
+                    task["provider"], task["connection"], task["execution_profile"],
+                    json.dumps(task["execution_requirements"]),
+                    task["execution_envelope"], task["effort"], task["route_reason"],
                 ),
             )
             await db.commit()
@@ -328,7 +357,13 @@ class TaskQueue:
         await self._ensure_db()
         if not kwargs:
             return await self.get(task_id)
-        for key in ("depends_on", "own_files", "forbidden_files"):
+        for key in (
+            "depends_on",
+            "own_files",
+            "forbidden_files",
+            "execution_requirements",
+            "execution_envelope",
+        ):
             if key in kwargs:
                 val = kwargs[key]
                 kwargs[key] = json.dumps(val) if not isinstance(val, str) else val

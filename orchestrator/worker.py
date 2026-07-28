@@ -37,8 +37,10 @@ from task_queue import TaskQueue
 from github_sync import _gh_update_issue_status
 from session_tree import SessionTree
 from execution_backend import LocalSubprocessBackend, get_execution_backend
+from execution_envelope import ExecutionEnvelope
 from worker_provider import get_agent_runtime
-from worker_runtime import resolve_runtime_route
+from worker_runtime import resolve_worker_execution
+from worker_status import worker_to_dict
 import condensers
 import worker_review
 import worker_tldr
@@ -100,11 +102,17 @@ class Worker:
         provider: str | None = None,
         effort: str | None = None,
         route_reason: str | None = None,
+        execution_envelope: ExecutionEnvelope | None = None,
     ):
         self.id = str(uuid.uuid4())[:8]
         self.task_id = task_id
         self.description = description
-        self.model = model
+        self.execution_envelope = execution_envelope
+        self.model = (
+            execution_envelope.resolved.model
+            if execution_envelope and execution_envelope.resolved.model
+            else model
+        )
         self._project_dir = project_dir
         self.task_type = task_type or _parse_task_type(description)
         self._original_project_dir = project_dir  # preserved for restore after worktree cleanup
@@ -123,10 +131,19 @@ class Worker:
         # Agent runtime (which CLI owns the loop: Claude Code vs Codex). The
         # `provider` argument/attribute remains as a compatibility alias for the
         # persisted task schema; it does not mean inference provider.
-        self._runtime_adapter = get_agent_runtime(provider)
+        runtime_name = (
+            execution_envelope.resolved.runtime_id
+            if execution_envelope
+            else provider
+        )
+        self._runtime_adapter = get_agent_runtime(runtime_name)
         self.agent_runtime = self._runtime_adapter.name
         self.provider = self.agent_runtime
-        self.effort = effort
+        self.effort = (
+            execution_envelope.resolved.effort
+            if execution_envelope
+            else effort
+        )
         self.route_reason = route_reason
         self.started_at = time.time()
         self._finished_at: float | None = None
@@ -195,50 +212,7 @@ class Worker:
         return int((self._finished_at or time.time()) - self.started_at)
 
     def to_dict(self) -> dict:
-        log_tail = ""
-        if self._log_path and self._log_path.exists():
-            try:
-                text = self._log_path.read_text(errors="replace")
-                log_tail = _truncate_output(text, max_lines=4, max_bytes=4096)
-            except Exception:
-                pass
-        return {
-            "id": self.id,
-            "task_id": self.task_id,
-            "description": self.description[:80],
-            "model": self.model,
-            "agent_runtime": self.agent_runtime,
-            "provider": self.provider,
-            "effort": self.effort,
-            "route_reason": self.route_reason,
-            "status": self.status,
-            "pid": self.pid,
-            "elapsed_s": self.elapsed_s,
-            "last_commit": self.last_commit,
-            "log_file": self.log_file,
-            "verified": self.verified,
-            "auto_committed": self.auto_committed,
-            "auto_pushed": self.auto_pushed,
-            "branch_name": self.branch_name,
-            "pr_url": self.pr_url,
-            "pr_merged": self.pr_merged,
-            "log_tail": log_tail,
-            "failure_context": self.failure_context,
-            "failure_class": self.failure_class,
-            "worktree_path": str(self._worktree_path) if self._worktree_path else None,
-            "oracle_result": self.oracle_result,
-            "oracle_reason": self.oracle_reason,
-            "transition_reason": self.transition_reason,
-            "completion_summary": self.completion_summary,
-            "model_score": self.model_score,
-            "estimated_tokens": self._estimate_tokens(),
-            "context_warning": self._estimate_tokens() > 160000,
-            "input_tokens": self._input_tokens,
-            "output_tokens": self._output_tokens,
-            "estimated_cost": self._estimated_cost,
-            "loop_detected": self._loop_detector.is_looping,
-            "loop_reason": self._loop_detector.reason,
-        }
+        return worker_to_dict(self)
 
     def _estimate_tokens(self) -> int:
         desc_tokens = len(self.description) // 4
@@ -371,6 +345,11 @@ class Worker:
             "task_id": self.task_id,
             "model": self.model,
             "provider": self.provider, "effort": self.effort, "route_reason": self.route_reason,
+            "execution_envelope": (
+                self.execution_envelope.to_dict()
+                if self.execution_envelope
+                else None
+            ),
             "task_type": self.task_type,
             "description": self.description[:200],  # truncate for log
         })
@@ -1174,7 +1153,8 @@ class WorkerPool:
         if existing:
             return existing
         description = task["description"]
-        route = await resolve_runtime_route(task, GLOBAL_SETTINGS, task_queue)
+        plan = await resolve_worker_execution(task, GLOBAL_SETTINGS, task_queue)
+        route = plan.route
         if route.needs_clarification:
             description = (
                 "⚠ Low readiness (<50): ask clarifying questions before coding. "
@@ -1196,12 +1176,13 @@ class WorkerPool:
         worker = Worker(
             task["id"],
             description,
-            route.model,
+            plan.envelope.resolved.model or route.model,
             project_dir,
             claude_dir,
             provider=route.agent_runtime,
-            effort=route.effort,
+            effort=plan.envelope.resolved.effort,
             route_reason=route.reason,
+            execution_envelope=plan.envelope,
         )
         worker.model_score = task.get("score")
         worker.task_timeout = task.get("timeout", 600)
@@ -1219,8 +1200,10 @@ class WorkerPool:
         _cur_attempts = (task.get("attempt_count") or 0) + 1
         await task_queue.update(
             task["id"], status="running", worker_id=worker.id,
-            attempt_count=_cur_attempts, model=route.model, provider=route.provider,
-            effort=route.effort, route_reason=route.reason,
+            attempt_count=_cur_attempts, model=worker.model,
+            agent_runtime=route.agent_runtime, provider=route.provider,
+            effort=worker.effort, route_reason=route.reason,
+            execution_envelope=plan.envelope.to_dict(),
         )
         await worker.start(task_queue=task_queue)
         return worker

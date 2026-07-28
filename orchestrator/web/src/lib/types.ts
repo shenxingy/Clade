@@ -2,13 +2,88 @@
 
 export type TaskStatus = 'pending' | 'running' | 'done' | 'failed' | 'paused';
 export type TaskType = 'AUTO' | 'HORIZONTAL' | 'VERTICAL';
+export type AgentRuntime = 'claude' | 'codex';
+export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
+export interface ExecutionEnvelope {
+  schema_version: 'clade.execution/v1';
+  run_id: string;
+  created_at: string;
+  request: {
+    profile: string;
+    runtime: AgentRuntime;
+    connection: string;
+    model: string | null;
+    effort: Effort | null;
+    requirements: Array<{ capability: string; level: string }>;
+    preferences: Record<string, unknown>;
+  };
+  resolved: {
+    surface: string;
+    runtime: { id: AgentRuntime; version: string | null };
+    inference: {
+      connection: string;
+      provider: string;
+      protocol: string;
+      endpoint_identity: string;
+      model: string | null;
+    };
+    controls: { effort: Effort | null };
+    resume: string;
+    capabilities: Record<string, { state: string; source: string }>;
+  };
+  degradations: Array<{
+    capability: string;
+    requested: string;
+    resolved: string;
+    reason: string;
+  }>;
+  provenance: Record<string, string>;
+}
+
+export interface StatusSnapshot {
+  schema_version: 'clade.status/v1';
+  observed_at: string;
+  task: {
+    id: string;
+    state: string;
+    progress: {
+      completed: number | null;
+      total: number | null;
+      source: string;
+    };
+  };
+  git: {
+    branch: string | null;
+    dirty: boolean | null;
+    checkpoint_sha: string | null;
+  };
+  execution: ExecutionEnvelope | null;
+  limits: Array<Record<string, unknown>>;
+  freshness: Record<string, string>;
+}
+
+export interface RuntimeConnection {
+  agent_runtime: AgentRuntime;
+  inference_provider: string;
+  wire_protocol: string;
+  endpoint_identity: string;
+  models: Record<string, string>;
+  capabilities: Record<string, string>;
+}
 
 export interface Task {
   id: string;
   description: string;
   model: string;
-  provider: 'claude' | 'codex' | null;
-  effort: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | null;
+  agent_runtime: AgentRuntime | null;
+  /** @deprecated Compatibility alias for agent_runtime. */
+  provider: AgentRuntime | null;
+  connection: string | null;
+  execution_profile: string | null;
+  execution_requirements: Record<string, string>;
+  execution_envelope: ExecutionEnvelope | null;
+  effort: Effort | null;
   route_reason: string | null;
   timeout: number;
   status: TaskStatus;
@@ -38,11 +113,13 @@ export interface Worker {
   task_id: string;
   description: string;
   model: string;
-  agent_runtime?: 'claude' | 'codex';
+  agent_runtime?: AgentRuntime;
   /** @deprecated Compatibility alias for agent_runtime. */
-  provider?: 'claude' | 'codex';
-  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | null;
+  provider?: AgentRuntime;
+  effort?: Effort | null;
   route_reason?: string | null;
+  execution_envelope?: ExecutionEnvelope | null;
+  status_snapshot?: StatusSnapshot;
   status: string;
   log_tail: string;           // raw string from server (split on \n to display)
   elapsed_s: number;
@@ -94,7 +171,11 @@ export interface GlobalSettings {
   loop_max_iterations: number;
   notification_webhook: string;
   usage_provider: string;
-  worker_provider?: 'claude' | 'codex';
+  agent_runtime: AgentRuntime;
+  /** @deprecated Compatibility alias for agent_runtime. */
+  worker_provider?: AgentRuntime;
+  runtime_connections: Record<AgentRuntime, string>;
+  connections: Record<string, RuntimeConnection>;
   codex_cheap_model?: string;
   codex_strong_model?: string;
 }
@@ -107,9 +188,9 @@ export interface StatusMessage {
   queue: Task[];              // server sends 'queue', not 'tasks'
   workers: Worker[];          // server sends array, not Record
   loop_state: Record<string, unknown> | null;
-  progress_pct: number;
-  eta_seconds: number;
-  success_rate: number;
+  progress_pct: number | null;
+  eta_seconds: number | null;
+  success_rate: number | null;
   run_complete: boolean;
   budget_exceeded: boolean;
   budget_limit: number;

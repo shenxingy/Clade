@@ -42,6 +42,11 @@ export function WorkerCard({ worker }: { worker: Worker }) {
         >
           <span className="text-green-400 text-xs font-mono">{worker.id.slice(0, 8)}</span>
           <ModelBadge model={worker.model} />
+          {worker.execution_envelope?.resolved.inference.provider && (
+            <span className="text-[10px] text-muted-foreground">
+              {worker.agent_runtime ?? worker.provider} · {worker.execution_envelope.resolved.inference.provider}
+            </span>
+          )}
           <span className="flex-1 text-sm text-foreground truncate">{worker.description}</span>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span>{formatDuration(worker.elapsed_s)}</span>

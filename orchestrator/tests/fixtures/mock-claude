@@ -30,6 +30,11 @@
 # may leave stdin attached to the parent process (a blocking `cat` would hang).
 set -u
 
+if [[ "${1:-}" == "--version" ]]; then
+  echo "mock-claude 1.0"
+  exit 0
+fi
+
 # ─── Extract the prompt from argv (skip value-taking flags) ───────────────────
 PROMPT=""
 prev=""
