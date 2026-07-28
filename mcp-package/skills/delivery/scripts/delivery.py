@@ -322,6 +322,7 @@ def cmd_start(args: argparse.Namespace) -> dict[str, Any]:
         "published": False,
         "pull_request": None,
         "verification": {"checkpoints": [], "candidate": None},
+        "restacks": [],
         "authorization": {
             "push": args.push_authority,
             "open_pr": args.pr_authority,
@@ -406,6 +407,63 @@ def cmd_candidate(args: argparse.Namespace) -> dict[str, Any]:
         state["base_sha"] = base_sha
         state["verification"]["candidate"] = candidate
         state["state"] = "BUILD"
+        _write_state(root, state)
+    return state
+
+
+def cmd_restack(args: argparse.Namespace) -> dict[str, Any]:
+    """Record verified new ancestry after an owned rebase/restack."""
+
+    root = _root(args.repo.resolve())
+    if _git(root, "status", "--porcelain=v1").stdout.strip():
+        raise DeliveryError("refusing to record restack with a dirty working tree")
+    with _locked_state_dir(root):
+        state = _read_state(root, args.id)
+        sha = _verify_delivery_checkout(root, state)
+        previous = state.get("head_sha")
+        if args.previous_head != previous:
+            raise DeliveryError(
+                f"restack lease mismatch: expected recorded head {previous}, "
+                f"received {args.previous_head}"
+            )
+        base_sha = _git(root, "rev-parse", args.base, check=True).stdout.strip()
+        if _git(
+            root,
+            "merge-base",
+            "--is-ancestor",
+            base_sha,
+            sha,
+        ).returncode != 0:
+            raise DeliveryError(
+                f"new base {args.base!r} ({base_sha}) is not an ancestor of HEAD {sha}"
+            )
+        if state.get("published") and not args.pr_base_updated:
+            raise DeliveryError(
+                "published delivery requires --pr-base-updated after retargeting "
+                "the pull request"
+            )
+        restacks = state.setdefault("restacks", [])
+        restacks.append(
+            {
+                "previous_head_sha": previous,
+                "head_sha": sha,
+                "previous_base_ref": state.get("base_ref"),
+                "previous_base_sha": state.get("base_sha"),
+                "base_ref": args.base,
+                "base_sha": base_sha,
+                "parent": args.parent,
+                "recorded_at": _now(),
+            }
+        )
+        state["head_sha"] = sha
+        state["base_ref"] = args.base
+        state["base_sha"] = base_sha
+        state["parent"] = args.parent
+        state["verification"]["candidate"] = None
+        if state.get("pull_request") and args.pr_base_updated:
+            state["pull_request"]["base"] = args.pr_base or args.base
+            state["pull_request"]["head_sha"] = sha
+        state["state"] = "PUBLISHED" if state.get("published") else "BUILD"
         _write_state(root, state)
     return state
 
@@ -829,6 +887,16 @@ def build_parser() -> argparse.ArgumentParser:
         command.add_argument("--result", required=True)
         command.add_argument("--head-sha")
         command.set_defaults(handler=handler)
+
+    restack = sub.add_parser("restack")
+    _common_repo(restack)
+    restack.add_argument("--id", required=True)
+    restack.add_argument("--previous-head", required=True)
+    restack.add_argument("--base", required=True)
+    restack.add_argument("--parent")
+    restack.add_argument("--pr-base-updated", action="store_true")
+    restack.add_argument("--pr-base")
+    restack.set_defaults(handler=cmd_restack)
 
     publish = sub.add_parser("publish")
     _common_repo(publish)
