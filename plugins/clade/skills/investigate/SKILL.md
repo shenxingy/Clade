@@ -240,3 +240,19 @@ The subagent reads code and forms hypotheses but cannot modify files. Merge its 
 | Bug is in a dependency (not this codebase) | Go to Phase 6b: minimal repro → upstream patch > pin-with-linked-issue > documented workaround. Never patch the installed copy in-place. |
 | Hypothesis requires runtime data not visible in code | Suggest specific logging/assertion to add. Output as NEEDS_CONTEXT with exact location and what to log. |
 | 3 hypotheses exhausted, still no root cause | Output BLOCKED — write to `.clade/blockers.md` with what was tried and what's needed |
+
+## Delivery completion
+
+If this workflow changes files or external state:
+
+- Inspect the real final state before responding, including `git status` for a
+  repository task.
+- Never report `DONE` while task-owned changes are uncommitted. Use or continue
+  `$clade:delivery` and create a repository-compliant checkpoint or preserve
+  the work when committing is unavailable.
+- When the user request or trusted repository policy makes publication,
+  deployment, or live verification part of the task, do not silently downgrade
+  the result to local-only work.
+- If a required delivery transition lacks authority, credentials, a destination,
+  or reachable external state, report `BLOCKED` or `NEEDS_CONTEXT` rather than
+  appending a "not committed/pushed/deployed" caveat after `DONE`.

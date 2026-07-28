@@ -100,6 +100,22 @@ def test_delivery_lifecycle_has_semantic_parity_across_distributions() -> None:
     assert lifecycle <= canonical
 
 
+def test_all_codex_skills_end_with_delivery_completion_guard() -> None:
+    skills = list((PLUGIN_ROOT / "skills").glob("*/SKILL.md"))
+    for path in skills:
+        text = path.read_text(encoding="utf-8")
+        assert "## Delivery completion" in text, path
+        assert "Never report `DONE` while task-owned changes are uncommitted." in text, path
+        assert '"not committed/pushed/deployed" caveat after `DONE`' in text, path
+
+    frontend = (PLUGIN_ROOT / "skills" / "frontend-design" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    assert frontend.rfind("## Delivery completion") > frontend.rfind(
+        "## Completion Status"
+    )
+
+
 def test_execution_and_status_semantics_have_distribution_parity() -> None:
     semantic_core = {"provider", "status"}
     codex = {
@@ -161,5 +177,10 @@ def test_codex_session_context_emits_read_only_repository_guidance(tmp_path) -> 
     assert "AGENTS.md" in output["additionalContext"]
     assert "Adaptive delegation" in output["additionalContext"]
     assert "Cross-vendor calls are explicit-only" in output["additionalContext"]
+    assert "Delivery completion" in output["additionalContext"]
+    assert "Never report DONE with task-owned uncommitted changes" in output[
+        "additionalContext"
+    ]
+    assert "not a DONE caveat" in output["additionalContext"]
     assert "Uncommitted changes" in output["additionalContext"]
     assert not (tmp_path / ".clade").exists()

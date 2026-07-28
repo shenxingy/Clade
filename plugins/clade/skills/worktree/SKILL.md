@@ -124,3 +124,19 @@ Create or manage isolated agent workspaces without assuming every runtime uses
 a sibling directory plus immediate branch. Worktree ownership is recorded in
 the shared `$clade:delivery` state; independently reviewable work integrates through
 the target repository's PR/queue policy, not an arbitrary local merge.
+
+## Delivery completion
+
+If this workflow changes files or external state:
+
+- Inspect the real final state before responding, including `git status` for a
+  repository task.
+- Never report `DONE` while task-owned changes are uncommitted. Use or continue
+  `$clade:delivery` and create a repository-compliant checkpoint or preserve
+  the work when committing is unavailable.
+- When the user request or trusted repository policy makes publication,
+  deployment, or live verification part of the task, do not silently downgrade
+  the result to local-only work.
+- If a required delivery transition lacks authority, credentials, a destination,
+  or reachable external state, report `BLOCKED` or `NEEDS_CONTEXT` rather than
+  appending a "not committed/pushed/deployed" caveat after `DONE`.

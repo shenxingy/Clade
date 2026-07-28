@@ -4,4 +4,6 @@ ptyprocess==0.7.0
 watchfiles==1.1.1
 aiosqlite==0.22.1
 httpx==0.28.1
-mcp>=1.0.0
+# MCP v2 is a breaking API rewrite; migrate before removing this bound:
+# https://github.com/modelcontextprotocol/python-sdk/issues/1068
+mcp>=1.0.0,<2

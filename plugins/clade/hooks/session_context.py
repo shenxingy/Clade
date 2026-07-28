@@ -35,6 +35,14 @@ def main() -> int:
             "when those profiles are installed. Never overlap writers, never recurse, allow one "
             "cheap retry, and have the lead review all evidence. Cross-vendor calls are explicit-only."
         ),
+        (
+            "Delivery completion: for any task that changes files or external state, inspect the "
+            "real final state before responding. Never report DONE with task-owned uncommitted "
+            "changes; use or continue $clade:delivery to checkpoint or preserve them. If the request or "
+            "trusted repository policy requires publication, deployment, or live verification, "
+            "do not silently downgrade to local-only work. Missing authority, credentials, "
+            "destination, or external state is BLOCKED or NEEDS_CONTEXT, not a DONE caveat."
+        ),
     ]
     branch = _git(cwd, "branch", "--show-current")
     if branch:
