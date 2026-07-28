@@ -161,3 +161,19 @@ Integrator workflow for an already reviewed Clade delivery. It never treats
 authorship as merge authority, never bypasses pending/red gates, locks the
 reviewed head SHA, respects repository merge policy and live child ancestry,
 and does not finish until mainline/branch cleanup is verified.
+
+## Delivery completion
+
+If this workflow changes files or external state:
+
+- Inspect the real final state before responding, including `git status` for a
+  repository task.
+- Never report `DONE` while task-owned changes are uncommitted. Use or continue
+  `$clade:delivery` and create a repository-compliant checkpoint or preserve
+  the work when committing is unavailable.
+- When the user request or trusted repository policy makes publication,
+  deployment, or live verification part of the task, do not silently downgrade
+  the result to local-only work.
+- If a required delivery transition lacks authority, credentials, a destination,
+  or reachable external state, report `BLOCKED` or `NEEDS_CONTEXT` rather than
+  appending a "not committed/pushed/deployed" caveat after `DONE`.

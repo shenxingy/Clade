@@ -322,3 +322,19 @@ VERIFY_COVERAGE: N_pass/N_total|none
 # Verify Skill
 
 Post-iteration verification used by `start.sh` to check that behavior anchors still pass after autonomous work. Not user-invocable — called internally by the autonomous loop.
+
+## Delivery completion
+
+If this workflow changes files or external state:
+
+- Inspect the real final state before responding, including `git status` for a
+  repository task.
+- Never report `DONE` while task-owned changes are uncommitted. Use or continue
+  `$clade:delivery` and create a repository-compliant checkpoint or preserve
+  the work when committing is unavailable.
+- When the user request or trusted repository policy makes publication,
+  deployment, or live verification part of the task, do not silently downgrade
+  the result to local-only work.
+- If a required delivery transition lacks authority, credentials, a destination,
+  or reachable external state, report `BLOCKED` or `NEEDS_CONTEXT` rather than
+  appending a "not committed/pushed/deployed" caveat after `DONE`.

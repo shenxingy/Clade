@@ -152,6 +152,12 @@ codex_agent_count=$(ls "$CODEX_DIR/agents/"*.toml 2>/dev/null | wc -l | tr -d ' 
 grep -q '^## Adaptive Delegation$' "$CODEX_DIR/AGENTS.md" \
   && pass "Codex adaptive-delegation instructions installed" \
   || fail "Codex adaptive-delegation instructions installed"
+grep -q '^## Delivery Completion$' "$CODEX_DIR/AGENTS.md" \
+  && pass "Codex delivery-completion instructions installed" \
+  || fail "Codex delivery-completion instructions installed"
+grep -q 'Never report `DONE` while task-owned changes are uncommitted' "$CODEX_DIR/AGENTS.md" \
+  && pass "Codex dirty-DONE guard installed" \
+  || fail "Codex dirty-DONE guard installed"
 
 script_count=$(ls "$CLAUDE_DIR/scripts/"*.sh 2>/dev/null | wc -l | tr -d ' ')
 [[ "$script_count" -gt 0 ]] && pass "scripts installed ($script_count)" || fail "scripts installed"
@@ -263,12 +269,16 @@ grep -q "Agent Ground Rules" "$CLAUDE_DIR/CLAUDE.md" \
 
 codex_sentinel_count=$(grep -c "$CODEX_SENTINEL" "$CODEX_DIR/AGENTS.md" 2>/dev/null || true)
 codex_block_count=$(grep -c '<!-- BEGIN CLADE ADAPTIVE DELEGATION -->' "$CODEX_DIR/AGENTS.md" 2>/dev/null || true)
+codex_delivery_count=$(grep -c '^## Delivery Completion$' "$CODEX_DIR/AGENTS.md" 2>/dev/null || true)
 [[ "$codex_sentinel_count" -eq 1 ]] \
   && pass "Codex user instructions survive reinstall" \
   || fail "Codex user instructions survive reinstall" "sentinel found $codex_sentinel_count times"
 [[ "$codex_block_count" -eq 1 ]] \
   && pass "Codex managed instructions remain idempotent" \
   || fail "Codex managed instructions remain idempotent" "block found $codex_block_count times"
+[[ "$codex_delivery_count" -eq 1 ]] \
+  && pass "Codex delivery instructions remain idempotent" \
+  || fail "Codex delivery instructions remain idempotent" "section found $codex_delivery_count times"
 
 if command -v jq &>/dev/null; then
   model_val=$(jq -r '.model // ""' "$CLAUDE_DIR/settings.json" 2>/dev/null)

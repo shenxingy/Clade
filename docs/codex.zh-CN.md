@@ -32,8 +32,8 @@ codex plugin add clade@clade
 - 25 个核心 workflows：commit、Codex usage pace、安全审查、release 文档、frontend design、
   handoff/pickup、incident、investigation、architecture map、PR review/merge、
   research、retro、项目 review、sync、verification、worktree 与决策辅助流程
-- `SessionStart` hook：只读注入 branch、recent commits、dirty tree、handoff 和
-  repository guidance，不修改仓库
+- `SessionStart` hook：只读注入 branch、recent commits、dirty tree、handoff、
+  repository guidance 和 delivery completion，不修改仓库
 - `PreToolUse` safety hook：阻止灾难性删除、破坏性 SQL、数据库 migration 和
   shared branch force push；feature branch force push 会改写为 `--force-with-lease`
 
@@ -54,6 +54,11 @@ python3 configs/scripts/regen-codex-plugin.py --check
 原生 Codex workflows 优先读取 `AGENTS.md`，旧项目没有该文件时再读取
 `CLAUDE.md`。新的运行状态写入 `.clade/` 或 `~/.clade/`；迁移已有项目时
 可以读取 legacy Claude state，但不会创建新的 vendor-specific state。
+
+每个生成的 native skill 末尾也有同一条 delivery boundary：可写任务不能在
+task-owned 改动尚未提交时报告 `DONE`；涉及 live URL 或已部署服务的请求也不能
+被静默降级成本地修改。缺少发布或部署权限时必须报告 blocker，不能作为完成后的
+附带说明。
 
 显式调用使用 Codex 的 `$skill-name` 形式：
 
@@ -144,9 +149,10 @@ FastAPI orchestrator 已能把 `codex exec` 当作一等 worker provider。全�
 质量/总时间都不退化后再考虑默认开启。
 
 `./install.sh` 会把 `clade_cheap_explorer` 与 `clade_cheap_worker` 安装到
-`~/.codex/agents/`，并在不覆盖用户内容的前提下幂等合并全局委派规则。架构、
-含糊、高风险或不可机械验收的工作仍由主模型完成；写入小弟必须有明确文件所有权
-和 verifier。Spark 因套餐可用性不同，不作为默认廉价层。
+`~/.codex/agents/`，并在不覆盖用户内容的前提下幂等合并全局托管规则，其中同时
+包含自适应委派与 delivery completion。架构、含糊、高风险或不可机械验收的工作
+仍由主模型完成；写入小弟必须有明确文件所有权和 verifier。Spark 因套餐可用性
+不同，不作为默认廉价层。
 
 ## 兼容边界
 
