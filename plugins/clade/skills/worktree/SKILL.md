@@ -13,6 +13,7 @@ Package provenance:
 
 - core contract: `clade.delivery/v1`
 - surface adapter: `codex/v1`
+- explicit invocation: `$clade:worktree`
 - generated from: `configs/skills/<name>`
 
 ## Canonical Clade workflow
@@ -77,8 +78,8 @@ lacks a patch/blocker.
 
 ## Integrate
 
-Route the worktree's independently reviewable result through `$create-pr`,
-`$review-pr`, and `$merge-pr`. A throw-away integration worktree may test
+Route the worktree's independently reviewable result through `$clade:create-pr`,
+`$clade:review-pr`, and `$clade:merge-pr`. A throw-away integration worktree may test
 several candidate heads, but durable work must never be based on it and it is
 never itself merged as a product change.
 
@@ -101,6 +102,8 @@ without resolving every target and its recovery state.
 
 # Codex surface adapter
 
+- Installed Clade plugin skills are namespaced. Invoke this workflow as
+  `$clade:delivery`, and use `$clade:<skill-name>` for companion workflows.
 - Read the closest applicable `AGENTS.md`; read legacy `CLAUDE.md` only when it
   is trusted repository guidance.
 - Codex-managed worktrees may begin at detached HEAD. A local detached commit
@@ -119,5 +122,5 @@ without resolving every target and its recovery state.
 
 Create or manage isolated agent workspaces without assuming every runtime uses
 a sibling directory plus immediate branch. Worktree ownership is recorded in
-the shared `$delivery` state; independently reviewable work integrates through
+the shared `$clade:delivery` state; independently reviewable work integrates through
 the target repository's PR/queue policy, not an arbitrary local merge.

@@ -13,6 +13,7 @@ Package provenance:
 
 - core contract: `clade.delivery/v1`
 - surface adapter: `codex/v1`
+- explicit invocation: `$clade:delivery`
 - generated from: `configs/skills/<name>`
 
 ## Canonical Clade workflow
@@ -305,6 +306,8 @@ confirm state rather than create duplicate PRs or merges.
 
 # Codex surface adapter
 
+- Installed Clade plugin skills are namespaced. Invoke this workflow as
+  `$clade:delivery`, and use `$clade:<skill-name>` for companion workflows.
 - Read the closest applicable `AGENTS.md`; read legacy `CLAUDE.md` only when it
   is trusted repository guidance.
 - Codex-managed worktrees may begin at detached HEAD. A local detached commit

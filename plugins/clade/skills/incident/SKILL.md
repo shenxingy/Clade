@@ -10,14 +10,16 @@ delegate the workflow to Clade's MCP bridge.
 
 Codex compatibility rules:
 
+- Plugin skills are namespaced. Invoke this workflow explicitly as
+  `$clade:incident`; a bare `$name` does not select the installed Clade plugin.
 - Read the nearest `AGENTS.md` files for repository instructions. If a project
   has only `CLAUDE.md`, treat it as legacy project guidance and read it too.
 - Store new Clade working state under `.clade/` (or `~/.clade/` for personal
   state). Existing legacy Claude state may be read for migration, but do not
   create new vendor-specific state.
-- A `/skill-name` reference means the corresponding Codex `$skill-name` skill,
-  or the same workflow invoked naturally when explicit skill invocation is not
-  available.
+- A `/skill-name` reference means the corresponding Codex
+  `$clade:skill-name` plugin skill, or the same workflow invoked naturally when
+  explicit skill invocation is not available.
 - Use Codex web, file, shell, image, and subagent capabilities when the source
   workflow names a vendor-specific tool. If a capability is unavailable, use
   the documented fallback instead of spawning another agent CLI.

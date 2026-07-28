@@ -28,7 +28,7 @@ Three ways to use Clade: the full **Claude CLI framework**, the native **Codex p
 2. [MCP Server](#mcp-server--use-skills-in-any-ai-editor)
 3. [What It Does](#what-it-does)
 4. [Self-Learning Mechanisms](#self-learning-mechanisms)
-5. [Skills](#skills-131)
+5. [Skills](#skills-132)
 6. [Supported Languages](#supported-languages)
 7. [Documentation](#documentation)
 8. [Repo Structure](#repo-structure)
@@ -56,15 +56,17 @@ codex plugin add clade@clade
 ```
 
 Start a new Codex thread, then invoke a workflow naturally or explicitly with
-`$review`, `$verify`, `$investigate`, and the other bundled skills. Open `/hooks`
-once to review and trust Clade's session-context and command-safety hooks.
+the plugin-qualified names `$clade:review`, `$clade:verify`,
+`$clade:investigate`, and the other bundled skills. Open `/hooks` once to
+review and trust Clade's session-context and command-safety hooks.
 
-Run `$codex-usage setup minimal` for a compact native footer. `$codex-usage`
-defaults to the equally compact `project(branch)-9% (6d)` pace view; icon and
-detail styles are optional. It never reads or exposes Codex credentials.
+Run `$clade:codex-usage setup minimal` for a compact native footer.
+`$clade:codex-usage` defaults to the equally compact
+`project(branch)-9% (6d)` pace view; icon and detail styles are optional. It
+never reads or exposes Codex credentials.
 
 The native plugin runs directly in Codex and does **not** require Claude Code.
-It currently ships 21 provider-native core workflows; Claude-specific overnight
+It currently ships 25 provider-native core workflows; Claude-specific overnight
 orchestration remains in the full framework. See [Native Codex Support](docs/codex.md).
 
 ### MCP Server Only
@@ -82,7 +84,7 @@ all runtime and sandbox options.
 
 ## MCP Server — Use Skills in Any AI Editor
 
-The MCP package exposes 32 bundled Clade skills, plus compatible user-installed
+The MCP package exposes 34 bundled Clade skills, plus compatible user-installed
 skills, as callable tools via the [Model Context Protocol](https://modelcontextprotocol.io).
 It can execute them with either Claude or Codex.
 
@@ -136,7 +138,7 @@ Both work on any project Claude Code is run in (universal, in `~/.claude/scripts
 
 See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, detectors, schemas, and tunable env vars.
 
-## Skills (131)
+## Skills (132)
 
 ### Core Workflow
 
@@ -293,9 +295,9 @@ Fully automatic once configured. See [Configuration](docs/configuration.md) for 
 clade/
 ├── install.sh               # One-command deployment
 ├── configs/                 # ← THE PRODUCT CENTER
-│   ├── skills/              # 129 skill definitions
+│   ├── skills/              # 132 skill definitions
 │   ├── hooks/               # 30 event hooks
-│   ├── agents/              # 36 agent definitions
+│   ├── agents/              # 37 agent definitions
 │   └── scripts/             # 35 shell + 13 Python utilities
 ├── plugins/clade/           # Native Codex plugin (25 generated core skills + hooks)
 ├── .agents/plugins/         # Codex marketplace manifest
