@@ -3,7 +3,7 @@
   "facts": [
     {
       "name": "skills",
-      "value": 131,
+      "value": 132,
       "derive": {
         "type": "count_glob",
         "pattern": "configs/skills/*/"
