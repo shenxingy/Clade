@@ -493,7 +493,9 @@ for pair in "committer:committer.sh" "slt:statusline-toggle.sh"; do
   link="$HOME/.local/bin/$link_name"
   if [[ -L "$link" ]]; then
     resolved=$(readlink -f "$link" 2>/dev/null || true)
-    if [[ -f "$resolved" && "$resolved" == "$CLAUDE_DIR/scripts/$target_base" ]]; then
+    # macOS canonicalizes /tmp to /private/tmp, so compare file identity
+    # instead of path spelling after readlink -f.
+    if [[ -f "$resolved" && "$resolved" -ef "$CLAUDE_DIR/scripts/$target_base" ]]; then
       pass "$link_name symlink resolves to installed $target_base"
     else
       fail "$link_name symlink resolves" "points at '$resolved'"
