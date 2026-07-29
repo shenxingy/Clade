@@ -3,8 +3,8 @@
 <!-- Legend: ✅ pass  ❌ fail  ⚠ known limitation  ⬜ not yet tested -->
 
 **Project type:** cli + skill-system + orchestrator (FastAPI)
-**Last full pass:** 2026-04-17
-**Coverage:** 83 ✅, 0 ❌, 4 ⚠, 0 ⬜ untested
+**Last full pass:** 2026-07-29
+**Coverage:** 92 ✅, 0 ❌, 4 ⚠, 0 ⬜ untested
 
 ---
 
@@ -13,8 +13,8 @@
 
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
-| I1 | `./install.sh` runs without errors — no missing source files, no broken symlinks | ✅ | 2026-07-13 | fresh and idempotent installs pass in an isolated HOME |
-| I2 | All skills from `configs/skills/` are installed to `~/.claude/skills/` | ✅ | 2026-07-13 | 129/129 skills installed and validated |
+| I1 | `./install.sh` runs without errors — no missing source files, no broken symlinks | ✅ | 2026-07-29 | fresh and idempotent installs pass in an isolated HOME (44/44 `tests/test-install.sh`) |
+| I2 | All skills from `configs/skills/` are installed to `~/.claude/skills/` | ✅ | 2026-07-29 | 132/132 skills installed and validated |
 | I3 | All hooks from `configs/hooks/` are installed to `~/.claude/hooks/` | ✅ | 2026-07-13 | 30/30 hooks installed and executable |
 | I4 | All scripts from `configs/scripts/` are installed to `~/.claude/scripts/` | ✅ | 2026-07-13 | 35 shell scripts plus Python helpers installed |
 | I5 | All templates from `configs/templates/` are installed to `~/.claude/templates/` | ✅ | 2026-04-12 | |
@@ -28,7 +28,7 @@
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
 | CX1 | `.agents/plugins/marketplace.json` installs `plugins/clade/` as a valid Codex plugin | ✅ | 2026-07-13 | validated and installed locally as `clade@clade` |
-| CX2 | All 21 curated Codex skills match their canonical sources and contain no nested `claude -p` execution | ✅ | 2026-07-13 | deterministic generator and CI drift gate pass |
+| CX2 | All 25 curated Codex skills match their canonical sources and contain no nested `claude -p` execution | ✅ | 2026-07-29 | `regen-codex-plugin.py --check` reports no drift |
 | CX3 | Native lifecycle hooks inject read-only session context and guard destructive Bash commands | ✅ | 2026-07-13 | regression tests cover force-push rewriting/blocking and recursive deletion |
 | CX4 | `clade-mcp` selects Claude, Codex, or auto runtime without changing the backwards-compatible default | ✅ | 2026-07-13 | unit tests and MCP initialization handshake pass |
 | CX5 | `$codex-usage` reads authenticated rate-limit snapshots without opening credentials and safely merges native footer fields | ✅ | 2026-07-13 | unit tests cover protocol messages, pace calculation, config preservation, idempotence, and malformed config |
@@ -45,6 +45,19 @@
 | B5 | `/loop` skill prompt contains: goal file input → supervisor plans → workers execute → convergence check | ✅ | 2026-04-10 | |
 | B6 | `/review` skill prompt contains: VERIFY.md load → checkpoint loop → fix-in-session → convergence | ✅ | 2026-04-15 | 9 steps total (original 7 + new Step 5.4 E2E interrupts + Step 5.5 SEO) |
 | B7 | `loop-runner.sh` exists, is executable, and passes `bash -n` syntax check | ✅ | 2026-04-10 | -rwxrwxr-x, syntax OK |
+
+## Loop Checkpoint Recovery
+<!-- configs/scripts/loop_checkpoint.py + loop-runner.sh, since commit 25949fe. Identity-bound: a checkpoint only resumes when checkout_root, goal_file, branch, and head_sha all match the current run; --resume is required and normal launches never read stale checkpoints. -->
+
+| ID | Checkpoint | Status | Verified | Notes |
+|----|-----------|--------|----------|-------|
+| LR1 | Normal (non-`--resume`) launches ignore any existing checkpoint and always start at iteration 1 | ✅ | 2026-07-29 | `tests/test-loop-checkpoint.sh`: "fresh run starts at iteration 1" + "fresh run ignores old checkpoint" |
+| LR2 | `--resume` after a `pre-done` checkpoint resumes at the recorded iteration instead of restarting | ✅ | 2026-07-29 | "pre-done resumes the recorded iteration" |
+| LR3 | `--resume` after a `workers-done` checkpoint skips PRE and the supervisor/workers entirely and continues straight at POST | ✅ | 2026-07-29 | "workers-done skips PRE and workers" + "workers-done does not repeat LLM work" (0 mock LLM calls) |
+| LR4 | `--resume` after a `post-done` checkpoint replays only the deterministic convergence/state transition, not any LLM phase, and clears its checkpoint once terminal | ✅ | 2026-07-29 | "post-done finishes the recorded convergence transition" + "terminal run clears its checkpoints" |
+| LR5 | Recovery fails closed (exit 2) and names the mismatched field when checkout root, goal file, branch, or `HEAD` no longer match the saved checkpoint identity — it never silently resumes against the wrong state | ✅ | 2026-07-29 | "mismatched HEAD fails closed" + "mismatch names the rejected identity field" |
+| LR6 | `--resume` with no existing checkpoint fails closed (exit 2) with an explicit "no checkpoint exists" message rather than silently starting fresh | ✅ | 2026-07-29 | "resume without checkpoint fails closed" |
+| LR7 | `loop-runner.sh --help` prints usage and performs no checkpoint writes or `~/.claude` side effects | ✅ | 2026-07-29 | "--help prints usage" + "--help has no checkpoint side effects" |
 
 ## Hook Behavior
 <!-- Hooks must fire correctly and not over-block. -->
@@ -77,8 +90,8 @@
 
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
-| PY1 | All Python modules pass `python -m py_compile` (full list from CLAUDE.md) | ✅ | 2026-07-13 | all orchestrator modules compile clean |
-| PY2 | `pytest tests/` passes with zero failures | ✅ | 2026-07-13 | 974 passed, 2 skipped |
+| PY1 | All Python modules pass `python -m py_compile` (full list from CLAUDE.md) | ✅ | 2026-07-29 | all orchestrator modules compile clean |
+| PY2 | `pytest tests/` passes with zero failures | ✅ | 2026-07-29 | 1261 passed, 2 skipped |
 | PY3 | No circular imports — `python -c "import server"` runs without ImportError | ✅ | 2026-04-10 | |
 | PY4 | Orchestrator API returns 200 + valid JSON on core GET routes (`/api/projects`, `/api/sessions`, `/api/sessions/overview`, `/api/tasks`, `/api/ideas`, `/api/processes`, `/api/metrics/pass-at-k`) | ✅ | 2026-04-15 | tested against running instance on :8010 — 7/7 endpoints 200, all parse as valid JSON (29 projects, 1 session, 38 tasks, 10 ideas, pass_rate=1.0). Resolves former KL3. |
 
@@ -98,7 +111,7 @@
 
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
-| SK1 | Every dir in `configs/skills/` contains `SKILL.md` | ✅ | 2026-07-13 | 129/129 skill dirs pass `validate-skills.py` with zero warnings |
+| SK1 | Every dir in `configs/skills/` contains `SKILL.md` | ✅ | 2026-07-29 | 132/132 skill dirs pass `validate-skills.py` with zero warnings |
 | SK2 | `/review` skill: prompt.md contains all 7 steps and convergence condition | ✅ | 2026-04-15 | 9 steps total; original Steps 1-7 all present + new 5.4 (E2E) + 5.5 (SEO) |
 | SK3 | `/verify` skill: prompt.md contains VERIFY.md coverage section and `VERIFY_COVERAGE` footer field | ✅ | 2026-04-10 | |
 | SK4 | `/commit` skill: references `committer` script; `git add .` only appears in prohibition rule | ✅ | 2026-04-10 | |
@@ -116,7 +129,7 @@
 | ID | Checkpoint | Status | Notes |
 |----|-----------|--------|-------|
 | KL2 | `/commit`, `/loop`, `/start` skills cannot be fully E2E tested without actual uncommitted changes or a running background loop | ⚠ | Skill prompt content verified; runtime behavior requires manual spot-check |
-| KL4 | Windows not supported — scripts use bash, `~/.claude/` paths, and POSIX tools | ⚠ | WSL2 would work; native Windows CMD/PowerShell is out of scope |
+| KL4 | Bare Windows CMD/PowerShell (no bash) not supported — scripts require a POSIX shell | ⚠ | Git Bash (MINGW/MSYS/Cygwin) and WSL2 both work — see XP6; a shell with no bash at all remains out of scope |
 
 ## Cross-Platform Compatibility
 <!-- Scripts must work on both Linux and macOS. -->
@@ -128,6 +141,7 @@
 | XP3 | `sed -i` uses `_sed_i()` wrapper in `tmux-dispatch.sh` | ✅ | 2026-04-10 | `_sed_i` wrapper with `sed -i ''` macOS branch present |
 | XP4 | `readlink -f` uses python3 fallback in `scan-todos.sh` | ✅ | 2026-04-10 | `_readlink_f()` with python3 fallback present |
 | XP5 | `stat -c` calls have `stat -f` macOS fallback in session-context.sh and run-tasks*.sh | ✅ | 2026-04-10 | all 5 instances use `|| stat -f` pattern |
+| XP6 | `install.sh` detects Git Bash (MINGW/MSYS/Cygwin via `uname -s`) and rewrites hook + statusLine commands to run through `bash.exe -c "exec ..."` so cmd.exe doesn't silently no-op them | ✅ | 2026-07-29 | `tests/test-install.sh` Suite 4 "Windows/Git Bash fresh + existing settings" — 4/4 checks pass, both fresh installs and reinstalls onto existing settings.json |
 
 ## Research & Backlog Health
 <!-- These checkpoints prevent research from being done but not absorbed. /review must check these. -->

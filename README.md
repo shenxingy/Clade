@@ -53,7 +53,7 @@ cd clade && ./install.sh
 
 Installs skills, hooks, agents, scripts, and safety guardian. Start a new Claude Code session to activate.
 
-> **Requires:** `jq`. **Platform:** Linux and macOS.
+> **Requires:** `jq`. **Platform:** Linux, macOS, and Windows via Git Bash (native CMD/PowerShell without bash is out of scope).
 
 ### Codex — Native Plugin
 
@@ -332,7 +332,7 @@ clade/
 │   ├── skills/              # 132 skill definitions
 │   ├── hooks/               # 30 event hooks
 │   ├── agents/              # 37 agent definitions
-│   └── scripts/             # 35 shell + 13 Python utilities
+│   └── scripts/             # 35 shell + 15 Python utilities
 ├── plugins/clade/           # Native Codex plugin (25 generated core skills + hooks)
 ├── .agents/plugins/         # Codex marketplace manifest
 ├── orchestrator/            # ← THE EXECUTION ADAPTER

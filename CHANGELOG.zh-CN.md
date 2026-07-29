@@ -11,10 +11,21 @@ semantic versioning。
 
 - Loop 新增 crash-safe phase recovery：只有显式、身份匹配的 `--resume` 才会
   恢复；普通启动忽略旧 checkpoint，`--help` 不产生副作用
+- `delivery abandon` 新增放弃过渡：面向已被取代、尚未发布的工作，要求精确的
+  HEAD lease 与非空理由；已发布的 GitHub PR 只有在实时检查证明其在该精确
+  head 上已 closed 后才能放弃
 - 原生 `$codex-usage` workflow，显示 Clade 的 95% 目标使用节奏
 - 通过已认证的 Codex app-server 安全读取 rate limits，不打开凭证文件
 - 幂等配置 Codex 原生 five-hour 与 weekly status-line fields
 - 极简、可选图标、详细三种 styles，十种 themes，以及 JSON 输出
+
+### 修复
+
+- `delivery abandon` 现在按分支发现 PR，而不是信任可能过期的 `published`
+  标记——未记录的 open PR 会阻止放弃，在记录 head 上已 merged 的 PR 会被
+  reconcile 而不是被误标为 abandoned
+- Task 更新会在写入前，针对生效的 runtime 重新校验生效的已持久化 connection，
+  而不是等到执行时才失败
 
 ## [0.2.0] — 2026-07-13
 
