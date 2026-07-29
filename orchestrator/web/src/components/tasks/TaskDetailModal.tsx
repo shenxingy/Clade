@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { X, FileText } from 'lucide-react';
-import { Task } from '../../lib/types';
+import { X, FileText, ShieldCheck } from 'lucide-react';
+import { EvidenceBundle, Task } from '../../lib/types';
 import { StatusBadge } from '../shared/StatusBadge';
 import { ModelBadge } from '../shared/ModelBadge';
 import { formatDuration, formatCost } from '../../lib/utils';
@@ -15,9 +15,16 @@ interface Props {
 export function TaskDetailModal({ task, sessionId, onClose }: Props) {
   const [log, setLog] = useState<string | null>(null);
   const [logLoading, setLogLoading] = useState(false);
+  const [attempts, setAttempts] = useState<EvidenceBundle[]>([]);
+  const [evidenceLoading, setEvidenceLoading] = useState(false);
 
   useEffect(() => {
-    if (!task) { setLog(null); return; }
+    if (!task) { setLog(null); setAttempts([]); return; }
+    setEvidenceLoading(true);
+    api.evidence(task.id, sessionId)
+      .then(r => setAttempts(r.attempts))
+      .catch(() => setAttempts([]))
+      .finally(() => setEvidenceLoading(false));
     // Auto-load log for done/failed/interrupted tasks
     if (['done', 'failed'].includes(task.status) && task.log_file) {
       setLogLoading(true);
@@ -125,6 +132,45 @@ export function TaskDetailModal({ task, sessionId, onClose }: Props) {
               <p className="text-xs text-red-300 whitespace-pre-wrap">{task.failed_reason}</p>
             </section>
           )}
+
+          {/* Lifecycle evidence */}
+          <section>
+            <div className="flex items-center gap-2 mb-1">
+              <ShieldCheck size={12} className="text-muted-foreground" />
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Attempt evidence
+              </p>
+            </div>
+            {evidenceLoading && (
+              <p className="text-xs text-muted-foreground">Loading evidence…</p>
+            )}
+            {!evidenceLoading && attempts.length === 0 && (
+              <p className="text-xs text-muted-foreground">(no evidence recorded)</p>
+            )}
+            <div className="flex flex-col gap-2">
+              {attempts.map(attempt => (
+                <details key={attempt.attempt_id} className="rounded border border-border bg-secondary/50 p-2">
+                  <summary className="cursor-pointer list-none flex flex-wrap items-center gap-2 text-xs">
+                    <span className="font-medium text-foreground">Attempt {attempt.attempt_index}</span>
+                    <span className="rounded bg-background px-1.5 py-0.5 text-muted-foreground">
+                      {attempt.lifecycle_state}
+                    </span>
+                    <span className="font-mono text-muted-foreground">
+                      rev {attempt.revision} · {attempt.digest.slice(7, 19)}
+                    </span>
+                    {attempt.redaction_metadata.count > 0 && (
+                      <span className="text-yellow-400">
+                        {attempt.redaction_metadata.count} redacted
+                      </span>
+                    )}
+                  </summary>
+                  <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-all rounded bg-background p-2 text-[11px] leading-relaxed text-muted-foreground">
+                    {JSON.stringify(attempt.evidence, null, 2)}
+                  </pre>
+                </details>
+              ))}
+            </div>
+          </section>
 
           {/* Log */}
           <section className="flex-1">

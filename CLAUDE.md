@@ -104,6 +104,7 @@ task_queue.py        ← SQLite tasks + append-only evidence persistence
 swarm.py             ← SwarmManager (extracted from worker.py)
 worker_taskfile.py   ← build_task_file: task file construction + context injection
 worker_runtime.py    ← runtime-route resolution + durable selection failure
+worker_evidence.py   ← attempt lifecycle + worker/verifier/delivery evidence projection
     ↑
 worker.py            ← Worker, WorkerPool — core execution engine
 session.py           ← ProjectSession, registry, status_loop (lazy-imports task_factory/)
@@ -131,6 +132,7 @@ routes/usage.py      ← Usage dashboard API routes
 | `swarm.py` | `SwarmManager` (extracted from worker.py; re-exported there) |
 | `worker_taskfile.py` | `build_task_file` — task file construction + context injection |
 | `worker_runtime.py` | Runtime route resolution and fail-closed task outcome persistence |
+| `worker_evidence.py` | Evidence attempt lifecycle, Git/test/oracle/cost/artifact projection, and terminal delivery candidate |
 | `worker_tldr.py` | `_generate_code_tldr`, `_score_task` — TLDR + scoring (leaf) |
 | `worker_review.py` | `_write_pr_review`, `_oracle_review`, `_write_progress_entry` (leaf) |
 | `oracle_cli.py` | Standalone oracle gate — same judge as the orchestrator, no server needed (`oracle-review.sh` shim; opt-in `/commit` gate via `CLADE_ORACLE_GATE=1`) |
@@ -141,7 +143,7 @@ routes/usage.py      ← Usage dashboard API routes
 | `ideas.py` | `IdeasManager` — async idea CRUD, AI evaluation, promotion |
 | `process_manager.py` | `ProcessPool`, `StartProcess` — start.sh lifecycle control |
 | `usage_tracker.py` | Multi-machine ccusage ingestion (`~/.claude/orchestrator/usage.db`) |
-| `routes/tasks.py` | Task CRUD + bulk-action routes (13 handlers) |
+| `routes/tasks.py` | Task CRUD, bulk actions, and on-demand verified evidence attempts |
 | `routes/workers.py` | Worker control + inspection routes (9 handlers) |
 | `routes/ideas.py` | Ideas API routes (CRUD, evaluate, execute, promote) |
 | `routes/usage.py` | Usage dashboard API routes |

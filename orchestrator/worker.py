@@ -1,6 +1,5 @@
 """
 Orchestrator worker — execution engine.
-Worker, WorkerPool.
 SwarmManager is in swarm.py.
 
 Supporting concerns are extracted into sibling ``worker_*`` and service modules
@@ -57,6 +56,7 @@ from worker_review import (
 from worker_taskfile import build_task_file
 from event_stream import EventStream
 from worker_envelope import build_from_worker
+import worker_evidence
 from worker_phase_graph import record_transition, validate_transition
 from handoff_registry import project_handoff, validate_handoff
 from tracing import TracingService, start_task_span
@@ -386,6 +386,7 @@ class Worker:
             content={"shell_cmd": shell_cmd[:500], "pid": self.pid},
         )
         self._task_span = start_task_span(self.id, self.description, self.task_id)
+        await worker_evidence.append_worker_evidence(self, "running")
 
     async def _spawn_with_redacted_log(
         self, shell_cmd: str, env: dict[str, str], *, append: bool
@@ -588,6 +589,7 @@ class Worker:
             self._task_span = None
 
         if self.status == "done":
+            await worker_evidence.append_worker_evidence(self, "verifying")
             try:
                 verified = await self.verify_and_commit()
             except Exception:
@@ -722,6 +724,7 @@ class Worker:
                 logger.info("Handoff file found for task %s — flagging for continuation", self.task_id)
             except Exception:
                 pass
+        await worker_evidence.append_worker_terminal_evidence(self)
         self._event_stream.emit(
             event_type="state_change",
             event_kind="worker_envelope",
@@ -1165,7 +1168,7 @@ class WorkerPool:
         if existing:
             return existing
         description = task["description"]
-        plan = await resolve_worker_execution(task, GLOBAL_SETTINGS, task_queue)
+        plan = await resolve_worker_execution(task, GLOBAL_SETTINGS, task_queue, project_dir)
         route = plan.route
         if route.needs_clarification:
             description = (
@@ -1200,6 +1203,8 @@ class WorkerPool:
         worker.task_timeout = task.get("timeout", 600)
         worker.own_files = task.get("own_files", [])
         worker.forbidden_files = task.get("forbidden_files", [])
+        worker.evidence_attempt_id = plan.evidence_attempt_id
+        worker.evidence_base_sha = plan.evidence_base_sha
         # Per-task token budget (0 = use global setting or unlimited)
         _per_task_budget = task.get("token_budget") or 0
         _global_budget = GLOBAL_SETTINGS.get("worker_token_budget", 0)
@@ -1209,7 +1214,7 @@ class WorkerPool:
             worker._handoff_type = task["handoff_type"]
             worker._handoff_payload = task.get("handoff_payload")
         self.workers[worker.id] = worker
-        _cur_attempts = (task.get("attempt_count") or 0) + 1
+        _cur_attempts = plan.evidence_attempt_index or (task.get("attempt_count") or 0) + 1
         await task_queue.update(
             task["id"], status="running", worker_id=worker.id,
             attempt_count=_cur_attempts, model=worker.model,
@@ -1217,7 +1222,7 @@ class WorkerPool:
             effort=worker.effort, route_reason=route.reason,
             execution_envelope=plan.envelope.to_dict(),
         )
-        await worker.start(task_queue=task_queue)
+        await worker_evidence.start_worker_with_evidence(worker, task_queue)
         return worker
 
     async def _handoff_to_worker(

@@ -1,3 +1,5 @@
+import type { EvidenceAttemptsResponse } from './types';
+
 // ─── API Base ─────────────────────────────────────────────────────
 
 const BASE = '/api';
@@ -36,6 +38,7 @@ export const tasks = {
   retryFailed: (sessionId: string)                     => req<unknown>('POST', `/tasks/retry-failed?session=${sessionId}`),
   mergeAllDone:(sessionId: string)                     => req<unknown>('POST', `/tasks/merge-all-done?session=${sessionId}`),
   sendMessage: (taskId: string, sessionId: string, content: string) => req<unknown>('POST', `/tasks/${taskId}/messages?session=${sessionId}`, { content }),
+  evidence:    (taskId: string, sessionId: string)     => req<EvidenceAttemptsResponse>('GET', `/tasks/${taskId}/evidence?session=${sessionId}`),
   log:         (taskId: string, sessionId: string)     => req<{ log: string; path?: string }>('GET', `/tasks/${taskId}/log?session=${sessionId}`),
 };
 
