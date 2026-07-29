@@ -92,13 +92,16 @@ With `--apply`: actual writes.
 Workflow:
 
 1. Find the most recent audit report for this upstream
-2. Parse decision checkboxes (`[x]` = accept, `[ ]` = skip)
-3. For each accepted skill, perform 3-way merge:
+2. Refresh the upstream cache and compare its full commit SHA with the report's
+   `Audited commit`. Legacy reports and changed commits remain readable in
+   dry-run mode, but `--apply` must stop and require a fresh `/equip audit`.
+3. Parse decision checkboxes (`[x]` = accept, `[ ]` = skip)
+4. For each accepted skill, perform 3-way merge:
    - `base` = fingerprint from last_synced_commit (stored in upstreams.yaml)
    - `ours` = current local file content
    - `theirs` = remote HEAD file content
    - Apply rules in `references/audit-criteria.md` "Merge Strategy" section
-4. For conflicts the script cannot resolve automatically (both sides changed), PAUSE and ask the user to choose per file
+5. For conflicts the script cannot resolve automatically (both sides changed), PAUSE and ask the user to choose per file
 
 After apply, surface:
 - What was written

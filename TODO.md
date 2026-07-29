@@ -229,8 +229,10 @@ backlog.
 - [ ] **P1 · eval review · depends on eval candidates:** add explicit human
   review/promotion tooling and corpus provenance; never auto-accept ground
   truth.
-- [ ] **P1 · supply-chain:** bind `/equip sync` screening to the exact fetched
-  upstream commit and re-screen drift before apply. No dependency.
+- [x] **P1 · completed 2026-07-28 · supply-chain:** `/equip audit` records the
+  exact upstream commit; `/equip sync` refreshes and compares it, and
+  `--apply` fails closed on legacy reports or drift until a new audit is
+  accepted.
 - [ ] **P2 · regression metrics · depends on evidence/evals:** report evidence
   completeness, false approvals, human overrides, and accepted regression
   coverage.
