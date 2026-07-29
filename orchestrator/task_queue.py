@@ -21,6 +21,13 @@ from evidence_bundle import (
     create_evidence_bundle,
     validate_evidence_chain,
 )
+from eval_candidates import (
+    SCHEMA_VERSION as EVAL_CANDIDATE_SCHEMA_VERSION,
+    canonical_diff_digest,
+    validate_evidence_digest,
+    validate_identifier,
+    validate_trigger,
+)
 from runtime_redaction import merge_metadata, redact_runtime
 
 from config import (
@@ -287,6 +294,47 @@ class TaskQueue:
                     BEGIN
                         SELECT RAISE(ABORT, 'evidence bundles are append-only');
                     END
+                """)
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS eval_candidates (
+                        candidate_id TEXT PRIMARY KEY,
+                        schema_version TEXT NOT NULL CHECK (
+                            schema_version = 'clade.eval_candidate/v1'
+                        ),
+                        source_task_id TEXT NOT NULL,
+                        source_attempt_id TEXT NOT NULL,
+                        source_attempt_revision INTEGER NOT NULL CHECK (
+                            source_attempt_revision > 0
+                        ),
+                        source_evidence_digest TEXT NOT NULL,
+                        trigger TEXT NOT NULL CHECK (
+                            trigger IN (
+                                'incident_failure', 'oracle_rejected',
+                                'oracle_unreviewed', 'oracle_disagreement',
+                                'managed_revert', 'explicit_correction'
+                            )
+                        ),
+                        diff_digest TEXT NOT NULL,
+                        payload_json TEXT NOT NULL,
+                        redaction_metadata TEXT NOT NULL,
+                        status TEXT NOT NULL DEFAULT 'quarantined' CHECK (
+                            status IN (
+                                'quarantined', 'promoted', 'rejected', 'expired'
+                            )
+                        ),
+                        decision_reason TEXT,
+                        decided_by TEXT,
+                        decided_at REAL,
+                        promotion_kind TEXT,
+                        promotion_ref TEXT,
+                        created_at REAL NOT NULL,
+                        UNIQUE (source_attempt_id, trigger, diff_digest),
+                        FOREIGN KEY (source_task_id) REFERENCES tasks(id)
+                    )
+                """)
+                await db.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_eval_candidates_status_created
+                    ON eval_candidates(status, created_at)
                 """)
                 await db.execute("""
                     CREATE TABLE IF NOT EXISTS interventions (
@@ -1049,7 +1097,21 @@ class TaskQueue:
             )
             await self._insert_evidence_bundle(db, bundle)
             await db.commit()
-        return bundle.to_dict()
+        serialized = bundle.to_dict()
+        if bundle.lifecycle_state is EvidenceLifecycle.REVERTED:
+            try:
+                await self.create_eval_candidate(
+                    bundle.attempt_id,
+                    trigger="managed_revert",
+                    diff=(evidence or {}).get("diff", evidence or {}),
+                    payload={"lifecycle_state": "reverted", "evidence": evidence or {}},
+                    source_attempt_revision=bundle.revision,
+                    source_evidence_digest=bundle.digest,
+                    created_at=bundle.recorded_at,
+                )
+            except Exception:
+                logger.exception("failed to create managed-revert eval candidate")
+        return serialized
 
     async def get_evidence_bundle(self, attempt_id: str) -> dict | None:
         """Return the latest verified snapshot for one attempt."""
@@ -1103,6 +1165,160 @@ class TaskQueue:
             ) as cursor:
                 rows = await cursor.fetchall()
         return [self._evidence_row_to_bundle(row).to_dict() for row in rows]
+
+    # ─── Quarantined Eval Candidates ────────────────────────────────────────
+
+    @staticmethod
+    def _eval_candidate_row_to_dict(row) -> dict:
+        try:
+            payload = json.loads(row["payload_json"])
+            redaction_metadata = json.loads(row["redaction_metadata"])
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise ValueError("persisted eval candidate contains invalid JSON") from exc
+        return {
+            "schema_version": row["schema_version"],
+            "candidate_id": row["candidate_id"],
+            "source_task_id": row["source_task_id"],
+            "source_attempt_id": row["source_attempt_id"],
+            "source_attempt_revision": row["source_attempt_revision"],
+            "source_evidence_digest": row["source_evidence_digest"],
+            "trigger": row["trigger"],
+            "diff_digest": row["diff_digest"],
+            "payload": payload,
+            "redaction_metadata": redaction_metadata,
+            "status": row["status"],
+            "decision_reason": row["decision_reason"],
+            "decided_by": row["decided_by"],
+            "decided_at": row["decided_at"],
+            "promotion_kind": row["promotion_kind"],
+            "promotion_ref": row["promotion_ref"],
+            "created_at": row["created_at"],
+        }
+
+    async def create_eval_candidate(
+        self,
+        source_attempt_id: str,
+        *,
+        trigger: str,
+        diff,
+        payload: dict | None = None,
+        source_attempt_revision: int | None = None,
+        source_evidence_digest: str | None = None,
+        created_at: float | None = None,
+    ) -> tuple[dict, bool]:
+        """Create one redacted quarantined candidate pinned to exact evidence."""
+
+        await self._ensure_db()
+        attempt_id = validate_identifier(
+            source_attempt_id, field_name="source_attempt_id"
+        )
+        trigger_name = validate_trigger(trigger)
+        if source_attempt_revision is not None and (
+            isinstance(source_attempt_revision, bool)
+            or not isinstance(source_attempt_revision, int)
+            or source_attempt_revision < 1
+        ):
+            raise ValueError("source_attempt_revision must be a positive integer")
+        if source_evidence_digest is not None:
+            validate_evidence_digest(source_evidence_digest)
+        redacted = redact_runtime(
+            {"diff": diff, "signal": payload or {}},
+            field_path="$.eval_candidate",
+        )
+        safe_payload = redacted.value
+        diff_digest = canonical_diff_digest(safe_payload["diff"])
+        candidate_id = f"eval-{uuid.uuid4().hex}"
+        timestamp = created_at if created_at is not None else time.time()
+
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            db.row_factory = aiosqlite.Row
+            await db.execute("BEGIN IMMEDIATE")
+            revision_clause = (
+                "AND revision = ?" if source_attempt_revision is not None else ""
+            )
+            params: tuple = (
+                (attempt_id, source_attempt_revision)
+                if source_attempt_revision is not None
+                else (attempt_id,)
+            )
+            async with db.execute(
+                "SELECT * FROM evidence_bundles WHERE attempt_id = ? "
+                f"{revision_clause} ORDER BY revision DESC LIMIT 1",
+                params,
+            ) as cursor:
+                evidence_row = await cursor.fetchone()
+            if evidence_row is None:
+                await db.rollback()
+                raise ValueError(f"unknown evidence attempt or revision: {attempt_id}")
+            evidence = self._evidence_row_to_bundle(evidence_row)
+            if (
+                source_evidence_digest is not None
+                and evidence.digest != source_evidence_digest
+            ):
+                await db.rollback()
+                raise ValueError("source evidence digest does not match revision")
+            cur = await db.execute(
+                """INSERT OR IGNORE INTO eval_candidates
+                   (candidate_id, schema_version, source_task_id,
+                    source_attempt_id, source_attempt_revision,
+                    source_evidence_digest, trigger, diff_digest, payload_json,
+                    redaction_metadata, status, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'quarantined', ?)""",
+                (
+                    candidate_id,
+                    EVAL_CANDIDATE_SCHEMA_VERSION,
+                    evidence.task_id,
+                    evidence.attempt_id,
+                    evidence.revision,
+                    evidence.digest,
+                    trigger_name,
+                    diff_digest,
+                    json.dumps(safe_payload, sort_keys=True),
+                    json.dumps(redacted.metadata.to_dict(), sort_keys=True),
+                    timestamp,
+                ),
+            )
+            created = cur.rowcount == 1
+            async with db.execute(
+                """SELECT * FROM eval_candidates
+                   WHERE source_attempt_id = ? AND trigger = ? AND diff_digest = ?""",
+                (attempt_id, trigger_name, diff_digest),
+            ) as cursor:
+                row = await cursor.fetchone()
+            await db.commit()
+        if row is None:
+            raise RuntimeError("eval candidate insert did not produce a row")
+        return self._eval_candidate_row_to_dict(row), created
+
+    async def get_eval_candidate(self, candidate_id: str) -> dict | None:
+        await self._ensure_db()
+        candidate = validate_identifier(candidate_id, field_name="candidate_id")
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM eval_candidates WHERE candidate_id = ?",
+                (candidate,),
+            ) as cursor:
+                row = await cursor.fetchone()
+        return self._eval_candidate_row_to_dict(row) if row else None
+
+    async def list_eval_candidates(
+        self, *, status: str = "quarantined", limit: int = 100
+    ) -> list[dict]:
+        await self._ensure_db()
+        if status not in {"quarantined", "promoted", "rejected", "expired"}:
+            raise ValueError("invalid eval candidate status")
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
+            raise ValueError("limit must be an integer from 1 to 1000")
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                """SELECT * FROM eval_candidates
+                   WHERE status = ? ORDER BY created_at ASC LIMIT ?""",
+                (status, limit),
+            ) as cursor:
+                rows = await cursor.fetchall()
+        return [self._eval_candidate_row_to_dict(row) for row in rows]
 
     # ─── Interventions ───────────────────────────────────────────────────────
 

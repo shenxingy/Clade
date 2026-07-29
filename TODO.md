@@ -228,9 +228,11 @@ backlog.
   capture execution, timing, exact Git SHAs, tests, oracle verdicts, optional
   artifacts, usage/cost, and delivery candidates; delivery exposes an
   attempt-linked projection, and task detail API/UI show verified bundles.
-- [ ] **P1 · evals · depends on EvidenceBundle:** turn incidents, oracle
-  disagreements, reverts, and explicit corrections into quarantined sanitized
-  eval candidates with human promotion.
+- [x] **P1 · completed 2026-07-28 · eval candidates:** incidents, oracle
+  rejection/unreviewed/disagreement, managed reverts, and explicit corrections
+  now create deduplicated, sanitized quarantine records pinned to an exact
+  EvidenceBundle revision/digest. Human promotion remains the separate item
+  below.
 - [ ] **P1 · eval review · depends on eval candidates:** add explicit human
   review/promotion tooling and corpus provenance; never auto-accept ground
   truth.
