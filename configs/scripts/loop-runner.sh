@@ -468,7 +468,12 @@ EOF
 )
 
   local result
-  if ! result=$(_timeout "$SUPERVISOR_TIMEOUT" claude --model "$SUPERVISOR_MODEL" "${PURE_JUDGE_FLAGS[@]}" -p "$supervisor_prompt" 2>&1); then
+  # The supervisor is a bounded planner, not a repository explorer.  It gets
+  # hydrated Git/goal context and delegates code inspection to workers.  With
+  # default read tools enabled, broad goals can consume unbounded tool turns
+  # until the wall-clock timeout and never produce the JSON plan.
+  if ! result=$(_timeout "$SUPERVISOR_TIMEOUT" claude --model "$SUPERVISOR_MODEL" \
+      "${PURE_JUDGE_FLAGS[@]}" --tools "" -p "$supervisor_prompt" 2>&1); then
     log_error "Supervisor call failed or timed out"
     echo "[]"
     return

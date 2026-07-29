@@ -1016,6 +1016,12 @@ else
   fail "supervisor invocation missing --setting-sources" "args log: $(head -c 300 "$MOCK_CLAUDE_ARGS_LOG" 2>/dev/null)"
 fi
 TESTS_RUN=$((TESTS_RUN + 1))
+if grep -v -- 'stream-json' "$MOCK_CLAUDE_ARGS_LOG" 2>/dev/null | grep -q -- '--tools'; then
+  pass "supervisor invocation disables repository tools (bounded planner)"
+else
+  fail "supervisor invocation missing bounded-planner tool policy" "args log: $(head -c 300 "$MOCK_CLAUDE_ARGS_LOG" 2>/dev/null)"
+fi
+TESTS_RUN=$((TESTS_RUN + 1))
 if ! grep -q -- 'stream-json' "$MOCK_CLAUDE_ARGS_LOG" 2>/dev/null; then
   fail "worker invocation not recorded (stream-json line missing from args log)"
 elif grep -- 'stream-json' "$MOCK_CLAUDE_ARGS_LOG" | grep -q -- '--setting-sources'; then
