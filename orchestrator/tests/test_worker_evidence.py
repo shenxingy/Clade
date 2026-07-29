@@ -112,6 +112,31 @@ async def test_worker_lifecycle_persists_terminal_evidence(task_queue, tmp_path)
     assert terminal["redaction_metadata"]["count"] == 1
     assert terminal["evidence"]["usage"]["estimated_cost"] == 0.05
     assert terminal["evidence"]["delivery_candidate"]["pushed"] is True
+    assert await task_queue.list_eval_candidates() == []
+
+    rejected_task = await task_queue.add("Capture rejected oracle patch")
+    rejected_attempt = await begin_task_evidence(
+        rejected_task, task_queue, tmp_path
+    )
+    rejected = SimpleNamespace(**vars(worker))
+    rejected.id = "worker-rejected"
+    rejected.task_id = rejected_task["id"]
+    rejected.evidence_attempt_id = rejected_attempt["attempt_id"]
+    rejected.evidence_base_sha = rejected_attempt["evidence"]["git"]["base_sha"]
+    rejected.status = "failed"
+    rejected.auto_committed = False
+    rejected.auto_pushed = False
+    rejected.oracle_result = "rejected"
+    rejected.oracle_reason = "unsafe behavior"
+    rejected.eval_diff = "diff --git a/parser.py b/parser.py\n+unsafe\n"
+    rejected.failure_context = "oracle rejected generated patch"
+    await append_worker_terminal_evidence(rejected)
+
+    candidates = await task_queue.list_eval_candidates()
+    assert [item["trigger"] for item in candidates] == ["oracle_rejected"]
+    assert candidates[0]["source_evidence_digest"] == (
+        await task_queue.get_evidence_bundle(rejected_attempt["attempt_id"])
+    )["digest"]
 
 
 async def test_runtime_preflight_failure_closes_evidence_attempt(task_queue, tmp_path):
@@ -128,6 +153,10 @@ async def test_runtime_preflight_failure_closes_evidence_attempt(task_queue, tmp
     assert (await task_queue.get(task["id"]))["attempt_count"] == 1
     assert attempts[0]["lifecycle_state"] == "failed"
     assert attempts[0]["evidence"]["failure"]["stage"] == "preflight"
+    candidates = await task_queue.list_eval_candidates()
+    assert len(candidates) == 1
+    assert candidates[0]["trigger"] == "incident_failure"
+    assert candidates[0]["source_evidence_digest"] == attempts[0]["digest"]
 
 
 async def test_spawn_failure_closes_created_attempt(task_queue, tmp_path):
@@ -150,3 +179,6 @@ async def test_spawn_failure_closes_created_attempt(task_queue, tmp_path):
     latest = await task_queue.get_evidence_bundle(attempt["attempt_id"])
     assert latest["lifecycle_state"] == "failed"
     assert latest["evidence"]["failure"]["stage"] == "spawn"
+    candidates = await task_queue.list_eval_candidates()
+    assert len(candidates) == 1
+    assert candidates[0]["trigger"] == "incident_failure"

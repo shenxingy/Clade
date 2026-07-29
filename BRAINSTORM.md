@@ -34,8 +34,10 @@ executable or conditional.
   timing, exact Git SHAs, tests, oracle verdicts, optional artifacts,
   usage/cost, and delivery candidates; delivery exposes an attempt-linked
   projection, and task detail API/UI show verified bundles.
-- [ ] **P1 / depends on EvidenceBundle:** quarantine sanitized eval candidates
-  from incidents, oracle disagreements, reverts, and explicit corrections.
+- [x] **P1 / RESOLVED 2026-07-28:** incidents, oracle
+  rejection/unreviewed/disagreement, managed reverts, and explicit corrections
+  create deduplicated sanitized quarantine records pinned to exact immutable
+  evidence; raw hook JSONL is deliberately excluded.
 - [ ] **P1 / depends on eval candidates:** add human review/promotion tooling;
   never assign ground truth automatically.
 - [x] **P1 / RESOLVED 2026-07-28:** `/equip` approvals are bound to the exact

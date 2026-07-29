@@ -1005,10 +1005,8 @@ class Worker:
                 cwd=str(self._project_dir),
             )
             diff_out, _ = await asyncio.wait_for(diff_proc.communicate(), timeout=15)
-            # Inject parsed acceptance criteria so the grader checks them one-by-one
+            self.eval_diff = diff_out.decode()
             criteria = _parse_task_schema(self.description).get("acceptance_criteria") or None
-            # Constitutional AI (reflection-agents §Gap4): the target repo's own
-            # CLAUDE.md "Code Rules" become binding constraints the grader enforces.
             constitution = _read_constitution(self._project_dir)
             # Resample the verdict K× and require a clean majority to approve; a bad
             # config value degrades to single-shot rather than crashing to fail-open.
@@ -1062,6 +1060,7 @@ class Worker:
             except Exception as exc:
                 diversity = judge_diversity.check_error(exc)
             agreement = judge_diversity.oracle_agreement(approved, diversity)
+            self.judge_agreement = agreement
             logger.info("Worker %s judge diversity: agreement=%s evidence=%s", self.id, agreement, diversity)
             self._event_stream.emit(
                 event_type="state_change", event_kind="judge_diversity", source="system",
