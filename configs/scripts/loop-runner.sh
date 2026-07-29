@@ -18,6 +18,7 @@
 #   loop-runner.sh GOAL_FILE [options]
 #   loop-runner.sh --status
 #   loop-runner.sh --stop
+#   loop-runner.sh --help
 #
 # Options:
 #   --model MODEL         supervisor model (default: claude-sonnet-4-6)
@@ -30,6 +31,7 @@
 #   --state FILE          state file (default: .claude/loop-state.json)
 #   --log-dir DIR         log directory (default: logs/loop)
 #   --dry-run             preview plan, no claude calls (see run_dry_run_preview)
+#   --resume              resume an identity-matched interrupted run
 
 set -euo pipefail
 
@@ -102,6 +104,7 @@ INTERRUPT_STATE_FILE=".claude/interrupt-state.json"
 ITERATION=0
 ITERATION_START_COMMIT=""
 DRY_RUN=false
+RESUME=false
 # ────────────────────────────────────────────────────────────────
 
 # ─── LOGGING ────────────────────────────────────────────────────
@@ -121,6 +124,7 @@ parse_args() {
   # Handle --status and --stop before GOAL_FILE is required
   for arg in "$@"; do
     case "$arg" in
+      --help|-h) print_usage; exit 0 ;;
       --status) show_status; exit 0 ;;
       --stop)   write_stop_sentinel; exit 0 ;;
       --interrupt)
@@ -152,7 +156,7 @@ print(f'Interrupt state written to {path}')
       --context)      CONTEXT_FILE="$2"; shift 2 ;;
       --state)        STATE_FILE="$2"; shift 2 ;;
       --log-dir)      LOG_DIR="$2"; shift 2 ;;
-      --resume)       shift ;;  # no-op: Blueprint loop always resumes from state
+      --resume)       RESUME=true; shift ;;
       --budget)       shift 2 ;;  # accepted but not used in Blueprint mode
       --exit-gate)    shift 2 ;;  # accepted but not used in Blueprint mode
       --dry-run)      DRY_RUN=true; shift ;;
@@ -1033,12 +1037,6 @@ history = state.get('history', [])
 history.append({'iter': iteration, 'commits': commits})
 state['history'] = history[-20:]  # keep last 20
 json.dump(state, open(state_file, 'w'), indent=2)
-
-# Also save a lightweight checkpoint file for crash recovery
-ckpt_dir = os.path.expanduser(f"~/.claude/loop-checkpoints/{os.path.basename(os.getcwd())}")
-os.makedirs(ckpt_dir, exist_ok=True)
-with open(os.path.join(ckpt_dir, f"iter-{iteration}-state.json"), "w") as f:
-    json.dump(state, f, indent=2)
 PYTHON_EOF
 }
 # ────────────────────────────────────────────────────────────────
@@ -1157,79 +1155,44 @@ generate_loop_report() {
     echo "Goal: $GOAL_FILE"
     [ -n "$fixrate_summary" ] && echo "Fix-rate: $fixrate_summary"
   } > "$LOG_DIR/last-progress"
+  return 0
 }
 # ────────────────────────────────────────────────────────────────
 
 # ─── CHECKPOINT ──────────────────────────────────────────────────
-# Saves state after each phase for crash recovery.
-# Checkpoints live in ~/.claude/loop-checkpoints/{project_name}/
-_checkpoint_dir() {
-  local project_name
-  project_name=$(basename "$(pwd)")
-  echo "$HOME/.claude/loop-checkpoints/$project_name"
-}
-
 _save_checkpoint() {
   local iteration="$1"
   local phase="$2"
   local extra="${3:-}"
-
-  local ckpt_dir
-  ckpt_dir=$(_checkpoint_dir)
-  mkdir -p "$ckpt_dir"
-
-  local ckpt_file="${ckpt_dir}/iter-${iteration}-${phase}.json"
-
-  # Capture current state
-  cat > "$ckpt_file" <<EOF
-{
-  "iteration": $iteration,
-  "phase": "$phase",
-  "goal_file": "$GOAL_FILE",
-  "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "extra": "$extra",
-  "consecutive_no_commits": ${consecutive_no_commits:-0},
-  "consecutive_worker_failures": ${consecutive_worker_failures:-0},
-  "started_commit": "$(git rev-parse HEAD 2>/dev/null || echo "")"
-}
-EOF
+  local ckpt_file
+  ckpt_file=$(python3 "$(_sibling_script loop_checkpoint.py)" save \
+    --goal "$GOAL_FILE" --iteration "$iteration" --phase "$phase" \
+    --extra "$extra" --no-commits "${consecutive_no_commits:-0}" \
+    --worker-failures "${consecutive_worker_failures:-0}" \
+    --iteration-start-commit "$ITERATION_START_COMMIT")
   log_info "[CHECKPOINT] iter $iteration $phase → $ckpt_file"
 }
 
 _recover_checkpoint() {
-  local ckpt_dir
-  ckpt_dir=$(_checkpoint_dir)
-
-  if [ ! -d "$ckpt_dir" ]; then
+  local recovered
+  if ! recovered=$(python3 "$(_sibling_script loop_checkpoint.py)" recover \
+      --goal "$GOAL_FILE" 2>&1); then
+    log_error "[RECOVERY] $recovered"
     return 1
   fi
+  RECOVERED_ITERATION=$(printf '%s' "$recovered" | python3 -c 'import json,sys; print(json.load(sys.stdin)["iteration"])')
+  RECOVERED_PHASE=$(printf '%s' "$recovered" | python3 -c 'import json,sys; print(json.load(sys.stdin)["phase"])')
+  RECOVERED_EXTRA=$(printf '%s' "$recovered" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("extra", ""))')
+  RECOVERED_NO_COMMITS=$(printf '%s' "$recovered" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("consecutive_no_commits", 0))')
+  RECOVERED_WORKER_FAILURES=$(printf '%s' "$recovered" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("consecutive_worker_failures", 0))')
+  RECOVERED_START_COMMIT=$(printf '%s' "$recovered" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("iteration_start_commit", ""))')
+  local ckpt_file
+  ckpt_file=$(printf '%s' "$recovered" | python3 -c 'import json,sys; print(json.load(sys.stdin)["checkpoint_file"])')
+  log_info "[RECOVERY] Resuming iteration $RECOVERED_ITERATION after $RECOVERED_PHASE → $ckpt_file"
+}
 
-  local latest
-  latest=$(ls -t "$ckpt_dir"/iter-*.json 2>/dev/null | head -1 || true)
-  if [ -z "$latest" ]; then
-    return 1
-  fi
-
-  log_info "[RECOVERY] Found checkpoint: $latest"
-
-  # Extract state from checkpoint
-  recovered_iteration=$(python3 -c "
-import json, sys
-d = json.load(open('$latest'))
-print(d.get('iteration', 0))
-" 2>/dev/null || echo "0")
-
-  recovered_phase=$(python3 -c "
-import json, sys
-d = json.load(open('$latest'))
-print(d.get('phase', ''))
-" 2>/dev/null || echo "")
-
-  if [ -n "$recovered_phase" ]; then
-    log_info "[RECOVERY] Resuming from iter $recovered_iteration phase: $recovered_phase"
-    return 0
-  fi
-  return 1
+_clear_checkpoints() {
+  python3 "$(_sibling_script loop_checkpoint.py)" clear --goal "$GOAL_FILE"
 }
 
 # ─── DRY RUN: preview plan, no claude calls, no state writes ────
@@ -1259,21 +1222,21 @@ EOF
 
 # ─── MAIN BLUEPRINT LOOP ────────────────────────────────────────
 run_blueprint_loop() {
-  # Recovery emits log lines, so the selected log directory must exist before
-  # the first checkpoint probe.  Custom --log-dir values commonly start absent.
   mkdir -p "$LOG_DIR"
-
-  # Try to recover from checkpoint
-  if _recover_checkpoint; then
-    log_warn "[RECOVERY] Checkpoint recovery is a design stub — full implementation"
-    log_warn "[RECOVERY] would resume from recovered_iteration/recovered_phase."
-    log_warn "[RECOVERY] For now, starting fresh but preserving iteration counter."
-  fi
-
   local iteration=0
   local consecutive_no_commits=0
   local consecutive_worker_failures=0
   local exit_reason="max_iterations"
+  local resume_phase=""
+
+  if [ "$RESUME" = "true" ]; then
+    _recover_checkpoint || return 2
+    iteration=$((RECOVERED_ITERATION - 1))
+    consecutive_no_commits=$RECOVERED_NO_COMMITS
+    consecutive_worker_failures=$RECOVERED_WORKER_FAILURES
+    resume_phase=$RECOVERED_PHASE
+    ITERATION_START_COMMIT=$RECOVERED_START_COMMIT
+  fi
 
   log_info "Starting Blueprint Loop"
   log_info "  Goal:         $GOAL_FILE"
@@ -1284,6 +1247,20 @@ run_blueprint_loop() {
   log_info "  Workers:      $WORKER_MODEL"
   log_info "  State file:   $STATE_FILE"
 
+  # POST was already completed before the crash: finish its deterministic
+  # convergence/state transition once, then continue at the next iteration.
+  if [ "$resume_phase" = "post-done" ]; then
+    iteration=$RECOVERED_ITERATION
+    ITERATION=$iteration
+    if _check_convergence "$iteration"; then
+      generate_loop_report "$iteration" "$exit_reason"
+      _clear_checkpoints
+      return
+    fi
+    update_state "$iteration" "${RECOVERED_EXTRA:-0}"
+    resume_phase=""
+  fi
+
   while true; do
     iteration=$((iteration + 1))
     ITERATION=$iteration  # make available to node functions
@@ -1291,75 +1268,40 @@ run_blueprint_loop() {
     log_info ""
     log_info "═══ Iteration $iteration / $MAX_ITER ═══"
 
-    # [DET] Check stop sentinel first
-    if check_stop_sentinel; then
-      exit_reason="user_stop"
-      break
-    fi
+    if [ "$resume_phase" != "workers-done" ]; then
+      if check_stop_sentinel; then exit_reason="user_stop"; break; fi
+      if ! node_pre_flight; then exit_reason="pre_flight_failed"; break; fi
+      ITERATION_START_COMMIT=$(git rev-parse HEAD 2>/dev/null || true)
+      if check_interrupt; then exit_reason="interrupted"; break; fi
+      node_health_check
+      node_hydrate_context
+      node_parse_todo
+      _save_checkpoint "$iteration" "pre-done"
 
-    # [DET] pre_flight
-    if ! node_pre_flight; then
-      exit_reason="pre_flight_failed"
-      break
-    fi
-    ITERATION_START_COMMIT=$(git rev-parse HEAD 2>/dev/null || true)
-
-    # [DET] Check for interrupt (LangGraph breakpoint pattern)
-    if check_interrupt; then
-      exit_reason="interrupted"
-      break
-    fi
-
-    # [DET] health_check — Anthropic lever: repair a broken baseline before
-    # planning new work. Writes .claude/health-warning.md (folded into context).
-    node_health_check
-
-    # [DET] hydrate_context
-    node_hydrate_context
-
-    # [DET] parse TODO items from goal file
-    node_parse_todo
-
-    # [DET] checkpoint after PRE
-    _save_checkpoint "$iteration" "pre-done"
-
-    # [LLM] supervisor
-    local tasks_json
-    tasks_json=$(node_supervisor "$iteration")
-
-    # Supervisor always outputs tasks array (CONVERGED judgment removed — deterministic check comes after commit)
-    # Empty array means supervisor sees no valuable tasks to add (not CONVERGED — script decides)
-
-    # [DET] score + write task file
-    local task_file
-    task_file=$(node_score_and_write "$tasks_json")
-
-    local task_count=0
-    if [ -n "$task_file" ] && [ -f "$task_file" ]; then
-      task_count=$(grep -c '===TASK===' "$task_file" 2>/dev/null || true)
-    fi
-
-    if [ "$task_count" -eq 0 ]; then
-      consecutive_no_commits=$((consecutive_no_commits + 1))
-      log_warn "No executable tasks this iteration (consecutive empty: $consecutive_no_commits / $MAX_CONSECUTIVE_NO_COMMITS)"
-      if [ "$consecutive_no_commits" -ge "$MAX_CONSECUTIVE_NO_COMMITS" ]; then
-        log_error "$MAX_CONSECUTIVE_NO_COMMITS consecutive empty iterations — loop appears stuck"
-        exit_reason="stuck_no_tasks"
-        break
+      local tasks_json task_file task_count=0
+      tasks_json=$(node_supervisor "$iteration")
+      task_file=$(node_score_and_write "$tasks_json")
+      if [ -n "$task_file" ] && [ -f "$task_file" ]; then
+        task_count=$(grep -c '===TASK===' "$task_file" 2>/dev/null || true)
       fi
-      # Empty iterations must still honor max-iter and goal convergence —
-      # without this the continue bypassed _check_convergence entirely, so
-      # an empty-task loop could run past --max-iter (max_iter+1 bypass).
-      _check_convergence "$iteration" && break
-      update_state "$iteration" 0
-      continue
+      if [ "$task_count" -eq 0 ]; then
+        consecutive_no_commits=$((consecutive_no_commits + 1))
+        log_warn "No executable tasks this iteration (consecutive empty: $consecutive_no_commits / $MAX_CONSECUTIVE_NO_COMMITS)"
+        if [ "$consecutive_no_commits" -ge "$MAX_CONSECUTIVE_NO_COMMITS" ]; then
+          log_error "$MAX_CONSECUTIVE_NO_COMMITS consecutive empty iterations — loop appears stuck"
+          exit_reason="stuck_no_tasks"
+          break
+        fi
+        _check_convergence "$iteration" && break
+        update_state "$iteration" 0
+        continue
+      fi
+      node_run_workers "$task_file"
+      _save_checkpoint "$iteration" "workers-done"
+    else
+      log_info "[RECOVERY] Workers already completed; continuing at POST"
+      resume_phase=""
     fi
-
-    # [LLM-PAR] workers
-    node_run_workers "$task_file"
-
-    # [DET] checkpoint after workers
-    _save_checkpoint "$iteration" "workers-done"
 
     # [DET] Check for interrupt before syntax check (LangGraph breakpoint)
     if check_interrupt; then
@@ -1466,27 +1408,39 @@ run_blueprint_loop() {
   done
 
   generate_loop_report "$iteration" "$exit_reason"
+  case "$exit_reason" in
+    converged|max_iterations|stuck_no_commits|stuck_no_tasks)
+      _clear_checkpoints
+      ;;
+  esac
 }
 # ────────────────────────────────────────────────────────────────
 
 # ─── ENTRY POINT ────────────────────────────────────────────────
+print_usage() {
+  cat <<'EOF'
+Usage: loop-runner.sh GOAL_FILE [options]
+       loop-runner.sh --status
+       loop-runner.sh --stop
+
+Options:
+  --model MODEL         supervisor model (default: claude-sonnet-4-6)
+  --worker-model MODEL  worker model (default: same as supervisor)
+  --max-iter N          max iterations (default: 10)
+  --max-workers N       max parallel workers (default: 4)
+  --context FILE        pre-generated context file
+  --state FILE          state file (default: .claude/loop-state.json)
+  --log-dir DIR         log directory (default: logs/loop)
+  --dry-run             preview iteration plan, no claude calls
+  --resume              resume an identity-matched interrupted run
+EOF
+}
+
 main() {
   parse_args "$@"
 
   if [ -z "$GOAL_FILE" ]; then
-    echo "Usage: loop-runner.sh GOAL_FILE [options]"
-    echo "       loop-runner.sh --status"
-    echo "       loop-runner.sh --stop"
-    echo ""
-    echo "Options:"
-    echo "  --model MODEL         supervisor model (default: claude-sonnet-4-6)"
-    echo "  --worker-model MODEL  worker model (default: same as supervisor)"
-    echo "  --max-iter N          max iterations (default: 10)"
-    echo "  --max-workers N       max parallel workers (default: 4)"
-    echo "  --context FILE        pre-generated context file"
-    echo "  --state FILE          state file (default: .claude/loop-state.json)"
-    echo "  --log-dir DIR         log directory (default: logs/loop)"
-    echo "  --dry-run             preview iteration plan, no claude calls"
+    print_usage
     exit 1
   fi
 

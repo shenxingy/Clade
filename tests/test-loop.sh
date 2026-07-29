@@ -30,6 +30,9 @@ if [[ "${1:-}" == "--real" ]]; then
   shift
   exec bash "$(cd "$(dirname "$0")" && pwd)/test-loop-real.sh" "$@"
 fi
+if [[ -z "${1:-}" || "${1:-}" == "checkpoint" ]]; then
+  bash "$(cd "$(dirname "$0")" && pwd)/test-loop-checkpoint.sh" || exit 1
+fi
 
 TESTS_RUN=0
 TESTS_PASSED=0
@@ -728,7 +731,7 @@ echo '{"stop": true}' > .claude/loop-state3
 # Make the mock return tasks so the loop would continue if STOP wasn't set
 export MOCK_CLAUDE_RESPONSE='[{"description": "Do something in some/file.py: should never run", "model": "haiku", "files": ["some/file.py"]}]'
 
-output=$(bash "$SCRIPTS_DIR/loop-runner.sh" "goal2.md" --max-iter 5 --state .claude/loop-state3 --log-dir logs/loop --resume 2>&1) || true
+output=$(bash "$SCRIPTS_DIR/loop-runner.sh" "goal2.md" --max-iter 5 --state .claude/loop-state3 --log-dir logs/loop 2>&1) || true
 assert_contains "$output" "Stop sentinel detected" "STOP sentinel detected"
 
 # Test 4: Max iterations reached
@@ -757,14 +760,9 @@ output=$(bash "$SCRIPTS_DIR/loop-runner.sh" "goal4.md" --max-iter 3 --state .cla
 export MOCK_CLAUDE_EXIT=0
 assert_contains "$output" "Supervisor call failed" "reports supervisor failure"
 
-# Test 6: Resume is a design stub in the Blueprint loop — the iteration
-# counter always restarts at 1 regardless of prior state (see
-# _recover_checkpoint in loop-runner.sh)
-echo '{"iteration": 3, "commits_this_iter": 0}' > .claude/loop-state6
-export MOCK_CLAUDE_RESPONSE="STATUS: CONVERGED"
-
+# Test 6: explicit resume without an identity-matched checkpoint fails closed.
 output=$(bash "$SCRIPTS_DIR/loop-runner.sh" "goal.md" --max-iter 10 --state .claude/loop-state6 --log-dir logs/loop --resume 2>&1) || true
-assert_contains "$output" "Iteration 1" "resume (stub) restarts at iteration 1"
+assert_contains "$output" "no checkpoint exists" "resume requires an exact checkpoint"
 
 # Test 7: Fresh start resets iteration
 echo '{"iteration": 5}' > .claude/loop-state7
@@ -1327,7 +1325,7 @@ if [[ ! -d "$DEPLOY_DIR" ]]; then
   # sense on machines that ran install.sh. Skipping is not a failure.
   echo "  (no deployed kit at $DEPLOY_DIR — skipping deploy verification)"
 else
-for script in loop-runner.sh loop_json.py run-tasks-parallel.sh run-tasks.sh; do
+for script in loop-runner.sh loop_checkpoint.py loop_json.py run-tasks-parallel.sh run-tasks.sh; do
   src="$ORIG_DIR/configs/scripts/$script"
   dst="$DEPLOY_DIR/$script"
   TESTS_RUN=$((TESTS_RUN + 1))

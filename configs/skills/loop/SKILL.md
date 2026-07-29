@@ -67,8 +67,12 @@ The **supervisor** does the task breakdown — not you.
 /loop --status                               # Check current loop progress
 /loop --stop                                 # Stop loop after current iteration
 /loop --dry-run goal.md                      # Preview without running
-/loop --resume goal.md                       # Resume interrupted loop
+/loop --resume goal.md                       # Resume an exact matching interrupted loop
 ```
+
+Resume is explicit and fail-closed: the checkpoint must match the current
+checkout, goal path, branch, and HEAD. A normal launch starts fresh and never
+silently consumes an older checkpoint.
 
 ## After convergence
 
