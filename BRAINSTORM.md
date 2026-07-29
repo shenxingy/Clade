@@ -17,9 +17,11 @@ Past resolved/deferred items live in [`docs/archive/BRAINSTORM-resolved.md`](doc
 This is the authoritative inbox after comparing every unchecked historical item
 with landed commits and `IMPLEMENTATION_PLAN.md`. Historical research remains
 below as evidence; checked items there are resolved/superseded/rejected rather
-than deleted. The authoritative program has nineteen entries, each mirrored in
-`TODO.md`. Checked entries in this block have landed; unchecked entries remain
-executable or conditional.
+than deleted. The reconciled research program has nineteen entries, each
+mirrored in `TODO.md`. Checked entries in this block have landed; its two
+unchecked entries are conditional watches, not executable work. Follow-on
+runtime gaps discovered after reconciliation are tracked separately in
+`TODO.md`.
 
 - [x] **P0 / RESOLVED 2026-07-28:** both MCP servers now use Python SDK v2
   low-level `on_*` handlers and require `mcp>=2.0.0,<3`; a real stdio test
@@ -116,6 +118,7 @@ section; it is an ongoing log, not historical research.
 [2026-06-12] loop-runner: commits stay local — no push phase, fleet sync silently deployed stale HEAD / workaround: manual git push before node pulls; consider a [DET] push node after commit_changes
 [2026-06-14] browser-verify: `npx playwright install chromium` resolves a different playwright version than `@playwright/mcp` bundles → "Removing unused browser" + version-mismatch box on first setup / workaround: it still lands the right chromium build (verified chromium-1223 present + MCP launched); documented as expected in configuration.md. Cleaner fix: pin the browser install to @playwright/mcp's bundled version.
 [2026-06-14] frontend-detect: real projects (scamai-landing) describe their stack in CLAUDE.md prose ("Built with Next.js 15"), not the template's structured `Frontend:` line — _is_frontend_project returned False, visual-verify directive would never inject / FIXED a1e807d: _project_is_frontend now also reads package.json deps. Lesson: don't gate on a doc format real projects don't follow (deploy-gap).
+[2026-07-29] loop-runner: reproduced the 2026-06-12 false-stuck path on the documentation convergence goal — two worker waves committed and verified the requested state, but the coordinator left all 5/5 goal checkboxes open and exited `stuck_no_commits`. Worker-side marking was deliberately removed for race safety, so the replacement must be coordinator-owned completion reconciliation. PROMOTED to TODO.md P0 follow-on.
 
 ---
 

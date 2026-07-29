@@ -11,6 +11,8 @@ semantic versioning。
 
 - Loop 新增 crash-safe phase recovery：只有显式、身份匹配的 `--resume` 才会
   恢复；普通启动忽略旧 checkpoint，`--help` 不产生副作用
+- Windows Git Bash 全新安装现在会把所有 hooks 与 status-line commands
+  包装为经 `bash.exe` 执行，与已有 settings 的迁移路径保持一致
 - `delivery abandon` 新增放弃过渡：面向已被取代、尚未发布的工作，要求精确的
   HEAD lease 与非空理由；已发布的 GitHub PR 只有在实时检查证明其在该精确
   head 上已 closed 后才能放弃
@@ -21,11 +23,21 @@ semantic versioning。
 
 ### 修复
 
+- Loop planning 现在会保留原始 supervisor 输出、安全提取嵌套 JSON、限制
+  planner tools、在 checkpoint 前初始化自定义 log 目录、只验证当前 iteration
+  的变更、共享一个 task JSON parser，并以 worker 格式分发恢复任务
+- Routing settings 会拒绝 `NaN` 与无限阈值，避免持久化无法通过 JSON
+  round-trip 的数值
 - `delivery abandon` 现在按分支发现 PR，而不是信任可能过期的 `published`
   标记——未记录的 open PR 会阻止放弃，在记录 head 上已 merged 的 PR 会被
   reconcile 而不是被误标为 abandoned
 - Task 更新会在写入前，针对生效的 runtime 重新校验生效的已持久化 connection，
   而不是等到执行时才失败
+
+### 变更
+
+- 生成的 MCP skill catalogs 现在与 manifest 对齐；生成的 Codex plugin 内容
+  变化时会同步刷新 plugin cache version
 
 ## [0.2.0] — 2026-07-13
 
