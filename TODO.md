@@ -311,6 +311,33 @@ backlog.
   events, reject `worker_provider`/task `provider` inputs and rebuild SQLite
   without the historical `tasks.provider` column.
 
+### Follow-on delivery hardening — 2026-07-29
+
+Landed after the 2026-07-28 reconciliation above; not sourced from the
+research inbox, so tracked separately rather than folded into the count above.
+
+- [x] **delivery: safe abandonment transition** — added an `abandon`
+  transition for superseded, unpublished delivery work: exact-head lease,
+  non-empty reason, idempotent only for the same head+reason; published
+  GitHub PR work may abandon only after a live forge check proves the PR is
+  CLOSED (not OPEN/MERGED) at the recorded head (`9975895`). Abandonment now
+  also discovers PRs by branch instead of trusting a possibly-stale
+  `published` flag — an unrecorded OPEN PR blocks abandonment, and an
+  unrecorded MERGED PR at the recorded head is flagged for reconciliation
+  instead of mislabeled abandoned (`26e88ec`).
+- [x] **task connection revalidation:** `PATCH /api/tasks/{id}` now
+  re-validates the effective persisted connection against the effective
+  runtime whenever either `connection` or `agent_runtime` changes (previously
+  only a freshly supplied `connection` was checked) — an invalid
+  connection/runtime pairing is now rejected at mutation time instead of
+  first failing at execution (`c5a5c92`).
+- [x] **Loop checkpoint recovery:** `loop-runner.sh` checkpoint recovery is
+  now crash-safe and explicit — only an identity-matched `--resume` restores
+  a checkpoint; a normal launch ignores a stale one, and `--help` has no side
+  effects (`25949fe`).
+- [x] **Codex plugin cache refresh:** bumped the installed Codex plugin cache
+  version to pick up the delivery/loop skill changes above (`8d93e1e`).
+
 ## Tech Debt
 
 - [x] 🟡 Migrate the orchestrator MCP servers to the Python SDK v2 API, then
