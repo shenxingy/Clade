@@ -103,26 +103,23 @@ if [[ -f "$SCRIPT_DIR/orchestrator/mcp_server.py" ]]; then
   echo "  Then restart Claude Code and use skills via MCP tool calls."
 fi
 
-# ─── 4. Copy skills (only repo-managed skills, don't overwrite others) ─
+# ─── 4. Mirror repo-managed skills; preserve unrelated user skills ─────
 
 echo "Installing skills..."
 for skill_dir in "$SCRIPT_DIR/configs/skills/"/*/; do
   skill_name=$(basename "$skill_dir")
-  mkdir -p "$CLAUDE_DIR/skills/$skill_name"
-  # Copy files at root level
-  cp "$skill_dir"* "$CLAUDE_DIR/skills/$skill_name/" 2>/dev/null || true
-  # Copy subdirectories (references/, assets/, etc.) recursively
-  for sub_dir in "$skill_dir"*/; do
-    [[ -d "$sub_dir" ]] || continue
-    sub_name=$(basename "$sub_dir")
-    [[ "$sub_name" == "__pycache__" ]] && continue
-    mkdir -p "$CLAUDE_DIR/skills/$skill_name/$sub_name"
-    cp -r "$sub_dir"* "$CLAUDE_DIR/skills/$skill_name/$sub_name/" 2>/dev/null || true
-  done
+  skill_target="$CLAUDE_DIR/skills/$skill_name"
+  case "$skill_target" in
+    "$CLAUDE_DIR"/skills/*) ;;
+    *) echo "FATAL: unsafe skill target: $skill_target" >&2; exit 1 ;;
+  esac
+  rm -rf "$skill_target"
+  mkdir -p "$skill_target"
+  cp -r "$skill_dir". "$skill_target/"
   # Never deploy interpreter caches from a developer checkout. Python will
   # recreate valid bytecode for the installed source when useful.
-  find "$CLAUDE_DIR/skills/$skill_name" -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
-  find "$CLAUDE_DIR/skills/$skill_name" -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete 2>/dev/null || true
+  find "$skill_target" -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
+  find "$skill_target" -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete 2>/dev/null || true
   echo "  Installed skill: $skill_name"
 done
 

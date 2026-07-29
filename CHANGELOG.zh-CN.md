@@ -23,6 +23,8 @@ semantic versioning。
 
 ### 修复
 
+- 重装现在会精确镜像每个 repo-managed skill 子树，清除陈旧或意外嵌套的
+  内容，同时保留无关的用户自有 skill 目录
 - Loop 完成对账现在由 coordinator 独占并 fail-closed：只有 worker、syntax、
   test 与最终 verify 全部通过后，才按精确 task-to-goal 证据勾选；即使
   leftover sweep 为空也会计入 worker 自建 commits，串行/并行 worker 失败
