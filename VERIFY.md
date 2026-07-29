@@ -4,7 +4,7 @@
 
 **Project type:** cli + skill-system + orchestrator (FastAPI)
 **Last full pass:** 2026-07-29
-**Coverage:** 92 ✅, 0 ❌, 4 ⚠, 0 ⬜ untested
+**Coverage:** 93 ✅, 0 ❌, 4 ⚠, 0 ⬜ untested
 
 ---
 
@@ -16,7 +16,7 @@
 | I1 | `./install.sh` runs without errors — no missing source files, no broken symlinks | ✅ | 2026-07-29 | fresh and idempotent installs pass in an isolated HOME (44/44 `tests/test-install.sh`) |
 | I2 | All skills from `configs/skills/` are installed to `~/.claude/skills/` | ✅ | 2026-07-29 | 132/132 skills installed and validated |
 | I3 | All hooks from `configs/hooks/` are installed to `~/.claude/hooks/` | ✅ | 2026-07-13 | 30/30 hooks installed and executable |
-| I4 | All scripts from `configs/scripts/` are installed to `~/.claude/scripts/` | ✅ | 2026-07-29 | 35 shell scripts plus 15 Python helpers installed |
+| I4 | All scripts from `configs/scripts/` are installed to `~/.claude/scripts/` | ✅ | 2026-07-29 | 35 shell scripts plus 16 Python helpers installed |
 | I5 | All templates from `configs/templates/` are installed to `~/.claude/templates/` | ✅ | 2026-04-12 | |
 | I6 | `~/.local/bin/slt` symlink exists and points to `statusline-toggle.sh` | ✅ | 2026-04-12 | |
 | I7 | `~/.local/bin/committer` symlink exists and points to `committer.sh` | ✅ | 2026-04-12 | |
@@ -58,6 +58,7 @@
 | LR5 | Recovery fails closed (exit 2) and names the mismatched field when checkout root, goal file, branch, or `HEAD` no longer match the saved checkpoint identity — it never silently resumes against the wrong state | ✅ | 2026-07-29 | "mismatched HEAD fails closed" + "mismatch names the rejected identity field" |
 | LR6 | `--resume` with no existing checkpoint fails closed (exit 2) with an explicit "no checkpoint exists" message rather than silently starting fresh | ✅ | 2026-07-29 | "resume without checkpoint fails closed" |
 | LR7 | `loop-runner.sh --help` prints usage and performs no checkpoint writes or `~/.claude` side effects | ✅ | 2026-07-29 | "--help prints usage" + "--help has no checkpoint side effects" |
+| LR8 | Successful tasks reconcile exact goal line/text evidence only after all gates pass, worker-created commits count without leftover files, and serial/parallel task failures propagate non-zero | ✅ | 2026-07-29 | `tests/test-loop-goal.sh`: 12/12 deterministic checks, including failed-worker blocking and same-iteration `converged` |
 
 ## Hook Behavior
 <!-- Hooks must fire correctly and not over-block. -->

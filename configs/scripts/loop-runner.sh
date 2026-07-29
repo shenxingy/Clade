@@ -354,7 +354,7 @@ except Exception:
 current_section = "Uncategorized"
 items = []
 
-for line in content.splitlines():
+for line_no, line in enumerate(content.splitlines(), 1):
     stripped = line.strip()
     # Track section headers (## Section Name or # Section Name)
     section_match = re.match(r'^(#{1,3})\s+(.+)$', stripped)
@@ -371,6 +371,7 @@ for line in content.splitlines():
         section_slug = re.sub(r"[^a-zA-Z0-9]+", "-", current_section.lower()).strip("-")
         items.append({
             "checked": checked,
+            "line": line_no,
             "text": text,
             "section": current_section,
             "from": f"_From: {goal_file} §{section_slug}",
@@ -379,7 +380,7 @@ for line in content.splitlines():
 # Output unchecked items first with provenance
 for item in items:
     marker = "[x]" if item["checked"] else "[ ]"
-    print(f"- {marker} {item['text']}  {item['from']}")
+    print(f"- {marker} {item['text']}  _Line: {item['line']}  {item['from']}")
 
 if not items:
     print("(no TODO items)")
@@ -449,7 +450,8 @@ Output ONLY this format — a JSON array of tasks to execute:
   {
     "description": "One sentence task with exact file paths and what to do. Include: which file, which function, what to implement, how to verify, commit with committer script.",
     "model": "haiku|sonnet|opus",
-    "files": ["path/to/file.py"]
+    "files": ["path/to/file.py"],
+    "goal_items": [{"line": 12, "text": "exact unchecked goal item this task fully satisfies"}]
   }
 ]
 \`\`\`
@@ -466,6 +468,7 @@ You output tasks. The script decides convergence. Do NOT output CONVERGED.
 - Max $MAX_WORKERS tasks — pick the highest-value ones
 - Tasks must be INDEPENDENT (no dependency between tasks in same iteration)
 - Model: haiku=mechanical/trivial (<30 lines, rename, delete), sonnet=standard, opus=complex architecture
+- Bind only goal items the task fully satisfies, using the exact _Line and text from context; use [] for supporting work
 - Never repeat a task already in recent commits
 - Workers commit via: committer "type: msg" file1 file2 (NEVER git add .)
 - If .claude/blockers.md exists, output an empty tasks array []
@@ -546,6 +549,12 @@ for task in tasks:
     desc = task.get('description', '').strip()
     model = task.get('model', 'sonnet')
     files = task.get('files', [])
+    goal_items = task.get('goal_items', [])
+    if not isinstance(goal_items, list):
+        goal_items = []
+    goal_items = [item for item in goal_items if isinstance(item, dict)
+                  and isinstance(item.get('line'), int) and item['line'] > 0
+                  and isinstance(item.get('text'), str) and item['text'].strip()]
 
     if not desc:
         continue
@@ -572,6 +581,7 @@ for task in tasks:
         f'model: {model}',
         'timeout: 600',
         'retries: 2',
+        'goal_items_json: ' + json.dumps(goal_items, separators=(',', ':')),
         '---',
         desc,
         '',
@@ -621,6 +631,7 @@ print('\n'.join(output_tasks))
 # Runs tasks in parallel using run-tasks-parallel.sh or run-tasks.sh
 node_run_workers() {
   local task_file="$1"
+  WORKERS_SUCCEEDED=false
   log_info "[LLM-PAR] workers (task_file=$task_file)"
 
   if [ ! -f "$task_file" ] || [ ! -s "$task_file" ]; then
@@ -641,23 +652,21 @@ node_run_workers() {
   # (Co-Authored-By + X-Clade-Task) so loop commits segment as agent-authored.
   # Workers keep user hooks deliberately; pure judges drop them — see PURE_JUDGE_FLAGS.
   if [ "$MAX_WORKERS" -gt 1 ]; then
-    CLADE_WORKER_TASK_ID="loop-iter${ITERATION}" MAX_WORKERS="$MAX_WORKERS" \
+    if CLADE_WORKER_TASK_ID="loop-iter${ITERATION}" MAX_WORKERS="$MAX_WORKERS" \
       _timeout "$worker_total_timeout" \
       bash "$(_sibling_script run-tasks-parallel.sh)" "$task_file" 2>&1 \
-      | tee -a "$LOG_DIR/loop.log" || {
-        log_warn "Workers returned non-zero exit (some tasks may have failed)"
-      }
+      | tee -a "$LOG_DIR/loop.log"; then WORKERS_SUCCEEDED=true
+    else log_warn "Workers returned non-zero exit (some tasks may have failed)"; fi
   else
     # --keep-logs: run-tasks.sh's success auto-cleanup otherwise deletes the
     # caller-owned iter task file + worker logs (the loop's audit trail, and
     # what tests/test-loop-real.sh asserts). run-tasks-parallel.sh never
     # garbage-collects them — keep both paths consistent.
-    CLADE_WORKER_TASK_ID="loop-iter${ITERATION}" \
+    if CLADE_WORKER_TASK_ID="loop-iter${ITERATION}" \
       _timeout "$worker_total_timeout" \
       bash "$(_sibling_script run-tasks.sh)" "$task_file" --keep-logs 2>&1 \
-      | tee -a "$LOG_DIR/loop.log" || {
-        log_warn "Worker returned non-zero exit"
-      }
+      | tee -a "$LOG_DIR/loop.log"; then WORKERS_SUCCEEDED=true
+    else log_warn "Worker returned non-zero exit"; fi
   fi
 }
 # ────────────────────────────────────────────────────────────────
@@ -916,19 +925,38 @@ else:
 
   echo "$parsed"
 
-  if echo "$parsed" | python3 -c "import sys,json; d=json.load(sys.stdin); sys.exit(0 if d.get('passed') == False else 1)" 2>/dev/null; then
+  if echo "$parsed" | python3 -c "import sys,json; d=json.load(sys.stdin); sys.exit(0 if d.get('passed') is False else 1)" 2>/dev/null; then
     log_warn "Verify found issues: $(echo "$parsed" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("summary",""))' 2>/dev/null || echo "see log")"
-  else
+  elif _verify_passed "$parsed"; then
     log_success "Verify passed"
+  else
+    log_warn "Verify unavailable or unparseable"
   fi
+}
+
+_verify_passed() {
+  printf '%s' "$1" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("passed") is True else 1)' 2>/dev/null
+}
+
+node_reconcile_goal() {
+  local marked
+  if ! marked=$(python3 "$(_sibling_script loop_goal.py)" --goal "$GOAL_FILE" --task-file "$1"); then
+    log_warn "Goal reconciliation refused; leaving checklist unchanged"
+    return 1
+  fi
+  log_success "Coordinator reconciled $marked goal item(s)"
 }
 # ────────────────────────────────────────────────────────────────────
 
 # ─── [DET] NODE: COMMIT CHANGES ─────────────────────────────────
 # Commits all uncommitted changes via committer script. No LLM calls.
-# Echoes number of files committed.
+# Echoes the number of commits created by workers or the sweep.
 node_commit_changes() {
   log_info "[DET] commit_changes"
+  local committed=0
+  if [ -n "${ITERATION_START_COMMIT:-}" ] && git merge-base --is-ancestor "$ITERATION_START_COMMIT" HEAD 2>/dev/null; then
+    committed=$(git rev-list --count "$ITERATION_START_COMMIT"..HEAD 2>/dev/null || echo 0)
+  fi
 
   # git status --porcelain sees modified, staged AND worker-CREATED untracked
   # files (git diff --name-only missed untracked entirely, so new files were
@@ -961,7 +989,7 @@ node_commit_changes() {
 
   if [ "$uncommitted" -eq 0 ]; then
     log_info "No uncommitted changes"
-    echo 0
+    echo "$committed"
     return
   fi
 
@@ -981,8 +1009,7 @@ workers during iteration $ITERATION of goal $GOAL_FILE."
     # tee to stderr — this function's stdout is captured (new_commits=$(...))
     committer "$commit_msg" $files_to_commit 2>&1 | tee -a "$LOG_DIR/loop.log" >&2 || {
       log_warn "committer failed — changes remain uncommitted"
-      echo 0
-      return
+      return 1
     }
   else
     # Fallback: direct git commit. Mirror committer.sh semantics: clear any
@@ -994,13 +1021,13 @@ workers during iteration $ITERATION of goal $GOAL_FILE."
     git add $files_to_commit
     git commit -m "$commit_msg" 2>&1 | tee -a "$LOG_DIR/loop.log" >&2 || {
       log_warn "git commit failed"
-      echo 0
-      return
+      return 1
     }
   fi
 
-  log_success "Committed $uncommitted file(s)"
-  echo "$uncommitted"
+  committed=$(git rev-list --count "$ITERATION_START_COMMIT"..HEAD 2>/dev/null || echo 0)
+  log_success "Committed $uncommitted file(s); iteration total is $committed commit(s)"
+  echo "$committed"
 }
 # ────────────────────────────────────────────────────────────────
 
@@ -1264,6 +1291,8 @@ run_blueprint_loop() {
   while true; do
     iteration=$((iteration + 1))
     ITERATION=$iteration  # make available to node functions
+    local task_file="$LOG_DIR/iter-${iteration}-tasks.txt"
+    local all_workers_succeeded=false
 
     log_info ""
     log_info "═══ Iteration $iteration / $MAX_ITER ═══"
@@ -1278,9 +1307,9 @@ run_blueprint_loop() {
       node_parse_todo
       _save_checkpoint "$iteration" "pre-done"
 
-      local tasks_json task_file task_count=0
+      local tasks_json task_count=0
       tasks_json=$(node_supervisor "$iteration")
-      task_file=$(node_score_and_write "$tasks_json")
+      node_score_and_write "$tasks_json" "$task_file" >/dev/null
       if [ -n "$task_file" ] && [ -f "$task_file" ]; then
         task_count=$(grep -c '===TASK===' "$task_file" 2>/dev/null || true)
       fi
@@ -1297,9 +1326,11 @@ run_blueprint_loop() {
         continue
       fi
       node_run_workers "$task_file"
-      _save_checkpoint "$iteration" "workers-done"
+      all_workers_succeeded="$WORKERS_SUCCEEDED"
+      _save_checkpoint "$iteration" "workers-done" "$all_workers_succeeded"
     else
       log_info "[RECOVERY] Workers already completed; continuing at POST"
+      [ "$RECOVERED_EXTRA" = "true" ] && all_workers_succeeded=true
       resume_phase=""
     fi
 
@@ -1334,9 +1365,6 @@ run_blueprint_loop() {
     local test_result=0
     node_test_sample || test_result=$?
 
-    # [LLM] verify — Junie pattern: LLM-based formal verification
-    node_verify
-
     # [LLM] Mid-iteration fix — Stripe pattern: test fails → fix → re-test
     # One retry only. If it fails again, give up on this iteration (don't commit bad code)
     if [ $test_result -ne 0 ]; then
@@ -1349,10 +1377,12 @@ run_blueprint_loop() {
       if [ -f "$fix_task_file" ] && [ -s "$fix_task_file" ]; then
         # Run fix workers
         node_run_workers "$fix_task_file"
+        [ "$WORKERS_SUCCEEDED" = "true" ] || all_workers_succeeded=false
 
         # Re-run syntax + test to verify fix
         local fix_syntax_failures
         fix_syntax_failures=$(node_syntax_check)
+        syntax_failures="$fix_syntax_failures"
         if [ -n "$fix_syntax_failures" ]; then
           log_warn "Fix introduced syntax errors — reverting"
           while IFS= read -r f; do
@@ -1362,8 +1392,9 @@ run_blueprint_loop() {
 
         local fix_test_result=0
         node_test_sample || fix_test_result=$?
+        test_result=$fix_test_result
         if [ $fix_test_result -ne 0 ]; then
-          log_warn "Mid-iteration fix failed — skipping commit this iteration"
+          log_warn "Mid-iteration fix failed — completion remains unverified"
           consecutive_worker_failures=$((consecutive_worker_failures + 1))
           update_state "$iteration" 0
           # Fall through to convergence_check
@@ -1371,20 +1402,41 @@ run_blueprint_loop() {
       fi
     fi
 
+    local verify_result
+    verify_result=$(node_verify)
+
+    # Workers never edit the goal; the coordinator requires every gate.
+    if [ "$all_workers_succeeded" = "true" ] && [ -z "$syntax_failures" ] \
+       && [ "$test_result" -eq 0 ] && _verify_passed "$verify_result"; then
+      node_reconcile_goal "$task_file" || true
+    else
+      log_warn "Skipping goal reconciliation because an execution or verification gate did not pass"
+    fi
+
     # [DET] commit_changes
     local new_commits
-    new_commits=$(node_commit_changes)
+    if ! new_commits=$(node_commit_changes); then
+      exit_reason="commit_failed"
+      break
+    fi
 
     if [ "${new_commits:-0}" -eq 0 ]; then
       consecutive_no_commits=$((consecutive_no_commits + 1))
-      # Workers ran but produced nothing — count as worker failure
+      log_warn "No commits this iteration (consecutive no-commit: $consecutive_no_commits)"
+    else
+      consecutive_no_commits=0
+      log_success "Counted $new_commits commit(s) in iteration $iteration"
+    fi
+    if [ "$all_workers_succeeded" = "true" ]; then
+      consecutive_worker_failures=0
+    else
       consecutive_worker_failures=$((consecutive_worker_failures + 1))
-      log_warn "No commits this iteration (consecutive no-commit: $consecutive_no_commits, consecutive worker failures: $consecutive_worker_failures)"
+      log_warn "Worker execution failed (consecutive: $consecutive_worker_failures)"
       if [ "$consecutive_worker_failures" -ge "$MAX_CONSECUTIVE_FAILURES" ]; then
         log_error "$MAX_CONSECUTIVE_FAILURES consecutive worker failures — all workers failed, writing blocker"
         {
           echo "## Blocker [$(date '+%Y-%m-%d %H:%M')]"
-          echo "All $MAX_CONSECUTIVE_FAILURES consecutive worker runs produced no commits."
+          echo "All $MAX_CONSECUTIVE_FAILURES consecutive worker runs returned failure."
           echo "Likely causes: workers hitting permission errors, wrong working directory, or unresolvable task conflicts."
           echo "Iteration: $iteration"
           echo "Last goal: $GOAL_FILE"
@@ -1392,10 +1444,6 @@ run_blueprint_loop() {
         exit_reason="all_workers_failed"
         break
       fi
-    else
-      consecutive_no_commits=0
-      consecutive_worker_failures=0
-      log_success "Committed $new_commits change(s) in iteration $iteration"
     fi
 
     # [DET] checkpoint after POST

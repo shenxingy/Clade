@@ -342,12 +342,14 @@ research inbox, so tracked separately rather than folded into the count above.
   version to pick up the delivery workflow changes that preceded Loop recovery
   (`8d93e1e`). Loop is a Claude/MCP skill and was installed separately from
   merged `main`.
-- [ ] **P0 · Loop completion reconciliation:** the 2026-07-29 documentation
-  Loop completed and verified its worker changes but exited
-  `stuck_no_commits` because all five goal checkboxes remained open. Restore
-  convergence without reintroducing parallel worker writes to one goal file:
-  completion evidence must be coordinator-owned, phase-safe, and covered by a
-  regression that reaches `converged` after successful worker output.
+- [x] **P0 · completed 2026-07-29 · Loop completion reconciliation:**
+  supervisors bind tasks to exact goal line/text evidence; workers remain
+  prohibited from editing the shared goal; and the coordinator marks items
+  only after worker, syntax, test, and final verification gates pass.
+  Iteration progress now counts commits created directly by workers as well as
+  the leftover sweep. Deterministic regressions cover fail-closed stale
+  evidence, idempotence, failure propagation, worker commit accounting, and
+  same-iteration `converged`.
 
 ## Tech Debt
 
