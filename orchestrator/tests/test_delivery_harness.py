@@ -490,6 +490,73 @@ def test_abandon_rejects_empty_reason_and_open_pr_then_accepts_closed_pr(
     assert abandoned["abandonment"]["closed_pull_request"]["state"] == "CLOSED"
 
 
+def test_abandon_discovers_unrecorded_branch_prs(git_repo: Path) -> None:
+    _git(git_repo, "remote", "add", "origin", "https://github.com/acme/repo.git")
+    started = _start(git_repo)
+    recorded_head = started["head_sha"]
+    bin_dir = git_repo / "fake-bin"
+    bin_dir.mkdir()
+    env = dict(os.environ)
+    env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
+
+    _fake_gh(bin_dir, listed_pr_state="OPEN")
+    open_pr = _delivery(
+        git_repo,
+        "abandon",
+        "--id",
+        "fixture",
+        "--head-sha",
+        recorded_head,
+        "--reason",
+        "superseded",
+        env=env,
+        expected=2,
+    )
+    assert "unrecorded PR #17 is still open" in open_pr["error"]
+
+    _fake_gh(bin_dir, listed_pr_state="MERGED")
+    merged_same_head = _delivery(
+        git_repo,
+        "abandon",
+        "--id",
+        "fixture",
+        "--head-sha",
+        recorded_head,
+        "--reason",
+        "superseded",
+        env=env,
+        expected=2,
+    )
+    assert "reconcile it instead of abandoning" in merged_same_head["error"]
+
+    (git_repo / "later.txt").write_text("later delivery\n", encoding="utf-8")
+    _git(git_repo, "add", "later.txt")
+    _git(git_repo, "commit", "-q", "-m", "later delivery")
+    _fake_gh(bin_dir, listed_pr_state="MERGED")
+    superseded = _delivery(
+        git_repo,
+        "abandon",
+        "--id",
+        "fixture",
+        "--head-sha",
+        recorded_head,
+        "--reason",
+        "superseded before later branch delivery",
+        env=env,
+    )
+
+    assert superseded["state"] == "ABANDONED"
+    assert superseded["abandonment"]["closed_pull_request"] is None
+    assert superseded["abandonment"]["related_pull_requests"] == [
+        {
+            "number": 17,
+            "url": "https://github.com/acme/repo/pull/17",
+            "state": "MERGED",
+            "head_sha": _git(git_repo, "rev-parse", "HEAD"),
+        }
+    ]
+
+
 def test_restack_updates_ancestry_with_head_lease(git_repo: Path) -> None:
     _start(git_repo)
     (git_repo / "feature.txt").write_text("feature\n", encoding="utf-8")
@@ -583,6 +650,7 @@ def _fake_gh(
     pending: bool = False,
     commit_count: int = 2,
     pr_state: str = "OPEN",
+    listed_pr_state: str | None = None,
 ) -> Path:
     check = (
         '{"name":"Tests","status":"IN_PROGRESS","conclusion":""}'
@@ -616,7 +684,15 @@ elif args[:2] == ["repo", "view"]:
         "squashMergeAllowed": True,
     }}))
 elif args[:2] == ["pr", "list"]:
-    print("[]")
+    if "--head" in args and {json.dumps(listed_pr_state)} is not None:
+        print(json.dumps([{{
+            "number": 17,
+            "url": "https://github.com/acme/repo/pull/17",
+            "state": {json.dumps(listed_pr_state)},
+            "headRefOid": {json.dumps(_git(bin_dir.parent, "rev-parse", "HEAD"))},
+        }}]))
+    else:
+        print("[]")
 else:
     print("unsupported", file=sys.stderr)
     sys.exit(1)

@@ -599,6 +599,46 @@ def _gh_pr(root: Path, pr: str) -> dict[str, Any]:
         raise DeliveryError("gh returned invalid PR JSON") from exc
 
 
+def _gh_prs_by_head(root: Path, branch: str) -> list[dict[str, Any]]:
+    result = _run(
+        [
+            "gh",
+            "pr",
+            "list",
+            "--state",
+            "all",
+            "--head",
+            branch,
+            "--limit",
+            "100",
+            "--json",
+            "number,url,state,headRefOid",
+        ],
+        cwd=root,
+        timeout=15,
+    )
+    if result.returncode != 0:
+        raise DeliveryError(
+            result.stderr.strip() or "unable to discover PRs for delivery branch"
+        )
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise DeliveryError("gh returned invalid branch PR JSON") from exc
+    if not isinstance(data, list):
+        raise DeliveryError("gh returned non-list branch PR JSON")
+    return data
+
+
+def _pr_abandonment_fact(pr: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "number": pr.get("number"),
+        "url": pr.get("url"),
+        "state": str(pr.get("state") or "").upper(),
+        "head_sha": pr.get("headRefOid"),
+    }
+
+
 def _gh_methods(root: Path) -> list[str]:
     result = _run(
         [
@@ -787,64 +827,80 @@ def cmd_abandon(args: argparse.Namespace) -> dict[str, Any]:
     if not reason:
         raise DeliveryError("abandonment reason must not be empty")
 
+    initial = _read_state(root, args.id)
+    recorded_head = initial.get("head_sha")
+    if args.head_sha != recorded_head:
+        raise DeliveryError("abandonment head SHA does not match recorded delivery head")
+
+    if initial.get("state") == "ABANDONED":
+        abandonment = initial.get("abandonment") or {}
+        if (
+            abandonment.get("head_sha") == args.head_sha
+            and abandonment.get("reason") == reason
+        ):
+            return initial
+        raise DeliveryError("delivery is already abandoned with different recorded facts")
+
+    allowed_states = {"BUILD", "CHECKPOINT", "PUBLISHED", "READY", "BLOCKED"}
+    if initial.get("state") not in allowed_states:
+        raise DeliveryError(f"cannot abandon delivery in state {initial.get('state')!r}")
+
+    pull_request = initial.get("pull_request") or {}
+    pr_number = pull_request.get("number")
+    closed_pr = None
+    related_prs: list[dict[str, Any]] = []
+    if pr_number:
+        if initial.get("forge") != "github":
+            raise DeliveryError(
+                "published PR abandonment requires a supported forge closure check"
+            )
+        live_pr = _gh_pr(root, str(pr_number))
+        live_state = str(live_pr.get("state") or "").upper()
+        if live_state != "CLOSED":
+            raise DeliveryError(
+                f"published delivery PR is not closed: {live_state or 'UNKNOWN'}"
+            )
+        if live_pr.get("headRefOid") != recorded_head:
+            raise DeliveryError("closed PR head SHA does not match recorded delivery head")
+        closed_pr = _pr_abandonment_fact(live_pr)
+    elif initial.get("ready"):
+        raise DeliveryError("READY delivery has no pull request to verify closed")
+    elif initial.get("forge") == "github" and initial.get("branch"):
+        discovered = _gh_prs_by_head(root, initial["branch"])
+        for live_pr in discovered:
+            live_state = str(live_pr.get("state") or "").upper()
+            fact = _pr_abandonment_fact(live_pr)
+            if live_state == "OPEN":
+                raise DeliveryError(
+                    f"unrecorded PR #{fact['number']} is still open for delivery branch"
+                )
+            if live_state not in {"CLOSED", "MERGED"}:
+                raise DeliveryError(
+                    f"unrecorded PR #{fact['number']} has unknown state "
+                    f"{live_state or 'UNKNOWN'}"
+                )
+            if fact["head_sha"] == recorded_head:
+                if live_state == "MERGED":
+                    raise DeliveryError(
+                        f"recorded delivery head is already merged in PR "
+                        f"#{fact['number']}; reconcile it instead of abandoning"
+                    )
+                closed_pr = fact
+            else:
+                related_prs.append(fact)
+
     with _locked_state_dir(root):
         state = _read_state(root, args.id)
-        recorded_head = state.get("head_sha")
-        if args.head_sha != recorded_head:
+        if state.get("updated_at") != initial.get("updated_at"):
             raise DeliveryError(
-                "abandonment head SHA does not match recorded delivery head"
+                "delivery changed during forge verification; retry abandonment"
             )
-
-        if state.get("state") == "ABANDONED":
-            abandonment = state.get("abandonment") or {}
-            if (
-                abandonment.get("head_sha") == args.head_sha
-                and abandonment.get("reason") == reason
-            ):
-                return state
-            raise DeliveryError(
-                "delivery is already abandoned with different recorded facts"
-            )
-
-        allowed_states = {"BUILD", "CHECKPOINT", "PUBLISHED", "READY", "BLOCKED"}
-        if state.get("state") not in allowed_states:
-            raise DeliveryError(
-                f"cannot abandon delivery in state {state.get('state')!r}"
-            )
-
-        pull_request = state.get("pull_request") or {}
-        pr_number = pull_request.get("number")
-        closed_pr = None
-        if pr_number:
-            if state.get("forge") != "github":
-                raise DeliveryError(
-                    "published PR abandonment requires a supported forge closure "
-                    "check"
-                )
-            live_pr = _gh_pr(root, str(pr_number))
-            live_state = str(live_pr.get("state") or "").upper()
-            if live_state != "CLOSED":
-                raise DeliveryError(
-                    f"published delivery PR is not closed: {live_state or 'UNKNOWN'}"
-                )
-            if live_pr.get("headRefOid") != recorded_head:
-                raise DeliveryError(
-                    "closed PR head SHA does not match recorded delivery head"
-                )
-            closed_pr = {
-                "number": live_pr.get("number"),
-                "url": live_pr.get("url"),
-                "state": live_state,
-                "head_sha": live_pr.get("headRefOid"),
-            }
-        elif state.get("ready"):
-            raise DeliveryError("READY delivery has no pull request to verify closed")
-
         state["state"] = "ABANDONED"
         state["abandonment"] = {
             "head_sha": recorded_head,
             "reason": reason,
             "closed_pull_request": closed_pr,
+            "related_pull_requests": related_prs,
             "abandoned_at": _now(),
         }
         _write_state(root, state)
