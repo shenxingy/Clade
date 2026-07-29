@@ -95,6 +95,14 @@ async def compute_eval_metrics(db_path: Path, evals_root: Path) -> dict:
     complete = sum(
         _terminal_complete(_load_json(row["evidence_json"])) for row in terminal
     )
+    verified_deliveries = sum(
+        row["lifecycle_state"] == "delivered"
+        and _terminal_complete(evidence)
+        and evidence.get("verification", {}).get("oracle_verdict") == "approved"
+        and evidence.get("delivery_candidate", {}).get("eligible") is True
+        for row in terminal
+        for evidence in [_load_json(row["evidence_json"])]
+    )
     approved_attempts = sum(
         _load_json(row["evidence_json"])
         .get("verification", {})
@@ -156,6 +164,12 @@ async def compute_eval_metrics(db_path: Path, evals_root: Path) -> dict:
     return {
         "schema_version": SCHEMA_VERSION,
         "candidates": {"total": total_candidates, **status_counts},
+        "north_star": {
+            "metric": "verified_delivery_rate",
+            "verified_deliveries": verified_deliveries,
+            "terminal_attempts": len(terminal),
+            "rate": _ratio(verified_deliveries, len(terminal)),
+        },
         "evidence_completeness": {
             "complete": complete,
             "terminal_attempts": len(terminal),

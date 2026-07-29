@@ -74,6 +74,12 @@ async def test_metrics_link_false_approve_override_coverage_and_evidence(
         "rejected": 0,
         "expired": 0,
     }
+    assert report["north_star"] == {
+        "metric": "verified_delivery_rate",
+        "verified_deliveries": 1,
+        "terminal_attempts": 1,
+        "rate": 1.0,
+    }
     assert report["evidence_completeness"] == {
         "complete": 1,
         "terminal_attempts": 1,
@@ -102,11 +108,47 @@ async def test_metrics_use_null_not_zero_without_a_denominator(
 ):
     report = await compute_eval_metrics(task_queue._db_path, tmp_path)
 
+    assert report["north_star"]["rate"] is None
     assert report["evidence_completeness"]["rate"] is None
     assert report["source_integrity"]["rate"] is None
     assert report["false_approvals"]["rate"] is None
     assert report["human_overrides"]["rate"] is None
     assert report["accepted_regression_coverage"]["rate"] is None
+
+
+async def test_north_star_counts_strict_deliveries_over_all_terminal_attempts(
+    task_queue, tmp_path
+):
+    await _approved_attempt(task_queue)
+    failed_task = await task_queue.add("Fail one bounded delivery")
+    failed = await task_queue.create_evidence_attempt(
+        failed_task["id"], attempt_id="attempt-failed"
+    )
+    await task_queue.append_evidence_bundle(
+        failed["attempt_id"], lifecycle_state="running"
+    )
+    await task_queue.append_evidence_bundle(
+        failed["attempt_id"],
+        lifecycle_state="failed",
+        evidence={
+            "worker_envelope": {"status": "failed"},
+            "timing": {"finished_at": 12.0},
+            "git": {"base_sha": "a", "head_sha": "a"},
+            "verification": {"oracle_verdict": "rejected"},
+            "usage": {"input_tokens": 1},
+            "artifacts": {"changed_files": []},
+            "delivery_candidate": {"eligible": False},
+        },
+    )
+
+    report = await compute_eval_metrics(task_queue._db_path, tmp_path)
+
+    assert report["north_star"] == {
+        "metric": "verified_delivery_rate",
+        "verified_deliveries": 1,
+        "terminal_attempts": 2,
+        "rate": 0.5,
+    }
 
 
 async def test_missing_corpus_file_is_visible_as_uncovered(

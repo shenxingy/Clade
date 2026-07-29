@@ -193,6 +193,11 @@ export interface EvalMetrics {
     rejected: number;
     expired: number;
   };
+  north_star: EvalMetricRatio & {
+    metric: 'verified_delivery_rate';
+    verified_deliveries: number;
+    terminal_attempts: number;
+  };
   evidence_completeness: EvalMetricRatio & {
     complete: number;
     terminal_attempts: number;
