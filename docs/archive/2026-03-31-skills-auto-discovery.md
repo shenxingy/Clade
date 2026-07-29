@@ -758,6 +758,5 @@ export default { manifest, create, detect } satisfies PluginModule<Agent>;
 - [Composio agent-orchestrator](https://github.com/ComposioHQ/agent-orchestrator) — `packages/core/src/plugin-registry.ts`, `packages/core/src/types.ts`, `packages/plugins/agent-claude-code/src/index.ts`
 - [MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk) — `packages/core/src/types/spec.types.ts`, `packages/server/src/server/mcp.ts`
 - [Goose (block/goose)](https://github.com/block/goose) — `crates/goose/src/agents/extension.rs` (from research doc)
-- [Cursor 2.0 & Devin 2.0 Research](./2026-03-30-cursor-devin-research.md)
-- [Goose Research](./2026-03-30-goose-research.md)
-- [Composio Orchestrator Research](./2026-03-30-composio-orchestrator-research.md)
+- [Cursor 2.0 & Devin 2.0 Research](../research/2026-03-30-cursor-devin-research.md)
+- [Composio Orchestrator Research](../research/2026-03-30-composio-orchestrator-research.md)

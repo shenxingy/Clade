@@ -50,7 +50,7 @@ cd clade && ./install.sh
 
 安装 skills、hooks、agents、scripts 和安全守卫。启动新的 Claude Code 会话即可激活。
 
-> **依赖：** `jq`。**平台：** Linux 和 macOS。
+> **依赖：** `jq`。**平台：** Linux、macOS，以及通过 Git Bash 的 Windows（不含 bash 的原生 CMD/PowerShell 不在支持范围内）。
 
 ### Codex — 原生插件
 
@@ -317,7 +317,7 @@ clade/
 │   ├── skills/              # 132 个 skill 定义
 │   ├── hooks/               # 30 个事件 hooks + lib/
 │   ├── agents/              # 37 个 agent 定义
-│   └── scripts/             # 35 个 shell + 13 个 Python 工具
+│   └── scripts/             # 35 个 shell + 15 个 Python 工具
 ├── adapters/openclaw/       # OpenClaw 集成（手机监控）
 ├── templates/               # settings、CLAUDE.md、corrections 模板
 └── docs/                    # 指南与研究

@@ -21,7 +21,10 @@ Phases 1–13 complete.
 ### CLI-side (configs/skills/, configs/scripts/)
 
 - [x] **Two-phase orchestrate** (`/orchestrate --plan`) — Phase 1: codebase analysis → `IMPLEMENTATION_PLAN.md`, Phase 2: plan → `proposed-tasks.md` with `OWN_FILES`/`FORBIDDEN_FILES`
-- [x] **Loop artifact marking** — instruct workers to mark `- [ ]` → `- [x]` in goal file on completion (enforce via supervisor prompt)
+- [x] **Loop artifact marking experiment (retired as unsafe)** — the original
+  worker-side `- [ ]` → `- [x]` mutation was removed after it raced across
+  parallel worktrees; see the later Phase 11.8 entry. This historical item is
+  not evidence that current Blueprint Loop completion reconciliation exists.
 - [x] **Loop `--stop`** — write STOP sentinel to state file; loop-runner checks before each iteration
 - [x] **Loop signal handling** — trap SIGTERM/SIGINT in loop-runner.sh for graceful shutdown
 
@@ -310,6 +313,41 @@ backlog.
 - [ ] **Conditional watch:** after one stable release reports zero compatibility
   events, reject `worker_provider`/task `provider` inputs and rebuild SQLite
   without the historical `tasks.provider` column.
+
+### Follow-on delivery hardening — 2026-07-29
+
+Landed after the 2026-07-28 reconciliation above; not sourced from the
+research inbox, so tracked separately rather than folded into the count above.
+
+- [x] **delivery: safe abandonment transition** — added an `abandon`
+  transition for superseded, unpublished delivery work: exact-head lease,
+  non-empty reason, idempotent only for the same head+reason; published
+  GitHub PR work may abandon only after a live forge check proves the PR is
+  CLOSED (not OPEN/MERGED) at the recorded head (`9975895`). Abandonment now
+  also discovers PRs by branch instead of trusting a possibly-stale
+  `published` flag — an unrecorded OPEN PR blocks abandonment, and an
+  unrecorded MERGED PR at the recorded head is flagged for reconciliation
+  instead of mislabeled abandoned (`26e88ec`).
+- [x] **task connection revalidation:** `PATCH /api/tasks/{id}` now
+  re-validates the effective persisted connection against the effective
+  runtime whenever either `connection` or `agent_runtime` changes (previously
+  only a freshly supplied `connection` was checked) — an invalid
+  connection/runtime pairing is now rejected at mutation time instead of
+  first failing at execution (`c5a5c92`).
+- [x] **Loop checkpoint recovery:** `loop-runner.sh` checkpoint recovery is
+  now crash-safe and explicit — only an identity-matched `--resume` restores
+  a checkpoint; a normal launch ignores a stale one, and `--help` has no side
+  effects (`25949fe`).
+- [x] **Codex plugin cache refresh:** bumped the installed Codex plugin cache
+  version to pick up the delivery workflow changes that preceded Loop recovery
+  (`8d93e1e`). Loop is a Claude/MCP skill and was installed separately from
+  merged `main`.
+- [ ] **P0 · Loop completion reconciliation:** the 2026-07-29 documentation
+  Loop completed and verified its worker changes but exited
+  `stuck_no_commits` because all five goal checkboxes remained open. Restore
+  convergence without reintroducing parallel worker writes to one goal file:
+  completion evidence must be coordinator-owned, phase-safe, and covered by a
+  regression that reaches `converged` after successful worker output.
 
 ## Tech Debt
 

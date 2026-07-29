@@ -1,5 +1,36 @@
 # Implementation Plan: 2026-H2 Evidence-Driven Agent Harness
 
+## Status (audited 2026-07-29)
+
+Every numbered step in the Execution Order below has landed. The plan's own
+exit criteria are met: Brainstorm/TODO report truthful counts, both MCP
+servers run on SDK v2, `/equip sync --apply` fails closed on unaudited drift,
+worker events/provider output are sanitized before persistence, and the final
+merged `main` has been installed on this server with the checkout back on
+`main` (see `PROGRESS.md`, 2026-07-28 entries and the follow-on 2026-07-29
+delivery hardening — safe `abandon` transition `9975895`/`26e88ec`, task
+connection revalidation `c5a5c92`, crash-safe Loop checkpoint recovery
+`25949fe`). The documentation convergence audit then reproduced one follow-on
+runtime gap: Loop lacks a safe coordinator-owned replacement for the retired
+worker-side goal marking, so that P0 is tracked separately in `TODO.md`.
+
+Only two items remain, and both are deliberately conditional, not
+undelivered work — see `TODO.md` "Conditional watch" entries and the matching
+BRAINSTORM.md `[Reconciled]` section:
+
+- **Step 16 final shim deletion**: the compatibility-retirement *window*
+  (idempotent migration, `agent_runtime`-only writes, deprecation headers) is
+  done (`11bd560`); deleting the remaining `worker_provider`/task `provider`
+  input aliases and the historical SQLite column is gated on one stable
+  release recording zero compatibility events, which has not yet been
+  observed.
+- **Beads-style note-to-self**: intentionally out of scope unless measured
+  loop-runner cross-iteration context loss recurs; no such recurrence has
+  been observed.
+
+Per-step completion evidence (exact SHA per step) is recorded inline in the
+Execution Order section below rather than restated here.
+
 ## Context
 
 ### Current state
@@ -187,27 +218,30 @@ Minimum fields:
 
 ### Wave 0 — Truthful backlog and immediate compatibility
 
-0. **Record late delivery authority**
+0. **Record late delivery authority — completed 2026-07-28 (`e72428e`)**
    - Add a monotonic, audited transition for explicit push/PR/merge/delete
      authority granted after a delivery has started.
    - Never require direct edits to Git-private delivery state.
    - Tests: late authority enables publication; conflicting authority is
      rejected.
+   - Delivered as `delivery.py cmd_authorize`: records authority per action,
+     refuses to silently replace an already-granted non-pending authority,
+     and rejects updates on a terminal delivery state.
 
-0a. **Remove automatic squash bias**
+0a. **Remove automatic squash bias — completed 2026-07-28 (`1e603d0`)**
    - Preserve live stack topology, prefer rebase for a single verified commit,
      and require an explicit history-semantic decision for multi-commit PRs
      whenever the forge allows several merge methods.
    - Tests: multi-commit `auto` is ambiguous; single-commit `auto` rebases.
 
-1. **Reconcile Brainstorm/TODO state**
+1. **Reconcile Brainstorm/TODO state — completed 2026-07-28 (`9f82463`)**
    - Files: `BRAINSTORM.md`, `TODO.md`, `docs/research/README.md`
    - Mark 33 stale checkboxes resolved/superseded.
    - Keep the Beads item explicitly conditional.
    - Promote the accepted program below into TODO with phase/status labels.
    - Depends on: nothing.
 
-2. **Migrate MCP Python SDK v2**
+2. **Migrate MCP Python SDK v2 — completed 2026-07-28 (`c76a098`, #40)**
    - Files: `orchestrator/mcp_server.py`,
      `mcp-package/src/clade_mcp/server.py`,
      `orchestrator/requirements.txt`, `mcp-package/pyproject.toml`,
@@ -219,7 +253,7 @@ Minimum fields:
    - Verify v1-era clients remain supported by the v2 server.
    - Depends on: nothing.
 
-3. **Re-screen `/equip sync`**
+3. **Re-screen `/equip sync` — completed 2026-07-28 (`e34632c`)**
    - Files: `configs/scripts/equip_sync.py`,
      `configs/scripts/equip_audit.py`, equip tests and skill docs.
    - Bind an audit report to the exact upstream commit.
@@ -229,7 +263,7 @@ Minimum fields:
 
 ### Wave 1 — Safe evidence substrate
 
-4. **Add structured runtime redaction**
+4. **Add structured runtime redaction — completed 2026-07-28 (`229ad3c`)**
    - Files: new leaf module `orchestrator/runtime_redaction.py`,
      `orchestrator/event_stream.py`, provider-output persistence call sites,
      focused tests.
@@ -238,7 +272,7 @@ Minimum fields:
    - Record redaction metadata without retaining originals.
    - Depends on: nothing, but must land before Steps 5–6.
 
-5. **Define and persist `EvidenceBundle`**
+5. **Define and persist `EvidenceBundle` — completed 2026-07-28 (`400f01b`)**
    - Files: new leaf module `orchestrator/evidence_bundle.py`,
      `orchestrator/task_queue.py`, `orchestrator/config.py`,
      schema fixture and contract tests.
@@ -247,7 +281,7 @@ Minimum fields:
      transitions.
    - Depends on: Step 4.
 
-6. **Wire worker, verifier, delivery, and UI evidence**
+6. **Wire worker, verifier, delivery, and UI evidence — completed 2026-07-28 (`421eaf7`)**
    - Files: `orchestrator/worker.py`, `orchestrator/worker_review.py`,
      `orchestrator/worker_envelope.py`, delivery controller,
      task/detail API and TypeScript views.
@@ -327,7 +361,7 @@ Minimum fields:
 
 ### Wave 4 — Finish the universal harness
 
-14. **Complete provider/model registry**
+14. **Complete provider/model registry — completed 2026-07-28 (`1495c3b`)**
     - Files: `orchestrator/execution_envelope.py`,
       `orchestrator/execution_resolver.py`, provider skill, settings/API/UI.
     - Add live discovery with TTL, explicit stale pinned fallback, capability
@@ -335,7 +369,7 @@ Minimum fields:
       adapters.
     - Depends on: stable EvidenceBundle identity fields.
 
-15. **Add runtime/surface conformance fixtures**
+15. **Add runtime/surface conformance fixtures — completed 2026-07-28 (`8728746`, gated by `b2c3608`)**
     - Files: recorded sanitized adapter fixtures and conformance runners.
     - Cover Claude, Codex, MCP/headless first; add Kimi only when the runtime
       is available and its lifecycle can be observed.
@@ -343,23 +377,31 @@ Minimum fields:
       silently passing.
     - Depends on: Step 14.
 
-16. **Retire compatibility shims**
+16. **Retire compatibility shims — window landed 2026-07-28 (`11bd560`); final deletion is a conditional watch**
     - Files: config/settings, worker/runtime adapters, generators, docs.
     - Remove deprecated aliases only after fixture and telemetry evidence show
       no supported path uses them.
     - Provide explicit migration errors/import tooling.
     - Depends on: Steps 14–15.
+    - Delivered: internal terminology, workers, status, task responses, and
+      UI use only `agent_runtime`; settings/SQLite migrations are idempotent;
+      new rows no longer dual-write `provider`; old API inputs get deprecation
+      headers plus a secret-free aggregate counter
+      (`docs/COMPATIBILITY-RETIREMENT.md`). Not yet done, and deliberately
+      not invented as done: deleting the remaining input aliases and the
+      historical `tasks.provider` SQLite column — gated on one stable release
+      recording zero compatibility events (see TODO.md "Conditional watch").
 
 ### Wave 5 — Product metrics and positioning
 
-17. **Update North Star and dashboard**
+17. **Update North Star and dashboard — completed 2026-07-28 (`ef1a8e5`)**
     - Files: `VISION.md`, analytics/status API, dashboard.
     - Add evidence completeness, false-approval rate, human override rate,
       regression coverage, success/$, and success/wall-hour alongside
       autonomous duration.
     - Depends on: Waves 1–3 producing real data.
 
-18. **Reposition the orchestrator**
+18. **Reposition the orchestrator — completed 2026-07-28 (`1e603d0`)**
     - Files: `VISION.md`, README architecture sections.
     - Treat native fan-out/scheduling as harness table stakes.
     - Position Clade around provider-neutral execution identity, evidence,
@@ -368,7 +410,7 @@ Minimum fields:
 
 ### Wave 6 — Local rollout and repository cleanup
 
-19. **Install the final merged configuration on this server**
+19. **Install the final merged configuration on this server — completed 2026-07-28 (`ac0802a`, #58)**
     - Source: the final verified `main`, never an intermediate task branch.
     - Run the repository install flow so current skills, hooks, scripts,
       agents, generated catalogs, and native Codex plugin surfaces are present
@@ -378,8 +420,15 @@ Minimum fields:
     - Compare installed files against the tracked canonical sources and run
       the clean-HOME install regression before and after the real installation.
     - Depends on: Waves 0–5 merged and final `main` verified.
+    - Superseded once more by the 2026-07-29 follow-on delivery-hardening
+      commits landing after this closeout (`9975895`, `26e88ec`, `c5a5c92`,
+      `25949fe`); the Codex plugin cache was refreshed for the delivery changes
+      that preceded Loop recovery (`8d93e1e`), while the Claude/MCP Loop files
+      were installed separately from merged `main`. Re-running Wave 6 whenever
+      meaningful post-closeout commits land is expected, not a sign the
+      original closeout was wrong.
 
-20. **Remove completed delivery branches and return to main**
+20. **Remove completed delivery branches and return to main — completed 2026-07-28 (`ac0802a`, #58)**
     - Merge only exact reviewed candidate SHAs after required CI is green.
     - Delete merged task branches locally and remotely when no live child
       delivery depends on them.

@@ -32,7 +32,7 @@ Resources Clade has learned from — design patterns, architectural decisions, a
 
 **Key insight:** gstack treats skill prompts as production software — precise step numbering, explicit gate conditions, concrete output formats, enumerated failure modes. Our skills work but are under-specified relative to this standard.
 
-**Detailed research notes:** [`docs/plans/2026-03-30-gstack-learnings.md`](docs/plans/2026-03-30-gstack-learnings.md)
+**Detailed research notes:** [`docs/archive/2026-03-30-gstack-learnings.md`](docs/archive/2026-03-30-gstack-learnings.md)
 
 ---
 
