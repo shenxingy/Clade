@@ -484,32 +484,10 @@ EOF
   # the ignored loop log directory and is never swept into worker commits.
   printf '%s\n' "$result" > "$LOG_DIR/iter-${iteration}-supervisor.raw.txt"
 
-  # Extract JSON from result (supervisor may include preamble text)
-  echo "$result" | python3 -c "
-import sys, json
-text = sys.stdin.read()
-decoder = json.JSONDecoder()
-candidates = []
-for start, char in enumerate(text):
-    if char not in '[{':
-        continue
-    try:
-        parsed, consumed = decoder.raw_decode(text[start:])
-    except json.JSONDecodeError:
-        continue
-    candidates.append((start, consumed, parsed))
-for _, _, parsed in reversed(candidates):
-    if (
-        isinstance(parsed, list)
-        and all(
-            isinstance(item, dict) and isinstance(item.get('description'), str)
-            for item in parsed
-        )
-    ):
-        print(json.dumps(parsed))
-        sys.exit(0)
-print('[]')
-" 2>/dev/null || echo "[]"
+  # Extract JSON from result (supervisor may include preamble text).
+  echo "$result" \
+    | python3 "$(_sibling_script loop_json.py)" 2>/dev/null \
+    || echo "[]"
 }
 # ────────────────────────────────────────────────────────────────
 
@@ -1097,32 +1075,9 @@ $failure_context
 
   mkdir -p "$(dirname "$task_file")"
   _timeout "$SUPERVISOR_TIMEOUT" claude --model sonnet "${PURE_JUDGE_FLAGS[@]}" -p "$fix_prompt" 2>&1 \
-    | python3 -c "
-import sys, json
-text = sys.stdin.read()
-decoder = json.JSONDecoder()
-candidates = []
-for start, char in enumerate(text):
-    if char not in '[{':
-        continue
-    try:
-        parsed, consumed = decoder.raw_decode(text[start:])
-    except json.JSONDecodeError:
-        continue
-    candidates.append((start, consumed, parsed))
-for _, _, parsed in reversed(candidates):
-    if (
-        isinstance(parsed, list)
-        and parsed
-        and all(
-            isinstance(item, dict) and isinstance(item.get('description'), str)
-            for item in parsed
-        )
-    ):
-        print(json.dumps(parsed))
-        sys.exit(0)
-print('[]')
-" > "$task_file" 2>/dev/null || echo "[]" > "$task_file"
+    | python3 "$(_sibling_script loop_json.py)" --require-nonempty \
+      > "$task_file" 2>/dev/null \
+    || echo "[]" > "$task_file"
 
   local task_count
   task_count=$(grep -c '===TASK===' "$task_file" 2>/dev/null || true)

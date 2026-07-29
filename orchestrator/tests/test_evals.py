@@ -12,6 +12,7 @@ bypassing the conftest MagicMock).
 from __future__ import annotations
 
 import importlib.util
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -190,17 +191,27 @@ def test_offline_mode_exits_zero():
 # ─── Supervisor parser round-trip ─────────────────────────────────────────────
 
 
-def test_supervisor_parser_extraction_tracks_live_script():
-    snippet = se.extract_parser_snippet()
-    assert "json.loads" in snippet and "re.findall" in snippet
-    # Fidelity guard: bash double-quote processing must not rewrite the snippet.
-    # If someone adds $vars/backticks/escapes to the embedded parser, raw
-    # extraction stops being equivalent to what the shell executes — fail loud.
-    for forbidden in ("$", "`", '\\"', "\\\\"):
-        assert forbidden not in snippet, (
-            f"embedded parser now contains {forbidden!r} — bash would rewrite it; "
-            "update supervisor_eval.extract_parser_snippet to shell-decode first"
-        )
+def test_supervisor_parser_resolution_tracks_live_script():
+    parser = se.resolve_parser()
+    source = parser.read_text()
+
+    assert parser == se.PARSER
+    assert "json.JSONDecoder()" in source
+    assert "decoder.raw_decode" in source
+
+
+def test_fix_parser_skips_trailing_empty_array():
+    parser = se.resolve_parser()
+    raw = '[{"description": "fix the failed test"}]\n[]'
+    proc = subprocess.run(
+        [sys.executable, str(parser), "--require-nonempty"],
+        input=raw,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert json.loads(proc.stdout) == [{"description": "fix the failed test"}]
 
 
 def test_supervisor_fixtures_validate():
@@ -211,10 +222,10 @@ def test_supervisor_fixtures_validate():
 
 def test_supervisor_cases_roundtrip():
     cases, _ = se.load_cases()
-    snippet = se.extract_parser_snippet()
+    parser = se.resolve_parser()
     failures: list[str] = []
     for case in cases:
-        failures.extend(se.run_case(case, snippet))
+        failures.extend(se.run_case(case, parser))
     assert not failures, "\n".join(failures)
 
 

@@ -124,6 +124,14 @@ assert_eq "$RC5" "0" "uncreatable log dir does not block the run"
 assert_contains "$OUT5" "quiet-run: OK" "verdict still printed with a fallback log dir"
 rm -f "$BLOCKED_DIR"
 
+# ─── 6. Invocation errors preserve their conventional exit codes ─────
+section "Invocation errors"
+
+bash "$SCRIPT" /nonexistent-cmd-quiet-run-test >/dev/null 2>&1
+assert_eq "$?" "127" "missing command mirrors exit code 127"
+bash "$SCRIPT" >/dev/null 2>&1
+assert_eq "$?" "2" "no arguments exits with usage code 2"
+
 # ─── Summary ─────────────────────────────────────────────────────────
 echo ""
 echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
