@@ -695,12 +695,17 @@ assert_file_contains "logs/loop-empty/last-progress" "Exit: max_iterations" "emp
 # checked goal converges on iteration 1 instead of looping to the breaker.
 printf '# Goal: all done\n\n- [x] finished\n' > goal-empty-done.md
 mkdir -p logs/loop-empty-done
+export MOCK_CLAUDE_ARGS_LOG="$TEST_DIR/claude-args-empty-done-$$.log"
+rm -f "$MOCK_CLAUDE_ARGS_LOG"
 output=$(
   exec 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- 2>/dev/null
   timeout --kill-after=5s 60s bash "$SCRIPTS_DIR/loop-runner.sh" "goal-empty-done.md" --max-iter 5 --max-workers 1 --state .claude/loop-state-empty-done --log-dir logs/loop-empty-done 2>&1
 ) || true
 assert_not_contains "$output" "Iteration 2" "converged-goal empty loop stops at iteration 1"
 assert_file_contains "logs/loop-empty-done/last-progress" "Exit: converged" "converged-goal empty loop records converged exit"
+empty_done_calls=$(grep -c '^ARGS:' "$MOCK_CLAUDE_ARGS_LOG" 2>/dev/null || true)
+assert_eq "1" "$empty_done_calls" "no-change iteration skips unrelated HEAD~1 verification"
+unset MOCK_CLAUDE_ARGS_LOG
 
 # Test 2: Missing goal file
 rm -f nonexistent.md
