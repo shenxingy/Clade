@@ -107,6 +107,25 @@ above rather than by stale phase-level duplicates.
 
 ---
 
+## [AI] Friction Log
+
+Live section — append new entries here as they happen. Do not archive this
+section; it is an ongoing log, not historical research.
+
+[2026-06-12] loop-runner: work completed but exit reason read stuck_no_commits — supervisor kept planning after 5/5 criteria met instead of returning CONVERGED / workaround: verified convergence manually via git log + gates
+[2026-06-12] loop-runner: commits stay local — no push phase, fleet sync silently deployed stale HEAD / workaround: manual git push before node pulls; consider a [DET] push node after commit_changes
+[2026-06-14] browser-verify: `npx playwright install chromium` resolves a different playwright version than `@playwright/mcp` bundles → "Removing unused browser" + version-mismatch box on first setup / workaround: it still lands the right chromium build (verified chromium-1223 present + MCP launched); documented as expected in configuration.md. Cleaner fix: pin the browser install to @playwright/mcp's bundled version.
+[2026-06-14] frontend-detect: real projects (scamai-landing) describe their stack in CLAUDE.md prose ("Built with Next.js 15"), not the template's structured `Frontend:` line — _is_frontend_project returned False, visual-verify directive would never inject / FIXED a1e807d: _project_is_frontend now also reads package.json deps. Lesson: don't gate on a doc format real projects don't follow (deploy-gap).
+
+---
+
+## Historical / Archived Research
+
+Everything from here to the end of the file is dated research/investigation
+material that has already been resolved, superseded, rejected, or folded into
+the reconciled backlog above. It is retained as evidence of what was checked
+and why — read it as a record, not as a second backlog of open work.
+
 ## [Research] 2026-07-28 — 全量重学：人物、近期 commits 与 2026-H2 agent 工程转向
 
 用户问题：把此前研究过和 watch-list 上的人物、项目重新学一遍，重点检查近期
@@ -738,14 +757,6 @@ User question: 完整的学习他们的工作流，看看凭什么他们能又�
 - [x] **Worktree env bootstrap + per-file post-edit lint** in run-tasks-parallel.sh / post-tool-use-lint.sh [M/medium]
 - [x] Low-priority lane: committer attribution trailers [S/low]; MCP compact mode [S/low]; second-opinion-{codex,gemini} agents [S/low]
 - [x] **Design discussions (bigger bets)**: prompt eval harness (orchestrator/evals/ — gates the oracle rewrite); offline recovery e2e with planted failures; mid-flight worker steering via PostToolUse mailbox drain
-
-
-## [AI] Friction Log
-
-[2026-06-12] loop-runner: work completed but exit reason read stuck_no_commits — supervisor kept planning after 5/5 criteria met instead of returning CONVERGED / workaround: verified convergence manually via git log + gates
-[2026-06-12] loop-runner: commits stay local — no push phase, fleet sync silently deployed stale HEAD / workaround: manual git push before node pulls; consider a [DET] push node after commit_changes
-[2026-06-14] browser-verify: `npx playwright install chromium` resolves a different playwright version than `@playwright/mcp` bundles → "Removing unused browser" + version-mismatch box on first setup / workaround: it still lands the right chromium build (verified chromium-1223 present + MCP launched); documented as expected in configuration.md. Cleaner fix: pin the browser install to @playwright/mcp's bundled version.
-[2026-06-14] frontend-detect: real projects (scamai-landing) describe their stack in CLAUDE.md prose ("Built with Next.js 15"), not the template's structured `Frontend:` line — _is_frontend_project returned False, visual-verify directive would never inject / FIXED a1e807d: _project_is_frontend now also reads package.json deps. Lesson: don't gate on a doc format real projects don't follow (deploy-gap).
 
 ---
 
