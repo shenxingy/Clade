@@ -170,16 +170,17 @@ Rules:
 - Evidence may reference a delivery record but must not grant Git publication
   or merge authority.
 
-### `clade.eval-candidate/v1`
+### `clade.eval_candidate/v1`
 
 Minimum fields:
 
 - candidate ID and source attempt/evidence ID;
-- trigger (`incident`, `oracle_disagreement`, `revert`,
-  `explicit_correction`, `ci_failure`);
-- sanitized task, diff, evidence references, observed verdict, proposed
-  ground-truth verdict, and provenance;
-- quarantine state (`pending`, `accepted`, `rejected`);
+- trigger (`incident_failure`, `oracle_rejected`, `oracle_unreviewed`,
+  `oracle_disagreement`, `managed_revert`, `explicit_correction`);
+- sanitized diff/signal payload, exact immutable evidence revision/digest,
+  observed verdict, and provenance; candidates never contain proposed ground
+  truth;
+- review state (`quarantined`, `promoted`, `rejected`, `expired`);
 - reviewer identity/time and target corpus on promotion.
 
 ## Execution Order
@@ -257,7 +258,7 @@ Minimum fields:
 
 ### Wave 2 — Failures become evals
 
-7. **Create quarantined eval candidates**
+7. **Create quarantined eval candidates — completed 2026-07-28**
    - Files: new `orchestrator/eval_candidates.py`,
      event/oracle/correction/revert integration points, DB migration, tests.
    - Produce candidates from real failure signals after redaction.

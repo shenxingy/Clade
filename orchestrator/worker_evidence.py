@@ -74,7 +74,7 @@ async def fail_preflight_evidence(
     if not attempt or not hasattr(task_queue, "append_evidence_bundle"):
         return
     try:
-        await task_queue.append_evidence_bundle(
+        bundle = await task_queue.append_evidence_bundle(
             attempt["attempt_id"],
             lifecycle_state="failed",
             evidence={
@@ -86,6 +86,15 @@ async def fail_preflight_evidence(
                 "timing": {"finished_at": time.time()},
             },
         )
+        if hasattr(task_queue, "create_eval_candidate"):
+            await task_queue.create_eval_candidate(
+                attempt["attempt_id"],
+                trigger="incident_failure",
+                diff={"stage": "preflight", "type": type(error).__name__},
+                payload={"reason": str(error)},
+                source_attempt_revision=bundle["revision"],
+                source_evidence_digest=bundle["digest"],
+            )
     except Exception:
         logger.exception("failed to close preflight evidence attempt")
 
@@ -132,7 +141,7 @@ async def start_worker_with_evidence(worker: Any, task_queue: Any) -> None:
         attempt_id = getattr(worker, "evidence_attempt_id", None)
         if attempt_id:
             try:
-                await task_queue.append_evidence_bundle(
+                bundle = await task_queue.append_evidence_bundle(
                     attempt_id,
                     lifecycle_state="failed",
                     evidence={
@@ -144,6 +153,15 @@ async def start_worker_with_evidence(worker: Any, task_queue: Any) -> None:
                         "timing": {"finished_at": time.time()},
                     },
                 )
+                if hasattr(task_queue, "create_eval_candidate"):
+                    await task_queue.create_eval_candidate(
+                        attempt_id,
+                        trigger="incident_failure",
+                        diff={"stage": "spawn", "type": type(exc).__name__},
+                        payload={"reason": str(exc)},
+                        source_attempt_revision=bundle["revision"],
+                        source_evidence_digest=bundle["digest"],
+                    )
             except Exception:
                 logger.exception("failed to close spawn evidence attempt")
         raise
@@ -159,10 +177,13 @@ async def append_worker_terminal_evidence(worker: Any) -> None:
     project_dir = Path(getattr(worker, "_project_dir"))
     head_sha = await _git(project_dir, "rev-parse", "HEAD")
     base_sha = getattr(worker, "evidence_base_sha", None)
+    eval_diff = getattr(worker, "eval_diff", None)
     changed_files: list[str] = []
     if base_sha and head_sha and base_sha != head_sha:
         changed = await _git(project_dir, "diff", "--name-only", f"{base_sha}..{head_sha}")
         changed_files = changed.splitlines() if changed else []
+        if eval_diff is None:
+            eval_diff = await _git(project_dir, "diff", f"{base_sha}..{head_sha}")
     setattr(worker, "changed_files", changed_files)
 
     if getattr(worker, "auto_committed", False):
@@ -180,8 +201,9 @@ async def append_worker_terminal_evidence(worker: Any) -> None:
         if getattr(worker, name, None)
     }
     envelope = build_from_worker(worker)
+    bundle = None
     try:
-        await task_queue.append_evidence_bundle(
+        bundle = await task_queue.append_evidence_bundle(
             attempt_id,
             lifecycle_state=lifecycle_state,
             evidence={
@@ -201,6 +223,7 @@ async def append_worker_terminal_evidence(worker: Any) -> None:
                     "tests": getattr(worker, "test_evidence", ""),
                     "oracle_verdict": getattr(worker, "oracle_result", None),
                     "oracle_reason": getattr(worker, "oracle_reason", None),
+                    "judge_agreement": getattr(worker, "judge_agreement", None),
                 },
                 "usage": {
                     "input_tokens": getattr(worker, "_input_tokens", 0),
@@ -222,3 +245,32 @@ async def append_worker_terminal_evidence(worker: Any) -> None:
         )
     except Exception:
         logger.exception("failed to append terminal worker evidence")
+        return
+
+    triggers: list[str] = []
+    oracle_result = getattr(worker, "oracle_result", None)
+    agreement = getattr(worker, "judge_agreement", None)
+    if oracle_result == "rejected":
+        triggers.append("oracle_rejected")
+    elif oracle_result == "unreviewed":
+        triggers.append("oracle_unreviewed")
+    if agreement in {"oracle-lenient", "oracle-strict"}:
+        triggers.append("oracle_disagreement")
+    if lifecycle_state == "failed" and not triggers:
+        triggers.append("incident_failure")
+    for trigger in triggers:
+        try:
+            await task_queue.create_eval_candidate(
+                attempt_id,
+                trigger=trigger,
+                diff=eval_diff or "",
+                payload={
+                    "failure": getattr(worker, "failure_context", None),
+                    "verification": bundle["evidence"].get("verification", {}),
+                    "changed_files": changed_files,
+                },
+                source_attempt_revision=bundle["revision"],
+                source_evidence_digest=bundle["digest"],
+            )
+        except Exception:
+            logger.exception("failed to create %s eval candidate", trigger)

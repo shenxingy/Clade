@@ -76,6 +76,21 @@ async def message_worker(
                 source_task_id=w.task_id,
                 spawned_task_id=new_task["id"],
             )
+            attempts = await s.task_queue.list_evidence_attempts(w.task_id)
+            if attempts:
+                source = attempts[-1]
+                await s.task_queue.create_eval_candidate(
+                    source["attempt_id"],
+                    trigger="explicit_correction",
+                    diff={"correction": user_message},
+                    payload={
+                        "failure": failure_ctx,
+                        "source_task_id": w.task_id,
+                        "spawned_task_id": new_task["id"],
+                    },
+                    source_attempt_revision=source["revision"],
+                    source_evidence_digest=source["digest"],
+                )
     except Exception:
         pass
     new_worker = await s.worker_pool.start_worker(

@@ -1,3 +1,7 @@
+-- index idx_eval_candidates_status_created
+CREATE INDEX idx_eval_candidates_status_created
+                    ON eval_candidates(status, created_at);
+
 -- index idx_evidence_bundles_task_attempt
 CREATE INDEX idx_evidence_bundles_task_attempt
                     ON evidence_bundles(task_id, attempt_index, revision);
@@ -12,6 +16,43 @@ CREATE TABLE commits (
                         pushed_at REAL,
                         merged_at REAL,
                         FOREIGN KEY (task_id) REFERENCES tasks(id)
+                    );
+
+-- table eval_candidates
+CREATE TABLE eval_candidates (
+                        candidate_id TEXT PRIMARY KEY,
+                        schema_version TEXT NOT NULL CHECK (
+                            schema_version = 'clade.eval_candidate/v1'
+                        ),
+                        source_task_id TEXT NOT NULL,
+                        source_attempt_id TEXT NOT NULL,
+                        source_attempt_revision INTEGER NOT NULL CHECK (
+                            source_attempt_revision > 0
+                        ),
+                        source_evidence_digest TEXT NOT NULL,
+                        trigger TEXT NOT NULL CHECK (
+                            trigger IN (
+                                'incident_failure', 'oracle_rejected',
+                                'oracle_unreviewed', 'oracle_disagreement',
+                                'managed_revert', 'explicit_correction'
+                            )
+                        ),
+                        diff_digest TEXT NOT NULL,
+                        payload_json TEXT NOT NULL,
+                        redaction_metadata TEXT NOT NULL,
+                        status TEXT NOT NULL DEFAULT 'quarantined' CHECK (
+                            status IN (
+                                'quarantined', 'promoted', 'rejected', 'expired'
+                            )
+                        ),
+                        decision_reason TEXT,
+                        decided_by TEXT,
+                        decided_at REAL,
+                        promotion_kind TEXT,
+                        promotion_ref TEXT,
+                        created_at REAL NOT NULL,
+                        UNIQUE (source_attempt_id, trigger, diff_digest),
+                        FOREIGN KEY (source_task_id) REFERENCES tasks(id)
                     );
 
 -- table evidence_bundles
