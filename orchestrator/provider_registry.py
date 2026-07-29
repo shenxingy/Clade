@@ -10,6 +10,7 @@ import tempfile
 import time
 import tomllib
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -232,6 +233,13 @@ class NativeProfileResolver:
 Transport = Callable[[str, Mapping[str, str], float], Mapping[str, Any]]
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Never forward credential-bearing catalog requests across redirects."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 def _default_transport(
     url: str,
     headers: Mapping[str, str],
@@ -239,7 +247,8 @@ def _default_transport(
 ) -> Mapping[str, Any]:
     request = urllib.request.Request(url, headers=dict(headers), method="GET")
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        opener = urllib.request.build_opener(_NoRedirect)
+        with opener.open(request, timeout=timeout) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         category = "auth" if exc.code in {401, 403} else "remote_error"
@@ -254,6 +263,9 @@ def _default_transport(
 
 
 def _models_url(base_url: str) -> str:
+    parsed = urllib.parse.urlsplit(base_url)
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise DiscoveryFailure("insecure_or_invalid_endpoint")
     if base_url.endswith("/models"):
         return base_url
     if base_url.endswith("/v1"):

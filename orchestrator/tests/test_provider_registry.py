@@ -8,10 +8,13 @@ from pathlib import Path
 import pytest
 
 from provider_registry import (
+    DiscoveryFailure,
     ModelCatalogUnavailable,
     NativeProfile,
     NativeProfileResolver,
     ProviderRegistry,
+    _NoRedirect,
+    _models_url,
 )
 from routes import providers as providers_route
 
@@ -283,6 +286,14 @@ models = ["gpt/custom"]
     assert codex_profile.base_url == "https://openai.example/v1"
     assert codex_profile.api_key == "openai-secret"
     assert codex_profile.models == ("gpt/custom",)
+
+
+def test_catalog_transport_rejects_insecure_endpoints_and_redirects():
+    with pytest.raises(DiscoveryFailure, match="insecure_or_invalid_endpoint"):
+        _models_url("http://models.example.test")
+    assert _NoRedirect().redirect_request(
+        None, None, 302, "redirect", {}, "https://attacker.example"
+    ) is None
 
 
 @pytest.mark.asyncio

@@ -65,8 +65,10 @@ executable or conditional.
   native profile references, live TTL discovery, configuration-bound cache
   identity, capability provenance, real worker connection selection, and
   explicit pinned-only stale fallback.
-- [ ] **P2 / depends on provider registry:** add runtime/surface conformance
-  fixtures and credential-gated live smoke tests.
+- [x] **P2 / completed 2026-07-28:** six sanitized runtime/provider/surface
+  fixtures cover every registry adapter and generated surface; deterministic
+  CI replay is paired with separately credential-gated Anthropic/OpenAI live
+  catalog smoke, redirect refusal, and HTTPS-only discovery.
 - [ ] **P2 / depends on conformance:** retire compatibility shims only after
   fixtures and telemetry prove supported paths have migrated.
 - [ ] **P3 / depends on metrics:** update VISION/North Star/dashboard for

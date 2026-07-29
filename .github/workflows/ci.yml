@@ -100,6 +100,11 @@ jobs:
           cd orchestrator
           python -m pytest tests/ -v
 
+      - name: Run sanitized provider conformance fixtures
+        run: |
+          cd orchestrator
+          python evals/run_provider_conformance.py
+
   shell-tests:
     name: Shell Tests
     runs-on: ubuntu-latest
@@ -213,3 +218,29 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: bash tests/test-loop.sh --real
+
+  provider-live-anthropic:
+    name: Provider Live Smoke — Anthropic (key-gated)
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+
+      - name: Run read-only Anthropic catalog smoke
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python orchestrator/evals/run_provider_conformance.py --live anthropic
+
+  provider-live-openai:
+    name: Provider Live Smoke — OpenAI (key-gated)
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+
+      - name: Run read-only OpenAI catalog smoke
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: python orchestrator/evals/run_provider_conformance.py --live openai

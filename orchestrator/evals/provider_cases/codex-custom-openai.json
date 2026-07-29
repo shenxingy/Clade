@@ -1,0 +1,26 @@
+{
+  "id": "codex-custom-openai",
+  "surface": "mcp",
+  "runtime": "codex",
+  "inference_provider": "private-gateway",
+  "wire_protocol": "openai-responses-compatible",
+  "adapter": "custom-openai",
+  "store": "codex-config",
+  "wire_model": "fixture/gateway-v1",
+  "catalog_capabilities": {"structured_events": "unsupported"},
+  "expected": {
+    "id": "codex-custom-openai",
+    "surface": "mcp",
+    "runtime": "codex",
+    "inference_provider": "private-gateway",
+    "wire_protocol": "openai-responses-compatible",
+    "model": "fixture/gateway-v1",
+    "catalog_state": "fresh",
+    "catalog_source": "custom-openai@1:fixture-profile",
+    "capability": {"name": "structured_events", "state": "unsupported", "source": "custom-openai@1:fixture-profile"},
+    "profile_bound": true,
+    "surface_marker_present": true,
+    "secret_exposed": false,
+    "auth_shape": "bearer"
+  }
+}

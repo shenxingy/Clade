@@ -1,4 +1,4 @@
-# Prompt Eval Harness
+# Evaluation Harnesses
 
 Regression tests for the LLM prompts that gate autonomous work: the **oracle
 review** (`worker_review.py:_oracle_review`) and the **loop supervisor**
@@ -21,9 +21,11 @@ evals/
 ├── run_oracle_eval.py     # replays oracle_cases/ through the LIVE _oracle_review
 ├── supervisor_eval.py     # offline structural eval of the LIVE node_supervisor parser
 ├── run_loop_eval.py       # offline: drives the LIVE oracle retry/convergence fns over verdict sequences
+├── run_provider_conformance.py # sanitized runtime/connection/surface matrix + gated live catalog smoke
 ├── oracle_cases/          # 20 fixtures: task + diff + expected verdict + rationale
 ├── supervisor_cases/      # 7 fixtures: recorded supervisor replies + structural expectations
-└── loop_cases/            # 7 fixtures: oracle-verdict SEQUENCES + expected fan-out/terminal (+ _baseline.json)
+├── loop_cases/            # 7 fixtures: oracle-verdict SEQUENCES + expected fan-out/terminal (+ _baseline.json)
+└── provider_cases/        # 6 secret-free runtime/provider/surface fixtures
 ```
 
 ## Running
@@ -38,6 +40,7 @@ cd orchestrator
 python3 evals/run_oracle_eval.py --offline
 python3 evals/supervisor_eval.py            # offline by nature
 python3 evals/run_loop_eval.py               # offline: oracle retry/convergence loop (fan-out + reject-cap)
+python3 evals/run_provider_conformance.py    # offline: provider/runtime/surface contracts
 
 # Live — real `claude -p` (haiku) calls through the exact worker code path.
 # Manual or scheduled ONLY (see cost policy). Exits 1 below threshold.
@@ -45,10 +48,30 @@ python3 evals/run_oracle_eval.py                      # full run, threshold 0.75
 python3 evals/run_oracle_eval.py --cases reject-      # substring filter
 python3 evals/run_oracle_eval.py --threshold 0.85 --concurrency 8
 python3 evals/run_oracle_eval.py --model claude-haiku-4-5   # pin a snapshot
+
+# Read-only live model-catalog smoke. Each provider is separately credential
+# gated; missing credentials print SKIP and exit 0. The output contains only a
+# model count, catalog digest, and safe error category — never IDs/endpoints/keys.
+python3 evals/run_provider_conformance.py --live anthropic
+python3 evals/run_provider_conformance.py --live openai
 ```
 
 pytest (`tests/test_evals.py`) runs **only the offline layer** — live API
 replays are never part of CI or the default test suite.
+
+### Provider conformance (`run_provider_conformance.py`)
+
+The sanitized fixture matrix drives the real native-profile resolver, provider
+registry, execution envelope, runtime command adapter, worker environment
+binding, and canonical Claude/Codex/MCP/generic surface guidance. Fixtures may
+contain opaque provider/model/profile identities, but schema validation rejects
+URLs, machine paths, credential keys, and key material.
+
+Normal PR/push CI runs only these deterministic fixtures. Manual/weekly live
+jobs inject Anthropic and OpenAI credentials into separate jobs and perform one
+read-only `/models` request. Catalog transport rejects non-HTTPS endpoints and
+all redirects so an authorization header cannot be forwarded to another
+origin.
 
 ### Loop-review eval (`run_loop_eval.py` + `loop_cases/`)
 
