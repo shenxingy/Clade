@@ -209,11 +209,14 @@ Goal: maximize autonomous run hours. Minimize human intervention. System knows w
 
 ## Active execution program — reconciled 2026-07-28
 
-These are the only active items promoted from the research inbox. Historical
-checkboxes below are retained as completion evidence, not a second backlog.
+These are the only promoted execution-program items from the research inbox.
+Checked entries here have landed; unchecked entries remain active or
+conditional. Historical checkboxes below are completion evidence, not a second
+backlog.
 
-- [ ] **P0 · unblocked · MCP v2:** migrate both MCP servers to Python SDK v2 and
-  remove the `mcp<2` bound. No dependency.
+- [x] **P0 · completed 2026-07-28 · MCP v2:** both MCP servers use typed SDK v2
+  `on_*` handlers, require `mcp>=2.0.0,<3`, and negotiate the v1-era
+  `2024-11-05` protocol over stdio.
 - [ ] **P0 · security:** redact runtime event and provider output before JSONL,
   SQLite, or log persistence. No dependency.
 - [ ] **P1 · evidence · depends on redaction:** persist versioned,

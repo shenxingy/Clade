@@ -35,9 +35,16 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from mcp.server import Server
+from mcp.server import Server, ServerRequestContext
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent, CallToolResult
+from mcp.types import (
+    CallToolRequestParams,
+    CallToolResult,
+    ListToolsResult,
+    PaginatedRequestParams,
+    TextContent,
+    Tool,
+)
 
 # ─── Server Info ────────────────────────────────────────────────────────────────
 SERVER_NAME = "clade"
@@ -316,21 +323,6 @@ def _grep_search_code(snippet: str, root: Path, context: int = 3) -> str:
     return f"Neither rg nor grep available; cannot search for: {snippet!r}"
 
 
-# ─── MCP Server ───────────────────────────────────────────────────────────────
-
-app = Server(
-    name=SERVER_NAME,
-    version=SERVER_VERSION,
-    instructions=(
-        "Clade MCP Server — exposes installed Clade skills as callable tools.\n"
-        "Skills are AI-augmented workflow automations installed in ~/.claude/skills/.\n"
-        "Each tool call executes the skill's prompt in the current project directory.\n"
-        "Use 'clade_list_skills' first to discover available skills."
-    ),
-)
-
-
-@app.list_tools()
 async def list_tools() -> list[Tool]:
     """Advertise Clade skills as MCP tools.
 
@@ -342,7 +334,7 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="clade_list_skills",
             description="List all available Clade skills with their descriptions. Returns name, description, and argument hints.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {},
             },
@@ -354,7 +346,7 @@ async def list_tools() -> list[Tool]:
                 "Find a class definition in the Python codebase using AST. "
                 "Returns file path, line number, base classes, and method signatures."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "class_name": {
@@ -373,7 +365,7 @@ async def list_tools() -> list[Tool]:
                 "Find a method or function definition by name. "
                 "Optionally scope to a specific class. Returns file path, line, and source snippet."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "method_name": {
@@ -397,7 +389,7 @@ async def list_tools() -> list[Tool]:
                 "Search for a code pattern or literal snippet in the codebase using grep. "
                 "Returns matching lines with surrounding context."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "snippet": {
@@ -426,7 +418,7 @@ async def list_tools() -> list[Tool]:
                 "Returns matching skills with argument hints. "
                 "Execute one with clade_run_skill."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "query": {
@@ -444,7 +436,7 @@ async def list_tools() -> list[Tool]:
                 "Execute an installed Clade skill by name. Discover names via "
                 "clade_list_skills or clade_search_skills."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "name": {
@@ -473,7 +465,7 @@ async def list_tools() -> list[Tool]:
             name=f"clade_{skill['name']}",
             description=f"{skill['description']}\n\n[argument-hint: {skill['argument_hint']}]"
                         if skill["argument_hint"] else skill["description"],
-            inputSchema=input_schema,
+            input_schema=input_schema,
         ))
 
     return tools
@@ -492,7 +484,6 @@ def _format_args(arguments: dict[str, Any]) -> str:
     return args_str
 
 
-@app.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
     """Execute a Clade skill tool.
 
@@ -520,7 +511,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
         if not query:
             return CallToolResult(
                 content=[TextContent(type="text", text="query is required")],
-                isError=True,
+                is_error=True,
             )
         matches = search_skills(query, load_skills())
         if not matches:
@@ -540,7 +531,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
         if not skill_name:
             return CallToolResult(
                 content=[TextContent(type="text", text="name is required")],
-                isError=True,
+                is_error=True,
             )
         raw_args = arguments.get("args", "")
         args_str = raw_args.strip() if isinstance(raw_args, str) else _format_args(raw_args or {})
@@ -551,20 +542,20 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
     if name == "clade_search_class":
         cn = arguments.get("class_name", "").strip()
         if not cn:
-            return CallToolResult(content=[TextContent(type="text", text="class_name is required")], isError=True)
+            return CallToolResult(content=[TextContent(type="text", text="class_name is required")], is_error=True)
         return CallToolResult(content=[TextContent(type="text", text=_ast_search_class(cn, _search_root))])
 
     if name == "clade_search_method":
         mn = arguments.get("method_name", "").strip()
         if not mn:
-            return CallToolResult(content=[TextContent(type="text", text="method_name is required")], isError=True)
+            return CallToolResult(content=[TextContent(type="text", text="method_name is required")], is_error=True)
         cn = arguments.get("class_name") or None
         return CallToolResult(content=[TextContent(type="text", text=_ast_search_method(mn, cn, _search_root))])
 
     if name == "clade_search_code":
         sp = arguments.get("snippet", "").strip()
         if not sp:
-            return CallToolResult(content=[TextContent(type="text", text="snippet is required")], isError=True)
+            return CallToolResult(content=[TextContent(type="text", text="snippet is required")], is_error=True)
         ctx = int(arguments.get("context_lines", 3))
         return CallToolResult(content=[TextContent(type="text", text=_grep_search_code(sp, _search_root, ctx))])
 
@@ -573,7 +564,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
     if not name.startswith("clade_"):
         return CallToolResult(
             content=[TextContent(type="text", text=f"Unknown tool: {name}")],
-            isError=True,
+            is_error=True,
         )
 
     return await _execute_skill(name[len("clade_"):], _format_args(arguments))
@@ -586,7 +577,7 @@ async def _execute_skill(skill_name: str, args_str: str) -> CallToolResult:
     if skill_name not in skills:
         return CallToolResult(
             content=[TextContent(type="text", text=f"Skill not found: {skill_name}")],
-            isError=True,
+            is_error=True,
         )
 
     skill = skills[skill_name]
@@ -638,7 +629,7 @@ async def _execute_skill(skill_name: str, args_str: str) -> CallToolResult:
                     type="text",
                     text=f"Skill '{skill_name}' failed (exit {result.returncode}):\n{result.stderr[:500]}"
                 )],
-                isError=True,
+                is_error=True,
             )
 
     except subprocess.TimeoutExpired:
@@ -647,7 +638,7 @@ async def _execute_skill(skill_name: str, args_str: str) -> CallToolResult:
                 type="text",
                 text=f"Skill '{skill_name}' timed out after 300s"
             )],
-            isError=True,
+            is_error=True,
         )
     except FileNotFoundError:
         return CallToolResult(
@@ -655,13 +646,45 @@ async def _execute_skill(skill_name: str, args_str: str) -> CallToolResult:
                 type="text",
                 text="claude command not found. Is Claude Code installed and in PATH?"
             )],
-            isError=True,
+            is_error=True,
         )
     except Exception as exc:
         return CallToolResult(
             content=[TextContent(type="text", text=f"Error running skill '{skill_name}': {exc}")],
-            isError=True,
+            is_error=True,
         )
+
+
+# ─── MCP v2 adapters ──────────────────────────────────────────────────────────
+
+async def _handle_list_tools(
+    _ctx: ServerRequestContext,
+    _params: PaginatedRequestParams | None,
+) -> ListToolsResult:
+    """Adapt the testable catalog function to the SDK v2 low-level contract."""
+    return ListToolsResult(tools=await list_tools())
+
+
+async def _handle_call_tool(
+    _ctx: ServerRequestContext,
+    params: CallToolRequestParams,
+) -> CallToolResult:
+    """Adapt typed SDK v2 params while preserving Clade's tool behavior."""
+    return await call_tool(params.name, params.arguments or {})
+
+
+app = Server(
+    SERVER_NAME,
+    version=SERVER_VERSION,
+    instructions=(
+        "Clade MCP Server — exposes installed Clade skills as callable tools.\n"
+        "Skills are AI-augmented workflow automations installed in ~/.claude/skills/.\n"
+        "Each tool call executes the skill's prompt in the current project directory.\n"
+        "Use 'clade_list_skills' first to discover available skills."
+    ),
+    on_list_tools=_handle_list_tools,
+    on_call_tool=_handle_call_tool,
+)
 
 
 # ─── Entry Point ───────────────────────────────────────────────────────────────
