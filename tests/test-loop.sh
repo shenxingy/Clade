@@ -660,13 +660,14 @@ assert_not_contains "$output" "committer failed" "committer accepted the leftove
 # must NOT be committed — sweeping the state file every iteration would defeat
 # the consecutive-no-commit stuck detection.
 printf '# Goal: converge again\n\n- [x] already done\n' > goal-untracked.md
-mkdir -p logs/loop-untracked  # log_* tee into $LOG_DIR — must exist before the first top-level log line
 export MOCK_CLAUDE_TOUCH="$REPO_DIR/created-by-worker.txt"
 output=$(
   exec 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- 2>/dev/null
   timeout --kill-after=5s 90s bash "$SCRIPTS_DIR/loop-runner.sh" "goal-untracked.md" --max-iter 3 --max-workers 1 --state .claude/loop-state-untracked --log-dir logs/loop-untracked 2>&1
 ) || true
 unset MOCK_CLAUDE_TOUCH
+assert_not_contains "$output" "tee:" "custom log dir exists before recovery logging"
+assert_file_exists "logs/loop-untracked/loop.log" "custom log file created automatically"
 assert_contains "$output" "CONVERGED" "untracked-sweep run converges"
 tracked_now=$(git ls-files)
 assert_contains "$tracked_now" "created-by-worker.txt" "worker-created untracked file swept into leftover commit"

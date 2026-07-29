@@ -1263,6 +1263,10 @@ EOF
 
 # ─── MAIN BLUEPRINT LOOP ────────────────────────────────────────
 run_blueprint_loop() {
+  # Recovery emits log lines, so the selected log directory must exist before
+  # the first checkpoint probe.  Custom --log-dir values commonly start absent.
+  mkdir -p "$LOG_DIR"
+
   # Try to recover from checkpoint
   if _recover_checkpoint; then
     log_warn "[RECOVERY] Checkpoint recovery is a design stub — full implementation"
@@ -1275,7 +1279,6 @@ run_blueprint_loop() {
   local consecutive_worker_failures=0
   local exit_reason="max_iterations"
 
-  mkdir -p "$LOG_DIR"
   log_info "Starting Blueprint Loop"
   log_info "  Goal:         $GOAL_FILE"
   log_info "  Max iter:     $MAX_ITER"
