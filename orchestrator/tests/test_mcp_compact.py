@@ -6,6 +6,9 @@ restores full enumeration.
 
 from __future__ import annotations
 
+import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -72,6 +75,7 @@ class TestListTools:
             "clade_list_skills", "clade_search_skills", "clade_run_skill",
             "clade_search_class", "clade_search_method", "clade_search_code",
         }
+        assert all(tool.input_schema["type"] == "object" for tool in await mcp_server.list_tools())
 
     async def test_enumeration_mode_exposes_per_skill_tools(self, skills_dir, monkeypatch):
         monkeypatch.setenv("CLADE_MCP_COMPACT", "0")
@@ -127,15 +131,15 @@ class TestCallToolCompact:
 
     async def test_search_skills_requires_query(self, skills_dir):
         result = await mcp_server.call_tool("clade_search_skills", {})
-        assert result.isError
+        assert result.is_error
 
     async def test_run_skill_requires_name(self, skills_dir):
         result = await mcp_server.call_tool("clade_run_skill", {})
-        assert result.isError
+        assert result.is_error
 
     async def test_run_skill_unknown_name_is_error(self, skills_dir):
         result = await mcp_server.call_tool("clade_run_skill", {"name": "nope"})
-        assert result.isError
+        assert result.is_error
         assert "Skill not found: nope" in result.content[0].text
 
     async def test_run_skill_executes_via_claude(self, skills_dir, monkeypatch):
@@ -149,7 +153,7 @@ class TestCallToolCompact:
         result = await mcp_server.call_tool(
             "clade_run_skill", {"name": "alpha", "args": "--dry-run"}
         )
-        assert not getattr(result, "isError", False)
+        assert not getattr(result, "is_error", False)
         assert result.content[0].text == "all done"
         prompt = captured["cmd"][2]
         assert "Prompt body for alpha" in prompt
@@ -163,6 +167,64 @@ class TestCallToolCompact:
         monkeypatch.setattr(mcp_server.subprocess, "run", _fake_run)
         result = await mcp_server.call_tool("clade_beta", {})
         assert result.content[0].text == "ok"
+
+
+class TestMCPV2Adapters:
+    def test_low_level_handlers_are_registered_without_v1_decorators(self):
+        assert mcp_server.app.get_request_handler("tools/list") is not None
+        assert mcp_server.app.get_request_handler("tools/call") is not None
+
+    async def test_list_adapter_returns_the_typed_v2_result(self, skills_dir):
+        result = await mcp_server._handle_list_tools(None, None)
+        assert {tool.name for tool in result.tools} >= {
+            "clade_list_skills",
+            "clade_search_skills",
+            "clade_run_skill",
+        }
+
+    def test_stdio_negotiates_the_oldest_v1_era_protocol(self, tmp_path):
+        requests = [
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "legacy-test", "version": "1.0"},
+                },
+            },
+            {
+                "jsonrpc": "2.0",
+                "method": "notifications/initialized",
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/list",
+                "params": {},
+            },
+        ]
+        env = dict(os.environ)
+        env["HOME"] = str(tmp_path)
+        env["CLADE_MCP_COMPACT"] = "1"
+        completed = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "orchestrator" / "mcp_server.py")],
+            input="\n".join(json.dumps(request) for request in requests) + "\n",
+            text=True,
+            capture_output=True,
+            timeout=15,
+            env=env,
+            check=False,
+        )
+
+        assert completed.returncode == 0, completed.stderr
+        messages = [json.loads(line) for line in completed.stdout.splitlines() if line]
+        by_id = {message.get("id"): message for message in messages}
+        assert by_id[1]["result"]["protocolVersion"] == "2024-11-05"
+        assert {
+            tool["name"] for tool in by_id[2]["result"]["tools"]
+        } >= {"clade_list_skills", "clade_search_skills", "clade_run_skill"}
 
 
 class TestSearchSkillsWhenToUse:

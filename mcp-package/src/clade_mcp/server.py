@@ -22,9 +22,16 @@ from pathlib import Path
 from subprocess import TimeoutExpired
 from typing import Any
 
-from mcp.server import Server
+from mcp.server import Server, ServerRequestContext
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent, CallToolResult
+from mcp.types import (
+    CallToolRequestParams,
+    CallToolResult,
+    ListToolsResult,
+    PaginatedRequestParams,
+    TextContent,
+    Tool,
+)
 
 from .runtime import get_runtime
 
@@ -180,22 +187,6 @@ def load_skills() -> list[dict]:
     return list(skills_by_name.values())
 
 
-# ─── MCP Server ───────────────────────────────────────────────────────────────
-
-app = Server(
-    name=SERVER_NAME,
-    version=SERVER_VERSION,
-    instructions=(
-        "Clade MCP Server — exposes installed Clade skills as callable tools.\n"
-        "Skills are AI-augmented workflow automations for the full software development lifecycle.\n"
-        "Each tool call executes the skill's prompt in the current project directory.\n"
-        "Use 'clade_list_skills' first to discover available skills.\n\n"
-        "Homepage: https://github.com/shenxingy/clade"
-    ),
-)
-
-
-@app.list_tools()
 async def list_tools() -> list[Tool]:
     """Advertise all Clade skills as MCP tools."""
     skills = load_skills()
@@ -204,7 +195,7 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="clade_list_skills",
             description="List all available Clade skills with descriptions and argument hints.",
-            inputSchema={"type": "object", "properties": {}},
+            input_schema={"type": "object", "properties": {}},
         ),
     ]
 
@@ -221,13 +212,12 @@ async def list_tools() -> list[Tool]:
         tools.append(Tool(
             name=f"clade_{skill['name']}",
             description=desc,
-            inputSchema=input_schema,
+            input_schema=input_schema,
         ))
 
     return tools
 
 
-@app.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
     """Execute a Clade skill with the configured agent runtime."""
 
@@ -254,7 +244,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
     if not name.startswith("clade_"):
         return CallToolResult(
             content=[TextContent(type="text", text=f"Unknown tool: {name}")],
-            isError=True,
+            is_error=True,
         )
 
     skill_name = name[len("clade_"):]
@@ -263,7 +253,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
     if skill_name not in skills:
         return CallToolResult(
             content=[TextContent(type="text", text=f"Skill not found: {skill_name}")],
-            isError=True,
+            is_error=True,
         )
 
     skill = skills[skill_name]
@@ -299,17 +289,17 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
                 text=f"Skill '{skill_name}' failed in {runtime.name} runtime "
                      f"(exit {result.returncode}):\n{result.error[:500]}",
             )],
-            isError=True,
+            is_error=True,
         )
     except TimeoutExpired:
         return CallToolResult(
             content=[TextContent(type="text", text=f"Skill '{skill_name}' timed out after 300s")],
-            isError=True,
+            is_error=True,
         )
     except ValueError as exc:
         return CallToolResult(
             content=[TextContent(type="text", text=str(exc))],
-            isError=True,
+            is_error=True,
         )
     except FileNotFoundError:
         runtime_name = os.environ.get("CLADE_RUNTIME", "claude")
@@ -318,13 +308,46 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
                 type="text",
                 text=f"{runtime_name} CLI not found. Install it or select another CLADE_RUNTIME."
             )],
-            isError=True,
+            is_error=True,
         )
     except Exception as exc:
         return CallToolResult(
             content=[TextContent(type="text", text=f"Error running skill '{skill_name}': {exc}")],
-            isError=True,
+            is_error=True,
         )
+
+
+# ─── MCP v2 adapters ──────────────────────────────────────────────────────────
+
+async def _handle_list_tools(
+    _ctx: ServerRequestContext,
+    _params: PaginatedRequestParams | None,
+) -> ListToolsResult:
+    """Adapt the testable catalog function to the SDK v2 low-level contract."""
+    return ListToolsResult(tools=await list_tools())
+
+
+async def _handle_call_tool(
+    _ctx: ServerRequestContext,
+    params: CallToolRequestParams,
+) -> CallToolResult:
+    """Adapt typed SDK v2 params while preserving Clade's tool behavior."""
+    return await call_tool(params.name, params.arguments or {})
+
+
+app = Server(
+    SERVER_NAME,
+    version=SERVER_VERSION,
+    instructions=(
+        "Clade MCP Server — exposes installed Clade skills as callable tools.\n"
+        "Skills are AI-augmented workflow automations for the full software development lifecycle.\n"
+        "Each tool call executes the skill's prompt in the current project directory.\n"
+        "Use 'clade_list_skills' first to discover available skills.\n\n"
+        "Homepage: https://github.com/shenxingy/clade"
+    ),
+    on_list_tools=_handle_list_tools,
+    on_call_tool=_handle_call_tool,
+)
 
 
 # ─── Entry Point ───────────────────────────────────────────────────────────────

@@ -26,8 +26,7 @@ classifiers = [
     "Topic :: Software Development :: Quality Assurance",
 ]
 dependencies = [
-    # MCP v2 is a breaking API rewrite; see orchestrator/requirements.txt.
-    "mcp>=1.0.0,<2",
+    "mcp>=2.0.0,<3",
 ]
 
 [project.urls]
