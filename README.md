@@ -12,11 +12,17 @@
 
 # Clade
 
-**Autonomous coding, evolved.**
+**A provider-neutral delivery control plane for coding agents.**
 
-132 skills, 30 hooks, 37 agents, a safety guardian, and a correction learning loop — with native distributions for Claude Code and Codex, plus a provider-neutral MCP bridge for other editors.
+Clade turns agent work into reviewable delivery: resolved execution identity,
+immutable evidence, calibrated verification, correction learning, and truthful
+Git history. It ships native Claude Code and Codex surfaces plus an MCP bridge
+for other clients.
 
-Three ways to use Clade: the full **Claude CLI framework**, the native **Codex plugin**, or the provider-neutral **MCP bridge**. Add the optional **Orchestrator** for multi-worker observability, quality gates, and task routing.
+Use the full **Claude Code framework**, the native **Codex plugin**, or the
+provider-neutral **MCP bridge**. The optional **Orchestrator** adds a
+provider/model registry, evidence and eval control plane, verifier-aware
+routing, delivery state, and multi-project fleet truth.
 
 > If this saves you time, a star helps others find it. Something broken? [Open an issue](https://github.com/shenxingy/clade/issues/new/choose).
 
@@ -26,14 +32,15 @@ Three ways to use Clade: the full **Claude CLI framework**, the native **Codex p
 
 1. [Install](#install)
 2. [MCP Server](#mcp-server--use-skills-in-any-ai-editor)
-3. [What It Does](#what-it-does)
-4. [Self-Learning Mechanisms](#self-learning-mechanisms)
-5. [Skills](#skills-132)
-6. [Supported Languages](#supported-languages)
-7. [Documentation](#documentation)
-8. [Repo Structure](#repo-structure)
-9. [Contributing](#contributing)
-10. [License](#license)
+3. [The Trust Loop](#the-trust-loop)
+4. [What It Does](#what-it-does)
+5. [Self-Learning Mechanisms](#self-learning-mechanisms)
+6. [Skills](#skills-132)
+7. [Supported Languages](#supported-languages)
+8. [Documentation](#documentation)
+9. [Repo Structure](#repo-structure)
+10. [Contributing](#contributing)
+11. [License](#license)
 
 ## Install
 
@@ -114,6 +121,24 @@ It can execute them with either Claude or Codex.
 there would duplicate skills and spawn nested agent sessions. The same applies
 inside the full Claude Code framework, where Clade skills are already native.
 
+## The Trust Loop
+
+Clade keeps six concerns separate so a green-looking run cannot silently change
+runtime, account, history, or evidence semantics:
+
+| Layer | Contract |
+|---|---|
+| Execution identity | Agent runtime, native connection, inference provider, wire protocol, and opaque model are resolved independently |
+| Evidence | Every attempt can carry append-only task, timing, Git SHA, test, oracle, cost, artifact, and delivery evidence with digest-linked revisions |
+| Verifier calibration | Cheap→strong routing is default-off and requires deterministic verifier evidence; observational reports never mutate policy |
+| Correction learning | Explicit corrections pair rejected work with human context and create reviewable eval candidates; no automatic ground-truth path |
+| Delivery | Exact reviewed SHA, live PR topology, CI, and repository policy determine merge semantics; squash is never the universal default |
+| Fleet truth | Provider catalogs, task state, usage, evidence health, and delivery status remain provenance- and freshness-aware across projects |
+
+Evidence and oracle approval are gates and audit material, not authorization to
+publish or merge. Repository policy and explicit authority still control
+external side effects.
+
 ## What It Does
 
 | When | What fires | Effect |
@@ -129,12 +154,17 @@ See [How It Works](docs/how-it-works.md) for the full hook reference (30 hooks).
 
 ## Self-Learning Mechanisms
 
-Two mechanisms keep Clade aligned with reality without manual upkeep:
+Three mechanisms keep Clade aligned with reality:
 
 - **Commit Lessons** *(reactive)* — `commit-archeology.sh` mines `git log` for recurring fix patterns (wiring-gap, deploy-gap, compat-gap, **claude-overridden**) and injects the top 4 at every session start.
 - **Doc Align** *(preventive)* — `doc-align.py` declares shared facts in `docs/facts.json` (auto-derived from filesystem); checks/auto-fixes drift across every `*.md`. A PostToolUse hook flags drift the moment you edit a doc, so stale counts never reach commit.
+- **Correction Pairing** *(human-grounded)* — explicit corrections pair rejected
+  work with the replacement context. Orchestrator corrections enter quarantine
+  as eval candidates; only explicit human review can promote corpus truth.
 
-Both work on any project Claude Code is run in (universal, in `~/.claude/scripts/`). Both are silent no-ops on repos that haven't opted in.
+Commit Lessons and Doc Align run locally in the full Claude distribution and
+silently no-op in repos that have not opted in. Correction evidence never
+turns an inferred revert or async signal into an automatic rule.
 
 See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, detectors, schemas, and tunable env vars.
 
@@ -170,7 +200,7 @@ See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, de
 | Skill | What it does |
 |-------|-------------|
 | `/review-pr N` | AI code review on a PR diff — Critical / Warning / Suggestion |
-| `/merge-pr N` | Squash-merge PR and clean up branch |
+| `/merge-pr N` | Merge an exact reviewed PR with topology- and history-aware semantics, then clean up |
 | `/investigate` | Root cause analysis — no fix without confirmed hypothesis |
 | `/incident DESC` | Incident response — diagnose, postmortem, follow-up tasks |
 | `/cso` | Security audit (OWASP + STRIDE) |
@@ -287,7 +317,11 @@ Fully automatic once configured. See [Configuration](docs/configuration.md) for 
 
 **Codex plugin** (`plugins/clade/`): Generated provider-native core skills plus Codex lifecycle hooks. Distributed through `.agents/plugins/marketplace.json`.
 
-**Orchestrator** (`orchestrator/`): Observability + gates + execution adapter. Watches parallel workers, enforces quality gates, routes tasks, provides web UI for multi-project oversight. Optional — CLI works independently.
+**Orchestrator** (`orchestrator/`): Optional evidence, evaluation, delivery, and
+fleet control plane. It resolves native runtime connections without copying
+credentials, watches workers, calibrates verifier-aware routing, records
+immutable attempt evidence, and exposes exact delivery state. Native CLI/plugin
+surfaces work independently.
 
 **Web UI** (`orchestrator/web/`): Read-only observation window. Task queue, worker status, cost dashboard, settings. No production logic — all executes via CLI.
 

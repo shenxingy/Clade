@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# start.sh — Launch the Claude Code Orchestrator Web UI
+# start.sh — Launch the Clade Orchestrator Web UI
 #
 # Usage: ./orchestrator/start.sh [--port PORT]
 # Default port: 8765
@@ -29,9 +29,10 @@ if ! command -v python3 &>/dev/null; then
   exit 1
 fi
 
-if ! command -v claude &>/dev/null && ! command -v cc &>/dev/null; then
-  echo "Warning: claude CLI not found in PATH."
-  echo "Make sure 'claude' or 'cc' is available before using the orchestrator."
+if ! command -v claude &>/dev/null && ! command -v cc &>/dev/null \
+   && ! command -v codex &>/dev/null; then
+  echo "Warning: no supported agent runtime found in PATH."
+  echo "Install 'claude'/'cc' or 'codex' before starting workers."
 fi
 
 # ─── Set up venv (uv preferred, python3 fallback) ────────────────────────────
@@ -62,7 +63,7 @@ fi
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "Claude Code Orchestrator"
+echo "Clade Orchestrator"
 if [[ -n "$PROJECT_DIR" ]]; then
   echo "Project: $PROJECT_DIR"
 else
