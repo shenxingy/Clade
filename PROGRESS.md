@@ -1,6 +1,36 @@
 # Progress Log
 
 ---
+### 2026-07-29 — Delivery Lifecycle Hardening + Loop Checkpoint Recovery
+
+- Added a safe `abandon` transition to the `delivery` skill controller for
+  superseded, unpublished work: an exact-head lease, a non-empty reason, and
+  idempotency only for the same head+reason. Published GitHub PR work may
+  abandon only after a live forge check proves the PR is CLOSED (not OPEN or
+  MERGED) at the recorded head; abandonment terminalizes the branch lease
+  without deleting work (`9975895`).
+- Hardened abandonment to discover PRs by the recorded branch instead of
+  trusting a possibly-stale `published` flag: an unrecorded OPEN PR now blocks
+  abandonment, and an unrecorded MERGED PR at the exact recorded head is
+  flagged for reconciliation rather than mislabeled abandoned (`26e88ec`).
+- Fixed `PATCH /api/tasks/{id}` to revalidate the effective persisted
+  connection against the effective runtime whenever either `connection` or
+  `agent_runtime` changes, not only when a fresh `connection` value is
+  supplied — an invalid connection/runtime pairing is now rejected at
+  mutation time instead of first failing at task execution (`c5a5c92`).
+- Made `loop-runner.sh` checkpoint recovery crash-safe and explicit: only an
+  identity-matched `--resume` restores a checkpoint, a normal launch ignores a
+  stale one, and `--help` has no side effects (`25949fe`).
+- Refreshed the installed Codex plugin cache version for the delivery workflow
+  changes that preceded Loop recovery (`8d93e1e`); Loop itself is distributed
+  through Claude/MCP and was installed separately from merged `main`.
+- The documentation convergence Loop reproduced a follow-on control-flow gap:
+  workers committed and verified the requested state, but the coordinator left
+  all 5 goal checkboxes open and exited `stuck_no_commits`. The unsafe
+  worker-side marking experiment remains retired; a coordinator-owned,
+  phase-safe replacement is promoted to the P0 follow-on in `TODO.md`.
+
+---
 ### 2026-07-28 — Local Rollout + Research Program Closeout
 
 - Installed merged `main` into this server's Claude and Codex user
