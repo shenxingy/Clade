@@ -12,6 +12,64 @@ Past resolved/deferred items live in [`docs/archive/BRAINSTORM-resolved.md`](doc
 
 ---
 
+## [Reconciled] 2026-07-28 — executable backlog
+
+This is the authoritative inbox after comparing every unchecked historical item
+with landed commits and `IMPLEMENTATION_PLAN.md`. Historical research remains
+below as evidence; checked items there are resolved/superseded/rejected rather
+than deleted. The only active items are these nineteen, each mirrored in
+`TODO.md`.
+
+- [ ] **P0 / unblocked:** migrate both MCP servers to Python SDK v2; the v2.0.0
+  release removed the prior upstream blocker.
+- [ ] **P0 / security:** redact runtime events and provider output before any
+  JSONL, SQLite, or log persistence.
+- [ ] **P1 / depends on redaction:** persist versioned lifecycle-linked
+  `EvidenceBundle v1` records.
+- [ ] **P1 / depends on EvidenceBundle:** wire worker, verifier, delivery, API,
+  and UI evidence into the bundle.
+- [ ] **P1 / depends on EvidenceBundle:** quarantine sanitized eval candidates
+  from incidents, oracle disagreements, reverts, and explicit corrections.
+- [ ] **P1 / depends on eval candidates:** add human review/promotion tooling;
+  never assign ground truth automatically.
+- [ ] **P1 / independent:** re-screen `/equip sync` against the exact fetched
+  upstream commit before applying it.
+- [ ] **P2 / depends on evidence/evals:** publish evidence completeness,
+  false-approval, human-override, and regression-coverage metrics.
+- [ ] **P2 / data first:** persist attempt/phase timing and routing telemetry.
+- [ ] **P2 / depends on telemetry/evals:** build a recorded routing replay
+  corpus.
+- [ ] **P2 / depends on replay:** add the default-off verifier-aware routing
+  cascade only when replay evidence supports it.
+- [ ] **P2 / depends on telemetry:** publish empirical routing break-even
+  reports with sample counts and uncertainty.
+- [ ] **P2 / depends on EvidenceBundle:** complete the provider/model registry
+  with live discovery, provenance, and stale pinned fallback.
+- [ ] **P2 / depends on provider registry:** add runtime/surface conformance
+  fixtures and credential-gated live smoke tests.
+- [ ] **P2 / depends on conformance:** retire compatibility shims only after
+  fixtures and telemetry prove supported paths have migrated.
+- [ ] **P3 / depends on metrics:** update VISION/North Star/dashboard for
+  evidence completeness, false approvals, overrides, and regression coverage.
+- [ ] **P3 / depends on implemented mechanisms:** reposition the orchestrator
+  around provider-neutral identity, evidence, verifier calibration, correction
+  learning, delivery, and fleet truth.
+- [ ] **P0 closeout / depends on all feature PRs:** install final merged `main`
+  into this server's Claude/Codex user config, preserve user state, remove
+  completed local/remote branches, and finish clean on synchronized `main`.
+- [ ] **CONDITIONAL WATCH:** adopt Beads-style agent-filed note-to-self entries
+  only if measured loop-runner context loss recurs.
+
+**Deliberate non-work:** automatic draft-PR publication is **REJECTED
+2026-07-28 by authority design**. Delivery may publish an explicitly authorized
+draft, but never creates one automatically. Universal-harness phases 0–2 are
+**RESOLVED 2026-07-28** in PR #34 (`2fcc82a`); only the separately planned
+phase 3–5 completion work remains and is represented explicitly by the
+provider-registry, conformance, shim-retirement, evidence, and routing items
+above rather than by stale phase-level duplicates.
+
+---
+
 ## [Research] 2026-07-28 — 全量重学：人物、近期 commits 与 2026-H2 agent 工程转向
 
 用户问题：把此前研究过和 watch-list 上的人物、项目重新学一遍，重点检查近期
@@ -123,17 +181,17 @@ harness。Reflexion 尤其应只保留“结构化失败反馈”，不要学无
 - event stream 已可重放，却还不是一个可安全导出/分享的 trace；未脱敏就无法成为
   eval、support bundle 或跨团队审计材料。
 
-### Recommended additions to TODO.md（不自动添加）
+### Recommended additions to TODO.md（superseded by reconciled backlog）
 
-- [ ] 定义版本化 `EvidenceBundle v1`：task/attempt/envelope/base+head SHA/tests/
+- [x] 定义版本化 `EvidenceBundle v1`：task/attempt/envelope/base+head SHA/tests/
   screenshots-or-video/cost/oracle+human verdict/rollback，绑定 delivery state 而非
   只写 PR prose。
-- [ ] 建立 `failure → sanitized eval candidate` 管道：incident、oracle disagreement、
+- [x] 建立 `failure → sanitized eval candidate` 管道：incident、oracle disagreement、
   revert、explicit correction 进入 quarantine；人工确认后进入 oracle/resolve corpus，
   后续 prompt/harness 变更必须重放。
-- [ ] 在 `EventStream.emit()` 与 provider stdout/stderr 持久化边界统一执行结构化
+- [x] 在 `EventStream.emit()` 与 provider stdout/stderr 持久化边界统一执行结构化
   redaction；保留 redaction metadata，不把原 secret/path 复制到日志。
-- [ ] 更新 North Star dashboard：除 throughput/cost 外展示 evidence completeness、
+- [x] 更新 North Star dashboard：除 throughput/cost 外展示 evidence completeness、
   false approval、human override、regression coverage。
 
 **不建议现在做：** 增加更多常驻 agent 角色、复制 Crew/Factory 的品牌化 topology、
@@ -325,15 +383,15 @@ scope 比 brief 大、verifier 不可靠、触及 forbidden/high-risk 文件。*
 - session report 应同时展示 total tokens、wall-clock critical path、并发度、美元成本和
   oracle-approved completion；任何单指标都会误导。
 
-### Recommended additions to TODO.md（不自动添加）
+### Recommended additions to TODO.md（superseded by reconciled backlog）
 
-- [ ] 建立 30–50 个真实历史任务的 routing eval：固定输入/commit/CI oracle，三臂对照
+- [x] 建立 30–50 个真实历史任务的 routing eval：固定输入/commit/CI oracle，三臂对照
   `cheap×N parallel`、`strong high-effort×1`、`cheap→strong cascade`，至少重复 3 次估计方差
-- [ ] 记录 `attempt_index`、`parent_attempt`、`effort`、`queue_ms`、`inference_ms`、
+- [x] 记录 `attempt_index`、`parent_attempt`、`effort`、`queue_ms`、`inference_ms`、
   `verify_ms`、`final_oracle`，按任务类型输出 pass@1、pass@k、success/$、success/wall-hour
-- [ ] 把 router 改成 verifier-aware cascade：低风险可验证任务先便宜模型；首轮失败或
+- [x] 把 router 改成 verifier-aware cascade：低风险可验证任务先便宜模型；首轮失败或
   高风险/无自动 verifier 直接强模型；设置最多一次 cheap retry，避免无界串行反思
-- [ ] 用历史 telemetry 拟合每类任务的 empirical break-even，而不是在 prompt 中硬编码
+- [x] 用历史 telemetry 拟合每类任务的 empirical break-even，而不是在 prompt 中硬编码
   `4×`；数据不足时明确显示样本数与置信区间
 
 ---
@@ -360,10 +418,10 @@ work queue." Same session also surveyed what else is new in 2026 H1.
 - **Native Dynamic Workflows/Routines eat the orchestrator's undifferentiated middle.** VISION's "cockpit" pillar should double down on oracle-gated quality + learning loop + fleet/usage view, and consider *delegating* raw fan-out to the harness where available.
 - No durable-ledger gap confirmed (queue ≠ missing; it's already SQLite+files+issues) — do not build a beads clone.
 
-### Recommended additions to TODO.md (not auto-added)
-- [ ] Positioning review: which orchestrator features are now harness table-stakes (parallel fan-out, cron) vs Clade moat (oracle, corrections, usage, sync) — update VISION.md accordingly
-- [ ] Watch beads' agent-filed note-to-self mechanic; if loop-runner workers start losing cross-iteration context, that's the trigger to adopt
-- [ ] Consider running INJ screening at /equip **sync** time too (audit gates adoption, but a later upstream update could introduce injection between audit and sync)
+### Recommended additions to TODO.md (superseded by reconciled backlog)
+- [x] Positioning review: which orchestrator features are now harness table-stakes (parallel fan-out, cron) vs Clade moat (oracle, corrections, usage, sync) — update VISION.md accordingly
+- [x] Watch beads' agent-filed note-to-self mechanic; if loop-runner workers start losing cross-iteration context, that's the trigger to adopt
+- [x] Consider running INJ screening at /equip **sync** time too (audit gates adoption, but a later upstream update could introduce injection between audit and sync)
 
 Sources: [ghuntley.com/loop](https://ghuntley.com/loop/) (cue→404), [yegge.ai/gastown](https://yegge.ai/gastown), [Gas Town HN thread](https://news.ycombinator.com/item?id=46734302), [Parsons — orchestrator too clever](https://www.chrismdp.com/your-agent-orchestrator-is-too-clever/), [Mason — coherence through orchestration](https://mikemason.ca/writing/ai-coding-agents-jan-2026/), [InfoQ — Dynamic Workflows](https://www.infoq.com/news/2026/06/dynamic-workflows-claude-code/), [Anthropic — introducing dynamic workflows](https://claude.com/blog/introducing-dynamic-workflows-in-claude-code), [Agentman — skills ecosystem 2026](https://agentman.ai/blog/agent-skills-ecosystem-report-2026), [Register — Ralph Wiggum loops](https://www.theregister.com/2026/01/27/ralph_wiggum_claude_loops/), [Medium — every harness is a Ralph loop](https://medium.com/ai-all-in/every-ai-coding-harness-is-just-a-ralph-loop-69690dc69e7c)
 
@@ -373,10 +431,10 @@ Sources: [ghuntley.com/loop](https://ghuntley.com/loop/) (cue→404), [yegge.ai/
 
 89 agents, 5.8M tok, 1387 tool calls. Mined 3-6 mechanisms per person (83 raw) → triage-dedup → 70 distinct candidates → adversarial verify (4-check framework: deficient-not-different / capabilities-not-names / single-tool-local-first scope / mechanism equivalence). Result: **25 confirmed_gap (36%), 15 parity, 28 different-not-deficient, 2 N/A.** Confirmed-gap rate meaningfully higher than prior rounds — verification surfaced 3 genuine LIVE BUGS in Clade's own shipped code (not "adopt an external pattern"), found only because checking each candidate against the real code forced a close read of adjacent logic.
 
-**3 confirmed live bugs (fix under the bug-fix-without-permission rule, no separate ask needed):**
-- [ ] Plan-drift: `oracle_result`/`oracle_reason` computed in `worker.py` but never persisted to the DB; `session.py:_run_plan_build` marks a checklist item `[x]` the instant status hits ANY terminal value — before the test/oracle gate resolves. A rejected/reverted commit still shows checked off.
-- [ ] Dead code: `context_budget_warning` writes `context-warning-<id>.md`; zero readers exist (confirmed via grep) since it was introduced.
-- [ ] Orphan-process safety hole: workers `setsid` (survive orchestrator restart); `_recover_orphaned_tasks()` only relabels DB rows without checking/killing the still-alive process; `retry_task` can silently collide into a shared worktree.
+**3 confirmed live bugs — RESOLVED 2026-07-28:**
+- [x] Plan-drift: `oracle_result`/`oracle_reason` computed in `worker.py` but never persisted to the DB; `session.py:_run_plan_build` marks a checklist item `[x]` the instant status hits ANY terminal value — before the test/oracle gate resolves. A rejected/reverted commit still shows checked off. (resolved by `69c25a7`)
+- [x] Dead code: `context_budget_warning` writes `context-warning-<id>.md`; zero readers exist (confirmed via grep) since it was introduced. (resolved by `a29363f`)
+- [x] Orphan-process safety hole: workers `setsid` (survive orchestrator restart); `_recover_orphaned_tasks()` only relabels DB rows without checking/killing the still-alive process; `retry_task` can silently collide into a shared worktree. (resolved by `4e63b7e`)
 
 **22 external-pattern-adoption gaps, prioritized (leverage desc, effort asc — full prose + per-item source/mechanism in workflow transcript wf_06e7a1a3-f1f):**
 
@@ -487,14 +545,14 @@ User question: 再学习一轮他们，看看我们的学习成果和他们的�
 - WIF keyless auth / GCP secret brokerage — no cloud secret fleet; CI already key-gated + SHA-pinned
 - nbdime (no notebooks), formal Quint/Kani/MBT layer (cost/scope), BASH_ENV direnv shim (no direnv here; .venv symlink bootstrap covers), tracey (re-confirmed round-1: VERIFY.md equivalent), two-stage permission classifier (CC ships auto mode at harness level)
 
-### Noted, not landed (candidates for a future wave)
+### Noted, not landed — RESOLVED 2026-07-28 (all six landed in `d3c7c90`)
 
-- [ ] Mutation testing as run-over-run missed-count diff ratchet, narrow high-signal targets first (lovesegfault mutants.toml) [M/medium — patrol-lane experiment]
-- [ ] Judge hardening: pure judges could add `--disallowed-tools` belt-and-braces (cookbooks: allowed gates prompting, disallowed gates availability) [S/low]
-- [ ] Standing friction-log instruction for workers (append harness pain to BRAINSTORM [AI]) [S/low]
-- [ ] `input_examples` on mcp_server tool definitions (advanced-tool-use blog: 72%→90% complex-param accuracy) [S/low]
-- [ ] Strike-ladder N=4..7 structural-close templates as /audit reference doc (delete-reimplementation, make-function-total, single-emit-chokepoint) [S/low prose]
-- [ ] Flake-verdict policy doc for test-loop-real (felixrieseberg: "one SUCCESS = good, three identical failures = content must change") [S/low]
+- [x] Mutation testing as run-over-run missed-count diff ratchet, narrow high-signal targets first (lovesegfault mutants.toml) [M/medium — patrol-lane experiment]
+- [x] Judge hardening: pure judges could add `--disallowed-tools` belt-and-braces (cookbooks: allowed gates prompting, disallowed gates availability) [S/low]
+- [x] Standing friction-log instruction for workers (append harness pain to BRAINSTORM [AI]) [S/low]
+- [x] `input_examples` on mcp_server tool definitions (advanced-tool-use blog: 72%→90% complex-param accuracy) [S/low]
+- [x] Strike-ladder N=4..7 structural-close templates as /audit reference doc (delete-reimplementation, make-function-total, single-emit-chokepoint) [S/low prose]
+- [x] Flake-verdict policy doc for test-loop-real (felixrieseberg: "one SUCCESS = good, three identical failures = content must change") [S/low]
 
 ### Wave-1/2 deploy-gap audit (this repo's recurring failure class — checked deliberately)
 
@@ -614,27 +672,27 @@ User question: 完整的学习他们的工作流，看看凭什么他们能又�
 - CI-failure markdown catalog (covered by error_classifier + intervention replay), tracey spec traceability (VERIFY.md equivalent), Renovate fleet automerge (curate-first trust model), generated workflows (premature at 84 lines), signed release gate (N/A — no publish leg) (lovesegfault)
 - Colocated notes.md (injection beats colocation for agent consumers), starter template (user-level kit is stronger; no repo-creation flow) (controversial)
 
-### Recommended additions to TODO.md
+### Recommended additions to TODO.md — RESOLVED 2026-07-28
 
 *(BRAINSTORM is an inbox — these are recommendations for human promotion, grouped by cluster, ordered by impact.)*
 
-- [ ] **Oracle integrity package** (the highest-leverage cluster — all four touch `worker_review.py`/`worker.py` and should land as one phase): (a) criteria-injection + evidence-forcing rubric [S/high]; (b) fail-open → 'unreviewed' + infra-error counter + canary [S/high]; (c) tests run BEFORE oracle/push, evidence threaded into prompts; /review-pr executes the change [M/high]; (d) severity:error gate on the chunked path, optional findings → follow-ups [S/medium]
-- [ ] **CI hardening commit**: install-test job (clean-HOME install.sh + assertions) + flip shell-tests continue-on-error to false + optional alls-green-style gate job [S/medium]
-- [ ] **test_conventions.py**: 1500-line cap, import-DAG acyclicity, no exception text in 500s — runs in CI pytest AND workers' local test command [S/medium]
-- [ ] **checks.sh in committer**: staged-secret scan fail-closed + shellcheck, same script reused as a CI step [S/medium]
-- [ ] **CI-failure task hydration**: log tails in scan-ci-failures.sh/ci_watcher.py, actions-run URLs in worker_hydrate.py, anti-infra/anti-downgrade guardrails [S/medium]
-- [ ] **/trim-tests skill + scan-health suite-runtime probe** (>100s verify_cmd → trim suggestion task) [S/medium]
-- [ ] **/audit ESCALATE-TO-STRUCTURAL** + /generate-hook Step 6 rule retirement [S/medium]
-- [ ] **quiet-run.sh** verify wrapper wired into /verify, /review, loop-runner worker block [S/medium]
-- [ ] **gh pr merge --auto + do-not-merge label** in routes/tasks.py merge_all_done [S/medium]
-- [ ] **ensure_repo_invariants()** preflight in github_sync.py, called at session init + start.sh health check [S/medium]
-- [ ] **validate-skills.py**: one frontmatter schema + shared parser for install.sh and mcp_server [S/medium]
-- [ ] **Dependency-bug doctrine** in /investigate Phase 6b + Engineering Values bullet [S/medium]
-- [ ] **History payload**: fix-task test-presence oracle criterion + structured PR bodies (replace --fill) + commit-body rule in /commit + loop-runner + worker_taskfile [S/medium]
-- [ ] **Path-scoped rule-injector hook** (.claude/rules/*.md with paths: frontmatter) [M/medium]
-- [ ] **Worktree env bootstrap + per-file post-edit lint** in run-tasks-parallel.sh / post-tool-use-lint.sh [M/medium]
-- [ ] Low-priority lane: committer attribution trailers [S/low]; MCP compact mode [S/low]; second-opinion-{codex,gemini} agents [S/low]
-- [ ] **Design discussions (bigger bets)**: prompt eval harness (orchestrator/evals/ — gates the oracle rewrite); offline recovery e2e with planted failures; mid-flight worker steering via PostToolUse mailbox drain
+- [x] **Oracle integrity package** (the highest-leverage cluster — all four touch `worker_review.py`/`worker.py` and should land as one phase): (a) criteria-injection + evidence-forcing rubric [S/high]; (b) fail-open → 'unreviewed' + infra-error counter + canary [S/high]; (c) tests run BEFORE oracle/push, evidence threaded into prompts; /review-pr executes the change [M/high]; (d) severity:error gate on the chunked path, optional findings → follow-ups [S/medium]
+- [x] **CI hardening commit**: install-test job (clean-HOME install.sh + assertions) + flip shell-tests continue-on-error to false + optional alls-green-style gate job [S/medium]
+- [x] **test_conventions.py**: 1500-line cap, import-DAG acyclicity, no exception text in 500s — runs in CI pytest AND workers' local test command [S/medium]
+- [x] **checks.sh in committer**: staged-secret scan fail-closed + shellcheck, same script reused as a CI step [S/medium]
+- [x] **CI-failure task hydration**: log tails in scan-ci-failures.sh/ci_watcher.py, actions-run URLs in worker_hydrate.py, anti-infra/anti-downgrade guardrails [S/medium]
+- [x] **/trim-tests skill + scan-health suite-runtime probe** (>100s verify_cmd → trim suggestion task) [S/medium]
+- [x] **/audit ESCALATE-TO-STRUCTURAL** + /generate-hook Step 6 rule retirement [S/medium]
+- [x] **quiet-run.sh** verify wrapper wired into /verify, /review, loop-runner worker block [S/medium]
+- [x] **gh pr merge --auto + do-not-merge label** in routes/tasks.py merge_all_done [S/medium]
+- [x] **ensure_repo_invariants()** preflight in github_sync.py, called at session init + start.sh health check [S/medium]
+- [x] **validate-skills.py**: one frontmatter schema + shared parser for install.sh and mcp_server [S/medium]
+- [x] **Dependency-bug doctrine** in /investigate Phase 6b + Engineering Values bullet [S/medium]
+- [x] **History payload**: fix-task test-presence oracle criterion + structured PR bodies (replace --fill) + commit-body rule in /commit + loop-runner + worker_taskfile [S/medium]
+- [x] **Path-scoped rule-injector hook** (.claude/rules/*.md with paths: frontmatter) [M/medium]
+- [x] **Worktree env bootstrap + per-file post-edit lint** in run-tasks-parallel.sh / post-tool-use-lint.sh [M/medium]
+- [x] Low-priority lane: committer attribution trailers [S/low]; MCP compact mode [S/low]; second-opinion-{codex,gemini} agents [S/low]
+- [x] **Design discussions (bigger bets)**: prompt eval harness (orchestrator/evals/ — gates the oracle rewrite); offline recovery e2e with planted failures; mid-flight worker steering via PostToolUse mailbox drain
 
 
 ## [AI] Friction Log
@@ -780,25 +838,27 @@ CLEAN
   → prove clean tree + local/remote alignment → DONE
 ```
 
-### Recommended additions to TODO.md
+### Recommended additions to TODO.md — RESOLVED/SUPERSEDED 2026-07-28
 
-- [ ] Add a `delivery` skill/state machine that starts a clean task
+- [x] Add a `delivery` skill/state machine that starts a clean task
   branch/worktree before edits and owns the lifecycle through merged PR and
   cleanup; changing code on a created task branch cannot end at "uncommitted".
-- [ ] Split verification into `checkpoint` (focused affected tests before each
+- [x] Split verification into `checkpoint` (focused affected tests before each
   commit) and `candidate` (full CI after final base alignment); require each
   preserved commit to be green.
-- [ ] Add automatic early draft-PR creation/update after the first pushed green
+- [x] Add automatic early draft-PR creation/update after the first pushed green
   checkpoint, including base SHA, stack parent, scope, and evidence fields.
-- [ ] Add `restack` to stacked delivery: after a parent merges, sync trunk,
+  **REJECTED 2026-07-28:** explicit delivery authority may authorize a draft;
+  unconditional automatic publication is intentionally not implemented.
+- [x] Add `restack` to stacked delivery: after a parent merges, sync trunk,
   rebuild/retarget every child, push with lease, and rerun that child's CI.
-- [ ] Replace unconditional squash with `merge-pr --strategy
+- [x] Replace unconditional squash with `merge-pr --strategy
   auto|squash|rebase|merge`; detect child PRs and repository policy, lock the
   reviewed head SHA, and explain the choice.
-- [ ] Make post-merge cleanup a verified gate: local/remote branch absent,
+- [x] Make post-merge cleanup a verified gate: local/remote branch absent,
   remote refs pruned, main equals origin/main, no dirty files, children
   restacked.
-- [ ] Add an end-to-end regression fixture for the exact failure reproduced
+- [x] Add an end-to-end regression fixture for the exact failure reproduced
   here: child branch from open PR → parent amended/squash-merged → child
   restacked → own CI → own PR → merge → branch cleanup.
 

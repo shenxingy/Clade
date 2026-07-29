@@ -11,7 +11,15 @@ The two docs work as a pair:
 
 Each deep-dive in this folder has YAML frontmatter (`status`, `summary`, `integrated_items`, `needs_work_items`). This index rolls that up so you don't re-read 30 KB to find what's left to do. **Source of truth is each doc's frontmatter** — when you close a gap, update the doc, then refresh this index.
 
-- **Last reviewed:** 2026-07-15 (OpenAI + frontier sweep added 3 deep-dives; prior 2026-06-18) · **Cadence:** refresh when a deep-dive's `status` changes or a new one lands.
+> **2026-07-28 reconciliation:** the historical per-document gap counts below
+> are research provenance, not an executable queue. The authoritative open
+> program is the nineteen-item, dependency-labelled list in
+> [`TODO.md`](../../TODO.md) (MCP SDK v2 first; event redaction, evidence,
+> evals, routing, universal-harness completion, `/equip sync`, positioning,
+> local rollout/cleanup; plus one conditional Beads watch).
+> Universal-harness phases 0–2 landed in PR #34 (`2fcc82a`); do not reopen them.
+
+- **Last reviewed:** 2026-07-28 (full expert/project re-screen and backlog reconciliation; prior 2026-07-15) · **Cadence:** refresh when a deep-dive's `status` changes or a new one lands.
 
 **Status:** ✅ integrated (absorbed) · 📘 reference (studied, nothing to build) · 🔨 needs_work (open gaps)
 
