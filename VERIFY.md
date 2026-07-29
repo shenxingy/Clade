@@ -4,7 +4,7 @@
 
 **Project type:** cli + skill-system + orchestrator (FastAPI)
 **Last full pass:** 2026-07-29
-**Coverage:** 93 ✅, 0 ❌, 4 ⚠, 0 ⬜ untested
+**Coverage:** 94 ✅, 0 ❌, 4 ⚠, 0 ⬜ untested
 
 ---
 
@@ -59,6 +59,7 @@
 | LR6 | `--resume` with no existing checkpoint fails closed (exit 2) with an explicit "no checkpoint exists" message rather than silently starting fresh | ✅ | 2026-07-29 | "resume without checkpoint fails closed" |
 | LR7 | `loop-runner.sh --help` prints usage and performs no checkpoint writes or `~/.claude` side effects | ✅ | 2026-07-29 | "--help prints usage" + "--help has no checkpoint side effects" |
 | LR8 | Successful tasks reconcile exact goal line/text evidence only after all gates pass, worker-created commits count without leftover files, and serial/parallel task failures propagate non-zero | ✅ | 2026-07-29 | `tests/test-loop-goal.sh`: 12/12 deterministic checks, including failed-worker blocking and same-iteration `converged` |
+| LR9 | A non-zero supervisor CLI exit preserves its raw provider response, stops immediately as `supervisor_failed`, retains a resumable checkpoint, and propagates a non-zero runner exit instead of consuming iterations as empty plans | ✅ | 2026-07-29 | integration regression asserts reason + exit 1; live run preserved the Claude session-limit response |
 
 ## Hook Behavior
 <!-- Hooks must fire correctly and not over-block. -->
