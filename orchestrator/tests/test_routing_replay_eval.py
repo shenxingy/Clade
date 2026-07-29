@@ -6,6 +6,8 @@ import copy
 import sys
 from pathlib import Path
 
+import pytest
+
 
 EVALS = Path(__file__).resolve().parents[1] / "evals"
 if str(EVALS) not in sys.path:
@@ -85,6 +87,26 @@ def test_threshold_gate_fails_a_cascade_efficiency_regression():
     assert gate["evaluated"] is True
     assert gate["passed"] is False
     assert "cascade success_per_usd regressed versus strong-self" in gate["reasons"]
+
+
+@pytest.mark.parametrize("allowed_drop", [float("nan"), float("inf"), float("-inf")])
+def test_threshold_gate_rejects_non_finite_allowed_drop(allowed_drop):
+    cases, _ = routing_eval.load_cases()
+    report = routing_eval.summarize(cases)
+
+    with pytest.raises(ValueError, match="finite and non-negative"):
+        routing_eval.evaluate_thresholds(
+            report, allowed_pass_at_k_drop=allowed_drop
+        )
+
+
+@pytest.mark.parametrize("allowed_drop", ["nan", "inf", "-inf"])
+def test_cli_rejects_non_finite_allowed_drop(allowed_drop, capsys):
+    with pytest.raises(SystemExit) as caught:
+        routing_eval.main([f"--allowed-pass-at-k-drop={allowed_drop}"])
+
+    assert caught.value.code == 2
+    assert "allowed drop finite and non-negative" in capsys.readouterr().err
 
 
 def test_schema_rejects_unmatched_or_unreliable_input_contract():

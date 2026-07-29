@@ -237,6 +237,8 @@ def evaluate_thresholds(
     min_samples: int = 6,
     allowed_pass_at_k_drop: float = 0.0,
 ) -> dict:
+    if not math.isfinite(allowed_pass_at_k_drop) or allowed_pass_at_k_drop < 0:
+        raise ValueError("allowed_pass_at_k_drop must be finite and non-negative")
     strong = report["policies"]["strong_self"]
     cascade = report["policies"]["cheap_to_strong"]
     reasons: list[str] = []
@@ -268,8 +270,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--allowed-pass-at-k-drop", type=float, default=0.0)
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
-    if args.k < 1 or args.min_samples < 1 or args.allowed_pass_at_k_drop < 0:
-        parser.error("k/min-samples must be positive and allowed drop non-negative")
+    if (
+        args.k < 1
+        or args.min_samples < 1
+        or not math.isfinite(args.allowed_pass_at_k_drop)
+        or args.allowed_pass_at_k_drop < 0
+    ):
+        parser.error(
+            "k/min-samples must be positive and allowed drop finite and non-negative"
+        )
     cases, errors = load_cases(args.cases_dir)
     if errors:
         for error in errors:
