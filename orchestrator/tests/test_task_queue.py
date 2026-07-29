@@ -91,6 +91,19 @@ async def test_retry_task_rejects_running(task_queue: TaskQueue):
     assert "error" in result
 
 
+async def test_retry_failed_creates_attempt_lineage_parent(task_queue: TaskQueue):
+    from types import SimpleNamespace
+    from routes.tasks import retry_failed
+
+    task = await task_queue.add("failed work")
+    await task_queue.update(task["id"], status="failed", failed_reason="boom")
+
+    result = await retry_failed(s=SimpleNamespace(task_queue=task_queue))
+    retried = await task_queue.get(result["task_ids"][0])
+
+    assert retried["parent_task_id"] == task["id"]
+
+
 async def test_delete_removes_task(task_queue: TaskQueue):
     task = await task_queue.add("Task to delete")
     task_id = task["id"]

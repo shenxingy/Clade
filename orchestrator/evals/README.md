@@ -216,6 +216,25 @@ an empty denominator is `null`, never a misleading zero:
 
 The React dashboard exposes the same snapshot under the **Evals** tab.
 
+## Attempt routing telemetry
+
+Every runtime attempt advances an immutable nested
+`clade.attempt_telemetry/v1` snapshot inside its EvidenceBundle. The snapshot
+keeps:
+
+- atomic `attempt_index` and optional `parent_attempt_id` lineage;
+- `queue_ms`, `inference_ms`, and `verify_ms`, plus their phase boundaries;
+- resolved agent runtime, connection, model, effort, and audit reason;
+- terminal lifecycle outcome, worker status, verification result, and final
+  oracle verdict.
+
+Unavailable phases are `null`; a preflight or spawn failure never fabricates
+inference or verification time. Same-task retries link to the previous attempt.
+Retry, correction, and handoff tasks use their existing `parent_task_id` to
+resolve the exact latest parent attempt. This JSON-only addition preserves the
+outer `clade.evidence/v1` and frozen SQLite schema while giving routing replay
+fixtures a stable, redacted source.
+
 ## Supervisor cases
 
 `supervisor_eval.py` extracts the JSON-extraction snippet embedded in
