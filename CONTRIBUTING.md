@@ -107,9 +107,7 @@ orchestrator/start.sh       # Launch script
 The GUI is deliberately self-contained — no bundler, no framework. This makes it easy to modify.
 
 For deeper context, see:
-- [`docs/research/hooks.md`](docs/research/hooks.md) — hook system internals
-- [`docs/research/subagents.md`](docs/research/subagents.md) — custom agent patterns
-- [`docs/research/batch-tasks.md`](docs/research/batch-tasks.md) — batch execution details
+- [`docs/research/2026-04-07-claude-hooks.md`](docs/research/2026-04-07-claude-hooks.md) — Claude Code hook system design and patterns
 
 ## Getting Help
 
