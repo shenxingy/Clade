@@ -655,15 +655,12 @@ def cmd_merge_plan(args: argparse.Namespace) -> dict[str, Any]:
     methods = _gh_methods(root)
     children = _gh_children(root, pr["headRefName"])
     requested = args.strategy
-    if requested != "auto":
-        if requested not in methods:
+    if children:
+        if requested in {"squash", "rebase"}:
             raise DeliveryError(
-                f"requested merge strategy {requested!r} is disabled; "
-                f"allowed: {', '.join(methods) or 'none'}"
+                f"live child PRs depend on {pr['headRefName']!r}; "
+                f"{requested} would rewrite their parent ancestry"
             )
-        strategy = requested
-        reason = "explicit strategy allowed by repository policy"
-    elif children:
         if "merge" not in methods:
             raise DeliveryError(
                 "live child PRs depend on this head and merge commits are disabled; "
@@ -671,18 +668,31 @@ def cmd_merge_plan(args: argparse.Namespace) -> dict[str, Any]:
             )
         strategy = "merge"
         reason = "preserve ancestry for live child PRs"
-    elif "squash" in methods:
-        strategy = "squash"
-        reason = "atomic unstacked PR; working commits are review checkpoints"
-    elif len(pr.get("commits") or []) == 1 and "rebase" in methods:
-        strategy = "rebase"
-        reason = "single verified commit and squash is unavailable"
-    elif "merge" in methods:
-        strategy = "merge"
-        reason = "repository merge policy fallback"
-    elif "rebase" in methods:
-        strategy = "rebase"
-        reason = "repository permits only rebase integration"
+    elif requested != "auto":
+        if requested not in methods:
+            raise DeliveryError(
+                f"requested merge strategy {requested!r} is disabled; "
+                f"allowed: {', '.join(methods) or 'none'}"
+            )
+        strategy = requested
+        reason = "explicit strategy allowed by repository policy"
+    elif len(pr.get("commits") or []) == 1 and methods:
+        for method in ("rebase", "squash", "merge"):
+            if method in methods:
+                strategy = method
+                break
+        reason = (
+            "single verified commit; preserve it linearly when repository policy permits"
+        )
+    elif len(methods) == 1:
+        strategy = methods[0]
+        reason = "repository policy exposes only one merge method"
+    elif methods:
+        raise DeliveryError(
+            "auto strategy is ambiguous for a multi-commit PR: inspect whether "
+            "the commits are curated mainline units, disposable checkpoints, or "
+            "topology that must remain visible, then pass --strategy explicitly"
+        )
     else:
         raise DeliveryError("repository exposes no supported merge strategy")
 

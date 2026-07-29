@@ -193,6 +193,12 @@ Minimum fields:
    - Tests: late authority enables publication; conflicting authority is
      rejected.
 
+0a. **Remove automatic squash bias**
+   - Preserve live stack topology, prefer rebase for a single verified commit,
+     and require an explicit history-semantic decision for multi-commit PRs
+     whenever the forge allows several merge methods.
+   - Tests: multi-commit `auto` is ambiguous; single-commit `auto` rebases.
+
 1. **Reconcile Brainstorm/TODO state**
    - Files: `BRAINSTORM.md`, `TODO.md`, `docs/research/README.md`
    - Mark 33 stale checkboxes resolved/superseded.

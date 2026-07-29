@@ -60,7 +60,12 @@ chore: bump orchestrator dependencies
 5. Open a PR against `main`
 6. A maintainer will review within a few days
 
-PRs are squash-merged to keep history clean.
+Merge strategy follows the PR's actual history semantics. A single verified
+commit is normally rebased; curated independently useful commits may be
+rebased; disposable checkpoint/fixup history may be squashed; and merge commits
+are reserved for stacks or cases where the PR boundary/topology must remain
+visible. Multi-commit PRs must not be auto-squashed without inspecting those
+commits.
 
 ## Good First Issues
 

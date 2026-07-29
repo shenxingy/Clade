@@ -261,12 +261,15 @@ READY fails closed when:
 - the requested strategy is disabled;
 - live children would be broken by ancestry rewriting.
 
-`auto` chooses repository-compatible history semantics:
+`auto` chooses only when the history semantics are unambiguous:
 
-- squash for an atomic unstacked PR whose intermediate commits are checkpoints;
 - merge when live children require ancestry preservation;
-- rebase only when compatible evidence/policy makes it truthful;
-- stop when no safe strategy exists.
+- rebase for one verified commit when repository policy permits, avoiding a
+  needless commit rewrite;
+- the sole enabled method when repository policy allows exactly one;
+- stop for a multi-commit PR when several methods are available, requiring an
+  explicit choice after inspecting whether commits are curated mainline units,
+  disposable checkpoints, or topology that must remain visible.
 
 Execute exactly the emitted command. It always includes
 `--match-head-commit <reviewed-sha>` and never uses `--admin`, a CI bypass, plain
