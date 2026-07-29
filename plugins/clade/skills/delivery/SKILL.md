@@ -24,6 +24,7 @@ reviewable unit:
 ```text
 probe → start → build → checkpoint* → candidate → publish/update
       → review/CI → ready → integrate → clean
+      ↘ abandon superseded work under exact leases → clean
 ```
 
 Do not stop after creating a branch or editing files. Do not guess repository
@@ -296,9 +297,32 @@ Stacks merge bottom-up. After a parent lands, synchronously retarget/restack
 each child, push only with a verified force-with-lease on owned branches,
 invalidate its evidence, and rerun that child's full candidate/remote CI.
 
-## 8. Clean and prove completion
+## 8. Abandon superseded work safely
 
-After merge:
+When a delivery is intentionally superseded or no longer needed, record that
+disposition instead of editing state files or pretending it merged:
+
+```bash
+python3 "$DELIVERY_PY" abandon \
+  --id "<id>" --head-sha "<recorded-head>" \
+  --reason "<why this unpublished delivery is no longer needed>"
+```
+
+The exact recorded HEAD is a lease, the reason must be non-empty, and the
+transition is idempotent only for the same HEAD and reason. Unpublished BUILD,
+CHECKPOINT, or BLOCKED work can transition directly. Published GitHub PR work
+can transition only after a live forge check proves the PR is CLOSED—not OPEN
+or MERGED—and its head still equals the recorded lease. READY work without a
+verifiable closed PR, merged work, and cleaned work are rejected. `abandon` is
+not a CI, review, or integration bypass.
+
+Abandonment terminalizes the branch lease but does not delete work. Preserve
+anything still needed, remove only the owned worktree/branch under recorded
+authority, then run `verify-clean`.
+
+## 9. Clean and prove completion
+
+After merge or abandonment:
 
 1. move to the resolved default branch;
 2. fetch/prune and update it with `--ff-only`;

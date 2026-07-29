@@ -233,6 +233,7 @@ def _delivery_evidence_projection(state: dict[str, Any]) -> dict[str, Any]:
         "pull_request": state.get("pull_request"),
         "ready": state.get("ready"),
         "merge": state.get("merge"),
+        "abandonment": state.get("abandonment"),
         "cleanup": state.get("cleanup"),
         "updated_at": state.get("updated_at"),
     }
@@ -352,6 +353,7 @@ def cmd_start(args: argparse.Namespace) -> dict[str, Any]:
         },
         "ready": None,
         "merge": None,
+        "abandonment": None,
         "cleanup": None,
         "artifacts": [],
         "created_at": now,
@@ -777,6 +779,78 @@ def cmd_merged(args: argparse.Namespace) -> dict[str, Any]:
     return state
 
 
+def cmd_abandon(args: argparse.Namespace) -> dict[str, Any]:
+    """Terminalize superseded delivery work under exact head and forge leases."""
+
+    root = _root(args.repo.resolve())
+    reason = args.reason.strip()
+    if not reason:
+        raise DeliveryError("abandonment reason must not be empty")
+
+    with _locked_state_dir(root):
+        state = _read_state(root, args.id)
+        recorded_head = state.get("head_sha")
+        if args.head_sha != recorded_head:
+            raise DeliveryError(
+                "abandonment head SHA does not match recorded delivery head"
+            )
+
+        if state.get("state") == "ABANDONED":
+            abandonment = state.get("abandonment") or {}
+            if (
+                abandonment.get("head_sha") == args.head_sha
+                and abandonment.get("reason") == reason
+            ):
+                return state
+            raise DeliveryError(
+                "delivery is already abandoned with different recorded facts"
+            )
+
+        allowed_states = {"BUILD", "CHECKPOINT", "PUBLISHED", "READY", "BLOCKED"}
+        if state.get("state") not in allowed_states:
+            raise DeliveryError(
+                f"cannot abandon delivery in state {state.get('state')!r}"
+            )
+
+        pull_request = state.get("pull_request") or {}
+        pr_number = pull_request.get("number")
+        closed_pr = None
+        if pr_number:
+            if state.get("forge") != "github":
+                raise DeliveryError(
+                    "published PR abandonment requires a supported forge closure "
+                    "check"
+                )
+            live_pr = _gh_pr(root, str(pr_number))
+            live_state = str(live_pr.get("state") or "").upper()
+            if live_state != "CLOSED":
+                raise DeliveryError(
+                    f"published delivery PR is not closed: {live_state or 'UNKNOWN'}"
+                )
+            if live_pr.get("headRefOid") != recorded_head:
+                raise DeliveryError(
+                    "closed PR head SHA does not match recorded delivery head"
+                )
+            closed_pr = {
+                "number": live_pr.get("number"),
+                "url": live_pr.get("url"),
+                "state": live_state,
+                "head_sha": live_pr.get("headRefOid"),
+            }
+        elif state.get("ready"):
+            raise DeliveryError("READY delivery has no pull request to verify closed")
+
+        state["state"] = "ABANDONED"
+        state["abandonment"] = {
+            "head_sha": recorded_head,
+            "reason": reason,
+            "closed_pull_request": closed_pr,
+            "abandoned_at": _now(),
+        }
+        _write_state(root, state)
+    return state
+
+
 def cmd_preserve_ref(args: argparse.Namespace) -> dict[str, Any]:
     root = _root(args.repo.resolve())
     with _locked_state_dir(root):
@@ -1022,6 +1096,13 @@ def build_parser() -> argparse.ArgumentParser:
     merged.add_argument("--merge-sha", required=True)
     merged.add_argument("--strategy", choices=("squash", "rebase", "merge"))
     merged.set_defaults(handler=cmd_merged)
+
+    abandon = sub.add_parser("abandon")
+    _common_repo(abandon)
+    abandon.add_argument("--id", required=True)
+    abandon.add_argument("--head-sha", required=True)
+    abandon.add_argument("--reason", required=True)
+    abandon.set_defaults(handler=cmd_abandon)
 
     preserve = sub.add_parser("preserve-ref")
     _common_repo(preserve)
