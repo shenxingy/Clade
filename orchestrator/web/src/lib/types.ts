@@ -108,6 +108,41 @@ export interface Task {
   priority_score: number | null;
 }
 
+export type EvidenceLifecycle =
+  | 'created'
+  | 'running'
+  | 'verifying'
+  | 'delivery_pending'
+  | 'delivered'
+  | 'failed'
+  | 'cancelled'
+  | 'reverted';
+
+export interface EvidenceBundle {
+  schema_version: 'clade.evidence/v1';
+  bundle_id: string;
+  attempt_id: string;
+  task_id: string;
+  attempt_index: number;
+  revision: number;
+  lifecycle_state: EvidenceLifecycle;
+  recorded_at: number;
+  evidence: Record<string, unknown>;
+  redaction_metadata: {
+    schema_version: 'clade.redaction/v1';
+    count: number;
+    kinds: Record<string, number>;
+    fields: string[];
+  };
+  previous_digest: string | null;
+  digest: string;
+}
+
+export interface EvidenceAttemptsResponse {
+  task_id: string;
+  attempts: EvidenceBundle[];
+}
+
 export interface Worker {
   id: string;
   task_id: string;

@@ -224,8 +224,10 @@ backlog.
   persists redacted, append-only attempt revisions with validated lifecycle
   transitions, canonical SHA-256 predecessor chains, and SQLite immutability
   guards.
-- [ ] **P1 · evidence wiring · depends on EvidenceBundle:** connect worker,
-  verifier, delivery, API, and UI evidence to the bundle.
+- [x] **P1 · completed 2026-07-28 · evidence wiring:** worker attempts now
+  capture execution, timing, exact Git SHAs, tests, oracle verdicts, optional
+  artifacts, usage/cost, and delivery candidates; delivery exposes an
+  attempt-linked projection, and task detail API/UI show verified bundles.
 - [ ] **P1 · evals · depends on EvidenceBundle:** turn incidents, oracle
   disagreements, reverts, and explicit corrections into quarantined sanitized
   eval candidates with human promotion.
