@@ -9,6 +9,8 @@ versioning for the `clade-mcp` Python package and tagged public releases.
 
 ### Added
 
+- Crash-safe Loop phase recovery with explicit, identity-matched `--resume`;
+  normal launches ignore stale checkpoints and `--help` has no side effects
 - Native `$codex-usage` workflow with Clade's 95%-target pace view
 - Credential-safe rate-limit reads through the authenticated Codex app-server
 - Idempotent setup for Codex's native five-hour and weekly status-line fields
