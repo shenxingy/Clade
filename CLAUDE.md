@@ -102,6 +102,7 @@ compression_feedback.py ← compression UX feedback (consumed by /handoff skill)
 # Mid-tier
 github_sync.py       ← gh CLI wrappers (issues, push, sync)
 task_queue.py        ← SQLite tasks + append-only evidence persistence
+routing_break_even.py ← production-only observational routing analytics
 swarm.py             ← SwarmManager (extracted from worker.py)
 worker_taskfile.py   ← build_task_file: task file construction + context injection
 worker_runtime.py    ← runtime-route resolution + durable selection failure
@@ -130,6 +131,7 @@ routes/usage.py      ← Usage dashboard API routes
 | `cascade_policy.py` | Pure default-off verifier-cascade policy, escalation signals, and retry contract projection |
 | `evidence_bundle.py` | Immutable `clade.evidence/v1` snapshots, lifecycle validation, and digest-chain verification |
 | `task_queue.py` | SQLite CRUD for tasks, loops, messages, interventions, and append-only attempt evidence |
+| `routing_break_even.py` | Read-only production EvidenceBundle aggregation for observational routing break-even metrics |
 | `worker.py` | `Worker`, `WorkerPool` — core execution engine |
 | `swarm.py` | `SwarmManager` (extracted from worker.py; re-exported there) |
 | `worker_taskfile.py` | `build_task_file` — task file construction + context injection |
