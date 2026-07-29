@@ -134,7 +134,7 @@ def retry_fields(
         "own_files": list(getattr(worker, "own_files", []) or []),
         "forbidden_files": list(getattr(worker, "forbidden_files", []) or []),
         "is_critical_path": bool(task.get("is_critical_path")),
-        "provider": getattr(worker, "provider", None),
+        "agent_runtime": getattr(worker, "agent_runtime", None),
         "effort": getattr(worker, "effort", None),
         "source_ref": escalation_source(worker, signal) or task.get("source_ref"),
         "parent_task_id": worker.task_id,

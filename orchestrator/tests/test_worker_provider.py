@@ -20,7 +20,6 @@ from worker_provider import (
     CodexProvider,
     WorkerProvider,
     get_agent_runtime,
-    get_worker_provider,
 )
 from worker_provider import _probe_runtime_version
 
@@ -232,25 +231,19 @@ def test_factory_unknown_runtime_fails_closed(invalid):
         get_agent_runtime(invalid)
 
 
-def test_legacy_factory_alias_has_same_fail_closed_contract():
-    assert isinstance(get_worker_provider("codex"), CodexProvider)
-    with pytest.raises(AgentRuntimeSelectionError):
-        get_worker_provider("bogus")
-
-
 def test_factory_none_reads_global_runtime_setting(monkeypatch):
     import config
 
-    monkeypatch.setitem(config.GLOBAL_SETTINGS, "worker_provider", "codex")
+    monkeypatch.setitem(config.GLOBAL_SETTINGS, "agent_runtime", "codex")
     assert isinstance(get_agent_runtime(None), CodexProvider)
-    monkeypatch.setitem(config.GLOBAL_SETTINGS, "worker_provider", "claude")
+    monkeypatch.setitem(config.GLOBAL_SETTINGS, "agent_runtime", "claude")
     assert isinstance(get_agent_runtime(None), ClaudeProvider)
 
 
 def test_factory_invalid_global_runtime_fails_closed(monkeypatch):
     import config
 
-    monkeypatch.setitem(config.GLOBAL_SETTINGS, "worker_provider", "")
+    monkeypatch.setitem(config.GLOBAL_SETTINGS, "agent_runtime", "")
     with pytest.raises(AgentRuntimeSelectionError, match="<empty>"):
         get_agent_runtime(None)
 

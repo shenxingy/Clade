@@ -898,7 +898,7 @@ async def _decompose_horizontal(task: dict, session) -> None:
             description=f"[file: {path}] {desc}",
             parent_task_id=task["id"],
             task_type="VERTICAL",
-            provider=task.get("provider"),
+            agent_runtime=task.get("agent_runtime"),
             effort=task.get("effort"),
         )
     await session.task_queue.update(task["id"], status="grouped")

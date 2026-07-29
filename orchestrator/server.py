@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import Body, Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import Body, Depends, FastAPI, HTTPException, Query, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -57,6 +57,11 @@ from run_contract import (
 )
 from tracing import TracingService
 from run_budget import attribution
+from compatibility_telemetry import (
+    SETTINGS_WORKER_PROVIDER,
+    read_compatibility_telemetry,
+    record_compatibility_use,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1075,15 +1080,28 @@ async def get_settings():
     return GLOBAL_SETTINGS
 
 
+@app.get("/api/compatibility")
+async def get_compatibility():
+    return read_compatibility_telemetry()
+
+
 @app.post("/api/settings")
-async def post_settings(body: dict = Body(...)):
+async def post_settings(body: dict = Body(...), response: Response = None):
     valid_keys = set(_SETTINGS_DEFAULTS.keys())
-    unknown = sorted(set(body) - valid_keys)
+    unknown = sorted(set(body) - valid_keys - {"worker_provider"})
     if unknown:
         raise HTTPException(
             status_code=422,
             detail=f"Unknown settings: {', '.join(unknown)}",
         )
+    if "worker_provider" in body:
+        record_compatibility_use(SETTINGS_WORKER_PROVIDER)
+        logger.warning("Deprecated settings field worker_provider received; use agent_runtime")
+        if response is not None:
+            response.headers["Deprecation"] = "true"
+            response.headers["Warning"] = (
+                '299 Clade "worker_provider is deprecated; use agent_runtime"'
+            )
     updates = dict(body)
     canonical = body.get("agent_runtime")
     legacy = body.get("worker_provider")
@@ -1102,7 +1120,7 @@ async def post_settings(body: dict = Body(...)):
                     detail="agent_runtime conflicts with legacy worker_provider",
                 )
             updates["agent_runtime"] = normalized
-            updates["worker_provider"] = normalized
+            updates.pop("worker_provider", None)
         except AgentRuntimeSelectionError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
     merged_connections = updates.get(

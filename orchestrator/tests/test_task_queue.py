@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import pytest
+from fastapi import Response
 
+import compatibility_telemetry
 from task_queue import TaskQueue
 
 
@@ -17,22 +19,32 @@ async def test_add_returns_task(task_queue: TaskQueue):
     assert task["status"] == "pending"
 
 
-async def test_add_persists_provider_effort_and_route_reason(task_queue: TaskQueue):
+async def test_add_migrates_legacy_provider_argument_to_canonical_runtime(
+    task_queue: TaskQueue,
+):
     task = await task_queue.add(
         "Run a bounded implementation", provider="codex", effort="medium"
     )
     await task_queue.update(task["id"], route_reason="explicit bounded task")
     fetched = await task_queue.get(task["id"])
-    assert fetched["provider"] == "codex"
+    assert fetched["agent_runtime"] == "codex"
+    assert "provider" not in fetched
     assert fetched["effort"] == "medium"
     assert fetched["route_reason"] == "explicit bounded task"
 
 
-async def test_update_route_rejects_invalid_provider_and_effort(task_queue: TaskQueue):
+async def test_update_route_rejects_invalid_provider_and_effort(
+    task_queue: TaskQueue, tmp_path, monkeypatch
+):
     from types import SimpleNamespace
     from fastapi import HTTPException
     from routes.tasks import update_task
 
+    monkeypatch.setattr(
+        compatibility_telemetry,
+        "_telemetry_file",
+        tmp_path / "compatibility-telemetry.json",
+    )
     task = await task_queue.add("Validate routing updates")
     session = SimpleNamespace(task_queue=task_queue)
     with pytest.raises(HTTPException) as provider_error:
@@ -41,10 +53,13 @@ async def test_update_route_rejects_invalid_provider_and_effort(task_queue: Task
     with pytest.raises(HTTPException) as effort_error:
         await update_task(task["id"], {"effort": "infinite"}, s=session)
     assert effort_error.value.status_code == 400
+    response = Response()
     updated = await update_task(
-        task["id"], {"provider": " CODEX "}, s=session
+        task["id"], {"provider": " CODEX "}, s=session, response=response
     )
-    assert updated["provider"] == "codex"
+    assert updated["agent_runtime"] == "codex"
+    assert "provider" not in updated
+    assert response.headers["deprecation"] == "true"
 
 
 async def test_list_all_tasks(task_queue: TaskQueue):

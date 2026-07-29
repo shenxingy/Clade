@@ -39,7 +39,7 @@ def _worker():
         }
     )
     return SimpleNamespace(
-        provider="codex",
+        agent_runtime="codex",
         model="gpt-5.6-terra",
         effort="medium",
         route_reason="high readiness: cheap Codex tier",

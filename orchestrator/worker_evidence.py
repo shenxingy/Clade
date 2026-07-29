@@ -70,7 +70,7 @@ async def begin_task_evidence(
                 "source_ref": task.get("source_ref"),
             },
             "routing": {
-                "requested_runtime": task.get("agent_runtime") or task.get("provider"),
+                "requested_runtime": task.get("agent_runtime"),
                 "requested_connection": task.get("connection"),
                 "requested_model": task.get("model"),
                 "requested_effort": task.get("effort"),
