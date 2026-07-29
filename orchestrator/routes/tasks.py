@@ -560,7 +560,13 @@ async def update_task(
             parse_requirements(updates["execution_requirements"])
         except InvalidExecutionConfig as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-    if "connection" in updates and updates["connection"] is not None:
+    effective_connection = (
+        updates["connection"] if "connection" in updates else task.get("connection")
+    )
+    if (
+        effective_connection is not None
+        and ("connection" in updates or "agent_runtime" in updates)
+    ):
         try:
             runtime = normalize_agent_runtime(
                 updates.get("agent_runtime")
@@ -568,7 +574,7 @@ async def update_task(
                 GLOBAL_SETTINGS.get("agent_runtime", "claude"),
             )
             resolve_connection(
-                connection_id=str(updates["connection"]),
+                connection_id=str(effective_connection),
                 runtime_id=runtime,
                 connections=GLOBAL_SETTINGS.get("connections") or {},
             )
