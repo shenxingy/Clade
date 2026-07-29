@@ -4,7 +4,7 @@
 
 **Project type:** cli + skill-system + orchestrator (FastAPI)
 **Last full pass:** 2026-07-29
-**Coverage:** 94 ✅, 0 ❌, 4 ⚠, 0 ⬜ untested
+**Coverage:** 95 ✅, 0 ❌, 4 ⚠, 0 ⬜ untested
 
 ---
 
@@ -13,7 +13,7 @@
 
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
-| I1 | `./install.sh` runs without errors — no missing source files, no broken symlinks | ✅ | 2026-07-29 | fresh and idempotent installs pass in an isolated HOME (44/44 `tests/test-install.sh`) |
+| I1 | `./install.sh` runs without errors — no missing source files, no broken symlinks | ✅ | 2026-07-29 | fresh and idempotent installs pass in an isolated HOME (46/46 `tests/test-install.sh`) |
 | I2 | All skills from `configs/skills/` are installed to `~/.claude/skills/` | ✅ | 2026-07-29 | 132/132 skills installed and validated |
 | I3 | All hooks from `configs/hooks/` are installed to `~/.claude/hooks/` | ✅ | 2026-07-13 | 30/30 hooks installed and executable |
 | I4 | All scripts from `configs/scripts/` are installed to `~/.claude/scripts/` | ✅ | 2026-07-29 | 35 shell scripts plus 16 Python helpers installed |
@@ -21,6 +21,7 @@
 | I6 | `~/.local/bin/slt` symlink exists and points to `statusline-toggle.sh` | ✅ | 2026-04-12 | |
 | I7 | `~/.local/bin/committer` symlink exists and points to `committer.sh` | ✅ | 2026-04-12 | |
 | I8 | `~/.local/bin/devmode` symlink exists and points to `devmode.sh` | ✅ | 2026-04-12 | |
+| I9 | Reinstall exactly mirrors repo-managed skill subtrees without deleting unrelated user-owned skill directories | ✅ | 2026-07-29 | isolated install regression seeds a stale nested subtree and a private skill, then proves cleanup + preservation |
 
 ## Native Codex Distribution
 <!-- Codex runs Clade skills directly from a native plugin; external MCP clients can select Codex as their execution runtime. -->

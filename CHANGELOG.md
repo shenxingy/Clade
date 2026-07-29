@@ -23,6 +23,9 @@ versioning for the `clade-mcp` Python package and tagged public releases.
 
 ### Fixed
 
+- Reinstalling now mirrors each repo-managed skill subtree exactly, removing
+  stale or accidentally nested content while preserving unrelated user-owned
+  skill directories
 - Loop completion is now coordinator-owned and fail-closed: exact task-to-goal
   evidence is reconciled only after worker, syntax, test, and final verification
   gates pass; worker-created commits count even when the leftover sweep is empty,
