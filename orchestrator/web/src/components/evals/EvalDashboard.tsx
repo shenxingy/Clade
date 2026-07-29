@@ -77,10 +77,10 @@ export function EvalDashboard() {
     <section className="p-6 max-w-6xl mx-auto">
       <div className="flex items-end justify-between gap-4 mb-6">
         <div>
-          <div className="text-[10px] uppercase tracking-[0.28em] text-cyan-400">Evidence control plane</div>
-          <h1 className="mt-2 text-xl font-semibold">Regression signal, with denominators</h1>
+          <div className="text-[10px] uppercase tracking-[0.28em] text-cyan-400">Verified delivery control plane</div>
+          <h1 className="mt-2 text-xl font-semibold">North Star and release guardrails</h1>
           <p className="mt-1 text-xs text-muted-foreground max-w-2xl">
-            N/A means the system has no valid denominator yet. It never silently becomes zero.
+            Throughput never compensates for false approval or missing evidence. N/A means no valid denominator.
           </p>
         </div>
         <button
@@ -96,6 +96,31 @@ export function EvalDashboard() {
       {!metrics && !error && <div className="text-xs text-muted-foreground">Loading evidence graph…</div>}
       {metrics && (
         <>
+          <article className="border border-cyan-900/70 bg-cyan-950/20 mb-5 grid md:grid-cols-[1.4fr_1fr]">
+            <div className="p-5 md:p-6 border-b md:border-b-0 md:border-r border-cyan-900/70">
+              <div className="text-[10px] uppercase tracking-[0.28em] text-cyan-400">
+                North Star · verified delivery rate
+              </div>
+              <div className="mt-3 text-5xl font-semibold tracking-tight">
+                {formatRate(metrics.north_star.rate)}
+              </div>
+              <p className="mt-3 text-xs leading-5 text-muted-foreground max-w-xl">
+                Delivered attempts with complete terminal evidence, an approved oracle verdict,
+                and an eligible delivery candidate — divided by every terminal attempt.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-1">
+              <div className="p-4 border-r md:border-r-0 md:border-b border-cyan-900/70">
+                <div className="text-[10px] uppercase tracking-widest text-muted-foreground">Verified deliveries</div>
+                <div className="mt-2 text-2xl text-green-400">{metrics.north_star.verified_deliveries}</div>
+              </div>
+              <div className="p-4">
+                <div className="text-[10px] uppercase tracking-widest text-muted-foreground">Terminal attempts</div>
+                <div className="mt-2 text-2xl">{metrics.north_star.terminal_attempts}</div>
+              </div>
+            </div>
+          </article>
+
           <div className="grid grid-cols-2 md:grid-cols-4 border border-border mb-5">
             {[
               ['Quarantine', metrics.candidates.quarantined, 'text-yellow-400'],
@@ -110,6 +135,11 @@ export function EvalDashboard() {
             ))}
           </div>
 
+          <div className="mb-3">
+            <div className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+              Release guardrails and provenance
+            </div>
+          </div>
           <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
             <MetricCard
               eyebrow="Attempt evidence"

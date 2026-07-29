@@ -286,9 +286,12 @@ backlog.
   headers plus secret-free aggregate counters. The final input-alias/schema
   deletion is correctly conditional on one stable zero-use window, documented
   in `docs/COMPATIBILITY-RETIREMENT.md`, rather than guessed from green tests.
-- [ ] **P3 · product metrics · depends on evidence/routing:** update
-  VISION/North Star/dashboard with evidence completeness, false approvals,
-  human overrides, and regression coverage.
+- [x] **P3 · completed 2026-07-28 · product metrics:** VISION and the dashboard
+  now define verified delivery rate as the strict North Star (complete terminal
+  evidence + approved oracle + eligible delivery / every terminal attempt).
+  Evidence completeness, confirmed false approvals, human overrides, accepted
+  regression coverage, and exact source integrity remain denominator-explicit
+  guardrails that throughput cannot offset.
 - [ ] **P3 · positioning · depends on implemented mechanisms:** reposition the
   orchestrator around provider-neutral identity, evidence, verifier
   calibration, correction learning, delivery, and fleet truth.

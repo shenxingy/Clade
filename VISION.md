@@ -10,19 +10,34 @@ An **AI Software Development Engineer (SDE)** — not a collection of scripts, b
 
 ## North Star
 
-**Maximum autonomous hours.** Give it a direction — come back later to merged PRs.
+**Verified autonomous delivery rate.** Give Clade a direction and get back
+delivery candidates that are not merely finished, but oracle-approved,
+evidence-complete, and eligible to ship.
 
 | Metric | Target |
 |---|---|
-| Autonomous run length | 8-16 hours (overnight/weekend) |
-| Human leverage ratio | 3x (24h output from 8h direction-setting) |
-| Task success rate | 90%+ (oracle-approved) |
+| Verified delivery rate | 90%+ of terminal attempts |
+| Evidence completeness | 100% of terminal attempts |
+| Confirmed false-approval rate | 0%; any non-zero value is a release signal |
+| Human override rate | Visible with an explicit comparable denominator; investigate drift |
+| Accepted regression coverage | 100% of promoted corrections |
 | Cost per approved task | < $2 (viable vs manual work) |
 | Recovery from failure | Self-healing (3-tier) |
 
-*Baselines to be measured after sustained autonomous runs on real projects. Only hard data point so far: e2e test completed 2 iterations, $0.78, 2 minutes (2026-03-02). Cost economics depend heavily on task complexity and model selection — haiku-heavy routing is key to staying under budget.*
+The North Star numerator is a strict delivered attempt with a complete terminal
+evidence bundle, an approved oracle verdict, and an eligible delivery
+candidate. The denominator is every terminal attempt, including failures,
+cancellations, and reverts. Empty denominators are `N/A`, never a fake zero.
 
-**Real metric:** Oracle-approved task completions per hour of unattended runtime.
+Throughput, unattended run length, leverage, and cost remain operating metrics,
+but they cannot compensate for a false approval or missing evidence. “Approved
+completions per hour” is not called unattended throughput until Clade persists
+run-level wall-clock intervals; summing concurrent attempt phase times would
+overcount the denominator.
+
+*Baselines still require sustained autonomous runs on real projects. The only
+historical timing point is an e2e test that completed 2 iterations for $0.78 in
+2 minutes (2026-03-02); it is not a production baseline.*
 
 ---
 
