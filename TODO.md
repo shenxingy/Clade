@@ -253,8 +253,13 @@ backlog.
   fixtures pin task digest, base tree, and deterministic verifier, then compare
   strong-self, native-cheap, and cheap→strong with denominator-explicit
   pass@1/pass@k, efficiency, queue, variance, and sample metrics.
-- [ ] **P2 · routing policy · depends on replay:** enable a verifier-aware
-  cascade only after replay evidence; keep it default-off beforehand.
+- [x] **P2 · completed 2026-07-28 · routing policy:** default-off,
+  verifier-aware routing permits one cheap attempt only for bounded,
+  non-critical, high-readiness task classes with an explicitly deterministic
+  project verifier. No diff, verifier failure/unavailability, retryable runtime
+  error, oracle disagreement/unavailability/rejection, or scope expansion
+  creates exactly one strong fallback with preserved lineage and execution
+  contract; another cascade retry is never created.
 - [ ] **P2 · routing analysis · depends on telemetry:** report empirical
   break-even by task class with sample counts and uncertainty.
 - [ ] **P2 · provider registry · depends on EvidenceBundle:** complete live

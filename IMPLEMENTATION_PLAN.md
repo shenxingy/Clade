@@ -295,7 +295,7 @@ Minimum fields:
       variance, and sample count.
     - Depends on: Steps 8 and 10.
 
-12. **Implement verifier-aware cascade, default off**
+12. **Implement verifier-aware cascade, default off — completed 2026-07-28**
     - Files: `orchestrator/worker_routing.py`, retry/requeue paths, settings UI,
       replay/contract tests.
     - Cheap-first only for low-risk tasks with deterministic verifiers.
@@ -303,6 +303,13 @@ Minimum fields:
       unreliable verifier, or scope/risk expansion.
     - Allow at most one cheap retry.
     - Depends on: Step 11 meeting documented non-regression thresholds.
+    - Delivered as a fail-closed two-stage state machine: one eligible cheap
+      attempt, then at most one strong fallback. Every fallback preserves task
+      lineage, runtime connection/profile/requirements, phase, and ownership
+      bounds. Preflight and terminal telemetry distinguish not-run, passed,
+      failed, disagreement, unreliable, no-diff, and scope-expansion outcomes.
+      The toggle remains off because the passing starter replay is constructed,
+      not production evidence.
 
 13. **Fit empirical break-even reports**
     - Files: analytics/reporting only at first.

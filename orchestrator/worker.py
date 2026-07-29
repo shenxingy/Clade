@@ -46,6 +46,7 @@ import worker_tldr
 import worker_utils
 import worker_hydrate
 import judge_diversity
+import cascade_policy
 from worker_review import (
     _oracle_review, _read_constitution, _summarize_worker_completion,
     _record_oracle_infra_error, _reset_oracle_infra_streak,
@@ -604,7 +605,7 @@ class Worker:
                 except Exception:
                     pass
             _budget_ok = (self.token_budget == 0 or _current_tokens < self.token_budget)
-            if not verified and self._reflection_retries < MAX_REFLECTION_RETRIES and _budget_ok:
+            if not verified and self._reflection_retries < MAX_REFLECTION_RETRIES and _budget_ok and not (self._test_requeue or self._ownership_violation or self._oracle_requeue):
                 try:
                     lint_output = await _run_lint_check(self._project_dir)
                     if lint_output:
@@ -738,7 +739,7 @@ class Worker:
         Glob logic lives in worker_utils._check_file_ownership (moved for the
         1500-line budget).
         """
-        return _check_ownership_globs(changed_files, self.own_files, self.forbidden_files)
+        return cascade_policy.scope_result(_check_ownership_globs(changed_files, self.own_files, self.forbidden_files), route_reason=self.route_reason, changed_files=changed_files, max_files=cascade_policy.max_changed_files(GLOBAL_SETTINGS))
 
     async def verify_and_commit(self) -> bool:
         diff_proc = await asyncio.create_subprocess_exec(
@@ -772,6 +773,8 @@ class Worker:
             if f.strip()
         ]
         if not changed_files:
+            if cascade_policy.is_cheap_route(self.route_reason):
+                self._test_requeue, self._test_requeue_reason = True, "No diff produced by cheap attempt"
             return False
 
         # Agent-Fingerprint: record whether the diff includes test files (a
@@ -879,7 +882,7 @@ class Worker:
                 # On failure: undo the commit, skip push, requeue with the output.
                 test_evidence = ""
                 try:
-                    tests_passed, test_output = await _run_project_tests(self._project_dir)
+                    tests_passed, test_output = await _run_project_tests(self._project_dir, config_dir=self._original_project_dir, fail_closed=cascade_policy.is_cheap_route(self.route_reason))
                     reg_warning = await _run_intramorphic_check(
                         self._project_dir, self._claude_dir, test_output, self.task_id
                     )
@@ -1045,7 +1048,7 @@ class Worker:
                     )
             except Exception:
                 pass  # escalation must never break the commit flow
-            return True
+            return await cascade_policy.handle_unreliable(self)
         _reset_oracle_infra_streak(self._claude_dir)
         self.oracle_result = "approved" if approved else "rejected"
         self.oracle_reason = reason
@@ -1066,7 +1069,7 @@ class Worker:
                 content={"oracle_result": self.oracle_result, "agreement": agreement,
                          "diversity": diversity})
         if approved:
-            if GLOBAL_SETTINGS.get("judge_diversity_block", False) and agreement == "oracle-lenient":
+            if (GLOBAL_SETTINGS.get("judge_diversity_block", False) or cascade_policy.is_cheap_route(self.route_reason)) and agreement == "oracle-lenient":
                 block_reason = "Deterministic review failed despite oracle approval"
                 await self._undo_commit()
                 self.auto_committed = False
@@ -1345,11 +1348,10 @@ class WorkerPool:
                                                 elapsed_s=w.elapsed_s, failed_reason=stuck_reason)
                         # Requeue with stuck context (skip: already retried, or loop-managed tasks)
                         _is_loop_task = w.description.startswith("[Loop-") or w.description.startswith("[Plan-")
-                        if not w.description.startswith("[STUCK-RETRY]") and not _is_loop_task:
+                        if not w.description.startswith("[STUCK-RETRY]") and not _is_loop_task and not cascade_policy.is_strong_route(w.route_reason):
                             retry_desc = f"[STUCK-RETRY] {w.description}"
-                            await task_queue.add(retry_desc, w.model,
-                                                 own_files=w.own_files, forbidden_files=w.forbidden_files,
-                                                 provider=w.provider, effort=w.effort)
+                            original = await task_queue.get(w.task_id)
+                            await task_queue.add(retry_desc, w.model, **cascade_policy.retry_fields(w, original or {}, "repeated_error"))
                         else:
                             logger.warning("Worker %s stuck — not re-queuing (retry=%s, loop=%s)",
                                            w.id, w.description.startswith("[STUCK-RETRY]"), _is_loop_task)

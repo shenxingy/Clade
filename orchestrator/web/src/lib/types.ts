@@ -233,6 +233,7 @@ export interface GlobalSettings {
   auto_oracle: boolean;
   auto_scale: boolean;
   auto_model_routing: boolean;
+  verifier_cascade_enabled: boolean;
   stuck_timeout_minutes: number;
   github_issues_sync: boolean;
   github_issues_label: string;

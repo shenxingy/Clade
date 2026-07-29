@@ -987,7 +987,7 @@ class _QueueStub:
         self.added = []
 
     async def add(self, desc, model, own_files=None, forbidden_files=None,
-                  provider=None, effort=None):
+                  provider=None, effort=None, **kwargs):
         self.added.append((desc, model, provider, effort))
         return "new-task-id"
 
