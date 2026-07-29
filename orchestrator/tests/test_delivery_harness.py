@@ -154,6 +154,7 @@ def test_delivery_evidence_projection_links_attempt_and_omits_private_state(
         },
         "ready": None,
         "merge": None,
+        "abandonment": None,
         "cleanup": None,
         "updated_at": evidence["updated_at"],
     }
@@ -351,6 +352,144 @@ def test_authorize_rejects_silent_authority_replacement(git_repo: Path) -> None:
     assert "refusing to replace existing merge authority" in result["error"]
 
 
+def test_abandon_uses_exact_head_lease_is_idempotent_and_allows_cleanup(
+    git_repo: Path,
+) -> None:
+    started = _start(git_repo)
+    head = started["head_sha"]
+
+    stale = _delivery(
+        git_repo,
+        "abandon",
+        "--id",
+        "fixture",
+        "--head-sha",
+        "not-the-recorded-head",
+        "--reason",
+        "superseded",
+        expected=2,
+    )
+    assert "does not match recorded delivery head" in stale["error"]
+
+    abandoned = _delivery(
+        git_repo,
+        "abandon",
+        "--id",
+        "fixture",
+        "--head-sha",
+        head,
+        "--reason",
+        "superseded by atomic deliveries",
+    )
+    repeated = _delivery(
+        git_repo,
+        "abandon",
+        "--id",
+        "fixture",
+        "--head-sha",
+        head,
+        "--reason",
+        "superseded by atomic deliveries",
+    )
+    active = _delivery(git_repo, "list")
+    all_deliveries = _delivery(git_repo, "list", "--all")
+    evidence = _delivery(git_repo, "evidence", "--id", "fixture")
+
+    assert abandoned["state"] == "ABANDONED"
+    assert abandoned["abandonment"]["head_sha"] == head
+    assert repeated["abandonment"] == abandoned["abandonment"]
+    assert active["deliveries"] == []
+    assert [item["delivery_id"] for item in all_deliveries["deliveries"]] == [
+        "fixture"
+    ]
+    assert evidence["abandonment"] == abandoned["abandonment"]
+
+    changed_reason = _delivery(
+        git_repo,
+        "abandon",
+        "--id",
+        "fixture",
+        "--head-sha",
+        head,
+        "--reason",
+        "a different disposition",
+        expected=2,
+    )
+    assert "already abandoned with different recorded facts" in changed_reason["error"]
+
+    _git(git_repo, "switch", "-q", "main")
+    _git(git_repo, "branch", "-D", "agent/fixture")
+    cleaned = _delivery(git_repo, "verify-clean", "--id", "fixture")
+    assert cleaned["state"] == "CLEAN"
+    assert cleaned["cleanup"]["clean"] is True
+
+
+def test_abandon_rejects_empty_reason_and_open_pr_then_accepts_closed_pr(
+    git_repo: Path,
+) -> None:
+    _git(git_repo, "remote", "add", "origin", "https://github.com/acme/repo.git")
+    started = _start(git_repo)
+    head = started["head_sha"]
+
+    empty = _delivery(
+        git_repo,
+        "abandon",
+        "--id",
+        "fixture",
+        "--head-sha",
+        head,
+        "--reason",
+        "",
+        expected=2,
+    )
+    assert "reason must not be empty" in empty["error"]
+
+    _delivery(
+        git_repo,
+        "publish",
+        "--id",
+        "fixture",
+        "--pr",
+        "17",
+        "--url",
+        "https://github.com/acme/repo/pull/17",
+    )
+    bin_dir = git_repo / "fake-bin"
+    bin_dir.mkdir()
+    _fake_gh(bin_dir, pr_state="OPEN")
+    env = dict(os.environ)
+    env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
+
+    open_pr = _delivery(
+        git_repo,
+        "abandon",
+        "--id",
+        "fixture",
+        "--head-sha",
+        head,
+        "--reason",
+        "superseded",
+        env=env,
+        expected=2,
+    )
+    assert "published delivery PR is not closed: OPEN" in open_pr["error"]
+
+    _fake_gh(bin_dir, pr_state="CLOSED")
+    abandoned = _delivery(
+        git_repo,
+        "abandon",
+        "--id",
+        "fixture",
+        "--head-sha",
+        head,
+        "--reason",
+        "superseded",
+        env=env,
+    )
+    assert abandoned["state"] == "ABANDONED"
+    assert abandoned["abandonment"]["closed_pull_request"]["state"] == "CLOSED"
+
+
 def test_restack_updates_ancestry_with_head_lease(git_repo: Path) -> None:
     _start(git_repo)
     (git_repo / "feature.txt").write_text("feature\n", encoding="utf-8")
@@ -443,6 +582,7 @@ def _fake_gh(
     *,
     pending: bool = False,
     commit_count: int = 2,
+    pr_state: str = "OPEN",
 ) -> Path:
     check = (
         '{"name":"Tests","status":"IN_PROGRESS","conclusion":""}'
@@ -459,7 +599,7 @@ if args[:2] == ["pr", "view"]:
     print(json.dumps({{
         "number": 17,
         "url": "https://github.com/acme/repo/pull/17",
-        "state": "OPEN",
+        "state": {json.dumps(pr_state)},
         "isDraft": False,
         "mergeable": "MERGEABLE",
         "mergeStateStatus": "CLEAN",

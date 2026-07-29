@@ -2,7 +2,7 @@
 name: delivery
 description: Adaptive, resumable Git delivery across repositories and agent runtimes — probe policy, checkpoint coherent work, publish, review, integrate, and verify cleanup
 when_to_use: "start coding branch, manage delivery lifecycle, checkpoint work, prepare/publish/update PR, choose merge strategy, finish and clean a coding task"
-argument-hint: 'start|authorize|status|checkpoint|candidate|evidence|publish|ready|merge|clean [options]'
+argument-hint: 'start|authorize|status|checkpoint|candidate|evidence|publish|ready|merge|abandon|clean [options]'
 user_invocable: true
 ---
 
