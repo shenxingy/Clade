@@ -9,5 +9,9 @@
   compatible gateway as an explicit protocol choice.
 - Preserve unknown custom provider/model IDs. Validate capabilities through
   declared metadata or probes, never prefixes.
+- A discovery-managed connection references the trusted user profile as
+  `store: codex-config` plus its `model_providers` profile name. Model-list
+  probes may use that profile's endpoint and credential environment variable,
+  but neither value may enter repository settings, status, or cache output.
 - Start a new session if the installed Codex version does not reload provider
   configuration dynamically.

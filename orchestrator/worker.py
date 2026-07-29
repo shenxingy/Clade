@@ -38,7 +38,7 @@ from session_tree import SessionTree
 from execution_backend import LocalSubprocessBackend, get_execution_backend
 from execution_envelope import ExecutionEnvelope
 from worker_provider import get_agent_runtime
-from worker_runtime import resolve_worker_execution
+from worker_runtime import connection_for_envelope, resolve_worker_execution
 from worker_status import worker_to_dict
 import condensers
 import worker_review
@@ -79,7 +79,6 @@ from worker_utils import (
 )
 
 logger = logging.getLogger(__name__)
-
 # Documented leaf modules cannot import config — thread the pinned haiku
 # snapshot and the pure-judge settings flag into them here (they default to
 # the 'haiku' alias / the same flag literal when imported standalone).
@@ -281,12 +280,14 @@ class Worker:
         The Claude adapter reproduces the historical inline command byte-for-byte.
         """
         mcp_config = self._project_dir / ".claude" / "mcp.json"
+        connection = connection_for_envelope(self.execution_envelope, GLOBAL_SETTINGS)
         shell_cmd = self._runtime_adapter.build_command(
             task_file=task_file,
             requested_model=self.model,
             task_type=self.task_type,
             mcp_config=mcp_config,
             effort=self.effort,
+            connection=connection,
         )
 
         env = {**os.environ}
@@ -301,8 +302,8 @@ class Worker:
             _deny = []  # scalar/dict misconfig → no-op, never crash the spawn
         for _deny_key in _deny:
             env.pop(str(_deny_key), None)
-        # Attribution: committer.sh appends Co-Authored-By + X-Clade-Task trailers
-        # when this is set, letting commit-archeology segment agent vs human commits
+        self._runtime_adapter.apply_connection_env(connection, env)
+        # Attribution trailers make every worker commit agent-segmentable.
         env["CLADE_WORKER_TASK_ID"] = str(self.task_id)
         # Model provenance (Round-4 gap, Yegge pattern): record the primary model
         # for this spawn — CLADE_WORKER_TASK_ID alone can't tell you which model

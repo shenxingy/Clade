@@ -1,6 +1,23 @@
 # Progress Log
 
 ---
+### 2026-07-28 — Provider Registry v1
+
+- Added secret-safe live model discovery with TTL caches for Anthropic,
+  OpenAI, MiniMax, Moonshot, custom OpenAI-compatible, and native-static
+  profiles.
+- Bound cache observations to the exact adapter/store/profile configuration so
+  a reused connection ID cannot carry model proof across accounts.
+- Bound Codex workers to their selected `model_provider` and Claude workers to
+  the selected trusted native profile without persisting endpoint or credential
+  material.
+- Added catalog/capability provenance to execution envelopes, pinned-only stale
+  fallback with a named degradation, provider registry API/refresh controls,
+  Settings UI health badges, and canonical provider-skill guidance.
+- Verification: 1,222 pytest tests passed with 2 skipped; React production
+  build passed; loop suite 181/181; install suite 40/40.
+
+---
 ### 2026-03-30 ~ 2026-03-31 — Research Program + Blueprint Loop + Web UI Rewrite
 
 **Two-day intensive: 17 new research docs + 3 feature implementations + full web UI rewrite.**

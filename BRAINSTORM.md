@@ -61,8 +61,10 @@ executable or conditional.
   break-even reports with sample counts, deterministic 95% intervals, visible
   exclusions, and a 30-sample floor. Reports stay observational and cannot
   mutate routing without matched task/base/verifier counterfactual evidence.
-- [ ] **P2 / depends on EvidenceBundle:** complete the provider/model registry
-  with live discovery, provenance, and stale pinned fallback.
+- [x] **P2 / completed 2026-07-28:** provider/model registry uses secret-safe
+  native profile references, live TTL discovery, configuration-bound cache
+  identity, capability provenance, real worker connection selection, and
+  explicit pinned-only stale fallback.
 - [ ] **P2 / depends on provider registry:** add runtime/surface conformance
   fixtures and credential-gated live smoke tests.
 - [ ] **P2 / depends on conformance:** retire compatibility shims only after

@@ -15,6 +15,7 @@ from execution_envelope import (
     parse_requirements,
     resolve_connection,
 )
+from provider_registry import DEFAULT_REGISTRY, ProviderRegistry
 from worker_provider import WorkerProvider
 from worker_routing import WorkerRoute
 
@@ -63,6 +64,7 @@ def resolve_execution(
     settings: Mapping[str, Any],
     route: WorkerRoute,
     adapter: WorkerProvider,
+    registry: ProviderRegistry = DEFAULT_REGISTRY,
 ) -> Any:
     """Create a secret-free execution envelope before worker construction."""
 
@@ -99,6 +101,12 @@ def resolve_execution(
     model_map = connection.get("models") or {}
     resolved_model = str(model_map.get(route.model, route.model)) if route.model else None
     resolved_model = adapter.resolve_model(resolved_model)
+    catalog = registry.resolve(
+        connection_id=str(connection_id),
+        connection=connection,
+        requested_model=resolved_model,
+    )
+    resolved_model = catalog.model
     resolved_effort, effort_degradation = adapter.resolve_effort(
         route.effort, resolved_model
     )
@@ -112,9 +120,26 @@ def resolve_execution(
                 reason=effort_degradation,
             )
         )
+    if catalog.state == "stale":
+        degradations.append(
+            Degradation(
+                capability="model_catalog",
+                requested="fresh",
+                resolved="stale",
+                reason=(
+                    "live discovery failed or expired; continuing only because "
+                    "the resolved model is explicitly pinned"
+                ),
+            )
+        )
 
     capabilities = _connection_capabilities(
         adapter.capabilities(),
+        catalog.capabilities,
+        source=catalog.source,
+    )
+    capabilities = _connection_capabilities(
+        capabilities,
         connection.get("capabilities") or {},
         source=f"connection:{connection_id}",
     )
@@ -149,5 +174,6 @@ def resolve_execution(
             "connection": str(connection_id),
             "repository_policy": str(task.get("policy_source") or "clade-default"),
             "route_reason": route.reason,
+            **catalog.provenance(),
         },
     )

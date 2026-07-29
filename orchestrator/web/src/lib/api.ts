@@ -1,4 +1,8 @@
-import type { EvalMetrics, EvidenceAttemptsResponse } from './types';
+import type {
+  EvalMetrics,
+  EvidenceAttemptsResponse,
+  ProviderRegistrySnapshot,
+} from './types';
 
 // ─── API Base ─────────────────────────────────────────────────────
 
@@ -72,4 +76,9 @@ export const evals = {
 export const settings = {
   get:    ()              => req<unknown>('GET', '/settings'),
   update: (data: unknown) => req<unknown>('POST', '/settings', data),
+};
+
+export const providerRegistry = {
+  get:     () => req<ProviderRegistrySnapshot>('GET', '/provider-registry'),
+  refresh: () => req<ProviderRegistrySnapshot>('POST', '/provider-registry/refresh'),
 };
