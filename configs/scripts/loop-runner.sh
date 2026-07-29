@@ -485,18 +485,28 @@ EOF
 
   # Extract JSON from result (supervisor may include preamble text)
   echo "$result" | python3 -c "
-import sys, json, re
+import sys, json
 text = sys.stdin.read()
-# Try to find JSON array or CONVERGED object
-for pattern in [r'\[[\s\S]*\]', r'\{[\s\S]*\}']:
-    matches = re.findall(pattern, text)
-    for m in reversed(matches):
-        try:
-            parsed = json.loads(m)
-            print(json.dumps(parsed))
-            sys.exit(0)
-        except Exception:
-            pass
+decoder = json.JSONDecoder()
+candidates = []
+for start, char in enumerate(text):
+    if char not in '[{':
+        continue
+    try:
+        parsed, consumed = decoder.raw_decode(text[start:])
+    except json.JSONDecodeError:
+        continue
+    candidates.append((start, consumed, parsed))
+for _, _, parsed in reversed(candidates):
+    if (
+        isinstance(parsed, list)
+        and all(
+            isinstance(item, dict) and isinstance(item.get('description'), str)
+            for item in parsed
+        )
+    ):
+        print(json.dumps(parsed))
+        sys.exit(0)
 print('[]')
 " 2>/dev/null || echo "[]"
 }
@@ -1084,16 +1094,29 @@ $failure_context
   mkdir -p "$(dirname "$task_file")"
   _timeout "$SUPERVISOR_TIMEOUT" claude --model sonnet "${PURE_JUDGE_FLAGS[@]}" -p "$fix_prompt" 2>&1 \
     | python3 -c "
-import sys, json, re
+import sys, json
 text = sys.stdin.read()
-for p in [r'\[[\s\S]*]\]', r'\{[\s\S]*\}']:
-    m = re.findall(p, text)
-    for x in reversed(m):
-        try:
-            parsed = json.loads(x)
-            if isinstance(parsed, list) and len(parsed) > 0:
-                print(json.dumps(parsed)); sys.exit(0)
-        except Exception: pass
+decoder = json.JSONDecoder()
+candidates = []
+for start, char in enumerate(text):
+    if char not in '[{':
+        continue
+    try:
+        parsed, consumed = decoder.raw_decode(text[start:])
+    except json.JSONDecodeError:
+        continue
+    candidates.append((start, consumed, parsed))
+for _, _, parsed in reversed(candidates):
+    if (
+        isinstance(parsed, list)
+        and parsed
+        and all(
+            isinstance(item, dict) and isinstance(item.get('description'), str)
+            for item in parsed
+        )
+    ):
+        print(json.dumps(parsed))
+        sys.exit(0)
 print('[]')
 " > "$task_file" 2>/dev/null || echo "[]" > "$task_file"
 
