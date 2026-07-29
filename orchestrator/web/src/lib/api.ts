@@ -1,4 +1,4 @@
-import type { EvidenceAttemptsResponse } from './types';
+import type { EvalMetrics, EvidenceAttemptsResponse } from './types';
 
 // ─── API Base ─────────────────────────────────────────────────────
 
@@ -60,6 +60,11 @@ export const ideas = {
   delete:  (ideaId: number, sessionId: string)   => req<void>('DELETE', `/ideas/${ideaId}?session=${sessionId}`),
   evaluate:(ideaId: number, sessionId: string)   => req<unknown>('POST', `/ideas/${ideaId}/evaluate?session=${sessionId}`),
   execute: (ideaId: number, sessionId: string)   => req<unknown>('POST', `/ideas/${ideaId}/execute?session=${sessionId}`),
+};
+
+export const evals = {
+  metrics: (sessionId: string) =>
+    req<EvalMetrics>('GET', `/eval-candidates/metrics?session=${sessionId}`),
 };
 
 // ─── Settings ────────────────────────────────────────────────────
