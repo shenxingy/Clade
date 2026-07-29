@@ -12,7 +12,7 @@ The programmer provides a GOAL file (ideal end state). The supervisor does task 
 - **`--status`** → STATUS MODE
 - **`--stop`** → STOP MODE
 - **`--dry-run GOAL_FILE`** → DRY RUN MODE
-- **`--resume GOAL_FILE`** → RESUME MODE (skip enrichment, continue from state)
+- **`--resume GOAL_FILE`** → RESUME MODE (continue only from an identity-matched checkpoint)
 
 Options:
 - `--model haiku|sonnet|opus` — supervisor model (default: `sonnet`)
@@ -106,9 +106,10 @@ Hard limits (not overridable by LLM):
    ```
    - Use `.claude/loop-goal-resolved.md` for all subsequent steps
    - Pass `.claude/loop-goal-resolved.md` to `loop-runner.sh` instead of the original
-4. Check if `.claude/loop-state.json` exists:
-   - Exists + no `--resume`: ask user — resume or restart?
-   - `--resume`: proceed directly to Step 4 (skip enrichment)
+4. Choose recovery behavior:
+   - No `--resume`: start fresh; stale state/checkpoints are never consumed
+   - `--resume`: proceed directly to Step 4; the runner fails closed unless
+     checkpoint checkout, goal path, branch, and HEAD all match
 
 ### Step 2: Analyze goal
 
@@ -166,8 +167,13 @@ _goal_path="{absolute_goal_path}"
 if [ -f .claude/loop-goal-resolved.md ]; then
   _goal_path=".claude/loop-goal-resolved.md"
 fi
+_resume_args=()
+if [ "{resume_mode}" = "true" ]; then
+  _resume_args=(--resume)
+fi
 bash ~/.claude/scripts/loop-runner.sh \
   "$_goal_path" \
+  "${_resume_args[@]}" \
   --model {supervisor_model} \
   --worker-model {worker_model} \
   --max-iter {max_iter} \
@@ -237,7 +243,9 @@ Goal achieved → supervisor outputs STATUS: CONVERGED → loop exits.
   ps aux | grep 'claude -p' | grep -v grep   # hung workers
   tail -20 logs/loop/*.log                    # last output
   ```
-  A hung worker will show the same log line repeatedly. Kill with `kill <PID>` and re-run `/loop` — loop-runner.sh will pick up from where it stopped.
+  A hung worker will show the same log line repeatedly. Kill with `kill <PID>`
+  and re-run `/loop --resume GOAL_FILE`; the runner resumes only from the latest
+  identity-matched phase checkpoint.
 - **3-strike escalation**: if the loop runs 3+ iterations without any new commits (supervisor keeps planning but workers produce nothing), STOP the loop and surface the issue:
   ```
   ⚠ Loop appears stuck — 3 iterations with no commits.

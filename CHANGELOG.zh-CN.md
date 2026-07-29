@@ -9,6 +9,8 @@ semantic versioning。
 
 ### 新增
 
+- Loop 新增 crash-safe phase recovery：只有显式、身份匹配的 `--resume` 才会
+  恢复；普通启动忽略旧 checkpoint，`--help` 不产生副作用
 - 原生 `$codex-usage` workflow，显示 Clade 的 95% 目标使用节奏
 - 通过已认证的 Codex app-server 安全读取 rate limits，不打开凭证文件
 - 幂等配置 Codex 原生 five-hour 与 weekly status-line fields
