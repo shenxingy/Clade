@@ -267,6 +267,39 @@ success/USD or success/wall-hour regression. Insufficient samples yield **not
 evaluated**, not a pass. The replay passing is evidence to review a default-off
 policy; it does not itself enable routing.
 
+## Verifier-aware routing cascade
+
+The runtime policy is deliberately default-off. Enabling
+`verifier_cascade_enabled` still does nothing unless automatic model routing is
+enabled and the project explicitly declares a deterministic verifier:
+
+```json
+{
+  "test_cmd": "pytest tests/ -q",
+  "test_cmd_deterministic": true,
+  "test_cmd_id": "project-pytest"
+}
+```
+
+The command itself is not copied into routing evidence; its SHA-256 digest and
+the declared ID form the verifier identity. Cheap-first eligibility additionally
+requires a non-critical task, readiness at or above
+`verifier_cascade_min_score`, a task class in
+`verifier_cascade_task_types`, and non-empty `own_files`. The changed-file count
+may not exceed `verifier_cascade_max_files`.
+
+An eligible task gets exactly one cheap attempt. No diff, a failing or
+unavailable verifier, a retryable classified runtime error, verifier/oracle
+disagreement or unavailability, oracle rejection, or scope expansion creates
+one strong fallback. That child preserves task lineage, ownership bounds,
+runtime connection, execution profile and requirements, task type, and phase.
+A failing strong child does not create another cascade child. Attempt telemetry
+records the stage, normalized verifier status, and escalation signal.
+
+Passing the committed constructed replay is not production break-even evidence,
+so installs and upgrades keep this setting disabled until reviewed production
+samples justify changing the default.
+
 ## Supervisor cases
 
 `supervisor_eval.py` extracts the JSON-extraction snippet embedded in

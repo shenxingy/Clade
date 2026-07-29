@@ -407,6 +407,10 @@ scope 比 brief 大、verifier 不可靠、触及 forbidden/high-risk 文件。*
   `verify_ms`、`final_oracle`，按任务类型输出 pass@1、pass@k、success/$、success/wall-hour
 - [x] 把 router 改成 verifier-aware cascade：低风险可验证任务先便宜模型；首轮失败或
   高风险/无自动 verifier 直接强模型；设置最多一次 cheap retry，避免无界串行反思
+  - 2026-07-28 实现说明：策略仍默认关闭。只有显式声明 deterministic `test_cmd`、
+    有界 `own_files`、非 critical、高 readiness 且允许的低风险 task class 才进入
+    cheap-first；失败只生成一个保留原执行契约的 strong child，strong 再失败即结束
+    cascade。当前 replay starter corpus 是 constructed evidence，因此不能冒充生产收益。
 - [x] 用历史 telemetry 拟合每类任务的 empirical break-even，而不是在 prompt 中硬编码
   `4×`；数据不足时明确显示样本数与置信区间
 

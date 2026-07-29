@@ -127,6 +127,10 @@ _SETTINGS_DEFAULTS = {
     # advisory (oracle decides) to avoid false-blocks from an imperfect repro.
     "repro_test_gate": False,
     "auto_model_routing": False,
+    "verifier_cascade_enabled": False,
+    "verifier_cascade_min_score": 80,
+    "verifier_cascade_max_files": 8,
+    "verifier_cascade_task_types": ["test", "tldr"],
     "context_budget_warning": True,
     "github_issues_sync": False,
     "github_issues_label": "orchestrator",

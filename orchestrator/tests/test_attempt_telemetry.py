@@ -94,6 +94,9 @@ def test_phase_telemetry_has_explicit_millisecond_denominators():
         "transition_reason": "process_exited_rc_0",
         "verified": True,
         "final_oracle": "approved",
+        "verifier_status": "passed",
+        "cascade_stage": None,
+        "cascade_signal": None,
     }
 
 
@@ -148,3 +151,4 @@ def test_preflight_failure_records_queue_only_and_clamps_clock_skew():
     assert telemetry["routing"]["model"] == "gpt-5.6-terra"
     assert telemetry["routing"]["route_reason"] == "preflight failure"
     assert telemetry["result"]["transition_reason"] == "preflight_failure"
+    assert telemetry["result"]["verifier_status"] is None

@@ -80,6 +80,7 @@ Key modules (import DAG — leaf → root):
 # Leaves (no project imports)
 config.py            ← constants, settings, utilities
 agent_runtime.py     ← agent-runtime ids + fail-closed validation
+cascade_policy.py    ← pure verifier-aware cheap→strong eligibility, lineage, and signal helpers
 fault_localize.py    ← multi-language SBFL: test-runner detection, go/js failure parsers, cross-lang symbol index (stdlib-only leaf; worker_tldr imports it)
 ideas.py             ← IdeasManager, async idea CRUD
 process_manager.py   ← ProcessPool, start.sh lifecycle
@@ -126,6 +127,7 @@ routes/usage.py      ← Usage dashboard API routes
 |------|---------|
 | `config.py` | `GLOBAL_SETTINGS`, `_ALLOWED_TASK_COLS`, model aliases, cost utils |
 | `agent_runtime.py` | Agent-runtime identity and fail-closed selection shared by routing/settings/factory |
+| `cascade_policy.py` | Pure default-off verifier-cascade policy, escalation signals, and retry contract projection |
 | `evidence_bundle.py` | Immutable `clade.evidence/v1` snapshots, lifecycle validation, and digest-chain verification |
 | `task_queue.py` | SQLite CRUD for tasks, loops, messages, interventions, and append-only attempt evidence |
 | `worker.py` | `Worker`, `WorkerPool` — core execution engine |

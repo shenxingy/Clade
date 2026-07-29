@@ -16,6 +16,7 @@ from execution_resolver import resolve_execution
 from worker_provider import get_agent_runtime
 from worker_routing import WorkerRoute, resolve_worker_route
 from worker_evidence import begin_task_evidence, fail_preflight_evidence
+from cascade_policy import load_verifier_contract
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,7 @@ async def resolve_runtime_route(
     task: Mapping[str, Any],
     settings: Mapping[str, Any],
     task_queue: Any,
+    project_dir: Any = None,
 ) -> WorkerRoute:
     """Resolve a route or persist one terminal configuration failure."""
 
@@ -41,7 +43,9 @@ async def resolve_runtime_route(
         or "AUTO"
     )
     try:
-        return resolve_worker_route(route_task, settings)
+        return resolve_worker_route(
+            route_task, settings, load_verifier_contract(project_dir)
+        )
     except AgentRuntimeSelectionError as exc:
         # Prevent auto-start from retrying the same invalid selection on every
         # status-loop tick. No Worker or subprocess exists at this point.
@@ -72,7 +76,9 @@ async def resolve_worker_execution(
             task["id"], attempt_count=attempt["attempt_index"]
         )
     try:
-        route = await resolve_runtime_route(task, settings, task_queue)
+        route = await resolve_runtime_route(
+            task, settings, task_queue, project_dir
+        )
         adapter = get_agent_runtime(route.agent_runtime)
         envelope = resolve_execution(
             task=task,

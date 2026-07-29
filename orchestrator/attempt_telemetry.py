@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 from typing import Any, Mapping
 
+import cascade_policy
 
 SCHEMA_VERSION = "clade.attempt_telemetry/v1"
 
@@ -139,6 +140,14 @@ def terminal_patch(
         "transition_reason": getattr(worker, "transition_reason", None),
         "verified": bool(getattr(worker, "verified", False)),
         "final_oracle": getattr(worker, "oracle_result", None),
+        "verifier_status": cascade_policy.verifier_status(worker),
+        "cascade_stage": cascade_policy.route_stage(
+            getattr(worker, "route_reason", None)
+        ),
+        "cascade_signal": (
+            getattr(worker, "_cascade_escalation_signal", None)
+            or cascade_policy.escalation_signal(worker)
+        ),
     }
     return {"telemetry": telemetry}
 
@@ -178,5 +187,8 @@ def failure_patch(
         "transition_reason": f"{stage}_failure",
         "verified": False,
         "final_oracle": None,
+        "verifier_status": None,
+        "cascade_stage": None,
+        "cascade_signal": None,
     }
     return {"telemetry": telemetry}

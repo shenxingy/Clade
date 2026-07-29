@@ -16,6 +16,7 @@ from agent_runtime import (
     normalize_agent_runtime,
 )
 from config import _MODEL_ALIASES
+from cascade_policy import VerifierContract, decide as decide_cascade
 
 
 # Backward-compatible export for callers that have not migrated terminology.
@@ -49,7 +50,11 @@ def normalize_effort(value: Any) -> str | None:
     return candidate if candidate in VALID_EFFORTS else None
 
 
-def resolve_worker_route(task: Mapping[str, Any], settings: Mapping[str, Any]) -> WorkerRoute:
+def resolve_worker_route(
+    task: Mapping[str, Any],
+    settings: Mapping[str, Any],
+    verifier: VerifierContract | None = None,
+) -> WorkerRoute:
     """Resolve a task to a safe provider/model/effort envelope.
 
     Explicit task effort wins unless a safety upgrade is required. Automatic
@@ -121,6 +126,24 @@ def resolve_worker_route(task: Mapping[str, Any], settings: Mapping[str, Any]) -
                 else candidate
             )
             reason += f"; task-type override ({task_type})"
+
+    cascade = decide_cascade(task, settings, verifier)
+    if cascade.stage == "cheap":
+        model = (
+            _MODEL_ALIASES["haiku"]
+            if agent_runtime == "claude"
+            else str(settings.get("codex_cheap_model") or "gpt-5.6-terra")
+        )
+        effort = None if agent_runtime == "claude" else "low"
+        reason = cascade.reason
+    elif cascade.stage == "strong":
+        model = (
+            _MODEL_ALIASES["sonnet"]
+            if agent_runtime == "claude"
+            else str(settings.get("codex_strong_model") or "gpt-5.6-sol")
+        )
+        effort = "high"
+        reason = cascade.reason
 
     # Claude Haiku does not support the effort control. Apply this after every
     # model override so the stored audit envelope matches the command actually run.
