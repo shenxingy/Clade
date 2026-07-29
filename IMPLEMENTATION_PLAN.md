@@ -311,12 +311,19 @@ Minimum fields:
       The toggle remains off because the passing starter replay is constructed,
       not production evidence.
 
-13. **Fit empirical break-even reports**
+13. **Fit empirical break-even reports — completed 2026-07-28**
     - Files: analytics/reporting only at first.
     - Group by task class/model/effort; show confidence intervals and refuse a
       recommendation below the minimum sample size.
     - A learned router is a later decision, not part of this step.
     - Depends on: sustained data from Steps 10–12.
+    - Delivered as a production-only read model over latest immutable attempt
+      evidence. It reports task-class/runtime/model/effort groups, explicit
+      denominators, deterministic 95% intervals, and independent-attempt
+      cost/wall projections. Constructed/eval evidence is excluded; comparisons
+      require 30 samples per group. Ordinary production grouping is labeled
+      observational and cannot produce or apply a routing recommendation
+      without matched task/base/verifier counterfactuals.
 
 ### Wave 4 — Finish the universal harness
 

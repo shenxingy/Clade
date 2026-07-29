@@ -300,6 +300,32 @@ Passing the committed constructed replay is not production break-even evidence,
 so installs and upgrades keep this setting disabled until reviewed production
 samples justify changing the default.
 
+## Production routing break-even report
+
+The session API exposes a read-only report from the latest immutable attempt
+snapshots:
+
+```text
+GET /api/eval-candidates/routing-break-even
+GET /api/eval-candidates/routing-break-even?min_samples=30
+```
+
+It groups production observations by task class, agent runtime, model, and
+effort. Every group reports attempts/tasks, oracle-approved verified successes,
+success rate, estimated-cost and full phase-time denominators, success/USD,
+success/wall-hour, and deterministic bootstrap 95% intervals. A break-even
+projection estimates how many independent attempts would match the best
+observed success rate, with projected cost and serial wall time.
+
+The projection is explicitly observational. Attempts sourced from
+`constructed:` or `eval:` fixtures, missing cost or phase timing, or lacking a
+determinate verifier/oracle outcome are excluded with reason counts. At least
+30 observations per group are required by default. Even above that floor,
+ordinary production groups are not matched counterfactuals, so the report
+returns a null recommendation and `router_mutated: false`. A causal routing
+recommendation requires the same task/base/verifier matching contract used by
+the replay corpus.
+
 ## Supervisor cases
 
 `supervisor_eval.py` extracts the JSON-extraction snippet embedded in

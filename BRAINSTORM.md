@@ -57,8 +57,10 @@ executable or conditional.
   task/base/verifier inputs and fails closed below the declared sample gate.
 - [ ] **P2 / depends on replay:** add the default-off verifier-aware routing
   cascade only when replay evidence supports it.
-- [ ] **P2 / depends on telemetry:** publish empirical routing break-even
-  reports with sample counts and uncertainty.
+- [x] **P2 / completed 2026-07-28:** publish production-only empirical routing
+  break-even reports with sample counts, deterministic 95% intervals, visible
+  exclusions, and a 30-sample floor. Reports stay observational and cannot
+  mutate routing without matched task/base/verifier counterfactual evidence.
 - [ ] **P2 / depends on EvidenceBundle:** complete the provider/model registry
   with live discovery, provenance, and stale pinned fallback.
 - [ ] **P2 / depends on provider registry:** add runtime/surface conformance
@@ -413,6 +415,10 @@ scope 比 brief 大、verifier 不可靠、触及 forbidden/high-risk 文件。*
     cascade。当前 replay starter corpus 是 constructed evidence，因此不能冒充生产收益。
 - [x] 用历史 telemetry 拟合每类任务的 empirical break-even，而不是在 prompt 中硬编码
   `4×`；数据不足时明确显示样本数与置信区间
+  - 2026-07-28 实现说明：`routing_break_even.py` 只读取最新 immutable production
+    EvidenceBundle；constructed/eval、缺成本/phase、unreviewed 均单独计入 exclusions。
+    其 `independent_attempts` 是观测性投影，不是因果结论；无 matched counterfactual
+    时 recommendation 永远为 null，router 也不会被修改。
 
 ---
 
