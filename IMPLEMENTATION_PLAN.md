@@ -338,6 +338,31 @@ Minimum fields:
       verifier calibration, correction learning, delivery, and fleet truth.
     - Depends on: implemented mechanisms, not research promises.
 
+### Wave 6 — Local rollout and repository cleanup
+
+19. **Install the final merged configuration on this server**
+    - Source: the final verified `main`, never an intermediate task branch.
+    - Run the repository install flow so current skills, hooks, scripts,
+      agents, generated catalogs, and native Codex plugin surfaces are present
+      in the user-scoped installation.
+    - Preserve credentials, provider connections, learned correction rules,
+      and other user-owned mutable state.
+    - Compare installed files against the tracked canonical sources and run
+      the clean-HOME install regression before and after the real installation.
+    - Depends on: Waves 0–5 merged and final `main` verified.
+
+20. **Remove completed delivery branches and return to main**
+    - Merge only exact reviewed candidate SHAs after required CI is green.
+    - Delete merged task branches locally and remotely when no live child
+      delivery depends on them.
+    - Run `git fetch --prune`, switch to `main`, update with `--ff-only`, and
+      prove `main == origin/main`.
+    - Remove no branch/worktree that is unmerged, owned by another live
+      session, or needed by a stacked child.
+    - Final state: clean worktree, no completed local/remote task branches,
+      no stale worktrees, and all delivery records terminal.
+    - Depends on: Step 19.
+
 ## File Interaction Graph
 
 ```text
@@ -390,6 +415,10 @@ The first four branches are independent. Evidence contract/wiring is a stack
 because the latter consumes the former. Every PR must carry its own tests and
 exact-SHA candidate evidence.
 
+After the final feature PR merges, perform local installation and branch
+cleanup as one explicit closeout transaction; do not treat either as an
+afterthought or leave the repository on a topic branch.
+
 ## Risks & Mitigations
 
 - **Historical checkbox drift**: reconcile by code/commit evidence, not by
@@ -419,6 +448,11 @@ exact-SHA candidate evidence.
 - **Plan grows faster than delivery**: execute one wave at a time, maximum six
   active tasks, one writer per file set, and re-audit remaining scope after
   every wave.
+- **Local install overwrites user-owned state**: use the repository installer
+  and its merge/preserve rules; snapshot and compare user-scoped mutable files,
+  never copy the repository tree wholesale over `~/.claude`.
+- **Branch cleanup destroys stacked work**: resolve live delivery ownership and
+  child ancestry before deletion; cleanup only merged, session-owned branches.
 
 ## Verification Strategy
 
@@ -456,6 +490,12 @@ Add feature-specific gates:
   tests never become mandatory for contributors without credentials.
 - Runtime matrix: recorded contract fixtures in CI and credential-gated live
   smoke tests.
+- Final local rollout: `tests/test-install.sh`, a throwaway-HOME install,
+  real `./install.sh`, installed-vs-canonical comparison, and a post-install
+  smoke check of skill/hook/script discovery.
+- Final Git cleanup: delivery `verify-clean`, `git worktree list --porcelain`,
+  `git branch -vv`, remote branch inspection, `git fetch --prune`, and exact
+  `main`/`origin/main` SHA equality.
 
 ## First-Phase Exit Criteria
 
@@ -467,6 +507,11 @@ Wave 0–1 is complete only when:
 - worker events/provider outputs are sanitized before persistence;
 - full repository verification passes on each exact candidate SHA;
 - every change is delivered as its own repository-compliant commit/PR unit.
+
+The whole program is complete only when the final merged `main` has also been
+installed on this server, installed configuration matches the canonical
+repository surfaces, completed branches are absent locally/remotely, the
+checkout is back on `main`, and `main == origin/main` with a clean worktree.
 
 ## Planning Assumptions Requiring Confirmation
 
