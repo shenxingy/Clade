@@ -220,8 +220,10 @@ backlog.
 - [x] **P0 · completed 2026-07-28 · security:** structured runtime redaction
   now sanitizes event/session/trace JSONL, SQLite runtime text, and piped
   provider stdout/stderr before persistence, with secret-free metadata.
-- [ ] **P1 · evidence · depends on redaction:** persist versioned,
-  lifecycle-linked `EvidenceBundle v1` records.
+- [x] **P1 · completed 2026-07-28 · evidence:** `clade.evidence/v1` now
+  persists redacted, append-only attempt revisions with validated lifecycle
+  transitions, canonical SHA-256 predecessor chains, and SQLite immutability
+  guards.
 - [ ] **P1 · evidence wiring · depends on EvidenceBundle:** connect worker,
   verifier, delivery, API, and UI evidence to the bundle.
 - [ ] **P1 · evals · depends on EvidenceBundle:** turn incidents, oracle

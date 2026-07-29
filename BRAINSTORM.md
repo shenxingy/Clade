@@ -27,8 +27,9 @@ executable or conditional.
 - [x] **P0 / RESOLVED 2026-07-28:** runtime events, session/trace JSONL,
   SQLite runtime text, and provider output are redacted before persistence
   with secret-free metadata.
-- [ ] **P1 / depends on redaction:** persist versioned lifecycle-linked
-  `EvidenceBundle v1` records.
+- [x] **P1 / RESOLVED 2026-07-28:** `clade.evidence/v1` now persists redacted,
+  append-only attempt revisions with validated lifecycle transitions,
+  canonical SHA-256 predecessor chains, and SQLite immutability guards.
 - [ ] **P1 / depends on EvidenceBundle:** wire worker, verifier, delivery, API,
   and UI evidence into the bundle.
 - [ ] **P1 / depends on EvidenceBundle:** quarantine sanitized eval candidates

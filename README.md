@@ -305,6 +305,7 @@ clade/
 │   ├── server.py            # FastAPI app, routes, WebSocket
 │   ├── worker.py            # WorkerPool, SwarmManager, task dispatch
 │   ├── task_queue.py        # SQLite task queue + CRUD
+│   ├── evidence_bundle.py   # Immutable lifecycle evidence + digest chains
 │   └── web/                 # ← THE OBSERVATION WINDOW
 │       └── src/             # React + Vite UI (served from dist/)
 ├── docs/                    # Guides and research
