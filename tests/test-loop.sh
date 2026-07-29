@@ -1004,6 +1004,9 @@ output=$(
 ) || true
 assert_contains "$output" "1 task(s)" "full run: 1 task parsed and dispatched"
 assert_contains "$output" "Iteration 1" "full run: iteration 1 executed"
+assert_file_contains "logs/loop/iter-1-supervisor.raw.txt" '"description"' "raw supervisor plan is preserved"
+tracked_after_loop=$(git ls-files)
+assert_not_contains "$tracked_after_loop" "iter-1-supervisor.raw.txt" "raw supervisor plan is not committed"
 
 # Pure-judge containment (PURE_JUDGE_FLAGS): the supervisor's stdout is parsed
 # (JSON task array) — its claude invocation must drop user settings, or a

@@ -479,6 +479,10 @@ EOF
     return
   fi
 
+  # Preserve the unparsed planner response for audit/debugging.  This stays in
+  # the ignored loop log directory and is never swept into worker commits.
+  printf '%s\n' "$result" > "$LOG_DIR/iter-${iteration}-supervisor.raw.txt"
+
   # Extract JSON from result (supervisor may include preamble text)
   echo "$result" | python3 -c "
 import sys, json, re
