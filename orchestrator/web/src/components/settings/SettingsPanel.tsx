@@ -172,6 +172,7 @@ export function SettingsPanel({ open, onClose }: Props) {
               <Toggle label="Auto-oracle eval" value={f.auto_oracle} onChange={v => patch('auto_oracle', v)} />
               <Toggle label="Auto-scale workers" value={f.auto_scale} onChange={v => patch('auto_scale', v)} />
               <Toggle label="Model routing" value={f.auto_model_routing} onChange={v => patch('auto_model_routing', v)} />
+              <Toggle label="Verifier cascade" value={f.verifier_cascade_enabled} onChange={v => patch('verifier_cascade_enabled', v)} />
             </section>
 
             {/* Budget */}

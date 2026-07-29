@@ -23,6 +23,7 @@ from worker_utils import (
     oracle_reject_depth, oracle_retry_sample_count, ORACLE_REJECT_MARKER,
     _strip_error_context,
 )
+import cascade_policy
 
 logger = logging.getLogger(__name__)
 
@@ -978,6 +979,17 @@ async def _escalate_oracle_reject_plateau(
         pass  # fail-open
 
 
+async def _retry_options(
+    w: Any,
+    task_queue: Any,
+    signal: str,
+    *,
+    original: dict | None = None,
+) -> dict[str, Any]:
+    task = original if original is not None else await task_queue.get(w.task_id)
+    return cascade_policy.retry_fields(w, task or {}, signal)
+
+
 async def handle_oracle_requeue(
     w: Any, task_queue: Any,
     max_reject_rounds: int, notification_webhook: str, parallel_fix_samples: int,
@@ -987,6 +999,9 @@ async def handle_oracle_requeue(
     could otherwise requeue forever). Moved out of WorkerPool.poll_all to keep
     worker.py under the 1500-line convention cap — pure extraction, same logic.
     """
+    if cascade_policy.is_strong_route(w.route_reason):
+        logger.info("Cascade strong fallback rejected for task %s — cascade exhausted", w.task_id)
+        return
     error_summary = _strip_error_context(w._oracle_requeue_reason)
     orig_task = await task_queue.get(w.task_id)
     is_critical = bool(orig_task and orig_task.get("is_critical_path"))
@@ -1004,6 +1019,20 @@ async def handle_oracle_requeue(
             pass  # escalation must never break poll_all
         return
     n_samples = oracle_retry_sample_count(w.description, is_critical, parallel_fix_samples)
+    signal = (
+        "verifier_disagreement"
+        if getattr(w, "judge_agreement", None) in {"oracle-lenient", "oracle-strict"}
+        else "unreliable_verifier"
+        if getattr(w, "oracle_result", None) == "unreviewed"
+        else "oracle_rejected"
+    )
+    retry_options = await _retry_options(
+        w, task_queue, signal, original=orig_task
+    )
+    if str(retry_options.get("source_ref") or "").startswith(
+        cascade_policy.STRONG_SOURCE_PREFIX
+    ):
+        n_samples = 1
     _diverse_hints = [
         "Try a different algorithmic approach than your previous attempt.",
         "Focus on the root cause rather than symptoms — consider upstream fixes.",
@@ -1018,10 +1047,7 @@ async def handle_oracle_requeue(
             f"Fix the issue described above. Do NOT repeat the same approach.{hint}"
         )
         await task_queue.add(
-            retry_desc, w.model, own_files=w.own_files,
-            forbidden_files=w.forbidden_files,
-            provider=getattr(w, "provider", None), effort=getattr(w, "effort", None),
-            parent_task_id=w.task_id,
+            retry_desc, w.model, **retry_options,
         )
     if n_samples > 1:
         logger.info("Oracle rejected task %s — plateau, spawned %d diverse samples", w.task_id, n_samples)
@@ -1036,23 +1062,27 @@ async def handle_test_requeue(w: Any, task_queue: Any, is_loop_task: bool) -> No
     diagnostic failed_reason update still happens regardless, since it only
     annotates the existing row rather than creating a new one."""
     error_summary = _strip_error_context(w._test_requeue_reason)
-    if not is_loop_task:
+    signal = cascade_policy.test_requeue_signal(w)
+    if not is_loop_task and not cascade_policy.is_strong_route(w.route_reason):
+        retry_options = await _retry_options(w, task_queue, signal)
+        failure_label = (
+            "produced no diff"
+            if signal == "no_diff"
+            else "FAILED the project test suite"
+        )
         retry_desc = (
             f"{w.description}\n\n---\n"
-            f"Previous attempt FAILED the project test suite (commit undone, never pushed):\n"
+            f"Previous attempt {failure_label} (commit undone, never pushed):\n"
             f"{error_summary}\n"
             f"Fix the failures, run the project tests locally, then complete the task."
         )
-        await task_queue.add(retry_desc, w.model,
-                             own_files=w.own_files, forbidden_files=w.forbidden_files,
-                             provider=getattr(w, "provider", None),
-                             effort=getattr(w, "effort", None),
-                             parent_task_id=w.task_id)
-    await task_queue.update(
-        w.task_id, failed_reason=f"Pre-push tests failed: {error_summary[:200]}"
-    )
-    if not is_loop_task:
+        await task_queue.add(retry_desc, w.model, **retry_options)
+    failed_label = "No diff produced" if signal == "no_diff" else "Pre-push tests failed"
+    await task_queue.update(w.task_id, failed_reason=f"{failed_label}: {error_summary[:200]}")
+    if not is_loop_task and not cascade_policy.is_strong_route(w.route_reason):
         logger.info("Pre-push tests failed for task %s — re-queued with test output", w.task_id)
+    elif cascade_policy.is_strong_route(w.route_reason):
+        logger.info("Cascade strong fallback failed for task %s — cascade exhausted", w.task_id)
     else:
         logger.info(
             "Pre-push tests failed for task %s — loop/plan-managed, not requeuing "
@@ -1064,7 +1094,10 @@ async def handle_ownership_requeue(w: Any, task_queue: Any, is_loop_task: bool) 
     """File ownership violation → re-queue with violation context. Same
     loop/plan exemption as handle_test_requeue."""
     error_summary = _strip_error_context(w._ownership_violation_reason)
-    if not is_loop_task:
+    if not is_loop_task and not cascade_policy.is_strong_route(w.route_reason):
+        retry_options = await _retry_options(
+            w, task_queue, "scope_risk_expansion"
+        )
         retry_desc = (
             f"{w.description}\n\n---\n"
             f"Previous attempt REJECTED — file ownership violation:\n"
@@ -1072,15 +1105,11 @@ async def handle_ownership_requeue(w: Any, task_queue: Any, is_loop_task: bool) 
             f"You MUST only edit files matching your OWN_FILES patterns. "
             f"Do NOT touch FORBIDDEN_FILES. Find an alternative approach."
         )
-        await task_queue.add(retry_desc, w.model,
-                            own_files=w.own_files, forbidden_files=w.forbidden_files,
-                            provider=getattr(w, "provider", None),
-                            effort=getattr(w, "effort", None),
-                            parent_task_id=w.task_id)
+        await task_queue.add(retry_desc, w.model, **retry_options)
     await task_queue.update(
         w.task_id, failed_reason=f"Ownership violation: {error_summary[:200]}"
     )
-    if not is_loop_task:
+    if not is_loop_task and not cascade_policy.is_strong_route(w.route_reason):
         logger.info("Ownership violation task %s — re-queued with reason", w.task_id)
     else:
         logger.info(
@@ -1093,18 +1122,17 @@ async def handle_handoff_requeue(w: Any, task_queue: Any, is_loop_task: bool) ->
     """Worker wrote a handoff file → create a continuation task. Same
     loop/plan exemption as handle_oracle_requeue — no diagnostic update here
     (unlike test/ownership) since there is nothing to annotate on the row."""
-    if not is_loop_task:
+    if not is_loop_task and not cascade_policy.is_strong_route(w.route_reason):
+        retry_options = await _retry_options(
+            w, task_queue, "scope_risk_expansion"
+        )
         continuation_desc = (
             f"{w.description}\n\n---\n"
             f"**Continuation — previous session handed off:**\n"
             f"{w._handoff_content}\n\n"
             f"Run /pickup if available, then continue from where the previous worker left off."
         )
-        await task_queue.add(continuation_desc, w.model,
-                            own_files=w.own_files, forbidden_files=w.forbidden_files,
-                            provider=getattr(w, "provider", None),
-                            effort=getattr(w, "effort", None),
-                            parent_task_id=w.task_id)
+        await task_queue.add(continuation_desc, w.model, **retry_options)
         logger.info("Handoff task %s → continuation queued", w.task_id)
     else:
         logger.info(

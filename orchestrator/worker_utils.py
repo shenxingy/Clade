@@ -439,7 +439,13 @@ async def _run_lint_check(project_dir: Path) -> str:
 # ─── Post-Commit Test Runner (Sweep §Gap3) ───────────────────────────────────
 
 
-async def _run_project_tests(project_dir: Path, timeout: int = 60) -> tuple[bool, str]:
+async def _run_project_tests(
+    project_dir: Path,
+    timeout: int = 60,
+    *,
+    config_dir: Path | None = None,
+    fail_closed: bool = False,
+) -> tuple[bool, str]:
     """Run the project's test command after a worker commits (Sweep §Gap3).
 
     Reads `test_cmd` from `.claude/orchestrator.json`. Falls back to auto-detection:
@@ -447,7 +453,7 @@ async def _run_project_tests(project_dir: Path, timeout: int = 60) -> tuple[bool
     Returns (passed, output_summary). Fails open on any error.
     """
     test_cmd: str | None = None
-    config_file = project_dir / ".claude" / "orchestrator.json"
+    config_file = (config_dir or project_dir) / ".claude" / "orchestrator.json"
     if config_file.exists():
         try:
             cfg = json.loads(config_file.read_text())
@@ -464,7 +470,11 @@ async def _run_project_tests(project_dir: Path, timeout: int = 60) -> tuple[bool
             test_cmd = "pytest tests/ -q --tb=short -x 2>&1 | tail -20"
 
     if not test_cmd:
-        return True, ""  # no test command configured; skip silently
+        return (
+            (False, "[deterministic test_cmd unavailable]")
+            if fail_closed
+            else (True, "")
+        )
 
     try:
         proc = await asyncio.create_subprocess_shell(
@@ -478,12 +488,15 @@ async def _run_project_tests(project_dir: Path, timeout: int = 60) -> tuple[bool
         except asyncio.TimeoutError:
             proc.kill()
             await proc.communicate()
-            return True, f"[test_cmd timed out after {timeout}s]"
+            return (
+                not fail_closed,
+                f"[test_cmd timed out after {timeout}s]",
+            )
         passed = proc.returncode == 0
         output = out.decode("utf-8", errors="replace").strip()[-1000:]  # last 1KB
         return passed, output
     except Exception as e:
-        return True, f"[test_cmd error: {e}]"
+        return not fail_closed, f"[test_cmd error: {e}]"
 
 
 # ─── Intramorphic Testing (OpenHands §Gap3) ───────────────────────────────────
@@ -883,11 +896,37 @@ async def _maybe_enqueue_classify_retry(
             derive_retry_decision as _derive_retry_decision,
             parse_retry_prefix as _parse_retry_prefix,
         )
+        from cascade_policy import (
+            escalation_source,
+            is_strong_route,
+            retry_fields,
+        )
 
-        if not GLOBAL_SETTINGS.get("auto_classify_retry", False):
-            return False
         err = getattr(w, "_failure_classified", None)
         if err is None:
+            return False
+        if getattr(w, "_classify_retry_enqueued", False) or is_strong_route(
+            getattr(w, "route_reason", None)
+        ):
+            return False
+        cascade_source = escalation_source(w, "repeated_error")
+        cascade_retry = _derive_retry_decision(
+            err,
+            attempt=1,
+            max_attempts=2,
+            current_model=w.model,
+        )
+        if cascade_source and cascade_retry is not None:
+            original = await task_queue.get(w.task_id)
+            await task_queue.add(
+                f"{w.description}\n\n---\nCheap attempt hit a repeated runtime error; "
+                "retry once on the strong tier.",
+                w.model,
+                **retry_fields(w, original or {}, "repeated_error"),
+            )
+            w._classify_retry_enqueued = True
+            return True
+        if not GLOBAL_SETTINGS.get("auto_classify_retry", False):
             return False
 
         desc = w.description or ""
@@ -931,6 +970,7 @@ async def _maybe_enqueue_classify_retry(
             forbidden_files=w.forbidden_files,
             provider=getattr(w, "provider", None),
             effort=getattr(w, "effort", None),
+            parent_task_id=w.task_id,
         )
         logger.info(
             "Auto-classify retry: task %s [%s] → enqueued retry (model=%s, attempt=%d/%d)",
