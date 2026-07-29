@@ -1,23 +1,39 @@
 """Settings API guards the agent-runtime boundary before persistence."""
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Response
 
+import compatibility_telemetry
 import server
 from routes.tasks import _validate_task
+
+
+@pytest.fixture(autouse=True)
+def _isolated_compatibility_telemetry(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        compatibility_telemetry,
+        "_telemetry_file",
+        tmp_path / "compatibility-telemetry.json",
+    )
 
 
 @pytest.mark.asyncio
 async def test_settings_api_normalizes_known_agent_runtime(monkeypatch):
     saved = []
     monkeypatch.setattr(server, "_save_settings", lambda snapshot: saved.append(snapshot))
-    monkeypatch.setitem(server.GLOBAL_SETTINGS, "worker_provider", "claude")
+    monkeypatch.delitem(server.GLOBAL_SETTINGS, "worker_provider", raising=False)
+    response = Response()
 
-    result = await server.post_settings({"worker_provider": " CODEX "})
+    result = await server.post_settings(
+        {"worker_provider": " CODEX "}, response=response
+    )
 
-    assert result["worker_provider"] == "codex"
+    assert "worker_provider" not in result
     assert result["agent_runtime"] == "codex"
-    assert saved[-1]["worker_provider"] == "codex"
+    assert "worker_provider" not in saved[-1]
+    assert response.headers["deprecation"] == "true"
+    telemetry = compatibility_telemetry.read_compatibility_telemetry()
+    assert telemetry["events"]["settings.worker_provider"]["count"] == 1
 
 
 @pytest.mark.asyncio
@@ -27,14 +43,14 @@ async def test_settings_api_rejects_invalid_runtime_without_mutation(
 ):
     saved = []
     monkeypatch.setattr(server, "_save_settings", lambda snapshot: saved.append(snapshot))
-    monkeypatch.setitem(server.GLOBAL_SETTINGS, "worker_provider", "claude")
+    monkeypatch.setitem(server.GLOBAL_SETTINGS, "agent_runtime", "claude")
 
     with pytest.raises(HTTPException) as caught:
         await server.post_settings({"worker_provider": invalid})
 
     assert caught.value.status_code == 422
     assert "Unsupported agent runtime" in caught.value.detail
-    assert server.GLOBAL_SETTINGS["worker_provider"] == "claude"
+    assert server.GLOBAL_SETTINGS["agent_runtime"] == "claude"
     assert saved == []
 
 

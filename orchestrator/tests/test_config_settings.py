@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 
+import compatibility_telemetry
 import config
 
 
@@ -34,6 +35,41 @@ def test_known_keys_merge_without_warning(tmp_path, monkeypatch, caplog):
         loaded = config._load_settings()
     assert loaded["auto_push"] is False
     assert not caplog.records
+
+
+def test_legacy_runtime_setting_is_migrated_once_and_persisted(
+    tmp_path, monkeypatch
+):
+    settings_file = _point_at(
+        tmp_path,
+        monkeypatch,
+        {"worker_provider": "codex", "auto_push": False},
+    )
+    monkeypatch.setattr(
+        compatibility_telemetry,
+        "_telemetry_file",
+        tmp_path / "compatibility-telemetry.json",
+    )
+
+    loaded = config._load_settings()
+    persisted = json.loads(settings_file.read_text())
+
+    assert loaded["agent_runtime"] == "codex"
+    assert "worker_provider" not in loaded
+    assert persisted == {"agent_runtime": "codex", "auto_push": False}
+    assert settings_file.stat().st_mode & 0o777 == 0o600
+    assert (
+        compatibility_telemetry.read_compatibility_telemetry()["events"]
+        ["settings.worker_provider"]["count"]
+        == 1
+    )
+
+    config._load_settings()
+    assert (
+        compatibility_telemetry.read_compatibility_telemetry()["events"]
+        ["settings.worker_provider"]["count"]
+        == 1
+    )
 
 
 def test_unknown_key_warns_and_real_key_keeps_default(tmp_path, monkeypatch, caplog):

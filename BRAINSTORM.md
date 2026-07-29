@@ -69,8 +69,11 @@ executable or conditional.
   fixtures cover every registry adapter and generated surface; deterministic
   CI replay is paired with separately credential-gated Anthropic/OpenAI live
   catalog smoke, redirect refusal, and HTTPS-only discovery.
-- [ ] **P2 / depends on conformance:** retire compatibility shims only after
-  fixtures and telemetry prove supported paths have migrated.
+- [x] **P2 / RESOLVED 2026-07-28:** internal runtime terminology is canonical,
+  old settings and SQLite rows migrate idempotently, new writes and responses
+  omit `provider`, and old API inputs emit deprecation headers plus secret-free
+  aggregate usage counters. Final alias/column deletion is deliberately gated
+  on a stable zero-use release (`docs/COMPATIBILITY-RETIREMENT.md`).
 - [ ] **P3 / depends on metrics:** update VISION/North Star/dashboard for
   evidence completeness, false approvals, overrides, and regression coverage.
 - [ ] **P3 / depends on implemented mechanisms:** reposition the orchestrator
@@ -81,6 +84,9 @@ executable or conditional.
   completed local/remote branches, and finish clean on synchronized `main`.
 - [ ] **CONDITIONAL WATCH:** adopt Beads-style agent-filed note-to-self entries
   only if measured loop-runner context loss recurs.
+- [ ] **CONDITIONAL WATCH:** delete the remaining runtime input aliases and
+  historical SQLite column only after one stable release records zero
+  compatibility events.
 
 **Deliberate non-work:** automatic draft-PR publication is **REJECTED
 2026-07-28 by authority design**. Delivery may publish an explicitly authorized

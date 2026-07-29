@@ -201,10 +201,8 @@ _SETTINGS_DEFAULTS = {
     "task_class_resampling": {},
     "replay_interrupted_on_startup": False,  # re-queue interrupted tasks on server restart (opt-in)
     "execution_backend": "local",  # how workers spawn: "local" (OS subprocess+setsid). See execution_backend.py.
-    # Compatibility key: selects the agent runtime (the CLI that owns the
-    # agent loop), NOT the inference provider. Per-task `provider` is the
-    # legacy override until the persisted schema migrates.
-    "worker_provider": "claude",
+    # The agent runtime is the CLI that owns the loop, not the inference
+    # provider. Historical ``worker_provider`` files are migrated on load.
     "agent_runtime": "claude",
     # Secret-free connection identities. Native runtime/provider configuration
     # owns endpoints and credentials; envelopes record only these identities.
@@ -300,22 +298,37 @@ def _load_settings() -> dict:
             "orchestrator-settings.json is not a JSON object; using defaults"
         )
         return settings
+    migrated = dict(loaded)
+    legacy_runtime = migrated.pop("worker_provider", None)
+    if "worker_provider" in loaded:
+        from compatibility_telemetry import (
+            SETTINGS_WORKER_PROVIDER,
+            record_compatibility_use,
+        )
+
+        record_compatibility_use(SETTINGS_WORKER_PROVIDER)
+        if "agent_runtime" not in migrated:
+            migrated["agent_runtime"] = legacy_runtime
+        elif migrated["agent_runtime"] != legacy_runtime:
+            logger.warning(
+                "agent_runtime conflicts with legacy worker_provider; "
+                "keeping canonical agent_runtime"
+            )
+        try:
+            _settings_file.write_text(json.dumps(migrated, indent=2) + "\n")
+            _secure_file(_settings_file)
+        except Exception as exc:
+            logger.warning("could not persist canonical settings migration: %s", exc)
     # Surface unknown keys (like Codex's deny_unknown_fields): a typo'd setting
     # is otherwise merged-but-ignored, silently disabling the feature it meant
     # to configure. Warn only — keep merging so behavior is unchanged.
-    unknown = sorted(k for k in loaded if k not in _SETTINGS_DEFAULTS)
+    unknown = sorted(k for k in migrated if k not in _SETTINGS_DEFAULTS)
     if unknown:
         logger.warning(
             "orchestrator-settings.json has unknown setting keys (ignored): %s",
             ", ".join(unknown),
         )
-    settings.update(loaded)
-    # Bidirectional compatibility during the deprecation window. Canonical
-    # agent_runtime wins when both are present; old files migrate in memory.
-    if "agent_runtime" in loaded:
-        settings["worker_provider"] = loaded["agent_runtime"]
-    elif "worker_provider" in loaded:
-        settings["agent_runtime"] = loaded["worker_provider"]
+    settings.update(migrated)
     return settings
 
 
@@ -338,7 +351,8 @@ def _secure_dir(path: Path, mode: int = 0o700) -> None:
 
 def _save_settings(s: dict) -> None:
     _settings_file.parent.mkdir(parents=True, exist_ok=True)
-    _settings_file.write_text(json.dumps(s, indent=2))
+    canonical = {key: value for key, value in s.items() if key != "worker_provider"}
+    _settings_file.write_text(json.dumps(canonical, indent=2))
     # settings.json holds secrets (webhook_secret, hub_token, minimax_api_key) —
     # tighten to owner-only after every write.
     _secure_file(_settings_file)

@@ -21,7 +21,7 @@ _WR_SPEC.loader.exec_module(_WR)
 
 SETTINGS = {
     "agent_runtime": "codex",
-    "worker_provider": "codex",
+    "agent_runtime": "codex",
     "default_model": "gpt-5.6-sol",
     "auto_model_routing": True,
     "verifier_cascade_enabled": True,
@@ -35,7 +35,7 @@ SETTINGS = {
 
 def _task(**overrides):
     return {
-        "provider": "codex",
+        "agent_runtime": "codex",
         "model": "gpt-5.6-sol",
         "score": 92,
         "task_type": "test",
@@ -173,7 +173,7 @@ async def test_test_failure_requeue_preserves_contract_and_marks_strong(task_que
         own_files=["tests/**"],
         task_type="test",
         phase="verify",
-        provider="codex",
+        agent_runtime="codex",
         connection="codex-default",
         execution_profile="default",
         execution_requirements=[],
@@ -184,7 +184,7 @@ async def test_test_failure_requeue_preserves_contract_and_marks_strong(task_que
         model="gpt-5.6-terra",
         own_files=["tests/**"],
         forbidden_files=[],
-        provider="codex",
+        agent_runtime="codex",
         effort="low",
         route_reason=cascade_policy.CHEAP_REASON,
         _test_requeue_reason="tests failed",
@@ -214,7 +214,7 @@ async def test_no_diff_gets_truthful_signal_and_strong_fallback_is_terminal(task
         "Write a bounded test",
         own_files=["tests/**"],
         task_type="test",
-        provider="codex",
+        agent_runtime="codex",
     )
     cheap = SimpleNamespace(
         task_id=original["id"],
@@ -222,7 +222,7 @@ async def test_no_diff_gets_truthful_signal_and_strong_fallback_is_terminal(task
         model="gpt-5.6-terra",
         own_files=["tests/**"],
         forbidden_files=[],
-        provider="codex",
+        agent_runtime="codex",
         effort="low",
         route_reason=cascade_policy.CHEAP_REASON,
         _test_requeue_reason="No diff produced by cheap attempt",
@@ -257,7 +257,7 @@ async def test_repeated_error_is_idempotent_and_preserves_execution_contract(tas
         forbidden_files=["secrets/**"],
         task_type="test",
         phase="verify",
-        provider="codex",
+        agent_runtime="codex",
         connection="codex-default",
         execution_profile="isolated",
         execution_requirements={"network": False},
@@ -268,7 +268,7 @@ async def test_repeated_error_is_idempotent_and_preserves_execution_contract(tas
         model="gpt-5.6-terra",
         own_files=["tests/**"],
         forbidden_files=["secrets/**"],
-        provider="codex",
+        agent_runtime="codex",
         effort="low",
         route_reason=cascade_policy.CHEAP_REASON,
         _failure_classified=ClassifiedError(reason=FailoverReason.rate_limit),

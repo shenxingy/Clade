@@ -28,8 +28,8 @@ Runtime adapters
 
 Selection
 ---------
-The legacy ``worker_provider`` setting (default ``"claude"``) or per-task
-``provider`` column selects an **agent runtime**, not an inference provider.
+The canonical ``agent_runtime`` setting (default ``"claude"``) or per-task
+runtime selects an **agent runtime**, not an inference provider.
 Unknown and empty values fail before command construction. They must never run
 Claude accidentally with the wrong credentials, model, or billing account.
 
@@ -345,20 +345,14 @@ _RUNTIMES: dict[str, type[WorkerProvider]] = {
 def get_agent_runtime(name: str | None = None) -> WorkerProvider:
     """Resolve an agent-runtime adapter by name.
 
-    ``name`` comes from the legacy per-task ``provider`` value or
-    ``worker_provider`` setting (read lazily when ``None``). Unsupported,
+    ``name`` comes from the per-task ``agent_runtime`` value or canonical
+    setting (read lazily when ``None``). Unsupported,
     missing, and empty configured values fail closed before a subprocess can
     start.
     """
     if name is None:
         from config import GLOBAL_SETTINGS  # lazy: keep this module a leaf
 
-        name = GLOBAL_SETTINGS.get("worker_provider")
+        name = GLOBAL_SETTINGS.get("agent_runtime")
     runtime = normalize_agent_runtime(name)
     return _RUNTIMES[runtime]()
-
-
-def get_worker_provider(name: str | None = None) -> WorkerProvider:
-    """Backward-compatible alias for :func:`get_agent_runtime`."""
-
-    return get_agent_runtime(name)

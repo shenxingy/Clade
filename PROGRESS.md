@@ -1,6 +1,20 @@
 # Progress Log
 
 ---
+### 2026-07-28 — Provider Compatibility Retirement Window
+
+- Removed repository-internal `worker_provider`, task `provider`,
+  `WorkerRoute.provider`, `normalize_provider`, and `get_worker_provider`
+  routing/factory shims. Workers, status, evidence telemetry, retries, task
+  responses, and the React client now expose `agent_runtime`.
+- Added one-way settings migration and SQLite backfill. New task rows write only
+  `agent_runtime`; migrations are idempotent and preserve historical data.
+- Added standard API deprecation headers and an owner-only, allowlisted
+  compatibility counter containing no values, endpoints, profiles, or secrets.
+- Kept compatibility paths that remain real release contracts. Their exact
+  removal gate is documented in `docs/COMPATIBILITY-RETIREMENT.md`.
+
+---
 ### 2026-07-28 — Provider Conformance + Live Smoke
 
 - Added six sanitized fixtures spanning Claude/Codex runtimes, Anthropic,

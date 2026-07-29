@@ -54,7 +54,7 @@ def _routing(worker: Any) -> dict[str, Any]:
         inference = resolved.get("inference") or {}
         connection = inference.get("connection") or resolved.get("connection")
     return {
-        "agent_runtime": getattr(worker, "provider", None),
+        "agent_runtime": getattr(worker, "agent_runtime", None),
         "connection": connection,
         "model": getattr(worker, "model", None),
         "effort": getattr(worker, "effort", None),

@@ -31,7 +31,7 @@ from eval_candidates import (
     validate_trigger,
 )
 from runtime_redaction import merge_metadata, redact_runtime
-
+from compatibility_telemetry import TASKS_SQLITE_PROVIDER, record_compatibility_use
 from config import (
     _ALLOWED_LOOP_COLS,
     _ALLOWED_TASK_COLS,
@@ -192,6 +192,13 @@ class TaskQueue:
                 await _migrate("ALTER TABLE tasks ADD COLUMN pgid INTEGER")
                 await _migrate("ALTER TABLE tasks ADD COLUMN provider TEXT")
                 await _migrate("ALTER TABLE tasks ADD COLUMN agent_runtime TEXT")
+                cursor = await db.execute(
+                    "UPDATE tasks SET agent_runtime = provider WHERE "
+                    "(agent_runtime IS NULL OR trim(agent_runtime) = '') "
+                    "AND provider IS NOT NULL AND trim(provider) != ''"
+                )
+                if cursor.rowcount:
+                    record_compatibility_use(TASKS_SQLITE_PROVIDER, cursor.rowcount)
                 await _migrate("ALTER TABLE tasks ADD COLUMN connection TEXT")
                 await _migrate("ALTER TABLE tasks ADD COLUMN execution_profile TEXT")
                 await _migrate("ALTER TABLE tasks ADD COLUMN execution_requirements TEXT DEFAULT '{}'")
@@ -421,6 +428,7 @@ class TaskQueue:
 
     def _row_to_dict(self, row) -> dict:
         d = dict(row)
+        d.pop("provider", None)
         for key in (
             "depends_on",
             "own_files",
@@ -497,7 +505,6 @@ class TaskQueue:
             "parent_task_id": parent_task_id,
             "phase": phase,
             "agent_runtime": agent_runtime or provider,
-            "provider": agent_runtime or provider,
             "connection": connection,
             "execution_profile": execution_profile,
             "execution_requirements": execution_requirements or {},
@@ -528,7 +535,7 @@ class TaskQueue:
                     json.dumps(task["own_files"]), json.dumps(task["forbidden_files"]),
                     task["is_critical_path"], task["task_type"], task["source_ref"],
                     task["parent_task_id"], task["phase"], task["agent_runtime"],
-                    task["provider"], task["connection"], task["execution_profile"],
+                    None, task["connection"], task["execution_profile"],
                     json.dumps(task["execution_requirements"]),
                     task["execution_envelope"], task["effort"], task["route_reason"],
                     json.dumps(task["redaction_metadata"]),
