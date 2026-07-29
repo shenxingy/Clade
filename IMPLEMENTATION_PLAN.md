@@ -186,6 +186,13 @@ Minimum fields:
 
 ### Wave 0 — Truthful backlog and immediate compatibility
 
+0. **Record late delivery authority**
+   - Add a monotonic, audited transition for explicit push/PR/merge/delete
+     authority granted after a delivery has started.
+   - Never require direct edits to Git-private delivery state.
+   - Tests: late authority enables publication; conflicting authority is
+     rejected.
+
 1. **Reconcile Brainstorm/TODO state**
    - Files: `BRAINSTORM.md`, `TODO.md`, `docs/research/README.md`
    - Mark 33 stale checkboxes resolved/superseded.

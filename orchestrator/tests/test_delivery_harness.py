@@ -243,6 +243,60 @@ def test_publish_does_not_infer_pr_authority(git_repo: Path) -> None:
     assert "not authorized" in result["error"]
 
 
+def test_authorize_records_late_user_authority_and_enables_publish(
+    git_repo: Path,
+) -> None:
+    _start(git_repo, authorities=False)
+
+    updated = _delivery(
+        git_repo,
+        "authorize",
+        "--id",
+        "fixture",
+        "--push",
+        "task-request",
+        "--open-pr",
+        "task-request",
+        "--merge",
+        "task-request",
+        "--delete-remote-branch",
+        "task-request",
+    )
+    published = _delivery(
+        git_repo,
+        "publish",
+        "--id",
+        "fixture",
+        "--pr",
+        "17",
+    )
+
+    assert updated["authorization"] == {
+        "push": "task-request",
+        "open_pr": "task-request",
+        "merge": "task-request",
+        "delete_remote_branch": "task-request",
+    }
+    assert updated["authorization_history"][-1]["previous"]["open_pr"] == "pending"
+    assert published["pull_request"]["number"] == 17
+
+
+def test_authorize_rejects_silent_authority_replacement(git_repo: Path) -> None:
+    _start(git_repo)
+
+    result = _delivery(
+        git_repo,
+        "authorize",
+        "--id",
+        "fixture",
+        "--merge",
+        "repository-policy",
+        expected=2,
+    )
+
+    assert "refusing to replace existing merge authority" in result["error"]
+
+
 def test_restack_updates_ancestry_with_head_lease(git_repo: Path) -> None:
     _start(git_repo)
     (git_repo / "feature.txt").write_text("feature\n", encoding="utf-8")

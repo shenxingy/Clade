@@ -44,6 +44,7 @@ STATES = (
 )
 TERMINAL_STATES = {"CLEAN", "ABANDONED"}
 SAFE_ID = re.compile(r"[^A-Za-z0-9._-]+")
+AUTHORITY_VALUES = {"pending", "task-request", "repository-policy"}
 
 
 class DeliveryError(RuntimeError):
@@ -350,6 +351,45 @@ def cmd_start(args: argparse.Namespace) -> dict[str, Any]:
 def cmd_show(args: argparse.Namespace) -> dict[str, Any]:
     root = _root(args.repo.resolve())
     return _read_state(root, args.id)
+
+
+def cmd_authorize(args: argparse.Namespace) -> dict[str, Any]:
+    """Record authority granted after a delivery was started."""
+    root = _root(args.repo.resolve())
+    requested = {
+        "push": args.push,
+        "open_pr": args.open_pr,
+        "merge": args.merge,
+        "delete_remote_branch": args.delete_remote_branch,
+    }
+    changes = {key: value for key, value in requested.items() if value is not None}
+    if not changes:
+        raise DeliveryError("authorize requires at least one authority update")
+
+    with _locked_state_dir(root):
+        state = _read_state(root, args.id)
+        if state.get("state") in TERMINAL_STATES:
+            raise DeliveryError(
+                f"cannot update authority for terminal delivery state {state['state']}"
+            )
+        previous = dict(state["authorization"])
+        for action, authority in changes.items():
+            current = previous.get(action, "pending")
+            if current != "pending" and current != authority:
+                raise DeliveryError(
+                    f"refusing to replace existing {action} authority "
+                    f"{current!r} with {authority!r}"
+                )
+            state["authorization"][action] = authority
+        state.setdefault("authorization_history", []).append(
+            {
+                "previous": previous,
+                "updated": changes,
+                "recorded_at": _now(),
+            }
+        )
+        _write_state(root, state)
+    return state
 
 
 def cmd_list(args: argparse.Namespace) -> dict[str, Any]:
@@ -873,6 +913,18 @@ def build_parser() -> argparse.ArgumentParser:
     _common_repo(show)
     show.add_argument("--id", required=True)
     show.set_defaults(handler=cmd_show)
+
+    authorize = sub.add_parser("authorize")
+    _common_repo(authorize)
+    authorize.add_argument("--id", required=True)
+    authorize.add_argument("--push", choices=sorted(AUTHORITY_VALUES))
+    authorize.add_argument("--open-pr", choices=sorted(AUTHORITY_VALUES))
+    authorize.add_argument("--merge", choices=sorted(AUTHORITY_VALUES))
+    authorize.add_argument(
+        "--delete-remote-branch",
+        choices=sorted(AUTHORITY_VALUES),
+    )
+    authorize.set_defaults(handler=cmd_authorize)
 
     listing = sub.add_parser("list")
     _common_repo(listing)
