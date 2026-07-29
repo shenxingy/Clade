@@ -23,6 +23,10 @@ semantic versioning。
 
 ### 修复
 
+- Loop 完成对账现在由 coordinator 独占并 fail-closed：只有 worker、syntax、
+  test 与最终 verify 全部通过后，才按精确 task-to-goal 证据勾选；即使
+  leftover sweep 为空也会计入 worker 自建 commits，串行/并行 worker 失败
+  均会传播非零退出码
 - Loop planning 现在会保留原始 supervisor 输出、安全提取嵌套 JSON、限制
   planner tools、在 checkpoint 前初始化自定义 log 目录、只验证当前 iteration
   的变更、共享一个 task JSON parser，并以 worker 格式分发恢复任务

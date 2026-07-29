@@ -790,3 +790,5 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "Done. Total: $TOTAL | Success: $SUCCESS | Failed: $FAILED"
 echo "Logs: $LOG_DIR/"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+[[ "$FAILED" -eq 0 ]]
