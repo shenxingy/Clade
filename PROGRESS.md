@@ -1,6 +1,21 @@
 # Progress Log
 
 ---
+### 2026-07-28 — Provider Conformance + Live Smoke
+
+- Added six sanitized fixtures spanning Claude/Codex runtimes, Anthropic,
+  OpenAI, MiniMax, Moonshot, custom OpenAI-compatible, and native-static
+  adapters plus Claude/Codex/MCP/generic surfaces.
+- Fixture replay drives the real registry, execution resolver, runtime command,
+  native profile environment, and generated surface contracts without storing
+  endpoints, paths, or credentials.
+- Added separate manual/weekly Anthropic and OpenAI read-only live catalog jobs;
+  missing credentials skip safely and output never contains endpoint, header,
+  key, or model IDs.
+- Hardened live discovery to reject non-HTTPS endpoints and all redirects,
+  preventing authorization forwarding across origins.
+
+---
 ### 2026-07-28 — Provider Registry v1
 
 - Added secret-safe live model discovery with TTL caches for Anthropic,

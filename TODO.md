@@ -273,8 +273,12 @@ backlog.
   binds the real native connection, records catalog/capability provenance,
   rejects cross-account cache reuse, and permits stale continuation only for
   an explicit pinned model with a visible degradation.
-- [ ] **P2 · conformance · depends on provider registry:** add sanitized
-  runtime/surface fixtures and credential-gated live smoke tests.
+- [x] **P2 · completed 2026-07-28 · conformance:** six secret-free fixtures
+  exercise Claude/Codex runtimes, all registry adapters, native profile
+  binding, and Claude/Codex/MCP/generic surface semantics. Deterministic
+  fixture replay runs on every CI build; separate manual/weekly Anthropic and
+  OpenAI jobs perform credential-gated read-only catalog smoke. Discovery
+  rejects non-HTTPS endpoints and redirects to prevent credential forwarding.
 - [ ] **P2 · compatibility · depends on conformance:** retire shims only after
   fixtures and telemetry prove no supported path relies on them.
 - [ ] **P3 · product metrics · depends on evidence/routing:** update

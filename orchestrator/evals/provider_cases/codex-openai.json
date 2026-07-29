@@ -1,0 +1,26 @@
+{
+  "id": "codex-openai",
+  "surface": "codex",
+  "runtime": "codex",
+  "inference_provider": "openai",
+  "wire_protocol": "openai-responses",
+  "adapter": "openai",
+  "store": "codex-config",
+  "wire_model": "fixture/codex-v1",
+  "catalog_capabilities": {"image_input": "supported"},
+  "expected": {
+    "id": "codex-openai",
+    "surface": "codex",
+    "runtime": "codex",
+    "inference_provider": "openai",
+    "wire_protocol": "openai-responses",
+    "model": "fixture/codex-v1",
+    "catalog_state": "fresh",
+    "catalog_source": "openai@1:fixture-profile",
+    "capability": {"name": "image_input", "state": "conditional", "source": "openai@1:fixture-profile"},
+    "profile_bound": true,
+    "surface_marker_present": true,
+    "secret_exposed": false,
+    "auth_shape": "bearer"
+  }
+}
