@@ -21,8 +21,14 @@
 - Made `loop-runner.sh` checkpoint recovery crash-safe and explicit: only an
   identity-matched `--resume` restores a checkpoint, a normal launch ignores a
   stale one, and `--help` has no side effects (`25949fe`).
-- Refreshed the installed Codex plugin cache version to pick up the
-  delivery/loop skill changes above (`8d93e1e`).
+- Refreshed the installed Codex plugin cache version for the delivery workflow
+  changes that preceded Loop recovery (`8d93e1e`); Loop itself is distributed
+  through Claude/MCP and was installed separately from merged `main`.
+- The documentation convergence Loop reproduced a follow-on control-flow gap:
+  workers committed and verified the requested state, but the coordinator left
+  all 5 goal checkboxes open and exited `stuck_no_commits`. The unsafe
+  worker-side marking experiment remains retired; a coordinator-owned,
+  phase-safe replacement is promoted to the P0 follow-on in `TODO.md`.
 
 ---
 ### 2026-07-28 — Local Rollout + Research Program Closeout

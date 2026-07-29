@@ -10,7 +10,9 @@ merged `main` has been installed on this server with the checkout back on
 `main` (see `PROGRESS.md`, 2026-07-28 entries and the follow-on 2026-07-29
 delivery hardening — safe `abandon` transition `9975895`/`26e88ec`, task
 connection revalidation `c5a5c92`, crash-safe Loop checkpoint recovery
-`25949fe`).
+`25949fe`). The documentation convergence audit then reproduced one follow-on
+runtime gap: Loop lacks a safe coordinator-owned replacement for the retired
+worker-side goal marking, so that P0 is tracked separately in `TODO.md`.
 
 Only two items remain, and both are deliberately conditional, not
 undelivered work — see `TODO.md` "Conditional watch" entries and the matching
@@ -420,9 +422,11 @@ Minimum fields:
     - Depends on: Waves 0–5 merged and final `main` verified.
     - Superseded once more by the 2026-07-29 follow-on delivery-hardening
       commits landing after this closeout (`9975895`, `26e88ec`, `c5a5c92`,
-      `25949fe`); the installed Codex plugin cache was refreshed again to pick
-      them up (`8d93e1e`). Re-running Wave 6 whenever meaningful post-closeout
-      commits land is expected, not a sign the original closeout was wrong.
+      `25949fe`); the Codex plugin cache was refreshed for the delivery changes
+      that preceded Loop recovery (`8d93e1e`), while the Claude/MCP Loop files
+      were installed separately from merged `main`. Re-running Wave 6 whenever
+      meaningful post-closeout commits land is expected, not a sign the
+      original closeout was wrong.
 
 20. **Remove completed delivery branches and return to main — completed 2026-07-28 (`ac0802a`, #58)**
     - Merge only exact reviewed candidate SHAs after required CI is green.

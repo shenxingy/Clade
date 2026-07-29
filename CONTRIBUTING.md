@@ -108,6 +108,8 @@ The GUI is deliberately self-contained — no bundler, no framework. This makes 
 
 For deeper context, see:
 - [`docs/research/2026-04-07-claude-hooks.md`](docs/research/2026-04-07-claude-hooks.md) — Claude Code hook system design and patterns
+- [`docs/reference/hooks.md`](docs/reference/hooks.md) — current hook reference
+- [`docs/reference/batch-tasks.md`](docs/reference/batch-tasks.md) — current batch execution reference
 
 ## Getting Help
 

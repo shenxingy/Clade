@@ -11,6 +11,8 @@ versioning for the `clade-mcp` Python package and tagged public releases.
 
 - Crash-safe Loop phase recovery with explicit, identity-matched `--resume`;
   normal launches ignore stale checkpoints and `--help` has no side effects
+- Fresh Windows Git Bash installs wrap every hook and status-line command
+  through `bash.exe`, matching the existing-settings migration path
 - `delivery abandon` transition for superseded, unpublished work — requires an
   exact HEAD lease and non-empty reason; published GitHub PR work can only
   abandon after a live check proves the PR is closed at that exact head
@@ -21,12 +23,23 @@ versioning for the `clade-mcp` Python package and tagged public releases.
 
 ### Fixed
 
+- Loop planning now keeps raw supervisor output, extracts nested JSON safely,
+  bounds planner tools, initializes custom log directories before checkpoint
+  work, verifies only current-iteration changes, shares one task JSON parser,
+  and dispatches recovery tasks in the worker format
+- Routing settings reject `NaN` and infinite thresholds instead of persisting
+  values that cannot round-trip through JSON
 - `delivery abandon` now discovers PRs by branch instead of trusting a
   possibly stale `published` flag — an unrecorded open PR blocks abandonment,
   and a merged PR at the recorded head is reconciled rather than mislabeled
   abandoned
 - Task updates revalidate the effective persisted connection against the
   effective runtime before mutation, instead of only failing at execution time
+
+### Changed
+
+- Generated MCP skill catalogs now match the manifest, and the Codex plugin
+  cache version refreshes whenever generated plugin content changes
 
 ## [0.2.0] — 2026-07-13
 
