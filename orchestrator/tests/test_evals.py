@@ -214,6 +214,20 @@ def test_fix_parser_skips_trailing_empty_array():
     assert json.loads(proc.stdout) == [{"description": "fix the failed test"}]
 
 
+def test_parser_enforces_deterministic_task_cap():
+    parser = se.resolve_parser()
+    raw = '[{"description":"one"},{"description":"two"}]'
+    proc = subprocess.run(
+        [sys.executable, str(parser), "--max-tasks", "1"],
+        input=raw,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert json.loads(proc.stdout) == [{"description": "one"}]
+
+
 def test_supervisor_fixtures_validate():
     cases, errors = se.load_cases()
     assert not errors, "\n".join(errors)
