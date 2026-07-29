@@ -1,0 +1,36 @@
+{
+  "schema_version": "clade.routing_case/v1",
+  "id": "cheap-no-diff",
+  "source": "constructed:sanitized-routing-baseline",
+  "task": {"class": "fix", "input_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},
+  "base": {"ref": "git:3333333333333333333333333333333333333333", "tree_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"},
+  "verifier": {"id": "pytest-targeted", "version": "1", "digest": "sha256:9999999999999999999999999999999999999999999999999999999999999999", "deterministic": true},
+  "attempts": {
+    "cheap": {
+      "source_attempt_id": "att-cheap-no-diff-cheap",
+      "cost_usd": 0.005,
+      "telemetry": {
+        "schema_version": "clade.attempt_telemetry/v1",
+        "queue_ms": 1000,
+        "inference_ms": 6000,
+        "verify_ms": 3000,
+        "routing": {"agent_runtime": "codex", "model": "gpt-5.6-terra", "effort": "medium", "route_reason": "recorded cheap arm"}
+      },
+      "verification": {"status": "no_diff", "final_oracle": null},
+      "outcome": "failed"
+    },
+    "strong": {
+      "source_attempt_id": "att-cheap-no-diff-strong",
+      "cost_usd": 0.1,
+      "telemetry": {
+        "schema_version": "clade.attempt_telemetry/v1",
+        "queue_ms": 2000,
+        "inference_ms": 50000,
+        "verify_ms": 8000,
+        "routing": {"agent_runtime": "codex", "model": "gpt-5.6-sol", "effort": "high", "route_reason": "recorded strong arm"}
+      },
+      "verification": {"status": "passed", "final_oracle": "approved"},
+      "outcome": "delivered"
+    }
+  }
+}
