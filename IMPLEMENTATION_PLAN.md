@@ -265,7 +265,7 @@ Minimum fields:
    - Deduplicate by source attempt + trigger + diff digest.
    - Depends on: Steps 4–6.
 
-8. **Add review/promote tooling**
+8. **Add review/promote tooling — completed 2026-07-28**
    - Files: `orchestrator/evals/`, a small CLI or route, eval README/tests.
    - Review pending candidates and promote accepted cases into the correct
      corpus with complete provenance.

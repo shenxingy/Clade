@@ -139,12 +139,14 @@ from routes.process import router as process_router  # noqa: E402
 from routes.tasks import router as tasks_router  # noqa: E402
 from routes.workers import router as workers_router  # noqa: E402
 from routes.usage import router as usage_router  # noqa: E402
+from routes.evals import router as evals_router  # noqa: E402
 app.include_router(webhooks_router)
 app.include_router(ideas_router)
 app.include_router(process_router)
 app.include_router(tasks_router)
 app.include_router(workers_router)
 app.include_router(usage_router)
+app.include_router(evals_router)
 
 # Serve static files (web UI) — prefer React dist/ if built, fallback to legacy
 WEB_DIST = Path(__file__).parent / "web" / "dist"

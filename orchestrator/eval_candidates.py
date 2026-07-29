@@ -46,6 +46,15 @@ def validate_trigger(value: Any) -> str:
     return trigger
 
 
+def validate_status(value: Any) -> str:
+    status = str(value or "")
+    if status not in VALID_STATUSES:
+        raise EvalCandidateValidationError(
+            f"status must be one of: {', '.join(sorted(VALID_STATUSES))}"
+        )
+    return status
+
+
 def validate_evidence_digest(value: Any) -> str:
     digest = str(value or "")
     if not _DIGEST.fullmatch(digest):
@@ -64,3 +73,32 @@ def canonical_diff_digest(value: Any) -> str:
         sort_keys=True,
     ).encode("utf-8")
     return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
+
+
+def row_to_dict(row) -> dict:
+    """Decode one trusted SQLite eval-candidate row."""
+
+    try:
+        payload = json.loads(row["payload_json"])
+        redaction_metadata = json.loads(row["redaction_metadata"])
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise ValueError("persisted eval candidate contains invalid JSON") from exc
+    return {
+        "schema_version": row["schema_version"],
+        "candidate_id": row["candidate_id"],
+        "source_task_id": row["source_task_id"],
+        "source_attempt_id": row["source_attempt_id"],
+        "source_attempt_revision": row["source_attempt_revision"],
+        "source_evidence_digest": row["source_evidence_digest"],
+        "trigger": row["trigger"],
+        "diff_digest": row["diff_digest"],
+        "payload": payload,
+        "redaction_metadata": redaction_metadata,
+        "status": row["status"],
+        "decision_reason": row["decision_reason"],
+        "decided_by": row["decided_by"],
+        "decided_at": row["decided_at"],
+        "promotion_kind": row["promotion_kind"],
+        "promotion_ref": row["promotion_ref"],
+        "created_at": row["created_at"],
+    }
