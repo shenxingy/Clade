@@ -670,3 +670,5 @@ if [[ "$failed" -eq 0 && "$KEEP_LOGS" == false && "$MODE" != "--dry-run" && "$pr
   rmdir logs 2>/dev/null || true
   echo "Removed: $TASK_FILE, $LOG_DIR/"
 fi
+
+[[ "$failed" -eq 0 ]]

@@ -29,7 +29,9 @@ POST (deterministic + conditional LLM):
   fix_syntax       — [LLM] one attempt to fix failures
   test_sample      — run verify_cmd from CLAUDE.md
   mid-iter fix     — [LLM] if test fails → fix → re-test (Stripe pattern)
-  commit_changes   — commit all worker output
+  verify           — require an explicit final-state pass
+  reconcile_goal   — coordinator marks exact task-bound goal items
+  commit_changes   — sweep leftovers and count every iteration commit
                 ↓
 Deterministic convergence check:
   - remaining unchecked items = 0 → CONVERGED
@@ -74,7 +76,11 @@ Resume is explicit and fail-closed: the checkpoint must match the current
 checkout, goal path, branch, and HEAD. A normal launch starts fresh and never
 silently consumes an older checkpoint.
 
+Workers never mutate the shared goal file. The supervisor binds each task to
+exact goal line/text evidence, and the coordinator marks those items only
+after the worker, syntax, test, and final verification gates all pass. Commit
+progress counts commits created directly by workers as well as the final sweep.
+
 ## After convergence
 
-Run `/commit` to push any remaining uncommitted changes from workers.
 Run `/review` to verify all behavior anchors still pass after autonomous changes.

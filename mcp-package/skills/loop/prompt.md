@@ -85,7 +85,9 @@ The loop runs as a deterministic + LLM hybrid state machine:
 [DET] Syntax check          — validates all changed .py / .sh / .ts files
 [LLM] Fix node (if needed)  — one attempt to fix syntax failures
 [DET] Test sample           — runs CLAUDE.md verify_cmd if present
-[DET] Commit changes        — commits all worker output
+[LLM] Final verify          — explicit pass required for completion evidence
+[DET] Goal reconciliation  — coordinator marks exact task-bound goal items
+[DET] Commit changes        — sweeps leftovers and counts all worker commits
 [DET] Convergence check     — CONVERGED? max_iter? 3 consecutive empty iters?
 → Repeat until converged, max_iter reached, or stuck
 ```
@@ -94,6 +96,10 @@ Hard limits (not overridable by LLM):
 - Max 3 consecutive iterations with zero commits → stops automatically
 - Syntax fix: max 1 LLM attempt; broken files are reverted if still failing
 - Never commits files with syntax errors
+- Workers never edit the shared goal file; only the coordinator reconciles
+  exact supervisor line/text mappings after worker, syntax, test, and verify pass
+- Iteration progress counts commits made directly by workers, not only files
+  left over for the final commit sweep
 - State file: `.claude/loop-state.json` (JSON format)
 
 ### Step 1: Validate and Pre-process

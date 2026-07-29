@@ -23,6 +23,10 @@ versioning for the `clade-mcp` Python package and tagged public releases.
 
 ### Fixed
 
+- Loop completion is now coordinator-owned and fail-closed: exact task-to-goal
+  evidence is reconciled only after worker, syntax, test, and final verification
+  gates pass; worker-created commits count even when the leftover sweep is empty,
+  and serial/parallel worker failures propagate as non-zero exits
 - Loop planning now keeps raw supervisor output, extracts nested JSON safely,
   bounds planner tools, initializes custom log directories before checkpoint
   work, verifies only current-iteration changes, shares one task JSON parser,
