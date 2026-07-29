@@ -207,10 +207,62 @@ Goal: maximize autonomous run hours. Minimize human intervention. System knows w
 
 ---
 
+## Active execution program — reconciled 2026-07-28
+
+These are the only active items promoted from the research inbox. Historical
+checkboxes below are retained as completion evidence, not a second backlog.
+
+- [ ] **P0 · unblocked · MCP v2:** migrate both MCP servers to Python SDK v2 and
+  remove the `mcp<2` bound. No dependency.
+- [ ] **P0 · security:** redact runtime event and provider output before JSONL,
+  SQLite, or log persistence. No dependency.
+- [ ] **P1 · evidence · depends on redaction:** persist versioned,
+  lifecycle-linked `EvidenceBundle v1` records.
+- [ ] **P1 · evidence wiring · depends on EvidenceBundle:** connect worker,
+  verifier, delivery, API, and UI evidence to the bundle.
+- [ ] **P1 · evals · depends on EvidenceBundle:** turn incidents, oracle
+  disagreements, reverts, and explicit corrections into quarantined sanitized
+  eval candidates with human promotion.
+- [ ] **P1 · eval review · depends on eval candidates:** add explicit human
+  review/promotion tooling and corpus provenance; never auto-accept ground
+  truth.
+- [ ] **P1 · supply-chain:** bind `/equip sync` screening to the exact fetched
+  upstream commit and re-screen drift before apply. No dependency.
+- [ ] **P2 · regression metrics · depends on evidence/evals:** report evidence
+  completeness, false approvals, human overrides, and accepted regression
+  coverage.
+- [ ] **P2 · routing data:** persist attempt/phase timing and routing telemetry.
+  Depends on EvidenceBundle identity.
+- [ ] **P2 · routing replay · depends on telemetry/eval tooling:** build a
+  recorded routing replay corpus with fixed task/base/verifier inputs.
+- [ ] **P2 · routing policy · depends on replay:** enable a verifier-aware
+  cascade only after replay evidence; keep it default-off beforehand.
+- [ ] **P2 · routing analysis · depends on telemetry:** report empirical
+  break-even by task class with sample counts and uncertainty.
+- [ ] **P2 · provider registry · depends on EvidenceBundle:** complete live
+  model discovery, capability provenance, real connection adapters, and stale
+  pinned fallback.
+- [ ] **P2 · conformance · depends on provider registry:** add sanitized
+  runtime/surface fixtures and credential-gated live smoke tests.
+- [ ] **P2 · compatibility · depends on conformance:** retire shims only after
+  fixtures and telemetry prove no supported path relies on them.
+- [ ] **P3 · product metrics · depends on evidence/routing:** update
+  VISION/North Star/dashboard with evidence completeness, false approvals,
+  human overrides, and regression coverage.
+- [ ] **P3 · positioning · depends on implemented mechanisms:** reposition the
+  orchestrator around provider-neutral identity, evidence, verifier
+  calibration, correction learning, delivery, and fleet truth.
+- [ ] **P0 closeout · depends on all feature PRs:** install final merged `main`
+  into this server's Claude/Codex config while preserving user state; delete
+  completed local/remote branches and finish clean on synchronized `main`.
+- [ ] **Conditional watch:** add Beads-style agent-filed note-to-self entries
+  only when measured loop-runner cross-iteration context loss recurs.
+
 ## Tech Debt
 
-- [ ] 🟡 Migrate the orchestrator MCP servers to the Python SDK v2 API, then
-  remove the `mcp<2` compatibility bound
+- [x] 🟡 Migrate the orchestrator MCP servers to the Python SDK v2 API, then
+  remove the `mcp<2` compatibility bound — **SUPERSEDED 2026-07-28** by the
+  dependency-labelled P0 item above
   ([upstream v2 breaking-change context](https://github.com/modelcontextprotocol/python-sdk/issues/1068))
 - [x] 🔴 `TaskQueue.add()` missing `task_type`/`source_ref`/`parent_task_id` params — `_decompose_horizontal()` and task factories will TypeError at runtime (`orchestrator/task_queue.py:234`)
 - [x] 🔴 `httpx` not in requirements.txt but imported by ci_watcher — `ModuleNotFoundError` at import time (`orchestrator/task_factory/ci_watcher.py:9`)
