@@ -243,6 +243,60 @@ def test_publish_does_not_infer_pr_authority(git_repo: Path) -> None:
     assert "not authorized" in result["error"]
 
 
+def test_authorize_records_late_user_authority_and_enables_publish(
+    git_repo: Path,
+) -> None:
+    _start(git_repo, authorities=False)
+
+    updated = _delivery(
+        git_repo,
+        "authorize",
+        "--id",
+        "fixture",
+        "--push",
+        "task-request",
+        "--open-pr",
+        "task-request",
+        "--merge",
+        "task-request",
+        "--delete-remote-branch",
+        "task-request",
+    )
+    published = _delivery(
+        git_repo,
+        "publish",
+        "--id",
+        "fixture",
+        "--pr",
+        "17",
+    )
+
+    assert updated["authorization"] == {
+        "push": "task-request",
+        "open_pr": "task-request",
+        "merge": "task-request",
+        "delete_remote_branch": "task-request",
+    }
+    assert updated["authorization_history"][-1]["previous"]["open_pr"] == "pending"
+    assert published["pull_request"]["number"] == 17
+
+
+def test_authorize_rejects_silent_authority_replacement(git_repo: Path) -> None:
+    _start(git_repo)
+
+    result = _delivery(
+        git_repo,
+        "authorize",
+        "--id",
+        "fixture",
+        "--merge",
+        "repository-policy",
+        expected=2,
+    )
+
+    assert "refusing to replace existing merge authority" in result["error"]
+
+
 def test_restack_updates_ancestry_with_head_lease(git_repo: Path) -> None:
     _start(git_repo)
     (git_repo / "feature.txt").write_text("feature\n", encoding="utf-8")
@@ -330,7 +384,12 @@ def test_export_patch_preserves_tracked_and_untracked_changes(
     assert state["artifacts"][-1]["kind"] == "patch"
 
 
-def _fake_gh(bin_dir: Path, *, pending: bool = False) -> Path:
+def _fake_gh(
+    bin_dir: Path,
+    *,
+    pending: bool = False,
+    commit_count: int = 2,
+) -> Path:
     check = (
         '{"name":"Tests","status":"IN_PROGRESS","conclusion":""}'
         if pending
@@ -354,7 +413,7 @@ if args[:2] == ["pr", "view"]:
         "headRefOid": {json.dumps(_git(bin_dir.parent, "rev-parse", "HEAD"))},
         "baseRefName": "main",
         "statusCheckRollup": [{check}],
-        "commits": [{{"oid": "one"}}, {{"oid": "two"}}],
+        "commits": [{{"oid": str(index)}} for index in range({commit_count})],
     }}))
 elif args[:2] == ["repo", "view"]:
     print(json.dumps({{
@@ -419,6 +478,66 @@ def test_merge_plan_blocks_pending_checks_and_locks_exact_head(
     assert "pending" in blocked["error"]
 
     _fake_gh(bin_dir, pending=False)
+    ambiguous = _delivery(
+        git_repo,
+        "merge-plan",
+        "--id",
+        "fixture",
+        "--pr",
+        "17",
+        env=env,
+        expected=2,
+    )
+    assert "ambiguous for a multi-commit PR" in ambiguous["error"]
+
+    plan = _delivery(
+        git_repo,
+        "merge-plan",
+        "--id",
+        "fixture",
+        "--pr",
+        "17",
+        "--strategy",
+        "rebase",
+        env=env,
+    )
+    assert plan["strategy"] == "rebase"
+    assert plan["head_sha"] == _git(git_repo, "rev-parse", "HEAD")
+    assert plan["command"][-2:] == ["--match-head-commit", plan["head_sha"]]
+
+
+def test_merge_plan_auto_prefers_rebase_for_one_verified_commit(
+    git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _git(git_repo, "remote", "add", "origin", "https://github.com/acme/repo.git")
+    _start(git_repo)
+    _delivery(
+        git_repo,
+        "candidate",
+        "--id",
+        "fixture",
+        "--command",
+        "full CI",
+        "--result",
+        "passed",
+    )
+    _delivery(
+        git_repo,
+        "publish",
+        "--id",
+        "fixture",
+        "--pr",
+        "17",
+        "--url",
+        "https://github.com/acme/repo/pull/17",
+    )
+    bin_dir = git_repo / "fake-bin"
+    bin_dir.mkdir()
+    _fake_gh(bin_dir, commit_count=1)
+    env = dict(os.environ)
+    env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
+
     plan = _delivery(
         git_repo,
         "merge-plan",
@@ -428,6 +547,6 @@ def test_merge_plan_blocks_pending_checks_and_locks_exact_head(
         "17",
         env=env,
     )
-    assert plan["strategy"] == "squash"
-    assert plan["head_sha"] == _git(git_repo, "rev-parse", "HEAD")
-    assert plan["command"][-2:] == ["--match-head-commit", plan["head_sha"]]
+
+    assert plan["strategy"] == "rebase"
+    assert "single verified commit" in plan["reason"]

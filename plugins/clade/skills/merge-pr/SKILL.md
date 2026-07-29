@@ -81,15 +81,16 @@ and emits one exact command containing:
 --match-head-commit <reviewed-head-sha>
 ```
 
-`auto` chooses:
+`auto` chooses only when the history semantics are unambiguous:
 
-- **squash**: atomic unstacked PR; working commits are checkpoint/review
-  history and one integration commit is the truthful revert unit;
-- **rebase**: explicitly curated independently green commits whose individual
-  mainline value should remain, when repository policy permits;
-- **merge commit**: shared/live stack ancestry must be preserved or repository
-  policy requires topology;
-- **stop**: no safe compatible strategy.
+- **rebase**: one verified commit when repository policy permits, avoiding a
+  needless commit rewrite;
+- **merge commit**: shared/live stack ancestry must be preserved;
+- **the sole enabled method**: repository policy leaves no semantic choice;
+- **stop**: a multi-commit PR has several allowed methods. Inspect its commits,
+  then explicitly choose rebase for curated mainline units, squash for
+  disposable/checkpoint history, or merge when the PR boundary/topology should
+  remain visible.
 
 Merge queues and auto-merge are repository integrations, not bypasses. Use the
 native queue when required; otherwise execute exactly the emitted strategy and

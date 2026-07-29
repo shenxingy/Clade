@@ -104,6 +104,21 @@ The controller refuses unrelated dirty starts, accidental topic-on-topic
 ancestry, duplicate active branch leases, and mismatched idempotent resumes.
 Do not bypass those failures by editing its state file.
 
+If the user or repository policy grants publication/integration authority
+after START, record only the newly granted actions through the controller:
+
+```bash
+python3 "$DELIVERY_PY" authorize \
+  --id "<id>" \
+  [--push task-request|repository-policy] \
+  [--open-pr task-request|repository-policy] \
+  [--merge task-request|repository-policy] \
+  [--delete-remote-branch task-request|repository-policy]
+```
+
+This transition is monotonic: it may fill pending authority but never silently
+replace an already recorded authority source.
+
 Event routing:
 
 | Situation | Safe route |
@@ -246,12 +261,15 @@ READY fails closed when:
 - the requested strategy is disabled;
 - live children would be broken by ancestry rewriting.
 
-`auto` chooses repository-compatible history semantics:
+`auto` chooses only when the history semantics are unambiguous:
 
-- squash for an atomic unstacked PR whose intermediate commits are checkpoints;
 - merge when live children require ancestry preservation;
-- rebase only when compatible evidence/policy makes it truthful;
-- stop when no safe strategy exists.
+- rebase for one verified commit when repository policy permits, avoiding a
+  needless commit rewrite;
+- the sole enabled method when repository policy allows exactly one;
+- stop for a multi-commit PR when several methods are available, requiring an
+  explicit choice after inspecting whether commits are curated mainline units,
+  disposable checkpoints, or topology that must remain visible.
 
 Execute exactly the emitted command. It always includes
 `--match-head-commit <reviewed-sha>` and never uses `--admin`, a CI bypass, plain
@@ -340,6 +358,8 @@ permission to push, open a PR, merge, or delete a branch.
 - PR creation is idempotent, merge is an explicit integrator action, and
   cleanup is verified.
 - Repository policy and explicit user authority outrank Clade defaults.
+- Authority granted after START is recorded through the audited `authorize`
+  transition; never edit delivery state directly.
 
 The executable workflow and state schema live in `prompt.md` and
 `scripts/delivery.py`. Runtime-specific mechanics live under `surfaces/`.

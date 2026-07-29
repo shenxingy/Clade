@@ -44,6 +44,7 @@ STATES = (
 )
 TERMINAL_STATES = {"CLEAN", "ABANDONED"}
 SAFE_ID = re.compile(r"[^A-Za-z0-9._-]+")
+AUTHORITY_VALUES = {"pending", "task-request", "repository-policy"}
 
 
 class DeliveryError(RuntimeError):
@@ -352,6 +353,45 @@ def cmd_show(args: argparse.Namespace) -> dict[str, Any]:
     return _read_state(root, args.id)
 
 
+def cmd_authorize(args: argparse.Namespace) -> dict[str, Any]:
+    """Record authority granted after a delivery was started."""
+    root = _root(args.repo.resolve())
+    requested = {
+        "push": args.push,
+        "open_pr": args.open_pr,
+        "merge": args.merge,
+        "delete_remote_branch": args.delete_remote_branch,
+    }
+    changes = {key: value for key, value in requested.items() if value is not None}
+    if not changes:
+        raise DeliveryError("authorize requires at least one authority update")
+
+    with _locked_state_dir(root):
+        state = _read_state(root, args.id)
+        if state.get("state") in TERMINAL_STATES:
+            raise DeliveryError(
+                f"cannot update authority for terminal delivery state {state['state']}"
+            )
+        previous = dict(state["authorization"])
+        for action, authority in changes.items():
+            current = previous.get(action, "pending")
+            if current != "pending" and current != authority:
+                raise DeliveryError(
+                    f"refusing to replace existing {action} authority "
+                    f"{current!r} with {authority!r}"
+                )
+            state["authorization"][action] = authority
+        state.setdefault("authorization_history", []).append(
+            {
+                "previous": previous,
+                "updated": changes,
+                "recorded_at": _now(),
+            }
+        )
+        _write_state(root, state)
+    return state
+
+
 def cmd_list(args: argparse.Namespace) -> dict[str, Any]:
     root = _root(args.repo.resolve())
     directory = _state_dir(root)
@@ -615,15 +655,12 @@ def cmd_merge_plan(args: argparse.Namespace) -> dict[str, Any]:
     methods = _gh_methods(root)
     children = _gh_children(root, pr["headRefName"])
     requested = args.strategy
-    if requested != "auto":
-        if requested not in methods:
+    if children:
+        if requested in {"squash", "rebase"}:
             raise DeliveryError(
-                f"requested merge strategy {requested!r} is disabled; "
-                f"allowed: {', '.join(methods) or 'none'}"
+                f"live child PRs depend on {pr['headRefName']!r}; "
+                f"{requested} would rewrite their parent ancestry"
             )
-        strategy = requested
-        reason = "explicit strategy allowed by repository policy"
-    elif children:
         if "merge" not in methods:
             raise DeliveryError(
                 "live child PRs depend on this head and merge commits are disabled; "
@@ -631,18 +668,31 @@ def cmd_merge_plan(args: argparse.Namespace) -> dict[str, Any]:
             )
         strategy = "merge"
         reason = "preserve ancestry for live child PRs"
-    elif "squash" in methods:
-        strategy = "squash"
-        reason = "atomic unstacked PR; working commits are review checkpoints"
-    elif len(pr.get("commits") or []) == 1 and "rebase" in methods:
-        strategy = "rebase"
-        reason = "single verified commit and squash is unavailable"
-    elif "merge" in methods:
-        strategy = "merge"
-        reason = "repository merge policy fallback"
-    elif "rebase" in methods:
-        strategy = "rebase"
-        reason = "repository permits only rebase integration"
+    elif requested != "auto":
+        if requested not in methods:
+            raise DeliveryError(
+                f"requested merge strategy {requested!r} is disabled; "
+                f"allowed: {', '.join(methods) or 'none'}"
+            )
+        strategy = requested
+        reason = "explicit strategy allowed by repository policy"
+    elif len(pr.get("commits") or []) == 1 and methods:
+        for method in ("rebase", "squash", "merge"):
+            if method in methods:
+                strategy = method
+                break
+        reason = (
+            "single verified commit; preserve it linearly when repository policy permits"
+        )
+    elif len(methods) == 1:
+        strategy = methods[0]
+        reason = "repository policy exposes only one merge method"
+    elif methods:
+        raise DeliveryError(
+            "auto strategy is ambiguous for a multi-commit PR: inspect whether "
+            "the commits are curated mainline units, disposable checkpoints, or "
+            "topology that must remain visible, then pass --strategy explicitly"
+        )
     else:
         raise DeliveryError("repository exposes no supported merge strategy")
 
@@ -873,6 +923,18 @@ def build_parser() -> argparse.ArgumentParser:
     _common_repo(show)
     show.add_argument("--id", required=True)
     show.set_defaults(handler=cmd_show)
+
+    authorize = sub.add_parser("authorize")
+    _common_repo(authorize)
+    authorize.add_argument("--id", required=True)
+    authorize.add_argument("--push", choices=sorted(AUTHORITY_VALUES))
+    authorize.add_argument("--open-pr", choices=sorted(AUTHORITY_VALUES))
+    authorize.add_argument("--merge", choices=sorted(AUTHORITY_VALUES))
+    authorize.add_argument(
+        "--delete-remote-branch",
+        choices=sorted(AUTHORITY_VALUES),
+    )
+    authorize.set_defaults(handler=cmd_authorize)
 
     listing = sub.add_parser("list")
     _common_repo(listing)
