@@ -102,6 +102,7 @@ _SETTINGS_DEFAULTS = {
     "auto_start": True,
     "auto_push": True,
     "auto_merge": True,
+    "auto_merge_strategy": "auto",
     "auto_review": True,
     "default_model": "sonnet",
     "loop_supervisor_model": "sonnet",

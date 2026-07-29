@@ -4,12 +4,34 @@
 
 # Self-Learning Mechanisms
 
-Clade has two complementary mechanisms that keep the system aligned with reality without manual upkeep:
+Clade has three complementary mechanisms that keep the system aligned with
+reality:
 
 1. [Commit Lessons](#commit-lessons--learn-from-your-git-history) — *reactive*: mine `git log` for recurring fix patterns, inject them into every session
 2. [Doc Align](#doc-align--keep-counts-and-facts-in-sync-across-all-docs) — *preventive*: declare facts once, auto-detect drift across all `*.md`
+3. [Correction Pairing](#correction-pairing--human-grounded-feedback) —
+   *human-grounded*: pair an explicit correction with rejected work and route
+   it through reviewable learning/eval paths
 
-Together: Clade learns from past mistakes **and** prevents future drift.
+Together: Clade learns from explicit evidence and prevents future drift without
+inventing automatic ground truth.
+
+---
+
+## Correction Pairing — human-grounded feedback
+
+The full Claude distribution keeps a short-lived edit shadow. A revert signal
+can mark that shadow as a rejected change, but it remains data-only. A later
+explicit correction supplies the human context that makes the pair useful.
+Unpaired async signals do not write durable rules.
+
+In the Orchestrator, an explicit correction against an evidence-backed attempt
+creates a sanitized quarantined eval candidate. Promotion requires an explicit
+reviewer, reason, target corpus, human label, and exact evidence provenance.
+Rejection writes no corpus fixture.
+
+This is intentionally narrower than “learn from every revert”: a revert can be
+mechanical, unrelated, or ambiguous. Human context is the authority boundary.
 
 ---
 

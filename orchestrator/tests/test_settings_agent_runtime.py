@@ -155,6 +155,28 @@ async def test_settings_api_rejects_unknown_key(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_settings_api_rejects_unknown_merge_semantics(monkeypatch):
+    monkeypatch.setattr(server, "_save_settings", lambda snapshot: None)
+
+    with pytest.raises(HTTPException) as caught:
+        await server.post_settings({"auto_merge_strategy": "always-squash"})
+
+    assert caught.value.status_code == 422
+    assert "auto, merge, rebase, squash" in caught.value.detail
+
+
+@pytest.mark.asyncio
+async def test_settings_api_rejects_non_string_merge_semantics(monkeypatch):
+    monkeypatch.setattr(server, "_save_settings", lambda snapshot: None)
+
+    with pytest.raises(HTTPException) as caught:
+        await server.post_settings({"auto_merge_strategy": ["squash"]})
+
+    assert caught.value.status_code == 422
+    assert "auto, merge, rebase, squash" in caught.value.detail
+
+
+@pytest.mark.asyncio
 async def test_settings_api_rejects_native_store_runtime_mismatch(monkeypatch):
     monkeypatch.setattr(server, "_save_settings", lambda snapshot: None)
     connections = {

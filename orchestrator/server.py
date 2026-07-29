@@ -28,6 +28,7 @@ from execution_envelope import (
     resolve_connection,
 )
 from provider_registry import DEFAULT_REGISTRY
+from merge_policy import MERGE_STRATEGIES
 from config import (
     GLOBAL_SETTINGS,
     PROJECT_DIR,
@@ -113,7 +114,7 @@ async def lifespan(app: FastAPI):
         await usage_tracker.stop_poller()
 
 
-app = FastAPI(title="Claude Code Orchestrator", lifespan=lifespan)
+app = FastAPI(title="Clade Orchestrator", lifespan=lifespan)
 
 
 @app.exception_handler(AgentRuntimeSelectionError)
@@ -1093,6 +1094,17 @@ async def post_settings(body: dict = Body(...), response: Response = None):
         raise HTTPException(
             status_code=422,
             detail=f"Unknown settings: {', '.join(unknown)}",
+        )
+    if (
+        "auto_merge_strategy" in body
+        and (
+            not isinstance(body["auto_merge_strategy"], str)
+            or body["auto_merge_strategy"] not in MERGE_STRATEGIES
+        )
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="auto_merge_strategy must be one of: auto, merge, rebase, squash",
         )
     if "worker_provider" in body:
         record_compatibility_use(SETTINGS_WORKER_PROVIDER)

@@ -54,7 +54,10 @@ def _shell_dispatcher(responses: list[tuple[str, FakeProc]]):
     return calls, _fake_shell
 
 
-_REPO_VIEW_OK = FakeProc(stdout=b'{"viewerPermission": "ADMIN", "squashMergeAllowed": true}')
+_REPO_VIEW_OK = FakeProc(stdout=(
+    b'{"viewerPermission": "ADMIN", "mergeCommitAllowed": true,'
+    b'"rebaseMergeAllowed": true, "squashMergeAllowed": true}'
+))
 
 
 # ─── ensure_repo_invariants ──────────────────────────────────────────────────
@@ -74,7 +77,7 @@ class TestEnsureRepoInvariants:
             "orchestrator", "pending", "running", "done", "failed"
         ]
         assert findings["viewer_permission"] == "ADMIN"
-        assert findings["squash_merge_allowed"] is True
+        assert findings["merge_methods_allowed"] == ["merge", "rebase", "squash"]
         assert findings["warnings"] == []
         # idempotent form: every label create uses --force
         label_cmds = [c for c in calls if "gh label create" in c]
@@ -121,7 +124,7 @@ class TestEnsureRepoInvariants:
         assert findings["viewer_permission"] == "READ"
         assert any("viewerPermission=READ" in w for w in findings["warnings"])
 
-    async def test_squash_merge_disabled_warns(self, tmp_path, monkeypatch):
+    async def test_no_merge_method_warns(self, tmp_path, monkeypatch):
         _, fake_shell = _shell_dispatcher([
             ("gh label create", FakeProc()),
             ("gh repo view", FakeProc(
@@ -131,8 +134,8 @@ class TestEnsureRepoInvariants:
 
         findings = await gs.ensure_repo_invariants(tmp_path)
 
-        assert findings["squash_merge_allowed"] is False
-        assert any("squash merge disabled" in w for w in findings["warnings"])
+        assert findings["merge_methods_allowed"] == []
+        assert any("no enabled pull-request merge method" in w for w in findings["warnings"])
 
     async def test_unparseable_repo_view_warns(self, tmp_path, monkeypatch):
         _, fake_shell = _shell_dispatcher([

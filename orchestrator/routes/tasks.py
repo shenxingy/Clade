@@ -19,7 +19,13 @@ from config import (
     _deps_met,
 )
 from session import ProjectSession, _resolve_session
-from github_sync import _gh_create_issue
+from github_sync import _gh_create_issue, _run_gh
+from merge_policy import (
+    MergeContext,
+    MergePolicyError,
+    choose_merge_strategy,
+    enabled_merge_methods,
+)
 from worker_tldr import _score_task
 from worker_review import _write_pr_review, _write_progress_entry
 from worker_routing import VALID_EFFORTS
@@ -305,12 +311,75 @@ async def _gh_pr_labels(pr_url: str, project_dir: Path) -> list[str] | None:
         return None
 
 
-async def _gh_merge_pr(pr_url: str, project_dir: Path, auto: bool) -> bool:
-    """Run gh pr merge (with --auto when requested). False on any failure."""
+async def _gh_merge_plan(pr_url: str, project_dir: Path) -> tuple[str, str]:
+    """Inspect live topology and return (strategy, exact head SHA)."""
+
+    quoted = shlex.quote(pr_url)
+    rc, out, err = await _run_gh(
+        f"gh pr view {quoted} --json commits,headRefName,headRefOid",
+        project_dir,
+    )
+    if rc != 0:
+        raise MergePolicyError(
+            f"cannot inspect pull request history: {err.strip()[:120] or 'gh failed'}"
+        )
+    try:
+        pr = json.loads(out)
+        head_ref = str(pr["headRefName"])
+        head_sha = str(pr["headRefOid"])
+        commit_count = len(pr["commits"])
+    except (KeyError, TypeError, json.JSONDecodeError) as exc:
+        raise MergePolicyError("pull request history metadata is incomplete") from exc
+
+    rc, out, err = await _run_gh(
+        "gh repo view --json mergeCommitAllowed,rebaseMergeAllowed,squashMergeAllowed",
+        project_dir,
+    )
+    if rc != 0:
+        raise MergePolicyError(
+            f"cannot inspect repository merge policy: {err.strip()[:120] or 'gh failed'}"
+        )
+    try:
+        methods = enabled_merge_methods(json.loads(out))
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise MergePolicyError("repository merge policy metadata is incomplete") from exc
+
+    rc, out, err = await _run_gh(
+        f"gh pr list --state open --base {shlex.quote(head_ref)} "
+        "--limit 1 --json number",
+        project_dir,
+    )
+    if rc != 0:
+        raise MergePolicyError(
+            f"cannot inspect child pull requests: {err.strip()[:120] or 'gh failed'}"
+        )
+    try:
+        children = json.loads(out)
+        has_open_children = bool(children)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise MergePolicyError("child pull request metadata is incomplete") from exc
+
+    strategy = choose_merge_strategy(
+        MergeContext(commit_count, methods, has_open_children),
+        str(GLOBAL_SETTINGS.get("auto_merge_strategy") or "auto"),
+    )
+    return strategy, head_sha
+
+
+async def _gh_merge_pr(
+    pr_url: str,
+    project_dir: Path,
+    auto: bool,
+    strategy: str,
+    head_sha: str,
+) -> bool:
+    """Run one exact-head merge command with already-resolved semantics."""
+
     flag = "--auto " if auto else ""
     try:
         proc = await asyncio.create_subprocess_shell(
-            f'gh pr merge {shlex.quote(pr_url)} {flag}--squash --delete-branch',
+            f"gh pr merge {shlex.quote(pr_url)} {flag}--{strategy} "
+            f"--match-head-commit {shlex.quote(head_sha)} --delete-branch",
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
             cwd=str(project_dir),
         )
@@ -360,6 +429,7 @@ async def merge_all_done(s: ProjectSession = Depends(_resolve_session)):
             pr_url = pr_out.decode().strip()
             w.pr_url = pr_url
             created += 1
+            merge_result = {}
             if GLOBAL_SETTINGS.get("auto_review", True):
                 asyncio.create_task(_write_pr_review(pr_url, w.description, s.project_dir))
             if branch.startswith("orchestrator/task-") and GLOBAL_SETTINGS.get("auto_merge", True):
@@ -383,15 +453,40 @@ async def merge_all_done(s: ProjectSession = Depends(_resolve_session)):
                         "skipped": f"'{_DO_NOT_MERGE_LABEL}' label",
                     })
                     continue
+                try:
+                    strategy, head_sha = await _gh_merge_plan(
+                        pr_url, s.project_dir
+                    )
+                except MergePolicyError as exc:
+                    logger.info("merge_all_done: %s — merge skipped", exc)
+                    results.append({
+                        "worker_id": w.id,
+                        "pr_url": pr_url,
+                        "skipped": str(exc),
+                    })
+                    continue
+                merge_result = {
+                    "merge_strategy": strategy,
+                    "head_sha": head_sha,
+                }
                 # Prefer auto-merge: on repos with branch protection + required
                 # checks the target repo's own CI becomes the merge gate
                 # (domdomegg) — gh refuses --auto where unsupported, so fall
                 # back to the immediate merge below.
-                if await _gh_merge_pr(pr_url, s.project_dir, auto=True):
+                if await _gh_merge_pr(
+                    pr_url, s.project_dir, True, strategy, head_sha
+                ):
                     auto_merge_queued += 1
-                    results.append({"worker_id": w.id, "pr_url": pr_url, "auto_merge": True})
+                    results.append({
+                        "worker_id": w.id,
+                        "pr_url": pr_url,
+                        "auto_merge": True,
+                        **merge_result,
+                    })
                     continue
-                if await _gh_merge_pr(pr_url, s.project_dir, auto=False):
+                if await _gh_merge_pr(
+                    pr_url, s.project_dir, False, strategy, head_sha
+                ):
                     w.pr_merged = True
                     merged += 1
                     asyncio.create_task(_write_progress_entry(
@@ -403,7 +498,7 @@ async def merge_all_done(s: ProjectSession = Depends(_resolve_session)):
                 else:
                     results.append({"worker_id": w.id, "pr_url": pr_url, "error": "gh pr merge failed"})
                     continue
-            results.append({"worker_id": w.id, "pr_url": pr_url})
+            results.append({"worker_id": w.id, "pr_url": pr_url, **merge_result})
         except Exception as e:
             logger.warning("merge_all_done worker %s failed: %s", w.id, e)
             results.append({"worker_id": w.id, "error": "PR merge failed"})

@@ -7,8 +7,8 @@
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Workflow](#workflow)
-3. [Layout](#layout)
+2. [Trust Pipeline](#trust-pipeline)
+3. [Control Plane](#control-plane)
 4. [GUI Settings Reference](#gui-settings-reference)
 5. [Broadcast to All Workers](#broadcast-to-all-workers)
 6. [Iteration Loop (Autonomous Refinement)](#iteration-loop-autonomous-refinement)
@@ -17,61 +17,57 @@
 
 ## Overview
 
-**Observability + gates + execution adapter.** The orchestrator sits between your CLI work and the outside world. It watches parallel workers execute tasks, enforces quality gates before pushing, routes work via GitHub, and provides a web UI dashboard.
+**Identity + evidence + evaluation + delivery + fleet truth.** The Orchestrator
+is an optional control plane around native Claude Code and Codex workers. It
+resolves a secret-free connection identity, records append-only attempt
+evidence, calibrates verifiers, and tracks exact delivery state across projects.
 
-The **web UI** is a read-only observation window — you watch workers run, monitor costs, and adjust settings. All execution happens via CLI workers (`start.sh`, `loop-runner.sh`) in your terminal or background.
+The web UI shows queues, workers, provider catalogs, evidence/eval health,
+usage, and delivery state. Task and settings mutations are explicit control
+actions; viewing a green card never grants publish or merge authority.
 
-Fastest way to go from idea to parallel execution: one chat session with the orchestrator decomposes your goal into tasks; a dashboard shows N workers executing them in parallel.
+Claude/Codex runtime selection is distinct from the inference provider, native
+profile, wire protocol, and model. The Orchestrator stores references and
+provenance, not credentials.
 
 ```bash
 cd orchestrator && ./start.sh
 # → Opens http://localhost:8765 in your browser
 ```
 
-**No build step.** Single HTML file + FastAPI backend. Requires Python 3.9+.
+The FastAPI backend requires Python 3.9+. The repository includes a legacy web
+fallback; maintainers build the current React UI with
+`cd orchestrator/web && npm run build`.
 
-## Workflow
-
-```
-1. Chat: "Build a SaaS with auth, billing, analytics"
-   → Orchestrator asks 2-3 clarifying questions (stack, constraints, existing code)
-   → You answer (type or use OS voice input)
-
-2. Orchestrator proposes task breakdown
-   → Writes .claude/proposed-tasks.md
-   → UI shows confirmation overlay: "4 tasks ready. Start all?"
-
-3. Click "Start All Workers"
-   → Workers launch in parallel: claude -p "$(cat task.md)" --dangerously-skip-permissions
-   → Dashboard updates every 1s: status, last commit, elapsed time
-
-4. Monitor:
-   Worker 1 │ running  │ feat: add NextAuth config    │ 2m34s │ [Pause] [Chat]
-   Worker 2 │ running  │ feat: create Stripe webhook  │ 1m12s │ [Pause] [Chat]
-   Worker 3 │ blocked  │ needs Stripe API key         │ 0m45s │        [Chat]
-
-5. Worker 3 blocked → click [Chat] → type "Use sk_test_xxx"
-   → Worker stops, message injected as context, worker restarts
-
-6. All done: progress bar 100%, review with: git log --oneline
-```
-
-## Layout
+## Trust Pipeline
 
 ```
-┌─────────────────────────────────┬──────────────────────────────┐
-│  Orchestrator Chat (PTY)        │  Task Queue                  │
-│                                 │  ├ pending: Implement auth   │
-│  > Build a SaaS with auth...    │  ├ pending: Add Stripe       │
-│  < What tech stack?             │  └ [Run] [Delete] [+ Add]    │
-│  > Next.js, Prisma, Stripe      ├──────────────────────────────┤
-│  < Writing 4 tasks...           │  Workers                     │
-│                                 │  ┌──────────────────────────┐│
-│  ┌─ 4 tasks ready ──────────┐   │  │ running │ feat: auth...  ││
-│  │ Start All Workers? [Yes] │   │  │ 2m34s   │ [Pause][Chat]  ││
-│  └──────────────────────────┘   │  └──────────────────────────┘│
-│  [Type message... ]   [Send]    │  ████░░░░░ 35%  ETA ~8 min   │
-└─────────────────────────────────┴──────────────────────────────┘
+queued task
+  → resolve runtime + native connection + provider + protocol + opaque model
+  → execute in an isolated worker/worktree
+  → append timing + Git SHA + test + oracle + cost + artifact evidence
+  → quarantine failures, disagreements, reverts, and explicit corrections
+  → human review may promote a sanitized regression fixture
+  → exact-SHA delivery state follows CI, repository policy, and authority
+```
+
+Verifier-aware cheap→strong routing is default-off. It requires automatic
+routing, a deterministic verifier contract, bounded low-risk ownership, and
+replay evidence. Production break-even reports are observational and cannot
+change routing policy.
+
+## Control Plane
+
+```
+┌──────────────────────────────┬───────────────────────────────┐
+│ Fleet                        │ Evidence + evaluation         │
+│ projects / queues / workers  │ North Star / guardrails       │
+│ provider catalogs / usage    │ quarantine / human review     │
+├──────────────────────────────┼───────────────────────────────┤
+│ Execution                    │ Delivery                      │
+│ runtime / connection / model │ exact SHA / CI / PR topology  │
+│ capability provenance        │ history semantics / cleanup   │
+└──────────────────────────────┴───────────────────────────────┘
 ```
 
 ## GUI Settings Reference
@@ -82,7 +78,8 @@ Open the **⚙ Settings** panel (top-right of the Web UI) to configure:
 |---------|---------|--------|
 | Auto-start workers | ON | Workers launch immediately when `proposed-tasks.md` is written |
 | Auto-push | ON | Push to feature branch after each commit |
-| Auto-merge | ON | Squash-merge `orchestrator/task-*` PRs automatically |
+| Auto-merge | ON | Queue or merge `orchestrator/task-*` PRs only after label, metadata, and repository-policy checks |
+| Merge history | `auto` | Live child topology → merge commit; one coherent commit → rebase; ambiguous multi-commit history stops for an explicit choice. Squash requires explicit/sole-policy semantics |
 | Auto-review | ON | Post AI code review comment on each PR |
 | **Oracle validation** | OFF | Haiku independently reviews each diff before push — catches "completed but wrong" silently; rejects bad pushes |
 | **Auto model routing** | OFF | Picks model by scout score: score ≥80 → haiku, 50-79 → sonnet, <50 → sonnet + ask-first warning |

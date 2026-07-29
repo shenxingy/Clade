@@ -12,13 +12,13 @@ This page is for users who have been running [Hermes Agent](https://github.com/N
 
 | | Hermes Agent | Clade |
 |---|---|---|
-| Layer | Standalone agent runtime (its own loop, tools, gateway) | Augmentation layer for Claude Code CLI |
-| Replaces | Claude Code, OpenClaw, Cursor, Codex CLI | nothing — sits beside Claude Code |
-| Provider | Multi (Anthropic, OpenRouter, NIM, Kimi, …) | Claude only (uses your Claude Code subscription) |
+| Layer | Standalone agent runtime (its own loop, tools, gateway) | Delivery contracts distributed through native Claude Code/Codex surfaces and MCP, with an optional control plane |
+| Replaces | Claude Code, OpenClaw, Cursor, Codex CLI | nothing — augments the runtime or client you already selected |
+| Runtime/provider | One owned runtime with many provider adapters | Claude or Codex runtime; native connection may resolve Anthropic, OpenAI, MiniMax, Moonshot, custom-compatible, or runtime-default inference |
 | Parallel work | Built-in subagents via RPC | Orchestrator: WorkerPool + git worktrees + GitHub-issue task queue |
-| Messaging | Telegram / Discord / Slack / WhatsApp / Signal / Email gateway | None — runs in your terminal |
+| Messaging | Telegram / Discord / Slack / WhatsApp / Signal / Email gateway | No general messaging gateway; native terminal/editor plus optional integrations |
 | Cron | Built-in scheduler with messaging delivery | `/loop`, `/schedule` skills + orchestrator process pool |
-| Skills | `agentskills.io` standard, autonomous skill creation | `configs/skills/` installed to `~/.claude/skills/` |
+| Skills | `agentskills.io` standard, autonomous skill creation | Claude distribution, native Codex plugin, or MCP catalog |
 
 If you were using Hermes for *coding work*, you can keep using Hermes — but the **Claude Code TUI is generally a better coding hot-loop** because the tool schemas were designed by Anthropic and Claude is trained on them. Drop into Hermes for: messaging-platform access, multi-provider failover, long-running cloud-resident agents.
 
@@ -26,7 +26,9 @@ If you were using Hermes for *coding work*, you can keep using Hermes — but th
 
 Many users run both:
 
-- **Claude Code (with Clade installed)** for interactive coding sessions and project automation (`./orchestrator/start.sh`).
+- **Claude Code or Codex (with the matching Clade distribution)** for
+  interactive coding and project delivery; add the Orchestrator only when you
+  need queues, evidence/evals, calibrated routing, or fleet visibility.
 - **Hermes** as a "remote agent" that lives on a VPS / Modal / Daytona instance, reachable from your phone via Telegram.
 
 Both can share the same Claude OAuth credentials (Hermes's `model.provider: anthropic` configuration uses `~/.claude.json` for auth — see [agent-config-kit's hermes.patch.yaml](https://github.com/NousResearch/hermes-agent) for the canonical config).
@@ -53,12 +55,17 @@ Hermes uses pluggable memory providers (Honcho, mem0, supermemory, byterover, �
 
 ## What's deliberately not ported from Hermes
 
-These Hermes features won't show up in Clade because they don't fit Clade's scope (Claude Code augmentation, single-runtime):
+These Hermes features do not map directly because Clade augments native coding
+runtimes rather than owning a general conversation gateway:
 
 - **Messaging gateway** (`gateway/`) — needs runtime ownership of the conversation loop; Claude Code owns it instead.
-- **Multi-provider adapters** (`agent/{anthropic,bedrock,gemini_*,codex_responses}_adapter.py`) — Clade is Claude-only by design.
+- **A universal provider-owned conversation loop**
+  (`agent/{anthropic,bedrock,gemini_*,codex_responses}_adapter.py`) — Clade
+  resolves provider/model catalogs and native connection references, but the
+  selected Claude/Codex runtime still owns execution and credentials.
 - **Pluggable memory provider system** (`plugins/memory/honcho|mem0|supermemory|...`) — Clade's typed memory is a flat-file system; future-proof interface design isn't worth the abstraction cost today.
-- **Built-in TUI** (`hermes_cli/`, `tui_gateway/`, `ui-tui/`) — Clade rides Claude Code's TUI.
+- **Built-in TUI** (`hermes_cli/`, `tui_gateway/`, `ui-tui/`) — Clade uses the
+  selected runtime's native interface or another MCP client.
 - **RL trajectory tooling** (`environments/`, `batch_runner.py`, `trajectory_compressor.py`) — Clade isn't a research project.
 
 ## Selectively borrowed from Hermes

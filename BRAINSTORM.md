@@ -78,9 +78,11 @@ executable or conditional.
   delivery rate as the North Star and keep evidence completeness, false
   approvals, overrides, regression coverage, and source integrity as explicit
   guardrails. Concurrent attempt phase time is not mislabeled unattended time.
-- [ ] **P3 / depends on implemented mechanisms:** reposition the orchestrator
-  around provider-neutral identity, evidence, verifier calibration, correction
-  learning, delivery, and fleet truth.
+- [x] **P3 / RESOLVED 2026-07-28:** English/Chinese product docs now position
+  Clade around provider-neutral identity, immutable evidence, calibrated
+  verification, human-grounded corrections, exact-SHA delivery, and fleet
+  truth. Orchestrator auto-merge also stopped treating squash as a universal
+  default and now preserves live topology/history semantics.
 - [ ] **P0 closeout / depends on all feature PRs:** install final merged `main`
   into this server's Claude/Codex user config, preserve user state, remove
   completed local/remote branches, and finish clean on synchronized `main`.

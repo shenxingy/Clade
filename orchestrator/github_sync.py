@@ -16,6 +16,7 @@ from typing import Any
 import aiosqlite
 
 from config import GLOBAL_SETTINGS
+from merge_policy import enabled_merge_methods
 from task_queue import TaskQueue
 
 logger = logging.getLogger(__name__)
@@ -84,8 +85,8 @@ async def ensure_repo_invariants(
     - ensure_labels: `gh label create --force` for the orchestrator label +
       pending/running/done/failed (idempotent). Without these, Issues sync is
       silently DOA on fresh repos — every fail-open label call returns None.
-    - check_merge: `gh repo view --json viewerPermission,squashMergeAllowed`
-      so missing push rights / disabled squash merge surface before a run.
+    - check_merge: inspect viewer permission and every enabled history method
+      so missing authority or an unmergeable repository surfaces before a run.
 
     Fail-open by design: every gh failure lands in findings["warnings"] with a
     logged warning, never raised. On machines without gh auth or network this
@@ -93,7 +94,7 @@ async def ensure_repo_invariants(
     """
     findings: dict = {
         "labels_ensured": [], "warnings": [],
-        "viewer_permission": None, "squash_merge_allowed": None,
+        "viewer_permission": None, "merge_methods_allowed": [],
     }
     if ensure_labels:
         for label in (_gh_label(), *_STATUS_LABELS):
@@ -108,7 +109,9 @@ async def ensure_repo_invariants(
                 )
     if check_merge:
         rc, out, err = await _run_gh(
-            'gh repo view --json viewerPermission,squashMergeAllowed', project_dir
+            "gh repo view --json viewerPermission,mergeCommitAllowed,"
+            "rebaseMergeAllowed,squashMergeAllowed",
+            project_dir,
         )
         if rc != 0:
             findings["warnings"].append(
@@ -118,14 +121,16 @@ async def ensure_repo_invariants(
             try:
                 data = json.loads(out)
                 findings["viewer_permission"] = data.get("viewerPermission")
-                findings["squash_merge_allowed"] = data.get("squashMergeAllowed")
+                findings["merge_methods_allowed"] = sorted(
+                    enabled_merge_methods(data)
+                )
                 if findings["viewer_permission"] not in ("WRITE", "MAINTAIN", "ADMIN"):
                     findings["warnings"].append(
                         f"viewerPermission={findings['viewer_permission']} — push/merge will fail"
                     )
-                if findings["squash_merge_allowed"] is False:
+                if not findings["merge_methods_allowed"]:
                     findings["warnings"].append(
-                        "squash merge disabled — gh pr merge --squash will fail"
+                        "repository has no enabled pull-request merge method"
                     )
             except Exception:
                 findings["warnings"].append("gh repo view returned unparseable JSON")

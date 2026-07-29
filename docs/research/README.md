@@ -11,13 +11,15 @@ The two docs work as a pair:
 
 Each deep-dive in this folder has YAML frontmatter (`status`, `summary`, `integrated_items`, `needs_work_items`). This index rolls that up so you don't re-read 30 KB to find what's left to do. **Source of truth is each doc's frontmatter** — when you close a gap, update the doc, then refresh this index.
 
-> **2026-07-28 reconciliation:** the historical per-document gap counts below
-> are research provenance, not an executable queue. The authoritative open
-> program is the nineteen-item, dependency-labelled list in
-> [`TODO.md`](../../TODO.md) (MCP SDK v2 first; event redaction, evidence,
-> evals, routing, universal-harness completion, `/equip sync`, positioning,
-> local rollout/cleanup; plus one conditional Beads watch).
-> Universal-harness phases 0–2 landed in PR #34 (`2fcc82a`); do not reopen them.
+> **2026-07-28 closeout:** the historical per-document gap counts below are
+> research provenance, not an executable queue. Every unconditional item
+> promoted by the July re-screen has landed: MCP v2, redaction, immutable
+> evidence, human-reviewed eval learning/metrics, routing replay/cascade/
+> break-even, provider registry/conformance, compatibility retirement,
+> evidence-qualified North Star, and provider-neutral positioning. The
+> authoritative remaining work in [`TODO.md`](../../TODO.md) is server rollout
+> and branch cleanup plus explicitly conditional watches. Do not reopen the
+> historical lists without new evidence.
 
 - **Last reviewed:** 2026-07-28 (full expert/project re-screen and backlog reconciliation; prior 2026-07-15) · **Cadence:** refresh when a deep-dive's `status` changes or a new one lands.
 

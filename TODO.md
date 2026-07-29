@@ -292,9 +292,13 @@ backlog.
   Evidence completeness, confirmed false approvals, human overrides, accepted
   regression coverage, and exact source integrity remain denominator-explicit
   guardrails that throughput cannot offset.
-- [ ] **P3 · positioning · depends on implemented mechanisms:** reposition the
-  orchestrator around provider-neutral identity, evidence, verifier
-  calibration, correction learning, delivery, and fleet truth.
+- [x] **P3 · completed 2026-07-28 · positioning and merge semantics:** public
+  docs now describe Clade as a provider-neutral delivery control plane around
+  identity, immutable evidence, verifier calibration, human-grounded
+  correction learning, exact-SHA delivery, and fleet truth. Orchestrator
+  auto-merge no longer hard-codes squash: live children preserve topology,
+  one coherent commit rebases, and ambiguous multi-commit history stops for an
+  explicit semantic choice.
 - [ ] **P0 closeout · depends on all feature PRs:** install final merged `main`
   into this server's Claude/Codex config while preserving user state; delete
   completed local/remote branches and finish clean on synchronized `main`.

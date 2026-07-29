@@ -99,7 +99,8 @@ For most day-to-day work — bug fixes, small features, refactoring, codebase qu
 
 ### `/merge-pr NUMBER`
 **When:** Ready to merge.
-- Squash-merges the PR and deletes the feature branch
+- Locks the reviewed head, chooses merge/rebase/squash from live topology,
+  commit semantics, and repository policy, then verifies cleanup
 - Run after `/review-pr` gives the green light
 
 ### `/incident DESCRIPTION`

@@ -12,9 +12,14 @@
 
 # Clade
 
-**自主编码，进化而来。**
+**面向 coding agents 的 provider-neutral 交付控制平面。**
 
-132 个 skills、30 个 hooks、37 个 agents、一个安全守卫，以及一个纠正学习循环。Clade 现在同时提供 Claude Code 完整框架、Codex 原生插件，以及面向其他编辑器的 provider-neutral MCP bridge。
+Clade 把 agent 的工作变成可复查的交付：解析后的执行身份、不可变证据、
+校准过的验证、纠正学习，以及真实保留语义的 Git 历史。它同时提供 Claude Code
+完整框架、Codex 原生插件和面向其他客户端的 MCP bridge。
+
+可选的 **Orchestrator** 进一步提供 provider/model registry、证据与 eval
+控制平面、verifier-aware routing、交付状态，以及跨项目 fleet truth。
 
 > 如果它帮你省了时间，点个 star 能帮更多人找到它。出问题了？[提 issue](https://github.com/shenxingy/clade/issues/new/choose)。
 
@@ -24,14 +29,15 @@
 
 1. [安装](#安装)
 2. [MCP Server](#mcp-server--在任何-ai-编辑器中使用-skills)
-3. [它做什么](#它做什么)
-4. [自学习机制](#自学习机制)
-5. [Skills](#skills-132)
-6. [支持的语言](#支持的语言)
-7. [文档](#文档)
-8. [仓库结构](#仓库结构)
-9. [贡献](#贡献)
-10. [License](#license)
+3. [可信交付循环](#可信交付循环)
+4. [它做什么](#它做什么)
+5. [自学习机制](#自学习机制)
+6. [Skills](#skills-132)
+7. [支持的语言](#支持的语言)
+8. [文档](#文档)
+9. [仓库结构](#仓库结构)
+10. [贡献](#贡献)
+11. [License](#license)
 
 ## 安装
 
@@ -106,6 +112,23 @@ MCP package 通过 [Model Context Protocol](https://modelcontextprotocol.io)
 在 Codex 自身内部应优先使用原生插件，避免重复加载 skills 和启动嵌套 agent；
 Claude Code 完整框架已经原生安装 Clade skills，也不应重复挂载 MCP server。
 
+## 可信交付循环
+
+Clade 把六个维度分开处理，避免一次“看起来是绿的”运行悄悄改变 runtime、
+账号、历史或证据语义：
+
+| 层 | 合同 |
+|---|---|
+| 执行身份 | 分别解析 agent runtime、原生 connection、inference provider、wire protocol 和 opaque model |
+| 证据 | attempt 以 digest-linked revision 追加 task、timing、Git SHA、测试、oracle、成本、artifact 和 delivery 证据 |
+| Verifier 校准 | cheap→strong routing 默认关闭，必须有 deterministic verifier 证据；观察报告不能自动改策略 |
+| 纠正学习 | 显式纠正把被拒工作与人工上下文配对，形成待审 eval candidate；不存在自动 ground truth |
+| 交付 | exact reviewed SHA、live PR topology、CI 和仓库策略共同决定 merge 语义；squash 不是通用默认值 |
+| Fleet truth | provider catalog、任务、usage、证据健康和 delivery 状态都保留 provenance 与 freshness |
+
+证据和 oracle approval 是门禁与审计材料，不代表自动获得 publish/merge
+权限；外部副作用仍由仓库策略和明确授权决定。
+
 ## 它做什么
 
 | 时机 | 触发什么 | 效果 |
@@ -121,12 +144,15 @@ Claude Code 完整框架已经原生安装 Clade skills，也不应重复挂载 
 
 ## 自学习机制
 
-两个机制让 Clade 无需人工维护就与现实保持一致：
+三个机制让 Clade 与现实保持一致：
 
 - **Commit Lessons**（响应式）— `commit-archeology.sh` 从 `git log` 挖掘重复修复模式（wiring-gap、deploy-gap、compat-gap、**claude-overridden**），每次会话启动时注入 top 4。
 - **Doc Align**（预防式）— `doc-align.py` 在 `docs/facts.json` 中声明共享事实（从文件系统自动推导），检查/自动修复所有 `*.md` 的漂移。PostToolUse hook 在你编辑文档的瞬间标记漂移，过期数字到不了 commit。
+- **Correction Pairing**（人工定真）— 显式纠正把被拒工作与替代上下文配对；
+  Orchestrator 把它隔离成 eval candidate，只有显式人工 review 才能提升为 corpus truth。
 
-两者对任何运行 Claude Code 的项目都生效（全局，位于 `~/.claude/scripts/`），未启用的仓库静默跳过。
+Commit Lessons 与 Doc Align 在 Claude 完整框架中本地运行，未启用的仓库静默
+跳过。推断出的 revert 或异步信号不会自动写成规则。
 
 详见 [Self-Learning Mechanisms](docs/learning-mechanisms.md)。
 
@@ -162,7 +188,7 @@ Claude Code 完整框架已经原生安装 Clade skills，也不应重复挂载 
 | Skill | 功能 |
 |-------|------|
 | `/review-pr N` | AI 审查 PR diff — Critical / Warning / Suggestion |
-| `/merge-pr N` | Squash-merge PR 并清理分支 |
+| `/merge-pr N` | 按 topology 与 history 语义合并 exact reviewed PR，并清理分支 |
 | `/investigate` | 根因分析 — 假设未确认不动手修 |
 | `/incident DESC` | 事故响应 — 诊断、复盘、后续任务 |
 | `/cso` | 安全审计（OWASP + STRIDE） |
