@@ -33,9 +33,6 @@ from provider_registry import (  # noqa: E402
     _default_transport,
     _discover,
 )
-from execution_resolver import resolve_execution  # noqa: E402
-from worker_provider import get_agent_runtime  # noqa: E402
-from worker_routing import WorkerRoute  # noqa: E402
 
 
 CASES_DIR = Path(__file__).resolve().parent / "provider_cases"
@@ -183,6 +180,13 @@ def _write_native_profile(root: Path, case: Mapping[str, Any]) -> dict[str, str]
 
 
 def run_case(case: Mapping[str, Any]) -> dict[str, Any]:
+    # Offline fixture replay needs the full orchestrator dependency set. Keep
+    # these imports out of module scope so credential-gated live mode can SKIP
+    # safely on a bare stdlib runner before optional dependencies are installed.
+    from execution_resolver import resolve_execution
+    from worker_provider import get_agent_runtime
+    from worker_routing import WorkerRoute
+
     errors = validate_case(dict(case), str(case.get("id") or "fixture"))
     if errors:
         raise ValueError("; ".join(errors))
