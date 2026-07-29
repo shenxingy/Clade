@@ -249,8 +249,10 @@ backlog.
   now records parent-attempt lineage, queue/inference/verify milliseconds,
   resolved runtime/connection/model/effort/reason, final oracle, and outcome;
   preflight/spawn failures keep explicit empty phases instead of fake zeroes.
-- [ ] **P2 · routing replay · depends on telemetry/eval tooling:** build a
-  recorded routing replay corpus with fixed task/base/verifier inputs.
+- [x] **P2 · completed 2026-07-28 · routing replay:** offline matched-arm
+  fixtures pin task digest, base tree, and deterministic verifier, then compare
+  strong-self, native-cheap, and cheap→strong with denominator-explicit
+  pass@1/pass@k, efficiency, queue, variance, and sample metrics.
 - [ ] **P2 · routing policy · depends on replay:** enable a verifier-aware
   cascade only after replay evidence; keep it default-off beforehand.
 - [ ] **P2 · routing analysis · depends on telemetry:** report empirical

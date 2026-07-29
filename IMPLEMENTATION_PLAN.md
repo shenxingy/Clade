@@ -286,7 +286,7 @@ Minimum fields:
       `verify_ms`, final oracle, route reason, model, effort, and outcome.
     - Depends on: Step 5.
 
-11. **Build routing replay eval**
+11. **Build routing replay eval — completed 2026-07-28**
     - Files: new `orchestrator/evals/run_routing_eval.py`, sanitized fixtures,
       tests and documentation.
     - Compare strong-self, native-cheap, and cheap→strong cascade on fixed

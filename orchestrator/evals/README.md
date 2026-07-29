@@ -235,6 +235,38 @@ resolve the exact latest parent attempt. This JSON-only addition preserves the
 outer `clade.evidence/v1` and frozen SQLite schema while giving routing replay
 fixtures a stable, redacted source.
 
+## Routing replay
+
+Run the matched-arm replay offline:
+
+```bash
+python3 evals/run_routing_eval.py
+python3 evals/run_routing_eval.py --json
+```
+
+Each `routing_cases/*.json` record pins one sanitized task digest, exact base
+tree, and deterministic verifier contract, then carries one cheap and one
+strong recorded attempt projection. The runner makes no model, network, or
+subprocess calls. It compares:
+
+- `strong_self`: the recorded strong attempt;
+- `native_cheap`: the recorded cheap attempt;
+- `cheap_to_strong`: cheap first, then the matched strong fallback only when
+  cheap did not finish with a passing verifier and non-rejected oracle.
+
+Every policy reports explicit numerator/denominator/value objects for pass@1,
+pass@k, success/USD, success/wall-hour, and queue overhead, plus wall-time
+variance and sample/attempt counts. Empty denominators are `null`. The committed
+starter corpus is visibly marked `constructed:`; future human-reviewed
+production projections use `eval:` provenance and must keep the same
+task/base/verifier match.
+
+The default Step-12 eligibility gate requires at least six complete matched
+cases, no cascade pass@k regression versus strong-self, and no cascade
+success/USD or success/wall-hour regression. Insufficient samples yield **not
+evaluated**, not a pass. The replay passing is evidence to review a default-off
+policy; it does not itself enable routing.
+
 ## Supervisor cases
 
 `supervisor_eval.py` extracts the JSON-extraction snippet embedded in

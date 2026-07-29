@@ -52,8 +52,9 @@ executable or conditional.
 - [x] **P2 / RESOLVED 2026-07-28:** immutable attempt evidence records
   parent-attempt lineage, explicit queue/inference/verify phase timing, the
   resolved route, final oracle, and outcome without a SQLite schema change.
-- [ ] **P2 / depends on telemetry/evals:** build a recorded routing replay
-  corpus.
+- [x] **P2 / RESOLVED 2026-07-28:** an offline matched-arm routing corpus
+  compares strong-self, native-cheap, and cheap→strong on fixed sanitized
+  task/base/verifier inputs and fails closed below the declared sample gate.
 - [ ] **P2 / depends on replay:** add the default-off verifier-aware routing
   cascade only when replay evidence supports it.
 - [ ] **P2 / depends on telemetry:** publish empirical routing break-even
