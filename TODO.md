@@ -233,9 +233,10 @@ backlog.
   now create deduplicated, sanitized quarantine records pinned to an exact
   EvidenceBundle revision/digest. Human promotion remains the separate item
   below.
-- [ ] **P1 · eval review · depends on eval candidates:** add explicit human
-  review/promotion tooling and corpus provenance; never auto-accept ground
-  truth.
+- [x] **P1 · completed 2026-07-28 · eval review:** explicit CLI/API review
+  requires reviewer, reason, target, and a corpus-specific human label;
+  promotion atomically writes non-overwriting oracle/resolve fixtures with
+  exact evidence provenance, and rejection writes no corpus data.
 - [x] **P1 · completed 2026-07-28 · supply-chain:** `/equip audit` records the
   exact upstream commit; `/equip sync` refreshes and compares it, and
   `--apply` fails closed on legacy reports or drift until a new audit is

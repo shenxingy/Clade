@@ -24,8 +24,10 @@ from evidence_bundle import (
 from eval_candidates import (
     SCHEMA_VERSION as EVAL_CANDIDATE_SCHEMA_VERSION,
     canonical_diff_digest,
+    row_to_dict as eval_candidate_row_to_dict,
     validate_evidence_digest,
     validate_identifier,
+    validate_status,
     validate_trigger,
 )
 from runtime_redaction import merge_metadata, redact_runtime
@@ -1168,33 +1170,6 @@ class TaskQueue:
 
     # ─── Quarantined Eval Candidates ────────────────────────────────────────
 
-    @staticmethod
-    def _eval_candidate_row_to_dict(row) -> dict:
-        try:
-            payload = json.loads(row["payload_json"])
-            redaction_metadata = json.loads(row["redaction_metadata"])
-        except (TypeError, json.JSONDecodeError) as exc:
-            raise ValueError("persisted eval candidate contains invalid JSON") from exc
-        return {
-            "schema_version": row["schema_version"],
-            "candidate_id": row["candidate_id"],
-            "source_task_id": row["source_task_id"],
-            "source_attempt_id": row["source_attempt_id"],
-            "source_attempt_revision": row["source_attempt_revision"],
-            "source_evidence_digest": row["source_evidence_digest"],
-            "trigger": row["trigger"],
-            "diff_digest": row["diff_digest"],
-            "payload": payload,
-            "redaction_metadata": redaction_metadata,
-            "status": row["status"],
-            "decision_reason": row["decision_reason"],
-            "decided_by": row["decided_by"],
-            "decided_at": row["decided_at"],
-            "promotion_kind": row["promotion_kind"],
-            "promotion_ref": row["promotion_ref"],
-            "created_at": row["created_at"],
-        }
-
     async def create_eval_candidate(
         self,
         source_attempt_id: str,
@@ -1288,7 +1263,7 @@ class TaskQueue:
             await db.commit()
         if row is None:
             raise RuntimeError("eval candidate insert did not produce a row")
-        return self._eval_candidate_row_to_dict(row), created
+        return eval_candidate_row_to_dict(row), created
 
     async def get_eval_candidate(self, candidate_id: str) -> dict | None:
         await self._ensure_db()
@@ -1300,14 +1275,16 @@ class TaskQueue:
                 (candidate,),
             ) as cursor:
                 row = await cursor.fetchone()
-        return self._eval_candidate_row_to_dict(row) if row else None
+        return eval_candidate_row_to_dict(row) if row else None
 
     async def list_eval_candidates(
         self, *, status: str = "quarantined", limit: int = 100
     ) -> list[dict]:
         await self._ensure_db()
-        if status not in {"quarantined", "promoted", "rejected", "expired"}:
-            raise ValueError("invalid eval candidate status")
+        try:
+            status = validate_status(status)
+        except ValueError as exc:
+            raise ValueError("invalid eval candidate status") from exc
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
             raise ValueError("limit must be an integer from 1 to 1000")
         async with aiosqlite.connect(str(self._db_path)) as db:
@@ -1318,7 +1295,94 @@ class TaskQueue:
                 (status, limit),
             ) as cursor:
                 rows = await cursor.fetchall()
-        return [self._eval_candidate_row_to_dict(row) for row in rows]
+        return [eval_candidate_row_to_dict(row) for row in rows]
+
+    async def decide_eval_candidate(
+        self,
+        candidate_id: str,
+        *,
+        status: str,
+        reviewer: str,
+        reason: str,
+        promotion_kind: str | None = None,
+        promotion_ref: str | None = None,
+        decided_at: float | None = None,
+    ) -> dict:
+        """Apply one explicit human decision with a quarantined-state CAS."""
+
+        await self._ensure_db()
+        candidate = validate_identifier(candidate_id, field_name="candidate_id")
+        reviewer_check = redact_runtime(
+            str(reviewer or "").strip(), field_path="$.decided_by"
+        )
+        if reviewer_check.metadata.redacted:
+            raise ValueError("reviewer must be a non-sensitive stable identifier")
+        reviewer_id = validate_identifier(
+            reviewer_check.value, field_name="reviewer"
+        )
+        if status not in {"promoted", "rejected"}:
+            raise ValueError("decision status must be promoted or rejected")
+        decision = redact_runtime(str(reason or "").strip(), field_path="$.decision_reason")
+        if not decision.value:
+            raise ValueError("decision reason is required")
+        if len(decision.value) > 4000:
+            raise ValueError("decision reason must be at most 4000 characters")
+        if status == "promoted":
+            kind = validate_identifier(promotion_kind, field_name="promotion_kind")
+            ref = validate_identifier(promotion_ref, field_name="promotion_ref")
+        else:
+            kind = ref = None
+        timestamp = decided_at if decided_at is not None else time.time()
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            db.row_factory = aiosqlite.Row
+            await db.execute("BEGIN IMMEDIATE")
+            async with db.execute(
+                "SELECT * FROM eval_candidates WHERE candidate_id = ?",
+                (candidate,),
+            ) as cursor:
+                row = await cursor.fetchone()
+            if row is None:
+                await db.rollback()
+                raise ValueError(f"unknown eval candidate: {candidate}")
+            if row["status"] != "quarantined":
+                await db.rollback()
+                raise ValueError(
+                    f"eval candidate already decided: {row['status']}"
+                )
+            try:
+                prior_metadata = json.loads(row["redaction_metadata"])
+            except (TypeError, json.JSONDecodeError):
+                prior_metadata = {}
+            metadata = merge_metadata(
+                prior_metadata, decision.metadata
+            ).to_dict()
+            cur = await db.execute(
+                """UPDATE eval_candidates
+                   SET status = ?, decision_reason = ?, decided_by = ?,
+                       decided_at = ?, promotion_kind = ?, promotion_ref = ?,
+                       redaction_metadata = ?
+                   WHERE candidate_id = ? AND status = 'quarantined'""",
+                (
+                    status,
+                    decision.value,
+                    reviewer_id,
+                    timestamp,
+                    kind,
+                    ref,
+                    json.dumps(metadata, sort_keys=True),
+                    candidate,
+                ),
+            )
+            if cur.rowcount != 1:
+                await db.rollback()
+                raise ValueError("eval candidate decision lost a concurrent race")
+            async with db.execute(
+                "SELECT * FROM eval_candidates WHERE candidate_id = ?",
+                (candidate,),
+            ) as cursor:
+                decided = await cursor.fetchone()
+            await db.commit()
+        return eval_candidate_row_to_dict(decided)
 
     # ─── Interventions ───────────────────────────────────────────────────────
 
