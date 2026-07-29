@@ -1,6 +1,6 @@
 {
   "name": "clade",
-  "version": "0.3.1",
+  "version": "0.3.1+codex.20260729045401",
   "description": "Native Codex workflows, usage visibility, and safety hooks from the Clade autonomous coding toolkit.",
   "author": {
     "name": "Xingy Shen",

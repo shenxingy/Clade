@@ -55,8 +55,11 @@ executable or conditional.
 - [x] **P2 / RESOLVED 2026-07-28:** an offline matched-arm routing corpus
   compares strong-self, native-cheap, and cheap→strong on fixed sanitized
   task/base/verifier inputs and fails closed below the declared sample gate.
-- [ ] **P2 / depends on replay:** add the default-off verifier-aware routing
-  cascade only when replay evidence supports it.
+- [x] **P2 / RESOLVED 2026-07-28:** the verifier-aware cheap→strong cascade is
+  default-off and requires a declared deterministic verifier, bounded
+  low-risk ownership, replay coverage, and explicit task-type eligibility.
+  Missing or failing cheap verification escalates to strong; production
+  reports remain observational and cannot enable routing.
 - [x] **P2 / completed 2026-07-28:** publish production-only empirical routing
   break-even reports with sample counts, deterministic 95% intervals, visible
   exclusions, and a 30-sample floor. Reports stay observational and cannot
@@ -83,9 +86,11 @@ executable or conditional.
   verification, human-grounded corrections, exact-SHA delivery, and fleet
   truth. Orchestrator auto-merge also stopped treating squash as a universal
   default and now preserves live topology/history semantics.
-- [ ] **P0 closeout / depends on all feature PRs:** install final merged `main`
-  into this server's Claude/Codex user config, preserve user state, remove
-  completed local/remote branches, and finish clean on synchronized `main`.
+- [x] **P0 / RESOLVED 2026-07-28:** installed merged `main` into this server's
+  Claude/Codex user config, preserved the existing user key sets, migrated the
+  Orchestrator settings to canonical runtime/connection/merge fields, refreshed
+  the local Codex plugin cache, and removed completed branch state. Final
+  delivery returns to synchronized `main`.
 - [ ] **CONDITIONAL WATCH:** adopt Beads-style agent-filed note-to-self entries
   only if measured loop-runner context loss recurs.
 - [ ] **CONDITIONAL WATCH:** delete the remaining runtime input aliases and

@@ -299,9 +299,12 @@ backlog.
   auto-merge no longer hard-codes squash: live children preserve topology,
   one coherent commit rebases, and ambiguous multi-commit history stops for an
   explicit semantic choice.
-- [ ] **P0 closeout · depends on all feature PRs:** install final merged `main`
-  into this server's Claude/Codex config while preserving user state; delete
-  completed local/remote branches and finish clean on synchronized `main`.
+- [x] **P0 · completed 2026-07-28 · local rollout and cleanup:** installed
+  merged `main` into this server's Claude/Codex config, migrated the
+  Orchestrator settings to current canonical fields without exposing or
+  replacing user values, refreshed the local Codex plugin cache, and removed
+  completed local/remote branch state. Final delivery returns to synchronized
+  `main`.
 - [ ] **Conditional watch:** add Beads-style agent-filed note-to-self entries
   only when measured loop-runner cross-iteration context loss recurs.
 - [ ] **Conditional watch:** after one stable release reports zero compatibility

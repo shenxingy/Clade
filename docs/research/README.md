@@ -17,9 +17,9 @@ Each deep-dive in this folder has YAML frontmatter (`status`, `summary`, `integr
 > evidence, human-reviewed eval learning/metrics, routing replay/cascade/
 > break-even, provider registry/conformance, compatibility retirement,
 > evidence-qualified North Star, and provider-neutral positioning. The
-> authoritative remaining work in [`TODO.md`](../../TODO.md) is server rollout
-> and branch cleanup plus explicitly conditional watches. Do not reopen the
-> historical lists without new evidence.
+> authoritative remaining entries in [`TODO.md`](../../TODO.md) are explicitly
+> conditional watches; the server rollout and branch cleanup are complete. Do
+> not reopen the historical lists without new evidence.
 
 - **Last reviewed:** 2026-07-28 (full expert/project re-screen and backlog reconciliation; prior 2026-07-15) · **Cadence:** refresh when a deep-dive's `status` changes or a new one lands.
 
