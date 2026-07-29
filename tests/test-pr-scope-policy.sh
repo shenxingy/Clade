@@ -78,6 +78,10 @@ assert_contains \
   "verify-clean --id" \
   "delivery makes cleanup a verified transition"
 assert_contains \
+  "configs/skills/delivery/prompt.md" \
+  "abandon \\" \
+  "delivery records superseded work safely"
+assert_contains \
   "configs/skills/ship/prompt.md" \
   "features already reviewed in" \
   "release cannot bypass feature review"
