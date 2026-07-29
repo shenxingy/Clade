@@ -1,3 +1,7 @@
+-- index idx_evidence_bundles_task_attempt
+CREATE INDEX idx_evidence_bundles_task_attempt
+                    ON evidence_bundles(task_id, attempt_index, revision);
+
 -- table commits
 CREATE TABLE commits (
                         id TEXT PRIMARY KEY,
@@ -7,6 +11,33 @@ CREATE TABLE commits (
                         committed_at REAL,
                         pushed_at REAL,
                         merged_at REAL,
+                        FOREIGN KEY (task_id) REFERENCES tasks(id)
+                    );
+
+-- table evidence_bundles
+CREATE TABLE evidence_bundles (
+                        attempt_id TEXT NOT NULL,
+                        revision INTEGER NOT NULL CHECK (revision > 0),
+                        bundle_id TEXT NOT NULL,
+                        schema_version TEXT NOT NULL
+                            CHECK (schema_version = 'clade.evidence/v1'),
+                        task_id TEXT NOT NULL,
+                        attempt_index INTEGER NOT NULL CHECK (attempt_index > 0),
+                        lifecycle_state TEXT NOT NULL CHECK (
+                            lifecycle_state IN (
+                                'created', 'running', 'verifying',
+                                'delivery_pending', 'delivered', 'failed',
+                                'cancelled', 'reverted'
+                            )
+                        ),
+                        recorded_at REAL NOT NULL CHECK (recorded_at >= 0),
+                        evidence_json TEXT NOT NULL,
+                        redaction_metadata TEXT NOT NULL,
+                        previous_digest TEXT,
+                        payload_digest TEXT NOT NULL,
+                        PRIMARY KEY (attempt_id, revision),
+                        UNIQUE (bundle_id, revision),
+                        UNIQUE (task_id, attempt_index, revision),
                         FOREIGN KEY (task_id) REFERENCES tasks(id)
                     );
 
@@ -109,3 +140,56 @@ CREATE TABLE worker_messages (
                         read INTEGER DEFAULT 0,
                         redaction_metadata TEXT DEFAULT '{}'
                     );
+
+-- trigger evidence_bundles_insert_guard
+CREATE TRIGGER evidence_bundles_insert_guard
+                    BEFORE INSERT ON evidence_bundles
+                    BEGIN
+                        SELECT CASE
+                            WHEN NEW.revision != COALESCE((
+                                SELECT MAX(revision) + 1
+                                FROM evidence_bundles
+                                WHERE attempt_id = NEW.attempt_id
+                            ), 1)
+                            THEN RAISE(ABORT, 'evidence revision must append')
+                        END;
+                        SELECT CASE
+                            WHEN EXISTS (
+                                SELECT 1 FROM evidence_bundles
+                                WHERE task_id = NEW.task_id
+                                  AND attempt_index = NEW.attempt_index
+                                  AND attempt_id != NEW.attempt_id
+                            )
+                            THEN RAISE(ABORT, 'evidence attempt identity changed')
+                        END;
+                        SELECT CASE
+                            WHEN NEW.revision = 1 AND (
+                                NEW.lifecycle_state != 'created'
+                                OR NEW.previous_digest IS NOT NULL
+                            )
+                            THEN RAISE(ABORT, 'invalid initial evidence revision')
+                        END;
+                        SELECT CASE
+                            WHEN NEW.revision > 1 AND NEW.previous_digest IS NOT (
+                                SELECT payload_digest
+                                FROM evidence_bundles
+                                WHERE attempt_id = NEW.attempt_id
+                                ORDER BY revision DESC LIMIT 1
+                            )
+                            THEN RAISE(ABORT, 'evidence predecessor mismatch')
+                        END;
+                    END;
+
+-- trigger evidence_bundles_no_delete
+CREATE TRIGGER evidence_bundles_no_delete
+                    BEFORE DELETE ON evidence_bundles
+                    BEGIN
+                        SELECT RAISE(ABORT, 'evidence bundles are append-only');
+                    END;
+
+-- trigger evidence_bundles_no_update
+CREATE TRIGGER evidence_bundles_no_update
+                    BEFORE UPDATE ON evidence_bundles
+                    BEGIN
+                        SELECT RAISE(ABORT, 'evidence bundles are append-only');
+                    END;
