@@ -100,6 +100,7 @@ STATE_FILE=".claude/loop-state.json"
 LOG_DIR="logs/loop"
 INTERRUPT_STATE_FILE=".claude/interrupt-state.json"
 ITERATION=0
+ITERATION_START_COMMIT=""
 DRY_RUN=false
 # ────────────────────────────────────────────────────────────────
 
@@ -873,10 +874,13 @@ node_verify() {
 
   # Get list of changed files for focused verification
   local changed_files
-  changed_files=$(git diff --name-only 2>/dev/null | head -20 || true)
-  if [ -z "$changed_files" ]; then
-    changed_files=$(git diff --name-only HEAD~1..HEAD 2>/dev/null | head -20 || true)
-  fi
+  changed_files=$({
+    git diff --name-only 2>/dev/null || true
+    if [ -n "${ITERATION_START_COMMIT:-}" ] \
+       && [ "$(git rev-parse HEAD 2>/dev/null || true)" != "$ITERATION_START_COMMIT" ]; then
+      git diff --name-only "$ITERATION_START_COMMIT"..HEAD 2>/dev/null || true
+    fi
+  } | awk 'NF && !seen[$0]++' | head -20)
 
   if [ -z "$changed_files" ]; then
     log_info "No changed files to verify"
@@ -1338,6 +1342,7 @@ run_blueprint_loop() {
       exit_reason="pre_flight_failed"
       break
     fi
+    ITERATION_START_COMMIT=$(git rev-parse HEAD 2>/dev/null || true)
 
     # [DET] Check for interrupt (LangGraph breakpoint pattern)
     if check_interrupt; then
