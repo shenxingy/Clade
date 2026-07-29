@@ -218,6 +218,16 @@ export function SettingsPanel({ open, onClose }: Props) {
               <Toggle label="Auto-start tasks" value={f.auto_start} onChange={v => patch('auto_start', v)} />
               <Toggle label="Auto-push commits" value={f.auto_push} onChange={v => patch('auto_push', v)} />
               <Toggle label="Auto-merge PRs" value={f.auto_merge} onChange={v => patch('auto_merge', v)} />
+              <Row label="Merge history">
+                <select value={f.auto_merge_strategy ?? 'auto'}
+                  onChange={e => patch('auto_merge_strategy', e.target.value)}
+                  className="input-sm w-28">
+                  <option value="auto">semantic auto</option>
+                  <option value="merge">merge commit</option>
+                  <option value="rebase">rebase</option>
+                  <option value="squash">squash</option>
+                </select>
+              </Row>
               <Toggle label="Auto-review workers" value={f.auto_review} onChange={v => patch('auto_review', v)} />
               <Toggle label="Auto-oracle eval" value={f.auto_oracle} onChange={v => patch('auto_oracle', v)} />
               <Toggle label="Auto-scale workers" value={f.auto_scale} onChange={v => patch('auto_scale', v)} />

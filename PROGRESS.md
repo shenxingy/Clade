@@ -1,6 +1,19 @@
 # Progress Log
 
 ---
+### 2026-07-28 — Provider-Neutral Positioning + Truthful Merge History
+
+- Repositioned English/Chinese public docs around native Claude/Codex/MCP
+  surfaces and shared identity, evidence, evaluation, delivery, and fleet
+  contracts without implying that evidence grants publication authority.
+- Documented human-grounded correction pairing and corrected stale
+  Claude-only/Hermes migration claims.
+- Replaced Orchestrator's hard-coded squash merge with live policy:
+  merge-commit for child topology, rebase for one coherent commit, explicit
+  choice for ambiguous multi-commit history, and exact-head locking for every
+  automated merge.
+
+---
 ### 2026-07-28 — Evidence-Qualified North Star
 
 - Replaced “maximum autonomous hours” with a measurable verified delivery rate:

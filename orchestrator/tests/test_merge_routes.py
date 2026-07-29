@@ -184,16 +184,47 @@ def _no_labels() -> FakeProc:
 
 
 class TestMergeAllDoneAutoMerge:
-    def _patch(self, monkeypatch, fake_shell):
+    def _patch(
+        self,
+        monkeypatch,
+        fake_shell,
+        *,
+        commits: int = 1,
+        children: bool = False,
+    ):
+        async def _fake_run_gh(command, _project_dir):
+            if "--json commits,headRefName,headRefOid" in command:
+                payload = (
+                    '{"headRefName":"orchestrator/task-t1",'
+                    '"headRefOid":"abc123","commits":['
+                    + ",".join("{}" for _ in range(commits))
+                    + "]}"
+                )
+                return 0, payload, ""
+            if "gh repo view" in command:
+                return 0, (
+                    '{"mergeCommitAllowed":true,"rebaseMergeAllowed":true,'
+                    '"squashMergeAllowed":true}'
+                ), ""
+            if "gh pr list" in command:
+                payload = (
+                    '[{"baseRefName":"orchestrator/task-t1"}]'
+                    if children else "[]"
+                )
+                return 0, payload, ""
+            return 1, "", "unexpected command"
+
         monkeypatch.setattr(rt, "asyncio", AsyncioProxy(create_subprocess_shell=fake_shell))
+        monkeypatch.setattr(rt, "_run_gh", _fake_run_gh)
         monkeypatch.setitem(rt.GLOBAL_SETTINGS, "auto_review", False)
         monkeypatch.setitem(rt.GLOBAL_SETTINGS, "auto_merge", True)
+        monkeypatch.setitem(rt.GLOBAL_SETTINGS, "auto_merge_strategy", "auto")
 
     async def test_auto_merge_preferred_over_immediate(self, tmp_path, monkeypatch):
         w = FakeWorker()
         calls, fake_shell = _shell_dispatcher([
             ("gh pr create", FakeProc(PR_URL)),
-            ("gh pr view", _no_labels()),
+            ("--json labels", _no_labels()),
             ("--auto", FakeProc()),  # auto-merge supported
         ])
         self._patch(monkeypatch, fake_shell)
@@ -205,13 +236,17 @@ class TestMergeAllDoneAutoMerge:
         assert w.pr_merged is False
         merge_cmds = [c for c in calls if "gh pr merge" in c]
         assert len(merge_cmds) == 1 and "--auto" in merge_cmds[0]
+        assert "--rebase" in merge_cmds[0]
+        assert "--match-head-commit abc123" in merge_cmds[0]
         assert out["results"][0]["auto_merge"] is True
+        assert out["results"][0]["merge_strategy"] == "rebase"
+        assert out["results"][0]["head_sha"] == "abc123"
 
     async def test_falls_back_to_immediate_merge(self, tmp_path, monkeypatch):
         w = FakeWorker()
         calls, fake_shell = _shell_dispatcher([
             ("gh pr create", FakeProc(PR_URL)),
-            ("gh pr view", _no_labels()),
+            ("--json labels", _no_labels()),
             ("--auto", FakeProc(stderr=b"auto-merge is not allowed", returncode=1)),
             ("gh pr merge", FakeProc()),  # plain merge succeeds
         ])
@@ -225,12 +260,14 @@ class TestMergeAllDoneAutoMerge:
         merge_cmds = [c for c in calls if "gh pr merge" in c]
         assert len(merge_cmds) == 2
         assert "--auto" in merge_cmds[0] and "--auto" not in merge_cmds[1]
+        assert out["results"][0]["merge_strategy"] == "rebase"
+        assert out["results"][0]["head_sha"] == "abc123"
 
     async def test_do_not_merge_label_skips_merge(self, tmp_path, monkeypatch):
         w = FakeWorker()
         calls, fake_shell = _shell_dispatcher([
             ("gh pr create", FakeProc(PR_URL)),
-            ("gh pr view", FakeProc(stdout=b'{"labels": [{"name": "do-not-merge"}]}')),
+            ("--json labels", FakeProc(stdout=b'{"labels": [{"name": "do-not-merge"}]}')),
         ])
         self._patch(monkeypatch, fake_shell)
 
@@ -245,7 +282,7 @@ class TestMergeAllDoneAutoMerge:
         w = FakeWorker()
         calls, fake_shell = _shell_dispatcher([
             ("gh pr create", FakeProc(PR_URL)),
-            ("gh pr view", FakeProc(stderr=b"network down", returncode=1)),
+            ("--json labels", FakeProc(stderr=b"network down", returncode=1)),
         ])
         self._patch(monkeypatch, fake_shell)
 
@@ -261,7 +298,7 @@ class TestMergeAllDoneAutoMerge:
         w = FakeWorker()
         calls, fake_shell = _shell_dispatcher([
             ("gh pr create", FakeProc(PR_URL)),
-            ("gh pr view", _no_labels()),
+            ("--json labels", _no_labels()),
             ("gh pr merge", FakeProc(stderr=b"merge conflict", returncode=1)),
         ])
         self._patch(monkeypatch, fake_shell)
@@ -271,6 +308,39 @@ class TestMergeAllDoneAutoMerge:
         assert out["merged"] == 0 and out["auto_merge_queued"] == 0
         assert w.pr_merged is False
         assert out["results"][0]["error"] == "gh pr merge failed"
+
+    async def test_ambiguous_multi_commit_history_is_not_auto_squashed(
+        self, tmp_path, monkeypatch
+    ):
+        w = FakeWorker()
+        calls, fake_shell = _shell_dispatcher([
+            ("gh pr create", FakeProc(PR_URL)),
+            ("--json labels", _no_labels()),
+        ])
+        self._patch(monkeypatch, fake_shell, commits=3)
+
+        out = await rt.merge_all_done(s=_fake_session([w], tmp_path))
+
+        assert out["merged"] == 0 and out["auto_merge_queued"] == 0
+        assert "multi-commit history is ambiguous" in out["results"][0]["skipped"]
+        assert not any("gh pr merge" in command for command in calls)
+
+    async def test_live_child_uses_merge_commit(self, tmp_path, monkeypatch):
+        w = FakeWorker()
+        calls, fake_shell = _shell_dispatcher([
+            ("gh pr create", FakeProc(PR_URL)),
+            ("--json labels", _no_labels()),
+            ("--auto", FakeProc()),
+        ])
+        self._patch(monkeypatch, fake_shell, children=True)
+
+        out = await rt.merge_all_done(s=_fake_session([w], tmp_path))
+
+        assert out["auto_merge_queued"] == 1
+        merge_cmd = next(command for command in calls if "gh pr merge" in command)
+        assert "--merge" in merge_cmd
+        assert "--squash" not in merge_cmd
+        assert out["results"][0]["merge_strategy"] == "merge"
 
     async def test_non_orchestrator_branch_never_merged(self, tmp_path, monkeypatch):
         w = FakeWorker(branch_name="feature/manual-work")
@@ -309,4 +379,6 @@ class TestGhHelpers:
         async def _boom(*a, **k):
             raise OSError("gh not installed")
         monkeypatch.setattr(rt, "asyncio", AsyncioProxy(create_subprocess_shell=_boom))
-        assert await rt._gh_merge_pr("https://x/pull/1", tmp_path, auto=True) is False
+        assert await rt._gh_merge_pr(
+            "https://x/pull/1", tmp_path, True, "rebase", "abc123"
+        ) is False

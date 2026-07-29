@@ -269,6 +269,7 @@ export interface GlobalSettings {
   auto_start: boolean;
   auto_push: boolean;
   auto_merge: boolean;
+  auto_merge_strategy: 'auto' | 'merge' | 'rebase' | 'squash';
   auto_review: boolean;
   auto_oracle: boolean;
   auto_scale: boolean;

@@ -4,7 +4,10 @@
 
 An **AI Software Development Engineer (SDE)** — not a collection of scripts, but a complete system that mirrors how a senior developer works: receive requirements, plan, build, verify, maintain. The human sets direction; the system does everything else.
 
-**One monorepo, two pillars:** CLI configs (the engine) + Orchestrator (the cockpit). Same primitives, two interfaces, one goal.
+**One monorepo, shared delivery contracts:** native Claude Code and Codex
+surfaces, an MCP bridge, and an optional Orchestrator control plane. The
+interface and runtime may change; identity, evidence, verification, correction,
+and delivery semantics do not.
 
 ---
 
@@ -113,7 +116,7 @@ The system has implicit roles, not explicit microservices. Each role maps to exi
 │  Sets direction. Reviews results. Resolves Tier 3 blockers.     │
 └──────────────┬──────────────────────────────────────────────────┘
                │
-               │  Claude Code TUI  /  Orchestrator Web UI
+               │ Claude Code / Codex / MCP clients / Orchestrator Web
                │
 ┌──────────────┴──────────────────────────────────────────────────┐
 │                                                                   │
@@ -139,16 +142,22 @@ The system has implicit roles, not explicit microservices. Each role maps to exi
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-**No central dispatcher.** Each role is triggered directly (user invokes a skill or start.sh chains them). A dispatcher would add complexity without value — the phases have different trigger patterns (capture = anytime, build = long-running, patrol = periodic) that don't benefit from uniform routing.
+**No mandatory universal dispatcher.** Native skills can run directly in their
+own agent runtime. Projects that need queues, fleet visibility, evidence, or
+delivery gates can opt into the Orchestrator dispatcher without making it a
+dependency for every workflow.
 
 ---
 
-## Two Pillars
+## Surfaces and Control Plane
 
-### CLI Layer — The Product Center
-`configs/` → installed to `~/.claude/` via `install.sh`
+### Native and Bridge Surfaces
+`configs/` for Claude Code · `plugins/clade/` for Codex · `mcp-package/` for MCP
 
-**The interface you live in.** Where work actually happens: `/commit`, `/loop`, `/verify`, `/orchestrate`. Works everywhere: SSH, tmux, CI, phone via Tailscale. No server required.
+Workflows execute in the runtime the user selected. Claude Code receives the
+full CLI framework; Codex receives provider-native lifecycle skills and hooks;
+MCP clients can invoke the shared catalog through either supported runtime. No
+Orchestrator server is required for these native paths.
 
 | Category | Components |
 |---|---|
@@ -157,15 +166,23 @@ The system has implicit roles, not explicit microservices. Each role maps to exi
 | **Hooks** | session-context, guardian, post-edit-check, verify-task-completed, correction-detector |
 | **Templates** | CLAUDE.md, task presets (test-writer, refactor-bot, security-scan) |
 
-**Strengths:** Scriptable, composable, safe for self-modification (scripts external to codebase), works in any environment, zero-dependency.
+**Strengths:** Scriptable, composable, runtime-native, safe for
+self-modification, and usable without a central service.
 
-### Orchestrator Layer — Observability + Gates + Execution Adapter
+### Orchestrator — Evidence + Evaluation + Delivery + Fleet Control
 `orchestrator/` (Python FastAPI server)
 
-**Three separate roles:**
-- **Observability** (metrics, dashboards, cost tracking) — "What's happening across all my projects?"
-- **Gates** (quality checks, oracle validation, threshold enforcement) — Enforces standards before pushing
-- **Execution adapter** (task dispatch, worker pool, GitHub sync) — Routes work to CLI workers, collects results
+**Five separate roles:**
+- **Identity** — resolves runtime, native connection, inference provider,
+  protocol, model, and capabilities without copying credentials.
+- **Evidence** — persists immutable attempt revisions linking execution,
+  timing, exact Git SHAs, tests, oracle, cost, artifacts, and delivery state.
+- **Evaluation** — quarantines failures/corrections for explicit human review
+  and reports denominator-explicit verifier health.
+- **Delivery** — binds review and merge to an exact SHA, live topology,
+  repository policy, and explicit authority.
+- **Fleet truth** — reports fresh task, worker, provider catalog, usage, and
+  delivery state across projects.
 
 **Web UI** (`orchestrator/web/`): Read-only observation window. Displays task queue, worker status, cost dashboards, settings. All execution happens via CLI workers — the UI is a window into that work, not an executor itself.
 
@@ -173,7 +190,7 @@ The system has implicit roles, not explicit microservices. Each role maps to exi
 |---|---|
 | Ideas inbox | Async idea input, AI evaluation, one-click execute via start.sh |
 | Worker dashboard | Real-time status, logs, token bars per worker |
-| Quality gates | Oracle validation, model routing, context budget enforcement |
+| Quality gates | Oracle validation, evidence health, default-off calibrated routing |
 | Task management | Queue overview, add/run/delete/prioritize tasks |
 | Process manager | Start/stop start.sh processes, view logs and reports |
 | Multi-project view | All sessions at a glance — queue depth, cost rate, health |
@@ -242,7 +259,9 @@ start.sh --resume --hours 8         # resume where it left off
 
 | Interface | When | What |
 |---|---|---|
-| **Claude Code TUI** | Daily development | `/start`, `/loop`, `/commit`, `/verify` — hands-on-keyboard flow |
+| **Claude Code** | Full framework and overnight automation | `/start`, `/loop`, `/commit`, `/verify` |
+| **Codex** | Provider-native lifecycle and delivery | `$clade:*` skills and native hooks |
+| **MCP clients** | Shared skills from other editors | Claude or Codex execution runtime |
 | **Orchestrator Web** | Morning check-in, multi-project oversight | Dashboard: all projects at a glance, cost burn rate, worker health |
 | **Telegram/Webhook** | Away from desk | Notifications: "Loop converged", "Blocker written", "Budget 80%" |
 | **BRAINSTORM.md** | Anytime, anywhere | Lowest-friction idea capture — even from phone via GitHub edit |
@@ -335,7 +354,8 @@ Transformed the orchestrator GUI from a developer debug panel into an AI SDE ope
 
 ## Long-Term Direction
 
-Beyond Phase 13, the system's evolution follows the same principle: **reduce human time per unit of output.**
+Beyond Phase 13, the system's evolution follows the same principle:
+**increase verified delivery without trading away evidence or human authority.**
 
 Potential directions (not committed — these live in BRAINSTORM.md when ready):
 - **Voice interface** — dictate ideas and direction instead of typing
