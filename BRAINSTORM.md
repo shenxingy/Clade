@@ -34,8 +34,9 @@ executable or conditional.
   from incidents, oracle disagreements, reverts, and explicit corrections.
 - [ ] **P1 / depends on eval candidates:** add human review/promotion tooling;
   never assign ground truth automatically.
-- [ ] **P1 / independent:** re-screen `/equip sync` against the exact fetched
-  upstream commit before applying it.
+- [x] **P1 / RESOLVED 2026-07-28:** `/equip` approvals are bound to the exact
+  audited upstream commit; apply refreshes the cache and fails closed on
+  legacy reports or drift until re-screened.
 - [ ] **P2 / depends on evidence/evals:** publish evidence completeness,
   false-approval, human-override, and regression-coverage metrics.
 - [ ] **P2 / data first:** persist attempt/phase timing and routing telemetry.

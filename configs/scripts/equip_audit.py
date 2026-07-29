@@ -333,6 +333,7 @@ def build_report(
     upstream_id: str,
     upstream_repo: str,
     upstream_ref: str,
+    upstream_commit: Optional[str],
     upstream_version: Optional[str],
     audits: list[SkillAudit],
     native_names: set[str],
@@ -348,6 +349,8 @@ def build_report(
     lines.append("")
     lines.append(f"- **Audited:** {now}")
     lines.append(f"- **Ref:** `{upstream_ref}`" + (f" (tag {upstream_version})" if upstream_version else ""))
+    if upstream_commit:
+        lines.append(f"- **Audited commit:** `{upstream_commit}`")
     lines.append(f"- **Skills evaluated:** {len(audits)}")
     lines.append(f"- **Decisions:** {len(adopt)} ADOPT · {len(review)} NEEDS-REVIEW · {len(skip)} SKIP")
     lines.append("")
@@ -417,17 +420,20 @@ def main() -> int:
     upstream_id: str
     upstream_repo: str
     upstream_ref: str
+    upstream_commit: Optional[str]
 
     # Self-audit
     if target == ".":
         upstream_id = "self"
         upstream_repo = f"(local project {project.name})"
         try:
-            upstream_ref = subprocess.run(
+            upstream_commit = subprocess.run(
                 ["git", "rev-parse", "HEAD"], cwd=project, capture_output=True, text=True
-            ).stdout.strip()[:7] or "workdir"
+            ).stdout.strip() or None
+            upstream_ref = upstream_commit[:7] if upstream_commit else "workdir"
         except Exception:
             upstream_ref = "workdir"
+            upstream_commit = None
         audit_root = skills_root(project)
         skill_dirs = [
             p for p in sorted(audit_root.iterdir())
@@ -459,7 +465,11 @@ def main() -> int:
         audit_root = detect_upstream_skills_dir(cache_path) or cache_path
         upstream_id = upstream.id
         upstream_repo = upstream.repo
-        upstream_ref = current_commit(cache_path)[:7]
+        upstream_commit = current_commit(cache_path)
+        if not upstream_commit:
+            print(f"ERROR: could not resolve audited commit for {upstream.repo}", file=sys.stderr)
+            return 2
+        upstream_ref = upstream_commit[:7]
         upstream_version = latest_tag(cache_path)
 
     # Overlap detection:
@@ -512,6 +522,7 @@ def main() -> int:
         upstream_id=upstream_id,
         upstream_repo=upstream_repo,
         upstream_ref=upstream_ref,
+        upstream_commit=upstream_commit,
         upstream_version=upstream_version if target != "." else None,
         audits=audits,
         native_names=native_names,
