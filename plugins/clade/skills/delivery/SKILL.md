@@ -316,6 +316,13 @@ or MERGED—and its head still equals the recorded lease. READY work without a
 verifiable closed PR, merged work, and cleaned work are rejected. `abandon` is
 not a CI, review, or integration bypass.
 
+For GitHub-backed unpublished records, the controller also discovers PRs by
+the recorded branch instead of trusting a possibly stale `published` flag.
+Any unrecorded OPEN PR blocks abandonment; an unrecorded MERGED PR at the exact
+recorded head must be reconciled rather than mislabeled abandoned. Terminal
+PRs at later heads are retained as related audit evidence for a superseded
+stale record.
+
 Abandonment terminalizes the branch lease but does not delete work. Preserve
 anything still needed, remove only the owned worktree/branch under recorded
 authority, then run `verify-clean`.
