@@ -121,6 +121,7 @@ section; it is an ongoing log, not historical research.
 [2026-07-29] loop-runner: reproduced the 2026-06-12 false-stuck path on the documentation convergence goal — two worker waves committed and verified the requested state, but the coordinator left all 5/5 goal checkboxes open and exited `stuck_no_commits`. Worker-side marking was deliberately removed for race safety, so the replacement must be coordinator-owned completion reconciliation. PROMOTED to TODO.md P0 follow-on.
 [2026-07-29] loop-runner: RESOLVED the false-stuck path with exact supervisor line/text bindings, coordinator-only post-gate reconciliation, real worker-commit counting, and non-zero worker failure propagation; deterministic tests now reach same-iteration `converged`.
 [2026-07-29] loop-runner: live validation hit the Claude session limit, but the runner discarded the provider response and retried it as an empty plan until `max_iterations` / FIXED by preserving raw failure evidence and exiting once as resumable `supervisor_failed`.
+[2026-07-29] install.sh: final source/deployed parity found stale nested `references/references` and `assets/assets` trees under repo-managed skills / FIXED by exact per-skill mirroring with an unrelated-user-skill preservation regression.
 
 ---
 

@@ -239,6 +239,9 @@ fi
 
 # Seed a stale pre-migration mirror so the reinstall exercises the cleanup path
 echo "stale pre-2026-07-10 mirror" > "$CLAUDE_DIR/agents/available-skills.md"
+mkdir -p "$CLAUDE_DIR/skills/ads/references/references" "$CLAUDE_DIR/skills/private"
+echo "stale nested copy" > "$CLAUDE_DIR/skills/ads/references/references/stale.md"
+printf '%s\n' '---' 'name: private' 'description: User-owned test skill.' '---' > "$CLAUDE_DIR/skills/private/SKILL.md"
 
 install_log2="$SANDBOX/install-2.log"
 if bash "$SRC/install.sh" </dev/null >"$install_log2" 2>&1; then
@@ -253,6 +256,15 @@ if [[ -e "$CLAUDE_DIR/agents/available-skills.md" ]]; then
 else
   pass "reinstall migrates away stale agents/available-skills.md"
 fi
+
+if [[ -e "$CLAUDE_DIR/skills/ads/references/references" ]]; then
+  fail "reinstall removes stale nested repo-managed skill content"
+else
+  pass "reinstall removes stale nested repo-managed skill content"
+fi
+[[ -f "$CLAUDE_DIR/skills/private/SKILL.md" ]] \
+  && pass "reinstall preserves unrelated user-owned skills" \
+  || fail "reinstall preserves unrelated user-owned skills"
 
 # Regression for ab06c33: plain cp used to clobber the learned-rules section
 sentinel_count=$(grep -c "$SENTINEL_RULE" "$CLAUDE_DIR/CLAUDE.md" 2>/dev/null || true)
