@@ -12,6 +12,134 @@ Past resolved/deferred items live in [`docs/archive/BRAINSTORM-resolved.md`](doc
 
 ---
 
+## [Research] 2026-07-28 — 全量重学：人物、近期 commits 与 2026-H2 agent 工程转向
+
+用户问题：把此前研究过和 watch-list 上的人物、项目重新学一遍，重点检查近期
+commit/文章是否说明旧做法已经过时。研究窗口优先取 2026-05-01 至今；没有新公开
+证据时回溯到 2026-01，并明确标成“未发现”，不把沉默解释成转向。
+
+**总判断：旧的 loop 没有被淘汰，但它已经从“自动写代码的循环”升级成“能交付
+可验证证据的循环”。** 近期最一致的变化不是堆更多 agent，而是：
+
+1. **maker 与 checker 分离，交付物必须自带证据。** 测试、截图/视频、成本、
+   模型、commit、verdict 要能一起复查，不能只收一句“完成了”。
+2. **失败进入永久学习回路。** incident、错误审批和人工纠正应进入 regression
+   corpus；下次发布前重放，而不是只写一段 retrospective。
+3. **持久 thread/turn + 可重放事件正在成为 harness 核心。** CLI/TUI/IDE 只是
+   client，恢复、审批、背压和 schema 才是稳定层。
+4. **skills/hooks/playbooks 变成 repo-owned policy。** 指令和工具按需披露；
+   产品里的 slash command、角色名和 UI 布局反而是最不值得复制的部分。
+5. **安全默认值进入日常工程。** 日志脱敏、容器/Action pin、调用者权限透传、
+   幂等副作用和 worktree 隔离不再是附加项。
+
+### 人物重新核查
+
+| 人物 | 最近可验证信号 | 相比旧认识的变化 | 对 Clade 的含义 |
+|---|---|---|---|
+| **Geoffrey Huntley** | [Everything is a Ralph loop](https://ghuntley.com/loop/) 与 [Don't waste your back pressure](https://ghuntley.com/pressure/)（2026-01-17） | 没有转向复杂 swarm；更明确反对无约束 multiplexing，强调 one-task-per-loop 和失败反馈永久化 | `/loop` 方向仍对；并行只用于真正独立的读或隔离写，重复失败必须落成 test/hook/rule |
+| **Dexter Horthy / HumanLayer** | 最近可确认的一手代码活动是 [humanlayer#936](https://github.com/humanlayer/humanlayer/pull/936)（2026-01-10） | 2026-05 后未发现足够公开证据，不能声称 12-Factor Agents 已换方向 | 保留 approval/escalation boundary；不要从沉默推导新架构 |
+| **Garry Tan / gstack** | [gstack CHANGELOG](https://github.com/garrytan/gstack/blob/main/CHANGELOG.md)：2026-03 至 05 增加 append-only learnings、置信度、衰减、transcript 检索和并发 ship collision guard | 从技能 preamble 转向“有 provenance、confidence、decay 的持久记忆”，同时保护交付并发 | Clade 的 corrections/rules 需要继续保持来源与失效语义；delivery 锁方向得到验证 |
+| **Addy Osmani** | [Loop Engineering](https://addyosmani.com/blog/loop-engineering/)（06-07）、[Agentic Code Review](https://addyosmani.com/blog/agentic-code-review/)（06-15）、[Own the Outer Loop](https://addyosmani.com/blog/own-the-outer-loop/)（07-15）、[Software Factories, Light and Dark](https://addyosmani.com/blog/software-factories/)（07-20） | 从“如何跑 loop”推进到“人必须拥有 outer-loop 的责任、证据和 ship verdict”；也警告同族模型 checker 有相关盲点 | North Star 不能只看 autonomous hours；需要同时看 evidence quality、false approval 与 human-owned verdict |
+| **Boris Cherny** | 2026-06 meetup 仍以“从写源码到管理 agents”为主；[Claude Code issue #42796](https://github.com/anthropics/claude-code/issues/42796) 记录 adaptive thinking 偶发零推理时可回退固定 reasoning budget | 没找到 2026-05 后可稳定归属的个人 commit；可确认的是“自动 loop 也要保留确定性回退旋钮” | 记录 resolved model/effort 和失败轨迹；模型策略变化不能让运行不可解释 |
+| **Thorsten Ball** | 最近可确认的 agent 一手内容仍是 [Joy & Curiosity #73](https://registerspill.thorstenball.com/p/joy-and-curiosity-73)（2026-02-08） | 2026-05 后无足够新证据 | 旧的最小 agent loop 仍是参考，不据此发明新缺口 |
+| **Simon Willison** | [Claude Code team fireside](https://simonwillison.net/2026/Jul/21/cat-and-thariq/)（07-21）、[sqlite-utils 4.0rc2](https://simonwillison.net/2026/Jul/5/sqlite-utils-fable/)（07-05）、[让 agent 录 demo 视频](https://simonwillison.net/2026/Jun/30/shot-scraper-video/)（06-30） | 从“代码能跑”进一步要求可观察 demo、公开成本/agent 贡献；incident PR 会进入 code-review eval set | UI/行为任务应产出 replayable demo；事故与错误审批自动加入 eval corpus |
+| **Hamel Husain** | [Evals Skills for Coding Agents](https://hamel.dev/blog/posts/evals-skills/index.html)（03-02）、[It's Hard to Eval Is a Product Smell](https://hamel.dev/blog/posts/eval-smell/index.html)（06-29） | 从事后打一个 generic score，转向让产品先输出来源、中间计算、不确定项和可重跑 artifact | task output 设计本身必须可评估；先定义 evidence schema，再谈更强 judge |
+| **Armin Ronacher** | [Pi: The Minimal Agent Within OpenClaw](https://lucumr.pocoo.org/2026/1/31/pi/)（01-31） | 从大工具面/大 prompt 收缩到 Read/Write/Edit/Bash 小核心；状态、extensions、session tree 在 context 外按需加载 | 保持 worker core 小，工具与 skills progressive disclosure；review 用 fork/session，不把全部历史重放进 prompt |
+| **Mitchell Hashimoto** | [My AI Adoption Journey](https://mitchellh.com/writing/my-ai-adoption-journey)（02-05） | 从同步盯 agent 转向高成功率任务后台化、关通知；每次失误工程化成以后不再发生的 harness check | Clade 的 corrections→rule/test/hook 是正确方向；人不应被 agent 中间状态反向打断 |
+| **Andrej Karpathy** | [No Priors 访谈](https://www.nopriors.com/p/andrej-karpathy-on-code-agents-autoresearch)（03-20） | 人的工作继续上移到定义搜索空间、评测和选择 loop；公开的“80% agent”比例只有转引，不能当精确 telemetry | 不追逐使用比例；保存每轮可比较 eval 与人类 touch-up，测 verified outcome |
+| **Kazuhiro Sera (`seratch`)** | [openai-agents-python#3993](https://github.com/openai/openai-agents-python/pull/3993)，merge `a6cb92244211`：日志路径脱敏；[openai-agents-js#1535](https://github.com/openai/openai-agents-js/pull/1535)，merge `58e3a4396ea6`：导出 lifecycle/tool helper types（均 07-28） | 从 examples/编排使用者走到双语言 SDK 的稳定 lifecycle API 与默认日志安全 | 对外 adapter 要有稳定、类型化 lifecycle；所有 runtime event 在落盘前统一脱敏 |
+| **Grant Birkinbine (`GrantBirki`)** | [codex-security#15](https://github.com/openai/codex-security/pull/15)，merge `e0dfd8881068`：pin customer container images 并恢复 SDK CI（07-28） | IssueOps/审计习惯延伸到供应链和“安全修复必须恢复验证链” | Clade 已 pin GitHub Actions 到完整 SHA；后续容器也应 pin digest，安全变更不得绕过 SDK/CI |
+| **Harry Bagdi (`hbagdi`)** | [cilium#47571](https://github.com/cilium/cilium/pull/47571)，当前 head `27d7b40a8c65`：update race 后继续 identity GC（07-28，open） | 最新公开信号是分布式 reconciliation 的竞态恢复，不是 agent 框架新抽象 | 重试/cleanup 必须幂等；进程恢复不能只改 DB 状态而忽略仍存活的副作用 |
+| **Dalton Hubble (`dghubble`)** | [afterburn#1280](https://github.com/coreos/afterburn/pull/1280)，merge `6bcfb38cc123`：Oracle Cloud nested metadata（07-24） | 持续强调 provider 输入弱结构化、fixture 与兼容处理 | provider adapter 不假设扁平 schema；用 recorded fixtures 验证兼容范围 |
+| **Peter Bakkum (`bakks`)** | 2026-05 后未发现可靠公开 commit/event | 不能证明旧的交互安全 DX 有新转向 | 无新增动作 |
+| **Yiheng Xu (`yxu-oai`)** | 2026-05 后未发现可归属工程 commit；最近相关公开研究仍是 [OpenCUA](https://arxiv.org/abs/2508.09123) | 研究作者身份不能替代近期工程证据 | 保留 GUI action trace/replay 旧结论，不新增推断 |
+| **Vincent Tsao** | 2026-05 后未找到可靠个人 commit；只能确认长期 Bazel/依赖生态维护背景 | 无足够信号 | 无新增动作 |
+| **Anton Tananaev** | [Traccar 6.13.3](https://github.com/traccar/traccar/releases/tag/v6.13.3)（05-06）及真实部署 issue 维护 | 是稳定 release/实机复现范例，不应继续误列为 OpenAI agent 人物 | 学 release discipline，不推导 agent 机制 |
+| **Chao Sun** | OpenAI 官方 [Inside our in-house data agent](https://openai.com/index/inside-our-in-house-data-agent/)（01-29）；其 OpenAI/DataFusion 身份可确认，但文章并非他署名 | 数据 agent 从静态 metadata/RAG 转向每日 usage+人工注释+代码 enrichment；运行时按需检索、golden SQL 持续 eval、权限透传、减少工具 | repo 语义索引必须持续刷新；行为锚点做 canary eval；外部操作沿用调用者权限。机制可信度高，个人归因仅中等 |
+
+### 活跃项目近期 commits：哪些是方向，哪些只是噪声
+
+| 项目 | 近期证据 | 当前应学习的稳定机制 | 不应复制的表面 |
+|---|---|---|---|
+| **OpenAI Codex** | [app-server README](https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md) 与 0.130.0 release：versioned JSON-RPC、Thread/Turn、远程控制、分页、live config refresh | 把 core 暴露成有 schema、事件、审批、backpressure 的协议；clients 可替换 | 当前 TUI、slash names、默认模型 |
+| **Claude Code** | [CHANGELOG](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md)：plugin/agent SDK、worktree baseRef、effort hook、hook feedback；legacy SDK entrypoint 已移除 | lifecycle hooks、worktree isolation、structured hook feedback、权限边界 | 旧 SDK 调用入口和特定 feature flag |
+| **LangGraph** | [`413414573423`](https://github.com/langchain-ai/langgraph/commit/41341457342327166d72fc11952ab28fb61ec0bf)，1.2.10（07-28） | node checkpoint、thread id、interrupt/resume；node 重跑要求副作用幂等 | 图 DSL 本身 |
+| **CrewAI** | [`f15844b21966`](https://github.com/crewAIInc/crewAI/commit/f15844b21966e35dff2f656ce8724b985703043c)（07-28）：skills progressive disclosure | 按需加载 skill/tool 指令 | “角色/crew”命名即架构 |
+| **OpenHands** | [`2965aca5cac6`](https://github.com/OpenHands/OpenHands/commit/2965aca5cac67aeebb36ef7d05b64fc1c695fc16)（07-28）；组织拆出 SDK/CLI/extensions | 可替换 runtime、轨迹与 eval；UI 只是 client | 单体 web/container 产品形态 |
+| **Qodo / PR-Agent** | [`b249e568e0c0`](https://github.com/The-PR-Agent/pr-agent/commit/b249e568e0c0fb6c674ace55fe95d02f62f8f3b3)（07-26）；向 shareable playbooks/commands 扩展 | repo-owned、可审查的 review playbook + CI gate | 单个 PR bot 命令集合 |
+| **OpenCode** | [`a45c2b917e65`](https://github.com/anomalyco/opencode/commit/a45c2b917e657e50881117e8c3f85f4bff06e47d)，v1.18.9（07-28） | client/server、provider-agnostic core、general subagent/LSP | TUI 布局 |
+| **Goose / ACP** | [`5b547350e2f9`](https://github.com/aaif-goose/goose/commit/5b547350e2f9e44b3d73aca0a6422b60ea302440)（07-28）及 ACP 迁移 | agent-client protocol 与内部 orchestration 分层；MCP 管工具、ACP 管会话/控制 | 当前 extension catalog |
+| **Vercel AI SDK** | [`6a5bdffacd2a`](https://github.com/vercel/ai/commit/6a5bdffacd2a33697e93f08d1a787484d85afea2)（07-28） | typed provider/stream/tool contract | 绑定其 Gateway |
+| **Warp / Oz** | [OSS/Oz announcement](https://github.com/warpdotdev/warp/discussions/9240)（04-28） | issue→spec→implementation→review→ship 与可观察 session | cloud terminal UI |
+| **Factory** | [Factory OSS](https://github.com/Factory-AI/factory)：CLI/SDK/IDE/Action 多 surface | 一个 core 覆盖 CLI/IDE/CI，Action 做 PR gate | Droid branding/marketplace |
+| **Aider** | 2026 主要是模型兼容维护；最新稳定 release 仍停在 2025 | repomap、read-only context、deterministic cache 仍稳定 | 大量 chat/slash mode |
+
+以下项目在公开证据中**没有 2026 核心架构更新**，应从“活跃竞品”降为“稳定研究
+参照”：Agentless、原 AutoCodeRover、Sonar Foundation Agent、Moatless、Sweep、
+Reflexion。它们仍分别贡献 localization→repair、AST navigation、stateful search、
+issue→PR 和 structured failure memory，但不能拿旧 benchmark scaffold 假装前沿
+harness。Reflexion 尤其应只保留“结构化失败反馈”，不要学无限 self-reflection。
+
+### 对照 Clade：已经吸收、已规划、真正的新缺口
+
+**已经吸收（不要重复造）：**
+
+- one-task focus、fresh/isolated context、worktree writer isolation；
+- pre-push tests + two-pass oracle、repro-test gate、oracle eval fixtures；
+- append-only worker event stream、crash replay、completion summary；
+- corrections→rules/hooks/tests、Nth-strike escalation；
+- GitHub Actions 完整 SHA pin、staged-secret scan；
+- task provider/model/effort routing 和 execution envelope 的第一步。
+
+**已经在 2026-07-27 architecture contract 中规划（本轮只是再次验证优先级）：**
+
+- runtime/provider/protocol/model 分离；
+- immutable execution envelope、capability negotiation、native adapters；
+- status/usage/delivery 的统一语义与版本化协议；
+- Codex structured events/thread resume、ACP/app-server 类控制面。
+
+**本轮确认的 3 个真实缺口：**
+
+1. **没有 lifecycle-linked `EvidenceBundle`。** 当前 test evidence 会进入 oracle，
+   frontend task prompt 会要求 screenshot，delivery 也能登记 git artifact，但数据库里
+   没有一个 schema 把 task/attempt、resolved envelope、base/head SHA、tests、截图或
+   demo、cost、oracle verdict、human verdict、rollback 串起来。Hamel/Simon/Addy 的
+   新共识说明这不是报告美化，而是 outer-loop 的基本交付对象。
+2. **eval corpus 仍主要靠人工维护。** `orchestrator/evals/` 能重放 oracle fixtures，
+   但 incident、oracle false-approve/reject、人工 revert/correction 没有自动生成
+   sanitized regression candidate。现有 corrections learning 是 prompt/hook 学习，
+   不等于持续校准 verifier。
+3. **runtime event 落盘前没有统一脱敏。** `EventStream.emit()` 直接把任意 content
+   写进 per-worker/global JSONL；现有 `redact.py` 保护 staged diff/commit path，
+   没覆盖 event/log boundary。seratch 当天的 SDK commit 说明即使不是 credential，
+   运行路径与 provider 内部细节也应按策略脱敏。
+
+### Gaps vs current VISION
+
+- North Star 只写 `oracle-approved completions / hour`，缺少 evidence completeness、
+  false-approval rate、incident-regression coverage 与 human override rate。
+- VISION 把 Verify 描述成“测试真实行为”，但没有定义跨 CLI/backend/UI 通用的
+  verification artifact contract。
+- event stream 已可重放，却还不是一个可安全导出/分享的 trace；未脱敏就无法成为
+  eval、support bundle 或跨团队审计材料。
+
+### Recommended additions to TODO.md（不自动添加）
+
+- [ ] 定义版本化 `EvidenceBundle v1`：task/attempt/envelope/base+head SHA/tests/
+  screenshots-or-video/cost/oracle+human verdict/rollback，绑定 delivery state 而非
+  只写 PR prose。
+- [ ] 建立 `failure → sanitized eval candidate` 管道：incident、oracle disagreement、
+  revert、explicit correction 进入 quarantine；人工确认后进入 oracle/resolve corpus，
+  后续 prompt/harness 变更必须重放。
+- [ ] 在 `EventStream.emit()` 与 provider stdout/stderr 持久化边界统一执行结构化
+  redaction；保留 redaction metadata，不把原 secret/path 复制到日志。
+- [ ] 更新 North Star dashboard：除 throughput/cost 外展示 evidence completeness、
+  false approval、human override、regression coverage。
+
+**不建议现在做：** 增加更多常驻 agent 角色、复制 Crew/Factory 的品牌化 topology、
+继续扩充 slash commands、为低活跃 research scaffold 做兼容层。近期一手证据共同
+指向“更少的核心、更多的证据与可恢复性”，不是更大的 agent org chart。
+
 ## [Research] 2026-07-21 — 弱/便宜模型多轮 vs 强模型高 effort：token、时间、成本的 break-even
 
 用户问题：是否已有研究比较“能力较弱但便宜的模型反复跑多轮”与“强模型单次高
