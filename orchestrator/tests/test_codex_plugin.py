@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -33,7 +34,10 @@ def test_codex_plugin_manifest_and_marketplace_are_wired() -> None:
         (REPO_ROOT / ".agents" / "plugins" / "marketplace.json").read_text()
     )
     assert manifest["name"] == "clade"
-    assert manifest["version"] == "0.3.1"
+    assert re.fullmatch(
+        r"0\.3\.1(?:\+codex\.[0-9A-Za-z.-]+)?",
+        manifest["version"],
+    )
     assert manifest["skills"] == "./skills/"
     assert manifest["interface"]["category"] == "Developer Tools"
     entry = next(plugin for plugin in marketplace["plugins"] if plugin["name"] == "clade")

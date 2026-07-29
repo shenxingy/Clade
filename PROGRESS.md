@@ -1,6 +1,19 @@
 # Progress Log
 
 ---
+### 2026-07-28 — Local Rollout + Research Program Closeout
+
+- Installed merged `main` into this server's Claude and Codex user
+  distributions; source-parity and preservation assertions passed without
+  printing credential or connection values.
+- Expanded the local Orchestrator settings through the canonical loader/saver:
+  current runtime, connection, provider, and semantic merge fields are present;
+  the retired `worker_provider` field is absent; the file is owner-only.
+- Refreshed the installed Clade Codex plugin from the repository source with a
+  cache-busted version, pruned stale remote-tracking refs, and closed every
+  unconditional item promoted by the July expert/project re-screen.
+
+---
 ### 2026-07-28 — Provider-Neutral Positioning + Truthful Merge History
 
 - Repositioned English/Chinese public docs around native Claude/Codex/MCP
