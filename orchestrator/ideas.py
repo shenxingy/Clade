@@ -17,6 +17,8 @@ from pathlib import Path
 
 import aiosqlite
 
+from runtime_redaction import merge_metadata, redact_runtime
+
 logger = logging.getLogger(__name__)
 
 # Pure-judge containment: both claude -p calls here have their stdout consumed
@@ -81,6 +83,7 @@ class IdeasManager:
                 project TEXT,
                 status TEXT DEFAULT 'raw',
                 ai_evaluation TEXT,
+                redaction_metadata TEXT DEFAULT '{}',
                 priority INTEGER DEFAULT 0,
                 promoted_to TEXT,
                 created_at TEXT DEFAULT (datetime('now')),
@@ -91,9 +94,18 @@ class IdeasManager:
                 idea_id INTEGER NOT NULL,
                 role TEXT NOT NULL,
                 content TEXT NOT NULL,
+                redaction_metadata TEXT DEFAULT '{}',
                 created_at TEXT DEFAULT (datetime('now')),
                 FOREIGN KEY (idea_id) REFERENCES ideas(id)
             )""")
+            for migration in (
+                "ALTER TABLE ideas ADD COLUMN redaction_metadata TEXT DEFAULT '{}'",
+                "ALTER TABLE idea_messages ADD COLUMN redaction_metadata TEXT DEFAULT '{}'",
+            ):
+                try:
+                    await conn.execute(migration)
+                except Exception:
+                    pass
             await conn.commit()
             self._conn = conn
             return self._conn
@@ -113,10 +125,14 @@ class IdeasManager:
 
     async def add_idea(self, content: str, source: str = "human",
                        project: str | None = None) -> dict:
+        redaction = redact_runtime(content, field_path="$.ideas.content")
+        content = str(redaction.value)
+        metadata = redaction.metadata.to_dict() if redaction.metadata.redacted else {}
         async with self._db() as db:
             cur = await db.execute(
-                "INSERT INTO ideas (content, source, project) VALUES (?, ?, ?)",
-                (content, source, project),
+                "INSERT INTO ideas (content, source, project, redaction_metadata) "
+                "VALUES (?, ?, ?, ?)",
+                (content, source, project, json.dumps(metadata)),
             )
             await db.commit()
             idea_id = cur.lastrowid
@@ -154,6 +170,13 @@ class IdeasManager:
                 (idea_id,),
             ) as cur:
                 idea["messages"] = [dict(r) for r in await cur.fetchall()]
+            for message in idea["messages"]:
+                try:
+                    message["redaction_metadata"] = json.loads(
+                        message.get("redaction_metadata") or "{}"
+                    )
+                except (TypeError, json.JSONDecodeError):
+                    message["redaction_metadata"] = {}
         return idea
 
     _VALID_STATUSES = {"raw", "evaluating", "evaluated", "promoting", "promoted", "archived",
@@ -167,10 +190,33 @@ class IdeasManager:
             return await self.get_idea(idea_id)
         if "status" in fields and fields["status"] not in self._VALID_STATUSES:
             raise ValueError(f"Invalid status: {fields['status']}")
+        redaction = redact_runtime(
+            {
+                key: value
+                for key, value in fields.items()
+                if key in {"content", "ai_evaluation"}
+            },
+            field_path="$.ideas",
+        )
+        fields.update(redaction.value)
         fields["updated_at"] = datetime.now().isoformat()
-        set_clause = ", ".join(f'"{k}" = ?' for k in fields)
-        values = list(fields.values()) + [idea_id]
         async with self._db() as db:
+            if redaction.metadata.redacted:
+                async with db.execute(
+                    "SELECT redaction_metadata FROM ideas WHERE id = ?", (idea_id,)
+                ) as cursor:
+                    row = await cursor.fetchone()
+                existing = {}
+                if row and row[0]:
+                    try:
+                        existing = json.loads(row[0])
+                    except (TypeError, json.JSONDecodeError):
+                        existing = {}
+                fields["redaction_metadata"] = json.dumps(
+                    merge_metadata(existing, redaction.metadata).to_dict()
+                )
+            set_clause = ", ".join(f'"{k}" = ?' for k in fields)
+            values = list(fields.values()) + [idea_id]
             await db.execute(f"UPDATE ideas SET {set_clause} WHERE id = ?", values)
             await db.commit()
         return await self.get_idea(idea_id)
@@ -179,14 +225,19 @@ class IdeasManager:
         return await self.update_idea(idea_id, status="archived")
 
     async def add_message(self, idea_id: int, role: str, content: str) -> dict:
+        redaction = redact_runtime(content, field_path="$.idea_messages.content")
+        content = str(redaction.value)
+        metadata = redaction.metadata.to_dict() if redaction.metadata.redacted else {}
         async with self._db() as db:
             cur = await db.execute(
-                "INSERT INTO idea_messages (idea_id, role, content) VALUES (?, ?, ?)",
-                (idea_id, role, content),
+                "INSERT INTO idea_messages "
+                "(idea_id, role, content, redaction_metadata) VALUES (?, ?, ?, ?)",
+                (idea_id, role, content, json.dumps(metadata)),
             )
             await db.commit()
             return {"id": cur.lastrowid, "idea_id": idea_id,
-                    "role": role, "content": content}
+                    "role": role, "content": content,
+                    "redaction_metadata": metadata}
 
     # ─── AI Evaluation ───────────────────────────────────────────────────────
 
@@ -349,6 +400,10 @@ class IdeasManager:
     @staticmethod
     def _row_to_dict(row) -> dict:
         d = dict(row)
+        try:
+            d["redaction_metadata"] = json.loads(d.get("redaction_metadata") or "{}")
+        except (TypeError, json.JSONDecodeError):
+            d["redaction_metadata"] = {}
         # Parse ai_evaluation JSON if present
         raw = d.get("ai_evaluation")
         if isinstance(raw, str):

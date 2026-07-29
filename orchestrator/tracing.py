@@ -20,6 +20,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from runtime_redaction import redact_runtime
+
 
 @dataclass
 class Span:
@@ -148,7 +150,11 @@ class Tracer:
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w") as f:
             for span in self._spans:
-                f.write(json.dumps(span.to_dict()) + "\n")
+                redaction = redact_runtime(span.to_dict())
+                record = redaction.value
+                if redaction.metadata.redacted:
+                    record["_redaction"] = redaction.metadata.to_dict()
+                f.write(json.dumps(record) + "\n")
 
         self._finished = True
         return path

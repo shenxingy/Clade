@@ -217,8 +217,9 @@ backlog.
 - [x] **P0 · completed 2026-07-28 · MCP v2:** both MCP servers use typed SDK v2
   `on_*` handlers, require `mcp>=2.0.0,<3`, and negotiate the v1-era
   `2024-11-05` protocol over stdio.
-- [ ] **P0 · security:** redact runtime event and provider output before JSONL,
-  SQLite, or log persistence. No dependency.
+- [x] **P0 · completed 2026-07-28 · security:** structured runtime redaction
+  now sanitizes event/session/trace JSONL, SQLite runtime text, and piped
+  provider stdout/stderr before persistence, with secret-free metadata.
 - [ ] **P1 · evidence · depends on redaction:** persist versioned,
   lifecycle-linked `EvidenceBundle v1` records.
 - [ ] **P1 · evidence wiring · depends on EvidenceBundle:** connect worker,

@@ -15,6 +15,7 @@ import shlex
 from pathlib import Path
 
 import aiosqlite
+from runtime_redaction import merge_metadata, redact_runtime
 
 # fault_localize is a stdlib-only leaf (lower in the DAG); importing it keeps
 # worker_tldr standalone-importable. Shared scan constants + symbol index live
@@ -1410,12 +1411,37 @@ async def _score_task(task_id: str, description: str, db_path: Path, claude_dir:
             if m:
                 data = json.loads(m.group())
                 score = max(0, min(100, int(data.get("score", 50))))
-                note = str(data.get("note", ""))[:100]
+                note_redaction = redact_runtime(
+                    str(data.get("note", ""))[:100],
+                    field_path="$.tasks.score_note",
+                )
+                note = str(note_redaction.value)
                 async with aiosqlite.connect(str(db_path)) as db:
-                    await db.execute(
-                        "UPDATE tasks SET score = ?, score_note = ? WHERE id = ?",
-                        (score, note, task_id),
-                    )
+                    if note_redaction.metadata.redacted:
+                        async with db.execute(
+                            "SELECT redaction_metadata FROM tasks WHERE id = ?",
+                            (task_id,),
+                        ) as cursor:
+                            row = await cursor.fetchone()
+                        existing = {}
+                        if row and row[0]:
+                            try:
+                                existing = json.loads(row[0])
+                            except (TypeError, json.JSONDecodeError):
+                                existing = {}
+                        metadata = merge_metadata(
+                            existing, note_redaction.metadata
+                        ).to_dict()
+                        await db.execute(
+                            "UPDATE tasks SET score = ?, score_note = ?, "
+                            "redaction_metadata = ? WHERE id = ?",
+                            (score, note, json.dumps(metadata), task_id),
+                        )
+                    else:
+                        await db.execute(
+                            "UPDATE tasks SET score = ?, score_note = ? WHERE id = ?",
+                            (score, note, task_id),
+                        )
                     await db.commit()
         except asyncio.TimeoutError:
             proc.kill()

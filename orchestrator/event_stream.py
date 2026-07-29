@@ -24,6 +24,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from runtime_redaction import redact_runtime
+
 logger = logging.getLogger(__name__)
 
 
@@ -101,6 +103,20 @@ class EventStream:
         if cause_id is None and self._cause_stack:
             cause_id = self._cause_stack[-1]
 
+        redaction = redact_runtime(content)
+        persisted_content = redaction.value
+        if redaction.metadata.redacted:
+            if isinstance(persisted_content, dict):
+                persisted_content = {
+                    **persisted_content,
+                    "_redaction": redaction.metadata.to_dict(),
+                }
+            else:
+                persisted_content = {
+                    "value": persisted_content,
+                    "_redaction": redaction.metadata.to_dict(),
+                }
+
         event = WorkerEvent(
             id=None,
             worker_id=self.worker_id,
@@ -108,7 +124,7 @@ class EventStream:
             event_kind=event_kind,
             source=source,
             cause_id=cause_id,
-            content=json.dumps(content) if content is not None else "",
+            content=json.dumps(persisted_content) if content is not None else "",
             timestamp=time.time(),
         )
 

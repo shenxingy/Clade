@@ -88,6 +88,7 @@ worker_review.py     ← oracle + PR review
 worker_utils.py      ← output helpers, lint reflection, LoopDetectionService, worker-state helpers
 worker_hydrate.py    ← _pre_hydrate (GitHub issue/PR pre-hydration)
 condensers.py        ← Condenser ABC + implementations
+runtime_redaction.py ← stdlib-only secret/path redaction before persistence
 event_stream.py      ← crash-safe JSONL event logging
 tracing.py           ← TracingService, task spans
 reactions.py         ← ReactionExecutor
