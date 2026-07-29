@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import os
+from pathlib import Path
+import subprocess
+import sys
 
 from provider_registry import DiscoveryFailure
 from evals import run_provider_conformance as conformance
@@ -47,6 +51,30 @@ def test_live_smoke_is_credential_gated(monkeypatch):
 
     assert result is None
     assert error == "missing_anthropic_api_key"
+
+
+def test_live_smoke_skip_needs_only_stdlib_dependencies():
+    script = (
+        Path(__file__).resolve().parents[1]
+        / "evals"
+        / "run_provider_conformance.py"
+    )
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if key not in {"ANTHROPIC_API_KEY", "CLADE_PROVIDER_SMOKE_BASE_URL"}
+    }
+
+    result = subprocess.run(
+        [sys.executable, "-S", str(script), "--live", "anthropic"],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "SKIP provider live smoke" in result.stdout
 
 
 def test_live_smoke_reports_only_safe_catalog_summary(monkeypatch):
