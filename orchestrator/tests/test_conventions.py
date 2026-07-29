@@ -210,7 +210,7 @@ def test_documented_leaf_modules_import_no_project_code() -> None:
         "ideas", "process_manager", "worker_tldr", "worker_review",
         "worker_utils", "worker_hydrate", "condensers", "event_stream",
         "tracing", "error_classifier", "session_tree", "usage_tracker",
-        "compression_feedback", "fault_localize",
+        "compression_feedback", "fault_localize", "runtime_redaction",
     }
     graph = _import_graph()
     violations = []
@@ -218,7 +218,9 @@ def test_documented_leaf_modules_import_no_project_code() -> None:
         if leaf not in graph:
             violations.append(f"{leaf}: missing — update CLAUDE.md module map")
             continue
-        heavy = graph[leaf] - {"config", "fault_localize", "worker_utils"}
+        heavy = graph[leaf] - {
+            "config", "fault_localize", "worker_utils", "runtime_redaction"
+        }
         if heavy:
             violations.append(f"{leaf}: imports {sorted(heavy)} at module level")
     assert not violations, (

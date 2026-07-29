@@ -61,6 +61,7 @@ from worker_phase_graph import record_transition, validate_transition
 from handoff_registry import project_handoff, validate_handoff
 from tracing import TracingService, start_task_span
 from reactions import ReactionExecutor
+from runtime_redaction import capture_provider_output
 from error_classifier import (
     classify as _classify_error,
     summarize as _summarize_error,
@@ -152,6 +153,7 @@ class Worker:
         self.last_commit: str | None = None
         self.log_file: str | None = None
         self._log_path: Path | None = None
+        self._log_capture_task: asyncio.Task | None = None
         self._session_tree: SessionTree | None = None  # Pi-style JSONL session tree
         self.verified: bool = False
         self.auto_committed: bool = False
@@ -356,14 +358,7 @@ class Worker:
         # Record the task description as the first user entry
         root_id = self._session_tree.user(self.description[:5000])
 
-        with open(self._log_path, "w") as log_fd:
-            self.proc = await self._backend.spawn(
-                shell_cmd,
-                stdout=log_fd,
-                stderr=log_fd,
-                env=env,
-                cwd=str(self._project_dir),
-            )
+        await self._spawn_with_redacted_log(shell_cmd, env, append=False)
         self.pid = self.proc.pid
         try:
             self.pgid = os.getpgid(self.proc.pid)
@@ -391,6 +386,33 @@ class Worker:
             content={"shell_cmd": shell_cmd[:500], "pid": self.pid},
         )
         self._task_span = start_task_span(self.id, self.description, self.task_id)
+
+    async def _spawn_with_redacted_log(
+        self, shell_cmd: str, env: dict[str, str], *, append: bool
+    ) -> None:
+        """Spawn provider output through the redaction boundary before disk."""
+        if self._log_path is None:
+            raise RuntimeError("worker log path must be initialized before spawn")
+        self.proc = await self._backend.spawn(
+            shell_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            env=env,
+            cwd=str(self._project_dir),
+        )
+        self._log_capture_task = asyncio.create_task(
+            capture_provider_output(self.proc.stdout, self._log_path, append=append)
+        )
+
+    async def _finish_log_capture(self) -> None:
+        task = self._log_capture_task
+        if task is None:
+            return
+        self._log_capture_task = None
+        try:
+            await task
+        except Exception:
+            logger.exception("provider log capture failed for worker %s", self.id)
 
     def is_alive(self) -> bool:
         return self._backend.is_alive(self.proc)
@@ -428,6 +450,7 @@ class Worker:
             await asyncio.sleep(0.5)
             if self.is_alive():
                 self._backend.kill(self.pgid, signal.SIGKILL)
+        await self._finish_log_capture()
         if self._finished_at is None:
             self._finished_at = time.time()
         self._verify_triggered = True  # prevent _on_worker_done from running after forced stop
@@ -435,6 +458,7 @@ class Worker:
 
     async def poll(self) -> None:
         if not self.is_alive():
+            await self._finish_log_capture()
             if self._finished_at is None:
                 self._finished_at = time.time()
             rc = self.proc.returncode if self.proc else -1
@@ -1090,17 +1114,8 @@ class Worker:
 
         _, env = self._build_cmd_and_env(task_file)
 
-        # Append to existing log
-        log_fd = open(self._log_path, "a") if self._log_path else None
         try:
-            self.proc = await asyncio.create_subprocess_shell(
-                shell_cmd,
-                stdout=log_fd,
-                stderr=log_fd,
-                preexec_fn=os.setsid,
-                env=env,
-                cwd=str(self._project_dir),
-            )
+            await self._spawn_with_redacted_log(shell_cmd, env, append=True)
             self.pid = self.proc.pid
             self.status = "running"
             self._finished_at = None
@@ -1111,11 +1126,9 @@ class Worker:
             except asyncio.TimeoutError:
                 self.proc.kill()
                 await self.proc.wait()
+            await self._finish_log_capture()
             rc = self.proc.returncode if self.proc else -1
             self.status = "done" if rc == 0 else "failed"
-            if log_fd:
-                log_fd.close()
-                log_fd = None
             if self.status == "done":
                 return await self.verify_and_commit()
             # If --continue failed (e.g. no prior session), fall back to full restart
@@ -1124,8 +1137,7 @@ class Worker:
                 return await self._run_with_context(extra_context, use_continue=False)
             return False
         except Exception:
-            if log_fd:
-                log_fd.close()
+            await self._finish_log_capture()
             return False
 
 

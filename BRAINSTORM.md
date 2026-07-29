@@ -24,8 +24,9 @@ executable or conditional.
 - [x] **P0 / RESOLVED 2026-07-28:** both MCP servers now use Python SDK v2
   low-level `on_*` handlers and require `mcp>=2.0.0,<3`; a real stdio test
   negotiates the oldest supported v1-era protocol (`2024-11-05`).
-- [ ] **P0 / security:** redact runtime events and provider output before any
-  JSONL, SQLite, or log persistence.
+- [x] **P0 / RESOLVED 2026-07-28:** runtime events, session/trace JSONL,
+  SQLite runtime text, and provider output are redacted before persistence
+  with secret-free metadata.
 - [ ] **P1 / depends on redaction:** persist versioned lifecycle-linked
   `EvidenceBundle v1` records.
 - [ ] **P1 / depends on EvidenceBundle:** wire worker, verifier, delivery, API,

@@ -37,7 +37,7 @@ _ALLOWED_TASK_COLS = {"status", "description", "model", "depends_on", "score",
                       "phase", "oracle_result", "oracle_reason", "pgid", "provider",
                       "agent_runtime", "connection", "execution_profile",
                       "execution_requirements", "execution_envelope",
-                      "effort", "route_reason"}
+                      "effort", "route_reason", "redaction_metadata"}
 
 _ALLOWED_LOOP_COLS = {
     "name", "artifact_path", "context_dir", "status", "iteration",

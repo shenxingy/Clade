@@ -23,6 +23,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from runtime_redaction import redact_runtime
+
 logger = logging.getLogger(__name__)
 
 
@@ -44,6 +46,10 @@ class SessionTree:
         """Append entry to JSONL file. Returns entry id."""
         entry["id"] = entry.get("id") or self._new_id()
         entry["ts"] = datetime.now(timezone.utc).isoformat()
+        redaction = redact_runtime(entry)
+        entry = redaction.value
+        if redaction.metadata.redacted:
+            entry["_redaction"] = redaction.metadata.to_dict()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.path, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
