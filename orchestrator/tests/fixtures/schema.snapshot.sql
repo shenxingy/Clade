@@ -42,7 +42,8 @@ CREATE TABLE interventions (
                         success INTEGER DEFAULT 0,
                         source_task_id TEXT,
                         spawned_task_id TEXT,
-                        created_at REAL
+                        created_at REAL,
+                        redaction_metadata TEXT DEFAULT '{}'
                     );
 
 -- table iteration_loops
@@ -87,6 +88,7 @@ CREATE TABLE tasks (
                         last_commit TEXT,
                         log_file TEXT,
                         failed_reason TEXT,
+                        redaction_metadata TEXT DEFAULT '{}',
                         created_at REAL,
                         depends_on TEXT DEFAULT '[]',
                         score INTEGER,
@@ -104,5 +106,6 @@ CREATE TABLE worker_messages (
                         from_task_id TEXT,
                         content TEXT NOT NULL,
                         created_at REAL,
-                        read INTEGER DEFAULT 0
+                        read INTEGER DEFAULT 0,
+                        redaction_metadata TEXT DEFAULT '{}'
                     );

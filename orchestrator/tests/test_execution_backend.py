@@ -110,6 +110,35 @@ def test_worker_uses_local_backend_by_default(tmp_path: Path) -> None:
     assert isinstance(w._backend, LocalSubprocessBackend)
 
 
+async def test_worker_provider_output_is_piped_through_redaction(tmp_path: Path) -> None:
+    worker_file = Path(__file__).parent.parent / "worker.py"
+    spec = importlib.util.spec_from_file_location("_real_worker_redaction", worker_file)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    worker = mod.Worker(
+        task_id="t-redact",
+        description="capture output",
+        model="sonnet",
+        project_dir=tmp_path,
+        claude_dir=claude_dir,
+    )
+    worker._log_path = claude_dir / "worker.log"
+    secret = "ghp_" + "Z" * 40
+
+    await worker._spawn_with_redacted_log(
+        f"printf '%s\\n' '{secret}'", dict(os.environ), append=False
+    )
+    await worker.proc.wait()
+    await worker._finish_log_capture()
+
+    persisted = worker._log_path.read_text()
+    assert secret not in persisted
+    assert "<redacted:github_token>" in persisted
+    assert worker._log_path.with_suffix(".log.redaction.json").is_file()
+
+
 # ─── (b) LocalSubprocessBackend.spawn produces a live pid ────────────────────
 
 

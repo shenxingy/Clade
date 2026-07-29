@@ -14,6 +14,8 @@ import aiosqlite
 
 import logging
 
+from runtime_redaction import merge_metadata, redact_runtime
+
 from config import (
     _ALLOWED_LOOP_COLS,
     _ALLOWED_TASK_COLS,
@@ -24,6 +26,28 @@ from config import (
 )
 
 logger = logging.getLogger(__name__)
+
+_RUNTIME_TEXT_FIELDS = {
+    "description",
+    "failed_reason",
+    "score_note",
+    "handoff_payload",
+    "completion_summary",
+    "oracle_reason",
+    "route_reason",
+}
+
+
+def _redact_text_fields(values: dict) -> tuple[dict, dict]:
+    selected = {key: value for key, value in values.items() if key in _RUNTIME_TEXT_FIELDS}
+    if not selected:
+        return values, {}
+    result = redact_runtime(selected, field_path="$.tasks")
+    updated = dict(values)
+    updated.update(result.value)
+    metadata = result.metadata.to_dict() if result.metadata.redacted else {}
+    return updated, metadata
+
 
 # ─── Task Queue (SQLite-backed) ───────────────────────────────────────────────
 
@@ -68,6 +92,7 @@ class TaskQueue:
                         last_commit TEXT,
                         log_file TEXT,
                         failed_reason TEXT,
+                        redaction_metadata TEXT DEFAULT '{}',
                         created_at REAL,
                         depends_on TEXT DEFAULT '[]',
                         score INTEGER,
@@ -157,6 +182,7 @@ class TaskQueue:
                 await _migrate("ALTER TABLE tasks ADD COLUMN execution_envelope TEXT")
                 await _migrate("ALTER TABLE tasks ADD COLUMN effort TEXT")
                 await _migrate("ALTER TABLE tasks ADD COLUMN route_reason TEXT")
+                await _migrate("ALTER TABLE tasks ADD COLUMN redaction_metadata TEXT DEFAULT '{}'")
                 await db.execute("""
                     CREATE TABLE IF NOT EXISTS worker_messages (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -164,9 +190,13 @@ class TaskQueue:
                         from_task_id TEXT,
                         content TEXT NOT NULL,
                         created_at REAL,
-                        read INTEGER DEFAULT 0
+                        read INTEGER DEFAULT 0,
+                        redaction_metadata TEXT DEFAULT '{}'
                     )
                 """)
+                await _migrate(
+                    "ALTER TABLE worker_messages ADD COLUMN redaction_metadata TEXT DEFAULT '{}'"
+                )
                 await db.execute("""
                     CREATE TABLE IF NOT EXISTS interventions (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -176,9 +206,13 @@ class TaskQueue:
                         success INTEGER DEFAULT 0,
                         source_task_id TEXT,
                         spawned_task_id TEXT,
-                        created_at REAL
+                        created_at REAL,
+                        redaction_metadata TEXT DEFAULT '{}'
                     )
                 """)
+                await _migrate(
+                    "ALTER TABLE interventions ADD COLUMN redaction_metadata TEXT DEFAULT '{}'"
+                )
                 # Ideas tables (Phase 13)
                 await db.execute("""
                     CREATE TABLE IF NOT EXISTS ideas (
@@ -219,12 +253,13 @@ class TaskQueue:
                     if existing:
                         async with aiosqlite.connect(str(self._db_path)) as db:
                             for t in existing:
+                                t, legacy_metadata = _redact_text_fields(dict(t))
                                 await db.execute(
                                     """INSERT OR IGNORE INTO tasks
                                        (id, description, model, timeout, retries, status, worker_id,
                                         started_at, elapsed_s, last_commit, log_file, failed_reason,
-                                        created_at, depends_on)
-                                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                                        created_at, depends_on, redaction_metadata)
+                                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                                     (
                                         t.get("id"), t.get("description", ""),
                                         t.get("model", "sonnet"), t.get("timeout", 600),
@@ -234,6 +269,7 @@ class TaskQueue:
                                         t.get("log_file"), t.get("failed_reason"),
                                         t.get("created_at", time.time()),
                                         json.dumps(t.get("depends_on", [])),
+                                        json.dumps(legacy_metadata),
                                     ),
                                 )
                             await db.commit()
@@ -250,6 +286,7 @@ class TaskQueue:
             "forbidden_files",
             "execution_requirements",
             "execution_envelope",
+            "redaction_metadata",
         ):
             raw = d.get(key)
             if isinstance(raw, str):
@@ -259,11 +296,13 @@ class TaskQueue:
                     d[key] = (
                         []
                         if key in {"depends_on", "own_files", "forbidden_files"}
-                        else None
+                        else ({} if key == "redaction_metadata" else None)
                     )
             elif raw is None:
                 d[key] = (
-                    [] if key in {"depends_on", "own_files", "forbidden_files"} else None
+                    []
+                    if key in {"depends_on", "own_files", "forbidden_files"}
+                    else ({} if key == "redaction_metadata" else None)
                 )
         return d
 
@@ -325,6 +364,8 @@ class TaskQueue:
             "effort": effort,
             "route_reason": None,
         }
+        task, redaction_metadata = _redact_text_fields(task)
+        task["redaction_metadata"] = redaction_metadata
         async with aiosqlite.connect(str(self._db_path)) as db:
             await db.execute(
                 """INSERT INTO tasks
@@ -333,8 +374,9 @@ class TaskQueue:
                     created_at, depends_on, score, score_note, own_files, forbidden_files,
                     is_critical_path, task_type, source_ref, parent_task_id, phase,
                     agent_runtime, provider, connection, execution_profile,
-                    execution_requirements, execution_envelope, effort, route_reason)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    execution_requirements, execution_envelope, effort, route_reason,
+                    redaction_metadata)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     task["id"], task["description"], task["model"],
                     task["timeout"], task["retries"], task["status"],
@@ -348,6 +390,7 @@ class TaskQueue:
                     task["provider"], task["connection"], task["execution_profile"],
                     json.dumps(task["execution_requirements"]),
                     task["execution_envelope"], task["effort"], task["route_reason"],
+                    json.dumps(task["redaction_metadata"]),
                 ),
             )
             await db.commit()
@@ -357,6 +400,7 @@ class TaskQueue:
         await self._ensure_db()
         if not kwargs:
             return await self.get(task_id)
+        kwargs, new_redaction_metadata = _redact_text_fields(kwargs)
         for key in (
             "depends_on",
             "own_files",
@@ -373,6 +417,22 @@ class TaskQueue:
         set_clause = ", ".join(f"{k} = ?" for k in kwargs)
         values = list(kwargs.values()) + [task_id]
         async with aiosqlite.connect(str(self._db_path)) as db:
+            if new_redaction_metadata:
+                async with db.execute(
+                    "SELECT redaction_metadata FROM tasks WHERE id = ?", (task_id,)
+                ) as cur:
+                    row = await cur.fetchone()
+                existing = {}
+                if row and row[0]:
+                    try:
+                        existing = json.loads(row[0])
+                    except (TypeError, json.JSONDecodeError):
+                        existing = {}
+                kwargs["redaction_metadata"] = json.dumps(
+                    merge_metadata(existing, new_redaction_metadata).to_dict()
+                )
+                set_clause = ", ".join(f"{k} = ?" for k in kwargs)
+                values = list(kwargs.values()) + [task_id]
             await db.execute(f"UPDATE tasks SET {set_clause} WHERE id = ?", values)
             await db.commit()
         return await self.get(task_id)
@@ -714,12 +774,25 @@ class TaskQueue:
 
     async def send_message(self, to_task_id: str, content: str, from_task_id: str | None = None) -> dict:
         await self._ensure_db()
+        redaction = redact_runtime(content, field_path="$.worker_messages.content")
+        content = str(redaction.value)
+        metadata = redaction.metadata.to_dict() if redaction.metadata.redacted else {}
         msg = {"to_task_id": to_task_id, "from_task_id": from_task_id,
-               "content": content, "created_at": time.time(), "read": 0}
+               "content": content, "created_at": time.time(), "read": 0,
+               "redaction_metadata": metadata}
         async with aiosqlite.connect(str(self._db_path)) as db:
             cur = await db.execute(
-                "INSERT INTO worker_messages (to_task_id, from_task_id, content, created_at, read) VALUES (?,?,?,?,?)",
-                (to_task_id, from_task_id, content, msg["created_at"], 0),
+                "INSERT INTO worker_messages "
+                "(to_task_id, from_task_id, content, created_at, read, redaction_metadata) "
+                "VALUES (?,?,?,?,?,?)",
+                (
+                    to_task_id,
+                    from_task_id,
+                    content,
+                    msg["created_at"],
+                    0,
+                    json.dumps(metadata),
+                ),
             )
             await db.commit()
             msg["id"] = cur.lastrowid
@@ -734,7 +807,15 @@ class TaskQueue:
         async with aiosqlite.connect(str(self._db_path)) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(sql, (task_id,)) as cur:
-                return [dict(r) for r in await cur.fetchall()]
+                messages = [dict(r) for r in await cur.fetchall()]
+        for message in messages:
+            try:
+                message["redaction_metadata"] = json.loads(
+                    message.get("redaction_metadata") or "{}"
+                )
+            except (TypeError, json.JSONDecodeError):
+                message["redaction_metadata"] = {}
+        return messages
 
     async def mark_messages_read(self, task_id: str) -> int:
         await self._ensure_db()
@@ -755,14 +836,31 @@ class TaskQueue:
         spawned_task_id: str | None = None,
     ) -> int:
         await self._ensure_db()
+        redaction = redact_runtime(
+            {
+                "failure_pattern": failure_pattern,
+                "correction": correction,
+                "task_description_hint": task_description_hint,
+            },
+            field_path="$.interventions",
+        )
+        values = redaction.value
+        metadata = redaction.metadata.to_dict() if redaction.metadata.redacted else {}
         async with aiosqlite.connect(str(self._db_path)) as db:
             cur = await db.execute(
                 """INSERT INTO interventions
                    (failure_pattern, correction, task_description_hint,
-                    source_task_id, spawned_task_id, created_at)
-                   VALUES (?,?,?,?,?,?)""",
-                (failure_pattern, correction, task_description_hint,
-                 source_task_id, spawned_task_id, time.time()),
+                    source_task_id, spawned_task_id, created_at, redaction_metadata)
+                   VALUES (?,?,?,?,?,?,?)""",
+                (
+                    values["failure_pattern"],
+                    values["correction"],
+                    values["task_description_hint"],
+                    source_task_id,
+                    spawned_task_id,
+                    time.time(),
+                    json.dumps(metadata),
+                ),
             )
             await db.commit()
             return cur.lastrowid
