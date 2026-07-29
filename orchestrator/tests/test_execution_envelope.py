@@ -16,6 +16,7 @@ from execution_envelope import (
     resolve_connection,
 )
 from execution_resolver import resolve_execution
+from provider_registry import NativeProfile, ProviderRegistry
 from worker_provider import ClaudeProvider, CodexProvider
 from worker_routing import WorkerRoute
 
@@ -191,3 +192,54 @@ def test_codex_runtime_accepts_custom_responses_gateway_model(monkeypatch):
     assert envelope.resolved.inference_provider == "private-gateway"
     assert envelope.resolved.wire_protocol == "openai-responses-compatible"
 
+
+def test_discovered_capabilities_and_stale_pin_are_recorded(monkeypatch, tmp_path):
+    adapter = CodexProvider()
+    monkeypatch.setattr(adapter, "runtime_version", lambda: "test")
+    connection = {
+        **_connection(
+            "codex",
+            "private-gateway",
+            models={"logical-strong": "gateway/reasoner-v9"},
+        ),
+        "pinned_models": ["gateway/reasoner-v9"],
+        "discovery": {
+            "adapter": "native-static",
+            "store": "codex-config",
+            "profile": "work",
+            "ttl_seconds": 30,
+        },
+    }
+
+    class EmptyProfile:
+        def resolve(self, _discovery):
+            return NativeProfile(
+                adapter="native-static",
+                base_url=None,
+                api_key=None,
+                models=(),
+            )
+
+    registry = ProviderRegistry(
+        cache_path=tmp_path / "registry.json",
+        clock=lambda: 1000.0,
+        profile_resolver=EmptyProfile(),
+    )
+    envelope = resolve_execution(
+        task={
+            "model": "logical-strong",
+            "execution_requirements": {"repository_read": "required"},
+        },
+        settings={
+            "runtime_connections": {"codex": "enterprise-responses"},
+            "connections": {"enterprise-responses": connection},
+        },
+        route=WorkerRoute("codex", "logical-strong", "high", "test"),
+        adapter=adapter,
+        registry=registry,
+    )
+
+    assert envelope.resolved.model == "gateway/reasoner-v9"
+    assert envelope.provenance["model_catalog_state"] == "stale"
+    assert envelope.provenance["model_selection"] == "explicit_pinned_fallback"
+    assert any(item.capability == "model_catalog" for item in envelope.degradations)

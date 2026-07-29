@@ -28,6 +28,17 @@ class WorkerExecutionPlan:
     evidence_base_sha: str | None = None
 
 
+def connection_for_envelope(
+    envelope: ExecutionEnvelope | None,
+    settings: Mapping[str, Any],
+) -> Mapping[str, Any] | None:
+    connections = settings.get("connections")
+    if not envelope or not isinstance(connections, Mapping):
+        return None
+    connection = connections.get(envelope.resolved.connection)
+    return connection if isinstance(connection, Mapping) else None
+
+
 async def resolve_runtime_route(
     task: Mapping[str, Any],
     settings: Mapping[str, Any],

@@ -69,7 +69,46 @@ export interface RuntimeConnection {
   wire_protocol: string;
   endpoint_identity: string;
   models: Record<string, string>;
+  pinned_models?: string[];
+  discovery?: {
+    adapter: 'anthropic' | 'openai' | 'minimax' | 'moonshot' | 'custom-openai' | 'native-static';
+    store: 'claude-providers' | 'codex-config';
+    profile: string;
+    ttl_seconds?: number;
+    timeout_seconds?: number;
+    default_model?: string;
+  };
   capabilities: Record<string, string>;
+}
+
+export interface ProviderRegistryConnection {
+  id: string;
+  agent_runtime: AgentRuntime;
+  inference_provider: string;
+  wire_protocol: string;
+  endpoint_identity: string;
+  models: string[];
+  capabilities: Record<string, string>;
+  catalog: {
+    state: 'fresh' | 'stale' | 'unavailable' | 'declared';
+    source: string;
+    observed_at: string | null;
+    expires_at: string | null;
+    digest: string | null;
+    last_error: string | null;
+    model_capabilities: Record<string, Record<string, string>>;
+  };
+  health: { state: 'healthy' | 'degraded' | 'unreachable' | 'unknown' };
+  selection: {
+    pinned_models: string[];
+    stale_fallback: boolean;
+  };
+}
+
+export interface ProviderRegistrySnapshot {
+  schema_version: 'clade.provider_registry/v1';
+  observed_at: string;
+  connections: ProviderRegistryConnection[];
 }
 
 export interface Task {
