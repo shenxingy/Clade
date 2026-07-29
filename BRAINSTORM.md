@@ -74,8 +74,10 @@ executable or conditional.
   omit `provider`, and old API inputs emit deprecation headers plus secret-free
   aggregate usage counters. Final alias/column deletion is deliberately gated
   on a stable zero-use release (`docs/COMPATIBILITY-RETIREMENT.md`).
-- [ ] **P3 / depends on metrics:** update VISION/North Star/dashboard for
-  evidence completeness, false approvals, overrides, and regression coverage.
+- [x] **P3 / RESOLVED 2026-07-28:** VISION/API/dashboard define strict verified
+  delivery rate as the North Star and keep evidence completeness, false
+  approvals, overrides, regression coverage, and source integrity as explicit
+  guardrails. Concurrent attempt phase time is not mislabeled unattended time.
 - [ ] **P3 / depends on implemented mechanisms:** reposition the orchestrator
   around provider-neutral identity, evidence, verifier calibration, correction
   learning, delivery, and fleet truth.

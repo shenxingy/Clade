@@ -1,6 +1,18 @@
 # Progress Log
 
 ---
+### 2026-07-28 — Evidence-Qualified North Star
+
+- Replaced “maximum autonomous hours” with a measurable verified delivery rate:
+  strict delivered, evidence-complete, oracle-approved, delivery-eligible
+  attempts divided by every terminal attempt.
+- Elevated the metric in the eval dashboard while retaining evidence
+  completeness, false approvals, human overrides, regression coverage, and
+  source integrity as denominator-explicit release guardrails.
+- Refused to infer unattended wall time by summing concurrent attempt phases;
+  throughput remains an operating metric until run-level intervals exist.
+
+---
 ### 2026-07-28 — Provider Compatibility Retirement Window
 
 - Removed repository-internal `worker_provider`, task `provider`,
