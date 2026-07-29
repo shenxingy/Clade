@@ -351,12 +351,16 @@ else
     # Merge: update hooks + statusLine, preserve everything else
     jq --argjson hooks "$HOOKS" --argjson sl "$STATUSLINE" \
       '.hooks = $hooks | .statusLine = $sl' \
-      "$CLAUDE_DIR/settings.json" > /tmp/claude-settings-merged.json
-    mv /tmp/claude-settings-merged.json "$CLAUDE_DIR/settings.json"
+      "$CLAUDE_DIR/settings.json" > "$CLAUDE_DIR/.settings.json.$$"
+    mv "$CLAUDE_DIR/.settings.json.$$" "$CLAUDE_DIR/settings.json"
     echo "  Merged hooks + statusLine into existing settings.json"
   else
-    # Fresh install: copy template
-    cp "$SCRIPT_DIR/templates/settings.json" "$CLAUDE_DIR/settings.json"
+    # Fresh install: retain template defaults, but inject the same computed
+    # hook/status-line commands as the merge path (including Windows wrappers).
+    jq --argjson hooks "$HOOKS" --argjson sl "$STATUSLINE" \
+      '.hooks = $hooks | .statusLine = $sl' \
+      "$SCRIPT_DIR/templates/settings.json" > "$CLAUDE_DIR/.settings.json.$$"
+    mv "$CLAUDE_DIR/.settings.json.$$" "$CLAUDE_DIR/settings.json"
     echo "  Created settings.json from template"
     echo ""
     echo "  IMPORTANT: Configure these in ~/.claude/settings.json:"
