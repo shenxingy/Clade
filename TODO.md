@@ -260,8 +260,13 @@ backlog.
   error, oracle disagreement/unavailability/rejection, or scope expansion
   creates exactly one strong fallback with preserved lineage and execution
   contract; another cascade retry is never created.
-- [ ] **P2 · routing analysis · depends on telemetry:** report empirical
-  break-even by task class with sample counts and uncertainty.
+- [x] **P2 · completed 2026-07-28 · routing analysis:** a production-only,
+  read-only EvidenceBundle report groups task class/runtime/model/effort and
+  exposes denominator-explicit success rate, success/$, success/wall-hour,
+  deterministic 95% intervals, and independent-attempt break-even projections.
+  Constructed/eval sources and unverifiable attempts are excluded visibly;
+  fewer than 30 samples suppresses comparison, and observational data never
+  emits or applies a causal routing recommendation.
 - [ ] **P2 · provider registry · depends on EvidenceBundle:** complete live
   model discovery, capability provenance, real connection adapters, and stale
   pinned fallback.

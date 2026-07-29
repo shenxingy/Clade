@@ -12,6 +12,7 @@ from eval_review import (
     reject_candidate,
 )
 from eval_metrics import compute_eval_metrics
+from routing_break_even import DEFAULT_MIN_SAMPLES, compute_routing_break_even
 from session import ProjectSession, _resolve_session
 
 
@@ -21,6 +22,16 @@ router = APIRouter(prefix="/api/eval-candidates", tags=["evals"])
 @router.get("/metrics")
 async def metrics(s: ProjectSession = Depends(_resolve_session)):
     return await compute_eval_metrics(s.task_queue._db_path, EVALS_ROOT)
+
+
+@router.get("/routing-break-even")
+async def routing_break_even(
+    min_samples: int = Query(default=DEFAULT_MIN_SAMPLES, ge=2, le=1000),
+    s: ProjectSession = Depends(_resolve_session),
+):
+    return await compute_routing_break_even(
+        s.task_queue._db_path, min_samples=min_samples
+    )
 
 
 @router.get("")
