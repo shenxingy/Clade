@@ -165,16 +165,36 @@ Categories (each must keep ≥1 fixture — enforced by `tests/test_evals.py`):
 
 Mine real false-approves/false-rejects rather than inventing them:
 
-1. **Tasks DB** — `~/.claude/orchestrator/tasks.db` keeps `oracle_result` /
-   `oracle_reason` per task. Query for `rejected` rows that were later merged
-   unchanged (false-reject) or `approved` rows that got reverted
-   (false-approve): `git log --grep="revert" --oneline` cross-referenced with
-   task branch names.
-2. **Event stream** — `event_stream.py` JSONL logs carry the full
-   task-description + verdict timeline per session.
-3. Reconstruct the diff (`git show --format= <sha>`), set `source: git:<sha>`,
-   write the contract-correct verdict (not necessarily what the oracle said
-   at the time), and explain the discrepancy in `rationale`.
+1. Runtime failure sources create sanitized `clade.eval_candidate/v1`
+   quarantine rows pinned to an exact EvidenceBundle revision/digest. Raw hook
+   JSONL is intentionally not an ingestion source because it lacks exact
+   attempt identity.
+2. List and inspect pending rows:
+
+   ```bash
+   python3 eval_review_cli.py --claude-dir /path/to/project/.claude list
+   python3 eval_review_cli.py --claude-dir /path/to/project/.claude show <candidate-id>
+   ```
+
+3. A human reproduces the case and writes the target corpus label contract to
+   a JSON file. Promotion requires reviewer identity, reason, corpus target,
+   and that case file; rejection also requires reviewer and reason:
+
+   ```bash
+   python3 eval_review_cli.py --claude-dir /path/to/project/.claude \
+     promote <candidate-id> --target oracle --reviewer alex \
+     --reason "reproduced with parser fixture" --case-file /tmp/case.json
+   python3 eval_review_cli.py --claude-dir /path/to/project/.claude \
+     reject <candidate-id> --reviewer alex --reason "environment-only failure"
+   ```
+
+Promotion atomically creates a non-overwriting corpus file, then compare-and-
+sets the candidate from `quarantined` to `promoted`. A DB failure removes a
+newly created file; a conflicting case ID leaves the candidate quarantined.
+Every fixture promoted this way has `source: eval:<candidate-id>` and a
+`promotion_provenance` block containing the exact evidence digest, reviewer,
+reason, trigger, diff digest, and redaction metadata. No code path assigns
+ground truth automatically.
 
 ## Supervisor cases
 

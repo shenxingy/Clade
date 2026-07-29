@@ -38,8 +38,10 @@ executable or conditional.
   rejection/unreviewed/disagreement, managed reverts, and explicit corrections
   create deduplicated sanitized quarantine records pinned to exact immutable
   evidence; raw hook JSONL is deliberately excluded.
-- [ ] **P1 / depends on eval candidates:** add human review/promotion tooling;
-  never assign ground truth automatically.
+- [x] **P1 / RESOLVED 2026-07-28:** explicit CLI/API review requires reviewer,
+  reason, target, and a corpus-specific human label; promotion atomically
+  writes non-overwriting oracle/resolve fixtures with exact provenance, while
+  rejection writes no corpus data. No automatic ground-truth path exists.
 - [x] **P1 / RESOLVED 2026-07-28:** `/equip` approvals are bound to the exact
   audited upstream commit; apply refreshes the cache and fails closed on
   legacy reports or drift until re-screened.
