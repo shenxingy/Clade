@@ -83,6 +83,8 @@ never enabled by default.
 | Skill | Description |
 |-------|-------------|
 | **commit** | Analyze changes, split into logical commits by module, push |
+| **create-pr** | Publish or update one exact-SHA pull request |
+| **delivery** | Run the full checkpoint, review, integration, and cleanup workflow |
 | **loop** | Clade goal-driven Blueprint loop (NOT the CC built-in interval poller) |
 | **review** | Coverage-driven VERIFY.md review (NOT a PR review — use review-pr) |
 | **review-pr** | AI-powered PR code review with structured feedback |
