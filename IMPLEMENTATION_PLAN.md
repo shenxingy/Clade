@@ -280,7 +280,7 @@ Minimum fields:
 
 ### Wave 3 — Measured routing
 
-10. **Persist attempt and phase timings**
+10. **Persist attempt and phase timings — completed 2026-07-28**
     - Files: task/evidence schema, worker lifecycle, routing and status tests.
     - Record `attempt_index`, `parent_attempt_id`, `queue_ms`, `inference_ms`,
       `verify_ms`, final oracle, route reason, model, effort, and outcome.

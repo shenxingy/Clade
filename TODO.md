@@ -245,8 +245,10 @@ backlog.
   denominator-explicit evidence completeness, exact-source integrity,
   confirmed false approvals, human overrides, candidate states, and accepted
   corpus coverage; empty denominators are `null`, never fake zeroes.
-- [ ] **P2 · routing data:** persist attempt/phase timing and routing telemetry.
-  Depends on EvidenceBundle identity.
+- [x] **P2 · completed 2026-07-28 · routing data:** immutable attempt evidence
+  now records parent-attempt lineage, queue/inference/verify milliseconds,
+  resolved runtime/connection/model/effort/reason, final oracle, and outcome;
+  preflight/spawn failures keep explicit empty phases instead of fake zeroes.
 - [ ] **P2 · routing replay · depends on telemetry/eval tooling:** build a
   recorded routing replay corpus with fixed task/base/verifier inputs.
 - [ ] **P2 · routing policy · depends on replay:** enable a verifier-aware

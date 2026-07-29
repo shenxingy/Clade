@@ -112,6 +112,12 @@ async def test_worker_lifecycle_persists_terminal_evidence(task_queue, tmp_path)
     assert terminal["redaction_metadata"]["count"] == 1
     assert terminal["evidence"]["usage"]["estimated_cost"] == 0.05
     assert terminal["evidence"]["delivery_candidate"]["pushed"] is True
+    telemetry = terminal["evidence"]["telemetry"]
+    assert telemetry["schema_version"] == "clade.attempt_telemetry/v1"
+    assert telemetry["attempt_index"] == 1
+    assert telemetry["parent_attempt_id"] is None
+    assert telemetry["result"]["outcome"] == "delivered"
+    assert telemetry["result"]["final_oracle"] == "approved"
     assert await task_queue.list_eval_candidates() == []
 
     rejected_task = await task_queue.add("Capture rejected oracle patch")
@@ -137,6 +143,25 @@ async def test_worker_lifecycle_persists_terminal_evidence(task_queue, tmp_path)
     assert candidates[0]["source_evidence_digest"] == (
         await task_queue.get_evidence_bundle(rejected_attempt["attempt_id"])
     )["digest"]
+
+
+async def test_attempt_parent_links_same_task_retry_and_child_task(task_queue, tmp_path):
+    task = await task_queue.add("Original attempt")
+    first = await begin_task_evidence(task, task_queue, tmp_path)
+    same_task_retry = await begin_task_evidence(task, task_queue, tmp_path)
+
+    assert same_task_retry["evidence"]["attempt"]["parent_attempt_id"] == (
+        first["attempt_id"]
+    )
+
+    child = await task_queue.add(
+        "Retry as a child task", parent_task_id=task["id"]
+    )
+    child_attempt = await begin_task_evidence(child, task_queue, tmp_path)
+
+    assert child_attempt["evidence"]["attempt"]["parent_attempt_id"] == (
+        same_task_retry["attempt_id"]
+    )
 
 
 async def test_runtime_preflight_failure_closes_evidence_attempt(task_queue, tmp_path):
