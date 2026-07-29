@@ -272,7 +272,7 @@ Minimum fields:
    - Never accept automatically.
    - Depends on: Step 7.
 
-9. **Add regression-coverage metrics**
+9. **Add regression-coverage metrics — completed 2026-07-28**
    - Files: analytics/status modules and dashboard types/components.
    - Report candidates pending, accepted coverage, false-approve rate, human
      overrides, and evidence completeness.

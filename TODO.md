@@ -241,9 +241,10 @@ backlog.
   exact upstream commit; `/equip sync` refreshes and compares it, and
   `--apply` fails closed on legacy reports or drift until a new audit is
   accepted.
-- [ ] **P2 · regression metrics · depends on evidence/evals:** report evidence
-  completeness, false approvals, human overrides, and accepted regression
-  coverage.
+- [x] **P2 · completed 2026-07-28 · regression metrics:** API/dashboard report
+  denominator-explicit evidence completeness, exact-source integrity,
+  confirmed false approvals, human overrides, candidate states, and accepted
+  corpus coverage; empty denominators are `null`, never fake zeroes.
 - [ ] **P2 · routing data:** persist attempt/phase timing and routing telemetry.
   Depends on EvidenceBundle identity.
 - [ ] **P2 · routing replay · depends on telemetry/eval tooling:** build a
