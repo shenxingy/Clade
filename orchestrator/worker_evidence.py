@@ -8,10 +8,23 @@ import time
 from pathlib import Path
 from typing import Any, Mapping
 
+from attempt_telemetry import (
+    failure_patch,
+    running_patch,
+    terminal_patch,
+    verifying_patch,
+)
 from worker_envelope import build_from_worker
 
 
 logger = logging.getLogger(__name__)
+
+
+async def _latest_attempt(task_queue: Any, task_id: str | None) -> dict | None:
+    if not task_id or not hasattr(task_queue, "list_evidence_attempts"):
+        return None
+    attempts = await task_queue.list_evidence_attempts(task_id)
+    return attempts[-1] if attempts else None
 
 
 async def _git(project_dir: Path, *args: str) -> str | None:
@@ -42,9 +55,15 @@ async def begin_task_evidence(
     if create is None:
         return None
     base_sha = await _git(project_dir, "rev-parse", "HEAD")
+    parent = await _latest_attempt(task_queue, str(task["id"]))
+    if parent is None:
+        parent = await _latest_attempt(task_queue, task.get("parent_task_id"))
     return await create(
         str(task["id"]),
         evidence={
+            "attempt": {
+                "parent_attempt_id": parent["attempt_id"] if parent else None,
+            },
             "task": {
                 "type": task.get("task_type"),
                 "phase": task.get("phase"),
@@ -74,6 +93,7 @@ async def fail_preflight_evidence(
     if not attempt or not hasattr(task_queue, "append_evidence_bundle"):
         return
     try:
+        finished_at = time.time()
         bundle = await task_queue.append_evidence_bundle(
             attempt["attempt_id"],
             lifecycle_state="failed",
@@ -83,7 +103,10 @@ async def fail_preflight_evidence(
                     "type": type(error).__name__,
                     "reason": str(error),
                 },
-                "timing": {"finished_at": time.time()},
+                "timing": {"finished_at": finished_at},
+                **failure_patch(
+                    attempt, stage="preflight", observed_at=finished_at
+                ),
             },
         )
         if hasattr(task_queue, "create_eval_candidate"):
@@ -106,6 +129,7 @@ async def append_worker_evidence(worker: Any, lifecycle_state: str) -> None:
     attempt_id = getattr(worker, "evidence_attempt_id", None)
     if not task_queue or not attempt_id:
         return
+    observed_at = time.time()
     evidence: dict[str, Any] = {
         "worker": {
             "id": getattr(worker, "id", None),
@@ -117,6 +141,16 @@ async def append_worker_evidence(worker: Any, lifecycle_state: str) -> None:
             "elapsed_s": getattr(worker, "elapsed_s", None),
         },
     }
+    try:
+        latest = await task_queue.get_evidence_bundle(attempt_id)
+    except Exception:
+        logger.exception("failed to read %s worker evidence", lifecycle_state)
+        latest = None
+    if latest is not None:
+        if lifecycle_state == "running":
+            evidence.update(running_patch(latest, worker, observed_at=observed_at))
+        elif lifecycle_state == "verifying":
+            evidence.update(verifying_patch(latest, observed_at=observed_at))
     execution = getattr(worker, "execution_envelope", None)
     if execution is not None:
         evidence["execution"] = execution.to_dict()
@@ -130,6 +164,16 @@ async def append_worker_evidence(worker: Any, lifecycle_state: str) -> None:
         logger.exception("failed to append %s worker evidence", lifecycle_state)
 
 
+async def verify_worker_with_evidence(worker: Any) -> bool:
+    """Run worker verification while capturing its exact phase boundaries."""
+
+    await append_worker_evidence(worker, "verifying")
+    try:
+        return await worker.verify_and_commit()
+    finally:
+        worker._evidence_verify_finished_at = time.time()
+
+
 async def start_worker_with_evidence(worker: Any, task_queue: Any) -> None:
     """Start a worker and close its created attempt if spawning fails."""
 
@@ -141,6 +185,8 @@ async def start_worker_with_evidence(worker: Any, task_queue: Any) -> None:
         attempt_id = getattr(worker, "evidence_attempt_id", None)
         if attempt_id:
             try:
+                finished_at = time.time()
+                attempt = await task_queue.get_evidence_bundle(attempt_id)
                 bundle = await task_queue.append_evidence_bundle(
                     attempt_id,
                     lifecycle_state="failed",
@@ -150,7 +196,14 @@ async def start_worker_with_evidence(worker: Any, task_queue: Any) -> None:
                             "type": type(exc).__name__,
                             "reason": str(exc),
                         },
-                        "timing": {"finished_at": time.time()},
+                        "timing": {"finished_at": finished_at},
+                        **(
+                            failure_patch(
+                                attempt, stage="spawn", observed_at=finished_at
+                            )
+                            if attempt
+                            else {}
+                        ),
                     },
                 )
                 if hasattr(task_queue, "create_eval_candidate"):
@@ -203,6 +256,10 @@ async def append_worker_terminal_evidence(worker: Any) -> None:
     envelope = build_from_worker(worker)
     bundle = None
     try:
+        finished_at = (
+            getattr(worker, "_evidence_verify_finished_at", None) or time.time()
+        )
+        latest = await task_queue.get_evidence_bundle(attempt_id)
         bundle = await task_queue.append_evidence_bundle(
             attempt_id,
             lifecycle_state=lifecycle_state,
@@ -210,9 +267,19 @@ async def append_worker_terminal_evidence(worker: Any) -> None:
                 "worker_envelope": envelope.to_dict(),
                 "timing": {
                     "started_at": getattr(worker, "started_at", None),
-                    "finished_at": getattr(worker, "_finished_at", None) or time.time(),
+                    "finished_at": getattr(worker, "_finished_at", None) or finished_at,
                     "elapsed_s": getattr(worker, "elapsed_s", None),
                 },
+                **(
+                    terminal_patch(
+                        latest,
+                        worker,
+                        lifecycle_state=lifecycle_state,
+                        observed_at=finished_at,
+                    )
+                    if latest
+                    else {}
+                ),
                 "git": {
                     "base_sha": base_sha,
                     "head_sha": head_sha,

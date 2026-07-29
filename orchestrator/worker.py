@@ -589,9 +589,8 @@ class Worker:
             self._task_span = None
 
         if self.status == "done":
-            await worker_evidence.append_worker_evidence(self, "verifying")
             try:
-                verified = await self.verify_and_commit()
+                verified = await worker_evidence.verify_worker_with_evidence(self)
             except Exception:
                 logger.exception("verify_and_commit failed for worker %s", self.id)
                 verified = False

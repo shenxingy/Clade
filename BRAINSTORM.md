@@ -49,7 +49,9 @@ executable or conditional.
   denominator-explicit evidence completeness, exact-source integrity,
   confirmed false approvals, human overrides, candidate states, and accepted
   corpus coverage; empty denominators are `null`, never fake zeroes.
-- [ ] **P2 / data first:** persist attempt/phase timing and routing telemetry.
+- [x] **P2 / RESOLVED 2026-07-28:** immutable attempt evidence records
+  parent-attempt lineage, explicit queue/inference/verify phase timing, the
+  resolved route, final oracle, and outcome without a SQLite schema change.
 - [ ] **P2 / depends on telemetry/evals:** build a recorded routing replay
   corpus.
 - [ ] **P2 / depends on replay:** add the default-off verifier-aware routing

@@ -64,7 +64,8 @@ async def message_worker(
     await w.stop()
     new_desc = f"{original_desc}\n\n---\n**Additional context from user:**\n{user_message}"
     new_task = await s.task_queue.add(
-        new_desc, w.model, provider=w.provider, effort=w.effort
+        new_desc, w.model, provider=w.provider, effort=w.effort,
+        parent_task_id=w.task_id,
     )
     # Record intervention for future auto-injection
     try:

@@ -207,7 +207,8 @@ async def retry_failed(s: ProjectSession = Depends(_resolve_session)):
             )
         model = _MODEL_ALIASES.get(t.get("model", "sonnet"), t.get("model", "sonnet"))
         new_task = await s.task_queue.add(
-            retry_desc, model, provider=t.get("provider"), effort=t.get("effort")
+            retry_desc, model, provider=t.get("provider"), effort=t.get("effort"),
+            parent_task_id=t["id"],
         )
         retried.append(new_task["id"])
     return {"retried": len(retried), "task_ids": retried}
