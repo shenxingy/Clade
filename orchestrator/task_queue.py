@@ -14,6 +14,13 @@ import aiosqlite
 
 import logging
 
+from evidence_bundle import (
+    EvidenceBundle,
+    EvidenceLifecycle,
+    advance_evidence_bundle,
+    create_evidence_bundle,
+    validate_evidence_chain,
+)
 from runtime_redaction import merge_metadata, redact_runtime
 
 from config import (
@@ -197,6 +204,90 @@ class TaskQueue:
                 await _migrate(
                     "ALTER TABLE worker_messages ADD COLUMN redaction_metadata TEXT DEFAULT '{}'"
                 )
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS evidence_bundles (
+                        attempt_id TEXT NOT NULL,
+                        revision INTEGER NOT NULL CHECK (revision > 0),
+                        bundle_id TEXT NOT NULL,
+                        schema_version TEXT NOT NULL
+                            CHECK (schema_version = 'clade.evidence/v1'),
+                        task_id TEXT NOT NULL,
+                        attempt_index INTEGER NOT NULL CHECK (attempt_index > 0),
+                        lifecycle_state TEXT NOT NULL CHECK (
+                            lifecycle_state IN (
+                                'created', 'running', 'verifying',
+                                'delivery_pending', 'delivered', 'failed',
+                                'cancelled', 'reverted'
+                            )
+                        ),
+                        recorded_at REAL NOT NULL CHECK (recorded_at >= 0),
+                        evidence_json TEXT NOT NULL,
+                        redaction_metadata TEXT NOT NULL,
+                        previous_digest TEXT,
+                        payload_digest TEXT NOT NULL,
+                        PRIMARY KEY (attempt_id, revision),
+                        UNIQUE (bundle_id, revision),
+                        UNIQUE (task_id, attempt_index, revision),
+                        FOREIGN KEY (task_id) REFERENCES tasks(id)
+                    )
+                """)
+                await db.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_evidence_bundles_task_attempt
+                    ON evidence_bundles(task_id, attempt_index, revision)
+                """)
+                await db.execute("""
+                    CREATE TRIGGER IF NOT EXISTS evidence_bundles_no_update
+                    BEFORE UPDATE ON evidence_bundles
+                    BEGIN
+                        SELECT RAISE(ABORT, 'evidence bundles are append-only');
+                    END
+                """)
+                await db.execute("""
+                    CREATE TRIGGER IF NOT EXISTS evidence_bundles_insert_guard
+                    BEFORE INSERT ON evidence_bundles
+                    BEGIN
+                        SELECT CASE
+                            WHEN NEW.revision != COALESCE((
+                                SELECT MAX(revision) + 1
+                                FROM evidence_bundles
+                                WHERE attempt_id = NEW.attempt_id
+                            ), 1)
+                            THEN RAISE(ABORT, 'evidence revision must append')
+                        END;
+                        SELECT CASE
+                            WHEN EXISTS (
+                                SELECT 1 FROM evidence_bundles
+                                WHERE task_id = NEW.task_id
+                                  AND attempt_index = NEW.attempt_index
+                                  AND attempt_id != NEW.attempt_id
+                            )
+                            THEN RAISE(ABORT, 'evidence attempt identity changed')
+                        END;
+                        SELECT CASE
+                            WHEN NEW.revision = 1 AND (
+                                NEW.lifecycle_state != 'created'
+                                OR NEW.previous_digest IS NOT NULL
+                            )
+                            THEN RAISE(ABORT, 'invalid initial evidence revision')
+                        END;
+                        SELECT CASE
+                            WHEN NEW.revision > 1 AND NEW.previous_digest IS NOT (
+                                SELECT payload_digest
+                                FROM evidence_bundles
+                                WHERE attempt_id = NEW.attempt_id
+                                ORDER BY revision DESC LIMIT 1
+                            )
+                            THEN RAISE(ABORT, 'evidence predecessor mismatch')
+                        END;
+                    END
+                """)
+                await db.execute("""
+                    CREATE TRIGGER IF NOT EXISTS evidence_bundles_no_delete
+                    BEFORE DELETE ON evidence_bundles
+                    BEGIN
+                        SELECT RAISE(ABORT, 'evidence bundles are append-only');
+                    END
+                """)
                 await db.execute("""
                     CREATE TABLE IF NOT EXISTS interventions (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -826,6 +917,192 @@ class TaskQueue:
             )
             await db.commit()
             return cur.rowcount
+
+    # ─── Evidence Bundles ───────────────────────────────────────────────────
+
+    @staticmethod
+    def _evidence_row_to_bundle(row) -> EvidenceBundle:
+        try:
+            evidence = json.loads(row["evidence_json"])
+            redaction_metadata = json.loads(row["redaction_metadata"])
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise ValueError("persisted evidence bundle contains invalid JSON") from exc
+        return EvidenceBundle.from_dict(
+            {
+                "schema_version": row["schema_version"],
+                "bundle_id": row["bundle_id"],
+                "attempt_id": row["attempt_id"],
+                "task_id": row["task_id"],
+                "attempt_index": row["attempt_index"],
+                "revision": row["revision"],
+                "lifecycle_state": row["lifecycle_state"],
+                "recorded_at": row["recorded_at"],
+                "evidence": evidence,
+                "redaction_metadata": redaction_metadata,
+                "previous_digest": row["previous_digest"],
+                "digest": row["payload_digest"],
+            }
+        )
+
+    @staticmethod
+    async def _insert_evidence_bundle(db, bundle: EvidenceBundle) -> None:
+        serialized = bundle.to_dict()
+        await db.execute(
+            """INSERT INTO evidence_bundles
+               (attempt_id, revision, bundle_id, schema_version, task_id,
+                attempt_index, lifecycle_state, recorded_at, evidence_json,
+                redaction_metadata, previous_digest, payload_digest)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                bundle.attempt_id,
+                bundle.revision,
+                bundle.bundle_id,
+                bundle.schema_version,
+                bundle.task_id,
+                bundle.attempt_index,
+                bundle.lifecycle_state.value,
+                bundle.recorded_at,
+                json.dumps(serialized["evidence"], sort_keys=True),
+                json.dumps(serialized["redaction_metadata"], sort_keys=True),
+                bundle.previous_digest,
+                bundle.digest,
+            ),
+        )
+
+    async def create_evidence_attempt(
+        self,
+        task_id: str,
+        *,
+        attempt_index: int | None = None,
+        attempt_id: str | None = None,
+        bundle_id: str | None = None,
+        evidence: dict | None = None,
+        recorded_at: float | None = None,
+    ) -> dict:
+        """Create revision 1 for a task attempt and return its safe snapshot."""
+
+        await self._ensure_db()
+        redacted = redact_runtime(evidence or {}, field_path="$.evidence")
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            db.row_factory = aiosqlite.Row
+            await db.execute("BEGIN IMMEDIATE")
+            async with db.execute(
+                "SELECT 1 FROM tasks WHERE id = ?", (task_id,)
+            ) as cursor:
+                if await cursor.fetchone() is None:
+                    await db.rollback()
+                    raise ValueError(f"unknown task for evidence attempt: {task_id}")
+            if attempt_index is None:
+                async with db.execute(
+                    "SELECT COALESCE(MAX(attempt_index), 0) + 1 "
+                    "FROM evidence_bundles WHERE task_id = ?",
+                    (task_id,),
+                ) as cursor:
+                    row = await cursor.fetchone()
+                    attempt_index = int(row[0])
+            bundle = create_evidence_bundle(
+                task_id=task_id,
+                attempt_index=attempt_index,
+                attempt_id=attempt_id,
+                bundle_id=bundle_id,
+                recorded_at=recorded_at if recorded_at is not None else time.time(),
+                evidence=redacted.value,
+                redaction_metadata=redacted.metadata.to_dict(),
+            )
+            await self._insert_evidence_bundle(db, bundle)
+            await db.commit()
+        return bundle.to_dict()
+
+    async def append_evidence_bundle(
+        self,
+        attempt_id: str,
+        *,
+        lifecycle_state: EvidenceLifecycle | str,
+        evidence: dict | None = None,
+        recorded_at: float | None = None,
+    ) -> dict:
+        """Atomically append one redacted snapshot to an attempt digest chain."""
+
+        await self._ensure_db()
+        redacted = redact_runtime(evidence or {}, field_path="$.evidence")
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            db.row_factory = aiosqlite.Row
+            await db.execute("BEGIN IMMEDIATE")
+            async with db.execute(
+                "SELECT * FROM evidence_bundles WHERE attempt_id = ? "
+                "ORDER BY revision DESC LIMIT 1",
+                (attempt_id,),
+            ) as cursor:
+                row = await cursor.fetchone()
+            if row is None:
+                await db.rollback()
+                raise ValueError(f"unknown evidence attempt: {attempt_id}")
+            previous = self._evidence_row_to_bundle(row)
+            bundle = advance_evidence_bundle(
+                previous,
+                lifecycle_state=lifecycle_state,
+                recorded_at=recorded_at if recorded_at is not None else time.time(),
+                evidence_patch=redacted.value,
+                redaction_metadata=merge_metadata(
+                    previous.redaction_metadata, redacted.metadata
+                ).to_dict(),
+            )
+            await self._insert_evidence_bundle(db, bundle)
+            await db.commit()
+        return bundle.to_dict()
+
+    async def get_evidence_bundle(self, attempt_id: str) -> dict | None:
+        """Return the latest verified snapshot for one attempt."""
+
+        await self._ensure_db()
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM evidence_bundles WHERE attempt_id = ? "
+                "ORDER BY revision DESC LIMIT 1",
+                (attempt_id,),
+            ) as cursor:
+                row = await cursor.fetchone()
+        return self._evidence_row_to_bundle(row).to_dict() if row else None
+
+    async def get_evidence_history(self, attempt_id: str) -> list[dict]:
+        """Return and verify every immutable snapshot for one attempt."""
+
+        await self._ensure_db()
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM evidence_bundles WHERE attempt_id = ? "
+                "ORDER BY revision ASC",
+                (attempt_id,),
+            ) as cursor:
+                rows = await cursor.fetchall()
+        bundles = [self._evidence_row_to_bundle(row) for row in rows]
+        validate_evidence_chain(bundles)
+        return [bundle.to_dict() for bundle in bundles]
+
+    async def list_evidence_attempts(self, task_id: str) -> list[dict]:
+        """Return the latest verified snapshot for every attempt of a task."""
+
+        await self._ensure_db()
+        async with aiosqlite.connect(str(self._db_path)) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                """SELECT current.*
+                   FROM evidence_bundles AS current
+                   JOIN (
+                       SELECT attempt_id, MAX(revision) AS revision
+                       FROM evidence_bundles
+                       WHERE task_id = ?
+                       GROUP BY attempt_id
+                   ) AS latest
+                   ON current.attempt_id = latest.attempt_id
+                   AND current.revision = latest.revision
+                   ORDER BY current.attempt_index ASC""",
+                (task_id,),
+            ) as cursor:
+                rows = await cursor.fetchall()
+        return [self._evidence_row_to_bundle(row).to_dict() for row in rows]
 
     # ─── Interventions ───────────────────────────────────────────────────────
 

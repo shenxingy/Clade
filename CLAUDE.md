@@ -89,6 +89,7 @@ worker_utils.py      ← output helpers, lint reflection, LoopDetectionService, 
 worker_hydrate.py    ← _pre_hydrate (GitHub issue/PR pre-hydration)
 condensers.py        ← Condenser ABC + implementations
 runtime_redaction.py ← stdlib-only secret/path redaction before persistence
+evidence_bundle.py   ← versioned immutable attempt evidence + digest-chain contract
 event_stream.py      ← crash-safe JSONL event logging
 tracing.py           ← TracingService, task spans
 reactions.py         ← ReactionExecutor
@@ -99,7 +100,7 @@ compression_feedback.py ← compression UX feedback (consumed by /handoff skill)
     ↑
 # Mid-tier
 github_sync.py       ← gh CLI wrappers (issues, push, sync)
-task_queue.py        ← SQLite-backed task CRUD
+task_queue.py        ← SQLite tasks + append-only evidence persistence
 swarm.py             ← SwarmManager (extracted from worker.py)
 worker_taskfile.py   ← build_task_file: task file construction + context injection
 worker_runtime.py    ← runtime-route resolution + durable selection failure
@@ -124,7 +125,8 @@ routes/usage.py      ← Usage dashboard API routes
 |------|---------|
 | `config.py` | `GLOBAL_SETTINGS`, `_ALLOWED_TASK_COLS`, model aliases, cost utils |
 | `agent_runtime.py` | Agent-runtime identity and fail-closed selection shared by routing/settings/factory |
-| `task_queue.py` | SQLite CRUD for tasks, loops, messages, interventions |
+| `evidence_bundle.py` | Immutable `clade.evidence/v1` snapshots, lifecycle validation, and digest-chain verification |
+| `task_queue.py` | SQLite CRUD for tasks, loops, messages, interventions, and append-only attempt evidence |
 | `worker.py` | `Worker`, `WorkerPool` — core execution engine |
 | `swarm.py` | `SwarmManager` (extracted from worker.py; re-exported there) |
 | `worker_taskfile.py` | `build_task_file` — task file construction + context injection |
