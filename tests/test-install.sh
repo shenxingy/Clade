@@ -308,7 +308,76 @@ else
   echo "  (jq not available — skipping settings merge checks)"
 fi
 
-# ─── Suite 4: Idempotency markers ────────────────────────────────────
+# ─── Suite 4: Windows/Git Bash settings commands ────────────────────
+
+section "Windows/Git Bash fresh + existing settings"
+
+if command -v jq &>/dev/null; then
+  WINDOWS_HOME="$SANDBOX/windows-home"
+  WINDOWS_BIN="$SANDBOX/windows-bin"
+  mkdir -p "$WINDOWS_HOME" "$WINDOWS_BIN"
+  touch "$WINDOWS_HOME/.bashrc"
+
+  cat > "$WINDOWS_BIN/uname" <<'SH'
+#!/bin/sh
+printf '%s\n' 'MINGW64_NT-10.0'
+SH
+  cat > "$WINDOWS_BIN/cygpath" <<'SH'
+#!/bin/sh
+printf '%s\n' 'C:\Program Files\Git\bin\bash.exe'
+SH
+  cat > "$WINDOWS_BIN/bash" <<'SH'
+#!/bin/sh
+exec /bin/bash "$@"
+SH
+  chmod +x "$WINDOWS_BIN/uname" "$WINDOWS_BIN/cygpath" "$WINDOWS_BIN/bash"
+
+  windows_install_log="$SANDBOX/install-windows-1.log"
+  if HOME="$WINDOWS_HOME" PATH="$WINDOWS_BIN:$PATH" \
+      /bin/bash "$SRC/install.sh" </dev/null >"$windows_install_log" 2>&1; then
+    pass "Windows/Git Bash fresh install exits 0"
+  else
+    fail "Windows/Git Bash fresh install exits 0" "see $windows_install_log"
+    tail -30 "$windows_install_log"
+  fi
+
+  WINDOWS_SETTINGS="$WINDOWS_HOME/.claude/settings.json"
+  WINDOWS_PREFIX='"C:\Program Files\Git\bin\bash.exe" -c "exec '
+  if jq -e --arg prefix "$WINDOWS_PREFIX" '
+      [.. | objects | select(has("command")) | .command
+       | startswith($prefix)] | length > 0 and all
+    ' "$WINDOWS_SETTINGS" >/dev/null 2>&1; then
+    pass "fresh Windows settings wrap every hook + statusLine command"
+  else
+    fail "fresh Windows settings wrap every hook + statusLine command"
+  fi
+
+  jq '. + {model: "windows-sentinel-keep"}' "$WINDOWS_SETTINGS" \
+    > "$WINDOWS_SETTINGS.new"
+  mv "$WINDOWS_SETTINGS.new" "$WINDOWS_SETTINGS"
+  windows_install_log2="$SANDBOX/install-windows-2.log"
+  if HOME="$WINDOWS_HOME" PATH="$WINDOWS_BIN:$PATH" \
+      /bin/bash "$SRC/install.sh" </dev/null >"$windows_install_log2" 2>&1; then
+    pass "Windows/Git Bash reinstall exits 0"
+  else
+    fail "Windows/Git Bash reinstall exits 0" "see $windows_install_log2"
+    tail -30 "$windows_install_log2"
+  fi
+
+  if jq -e --arg prefix "$WINDOWS_PREFIX" '
+      .model == "windows-sentinel-keep"
+      and ([.. | objects | select(has("command")) | .command
+            | startswith($prefix)] | length > 0 and all)
+    ' "$WINDOWS_SETTINGS" >/dev/null 2>&1; then
+    pass "existing Windows settings preserve user keys and wrapped commands"
+  else
+    fail "existing Windows settings preserve user keys and wrapped commands"
+  fi
+else
+  echo "  (jq not available — skipping Windows settings checks)"
+fi
+
+# ─── Suite 5: Idempotency markers ────────────────────────────────────
 
 section "Idempotency markers"
 
@@ -337,7 +406,7 @@ else
   fail "shell aliases appended exactly once" "found $alias_count alias lines (want 2)"
 fi
 
-# ─── Suite 5: Symlinks resolve ───────────────────────────────────────
+# ─── Suite 6: Symlinks resolve ───────────────────────────────────────
 
 section "Symlinks"
 
@@ -356,7 +425,7 @@ for pair in "committer:committer.sh" "slt:statusline-toggle.sh"; do
   fi
 done
 
-# ─── Suite 6: Smoke-run installed copies (not the repo copies) ───────
+# ─── Suite 7: Smoke-run installed copies (not the repo copies) ───────
 
 section "Smoke-run installed scripts"
 
