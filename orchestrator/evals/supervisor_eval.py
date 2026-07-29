@@ -1,27 +1,21 @@
 #!/usr/bin/env python3
 """Supervisor output-parsing eval — offline structural assertions on the LIVE
-``node_supervisor`` parser embedded in ``configs/scripts/loop-runner.sh``.
+parser invoked by ``configs/scripts/loop-runner.sh``.
 
 The supervisor LLM returns a JSON array of tasks; loop-runner.sh extracts it
-with an embedded ``python3 -c`` snippet. This eval pulls that snippet out of
-the CURRENT loop-runner.sh (so the fixtures always exercise the deployed
-parser, and drift fails loudly) and replays recorded supervisor outputs
-through it, then runs structural checks on the parsed tasks:
+through the sibling ``loop_json.py`` helper. This eval resolves that helper
+from the CURRENT loop-runner.sh (so fixtures always exercise the deployed
+parser and drift fails loudly), replays recorded outputs through it, then runs
+structural checks on the parsed tasks:
 
   - every task is an object with a non-empty description
   - model is a valid tier (haiku | sonnet | opus)
   - files is a non-empty list
   - tasks in one iteration are independent (no file shared between tasks)
 
-Two fixtures intentionally encode KNOWN parser weaknesses (single-object
-replies leak their ``files`` array as a bogus task; brackets in prose break
-array extraction). If you improve the parser, those fixtures must be updated
-— that is the point: parser behavior changes become visible diffs.
-
-Fidelity note: the snippet is executed via ``python3 -c`` exactly as the
-shell does. The snippet contains no ``$``/backtick/escape sequences that
-bash double-quote processing would rewrite, so raw extraction is equivalent
-(asserted by the pytest round-trip in tests/test_evals.py).
+Fixtures cover prose/fences, bracketed preambles, malformed objects, garbage,
+and structural task violations. The same helper is used by supervisor and
+fix-task paths, eliminating parser drift between shell call sites.
 
 Offline only — no API calls. Exit codes: 0 = all cases pass, 1 = mismatch,
 2 = fixtures/parser unusable.
@@ -30,7 +24,6 @@ Offline only — no API calls. Exit codes: 0 = all cases pass, 1 = mismatch,
 from __future__ import annotations
 
 import json
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -38,6 +31,7 @@ from pathlib import Path
 EVALS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = EVALS_DIR.parent.parent
 LOOP_RUNNER = REPO_ROOT / "configs" / "scripts" / "loop-runner.sh"
+PARSER = REPO_ROOT / "configs" / "scripts" / "loop_json.py"
 SUPERVISOR_CASES_DIR = EVALS_DIR / "supervisor_cases"
 
 VALID_MODELS = {"haiku", "sonnet", "opus"}
@@ -52,39 +46,31 @@ KNOWN_ISSUE_KINDS = {
 }
 
 
-# ─── Live parser extraction ───────────────────────────────────────────────────
+# ─── Live parser resolution ───────────────────────────────────────────────────
 
 
-def extract_parser_snippet(loop_runner: Path = LOOP_RUNNER) -> str:
-    """Pull the embedded JSON-extraction python out of node_supervisor().
-
-    Raises RuntimeError when the snippet cannot be located — that means
-    loop-runner.sh was restructured and this eval must be updated, which is a
-    desired loud failure (silently testing a stale copy would be worse).
-    """
+def resolve_parser(loop_runner: Path = LOOP_RUNNER, parser: Path = PARSER) -> Path:
+    """Resolve the parser actually wired into ``node_supervisor``."""
     text = loop_runner.read_text()
-    fn = re.search(r"node_supervisor\(\)\s*\{.*?\n\}", text, re.DOTALL)
-    if not fn:
-        raise RuntimeError("node_supervisor() not found in loop-runner.sh")
-    snippet = re.search(r'python3 -c "\n(.*?)\n" 2>/dev/null', fn.group(), re.DOTALL)
-    if not snippet:
-        raise RuntimeError("embedded python3 -c parser not found in node_supervisor()")
-    code = snippet.group(1)
-    if "json.loads" not in code:
-        raise RuntimeError("extracted snippet does not look like the JSON parser")
-    return code
+    if text.count("_sibling_script loop_json.py") < 2:
+        raise RuntimeError(
+            "loop-runner.sh must invoke loop_json.py for supervisor and fix tasks"
+        )
+    if not parser.is_file():
+        raise RuntimeError("loop_json.py not found")
+    return parser
 
 
-def parse_supervisor_output(raw_output: str, snippet: str | None = None):
-    """Run a recorded supervisor reply through the live parser snippet.
+def parse_supervisor_output(raw_output: str, parser: Path | None = None):
+    """Run a recorded supervisor reply through the live parser.
 
     Mirrors the shell contract: parser failure (nonzero exit / empty stdout)
     yields ``[]``, exactly like ``... 2>/dev/null || echo "[]"``.
     """
-    code = snippet if snippet is not None else extract_parser_snippet()
+    parser_path = parser if parser is not None else resolve_parser()
     try:
         proc = subprocess.run(
-            [sys.executable, "-c", code],
+            [sys.executable, str(parser_path)],
             input=raw_output,
             capture_output=True,
             text=True,
@@ -184,11 +170,11 @@ def load_cases(cases_dir: Path = SUPERVISOR_CASES_DIR) -> tuple[list[dict], list
 # ─── Runner ───────────────────────────────────────────────────────────────────
 
 
-def run_case(case: dict, snippet: str) -> list[str]:
+def run_case(case: dict, parser: Path) -> list[str]:
     """Replay one case; return mismatch descriptions (empty = pass)."""
     mismatches: list[str] = []
     cid = case["id"]
-    parsed = parse_supervisor_output(case["raw_output"], snippet)
+    parsed = parse_supervisor_output(case["raw_output"], parser)
     count = live_task_count(parsed)
     if count != case["expected_task_count"]:
         mismatches.append(
@@ -209,13 +195,13 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  - {e}")
         return 2
     try:
-        snippet = extract_parser_snippet()
+        parser = resolve_parser()
     except (RuntimeError, OSError) as e:
         print(f"PARSER EXTRACTION FAILED: {e}")
         return 2
     failures: list[str] = []
     for case in cases:
-        mismatches = run_case(case, snippet)
+        mismatches = run_case(case, parser)
         status = "ok  " if not mismatches else "MISS"
         print(f"{case['id']:<36} {status}")
         failures.extend(mismatches)
