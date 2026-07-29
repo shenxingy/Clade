@@ -31,6 +31,24 @@ def test_release_version_surfaces_are_aligned() -> None:
     assert server_manifest["packages"][0]["version"] == expected
 
 
+def test_mcp_dependency_requires_v2_without_a_v1_fallback() -> None:
+    orchestrator_requirements = (
+        REPO_ROOT / "orchestrator" / "requirements.txt"
+    ).read_text(encoding="utf-8")
+    package_manifest = (
+        REPO_ROOT / "mcp-package" / "pyproject.toml"
+    ).read_text(encoding="utf-8")
+
+    assert "mcp>=2.0.0,<3" in orchestrator_requirements
+    assert '"mcp>=2.0.0,<3"' in package_manifest
+    assert "mcp>=1" not in orchestrator_requirements + package_manifest
+
+
+def test_packaged_server_registers_v2_low_level_handlers() -> None:
+    assert server.app.get_request_handler("tools/list") is not None
+    assert server.app.get_request_handler("tools/call") is not None
+
+
 def test_editable_install_resolves_curated_bundled_skills() -> None:
     expected = REPO_ROOT / "mcp-package" / "skills"
     assert server.BUNDLED_SKILLS_DIR == expected

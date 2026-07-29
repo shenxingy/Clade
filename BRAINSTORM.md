@@ -17,11 +17,13 @@ Past resolved/deferred items live in [`docs/archive/BRAINSTORM-resolved.md`](doc
 This is the authoritative inbox after comparing every unchecked historical item
 with landed commits and `IMPLEMENTATION_PLAN.md`. Historical research remains
 below as evidence; checked items there are resolved/superseded/rejected rather
-than deleted. The only active items are these nineteen, each mirrored in
-`TODO.md`.
+than deleted. The authoritative program has nineteen entries, each mirrored in
+`TODO.md`. Checked entries in this block have landed; unchecked entries remain
+executable or conditional.
 
-- [ ] **P0 / unblocked:** migrate both MCP servers to Python SDK v2; the v2.0.0
-  release removed the prior upstream blocker.
+- [x] **P0 / RESOLVED 2026-07-28:** both MCP servers now use Python SDK v2
+  low-level `on_*` handlers and require `mcp>=2.0.0,<3`; a real stdio test
+  negotiates the oldest supported v1-era protocol (`2024-11-05`).
 - [ ] **P0 / security:** redact runtime events and provider output before any
   JSONL, SQLite, or log persistence.
 - [ ] **P1 / depends on redaction:** persist versioned lifecycle-linked
