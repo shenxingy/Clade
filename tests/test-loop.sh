@@ -144,11 +144,18 @@ cat > "$MOCK_BIN/claude" <<'MOCKEOF'
 if [[ -n "${MOCK_CLAUDE_ARGS_LOG:-}" ]]; then
   printf 'ARGS: %s\n' "$*" >> "$MOCK_CLAUDE_ARGS_LOG"
 fi
-cat > /dev/null  # consume stdin
+mock_input=$(cat)
+if [[ -n "${MOCK_CLAUDE_FIX_MARKER:-}" ]] \
+    && [[ "$mock_input" == *"${MOCK_CLAUDE_FIX_TRIGGER:-Repair verification marker}"* ]]; then
+  touch "$MOCK_CLAUDE_FIX_MARKER"
+fi
 if [[ -n "${MOCK_CLAUDE_TOUCH:-}" ]]; then
   echo "mock worker output" >> "$MOCK_CLAUDE_TOUCH"
 fi
-if [[ -f "${MOCK_CLAUDE_RESPONSE:-}" ]]; then
+if [[ -n "${MOCK_CLAUDE_FIX_RESPONSE:-}" ]] \
+    && [[ "$*" == *"The main workers completed but test_sample failed"* ]]; then
+  echo "$MOCK_CLAUDE_FIX_RESPONSE"
+elif [[ -f "${MOCK_CLAUDE_RESPONSE:-}" ]]; then
   cat "$MOCK_CLAUDE_RESPONSE"
 else
   echo "${MOCK_CLAUDE_RESPONSE:-STATUS: CONVERGED}"
@@ -1049,6 +1056,30 @@ unset MOCK_CLAUDE_ARGS_LOG
 # fully-successful worker run erased logs/loop/iter-1-tasks.txt — the exact
 # artifact test-loop-real.sh asserts).
 assert_file_exists "logs/loop/iter-1-tasks.txt" "iter task file survives successful worker run (--keep-logs)"
+
+# Mid-iteration fix regression: parsed JSON must be converted through the same
+# ===TASK=== writer before run-tasks.sh receives it.
+cat > CLAUDE.md <<'EOF'
+# Test project
+- Verify command: test -f fix-passed.marker
+EOF
+export MOCK_CLAUDE_RESPONSE='[{"description":"Run initial work without fixing the marker","model":"haiku","files":["initial.txt"]}]'
+export MOCK_CLAUDE_FIX_RESPONSE='[{"description":"Repair verification marker after the failed test","model":"sonnet","files":["fix-passed.marker"]}]'
+export MOCK_CLAUDE_FIX_MARKER="$REPO_DIR/fix-passed.marker"
+export MOCK_CLAUDE_FIX_TRIGGER="Repair verification marker"
+rm -f "$MOCK_CLAUDE_FIX_MARKER"
+output=$(
+  exec 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- 2>/dev/null
+  timeout --kill-after=5s 60s bash "$SCRIPTS_DIR/loop-runner.sh" "goal.md" \
+    --max-iter 1 --max-workers 1 --state .claude/loop-state-fix \
+    --log-dir logs/loop-fix 2>&1
+) || true
+assert_contains "$output" "Created 1 fix task(s)" "failed test creates one formatted fix task"
+assert_file_contains "logs/loop-fix/iter-1-fix-tasks.txt" "===TASK===" "fix task uses worker format"
+assert_file_contains "logs/loop-fix/iter-1-fix-tasks.txt" "Repair verification marker" "fix worker receives repair description"
+assert_file_exists "$MOCK_CLAUDE_FIX_MARKER" "fix worker runs before verification retry"
+assert_contains "$output" "Test sample passed" "verification is retried after fix worker"
+unset MOCK_CLAUDE_FIX_RESPONSE MOCK_CLAUDE_FIX_MARKER MOCK_CLAUDE_FIX_TRIGGER
 fi
 
 # ═══════════════════════════════════════════════════════════════════════

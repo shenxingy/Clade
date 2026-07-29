@@ -37,10 +37,15 @@ def extract_task_array(text: str, *, require_nonempty: bool = False) -> list[dic
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--require-nonempty", action="store_true")
+    parser.add_argument("--max-tasks", type=int)
     args = parser.parse_args(argv)
+    if args.max_tasks is not None and args.max_tasks < 1:
+        parser.error("--max-tasks must be positive")
     tasks = extract_task_array(
         sys.stdin.read(), require_nonempty=args.require_nonempty
     )
+    if args.max_tasks is not None:
+        tasks = tasks[: args.max_tasks]
     print(json.dumps(tasks))
     return 0
 

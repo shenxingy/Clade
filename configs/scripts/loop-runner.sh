@@ -486,7 +486,8 @@ EOF
 
   # Extract JSON from result (supervisor may include preamble text).
   echo "$result" \
-    | python3 "$(_sibling_script loop_json.py)" 2>/dev/null \
+    | python3 "$(_sibling_script loop_json.py)" --max-tasks "$MAX_WORKERS" \
+      2>/dev/null \
     || echo "[]"
 }
 # ────────────────────────────────────────────────────────────────
@@ -495,7 +496,7 @@ EOF
 # Scores tasks, writes task file in ===TASK=== format. No LLM calls.
 node_score_and_write() {
   local tasks_json="$1"
-  local task_file="$LOG_DIR/iter-${ITERATION}-tasks.txt"
+  local task_file="${2:-$LOG_DIR/iter-${ITERATION}-tasks.txt}"
 
   log_info "[DET] score_and_write"
 
@@ -1074,10 +1075,14 @@ $failure_context
 - Workers commit via: committer \"fix: description\" file1 file2"
 
   mkdir -p "$(dirname "$task_file")"
-  _timeout "$SUPERVISOR_TIMEOUT" claude --model sonnet "${PURE_JUDGE_FLAGS[@]}" -p "$fix_prompt" 2>&1 \
-    | python3 "$(_sibling_script loop_json.py)" --require-nonempty \
-      > "$task_file" 2>/dev/null \
-    || echo "[]" > "$task_file"
+  local tasks_json
+  tasks_json=$(
+    _timeout "$SUPERVISOR_TIMEOUT" claude --model sonnet \
+      "${PURE_JUDGE_FLAGS[@]}" -p "$fix_prompt" 2>&1 \
+      | python3 "$(_sibling_script loop_json.py)" --require-nonempty --max-tasks 1
+  ) || tasks_json="[]"
+  rm -f "$task_file"
+  node_score_and_write "$tasks_json" "$task_file" >/dev/null
 
   local task_count
   task_count=$(grep -c '===TASK===' "$task_file" 2>/dev/null || true)
