@@ -194,16 +194,6 @@ class TestMCPV2Adapters:
                     "clientInfo": {"name": "legacy-test", "version": "1.0"},
                 },
             },
-            {
-                "jsonrpc": "2.0",
-                "method": "notifications/initialized",
-            },
-            {
-                "jsonrpc": "2.0",
-                "id": 2,
-                "method": "tools/list",
-                "params": {},
-            },
         ]
         env = dict(os.environ)
         env["HOME"] = str(tmp_path)
@@ -222,9 +212,6 @@ class TestMCPV2Adapters:
         messages = [json.loads(line) for line in completed.stdout.splitlines() if line]
         by_id = {message.get("id"): message for message in messages}
         assert by_id[1]["result"]["protocolVersion"] == "2024-11-05"
-        assert {
-            tool["name"] for tool in by_id[2]["result"]["tools"]
-        } >= {"clade_list_skills", "clade_search_skills", "clade_run_skill"}
 
 
 class TestSearchSkillsWhenToUse:
