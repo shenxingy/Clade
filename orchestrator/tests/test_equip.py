@@ -26,6 +26,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
 import equip_audit as ea  # noqa: E402
 import equip_common as ec  # noqa: E402
 import equip_scan as es  # noqa: E402
+import equip_sync as esync  # noqa: E402
 
 
 # ─── Git test helpers ───────────────────────────────────────────────────────
@@ -396,6 +397,7 @@ def test_equip_audit_main_self_audit_includes_agent_section(tmp_path, monkeypatc
     assert "## Agents (informational" in text
     assert "`wild`" in text
     assert "PERM-01" in text
+    assert f"- **Audited commit:** `{_rev_parse('HEAD', project)}`" in text
 
 
 # ─── Layout E: single-skill-at-root upstream repos (scamai/design-system) ───
@@ -486,6 +488,131 @@ def test_equip_sync_diff_only_handles_single_skill_upstream(tmp_path, monkeypatc
     # The repo root shows up as ONE new skill named after the upstream id
     assert "NEW" in out and "design-system" in out
     assert "no skills dir" not in out
+
+
+# ─── Commit-bound audit authority ───────────────────────────────────────────
+
+def _commit_bound_sync_fixture(
+    tmp_path: Path,
+    monkeypatch,
+    *,
+    report_commit: str | None,
+) -> tuple[Path, Path, str, list[str]]:
+    project = tmp_path / "proj"
+    (project / "configs" / "skills").mkdir(parents=True)
+    ec.ensure_equipment_dir(project)
+    ec.save_upstreams(project, [ec.Upstream(id="up", repo="owner/up")])
+
+    cache = ec.cache_dir(project) / "up"
+    _make_single_skill_repo(cache)
+    _init_repo(cache)
+    _git(["add", "-A"], cwd=cache)
+    _git(["commit", "-q", "-m", "audited"], cwd=cache)
+    fetched_commit = _rev_parse("HEAD", cache)
+
+    report_lines = [
+        "# Equip Audit: owner/up",
+        "",
+        "- **Ref:** `main`",
+    ]
+    if report_commit:
+        report_lines.append(f"- **Audited commit:** `{report_commit}`")
+    report_lines.extend(["", "### [x] `up`", "", "**Flags:** none — clean.", ""])
+    audit = ec.audits_dir(project) / "up-2026-07-28.md"
+    audit.write_text("\n".join(report_lines))
+
+    refresh_calls: list[str] = []
+
+    def refresh(_project: Path, upstream: ec.Upstream) -> Path:
+        refresh_calls.append(upstream.id)
+        return cache
+
+    monkeypatch.setattr(esync, "clone_or_update_cache", refresh)
+    return project, cache, fetched_commit, refresh_calls
+
+
+def test_parse_audited_commit_accepts_exact_sha_and_legacy_is_none(tmp_path):
+    report = tmp_path / "audit.md"
+    sha = "A" * 40
+    report.write_text(f"- **Audited commit:** `{sha}`\n")
+    assert esync.parse_audited_commit(report) == sha.lower()
+
+    report.write_text("- **Ref:** `abc1234`\n")
+    assert esync.parse_audited_commit(report) is None
+
+
+def test_equip_sync_apply_accepts_only_matching_audited_commit(
+    tmp_path, monkeypatch, capsys
+):
+    project, _cache, fetched_commit, refresh_calls = _commit_bound_sync_fixture(
+        tmp_path, monkeypatch, report_commit=None
+    )
+    audit = ec.audits_dir(project) / "up-2026-07-28.md"
+    text = audit.read_text()
+    audit.write_text(
+        text.replace("- **Ref:** `main`", f"- **Ref:** `main`\n- **Audited commit:** `{fetched_commit}`")
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["equip_sync.py", "--project", str(project), "--upstream", "up", "--apply"],
+    )
+
+    assert esync.main() == 0
+    assert refresh_calls == ["up"]
+    assert (project / "configs" / "skills" / "up" / "SKILL.md").is_file()
+    assert ec.find_upstream(project, "up").last_synced_commit == fetched_commit
+    output = capsys.readouterr().out
+    assert f"Audited commit: {fetched_commit}" in output
+    assert f"Fetched commit: {fetched_commit}" in output
+
+
+def test_equip_sync_apply_fails_closed_on_drift(tmp_path, monkeypatch, capsys):
+    project, _cache, fetched_commit, refresh_calls = _commit_bound_sync_fixture(
+        tmp_path, monkeypatch, report_commit="0" * 40
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["equip_sync.py", "--project", str(project), "--upstream", "up", "--apply"],
+    )
+
+    assert esync.main() == 2
+    assert refresh_calls == ["up"]
+    assert not (project / "configs" / "skills" / "up").exists()
+    assert ec.find_upstream(project, "up").last_synced_commit is None
+    captured = capsys.readouterr()
+    assert fetched_commit in captured.out
+    assert "upstream changed after audit" in captured.err
+    assert "run /equip audit up" in captured.err
+
+
+def test_equip_sync_legacy_report_is_readable_dry_run_but_cannot_apply(
+    tmp_path, monkeypatch, capsys
+):
+    project, _cache, fetched_commit, _refresh_calls = _commit_bound_sync_fixture(
+        tmp_path, monkeypatch, report_commit=None
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["equip_sync.py", "--project", str(project), "--upstream", "up"],
+    )
+
+    assert esync.main() == 0
+    captured = capsys.readouterr()
+    assert "Audited commit: unknown (legacy report)" in captured.out
+    assert f"Fetched commit: {fetched_commit}" in captured.out
+    assert "--apply would be blocked" in captured.out
+    assert not (project / "configs" / "skills" / "up").exists()
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["equip_sync.py", "--project", str(project), "--upstream", "up", "--apply"],
+    )
+    assert esync.main() == 2
+    assert "predates exact-commit binding" in capsys.readouterr().err
 
 
 # ─── INJ-01..04: skill-borne prompt-injection screening (ToxicSkills-class) ─

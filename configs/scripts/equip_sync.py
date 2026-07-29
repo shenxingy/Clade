@@ -101,6 +101,9 @@ def apply_remediations(content: str, flag_ids: set[str]) -> tuple[str, list[str]
 
 SKILL_HEADER = re.compile(r"^###\s+\[([ xX])\]\s+`([^`]+)`")
 FLAGS_IN_SECTION = re.compile(r"\*\*(SEC-\d+|NOI-\d+|DRF-\d+|BLT-\d+|QLT-\d+|LIC-\d+|DEP-\d+|OVR-\d+)\*\*")
+AUDITED_COMMIT = re.compile(
+    r"^-\s+\*\*Audited commit:\*\*\s+`([0-9a-fA-F]{40}|[0-9a-fA-F]{64})`\s*$"
+)
 
 
 def parse_audit_report(path: Path) -> list[tuple[str, bool, set[str]]]:
@@ -128,6 +131,22 @@ def parse_audit_report(path: Path) -> list[tuple[str, bool, set[str]]]:
     if current_name is not None:
         out.append((current_name, current_accepted, current_flags))
     return out
+
+
+def parse_audited_commit(path: Path) -> Optional[str]:
+    """Return the exact upstream commit bound to an audit report.
+
+    Reports written before commit binding intentionally return ``None``. They
+    remain readable in dry-run mode, but are never sufficient authority for
+    ``--apply``.
+    """
+    if not path.is_file():
+        return None
+    for line in path.read_text().splitlines():
+        match = AUDITED_COMMIT.match(line)
+        if match:
+            return match.group(1).lower()
+    return None
 
 
 def find_latest_audit(project: Path, upstream_id: str) -> Optional[Path]:
@@ -352,10 +371,8 @@ def main() -> int:
         print(f"ERROR: upstream {args.upstream!r} not registered", file=sys.stderr)
         return 2
 
-    cache_path = cache_dir(project) / upstream.id
-    if not (cache_path / ".git").is_dir():
-        print(f"Fetching {upstream.repo}...")
-        clone_or_update_cache(project, upstream)
+    print(f"Fetching {upstream.repo}...")
+    cache_path = clone_or_update_cache(project, upstream)
 
     skill_dirs = upstream_skill_dirs(cache_path)
     if not skill_dirs:
@@ -383,6 +400,34 @@ def main() -> int:
         return 2
 
     print(f"Audit report: {audit_path}")
+    audited_commit = parse_audited_commit(audit_path)
+    fetched_commit = current_commit(cache_path).lower()
+    print(f"Audited commit: {audited_commit or 'unknown (legacy report)'}")
+    print(f"Fetched commit: {fetched_commit or 'unknown'}")
+
+    commit_matches = bool(audited_commit and fetched_commit == audited_commit)
+    if not audited_commit:
+        message = (
+            "audit report predates exact-commit binding; run /equip audit "
+            f"{upstream.id} to re-screen the fetched content"
+        )
+    elif not fetched_commit:
+        message = "could not resolve the fetched upstream commit"
+    elif not commit_matches:
+        message = (
+            f"upstream changed after audit ({audited_commit[:12]} -> "
+            f"{fetched_commit[:12]}); run /equip audit {upstream.id} to "
+            "re-screen and approve the new commit"
+        )
+    else:
+        message = ""
+
+    if message and args.apply:
+        print(f"ERROR: refusing --apply: {message}.", file=sys.stderr)
+        return 2
+    if message:
+        print(f"[DRY RUN WARNING] --apply would be blocked: {message}.")
+
     decisions = parse_audit_report(audit_path)
     accepted = [(n, flags) for n, a, flags in decisions if a]
     print(f"Decisions parsed: {len(decisions)} skills, {len(accepted)} accepted for sync")

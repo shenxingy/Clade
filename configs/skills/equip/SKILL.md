@@ -15,8 +15,8 @@ A project-agnostic skill for managing "absorbed" assets (skills, agents, scripts
 | Command | Purpose |
 |---|---|
 | `/equip inventory` | Scan current project; classify every asset as `native` / `absorbed` / `modified-absorbed` / `orphan`; write `.claude/equipment/inventory.yaml` |
-| `/equip audit <repo\|id>` | Clone upstream, apply red-flag checks to each skill, score, write markdown audit report with decision checkboxes |
-| `/equip sync <id> [--apply]` | Parse audit report, perform 3-way merge (base/ours/theirs) for ADOPT decisions; dry-run by default |
+| `/equip audit <repo\|id>` | Clone upstream, apply red-flag checks to each skill, and bind the decision report to the exact audited commit |
+| `/equip sync <id> [--apply]` | Refresh upstream, verify its exact commit matches the audit, then perform a 3-way merge; dry-run by default |
 | `/equip diff <id>` | Show per-file delta between registered `last_synced_commit` and remote HEAD |
 | `/equip list` | Show registered upstreams with ahead/behind status |
 | `/equip add <repo>` | Register a new upstream (interactive: select which local paths it covers) |
@@ -36,6 +36,7 @@ A project-agnostic skill for managing "absorbed" assets (skills, agents, scripts
 ## Design principles
 
 - **Review-first, not sync-first**: upstream content is always audited before it touches local files
+- **Commit-bound approval**: `--apply` fails closed if the fetched commit differs from the exact commit in the audit report; re-run `/equip audit` to approve drift
 - **Trust is per-skill, not per-repo**: one upstream can have 17 good skills + 3 bad ones; `/equip` picks
 - **Local customizations are sacred**: files modified locally are never overwritten without explicit approval
 - **Transparent**: every decision recorded in `.claude/equipment/audits/<id>-<date>.md` that the user can read and edit
