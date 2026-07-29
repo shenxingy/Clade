@@ -93,7 +93,7 @@ python3 "$DELIVERY_PY" start \
   --task-source "<prompt|issue|open-pr|review|automation>" \
   --branch "<owned-topic-branch>" \
   --base "<resolved-base-ref>" \
-  [--create-branch] [--parent "<stack-parent>"] \
+  [--create-branch] [--parent "<stack-parent>"] [--attempt-id "<attempt-id>"] \
   [--push-authority task-request|repository-policy] \
   [--pr-authority task-request|repository-policy] \
   [--merge-authority task-request|repository-policy] \
@@ -103,6 +103,14 @@ python3 "$DELIVERY_PY" start \
 The controller refuses unrelated dirty starts, accidental topic-on-topic
 ancestry, duplicate active branch leases, and mismatched idempotent resumes.
 Do not bypass those failures by editing its state file.
+
+When the work belongs to an orchestrator EvidenceBundle, pass its exact
+`attempt_id`. At any later delivery state, obtain the bounded, secret-free
+projection without importing controller internals:
+
+```bash
+python3 "$DELIVERY_PY" evidence --id "<id>"
+```
 
 If the user or repository policy grants publication/integration authority
 after START, record only the newly granted actions through the controller:
@@ -360,6 +368,8 @@ permission to push, open a PR, merge, or delete a branch.
 - Repository policy and explicit user authority outrank Clade defaults.
 - Authority granted after START is recorded through the audited `authorize`
   transition; never edit delivery state directly.
+- When an orchestrator attempt exists, START records its `--attempt-id` and
+  `evidence` emits the stable secret-free delivery projection for the bundle.
 
 The executable workflow and state schema live in `prompt.md` and
 `scripts/delivery.py`. Runtime-specific mechanics live under `surfaces/`.

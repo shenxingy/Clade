@@ -616,6 +616,17 @@ async def get_task_messages(task_id: str, s: ProjectSession = Depends(_resolve_s
     return await s.task_queue.get_messages(task_id, unread_only=False)
 
 
+@router.get("/api/tasks/{task_id}/evidence")
+async def get_task_evidence(task_id: str, s: ProjectSession = Depends(_resolve_session)):
+    task = await s.task_queue.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return {
+        "task_id": task_id,
+        "attempts": await s.task_queue.list_evidence_attempts(task_id),
+    }
+
+
 @router.get("/api/tasks/{task_id}/log")
 async def get_task_log(task_id: str, s: ProjectSession = Depends(_resolve_session)):
     """Return the last 500 lines of a task's log file."""

@@ -2,7 +2,7 @@
 name: delivery
 description: Adaptive, resumable Git delivery across repositories and agent runtimes — probe policy, checkpoint coherent work, publish, review, integrate, and verify cleanup
 when_to_use: "start coding branch, manage delivery lifecycle, checkpoint work, prepare/publish/update PR, choose merge strategy, finish and clean a coding task"
-argument-hint: 'start|authorize|status|checkpoint|candidate|publish|ready|merge|clean [options]'
+argument-hint: 'start|authorize|status|checkpoint|candidate|evidence|publish|ready|merge|clean [options]'
 user_invocable: true
 ---
 
@@ -26,6 +26,8 @@ permission to push, open a PR, merge, or delete a branch.
 - Repository policy and explicit user authority outrank Clade defaults.
 - Authority granted after START is recorded through the audited `authorize`
   transition; never edit delivery state directly.
+- When an orchestrator attempt exists, START records its `--attempt-id` and
+  `evidence` emits the stable secret-free delivery projection for the bundle.
 
 The executable workflow and state schema live in `prompt.md` and
 `scripts/delivery.py`. Runtime-specific mechanics live under `surfaces/`.

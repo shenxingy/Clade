@@ -76,6 +76,7 @@ def _start(
     *,
     delivery_id: str = "fixture",
     authorities: bool = True,
+    attempt_id: str | None = None,
 ) -> dict:
     _git(repo, "switch", "-q", "-c", "agent/fixture")
     args = [
@@ -91,6 +92,8 @@ def _start(
         "--base",
         "main",
     ]
+    if attempt_id:
+        args.extend(["--attempt-id", attempt_id])
     if authorities:
         args.extend(
             [
@@ -105,6 +108,57 @@ def _start(
             ]
         )
     return _delivery(repo, *args)
+
+
+def test_delivery_evidence_projection_links_attempt_and_omits_private_state(
+    git_repo: Path,
+) -> None:
+    started = _start(git_repo, attempt_id="attempt-17")
+    candidate = _delivery(
+        git_repo,
+        "candidate",
+        "--id",
+        "fixture",
+        "--command",
+        "pytest -q",
+        "--result",
+        "passed",
+    )
+    _delivery(
+        git_repo,
+        "publish",
+        "--id",
+        "fixture",
+        "--pr",
+        "17",
+        "--url",
+        "https://github.com/acme/repo/pull/17",
+    )
+
+    evidence = _delivery(git_repo, "evidence", "--id", "fixture")
+
+    assert evidence == {
+        "schema_version": "clade.delivery-evidence/v1",
+        "attempt_id": "attempt-17",
+        "delivery_id": "fixture",
+        "state": "PUBLISHED",
+        "base": {"ref": "main", "sha": started["base_sha"]},
+        "head": {"branch": "agent/fixture", "sha": candidate["head_sha"]},
+        "candidate": candidate["verification"]["candidate"],
+        "pull_request": {
+            "number": 17,
+            "url": "https://github.com/acme/repo/pull/17",
+            "base": "main",
+            "head_sha": candidate["head_sha"],
+            "draft": False,
+        },
+        "ready": None,
+        "merge": None,
+        "cleanup": None,
+        "updated_at": evidence["updated_at"],
+    }
+    assert "repository_root" not in evidence
+    assert "authorization" not in evidence
 
 
 def test_context_probe_keeps_plain_git_and_unknown_ownership_explicit(

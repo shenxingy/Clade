@@ -306,6 +306,7 @@ clade/
 │   ├── worker.py            # WorkerPool, SwarmManager, task dispatch
 │   ├── task_queue.py        # SQLite task queue + CRUD
 │   ├── evidence_bundle.py   # Immutable lifecycle evidence + digest chains
+│   ├── worker_evidence.py   # Worker/verifier/delivery evidence wiring
 │   └── web/                 # ← THE OBSERVATION WINDOW
 │       └── src/             # React + Vite UI (served from dist/)
 ├── docs/                    # Guides and research

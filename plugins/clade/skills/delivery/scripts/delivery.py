@@ -219,6 +219,25 @@ def _evidence(command: str, result: str, sha: str) -> dict[str, str]:
     }
 
 
+def _delivery_evidence_projection(state: dict[str, Any]) -> dict[str, Any]:
+    """Return stable, secret-free delivery fields for an EvidenceBundle."""
+
+    return {
+        "schema_version": "clade.delivery-evidence/v1",
+        "attempt_id": state.get("attempt_id"),
+        "delivery_id": state["delivery_id"],
+        "state": state["state"],
+        "base": {"ref": state.get("base_ref"), "sha": state.get("base_sha")},
+        "head": {"branch": state.get("branch"), "sha": state.get("head_sha")},
+        "candidate": state.get("verification", {}).get("candidate"),
+        "pull_request": state.get("pull_request"),
+        "ready": state.get("ready"),
+        "merge": state.get("merge"),
+        "cleanup": state.get("cleanup"),
+        "updated_at": state.get("updated_at"),
+    }
+
+
 def _invalidate_candidate(state: dict[str, Any], head_sha: str) -> None:
     candidate = state.get("verification", {}).get("candidate")
     if candidate and candidate.get("head_sha") != head_sha:
@@ -305,6 +324,7 @@ def cmd_start(args: argparse.Namespace) -> dict[str, Any]:
     state = {
         "schema_version": SCHEMA_VERSION,
         "delivery_id": delivery_id,
+        "attempt_id": _safe_id(args.attempt_id) if args.attempt_id else None,
         "task_source": args.task_source,
         "owner": args.owner,
         "runtime": args.runtime,
@@ -340,7 +360,9 @@ def cmd_start(args: argparse.Namespace) -> dict[str, Any]:
     with _locked_state_dir(root):
         if path.exists():
             existing = _read_state(root, delivery_id)
-            immutable = ("branch", "base_sha", "owner", "repository_root")
+            immutable = (
+                "branch", "base_sha", "owner", "repository_root", "attempt_id"
+            )
             if all(existing.get(key) == state.get(key) for key in immutable):
                 return existing
             raise DeliveryError(f"delivery id already exists with different facts: {delivery_id}")
@@ -351,6 +373,11 @@ def cmd_start(args: argparse.Namespace) -> dict[str, Any]:
 def cmd_show(args: argparse.Namespace) -> dict[str, Any]:
     root = _root(args.repo.resolve())
     return _read_state(root, args.id)
+
+
+def cmd_evidence(args: argparse.Namespace) -> dict[str, Any]:
+    root = _root(args.repo.resolve())
+    return _delivery_evidence_projection(_read_state(root, args.id))
 
 
 def cmd_authorize(args: argparse.Namespace) -> dict[str, Any]:
@@ -911,6 +938,7 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument("--branch")
     start.add_argument("--base")
     start.add_argument("--parent")
+    start.add_argument("--attempt-id")
     start.add_argument("--create-branch", action="store_true")
     start.add_argument("--allow-dirty", action="store_true")
     start.add_argument("--push-authority", default="pending")
@@ -923,6 +951,11 @@ def build_parser() -> argparse.ArgumentParser:
     _common_repo(show)
     show.add_argument("--id", required=True)
     show.set_defaults(handler=cmd_show)
+
+    evidence = sub.add_parser("evidence")
+    _common_repo(evidence)
+    evidence.add_argument("--id", required=True)
+    evidence.set_defaults(handler=cmd_evidence)
 
     authorize = sub.add_parser("authorize")
     _common_repo(authorize)

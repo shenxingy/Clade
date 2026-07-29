@@ -30,8 +30,10 @@ executable or conditional.
 - [x] **P1 / RESOLVED 2026-07-28:** `clade.evidence/v1` now persists redacted,
   append-only attempt revisions with validated lifecycle transitions,
   canonical SHA-256 predecessor chains, and SQLite immutability guards.
-- [ ] **P1 / depends on EvidenceBundle:** wire worker, verifier, delivery, API,
-  and UI evidence into the bundle.
+- [x] **P1 / RESOLVED 2026-07-28:** worker attempts now capture execution,
+  timing, exact Git SHAs, tests, oracle verdicts, optional artifacts,
+  usage/cost, and delivery candidates; delivery exposes an attempt-linked
+  projection, and task detail API/UI show verified bundles.
 - [ ] **P1 / depends on EvidenceBundle:** quarantine sanitized eval candidates
   from incidents, oracle disagreements, reverts, and explicit corrections.
 - [ ] **P1 / depends on eval candidates:** add human review/promotion tooling;
