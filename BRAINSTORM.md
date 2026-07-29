@@ -45,8 +45,10 @@ executable or conditional.
 - [x] **P1 / RESOLVED 2026-07-28:** `/equip` approvals are bound to the exact
   audited upstream commit; apply refreshes the cache and fails closed on
   legacy reports or drift until re-screened.
-- [ ] **P2 / depends on evidence/evals:** publish evidence completeness,
-  false-approval, human-override, and regression-coverage metrics.
+- [x] **P2 / RESOLVED 2026-07-28:** API/dashboard publish
+  denominator-explicit evidence completeness, exact-source integrity,
+  confirmed false approvals, human overrides, candidate states, and accepted
+  corpus coverage; empty denominators are `null`, never fake zeroes.
 - [ ] **P2 / data first:** persist attempt/phase timing and routing telemetry.
 - [ ] **P2 / depends on telemetry/evals:** build a recorded routing replay
   corpus.

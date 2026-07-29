@@ -6,12 +6,13 @@ import { WorkerList } from './components/workers/WorkerList';
 import { PaneManager } from './components/terminal/PaneManager';
 import { UsageBar } from './components/layout/UsageBar';
 import { SettingsPanel } from './components/settings/SettingsPanel';
+import { EvalDashboard } from './components/evals/EvalDashboard';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useSessionStore } from './stores/sessionStore';
 import { sessions as sessionsApi, settings as settingsApi } from './lib/api';
 import type { StatusMessage, Session, GlobalSettings } from './lib/types';
 
-type ActiveTab = 'tasks' | 'workers' | 'terminal';
+type ActiveTab = 'tasks' | 'workers' | 'evals' | 'terminal';
 
 export default function App() {
   const {
@@ -56,7 +57,7 @@ export default function App() {
         <main className="flex-1 flex flex-col overflow-hidden">
           {/* Tab bar */}
           <div className="flex border-b border-border px-4 gap-0 shrink-0">
-            {(['tasks', 'workers', 'terminal'] as ActiveTab[]).map(t => (
+            {(['tasks', 'workers', 'evals', 'terminal'] as ActiveTab[]).map(t => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -79,6 +80,7 @@ export default function App() {
           <div className={`flex-1 ${tab === 'terminal' ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'}`}>
             {tab === 'tasks' && <TaskBoard />}
             {tab === 'workers' && <WorkerList />}
+            {tab === 'evals' && <EvalDashboard />}
             {tab === 'terminal' && <PaneManager />}
           </div>
         </main>

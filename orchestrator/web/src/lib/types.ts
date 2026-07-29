@@ -143,6 +143,41 @@ export interface EvidenceAttemptsResponse {
   attempts: EvidenceBundle[];
 }
 
+export interface EvalMetricRatio {
+  rate: number | null;
+}
+
+export interface EvalMetrics {
+  schema_version: 'clade.eval_metrics/v1';
+  candidates: {
+    total: number;
+    quarantined: number;
+    promoted: number;
+    rejected: number;
+    expired: number;
+  };
+  evidence_completeness: EvalMetricRatio & {
+    complete: number;
+    terminal_attempts: number;
+  };
+  source_integrity: EvalMetricRatio & {
+    valid: number;
+    candidates: number;
+  };
+  false_approvals: EvalMetricRatio & {
+    confirmed: number;
+    oracle_approved_attempts: number;
+  };
+  human_overrides: EvalMetricRatio & {
+    count: number;
+    comparable_promotions: number;
+  };
+  accepted_regression_coverage: EvalMetricRatio & {
+    covered: number;
+    promoted: number;
+  };
+}
+
 export interface Worker {
   id: string;
   task_id: string;

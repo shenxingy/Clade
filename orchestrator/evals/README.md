@@ -196,6 +196,26 @@ Every fixture promoted this way has `source: eval:<candidate-id>` and a
 reason, trigger, diff digest, and redaction metadata. No code path assigns
 ground truth automatically.
 
+## Runtime quality metrics
+
+`GET /api/eval-candidates/metrics?session=<session-id>` returns
+`clade.eval_metrics/v1`. Every ratio exposes its numerator and denominator;
+an empty denominator is `null`, never a misleading zero:
+
+- evidence completeness = lifecycle-complete terminal bundles / terminal
+  attempts;
+- source integrity = candidates resolving to their exact evidence
+  revision/digest / all candidates;
+- confirmed false-approve rate = unique oracle-approved attempts whose
+  human-promoted oracle label is `rejected` (or promoted resolve case) / all
+  oracle-approved attempts;
+- human override rate = promoted oracle fixtures whose human label disagrees
+  with the observed approved/rejected verdict / comparable promotions;
+- accepted regression coverage = promoted rows with a present corpus file
+  whose provenance matches candidate ID and evidence digest / all promotions.
+
+The React dashboard exposes the same snapshot under the **Evals** tab.
+
 ## Supervisor cases
 
 `supervisor_eval.py` extracts the JSON-extraction snippet embedded in

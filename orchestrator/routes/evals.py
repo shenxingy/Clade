@@ -5,15 +5,22 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from eval_review import (
+    EVALS_ROOT,
     EvalReviewConflict,
     EvalReviewError,
     promote_candidate,
     reject_candidate,
 )
+from eval_metrics import compute_eval_metrics
 from session import ProjectSession, _resolve_session
 
 
 router = APIRouter(prefix="/api/eval-candidates", tags=["evals"])
+
+
+@router.get("/metrics")
+async def metrics(s: ProjectSession = Depends(_resolve_session)):
+    return await compute_eval_metrics(s.task_queue._db_path, EVALS_ROOT)
 
 
 @router.get("")
