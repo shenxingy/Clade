@@ -62,6 +62,44 @@ async def test_update_route_rejects_invalid_provider_and_effort(
     assert response.headers["deprecation"] == "true"
 
 
+async def test_update_route_rejects_runtime_incompatible_with_existing_connection(
+    task_queue: TaskQueue, monkeypatch
+):
+    from types import SimpleNamespace
+    from fastapi import HTTPException
+    import routes.tasks as task_routes
+
+    monkeypatch.setitem(
+        task_routes.GLOBAL_SETTINGS,
+        "connections",
+        {
+            "codex-work": {
+                "agent_runtime": "codex",
+                "inference_provider": "openai",
+                "wire_protocol": "responses",
+                "endpoint_identity": "codex-user-config",
+            }
+        },
+    )
+    task = await task_queue.add(
+        "Keep runtime and connection compatible",
+        agent_runtime="codex",
+        connection="codex-work",
+    )
+    session = SimpleNamespace(task_queue=task_queue)
+
+    with pytest.raises(HTTPException) as caught:
+        await task_routes.update_task(
+            task["id"], {"agent_runtime": "claude"}, s=session
+        )
+
+    assert caught.value.status_code == 400
+    assert "belongs to runtime" in caught.value.detail
+    unchanged = await task_queue.get(task["id"])
+    assert unchanged["agent_runtime"] == "codex"
+    assert unchanged["connection"] == "codex-work"
+
+
 async def test_list_all_tasks(task_queue: TaskQueue):
     await task_queue.add("Task one")
     await task_queue.add("Task two")
