@@ -1,0 +1,26 @@
+{
+  "id": "claude-minimax",
+  "surface": "mcp",
+  "runtime": "claude",
+  "inference_provider": "minimax",
+  "wire_protocol": "anthropic-compatible",
+  "adapter": "minimax",
+  "store": "claude-providers",
+  "wire_model": "fixture/minimax-v1",
+  "catalog_capabilities": {"image_input": "unsupported"},
+  "expected": {
+    "id": "claude-minimax",
+    "surface": "mcp",
+    "runtime": "claude",
+    "inference_provider": "minimax",
+    "wire_protocol": "anthropic-compatible",
+    "model": "fixture/minimax-v1",
+    "catalog_state": "fresh",
+    "catalog_source": "minimax@1:fixture-profile",
+    "capability": {"name": "image_input", "state": "unsupported", "source": "minimax@1:fixture-profile"},
+    "profile_bound": true,
+    "surface_marker_present": true,
+    "secret_exposed": false,
+    "auth_shape": "bearer"
+  }
+}

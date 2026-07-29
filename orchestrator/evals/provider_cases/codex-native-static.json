@@ -1,0 +1,26 @@
+{
+  "id": "codex-native-static",
+  "surface": "generic",
+  "runtime": "codex",
+  "inference_provider": "local-runtime",
+  "wire_protocol": "runtime-native",
+  "adapter": "native-static",
+  "store": "codex-config",
+  "wire_model": "fixture/local-v1",
+  "catalog_capabilities": {},
+  "expected": {
+    "id": "codex-native-static",
+    "surface": "generic",
+    "runtime": "codex",
+    "inference_provider": "local-runtime",
+    "wire_protocol": "runtime-native",
+    "model": "fixture/local-v1",
+    "catalog_state": "fresh",
+    "catalog_source": "native-static@1:fixture-profile",
+    "capability": {"name": "reasoning_control", "state": "supported", "source": "codex-adapter@1"},
+    "profile_bound": true,
+    "surface_marker_present": true,
+    "secret_exposed": false,
+    "auth_shape": "none"
+  }
+}

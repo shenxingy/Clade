@@ -1,0 +1,26 @@
+{
+  "id": "claude-anthropic",
+  "surface": "claude-code",
+  "runtime": "claude",
+  "inference_provider": "anthropic",
+  "wire_protocol": "anthropic-messages",
+  "adapter": "anthropic",
+  "store": "claude-providers",
+  "wire_model": "fixture/claude-v1",
+  "catalog_capabilities": {"image_input": "supported"},
+  "expected": {
+    "id": "claude-anthropic",
+    "surface": "claude-code",
+    "runtime": "claude",
+    "inference_provider": "anthropic",
+    "wire_protocol": "anthropic-messages",
+    "model": "fixture/claude-v1",
+    "catalog_state": "fresh",
+    "catalog_source": "anthropic@1:fixture-profile",
+    "capability": {"name": "image_input", "state": "conditional", "source": "anthropic@1:fixture-profile"},
+    "profile_bound": true,
+    "surface_marker_present": true,
+    "secret_exposed": false,
+    "auth_shape": "x-api-key"
+  }
+}

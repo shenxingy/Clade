@@ -1,0 +1,26 @@
+{
+  "id": "codex-moonshot",
+  "surface": "generic",
+  "runtime": "codex",
+  "inference_provider": "moonshot",
+  "wire_protocol": "openai-responses-compatible",
+  "adapter": "moonshot",
+  "store": "codex-config",
+  "wire_model": "fixture/moonshot-v1",
+  "catalog_capabilities": {"reasoning_control": "supported"},
+  "expected": {
+    "id": "codex-moonshot",
+    "surface": "generic",
+    "runtime": "codex",
+    "inference_provider": "moonshot",
+    "wire_protocol": "openai-responses-compatible",
+    "model": "fixture/moonshot-v1",
+    "catalog_state": "fresh",
+    "catalog_source": "moonshot@1:fixture-profile",
+    "capability": {"name": "reasoning_control", "state": "supported", "source": "moonshot@1:fixture-profile"},
+    "profile_bound": true,
+    "surface_marker_present": true,
+    "secret_exposed": false,
+    "auth_shape": "bearer"
+  }
+}
