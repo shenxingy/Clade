@@ -6,6 +6,7 @@ provider emits a well-formed `codex exec` command with none of the claude-only
 flags and with stdin closed so a headless worker cannot hang.
 """
 
+import json
 import shlex
 import stat
 from pathlib import Path
@@ -144,6 +145,63 @@ def test_codex_command_passes_reasoning_effort_as_config():
     assert parts[effort_index:effort_index + 2] == [
         "-c", 'model_reasoning_effort="medium"'
     ]
+
+
+def test_codex_connection_profile_is_bound_on_command():
+    cmd = CodexProvider().build_command(
+        task_file=TASK,
+        requested_model="gateway/reasoner-v9",
+        task_type=None,
+        mcp_config=NO_MCP,
+        connection={
+            "discovery": {
+                "store": "codex-config",
+                "profile": "enterprise-work",
+            }
+        },
+    )
+
+    assert 'model_provider="enterprise-work"' in cmd
+
+
+def test_claude_connection_profile_replaces_inherited_transport_env(
+    tmp_path, monkeypatch
+):
+    profiles = tmp_path / "providers.json"
+    profiles.write_text(
+        json.dumps(
+            {
+                "providers": {
+                    "work": {
+                        "base_url": "https://gateway.example/anthropic/",
+                        "api_key_env": "CLADE_TEST_GATEWAY_KEY",
+                        "models": ["gateway/model-v1"],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CLADE_CLAUDE_PROVIDERS_FILE", str(profiles))
+    monkeypatch.setenv("CLADE_TEST_GATEWAY_KEY", "selected-secret")
+    env = {
+        "ANTHROPIC_BASE_URL": "https://wrong-account.example",
+        "ANTHROPIC_API_KEY": "wrong-secret",
+    }
+
+    ClaudeProvider().apply_connection_env(
+        {
+            "discovery": {
+                "adapter": "anthropic",
+                "store": "claude-providers",
+                "profile": "work",
+            }
+        },
+        env,
+    )
+
+    assert env["ANTHROPIC_BASE_URL"] == "https://gateway.example/anthropic"
+    assert env["ANTHROPIC_API_KEY"] == "selected-secret"
 
 
 def test_codex_resolve_model_accepts_connection_scoped_opaque_ids():

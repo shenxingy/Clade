@@ -408,6 +408,12 @@ def resolve_connection(
             field_name="connection.endpoint_identity",
         ),
         "models": dict(connection.get("models") or {}),
+        "pinned_models": list(connection.get("pinned_models") or []),
+        "discovery": (
+            dict(connection["discovery"])
+            if isinstance(connection.get("discovery"), Mapping)
+            else connection.get("discovery")
+        ),
         "capabilities": dict(connection.get("capabilities") or {}),
     }
 

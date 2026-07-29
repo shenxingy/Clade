@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
-import { X } from 'lucide-react';
+import { RefreshCw, X } from 'lucide-react';
 import { useSessionStore } from '../../stores/sessionStore';
-import { settings as settingsApi } from '../../lib/api';
-import type { GlobalSettings } from '../../lib/types';
+import { providerRegistry as providerRegistryApi, settings as settingsApi } from '../../lib/api';
+import type { GlobalSettings, ProviderRegistrySnapshot } from '../../lib/types';
 
 interface Props {
   open: boolean;
@@ -22,6 +22,8 @@ const MODEL_SUGGESTIONS = [
 export function SettingsPanel({ open, onClose }: Props) {
   const { settings, setSettings } = useSessionStore();
   const [form, setForm] = useState<GlobalSettings | null>(null);
+  const [providerRegistry, setProviderRegistry] = useState<ProviderRegistrySnapshot | null>(null);
+  const [refreshingProviders, setRefreshingProviders] = useState(false);
   const [saving, setSaving] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -35,6 +37,12 @@ export function SettingsPanel({ open, onClose }: Props) {
       }).catch(console.error);
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (open) {
+      providerRegistryApi.get().then(setProviderRegistry).catch(console.error);
+    }
+  }, [open]);
 
   // Sync form when store settings change externally
   useEffect(() => {
@@ -67,6 +75,13 @@ export function SettingsPanel({ open, onClose }: Props) {
   const selectedConnection = selectedConnectionId
     ? f?.connections?.[selectedConnectionId]
     : undefined;
+  const selectedRegistryConnection = providerRegistry?.connections.find(
+    connection => connection.id === selectedConnectionId,
+  );
+  const modelSuggestions = Array.from(new Set([
+    ...MODEL_SUGGESTIONS,
+    ...(selectedRegistryConnection?.models ?? []),
+  ]));
 
   const patchRuntimeConnection = (connectionId: string) => {
     if (!f) return;
@@ -74,6 +89,17 @@ export function SettingsPanel({ open, onClose }: Props) {
       ...f.runtime_connections,
       [selectedRuntime]: connectionId,
     });
+  };
+
+  const refreshProviders = async () => {
+    setRefreshingProviders(true);
+    try {
+      setProviderRegistry(await providerRegistryApi.refresh());
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setRefreshingProviders(false);
+    }
   };
 
   return (
@@ -116,7 +142,7 @@ export function SettingsPanel({ open, onClose }: Props) {
                   onChange={e => patch('default_model', e.target.value)}
                   className="input-sm w-36" />
                 <datalist id="clade-model-suggestions">
-                  {MODEL_SUGGESTIONS.map(m => <option key={m} value={m} />)}
+                  {modelSuggestions.map(m => <option key={m} value={m} />)}
                 </datalist>
               </Row>
               <Row label="Agent runtime">
@@ -139,10 +165,34 @@ export function SettingsPanel({ open, onClose }: Props) {
               </Row>
               {selectedConnection && (
                 <div className="mb-2 rounded border border-border bg-secondary/40 px-2 py-1.5 text-[11px] text-muted-foreground">
-                  <div>{selectedConnection.inference_provider} · {selectedConnection.wire_protocol}</div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span>{selectedConnection.inference_provider} · {selectedConnection.wire_protocol}</span>
+                    {selectedRegistryConnection && (
+                      <CatalogBadge state={selectedRegistryConnection.catalog.state} />
+                    )}
+                  </div>
                   <div className="truncate" title={selectedConnection.endpoint_identity}>
                     {selectedConnection.endpoint_identity}
                   </div>
+                  {selectedRegistryConnection && (
+                    <div className="mt-1 flex items-center justify-between gap-2 border-t border-border pt-1">
+                      <span
+                        className="truncate"
+                        title={`${selectedRegistryConnection.catalog.source} · ${selectedRegistryConnection.catalog.observed_at ?? 'not observed'}`}
+                      >
+                        {selectedRegistryConnection.models.length} models · {selectedRegistryConnection.catalog.source}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={refreshProviders}
+                        disabled={refreshingProviders}
+                        className="shrink-0 rounded p-0.5 hover:bg-background disabled:opacity-50"
+                        title="Refresh provider catalogs"
+                      >
+                        <RefreshCw size={11} className={refreshingProviders ? 'animate-spin' : ''} />
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
               <Row label="Codex cheap model">
@@ -211,6 +261,16 @@ export function SettingsPanel({ open, onClose }: Props) {
       </aside>
     </div>
   );
+}
+
+function CatalogBadge({ state }: { state: 'fresh' | 'stale' | 'unavailable' | 'declared' }) {
+  const classes = {
+    fresh: 'bg-emerald-500/15 text-emerald-600',
+    stale: 'bg-amber-500/15 text-amber-600',
+    unavailable: 'bg-red-500/15 text-red-600',
+    declared: 'bg-secondary text-muted-foreground',
+  }[state];
+  return <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${classes}`}>{state}</span>;
 }
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {

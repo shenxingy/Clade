@@ -267,9 +267,12 @@ backlog.
   Constructed/eval sources and unverifiable attempts are excluded visibly;
   fewer than 30 samples suppresses comparison, and observational data never
   emits or applies a causal routing recommendation.
-- [ ] **P2 · provider registry · depends on EvidenceBundle:** complete live
-  model discovery, capability provenance, real connection adapters, and stale
-  pinned fallback.
+- [x] **P2 · completed 2026-07-28 · provider registry:** native Claude/Codex
+  profiles now drive TTL model discovery for Anthropic, OpenAI, MiniMax,
+  Moonshot, custom OpenAI-compatible, and native-static catalogs. Execution
+  binds the real native connection, records catalog/capability provenance,
+  rejects cross-account cache reuse, and permits stale continuation only for
+  an explicit pinned model with a visible degradation.
 - [ ] **P2 · conformance · depends on provider registry:** add sanitized
   runtime/surface fixtures and credential-gated live smoke tests.
 - [ ] **P2 · compatibility · depends on conformance:** retire shims only after

@@ -27,6 +27,7 @@ from execution_envelope import (
     InvalidExecutionConfig,
     resolve_connection,
 )
+from provider_registry import DEFAULT_REGISTRY
 from config import (
     GLOBAL_SETTINGS,
     PROJECT_DIR,
@@ -140,6 +141,7 @@ from routes.tasks import router as tasks_router  # noqa: E402
 from routes.workers import router as workers_router  # noqa: E402
 from routes.usage import router as usage_router  # noqa: E402
 from routes.evals import router as evals_router  # noqa: E402
+from routes.providers import router as providers_router  # noqa: E402
 app.include_router(webhooks_router)
 app.include_router(ideas_router)
 app.include_router(process_router)
@@ -147,6 +149,7 @@ app.include_router(tasks_router)
 app.include_router(workers_router)
 app.include_router(usage_router)
 app.include_router(evals_router)
+app.include_router(providers_router)
 
 # Serve static files (web UI) — prefer React dist/ if built, fallback to legacy
 WEB_DIST = Path(__file__).parent / "web" / "dist"
@@ -1124,6 +1127,10 @@ async def post_settings(body: dict = Body(...)):
                 runtime_id=normalized_runtime,
                 connections=merged_connections,
             )
+        for connection in merged_connections.values():
+            if not isinstance(connection, dict):
+                raise InvalidExecutionConfig("connection must be an object")
+            DEFAULT_REGISTRY.validate_connection(connection)
     except (AgentRuntimeSelectionError, InvalidExecutionConfig) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     for k, v in updates.items():

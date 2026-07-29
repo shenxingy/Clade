@@ -136,3 +136,38 @@ async def test_settings_api_rejects_unknown_key(monkeypatch):
 
     assert caught.value.status_code == 422
     assert "Unknown settings: agent_runtim" == caught.value.detail
+
+
+@pytest.mark.asyncio
+async def test_settings_api_rejects_native_store_runtime_mismatch(monkeypatch):
+    monkeypatch.setattr(server, "_save_settings", lambda snapshot: None)
+    connections = {
+        "claude-work": {
+            "agent_runtime": "claude",
+            "inference_provider": "custom",
+            "wire_protocol": "anthropic-compatible",
+            "endpoint_identity": "trusted-profile",
+            "models": {"strong": "gateway/model"},
+            "capabilities": {},
+            "discovery": {
+                "adapter": "custom-openai",
+                "store": "codex-config",
+                "profile": "work",
+            },
+        },
+        "codex-default": server.GLOBAL_SETTINGS["connections"]["codex-default"],
+    }
+
+    with pytest.raises(HTTPException) as caught:
+        await server.post_settings(
+            {
+                "connections": connections,
+                "runtime_connections": {
+                    "claude": "claude-work",
+                    "codex": "codex-default",
+                },
+            }
+        )
+
+    assert caught.value.status_code == 422
+    assert "claude-providers" in caught.value.detail

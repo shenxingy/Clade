@@ -49,7 +49,7 @@ import tempfile
 from abc import ABC, abstractmethod
 from functools import lru_cache
 from pathlib import Path
-from typing import Final
+from typing import Any, Final, Mapping, MutableMapping
 
 from agent_runtime import normalize_agent_runtime
 from config import (
@@ -58,7 +58,13 @@ from config import (
     _build_tool_flags,
     _fallback_flag,
 )
-from execution_envelope import CapabilitySet, CapabilityState, validate_model_id
+from execution_envelope import (
+    CapabilitySet,
+    CapabilityState,
+    InvalidExecutionConfig,
+    validate_model_id,
+)
+from provider_registry import DiscoveryFailure, NativeProfileResolver
 
 
 _ALLOWED_EFFORTS: Final = frozenset({"low", "medium", "high", "xhigh", "max"})
@@ -126,8 +132,16 @@ class WorkerProvider(ABC):
         task_type: str | None,
         mcp_config: Path | None,
         effort: str | None = None,
+        connection: Mapping[str, Any] | None = None,
     ) -> str:
         """Build the full shell command string for this worker."""
+
+    def apply_connection_env(
+        self,
+        connection: Mapping[str, Any] | None,
+        env: MutableMapping[str, str],
+    ) -> None:
+        """Apply a trusted connection to one worker process environment."""
 
     def build_continue_command(
         self, *, task_file: Path, requested_model: str | None, effort: str | None = None
@@ -202,6 +216,7 @@ class ClaudeProvider(WorkerProvider):
         task_type: str | None,
         mcp_config: Path | None,
         effort: str | None = None,
+        connection: Mapping[str, Any] | None = None,
     ) -> str:
         model = self.resolve_model(requested_model)
         cmd = (
@@ -220,6 +235,29 @@ class ClaudeProvider(WorkerProvider):
         if mcp_config is not None and mcp_config.exists():
             cmd += f" --mcp-config {shlex.quote(str(mcp_config))}"
         return cmd
+
+    def apply_connection_env(
+        self,
+        connection: Mapping[str, Any] | None,
+        env: MutableMapping[str, str],
+    ) -> None:
+        discovery = connection.get("discovery") if connection else None
+        if not isinstance(discovery, Mapping):
+            return
+        try:
+            profile = NativeProfileResolver().resolve(discovery)
+        except DiscoveryFailure as exc:
+            raise InvalidExecutionConfig(
+                f"Claude connection profile is unavailable: {exc.category}"
+            ) from exc
+        if profile.base_url:
+            env["ANTHROPIC_BASE_URL"] = profile.base_url
+        else:
+            env.pop("ANTHROPIC_BASE_URL", None)
+        if profile.api_key:
+            env["ANTHROPIC_API_KEY"] = profile.api_key
+        else:
+            env.pop("ANTHROPIC_API_KEY", None)
 
     def build_continue_command(
         self, *, task_file: Path, requested_model: str | None, effort: str | None = None
@@ -277,11 +315,16 @@ class CodexProvider(WorkerProvider):
         task_type: str | None,
         mcp_config: Path | None,
         effort: str | None = None,
+        connection: Mapping[str, Any] | None = None,
     ) -> str:
         model = self.resolve_model(requested_model)
         parts = ["codex exec", "--dangerously-bypass-approvals-and-sandbox"]
         if model:
             parts.append(f"-m {shlex.quote(model)}")
+        discovery = connection.get("discovery") if connection else None
+        if isinstance(discovery, Mapping) and discovery.get("store") == "codex-config":
+            profile = validate_model_id(discovery.get("profile"), allow_none=False)
+            parts.append(f"-c {shlex.quote(f'model_provider=\"{profile}\"')}")
         effort = _safe_effort(effort)
         if effort:
             parts.append(f"-c {shlex.quote(f'model_reasoning_effort=\"{effort}\"')}")
