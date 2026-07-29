@@ -70,7 +70,7 @@ export function SettingsPanel({ open, onClose }: Props) {
   };
 
   const f = form;
-  const selectedRuntime = f?.agent_runtime ?? f?.worker_provider ?? 'claude';
+  const selectedRuntime = f?.agent_runtime ?? 'claude';
   const selectedConnectionId = f?.runtime_connections?.[selectedRuntime] ?? '';
   const selectedConnection = selectedConnectionId
     ? f?.connections?.[selectedConnectionId]

@@ -9,7 +9,7 @@ import os
 import shlex
 from pathlib import Path
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Response
 
 from agent_runtime import AgentRuntimeSelectionError, normalize_agent_runtime
 from config import (
@@ -28,6 +28,7 @@ from execution_envelope import (
     parse_requirements,
     resolve_connection,
 )
+from compatibility_telemetry import TASKS_API_PROVIDER, record_compatibility_use
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +81,7 @@ def _validate_task(body: dict) -> list[str]:
         try:
             runtime = normalize_agent_runtime(
                 GLOBAL_SETTINGS.get("agent_runtime"),
-                GLOBAL_SETTINGS.get("worker_provider", "claude"),
+                "claude",
             )
             resolve_connection(
                 connection_id=str(body["connection"]),
@@ -107,7 +108,19 @@ async def list_tasks(s: ProjectSession = Depends(_resolve_session)):
 
 
 @router.post("/api/tasks")
-async def create_task(body: dict, s: ProjectSession = Depends(_resolve_session)):
+async def create_task(
+    body: dict,
+    s: ProjectSession = Depends(_resolve_session),
+    response: Response = None,
+):
+    if "provider" in body:
+        record_compatibility_use(TASKS_API_PROVIDER)
+        logger.warning("Deprecated task field provider received; use agent_runtime")
+        if response is not None:
+            response.headers["Deprecation"] = "true"
+            response.headers["Warning"] = (
+                '299 Clade "task provider is deprecated; use agent_runtime"'
+            )
     errors = _validate_task(body)
     if errors:
         raise HTTPException(status_code=400, detail=errors)
@@ -406,10 +419,23 @@ async def merge_all_done(s: ProjectSession = Depends(_resolve_session)):
 # (import-proposed, start-all, retry-failed, merge-all-done) or FastAPI will
 # match those paths as task_id and return 404.
 @router.post("/api/tasks/{task_id}")
-async def update_task(task_id: str, body: dict, s: ProjectSession = Depends(_resolve_session)):
+async def update_task(
+    task_id: str,
+    body: dict,
+    s: ProjectSession = Depends(_resolve_session),
+    response: Response = None,
+):
     task = await s.task_queue.get(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    if "provider" in body:
+        record_compatibility_use(TASKS_API_PROVIDER)
+        logger.warning("Deprecated task field provider received; use agent_runtime")
+        if response is not None:
+            response.headers["Deprecation"] = "true"
+            response.headers["Warning"] = (
+                '299 Clade "task provider is deprecated; use agent_runtime"'
+            )
     updates = {k: v for k, v in body.items() if k in _ALLOWED_TASK_COLS}
     if not updates:
         return task
@@ -431,7 +457,7 @@ async def update_task(task_id: str, body: dict, s: ProjectSession = Depends(_res
                     detail="agent_runtime conflicts with legacy provider",
                 )
             updates["agent_runtime"] = normalized
-            updates["provider"] = normalized
+            updates.pop("provider", None)
         except AgentRuntimeSelectionError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
     if "execution_requirements" in updates:
@@ -443,10 +469,8 @@ async def update_task(task_id: str, body: dict, s: ProjectSession = Depends(_res
         try:
             runtime = normalize_agent_runtime(
                 updates.get("agent_runtime")
-                or task.get("agent_runtime")
-                or task.get("provider"),
-                GLOBAL_SETTINGS.get("agent_runtime")
-                or GLOBAL_SETTINGS.get("worker_provider", "claude"),
+                or task.get("agent_runtime"),
+                GLOBAL_SETTINGS.get("agent_runtime", "claude"),
             )
             resolve_connection(
                 connection_id=str(updates["connection"]),

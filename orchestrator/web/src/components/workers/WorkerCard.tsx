@@ -44,7 +44,7 @@ export function WorkerCard({ worker }: { worker: Worker }) {
           <ModelBadge model={worker.model} />
           {worker.execution_envelope?.resolved.inference.provider && (
             <span className="text-[10px] text-muted-foreground">
-              {worker.agent_runtime ?? worker.provider} · {worker.execution_envelope.resolved.inference.provider}
+              {worker.agent_runtime} · {worker.execution_envelope.resolved.inference.provider}
             </span>
           )}
           <span className="flex-1 text-sm text-foreground truncate">{worker.description}</span>

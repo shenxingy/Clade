@@ -23,7 +23,6 @@ def worker_to_dict(w: Any) -> dict[str, Any]:
         "description": w.description[:80],
         "model": w.model,
         "agent_runtime": w.agent_runtime,
-        "provider": w.provider,
         "effort": w.effort,
         "route_reason": w.route_reason,
         "execution_envelope": (

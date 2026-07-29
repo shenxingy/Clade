@@ -64,8 +64,8 @@ export function TaskDetailModal({ task, sessionId, onClose }: Props) {
         {/* Metadata grid */}
         <div className="px-4 py-3 grid grid-cols-2 gap-x-6 gap-y-1.5 border-b border-border shrink-0">
           <Meta label="Model"><ModelBadge model={task.model} /></Meta>
-          {(task.agent_runtime || task.provider) && (
-            <Meta label="Agent runtime">{task.agent_runtime || task.provider}</Meta>
+          {task.agent_runtime && (
+            <Meta label="Agent runtime">{task.agent_runtime}</Meta>
           )}
           {task.execution_envelope?.resolved.inference && (
             <>

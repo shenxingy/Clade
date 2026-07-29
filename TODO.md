@@ -279,8 +279,13 @@ backlog.
   fixture replay runs on every CI build; separate manual/weekly Anthropic and
   OpenAI jobs perform credential-gated read-only catalog smoke. Discovery
   rejects non-HTTPS endpoints and redirects to prevent credential forwarding.
-- [ ] **P2 · compatibility · depends on conformance:** retire shims only after
-  fixtures and telemetry prove no supported path relies on them.
+- [x] **P2 · completed 2026-07-28 · compatibility retirement window:** runtime
+  routing, workers, status, task responses, and UI now use only
+  `agent_runtime`; settings and SQLite migrations are idempotent; new task rows
+  no longer dual-write `provider`; and old API inputs emit standard deprecation
+  headers plus secret-free aggregate counters. The final input-alias/schema
+  deletion is correctly conditional on one stable zero-use window, documented
+  in `docs/COMPATIBILITY-RETIREMENT.md`, rather than guessed from green tests.
 - [ ] **P3 · product metrics · depends on evidence/routing:** update
   VISION/North Star/dashboard with evidence completeness, false approvals,
   human overrides, and regression coverage.
@@ -292,6 +297,9 @@ backlog.
   completed local/remote branches and finish clean on synchronized `main`.
 - [ ] **Conditional watch:** add Beads-style agent-filed note-to-self entries
   only when measured loop-runner cross-iteration context loss recurs.
+- [ ] **Conditional watch:** after one stable release reports zero compatibility
+  events, reject `worker_provider`/task `provider` inputs and rebuild SQLite
+  without the historical `tasks.provider` column.
 
 ## Tech Debt
 

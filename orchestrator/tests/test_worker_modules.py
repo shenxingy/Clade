@@ -987,8 +987,8 @@ class _QueueStub:
         self.added = []
 
     async def add(self, desc, model, own_files=None, forbidden_files=None,
-                  provider=None, effort=None, **kwargs):
-        self.added.append((desc, model, provider, effort))
+                  agent_runtime=None, effort=None, **kwargs):
+        self.added.append((desc, model, agent_runtime, effort))
         return "new-task-id"
 
 
@@ -998,7 +998,7 @@ class TestMaybeEnqueueClassifyRetry:
         import types
         return types.SimpleNamespace(
             description=desc, model=model, task_id="t1",
-            own_files=[], forbidden_files=[], provider="codex", effort="medium",
+            own_files=[], forbidden_files=[], agent_runtime="codex", effort="medium",
             _failure_classified=err,
         )
 

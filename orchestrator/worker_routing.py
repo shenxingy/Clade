@@ -11,16 +11,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-from agent_runtime import (
-    SUPPORTED_AGENT_RUNTIMES,
-    normalize_agent_runtime,
-)
+from agent_runtime import normalize_agent_runtime
 from config import _MODEL_ALIASES
 from cascade_policy import VerifierContract, decide as decide_cascade
 
 
-# Backward-compatible export for callers that have not migrated terminology.
-VALID_PROVIDERS = SUPPORTED_AGENT_RUNTIMES
 VALID_EFFORTS = frozenset({"low", "medium", "high", "xhigh", "max"})
 
 
@@ -31,19 +26,6 @@ class WorkerRoute:
     effort: str | None
     reason: str
     needs_clarification: bool = False
-
-    @property
-    def provider(self) -> str:
-        """Legacy task/API field for the resolved agent runtime."""
-
-        return self.agent_runtime
-
-
-def normalize_provider(value: Any, default: str = "claude") -> str:
-    """Backward-compatible alias for :func:`normalize_agent_runtime`."""
-
-    return normalize_agent_runtime(value, default)
-
 
 def normalize_effort(value: Any) -> str | None:
     candidate = str(value or "").strip().lower()
@@ -62,16 +44,8 @@ def resolve_worker_route(
     the strong tier at high effort; only high-readiness work gets the cheap
     tier. A middle-score or unscored task keeps the configured/default model.
     """
-    task_runtime = (
-        task.get("agent_runtime")
-        if task.get("agent_runtime") is not None
-        else task.get("provider")
-    )
-    default_runtime = (
-        settings.get("agent_runtime")
-        if settings.get("agent_runtime") is not None
-        else settings.get("worker_provider", "claude")
-    )
+    task_runtime = task.get("agent_runtime")
+    default_runtime = settings.get("agent_runtime", "claude")
     agent_runtime = normalize_agent_runtime(task_runtime, default_runtime)
     requested_model = str(task.get("model") or settings.get("default_model") or "sonnet").strip()
     effort = normalize_effort(task.get("effort"))
@@ -79,7 +53,7 @@ def resolve_worker_route(
     critical = bool(task.get("is_critical_path"))
     auto = bool(settings.get("auto_model_routing", False))
     needs_clarification = score is not None and score < 50
-    reason = "task override" if task.get("provider") or task.get("model") or effort else "configured default"
+    reason = "task override" if task_runtime or task.get("model") or effort else "configured default"
 
     if agent_runtime == "claude":
         model = next(

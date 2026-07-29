@@ -149,7 +149,7 @@ async def test_explicit_correction_links_latest_attempt(task_queue):
         description="Implement the original request",
         failure_context="Tests failed in parser",
         model="sonnet",
-        provider="claude",
+        agent_runtime="claude",
         effort=None,
         stop=AsyncMock(),
     )

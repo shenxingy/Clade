@@ -119,7 +119,7 @@ def test_codex_worker_threads_effort_into_command_and_status(tmp_path: Path) -> 
         model="gpt-5.6-terra",
         project_dir=tmp_path,
         claude_dir=claude_dir,
-        provider="codex",
+        agent_runtime="codex",
         effort="medium",
         route_reason="high readiness: cheap Codex tier",
     )
@@ -129,7 +129,7 @@ def test_codex_worker_threads_effort_into_command_and_status(tmp_path: Path) -> 
     status = worker.to_dict()
     assert 'model_reasoning_effort="medium"' in cmd
     assert status["agent_runtime"] == "codex"
-    assert status["provider"] == "codex"
+    assert "provider" not in status
     assert status["effort"] == "medium"
     assert "cheap Codex" in status["route_reason"]
 
@@ -151,7 +151,7 @@ async def test_worker_pool_invalid_runtime_fails_before_spawn_and_marks_task(
         "id": "task-invalid-runtime",
         "description": "Implement a bounded change",
         "model": "sonnet",
-        "provider": "claud",
+        "agent_runtime": "claud",
     }
 
     with pytest.raises(
@@ -180,6 +180,13 @@ async def test_worker_pool_invalid_runtime_fails_before_spawn_and_marks_task(
 # ─── Overload failover (gap C) + spawn-env denylist (security sliver) ─────────
 
 import config  # noqa: E402 — real config module shared with the worker under test
+
+
+@pytest.fixture(autouse=True)
+def _canonical_default_runtime(monkeypatch):
+    """Unit behavior must not depend on the operator's local runtime choice."""
+
+    monkeypatch.setitem(config.GLOBAL_SETTINGS, "agent_runtime", "claude")
 
 
 def _worker(tmp_path: Path, model: str = "sonnet") -> Worker:

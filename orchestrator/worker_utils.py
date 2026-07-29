@@ -968,7 +968,7 @@ async def _maybe_enqueue_classify_retry(
             decision.model,
             own_files=w.own_files,
             forbidden_files=w.forbidden_files,
-            provider=getattr(w, "provider", None),
+            agent_runtime=getattr(w, "agent_runtime", None),
             effort=getattr(w, "effort", None),
             parent_task_id=w.task_id,
         )

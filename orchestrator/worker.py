@@ -100,7 +100,7 @@ class Worker:
         project_dir: Path,
         claude_dir: Path,
         task_type: str | None = None,
-        provider: str | None = None,
+        agent_runtime: str | None = None,
         effort: str | None = None,
         route_reason: str | None = None,
         execution_envelope: ExecutionEnvelope | None = None,
@@ -129,17 +129,14 @@ class Worker:
             self._backend = get_execution_backend()
         except NotImplementedError:
             self._backend = LocalSubprocessBackend()
-        # Agent runtime (which CLI owns the loop: Claude Code vs Codex). The
-        # `provider` argument/attribute remains as a compatibility alias for the
-        # persisted task schema; it does not mean inference provider.
+        # Agent runtime (which CLI owns the loop: Claude Code vs Codex).
         runtime_name = (
             execution_envelope.resolved.runtime_id
             if execution_envelope
-            else provider
+            else agent_runtime
         )
         self._runtime_adapter = get_agent_runtime(runtime_name)
         self.agent_runtime = self._runtime_adapter.name
-        self.provider = self.agent_runtime
         self.effort = (
             execution_envelope.resolved.effort
             if execution_envelope
@@ -348,7 +345,7 @@ class Worker:
             "worker_id": self.id,
             "task_id": self.task_id,
             "model": self.model,
-            "provider": self.provider, "effort": self.effort, "route_reason": self.route_reason,
+            "agent_runtime": self.agent_runtime, "effort": self.effort, "route_reason": self.route_reason,
             "execution_envelope": (
                 self.execution_envelope.to_dict()
                 if self.execution_envelope
@@ -1196,7 +1193,7 @@ class WorkerPool:
             plan.envelope.resolved.model or route.model,
             project_dir,
             claude_dir,
-            provider=route.agent_runtime,
+            agent_runtime=route.agent_runtime,
             effort=plan.envelope.resolved.effort,
             route_reason=route.reason,
             execution_envelope=plan.envelope,
@@ -1220,7 +1217,7 @@ class WorkerPool:
         await task_queue.update(
             task["id"], status="running", worker_id=worker.id,
             attempt_count=_cur_attempts, model=worker.model,
-            agent_runtime=route.agent_runtime, provider=route.provider,
+            agent_runtime=route.agent_runtime,
             effort=worker.effort, route_reason=route.reason,
             execution_envelope=plan.envelope.to_dict(),
         )
@@ -1281,7 +1278,7 @@ class WorkerPool:
             own_files=parent_task.get("own_files", []),
             forbidden_files=parent_task.get("forbidden_files", []),
             parent_task_id=parent_task.get("id"),
-            provider=parent_task.get("provider"),
+            agent_runtime=parent_task.get("agent_runtime"),
             effort=parent_task.get("effort"),
         )
 

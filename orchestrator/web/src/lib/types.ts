@@ -116,8 +116,6 @@ export interface Task {
   description: string;
   model: string;
   agent_runtime: AgentRuntime | null;
-  /** @deprecated Compatibility alias for agent_runtime. */
-  provider: AgentRuntime | null;
   connection: string | null;
   execution_profile: string | null;
   execution_requirements: Record<string, string>;
@@ -222,9 +220,7 @@ export interface Worker {
   task_id: string;
   description: string;
   model: string;
-  agent_runtime?: AgentRuntime;
-  /** @deprecated Compatibility alias for agent_runtime. */
-  provider?: AgentRuntime;
+  agent_runtime: AgentRuntime;
   effort?: Effort | null;
   route_reason?: string | null;
   execution_envelope?: ExecutionEnvelope | null;
@@ -282,8 +278,6 @@ export interface GlobalSettings {
   notification_webhook: string;
   usage_provider: string;
   agent_runtime: AgentRuntime;
-  /** @deprecated Compatibility alias for agent_runtime. */
-  worker_provider?: AgentRuntime;
   runtime_connections: Record<AgentRuntime, string>;
   connections: Record<string, RuntimeConnection>;
   codex_cheap_model?: string;

@@ -64,7 +64,7 @@ async def message_worker(
     await w.stop()
     new_desc = f"{original_desc}\n\n---\n**Additional context from user:**\n{user_message}"
     new_task = await s.task_queue.add(
-        new_desc, w.model, provider=w.provider, effort=w.effort,
+        new_desc, w.model, agent_runtime=w.agent_runtime, effort=w.effort,
         parent_task_id=w.task_id,
     )
     # Record intervention for future auto-injection
@@ -117,7 +117,7 @@ async def broadcast_to_workers(session_id: str, body: dict):
             await worker.stop()
             new_desc = f"{original_desc}\n\n---\n**Broadcast message:** {message}"
             new_task = await session.task_queue.add(
-                new_desc, worker.model, provider=worker.provider, effort=worker.effort
+                new_desc, worker.model, agent_runtime=worker.agent_runtime, effort=worker.effort
             )
             await session.worker_pool.start_worker(
                 new_task, session.task_queue, session.project_dir, session.claude_dir
