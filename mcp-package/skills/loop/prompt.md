@@ -100,6 +100,8 @@ Hard limits (not overridable by LLM):
   exact supervisor line/text mappings after worker, syntax, test, and verify pass
 - Iteration progress counts commits made directly by workers, not only files
   left over for the final commit sweep
+- Supervisor CLI failures preserve the raw response, stop immediately with
+  `supervisor_failed`, retain the checkpoint, and return non-zero for automation
 - State file: `.claude/loop-state.json` (JSON format)
 
 ### Step 1: Validate and Pre-process
