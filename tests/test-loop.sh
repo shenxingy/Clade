@@ -759,9 +759,11 @@ export MOCK_CLAUDE_EXIT=1
 echo '{"iteration": 0}' > .claude/loop-state5
 create_goal_file "goal4.md"
 
-output=$(bash "$SCRIPTS_DIR/loop-runner.sh" "goal4.md" --max-iter 3 --state .claude/loop-state5 --log-dir logs/loop 2>&1) || true
+output=$(bash "$SCRIPTS_DIR/loop-runner.sh" "goal4.md" --max-iter 3 --state .claude/loop-state5 --log-dir logs/loop 2>&1); supervisor_exit=$?
 export MOCK_CLAUDE_EXIT=0
 assert_contains "$output" "Supervisor call failed" "reports supervisor failure"
+assert_file_contains "logs/loop/last-progress" "Exit: supervisor_failed" "supervisor failure has a distinct terminal reason"
+assert_exit_code "1" "$supervisor_exit" "supervisor failure propagates a non-zero process exit"
 
 # Test 6: explicit resume without an identity-matched checkpoint fails closed.
 output=$(bash "$SCRIPTS_DIR/loop-runner.sh" "goal.md" --max-iter 10 --state .claude/loop-state6 --log-dir logs/loop --resume 2>&1) || true

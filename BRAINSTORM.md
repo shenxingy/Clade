@@ -120,6 +120,7 @@ section; it is an ongoing log, not historical research.
 [2026-06-14] frontend-detect: real projects (scamai-landing) describe their stack in CLAUDE.md prose ("Built with Next.js 15"), not the template's structured `Frontend:` line — _is_frontend_project returned False, visual-verify directive would never inject / FIXED a1e807d: _project_is_frontend now also reads package.json deps. Lesson: don't gate on a doc format real projects don't follow (deploy-gap).
 [2026-07-29] loop-runner: reproduced the 2026-06-12 false-stuck path on the documentation convergence goal — two worker waves committed and verified the requested state, but the coordinator left all 5/5 goal checkboxes open and exited `stuck_no_commits`. Worker-side marking was deliberately removed for race safety, so the replacement must be coordinator-owned completion reconciliation. PROMOTED to TODO.md P0 follow-on.
 [2026-07-29] loop-runner: RESOLVED the false-stuck path with exact supervisor line/text bindings, coordinator-only post-gate reconciliation, real worker-commit counting, and non-zero worker failure propagation; deterministic tests now reach same-iteration `converged`.
+[2026-07-29] loop-runner: live validation hit the Claude session limit, but the runner discarded the provider response and retried it as an empty plan until `max_iterations` / FIXED by preserving raw failure evidence and exiting once as resumable `supervisor_failed`.
 
 ---
 

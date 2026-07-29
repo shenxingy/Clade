@@ -80,6 +80,10 @@ Workers never mutate the shared goal file. The supervisor binds each task to
 exact goal line/text evidence, and the coordinator marks those items only
 after the worker, syntax, test, and final verification gates all pass. Commit
 progress counts commits created directly by workers as well as the final sweep.
+If the supervisor runtime is unavailable, Loop preserves its raw response,
+reports `supervisor_failed`, and leaves the checkpoint resumable instead of
+misclassifying repeated provider failures as empty plans or max-iteration work;
+terminal execution failures also propagate a non-zero process exit.
 
 ## After convergence
 

@@ -475,21 +475,16 @@ You output tasks. The script decides convergence. Do NOT output CONVERGED.
 EOF
 )
 
-  local result
-  # The supervisor is a bounded planner, not a repository explorer.  It gets
-  # hydrated Git/goal context and delegates code inspection to workers.  With
-  # default read tools enabled, broad goals can consume unbounded tool turns
-  # until the wall-clock timeout and never produce the JSON plan.
-  if ! result=$(_timeout "$SUPERVISOR_TIMEOUT" claude --model "$SUPERVISOR_MODEL" \
-      "${PURE_JUDGE_FLAGS[@]}" --tools "" -p "$supervisor_prompt" 2>&1); then
-    log_error "Supervisor call failed or timed out"
-    echo "[]"
-    return
-  fi
-
-  # Preserve the unparsed planner response for audit/debugging.  This stays in
-  # the ignored loop log directory and is never swept into worker commits.
+  local result supervisor_rc=0 detail
+  result=$(_timeout "$SUPERVISOR_TIMEOUT" claude --model "$SUPERVISOR_MODEL" \
+    "${PURE_JUDGE_FLAGS[@]}" --tools "" -p "$supervisor_prompt" 2>&1) || supervisor_rc=$?
   printf '%s\n' "$result" > "$LOG_DIR/iter-${iteration}-supervisor.raw.txt"
+  if [ "$supervisor_rc" -ne 0 ]; then
+    detail=$(printf '%s\n' "$result" | tail -n 1)
+    log_error "Supervisor call failed (exit $supervisor_rc): ${detail:-no output}"
+    echo "[]"
+    return "$supervisor_rc"
+  fi
 
   # Extract JSON from result (supervisor may include preamble text).
   echo "$result" \
@@ -1308,7 +1303,10 @@ run_blueprint_loop() {
       _save_checkpoint "$iteration" "pre-done"
 
       local tasks_json task_count=0
-      tasks_json=$(node_supervisor "$iteration")
+      if ! tasks_json=$(node_supervisor "$iteration"); then
+        exit_reason="supervisor_failed"
+        break
+      fi
       node_score_and_write "$tasks_json" "$task_file" >/dev/null
       if [ -n "$task_file" ] && [ -f "$task_file" ]; then
         task_count=$(grep -c '===TASK===' "$task_file" 2>/dev/null || true)
@@ -1461,6 +1459,7 @@ run_blueprint_loop() {
       _clear_checkpoints
       ;;
   esac
+  case "$exit_reason" in supervisor_failed|commit_failed|pre_flight_failed|all_workers_failed) return 1;; esac
 }
 # ────────────────────────────────────────────────────────────────
 

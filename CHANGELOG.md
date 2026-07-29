@@ -27,6 +27,10 @@ versioning for the `clade-mcp` Python package and tagged public releases.
   evidence is reconciled only after worker, syntax, test, and final verification
   gates pass; worker-created commits count even when the leftover sweep is empty,
   and serial/parallel worker failures propagate as non-zero exits
+- Loop supervisor CLI failures now preserve the raw provider response and stop
+  once with a distinct resumable `supervisor_failed` outcome instead of being
+  retried as empty plans and mislabeled `max_iterations`; the runner exits
+  non-zero for this and other terminal execution failures
 - Loop planning now keeps raw supervisor output, extracts nested JSON safely,
   bounds planner tools, initializes custom log directories before checkpoint
   work, verifies only current-iteration changes, shares one task JSON parser,
