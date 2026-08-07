@@ -12,6 +12,62 @@ Past resolved/deferred items live in [`docs/archive/BRAINSTORM-resolved.md`](doc
 
 ---
 
+## 2026-08-07 — Verification is applied to code and not to outbound artifacts
+
+Clade ships 84 business skills (blog 30, seo 25, ads 23, email 6) and every one of
+them *produces* an artifact. **None of them verifies one.** The trust loop —
+immutable evidence, calibrated verification, correction learning — stops at the
+repository boundary, even though the artifacts that leave the building carry more
+risk than most commits.
+
+Evidence: a partnership brief written for an external counterparty in one session.
+An adversarial pass over the finished draft found **25 gaps, 20 internal
+contradictions and 10 instances of wishful thinking**, including:
+
+- **A premise failure.** Three items asked the counterparty for a capability their
+  product does not have — verifiable in one call against their own OpenAPI spec.
+  Sending it would have proved we had not read their documentation, in a document
+  whose entire authority rested on having read their documentation.
+- **Confidentiality leaks.** A named customer executive's verbatim description of
+  their own fraud-control weakness, an ownership percentage, a proprietary
+  throughput figure, and a validated model metric — all bound for a company with
+  no NDA.
+- **A claim that was simply false.** "We replayed our detector against their
+  ground-truth labels." We had asked for those labels and never received them.
+- **A soft threat.** "We noticed your two published latency numbers disagree. We're
+  not going to tell anyone." Framing discretion as a favour, in writing, to a
+  company whose COO is a former newspaper correspondent.
+- **A joke that was factually wrong** in front of the only audience qualified to
+  notice it.
+
+Then four cold readers, each role-playing a different person at the recipient with
+no prior context, read the corrected page. All four would have replied same-day —
+and all four independently rejected the same ask and wrote the same counter-offer.
+
+**The novel check, and the reason to build this.** The page was also fed to an LLM
+with the prompt a busy recipient would actually use: *"summarise this and be blunt
+about any hidden agenda."* The summary was **materially more hostile than any of the
+four human readers**: "a sophisticated sales pitch disguised as a technical
+disclosure", "unauthorized pilots", "ethically convenient", "the four unnamed
+customers are leverage", "a trojan-horse feature request". It also invented a fact.
+
+An LLM cannot weigh sincerity. It pattern-matches *voluntary disclosure early in a
+sales document* onto *disarming tactic* — so the single strongest move in the
+document is the one it flags as manipulation. Recipients increasingly read through
+that lens first. **Nobody is testing for it**, and the fix was cheap: one phrase in
+our own copy ("before we had any right to") was the word the model escalated to
+"unauthorized".
+
+**Proposal — `configs/skills/outbound`.** Six checks over any artifact about to
+leave the building: premise, confidentiality forward-test, evidence class, cold
+read, **AI read**, tone metrics. Deliberately not partnership-specific; the same
+six apply to a press release, a customer email, or an RFP response.
+
+Scope caution: this shape has been exercised once. Ship the verifier, not a
+methodology — and revisit after three more runs.
+
+---
+
 ## [Reconciled] 2026-07-28 — executable backlog
 
 This is the authoritative inbox after comparing every unchecked historical item
