@@ -82,10 +82,10 @@ def test_normalize_calculates_weekly_pace_and_orders_codex_first() -> None:
     )
     assert codex_usage.format_rows(
         rows, style="minimal", project="xingyushen", branch="main"
-    ) == "xingyushen(main)+12% (4d)"
+    ) == "xingyushen git:(main)+12% (4d)"
     assert codex_usage.format_rows(
         rows, theme="bird", style="icon", project="xingyushen", branch="main"
-    ) == "xingyushen(main) 🦢 +12% (4d)"
+    ) == "xingyushen git:(main) 🦢 +12% (4d)"
 
 
 def test_setup_adds_recommended_footer_when_tui_is_missing(tmp_path: Path) -> None:

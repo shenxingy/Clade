@@ -88,7 +88,7 @@ $clade:codex-usage --json
 默认 `minimal` 视图刻意保持极简：
 
 ```text
-xingyushen(main)-9% (6d)
+xingyushen git:(main)-9% (6d)
 ```
 
 其中包含 project、branch、相对 95% utilization 目标的节奏与重置时间。
