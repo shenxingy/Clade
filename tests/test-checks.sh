@@ -15,6 +15,7 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMMITTER="$REPO_ROOT/configs/scripts/committer.sh"
 CHECKS="$REPO_ROOT/configs/scripts/checks.sh"
+GIT_IDENTITY="$REPO_ROOT/configs/scripts/git_identity.py"
 
 # ─── Test framework (mirrors tests/test-loop.sh) ─────────────────────
 TESTS_RUN=0
@@ -92,6 +93,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# All committer tests run behind the same explicit human VCS identity anchor.
+# The path override keeps the suite hermetic and proves no real user identity
+# is consulted or modified.
+IDENTITY_HOME="$(mktemp -d /tmp/clade-identity-test.XXXXXX)"
+CLEANUP_DIRS+=("$IDENTITY_HOME")
+export CLADE_GIT_IDENTITY_FILE="$IDENTITY_HOME/git-identity.json"
+python3 "$GIT_IDENTITY" pin --name Test --email test@example.com >/dev/null
+
 # Fresh throwaway repo with one initial commit (no remote — that is why every
 # committer call below uses --no-push).
 make_repo() {
@@ -113,6 +122,48 @@ commit_count() { git -C "$1" rev-list --count HEAD; }
 # Fake AWS access key id, built by concatenation so this test file itself
 # never contains a contiguous scannable literal (the gate would flag it).
 FAKE_AKIA="AKIA""IOSFODNN7EXAMPLE"
+
+# ─── Git identity trust boundary ────────────────────────────────────
+echo "── git_identity.py trust boundary ──"
+
+D="$(make_repo)"
+python3 "$GIT_IDENTITY" check --repo "$D" >/dev/null 2>&1
+assert_eq 0 $? "pinned identity accepts matching Git configuration"
+
+git -C "$D" config user.email "dukeamlmachine@gmail.com"
+OUT="$(python3 "$GIT_IDENTITY" check --repo "$D" 2>&1; echo "rc=$?")"
+assert_contains "$OUT" "rc=1" "identity check rejects a different configured email"
+assert_contains "$OUT" "Provider login emails must never be used as VCS identity" \
+  "identity rejection explains the provider/VCS boundary"
+
+git -C "$D" config user.email "test@example.com"
+OUT="$(GIT_AUTHOR_EMAIL="dukeamlmachine@gmail.com" python3 "$GIT_IDENTITY" check --repo "$D" 2>&1; echo "rc=$?")"
+assert_contains "$OUT" "rc=1" "identity check rejects a contaminated GIT_AUTHOR_EMAIL"
+assert_contains "$OUT" "effective author" "environment contamination identifies the effective author source"
+
+MISSING_IDENTITY="$IDENTITY_HOME/missing.json"
+OUT="$(cd "$D" && CLADE_GIT_IDENTITY_FILE="$MISSING_IDENTITY" \
+  bash "$COMMITTER" "feat: should not commit" README.md --no-push 2>&1; echo "rc=$?")"
+assert_contains "$OUT" "rc=1" "committer fails closed when no identity is pinned"
+assert_contains "$OUT" "no pinned Git identity" "missing identity error gives the pinning reason"
+assert_eq 1 "$(commit_count "$D")" "missing identity creates no commit"
+
+git -C "$D" config user.email "dukeamlmachine@gmail.com"
+echo "wrong config" > "$D/wrong.txt"
+OUT="$(cd "$D" && bash "$COMMITTER" "feat: reject wrong identity" wrong.txt --no-push 2>&1; echo "rc=$?")"
+assert_contains "$OUT" "rc=1" "committer blocks a configured identity mismatch before commit"
+assert_eq 1 "$(commit_count "$D")" "configured identity mismatch creates no commit"
+assert_eq "" "$(git -C "$D" diff --cached --name-only)" "identity rejection leaves the index untouched"
+
+git -C "$D" config user.email "test@example.com"
+echo "correct config" > "$D/correct.txt"
+(cd "$D" && bash "$COMMITTER" "feat: preserve pinned identity" correct.txt --no-push) >/dev/null 2>&1
+assert_eq 0 $? "committer accepts the pinned identity"
+assert_eq "Test <test@example.com>|Test <test@example.com>" \
+  "$(git -C "$D" log -1 --format='%an <%ae>|%cn <%ce>')" \
+  "committer writes the pinned author and committer to HEAD"
+python3 "$GIT_IDENTITY" verify-head --repo "$D" >/dev/null 2>&1
+assert_eq 0 $? "post-commit verification accepts exact pinned attribution"
 
 # ─── checks.sh commit-msg ────────────────────────────────────────────
 echo "── checks.sh commit-msg ──"

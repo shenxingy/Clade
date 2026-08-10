@@ -113,11 +113,13 @@ REPO_DIR="$TEST_DIR/repo"
 mkdir -p "$REPO_DIR"
 cd "$REPO_DIR" || exit 1
 git init -q
-git config user.email "test@test.com"
+git config user.email "test@example.com"
 git config user.name "Test"
 echo "init" > README.md
 git add README.md
 git commit -q -m "init"
+export CLADE_GIT_IDENTITY_FILE="$TEST_DIR/git-identity.json"
+python3 "$SCRIPTS_DIR/git_identity.py" pin --name Test --email test@example.com >/dev/null
 mkdir -p .claude logs/loop
 
 cat > goal.md <<'EOF'

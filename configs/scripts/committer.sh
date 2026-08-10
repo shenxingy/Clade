@@ -23,6 +23,23 @@ elif [[ -f "$HOME/.claude/scripts/checks.sh" ]]; then
   CHECKS_SH="$HOME/.claude/scripts/checks.sh"
 fi
 
+# VCS identity is an explicit human-owned trust anchor. It must never be
+# inferred from the active Claude/Codex/provider account, whose login email may
+# belong to a different person. Resolve the helper like checks.sh so source
+# checkouts and installed copies enforce the same boundary.
+GIT_IDENTITY_PY=""
+if [[ -f "$SELF_DIR/git_identity.py" ]]; then
+  GIT_IDENTITY_PY="$SELF_DIR/git_identity.py"
+elif [[ -f "$HOME/.claude/scripts/git_identity.py" ]]; then
+  GIT_IDENTITY_PY="$HOME/.claude/scripts/git_identity.py"
+fi
+PYTHON_BIN=""
+if command -v python3 &>/dev/null; then
+  PYTHON_BIN="python3"
+elif command -v python &>/dev/null; then
+  PYTHON_BIN="python"
+fi
+
 MSG="${1:-}"
 if [[ -z "$MSG" ]]; then
   echo "Usage: committer <message> <file> [file2...] [--no-push]" >&2
@@ -78,6 +95,22 @@ elif ! echo "$MSG" | head -1 | grep -qE '^(feat|fix|refactor|test|chore|docs|per
   exit 1
 fi
 
+# Fail before touching the index when the identity is absent, configured for a
+# different human, or contaminated by GIT_AUTHOR_*/GIT_COMMITTER_* variables.
+if [[ -z "$GIT_IDENTITY_PY" || -z "$PYTHON_BIN" ]]; then
+  echo "Error: Clade Git identity guard is unavailable; refusing to commit." >&2
+  exit 1
+fi
+if ! "$PYTHON_BIN" "$GIT_IDENTITY_PY" check --repo .; then
+  exit 1
+fi
+IDENTITY_TSV=$("$PYTHON_BIN" "$GIT_IDENTITY_PY" show --format tsv)
+IFS=$'\t' read -r PINNED_GIT_NAME PINNED_GIT_EMAIL <<< "$IDENTITY_TSV"
+export GIT_AUTHOR_NAME="$PINNED_GIT_NAME"
+export GIT_AUTHOR_EMAIL="$PINNED_GIT_EMAIL"
+export GIT_COMMITTER_NAME="$PINNED_GIT_NAME"
+export GIT_COMMITTER_EMAIL="$PINNED_GIT_EMAIL"
+
 # Reset staging area — clear any previously staged files from other agents
 git restore --staged :/ 2>/dev/null || true
 
@@ -112,6 +145,10 @@ X-Clade-Task: ${CLADE_WORKER_TASK_ID}
 Agent-Signature: ${CLADE_WORKER_MODEL:-unknown-model}")
 fi
 git --no-pager commit "${COMMIT_ARGS[@]}"
+if ! "$PYTHON_BIN" "$GIT_IDENTITY_PY" verify-head --repo .; then
+  echo "FATAL: commit was created with unexpected attribution; stop delivery and inspect HEAD." >&2
+  exit 1
+fi
 echo "Committed: $MSG"
 
 # Push

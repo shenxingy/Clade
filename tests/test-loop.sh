@@ -30,6 +30,13 @@ if [[ "${1:-}" == "--real" ]]; then
   shift
   exec bash "$(cd "$(dirname "$0")" && pwd)/test-loop-real.sh" "$@"
 fi
+
+# Keep every nested Loop fixture on one explicit VCS identity.
+LOOP_IDENTITY_DIR=$(mktemp -d /tmp/test-loop-identity-XXXXXX)
+trap 'rm -rf "$LOOP_IDENTITY_DIR"' EXIT
+export CLADE_GIT_IDENTITY_FILE="$LOOP_IDENTITY_DIR/git-identity.json"
+python3 "$(cd "$(dirname "$0")/.." && pwd)/configs/scripts/git_identity.py" \
+  pin --name Test --email test@example.com >/dev/null || exit 1
 if [[ -z "${1:-}" || "${1:-}" == "checkpoint" ]]; then
   bash "$(cd "$(dirname "$0")" && pwd)/test-loop-checkpoint.sh" || exit 1
 fi
@@ -198,7 +205,7 @@ setup_test_repo() {
   mkdir -p "$repo_dir"
   cd "$repo_dir"
   git init -q
-  git config user.email "test@test.com"
+  git config user.email "test@example.com"
   git config user.name "Test"
   echo "init" > README.md
   git add README.md
@@ -209,6 +216,7 @@ setup_test_repo() {
 cleanup() {
   cd "$ORIG_DIR"
   rm -rf "$TEST_DIR"
+  rm -rf "$LOOP_IDENTITY_DIR"
 }
 trap cleanup EXIT
 

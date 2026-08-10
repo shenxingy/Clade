@@ -37,7 +37,6 @@ set -euo pipefail
 
 # Allow nested claude calls from within a Claude Code session
 unset CLAUDECODE 2>/dev/null || true
-
 # ─── CROSS-PLATFORM HELPERS ─────────────────────────────────────────
 # Resolve a companion script (run-tasks.sh etc.) next to THIS copy of
 # loop-runner.sh first — repo checkouts and CI have no deployed
@@ -64,7 +63,6 @@ _timeout() {
   fi
 }
 # ────────────────────────────────────────────────────────────────────
-
 # ─── PURE-JUDGE CONTAINMENT ─────────────────────────────────────
 # Nested `claude -p` calls whose stdout is PARSED (supervisor JSON task
 # array, verify JSON, fix-task JSON) must NOT load user settings: a
@@ -76,7 +74,6 @@ _timeout() {
 # user settings: commit-discipline hooks are core value.
 readonly PURE_JUDGE_FLAGS=(--setting-sources "" --disallowed-tools Edit,Write,Bash)
 # ────────────────────────────────────────────────────────────────
-
 # ─── BLUEPRINT HARD LIMITS ──────────────────────────────────────
 readonly MAX_CONSECUTIVE_NO_COMMITS=3   # consecutive empty iters → force stop
 readonly MAX_CONSECUTIVE_FAILURES=3     # consecutive worker failures (ran but no commits) → force stop
@@ -269,6 +266,10 @@ node_pre_flight() {
     return 1
   fi
 
+  local identity_tsv
+  identity_tsv=$(python3 "$(_sibling_script git_identity.py)" check --repo . --format tsv 2>&1) || { log_error "$identity_tsv"; return 1; }
+  IFS=$'\t' read -r GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL <<< "$identity_tsv"
+  export GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME="$GIT_AUTHOR_NAME" GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
   log_success "Pre-flight OK"
 }
 # ────────────────────────────────────────────────────────────────
