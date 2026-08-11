@@ -39,7 +39,7 @@
 | `stop-check.sh` | Stop | Blocks stop if uncommitted changes or blockers.md has entries |
 | `verify-task-completed.sh` | TaskCompleted | Runs quality gate after task completion |
 | `notify-telegram.sh` | Notification | Forwards Claude notifications to Telegram |
-| `shadow-cleanup.sh` | SessionEnd | Removes /tmp/claude-edit-shadows/session-<session_id>.jsonl when session terminates |
+| `session-end-cleanup.sh` | SessionEnd | Removes /tmp/claude-edit-shadows/session-<session_id>.jsonl when session terminates |
 
 All hooks are shell scripts — zero API cost, sub-second execution.
 

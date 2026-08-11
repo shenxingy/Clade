@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # post-edit-check.sh — Auto type-check / lint after file edits.
-# Triggered by PostToolUse on Edit|Write, wired async + asyncRewake.
+# Triggered by PostToolUse on Edit|Write, wired asyncRewake (which implies async).
 #
 # Supported: TypeScript, Python, Rust, Go, Swift, Kotlin/Java, LaTeX
 #
@@ -49,7 +49,14 @@ UNCOMMITTED_COUNT=$(git diff --name-only HEAD 2>/dev/null | wc -l | xargs)
 # Outside a git repo `git diff` prints nothing, so wc yields 0 — but default
 # anyway: an empty operand makes the [[ -ge ]] below a syntax error, not a skip.
 UNCOMMITTED_COUNT=${UNCOMMITTED_COUNT:-0}
-COMMIT_REMINDER_THRESHOLD=${COMMIT_REMINDER_THRESHOLD:-2}
+# Threshold 2 was survivable when this finding went out as a systemMessage that
+# nobody received. On the asyncRewake path every finding INTERRUPTS the turn, and
+# ordinary work sits above 2 uncommitted files almost permanently — that would
+# wake Claude on literally every edit and train it to ignore the channel. The
+# nudge only earns an interruption once the working tree is genuinely sprawling;
+# routine "commit small and often" pressure belongs to stop-check.sh, which
+# already gates on uncommitted work at Stop with session-scoped attribution.
+COMMIT_REMINDER_THRESHOLD=${COMMIT_REMINDER_THRESHOLD:-15}
 
 if [[ "$UNCOMMITTED_COUNT" -ge "$COMMIT_REMINDER_THRESHOLD" ]] && [[ "$UNCOMMITTED_COUNT" -gt 0 ]]; then
   add_finding "⚠ $UNCOMMITTED_COUNT files edited without commit — run: committer \"type: desc\" file1 file2"

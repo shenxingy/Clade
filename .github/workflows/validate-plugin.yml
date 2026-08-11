@@ -28,47 +28,31 @@ jobs:
       # fail on unrecognized fields, missing metadata, and other issues that
       # the runtime tolerates.") — so this is not the "flag unknown" case.
       #
-      # It was dropped anyway because `claude plugin validate . --strict`
-      # currently fails on this repo's CLEAN, uncorrupted manifest:
+      # --strict was briefly dropped because it failed on the CLEAN manifest:
+      # with only .claude-plugin/plugin.json present, the validator also
+      # inspected the repo root and warned that CLAUDE.md there is not loaded
+      # as plugin context. Adding .claude-plugin/marketplace.json changed the
+      # entry point — validation now resolves the marketplace and descends into
+      # its plugins (errors are reported as `plugins[0] plugin.json → …`), and
+      # that root-level warning no longer fires. --strict passes clean, so the
+      # documented condition for restoring it is met.
       #
-      #   Validating plugin: .../CLAUDE.md
-      #   ⚠ Found 1 warning:
-      #     ❯ root: CLAUDE.md at the plugin root is not loaded as project
-      #       context. To ship context with your plugin, use a skill
-      #       (skills/<name>/SKILL.md) instead.
-      #   ✘ Validation failed (--strict treats warnings as errors)
-      #   exit=1
+      # Proofs, run locally against CLI v2.1.227 in a throwaway copy of
+      # .claude-plugin/ with configs/ symlinked in (repo left untouched):
       #
-      # That warning is real but pre-existing and out of scope here — the
-      # plugin manifest not yet declaring component paths is tracked
-      # separately in goal-cc-codex-adaptation.md. Gating CI on --strict
-      # today would make this job permanently red on every commit for a
-      # reason that has nothing to do with manifest corruption, which
-      # defeats the point of the gate. Plain (non-strict) validate does not
-      # have this problem: it exits 0 ("Validation passed with warnings") on
-      # the clean manifest, and — proven below — still exits non-zero on a
-      # genuinely corrupted one, so the gate stays meaningful without
-      # --strict. Revisit --strict once the component-paths gap above is
-      # closed and the warning goes away on its own.
+      #   clean manifests            → validate . = 0,  validate . --strict = 0
+      #   keywords: [] → "string"    → validate . = 1   (schema error)
+      #   skills: → missing dir      → validate . = 1   ("Path not found",
+      #                                 i.e. component paths are really walked)
+      #   extra unknown field        → validate . = 0,  --strict = 1
+      #                                 ("Unknown field 'x'. Claude Code
+      #                                  ignores it at load time.")
       #
-      # Proof the gate actually catches corruption (done locally, CLI
-      # v2.1.227, then reverted — `git diff` was clean afterward): removed
-      # the required "name" field from .claude-plugin/plugin.json and reran
-      # the same command this step runs:
-      #
-      #   $ claude plugin validate .
-      #   Validating plugin manifest: .../.claude-plugin/plugin.json
-      #   ✘ Found 1 error:
-      #     ❯ name: Invalid input: expected string, received undefined
-      #   Validating plugin: .../CLAUDE.md
-      #   ⚠ Found 1 warning:
-      #     ❯ root: CLAUDE.md at the plugin root is not loaded as project
-      #       context. ...
-      #   ✘ Validation failed
-      #   exit=1
-      #
-      # vs. exit 0 on the unmodified manifest — confirming this step fails
-      # the build on real manifest defects, not just on the unrelated
-      # warning above.
-      - name: Validate plugin manifest
-        run: claude plugin validate .
+      # That last row is why the gate runs --strict rather than plain validate:
+      # a hook/manifest field that does not exist is silently ignored at load
+      # time, so it reads as working configuration while doing nothing. This
+      # repo shipped exactly that failure (invented rewakeMessage /
+      # rewakeSummary keys on a command hook) — non-strict validation is blind
+      # to it, --strict is not.
+      - name: Validate plugin and marketplace manifests
+        run: claude plugin validate . --strict

@@ -119,13 +119,10 @@
                 "hooks": [
                     {
                         "id": "post-edit-check",
-                        "description": "Run background checks (type-check, lint) after file edits and wake Claude when they FAIL. asyncRewake is the delivery channel: the check can take 180s so it must not block the turn, but a plain async hook's output goes nowhere — the old systemMessage was written into a void. The hook now exits 2 with its findings on stderr, which asyncRewake surfaces as a system reminder; a clean check exits 0 silently and never wakes Claude. async:true is kept alongside it deliberately — asyncRewake alone only backgrounds when the session is interactive or has streaming input, so headless `claude -p` workers would otherwise block for up to 180s per edit.",
+                        "description": "Run background checks (type-check, lint) after file edits and wake Claude when they FAIL. asyncRewake is the delivery channel: the check can take 180s so it must not block the turn, but a plain async hook's output goes nowhere — the old systemMessage was written into a void. The hook now exits 2 with its findings on stderr, which asyncRewake surfaces as a system reminder; a clean check exits 0 silently and never wakes Claude. asyncRewake implies async, so it is the only flag needed here. Findings are phrased inside the hook's own stderr, because the command hook schema has no field for customizing the wake text.",
                         "type": "command",
                         "command": "~/.claude/hooks/post-edit-check.sh",
-                        "async": true,
                         "asyncRewake": true,
-                        "rewakeMessage": "Background post-edit check found problems — fix or acknowledge them, then continue with the user's original request:",
-                        "rewakeSummary": "Post-edit check found problems",
                         "timeout": 180,
                         "statusMessage": "Running checks..."
                     },

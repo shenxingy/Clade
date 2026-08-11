@@ -211,9 +211,21 @@ assert_eq "$RC" "0" "clean check exits 0"
 assert_eq "$(cat "$STDOUT_F")" "" "clean check writes nothing to stdout"
 assert_eq "$(cat "$STDERR_F")" "" "clean check writes nothing to stderr (no wake)"
 
-# --- uncommitted files at/over the threshold: finding reaches stderr, exit 2 ---
+# --- a couple of dirty files must NOT wake Claude on the default threshold ---
+# Every exit 2 interrupts the turn, and ordinary work sits above 2 uncommitted
+# files almost permanently; a per-edit wake would train Claude to ignore the
+# channel. Guards the default, so lowering it back is a visible test failure.
 printf 'one changed\n' > "$PROJ/a.txt"
 printf 'two changed\n' > "$PROJ/b.txt"
+run_post_edit "$PROJ/a.txt"
+assert_eq "$RC" "0" "2 dirty files stay below the default threshold (no wake)"
+assert_eq "$(cat "$STDERR_F")" "" "sub-threshold dirty tree writes nothing to stderr"
+
+# --- uncommitted files at/over the threshold: finding reaches stderr, exit 2 ---
+# Pin the threshold explicitly: this asserts the delivery contract, not the
+# default's value, which the assertions above own.
+COMMIT_REMINDER_THRESHOLD=2
+export COMMIT_REMINDER_THRESHOLD
 run_post_edit "$PROJ/a.txt"
 assert_eq "$RC" "2" "uncommitted-file finding exits 2 (asyncRewake wake signal)"
 assert_contains "$(cat "$STDERR_F")" "files edited without commit" \
@@ -229,8 +241,9 @@ if grep -q 'systemMessage' "$STDERR_F"; then
 else
   pass "no longer emits the discarded systemMessage envelope"
 fi
+unset COMMIT_REMINDER_THRESHOLD
 
-# --- below the threshold: one dirty file, default threshold 2 → silent ---
+# --- below the threshold: one dirty file → silent ---
 git -C "$PROJ" checkout -- . >/dev/null 2>&1
 printf 'only one changed\n' > "$PROJ/a.txt"
 run_post_edit "$PROJ/a.txt"
@@ -248,7 +261,11 @@ unset COMMIT_REMINDER_THRESHOLD
 # A .py file with a syntax error trips the type check; keeping the tree dirty
 # trips the commit reminder. asyncRewake fires once, so one message must carry
 # both — emitting them separately dropped whichever came second.
+# Threshold pinned low so the fixture only needs a couple of dirty files; the
+# default's value is asserted separately above.
 if command -v ruff >/dev/null 2>&1 || command -v pyright >/dev/null 2>&1 || command -v mypy >/dev/null 2>&1; then
+  COMMIT_REMINDER_THRESHOLD=2
+  export COMMIT_REMINDER_THRESHOLD
   printf 'def broken(:\n' > "$PROJ/broken.py"
   printf 'still dirty\n' > "$PROJ/b.txt"
   run_post_edit "$PROJ/broken.py"
@@ -261,6 +278,7 @@ if command -v ruff >/dev/null 2>&1 || command -v pyright >/dev/null 2>&1 || comm
       "stderr: $(head -5 <<< "$err")"
   fi
   rm -f "$PROJ/broken.py"
+  unset COMMIT_REMINDER_THRESHOLD
 else
   echo "  (no python type-checker available — skipping combined-findings case)"
 fi
@@ -365,13 +383,22 @@ jq -e '.hooks.PostToolUse[].hooks[] | select(.id=="post-edit-check") | .asyncRew
   && pass "post-edit-check has asyncRewake: true" \
   || fail "post-edit-check has asyncRewake: true"
 
-# asyncRewake implies async only when the session is interactive or has
-# streaming input; headless `claude -p` workers need the explicit flag or they
-# block for up to 180s per edit.
-jq -e '.hooks.PostToolUse[].hooks[] | select(.id=="post-edit-check") | .async == true' \
+# asyncRewake implies async (Claude Code command-hook field reference), so a
+# separate async: true is dead config. The command-hook schema is also closed:
+# type/command/args/async/asyncRewake/shell/if/timeout/statusMessage/once. Fields
+# invented around the wake — rewakeMessage, rewakeSummary — read as real settings
+# while doing nothing, and `claude plugin validate --strict` flags them as
+# unrecognized. Wake text belongs in the hook's own stderr.
+jq -e '.hooks.PostToolUse[].hooks[] | select(.id=="post-edit-check") | has("async") | not' \
   "$SETTINGS" >/dev/null 2>&1 \
-  && pass "post-edit-check keeps async: true for headless sessions" \
-  || fail "post-edit-check keeps async: true for headless sessions"
+  && pass "post-edit-check drops redundant async (asyncRewake implies it)" \
+  || fail "post-edit-check drops redundant async (asyncRewake implies it)"
+
+jq -e '.hooks.PostToolUse[].hooks[] | select(.id=="post-edit-check")
+       | has("rewakeMessage") or has("rewakeSummary") | not' \
+  "$SETTINGS" >/dev/null 2>&1 \
+  && pass "post-edit-check carries no invented rewake* fields" \
+  || fail "post-edit-check carries no invented rewake* fields"
 
 jq -e '.hooks.PostToolUse[].hooks[] | select(.id=="skill-suggest") | has("async") | not' \
   "$SETTINGS" >/dev/null 2>&1 \
