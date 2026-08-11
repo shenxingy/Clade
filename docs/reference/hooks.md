@@ -14,7 +14,7 @@ integrated_items:
   - "SessionEnd hook used for shadow cleanup — removes /tmp/claude-edit-shadows/session-<session_id>.jsonl when session terminates"
 needs_work_items: []
 reference_items:
-  - "SubagentStart/SubagentStop hooks — Clade 用 subprocess worker 而非 Claude Code 内置 subagent，场景不匹配，not implemented"
+  - "SubagentStart/SubagentStop hooks — not implemented. 早期理由「Clade 只用 subprocess worker，场景不匹配」已过期：configs/agents/ 现有 37 个 agent 定义，多个 skill 会 fan-out 到 Task subagent，而且 Claude Code 2.1.221 把默认 spawn 深度从 1 提到 3。真正的现状是尚未评估，不是不适用"
   - "TeammateIdle hook — 仅适用于 multi-agent team workflow，Clade 用 WorkerPool 模式不适用，not implemented"
 
 ## Overview
@@ -178,9 +178,24 @@ Matchers are regex strings:
 
 ## Intentional No-ops
 
-Some hooks are deliberately left as async/systemMessage to avoid latency cost and waking the LLM with low-value advisory output:
+Some hooks are deliberately left as async to avoid latency cost and waking the
+LLM with low-value advisory output.
 
-- **`doc-align-check.sh`** (PostToolUse, async) — Real-time doc-drift warning after markdown edits. Advisory only (warns of disagreement with `docs/facts.json`); does not block. Runs async with systemMessage to avoid latency. Users can inspect the warning in verbose mode; the warning does not require LLM action, so async delivery is acceptable.
+Be precise about what "async" costs, because two hooks in this repo were already
+found emitting into a void believing otherwise (`secret-scanner.sh`,
+`skill-suggest.sh`): a plain `async: true` command hook has **no channel back
+into the turn at all**. Its stdout is discarded — `systemMessage` included, so
+nobody reads it, not even in verbose mode. `asyncRewake` is the only way a
+background hook reaches Claude, and only via stderr on exit code 2. So keeping a
+hook async is a decision to **discard** its output, not to deliver it quietly.
+That is acceptable only when the output was never worth acting on:
+
+- **`doc-align-check.sh`** (PostToolUse, async) — Real-time doc-drift warning
+  after markdown edits, advisory only (disagreement with `docs/facts.json`),
+  never blocking. Its `systemMessage` is discarded, and that is the accepted
+  outcome: the drift is visible in the diff being written anyway, and firing an
+  `asyncRewake` interrupt on every markdown edit would cost far more attention
+  than the warning is worth. Left async knowingly, not by oversight.
 
 - **`prompt-tracker.sh`** (UserPromptSubmit, async) — Analytics hook tracking user prompts for correction learning and loop detection. Produces no output to Claude; runs async because it is pure telemetry. Waking the LLM or waiting on the result adds latency with zero benefit to the interaction.
 
