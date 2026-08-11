@@ -107,6 +107,12 @@ Before coding, understand the context and commit to a BOLD aesthetic direction:
 
 **CRITICAL**: Choose a clear conceptual direction and execute it with precision. Bold maximalism and refined minimalism both work - the key is intentionality, not intensity.
 
+**Build on constrained scales, and prove the hierarchy in grayscale.** Consistency comes
+from a small fixed set of spacing, type, and elevation steps, not from judging each value
+by eye. Compose in grayscale first — if the layout's reading order only appears once color
+arrives, the hierarchy is being carried by color alone and will collapse for a colorblind
+user, in dark mode, or in print. Fix it with size, weight, and space, then add color.
+
 Then implement working code (HTML/CSS/JS, React, Vue, etc.) that is:
 - Production-grade and functional
 - Visually striking and memorable
@@ -115,14 +121,33 @@ Then implement working code (HTML/CSS/JS, React, Vue, etc.) that is:
 
 ---
 
+## Accessibility & Legibility Floors
+
+These apply to **every** interface, with or without a design system. They are floors, not
+targets: clear them first, then spend all the creative freedom below. A design system may
+raise a floor; nothing lowers one. If a requested look cannot clear a floor, say so and
+propose the nearest version that does — do not ship it silently.
+
+- **Contrast (WCAG 2.2 AA)**: body text ≥4.5:1 against its backdrop; large text (≥24px, or ≥18.66px bold) ≥3:1; icons, input borders, and focus rings ≥3:1. *Backdrop* means the real one — text over a gradient, photo, noise texture, or blur must clear the ratio at its **worst** pixel, not its average.
+- **Focus is always visible**: never `outline: none` without a replacement. Focus indicators need ≥3:1 against both the component and its surroundings, with at least a 2px perimeter, and the focused element must not be obscured.
+- **Target size**: interactive targets ≥24×24 CSS px (WCAG 2.2 AA, 2.5.8); aim for ~44px on primary touch actions.
+- **Motion respects preference**: wrap every animation, scroll effect, and transition in `@media (prefers-reduced-motion: no-preference)`, or neutralize them under `(reduce)`. Parallax, large-scale movement, and autoplaying loops are vestibular triggers — they need this most, and they are exactly what "surprising motion" tends to produce.
+- **Body type**: ≥16px body copy, line-height ≈1.5, and a measure of 45–75 characters (~66 optimal; push line-height to 1.6–1.7 past 75). Oversized measure and 14px body are the two most common legibility failures in generated UI.
+- **Semantics before styling**: headings in real order (one `h1`, no skipped levels), `alt` on meaningful images (`alt=""` on decorative ones), labels bound to inputs, actual `<button>` elements. Screen-reader structure is part of the design, not a cleanup pass.
+
+Contrast, target size, and measure are **rendered-output** rules — a clean grep proves
+nothing about them. See the enforcement tiers above.
+
+---
+
 ## Frontend Aesthetics Guidelines
 
 Focus on:
 - **Typography**: Choose fonts that are beautiful, unique, and interesting. Avoid generic fonts like Arial and Inter; opt instead for distinctive choices that elevate the frontend's aesthetics; unexpected, characterful font choices. Pair a distinctive display font with a refined body font. *(Exception: if the project's design system explicitly specifies font families, use them — the design system overrides general aesthetic rules.)*
 - **Color & Theme**: Commit to a cohesive aesthetic. Use CSS variables for consistency. Dominant colors with sharp accents outperform timid, evenly-distributed palettes. *(Exception: if the project's design system defines a color palette, use those tokens exactly.)*
-- **Motion**: Use animations for effects and micro-interactions. Prioritize CSS-only solutions for HTML. Use Motion library for React when available. Focus on high-impact moments: one well-orchestrated page load with staggered reveals (animation-delay) creates more delight than scattered micro-interactions. Use scroll-triggering and hover states that surprise.
-- **Spatial Composition**: Unexpected layouts. Asymmetry. Overlap. Diagonal flow. Grid-breaking elements. Generous negative space OR controlled density.
-- **Backgrounds & Visual Details**: Create atmosphere and depth rather than defaulting to solid colors. Add contextual effects and textures that match the overall aesthetic. Apply creative forms like gradient meshes, noise textures, geometric patterns, layered transparencies, dramatic shadows, decorative borders, custom cursors, and grain overlays.
+- **Motion**: Use animations for effects and micro-interactions. Prioritize CSS-only solutions for HTML. Use Motion library for React when available. Focus on high-impact moments: one well-orchestrated page load with staggered reveals (animation-delay) creates more delight than scattered micro-interactions. Use scroll-triggering and hover states that surprise — **inside a `prefers-reduced-motion` guard**, always.
+- **Spatial Composition**: Unexpected layouts. Asymmetry. Overlap. Diagonal flow. Grid-breaking elements. Generous negative space OR controlled density. Break the grid deliberately, from a **constrained spacing scale** — arbitrary one-off pixel values read as sloppy, not as daring.
+- **Backgrounds & Visual Details**: Create atmosphere and depth rather than defaulting to solid colors. Add contextual effects and textures that match the overall aesthetic. Apply creative forms like gradient meshes, noise textures, geometric patterns, layered transparencies, dramatic shadows, decorative borders, custom cursors, and grain overlays. Every one of these sits *behind text* — check the contrast floor at the busiest pixel, and add a scrim, solid plate, or text shadow when it fails rather than dropping the effect.
 
 NEVER use generic AI-generated aesthetics like overused font families (Inter, Roboto, Arial, system fonts), cliched color schemes (particularly purple gradients on white backgrounds), predictable layouts and component patterns, and cookie-cutter design that lacks context-specific character.
 
@@ -190,6 +215,7 @@ After implementation, note: `Run /seo page <url> to audit, /seo geo <url> for AI
 - **Design system**: [Found <source: .design-system.md / design-system/SKILL.md / DESIGN.md> — using tokens: <list key tokens used>] OR [No design system found — full creative freedom applied]
 - **Hard-rule check**: [Grepped output for banned patterns: <patterns> — clean] OR [N/A — no hard rules declared]
 - **Rendered-output rules**: [Ran <validator> against the built artifact — <what it measured>] OR [Declared but unchecked: <rule> needs a rendered-artifact validator] OR [N/A — all hard rules are grep-able]
+- **Accessibility floors**: [Contrast <worst measured ratio> / focus visible / targets ≥24px / reduced-motion guarded / body ≥16px at 45–75ch — all clear] OR [Cleared except <floor>: <why, and the nearest conforming alternative offered>]
 - **Component library**: [Using <library> as specified in design system] OR [No library specified — building from raw HTML/CSS] OR [N/A — no design system]
 - **Aesthetic direction**: [1-sentence description of the chosen aesthetic]
 - **Differentiation**: [What makes this memorable — the one thing users will remember]
