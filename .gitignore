@@ -5,7 +5,14 @@ orchestrator/caddy.log
 **/__pycache__/
 *.pyc
 *.pyo
-.claude/
+.claude/*
+# Absorbed third-party code must carry its receipt: `equip`'s registry and audit
+# reports record which upstream a skill came from, at which exact commit, and why
+# anything was rejected. Ignoring them leaves reviewers with vendored code and no
+# provenance. Uses `.claude/*` rather than `.claude/` because git cannot re-include
+# a path whose parent directory is excluded. The nested
+# `.claude/equipment/.gitignore` still keeps the clone cache out.
+!.claude/equipment/
 orchestrator/.claude/
 
 # Build artifacts
