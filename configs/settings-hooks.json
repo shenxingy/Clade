@@ -3,23 +3,28 @@
     "hooks": {
         "SessionStart": [
             {
-                "matcher": "startup",
+                "matcher": "startup|clear|fork",
                 "hooks": [
                     {
                         "id": "session-baseline",
-                        "description": "Capture git dirty baseline for session-scoped stop-check",
+                        "description": "Capture git dirty baseline for session-scoped stop-check. Must cover clear/fork too: those mint a NEW session_id with no baseline file, and stop-check.sh fails open when the baseline is missing — so a startup-only matcher silently disables the stop gate for every cleared or forked session. Deliberately NOT on resume: resume keeps the original session_id, and re-baselining would reclassify this session's own uncommitted work as pre-existing.",
                         "type": "command",
                         "command": "~/.claude/hooks/session-baseline.sh",
                         "timeout": 5
                     },
                     {
                         "id": "session-context",
-                        "description": "Load project context and compact-state at session start",
+                        "description": "Load project context and compact-state at session start. Also on clear/fork, which discard the injected context but keep the process alive.",
                         "type": "command",
                         "command": "~/.claude/hooks/session-context.sh",
                         "timeout": 10,
                         "statusMessage": "Loading project context..."
-                    },
+                    }
+                ]
+            },
+            {
+                "matcher": "startup",
+                "hooks": [
                     {
                         "id": "memory-sync-pull",
                         "description": "Pull latest memory from remote at session start",
@@ -306,10 +311,9 @@
                     },
                     {
                         "id": "secret-scanner",
-                        "description": "Warn (non-blocking) when the prompt appears to contain a credential",
+                        "description": "Warn (non-blocking) when the prompt appears to contain a credential. Runs SYNC on purpose: the hook's only output is hookSpecificOutput.additionalContext, and an async hook has no channel back into the turn (that is what asyncRewake exists for), so async:true discarded the credential warning entirely. Same sync treatment as correction-detector, which also injects context on this event.",
                         "type": "command",
                         "command": "~/.claude/hooks/secret-scanner.sh",
-                        "async": true,
                         "timeout": 5
                     }
                 ]
