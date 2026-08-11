@@ -259,8 +259,14 @@ node_hydrate_context() {
     echo "## Uncommitted Changes"
     git status -sb 2>/dev/null || echo "none"
 
-    # Include pre-generated context if provided
-    if [ -n "$CONTEXT_FILE" ] && [ -f "$CONTEXT_FILE" ]; then
+    # Include pre-generated context if provided.
+    # The whole block redirects into .claude/loop-context.md, so a CONTEXT_FILE
+    # pointing at that same path makes cat read its own output target: cat exits
+    # non-zero, and under `set -e` the loop dies before the supervisor ever runs.
+    # The skill's own documented invocation passes exactly that path, so compare
+    # resolved paths and skip the self-include instead of trusting the caller.
+    if [ -n "$CONTEXT_FILE" ] && [ -f "$CONTEXT_FILE" ] \
+       && [ "$(readlink -f "$CONTEXT_FILE")" != "$(readlink -f .claude/loop-context.md)" ]; then
       echo ""
       echo "## Additional Context"
       cat "$CONTEXT_FILE"
