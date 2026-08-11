@@ -33,7 +33,10 @@ test -f DESIGN.md && echo "FOUND: DESIGN.md (full spec)"
 ### Obligations when working under a design system
 
 - **Hard rules are law.** If the system declares HARD RULES — typically grep-able patterns ("never `rounded-*`", "no `border-*`") — grep every file you wrote for the banned patterns before finishing. Run the system's review checklist if it ships one.
-- **Record decisions, especially rejections.** If the spec has a Decisions Log, append significant choices with date + rationale — including experiments you tried and reverted ("dot-texture fills tried, rejected"). A recorded failure stops the next agent from re-trying it.
+- **Verify at every declared viewport.** If the system names breakpoints (e.g. 375px and 1280px), check both before claiming done — a rule that holds at desktop and breaks at mobile is a broken rule.
+- **Record decisions, especially rejections.** If the spec has a Decisions Log, append significant choices with date + rationale — including experiments you tried and reverted. Record what *measurably* failed and the constraint that replaced it ("7–12pt supporting text unreadable at presentation distance → 13pt floor, 18pt median"), not just the verdict ("dark version rejected"). A measured failure becomes a reusable rule; a bare verdict only prevents one repeat.
+- **Match the enforcement tier to the rule.** Grep catches banned tokens in source. Rules about *rendered output* — type size, how much of the canvas a surface covers, word count, contrast — need a validator that opens the built artifact; rules that must never regress belong in the build or CI. When a rule cannot be grepped, say so rather than letting a clean grep imply it was checked.
+- **A gate that crashes is worse than no gate** — it reports nothing and reads as clean. After writing or changing a validator, run it against a known violation and confirm it actually fails.
 - **Offer enforcement once.** When hard rules are grep-able and you saw (or made) a violation, suggest `/generate-hook` to turn them into a PostToolUse warn hook — checkable patterns are one command away from mechanical enforcement.
 
 ### Authoring a design system (when asked to create one)
@@ -43,6 +46,7 @@ Structure it as two layers plus assets, so it works both as agent context and hu
 - **`SKILL.md`** (agent-facing, ≤100 lines): aesthetic in one sentence; HARD RULES stated as grep-able patterns; token summary; component pointers; a short review checklist.
 - **`DESIGN.md`** (deep spec): full tokens/typography/components with rationale; adopted heuristics written as "**Principle** — statement → *how we apply it here*" (not bare principle names); a **Decisions Log** table (date | decision | rationale) that also records rejected experiments; note the biggest live tension between principles and the current design honestly.
 - **Paste-ready assets** beside the docs (tokens.css, components) — ship code, don't describe it in prose.
+- **A validator** whenever a hard rule targets rendered output rather than source text: a script that opens the built artifact (rendered page, PDF, slide images) and fails loudly with the offending number. Wire it into the build so the rule is enforced, not merely documented.
 
 ---
 
@@ -69,6 +73,7 @@ Before coding, understand the context and commit to a BOLD aesthetic direction:
 - **Tone**: Pick an extreme: brutally minimal, maximalist chaos, retro-futuristic, organic/natural, luxury/refined, playful/toy-like, editorial/magazine, brutalist/raw, art deco/geometric, soft/pastel, industrial/utilitarian, etc. There are so many flavors to choose from. Use these for inspiration but design one that is true to the aesthetic direction.
 - **Constraints**: Technical requirements (framework, performance, accessibility).
 - **Differentiation**: What makes this UNFORGETTABLE? What's the one thing someone will remember? *(If a design system exists, create distinction WITHIN its constraints.)*
+- **Usability check**: before finalizing a layout, run it against the high-leverage usability laws — Hick's (fewer, clearer choices), Miller's (~7±2 items per group), Fitts's (large, close targets), Jakob's (innovate in look, not in where things live), Von Restorff (exactly one element stands out), Serial Position (most important items first and last). Full set: https://lawsofux.com/. Where the design knowingly violates one, name which and how you mitigate it — an acknowledged tension beats a silent one.
 
 **CRITICAL**: Choose a clear conceptual direction and execute it with precision. Bold maximalism and refined minimalism both work - the key is intentionality, not intensity.
 
@@ -98,6 +103,21 @@ Interpret creatively and make unexpected choices that feel genuinely designed fo
 **IMPORTANT**: Match implementation complexity to the aesthetic vision. Maximalist designs need elaborate code with extensive animations and effects. Minimalist or refined designs need restraint, precision, and careful attention to spacing, typography, and subtle details. Elegance comes from executing the vision well.
 
 Remember: Claude is capable of extraordinary creative work. Don't hold back, show what can truly be created when thinking outside the box and committing fully to a distinctive vision.
+
+---
+
+## Presentation & Deck Surfaces
+
+Slides, pitch decks, and anything read from across a room **invert** several rules above —
+"atmosphere and depth" is precisely how a slide becomes unreadable. When the output is
+presented rather than browsed:
+
+- **One thesis per slide.** Give one claim, metric, or step the dominant visual weight; supporting proof is secondary and metadata tertiary (roughly 60/30/10). Three or more equal cards make every fact look equally important and destroy the reading order — use asymmetry, scale, and whitespace instead.
+- **Highlight the decisive beat.** In a sequence, emphasize the decision/result step rather than styling every step equally. In metrics and roadmaps, enlarge the current or decisive fact and dim the rest.
+- **Legibility floors outrank taste.** Audience-facing body copy ≥18pt where possible, with a hard floor around 13pt below which text is metadata only and must never carry the point. Cap words per slide (~70): a slide that has to be *read* is a slide nobody hears.
+- **Heavy full-bleed surfaces are focal, not atmospheric.** A dominant dark or saturated field should mark the one thing that matters on that slide, not set the mood of the whole deck. Cap its share of the canvas (~45% outside deliberate interstitials) — past that it stops being emphasis and becomes the background.
+- **Review at presentation distance**, not at 100% zoom on your own monitor: a viewer should identify the slide's point in about two seconds without reading the body copy.
+- **Generate from a single content model** where possible (one source → PPTX/PDF/images/viewer) so the numeric rules above can be checked mechanically instead of eyeballed. Those checks are rendered-output rules — see the enforcement tiers above; a word count or a coverage ratio cannot be grepped out of source.
 
 ---
 
@@ -139,6 +159,7 @@ After implementation, note: `Run /seo page <url> to audit, /seo geo <url> for AI
 
 - **Design system**: [Found <source: .design-system.md / design-system/SKILL.md / DESIGN.md> — using tokens: <list key tokens used>] OR [No design system found — full creative freedom applied]
 - **Hard-rule check**: [Grepped output for banned patterns: <patterns> — clean] OR [N/A — no hard rules declared]
+- **Rendered-output rules**: [Ran <validator> against the built artifact — <what it measured>] OR [Declared but unchecked: <rule> needs a rendered-artifact validator] OR [N/A — all hard rules are grep-able]
 - **Component library**: [Using <library> as specified in design system] OR [No library specified — building from raw HTML/CSS] OR [N/A — no design system]
 - **Aesthetic direction**: [1-sentence description of the chosen aesthetic]
 - **Differentiation**: [What makes this memorable — the one thing users will remember]
