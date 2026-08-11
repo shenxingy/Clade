@@ -25,19 +25,21 @@
 | `linter-config-guard.sh` | PreToolUse (Edit/Write) | Guards linter config files from accidental overwrite |
 | `revert-detector.sh` | PreToolUse (Bash) | Detects git revert/reset attempts and warns |
 | `permission-request.sh` | PermissionRequest | Handles elevated permission requests |
-| `post-edit-check.sh` | PostToolUse (Edit/Write) | Runs verify_cmd after edits; injects lint errors on failure |
-| `post-tool-use-lint.sh` | PostToolUse (Edit/Write) | Runs project verify_cmd; exits 2 on failure so Claude fixes it |
+| `post-edit-check.sh` | PostToolUse (Edit/Write) | Runs async verify_cmd after edits (type-check, tests); results delivered via asyncRewake on next turn |
+| `post-tool-use-lint.sh` | PostToolUse (Edit/Write) | Runs project verify_cmd; exits 2 on failure so Claude fixes it immediately |
 | `post-tool-use-failure.sh` | PostToolUse (failure) | Logs tool failures for pattern tracking |
 | `rule-injector.sh` | PostToolUse (Edit/Write) | Injects path-scoped rules from `.claude/rules/` + `~/.claude/rules/` when the edited file matches their `paths:` frontmatter (once per session per rule) |
-| `edit-shadow-detector.sh` | PostToolUse (Edit/Write) | Detects when edits shadow other files |
+| `edit-shadow-detector.sh` | PostToolUse (Edit/Write) | Detects when edits shadow other files; async warning via systemMessage |
 | `failure-detector.sh` | PostToolUse (Bash) | Tracks consecutive Bash failures; injects debugging pressure |
 | `memory-sync.sh` | PostToolUse (Write/Edit) | Syncs memory files to NFS/GitHub when written |
+| `doc-align-check.sh` | PostToolUse (Edit/Write) | Advisory: warns if edited markdown disagrees with docs/facts.json; async systemMessage only |
 | `correction-detector.sh` | UserPromptSubmit | Detects correction patterns; saves rules to corrections/rules.md |
-| `prompt-tracker.sh` | UserPromptSubmit | Tracks prompts for correction learning stats |
+| `prompt-tracker.sh` | UserPromptSubmit | Tracks prompts for correction learning stats; pure telemetry, no output to Claude |
 | `pre-compact.sh` | PreCompact | Saves session state before context compression |
 | `stop-check.sh` | Stop | Blocks stop if uncommitted changes or blockers.md has entries |
 | `verify-task-completed.sh` | TaskCompleted | Runs quality gate after task completion |
 | `notify-telegram.sh` | Notification | Forwards Claude notifications to Telegram |
+| `shadow-cleanup.sh` | SessionEnd | Removes /tmp/claude-edit-shadows/session-<session_id>.jsonl when session terminates |
 
 All hooks are shell scripts — zero API cost, sub-second execution.
 
@@ -50,6 +52,8 @@ All hooks are shell scripts — zero API cost, sub-second execution.
 ```
 
 Common values: `"tsc --noEmit"` (TypeScript), `"python3 -m py_compile <file>"` (Python), `"cargo check"` (Rust), `"go build ./..."` (Go). Leave unset to disable.
+
+**`post-edit-check.sh`** runs **async background checks** (type-check, test suite) in parallel while Claude continues working. Results are delivered on the next conversation turn via `asyncRewake` — Claude will see any failures and can fix them then. This is for expensive checks (full test suites, type-checking large codebases) where waiting synchronously would be slower than proceeding and fixing failures later.
 
 ## Agents (specialized sub-agents)
 

@@ -4,19 +4,18 @@
 name: hooks.md
 date: 2026-02-XX
 status: integrated
-review_date: 2026-03-31
+review_date: 2026-08-10
 summary:
   - "Claude Code hooks system: lifecycle events, types, exit codes, patterns"
 integrated_items:
-  - "All major lifecycle hooks implemented (SessionStart, PreToolUse, PostToolUse, Stop, PreCompact, TaskCompleted, Notification, UserPromptSubmit) — settings.json 全部有配置"
+  - "All major lifecycle hooks implemented (SessionStart, PreToolUse, PostToolUse, Stop, PreCompact, SessionEnd, TaskCompleted, Notification, UserPromptSubmit) — settings.json 全部有配置"
   - "Command, prompt, agent 三种 hook type 全部使用"
   - "Auto-format/lint on edit, block dangerous commands, verify completion patterns — 全部实现"
+  - "SessionEnd hook used for shadow cleanup — removes /tmp/claude-edit-shadows/session-<session_id>.jsonl when session terminates"
 needs_work_items: []
 reference_items:
-  - "SubagentStart/SubagentStop hooks — Clade 用 subprocess worker 而非 Claude Code 内置 subagent，场景不匹配"
-  - "SessionEnd hook — Nice to have，但 Clade 的 SessionStart 已注入上下文，SessionEnd 收益不大"
-  - "TeammateIdle hook — 仅适用于 multi-agent team workflow，Clade 用 WorkerPool 模式不适用"
-  - "PermissionRequest hook — Clade 用 --dangerously-skip-permissions，场景不匹配"
+  - "SubagentStart/SubagentStop hooks — Clade 用 subprocess worker 而非 Claude Code 内置 subagent，场景不匹配，not implemented"
+  - "TeammateIdle hook — 仅适用于 multi-agent team workflow，Clade 用 WorkerPool 模式不适用，not implemented"
 
 ## Overview
 
@@ -176,6 +175,16 @@ Matchers are regex strings:
   }]
 }
 ```
+
+## Intentional No-ops
+
+Some hooks are deliberately left as async/systemMessage to avoid latency cost and waking the LLM with low-value advisory output:
+
+- **`doc-align-check.sh`** (PostToolUse, async) — Real-time doc-drift warning after markdown edits. Advisory only (warns of disagreement with `docs/facts.json`); does not block. Runs async with systemMessage to avoid latency. Users can inspect the warning in verbose mode; the warning does not require LLM action, so async delivery is acceptable.
+
+- **`prompt-tracker.sh`** (UserPromptSubmit, async) — Analytics hook tracking user prompts for correction learning and loop detection. Produces no output to Claude; runs async because it is pure telemetry. Waking the LLM or waiting on the result adds latency with zero benefit to the interaction.
+
+These hooks are deliberately NOT turned into `action: "block"` prompt hooks or sync command hooks with statusMessage — the cost (context wake, prompt latency, LLM invocation) exceeds the value (advisory noise for the former, telemetry-only for the latter). This trade-off is intentional and should not be changed to "proper" sync hooks without first confirming the value justifies the latency cost.
 
 ## Key Gotchas
 
