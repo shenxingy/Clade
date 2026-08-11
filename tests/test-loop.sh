@@ -1338,7 +1338,7 @@ if [[ ! -d "$DEPLOY_DIR" ]]; then
   # sense on machines that ran install.sh. Skipping is not a failure.
   echo "  (no deployed kit at $DEPLOY_DIR — skipping deploy verification)"
 else
-for script in loop-runner.sh loop_checkpoint.py loop_goal.py loop_json.py run-tasks-parallel.sh run-tasks.sh; do
+for script in loop-runner.sh loop_args.sh loop_checkpoint.py loop_goal.py loop_json.py run-tasks-parallel.sh run-tasks.sh; do
   src="$ORIG_DIR/configs/scripts/$script"
   dst="$DEPLOY_DIR/$script"
   TESTS_RUN=$((TESTS_RUN + 1))

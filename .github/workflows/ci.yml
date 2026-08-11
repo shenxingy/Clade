@@ -200,6 +200,21 @@ jobs:
       - name: Run scan-health tests
         run: bash tests/test-scan-health.sh
 
+      # pre-tool-guardian is the blast door for rm -rf / force-push / DROP, and
+      # until now it had no suite here at all. It shipped two defects that a
+      # test would have caught the day they landed: per-LINE rm matching blocked
+      # benign temp deletes that merely shared a line with a home path, and the
+      # `~` alternative could never match `~` or `~/…` (so `rm -rf ~` was allowed
+      # outright). Both directions are asserted.
+      - name: Run pre-tool-guardian tests
+        run: bash tests/test-pre-tool-guardian.sh
+
+      # Loop argument parsing + planning-budget defaults. The documented
+      # `--dry-run goal.md` order used to set GOAL_FILE=--dry-run, and the
+      # supervisor budget defaulted to 120s through two separate stuck runs.
+      - name: Run loop argument tests
+        run: bash tests/test-loop-args.sh
+
   install-test:
     name: Install Test
     runs-on: ubuntu-latest

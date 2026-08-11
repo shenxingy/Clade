@@ -2,7 +2,7 @@
 name: loop
 description: Clade goal-driven autonomous improvement loop (Blueprint architecture — deterministic pre/post phases + LLM supervisor/worker nodes, converges when goal met or max-iter hit). NOT the Claude Code built-in /loop (which polls a prompt on an interval like `/loop 5m /foo`) — if the user wants interval polling, route to the built-in.
 when_to_use: "run loop with goal file, autonomous supervisor+worker loop, keep fixing until tests pass in background workers, iterate until converged, goal.md, Blueprint loop, 自动循环, run until converged — NOT for TODO.md tasks (use /batch-tasks), NOT for task decomposition (use /orchestrate), NOT for in-session iteration in the current context (use /iloop), NOT for interval polling a prompt (that's the CC built-in /loop)"
-argument-hint: 'GOAL_FILE [--model haiku|sonnet|opus] [--worker-model MODEL] [--max-iter N] [--max-workers N] [--dry-run] [--status] [--stop] [--resume]'
+argument-hint: 'GOAL_FILE [--model haiku|sonnet|opus] [--worker-model MODEL] [--max-iter N] [--max-workers N] [--supervisor-timeout N] [--dry-run] [--status] [--stop] [--resume]'
 user_invocable: true
 ---
 
@@ -68,7 +68,8 @@ The **supervisor** does the task breakdown — not you.
 /loop goal.md --max-consecutive-failures 5  # Stop after 5 consecutive worker failures (default: 3)
 /loop --status                               # Check current loop progress
 /loop --stop                                 # Stop loop after current iteration
-/loop --dry-run goal.md                      # Preview without running
+/loop --dry-run goal.md                      # Preview without running (goal may precede or follow flags)
+/loop goal.md --supervisor-timeout 600      # Bigger planning budget (default 300s)
 /loop --resume goal.md                       # Resume an exact matching interrupted loop
 ```
 

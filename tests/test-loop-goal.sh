@@ -8,6 +8,21 @@ RUNNER="$ROOT/configs/scripts/loop-runner.sh"
 HELPER="$ROOT/configs/scripts/loop_goal.py"
 TEST_ROOT=$(mktemp -d /tmp/test-loop-goal-XXXXXX)
 trap 'rm -rf "$TEST_ROOT"' EXIT
+
+# Commit-creating fixtures need a pinned VCS identity (see configs/scripts/
+# git_identity.py). test-loop.sh pins one before calling this file, so this
+# suite passed there while failing 5 cases whenever it was run on its own —
+# and CI only ever invokes it through test-loop.sh, so the standalone break
+# stayed invisible. Pin our own when the parent has not already, keeping the
+# parent's identity authoritative when it has.
+if [[ -z "${CLADE_GIT_IDENTITY_FILE:-}" ]]; then
+  LOOP_GOAL_IDENTITY_DIR=$(mktemp -d /tmp/test-loop-goal-identity-XXXXXX)
+  trap 'rm -rf "$TEST_ROOT" "$LOOP_GOAL_IDENTITY_DIR"' EXIT
+  export CLADE_GIT_IDENTITY_FILE="$LOOP_GOAL_IDENTITY_DIR/git-identity.json"
+  python3 "$ROOT/configs/scripts/git_identity.py" \
+    pin --name Test --email test@example.com >/dev/null || exit 1
+fi
+
 PASSED=0
 FAILED=0
 

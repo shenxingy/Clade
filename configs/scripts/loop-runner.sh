@@ -25,8 +25,8 @@
 #   --worker-model MODEL  worker model (default: same as supervisor)
 #   --max-iter N          max iterations (default: 10)
 #   --max-workers N       max parallel workers (default: 4)
-#   --supervisor-timeout N  supervisor LLM timeout in seconds (default: 120;
-#                           raise for multi-workstream goals)
+#   --supervisor-timeout N  supervisor LLM timeout in seconds (default: 300;
+#                           raise further for very large goals)
 #   --context FILE        pre-generated context file (passed to supervisor)
 #   --state FILE          state file (default: .claude/loop-state.json)
 #   --log-dir DIR         log directory (default: logs/loop)
@@ -79,10 +79,12 @@ readonly MAX_CONSECUTIVE_NO_COMMITS=3   # consecutive empty iters → force stop
 readonly MAX_CONSECUTIVE_FAILURES=3     # consecutive worker failures (ran but no commits) → force stop
 readonly SYNTAX_CHECK_TIMEOUT=30        # syntax check timeout (seconds)
 readonly TEST_SAMPLE_TIMEOUT=120        # verify_cmd timeout (seconds)
-# Supervisor timeout is NOT readonly: complex multi-workstream goals need more
-# than the 120s default to plan (align-elites goal hit 3×120s timeouts →
-# stuck_no_tasks). Override with --supervisor-timeout N.
-SUPERVISOR_TIMEOUT=120                  # supervisor LLM call timeout (seconds)
+# NOT readonly: override with --supervisor-timeout N. 120s was the default
+# through two stuck runs (align-elites 3×120s; a 10-requirement goal died
+# supervisor_failed on iter 1). Planning cost scales with goal size — a measured
+# 10KB prompt takes ~76s on sonnet — so 120s had no headroom. The flag existed
+# both times and solved neither; the default is the fix.
+SUPERVISOR_TIMEOUT=300                  # supervisor LLM call timeout (seconds)
 readonly WORKER_TIMEOUT=600             # per-worker timeout (seconds)
 readonly MAX_FIX_ATTEMPTS=1             # syntax fix: max 1 LLM call per iter
 # ────────────────────────────────────────────────────────────────
@@ -115,57 +117,13 @@ log_success() { echo "[$(date '+%H:%M:%S')] [OK]    $*" | tee -a "$LOG_DIR/loop.
 log_warn()    { echo "[$(date '+%H:%M:%S')] [WARN]  $*" | tee -a "$LOG_DIR/loop.log" >&2; }
 log_error()   { echo "[$(date '+%H:%M:%S')] [ERROR] $*" | tee -a "$LOG_DIR/loop.log" >&2; }
 # ────────────────────────────────────────────────────────────────
-
 # ─── PARSE ARGS ─────────────────────────────────────────────────
-parse_args() {
-  # Handle --status and --stop before GOAL_FILE is required
-  for arg in "$@"; do
-    case "$arg" in
-      --help|-h) print_usage; exit 0 ;;
-      --status) show_status; exit 0 ;;
-      --stop)   write_stop_sentinel; exit 0 ;;
-      --interrupt)
-        # Write interrupt state file and exit (LangGraph pattern)
-        mkdir -p .claude
-        python3 -c "
-import json, sys, time
-state = {'interrupted': True, 'reason': 'manual', 'timestamp': time.time()}
-path = '.claude/interrupt-state.json'
-with open(path, 'w') as f:
-    json.dump(state, f, indent=2)
-print(f'Interrupt state written to {path}')
-"
-        exit 0 ;;
-    esac
-  done
+# parse_args + print_usage live in loop_args.sh (this file sits at the
+# 1500-line ceiling from CLAUDE.md Code Rules). Sourced, so they set the
+# same globals here as when they were inline.
+# shellcheck source=loop_args.sh
+. "$(_sibling_script loop_args.sh)"
 
-  GOAL_FILE="${1:-}"
-  [ $# -gt 0 ] && shift || true
-
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --model)        SUPERVISOR_MODEL="$2"; shift 2 ;;
-      --worker-model) WORKER_MODEL="$2"; shift 2 ;;
-      --max-iter)     MAX_ITER="$2"; shift 2 ;;
-      --max-workers)  MAX_WORKERS="$2"; shift 2 ;;
-      --supervisor-timeout) SUPERVISOR_TIMEOUT="$2"; shift 2 ;;
-      --max-consecutive-failures) MAX_CONSECUTIVE_FAILURESOverride="$2"; shift 2 ;;
-      --context)      CONTEXT_FILE="$2"; shift 2 ;;
-      --state)        STATE_FILE="$2"; shift 2 ;;
-      --log-dir)      LOG_DIR="$2"; shift 2 ;;
-      --resume)       RESUME=true; shift ;;
-      --budget)       shift 2 ;;  # accepted but not used in Blueprint mode
-      --exit-gate)    shift 2 ;;  # accepted but not used in Blueprint mode
-      --dry-run)      DRY_RUN=true; shift ;;
-      *) log_warn "Unknown arg: $1"; shift ;;
-    esac
-  done
-
-  # Apply --max-consecutive-failures override if provided
-  if [ -n "$MAX_CONSECUTIVE_FAILURESOverride" ]; then
-    MAX_CONSECUTIVE_FAILURES="$MAX_CONSECUTIVE_FAILURESOverride"
-  fi
-}
 # ────────────────────────────────────────────────────────────────
 
 # ─── STOP SENTINEL ──────────────────────────────────────────────
@@ -482,7 +440,17 @@ EOF
   printf '%s\n' "$result" > "$LOG_DIR/iter-${iteration}-supervisor.raw.txt"
   if [ "$supervisor_rc" -ne 0 ]; then
     detail=$(printf '%s\n' "$result" | tail -n 1)
-    log_error "Supervisor call failed (exit $supervisor_rc): ${detail:-no output}"
+    # 124 = timeout(1)'s kill code. Unnamed, this printed "exit 124: Execution
+    # error" — the CLI's last line, which never mentions a timeout and sends you
+    # debugging the model instead of the budget.
+    if [ "$supervisor_rc" -eq 124 ]; then
+      log_error "Supervisor timed out after ${SUPERVISOR_TIMEOUT}s while planning (no plan produced)."
+      log_error "  Planning cost scales with goal size. Retry with a larger budget:"
+      log_error "    --supervisor-timeout $((SUPERVISOR_TIMEOUT * 2))"
+      log_error "  or split the goal into fewer requirements. CLI said: ${detail:-none}"
+    else
+      log_error "Supervisor call failed (exit $supervisor_rc): ${detail:-no output}"
+    fi
     echo "[]"
     return "$supervisor_rc"
   fi
@@ -1463,26 +1431,6 @@ run_blueprint_loop() {
   case "$exit_reason" in supervisor_failed|commit_failed|pre_flight_failed|all_workers_failed) return 1;; esac
 }
 # ────────────────────────────────────────────────────────────────
-
-# ─── ENTRY POINT ────────────────────────────────────────────────
-print_usage() {
-  cat <<'EOF'
-Usage: loop-runner.sh GOAL_FILE [options]
-       loop-runner.sh --status
-       loop-runner.sh --stop
-
-Options:
-  --model MODEL         supervisor model (default: claude-sonnet-4-6)
-  --worker-model MODEL  worker model (default: same as supervisor)
-  --max-iter N          max iterations (default: 10)
-  --max-workers N       max parallel workers (default: 4)
-  --context FILE        pre-generated context file
-  --state FILE          state file (default: .claude/loop-state.json)
-  --log-dir DIR         log directory (default: logs/loop)
-  --dry-run             preview iteration plan, no claude calls
-  --resume              resume an identity-matched interrupted run
-EOF
-}
 
 main() {
   parse_args "$@"
