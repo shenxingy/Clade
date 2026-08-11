@@ -86,16 +86,41 @@ fi  # end dev-mode gate
 # Block rm with both -r and -f flags targeting /, ~, $HOME, or critical system paths.
 # Handles any flag order: -rf, -fr, -r -f, -f -r, -rfi, etc.
 # Root (/) matched with word-boundary-aware pattern: space+slash+(space|end|star)
-DANGEROUS_NAMED_PATHS='(~|\$HOME|/home|/etc|/usr|/var|/sys|/proc|/boot)\b'
+# `~` needs its own anchoring, NOT the trailing \b the other alternatives use:
+# \b requires a word/non-word transition, and `~` is itself a non-word char, so
+# `~\b` could never match `~` or `~/...` (it only matched nonsense like `~abc`)
+# — i.e. `rm -rf ~` sailed straight through. Anchor it as a home reference
+# instead: start/space/`=` before it, and `/`, whitespace, or end after the
+# optional ~user part. That still lets a trailing-tilde backup file through
+# (`rm -rf /tmp/file~`), which is not a home reference.
+DANGEROUS_TILDE='(^|[[:space:]]|=)~[a-zA-Z0-9._-]*(/|[[:space:]]|$)'
+DANGEROUS_NAMED_PATHS="($DANGEROUS_TILDE|\\\$HOME\\b|(/home|/etc|/usr|/var|/sys|/proc|/boot)\\b)"
 DANGEROUS_ROOT='(^|[[:space:]])/([[:space:]]|$|\*)'
-# Extract only the lines that contain rm — avoid false positives where
-# a dangerous path appears elsewhere in the script (e.g. "cd /home/...")
-RM_LINES=$(echo "$COMMAND" | grep -E '\brm\b' || true)
-if [[ -n "$RM_LINES" ]] \
-  && echo "$RM_LINES" | grep -qE '\brm\b.*-[a-zA-Z]*r' \
-  && echo "$RM_LINES" | grep -qE '\brm\b.*-[a-zA-Z]*f' \
-  && (echo "$RM_LINES" | grep -qE "$DANGEROUS_NAMED_PATHS" \
-    || echo "$RM_LINES" | grep -qE "$DANGEROUS_ROOT"); then
+# Split into individual shell statements before testing, then require ONE
+# statement to satisfy every condition on its own.
+#
+# Per-LINE matching was too coarse in both directions:
+#   - False positive: `SRC=/home/me/.claude; rm -rf /tmp/shadow-test` blocked a
+#     benign temp delete because a home path shared its line. Shell one-liners
+#     chain statements with ; && || far more often than they use newlines, so
+#     "only look at rm lines" did not actually isolate the rm.
+#   - False negative direction: the three greps ran independently over the whole
+#     set of rm lines, so `rm -r a` on one line plus `rm -f /home/b` on another
+#     combined into a block that neither statement earned.
+# `tr` (not sed \n, which BSD sed rejects) keeps this portable to macOS.
+RM_STATEMENTS=$(printf '%s' "$COMMAND" | tr ';|&' '\n\n\n' | grep -E '\brm\b' || true)
+CATASTROPHIC_RM=false
+while IFS= read -r _stmt; do
+  [[ -z "$_stmt" ]] && continue
+  echo "$_stmt" | grep -qE '\brm\b.*-[a-zA-Z]*r' || continue
+  echo "$_stmt" | grep -qE '\brm\b.*-[a-zA-Z]*f' || continue
+  if echo "$_stmt" | grep -qE "$DANGEROUS_NAMED_PATHS" \
+    || echo "$_stmt" | grep -qE "$DANGEROUS_ROOT"; then
+    CATASTROPHIC_RM=true
+    break
+  fi
+done <<< "$RM_STATEMENTS"
+if [[ "$CATASTROPHIC_RM" == true ]]; then
   jq -n \
     --arg cmd "$COMMAND" \
     '{"decision":"block","reason":("Catastrophic rm -rf blocked on system/home directory. Command: " + $cmd + ". If intentional, run manually in your terminal.")}'
