@@ -163,6 +163,14 @@ jobs:
       - name: Run correction-pairing tests
         run: bash tests/test-correction-pairing.sh
 
+      # Hook delivery channels (CC 2.1): SessionEnd shadow cleanup (attribution,
+      # no session_id, missing dir, CP_SHADOW_DIR override), post-edit-check
+      # exit-2 asyncRewake findings vs silent success, skill-suggest sync
+      # delivery bounded by its in-script `timeout 5`, and the settings wiring
+      # that makes all three reachable
+      - name: Run hook delivery tests
+        run: bash tests/test-hooks.sh
+
       # Post-compaction re-injection (SessionStart source=compact): goal re-inject,
       # rule-sentinel re-arm, source guard, staleness guard, silent-when-empty
       - name: Run post-compact-reinject tests

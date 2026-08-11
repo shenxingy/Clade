@@ -366,6 +366,31 @@ else
   fi
 fi
 
+# ─── 8b. Enforce the subagent recursion limit ────────────────────────
+# "Subagents must not delegate recursively" (Agent Ground Rules) was an
+# unenforced convention. Claude Code 2.1.221 raised the default subagent spawn
+# depth from 1 to 3, so the rule now needs a real control behind it.
+#
+# The control is the CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH env var, which
+# settings.json `env` supplies to every session. Verified against the 2.1.227
+# binary: the Agent tool is offered only while `agentDepth < maxSpawnDepth`, so
+# depth 1 = the main loop may spawn, a subagent may not. There is no
+# `maxSubagentDepth` settings key — see .claude/decisions.md.
+#
+# MERGE, never replace. §8 above may replace `.hooks` wholesale because that
+# section is entirely repo-managed; `env` is not — it is where users keep
+# TG_BOT_TOKEN, TG_CHAT_ID and their own variables. Read, add one key, write back.
+if command -v jq &>/dev/null && [[ -f "$CLAUDE_DIR/settings.json" ]]; then
+  if jq '.env = ((.env // {}) + {"CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "1"})' \
+      "$CLAUDE_DIR/settings.json" > "$CLAUDE_DIR/.settings.json.$$" 2>/dev/null; then
+    mv "$CLAUDE_DIR/.settings.json.$$" "$CLAUDE_DIR/settings.json"
+    echo "  Capped subagent spawn depth at 1 (env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH)"
+  else
+    rm -f "$CLAUDE_DIR/.settings.json.$$"
+    echo "  WARNING: could not set CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH in settings.json"
+  fi
+fi
+
 # ─── 9. Set up shell aliases (cc + claude bypass) ────────────────────
 
 echo "Configuring shell aliases..."

@@ -176,6 +176,29 @@ else
   fail "install leaves source checkout facts unchanged"
 fi
 
+# SessionEnd shadow cleanup ships with the hook set
+[[ -x "$CLAUDE_DIR/hooks/session-end-cleanup.sh" ]] \
+  && pass "session-end-cleanup.sh installed and executable" \
+  || fail "session-end-cleanup.sh installed and executable"
+
+# Subagent recursion cap — "subagents must not delegate recursively" needs a
+# real control now that Claude Code 2.1.221 defaults the spawn depth to 3.
+if command -v jq &>/dev/null; then
+  depth=$(jq -r '.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH // ""' \
+    "$CLAUDE_DIR/settings.json" 2>/dev/null)
+  [[ "$depth" == "1" ]] \
+    && pass "fresh install caps subagent spawn depth at 1" \
+    || fail "fresh install caps subagent spawn depth at 1" "got '$depth'"
+
+  # The depth merge must not have wiped the template's own env keys.
+  if jq -e '.env | has("TG_BOT_TOKEN") and has("TG_CHAT_ID")' \
+      "$CLAUDE_DIR/settings.json" >/dev/null 2>&1; then
+    pass "depth merge preserves the template's env keys"
+  else
+    fail "depth merge preserves the template's env keys"
+  fi
+fi
+
 # ─── Suite 2: Generated skill catalog ────────────────────────────────
 
 section "Generated skill catalog (available_skills.md)"
@@ -231,8 +254,15 @@ CODEX_SENTINEL="codex-user-rule-sentinel-28c1"
 mv "$CLAUDE_DIR/CLAUDE.md.new" "$CLAUDE_DIR/CLAUDE.md"
 printf '\n## User Rules\n- %s\n' "$CODEX_SENTINEL" >> "$CODEX_DIR/AGENTS.md"
 
+ENV_SENTINEL="user-env-sentinel-4b9d"
 if command -v jq &>/dev/null; then
-  jq '. + {model: "sentinel-model-keep"}' "$CLAUDE_DIR/settings.json" \
+  # Seed BOTH a top-level user key and a user-authored key inside `env`. The
+  # depth cap lands in `env`, which — unlike `.hooks` — is user-owned territory,
+  # so it must be merged into rather than replaced.
+  jq --arg s "$ENV_SENTINEL" \
+    '. + {model: "sentinel-model-keep"}
+     | .env = ((.env // {}) + {MY_OWN_VAR: $s})' \
+    "$CLAUDE_DIR/settings.json" \
     > "$CLAUDE_DIR/settings.json.new" 2>/dev/null \
     && mv "$CLAUDE_DIR/settings.json.new" "$CLAUDE_DIR/settings.json"
 fi
@@ -315,6 +345,42 @@ if command -v jq &>/dev/null; then
     pass "mailbox-drain wired into PostToolUse hooks"
   else
     fail "mailbox-drain wired into PostToolUse hooks"
+  fi
+
+  if jq -e '[.hooks.SessionEnd[].hooks[].id] | index("session-end-cleanup")' \
+      "$CLAUDE_DIR/settings.json" >/dev/null 2>&1; then
+    pass "session-end-cleanup wired into SessionEnd hooks"
+  else
+    fail "session-end-cleanup wired into SessionEnd hooks"
+  fi
+
+  # ── Subagent depth: idempotent, and non-destructive to user env keys ──
+  depth=$(jq -r '.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH // ""' \
+    "$CLAUDE_DIR/settings.json" 2>/dev/null)
+  [[ "$depth" == "1" ]] \
+    && pass "subagent depth cap survives reinstall (idempotent)" \
+    || fail "subagent depth cap survives reinstall" "got '$depth'"
+
+  env_sentinel_val=$(jq -r '.env.MY_OWN_VAR // ""' "$CLAUDE_DIR/settings.json" 2>/dev/null)
+  [[ "$env_sentinel_val" == "$ENV_SENTINEL" ]] \
+    && pass "depth merge preserves user-authored keys in env" \
+    || fail "depth merge preserves user-authored keys in env" "got '$env_sentinel_val'"
+
+  # A merge that replaced `env` wholesale would also have dropped these.
+  if jq -e '.env | has("TG_BOT_TOKEN") and has("TG_CHAT_ID")' \
+      "$CLAUDE_DIR/settings.json" >/dev/null 2>&1; then
+    pass "reinstall preserves the template env keys alongside the cap"
+  else
+    fail "reinstall preserves the template env keys alongside the cap"
+  fi
+
+  # The cap is a real Claude Code control, not an invented settings key: the
+  # 2.1.227 binary reads CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH from the process
+  # env (settings `env` feeds it) and has no `maxSubagentDepth` key at all.
+  if jq -e 'has("maxSubagentDepth")' "$CLAUDE_DIR/settings.json" >/dev/null 2>&1; then
+    fail "no inert maxSubagentDepth key written" "that key does not exist in Claude Code"
+  else
+    pass "no inert maxSubagentDepth key written"
   fi
 else
   echo "  (jq not available — skipping settings merge checks)"
