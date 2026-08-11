@@ -1,0 +1,74 @@
+name: Validate Plugin Manifest
+
+# Gate on the authoritative Claude Code manifest validator, not a hand-rolled
+# schema check that would drift from the real plugin loader. Installing the
+# CLI is this job's own responsibility — it must never fall back to "skip
+# when unavailable", because a skipped job reports green on a broken
+# manifest exactly as convincingly as a passing one.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate-plugin-manifest:
+    name: Validate Plugin Manifest
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      # --strict decision (verified locally on CLI v2.1.227, 2026-08-10, not
+      # guessed): `claude plugin validate --help` confirms --strict is a real,
+      # documented flag ("Treat warnings as errors (exit 1). Use in CI to
+      # fail on unrecognized fields, missing metadata, and other issues that
+      # the runtime tolerates.") — so this is not the "flag unknown" case.
+      #
+      # It was dropped anyway because `claude plugin validate . --strict`
+      # currently fails on this repo's CLEAN, uncorrupted manifest:
+      #
+      #   Validating plugin: .../CLAUDE.md
+      #   ⚠ Found 1 warning:
+      #     ❯ root: CLAUDE.md at the plugin root is not loaded as project
+      #       context. To ship context with your plugin, use a skill
+      #       (skills/<name>/SKILL.md) instead.
+      #   ✘ Validation failed (--strict treats warnings as errors)
+      #   exit=1
+      #
+      # That warning is real but pre-existing and out of scope here — the
+      # plugin manifest not yet declaring component paths is tracked
+      # separately in goal-cc-codex-adaptation.md. Gating CI on --strict
+      # today would make this job permanently red on every commit for a
+      # reason that has nothing to do with manifest corruption, which
+      # defeats the point of the gate. Plain (non-strict) validate does not
+      # have this problem: it exits 0 ("Validation passed with warnings") on
+      # the clean manifest, and — proven below — still exits non-zero on a
+      # genuinely corrupted one, so the gate stays meaningful without
+      # --strict. Revisit --strict once the component-paths gap above is
+      # closed and the warning goes away on its own.
+      #
+      # Proof the gate actually catches corruption (done locally, CLI
+      # v2.1.227, then reverted — `git diff` was clean afterward): removed
+      # the required "name" field from .claude-plugin/plugin.json and reran
+      # the same command this step runs:
+      #
+      #   $ claude plugin validate .
+      #   Validating plugin manifest: .../.claude-plugin/plugin.json
+      #   ✘ Found 1 error:
+      #     ❯ name: Invalid input: expected string, received undefined
+      #   Validating plugin: .../CLAUDE.md
+      #   ⚠ Found 1 warning:
+      #     ❯ root: CLAUDE.md at the plugin root is not loaded as project
+      #       context. ...
+      #   ✘ Validation failed
+      #   exit=1
+      #
+      # vs. exit 0 on the unmodified manifest — confirming this step fails
+      # the build on real manifest defects, not just on the unrelated
+      # warning above.
+      - name: Validate plugin manifest
+        run: claude plugin validate .
