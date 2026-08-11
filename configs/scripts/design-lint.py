@@ -459,29 +459,47 @@ def lint_html(path: Path, report: Report, label: str) -> None:
                        f"{len(levels)} headings, single h1, no skipped levels")
 
     # -- declared colour pairs ------------------------------------------------
+    # A pair that cannot be statically resolved (unsupported colour function,
+    # a custom property with no fallback) must never be silently dropped: if
+    # every OTHER pair happens to pass, the unresolved one would otherwise
+    # vanish into a bare PASS that never actually checked it.
     props = custom_properties(all_css)
     worst: tuple[float, str] | None = None
+    unresolved: list[str] = []
     for selector, body in _RULE.findall(css):
         decls = {k.lower().strip(): v.strip() for k, v in _DECL.findall(body)}
         fg = decls.get("color")
         bg = decls.get("background-color") or decls.get("background")
         if not fg or not bg:
             continue
-        fg, bg = resolve_value(fg, props), resolve_value(bg, props)
-        c_fg, c_bg = parse_color(fg), parse_color(bg)
+        sel = " ".join(selector.split())[:60]
+        r_fg, r_bg = resolve_value(fg, props), resolve_value(bg, props)
+        c_fg, c_bg = parse_color(r_fg), parse_color(r_bg)
         if not c_fg or not c_bg:
+            unresolved.append(f"{sel} — {fg.strip()} on {bg.strip()}")
             continue
         ratio = contrast_ratio(c_fg, c_bg)
-        sel = " ".join(selector.split())[:60]
         if worst is None or ratio < worst[0]:
-            worst = (ratio, f"{sel} — {fg.strip()} on {bg.strip()} = {ratio:.2f}:1")
+            worst = (ratio, f"{sel} — {r_fg.strip()} on {r_bg.strip()} = {ratio:.2f}:1")
     if worst is None:
-        report.add("html.contrast", "SKIP", tag,
-                   "no rule declares colour and background together — static analysis "
-                   "cannot resolve inherited or computed pairs")
+        if unresolved:
+            report.add("html.contrast", "SKIP", tag,
+                       f"{len(unresolved)} rule(s) declare colour+background that could "
+                       f"not be statically resolved (e.g. {unresolved[0]}) — unsupported "
+                       f"colour function or a custom property with no fallback")
+        else:
+            report.add("html.contrast", "SKIP", tag,
+                       "no rule declares colour and background together — static analysis "
+                       "cannot resolve inherited or computed pairs")
     elif worst[0] < CONTRAST_TEXT:
         sev = "FAIL" if worst[0] < CONTRAST_LARGE else "WARN"
         report.add("html.contrast", sev, tag, worst[1] + " (AA text needs 4.5:1)",
+                   measured=round(worst[0], 2), threshold=CONTRAST_TEXT)
+    elif unresolved:
+        report.add("html.contrast", "SKIP", tag,
+                   f"worst resolvable pair clears {CONTRAST_TEXT}:1 ({worst[1]}), but "
+                   f"{len(unresolved)} other pair(s) could not be statically resolved "
+                   f"(e.g. {unresolved[0]}) and were never verified",
                    measured=round(worst[0], 2), threshold=CONTRAST_TEXT)
     else:
         report.add("html.contrast", "PASS", tag, "worst declared pair " + worst[1],

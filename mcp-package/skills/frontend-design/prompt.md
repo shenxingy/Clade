@@ -98,12 +98,12 @@ targets: clear them first, then spend all the creative freedom below. A design s
 raise a floor; nothing lowers one. If a requested look cannot clear a floor, say so and
 propose the nearest version that does — do not ship it silently.
 
-- **Contrast (WCAG 2.2 AA)**: body text ≥4.5:1 against its backdrop; large text (≥24px, or ≥18.66px bold) ≥3:1; icons, input borders, and focus rings ≥3:1. *Backdrop* means the real one — text over a gradient, photo, noise texture, or blur must clear the ratio at its **worst** pixel, not its average.
-- **Focus is always visible**: never `outline: none` without a replacement. Focus indicators need ≥3:1 against both the component and its surroundings, with at least a 2px perimeter, and the focused element must not be obscured.
-- **Target size**: interactive targets ≥24×24 CSS px (WCAG 2.2 AA, 2.5.8); aim for ~44px on primary touch actions.
-- **Motion respects preference**: wrap every animation, scroll effect, and transition in `@media (prefers-reduced-motion: no-preference)`, or neutralize them under `(reduce)`. Parallax, large-scale movement, and autoplaying loops are vestibular triggers — they need this most, and they are exactly what "surprising motion" tends to produce.
-- **Body type**: ≥16px body copy, line-height ≈1.5, and a measure of 45–75 characters (~66 optimal; push line-height to 1.6–1.7 past 75). Oversized measure and 14px body are the two most common legibility failures in generated UI.
-- **Semantics before styling**: headings in real order (one `h1`, no skipped levels), `alt` on meaningful images (`alt=""` on decorative ones), labels bound to inputs, actual `<button>` elements. Screen-reader structure is part of the design, not a cleanup pass.
+- **Contrast (WCAG 2.2 AA)**: body text ≥4.5:1 against its backdrop; large text (≥24px, or ≥18.66px bold) ≥3:1; icons, input borders, and focus rings ≥3:1. *Backdrop* means the real one — text over a gradient, photo, noise texture, or blur must clear the ratio at its **worst** pixel, not its average. `design-lint html` measures statically-declared colour+background pairs; `design-lint render` heuristically estimates rendered-pixel contrast (capped at WARN, never authoritative). Gradient/photo/blur backdrops, and icon/input-border/focus-ring contrast specifically, are **[human-verified-only]**.
+- **Focus is always visible**: never `outline: none` without a replacement. Focus indicators need ≥3:1 against both the component and its surroundings, with at least a 2px perimeter, and the focused element must not be obscured. `design-lint html` catches a bare `outline: none` with no `:focus`/`:focus-visible` replacement rule declared. The ≥3:1 ratio, ≥2px perimeter, and not-obscured requirements are **[human-verified-only]**.
+- **Target size**: interactive targets ≥24×24 CSS px (WCAG 2.2 AA, 2.5.8); aim for ~44px on primary touch actions. **[human-verified-only]** — design-lint has no rendered hit-target-size check.
+- **Motion respects preference**: wrap every animation, scroll effect, and transition in `@media (prefers-reduced-motion: no-preference)`, or neutralize them under `(reduce)`. Parallax, large-scale movement, and autoplaying loops are vestibular triggers — they need this most, and they are exactly what "surprising motion" tends to produce. `design-lint html` checks that declared animation/transition is guarded by a `prefers-reduced-motion` media query. Whether the `(reduce)` branch actually neutralizes the motion (versus just existing) is **[human-verified-only]**.
+- **Body type**: ≥16px body copy, line-height ≈1.5, and a measure of 45–75 characters (~66 optimal; push line-height to 1.6–1.7 past 75). Oversized measure and 14px body are the two most common legibility failures in generated UI. `design-lint html` checks declared `font-size` against the 16px floor. Line-height and measure (characters per line) are **[human-verified-only]**.
+- **Semantics before styling**: headings in real order (one `h1`, no skipped levels), `alt` on meaningful images (`alt=""` on decorative ones), labels bound to inputs, actual `<button>` elements. Screen-reader structure is part of the design, not a cleanup pass. `design-lint html` checks heading order and presence of an `alt` attribute on every `<img>` (not whether the alt text is correct, or correctly empty on decorative images). Label-to-input binding and real-`<button>`-vs-styled-`<div>` are **[human-verified-only]**.
 
 Contrast, target size, and measure are **rendered-output** rules — a clean grep proves
 nothing about them. See the enforcement tiers above.
@@ -185,6 +185,7 @@ After implementation, note: `Run /seo page <url> to audit, /seo geo <url> for AI
 - **Design system**: [Found <source: .design-system.md / design-system/SKILL.md / DESIGN.md> — using tokens: <list key tokens used>] OR [No design system found — full creative freedom applied]
 - **Hard-rule check**: [Grepped output for banned patterns: <patterns> — clean] OR [N/A — no hard rules declared]
 - **Rendered-output rules**: [Ran <validator> against the built artifact — <what it measured>] OR [Declared but unchecked: <rule> needs a rendered-artifact validator] OR [N/A — all hard rules are grep-able]
+- **Measured worst contrast ratio**: [`design-lint <lane> <artifact>` worst pair: <X.XX>:1 — <PASS/WARN/FAIL/SKIP + reason>] OR [Not run: <why — e.g. no rendered artifact yet>]
 - **Accessibility floors**: [Contrast <worst measured ratio> / focus visible / targets ≥24px / reduced-motion guarded / body ≥16px at 45–75ch — all clear] OR [Cleared except <floor>: <why, and the nearest conforming alternative offered>]
 - **Component library**: [Using <library> as specified in design system] OR [No library specified — building from raw HTML/CSS] OR [N/A — no design system]
 - **Aesthetic direction**: [1-sentence description of the chosen aesthetic]
@@ -198,6 +199,11 @@ This section makes design reasoning transparent and verifiable.
 ---
 
 ## Completion Status
+
+**Completion checklist — run before reporting done:**
+- If the artifact is HTML/web output: run `design-lint html <artifact>` and read every finding. A `SKIP` means that check could not verify the rule statically — it is not a pass, and does not license claiming the floor is clear.
+- If the artifact is a deck/PPTX: run `design-lint deck <file.pptx>` (source metrics) and, once rendered, `design-lint render <slide-images>` (pixel metrics).
+- Record the worst measured contrast ratio design-lint reported in the `## Design Decisions` block (see Output Requirements above) — do not report the contrast floor as clear from an eyeballed guess.
 
 - ✅ **DONE** — task completed successfully
 - ⚠ **DONE_WITH_CONCERNS** — completed but with caveats to note
