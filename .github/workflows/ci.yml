@@ -78,6 +78,13 @@ jobs:
       - name: Codex plugin skills drift gate
         run: python3 configs/scripts/regen-codex-plugin.py --check
 
+      # .claude-plugin/plugin.json's version must track the canonical semver
+      # published in the Codex manifest, and its agents field must list every
+      # configs/agents/*.md file (Claude Code's agents field takes explicit
+      # file paths, not a directory).
+      - name: Claude Code plugin manifest drift gate
+        run: python3 configs/scripts/regen-cc-plugin.py --check
+
   pytest:
     name: Tests
     runs-on: ubuntu-latest

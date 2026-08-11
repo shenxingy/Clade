@@ -1,0 +1,14 @@
+{
+  "name": "clade",
+  "description": "Autonomous coding toolkit for Claude Code. 30+ skills, 14 hooks, 37 agents, a safety guardian, and a correction learning loop.",
+  "owner": {
+    "name": "shenxingy",
+    "url": "https://github.com/shenxingy"
+  },
+  "plugins": [
+    {
+      "name": "clade",
+      "source": "./"
+    }
+  ]
+}
