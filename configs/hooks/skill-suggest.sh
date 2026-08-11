@@ -6,6 +6,27 @@
 #
 # Covers: blog, API routes, security, infra/CI, frontend components,
 # DB migrations, ML configs, LaTeX, schema, sitemap, tests, meta.
+#
+# Delivery contract: this hook runs SYNCHRONOUSLY. Its only product is
+# hookSpecificOutput.additionalContext, and a background hook has no channel
+# back into the turn, so async:true discarded every suggestion. asyncRewake is
+# the other option but it is the wrong shape here — waking Claude mid-turn for
+# an advisory "consider /blog-seo-check" is exactly the interruption cost the
+# hook is not worth (see .claude/decisions.md).
+#
+# Sync means this hook is on the Edit/Write critical path, so its worst case is
+# bounded HERE, not just by the 5s hook timeout in settings: the body is
+# re-executed under `timeout 5`. The unbounded step is the content probe below
+# (`grep application/ld+json "$FILE_PATH"`), which can stall on a huge file, a
+# fifo, or a hung network mount. A kill surfaces as "no suggestion", never as a
+# hook failure.
+if [[ -z "${SKILL_SUGGEST_INNER:-}" ]] && command -v timeout >/dev/null 2>&1; then
+  export SKILL_SUGGEST_INNER=1
+  # GNU timeout puts the child in its own process group and signals the group,
+  # so a blocked grep dies with the shell instead of outliving it.
+  timeout 5 bash "$0" "$@"
+  exit 0
+fi
 
 INPUT=$(cat)
 FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')

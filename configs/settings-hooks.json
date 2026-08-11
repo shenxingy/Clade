@@ -65,6 +65,19 @@
                 ]
             }
         ],
+        "SessionEnd": [
+            {
+                "hooks": [
+                    {
+                        "id": "session-end-cleanup",
+                        "description": "Delete this session's correction-pairing shadow (/tmp/claude-edit-shadows/session-<session_id>.jsonl). No matcher on purpose: every end reason (clear, logout, prompt_input_exit, other) retires that session_id, and the next session gets a new one. Attribution-scoped — it unlinks only the file keyed by the ending session_id, so a parallel live session's shadow is never touched.",
+                        "type": "command",
+                        "command": "~/.claude/hooks/session-end-cleanup.sh",
+                        "timeout": 5
+                    }
+                ]
+            }
+        ],
         "PreToolUse": [
             {
                 "matcher": "Bash",
@@ -106,10 +119,13 @@
                 "hooks": [
                     {
                         "id": "post-edit-check",
-                        "description": "Run async checks (type-check, tests) after file edits",
+                        "description": "Run background checks (type-check, lint) after file edits and wake Claude when they FAIL. asyncRewake is the delivery channel: the check can take 180s so it must not block the turn, but a plain async hook's output goes nowhere — the old systemMessage was written into a void. The hook now exits 2 with its findings on stderr, which asyncRewake surfaces as a system reminder; a clean check exits 0 silently and never wakes Claude. async:true is kept alongside it deliberately — asyncRewake alone only backgrounds when the session is interactive or has streaming input, so headless `claude -p` workers would otherwise block for up to 180s per edit.",
                         "type": "command",
                         "command": "~/.claude/hooks/post-edit-check.sh",
                         "async": true,
+                        "asyncRewake": true,
+                        "rewakeMessage": "Background post-edit check found problems — fix or acknowledge them, then continue with the user's original request:",
+                        "rewakeSummary": "Post-edit check found problems",
                         "timeout": 180,
                         "statusMessage": "Running checks..."
                     },
@@ -155,10 +171,9 @@
                     },
                     {
                         "id": "skill-suggest",
-                        "description": "Suggest relevant skills after file edits (blog→SEO/GEO, schema→validate, etc.)",
+                        "description": "Suggest relevant skills after file edits (blog→SEO/GEO, schema→validate, etc.). Runs SYNC on purpose: its only output is hookSpecificOutput.additionalContext, which a background hook cannot deliver, so async:true discarded every suggestion. asyncRewake was rejected — waking Claude mid-turn for an advisory hint is not worth the interruption (see .claude/decisions.md). Being on the Edit/Write critical path, its cost is bounded twice: this 5s hook timeout, and a `timeout 5` re-exec inside the script itself that also kills a stalled content probe.",
                         "type": "command",
                         "command": "~/.claude/hooks/skill-suggest.sh",
-                        "async": true,
                         "timeout": 5
                     }
                 ]
