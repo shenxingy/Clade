@@ -188,6 +188,16 @@ for f in "$SCRIPT_DIR/configs/scripts/"*.py; do
 done
 echo "  Installed: $(ls "$SCRIPT_DIR/configs/scripts/"*.sh "$SCRIPT_DIR/configs/scripts/"*.py 2>/dev/null | xargs -I{} basename {} | tr '\n' ' ')"
 
+# Explicit named install for design-lint.py: the frontend-design skill's
+# completion checklist requires `design-lint html <artifact>` before
+# reporting done, so its presence at this path is load-bearing, not
+# incidental to the generic *.py sweep above.
+if [[ -f "$SCRIPT_DIR/configs/scripts/design-lint.py" ]]; then
+  cp "$SCRIPT_DIR/configs/scripts/design-lint.py" "$CLAUDE_DIR/scripts/design-lint.py"
+  chmod +x "$CLAUDE_DIR/scripts/design-lint.py"
+  echo "  Installed design-lint.py (frontend-design completion-checklist validator)"
+fi
+
 # Copy scripts/ subdirectories (e.g. seo/)
 for sub_dir in "$SCRIPT_DIR/configs/scripts/"/*/; do
   [[ -d "$sub_dir" ]] || continue

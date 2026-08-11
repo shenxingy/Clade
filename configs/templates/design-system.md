@@ -162,3 +162,21 @@ Other constraints:
 - [placeholder]  e.g. "No inline styles — use CSS modules or Tailwind utility classes only"
 - [placeholder]  e.g. "Icon library: lucide-react only — do not import from @heroicons or @radix-ui/icons directly"
 - [placeholder]  e.g. "Border radius: use rounded-md (6px) by default; rounded-full only for avatars/pills"
+
+Enforcement tier — state how each constraint above is actually checked, so a clean
+grep is never mistaken for a verified rule:
+- Grep-able in source: [placeholder]  e.g. "banned `rounded-*` — grep before finishing"
+- Needs a rendered-artifact validator: [placeholder]  e.g. "min contrast, min type size, canvas coverage — measured on the built page/image, not the source"
+- Enforced in build/CI: [placeholder]  e.g. "scripts/validate-design.py runs in CI"
+
+## Decisions Log
+
+Append every significant design decision — **especially rejected experiments**. Record
+what measurably failed and the constraint that replaced it, not just the verdict; a
+measured failure becomes a reusable rule, while a bare "we rejected X" only prevents
+one repeat. Note the biggest live tension between your principles and the current
+design honestly rather than hiding it.
+
+| Date | Decision | Rationale |
+|------|----------|-----------|
+| [YYYY-MM-DD] | [placeholder]  e.g. "Initial design system created" | [placeholder]  e.g. "Codified tokens after stripping all borders at the founder's request" |
