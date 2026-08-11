@@ -138,12 +138,12 @@ def parse_color(text: str) -> tuple[int, int, int] | None:
 # ─── Lane: deck (pptx source metrics) ───
 
 
-def lint_deck(path: Path, report: Report) -> None:
+def lint_deck(path: Path, report: Report, label: str) -> None:
     try:
         from pptx import Presentation           # type: ignore
         from pptx.util import Inches            # type: ignore
     except ImportError:
-        report.add("deck.deps", "SKIP", path.name,
+        report.add("deck.deps", "SKIP", label,
                    "python-pptx not installed — source metrics unavailable "
                    "(pip install python-pptx); render lane still applies")
         return
@@ -152,7 +152,7 @@ def lint_deck(path: Path, report: Report) -> None:
     canvas_w, canvas_h = prs.slide_width, prs.slide_height
 
     for idx, slide in enumerate(prs.slides, start=1):
-        tag = f"{path.name} slide {idx}"
+        tag = f"{label} slide {idx}"
         texts: list[str] = []
         body_pt: list[float] = []
 
@@ -274,17 +274,17 @@ def _dominant_colors(image, limit: int = 12) -> list[tuple[tuple[int, int, int],
     return [(rgb, n / total) for n, rgb in counts[:limit]]
 
 
-def lint_render(path: Path, report: Report) -> None:
+def lint_render(path: Path, report: Report, label: str) -> None:
     try:
         from PIL import Image                   # type: ignore
     except ImportError:
-        report.add("render.deps", "SKIP", path.name,
+        report.add("render.deps", "SKIP", label,
                    "Pillow not installed — no pixel metrics (pip install pillow)")
         return
 
     with Image.open(path) as probe:
         if probe.width < MIN_CANVAS_PX or probe.height < MIN_CANVAS_PX:
-            report.add("render.scope", "SKIP", path.name,
+            report.add("render.scope", "SKIP", label,
                        f"{probe.width}×{probe.height} is below the canvas threshold — "
                        f"icons and logos are not judged as slides or pages")
             return
@@ -304,17 +304,17 @@ def lint_render(path: Path, report: Report) -> None:
         focal = dark / total
 
     if focal > FOCAL_COVERAGE_MAX:
-        report.add("render.focal", "FAIL", path.name,
+        report.add("render.focal", "FAIL", label,
                    f"heavy surface covers {focal:.1%} of the canvas — it has stopped "
                    f"being emphasis and become the background",
                    measured=round(focal, 4), threshold=FOCAL_COVERAGE_MAX)
     else:
-        report.add("render.focal", "PASS", path.name, f"heavy surface {focal:.1%}",
+        report.add("render.focal", "PASS", label, f"heavy surface {focal:.1%}",
                    measured=round(focal, 4), threshold=FOCAL_COVERAGE_MAX)
 
     palette = _dominant_colors(quant)
     if not palette:
-        report.add("render.contrast", "SKIP", path.name, "palette not readable")
+        report.add("render.contrast", "SKIP", label, "palette not readable")
         return
     background = palette[0][0]
     # Share alone cannot tell text from a tinted surface panel: a muted tile and a
@@ -332,7 +332,7 @@ def lint_render(path: Path, report: Report) -> None:
         if TEXT_THINNESS_MIN <= thin < TEXT_THINNESS_MAX:
             detail.append((rgb, share, thin))
     if not detail:
-        report.add("render.contrast", "SKIP", path.name,
+        report.add("render.contrast", "SKIP", label,
                    "no text-like colour found (every minority colour reads as a solid "
                    "surface, not glyphs) — contrast unverified on pixels")
         return
@@ -350,12 +350,12 @@ def lint_render(path: Path, report: Report) -> None:
     # are `html` (declared pairs) and the design system's own tokens; this probe
     # exists to point a human at the slide worth opening.
     if worst < CONTRAST_TEXT:
-        report.add("render.contrast", "WARN", path.name,
+        report.add("render.contrast", "WARN", label,
                    f"{label} — under {CONTRAST_TEXT}:1. Heuristic: may be anti-aliasing "
                    f"fringe rather than text; confirm before treating as a defect",
                    measured=round(worst, 2), threshold=CONTRAST_TEXT)
     else:
-        report.add("render.contrast", "PASS", path.name, label,
+        report.add("render.contrast", "PASS", label, label,
                    measured=round(worst, 2), threshold=CONTRAST_TEXT)
 
 
@@ -370,14 +370,14 @@ _RULE = re.compile(r"([^{}]+)\{([^{}]*)\}", re.S)
 _FONT_SIZE_PX = re.compile(r"font-size\s*:\s*([\d.]+)px", re.I)
 
 
-def lint_html(path: Path, report: Report) -> None:
+def lint_html(path: Path, report: Report, label: str) -> None:
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
-        report.add("html.read", "SKIP", path.name, f"unreadable: {exc}")
+        report.add("html.read", "SKIP", label, f"unreadable: {exc}")
         return
 
-    tag = path.name
+    tag = label
     css = "\n".join(_STYLE_BLOCK.findall(text))
     inline_styles = re.findall(r'style\s*=\s*"([^"]*)"', text, re.I)
     all_css = css + "\n" + "\n".join(inline_styles)
@@ -509,11 +509,19 @@ def main(argv: list[str] | None = None) -> int:
 
     report = Report(lane=args.lane)
     runner = {"deck": lint_deck, "render": lint_render, "html": lint_html}[args.lane]
+    root = args.target if args.target.is_dir() else args.target.parent
     for path in paths:
+        # Label by path relative to the scan root. Artifact pages are all named
+        # index.html, so a basename label silently merges hundreds of distinct
+        # findings into one target and makes every aggregate count wrong.
         try:
-            runner(path, report)
+            label = str(path.relative_to(root))
+        except ValueError:
+            label = path.name
+        try:
+            runner(path, report, label)
         except Exception as exc:  # a crashed check must be visible, never silent
-            report.add(f"{args.lane}.error", "FAIL", path.name,
+            report.add(f"{args.lane}.error", "FAIL", label,
                        f"check crashed: {type(exc).__name__}: {exc}")
 
     if args.json:
