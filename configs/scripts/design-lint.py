@@ -118,6 +118,31 @@ _NAMED = {
 }
 
 
+_VAR_DEF = re.compile(r"(--[\w-]+)\s*:\s*([^;}]+)")
+_VAR_USE = re.compile(r"var\(\s*(--[\w-]+)\s*(?:,\s*([^)]+))?\)")
+
+
+def custom_properties(css: str) -> dict[str, str]:
+    """Collect `--token: value` declarations so var() references can resolve.
+
+    The skill tells designers to build on CSS custom properties, so a checker
+    that gives up at `var(--ink)` is blind on exactly the idiom it recommends.
+    Later definitions win, matching the cascade for same-specificity rules.
+    """
+    return {name: value.strip() for name, value in _VAR_DEF.findall(css)}
+
+
+def resolve_value(value: str, props: dict[str, str], depth: int = 0) -> str:
+    """Substitute var() references, honouring fallbacks, with a recursion cap."""
+    if depth > 8 or "var(" not in value:
+        return value
+
+    def swap(m: re.Match) -> str:
+        return props.get(m.group(1), (m.group(2) or "")).strip()
+
+    return resolve_value(_VAR_USE.sub(swap, value), props, depth + 1)
+
+
 def parse_color(text: str) -> tuple[int, int, int] | None:
     """Best-effort CSS colour → RGB. Returns None when not confidently parsed."""
     text = text.strip().lower()
@@ -434,6 +459,7 @@ def lint_html(path: Path, report: Report, label: str) -> None:
                        f"{len(levels)} headings, single h1, no skipped levels")
 
     # -- declared colour pairs ------------------------------------------------
+    props = custom_properties(all_css)
     worst: tuple[float, str] | None = None
     for selector, body in _RULE.findall(css):
         decls = {k.lower().strip(): v.strip() for k, v in _DECL.findall(body)}
@@ -441,6 +467,7 @@ def lint_html(path: Path, report: Report, label: str) -> None:
         bg = decls.get("background-color") or decls.get("background")
         if not fg or not bg:
             continue
+        fg, bg = resolve_value(fg, props), resolve_value(bg, props)
         c_fg, c_bg = parse_color(fg), parse_color(bg)
         if not c_fg or not c_bg:
             continue
