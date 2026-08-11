@@ -33,7 +33,24 @@
  * (file:// works for non-ES-module pages; CLI --screenshot can hang on tall
  *  pages, so we drive via Puppeteer and screenshot per-viewport.)
  */
-const puppeteer = require(process.env.PUP || 'puppeteer-core');
+// Local adaptation (Clade): the bare top-level require sat outside the catch at
+// the bottom of this file, so a machine without puppeteer got a raw
+// MODULE_NOT_FOUND stack and no hint about what to install. A verification gate
+// that cannot start must say so in a way the reader can act on — an unrunnable
+// harness otherwise reads as an absent one.
+let puppeteer;
+try {
+  puppeteer = require(process.env.PUP || 'puppeteer-core');
+} catch (e) {
+  if (e.code !== 'MODULE_NOT_FOUND') throw e;
+  console.error(
+    'GRID VERIFY: CANNOT RUN — puppeteer-core is not installed.\n' +
+    '  This harness is the only thing that proves 0px grid adherence; without it\n' +
+    '  the grid is unverified, not verified.\n' +
+    '  Install:  npm i puppeteer-core   (or set PUP=/path/to/puppeteer-core)\n' +
+    '  Chrome:   set CHROME=/path/to/chrome if no bundled binary is present.');
+  process.exit(2);
+}
 const path = require('path');
 
 const args = process.argv.slice(2);

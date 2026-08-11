@@ -80,6 +80,22 @@ Deterministic, no network/credentials. `python3 vignelli_system.py` → CSS toke
 ### Canon palette (color as identifier)
 Vignelli vermilion `#F04E23` · Signal blue `#0039A6` · Signal yellow `#FFCC00` · Ink `#0A0A0A` · Warm paper `#F4F1EA` · White `#FFFFFF`.
 
+**Contrast budget (local addition — measured, not inherited from upstream).** These are
+signage colours chosen for identity, and the historical fidelity is the point, so the
+palette is unchanged. What follows is what each one may legally *carry*, against warm
+paper `#F4F1EA` unless noted:
+
+| token | ratio | may be used for |
+|---|---|---|
+| Ink `#0A0A0A` | 17.55:1 | anything, including body copy |
+| Signal blue `#0039A6` | 8.72:1 | anything, including body copy |
+| Vermilion `#F04E23` (the default `--primary`) | 3.20:1 | large text ≥24px (or ≥18.66px bold), rules, fills, icons — **never body-size text or small labels** |
+| Signal yellow `#FFCC00` | 1.51:1 on white | fills and blocks only — **never text, never a hairline rule** |
+
+Vermilion being the default `--primary` is the trap: the obvious use (links, labels,
+small emphasis) is exactly the use it cannot carry at AA. Reach for ink or signal blue
+when the colour has to be readable, and let vermilion do identity work at display size.
+
 ---
 
 ## PRODUCTION — bringing the system into images & the real world

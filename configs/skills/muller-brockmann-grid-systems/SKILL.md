@@ -43,6 +43,7 @@ Children place with `grid-column: <startline> / <endline>` (e.g. `1 / 6`, `6 / 1
 
 ### 2.4 Lock vertical rhythm to the baseline
 - Leading = `--lh` (e.g. 24px = 3×8). **Every line-height a multiple of the baseline, in px (not unitless) for display type** — unitless line-heights on large type push the box off the grid.
+  - *Local note: keep the px lock scoped to display type, as written. Body copy should stay **unitless**, because a px line-height does not grow when a reader enlarges text and the lines collide (WCAG 2.2 SC 1.4.12 Text Spacing expects 1.5× to survive). The baseline grid and text-scaling resilience genuinely pull against each other here; resolve it by letting headlines lock to the grid and letting body text breathe, not by locking everything.*
 - Every margin/padding a multiple of the baseline. Spread top/bottom padding a multiple too, so content starts on a line.
 - **Media heights = multiples of the leading** (e.g. 240/360/432/480px) so a photo's top AND bottom both land on lines.
 - Hairline rules sit inside a baseline-height band, not free-floating.
@@ -102,6 +103,7 @@ A clean run looks like: `col=0px overlay=0px baseline≤4px ink=0px` → `GRID V
 ## SCRIPTS
 - **`grid_tokens.py`** — deterministic scaffold generator. Emits the `:root` tokens, `.grid`/`.band` (subgrid) scaffold, `.guides` overlay CSS, toggle JS, and the optical-alignment JS — all wired to one source of truth. `--scaffold` emits a full minimal HTML page. No network/credentials.
 - **`verify_grid.js`** — Puppeteer harness implementing all four checks above with the corrected both-edges column math, the optical-exclusion, per-element column-line ink targeting, and PASS/FAIL output at multiple widths. Env: `CHROME` (chrome binary), `PUP` (puppeteer-core module path).
+  **Requires `puppeteer-core`, which is not a standard dependency — install it (`npm i puppeteer-core`) before claiming the grid is verified.** Without it the harness exits 2 with an install hint; treat that as *unverified*, never as passing. This is the whole point of the CREED below: the claim is "proved at 0px", and an unrunnable prover proves nothing.
 
 ## CREED
 A grid you can't toggle on and measure is a mood board, not a system. Build it from one source of truth, prove it at 0px, and align the **ink**.
