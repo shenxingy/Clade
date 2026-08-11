@@ -1,0 +1,11 @@
+upstreams:
+- id: claude-design-skills
+  repo: maxsoweski/claude-design-skills
+  branch: main
+  pinned_ref: null
+  last_synced_commit: 9e1328cf99181710e58a4e73291eb3c34d2552a2
+  last_synced_version: null
+  last_synced_at: '2026-08-11T18:34:37.070654+00:00'
+  include: []
+  exclude: []
+  notes: ''
