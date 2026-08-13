@@ -28,6 +28,7 @@ import json
 import re
 import sys
 from dataclasses import dataclass, field, asdict
+from html.parser import HTMLParser
 from pathlib import Path
 from statistics import median
 from typing import Any, Iterable
@@ -394,6 +395,210 @@ _DECL = re.compile(r"([a-z-]+)\s*:\s*([^;{}]+)", re.I)
 _RULE = re.compile(r"([^{}]+)\{([^{}]*)\}", re.S)
 _FONT_SIZE_PX = re.compile(r"font-size\s*:\s*([\d.]+)px", re.I)
 
+# ─── Inherited-contrast cascade (the inversion-band blind spot) ───
+#
+# Pairing colour+background *within one rule* misses the most common real
+# failure: an inversion band (`.thesis{background:var(--fg);color:var(--bg)}`)
+# containing a child that repaints only its own background
+# (`blockquote{background:var(--muted)}`). The child's text colour is
+# inherited from the band, its background comes from the un-inverted palette,
+# and the two collide — measured at 1.17:1 on a real published artifact while
+# the declared-pair check reported no failure. Resolving that needs the HTML
+# tree, not the stylesheet alone.
+
+_UNSUPPORTED_SEL = re.compile(r"[>+~*\[]|::|:(?!root\b)")
+_COMPOUND = re.compile(r"^([a-z][\w-]*)?((?:[.#][\w-]+)*)$", re.I)
+# Elements that never render inherited text of their own.
+_VOID_OR_META = {"style", "script", "head", "meta", "link", "title", "br", "img",
+                 "hr", "input", "source", "path", "svg", "circle", "rect"}
+
+
+def _split_media(css: str) -> tuple[str, str]:
+    """Split CSS into (base, prefers-color-scheme:dark) sources.
+
+    Without this, `custom_properties`'s last-definition-wins collapses a
+    two-theme page onto whichever palette is declared last — so one whole
+    theme is never measured.
+    """
+    base: list[str] = []
+    dark: list[str] = []
+    i = 0
+    while True:
+        m = re.compile(r"@media[^{]*prefers-color-scheme\s*:\s*dark[^{]*\{", re.I).search(css, i)
+        if not m:
+            base.append(css[i:])
+            return "".join(base), "".join(dark)
+        base.append(css[i:m.start()])
+        depth, j = 1, m.end()
+        while j < len(css) and depth:
+            if css[j] == "{":
+                depth += 1
+            elif css[j] == "}":
+                depth -= 1
+            j += 1
+        dark.append(css[m.end():j - 1])
+        i = j
+
+
+class _Tree(HTMLParser):
+    """Minimal element tree: (tag, id, classes, parent, has_text)."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.nodes: list[dict] = []
+        self._stack: list[int] = []
+
+    def handle_starttag(self, tag: str, attrs: list) -> None:
+        a = dict(attrs)
+        self.nodes.append({
+            "tag": tag,
+            "id": a.get("id") or "",
+            "classes": set((a.get("class") or "").split()),
+            "parent": self._stack[-1] if self._stack else None,
+            "text": False,
+        })
+        if tag not in _VOID_OR_META:
+            self._stack.append(len(self.nodes) - 1)
+
+    def handle_endtag(self, tag: str) -> None:
+        for k in range(len(self._stack) - 1, -1, -1):
+            if self.nodes[self._stack[k]]["tag"] == tag:
+                del self._stack[k:]
+                return
+
+    def handle_data(self, data: str) -> None:
+        if data.strip() and self._stack:
+            node = self.nodes[self._stack[-1]]
+            if node["tag"] not in _VOID_OR_META:
+                node["text"] = True
+
+
+def _match_compound(node: dict, comp: str) -> bool:
+    m = _COMPOUND.match(comp)
+    if not m:
+        return False
+    tag, rest = m.group(1), m.group(2) or ""
+    if tag and tag.lower() != node["tag"]:
+        return False
+    for token in re.findall(r"[.#][\w-]+", rest):
+        if token[0] == "." and token[1:] not in node["classes"]:
+            return False
+        if token[0] == "#" and token[1:] != node["id"]:
+            return False
+    return True
+
+
+def _matches(nodes: list[dict], idx: int, selector: str) -> bool:
+    """Descendant-combinator matching, right to left."""
+    parts = selector.split()
+    if not parts or not _match_compound(nodes[idx], parts[-1]):
+        return False
+    cur = nodes[idx]["parent"]
+    for comp in reversed(parts[:-1]):
+        while cur is not None and not _match_compound(nodes[cur], comp):
+            cur = nodes[cur]["parent"]
+        if cur is None:
+            return False
+        cur = nodes[cur]["parent"]
+    return True
+
+
+def _specificity(selector: str) -> tuple[int, int, int]:
+    return (selector.count("#"), selector.count("."),
+            len(re.findall(r"(?:^|\s)[a-z][\w-]*", selector, re.I)))
+
+
+def inherited_contrast(text: str, css: str, tag: str, report: Report) -> None:
+    """Measure each text node's inherited colour against its effective backdrop."""
+    tree = _Tree()
+    try:
+        tree.feed(text)
+    except Exception as exc:                                   # malformed markup
+        report.add("html.contrast.inherited", "SKIP", tag, f"unparseable markup: {exc}")
+        return
+    nodes = tree.nodes
+    if not nodes:
+        report.add("html.contrast.inherited", "SKIP", tag, "no elements parsed")
+        return
+
+    base_css, dark_css = _split_media(css)
+    themes = [("light", custom_properties(base_css))]
+    if dark_css.strip():
+        dark_props = dict(themes[0][1])
+        dark_props.update(custom_properties(dark_css))
+        themes.append(("dark", dark_props))
+
+    # Rules in cascade order, skipping selectors this matcher cannot honour.
+    rules, skipped = [], 0
+    for order, (selector, body) in enumerate(_RULE.findall(base_css)):
+        decls = {k.lower().strip(): v.strip() for k, v in _DECL.findall(body)}
+        if not ({"color", "background", "background-color"} & decls.keys()):
+            continue
+        for sel in (s.strip() for s in selector.split(",")):
+            if not sel or sel.startswith("@") or _UNSUPPORTED_SEL.search(sel):
+                skipped += 1
+                continue
+            rules.append((_specificity(sel), order, sel, decls))
+    rules.sort(key=lambda r: (r[0], r[1]))
+
+    matched: list[dict] = [{} for _ in nodes]
+    for _, _, sel, decls in rules:
+        for i in range(len(nodes)):
+            if _matches(nodes, i, sel):
+                matched[i].update(decls)
+
+    def inherited_color(i: int | None, props: dict) -> tuple[int, int, int] | None:
+        while i is not None:
+            raw = matched[i].get("color")
+            if raw:
+                c = parse_color(resolve_value(raw, props))
+                if c:
+                    return c
+            i = nodes[i]["parent"]
+        return None
+
+    def effective_bg(i: int | None, props: dict) -> tuple[int, int, int] | None:
+        while i is not None:
+            raw = matched[i].get("background-color") or matched[i].get("background")
+            if raw and not re.search(r"\b(transparent|none)\b", raw, re.I):
+                c = parse_color(resolve_value(raw, props))
+                if c:
+                    return c
+            i = nodes[i]["parent"]
+        return None
+
+    worst: tuple[float, str] | None = None
+    for theme, props in themes:
+        for i, node in enumerate(nodes):
+            if not node["text"]:
+                continue
+            fg, bg = inherited_color(i, props), effective_bg(i, props)
+            if not fg or not bg:
+                continue
+            ratio = contrast_ratio(fg, bg)
+            if worst is None or ratio < worst[0]:
+                where = node["tag"] + ("." + sorted(node["classes"])[0] if node["classes"] else "")
+                worst = (ratio, f"<{where}> rgb{fg} on rgb{bg} = {ratio:.2f}:1 [{theme}]")
+
+    if worst is None:
+        report.add("html.contrast.inherited", "SKIP", tag,
+                   "no text node resolved to both an inherited colour and an opaque backdrop")
+        return
+    note = f" ({skipped} unsupported selector(s) not matched)" if skipped else ""
+    if worst[0] < CONTRAST_LARGE:
+        report.add("html.contrast.inherited", "FAIL", tag,
+                   f"worst inherited pair {worst[1]} — below {CONTRAST_LARGE}:1 even for "
+                   f"large text{note}", measured=round(worst[0], 2), threshold=CONTRAST_TEXT)
+    elif worst[0] < CONTRAST_TEXT:
+        report.add("html.contrast.inherited", "WARN", tag,
+                   f"worst inherited pair {worst[1]} — clears large-text {CONTRAST_LARGE}:1 "
+                   f"but not body {CONTRAST_TEXT}:1{note}",
+                   measured=round(worst[0], 2), threshold=CONTRAST_TEXT)
+    else:
+        report.add("html.contrast.inherited", "PASS", tag,
+                   f"worst inherited pair {worst[1]}{note}",
+                   measured=round(worst[0], 2), threshold=CONTRAST_TEXT)
+
 
 def lint_html(path: Path, report: Report, label: str) -> None:
     try:
@@ -504,6 +709,9 @@ def lint_html(path: Path, report: Report, label: str) -> None:
     else:
         report.add("html.contrast", "PASS", tag, "worst declared pair " + worst[1],
                    measured=round(worst[0], 2), threshold=CONTRAST_TEXT)
+
+    # -- inherited colour vs effective backdrop (needs the DOM, not just CSS) --
+    inherited_contrast(text, css, tag, report)
 
     # -- body type size -------------------------------------------------------
     sizes = [float(s) for s in _FONT_SIZE_PX.findall(all_css)]

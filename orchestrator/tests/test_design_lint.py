@@ -129,6 +129,115 @@ def test_lint_html_resolves_custom_properties_before_measuring_contrast(tmp_path
     assert contrast.severity == "FAIL"  # white-on-yellow is nowhere near 4.5:1
 
 
+# ─── Inherited contrast across an inversion band ────────────────────────────
+#
+# Regression corpus for a real published artifact where white headline text
+# landed on a light-grey plate at 1.17:1 while every declared colour+background
+# pair passed. The colour was inherited from an inverting ancestor; the plate
+# came from the un-inverted palette. Declaration-pairing cannot see it.
+
+_INVERSION_PAGE = """<html><head><style>
+  :root { --bg:#ffffff; --fg:#08080a; --muted:#ededf0; }
+  @media(prefers-color-scheme:dark){ :root{ --bg:#050506; --fg:#ffffff; --muted:#111114; } }
+  body { background:var(--bg); color:var(--fg); }
+  .thesis { background:var(--fg); color:var(--bg); }
+  blockquote { background:var(--muted); }
+</style></head><body><section class="thesis">
+  <blockquote>headline that collides</blockquote>
+</section></body></html>"""
+
+
+def _run_html(tmp_path, html, name="page.html"):
+    page = tmp_path / name
+    page.write_text(html)
+    report = design_lint.Report(lane="html")
+    design_lint.lint_html(page, report, name)
+    return report
+
+
+def _finding(report, check):
+    return next(f for f in report.findings if f.check == check)
+
+
+def test_inversion_band_descendant_background_is_caught(tmp_path):
+    report = _run_html(tmp_path, _INVERSION_PAGE)
+    inherited = _finding(report, "html.contrast.inherited")
+    assert inherited.severity == "FAIL"
+    assert inherited.measured is not None and inherited.measured < 1.3
+    assert "blockquote" in inherited.detail
+
+
+def test_declared_pair_check_alone_never_sees_the_inversion_collision(tmp_path):
+    # The point of the new check: the old one is not merely quieter here, it is
+    # structurally blind, because `blockquote` declares no `color` at all.
+    report = _run_html(tmp_path, _INVERSION_PAGE)
+    declared = _finding(report, "html.contrast")
+    assert declared.severity != "FAIL"
+
+
+def test_worst_theme_wins_so_a_dark_only_failure_is_not_hidden(tmp_path):
+    # Light resolves to near-black on white (fine); dark collides. Collapsing
+    # the two palettes onto whichever is declared last would report a pass.
+    html = """<html><head><style>
+      :root { --bg:#ffffff; --fg:#111111; --plate:#f2f2f2; }
+      @media(prefers-color-scheme:dark){ :root{ --bg:#101010; --fg:#141414; --plate:#101010; } }
+      body { background:var(--bg); color:var(--fg); }
+      .card { background:var(--plate); }
+    </style></head><body><div class="card">text</div></body></html>"""
+    inherited = _finding(_run_html(tmp_path, html), "html.contrast.inherited")
+    assert inherited.severity == "FAIL"
+    assert "[dark]" in inherited.detail
+
+
+def test_a_correctly_inverted_band_passes(tmp_path):
+    # Same structure, but the plate is expressed in the band's own polarity.
+    html = _INVERSION_PAGE.replace("blockquote { background:var(--muted); }",
+                                   "blockquote { background:var(--fg); color:var(--bg); }")
+    inherited = _finding(_run_html(tmp_path, html), "html.contrast.inherited")
+    assert inherited.severity == "PASS"
+
+
+def test_descendant_selectors_are_matched_against_the_tree(tmp_path):
+    html = """<html><head><style>
+      body { color:#ffffff; background:#000000; }
+      .band p { background:#f0f0f0; }
+    </style></head><body><div class="band"><p>white on near-white</p></div></body></html>"""
+    inherited = _finding(_run_html(tmp_path, html), "html.contrast.inherited")
+    assert inherited.severity == "FAIL"
+
+
+def test_unsupported_selectors_are_reported_not_silently_dropped(tmp_path):
+    html = """<html><head><style>
+      body { color:#000000; background:#ffffff; }
+      .a > .b { background:#ffffff; }
+      li:nth-child(2) { background:#ffffff; }
+    </style></head><body><p>ok</p></body></html>"""
+    inherited = _finding(_run_html(tmp_path, html), "html.contrast.inherited")
+    assert "unsupported selector" in inherited.detail
+
+
+def test_text_over_a_transparent_element_uses_the_nearest_opaque_backdrop(tmp_path):
+    html = """<html><head><style>
+      body { color:#ffffff; background:#eeeeee; }
+      .shell { background:transparent; }
+    </style></head><body><div class="shell"><span>white on light grey</span></div></body></html>"""
+    inherited = _finding(_run_html(tmp_path, html), "html.contrast.inherited")
+    assert inherited.severity == "FAIL"
+
+
+def test_split_media_separates_the_two_palettes(tmp_path):
+    base, dark = design_lint._split_media(
+        ":root{--x:#fff}@media(prefers-color-scheme:dark){:root{--x:#000}}.a{color:red}")
+    assert "#fff" in base and "#000" not in base
+    assert "#000" in dark
+    assert ".a{color:red}" in base
+
+
+def test_page_with_no_elements_skips_rather_than_passing(tmp_path):
+    inherited = _finding(_run_html(tmp_path, ""), "html.contrast.inherited")
+    assert inherited.severity == "SKIP"
+
+
 # ─── Text-vs-surface thinness discriminator ─────────────────────────────────
 
 PIL = pytest.importorskip("PIL", reason="Pillow not installed — render-lane pixel checks are optional")
