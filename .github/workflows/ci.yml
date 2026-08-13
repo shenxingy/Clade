@@ -85,6 +85,18 @@ jobs:
       - name: Claude Code plugin manifest drift gate
         run: python3 configs/scripts/regen-cc-plugin.py --check
 
+      # docs/facts.json holds the cross-doc counts (skills/hooks/agents/scripts).
+      # `verify` re-derives them from the filesystem AND checks every *.md
+      # against them — `check` alone only compares docs to the recorded values,
+      # so adding a skill (which touches no *.md) would leave the local
+      # doc-align-check.sh hook silent and every doc quietly wrong.
+      - name: Doc facts drift gate
+        run: |
+          if ! python3 configs/scripts/doc-align.py verify; then
+            echo "::error::doc facts drifted — run: configs/scripts/doc-align.py sync (then commit the result)"
+            exit 1
+          fi
+
   pytest:
     name: Tests
     runs-on: ubuntu-latest
