@@ -97,6 +97,12 @@ jobs:
             exit 1
           fi
 
+      # CLAUDE.md's orchestrator import DAG reads as complete, so a module that
+      # exists but is absent from it makes an agent conclude the module doesn't
+      # exist. Adding a module and describing it must be the same commit.
+      - name: Architecture map coverage
+        run: python3 configs/scripts/check-arch-map.py
+
   pytest:
     name: Tests
     runs-on: ubuntu-latest
