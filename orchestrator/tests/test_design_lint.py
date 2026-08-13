@@ -238,6 +238,65 @@ def test_page_with_no_elements_skips_rather_than_passing(tmp_path):
     assert inherited.severity == "SKIP"
 
 
+def test_band_scoped_token_override_is_honoured(tmp_path):
+    # The canonical fix for the inversion collision is to re-point the token
+    # for the band's subtree. A checker that resolves every var() against
+    # :root would still report FAIL and make the real fix unverifiable.
+    # The override must be polarity-relative (var(--fg), not a fixed hex) —
+    # a literal grey that works in light mode collides again in dark mode.
+    html = _INVERSION_PAGE.replace(
+        ".thesis { background:var(--fg); color:var(--bg); }",
+        ".thesis { background:var(--fg); color:var(--bg); --muted:var(--fg); }")
+    inherited = _finding(_run_html(tmp_path, html), "html.contrast.inherited")
+    assert inherited.severity == "PASS"
+
+
+def test_a_fixed_hex_override_that_only_suits_light_mode_still_fails(tmp_path):
+    html = _INVERSION_PAGE.replace(
+        ".thesis { background:var(--fg); color:var(--bg); }",
+        ".thesis { background:var(--fg); color:var(--bg); --muted:#3a3a3a; }")
+    inherited = _finding(_run_html(tmp_path, html), "html.contrast.inherited")
+    assert inherited.severity == "FAIL"
+    assert "[dark]" in inherited.detail
+
+
+# ─── parse_color must refuse what it cannot composite ───────────────────────
+
+
+@pytest.mark.parametrize("value", [
+    "color-mix(in srgb,#ffffff 12%,transparent)",   # scraping #ffffff inverts the verdict
+    "rgba(255,255,255,0.12)",                       # translucent veil, not a plate
+    "rgb(255 255 255 / 0.2)",                       # space-separated alpha
+    "#ffffff80",                                    # 8-digit hex carries alpha
+    "hsl(0 0% 100%)",                               # unmodelled colour space
+    "oklch(0.9 0.1 200)",
+])
+def test_parse_color_refuses_values_it_cannot_composite(value):
+    assert design_lint.parse_color(value) is None
+
+
+@pytest.mark.parametrize("value,expected", [
+    ("#08080a", (8, 8, 10)),
+    ("#fff", (255, 255, 255)),
+    ("rgb(12,34,56)", (12, 34, 56)),
+    ("rgba(12,34,56,1)", (12, 34, 56)),
+    ("white", (255, 255, 255)),
+])
+def test_parse_color_still_resolves_opaque_values(value, expected):
+    assert design_lint.parse_color(value) == expected
+
+
+def test_translucent_backdrop_falls_through_to_the_opaque_ancestor(tmp_path):
+    # A 10%-white veil over black is still black-ish; treating it as solid
+    # white would flip a passing page to FAIL.
+    html = """<html><head><style>
+      body { color:#ffffff; background:#000000; }
+      .veil { background:rgba(255,255,255,0.1); }
+    </style></head><body><div class="veil">white on near-black</div></body></html>"""
+    inherited = _finding(_run_html(tmp_path, html), "html.contrast.inherited")
+    assert inherited.severity == "PASS"
+
+
 # ─── Text-vs-surface thinness discriminator ─────────────────────────────────
 
 PIL = pytest.importorskip("PIL", reason="Pillow not installed — render-lane pixel checks are optional")

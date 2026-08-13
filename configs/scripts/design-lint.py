@@ -111,6 +111,11 @@ def contrast_ratio(a: tuple[int, int, int], b: tuple[int, int, int]) -> float:
 
 _HEX = re.compile(r"#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b")
 _RGB = re.compile(r"rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)")
+# Functions whose output is not the channels written inside them, and 8-digit
+# hex, which carries alpha. Both must refuse to parse rather than be scraped.
+_COMPUTED_COLOR = re.compile(
+    r"\b(color-mix|light-dark|oklch|oklab|lab|lch|hwb|hsla?|color)\s*\(|#[0-9a-f]{8}\b", re.I)
+_ALPHA = re.compile(r"rgba?\([^)]*[,/]\s*([\d.]+)\s*\)", re.I)
 
 _NAMED = {
     "black": (0, 0, 0), "white": (255, 255, 255), "red": (255, 0, 0),
@@ -145,10 +150,24 @@ def resolve_value(value: str, props: dict[str, str], depth: int = 0) -> str:
 
 
 def parse_color(text: str) -> tuple[int, int, int] | None:
-    """Best-effort CSS colour → RGB. Returns None when not confidently parsed."""
+    """Best-effort CSS colour → RGB. Returns None when not confidently parsed.
+
+    Returning None is the *safe* answer, and the callers are built for it: an
+    unresolved colour becomes an explicit SKIP, or the backdrop walk continues
+    to the next opaque ancestor. Guessing is the dangerous answer — a bare
+    `_HEX.search` on `color-mix(in srgb,#fff 12%,transparent)` finds `#fff` and
+    reports a 12%-opacity veil as a solid white plate, inverting the verdict.
+    """
     text = text.strip().lower()
     if text in _NAMED:
         return _NAMED[text]
+    # Colour functions whose result is not the literal channels written inside
+    # them. Never scrape a component colour out of one.
+    if _COMPUTED_COLOR.search(text):
+        return None
+    m = _ALPHA.search(text)
+    if m and float(m.group(1)) < 1.0:
+        return None                                # translucent: needs compositing
     m = _HEX.search(text)
     if m:
         h = m.group(1)
@@ -532,7 +551,8 @@ def inherited_contrast(text: str, css: str, tag: str, report: Report) -> None:
     rules, skipped = [], 0
     for order, (selector, body) in enumerate(_RULE.findall(base_css)):
         decls = {k.lower().strip(): v.strip() for k, v in _DECL.findall(body)}
-        if not ({"color", "background", "background-color"} & decls.keys()):
+        relevant = {"color", "background", "background-color"} & decls.keys()
+        if not relevant and not any(k.startswith("--") for k in decls):
             continue
         for sel in (s.strip() for s in selector.split(",")):
             if not sel or sel.startswith("@") or _UNSUPPORTED_SEL.search(sel):
@@ -547,21 +567,38 @@ def inherited_contrast(text: str, css: str, tag: str, report: Report) -> None:
             if _matches(nodes, i, sel):
                 matched[i].update(decls)
 
-    def inherited_color(i: int | None, props: dict) -> tuple[int, int, int] | None:
+    def scoped_props(i: int, base: dict) -> dict:
+        """Custom properties inherit, so a band may re-point --muted for its
+        own subtree. Resolving every var() against the :root palette would
+        report the *unfixed* colour on a page that scopes its tokens correctly.
+        """
+        chain = []
+        j: int | None = i
+        while j is not None:
+            chain.append(j)
+            j = nodes[j]["parent"]
+        props = dict(base)
+        for k in reversed(chain):                       # root → self, nearest wins
+            props.update({n: v for n, v in matched[k].items() if n.startswith("--")})
+        return props
+
+    def inherited_color(i: int | None, base: dict) -> tuple[int, int, int] | None:
         while i is not None:
             raw = matched[i].get("color")
             if raw:
-                c = parse_color(resolve_value(raw, props))
+                # A var() in an inherited property resolves in the scope of the
+                # element that declared it, not the one that inherits it.
+                c = parse_color(resolve_value(raw, scoped_props(i, base)))
                 if c:
                     return c
             i = nodes[i]["parent"]
         return None
 
-    def effective_bg(i: int | None, props: dict) -> tuple[int, int, int] | None:
+    def effective_bg(i: int | None, base: dict) -> tuple[int, int, int] | None:
         while i is not None:
             raw = matched[i].get("background-color") or matched[i].get("background")
             if raw and not re.search(r"\b(transparent|none)\b", raw, re.I):
-                c = parse_color(resolve_value(raw, props))
+                c = parse_color(resolve_value(raw, scoped_props(i, base)))
                 if c:
                     return c
             i = nodes[i]["parent"]
