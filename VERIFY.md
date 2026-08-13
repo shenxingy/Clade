@@ -72,7 +72,7 @@
 | H3 | `pre-tool-guardian.sh` allows `alembic upgrade` when dev-mode is ON | ✅ | 2026-04-10 | source verified: `if [[ "$DEV_MODE" == false ]]` gate at line 40 |
 | H4 | `pre-tool-guardian.sh` blocks `rm -rf /` regardless of dev-mode | ✅ | 2026-04-10 | source verified: lines 78-96 |
 | H5 | `pre-tool-guardian.sh` blocks `git push --force origin main` regardless of dev-mode | ✅ | 2026-04-10 | source verified: lines 99-108 |
-| H6 | All other hooks pass `bash -n` syntax check | ✅ | 2026-07-13 | all 30 hooks pass |
+| H6 | All other hooks pass `bash -n` syntax check | ✅ | 2026-07-13 | all 31 hooks pass |
 | H7 | `pre-tool-guardian.sh` does NOT block when migration pattern appears only in a variable assignment string (false-positive fix) | ✅ | 2026-04-10 | SCANNABLE strips `VAR='...'` and `VAR="..."` lines (guardian.sh:47-50) |
 | H8 | `session-baseline.sh` captures sorted `git status --porcelain` output keyed by `session_id` at SessionStart, excluding `.claude/` paths | ✅ | 2026-04-15 | tested in /tmp repo: baseline file written to `.claude/sessions/<sid>.baseline`, `.claude/` paths filtered out |
 | H9 | `stop-check.sh` ignores pre-existing dirty files (present in baseline) and blocks only on session-produced changes — prevents deadlock between parallel CC sessions on same repo | ✅ | 2026-04-15 | tested: preexisting dirt → exit 0 silent; new session file → exit 2 with filename in output |
@@ -84,8 +84,8 @@
 
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
-| SH1 | All `configs/hooks/*.sh` pass `bash -n` | ✅ | 2026-07-13 | all 30 hooks pass |
-| SH2 | All `configs/scripts/*.sh` pass `bash -n` | ✅ | 2026-07-13 | all 35 scripts pass |
+| SH1 | All `configs/hooks/*.sh` pass `bash -n` | ✅ | 2026-07-13 | all 31 hooks pass |
+| SH2 | All `configs/scripts/*.sh` pass `bash -n` | ✅ | 2026-07-13 | all 36 scripts pass |
 | SH3 | `install.sh` + `uninstall.sh` pass `bash -n` | ✅ | 2026-06-04 | uninstall.sh rewritten to derive removal lists from configs/ |
 
 ## Orchestrator — Python Syntax & Tests

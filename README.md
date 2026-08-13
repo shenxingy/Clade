@@ -35,7 +35,7 @@ routing, delivery state, and multi-project fleet truth.
 3. [The Trust Loop](#the-trust-loop)
 4. [What It Does](#what-it-does)
 5. [Self-Learning Mechanisms](#self-learning-mechanisms)
-6. [Skills](#skills-132)
+6. [Skills](#skills-135)
 7. [Supported Languages](#supported-languages)
 8. [Documentation](#documentation)
 9. [Repo Structure](#repo-structure)
@@ -150,7 +150,7 @@ external side effects.
 | You correct Claude | `correction-detector.sh` | Logs correction, prompts Claude to save a reusable rule |
 | Claude marks task done | `verify-task-completed.sh` | Adaptive quality gate: compile + lint, build + test in strict mode |
 
-See [How It Works](docs/how-it-works.md) for the full hook reference (30 hooks).
+See [How It Works](docs/how-it-works.md) for the full hook reference (31 hooks).
 
 ## Self-Learning Mechanisms
 
@@ -168,7 +168,7 @@ turns an inferred revert or async signal into an automatic rule.
 
 See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, detectors, schemas, and tunable env vars.
 
-## Skills (132)
+## Skills (135)
 
 ### Core Workflow
 
@@ -329,10 +329,10 @@ surfaces work independently.
 clade/
 ├── install.sh               # One-command deployment
 ├── configs/                 # ← THE PRODUCT CENTER
-│   ├── skills/              # 132 skill definitions
-│   ├── hooks/               # 30 event hooks
+│   ├── skills/              # 135 skill definitions
+│   ├── hooks/               # 31 event hooks
 │   ├── agents/              # 37 agent definitions
-│   └── scripts/             # 35 shell + 15 Python utilities
+│   └── scripts/             # 36 shell + 19 Python utilities
 ├── plugins/clade/           # Native Codex plugin (25 generated core skills + hooks)
 ├── .agents/plugins/         # Codex marketplace manifest
 ├── orchestrator/            # ← THE EXECUTION ADAPTER
