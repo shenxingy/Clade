@@ -98,6 +98,19 @@ error_classifier.py  ← error classify/summarize + retry decisions
 session_tree.py      ← SessionTree
 usage_tracker.py     ← multi-machine ccusage ingestion (used by routes/usage.py)
 compression_feedback.py ← compression UX feedback (consumed by /handoff skill)
+execution_envelope.py ← versioned immutable execution contract (runtime/provider/protocol/model split)
+worker_envelope.py   ← versioned terminal contract emitted by workers
+handoff_registry.py  ← typed worker-handoff schemas + prompt-safe projections
+reset_handoff.py     ← compact typed context seeds for clean loop resets
+run_contract.py      ← repository-owned autonomous-run policy (optional CLADE_WORKFLOW.md)
+run_budget.py        ← pure run-budget policy + trace attribution
+merge_policy.py      ← truthful pull-request history selection
+judge_diversity.py   ← deterministic review checks independent of the LLM oracle
+status_snapshot.py   ← provider-neutral status truth rendered by surface adapters
+worker_phase_graph.py ← declared worker/task/loop lifecycle graph (additive observability)
+compatibility_telemetry.py ← secret-free compatibility-window counters
+eval_candidates.py   ← validated identifiers + digests for quarantined eval candidates
+eval_metrics.py      ← read-only, denominator-explicit evidence/eval quality metrics
     ↑
 # Mid-tier
 github_sync.py       ← gh CLI wrappers (issues, push, sync)
@@ -107,6 +120,15 @@ swarm.py             ← SwarmManager (extracted from worker.py)
 worker_taskfile.py   ← build_task_file: task file construction + context injection
 worker_runtime.py    ← runtime-route resolution + durable selection failure
 worker_evidence.py   ← attempt lifecycle + worker/verifier/delivery evidence projection
+attempt_telemetry.py ← pure attempt-level routing/phase telemetry builders (imports cascade_policy)
+provider_registry.py ← secret-safe live model discovery, TTL cache, pinned fallback
+worker_routing.py    ← pure route decision: runtime, model, effort, audit reason
+worker_provider.py   ← WHICH agent CLI a worker runs (claude vs codex command + env)
+execution_backend.py ← HOW a worker process is spawned/torn down (lazy config import)
+execution_resolver.py ← route + provider → immutable execution envelope
+worker_status.py     ← worker status serialization kept out of the execution engine
+eval_review.py       ← human review + atomic corpus promotion for eval candidates
+eval_review_cli.py   ← standalone CLI to promote/reject quarantined eval candidates
     ↑
 worker.py            ← Worker, WorkerPool — core execution engine
 session.py           ← ProjectSession, registry, status_loop (lazy-imports task_factory/)
@@ -121,7 +143,12 @@ routes/webhooks.py   ← GitHub webhook handler
 routes/ideas.py      ← Ideas API routes (CRUD, evaluate, execute, promote)
 routes/process.py    ← Process manager API routes
 routes/usage.py      ← Usage dashboard API routes
+routes/evals.py      ← Human-review routes for quarantined eval candidates
+routes/providers.py  ← Secret-safe provider/model registry inspection + refresh
 ```
+
+Every `orchestrator/*.py` and `orchestrator/routes/*.py` must appear above —
+CI's "Architecture map coverage" gate fails on any module missing from this file.
 
 ### Key File Map
 | File | Purpose |
