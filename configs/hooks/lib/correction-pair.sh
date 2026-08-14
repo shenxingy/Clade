@@ -52,3 +52,40 @@ cp_recent_files() {
     | awk 'NF { seen[$0]=NR; line[NR]=$0 } END { for (i=1;i<=NR;i++) if (seen[line[i]]==i) print line[i] }' \
     | tail -n "$limit"
 }
+
+# cp_append_history <history_file> <jq_args...> — append one JSON record atomically.
+#
+# Why this exists: jq flushes stdout in ~4096-byte chunks, so a record larger
+# than that becomes several write() calls. Two hooks appending concurrently —
+# routine here, parallel sessions are the norm — can interleave between those
+# calls and splice one record into another. That corrupts the JSON stream from
+# that byte onward, and EVERY reader silently stops there rather than erroring:
+# the observed file parsed 818 of 4096 lines and lost months of tail history.
+#
+# Two defences, because either alone leaves a hole:
+#   1. Bound the prompt so a record is one write() even without a lock. Callers
+#      pass an already-bounded prompt (see cp_bound_prompt).
+#   2. flock when available. macOS ships no flock(1), so it is best-effort.
+cp_append_history() {
+  local hist="$1"; shift
+  command -v jq >/dev/null 2>&1 || return 0
+  mkdir -p "$(dirname "$hist")" 2>/dev/null || return 0
+
+  if command -v flock >/dev/null 2>&1; then
+    { flock -x 9 2>/dev/null; jq -nc "$@" >&9; } 9>>"$hist" 2>/dev/null
+  else
+    jq -nc "$@" >> "$hist" 2>/dev/null
+  fi
+}
+
+# cp_bound_prompt <text> [max_chars] — echo text clipped to a single-write size.
+# Correction learning needs the gist, not an 8 KB paste; losing the tail of one
+# prompt beats losing every record written after it.
+cp_bound_prompt() {
+  local text="$1" max="${2:-1800}"
+  if [[ ${#text} -le $max ]]; then
+    printf '%s' "$text"
+  else
+    printf '%s… [clipped %d chars]' "${text:0:$max}" "$(( ${#text} - max ))"
+  fi
+}

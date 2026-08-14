@@ -47,12 +47,26 @@ HISTORY_FILE="$CORRECTIONS_DIR/history.jsonl"
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 PROJECT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 
-jq -nc \
-  --arg ts "$TIMESTAMP" \
-  --arg prompt "$PROMPT" \
-  --arg project "$PROJECT" \
-  --arg type "explicit" \
-  '{timestamp: $ts, prompt: $prompt, project: $project, type: $type}' >> "$HISTORY_FILE"
+# Sourced here rather than at first use further down: this append needs the
+# atomic-write helper, and an unlocked >> of an oversized record is what
+# truncated the history for every reader.
+source "$LIBDIR/correction-pair.sh" 2>/dev/null || true
+
+if declare -f cp_append_history >/dev/null 2>&1; then
+  cp_append_history "$HISTORY_FILE" \
+    --arg ts "$TIMESTAMP" \
+    --arg prompt "$(cp_bound_prompt "$PROMPT")" \
+    --arg project "$PROJECT" \
+    --arg type "explicit" \
+    '{timestamp: $ts, prompt: $prompt, project: $project, type: $type}'
+else
+  jq -nc \
+    --arg ts "$TIMESTAMP" \
+    --arg prompt "$PROMPT" \
+    --arg project "$PROJECT" \
+    --arg type "explicit" \
+    '{timestamp: $ts, prompt: $prompt, project: $project, type: $type}' >> "$HISTORY_FILE"
+fi
 
 # ─── Auto-increment domain stats ──────────────────────────────────────
 STATS_FILE="$CORRECTIONS_DIR/stats.json"

@@ -76,14 +76,25 @@ if [[ "$REVERTED_FILES_JSON" != "[]" ]] && [[ -f "$HISTORY_FILE" ]] && command -
   fi
 fi
 
-jq -nc \
-  --arg ts "$TIMESTAMP" \
-  --arg prompt "$COMMAND" \
-  --arg project "$PROJECT" \
-  --arg type "implicit-revert" \
-  --argjson files "$REVERTED_FILES_JSON" \
-  --argjson repeat "$REPEAT" \
-  '{timestamp:$ts, prompt:$prompt, project:$project, type:$type, reverted_files:$files, repeat:$repeat}' \
-  >> "$HISTORY_FILE" 2>/dev/null
+if declare -f cp_append_history >/dev/null 2>&1; then
+  cp_append_history "$HISTORY_FILE" \
+    --arg ts "$TIMESTAMP" \
+    --arg prompt "$(cp_bound_prompt "$COMMAND")" \
+    --arg project "$PROJECT" \
+    --arg type "implicit-revert" \
+    --argjson files "$REVERTED_FILES_JSON" \
+    --argjson repeat "$REPEAT" \
+    '{timestamp:$ts, prompt:$prompt, project:$project, type:$type, reverted_files:$files, repeat:$repeat}'
+else
+  jq -nc \
+    --arg ts "$TIMESTAMP" \
+    --arg prompt "$COMMAND" \
+    --arg project "$PROJECT" \
+    --arg type "implicit-revert" \
+    --argjson files "$REVERTED_FILES_JSON" \
+    --argjson repeat "$REPEAT" \
+    '{timestamp:$ts, prompt:$prompt, project:$project, type:$type, reverted_files:$files, repeat:$repeat}' \
+    >> "$HISTORY_FILE" 2>/dev/null
+fi
 
 exit 0
