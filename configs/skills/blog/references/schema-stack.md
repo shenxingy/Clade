@@ -12,7 +12,7 @@
 - [VideoObject Schema](#videoobject-schema)
 - [Speakable Schema](#speakable-schema)
 - [Stable @id Patterns](#stable-id-patterns)
-- [Deprecated Schema Types: NEVER Use](#deprecated-schema-types----never-use)
+- [Deprecated Schema Types: NEVER Use](#deprecated-schema-types-never-use)
 - [ProfilePage Schema (Author Pages)](#profilepage-schema-author-pages)
 - [JSON-LD @graph Pattern](#json-ld-graph-pattern)
 - [Schema Validation Checklist](#schema-validation-checklist)

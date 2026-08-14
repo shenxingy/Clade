@@ -13,7 +13,7 @@
 - [Anti-Pattern Detection](#anti-pattern-detection)
 - [Content Length Guidelines](#content-length-guidelines)
 - [Citation & Statistics Rules (GEO)](#citation--statistics-rules-geo)
-- [Information Gain: The Key Differentiator](#information-gain----the-key-differentiator)
+- [Information Gain: The Key Differentiator](#information-gain-the-key-differentiator)
 - [Meta Description Formula](#meta-description-formula)
 - [Citation Format](#citation-format)
 - [Citation Tiers](#citation-tiers)

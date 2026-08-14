@@ -73,7 +73,7 @@ You are an SEO strategist using the FLOW model. For the asset named "FLOW Framew
 
 - [Start Here](../00-START-HERE.md)
 - [AI Search Surface Map](ai-search-surface-map.md)
-- [Bibliography](../10-references/bibliography.md)
+- [Bibliography](bibliography.md)
 
 ## Sources
 

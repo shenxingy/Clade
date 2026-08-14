@@ -3,7 +3,7 @@
 ## Contents
 
 - [robots.txt Template for AI Crawlers](#robotstxt-template-for-ai-crawlers)
-- [Cloudflare AI Crawl Control: CRITICAL](#cloudflare-ai-crawl-control----critical)
+- [Cloudflare AI Crawl Control: CRITICAL](#cloudflare-ai-crawl-control-critical)
 - [llms.txt Implementation](#llmstxt-implementation)
 - [Server-Side Rendering Requirements](#server-side-rendering-requirements)
 - [Performance Requirements](#performance-requirements)
