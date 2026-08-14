@@ -123,6 +123,57 @@ assert_not_contains "$OUT" "[REQUIRED]" "low hit-rate rule does not trigger esca
 rm -rf "$H"
 
 # ─── Summary ─────────────────────────────────────────────────────────
+
+
+# ─── Severity gate on CLAUDE.md promotion ────────────────────────────
+# Age used to be the entire promotion test, so surviving 14 days wrote a rule
+# into every future session's context. 28 of 42 promoted rules were the weakest
+# class (`edge-case`) before this gate existed.
+echo "── severity gate: only damaging root causes reach CLAUDE.md ──"
+
+make_aged_home() {
+  local d; d="$(mktemp -d)"
+  mkdir -p "$d/.claude/corrections"
+  local old ancient i
+  old="$(date -d '30 days ago' +%Y-%m-%d 2>/dev/null || date -v-30d +%Y-%m-%d)"
+  ancient="$(date -d '70 days ago' +%Y-%m-%d 2>/dev/null || date -v-70d +%Y-%m-%d)"
+  {
+    echo "- [$old] auth (security): sanitize the token before logging it"
+    echo "- [$old] deploy (deploy-gap): config defined is not config loaded"
+    echo "- [$old] race (async-race): kill and drain the subprocess on timeout"
+    echo "- [$old] wiring (settings-disconnect): setting defined but never read"
+    echo "- [$old] ui (edge-case): remember sidebar width across reloads"
+    echo "- [$ancient] style (edge-case): ancient low-severity rule that ages out"
+    for i in $(seq 1 8); do
+      echo "- [$old] filler$i (edge-case): filler rule number $i, unique text"
+    done
+  } > "$d/.claude/corrections/rules.md"
+  : > "$d/.claude/CLAUDE.md"
+  echo "$d"
+}
+
+H="$(make_aged_home)"
+OUT="$(run_audit "$H")"
+PROMOTED="$(grep -cE '^- \[' "$H/.claude/CLAUDE.md" 2>/dev/null || echo 0)"
+
+assert_contains "$OUT" "withheld (low-severity)" "reports withheld count instead of silently dropping"
+[[ "$PROMOTED" -eq 4 ]] \
+  && pass "exactly the 4 damaging root causes reached CLAUDE.md" \
+  || fail "expected 4 promotions, got $PROMOTED"
+grep -q "security" "$H/.claude/CLAUDE.md" \
+  && pass "security rule promoted" || fail "security rule was not promoted"
+grep -q "edge-case" "$H/.claude/CLAUDE.md" \
+  && fail "edge-case rule leaked into CLAUDE.md" \
+  || pass "edge-case refused, not promoted"
+grep -q "sidebar width" "$H/.claude/corrections/rules.md" \
+  && pass "withheld rule stays in rules.md for /audit" \
+  || fail "withheld rule vanished instead of awaiting human review"
+grep -q "ancient low-severity" "$H/.claude/corrections/rules-archive.md" 2>/dev/null \
+  && pass "60-day withheld rule still ages out (withholding cannot pin it)" \
+  || fail "withheld rule was never archived — rules.md would grow forever"
+rm -rf "$H"
+
+
 echo ""
 if [[ $TESTS_FAILED -eq 0 ]]; then
   echo -e "  ${GREEN}ALL $TESTS_RUN TESTS PASSED${NC}"

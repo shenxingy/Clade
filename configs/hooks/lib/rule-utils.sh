@@ -85,3 +85,26 @@ rule_exists_in_file() {
 
   echo "$haystack" | grep -qF "$needle" 2>/dev/null
 }
+
+# ─── rule_earns_promotion ────────────────────────────────────────────
+# Does this root cause justify permanent CLAUDE.md context?
+#
+# CLAUDE.md loads on every session, so a line there is a standing tax on every
+# future turn. Only failure classes that cause real damage — silent breakage,
+# data races, leaked secrets, shipped-but-not-running code — clear that bar.
+#
+# `edge-case` is deliberately excluded despite being the most COMMON class:
+# common is not the same as costly, and promoting on frequency is how the file
+# filled with 28 of them. They remain in rules.md, where `/audit` promotes them
+# by human judgement rather than by having survived a fortnight.
+# Matched with `case` rather than by splitting a string on spaces: zsh does not
+# word-split unquoted parameters, so the loop form silently withheld EVERY rule
+# when this lib was sourced from a zsh shell.
+RULE_PROMOTABLE_ROOT_CAUSES="security async-race deploy-gap settings-disconnect data-loss"
+
+rule_earns_promotion() {
+  case "${1:-}" in
+    security|async-race|deploy-gap|settings-disconnect|data-loss) return 0 ;;
+    *) return 1 ;;
+  esac
+}

@@ -60,9 +60,11 @@ run_auto_audit() {
   local promoted=0
   local redundant=0
   local archived=0
+  local withheld=0
   local lines_to_remove=()
   local promoted_names=()
   local archived_names=()
+  local withheld_names=()
 
   mkdir -p "$(dirname "$ARCHIVE_FILE")"
 
@@ -82,7 +84,34 @@ run_auto_audit() {
       continue
     fi
 
-    # PROMOTE: 14+ days old, not already in target (only on 7-day cadence)
+    # PROMOTE: 14+ days old AND a root cause that earns permanent context.
+    #
+    # Age alone used to be the whole test, so survival WAS promotion: nothing
+    # ever had to prove it mattered. The result is measurable — 28 of 42
+    # auto-promoted rules in the global CLAUDE.md were `edge-case`, the weakest
+    # class, holding two thirds of a budget that loads into every session.
+    #
+    # Below-threshold rules are REFUSED, not warned about, and not silently
+    # dropped either: they stay in rules.md where `/audit` can promote them
+    # deliberately, and the refusal count is reported.
+    # Archive runs FIRST so withholding cannot pin a rule in rules.md forever:
+    # a rule that never earns promotion must still age out at 60 days.
+    if [[ "$timer_elapsed" -eq 1 && "$age" -ge 60 ]] \
+       && ! rule_earns_promotion "${RULE_ROOT_CAUSES[$i]}"; then
+      echo "$line [archived $(date +%Y-%m-%d)]" >> "$ARCHIVE_FILE"
+      lines_to_remove+=("$line")
+      archived=$((archived + 1))
+      archived_names+=("${domain}: ${text:0:40}")
+      continue
+    fi
+
+    if [[ "$timer_elapsed" -eq 1 && "$age" -ge 14 ]] \
+       && ! rule_earns_promotion "${RULE_ROOT_CAUSES[$i]}"; then
+      withheld=$((withheld + 1))
+      withheld_names+=("${RULE_ROOT_CAUSES[$i]}: ${text:0:48}")
+      continue
+    fi
+
     if [[ "$timer_elapsed" -eq 1 && "$age" -ge 14 ]]; then
       # Append to CLAUDE.md under ## Auto-Promoted Rules
       if [[ -f "$CLAUDE_TARGET" ]]; then
@@ -208,19 +237,28 @@ run_auto_audit() {
 
   # ─── Build summary ──────────────────────────────────────────────
   local summary=""
-  local changes=$((promoted + redundant + archived + cross_promoted))
+  local changes=$((promoted + redundant + archived + cross_promoted + withheld))
 
   if [[ "$changes" -gt 0 ]]; then
     summary="Auto-audit completed: "
     [[ "$promoted" -gt 0 ]] && summary="${summary}${promoted} promoted, "
     [[ "$redundant" -gt 0 ]] && summary="${summary}${redundant} redundant removed, "
     [[ "$archived" -gt 0 ]] && summary="${summary}${archived} archived, "
+    [[ "$withheld" -gt 0 ]] && summary="${summary}${withheld} withheld (low-severity), "
     [[ "$cross_promoted" -gt 0 ]] && summary="${summary}${cross_promoted} cross-project promoted, "
     summary="${summary%%, }"
 
     for name in "${promoted_names[@]}"; do
       summary="${summary}\n  → Promoted: ${name}"
     done
+    # Named, not just counted: a silent refusal is indistinguishable from a
+    # rule that was never written, and nobody audits what they cannot see.
+    if [[ "$withheld" -gt 0 ]]; then
+      summary="${summary}\n  Withheld from CLAUDE.md — promote deliberately via /audit if one earns it:"
+      for name in "${withheld_names[@]}"; do
+        summary="${summary}\n  → ${name}"
+      done
+    fi
   else
     summary="Auto-audit: no changes needed (${total} rules checked)"
   fi
