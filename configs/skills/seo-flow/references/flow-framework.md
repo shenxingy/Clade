@@ -7,7 +7,7 @@ tags:
   - framework
 ---
 
-![FLOW Operating Loop](../../assets/diagrams/flow-v4-flow-loop.png)
+!FLOW Operating Loop
 
 # FLOW Framework
 
@@ -70,8 +70,8 @@ You are an SEO strategist using the FLOW model. For the asset named "FLOW Framew
 
 ## See Also
 
-- [Start Here](../00-START-HERE.md)
-- [AI Search Surface Map](ai-search-surface-map.md)
+- Start Here
+- AI Search Surface Map
 - [Bibliography](bibliography.md)
 
 ## Sources
