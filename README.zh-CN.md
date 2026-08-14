@@ -142,7 +142,7 @@ Clade 把六个维度分开处理，避免一次“看起来是绿的”运行�
 | 你纠正 Claude | `correction-detector.sh` | 记录纠正，提示 Claude 保存可复用的规则 |
 | Claude 标记任务完成 | `verify-task-completed.sh` | 自适应质量门禁：compile + lint，严格模式额外 build + test |
 
-完整 hook 参考（30 个 hooks）见 [How It Works](docs/how-it-works.md)。
+完整 hook 参考（31 个 hooks）见 [How It Works](docs/how-it-works.md)。
 
 ## 自学习机制
 
@@ -319,7 +319,7 @@ clade/
 │   ├── skills/              # 135 个 skill 定义
 │   ├── hooks/               # 31 个事件 hooks + lib/
 │   ├── agents/              # 37 个 agent 定义
-│   └── scripts/             # 36 个 shell + 20 个 Python 工具
+│   └── scripts/             # 36 个 shell + 21 个 Python 工具
 ├── adapters/openclaw/       # OpenClaw 集成（手机监控）
 ├── templates/               # settings、CLAUDE.md、corrections 模板
 └── docs/                    # 指南与研究
