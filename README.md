@@ -38,9 +38,11 @@ routing, delivery state, and multi-project fleet truth.
 6. [Skills](#skills-135)
 7. [Supported Languages](#supported-languages)
 8. [Documentation](#documentation)
-9. [Repo Structure](#repo-structure)
-10. [Contributing](#contributing)
-11. [License](#license)
+9. [Dotfile Sync](#dotfile-sync)
+10. [Architecture](#architecture)
+11. [OpenClaw Integration](#openclaw-integration)
+12. [Contributing](#contributing)
+13. [License](#license)
 
 ## Install
 

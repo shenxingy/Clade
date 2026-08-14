@@ -35,9 +35,11 @@ Clade 把 agent 的工作变成可复查的交付：解析后的执行身份、�
 6. [Skills](#skills-135)
 7. [支持的语言](#支持的语言)
 8. [文档](#文档)
-9. [仓库结构](#仓库结构)
-10. [贡献](#贡献)
-11. [License](#license)
+9. [Dotfile 同步](#dotfile-同步)
+10. [仓库结构](#仓库结构)
+11. [OpenClaw 集成](#openclaw-集成)
+12. [贡献](#贡献)
+13. [License](#license)
 
 ## 安装
 
