@@ -37,6 +37,10 @@ EXCLUDE_DIRS = {
 _LINK = re.compile(r"\[([^\]]*)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 _HEADING = re.compile(r"^#{1,6}\s+(.*)$", re.M)
 _FENCE = re.compile(r"^```.*?^```", re.M | re.S)
+# Inline code spans document link *syntax* (`[keyword](filename.md)`) rather
+# than linking anywhere. Stripping fences but not spans reports every such
+# example as a dead link.
+_INLINE_CODE = re.compile(r"`[^`\n]+`")
 _EXTERNAL = re.compile(r"^(https?:|mailto:|tel:|ftp:|data:)", re.I)
 # Bare words used as link-syntax placeholders in authoring examples.
 _PLACEHOLDER = re.compile(
@@ -83,7 +87,7 @@ def check(root: Path) -> list[str]:
         except OSError as exc:
             problems.append(f"{md.relative_to(root)}: unreadable ({exc})")
             continue
-        body = _FENCE.sub("", text)                 # code fences are not links
+        body = _INLINE_CODE.sub("", _FENCE.sub("", text))   # neither fences nor spans link
         own = anchors_of(text)
         rel = md.relative_to(root)
 

@@ -103,6 +103,12 @@ jobs:
       - name: Architecture map coverage
         run: python3 configs/scripts/check-arch-map.py
 
+      # Counts and module coverage were gated; where a link *points* was not.
+      # Two absorbed skills shipped 150 dead cross-references for months because
+      # the sync flattened an upstream tree without rewriting the links inside it.
+      - name: Reference resolution
+        run: python3 configs/scripts/check-references.py
+
   pytest:
     name: Tests
     runs-on: ubuntu-latest
