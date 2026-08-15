@@ -95,6 +95,12 @@ SUPERVISOR_MODEL="claude-sonnet-4-6"
 WORKER_MODEL="claude-sonnet-4-6"
 MAX_ITER=10
 MAX_WORKERS=4
+# Wall-clock bound. Iteration count is NOT a time bound — a single iteration
+# runs until its workers finish, and worker work is unbounded, so `--max-iter 10`
+# happily becomes an overnight run. `/start` exists to run unattended, which is
+# exactly when nobody is watching the spend. 0 disables.
+MAX_RUNTIME_MIN=480
+LOOP_START_EPOCH=$(date +%s)
 MAX_CONSECUTIVE_FAILURESOverride=""
 CONTEXT_FILE=""
 STATE_FILE=".claude/loop-state.json"
@@ -1095,6 +1101,19 @@ _check_convergence() {
     log_warn "Max iterations ($MAX_ITER) reached"
     exit_reason="max_iterations"
     return 0
+  fi
+
+  # Hard stop: wall clock. Checked BETWEEN iterations, so it bounds how long a
+  # run keeps starting new work — it cannot interrupt an iteration already in
+  # flight. That is what the per-worker timeout in run-tasks-parallel.sh is for;
+  # the two together are what make a run actually bounded.
+  if [ "${MAX_RUNTIME_MIN:-0}" -gt 0 ]; then
+    local elapsed_min=$(( ( $(date +%s) - LOOP_START_EPOCH ) / 60 ))
+    if [ "$elapsed_min" -ge "$MAX_RUNTIME_MIN" ]; then
+      log_warn "Wall-clock limit reached: ${elapsed_min}m ≥ ${MAX_RUNTIME_MIN}m (--max-runtime)"
+      exit_reason="max_runtime"
+      return 0
+    fi
   fi
 
   # Hard stop: too many consecutive no-commits
