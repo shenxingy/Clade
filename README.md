@@ -35,7 +35,7 @@ routing, delivery state, and multi-project fleet truth.
 3. [The Trust Loop](#the-trust-loop)
 4. [What It Does](#what-it-does)
 5. [Self-Learning Mechanisms](#self-learning-mechanisms)
-6. [Skills](#skills-135)
+6. [Skills](#skills-136)
 7. [Supported Languages](#supported-languages)
 8. [Documentation](#documentation)
 9. [Dotfile Sync](#dotfile-sync)
@@ -170,7 +170,7 @@ turns an inferred revert or async signal into an automatic rule.
 
 See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, detectors, schemas, and tunable env vars.
 
-## Skills (135)
+## Skills (136)
 
 ### Core Workflow
 
@@ -331,7 +331,7 @@ surfaces work independently.
 clade/
 ├── install.sh               # One-command deployment
 ├── configs/                 # ← THE PRODUCT CENTER
-│   ├── skills/              # 135 skill definitions
+│   ├── skills/              # 136 skill definitions
 │   ├── hooks/               # 31 event hooks
 │   ├── agents/              # 37 agent definitions
 │   └── scripts/             # 36 shell + 21 Python utilities

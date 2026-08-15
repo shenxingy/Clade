@@ -32,7 +32,7 @@ Clade 把 agent 的工作变成可复查的交付：解析后的执行身份、�
 3. [可信交付循环](#可信交付循环)
 4. [它做什么](#它做什么)
 5. [自学习机制](#自学习机制)
-6. [Skills](#skills-135)
+6. [Skills](#skills-136)
 7. [支持的语言](#支持的语言)
 8. [文档](#文档)
 9. [Dotfile 同步](#dotfile-同步)
@@ -158,7 +158,7 @@ Commit Lessons 与 Doc Align 在 Claude 完整框架中本地运行，未启用�
 
 详见 [Self-Learning Mechanisms](docs/learning-mechanisms.md)。
 
-## Skills (135)
+## Skills (136)
 
 ### 核心工作流
 
@@ -316,7 +316,7 @@ clade/
 │   ├── mcp_server.py        # MCP server（本地开发版）
 │   └── web/                 # React + Vite 仪表盘（web/src/，从 web/dist 提供服务）
 ├── configs/
-│   ├── skills/              # 135 个 skill 定义
+│   ├── skills/              # 136 个 skill 定义
 │   ├── hooks/               # 31 个事件 hooks + lib/
 │   ├── agents/              # 37 个 agent 定义
 │   └── scripts/             # 36 个 shell + 21 个 Python 工具

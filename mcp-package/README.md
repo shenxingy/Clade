@@ -130,7 +130,7 @@ Skills from `~/.claude/skills/` (installed by the legacy full framework) are als
 
 This MCP server is one part of Clade. The full framework includes:
 
-- **135 skills** — coding, research, SEO, content, paid ads, and email workflows
+- **136 skills** — coding, research, SEO, content, paid ads, and email workflows
 - **31 hooks** — safety guardian, correction learning, type-checking, session context
 - **36 shell scripts + 21 Python utilities** — commits, loops, parallel tasks, health scanning
 - **37 agents** — code, security, compliance, marketing, research, and verification specialists

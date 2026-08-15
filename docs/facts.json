@@ -3,7 +3,7 @@
   "facts": [
     {
       "name": "skills",
-      "value": 135,
+      "value": 136,
       "derive": {
         "type": "count_glob",
         "pattern": "configs/skills/*/"
@@ -11,11 +11,11 @@
       "patterns": [
         "^## Skills\\s*\\((\\d+)\\)",
         "^(\\d+) skills,",
-        "^(\\d+) 个 skills、",
+        "^(\\d+) \u4e2a skills\u3001",
         "all (\\d+) Clade skills",
         "\\[Skills\\]\\(#skills-(\\d+)\\)",
         "skills/\\s+# (\\d+) skill definitions",
-        "skills/\\s+# (\\d+) 个 skill 定义",
+        "skills/\\s+# (\\d+) \u4e2a skill \u5b9a\u4e49",
         "^- \\*\\*(\\d+) skills\\*\\*"
       ]
     },
@@ -31,10 +31,10 @@
         "hook reference \\((\\d+) hooks\\)",
         "^- \\*\\*(\\d+) hooks\\*\\*",
         "hooks/\\s+# (\\d+) event hooks",
-        "hooks/\\s+# (\\d+) 个事件 hooks",
+        "hooks/\\s+# (\\d+) \u4e2a\u4e8b\u4ef6 hooks",
         "all (\\d+) hooks pass",
-        "hook 参考（(\\d+) 个 hooks）",
-        "^- \\*\\*(\\d+) 个 hooks\\*\\*"
+        "hook \u53c2\u8003\uff08(\\d+) \u4e2a hooks\uff09",
+        "^- \\*\\*(\\d+) \u4e2a hooks\\*\\*"
       ]
     },
     {
@@ -46,9 +46,9 @@
       },
       "patterns": [
         "^\\d+ skills,\\s+\\d+ hooks,\\s+(\\d+) agents",
-        "^\\d+ 个 skills、\\d+ 个 hooks、(\\d+) 个 agents",
+        "^\\d+ \u4e2a skills\u3001\\d+ \u4e2a hooks\u3001(\\d+) \u4e2a agents",
         "agents/\\s+# (\\d+) agent definitions",
-        "agents/\\s+# (\\d+) 个 agent 定义"
+        "agents/\\s+# (\\d+) \u4e2a agent \u5b9a\u4e49"
       ]
     },
     {
@@ -62,7 +62,7 @@
         "all (\\d+) scripts pass",
         "^- \\*\\*(\\d+) shell scripts",
         "scripts/\\s+# (\\d+) shell",
-        "scripts/\\s+# (\\d+) 个 shell"
+        "scripts/\\s+# (\\d+) \u4e2a shell"
       ]
     },
     {
@@ -74,7 +74,7 @@
       },
       "patterns": [
         "(\\d+) Python utilities",
-        "(\\d+) 个 Python 工具"
+        "(\\d+) \u4e2a Python \u5de5\u5177"
       ]
     },
     {
@@ -87,9 +87,9 @@
       "patterns": [
         "ships (\\d+) provider-native core workflows",
         "plugin \\((\\d+) generated core skills",
-        "plugin（(\\d+) 个核心 skills",
+        "plugin\uff08(\\d+) \u4e2a\u6838\u5fc3 skills",
         "^- (\\d+) core workflows:",
-        "^- (\\d+) 个核心 workflows："
+        "^- (\\d+) \u4e2a\u6838\u5fc3 workflows\uff1a"
       ]
     },
     {
@@ -101,7 +101,7 @@
       },
       "patterns": [
         "exposes (\\d+) bundled Clade skills",
-        "暴露 (\\d+) 个内置 Clade skills"
+        "\u66b4\u9732 (\\d+) \u4e2a\u5185\u7f6e Clade skills"
       ]
     }
   ]
