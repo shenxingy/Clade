@@ -334,7 +334,7 @@ clade/
 │   ├── skills/              # 136 skill definitions
 │   ├── hooks/               # 31 event hooks
 │   ├── agents/              # 37 agent definitions
-│   └── scripts/             # 36 shell + 21 Python utilities
+│   └── scripts/             # 37 shell + 21 Python utilities
 ├── plugins/clade/           # Native Codex plugin (25 generated core skills + hooks)
 ├── .agents/plugins/         # Codex marketplace manifest
 ├── orchestrator/            # ← THE EXECUTION ADAPTER
