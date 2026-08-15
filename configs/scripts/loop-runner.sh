@@ -100,7 +100,10 @@ MAX_WORKERS=4
 # happily becomes an overnight run. `/start` exists to run unattended, which is
 # exactly when nobody is watching the spend. 0 disables.
 MAX_RUNTIME_MIN=480
-LOOP_START_EPOCH=$(date +%s)
+# Overridable so the wall-clock branch is testable without a test that sleeps a
+# minute, and so a caller resuming a run can choose to carry the ORIGINAL start
+# time forward rather than silently granting a fresh 8 hours on every --resume.
+LOOP_START_EPOCH="${LOOP_START_EPOCH:-$(date +%s)}"
 MAX_CONSECUTIVE_FAILURESOverride=""
 CONTEXT_FILE=""
 STATE_FILE=".claude/loop-state.json"

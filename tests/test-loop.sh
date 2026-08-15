@@ -1411,6 +1411,42 @@ else
 fi
 fi
 
+
+# ─── Wall-clock bound ────────────────────────────────────────────────
+# Iterations are not a time bound: one iteration runs until its workers finish,
+# and worker work is unbounded, so `--max-iter 10` becomes an overnight run.
+# `/start` exists to run unattended — exactly when nobody is watching the spend.
+echo ""
+echo "── --max-runtime bounds a run by wall clock ──"
+
+printf '# Goal: never done\n\n- [ ] unchecked forever\n' > goal-runtime.md
+mkdir -p logs/loop-runtime logs/loop-runtime-off
+export MOCK_CLAUDE_RESPONSE='[]'
+
+# Pre-seed the start epoch 90 minutes back so the branch is exercised without
+# a test that actually sleeps.
+out_rt=$(
+  exec 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- 2>/dev/null
+  LOOP_START_EPOCH=$(( $(date +%s) - 90*60 )) \
+  timeout --kill-after=5s 60s bash "$SCRIPTS_DIR/loop-runner.sh" "goal-runtime.md" \
+    --max-iter 5 --max-workers 1 --max-runtime 60 \
+    --state .claude/loop-state-runtime --log-dir logs/loop-runtime 2>&1
+) || true
+assert_contains "$out_rt" "Wall-clock limit reached" "90m elapsed vs --max-runtime 60 stops the run"
+assert_not_contains "$out_rt" "Iteration 2" "wall-clock stop happens before starting more work"
+assert_file_contains "logs/loop-runtime/last-progress" "Exit: max_runtime" "records max_runtime as the exit reason"
+
+# 0 disables the bound — the run must terminate for a DIFFERENT reason.
+out_off=$(
+  exec 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- 2>/dev/null
+  LOOP_START_EPOCH=$(( $(date +%s) - 9999*60 )) \
+  timeout --kill-after=5s 60s bash "$SCRIPTS_DIR/loop-runner.sh" "goal-runtime.md" \
+    --max-iter 1 --max-workers 1 --max-runtime 0 \
+    --state .claude/loop-state-runtime-off --log-dir logs/loop-runtime-off 2>&1
+) || true
+assert_not_contains "$out_off" "Wall-clock limit reached" "--max-runtime 0 disables the bound entirely"
+assert_contains "$out_off" "Max iterations" "with the clock disabled the run still stops on --max-iter"
+
 # ═══════════════════════════════════════════════════════════════════════
 # TEST SUITE 16: scan-health.sh test-runtime probe
 # ═══════════════════════════════════════════════════════════════════════
