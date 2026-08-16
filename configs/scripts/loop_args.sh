@@ -44,6 +44,7 @@ print(f'Interrupt state written to {path}')
       --worker-model) WORKER_MODEL="$2"; shift 2 ;;
       --max-iter)     MAX_ITER="$2"; shift 2 ;;
       --max-runtime)  MAX_RUNTIME_MIN="$2"; shift 2 ;;
+      --max-cost)     MAX_COST_USD="$2"; shift 2 ;;
       --max-workers)  MAX_WORKERS="$2"; shift 2 ;;
       --supervisor-timeout) SUPERVISOR_TIMEOUT="$2"; shift 2 ;;
       --max-consecutive-failures) MAX_CONSECUTIVE_FAILURESOverride="$2"; shift 2 ;;
@@ -86,6 +87,9 @@ Options:
   --max-runtime N       wall-clock minutes before the loop stops between
                         iterations (default: 480 = 8h; 0 disables). Iterations
                         are not a time bound — one can run for hours.
+  --max-cost USD        stop between iterations once the run's reported spend
+                        reaches this (default: 0 = unlimited). Summed from the
+                        CLI's own total_cost_usd; time is not a cost proxy.
   --max-workers N       max parallel workers (default: 4)
   --supervisor-timeout N  seconds the supervisor gets to produce a plan
                         (default: 300). Planning cost scales with goal size;

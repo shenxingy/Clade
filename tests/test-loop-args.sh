@@ -113,6 +113,22 @@ check "runner special-cases exit 124" \
 check "runner suggests a concrete larger budget" \
   "$(grep -q 'supervisor-timeout \$((SUPERVISOR_TIMEOUT \* 2))' "$RUNNER" && echo yes || echo no)"
 
+
+section "Resource ceilings are reachable and documented"
+
+# Time is not a proxy for money: a cheap model can run all night for pennies
+# while an expensive one burns the budget in an hour. Both ceilings must exist,
+# and both must be findable — a flag nobody can read about is not a mitigation
+# (loop-runner.sh already shipped --supervisor-timeout undocumented once).
+run_dry --max-runtime 30 --max-cost 12.5 "$GOAL" --dry-run
+check "--max-runtime is accepted" "$([[ $RC -eq 0 ]] && echo yes || echo no)" "rc=$RC"
+check "--max-cost is accepted" "$([[ "$OUT" != *"Unknown option"* ]] && echo yes || echo no)" \
+  "$(grep -o 'Unknown option.*' <<< "$OUT" | head -1)"
+
+OUT="$(bash "$RUNNER" --help 2>&1 || true)"
+check "--max-runtime is documented in usage" "$(has -- '--max-runtime')" "missing from --help"
+check "--max-cost is documented in usage" "$(has -- '--max-cost')" "missing from --help"
+
 printf "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
 if [[ "$TESTS_FAILED" -eq 0 ]]; then
   printf "  ${GREEN}ALL PASSED${NC} (%d/%d)\n" "$TESTS_PASSED" "$TESTS_RUN"
