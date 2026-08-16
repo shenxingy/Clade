@@ -336,8 +336,12 @@ assert_contains "$LESSONS" "agent fix-rate 100% (3/3) vs human 0% (0/2)" "fix-ra
 # ─── commit-body mandate wiring (mechanism/hazard/root-cause in bodies) ──
 echo "── commit-body mandate wiring ──"
 
-assert_file_contains "$REPO_ROOT/configs/scripts/loop-runner.sh" \
-  "2-4 line body" "loop-runner worker instructions carry the body mandate"
+# The worker instructions moved to loop_score.sh when loop-runner.sh was split
+# to stay under the 1500-line rule. Assert on the mandate reaching a worker,
+# not on which file currently holds the string — otherwise the next extraction
+# breaks a test that is really about behaviour.
+assert_file_contains "$REPO_ROOT/configs/scripts/loop_score.sh" \
+  "2-4 line body" "loop worker instructions carry the body mandate"
 assert_file_contains "$REPO_ROOT/configs/skills/commit/prompt.md" \
   "Body mandate" "/commit skill Step 3 carries the body mandate"
 assert_file_contains "$REPO_ROOT/orchestrator/worker_taskfile.py" \
