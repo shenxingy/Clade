@@ -130,11 +130,19 @@ CROSS_FILE="$HOME/.claude/corrections/cross-project-rules.jsonl"
 CONTEXT="A user correction was detected in the prompt above. After addressing the user's request:
 1. Extract the lesson (what was wrong, what's correct)
 2. Identify the root cause — which category does this fall into?
+   Defect classes (what is wrong with the code):
    - settings-disconnect: defined but not wired/called/loaded
    - edge-case: untested input, OS, or state (empty, first-run, null)
    - async-race: stale closure, TOCTOU, zombie process, missing lock
    - security: unsanitized input, leaked secrets, missing auth
    - deploy-gap: source ≠ deployed, config ≠ loaded, defined ≠ called
+   Collaboration classes (what broke between you and the developer):
+   - inaccurate-self-reporting: claimed done/passing/verified from partial or
+     unchecked evidence — a truncated log, a suite not run, an unread output
+   - constraint-violation: ignored an instruction that was actually given —
+     asked to confirm first, to stay in scope, to not touch something
+   - premature-action: acted before gathering enough project state
+   - scope-overreach: turned a bounded request into a broader intervention
 3. Append a rule to $RULES_PATH in this format:
    - [YYYY-MM-DD] <domain> (<root-cause>): <do this> instead of <not this>
    Example: - [2026-02-25] imports (settings-disconnect): Use @/ path aliases and verify tsconfig paths are set — not bare relative paths that break on move

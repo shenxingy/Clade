@@ -100,11 +100,23 @@ rule_exists_in_file() {
 # Matched with `case` rather than by splitting a string on spaces: zsh does not
 # word-split unquoted parameters, so the loop form silently withheld EVERY rule
 # when this lib was sourced from a zsh shell.
-RULE_PROMOTABLE_ROOT_CAUSES="security async-race deploy-gap settings-disconnect data-loss"
+#
+# The collaboration classes were added after Tang et al. 2026 (arXiv:2605.29442,
+# 16,118 evidence-grounded episodes from 20,574 real sessions) measured what
+# actually goes wrong between developers and coding agents. Two of their seven
+# symptoms dominate and are GROWING in share over time:
+#   Developer Constraint Violation  38.33%   (highest in CLI: 49.49%)
+#   Inaccurate Self-Reporting       22.58%
+# Both cost trust rather than data, which is precisely why they were invisible
+# to a taxonomy built only from defect classes: a correction about either one
+# had nowhere to go except `edge-case`, the bucket this gate withholds. The
+# most common real-world failure was being systematically suppressed.
+RULE_PROMOTABLE_ROOT_CAUSES="security async-race deploy-gap settings-disconnect data-loss inaccurate-self-reporting constraint-violation"
 
 rule_earns_promotion() {
   case "${1:-}" in
     security|async-race|deploy-gap|settings-disconnect|data-loss) return 0 ;;
+    inaccurate-self-reporting|constraint-violation) return 0 ;;
     *) return 1 ;;
   esac
 }

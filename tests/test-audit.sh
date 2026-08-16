@@ -165,6 +165,25 @@ grep -q "security" "$H/.claude/CLAUDE.md" \
 grep -q "edge-case" "$H/.claude/CLAUDE.md" \
   && fail "edge-case rule leaked into CLAUDE.md" \
   || pass "edge-case refused, not promoted"
+
+# Collaboration classes must promote too. Tang et al. 2026 measured constraint
+# violation (38.33%) and inaccurate self-reporting (22.58%) as the two largest
+# and fastest-growing real-world failures; before these were added, a correction
+# about either had nowhere to go but `edge-case` — the bucket this gate withholds.
+# rule-utils.sh is only sourced inside run_audit's subshell; the predicate is
+# tested directly here, so bring it into scope explicitly.
+# shellcheck source=../configs/hooks/lib/rule-utils.sh
+. "$REPO_ROOT/configs/hooks/lib/rule-utils.sh"
+for cause in inaccurate-self-reporting constraint-violation premature-action; do
+  if rule_earns_promotion "$cause" 2>/dev/null; then got=promote; else got=withhold; fi
+  case "$cause" in
+    premature-action) want=withhold ;;   # real, but not trust-destroying on its own
+    *)                want=promote  ;;
+  esac
+  [[ "$got" == "$want" ]] \
+    && pass "$cause -> $want" \
+    || fail "$cause -> $got" "expected $want"
+done
 grep -q "sidebar width" "$H/.claude/corrections/rules.md" \
   && pass "withheld rule stays in rules.md for /audit" \
   || fail "withheld rule vanished instead of awaiting human review"
