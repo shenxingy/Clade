@@ -599,6 +599,46 @@ tests/test_foo.py::TestBaz::test_error1 ERROR                       [  4%]
         out = "platform linux -- Python 3.11\n=== 2 passed in 0.5s ===\n"
         assert _parse_pytest_results(out) == {}
 
+    def test_parses_coloured_output(self):
+        # pytest colourizes under FORCE_COLOR regardless of TTY; the old regex
+        # matched nothing, so the baseline came back empty and the intramorphic
+        # check reported "no regressions" because it could see none.
+        out = "tests/t.py::test_a \x1b[32mPASSED\x1b[0m\x1b[32m [100%]\x1b[0m\n"
+        assert _parse_pytest_results(out) == {"tests/t.py::test_a": True}
+
+
+class TestCaptureTestBaseline:
+    """The baseline is the entire input to intramorphic regression detection.
+    Its default command used to be `-v --tb=no -q`, which pytest scores as
+    verbosity 0 — dots, no per-node lines, empty baseline, and a detector that
+    could never fire. These tests pin the command to one that actually reports."""
+
+    @pytest.fixture
+    def project(self, tmp_path):
+        (tmp_path / "pyproject.toml").write_text("[project]\nname='x'\nversion='0'\n")
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_s.py").write_text(
+            "def test_ok():\n    assert True\n\ndef test_no():\n    assert False\n"
+        )
+        return tmp_path
+
+    @pytest.mark.asyncio
+    async def test_baseline_is_non_empty_and_records_both_verdicts(self, project):
+        from worker_utils import _capture_test_baseline
+
+        baseline = await _capture_test_baseline(project, timeout=120)
+        assert baseline, "empty baseline makes regression detection a no-op"
+        assert baseline.get("tests/test_s.py::test_ok") is True
+        assert baseline.get("tests/test_s.py::test_no") is False
+
+    @pytest.mark.asyncio
+    async def test_baseline_survives_forced_colour(self, project, monkeypatch):
+        from worker_utils import _capture_test_baseline
+
+        monkeypatch.setenv("FORCE_COLOR", "3")
+        baseline = await _capture_test_baseline(project, timeout=120)
+        assert baseline.get("tests/test_s.py::test_ok") is True
+
 
 class TestFindIntramorphicRegressions:
     def test_detects_regression(self):

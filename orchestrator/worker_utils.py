@@ -24,6 +24,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from pytest_report import color_free_env, force_verbose, parse_results
+
 logger = logging.getLogger(__name__)
 
 # ─── Constants ────────────────────────────────────────────────────────────────
@@ -482,6 +484,10 @@ async def _run_project_tests(
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
             cwd=str(project_dir),
+            # The verdict here is the exit code, so colour cannot corrupt it —
+            # but `output` below is handed to the model, and escape sequences
+            # there are unreadable context billed as tokens.
+            env=color_free_env(),
         )
         try:
             out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
@@ -504,17 +510,13 @@ async def _run_project_tests(
 # ground-truth test oracle. A test that was PASSING before and is now FAILING
 # is a regression introduced by the fix — not a pre-existing failure.
 
-_PYTEST_RESULT_RE = re.compile(r'^(.+::.+?)\s+(PASSED|FAILED|ERROR)')
-
-
 def _parse_pytest_results(output: str) -> dict[str, bool]:
-    """Parse pytest -v output into {test_id: passed} dict."""
-    results: dict[str, bool] = {}
-    for line in output.splitlines():
-        m = _PYTEST_RESULT_RE.match(line.strip())
-        if m:
-            results[m.group(1).strip()] = m.group(2) == "PASSED"
-    return results
+    """Parse pytest -v output into {test_id: passed} dict.
+
+    Delegates to pytest_report, which strips terminal colour first — the local
+    regex silently returned {} whenever the environment forced it on.
+    """
+    return parse_results(output)
 
 
 def _find_intramorphic_regressions(
@@ -634,16 +636,18 @@ async def _capture_test_baseline(project_dir: Path, timeout: int = 30) -> dict[s
     if not test_cmd:
         venv_pytest = project_dir / ".venv" / "bin" / "pytest"
         if venv_pytest.exists():
-            test_cmd = f"{venv_pytest} tests/ -v --tb=no -q 2>&1 | head -300"
+            test_cmd = f"{venv_pytest} tests/ --tb=no 2>&1 | head -300"
         elif (project_dir / "pytest.ini").exists() or (project_dir / "pyproject.toml").exists():
-            test_cmd = "pytest tests/ -v --tb=no -q 2>&1 | head -300"
+            test_cmd = "pytest tests/ --tb=no 2>&1 | head -300"
 
     if not test_cmd:
         return {}
 
-    # Ensure -v for per-test result parsing
-    if "pytest" in test_cmd and " -v" not in test_cmd:
-        test_cmd = test_cmd.replace("pytest ", "pytest -v ", 1)
+    # force_verbose, not a bare "add -v": pytest verbosity is count(-v) - count(-q),
+    # so the old default (`-v --tb=no -q`) was verbosity 0 and printed dots. The
+    # baseline came back empty every time, and an empty baseline makes
+    # _find_intramorphic_regressions structurally incapable of reporting one.
+    test_cmd = force_verbose(test_cmd)
 
     try:
         proc = await asyncio.create_subprocess_shell(
@@ -651,6 +655,7 @@ async def _capture_test_baseline(project_dir: Path, timeout: int = 30) -> dict[s
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
             cwd=str(project_dir),
+            env=color_free_env(),
         )
         try:
             out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)

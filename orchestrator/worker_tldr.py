@@ -15,6 +15,7 @@ import shlex
 from pathlib import Path
 
 import aiosqlite
+from pytest_report import color_free_env
 from runtime_redaction import merge_metadata, redact_runtime
 
 # fault_localize is a stdlib-only leaf (lower in the DAG); importing it keeps
@@ -1157,6 +1158,10 @@ async def _sbfl_prepass(project_dir: Path, timeout: int = 30) -> str:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
             cwd=str(project_dir),
+            # _TRACE_RE below matches raw `path/file.py:N: in func` frames;
+            # pytest colours those, and the escape codes break the match, so
+            # SBFL would silently find zero suspects.
+            env=color_free_env(),
         )
         try:
             out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)

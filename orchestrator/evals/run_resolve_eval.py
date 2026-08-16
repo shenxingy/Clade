@@ -67,6 +67,13 @@ from typing import Awaitable, Callable
 EVALS_DIR = Path(__file__).resolve().parent
 RESOLVE_CASES_DIR = EVALS_DIR / "resolve_cases"
 
+# evals/ is not a package and is run as a script, so the orchestrator dir is not
+# on sys.path by default — same bootstrap the other eval runners use.
+if str(EVALS_DIR.parent) not in sys.path:
+    sys.path.insert(0, str(EVALS_DIR.parent))
+
+from pytest_report import color_free_env, force_verbose, parse_results  # noqa: E402
+
 logger = logging.getLogger("resolve_eval")
 
 REQUIRED_FIELDS = {
@@ -266,43 +273,32 @@ def apply_patch(patch: str, repo_dir: Path) -> tuple[bool, str]:
 
 # ─── Test execution + scoring (the resolve-rate contract) ────────────────────
 
-_PYTEST_RESULT_RE = re.compile(r'^(.+?::[\w\[\]:./-]+)\s+(PASSED|FAILED|ERROR)', re.M)
-
-
-def parse_pytest_results(output: str) -> dict[str, bool]:
-    """Parse ``pytest -v`` output into {node_id: passed}. Same shape as
-    worker_utils._parse_pytest_results, kept local so the harness has no
-    import-time dependency on the worker module."""
-    return {m.group(1).strip(): m.group(2) == "PASSED"
-            for m in _PYTEST_RESULT_RE.finditer(output)}
-
-
-def _force_verbose_pytest(cmd: str) -> str:
-    """Normalize a pytest command so it emits ``node::id PASSED`` lines: strip
-    quiet flags (``-q`` suppresses per-node lines even with ``-v``) and ensure
-    ``-v`` is present. Non-pytest commands are returned unchanged."""
-    if "pytest" not in cmd:
-        return cmd
-    cmd = re.sub(r'(?<!\S)(-q|--quiet|--no-header)(?=\s|$)', '', cmd)
-    cmd = re.sub(r'\s{2,}', ' ', cmd).strip()
-    if " -v" not in f" {cmd}":
-        cmd = cmd.replace("pytest", "pytest -v", 1)
-    return cmd
+# Parsing and command normalization live in the stdlib-only pytest_report leaf so
+# the harness and the worker cannot drift into disagreeing about what a passing
+# test looks like. This file used to carry its own copy to avoid importing the
+# worker module; the leaf preserves that (no orchestrator dependencies) while
+# ending the duplication.
+parse_pytest_results = parse_results
+_force_verbose_pytest = force_verbose
 
 
 def run_tests(inst: dict, repo_dir: Path, timeout: int = 120) -> dict[str, bool]:
     """Run ``inst['test_cmd']`` in ``repo_dir`` (forced verbose so node-level
     results parse). Returns {node_id: passed}; {} if the suite can't run."""
-    cmd = _force_verbose_pytest(inst["test_cmd"])
+    cmd = force_verbose(inst["test_cmd"])
     try:
         proc = subprocess.run(
             cmd, cwd=str(repo_dir), shell=True,
             capture_output=True, text=True, timeout=timeout,
+            # Without this the harness inherits FORCE_COLOR from whatever shell
+            # launched it, pytest emits ANSI, nothing parses, and every instance
+            # scores UNRESOLVED — a 0% resolve rate reported as a real result.
+            env=color_free_env(),
         )
     except subprocess.TimeoutExpired:
         logger.warning("%s: test_cmd timed out after %ds", inst["instance_id"], timeout)
         return {}
-    return parse_pytest_results(proc.stdout + proc.stderr)
+    return parse_results(proc.stdout + proc.stderr)
 
 
 def score_instance(inst: dict, results: dict[str, bool]) -> tuple[bool, str]:
@@ -358,8 +354,11 @@ async def run_instance(inst: dict, solve_fn: SolveFn) -> dict:
     score. Captures wall-time. Never raises — failures become unresolved rows."""
     iid = inst["instance_id"]
     started = time.monotonic()
+    # `measured` separates "the agent failed" from "the harness could not look".
+    # Both used to land as resolved=False, so a harness that could not run a
+    # single suite reported a clean 0% instead of admitting it saw nothing.
     row = {"instance_id": iid, "resolved": False, "detail": "", "patched": False,
-           "elapsed_s": 0.0}
+           "measured": True, "elapsed_s": 0.0}
     with tempfile.TemporaryDirectory(prefix=f"resolve-{iid}-") as tmp:
         work = Path(tmp)
         try:
@@ -375,15 +374,18 @@ async def run_instance(inst: dict, solve_fn: SolveFn) -> dict:
                 else:
                     results = run_tests(inst, repo_dir)
                     if not results:
+                        row["measured"] = False
                         row["detail"] = "test_cmd produced no parseable results"
                     else:
                         resolved, detail = score_instance(inst, results)
                         row["resolved"] = resolved
                         row["detail"] = detail
         except NotImplementedError as e:
+            row["measured"] = False
             row["detail"] = f"setup not wired: {e}"
         except Exception as e:  # pragma: no cover — defensive
             logger.warning("%s: pipeline error: %s", iid, e)
+            row["measured"] = False
             row["detail"] = f"pipeline error: {type(e).__name__}"
     row["elapsed_s"] = round(time.monotonic() - started, 2)
     return row
@@ -408,18 +410,26 @@ def summarize(rows: list[dict], threshold: float) -> dict:
     """Compute resolve-rate + cost aggregates. Returns a summary dict.
 
     rate = resolved / total; ok = rate >= threshold (>= so a 0.0 gate always
-    passes the dry-run, matching run_oracle_eval's >= semantics)."""
+    passes the dry-run, matching run_oracle_eval's >= semantics).
+
+    Any unmeasured instance forces ok=False regardless of rate. An instance the
+    harness could not observe makes the reported rate a lower bound, not a
+    measurement, and a gate that passes on a lower bound is a gate that passes
+    when its own instrument is broken."""
     total = len(rows)
     resolved = sum(1 for r in rows if r["resolved"])
+    unmeasured = sum(1 for r in rows if not r.get("measured", True))
     rate = resolved / total if total else 0.0
     total_cost = round(sum(r.get("cost", 0.0) for r in rows), 4)
     return {
         "total": total,
         "resolved": resolved,
+        "measured": total - unmeasured,
+        "unmeasured": unmeasured,
         "rate": rate,
         "total_cost": total_cost,
         "avg_cost": round(total_cost / total, 4) if total else 0.0,
-        "ok": total > 0 and rate >= threshold,
+        "ok": total > 0 and unmeasured == 0 and rate >= threshold,
     }
 
 
@@ -428,7 +438,10 @@ def print_scoreboard(rows: list[dict], summary: dict, threshold: float,
     print(f"\n{'instance':<32} {'resolved':<9} {'cost':>8} {'time':>7}  detail")
     print("-" * 92)
     for r in rows:
-        mark = "RESOLVED " if r["resolved"] else "unresolved"
+        if not r.get("measured", True):
+            mark = "UNMEASURED"
+        else:
+            mark = "RESOLVED " if r["resolved"] else "unresolved"
         print(f"{r['instance_id']:<32} {mark:<9} "
               f"${r.get('cost', 0.0):>7.4f} {r['elapsed_s']:>6.1f}s  {r['detail'][:34]}")
     print("-" * 92)
@@ -437,6 +450,10 @@ def print_scoreboard(rows: list[dict], summary: dict, threshold: float,
           f"(threshold {threshold * 100:.0f}%) — "
           f"${summary['total_cost']:.4f} total (${summary['avg_cost']:.4f}/inst), "
           f"{elapsed:.1f}s wall")
+    if summary.get("unmeasured"):
+        print(f"UNMEASURED: {summary['unmeasured']}/{summary['total']} instance(s) "
+              f"never produced a scoreable test result — the rate above is a lower "
+              f"bound, not a measurement. Fix the harness before reading it.")
     peer_str = ", ".join(f"{n} {r:.1f}% @ ${c:.2f}" for n, r, c in PEERS)
     print(f"peers (SWE-bench-Lite): {peer_str}")
     if not summary["ok"]:

@@ -104,6 +104,22 @@ def test_summarize_rate_and_gate():
     assert rr.summarize(rows, threshold=0.0)["ok"]            # 0.0 gate (dry-run) passes
 
 
+def test_unmeasured_instances_fail_the_gate():
+    """An instance the harness could not score makes the rate a lower bound.
+    A gate that passes on a lower bound passes when its own instrument breaks —
+    which is exactly how a colour-blinded harness reported a clean 0%."""
+    rows = [
+        {"instance_id": "a", "resolved": True, "measured": True, "cost": 0.0},
+        {"instance_id": "b", "resolved": False, "measured": False, "cost": 0.0},
+    ]
+    s = rr.summarize(rows, threshold=0.0)
+    assert s["unmeasured"] == 1 and s["measured"] == 1
+    assert not s["ok"], "unmeasured instance must fail the gate at any threshold"
+    # …and rows without the key (older result files) still count as measured.
+    legacy = [{"instance_id": "a", "resolved": True, "cost": 0.0}]
+    assert rr.summarize(legacy, threshold=0.0)["unmeasured"] == 0
+
+
 # ─── Full pipeline through the canned solver (the core assertion) ─────────────
 
 

@@ -202,10 +202,12 @@ def test_import_graph_is_a_strict_dag() -> None:
 
 def test_documented_leaf_modules_import_no_project_code() -> None:
     """CLAUDE.md's module map declares these as leaves (no project imports except
-    config, cascade_policy, fault_localize, and worker_utils — all stdlib-only
-    constants/primitive modules lower in the DAG that other leaves may depend on
-    without becoming non-leaves themselves; worker_review -> worker_utils mirrors
-    the pre-existing worker_tldr -> fault_localize precedent)."""
+    config, cascade_policy, fault_localize, pytest_report, and worker_utils — all
+    stdlib-only constants/primitive modules lower in the DAG that other leaves may
+    depend on without becoming non-leaves themselves; worker_review -> worker_utils
+    mirrors the pre-existing worker_tldr -> fault_localize precedent, and
+    pytest_report is shared by worker_utils, worker_tldr and evals/ precisely so
+    they cannot drift on what a passing test looks like)."""
     leaves = {
         "ideas", "process_manager", "worker_tldr", "worker_review",
         "worker_utils", "worker_hydrate", "condensers", "event_stream",
@@ -220,7 +222,7 @@ def test_documented_leaf_modules_import_no_project_code() -> None:
             continue
         heavy = graph[leaf] - {
             "config", "cascade_policy", "fault_localize", "worker_utils",
-            "runtime_redaction",
+            "runtime_redaction", "pytest_report",
         }
         if heavy:
             violations.append(f"{leaf}: imports {sorted(heavy)} at module level")
