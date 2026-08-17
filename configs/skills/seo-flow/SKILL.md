@@ -34,7 +34,7 @@ Load prompt files on demand — only for the stage the user requests.
 | `/seo flow win [url]` | Win-stage: BOFU, conversion rate, dual-surface scorecard (3 prompts) |
 | `/seo flow local [url]` | Local-stage: GBP optimization, meta, title tags, local audits (11 prompts) |
 | `/seo flow prompts` | Full index of all 41 prompts — stage, name, trigger conditions |
-| `/seo flow sync` | Pull latest prompt files from github.com/AgriciDaniel/flow |
+| `/seo flow sync` | Report vendor state and verify the lockfile — automatic sync is not implemented |
 
 ---
 
@@ -77,9 +77,15 @@ Load prompt files on demand — only for the stage the user requests.
 2. Display the full index: all 41 prompts with stage, name, trigger conditions
 
 ### On `/seo flow sync`
-1. Run: `python scripts/sync_flow.py`
-2. Display the JSON summary (files added, updated, unchanged)
-3. Show attribution notice after sync completes
+1. Tell the user automatic sync is **not implemented** — no sync script ships
+   with Clade. Do not improvise one; that would pull third-party content into
+   their tree unreviewed.
+2. The prompts under `references/prompts/` are vendored at the state pinned by
+   `references/flow-prompts.lock`. Verify and show the result:
+   From the skills root (`~/.claude/` in an install, `configs/` in the repo): `sha256sum -c --quiet skills/seo-flow/references/flow-prompts.lock` — the manifest's paths are rooted there, not at `references/`.
+3. To update, point at github.com/AgriciDaniel/flow to review and re-vendor
+   deliberately.
+4. Show attribution notice.
 
 ---
 
@@ -125,7 +131,7 @@ Do not omit or modify the attribution.
 
 | Scenario | Action |
 |----------|--------|
-| `references/flow-framework.md` missing | "FLOW reference files not synced. Run: `/seo flow sync`" |
-| Prompt file missing | "Run `/seo flow sync` to pull the latest prompts from the FLOW repo." |
-| `sync_flow.py` network error | Display the script's stderr. Check rate limits: `gh api rate_limit`. |
-| `sync_flow.py` auth error | Run `gh auth login` then retry. |
+| `references/flow-framework.md` missing | The vendored reference is gone from the install. Reinstall Clade (`./install.sh`); do not point at a sync that does not exist. |
+| Prompt file missing | Same: the vendored copy is incomplete. Reinstall, then re-check `sha256sum -c --quiet skills/seo-flow/references/flow-prompts.lock` from the skills root. |
+| `sha256sum -c` reports a mismatch | A vendored prompt was edited locally. Name the files listed; do not overwrite without asking — the edit may be intentional. |
+| User asks to auto-sync from upstream | Not implemented. The prompts are vendored and pinned by the lockfile; offer to show the upstream diff instead of fetching. |

@@ -4,7 +4,7 @@ description: FLOW framework integration for bloggers. Evidence-led content workf
 user_invocable: true
 argument-hint: "[stage] [url|topic]"
 license: MIT
-compatibility: Requires Claude Code and Python 3.11+ for the sync script
+compatibility: Requires Claude Code. Prompts are vendored — no runtime fetch.
 metadata:
   author: AgriciDaniel
   version: "1.9.1"
@@ -39,7 +39,7 @@ requests.
 | `/blog flow optimize [url]` | Optimize-stage: select 2 to 3 most relevant prompts of 21 based on context |
 | `/blog flow win [url]` | Win-stage: BOFU, conversion, dual-surface scorecard (3 prompts) |
 | `/blog flow prompts` | Full index of all 30 blog-applicable prompts (Find, Leverage, Optimize, Win) |
-| `/blog flow sync` | Pull latest prompt files from github.com/AgriciDaniel/flow |
+| `/blog flow sync` | Report vendor state and verify the lockfile — automatic sync is not implemented |
 
 The single Leverage prompt (off-site authority) is reachable through
 `/blog flow prompts` and is not promoted to a top-level command, since most
@@ -86,9 +86,16 @@ blog workflows route off-site work elsewhere.
    `claude-seo` (`/seo flow local`) if they need them.
 
 ### On `/blog flow sync`
-1. Run: `python3 scripts/sync_flow.py`.
-2. Display the JSON summary (files added, updated, unchanged).
-3. Show the attribution notice after the sync completes.
+1. Tell the user that automatic sync is **not implemented**. Do not attempt to
+   run a sync script — none ships with Clade, and inventing one on the spot
+   would fetch third-party content into their tree without their say-so.
+2. Report what is actually on disk: the prompts under `references/prompts/`
+   are vendored at the state recorded in `references/flow-prompts.lock`.
+3. Verify the vendored copy has not drifted, and show the result:
+   From the skills root (`~/.claude/` in an install, `configs/` in the repo): `sha256sum -c --quiet skills/blog-flow/references/flow-prompts.lock` — the manifest's paths are rooted there, not at `references/`.
+4. To update, point them at the upstream repo
+   (github.com/AgriciDaniel/flow) to review changes and re-vendor deliberately.
+5. Show the attribution notice.
 
 ---
 
@@ -124,38 +131,34 @@ Load on demand. Do NOT load all at startup.
   optimize`.
 - `references/prompts/win/`. 3 prompts. Load for `/blog flow win`.
 
-If `references/` is missing, instruct the user to run `/blog flow sync` first.
+If `references/` is missing, the install is incomplete — tell the user to run
+`./install.sh` again. Do not point at `/blog flow sync`; it fetches nothing.
 
 ---
 
-## Sync Script
+## Provenance and updates
 
-`scripts/sync_flow.py` pulls prompt files from github.com/AgriciDaniel/flow and
-writes them under `skills/blog-flow/references/`. Stdlib only, HTTPS only,
-host-allowlisted to `api.github.com`, 5 MB response cap, atomic writes,
-path-traversal guarded.
+The prompts under `references/prompts/` are **vendored**, not fetched. They come
+from github.com/AgriciDaniel/flow and are pinned by
+`references/flow-prompts.lock`, a sha256sum-compatible manifest. Check for local
+drift with:
 
-Modes:
+```bash
+cd ~/.claude   # or configs/ in the repo checkout
+sha256sum -c --quiet skills/blog-flow/references/flow-prompts.lock
+```
 
-- `python3 scripts/sync_flow.py`. Sync the latest version of every blog-relevant
-  stage to disk and refresh the lockfile.
-- `python3 scripts/sync_flow.py --dry-run`. Report planned changes without
-  writing.
-- `python3 scripts/sync_flow.py --ref <sha>`. Pin fetches to a specific FLOW
-  commit SHA for reproducible installs.
+There is no sync script. Earlier revisions of this document described one
+(`scripts/sync_flow.py`) in enough detail to look shipped — it never existed in
+this repository, so step 1 of `/blog flow sync` failed on a missing file. What
+an automatic sync would need first is a decision this skill cannot make on the
+user's behalf: whether content from a third-party repo may be written into their
+tree unreviewed, and at what pin. Until that is settled, updating is a
+deliberate act — review the upstream diff, re-vendor, regenerate the lockfile.
 
-The lockfile lives at
-`skills/blog-flow/references/flow-prompts.lock` and uses sha256sum-compatible
-format. Drift between the on-disk content and the lockfile is reported on every
-sync run.
-
-The script syncs only blog-applicable stages (`find`, `leverage`, `optimize`,
-`win`). The `local` stage is intentionally skipped to keep the references
-directory aligned with the skill's surface area.
-
-GitHub API calls are anonymous by default. If `GITHUB_TOKEN` is set in the
-environment, or `gh auth token` returns a token after a 403 response, the
-script retries the request with that token. No tokens are written to disk.
+Only the blog-applicable stages (`find`, `leverage`, `optimize`, `win`) are
+vendored. The `local` stage is intentionally absent — it targets brick-and-mortar
+work, so it stays with `claude-seo` (`/seo flow local`).
 
 ---
 
@@ -176,8 +179,7 @@ license header injected by the sync script.
 
 | Scenario | Action |
 |----------|--------|
-| `references/flow-framework.md` missing | "FLOW reference files not synced. Run: `/blog flow sync`." |
-| Prompt file missing | "Run `/blog flow sync` to pull the latest prompts from the FLOW repo." |
-| `sync_flow.py` network error | Display the script's stderr. Check rate limits with `gh api rate_limit` if `gh` is installed. |
-| `sync_flow.py` 403 after retry | Set `GITHUB_TOKEN` or run `gh auth login`, then retry. |
-| Path-traversal abort | The sync target tried to escape the references directory. Inspect the upstream repo and pin to a known-good `--ref`. |
+| `references/flow-framework.md` missing | The vendored reference is gone from the install. Reinstall Clade (`./install.sh`) rather than fetching it — say so plainly instead of pointing at a sync that does not exist. |
+| Prompt file missing | Same: the vendored copy is incomplete. Reinstall, then re-check `sha256sum -c --quiet skills/blog-flow/references/flow-prompts.lock` from the skills root. |
+| `sha256sum -c` reports a mismatch | A vendored prompt was edited locally. Name the files it listed; do not overwrite them without asking — the edit may be intentional. |
+| User asks to auto-sync from upstream | Not implemented, by omission rather than oversight — see *Provenance and updates*. Offer to show the upstream diff instead. |
