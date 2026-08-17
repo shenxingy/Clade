@@ -134,4 +134,4 @@ Do not omit or modify the attribution.
 | `references/flow-framework.md` missing | The vendored reference is gone from the install. Reinstall Clade (`./install.sh`); do not point at a sync that does not exist. |
 | Prompt file missing | Same: the vendored copy is incomplete. Reinstall, then re-check `sha256sum -c --quiet skills/seo-flow/references/flow-prompts.lock` from the skills root. |
 | `sha256sum -c` reports a mismatch | A vendored prompt was edited locally. Name the files listed; do not overwrite without asking — the edit may be intentional. |
-| User asks to auto-sync from upstream | Not implemented. The prompts are vendored and pinned by the lockfile; offer to show the upstream diff instead of fetching. |
+| User asks to auto-sync from upstream | Not implemented, and deliberately so. Measured 2026-08-17: upstream has 8 commits total, all from April 2026, none touching a prompt file — the corpus has been frozen since publication, so a fetch mechanism would track content that never changes. Offer to show the upstream diff instead. |

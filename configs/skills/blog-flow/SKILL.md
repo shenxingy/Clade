@@ -148,13 +148,22 @@ cd ~/.claude   # or configs/ in the repo checkout
 sha256sum -c --quiet skills/blog-flow/references/flow-prompts.lock
 ```
 
-There is no sync script. Earlier revisions of this document described one
-(`scripts/sync_flow.py`) in enough detail to look shipped — it never existed in
-this repository, so step 1 of `/blog flow sync` failed on a missing file. What
-an automatic sync would need first is a decision this skill cannot make on the
-user's behalf: whether content from a third-party repo may be written into their
-tree unreviewed, and at what pin. Until that is settled, updating is a
-deliberate act — review the upstream diff, re-vendor, regenerate the lockfile.
+There is no sync script, and there should not be one. Earlier revisions of this
+document described `scripts/sync_flow.py` in enough detail to look shipped — it
+never existed in this repository, so step 1 of `/blog flow sync` failed on a
+missing file.
+
+Building it was measured rather than argued (2026-08-17, GitHub API): upstream
+has **8 commits total**, all on 2026-04-25/26, and **not one of them touched a
+prompt file** after the initial release. The prompt content has been frozen since
+publication. A fetch-on-demand mechanism — with its token handling, rate limits,
+path-traversal guards and lockfile refresh — would exist to track a corpus that
+has never changed, while adding the one thing this skill has no business
+deciding: whether third-party content may be written into a user's tree
+unreviewed. Re-run that check before reopening the question.
+
+Updating is therefore a deliberate act: review the upstream diff, re-vendor,
+regenerate the lockfile.
 
 Only the blog-applicable stages (`find`, `leverage`, `optimize`, `win`) are
 vendored. The `local` stage is intentionally absent — it targets brick-and-mortar
