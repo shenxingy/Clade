@@ -841,3 +841,75 @@ class TestOracleVerdictResampling:
         monkeypatch.setattr(wr, "_oracle_review_chunk_once", fake_once)
         approved, reason, infra = await wr._oracle_review_chunk("t", "d", "", tmp_path, samples=3)
         assert infra is True
+
+
+# ─── Test-integrity evidence reaches the prompt ──────────────────────────────
+# The detector is only worth its complexity if what it counts actually arrives
+# in front of the judge. Counting correctly and then dropping the result on the
+# floor is the failure mode that looks identical to working.
+
+
+class TestIntegrityEvidenceWiring:
+    GAMED_DIFF = (
+        "diff --git a/tests/test_calc.py b/tests/test_calc.py\n"
+        "--- a/tests/test_calc.py\n+++ b/tests/test_calc.py\n@@ -1,5 +1,4 @@\n"
+        " from calc import add\n"
+        "-    assert add(2, 3) == 5\n"
+    )
+    CLEAN_DIFF = (
+        "diff --git a/calc.py b/calc.py\n--- a/calc.py\n+++ b/calc.py\n@@ -1,3 +1,3 @@\n"
+        " def add(a, b):\n-    return a - b\n+    return a + b\n"
+    )
+
+    def test_weakened_diff_puts_the_count_in_the_task_block(self):
+        from judge_diversity import test_integrity, test_integrity_evidence
+
+        evidence = test_integrity_evidence(test_integrity(self.GAMED_DIFF))
+        assert evidence, "detector produced nothing to inject"
+        block = wr._build_oracle_task_block(
+            "fix: add returns the difference", None, "", evidence
+        )
+        assert "assertion(s) removed" in block
+        assert "grounds to reject" in block
+
+    def test_clean_diff_adds_nothing(self):
+        from judge_diversity import test_integrity, test_integrity_evidence
+
+        evidence = test_integrity_evidence(test_integrity(self.CLEAN_DIFF))
+        assert evidence == ""
+        block = wr._build_oracle_task_block("fix: add is wrong", None, "", evidence)
+        assert "Test-integrity signal" not in block
+
+    def test_evidence_is_attached_regardless_of_fix_intent(self):
+        # A diff that deletes assertions is worth explaining whatever the task
+        # called itself; the fix-intent gate governs the other criteria only.
+        block = wr._build_oracle_task_block(
+            "chore: tidy up the suite", None, "", "Test-integrity signal across 1 file"
+        )
+        assert "Test-integrity signal" in block
+
+    @pytest.mark.asyncio
+    async def test_signal_survives_chunking_of_a_large_diff(self, tmp_path, monkeypatch):
+        """The count is taken over the WHOLE diff and rides the task block into
+        every chunk. Chunked review drops everything past chunk 3, so a
+        per-chunk look would miss weakening in a large refactor entirely."""
+        seen: list[str] = []
+
+        async def fake_chunk(task_block, chunk, label, cdir, **kw):
+            seen.append(task_block)
+            return (True, "ok", False)
+
+        monkeypatch.setattr(wr, "_oracle_review_chunk", fake_chunk)
+        padding = "\n".join(f"+# filler line {i}" for i in range(4000))
+        big = self.GAMED_DIFF + (
+            "diff --git a/src/big.py b/src/big.py\n--- a/src/big.py\n+++ b/src/big.py\n"
+            "@@ -1,1 +1,4000 @@\n" + padding + "\n"
+        )
+        assert len(big) > wr._ORACLE_CHUNK_SIZE, "diff not large enough to chunk"
+
+        await wr._oracle_review("fix: add is wrong", big, tmp_path)
+
+        assert len(seen) > 1, "expected the diff to be reviewed in chunks"
+        assert all("assertion(s) removed" in block for block in seen), (
+            "the whole-diff integrity count must reach every chunk's prompt"
+        )
