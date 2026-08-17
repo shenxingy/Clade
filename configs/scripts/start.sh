@@ -859,6 +859,7 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
     LOOP_BUDGET_ARGS=(--budget "$BUDGET_REMAINING")
   fi
 
+  LOOP_STATUS=0
   bash "$SCRIPTS_DIR/loop-runner.sh" .claude/loop-goal.md \
     --model "$SUPERVISOR_MODEL" \
     --worker-model "$WORKER_MODEL" \
@@ -866,13 +867,21 @@ while [[ $OUTER_ITER -lt $MAX_OUTER_ITER ]]; do
     --max-iter "$MAX_INNER_ITER" \
     --state .claude/loop-state-start \
     --log-dir logs/loop \
-    ${LOOP_BUDGET_ARGS[@]+"${LOOP_BUDGET_ARGS[@]}"}
+    ${LOOP_BUDGET_ARGS[@]+"${LOOP_BUDGET_ARGS[@]}"} || LOOP_STATUS=$?
 
   _accumulate_cost
   _log "Cumulative cost: \$$TOTAL_COST"
 
   # Targeted mode: one outer iteration is enough (loop-runner iterates internally)
   if [[ "${TARGETED:-false}" == "true" ]]; then
+    # loop-runner returns 2 when it stopped with goal items still unchecked.
+    # This branch used to write "completed" and exit 0 unconditionally, so a
+    # stalled or ceiling-capped run was reported to the human as a finished one.
+    if [[ "${LOOP_STATUS:-0}" -ne 0 ]]; then
+      _log "Targeted mode ended INCOMPLETE (loop-runner exit $LOOP_STATUS) — see logs/loop/last-progress for the exit reason."
+      _write_session_report "incomplete"
+      exit "$LOOP_STATUS"
+    fi
     _log "Targeted mode complete."
     # Try post-convergence scan before declaring session done
     if _post_convergence_scan; then

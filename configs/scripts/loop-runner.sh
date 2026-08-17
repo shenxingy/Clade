@@ -980,6 +980,32 @@ $failure_context
 _check_convergence() {
   local iteration="$1"
 
+  # Success is tested BEFORE the give-up conditions, deliberately. With the
+  # order reversed — as it was — a run that finished its goal on the very last
+  # allowed iteration, or just as a ceiling came due, reported "max iterations
+  # reached" instead of "converged": the reason the loop would have stopped
+  # anyway overwrote the fact that it had actually succeeded.
+  if [ -f "$GOAL_FILE" ]; then
+    local remaining total
+    remaining=$(grep -c '^\- \[ \]' "$GOAL_FILE" 2>/dev/null || true)
+    remaining=${remaining:--1}
+    total=$(grep -c '^\- \[' "$GOAL_FILE" 2>/dev/null || true)
+    total=${total:-0}
+    if [ "$total" -eq 0 ]; then
+      # A goal file with no checkboxes reads as "0 unchecked", which is
+      # indistinguishable from "everything is done". Calling that convergence
+      # lets a malformed or mis-templated goal declare victory on iteration 1
+      # having executed nothing.
+      log_warn "Goal file has no '- [ ]' / '- [x]' items — convergence cannot be measured from it"
+    elif [ "$remaining" = "0" ]; then
+      log_success "CONVERGED: 0 unchecked items remain in goal file (deterministic check)"
+      exit_reason="converged"
+      return 0
+    elif [ "$remaining" -gt 0 ]; then
+      log_info "Convergence check: $remaining unchecked items remain — not done yet"
+    fi
+  fi
+
   # Hard stop: max iterations
   if [ "$iteration" -ge "$MAX_ITER" ]; then
     log_warn "Max iterations ($MAX_ITER) reached"
@@ -997,20 +1023,6 @@ _check_convergence() {
     log_error "$MAX_CONSECUTIVE_NO_COMMITS consecutive iterations with no commits — loop stuck"
     exit_reason="stuck_no_commits"
     return 0
-  fi
-
-  # Deterministic convergence: no unchecked items remain in goal file
-  if [ -f "$GOAL_FILE" ]; then
-    local remaining
-    remaining=$(grep -c '^\- \[ \]' "$GOAL_FILE" 2>/dev/null || true)
-    remaining=${remaining:--1}
-    if [ "$remaining" = "0" ]; then
-      log_success "CONVERGED: 0 unchecked items remain in goal file (deterministic check)"
-      exit_reason="converged"
-      return 0
-    elif [ "$remaining" -gt 0 ]; then
-      log_info "Convergence check: $remaining unchecked items remain — not done yet"
-    fi
   fi
 
   return 1  # not converged, continue
@@ -1329,7 +1341,19 @@ run_blueprint_loop() {
       _clear_checkpoints
       ;;
   esac
-  case "$exit_reason" in supervisor_failed|commit_failed|pre_flight_failed|all_workers_failed) return 1;; esac
+  # Exit status has to separate the three outcomes a caller actually has to act
+  # on. It used to collapse "gave up" into success: every ceiling and every
+  # stall returned 0, so `loop-runner.sh goal.md && echo done` printed done
+  # after a run that stalled on iteration 3 of 20 with the goal untouched, and
+  # start.sh wrote "completed" on the strength of that.
+  #   0 — the goal was reached, or a human asked the run to stop
+  #   1 — a stage failed outright; the run broke
+  #   2 — the run gave up with goal items still unchecked (ceiling hit or stalled)
+  case "$exit_reason" in
+    supervisor_failed|commit_failed|pre_flight_failed|all_workers_failed) return 1 ;;
+    converged|user_stop|interrupted) return 0 ;;
+    *) return 2 ;;
+  esac
 }
 # ────────────────────────────────────────────────────────────────
 

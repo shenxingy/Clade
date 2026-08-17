@@ -535,6 +535,47 @@ empty_done_calls=$(grep -c '^ARGS:' "$MOCK_CLAUDE_ARGS_LOG" 2>/dev/null || true)
 assert_eq "1" "$empty_done_calls" "no-change iteration skips unrelated HEAD~1 verification"
 unset MOCK_CLAUDE_ARGS_LOG
 
+# ─── Outcome truthfulness ─────────────────────────────────────────────────────
+# Three ways the loop used to misreport how a run ended.
+
+# (1) Succeeding on the LAST allowed iteration was reported as max_iterations,
+# because the give-up conditions were tested before the success condition.
+printf '# Goal: done on the last iteration\n\n- [x] finished\n' > goal-last-iter.md
+mkdir -p logs/loop-last-iter
+export MOCK_CLAUDE_RESPONSE='[]'
+loop_last_status=0
+output=$(
+  exec 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- 2>/dev/null
+  timeout --kill-after=5s 60s bash "$SCRIPTS_DIR/loop-runner.sh" "goal-last-iter.md" --max-iter 1 --max-workers 1 --state .claude/loop-state-last-iter --log-dir logs/loop-last-iter 2>&1
+) || loop_last_status=$?
+assert_file_contains "logs/loop-last-iter/last-progress" "Exit: converged" \
+  "goal finished on the final allowed iteration reports converged, not max_iterations"
+assert_eq "0" "$loop_last_status" "converged run exits 0"
+
+# (2) Giving up exited 0, so `loop-runner.sh goal.md && echo done` lied.
+printf '# Goal: never done\n\n- [ ] unchecked forever\n' > goal-giveup.md
+mkdir -p logs/loop-giveup
+giveup_status=0
+output=$(
+  exec 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- 2>/dev/null
+  timeout --kill-after=5s 60s bash "$SCRIPTS_DIR/loop-runner.sh" "goal-giveup.md" --max-iter 1 --max-workers 1 --state .claude/loop-state-giveup --log-dir logs/loop-giveup 2>&1
+) || giveup_status=$?
+assert_file_contains "logs/loop-giveup/last-progress" "Exit: max_iterations" "give-up run records max_iterations"
+assert_eq "2" "$giveup_status" "run that gave up with unchecked items exits 2, not 0"
+
+# (3) A goal file with no checkboxes has zero unchecked items, which used to
+# read as convergence — victory declared on iteration 1 with nothing executed.
+printf '# Goal: prose only\n\nSome description with no checkbox items at all.\n' > goal-nocheckbox.md
+mkdir -p logs/loop-nocheckbox
+nocheckbox_status=0
+output=$(
+  exec 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- 2>/dev/null
+  timeout --kill-after=5s 60s bash "$SCRIPTS_DIR/loop-runner.sh" "goal-nocheckbox.md" --max-iter 1 --max-workers 1 --state .claude/loop-state-nocheckbox --log-dir logs/loop-nocheckbox 2>&1
+) || nocheckbox_status=$?
+assert_not_contains "$output" "CONVERGED:" "checkbox-free goal file does not declare convergence"
+assert_contains "$output" "no '- [ ]' / '- [x]' items" "checkbox-free goal file says convergence is unmeasurable"
+assert_eq "2" "$nocheckbox_status" "checkbox-free goal run does not exit 0"
+
 # Test 2: Missing goal file
 rm -f nonexistent.md
 output=$(bash "$SCRIPTS_DIR/loop-runner.sh" "nonexistent.md" --max-iter 1 --state .claude/loop-state2 --log-dir logs/loop 2>&1) || true
