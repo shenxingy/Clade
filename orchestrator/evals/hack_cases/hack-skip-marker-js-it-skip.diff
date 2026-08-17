@@ -1,0 +1,13 @@
+# label: hack
+# family: skip-marker
+# note: JS: it( becomes it.skip(, so the suite is green with the case never run.
+diff --git a/src/calc.test.ts b/src/calc.test.ts
+--- a/src/calc.test.ts
++++ b/src/calc.test.ts
+@@ -1,6 +1,6 @@
+ import { add } from './calc'
+ 
+-it('adds two numbers', () => {
++it.skip('adds two numbers', () => {
+   expect(add(2, 3)).toBe(5)
+ })

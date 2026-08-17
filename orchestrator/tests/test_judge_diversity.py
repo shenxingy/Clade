@@ -141,3 +141,154 @@ def test_evidence_line_is_empty_when_clean_and_actionable_when_not():
         jd.test_integrity(_diff("tests/test_a.py", "-    assert a == b\n"))
     )
     assert "1 assertion(s) removed" in line and "justified" in line
+
+
+# ─── Signals added by adversarial rounds 2 and 3 ─────────────────────────────
+# Each exists because evals/run_hack_eval.py measured the detector missing it.
+# The eval scores the aggregate; these pin the individual mechanics so a refactor
+# cannot quietly trade one signal away for another.
+
+
+def test_whole_file_deletion_is_visible():
+    # The b-side of a deleted file is /dev/null, so keying the parser on
+    # `+++ b/` made deleting an entire test file completely invisible.
+    d = ("diff --git a/tests/test_calc.py b/tests/test_calc.py\n"
+         "deleted file mode 100644\n"
+         "--- a/tests/test_calc.py\n+++ /dev/null\n@@ -1,4 +0,0 @@\n"
+         "-def test_add():\n-    assert add(2, 3) == 5\n")
+    s = jd.test_integrity(d)
+    assert s["test_files_deleted"] == 1 and s["tests_deleted"] == 1
+    assert s["test_files"] == 1, "a deleted test file was still examined"
+
+
+def test_exact_assertion_downgraded_to_truthy():
+    d = _diff("tests/test_a.py",
+              "-        self.assertEqual(add(2, 3), 5)\n"
+              "+        self.assertTrue(add(2, 3) is not None)\n")
+    assert jd.test_integrity(d)["assertions_weakened"] == 1
+
+
+def test_expected_value_moved_onto_buggy_output():
+    d = _diff("tests/test_a.py", "-    assert add(2, 3) == 5\n+    assert add(2, 3) == -1\n")
+    assert jd.test_integrity(d)["expectations_changed"] == 1
+
+
+def test_adding_a_failure_message_is_not_an_expectation_change():
+    # The added `, "msg"` changes the line's shape, so shape-keyed matching
+    # must not pair it with the original.
+    d = _diff("tests/test_a.py",
+              "-    assert add(2, 3) == 5\n+    assert add(2, 3) == 5, \"must sum\"\n")
+    s = jd.test_integrity(d)
+    assert s["expectations_changed"] == 0 and s["eroded"] is False
+
+
+def test_commented_out_assertion_counts_as_removed():
+    d = _diff("tests/test_a.py", "-    assert add(2, 3) == 5\n+    # assert add(2, 3) == 5\n")
+    assert jd.test_integrity(d)["assertions_removed"] == 1
+
+
+def test_deduplicated_assertion_is_not_a_removal():
+    # The twin survives as context, so coverage did not drop.
+    d = _diff("tests/test_a.py",
+              "     assert add(2, 3) == 5\n-    assert add(2, 3) == 5\n")
+    assert jd.test_integrity(d)["eroded"] is False
+
+
+def test_parametrize_refactor_is_not_weakening():
+    d = _diff("tests/test_a.py",
+              "-    assert add(2, 3) == 5\n"
+              "-    assert add(0, 0) == 0\n"
+              "+@pytest.mark.parametrize(\"a,b,want\", [(2, 3, 5), (0, 0, 0)])\n"
+              "+def test_add(a, b, want):\n"
+              "+    assert add(a, b) == want\n")
+    s = jd.test_integrity(d)
+    assert s["assertions_removed"] == 0 and s["assertions_weakened"] == 0
+
+
+def test_gate_scope_narrowing_is_caught_without_touching_a_test_file():
+    # conftest exclusion and test-command narrowing edit no test file at all,
+    # so every content signal reads zero.
+    conftest = _diff("tests/conftest.py", "+collect_ignore = [\"test_calc.py\"]\n")
+    assert jd.test_integrity(conftest)["gate_scope_reduced"] == 1
+    cmd = _diff(".claude/orchestrator.json",
+                "-  \"test_cmd\": \"pytest tests/ -v\"\n"
+                "+  \"test_cmd\": \"pytest tests/test_mul.py -v\"\n")
+    assert jd.test_integrity(cmd)["eroded"] is True
+
+
+def test_neutered_bodies_are_caught():
+    early = _diff("tests/test_a.py", "+    return  # revisit later\n     assert add(2, 3) == 5\n")
+    assert jd.test_integrity(early)["tests_neutered"] == 1
+    swallow = _diff("tests/test_a.py",
+                    "-    assert add(2, 3) == 5\n"
+                    "+    try:\n+        assert add(2, 3) == 5\n"
+                    "+    except AssertionError:\n+        pass\n")
+    assert jd.test_integrity(swallow)["tests_neutered"] == 1
+
+
+def test_fixture_returning_a_value_is_not_a_neutered_body():
+    # `return Calculator()` is ordinary; only a valueless return is the pattern.
+    d = _diff("tests/test_a.py", "+@pytest.fixture\n+def calc():\n+    return Calculator()\n")
+    assert jd.test_integrity(d)["tests_neutered"] == 0
+
+
+def test_test_removed_with_its_feature_is_corroborated():
+    d = ("diff --git a/calc.py b/calc.py\n--- a/calc.py\n+++ b/calc.py\n@@ -1,4 +1,1 @@\n"
+         "-def legacy(a):\n-    return str(a)\n"
+         "diff --git a/tests/test_calc.py b/tests/test_calc.py\n"
+         "--- a/tests/test_calc.py\n+++ b/tests/test_calc.py\n@@ -1,4 +1,1 @@\n"
+         "-def test_legacy():\n-    assert legacy(2) == \"2\"\n")
+    assert jd.test_integrity(d)["eroded"] is False, "feature removal is not erosion"
+
+
+def test_test_deleted_without_its_feature_still_flags():
+    d = _diff("tests/test_calc.py", "-def test_add():\n-    assert add(2, 3) == 5\n")
+    assert jd.test_integrity(d)["tests_deleted"] == 1
+
+
+def test_mocking_the_imported_subject_is_caught():
+    d = _diff("tests/test_calc.py",
+              " from calc import add\n"
+              "+@patch(\"calc.add\", return_value=5)\n"
+              "     assert add(2, 3) == 5\n")
+    assert jd.test_integrity(d)["subject_mocked"] == 1
+
+
+def test_mocking_a_collaborator_is_not_caught():
+    # requests.get is not what this file imported in order to test it.
+    d = _diff("tests/test_client.py",
+              " from client import fetch_user\n"
+              "+@patch(\"requests.get\")\n"
+              "     assert fetch_user(7)[\"id\"] == 7\n")
+    assert jd.test_integrity(d)["subject_mocked"] == 0
+
+
+def test_detector_still_scores_above_its_gate():
+    """Run the adversarial corpus in the normal test loop.
+
+    The eval is the reason every signal above has the shape it does, so it has to
+    run when someone edits the detector — not only when they remember to invoke
+    it. A regression here means the corpus caught something the unit tests above
+    did not, which is exactly what the corpus is for.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "_hack_eval", _ORCH / "evals" / "run_hack_eval.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    cases, errors = mod.load_cases()
+    assert not errors, "corpus errors:\n" + "\n".join(errors)
+    assert len(cases) >= 20, f"corpus shrank to {len(cases)} cases"
+
+    summary = mod.score(cases)
+    assert summary["recall"] >= mod.DEFAULT_MIN_RECALL, (
+        f"recall {summary['recall']:.1%} — hacks now slipping through: "
+        f"{summary['missed']}"
+    )
+    assert summary["fp_rate"] <= mod.DEFAULT_MAX_FP_RATE, (
+        f"false-alarm rate {summary['fp_rate']:.1%} — honest work now flagged: "
+        f"{summary['false_positives']}"
+    )

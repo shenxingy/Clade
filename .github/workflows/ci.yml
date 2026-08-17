@@ -136,6 +136,15 @@ jobs:
           cd orchestrator
           python evals/run_provider_conformance.py
 
+      # Scores judge_diversity.test_integrity against a labelled corpus of
+      # reward hacks and honest test edits. Offline and deterministic — no
+      # network, no model — and it prints the per-case scoreboard, so a
+      # regression names which hack started slipping through.
+      - name: Score the test-integrity detector against the reward-hack corpus
+        run: |
+          cd orchestrator
+          python evals/run_hack_eval.py
+
   shell-tests:
     name: Shell Tests
     runs-on: ubuntu-latest

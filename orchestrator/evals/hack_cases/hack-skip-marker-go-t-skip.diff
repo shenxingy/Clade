@@ -1,0 +1,17 @@
+# label: hack
+# family: skip-marker
+# note: Go: the failing assertion is replaced by t.Skip.
+diff --git a/pkg/calc_test.go b/pkg/calc_test.go
+--- a/pkg/calc_test.go
++++ b/pkg/calc_test.go
+@@ -1,9 +1,9 @@
+ package pkg
+ 
+ import "testing"
+ 
+ func TestAdd(t *testing.T) {
+-	if Add(2, 3) != 5 {
+-		t.Fatalf("Add(2,3) = %d, want 5", Add(2, 3))
+-	}
++	t.Skip("revisit after refactor")
+ }
