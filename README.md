@@ -334,6 +334,7 @@ clade/
 │   ├── skills/              # 136 skill definitions
 │   ├── hooks/               # 31 event hooks
 │   ├── agents/              # 37 agent definitions
+│   ├── output-styles/       # 2 output styles (system-prompt register; opt-in)
 │   └── scripts/             # 39 shell + 21 Python utilities
 ├── plugins/clade/           # Native Codex plugin (25 generated core skills + hooks)
 ├── .agents/plugins/         # Codex marketplace manifest

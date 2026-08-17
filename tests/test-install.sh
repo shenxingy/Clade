@@ -136,6 +136,35 @@ fi
   && pass "rule-injector.sh installed and executable" \
   || fail "rule-injector.sh installed and executable"
 
+# Output styles: the one primitive that edits the SYSTEM prompt, so CLAUDE.md
+# cannot substitute for it. Shipped but never auto-activated.
+[[ -d "$CLAUDE_DIR/output-styles" ]] \
+  && pass "output-styles dir created (~/.claude/output-styles)" \
+  || fail "output-styles dir created (~/.claude/output-styles)"
+
+style_count=0; style_bad=0
+for style in "$CLAUDE_DIR/output-styles/"*.md; do
+  [[ -f "$style" ]] || continue
+  style_count=$((style_count + 1))
+  # A style missing keep-coding-instructions silently DROPS Claude Code's
+  # built-in engineering instructions — catastrophic for a coding toolkit.
+  head -1 "$style" | grep -q '^---$' || style_bad=$((style_bad + 1))
+  grep -q '^description:' "$style" || style_bad=$((style_bad + 1))
+  grep -q '^keep-coding-instructions: true$' "$style" || style_bad=$((style_bad + 1))
+done
+if [[ $style_count -gt 0 && $style_bad -eq 0 ]]; then
+  pass "all $style_count output styles have frontmatter and keep coding instructions"
+else
+  fail "output styles well-formed" "$style_count styles, $style_bad frontmatter problems"
+fi
+
+# Shipping a style must not silently change how every session talks.
+if grep -q '"outputStyle"' "$CLAUDE_DIR/settings.json" 2>/dev/null; then
+  fail "install does not activate an output style" "settings.json sets outputStyle"
+else
+  pass "install ships output styles without activating one"
+fi
+
 # Mid-flight worker steering: mailbox-drain.sh ships with the hook set
 [[ -x "$CLAUDE_DIR/hooks/mailbox-drain.sh" ]] \
   && pass "mailbox-drain.sh installed and executable" \
@@ -273,6 +302,12 @@ mkdir -p "$CLAUDE_DIR/skills/ads/references/references" "$CLAUDE_DIR/skills/priv
 echo "stale nested copy" > "$CLAUDE_DIR/skills/ads/references/references/stale.md"
 printf '%s\n' '---' 'name: private' 'description: User-owned test skill.' '---' > "$CLAUDE_DIR/skills/private/SKILL.md"
 
+# ~/.claude/output-styles/ is shared with the user's own styles, so the installer
+# copies by name instead of mirroring the directory — a mirror would delete these.
+mkdir -p "$CLAUDE_DIR/output-styles"
+printf '%s\n' '---' 'name: My Own Style' 'description: User-authored.' '---' \
+  > "$CLAUDE_DIR/output-styles/my-own.md"
+
 install_log2="$SANDBOX/install-2.log"
 if bash "$SRC/install.sh" </dev/null >"$install_log2" 2>&1; then
   pass "second install.sh run exits 0 (idempotent)"
@@ -295,6 +330,10 @@ fi
 [[ -f "$CLAUDE_DIR/skills/private/SKILL.md" ]] \
   && pass "reinstall preserves unrelated user-owned skills" \
   || fail "reinstall preserves unrelated user-owned skills"
+
+[[ -f "$CLAUDE_DIR/output-styles/my-own.md" ]] \
+  && pass "reinstall preserves user-authored output styles" \
+  || fail "reinstall preserves user-authored output styles"
 
 # Regression for ab06c33: plain cp used to clobber the learned-rules section
 sentinel_count=$(grep -c "$SENTINEL_RULE" "$CLAUDE_DIR/CLAUDE.md" 2>/dev/null || true)

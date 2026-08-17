@@ -8,7 +8,7 @@
 - Verify command: cd orchestrator && find . \( -name .venv -o -name node_modules -o -name __pycache__ \) -prune -o -name "*.py" -print | xargs -n1 python -m py_compile
 
 ## Features (Behavior Anchors)
-- install.sh: running `./install.sh` copies skills/hooks/scripts/agents to ~/.claude/ without errors
+- install.sh: running `./install.sh` copies skills/hooks/scripts/agents/output-styles to ~/.claude/ without errors, and activates no output style
 - slt: running `slt` cycles the statusline mode (symbol → percent → number → off)
 - /commit: creates repository-adaptive checkpoint commits and publishes when the active delivery or repository policy authorizes it
 - /loop: given a goal file, runs supervisor+worker iterations until converged or max-iter
@@ -65,6 +65,12 @@ python3 configs/scripts/regen-codex-plugin.py --check
 - `hooks/` — pre/post hooks for Claude Code events (wired via `settings-hooks.json`)
 - `scripts/` — shell utilities (e.g., `committer.sh`)
 - `agents/` — subagent definitions for the Agent tool
+- `output-styles/` — system-prompt register overrides selected via `/config`. The
+  only primitive here that edits the *system* prompt rather than appending a user
+  message, so it reaches turns `CLAUDE.md` cannot. All ship
+  `keep-coding-instructions: true` (omitting it silently drops Claude Code's
+  built-in engineering instructions) and none is activated by `install.sh` —
+  selection stays the user's.
 
 **Correction-pairing pipeline** (the learn-from-corrections loop — captures the "AI did X → it got rejected" pair so a rule is grounded in the real diff, not just words):
 - `edit-shadow-detector.sh` (PostToolUse, async) logs files Claude writes → session-keyed shadow at `/tmp/claude-edit-shadows/session-<session_id>.jsonl`

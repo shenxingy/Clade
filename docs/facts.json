@@ -52,6 +52,18 @@
       ]
     },
     {
+      "name": "output_styles",
+      "value": 2,
+      "derive": {
+        "type": "count_glob",
+        "pattern": "configs/output-styles/*.md"
+      },
+      "patterns": [
+        "output-styles/\\s+# (\\d+) output styles",
+        "^- \\*\\*(\\d+) output styles\\*\\*"
+      ]
+    },
+    {
       "name": "scripts",
       "value": 39,
       "derive": {

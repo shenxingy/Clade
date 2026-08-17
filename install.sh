@@ -281,6 +281,24 @@ if [[ -d "$SCRIPT_DIR/configs/templates" ]]; then
   echo "  Installed: $(ls "$SCRIPT_DIR/configs/templates/" | tr '\n' ' ')"
 fi
 
+# ─── 6c-2. Deploy output styles ──────────────────────────────────────
+# Output styles are the one Claude Code primitive that edits the SYSTEM prompt
+# rather than appending a user message, so they reach turns CLAUDE.md cannot.
+# Copied by name, never mirrored: ~/.claude/output-styles/ is also where a user
+# keeps their own, and this installer has no business deleting those.
+# None is activated here — selection is the user's, via /config or the
+# `outputStyle` setting.
+
+echo "Installing output styles..."
+if compgen -G "$SCRIPT_DIR/configs/output-styles/*.md" > /dev/null 2>&1; then
+  mkdir -p "$CLAUDE_DIR/output-styles"
+  cp "$SCRIPT_DIR/configs/output-styles/"*.md "$CLAUDE_DIR/output-styles/"
+  echo "  Installed: $(ls "$SCRIPT_DIR/configs/output-styles/"*.md | xargs -I{} basename {} | tr '\n' ' ')"
+  echo "  Activate with /config → Output style (none is enabled by default)"
+else
+  echo "  (no output styles to install)"
+fi
+
 # ─── 6d. Deploy + configure status line ──────────────────────────────
 
 echo "Configuring status line..."

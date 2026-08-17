@@ -46,6 +46,7 @@
 | B5 | `/loop` skill prompt contains: goal file input → supervisor plans → workers execute → convergence check | ✅ | 2026-04-10 | |
 | B6 | `/review` skill prompt contains: VERIFY.md load → checkpoint loop → fix-in-session → convergence | ✅ | 2026-04-15 | 9 steps total (original 7 + new Step 5.4 E2E interrupts + Step 5.5 SEO) |
 | B7 | `loop-runner.sh` exists, is executable, and passes `bash -n` syntax check | ✅ | 2026-04-10 | -rwxrwxr-x, syntax OK |
+| B8 | `install.sh` deploys `configs/output-styles/*.md` to `~/.claude/output-styles/`, activates none, and leaves user-authored styles in place | ✅ | 2026-08-16 | `tests/test-install.sh` 58/58: dir created, both styles carry `keep-coding-instructions: true`, no `outputStyle` written to settings.json, `my-own.md` survives reinstall |
 
 ## Loop Checkpoint Recovery
 <!-- configs/scripts/loop_checkpoint.py + loop-runner.sh, since commit 25949fe. Identity-bound: a checkpoint only resumes when checkout_root, goal_file, branch, and head_sha all match the current run; --resume is required and normal launches never read stale checkpoints. -->
