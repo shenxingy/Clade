@@ -316,8 +316,9 @@ def parse_requirements(
     if raw is None:
         return tuple(defaults)
     parsed: list[CapabilityRequirement] = []
+    items: list[tuple[Any, Any]]
     if isinstance(raw, Mapping):
-        items = raw.items()
+        items = list(raw.items())
     elif isinstance(raw, list | tuple):
         items = []
         for item in raw:
