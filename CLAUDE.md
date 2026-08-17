@@ -112,7 +112,7 @@ reset_handoff.py     ← compact typed context seeds for clean loop resets
 run_contract.py      ← repository-owned autonomous-run policy (optional CLADE_WORKFLOW.md)
 run_budget.py        ← pure run-budget policy + trace attribution
 merge_policy.py      ← truthful pull-request history selection
-judge_diversity.py   ← deterministic review checks independent of the LLM oracle
+judge_diversity.py   ← deterministic review checks independent of the LLM oracle, plus test-integrity signals (counted from the diff, fed to the oracle, never an auto-fail)
 status_snapshot.py   ← provider-neutral status truth rendered by surface adapters
 worker_phase_graph.py ← declared worker/task/loop lifecycle graph (additive observability)
 compatibility_telemetry.py ← secret-free compatibility-window counters

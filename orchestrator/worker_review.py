@@ -24,6 +24,7 @@ from worker_utils import (
     _strip_error_context,
 )
 import cascade_policy
+from judge_diversity import test_integrity, test_integrity_evidence
 
 logger = logging.getLogger(__name__)
 
@@ -437,6 +438,7 @@ def _build_oracle_task_block(
     task_description: str,
     acceptance_criteria: list[str] | None,
     test_evidence: str = "",
+    integrity_evidence: str = "",
 ) -> str:
     """Build the task block injected into oracle prompts.
 
@@ -458,6 +460,13 @@ def _build_oracle_task_block(
         )
         block += "\n\n" + _FIX_ONE_STEP_CRITERION
         block += "\n\n" + _TEST_INTEGRITY_CRITERION
+    # Hand the judge the measured delta rather than relying on it to spot the
+    # weakening unaided — judge_diversity counted it from the diff already, and
+    # this is the pairing (quality judge + behavioural signal) that the criterion
+    # above is weakest without. Attached regardless of fix-intent: a diff that
+    # deletes assertions is worth explaining whatever the task called itself.
+    if integrity_evidence:
+        block += "\n\n" + integrity_evidence
     if _detect_perf_intent(task_description):
         block += "\n\n" + _PERF_MAGNITUDE_CRITERION
     if test_evidence:
@@ -799,7 +808,14 @@ async def _oracle_review(
     reviewed — callers must tag the result 'unreviewed', never 'approved'
     (lovesegfault: fail-open must not masquerade as a review).
     """
-    task_block = _build_oracle_task_block(task_description, acceptance_criteria, test_evidence)
+    # Computed over the WHOLE diff before any chunking. Chunked review drops
+    # everything past chunk 3, so a weakened assertion in a large refactor is
+    # exactly what a per-chunk look would miss; the count travels in every
+    # chunk's task block instead.
+    integrity_evidence = test_integrity_evidence(test_integrity(diff_text))
+    task_block = _build_oracle_task_block(
+        task_description, acceptance_criteria, test_evidence, integrity_evidence
+    )
     # Risk-based dispatch (Takanori Sano): a diff touching a security/data-
     # sensitive surface gets extra resample votes regardless of its size — a
     # 1-line change to billing/auth code must not get the same single-shot

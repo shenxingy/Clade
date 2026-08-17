@@ -207,7 +207,9 @@ def test_documented_leaf_modules_import_no_project_code() -> None:
     depend on without becoming non-leaves themselves; worker_review -> worker_utils
     mirrors the pre-existing worker_tldr -> fault_localize precedent, and
     pytest_report is shared by worker_utils, worker_tldr and evals/ precisely so
-    they cannot drift on what a passing test looks like)."""
+    they cannot drift on what a passing test looks like; worker_review ->
+    judge_diversity pairs the LLM test-integrity criterion with the deterministic
+    count that backs it)."""
     leaves = {
         "ideas", "process_manager", "worker_tldr", "worker_review",
         "worker_utils", "worker_hydrate", "condensers", "event_stream",
@@ -222,7 +224,7 @@ def test_documented_leaf_modules_import_no_project_code() -> None:
             continue
         heavy = graph[leaf] - {
             "config", "cascade_policy", "fault_localize", "worker_utils",
-            "runtime_redaction", "pytest_report",
+            "runtime_redaction", "pytest_report", "judge_diversity",
         }
         if heavy:
             violations.append(f"{leaf}: imports {sorted(heavy)} at module level")

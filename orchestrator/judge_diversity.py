@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import signal
 import subprocess
@@ -153,6 +154,112 @@ def deterministic_checks(worktree_dir: str | Path, changed_files: list[str]) -> 
         checks.append({"name": "test_suite", "ok": ok, "evidence": evidence})
 
     return {"passed": all(check["ok"] for check in checks), "checks": checks}
+
+
+# ─── Test-integrity signals (deterministic counterpart to the oracle) ────────
+#
+# worker_review's _TEST_INTEGRITY_CRITERION asks the LLM oracle to notice a diff
+# that reaches green by weakening tests. That is the single most-documented
+# coding-agent reward hack, and asking one judge to spot it unaided in a large
+# diff is exactly the arrangement this module exists to complement: a judge can
+# be argued past, a count of removed assertions cannot.
+#
+# These are SIGNALS, not a verdict, and deliberately excluded from `passed`.
+# Deleting a test is sometimes right — an obsolete case, a genuine refactor —
+# so a hard gate here would fire on honest work, and a gate that cries wolf gets
+# routed around, which leaves the project worse off than no gate. The job is to
+# make the delta impossible to overlook and hand it to the judge, not to guess
+# intent. Net counts (removed minus added) mean a test MOVED between two files
+# in the same diff nets to zero; only a real disappearance shows up.
+
+_TEST_PATH_RE = re.compile(
+    r"(^|/)(tests?|__tests__|spec)/|(^|/)test_[^/]+\.py$|_test\.(py|go|rb|rs)$"
+    r"|\.(test|spec)\.[jt]sx?$|_spec\.rb$",
+    re.I,
+)
+
+_ASSERT_RE = re.compile(
+    r"\bassert\b|\bassert(_eq|_ne)?!|self\.assert\w+\(|pytest\.raises"
+    r"|\bt\.(Error|Fatal)f?\(|\b(require|assert)\.\w+\("
+    r"|\bexpect\(|\.should\b|\bchai\.",
+)
+
+_TEST_DEF_RE = re.compile(
+    r"^\s*(async\s+)?def\s+test\w*\s*\(|^\s*func\s+(Test|Benchmark|Fuzz)\w*\s*\("
+    r"|^\s*(it|test)\s*(\.each)?\s*[(`]|^\s*#\[test\]",
+)
+
+_SKIP_RE = re.compile(
+    r"@pytest\.mark\.(skip|skipif|xfail)|@unittest\.skip|pytest\.skip\("
+    r"|\bt\.Skip\w*\(|\b(it|test|describe)\.(skip|todo)\s*\(|\bx(it|test|describe)\s*\("
+    r"|^\s*#\[ignore\]",
+)
+
+
+def test_integrity(diff: str) -> dict:
+    """Count test-weakening signals in a unified diff.
+
+    Returns counts plus ``eroded`` (any signal present) and ``test_files``, the
+    number of test files the diff actually touched. That last field is the
+    difference between "examined the tests, found nothing" and "there were no
+    tests to examine" — an all-zero result is meaningless without it.
+    """
+    counts = {"assertions_removed": 0, "tests_deleted": 0, "skips_added": 0}
+    test_files: set[str] = set()
+    if not diff:
+        return {**counts, "eroded": False, "test_files": 0}
+
+    in_test_file = False
+    for line in diff.splitlines():
+        if line.startswith("+++ b/"):
+            path = line[6:]
+            in_test_file = bool(_TEST_PATH_RE.search(path))
+            if in_test_file:
+                test_files.add(path)
+            continue
+        if line.startswith(("--- ", "+++ ", "@@", "diff --git", "index ")):
+            continue
+        if not in_test_file or not line or line[0] not in "+-":
+            continue
+
+        body, added = line[1:], line[0] == "+"
+        delta = 1 if added else -1
+        # Removals are the signal, so assertions/definitions count DOWN on add:
+        # the stored number is net-removed and a rewrite that keeps the count
+        # nets to zero.
+        if _ASSERT_RE.search(body):
+            counts["assertions_removed"] -= delta
+        if _TEST_DEF_RE.search(body):
+            counts["tests_deleted"] -= delta
+        if _SKIP_RE.search(body):
+            counts["skips_added"] += delta
+
+    counts = {k: max(0, v) for k, v in counts.items()}
+    return {
+        **counts,
+        "eroded": any(counts.values()),
+        "test_files": len(test_files),
+    }
+
+
+def test_integrity_evidence(signals: dict) -> str:
+    """One line the oracle can act on, or '' when there is nothing to say."""
+    if not signals.get("eroded"):
+        return ""
+    parts = [
+        f"{signals['assertions_removed']} assertion(s) removed"
+        if signals.get("assertions_removed") else "",
+        f"{signals['tests_deleted']} test definition(s) deleted"
+        if signals.get("tests_deleted") else "",
+        f"{signals['skips_added']} skip/xfail marker(s) added"
+        if signals.get("skips_added") else "",
+    ]
+    detail = ", ".join(p for p in parts if p)
+    return (
+        f"Test-integrity signal across {signals.get('test_files', 0)} test file(s): "
+        f"{detail}. Confirm each is justified by the task rather than a way to "
+        f"reach a passing suite; if any is not, that alone is grounds to reject."
+    )
 
 
 def changed_files_from_diff(diff: str) -> list[str]:
