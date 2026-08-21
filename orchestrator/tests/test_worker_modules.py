@@ -607,6 +607,66 @@ tests/test_foo.py::TestBaz::test_error1 ERROR                       [  4%]
         assert _parse_pytest_results(out) == {"tests/t.py::test_a": True}
 
 
+class TestPytestLauncher:
+    """Which pytest gets invoked, and what happens when none resolves.
+
+    The ordering is the whole point. Emitting a bare `pytest` that does not
+    resolve is not a loud failure: the shell says "command not found", the
+    parser finds no result lines, and the caller receives {} — which
+    _find_intramorphic_regressions cannot distinguish from "nothing
+    regressed". Every macOS run took that branch, so the regression detector
+    was structurally incapable of firing there.
+    """
+
+    @staticmethod
+    def _proj(tmp_path, *, venv=False, marker="pyproject.toml"):
+        tmp_path.mkdir(parents=True, exist_ok=True)
+        if marker:
+            (tmp_path / marker).write_text("[project]\nname='x'\nversion='0'\n")
+        if venv:
+            binpath = tmp_path / ".venv" / "bin"
+            binpath.mkdir(parents=True)
+            (binpath / "pytest").write_text("#!/bin/sh\n")
+        return tmp_path
+
+    def test_project_venv_wins(self, tmp_path):
+        from worker_utils import _pytest_launcher
+        proj = self._proj(tmp_path, venv=True)
+        # The project's own deps beat anything on PATH, always.
+        assert str(proj / ".venv" / "bin" / "pytest") in _pytest_launcher(proj)
+
+    def test_bare_pytest_only_when_it_resolves(self, tmp_path, monkeypatch):
+        import worker_utils
+        monkeypatch.setattr(worker_utils.shutil, "which", lambda n: "/usr/bin/pytest")
+        assert worker_utils._pytest_launcher(self._proj(tmp_path)) == "pytest"
+
+    def test_falls_back_to_this_interpreter_when_pytest_is_not_on_path(self, tmp_path, monkeypatch):
+        import worker_utils
+        monkeypatch.setattr(worker_utils.shutil, "which", lambda n: None)
+        launcher = worker_utils._pytest_launcher(self._proj(tmp_path))
+        assert "-m pytest" in launcher and sys.executable in launcher
+        # Never emit the name that does not resolve.
+        assert not launcher.startswith("pytest")
+
+    def test_none_when_the_project_is_not_a_pytest_project(self, tmp_path, monkeypatch):
+        import worker_utils
+        monkeypatch.setattr(worker_utils.shutil, "which", lambda n: None)
+        assert worker_utils._pytest_launcher(self._proj(tmp_path, marker=None)) is None
+
+    def test_pytest_ini_also_counts_as_a_marker(self, tmp_path, monkeypatch):
+        import worker_utils
+        monkeypatch.setattr(worker_utils.shutil, "which", lambda n: "/usr/bin/pytest")
+        assert worker_utils._pytest_launcher(self._proj(tmp_path, marker="pytest.ini")) == "pytest"
+
+    def test_a_venv_path_containing_a_space_is_quoted(self, tmp_path):
+        from worker_utils import _pytest_launcher
+        proj = self._proj(tmp_path / "a dir", venv=True)
+        launcher = _pytest_launcher(proj)
+        # Unquoted, the shell would split this into two arguments and run a
+        # command that does not exist -- silently, back to an empty baseline.
+        assert launcher.startswith("'") or "\\ " in launcher
+
+
 class TestCaptureTestBaseline:
     """The baseline is the entire input to intramorphic regression detection.
     Its default command used to be `-v --tb=no -q`, which pytest scores as
