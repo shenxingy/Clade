@@ -147,7 +147,11 @@ CONTEXT="A user correction was detected in the prompt above. After addressing th
    - [YYYY-MM-DD] <domain> (<root-cause>): <do this> instead of <not this>
    Example: - [2026-02-25] imports (settings-disconnect): Use @/ path aliases and verify tsconfig paths are set — not bare relative paths that break on move
 4. In one sentence: how could you have caught this BEFORE the user pointed it out? (e.g., 'I should have checked cross-platform compat when using shell builtins')
-5. Keep rules.md under $RULES_LIMIT lines — remove outdated rules if needed"
+5. Keep rules.md under $RULES_LIMIT RULE lines — retire the least useful rules
+   when over. The header block at the top of the file (the format spec and the
+   root-cause list) is NOT a rule and does NOT count toward the limit — never
+   delete it. It was trimmed away once, and it is the only in-file statement of
+   the format that auto-audit.sh requires before it will promote anything."
 
 # ─── Concrete signal: the actual change that was rejected (the labeled pair) ──
 # Gate: we only reach here on an EXPLICIT correction. Silent reverts/edits stay
