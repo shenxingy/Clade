@@ -12,6 +12,7 @@ import os
 import re
 import shlex
 import signal
+import subprocess
 import time
 from pathlib import Path
 
@@ -502,22 +503,48 @@ def _estimate_cost(input_tokens: int, output_tokens: int) -> float:
 
 
 def _pgid_alive_and_claude_like(pgid: int) -> bool:
-    """Best-effort (Linux /proc) check that `pgid` is still a live claude-worker
-    process before it gets killed. PIDs are reused by the OS, so after a
-    restart a remembered pgid could — in the worst case — belong to a totally
-    unrelated process by the time recovery runs; killing on cmdline content is
-    a cheap extra check, not a guarantee. Returns True (safe to kill) whenever
-    the check can't be performed (non-Linux, unreadable /proc, already gone —
-    killpg's own ProcessLookupError handles that case) so recovery still
-    reaps real orphans on platforms without /proc."""
+    """Best-effort check that `pgid` is still a live claude-worker process
+    before it gets killed. PIDs are reused by the OS, so after a restart a
+    remembered pgid could — in the worst case — belong to a totally unrelated
+    process by the time recovery runs; killing on cmdline content is a cheap
+    extra check, not a guarantee.
+
+    Two readers, because the orchestrator runs on both: /proc where it exists,
+    and `ps` where it does not. The /proc-only version returned True on macOS
+    for EVERY pgid, which meant the PID-reuse net was simply absent on the
+    machine most of this development happens on — recovery there would killpg
+    a recycled pgid belonging to someone else's process. CI is Linux-only, so
+    it could never see that; the macOS test failed for a year's worth of
+    commits and read as an environment quirk.
+
+    Returns True (safe to kill) whenever the check genuinely cannot be
+    performed, so recovery still reaps real orphans rather than silently
+    never reaping. "Already gone" also returns True — killpg's own
+    ProcessLookupError handles that case harmlessly.
+    """
     cmdline_path = Path(f"/proc/{pgid}/cmdline")
     try:
-        if not cmdline_path.exists():
-            return True  # no /proc (non-Linux) or already exited — proceed
-        cmdline = cmdline_path.read_bytes().replace(b"\x00", b" ").decode(errors="replace")
-        return "claude" in cmdline
+        if cmdline_path.exists():
+            cmdline = cmdline_path.read_bytes().replace(b"\x00", b" ").decode(errors="replace")
+            return "claude" in cmdline
     except Exception:
-        return True  # unreadable — proceed rather than silently never-reap
+        return True  # unreadable /proc — proceed rather than silently never-reap
+
+    # No /proc: macOS/BSD. `ps -p <pgid> -o command=` prints the group leader's
+    # argv (empty with rc=1 when the pid is gone), which is the same question
+    # /proc/<pid>/cmdline answers. Bounded, because a hung ps must not wedge
+    # startup recovery.
+    try:
+        proc = subprocess.run(
+            ["ps", "-p", str(int(pgid)), "-o", "command="],
+            capture_output=True, text=True, timeout=5,
+        )
+    except Exception:
+        return True  # no usable ps — same fail-open contract as above
+    command = (proc.stdout or "").strip()
+    if not command:
+        return True  # already exited, or ps could not see it
+    return "claude" in command
 
 
 async def _recover_orphaned_tasks(task_queue: Any) -> int:
