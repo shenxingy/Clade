@@ -138,9 +138,11 @@ Checkpoint sequence:
 
 1. Review the scoped diff and secret risk.
 2. Run affected tests/lint/typecheck—full CI is not required yet.
-3. Stage explicit task files only; honor repository commit/signing/DCO rules.
-4. Commit with the repository's message convention.
-5. Record evidence:
+3. Judge any test the diff adds or changes (below). A green run is the input to
+   that judgement, not a substitute for it.
+4. Stage explicit task files only; honor repository commit/signing/DCO rules.
+5. Commit with the repository's message convention.
+6. Record evidence:
 
 ```bash
 python3 "$DELIVERY_PY" checkpoint \
@@ -148,6 +150,27 @@ python3 "$DELIVERY_PY" checkpoint \
   --command "<focused verification command>" \
   --result "<actual result>"
 ```
+
+### Judging a test
+
+Pass rate and coverage say a test ran. Neither says it would have noticed the
+bug. Judge on three questions, in order:
+
+- **Where does it observe?** The assertion must read state on the far side of
+  the boundary the change crosses. A return value, a log line, a mock's
+  recorded call, and "no exception raised" all sit on the near side and can be
+  green while the user-visible effect is broken. Name the boundary in the test
+  name or one comment, so a reviewer can check it without knowing the feature.
+- **Would it go red?** Revert the fix, or gut the implementation, and require
+  the test to fail. A test that survives that is decoration. This costs one
+  command and catches what coverage cannot.
+- **What did it not cover?** Report the denominator with the verdict: lanes
+  skipped and why, devices unavailable, files the run never loaded. A gate that
+  reports PASS over a subset it does not name is the most expensive kind of
+  green, because it stops anyone else from looking.
+
+Prefer refusing to run over reporting a green the run cannot back — an
+unavailable lane is an unproven lane, not a passing one.
 
 Push only when the delivery authorization or repository policy permits it.
 Publication is useful after a green checkpoint, but a local commit does not
