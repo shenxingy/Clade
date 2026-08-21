@@ -103,6 +103,28 @@ assert_verdict "force push to main"        'git push --force origin main'       
 assert_verdict "SQL DROP"                  'psql -c "DROP DATABASE prod"'         BLOCK
 assert_verdict "ordinary command"          'git status'                           ALLOW
 
+section "Self-killing pkill -f"
+# `pkill -f PAT` matches full command lines, including the launching shell's.
+# In an ssh/bash -c one-liner the wrapper's own argv carries PAT, so the shell
+# kills itself: exit 255/144, and everything after the && silently never runs.
+# It reads as an ssh failure, which is where the debugging time goes.
+assert_verdict "ssh one-liner, pattern twice" \
+  'ssh lynx "pkill -f train.py; python train.py --resume"'    BLOCK
+assert_verdict "ssh one-liner, single occurrence still self-matches" \
+  'ssh castor "pkill -f crop_faces"'                          BLOCK
+assert_verdict "compound command, pattern twice" \
+  'pkill -f monitor.sh && ./monitor.sh'                       BLOCK
+assert_verdict "bash -c wrapper" \
+  'bash -c "pkill -f worker && ./worker"'                     BLOCK
+# The other direction matters more than the blocks: a guard that fires on
+# ordinary work is one you learn to click past.
+assert_verdict "bare local pkill -f stays allowed" \
+  'pkill -f uvicorn'                                          ALLOW
+assert_verdict "pkill without -f stays allowed" \
+  'pkill -9 dotnet'                                           ALLOW
+assert_verdict "grepping for a process name is not a kill" \
+  'ps aux | grep train.py'                                    ALLOW
+
 # ─── Summary ─────────────────────────────────────────────────────────
 printf "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
 if [[ "$TESTS_FAILED" -eq 0 ]]; then

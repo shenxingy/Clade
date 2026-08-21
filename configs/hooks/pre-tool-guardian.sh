@@ -162,5 +162,35 @@ if echo "$COMMAND" | grep -qiE '\bDROP[[:space:]]+(DATABASE|TABLE|SCHEMA)\b'; th
   exit 0
 fi
 
+# ─── Self-killing pkill -f ───────────────────────────────────────────
+# `pkill -f PAT` matches against full command lines, including the command line
+# of the shell that launched it. Inside an ssh one-liner or a compound command
+# whose own text contains PAT, the launching shell matches its own pattern and
+# kills itself: exit 255/144, and the work after the `&&` never runs. It looks
+# like the remote host rejected the connection, so the time goes into debugging
+# ssh. Blocked only in the shape that actually self-destructs, because a guard
+# that fires on ordinary `pkill -f name` is one you learn to ignore.
+if echo "$COMMAND" | grep -qE 'pkill[[:space:]]+(-[a-zA-Z]*f|--full)'; then
+  _PK_PAT=$(echo "$COMMAND" \
+    | sed -nE "s/.*pkill[[:space:]]+(-[a-zA-Z]*f|--full)[[:space:]]+['\"]?([^'\"[:space:]]+).*/\2/p" \
+    | head -1)
+  if [[ -n "$_PK_PAT" ]]; then
+    # Occurrences of the pattern in the command the shell will carry.
+    _PK_N=$(echo "$COMMAND" | grep -oF -- "$_PK_PAT" | wc -l | tr -d ' ')
+    # A wrapped/remote one-liner carries the pattern in the wrapper's own argv,
+    # so a single textual occurrence is still a self-match there.
+    _PK_WRAPPED=false
+    echo "$COMMAND" | grep -qE '(^|[[:space:]])(ssh|bash[[:space:]]+-c|sh[[:space:]]+-c)([[:space:]]|$)' \
+      && _PK_WRAPPED=true
+    if [[ "${_PK_N:-0}" -ge 2 || "$_PK_WRAPPED" == true ]]; then
+      jq -n \
+        --arg pat "$_PK_PAT" \
+        --arg cmd "$COMMAND" \
+        '{"decision":"block","reason":("pkill -f " + $pat + " will match the command line of the shell running it, so this kills its own launcher (exit 255/144) and everything after it never runs. Fixes: put the pkill in a script file, so the pattern is not in the caller argv; anchor the pattern (\"name\\.py --flag\"); and in monitors use the bracket trick pgrep \"na[m]e\". Command: " + $cmd)}'
+      exit 0
+    fi
+  fi
+fi
+
 # ─── Allow everything else ───────────────────────────────────────────
 exit 0
