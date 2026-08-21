@@ -369,11 +369,22 @@ def _iter_diff_files(diff: str):
 def test_integrity(diff: str) -> dict:
     """Count test-weakening signals in a unified diff.
 
-    Five signals, each a distinct way a suite gets to green without the code
+    Nine signals, each a distinct way a suite gets to green without the code
     getting better, plus ``test_files`` — the number of test files actually
     examined. That last field is the difference between "looked at the tests and
     found nothing" and "there were no tests to look at"; an all-zero result means
     nothing without it.
+
+    Every signal here is SUBTRACTIVE: it fires on a diff that removes, skips,
+    weakens, or narrows something that already existed. That is deliberate, and
+    it is also the limit. A brand-new test that never tested anything —
+    asserting a call's return value instead of the state the call was supposed
+    to change, replacing the subject under test with a double, or asserting a
+    tautology — subtracts nothing and scores clean here, with ``eroded`` False
+    and no evidence forwarded to the oracle. Confirmed by probe, not assumed.
+    On greenfield and porting work, where nearly every test is additive, this
+    function is close to blind; the oracle prompt and the human reviewer are
+    the only things covering that case today.
 
     Measured, not asserted: ``evals/run_hack_eval.py`` scores this function
     against a labelled corpus of hacks and honest test edits. Re-run it after any
