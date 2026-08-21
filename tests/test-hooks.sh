@@ -425,6 +425,23 @@ jq -e '.hooks.SessionStart[] | select(.matcher=="startup|clear|fork")' "$SETTING
   && pass "SessionStart baseline still covers startup|clear|fork" \
   || fail "SessionStart baseline still covers startup|clear|fork"
 
+# ─── type:prompt hooks must carry statusMessage ──────────────────────
+# Without it Claude Code renders the hook's ENTIRE prompt into the UI. The
+# rule was written down in 2026-04 and violated anyway by precompact-state-save,
+# whose prompt is ~900 chars — dumped at the exact moment context is scarce and
+# the user is least able to absorb it. Prose did not hold the line; this does.
+_missing=$(jq -r '
+  .hooks | to_entries[] as $ev
+  | $ev.value[]?.hooks[]?
+  | select(.type=="prompt")
+  | select((.statusMessage // "") == "")
+  | "\($ev.key)/\(.id // "<no id>")"' "$SETTINGS" 2>/dev/null)
+if [[ -z "$_missing" ]]; then
+  pass "every type:prompt hook carries a statusMessage"
+else
+  fail "every type:prompt hook carries a statusMessage" "missing on: $(tr '\n' ' ' <<< "$_missing")"
+fi
+
 # ─── Summary ─────────────────────────────────────────────────────────
 
 echo ""
