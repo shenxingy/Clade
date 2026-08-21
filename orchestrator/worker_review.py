@@ -392,7 +392,19 @@ _TEST_INTEGRITY_CRITERION = (
     "match the (buggy) new behavior instead of the originally-intended expected "
     "behavior. If the diff touches test code, verify the change preserves or "
     "tightens the assertion's strength — a test that got weaker to pass is a "
-    "violation, not a fix, even if the stated result is 'tests now pass'."
+    "violation, not a fix, even if the stated result is 'tests now pass'.\n"
+    "The criterion above only catches tests that got WEAKER. Judge ADDED tests "
+    "too, because a new test that never tested anything subtracts nothing and "
+    "so reaches you unflagged: 115 of the last 133 test-carrying commits in "
+    "this repository were purely additive. For each test the diff ADDS, ask "
+    "where it observes. The assertion must read state on the far side of the "
+    "boundary the change crosses — a call's return value, a log line, a mock's "
+    "recorded invocation and 'no exception raised' are all on the near side "
+    "and stay green while the user-visible effect is broken. Treat as "
+    "violations: an added test whose subject under test is replaced by a "
+    "double; a tautology (is not None, assert True, toBeDefined) standing in "
+    "for a real expectation; and an added test that would have passed before "
+    "this diff, which tests existing behavior rather than the change."
 )
 
 

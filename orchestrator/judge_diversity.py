@@ -382,9 +382,19 @@ def test_integrity(diff: str) -> dict:
     to change, replacing the subject under test with a double, or asserting a
     tautology — subtracts nothing and scores clean here, with ``eroded`` False
     and no evidence forwarded to the oracle. Confirmed by probe, not assumed.
-    On greenfield and porting work, where nearly every test is additive, this
-    function is close to blind; the oracle prompt and the human reviewer are
-    the only things covering that case today.
+    On greenfield and porting work this function is close to blind, and that is
+    most of the traffic: 115 of the last 133 test-carrying commits here were
+    purely additive, so these nine signals see about 14% of what they exist to
+    police.
+
+    An earlier revision of this docstring said the oracle prompt covered the
+    additive case. It did not — ``worker_review._TEST_INTEGRITY_CRITERION`` was
+    subtractive in every red flag it named, so the claim pointed at a mitigation
+    that was not there, on the path that gates autonomous acceptance. That
+    criterion now judges added tests on where they observe. It is a prompt, so
+    it is judgement rather than a count; closing the gap properly means running
+    the tests a diff ADDS against its base commit and forwarding the ones that
+    already pass, which is a measurement this function does not yet make.
 
     Measured, not asserted: ``evals/run_hack_eval.py`` scores this function
     against a labelled corpus of hacks and honest test edits. Re-run it after any
