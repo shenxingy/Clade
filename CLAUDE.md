@@ -5,7 +5,7 @@
 - Frontend: Vite + React + TypeScript UI under orchestrator/web/src/ (served from web/dist; not the primary interface)
 - Backend: FastAPI (orchestrator/, port 8000) — optional, CLI layer works standalone
 - Test command: cd orchestrator && .venv/bin/python -m pytest tests/ -v
-- Verify command: cd orchestrator && find . \( -name .venv -o -name node_modules -o -name __pycache__ \) -prune -o -name "*.py" -print | xargs -n1 python -m py_compile
+- Verify command: cd orchestrator && find . \( -name .venv -o -name node_modules -o -name __pycache__ \) -prune -o -name "*.py" -print | xargs -n1 .venv/bin/python -m py_compile
 
 ## Features (Behavior Anchors)
 - install.sh: running `./install.sh` copies skills/hooks/scripts/agents/output-styles to ~/.claude/ without errors, and activates no output style
@@ -39,7 +39,7 @@ cd orchestrator && uvicorn server:app --reload
 cd orchestrator && .venv/bin/python -m pytest tests/ -v
 
 # Syntax check (all Python modules — same find-based sweep CI runs)
-cd orchestrator && find . \( -name .venv -o -name node_modules -o -name __pycache__ \) -prune -o -name "*.py" -print | xargs -n1 python -m py_compile
+cd orchestrator && find . \( -name .venv -o -name node_modules -o -name __pycache__ \) -prune -o -name "*.py" -print | xargs -n1 .venv/bin/python -m py_compile
 
 # Multi-machine usage tracking — see orchestrator/usage_tracker.py
 #   Hub:  start orchestrator normally, optionally set usage_ingest_token in ~/.claude/orchestrator-settings.json
@@ -212,7 +212,7 @@ Conventional commit types: `feat` / `fix` / `refactor` / `test` / `chore` / `doc
 Before committing, ensure CI will pass by running locally:
 ```bash
 # 1. Python syntax check (all modules — same find-based sweep CI runs)
-cd orchestrator && find . \( -name .venv -o -name node_modules -o -name __pycache__ \) -prune -o -name "*.py" -print | xargs -n1 python -m py_compile
+cd orchestrator && find . \( -name .venv -o -name node_modules -o -name __pycache__ \) -prune -o -name "*.py" -print | xargs -n1 .venv/bin/python -m py_compile
 
 # 2. Tests
 cd orchestrator && .venv/bin/python -m pytest tests/ -v
