@@ -294,7 +294,7 @@ def _extract_entity_name(stripped_line: str) -> str | None:
     for prefix in ("class ", "def ", "async def "):
         if stripped_line.startswith(prefix):
             rest = stripped_line[len(prefix):]
-            name = re.split(r'[\s(:]', rest, 1)[0]
+            name = re.split(r'[\s(:]', rest, maxsplit=1)[0]
             return name if name else None
     # JS/TS: export class Foo, export function foo, export const foo
     m = re.match(r'(?:export\s+)?(?:async\s+)?(?:function|class)\s+(\w+)', stripped_line)
