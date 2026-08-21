@@ -124,6 +124,20 @@ assert_verdict "pkill without -f stays allowed" \
   'pkill -9 dotnet'                                           ALLOW
 assert_verdict "grepping for a process name is not a kill" \
   'ps aux | grep train.py'                                    ALLOW
+assert_verdict "after a semicolon separator" \
+  'cd /srv; pkill -f app.py && ./app.py'                      BLOCK
+# Regression. The first cut matched `pkill -f` ANYWHERE in the string, so the
+# guard refused its own commit message. `pkill` has to sit at a COMMAND
+# position — start of string, or after a separator or an opening quote — and
+# the grep and the pattern-extracting sed must agree on which characters count
+# as that position. They did not: the sed omitted the quote characters, so the
+# ssh cases matched the grep, extracted an empty pattern, and fell through to
+# allow. A guard that fires on prose is one you learn to click past; a guard
+# that matches and then silently extracts nothing protects nothing.
+assert_verdict "pkill named inside a commit message" \
+  'git commit -m "block the pkill -f shape that kills its launcher"'  ALLOW
+assert_verdict "pkill discussed in prose written to a file" \
+  'echo "use pkill -f name carefully" >> NOTES.md'            ALLOW
 
 # ─── Summary ─────────────────────────────────────────────────────────
 printf "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"

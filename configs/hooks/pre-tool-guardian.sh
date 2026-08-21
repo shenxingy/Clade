@@ -170,9 +170,13 @@ fi
 # like the remote host rejected the connection, so the time goes into debugging
 # ssh. Blocked only in the shape that actually self-destructs, because a guard
 # that fires on ordinary `pkill -f name` is one you learn to ignore.
-if echo "$COMMAND" | grep -qE 'pkill[[:space:]]+(-[a-zA-Z]*f|--full)'; then
+# `pkill` must sit at a COMMAND position — start of string, or after a
+# separator or an opening quote. Matching it anywhere caught prose: this very
+# guard's own commit message ("block the pkill -f shape that kills its own
+# launcher") was refused, which is the failure mode the rule below warns about.
+if echo "$COMMAND" | grep -qE '(^|[;&|(]|[[:space:]]&&[[:space:]]|["'"'"'])[[:space:]]*pkill[[:space:]]+(-[a-zA-Z]*f|--full)'; then
   _PK_PAT=$(echo "$COMMAND" \
-    | sed -nE "s/.*pkill[[:space:]]+(-[a-zA-Z]*f|--full)[[:space:]]+['\"]?([^'\"[:space:]]+).*/\2/p" \
+    | sed -nE "s/.*(^|[;&|('\"]|[[:space:]])pkill[[:space:]]+(-[a-zA-Z]*f|--full)[[:space:]]+['\"]?([^'\"[:space:]]+).*/\3/p" \
     | head -1)
   if [[ -n "$_PK_PAT" ]]; then
     # Occurrences of the pattern in the command the shell will carry.
