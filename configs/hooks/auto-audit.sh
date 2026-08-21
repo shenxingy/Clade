@@ -156,6 +156,8 @@ run_auto_audit() {
 
   # ─── Cross-project aggregation ───────────────────────────────────
   local cross_promoted=0
+  local cross_withheld=0
+  local cross_withheld_names=()
   local CROSS_FILE="$HOME/.claude/corrections/cross-project-rules.jsonl"
   if [[ "$timer_elapsed" -eq 1 ]] && [[ -f "$CROSS_FILE" ]] && command -v jq &>/dev/null; then
     # Find rule_hashes appearing in 2+ DISTINCT projects. Counting raw
@@ -173,9 +175,30 @@ run_auto_audit() {
       rule_text=$(jq -r --arg h "$hash" 'select(.rule_hash == $h) | .rule_text' "$CROSS_FILE" 2>/dev/null | head -1)
       [[ -z "$rule_text" ]] && continue
 
-      # Markup means pasted HTML or harness-injected <task-notification>,
-      # never a promotable rule
-      [[ "$rule_text" == \<* ]] && continue
+      # `rule_text` is a 120-char excerpt of the RAW USER PROMPT, written by
+      # correction-detector.sh. It is NOT an extracted rule and never was --
+      # the field name has always oversold it. Until 2026-08-20 it was appended
+      # verbatim to the global CLAUDE.md, which is how four oracle-subagent
+      # prompts became standing instructions in every project on this machine:
+      #   "You are a spec compliance checker. Does this diff correctly ..."
+      #   "You are a code quality reviewer. Does this diff introduce bugs ..."
+      #   "[Reviewing chunk: 1/2]"   "[Reviewing chunk: 2/2]"
+      # They qualified because a review subagent runs in more than one project,
+      # so the 2-distinct-projects test is exactly what they pass. The old
+      # guard only rejected text starting with "<", which none of them do.
+      #
+      # What a repeated excerpt actually means is "this DOMAIN keeps recurring
+      # across projects" -- a signal worth surfacing to a human, never text
+      # worth appending. Anything written here lands in every turn of every
+      # project, so the bar is the documented rule shape and nothing softer:
+      #   [YYYY-MM-DD] <domain> (<root-cause>): <do this> instead of <not this>
+      # A raw prompt excerpt cannot match it, which is the point.
+      if ! printf '%s' "$rule_text" \
+        | grep -qE '^\[[0-9]{4}-[0-9]{2}-[0-9]{2}\] [a-z0-9-]+ \([a-z-]+\):'; then
+        cross_withheld_names+=("${rule_text:0:56}")
+        cross_withheld=$((cross_withheld + 1))
+        continue
+      fi
 
       # Skip if already in global CLAUDE.md
       if rule_exists_in_file "$rule_text" "$global_claude"; then
@@ -237,7 +260,7 @@ run_auto_audit() {
 
   # ─── Build summary ──────────────────────────────────────────────
   local summary=""
-  local changes=$((promoted + redundant + archived + cross_promoted + withheld))
+  local changes=$((promoted + redundant + archived + cross_promoted + cross_withheld + withheld))
 
   if [[ "$changes" -gt 0 ]]; then
     summary="Auto-audit completed: "
@@ -246,6 +269,7 @@ run_auto_audit() {
     [[ "$archived" -gt 0 ]] && summary="${summary}${archived} archived, "
     [[ "$withheld" -gt 0 ]] && summary="${summary}${withheld} withheld (low-severity), "
     [[ "$cross_promoted" -gt 0 ]] && summary="${summary}${cross_promoted} cross-project promoted, "
+    [[ "$cross_withheld" -gt 0 ]] && summary="${summary}${cross_withheld} cross-project withheld (not rule-shaped), "
     summary="${summary%%, }"
 
     for name in "${promoted_names[@]}"; do
@@ -256,6 +280,15 @@ run_auto_audit() {
     if [[ "$withheld" -gt 0 ]]; then
       summary="${summary}\n  Withheld from CLAUDE.md — promote deliberately via /audit if one earns it:"
       for name in "${withheld_names[@]}"; do
+        summary="${summary}\n  → ${name}"
+      done
+    fi
+    # Same reasoning as above: name what was refused. These are prompt excerpts
+    # that recur across projects, not rules. If one describes a real lesson,
+    # write it as a rule by hand — do not relax the shape gate to let it in.
+    if [[ "$cross_withheld" -gt 0 ]]; then
+      summary="${summary}\n  Cross-project excerpts withheld (not rule-shaped):"
+      for name in "${cross_withheld_names[@]}"; do
         summary="${summary}\n  → ${name}"
       done
     fi

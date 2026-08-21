@@ -193,6 +193,74 @@ grep -q "ancient low-severity" "$H/.claude/corrections/rules-archive.md" 2>/dev/
 rm -rf "$H"
 
 
+# ─── Cross-project promotion gate ────────────────────────────────────
+# Regression guard for a real incident: `rule_text` in cross-project-rules.jsonl
+# is a 120-char excerpt of the RAW USER PROMPT, not an extracted rule. The old
+# guard rejected only text starting with "<", so four oracle-subagent prompts
+# reached the global CLAUDE.md and became standing instructions in every
+# project on the machine. A review subagent runs in more than one project,
+# which is exactly what the 2-distinct-projects test rewards.
+echo ""
+echo "Cross-project promotion gate:"
+
+make_cross_home() {
+  local d; d="$(mktemp -d /tmp/clade-test-xproj.XXXXXX)"
+  mkdir -p "$d/.claude/corrections"
+  local recent i
+  recent="$(date -d '2 days ago' +%Y-%m-%d 2>/dev/null || date -v-2d +%Y-%m-%d)"
+  # run_auto_audit returns early below 10 rules; recent + edge-case keeps these
+  # seeds from promoting or archiving and polluting the CLAUDE.md assertions.
+  for i in $(seq 1 10); do
+    echo "- [$recent] seed$i (edge-case): filler rule number $i, unique text" \
+      >> "$d/.claude/corrections/rules.md"
+  done
+  : > "$d/.claude/CLAUDE.md"
+  echo '{}' > "$d/.claude/corrections/rule-effectiveness.json"
+  # Each excerpt in 2 DISTINCT projects, which is the promotion threshold.
+  local xf="$d/.claude/corrections/cross-project-rules.jsonl"
+  local text hash proj
+  while IFS='|' read -r hash text; do
+    [[ -z "$hash" ]] && continue
+    for proj in projA projB; do
+      printf '{"timestamp":"2026-08-01T00:00:00Z","domain":"d","rule_text":%s,"project":"%s","rule_hash":"%s"}\n' \
+        "$(printf '%s' "$text" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')" \
+        "$proj" "$hash" >> "$xf"
+    done
+  done <<'EXCERPTS'
+h1|You are a spec compliance checker. Does this diff correctly implement the required task?
+h2|You are a code quality reviewer. Does this diff introduce bugs, security issues, or serious defects?
+h3|[Reviewing chunk: 1/2]
+h4|<task-notification><task-id>x</task-id>
+h5|git pull
+h6|[2026-08-04] real-lesson (deploy-gap): verify source equals deployed before reasoning about behavior
+EXCERPTS
+  echo "$d"
+}
+
+H="$(make_cross_home)"
+OUT="$(run_audit "$H")"
+CM="$(cat "$H/.claude/CLAUDE.md")"
+
+assert_not_contains "$CM" "You are a spec compliance checker" \
+  "oracle spec-checker prompt never reaches global CLAUDE.md"
+assert_not_contains "$CM" "You are a code quality reviewer" \
+  "oracle code-reviewer prompt never reaches global CLAUDE.md"
+assert_not_contains "$CM" "[Reviewing chunk" \
+  "harness chunk marker never reaches global CLAUDE.md"
+assert_not_contains "$CM" "task-notification" \
+  "harness markup never reaches global CLAUDE.md"
+assert_not_contains "$CM" "git pull" \
+  "a pasted shell command never reaches global CLAUDE.md"
+# The gate must not simply reject everything: a correctly shaped rule still lands.
+assert_contains "$CM" "real-lesson (deploy-gap)" \
+  "a correctly shaped rule is still promoted"
+# A silent refusal is indistinguishable from a rule that was never written.
+assert_contains "$OUT" "withheld (not rule-shaped)" \
+  "withheld excerpts are counted in the audit summary"
+assert_contains "$OUT" "spec compliance checker" \
+  "withheld excerpts are named, not just counted"
+rm -rf "$H"
+
 echo ""
 if [[ $TESTS_FAILED -eq 0 ]]; then
   echo -e "  ${GREEN}ALL $TESTS_RUN TESTS PASSED${NC}"
