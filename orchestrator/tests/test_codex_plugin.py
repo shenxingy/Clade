@@ -6,6 +6,7 @@ import importlib.util
 import json
 import re
 import subprocess
+import shutil
 import sys
 from pathlib import Path
 
@@ -14,7 +15,12 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 PLUGIN_ROOT = REPO_ROOT / "plugins" / "clade"
 
 
+_PLUGIN_PYCACHE = PLUGIN_ROOT / "hooks" / "__pycache__"
+
+
 def _load_module(name: str, path: Path):
+    # Start from a known state so the assertion after the load means something.
+    shutil.rmtree(_PLUGIN_PYCACHE, ignore_errors=True)
     spec = importlib.util.spec_from_file_location(name, path)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
@@ -153,7 +159,16 @@ def test_codex_guardian_denies_and_rewrites_supported_commands() -> None:
     recursive_home = guardian.evaluate('rm --recursive --force "$HOME"')
     assert recursive_home["hookSpecificOutput"]["permissionDecision"] == "deny"
     assert guardian.evaluate("git status --short") is None
-    assert not (PLUGIN_ROOT / "hooks" / "__pycache__").exists()
+    # The property is that THIS load writes no bytecode into the shipped
+    # plugin, not that the directory happens to be absent. Asserting absence
+    # alone made the test pass only on a fresh checkout: a __pycache__ left by
+    # any earlier interpreter run (one here dated from a month before this was
+    # written) failed it forever afterwards, on a machine where CI could never
+    # reproduce it. Clear it first, then assert the loader did not recreate it.
+    assert not _PLUGIN_PYCACHE.exists(), (
+        f"{_PLUGIN_PYCACHE} was recreated by _load_module — sys.dont_write_bytecode "
+        "is no longer taking effect, and the shipped plugin will accumulate .pyc files"
+    )
 
 
 def test_codex_hooks_use_supported_command_handlers() -> None:

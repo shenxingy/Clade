@@ -76,6 +76,7 @@ import asyncio
 import json
 import logging
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -335,10 +336,32 @@ parse_pytest_results = parse_results
 _force_verbose_pytest = force_verbose
 
 
+_LEADING_PY_RE = re.compile(r"^(\s*)(python3?)(\s)")
+
+
+def resolve_interpreter(cmd: str) -> str:
+    """Rewrite a leading bare ``python``/``python3`` to this interpreter when,
+    and only when, the named one does not resolve on PATH.
+
+    A real SWE-bench instance runs inside a prepared environment where
+    ``python`` means THAT environment's interpreter, so the name is left alone
+    whenever it resolves. The synthetic cases in ``resolve_cases/`` also say
+    ``python``, and on a machine that only ships ``python3`` — every stock
+    macOS, which is where this is developed — that command does not exist. The
+    shell prints "command not found", the parser sees no node lines, and every
+    instance scores UNRESOLVED: the same 0%-reported-as-a-result failure the
+    colour handling below already exists to prevent, one layer up.
+    """
+    match = _LEADING_PY_RE.match(cmd)
+    if not match or shutil.which(match.group(2)):
+        return cmd
+    return _LEADING_PY_RE.sub(lambda m: f"{m.group(1)}{sys.executable}{m.group(3)}", cmd, count=1)
+
+
 def run_tests(inst: dict, repo_dir: Path, timeout: int = 120) -> dict[str, bool]:
     """Run ``inst['test_cmd']`` in ``repo_dir`` (forced verbose so node-level
     results parse). Returns {node_id: passed}; {} if the suite can't run."""
-    cmd = force_verbose(inst["test_cmd"])
+    cmd = resolve_interpreter(force_verbose(inst["test_cmd"]))
     try:
         proc = subprocess.run(
             cmd, cwd=str(repo_dir), shell=True,

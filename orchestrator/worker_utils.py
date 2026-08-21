@@ -20,6 +20,7 @@ import logging
 import os
 import re
 import shlex
+import shutil
 import sys
 from pathlib import Path
 from typing import Any
@@ -465,11 +466,9 @@ async def _run_project_tests(
 
     if not test_cmd:
         # Auto-detect: try .venv/bin/pytest first, then system pytest
-        venv_pytest = project_dir / ".venv" / "bin" / "pytest"
-        if venv_pytest.exists():
-            test_cmd = f"{venv_pytest} tests/ -q --tb=short -x 2>&1 | tail -20"
-        elif (project_dir / "pytest.ini").exists() or (project_dir / "pyproject.toml").exists():
-            test_cmd = "pytest tests/ -q --tb=short -x 2>&1 | tail -20"
+        launcher = _pytest_launcher(project_dir)
+        if launcher:
+            test_cmd = f"{launcher} tests/ -q --tb=short -x 2>&1 | tail -20"
 
     if not test_cmd:
         return (
@@ -618,6 +617,32 @@ async def _run_repro_filter(
         repro_file.unlink(missing_ok=True)
 
 
+def _pytest_launcher(project_dir: Path) -> str | None:
+    """How to invoke pytest for `project_dir`, or None when it cannot be.
+
+    Order matters. The project's own venv wins, because the project's tests
+    need the project's dependencies. A bare `pytest` is only correct when the
+    name actually resolves — emitting it unchecked is how the baseline came
+    back empty on every macOS run: the shell printed "command not found", the
+    parser saw no result lines, and `_find_intramorphic_regressions` compared
+    an empty dict against an empty dict and reported all-clear forever. A gate
+    that measures nothing reports the same thing as a gate that passes.
+
+    `sys.executable -m pytest` is the last resort rather than the first choice:
+    it is guaranteed to resolve, but it runs the ORCHESTRATOR's pytest and
+    dependency set against someone else's project, which is right often enough
+    to beat measuring nothing and wrong often enough not to prefer it.
+    """
+    venv_pytest = project_dir / ".venv" / "bin" / "pytest"
+    if venv_pytest.exists():
+        return shlex.quote(str(venv_pytest))
+    if not ((project_dir / "pytest.ini").exists() or (project_dir / "pyproject.toml").exists()):
+        return None
+    if shutil.which("pytest"):
+        return "pytest"
+    return f"{shlex.quote(sys.executable)} -m pytest"
+
+
 async def _capture_test_baseline(project_dir: Path, timeout: int = 30) -> dict[str, bool]:
     """Run tests on the clean worktree (before worker edits) to capture baseline.
 
@@ -634,11 +659,9 @@ async def _capture_test_baseline(project_dir: Path, timeout: int = 30) -> dict[s
             pass
 
     if not test_cmd:
-        venv_pytest = project_dir / ".venv" / "bin" / "pytest"
-        if venv_pytest.exists():
-            test_cmd = f"{venv_pytest} tests/ --tb=no 2>&1 | head -300"
-        elif (project_dir / "pytest.ini").exists() or (project_dir / "pyproject.toml").exists():
-            test_cmd = "pytest tests/ --tb=no 2>&1 | head -300"
+        launcher = _pytest_launcher(project_dir)
+        if launcher:
+            test_cmd = f"{launcher} tests/ --tb=no 2>&1 | head -300"
 
     if not test_cmd:
         return {}

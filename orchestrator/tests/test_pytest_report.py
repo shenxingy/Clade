@@ -12,6 +12,7 @@ is the same blind gate wearing a different hat.
 from __future__ import annotations
 
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -122,8 +123,15 @@ class TestAgainstRealPytest:
         return tmp_path
 
     def _run(self, repo: Path, env: dict) -> str:
+        # `sys.executable -m pytest`, not a bare `pytest`: the bare name only
+        # resolves when the venv's bin is on PATH, which it is not when the
+        # suite is run as `.venv/bin/python -m pytest` — the normal way to run
+        # it here. That made these two assertions fail on every local run while
+        # CI stayed green, and a test that is red for everyone locally is a
+        # test everyone learns to ignore. force_verbose rewrites the first
+        # "pytest" token it finds, which is the one after -m.
         proc = subprocess.run(
-            force_verbose("pytest tests/ -p no:cacheprovider -q"),
+            force_verbose(f"{shlex.quote(sys.executable)} -m pytest tests/ -p no:cacheprovider -q"),
             cwd=str(repo), shell=True, capture_output=True, text=True,
             timeout=120, env=env,
         )
