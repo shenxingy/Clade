@@ -9,6 +9,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
 
+from ideas import IdeasManager
 from session import registry
 
 logger = logging.getLogger(__name__)

@@ -21,7 +21,6 @@ _WR_SPEC.loader.exec_module(_WR)
 
 SETTINGS = {
     "agent_runtime": "codex",
-    "agent_runtime": "codex",
     "default_model": "gpt-5.6-sol",
     "auto_model_routing": True,
     "verifier_cascade_enabled": True,
