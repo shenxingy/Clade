@@ -86,6 +86,57 @@ def test_non_claude_cmdline_returns_false():
         proc.wait(timeout=2)
 
 
+class TestWithoutProc:
+    """The no-/proc branch, forced on whatever platform is running.
+
+    These three assertions are the only thing standing between a macOS
+    developer and orphan recovery killpg-ing a recycled pgid that belongs to
+    somebody else. They cannot be left to run only where /proc is absent: CI is
+    Linux-only, so the branch that actually executes on the primary development
+    machine would otherwise never be exercised by any gate. Forcing the branch
+    here means Linux CI protects the macOS path.
+    """
+
+    @staticmethod
+    def _no_proc(monkeypatch):
+        monkeypatch.setattr(cfg.Path, "exists", lambda self: False)
+
+    def test_claude_like_process_is_still_recognised(self, monkeypatch):
+        proc, pgid = _spawn_detached("claude-worker-test")
+        try:
+            self._no_proc(monkeypatch)
+            assert cfg._pgid_alive_and_claude_like(pgid) is True
+        finally:
+            os.killpg(pgid, signal.SIGKILL)
+            proc.wait(timeout=2)
+
+    def test_unrelated_process_is_protected(self, monkeypatch):
+        # The whole point: without a /proc reader this used to return True for
+        # every pgid, so the PID-reuse net did not exist off Linux.
+        proc, pgid = _spawn_detached("totally-unrelated-process")
+        try:
+            self._no_proc(monkeypatch)
+            assert cfg._pgid_alive_and_claude_like(pgid) is False
+        finally:
+            os.killpg(pgid, signal.SIGKILL)
+            proc.wait(timeout=2)
+
+    def test_dead_pgid_still_fails_open(self, monkeypatch):
+        self._no_proc(monkeypatch)
+        assert cfg._pgid_alive_and_claude_like(999_999_999) is True
+
+    def test_unusable_ps_fails_open(self, monkeypatch):
+        # Fail-open is the documented contract: a machine where the check
+        # cannot run must still reap real orphans rather than never reap.
+        self._no_proc(monkeypatch)
+
+        def _boom(*a, **k):
+            raise OSError("no ps on this box")
+
+        monkeypatch.setattr(cfg.subprocess, "run", _boom)
+        assert cfg._pgid_alive_and_claude_like(4242) is True
+
+
 def test_nonexistent_pgid_returns_true():
     # No /proc entry (already exited, or non-Linux) — proceed, matching the
     # original unconditional-kill behavior; killpg's own ProcessLookupError
