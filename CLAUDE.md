@@ -232,7 +232,23 @@ bash -n configs/hooks/*.sh configs/scripts/*.sh install.sh
 #    from configs/skills/ via the mcp-package/skills.list manifest. After
 #    editing any skill shipped in the package, regenerate and commit:
 configs/scripts/regen-mcp-package.sh
+
+# 5. Codex plugin drift gate — same story, different surface
+python3 configs/scripts/regen-codex-plugin.py --check   # regenerate without --check
+
+# 6. Doc facts drift gate — README/docs carry counts derived from the tree
+#    (how many scripts, skills, hooks). ADDING A FILE MAKES THEM STALE and
+#    fails CI, which is how this list grew: red-phase-audit.py moved the
+#    Python-script count 21 → 22 while the READMEs still said 21.
+python3 configs/scripts/doc-align.py verify             # doc-align.py sync to fix
+
+# 7. Shellcheck on the shared gate (CI installs shellcheck; local may not)
+configs/scripts/checks.sh shellcheck configs/scripts/checks.sh
 ```
+
+Items 5–7 were absent from this list until 2026-08-22 while CI enforced them,
+so a local run could be green against a checklist that did not cover the gates.
+If you add a CI step, add it here in the same commit.
 
 CI runs 4 jobs on push/PR to main: `syntax-check` (includes the mcp-package
 skills drift gate), `pytest`, `shell-tests`, `install-test`. The `pytest` job
