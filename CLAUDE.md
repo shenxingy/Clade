@@ -53,6 +53,14 @@ cd orchestrator && find . \( -name .venv -o -name node_modules -o -name __pycach
 # it inside Claude Code or Codex when native skills are installed: that duplicates
 # every skill and spawns nested agent sessions. See mcp-package/README.md.
 
+# Red-phase audit — run the tests a commit ADDS against its parent. One that
+# already passes needed nothing from the change: it pins existing behaviour, or
+# nothing. Covers the additive case judge_diversity.test_integrity is blind to
+# (115 of the last 133 test-carrying commits here were purely additive).
+# Measured on this repo: fires on ~17% of checked commits. Diagnostic, not a gate
+# — a test that passes at base can be a deliberate characterization test.
+RED_PHASE_PYTHON=orchestrator/.venv/bin/python python3 configs/scripts/red-phase-audit.py 30
+
 # Native Codex plugin — regenerate after changing a shipped canonical skill
 python3 configs/scripts/regen-codex-plugin.py
 python3 configs/scripts/regen-codex-plugin.py --check
