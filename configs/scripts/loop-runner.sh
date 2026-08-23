@@ -508,8 +508,8 @@ node_run_workers() {
 
   local worker_total_timeout=$(( WORKER_TIMEOUT * task_count + 60 ))
 
-  # CLADE_WORKER_TASK_ID → committer.sh appends attribution trailers
-  # (Co-Authored-By + X-Clade-Task) so loop commits segment as agent-authored.
+  # CLADE_WORKER_TASK_ID → committer.sh appends an X-Clade-Task traceability
+  # trailer so loop commits segment as agent-authored without a co-author claim.
   # Workers keep user hooks deliberately; pure judges drop them — see PURE_JUDGE_FLAGS.
   if [ "$MAX_WORKERS" -gt 1 ]; then
     if CLADE_WORKER_TASK_ID="loop-iter${ITERATION}" MAX_WORKERS="$MAX_WORKERS" \

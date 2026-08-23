@@ -895,7 +895,7 @@ class TestFallbackCommitCmd:
             ["git", "-C", str(repo), "log", "-1", "--format=%B"],
             capture_output=True, text=True, check=True,
         ).stdout
-        assert "Co-Authored-By: Claude <noreply@anthropic.com>" in body
+        assert "Co-Authored-By" not in body
         assert "X-Clade-Task: task-7" in body
         # git must parse it as a real trailer, not loose body text
         trailer = subprocess.run(

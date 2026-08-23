@@ -300,7 +300,7 @@ class Worker:
         for _deny_key in _deny:
             env.pop(str(_deny_key), None)
         self._runtime_adapter.apply_connection_env(connection, env)
-        # Attribution trailers make every worker commit agent-segmentable.
+        # The X-Clade-Task traceability trailer makes worker commits segmentable.
         env["CLADE_WORKER_TASK_ID"] = str(self.task_id)
         # Model provenance (Round-4 gap, Yegge pattern): record the primary model
         # for this spawn — CLADE_WORKER_TASK_ID alone can't tell you which model

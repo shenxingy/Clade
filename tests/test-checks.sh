@@ -274,14 +274,14 @@ assert_eq 2 "$(commit_count "$D")" "clean commit landed"
 ( cd "$D" && bash "$COMMITTER" "not-a-type: nope" file.txt --no-push ) >/dev/null 2>&1
 assert_eq 1 $? "committer still rejects non-conventional messages (via checks.sh)"
 
-# ─── committer.sh attribution trailers (CLADE_WORKER_TASK_ID) ────────
-echo "── committer.sh attribution trailers ──"
+# ─── committer.sh traceability trailers (CLADE_WORKER_TASK_ID) ───────
+echo "── committer.sh traceability trailers ──"
 
 D="$(make_repo)"
 echo "agent change" > "$D/agent.txt"
 ( cd "$D" && CLADE_WORKER_TASK_ID=42 bash "$COMMITTER" "feat: agent change" agent.txt --no-push ) >/dev/null 2>&1
 BODY="$(git -C "$D" log -1 --format=%B)"
-assert_contains "$BODY" "Co-Authored-By: Claude <noreply@anthropic.com>" "worker commit carries Co-Authored-By trailer"
+assert_not_contains "$BODY" "Co-Authored-By" "worker commit does not claim Claude as a co-author"
 assert_contains "$BODY" "X-Clade-Task: 42" "worker commit carries X-Clade-Task trailer"
 TRAILER_VAL="$(git -C "$D" log -1 --format='%(trailers:key=X-Clade-Task,valueonly)' | tr -d '\n')"
 assert_eq "42" "$TRAILER_VAL" "git parses X-Clade-Task as a real trailer (single -m block)"

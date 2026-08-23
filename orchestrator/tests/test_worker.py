@@ -98,8 +98,8 @@ def test_worker_build_cmd_and_env(tmp_path: Path) -> None:
     assert "claude-haiku" in cmd
     # CLAUDECODE must not be in the env dict
     assert "CLAUDECODE" not in env
-    # attribution: committer.sh appends Co-Authored-By + X-Clade-Task trailers
-    # when this is set, so every worker-session commit is agent-segmentable
+    # traceability: committer.sh appends X-Clade-Task when this is set, so every
+    # worker-session commit is agent-segmentable without claiming co-authorship
     assert env["CLADE_WORKER_TASK_ID"] == "task-xyz"
     # model provenance (Round-4 gap): committer.sh appends an Agent-Signature
     # trailer from this — must be the resolved model actually used for the

@@ -153,15 +153,12 @@ def _fallback_commit_cmd(commit_msg: str, files_arg: str, task_id: str | None = 
     commit. Exits 65 on a secret hit so callers can tell a policy abort from
     an ordinary git failure; the stage is reset so nothing is left half-done.
 
-    When task_id is given, attribution trailers (Co-Authored-By + X-Clade-Task,
-    one -m so git parses a single trailer block) mark the commit agent-authored
-    for commit-archeology's agent/human segmentation.
+    When task_id is given, an X-Clade-Task trailer marks the commit
+    agent-authored for commit-archeology's agent/human segmentation.
     """
     trailers = ""
     if task_id:
-        trailers = " -m " + shlex.quote(
-            f"Co-Authored-By: Claude <noreply@anthropic.com>\nX-Clade-Task: {task_id}"
-        )
+        trailers = " -m " + shlex.quote(f"X-Clade-Task: {task_id}")
     return (
         f"git add {files_arg} && "
         f'if [ "${{CLADE_ALLOW_SECRETS:-0}}" != "1" ] && '
