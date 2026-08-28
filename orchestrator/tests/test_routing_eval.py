@@ -105,6 +105,10 @@ GOLDEN_TOP3: list[tuple[str, str]] = [
     ("Meta ads pixel CAPI Advantage+", "ads-meta"),
     ("generate an image design a logo", "banana"),
     ("design UI component with the design system", "frontend-design"),
+    ("优化网页 UI", "frontend-design"),
+    ("优化 iOS 原生 App", "frontend-design"),
+    ("优化 Windows 桌面软件", "frontend-design"),
+    ("redesign Electron desktop app UI", "frontend-design"),
     # Chinese triggers — substring match requires the phrase to literally
     # appear in the skill's frontmatter (verified by grep, all unique).
     ("提交", "commit"),
@@ -156,6 +160,15 @@ DISAMBIGUATION_RANK1: list[tuple[str, str]] = [
     # wins outright.)
     ("add a new skill", "skill-new"),
     ("write a new slash command", "skill-new"),
+    # interface-design umbrella: platform-specific UI requests must beat ads,
+    # localization, and design-system siblings that also mention app/UI terms.
+    ("优化手机端 UI", "frontend-design"),
+    ("优化 iOS 原生 App", "frontend-design"),
+    ("优化 Android App 界面", "frontend-design"),
+    ("优化 macOS 本地软件", "frontend-design"),
+    ("优化 Windows 桌面软件", "frontend-design"),
+    ("redesign Electron desktop app UI", "frontend-design"),
+    ("build Flutter mobile interface", "frontend-design"),
 ]
 
 

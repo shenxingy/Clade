@@ -1,6 +1,6 @@
 ---
 name: frontend-design
-description: "Create distinctive, production-grade frontend interfaces and presentation surfaces with high design quality. Detects and enforces the project's design system (.design-system.md, design-system skill repo, or DESIGN.md) — hard-rule grep checks, rendered-output validators, review checklist, decisions log; can also author a new design system (SKILL.md + DESIGN.md + assets)."
+description: "Create, prototype, redesign, audit, or optimize production-grade interfaces and presentation surfaces across websites, responsive/mobile web, iOS/iPadOS/macOS, Android, Windows, Electron/Tauri, Flutter/React Native, and other local/native apps. Use for UI/UX design, visual polish, components, interaction states, cursor or motion decisions, design systems, decks, and requests such as 设计页面、优化网页/界面/UI、优化手机端 UI、原生 App 或桌面软件设计. Runs a platform-aware benchmark, an optional HTML or native preview checkpoint, implementation, accessibility checks, and rendered/live verification."
 ---
 
 # Clade for Codex
@@ -28,244 +28,335 @@ Codex compatibility rules:
 
 ## Canonical Clade workflow
 
-This skill guides creation of distinctive, production-grade frontend interfaces that avoid generic "AI slop" aesthetics. Implement real working code with exceptional attention to aesthetic details and creative choices.
+# Interface Design Pipeline
 
-The user provides frontend requirements: a component, page, application, or interface to build. They may include context about the purpose, audience, or technical constraints.
+Create, prototype, redesign, audit, or optimize production-grade interfaces
+across web, mobile, desktop, and native application surfaces. Preserve the
+historical `frontend-design` entry point, but do not treat every interface as a
+website.
 
----
+Use evidence to decide what is best for this product. Awards reveal expressive
+possibilities; platform guidance defines learned behavior; task tests and
+production outcomes decide whether the result is actually better.
 
-## Design System Integration
+## Operating contract
 
-**Before making ANY visual choices**, look for a project design system — first hit wins:
+Before making visual choices:
+
+1. Read `references/ui-ux-benchmark.md` completely.
+2. Classify the platform from the request and repository. If unclear, run
+   `python3 <skill-root>/scripts/detect_interface_platform.py <project-root>`.
+   Treat its result as evidence, not authority; user intent and shipped targets
+   win. Ask only when the unresolved platform would materially change the work.
+3. Read the matching platform reference completely:
+   - browser, responsive web, or PWA: `references/platform-web.md`
+   - iOS, iPadOS, macOS, UIKit, SwiftUI, or AppKit:
+     `references/platform-apple.md`
+   - Windows, WinUI, WPF, or Windows App SDK:
+     `references/platform-windows.md`
+   - Android, Material, Views, or Jetpack Compose:
+     `references/platform-android.md`
+   - Electron, Tauri, Flutter, React Native, or another shared-code shell:
+     `references/platform-cross-platform.md`, plus every actual target platform
+     reference that affects the requested work
+   - slides, decks, or other projected/presented surfaces:
+     `references/platform-presentation.md`
+4. Detect the design system before choosing colors, type, spacing, components,
+   or motion.
+
+For a mixed-platform product, share product logic, content, and brand tokens,
+then translate platform contracts separately. Do not average incompatible
+platform conventions into one lowest-common-denominator UI.
+
+## Scope lane
+
+Run every phase below for every UI task, but scale the evidence and artifacts to
+the decision risk:
+
+- **Micro** — a local, reversible component or style correction. Reuse existing
+  product evidence; compare the platform rule and one relevant in-product or
+  external pattern. Do not manufacture a research project.
+- **Standard** — a component family, page, screen, or user flow. Use the official
+  platform source, two direct-product flows where available, one mature design
+  system, and one known failure/counterexample.
+- **Full** — a new product, major redesign, unfamiliar interaction, or
+  cross-platform system. Use the complete benchmark set: official platform,
+  two direct competitors, an awarded reference, a mature design system, and a
+  counterexample. Capture complete flows rather than hero screenshots.
+
+State the lane and rationale. A skipped phase is not invisible: mark it `N/A`
+with a concrete reason.
+
+## Seven-phase pipeline
+
+### 1. Lock the problem
+
+Identify the target users, target platform(s), and three most important tasks.
+Classify the request as greenfield design, optimization, or implementation of an
+approved spec. Record technical constraints, input modes, accessibility needs,
+locales, performance budget, and the desired outcome.
+
+For optimization, establish the baseline before editing: capture the current
+rendered surface and important flows, list observed failures, and tie each
+proposed change to task success, error recovery, comprehension, accessibility,
+or a product metric. Do not translate personal taste into an unqualified
+"improvement."
+
+### 2. Build the benchmark
+
+Use the evidence ladder and reference-set rules in
+`references/ui-ux-benchmark.md`. Inspect complete states and flows: loading,
+empty, error, permission, offline, undo, keyboard, touch, and destructive paths
+where relevant. Separate observations from hypotheses.
+
+Produce a compact benchmark brief containing:
+
+- the reusable pattern and why it fits this task;
+- the platform behavior that must remain native;
+- the product behavior worth inventing;
+- the brand expression worth making distinctive;
+- rejected patterns and why they fail here.
+
+### 3. Define behavior before decoration
+
+Specify information hierarchy, navigation, content, and the shortest coherent
+task path. For each interactive component, consider:
+
+- rest, hover where available, keyboard focus, pressed, selected, disabled, and
+  loading;
+- success, empty, error, permission, offline, undo, and recovery states at the
+  flow level;
+- mouse/trackpad, keyboard, touch, stylus, assistive technology, and remote/game
+  controller inputs only where the target platform supports them;
+- localization expansion, dynamic type/font scaling, dark/high-contrast modes,
+  and reduced motion.
+
+Hover must never carry required information. Cursor changes must follow
+platform and component semantics, not fashion. Motion must perform at least one
+job: confirm feedback, explain spatial relationship, preserve continuity, guide
+attention, or express progress. If removing an animation does not make the
+change harder to understand, omit it.
+
+### 4. Choose the visual checkpoint
+
+Decide whether a preview reduces meaningful rework:
+
+| Situation | Default checkpoint |
+|---|---|
+| Existing runnable web/app surface | Build in its real component preview, dev route, story, or sandbox |
+| New browser UI or a purely visual concept | Create a small standalone HTML/CSS/JS prototype with realistic content |
+| Native app with uncertain hierarchy, density, color, or type | HTML is allowed as a clearly labelled **visual hypothesis only** |
+| Native interaction, window, menu, focus, touch, pointer, haptic, or accessibility behavior | Use SwiftUI/Compose/WinUI/XAML or the platform's real preview/simulator |
+| Small reversible change under an established system | Implement directly and inspect the rendered result |
+
+Prefer one recommended direction. Produce a second variant only when a real
+tradeoff remains unresolved by evidence; do not generate decorative option
+sprawl.
+
+If the user asked to see the direction before implementation, make the preview
+viewable, provide the local/live URL or rendered image, and stop at that
+checkpoint for confirmation. Otherwise use the checkpoint as an internal
+review step and continue. Never present an HTML mockup as proof of native
+behavior.
+
+### 5. Implement in the real surface
+
+Use the existing framework, components, and repository conventions. Do not
+replace a working stack merely to express an aesthetic. Match implementation
+complexity to the value of the interaction.
+
+Apply this precedence order when rules conflict:
+
+1. safety, accessibility, and user data integrity;
+2. platform input, semantic, window, and navigation contracts;
+3. the project's explicit design system and shipped component library;
+4. the product's task model and content;
+5. brand expression and visual novelty;
+6. general aesthetic guidance.
+
+This is not a choice between native and custom. Keep the platform skeleton,
+invent the product brain, and express the brand without breaking either.
+
+### 6. Verify the implementation
+
+Use three evidence tiers:
+
+1. **Source/static** — types, lint, hard-rule grep, semantics, token usage.
+2. **Rendered/interactive** — real viewports or native previews, screenshots,
+   focus order, keyboard/touch/pointer behavior, state transitions, contrast,
+   text scaling, reduced motion, overflow, and realistic data.
+3. **Outcome** — representative users performing target tasks, then production
+   success, completion time, errors, abandonment, support tickets, retention,
+   conversion, and performance percentiles where applicable.
+
+Run the repository's tests and the platform checks named in the selected
+reference. For HTML/web output, run `design-lint html <artifact>` and inspect the
+live result at every declared viewport. A clean static check does not prove a
+rendered rule. For decks, run `design-lint deck` and, once rendered,
+`design-lint render`.
+
+Do not claim user testing, assistive-technology coverage, device coverage, or
+production improvement unless it actually occurred. Report an unrun tier as a
+named follow-up gate, not as a pass.
+
+### 7. Compare and record
+
+For optimization, compare before and after against the same tasks and
+constraints. Record decisions, rejected experiments, remaining uncertainty,
+and the next measurable signal. For a substantial or long-lived design, append
+the decision to the project's design-system Decisions Log when one exists.
+
+## Design system integration
+
+Use the first design-system source found:
 
 ```bash
-# Detection cascade
-test -f .design-system.md && echo "FOUND: .design-system.md (token sheet)"
-test -f design-system/SKILL.md && echo "FOUND: design-system skill repo"
-test -f DESIGN.md && echo "FOUND: DESIGN.md (full spec)"
+test -f .design-system.md && echo "FOUND: .design-system.md"
+test -f design-system/SKILL.md && echo "FOUND: design-system/SKILL.md"
+test -f DESIGN.md && echo "FOUND: DESIGN.md"
 ```
 
-1. **`.design-system.md`** — token-sheet convention (this skill's original format).
-2. **`design-system/SKILL.md`** — a design system packaged as a skill and dropped into the project: agent-facing rules + paste-ready assets (tokens.css, components/, brand/). Read SKILL.md fully; open the deep spec it links (usually `DESIGN.md`) only when a rule needs rationale. Use the shipped components/assets directly — never re-implement them.
-3. **`DESIGN.md`** at project root — a full design spec without the skill wrapper.
+When one exists:
 
-**If a design system is found:**
-- Read it fully before proceeding.
-- ALL color, typography, spacing, and component choices MUST use tokens from it. Do NOT invent new values.
-- Treat `[placeholder]` values as undefined — skip those tokens and apply creative freedom for those dimensions only. If ALL tokens are still `[placeholder]`, note "design system template not filled in" and proceed with full creative freedom.
-- If the design system contradicts general aesthetic guidelines below, **the design system wins**.
-- If only partial tokens are defined (e.g., colors but no typography), use tokens where available and apply creative freedom to the undefined dimensions.
-- The "Differentiation" step changes: instead of picking any aesthetic freely, **create distinction WITHIN the system constraints** — like a chef creating a signature dish from a fixed pantry. Find the most expressive combination of the given tokens.
+- Read it fully before visual implementation.
+- Use its defined color, typography, spacing, motion, and component tokens.
+  Treat `[placeholder]` as undefined and exercise freedom only there.
+- Import its shipped components and brand assets; never redraw a supplied logo
+  or rebuild a component primitive without a documented reason.
+- Enforce grep-able hard rules against every task-owned file. Use a rendered
+  validator for rules about contrast, size, coverage, hierarchy, or motion.
+- Verify every declared viewport and appearance mode.
+- Record significant choices and rejected experiments in its Decisions Log.
 
-**If no design system exists:**
-- Proceed with full creative freedom (existing behavior below).
+When no design system exists, define a small constrained token scale before
+composing. Do not create a permanent design system unless the user asks for one
+or the implementation clearly requires reusable governance.
 
-### Obligations when working under a design system
+If asked to author a design system, ship:
 
-- **Hard rules are law.** If the system declares HARD RULES — typically grep-able patterns ("never `rounded-*`", "no `border-*`") — grep every file you wrote for the banned patterns before finishing. Run the system's review checklist if it ships one.
-- **Verify at every declared viewport.** If the system names breakpoints (e.g. 375px and 1280px), check both before claiming done — a rule that holds at desktop and breaks at mobile is a broken rule.
-- **Record decisions, especially rejections.** If the spec has a Decisions Log, append significant choices with date + rationale — including experiments you tried and reverted. Record what *measurably* failed and the constraint that replaced it ("7–12pt supporting text unreadable at presentation distance → 13pt floor, 18pt median"), not just the verdict ("dark version rejected"). A measured failure becomes a reusable rule; a bare verdict only prevents one repeat.
-- **Match the enforcement tier to the rule.** Grep catches banned tokens in source. Rules about *rendered output* — type size, how much of the canvas a surface covers, word count, contrast — need a validator that opens the built artifact; rules that must never regress belong in the build or CI. When a rule cannot be grepped, say so rather than letting a clean grep imply it was checked.
-- **A gate that crashes is worse than no gate** — it reports nothing and reads as clean. After writing or changing a validator, run it against a known violation and confirm it actually fails.
-- **Offer enforcement once.** When hard rules are grep-able and you saw (or made) a violation, suggest `/generate-hook` to turn them into a PostToolUse warn hook — checkable patterns are one command away from mechanical enforcement.
+- `SKILL.md` no longer than 100 lines with grep-able hard rules, token summary,
+  component pointers, and a review checklist;
+- `DESIGN.md` with rationale, component/state specifications, principle-to-
+  application statements, open tensions, and a Decisions Log;
+- paste-ready tokens, components, and brand assets;
+- a validator for every hard rule that targets rendered output.
 
-### Authoring a design system (when asked to create one)
+## Component and aesthetic rules
 
-Structure it as two layers plus assets, so it works both as agent context and human reference:
+- Prefer the project's component library. Use shadcn, MUI, Ant Design, Radix,
+  SwiftUI/UIKit/AppKit, WinUI, Compose/Material, Flutter, or other declared
+  primitives rather than rebuilding their contracts from scratch.
+- Prove hierarchy in grayscale through size, weight, order, and space before
+  relying on color.
+- Use constrained type, spacing, radius, elevation, color, and motion scales.
+- Choose a clear aesthetic direction appropriate to the product. Distinction
+  should come from coherent hierarchy, content, composition, data expression,
+  and a few signature moments, not effects on every control.
+- A platform/system font is often the correct native choice. On expressive web
+  and brand surfaces, choose typography deliberately; never reject a system
+  font merely because it is common.
+- Avoid generic AI styling: context-free purple gradients, interchangeable card
+  grids, arbitrary glass, excessive pills, decorative dashboards, fake native
+  chrome, and motion without a job.
+- Do not add custom cursors, scroll hijacking, parallax, blur, grain, or texture
+  unless they support the concept and survive platform, contrast, performance,
+  and reduced-motion checks.
 
-- **`SKILL.md`** (agent-facing, ≤100 lines): aesthetic in one sentence; HARD RULES stated as grep-able patterns; token summary; component pointers; a short review checklist.
-- **`DESIGN.md`** (deep spec): full tokens/typography/components with rationale; adopted heuristics written as "**Principle** — statement → *how we apply it here*" (not bare principle names); a **Decisions Log** table (date | decision | rationale) that also records rejected experiments; note the biggest live tension between principles and the current design honestly.
-- **Paste-ready assets** beside the docs (tokens.css, components) — ship code, don't describe it in prose.
-- **A validator** whenever a hard rule targets rendered output rather than source text: a script that opens the built artifact (rendered page, PDF, slide images) and fails loudly with the offending number. Wire it into the build so the rule is enforced, not merely documented.
+## Accessibility and legibility floors
 
----
+These are floors, not aesthetic targets. A design system may raise but never
+lower them.
 
-## Component Library Awareness
+- On web, meet WCAG 2.2 AA: body text at least 4.5:1; large text and meaningful
+  non-text UI at least 3:1 against the real backdrop.
+- Keep focus visible. Never remove an outline without an equally visible
+  replacement, and ensure focused content is not obscured.
+- Meet the target platform's minimum hit size; for web, never go below the WCAG
+  24x24 CSS px minimum/spacing exception and aim near 44px for primary touch
+  actions.
+- Guard or neutralize animation under reduced-motion settings.
+- On web, use real headings, links, buttons, labels, and image alternatives
+  before ARIA. On native platforms, use real accessibility roles, names,
+  values, actions, and focus order.
+- Test text enlargement, localization expansion, high contrast, keyboard or
+  switch access, and screen readers when relevant. Mark human/device-only checks
+  truthfully.
 
-If the design system specifies or ships a component library:
-- **Design-system skill repo with components/** → import its shipped components (Button, icons, Logo…) — never rebuild or re-render what it ships (brand marks especially: use the SVG assets, never re-render from a font)
-- **shadcn/ui** → use shadcn components (`Button`, `Card`, `Input`, etc.) instead of building from scratch
-- **MUI / Material UI** → use MUI components with `sx` prop or `styled()`
-- **Ant Design** → use antd components with `theme` token overrides
-- **Radix UI** → use Radix primitives with custom CSS
-- **Other** → import from the specified library; do not rebuild what already exists
+## Presentation surfaces
 
-If no component library is specified in the design system, fall back to raw HTML/CSS using the design system's tokens.
+For slides and decks, also follow `references/platform-presentation.md` and
+invert browser assumptions:
 
-If no design system exists at all, build from scratch with full creative freedom.
+- Give each slide one dominant thesis with roughly 60/30/10 visual hierarchy.
+- Keep audience-facing body copy at least 18pt where possible, with about 13pt
+  as a metadata-only floor; keep the main slide near 70 words or fewer.
+- Use heavy full-bleed surfaces as focal beats, not ambient decoration.
+- Review at presentation distance and validate the rendered artifact, not only
+  the source.
 
----
+## Public-web SEO only
 
-## Design Thinking
+Apply SEO metadata only to public, crawlable web pages. Do not add it to native
+apps, internal tools, isolated components, or visual prototypes unless they are
+also public pages. For an applicable page include a unique title, description,
+canonical URL, Open Graph title/description/image/URL, and appropriate WebSite
+or Organization structured data. Use the framework's native metadata API.
 
-Before coding, understand the context and commit to a BOLD aesthetic direction:
-- **Purpose**: What problem does this interface solve? Who uses it?
-- **Tone**: Pick an extreme: brutally minimal, maximalist chaos, retro-futuristic, organic/natural, luxury/refined, playful/toy-like, editorial/magazine, brutalist/raw, art deco/geometric, soft/pastel, industrial/utilitarian, etc. There are so many flavors to choose from. Use these for inspiration but design one that is true to the aesthetic direction.
-- **Constraints**: Technical requirements (framework, performance, accessibility).
-- **Differentiation**: What makes this UNFORGETTABLE? What's the one thing someone will remember? *(If a design system exists, create distinction WITHIN its constraints.)*
-- **Usability check**: before finalizing a layout, run it against the high-leverage usability laws — Hick's (fewer, clearer choices), Miller's (~7±2 items per group), Fitts's (large, close targets), Jakob's (innovate in look, not in where things live), Von Restorff (exactly one element stands out), Serial Position (most important items first and last). Full set: https://lawsofux.com/. Where the design knowingly violates one, name which and how you mitigate it — an acknowledged tension beats a silent one.
+## Required handoff
 
-**CRITICAL**: Choose a clear conceptual direction and execute it with precision. Bold maximalism and refined minimalism both work - the key is intentionality, not intensity.
-
-**Build on constrained scales, and prove the hierarchy in grayscale.** Consistency comes
-from a small fixed set of spacing, type, and elevation steps, not from judging each value
-by eye. Compose in grayscale first — if the layout's reading order only appears once color
-arrives, the hierarchy is being carried by color alone and will collapse for a colorblind
-user, in dark mode, or in print. Fix it with size, weight, and space, then add color.
-
-Then implement working code (HTML/CSS/JS, React, Vue, etc.) that is:
-- Production-grade and functional
-- Visually striking and memorable
-- Cohesive with a clear aesthetic point-of-view
-- Meticulously refined in every detail
-
----
-
-## Accessibility & Legibility Floors
-
-These apply to **every** interface, with or without a design system. They are floors, not
-targets: clear them first, then spend all the creative freedom below. A design system may
-raise a floor; nothing lowers one. If a requested look cannot clear a floor, say so and
-propose the nearest version that does — do not ship it silently.
-
-- **Contrast (WCAG 2.2 AA)**: body text ≥4.5:1 against its backdrop; large text (≥24px, or ≥18.66px bold) ≥3:1; icons, input borders, and focus rings ≥3:1. *Backdrop* means the real one — text over a gradient, photo, noise texture, or blur must clear the ratio at its **worst** pixel, not its average. `design-lint html` measures statically-declared colour+background pairs **and** inherited-colour-vs-effective-backdrop pairs across the parsed DOM, in every declared theme; `design-lint render` heuristically estimates rendered-pixel contrast (capped at WARN, never authoritative). Gradient/photo/blur backdrops, and icon/input-border/focus-ring contrast specifically, are **[human-verified-only]**.
-- **Inversion bands must re-point their tokens, not just flip fg/bg.** A band that inverts (`.thesis{background:var(--fg);color:var(--bg)}`) puts its subtree on the *opposite* polarity, but the palette tokens do not follow. Any descendant that paints a surface from the page-polarity palette — `blockquote{background:var(--muted)}`, `pre`, `.card`, a table head — lands un-inverted plate under inverted text and collapses toward 1:1. A published artifact shipped exactly this at **1.08:1**, illegible in both themes, while every declared colour+background pair passed. Fix by re-scoping the tokens on the band itself (`.thesis{--muted:color-mix(in srgb,var(--bg) 12%,transparent)}`), which repairs every present and future descendant at once; a literal hex override only ever suits one theme. **Never restyle the descendant one-off** — the next one reintroduces it.
-- **Focus is always visible**: never `outline: none` without a replacement. Focus indicators need ≥3:1 against both the component and its surroundings, with at least a 2px perimeter, and the focused element must not be obscured. `design-lint html` catches a bare `outline: none` with no `:focus`/`:focus-visible` replacement rule declared. The ≥3:1 ratio, ≥2px perimeter, and not-obscured requirements are **[human-verified-only]**.
-- **Target size**: interactive targets ≥24×24 CSS px (WCAG 2.2 AA, 2.5.8); aim for ~44px on primary touch actions. **[human-verified-only]** — design-lint has no rendered hit-target-size check.
-- **Motion respects preference**: wrap every animation, scroll effect, and transition in `@media (prefers-reduced-motion: no-preference)`, or neutralize them under `(reduce)`. Parallax, large-scale movement, and autoplaying loops are vestibular triggers — they need this most, and they are exactly what "surprising motion" tends to produce. `design-lint html` checks that declared animation/transition is guarded by a `prefers-reduced-motion` media query. Whether the `(reduce)` branch actually neutralizes the motion (versus just existing) is **[human-verified-only]**.
-- **Body type**: ≥16px body copy, line-height ≈1.5, and a measure of 45–75 characters (~66 optimal; push line-height to 1.6–1.7 past 75). Oversized measure and 14px body are the two most common legibility failures in generated UI. `design-lint html` checks declared `font-size` against the 16px floor. Line-height and measure (characters per line) are **[human-verified-only]**.
-- **Semantics before styling**: headings in real order (one `h1`, no skipped levels), `alt` on meaningful images (`alt=""` on decorative ones), labels bound to inputs, actual `<button>` elements. Screen-reader structure is part of the design, not a cleanup pass. `design-lint html` checks heading order and presence of an `alt` attribute on every `<img>` (not whether the alt text is correct, or correctly empty on decorative images). Label-to-input binding and real-`<button>`-vs-styled-`<div>` are **[human-verified-only]**.
-
-Contrast, target size, and measure are **rendered-output** rules — a clean grep proves
-nothing about them. See the enforcement tiers above.
-
----
-
-## Frontend Aesthetics Guidelines
-
-Focus on:
-- **Typography**: Choose fonts that are beautiful, unique, and interesting. Avoid generic fonts like Arial and Inter; opt instead for distinctive choices that elevate the frontend's aesthetics; unexpected, characterful font choices. Pair a distinctive display font with a refined body font. *(Exception: if the project's design system explicitly specifies font families, use them — the design system overrides general aesthetic rules.)*
-- **Color & Theme**: Commit to a cohesive aesthetic. Use CSS variables for consistency. Dominant colors with sharp accents outperform timid, evenly-distributed palettes. *(Exception: if the project's design system defines a color palette, use those tokens exactly.)*
-- **Motion**: Use animations for effects and micro-interactions. Prioritize CSS-only solutions for HTML. Use Motion library for React when available. Focus on high-impact moments: one well-orchestrated page load with staggered reveals (animation-delay) creates more delight than scattered micro-interactions. Use scroll-triggering and hover states that surprise — **inside a `prefers-reduced-motion` guard**, always.
-- **Spatial Composition**: Unexpected layouts. Asymmetry. Overlap. Diagonal flow. Grid-breaking elements. Generous negative space OR controlled density. Break the grid deliberately, from a **constrained spacing scale** — arbitrary one-off pixel values read as sloppy, not as daring.
-- **Backgrounds & Visual Details**: Create atmosphere and depth rather than defaulting to solid colors. Add contextual effects and textures that match the overall aesthetic. Apply creative forms like gradient meshes, noise textures, geometric patterns, layered transparencies, dramatic shadows, decorative borders, custom cursors, and grain overlays. Every one of these sits *behind text* — check the contrast floor at the busiest pixel, and add a scrim, solid plate, or text shadow when it fails rather than dropping the effect.
-
-NEVER use generic AI-generated aesthetics like overused font families (Inter, Roboto, Arial, system fonts), cliched color schemes (particularly purple gradients on white backgrounds), predictable layouts and component patterns, and cookie-cutter design that lacks context-specific character.
-
-**Exception**: if the project's design system explicitly specifies these fonts/colors/patterns, use them — the design system overrides general aesthetic rules.
-
-Interpret creatively and make unexpected choices that feel genuinely designed for the context. No design should be the same. Vary between light and dark themes, different fonts, different aesthetics. NEVER converge on common choices (Space Grotesk, for example) across generations.
-
-**IMPORTANT**: Match implementation complexity to the aesthetic vision. Maximalist designs need elaborate code with extensive animations and effects. Minimalist or refined designs need restraint, precision, and careful attention to spacing, typography, and subtle details. Elegance comes from executing the vision well.
-
-Remember: Codex is capable of extraordinary creative work. Don't hold back, show what can truly be created when thinking outside the box and committing fully to a distinctive vision.
-
----
-
-## Presentation & Deck Surfaces
-
-Slides, pitch decks, and anything read from across a room **invert** several rules above —
-"atmosphere and depth" is precisely how a slide becomes unreadable. When the output is
-presented rather than browsed:
-
-- **One thesis per slide.** Give one claim, metric, or step the dominant visual weight; supporting proof is secondary and metadata tertiary (roughly 60/30/10). Three or more equal cards make every fact look equally important and destroy the reading order — use asymmetry, scale, and whitespace instead.
-- **Highlight the decisive beat.** In a sequence, emphasize the decision/result step rather than styling every step equally. In metrics and roadmaps, enlarge the current or decisive fact and dim the rest.
-- **Legibility floors outrank taste.** Audience-facing body copy ≥18pt where possible, with a hard floor around 13pt below which text is metadata only and must never carry the point. Cap words per slide (~70): a slide that has to be *read* is a slide nobody hears.
-- **Heavy full-bleed surfaces are focal, not atmospheric.** A dominant dark or saturated field should mark the one thing that matters on that slide, not set the mood of the whole deck. Cap its share of the canvas (~45% outside deliberate interstitials) — past that it stops being emphasis and becomes the background.
-- **Review at presentation distance**, not at 100% zoom on your own monitor: a viewer should identify the slide's point in about two seconds without reading the body copy.
-- **Generate from a single content model** where possible (one source → PPTX/PDF/images/viewer) so the numeric rules above can be checked mechanically instead of eyeballed. Those checks are rendered-output rules — see the enforcement tiers above; a word count or a coverage ratio cannot be grepped out of source.
-
----
-
-## SEO Requirements
-
-Every page or layout component generated **must include** the following by default (omit only if user explicitly says "no SEO"):
-
-```html
-<!-- Required in <head> -->
-<title>[Page title — unique, ≤60 chars]</title>
-<meta name="description" content="[Page description — ≤160 chars]">
-<meta property="og:title" content="[Same as title]">
-<meta property="og:description" content="[Same as description]">
-<meta property="og:image" content="[Absolute URL to OG image]">
-<meta property="og:url" content="[Canonical URL]">
-<link rel="canonical" href="[Canonical URL]">
-
-<!-- For homepage/landing pages — add Organization or WebSite schema -->
-<script type="application/ld+json">
-{"@context":"https://schema.org","@type":"WebSite","name":"[Site name]","url":"[URL]"}
-</script>
-```
-
-- For React/Next.js: use `<Head>` or `metadata` export
-- For Vue: use `useHead()` / vue-meta
-- For raw HTML: inline in `<head>`
-- For components that aren't full pages: skip, but note "add to parent layout"
-
-After implementation, note: `Run /seo page <url> to audit, /seo geo <url> for AI search readiness`
-
----
-
-## Output Requirements
-
-**Start every response with a `## Design Decisions` section** before any code:
+Start the implementation handoff with:
 
 ```markdown
 ## Design Decisions
 
-- **Design system**: [Found <source: .design-system.md / design-system/SKILL.md / DESIGN.md> — using tokens: <list key tokens used>] OR [No design system found — full creative freedom applied]
-- **Hard-rule check**: [Grepped output for banned patterns: <patterns> — clean] OR [N/A — no hard rules declared]
-- **Rendered-output rules**: [Ran <validator> against the built artifact — <what it measured>] OR [Declared but unchecked: <rule> needs a rendered-artifact validator] OR [N/A — all hard rules are grep-able]
-- **Measured worst contrast ratio**: [`design-lint <lane> <artifact>` worst pair: <X.XX>:1 — <PASS/WARN/FAIL/SKIP + reason>] OR [Not run: <why — e.g. no rendered artifact yet>]
-- **Accessibility floors**: [Contrast <worst measured ratio> / focus visible / targets ≥24px / reduced-motion guarded / body ≥16px at 45–75ch — all clear] OR [Cleared except <floor>: <why, and the nearest conforming alternative offered>]
-- **Component library**: [Using <library> as specified in design system] OR [No library specified — building from raw HTML/CSS] OR [N/A — no design system]
-- **Aesthetic direction**: [1-sentence description of the chosen aesthetic]
-- **Differentiation**: [What makes this memorable — the one thing users will remember]
-- **Key token overrides**: [If design system existed: list any dimensions where partial tokens meant creative freedom was applied]
+- **Scope lane**: [Micro / Standard / Full — rationale]
+- **Platform**: [detected target(s), inputs, and platform reference loaded]
+- **Design system**: [source and tokens/components used, or none]
+- **Benchmark**: [reference set, reusable pattern, counterexample, rejected choice]
+- **Native vs custom**: [platform skeleton / product brain / brand expression]
+- **Visual checkpoint**: [real surface / HTML study / native preview / direct implementation — why]
+- **State and motion**: [states covered; each motion's job or no-motion decision]
+- **Verification**: [source, rendered/interactive, and outcome evidence; explicit unrun gates]
+- **Measured worst contrast**: [ratio and tool/lane, or truthful reason it was not measurable]
 ```
 
-This section makes design reasoning transparent and verifiable.
+Before reporting completion:
 
+- confirm every pipeline phase is represented or marked `N/A` with a reason;
+- run project tests, design-system checks, and selected platform verification;
+- inspect the real rendered/native result rather than trusting source alone;
+- preserve task-owned work through the repository delivery workflow;
+- use `DONE_WITH_CONCERNS` when human/device/production evidence needed for the
+  user's stated outcome remains unavailable.
 
----
-
-## Completion Status
-
-**Completion checklist — run before reporting done:**
-- If the artifact is HTML/web output: run `design-lint html <artifact>` and read every finding. A `SKIP` means that check could not verify the rule statically — it is not a pass, and does not license claiming the floor is clear.
-- If the artifact is a deck/PPTX: run `design-lint deck <file.pptx>` (source metrics) and, once rendered, `design-lint render <slide-images>` (pixel metrics).
-- Record the worst measured contrast ratio design-lint reported in the `## Design Decisions` block (see Output Requirements above) — do not report the contrast floor as clear from an eyeballed guess.
-
-- ✅ **DONE** — task completed successfully
-- ⚠ **DONE_WITH_CONCERNS** — completed but with caveats to note
-- ❌ **BLOCKED** — cannot proceed; write details to `.clade/blockers.md`
-- ❓ **NEEDS_CONTEXT** — missing information; use AskUserQuestion
-
-**3-strike rule:** If the same approach fails 3 times, switch to BLOCKED — do not retry indefinitely.
+Use `DONE`, `DONE_WITH_CONCERNS`, `BLOCKED`, or `NEEDS_CONTEXT` truthfully. After
+three failures of the same approach, stop repeating it and report the blocking
+condition.
 
 ## Additional skill reference
 
-# Frontend Design
+# Interface Design Pipeline
 
-Guides creation of distinctive, production-grade frontend interfaces that avoid generic AI aesthetics. Generates real working code with exceptional attention to design details.
+Guides interface work from evidence and platform choice through preview,
+implementation, and verification. The historical `frontend-design` name stays
+for compatibility; the workflow covers web, mobile, desktop, and native apps.
 
 ## Usage
 
 ```
-/frontend-design        # Start with interactive requirements gathering
+/frontend-design        # Run the platform-aware interface pipeline
 ```
 
-Respects the project's design system if present — `.design-system.md` (token
-sheet), `design-system/SKILL.md` (design system packaged as a skill, with
-tokens/components/brand assets), or `DESIGN.md` (full spec). Enforces its hard
-rules, runs its review checklist, and records decisions (including rejected
-experiments) in its Decisions Log. Can also author a new design system in the
-two-layer SKILL.md + DESIGN.md + assets structure.
+Every invocation classifies the target platform and task size, reads the shared
+benchmark contract plus the relevant platform adapter, then runs all seven
+pipeline phases at proportional depth. It respects the project's design system,
+keeps platform contracts native, and makes product workflow and brand choices
+deliberately.
 
-Covers presentation surfaces (slides, decks) as well as web UI — these invert
-several web aesthetic rules, so they carry their own legibility floors, one-thesis
-hierarchy, and focal-surface caps, checked on the rendered artifact rather than
-by grepping source.
+When visual direction is materially uncertain, it creates a viewable checkpoint
+before expensive implementation. HTML is preferred for browser UI and may be
+used as a clearly labelled visual study for native apps; native behavior must be
+validated in the real platform preview, simulator, or running app.
 
 ## Delivery completion
 
