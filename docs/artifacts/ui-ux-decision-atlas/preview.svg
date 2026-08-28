@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">UI UX Decision Atlas</title>
+  <desc id="desc">世界级设计参考、原生边界、交互状态、动效原则与验证方法。</desc>
+  <rect width="1200" height="630" fill="#ffffff"/>
+  <g fill="#0a0a0a">
+    <circle cx="850" cy="95" r="5"/><circle cx="890" cy="95" r="5"/><circle cx="930" cy="95" r="5"/><circle cx="970" cy="95" r="5"/><circle cx="1010" cy="95" r="5"/><circle cx="1050" cy="95" r="5"/><circle cx="1090" cy="95" r="5"/>
+    <circle cx="850" cy="135" r="5"/><circle cx="890" cy="135" r="5"/><circle cx="930" cy="135" r="5"/><circle cx="970" cy="135" r="5"/><circle cx="1010" cy="135" r="5"/><circle cx="1050" cy="135" r="5"/><circle cx="1090" cy="135" r="5"/>
+    <circle cx="850" cy="175" r="5"/><circle cx="890" cy="175" r="5"/><circle cx="930" cy="175" r="5"/><circle cx="970" cy="175" r="5"/><circle cx="1010" cy="175" r="5"/><circle cx="1050" cy="175" r="5"/><circle cx="1090" cy="175" r="5"/>
+  </g>
+  <text x="72" y="96" fill="#55555e" font-family="monospace" font-size="24">DECISION TOOL / 2026.08</text>
+  <text x="72" y="245" fill="#0a0a0a" font-family="monospace" font-size="82">UI/UX</text>
+  <text x="72" y="340" fill="#0a0a0a" font-family="monospace" font-size="82">DECISION ATLAS</text>
+  <rect x="72" y="430" width="1056" height="128" fill="#0a0a0a"/>
+  <text x="104" y="486" fill="#ffffff" font-family="monospace" font-size="28">NO UNIVERSAL #1.</text>
+  <text x="104" y="530" fill="#c8c8cf" font-family="sans-serif" font-size="24">Define the user, platform, task and metric first.</text>
+</svg>
