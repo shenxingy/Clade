@@ -242,6 +242,13 @@ jobs:
       - name: Run pre-tool-guardian tests
         run: bash tests/test-pre-tool-guardian.sh
 
+      # The watchdog's worker selection had no test and matched none of the
+      # commands worker_provider.py builds, so it freed no memory under
+      # pressure. Pure-function selection, exercised against synthetic
+      # `ps` tables — no processes are spawned or signalled.
+      - name: Run memory-watchdog selection tests
+        run: bash tests/test-memory-watchdog.sh
+
       # Loop argument parsing + planning-budget defaults. The documented
       # `--dry-run goal.md` order used to set GOAL_FILE=--dry-run, and the
       # supervisor budget defaulted to 120s through two separate stuck runs.
