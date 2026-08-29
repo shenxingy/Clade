@@ -794,52 +794,128 @@ async def _rank_tasks(task_queue: Any, claude_dir: Path) -> None:
 # ─── Worker-state helpers (moved from worker.py for line-count budget) ────────
 
 
-def _compute_activity_state(claude_dir: Path | None) -> str:
+def _claude_transcript_root() -> Path:
+    """Where Claude Code keeps per-project session transcripts."""
+    override = os.environ.get("CLAUDE_CONFIG_DIR")
+    base = Path(override).expanduser() if override else Path.home() / ".claude"
+    return base / "projects"
+
+
+def _encode_project_path(project_dir: Path) -> str:
+    """Claude Code's on-disk name for a project's transcript directory.
+
+    Measured against the 60 transcript directories on a real machine: the
+    absolute path has ``/``, ``.`` and ``_`` each replaced by ``-``
+    (``/home/u/projects/snap_dragon_packaging`` ->
+    ``-home-u-projects-snap-dragon-packaging``). The mapping is lossy — a
+    ``foo_bar`` and a ``foo-bar`` sibling encode identically — which is
+    tolerable here because the result only feeds an advisory activity
+    heuristic, never a decision.
+    """
+    return re.sub(r"[/._]", "-", str(project_dir))
+
+
+def _compute_activity_state(project_dir: Path | None) -> str:
     """Determine activity state by reading Claude Code's JSONL session file.
 
     Composio pattern: maps JSONL entry types to activity states.
     Returns: 'active', 'waiting_input', 'blocked', or 'unknown'.
+
+    Takes the directory the agent RUNS in (a worktree, when the worker has
+    one), because that is what Claude Code encodes into the transcript path.
+
+    This returned "unknown" unconditionally until 2026-08-29, in three
+    independent ways: it was handed ``<project>/.claude`` and took ``.parent``
+    as if it were ``~/.claude``; it globbed ``projects/*/sessions/*.jsonl``
+    when transcripts sit directly in ``projects/<encoded>/``; and the ``*``
+    over projects would have reported an unrelated repository's session,
+    whichever had the newest mtime. Its test built the wrong layout itself,
+    so it stayed green over all three.
     """
-    if not claude_dir:
+    if not project_dir:
         return "unknown"
     try:
-        # Claude Code session JSONL lives in ~/.claude/projects/{encoded-path}/
-        # Each session has a .jsonl file we can read
-        projects_dir = claude_dir.parent  # typically ~/.claude
-        if not projects_dir.exists():
+        session_dir = _claude_transcript_root() / _encode_project_path(project_dir)
+        if not session_dir.is_dir():
             return "unknown"
-        # Find the most recent session .jsonl for this project
-        import glob as _glob
-        session_pattern = str(projects_dir / "projects" / "*" / "sessions" / "*.jsonl")
         jsonl_files = sorted(
-            _glob.glob(session_pattern),
+            (str(p) for p in session_dir.glob("*.jsonl")),
             key=lambda p: os.path.getmtime(p),
             reverse=True,
         )
         if not jsonl_files:
             return "unknown"
-        # Read last entry from most recent session file
         with open(jsonl_files[0], "rb") as f:
-            f.seek(max(0, os.path.getsize(jsonl_files[0]) - 4096))
+            f.seek(max(0, os.path.getsize(jsonl_files[0]) - _ACTIVITY_TAIL_BYTES))
             tail = f.read().decode("utf-8", errors="replace")
         lines = tail.strip().splitlines()
-        if not lines:
-            return "unknown"
-        last_line = lines[-1]
-        entry = json.loads(last_line)
-        last_type = entry.get("type", "")
-        # Composio mapping
-        if last_type in ("tool_use", "user"):
-            return "active"
-        elif last_type in ("assistant", "summary", "result"):
-            return "waiting_input"
-        elif last_type == "error":
-            return "blocked"
-        elif last_type == "permission_request":
-            return "waiting_input"
+        for line in reversed(lines):
+            state = _activity_from_entry(line)
+            if state:
+                return state
         return "unknown"
     except Exception:
         return "unknown"
+
+
+# How far back to read. The last line is very often bookkeeping rather than a
+# turn, so the scan has to walk past several entries to find a conversational
+# one; 4 KB was not reliably enough for that.
+_ACTIVITY_TAIL_BYTES = 65536
+
+# Entry types that are bookkeeping, not conversation. Counted over a real
+# 900-entry transcript: assistant 282, attachment 156, user 147, then
+# last-prompt / mode / permission-mode / bridge-session / atis-latch / ai-title
+# / pr-link / queue-operation / file-history-* — every one of which can be the
+# final line while the agent is mid-turn.
+_ACTIVITY_TURN_TYPES = ("assistant", "user", "system")
+
+
+def _content_block_types(entry: dict) -> set[str]:
+    content = (entry.get("message") or {}).get("content")
+    if isinstance(content, str):
+        return {"text"}
+    if isinstance(content, list):
+        return {b.get("type") for b in content if isinstance(b, dict)}
+    return set()
+
+
+def _activity_from_entry(line: str) -> str | None:
+    """Map one transcript line to an activity state, or None if it is not a turn.
+
+    Grounded in the schema Claude Code actually writes, not the shape the
+    original Composio port assumed. There is no top-level ``tool_use``,
+    ``result``, ``error`` or ``permission_request`` entry type: tool calls are
+    ``tool_use`` CONTENT BLOCKS inside an ``assistant`` entry, tool returns are
+    ``tool_result`` blocks inside a ``user`` entry, and the one blocking signal
+    is a ``system`` entry with ``preventedContinuation``.
+    """
+    line = line.strip()
+    if not line or not line.startswith("{"):
+        return None
+    try:
+        entry = json.loads(line)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(entry, dict):
+        return None
+    entry_type = entry.get("type")
+    if entry_type not in _ACTIVITY_TURN_TYPES:
+        return None
+
+    if entry_type == "system":
+        # stop_hook_summary carries preventedContinuation when a Stop hook
+        # refused to let the turn end — the agent is held, not working.
+        return "blocked" if entry.get("preventedContinuation") else None
+
+    blocks = _content_block_types(entry)
+    if entry_type == "assistant":
+        # A tool call means work is in flight; text/thinking alone means the
+        # turn produced its answer and the agent is waiting.
+        return "active" if "tool_use" in blocks else "waiting_input"
+    # entry_type == "user": either a tool result feeding the next step, or a
+    # fresh instruction. Both mean the agent has work to do.
+    return "active"
 
 
 def _check_file_ownership(

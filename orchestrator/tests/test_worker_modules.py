@@ -1,6 +1,8 @@
 """Tests for extracted worker modules: condensers, worker_utils, worker_hydrate, worker_tldr."""
 
+import json
 import os
+import re
 import subprocess
 
 import pytest
@@ -1018,40 +1020,133 @@ class TestCheckFileOwnership:
         assert "FORBIDDEN_FILES" in reason
 
 class TestComputeActivityState:
+    """Fixtures use Claude Code's real transcript schema, not an invented one.
+
+    The previous fixtures built ``projects/<name>/sessions/*.jsonl`` under a
+    directory of their own choosing and wrote ``{"type": "tool_use"}`` lines.
+    Claude Code writes neither: transcripts sit directly in
+    ``<config>/projects/<encoded>/``, and tool calls are ``tool_use`` content
+    blocks inside an ``assistant`` entry. Every assertion here passed against a
+    function that returned "unknown" for all real input.
+    """
+
+    @staticmethod
+    def _transcript_dir(config_dir, project_dir):
+        """Mirror Claude Code's encoding: '/', '.' and '_' all become '-'."""
+        d = config_dir / "projects" / re.sub(r"[/._]", "-", str(project_dir))
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    @staticmethod
+    def _turn(entry_type, *block_types, **extra):
+        entry = {"type": entry_type, **extra}
+        if block_types:
+            entry["message"] = {"content": [{"type": b} for b in block_types]}
+        return json.dumps(entry)
+
     def test_none_dir_unknown(self):
         assert _compute_activity_state(None) == "unknown"
 
-    def test_missing_parent_unknown(self, tmp_path):
-        assert _compute_activity_state(tmp_path / "nope" / ".claude") == "unknown"
+    def test_project_without_transcripts_unknown(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cfg"))
+        assert _compute_activity_state(tmp_path / "proj") == "unknown"
 
-    def test_no_sessions_unknown(self, tmp_path):
-        claude_dir = tmp_path / "orchestrator"
-        claude_dir.mkdir()
-        assert _compute_activity_state(claude_dir) == "unknown"
+    def test_transcript_dir_present_but_empty_unknown(self, tmp_path, monkeypatch):
+        cfg = tmp_path / "cfg"
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
+        project = tmp_path / "proj"
+        self._transcript_dir(cfg, project)
+        assert _compute_activity_state(project) == "unknown"
 
-    def test_maps_last_jsonl_entry_types(self, tmp_path):
-        sessions = tmp_path / "projects" / "p1" / "sessions"
-        sessions.mkdir(parents=True)
-        jsonl = sessions / "s1.jsonl"
-        claude_dir = tmp_path / "orchestrator"  # parent → tmp_path
-        claude_dir.mkdir()
-        for entry_type, expected in (
-            ("tool_use", "active"),
-            ("assistant", "waiting_input"),
-            ("error", "blocked"),
-            ("permission_request", "waiting_input"),
-            ("something_else", "unknown"),
-        ):
-            jsonl.write_text('{"type": "%s"}\n' % entry_type)
-            assert _compute_activity_state(claude_dir) == expected
+    @pytest.mark.parametrize(
+        "line_factory,expected",
+        [
+            (lambda t: t("assistant", "tool_use"), "active"),
+            (lambda t: t("assistant", "thinking", "text"), "waiting_input"),
+            (lambda t: t("assistant", "text"), "waiting_input"),
+            (lambda t: t("user", "tool_result"), "active"),
+            (lambda t: t("user", "text"), "active"),
+            (lambda t: t("system", preventedContinuation=True), "blocked"),
+        ],
+    )
+    def test_maps_real_turn_shapes(self, tmp_path, monkeypatch, line_factory, expected):
+        cfg = tmp_path / "cfg"
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
+        project = tmp_path / "proj"
+        jsonl = self._transcript_dir(cfg, project) / "s1.jsonl"
+        jsonl.write_text(line_factory(self._turn) + "\n")
+        assert _compute_activity_state(project) == expected
 
-    def test_garbage_jsonl_unknown(self, tmp_path):
-        sessions = tmp_path / "projects" / "p1" / "sessions"
-        sessions.mkdir(parents=True)
-        (sessions / "s1.jsonl").write_text("not json at all\n")
-        claude_dir = tmp_path / "orchestrator"
-        claude_dir.mkdir()
-        assert _compute_activity_state(claude_dir) == "unknown"
+    def test_skips_bookkeeping_entries_to_reach_the_last_turn(self, tmp_path, monkeypatch):
+        """The final line is very often not a turn at all.
+
+        Counted over a real transcript: attachment (156), last-prompt, mode,
+        permission-mode, bridge-session, atis-latch, ai-title, pr-link,
+        queue-operation, file-history-*. Reading only the last line reported
+        "unknown" while the agent was demonstrably mid-turn.
+        """
+        cfg = tmp_path / "cfg"
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
+        project = tmp_path / "proj"
+        jsonl = self._transcript_dir(cfg, project) / "s1.jsonl"
+        jsonl.write_text(
+            "\n".join(
+                [
+                    self._turn("assistant", "tool_use"),
+                    json.dumps({"type": "attachment"}),
+                    json.dumps({"type": "ai-title"}),
+                    json.dumps({"type": "pr-link"}),
+                ]
+            )
+            + "\n"
+        )
+        assert _compute_activity_state(project) == "active"
+
+    def test_underscore_project_encodes_to_hyphen(self, tmp_path, monkeypatch):
+        """snap_dragon_packaging files under ...-snap-dragon-packaging."""
+        cfg = tmp_path / "cfg"
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
+        project = tmp_path / "snap_dragon_packaging"
+        d = cfg / "projects" / re.sub(r"[/._]", "-", str(project))
+        d.mkdir(parents=True)
+        assert "snap-dragon-packaging" in d.name
+        (d / "s1.jsonl").write_text(self._turn("assistant", "tool_use") + "\n")
+        assert _compute_activity_state(project) == "active"
+
+    def test_other_projects_transcripts_are_not_read(self, tmp_path, monkeypatch):
+        """A newer session in a DIFFERENT repo must not answer for this one.
+
+        The old glob spanned every project and took the newest by mtime, so a
+        busy unrelated repository decided this worker's reported state.
+        """
+        cfg = tmp_path / "cfg"
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
+        mine, theirs = tmp_path / "mine", tmp_path / "theirs"
+        (self._transcript_dir(cfg, mine) / "s1.jsonl").write_text(
+            self._turn("assistant", "text") + "\n"
+        )
+        other = self._transcript_dir(cfg, theirs) / "s1.jsonl"
+        other.write_text(self._turn("assistant", "tool_use") + "\n")
+        os.utime(other, (10**10, 10**10))  # far newer than mine
+        assert _compute_activity_state(mine) == "waiting_input"
+
+    def test_newest_session_within_the_project_wins(self, tmp_path, monkeypatch):
+        cfg = tmp_path / "cfg"
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
+        project = tmp_path / "proj"
+        d = self._transcript_dir(cfg, project)
+        (d / "old.jsonl").write_text(self._turn("assistant", "text") + "\n")
+        newest = d / "new.jsonl"
+        newest.write_text(self._turn("assistant", "tool_use") + "\n")
+        os.utime(newest, (10**10, 10**10))
+        assert _compute_activity_state(project) == "active"
+
+    def test_garbage_jsonl_unknown(self, tmp_path, monkeypatch):
+        cfg = tmp_path / "cfg"
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
+        project = tmp_path / "proj"
+        (self._transcript_dir(cfg, project) / "s1.jsonl").write_text("not json at all\n")
+        assert _compute_activity_state(project) == "unknown"
 
 
 class TestUndoLastCommit:

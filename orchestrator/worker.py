@@ -422,8 +422,10 @@ class Worker:
 
         Logic lives in worker_utils._compute_activity_state (moved for the
         1500-line budget). Returns 'active'/'waiting_input'/'blocked'/'unknown'.
+        Takes the RUN dir (worktree while active) — that is what Claude Code
+        encodes into the transcript path, unlike the config dir passed before.
         """
-        return _compute_activity_state(self._claude_dir)
+        return _compute_activity_state(self._project_dir)
 
     def pause(self) -> None:
         if self.pgid and self.is_alive():
