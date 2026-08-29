@@ -1152,9 +1152,31 @@ section "models.env Integration"
 
 source "$ORIG_DIR/configs/models.env"
 
-assert_eq "claude-haiku-4-5-20251001" "$MODEL_HAIKU" "MODEL_HAIKU correct"
-assert_eq "claude-sonnet-4-6" "$MODEL_SONNET" "MODEL_SONNET correct"
-assert_eq "claude-opus-4-6" "$MODEL_OPUS" "MODEL_OPUS correct"
+# Pin the CROSS-SURFACE invariant, not the literals. Restating models.env's
+# own contents proved nothing and went red on every legitimate model bump;
+# what actually matters is that the shell layer and orchestrator/config.py
+# name the same models, because a split between them routes the two surfaces
+# to different models with nothing to notice.
+CFG_ALIASES=$(python3 - "$ORIG_DIR/orchestrator/config.py" <<'PYEOF'
+import ast, re, sys
+src = open(sys.argv[1], encoding="utf-8").read()
+m = re.search(r"^_MODEL_ALIASES = (\{.*?^\})", src, re.S | re.M)
+a = ast.literal_eval(m.group(1))
+print(f"{a['haiku']}\n{a['sonnet']}\n{a['opus']}")
+PYEOF
+)
+CFG_HAIKU=$(sed -n 1p <<<"$CFG_ALIASES")
+CFG_SONNET=$(sed -n 2p <<<"$CFG_ALIASES")
+CFG_OPUS=$(sed -n 3p <<<"$CFG_ALIASES")
+
+assert_eq "$CFG_HAIKU" "$MODEL_HAIKU" "MODEL_HAIKU matches config.py _MODEL_ALIASES"
+assert_eq "$CFG_SONNET" "$MODEL_SONNET" "MODEL_SONNET matches config.py _MODEL_ALIASES"
+assert_eq "$CFG_OPUS" "$MODEL_OPUS" "MODEL_OPUS matches config.py _MODEL_ALIASES"
+
+# A generation-stale alias silently routes every task to a superseded model,
+# so assert the shape rather than a literal that has to be edited each bump.
+case "$MODEL_OPUS" in claude-opus-4-*) assert_eq "current" "stale" "MODEL_OPUS is not a superseded generation" ;; esac
+case "$MODEL_SONNET" in claude-sonnet-4-*) assert_eq "current" "stale" "MODEL_SONNET is not a superseded generation" ;; esac
 
 # Test model_id resolution
 model_id_test() {

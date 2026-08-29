@@ -25,8 +25,7 @@ from config import (
     HAIKU_MODEL,
     SETTING_SOURCES_NONE,
     DISALLOWED_TOOLS_JUDGE,
-    _estimate_cost,
-    _parse_token_usage,
+    resolve_worker_usage,
     _resolve_fallback_model,
     _parse_task_type, _parse_task_class,
     _parse_task_schema,
@@ -67,6 +66,7 @@ from error_classifier import (
     classify as _classify_error,
     summarize as _summarize_error,
 )
+from agent_output import absorb_agent_result
 from worker_utils import (
     _distill_output, _truncate_output, _strip_error_context,
     _run_lint_check, _extract_lint_targets, _run_project_tests, LoopDetectionService,
@@ -150,6 +150,7 @@ class Worker:
         self.last_commit: str | None = None
         self.log_file: str | None = None
         self._log_path: Path | None = None
+        self._agent_result: Any = None  # agent_output.AgentResult when structured
         self._log_capture_task: asyncio.Task | None = None
         self._session_tree: SessionTree | None = None  # Pi-style JSONL session tree
         self.verified: bool = False
@@ -184,6 +185,7 @@ class Worker:
         # cycle in the worker.py header (error_classifier is already imported).
         self._failure_classified: Any = None
         self._worktree_path: Path | None = None
+        self._worktree_error: str = ""
         self._branch_name: str | None = None
         self.own_files: list[str] = []
         self.forbidden_files: list[str] = []
@@ -223,46 +225,46 @@ class Worker:
                 pass
         return desc_tokens + log_tokens
 
-    async def _setup_worktree(self) -> None:
-        """Create an isolated git worktree for this worker. Updates self._project_dir on success."""
-        worktree_base = self._claude_dir / "worktrees"
+    async def _setup_worktree(self) -> bool:
+        """Create an isolated git worktree. Updates self._project_dir on success.
+
+        Returns False when isolation could not be obtained. Every failure path
+        here used to set _worktree_path = None, DISCARD git's stderr, and leave
+        _project_dir pointing at the shared checkout — so a worker spawned with
+        --dangerously-skip-permissions ran in the user's own working tree, with
+        nothing logged to say so. That is precisely the uncoordinated-parallel-
+        writer race CLAUDE.md warns about, reached silently.
+        """
+        # NOT .claude/worktrees/: CLI 2.1.236 claims that directory as its own
+        # managed pool and deletes a session's worktree with it. An autonomous
+        # worker must not share a namespace something else prunes.
+        worktree_base = self._claude_dir / "orchestrator-worktrees"
         worktree_base.mkdir(parents=True, exist_ok=True)
         self._worktree_path = worktree_base / f"worker-{self.id}"
         self._branch_name = f"orchestrator/task-{self.task_id}"
-
-        wt_proc = await asyncio.create_subprocess_exec(
-            "git", "worktree", "add", str(self._worktree_path), "-b", self._branch_name,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-            cwd=str(self._project_dir),
-        )
-        try:
-            wt_out, wt_err = await asyncio.wait_for(wt_proc.communicate(), timeout=30)
-            if wt_proc.returncode == 0:
-                self._project_dir = self._worktree_path
-            else:
+        # Second attempt reuses the branch: a requeued task keeps its own.
+        for branch_args in (["-b", self._branch_name], [self._branch_name]):
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "git", "worktree", "add", str(self._worktree_path), *branch_args,
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                    cwd=str(self._project_dir),
+                )
                 try:
-                    wt_proc2 = await asyncio.create_subprocess_exec(
-                        "git", "worktree", "add", str(self._worktree_path), self._branch_name,
-                        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-                        cwd=str(self._project_dir),
-                    )
-                    try:
-                        await asyncio.wait_for(wt_proc2.communicate(), timeout=30)
-                    except asyncio.TimeoutError:
-                        wt_proc2.kill()
-                        await wt_proc2.communicate()
-                    if wt_proc2.returncode == 0:
-                        self._project_dir = self._worktree_path
-                    else:
-                        self._worktree_path = None
-                except Exception:
-                    self._worktree_path = None
-        except asyncio.TimeoutError:
-            wt_proc.kill()
-            await wt_proc.communicate()
-            self._worktree_path = None
-        except Exception:
-            self._worktree_path = None
+                    _, err = await asyncio.wait_for(proc.communicate(), timeout=30)
+                except asyncio.TimeoutError:
+                    proc.kill()
+                    await proc.communicate()
+                    err = b"git worktree add timed out after 30s"
+                if proc.returncode == 0:
+                    self._project_dir = self._worktree_path
+                    return True
+                self._worktree_error = err.decode(errors="replace").strip()[:300]
+            except Exception as exc:
+                self._worktree_error = f"{type(exc).__name__}: {exc}"[:300]
+        self._worktree_path = None
+        logger.error("Worker %s: worktree isolation failed — %s", self.id, self._worktree_error)
+        return False
 
     async def _build_task_file(self, task_queue: TaskQueue | None) -> Path:
         """Write the task file with injected context (see worker_taskfile.py)."""
@@ -334,7 +336,10 @@ class Worker:
 
     async def start(self, task_queue: TaskQueue | None = None) -> None:
         self._task_queue = task_queue
-        await self._setup_worktree()
+        if not await self._setup_worktree() and GLOBAL_SETTINGS.get("worker_require_worktree", True):
+            raise RuntimeError(
+                f"worktree isolation failed, refusing to run in the shared checkout: "
+                f"{self._worktree_error}")
         task_file = await self._build_task_file(task_queue)
         shell_cmd, env = self._build_cmd_and_env(task_file)
 
@@ -422,8 +427,10 @@ class Worker:
 
         Logic lives in worker_utils._compute_activity_state (moved for the
         1500-line budget). Returns 'active'/'waiting_input'/'blocked'/'unknown'.
+        Takes the RUN dir (worktree while active) — that is what Claude Code
+        encodes into the transcript path, unlike the config dir passed before.
         """
-        return _compute_activity_state(self._claude_dir)
+        return _compute_activity_state(self._project_dir)
 
     def pause(self) -> None:
         if self.pgid and self.is_alive():
@@ -459,6 +466,8 @@ class Worker:
     async def poll(self) -> None:
         if not self.is_alive():
             await self._finish_log_capture()
+            # Absorb usage + project events to prose before ANY log consumer.
+            self._agent_result = absorb_agent_result(self._log_path)
             if self._finished_at is None:
                 self._finished_at = time.time()
             rc = self.proc.returncode if self.proc else -1
@@ -596,12 +605,9 @@ class Worker:
             # Reflection loop (Aider pattern): if verification failed, run lint check and retry
             # Token budget gate: parse current usage first; skip retry if budget exceeded.
             _current_tokens = 0
-            if self.token_budget > 0 and self._log_path and self._log_path.exists():
-                try:
-                    _in, _out = _parse_token_usage(self._log_path)
-                    _current_tokens = _in + _out
-                except Exception:
-                    pass
+            if self.token_budget > 0:
+                _in, _out, _ = resolve_worker_usage(self._agent_result, self._log_path, self.model)
+                _current_tokens = _in + _out
             _budget_ok = (self.token_budget == 0 or _current_tokens < self.token_budget)
             if not verified and self._reflection_retries < MAX_REFLECTION_RETRIES and _budget_ok and not (self._test_requeue or self._ownership_violation or self._oracle_requeue):
                 try:
@@ -646,15 +652,12 @@ class Worker:
                             self._loop_detector._loop_detected = False  # reset loop detection on retry
                             self._reflection_retries = 0  # reset on success
                             self._failure_reflections.clear()  # clear episodic memory on success
-                        else:
-                            self._reflection_retries += 0  # already incremented
                 except Exception:
                     pass
         # Parse token usage from log and enforce token budget
         if self._log_path and self._log_path.exists():
             try:
-                self._input_tokens, self._output_tokens = _parse_token_usage(self._log_path)
-                self._estimated_cost = _estimate_cost(self._input_tokens, self._output_tokens)
+                self._input_tokens, self._output_tokens, self._estimated_cost = resolve_worker_usage(self._agent_result, self._log_path, self.model)
                 total_tokens = self._input_tokens + self._output_tokens
                 if self.token_budget > 0 and total_tokens > self.token_budget and self.status != "done":
                     self.status = "failed"

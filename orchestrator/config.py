@@ -49,8 +49,8 @@ _ALLOWED_LOOP_COLS = {
 
 _MODEL_ALIASES = {
     "haiku": "claude-haiku-4-5-20251001",
-    "sonnet": "claude-sonnet-4-6",
-    "opus": "claude-opus-4-6",
+    "sonnet": "claude-sonnet-5",
+    "opus": "claude-opus-5",
 }
 
 # Canonical model IDs — single source of truth. Dated model snapshots may
@@ -67,6 +67,10 @@ OPUS_MODEL = _MODEL_ALIASES["opus"]
 # providers use opaque model IDs validated and shell-quoted at the adapter
 # boundary.
 ALLOWED_MODEL_IDS = set(_MODEL_ALIASES.values()) | {
+    # Superseded generations stay accepted: task rows, evidence bundles, and
+    # `model:` pins written before an alias moved must keep resolving.
+    "claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6",
+    "claude-sonnet-4-6",
     "claude-opus-4-5", "claude-sonnet-4-5", "claude-haiku-4-5",
 }
 
@@ -111,6 +115,15 @@ _SETTINGS_DEFAULTS = {
     "loop_convergence_n": 3,
     "loop_max_iterations": 20,
     "loop_context_mode": "carry",  # carry=current hydration; reset=typed clean handoff
+    # Spawn workers with --output-format stream-json so the agent reports its
+    # own token usage and total_cost_usd. Off means falling back to scraping
+    # prose for a `tokens: N/N` line the CLI does not emit, i.e. cost 0.0 and a
+    # token budget that cannot fire. Kill switch only — see agent_output.py.
+    "worker_structured_output": True,
+    # Refuse to run a worker in the shared checkout when git worktree isolation
+    # fails. Off restores the old silent fallback, in which an agent spawned
+    # with --dangerously-skip-permissions edits the user's own working tree.
+    "worker_require_worktree": True,
     "run_budget_usd": 0.0,  # max cost per autonomous run (0 = unlimited)
     "run_budget_tokens": 0,  # max tokens per autonomous run (0 = unlimited)
     "auto_oracle": False,
@@ -495,9 +508,85 @@ def _parse_token_usage(log_path: Path) -> tuple[int, int]:
     return input_t, output_t
 
 
-def _estimate_cost(input_tokens: int, output_tokens: int) -> float:
-    """Estimate USD cost using Sonnet pricing ($3/MTok input, $15/MTok output)."""
-    return round(input_tokens * 3.0 / 1_000_000 + output_tokens * 15.0 / 1_000_000, 4)
+# USD per million tokens, (input, output). Anthropic first-party API rates as
+# published 2026-08-29. Bedrock and Vertex are partner-operated and priced
+# separately; a gateway model id that is not listed falls back to SONNET_RATE.
+#
+# Only ever used when the agent does not report its own spend. `claude -p
+# --output-format json` returns `total_cost_usd` and a per-model `modelUsage`
+# breakdown, which is authoritative and covers cache reads and server tools
+# this table cannot see — prefer it and treat this as the degraded path.
+SONNET_RATE = (3.0, 15.0)
+_MODEL_RATES: dict[str, tuple[float, float]] = {
+    "claude-fable-5": (10.0, 50.0),
+    "claude-opus-5": (5.0, 25.0),
+    "claude-opus-4-8": (5.0, 25.0),
+    "claude-opus-4-7": (5.0, 25.0),
+    "claude-opus-4-6": (5.0, 25.0),
+    "claude-opus-4-5": (5.0, 25.0),
+    "claude-sonnet-5": SONNET_RATE,
+    "claude-sonnet-4-6": SONNET_RATE,
+    "claude-sonnet-4-5": SONNET_RATE,
+    "claude-haiku-4-5": (1.0, 5.0),
+}
+
+
+def _model_rate(model: str | None) -> tuple[float, float]:
+    """Resolve a model id (alias, dated snapshot, or gateway id) to its rate."""
+    if not model:
+        return SONNET_RATE
+    resolved = _MODEL_ALIASES.get(model, model)
+    if resolved in _MODEL_RATES:
+        return _MODEL_RATES[resolved]
+    # Dated snapshots (claude-haiku-4-5-20251001) share their base model's rate.
+    for known, rate in _MODEL_RATES.items():
+        if resolved.startswith(known + "-"):
+            return rate
+    return SONNET_RATE
+
+
+def _estimate_cost(input_tokens: int, output_tokens: int, model: str | None = None) -> float:
+    """Estimate USD cost for a model.
+
+    Every model was billed at Sonnet's rate until 2026-08-29, so an Opus task
+    was reported at 60% of its real price and a Haiku task at 300% of it — on
+    the same figure `run_budget` enforces against and `routing_break_even`
+    divides by. The model argument defaults to Sonnet so existing two-argument
+    calls keep their old behaviour rather than silently changing price.
+    """
+    rate_in, rate_out = _model_rate(model)
+    return round(
+        input_tokens * rate_in / 1_000_000 + output_tokens * rate_out / 1_000_000, 4
+    )
+
+def resolve_worker_usage(
+    agent_result: Any, log_path: Path | None, model: str | None
+) -> tuple[int, int, float]:
+    """Tokens and USD for a finished worker, best source first.
+
+    `agent_result` is an agent_output.AgentResult when the run emitted
+    structured output — that is the agent's own accounting, so it already
+    includes cache reads and server-tool use that no local estimate can see.
+    Duck-typed rather than imported to keep this module free of project
+    imports.
+
+    Falls back to scraping the prose only when there is no result event
+    (text-mode output, a crash before the run finished). That path returns
+    (0, 0, 0.0) in practice, which is precisely why the structured path
+    exists — see agent_output's module docstring.
+    """
+    if agent_result is not None:
+        cost = getattr(agent_result, "total_cost_usd", None)
+        tokens_in = getattr(agent_result, "input_tokens", 0)
+        tokens_out = getattr(agent_result, "output_tokens", 0)
+        if cost is None:
+            cost = _estimate_cost(tokens_in, tokens_out, model)
+        return tokens_in, tokens_out, float(cost)
+    if log_path is None:
+        return 0, 0, 0.0
+    tokens_in, tokens_out = _parse_token_usage(log_path)
+    return tokens_in, tokens_out, _estimate_cost(tokens_in, tokens_out, model)
+
 
 # ─── Session Recovery ─────────────────────────────────────────────────────────
 

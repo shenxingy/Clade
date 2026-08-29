@@ -96,6 +96,7 @@ config.py            ← constants, settings, utilities
 agent_runtime.py     ← agent-runtime ids + fail-closed validation
 cascade_policy.py    ← pure verifier-aware cheap→strong eligibility, lineage, and signal helpers
 fault_localize.py    ← multi-language SBFL: test-runner detection, go/js failure parsers, cross-lang symbol index (stdlib-only leaf; worker_tldr imports it)
+agent_output.py      ← stdlib-only contract for reading a spawned agent's own usage report (stream-json/json → cost, tokens, per-model usage, prose projection)
 pytest_report.py     ← stdlib-only pytest-output contract: colour-proof result parsing, verbosity normalization, colour-free subprocess env (shared by worker_utils, worker_tldr, evals/)
 ideas.py             ← IdeasManager, async idea CRUD
 process_manager.py   ← ProcessPool, start.sh lifecycle
@@ -180,6 +181,7 @@ CI's "Architecture map coverage" gate fails on any module missing from this file
 | `worker_runtime.py` | Runtime route resolution and fail-closed task outcome persistence |
 | `worker_evidence.py` | Evidence attempt lifecycle, Git/test/oracle/cost/artifact projection, and terminal delivery candidate |
 | `worker_tldr.py` | `_generate_code_tldr`, `_score_task` — TLDR + scoring (leaf) |
+| `agent_output.py` | `parse_agent_output` / `absorb_agent_result` — the agent's self-reported `total_cost_usd` and usage, and the prose projection every log consumer reads (leaf) |
 | `pytest_report.py` | `parse_results` / `force_verbose` / `color_free_env` — the one definition of how pytest output is read back (leaf) |
 | `worker_review.py` | `_write_pr_review`, `_oracle_review`, `_write_progress_entry` (leaf) |
 | `oracle_cli.py` | Standalone oracle gate — same judge as the orchestrator, no server needed (`oracle-review.sh` shim; opt-in `/commit` gate via `CLADE_ORACLE_GATE=1`) |
@@ -259,16 +261,28 @@ python3 configs/scripts/check-references.py
 # 11. Shellcheck on the shared gate (CI installs shellcheck; local may not)
 configs/scripts/checks.sh shellcheck configs/scripts/checks.sh
 
-# 12. Every suite the `shell-tests` job runs — all 17, not a convenient subset
+# 12. Every suite the `shell-tests` job runs — all 18, not a convenient subset
 for t in loop checks skill-routing pr-scope-policy audit worktree-env \
          rule-injector mailbox-drain correction-pairing hooks \
          post-compact-reinject context-warning-drain ensure-dev-server \
-         quiet-run scan-health pre-tool-guardian loop-args; do
+         quiet-run scan-health pre-tool-guardian loop-args memory-watchdog; do
   bash "tests/test-$t.sh" >/dev/null || echo "FAILED: $t"
 done
 
-# 13. Plugin manifest validator (separate workflow; needs the claude CLI)
+# 13. The install-test job (its own CI job, not part of shell-tests)
+bash tests/test-install.sh
+
+# 14. Plugin manifest validator + component resolution (separate workflow;
+#     both need the claude CLI). --strict checks the manifest against a schema
+#     and is blind to a schema-valid manifest that resolves nothing, which is
+#     what this repo shipped: 37 agent paths loading as Agents (0).
 claude plugin validate . --strict
+bash configs/scripts/check-cc-plugin-components.sh
+
+# 15. This list is a superset of CI — enforced, not merely asserted. It had
+#     drifted twice (df802c3, then again by 2026-08-29) because the only thing
+#     holding it was the sentence below telling you to keep it in sync.
+python3 configs/scripts/check-ci-checklist.py
 ```
 
 `tests/test-loop.sh` additionally asserts that the deployed
@@ -283,7 +297,7 @@ enforces that yet, which is precisely why it keeps recurring.
 On push/PR to `main`, four workflow files fire:
 
 - `ci.yml` — `syntax-check` (11 gates), `pytest` (suite + 2 offline evals),
-  `shell-tests` (17 suites), `install-test`. `run_hack_eval.py` scores
+  `shell-tests` (18 suites), `install-test`. `run_hack_eval.py` scores
   `judge_diversity.test_integrity` against the labelled reward-hack corpus in
   `evals/hack_cases/` — read its README before changing either, because that
   gate's floor and ceiling are measured, not chosen.

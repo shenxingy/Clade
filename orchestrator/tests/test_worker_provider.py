@@ -1,9 +1,10 @@
 """Deterministic tests for the worker execution-provider abstraction.
 
-Covers the two invariants that matter: the claude provider reproduces the
-historical inline command byte-for-byte (default path unchanged), and the codex
-provider emits a well-formed `codex exec` command with none of the claude-only
-flags and with stdin closed so a headless worker cannot hang.
+Covers the invariants that matter: the claude provider still reproduces the
+historical inline command in every part the provider abstraction was meant to
+preserve, it asks the agent to report its own usage, and the codex provider
+emits a well-formed `codex exec` command with none of the claude-only flags and
+with stdin closed so a headless worker cannot hang.
 """
 
 import json
@@ -27,10 +28,18 @@ TASK = Path("/tmp/task-abc.md")
 NO_MCP = Path("/nonexistent/.claude/mcp.json")
 
 
-# ─── ClaudeProvider: byte-identical to the historical inline command ──────────
-def test_claude_command_is_byte_identical_to_legacy():
-    # The exact string worker.py built inline before the provider abstraction.
-    expected = (
+# ─── ClaudeProvider: the historical inline command, plus self-reported usage ──
+def test_claude_command_matches_legacy_apart_from_structured_output():
+    """The legacy string, with `--output-format stream-json --verbose` added.
+
+    This test pinned the pre-abstraction command byte-for-byte, which also
+    pinned the defect that command carried: with no `--output-format`, the CLI
+    printed prose, `_parse_token_usage` matched nothing, and every worker was
+    recorded at $0.00 — the figure the token budget compares against and
+    routing_break_even divides by. The byte-identity contract is deliberately
+    relaxed here; everything the abstraction was meant to preserve still is.
+    """
+    legacy = (
         f'claude -p "$(cat {shlex.quote(str(TASK))})" '
         f"--model {SONNET_MODEL} --dangerously-skip-permissions"
         f"{_fallback_flag('sonnet')}{_build_tool_flags(None)}"
@@ -38,7 +47,34 @@ def test_claude_command_is_byte_identical_to_legacy():
     got = ClaudeProvider().build_command(
         task_file=TASK, requested_model="sonnet", task_type=None, mcp_config=NO_MCP
     )
-    assert got == expected
+    assert got == legacy + " --output-format stream-json --verbose"
+
+
+def test_claude_command_asks_the_agent_to_report_its_own_usage():
+    """--verbose is load-bearing, not decoration.
+
+    `claude --print --output-format=stream-json` without it exits 1 with
+    "requires --verbose" (CLI 2.1.236), so dropping it fails every spawn
+    instead of degrading to the old behaviour.
+    """
+    for got in (
+        ClaudeProvider().build_command(
+            task_file=TASK, requested_model="sonnet", task_type=None, mcp_config=NO_MCP
+        ),
+        ClaudeProvider().build_continue_command(task_file=TASK, requested_model="sonnet"),
+    ):
+        assert "--output-format stream-json" in got
+        assert "--verbose" in got
+
+
+def test_structured_output_setting_is_a_kill_switch(monkeypatch):
+    from config import GLOBAL_SETTINGS
+
+    monkeypatch.setitem(GLOBAL_SETTINGS, "worker_structured_output", False)
+    got = ClaudeProvider().build_command(
+        task_file=TASK, requested_model="sonnet", task_type=None, mcp_config=NO_MCP
+    )
+    assert "--output-format" not in got
 
 
 def test_claude_appends_mcp_config_only_when_present(tmp_path):

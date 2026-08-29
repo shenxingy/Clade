@@ -109,6 +109,14 @@ jobs:
       - name: Reference resolution
         run: python3 configs/scripts/check-references.py
 
+      # CLAUDE.md's pre-commit checklist claims to be what makes CI pass. It
+      # had drifted twice (df802c3, then again by 2026-08-29), both times
+      # leaving a local run green against a list that did not cover the build.
+      # This compares the gates the workflows invoke against the gates that
+      # section names, so the claim is enforced rather than asserted.
+      - name: Pre-commit checklist covers CI
+        run: python3 configs/scripts/check-ci-checklist.py
+
   pytest:
     name: Tests
     runs-on: ubuntu-latest
@@ -241,6 +249,13 @@ jobs:
       # outright). Both directions are asserted.
       - name: Run pre-tool-guardian tests
         run: bash tests/test-pre-tool-guardian.sh
+
+      # The watchdog's worker selection had no test and matched none of the
+      # commands worker_provider.py builds, so it freed no memory under
+      # pressure. Pure-function selection, exercised against synthetic
+      # `ps` tables — no processes are spawned or signalled.
+      - name: Run memory-watchdog selection tests
+        run: bash tests/test-memory-watchdog.sh
 
       # Loop argument parsing + planning-budget defaults. The documented
       # `--dry-run goal.md` order used to set GOAL_FILE=--dry-run, and the

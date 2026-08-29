@@ -86,7 +86,7 @@
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
 | SH1 | All `configs/hooks/*.sh` pass `bash -n` | ✅ | 2026-07-13 | all 31 hooks pass |
-| SH2 | All `configs/scripts/*.sh` pass `bash -n` | ✅ | 2026-07-13 | all 39 scripts pass |
+| SH2 | All `configs/scripts/*.sh` pass `bash -n` | ✅ | 2026-07-13 | all 40 scripts pass |
 | SH3 | `install.sh` + `uninstall.sh` pass `bash -n` | ✅ | 2026-06-04 | uninstall.sh rewritten to derive removal lists from configs/ |
 
 ## Orchestrator — Python Syntax & Tests

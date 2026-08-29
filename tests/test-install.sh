@@ -294,6 +294,15 @@ if command -v jq &>/dev/null; then
     "$CLAUDE_DIR/settings.json" \
     > "$CLAUDE_DIR/settings.json.new" 2>/dev/null \
     && mv "$CLAUDE_DIR/settings.json.new" "$CLAUDE_DIR/settings.json"
+
+  # Reproduce the real upgrade state: every machine installed before the deny
+  # list shipped carries settings.json with NO permissions key at all, because
+  # the merge path only ever wrote .hooks and .statusLine. Seed a user-authored
+  # allow + deny alongside it so the union is exercised, not just the empty case.
+  jq '.permissions = {allow: ["Bash(mytool:*)"], deny: ["Read(~/my-secrets/**)"]}' \
+    "$CLAUDE_DIR/settings.json" \
+    > "$CLAUDE_DIR/settings.json.new" 2>/dev/null \
+    && mv "$CLAUDE_DIR/settings.json.new" "$CLAUDE_DIR/settings.json"
 fi
 
 # Seed a stale pre-migration mirror so the reinstall exercises the cleanup path
@@ -366,6 +375,45 @@ if command -v jq &>/dev/null; then
   [[ "$model_val" == "sentinel-model-keep" ]] \
     && pass "settings.json merge preserves unrelated keys" \
     || fail "settings.json merge preserves unrelated keys" "model='$model_val'"
+
+  # The deny list is the only permission control that still binds under
+  # --dangerously-skip-permissions, which is how every Clade worker spawns.
+  # Before 2026-08-29 the merge path never wrote .permissions, so these rules
+  # reached fresh installs only and every upgraded machine ran without them.
+  missing_deny=""
+  while read -r rule; do
+    jq -e --arg r "$rule" '.permissions.deny | index($r)' \
+      "$CLAUDE_DIR/settings.json" >/dev/null 2>&1 || missing_deny="$missing_deny $rule"
+  done < <(jq -r '.permissions.deny[]' "$SRC/templates/settings.json")
+  [[ -z "$missing_deny" ]] \
+    && pass "reinstall merges the template deny rules into existing settings.json" \
+    || fail "reinstall merges the template deny rules into existing settings.json" \
+            "missing:$missing_deny"
+
+  jq -e '.permissions.deny | index("Read(~/my-secrets/**)")' \
+    "$CLAUDE_DIR/settings.json" >/dev/null 2>&1 \
+    && pass "reinstall preserves a user-authored deny rule" \
+    || fail "reinstall preserves a user-authored deny rule"
+
+  jq -e '.permissions.allow | index("Bash(mytool:*)")' \
+    "$CLAUDE_DIR/settings.json" >/dev/null 2>&1 \
+    && pass "reinstall preserves a user-authored allow rule" \
+    || fail "reinstall preserves a user-authored allow rule"
+
+  # Deny-only union on purpose: silently adopting the template's allow list
+  # would grant an autonomous worker capability the user never opted into.
+  jq -e '.permissions.allow | index("Bash(pytest:*)")' \
+    "$CLAUDE_DIR/settings.json" >/dev/null 2>&1 \
+    && fail "reinstall does not silently widen the allow list" \
+            "template allow rule leaked into an existing settings.json" \
+    || pass "reinstall does not silently widen the allow list"
+
+  dup_deny=$(jq -r '.permissions.deny | length as $n | (unique | length) as $u
+                    | if $n == $u then "ok" else "dupes" end' \
+             "$CLAUDE_DIR/settings.json" 2>/dev/null)
+  [[ "$dup_deny" == "ok" ]] \
+    && pass "deny union de-duplicates across reinstalls" \
+    || fail "deny union de-duplicates across reinstalls" "$dup_deny"
 
   hooks_type=$(jq -r '.hooks | type' "$CLAUDE_DIR/settings.json" 2>/dev/null)
   [[ "$hooks_type" == "object" ]] \
