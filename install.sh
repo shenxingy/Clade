@@ -372,13 +372,30 @@ else
     echo "  Rewrote hook + statusLine commands to run via Git Bash"
   fi
 
+  # templates/settings.json ships a deny list — Read(~/.ssh/**), Read(~/.aws/**),
+  # Read(~/**/.env). Until 2026-08-29 the merge path below wrote only .hooks and
+  # .statusLine, so those rules reached fresh installs only: every machine that
+  # had ever run install.sh before the deny list existed kept `permissions: null`
+  # forever. That is the wrong half to skip. Clade spawns workers with
+  # --dangerously-skip-permissions, and deny rules are the one control that still
+  # binds under it — they are checked before the bypass, so they are the last
+  # thing standing between an autonomous worker and ~/.ssh.
+  TEMPLATE_DENY=$(jq -c '.permissions.deny // []' "$SCRIPT_DIR/templates/settings.json")
+
   if [[ -f "$CLAUDE_DIR/settings.json" ]]; then
-    # Merge: update hooks + statusLine, preserve everything else
-    jq --argjson hooks "$HOOKS" --argjson sl "$STATUSLINE" \
-      '.hooks = $hooks | .statusLine = $sl' \
+    # Merge: hooks + statusLine, and UNION the template's deny rules into
+    # whatever the user already has. Deny-only on purpose — a deny is strictly
+    # more restrictive, so adding one can never silently widen what an agent may
+    # do, whereas quietly unioning `allow` would grant capability the user never
+    # opted into. Existing user deny entries are preserved and de-duplicated.
+    jq --argjson hooks "$HOOKS" --argjson sl "$STATUSLINE" --argjson deny "$TEMPLATE_DENY" \
+      '.hooks = $hooks
+       | .statusLine = $sl
+       | .permissions = ((.permissions // {})
+                         | .deny = ((.deny // []) + $deny | unique))' \
       "$CLAUDE_DIR/settings.json" > "$CLAUDE_DIR/.settings.json.$$"
     mv "$CLAUDE_DIR/.settings.json.$$" "$CLAUDE_DIR/settings.json"
-    echo "  Merged hooks + statusLine into existing settings.json"
+    echo "  Merged hooks + statusLine + deny rules into existing settings.json"
   else
     # Fresh install: retain template defaults, but inject the same computed
     # hook/status-line commands as the merge path (including Windows wrappers).
