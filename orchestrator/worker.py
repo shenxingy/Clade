@@ -185,6 +185,7 @@ class Worker:
         # cycle in the worker.py header (error_classifier is already imported).
         self._failure_classified: Any = None
         self._worktree_path: Path | None = None
+        self._worktree_error: str = ""
         self._branch_name: str | None = None
         self.own_files: list[str] = []
         self.forbidden_files: list[str] = []
@@ -224,46 +225,43 @@ class Worker:
                 pass
         return desc_tokens + log_tokens
 
-    async def _setup_worktree(self) -> None:
-        """Create an isolated git worktree for this worker. Updates self._project_dir on success."""
+    async def _setup_worktree(self) -> bool:
+        """Create an isolated git worktree. Updates self._project_dir on success.
+
+        Returns False when isolation could not be obtained. Every failure path
+        here used to set _worktree_path = None, DISCARD git's stderr, and leave
+        _project_dir pointing at the shared checkout — so a worker spawned with
+        --dangerously-skip-permissions ran in the user's own working tree, with
+        nothing logged to say so. That is precisely the uncoordinated-parallel-
+        writer race CLAUDE.md warns about, reached silently.
+        """
         worktree_base = self._claude_dir / "worktrees"
         worktree_base.mkdir(parents=True, exist_ok=True)
         self._worktree_path = worktree_base / f"worker-{self.id}"
         self._branch_name = f"orchestrator/task-{self.task_id}"
-
-        wt_proc = await asyncio.create_subprocess_exec(
-            "git", "worktree", "add", str(self._worktree_path), "-b", self._branch_name,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-            cwd=str(self._project_dir),
-        )
-        try:
-            wt_out, wt_err = await asyncio.wait_for(wt_proc.communicate(), timeout=30)
-            if wt_proc.returncode == 0:
-                self._project_dir = self._worktree_path
-            else:
+        # Second attempt reuses the branch: a requeued task keeps its own.
+        for branch_args in (["-b", self._branch_name], [self._branch_name]):
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "git", "worktree", "add", str(self._worktree_path), *branch_args,
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                    cwd=str(self._project_dir),
+                )
                 try:
-                    wt_proc2 = await asyncio.create_subprocess_exec(
-                        "git", "worktree", "add", str(self._worktree_path), self._branch_name,
-                        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-                        cwd=str(self._project_dir),
-                    )
-                    try:
-                        await asyncio.wait_for(wt_proc2.communicate(), timeout=30)
-                    except asyncio.TimeoutError:
-                        wt_proc2.kill()
-                        await wt_proc2.communicate()
-                    if wt_proc2.returncode == 0:
-                        self._project_dir = self._worktree_path
-                    else:
-                        self._worktree_path = None
-                except Exception:
-                    self._worktree_path = None
-        except asyncio.TimeoutError:
-            wt_proc.kill()
-            await wt_proc.communicate()
-            self._worktree_path = None
-        except Exception:
-            self._worktree_path = None
+                    _, err = await asyncio.wait_for(proc.communicate(), timeout=30)
+                except asyncio.TimeoutError:
+                    proc.kill()
+                    await proc.communicate()
+                    err = b"git worktree add timed out after 30s"
+                if proc.returncode == 0:
+                    self._project_dir = self._worktree_path
+                    return True
+                self._worktree_error = err.decode(errors="replace").strip()[:300]
+            except Exception as exc:
+                self._worktree_error = f"{type(exc).__name__}: {exc}"[:300]
+        self._worktree_path = None
+        logger.error("Worker %s: worktree isolation failed — %s", self.id, self._worktree_error)
+        return False
 
     async def _build_task_file(self, task_queue: TaskQueue | None) -> Path:
         """Write the task file with injected context (see worker_taskfile.py)."""
@@ -335,7 +333,10 @@ class Worker:
 
     async def start(self, task_queue: TaskQueue | None = None) -> None:
         self._task_queue = task_queue
-        await self._setup_worktree()
+        if not await self._setup_worktree() and GLOBAL_SETTINGS.get("worker_require_worktree", True):
+            raise RuntimeError(
+                f"worktree isolation failed, refusing to run in the shared checkout: "
+                f"{self._worktree_error}")
         task_file = await self._build_task_file(task_queue)
         shell_cmd, env = self._build_cmd_and_env(task_file)
 

@@ -431,3 +431,90 @@ async def test_typed_handoff_success_logs_success(tmp_path: Path, monkeypatch, c
         await pool.poll_all(tq)
 
     assert any("child worker spawned" in r.message for r in caplog.records)
+
+
+# ─── Worktree isolation must fail closed ──────────────────────────────────────
+
+
+class TestWorktreeIsolationFailsClosed:
+    """A worker must not fall back to the shared checkout in silence.
+
+    Every failure path in _setup_worktree set _worktree_path = None, discarded
+    git's stderr, and left _project_dir on the main checkout — so an agent
+    spawned with --dangerously-skip-permissions edited the user's own working
+    tree with nothing logged. CLAUDE.md names uncoordinated parallel writers to
+    shared build/test state as a real race, not a hypothetical one.
+    """
+
+    @staticmethod
+    def _git_repo(path: Path) -> Path:
+        import subprocess
+
+        path.mkdir(parents=True, exist_ok=True)
+        for cmd in (
+            ["git", "init", "-q"],
+            ["git", "config", "user.email", "t@example.com"],
+            ["git", "config", "user.name", "t"],
+            ["git", "commit", "-q", "--allow-empty", "-m", "root"],
+        ):
+            subprocess.run(cmd, cwd=path, check=True, capture_output=True)
+        return path
+
+    def _worker(self, tmp_path: Path, project_dir: Path) -> Worker:
+        claude_dir = tmp_path / ".claude"
+        claude_dir.mkdir(exist_ok=True)
+        return Worker(
+            task_id="task-wt",
+            description="isolate me",
+            model="sonnet",
+            project_dir=project_dir,
+            claude_dir=claude_dir,
+        )
+
+    async def test_returns_false_and_keeps_gits_stderr_when_not_a_repo(self, tmp_path: Path):
+        project = tmp_path / "proj"
+        project.mkdir()  # deliberately NOT a git repo
+        w = self._worker(tmp_path, project)
+
+        assert await w._setup_worktree() is False
+        assert w._worktree_path is None
+        # git's message must survive — it was captured and thrown away before,
+        # leaving an isolation failure with no diagnosis anywhere.
+        assert w._worktree_error, "git stderr was discarded again"
+
+    async def test_start_refuses_to_run_in_the_shared_checkout(self, tmp_path: Path):
+        """The failure is survivable; proceeding after it is not.
+
+        start_worker_with_evidence already turns a raise into a failed worker
+        with its evidence attempt closed, so raising is the handled path.
+        """
+        project = tmp_path / "proj"
+        project.mkdir()
+        w = self._worker(tmp_path, project)
+
+        with pytest.raises(RuntimeError, match="shared checkout"):
+            await w.start()
+        assert w.proc is None, "no agent may be spawned once isolation failed"
+
+    async def test_kill_switch_restores_the_old_fallback(self, tmp_path: Path):
+        from config import GLOBAL_SETTINGS
+
+        project = tmp_path / "proj"
+        project.mkdir()
+        w = self._worker(tmp_path, project)
+        original = GLOBAL_SETTINGS.get("worker_require_worktree", True)
+        GLOBAL_SETTINGS["worker_require_worktree"] = False
+        try:
+            # Not raising is the whole assertion; the spawn itself is out of
+            # scope here (and would need a real agent CLI).
+            assert await w._setup_worktree() is False
+        finally:
+            GLOBAL_SETTINGS["worker_require_worktree"] = original
+
+    async def test_succeeds_and_moves_project_dir_inside_a_real_repo(self, tmp_path: Path):
+        repo = self._git_repo(tmp_path / "repo")
+        w = self._worker(tmp_path, repo)
+
+        assert await w._setup_worktree() is True
+        assert w._worktree_path is not None and w._worktree_path.exists()
+        assert w._project_dir == w._worktree_path

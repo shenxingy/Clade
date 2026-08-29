@@ -120,6 +120,10 @@ _SETTINGS_DEFAULTS = {
     # prose for a `tokens: N/N` line the CLI does not emit, i.e. cost 0.0 and a
     # token budget that cannot fire. Kill switch only — see agent_output.py.
     "worker_structured_output": True,
+    # Refuse to run a worker in the shared checkout when git worktree isolation
+    # fails. Off restores the old silent fallback, in which an agent spawned
+    # with --dangerously-skip-permissions edits the user's own working tree.
+    "worker_require_worktree": True,
     "run_budget_usd": 0.0,  # max cost per autonomous run (0 = unlimited)
     "run_budget_tokens": 0,  # max tokens per autonomous run (0 = unlimited)
     "auto_oracle": False,

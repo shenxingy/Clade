@@ -10,6 +10,7 @@ import json
 import pytest
 
 from agent_output import AgentResult, absorb_agent_result, parse_agent_output
+from config import HAIKU_MODEL  # dated snapshots may only be literals in config.py
 
 # Trimmed from a real `--output-format stream-json --verbose` run. The hook and
 # thinking_tokens system events are kept because a real log is full of them and
@@ -34,7 +35,7 @@ STREAM_EVENTS = [
             "cache_creation_input_tokens": 0,
         },
         "modelUsage": {
-            "claude-haiku-4-5-20251001": {
+            HAIKU_MODEL: {
                 "inputTokens": 13,
                 "outputTokens": 98,
                 "costUSD": 0.01279555,
@@ -74,8 +75,8 @@ class TestParseAgentOutput:
     def test_per_model_usage_survives(self):
         """Needed to price a run that spanned models; nothing had it before."""
         r = parse_agent_output(_stream())
-        assert list(r.model_usage) == ["claude-haiku-4-5-20251001"]
-        assert r.model_usage["claude-haiku-4-5-20251001"]["costUSD"] == pytest.approx(0.01279555)
+        assert list(r.model_usage) == [HAIKU_MODEL]
+        assert r.model_usage[HAIKU_MODEL]["costUSD"] == pytest.approx(0.01279555)
 
     def test_text_excludes_thinking_and_tool_calls(self):
         """Only prose reaches downstream consumers, not reasoning or tool JSON."""
