@@ -269,12 +269,20 @@ for t in loop checks skill-routing pr-scope-policy audit worktree-env \
   bash "tests/test-$t.sh" >/dev/null || echo "FAILED: $t"
 done
 
-# 13. Plugin manifest validator + component resolution (separate workflow;
+# 13. The install-test job (its own CI job, not part of shell-tests)
+bash tests/test-install.sh
+
+# 14. Plugin manifest validator + component resolution (separate workflow;
 #     both need the claude CLI). --strict checks the manifest against a schema
 #     and is blind to a schema-valid manifest that resolves nothing, which is
 #     what this repo shipped: 37 agent paths loading as Agents (0).
 claude plugin validate . --strict
 bash configs/scripts/check-cc-plugin-components.sh
+
+# 15. This list is a superset of CI — enforced, not merely asserted. It had
+#     drifted twice (df802c3, then again by 2026-08-29) because the only thing
+#     holding it was the sentence below telling you to keep it in sync.
+python3 configs/scripts/check-ci-checklist.py
 ```
 
 `tests/test-loop.sh` additionally asserts that the deployed

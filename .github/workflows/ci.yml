@@ -109,6 +109,14 @@ jobs:
       - name: Reference resolution
         run: python3 configs/scripts/check-references.py
 
+      # CLAUDE.md's pre-commit checklist claims to be what makes CI pass. It
+      # had drifted twice (df802c3, then again by 2026-08-29), both times
+      # leaving a local run green against a list that did not cover the build.
+      # This compares the gates the workflows invoke against the gates that
+      # section names, so the claim is enforced rather than asserted.
+      - name: Pre-commit checklist covers CI
+        run: python3 configs/scripts/check-ci-checklist.py
+
   pytest:
     name: Tests
     runs-on: ubuntu-latest
