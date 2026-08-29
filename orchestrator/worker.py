@@ -235,7 +235,10 @@ class Worker:
         nothing logged to say so. That is precisely the uncoordinated-parallel-
         writer race CLAUDE.md warns about, reached silently.
         """
-        worktree_base = self._claude_dir / "worktrees"
+        # NOT .claude/worktrees/: CLI 2.1.236 claims that directory as its own
+        # managed pool and deletes a session's worktree with it. An autonomous
+        # worker must not share a namespace something else prunes.
+        worktree_base = self._claude_dir / "orchestrator-worktrees"
         worktree_base.mkdir(parents=True, exist_ok=True)
         self._worktree_path = worktree_base / f"worker-{self.id}"
         self._branch_name = f"orchestrator/task-{self.task_id}"
