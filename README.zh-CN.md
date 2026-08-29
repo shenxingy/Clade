@@ -36,7 +36,7 @@ Clade 把 agent 的工作变成可复查的交付：解析后的执行身份、�
 7. [支持的语言](#支持的语言)
 8. [文档](#文档)
 9. [Dotfile 同步](#dotfile-同步)
-10. [仓库结构](#仓库结构)
+10. [架构](#架构)
 11. [OpenClaw 集成](#openclaw-集成)
 12. [贡献](#贡献)
 13. [License](#license)
@@ -217,62 +217,16 @@ Commit Lessons 与 Doc Align 在 Claude 完整框架中本地运行，未启用�
 | `/provider` | 切换 LLM provider |
 | `slt` | 切换状态栏配额进度指示器 |
 
-### 博客与内容（30 个 skills）
+### 内容家族
 
-| Skill | 功能 |
-|-------|------|
-| `/blog` | 全生命周期 — brief → outline → write → SEO check |
-| `/blog-write` | 从零写 SERP-informed 文章 |
-| `/blog-rewrite` | 优化已有文章的质量与 SEO |
-| `/blog-audit` | 全站健康扫描（薄内容、meta、关键词蚕食） |
-| + 26 个 | analyze · audio · brand · brief · calendar · cannibalization · chart · cluster · discourse · factcheck · flow · geo · google · image · locale-audit · localize · multilingual · notebooklm · outline · persona · repurpose · schema · seo-check · strategy · taxonomy · translate |
-
-### SEO（25 个 skills）
-
-| Skill | 功能 |
-|-------|------|
-| `/seo` | 完整 SEO 审计套件 |
-| `/seo-technical` | 可抓取性、可索引性、Core Web Vitals |
-| `/seo-page` | 单页深度分析 |
-| `/seo-content` | E-E-A-T 与内容质量评分 |
-| + 21 个 | audit · backlinks · cluster · competitor-pages · content-brief · dataforseo · drift · ecommerce · flow · geo · google · hreflang · image-gen · images · local · maps · plan · programmatic · schema · sitemap · sxo |
-
-### 付费广告（23 个 skills）
-
-| Skill | 功能 |
-|-------|------|
-| `/ads` | 多平台广告审计套件 |
-| `/ads-google` | Google Ads — Quality Score、PMax、出价 |
-| `/ads-meta` | Meta Ads — Pixel/CAPI、素材疲劳、Advantage+ |
-| `/ads-create` | 从 brief 创建新广告活动 |
-| + 19 个 | amazon · apple · attribution · audit · budget · competitor · creative · dna · generate · landing · linkedin · math · microsoft · photoshoot · plan · server-side-tracking · test · tiktok · youtube |
-
-### 邮件（6 个 skills）
-
-| Skill | 功能 |
-|-------|------|
-| `/email-write` | 用成熟文案框架（PAS、AIDA、BAB）写高转化邮件 |
-| `/email-audit` | 送达率审计 — SPF、DKIM、DMARC、黑名单、健康分 |
-| `/email-sequence` | 设计自动化序列（welcome、nurture、re-engagement） |
-| + 3 个 | check · plan · review |
-
-每个 skill 的详细使用指南见 [When to Use What](docs/when-to-use-what.md)。
+**博客与内容**（30）· **SEO**（25）· **付费广告**（23）· **邮件**（6）——
+逐 skill 的表格见 [什么时候用什么](docs/when-to-use-what.md)。
 
 ## 支持的语言
 
-自动检测 — hooks 和 agents 适配你的项目：
-
-| 语言 | 编辑检查 | 类型检查器 | 测试执行器 |
-|------|---------|-----------|-----------|
-| TypeScript / JavaScript | tsc（monorepo 感知） | tsc | jest / vitest |
-| Python | pyright / mypy | pyright / mypy | pytest |
-| Rust | cargo check | cargo check | cargo test |
-| Go | go vet | go vet | go test |
-| Swift / iOS | swift build | swift build | swift test |
-| Kotlin / Android / Java | gradlew | gradlew | gradle test |
-| LaTeX | chktex | chktex | — |
-
-所有检查按检测自动启用 — 工具未安装时 hook 静默跳过。
+按项目自动检测，hooks 与 agents 随之适配（TypeScript/JavaScript、Python、Rust、
+Go、Swift、Kotlin/Java、LaTeX）。逐语言的检查器与测试运行器对照表见
+[工作原理](docs/how-it-works.md)。工具未安装时对应检查静默跳过。
 
 ## 文档
 
@@ -287,7 +241,8 @@ Commit Lessons 与 Doc Align 在 Claude 完整框架中本地运行，未启用�
 | [通宵自主运行](docs/autonomous-operation.md) | 任务队列、并行会话、上下文接力、安全保障 |
 | [工作原理](docs/how-it-works.md) | Hooks、agents、skills 内部机制、纠正学习、模型选择 |
 | [配置](docs/configuration.md) | 设置、阈值、添加自定义 hooks/agents/skills |
-| [什么时候用什么](docs/when-to-use-what.md) | 每个 skill 的详细使用指南 |
+| [什么时候用什么](docs/when-to-use-what.md) | 什么场景该用哪个 skill —— 核心工作流命令详解，内容家族按表索引 |
+| [向谁学习](docs/who-to-learn-from.md) | agentic-coding 前沿的甄选观察名单 —— 人、仓库、bot 行为，每季度复核 |
 
 ## Dotfile 同步
 
@@ -300,30 +255,22 @@ Commit Lessons 与 Doc Align 在 Claude 完整框架中本地运行，未启用�
 
 配置后完全自动。详见 [配置](docs/configuration.md)。
 
-## 仓库结构
+## 架构
 
-```
-clade/
-├── install.sh               # 一键部署
-├── uninstall.sh             # 干净卸载
-├── mcp-package/             # PyPI 包（clade-mcp）
-├── plugins/clade/           # Codex 原生插件（25 个核心 skills + hooks）
-├── .agents/plugins/         # Codex marketplace manifest
-├── orchestrator/            # FastAPI Web UI + worker 池 + 任务队列
-│   ├── server.py            # 应用、路由、WebSocket
-│   ├── worker.py            # Worker、WorkerPool
-│   ├── task_queue.py        # SQLite 任务 CRUD
-│   ├── mcp_server.py        # MCP server（本地开发版）
-│   └── web/                 # React + Vite 仪表盘（web/src/，从 web/dist 提供服务）
-├── configs/
-│   ├── skills/              # 136 个 skill 定义
-│   ├── hooks/               # 31 个事件 hooks + lib/
-│   ├── agents/              # 37 个 agent 定义
-│   └── scripts/             # 40 个 shell + 24 个 Python 工具
-├── adapters/openclaw/       # OpenClaw 集成（手机监控）
-├── templates/               # settings、CLAUDE.md、corrections 模板
-└── docs/                    # 指南与研究
-```
+**Claude CLI 层**（`configs/` → 安装到 `~/.claude/`）：完整的 skill、hook、
+script 与 agent 框架。
+
+**Codex 插件**（`plugins/clade/`）：由 canonical skills 生成的原生核心 skills，
+外加 Codex 生命周期 hooks，通过 `.agents/plugins/marketplace.json` 分发。
+
+**Orchestrator**（`orchestrator/`）：可选的证据、评测、交付与机队控制平面。它在
+不复制凭据的前提下解析原生 runtime 连接，监视 workers，校准 verifier 感知的路由，
+记录不可变的 attempt 证据，并暴露精确的交付状态。原生 CLI/插件面可独立工作。
+
+**Web UI**（`orchestrator/web/`）：只读观察窗口。任务队列、worker 状态、成本看板、
+设置。不含生产逻辑 —— 一切都通过 CLI 执行。
+
+完整目录树见 [工作原理](docs/how-it-works.md#repository-layout)。
 
 ## OpenClaw 集成
 

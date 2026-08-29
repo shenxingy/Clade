@@ -193,3 +193,47 @@ For most day-to-day work — bug fixes, small features, refactoring, codebase qu
 **When:** Controlling the statusline display.
 - `slt` cycles through modes: symbol → percent → number → off
 - `slt theme` lists themes; `slt theme <name>` sets one
+
+## Content families
+
+Moved out of the README on 2026-08-29 — it is a landing page, not a
+reference manual (`configs/CLAUDE.md`).
+
+## Blog & Content (30 skills)
+
+| Skill | What it does |
+|-------|-------------|
+| `/blog` | Full lifecycle — brief → outline → write → SEO check |
+| `/blog-write` | Write SERP-informed articles from scratch |
+| `/blog-rewrite` | Optimize existing posts for quality and SEO |
+| `/blog-audit` | Full-site health scan (thin content, meta, cannibalization) |
+| + 26 more | analyze · audio · brand · brief · calendar · cannibalization · chart · cluster · discourse · factcheck · flow · geo · google · image · locale-audit · localize · multilingual · notebooklm · outline · persona · repurpose · schema · seo-check · strategy · taxonomy · translate |
+
+## SEO (25 skills)
+
+| Skill | What it does |
+|-------|-------------|
+| `/seo` | Full SEO audit suite |
+| `/seo-technical` | Crawlability, indexability, Core Web Vitals |
+| `/seo-page` | Deep single-page analysis |
+| `/seo-content` | E-E-A-T and content quality scoring |
+| + 21 more | audit · backlinks · cluster · competitor-pages · content-brief · dataforseo · drift · ecommerce · flow · geo · google · hreflang · image-gen · images · local · maps · plan · programmatic · schema · sitemap · sxo |
+
+## Paid Ads (23 skills)
+
+| Skill | What it does |
+|-------|-------------|
+| `/ads` | Multi-platform ads audit suite |
+| `/ads-google` | Google Ads — Quality Score, PMax, bidding |
+| `/ads-meta` | Meta Ads — Pixel/CAPI, creative fatigue, Advantage+ |
+| `/ads-create` | Create new ad campaigns from brief |
+| + 19 more | amazon · apple · attribution · audit · budget · competitor · creative · dna · generate · landing · linkedin · math · microsoft · photoshoot · plan · server-side-tracking · test · tiktok · youtube |
+
+## Email (6 skills)
+
+| Skill | What it does |
+|-------|-------------|
+| `/email-write` | Compose high-converting emails (PAS, AIDA, BAB frameworks) |
+| `/email-audit` | Deliverability audit — SPF, DKIM, DMARC, blacklists, health score |
+| `/email-sequence` | Design automation sequences (welcome, nurture, re-engagement) |
+| + 3 more | check · plan · review |

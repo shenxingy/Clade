@@ -36,13 +36,12 @@ routing, delivery state, and multi-project fleet truth.
 4. [What It Does](#what-it-does)
 5. [Self-Learning Mechanisms](#self-learning-mechanisms)
 6. [Skills](#skills-136)
-7. [Supported Languages](#supported-languages)
-8. [Documentation](#documentation)
-9. [Dotfile Sync](#dotfile-sync)
-10. [Architecture](#architecture)
-11. [OpenClaw Integration](#openclaw-integration)
-12. [Contributing](#contributing)
-13. [License](#license)
+7. [Documentation](#documentation)
+8. [Dotfile Sync](#dotfile-sync)
+9. [Architecture](#architecture)
+10. [OpenClaw Integration](#openclaw-integration)
+11. [Contributing](#contributing)
+12. [License](#license)
 
 ## Install
 
@@ -152,7 +151,7 @@ external side effects.
 | You correct Claude | `correction-detector.sh` | Logs correction, prompts Claude to save a reusable rule |
 | Claude marks task done | `verify-task-completed.sh` | Adaptive quality gate: compile + lint, build + test in strict mode |
 
-See [How It Works](docs/how-it-works.md) for the full hook reference (31 hooks).
+See [How It Works](docs/how-it-works.md) for the hook reference. 31 hooks ship; the guide documents the ones you are likely to tune — `ls configs/hooks/` is the complete list.
 
 ## Self-Learning Mechanisms
 
@@ -178,8 +177,7 @@ See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, de
 |-------|-------------|
 | `/commit` | Create repository-adaptive checkpoint commits; publish when authorized |
 | `/sync` | Check off completed TODOs, append session summary to PROGRESS.md |
-| `/review` | 8-phase coverage review — finds AND fixes issues, loops until clean |
-| `/verify` | Verify project behavior anchors (compile, test, lint) |
+| `/review` | Walks every VERIFY.md checkpoint, fixing failures in-session until all pass |
 
 ### Autonomous Operation
 
@@ -229,62 +227,11 @@ See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, de
 | `/provider` | Switch LLM provider |
 | `slt` | Toggle statusline quota pace indicator |
 
-### Blog & Content (30 skills)
+### Content families
 
-| Skill | What it does |
-|-------|-------------|
-| `/blog` | Full lifecycle — brief → outline → write → SEO check |
-| `/blog-write` | Write SERP-informed articles from scratch |
-| `/blog-rewrite` | Optimize existing posts for quality and SEO |
-| `/blog-audit` | Full-site health scan (thin content, meta, cannibalization) |
-| + 26 more | analyze · audio · brand · brief · calendar · cannibalization · chart · cluster · discourse · factcheck · flow · geo · google · image · locale-audit · localize · multilingual · notebooklm · outline · persona · repurpose · schema · seo-check · strategy · taxonomy · translate |
-
-### SEO (25 skills)
-
-| Skill | What it does |
-|-------|-------------|
-| `/seo` | Full SEO audit suite |
-| `/seo-technical` | Crawlability, indexability, Core Web Vitals |
-| `/seo-page` | Deep single-page analysis |
-| `/seo-content` | E-E-A-T and content quality scoring |
-| + 21 more | audit · backlinks · cluster · competitor-pages · content-brief · dataforseo · drift · ecommerce · flow · geo · google · hreflang · image-gen · images · local · maps · plan · programmatic · schema · sitemap · sxo |
-
-### Paid Ads (23 skills)
-
-| Skill | What it does |
-|-------|-------------|
-| `/ads` | Multi-platform ads audit suite |
-| `/ads-google` | Google Ads — Quality Score, PMax, bidding |
-| `/ads-meta` | Meta Ads — Pixel/CAPI, creative fatigue, Advantage+ |
-| `/ads-create` | Create new ad campaigns from brief |
-| + 19 more | amazon · apple · attribution · audit · budget · competitor · creative · dna · generate · landing · linkedin · math · microsoft · photoshoot · plan · server-side-tracking · test · tiktok · youtube |
-
-### Email (6 skills)
-
-| Skill | What it does |
-|-------|-------------|
-| `/email-write` | Compose high-converting emails (PAS, AIDA, BAB frameworks) |
-| `/email-audit` | Deliverability audit — SPF, DKIM, DMARC, blacklists, health score |
-| `/email-sequence` | Design automation sequences (welcome, nurture, re-engagement) |
-| + 3 more | check · plan · review |
-
-See [When to Use What](docs/when-to-use-what.md) for detailed usage guidance.
-
-## Supported Languages
-
-Auto-detected — hooks and agents adapt to your project:
-
-| Language | Edit check | Type checker | Test runner |
-|----------|-----------|-------------|-------------|
-| TypeScript / JavaScript | tsc (monorepo-aware) | tsc | jest / vitest |
-| Python | pyright / mypy | pyright / mypy | pytest |
-| Rust | cargo check | cargo check | cargo test |
-| Go | go vet | go vet | go test |
-| Swift / iOS | swift build | swift build | swift test |
-| Kotlin / Android / Java | gradlew | gradlew | gradle test |
-| LaTeX | chktex | chktex | — |
-
-All checks are opt-in by detection — if the tool isn't installed, the hook silently skips.
+**Blog & Content** (30) · **SEO** (25) · **Paid Ads** (23) · **Email** (6) —
+per-skill tables live in [When to Use What](docs/when-to-use-what.md), which
+also carries the per-skill usage guidance for the core workflow commands above.
 
 ## Documentation
 
@@ -299,7 +246,7 @@ All checks are opt-in by detection — if the tool isn't installed, the hook sil
 | [Overnight Operation](docs/autonomous-operation.md) | Task queue, parallel sessions, context relay, safety |
 | [How It Works](docs/how-it-works.md) | Hooks, agents, skills internals, correction learning, model selection |
 | [Configuration](docs/configuration.md) | Settings, thresholds, adding custom hooks/agents/skills |
-| [When to Use What](docs/when-to-use-what.md) | Detailed usage guidance for every skill |
+| [When to Use What](docs/when-to-use-what.md) | Which skill to reach for, per situation — core workflow commands in depth, content families by table |
 | [Who to Learn From](docs/who-to-learn-from.md) | Vetted watch-list of the agentic-coding frontier — people, repos, bot behavior, reviewed quarterly |
 
 ## Dotfile Sync
@@ -326,30 +273,6 @@ immutable attempt evidence, and exposes exact delivery state. Native CLI/plugin
 surfaces work independently.
 
 **Web UI** (`orchestrator/web/`): Read-only observation window. Task queue, worker status, cost dashboard, settings. No production logic — all executes via CLI.
-
-```
-clade/
-├── install.sh               # One-command deployment
-├── configs/                 # ← THE PRODUCT CENTER
-│   ├── skills/              # 136 skill definitions
-│   ├── hooks/               # 31 event hooks
-│   ├── agents/              # 37 agent definitions
-│   ├── output-styles/       # 2 output styles (system-prompt register; opt-in)
-│   └── scripts/             # 40 shell + 24 Python utilities
-├── plugins/clade/           # Native Codex plugin (25 generated core skills + hooks)
-├── .agents/plugins/         # Codex marketplace manifest
-├── orchestrator/            # ← THE EXECUTION ADAPTER
-│   ├── server.py            # FastAPI app, routes, WebSocket
-│   ├── worker.py            # WorkerPool, SwarmManager, task dispatch
-│   ├── task_queue.py        # SQLite task queue + CRUD
-│   ├── evidence_bundle.py   # Immutable lifecycle evidence + digest chains
-│   ├── worker_evidence.py   # Worker/verifier/delivery evidence wiring
-│   └── web/                 # ← THE OBSERVATION WINDOW
-│       └── src/             # React + Vite UI (served from dist/)
-├── docs/                    # Guides and research
-├── adapters/openclaw/       # OpenClaw integration (mobile monitoring)
-└── templates/               # Settings, CLAUDE.md templates
-```
 
 ## OpenClaw Integration
 

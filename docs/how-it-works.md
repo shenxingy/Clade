@@ -251,3 +251,48 @@ The kit optimizes model usage at every level:
 | **Staying current** | Run `/model-research --apply` when new models drop to update all selection logic |
 
 Sonnet costs 60% of Opus per token ($3/$15 vs $5/$25 per MTok, verified 2026-08-29 against `orchestrator/config.py:_MODEL_RATES`). The kit defaults to Sonnet and only escalates to Opus when the task genuinely needs it. The benchmark spread that produced this rule was measured on the 4.6 generation and is recorded, with that scope stated, in [docs/reference/models.md](reference/models.md).
+
+## Supported Languages
+
+Auto-detected — hooks and agents adapt to your project:
+
+| Language | Edit check | Type checker | Test runner |
+|----------|-----------|-------------|-------------|
+| TypeScript / JavaScript | tsc (monorepo-aware) | tsc | jest / vitest |
+| Python | pyright / mypy | pyright / mypy | pytest |
+| Rust | cargo check | cargo check | cargo test |
+| Go | go vet | go vet | go test |
+| Swift / iOS | swift build | swift build | swift test |
+| Kotlin / Android / Java | gradlew | gradlew | gradle test |
+| LaTeX | chktex | chktex | — |
+
+All checks are opt-in by detection — if the tool isn't installed, the hook silently skips.
+
+## Repository layout
+
+Moved out of the README on 2026-08-29 (landing page, not a reference manual).
+
+```
+clade/
+├── install.sh               # One-command deployment
+├── uninstall.sh             # Removes what install.sh deployed
+├── configs/                 # ← THE PRODUCT CENTER
+│   ├── skills/              # 136 skill definitions
+│   ├── hooks/               # 31 event hooks
+│   ├── agents/              # 37 agent definitions
+│   ├── output-styles/       # 2 output styles (system-prompt register; opt-in)
+│   └── scripts/             # 40 shell + 24 Python utilities
+├── plugins/clade/           # Native Codex plugin (25 generated core skills + hooks)
+├── .agents/plugins/         # Codex marketplace manifest
+├── orchestrator/            # ← THE EXECUTION ADAPTER
+│   ├── server.py            # FastAPI app, routes, WebSocket
+│   ├── worker.py            # WorkerPool, SwarmManager, task dispatch
+│   ├── task_queue.py        # SQLite task queue + CRUD
+│   ├── evidence_bundle.py   # Immutable lifecycle evidence + digest chains
+│   ├── worker_evidence.py   # Worker/verifier/delivery evidence wiring
+│   └── web/                 # ← THE OBSERVATION WINDOW
+│       └── src/             # React + Vite UI (served from dist/)
+├── docs/                    # Guides and research
+├── adapters/openclaw/       # OpenClaw integration (mobile monitoring)
+└── templates/               # Settings, CLAUDE.md templates
+```
