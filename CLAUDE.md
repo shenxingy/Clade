@@ -142,6 +142,7 @@ github_sync.py       ← gh CLI wrappers (issues, push, sync)
 task_queue.py        ← SQLite tasks + append-only evidence persistence
 routing_break_even.py ← production-only observational routing analytics
 swarm.py             ← SwarmManager (extracted from worker.py)
+worker_pool.py       ← WorkerPool: which workers exist and polling them (extracted from worker.py; re-exported there, bound to that module's Worker)
 worker_taskfile.py   ← build_task_file: task file construction + context injection
 worker_runtime.py    ← runtime-route resolution + durable selection failure
 worker_evidence.py   ← attempt lifecycle + worker/verifier/delivery evidence projection
@@ -186,6 +187,7 @@ CI's "Architecture map coverage" gate fails on any module missing from this file
 | `routing_break_even.py` | Read-only production EvidenceBundle aggregation for observational routing break-even metrics |
 | `worker.py` | `Worker`, `WorkerPool` — core execution engine |
 | `swarm.py` | `SwarmManager` (extracted from worker.py; re-exported there) |
+| `worker_pool.py` | `WorkerPool` — worker scheduling and polling. `worker.py` subclasses it to bind its own `Worker`, which keeps privately-loaded test copies private |
 | `worker_taskfile.py` | `build_task_file` — task file construction + context injection |
 | `worker_runtime.py` | Runtime route resolution and fail-closed task outcome persistence |
 | `worker_evidence.py` | Evidence attempt lifecycle, Git/test/oracle/cost/artifact projection, and terminal delivery candidate |
