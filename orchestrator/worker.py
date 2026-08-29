@@ -656,7 +656,7 @@ class Worker:
         if self._log_path and self._log_path.exists():
             try:
                 self._input_tokens, self._output_tokens = _parse_token_usage(self._log_path)
-                self._estimated_cost = _estimate_cost(self._input_tokens, self._output_tokens)
+                self._estimated_cost = _estimate_cost(self._input_tokens, self._output_tokens, self.model)
                 total_tokens = self._input_tokens + self._output_tokens
                 if self.token_budget > 0 and total_tokens > self.token_budget and self.status != "done":
                     self.status = "failed"

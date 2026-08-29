@@ -348,3 +348,55 @@ def test_dated_model_ids_live_only_in_config() -> None:
         "(leaf modules: thread it in from worker.py instead):\n"
         + "\n".join(violations)
     )
+
+
+# ─── Model pricing ────────────────────────────────────────────────────────────
+
+
+def test_estimate_cost_prices_each_model_tier_separately() -> None:
+    """Every model was billed at Sonnet's rate until 2026-08-29.
+
+    That single figure is what `run_budget` enforces against and what
+    `routing_break_even` divides by for success-per-dollar, so an Opus task
+    was understated 1.67x and a Haiku task overstated 3x on the numbers the
+    router uses to choose between them.
+    """
+    from config import _estimate_cost
+
+    mtok = 1_000_000
+    # Anthropic first-party rates, USD per MTok (input, output), 2026-08-29.
+    for model, want_in, want_out in [
+        ("claude-opus-5", 5.0, 25.0),
+        ("claude-sonnet-5", 3.0, 15.0),
+        ("claude-haiku-4-5", 1.0, 5.0),
+        ("claude-fable-5", 10.0, 50.0),
+    ]:
+        assert _estimate_cost(mtok, 0, model) == want_in, model
+        assert _estimate_cost(0, mtok, model) == want_out, model
+
+    # Aliases resolve to their model's rate, not to the default.
+    assert _estimate_cost(mtok, 0, "opus") == 5.0
+    assert _estimate_cost(mtok, 0, "haiku") == 1.0
+
+    # Dated snapshots share their base model's rate. Referenced through the
+    # config constant, since this file must not hardcode a dated id either.
+    from config import HAIKU_MODEL
+
+    assert _estimate_cost(mtok, 0, HAIKU_MODEL) == 1.0
+
+    # Unknown gateway ids and the two-argument form both fall back to Sonnet,
+    # so nothing silently reprices when a caller has no model to pass.
+    assert _estimate_cost(mtok, 0, "some-gateway/mystery-model") == 3.0
+    assert _estimate_cost(mtok, 0) == 3.0
+
+
+def test_model_aliases_point_at_the_current_generation() -> None:
+    """A stale alias silently routes every task to a superseded model."""
+    from config import _MODEL_ALIASES, ALLOWED_MODEL_IDS
+
+    assert _MODEL_ALIASES["opus"] == "claude-opus-5"
+    assert _MODEL_ALIASES["sonnet"] == "claude-sonnet-5"
+    # Superseded ids must stay resolvable — task rows and evidence bundles
+    # written before an alias moved still reference them.
+    for legacy in ("claude-opus-4-6", "claude-sonnet-4-6", "claude-opus-4-5"):
+        assert legacy in ALLOWED_MODEL_IDS, legacy

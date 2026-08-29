@@ -49,8 +49,8 @@ _ALLOWED_LOOP_COLS = {
 
 _MODEL_ALIASES = {
     "haiku": "claude-haiku-4-5-20251001",
-    "sonnet": "claude-sonnet-4-6",
-    "opus": "claude-opus-4-6",
+    "sonnet": "claude-sonnet-5",
+    "opus": "claude-opus-5",
 }
 
 # Canonical model IDs — single source of truth. Dated model snapshots may
@@ -67,6 +67,10 @@ OPUS_MODEL = _MODEL_ALIASES["opus"]
 # providers use opaque model IDs validated and shell-quoted at the adapter
 # boundary.
 ALLOWED_MODEL_IDS = set(_MODEL_ALIASES.values()) | {
+    # Superseded generations stay accepted: task rows, evidence bundles, and
+    # `model:` pins written before an alias moved must keep resolving.
+    "claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6",
+    "claude-sonnet-4-6",
     "claude-opus-4-5", "claude-sonnet-4-5", "claude-haiku-4-5",
 }
 
@@ -495,9 +499,56 @@ def _parse_token_usage(log_path: Path) -> tuple[int, int]:
     return input_t, output_t
 
 
-def _estimate_cost(input_tokens: int, output_tokens: int) -> float:
-    """Estimate USD cost using Sonnet pricing ($3/MTok input, $15/MTok output)."""
-    return round(input_tokens * 3.0 / 1_000_000 + output_tokens * 15.0 / 1_000_000, 4)
+# USD per million tokens, (input, output). Anthropic first-party API rates as
+# published 2026-08-29. Bedrock and Vertex are partner-operated and priced
+# separately; a gateway model id that is not listed falls back to SONNET_RATE.
+#
+# Only ever used when the agent does not report its own spend. `claude -p
+# --output-format json` returns `total_cost_usd` and a per-model `modelUsage`
+# breakdown, which is authoritative and covers cache reads and server tools
+# this table cannot see — prefer it and treat this as the degraded path.
+SONNET_RATE = (3.0, 15.0)
+_MODEL_RATES: dict[str, tuple[float, float]] = {
+    "claude-fable-5": (10.0, 50.0),
+    "claude-opus-5": (5.0, 25.0),
+    "claude-opus-4-8": (5.0, 25.0),
+    "claude-opus-4-7": (5.0, 25.0),
+    "claude-opus-4-6": (5.0, 25.0),
+    "claude-opus-4-5": (5.0, 25.0),
+    "claude-sonnet-5": SONNET_RATE,
+    "claude-sonnet-4-6": SONNET_RATE,
+    "claude-sonnet-4-5": SONNET_RATE,
+    "claude-haiku-4-5": (1.0, 5.0),
+}
+
+
+def _model_rate(model: str | None) -> tuple[float, float]:
+    """Resolve a model id (alias, dated snapshot, or gateway id) to its rate."""
+    if not model:
+        return SONNET_RATE
+    resolved = _MODEL_ALIASES.get(model, model)
+    if resolved in _MODEL_RATES:
+        return _MODEL_RATES[resolved]
+    # Dated snapshots (claude-haiku-4-5-20251001) share their base model's rate.
+    for known, rate in _MODEL_RATES.items():
+        if resolved.startswith(known + "-"):
+            return rate
+    return SONNET_RATE
+
+
+def _estimate_cost(input_tokens: int, output_tokens: int, model: str | None = None) -> float:
+    """Estimate USD cost for a model.
+
+    Every model was billed at Sonnet's rate until 2026-08-29, so an Opus task
+    was reported at 60% of its real price and a Haiku task at 300% of it — on
+    the same figure `run_budget` enforces against and `routing_break_even`
+    divides by. The model argument defaults to Sonnet so existing two-argument
+    calls keep their old behaviour rather than silently changing price.
+    """
+    rate_in, rate_out = _model_rate(model)
+    return round(
+        input_tokens * rate_in / 1_000_000 + output_tokens * rate_out / 1_000_000, 4
+    )
 
 # ─── Session Recovery ─────────────────────────────────────────────────────────
 
