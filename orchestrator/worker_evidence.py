@@ -15,6 +15,7 @@ from attempt_telemetry import (
     verifying_patch,
 )
 from worker_envelope import build_from_worker
+from worker_utils import git_control_surface, git_control_surface_changes
 
 
 logger = logging.getLogger(__name__)
@@ -164,8 +165,72 @@ async def append_worker_evidence(worker: Any, lifecycle_state: str) -> None:
         logger.exception("failed to append %s worker evidence", lifecycle_state)
 
 
+async def _git_common_dir(project_dir: Path) -> Path | None:
+    """The SHARED .git a worktree writes through, resolved absolutely."""
+    out = await _git(project_dir, "rev-parse", "--git-common-dir")
+    if not out:
+        return None
+    path = Path(out)
+    return path if path.is_absolute() else (Path(project_dir) / path).resolve()
+
+
+async def _snapshot_git_surface(worker: Any) -> None:
+    """Record the parent repo's hooks + config before the agent runs."""
+    from config import GLOBAL_SETTINGS
+
+    worker._git_surface_before = {}
+    if not GLOBAL_SETTINGS.get("worker_git_surface_guard", True):
+        return
+    try:
+        common = await _git_common_dir(Path(worker._project_dir))
+        worker._git_surface_common_dir = common
+        worker._git_surface_before = git_control_surface(common)
+    except Exception:
+        logger.exception("failed to snapshot the git control surface")
+
+
+async def _assert_git_surface_untouched(worker: Any) -> list[str]:
+    """Changes the agent made to the parent repo's hooks or config.
+
+    A worktree bounds the working tree, not `.git`. An agent can write
+    `<main>/.git/hooks/pre-commit` from inside its worktree and that hook then
+    runs for the OPERATOR's next commit in the main checkout — reproduced, not
+    theorised. Workers spawn with permissions bypassed, so this is the control.
+
+    Detection rather than prevention because a worker must be able to write
+    `.git` to commit at all; bounding that needs an OS sandbox. The digest is
+    exact: `worktree add`, a commit inside the worktree, and `worktree remove`
+    all leave it unchanged.
+    """
+    before = getattr(worker, "_git_surface_before", None)
+    if not before:
+        return []
+    try:
+        common = getattr(worker, "_git_surface_common_dir", None) or await _git_common_dir(
+            Path(worker._original_project_dir)
+        )
+        return git_control_surface_changes(before, git_control_surface(common))
+    except Exception:
+        logger.exception("failed to re-read the git control surface")
+        return []
+
+
 async def verify_worker_with_evidence(worker: Any) -> bool:
     """Run worker verification while capturing its exact phase boundaries."""
+
+    tampered = await _assert_git_surface_untouched(worker)
+    if tampered:
+        worker.status = "failed"
+        worker.transition_reason = "git_control_surface_modified"
+        worker.failure_context = (
+            "Refusing to verify: the agent modified the parent repository's git "
+            "control surface, which executes on the operator's machine — "
+            + "; ".join(tampered[:5])
+        )
+        logger.error("Worker %s modified the git control surface: %s", worker.id, tampered)
+        await append_worker_evidence(worker, "verifying")
+        worker._evidence_verify_finished_at = time.time()
+        return False
 
     await append_worker_evidence(worker, "verifying")
     try:
@@ -177,6 +242,7 @@ async def verify_worker_with_evidence(worker: Any) -> bool:
 async def start_worker_with_evidence(worker: Any, task_queue: Any) -> None:
     """Start a worker and close its created attempt if spawning fails."""
 
+    await _snapshot_git_surface(worker)
     try:
         await worker.start(task_queue=task_queue)
     except Exception as exc:

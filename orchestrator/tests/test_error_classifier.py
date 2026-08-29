@@ -11,6 +11,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import pytest  # noqa: E402
+
 from error_classifier import (  # noqa: E402
     ClassifiedError,
     FailoverReason,
@@ -260,3 +262,81 @@ def test_summarize_format() -> None:
     assert "rate_limit" in s
     assert "429" in s
     assert "retry+30s" in s
+
+
+# ─── Quota exhaustion must not be retried ─────────────────────────────────────
+
+
+class TestQuotaExhaustionIsNotRetryable:
+    """A spent balance and a spent usage window are both walls, not weather.
+
+    Anthropic returns 429 for ordinary throttling AND for a dead balance; only
+    the message body separates them. Both used to classify as `rate_limit`, so
+    the orchestrator retried a dead account on a 30s backoff until the run's
+    iteration budget or wall clock ran out. The subscription-quota message
+    matched nothing at all and retried on a 4s backoff.
+    """
+
+    @pytest.mark.parametrize(
+        "message,expected",
+        [
+            # Verified live against the classifier before the fix: rate_limit.
+            ("429 rate_limit_error credit balance is too low", "billing"),
+            ("Your credit balance is too low to access the Anthropic API", "billing"),
+            ("402 payment required", "billing"),
+            # Verified live before the fix: unknown, retryable, 4s backoff.
+            ("usage limit reached. Your limit will reset at 5pm", "quota_exhausted"),
+            ("You have reached your weekly limit", "quota_exhausted"),
+            ("Plan limit reached for this account", "quota_exhausted"),
+        ],
+    )
+    def test_quota_states_abort_instead_of_retrying(self, message, expected):
+        from error_classifier import classify
+
+        err = classify(message)
+        assert err.reason.value == expected, message
+        assert err.retryable is False
+        assert err.abort is True
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "429 Too Many Requests",
+            "rate limit exceeded, please slow down",
+        ],
+    )
+    def test_ordinary_throttling_still_retries(self, message):
+        """The fix must not turn transient throttling into a hard stop."""
+        from error_classifier import classify
+
+        err = classify(message)
+        assert err.reason.value == "rate_limit"
+        assert err.retryable is True
+        assert err.abort is False
+        assert err.backoff_seconds >= 30.0
+
+    def test_quota_exhaustion_never_schedules_another_attempt(self):
+        """derive_retry_decision must hard-skip, not merely back off further."""
+        from error_classifier import FailoverReason, derive_retry_decision
+
+        for reason in (FailoverReason.billing, FailoverReason.quota_exhausted):
+            err = ClassifiedError(reason=reason, retryable=False, abort=True)
+            assert derive_retry_decision(
+                err, attempt=1, max_attempts=3, current_model="sonnet"
+            ) is None, reason
+
+    def test_ordinary_throttling_still_schedules_a_retry(self):
+        """The control case — the hard-skip must not swallow transient 429s."""
+        from error_classifier import classify, derive_retry_decision
+
+        err = classify("429 Too Many Requests")
+        assert derive_retry_decision(
+            err, attempt=1, max_attempts=3, current_model="sonnet"
+        ) is not None
+
+    def test_summarize_names_the_quota_state_in_logs(self):
+        from error_classifier import FailoverReason, summarize
+
+        text = summarize(ClassifiedError(reason=FailoverReason.quota_exhausted,
+                                         retryable=False, abort=True))
+        assert "quota_exhausted" in text and "abort" in text

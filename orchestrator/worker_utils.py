@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import fnmatch
+import hashlib
 import json
 import logging
 import os
@@ -23,7 +24,7 @@ import shlex
 import shutil
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from pytest_report import color_free_env, force_verbose, parse_results
 
@@ -916,6 +917,117 @@ def _activity_from_entry(line: str) -> str | None:
     # entry_type == "user": either a tool result feeding the next step, or a
     # fresh instruction. Both mean the agent has work to do.
     return "active"
+
+
+# ─── Git control surface ──────────────────────────────────────────────────────
+# A git worktree bounds the working tree, not the repository. `.git` is SHARED:
+# from inside a worktree, `git rev-parse --git-common-dir` resolves to the
+# PARENT repo's `.git`, so an agent can write `<main>/.git/hooks/pre-commit`
+# and it executes the next time the operator commits in the main checkout.
+# Reproduced on this machine — a hook written from a worktree ran for a commit
+# made in the parent repo. Workers spawn with --dangerously-skip-permissions,
+# so nothing else stops that.
+#
+# Prevention needs an OS sandbox: the worker must be able to write `.git` to
+# commit at all, so no git-level setting closes it. What IS available cheaply
+# is detection, and it is exact — measured across `worktree add`, a commit
+# inside the worktree, and `worktree remove`, this digest does not move, while
+# both a planted hook and a `core.fsmonitor` entry change it.
+
+GIT_CONTROL_FILES = ("config",)
+GIT_CONTROL_DIRS = ("hooks",)
+
+
+async def preserve_worktree_wip(
+    worktree_path: Path | None, branch_name: str | None, reason: str
+) -> str | None:
+    """Commit whatever the agent had written before its worktree is destroyed.
+
+    A worker commits exactly once, at the end of verification. `stop()` skips
+    verification by design and then runs `git worktree remove --force`, so
+    every uncommitted byte was deleted — including on the AUTOMATIC paths
+    (loop detection and the stuck-worker timeout), where nobody is watching.
+    The branch itself survives worktree removal, so a WIP commit on it makes
+    the work recoverable with `git checkout <branch>` while still freeing the
+    disk.
+
+    Returns the commit SHA, or None when there was nothing to save.
+    """
+    if not worktree_path or not branch_name:
+        return None
+    try:
+        if not Path(worktree_path).is_dir():
+            return None
+
+        async def _run(*args: str) -> tuple[int, str]:
+            proc = await asyncio.create_subprocess_exec(
+                "git", *args, cwd=str(worktree_path),
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+            )
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
+            return proc.returncode or 0, out.decode(errors="replace").strip()
+
+        code, dirty = await _run("status", "--porcelain")
+        if code != 0 or not dirty:
+            return None
+        code, _ = await _run("add", "-A")
+        if code != 0:
+            return None
+        code, _ = await _run(
+            "-c", "core.hooksPath=/dev/null",  # never run repo hooks on a rescue commit
+            "commit", "--no-verify", "-m", f"wip: worker stopped ({reason})",
+        )
+        if code != 0:
+            return None
+        code, sha = await _run("rev-parse", "HEAD")
+        return sha if code == 0 else None
+    except Exception:
+        logger.exception("failed to preserve worktree WIP before cleanup")
+        return None
+
+
+def git_control_surface(git_common_dir: Path | None) -> dict[str, str]:
+    """Digest every file that can turn a git command into code execution.
+
+    Covers `.git/hooks/*` and `.git/config` — the latter because
+    `core.fsmonitor`, `core.pager`, `diff.*.textconv` and aliases all execute
+    a command the operator never typed. Returns {relative path: sha256}.
+    """
+    surface: dict[str, str] = {}
+    if not git_common_dir:
+        return surface
+    try:
+        base = Path(git_common_dir)
+        targets: list[Path] = [base / name for name in GIT_CONTROL_FILES]
+        for dirname in GIT_CONTROL_DIRS:
+            d = base / dirname
+            if d.is_dir():
+                targets.extend(sorted(p for p in d.iterdir() if p.is_file()))
+        for path in targets:
+            try:
+                surface[str(path.relative_to(base))] = hashlib.sha256(
+                    path.read_bytes()
+                ).hexdigest()
+            except OSError:
+                continue
+    except Exception:
+        return surface
+    return surface
+
+
+def git_control_surface_changes(
+    before: Mapping[str, str], after: Mapping[str, str]
+) -> list[str]:
+    """Human-readable diff of two surfaces. Empty list means untouched."""
+    changes: list[str] = []
+    for name in sorted(set(after) - set(before)):
+        changes.append(f"added {name}")
+    for name in sorted(set(before) - set(after)):
+        changes.append(f"removed {name}")
+    for name in sorted(set(before) & set(after)):
+        if before[name] != after[name]:
+            changes.append(f"modified {name}")
+    return changes
 
 
 def _check_file_ownership(

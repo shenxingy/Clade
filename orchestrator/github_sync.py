@@ -161,7 +161,10 @@ async def _gh_create_issue(task: dict, project_dir: Path, db_path: Path) -> int 
         except asyncio.TimeoutError:
             proc.kill()
             await proc.communicate()
-            return None
+            # The timeout says we stopped waiting, not that GitHub did nothing.
+            # Look for an issue carrying this task's id before giving up, or the
+            # next push creates a second one for the same task.
+            return await _gh_find_issue_by_task_id(task["id"], project_dir, db_path)
         if proc.returncode != 0:
             logger.warning("gh issue create failed: %s", err.decode()[:200])
             return None
@@ -178,6 +181,43 @@ async def _gh_create_issue(task: dict, project_dir: Path, db_path: Path) -> int 
     except Exception as e:
         logger.warning("gh issue create error: %s", e)
         return None
+
+
+async def _gh_find_issue_by_task_id(
+    task_id: str, project_dir: Path, db_path: str | Path
+) -> int | None:
+    """Find an issue this orchestrator already created for `task_id`.
+
+    Used only to recover from a create that timed out locally. Searches the
+    body text for the id stamped by `_format_issue_body`, then re-binds it so
+    the next push updates that issue instead of opening another.
+    """
+    try:
+        cmd = (
+            f"gh issue list --search {shlex.quote(task_id)} --state all "
+            f"--limit 20 --json number,body"
+        )
+        proc = await asyncio.create_subprocess_shell(
+            cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+            cwd=str(project_dir),
+        )
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
+        if proc.returncode != 0:
+            return None
+        for issue in json.loads(out.decode() or "[]"):
+            meta, _desc = _parse_issue_body(issue.get("body") or "")
+            if meta.get("task_id") == task_id:
+                num = int(issue["number"])
+                async with aiosqlite.connect(str(db_path)) as db:
+                    await db.execute(
+                        "UPDATE tasks SET gh_issue_number = ? WHERE id = ?", (num, task_id)
+                    )
+                    await db.commit()
+                logger.info("recovered orphaned issue #%s for task %s", num, task_id)
+                return num
+    except Exception:
+        logger.exception("issue recovery lookup failed for task %s", task_id)
+    return None
 
 
 async def _gh_update_issue_status(task: dict, project_dir: Path) -> bool:
@@ -249,14 +289,32 @@ async def _gh_pull_issues(project_dir: Path, task_queue: TaskQueue) -> dict:
         logger.warning("gh_pull_issues failed: %s", e)
         return {"error": "GitHub sync failed"}
 
-    stats = {"created": 0, "updated": 0, "deleted": 0, "skipped": 0}
+    stats = {"created": 0, "updated": 0, "deleted": 0, "skipped": 0, "adopted": 0}
     local_tasks = await task_queue.list()
     by_issue = {t["gh_issue_number"]: t for t in local_tasks if t.get("gh_issue_number")}
+    # `_format_issue_body` stamps the task id into every issue body, and until
+    # 2026-08-29 nothing ever read it back — `grep -n task_id` on this file
+    # returned exactly one hit. That made the issue NUMBER the only join key,
+    # and `_gh_create_issue` returns None on its 30s timeout AFTER GitHub may
+    # already have created the issue. The task then keeps gh_issue_number NULL,
+    # the next pull sees an unowned issue, invents a second task, and the next
+    # push gives that one its own issue. One timeout, a growing pair of
+    # duplicates. Reconciling on the id we wrote closes the loop.
+    by_task_id = {t["id"]: t for t in local_tasks}
 
     for issue in issues:
         num = issue["number"]
         meta, desc = _parse_issue_body(issue.get("body") or "")
         is_closed = issue.get("state", "").upper() == "CLOSED"
+
+        if num not in by_issue:
+            orphan = by_task_id.get(meta.get("task_id"))
+            if orphan is not None and not orphan.get("gh_issue_number"):
+                # This issue is ours; we just lost the receipt.
+                await task_queue.update(orphan["id"], gh_issue_number=num)
+                orphan["gh_issue_number"] = num
+                by_issue[num] = orphan
+                stats["adopted"] += 1
 
         if num in by_issue:
             local = by_issue[num]
@@ -289,7 +347,7 @@ async def _gh_pull_issues(project_dir: Path, task_queue: TaskQueue) -> dict:
 
 async def _gh_push_all(project_dir: Path, task_queue: TaskQueue) -> dict:
     """Push all local tasks to GitHub Issues."""
-    stats = {"created": 0, "updated": 0, "errors": []}
+    stats: dict[str, Any] = {"created": 0, "updated": 0, "errors": []}
     tasks = await task_queue.list()
     db_path = task_queue._db_path
 

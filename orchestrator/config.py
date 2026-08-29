@@ -124,6 +124,11 @@ _SETTINGS_DEFAULTS = {
     # fails. Off restores the old silent fallback, in which an agent spawned
     # with --dangerously-skip-permissions edits the user's own working tree.
     "worker_require_worktree": True,
+    # Refuse to verify or commit when an agent modified the PARENT repository's
+    # .git/hooks or .git/config. A worktree bounds the working tree, not .git —
+    # a hook written from a worktree runs for the operator's next commit in the
+    # main checkout. Detection only; prevention needs an OS sandbox.
+    "worker_git_surface_guard": True,
     "run_budget_usd": 0.0,  # max cost per autonomous run (0 = unlimited)
     "run_budget_tokens": 0,  # max tokens per autonomous run (0 = unlimited)
     "auto_oracle": False,

@@ -229,11 +229,9 @@ class Worker:
         """Create an isolated git worktree. Updates self._project_dir on success.
 
         Returns False when isolation could not be obtained. Every failure path
-        here used to set _worktree_path = None, DISCARD git's stderr, and leave
-        _project_dir pointing at the shared checkout — so a worker spawned with
-        --dangerously-skip-permissions ran in the user's own working tree, with
-        nothing logged to say so. That is precisely the uncoordinated-parallel-
-        writer race CLAUDE.md warns about, reached silently.
+        here used to set _worktree_path = None, discard git's stderr, and leave
+        _project_dir on the shared checkout — so a permission-bypassed worker
+        ran in the user's own tree, silently. See CLAUDE.md on parallel writers.
         """
         # NOT .claude/worktrees/: CLI 2.1.236 claims that directory as its own
         # managed pool and deletes a session's worktree with it. An autonomous
@@ -461,6 +459,7 @@ class Worker:
         if self._finished_at is None:
             self._finished_at = time.time()
         self._verify_triggered = True  # prevent _on_worker_done from running after forced stop
+        await preserve_worktree_wip(self._worktree_path, self._branch_name, "stopped")  # before force-remove
         await self._cleanup_worktree()
 
     async def poll(self) -> None:
