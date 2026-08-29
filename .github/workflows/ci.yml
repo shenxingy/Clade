@@ -90,6 +90,14 @@ jobs:
       # against them — `check` alone only compares docs to the recorded values,
       # so adding a skill (which touches no *.md) would leave the local
       # doc-align-check.sh hook silent and every doc quietly wrong.
+      # docs/configuration.md promises the .example.json holds "every supported
+      # orchestrator key" and "always matches _SETTINGS_DEFAULTS". install.sh
+      # copies a HAND-MAINTAINED template, so it tracked nothing: measured
+      # 2026-08-29, 33 keys against 75, with one stale key that is no longer a
+      # setting at all. Generated now, and enforced here so the promise holds.
+      - name: Settings reference drift gate
+        run: python3 configs/scripts/regen-settings-example.py --check
+
       - name: Doc facts drift gate
         run: |
           if ! python3 configs/scripts/doc-align.py verify; then

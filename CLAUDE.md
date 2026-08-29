@@ -252,6 +252,12 @@ python3 configs/scripts/doc-align.py verify             # doc-align.py sync to f
 # 8. Skill registry validation
 python3 configs/scripts/validate-skills.py configs/skills
 
+# 8b. Settings reference drift gate — templates/orchestrator-settings.example.json
+#     is GENERATED from config.py:_SETTINGS_DEFAULTS. Adding a setting without
+#     regenerating leaves docs/configuration.md's "every supported key" promise
+#     false; it had drifted to 33 of 75 keys, one of them no longer a setting.
+python3 configs/scripts/regen-settings-example.py --check   # regenerate without --check
+
 # 9. Architecture map coverage — every orchestrator module listed in this file
 python3 configs/scripts/check-arch-map.py
 
