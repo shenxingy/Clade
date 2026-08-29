@@ -92,7 +92,7 @@ Claude auto-selects agents. Haiku agents are fast and cheap for mechanical check
 
 **`/model-research`** searches the web for latest Claude model announcements, benchmarks, and pricing. Compares against the current guide and shows what changed. With `--apply`, updates `docs/research/models.md`, the session-context model guidance, and batch-tasks model assignment criteria.
 
-**`/worktree`** creates a new git worktree in `.claude/worktrees/` with an isolated branch, switches the session into it. Use when running parallel Claude Code sessions on the same repo.
+**`/worktree`** creates or inspects an isolated Git workspace with explicit ownership and delivery routing (`"task prompt"` | `--list` | `--preserve` | `--clean <delivery-id>`). It resolves a destination **outside the repository root** — deliberately not `.claude/worktrees/`, which Claude Code 2.1.236 claims as its own managed pool and deletes along with a session (see `orchestrator/worker.py:236-239`). Use when running parallel sessions on the same repo.
 
 **`/research`** runs a structured deep-dive on a topic — web search, synthesize findings, save to `docs/research/<topic>.md`. Useful before starting a complex feature.
 

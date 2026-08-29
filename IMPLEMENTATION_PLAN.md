@@ -33,7 +33,13 @@ Execution Order section below rather than restated here.
 
 ## Context
 
-### Current state
+### Current state — snapshot of 2026-07-27, superseded
+
+Kept as the record of what was believed when this plan was written; the Status
+block at the top of this file (audited 2026-07-29) supersedes every count here
+and reports the MCP migration below as shipped. Re-measured 2026-08-29:
+`TODO.md` holds 212 completed and 2 open items — both "Conditional watch"
+(`TODO.md:311,314`) — and `BRAINSTORM.md` has 2 unchecked boxes, not 44.
 
 - `TODO.md` has 188 completed checkboxes and one real open item:
   migrate both MCP servers from Python SDK v1 to v2 and remove the `mcp<2`

@@ -7,6 +7,67 @@ semantic versioning。
 
 ## Unreleased
 
+### 安全
+
+- worktree 只隔离工作树，不隔离 `.git`。在 worker 的 worktree 内，
+  `git rev-parse --git-common-dir` 解析到父仓库，因此 agent 可以写入
+  `<main>/.git/hooks/pre-commit`，并在操作者下一次提交时执行。现在 worker
+  在启动前对父仓库的 hooks 与 config 取快照，若发生变化则拒绝验证与提交
+  （`worker_git_surface_guard`，默认开启）
+- `install.sh` 升级路径从不写入 deny 规则。`templates/settings.json` 带有
+  `Read(~/.ssh/**)`、`Read(~/.aws/**)`、`Read(~/**/.env)`，但合并分支只写
+  `.hooks` 与 `.statusLine`，因此所有在 deny 列表出现之前安装过的机器，
+  `permissions` 一直是 null —— 而 worker 正是以绕过权限的方式启动的，deny
+  规则是最后一道约束。合并只做 deny 的并集，绝不扩大用户自己的 allow 列表
+- worktree 隔离失败时静默放行。所有失败路径都丢弃了 git 的 stderr 并让 worker
+  留在共享检出上；现在会直接抛错，而不是让未隔离的 agent 在操作者本人的工作树
+  里运行（`worker_require_worktree`）
+
+### 新增
+
+- worker 自报开销：spawn 带 `--output-format stream-json`，
+  `orchestrator/agent_output.py` 读回 `total_cost_usd`、按模型的 `modelUsage`
+  与真实 token 数，并把事件流投影回纯文本，因此所有既有日志消费方不受影响
+- 按模型计价（`config.py:_MODEL_RATES`）取代此前对所有模型套用 Sonnet 单价的
+  做法 —— 那让 Opus 低估 1.67 倍、Haiku 高估 3 倍，而 token 预算闸与路由
+  break-even 分析都依赖这个数字
+- 新增 `quota_exhausted` 错误类别。余额耗尽与用量窗口耗尽都返回 429，此前会以
+  30 秒退避一直重试到耗光本次运行的预算；现在两者都直接中止
+- 停止 worker 时，先把它写下的内容以 `wip:` 提交保存到它自己的分支，再强制移除
+  worktree —— 包括循环检测与卡死超时这些无人值守的自动路径
+- 三道"跑真东西再断言"的闸：`check-cc-plugin-components.sh` 真实加载插件并把
+  解析结果与代码树比对；`check-ci-checklist.py` 把文档化的提交前清单与 CI 实际
+  调用的闸比对，并拒绝无法执行的命令；`regen-settings-example.py` 从
+  `_SETTINGS_DEFAULTS` 生成设置参考文件
+- `frontend-design` 升级为平台感知的界面流水线，覆盖 web、Apple、Android、
+  Windows、跨平台与演示文稿等目标
+
+### 变更
+
+- `opus` 与 `sonnet` 别名解析到 Opus 5 与 Sonnet 5；被取代的旧 ID 继续被接受，
+  以保证既有 task 行与 evidence bundle 仍可解析。`configs/models.env` 现在会被
+  `loop-runner.sh` source，而不再被硬编码的 `claude-sonnet-4-6` 覆盖
+- orchestrator 的 worktree 迁出 `.claude/worktrees/` —— Claude Code 把该目录
+  声明为自己的托管池，并会随 session 一起删除
+
+### 修复
+
+- Claude Code 插件宣称提供 37 个 agent 与 14 个 hook，实际一个都没加载：
+  `agents` 写成文件路径数组虽然符合 schema，却解析不出任何东西，而
+  `plugin validate --strict` 对此照样返回 0
+- 内存 watchdog 匹配不到 orchestrator 实际构建的任何命令 —— 它的模式要求
+  `claude` 与 `-p` 之间还有一个 token —— 因此在内存压力下从未释放任何内存。
+  它还会向 `sh -c` 外壳而非 agent 发信号，并且按 pid 而非存活时长排序
+- worker 活跃度启发式读取的是 Claude Code 从未写过的记录路径，而它的测试
+  自己构造了同样错误的布局，因此在永远返回 "unknown" 的情况下始终是绿的
+- GitHub issue 创建超时会把一个任务分叉成不断增长的重复对；`task_id` 被写入
+  每个 issue body，却从未被读回
+- `/brief` 探测 `localhost:4000`，而 orchestrator 绑定的是 8765
+- 两个消费方把 `.claude/loop-state` 当 KEY=VALUE 解析，而 `loop-runner.sh`
+  写的是 `.claude/loop-state.json`，因此 session 启动时的 loop 横幅一直是空的。
+  `converged` 现在会被持久化，而不再只是一个 shell 局部变量
+- 每次 session 启动都会注入指向已被取代的模型代次的指引
+
 ### 新增
 
 - Loop 新增 crash-safe phase recovery：只有显式、身份匹配的 `--resume` 才会

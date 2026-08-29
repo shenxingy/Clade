@@ -87,10 +87,13 @@ For most day-to-day work — bug fixes, small features, refactoring, codebase qu
 
 ### `/review`
 **When:** Before releases, after a long sprint, or onboarding to a codebase.
-- **Finds and fixes** (not just reports): file size violations, lint errors, dead code, security issues, doc staleness
-- 8 phases: doc health → goal alignment → code structure → lint → comments → bugs → security → UI
-- Loops until clean — reruns after each fix pass, up to 3 iterations
-- Remaining unfixed issues are written to `## Tech Debt` in TODO.md
+- **Coverage-driven, not free-form**: walks every checkpoint in `VERIFY.md`, testing
+  each scenario end-to-end and fixing failures in-session
+- Converges only when every checkpoint is ✅ (pass) or ⚠ (known limitation) — no
+  ⬜ (untested) or ❌ (fail) may remain
+- Emits `REVIEW_RESULT` / `REMAINING` / `COVERAGE` so a loop can act on the outcome
+- **NOT** the Claude Code built-in `/review`, which reviews a single PR diff. For a
+  PR, use `/review-pr` or the built-in.
 
 ### `/review-pr NUMBER`
 **When:** Before merging a pull request.
@@ -153,7 +156,10 @@ For most day-to-day work — bug fixes, small features, refactoring, codebase qu
 ### `/commit`
 **When:** Ready to commit.
 - Analyzes all uncommitted changes, splits into logical commits by module
-- Pushes by default; `--no-push` to skip, `--dry-run` to preview
+- Does **not** push by default. Publication requires `--publish`, or a recorded
+  task-request / repository-policy authority — see `configs/skills/commit/prompt.md` §6.
+  `--candidate` binds verification to the final SHA; `--dry-run` previews.
+  (`--no-push` never existed; `docs/how-it-works.md:82` had this right all along.)
 
 ### `/sync`
 **When:** End of every coding session.

@@ -63,8 +63,8 @@ Your thinking decouples from execution — design all tasks in one burst, let ag
 Use `/worktree` to create isolated git worktrees so multiple agents work the same repo without conflicts:
 
 ```
-/worktree create feat/auth-rework    # Terminal 1
-/worktree create feat/rate-limiting  # Terminal 2
+/worktree "rework auth"        # Terminal 1 — the prompt IS the argument
+/worktree "add rate limiting"  # Terminal 2
 ```
 
 Each agent works in its own directory. `committer` prevents staging conflicts. Merge when done.
