@@ -207,3 +207,127 @@ async def test_spawn_failure_closes_created_attempt(task_queue, tmp_path):
     candidates = await task_queue.list_eval_candidates()
     assert len(candidates) == 1
     assert candidates[0]["trigger"] == "incident_failure"
+
+
+# ─── Git control surface guard ────────────────────────────────────────────────
+
+
+class TestGitControlSurfaceGuard:
+    """A worktree bounds the working tree, not `.git`.
+
+    From inside a `git worktree add` tree, `git rev-parse --git-common-dir`
+    resolves to the PARENT repo's `.git`. An agent can therefore write
+    `<main>/.git/hooks/pre-commit`, and that hook executes the next time the
+    OPERATOR commits in the main checkout. Reproduced on a real repo before
+    this guard was written. Workers spawn with permissions bypassed, so nothing
+    else stands in the way.
+    """
+
+    @staticmethod
+    def _repo(tmp_path):
+        import subprocess
+
+        repo = tmp_path / "main"
+        repo.mkdir()
+        for cmd in (
+            ["git", "init", "-q"],
+            ["git", "config", "user.email", "t@example.com"],
+            ["git", "config", "user.name", "t"],
+            ["git", "commit", "-q", "--allow-empty", "-m", "root"],
+        ):
+            subprocess.run(cmd, cwd=repo, check=True, capture_output=True)
+        return repo
+
+    def test_normal_worktree_traffic_does_not_move_the_digest(self, tmp_path):
+        """Zero false positives is what makes this usable as a hard gate."""
+        import subprocess
+
+        from worker_utils import git_control_surface, git_control_surface_changes
+
+        repo = self._repo(tmp_path)
+        git_dir = repo / ".git"
+        before = git_control_surface(git_dir)
+        assert before, "surface should not be empty for a real repo"
+
+        wt = tmp_path / "wt"
+        subprocess.run(["git", "worktree", "add", "-q", str(wt), "-b", "feat"],
+                       cwd=repo, check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-q", "--allow-empty", "-m", "work"],
+                       cwd=wt, check=True, capture_output=True)
+        subprocess.run(["git", "worktree", "remove", "--force", str(wt)],
+                       cwd=repo, check=True, capture_output=True)
+
+        assert git_control_surface_changes(before, git_control_surface(git_dir)) == []
+
+    def test_a_hook_planted_from_the_worktree_is_detected(self, tmp_path):
+        import subprocess
+
+        from worker_utils import git_control_surface, git_control_surface_changes
+
+        repo = self._repo(tmp_path)
+        before = git_control_surface(repo / ".git")
+
+        wt = tmp_path / "wt"
+        subprocess.run(["git", "worktree", "add", "-q", str(wt), "-b", "feat"],
+                       cwd=repo, check=True, capture_output=True)
+        # Exactly what an agent inside the worktree can do today.
+        common = subprocess.run(["git", "rev-parse", "--git-common-dir"],
+                                cwd=wt, check=True, capture_output=True, text=True).stdout.strip()
+        hook = (wt / common).resolve() / "hooks" / "pre-commit"
+        hook.write_text("#!/bin/sh\necho pwned\n")
+
+        changes = git_control_surface_changes(before, git_control_surface(repo / ".git"))
+        assert changes == ["added hooks/pre-commit"]
+
+    def test_config_tampering_is_detected(self, tmp_path):
+        """core.fsmonitor / core.pager / aliases all execute a command."""
+        import subprocess
+
+        from worker_utils import git_control_surface, git_control_surface_changes
+
+        repo = self._repo(tmp_path)
+        before = git_control_surface(repo / ".git")
+        subprocess.run(["git", "config", "core.fsmonitor", "/tmp/evil.sh"],
+                       cwd=repo, check=True, capture_output=True)
+        assert git_control_surface_changes(before, git_control_surface(repo / ".git")) == [
+            "modified config"
+        ]
+
+    def test_missing_or_none_dir_is_empty_not_an_error(self, tmp_path):
+        from worker_utils import git_control_surface
+
+        assert git_control_surface(None) == {}
+        assert git_control_surface(tmp_path / "nope") == {}
+
+    async def test_verify_refuses_when_the_surface_moved(self, tmp_path):
+        """The gate must stop before verify_and_commit, not after."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        import worker_evidence
+
+        worker = MagicMock()
+        worker.id = "w1"
+        worker._git_surface_before = {"hooks/pre-commit": "aaa"}
+        worker._git_surface_common_dir = tmp_path / "nope"  # -> empty surface = "removed"
+        worker._original_project_dir = tmp_path
+        worker.verify_and_commit = AsyncMock(return_value=True)
+
+        result = await worker_evidence.verify_worker_with_evidence(worker)
+
+        assert result is False
+        worker.verify_and_commit.assert_not_awaited()
+        assert worker.transition_reason == "git_control_surface_modified"
+        assert "operator" in worker.failure_context
+
+    async def test_verify_proceeds_when_the_surface_is_intact(self, tmp_path):
+        from unittest.mock import AsyncMock, MagicMock
+
+        import worker_evidence
+
+        worker = MagicMock()
+        worker.id = "w1"
+        worker._git_surface_before = {}  # guard off / nothing recorded
+        worker.verify_and_commit = AsyncMock(return_value=True)
+
+        assert await worker_evidence.verify_worker_with_evidence(worker) is True
+        worker.verify_and_commit.assert_awaited_once()
