@@ -162,11 +162,13 @@ jobs:
       # failure before — an unrecognised pytest argument made every commit
       # report 0 passed, and the 0% fire rate read as good news. The self-test
       # runs one positive and one negative control and fails if either is wrong.
+      # No RED_PHASE_PYTHON here: this job installs dependencies into the
+      # runner's system Python rather than a venv, and the script already
+      # falls back to sys.executable when orchestrator/.venv is absent.
+      # Pinning the venv path made the step fail with FileNotFoundError on a
+      # runner that has no venv at all.
       - name: Red-phase audit self-test (can the harness go red?)
-        run: |
-          cd orchestrator
-          RED_PHASE_PYTHON="$(pwd)/.venv/bin/python" \
-            python3 ../configs/scripts/red-phase-audit.py --self-test
+        run: python3 configs/scripts/red-phase-audit.py --self-test
 
       - name: Score the test-integrity detector against the reward-hack corpus
         run: |
