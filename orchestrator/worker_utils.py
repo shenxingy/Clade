@@ -938,6 +938,54 @@ GIT_CONTROL_FILES = ("config",)
 GIT_CONTROL_DIRS = ("hooks",)
 
 
+async def preserve_worktree_wip(
+    worktree_path: Path | None, branch_name: str | None, reason: str
+) -> str | None:
+    """Commit whatever the agent had written before its worktree is destroyed.
+
+    A worker commits exactly once, at the end of verification. `stop()` skips
+    verification by design and then runs `git worktree remove --force`, so
+    every uncommitted byte was deleted — including on the AUTOMATIC paths
+    (loop detection and the stuck-worker timeout), where nobody is watching.
+    The branch itself survives worktree removal, so a WIP commit on it makes
+    the work recoverable with `git checkout <branch>` while still freeing the
+    disk.
+
+    Returns the commit SHA, or None when there was nothing to save.
+    """
+    if not worktree_path or not branch_name:
+        return None
+    try:
+        if not Path(worktree_path).is_dir():
+            return None
+
+        async def _run(*args: str) -> tuple[int, str]:
+            proc = await asyncio.create_subprocess_exec(
+                "git", *args, cwd=str(worktree_path),
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+            )
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
+            return proc.returncode or 0, out.decode(errors="replace").strip()
+
+        code, dirty = await _run("status", "--porcelain")
+        if code != 0 or not dirty:
+            return None
+        code, _ = await _run("add", "-A")
+        if code != 0:
+            return None
+        code, _ = await _run(
+            "-c", "core.hooksPath=/dev/null",  # never run repo hooks on a rescue commit
+            "commit", "--no-verify", "-m", f"wip: worker stopped ({reason})",
+        )
+        if code != 0:
+            return None
+        code, sha = await _run("rev-parse", "HEAD")
+        return sha if code == 0 else None
+    except Exception:
+        logger.exception("failed to preserve worktree WIP before cleanup")
+        return None
+
+
 def git_control_surface(git_common_dir: Path | None) -> dict[str, str]:
     """Digest every file that can turn a git command into code execution.
 

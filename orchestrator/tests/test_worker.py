@@ -518,3 +518,93 @@ class TestWorktreeIsolationFailsClosed:
         assert await w._setup_worktree() is True
         assert w._worktree_path is not None and w._worktree_path.exists()
         assert w._project_dir == w._worktree_path
+
+
+# ─── A stopped worker must not lose its work ──────────────────────────────────
+
+
+class TestStopPreservesWork:
+    """`stop()` skips verification by design and then force-removes the worktree.
+
+    A worker commits exactly once, at the end of verification, so every
+    uncommitted byte was deleted. That is not only the UI's stop button —
+    `worker.py` calls `stop()` from loop detection and the stuck-worker
+    timeout, where nobody is watching. The branch survives worktree removal, so
+    a WIP commit on it makes the work recoverable.
+    """
+
+    @staticmethod
+    def _repo(tmp_path):
+        import subprocess
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        for cmd in (
+            ["git", "init", "-q"],
+            ["git", "config", "user.email", "t@example.com"],
+            ["git", "config", "user.name", "t"],
+            ["git", "commit", "-q", "--allow-empty", "-m", "root"],
+        ):
+            subprocess.run(cmd, cwd=repo, check=True, capture_output=True)
+        return repo
+
+    async def test_uncommitted_work_survives_on_the_branch(self, tmp_path: Path):
+        import subprocess
+
+        from worker_utils import preserve_worktree_wip
+
+        repo = self._repo(tmp_path)
+        wt = tmp_path / "wt"
+        branch = "orchestrator/task-1"
+        subprocess.run(["git", "worktree", "add", "-q", str(wt), "-b", branch],
+                       cwd=repo, check=True, capture_output=True)
+        (wt / "work.txt").write_text("40 minutes of work\n")
+
+        sha = await preserve_worktree_wip(wt, branch, "stopped")
+        assert sha, "nothing was committed, so the force-remove would destroy it"
+
+        subprocess.run(["git", "worktree", "remove", "--force", str(wt)],
+                       cwd=repo, check=True, capture_output=True)
+        recovered = subprocess.run(
+            ["git", "cat-file", "-p", f"{branch}:work.txt"],
+            cwd=repo, capture_output=True, text=True,
+        )
+        assert recovered.returncode == 0
+        assert "40 minutes of work" in recovered.stdout
+
+    async def test_a_clean_worktree_produces_no_commit(self, tmp_path: Path):
+        """No junk commits on the normal path."""
+        import subprocess
+
+        from worker_utils import preserve_worktree_wip
+
+        repo = self._repo(tmp_path)
+        wt = tmp_path / "wt"
+        subprocess.run(["git", "worktree", "add", "-q", str(wt), "-b", "b1"],
+                       cwd=repo, check=True, capture_output=True)
+        assert await preserve_worktree_wip(wt, "b1", "stopped") is None
+
+    async def test_missing_worktree_or_branch_is_safe(self, tmp_path: Path):
+        from worker_utils import preserve_worktree_wip
+
+        assert await preserve_worktree_wip(None, "b1", "stopped") is None
+        assert await preserve_worktree_wip(tmp_path / "gone", "b1", "stopped") is None
+        assert await preserve_worktree_wip(tmp_path, None, "stopped") is None
+
+    async def test_repo_hooks_do_not_run_on_the_rescue_commit(self, tmp_path: Path):
+        """A hostile or merely broken pre-commit hook must not block the rescue."""
+        import subprocess
+
+        from worker_utils import preserve_worktree_wip
+
+        repo = self._repo(tmp_path)
+        hook = repo / ".git" / "hooks" / "pre-commit"
+        hook.write_text("#!/bin/sh\nexit 1\n")
+        hook.chmod(0o755)
+
+        wt = tmp_path / "wt"
+        subprocess.run(["git", "worktree", "add", "-q", str(wt), "-b", "b1"],
+                       cwd=repo, check=True, capture_output=True)
+        (wt / "work.txt").write_text("work\n")
+
+        assert await preserve_worktree_wip(wt, "b1", "stopped"), "hook blocked the rescue"
