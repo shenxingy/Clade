@@ -1,28 +1,29 @@
 ---
 name: frontend-design
-description: Create distinctive, production-grade frontend interfaces and presentation surfaces with high design quality. Detects and enforces the project's design system (.design-system.md, design-system skill repo, or DESIGN.md) — hard-rule grep checks, rendered-output validators, review checklist, decisions log; can also author a new design system (SKILL.md + DESIGN.md + assets).
-when_to_use: "design UI, create component, frontend design, build page, design a slide deck, presentation slides, apply the design system, follow brand guidelines, author a design system, 设计页面, 做 PPT, 设计幻灯片, 按设计系统, 品牌规范"
+description: Create, prototype, redesign, audit, or optimize production-grade interfaces and presentation surfaces across websites, responsive/mobile web, iOS/iPadOS/macOS, Android, Windows, Electron/Tauri, Flutter/React Native, and other local/native apps. Use for UI/UX design, visual polish, components, interaction states, cursor or motion decisions, design systems, decks, and requests such as 设计页面、优化网页/界面/UI、优化手机端 UI、原生 App 或桌面软件设计. Runs a platform-aware benchmark, an optional HTML or native preview checkpoint, implementation, accessibility checks, and rendered/live verification.
+when_to_use: "design UI, improve UI, optimize UI, redesign interface, UX audit, visual polish, interaction design, motion design, create component, build page, website redesign, responsive web, mobile web, native app UI, desktop app UI, local app, iOS, iPadOS, macOS, Android, Windows, WinUI, SwiftUI, Jetpack Compose, Flutter, React Native, Electron, Tauri, design a slide deck, apply the design system, author a design system, 设计页面, 优化网页, 优化界面, 优化 UI, 优化手机端 UI, UI 设计, UX 优化, 交互设计, 动效设计, 手机端 UI, 原生 App, 桌面软件, 本地软件, 苹果软件, Windows 软件, 做 PPT, 设计幻灯片, 按设计系统, 品牌规范"
 user_invocable: true
 ---
 
-# Frontend Design
+# Interface Design Pipeline
 
-Guides creation of distinctive, production-grade frontend interfaces that avoid generic AI aesthetics. Generates real working code with exceptional attention to design details.
+Guides interface work from evidence and platform choice through preview,
+implementation, and verification. The historical `frontend-design` name stays
+for compatibility; the workflow covers web, mobile, desktop, and native apps.
 
 ## Usage
 
 ```
-/frontend-design        # Start with interactive requirements gathering
+/frontend-design        # Run the platform-aware interface pipeline
 ```
 
-Respects the project's design system if present — `.design-system.md` (token
-sheet), `design-system/SKILL.md` (design system packaged as a skill, with
-tokens/components/brand assets), or `DESIGN.md` (full spec). Enforces its hard
-rules, runs its review checklist, and records decisions (including rejected
-experiments) in its Decisions Log. Can also author a new design system in the
-two-layer SKILL.md + DESIGN.md + assets structure.
+Every invocation classifies the target platform and task size, reads the shared
+benchmark contract plus the relevant platform adapter, then runs all seven
+pipeline phases at proportional depth. It respects the project's design system,
+keeps platform contracts native, and makes product workflow and brand choices
+deliberately.
 
-Covers presentation surfaces (slides, decks) as well as web UI — these invert
-several web aesthetic rules, so they carry their own legibility floors, one-thesis
-hierarchy, and focal-surface caps, checked on the rendered artifact rather than
-by grepping source.
+When visual direction is materially uncertain, it creates a viewable checkpoint
+before expensive implementation. HTML is preferred for browser UI and may be
+used as a clearly labelled visual study for native apps; native behavior must be
+validated in the real platform preview, simulator, or running app.

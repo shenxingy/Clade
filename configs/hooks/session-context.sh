@@ -331,12 +331,22 @@ fi
 
 # Mobile — iOS
 if compgen -G "*.xcodeproj" >/dev/null 2>&1 || [[ -f "Podfile" ]]; then
-  SKILL_ROUTE="${SKILL_ROUTE}iOS project: run xcodebuild tests after Swift changes\n"
+  SKILL_ROUTE="${SKILL_ROUTE}Apple UI project: /frontend-design runs the platform-aware interface pipeline; run xcodebuild tests after Swift changes\n"
 fi
 
 # Mobile — Android
 if [[ -f "build.gradle" || -f "build.gradle.kts" || -f "settings.gradle" || -f "settings.gradle.kts" ]]; then
-  SKILL_ROUTE="${SKILL_ROUTE}Android project: ./gradlew test after Kotlin/Java changes\n"
+  SKILL_ROUTE="${SKILL_ROUTE}Android UI project: /frontend-design runs the platform-aware interface pipeline; run ./gradlew test after Kotlin/Java changes\n"
+fi
+
+# Cross-platform and Windows desktop interface shells
+if [[ -d "src-tauri" ]] || grep -qE '"(electron|@tauri-apps/api|react-native)"' package.json 2>/dev/null \
+   || { [[ -f "pubspec.yaml" ]] && grep -qE '^[[:space:]]*flutter:' pubspec.yaml 2>/dev/null; }; then
+  SKILL_ROUTE="${SKILL_ROUTE}Cross-platform UI project: /frontend-design selects the real target adapters and preview lane\n"
+fi
+if compgen -G "*.sln" >/dev/null 2>&1 || compgen -G "*.csproj" >/dev/null 2>&1 \
+   || compgen -G "*.xaml" >/dev/null 2>&1; then
+  SKILL_ROUTE="${SKILL_ROUTE}Windows UI project: /frontend-design runs the Fluent/native interface pipeline\n"
 fi
 
 # ML/AI

@@ -57,9 +57,12 @@ if echo "$FILE_PATH" | grep -qiE '(Dockerfile|docker-compose|\.github/workflows|
 fi
 
 # ─── Frontend components ────────────────────────────────────────────
-if echo "$FILE_PATH" | grep -qiE '\.(tsx|jsx|vue|svelte)$' \
+# Web component extensions are intrinsically UI-shaped. Native source files
+# need a UI-shaped path; XIB/storyboard/XAML are declarative UI artifacts.
+if { echo "$FILE_PATH" | grep -qiE '\.(tsx|jsx|vue|svelte|xib|storyboard|xaml)$' \
+     || echo "$FILE_PATH" | grep -qiE '(components?|views?|screens?|pages?|ui)/.*\.(swift|kt|java|dart|cs|xml)$'; } \
    && ! echo "$FILE_PATH" | grep -qiE '(test|spec|story)'; then
-  SUGGESTIONS="${SUGGESTIONS}UI component edited. Consider browser testing or /review for visual verification\n"
+  SUGGESTIONS="${SUGGESTIONS}Interface component edited. Run /frontend-design for the platform-aware UI pipeline, then browser/native visual verification or /review\n"
 fi
 
 # ─── Database migrations ────────────────────────────────────────────

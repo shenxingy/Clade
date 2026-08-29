@@ -120,6 +120,12 @@ assert_contains "$OUT" "/verify" "API route edit suggests /verify"
 OUT=$(suggest "src/auth/token.py" "$(mktemp -d "$TMP_ROOT/th.XXXX")")
 assert_contains "$OUT" "/cso" "auth file edit suggests /cso"
 
+OUT=$(suggest "src/components/Button.tsx" "$(mktemp -d "$TMP_ROOT/th.XXXX")")
+assert_contains "$OUT" "/frontend-design" "web component edit suggests interface pipeline"
+
+OUT=$(suggest "Product/Views/SettingsView.swift" "$(mktemp -d "$TMP_ROOT/th.XXXX")")
+assert_contains "$OUT" "/frontend-design" "native view edit suggests interface pipeline"
+
 OUT=$(suggest "configs/skills/foo/SKILL.md" "$(mktemp -d "$TMP_ROOT/th.XXXX")")
 assert_contains "$OUT" "./install.sh" "Clade config edit suggests install.sh redeploy"
 
@@ -180,6 +186,25 @@ make_repo "$R3"
 echo '{}' > "$R3/package.json"
 OUT=$(run_session_context "$R3")
 assert_contains "$OUT" "/verify after code changes" "package.json → /verify workflow hint"
+
+# Native/cross-platform UI routing
+R5="$TMP_ROOT/repo-apple"
+make_repo "$R5"
+mkdir -p "$R5/Product.xcodeproj"
+OUT=$(run_session_context "$R5")
+assert_contains "$OUT" "/frontend-design" "Xcode project → interface pipeline hint"
+
+R6="$TMP_ROOT/repo-windows"
+make_repo "$R6"
+touch "$R6/Product.sln"
+OUT=$(run_session_context "$R6")
+assert_contains "$OUT" "Windows UI project" "Windows solution → native interface pipeline hint"
+
+R7="$TMP_ROOT/repo-cross-platform"
+make_repo "$R7"
+mkdir -p "$R7/src-tauri"
+OUT=$(run_session_context "$R7")
+assert_contains "$OUT" "Cross-platform UI project" "Tauri project → target-adapter hint"
 
 # Regression guard: the <available_skills> XML catalog was removed 2026-07-10
 # (duplicated Claude Code native skill discovery AND overflowed the hook
