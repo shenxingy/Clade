@@ -1,362 +1,370 @@
 {
-    "_comment": "Hooks section to merge into ~/.claude/settings.json — reference copy",
-    "hooks": {
-        "SessionStart": [
-            {
-                "matcher": "startup|clear|fork",
-                "hooks": [
-                    {
-                        "id": "session-baseline",
-                        "description": "Capture git dirty baseline for session-scoped stop-check. Must cover clear/fork too: those mint a NEW session_id with no baseline file, and stop-check.sh fails open when the baseline is missing — so a startup-only matcher silently disables the stop gate for every cleared or forked session. Deliberately NOT on resume: resume keeps the original session_id, and re-baselining would reclassify this session's own uncommitted work as pre-existing.",
-                        "type": "command",
-                        "command": "~/.claude/hooks/session-baseline.sh",
-                        "timeout": 5
-                    },
-                    {
-                        "id": "session-context",
-                        "description": "Load project context and compact-state at session start. Also on clear/fork, which discard the injected context but keep the process alive.",
-                        "type": "command",
-                        "command": "~/.claude/hooks/session-context.sh",
-                        "timeout": 10,
-                        "statusMessage": "Loading project context..."
-                    }
-                ]
-            },
-            {
-                "matcher": "startup",
-                "hooks": [
-                    {
-                        "id": "memory-sync-pull",
-                        "description": "Pull latest memory from remote at session start",
-                        "type": "command",
-                        "command": "~/.claude/scripts/sync-pull.sh",
-                        "async": true,
-                        "timeout": 30,
-                        "statusMessage": "Syncing memory..."
-                    },
-                    {
-                        "id": "sync-health",
-                        "description": "Detect dotfiles sync drift (missing config, broken symlinks, unreachable SYNC_DIR)",
-                        "type": "command",
-                        "command": "~/.claude/hooks/sync-health.sh",
-                        "timeout": 5
-                    },
-                    {
-                        "id": "commit-archeology",
-                        "description": "Inject recurring commit-pattern lessons (wiring/deploy/compat gaps, Claude-overridden, mass-fix days) mined from this repo's git log",
-                        "type": "command",
-                        "command": "~/.claude/hooks/commit-archeology.sh",
-                        "timeout": 15,
-                        "statusMessage": "Reading commit lessons..."
-                    }
-                ]
-            },
-            {
-                "matcher": "compact",
-                "hooks": [
-                    {
-                        "id": "post-compact-reinject",
-                        "description": "Re-inject the pinned task goal/state after context compaction — the startup matcher never fires on source=compact, so the PreCompact-saved goal was silently lost after auto-compaction",
-                        "type": "command",
-                        "command": "~/.claude/hooks/post-compact-reinject.sh",
-                        "timeout": 5,
-                        "statusMessage": "Restoring task context after compaction..."
-                    }
-                ]
-            }
-        ],
-        "SessionEnd": [
-            {
-                "hooks": [
-                    {
-                        "id": "session-end-cleanup",
-                        "description": "Delete this session's correction-pairing shadow (/tmp/claude-edit-shadows/session-<session_id>.jsonl). No matcher on purpose: every end reason (clear, logout, prompt_input_exit, other) retires that session_id, and the next session gets a new one. Attribution-scoped — it unlinks only the file keyed by the ending session_id, so a parallel live session's shadow is never touched.",
-                        "type": "command",
-                        "command": "~/.claude/hooks/session-end-cleanup.sh",
-                        "timeout": 5
-                    }
-                ]
-            }
-        ],
-        "PreToolUse": [
-            {
-                "matcher": "Bash",
-                "hooks": [
-                    {
-                        "id": "pre-tool-guardian",
-                        "description": "Block dangerous Bash commands (force push, rm -rf, drop table, etc.)",
-                        "type": "command",
-                        "command": "~/.claude/hooks/pre-tool-guardian.sh",
-                        "timeout": 5
-                    },
-                    {
-                        "id": "revert-detector",
-                        "description": "Detect and warn on git revert/reset commands",
-                        "type": "command",
-                        "command": "~/.claude/hooks/revert-detector.sh",
-                        "if": "Bash(git *)",
-                        "async": true,
-                        "timeout": 5
-                    }
-                ]
-            },
-            {
-                "matcher": "Edit|Write",
-                "hooks": [
-                    {
-                        "id": "linter-config-guard",
-                        "description": "Block edits to linter/formatter/type-checker config files (ECC Plankton pattern)",
-                        "type": "command",
-                        "command": "~/.claude/hooks/linter-config-guard.sh",
-                        "timeout": 5
-                    }
-                ]
-            }
-        ],
-        "PostToolUse": [
-            {
-                "matcher": "Edit|Write",
-                "hooks": [
-                    {
-                        "id": "post-edit-check",
-                        "description": "Run background checks (type-check, lint) after file edits and wake Claude when they FAIL. asyncRewake is the delivery channel: the check can take 180s so it must not block the turn, but a plain async hook's output goes nowhere — the old systemMessage was written into a void. The hook now exits 2 with its findings on stderr, which asyncRewake surfaces as a system reminder; a clean check exits 0 silently and never wakes Claude. asyncRewake implies async, so it is the only flag needed here. Findings are phrased inside the hook's own stderr, because the command hook schema has no field for customizing the wake text.",
-                        "type": "command",
-                        "command": "~/.claude/hooks/post-edit-check.sh",
-                        "asyncRewake": true,
-                        "timeout": 180,
-                        "statusMessage": "Running checks..."
-                    },
-                    {
-                        "id": "post-tool-use-lint",
-                        "description": "Run verify_cmd after file edits and inject lint errors as feedback",
-                        "type": "command",
-                        "command": "~/.claude/hooks/post-tool-use-lint.sh",
-                        "timeout": 30,
-                        "statusMessage": "Running verify_cmd..."
-                    },
-                    {
-                        "id": "rule-injector",
-                        "description": "Inject path-scoped rules (.claude/rules/*.md + ~/.claude/rules/*.md) when the edited file matches their paths: frontmatter — once per session per rule",
-                        "type": "command",
-                        "command": "~/.claude/hooks/rule-injector.sh",
-                        "timeout": 5,
-                        "statusMessage": "Checking path-scoped rules..."
-                    },
-                    {
-                        "id": "edit-shadow-detector",
-                        "description": "Detect edits that shadow or conflict with recent changes",
-                        "type": "command",
-                        "command": "~/.claude/hooks/edit-shadow-detector.sh",
-                        "async": true,
-                        "timeout": 5
-                    },
-                    {
-                        "id": "memory-sync-edit",
-                        "description": "Sync memory changes to remote after file edits",
-                        "type": "command",
-                        "command": "~/.claude/hooks/memory-sync.sh",
-                        "async": true,
-                        "timeout": 10
-                    },
-                    {
-                        "id": "doc-align-check",
-                        "description": "Real-time doc-drift guard: after .md edits, check docs/facts.json and warn if the edited file now disagrees with declared facts",
-                        "type": "command",
-                        "command": "~/.claude/hooks/doc-align-check.sh",
-                        "async": true,
-                        "timeout": 10
-                    },
-                    {
-                        "id": "skill-suggest",
-                        "description": "Suggest relevant skills after file edits (blog→SEO/GEO, schema→validate, etc.). Runs SYNC on purpose: its only output is hookSpecificOutput.additionalContext, which a background hook cannot deliver, so async:true discarded every suggestion. asyncRewake was rejected — waking Claude mid-turn for an advisory hint is not worth the interruption (see .claude/decisions.md). Being on the Edit/Write critical path, its cost is bounded twice: this 5s hook timeout, and a `timeout 5` re-exec inside the script itself that also kills a stalled content probe.",
-                        "type": "command",
-                        "command": "~/.claude/hooks/skill-suggest.sh",
-                        "timeout": 5
-                    }
-                ]
-            },
-            {
-                "matcher": "Bash",
-                "hooks": [
-                    {
-                        "id": "failure-detector",
-                        "description": "Detect Bash command failures and inject diagnostic context",
-                        "type": "command",
-                        "command": "~/.claude/hooks/failure-detector.sh",
-                        "timeout": 5
-                    },
-                    {
-                        "id": "memory-sync-bash",
-                        "description": "Sync memory changes to remote after Bash commands",
-                        "type": "command",
-                        "command": "~/.claude/hooks/memory-sync.sh",
-                        "async": true,
-                        "timeout": 10
-                    }
-                ]
-            },
-            {
-                "matcher": "*",
-                "hooks": [
-                    {
-                        "id": "mailbox-drain",
-                        "description": "Mid-flight worker steering: drain .claude/worker-inbox-<task>.md into context after any tool call (orchestrator workers only — no-op unless CLADE_WORKER_TASK_ID is set)",
-                        "type": "command",
-                        "command": "~/.claude/hooks/mailbox-drain.sh",
-                        "timeout": 5
-                    },
-                    {
-                        "id": "context-warning-drain",
-                        "description": "Deliver the ~80%-context-budget nudge worker.py writes to .claude/context-warning-<task>.md (orchestrator workers only — no-op unless CLADE_WORKER_TASK_ID is set)",
-                        "type": "command",
-                        "command": "~/.claude/hooks/context-warning-drain.sh",
-                        "timeout": 5
-                    }
-                ]
-            }
-        ],
-        "Stop": [
-            {
-                "hooks": [
-                    {
-                        "id": "iloop-continue",
-                        "description": "In-session iterative loop: when .claude/iloop.local.md is active, block exit and re-feed the task prompt (see /iloop skill)",
-                        "type": "command",
-                        "command": "~/.claude/hooks/iloop-hook.sh",
-                        "timeout": 10
-                    }
-                ]
-            },
-            {
-                "hooks": [
-                    {
-                        "id": "stop-completeness-check",
-                        "description": "LLM check that all user tasks are complete before stopping",
-                        "type": "prompt",
-                        "prompt": "Return {\"ok\":true} if all user tasks are complete, {\"ok\":false,\"reason\":\"one line\"} if something is clearly unfinished AND automatable. API errors → always {\"ok\":true}. Deferred/awaiting user input → {\"ok\":true}. JSON only, no other output.",
-                        "timeout": 30,
-                        "statusMessage": "Checking completion..."
-                    }
-                ]
-            },
-            {
-                "hooks": [
-                    {
-                        "id": "stop-uncommitted-guard",
-                        "description": "Block stop on session-scoped uncommitted changes (ignores pre-existing dirt from parallel CC sessions on the same repo); self-escapes via stop_hook_active + attempt counter to prevent LLM deadlock",
-                        "type": "command",
-                        "command": "~/.claude/hooks/stop-check.sh",
-                        "timeout": 10
-                    }
-                ]
-            }
-        ],
-        "PreCompact": [
-            {
-                "hooks": [
-                    {
-                        "id": "precompact-state-save",
-                        "description": "Prompt LLM to save active task state to compact-state.md before context compaction",
-                        "type": "prompt",
-                        "prompt": "[PreCompact State Checkpoint]\n\nContext compaction is about to happen. If you are in the middle of an active task, use the Write tool to save your state to .claude/compact-state.md BEFORE compaction.\n\nFormat (keep it short — this file is re-read at session start):\n```\n# Compact State — {ISO timestamp}\n## Identity\n{1 line: your current role — e.g. \"Claude Code assistant, Clade project, implementing X\"}\n## Active Task\n{1-2 sentences: what you are working on}\n## Progress\n{bullet list: what has been completed}\n## Next Step\n{exactly what to do next — be specific enough to resume without re-reading the conversation}\n## Key Context\n{critical facts that would be lost: file paths, error messages, variable names, architectural decisions}\n```\n\nThen output: > [Compact Checkpoint] State saved to .claude/compact-state.md\n\nIf you are NOT in the middle of an active task (conversation is idle or task is complete), skip this entirely.",
-                        "statusMessage": "Checkpointing task state before compaction..."
-                    }
-                ]
-            },
-            {
-                "hooks": [
-                    {
-                        "id": "precompact-script",
-                        "description": "Run pre-compact shell script (TLDR refresh, context snapshot)",
-                        "type": "command",
-                        "command": "bash ~/.claude/hooks/pre-compact.sh"
-                    }
-                ]
-            }
-        ],
-        "Notification": [
-            {
-                "matcher": "permission_prompt|idle_prompt",
-                "hooks": [
-                    {
-                        "id": "telegram-notify",
-                        "description": "Send Telegram notification on permission prompts or idle state",
-                        "type": "command",
-                        "command": "~/.claude/hooks/notify-telegram.sh",
-                        "async": true,
-                        "timeout": 10
-                    }
-                ]
-            }
-        ],
-        "TaskCompleted": [
-            {
-                "hooks": [
-                    {
-                        "id": "verify-task-completed",
-                        "description": "Run verify_cmd to confirm task was fully and correctly completed",
-                        "type": "command",
-                        "command": "~/.claude/hooks/verify-task-completed.sh",
-                        "timeout": 180,
-                        "statusMessage": "Verifying task completion..."
-                    }
-                ]
-            }
-        ],
-        "UserPromptSubmit": [
-            {
-                "hooks": [
-                    {
-                        "id": "correction-detector",
-                        "description": "Detect user corrections and save as feedback memories",
-                        "type": "command",
-                        "command": "~/.claude/hooks/correction-detector.sh",
-                        "timeout": 5,
-                        "statusMessage": ""
-                    },
-                    {
-                        "id": "prompt-tracker",
-                        "description": "Track user prompts for analytics and loop detection",
-                        "type": "command",
-                        "command": "~/.claude/hooks/prompt-tracker.sh",
-                        "async": true,
-                        "timeout": 5
-                    },
-                    {
-                        "id": "secret-scanner",
-                        "description": "Warn (non-blocking) when the prompt appears to contain a credential. Runs SYNC on purpose: the hook's only output is hookSpecificOutput.additionalContext, and an async hook has no channel back into the turn (that is what asyncRewake exists for), so async:true discarded the credential warning entirely. Same sync treatment as correction-detector, which also injects context on this event.",
-                        "type": "command",
-                        "command": "~/.claude/hooks/secret-scanner.sh",
-                        "timeout": 5
-                    }
-                ]
-            }
-        ],
-        "PostToolUseFailure": [
-            {
-                "hooks": [
-                    {
-                        "id": "post-tool-use-failure",
-                        "description": "Inject tool-specific diagnostic hints after tool call failures",
-                        "type": "command",
-                        "command": "~/.claude/hooks/post-tool-use-failure.sh",
-                        "timeout": 5
-                    }
-                ]
-            }
-        ],
-        "PermissionRequest": [
-            {
-                "hooks": [
-                    {
-                        "id": "permission-request",
-                        "description": "Auto-allow safe patterns (read-only git, file inspection, pytest) and persist via updatedPermissions",
-                        "type": "command",
-                        "command": "~/.claude/hooks/permission-request.sh",
-                        "timeout": 5
-                    }
-                ]
-            }
+  "_comment": "Hooks section to merge into ~/.claude/settings.json — reference copy",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|clear|fork",
+        "hooks": [
+          {
+            "id": "session-baseline",
+            "description": "Capture git dirty baseline for session-scoped stop-check. Must cover clear/fork too: those mint a NEW session_id with no baseline file, and stop-check.sh fails open when the baseline is missing — so a startup-only matcher silently disables the stop gate for every cleared or forked session. Deliberately NOT on resume: resume keeps the original session_id, and re-baselining would reclassify this session's own uncommitted work as pre-existing.",
+            "type": "command",
+            "command": "~/.claude/hooks/session-baseline.sh",
+            "timeout": 5
+          },
+          {
+            "id": "session-context",
+            "description": "Load project context and compact-state at session start. Also on clear/fork, which discard the injected context but keep the process alive.",
+            "type": "command",
+            "command": "~/.claude/hooks/session-context.sh",
+            "timeout": 10,
+            "statusMessage": "Loading project context..."
+          }
         ]
-    }
+      },
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "id": "memory-sync-pull",
+            "description": "Pull latest memory from remote at session start",
+            "type": "command",
+            "command": "~/.claude/scripts/sync-pull.sh",
+            "async": true,
+            "timeout": 30,
+            "statusMessage": "Syncing memory..."
+          },
+          {
+            "id": "sync-health",
+            "description": "Detect dotfiles sync drift (missing config, broken symlinks, unreachable SYNC_DIR)",
+            "type": "command",
+            "command": "~/.claude/hooks/sync-health.sh",
+            "timeout": 5
+          },
+          {
+            "id": "commit-archeology",
+            "description": "Inject recurring commit-pattern lessons (wiring/deploy/compat gaps, Claude-overridden, mass-fix days) mined from this repo's git log",
+            "type": "command",
+            "command": "~/.claude/hooks/commit-archeology.sh",
+            "timeout": 15,
+            "statusMessage": "Reading commit lessons..."
+          }
+        ]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "id": "post-compact-reinject",
+            "description": "Re-inject the pinned task goal/state after context compaction — the startup matcher never fires on source=compact, so the PreCompact-saved goal was silently lost after auto-compaction",
+            "type": "command",
+            "command": "~/.claude/hooks/post-compact-reinject.sh",
+            "timeout": 5,
+            "statusMessage": "Restoring task context after compaction..."
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "id": "session-end-cleanup",
+            "description": "Delete this session's correction-pairing shadow (/tmp/claude-edit-shadows/session-<session_id>.jsonl). No matcher on purpose: every end reason (clear, logout, prompt_input_exit, other) retires that session_id, and the next session gets a new one. Attribution-scoped — it unlinks only the file keyed by the ending session_id, so a parallel live session's shadow is never touched.",
+            "type": "command",
+            "command": "~/.claude/hooks/session-end-cleanup.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "id": "pre-tool-guardian",
+            "description": "Block dangerous Bash commands (force push, rm -rf, drop table, etc.)",
+            "type": "command",
+            "command": "~/.claude/hooks/pre-tool-guardian.sh",
+            "timeout": 5
+          },
+          {
+            "id": "revert-detector",
+            "description": "Detect and warn on git revert/reset commands",
+            "type": "command",
+            "command": "~/.claude/hooks/revert-detector.sh",
+            "if": "Bash(git *)",
+            "async": true,
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "id": "linter-config-guard",
+            "description": "Block edits to linter/formatter/type-checker config files (ECC Plankton pattern)",
+            "type": "command",
+            "command": "~/.claude/hooks/linter-config-guard.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "id": "post-edit-check",
+            "description": "Run background checks (type-check, lint) after file edits and wake Claude when they FAIL. asyncRewake is the delivery channel: the check can take 180s so it must not block the turn, but a plain async hook's output goes nowhere — the old systemMessage was written into a void. The hook now exits 2 with its findings on stderr, which asyncRewake surfaces as a system reminder; a clean check exits 0 silently and never wakes Claude. asyncRewake implies async, so it is the only flag needed here. Findings are phrased inside the hook's own stderr, because the command hook schema has no field for customizing the wake text.",
+            "type": "command",
+            "command": "~/.claude/hooks/post-edit-check.sh",
+            "asyncRewake": true,
+            "timeout": 180,
+            "statusMessage": "Running checks..."
+          },
+          {
+            "id": "post-tool-use-lint",
+            "description": "Run verify_cmd after file edits and inject lint errors as feedback",
+            "type": "command",
+            "command": "~/.claude/hooks/post-tool-use-lint.sh",
+            "timeout": 30,
+            "statusMessage": "Running verify_cmd..."
+          },
+          {
+            "id": "rule-injector",
+            "description": "Inject path-scoped rules (.claude/rules/*.md + ~/.claude/rules/*.md) when the edited file matches their paths: frontmatter — once per session per rule",
+            "type": "command",
+            "command": "~/.claude/hooks/rule-injector.sh",
+            "timeout": 5,
+            "statusMessage": "Checking path-scoped rules..."
+          },
+          {
+            "id": "edit-shadow-detector",
+            "description": "Detect edits that shadow or conflict with recent changes",
+            "type": "command",
+            "command": "~/.claude/hooks/edit-shadow-detector.sh",
+            "async": true,
+            "timeout": 5
+          },
+          {
+            "id": "worker-checkpoint",
+            "description": "Snapshot the worktree into a shadow repo after each agent write (orchestrator workers only; inert without CLADE_WORKER_SHADOW_DIR)",
+            "type": "command",
+            "command": "~/.claude/hooks/worker-checkpoint.sh",
+            "timeout": 10,
+            "async": true
+          },
+          {
+            "id": "memory-sync-edit",
+            "description": "Sync memory changes to remote after file edits",
+            "type": "command",
+            "command": "~/.claude/hooks/memory-sync.sh",
+            "async": true,
+            "timeout": 10
+          },
+          {
+            "id": "doc-align-check",
+            "description": "Real-time doc-drift guard: after .md edits, check docs/facts.json and warn if the edited file now disagrees with declared facts",
+            "type": "command",
+            "command": "~/.claude/hooks/doc-align-check.sh",
+            "async": true,
+            "timeout": 10
+          },
+          {
+            "id": "skill-suggest",
+            "description": "Suggest relevant skills after file edits (blog→SEO/GEO, schema→validate, etc.). Runs SYNC on purpose: its only output is hookSpecificOutput.additionalContext, which a background hook cannot deliver, so async:true discarded every suggestion. asyncRewake was rejected — waking Claude mid-turn for an advisory hint is not worth the interruption (see .claude/decisions.md). Being on the Edit/Write critical path, its cost is bounded twice: this 5s hook timeout, and a `timeout 5` re-exec inside the script itself that also kills a stalled content probe.",
+            "type": "command",
+            "command": "~/.claude/hooks/skill-suggest.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "id": "failure-detector",
+            "description": "Detect Bash command failures and inject diagnostic context",
+            "type": "command",
+            "command": "~/.claude/hooks/failure-detector.sh",
+            "timeout": 5
+          },
+          {
+            "id": "memory-sync-bash",
+            "description": "Sync memory changes to remote after Bash commands",
+            "type": "command",
+            "command": "~/.claude/hooks/memory-sync.sh",
+            "async": true,
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "id": "mailbox-drain",
+            "description": "Mid-flight worker steering: drain .claude/worker-inbox-<task>.md into context after any tool call (orchestrator workers only — no-op unless CLADE_WORKER_TASK_ID is set)",
+            "type": "command",
+            "command": "~/.claude/hooks/mailbox-drain.sh",
+            "timeout": 5
+          },
+          {
+            "id": "context-warning-drain",
+            "description": "Deliver the ~80%-context-budget nudge worker.py writes to .claude/context-warning-<task>.md (orchestrator workers only — no-op unless CLADE_WORKER_TASK_ID is set)",
+            "type": "command",
+            "command": "~/.claude/hooks/context-warning-drain.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "id": "iloop-continue",
+            "description": "In-session iterative loop: when .claude/iloop.local.md is active, block exit and re-feed the task prompt (see /iloop skill)",
+            "type": "command",
+            "command": "~/.claude/hooks/iloop-hook.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "id": "stop-completeness-check",
+            "description": "LLM check that all user tasks are complete before stopping",
+            "type": "prompt",
+            "prompt": "Return {\"ok\":true} if all user tasks are complete, {\"ok\":false,\"reason\":\"one line\"} if something is clearly unfinished AND automatable. API errors → always {\"ok\":true}. Deferred/awaiting user input → {\"ok\":true}. JSON only, no other output.",
+            "timeout": 30,
+            "statusMessage": "Checking completion..."
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "id": "stop-uncommitted-guard",
+            "description": "Block stop on session-scoped uncommitted changes (ignores pre-existing dirt from parallel CC sessions on the same repo); self-escapes via stop_hook_active + attempt counter to prevent LLM deadlock",
+            "type": "command",
+            "command": "~/.claude/hooks/stop-check.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "id": "precompact-state-save",
+            "description": "Prompt LLM to save active task state to compact-state.md before context compaction",
+            "type": "prompt",
+            "prompt": "[PreCompact State Checkpoint]\n\nContext compaction is about to happen. If you are in the middle of an active task, use the Write tool to save your state to .claude/compact-state.md BEFORE compaction.\n\nFormat (keep it short — this file is re-read at session start):\n```\n# Compact State — {ISO timestamp}\n## Identity\n{1 line: your current role — e.g. \"Claude Code assistant, Clade project, implementing X\"}\n## Active Task\n{1-2 sentences: what you are working on}\n## Progress\n{bullet list: what has been completed}\n## Next Step\n{exactly what to do next — be specific enough to resume without re-reading the conversation}\n## Key Context\n{critical facts that would be lost: file paths, error messages, variable names, architectural decisions}\n```\n\nThen output: > [Compact Checkpoint] State saved to .claude/compact-state.md\n\nIf you are NOT in the middle of an active task (conversation is idle or task is complete), skip this entirely.",
+            "statusMessage": "Checkpointing task state before compaction..."
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "id": "precompact-script",
+            "description": "Run pre-compact shell script (TLDR refresh, context snapshot)",
+            "type": "command",
+            "command": "bash ~/.claude/hooks/pre-compact.sh"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "permission_prompt|idle_prompt",
+        "hooks": [
+          {
+            "id": "telegram-notify",
+            "description": "Send Telegram notification on permission prompts or idle state",
+            "type": "command",
+            "command": "~/.claude/hooks/notify-telegram.sh",
+            "async": true,
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "TaskCompleted": [
+      {
+        "hooks": [
+          {
+            "id": "verify-task-completed",
+            "description": "Run verify_cmd to confirm task was fully and correctly completed",
+            "type": "command",
+            "command": "~/.claude/hooks/verify-task-completed.sh",
+            "timeout": 180,
+            "statusMessage": "Verifying task completion..."
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "id": "correction-detector",
+            "description": "Detect user corrections and save as feedback memories",
+            "type": "command",
+            "command": "~/.claude/hooks/correction-detector.sh",
+            "timeout": 5,
+            "statusMessage": ""
+          },
+          {
+            "id": "prompt-tracker",
+            "description": "Track user prompts for analytics and loop detection",
+            "type": "command",
+            "command": "~/.claude/hooks/prompt-tracker.sh",
+            "async": true,
+            "timeout": 5
+          },
+          {
+            "id": "secret-scanner",
+            "description": "Warn (non-blocking) when the prompt appears to contain a credential. Runs SYNC on purpose: the hook's only output is hookSpecificOutput.additionalContext, and an async hook has no channel back into the turn (that is what asyncRewake exists for), so async:true discarded the credential warning entirely. Same sync treatment as correction-detector, which also injects context on this event.",
+            "type": "command",
+            "command": "~/.claude/hooks/secret-scanner.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "id": "post-tool-use-failure",
+            "description": "Inject tool-specific diagnostic hints after tool call failures",
+            "type": "command",
+            "command": "~/.claude/hooks/post-tool-use-failure.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "id": "permission-request",
+            "description": "Auto-allow safe patterns (read-only git, file inspection, pytest) and persist via updatedPermissions",
+            "type": "command",
+            "command": "~/.claude/hooks/permission-request.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
 }

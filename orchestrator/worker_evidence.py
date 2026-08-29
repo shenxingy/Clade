@@ -301,6 +301,24 @@ async def start_worker_with_evidence(worker: Any, task_queue: Any) -> None:
         raise
 
 
+async def _checkpoint_summary(worker: Any) -> dict | None:
+    """How many per-tool-call checkpoints this attempt recorded, and the last SHA.
+
+    Read before `_cleanup_worktree` deletes the shadow repo (worker.py:752
+    appends terminal evidence, :759 cleans up). Without this the checkpoints
+    would exist only for the life of the run and leave no trace in the chain.
+    """
+    path = getattr(worker, "_shadow_repo_path", None)
+    shadow = path() if callable(path) else None
+    if shadow is None or not Path(shadow).exists():
+        return None
+    count = await _git(Path(shadow).parent, "--git-dir", str(shadow), "rev-list", "--count", "HEAD")
+    head = await _git(Path(shadow).parent, "--git-dir", str(shadow), "rev-parse", "HEAD")
+    if not count:
+        return None
+    return {"count": int(count), "head": head, "repo": str(shadow)}
+
+
 async def append_worker_terminal_evidence(worker: Any) -> None:
     """Persist terminal verification, artifact, cost, and delivery evidence."""
 
@@ -366,6 +384,7 @@ async def append_worker_terminal_evidence(worker: Any) -> None:
                     "head_sha": head_sha,
                     "commit": getattr(worker, "last_commit", None),
                 },
+                "checkpoints": await _checkpoint_summary(worker),
                 "verification": {
                     "judge_verified": bool(getattr(worker, "verified", False)),
                     "tests": getattr(worker, "test_evidence", ""),

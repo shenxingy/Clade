@@ -13,6 +13,7 @@ import logging
 import os
 import re
 import shlex
+import shutil
 import signal
 import time
 import uuid
@@ -291,6 +292,13 @@ class Worker:
         # Unset CLAUDECODE so workers can launch even when the orchestrator itself
         # is started from inside a Claude Code session (prevents "nested session" error)
         env.pop("CLAUDECODE", None)
+        # Per-tool-call workspace checkpoints. The hook is inert without these,
+        # so interactive sessions are untouched — only a worker asks for them.
+        # The shadow repo lives OUTSIDE the worktree: a separate --git-dir means
+        # a separate index, so it cannot contend with the worker's own commits.
+        if self._shadow_repo_path() is not None:
+            env["CLADE_WORKER_SHADOW_DIR"] = str(self._shadow_repo_path())
+            env["CLADE_WORKER_WORKTREE"] = str(self._project_dir)
         # Spawn-time env denylist: strips secrets an untrusted-text worker shouldn't read. Off by default.
         _deny = GLOBAL_SETTINGS.get("worker_env_deny") or []
         if isinstance(_deny, str):  # a bare string would iterate per-character
@@ -532,9 +540,26 @@ class Worker:
                 self.id, reaction.config.name, reaction.message
             )
 
+    def _shadow_repo_path(self) -> Path | None:
+        """Where this worker's per-tool-call checkpoints live, or None if off."""
+        if not GLOBAL_SETTINGS.get("worker_checkpoint_shadow", True):
+            return None
+        if not self._worktree_path:
+            return None
+        return self._claude_dir / "orchestrator-worktrees" / ".shadow" / f"{self.id}.git"
+
     async def _cleanup_worktree(self) -> None:
         if not self._worktree_path:
             return
+        # Remove the checkpoint history with the worktree it describes. Kept
+        # first so a failure below cannot strand it; the final SHA is already
+        # in the evidence bundle by this point.
+        shadow = self._shadow_repo_path()
+        if shadow is not None and shadow.exists():
+            try:
+                shutil.rmtree(shadow)
+            except OSError:
+                logger.warning("could not remove checkpoint repo %s", shadow)
         cleanup = await asyncio.create_subprocess_exec(
             "git", "worktree", "remove", "--force", str(self._worktree_path),
             stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,

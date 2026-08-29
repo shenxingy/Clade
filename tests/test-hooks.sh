@@ -442,6 +442,75 @@ else
   fail "every type:prompt hook carries a statusMessage" "missing on: $(tr '\n' ' ' <<< "$_missing")"
 fi
 
+# ─── worker-checkpoint: per-tool-call workspace snapshots ─────────────────────
+# A worker commits exactly once, at the end of verification, and stop()
+# force-removes the worktree — so "correct at call 14, wrong at 15" had no
+# record anywhere. This hook writes one commit per Edit/Write into a shadow
+# repo OUTSIDE the worktree.
+section "worker-checkpoint hook"
+
+CK_HOOK="$REPO_ROOT/configs/hooks/worker-checkpoint.sh"
+CK_ROOT=$(mktemp -d /tmp/clade-ck-XXXXXX)
+mkdir -p "$CK_ROOT/wt"
+( cd "$CK_ROOT/wt" && git init -q . && git config user.email t@e.com && git config user.name t \
+  && echo v1 > f.txt && git add -A && git commit -q -m base ) >/dev/null 2>&1
+
+ck_write() {  # $1 = new content
+  echo "$1" > "$CK_ROOT/wt/f.txt"
+  printf '{"tool_name":"Write","tool_input":{"file_path":"%s/wt/f.txt"}}' "$CK_ROOT" \
+    | CLADE_WORKER_SHADOW_DIR="$CK_ROOT/shadow.git" CLADE_WORKER_WORKTREE="$CK_ROOT/wt" \
+      bash "$CK_HOOK" >/dev/null 2>&1
+}
+
+# Inert without the env var — an interactive session must be untouched.
+echo v0 > "$CK_ROOT/wt/f.txt"
+printf '{"tool_name":"Write","tool_input":{"file_path":"%s/wt/f.txt"}}' "$CK_ROOT" \
+  | bash "$CK_HOOK" >/dev/null 2>&1
+if [[ -d "$CK_ROOT/shadow.git" ]]; then
+  fail "hook is inert without CLADE_WORKER_SHADOW_DIR" "it created a shadow repo anyway"
+else
+  pass "hook is inert without CLADE_WORKER_SHADOW_DIR"
+fi
+
+ck_write v2; ck_write v3; ck_write v4
+CK_N=$(git --git-dir="$CK_ROOT/shadow.git" rev-list --count HEAD 2>/dev/null || echo 0)
+assert_eq "3" "$CK_N" "one checkpoint per tool call"
+
+CK_OLD=$(git --git-dir="$CK_ROOT/shadow.git" show HEAD~2:f.txt 2>/dev/null)
+assert_eq "v2" "$CK_OLD" "an earlier call's content is recoverable"
+
+# The property the whole design rests on: a separate git-dir means a separate
+# index, so checkpoints cannot contend with the worker's own commits.
+CK_IDX_BEFORE=$(md5sum "$CK_ROOT/wt/.git/index" 2>/dev/null | cut -d' ' -f1)
+ck_write v5
+CK_IDX_AFTER=$(md5sum "$CK_ROOT/wt/.git/index" 2>/dev/null | cut -d' ' -f1)
+assert_eq "$CK_IDX_BEFORE" "$CK_IDX_AFTER" "checkpointing never touches the worktree's own index"
+
+( cd "$CK_ROOT/wt" && git add -A && git commit -q -m "worker commit" ) >/dev/null 2>&1 \
+  && pass "the worker can still commit after a checkpoint" \
+  || fail "the worker can still commit after a checkpoint"
+
+# A repo-supplied pre-commit hook must not be able to block a checkpoint.
+printf '#!/bin/sh\nexit 1\n' > "$CK_ROOT/wt/.git/hooks/pre-commit"
+chmod +x "$CK_ROOT/wt/.git/hooks/pre-commit"
+CK_N_BEFORE=$(git --git-dir="$CK_ROOT/shadow.git" rev-list --count HEAD)
+ck_write v6
+CK_N_AFTER=$(git --git-dir="$CK_ROOT/shadow.git" rev-list --count HEAD)
+if [[ "$CK_N_AFTER" -gt "$CK_N_BEFORE" ]]; then
+  pass "a hostile pre-commit hook cannot block a checkpoint"
+else
+  fail "a hostile pre-commit hook cannot block a checkpoint"
+fi
+
+# The shadow must live outside the worktree, or `git add -A` would sweep it in.
+if ls -a "$CK_ROOT/wt" | grep -q shadow; then
+  fail "the shadow repo lives outside the worktree" "found it inside"
+else
+  pass "the shadow repo lives outside the worktree"
+fi
+
+rm -rf "$CK_ROOT"
+
 # ─── Summary ─────────────────────────────────────────────────────────
 
 echo ""

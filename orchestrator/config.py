@@ -129,6 +129,11 @@ _SETTINGS_DEFAULTS = {
     # a hook written from a worktree runs for the operator's next commit in the
     # main checkout. Detection only; prevention needs an OS sandbox.
     "worker_git_surface_guard": True,
+    # One shadow-repo commit per agent Edit/Write, so "correct at call 14,
+    # wrong at 15" is answerable. The repo lives outside the worktree and is
+    # deleted with it, so the cost is bounded by one run. Off means a failed
+    # attempt can say THAT it failed but never when.
+    "worker_checkpoint_shadow": True,
     "run_budget_usd": 0.0,  # max cost per autonomous run (0 = unlimited)
     "run_budget_tokens": 0,  # max tokens per autonomous run (0 = unlimited)
     "auto_oracle": False,
