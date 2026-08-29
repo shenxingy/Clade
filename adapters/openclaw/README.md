@@ -17,7 +17,7 @@ Three OpenClaw skills that let you manage overnight coding sessions from your ph
 ```
 Phone → Telegram → OpenClaw → HTTP → monitor.py → reads CLI state files
                                           ↓
-                                    .claude/loop-state
+                                    .claude/loop-state.json
                                     logs/loop/
                                     .claude/loop-cost.log
                                     .claude/session-report-*.md

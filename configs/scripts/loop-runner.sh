@@ -920,6 +920,12 @@ if state.get('stop'):
 state['iteration'] = iteration
 state['commits_this_iter'] = commits
 state['goal_file'] = goal_file
+# Published on every write so consumers can always read it. Until 2026-08-29
+# `converged` existed nowhere: `exit_reason` was a shell local, so the two
+# readers of this file could not distinguish a running loop from a finished
+# one and rendered nothing at all.
+state.setdefault('converged', False)
+state.setdefault('exit_reason', None)
 history = state.get('history', [])
 history.append({'iter': iteration, 'commits': commits})
 state['history'] = history[-20:]  # keep last 20
@@ -1029,9 +1035,28 @@ _check_convergence() {
 }
 
 # ─── GENERATE LOOP REPORT ────────────────────────────────────────
+# Record the terminal verdict in the state file. Every exit path reaches
+# generate_loop_report, so this is the one place that sees the outcome.
+_persist_exit_state() {
+  local reason="$1"
+  [ -f "$STATE_FILE" ] || return 0
+  python3 - "$STATE_FILE" "$reason" <<'PYTHON_EOF'
+import json, sys
+state_file, reason = sys.argv[1], sys.argv[2]
+try:
+    state = json.load(open(state_file))
+except Exception:
+    sys.exit(0)
+state['exit_reason'] = reason or None
+state['converged'] = (reason == 'converged')
+json.dump(state, open(state_file, 'w'), indent=2)
+PYTHON_EOF
+}
+
 generate_loop_report() {
   local total_iterations="$1"
   local exit_reason="$2"
+  _persist_exit_state "$exit_reason"
 
   log_info ""
   log_info "═══════════════════════════════════════════════"
