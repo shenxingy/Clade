@@ -291,6 +291,14 @@ bash configs/scripts/check-cc-plugin-components.sh
 python3 configs/scripts/check-ci-checklist.py
 ```
 
+**Anything under `configs/scripts/` that CI runs in `syntax-check` must be
+stdlib-only.** That job installs no project dependencies — it sets up Python and
+goes straight to the gates. A gate that imports `orchestrator/config.py` pulls in
+`aiosqlite` and dies there while passing on a developer machine that happens to
+have it installed system-wide, which is exactly how the settings-reference gate
+failed its first CI run after a clean local sweep. Parse what you need
+(`ast.literal_eval`) rather than importing the module.
+
 `tests/test-loop.sh` additionally asserts that the deployed
 `~/.claude/scripts/loop-runner.sh` matches source. A stale local install fails
 it with no repository defect — the fix is `./install.sh`, not a code change.
