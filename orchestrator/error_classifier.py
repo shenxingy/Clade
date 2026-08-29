@@ -31,6 +31,7 @@ class FailoverReason(enum.Enum):
     # Quota / billing / rate
     rate_limit = "rate_limit"              # 429 — exponential backoff
     billing = "billing"                    # 402 / credits exhausted — abort
+    quota_exhausted = "quota_exhausted"    # plan/usage window spent — abort until reset
     long_context_tier = "long_context_tier"  # 1M-context tier gating — drop to 200k
 
     # Server-side
@@ -89,8 +90,19 @@ _PATTERNS: list[tuple[re.Pattern, FailoverReason]] = [
 
     (re.compile(r"\b401\b|unauthorized|invalid[_ -]?api[_ -]?key|authentication", re.I), FailoverReason.auth),
     (re.compile(r"\b403\b|forbidden|permission.denied", re.I), FailoverReason.auth),
-    (re.compile(r"\b402\b|insufficient.{0,4}credit|out of credits|credit.{0,4}exhausted|payment required", re.I), FailoverReason.billing),
-    (re.compile(r"\b429\b|rate.?limit|too many requests|quota.exceeded", re.I), FailoverReason.rate_limit),
+    # Both quota rules precede the 429 rule deliberately: Anthropic returns 429
+    # for a spent balance AND for ordinary throttling, and only the message body
+    # separates them. Classifying either as rate_limit made the orchestrator
+    # retry a dead account on a 30s backoff until the run's iteration budget or
+    # wall clock ran out. Verified against the live strings:
+    #   "429 rate_limit_error credit balance is too low" -> was rate_limit
+    #   "usage limit reached. Your limit will reset at 5pm" -> was unknown
+    (re.compile(r"\b402\b|insufficient.{0,4}credit|out of credits|credit.{0,4}exhausted"
+                r"|credit balance is too low|payment required|billing", re.I), FailoverReason.billing),
+    (re.compile(r"usage limit reached|limit will reset|weekly limit|plan limit"
+                r"|quota.{0,12}(exceeded|exhausted)|out of (usage|quota)", re.I),
+     FailoverReason.quota_exhausted),
+    (re.compile(r"\b429\b|rate.?limit|too many requests", re.I), FailoverReason.rate_limit),
 
     (re.compile(r"\b503\b|\b529\b|overloaded|service unavailable", re.I), FailoverReason.overloaded),
     (re.compile(r"\b502\b|bad gateway", re.I), FailoverReason.server_error),
@@ -191,7 +203,7 @@ def classify(
         hints |= {"backoff_seconds": 8.0}
     elif matched is FailoverReason.auth:
         hints |= {"should_rotate_credential": True, "backoff_seconds": 1.0}
-    elif matched is FailoverReason.billing:
+    elif matched in (FailoverReason.billing, FailoverReason.quota_exhausted):
         hints |= {"abort": True, "retryable": False}
     elif matched is FailoverReason.format_error:
         hints |= {"abort": True, "retryable": False}
@@ -253,6 +265,7 @@ def derive_retry_decision(
         FailoverReason.auth,                # human must rotate/fix the token
         FailoverReason.auth_permanent,
         FailoverReason.billing,             # account-level — retry is wasteful
+        FailoverReason.quota_exhausted,     # the window must elapse; retrying burns the run
         FailoverReason.format_error,        # bug in the request, not transient
         FailoverReason.process_killed,      # user/system intent
     ):
