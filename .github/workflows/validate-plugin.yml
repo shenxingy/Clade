@@ -56,3 +56,15 @@ jobs:
       # to it, --strict is not.
       - name: Validate plugin and marketplace manifests
         run: claude plugin validate . --strict
+
+      # Schema-valid is not the same as resolves-anything, and --strict cannot
+      # tell them apart. Measured on CLI 2.1.236 against the state this repo
+      # actually shipped: `"agents": ["./configs/agents/a.md", ...]` — a known
+      # field holding 37 paths that all exist — loaded as Agents (0), while
+      # `plugin validate . --strict` exited 0 on it. The manifest advertised
+      # "37 agents"; every plugin-path consumer got none of them.
+      #
+      # This step LOADS the plugin and compares the resolved inventory against
+      # what the tree contains, which is the only check that can see that gap.
+      - name: Plugin component resolution
+        run: bash configs/scripts/check-cc-plugin-components.sh

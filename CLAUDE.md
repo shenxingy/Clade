@@ -267,8 +267,12 @@ for t in loop checks skill-routing pr-scope-policy audit worktree-env \
   bash "tests/test-$t.sh" >/dev/null || echo "FAILED: $t"
 done
 
-# 13. Plugin manifest validator (separate workflow; needs the claude CLI)
+# 13. Plugin manifest validator + component resolution (separate workflow;
+#     both need the claude CLI). --strict checks the manifest against a schema
+#     and is blind to a schema-valid manifest that resolves nothing, which is
+#     what this repo shipped: 37 agent paths loading as Agents (0).
 claude plugin validate . --strict
+bash configs/scripts/check-cc-plugin-components.sh
 ```
 
 `tests/test-loop.sh` additionally asserts that the deployed

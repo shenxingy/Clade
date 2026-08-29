@@ -1,7 +1,7 @@
 {
   "name": "clade",
   "version": "0.3.1",
-  "description": "Autonomous coding toolkit for Claude Code. 30+ skills, 14 hooks, 37 agents, a safety guardian, and a correction learning loop — Claude codes better, catches its own mistakes, and runs unattended overnight.",
+  "description": "Autonomous coding toolkit for Claude Code. 136 skills, 37 agents, a safety guardian, and a correction learning loop — Claude codes better, catches its own mistakes, and runs unattended overnight. Hooks ship via install.sh, not this plugin.",
   "author": {
     "name": "shenxingy",
     "url": "https://github.com/shenxingy"
@@ -29,44 +29,5 @@
     "post-tool-use",
     "task-queue"
   ],
-  "skills": "./configs/skills",
-  "agents": [
-    "./configs/agents/audit-budget.md",
-    "./configs/agents/audit-compliance.md",
-    "./configs/agents/audit-creative.md",
-    "./configs/agents/audit-google.md",
-    "./configs/agents/audit-meta.md",
-    "./configs/agents/audit-tracking.md",
-    "./configs/agents/blog-researcher.md",
-    "./configs/agents/blog-reviewer.md",
-    "./configs/agents/blog-seo.md",
-    "./configs/agents/blog-writer.md",
-    "./configs/agents/bounded-implementer.md",
-    "./configs/agents/code-reviewer.md",
-    "./configs/agents/copy-writer.md",
-    "./configs/agents/creative-strategist.md",
-    "./configs/agents/debug-specialist.md",
-    "./configs/agents/format-adapter.md",
-    "./configs/agents/paper-reviewer.md",
-    "./configs/agents/second-opinion-codex.md",
-    "./configs/agents/second-opinion-gemini.md",
-    "./configs/agents/security-auditor.md",
-    "./configs/agents/seo-backlinks.md",
-    "./configs/agents/seo-content.md",
-    "./configs/agents/seo-dataforseo.md",
-    "./configs/agents/seo-geo.md",
-    "./configs/agents/seo-google.md",
-    "./configs/agents/seo-image-gen.md",
-    "./configs/agents/seo-local.md",
-    "./configs/agents/seo-maps.md",
-    "./configs/agents/seo-performance.md",
-    "./configs/agents/seo-schema.md",
-    "./configs/agents/seo-sitemap.md",
-    "./configs/agents/seo-technical.md",
-    "./configs/agents/seo-visual.md",
-    "./configs/agents/test-runner.md",
-    "./configs/agents/type-checker.md",
-    "./configs/agents/verify-app.md",
-    "./configs/agents/visual-designer.md"
-  ]
+  "skills": "./configs/skills"
 }
