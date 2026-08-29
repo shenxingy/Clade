@@ -123,8 +123,21 @@ async def fail_preflight_evidence(
         logger.exception("failed to close preflight evidence attempt")
 
 
-async def append_worker_evidence(worker: Any, lifecycle_state: str) -> None:
-    """Append a non-terminal running/verifying snapshot if evidence is enabled."""
+async def append_worker_evidence(
+    worker: Any, lifecycle_state: str, phase: str | None = None, **facts: Any
+) -> None:
+    """Append a non-terminal running/verifying snapshot if evidence is enabled.
+
+    `phase` marks WHICH step of verification this revision records. Without it,
+    tests, the oracle verdict and the push all landed in the single terminal
+    append at the bottom of this module, so a crash between "tests passed" and
+    "oracle returned" lost both — the bundle could say an attempt failed and
+    hand back a digest-chained final diff, but never when it went wrong.
+
+    Each phase is its own revision in the existing digest chain, so the
+    timeline is answerable after the fact without a new lifecycle state or a
+    new table.
+    """
 
     task_queue = getattr(worker, "_task_queue", None)
     attempt_id = getattr(worker, "evidence_attempt_id", None)
@@ -142,6 +155,8 @@ async def append_worker_evidence(worker: Any, lifecycle_state: str) -> None:
             "elapsed_s": getattr(worker, "elapsed_s", None),
         },
     }
+    if phase is not None:
+        evidence["phase"] = {"name": phase, "observed_at": observed_at, **facts}
     try:
         latest = await task_queue.get_evidence_bundle(attempt_id)
     except Exception:
@@ -286,6 +301,24 @@ async def start_worker_with_evidence(worker: Any, task_queue: Any) -> None:
         raise
 
 
+async def _checkpoint_summary(worker: Any) -> dict | None:
+    """How many per-tool-call checkpoints this attempt recorded, and the last SHA.
+
+    Read before `_cleanup_worktree` deletes the shadow repo (worker.py:752
+    appends terminal evidence, :759 cleans up). Without this the checkpoints
+    would exist only for the life of the run and leave no trace in the chain.
+    """
+    path = getattr(worker, "_shadow_repo_path", None)
+    shadow = path() if callable(path) else None
+    if shadow is None or not Path(shadow).exists():
+        return None
+    count = await _git(Path(shadow).parent, "--git-dir", str(shadow), "rev-list", "--count", "HEAD")
+    head = await _git(Path(shadow).parent, "--git-dir", str(shadow), "rev-parse", "HEAD")
+    if not count:
+        return None
+    return {"count": int(count), "head": head, "repo": str(shadow)}
+
+
 async def append_worker_terminal_evidence(worker: Any) -> None:
     """Persist terminal verification, artifact, cost, and delivery evidence."""
 
@@ -351,6 +384,7 @@ async def append_worker_terminal_evidence(worker: Any) -> None:
                     "head_sha": head_sha,
                     "commit": getattr(worker, "last_commit", None),
                 },
+                "checkpoints": await _checkpoint_summary(worker),
                 "verification": {
                     "judge_verified": bool(getattr(worker, "verified", False)),
                     "tests": getattr(worker, "test_evidence", ""),

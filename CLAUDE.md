@@ -91,6 +91,8 @@ python3 configs/scripts/regen-codex-plugin.py --check
 
 **Correction-pairing pipeline** (the learn-from-corrections loop — captures the "AI did X → it got rejected" pair so a rule is grounded in the real diff, not just words):
 - `edit-shadow-detector.sh` (PostToolUse, async) logs files Claude writes → session-keyed shadow at `/tmp/claude-edit-shadows/session-<session_id>.jsonl`
+
+**Per-attempt checkpoints** (separate from the correction pipeline above): `worker-checkpoint.sh` (PostToolUse Edit|Write, async) commits the whole worktree into a shadow repo OUTSIDE it, once per agent write. A worker commits exactly once — at the end of verification — and `stop()` force-removes the worktree, so "correct at call 14, wrong at 15" had no record. A separate `--git-dir` means a separate index, so checkpoints cannot contend with the worker's own commits (measured, see `tests/test-hooks.sh`). The final SHA and count land in the evidence bundle before cleanup deletes the repo. Setting: `worker_checkpoint_shadow`.
 - `revert-detector.sh` (PreToolUse Bash, async) on `git revert/reset/restore` cross-refs that shadow → writes `reverted_files` + `repeat` into `~/.claude/corrections/history.jsonl`
 - `correction-detector.sh` (UserPromptSubmit, **sync**) on an explicit "that's wrong" surfaces those rejected files into the rule-extraction context
 - **The gate is the wiring, not code:** the two silent-signal hooks are `async` (output never fed back) → a bare revert stays data-only; only an explicit correction (sync hook) escalates to context. `repeat=true` is stored for auto-audit but never auto-writes a rule (avoids noise).

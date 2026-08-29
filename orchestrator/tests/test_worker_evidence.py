@@ -331,3 +331,103 @@ class TestGitControlSurfaceGuard:
 
         assert await worker_evidence.verify_worker_with_evidence(worker) is True
         worker.verify_and_commit.assert_awaited_once()
+
+
+# ─── Verification phases land as they happen, not only at the end ─────────────
+
+
+async def test_each_verification_phase_is_its_own_revision(task_queue, tmp_path):
+    """Tests, oracle and push must be answerable separately.
+
+    They all reached disk in the single terminal append, so a crash between
+    "tests passed" and "the oracle returned" lost both: the bundle could say an
+    attempt failed and hand back a digest-chained final diff, but never say
+    WHEN it went wrong — and the worktree holding that state was already gone.
+    """
+    task = await task_queue.add("Phase evidence")
+    attempt = await begin_task_evidence(task, task_queue, tmp_path)
+    assert attempt is not None
+    worker = SimpleNamespace(
+        id="worker-phase",
+        task_id=task["id"],
+        _task_queue=task_queue,
+        evidence_attempt_id=attempt["attempt_id"],
+        _project_dir=tmp_path,
+        execution_envelope=None,
+        status="running",
+        transition_reason=None,
+        started_at=100.0,
+        elapsed_s=5,
+    )
+
+    await append_worker_evidence(worker, "running")
+    await append_worker_evidence(worker, "verifying", phase="tests", passed=True)
+    await append_worker_evidence(
+        worker, "verifying", phase="oracle", verdict="rejected", reason="scope creep"
+    )
+
+    history = await task_queue.get_evidence_history(attempt["attempt_id"])
+    phases = [
+        rev["evidence"]["phase"]
+        for rev in history
+        if "phase" in rev.get("evidence", {})
+    ]
+    assert [p["name"] for p in phases] == ["tests", "oracle"]
+    assert phases[0]["passed"] is True
+    # The point of the change: the test result survives independently of the
+    # oracle's, so "tests passed, then the oracle rejected" is recoverable.
+    assert phases[1]["verdict"] == "rejected"
+    assert phases[1]["reason"] == "scope creep"
+    assert phases[0]["observed_at"] <= phases[1]["observed_at"]
+
+
+async def test_a_crash_after_tests_still_leaves_the_test_result(task_queue, tmp_path):
+    """The terminal append never happens; the tests phase must still be there."""
+    task = await task_queue.add("Crash after tests")
+    attempt = await begin_task_evidence(task, task_queue, tmp_path)
+    worker = SimpleNamespace(
+        id="worker-crash",
+        task_id=task["id"],
+        _task_queue=task_queue,
+        evidence_attempt_id=attempt["attempt_id"],
+        _project_dir=tmp_path,
+        execution_envelope=None,
+        status="running",
+        transition_reason=None,
+        started_at=1.0,
+        elapsed_s=1,
+    )
+    await append_worker_evidence(worker, "running")
+    await append_worker_evidence(worker, "verifying", phase="tests", passed=True)
+    # …and nothing else: the process dies here.
+
+    history = await task_queue.get_evidence_history(attempt["attempt_id"])
+    recorded = [
+        rev["evidence"]["phase"]["name"]
+        for rev in history
+        if "phase" in rev.get("evidence", {})
+    ]
+    assert recorded == ["tests"]
+
+
+async def test_phase_is_absent_when_not_supplied(task_queue, tmp_path):
+    """Existing callers must not start emitting an empty phase block."""
+    task = await task_queue.add("No phase")
+    attempt = await begin_task_evidence(task, task_queue, tmp_path)
+    worker = SimpleNamespace(
+        id="worker-nophase",
+        task_id=task["id"],
+        _task_queue=task_queue,
+        evidence_attempt_id=attempt["attempt_id"],
+        _project_dir=tmp_path,
+        execution_envelope=None,
+        status="running",
+        transition_reason=None,
+        started_at=1.0,
+        elapsed_s=1,
+    )
+    await append_worker_evidence(worker, "running")
+    await append_worker_evidence(worker, "verifying")
+
+    history = await task_queue.get_evidence_history(attempt["attempt_id"])
+    assert all("phase" not in rev.get("evidence", {}) for rev in history)

@@ -30,6 +30,7 @@
 | `post-tool-use-failure.sh` | PostToolUse (failure) | Logs tool failures for pattern tracking |
 | `rule-injector.sh` | PostToolUse (Edit/Write) | Injects path-scoped rules from `.claude/rules/` + `~/.claude/rules/` when the edited file matches their `paths:` frontmatter (once per session per rule) |
 | `edit-shadow-detector.sh` | PostToolUse (Edit/Write) | Detects when edits shadow other files; async warning via systemMessage |
+| `worker-checkpoint.sh` | PostToolUse (Edit/Write) | One shadow-repo commit per agent write, so a failed attempt can say *when* it went wrong. Orchestrator workers only — inert unless `CLADE_WORKER_SHADOW_DIR` is set |
 | `failure-detector.sh` | PostToolUse (Bash) | Tracks consecutive Bash failures; injects debugging pressure |
 | `memory-sync.sh` | PostToolUse (Write/Edit) | Syncs memory files to NFS/GitHub when written |
 | `doc-align-check.sh` | PostToolUse (Edit/Write) | Advisory: warns if edited markdown disagrees with docs/facts.json; async systemMessage only |
@@ -278,7 +279,7 @@ clade/
 ├── uninstall.sh             # Removes what install.sh deployed
 ├── configs/                 # ← THE PRODUCT CENTER
 │   ├── skills/              # 136 skill definitions
-│   ├── hooks/               # 31 event hooks
+│   ├── hooks/               # 32 event hooks
 │   ├── agents/              # 37 agent definitions
 │   ├── output-styles/       # 2 output styles (system-prompt register; opt-in)
 │   └── scripts/             # 40 shell + 24 Python utilities
