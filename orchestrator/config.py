@@ -115,6 +115,11 @@ _SETTINGS_DEFAULTS = {
     "loop_convergence_n": 3,
     "loop_max_iterations": 20,
     "loop_context_mode": "carry",  # carry=current hydration; reset=typed clean handoff
+    # Spawn workers with --output-format stream-json so the agent reports its
+    # own token usage and total_cost_usd. Off means falling back to scraping
+    # prose for a `tokens: N/N` line the CLI does not emit, i.e. cost 0.0 and a
+    # token budget that cannot fire. Kill switch only — see agent_output.py.
+    "worker_structured_output": True,
     "run_budget_usd": 0.0,  # max cost per autonomous run (0 = unlimited)
     "run_budget_tokens": 0,  # max tokens per autonomous run (0 = unlimited)
     "auto_oracle": False,
@@ -549,6 +554,35 @@ def _estimate_cost(input_tokens: int, output_tokens: int, model: str | None = No
     return round(
         input_tokens * rate_in / 1_000_000 + output_tokens * rate_out / 1_000_000, 4
     )
+
+def resolve_worker_usage(
+    agent_result: Any, log_path: Path | None, model: str | None
+) -> tuple[int, int, float]:
+    """Tokens and USD for a finished worker, best source first.
+
+    `agent_result` is an agent_output.AgentResult when the run emitted
+    structured output — that is the agent's own accounting, so it already
+    includes cache reads and server-tool use that no local estimate can see.
+    Duck-typed rather than imported to keep this module free of project
+    imports.
+
+    Falls back to scraping the prose only when there is no result event
+    (text-mode output, a crash before the run finished). That path returns
+    (0, 0, 0.0) in practice, which is precisely why the structured path
+    exists — see agent_output's module docstring.
+    """
+    if agent_result is not None:
+        cost = getattr(agent_result, "total_cost_usd", None)
+        tokens_in = getattr(agent_result, "input_tokens", 0)
+        tokens_out = getattr(agent_result, "output_tokens", 0)
+        if cost is None:
+            cost = _estimate_cost(tokens_in, tokens_out, model)
+        return tokens_in, tokens_out, float(cost)
+    if log_path is None:
+        return 0, 0, 0.0
+    tokens_in, tokens_out = _parse_token_usage(log_path)
+    return tokens_in, tokens_out, _estimate_cost(tokens_in, tokens_out, model)
+
 
 # ─── Session Recovery ─────────────────────────────────────────────────────────
 

@@ -25,8 +25,7 @@ from config import (
     HAIKU_MODEL,
     SETTING_SOURCES_NONE,
     DISALLOWED_TOOLS_JUDGE,
-    _estimate_cost,
-    _parse_token_usage,
+    resolve_worker_usage,
     _resolve_fallback_model,
     _parse_task_type, _parse_task_class,
     _parse_task_schema,
@@ -67,6 +66,7 @@ from error_classifier import (
     classify as _classify_error,
     summarize as _summarize_error,
 )
+from agent_output import absorb_agent_result
 from worker_utils import (
     _distill_output, _truncate_output, _strip_error_context,
     _run_lint_check, _extract_lint_targets, _run_project_tests, LoopDetectionService,
@@ -150,6 +150,7 @@ class Worker:
         self.last_commit: str | None = None
         self.log_file: str | None = None
         self._log_path: Path | None = None
+        self._agent_result: Any = None  # agent_output.AgentResult when structured
         self._log_capture_task: asyncio.Task | None = None
         self._session_tree: SessionTree | None = None  # Pi-style JSONL session tree
         self.verified: bool = False
@@ -461,6 +462,8 @@ class Worker:
     async def poll(self) -> None:
         if not self.is_alive():
             await self._finish_log_capture()
+            # Absorb usage + project events to prose before ANY log consumer.
+            self._agent_result = absorb_agent_result(self._log_path)
             if self._finished_at is None:
                 self._finished_at = time.time()
             rc = self.proc.returncode if self.proc else -1
@@ -598,12 +601,9 @@ class Worker:
             # Reflection loop (Aider pattern): if verification failed, run lint check and retry
             # Token budget gate: parse current usage first; skip retry if budget exceeded.
             _current_tokens = 0
-            if self.token_budget > 0 and self._log_path and self._log_path.exists():
-                try:
-                    _in, _out = _parse_token_usage(self._log_path)
-                    _current_tokens = _in + _out
-                except Exception:
-                    pass
+            if self.token_budget > 0:
+                _in, _out, _ = resolve_worker_usage(self._agent_result, self._log_path, self.model)
+                _current_tokens = _in + _out
             _budget_ok = (self.token_budget == 0 or _current_tokens < self.token_budget)
             if not verified and self._reflection_retries < MAX_REFLECTION_RETRIES and _budget_ok and not (self._test_requeue or self._ownership_violation or self._oracle_requeue):
                 try:
@@ -648,15 +648,12 @@ class Worker:
                             self._loop_detector._loop_detected = False  # reset loop detection on retry
                             self._reflection_retries = 0  # reset on success
                             self._failure_reflections.clear()  # clear episodic memory on success
-                        else:
-                            self._reflection_retries += 0  # already incremented
                 except Exception:
                     pass
         # Parse token usage from log and enforce token budget
         if self._log_path and self._log_path.exists():
             try:
-                self._input_tokens, self._output_tokens = _parse_token_usage(self._log_path)
-                self._estimated_cost = _estimate_cost(self._input_tokens, self._output_tokens, self.model)
+                self._input_tokens, self._output_tokens, self._estimated_cost = resolve_worker_usage(self._agent_result, self._log_path, self.model)
                 total_tokens = self._input_tokens + self._output_tokens
                 if self.token_budget > 0 and total_tokens > self.token_budget and self.status != "done":
                     self.status = "failed"

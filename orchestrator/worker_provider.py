@@ -70,6 +70,25 @@ from provider_registry import DiscoveryFailure, NativeProfileResolver
 _ALLOWED_EFFORTS: Final = frozenset({"low", "medium", "high", "xhigh", "max"})
 
 
+def _structured_output_flags() -> str:
+    """Ask the agent to report its own usage instead of guessing from its prose.
+
+    `--verbose` is not optional: `--print` with `--output-format=stream-json`
+    exits 1 with "requires --verbose", so omitting it would fail every spawn
+    rather than degrade quietly. Verified against CLI 2.1.236.
+
+    Reading the result back is agent_output.absorb_agent_result, which also
+    projects the event stream to plain text, so every downstream prose consumer
+    (failure context, TLDR, distillation, the observation contract) is
+    unaffected by the format change.
+    """
+    from config import GLOBAL_SETTINGS  # lazy: keep this module a leaf
+
+    if not GLOBAL_SETTINGS.get("worker_structured_output", True):
+        return ""
+    return " --output-format stream-json --verbose"
+
+
 def _safe_effort(value: str | None) -> str | None:
     effort = str(value or "").strip().lower()
     return effort if effort in _ALLOWED_EFFORTS else None
@@ -223,6 +242,7 @@ class ClaudeProvider(WorkerProvider):
             f'claude -p "$(cat {shlex.quote(str(task_file))})" '
             f"--model {shlex.quote(model)} --dangerously-skip-permissions"
         )
+        cmd += _structured_output_flags()
         wire_effort, _ = self.resolve_effort(effort, model)
         if wire_effort:
             cmd += f" --effort {wire_effort}"
@@ -270,6 +290,7 @@ class ClaudeProvider(WorkerProvider):
             f" --model {shlex.quote(model)} --dangerously-skip-permissions"
             f"{_fallback_flag(requested_model)}"
         )
+        cmd += _structured_output_flags()
         wire_effort, _ = self.resolve_effort(effort, model)
         if wire_effort:
             cmd += f" --effort {wire_effort}"
