@@ -319,7 +319,7 @@ clade/
 │   ├── skills/              # 136 个 skill 定义
 │   ├── hooks/               # 31 个事件 hooks + lib/
 │   ├── agents/              # 37 个 agent 定义
-│   └── scripts/             # 40 个 shell + 23 个 Python 工具
+│   └── scripts/             # 40 个 shell + 24 个 Python 工具
 ├── adapters/openclaw/       # OpenClaw 集成（手机监控）
 ├── templates/               # settings、CLAUDE.md、corrections 模板
 └── docs/                    # 指南与研究
