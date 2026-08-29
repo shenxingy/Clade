@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UI/UX Decision Atlas — 世界级设计参考与 Benchmark 指南</title>
+  <meta name="description" content="一份可操作的 UI/UX 决策图谱：去哪里找顶级参考，如何判断原生与自研，怎样设计光标、按钮、状态与动效，以及如何用真实 benchmark 验证。">
+  <meta name="theme-color" content="#ffffff">
+  <link rel="canonical" href="https://artifacts.internal.scam.ai/ui-ux-decision-atlas/">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="UI/UX Decision Atlas">
+  <meta property="og:description" content="世界级设计参考、原生与自研边界、交互状态、动效原则与验证方法。">
+  <meta property="og:url" content="https://artifacts.internal.scam.ai/ui-ux-decision-atlas/">
+  <meta property="og:image" content="https://artifacts.internal.scam.ai/ui-ux-decision-atlas/preview.svg">
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"Report","name":"UI UX Decision Atlas","description":"世界级设计参考、原生与自研边界、交互状态、动效原则与验证方法。","dateModified":"2026-08-28","inLanguage":"zh-CN","url":"https://artifacts.internal.scam.ai/ui-ux-decision-atlas/"}</script>
+  <script>
+    (function () {
+      var saved = localStorage.getItem("ux-atlas-theme");
+      var dark = saved ? saved === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+      document.documentElement.dataset.theme = dark ? "dark" : "light";
+    }());
+  </script>
+  <style>@font-face { font-family: "GeistPixel-Square"; src: url("fonts/GeistPixel-Square.woff2") format("woff2"); font-weight: 400; font-display: swap; } @font-face { font-family: "Satoshi"; src: url("fonts/Satoshi-Regular.woff2") format("woff2"); font-weight: 400; font-display: swap; } @font-face { font-family: "Satoshi"; src: url("fonts/Satoshi-Medium.woff2") format("woff2"); font-weight: 600 800; font-display: swap; } :root { color-scheme: light; --background: #ffffff; --foreground: #0a0a0a; --muted: #ececef; --muted-foreground: #55555e; --primary: #0a0a0a; --primary-foreground: #ffffff; --focus: #0a0a0a; --paper: #ffffff; --ink: #0a0a0a; --display: "GeistPixel-Square", ui-monospace, "SFMono-Regular", Menlo, monospace; --body: "Satoshi", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; --mono: Menlo, Monaco, "Courier New", monospace; } html[data-theme="dark"] { color-scheme: dark; --background: #040406; --foreground: #ffffff; --muted: #0f0f12; --muted-foreground: #c8c8cf; --primary: #ffffff; --primary-foreground: #040406; --focus: #ffffff; } * { box-sizing: border-box; } html { scroll-behavior: smooth; scroll-padding-top: 96px; } body { margin: 0; background: var(--background); color: var(--foreground); font-family: var(--body); font-size: 17px; line-height: 1.55; text-rendering: optimizeLegibility; } body, button, a { -webkit-font-smoothing: antialiased; } ::selection { background: var(--foreground); color: var(--background); } a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: 0.22em; } button { appearance: none; border: 0; border-radius: 0; color: inherit; font: inherit; } button:focus-visible, a:focus-visible, [tabindex]:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; } .skip-link { position: fixed; inset: 12px auto auto 12px; z-index: 100; padding: 12px 16px; background: var(--primary); color: var(--primary-foreground); font-family: var(--display); transform: translateY(-160%); } .skip-link:focus { transform: translateY(0); } .shell { width: min(1180px, calc(100% - 48px)); margin-inline: auto; } .site-header { position: sticky; top: 0; z-index: 40; background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(18px); } html[data-theme="dark"] .site-header { background: rgba(4, 4, 6, 0.9); } .header-inner { min-height: 76px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 28px; } .brand, .nav-link, .theme-toggle, .eyebrow, .label, .filter, .state-control, .motion-control, .step-number, .source-index, .metric-label { font-family: var(--display); font-weight: 400; letter-spacing: 0.025em; } .brand { text-decoration: none; white-space: nowrap; } .brand span { color: var(--muted-foreground); } .top-nav { display: flex; justify-content: flex-end; gap: 22px; } .nav-link { color: var(--muted-foreground); text-decoration: none; } .nav-link:hover, .nav-link[aria-current="true"] { color: var(--foreground); } .theme-toggle { min-width: 78px; min-height: 48px; padding: 0 14px; background: var(--muted); cursor: pointer; } .hero { min-height: calc(100svh - 76px); display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.65fr); gap: clamp(48px, 8vw, 120px); align-items: end; padding-block: clamp(76px, 12vh, 150px) 84px; } .eyebrow, .label, .metric-label { display: inline-block; text-transform: uppercase; } .eyebrow { color: var(--muted-foreground); margin-bottom: 28px; } h1, h2, .display-copy { font-family: var(--display); font-weight: 400; letter-spacing: -0.035em; } h1 { max-width: 10ch; margin: 0; font-size: clamp(58px, 9.4vw, 128px); line-height: 0.92; } h2 { max-width: 14ch; margin: 0; font-size: clamp(42px, 6.2vw, 78px); line-height: 0.98; } h3 { margin: 0; font-size: clamp(22px, 2.5vw, 32px); line-height: 1.16; } p { margin: 0; } .hero-lede { max-width: 36ch; margin-top: 38px; font-size: clamp(21px, 2.2vw, 30px); line-height: 1.34; } .hero-verdict { min-height: 390px; padding: 34px; display: flex; flex-direction: column; justify-content: space-between; background: #0a0a0a; color: #ffffff; } .hero-verdict .label { color: #c8c8cf; } .hero-verdict strong { display: block; max-width: 8ch; font-family: var(--display); font-size: clamp(36px, 4.2vw, 58px); font-weight: 400; line-height: 1.04; } .hero-verdict p { color: #c8c8cf; } .section { padding-block: clamp(92px, 13vw, 170px); } .section-heading { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(360px, 1.1fr); gap: clamp(48px, 10vw, 140px); align-items: end; margin-bottom: clamp(48px, 7vw, 90px); } .section-intro { max-width: 39ch; font-size: clamp(20px, 2.1vw, 28px); line-height: 1.38; } .section-note { margin-top: 18px; color: var(--muted-foreground); } .evidence-layout { display: grid; grid-template-columns: minmax(260px, 0.75fr) minmax(0, 1.25fr); gap: 24px; background: var(--background); } .evidence-nav, .evidence-panel { background: var(--background); } .evidence-nav { display: flex; flex-direction: column; gap: 2px; } .evidence-tab { min-height: 82px; display: grid; grid-template-columns: 54px 1fr; align-items: center; gap: 8px; padding: 18px 22px; background: var(--muted); text-align: left; cursor: pointer; } .evidence-tab[aria-selected="true"] { background: var(--primary); color: var(--primary-foreground); } .evidence-tab:hover:not([aria-selected="true"]) { background: var(--background); } .evidence-tab span:first-child { font-family: var(--mono); font-variant-numeric: tabular-nums; } .evidence-panel { min-height: 500px; padding: clamp(34px, 6vw, 74px); display: flex; flex-direction: column; justify-content: space-between; } .evidence-rank { font-family: var(--display); font-size: clamp(84px, 13vw, 160px); line-height: 0.8; color: #767680; } .evidence-copy h3 { max-width: 18ch; margin-bottom: 24px; font-family: var(--display); font-size: clamp(34px, 4.2vw, 56px); font-weight: 400; line-height: 1.04; } .evidence-copy p { max-width: 48ch; font-size: 19px; } .evidence-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 52px; } .evidence-meta div { padding-top: 18px; } .evidence-meta strong { display: block; margin-bottom: 8px; font-family: var(--display); font-weight: 400; } .evidence-meta span { color: var(--muted-foreground); } .principle-band { margin-top: 2px; padding: clamp(38px, 6vw, 72px); background: #0a0a0a; color: #ffffff; } .principle-band strong { display: block; max-width: 24ch; font-family: var(--display); font-size: clamp(30px, 4.2vw, 54px); font-weight: 400; line-height: 1.12; } .principle-band p { max-width: 62ch; margin-top: 24px; color: #c8c8cf; font-size: 19px; } .filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 30px; } .filter, .state-control, .motion-control { min-height: 48px; padding: 12px 16px; background: var(--muted); cursor: pointer; } .filter[aria-pressed="true"], .state-control[aria-pressed="true"], .motion-control[aria-pressed="true"] { background: var(--primary); color: var(--primary-foreground); } .filter:hover:not([aria-pressed="true"]), .state-control:hover:not([aria-pressed="true"]), .motion-control:hover:not([aria-pressed="true"]) { background: var(--primary); color: var(--primary-foreground); } .reference-list { background: var(--muted); padding: 10px; } .reference-row { display: grid; grid-template-columns: 64px minmax(190px, 0.62fr) minmax(280px, 1.2fr) 130px; gap: 28px; align-items: start; padding: 28px 24px; background: transparent; text-decoration: none; } .reference-row + .reference-row { margin-top: 0; } .reference-row:hover { background: var(--primary); color: var(--primary-foreground); } .reference-row:hover .reference-type, .reference-row:hover .reference-use { color: #c8c8cf; } .source-index { font-variant-numeric: tabular-nums; } .reference-name { font-weight: 700; } .reference-type, .reference-use { color: var(--muted-foreground); } .reference-type { text-align: right; font-family: var(--display); } .reference-empty { padding: 42px; background: var(--background); color: var(--muted-foreground); } .layer-stack { display: grid; grid-template-columns: 0.75fr 1.25fr; gap: clamp(44px, 8vw, 110px); align-items: start; } .layer-thesis { position: sticky; top: 120px; } .layer-thesis .display-copy { margin-top: 26px; font-size: clamp(38px, 5.4vw, 68px); line-height: 1.02; } .layer-thesis p:last-child { max-width: 32ch; margin-top: 30px; color: var(--muted-foreground); } .layers { display: flex; flex-direction: column; gap: 0; background: var(--background); } .layer { min-height: 280px; padding: clamp(30px, 5vw, 58px); background: var(--background); } .layer:nth-child(2) { min-height: 370px; background: #0a0a0a; color: #ffffff; } .layer:nth-child(2) p, .layer:nth-child(2) li { color: #c8c8cf; } .layer-topline { display: flex; justify-content: space-between; gap: 28px; margin-bottom: 34px; } .layer-topline span { font-family: var(--mono); font-variant-numeric: tabular-nums; } .layer p { max-width: 48ch; color: var(--muted-foreground); } .layer ul { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 28px; margin: 30px 0 0; padding-left: 1.2em; color: var(--muted-foreground); } .platform-rows { margin-top: 90px; background: var(--muted); padding: 10px; } .platform-row { display: grid; grid-template-columns: minmax(160px, 0.5fr) minmax(220px, 0.75fr) minmax(300px, 1.4fr); gap: 34px; padding: 34px 28px; background: transparent; } .platform-row + .platform-row { margin-top: 0; } .platform-row h3 { font-family: var(--display); font-weight: 400; } .platform-row p { color: var(--muted-foreground); } .platform-base { font-family: var(--mono); } .lab-grid { display: grid; grid-template-columns: 0.82fr 1.18fr; gap: 0; background: var(--background); } .lab-copy, .lab-stage { background: var(--background); padding: clamp(32px, 5vw, 58px); } .lab-stage { background: var(--muted); } .lab-copy h3 { max-width: 15ch; margin: 24px 0; font-family: var(--display); font-size: clamp(34px, 4.4vw, 58px); font-weight: 400; line-height: 1.04; } .lab-copy p { max-width: 40ch; color: var(--muted-foreground); } .cursor-readout { margin-top: 36px; padding: 24px; background: var(--muted); } .cursor-readout strong { display: block; margin-top: 8px; font-family: var(--display); font-size: 24px; font-weight: 400; } .cursor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; } .cursor-specimen { min-height: 142px; padding: 22px; display: flex; flex-direction: column; justify-content: space-between; background: var(--background); } .cursor-specimen strong { font-family: var(--display); font-weight: 400; } .cursor-specimen span { color: var(--muted-foreground); } .cursor-default { cursor: default; } .cursor-pointer { cursor: pointer; } .cursor-text { cursor: text; user-select: text; } .cursor-grab { cursor: grab; } .cursor-grab:active { cursor: grabbing; } .cursor-resize { cursor: col-resize; } .state-lab { margin-top: 2px; display: grid; grid-template-columns: minmax(290px, 0.7fr) minmax(0, 1.3fr); gap: 0; background: var(--background); } .state-controls, .state-preview { padding: clamp(32px, 5vw, 58px); background: var(--background); } .state-controls { background: var(--muted); } .state-controls h3 { margin-bottom: 26px; font-family: var(--display); font-weight: 400; } .control-cluster { display: flex; flex-wrap: wrap; gap: 8px; } .state-preview { min-height: 430px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; } .demo-button { min-width: 210px; min-height: 58px; padding: 15px 24px; background: var(--primary); color: var(--primary-foreground); font-family: var(--display); cursor: pointer; transform: translateY(0); transition: transform 90ms ease, opacity 120ms ease, background-color 140ms ease, color 140ms ease; } .demo-button[data-state="hover"] { background: var(--muted); color: var(--foreground); } .demo-button[data-state="focus"] { outline: 3px solid var(--focus); outline-offset: 5px; } .demo-button[data-state="pressed"] { transform: translateY(2px) scale(0.985); } .demo-button[data-state="selected"] { background: var(--muted); color: var(--foreground); } .demo-button[data-state="disabled"] { opacity: 0.42; cursor: not-allowed; } .demo-button[data-state="loading"] { cursor: wait; } .loading-dots { display: none; align-items: center; justify-content: center; gap: 6px; } .demo-button[data-state="loading"] .demo-label { display: none; } .demo-button[data-state="loading"] .loading-dots { display: flex; } .loading-dots i { width: 7px; height: 7px; display: block; background: currentColor; border-radius: 50%; animation: blink 900ms infinite ease-in-out; } .loading-dots i:nth-child(2) { animation-delay: 120ms; } .loading-dots i:nth-child(3) { animation-delay: 240ms; } .state-description { max-width: 44ch; margin-top: 38px; color: var(--muted-foreground); } .motion-layout { display: grid; grid-template-columns: 0.78fr 1.22fr; gap: clamp(46px, 8vw, 110px); align-items: start; } .motion-copy { position: sticky; top: 120px; } .motion-copy h3 { margin: 24px 0; font-family: var(--display); font-size: clamp(36px, 4.8vw, 62px); font-weight: 400; line-height: 1.03; } .motion-copy p { color: var(--muted-foreground); } .motion-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 34px; } .motion-stage { min-height: 520px; position: relative; overflow: hidden; background: #0a0a0a; color: #ffffff; } .motion-object { width: 76px; height: 76px; position: absolute; inset: 50% auto auto 50%; transform: translate(-50%, -50%); display: grid; place-items: center; background: #ffffff; color: #0a0a0a; font-family: var(--display); } .motion-object[data-motion="feedback"] { animation: motion-feedback 380ms ease-out both; } .motion-object[data-motion="continuity"] { animation: motion-continuity 720ms cubic-bezier(0.2, 0.8, 0.2, 1) both; } .motion-object[data-motion="space"] { animation: motion-space 620ms cubic-bezier(0.2, 0.8, 0.2, 1) both; } .motion-object[data-motion="attention"] { animation: motion-attention 520ms ease-out both; } .motion-object[data-motion="progress"] { animation: motion-progress 1300ms linear both; } .motion-caption { position: absolute; inset: auto 32px 28px 32px; display: flex; justify-content: space-between; gap: 24px; color: #c8c8cf; } .motion-caption strong { color: #ffffff; font-family: var(--display); font-weight: 400; } .duration-rail { margin-top: 2px; padding: 34px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; background: var(--muted); } .duration { min-height: 160px; padding: 24px; display: flex; flex-direction: column; justify-content: space-between; background: transparent; } .duration strong { font-family: var(--display); font-size: 26px; font-weight: 400; } .duration span { color: var(--muted-foreground); } .benchmark-layout { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.7fr); gap: clamp(54px, 8vw, 110px); align-items: start; } .benchmark-steps { background: var(--muted); padding: 10px; } .benchmark-step { width: 100%; min-height: 138px; display: grid; grid-template-columns: 58px 1fr 42px; gap: 22px; align-items: start; padding: 28px 24px; background: transparent; text-align: left; cursor: pointer; } .benchmark-step + .benchmark-step { margin-top: 0; } .benchmark-step:hover { background: var(--muted); } .benchmark-step[data-done="true"] { background: var(--primary); color: var(--primary-foreground); } .benchmark-step[data-done="true"] .step-copy p { color: #c8c8cf; } .step-number { font-variant-numeric: tabular-nums; } .step-copy strong { display: block; margin-bottom: 8px; font-size: 20px; } .step-copy p { color: var(--muted-foreground); } .step-check { font-family: var(--display); font-size: 26px; text-align: right; } .progress-panel { position: sticky; top: 120px; padding: 34px; background: #0a0a0a; color: #ffffff; } .progress-panel .label, .progress-panel p { color: #c8c8cf; } .progress-number { display: block; margin: 38px 0 24px; font-family: var(--display); font-size: clamp(78px, 10vw, 124px); font-weight: 400; line-height: 0.8; font-variant-numeric: tabular-nums; } .progress-track { height: 10px; margin: 32px 0; background: #34343a; } .progress-fill { width: 0; height: 100%; background: #ffffff; transition: width 220ms ease-out; } .defaults { display: grid; grid-template-columns: 1.2fr 0.8fr 0.8fr; gap: clamp(24px, 4vw, 52px); background: var(--background); } .default-item { min-height: 280px; padding: clamp(28px, 4vw, 48px); display: flex; flex-direction: column; justify-content: space-between; background: var(--background); } .default-item:first-child { grid-row: span 2; min-height: 562px; background: #0a0a0a; color: #ffffff; } .default-item:first-child p { color: #c8c8cf; } .default-number { font-family: var(--display); font-size: clamp(52px, 7vw, 88px); line-height: 0.9; } .default-item h3 { max-width: 14ch; font-family: var(--display); font-weight: 400; } .default-item p { max-width: 34ch; color: var(--muted-foreground); } .closing { padding-block: clamp(100px, 16vw, 200px); text-align: center; } .closing strong { display: block; max-width: 17ch; margin-inline: auto; font-family: var(--display); font-size: clamp(44px, 7.6vw, 96px); font-weight: 400; line-height: 1; } .closing p { max-width: 46ch; margin: 34px auto 0; color: var(--muted-foreground); font-size: 20px; } .footer { padding-block: 54px 90px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; color: var(--muted-foreground); } .footer strong { display: block; margin-bottom: 10px; color: var(--foreground); font-family: var(--display); font-weight: 400; } @keyframes blink { 0%, 100% { opacity: 0.25; transform: scale(0.78); } 50% { opacity: 1; transform: scale(1); } } @keyframes motion-feedback { 0% { transform: translate(-50%, -50%) scale(1); } 38% { transform: translate(-50%, -50%) scale(0.82); } 100% { transform: translate(-50%, -50%) scale(1); } } @keyframes motion-continuity { 0% { transform: translate(-260%, -50%) scale(0.8); } 55% { transform: translate(-50%, -50%) scale(1.12); } 100% { transform: translate(-50%, -50%) scale(1); } } @keyframes motion-space { 0% { transform: translate(-50%, 240%) scale(0.66); opacity: 0; } 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; } } @keyframes motion-attention { 0%, 100% { transform: translate(-50%, -50%) scale(1); } 42% { transform: translate(-50%, -50%) scale(1.24); } 68% { transform: translate(-50%, -50%) scale(0.94); } } @keyframes motion-progress { 0% { left: 12%; transform: translate(-50%, -50%) scaleX(0.65); } 100% { left: 88%; transform: translate(-50%, -50%) scaleX(1.35); } } @media (max-width: 940px) { .top-nav { display: none; } .header-inner { grid-template-columns: 1fr auto; } .hero, .section-heading, .layer-stack, .motion-layout, .benchmark-layout { grid-template-columns: 1fr; } .hero { min-height: auto; } .hero-verdict { min-height: 330px; } .evidence-layout, .lab-grid, .state-lab { grid-template-columns: 1fr; } .evidence-nav { display: grid; grid-template-columns: repeat(5, minmax(160px, 1fr)); overflow-x: auto; } .evidence-tab { grid-template-columns: 1fr; } .layer-thesis, .motion-copy, .progress-panel { position: static; } .reference-row { grid-template-columns: 52px 0.7fr 1.3fr; } .reference-type { display: none; } .platform-row { grid-template-columns: 0.48fr 0.52fr; } .platform-row p:last-child { grid-column: 1 / -1; } .defaults { grid-template-columns: 1fr 1fr; } .default-item:first-child { grid-row: auto; grid-column: 1 / -1; min-height: 400px; } } @media (max-width: 620px) { .shell { width: min(100% - 24px, 1180px); } .header-inner { min-height: 66px; } .brand span { display: none; } h1 { font-size: clamp(48px, 16vw, 72px); } .hero { padding-block: 64px 72px; gap: 42px; } .hero-verdict, .principle-band, .progress-panel { padding: 28px; } .section { padding-block: 92px; } .section-heading { margin-bottom: 44px; } .evidence-panel { min-height: 620px; } .evidence-meta, .cursor-grid, .duration-rail, .defaults { grid-template-columns: 1fr; } .reference-row { grid-template-columns: 44px 1fr; gap: 16px; padding: 24px 18px; } .reference-use { grid-column: 2; } .layer ul { grid-template-columns: 1fr; } .platform-row { grid-template-columns: 1fr; } .platform-row p:last-child { grid-column: auto; } .lab-copy, .lab-stage, .state-controls, .state-preview { padding: 28px 22px; } .motion-stage { min-height: 420px; } .motion-caption { flex-direction: column; } .duration-rail { padding: 10px; } .benchmark-step { grid-template-columns: 44px 1fr 28px; gap: 12px; padding: 24px 16px; } .default-item:first-child { grid-column: auto; } .footer { grid-template-columns: 1fr; } } @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } } @media print { .site-header, .filters, .motion-controls, .state-controls { display: none; } .section { padding-block: 48px; } } </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到正文</a>
+  <header class="site-header">
+    <div class="shell header-inner">
+      <a class="brand" href="#top">UI/UX ATLAS <span>/ 2026.08</span></a>
+      <nav class="top-nav" aria-label="主要章节">
+        <a class="nav-link" href="#evidence">判断</a>
+        <a class="nav-link" href="#references">参考库</a>
+        <a class="nav-link" href="#native">原生边界</a>
+        <a class="nav-link" href="#interaction">交互</a>
+        <a class="nav-link" href="#benchmark">流程</a>
+      </nav>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换深浅主题" aria-pressed="false">DARK</button>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="shell hero" id="top">
+      <div>
+        <span class="eyebrow">Design benchmark · native patterns · interaction evidence</span>
+        <h1>世界第一，不存在。</h1>
+        <p class="hero-lede">存在的是：在特定用户、平台、任务和指标下，证据最强的方案。先定义“赢什么”，再找参考。</p>
+      </div>
+      <aside class="hero-verdict" aria-label="核心结论">
+        <span class="label">The useful answer</span>
+        <strong>不要找一个冠军。建立一套证据梯度。</strong>
+        <p>奖项告诉你行业审美；平台规范告诉你用户预期；可用性测试告诉你能不能用；线上数据才告诉你是否真的更好。</p>
+      </aside>
+    </section>
+
+    <section class="section" id="evidence">
+      <div class="shell">
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">01 / Evidence ladder</span>
+            <h2>“最好”必须分层判断</h2>
+          </div>
+          <div>
+            <p class="section-intro">同一张漂亮截图，可能拿奖，却无法完成任务。五层证据回答五个不同问题，越往下越接近真实产品价值。</p>
+            <p class="section-note">点击左侧层级，查看它能证明什么，以及最常见的误用。</p>
+          </div>
+        </div>
+
+        <div class="evidence-layout">
+          <div class="evidence-nav" role="tablist" aria-label="证据梯度">
+            <button class="evidence-tab" id="evidence-tab-0" type="button" role="tab" aria-controls="evidence-panel" aria-selected="true" tabindex="0" data-evidence="0"><span>01</span><span>奖项与策展</span></button>
+            <button class="evidence-tab" id="evidence-tab-1" type="button" role="tab" aria-controls="evidence-panel" aria-selected="false" tabindex="-1" data-evidence="1"><span>02</span><span>平台规范</span></button>
+            <button class="evidence-tab" id="evidence-tab-2" type="button" role="tab" aria-controls="evidence-panel" aria-selected="false" tabindex="-1" data-evidence="2"><span>03</span><span>用户行为</span></button>
+            <button class="evidence-tab" id="evidence-tab-3" type="button" role="tab" aria-controls="evidence-panel" aria-selected="false" tabindex="-1" data-evidence="3"><span>04</span><span>质量门槛</span></button>
+            <button class="evidence-tab" id="evidence-tab-4" type="button" role="tab" aria-controls="evidence-panel" aria-selected="false" tabindex="-1" data-evidence="4"><span>05</span><span>产品数据</span></button>
+          </div>
+          <article class="evidence-panel" id="evidence-panel" role="tabpanel" aria-labelledby="evidence-tab-0" aria-live="polite">
+            <div class="evidence-rank" id="evidence-rank">01</div>
+            <div class="evidence-copy">
+              <h3 id="evidence-title">它是否有视觉与叙事突破？</h3>
+              <p id="evidence-body">Awwwards、FWA、Webby、Apple Design Awards 适合发现优秀表达与新模式；它们不是任务成功率、学习成本或商业结果的排行榜。</p>
+              <div class="evidence-meta">
+                <div><strong>最适合</strong><span id="evidence-use">灵感、视觉语言、品牌表达、动效方向</span></div>
+                <div><strong>不要推断</strong><span id="evidence-risk">拿奖 = 最好用；高票 = 适合你的用户</span></div>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <div class="principle-band">
+          <strong>奖项是品味样本，不是真理。平台规范是默认答案，也不是产品策略。</strong>
+          <p>一项设计的最终证据链应该能从“为什么看它”，一路走到“用户是否更快、更准、更少犯错，以及业务是否改善”。任何中间层都不能代替最后一层。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="references">
+      <div class="shell">
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">02 / Reference atlas</span>
+            <h2>去哪里看真正有用的参考</h2>
+          </div>
+          <div>
+            <p class="section-intro">不是把 Dribbble 收藏夹越堆越高，而是按问题选证据。下面每个入口都标明“它能回答什么”。</p>
+            <p class="section-note"><span id="reference-count">32</span> 个一手或行业标准入口 · 外链在新窗口打开</p>
+          </div>
+        </div>
+        <div class="filters" role="group" aria-label="筛选参考来源">
+          <button class="filter" type="button" data-filter="all" aria-pressed="true">全部</button>
+          <button class="filter" type="button" data-filter="awards" aria-pressed="false">奖项</button>
+          <button class="filter" type="button" data-filter="platform" aria-pressed="false">平台</button>
+          <button class="filter" type="button" data-filter="behavior" aria-pressed="false">真实流程</button>
+          <button class="filter" type="button" data-filter="validation" aria-pressed="false">验证</button>
+          <button class="filter" type="button" data-filter="systems" aria-pressed="false">设计系统</button>
+        </div>
+        <div class="reference-list" id="reference-list" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <section class="section" id="native">
+      <div class="shell">
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">03 / Native × custom</span>
+            <h2>苹果原生，还是自己造？</h2>
+          </div>
+          <p class="section-intro">答案不是二选一。最稳的产品通常有三层：平台契约保持原生，产品工作流做出自己的大脑，品牌表达形成自己的气质。</p>
+        </div>
+
+        <div class="layer-stack">
+          <aside class="layer-thesis">
+            <span class="label">Working model</span>
+            <p class="display-copy">原生骨架。产品大脑。品牌气质。</p>
+            <p>越接近输入、无障碍、键盘、窗口和系统行为，越应服从平台；越接近任务模型与独特价值，越应该自研。</p>
+          </aside>
+          <div class="layers">
+            <article class="layer">
+              <div class="layer-topline"><h3>平台契约</h3><span>01 / KEEP NATIVE</span></div>
+              <p>这是用户已经学会的语言。擅自重写会增加学习成本，并经常破坏无障碍与系统集成。</p>
+              <ul><li>语义与焦点</li><li>键盘与快捷键</li><li>菜单与窗口</li><li>文本选择与拖放</li><li>动态字体</li><li>减少动态效果</li></ul>
+            </article>
+            <article class="layer">
+              <div class="layer-topline"><h3>产品大脑</h3><span>02 / INVENT HERE</span></div>
+              <p>这才是产品需要赢的地方：用户如何理解任务、推进工作、恢复错误，以及在复杂状态中保持方向感。</p>
+              <ul><li>信息架构</li><li>核心工作流</li><li>空、错、加载状态</li><li>批量操作与撤销</li><li>AI 等待与不确定性</li><li>产品级快捷方式</li></ul>
+            </article>
+            <article class="layer">
+              <div class="layer-topline"><h3>品牌气质</h3><span>03 / EXPRESS</span></div>
+              <p>在不破坏前两层的前提下，让产品被记住。品牌不是给每个按钮加特效，而是持续一致的表达系统。</p>
+              <ul><li>颜色与字体</li><li>版式与密度</li><li>图形与插画</li><li>数据可视化</li><li>声音与触觉</li><li>标志性动效</li></ul>
+            </article>
+          </div>
+        </div>
+
+        <div class="platform-rows">
+          <article class="platform-row"><h3>macOS</h3><p class="platform-base">SwiftUI + AppKit + HIG</p><p>窗口、菜单栏、快捷键、焦点、拖放与标准指针尽量原生；工作流、信息架构和品牌表达可以定制。原生按钮保留箭头光标是正常平台行为。</p></article>
+          <article class="platform-row"><h3>Windows</h3><p class="platform-base">WinUI 3 + Fluent 2</p><p>沿用系统控件状态、键盘导航、窗口行为与输入模型；用产品自己的任务层组合它们。WinUI 3 Gallery 是比截图更有价值的可运行目录。</p></article>
+          <article class="platform-row"><h3>Web</h3><p class="platform-base">Semantic HTML + browser conventions</p><p>先尊重链接、按钮、表单、滚动和历史记录等浏览器语义。不要假装成 Mac 窗口；跨平台应共享产品逻辑和品牌，再翻译成各平台组件。</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="interaction">
+      <div class="shell">
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">04 / Cursor + component states</span>
+            <h2>光标不是装饰，是语义</h2>
+          </div>
+          <div>
+            <p class="section-intro">苹果按钮上仍是箭头，不代表它落后；网页链接用手型，也不代表所有可点击元素都必须手型。平台习惯与组件语义优先。</p>
+            <p class="section-note">把鼠标移到右侧样本上，观察光标与说明。</p>
+          </div>
+        </div>
+
+        <div class="lab-grid">
+          <div class="lab-copy">
+            <span class="label">Cursor rule</span>
+            <h3>不要只靠光标告诉用户“这里能点”。</h3>
+            <p>可点击性应同时来自文案、位置、形状、反馈与焦点。光标只是补充信号，而且触屏根本没有 hover。</p>
+            <div class="cursor-readout" aria-live="polite"><span class="label">Now pointing at</span><strong id="cursor-readout">移动到任一样本</strong></div>
+          </div>
+          <div class="lab-stage">
+            <div class="cursor-grid">
+              <div class="cursor-specimen cursor-default" tabindex="0" data-cursor="Arrow / default — 原生动作按钮常用"><strong>动作按钮</strong><span>default</span></div>
+              <a class="cursor-specimen cursor-pointer" href="#benchmark" data-cursor="Pointer — 链接与导航的网页惯例"><strong>跳到流程</strong><span>pointer</span></a>
+              <div class="cursor-specimen cursor-text" tabindex="0" data-cursor="I-beam — 文本可选择或编辑"><strong>选择这段文字</strong><span>text</span></div>
+              <div class="cursor-specimen cursor-grab" tabindex="0" data-cursor="Grab / grabbing — 明确表示可拖动"><strong>拖动对象</strong><span>grab</span></div>
+              <div class="cursor-specimen cursor-resize" tabindex="0" data-cursor="Resize — 仅在真的能改变尺寸时使用"><strong>调整宽度</strong><span>col-resize</span></div>
+              <div class="cursor-specimen cursor-default" tabindex="0" data-cursor="Arrow + 清晰样式 — 没有手型也能可发现"><strong>Mac-style control</strong><span>default</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="state-lab">
+          <div class="state-controls">
+            <span class="label">State matrix</span>
+            <h3>一个按钮不是一张图，而是一组状态。</h3>
+            <div class="control-cluster" role="group" aria-label="按钮状态">
+              <button class="state-control" type="button" data-state="rest" aria-pressed="true">Rest</button>
+              <button class="state-control" type="button" data-state="hover" aria-pressed="false">Hover</button>
+              <button class="state-control" type="button" data-state="focus" aria-pressed="false">Focus</button>
+              <button class="state-control" type="button" data-state="pressed" aria-pressed="false">Pressed</button>
+              <button class="state-control" type="button" data-state="selected" aria-pressed="false">Selected</button>
+              <button class="state-control" type="button" data-state="disabled" aria-pressed="false">Disabled</button>
+              <button class="state-control" type="button" data-state="loading" aria-pressed="false">Loading</button>
+            </div>
+          </div>
+          <div class="state-preview">
+            <button class="demo-button" id="demo-button" type="button" data-state="rest">
+              <span class="demo-label">Run benchmark</span>
+              <span class="loading-dots" aria-label="加载中"><i></i><i></i><i></i></span>
+            </button>
+            <p class="state-description" id="state-description">Rest：高对比、明确标签、点击区域足够大。默认态本身就应让人知道它能做什么。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="motion">
+      <div class="shell">
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">05 / Purposeful motion</span>
+            <h2>哪些地方真的需要动画</h2>
+          </div>
+          <p class="section-intro">动效只在五种情况下有明确工作：确认反馈、解释空间关系、维持对象连续性、引导注意、表达进度。没有任务，就没有动画。</p>
+        </div>
+
+        <div class="motion-layout">
+          <div class="motion-copy">
+            <span class="label">Motion test</span>
+            <h3>删掉动画后，用户是否更难理解发生了什么？</h3>
+            <p>如果答案是否，它很可能只是装饰。高频操作尤其要克制；退出通常比进入更短；任何体验都必须尊重 reduced motion。</p>
+            <div class="motion-controls" role="group" aria-label="动效目的">
+              <button class="motion-control" type="button" data-motion="feedback" aria-pressed="true">反馈</button>
+              <button class="motion-control" type="button" data-motion="continuity" aria-pressed="false">连续性</button>
+              <button class="motion-control" type="button" data-motion="space" aria-pressed="false">空间</button>
+              <button class="motion-control" type="button" data-motion="attention" aria-pressed="false">注意</button>
+              <button class="motion-control" type="button" data-motion="progress" aria-pressed="false">进度</button>
+            </div>
+          </div>
+          <div class="motion-stage" aria-live="polite">
+            <div class="motion-object" id="motion-object" data-motion="feedback">OK</div>
+            <div class="motion-caption"><strong id="motion-title">反馈 · 380ms demo</strong><span id="motion-description">按下后快速压缩并恢复，确认输入已被系统接收。</span></div>
+          </div>
+        </div>
+
+        <div class="duration-rail">
+          <div class="duration"><strong>50–100 ms</strong><span>按压与直接反馈</span></div>
+          <div class="duration"><strong>80–160 ms</strong><span>hover 与颜色变化</span></div>
+          <div class="duration"><strong>160–250 ms</strong><span>tooltip、popover、小对象</span></div>
+          <div class="duration"><strong>250–333 ms</strong><span>页面与空间转换；退出更短</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="benchmark">
+      <div class="shell">
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">06 / Repeatable workflow</span>
+            <h2>每次前端设计，都按这七步走</h2>
+          </div>
+          <div>
+            <p class="section-intro">benchmark 不是“找几张好看的图”。它是一条从问题定义、完整状态，到可用性与生产数据的证据链。</p>
+            <p class="section-note">点击步骤可勾选；进度只保存在你的浏览器。</p>
+          </div>
+        </div>
+
+        <div class="benchmark-layout">
+          <div class="benchmark-steps" id="benchmark-steps">
+            <button class="benchmark-step" type="button" aria-pressed="false" data-step="0" data-done="false"><span class="step-number">01</span><span class="step-copy"><strong>锁定对象</strong><p>目标用户、目标平台、最重要的三个任务。没有这三项，“最好”没有定义。</p></span><span class="step-check">○</span></button>
+            <button class="benchmark-step" type="button" aria-pressed="false" data-step="1" data-done="false"><span class="step-number">02</span><span class="step-copy"><strong>建立六份参考</strong><p>官方平台、两个直接竞品、一个奖项作品、一个成熟设计系统、一个反例。</p></span><span class="step-check">○</span></button>
+            <button class="benchmark-step" type="button" aria-pressed="false" data-step="2" data-done="false"><span class="step-number">03</span><span class="step-copy"><strong>截完整流程</strong><p>不只截 happy path；补齐加载、空、错误、撤销、键盘、触摸与权限状态。</p></span><span class="step-check">○</span></button>
+            <button class="benchmark-step" type="button" aria-pressed="false" data-step="3" data-done="false"><span class="step-number">04</span><span class="step-copy"><strong>做状态矩阵</strong><p>每个组件记录 rest、hover、focus、pressed、selected、disabled、loading 与结果态。</p></span><span class="step-check">○</span></button>
+            <button class="benchmark-step" type="button" aria-pressed="false" data-step="4" data-done="false"><span class="step-number">05</span><span class="step-copy"><strong>跑任务测试</strong><p>比较任务成功率、完成时间、错误数、恢复能力与主观难度，而不是问“喜不喜欢”。</p></span><span class="step-check">○</span></button>
+            <button class="benchmark-step" type="button" aria-pressed="false" data-step="5" data-done="false"><span class="step-number">06</span><span class="step-copy"><strong>过质量门槛</strong><p>WCAG、键盘、屏幕阅读器、reduced motion、目标尺寸与 Core Web Vitals。</p></span><span class="step-check">○</span></button>
+            <button class="benchmark-step" type="button" aria-pressed="false" data-step="6" data-done="false"><span class="step-number">07</span><span class="step-copy"><strong>看生产证据</strong><p>转化、留存、放弃、支持工单与性能分位数。赢家由真实目标决定。</p></span><span class="step-check">○</span></button>
+          </div>
+          <aside class="progress-panel">
+            <span class="label">Benchmark readiness</span>
+            <strong class="progress-number"><span id="progress-done">0</span>/7</strong>
+            <p id="progress-copy">先定义用户、平台与任务。还没到画界面的阶段。</p>
+            <div class="progress-track" aria-hidden="true"><div class="progress-fill" id="progress-fill"></div></div>
+            <p>能力型产品还要固定真实场景与数据集；不要拿 App Store 排名代替能力 benchmark。</p>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="defaults">
+      <div class="shell">
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">07 / Sensible defaults</span>
+            <h2>没时间研究时，先用这些默认值</h2>
+          </div>
+          <p class="section-intro">默认值不是永恒真理，而是成本最低、最不容易伤害用户的起点。遇到证据，再覆盖它。</p>
+        </div>
+        <div class="defaults">
+          <article class="default-item"><span class="default-number">01</span><div><h3>原生骨架，定制任务层</h3><p>平台输入、焦点、快捷键、窗口与无障碍保持原生；信息架构、工作流和品牌表达由产品负责。</p></div></article>
+          <article class="default-item"><span class="default-number">02</span><div><h3>状态完整</h3><p>特别是 keyboard focus、pressed、loading 与错误恢复。</p></div></article>
+          <article class="default-item"><span class="default-number">03</span><div><h3>Hover 不承载必要信息</h3><p>触屏没有 hover；悬浮内容还必须可关闭、可停留、可聚焦。</p></div></article>
+          <article class="default-item"><span class="default-number">04</span><div><h3>目标够大</h3><p>桌面至少满足 WCAG 2.2 的 24×24 CSS px 或间距例外；触摸优先瞄准 44×44。</p></div></article>
+          <article class="default-item"><span class="default-number">05</span><div><h3>动效有任务</h3><p>确认、解释、连续性、注意、进度。其余从零开始论证。</p></div></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="shell closing">
+      <strong>最好的设计，不是最酷的状态。是最清楚的决定。</strong>
+      <p>下一次开始做界面时，先产出参考、理由、状态规格、动效理由和验证办法，再进入视觉实现。</p>
+    </section>
+  </main>
+
+  <footer class="shell footer">
+    <div><strong>UI/UX Decision Atlas</strong><p>研究整理日期：2026-08-28 · 内容面向产品与前端设计决策，不是奖项排名。</p></div>
+    <div><strong>证据说明</strong><p>来源优先采用官方平台规范、W3C 标准、官方奖项标准和成熟研究机构；参考库保留原始链接供复核。</p></div>
+  </footer>
+
+  <script>
+    var evidence = [
+      { rank: "01", title: "它是否有视觉与叙事突破？", body: "Awwwards、FWA、Webby、Apple Design Awards 适合发现优秀表达与新模式；它们不是任务成功率、学习成本或商业结果的排行榜。", use: "灵感、视觉语言、品牌表达、动效方向", risk: "拿奖 = 最好用；高票 = 适合你的用户" },
+      { rank: "02", title: "它是否符合这个平台的用户预期？", body: "Apple HIG、Fluent 2、Material 3 与浏览器标准定义了系统行为、语义、输入方式和无障碍默认值。它们是强基线，不是你的产品策略。", use: "系统控件、输入、焦点、窗口、键盘与无障碍", risk: "遵守规范 = 自动形成差异化产品" },
+      { rank: "03", title: "真实用户是否能完成任务？", body: "Mobbin 与 Pageflows 帮你看完整流程；Baymard 与 NN/g 帮你发现高频失败模式；最终仍需让目标用户完成真实任务。", use: "流程对比、认知负担、错误与恢复、可发现性", risk: "竞品这样做 = 用户就一定理解" },
+      { rank: "04", title: "它是否达到最低质量与包容性？", body: "WCAG、ARIA APG、键盘与屏幕阅读器检查，以及 Core Web Vitals，构成不能用审美豁免的工程门槛。", use: "可访问性、语义、性能、目标尺寸、减少动态效果", risk: "通过自动化扫描 = 完成无障碍" },
+      { rank: "05", title: "它是否改善了真实目标？", body: "转化、留存、任务成功率、完成时间、放弃、支持工单和性能分位数，才是具体产品里的最终裁判。先写下目标，再上线。", use: "A/B、可用性测试、生产指标与定性反馈", risk: "局部点击率提升 = 整体体验变好" }
+    ];
+
+    var references = [
+      ["Awwwards", "awards", "视觉与数字体验策展", "发现前沿版式、品牌表达与实验性交互；不要把 Site of the Day 当可用性结论。", "https://www.awwwards.com/"],
+      ["CSS Design Awards", "awards", "独立网页设计奖项", "看 UI、UX 与创新类评审口径，适合收集视觉方向。", "https://www.cssdesignawards.com/about"],
+      ["FWA", "awards", "数字体验创新档案", "寻找叙事、技术与互动表现的先锋案例。", "https://thefwa.com/"],
+      ["The Webby Awards", "awards", "综合评审框架", "用内容、结构导航、视觉、功能、互动、创新与整体体验拆解作品。", "https://www.webbyawards.com/judging-criteria/"],
+      ["UX Design Awards", "awards", "UX 专项评审", "关注研究、结果、可访问性、信任与真实价值，比纯视觉奖更接近产品。", "https://ux-design-awards.com/jury/judging-criteria"],
+      ["Apple Design Awards", "awards", "Apple 平台年度标杆", "看 Delight and Fun、Inclusivity、Innovation、Interaction、Social Impact、Visuals and Graphics。", "https://developer.apple.com/design/awards/"],
+      ["App Store Featuring", "awards", "Apple 编辑推荐线索", "理解 Apple 关注的品质、差异化、平台技术与本地化，不等于能力排行榜。", "https://developer.apple.com/app-store/getting-featured/"],
+      ["Microsoft Store Awards", "awards", "Windows 生态年度案例", "发现 Windows 应用在生产力、创意与平台体验上的优秀实现。", "https://blogs.windows.com/windowsdeveloper/2025/12/03/announcing-the-microsoft-store-awards-2025-winners/"],
+      ["Apple HIG", "platform", "Apple 官方人机界面指南", "查 macOS、iOS、iPadOS、visionOS 的布局、输入、组件、动效和无障碍预期。", "https://developer.apple.com/design/human-interface-guidelines/"],
+      ["Fluent 2", "platform", "Microsoft 官方设计系统", "查 Windows 与 Microsoft 产品的组件、交互、颜色、字体与动效。", "https://fluent2.microsoft.design/"],
+      ["WinUI 3 Gallery", "platform", "可运行的 Windows 控件目录", "直接看系统控件、状态和代码，比静态截图更适合复刻原生行为。", "https://learn.microsoft.com/en-us/windows/apps/get-started/samples"],
+      ["Material 3", "platform", "Google 跨平台设计系统", "参考组件结构、颜色系统、自适应布局与 motion token。", "https://m3.material.io/"],
+      ["Apple Pointing Devices", "platform", "Apple 指针行为", "核对 macOS/iPadOS 指针、hover、选择与自定义指针的边界。", "https://developer.apple.com/design/human-interface-guidelines/pointing-devices"],
+      ["Windows Mouse Interactions", "platform", "Microsoft 鼠标输入指南", "核对 hover、click、右键、滚轮与指针反馈。", "https://learn.microsoft.com/en-us/windows/apps/develop/input/mouse-interactions"],
+      ["Mobbin", "behavior", "真实产品流程库", "按任务查看成熟产品的多屏流程、状态与版本变化。", "https://mobbin.com/"],
+      ["Pageflows", "behavior", "网页与移动端用户流程", "观察 onboarding、checkout、upgrade、search 等完整路径与录像。", "https://pageflows.com/"],
+      ["Baymard Methodology", "behavior", "大规模电商 UX 研究", "学习如何把行为观察、benchmark 与可执行设计模式连接起来。", "https://baymard.com/research/methodology"],
+      ["NN/g Heuristics", "behavior", "十项可用性启发式", "快速检查系统状态、现实匹配、控制与自由、一致性、防错和恢复。", "https://www.nngroup.com/articles/ten-usability-heuristics/"],
+      ["WCAG 2.2", "validation", "Web 无障碍规范", "作为可感知、可操作、可理解、稳健的最低质量基线。", "https://www.w3.org/TR/WCAG22/"],
+      ["ARIA APG", "validation", "可访问组件模式", "查复杂 Web 组件的语义、键盘交互与焦点管理。", "https://www.w3.org/WAI/ARIA/apg/"],
+      ["Using ARIA", "validation", "ARIA 使用规则", "先用原生 HTML；仅在缺少语义时补 ARIA，避免伪造不可用控件。", "https://www.w3.org/TR/using-aria/"],
+      ["Core Web Vitals", "validation", "Web 体验性能阈值", "以第 75 分位检查 LCP ≤2.5s、INP ≤200ms、CLS ≤0.1。", "https://web.dev/articles/defining-core-web-vitals-thresholds"],
+      ["CSS UI 4 Cursor", "validation", "Web 光标标准", "核对 cursor 关键字的语义与浏览器行为。", "https://www.w3.org/TR/css-ui-4/"],
+      ["WCAG Hover or Focus", "validation", "悬浮内容要求", "tooltip 与 popover 必须可关闭、可悬停、保持可见，并支持键盘焦点。", "https://www.w3.org/WAI/WCAG22/Understanding/content-on-hover-or-focus.html"],
+      ["WCAG Target Size", "validation", "最小目标尺寸", "桌面目标至少 24×24 CSS px 或满足间距例外；触摸通常应更大。", "https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html"],
+      ["Apple Accessibility", "validation", "Apple 无障碍设计", "核对可点击区域、动态字体、颜色、声音、运动与辅助技术。", "https://developer.apple.com/design/human-interface-guidelines/accessibility"],
+      ["Apple Motion", "validation", "Apple 动效原则", "用运动表达层级、状态与连续性，并尊重 Reduce Motion。", "https://developer.apple.com/design/human-interface-guidelines/motion"],
+      ["Windows Motion", "validation", "Fluent 动效指导", "参考 83、167、250、333ms 节奏与连接、过渡、反馈用途。", "https://learn.microsoft.com/en-us/windows/apps/design/signature-experiences/motion"],
+      ["WCAG Animation", "validation", "交互动效可关闭", "由交互触发的非必要运动应提供禁用机制，避免前庭不适。", "https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions.html"],
+      ["Adobe Spectrum", "systems", "成熟跨产品设计系统", "研究组件状态、内容规范、可访问性与多产品治理。", "https://spectrum.adobe.com/"],
+      ["IBM Carbon", "systems", "企业级开源设计系统", "研究复杂数据、表格、表单、模式与设计 token。", "https://carbondesignsystem.com/"],
+      ["GitHub Primer", "systems", "开发者产品设计系统", "研究高密度 Web UI、导航、组件、内容与无障碍实现。", "https://primer.style/" ]
+    ];
+
+    var stateDescriptions = {
+      rest: "Rest：高对比、明确标签、点击区域足够大。默认态本身就应让人知道它能做什么。",
+      hover: "Hover：只做补充反馈，不新增必要信息，不改变布局。触屏用户不会看到它。",
+      focus: "Focus：键盘用户必须看得见当前位置。焦点不是可选装饰。",
+      pressed: "Pressed：输入已被接收的即时确认。自定义按钮尤其不能漏掉这个状态。",
+      selected: "Selected：表示持续状态，而不是瞬时动作；必须同时用语义传达。",
+      disabled: "Disabled：谨慎使用，并解释为何不可用。低透明度不能成为唯一线索。",
+      loading: "Loading：防止重复提交，保留按钮尺寸，并让辅助技术读出进行中。"
+    };
+
+    var motions = {
+      feedback: ["反馈 · 380ms demo", "按下后快速压缩并恢复，确认输入已被系统接收。"],
+      continuity: ["连续性 · 720ms demo", "对象从原位置移动到新状态，帮助用户维持同一对象的心理模型。"],
+      space: ["空间 · 620ms demo", "进入方向解释内容来自哪里，以及关闭后会回到哪里。"],
+      attention: ["注意 · 520ms demo", "一次短暂强调把视线引到变化处；不要循环争抢注意力。"],
+      progress: ["进度 · 1300ms demo", "连续运动表达任务仍在推进；同时保留文字或数值状态。"]
+    };
+
+    var evidenceTabs = Array.from(document.querySelectorAll("[data-evidence]"));
+    function selectEvidence(tab, moveFocus) {
+        var item = evidence[Number(tab.dataset.evidence)];
+        evidenceTabs.forEach(function (other) {
+          var active = other === tab;
+          other.setAttribute("aria-selected", String(active));
+          other.tabIndex = active ? 0 : -1;
+        });
+        document.getElementById("evidence-panel").setAttribute("aria-labelledby", tab.id);
+        document.getElementById("evidence-rank").textContent = item.rank;
+        document.getElementById("evidence-title").textContent = item.title;
+        document.getElementById("evidence-body").textContent = item.body;
+        document.getElementById("evidence-use").textContent = item.use;
+        document.getElementById("evidence-risk").textContent = item.risk;
+        if (moveFocus) { tab.focus(); }
+    }
+    evidenceTabs.forEach(function (tab, index) {
+      tab.addEventListener("click", function () { selectEvidence(tab, false); });
+      tab.addEventListener("keydown", function (event) {
+        var next = index;
+        if (event.key === "ArrowRight" || event.key === "ArrowDown") { next = (index + 1) % evidenceTabs.length; }
+        else if (event.key === "ArrowLeft" || event.key === "ArrowUp") { next = (index - 1 + evidenceTabs.length) % evidenceTabs.length; }
+        else if (event.key === "Home") { next = 0; }
+        else if (event.key === "End") { next = evidenceTabs.length - 1; }
+        else { return; }
+        event.preventDefault();
+        selectEvidence(evidenceTabs[next], true);
+      });
+    });
+
+    function renderReferences(filter) {
+      var list = document.getElementById("reference-list");
+      var visible = references.filter(function (item) { return filter === "all" || item[1] === filter; });
+      list.innerHTML = "";
+      visible.forEach(function (item) {
+        var link = document.createElement("a");
+        link.className = "reference-row";
+        link.href = item[4];
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.innerHTML = '<span class="source-index">' + String(references.indexOf(item) + 1).padStart(2, "0") + '</span><span class="reference-name">' + item[0] + '</span><span class="reference-use">' + item[3] + '</span><span class="reference-type">' + item[2] + ' ↗</span>';
+        list.appendChild(link);
+      });
+      document.getElementById("reference-count").textContent = String(visible.length);
+      if (!visible.length) {
+        list.innerHTML = '<p class="reference-empty">这个分类暂时没有条目。</p>';
+      }
+    }
+
+    document.querySelectorAll("[data-filter]").forEach(function (button) {
+      button.addEventListener("click", function () {
+        document.querySelectorAll("[data-filter]").forEach(function (other) { other.setAttribute("aria-pressed", String(other === button)); });
+        renderReferences(button.dataset.filter);
+      });
+    });
+    renderReferences("all");
+
+    document.querySelectorAll("[data-cursor]").forEach(function (sample) {
+      function showCursor() { document.getElementById("cursor-readout").textContent = sample.dataset.cursor; }
+      sample.addEventListener("mouseenter", showCursor);
+      sample.addEventListener("focus", showCursor);
+    });
+
+    document.querySelectorAll(".state-control").forEach(function (control) {
+      control.addEventListener("click", function () {
+        document.querySelectorAll(".state-control").forEach(function (other) { other.setAttribute("aria-pressed", String(other === control)); });
+        var state = control.dataset.state;
+        var demo = document.getElementById("demo-button");
+        demo.dataset.state = state;
+        demo.disabled = state === "disabled";
+        demo.setAttribute("aria-busy", String(state === "loading"));
+        document.getElementById("state-description").textContent = stateDescriptions[state];
+      });
+    });
+
+    function replayMotion(name) {
+      var object = document.getElementById("motion-object");
+      object.removeAttribute("data-motion");
+      void object.offsetWidth;
+      object.setAttribute("data-motion", name);
+      document.getElementById("motion-title").textContent = motions[name][0];
+      document.getElementById("motion-description").textContent = motions[name][1];
+    }
+
+    document.querySelectorAll(".motion-control").forEach(function (control) {
+      control.addEventListener("click", function () {
+        document.querySelectorAll(".motion-control").forEach(function (other) { other.setAttribute("aria-pressed", String(other === control)); });
+        replayMotion(control.dataset.motion);
+      });
+    });
+
+    var storedSteps;
+    try { storedSteps = JSON.parse(localStorage.getItem("ux-atlas-steps") || "[]"); } catch (error) { storedSteps = []; }
+    if (!Array.isArray(storedSteps)) { storedSteps = []; }
+
+    function updateProgress() {
+      var steps = Array.from(document.querySelectorAll(".benchmark-step"));
+      var done = steps.filter(function (step) { return step.dataset.done === "true"; }).length;
+      document.getElementById("progress-done").textContent = String(done);
+      document.getElementById("progress-fill").style.width = String(done / 7 * 100) + "%";
+      var messages = [
+        "先定义用户、平台与任务。还没到画界面的阶段。",
+        "问题已锁定。现在建立有目的的参考集。",
+        "参考齐了。接下来把流程与失败状态截完整。",
+        "完整流程已有轮廓。现在补组件状态矩阵。",
+        "设计规格已成形。让目标用户跑真实任务。",
+        "可用性有证据了。现在过无障碍与性能门槛。",
+        "质量门槛已过。上线后还要看真实产品指标。",
+        "证据链完整。现在才有资格讨论哪一个方案更好。"
+      ];
+      document.getElementById("progress-copy").textContent = messages[done];
+      localStorage.setItem("ux-atlas-steps", JSON.stringify(steps.map(function (step) { return step.dataset.done === "true"; })));
+    }
+
+    document.querySelectorAll(".benchmark-step").forEach(function (step, index) {
+      if (storedSteps[index]) {
+        step.dataset.done = "true";
+        step.setAttribute("aria-pressed", "true");
+        step.querySelector(".step-check").textContent = "✓";
+      }
+      step.addEventListener("click", function () {
+        var done = step.dataset.done === "true";
+        step.dataset.done = String(!done);
+        step.setAttribute("aria-pressed", String(!done));
+        step.querySelector(".step-check").textContent = done ? "○" : "✓";
+        updateProgress();
+      });
+    });
+    updateProgress();
+
+    var themeToggle = document.getElementById("theme-toggle");
+    function syncThemeButton() {
+      var dark = document.documentElement.dataset.theme === "dark";
+      themeToggle.setAttribute("aria-pressed", String(dark));
+      themeToggle.setAttribute("aria-label", dark ? "切换到浅色主题" : "切换到深色主题");
+      themeToggle.textContent = dark ? "LIGHT" : "DARK";
+      document.querySelector('meta[name="theme-color"]').setAttribute("content", dark ? "#040406" : "#ffffff");
+    }
+    themeToggle.addEventListener("click", function () {
+      var next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+      document.documentElement.dataset.theme = next;
+      localStorage.setItem("ux-atlas-theme", next);
+      syncThemeButton();
+    });
+    syncThemeButton();
+  </script>
+</body>
+</html>
