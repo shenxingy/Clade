@@ -222,10 +222,12 @@ Before committing, ensure CI will pass by running locally:
 # 1. Python syntax check (all modules — same find-based sweep CI runs)
 cd orchestrator && find . \( -name .venv -o -name node_modules -o -name __pycache__ \) -prune -o -name "*.py" -print | xargs -n1 .venv/bin/python -m py_compile
 
-# 2. Tests
+# 2. Tests, plus the two offline evals the same `pytest` job runs
 cd orchestrator && .venv/bin/python -m pytest tests/ -v
+cd orchestrator && .venv/bin/python evals/run_provider_conformance.py
+cd orchestrator && .venv/bin/python evals/run_hack_eval.py
 
-# 3. Shell syntax check
+# 3. Shell syntax check (hooks, scripts, installer)
 bash -n configs/hooks/*.sh configs/scripts/*.sh install.sh
 
 # 4. mcp-package derived-copy drift gate — mcp-package/skills/ is generated
@@ -233,32 +235,79 @@ bash -n configs/hooks/*.sh configs/scripts/*.sh install.sh
 #    editing any skill shipped in the package, regenerate and commit:
 configs/scripts/regen-mcp-package.sh
 
-# 5. Codex plugin drift gate — same story, different surface
+# 5. Codex plugin drift gate — same story, second generated surface
 python3 configs/scripts/regen-codex-plugin.py --check   # regenerate without --check
 
-# 6. Doc facts drift gate — README/docs carry counts derived from the tree
+# 6. Claude Code plugin manifest drift gate — third generated surface
+python3 configs/scripts/regen-cc-plugin.py --check      # regenerate without --check
+
+# 7. Doc facts drift gate — README/docs carry counts derived from the tree
 #    (how many scripts, skills, hooks). ADDING A FILE MAKES THEM STALE and
 #    fails CI, which is how this list grew: red-phase-audit.py moved the
 #    Python-script count 21 → 22 while the READMEs still said 21.
 python3 configs/scripts/doc-align.py verify             # doc-align.py sync to fix
 
-# 7. Shellcheck on the shared gate (CI installs shellcheck; local may not)
+# 8. Skill registry validation
+python3 configs/scripts/validate-skills.py configs/skills
+
+# 9. Architecture map coverage — every orchestrator module listed in this file
+python3 configs/scripts/check-arch-map.py
+
+# 10. Reference resolution — every markdown link, anchor, and path resolves
+python3 configs/scripts/check-references.py
+
+# 11. Shellcheck on the shared gate (CI installs shellcheck; local may not)
 configs/scripts/checks.sh shellcheck configs/scripts/checks.sh
+
+# 12. Every suite the `shell-tests` job runs — all 17, not a convenient subset
+for t in loop checks skill-routing pr-scope-policy audit worktree-env \
+         rule-injector mailbox-drain correction-pairing hooks \
+         post-compact-reinject context-warning-drain ensure-dev-server \
+         quiet-run scan-health pre-tool-guardian loop-args; do
+  bash "tests/test-$t.sh" >/dev/null || echo "FAILED: $t"
+done
+
+# 13. Plugin manifest validator (separate workflow; needs the claude CLI)
+claude plugin validate . --strict
 ```
 
-Items 5–7 were absent from this list until 2026-08-22 while CI enforced them,
-so a local run could be green against a checklist that did not cover the gates.
-If you add a CI step, add it here in the same commit.
+`tests/test-loop.sh` additionally asserts that the deployed
+`~/.claude/scripts/loop-runner.sh` matches source. A stale local install fails
+it with no repository defect — the fix is `./install.sh`, not a code change.
 
-CI runs 4 jobs on push/PR to main: `syntax-check` (includes the mcp-package
-skills drift gate), `pytest`, `shell-tests`, `install-test`. The `pytest` job
-also runs two offline evals: `evals/run_provider_conformance.py`, and
-`evals/run_hack_eval.py`, which scores `judge_diversity.test_integrity` against
-the labelled reward-hack corpus in `evals/hack_cases/` (see its README before
-changing either — the gate's floor and ceiling are measured, not chosen). A fifth key-gated
-job (`real-api-loop`) runs only on workflow_dispatch/weekly schedule: one live
-claude CLI loop scenario (~$0.05) via `bash tests/test-loop.sh --real` —
-without claude CLI + credentials it prints SKIP and exits 0.
+This checklist has now drifted twice. It covered 4 of 7 gates until 2026-08-22
+(`df802c3`), then 7 of 11 `syntax-check` gates and 0 of 17 shell suites until
+2026-08-29. **If you add a CI step, add it here in the same commit** — nothing
+enforces that yet, which is precisely why it keeps recurring.
+
+On push/PR to `main`, four workflow files fire:
+
+- `ci.yml` — `syntax-check` (11 gates), `pytest` (suite + 2 offline evals),
+  `shell-tests` (17 suites), `install-test`. `run_hack_eval.py` scores
+  `judge_diversity.test_integrity` against the labelled reward-hack corpus in
+  `evals/hack_cases/` — read its README before changing either, because that
+  gate's floor and ceiling are measured, not chosen.
+- `validate-plugin.yml` — `claude plugin validate . --strict` against the real
+  plugin loader rather than a hand-rolled schema that would drift from it.
+- `pr-honeypot-check.yml` — flags a PR body that echoes the `AGENTS.md`
+  compliance token verbatim. An informational comment, never a block.
+- `vouch-gate.yml` — closes issues and PRs opened by untrusted authors.
+
+Three `ci.yml` jobs are key-gated and skip cleanly without credentials:
+`real-api-loop` (workflow_dispatch or the weekly schedule — one live claude CLI
+loop scenario, roughly $0.05, via `bash tests/test-loop.sh --real`),
+`provider-live-anthropic`, and `provider-live-openai` (read-only catalog
+smokes).
+
+### Stacked PRs get no CI
+
+Both `ci.yml` and `validate-plugin.yml` filter on `pull_request: branches:
+[main]`, so a PR whose base is another feature branch runs only the honeypot
+and vouch gates — the two that trigger on `pull_request_target` with no branch
+filter. Retargeting such a PR to `main` does not help on its own either: a base
+change emits `edited`, which is not one of `pull_request`'s default trigger
+types. Close and reopen the PR (or push to its head) to get a real run, and
+confirm the check list actually grew before reading green as evidence.
 
 ## Code Rules
 
