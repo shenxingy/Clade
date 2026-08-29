@@ -139,6 +139,7 @@ eval_metrics.py      ← read-only, denominator-explicit evidence/eval quality m
     ↑
 # Mid-tier
 github_sync.py       ← gh CLI wrappers (issues, push, sync)
+task_schema.py       ← tasks.db DDL: table creation + additive ALTER migrations (leaf; task_queue imports it)
 task_queue.py        ← SQLite tasks + append-only evidence persistence
 routing_break_even.py ← production-only observational routing analytics
 swarm.py             ← SwarmManager (extracted from worker.py)
@@ -183,6 +184,7 @@ CI's "Architecture map coverage" gate fails on any module missing from this file
 | `agent_runtime.py` | Agent-runtime identity and fail-closed selection shared by routing/settings/factory |
 | `cascade_policy.py` | Pure default-off verifier-cascade policy, escalation signals, and retry contract projection |
 | `evidence_bundle.py` | Immutable `clade.evidence/v1` snapshots, lifecycle validation, and digest-chain verification |
+| `task_schema.py` | `ensure_schema` — every CREATE TABLE and additive migration for tasks.db, split out of `task_queue._ensure_db` |
 | `task_queue.py` | SQLite CRUD for tasks, loops, messages, interventions, and append-only attempt evidence |
 | `routing_break_even.py` | Read-only production EvidenceBundle aggregation for observational routing break-even metrics |
 | `worker.py` | `Worker`, `WorkerPool` — core execution engine |
@@ -217,7 +219,7 @@ Global settings stored at `~/.claude/orchestrator-settings.json`. Defaults defin
 
 ## DB Migrations
 
-Add try/except `ALTER TABLE` blocks in `task_queue.py:TaskQueue._ensure_db()`. New columns added to `_ALLOWED_TASK_COLS` in `config.py`.
+Add try/except `ALTER TABLE` blocks in `task_schema.py:ensure_schema()`. New columns added to `_ALLOWED_TASK_COLS` in `config.py`.
 
 ## Commits
 
@@ -362,7 +364,7 @@ confirm the check list actually grew before reading green as evidence.
 - Keep all files < 1500 lines (Read tool default = 2000 lines)
 - No circular imports — module deps must form a strict DAG
 - Settings → `config.py:_SETTINGS_DEFAULTS` only
-- DB migrations → try/except ALTER TABLE in `_ensure_db()`
+- DB migrations → try/except ALTER TABLE in `task_schema.ensure_schema()`
 - Never return `error.message` in 500 responses
 - If you fan out your own Task-tool subagents within one task: **serialize any
   subagent that writes/builds/runs tests** (they race on the same worktree's
