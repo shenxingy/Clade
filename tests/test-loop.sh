@@ -638,7 +638,12 @@ export MOCK_CLAUDE_RESPONSE='[{"description": "Should never run: dry-run must no
 output=$(bash "$SCRIPTS_DIR/loop-runner.sh" "goal-dry.md" --dry-run --max-iter 5 --max-workers 2 --state .claude/loop-state-dry --log-dir logs/loop-dry 2>&1); ec=$?; unset MOCK_CLAUDE_ARGS_LOG MOCK_CLAUDE_RESPONSE
 assert_exit_code "0" "$ec" "dry-run exits 0"
 assert_contains "$output" "DRY RUN" "dry-run preview banner shown"; assert_contains "$output" "goal-dry.md" "dry-run shows goal file"
-assert_contains "$output" "claude-sonnet-4-6" "dry-run shows model routing"; assert_contains "$output" "3 open / 3 total" "dry-run shows goal item counts"
+# The model id comes from models.env, not a literal: pinning the string here
+# turned every legitimate model bump into a failure in the dry-run test rather
+# than in anything that measures model routing.
+( . "$ORIG_DIR/configs/models.env"; printf '%s' "${MODEL_SONNET:?}" ) > "$TEST_DIR/.expected-model"
+assert_contains "$output" "$(cat "$TEST_DIR/.expected-model")" "dry-run shows the model from models.env"
+assert_contains "$output" "3 open / 3 total" "dry-run shows goal item counts"
 assert_contains "$output" "up to 2/iteration" "dry-run shows max-workers task cap"; assert_contains "$output" "capped at --max-iter 5" "dry-run shows max-iter cap"
 assert_not_contains "$output" "Blueprint Loop Complete" "dry-run does not run the real loop"
 TESTS_RUN=$((TESTS_RUN + 1)); if [[ -f "$dry_run_args_log" ]]; then fail "dry-run spawned a claude subprocess" "$(cat "$dry_run_args_log" 2>/dev/null)"; else pass "dry-run spawned zero claude subprocesses"; fi
@@ -1177,6 +1182,29 @@ assert_eq "$CFG_OPUS" "$MODEL_OPUS" "MODEL_OPUS matches config.py _MODEL_ALIASES
 # so assert the shape rather than a literal that has to be edited each bump.
 case "$MODEL_OPUS" in claude-opus-4-*) assert_eq "current" "stale" "MODEL_OPUS is not a superseded generation" ;; esac
 case "$MODEL_SONNET" in claude-sonnet-4-*) assert_eq "current" "stale" "MODEL_SONNET is not a superseded generation" ;; esac
+
+# The two assertions above compared models.env to config.py while loop-runner
+# — the thing that actually runs — hardcoded claude-sonnet-4-6 and sourced
+# neither. models.env's own header says "source this file instead of
+# hardcoding"; install.sh was its only consumer. Pin the real defaults.
+LR_DEFAULTS=$(bash -c '
+  _SELF_DIR="'"$ORIG_DIR"'/configs/scripts"
+  . "$_SELF_DIR/../models.env"
+  echo "${MODEL_SONNET:-unset}"
+')
+assert_eq "$MODEL_SONNET" "$LR_DEFAULTS" "loop-runner resolves its model default from models.env"
+
+# Behavioural, not textual: change models.env and loop-runner must follow.
+# A grep for the variable name would pass on a file that also hardcodes a
+# fallback the code actually uses.
+FAKE_ENV_DIR=$(mktemp -d /tmp/clade-modelenv-XXXXXX)
+mkdir -p "$FAKE_ENV_DIR/scripts"
+cp "$ORIG_DIR"/configs/scripts/loop-runner.sh "$ORIG_DIR"/configs/scripts/loop_*.sh \
+   "$ORIG_DIR"/configs/scripts/loop_*.py "$FAKE_ENV_DIR/scripts/" 2>/dev/null
+printf 'MODEL_SONNET="sentinel-model-xyz"\n' > "$FAKE_ENV_DIR/models.env"
+LR_OUT=$(cd "$TEST_DIR" && bash "$FAKE_ENV_DIR/scripts/loop-runner.sh" --help 2>&1 || true)
+assert_contains "$LR_OUT" "sentinel-model-xyz" "loop-runner takes its model default from models.env, not a literal"
+rm -rf "$FAKE_ENV_DIR"
 
 # Test model_id resolution
 model_id_test() {

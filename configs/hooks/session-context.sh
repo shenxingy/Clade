@@ -286,7 +286,12 @@ fi
 CONTEXT="${CONTEXT}\nIMPORTANT: Always respond in the same language the user writes in. If the user writes Chinese, respond in Chinese. If English, respond in English. NEVER respond in Korean under any circumstances.\n"
 
 # Model selection guidance
-CONTEXT="${CONTEXT}\nModel guide: Sonnet 4.6 is optimal for most coding (79.6% SWE-bench, 40% cheaper than Opus). Switch to Opus 4.6 only for: large refactors (10+ files), deep architectural reasoning, or outputs >64K tokens. Use Haiku 4.5 for sub-agents doing mechanical checks. If you detect the user is about to do a complex multi-file refactor on Sonnet, suggest: 'This task may benefit from Opus — run /model to switch.'\n"
+# Named generations, not benchmark scores: the previous text quoted SWE-bench
+# figures for Sonnet 4.6 / Opus 4.6 and was still injected into every session
+# after the aliases moved to Opus 5 / Sonnet 5. The cost ratio below IS
+# checkable — $3/$15 vs $5/$25 per MTok, i.e. 60% — so it stays; the scores
+# do not, because no verified figure for the current generation was to hand.
+CONTEXT="${CONTEXT}\nModel guide: Sonnet is the default for most coding and costs 60% of Opus per token. Switch to Opus for: large refactors (10+ files), deep architectural reasoning, or outputs >64K tokens. Use Haiku for sub-agents doing mechanical checks. If you detect the user is about to do a complex multi-file refactor on Sonnet, suggest: 'This task may benefit from Opus — run /model to switch.'\n"
 
 # Close the loop principle
 CONTEXT="${CONTEXT}\nClose the loop: After completing any task, run the relevant verify command (compile/test/lint) and show its output — don't claim success without evidence. When fixing X, also check if related Y and Z are affected.\n"

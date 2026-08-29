@@ -21,7 +21,7 @@
 #   loop-runner.sh --help
 #
 # Options:
-#   --model MODEL         supervisor model (default: claude-sonnet-4-6)
+#   --model MODEL         supervisor model (default: $MODEL_SONNET from models.env)
 #   --worker-model MODEL  worker model (default: same as supervisor)
 #   --max-iter N          max iterations (default: 10)
 #   --max-workers N       max parallel workers (default: 4)
@@ -90,9 +90,18 @@ readonly MAX_FIX_ATTEMPTS=1             # syntax fix: max 1 LLM call per iter
 # ────────────────────────────────────────────────────────────────
 
 # ─── DEFAULTS ───────────────────────────────────────────────────
+# models.env says "source this file instead of hardcoding" — and until
+# 2026-08-29 install.sh was its only consumer, while the loop that actually
+# runs pinned claude-sonnet-4-6 here. That left the shell layer two model
+# generations behind orchestrator/config.py with nothing comparing them.
+# One path covers both layouts: ~/.claude/scripts/.. and <repo>/configs/scripts/..
+# both resolve to the directory holding models.env. The literal fallback below
+# keeps a detached copy of this script starting.
+# shellcheck source=/dev/null
+[ -f "$_SELF_DIR/../models.env" ] && . "$_SELF_DIR/../models.env"
 GOAL_FILE=""
-SUPERVISOR_MODEL="claude-sonnet-4-6"
-WORKER_MODEL="claude-sonnet-4-6"
+SUPERVISOR_MODEL="${MODEL_SONNET:-claude-sonnet-5}"
+WORKER_MODEL="${MODEL_SONNET:-claude-sonnet-5}"
 MAX_ITER=10
 MAX_WORKERS=4
 # Wall-clock bound. Iteration count is NOT a time bound — a single iteration

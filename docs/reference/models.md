@@ -4,7 +4,7 @@
 name: models.md
 date: 2026-02-18
 status: integrated
-review_date: 2026-03-31
+review_date: 2026-11-30
 summary:
   - "Claude model benchmarks, cost-performance analysis, and selection guidelines"
 integrated_items:
@@ -16,13 +16,27 @@ reference_items: []
 
 ## Current Models
 
-| Model | ID | Input / Output | Context | Max Output | Speed |
-|-------|----|---------------|---------|------------|-------|
-| **Opus 4.6** | `claude-opus-4-6` | $5 / $25 per MTok | 200K (1M beta) | 128K tokens | Medium |
-| **Sonnet 4.6** | `claude-sonnet-4-6` | $3 / $15 per MTok | 200K (1M beta) | 64K tokens | Fast |
-| **Haiku 4.5** | `claude-haiku-4-5` | $1 / $5 per MTok | 200K | 64K tokens | Fastest |
+Mirrors `orchestrator/config.py:_MODEL_ALIASES` and `_MODEL_RATES`, which are
+the source of truth; `configs/models.env` carries the same ids for the shell
+layer. Verified 2026-08-29.
 
-## Performance Benchmarks
+| Model | ID | Input / Output | Context | Max Output |
+|-------|----|---------------|---------|------------|
+| **Fable 5** | `claude-fable-5` | $10 / $50 per MTok | 1M | 128K tokens |
+| **Opus 5** | `claude-opus-5` | $5 / $25 per MTok | 1M | 128K tokens |
+| **Sonnet 5** | `claude-sonnet-5` | $3 / $15 per MTok | 1M | 128K tokens |
+| **Haiku 4.5** | `claude-haiku-4-5` | $1 / $5 per MTok | 200K | 64K tokens |
+
+Clade's aliases resolve `opus` → Opus 5, `sonnet` → Sonnet 5, `haiku` → Haiku
+4.5. Superseded ids (`claude-opus-4-8`/`4-7`/`4-6`, `claude-sonnet-4-6`) stay
+accepted so older task rows and evidence bundles keep resolving.
+
+## Performance Benchmarks — 4.6 generation, recorded 2026-02-18
+
+Kept as the measurement that produced the routing rule below, NOT as current
+figures. No verified SWE-bench/OSWorld numbers for the 5 generation were to
+hand when this was revised on 2026-08-29, and inventing them to keep the
+section looking current would be worse than saying so.
 
 ### Coding (SWE-bench Verified)
 - Opus 4.6: **80.8%**

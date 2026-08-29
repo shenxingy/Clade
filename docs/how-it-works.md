@@ -250,4 +250,4 @@ The kit optimizes model usage at every level:
 | **Sub-agents** | Haiku for mechanical checks (type-check, tests), Sonnet for reasoning (review, verification) |
 | **Staying current** | Run `/model-research --apply` when new models drop to update all selection logic |
 
-Based on benchmarks: Sonnet 4.6 scores 79.6% on SWE-bench vs Opus 4.6's 80.8% at 60% of the cost. The kit defaults to Sonnet and only escalates to Opus when the task genuinely needs it.
+Sonnet costs 60% of Opus per token ($3/$15 vs $5/$25 per MTok, verified 2026-08-29 against `orchestrator/config.py:_MODEL_RATES`). The kit defaults to Sonnet and only escalates to Opus when the task genuinely needs it. The benchmark spread that produced this rule was measured on the 4.6 generation and is recorded, with that scope stated, in [docs/reference/models.md](reference/models.md).
