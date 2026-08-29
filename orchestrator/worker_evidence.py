@@ -123,8 +123,21 @@ async def fail_preflight_evidence(
         logger.exception("failed to close preflight evidence attempt")
 
 
-async def append_worker_evidence(worker: Any, lifecycle_state: str) -> None:
-    """Append a non-terminal running/verifying snapshot if evidence is enabled."""
+async def append_worker_evidence(
+    worker: Any, lifecycle_state: str, phase: str | None = None, **facts: Any
+) -> None:
+    """Append a non-terminal running/verifying snapshot if evidence is enabled.
+
+    `phase` marks WHICH step of verification this revision records. Without it,
+    tests, the oracle verdict and the push all landed in the single terminal
+    append at the bottom of this module, so a crash between "tests passed" and
+    "oracle returned" lost both — the bundle could say an attempt failed and
+    hand back a digest-chained final diff, but never when it went wrong.
+
+    Each phase is its own revision in the existing digest chain, so the
+    timeline is answerable after the fact without a new lifecycle state or a
+    new table.
+    """
 
     task_queue = getattr(worker, "_task_queue", None)
     attempt_id = getattr(worker, "evidence_attempt_id", None)
@@ -142,6 +155,8 @@ async def append_worker_evidence(worker: Any, lifecycle_state: str) -> None:
             "elapsed_s": getattr(worker, "elapsed_s", None),
         },
     }
+    if phase is not None:
+        evidence["phase"] = {"name": phase, "observed_at": observed_at, **facts}
     try:
         latest = await task_queue.get_evidence_bundle(attempt_id)
     except Exception:

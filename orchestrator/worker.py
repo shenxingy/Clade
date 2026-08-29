@@ -894,6 +894,13 @@ class Worker:
                         self._project_dir, self._claude_dir, self.task_id
                     )
                     test_evidence = _build_test_evidence(tests_passed, test_output, reg_warning)
+                    # Record the test outcome NOW. It used to reach disk only in
+                    # the terminal append, so a crash before the oracle returned
+                    # lost the fact that tests had already passed.
+                    await worker_evidence.append_worker_evidence(
+                        self, "verifying", phase="tests",
+                        passed=tests_passed, repro_passed=repro_passed,
+                    )
                     if repro_passed is not None:
                         test_evidence += (
                             "\nReproduction test: "
@@ -935,7 +942,12 @@ class Worker:
                 self.test_evidence = test_evidence  # surfaced later in the PR body
 
                 # Oracle validation gate (rejection requeues; infra errors tag 'unreviewed')
-                if not await self._run_oracle_gate(test_evidence):
+                oracle_ok = await self._run_oracle_gate(test_evidence)
+                await worker_evidence.append_worker_evidence(
+                    self, "verifying", phase="oracle",
+                    verdict=self.oracle_result, reason=self.oracle_reason,
+                )
+                if not oracle_ok:
                     return False
 
                 branch = f"orchestrator/task-{self.task_id}"
@@ -950,6 +962,10 @@ class Worker:
                         p_out, p_err = await asyncio.wait_for(push_proc.communicate(), timeout=30)
                         if push_proc.returncode == 0:
                             self.auto_pushed = True
+                        await worker_evidence.append_worker_evidence(
+                            self, "verifying", phase="push",
+                            pushed=self.auto_pushed, branch=branch,
+                        )
                     except asyncio.TimeoutError:
                         push_proc.kill()
                         await push_proc.communicate()
