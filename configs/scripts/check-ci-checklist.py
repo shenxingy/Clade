@@ -24,7 +24,9 @@ Exit 0 when every CI-enforced artefact appears in the checklist, 1 otherwise.
 
 from __future__ import annotations
 
+import os
 import re
+import shlex
 import sys
 from pathlib import Path
 
@@ -112,7 +114,60 @@ def checklist_artefacts() -> set[str]:
     return found
 
 
+# A documented command that cannot execute is worse than a missing one: it
+# reads as covered. `CLAUDE.md` carried
+# `configs/scripts/checks.sh shellcheck …` for months — mode 100644, no `bash`
+# prefix, so it exited 126 every time — while this script reported the gate
+# covered, because coverage compares which artefacts are NAMED, not whether the
+# line runs.
+INTERPRETERS = {"bash", "sh", "zsh", "python", "python3", "node", "env", "sudo"}
+
+
+def unrunnable_commands() -> list[str]:
+    """Documented lines that invoke a repo file directly without an interpreter."""
+    text = CLAUDE_MD.read_text(encoding="utf-8")
+    start = text.find(CHECKLIST_HEADING)
+    if start == -1:
+        return []
+    end = text.find("\n## ", start + len(CHECKLIST_HEADING))
+    section = text[start:end if end != -1 else len(text)]
+
+    problems: list[str] = []
+    for raw in section.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or line.startswith("|"):
+            continue
+        try:
+            first = shlex.split(line)[0]
+        except ValueError:
+            continue
+        if Path(first).name in INTERPRETERS:
+            continue
+        if not first.startswith(("configs/", "tests/", "orchestrator/", "./")):
+            continue
+        target = REPO_ROOT / first
+        if not target.exists():
+            problems.append(f"  {first} — documented but does not exist")
+        elif not os.access(target, os.X_OK):
+            problems.append(
+                f"  {first} — not executable, so this line exits 126; "
+                f"prefix it with `bash` or chmod +x"
+            )
+    return problems
+
+
 def main() -> int:
+    unrunnable = unrunnable_commands()
+    if unrunnable:
+        print(
+            "check-ci-checklist: the CLAUDE.md pre-commit checklist documents "
+            "commands that cannot run:",
+            file=sys.stderr,
+        )
+        for line in unrunnable:
+            print(line, file=sys.stderr)
+        return 1
+
     enforced = ci_artefacts()
     documented = checklist_artefacts()
 
@@ -123,7 +178,10 @@ def main() -> int:
 
     if not missing:
         total = len({a for group in enforced.values() for a in group})
-        print(f"check-ci-checklist: CLAUDE.md covers all {total} CI-enforced gates ✓")
+        print(
+            f"check-ci-checklist: CLAUDE.md covers all {total} CI-enforced gates, "
+            "and every documented command is runnable ✓"
+        )
         return 0
 
     print(
