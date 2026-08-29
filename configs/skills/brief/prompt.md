@@ -2,7 +2,7 @@ Generate a concise morning briefing for the current project. Follow these steps:
 
 1. Run `git log --since="18 hours ago" --oneline` to get recent commits.
 2. Run `git log --since="18 hours ago" --format="%s" | wc -l` to count commits.
-3. Check if the orchestrator is running: `curl -s http://localhost:4000/api/sessions/overview 2>/dev/null`
+3. Check if the orchestrator is running: `curl -s "http://localhost:${ORCHESTRATOR_PORT:-8765}/api/sessions/overview" 2>/dev/null`
    - If running and returns valid JSON: extract pending/running/done/failed counts and total_cost for each session.
    - If not running or returns an error: skip API data, note orchestrator offline.
 4. If PROGRESS.md exists, read its last 2000 characters to find the most recent lesson entry.

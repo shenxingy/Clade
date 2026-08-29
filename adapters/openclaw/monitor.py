@@ -46,8 +46,24 @@ async def auth_middleware(request: web.Request, handler):
 
 # ─── State File Parsers ──────────────────────────────────────────────────────
 
+def _parse_json_file(path: Path) -> dict:
+    """Parse a JSON state file (loop-state.json, written by loop-runner.sh).
+
+    These were read with _parse_kv_file until 2026-08-29, against a filename
+    with no extension that no writer produces. `_parse_kv_file` keeps only
+    lines containing "=", and JSON has none, so loop state was always empty.
+    """
+    try:
+        if not path.exists():
+            return {}
+        data = json.loads(path.read_text())
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
 def _parse_kv_file(path: Path) -> dict[str, str]:
-    """Parse KEY=VALUE file (loop-state, session-progress)."""
+    """Parse KEY=VALUE file (session-progress.md — see start.sh:158)."""
     result: dict[str, str] = {}
     if not path.exists():
         return result
@@ -118,9 +134,10 @@ async def handle_status(request: web.Request) -> web.Response:
         return web.json_response({"error": "No project found"}, status=404)
 
     # Loop state
-    loop_state = _parse_kv_file(proj / ".claude" / "loop-state")
-    # Also check inner loop state from start.sh
-    start_state = _parse_kv_file(proj / ".claude" / "loop-state-start")
+    loop_state = _parse_json_file(proj / ".claude" / "loop-state.json")
+    # Also check inner loop state from start.sh (start.sh:868 passes it as
+    # --state to the same writer, so it is JSON too).
+    start_state = _parse_json_file(proj / ".claude" / "loop-state-start")
     if start_state and not loop_state:
         loop_state = start_state
 

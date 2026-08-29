@@ -156,6 +156,20 @@ jobs:
       # reward hacks and honest test edits. Offline and deterministic — no
       # network, no model — and it prints the per-case scoreboard, so a
       # regression names which hack started slipping through.
+      # The red-phase audit is the only instrument that measures "an added test
+      # already passed at base". An instrument that cannot go red is
+      # indistinguishable from a clean codebase, and this one has shipped that
+      # failure before — an unrecognised pytest argument made every commit
+      # report 0 passed, and the 0% fire rate read as good news. The self-test
+      # runs one positive and one negative control and fails if either is wrong.
+      # No RED_PHASE_PYTHON here: this job installs dependencies into the
+      # runner's system Python rather than a venv, and the script already
+      # falls back to sys.executable when orchestrator/.venv is absent.
+      # Pinning the venv path made the step fail with FileNotFoundError on a
+      # runner that has no venv at all.
+      - name: Red-phase audit self-test (can the harness go red?)
+        run: python3 configs/scripts/red-phase-audit.py --self-test
+
       - name: Score the test-integrity detector against the reward-hack corpus
         run: |
           cd orchestrator

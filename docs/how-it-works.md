@@ -92,7 +92,7 @@ Claude auto-selects agents. Haiku agents are fast and cheap for mechanical check
 
 **`/model-research`** searches the web for latest Claude model announcements, benchmarks, and pricing. Compares against the current guide and shows what changed. With `--apply`, updates `docs/research/models.md`, the session-context model guidance, and batch-tasks model assignment criteria.
 
-**`/worktree`** creates a new git worktree in `.claude/worktrees/` with an isolated branch, switches the session into it. Use when running parallel Claude Code sessions on the same repo.
+**`/worktree`** creates or inspects an isolated Git workspace with explicit ownership and delivery routing (`"task prompt"` | `--list` | `--preserve` | `--clean <delivery-id>`). It resolves a destination **outside the repository root** — deliberately not `.claude/worktrees/`, which Claude Code 2.1.236 claims as its own managed pool and deletes along with a session (see `orchestrator/worker.py:236-239`). Use when running parallel sessions on the same repo.
 
 **`/research`** runs a structured deep-dive on a topic — web search, synthesize findings, save to `docs/research/<topic>.md`. Useful before starting a complex feature.
 
@@ -250,4 +250,49 @@ The kit optimizes model usage at every level:
 | **Sub-agents** | Haiku for mechanical checks (type-check, tests), Sonnet for reasoning (review, verification) |
 | **Staying current** | Run `/model-research --apply` when new models drop to update all selection logic |
 
-Based on benchmarks: Sonnet 4.6 scores 79.6% on SWE-bench vs Opus 4.6's 80.8% at 60% of the cost. The kit defaults to Sonnet and only escalates to Opus when the task genuinely needs it.
+Sonnet costs 60% of Opus per token ($3/$15 vs $5/$25 per MTok, verified 2026-08-29 against `orchestrator/config.py:_MODEL_RATES`). The kit defaults to Sonnet and only escalates to Opus when the task genuinely needs it. The benchmark spread that produced this rule was measured on the 4.6 generation and is recorded, with that scope stated, in [docs/reference/models.md](reference/models.md).
+
+## Supported Languages
+
+Auto-detected — hooks and agents adapt to your project:
+
+| Language | Edit check | Type checker | Test runner |
+|----------|-----------|-------------|-------------|
+| TypeScript / JavaScript | tsc (monorepo-aware) | tsc | jest / vitest |
+| Python | pyright / mypy | pyright / mypy | pytest |
+| Rust | cargo check | cargo check | cargo test |
+| Go | go vet | go vet | go test |
+| Swift / iOS | swift build | swift build | swift test |
+| Kotlin / Android / Java | gradlew | gradlew | gradle test |
+| LaTeX | chktex | chktex | — |
+
+All checks are opt-in by detection — if the tool isn't installed, the hook silently skips.
+
+## Repository layout
+
+Moved out of the README on 2026-08-29 (landing page, not a reference manual).
+
+```
+clade/
+├── install.sh               # One-command deployment
+├── uninstall.sh             # Removes what install.sh deployed
+├── configs/                 # ← THE PRODUCT CENTER
+│   ├── skills/              # 136 skill definitions
+│   ├── hooks/               # 31 event hooks
+│   ├── agents/              # 37 agent definitions
+│   ├── output-styles/       # 2 output styles (system-prompt register; opt-in)
+│   └── scripts/             # 40 shell + 24 Python utilities
+├── plugins/clade/           # Native Codex plugin (25 generated core skills + hooks)
+├── .agents/plugins/         # Codex marketplace manifest
+├── orchestrator/            # ← THE EXECUTION ADAPTER
+│   ├── server.py            # FastAPI app, routes, WebSocket
+│   ├── worker.py            # WorkerPool, SwarmManager, task dispatch
+│   ├── task_queue.py        # SQLite task queue + CRUD
+│   ├── evidence_bundle.py   # Immutable lifecycle evidence + digest chains
+│   ├── worker_evidence.py   # Worker/verifier/delivery evidence wiring
+│   └── web/                 # ← THE OBSERVATION WINDOW
+│       └── src/             # React + Vite UI (served from dist/)
+├── docs/                    # Guides and research
+├── adapters/openclaw/       # OpenClaw integration (mobile monitoring)
+└── templates/               # Settings, CLAUDE.md templates
+```

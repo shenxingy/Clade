@@ -227,6 +227,42 @@ else
   fail "hook output is valid additionalContext JSON" "jq could not parse: $(head -c 200 <<< "$RAW")"
 fi
 
+# ─── Loop banner reads the file loop-runner actually writes ───────────
+# loop-runner.sh:113 writes JSON to .claude/loop-state.json. Until 2026-08-29
+# this hook grepped three KEY=VALUE keys out of an extensionless
+# ".claude/loop-state" that no writer has ever produced — wrong filename,
+# wrong format, wrong key names — so the banner was silently empty on every
+# session start. `converged` did not exist in the writer at all.
+
+write_loop_state() { printf '%s\n' "$2" > "$1/.claude/loop-state.json"; }
+
+RL="$TMP_ROOT/repo-loop"
+make_repo "$RL"
+mkdir -p "$RL/.claude"
+
+write_loop_state "$RL" '{"iteration":7,"goal_file":"/x/goal-runtime.md","converged":false,"exit_reason":null}'
+OUT=$(run_session_context "$RL")
+assert_contains "$OUT" "running (goal-runtime.md, iter 7)" "running loop renders in the banner"
+
+write_loop_state "$RL" '{"iteration":9,"goal_file":"/x/goal-runtime.md","converged":true,"exit_reason":"converged"}'
+OUT=$(run_session_context "$RL")
+assert_contains "$OUT" "converged (goal-runtime.md, iter 9)" "converged loop renders in the banner"
+
+# The old reader could only express converged/running; a loop that hit a
+# ceiling looked identical to one still working.
+write_loop_state "$RL" '{"iteration":20,"goal_file":"/x/g.md","converged":false,"exit_reason":"max_iterations"}'
+OUT=$(run_session_context "$RL")
+assert_contains "$OUT" "stopped: max_iterations" "a loop stopped by a ceiling is distinguishable from a running one"
+
+write_loop_state "$RL" 'not json at all'
+OUT=$(run_session_context "$RL")
+assert_not_contains "$OUT" "Loop:" "a malformed state file emits no banner"
+
+rm -f "$RL/.claude/loop-state.json"
+printf 'CONVERGED=false\nITERATION=3\n' > "$RL/.claude/loop-state"
+OUT=$(run_session_context "$RL")
+assert_not_contains "$OUT" "Loop:" "the stale KEY=VALUE path is not read"
+
 # ─── Summary ──────────────────────────────────────────────────────────
 echo ""
 echo "── Results: $TESTS_PASSED/$TESTS_RUN passed ──"

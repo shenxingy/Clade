@@ -50,15 +50,31 @@ if [[ -n "$GIT_LOG" ]]; then
 fi
 
 # Loop state (if active)
-if [[ -f ".claude/loop-state" ]]; then
-  CONVERGED=$(grep "^CONVERGED=" .claude/loop-state | cut -d= -f2)
-  ITERATION=$(grep "^ITERATION=" .claude/loop-state | cut -d= -f2)
-  GOAL=$(grep "^GOAL=" .claude/loop-state | cut -d= -f2 | xargs basename 2>/dev/null)
-  if [[ "$CONVERGED" == "true" ]]; then
-    CONTEXT="${CONTEXT}Loop: ✓ converged (${GOAL}, iter ${ITERATION})\n"
-  elif [[ "$CONVERGED" == "false" ]]; then
-    CONTEXT="${CONTEXT}Loop: ⟳ running (${GOAL}, iter ${ITERATION})\n"
-  fi
+# loop-runner.sh writes JSON to .claude/loop-state.json (STATE_FILE at :113).
+# This read three KEY=VALUE keys out of an extensionless ".claude/loop-state"
+# that no writer has ever produced, so the banner was silently empty on every
+# session start. Filename, format and key names were all wrong, and `converged`
+# did not exist at all until the writer started publishing it.
+if [[ -f ".claude/loop-state.json" ]]; then
+  LOOP_LINE=$(python3 - <<'PYEOF' 2>/dev/null
+import json, os, sys
+try:
+    s = json.load(open(".claude/loop-state.json"))
+except Exception:
+    sys.exit(0)
+goal = os.path.basename(s.get("goal_file") or "") or "goal"
+it = s.get("iteration", "?")
+if s.get("converged"):
+    print(f"Loop: \u2713 converged ({goal}, iter {it})")
+else:
+    reason = s.get("exit_reason")
+    if reason:
+        print(f"Loop: \u25a0 stopped: {reason} ({goal}, iter {it})")
+    else:
+        print(f"Loop: \u27f3 running ({goal}, iter {it})")
+PYEOF
+)
+  [[ -n "$LOOP_LINE" ]] && CONTEXT="${CONTEXT}${LOOP_LINE}\n"
 fi
 
 # Next TODO item
@@ -270,7 +286,12 @@ fi
 CONTEXT="${CONTEXT}\nIMPORTANT: Always respond in the same language the user writes in. If the user writes Chinese, respond in Chinese. If English, respond in English. NEVER respond in Korean under any circumstances.\n"
 
 # Model selection guidance
-CONTEXT="${CONTEXT}\nModel guide: Sonnet 4.6 is optimal for most coding (79.6% SWE-bench, 40% cheaper than Opus). Switch to Opus 4.6 only for: large refactors (10+ files), deep architectural reasoning, or outputs >64K tokens. Use Haiku 4.5 for sub-agents doing mechanical checks. If you detect the user is about to do a complex multi-file refactor on Sonnet, suggest: 'This task may benefit from Opus — run /model to switch.'\n"
+# Named generations, not benchmark scores: the previous text quoted SWE-bench
+# figures for Sonnet 4.6 / Opus 4.6 and was still injected into every session
+# after the aliases moved to Opus 5 / Sonnet 5. The cost ratio below IS
+# checkable — $3/$15 vs $5/$25 per MTok, i.e. 60% — so it stays; the scores
+# do not, because no verified figure for the current generation was to hand.
+CONTEXT="${CONTEXT}\nModel guide: Sonnet is the default for most coding and costs 60% of Opus per token. Switch to Opus for: large refactors (10+ files), deep architectural reasoning, or outputs >64K tokens. Use Haiku for sub-agents doing mechanical checks. If you detect the user is about to do a complex multi-file refactor on Sonnet, suggest: 'This task may benefit from Opus — run /model to switch.'\n"
 
 # Close the loop principle
 CONTEXT="${CONTEXT}\nClose the loop: After completing any task, run the relevant verify command (compile/test/lint) and show its output — don't claim success without evidence. When fixing X, also check if related Y and Z are affected.\n"

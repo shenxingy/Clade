@@ -59,7 +59,16 @@ cd orchestrator && find . \( -name .venv -o -name node_modules -o -name __pycach
 # (115 of the last 133 test-carrying commits here were purely additive).
 # Measured on this repo: fires on ~17% of checked commits. Diagnostic, not a gate
 # — a test that passes at base can be a deliberate characterization test.
-RED_PHASE_PYTHON=orchestrator/.venv/bin/python python3 configs/scripts/red-phase-audit.py 30
+# The interpreter is found automatically; RED_PHASE_PYTHON only overrides it.
+# Pass an absolute path or a repo-relative one — a venv python is a symlink to
+# the system python, so the script uses abspath rather than resolve() to avoid
+# following that link out of the venv.
+python3 configs/scripts/red-phase-audit.py 30
+
+# Ask the instrument whether it can still go red. One positive and one negative
+# control; CI runs this on every push. A harness that cannot fire reports a
+# clean 0% exactly like a clean codebase — this one has done that before.
+python3 configs/scripts/red-phase-audit.py --self-test
 
 # Native Codex plugin — regenerate after changing a shipped canonical skill
 python3 configs/scripts/regen-codex-plugin.py
@@ -229,6 +238,11 @@ cd orchestrator && .venv/bin/python -m pytest tests/ -v
 cd orchestrator && .venv/bin/python evals/run_provider_conformance.py
 cd orchestrator && .venv/bin/python evals/run_hack_eval.py
 
+# 2b. Can the red-phase instrument still go red? One positive and one negative
+#     control. A harness that cannot fire reports a clean 0% exactly like a
+#     clean codebase — this one has shipped that failure before.
+python3 configs/scripts/red-phase-audit.py --self-test
+
 # 3. Shell syntax check (hooks, scripts, installer)
 bash -n configs/hooks/*.sh configs/scripts/*.sh install.sh
 
@@ -264,8 +278,12 @@ python3 configs/scripts/check-arch-map.py
 # 10. Reference resolution — every markdown link, anchor, and path resolves
 python3 configs/scripts/check-references.py
 
-# 11. Shellcheck on the shared gate (CI installs shellcheck; local may not)
-configs/scripts/checks.sh shellcheck configs/scripts/checks.sh
+# 11. Shellcheck (CI installs shellcheck; local may not). The `bash` prefix is
+#     required — checks.sh is mode 100644, so invoking it directly exits 126 —
+#     and the file list must match CI's, which is every hook and script plus
+#     the installer. The line here used to be neither: it ran one file, and
+#     did not run at all.
+bash configs/scripts/checks.sh shellcheck configs/hooks/*.sh configs/scripts/*.sh install.sh
 
 # 12. Every suite the `shell-tests` job runs — all 18, not a convenient subset
 for t in loop checks skill-routing pr-scope-policy audit worktree-env \

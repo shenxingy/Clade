@@ -87,10 +87,13 @@ For most day-to-day work — bug fixes, small features, refactoring, codebase qu
 
 ### `/review`
 **When:** Before releases, after a long sprint, or onboarding to a codebase.
-- **Finds and fixes** (not just reports): file size violations, lint errors, dead code, security issues, doc staleness
-- 8 phases: doc health → goal alignment → code structure → lint → comments → bugs → security → UI
-- Loops until clean — reruns after each fix pass, up to 3 iterations
-- Remaining unfixed issues are written to `## Tech Debt` in TODO.md
+- **Coverage-driven, not free-form**: walks every checkpoint in `VERIFY.md`, testing
+  each scenario end-to-end and fixing failures in-session
+- Converges only when every checkpoint is ✅ (pass) or ⚠ (known limitation) — no
+  ⬜ (untested) or ❌ (fail) may remain
+- Emits `REVIEW_RESULT` / `REMAINING` / `COVERAGE` so a loop can act on the outcome
+- **NOT** the Claude Code built-in `/review`, which reviews a single PR diff. For a
+  PR, use `/review-pr` or the built-in.
 
 ### `/review-pr NUMBER`
 **When:** Before merging a pull request.
@@ -153,7 +156,10 @@ For most day-to-day work — bug fixes, small features, refactoring, codebase qu
 ### `/commit`
 **When:** Ready to commit.
 - Analyzes all uncommitted changes, splits into logical commits by module
-- Pushes by default; `--no-push` to skip, `--dry-run` to preview
+- Does **not** push by default. Publication requires `--publish`, or a recorded
+  task-request / repository-policy authority — see `configs/skills/commit/prompt.md` §6.
+  `--candidate` binds verification to the final SHA; `--dry-run` previews.
+  (`--no-push` never existed; `docs/how-it-works.md:82` had this right all along.)
 
 ### `/sync`
 **When:** End of every coding session.
@@ -187,3 +193,47 @@ For most day-to-day work — bug fixes, small features, refactoring, codebase qu
 **When:** Controlling the statusline display.
 - `slt` cycles through modes: symbol → percent → number → off
 - `slt theme` lists themes; `slt theme <name>` sets one
+
+## Content families
+
+Moved out of the README on 2026-08-29 — it is a landing page, not a
+reference manual (`configs/CLAUDE.md`).
+
+## Blog & Content (30 skills)
+
+| Skill | What it does |
+|-------|-------------|
+| `/blog` | Full lifecycle — brief → outline → write → SEO check |
+| `/blog-write` | Write SERP-informed articles from scratch |
+| `/blog-rewrite` | Optimize existing posts for quality and SEO |
+| `/blog-audit` | Full-site health scan (thin content, meta, cannibalization) |
+| + 26 more | analyze · audio · brand · brief · calendar · cannibalization · chart · cluster · discourse · factcheck · flow · geo · google · image · locale-audit · localize · multilingual · notebooklm · outline · persona · repurpose · schema · seo-check · strategy · taxonomy · translate |
+
+## SEO (25 skills)
+
+| Skill | What it does |
+|-------|-------------|
+| `/seo` | Full SEO audit suite |
+| `/seo-technical` | Crawlability, indexability, Core Web Vitals |
+| `/seo-page` | Deep single-page analysis |
+| `/seo-content` | E-E-A-T and content quality scoring |
+| + 21 more | audit · backlinks · cluster · competitor-pages · content-brief · dataforseo · drift · ecommerce · flow · geo · google · hreflang · image-gen · images · local · maps · plan · programmatic · schema · sitemap · sxo |
+
+## Paid Ads (23 skills)
+
+| Skill | What it does |
+|-------|-------------|
+| `/ads` | Multi-platform ads audit suite |
+| `/ads-google` | Google Ads — Quality Score, PMax, bidding |
+| `/ads-meta` | Meta Ads — Pixel/CAPI, creative fatigue, Advantage+ |
+| `/ads-create` | Create new ad campaigns from brief |
+| + 19 more | amazon · apple · attribution · audit · budget · competitor · creative · dna · generate · landing · linkedin · math · microsoft · photoshoot · plan · server-side-tracking · test · tiktok · youtube |
+
+## Email (6 skills)
+
+| Skill | What it does |
+|-------|-------------|
+| `/email-write` | Compose high-converting emails (PAS, AIDA, BAB frameworks) |
+| `/email-audit` | Deliverability audit — SPF, DKIM, DMARC, blacklists, health score |
+| `/email-sequence` | Design automation sequences (welcome, nurture, re-engagement) |
+| + 3 more | check · plan · review |

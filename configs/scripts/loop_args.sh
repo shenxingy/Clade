@@ -81,7 +81,7 @@ Usage: loop-runner.sh GOAL_FILE [options]
 GOAL_FILE may appear before or after the options.
 
 Options:
-  --model MODEL         supervisor model (default: claude-sonnet-4-6)
+  --model MODEL         supervisor model (default from models.env)
   --worker-model MODEL  worker model (default: same as supervisor)
   --max-iter N          max iterations (default: 10)
   --max-runtime N       wall-clock minutes before the loop stops between
@@ -101,4 +101,10 @@ Options:
   --dry-run             preview iteration plan, no claude calls
   --resume              resume an identity-matched interrupted run
 EOF
+  # The block above is a quoted heredoc, so it cannot show what the defaults
+  # actually resolve to on this install. Printing them separately is the only
+  # way `--help` can be checked against models.env rather than against a
+  # literal someone has to remember to update.
+  printf '\nResolved on this install:\n  supervisor model      %s\n  worker model          %s\n' \
+    "${SUPERVISOR_MODEL:-unset}" "${WORKER_MODEL:-unset}"
 }

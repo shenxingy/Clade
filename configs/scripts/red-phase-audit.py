@@ -36,18 +36,29 @@ from pathlib import Path
 
 REPO = os.environ.get("RED_PHASE_REPO", os.getcwd())
 # The project's own interpreter, because the tests need the project's deps.
-PYTHON = os.environ.get("RED_PHASE_PYTHON") or (
+# Resolved to an ABSOLUTE path: pytest runs with cwd inside a throwaway
+# worktree, so the relative form CLAUDE.md documented
+# (`RED_PHASE_PYTHON=orchestrator/.venv/bin/python`) raised FileNotFoundError
+# on the first commit and took the whole audit with it.
+_python = os.environ.get("RED_PHASE_PYTHON") or (
     str(Path(REPO) / "orchestrator" / ".venv" / "bin" / "python")
     if (Path(REPO) / "orchestrator" / ".venv" / "bin" / "python").exists()
     else sys.executable
 )
+# abspath, NOT resolve(): a venv interpreter is usually a symlink to the system
+# python, and resolving it follows that link out of the venv — turning
+# `orchestrator/.venv/bin/python` into `/usr/bin/python3.12`, which has no
+# pytest, and reporting every commit as "no result line". A venv works by the
+# path you invoke, not by the binary's identity.
+PYTHON = _python if os.path.isabs(_python) else os.path.abspath(os.path.join(REPO, _python))
 SUBDIR = os.environ.get("RED_PHASE_SUBDIR", "orchestrator")
 TEST_PATH = re.compile(r"(^|/)tests?/.*\.py$|(^|/)test_[^/]+\.py$|_test\.py$")
 ADDED_DEF = re.compile(r"^\+\s*def (test_[A-Za-z0-9_]+)")
 
 
-def git(args, cwd=REPO, timeout=120):
-    p = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, timeout=timeout)
+def git(args, cwd=None, timeout=120):
+    p = subprocess.run(["git", *args], cwd=cwd or REPO, capture_output=True,
+                       text=True, timeout=timeout)
     return p.returncode, p.stdout, p.stderr
 
 
@@ -94,6 +105,11 @@ def run_at_base(sha, files_and_tests, workdir):
         orch = Path(workdir) / SUBDIR if SUBDIR else Path(workdir)
         if not orch.is_dir():
             return 0, 0, f"no {SUBDIR} dir at base"
+        # Tests outside SUBDIR cannot be addressed from this cwd. Name that
+        # reason: it is a scope limit, not a collection failure, and lumping
+        # the two hid how much of the tree this audit never looks at.
+        if SUBDIR and all(not p.startswith(SUBDIR + "/") for p in files_and_tests):
+            return 0, 0, f"out of scope: tests live outside {SUBDIR}/"
         proc = subprocess.run(
             # No --timeout: pytest-timeout is not installed in this venv, and an
             # unrecognized argument makes pytest exit with a usage error that
@@ -121,7 +137,104 @@ def run_at_base(sha, files_and_tests, workdir):
         git(["worktree", "remove", "--force", str(workdir)])
 
 
+def self_test() -> int:
+    """Prove the harness can fire, and can decline to.
+
+    A measurement instrument that cannot go red is indistinguishable from a
+    clean codebase — this script has already shipped that failure once (see
+    the note beside the pytest invocation above: an unrecognised argument made
+    every commit report 0 passed, and the 0% fire rate read as good news).
+    So: build a throwaway repo with one commit whose added test genuinely
+    needs the change, and one whose added test does not, then assert the
+    audit distinguishes them.
+
+    Exits non-zero if either control is wrong.
+    """
+    global REPO, SUBDIR
+
+    with tempfile.TemporaryDirectory() as td:
+        repo = Path(td) / "repo"
+        (repo / SUBDIR / "tests").mkdir(parents=True)
+
+        def run(*args):
+            subprocess.run(["git", *args], cwd=str(repo), check=True, capture_output=True)
+
+        run("init", "-q")
+        run("config", "user.email", "t@example.com")
+        run("config", "user.name", "t")
+        (repo / SUBDIR / "conftest.py").write_text("")
+        (repo / SUBDIR / "feature.py").write_text("def answer():\n    return 41\n")
+        (repo / SUBDIR / "tests" / "test_feature.py").write_text(
+            "import sys, pathlib\n"
+            "sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))\n"
+            "from feature import answer\n\n\n"
+            "def test_baseline():\n    assert answer() == 41\n"
+        )
+        run("add", "-A")
+        run("commit", "-q", "-m", "base")
+
+        # NEGATIVE control: the added test needs this commit's source change.
+        (repo / SUBDIR / "feature.py").write_text("def answer():\n    return 42\n")
+        (repo / SUBDIR / "tests" / "test_feature.py").write_text(
+            "import sys, pathlib\n"
+            "sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))\n"
+            "from feature import answer\n\n\n"
+            "def test_baseline():\n    assert answer() == 42\n\n\n"
+            "def test_needs_the_change():\n    assert answer() == 42\n"
+        )
+        run("add", "-A")
+        run("commit", "-q", "-m", "real red-phase test")
+        _, out, _ = git(["rev-parse", "HEAD"], cwd=str(repo))
+        sha_red = out.strip()
+
+        # POSITIVE control: the added test passes without any source change.
+        (repo / SUBDIR / "tests" / "test_feature.py").write_text(
+            "import sys, pathlib\n"
+            "sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))\n"
+            "from feature import answer\n\n\n"
+            "def test_baseline():\n    assert answer() == 42\n\n\n"
+            "def test_needs_the_change():\n    assert answer() == 42\n\n\n"
+            "def test_pins_existing_behaviour():\n    assert isinstance(answer(), int)\n"
+        )
+        run("add", "-A")
+        run("commit", "-q", "-m", "test that already passed")
+        _, out, _ = git(["rev-parse", "HEAD"], cwd=str(repo))
+        sha_green = out.strip()
+
+        prev_repo, REPO = REPO, str(repo)
+        try:
+            failures = []
+            for sha, label, want_fire in (
+                (sha_red, "test that needs the change", False),
+                (sha_green, "test that pins existing behaviour", True),
+            ):
+                at = added_tests(sha)
+                passed, total, note = run_at_base(sha, at, Path(td) / f"wt-{sha[:7]}")
+                fired = total > 0 and passed > 0
+                status = "FIRES" if fired else ("clean" if total else f"SKIP ({note})")
+                print(f"  {label:38} -> {status}")
+                if total == 0:
+                    failures.append(f"{label}: harness could not run it ({note})")
+                elif fired != want_fire:
+                    failures.append(
+                        f"{label}: expected {'FIRES' if want_fire else 'clean'}, got {status}"
+                    )
+        finally:
+            REPO = prev_repo
+
+    if failures:
+        print("\nSELF-TEST FAILED — this audit cannot be trusted:")
+        for f in failures:
+            print(f"  {f}")
+        return 1
+    print("\nSELF-TEST PASSED: the harness fires on a test that passes at base, "
+          "and stays clean on one that does not.")
+    return 0
+
+
 def main():
+    if "--self-test" in sys.argv:
+        return self_test()
     limit = int(sys.argv[1]) if len(sys.argv) > 1 else 40
     _, log, _ = git(["log", "-n", "400", "--format=%H", "--no-merges"])
     shas = [s for s in log.split() if s]
@@ -140,6 +253,7 @@ def main():
     fired = 0
     checked = 0
     skipped = 0
+    skip_reasons: dict[str, int] = {}
     hits = []
     with tempfile.TemporaryDirectory() as td:
         for i, (sha, at) in enumerate(sample, 1):
@@ -147,6 +261,7 @@ def main():
             passed, total, note = run_at_base(sha, at, wd)
             if total == 0:
                 skipped += 1
+                skip_reasons[note.split(":")[0]] = skip_reasons.get(note.split(":")[0], 0) + 1
                 print(f"  [{i:>2}/{len(sample)}] {sha[:9]}  SKIP  {note}")
                 continue
             checked += 1
@@ -158,8 +273,13 @@ def main():
             print(f"  [{i:>2}/{len(sample)}] {sha[:9]}  {passed}/{total} added tests already pass at base{flag}")
 
     print(f"\n{'='*70}")
-    print(f"checked {checked} commits ({skipped} skipped: no runnable node ids at base)")
+    print(f"checked {checked} commits, skipped {skipped}")
+    for reason, n in sorted(skip_reasons.items(), key=lambda kv: -kv[1]):
+        print(f"    {n:>3}  {reason}")
     print(f"FIRED on {fired} ({fired/max(1,checked)*100:.0f}% of checked)")
+    print(f"\nSCOPE: python tests under {SUBDIR}/ only. Shell suites in tests/ "
+          f"({len(list((Path(REPO) / 'tests').glob('test-*.sh')))} of them) are not "
+          "measured by this audit at all.")
     if hits:
         print("\nCommits whose added tests already passed before the change:")
         for sha, p, t, at in hits[:10]:
@@ -170,4 +290,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main() or 0)

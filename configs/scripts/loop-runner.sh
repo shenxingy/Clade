@@ -21,7 +21,7 @@
 #   loop-runner.sh --help
 #
 # Options:
-#   --model MODEL         supervisor model (default: claude-sonnet-4-6)
+#   --model MODEL         supervisor model (default: $MODEL_SONNET from models.env)
 #   --worker-model MODEL  worker model (default: same as supervisor)
 #   --max-iter N          max iterations (default: 10)
 #   --max-workers N       max parallel workers (default: 4)
@@ -90,9 +90,18 @@ readonly MAX_FIX_ATTEMPTS=1             # syntax fix: max 1 LLM call per iter
 # ────────────────────────────────────────────────────────────────
 
 # ─── DEFAULTS ───────────────────────────────────────────────────
+# models.env says "source this file instead of hardcoding" — and until
+# 2026-08-29 install.sh was its only consumer, while the loop that actually
+# runs pinned claude-sonnet-4-6 here. That left the shell layer two model
+# generations behind orchestrator/config.py with nothing comparing them.
+# One path covers both layouts: ~/.claude/scripts/.. and <repo>/configs/scripts/..
+# both resolve to the directory holding models.env. The literal fallback below
+# keeps a detached copy of this script starting.
+# shellcheck source=/dev/null
+[ -f "$_SELF_DIR/../models.env" ] && . "$_SELF_DIR/../models.env"
 GOAL_FILE=""
-SUPERVISOR_MODEL="claude-sonnet-4-6"
-WORKER_MODEL="claude-sonnet-4-6"
+SUPERVISOR_MODEL="${MODEL_SONNET:-claude-sonnet-5}"
+WORKER_MODEL="${MODEL_SONNET:-claude-sonnet-5}"
 MAX_ITER=10
 MAX_WORKERS=4
 # Wall-clock bound. Iteration count is NOT a time bound — a single iteration
@@ -920,6 +929,12 @@ if state.get('stop'):
 state['iteration'] = iteration
 state['commits_this_iter'] = commits
 state['goal_file'] = goal_file
+# Published on every write so consumers can always read it. Until 2026-08-29
+# `converged` existed nowhere: `exit_reason` was a shell local, so the two
+# readers of this file could not distinguish a running loop from a finished
+# one and rendered nothing at all.
+state.setdefault('converged', False)
+state.setdefault('exit_reason', None)
 history = state.get('history', [])
 history.append({'iter': iteration, 'commits': commits})
 state['history'] = history[-20:]  # keep last 20
@@ -1029,9 +1044,28 @@ _check_convergence() {
 }
 
 # ─── GENERATE LOOP REPORT ────────────────────────────────────────
+# Record the terminal verdict in the state file. Every exit path reaches
+# generate_loop_report, so this is the one place that sees the outcome.
+_persist_exit_state() {
+  local reason="$1"
+  [ -f "$STATE_FILE" ] || return 0
+  python3 - "$STATE_FILE" "$reason" <<'PYTHON_EOF'
+import json, sys
+state_file, reason = sys.argv[1], sys.argv[2]
+try:
+    state = json.load(open(state_file))
+except Exception:
+    sys.exit(0)
+state['exit_reason'] = reason or None
+state['converged'] = (reason == 'converged')
+json.dump(state, open(state_file, 'w'), indent=2)
+PYTHON_EOF
+}
+
 generate_loop_report() {
   local total_iterations="$1"
   local exit_reason="$2"
+  _persist_exit_state "$exit_reason"
 
   log_info ""
   log_info "═══════════════════════════════════════════════"

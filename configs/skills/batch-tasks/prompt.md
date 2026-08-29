@@ -109,7 +109,7 @@ When the user provides quoted task descriptions:
 | `sonnet` | $3/$15 MTok | 2-8 files, standard features, clear patterns | New API endpoint, add component, form with validation, multi-file feature |
 | `opus` | $5/$25 MTok | 5+ files, architectural, deep reasoning needed | Large refactor, cross-cutting concerns, complex state management, ambiguous "improve X" tasks |
 
-**Cost-performance rule**: Sonnet 4.6 scores 79.6% on SWE-bench vs Opus 4.6's 80.8% — only 1.2 pts difference at 60% of the cost. Default to `sonnet`. Reserve `opus` for tasks that genuinely require deep multi-file reasoning or very long outputs (>64K tokens). Use `haiku` aggressively — it handles mechanical tasks well and costs 1/3 of Sonnet.
+**Cost-performance rule**: Sonnet costs 60% of Opus per token ($3/$15 vs $5/$25 per MTok, verified 2026-08-29 against `orchestrator/config.py:_MODEL_RATES`), and the coding gap between the tiers is small. Default to `sonnet`. Reserve `opus` for tasks that genuinely require deep multi-file reasoning or very long outputs (>64K tokens). Use `haiku` aggressively — it handles mechanical tasks well and costs a third of Sonnet.
 
 5. **Assign timeout and retries** based on task scope:
 
