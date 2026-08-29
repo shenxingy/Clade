@@ -108,7 +108,7 @@ def run_at_base(sha, files_and_tests, workdir):
         # Tests outside SUBDIR cannot be addressed from this cwd. Name that
         # reason: it is a scope limit, not a collection failure, and lumping
         # the two hid how much of the tree this audit never looks at.
-        if all(not p.startswith(SUBDIR + "/") for p in files_and_tests):
+        if SUBDIR and all(not p.startswith(SUBDIR + "/") for p in files_and_tests):
             return 0, 0, f"out of scope: tests live outside {SUBDIR}/"
         proc = subprocess.run(
             # No --timeout: pytest-timeout is not installed in this venv, and an
