@@ -25,12 +25,13 @@ alphabetised into noise.
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-ORCHESTRATOR = REPO_ROOT / "orchestrator"
+CONFIG_PY = REPO_ROOT / "orchestrator" / "config.py"
 TEMPLATE = REPO_ROOT / "templates" / "orchestrator-settings.example.json"
 
 HEADER_KEY = "_comment"
@@ -44,10 +45,22 @@ HEADER = (
 
 
 def settings_defaults() -> dict:
-    sys.path.insert(0, str(ORCHESTRATOR))
-    import config  # type: ignore[import-not-found]  # noqa: E402 — path set above
+    """Read _SETTINGS_DEFAULTS without importing config.
 
-    return dict(config._SETTINGS_DEFAULTS)
+    Importing it pulls in aiosqlite, which the `syntax-check` job does not
+    install — the first CI run of this gate failed on exactly that while
+    passing locally, because this machine happened to have aiosqlite
+    system-wide. Every other gate in configs/scripts/ is stdlib-only for the
+    same reason, so this one parses the literal instead.
+    """
+    tree = ast.parse(CONFIG_PY.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name) and target.id == "_SETTINGS_DEFAULTS":
+                return dict(ast.literal_eval(node.value))
+    raise SystemExit(f"_SETTINGS_DEFAULTS not found in {CONFIG_PY}")
 
 
 def expected() -> dict:
