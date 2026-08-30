@@ -5,6 +5,36 @@
 > lives in [TODO.md](TODO.md). Decided 2026-08-29.
 
 ---
+### 2026-08-30 — Software-Fundamentals Review (Ng, *AI Engineering Skills Map*)
+
+Read the article's five areas against this repository and checked each claim
+against the tree rather than agreeing with it in prose. Most of it described
+things already in place; one item was a real hole.
+
+- **Shipped (`#88`):** four GitHub Action references were pinned to mutable
+  tags while eight others carried full commit SHAs — and the four were both
+  `uses:` in `pr-honeypot-check.yml` and both in `vouch-gate.yml`, the two
+  workflows that run on `pull_request_target` with `issues: write` /
+  `pull-requests: write` against fork PRs. That is the one context where a
+  moved tag executes attacker-influenced code holding this repository's write
+  token. `configs/scripts/check-action-pinning.py` now fails CI on any
+  unpinned reference; local `./` actions are exempt and `docker://` is
+  reported rather than silently passed.
+- **Measured and rejected — database indexing.** The `tasks` table declares no
+  index and `WHERE status = …` is its dominant filter, so `EXPLAIN QUERY PLAN`
+  reports `SCAN tasks`. The largest real `tasks.db` on this machine holds
+  **12 rows**. Indexing that is the premature abstraction this repository's
+  engineering values warn against, so nothing was changed. Recorded here so
+  the finding is not rediscovered and "fixed" later.
+- **Assessed as already covered:** system architecture (strict import DAG with
+  a CI gate, file-size limits, architecture-map coverage), testing strategy,
+  security and reliability (the 2026-08-29 wave), and production operation
+  (`event_stream`, `tracing`, and `notification_webhook` alerting on
+  run_complete / high_failure_rate / loop_converged).
+- **Deferred, with the decisions written down rather than left in a
+  conversation:** see the two 2026-08-30 entries in [TODO.md](TODO.md).
+
+---
 ### 2026-07-29 — Delivery Lifecycle Hardening + Loop Checkpoint Recovery
 
 - Added a safe `abandon` transition to the `delivery` skill controller for
