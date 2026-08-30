@@ -320,12 +320,18 @@ These are judgement calls, not defect fixes: each has a working mechanism and a
 default someone has to choose. Full context and the rejected-candidate list:
 [2026-08-29-ecosystem-audit.md](docs/research/2026-08-29-ecosystem-audit.md).
 
-- [ ] **Decide `worker_env_deny`'s default.** It is `[]`, so the mechanism that
-  strips secrets from an untrusted-text worker's environment has never applied
-  — while workers spawn with permissions bypassed. Picking the list is a call
-  about this machine: `GH_TOKEN` is needed for push, `ANTHROPIC_API_KEY`
-  conditionally, and a wrong entry breaks workers silently. Candidate start:
-  `TG_BOT_TOKEN`, `AWS_*`, `GOOGLE_*`, `MINIMAX_API_KEY`.
+- [x] **`worker_env_deny` — decided 2026-08-29: match on SHAPE, not on names.**
+  An enumeration goes stale the moment a new secret variable appears, and a
+  stale denylist reads exactly like a working one — which is how `[]` survived
+  as the default for its whole life. Now `*_API_KEY`, `*_SECRET`, `*_TOKEN`,
+  `*_PASSWORD`, `*_CREDENTIALS`, `*_PRIVATE_KEY`, `AWS_*`, `GOOGLE_*`, `GCP_*`,
+  `AZURE_*` as fnmatch patterns, with `worker_env_allow`
+  (`GH_TOKEN`, `GITHUB_TOKEN`) winning over them so a machine that authenticates
+  `gh` by env var keeps its push. `ANTHROPIC_API_KEY` is deliberately not
+  allow-listed: `worker_provider.apply_connection_env` re-injects it from the
+  selected profile *after* the filter, and a test pins that ordering.
+  **Operators upgrading:** a live `~/.claude/orchestrator-settings.json` that
+  pins `"worker_env_deny": []` overrides this and keeps the control off.
 - [ ] **Decide whether to sandbox the spawn chokepoint.** The git-control-surface
   escape (an agent writing `<main>/.git/hooks/pre-commit` from its worktree) is
   DETECTED by `worker_git_surface_guard`, not prevented — a worker must be able

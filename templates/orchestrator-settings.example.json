@@ -38,7 +38,24 @@
   "stuck_timeout_minutes": 15,
   "cost_budget": 0,
   "worker_token_budget": 0,
-  "worker_env_deny": [],
+  "worker_env_deny": [
+    "*_API_KEY",
+    "*_APIKEY",
+    "*_SECRET",
+    "*_SECRET_*",
+    "*_TOKEN",
+    "*_PASSWORD",
+    "*_CREDENTIALS",
+    "*_PRIVATE_KEY",
+    "AWS_*",
+    "GOOGLE_*",
+    "GCP_*",
+    "AZURE_*"
+  ],
+  "worker_env_allow": [
+    "GH_TOKEN",
+    "GITHUB_TOKEN"
+  ],
   "notification_webhook": "",
   "auto_scale": false,
   "min_workers": 1,

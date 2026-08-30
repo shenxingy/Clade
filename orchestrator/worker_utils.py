@@ -986,6 +986,20 @@ async def preserve_worktree_wip(
         return None
 
 
+def _as_env_patterns(value: Any) -> list[str]:
+    """Normalise a settings value into a list of fnmatch patterns.
+
+    A bare string would otherwise iterate per character, and a scalar or dict
+    misconfiguration must never crash a spawn — a malformed denylist is a
+    configuration bug, not a reason to stop working.
+    """
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, (list, tuple, set)):
+        return [str(v) for v in value]
+    return []
+
+
 def git_control_surface(git_common_dir: Path | None) -> dict[str, str]:
     """Digest every file that can turn a git command into code execution.
 

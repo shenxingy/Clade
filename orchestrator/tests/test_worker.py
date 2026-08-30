@@ -608,3 +608,100 @@ class TestStopPreservesWork:
         (wt / "work.txt").write_text("work\n")
 
         assert await preserve_worktree_wip(wt, "b1", "stopped"), "hook blocked the rescue"
+
+
+# ─── The denylist ships a real default, and it is shape-based ─────────────────
+
+
+@pytest.fixture
+def shipped_env_policy(monkeypatch):
+    """Pin the SHIPPED defaults, not the operator's live settings file.
+
+    GLOBAL_SETTINGS is a merge of _SETTINGS_DEFAULTS with
+    ~/.claude/orchestrator-settings.json, so without this a machine that pins
+    `worker_env_deny: []` makes these tests pass vacuously — testing the
+    machine rather than the code.
+    """
+    for key in ("worker_env_deny", "worker_env_allow"):
+        monkeypatch.setitem(config.GLOBAL_SETTINGS, key, config._SETTINGS_DEFAULTS[key])
+
+
+def test_the_shipped_default_blocks_real_secret_shapes(
+    tmp_path: Path, monkeypatch, shipped_env_policy
+) -> None:
+    """`worker_env_deny` defaulted to [] for its whole life.
+
+    The mechanism that "strips secrets an untrusted-text worker shouldn't read"
+    therefore never once applied — while workers spawn with permissions
+    bypassed and the webhook could feed them text from a GitHub comment.
+    """
+    for name in (
+        "TG_BOT_TOKEN", "AWS_SECRET_ACCESS_KEY", "GOOGLE_APPLICATION_CREDENTIALS",
+        "MINIMAX_API_KEY", "OPENAI_API_KEY", "DB_PASSWORD", "DEPLOY_PRIVATE_KEY",
+    ):
+        monkeypatch.setenv(name, "leak-me")
+    monkeypatch.setenv("PATH_KEEP_ME", "ok")
+
+    _, env = _worker(tmp_path)._build_cmd_and_env(tmp_path / "t.md")
+
+    for name in (
+        "TG_BOT_TOKEN", "AWS_SECRET_ACCESS_KEY", "GOOGLE_APPLICATION_CREDENTIALS",
+        "MINIMAX_API_KEY", "OPENAI_API_KEY", "DB_PASSWORD", "DEPLOY_PRIVATE_KEY",
+    ):
+        assert name not in env, f"{name} reached the worker"
+    assert env.get("PATH_KEEP_ME") == "ok"
+    assert env.get("PATH"), "the denylist must not strip the environment it needs to run"
+
+
+def test_a_secret_nobody_listed_is_still_blocked(
+    tmp_path: Path, monkeypatch, shipped_env_policy
+) -> None:
+    """The point of matching on shape: an enumeration goes stale silently.
+
+    A stale denylist reads exactly like a working one, which is how the [] default
+    survived. `*_API_KEY` covers the key that has not been invented yet.
+    """
+    monkeypatch.setenv("SOME_VENDOR_NOBODY_LISTED_API_KEY", "leak-me")
+    _, env = _worker(tmp_path)._build_cmd_and_env(tmp_path / "t.md")
+    assert "SOME_VENDOR_NOBODY_LISTED_API_KEY" not in env
+
+
+def test_the_allowlist_wins_so_push_keeps_working(
+    tmp_path: Path, monkeypatch, shipped_env_policy
+) -> None:
+    """`gh` usually reads ~/.config/gh/hosts.yml, but not on every machine.
+
+    On one that uses the env var, a shape-based deny would break the worker's
+    own push — so the exception is explicit rather than a hole in the pattern.
+    """
+    monkeypatch.setenv("GH_TOKEN", "gho_x")
+    monkeypatch.setenv("GITHUB_TOKEN", "ghs_x")
+    _, env = _worker(tmp_path)._build_cmd_and_env(tmp_path / "t.md")
+    assert env.get("GH_TOKEN") == "gho_x"
+    assert env.get("GITHUB_TOKEN") == "ghs_x"
+
+
+def test_anthropic_key_is_re_injected_after_the_filter(
+    tmp_path: Path, monkeypatch, shipped_env_policy
+) -> None:
+    """`*_API_KEY` denies it, and that is fine — the provider runs afterwards.
+
+    `worker_provider.apply_connection_env` pops and re-injects the key from the
+    selected profile AFTER the denylist, so the ordering is what makes the
+    broad pattern safe. If that order ever flips, workers lose their credential.
+    """
+    import worker_provider
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-from-env")
+    w = _worker(tmp_path)
+    injected = {}
+
+    def fake_apply(connection, env):
+        injected["saw_denied"] = "ANTHROPIC_API_KEY" not in env
+        env["ANTHROPIC_API_KEY"] = "sk-ant-from-profile"
+
+    monkeypatch.setattr(w._runtime_adapter, "apply_connection_env", fake_apply)
+    _, env = w._build_cmd_and_env(tmp_path / "t.md")
+
+    assert injected["saw_denied"], "the filter must run BEFORE the provider"
+    assert env["ANTHROPIC_API_KEY"] == "sk-ant-from-profile"
