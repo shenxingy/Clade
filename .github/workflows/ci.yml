@@ -117,6 +117,13 @@ jobs:
       - name: Reference resolution
         run: python3 configs/scripts/check-references.py
 
+      # Eight `uses:` lines carried full SHAs; four did not, and those four
+      # were both actions in pr-honeypot-check.yml and both in vouch-gate.yml —
+      # the two workflows that run on pull_request_target with write scopes
+      # against fork PRs. The decision to pin existed; nothing enforced it.
+      - name: Action pinning
+        run: python3 configs/scripts/check-action-pinning.py
+
       # Four root documents described overlapping state and nothing said which
       # one wins, so VISION's milestone table could stop at Phase 13 while TODO
       # tracked a finished Phase 14 and neither file looked wrong. Each now
