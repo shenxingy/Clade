@@ -136,6 +136,7 @@ judge_diversity.py   ← deterministic review checks independent of the LLM orac
 status_snapshot.py   ← provider-neutral status truth rendered by surface adapters
 worker_phase_graph.py ← declared worker/task/loop lifecycle graph (additive observability)
 compatibility_telemetry.py ← secret-free compatibility-window counters
+webhook_trust.py     ← fail-closed actor authorisation for GitHub webhook events (payload-only; no API call to fail open on)
 eval_candidates.py   ← validated identifiers + digests for quarantined eval candidates
 eval_metrics.py      ← read-only, denominator-explicit evidence/eval quality metrics
     ↑
@@ -210,6 +211,7 @@ CI's "Architecture map coverage" gate fails on any module missing from this file
 | `routes/tasks.py` | Task CRUD, bulk actions, and on-demand verified evidence attempts |
 | `routes/workers.py` | Worker control + inspection routes (9 handlers) |
 | `routes/ideas.py` | Ideas API routes (CRUD, evaluate, execute, promote) |
+| `webhook_trust.py` | `is_trusted_actor` — a signature proves the event came from GitHub, not that its author may direct a permission-bypassed worker |
 | `routes/usage.py` | Usage dashboard API routes |
 | `web/src/` | Vite + React + TypeScript UI source (App.tsx, components/, stores/, hooks/, lib/) |
 | `web/index.html` | Vite shell (`<div id="root">` + main.tsx); server serves `web/dist` build when present |

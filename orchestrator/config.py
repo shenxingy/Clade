@@ -173,6 +173,11 @@ _SETTINGS_DEFAULTS = {
     "auto_scale": False,
     "min_workers": 1,
     "webhook_secret": "",
+    # Accept GitHub webhook events with no signature. Off: an unsigned event is
+    # rejected instead of merely warned about. The endpoint queues work that
+    # auto_start spawns with permissions bypassed, and start.sh binds 0.0.0.0
+    # on a Tailscale host, so "warn and continue" was never a control.
+    "webhook_allow_unauthenticated": False,
     "coverage_scan": False,
     "dep_update_scan": False,
     "mutation_scan": False,  # patrol lane: mutmut survivors → test-gap tasks (ratchet)

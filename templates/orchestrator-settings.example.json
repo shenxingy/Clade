@@ -43,6 +43,7 @@
   "auto_scale": false,
   "min_workers": 1,
   "webhook_secret": "",
+  "webhook_allow_unauthenticated": false,
   "coverage_scan": false,
   "dep_update_scan": false,
   "mutation_scan": false,

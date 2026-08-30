@@ -336,11 +336,15 @@ default someone has to choose. Full context and the rejected-candidate list:
   `VISION.md`, `IMPLEMENTATION_PLAN.md` and `PROGRESS.md` track overlapping
   state. `IMPLEMENTATION_PLAN`'s stale block is now scoped rather than deleted,
   but nothing says which file wins.
-- [ ] **Decide the webhook's authorisation posture.** `routes/webhooks.py`
-  verifies an HMAC signature, but `webhook_secret` defaults to `""` and the
-  verifier then returns `True`. It warns on every request, so this reads as
-  deliberate — but even a valid signature carries no ACTOR check, so any GitHub
-  user's comment is as authorised as the operator's.
+- [x] **Webhook authorisation — decided 2026-08-29: fail closed, and check the
+  actor.** An unsigned event is now refused rather than warned about
+  (`webhook_allow_unauthenticated` opts back in, deliberately), and
+  `webhook_trust.is_trusted_actor` requires repo write access or an explicit
+  vouch before any event can queue work. Bots are refused however they present.
+  It fails CLOSED where `configs/scripts/vouch_check.py` fails OPEN — that
+  script decides whether to close an issue; this one decides whether to hand
+  someone an agent — and a test pins that their shared `TRUSTED_ASSOCIATIONS`
+  has not drifted.
 
 ### Follow-on delivery hardening — 2026-07-29
 

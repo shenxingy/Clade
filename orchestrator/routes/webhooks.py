@@ -10,6 +10,7 @@ import logging
 from fastapi import APIRouter, Header, HTTPException, Request
 
 from config import GLOBAL_SETTINGS
+from webhook_trust import is_trusted_actor
 from session import registry
 
 logger = logging.getLogger(__name__)
@@ -42,8 +43,17 @@ async def github_webhook(
     body = await request.body()
     secret = GLOBAL_SETTINGS.get("webhook_secret", "")
 
+    # Fail closed. This used to warn and continue, which is not a control: the
+    # endpoint queues work that auto_start spawns with permissions bypassed, and
+    # on a Tailscale host start.sh binds 0.0.0.0 rather than loopback.
     if not secret:
-        logger.warning("webhook_secret not configured — webhook endpoint is unauthenticated")
+        if not GLOBAL_SETTINGS.get("webhook_allow_unauthenticated", False):
+            logger.error(
+                "webhook rejected: webhook_secret is not configured. Set it, or set "
+                "webhook_allow_unauthenticated to accept unsigned events deliberately."
+            )
+            raise HTTPException(status_code=403, detail="Webhook not configured")
+        logger.warning("webhook_secret not configured — accepting unsigned events by setting")
     if secret and not _verify_signature(body, x_hub_signature_256, secret):
         raise HTTPException(status_code=403, detail="Invalid webhook signature")
 
@@ -55,6 +65,16 @@ async def github_webhook(
     session = registry.default()
     if session is None:
         raise HTTPException(status_code=503, detail="No active session")
+
+    # A valid signature proves the event came from GitHub, not that its AUTHOR
+    # may direct an agent. Any user could comment "/claude …" on a watched repo
+    # and have that text reach a permission-bypassed worker.
+    trusted, trust_reason = is_trusted_actor(
+        x_github_event, payload, getattr(session, "project_dir", None)
+    )
+    if not trusted:
+        logger.warning("webhook rejected: untrusted actor — %s", trust_reason)
+        raise HTTPException(status_code=403, detail="Untrusted actor")
 
     task_queue = session.task_queue
     description: str | None = None
