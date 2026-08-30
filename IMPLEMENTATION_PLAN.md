@@ -1,5 +1,10 @@
 # Implementation Plan: 2026-H2 Evidence-Driven Agent Harness
 
+> **Role: a completed, dated plan — history, not a backlog.** Its Status header
+> records that every numbered step landed. Open work lives in
+> [TODO.md](TODO.md); counts stated inside this file are snapshots of when it
+> was written, not current state. Decided 2026-08-29.
+
 ## Status (audited 2026-07-29)
 
 Every numbered step in the Execution Order below has landed. The plan's own

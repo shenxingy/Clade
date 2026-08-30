@@ -1,5 +1,11 @@
 # TODO — Clade
 
+> **This file is the single source of open work.** An unchecked `- [ ]` here
+> is the only thing that means "not done yet". `VISION.md` says why the system
+> exists, `IMPLEMENTATION_PLAN.md` is a completed dated plan, and `PROGRESS.md`
+> is a dated journal — none of them carries open items, and none of them
+> overrides this file. Decided 2026-08-29.
+
 > Vision and architecture: see [VISION.md](VISION.md)
 
 Phases 1–13 complete.
@@ -338,10 +344,19 @@ default someone has to choose. Full context and the rejected-candidate list:
   to write `.git` to commit at all. Landlock, not bubblewrap: this host reports
   `landlock` at ABI 8 while bwrap's user-namespace mode fails under
   `kernel.apparmor_restrict_unprivileged_userns=1`. A project, not a patch.
-- [ ] **Decide which roadmap document is authoritative.** `TODO.md`,
-  `VISION.md`, `IMPLEMENTATION_PLAN.md` and `PROGRESS.md` track overlapping
-  state. `IMPLEMENTATION_PLAN`'s stale block is now scoped rather than deleted,
-  but nothing says which file wins.
+- [x] **Roadmap authority — decided 2026-08-29: this file, and it is checked.**
+  Measured before deciding: of the four, only `TODO.md` carries open items
+  (4 open / 217 done; the other three have zero checkboxes between them), so
+  the de-facto answer was already this file — it just was not written down, and
+  `VISION.md`'s milestone table had silently stopped at Phase 13 while this file
+  tracked a completed Phase 14. Each of the four now opens with a one-line role
+  header, and `configs/scripts/check-roadmap-authority.py` fails if a root
+  roadmap document other than `TODO.md` grows an unchecked `- [ ]`, or if
+  `TODO.md` loses its header. A convention nobody can violate by accident beats
+  a paragraph asking them not to — which is the same reason the doc-count and
+  CI-checklist gates exist. `BRAINSTORM.md` is an inbox, not a roadmap: its two
+  conditional-watch entries were duplicates of items already tracked here, and
+  its own header says an idea is cleared once it lands in `TODO.md`.
 - [x] **Webhook authorisation — decided 2026-08-29: fail closed, and check the
   actor.** An unsigned event is now refused rather than warned about
   (`webhook_allow_unauthenticated` opts back in, deliberately), and
