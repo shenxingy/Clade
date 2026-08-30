@@ -316,9 +316,19 @@ backlog.
   `main`.
 - [ ] **Conditional watch:** add Beads-style agent-filed note-to-self entries
   only when measured loop-runner cross-iteration context loss recurs.
+  *Condition checked 2026-08-29: not triggered — no such loss has been measured
+  since the watch was filed. Still waiting on evidence, not on work.*
 - [ ] **Conditional watch:** after one stable release reports zero compatibility
   events, reject `worker_provider`/task `provider` inputs and rebuild SQLite
   without the historical `tasks.provider` column.
+  *Condition checked 2026-08-29: **not evaluable as written.**
+  `~/.claude/compatibility-telemetry.json` has never existed on this machine and
+  `read_compatibility_telemetry()` returns an empty window without creating it,
+  so "zero events" is indistinguishable from "never observed" — and the second
+  is not grounds for dropping a compatibility path. Discharging this watch needs
+  a window that demonstrably ran: a `window_started_at` at least one release old
+  with the counters present and at zero. Until the file exists, waiting longer
+  produces no evidence.*
 
 ### Open decisions — 2026-08-29 ecosystem audit
 
