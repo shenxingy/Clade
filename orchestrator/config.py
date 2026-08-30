@@ -127,13 +127,26 @@ _SETTINGS_DEFAULTS = {
     # Refuse to verify or commit when an agent modified the PARENT repository's
     # .git/hooks or .git/config. A worktree bounds the working tree, not .git —
     # a hook written from a worktree runs for the operator's next commit in the
-    # main checkout. Detection only; prevention needs an OS sandbox.
+    # main checkout. Detection only — `worker_sandbox` is the prevention, and
+    # this stays useful when that is off or unavailable.
     "worker_git_surface_guard": True,
     # One shadow-repo commit per agent Edit/Write, so "correct at call 14,
     # wrong at 15" is answerable. The repo lives outside the worktree and is
     # deleted with it, so the cost is bounded by one run. Off means a failed
     # attempt can say THAT it failed but never when.
     "worker_checkpoint_shadow": True,
+    # PREVENT the escape worker_git_surface_guard only detects, by making the
+    # parent repo's .git/hooks and .git/config unwritable to the worker via
+    # Landlock. Default OFF because it has a measured cost: `git gc` and
+    # `git pack-refs` fail on the shared repository, and new files cannot be
+    # created directly in the main checkout's root. Ordinary commits from the
+    # worktree are unaffected. Linux 5.13+ only — see worker_sandbox.py.
+    "worker_sandbox": False,
+    # When worker_sandbox is on but Landlock is unavailable, refuse the spawn
+    # rather than running unconfined. Off downgrades the sandbox to best-effort,
+    # which means an operator who asked for confinement may not get it and will
+    # not be told — the failure mode this repository keeps finding.
+    "worker_sandbox_fail_closed": True,
     "run_budget_usd": 0.0,  # max cost per autonomous run (0 = unlimited)
     "run_budget_tokens": 0,  # max tokens per autonomous run (0 = unlimited)
     "auto_oracle": False,

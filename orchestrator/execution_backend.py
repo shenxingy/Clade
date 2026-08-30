@@ -33,6 +33,7 @@ from __future__ import annotations
 import asyncio
 import os
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from typing import Any
 
 
@@ -63,8 +64,14 @@ class ExecutionBackend(ABC):
         stderr: Any,
         env: dict[str, str],
         cwd: str,
+        preexec: Callable[[], None] | None = None,
     ) -> asyncio.subprocess.Process:
-        """Launch ``shell_cmd`` in a fresh process group; return the process."""
+        """Launch ``shell_cmd`` in a fresh process group; return the process.
+
+        ``preexec`` runs between fork and exec and REPLACES the default
+        ``setsid``; an implementation that honours it must document that the
+        hook is responsible for creating the process group.
+        """
 
     @abstractmethod
     def is_alive(self, proc: asyncio.subprocess.Process | None) -> bool:
@@ -100,12 +107,17 @@ class LocalSubprocessBackend(ExecutionBackend):
         stderr: Any,
         env: dict[str, str],
         cwd: str,
+        preexec: Callable[[], None] | None = None,
     ) -> asyncio.subprocess.Process:
+        # `preexec` REPLACES the default rather than running alongside it, so
+        # any caller-supplied hook must call setsid itself — the kill path
+        # signals the process group, and losing it orphans everything the agent
+        # spawned. `worker_sandbox.SandboxPlan.preexec` does exactly that.
         return await asyncio.create_subprocess_shell(
             shell_cmd,
             stdout=stdout,
             stderr=stderr,
-            preexec_fn=os.setsid,
+            preexec_fn=preexec or os.setsid,
             env=env,
             cwd=cwd,
         )
@@ -146,7 +158,7 @@ class ClaudeNativeBackend(ExecutionBackend):
 
     name = "claude-native"
 
-    async def spawn(self, shell_cmd, *, stdout, stderr, env, cwd):  # noqa: D401
+    async def spawn(self, shell_cmd, *, stdout, stderr, env, cwd, preexec=None):  # noqa: D401
         """Reserved for the future in-process runtime — not implemented."""
         raise NotImplementedError("claude-native execution backend is not implemented yet")
 

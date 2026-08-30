@@ -59,6 +59,7 @@ from worker_taskfile import build_task_file
 from event_stream import EventStream
 from worker_envelope import build_from_worker
 import worker_evidence
+import worker_sandbox
 from worker_phase_graph import record_transition, validate_transition
 from handoff_registry import project_handoff, validate_handoff
 from tracing import TracingService, start_task_span
@@ -189,6 +190,8 @@ class Worker:
         self._failure_classified: Any = None
         self._worktree_path: Path | None = None
         self._worktree_error: str = ""
+        # What the Landlock sandbox confined for this spawn (worker_sandbox.describe).
+        self._sandbox: dict = {}
         self._branch_name: str | None = None
         self.own_files: list[str] = []
         self.forbidden_files: list[str] = []
@@ -404,19 +407,54 @@ class Worker:
         self._task_span = start_task_span(self.id, self.description, self.task_id)
         await worker_evidence.append_worker_evidence(self, "running")
 
+    async def _build_sandbox_plan(self) -> tuple[Any, dict]:
+        """Compile the Landlock ruleset for this spawn, if one was asked for.
+
+        Built in the parent so the forked child only pays a `prctl` plus one
+        `landlock_restrict_self`; almost nothing is safe to do between fork and
+        exec, and installing thousands of rules there would be.
+
+        A `SandboxUnavailable` raised under `worker_sandbox_fail_closed`
+        propagates and fails the spawn on purpose — the operator asked for
+        confinement and did not get it.
+        """
+        enabled = bool(GLOBAL_SETTINGS.get("worker_sandbox", False))
+        if not enabled:
+            return None, worker_sandbox.describe(None, "worker_sandbox is off")
+        common = await worker_evidence._git_common_dir(Path(self._project_dir))
+        plan, shape = worker_sandbox.plan_for_git_surface(
+            str(common) if common else None,
+            enabled=True,
+            fail_closed=bool(GLOBAL_SETTINGS.get("worker_sandbox_fail_closed", True)),
+        )
+        if plan is not None:
+            logger.info(
+                "Worker %s: sandboxed with %d Landlock rules (ABI %d), protecting %s",
+                self.id, plan.rule_count, plan.abi, ", ".join(plan.protect),
+            )
+        return plan, shape
+
     async def _spawn_with_redacted_log(
         self, shell_cmd: str, env: dict[str, str], *, append: bool
     ) -> None:
         """Spawn provider output through the redaction boundary before disk."""
         if self._log_path is None:
             raise RuntimeError("worker log path must be initialized before spawn")
-        self.proc = await self._backend.spawn(
-            shell_cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-            env=env,
-            cwd=str(self._project_dir),
-        )
+        plan, self._sandbox = await self._build_sandbox_plan()
+        try:
+            self.proc = await self._backend.spawn(
+                shell_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                env=env,
+                cwd=str(self._project_dir),
+                preexec=plan.preexec() if plan else None,
+            )
+        finally:
+            # The ruleset fd is inherited across fork and consumed before exec,
+            # so it is dead weight in the parent the moment spawn returns.
+            if plan is not None:
+                plan.close()
         self._log_capture_task = asyncio.create_task(
             capture_provider_output(self.proc.stdout, self._log_path, append=append)
         )

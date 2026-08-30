@@ -135,6 +135,7 @@ merge_policy.py      ← truthful pull-request history selection
 judge_diversity.py   ← deterministic review checks independent of the LLM oracle, plus 8 test-integrity signals (counted from the diff, fed to the oracle, never an auto-fail); scored by evals/run_hack_eval.py — 100% recall / 7.1% false alarms on a 30-case adversarial corpus
 status_snapshot.py   ← provider-neutral status truth rendered by surface adapters
 worker_phase_graph.py ← declared worker/task/loop lifecycle graph (additive observability)
+worker_sandbox.py    ← stdlib-only Landlock confinement: makes the shared .git/hooks and .git/config unwritable to a worker (default off)
 compatibility_telemetry.py ← secret-free compatibility-window counters
 webhook_trust.py     ← fail-closed actor authorisation for GitHub webhook events (payload-only; no API call to fail open on)
 eval_candidates.py   ← validated identifiers + digests for quarantined eval candidates
@@ -195,6 +196,7 @@ CI's "Architecture map coverage" gate fails on any module missing from this file
 | `worker_pool.py` | `WorkerPool` — worker scheduling and polling. `worker.py` subclasses it to bind its own `Worker`, which keeps privately-loaded test copies private |
 | `worker_taskfile.py` | `build_task_file` — task file construction + context injection |
 | `worker_runtime.py` | Runtime route resolution and fail-closed task outcome persistence |
+| `worker_sandbox.py` | Landlock ruleset that PREVENTS the git control-surface escape `worker_git_surface_guard` only detects (`worker_sandbox`, default off) |
 | `worker_evidence.py` | Evidence attempt lifecycle, Git/test/oracle/cost/artifact projection, and terminal delivery candidate |
 | `worker_tldr.py` | `_generate_code_tldr`, `_score_task` — TLDR + scoring (leaf) |
 | `agent_output.py` | `parse_agent_output` / `absorb_agent_result` — the agent's self-reported `total_cost_usd` and usage, and the prose projection every log consumer reads (leaf) |

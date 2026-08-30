@@ -16,6 +16,8 @@
   "worker_require_worktree": true,
   "worker_git_surface_guard": true,
   "worker_checkpoint_shadow": true,
+  "worker_sandbox": false,
+  "worker_sandbox_fail_closed": true,
   "run_budget_usd": 0.0,
   "run_budget_tokens": 0,
   "auto_oracle": false,
