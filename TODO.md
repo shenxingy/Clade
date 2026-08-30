@@ -338,12 +338,26 @@ default someone has to choose. Full context and the rejected-candidate list:
   selected profile *after* the filter, and a test pins that ordering.
   **Operators upgrading:** a live `~/.claude/orchestrator-settings.json` that
   pins `"worker_env_deny": []` overrides this and keeps the control off.
-- [ ] **Decide whether to sandbox the spawn chokepoint.** The git-control-surface
-  escape (an agent writing `<main>/.git/hooks/pre-commit` from its worktree) is
-  DETECTED by `worker_git_surface_guard`, not prevented — a worker must be able
-  to write `.git` to commit at all. Landlock, not bubblewrap: this host reports
-  `landlock` at ABI 8 while bwrap's user-namespace mode fails under
-  `kernel.apparmor_restrict_unprivileged_userns=1`. A project, not a patch.
+- [x] **Spawn sandbox — decided 2026-08-29: built, and shipped default off.**
+  It was recorded here as "a project, not a patch" on the belief that Landlock
+  could not express "`.git` writable, `.git/hooks` not" — it is allow-list only,
+  and a rule covers a whole hierarchy. **That belief was wrong, and measuring it
+  is what showed so:** the hole is cut by walking from `/` to the protected path
+  and allowing every sibling at each level, which leaves the blast radius at
+  exactly the named paths. `orchestrator/worker_sandbox.py` protects the shared
+  `.git/hooks` *and* `.git/config` (`core.hooksPath` reaches the same outcome by
+  another route), applied at the one spawn chokepoint via `preexec_fn`. The
+  ruleset is compiled in the parent, so the forked child pays only a `prctl` and
+  one `landlock_restrict_self`.
+  **Default off, because the cost is real and measured:** `git gc` and
+  `git pack-refs` fail on the shared repository (both create a lock file
+  directly in `.git`, and granting that would grant `.git/hooks` too), and new
+  files cannot be created directly in the main checkout's root. Ordinary
+  commits from the worktree are unaffected — the tests pin all of it, costs
+  included. `worker_sandbox_fail_closed` (default on) refuses the spawn rather
+  than running unconfined when Landlock is unavailable.
+  `worker_git_surface_guard` stays: it is the detection that still works when
+  this is off, or on a kernel without Landlock.
 - [x] **Roadmap authority — decided 2026-08-29: this file, and it is checked.**
   Measured before deciding: of the four, only `TODO.md` carries open items
   (4 open / 217 done; the other three have zero checkboxes between them), so
