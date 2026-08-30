@@ -55,6 +55,11 @@ The gaps cluster into 5 themes. This is the strategic read — *where the most e
 
 Grouped by [watch-list](../who-to-learn-from.md) tier. `Gaps` = count of open `needs_work_items`.
 
+### Ecosystem audit (2026-08-29)
+| Source | Status | Gaps | Core lesson | Doc |
+|--------|--------|------|-------------|-----|
+| **Three rounds + doc audit** | 🔨 | 10 | Almost nothing upstream was a capability Clade lacked; ~90 candidates yielded 20 defects **in Clade**, nearly all of one shape — a control that exists, is documented as working, and never applies. The counter is a gate that RUNS the real thing (load the plugin, read the workflow files, compare `_SETTINGS_DEFAULTS`, run a positive/negative control) rather than asserting about it. Four open decisions are in [TODO.md](../../TODO.md); the eight adversarially-rejected candidates are recorded so they are not re-proposed | [→](2026-08-29-ecosystem-audit.md) |
+
 ### OpenAI + frontier sweep (2026-07-15)
 | Source | Status | Gaps | Core lesson | Doc |
 |--------|--------|------|-------------|-----|
