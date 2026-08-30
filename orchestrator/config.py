@@ -168,7 +168,22 @@ _SETTINGS_DEFAULTS = {
     # hydrating untrusted GitHub issue/PR text; every key listed here is popped
     # from the worker's env before spawn. Default [] = off. Workers still need
     # ANTHROPIC_* / gh creds to function, so deny only truly worker-irrelevant secrets.
-    "worker_env_deny": [],
+    # Shapes, not names. A hand-listed set of secret variables goes stale the
+    # moment a new one appears, and a stale denylist reads exactly like a
+    # working one — this defaulted to [] for its whole life, so the mechanism
+    # that "strips secrets an untrusted-text worker shouldn't read" never once
+    # applied. fnmatch patterns; worker_env_allow wins over these.
+    "worker_env_deny": [
+        "*_API_KEY", "*_APIKEY", "*_SECRET", "*_SECRET_*", "*_TOKEN",
+        "*_PASSWORD", "*_CREDENTIALS", "*_PRIVATE_KEY",
+        "AWS_*", "GOOGLE_*", "GCP_*", "AZURE_*",
+    ],
+    # The few the toolchain genuinely needs back. `gh` normally authenticates
+    # from ~/.config/gh/hosts.yml, but on a machine that uses the env var
+    # instead, denying it would break the worker's own push. ANTHROPIC_API_KEY
+    # is not listed because it does not need to be: worker_provider pops and
+    # re-injects it from the selected profile AFTER this filter runs.
+    "worker_env_allow": ["GH_TOKEN", "GITHUB_TOKEN"],
     "notification_webhook": "",
     "auto_scale": False,
     "min_workers": 1,

@@ -8,6 +8,7 @@ Supporting concerns are extracted into sibling ``worker_*`` and service modules
 from __future__ import annotations
 
 import asyncio
+import fnmatch
 import json
 import logging
 import os
@@ -75,6 +76,7 @@ from worker_utils import (
     _parse_observation_contract, _fallback_commit_cmd, _is_test_file,
     _compute_activity_state, _undo_last_commit,
     _check_file_ownership as _check_ownership_globs,
+    _as_env_patterns,
     _maybe_enqueue_classify_retry,  # re-export: moved to worker_utils (leaf)
     MAX_LINES, MAX_BYTES, DISTILL_THRESHOLD, MAX_REFLECTION_RETRIES,
 )
@@ -300,13 +302,17 @@ class Worker:
             env["CLADE_WORKER_SHADOW_DIR"] = str(self._shadow_repo_path())
             env["CLADE_WORKER_WORKTREE"] = str(self._project_dir)
         # Spawn-time env denylist: strips secrets an untrusted-text worker shouldn't read. Off by default.
-        _deny = GLOBAL_SETTINGS.get("worker_env_deny") or []
-        if isinstance(_deny, str):  # a bare string would iterate per-character
-            _deny = [_deny]
-        elif not isinstance(_deny, (list, tuple, set)):
-            _deny = []  # scalar/dict misconfig → no-op, never crash the spawn
-        for _deny_key in _deny:
-            env.pop(str(_deny_key), None)
+        # Patterns, not an enumeration: a hand-listed set of secret names goes
+        # stale the moment a new one appears, and a stale denylist reads exactly
+        # like a working one. fnmatch means `*_API_KEY` covers the key nobody
+        # has added yet. Allow wins over deny, for the few the toolchain needs.
+        _deny = _as_env_patterns(GLOBAL_SETTINGS.get("worker_env_deny"))
+        _allow = _as_env_patterns(GLOBAL_SETTINGS.get("worker_env_allow"))
+        for _key in list(env):
+            if any(fnmatch.fnmatchcase(_key, p) for p in _deny) and not any(
+                fnmatch.fnmatchcase(_key, p) for p in _allow
+            ):
+                env.pop(_key, None)
         self._runtime_adapter.apply_connection_env(connection, env)
         # The X-Clade-Task traceability trailer makes worker commits segmentable.
         env["CLADE_WORKER_TASK_ID"] = str(self.task_id)
