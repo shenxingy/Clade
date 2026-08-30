@@ -288,6 +288,13 @@ python3 configs/scripts/check-arch-map.py
 # 10. Reference resolution — every markdown link, anchor, and path resolves
 python3 configs/scripts/check-references.py
 
+# 10c. Action pinning — every `uses:` is a commit SHA, never a movable tag.
+#      The repo already pinned 8 of 12; the 4 it missed were exactly the ones in
+#      the two `pull_request_target` workflows, which run with write scopes on
+#      fork PRs. Resolve a tag with:
+#        gh api repos/<owner>/<repo>/git/ref/tags/<tag> -q .object.sha
+python3 configs/scripts/check-action-pinning.py
+
 # 10b. Roadmap authority — TODO.md is the single source of open work; VISION.md,
 #      IMPLEMENTATION_PLAN.md and PROGRESS.md each state their role and carry no
 #      unchecked `- [ ]`. Nothing named a winner before, so VISION's milestone
