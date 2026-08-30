@@ -381,6 +381,32 @@ default someone has to choose. Full context and the rejected-candidate list:
   CI-checklist gates exist. `BRAINSTORM.md` is an inbox, not a roadmap: its two
   conditional-watch entries were duplicates of items already tracked here, and
   its own header says an idea is cleared once it lands in `TODO.md`.
+### Open decisions — 2026-08-30 software-fundamentals review
+
+Both came out of reading Ng's *AI Engineering Skills Map* against this repo
+(journal entry in [PROGRESS.md](PROGRESS.md)). Neither is a defect; each is a
+choice with a real tradeoff, which is why they are recorded instead of built.
+
+- [ ] **Decide whether invariants deserve a declarative home.** The article's
+  sharpest point for a tool that *runs* agents is that an agent makes tradeoff
+  decisions silently and never reports having made one. This repo enforces
+  plenty of invariants — `OWN_FILES`/`FORBIDDEN_FILES`, `worker_git_surface_guard`,
+  `worker_sandbox`, `judge_diversity`'s test-integrity signals, the oracle — but
+  they live scattered across settings, per-task files, and code.
+  `run_contract.py` looks like the natural home and is not: every key on it is
+  an operational knob (`max_concurrency`, `retry`, `backoff`, `oracle_posture`,
+  `auto_merge`), none is a statement of what must remain true.
+  **Not built, deliberately:** collecting them into one declared artifact is an
+  architectural fork with a real cost (a second place for a rule to be wrong,
+  and a migration for every existing control), not a gap with an obvious
+  implementation.
+- [ ] **Decide whether to add dependency/supply-chain scanning.** There is no
+  Dependabot config and no `pip-audit` / `npm audit` / CodeQL step; `#88` closed
+  the *action-pinning* hole but scanning dependencies is a different question.
+  **Not added along with `#88` on purpose:** that PR fixed an inconsistency in a
+  control the repo had already chosen, whereas this would be a new capability
+  with ongoing noise costs, and it deserves its own decision.
+
 - [x] **Webhook authorisation — decided 2026-08-29: fail closed, and check the
   actor.** An unsigned event is now refused rather than warned about
   (`webhook_allow_unauthenticated` opts back in, deliberately), and
