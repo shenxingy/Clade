@@ -286,6 +286,12 @@ python3 configs/scripts/check-arch-map.py
 # 10. Reference resolution — every markdown link, anchor, and path resolves
 python3 configs/scripts/check-references.py
 
+# 10b. Roadmap authority — TODO.md is the single source of open work; VISION.md,
+#      IMPLEMENTATION_PLAN.md and PROGRESS.md each state their role and carry no
+#      unchecked `- [ ]`. Nothing named a winner before, so VISION's milestone
+#      table stopped at Phase 13 while TODO tracked a finished Phase 14.
+python3 configs/scripts/check-roadmap-authority.py
+
 # 11. Shellcheck (CI installs shellcheck; local may not). The `bash` prefix is
 #     required — checks.sh is mode 100644, so invoking it directly exits 126 —
 #     and the file list must match CI's, which is every hook and script plus

@@ -149,11 +149,12 @@ runtime gaps discovered after reconciliation are tracked separately in
   Orchestrator settings to canonical runtime/connection/merge fields, refreshed
   the local Codex plugin cache, and removed completed branch state. Final
   delivery returns to synchronized `main`.
-- [ ] **CONDITIONAL WATCH:** adopt Beads-style agent-filed note-to-self entries
-  only if measured loop-runner context loss recurs.
-- [ ] **CONDITIONAL WATCH:** delete the remaining runtime input aliases and
-  historical SQLite column only after one stable release records zero
-  compatibility events.
+- [x] **PROCESSED 2026-08-29 → [TODO.md](TODO.md):** both conditional watches
+  (Beads-style agent-filed note-to-self entries; deleting the runtime input
+  aliases and historical SQLite column) are tracked there as open items. Per
+  this file's own rule an idea is cleared once it lands in `TODO.md`, and
+  `TODO.md` is now the declared single source of open work — carrying them in
+  two places is how the two copies drift apart.
 
 **Deliberate non-work:** automatic draft-PR publication is **REJECTED
 2026-07-28 by authority design**. Delivery may publish an explicitly authorized

@@ -117,6 +117,13 @@ jobs:
       - name: Reference resolution
         run: python3 configs/scripts/check-references.py
 
+      # Four root documents described overlapping state and nothing said which
+      # one wins, so VISION's milestone table could stop at Phase 13 while TODO
+      # tracked a finished Phase 14 and neither file looked wrong. Each now
+      # declares its role; this keeps open items in exactly one of them.
+      - name: Roadmap authority
+        run: python3 configs/scripts/check-roadmap-authority.py
+
       # CLAUDE.md's pre-commit checklist claims to be what makes CI pass. It
       # had drifted twice (df802c3, then again by 2026-08-29), both times
       # leaving a local run green against a list that did not cover the build.

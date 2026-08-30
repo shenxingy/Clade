@@ -1,5 +1,10 @@
 # VISION — Clade
 
+> **Role: durable intent — why the system exists and what it is for.** It does
+> not track open work; that is [TODO.md](TODO.md), the only file whose `- [ ]`
+> means "not done yet". The milestone table below records phases as they close.
+> Decided 2026-08-29.
+
 ## What This Is
 
 An **AI Software Development Engineer (SDE)** — not a collection of scripts, but a complete system that mirrors how a senior developer works: receive requirements, plan, build, verify, maintain. The human sets direction; the system does everything else.
@@ -298,6 +303,7 @@ start.sh --resume --hours 8         # resume where it left off
 | 11 | Autonomous Lifecycle | /start one-command unattended, /verify testing, 3-tier issues, drift prevention | DONE |
 | 12 | Product Intelligence | UI interaction testing, autonomous work discovery, design constraints, batch feedback | DONE |
 | 13 | AI SDE Operating Console | Ideas mode, process manager, three-mode UI, patrol auto-schedule | DONE |
+| 14 | Coverage-Driven Review | VERIFY.md checkpoint schema + templates, coverage-driven `/review` convergence | DONE |
 
 ---
 

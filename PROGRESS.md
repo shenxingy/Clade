@@ -1,5 +1,9 @@
 # Progress Log
 
+> **Role: a dated journal — what happened, when.** Entries are history and are
+> not stale by virtue of being old; do not read them as current state. Open work
+> lives in [TODO.md](TODO.md). Decided 2026-08-29.
+
 ---
 ### 2026-07-29 — Delivery Lifecycle Hardening + Loop Checkpoint Recovery
 
