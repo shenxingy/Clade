@@ -49,6 +49,7 @@ SKIP_JOBS = {
     "real-api-loop": "key-gated live-API tier (workflow_dispatch/weekly only)",
     "provider-live-anthropic": "key-gated read-only catalog smoke",
     "provider-live-openai": "key-gated read-only catalog smoke",
+    "dependency-audit": "weekly/dispatch only — advisories land without a code change",
 }
 
 # Artefacts CI invokes, recognised by shape. Each pattern's first group is the
@@ -60,7 +61,17 @@ ARTEFACT_PATTERNS = (
     re.compile(r"\b(py_compile)\b"),
     re.compile(r"\b(pytest)\b"),
     re.compile(r"(claude plugin validate)"),
+    re.compile(r"\b(ruff)\b"),
 )
+
+# ARTEFACT_PATTERNS is an ALLOWLIST, and that is this check's own blind spot:
+# a CI step invoking a tool no pattern above names is invisible here, so the
+# gate reports "covers all N gates" while the new step goes undocumented. It
+# happened the day the ruff step landed — `ruff check --config ...` matched
+# nothing, and this script stayed green with the checklist missing it. Adding a
+# new KIND of gate to CI therefore means adding its pattern here in the same
+# commit. Parsing arbitrary shell to do better is not worth it; noticing that
+# the list is a list is.
 
 
 def _job_blocks(text: str) -> dict[str, str]:
