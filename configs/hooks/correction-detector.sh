@@ -39,6 +39,80 @@ if ! $MATCHED; then
   exit 0
 fi
 
+# ─── Redact secrets BEFORE any disk write ─────────────────────────────
+# Everything below persists the prompt: history.jsonl and, further down,
+# cross-project-rules.jsonl. On installs where ~/.claude/corrections is a
+# symlink into a shared mount those files are group-readable at 0664, so a
+# credential pasted into a correction ("no, that's wrong, the key is …") used
+# to land there verbatim and stay. The MODEL still sees the prompt unmasked —
+# it is the user's own message, already in the transcript — only the persisted
+# copy is masked.
+#
+# Placed AFTER the correction gate on purpose: this is a sync UserPromptSubmit
+# hook, and spawning python3 on every prompt (~31ms) would tax the common path
+# that exits above without writing anything.
+#
+# Redact THEN bound (cp_bound_prompt runs later, on PROMPT_SAFE): clipping
+# first can cut a token below its length threshold — `sk-` plus 15 of 20
+# required chars stops matching — and persist a partial credential.
+#
+# The helpers live here rather than in lib/correction-pair.sh so a missing or
+# stale lib cannot silently restore the unmasked write path.
+
+# Fallback DETECTION ERE (POSIX, no \b — mirrors configs/scripts/checks.sh
+# SECRET_ERE plus the sk-/sk_ shapes redact.py knows). Open-ended {N,} counts
+# so a longer token still matches. Used only when python3 or redact.py is
+# unavailable.
+CD_SECRET_ERE='-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16,}|gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,}|sk-ant-[A-Za-z0-9_-]{40,}|sk-(proj-)?[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{35,}|xox[baprs]-[A-Za-z0-9-]{10,}|(sk|rk|ak)_[A-Za-z0-9]{32,}'
+
+# Sibling copy first. The same relative path resolves in BOTH layouts:
+# in-repo configs/hooks/../scripts, installed ~/.claude/hooks/../scripts.
+_cd_redact_py() {
+  local sib
+  sib="$(cd "$(dirname "$0")/../scripts" 2>/dev/null && pwd)"
+  if [[ -n "$sib" && -f "$sib/redact.py" ]]; then
+    printf '%s' "$sib/redact.py"
+  elif [[ -f "$HOME/.claude/scripts/redact.py" ]]; then
+    printf '%s' "$HOME/.claude/scripts/redact.py"
+  fi
+}
+
+# _cd_redact_prompt <text> — echo text with credentials masked. Never fails
+# open: a redact.py that raises on import (a malformed pattern does) exits
+# non-zero, so control falls through to the degraded path below rather than
+# returning the raw text.
+_cd_redact_prompt() {
+  local text="$1" py masked rc
+  py="$(_cd_redact_py)"
+  if [[ -n "$py" ]] && command -v python3 >/dev/null 2>&1; then
+    if masked=$(printf '%s' "$text" | python3 "$py" 2>/dev/null); then
+      printf '%s' "$masked"
+      return 0
+    fi
+  fi
+  # Degraded path: DETECT and withhold, never substitute. A sed replacement
+  # with these patterns would mask only the matched prefix and leave the rest
+  # of the token on disk — `sk_` + 48 hex loses 32 chars and keeps 16 — and a
+  # partial credential is still a credential. It also cannot reach a PEM body,
+  # which sed sees one line at a time. Dropping the text of one correction is
+  # cheaper than persisting any part of a key.
+  printf '%s' "$text" | grep -qE -e "$CD_SECRET_ERE" 2>/dev/null
+  rc=$?
+  if [[ $rc -eq 0 ]]; then
+    printf '[prompt withheld: secret detected, redactor unavailable]'
+  elif [[ $rc -ge 2 ]]; then
+    printf '[prompt withheld: redactor unavailable]'   # grep itself errored
+  else
+    printf '%s' "$text"
+  fi
+}
+
+PROMPT_SAFE="$(_cd_redact_prompt "$PROMPT")"
+# Fail closed. If the redactor produced nothing at all, the record keeps its
+# timestamp/project/type (the counting signal) but no text — never the raw
+# prompt, which is exactly the leak this block exists to stop.
+[[ -z "$PROMPT_SAFE" ]] && PROMPT_SAFE="[prompt withheld: redactor unavailable]"
+
 # Log to correction history
 CORRECTIONS_DIR="$HOME/.claude/corrections"
 mkdir -p "$CORRECTIONS_DIR"
@@ -55,14 +129,14 @@ source "$LIBDIR/correction-pair.sh" 2>/dev/null || true
 if declare -f cp_append_history >/dev/null 2>&1; then
   cp_append_history "$HISTORY_FILE" \
     --arg ts "$TIMESTAMP" \
-    --arg prompt "$(cp_bound_prompt "$PROMPT")" \
+    --arg prompt "$(cp_bound_prompt "$PROMPT_SAFE")" \
     --arg project "$PROJECT" \
     --arg type "explicit" \
     '{timestamp: $ts, prompt: $prompt, project: $project, type: $type}'
 else
   jq -nc \
     --arg ts "$TIMESTAMP" \
-    --arg prompt "$PROMPT" \
+    --arg prompt "$PROMPT_SAFE" \
     --arg project "$PROJECT" \
     --arg type "explicit" \
     '{timestamp: $ts, prompt: $prompt, project: $project, type: $type}' >> "$HISTORY_FILE"
@@ -164,7 +238,7 @@ if command -v jq &>/dev/null; then
   declare -f cp_recent_files >/dev/null 2>&1 && _recent_files=$(cp_recent_files "$(cp_session_key "$INPUT")" 8)
   _reverted=""
   [[ -f "$HISTORY_FILE" ]] && _reverted=$(tail -n 200 "$HISTORY_FILE" 2>/dev/null \
-    | jq -r --arg proj "$PROJECT" 'select(.type=="implicit-revert" and .project==$proj) | (.reverted_files // [])[]' 2>/dev/null)
+    | jq -r --arg proj "$PROJECT" 'select(.type=="implicit-revert" and .project==$proj) | (.reverted_files // [])[], (.session_files // [])[]' 2>/dev/null)
   _combined=$(printf '%s\n%s\n' "$_reverted" "$_recent_files" | awk 'NF' | sort -u | head -10)
   if [[ -n "$_combined" ]]; then
     _bullets=$(while IFS= read -r _p; do [[ -n "$_p" ]] && printf '  - %s\n' "$_p"; done <<< "$_combined")
@@ -177,7 +251,7 @@ fi
 
 # Write cross-project marker for auto-audit aggregation
 if [[ -n "$CROSS_FILE" ]] && command -v jq &>/dev/null; then
-  RULE_TEXT_PREVIEW=$(echo "$PROMPT" | head -c 120)
+  RULE_TEXT_PREVIEW=$(echo "$PROMPT_SAFE" | head -c 120)
   CROSS_HASH=$(echo -n "${DOMAIN}:${RULE_TEXT_PREVIEW}" | { command -v sha256sum >/dev/null 2>&1 && sha256sum || shasum -a 256; } 2>/dev/null | cut -c1-8)
   jq -nc \
     --arg ts "$TIMESTAMP" \

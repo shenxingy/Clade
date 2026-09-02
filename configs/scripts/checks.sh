@@ -39,8 +39,14 @@ CONVENTIONAL_RE='^(feat|fix|refactor|test|chore|docs|perf|style|ci|build)(\(.+\)
 
 # Fallback secret patterns (POSIX ERE) — mirrors redact.py's high-signal set:
 # PEM private-key blocks, AWS AKIA ids, GitHub ghp_/gho_/ghu_/ghs_/ghr_ and
-# github_pat_ tokens, Anthropic sk-ant keys, Google AIza keys, Slack xox tokens.
-SECRET_ERE='-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{22}|sk-ant-[A-Za-z0-9_-]{40}|AIza[0-9A-Za-z_-]{35}|xox[baprs]-[A-Za-z0-9-]{10}'
+# github_pat_ tokens, Anthropic sk-ant keys, Google AIza keys, Slack xox tokens,
+# and underscore-prefixed provider keys (sk_/rk_/ak_), which carry an explicit
+# leading-boundary group because POSIX ERE has no portable \b and `sk_` sits
+# inside the perfectly ordinary word `task_`. That last one is why the
+# "mirrors" claim is load-bearing rather than decorative: this ERE is what runs
+# when python3 is unavailable, and a pattern that exists only in redact.py is a
+# pattern the commit gate does not have.
+SECRET_ERE='-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{22}|sk-ant-[A-Za-z0-9_-]{40}|AIza[0-9A-Za-z_-]{35}|xox[baprs]-[A-Za-z0-9-]{10}|(^|[^A-Za-z0-9_])(sk|rk|ak)_[A-Za-z0-9]{32}'
 
 _redact_py() {
   if [[ -f "$SELF_DIR/redact.py" ]]; then

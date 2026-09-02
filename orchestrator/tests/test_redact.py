@@ -21,6 +21,13 @@ _spec.loader.exec_module(redact_mod)
 
 # ─── Library tests ───────────────────────────────────────────────────────────
 
+# Fake credentials, split so this file never carries a contiguous scannable
+# literal — configs/scripts/checks.sh scans every staged diff and would block
+# the commit that adds these tests. Same convention as tests/test-checks.sh.
+FAKE_UNDERSCORE_KEY = "sk_" + "d69f1a2b3c4d5e6f7081920a1b2c3d4e5f60718293a4b5c6"
+FAKE_STRIPE_LIVE = "sk_" + "live_51ABCdefGHIjklMNOpqrSTU12345"
+FAKE_STRIPE_TEST = "sk_" + "test_51ABCdefGHIjklMNOpqrSTU12345"
+
 def test_anthropic_key_detected() -> None:
     text = "ANTHROPIC_API_KEY=sk-ant-api03-abcdefghij1234567890ABCDEFGHIJ1234567890XX"
     masked, hits = redact_mod.redact(text)
@@ -68,6 +75,48 @@ def test_pem_private_key() -> None:
     assert "MIIEpAIBAAKCAQEA1234" not in masked
 
 
+def test_underscore_prefixed_key_detected() -> None:
+    # The hyphen-form `sk-` pattern does not cover `sk_`, and env_secret needs
+    # quotes — so this shape used to escape every pattern in the file.
+    text = "the key is sk_" + "d69f1a2b3c4d5e6f7081920a1b2c3d4e5f60718293a4b5c6"
+    masked, hits = redact_mod.redact(text)
+    assert hits, "should detect underscore-prefixed vendor key"
+    assert hits[0].kind == "generic_secret_key"
+    assert "sk_d69" not in masked
+    assert "<redacted:generic_secret_key>" in masked
+
+
+def test_unquoted_underscore_key_in_env_assignment_detected() -> None:
+    # `\bAPI_KEY` finds no word boundary inside SCAMAI_API_KEY, so env_secret
+    # misses this even when quoted. The value pattern is what has to catch it.
+    text = "SCAMAI_API_KEY=" + FAKE_UNDERSCORE_KEY
+    masked, hits = redact_mod.redact(text)
+    assert hits and hits[0].kind == "generic_secret_key"
+    assert "sk_d69" not in masked
+
+
+def test_stripe_live_key_keeps_specific_label() -> None:
+    # Pins the ordering claim: a future reorder that let the generic pattern
+    # shadow stripe_key would flip this label.
+    _, hits = redact_mod.redact(FAKE_STRIPE_LIVE)
+    assert hits and hits[0].kind == "stripe_key"
+
+
+def test_stripe_test_key_detected() -> None:
+    # Previously matched nothing: stripe_key demanded `_live_`, and the generic
+    # pattern cannot span `test_` (4 alnum before the second underscore).
+    masked, hits = redact_mod.redact(FAKE_STRIPE_TEST)
+    assert hits and hits[0].kind == "stripe_key"
+    assert "sk_test_51" not in masked
+
+
+def test_no_false_positive_on_underscore_suffixed_identifier() -> None:
+    # Regression guard for the \b. This is the exact shape that appears 14x in
+    # the real correction corpus (task_count, task_live, task_progress, ...).
+    _, hits = redact_mod.redact("task_abcdefghijklmnopqrstuvwxyz0123456789ABCD")
+    assert hits == []
+
+
 def test_no_false_positive_on_short_strings() -> None:
     # Short literals that look like prefixes shouldn't trip the detector.
     _, hits = redact_mod.redact("sk-ant-foo and ghp_short and sk-test")
@@ -113,6 +162,16 @@ def test_cli_check_returns_1_on_hit() -> None:
     )
     assert proc.returncode == 1
     assert "github_token" in proc.stderr
+
+
+def test_cli_check_flags_underscore_key() -> None:
+    proc = subprocess.run(
+        [sys.executable, str(_REDACT_PATH), "--check"],
+        input=FAKE_UNDERSCORE_KEY,
+        capture_output=True, text=True, timeout=10,
+    )
+    assert proc.returncode == 1
+    assert "generic_secret_key" in proc.stderr
 
 
 def test_cli_check_returns_0_on_clean() -> None:

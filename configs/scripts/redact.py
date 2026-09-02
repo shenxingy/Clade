@@ -51,8 +51,16 @@ _PATTERNS: list[tuple[str, re.Pattern, int]] = [
     ("google_api_key", re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b"), 0),
     # Slack tokens
     ("slack_token", re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"), 0),
-    # Stripe live keys
-    ("stripe_key", re.compile(r"\b(?:sk|rk|pk)_live_[A-Za-z0-9]{20,}\b"), 0),
+    # Stripe keys — test keys leak as readily as live ones and were previously
+    # matched by nothing: the generic entry below cannot span `test_` either.
+    ("stripe_key", re.compile(r"\b(?:sk|rk|pk)_(?:live|test)_[A-Za-z0-9]{20,}\b"), 0),
+    # Underscore-prefixed vendor keys (sk_<hex> and the same shape from other
+    # vendors). Placed after stripe_key for readability only: sk_live_/sk_test_
+    # can never reach 32 alnum before the second underscore, so the specific
+    # label always wins regardless of order. The \b is what keeps `task_<32
+    # alnum>` out — measured 0 hits repo-wide and 0 in a 2.8MB real prompt
+    # corpus, where every one of the 14 `sk_` occurrences sits inside `task_…`.
+    ("generic_secret_key", re.compile(r"\b(?:sk|rk|ak)_[A-Za-z0-9]{32,}\b"), 0),
     # JWT (header.payload.sig — three b64url segments)
     ("jwt", re.compile(
         r"\beyJ[A-Za-z0-9_=-]{10,}\.eyJ[A-Za-z0-9_=-]{10,}\.[A-Za-z0-9_=-]{10,}\b"

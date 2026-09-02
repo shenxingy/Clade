@@ -122,6 +122,12 @@ commit_count() { git -C "$1" rev-list --count HEAD; }
 # Fake AWS access key id, built by concatenation so this test file itself
 # never contains a contiguous scannable literal (the gate would flag it).
 FAKE_AKIA="AKIA""IOSFODNN7EXAMPLE"
+# Underscore-prefixed provider key (the Scam.ai shape). Same concatenation
+# trick, same reason. `sk_` sits inside the ordinary word `task_`, so the
+# pattern that catches this one has to carry a leading boundary — the two
+# assertions below pin both halves of that.
+FAKE_SK_UNDERSCORE="sk_""d69f0a1b2c3d4e5f60718293a4b5c6d7"
+FAKE_TASK_ID="task_""abcdefghijklmnopqrstuvwxyz012345"
 
 # ─── Git identity trust boundary ────────────────────────────────────
 echo "── git_identity.py trust boundary ──"
@@ -225,6 +231,28 @@ echo "aws_key = $FAKE_AKIA" > "$D/config.txt"
 git -C "$D" add config.txt
 ( cd "$D" && HOME="$ISO" bash "$ISO/checks.sh" staged ) >/dev/null 2>&1
 assert_eq 1 $? "fallback ERE path (no redact.py) still detects the key"
+
+# The underscore-key shape, through BOTH paths. redact.py grew this pattern
+# and checks.sh's inline ERE claims to mirror it — a claim that is only true
+# while something checks it.
+D="$(make_repo)"
+echo "api_key = $FAKE_SK_UNDERSCORE" > "$D/config.txt"
+git -C "$D" add config.txt
+( cd "$D" && bash "$CHECKS" staged ) >/dev/null 2>&1
+assert_eq 1 $? "staged scan fails on an sk_ underscore key"
+
+D="$(make_repo)"
+echo "api_key = $FAKE_SK_UNDERSCORE" > "$D/config.txt"
+git -C "$D" add config.txt
+( cd "$D" && HOME="$ISO" bash "$ISO/checks.sh" staged ) >/dev/null 2>&1
+assert_eq 1 $? "fallback ERE path also detects the sk_ underscore key"
+
+# ...and must not fire on an ordinary identifier that merely contains `sk_`.
+D="$(make_repo)"
+echo "job = $FAKE_TASK_ID" > "$D/config.txt"
+git -C "$D" add config.txt
+( cd "$D" && HOME="$ISO" bash "$ISO/checks.sh" staged ) >/dev/null 2>&1
+assert_eq 0 $? "fallback ERE does not fire on task_<32 alnum>"
 
 # ─── checks.sh shellcheck ────────────────────────────────────────────
 echo "── checks.sh shellcheck ──"
