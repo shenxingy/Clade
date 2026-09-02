@@ -504,6 +504,71 @@ find "$SCRIPT_DIR/configs" -type f \
   | "${_SHA256[@]}" | cut -d' ' -f1 > "$CLAUDE_DIR/.kit-checksum"
 echo "  Written .kit-source-dir + .kit-checksum for stale-script detection"
 
+# ─── 11b. Report installed files this repo does not install ──────────
+# Skills are MIRRORED (rm -rf per skill dir, see the skills loop above), but
+# hooks and scripts are plain copies — nothing ever prunes them. A file an
+# older version of this repo deployed, or one dropped in by hand, therefore
+# survives every reinstall unseen.
+#
+# Report only, never delete: 0164075 backported iloop-hook.sh after 909092f
+# had deleted it, so "absent from the repo today" is not the same as "safe to
+# remove", and ~/.claude/hooks is shared with whatever else the user installs.
+#
+# The expected set is what install.sh DEPLOYS, not what configs/ contains.
+# Deriving it from configs/ alone reports ~/.claude/scripts/mcp_server.py —
+# installed above from orchestrator/mcp_server.py — as an orphan.
+{
+  _clade_unowned() {
+    local dir="$1"
+    local expected="$2"
+    local installed
+    [[ -d "$dir" ]] || return 0
+    installed=$(
+      for _f in "$dir"/*; do
+        [[ -f "$_f" ]] && printf '%s\n' "${_f##*/}"
+      done
+    )
+    comm -23 \
+      <(printf '%s\n' "$installed" | grep -v '^$' | LC_ALL=C sort) \
+      <(printf '%s\n' "$expected" | grep -v '^$' | LC_ALL=C sort -u)
+  }
+
+  _expected_hooks=$(
+    for _f in "$SCRIPT_DIR/configs/hooks/"*.sh; do
+      [[ -f "$_f" ]] && printf '%s\n' "${_f##*/}"
+    done
+  )
+  _expected_scripts=$(
+    for _f in "$SCRIPT_DIR/configs/scripts/"*.sh "$SCRIPT_DIR/configs/scripts/"*.py; do
+      [[ -f "$_f" ]] && printf '%s\n' "${_f##*/}"
+    done
+    # Installed out of configs/ — keep in step with the mcp_server.py copy above.
+    printf '%s\n' "mcp_server.py"
+  )
+
+  _unowned=""
+  while IFS= read -r _name; do
+    [[ -n "$_name" ]] && _unowned+="  hooks/$_name"$'\n'
+  done < <(_clade_unowned "$CLAUDE_DIR/hooks" "$_expected_hooks")
+  while IFS= read -r _name; do
+    [[ -n "$_name" ]] && _unowned+="  scripts/$_name"$'\n'
+  done < <(_clade_unowned "$CLAUDE_DIR/scripts" "$_expected_scripts")
+
+  if [[ -n "$_unowned" ]]; then
+    _unowned_count=$(printf '%s' "$_unowned" | grep -c '^')
+    echo ""
+    echo "Files in ~/.claude/hooks and ~/.claude/scripts that Clade does not install:"
+    printf '%s' "$_unowned" | head -20
+    if [[ "$_unowned_count" -gt 20 ]]; then
+      echo "  ... and $((_unowned_count - 20)) more"
+    fi
+    echo "  Clade never removes these. Review and delete manually if unwanted."
+  fi
+
+  unset -f _clade_unowned
+  unset _expected_hooks _expected_scripts _unowned _unowned_count _name _f
+} || true
+
 # ─── 12. Summary ─────────────────────────────────────────────────────
 
 echo ""

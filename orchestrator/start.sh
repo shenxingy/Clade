@@ -59,6 +59,23 @@ else
   echo "  All dependencies present."
 fi
 
+# ─── Build the web UI ───────────────────────────────────────────────────────
+
+# Build the React UI if it is not built. dist/ is gitignored (committing it was
+# ruled out in docs/goals/align-elites.md), so a fresh checkout has no UI at all
+# and /web answers 503 until this runs. Non-fatal in both legs: the API is
+# useful without the browser UI, and a node problem must not stop the server.
+if [[ ! -d "$SCRIPT_DIR/web/dist" ]]; then
+  if command -v npm >/dev/null 2>&1; then
+    echo "Building web UI (first run)..."
+    ( cd "$SCRIPT_DIR/web" && npm ci --silent && npm run build ) \
+      || echo "  WARNING: web build failed — API still serves; /web returns 503"
+  else
+    echo "  Web UI not built and npm not found:"
+    echo "    cd orchestrator/web && npm ci && npm run build"
+  fi
+fi
+
 # ─── Start server ─────────────────────────────────────────────────────────────
 
 echo ""

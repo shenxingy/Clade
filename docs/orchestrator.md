@@ -35,9 +35,16 @@ cd orchestrator && ./start.sh
 # → Opens http://localhost:8765 in your browser
 ```
 
-The FastAPI backend requires Python 3.9+. The repository includes a legacy web
-fallback; maintainers build the current React UI with
-`cd orchestrator/web && npm run build`.
+The FastAPI backend requires Python 3.9+. The React UI must be built —
+`start.sh` does it for you on first run, or `cd orchestrator/web && npm ci &&
+npm run build` by hand. Until it is built, `/web` answers 503 naming that
+command and `/` redirects there; the API itself is unaffected. There is no
+longer a legacy fallback UI: the pre-Vite `app-*.js` files were removed once
+`index.html` became the Vite shell, which had left the fallback serving a page
+that could not boot.
+
+Every route requires a bearer token — see
+[Control-plane authentication](configuration.md#control-plane-authentication).
 
 ## Trust Pipeline
 

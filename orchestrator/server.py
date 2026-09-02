@@ -17,7 +17,7 @@ from pathlib import Path
 
 from fastapi import Body, Depends, FastAPI, HTTPException, Query, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 import httpx
 
@@ -207,10 +207,52 @@ app.include_router(usage_router)
 app.include_router(evals_router)
 app.include_router(providers_router)
 
-# Serve static files (web UI) — prefer React dist/ if built, fallback to legacy
+# ─── Static: the web UI ───────────────────────────────────────────────────────
+#
+# `web/index.html` is the Vite *source* shell: it loads `/src/main.tsx`, which
+# no browser can execute (raw TypeScript, served under a non-JS MIME type). It
+# stopped being a usable fallback the moment 7d5603b overwrote the legacy
+# xterm + app-*.js page with it, so the old "prefer dist/, fall back to web/"
+# mount served a permanently blank screen on any machine that had not built.
+# `web/dist` is therefore the only servable root; when it is missing, say so
+# with the command that fixes it rather than rendering nothing.
 WEB_DIST = Path(__file__).parent / "web" / "dist"
-_web_static_dir = str(WEB_DIST) if WEB_DIST.exists() else str(WEB_DIR)
-app.mount("/web", StaticFiles(directory=_web_static_dir, html=True), name="web")
+
+UI_NOT_BUILT = "Web UI is not built. Run: cd orchestrator/web && npm ci && npm run build"
+
+
+def mount_web_ui(target_app: FastAPI, dist_dir: Path, source_dir: Path) -> None:
+    """Register the `/web` surface on ``target_app``.
+
+    Registration order is load-bearing. Starlette matches routes in the order
+    they were added, and a ``Mount`` at ``/web`` swallows every path beneath
+    it — so ``/web/usage.html`` has to be declared *before* the mount. That
+    page is hand-written and lives outside the Vite graph (``vite.config.ts``
+    declares no ``publicDir``), so the build never copies it into ``dist/``:
+    without its own route it 404s on exactly the machines that did build.
+    """
+
+    usage_page = source_dir / "usage.html"
+
+    @target_app.get("/web/usage.html", include_in_schema=False)
+    async def usage_dashboard():
+        if not usage_page.exists():
+            return JSONResponse({"error": "usage.html not found"}, status_code=404)
+        return FileResponse(str(usage_page))
+
+    if dist_dir.exists():
+        target_app.mount(
+            "/web", StaticFiles(directory=str(dist_dir), html=True), name="web"
+        )
+        return
+
+    @target_app.get("/web", include_in_schema=False)
+    @target_app.get("/web/{path:path}", include_in_schema=False)
+    async def web_ui_not_built(path: str = ""):
+        return JSONResponse({"error": UI_NOT_BUILT}, status_code=503)
+
+
+mount_web_ui(app, WEB_DIST, WEB_DIR)
 
 # ─── REST: Version (stale-process guard) ──────────────────────────────────────
 
@@ -834,7 +876,12 @@ async def list_projects(base: str | None = None):
 
 @app.get("/")
 async def root():
-    return FileResponse(str(WEB_DIR / "index.html"))
+    # Never FileResponse(WEB_DIR/"index.html"): that is the un-built Vite
+    # source shell, which this served unconditionally — even on machines that
+    # had built dist/ — so the documented entry URL (start.sh prints
+    # http://localhost:8765) was blank everywhere. One code path owns the
+    # shell, and the redirect is correct in both the built and unbuilt cases.
+    return RedirectResponse("/web/")
 
 # ─── WebSocket: /ws/chat ──────────────────────────────────────────────────────
 
