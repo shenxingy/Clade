@@ -31,6 +31,7 @@ EDIT_SHADOW="$REPO_ROOT/configs/hooks/edit-shadow-detector.sh"
 RUNTIME_LIB="$REPO_ROOT/configs/hooks/lib/runtime-dir.sh"
 SETTINGS="$REPO_ROOT/configs/settings-hooks.json"
 STOP_CHECK="$REPO_ROOT/configs/hooks/stop-check.sh"
+PROMPT_TRACKER="$REPO_ROOT/configs/hooks/prompt-tracker.sh"
 
 # ─── Test framework (mirrors tests/test-correction-pairing.sh) ───────
 TESTS_RUN=0; TESTS_PASSED=0; TESTS_FAILED=0
@@ -835,6 +836,64 @@ rc=$?
 assert_eq "$rc" "2" "STOP_CHECK_AGENT_IDLE_S=0 restores the unconditional check"
 
 rm -rf "$SC_HOME" "$SC_REPO"
+
+section "prompt-tracker notices a re-typed standing brief"
+
+# The original fired async and reported through systemMessage, which an async
+# hook cannot deliver — so across 386,760 logged prompts and nine patterns past
+# its own threshold it had never once spoken. That silence is why a long brief
+# kept being hand-typed instead of becoming a skill.
+
+PT_LOG="$(mktemp "${TMPDIR:-/tmp}/clade-pt-log.XXXXXX")"
+PT_SEEN="$(mktemp "${TMPDIR:-/tmp}/clade-pt-seen.XXXXXX")"
+PT_BRIEF="$(python3 -c "print('please make an artifact visualising the whole project, every component, every surface, who works on what, the ultimate objective and the remaining gap, and the abandoned attempts, deployed internally. '*4)")"
+
+pt_run() {
+  printf '%s' "$(jq -cn --arg p "$1" '{prompt:$p}')" \
+    | PROMPT_TRACKER_LOG="$PT_LOG" PROMPT_TRACKER_SEEN="$PT_SEEN" bash "$PROMPT_TRACKER" 2>/dev/null
+}
+pt_reset() { : > "$PT_LOG"; : > "$PT_SEEN"; }
+
+# 1. Below the threshold it stays quiet; on the third it speaks.
+pt_reset
+out=$(pt_run "$PT_BRIEF"); assert_eq "$out" "" "silent on the first occurrence"
+out=$(pt_run "$PT_BRIEF"); assert_eq "$out" "" "silent on the second"
+out=$(pt_run "$PT_BRIEF")
+assert_contains "$out" "additionalContext" "speaks on the third, through the channel a sync hook has"
+assert_contains "$out" "standing preference" "explains why it is speaking"
+
+# 2. Once per pattern. A notice on every later occurrence is the nagging that
+#    gets a hook ignored.
+out=$(pt_run "$PT_BRIEF"); assert_eq "$out" "" "does not repeat itself on the fourth"
+
+# 3. A changed opening sentence must not hide the repeat — the whole point of
+#    the LSH banding over the old first-80-characters fingerprint.
+pt_reset
+pt_run "hi there. $PT_BRIEF" >/dev/null
+pt_run "good morning. $PT_BRIEF" >/dev/null
+out=$(pt_run "one more time, an entirely different opening sentence. $PT_BRIEF")
+assert_contains "$out" "additionalContext" "a new preamble does not hide the repeat"
+
+# 4. An unrelated brief of similar length must not collide.
+pt_reset
+PT_OTHER="$(python3 -c "print('completely unrelated request about database migration scheduling and connection pooling behaviour under heavy contention. '*4)")"
+pt_run "$PT_BRIEF" >/dev/null; pt_run "$PT_BRIEF" >/dev/null; pt_run "$PT_BRIEF" >/dev/null
+out=$(pt_run "$PT_OTHER"); assert_eq "$out" "" "an unrelated brief does not collide"
+
+# 5. Conversation is not a brief. The old 20-char floor logged every "ok".
+pt_reset
+for _ in 1 2 3 4; do out=$(pt_run "ok continue"); done
+assert_eq "$out" "" "short conversational prompts are ignored entirely"
+
+# 6. The log stays bounded — unbounded growth is what made it too slow to run
+#    synchronously, which is why it was async, which is why it never delivered.
+pt_reset
+for _ in $(seq 1 40); do pt_run "$PT_BRIEF $RANDOM" >/dev/null; done
+PT_LINES=$(wc -l < "$PT_LOG")
+if [[ "$PT_LINES" -le 40 ]]; then pass "log grows one line per brief, not per prompt"
+else fail "log grows one line per brief, not per prompt" "got $PT_LINES lines"; fi
+
+rm -f "$PT_LOG" "$PT_SEEN"
 
 # ─── Summary ─────────────────────────────────────────────────────────
 
