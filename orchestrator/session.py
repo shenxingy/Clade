@@ -970,6 +970,37 @@ async def _suggest_next_goals(session: "ProjectSession") -> None:
         pass  # fail-open
 
 
+# ─── Auto-scaling policy ──────────────────────────────────────────────────────
+
+def _autoscale_should_spawn(running: int, pending: int,
+                            min_workers: object, max_workers: int) -> bool:
+    """True when auto-scale wants one more worker.
+
+    Two independent triggers: a floor (``min_workers``) and the pre-existing
+    backlog ratio. The floor is the half of TODO.md's "Worker auto-scaling"
+    item that was declared done but never implemented — ``min_workers`` was a
+    published, UI-editable setting no backend code read.
+
+    Both triggers stay bounded by ``max_workers``; the caller keeps the global
+    cap, the dependency filter, the budget gate, the swarm gate and the 30s
+    spawn cooldown, so ramping to a floor of N takes 30s per worker by design.
+    """
+    try:
+        floor = max(1, int(min_workers))
+    except (TypeError, ValueError):
+        # orchestrator-settings.json is user-edited and untyped; a junk value
+        # must degrade to the default floor, not raise inside status_loop and
+        # abort the whole tick once a second.
+        floor = 1
+    if running >= max_workers:
+        return False
+    if pending <= 0:
+        return False
+    if running < floor:
+        return True
+    return pending > running * 2
+
+
 # ─── Status broadcast loop ────────────────────────────────────────────────────
 
 
@@ -1094,11 +1125,11 @@ async def status_loop():
                     _pending_now = len([t for t in _auto_tasks if t["status"] == "pending"])
                     # max_workers=0 means "no global cap" — auto-scaling still caps at 8 for safety
                     _max_w = GLOBAL_SETTINGS.get("max_workers", 0) or 8
+                    _min_w = GLOBAL_SETTINGS.get("min_workers", 1)
                     _spawn_cooldown = getattr(session, '_last_autoscale', 0)
                     if _global_max > 0 and _global_running >= _global_max:
                         pass  # skip auto-scaling, global cap hit
-                    elif (_pending_now > _running_now * 2
-                            and _running_now < _max_w
+                    elif (_autoscale_should_spawn(_running_now, _pending_now, _min_w, _max_w)
                             and time.time() - _spawn_cooldown > 30):
                         _ready = [t for t in _auto_tasks if t["status"] == "pending" and _deps_met(t, _done_ids)]
                         if _ready and not getattr(session, '_budget_exceeded', False):

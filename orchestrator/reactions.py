@@ -125,7 +125,13 @@ class ReactionExecutor:
         ),
     ]
 
-    def __init__(self, configs: list[ReactionConfig] | None = None):
+    def __init__(self, configs: list[ReactionConfig] | None = None, *,
+                 enabled: bool = True):
+        # Kill switch. This leaf must not import config (CLAUDE.md declares it
+        # a leaf), so the caller threads GLOBAL_SETTINGS["reactions_enabled"]
+        # in — see worker.py. Disabled means record_event returns nothing, so
+        # no reaction is ever tracked, triggered or logged.
+        self.enabled = enabled
         self.configs = configs or list(self.DEFAULT_CONFIGS)
         self._reactions: dict[str, list[Reaction]] = {c.name: [] for c in self.configs}
         self._event_counts: dict[str, list[tuple[float, int]]] = {}  # event_key → [(timestamp, count)]
@@ -139,7 +145,13 @@ class ReactionExecutor:
 
     def record_event(self, event_type: str, event_name: str = "",
                      event_content: str = "", count: int = 1) -> list[Reaction]:
-        """Record an event and return any triggered reactions."""
+        """Record an event and return any triggered reactions.
+
+        Returns an empty list unchanged when the executor is disabled, so
+        every call site keeps iterating a list and needs no guard of its own.
+        """
+        if not self.enabled:
+            return []
         now = time.time()
         triggered = []
 

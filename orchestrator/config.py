@@ -200,6 +200,10 @@ _SETTINGS_DEFAULTS = {
     "worker_env_allow": ["GH_TOKEN", "GITHUB_TOKEN"],
     "notification_webhook": "",
     "auto_scale": False,
+    # Auto-scale floor: while auto_scale is on and work is pending, keep
+    # spawning until this many workers are running (still bounded by
+    # max_workers, the global cap and the 30s spawn cooldown). Read in
+    # session._autoscale_should_spawn.
     "min_workers": 1,
     "webhook_secret": "",
     # Accept GitHub webhook events with no signature. Off: an unsigned event is
@@ -224,7 +228,6 @@ _SETTINGS_DEFAULTS = {
     "mutation_scan": False,  # patrol lane: mutmut survivors → test-gap tasks (ratchet)
     "mutation_targets": [],  # paths to mutate (project-relative); empty = lane no-ops
     "patrol_schedule": "",
-    "patrol_auto_ideas": False,
     "research_schedule": "",
     "usage_provider": "claude",
     "minimax_api_key": "",
@@ -318,36 +321,15 @@ _SETTINGS_DEFAULTS = {
     # today's behavior (raw text hydrated verbatim). Fail-open: a distillation
     # error/timeout falls back to the raw text — this never blocks hydration.
     "hydration_distillation": False,
+    # Kill switch for the reaction subsystem (orchestrator/reactions.py),
+    # read in worker.py when the executor is constructed. The rule list
+    # itself is NOT a setting: reactions.ReactionExecutor.DEFAULT_CONFIGS is
+    # the single source of truth. A "reaction_configs" key lived here until
+    # 2026-09 carrying a drifted copy of 3 of those 5 rules that nothing
+    # ever read — and because __init__ replaces rather than merges, wiring
+    # it would have deleted two rules for anyone who copied the generated
+    # reference file.
     "reactions_enabled": True,
-    "reaction_configs": [
-        {
-            "name": "repeated_tool_failure",
-            "event_type": "error",
-            "event_match": r"(?:tool|command).*failed|exit code [1-9]",
-            "threshold": 3,
-            "window_seconds": 300,
-            "action": "escalate",
-            "action_payload": {"strategy": "suggest_alternative"},
-        },
-        {
-            "name": "same_tool_repeated",
-            "event_type": "tool_call",
-            "event_match": r"^(?:bash|shell|exec):",
-            "threshold": 5,
-            "window_seconds": 180,
-            "action": "warn",
-            "action_payload": {"message": "Same tool called 5+ times — consider alternative approach"},
-        },
-        {
-            "name": "loop_detected",
-            "event_type": "state_change",
-            "event_match": r"loop.*detected",
-            "threshold": 1,
-            "window_seconds": 0,
-            "action": "abort",
-            "action_payload": {"message": "Behavioral loop detected — aborting task"},
-        },
-    ],
 }
 
 

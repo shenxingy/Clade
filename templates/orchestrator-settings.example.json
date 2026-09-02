@@ -70,7 +70,6 @@
   "mutation_scan": false,
   "mutation_targets": [],
   "patrol_schedule": "",
-  "patrol_auto_ideas": false,
   "research_schedule": "",
   "usage_provider": "claude",
   "minimax_api_key": "",
@@ -122,40 +121,5 @@
   "usage_hub_token": "",
   "usage_ingest_token": "",
   "hydration_distillation": false,
-  "reactions_enabled": true,
-  "reaction_configs": [
-    {
-      "name": "repeated_tool_failure",
-      "event_type": "error",
-      "event_match": "(?:tool|command).*failed|exit code [1-9]",
-      "threshold": 3,
-      "window_seconds": 300,
-      "action": "escalate",
-      "action_payload": {
-        "strategy": "suggest_alternative"
-      }
-    },
-    {
-      "name": "same_tool_repeated",
-      "event_type": "tool_call",
-      "event_match": "^(?:bash|shell|exec):",
-      "threshold": 5,
-      "window_seconds": 180,
-      "action": "warn",
-      "action_payload": {
-        "message": "Same tool called 5+ times — consider alternative approach"
-      }
-    },
-    {
-      "name": "loop_detected",
-      "event_type": "state_change",
-      "event_match": "loop.*detected",
-      "threshold": 1,
-      "window_seconds": 0,
-      "action": "abort",
-      "action_payload": {
-        "message": "Behavioral loop detected — aborting task"
-      }
-    }
-  ]
+  "reactions_enabled": true
 }

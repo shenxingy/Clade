@@ -34,7 +34,6 @@ from config import (
     _infer_commit_type,
 )
 from task_queue import TaskQueue
-from github_sync import _gh_update_issue_status
 from session_tree import SessionTree
 from execution_backend import LocalSubprocessBackend, get_execution_backend
 from execution_envelope import ExecutionEnvelope
@@ -61,7 +60,6 @@ from worker_envelope import build_from_worker
 import worker_evidence
 import worker_sandbox
 from worker_phase_graph import record_transition, validate_transition
-from handoff_registry import project_handoff, validate_handoff
 from tracing import TracingService, start_task_span
 from reactions import ReactionExecutor
 from runtime_redaction import capture_provider_output
@@ -75,11 +73,14 @@ from worker_utils import (
     _run_lint_check, _extract_lint_targets, _run_project_tests, LoopDetectionService,
     _run_intramorphic_check, _run_repro_filter, _rank_tasks,
     _parse_observation_contract, _fallback_commit_cmd, _is_test_file,
-    _compute_activity_state, _undo_last_commit,
+    _compute_activity_state, _undo_last_commit, preserve_worktree_wip,
     _check_file_ownership as _check_ownership_globs,
     _as_env_patterns,
-    _maybe_enqueue_classify_retry,  # re-export: moved to worker_utils (leaf)
-    MAX_LINES, MAX_BYTES, DISTILL_THRESHOLD, MAX_REFLECTION_RETRIES,
+    # Live re-export, not dead weight: tests/test_worker.py::
+    # test_classify_retry_helper_is_reexported_from_worker_utils asserts
+    # worker exposes the worker_utils function object.
+    _maybe_enqueue_classify_retry,
+    DISTILL_THRESHOLD, MAX_REFLECTION_RETRIES,
 )
 
 logger = logging.getLogger(__name__)
@@ -204,7 +205,9 @@ class Worker:
         self._reflection_retries: int = 0
         self._event_stream = EventStream(worker_id=self.id)
         self._tracer = TracingService.get_instance().get_or_create_tracer(self.id)
-        self._reaction_executor = ReactionExecutor()
+        self._reaction_executor = ReactionExecutor(
+            enabled=bool(GLOBAL_SETTINGS.get("reactions_enabled", True))
+        )
         self.completion_summary: str | None = None  # 1-sentence summary (multi-agent context archival)
         self._failure_reflections: list[str] = []  # Reflexion pattern: accumulated failure notes
         self.token_budget: int = 0  # max total tokens (0 = unlimited); multi-agent Gap 2
