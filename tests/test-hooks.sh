@@ -893,6 +893,33 @@ PT_LINES=$(wc -l < "$PT_LOG")
 if [[ "$PT_LINES" -le 40 ]]; then pass "log grows one line per brief, not per prompt"
 else fail "log grows one line per brief, not per prompt" "got $PT_LINES lines"; fi
 
+# 7. The record carries fingerprints and nothing else. A census of ~/.claude
+#    found 158 credential occurrences across the harness's own logs, 28 of them
+#    in this very file — every one from the earlier format, which stored the raw
+#    prompt. The rewrite replaced that with a 100-character preview, which is
+#    the same leak with a smaller window: a pasted key is very often in the
+#    first 100 characters. Nothing ever reads a stored preview back, so the
+#    record stores none.
+pt_reset
+PT_KEY="sk-$(printf 'proj')A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8S9t0U1v2"
+pt_run "$PT_KEY $PT_BRIEF" >/dev/null
+if grep -qF "$PT_KEY" "$PT_LOG"; then
+  fail "a credential pasted at the front of a brief never reaches the log" \
+       "the key is on disk in $PT_LOG"
+else
+  pass "a credential pasted at the front of a brief never reaches the log"
+fi
+# It is not merely absent because nothing was written.
+if [[ -s "$PT_LOG" ]] && grep -q '"exact"' "$PT_LOG"; then
+  pass "the fingerprint record was still written"
+else
+  fail "the fingerprint record was still written" "log is empty or malformed"
+fi
+# And the repeat detection still works without the stored text.
+pt_run "$PT_KEY $PT_BRIEF" >/dev/null
+out=$(pt_run "$PT_KEY $PT_BRIEF")
+assert_contains "$out" "additionalContext" "repeat detection survives storing no prompt text"
+
 rm -f "$PT_LOG" "$PT_SEEN"
 
 # ─── Summary ─────────────────────────────────────────────────────────

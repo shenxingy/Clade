@@ -82,11 +82,19 @@ bands=$(printf '%s\n' "$mins" | paste -d_ - - 2>/dev/null | head -4)
 shape=$(_hash "$(printf '%s' "$mins" | tr '\n' '-')")
 
 mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
+# The preview is computed for the MESSAGE and never written. Storing it would
+# put the first 100 characters of every long prompt on disk, and a pasted
+# credential is very often in the first 100 characters — a census of ~/.claude
+# found 158 credential occurrences across the harness's own logs, including 28
+# in this file, all of them from the previous format's raw `prompt` field.
+# Nothing ever reads a stored preview back: the repeat check greps for the
+# `exact` fingerprint and the LSH bands, and the message quotes the prompt that
+# is already in memory. So the record carries fingerprints and nothing else.
 preview=$(printf '%s' "$norm" | cut -c1-100)
 band_json=$(printf '%s\n' "$bands" | jq -R . | jq -cs .)
 jq -cn --arg d "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg e "$exact" --arg s "$shape" \
-       --arg p "$preview" --arg n "${#prompt}" --argjson b "$band_json" \
-   '{date:$d, exact:$e, shape:$s, bands:$b, chars:($n|tonumber), preview:$p}' \
+       --arg n "${#prompt}" --argjson b "$band_json" \
+   '{date:$d, exact:$e, shape:$s, bands:$b, chars:($n|tonumber)}' \
    >> "$LOG_FILE" 2>/dev/null || exit 0
 
 # Bound the log in place. Unbounded growth is what made the original too

@@ -349,7 +349,60 @@ re-running the gates.
 
 **Opened by the same wave** — found while fixing the above, none of it in the original audit:
 
-- [ ] 🔴 The redaction fix stops new leaks but does not scrub what is already written. `~/.claude/corrections/history.jsonl` and `cross-project-rules.jsonl` need a one-off `redact.py` pass, and any live third-party credential found there needs rotating. Both files sit on a shared mount at mode 0664.
+- [x] 🔴 **Scrubbed what was already written — and the item understated it by an
+      order of magnitude.** DONE 2026-09-02 via `configs/scripts/scrub-corrections.py`
+      (default dry-run, `--apply` to rewrite, named files or a directory sweep;
+      10 tests in `orchestrator/tests/test_scrub_corrections.py`).
+
+      Three corrections to the filed item, all found by measuring rather than
+      by trusting it:
+
+      1. **"Both files" was three.** The credential was also in two `.bak-*`
+         copies made by earlier maintenance passes, sitting in the same
+         directory at the same mode. A scrub that walks only the files someone
+         remembered leaves the key in a snapshot of itself. That is why this is
+         a script that sweeps a directory, not a command.
+      2. **"On a shared mount" was wrong.** It is local ext4, and the group is
+         single-member, so 0664 exposed the file to any local account rather
+         than to a set of collaborators. The corrections files were 0664; the
+         session transcripts are 0600.
+      3. **A raw scan of a JSONL file misses credentials.** A newline is stored
+         as the two characters `\` and `n`, so a key that began a line inside a
+         captured prompt sits on disk right after the letter `n` — a word
+         character, so `\b` does not match. Measured: the same 44-character key
+         appeared twice on one line and the raw scan reported one. Exactly the
+         CJK bypass from earlier today, one encoding layer up. The scrub decodes
+         each record and then replaces every literal occurrence. The live hook
+         path is unaffected — it redacts before encoding.
+
+      A read-only census of all 1,039 `.jsonl` files under `~/.claude` then
+      found **158 credential occurrences, 37 distinct**, far outside the
+      corrections directory. Cleaned: the corrections directory, the prompt
+      history (17 across 5 kinds), and one world-readable file-history snapshot.
+      **Deliberately not cleaned**: two session transcripts, 0600 and owner-only.
+      They are the harness's own resumable state, the remedy for a leaked key is
+      rotation rather than masking, and that is the owner's call. The command is
+      in the report.
+
+- [ ] 🔴 **Rotate the live credentials found in the census.** Masking removed
+      them from disk; it does not un-expose them. Live Stripe secret keys
+      (`sk_live_…SefN`, `…liem`, `…s2V7`), an Anthropic key (`sk-ant-a…90XX`), a
+      Sentry token (`sntryu_6…c6c0`), three third-party OpenAI-shaped keys
+      (`sk-cp-X4…XxMM`, `sk-tinyf…_5N2`, `…_5n2`), two 67-character generic keys
+      and two JWTs. The `pk_live_` publishable keys and everything matching
+      `_test_` need nothing. Owner action; nothing in this repo can do it.
+
+- [x] 🔴 **`prompt-tracker.sh` was writing the first 100 characters of every
+      long prompt to disk, and a pasted key is very often in the first 100
+      characters.** Found by the census above, in code written earlier the same
+      day: the rewrite replaced the old format's raw `prompt` field with a
+      `preview`, which is the same leak through a smaller window. Nothing ever
+      read a stored preview back — the repeat check greps the `exact`
+      fingerprint and the LSH bands, and the message quotes the prompt already
+      in memory — so the record now carries fingerprints and nothing else.
+      Pinned in `tests/test-hooks.sh` §7, which also asserts the record is still
+      written and that repeat detection survives storing no text.
+
 - [ ] 🟡 `session-scorecard.sh` selects `.domain` from `history.jsonl`, a field that file has never carried (0 of 983 records). Every record classifies as `unknown`, the domain match never fires, and `record_rule_hit` fires for every rule every run — rule-effectiveness counts are noise. Needs a decision first: have `correction-detector.sh` write `domain` into `history.jsonl` (it computes it but writes it only to the cross-project file), or drop domain-keyed hit tracking.
 - [ ] 🟡 `revert-detector.sh` records `project` from `$CLAUDE_PROJECT_DIR` rather than the directory the git command actually ran in — measured wrong on 68 of 92 informative records, all of which begin `cd <other repo>`. `rd_revert_base` already computes the right directory.
 - [ ] 🟡 `PROGRESS.md` is 1209 lines against the 100-line cap its own owning skill sets, and the `docs/progress-archive/` the skill prescribes was never created. Same problem the TODO archive just fixed, one file over.
