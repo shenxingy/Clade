@@ -403,7 +403,21 @@ re-running the gates.
       Pinned in `tests/test-hooks.sh` §7, which also asserts the record is still
       written and that repeat detection survives storing no text.
 
-- [ ] 🟡 `session-scorecard.sh` selects `.domain` from `history.jsonl`, a field that file has never carried (0 of 983 records). Every record classifies as `unknown`, the domain match never fires, and `record_rule_hit` fires for every rule every run — rule-effectiveness counts are noise. Needs a decision first: have `correction-detector.sh` write `domain` into `history.jsonl` (it computes it but writes it only to the cross-project file), or drop domain-keyed hit tracking.
+- [x] 🟡 **`session-scorecard.sh` read a field that had never been written.**
+      DONE 2026-09-02. It selects `.domain` from `history.jsonl` to find which
+      rules had a correction in their area this session. The field was in 0 of
+      983 records, so every record classified as `unknown`, the domain match
+      never fired, and `record_rule_hit` credited every rule on every run —
+      rule-effectiveness counts measured nothing.
+      Two causes, both in `correction-detector.sh`: domain detection ran *after*
+      the record was appended, and it was nested inside the `stats.json` branch,
+      so a machine without that file computed no domain at all. Detection is now
+      unconditional and happens before the write, and both write paths carry the
+      field. The test asserts the resolved value rather than merely non-null,
+      because `unknown` is what a missing field produces downstream too — and it
+      needed a real git repository to do that, since the shared fixture has only
+      a `.git` directory and `detect_domain` classifies `git diff` output.
+
 - [x] 🟡 **`revert-detector.sh` filed every revert under the wrong repository.**
       DONE 2026-09-02. It recorded `project` from `$CLAUDE_PROJECT_DIR` — the
       session's repo — while the command usually operated on another: 68 of 92

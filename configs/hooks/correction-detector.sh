@@ -133,20 +133,39 @@ PROJECT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 # truncated the history for every reader.
 source "$LIBDIR/correction-pair.sh" 2>/dev/null || true
 
+# ─── Domain, computed BEFORE the record is written ────────────────────
+# This used to run after the append, so `domain` was never a field of a history
+# record — 0 of 983. session-scorecard.sh selects `.domain` from this file to
+# decide which rules had a correction in their area this session, so every
+# record classified as `unknown`, the domain match never fired, and
+# `record_rule_hit` fired for every rule on every run. Rule-effectiveness
+# counts were noise measuring nothing.
+#
+# The detection was also nested inside the stats-file branch, so a machine
+# without stats.json computed no domain at all. It is unconditional now: the
+# history record needs it whether or not the counter file exists.
+if [[ -d "$PROJECT" ]]; then
+  source "$LIBDIR/domain-detect.sh" 2>/dev/null
+  pushd "$PROJECT" >/dev/null 2>&1 && detect_domain 2>/dev/null; popd >/dev/null 2>&1
+fi
+DOMAIN="${DOMAIN:-unknown}"
+
 if declare -f cp_append_history >/dev/null 2>&1; then
   cp_append_history "$HISTORY_FILE" \
     --arg ts "$TIMESTAMP" \
     --arg prompt "$(cp_bound_prompt "$PROMPT_SAFE")" \
     --arg project "$PROJECT" \
+    --arg domain "$DOMAIN" \
     --arg type "explicit" \
-    '{timestamp: $ts, prompt: $prompt, project: $project, type: $type}'
+    '{timestamp: $ts, prompt: $prompt, project: $project, domain: $domain, type: $type}'
 else
   jq -nc \
     --arg ts "$TIMESTAMP" \
     --arg prompt "$PROMPT_SAFE" \
     --arg project "$PROJECT" \
+    --arg domain "$DOMAIN" \
     --arg type "explicit" \
-    '{timestamp: $ts, prompt: $prompt, project: $project, type: $type}' >> "$HISTORY_FILE"
+    '{timestamp: $ts, prompt: $prompt, project: $project, domain: $domain, type: $type}' >> "$HISTORY_FILE"
 fi
 
 # ─── Auto-increment domain stats ──────────────────────────────────────
@@ -156,13 +175,7 @@ if [[ ! -f "$STATS_FILE" ]] && command -v jq &>/dev/null; then
   echo '{"frontend":0,"backend":0,"schema":0,"ml":0,"ios":0,"android":0,"systems":0,"academic":0,"unknown":0}' > "$STATS_FILE"
 fi
 if [[ -f "$STATS_FILE" ]] && command -v jq &>/dev/null; then
-  # Detect domain from recent changes in this project (avoid subshell so DOMAIN is set in parent)
-  if [[ -d "$PROJECT" ]]; then
-    source "$LIBDIR/domain-detect.sh" 2>/dev/null
-    pushd "$PROJECT" >/dev/null 2>&1 && detect_domain 2>/dev/null; popd >/dev/null 2>&1
-  fi
-  DOMAIN="${DOMAIN:-unknown}"
-  # Atomically increment the counter for this domain
+  # Atomically increment the counter for the domain resolved above.
   TMP_STATS=$(mktemp)
   jq --arg d "$DOMAIN" '.[$d] = ((.[$d] // 0) + 1)' "$STATS_FILE" > "$TMP_STATS" 2>/dev/null \
     && mv "$TMP_STATS" "$STATS_FILE" \

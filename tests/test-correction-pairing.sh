@@ -137,6 +137,43 @@ LAST=$(tail -n 1 "$HISTORY")
 assert_contains "$LAST" '"repeat":false' "reverting a DIFFERENT file is not a repeat"
 assert_contains "$LAST" '"reverted_files":[]' "a path Claude never wrote intersects nothing"
 
+# ─── 3a2. the history record carries the domain it is classified by ──
+# session-scorecard.sh selects `.domain` from history.jsonl to decide which
+# rules had a correction in their area. The field had never been written — 0 of
+# 983 records — because domain detection ran AFTER the append and was nested
+# inside the stats-file branch. Every record read back as `unknown`, so the
+# domain match never fired and every rule was credited with a hit on every run.
+section "correction-detector — the record carries its domain"
+CD_HOOK="$REPO_ROOT/configs/hooks/correction-detector.sh"
+printf '{"prompt":"no, that is wrong, you broke the build again"}' \
+  | CLAUDE_PROJECT_DIR="$PROJ" bash "$CD_HOOK" >/dev/null 2>&1
+CDREC=$(grep '"type":"explicit"' "$HISTORY" 2>/dev/null | tail -n 1)
+assert_eq "$(jq -r 'has("domain")' <<< "${CDREC:-\{\}}" 2>/dev/null)" "true" \
+  "an explicit correction record has a domain field"
+
+# And the value has to be the DETECTED domain, not the "unknown" fallback that a
+# missing field also produces downstream — asserting merely non-null would have
+# passed before this fix too, since the reader defaults to unknown either way.
+#
+# detect_domain classifies `git diff` output, so this needs a REAL repository.
+# $PROJ has only a `.git` directory, which is enough to look like a project and
+# not enough for git to answer, so the fixture gets its own.
+CD_REPO="$TMP_ROOT/domain-repo"
+mkdir -p "$CD_REPO/src"
+git -C "$CD_REPO" init -q >/dev/null 2>&1
+git -C "$CD_REPO" config user.email t@example.com >/dev/null 2>&1
+git -C "$CD_REPO" config user.name t >/dev/null 2>&1
+echo "# repo" > "$CD_REPO/CLAUDE.md"
+git -C "$CD_REPO" add -A >/dev/null 2>&1
+git -C "$CD_REPO" commit -qm init >/dev/null 2>&1
+: > "$CD_REPO/src/Widget.tsx"
+git -C "$CD_REPO" add -A >/dev/null 2>&1
+printf '{"prompt":"no, that is wrong, you broke the component again"}' \
+  | CLAUDE_PROJECT_DIR="$CD_REPO" bash "$CD_HOOK" >/dev/null 2>&1
+CDREC2=$(grep '"type":"explicit"' "$HISTORY" 2>/dev/null | tail -n 1)
+assert_eq "$(jq -r '.domain' <<< "${CDREC2:-\{\}}" 2>/dev/null)" "frontend" \
+  "the domain is the one detect_domain resolved, not the unknown fallback"
+
 # ─── 3b. the field-data record that motivated the fix ────────────────
 # Verbatim shape from history.jsonl: a revert in ANOTHER repo, filed under this
 # project, carrying 20 session files none of which the command named.
