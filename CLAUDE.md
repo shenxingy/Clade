@@ -387,7 +387,7 @@ python3 configs/scripts/check-roadmap-authority.py
 #     did not run at all.
 bash configs/scripts/checks.sh shellcheck configs/hooks/*.sh configs/hooks/lib/*.sh configs/scripts/*.sh install.sh
 
-# 12. Every suite the `shell-tests` job runs — all 18, not a convenient subset
+# 12. Every suite the `shell-tests` job runs — all 19, not a convenient subset
 for t in loop checks skill-routing pr-scope-policy audit worktree-env \
          rule-injector mailbox-drain correction-pairing hooks session-scorecard \
          post-compact-reinject context-warning-drain ensure-dev-server \
@@ -430,7 +430,7 @@ enforces that yet, which is precisely why it keeps recurring.
 
 On push/PR to `main`, four workflow files fire:
 
-- `ci.yml` — `syntax-check` (11 gates), `pytest` (suite + 2 offline evals),
+- `ci.yml` — `syntax-check` (17 gates), `pytest` (suite + 2 offline evals),
   `shell-tests` (19 suites), `install-test`. `run_hack_eval.py` scores
   `judge_diversity.test_integrity` against the labelled reward-hack corpus in
   `evals/hack_cases/` — read its README before changing either, because that
