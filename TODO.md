@@ -360,6 +360,52 @@ re-running the gates.
 - [ ] 🔵 Nothing enforces the top-level `docs/*.md` header convention; two of fourteen files had drifted off it and no gate noticed. Cheapest control: assert in `check-references.py` that every top-level `docs/*.md` links `../README.md` in its first three lines.
 - [ ] 🔵 The global agent rules assert that `/sync` flags a README over 300 lines. The shipped skill has no such logic — its only line-count rule caps `PROGRESS.md` at 100. Implement the check or correct the claim.
 - [ ] 🔵 Web lint has no home. The `npm run lint` script was deleted because eslint was never installed; re-adding it properly needs a `web` job in `ci.yml` and the coupled CLAUDE.md checklist line, which `check-ci-checklist.py` enforces.
+### Standing-brief configuration — 2026-09-02
+
+- [x] 🔴 **The repeat-brief detector had never spoken.** `prompt-tracker.sh` was
+      async and reported through `systemMessage`, which an async hook cannot
+      deliver — across 386,760 logged prompts and nine patterns past its own
+      threshold it produced nothing, ever. That silence is the direct cause of
+      the owner hand-typing the same long brief: nothing told them it had become
+      a pattern. Now sync via `additionalContext`, bounded log, min-hash + LSH
+      fingerprint so a changed opening sentence no longer hides the repeat, and
+      it speaks once per pattern. Six tests.
+- [x] 🟡 **Fan-out is now available by default and was being suppressed.**
+      `ultracode: true` makes Claude Code plan a workflow per substantive task;
+      it was set nowhere. `install.sh --ultracode[=small|medium|large]` is the
+      opt-in. Two things in this repo fought it: `configs/CLAUDE.md`'s blanket
+      "use at most three agents", installed globally and read every turn — it
+      sat in context while a 166-agent review ran — and the absent
+      `workflowSizeGuideline`. Both fixed; the recursion cap stays because a
+      Workflow orchestrates from the lead and never needs to nest.
+- [x] 🟡 **`/landscape` skill added.** Encodes the whole-system report brief the
+      owner kept retyping: the 18-section spine (stakeholder framing, testable
+      goal, parts inventory with repo and owner, surfaces including dormant
+      ones, one traced task, decisions, abandoned attempts, a capability-ladder
+      gap, exactly one next step, declared omissions), the ranked archaeology
+      for recovering failed attempts, and the two-step org survey.
+- [ ] 🔴 **The same emptiness exists in `frontend-design`.** The owner's standing
+      design brief — measured appearing nine times in `history.jsonl` across
+      three days in April, up to 9,181 characters — says *"请调用 frontend-design
+      skill，并严格遵循它的设计规范与最佳实践"*. The skill contains **none** of the
+      constraints it is being pointed at: grep across the whole skill directory
+      returns zero hits for scroll-jack, Framer Motion, GSAP,
+      prefers-reduced-motion, bento, Linear, Vercel, Stripe or 饱和. The brief has
+      a home and the home is empty, five months on. That is why it gets retyped.
+      Recover the constraints from the nine logged instances and put them in the
+      skill. This is the highest-value item in this section and the one still
+      open.
+- [ ] 🟡 The correction taxonomy has no class for "the user stated a standing
+      preference". `correction-detector.sh` injects nine root-cause classes and
+      `templates/corrections/rules.md` lists five; none covers a preference, so a
+      brief only enters the learning pipeline if it happens to arrive as a
+      complaint. Add the class, or accept that `prompt-tracker.sh` is the only
+      path for preferences and say so in both files.
+- [ ] 🔵 `install.sh --ultracode` has no test. `tests/test-install.sh` covers the
+      spawn-depth merge next to it; the same shape applies — assert the two keys
+      land, that an existing `settings.json` key survives the merge, and that an
+      invalid size falls back to medium rather than writing garbage.
+
 ### Review of the review — 2026-09-02, second pass
 
 - [x] 🔴 **The orchestrator has never run — and that is deliberate.** The

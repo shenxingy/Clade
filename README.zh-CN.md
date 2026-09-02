@@ -32,7 +32,7 @@ Clade 把 agent 的工作变成可复查的交付：解析后的执行身份、�
 3. [可信交付循环](#可信交付循环)
 4. [它做什么](#它做什么)
 5. [自学习机制](#自学习机制)
-6. [Skills](#skills-136)
+6. [Skills](#skills-137)
 7. [支持的语言](#支持的语言)
 8. [文档](#文档)
 9. [Dotfile 同步](#dotfile-同步)
@@ -158,7 +158,7 @@ Commit Lessons 与 Doc Align 在 Claude 完整框架中本地运行，未启用�
 
 详见 [Self-Learning Mechanisms](docs/learning-mechanisms.md)。
 
-## Skills (136)
+## Skills (137)
 
 ### 核心工作流
 
