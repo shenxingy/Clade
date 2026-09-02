@@ -706,14 +706,14 @@ $failure_context
 ## Instructions
 - Create exactly 1 task (JSON array format)
 - Task: fix the specific failing tests or verification checks
-- Use sonnet model for standard fixes
+- Use the $WORKER_MODEL model for this fix
 - Include exact file paths and what to fix
 - Workers commit via: committer \"fix: description\" file1 file2"
 
   mkdir -p "$(dirname "$task_file")"
   local tasks_json
   tasks_json=$(
-    _timeout "$SUPERVISOR_TIMEOUT" claude --model sonnet \
+    _timeout "$SUPERVISOR_TIMEOUT" claude --model "$SUPERVISOR_MODEL" \
       "${PURE_JUDGE_FLAGS[@]}" -p "$fix_prompt" 2>&1 \
       | python3 "$(_sibling_script loop_json.py)" --require-nonempty --max-tasks 1
   ) || tasks_json="[]"

@@ -247,7 +247,12 @@ Output a JSON object with this exact structure:
 Be strict. Return passed:false if any check fails. Do not fabricate checks you did not run."
 
   local result
-  if ! result=$(_timeout "$SUPERVISOR_TIMEOUT" claude -p "$verify_prompt" --model sonnet "${PURE_JUDGE_FLAGS[@]}" 2>&1); then
+  # $SUPERVISOR_MODEL, not a literal. `--model` sets that variable, and every
+  # other LLM node in this group honours it; this one and the fix-task node did
+  # not, so `/loop --model <x>` silently ran the verifier on sonnet. The default
+  # is unchanged — SUPERVISOR_MODEL defaults to MODEL_SONNET — so only an
+  # explicit override behaves differently, which is the point.
+  if ! result=$(_timeout "$SUPERVISOR_TIMEOUT" claude -p "$verify_prompt" --model "$SUPERVISOR_MODEL" "${PURE_JUDGE_FLAGS[@]}" 2>&1); then
     log_warn "Verify call failed or timed out"
     echo '{"passed": null, "items": [], "summary": "verify call failed"}'
     return

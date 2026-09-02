@@ -570,11 +570,21 @@ re-running the gates.
       control that never applies. Nothing in the repo says this yet except
       `CLAUDE.md`'s new note; a mechanical version would be a marker the audit
       skills read.
-- [ ] 🟡 `CapabilityState` for `"subagents"` is declared for both providers and
-      read by nothing — two definitions, zero consumers. Codex's is
-      `CONDITIONAL` with no condition expressed anywhere. Either route on it
-      (a fan-out plan should refuse to hand parallel sub-work to a runtime that
-      cannot subdivide) or delete the key.
+- [x] 🟡 **`subagents` was declared for both providers, read by nothing, and
+      wrong.** DONE 2026-09-02. The routing machinery already existed:
+      `resolve_capabilities` enforces a task's `execution_requirements` against
+      the runtime's capabilities, raising on a REQUIRED capability that is not
+      SUPPORTED and recording a `Degradation` for a PREFERRED one. Nothing had
+      ever declared this requirement, and Codex's state would have answered
+      wrongly if anything had — `CONDITIONAL` with no condition expressed reads
+      as "sometimes, depending", when `codex exec` spawns no sub-agent at all.
+      Corrected to `UNSUPPORTED`, and the `sources` map now carries each
+      condition instead of repeating the adapter name for every key, which is
+      what made it as unreadable as the state it was meant to explain.
+      Seven tests are the missing consumer: a run that must subdivide is refused
+      on Codex and admitted on Claude, a preferred one degrades rather than
+      failing, and no CONDITIONAL is allowed to ship without a stated condition.
+
 - [ ] 🟡 **Codex cannot fan out, and that is why it is slower.** `codex exec`
       exposes 15 flags and not one concerns agents, delegation or concurrency.
       The CLI's own `features list` shows `multi_agent stable true` — but only
@@ -665,7 +675,18 @@ failure mode is silence needs a test that proves it can fail.
 
 - [ ] 🔵 `orchestrator/tests/test_worker_modules.py` is 1446 lines, 54 under the ceiling. The natural split lifts the autoscale and fan-out sections into their own file.
 - [ ] 🔵 `tests/test-loop.sh` is 1442 lines, 58 under the ceiling, and the loop-runner split just pushed it there by adding deploy-parity entries. It is now the closest first-party file to the gate after `test_worker_modules.py`.
-- [ ] 🟡 `loop_verify.sh`'s `node_verify` hardcodes `--model sonnet` while every other LLM node in the group uses `$SUPERVISOR_MODEL`, so `/loop --model` never reaches the verify node. Pre-existing, surfaced by the extraction and moved unchanged rather than fixed inside a behaviour-preserving move.
+- [x] 🟡 **`--model` did not reach every node, in three places rather than one.**
+      DONE 2026-09-02. `loop_verify.sh`'s verify node and `loop-runner.sh`'s
+      fix-task planner both ran a literal `--model sonnet` while every other LLM
+      node used `$SUPERVISOR_MODEL`, and the planner's prompt separately told it
+      in prose to "use sonnet model" regardless of `--worker-model`. The default
+      is unchanged either way — `SUPERVISOR_MODEL` defaults to `MODEL_SONNET` —
+      which is exactly why it went unnoticed: the flag looked like it worked
+      until you asked which node ran what.
+      `tests/test-loop-args.sh` now fails on any `--model <literal>` in the loop
+      script group and on any prompt naming a model in prose. Both guards were
+      red-phase checked separately.
+
 - [ ] 🔵 `node_test_sample` and `node_health_check` communicate through three bare globals (`LAST_TEST_OUTPUT`, `LAST_TEST_RESULT`, `PREV_FAILED`) that are now a cross-file coupling between `loop_verify.sh` and `loop-runner.sh`. Sourced shell makes it work; the `# Writes:` header is the only thing recording it.
 
 ---
