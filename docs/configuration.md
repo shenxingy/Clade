@@ -10,11 +10,12 @@
 2. [Optional](#optional)
 3. [Tuning](#tuning)
 4. [Control-plane authentication](#control-plane-authentication)
-5. [Add a correction rule manually](#add-a-correction-rule-manually)
-6. [Adjust quality gate thresholds](#adjust-quality-gate-thresholds)
-7. [Add a new hook](#add-a-new-hook)
-8. [Add a new agent](#add-a-new-agent)
-9. [Add a new skill](#add-a-new-skill)
+5. [Standing multi-agent orchestration](#standing-multi-agent-orchestration)
+6. [Add a correction rule manually](#add-a-correction-rule-manually)
+7. [Adjust quality gate thresholds](#adjust-quality-gate-thresholds)
+8. [Add a new hook](#add-a-new-hook)
+9. [Add a new agent](#add-a-new-agent)
+10. [Add a new skill](#add-a-new-skill)
 
 ---
 
@@ -107,6 +108,56 @@ mask back leaves the stored secret alone.
 Setting `api_allow_unauthenticated` to `true` serves the control plane with no
 authentication at all. It exists so the choice is explicit rather than implied
 by an empty config; with no token and no opt-out, the server rejects.
+
+## Standing multi-agent orchestration
+
+By default Claude Code waits to be asked before it fans work out to agents. The
+`Workflow` tool is explicitly opt-in, and a task that would obviously benefit
+from parallelism does not on its own satisfy that opt-in.
+
+One settings key changes that:
+
+```bash
+./install.sh --ultracode          # <15 agents per run
+./install.sh --ultracode=large    # up to 50
+./install.sh --ultracode=small    # under 5
+```
+
+which merges into `~/.claude/settings.json`:
+
+```json
+{ "ultracode": true, "workflowSizeGuideline": "large" }
+```
+
+With it on, Claude plans a workflow for each substantive task instead of waiting
+for you to type `ultracode` in the prompt. It also raises reasoning effort to
+xhigh, so **it spends materially more per turn** — that is the right trade when
+you are driving a fleet from the terminal and the wrong one if you installed
+Clade for its commit hook. Off by default for that reason.
+
+Turn it off with `jq 'del(.ultracode)' ~/.claude/settings.json | sponge` or by
+editing the file.
+
+Two related environment keys, both in the `env` block of the same file:
+
+| key | default | what it does |
+|-----|---------|--------------|
+| `CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY` | 10 | how many read-only tools and subagents run at once |
+| `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` | 3, set to **1** by `install.sh` | layers of nesting below the main loop |
+
+The depth cap is deliberate — it enforces "subagents must not delegate
+recursively" — and it costs a workflow nothing, because a Workflow script
+orchestrates from the lead rather than by nesting.
+
+**Check whether a run used its parallelism**, rather than assuming:
+
+```bash
+python3 configs/scripts/workflow-scorecard.py --since 7
+```
+
+A single-agent tail over 15% means the shape was wrong: a barrier where a
+pipeline would do, or units too coarse. Measured across 89 runs on the author's
+account, 45% of all multi-agent wall clock was spent waiting on one agent.
 
 ## Add a correction rule manually
 

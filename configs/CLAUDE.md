@@ -39,8 +39,26 @@ These rules enable autonomous, unattended operation across all projects.
 - Decide before broad repository reads whether the lead should solve the task or use one direct subagent.
 - Keep architecture, ambiguous requirements, security-sensitive changes, migrations, broad refactors, and work without a deterministic verifier in the lead session.
 - Use `Explore` for bounded read-heavy discovery and `bounded-implementer` for one low-risk change only when file ownership and a deterministic verifier are explicit.
-- Use at most three agents for genuinely independent read-only work. Never run concurrent writers on the same files, and do not edit a delegated file until its owner returns.
-- Subagents must not delegate recursively. Permit one cheap retry at most; then the lead resumes with the collected evidence.
+- **Hand-rolled fan-out**: at most three agents for genuinely independent
+  read-only work. Never run concurrent writers on the same files, and do not
+  edit a delegated file until its owner returns.
+- **A planned Workflow run is exempt from that three.** Its size is governed by
+  `workflowSizeGuideline` in settings, and the cap exists to stop an unplanned
+  spray of Agent calls, not to stop a script that assigns disjoint file
+  ownership. Read as a blanket rule it silently fought every workflow — it sat
+  in context while a 166-agent review ran on 2026-09-02.
+- **Prefer `pipeline()` to `parallel()` whenever the work has stages, and cut
+  more units than there are slots.** Measured across 89 parallel runs (1777
+  agents, 49.9 h): 45% of all makespan was spent with exactly one agent still
+  running. Shape decides that, not agent count — a 110-agent pipeline finished
+  with a 0% single-agent tail at 80% utilisation despite a 6.9x straggler
+  spread, while a 10-agent barrier with a 2.0x spread wasted 19%. Check any run
+  with `workflow-scorecard.py`; a tail over 15% means the shape was wrong.
+- Subagents must not delegate recursively — enforced, not merely asked:
+  `install.sh` sets `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1`. A Workflow script
+  orchestrates from the lead, so its agents never need to nest and the cap costs
+  it nothing. Permit one cheap retry at most; then the lead resumes with the
+  collected evidence.
 - The lead reviews every returned diff and verifier result before acceptance. Cross-vendor delegation remains explicit-only.
 
 ## Context Management
