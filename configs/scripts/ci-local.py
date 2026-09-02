@@ -437,7 +437,10 @@ def main() -> int:
     )
     ap.add_argument("--repo", type=Path, default=Path.cwd())
     ap.add_argument("--job", action="append", help="Job id or name (repeatable).")
-    ap.add_argument("--all", action="store_true", help="Include conditional jobs.")
+    ap.add_argument("--all", action="store_true",
+                    help="Include conditional (schedule/dispatch) jobs. These are "
+                         "the tiers a repo deliberately keeps off every push; some "
+                         "spend real money. Prints what it is about to run first.")
     ap.add_argument("--list", action="store_true", help="Show the plan and exit.")
     ap.add_argument("--json", action="store_true", help="Machine-readable result.")
     ap.add_argument("--tail", type=int, default=40, help="Failure output lines (default 40).")
@@ -451,6 +454,7 @@ def main() -> int:
         return 1
 
     plan = collect_jobs(repo, args.all)
+
     if args.job:
         wanted = {w.lower() for w in args.job}
         plan = [
@@ -462,6 +466,20 @@ def main() -> int:
             return 1
         # An explicitly named job runs even if it is conditional.
         plan = [(j, None if r and r.startswith("conditional") else r) for j, r in plan]
+
+    if args.all and not args.list:
+        # The conditional tier is conditional for a reason. In this repository
+        # one of those jobs makes a live billed API call (~$0.05) and another
+        # runs `npm audit` against the network; on someone else's repo it could
+        # be a deploy. Name them before running, rather than after — and only
+        # the ones that survived the --job filter, or the warning names work
+        # that is not about to happen.
+        conditional = [j for j, r in plan if j.condition and r is None]
+        if conditional:
+            print("--all also runs these normally-skipped jobs:")
+            for job in conditional:
+                print(f"  · {job.display}   ({job.workflow})")
+            print("  Some conditional tiers spend money or touch the network.\n")
 
     if args.list:
         print(f"ci-local: {repo.name} on {local_platform()}\n")
