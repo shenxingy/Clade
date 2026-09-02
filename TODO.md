@@ -384,17 +384,24 @@ re-running the gates.
       ones, one traced task, decisions, abandoned attempts, a capability-ladder
       gap, exactly one next step, declared omissions), the ranked archaeology
       for recovering failed attempts, and the two-step org survey.
-- [ ] 🔴 **The same emptiness exists in `frontend-design`.** The owner's standing
-      design brief — measured appearing nine times in `history.jsonl` across
-      three days in April, up to 9,181 characters — says *"请调用 frontend-design
-      skill，并严格遵循它的设计规范与最佳实践"*. The skill contains **none** of the
-      constraints it is being pointed at: grep across the whole skill directory
-      returns zero hits for scroll-jack, Framer Motion, GSAP,
-      prefers-reduced-motion, bento, Linear, Vercel, Stripe or 饱和. The brief has
-      a home and the home is empty, five months on. That is why it gets retyped.
-      Recover the constraints from the nine logged instances and put them in the
-      skill. This is the highest-value item in this section and the one still
-      open.
+- [x] 🔴 **`frontend-design` was empty and is now filled.** The owner's standing
+      design brief — measured at fifteen appearances in `history.jsonl` over five
+      months, the canonical one 9,181 characters — said *"请调用 frontend-design
+      skill，并严格遵循它的设计规范与最佳实践"*, and the skill contained **none** of
+      what it was pointing at: zero hits across the whole directory for
+      scroll-jack, Framer Motion, prefers-reduced-motion, bento, Linear, Vercel,
+      Poppins or BRAND.md. The brief had a home and the home was empty, so it
+      got re-typed. Recovered from the logged instances into
+      `references/brand-differentiation.md` and wired into phase 4 and the
+      handoff contract.
+      **The most valuable part is that the brief has two versions that
+      disagree.** The first told Claude to follow Linear, Vercel, Stripe and
+      Anthropic's restrained palettes; that produced three sibling sites that
+      looked alike, so the second forbids exactly what the first recommended.
+      The reference records the ban list *as the correction to its own earlier
+      version*, which is the only form in which it makes sense. Client
+      specifics — the brand names and internal domains — are deliberately not
+      in the public repo; only the reusable method is.
 - [ ] 🟡 The correction taxonomy has no class for "the user stated a standing
       preference". `correction-detector.sh` injects nine root-cause classes and
       `templates/corrections/rules.md` lists five; none covers a preference, so a
