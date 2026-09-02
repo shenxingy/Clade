@@ -745,6 +745,106 @@ else
   tail -30 "$install_log5"
 fi
 
+# ─── Suite 10: --ultracode is an opt-in that actually lands ──────────
+#
+# The flag writes two keys into the user's own settings.json. Every failure
+# mode here is silent by construction: a merge that clobbers the file, a
+# rejected size that gets written verbatim, an opt-in that is on by default, or
+# a documented "turn it off with" line that does not turn it off. None of them
+# raise an error, and the installer prints a success line either way.
+
+section "--ultracode opt-in"
+
+SETTINGS="$HOME/.claude/settings.json"
+
+# The preceding suites all ran the installer with no flags. If the key is here
+# now, the opt-in defaults to on, which is the one thing it must never do.
+if [[ -f "$SETTINGS" ]] && ! jq -e 'has("ultracode")' "$SETTINGS" >/dev/null 2>&1; then
+  pass "ultracode is absent after a plain install (opt-in, not default)"
+else
+  fail "ultracode is absent after a plain install (opt-in, not default)" \
+       "settings.json: $(cat "$SETTINGS" 2>/dev/null | head -c 200)"
+fi
+
+# Seed a key the merge must preserve. `. + {...}` is a merge, but only if the
+# temp-file dance around it works; a truncated write would lose this.
+#
+# The canary has to be a key install.sh does NOT own. The first version of this
+# test used statusLine and failed — correctly, because §8 sets `.statusLine`
+# outright on every run. cleanupPeriodDays appears nowhere in the installer, so
+# losing it can only mean the merge clobbered the file.
+jq '. + {cleanupPeriodDays: 4242}' "$SETTINGS" \
+  > "$SETTINGS.seed" && mv "$SETTINGS.seed" "$SETTINGS"
+
+uc_log="$SANDBOX/install-ultracode.log"
+if bash "$SRC/install.sh" --ultracode </dev/null >"$uc_log" 2>&1; then
+  pass "install.sh --ultracode exits 0"
+else
+  fail "install.sh --ultracode exits 0" "see $uc_log"
+fi
+
+if jq -e '.ultracode == true and .workflowSizeGuideline == "medium"' "$SETTINGS" >/dev/null 2>&1; then
+  pass "--ultracode sets ultracode=true and the medium size guideline"
+else
+  fail "--ultracode sets ultracode=true and the medium size guideline" \
+       "got: $(jq -c '{ultracode, workflowSizeGuideline}' "$SETTINGS" 2>&1)"
+fi
+
+if jq -e '.cleanupPeriodDays == 4242' "$SETTINGS" >/dev/null 2>&1; then
+  pass "--ultracode merges into settings.json without dropping the user's keys"
+else
+  fail "--ultracode merges into settings.json without dropping the user's keys" \
+       "the seeded cleanupPeriodDays key did not survive"
+fi
+
+if bash "$SRC/install.sh" --ultracode=large </dev/null >/dev/null 2>&1 \
+   && jq -e '.workflowSizeGuideline == "large"' "$SETTINGS" >/dev/null 2>&1; then
+  pass "--ultracode=large raises the size guideline"
+else
+  fail "--ultracode=large raises the size guideline" \
+       "got: $(jq -r '.workflowSizeGuideline' "$SETTINGS" 2>&1)"
+fi
+
+# A rejected size must not reach the file. Writing "enormous" verbatim would be
+# read by Claude Code as an unknown value, not as the medium it warned about.
+uc_bad_log="$SANDBOX/install-ultracode-bad.log"
+bash "$SRC/install.sh" --ultracode=enormous </dev/null >"$uc_bad_log" 2>&1
+if jq -e '.workflowSizeGuideline == "medium"' "$SETTINGS" >/dev/null 2>&1 \
+   && grep -q "is not small|medium|large" "$uc_bad_log"; then
+  pass "--ultracode=<bogus> warns and falls back to medium instead of writing it"
+else
+  fail "--ultracode=<bogus> warns and falls back to medium instead of writing it" \
+       "value: $(jq -r '.workflowSizeGuideline' "$SETTINGS" 2>&1)"
+fi
+
+# The installer prints a removal command. An escape hatch nobody can run is the
+# same defect as no escape hatch; run the literal line it printed.
+removal=$(grep -o "jq 'del(\.ultracode)' [^ ]*" "$uc_log" | head -1)
+if [[ -n "$removal" ]]; then
+  expanded=${removal/\~\/.claude/$HOME/.claude}
+  if eval "$expanded" > "$SETTINGS.off" 2>/dev/null \
+     && jq -e 'has("ultracode") | not' "$SETTINGS.off" >/dev/null 2>&1; then
+    pass "the printed 'turn it off' command actually removes the key"
+  else
+    fail "the printed 'turn it off' command actually removes the key" "ran: $expanded"
+  fi
+  rm -f "$SETTINGS.off"
+else
+  fail "the installer prints a removal command" "no jq del line in $uc_log"
+fi
+
+# Last, because it destroys the sandbox's settings.json: the flag must degrade
+# to a warning rather than a crash when there is nothing to merge into.
+mv "$SETTINGS" "$SETTINGS.bak"
+uc_nofile_log="$SANDBOX/install-ultracode-nofile.log"
+if bash "$SRC/install.sh" --ultracode </dev/null >"$uc_nofile_log" 2>&1; then
+  pass "install.sh --ultracode still exits 0 when settings.json is absent"
+else
+  fail "install.sh --ultracode still exits 0 when settings.json is absent" \
+       "see $uc_nofile_log"
+fi
+mv "$SETTINGS.bak" "$SETTINGS" 2>/dev/null || true
+
 # ─── Summary ─────────────────────────────────────────────────────────
 
 echo ""
