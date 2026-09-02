@@ -1,9 +1,10 @@
 """CI failure watcher — polls GitHub Actions for failed runs and creates tasks."""
 
+import asyncio
+import contextlib
 import logging
 import os
 import re
-import subprocess
 from typing import Any
 
 import httpx
@@ -89,6 +90,46 @@ async def _fetch_failure_details(
     return summary
 
 
+async def _git_remote_url(project_dir: str, timeout: float = 10.0) -> str | None:
+    """`git remote get-url origin`, bounded and off the event loop.
+
+    check_ci_failures is dispatched detached (session.py: asyncio.create_task),
+    so a blocking call here freezes the SHARED loop — the status loop, every
+    worker poll, every HTTP request — not just this coroutine. `git remote
+    get-url` reads .git/config only, but a wedged mount under project_dir or a
+    git binary stuck on startup hangs it with no bound at all.
+
+    Returns None on any failure: the caller is fail-open by design.
+    """
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "git", "remote", "get-url", "origin",
+            cwd=project_dir,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+    except OSError as e:  # git missing, project_dir gone, fork failure
+        logger.warning("Failed to get git remote: %s", e)
+        return None
+
+    try:
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except asyncio.TimeoutError:
+        proc.kill()
+        # Bounded drain: an unbounded communicate() after kill re-introduces
+        # exactly the hang this helper exists to remove.
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(proc.communicate(), timeout=5)
+        logger.warning("git remote get-url timed out after %ss", timeout)
+        return None
+
+    if proc.returncode != 0:
+        logger.warning("git remote get-url failed (exit %s)", proc.returncode)
+        return None
+    return out.decode(errors="replace").strip() or None
+
+
 async def check_ci_failures(task_queue: Any, project_dir: str) -> list[str]:
     """
     Poll GitHub Actions for failed runs and create tasks for each new failure.
@@ -109,14 +150,8 @@ async def check_ci_failures(task_queue: Any, project_dir: str) -> list[str]:
             return created_ids
 
         # Detect git remote
-        try:
-            remote_url = subprocess.check_output(
-                ["git", "remote", "get-url", "origin"],
-                cwd=project_dir,
-                text=True,
-            ).strip()
-        except Exception as e:
-            logger.warning("Failed to get git remote: %s", e)
+        remote_url = await _git_remote_url(project_dir)
+        if not remote_url:
             return created_ids
 
         # Parse owner/repo from URL

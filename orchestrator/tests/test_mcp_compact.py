@@ -145,11 +145,14 @@ class TestCallToolCompact:
     async def test_run_skill_executes_via_claude(self, skills_dir, monkeypatch):
         captured = {}
 
-        def _fake_run(cmd, **kwargs):
+        # Patches _run_bounded, not subprocess.run: the skill spawn moved to
+        # asyncio.create_subprocess_exec so a 5-minute skill no longer blocks
+        # the MCP event loop and serialises every other request behind it.
+        async def _fake_run(cmd, *, timeout, env=None):
             captured["cmd"] = cmd
-            return SimpleNamespace(returncode=0, stdout='{"summary": "all done"}', stderr="")
+            return 0, '{"summary": "all done"}', ""
 
-        monkeypatch.setattr(mcp_server.subprocess, "run", _fake_run)
+        monkeypatch.setattr(mcp_server, "_run_bounded", _fake_run)
         result = await mcp_server.call_tool(
             "clade_run_skill", {"name": "alpha", "args": "--dry-run"}
         )
@@ -161,10 +164,11 @@ class TestCallToolCompact:
 
     async def test_per_skill_tool_name_still_works(self, skills_dir, monkeypatch):
         """Clients with cached enumeration-mode tool lists must not break."""
-        def _fake_run(cmd, **kwargs):
-            return SimpleNamespace(returncode=0, stdout='{"summary": "ok"}', stderr="")
 
-        monkeypatch.setattr(mcp_server.subprocess, "run", _fake_run)
+        async def _fake_run(cmd, *, timeout, env=None):
+            return 0, '{"summary": "ok"}', ""
+
+        monkeypatch.setattr(mcp_server, "_run_bounded", _fake_run)
         result = await mcp_server.call_tool("clade_beta", {})
         assert result.content[0].text == "ok"
 

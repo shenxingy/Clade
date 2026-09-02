@@ -4,11 +4,18 @@ Pure helpers are driven with fixture JSON; the async fetcher is exercised with
 duck-typed stub clients so no network or httpx mocking is needed.
 """
 
+import asyncio
+import os
+import subprocess
+
+from task_factory import ci_watcher
 from task_factory.ci_watcher import (
     _GUARDRAILS,
     _fetch_failure_details,
+    _git_remote_url,
     _log_tail,
     _summarize_failed_jobs,
+    check_ci_failures,
 )
 
 # ─── Fixture JSON (shape of /repos/{o}/{r}/actions/runs/{id}/jobs) ────────────
@@ -181,3 +188,104 @@ class TestGuardrails:
     def test_both_bad_fix_guardrails_present(self):
         assert "CI infrastructure" in _GUARDRAILS
         assert "downgrading or pinning dependencies" in _GUARDRAILS
+
+
+# ─── _git_remote_url (bounded, off the shared event loop) ────────────────────
+
+def _git(*args: str, cwd) -> None:
+    subprocess.run(["git", *args], cwd=str(cwd), check=True,
+                   capture_output=True, text=True, timeout=30)
+
+
+class _StuckProc:
+    """A spawned child that never finishes — communicate() blocks forever."""
+
+    def __init__(self) -> None:
+        self.killed = False
+        self.returncode = None
+
+    async def communicate(self):
+        if self.killed:
+            return b"", b""
+        await asyncio.Event().wait()  # never returns
+
+    def kill(self) -> None:
+        self.killed = True
+        self.returncode = -9
+
+
+class TestGitRemoteUrl:
+    async def test_reads_origin_from_a_real_repo(self, tmp_path):
+        _git("init", "-q", str(tmp_path), cwd=tmp_path.parent)
+        _git("remote", "add", "origin", "git@github.com:o/r.git", cwd=tmp_path)
+        assert await _git_remote_url(str(tmp_path)) == "git@github.com:o/r.git"
+
+    async def test_missing_origin_returns_none(self, tmp_path):
+        _git("init", "-q", str(tmp_path), cwd=tmp_path.parent)
+        assert await _git_remote_url(str(tmp_path)) is None
+
+    async def test_nonexistent_project_dir_returns_none(self, tmp_path):
+        # OSError on spawn (cwd does not exist) must not escape.
+        assert await _git_remote_url(str(tmp_path / "gone")) is None
+
+    async def test_timeout_kills_the_child_and_returns_none(self, monkeypatch):
+        """The regression: an unbounded `git remote get-url` on a wedged mount
+        froze the shared loop for the life of the process."""
+        proc = _StuckProc()
+
+        async def _fake_spawn(*args, **kwargs):
+            return proc
+
+        monkeypatch.setattr(
+            ci_watcher.asyncio, "create_subprocess_exec", _fake_spawn
+        )
+        result = await asyncio.wait_for(
+            _git_remote_url("/anywhere", timeout=0.05), timeout=5
+        )
+        assert result is None
+        assert proc.killed, "timed-out git child was never reaped"
+
+    async def test_does_not_block_the_shared_event_loop(self, tmp_path, monkeypatch):
+        """check_ci_failures is create_task'd onto the shared loop, so a slow
+        git must not stop the status loop / worker polls / HTTP handlers."""
+        fake_git = tmp_path / "git"
+        fake_git.write_text("#!/bin/sh\nsleep 0.3\necho git@github.com:o/r.git\n")
+        fake_git.chmod(0o755)
+        monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ['PATH']}")
+
+        ticks = 0
+
+        async def _ticker():
+            nonlocal ticks
+            for _ in range(30):
+                await asyncio.sleep(0.005)
+                ticks += 1
+
+        url, _ = await asyncio.gather(_git_remote_url(str(tmp_path)), _ticker())
+        assert url == "git@github.com:o/r.git"
+        assert ticks > 5, f"event loop was blocked during git ({ticks} ticks)"
+
+
+class _RecordingQueue:
+    def __init__(self) -> None:
+        self.added: list[dict] = []
+
+    async def list(self):
+        return []
+
+    async def add(self, **kwargs):
+        self.added.append(kwargs)
+        return {"id": "t1"}
+
+
+class TestCheckCiFailuresFailOpen:
+    async def test_returns_empty_when_remote_unresolvable(self, monkeypatch):
+        monkeypatch.setenv("GITHUB_TOKEN", "x")
+
+        async def _none(project_dir, timeout=10.0):
+            return None
+
+        monkeypatch.setattr(ci_watcher, "_git_remote_url", _none)
+        queue = _RecordingQueue()
+        assert await check_ci_failures(queue, ".") == []
+        assert queue.added == []

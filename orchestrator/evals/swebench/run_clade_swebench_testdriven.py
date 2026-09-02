@@ -11,7 +11,8 @@ from __future__ import annotations
 import asyncio, json, random, subprocess, sys, time, shlex
 from pathlib import Path
 
-sys.path.insert(0, "/home/alexshen/projects/clade/orchestrator")
+_ORCH = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_ORCH))
 import worker_tldr as wt          # noqa: E402
 import worker_review as wr        # noqa: E402
 from datasets import load_dataset  # noqa: E402

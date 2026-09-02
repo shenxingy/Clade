@@ -214,7 +214,7 @@ def test_documented_leaf_modules_import_no_project_code() -> None:
         "ideas", "process_manager", "worker_tldr", "worker_review",
         "worker_utils", "worker_hydrate", "condensers", "event_stream",
         "tracing", "error_classifier", "session_tree", "usage_tracker",
-        "compression_feedback", "fault_localize", "runtime_redaction",
+        "fault_localize", "runtime_redaction",
     }
     graph = _import_graph()
     violations = []

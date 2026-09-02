@@ -26,11 +26,12 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import contextlib
 import json
 import os
 import re
 import shlex
-import subprocess
+import signal
 import sys
 from pathlib import Path
 from typing import Any
@@ -49,6 +50,13 @@ from mcp.types import (
 # ─── Server Info ────────────────────────────────────────────────────────────────
 SERVER_NAME = "clade"
 SERVER_VERSION = "0.1.0"
+
+# Module constants, deliberately NOT config.py:_SETTINGS_DEFAULTS entries:
+# mcp_server.py is a standalone stdio entrypoint that imports nothing from the
+# orchestrator package (no aiosqlite, no settings file), and adding keys here
+# would drift from the generated settings reference.
+SKILL_TIMEOUT_S = 300
+SEARCH_TIMEOUT_S = 15
 
 # ─── Skill Discovery ───────────────────────────────────────────────────────────
 
@@ -208,6 +216,63 @@ def load_skills() -> list[dict]:
     return skills
 
 
+# ─── Bounded, non-blocking shellout ───────────────────────────────────────────
+# Every handler below runs on the MCP server's single event loop, and the SDK
+# dispatches tools/call concurrently (mcp.shared.jsonrpc_dispatcher spawns each
+# non-inline request with start_soon). A blocking subprocess.run here freezes
+# the read loop, the stdout writer, every other in-flight tool call and any
+# notifications/cancelled handling for the whole timeout.
+
+
+def _kill_process_group(proc: Any) -> None:
+    """SIGKILL the child's whole process group, falling back to the child.
+
+    `claude -p` spawns its own tool subprocesses; killing only the direct child
+    leaves those grandchildren running and holding the pipes.
+    """
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except (OSError, AttributeError):
+        with contextlib.suppress(Exception):
+            proc.kill()
+
+
+async def _run_bounded(
+    cmd: list[str], *, timeout: float, env: dict[str, str] | None = None
+) -> tuple[int, str, str]:
+    """Spawn cmd bounded, without blocking the MCP event loop.
+
+    Raises FileNotFoundError when the executable is missing and
+    asyncio.TimeoutError on expiry — after SIGKILLing the whole process group
+    and draining the pipes, so a claude run that spawned its own tools leaves
+    nothing behind. CancelledError takes the same reaping path, so a cancelled
+    MCP request does not leak the child either.
+    """
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env=env,
+        start_new_session=True,  # own group, so the kill reaches grandchildren
+    )
+    try:
+        out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except (asyncio.TimeoutError, asyncio.CancelledError):
+        _kill_process_group(proc)
+        # Bounded: if killpg fell through to proc.kill(), a surviving
+        # grandchild still holds the pipe and an unbounded drain would hang
+        # forever — the exact failure this function exists to remove.
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(proc.communicate(), timeout=5)
+        raise
+    return (
+        proc.returncode or 0,
+        out.decode(errors="replace"),
+        err.decode(errors="replace"),
+    )
+
+
 # ─── AST Code Search (AutoCodeRover §Gap1) ────────────────────────────────────
 
 _SKIP_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__", ".mypy_cache", "dist", "build"}
@@ -302,22 +367,24 @@ def _ast_search_method(method_name: str, class_name: str | None, root: Path) -> 
     return "\n\n".join(hits) if hits else f"Method `{method_name}` not found."
 
 
-def _grep_search_code(snippet: str, root: Path, context: int = 3) -> str:
+async def _grep_search_code(snippet: str, root: Path, context: int = 3) -> str:
     """Search for a code snippet using rg (with grep fallback)."""
     for cmd in (
         ["rg", "--no-heading", "-n", f"-C{context}", snippet, str(root)],
         ["grep", "-rn", f"--context={context}", snippet, str(root)],
     ):
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-            output = result.stdout.strip()
+            returncode, stdout, _ = await _run_bounded(cmd, timeout=SEARCH_TIMEOUT_S)
+            output = stdout.strip()
             if output:
                 return output[:4000]
             # grep exits 1 when no match — don't fall through to next cmd
-            if result.returncode in (0, 1):
+            if returncode in (0, 1):
                 return f"No matches for: {snippet!r}"
         except FileNotFoundError:
             continue
+        except asyncio.TimeoutError:
+            return f"Search timed out after {SEARCH_TIMEOUT_S}s for: {snippet!r}"
         except Exception as exc:
             return f"Search failed: {exc}"
     return f"Neither rg nor grep available; cannot search for: {snippet!r}"
@@ -543,21 +610,26 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
         cn = arguments.get("class_name", "").strip()
         if not cn:
             return CallToolResult(content=[TextContent(type="text", text="class_name is required")], is_error=True)
-        return CallToolResult(content=[TextContent(type="text", text=_ast_search_class(cn, _search_root))])
+        # AST walk + ast.parse over every .py file: pure CPU, seconds on a big
+        # repo. Off the loop so it cannot stall concurrent MCP requests.
+        text = await asyncio.to_thread(_ast_search_class, cn, _search_root)
+        return CallToolResult(content=[TextContent(type="text", text=text)])
 
     if name == "clade_search_method":
         mn = arguments.get("method_name", "").strip()
         if not mn:
             return CallToolResult(content=[TextContent(type="text", text="method_name is required")], is_error=True)
         cn = arguments.get("class_name") or None
-        return CallToolResult(content=[TextContent(type="text", text=_ast_search_method(mn, cn, _search_root))])
+        text = await asyncio.to_thread(_ast_search_method, mn, cn, _search_root)
+        return CallToolResult(content=[TextContent(type="text", text=text)])
 
     if name == "clade_search_code":
         sp = arguments.get("snippet", "").strip()
         if not sp:
             return CallToolResult(content=[TextContent(type="text", text="snippet is required")], is_error=True)
         ctx = int(arguments.get("context_lines", 3))
-        return CallToolResult(content=[TextContent(type="text", text=_grep_search_code(sp, _search_root, ctx))])
+        text = await _grep_search_code(sp, _search_root, ctx)
+        return CallToolResult(content=[TextContent(type="text", text=text)])
 
     # Handle per-skill tools (enumeration mode names; kept working in compact
     # mode too so clients with cached tool lists don't break)
@@ -601,24 +673,22 @@ async def _execute_skill(skill_name: str, args_str: str) -> CallToolResult:
     ]
 
     try:
-        result = subprocess.run(
+        returncode, stdout, stderr = await _run_bounded(
             cmd,
-            capture_output=True,
-            text=True,
-            timeout=300,  # 5 min timeout per skill
+            timeout=SKILL_TIMEOUT_S,
             env={**os.environ, "CLAUDE_CODE_EXPERIMENTAL_SKIP_INJECT": "1"},
         )
 
-        if result.returncode == 0:
+        if returncode == 0:
             # Try to parse JSON output for structured result
             try:
-                output = json.loads(result.stdout)
+                output = json.loads(stdout)
                 if isinstance(output, dict):
-                    summary = output.get("summary", result.stdout[:500])
+                    summary = output.get("summary", stdout[:500])
                 else:
                     summary = str(output)[:500]
             except (json.JSONDecodeError, ValueError):
-                summary = result.stdout[:500] if result.stdout else "(no output)"
+                summary = stdout[:500] if stdout else "(no output)"
 
             return CallToolResult(
                 content=[TextContent(type="text", text=summary)],
@@ -627,16 +697,16 @@ async def _execute_skill(skill_name: str, args_str: str) -> CallToolResult:
             return CallToolResult(
                 content=[TextContent(
                     type="text",
-                    text=f"Skill '{skill_name}' failed (exit {result.returncode}):\n{result.stderr[:500]}"
+                    text=f"Skill '{skill_name}' failed (exit {returncode}):\n{stderr[:500]}"
                 )],
                 is_error=True,
             )
 
-    except subprocess.TimeoutExpired:
+    except asyncio.TimeoutError:
         return CallToolResult(
             content=[TextContent(
                 type="text",
-                text=f"Skill '{skill_name}' timed out after 300s"
+                text=f"Skill '{skill_name}' timed out after {SKILL_TIMEOUT_S}s"
             )],
             is_error=True,
         )
