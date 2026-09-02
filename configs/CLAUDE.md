@@ -21,6 +21,55 @@ These rules enable autonomous, unattended operation across all projects.
 - Create PRs through `/create-pr`; it performs the scope gate and safely
   reconstructs an oversized branch before opening review.
 
+## CI — run it on hardware you already own
+
+**Hosted CI is billed per job, rounded up to the minute, per job.** A workflow
+whose four jobs take 24s, 39s, 60s and 73s bills four minutes, not three. The
+platform multiplies it: Linux 1x, Windows 2x, **macOS 10x**. Public
+repositories get standard runners free; private ones do not, and that is where
+the bill comes from.
+
+So the default is inverted from the usual habit: **the local run is the gate,
+and the hosted run is the receipt.** Push only after a full local pass. This is
+not only about money — a local run answers in seconds and needs no push to
+start, which is the larger saving on a public repo where the minutes are free.
+
+**Run the real gates, not a remembered subset:**
+
+```bash
+python3 ~/.claude/scripts/ci-local.py --list   # what runs here, what cannot, and why
+python3 ~/.claude/scripts/ci-local.py          # run them; exit 0 only if all passed
+python3 ~/.claude/scripts/ci-local.py --json   # machine-readable, for an automatic fixer
+```
+
+It parses `.github/workflows/*.yml` and executes the same `run:` blocks, so it
+works on any repository and **cannot drift from CI by construction**. A
+hand-maintained "run these before committing" list is the thing that drifts:
+one such list in this toolkit was wrong twice, covering 4 of 7 gates and later
+7 of 11 plus 0 of 18 suites, both times looking authoritative.
+
+**Reading its output honestly.** A skipped job is reported with its reason and
+never dropped — "nothing ran" and "everything passed" must not look alike. Jobs
+it will not run locally, each for a good reason: `pull_request_target`
+workflows (they act on the GitHub API, not the tree), steps needing a
+repository secret, conditional `schedule`/`workflow_dispatch` tiers (`--all`
+includes them), and jobs whose `runs-on` names a platform this machine is not.
+
+**Cross-platform work goes to the machine that has the platform.** A macOS job
+belongs on your Mac and a Windows job on your Windows box — over SSH or by
+running an agent locally on that machine — not on a hosted runner at 10x or 2x.
+`--list` names the platform each skipped job needs.
+
+**Keep hosted CI for what only it can do:** fork PRs from people whose machines
+you do not trust, the clean-machine property (a fresh checkout with no local
+state), and platforms you do not own. Deleting a hosted workflow whose gate now
+runs locally is a cost DECISION; read the commit that removed it before
+reporting its absence as a gap.
+
+**With no remote CI, a green local run is the only gate.** Run it to
+completion before every push, and never chain it behind `echo` — that masks the
+exit code and turns a red run green.
+
 ## Communication
 - When blocked on something requiring human input: write to `.claude/blockers.md` and stop
   - Format: `## Blocker [datetime]\n[what you need]\n[what you tried]`
