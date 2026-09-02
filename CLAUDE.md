@@ -116,6 +116,7 @@ worker_review.py     ← oracle + PR review
 worker_utils.py      ← output helpers, lint reflection, LoopDetectionService, worker-state helpers
 worker_hydrate.py    ← _pre_hydrate (GitHub issue/PR pre-hydration)
 condensers.py        ← Condenser ABC + implementations
+api_auth.py          ← stdlib-only bearer-token guard for the control plane (ASGI middleware, so it covers websockets too) + settings-secret masking
 runtime_redaction.py ← stdlib-only secret/path redaction before persistence
 evidence_bundle.py   ← versioned immutable attempt evidence + digest-chain contract
 event_stream.py      ← crash-safe JSONL event logging
@@ -214,6 +215,7 @@ CI's "Architecture map coverage" gate fails on any module missing from this file
 | `routes/workers.py` | Worker control + inspection routes (9 handlers) |
 | `routes/ideas.py` | Ideas API routes (CRUD, evaluate, execute, promote) |
 | `webhook_trust.py` | `is_trusted_actor` — a signature proves the event came from GitHub, not that its author may direct a permission-bypassed worker |
+| `api_auth.py` | `TokenAuthMiddleware` — default-closed authorisation for all 93 routes and both websockets. Middleware, not per-route `Depends`, because the next route added would silently forget the dependency and because `BaseHTTPMiddleware` never sees a websocket scope |
 | `routes/usage.py` | Usage dashboard API routes |
 | `web/src/` | Vite + React + TypeScript UI source (App.tsx, components/, stores/, hooks/, lib/) |
 | `web/index.html` | Vite shell (`<div id="root">` + main.tsx); server serves `web/dist` build when present |

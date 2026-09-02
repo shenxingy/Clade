@@ -29,12 +29,15 @@ from execution_envelope import (
 )
 from provider_registry import DEFAULT_REGISTRY
 from merge_policy import MERGE_STRATEGIES
+from api_auth import TokenAuthMiddleware, redact_settings, strip_redacted
 from config import (
     GLOBAL_SETTINGS,
     PROJECT_DIR,
     WEB_DIR,
     _SETTINGS_DEFAULTS,
     _deps_met,
+    _settings_file,
+    ensure_api_token,
     _recover_orphaned_tasks,
     _replay_interrupted_tasks,
     _save_settings,
@@ -71,6 +74,30 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Mint the control-plane token before anything can serve a request. Logged
+    # in full only on the run that created it — start.sh binds 0.0.0.0 when it
+    # sees Tailscale, so this line is how the operator gets in from another
+    # device, and reprinting a live credential every restart is not worth it.
+    _token, _minted = ensure_api_token()
+    if GLOBAL_SETTINGS.get("api_allow_unauthenticated", False):
+        logger.warning(
+            "api_allow_unauthenticated is on — the control plane is being served "
+            "with NO authentication. Every route here can spawn a worker that runs "
+            "with permissions bypassed."
+        )
+    elif _minted:
+        logger.info(
+            "Control-plane token minted. Open the UI with: "
+            "http://<host>:<port>/web/?token=%s  (stored in %s)",
+            _token,
+            _settings_file,
+        )
+    else:
+        logger.info(
+            "Control-plane token loaded from %s — append ?token=<value> once to "
+            "sign the browser in.",
+            _settings_file,
+        )
     if os.environ.get("ORCHESTRATOR_PROJECT_DIR"):
         default_session = registry.create(str(PROJECT_DIR))
         recovered = await _recover_orphaned_tasks(default_session.task_queue)
@@ -131,11 +158,23 @@ async def execution_resolution_error(_request, exc: ExecutionResolutionError):
     return JSONResponse(status_code=422, content={"detail": str(exc)})
 
 
-_cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:*,http://127.0.0.1:*").split(",")
+# Added FIRST so CORSMiddleware below ends up OUTSIDE it: Starlette builds the
+# stack with the last-added middleware outermost, and a preflight OPTIONS carries
+# no credentials, so an outer auth layer would reject it before CORS could answer.
+# TokenAuthMiddleware exempts OPTIONS as well, so the two orderings agree.
+app.add_middleware(TokenAuthMiddleware, settings_getter=lambda: GLOBAL_SETTINGS)
+
+# allow_origins is an exact-match list — CORSMiddleware does not glob, so the
+# former default of "http://localhost:*" matched nothing and every request was
+# in fact being admitted by the regex below. Default to empty and let the regex
+# state the policy in one place, with CORS_ORIGINS still available to name exact
+# extra origins. The regex now allows https so a TLS front end (see
+# orchestrator/caddy-setup.sh) is not silently blocked.
+_cors_origins = [o for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1|100\.\d+\.\d+\.\d+)(:\d+)?",
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|100\.\d+\.\d+\.\d+)(:\d+)?",
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -1078,7 +1117,15 @@ async def issues_sync_push(s: ProjectSession = Depends(_resolve_session)):
 
 @app.get("/api/settings")
 async def get_settings():
-    return GLOBAL_SETTINGS
+    """Settings with every credential masked.
+
+    This used to return GLOBAL_SETTINGS verbatim, which handed the caller
+    webhook_secret, the usage hub tokens and the control-plane token itself.
+    Masking is by key-name suffix rather than a hand-kept list, so a secret
+    added later is covered on the day it is added.
+    """
+
+    return redact_settings(GLOBAL_SETTINGS)
 
 
 @app.get("/api/compatibility")
@@ -1088,6 +1135,11 @@ async def get_compatibility():
 
 @app.post("/api/settings")
 async def post_settings(body: dict = Body(...), response: Response = None):
+    # The settings panel GETs the whole object and POSTs the whole object back.
+    # Now that GET masks credentials, a save would otherwise write the mask over
+    # every secret — including the token the caller authenticated with. Drop any
+    # secret-named key the client returned still masked; it means "unchanged".
+    body = strip_redacted(body)
     valid_keys = set(_SETTINGS_DEFAULTS.keys())
     unknown = sorted(set(body) - valid_keys - {"worker_provider"})
     if unknown:

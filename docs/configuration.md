@@ -9,11 +9,12 @@
 1. [Required](#required)
 2. [Optional](#optional)
 3. [Tuning](#tuning)
-4. [Add a correction rule manually](#add-a-correction-rule-manually)
-5. [Adjust quality gate thresholds](#adjust-quality-gate-thresholds)
-6. [Add a new hook](#add-a-new-hook)
-7. [Add a new agent](#add-a-new-agent)
-8. [Add a new skill](#add-a-new-skill)
+4. [Control-plane authentication](#control-plane-authentication)
+5. [Add a correction rule manually](#add-a-correction-rule-manually)
+6. [Adjust quality gate thresholds](#adjust-quality-gate-thresholds)
+7. [Add a new hook](#add-a-new-hook)
+8. [Add a new agent](#add-a-new-agent)
+9. [Add a new skill](#add-a-new-skill)
 
 ---
 
@@ -62,6 +63,50 @@ and a CI gate fails on drift — so "every supported key" is enforced, not just
 asserted. Each key's meaning lives as a comment beside it in
 `orchestrator/config.py:_SETTINGS_DEFAULTS`; JSON cannot carry those comments,
 so read them there rather than guessing from the value.
+
+## Control-plane authentication
+
+Every orchestrator route requires a bearer token. This is not optional and not
+a preference: `orchestrator/start.sh` binds `0.0.0.0` whenever it detects
+Tailscale, so the server is offered to the whole tailnet by default, and every
+mutating route here can open a session whose workers run with permissions
+bypassed as the account that started the server.
+
+The token is minted on first start and written to
+`~/.claude/orchestrator-settings.json` under `api_token`, in a file the server
+chmods to `0600`. The startup log prints the sign-in URL on the run that
+created it:
+
+```
+Control-plane token minted. Open the UI with: http://<host>:<port>/web/?token=<value>
+```
+
+Open that URL once. The page stores the token, strips it from the address bar,
+and sends it on every later request. To sign in from another device, append
+`?token=<value>` to the UI URL there too, reading the value out of the settings
+file.
+
+For scripted access, send it as a header:
+
+```bash
+curl -H "Authorization: Bearer $(jq -r .api_token ~/.claude/orchestrator-settings.json)" \
+  http://127.0.0.1:8765/api/status
+```
+
+Three deliberate exceptions:
+
+| Path | Why it is exempt |
+|------|------------------|
+| `/`, `/web/*`, `/api/version` | The SPA shell and the stale-process probe. Neither reads nor mutates project state. |
+| `/api/webhooks/github` | GitHub signs these with `webhook_secret`, and that path already fails closed on its own. |
+| `/api/usage/ingest` | Remote `usage-agent.py` nodes authenticate with `usage_hub_token` — but only while `usage_ingest_token` is set. Leave it empty and the route falls back to requiring the control-plane token, closing the old "empty = open ingest" default. |
+
+`GET /api/settings` masks every credential it returns, and a save that echoes a
+mask back leaves the stored secret alone.
+
+Setting `api_allow_unauthenticated` to `true` serves the control plane with no
+authentication at all. It exists so the choice is explicit rather than implied
+by an empty config; with no token and no opt-out, the server rejects.
 
 ## Add a correction rule manually
 

@@ -16,6 +16,7 @@ import subprocess
 import time
 from pathlib import Path
 
+from api_auth import generate_token
 from execution_envelope import InvalidExecutionConfig, validate_model_id
 from typing import Any
 
@@ -206,6 +207,18 @@ _SETTINGS_DEFAULTS = {
     # auto_start spawns with permissions bypassed, and start.sh binds 0.0.0.0
     # on a Tailscale host, so "warn and continue" was never a control.
     "webhook_allow_unauthenticated": False,
+    # Bearer token every control-plane route requires. Minted on first start by
+    # ensure_api_token() and stored here, in a file _save_settings() chmods to
+    # 0600 — so the token is readable by the account running the orchestrator
+    # and by nobody else on the machine. Rotate by clearing this key and
+    # restarting, or by POSTing a new value.
+    "api_token": "",
+    # Serve the control plane with no authentication at all. Off, and the same
+    # deliberate-opt-out shape as webhook_allow_unauthenticated above: with no
+    # token configured the server rejects rather than opens, because every
+    # mutating route here can spawn a worker that runs with permissions
+    # bypassed. Turn this on only for a single-user host you fully control.
+    "api_allow_unauthenticated": False,
     "coverage_scan": False,
     "dep_update_scan": False,
     "mutation_scan": False,  # patrol lane: mutmut survivors → test-gap tasks (ratchet)
@@ -417,6 +430,31 @@ def _save_settings(s: dict) -> None:
 
 
 GLOBAL_SETTINGS: dict = _load_settings()
+
+
+# ─── Control-plane token ──────────────────────────────────────────────────────
+
+
+def ensure_api_token() -> tuple[str, bool]:
+    """Return the control-plane token, minting and persisting one if unset.
+
+    Returns ``(token, minted)`` so the caller can log the full sign-in URL only
+    on the run that created the token, rather than reprinting a live credential
+    into the log on every restart.
+
+    Called from the server's lifespan startup. Anything that imports this module
+    without starting the server — the test suite, the CLIs — leaves the token
+    alone, so importing does not write to the user's settings file.
+    """
+
+    existing = str(GLOBAL_SETTINGS.get("api_token") or "").strip()
+    if existing:
+        return existing, False
+    token = generate_token()
+    GLOBAL_SETTINGS["api_token"] = token
+    _save_settings(GLOBAL_SETTINGS)
+    return token, True
+
 
 # ─── Project Scanner ──────────────────────────────────────────────────────────
 

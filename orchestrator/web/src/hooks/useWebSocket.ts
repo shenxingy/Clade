@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import type { WsMessage, StatusMessage } from '../lib/types';
+import { withToken } from '../lib/auth';
 
 interface UseWebSocketOptions {
   sessionId: string | null;
@@ -19,7 +20,7 @@ export function useWebSocket({ sessionId, onStatus }: UseWebSocketOptions) {
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
-    const ws = new WebSocket(`${protocol}//${host}/ws/status?session=${sessionId}`);
+    const ws = new WebSocket(withToken(`${protocol}//${host}/ws/status?session=${sessionId}`));
 
     ws.onopen = () => {
       setConnected(true);

@@ -101,6 +101,13 @@ if [[ -n "$TAILSCALE_IP" ]]; then
 else
   BIND_HOST="127.0.0.1"
 fi
+
+# Binding 0.0.0.0 above offers the control plane to the whole tailnet, and every
+# mutating route can spawn a worker running with permissions bypassed. Say where
+# the token is; the server logs the full sign-in URL on the run that mints it.
+SETTINGS_FILE="$HOME/.claude/orchestrator-settings.json"
+echo "Sign in with the control-plane token: ${SETTINGS_FILE} → api_token"
+echo "  (open http://<host>:${PORT}/web/?token=<value> once per browser)"
 echo ""
 
 if [[ -n "$PROJECT_DIR" ]]; then
