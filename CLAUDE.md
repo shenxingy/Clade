@@ -480,6 +480,25 @@ confirm the check list actually grew before reading green as evidence.
   build artifacts and test state); reads (grep/analysis/research) may run in
   parallel freely. Geoffrey Huntley: uncoordinated parallel writers to shared
   build/test state is a real race, not a hypothetical one.
+- **Prefer `pipeline()` to `parallel()` whenever the work has stages, and cut
+  more units than you have slots.** Measured across 89 parallel Workflow runs on
+  this account (1777 agents, 49.9h), 45% of all makespan was spent with exactly
+  ONE agent still running. The shape decides that, not the agent count: this
+  repository's 110-agent `pipeline()` finished with a **0%** single-agent tail at
+  80% utilisation *despite* its slowest agent taking 6.9x the median, while a
+  10-agent `parallel()` barrier with a far narrower 2.0x spread wasted 19% of its
+  makespan. A pipeline absorbs variance; a barrier converts it into idle
+  capacity. When a stage genuinely needs every prior result at once (dedup,
+  early-exit on zero, "compare against the others"), a barrier is correct — say
+  so in a comment, because it is the exception.
+- **Size units, or give the queue depth instead.** A fan-out cut by *topic*
+  produces units of wildly different length with no way to rebalance, which is
+  what produced that 2.0x. You do not need duration estimates if there are more
+  units than slots — the queue packs them. That is the half of CPU work-stealing
+  that transfers; the migration half does not, because an agent cannot be
+  preempted or moved mid-flight.
+- Check the result: `python3 configs/scripts/workflow-scorecard.py --since 7`.
+  A tail over 15% means the shape was wrong.
 
 ## Auto-Promoted Rules
 <!-- Promoted from .claude/corrections/rules.md via /audit. Each rule lists its original recording date. -->
