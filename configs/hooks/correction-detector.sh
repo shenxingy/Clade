@@ -170,9 +170,21 @@ fi
 
 # ─── Auto-increment domain stats ──────────────────────────────────────
 STATS_FILE="$CORRECTIONS_DIR/stats.json"
+_STATS_SEED='{"frontend":0,"backend":0,"schema":0,"ml":0,"ios":0,"android":0,"systems":0,"academic":0,"unknown":0}'
 # Initialize stats.json on first run
 if [[ ! -f "$STATS_FILE" ]] && command -v jq &>/dev/null; then
-  echo '{"frontend":0,"backend":0,"schema":0,"ml":0,"ios":0,"android":0,"systems":0,"academic":0,"unknown":0}' > "$STATS_FILE"
+  printf '%s\n' "$_STATS_SEED" > "$STATS_FILE"
+fi
+# SELF-HEAL. The increment below is `jq ... file > tmp && mv || rm -f tmp`, which
+# fails silently when the file is not valid JSON — and it was: the real file on
+# the author's machine held two nested sets of unresolved `<<<<<<< Updated
+# upstream` / `>>>>>>> Stashed changes` conflict markers, so every increment had
+# been a no-op for an unknown length of time and nobody could tell, because a
+# counter that stops counting looks exactly like a quiet week.
+if [[ -f "$STATS_FILE" ]] && command -v jq &>/dev/null \
+   && ! jq -e . "$STATS_FILE" >/dev/null 2>&1; then
+  cp -f "$STATS_FILE" "$STATS_FILE.corrupt.$(date -u +%Y%m%dT%H%M%SZ)" 2>/dev/null || true
+  printf '%s\n' "$_STATS_SEED" > "$STATS_FILE"
 fi
 if [[ -f "$STATS_FILE" ]] && command -v jq &>/dev/null; then
   # Atomically increment the counter for the domain resolved above.

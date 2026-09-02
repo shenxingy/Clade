@@ -613,13 +613,47 @@ re-running the gates.
       same CI job as `red-phase-audit.py --self-test`. Reintroducing the
       original regex fails it.
 
-- [ ] 🟡 The learning system does not measurably learn. The rework rate has been
-      flat at 9-15% for six months while `corrections/` accumulated rules, and
-      nothing closes the loop from "rule written" to "defect not repeated".
-      There is no measurement of whether any individual rule ever prevented
-      anything. Before adding more capture, measure the existing rules'
-      effect — `rule-effectiveness.sh` exists and its hit counts are known noise
-      (see the `.domain` item above).
+- [x] 🟡 **Measured why the learning system does not measurably learn.** The
+      item said measure the existing rules' effect before adding capture. Done
+      2026-09-02, and the answer is that the instrument cannot fire, for two
+      independent reasons.
+
+      1. **`rule-effectiveness.json` is `{}` — it has never recorded anything.**
+         Not a wiring bug: `record_rule_miss` is called, and reached. The gate in
+         front of it is `RULE_DOMAINS[i] == DOMAIN`, and the two sides speak
+         different vocabularies. `detect_domain` emits a closed set of eleven
+         labels (frontend, backend, ml, devops, security, unknown…). Rules are
+         filed under free text the model invents at write time —
+         `windows-remote-probe`, `verify-gating`, `throughput`, `scope`,
+         `proposals`. **The equality can essentially never hold**, so the best
+         match is never found and no miss is ever recorded.
+      2. **`stats.json` was not valid JSON.** It held two nested sets of
+         unresolved `<<<<<<< Updated upstream` / `>>>>>>> Stashed changes`
+         markers, so every `jq` increment failed into its own `|| rm -f` and was
+         discarded, for an unknown length of time. A counter that stops counting
+         looks exactly like a quiet week. `correction-detector.sh` now validates
+         the file, keeps the unreadable copy beside it, and reseeds — pinned by
+         three assertions in `tests/test-correction-pairing.sh`. The live file is
+         repaired by taking the largest value seen per key across the conflicting
+         branches, since counters only increase.
+
+      **Deliberately not "fixed" by loosening the match.** The word-overlap
+      score the code already computes was tried against the real rules: for a
+      correction about a hardcoded model and a stale deployed copy, the top
+      match was a rule about auditing asset provenance. Common English words
+      dominate. Shipping a threshold on that would replace an absent number with
+      a wrong one, which is worse. What is needed is a shared vocabulary between
+      the classifier and the rule format, and that is a design decision, filed
+      below rather than guessed at.
+
+- [ ] 🟡 **Decide the shared vocabulary for rule domains.** Either constrain the
+      rule format's domain field to `detect_domain`'s closed set (loses the
+      specificity of `windows-remote-probe`), or give each rule both a free-text
+      tag and a closed-set domain, or replace equality with a real similarity
+      measure validated against labelled pairs. Until one is chosen, rule-miss
+      counting stays structurally impossible. Evidence and the rejected option
+      are in the item above.
+
 
 ### Adversarial review of the audit branch — 2026-09-02
 

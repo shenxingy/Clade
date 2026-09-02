@@ -24,9 +24,15 @@ TESTS_RUN=0; TESTS_PASSED=0; TESTS_FAILED=0
 VERBOSE="${1:-}"
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[0;33m'; NC='\033[0m'
 
-pass() { TESTS_PASSED=$((TESTS_PASSED + 1)); echo -e "  ${GREEN}✓${NC} $1"; }
+# TESTS_RUN is incremented HERE, not in the assert wrappers. It used to live in
+# the wrappers, so a bare pass/fail — the shape you need for any check that is
+# not a string comparison — recorded a result without recording that it ran, and
+# the summary printed "Ran: 45  Passed: 46". test-hooks.sh already counts this
+# way; this file did not, and the mismatch was invisible until the two numbers
+# disagreed out loud.
+pass() { TESTS_RUN=$((TESTS_RUN + 1)); TESTS_PASSED=$((TESTS_PASSED + 1)); echo -e "  ${GREEN}✓${NC} $1"; }
 fail() {
-  TESTS_FAILED=$((TESTS_FAILED + 1))
+  TESTS_RUN=$((TESTS_RUN + 1)); TESTS_FAILED=$((TESTS_FAILED + 1))
   echo -e "  ${RED}✗${NC} $1"
   [[ -n "${2:-}" ]] && echo -e "    ${RED}→ $2${NC}"
 }
@@ -34,7 +40,6 @@ section() { echo ""; echo -e "${YELLOW}━━━ $1 ━━━${NC}"; }
 
 assert_contains() {
   local haystack="$1" needle="$2" msg="$3"
-  TESTS_RUN=$((TESTS_RUN + 1))
   if grep -qF "$needle" <<< "$haystack"; then pass "$msg"
   else
     fail "$msg" "output does not contain '$needle'"
@@ -50,13 +55,11 @@ assert_contains() {
 # fail is the defect it was written to catch.
 assert_eq() {
   local got="$1" want="$2" msg="$3"
-  TESTS_RUN=$((TESTS_RUN + 1))
   if [[ "$got" == "$want" ]]; then pass "$msg"
   else fail "$msg" "expected '$want', got '$got'"; fi
 }
 assert_not_contains() {
   local haystack="$1" needle="$2" msg="$3"
-  TESTS_RUN=$((TESTS_RUN + 1))
   if grep -qF "$needle" <<< "$haystack"; then
     fail "$msg" "output unexpectedly contains '$needle'"
     [[ "$VERBOSE" == "-v" ]] && echo "    output: $(head -8 <<< "$haystack")"
@@ -90,7 +93,6 @@ section "edit-shadow-detector — session_id keying"
 shadow_in "$PROJ/src/app.py" "$SID" | bash "$SHADOW_HOOK"
 shadow_in "$PROJ/src/util.py" "$SID" | bash "$SHADOW_HOOK"
 SFILE="$CP_SHADOW_DIR/session-$SID.jsonl"
-TESTS_RUN=$((TESTS_RUN + 1))
 if [[ -f "$SFILE" ]]; then pass "shadow file created under session_id key"
 else fail "shadow file created under session_id key" "missing $SFILE"; fi
 assert_contains "$(cat "$SFILE" 2>/dev/null)" "src/app.py" "shadow records the written file"
@@ -174,6 +176,29 @@ CDREC2=$(grep '"type":"explicit"' "$HISTORY" 2>/dev/null | tail -n 1)
 assert_eq "$(jq -r '.domain' <<< "${CDREC2:-\{\}}" 2>/dev/null)" "frontend" \
   "the domain is the one detect_domain resolved, not the unknown fallback"
 
+# ─── 3a3. a corrupt stats.json self-heals instead of no-opping forever ─
+# The increment is `jq … file > tmp && mv || rm -f tmp`, which fails silently on
+# invalid JSON. The real file on the author's machine held two nested sets of
+# unresolved git conflict markers, so every increment had been discarded for an
+# unknown length of time — and a counter that stops counting looks exactly like
+# a quiet week.
+section "correction-detector — a corrupt stats.json is repaired, not ignored"
+CD_STATS="$HOME/.claude/corrections/stats.json"
+mkdir -p "$(dirname "$CD_STATS")"
+printf '%s\n' '<<<<<<< Updated upstream' '{"frontend": 3}' '=======' '{"frontend": 9}' '>>>>>>> Stashed changes' > "$CD_STATS"
+printf '{"prompt":"no, that is wrong, you broke the component again"}' \
+  | CLAUDE_PROJECT_DIR="$CD_REPO" bash "$CD_HOOK" >/dev/null 2>&1
+assert_eq "$(jq -e . "$CD_STATS" >/dev/null 2>&1 && echo valid || echo invalid)" "valid" \
+  "a stats.json full of conflict markers is rebuilt into valid JSON"
+CD_BUMPED=$(jq -r '.frontend // 0' "$CD_STATS" 2>/dev/null)
+if [[ "${CD_BUMPED:-0}" -ge 1 ]]; then
+  pass "the correction that found it is still counted (frontend=$CD_BUMPED)"
+else
+  fail "the correction that found it is still counted" "frontend=$CD_BUMPED"
+fi
+CD_SAVED=$(ls "$HOME/.claude/corrections/"stats.json.corrupt.* 2>/dev/null | wc -l)
+assert_eq "$CD_SAVED" "1" "the unreadable file is kept beside it, not discarded"
+
 # ─── 3b. the field-data record that motivated the fix ────────────────
 # Verbatim shape from history.jsonl: a revert in ANOTHER repo, filed under this
 # project, carrying 20 session files none of which the command named.
@@ -236,7 +261,6 @@ assert_not_contains "$CTX2" "Concrete signal" "no concrete-signal block when not
 # ─── 6. session-key fallback when session_id absent ──────────────────
 section "lib — \$PPID fallback when session_id missing"
 echo '{"tool_input":{"file_path":"/tmp/x/nokey.py"}}' | bash "$SHADOW_HOOK"
-TESTS_RUN=$((TESTS_RUN + 1))
 if ls "$CP_SHADOW_DIR"/session-pid-*.jsonl >/dev/null 2>&1; then
   pass "falls back to a pid-keyed shadow file without session_id"
 else fail "falls back to a pid-keyed shadow file without session_id" "no session-pid-* file"; fi
@@ -306,7 +330,6 @@ BEFORE_N="$(wc -l < "$HISTORY" 2>/dev/null || echo 0)"
 correct_in "please add a docstring to the parser" "sess-redact-6" \
   | CLAUDE_PROJECT_DIR="$PROJ3" bash "$CORRECTION_HOOK" >/dev/null
 AFTER_N="$(wc -l < "$HISTORY" 2>/dev/null || echo 0)"
-TESTS_RUN=$((TESTS_RUN + 1))
 if [[ "$BEFORE_N" == "$AFTER_N" ]]; then
   pass "non-correction prompt persists nothing"
 else fail "non-correction prompt persists nothing" "history grew $BEFORE_N → $AFTER_N"; fi
