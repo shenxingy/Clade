@@ -8,6 +8,7 @@ summary:
   - "The result that changes how to write a workflow: agent count is not the problem, BARRIERS are. On this session's own runs a 110-agent pipeline() scored 80% utilisation with a 0% tail despite a 6.9x straggler spread, while a 10-agent parallel() barrier scored 55% with 19% of its makespan waiting on one agent."
   - "The lead session's own waste, from its transcript: 702 turns, 946k output tokens, and 81 of 321 Bash calls (25%) were pure status polls of background jobs against 3 uses of Monitor. 76 stop-hook interrupts, most of them while ten subagents were mid-write and committing would have been wrong."
   - "The verification pass that ran BEFORE implementation is the opposite of waste: it corrected about half the audit's specifics and killed four findings that were not defects, two of which would have been actively harmful to implement."
+  - "Rework has not improved in six months: 184 targeted fixes landed within 7 days of a feature on the same file, out of 864 commits, and the monthly rate sits flat at 9-15% while the correction-capture machinery has been accumulating rules the whole time. Normalising by touch count also KILLED the obvious hypothesis — the highest rework rates are small hooks and gate scripts, not the oversized hub files, which top the raw list only because they are touched constantly."
 integrated_items:
   - "configs/scripts/workflow-scorecard.py — reads the per-agent transcripts every Workflow run already writes and reports peak/mean concurrency, utilisation, the single-agent tail share, and the straggler ratio. Stdlib-only. Before it, 80 MB of process data existed for this project alone across 56 projects and not one line of code opened any of it."
   - "configs/hooks/stop-check.sh — detects live subagent transcripts and stays quiet while agents are writing, because every uncommitted file at that moment belongs to an agent mid-task. STOP_CHECK_AGENT_IDLE_S tunes the window; 0 restores the old behaviour. Five tests pin both directions."
@@ -165,6 +166,69 @@ already touched. That raw number overstates the problem — `CLAUDE.md` and
 - **Roughly nine doc-sync re-touches.** `doc-align.py` had to run three times
   because each wave added scripts and moved a derived count. Sequencing fix: run
   derived-fact syncs **once**, after every writer has finished, not per wave.
+
+## Implementation speed: the rework rate has not moved in six months
+
+The other half of the question was whether the project itself is being built
+efficiently — whether things that could have been designed right the first time
+are instead landing and then being repaired.
+
+Proxy, and its limits stated up front: count a **targeted** `fix` (touching five
+files or fewer, so a repo-wide sweep does not qualify) landing within seven days
+of a `feat` or `refactor` that touched the same file. That is not proof any
+given pair is rework — some of it is legitimate iteration on a thing still being
+built — but it is consistent over time, which is what makes the trend readable.
+
+Over 864 commits in 180 days: **184 such pairs across 97 files**, about 21% of
+commits. By month:
+
+| month | commits | with rework | rate |
+|---|---|---|---|
+| 2026-03 | 149 | 16 | 11% |
+| 2026-04 | 186 | 16 | 9% |
+| 2026-05 | 22 | 0 | 0% |
+| 2026-06 | 158 | 22 | 14% |
+| 2026-07 | 179 | 22 | 12% |
+| 2026-08 | 144 | 19 | 13% |
+| 2026-09 | 26 | 4 | 15% |
+
+May is an artifact — 22 commits is too few to read. Ignoring it, the rate is
+flat to slightly worse across six months. **The correction-capture machinery has
+been accumulating rules the whole time and the rework rate has not moved.**
+That is worth sitting with: rules are being written, and either they are not
+reaching the moment of decision, or they are not the binding constraint.
+
+Where the reworked files live:
+
+| area | share |
+|---|---|
+| `orchestrator/` | 27% |
+| tests | 20% |
+| `configs/scripts/` | 15% |
+| skills and plugins | 11% |
+| `configs/hooks/` | 8% |
+
+One hypothesis this measurement **killed**. The obvious story is that the
+oversized hub files drive rework, and the raw counts support it: `worker.py` 20
+follow-up fixes, `loop-runner.sh` 13, `config.py` 12. But normalising by how
+often each file is touched at all inverts the ranking — the highest *rates* are
+small hooks and gate scripts (`pre-tool-guardian.sh` 50% of its touches,
+`design-lint.py` 50%, `memory-sync.sh` 40%), while the hubs sit far down. The
+hubs appear at the top of the raw list only because they are touched constantly.
+
+That matches the shape this repository keeps rediscovering, and which the
+2026-08-29 audit named: *a control that exists, is documented as working, and
+never applies*. Hooks and gates are exactly where that failure lives, because
+their failure mode is silence — they do not crash, they simply stop mattering,
+and nothing notices until someone measures. Three of this session's own findings
+were that shape: a checklist gate blind to the gate that had just been added, a
+scorecard whose counters had read zero for the life of the file, and a stop hook
+whose 76 interrupts were all correctly ignored.
+
+The actionable reading is not "write fewer hooks". It is that **a control needs a
+test that proves it can fail** — the red phase — and this repository already
+knows that (`red-phase-audit.py`, `--self-test`) without applying it to its own
+hooks.
 
 ## The verification pass paid for itself
 
