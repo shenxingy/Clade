@@ -121,7 +121,8 @@ agent_output.py      ← stdlib-only contract for reading a spawned agent's own 
 pytest_report.py     ← stdlib-only pytest-output contract: colour-proof result parsing, verbosity normalization, colour-free subprocess env (shared by worker_utils, worker_tldr, evals/)
 ideas.py             ← IdeasManager, async idea CRUD
 process_manager.py   ← ProcessPool, start.sh lifecycle
-worker_tldr.py       ← TLDR generation, localization, fault location, scoring (imports fault_localize)
+repo_map.py          ← deterministic repository-structure analysis: AST/tree-sitter TLDR, entity pruning, PageRank centrality. Pure and synchronous — no LLM call, no subprocess, no DB (imports fault_localize)
+worker_tldr.py       ← task-specific localization, fault location, SBFL, repro-test generation, scoring — the half that spends money (imports repo_map, fault_localize)
 worker_review.py     ← oracle + PR review
 worker_utils.py      ← output helpers, lint reflection, LoopDetectionService, worker-state helpers
 worker_hydrate.py    ← _pre_hydrate (GitHub issue/PR pre-hydration)
@@ -219,7 +220,8 @@ mutation_scan.py  ← surviving mutant → task
 | `worker_runtime.py` | Runtime route resolution and fail-closed task outcome persistence |
 | `worker_sandbox.py` | Landlock ruleset that PREVENTS the git control-surface escape `worker_git_surface_guard` only detects (`worker_sandbox`, default off) |
 | `worker_evidence.py` | Evidence attempt lifecycle, Git/test/oracle/cost/artifact projection, and terminal delivery candidate |
-| `worker_tldr.py` | `_generate_code_tldr`, `_score_task` — TLDR + scoring (leaf) |
+| `repo_map.py` | `_generate_code_tldr`, `_pagerank_centrality`, `_keyword_filter_tldr` — builds the map of a repository. Split out of `worker_tldr.py` at 1459 of the 1500-line ceiling; the boundary is "map the repo" vs "narrow that map to a task", and the purity of this half is what the split buys |
+| `worker_tldr.py` | `_localize_tldr_for_task`, `_localize_fault`, `_sbfl_prepass`, `_score_task` — narrows the map for one task |
 | `agent_output.py` | `parse_agent_output` / `absorb_agent_result` — the agent's self-reported `total_cost_usd` and usage, and the prose projection every log consumer reads (leaf) |
 | `pytest_report.py` | `parse_results` / `force_verbose` / `color_free_env` — the one definition of how pytest output is read back (leaf) |
 | `worker_review.py` | `_write_pr_review`, `_oracle_review`, `_write_progress_entry` (leaf) |
