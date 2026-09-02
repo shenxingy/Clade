@@ -21,7 +21,7 @@ from clade_mcp.server import SERVER_VERSION  # noqa: E402
 
 
 def test_release_version_surfaces_are_aligned() -> None:
-    expected = "0.2.0"
+    expected = "0.3.1"
     server_manifest = json.loads(
         (REPO_ROOT / "mcp-package" / "server.json").read_text(encoding="utf-8")
     )

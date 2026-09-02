@@ -6,12 +6,12 @@
     "url": "https://github.com/shenxingy/clade",
     "source": "github"
   },
-  "version": "0.2.0",
+  "version": "0.3.1",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "clade-mcp",
-      "version": "0.2.0",
+      "version": "0.3.1",
       "transport": {
         "type": "stdio"
       },

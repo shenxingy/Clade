@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "clade-mcp"
-version = "0.2.0"
+version = "0.3.1"
 description = "Provider-neutral MCP server exposing Clade coding workflows through Claude or Codex"
 readme = "README.md"
 license = "MIT"

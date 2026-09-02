@@ -1,12 +1,12 @@
 **English** | [中文](https://github.com/shenxingy/Clade/blob/main/mcp-package/README.zh-CN.md)
 
-# clade-mcp 0.2.0
+# clade-mcp 0.3.1
 
 Provider-neutral MCP server that exposes **34 AI coding skills** as callable tools — autonomous commits, reviews, incident response, security audits, and more. Skill prompts can run through Claude or Codex.
 
 Part of the [Clade](https://github.com/shenxingy/clade) autonomous coding framework.
 
-## What's New in 0.2.0
+## What's New in 0.3.1
 
 - Native Codex execution through `codex exec --json`, selected with
   `CLADE_RUNTIME=codex`
@@ -132,7 +132,7 @@ This MCP server is one part of Clade. The full framework includes:
 
 - **136 skills** — coding, research, SEO, content, paid ads, and email workflows
 - **32 hooks** — safety guardian, correction learning, type-checking, session context
-- **40 shell scripts + 26 Python utilities** — commits, loops, parallel tasks, health scanning
+- **41 shell scripts + 26 Python utilities** — commits, loops, parallel tasks, health scanning
 - **37 agents** — code, security, compliance, marketing, research, and verification specialists
 - **Native Codex plugin** — 25 core workflows, usage visibility, and lifecycle safety hooks
 - **Orchestrator** — FastAPI web UI with task queue, worker pool, GitHub sync
