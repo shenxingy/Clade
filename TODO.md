@@ -655,10 +655,18 @@ failure mode is silence needs a test that proves it can fail.
       pattern gained `{n,}` quantifiers. The reason that survives inspection is
       that a line-oriented sed cannot reach a PEM body and any partial mask still
       persists part of a credential.
-- [ ] 🟡 The weekly `dependency-audit` job will be red on its first scheduled run:
-      `npm audit --audit-level=high` against the unchanged lockfile reports
-      findings in the vite/postcss build chain. Either land `npm audit fix` with
-      the gate or scope the first run to the Python half.
+- [x] 🟡 **The weekly `dependency-audit` job would have been red on its first
+      scheduled run.** DONE 2026-09-02, and the filed claim checked out:
+      `npm audit --audit-level=high` reported 4 high and 1 low against the
+      unchanged lockfile — four PostCSS advisories including two arbitrary
+      `.map` file reads, and four vite ones including the dev-server WebSocket
+      arbitrary file read the job's own comment was written about.
+      Fixed with `npm audit fix`, not `--force`: every bump is patch-level
+      inside the existing range (vite 6.4.1 → 6.4.3, postcss 8.5.8 → 8.5.26,
+      nanoid 3.3.11 → 3.3.18) and `package.json` is untouched. Verified the way
+      CI will run it — `npm ci` from the new lockfile, then audit, then build —
+      all three clean.
+
 - [ ] 🟡 Anthropic's documented fix for the other half of the prompt-cache miss —
       stagger a fan-out so the first response primes the shared prefix before
       the rest are sent — is not implemented. Only the system-prompt half is.
