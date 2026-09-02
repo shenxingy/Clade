@@ -35,6 +35,7 @@ gate. Exit 0 when the arrangement holds, 1 otherwise.
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -74,9 +75,31 @@ GOAL_GLOB = "goal-*.md"
 
 
 def _stray_goal_files() -> list[str]:
-    """Goal files tracked at the repository root, where neither rule reaches."""
+    """Goal files TRACKED at the repository root, where neither rule reaches.
 
-    return sorted(p.name for p in REPO_ROOT.glob(GOAL_GLOB) if p.is_file())
+    Tracked, not merely present. ``tests/test-loop.sh`` writes a throwaway
+    ``goal-runtime.md`` as a fixture, and a developer mid-loop may have one
+    sitting in the working tree — neither leaks anything, because neither is in
+    the repository. Globbing the directory failed on exactly that fixture the
+    first time this check ran.
+
+    ``git ls-files`` is a subprocess, not a dependency, so this stays runnable
+    in the syntax-check job. Without git the check yields nothing rather than
+    guessing: a false pass is recoverable, a false failure on someone's scratch
+    file teaches people to ignore the gate.
+    """
+
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "ls-files", "-z", "--", GOAL_GLOB],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=True,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return sorted(name for name in out.split("\0") if name)
 
 
 def _open_boxes(text: str) -> list[tuple[int, str]]:

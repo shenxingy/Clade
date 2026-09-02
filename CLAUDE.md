@@ -2,7 +2,7 @@
 
 ## Project Type
 - Type: cli + skill-system
-- Frontend: Vite + React + TypeScript UI under orchestrator/web/src/ (served from web/dist; not the primary interface)
+- Frontend: Vite + React + TypeScript UI under orchestrator/web/src/. `web/dist` is the ONLY servable root — `orchestrator/start.sh` builds it on first run, or `cd orchestrator/web && npm ci && npm run build` by hand. Without it `/web` returns 503 naming that command; `web/` itself is a source tree and is never mounted, and `/` redirects to `/web/`.
 - Backend: FastAPI (orchestrator/, port 8000) — optional, CLI layer works standalone
 - Test command: cd orchestrator && .venv/bin/python -m pytest tests/ -v
 - Verify command: cd orchestrator && find . \( -name .venv -o -name node_modules -o -name __pycache__ \) -prune -o -name "*.py" -print | xargs -n1 .venv/bin/python -m py_compile
@@ -90,13 +90,23 @@ python3 configs/scripts/regen-codex-plugin.py --check
   selection stays the user's.
 
 **Correction-pairing pipeline** (the learn-from-corrections loop — captures the "AI did X → it got rejected" pair so a rule is grounded in the real diff, not just words):
-- `edit-shadow-detector.sh` (PostToolUse, async) logs files Claude writes → session-keyed shadow at `/tmp/claude-edit-shadows/session-<session_id>.jsonl`
+- `edit-shadow-detector.sh` (PostToolUse, async) logs files Claude writes → session-keyed shadow at `<runtime>/claude-edit-shadows/session-<session_id>.jsonl`, where `<runtime>` is `$XDG_RUNTIME_DIR/clade` or `${TMPDIR:-/tmp}/clade-$EUID` (`configs/hooks/lib/runtime-dir.sh`) — a fixed `/tmp` path is squattable, and on this 40-account host it silently disabled pairing for every account but the one that created the directory
 
 **Per-attempt checkpoints** (separate from the correction pipeline above): `worker-checkpoint.sh` (PostToolUse Edit|Write, async) commits the whole worktree into a shadow repo OUTSIDE it, once per agent write. A worker commits exactly once — at the end of verification — and `stop()` force-removes the worktree, so "correct at call 14, wrong at 15" had no record. A separate `--git-dir` means a separate index, so checkpoints cannot contend with the worker's own commits (measured, see `tests/test-hooks.sh`). The final SHA and count land in the evidence bundle before cleanup deletes the repo. Setting: `worker_checkpoint_shadow`.
-- `revert-detector.sh` (PreToolUse Bash, async) on `git revert/reset/restore` cross-refs that shadow → writes `reverted_files` + `repeat` into `~/.claude/corrections/history.jsonl`
+- `revert-detector.sh` (PreToolUse Bash, async) on `git revert/reset/restore` cross-refs that shadow **against the command's own pathspec** → writes `reverted_files` (the intersection), `session_files` (the loose session list, under its true name), `revert_scope`, `revert_paths` and `repeat` into `~/.claude/corrections/history.jsonl`. `repeat` is meaningful only when `revert_scope` is `paths`: `git revert` takes no pathspec, `git reset --hard` cannot take one, and the hook is async, so for those the file set is not knowable at hook time — `reverted_files` is `[]` and `repeat` is `null`. Records written before 2026-09 carry the old semantics.
 - `correction-detector.sh` (UserPromptSubmit, **sync**) on an explicit "that's wrong" surfaces those rejected files into the rule-extraction context
+- **Nothing raw is persisted:** `correction-detector.sh` masks the prompt through
+  `redact.py` before any disk write, and all three persistence sites consume the
+  masked value. Redaction runs *after* the correction gate — this is a sync
+  `UserPromptSubmit` hook, so python3 must not spawn on prompts that write
+  nothing — and *before* `cp_bound_prompt`, since clipping first can cut a token
+  below its detection threshold and persist a partial credential. With python3
+  unavailable the hook detects with a fallback pattern and **withholds the whole
+  prompt** rather than substituting: those patterns are fixed-count, so a
+  substitution masks a token's prefix and leaves its tail on disk (measured: 16
+  of 48 characters survived).
 - **The gate is the wiring, not code:** the two silent-signal hooks are `async` (output never fed back) → a bare revert stays data-only; only an explicit correction (sync hook) escalates to context. `repeat=true` is stored for auto-audit but never auto-writes a rule (avoids noise).
-- Shared helpers: `hooks/lib/correction-pair.sh` (session key + shadow read). `history.jsonl`/shadow are compact JSONL (one object per line). Tests: `tests/test-correction-pairing.sh`.
+- Shared helpers: `hooks/lib/correction-pair.sh` (session key + shadow read) and `hooks/lib/runtime-dir.sh` (per-user scratch root; fails closed on a squatted path — not a symlink, owned by our euid, mode 0700). `history.jsonl`/shadow are compact JSONL (one object per line). Tests: `tests/test-correction-pairing.sh`.
 
 ### Orchestrator Layer (`orchestrator/`)
 Key modules (import DAG — leaf → root):
@@ -125,7 +135,6 @@ reactions.py         ← ReactionExecutor
 error_classifier.py  ← error classify/summarize + retry decisions
 session_tree.py      ← SessionTree
 usage_tracker.py     ← multi-machine ccusage ingestion (used by routes/usage.py)
-compression_feedback.py ← compression UX feedback (consumed by /handoff skill)
 execution_envelope.py ← versioned immutable execution contract (runtime/provider/protocol/model split)
 worker_envelope.py   ← versioned terminal contract emitted by workers
 handoff_registry.py  ← typed worker-handoff schemas + prompt-safe projections
@@ -182,6 +191,17 @@ routes/providers.py  ← Secret-safe provider/model registry inspection + refres
 Every `orchestrator/*.py` and `orchestrator/routes/*.py` must appear above —
 CI's "Architecture map coverage" gate fails on any module missing from this file.
 
+`orchestrator/task_factory/` is excluded from that gate by `check-arch-map.py`'s
+`SKIP_DIRS`, so its four modules are listed here for the reader rather than
+enforced. All four are lazy-imported from `session.py`:
+
+```
+ci_watcher.py     ← failed GitHub Actions run → task
+coverage_scan.py  ← coverage gap → task
+dep_update.py     ← outdated dependency → task
+mutation_scan.py  ← surviving mutant → task
+```
+
 ### Key File Map
 | File | Purpose |
 |------|---------|
@@ -218,8 +238,8 @@ CI's "Architecture map coverage" gate fails on any module missing from this file
 | `api_auth.py` | `TokenAuthMiddleware` — default-closed authorisation for all 93 routes and both websockets. Middleware, not per-route `Depends`, because the next route added would silently forget the dependency and because `BaseHTTPMiddleware` never sees a websocket scope |
 | `routes/usage.py` | Usage dashboard API routes |
 | `web/src/` | Vite + React + TypeScript UI source (App.tsx, components/, stores/, hooks/, lib/) |
-| `web/index.html` | Vite shell (`<div id="root">` + main.tsx); server serves `web/dist` build when present |
-| `web/usage.html` | Standalone usage dashboard (served at `/web/usage.html`) |
+| `web/index.html` | Vite *source* shell (`<div id="root">` + main.tsx) — the build entry, never served. It loads `/src/main.tsx`, which no browser executes. |
+| `web/usage.html` | Standalone usage dashboard. Served by an explicit route registered BEFORE the `/web` mount — `vite.config.ts` declares no `publicDir`, so the build never copies it into `dist/` and the mount alone 404s it on every machine that built. |
 
 ## Settings
 
@@ -227,7 +247,7 @@ Global settings stored at `~/.claude/orchestrator-settings.json`. Defaults defin
 
 ## DB Migrations
 
-Add try/except `ALTER TABLE` blocks in `task_schema.py:ensure_schema()`. New columns added to `_ALLOWED_TASK_COLS` in `config.py`.
+Add try/except `ALTER TABLE` blocks in `task_schema.py:ensure_schema()`. New columns added to `_ALLOWED_TASK_COLS` in `config.py`. And remove the new column from `LEGACY_SCHEMA` in `orchestrator/tests/test_task_schema_upgrade.py`, so the upgrade-path test actually exercises the migration — on a fresh DB the column is already in the CREATE block and the ALTER can only fail into a bare `except`.
 
 ## Commits
 
@@ -238,12 +258,55 @@ committer "type: message" file1 file2 file3
 
 Conventional commit types: `feat` / `fix` / `refactor` / `test` / `chore` / `docs` / `perf`
 
+## Release Versioning
+
+One base version spans every surface, and until 2026-09-02 nothing said so —
+which is how mcp-package sat at 0.2.0 for 241 commits while the plugin manifests
+advertised 0.3.1.
+
+`plugins/clade/.codex-plugin/plugin.json` is CANONICAL and hand-maintained.
+`regen-cc-plugin.py:canonical_version()` strips the `+codex.<stamp>` build
+metadata and writes the base into `.claude-plugin/plugin.json` and
+`marketplace.json`, so never hand-edit those two — the drift gate reverts you.
+The stamp exists to bust the Codex plugin cache; refresh it whenever generated
+plugin content changes.
+
+The same base must appear at five mcp-package sites, none of them generated:
+
+```
+mcp-package/pyproject.toml             version = "x.y.z"
+mcp-package/server.json                "version"  (twice: server, and the pypi pin)
+mcp-package/src/clade_mcp/__init__.py  __version__
+mcp-package/src/clade_mcp/server.py    SERVER_VERSION  ← what clients are told
+```
+
+Both package READMEs carry it in prose on their first lines as well.
+`test_clade_mcp_runtime.py::test_release_version_surfaces_are_aligned` is the
+only gate over any of this, it covers the mcp-package half only, and its
+`expected` is a hard-coded literal — so cutting a release means editing the
+gate, which is the hand-sync it was meant to prevent. Deriving it from
+`pyproject.toml` and extending it to the plugin manifests is open work.
+
 ## CI (GitHub Actions)
 
 Before committing, ensure CI will pass by running locally:
 ```bash
 # 1. Python syntax check (all modules — same find-based sweep CI runs)
 cd orchestrator && find . \( -name .venv -o -name node_modules -o -name __pycache__ \) -prune -o -name "*.py" -print | xargs -n1 .venv/bin/python -m py_compile
+
+# 1b. Python lint gate. py_compile proves a file PARSES; it cannot see a name
+#     that is never bound. Both F821 hits on this gate's first run were live
+#     NameErrors that had shipped under a green syntax gate — Worker.stop()
+#     called an unimported preserve_worktree_wip, so every worker stop path
+#     raised before cleanup. Rules and the MEASURED ignore baseline live in
+#     orchestrator/ruff.toml; the version is pinned in requirements-dev.txt and
+#     CI reads it from there. `--config` is not optional: the file sits under
+#     orchestrator/ but governs the whole tree. The ignore list shrinks and
+#     never grows; BLE001 (435 blind excepts, 89 swallowing into a bare pass)
+#     is deliberately not selected yet. [lint.per-file-ignores] is NOT a
+#     baseline — it parks known live NameErrors, and each entry must be deleted
+#     in the same commit as its fix.
+ruff check --config orchestrator/ruff.toml .
 
 # 2. Tests, plus the two offline evals the same `pytest` job runs
 cd orchestrator && .venv/bin/python -m pytest tests/ -v
@@ -308,11 +371,11 @@ python3 configs/scripts/check-roadmap-authority.py
 #     and the file list must match CI's, which is every hook and script plus
 #     the installer. The line here used to be neither: it ran one file, and
 #     did not run at all.
-bash configs/scripts/checks.sh shellcheck configs/hooks/*.sh configs/scripts/*.sh install.sh
+bash configs/scripts/checks.sh shellcheck configs/hooks/*.sh configs/hooks/lib/*.sh configs/scripts/*.sh install.sh
 
 # 12. Every suite the `shell-tests` job runs — all 18, not a convenient subset
 for t in loop checks skill-routing pr-scope-policy audit worktree-env \
-         rule-injector mailbox-drain correction-pairing hooks \
+         rule-injector mailbox-drain correction-pairing hooks session-scorecard \
          post-compact-reinject context-warning-drain ensure-dev-server \
          quiet-run scan-health pre-tool-guardian loop-args memory-watchdog; do
   bash "tests/test-$t.sh" >/dev/null || echo "FAILED: $t"
@@ -354,7 +417,7 @@ enforces that yet, which is precisely why it keeps recurring.
 On push/PR to `main`, four workflow files fire:
 
 - `ci.yml` — `syntax-check` (11 gates), `pytest` (suite + 2 offline evals),
-  `shell-tests` (18 suites), `install-test`. `run_hack_eval.py` scores
+  `shell-tests` (19 suites), `install-test`. `run_hack_eval.py` scores
   `judge_diversity.test_integrity` against the labelled reward-hack corpus in
   `evals/hack_cases/` — read its README before changing either, because that
   gate's floor and ceiling are measured, not chosen.
@@ -387,6 +450,17 @@ confirm the check list actually grew before reading green as evidence.
 - Settings → `config.py:_SETTINGS_DEFAULTS` only
 - DB migrations → try/except ALTER TABLE in `task_schema.ensure_schema()`
 - Never return `error.message` in 500 responses
+- `orchestrator/mcp_server.py` and `mcp-package/src/clade_mcp/server.py` serve an
+  asyncio event loop, and the MCP SDK dispatches `tools/call` concurrently. Every
+  shellout there must be `asyncio.create_subprocess_*` + `wait_for`, or
+  `asyncio.to_thread`; a bare `subprocess.run` freezes every concurrent MCP call
+  for the whole timeout.
+- Shipped hooks and scripts target bash 3.2 and a BSD userland — macOS is a
+  documented platform. Reach for capability detection with a fallback
+  (`command -v X`, `stat -c … || stat -f …`), not `uname` branching. A script
+  that genuinely needs bash 4 carries the `BASH_VERSINFO` re-exec guard from
+  `run-tasks-parallel.sh`. Per-user runtime state goes through
+  `configs/hooks/lib/runtime-dir.sh`, never a fixed `/tmp` path.
 - If you fan out your own Task-tool subagents within one task: **serialize any
   subagent that writes/builds/runs tests** (they race on the same worktree's
   build artifacts and test state); reads (grep/analysis/research) may run in
