@@ -72,6 +72,45 @@ fi
 # CURRENT above); comm under a UTF-8 locale rejects C-sorted input as unsorted.
 NEW_DIRTY=$(LC_ALL=C comm -13 "$BASELINE_FILE" <(echo "$CURRENT"))
 
+# ─── Are subagents still writing? ────────────────────────────────────
+# A session running a Workflow fan-out has agents editing the tree right now.
+# Every uncommitted file at that moment belongs to an agent mid-task, and
+# committing it would capture half-finished work — so the correct response to
+# this hook is always "no", and it will fire again on the next turn, and again.
+# The 2026-09-02 audit session took 76 such interrupts while ten agents ran,
+# refused all 76, and the only thing they produced was noise. A gate that is
+# right to ignore teaches people to ignore gates.
+#
+# Liveness is read off the agents' own transcripts: they append continuously
+# while running, so a recent mtime means work is in flight. Override the window
+# with STOP_CHECK_AGENT_IDLE_S; 0 disables the check entirely.
+_subagents_live() {
+  local window="${STOP_CHECK_AGENT_IDLE_S:-180}"
+  [ "$window" -gt 0 ] 2>/dev/null || return 1
+  [ -n "$SESSION_ID" ] || return 1
+  local now mtime f
+  now=$(date +%s)
+  for f in "$HOME"/.claude/projects/*/"$SESSION_ID"/subagents/*/*/agent-*.jsonl \
+           "$HOME"/.claude/projects/*/"$SESSION_ID"/subagents/agent-*.jsonl \
+           "$HOME"/.claude-profiles/*/projects/*/"$SESSION_ID"/subagents/*/*/agent-*.jsonl \
+           "$HOME"/.claude-profiles/*/projects/*/"$SESSION_ID"/subagents/agent-*.jsonl; do
+    [ -f "$f" ] || continue
+    mtime=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || echo 0)
+    # Early return: one live agent is enough, and a long session can hold
+    # hundreds of these files against a 10s hook timeout.
+    if [ $(( now - mtime )) -lt "$window" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+if _subagents_live; then
+  echo "[stop-check] Subagents are still writing — not flagging uncommitted state." >&2
+  echo "             Their files are theirs until they return; commit after they do." >&2
+  exit 0
+fi
+
 # ─── Build issue list ────────────────────────────────────────────────
 issues=()
 

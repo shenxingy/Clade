@@ -30,6 +30,7 @@ SESSION_CONTEXT="$REPO_ROOT/configs/hooks/session-context.sh"
 EDIT_SHADOW="$REPO_ROOT/configs/hooks/edit-shadow-detector.sh"
 RUNTIME_LIB="$REPO_ROOT/configs/hooks/lib/runtime-dir.sh"
 SETTINGS="$REPO_ROOT/configs/settings-hooks.json"
+STOP_CHECK="$REPO_ROOT/configs/hooks/stop-check.sh"
 
 # ─── Test framework (mirrors tests/test-correction-pairing.sh) ───────
 TESTS_RUN=0; TESTS_PASSED=0; TESTS_FAILED=0
@@ -783,6 +784,57 @@ rm -f "$BPROJ/.claude/handoff-2026-09-02.md"
 OUT=$(ctx CLADE_CTX_CEILING_BYTES=100)
 assert_contains "$OUT" "over the 100 budget" "an over-ceiling payload says so"
 assert_contains "$OUT" "Close the loop" "the ceiling warning does not truncate the trailing sections"
+
+section "stop-check does not nag while subagents are writing"
+
+# The 2026-09-02 audit session took 76 stop-hook interrupts while ten agents
+# were mid-write, refused all 76 because committing an agent's half-finished
+# files would be wrong, and got nothing but noise. These pin the fix.
+
+SC_HOME="$(mktemp -d "${TMPDIR:-/tmp}/clade-stopcheck.XXXXXX")"
+SC_REPO="$(mktemp -d "${TMPDIR:-/tmp}/clade-stopcheck-repo.XXXXXX")"
+SC_SESSION="11111111-2222-3333-4444-555555555555"
+git -C "$SC_REPO" init -q 2>/dev/null
+git -C "$SC_REPO" config user.email t@t; git -C "$SC_REPO" config user.name t
+echo base > "$SC_REPO/a.txt"; git -C "$SC_REPO" add a.txt
+git -C "$SC_REPO" -c commit.gpgsign=false commit -qm "chore: base"
+# Dirty file that appeared after the baseline, i.e. "produced this session".
+mkdir -p "$SC_REPO/.claude/sessions"
+: > "$SC_REPO/.claude/sessions/$SC_SESSION.baseline"
+echo changed > "$SC_REPO/b.txt"
+
+SC_AGENTS="$SC_HOME/.claude/projects/slug/$SC_SESSION/subagents/workflows/wf_x"
+mkdir -p "$SC_AGENTS"
+
+sc_run() {
+  ( cd "$SC_REPO" && printf '%s' "{\"session_id\":\"$SC_SESSION\",\"stop_hook_active\":false}" \
+      | HOME="$SC_HOME" CLAUDE_PROJECT_DIR="$SC_REPO" bash "$STOP_CHECK" 2>&1 )
+}
+
+# 1. A freshly-written agent transcript means work is in flight.
+echo '{}' > "$SC_AGENTS/agent-abc.jsonl"
+out=$(sc_run); rc=$?
+assert_eq "$rc" "0" "allows the stop while an agent transcript is fresh"
+assert_contains "$out" "Subagents are still writing" "says why it is staying quiet"
+
+# 2. Same tree, same dirt, agents long finished — the check must NOT swallow it.
+#    (Back-date past the default 180s window rather than sleeping.)
+touch -d '2 hours ago' "$SC_AGENTS/agent-abc.jsonl" 2>/dev/null \
+  || touch -t "$(date -v-2H +%Y%m%d%H%M 2>/dev/null || echo 200001010000)" "$SC_AGENTS/agent-abc.jsonl"
+rm -f "$SC_REPO/.claude/sessions/$SC_SESSION.stop_attempts"
+out=$(sc_run); rc=$?
+assert_eq "$rc" "2" "still blocks once the agents have gone quiet"
+assert_contains "$out" "uncommitted change" "names the dirt it found"
+
+# 3. The escape hatch really disables it.
+echo '{}' > "$SC_AGENTS/agent-abc.jsonl"   # fresh again: only the flag should matter
+rm -f "$SC_REPO/.claude/sessions/$SC_SESSION.stop_attempts"
+out=$( cd "$SC_REPO" && printf '%s' "{\"session_id\":\"$SC_SESSION\",\"stop_hook_active\":false}" \
+      | HOME="$SC_HOME" CLAUDE_PROJECT_DIR="$SC_REPO" STOP_CHECK_AGENT_IDLE_S=0 bash "$STOP_CHECK" 2>&1 )
+rc=$?
+assert_eq "$rc" "2" "STOP_CHECK_AGENT_IDLE_S=0 restores the unconditional check"
+
+rm -rf "$SC_HOME" "$SC_REPO"
 
 # ─── Summary ─────────────────────────────────────────────────────────
 
