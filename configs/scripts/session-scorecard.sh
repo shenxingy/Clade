@@ -19,7 +19,14 @@ mkdir -p "$CORRECTIONS_DIR"
 # ─── Determine session window (last 4 hours or since last scorecard) ──
 LAST_SCORECARD_TS=""
 if [[ -f "$SCORECARDS_FILE" ]]; then
-  LAST_SCORECARD_TS=$(tail -1 "$SCORECARDS_FILE" 2>/dev/null | jq -r '.timestamp // empty' 2>/dev/null)
+  # Slurp, not `tail -1`: this file's own writer was `jq -n` (pretty-printed)
+  # until 2026-09, so despite the .jsonl name a legacy record spans 10 lines and
+  # `tail -1` yields the single character `}`. `jq` then failed on every run,
+  # LAST_SCORECARD_TS was always empty, and SINCE always fell back to the 4-hour
+  # default below — the window never advanced. Slurping reads both the legacy
+  # pretty records and the compact ones the fixed writer now emits.
+  LAST_SCORECARD_TS=$(jq -rs 'map(.timestamp? // empty) | last // empty' \
+                        "$SCORECARDS_FILE" 2>/dev/null)
 fi
 
 if [[ -n "$LAST_SCORECARD_TS" ]]; then
@@ -37,22 +44,36 @@ NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 EXPLICIT_CORRECTIONS=0
 IMPLICIT_CORRECTIONS=0
 
-if [[ -f "$HISTORY_FILE" ]]; then
-  EXPLICIT_CORRECTIONS=$(awk -v since="$SINCE" '
-    { line=$0; match(line, /"timestamp":"([^"]+)"/, ts)
-      if (ts[1] >= since) {
-        if (line ~ /"type":"implicit/) impl++; else expl++
-      }
-    }
-    END { print expl+0 }
-  ' "$HISTORY_FILE" 2>/dev/null || echo 0)
+# Why jq and not awk: the previous implementation matched the timestamp with a
+# 3-argument `match(line, /re/, arr)`, which is a GAWK EXTENSION. mawk — the
+# default awk on Debian/Ubuntu, i.e. the machines this repo runs on — and BSD awk
+# both reject it outright ("syntax error", exit 2), and the `2>/dev/null || echo 0`
+# fallback converted that error into a plausible zero. Both counters were
+# structurally 0 for the life of the file. The hand-rolled regex was also
+# spacing-sensitive: it matched `"timestamp":"..."` but not the `"timestamp": "..."`
+# form, which is the majority of the records actually on disk. jq is already a hard
+# dependency of this script (window reader, domains, writer) and has neither
+# problem. Do NOT "simplify" this back to awk.
+#
+# `jq -R` + `fromjson?` keeps the parse LINE-SCOPED on purpose: history.jsonl has
+# been corrupted by interleaved concurrent appends before (see the header of
+# configs/hooks/lib/correction-pair.sh), and a whole-stream parse aborts at the
+# first bad byte and silently loses every record after it. The old awk was immune
+# to that because it was line-scoped; this keeps that property.
+_classify_corrections() {
+  jq -rR --arg since "$1" '
+    fromjson? // empty
+    | select((.timestamp // "") >= $since)
+    | if ((.type // "") | startswith("implicit")) then "implicit" else "explicit" end
+  ' "$HISTORY_FILE" 2>/dev/null
+}
 
-  IMPLICIT_CORRECTIONS=$(awk -v since="$SINCE" '
-    { line=$0; match(line, /"timestamp":"([^"]+)"/, ts)
-      if (ts[1] >= since && line ~ /"type":"implicit/) count++
-    }
-    END { print count+0 }
-  ' "$HISTORY_FILE" 2>/dev/null || echo 0)
+if [[ -f "$HISTORY_FILE" ]] && command -v jq >/dev/null 2>&1; then
+  _kinds=$(_classify_corrections "$SINCE")
+  # grep -c exits 1 on no match; `|| true` keeps the substitution's value at "0"
+  # so the --argjson below stays valid JSON.
+  EXPLICIT_CORRECTIONS=$(printf '%s\n' "$_kinds" | grep -c '^explicit$' || true)
+  IMPLICIT_CORRECTIONS=$(printf '%s\n' "$_kinds" | grep -c '^implicit$' || true)
 fi
 
 # ─── Count commits and reverts in this session ────────────────────────
@@ -109,7 +130,10 @@ if [[ -f "$LIBDIR/rule-effectiveness.sh" && -f "$LIBDIR/rule-utils.sh" ]]; then
 fi
 
 # ─── Write scorecard ─────────────────────────────────────────────────
-jq -n \
+# -c is load-bearing: without it this "jsonl" file is pretty-printed and every
+# line-oriented reader of it (including the window reader at the top of this
+# script) breaks.
+jq -nc \
   --arg ts "$NOW" \
   --arg since "$SINCE" \
   --argjson explicit "$EXPLICIT_CORRECTIONS" \
