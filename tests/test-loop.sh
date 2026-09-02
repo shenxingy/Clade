@@ -1306,6 +1306,11 @@ fi
 echo ""
 echo "── --max-runtime bounds a run by wall clock ──"
 
+# Pin the sandbox explicitly rather than inheriting whatever cd was last in
+# effect. This fixture escaped into the repository root twice on 2026-09-02, and
+# a stray `goal-*.md` at the root is exactly what check-roadmap-authority.py now
+# looks for — a test that plants the shape its own gate rejects.
+cd "$REPO_DIR"
 printf '# Goal: never done\n\n- [ ] unchecked forever\n' > goal-runtime.md
 mkdir -p logs/loop-runtime logs/loop-runtime-off
 export MOCK_CLAUDE_RESPONSE='[]'
@@ -1333,6 +1338,7 @@ out_off=$(
 ) || true
 assert_not_contains "$out_off" "Wall-clock limit reached" "--max-runtime 0 disables the bound entirely"
 assert_contains "$out_off" "Max iterations" "with the clock disabled the run still stops on --max-iter"
+rm -f goal-runtime.md   # a stray root-level goal-*.md is what check-roadmap-authority.py rejects
 
 
 # ═══════════════════════════════════════════════════════════════════════
