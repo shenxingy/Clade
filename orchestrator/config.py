@@ -121,6 +121,13 @@ _SETTINGS_DEFAULTS = {
     # prose for a `tokens: N/N` line the CLI does not emit, i.e. cost 0.0 and a
     # token budget that cannot fire. Kill switch only — see agent_output.py.
     "worker_structured_output": True,
+    # Pass --exclude-dynamic-system-prompt-sections to worker spawns, which
+    # moves cwd / env / memory-path / git-status out of the system prompt and
+    # into the first user message. Every worker gets its own git worktree, so
+    # those sections differ per worker and no two spawns can share a cached
+    # prefix — a fan-out of N is N cache writes at 1.25x base input where N-1
+    # could have been reads at 0.1x. Off restores the old prompt shape.
+    "worker_shared_prompt_cache": True,
     # Refuse to run a worker in the shared checkout when git worktree isolation
     # fails. Off restores the old silent fallback, in which an agent spawned
     # with --dangerously-skip-permissions edits the user's own working tree.

@@ -13,6 +13,7 @@
   "loop_max_iterations": 20,
   "loop_context_mode": "carry",
   "worker_structured_output": true,
+  "worker_shared_prompt_cache": true,
   "worker_require_worktree": true,
   "worker_git_surface_guard": true,
   "worker_checkpoint_shadow": true,
