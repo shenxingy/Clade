@@ -84,6 +84,8 @@ def test_pipeline_contract_and_resources_ship_to_every_distribution() -> None:
     for required in (
         "## Seven-phase pipeline",
         "## Scope lane",
+        "Design Read",
+        "references/design-direction-profiles.md",
         "HTML is allowed as a clearly labelled **visual hypothesis only**",
         "platform skeleton",
         "product brain",
@@ -110,6 +112,7 @@ def test_pipeline_contract_and_resources_ship_to_every_distribution() -> None:
         "platform-web.md",
         "platform-windows.md",
         "ui-ux-benchmark.md",
+        "design-direction-profiles.md",
         # The owner's standing design brief. It was hand-typed at this skill for
         # five months while the skill held none of it; losing the file again is
         # the failure worth pinning.
@@ -136,3 +139,31 @@ def test_pipeline_contract_and_resources_ship_to_every_distribution() -> None:
         "优化网页/界面/UI",
     ):
         assert trigger in plugin_skill
+
+
+def test_direction_profiles_are_named_tunable_and_versioned() -> None:
+    profiles = (
+        CANONICAL / "references" / "design-direction-profiles.md"
+    ).read_text(encoding="utf-8")
+
+    for required in (
+        "clade.design-direction/v1",
+        "composition",
+        "motion",
+        "density",
+        "system-native",
+        "product-quiet",
+        "editorial-story",
+        "soft-premium",
+        "industrial",
+        "playful",
+        "kinetic-campaign",
+        "civic-trust",
+        "dense-operations",
+        "taste:minimalist-ui",
+        "taste:high-end-visual-design",
+        "taste:industrial-brutalist-ui",
+    ):
+        assert required in profiles
+
+    assert "safety, accessibility" in profiles

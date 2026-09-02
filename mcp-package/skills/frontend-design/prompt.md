@@ -33,6 +33,10 @@ Before making visual choices:
      `references/platform-presentation.md`
 4. Detect the design system before choosing colors, type, spacing, components,
    or motion.
+5. Read `references/design-direction-profiles.md` for Standard and Full work,
+   whenever the user asks for a theme, preset, style, or alternate version, and
+   whenever the visual direction is materially undecided. A Micro change under
+   an established system may reuse the existing direction and mark this `N/A`.
 
 For a mixed-platform product, share product logic, content, and brand tokens,
 then translate platform contracts separately. Do not average incompatible
@@ -66,6 +70,11 @@ Classify the request as greenfield design, optimization, or implementation of an
 approved spec. Record technical constraints, input modes, accessibility needs,
 locales, performance budget, and the desired outcome.
 
+Draft the one-line `Design Read` and a `clade.design-direction/v1` profile from
+`references/design-direction-profiles.md`. Treat both as hypotheses until the
+benchmark confirms them. For redesigns, choose `preserve`, `evolve`, or
+`reframe` explicitly; never smuggle a reframe into a request for polish.
+
 For optimization, establish the baseline before editing: capture the current
 rendered surface and important flows, list observed failures, and tie each
 proposed change to task success, error recovery, comprehension, accessibility,
@@ -86,6 +95,8 @@ Produce a compact benchmark brief containing:
 - the product behavior worth inventing;
 - the brand expression worth making distinctive;
 - rejected patterns and why they fail here.
+
+Confirm or revise the Design Read and profile after reviewing the evidence.
 
 ### 3. Define behavior before decoration
 
@@ -132,6 +143,10 @@ Decide whether a preview reduces meaningful rework:
 Prefer one recommended direction. Produce a second variant only when a real
 tradeoff remains unresolved by evidence; do not generate decorative option
 sprawl.
+
+When `composition` or `motion` is 4 or 5, require a rendered checkpoint before
+committing to the direction. When comparing versions, hold content, tasks, and
+platform behavior constant and state the exact profile delta.
 
 If the user asked to see the direction before implementation, make the preview
 viewable, provide the local/live URL or rendered image, and stop at that
@@ -292,6 +307,9 @@ Start the implementation handoff with:
 - **Scope lane**: [Micro / Standard / Full — rationale]
 - **Platform**: [detected target(s), inputs, and platform reference loaded]
 - **Design system**: [source and tokens/components used, or none]
+- **Design direction**: [Design Read; `clade.design-direction/v1` preset,
+  variant, mode, family, composition/motion/density, source, and overrides; or
+  `N/A` for a Micro change that reuses an established direction]
 - **Benchmark**: [reference set, reusable pattern, counterexample, rejected choice]
 - **Brand differentiation** (brand surfaces only): [visual school and why; the
   four palette decisions; typeface and why; signature interaction and how it
