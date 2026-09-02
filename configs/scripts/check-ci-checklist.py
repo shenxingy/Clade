@@ -49,6 +49,7 @@ SKIP_JOBS = {
     "real-api-loop": "key-gated live-API tier (workflow_dispatch/weekly only)",
     "provider-live-anthropic": "key-gated read-only catalog smoke",
     "provider-live-openai": "key-gated read-only catalog smoke",
+    "dependency-audit": "weekly/dispatch only — advisories land without a code change",
 }
 
 # Artefacts CI invokes, recognised by shape. Each pattern's first group is the
@@ -60,7 +61,17 @@ ARTEFACT_PATTERNS = (
     re.compile(r"\b(py_compile)\b"),
     re.compile(r"\b(pytest)\b"),
     re.compile(r"(claude plugin validate)"),
+    re.compile(r"\b(ruff)\b"),
 )
+
+# ARTEFACT_PATTERNS is an ALLOWLIST, and that is this check's own blind spot:
+# a CI step invoking a tool no pattern above names is invisible here, so the
+# gate reports "covers all N gates" while the new step goes undocumented. It
+# happened the day the ruff step landed — `ruff check --config ...` matched
+# nothing, and this script stayed green with the checklist missing it. Adding a
+# new KIND of gate to CI therefore means adding its pattern here in the same
+# commit. Parsing arbitrary shell to do better is not worth it; noticing that
+# the list is a list is.
 
 
 def _job_blocks(text: str) -> dict[str, str]:
@@ -156,7 +167,64 @@ def unrunnable_commands() -> list[str]:
     return problems
 
 
+def prose_counts() -> list[str]:
+    """The two counts CLAUDE.md states in prose about ci.yml's own jobs.
+
+    Both had drifted by 2026-09-02 — "18 suites" against a list of 19 two lines
+    below it, and "11 gates" against 17 in the workflow — and both are exactly
+    the kind of number a reader trusts and never rechecks. This script already
+    parses both sides; comparing them costs nothing.
+    """
+
+    problems: list[str] = []
+    workflow = WORKFLOW_DIR / "ci.yml"
+    if not workflow.exists():
+        return problems
+    text = workflow.read_text(encoding="utf-8")
+    checklist = CLAUDE_MD.read_text(encoding="utf-8")
+
+    def _job(name: str) -> str:
+        if f"\n  {name}:" not in text:
+            return ""
+        after = text.split(f"\n  {name}:", 1)[1]
+        return re.split(r"\n  [a-z][a-z0-9-]*:\n", after)[0]
+
+    gates = [
+        n
+        for n in re.findall(r"^      - name: (.+)$", _job("syntax-check"), re.M)
+        if n.strip() != "Set up Python"
+    ]
+    suites = re.findall(r"^      - name: Run ", _job("shell-tests"), re.M)
+
+    for count, pattern, what in (
+        (len(gates), r"`syntax-check` \((\d+) gates\)", "syntax-check gates"),
+        (len(suites), r"`shell-tests` job runs — all (\d+)", "shell-tests suites"),
+        (len(suites), r"`shell-tests` \((\d+) suites\)", "shell-tests suites"),
+    ):
+        if not count:
+            continue
+        found = re.search(pattern, checklist)
+        if not found:
+            continue
+        if int(found.group(1)) != count:
+            problems.append(
+                f"CLAUDE.md says {found.group(1)} {what}; ci.yml has {count}"
+            )
+    return problems
+
+
 def main() -> int:
+    drifted = prose_counts()
+    if drifted:
+        print(
+            "check-ci-checklist: CLAUDE.md states counts about ci.yml that ci.yml "
+            "contradicts — these are numbers a reader trusts and never rechecks:",
+            file=sys.stderr,
+        )
+        for line in drifted:
+            print(f"  {line}", file=sys.stderr)
+        return 1
+
     unrunnable = unrunnable_commands()
     if unrunnable:
         print(

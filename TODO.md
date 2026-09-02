@@ -12,207 +12,14 @@ Phases 1–13 complete.
 
 ---
 
-## Phase 3 — Autonomous Robustness
+## Completed Phases
 
-### Server-side (orchestrator/server.py)
-
-- [x] **Oracle rejection → auto-requeue** — after oracle rejects + `git reset HEAD~1`, call `task_queue.add(original_desc + rejection_reason)` and start a new worker
-  - Location: `verify_and_commit()` oracle rejection block
-- [x] **Context budget auto-inject** — `context_warning` bool in worker to_dict() for UI badge; workers use `claude -p` (non-interactive) so stdin injection not possible without architecture change
-  - File-based warning still written; `context_warning` field broadcast via WebSocket
-- [x] **AGENTS.md auto-prepend** — in `start_worker()`, if `.claude/AGENTS.md` exists in project dir, prepend alongside CLAUDE.md injection
-  - Endpoint already generates it (`GET /agents-md`); missing: auto-inject on worker spawn
-- [x] **Worker handoff auto-trigger** — in `_on_worker_done()`, check for `.claude/handoff-{task_id}.md`; if exists, create continuation task with `/pickup` + original description
-
-### CLI-side (configs/skills/, configs/scripts/)
-
-- [x] **Two-phase orchestrate** (`/orchestrate --plan`) — Phase 1: codebase analysis → `IMPLEMENTATION_PLAN.md`, Phase 2: plan → `proposed-tasks.md` with `OWN_FILES`/`FORBIDDEN_FILES`
-- [x] **Loop artifact marking experiment (retired as unsafe)** — the original
-  worker-side `- [ ]` → `- [x]` mutation was removed after it raced across
-  parallel worktrees; see the later Phase 11.8 entry. This historical item is
-  not evidence that current Blueprint Loop completion reconciliation exists.
-- [x] **Loop `--stop`** — write STOP sentinel to state file; loop-runner checks before each iteration
-- [x] **Loop signal handling** — trap SIGTERM/SIGINT in loop-runner.sh for graceful shutdown
-
----
-
-## Phase 4 — Swarm Intelligence
-
-- [x] Swarm mode — N workers self-claim from shared queue (no central allocator)
-- [x] File ownership enforcement — OWN_FILES/FORBIDDEN_FILES parsed from proposed-tasks.md, stored in DB, enforced in verify_and_commit, violation → requeue
-- [x] GitHub Issues sync — Issues as persistent task database (survives machine restarts, editable from phone)
-- [x] Agent Teams — expose `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`
-- [x] Cross-worker messaging — mailbox pattern
-- [x] Task hot-path / critical path indicator + model tier boost for critical-path tasks
-
----
-
-## Phase 5 — Context Intelligence
-
-- [x] Semantic code TLDR — AST function signatures + JS/TS regex extraction at ~750 tokens vs raw 5K+ file paths
-- [x] Intervention recording — replay successful /message corrections on similar failures
-- [x] Dual-condition exit gate — semantic diff hash + change count (not just counting)
-
----
-
-## Phase 6 — Observability & Resilience (DONE)
-
-- [x] **Task analytics** — success/failure rate, avg duration per model, distribution chart; new dashboard widget
-  - Endpoint: `GET /api/sessions/{session_id}/analytics`
-  - UI: collapsible stats card with donut chart (haiku/sonnet/opus colors)
-- [x] **Token/cost tracking** — parse `claude -p` log for token usage, store in tasks table
-  - New columns: `input_tokens`, `output_tokens`, `estimated_cost`
-  - Parsed in `_on_worker_done()`, persisted in `poll_all()`
-  - UI: cost per worker card, session total in footer
-- [x] **Cost budget limit** — max spend per session; auto-pause workers when budget exceeded
-  - New setting: `cost_budget` (default: 0 = unlimited)
-  - Check in `status_loop()` before auto-start; manual "Run" bypasses
-  - UI: budget input in settings, toast + red footer on exceed
-- [x] **Stuck worker detection** — log file mtime unchanged for N minutes → kill + requeue
-  - Check in `poll_all()`: `log_path.stat().st_mtime` vs threshold
-  - New setting: `stuck_timeout_minutes` (default: 15)
-  - One-shot retry with `[STUCK-RETRY]` prefix (no infinite loop)
-- [x] **Session state persistence** — survive server restart
-  - `_recover_orphaned_tasks()` marks running/starting → interrupted
-  - Called on startup, create_session, switch_project
-  - `POST /api/tasks/{task_id}/retry` resets to pending
-  - UI: interrupted badge (orange) + retry button in history
-- [x] **Completion notifications** — webhook when batch/loop finishes
-  - New setting: `notification_webhook` (URL)
-  - Fires on: run_complete, high_failure_rate, loop_converged
-  - curl-based, fail-open, no new deps
-
----
-
-## Phase 7 — Task Velocity Engine
-
----
-
-### 7.1 Hook Layer — BOTH（代码级强制，任何 claude session 受益）
-
-- [x] **Commit reminder hook** — `configs/hooks/post-edit-check.sh` ✓ (loop 2026-02-27)
-
-- [x] **Commit granularity gate** — `configs/hooks/verify-task-completed.sh` ✓ (loop 2026-02-27)
-
-- [x] **CLAUDE.md per-file rule** — `configs/templates/CLAUDE.md` ✓ (loop 2026-02-27)
-
----
-
-### 7.2 CLI/TUI Velocity — configs/ 层（bash 实现）
-
-- [x] **loop-runner.sh HORIZONTAL 模式** ✓ (loop 2026-02-27)
-
-- [x] **TODO scanner CLI** — `configs/scripts/scan-todos.sh` ✓ (loop 2026-02-27)
-
-- [x] **tmux dispatcher** — `configs/scripts/tmux-dispatch.sh` ✓ (loop 2026-02-27)
-
----
-
-### 7.3 GUI Velocity — orchestrator/ 层（Python 实现）
-
-- [x] **Task type 字段** — DB + 解析 + UI badge
-  - `orchestrator/server.py`：`tasks` 表 ALTER 加 `task_type TEXT DEFAULT 'AUTO'`
-  - 解析 `proposed-tasks.md` 中 `TYPE: HORIZONTAL|VERTICAL` 字段，写入 DB
-  - 前端：worker card 显示 `H`（橙）/ `V`（蓝）/ `A`（灰）badge
-  - `/orchestrate` skill 生成的 `proposed-tasks.md` 格式中加 `TYPE:` 字段（改 skill prompt）
-
-- [x] **Horizontal auto-decomposition** — `orchestrator/server.py`
-  - `start_worker()` 前：`if task.task_type == 'HORIZONTAL'` → 调用 `_decompose_horizontal(task)`
-  - `_decompose_horizontal`：用 claude haiku 列出受影响文件列表 → 每个文件创建子任务
-  - 子任务描述：`[file: {path}] {原始任务描述}`，`parent_task_id` 字段记录父任务
-  - 父任务状态改为 `grouped`，所有子任务完成后父任务自动 complete
-
-- [x] **Worker auto-scaling** — `orchestrator/server.py` + 前端设置
-  - `status_loop()` 加逻辑：`pending_count > running_count * 2` → `_start_worker()`（最多到 `max_workers`）
-  - 新 settings（`orchestrator/settings.json`）：
-    - `auto_scale: bool = false`
-    - `min_workers: int = 1`
-    - `max_workers: int = 8`
-  - 前端 Settings 面板：Auto-Scale 开关 + min/max 数字输入
-  - 防止 spawn storm：每次 spawn 后冷却 30s 才检查下一次
-
----
-
-## Phase 8 — Closed-Loop Work Generation
-
----
-
-### 8.1 Task Factories — BOTH（CLI 脚本 + GUI Python 模块双形态）
-
-每个 factory 都有两种输出形态：CLI 版本输出 `===TASK===` 格式文件，GUI 版本写入 orchestrator DB。
-
-- [x] **CI failure watcher — CLI** (`configs/scripts/scan-ci-failures.sh`) ✓
-  - [x] GUI (`orchestrator/task_factory/ci_watcher.py`)：GitHub Actions API 轮询，`status_loop()` 集成
-  - 去重 key：`source_ref = ci_run_{run_id}`（tasks 表新增 `source_ref TEXT` 列）
-
-- [x] **Test coverage gap detector — CLI** (`configs/scripts/scan-coverage.sh`) ✓
-  - [x] GUI (`orchestrator/task_factory/coverage_scan.py`)：同 CLI 逻辑，写 DB
-
-- [x] **Dependency update bot — CLI** (`configs/scripts/scan-deps.sh`) ✓
-  - [x] GUI (`orchestrator/task_factory/dep_update.py`)：同逻辑，写 DB
-
----
-
-### 8.2 External Triggers — GUI only
-
-- [x] **GitHub webhook endpoint** — `orchestrator/routes/webhooks.py`
-  - `POST /api/webhooks/github`，注册到 FastAPI router
-  - 触发条件：Issue 加 `claude-do-it` 标签 → 用 title+body 创建任务
-  - 触发条件：Issue / PR 评论匹配 `/claude <instruction>` → 解析指令创建任务
-  - 安全：验证 `X-Hub-Signature-256`（HMAC-SHA256）；新 setting `webhook_secret`
-  - `source_ref = gh_issue_{number}` / `gh_pr_{number}` 去重
-
----
-
-### 8.3 Specialist Presets — BOTH
-
-- [x] **CLI task templates** — `configs/templates/` ✓
-  - `task-test-writer.md`, `task-refactor-bot.md`, `task-security-scan.md` 已完成
-  - 用法：`cat configs/templates/task-test-writer.md >> tasks.txt && bash batch-tasks tasks.txt`
-
-- [x] **GUI preset cards** — Task 创建 UI 新增 "Quick Presets" 区域（4 个 card）
-  - `test-writer` / `refactor-bot` / `docs-bot` / `security-scan`
-  - 点击 → 预填 prompt + 自动设 `TYPE=HORIZONTAL` + 推荐 model
-  - 前端：新增 `<PresetCards>` 组件，放在 TaskCreateForm 上方
-
-- [x] **MCP integration** — `docs/mcp-setup.md` + worker 自动加载
-  - 文档：推荐 servers（`brave-search`, `playwright-browser`, `filesystem`）+ 安装命令
-  - `orchestrator/server.py`：`start_worker()` 时检测项目目录 `.claude/mcp.json` → 注入 worker 环境
-  - `configs/templates/mcp.json.example`：可复制的示例配置
-
----
-
-## Phase 9 — Meta-Intelligence (TUI/CLI Layer)
-
-Goal: maximize autonomous run hours. Minimize human intervention. System knows where it is, learns from patterns, notifies when done.
-
-### 9.1 Smart Session Warm-up
-- [x] **session-context.sh: loop-state + next TODO** ✓ (loop 2026-02-27)
-
-### 9.2 Loop Intelligence
-- [x] **loop-runner.sh: auto-PROGRESS on convergence** ✓ (loop 2026-02-27)
-- [x] **loop-runner.sh: notify-telegram on convergence** ✓ (loop 2026-02-27)
-- [x] **loop-runner.sh: HORIZONTAL mode** ✓ (loop 2026-02-27)
-- [x] **loop-runner.sh: --exit-gate flag** ✓ (loop 2026-02-27)
-
-### 9.3 Commit Quality
-- [x] **verify-task-completed.sh: commit granularity stats** ✓ (loop 2026-02-27)
-
-### 9.4 Kit Completeness
-- [x] **Copy review-pr, merge-pr, worktree skills to configs/skills/** ✓ (loop 2026-02-27)
-
-### 9.5 Research Skill
-- [x] **`/research` skill** ✓ (loop 2026-02-27)
-
-### 9.6 Pattern Intelligence & Self-Improvement
-- [x] **`/map` skill** ✓ (loop 2026-02-27)
-- [x] **Prompt fingerprint tracker** ✓ (loop 2026-02-27)
-- [x] **`/incident` skill** ✓ (loop 2026-02-27)
-
-- [x] **Value tracking** — extend `.claude/stats.jsonl` with revert detection
-  - `configs/hooks/session-context.sh`: on startup, count `git log --oneline --grep="Revert"` in last 7 days
-  - If revert rate > 10%: surface warning in session context: `"⚠ High revert rate this week ({N} reverts)"`
-  - Pairs with existing commit granularity stats from `verify-task-completed.sh`
+Phases 3 through 14, the 2026-04-07 tech-debt list and the EVALUATION-STANDARD
+research gaps are complete. Their full checked history moved to
+[docs/archive/TODO-completed-phases.md](docs/archive/TODO-completed-phases.md)
+on 2026-09-02, so this file holds open work and its immediate context rather
+than a mostly-closed ledger. Nothing was ticked or unticked in the move: every
+section archived carried zero open items, measured section by section.
 
 ---
 
@@ -492,319 +299,483 @@ research inbox, so tracked separately rather than folded into the count above.
 - [x] 🟡 No CORS middleware on FastAPI app — mobile/remote access via Caddy HTTPS (stated in VISION) will fail with CORS errors (`orchestrator/server.py:72`)
 - [x] 🔵 `schedule` endpoint error message incorrect — said "ISO 8601" but parser only accepts `HH:MM`; fixed to "Use HH:MM (24h), e.g. 09:00" (`orchestrator/server.py:471`)
 - [x] 🟡 Skill name collision with Claude Code built-ins — spike run 2026-07-10, **VERDICT: keep the shared names permanently (won't-rename)**. Full sweep of 584 raw matches showed the old "~37+34 refs" estimate conflated infra paths (`logs/loop`, `.claude/loop-state`, REST routes `/api/sessions/{id}/loop/*`, `verify_backlinks.py`) with skill-name refs — orchestrator .py + tests/test-loop.sh contain **zero** Clade-skill refs. But the true rename cost is *larger*: /loop 123 + /review 66 + /verify 83 refs ≈ **~193 manual edits** after excluding regenerated mcp-package mirrors and append-only history, plus four classes of un-greppable breakage: (1) MCP tool names derive from skill dir names — external Cursor/Cline configs break silently; (2) `configs/templates/VERIFY-*.md` already stamped `Managed by /review skill` into downstream projects; (3) `start.sh:895` hard-cats `~/.claude/skills/verify/prompt.md` on installed machines; (4) muscle memory. Collision risk is already neutralized: `/verify` is `user_invocable: false` (typed always hits built-in — now locked by VERIFY.md SC23), built-in `/loop` is TUI-level with a different arg shape and doesn't co-appear in the model's skill list, `/review` is the only true dual listing but both descriptions cross-route — **zero misroute incidents since disambiguation shipped (2026-04-17 / 2026-06-04)**. Both proposed target names rejected: `/verify-all` would newly prefix-collide with `/verify`; `/converge` orphans the `/loop`↔`/iloop` pair. Contingency: if a real `/review` misroute pattern ever emerges, rename only `/review → /coverage`.
+- [x] 🔴 `redact.py` had no pattern for underscore-style API keys — DONE 2026-09-02. `generic_secret_key` added after `stripe_key`, and `stripe_key` widened to cover test keys. `checks.sh`'s inline fallback carries the same shape now, with an explicit leading boundary because POSIX ERE has no portable `\b` and the prefix sits inside the ordinary word `task_`; `tests/test-checks.sh` pins both directions. **The provenance sentence in the original item was withdrawn:** the claim that such a key sat in `history.jsonl` until the radar run removed it could not be substantiated on disk. The pattern gap was real and is demonstrated; the incident was not.
+- [x] 🔴 Correction capture wrote raw user prompts to disk — DONE 2026-09-02. Redaction runs once, after the correction gate (so python3 does not spawn on prompts that write nothing) and before `cp_bound_prompt` (clipping first can cut a token below its detection threshold). The filed item missed a **third** write: the lib-missing fallback branch leaked the same prompt. The prescribed sed fallback turned out unsafe — fixed-count patterns mask only a token's prefix, measured leaving 16 of 48 characters on disk — so the degraded path detects and withholds the whole prompt instead.
+- [x] 🟡 `reverted_files` is not a revert set — DONE 2026-09-02. Now the intersection with the command's own pathspec; the loose session list survives as `session_files`. `git revert` and `git reset --hard` genuinely cannot yield a file set and the hook is async, so those record `revert_scope` and leave `repeat` null rather than substituting a guess. `correction-detector.sh` unions `session_files` back in so the injected signal keeps its breadth.
+- [x] 🔵 `session-scorecard.sh` awk parsed one JSONL style — DONE 2026-09-02, and it was **not** latent. The three-argument `match()` errors on mawk, the default `awk` here, and a trailing `|| echo 0` turned that into a plausible zero: both correction counters had been structurally 0 for the life of the file. Rewritten on `jq`, which the script already hard-depends on. `tests/test-session-scorecard.sh` is new and runs in CI.
 
 ---
 
-## Phase 10 — Portfolio Mode (DONE)
-
-Human role: set direction for N projects → system auto-allocates workers, auto-ranks tasks, surfaces blockers.
-
-- [x] **Cross-project session overview** — single dashboard showing all active sessions + their queue depth + cost rate
-- [x] **Task priority ranker** — haiku scores pending tasks by impact/urgency across sessions; reorders queues
-- [x] **Worker pool router** — global `max_workers` budget shared across sessions; auto-rebalances based on queue depth
-- [x] **Morning briefing skill** — `/brief` generates a summary of overnight run: commits made, cost, failures, suggested next goals
-- [x] **Goal suggestion engine** — after each loop converges, suggest next 3 goals based on PROGRESS.md lessons + VISION.md gaps
-
----
-
----
-
-## Phase 11 — Autonomous Lifecycle
-
-Goal: one command starts everything, runs unattended for any duration (2h lunch / 8h overnight / full weekend) without stopping on minor issues, surfaces a clean session report when done. Human role shrinks to: set direction + approve proposals + resolve true blockers. The system self-plans, claims tasks, executes, verifies, loops — overnight is just one scenario, not the core constraint.
-
-**Implementation order (dependency chain):**
-```
-① Phase 10 verification + cost-tracking investigation (11.6) — fix stubs + unblock session-report design
-② CLAUDE.md template (11.4)              — Project Type + Features fields
-③ /verify skill (11.2)                   — needs those fields to work
-④ 3-tier rules in /loop (11.3)           — foundation for /start to rely on
-⑤ loop-runner.sh bug fixes (11.8)        — autonomous mode relies on reliable loop behavior
-⑥ Update /orchestrate Feature tag (11.1) — prerequisite for one-feature filtering
-⑦ /start morning mode + start.sh (11.1)  — morning mode first, validate pattern
-⑧ /start autonomous mode (11.1)          — full autonomous
-⑨ Safety layer (11.7)                    — cost guard + budget settings + --resume
-```
-
-**Architecture decision: /start = pure shell script (not a Claude meta-skill)**
-- /start is a shell script (like loop-runner.sh), NOT a Claude skill that runs in one session
-- Rationale: a single-session skill calling /orchestrate + /loop + /verify would blow context in one iteration
-- /start calls bottom-layer scripts directly: loop-runner.sh, batch-tasks, committer
-- Each worker = independent Claude session; /start itself consumes zero context
-- Does NOT require the GUI orchestrator to be running — TUI-native
-- Works for any run duration: `start.sh` (autonomous until done/blocked/budget), `start.sh --hours 4`, `start.sh --morning` (briefing only)
-
----
-
-### 11.6 — Phase 10 Verification ← start here (unblock dependencies)
-
-- [x] **Verify Phase 10 features actually work end-to-end** — code-level trace confirmed:
-  - ✓ Priority ranker: `_rank_tasks()` → 5min timer → haiku scores → DB write → `claim_next_pending()` ORDER BY priority_score DESC. Full chain wired.
-  - ✓ Cross-project overview: `GET /api/sessions/overview` returns pending/running + cost_rate_per_hour across all sessions.
-  - ✓ Model routing: score≥80→haiku, <50→sonnet+warning, critical_path→tier upgrade. Gated by `auto_model_routing` setting.
-  - ✓ Global max_workers: enforced in status_loop + auto-scale + start-all-queued.
-  - ⚠ Worker rebalancing NOT implemented (TODO said "auto-rebalances" but only global cap exists, no inter-session redistribution). Deferred — not needed for Phase 11 CLI layer.
-- [x] **Investigate `claude -p --output-format json` for cost tracking** — CONFIRMED: JSON output includes `total_cost_usd` (float) + `modelUsage.{model}.costUSD` per-model breakdown + full token counts. Parse with `jq '.total_cost_usd'`. Not a blocker — cost tracking fully feasible.
-
----
-
-### 11.4 — CLAUDE.md Template New Sections
-
-- [x] **Dogfooding: add `## Project Type` + `## Features` to claude-code-kit's own CLAUDE.md** — added with 6 behavior anchors (install.sh, slt, /commit, /loop, committer, loop-runner.sh)
-- [x] **Add `## Project Type` section to `configs/templates/CLAUDE.md`**
-- [x] **Add `## Features` section to `configs/templates/CLAUDE.md`**
-
----
-
-### 11.2 — `/verify` Skill
-
-- [x] **Create `configs/skills/verify/prompt.md`** — project-type-aware testing with behavior anchors, machine-parseable VERIFY_RESULT/FAILED_ANCHORS/UNVERIFIABLE footer
-  - `partial` vs `fail` distinction must be explicit in the prompt: `partial` = some anchors unverifiable (no test strategy, missing Playwright, insufficient coverage); `fail` = anchors that can be tested and are now regressing; start.sh uses this to decide skip-and-continue vs create-fix-tasks
-
----
-
-### 11.3 — 3-Tier Issue Handling
-
-- [x] **Add 3-tier rules to `loop-runner.sh` `INSTRUCTIONS` heredoc** — Tier 1 (decisions.md), Tier 2 (skipped.md), Tier 3 (blockers.md) + supervisor blocker detection
-- [x] **Add `blockers.md` check to loop-runner.sh per-iteration guard** — placed alongside STOP sentinel; stops loop + notifies on Tier 3 blocker
-- [x] **Add `decisions.md` / `skipped.md` cleanup to `/sync` skill** — archives tier files to `*-archive.md` and deletes originals
-- [x] **blockers.md stale entry handling in start.sh** — TTY: 30s prompt (auto-clear); unattended: exit with `blocked-stale` report
-
----
-
-### 11.1 — `/start` Skill
-
-**Internal flow (autonomous/unattended mode):**
-```
-outer iteration start:
-  check blockers.md + cost + wall-clock → stop if hit
-  /orchestrate → fresh proposed-tasks.md  (orchestrate decides if /research needed — not start.sh)
-  filter by top-priority feature → fresh filtered-tasks.md
-  if grep -c "^\- \[ \]" filtered-tasks.md == 0 → CONVERGED (done)
-  /loop [3-tier active] (goal = filtered-tasks.md)
-    ↓
-  /verify
-    ├─ pass    → claude -p sync → committer "docs: sync" → outer iteration start
-    ├─ partial → log gaps to skipped.md → claude -p sync → committer → outer iteration start
-    └─ fail    → create fix tasks → back to /loop (max 3 retries → tier 2)
-  ↓
-write .claude/session-report-{timestamp}.md → stop
-```
-
-**Convergence = stop when ALL true:**
-- Fresh `/orchestrate` output produces 0 open tasks for the current feature (checked at outer loop start)
-- `/verify` returns pass or partial
-- OR: iteration budget reached / cost cap hit / blocker written / max retries on verify-fail
-- Note: convergence check is on freshly-generated filtered-tasks.md (not worker-mutated files); /start never targets itself (circular)
-
-- [x] **Create `configs/skills/start/prompt.md` — morning briefing mode** — thin wrapper + `morning-brief.md` prompt template
-- [x] **Create `configs/scripts/start.sh` — autonomous/unattended mode** (shell script, NOT prompt.md)
-  - Shell orchestrator: self-plans, claims work, executes, verifies, loops — runs for any duration until done/blocked/budget hit
-  - Stop conditions: all tasks done (convergence) / `session_budget_usd` hit / wall-clock `--hours N` / `.claude/blockers.md` written / manual `--stop`
-  - **Calling /orchestrate from shell** (use heredoc to avoid `\n` issues):
-    ```bash
-    claude -p "$(printf '%s\n\n%s\n\n%s' \
-      "$(cat ~/.claude/skills/orchestrate/prompt.md)" \
-      "$(cat CLAUDE.md)" \
-      "$(cat TODO.md)")" > proposed-tasks.md
-    ```
-  - **One-feature focus filtering**: after /orchestrate writes proposed-tasks.md, start.sh groups tasks by `Feature:` tag, selects tasks for top-priority incomplete feature (priority = order in TODO.md), writes filtered-tasks.md → loop-runner.sh receives filtered-tasks.md; **fallback if no Feature: tags found**: treat all tasks as one group (run everything in one loop) — prevents start.sh crash when /orchestrate hasn't been updated yet to emit tags
-  - **Calling /verify from shell**: `claude -p "$(cat ~/.claude/skills/verify/prompt.md)" > .claude/verify-output.txt`; then `grep "VERIFY_RESULT:" .claude/verify-output.txt` to branch on pass/partial/fail
-  - **Calling /commit + /sync from shell**: use `committer.sh` directly (not the /commit skill — skill requires interactive Claude session); committer.sh stages and commits changed files; /sync = update TODO.md + PROGRESS.md (done by a separate claude -p call)
-  - Must re-read GOALS.md + VISION.md at start of every iteration (drift anchor, injected into loop-runner goal)
-  - Must NOT modify GOALS.md or VISION.md directly — proposals go to BRAINSTORM.md with `[AI]` prefix
-  - Max verify-fail retries: 3 per task before tier 2 escalation; retry counter tracked in session-progress.md
-  - Writes `.claude/session-report-{timestamp}.md` on finish by parsing `.claude/loop-cost.log`; works whether run was 2h or 16h
-  - verify-fail → fix task flow: `grep "FAILED_ANCHORS:" verify-output.txt` → write fix tasks → re-run loop-runner.sh
-  - **Convergence detection**: at the TOP of each outer iteration, AFTER fresh /orchestrate runs, `grep -c "^\- \[ \]" filtered-tasks.md`; if 0 → truly converged (no more open tasks in current feature scope), write `session-report-{timestamp}.md` + stop; if >0 → run /loop; this replaces the old "re-read filtered-tasks.md after verify" pattern — workers never mutate filtered-tasks.md, /orchestrate regenerates it fresh each iteration
-
-- [x] **Shell invocation checklist** — all `claude -p` calls use `--dangerously-skip-permissions`; orchestrate injects CLAUDE.md + TODO.md + GOALS.md + PROGRESS.md + skipped.md; optional docs guarded; sync before committer; unset CLAUDECODE at top
-- [x] **Add cost logging to loop-runner.sh** — supervisor uses `--output-format json` + python3 JSON parsing; worker costs parsed from `logs/claude-tasks/` stream-json logs via marker-file-based discovery; per-iteration + cumulative totals logged to `.claude/loop-cost.log`
-- [x] **Session report format** — `_write_session_report()` in start.sh writes timestamped `.claude/session-report-{id}.md`
-- [x] **Update `/orchestrate` skill to tag tasks with `Feature: <name>`** — added Feature: line to task block format + documentation
-- [x] **Targeted mode** (`/start --goal "X"`) — implemented: skips orchestrate, copies goal file directly to filtered-tasks.md
-- [x] **One-feature focus strategy** — `_filter_by_feature()` groups by Feature: tag, picks first feature, filters tasks; skipped.md injected into /orchestrate context for next iteration
-- [x] **30s plan approval window** — TTY detection + `read -t 30` auto-continue; `--confirm` forces window in non-TTY mode
-- [x] **Session progress file** — `_write_progress()` writes key=value to `.claude/session-progress.md`; `--resume` reads it back
-
----
-
-### 11.5 — Drift Prevention Conventions
-
-- [x] **Add `# FROZEN` convention to CLAUDE.md template** — documented with ~90% effectiveness caveat
-- [x] **Add BRAINSTORM proposal rule to `loop-runner.sh` `INSTRUCTIONS` heredoc** — "write to BRAINSTORM.md with [AI] prefix, never modify GOALS.md/VISION.md"
-- [x] **Inject BRAINSTORM rule into start.sh goal string** — appended to loop-goal.md before each loop-runner.sh call
-
----
-
-### 11.8 — loop-runner.sh Known Bugs
-
-- [x] **Bug: workers race-condition on goal file marking** — removed `- [ ]` → `- [x]` instructions from both INSTRUCTIONS heredoc and fallback wrapper; replaced with "Do NOT modify the goal file"
-- [x] **Bug: auto-deploy + git_recent_diff both use wrong commit range** — added `STARTED_COMMIT` to state file at loop start; both git_recent_diff and auto-deploy now use `$(state_read STARTED_COMMIT)..HEAD`
-- [x] **Bug: non-code task silent failure** — added `ITER_START_SHA` capture before workers + `git rev-list` count after; zero commits → injects context for supervisor to decide CONVERGED vs re-plan
-- [x] **Cost logging to loop-cost.log** — supervisor `--output-format json` + worker stream-json parsing; marker-file discovery for worker logs; cumulative tracking; start.sh `_accumulate_cost()` reads CUMULATIVE value
-
----
-
-### 11.7 — Safety Layer
-
-- [x] **Cost guard in `start.sh`** — reads `~/.claude/start-settings.json`, `--budget N` flag, defaults to $5 with warning; checked every iteration via `_check_stop_conditions()`
-- [x] **Context management** — start.sh is zero-context (pure shell); workers manage their own via handoff/pickup; start.sh only tracks wall-clock and cost
-- [x] **Entry point unification** — `start.sh` supports: `--morning`, `--run` (default), `--hours N`, `--goal "X"`, `--budget N`, `--resume`, `--stop`; skill wrapper delegates to start.sh
-- [x] **Mode auto-detection** — TTY → show plan + 30s approval window; no TTY → run immediately; `--confirm` forces window
-
----
-
-## Phase 12 — From Code-Centric to Product-Centric
-
-Goal: the system must not only build code, but also USE what it builds — interact with the UI, evaluate UX, and continuously discover new work without hand-written TODOs.
-
-### 12.0 — Stress-Test Prerequisite
-
-- [x] **Run `start.sh` on owlcast** — 66min, $10.48, 21 commits, 6 tasks, CONVERGED at iter 4 (see PROGRESS.md 2026-03-03)
-- [x] **Run `start.sh` on ai-ap-manager** — 22min, $4.21, 7 commits, 5 tasks, CONVERGED at iter 2 (see PROGRESS.md 2026-03-03)
-- [x] **Run `start.sh` on deepfake-platform** — 32min, $12.79, 41 commits, 5 goals → 14 tasks, 5 iterations (see PROGRESS.md 2026-03-03)
-- [x] **Record baselines in PROGRESS.md** — owlcast vs ai-ap-manager comparison table added
-
-#### Bugs found in stress test (fix before more runs)
-
-- [x] 🔴 **Parallel execution broken** — replaced `extract_file_refs()` (prose regex) with `extract_own_files()` (OWN_FILES: only) + `get_task_depends_on()`. Default: parallel. Serialize only on explicit `depends_on:` or `OWN_FILES:` overlap.
-- [x] 🟡 **Default timeout too short for large tasks** — model-aware defaults: haiku=900s (15m), sonnet=1800s (30m), opus=3600s (60m). Explicit `timeout:` still overrides.
-- [x] 🟡 **Disk pressure warning missing** — `_check_startup_health()` in start.sh: ≥95% abort, ≥90% warn+prompt, low memory (<512MB) warn.
-- [x] 🟡 **/orchestrate conversational fallback** — retry once with "CRITICAL: output ONLY ===TASK=== blocks" prepended; check for explicit `STATUS: CONVERGED` before giving up.
-- [x] 🔵 **Cost log delay** — `touch` cost log at loop-runner.sh startup; `_accumulate_cost()` skips python3 when cumulative is 0/empty.
-
-#### Bugs found in stress test #2 (ai-ap-manager)
-
-- [x] 🔴 **Stale installed scripts** — `install.sh` writes `.kit-source-dir` + `.kit-checksum`; `session-context.sh` warns on mismatch; `start.sh` auto-reinstalls (TTY) or aborts (unattended).
-- [x] 🟡 **Orphaned watchdog sleeps block start.sh** — watchdog/heartbeat trap handlers now kill inner `sleep` PID before exit. Validated in stress test #2b (zero orphaned processes).
-
-#### Bugs found in stress test #3 (deepfake-platform)
-
-- [x] 🔵 **Budget not enforced by inner loop** — loop-runner.sh now accepts `--budget` flag; start.sh passes `--budget-remaining` each iteration; loop breaks when cumulative cost exceeds budget
-- [x] 🟡 **`head -N` pipe kills start.sh** — added `trap '' PIPE` after signal handlers; SIGPIPE is now ignored
-
----
-
-### 12.1 — UI Interaction Testing (frontend/fullstack only)
-
-- [x] **Playwright user flow walker** — launch app, click buttons, fill forms, navigate pages (not just screenshots)
-- [x] **AI UX evaluation** — for each flow: does it work? Is it intuitive? Unnecessary steps? Better placement?
-- [x] **Findings classification** — bugs → fix tasks for next loop; UX improvements → BRAINSTORM.md with `[AI]` prefix
-- [x] **Machine-parseable output** — `INTERACTION_RESULT: pass|partial|fail` + structured issue list
-- [x] **Integration with `/verify`** — triggered automatically for frontend projects; skipped for CLI/backend/ML
-
----
-
-### 12.2 — Autonomous Work Discovery
-
-- [x] **Extract task factories to CLI** — CI watcher, coverage scanner, dep updater already exist as `configs/scripts/scan-{ci-failures,coverage,deps}.sh` from Phase 8.1
-- [x] **Post-convergence scan in start.sh** — `_post_convergence_scan()` runs all scan scripts after convergence; findings → injected as next iteration tasks (once per session to prevent infinite loops)
-- [x] **UX audit as work source** — already implemented in Phase 12.1: `INTERACTION_RESULT` parsing in start.sh; `[BUG]` → fix tasks, `[UX]` → BRAINSTORM.md
-- [x] **Code health scan** — `configs/scripts/scan-health.sh`: TODO/FIXME comments, mypy/tsc type errors, ruff/eslint lint, large files (>1500 lines); integrated into post-convergence scan
-
----
-
-### 12.3 — Design System Constraint
-
-- [x] **Design token injection in `/orchestrate`** — architect phase references component library + theme
-- [x] **`/frontend-design` design system awareness** — reads project `.design-system.md` for constraints
-
----
-
-### 12.4 — Batch Feedback + Cross-Project Patrol
-
-- [x] **Structured issue checklist from `/verify`** — output to `.claude/verify-issues.md`, not one-by-one
-- [x] **File-based annotation** — user marks `[fix]` / `[skip]` / `[wontfix]` per item in one editing pass
-- [x] **Auto-task creation** — `scan-verify-issues.sh` reads annotations, `[fix]` → ===TASK=== blocks, rest → skipped.md; integrated into start.sh as batch-feedback path + post-convergence scan
-- [x] **`start.sh --patrol`** — scan all `~/projects/*/` with `CLAUDE.md`, run task factories per project, aggregate report to `~/.claude/patrol-report-{date}.md`
-
----
-
-## Phase 13 — AI SDE Operating Console
-
-Async idea collection, AI evaluation, process management, three-mode UI.
-
-- [x] **13.1 Ideas data layer** — SQLite tables + IdeasManager CRUD + API routes
-- [x] **13.2 AI evaluation + negotiation** — claude -p haiku eval, discussion messages, WS broadcast
-- [x] **13.3 Process manager** — start.sh control from GUI (StartProcess + ProcessPool)
-- [x] **13.4 Three-mode UI** — ~~Ideas panel + app-ideas.js + plan/execute/ideas switching~~ → Replaced: unified single-page layout (left: direction+terminal, right: collapsible dashboard sections), inline expandable idea cards, no mode switching
-- [x] **13.5 Dashboard process cards** — running processes in Execute mode dashboard
-- [x] **13.6 Mobile responsiveness** — CSS media queries for 768px breakpoint
-- [x] **13.7 Patrol integration** — auto-schedule in status_loop, config settings
-- [x] **Review pass** — fixed security issues, error handling, XSS, input validation
-- [x] **Ideas-first redesign** — left panel = ideas inbox (input + Go cards), right panel = tasks/workers/processes/history only. Removed terminal, loop/swarm/deferred/scheduler/analytics sections, app-loop.js (981 lines). Added execute endpoint + slt-style usage pace.
-
-### Tech Debt
-- [x] Ideas DB connection pooling — RESOLVED (doc was stale): IdeasManager uses a shared persistent connection (`_get_conn` caches `self._conn`; closed on shutdown, `server.py:86`), NOT per-operation connect. Regression-tested in `tests/test_ideas_manager.py` (asserts reuse). NB: diverges from TaskQueue's per-op `aiosqlite.connect()` pattern.
-- [x] Track fire-and-forget asyncio.create_task refs for graceful shutdown (`routes/ideas.py:76,106,150`)
-- [x] ProcessPool shutdown hook — register atexit/FastAPI shutdown event (`process_manager.py:233`)
-- [x] Async interaction UX — inbox-style rapid input: batch paste, no selectIdea after submit, targeted WS card updates with fade-in animation (`app-ideas.js`, `styles.css`)
-- [x] Automated research scheduling — `research_schedule` setting, `--research` mode in start.sh, auto-trigger in status_loop, GUI schedule inputs (`config.py`, `start.sh`, `session.py`, `index.html`, `app-loop.js`)
-
----
-
-## Phase 14 — Coverage-Driven Review
-
-Goal: review converges reliably because it checks against a project-specific definition of "done", not free-form scanning. Programmer always has an accurate map of what's built, what works, what's unknown.
-
-### 14.1 — VERIFY.md Format + Templates [~30 min agent run]
-
-- [x] **Design VERIFY.md schema** — checkpoints with: description, category, status (✅/❌/⚠/⬜), `last_verified` timestamp. Categories: user journeys, error paths, state coverage, edge cases, API↔DB integration
-- [x] **Template: `configs/templates/VERIFY-frontend.md`** — user journey × error path × UI state × responsive coverage
-- [x] **Template: `configs/templates/VERIFY-backend.md`** — API endpoints × DB operations × auth × error handling × concurrent access
-- [x] **Template: `configs/templates/VERIFY-ai.md`** — model I/O contracts × prompt edge cases × fallback behavior × cost/latency bounds
-- [x] **Self-review of templates** — ran against OWASP, WCAG 2.1 AA, AWS Well-Architected; added Security + Accessibility sections to frontend, Security section to backend, Safety & Output Filtering section to AI
-
-### 14.2 — `/review` skill rewrite [~20 min agent run]
-
-- [x] **Load VERIFY.md** — skill reads project's `VERIFY.md` at start; if missing, offer to generate from nearest template
-- [x] **Systematic checkpoint pass** — iterate every ⬜/❌ checkpoint, test it, update status in-place
-- [x] **Fix-in-loop** — when ❌ found, fix immediately in same session, re-verify before moving on
-- [x] **Converge condition** — all checkpoints ✅ or explicitly ⚠ (known limitation), no ⬜ or ❌ remaining
-- [x] **Append new checkpoints** — when review discovers untested scenario not in VERIFY.md, append it and cover it
-
-### 14.3 — `/verify` skill (lightweight gate) [~10 min agent run]
-
-- [x] **Read-only pass** — runs all checkpoints, updates statuses, reports summary; does NOT fix (used by loop as exit gate)
-- [x] **Exit signal** — outputs `VERIFY_COVERAGE: N/total` in footer for loop-runner.sh to consume
-
-### Design Decisions
-| Decision | Choice | Reason |
-|---|---|---|
-| Coverage level | Behavior/journey (not code branch) | Code-level coverage is unit test territory; we cover user-visible completeness |
-| VERIFY.md location | Project root, committed with code | Project-specific, evolves with the codebase — same as jest.config/Dockerfile |
-| Templates | clade provides per project type | Starter coverage for common patterns; project customizes from there |
-| Dynamic evolution | Agent appends new checkpoints as discovered | VERIFY.md is a living doc, not a one-time spec |
-
----
-
-## Research Gaps — Discovered via EVALUATION-STANDARD (2026-03-30~31)
-
-Priority order. Each identified via bidirectional code-vs-research comparison against 17 deep-dive docs.
-
-### P0 — Core Loop Quality
-
-- [x] **Reflection Loop** — Aider pattern: inject lint errors as new message input, retry up to 3×. Implemented in `worker.py` `_run_lint_check()` + `_run_with_context()`.
-- [x] **Behavioral LoopDetectionService** — Gemini CLI pattern: detect repeated `tool+args ≥5×`, content repetition ≥10×, LLM self-check ≥30 turns. Implemented in `worker.py` `LoopDetectionService`.
-
-### P1 — Context Intelligence
-
-- [x] **Structured TODO provenance** — Kiro pattern: each TODO item tagged with `_From: GOALS.md §X.Y`. Implemented in `loop-runner.sh` `node_parse_todo()`.
-- [x] **EventStream architecture** — OpenHands pattern: immutable event log, worker state replay from log on restart. Implemented in `orchestrator/event_stream.py` + wired into `worker.py`.
-- [x] **9 Condenser types** — OpenHands pattern: `NoOp` / `RecentEvents` / `ObservationMasking` / `BrowserOutput` / `AmortizedForgetting` / `LLMSummarizing` / `LLMAttention` / `StructuredSummary` / `ConversationWindow`. Implemented in `worker.py` `Condenser` ABC + 4 implementations.
-
-### P2 — Supervisor Intelligence
-
-- [x] **Typed worker handoffs** — Codex Agents SDK pattern: `HandoffInputData` enables workers to hand off directly to specialized workers with structured context. Implemented in `worker.py` `_handoff_to_worker()` + `task_queue.py` `handoff_type`/`handoff_payload` fields.
-- [x] **Formal Verify phase** — Junie pattern: dedicated Verify node with structured JSON output. Implemented in `loop-runner.sh` `node_verify()`.
-- [x] **Interrupt breakpoints** — LangGraph pattern: `interrupt()` pauses graph for human review. Implemented in `loop-runner.sh` `check_interrupt()` + `server.py` `/api/interrupt` + `/api/interrupt/resume`.
-
-### P3 — Observability
-
-- [x] **Tracing span hierarchy** — Codex Agents SDK pattern: span-per-task + nested `llm_call_span` + `tool_call_span`. Implemented in `orchestrator/tracing.py` (simple JSON spans, not OpenTelemetry).
-- [x] **Reaction system** — Composio pattern: configurable `ReactionConfig` per event type with attempt counting and duration escalation. Implemented in `orchestrator/reactions.py` + `config.py` `reaction_configs`.
-- [x] **JSONL activity detection** — Composio pattern: read Claude Code JSONL session files to distinguish `active` vs `waiting_input` vs `blocked`. Implemented in `worker.py` `_get_activity_state()`.
+### Full-project audit — 2026-09-02
+
+Filed after a two-pass audit, then **verified finding by finding against the
+code before any of it was implemented**. That verification pass is the most
+useful thing in this section: roughly half the original specifics were wrong
+while the symptoms were mostly right, and four items turned out to be
+non-defects. Each entry below records the correction, because an item closed on
+a false premise is a trap for the next reader.
+
+Every enforced gate was green at audit time — 13 syntax-check gates, pytest,
+both offline evals, all shell suites, shellcheck, `tsc`, `npm audit`, zero
+import cycles, zero CI failures in 30 runs. Nothing here was findable by
+re-running the gates.
+
+- [x] 🔴 **The orchestrator control plane had no authentication** — DONE 2026-09-02, and it was worse than filed. `orchestrator/start.sh` binds `0.0.0.0` whenever it detects Tailscale, and that is the documented way to run the server, so the exposure was the whole tailnet rather than 40 local accounts; the port is 8765, not 8000. `GET /api/settings` returned `webhook_secret` and the usage tokens in plaintext. Worst: `/ws/chat` **starts** a `claude --dangerously-skip-permissions` PTY if none is alive and forwards keystrokes into it, so it was unauthenticated remote code execution, not merely an open control plane. Closed with default-deny ASGI middleware (not per-route `Depends`: `BaseHTTPMiddleware` never sees a websocket scope, and a dependency on 93 decorators is one the 94th forgets), a token minted on first start into a 0600 file, secret masking on the way out, and a test that walks the real route table. `caddy-setup.sh` does add Basic Auth but only in front of a public domain, never the socket.
+- [x] 🟡 `goal-cc-codex-adaptation.md` leaked ten open items past the roadmap gate — DONE 2026-09-02. All **ten** were delivered, not eight; the file was archived with a per-requirement outcome table rather than deleted. The gate now checks **location**, not checkbox state: gating on state would have broken `/loop`, which reads `- [ ]` out of a goal file as its work queue. It judges tracked files only — the first version globbed the directory and immediately false-positived on `tests/test-loop.sh`'s throwaway fixture.
+- [x] 🟡 The 2026-08-31 radar run's output was uncommitted — DONE 2026-09-02. Three cross-project rules moved to the global instruction file; four that name this repo's own tooling stayed.
+- [x] 🟡 **`worker.py` is a 30-import hub — the finding was wrong.** Verification measured the topology: `worker_routing` is not imported by `worker.py` at all, and five siblings have consumers besides it, so it is not the star the item described. The by-responsibility split it demanded is unavailable for a 60-attribute stateful class without mixins, which contradict this file's own cohesion rule. What was real: four dead import lines, now removed (28, not 30). The "15 modules per component" count also treated a shared name prefix as a component boundary; those 15 serve five different consumers.
+- [x] 🟡 Two files sat within 100 lines of the 1500-line gate — DONE 2026-09-02. `worker_tldr.py` 1459 → 735 with a new `repo_map.py` (762): the split is by responsibility, not one more leaf — repository-structure analysis is pure and synchronous, the half that stays spends money. `loop-runner.sh` 1407 → 1143 with a new `loop_verify.sh` (286). The census in the original item was wrong three ways: **two** files were within 100 lines, not three; the third-closest was `tests/test-loop.sh` at 1434, which the item never mentioned and which this very split pushes closer; and "eight above 1100" was fifteen, three of them generated copies whose split would cost a regen cycle. No rule actually says a file within 100 lines of the ceiling is blocked — the rule is a hard 1500, and the case for acting early rests on this repo's two recorded ceiling collisions.
+
+- [x] 🟡 Nothing built the web UI — DONE 2026-09-02, with three corrections. The dist-absent fallback did **not** serve the legacy `app-*.js` UI: `index.html` became the Vite shell in `7d5603b`, so the fallback served a page no browser can boot, and those 2705 lines had been unreachable since. eslint is absent from the lockfile entirely, so `npm run lint` was never runnable and an eslint config would not have fixed it. Two defects the audit missed and the fix covers: `GET /` served the un-built shell even where `dist` existed, and `/web/usage.html` 404'd once `dist` existed because vite copies no `publicDir`. Committing `dist` was never an option — already ruled out in `docs/goals/align-elites.md`.
+- [x] 🟡 Settings keys published and read by nothing — DONE 2026-09-02. **Four, not five.** `replay_interrupted_on_startup` was a false positive: it is read in `config.py` and called from `lifespan` on every startup, and the audit's detector excluded all of `config.py` rather than just the defaults literal. `reactions_enabled` and `min_workers` are wired; `reaction_configs` and `patrol_auto_ideas` are deleted. Wiring `reaction_configs` as published would have been harmful — its copy carries three of five rules and the executor replaces rather than merges, so anyone using the generated reference file would silently lose two. `test_every_setting_has_a_backend_reader` now enforces the invariant.
+- [x] 🟡 `mcp_server.py` blocked its event loop for five minutes — DONE 2026-09-02. `asyncio.create_subprocess_exec` + `wait_for`, with the timeout path SIGKILLing the process group and draining pipes. Recorded as an invariant in CLAUDE.md, because the same shape exists on the second MCP surface.
+- [x] 🟡 Release drift — DONE 2026-09-02. v0.3.1 cut across every surface. The mcp-package half needed **five** sites, not one, including `SERVER_VERSION`, which is what the MCP server tells connecting clients. **No tag created — publishing is an operator decision.**
+- [x] 🟡 No Python lint gate — DONE 2026-09-02, and it earned its keep on the first run: two live `NameError`s that had shipped green for months. `Worker.stop()` awaited an unimported `preserve_worktree_wip`, so every worker stop path raised before cleanup. Both fixed, both suppressions deleted in the same commit. `BLE001` is deliberately not selected: 435 blind excepts is a body of work, not a gate.
+- [x] 🟡 Fixed `/tmp` paths on a shared host — DONE 2026-09-02. All seven sites go through `configs/hooks/lib/runtime-dir.sh`, which fails closed on a squatted path.
+- [x] 🟡 Shell portability — PARTIALLY DONE 2026-09-02, and **half the finding was false**. All eight `stat -c` sites already had a `stat -f` fallback; the `mapfile` hit was a comment saying mapfile is deliberately avoided; the `awk match(` hits were Python `re.match` in a heredoc. Six real gaps fixed. The proposed shared `portable.sh` was rejected on inspection: it would put a hard sourcing dependency inside a synchronous SessionStart hook, and `configs/scripts/` must run from a bare checkout.
+- [x] 🔵 `compression_feedback.py` was dead — DONE 2026-09-02, deleted. `check-arch-map.py` only walks modules to the doc and never back, so nothing in CI would ever have flagged the stale map line. `task_factory/`'s four modules are now listed in CLAUDE.md with the exclusion stated.
+- [x] 🔵 `ci_watcher.py` subprocess without a timeout — DONE. The finding's mechanism was wrong (`git remote get-url` reads local config and touches no network) but the defect was broader: a blocking call inside a `create_task`'d coroutine stalls the whole event loop.
+- [x] 🔵 Two tree-sitter tests had never run — DONE. Only the Go grammar gates them, so `requirements-dev.txt` takes tree-sitter plus that one grammar rather than all eleven packages.
+- [x] 🔵 Docs parity — DONE. `README.md` gained the Supported Languages section the Chinese edition already had. `structural-close-ladder.md` was **reshaped, not extended**: it already carried a back link fused onto one line, and a future audit reading line counts would add a duplicate. Two sub-items were withdrawn: the 300-line README threshold is not actually enforced by `/sync`, and `BRAINSTORM.md` is deliberately exempt per `check-roadmap-authority.py`'s own docstring.
+- [x] 🔵 swebench hard-coded an absolute path — DONE.
+- [x] 🔵 `TODO.md` was 96% history — DONE. 874 lines to 361, all open items retained, closed phases archived. **Not** to `PROGRESS.md` as the item proposed: that file is a dated journal with zero checkboxes and is itself twelve times over the 100-line cap its own owning skill sets.
+- [x] 🔵 The two batch runners were copies — DONE. 176 shared lines, extracted flat rather than to `lib/` because CI's shellcheck glob is non-recursive. The extraction exposed a live bug: `grep -c` where `grep -n` was meant fed worker 1 the literal string "2" and worker 2 an empty prompt on legacy-format task files.
+- [x] 🔵 `install.sh` never prunes — DONE, orphan report only, print and never delete. **Most of the item's specifics were false:** `configs/models.env` exists, is tracked and is sourced by `loop-runner.sh`; `mcp_server.py` is installed by `install.sh` itself; the `compgen` guard was deliberate. Only the mechanism claim held.
+- [x] 🔵 Session-start context cost — DONE. `session-context.sh` byte-budgets every unbounded input, whole rules only, newest first, with a dropped-count notice. A measured injection was 24,057 characters, 82.7% of it correction rules.
+- [x] 🔵 The CORS default could never match — DONE, plus a defect the audit missed: the regex admitted all of `100.0.0.0/8` while Tailscale uses only `100.64.0.0/10`, so publicly routable hosts held a CORS grant. Pinned to the real CGNAT range.
+- [x] 🔵 No dependency scan — DONE, weekly rather than per-push. It surfaced something the audit had backwards: `npm audit` was **not** clean (that reading came from `--omit=dev`), and `fastapi==0.131.0`'s `starlette<1.0.0` cap locked the app to the last 0.x starlette, carrying two HIGH advisories with no in-range remedy. Bumped and verified end to end against a live server, not just the suite.
+- [x] 🔵 `task_schema.py` had no direct test — DONE, but **not** the test the item asked for: that one already existed in `test_schema_frozen.py`. The real gap was the upgrade path — five migrations that only ever run against a pre-existing old database and which no test had executed.
+- [~] 🔵 Orphan agents — **WON'T FIX.** "Referenced by no skill" is the wrong liveness test: agents are invocable directly, `paper-reviewer` is documented in `docs/how-it-works.md`, and `second-opinion-gemini` has contract tests. The same criterion would condemn `code-reviewer` and `type-checker`.
+
+**Opened by the same wave** — found while fixing the above, none of it in the original audit:
+
+- [x] 🔴 **Scrubbed what was already written — and the item understated it by an
+      order of magnitude.** DONE 2026-09-02 via `configs/scripts/scrub-corrections.py`
+      (default dry-run, `--apply` to rewrite, named files or a directory sweep;
+      10 tests in `orchestrator/tests/test_scrub_corrections.py`).
+
+      Three corrections to the filed item, all found by measuring rather than
+      by trusting it:
+
+      1. **"Both files" was three.** The credential was also in two `.bak-*`
+         copies made by earlier maintenance passes, sitting in the same
+         directory at the same mode. A scrub that walks only the files someone
+         remembered leaves the key in a snapshot of itself. That is why this is
+         a script that sweeps a directory, not a command.
+      2. **"On a shared mount" was wrong.** It is local ext4, and the group is
+         single-member, so 0664 exposed the file to any local account rather
+         than to a set of collaborators. The corrections files were 0664; the
+         session transcripts are 0600.
+      3. **A raw scan of a JSONL file misses credentials.** A newline is stored
+         as the two characters `\` and `n`, so a key that began a line inside a
+         captured prompt sits on disk right after the letter `n` — a word
+         character, so `\b` does not match. Measured: the same 44-character key
+         appeared twice on one line and the raw scan reported one. Exactly the
+         CJK bypass from earlier today, one encoding layer up. The scrub decodes
+         each record and then replaces every literal occurrence. The live hook
+         path is unaffected — it redacts before encoding.
+
+      A read-only census of all 1,039 `.jsonl` files under `~/.claude` then
+      found **158 credential occurrences, 37 distinct**, far outside the
+      corrections directory. Cleaned: the corrections directory, the prompt
+      history (17 across 5 kinds), and one world-readable file-history snapshot.
+      **Deliberately not cleaned**: two session transcripts, 0600 and owner-only.
+      They are the harness's own resumable state, the remedy for a leaked key is
+      rotation rather than masking, and that is the owner's call. The command is
+      in the report.
+
+- [ ] 🔴 **Rotate these 13 credentials.** Masking removed them from disk; it
+      does not un-expose them. Owner action — nothing in this repository can do
+      it. Ordered by blast radius; the "where" column is the project slug the
+      credential appeared under, which is what identifies the account to rotate
+      in.
+
+      | Rotate | Kind | Shape | Where it appeared |
+      |---|---|---|---|
+      | 1 | Stripe **live secret** | `sk_live_…SefN` | `projects` |
+      | 2 | Stripe **live secret** | `sk_live_…s2V7` | `projects`, `faceswap-platform-100` |
+      | 3 | Stripe **live secret** | `sk_live_…liem` | prompt history (already masked) |
+      | 4 | Anthropic API key | `sk-ant-api03…90XX` | `Clade-task-1` worktree |
+      | 5 | Sentry auth token | `sntryu_6…c6c0` | `faceswap-platform-100` |
+      | 6 | Resend token | `resend-t…cret` | `internal-server-infra` |
+      | 7 | OpenAI-shaped key | `sk-cp-X4…XxMM` | `call-agent`, `shared` |
+      | 8 | TinyFish key | `sk-tinyf…_5N2` | `tinyfish-partnership-research` |
+      | 9 | TinyFish key | `sk-tinyf…_5n2` | same, case variant (already masked) |
+      | 10 | 67-char `sk_` key | `sk_d698e…5c8a` | home, `projects` |
+      | 11 | 67-char `sk_` key | `sk_d698e…891a` | home |
+      | 12 | JWT | `eyJhbGci…06II` | `faceswap-platform-100` |
+      | 13 | JWT | `eyJhbGci…_yjE` | `faceswap-platform-100` |
+
+      **Need nothing**, listed so they are not chased: the five `pk_live_`
+      publishable keys (they ship in browser JavaScript), everything matching
+      `_test_`, `pub043e3…7aa1` (a public DSN), `vak_live…_xxx` (a placeholder),
+      `ghp_bad0…0000` and `xoxb-tes…oken` (fixtures), and four `env_secret`
+      matches that are code fragments rather than secrets.
+
+      **Re-running the census will now under-report.** Rows 3 and 9 were only in
+      files already scrubbed, so a fresh sweep cannot see them — the evidence was
+      removed, the exposure was not. This table is the record; the sweep is not.
+      To re-check what is still on disk:
+      `python3 configs/scripts/scrub-corrections.py --dir ~/.claude` (dry run by
+      default), and see the two session transcripts below.
+
+- [ ] 🟡 **Two session transcripts still hold 12 occurrences.** Mode 0600,
+      owner-only, and they are the harness's own resumable state, so they were
+      deliberately left alone: for a leaked key the remedy is rotation, after
+      which every copy is inert. Scrub them only if you want the plaintext gone
+      before rotating:
+      `python3 configs/scripts/scrub-corrections.py ~/.claude/projects/-home-alexshen-projects/438ce949-b228-4732-8f6e-7bfc8a3feae7.jsonl ~/.claude/projects/-home-alexshen-projects-business-business-tools-tinyfish-partnership-research/ad98341a-1dcf-42ee-b85b-3ab4eb5461e4.jsonl --apply`
+
+- [x] 🔴 **`prompt-tracker.sh` was writing the first 100 characters of every
+      long prompt to disk, and a pasted key is very often in the first 100
+      characters.** Found by the census above, in code written earlier the same
+      day: the rewrite replaced the old format's raw `prompt` field with a
+      `preview`, which is the same leak through a smaller window. Nothing ever
+      read a stored preview back — the repeat check greps the `exact`
+      fingerprint and the LSH bands, and the message quotes the prompt already
+      in memory — so the record now carries fingerprints and nothing else.
+      Pinned in `tests/test-hooks.sh` §7, which also asserts the record is still
+      written and that repeat detection survives storing no text.
+
+- [x] 🟡 **`session-scorecard.sh` read a field that had never been written.**
+      DONE 2026-09-02. It selects `.domain` from `history.jsonl` to find which
+      rules had a correction in their area this session. The field was in 0 of
+      983 records, so every record classified as `unknown`, the domain match
+      never fired, and `record_rule_hit` credited every rule on every run —
+      rule-effectiveness counts measured nothing.
+      Two causes, both in `correction-detector.sh`: domain detection ran *after*
+      the record was appended, and it was nested inside the `stats.json` branch,
+      so a machine without that file computed no domain at all. Detection is now
+      unconditional and happens before the write, and both write paths carry the
+      field. The test asserts the resolved value rather than merely non-null,
+      because `unknown` is what a missing field produces downstream too — and it
+      needed a real git repository to do that, since the shared fixture has only
+      a `.git` directory and `detect_domain` classifies `git diff` output.
+
+- [x] 🟡 **`revert-detector.sh` filed every revert under the wrong repository.**
+      DONE 2026-09-02. It recorded `project` from `$CLAUDE_PROJECT_DIR` — the
+      session's repo — while the command usually operated on another: 68 of 92
+      informative records began `cd <other repo> && git …`. `repeat` keys on
+      `.project`, so it compared a file against reverts in a repository it had
+      never been in, and could neither detect recurrence in the right repo nor
+      be trusted when it fired. `rd_revert_base` already computed the right
+      directory for shadow matching; only the record kept using the wrong one,
+      so the fix is to assign `PROJECT` from it and let the shadow match reuse
+      that single value.
+      **The first version of the test was itself the bug it was testing.** It
+      called `assert_eq`, which this suite never defined, so both assertions ran
+      as an undefined command: bash wrote to stderr, the suite counted nothing,
+      and the run stayed green at exactly 39 tests. Defining the helper took it
+      to 41, and red-phase confirms the attribution assertion fails without the
+      fix.
+
+- [x] 🟡 **`PROGRESS.md` was 1,209 lines against the 100-line cap its own
+      skill sets.** DONE 2026-09-02. The `/sync` skill says keep it under 100
+      lines and move older entries to `docs/progress-archive/YYYY-MM.md`. It
+      said so in prose only, so the file grew to twelve times the cap and the
+      archive directory was never created — the same shape as every other drift
+      in this audit, a rule with nothing checking it.
+      `configs/scripts/archive-progress.py` now splits the file by dated entry,
+      keeps the newest that fit plus anything marked `[ACTIVE]`, and writes the
+      rest to the month file the skill names. 65 entries in, 5 kept, 60
+      archived across three months, 65 entries out — nothing lost. `--check`
+      runs in CI as syntax-check gate 18, and adding it immediately caught
+      `CLAUDE.md` still claiming 17.
+
+- [x] 🟡 **`ReactionConfig.action` was decorative.** DONE 2026-09-02. Both
+      consumers in `worker.py` swallowed every triggered reaction into a flat
+      `logger.warning`, so `abort`, `escalate` and `warn` were the same event
+      with different spelling — and one shipped default carried the message
+      *"Behavioral loop detected — aborting task"* while nothing aborted
+      anything. The field decides the reported level now, through an explicit
+      `ACTION_LEVELS` table, and an action the module cannot dispatch raises
+      `UnknownReactionAction` when the executor is built rather than being
+      ignored when it fires. A silent no-op is what made it decorative.
+      The `loop_detected` default no longer claims an abort; it escalates and
+      says the worker continues. Eleven tests, three of which fail against the
+      old module: the two levels are distinguishable, an unknown action is
+      refused, and no shipped message promises an abort.
+
+- [ ] 🔵 **Decide whether a reaction should be able to stop a worker.** The
+      `abort` action maps to CRITICAL and dispatches no kill path, which is
+      honest but not the original intent. Wiring one needs a worker-side
+      contract first: what the task's status becomes, whether it is retried,
+      what the evidence bundle records, and whether a regex match on a poll
+      string is enough evidence to end a run. Referenced from the comment at the
+      top of `orchestrator/reactions.py`.
+
+- [x] 🟡 **The version-alignment gate required the hand-sync it exists to
+      prevent.** DONE 2026-09-02. The expected version was a literal in the
+      test, so cutting a release meant editing the gate that catches a missed
+      edit — the same failure it guards against, one level up. It is derived
+      from `mcp-package/pyproject.toml` now.
+      It also covered four surfaces where there are six: `.claude-plugin/plugin.json`
+      and the generated `plugins/clade/.codex-plugin/plugin.json` each carry a
+      version and neither was checked, so either could have shipped stale with
+      the suite green. The Codex manifest is compared on the part before the
+      semver build metadata it is regenerated with. Red-phase confirmed on each
+      surface separately, and on a bumped `pyproject.toml`.
+
+- [ ] 🔵 Patrol reports are written and never read. `start.sh` writes `~/.claude/patrol-report-DATE.md` and nothing parses it back; `patrol_auto_ideas` was the flag for that missing ingestion and was deleted rather than left as a published lie. Re-propose with a real design.
+- [ ] 🔵 `reactions.create_executor_from_config` has zero production callers and reads a settings key that no longer exists. Removing it means dropping three tests in `test_leaf_modules.py`.
+- [ ] 🔵 Nothing enforces the top-level `docs/*.md` header convention; two of fourteen files had drifted off it and no gate noticed. Cheapest control: assert in `check-references.py` that every top-level `docs/*.md` links `../README.md` in its first three lines.
+- [ ] 🔵 The global agent rules assert that `/sync` flags a README over 300 lines. The shipped skill has no such logic — its only line-count rule caps `PROGRESS.md` at 100. Implement the check or correct the claim.
+- [ ] 🔵 Web lint has no home. The `npm run lint` script was deleted because eslint was never installed; re-adding it properly needs a `web` job in `ci.yml` and the coupled CLAUDE.md checklist line, which `check-ci-checklist.py` enforces.
+### Standing-brief configuration — 2026-09-02
+
+- [x] 🔴 **The repeat-brief detector had never spoken.** `prompt-tracker.sh` was
+      async and reported through `systemMessage`, which an async hook cannot
+      deliver — across 386,760 logged prompts and nine patterns past its own
+      threshold it produced nothing, ever. That silence is the direct cause of
+      the owner hand-typing the same long brief: nothing told them it had become
+      a pattern. Now sync via `additionalContext`, bounded log, min-hash + LSH
+      fingerprint so a changed opening sentence no longer hides the repeat, and
+      it speaks once per pattern. Six tests.
+- [x] 🟡 **Fan-out is now available by default and was being suppressed.**
+      `ultracode: true` makes Claude Code plan a workflow per substantive task;
+      it was set nowhere. `install.sh --ultracode[=small|medium|large]` is the
+      opt-in. Two things in this repo fought it: `configs/CLAUDE.md`'s blanket
+      "use at most three agents", installed globally and read every turn — it
+      sat in context while a 166-agent review ran — and the absent
+      `workflowSizeGuideline`. Both fixed; the recursion cap stays because a
+      Workflow orchestrates from the lead and never needs to nest.
+- [x] 🟡 **`/landscape` skill added.** Encodes the whole-system report brief the
+      owner kept retyping: the 18-section spine (stakeholder framing, testable
+      goal, parts inventory with repo and owner, surfaces including dormant
+      ones, one traced task, decisions, abandoned attempts, a capability-ladder
+      gap, exactly one next step, declared omissions), the ranked archaeology
+      for recovering failed attempts, and the two-step org survey.
+- [x] 🔴 **`frontend-design` was empty and is now filled.** The owner's standing
+      design brief — measured at fifteen appearances in `history.jsonl` over five
+      months, the canonical one 9,181 characters — said *"请调用 frontend-design
+      skill，并严格遵循它的设计规范与最佳实践"*, and the skill contained **none** of
+      what it was pointing at: zero hits across the whole directory for
+      scroll-jack, Framer Motion, prefers-reduced-motion, bento, Linear, Vercel,
+      Poppins or BRAND.md. The brief had a home and the home was empty, so it
+      got re-typed. Recovered from the logged instances into
+      `references/brand-differentiation.md` and wired into phase 4 and the
+      handoff contract.
+      **The most valuable part is that the brief has two versions that
+      disagree.** The first told Claude to follow Linear, Vercel, Stripe and
+      Anthropic's restrained palettes; that produced three sibling sites that
+      looked alike, so the second forbids exactly what the first recommended.
+      The reference records the ban list *as the correction to its own earlier
+      version*, which is the only form in which it makes sense. Client
+      specifics — the brand names and internal domains — are deliberately not
+      in the public repo; only the reusable method is.
+- [x] 🟡 **The correction taxonomy had no class for a standing preference, so
+      the most expensive failure in the log was invisible to it.** All nine
+      classes describe something wrong with an answer. A repeated brief has no
+      wrong answer — each instance was answered correctly, which is exactly why
+      no correction was ever recorded and nothing ever escalated. Measured at
+      the time: 386,760 prompts, 2,990 fingerprints, nine past the repeat
+      threshold, and one 9,181-character brief typed fifteen times over five
+      months. Added `standing-preference` to `correction-detector.sh` and made
+      it promotable in `rule-utils.sh`, since persisting into every session is
+      the whole remedy rather than a side effect. It routes differently too: a
+      repeated brief needs a home, not a reminder, so step 3b sends a procedure
+      to a skill and a rule to CLAUDE.md and checks the home is not already
+      there and empty. Red-phase checked in `test-audit.sh`.
+- [ ] 🔵 `install.sh --ultracode` has no test. `tests/test-install.sh` covers the
+      spawn-depth merge next to it; the same shape applies — assert the two keys
+      land, that an existing `settings.json` key survives the merge, and that an
+      invalid size falls back to medium rather than writing garbage.
+
+### Review of the review — 2026-09-02, second pass
+
+- [x] 🔴 **The orchestrator has never run — and that is deliberate.** The
+      measurement stands: no `tasks.db` on this host carries the current schema
+      (three exist, two hold zero rows, the third holds 12 and predates
+      `agent_runtime`, `provider` and the evidence bundle), and no evidence store
+      exists at all. **DECIDED 2026-09-02 by the owner: the GUI is dormant —
+      effectively fully disabled — and all work happens in the terminal. It may
+      be rebuilt later, so nothing is deleted.** So this was never a defect; it
+      is the expected consequence of a decision that had not been written down
+      anywhere. What follows from it is a scope rule, below.
+- [x] 🟡 **The scope rule is mechanical now, not a note.** DONE 2026-09-02.
+      `docs/layers.json` declares each surface as `load-bearing`, `dormant` or
+      `generated`, with the reason and the date, and defines that vocabulary in
+      the file itself rather than somewhere a reader has to find. The
+      orchestrator is `dormant` with an explicit "do not delete, do not treat as
+      debt; CI keeps it compiling and that is the contract".
+      `/review`, `/cso` and `/next` each read it before ranking anything, so the
+      marker changes what an audit does rather than merely existing.
+      `configs/scripts/check-layers.py` keeps the declaration matching the tree —
+      unknown status, path that does not exist, dormant with no reason, and an
+      unclaimed source directory each fail it, checked one at a time. It caught
+      two unclaimed directories on its first run, which is why the `cli` layer
+      lists eight paths and not five.
+
+- [x] 🟡 **`subagents` was declared for both providers, read by nothing, and
+      wrong.** DONE 2026-09-02. The routing machinery already existed:
+      `resolve_capabilities` enforces a task's `execution_requirements` against
+      the runtime's capabilities, raising on a REQUIRED capability that is not
+      SUPPORTED and recording a `Degradation` for a PREFERRED one. Nothing had
+      ever declared this requirement, and Codex's state would have answered
+      wrongly if anything had — `CONDITIONAL` with no condition expressed reads
+      as "sometimes, depending", when `codex exec` spawns no sub-agent at all.
+      Corrected to `UNSUPPORTED`, and the `sources` map now carries each
+      condition instead of repeating the adapter name for every key, which is
+      what made it as unreadable as the state it was meant to explain.
+      Seven tests are the missing consumer: a run that must subdivide is refused
+      on Codex and admitted on Claude, a preferred one degrades rather than
+      failing, and no CONDITIONAL is allowed to ship without a stated condition.
+
+- [ ] 🟡 **Codex cannot fan out, and that is why it is slower.** `codex exec`
+      exposes 15 flags and not one concerns agents, delegation or concurrency.
+      The CLI's own `features list` shows `multi_agent stable true` — but only
+      the interactive TUI reaches it — `multi_agent_v2 stable false`, and
+      `enable_fanout removed`. So a Codex worker is one linear agent, while a
+      Claude worker can spawn its own subagents. Comparing their wall-clock as
+      if they were peers is comparing a fan-out against a single thread. The
+      only parallelism available to Codex is Clade spawning N `codex exec`
+      processes from outside, which the worker pool can already do and which
+      nothing measures.
+- [x] 🟡 **The polling rule now has a number.** DONE 2026-09-02.
+      `workflow-scorecard.py --polls` reads lead-session transcripts and reports
+      repeated status reads per background job, beside the straggler figures. A
+      poll is a status-only Bash call that is not the first of its kind — the
+      repetition is what makes it a poll, since checking once is a check.
+      **The first version could not fire, which is the finding.** Its mutation
+      guard was a bare `>>?[^&]`, and that matches the `>/` of `2>/dev/null`, so
+      every status command that silenced stderr was classified as mutating and
+      every session ever scanned reported zero polls. Zero read as discipline.
+      Fixed, and it now reports 30 polls against 35 jobs in one recent session
+      and 8 against 30 in another.
+      Because this is the second instrument here to ship unable to fire, it has
+      a `--self-test` with a positive and a negative control, wired into the
+      same CI job as `red-phase-audit.py --self-test`. Reintroducing the
+      original regex fails it.
+
+- [x] 🟡 **Measured why the learning system does not measurably learn.** The
+      item said measure the existing rules' effect before adding capture. Done
+      2026-09-02, and the answer is that the instrument cannot fire, for two
+      independent reasons.
+
+      1. **`rule-effectiveness.json` is `{}` — it has never recorded anything.**
+         Not a wiring bug: `record_rule_miss` is called, and reached. The gate in
+         front of it is `RULE_DOMAINS[i] == DOMAIN`, and the two sides speak
+         different vocabularies. `detect_domain` emits a closed set of eleven
+         labels (frontend, backend, ml, devops, security, unknown…). Rules are
+         filed under free text the model invents at write time —
+         `windows-remote-probe`, `verify-gating`, `throughput`, `scope`,
+         `proposals`. **The equality can essentially never hold**, so the best
+         match is never found and no miss is ever recorded.
+      2. **`stats.json` was not valid JSON.** It held two nested sets of
+         unresolved `<<<<<<< Updated upstream` / `>>>>>>> Stashed changes`
+         markers, so every `jq` increment failed into its own `|| rm -f` and was
+         discarded, for an unknown length of time. A counter that stops counting
+         looks exactly like a quiet week. `correction-detector.sh` now validates
+         the file, keeps the unreadable copy beside it, and reseeds — pinned by
+         three assertions in `tests/test-correction-pairing.sh`. The live file is
+         repaired by taking the largest value seen per key across the conflicting
+         branches, since counters only increase.
+
+      **Deliberately not "fixed" by loosening the match.** The word-overlap
+      score the code already computes was tried against the real rules: for a
+      correction about a hardcoded model and a stale deployed copy, the top
+      match was a rule about auditing asset provenance. Common English words
+      dominate. Shipping a threshold on that would replace an absent number with
+      a wrong one, which is worse. What is needed is a shared vocabulary between
+      the classifier and the rule format, and that is a design decision, filed
+      below rather than guessed at.
+
+- [ ] 🟡 **Decide the shared vocabulary for rule domains.** Either constrain the
+      rule format's domain field to `detect_domain`'s closed set (loses the
+      specificity of `windows-remote-probe`), or give each rule both a free-text
+      tag and a closed-set domain, or replace equality with a real similarity
+      measure validated against labelled pairs. Until one is chosen, rule-miss
+      counting stays structurally impossible. Evidence and the rejected option
+      are in the item above.
+
+
+### Adversarial review of the audit branch — 2026-09-02
+
+166 agents reviewed the branch across seven dimensions; each finding was then
+put to three independent refuters and kept only if fewer than two could refute
+it. 28 survived. The critical one and eight real defects are fixed on the
+branch; what follows is the residue, all of it prose that is now wrong rather
+than code that is broken.
+
+The review's own most useful output was structural: **three separate gates in
+this branch existed, were documented as working, and did not check what they
+claimed** — the CI-checklist gate was blind to the gate just added to it, the
+"walks the real route table" test reached 37 of 93 routes after the FastAPI
+bump, and the checklist's own suite and gate counts had drifted. A control whose
+failure mode is silence needs a test that proves it can fail.
+
+- [ ] 🔵 `orchestrator/ruff.toml`'s "Known live bugs" block still describes two
+      parked per-file-ignores in the present tense. Both bugs were fixed and both
+      entries deleted in the same commit, so a maintainer triaging a
+      worktree-cleanup failure is told `Worker.stop()` currently raises. Rewrite
+      as a past-tense note about what the gate's first run found.
+- [ ] 🔵 `docs/MIGRATE_FROM_HERMES.md` still lists `compression_feedback.py` as
+      "present in Clade today"; the module was deleted by this branch.
+      `check-references.py` does not resolve backticked `orchestrator/*.py`
+      paths, which is why nothing caught it — teaching it to would also have
+      caught the stale CLAUDE.md map line.
+- [ ] 🔵 The 0.3.1 CHANGELOG section omits the release's own security work — the
+      two HIGH starlette advisories, prompt redaction, per-user runtime paths,
+      the MCP event-loop fix — and the two compatibility notes an upgrader needs
+      (`/web` now 503s until built, `reaction_configs` and `patrol_auto_ideas`
+      removed). Its `[0.3.1]` compare link also points at a tag the release
+      deliberately did not create.
+- [ ] 🔵 `configs/skills/brief/prompt.md` probes the orchestrator with an
+      unauthenticated curl and now reports it offline. Add the bearer header the
+      way `docs/configuration.md` documents, then regenerate the mcp-package
+      mirror.
+- [ ] 🔵 `configs/scripts/usage-agent.py`'s docstring and `CLAUDE.md`'s usage line
+      still say "leave empty for open ingest". Ingest is exempt from the control
+      plane only while `usage_ingest_token` is set, so an empty token now means
+      the node must send the hub's `api_token` instead.
+- [ ] 🔵 `session-context.sh`'s dropped-rules notice counts header and blank lines
+      as rules, so it reports more dropped than exist.
+- [ ] 🔵 `CLAUDE.md`'s redaction paragraph justifies withhold-don't-substitute with
+      "those patterns are fixed-count", which stopped being the reason when the
+      pattern gained `{n,}` quantifiers. The reason that survives inspection is
+      that a line-oriented sed cannot reach a PEM body and any partial mask still
+      persists part of a credential.
+- [x] 🟡 **The weekly `dependency-audit` job would have been red on its first
+      scheduled run.** DONE 2026-09-02, and the filed claim checked out:
+      `npm audit --audit-level=high` reported 4 high and 1 low against the
+      unchanged lockfile — four PostCSS advisories including two arbitrary
+      `.map` file reads, and four vite ones including the dev-server WebSocket
+      arbitrary file read the job's own comment was written about.
+      Fixed with `npm audit fix`, not `--force`: every bump is patch-level
+      inside the existing range (vite 6.4.1 → 6.4.3, postcss 8.5.8 → 8.5.26,
+      nanoid 3.3.11 → 3.3.18) and `package.json` is untouched. Verified the way
+      CI will run it — `npm ci` from the new lockfile, then audit, then build —
+      all three clean.
+
+- [ ] 🟡 Anthropic's documented fix for the other half of the prompt-cache miss —
+      stagger a fan-out so the first response primes the shared prefix before
+      the rest are sent — is not implemented. Only the system-prompt half is.
+      Claude Code already does this inside its own Workflow runtime.
+- [ ] 🟡 Adversarial verification with N skeptics is measurably overspent:
+      Terminal-Bench V2 puts pairwise verification at 73.1% with one judge and
+      77.5% with sixteen. This session ran three refuters per finding. One
+      better-calibrated verifier returning a score plus its evidence belongs in
+      `worker_review.py` instead.
+- [ ] 🔵 Three tests in `test_static_serving.py` use `with TestClient(...)`, which
+      runs the FastAPI lifespan and therefore mints a control-plane token into
+      the developer's real settings file. They exercise routing only and do not
+      need it.
+
+- [ ] 🔵 `orchestrator/tests/test_worker_modules.py` is 1446 lines, 54 under the ceiling. The natural split lifts the autoscale and fan-out sections into their own file.
+- [ ] 🔵 `tests/test-loop.sh` is 1442 lines, 58 under the ceiling, and the loop-runner split just pushed it there by adding deploy-parity entries. It is now the closest first-party file to the gate after `test_worker_modules.py`.
+- [x] 🟡 **`--model` did not reach every node, in three places rather than one.**
+      DONE 2026-09-02. `loop_verify.sh`'s verify node and `loop-runner.sh`'s
+      fix-task planner both ran a literal `--model sonnet` while every other LLM
+      node used `$SUPERVISOR_MODEL`, and the planner's prompt separately told it
+      in prose to "use sonnet model" regardless of `--worker-model`. The default
+      is unchanged either way — `SUPERVISOR_MODEL` defaults to `MODEL_SONNET` —
+      which is exactly why it went unnoticed: the flag looked like it worked
+      until you asked which node ran what.
+      `tests/test-loop-args.sh` now fails on any `--model <literal>` in the loop
+      script group and on any prompt naming a model in prose. Both guards were
+      red-phase checked separately.
+
+- [ ] 🔵 `node_test_sample` and `node_health_check` communicate through three bare globals (`LAST_TEST_OUTPUT`, `LAST_TEST_RESULT`, `PREV_FAILED`) that are now a cross-file coupling between `loop_verify.sh` and `loop-runner.sh`. Sourced shell makes it work; the `# Writes:` header is the only thing recording it.
 
 ---
 
@@ -822,10 +793,3 @@ Priority order. Each identified via bidirectional code-vs-research comparison ag
 | CLI loop | Pure bash (loop-runner.sh) | No Python dependency, safe for self-modification |
 
 ---
-
-## Tech Debt (2026-04-07)
-
-- [x] 🟡 `worker.py` line count — RESOLVED 2026-04-08: `_rank_tasks` moved to `worker_utils.py`; `Condenser` classes extracted to `condensers.py`; `LoopDetectionService` in `worker_utils.py`; now at 1472 lines
-- [x] 🟡 `Condenser` ABC + 4 implementations — RESOLVED 2026-04-08: `ObservationMaskingCondenser` wired into `_build_task_file()` (context block + message condensing); `RecentEventsCondenser` used in `EventStream.get_recent_events()`; `LLMSummarizingCondenser` remains async-only (no call site yet — future work)
-- [x] 🔵 No test coverage for `event_stream.py`, `reactions.py`, `tracing.py`, `session_tree.py` — RESOLVED 2026-04-08: 55 tests added in `tests/test_leaf_modules.py`; also fixed `WorkerEvent.data→.content` bug in `get_recent_events()`
-- [x] 🔵 `worker.py` `Condenser` status — RESOLVED 2026-04-08: condensers are now live; `ObservationMaskingCondenser` active in `_build_task_file()`

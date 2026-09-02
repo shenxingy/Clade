@@ -21,11 +21,30 @@ source "$SYNC_CONFIG"
 
 # ─── Lock: prevent concurrent pushes ─────────────────────────────────────────
 
-LOCK_FILE="/tmp/claude-sync-push.lock"
+# Lock location: a per-user scratch root, never a fixed /tmp path. On a shared
+# host the first account to create /tmp/claude-sync-push.lock owns it; for every
+# other account `exec 9>` then fails and, under `set -e`, KILLS this script —
+# the memory-sync hook's push is silently dead. $CLAUDE_DIR is $HOME-private and
+# is the fallback when no runtime root resolves.
+_SP_RUNTIME_LIB="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/../hooks/lib/runtime-dir.sh"
+if [[ -f "$_SP_RUNTIME_LIB" ]]; then
+  # shellcheck source=/dev/null
+  . "$_SP_RUNTIME_LIB" 2>/dev/null || true
+fi
+if [[ -n "${CLADE_SYNC_PUSH_LOCK:-}" ]]; then
+  LOCK_FILE="$CLADE_SYNC_PUSH_LOCK"
+elif declare -f clade_runtime_dir >/dev/null 2>&1 && _SP_RT=$(clade_runtime_dir 2>/dev/null); then
+  LOCK_FILE="$_SP_RT/sync-push.lock"
+else
+  LOCK_FILE="$CLAUDE_DIR/.sync-push.lock"
+fi
+
 # flock is absent on Git Bash / minimal envs; guard so `set -e` doesn't abort the
 # push there. Concurrent pushes are rare and git's own index lock is the backstop.
 if command -v flock >/dev/null 2>&1; then
-  exec 9>"$LOCK_FILE"
+  # `|| exit 0`: an unopenable lock must degrade to "skip this push", never to
+  # a `set -e` abort that leaves no log line anywhere.
+  exec 9>"$LOCK_FILE" || exit 0
   flock -n 9 || exit 0  # another push is already running, skip
 fi
 

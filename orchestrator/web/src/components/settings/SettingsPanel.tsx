@@ -131,7 +131,8 @@ export function SettingsPanel({ open, onClose }: Props) {
                   onChange={e => patch('max_workers', parseInt(e.target.value) || 0)}
                   className="input-sm w-20" />
               </Row>
-              <Row label="Min workers">
+              {/* Floor, honoured only while "Auto-scale workers" is on. */}
+              <Row label="Min workers (auto-scale)">
                 <input type="number" min={1} value={f.min_workers ?? 1}
                   onChange={e => patch('min_workers', parseInt(e.target.value) || 1)}
                   className="input-sm w-20" />

@@ -37,7 +37,7 @@ from .runtime import get_runtime
 
 # ─── Server Info ────────────────────────────────────────────────────────────────
 SERVER_NAME = "clade"
-SERVER_VERSION = "0.2.0"
+SERVER_VERSION = "0.3.1"
 
 # ─── Skill Discovery ───────────────────────────────────────────────────────────
 

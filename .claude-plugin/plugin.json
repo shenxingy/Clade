@@ -1,7 +1,7 @@
 {
   "name": "clade",
   "version": "0.3.1",
-  "description": "Autonomous coding toolkit for Claude Code. 136 skills, 37 agents, a safety guardian, and a correction learning loop — Claude codes better, catches its own mistakes, and runs unattended overnight. Hooks ship via install.sh, not this plugin.",
+  "description": "Autonomous coding toolkit for Claude Code. 137 skills, 37 agents, a safety guardian, and a correction learning loop — Claude codes better, catches its own mistakes, and runs unattended overnight. Hooks ship via install.sh, not this plugin.",
   "author": {
     "name": "shenxingy",
     "url": "https://github.com/shenxingy"

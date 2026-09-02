@@ -1,3 +1,4 @@
+import { authHeaders } from './auth';
 import type {
   EvalMetrics,
   EvidenceAttemptsResponse,
@@ -11,7 +12,10 @@ const BASE = '/api';
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : {},
+    headers: {
+      ...authHeaders(),
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+    },
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {

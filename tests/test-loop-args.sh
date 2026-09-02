@@ -129,6 +129,34 @@ OUT="$(bash "$RUNNER" --help 2>&1 || true)"
 check "--max-runtime is documented in usage" "$(has -- '--max-runtime')" "missing from --help"
 check "--max-cost is documented in usage" "$(has -- '--max-cost')" "missing from --help"
 
+section "--model and --worker-model reach every node"
+
+# Two LLM nodes ran on a literal `--model sonnet` while every other one used
+# $SUPERVISOR_MODEL, so `/loop --model <x>` silently did not apply to the
+# verifier or the fix-task planner. The default was unchanged either way —
+# SUPERVISOR_MODEL defaults to MODEL_SONNET — which is exactly why nobody
+# noticed: the flag appeared to work until you looked at which node ran what.
+# A third hardcoding was in prose, instructing the planner to "use sonnet
+# model" regardless of --worker-model.
+LOOP_GROUP=(
+  "$REPO_ROOT/configs/scripts/loop-runner.sh"
+  "$REPO_ROOT/configs/scripts/loop_verify.sh"
+)
+HARDCODED=$(grep -nE -- '--model[[:space:]]+(sonnet|opus|haiku|claude-[a-z0-9-]+)' \
+  "${LOOP_GROUP[@]}" 2>/dev/null || true)
+check "no LLM node hardcodes a --model literal" \
+  "$([[ -z "$HARDCODED" ]] && echo yes || echo no)" "$HARDCODED"
+
+PROSE=$(grep -niE 'use (the )?(sonnet|opus|haiku) model' "${LOOP_GROUP[@]}" 2>/dev/null || true)
+check "no prompt tells the planner which model to use by name" \
+  "$([[ -z "$PROSE" ]] && echo yes || echo no)" "$PROSE"
+
+# And the variables the flags set are the ones the calls read.
+MODEL_CALLS=$(grep -cE -- 'claude .*--model "\$SUPERVISOR_MODEL"|--model "\$SUPERVISOR_MODEL"' \
+  "${LOOP_GROUP[@]}" 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')
+check "every claude call takes its model from \$SUPERVISOR_MODEL" \
+  "$([[ "$MODEL_CALLS" -ge 3 ]] && echo yes || echo no)" "found $MODEL_CALLS"
+
 printf "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
 if [[ "$TESTS_FAILED" -eq 0 ]]; then
   printf "  ${GREEN}ALL PASSED${NC} (%d/%d)\n" "$TESTS_PASSED" "$TESTS_RUN"

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -20,15 +21,45 @@ from clade_mcp import server  # noqa: E402
 from clade_mcp.server import SERVER_VERSION  # noqa: E402
 
 
+def _declared_release_version() -> str:
+    """The one version every other surface must agree with."""
+    with (REPO_ROOT / "mcp-package" / "pyproject.toml").open("rb") as handle:
+        return tomllib.load(handle)["project"]["version"]
+
+
 def test_release_version_surfaces_are_aligned() -> None:
-    expected = "0.2.0"
+    """Cutting a release must not require editing this test.
+
+    The expected version used to be a literal here, so bumping the package meant
+    hand-editing the gate that exists to catch a missed hand-edit — the failure
+    it was written to prevent, one level up. It is derived now.
+
+    It also covered four surfaces and there are six: the Claude Code plugin
+    manifest and the generated Codex plugin manifest both carry a version and
+    neither was checked, so either could have shipped stale with the suite green.
+    """
+    expected = _declared_release_version()
     server_manifest = json.loads(
         (REPO_ROOT / "mcp-package" / "server.json").read_text(encoding="utf-8")
     )
+    cc_plugin = json.loads(
+        (REPO_ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
+    )
+    codex_plugin = json.loads(
+        (REPO_ROOT / "plugins" / "clade" / ".codex-plugin" / "plugin.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
     assert __version__ == expected
     assert SERVER_VERSION == expected
     assert server_manifest["version"] == expected
     assert server_manifest["packages"][0]["version"] == expected
+    assert cc_plugin["version"] == expected
+
+    # The Codex manifest is regenerated with semver build metadata appended
+    # (0.3.1+codex.<stamp>). Everything before the plus sign is the release.
+    assert codex_plugin["version"].split("+", 1)[0] == expected
 
 
 def test_mcp_dependency_requires_v2_without_a_v1_fallback() -> None:

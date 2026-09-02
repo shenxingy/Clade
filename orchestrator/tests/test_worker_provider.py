@@ -47,7 +47,37 @@ def test_claude_command_matches_legacy_apart_from_structured_output():
     got = ClaudeProvider().build_command(
         task_file=TASK, requested_model="sonnet", task_type=None, mcp_config=NO_MCP
     )
-    assert got == legacy + " --output-format stream-json --verbose"
+    assert got == legacy + (
+        " --output-format stream-json --verbose"
+        " --exclude-dynamic-system-prompt-sections"
+    )
+
+
+def test_claude_command_lets_workers_share_a_prompt_cache():
+    """Every worker gets its own git worktree, so every worker had its own cache.
+
+    The default system prompt embeds cwd, env info, memory paths and git status.
+    Worktree-per-worker makes those differ for every spawn by construction, so a
+    fan-out of N was N cache WRITES (1.25x base input) where N-1 could have been
+    reads (0.1x) — a 12.5x price difference on the shared prefix, paid on every
+    fan-out this repository has ever run. The flag moves those sections into the
+    first user message; the CLI's own help calls it "Improves cross-user
+    prompt-cache reuse".
+    """
+    got = ClaudeProvider().build_command(
+        task_file=TASK, requested_model="sonnet", task_type=None, mcp_config=NO_MCP
+    )
+    assert "--exclude-dynamic-system-prompt-sections" in got
+
+
+def test_prompt_cache_sharing_is_switchable(monkeypatch):
+    import config
+
+    monkeypatch.setitem(config.GLOBAL_SETTINGS, "worker_shared_prompt_cache", False)
+    got = ClaudeProvider().build_command(
+        task_file=TASK, requested_model="sonnet", task_type=None, mcp_config=NO_MCP
+    )
+    assert "--exclude-dynamic-system-prompt-sections" not in got
 
 
 def test_claude_command_asks_the_agent_to_report_its_own_usage():

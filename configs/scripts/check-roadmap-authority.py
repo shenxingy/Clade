@@ -35,6 +35,7 @@ gate. Exit 0 when the arrangement holds, 1 otherwise.
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -58,6 +59,47 @@ FENCE = re.compile(r"^\s*(```|~~~)")
 #: A role header belongs at the top; scanning the whole file would let a
 #: matching phrase buried in a history entry pass for a declaration.
 HEADER_LINES = 15
+
+
+#: Live loop goals belong in the gitignored ``.claude/``; finished ones belong
+#: in ``docs/goals/`` or ``docs/archive/`` with their outcome recorded. A goal
+#: file tracked at the repository root is neither, and its open items are
+#: invisible to the TODO.md authority rule above — which is exactly how
+#: ``goal-cc-codex-adaptation.md`` sat at the root carrying ten unchecked boxes,
+#: eight of them already delivered, while this gate reported a clean tree.
+#:
+#: Checkbox STATE is deliberately NOT checked here. ``loop-runner.sh`` reads
+#: ``- [ ]`` out of a goal file as its work queue, so an unchecked box in a live
+#: goal is the file working correctly. The invariant is LOCATION.
+GOAL_GLOB = "goal-*.md"
+
+
+def _stray_goal_files() -> list[str]:
+    """Goal files TRACKED at the repository root, where neither rule reaches.
+
+    Tracked, not merely present. ``tests/test-loop.sh`` writes a throwaway
+    ``goal-runtime.md`` as a fixture, and a developer mid-loop may have one
+    sitting in the working tree — neither leaks anything, because neither is in
+    the repository. Globbing the directory failed on exactly that fixture the
+    first time this check ran.
+
+    ``git ls-files`` is a subprocess, not a dependency, so this stays runnable
+    in the syntax-check job. Without git the check yields nothing rather than
+    guessing: a false pass is recoverable, a false failure on someone's scratch
+    file teaches people to ignore the gate.
+    """
+
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "ls-files", "-z", "--", GOAL_GLOB],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=True,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return sorted(name for name in out.split("\0") if name)
 
 
 def _open_boxes(text: str) -> list[tuple[int, str]]:
@@ -102,6 +144,14 @@ def main() -> int:
                 f"{name}:{number}: open item outside {AUTHORITY} — {line[:70]}\n"
                 f"    Move it to {AUTHORITY}, or close it here as a dated outcome."
             )
+
+    for name in _stray_goal_files():
+        problems.append(
+            f"{name}: tracked goal file at the repository root.\n"
+            f"    A live loop goal belongs in .claude/ (gitignored); a finished\n"
+            f"    one belongs in docs/goals/ or docs/archive/ with its outcome\n"
+            f"    recorded. Root goal files leak open work past {AUTHORITY}."
+        )
 
     if problems:
         print(f"Roadmap authority check FAILED ({len(problems)} problem(s)):\n", file=sys.stderr)

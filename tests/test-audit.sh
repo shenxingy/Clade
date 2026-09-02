@@ -174,10 +174,15 @@ grep -q "edge-case" "$H/.claude/CLAUDE.md" \
 # tested directly here, so bring it into scope explicitly.
 # shellcheck source=../configs/hooks/lib/rule-utils.sh
 . "$REPO_ROOT/configs/hooks/lib/rule-utils.sh"
-for cause in inaccurate-self-reporting constraint-violation premature-action; do
+# standing-preference is the class with no incident behind it: the evidence is a
+# count of repeats, not a defect, and every individual answer may have been
+# right. It promotes because persisting into every session IS the remedy — a
+# rule that only lives in rules.md cannot stop the brief being typed again.
+for cause in inaccurate-self-reporting constraint-violation standing-preference premature-action; do
   if rule_earns_promotion "$cause" 2>/dev/null; then got=promote; else got=withhold; fi
   case "$cause" in
     premature-action) want=withhold ;;   # real, but not trust-destroying on its own
+    standing-preference) want=promote ;;
     *)                want=promote  ;;
   esac
   [[ "$got" == "$want" ]] \

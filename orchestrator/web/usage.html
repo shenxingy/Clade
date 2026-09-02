@@ -75,6 +75,43 @@
   </div>
 
 <script>
+// ─── Control-plane token ─────────────────────────────────────────────────────
+// This page is served from the public /web/ prefix, but every /api/usage route
+// behind it now requires a bearer token. Without this the three fetches below
+// return 401, `r.json()` parses the error body, and the dashboard renders $0.00
+// and "no data" — the worst possible failure, because it looks like an answer.
+// Same bootstrap as the React app: ?token= once, then localStorage.
+const TOKEN_KEY = "clade.apiToken";
+(function bootstrapToken() {
+  try {
+    const url = new URL(window.location.href);
+    const t = url.searchParams.get("token");
+    if (t) {
+      localStorage.setItem(TOKEN_KEY, t);
+      url.searchParams.delete("token");
+      history.replaceState({}, "", url.toString());
+    }
+  } catch (e) { /* private mode, blocked storage */ }
+})();
+function authHeaders() {
+  let t = "";
+  try { t = localStorage.getItem(TOKEN_KEY) || ""; } catch (e) { t = ""; }
+  return t ? { Authorization: "Bearer " + t } : {};
+}
+// Checks r.ok BEFORE parsing, so an auth failure surfaces as an error rather
+// than as zeroes.
+async function apiFetch(path, init) {
+  const opts = Object.assign({}, init);
+  opts.headers = Object.assign({}, opts.headers || {}, authHeaders());
+  const r = await fetch(path, opts);
+  if (!r.ok) {
+    const hint = r.status === 401
+      ? " — open this page once as /web/usage.html?token=<api_token from ~/.claude/orchestrator-settings.json>"
+      : "";
+    throw new Error(path + ": " + r.status + hint);
+  }
+  return r.json();
+}
 const fmt = n => (n ?? 0).toLocaleString();
 const cost = n => "$" + (n ?? 0).toFixed(2);
 const $ = id => document.getElementById(id);
@@ -88,8 +125,8 @@ async function load() {
   if (machine) qs.set("machine_id", machine);
   try {
     const [sRes, mRes] = await Promise.all([
-      fetch("/api/usage/summary?" + qs).then(r => r.json()),
-      fetch("/api/usage/machines").then(r => r.json()),
+      apiFetch("/api/usage/summary?" + qs),
+      apiFetch("/api/usage/machines"),
     ]);
     render(sRes, mRes);
     $("status").textContent = "updated " + new Date().toLocaleTimeString();
@@ -130,7 +167,7 @@ $("poll").onclick = async () => {
   $("status").textContent = "polling ccusage...";
   $("poll").disabled = true;
   try {
-    const r = await fetch("/api/usage/poll", { method: "POST" }).then(r => r.json());
+    const r = await apiFetch("/api/usage/poll", { method: "POST" });
     $("status").textContent = `polled ${r.machine_id}: ${r.rows} rows`;
     await load();
   } catch (e) {

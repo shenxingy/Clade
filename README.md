@@ -35,13 +35,14 @@ routing, delivery state, and multi-project fleet truth.
 3. [The Trust Loop](#the-trust-loop)
 4. [What It Does](#what-it-does)
 5. [Self-Learning Mechanisms](#self-learning-mechanisms)
-6. [Skills](#skills-136)
-7. [Documentation](#documentation)
-8. [Dotfile Sync](#dotfile-sync)
-9. [Architecture](#architecture)
-10. [OpenClaw Integration](#openclaw-integration)
-11. [Contributing](#contributing)
-12. [License](#license)
+6. [Skills](#skills-137)
+7. [Supported Languages](#supported-languages)
+8. [Documentation](#documentation)
+9. [Dotfile Sync](#dotfile-sync)
+10. [Architecture](#architecture)
+11. [OpenClaw Integration](#openclaw-integration)
+12. [Contributing](#contributing)
+13. [License](#license)
 
 ## Install
 
@@ -169,7 +170,7 @@ turns an inferred revert or async signal into an automatic rule.
 
 See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, detectors, schemas, and tunable env vars.
 
-## Skills (136)
+## Skills (137)
 
 ### Core Workflow
 
@@ -232,6 +233,14 @@ See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, de
 **Blog & Content** (30) · **SEO** (25) · **Paid Ads** (23) · **Email** (6) —
 per-skill tables live in [When to Use What](docs/when-to-use-what.md), which
 also carries the per-skill usage guidance for the core workflow commands above.
+
+## Supported Languages
+
+Detected per project, with hooks and agents adapting to what they find:
+TypeScript/JavaScript, Python, Rust, Go, Swift, Kotlin/Java, LaTeX. The
+per-language checker and test-runner table lives in
+[How It Works](docs/how-it-works.md). A check whose tool is not installed skips
+silently rather than failing the run.
 
 ## Documentation
 

@@ -11,6 +11,73 @@ else
   _SHA256=(shasum -a 256)
 fi
 
+# Cross-platform timeout. macOS ships no coreutils `timeout` (gtimeout via brew).
+# With NEITHER, SKIP the probe rather than run it unbounded: this is a sync
+# SessionStart hook, and an unbounded `gh api` on a dead network would block the
+# session start. A missing fingerprint field is the cheaper failure.
+# (Commit 2a6b32e's message claimed a timeout fallback in this file; its diff
+# only ever added the _SHA256 array above.)
+_timeout() {
+  if command -v timeout >/dev/null 2>&1; then timeout "$@"
+  elif command -v gtimeout >/dev/null 2>&1; then gtimeout "$@"
+  else return 0; fi
+}
+
+# ─── Context budget ──────────────────────────────────────────────────
+# Measured 2026-09-02: a real SessionStart injection was 24,057 chars, 82.7% of
+# it the correction-rules block — ~6k tokens before the first user message.
+# The 20KB skill catalog deleted in 8406ed4 pushed total hook output past the
+# harness inline limit (30.8KB observed) and the WHOLE additionalContext was
+# silently persisted to a file instead of entering context. Nothing has measured
+# this since, and rules.md grows on every /audit run.
+CTX_RULES_BUDGET="${CLADE_RULES_BUDGET_BYTES:-4000}"
+CTX_FILE_BUDGET="${CLADE_CTX_FILE_BUDGET_BYTES:-3000}"
+CTX_TOTAL_CEILING="${CLADE_CTX_CEILING_BYTES:-12000}"
+
+# _capped_read <file> <budget> — echo at most <budget> bytes of <file>, with an
+# explicit marker when the file was longer. Every input this hook injects used
+# to be an unbounded `cat`.
+_capped_read() {
+  local f="$1" budget="$2" size
+  head -c "$budget" "$f" 2>/dev/null
+  size=$(wc -c < "$f" 2>/dev/null | tr -d ' ')
+  [[ "${size:-0}" -gt "$budget" ]] \
+    && printf '\n… [truncated: %s of %s bytes shown]' "$budget" "$size"
+}
+
+# _rules_tail <file> <budget> — echo `__DROPPED__ <n>` followed by the newest
+# WHOLE lines of <file> that fit in <budget> bytes. Whole lines, never a byte
+# cut: one line is one self-contained rule, and a rule cut mid-sentence is
+# worse than an absent one. Pure POSIX awk — no gawk 3-arg match(), no GNU-only
+# flags.
+#
+# The count rides on stdout rather than a global because every caller reads this
+# through `$(...)`, and a command substitution runs in a SUBSHELL — a global set
+# inside it never reaches the caller. Use _rules_count/_rules_body to split.
+_rules_tail() {
+  local f="$1" budget="$2"
+  [[ -f "$f" ]] || { printf '__DROPPED__ 0'; return 0; }
+  awk -v b="$budget" '
+    { n++; l[n] = $0; s[n] = length($0) + 1 }
+    END {
+      t = 0; start = n + 1
+      for (i = n; i >= 1; i--) { if (t + s[i] > b) break; t += s[i]; start = i }
+      print "__DROPPED__ " (start - 1)
+      for (i = start; i <= n; i++) print l[i]
+    }' "$f" 2>/dev/null
+}
+
+# _rules_count <_rules_tail output> — echo the dropped-line count (0 on garbage).
+_rules_count() {
+  local n
+  n=$(printf '%s\n' "$1" | head -1 | awk '{print $2}')
+  [[ "$n" =~ ^[0-9]+$ ]] || n=0
+  printf '%s' "$n"
+}
+
+# _rules_body <_rules_tail output> — echo the kept rules, sentinel stripped.
+_rules_body() { printf '%s' "$(printf '%s\n' "$1" | tail -n +2)"; }
+
 # Only run for git repos
 if ! git rev-parse --is-inside-work-tree &>/dev/null; then
   exit 0
@@ -120,7 +187,7 @@ if [[ $(( _NOW - FP_MTIME )) -gt $FP_TTL || ! -s "$FP_CACHE_FILE" ]]; then
   {
     # Tailscale IP (so the agent can match user-mentioned LAN IPs to this box)
     if command -v tailscale &>/dev/null; then
-      TS_IP=$(timeout 2 tailscale ip -4 2>/dev/null | head -1)
+      TS_IP=$(_timeout 2 tailscale ip -4 2>/dev/null | head -1)
       [[ -n "$TS_IP" ]] && echo "Tailscale IP: $TS_IP"
     fi
     # Sibling projects on this host (so "the faker-100 brand" registers as local)
@@ -135,24 +202,24 @@ if [[ $(( _NOW - FP_MTIME )) -gt $FP_TTL || ! -s "$FP_CACHE_FILE" ]]; then
     fi
     # Auth identities (so the agent doesn't guess which account is active)
     if command -v gh &>/dev/null; then
-      GH_USER=$(timeout 2 gh api user --jq .login 2>/dev/null)
+      GH_USER=$(_timeout 2 gh api user --jq .login 2>/dev/null)
       [[ -n "$GH_USER" ]] && echo "gh auth: $GH_USER"
     fi
     if command -v gcloud &>/dev/null; then
-      GCLOUD_ACCT=$(timeout 2 gcloud config get-value account 2>/dev/null | grep -v '^(unset)$')
+      GCLOUD_ACCT=$(_timeout 2 gcloud config get-value account 2>/dev/null | grep -v '^(unset)$')
       [[ -n "$GCLOUD_ACCT" ]] && echo "gcloud: $GCLOUD_ACCT"
     fi
   } > "$FP_CACHE_FILE" 2>/dev/null
 fi
 if [[ -s "$FP_CACHE_FILE" ]]; then
-  FP_CONTENT=$(cat "$FP_CACHE_FILE" 2>/dev/null)
+  FP_CONTENT=$(_capped_read "$FP_CACHE_FILE" 1500)
   CONTEXT="${CONTEXT}\n## Environment Fingerprint (this host)\n${FP_CONTENT}\nIf the user names a machine, cross-reference Host:/Tailscale IP/sibling projects above before assuming it's remote.\n"
 fi
 
 # Project Profile (project-specific topology and verification commands)
 PROJECT_PROFILE="${CLAUDE_PROJECT_DIR:-$(pwd)}/.claude/PROJECT_PROFILE.md"
 if [[ -f "$PROJECT_PROFILE" ]]; then
-  PROFILE_CONTENT=$(cat "$PROJECT_PROFILE" 2>/dev/null)
+  PROFILE_CONTENT=$(_capped_read "$PROJECT_PROFILE" "$CTX_FILE_BUDGET")
   CONTEXT="${CONTEXT}\n## Project Profile\n${PROFILE_CONTENT}\n"
 fi
 
@@ -188,7 +255,7 @@ if [[ -d "$HANDOFF_DIR" ]]; then
     NOW=$(date +%s)
     AGE_HOURS=$(( (NOW - FILE_MTIME) / 3600 ))
     if [[ $AGE_HOURS -lt 24 ]]; then
-      HANDOFF_CONTENT=$(cat "$LATEST_HANDOFF" 2>/dev/null)
+      HANDOFF_CONTENT=$(_capped_read "$LATEST_HANDOFF" "$CTX_FILE_BUDGET")
       CONTEXT="${CONTEXT}\n## Handoff from previous session (${AGE_HOURS}h ago)\n${HANDOFF_CONTENT}\n⚠️ IMPORTANT: Before doing anything else, run \`/pickup\` to restore the exact session state. Do NOT start new work until pickup completes.\n"
     fi
   fi
@@ -200,7 +267,7 @@ if [[ -f "$COMPACT_STATE" ]]; then
   CS_MTIME=$(stat -c %Y "$COMPACT_STATE" 2>/dev/null || stat -f %m "$COMPACT_STATE" 2>/dev/null || echo 0)
   CS_AGE_HOURS=$(( ($(date +%s) - CS_MTIME) / 3600 ))
   if [[ $CS_AGE_HOURS -lt 2 ]]; then
-    COMPACT_CONTENT=$(cat "$COMPACT_STATE" 2>/dev/null)
+    COMPACT_CONTENT=$(_capped_read "$COMPACT_STATE" "$CTX_FILE_BUDGET")
     CONTEXT="${CONTEXT}\n## Compact State (context was compacted ${CS_AGE_HOURS}h ago — resume from here)\n${COMPACT_CONTENT}\n"
   fi
 fi
@@ -212,16 +279,31 @@ HOOKS_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Load correction rules (global + project-local)
 GLOBAL_RULES="$HOME/.claude/corrections/rules.md"
 PROJECT_RULES="${CLAUDE_PROJECT_DIR:-.}/.claude/corrections/rules.md"
+# BYTE-BUDGETED, not `tail -25`. Project rules get first claim on half the
+# budget (they are the most specific); global rules take what remains. The
+# dropped-line notice is what makes the tax visible instead of silent, and it
+# points at the tool that fixes the cause — /audit archives rules 60+ days old.
 COMBINED_RULES=""
+RULES_DROPPED_TOTAL=0
 if [[ -f "$PROJECT_RULES" && "$PROJECT_RULES" != "$GLOBAL_RULES" ]]; then
-  COMBINED_RULES=$(tail -25 "$PROJECT_RULES" 2>/dev/null)
-  [[ -n "$COMBINED_RULES" ]] && COMBINED_RULES="${COMBINED_RULES}\n"
+  _RAW=$(_rules_tail "$PROJECT_RULES" "$(( CTX_RULES_BUDGET / 2 ))")
+  RULES_DROPPED_TOTAL=$(( RULES_DROPPED_TOTAL + $(_rules_count "$_RAW") ))
+  _P=$(_rules_body "$_RAW")
+  [[ -n "$_P" ]] && COMBINED_RULES="${_P}\n"
 fi
 if [[ -f "$GLOBAL_RULES" ]]; then
-  COMBINED_RULES="${COMBINED_RULES}$(tail -25 "$GLOBAL_RULES" 2>/dev/null)"
+  _REMAIN=$(( CTX_RULES_BUDGET - ${#COMBINED_RULES} ))
+  [[ $_REMAIN -lt 500 ]] && _REMAIN=500
+  _RAW=$(_rules_tail "$GLOBAL_RULES" "$_REMAIN")
+  RULES_DROPPED_TOTAL=$(( RULES_DROPPED_TOTAL + $(_rules_count "$_RAW") ))
+  COMBINED_RULES="${COMBINED_RULES}$(_rules_body "$_RAW")"
 fi
 if [[ -n "$COMBINED_RULES" ]]; then
-  CONTEXT="${CONTEXT}\nCorrection rules (learned from past feedback):\n${COMBINED_RULES}\n"
+  CONTEXT="${CONTEXT}\nCorrection rules (learned from past feedback):\n${COMBINED_RULES}"
+  if [[ $RULES_DROPPED_TOTAL -gt 0 ]]; then
+    CONTEXT="${CONTEXT}\n(${RULES_DROPPED_TOTAL} older rules not shown — run /audit to promote or archive them.)"
+  fi
+  CONTEXT="${CONTEXT}\n"
 fi
 
 # Learning → Rule promotion (convert high-confidence learnings to rules)
@@ -397,6 +479,13 @@ fi
 # limit (30.8KB observed), so the whole additionalContext was persisted to a
 # file instead of entering context — the injection was dead weight that also
 # knocked out the useful sections above. Routing hints stay; catalog goes.
+
+# Warn, never truncate: the guidance blocks are appended LAST, so cutting the
+# assembled payload would silently drop exactly the sections this budget exists
+# to protect. A visible line beats a silent overflow.
+if [[ ${#CONTEXT} -gt $CTX_TOTAL_CEILING ]]; then
+  CONTEXT="${CONTEXT}\n(session-context: ${#CONTEXT} chars injected, over the ${CTX_TOTAL_CEILING} budget — a section has grown; see CLAUDE.md.)\n"
+fi
 
 if [[ -n "$CONTEXT" ]]; then
   jq -n --arg ctx "$CONTEXT" \

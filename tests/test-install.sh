@@ -636,6 +636,215 @@ else
   pass "installed committer.sh rejects empty invocation"
 fi
 
+# ─── Suite 8: Unowned-file report ────────────────────────────────────
+#
+# install.sh MIRRORS skills but plain-copies hooks and scripts, so anything an
+# older version deployed survives forever, invisibly. The report closes the
+# visibility gap without closing the door: it must never delete, because a
+# removal can be reversed (0164075 backported iloop-hook.sh after 909092f had
+# deleted it) and ~/.claude is shared with whatever else the user installs.
+
+section "Reports unowned hooks/scripts without deleting them"
+
+# Nothing to say on a clean install — the report must not be noise.
+if grep -q "that Clade does not install:" "$SANDBOX/install-1.log"; then
+  fail "clean install prints no unowned-file report" \
+    "heading appeared with an empty \$HOME"
+else
+  pass "clean install prints no unowned-file report"
+fi
+
+printf '#!/usr/bin/env bash\necho orphan\n' > "$CLAUDE_DIR/hooks/zz-orphan.sh"
+printf '#!/usr/bin/env bash\necho orphan\n' > "$CLAUDE_DIR/scripts/zz-orphan.sh"
+printf 'not even a shell script\n' > "$CLAUDE_DIR/scripts/zz-orphan-noext"
+
+install_log4="$SANDBOX/install-4.log"
+if bash "$SRC/install.sh" </dev/null >"$install_log4" 2>&1; then
+  pass "install.sh still exits 0 when unowned files are present"
+else
+  fail "install.sh still exits 0 when unowned files are present" "see $install_log4"
+  tail -30 "$install_log4"
+fi
+
+# The load-bearing assertion: report-only, never destructive.
+if [[ -f "$CLAUDE_DIR/hooks/zz-orphan.sh" && -f "$CLAUDE_DIR/scripts/zz-orphan.sh" \
+   && -f "$CLAUDE_DIR/scripts/zz-orphan-noext" ]]; then
+  pass "unowned files survive the reinstall (report never deletes)"
+else
+  fail "unowned files survive the reinstall (report never deletes)"
+fi
+
+orphan_block=$(sed -n '/that Clade does not install:/,/Clade never removes these/p' \
+  "$install_log4")
+
+if [[ -n "$orphan_block" ]]; then
+  pass "unowned-file report is printed when there is something to report"
+else
+  fail "unowned-file report is printed when there is something to report" \
+    "see $install_log4"
+fi
+
+for expected in "hooks/zz-orphan.sh" "scripts/zz-orphan.sh" "scripts/zz-orphan-noext"; do
+  if grep -qF "$expected" <<<"$orphan_block"; then
+    pass "report names $expected"
+  else
+    fail "report names $expected"
+  fi
+done
+
+# The false positive the finding that prompted this feature made about itself:
+# ~/.claude/scripts/mcp_server.py is absent from configs/scripts/ but IS
+# installed, from orchestrator/mcp_server.py. Deriving the expected set from
+# configs/ alone reports it as an orphan.
+[[ -f "$CLAUDE_DIR/scripts/mcp_server.py" ]] \
+  && pass "mcp_server.py is installed outside configs/ (precondition)" \
+  || fail "mcp_server.py is installed outside configs/ (precondition)"
+if grep -qF "mcp_server.py" <<<"$orphan_block"; then
+  fail "installed-but-not-in-configs mcp_server.py is not reported as unowned" \
+    "the expected set was derived from configs/ instead of from what installs"
+else
+  pass "installed-but-not-in-configs mcp_server.py is not reported as unowned"
+fi
+
+# Subdirectories are not files: hooks/lib and scripts/ads must never appear.
+if grep -qE "hooks/lib|scripts/(ads|blog)\\b" <<<"$orphan_block"; then
+  fail "report skips subdirectories"
+else
+  pass "report skips subdirectories"
+fi
+
+# ─── Suite 9: install.sh stays node-free ─────────────────────────────
+#
+# The web UI build belongs where the server is, not in the installer: this
+# script deploys skills and hooks to ~/.claude and must work on a machine with
+# no node toolchain at all.
+
+section "install.sh needs no node toolchain"
+
+if grep -Eqn '(^|[^[:alnum:]_./-])(npm|npx|yarn|pnpm|vite)([[:space:]]|$)' "$SRC/install.sh"; then
+  fail "install.sh invokes no package manager" \
+    "$(grep -Enm3 '(^|[^[:alnum:]_./-])(npm|npx|yarn|pnpm|vite)([[:space:]]|$)' "$SRC/install.sh")"
+else
+  pass "install.sh invokes no package manager"
+fi
+
+# Behavioural half: with npm/node/npx failing, install.sh must still succeed.
+NO_NODE_BIN="$SANDBOX/no-node-bin"
+mkdir -p "$NO_NODE_BIN"
+for shim in npm npx node; do
+  printf '#!/usr/bin/env bash\necho "%s: command not found" >&2\nexit 127\n' "$shim" \
+    > "$NO_NODE_BIN/$shim"
+  chmod +x "$NO_NODE_BIN/$shim"
+done
+
+install_log5="$SANDBOX/install-5.log"
+if PATH="$NO_NODE_BIN:$PATH" bash "$SRC/install.sh" </dev/null >"$install_log5" 2>&1; then
+  pass "install.sh exits 0 with npm/node/npx unusable"
+else
+  fail "install.sh exits 0 with npm/node/npx unusable" "see $install_log5"
+  tail -30 "$install_log5"
+fi
+
+# ─── Suite 10: --ultracode is an opt-in that actually lands ──────────
+#
+# The flag writes two keys into the user's own settings.json. Every failure
+# mode here is silent by construction: a merge that clobbers the file, a
+# rejected size that gets written verbatim, an opt-in that is on by default, or
+# a documented "turn it off with" line that does not turn it off. None of them
+# raise an error, and the installer prints a success line either way.
+
+section "--ultracode opt-in"
+
+SETTINGS="$HOME/.claude/settings.json"
+
+# The preceding suites all ran the installer with no flags. If the key is here
+# now, the opt-in defaults to on, which is the one thing it must never do.
+if [[ -f "$SETTINGS" ]] && ! jq -e 'has("ultracode")' "$SETTINGS" >/dev/null 2>&1; then
+  pass "ultracode is absent after a plain install (opt-in, not default)"
+else
+  fail "ultracode is absent after a plain install (opt-in, not default)" \
+       "settings.json: $(cat "$SETTINGS" 2>/dev/null | head -c 200)"
+fi
+
+# Seed a key the merge must preserve. `. + {...}` is a merge, but only if the
+# temp-file dance around it works; a truncated write would lose this.
+#
+# The canary has to be a key install.sh does NOT own. The first version of this
+# test used statusLine and failed — correctly, because §8 sets `.statusLine`
+# outright on every run. cleanupPeriodDays appears nowhere in the installer, so
+# losing it can only mean the merge clobbered the file.
+jq '. + {cleanupPeriodDays: 4242}' "$SETTINGS" \
+  > "$SETTINGS.seed" && mv "$SETTINGS.seed" "$SETTINGS"
+
+uc_log="$SANDBOX/install-ultracode.log"
+if bash "$SRC/install.sh" --ultracode </dev/null >"$uc_log" 2>&1; then
+  pass "install.sh --ultracode exits 0"
+else
+  fail "install.sh --ultracode exits 0" "see $uc_log"
+fi
+
+if jq -e '.ultracode == true and .workflowSizeGuideline == "medium"' "$SETTINGS" >/dev/null 2>&1; then
+  pass "--ultracode sets ultracode=true and the medium size guideline"
+else
+  fail "--ultracode sets ultracode=true and the medium size guideline" \
+       "got: $(jq -c '{ultracode, workflowSizeGuideline}' "$SETTINGS" 2>&1)"
+fi
+
+if jq -e '.cleanupPeriodDays == 4242' "$SETTINGS" >/dev/null 2>&1; then
+  pass "--ultracode merges into settings.json without dropping the user's keys"
+else
+  fail "--ultracode merges into settings.json without dropping the user's keys" \
+       "the seeded cleanupPeriodDays key did not survive"
+fi
+
+if bash "$SRC/install.sh" --ultracode=large </dev/null >/dev/null 2>&1 \
+   && jq -e '.workflowSizeGuideline == "large"' "$SETTINGS" >/dev/null 2>&1; then
+  pass "--ultracode=large raises the size guideline"
+else
+  fail "--ultracode=large raises the size guideline" \
+       "got: $(jq -r '.workflowSizeGuideline' "$SETTINGS" 2>&1)"
+fi
+
+# A rejected size must not reach the file. Writing "enormous" verbatim would be
+# read by Claude Code as an unknown value, not as the medium it warned about.
+uc_bad_log="$SANDBOX/install-ultracode-bad.log"
+bash "$SRC/install.sh" --ultracode=enormous </dev/null >"$uc_bad_log" 2>&1
+if jq -e '.workflowSizeGuideline == "medium"' "$SETTINGS" >/dev/null 2>&1 \
+   && grep -q "is not small|medium|large" "$uc_bad_log"; then
+  pass "--ultracode=<bogus> warns and falls back to medium instead of writing it"
+else
+  fail "--ultracode=<bogus> warns and falls back to medium instead of writing it" \
+       "value: $(jq -r '.workflowSizeGuideline' "$SETTINGS" 2>&1)"
+fi
+
+# The installer prints a removal command. An escape hatch nobody can run is the
+# same defect as no escape hatch; run the literal line it printed.
+removal=$(grep -o "jq 'del(\.ultracode)' [^ ]*" "$uc_log" | head -1)
+if [[ -n "$removal" ]]; then
+  expanded=${removal/\~\/.claude/$HOME/.claude}
+  if eval "$expanded" > "$SETTINGS.off" 2>/dev/null \
+     && jq -e 'has("ultracode") | not' "$SETTINGS.off" >/dev/null 2>&1; then
+    pass "the printed 'turn it off' command actually removes the key"
+  else
+    fail "the printed 'turn it off' command actually removes the key" "ran: $expanded"
+  fi
+  rm -f "$SETTINGS.off"
+else
+  fail "the installer prints a removal command" "no jq del line in $uc_log"
+fi
+
+# Last, because it destroys the sandbox's settings.json: the flag must degrade
+# to a warning rather than a crash when there is nothing to merge into.
+mv "$SETTINGS" "$SETTINGS.bak"
+uc_nofile_log="$SANDBOX/install-ultracode-nofile.log"
+if bash "$SRC/install.sh" --ultracode </dev/null >"$uc_nofile_log" 2>&1; then
+  pass "install.sh --ultracode still exits 0 when settings.json is absent"
+else
+  fail "install.sh --ultracode still exits 0 when settings.json is absent" \
+       "see $uc_nofile_log"
+fi
+mv "$SETTINGS.bak" "$SETTINGS" 2>/dev/null || true
+
 # ─── Summary ─────────────────────────────────────────────────────────
 
 echo ""

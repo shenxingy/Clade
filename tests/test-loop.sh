@@ -1229,6 +1229,14 @@ fi
 if should_run "deploy"; then
 section "Deployed Script Verification"
 
+# A dropped `. loop_*.sh` source line leaves every extracted node undefined.
+for sibling in loop_args.sh loop_verify.sh loop_bounds.sh loop_score.sh; do
+  TESTS_RUN=$((TESTS_RUN + 1))
+  if grep -q "_sibling_script $sibling" "$ORIG_DIR/configs/scripts/loop-runner.sh"
+  then pass "loop-runner.sh sources $sibling"
+  else fail "loop-runner.sh does not source $sibling" "extracted nodes undefined"; fi
+done
+
 DEPLOY_DIR="$HOME/.claude/scripts"
 
 if [[ ! -d "$DEPLOY_DIR" ]]; then
@@ -1236,7 +1244,7 @@ if [[ ! -d "$DEPLOY_DIR" ]]; then
   # sense on machines that ran install.sh. Skipping is not a failure.
   echo "  (no deployed kit at $DEPLOY_DIR — skipping deploy verification)"
 else
-for script in loop-runner.sh loop_args.sh loop_checkpoint.py loop_goal.py loop_json.py run-tasks-parallel.sh run-tasks.sh; do
+for script in loop-runner.sh loop_args.sh loop_verify.sh loop_bounds.sh loop_score.sh loop_checkpoint.py loop_goal.py loop_json.py run-tasks-parallel.sh run-tasks.sh run_tasks_common.sh; do
   src="$ORIG_DIR/configs/scripts/$script"
   dst="$DEPLOY_DIR/$script"
   TESTS_RUN=$((TESTS_RUN + 1))
@@ -1298,6 +1306,11 @@ fi
 echo ""
 echo "── --max-runtime bounds a run by wall clock ──"
 
+# Pin the sandbox explicitly rather than inheriting whatever cd was last in
+# effect. This fixture escaped into the repository root twice on 2026-09-02, and
+# a stray `goal-*.md` at the root is exactly what check-roadmap-authority.py now
+# looks for — a test that plants the shape its own gate rejects.
+cd "$REPO_DIR"
 printf '# Goal: never done\n\n- [ ] unchecked forever\n' > goal-runtime.md
 mkdir -p logs/loop-runtime logs/loop-runtime-off
 export MOCK_CLAUDE_RESPONSE='[]'
@@ -1325,6 +1338,7 @@ out_off=$(
 ) || true
 assert_not_contains "$out_off" "Wall-clock limit reached" "--max-runtime 0 disables the bound entirely"
 assert_contains "$out_off" "Max iterations" "with the clock disabled the run still stops on --max-iter"
+rm -f goal-runtime.md   # a stray root-level goal-*.md is what check-roadmap-authority.py rejects
 
 
 # ═══════════════════════════════════════════════════════════════════════

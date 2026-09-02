@@ -1,4 +1,21 @@
-fastapi==0.131.0
+fastapi==0.141.1
+# starlette is pinned HERE, not left to fastapi's dependency range, so the
+# security floor is visible in this file instead of hidden in another package's
+# metadata. fastapi==0.131.0 (the previous pin) required `starlette<1.0.0`, and
+# 0.52.1 is the LAST 0.x starlette ever published — so that cap locked the
+# orchestrator to a release carrying, with no in-range remedy:
+#   GHSA-82w8-qh3p-5jfq  HIGH  request.form() size/count limits silently ignored
+#                              for application/x-www-form-urlencoded → DoS
+#                              (fixed in 1.3.1)
+#   GHSA-wqp7-x3pw-xc5r  HIGH  SSRF + NTLM credential theft via UNC paths in
+#                              StaticFiles (fixed in 1.1.0) — server.py mounts
+#                              StaticFiles at /web
+#   GHSA-86qp-5c8j-p5mr  MOD   missing Host-header validation poisons
+#                              request.url.path (fixed in 1.0.1)
+#   GHSA-x746-7m8f-x49c  MOD   arbitrary HTTP method dispatched to HTTPEndpoint
+#                              attributes via getattr (fixed in 1.1.0)
+# fastapi 0.141.1 asks only for `starlette>=0.46.0`, so 1.x is reachable.
+starlette==1.6.0
 uvicorn[standard]==0.41.0
 ptyprocess==0.7.0
 watchfiles==1.1.1

@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import subprocess
 import time
 from contextlib import asynccontextmanager
@@ -17,7 +18,7 @@ from pathlib import Path
 
 from fastapi import Body, Depends, FastAPI, HTTPException, Query, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 import httpx
 
@@ -29,12 +30,15 @@ from execution_envelope import (
 )
 from provider_registry import DEFAULT_REGISTRY
 from merge_policy import MERGE_STRATEGIES
+from api_auth import TokenAuthMiddleware, redact_settings, strip_redacted
 from config import (
     GLOBAL_SETTINGS,
     PROJECT_DIR,
     WEB_DIR,
     _SETTINGS_DEFAULTS,
     _deps_met,
+    _settings_file,
+    ensure_api_token,
     _recover_orphaned_tasks,
     _replay_interrupted_tasks,
     _save_settings,
@@ -66,11 +70,70 @@ from compatibility_telemetry import (
 
 logger = logging.getLogger(__name__)
 
+
+class _TokenRedactingFilter(logging.Filter):
+    """Keep the control-plane token out of the server's own log.
+
+    A browser cannot set headers on a WebSocket handshake, so the SPA passes the
+    token as `?token=` — and uvicorn logs the handshake line, query string and
+    all, at INFO. The credential therefore landed in the server log on every
+    connect and reconnect. The same applies to the sign-in URL an operator pastes
+    once. Masking at the logging layer covers every emitter without changing the
+    wire protocol.
+    """
+
+    _PATTERN = re.compile(r"([?&]token=)[^&\s\"']+")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            if isinstance(record.msg, str) and "token=" in record.msg:
+                record.msg = self._PATTERN.sub(r"\1<redacted>", record.msg)
+            if record.args:
+                record.args = tuple(
+                    self._PATTERN.sub(r"\1<redacted>", a) if isinstance(a, str) else a
+                    for a in record.args
+                )
+        except Exception:  # never let logging hygiene break a request
+            pass
+        return True
+
+
+for _log_name in ("uvicorn", "uvicorn.error", "uvicorn.access", "websockets.server"):
+    logging.getLogger(_log_name).addFilter(_TokenRedactingFilter())
+
 # ─── App ──────────────────────────────────────────────────────────────────────
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Mint the control-plane token before anything can serve a request. Logged
+    # in full only on the run that created it — start.sh binds 0.0.0.0 when it
+    # sees Tailscale, so this line is how the operator gets in from another
+    # device, and reprinting a live credential every restart is not worth it.
+    _token, _minted = ensure_api_token()
+    if GLOBAL_SETTINGS.get("api_allow_unauthenticated", False):
+        logger.warning(
+            "api_allow_unauthenticated is on — the control plane is being served "
+            "with NO authentication. Every route here can spawn a worker that runs "
+            "with permissions bypassed."
+        )
+    elif _minted:
+        # WARNING, not INFO: uvicorn's default logging config does not enable
+        # the application logger at INFO, so this line — the one-time credential
+        # handoff the docs tell the operator to look for — was never printed at
+        # all. A credential handoff is not routine information anyway.
+        logger.warning(
+            "Control-plane token minted. Open the UI with: "
+            "http://<host>:<port>/web/?token=%s  (stored in %s)",
+            _token,
+            _settings_file,
+        )
+    else:
+        logger.warning(
+            "Control-plane token loaded from %s — append ?token=<value> once to "
+            "sign the browser in.",
+            _settings_file,
+        )
     if os.environ.get("ORCHESTRATOR_PROJECT_DIR"):
         default_session = registry.create(str(PROJECT_DIR))
         recovered = await _recover_orphaned_tasks(default_session.task_queue)
@@ -131,11 +194,34 @@ async def execution_resolution_error(_request, exc: ExecutionResolutionError):
     return JSONResponse(status_code=422, content={"detail": str(exc)})
 
 
-_cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:*,http://127.0.0.1:*").split(",")
+# Added FIRST so CORSMiddleware below ends up OUTSIDE it: Starlette builds the
+# stack with the last-added middleware outermost, and a preflight OPTIONS carries
+# no credentials, so an outer auth layer would reject it before CORS could answer.
+# TokenAuthMiddleware exempts OPTIONS as well, so the two orderings agree.
+app.add_middleware(TokenAuthMiddleware, settings_getter=lambda: GLOBAL_SETTINGS)
+
+# allow_origins is an exact-match list — CORSMiddleware does not glob, so the
+# former default of "http://localhost:*" matched nothing and every request was
+# in fact being admitted by the regex below. Default to empty and let the regex
+# state the policy in one place, with CORS_ORIGINS still available to name exact
+# extra origins. The regex now allows https so a TLS front end (see
+# orchestrator/caddy-setup.sh) is not silently blocked.
+_cors_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
+
+# Origins the browser UI may be served from. Starlette compares allow_origins
+# entries with `==` (starlette/middleware/cors.py:103), so the former
+# "http://localhost:*" default was dead text and this regex was doing all the
+# work unnoticed. Second octet pinned to 64-127 because Tailscale's CGNAT range
+# is 100.64.0.0/10 — the old \d+ also granted 100.0.0.0/8, which is publicly
+# routable, so any host under e.g. http://100.20.1.5 held a CORS grant.
+_CORS_ORIGIN_REGEX = (
+    r"https?://(localhost|127\.0\.0\.1|"
+    r"100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3})(:\d+)?"
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1|100\.\d+\.\d+\.\d+)(:\d+)?",
+    allow_origin_regex=_CORS_ORIGIN_REGEX,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -157,10 +243,52 @@ app.include_router(usage_router)
 app.include_router(evals_router)
 app.include_router(providers_router)
 
-# Serve static files (web UI) — prefer React dist/ if built, fallback to legacy
+# ─── Static: the web UI ───────────────────────────────────────────────────────
+#
+# `web/index.html` is the Vite *source* shell: it loads `/src/main.tsx`, which
+# no browser can execute (raw TypeScript, served under a non-JS MIME type). It
+# stopped being a usable fallback the moment 7d5603b overwrote the legacy
+# xterm + app-*.js page with it, so the old "prefer dist/, fall back to web/"
+# mount served a permanently blank screen on any machine that had not built.
+# `web/dist` is therefore the only servable root; when it is missing, say so
+# with the command that fixes it rather than rendering nothing.
 WEB_DIST = Path(__file__).parent / "web" / "dist"
-_web_static_dir = str(WEB_DIST) if WEB_DIST.exists() else str(WEB_DIR)
-app.mount("/web", StaticFiles(directory=_web_static_dir, html=True), name="web")
+
+UI_NOT_BUILT = "Web UI is not built. Run: cd orchestrator/web && npm ci && npm run build"
+
+
+def mount_web_ui(target_app: FastAPI, dist_dir: Path, source_dir: Path) -> None:
+    """Register the `/web` surface on ``target_app``.
+
+    Registration order is load-bearing. Starlette matches routes in the order
+    they were added, and a ``Mount`` at ``/web`` swallows every path beneath
+    it — so ``/web/usage.html`` has to be declared *before* the mount. That
+    page is hand-written and lives outside the Vite graph (``vite.config.ts``
+    declares no ``publicDir``), so the build never copies it into ``dist/``:
+    without its own route it 404s on exactly the machines that did build.
+    """
+
+    usage_page = source_dir / "usage.html"
+
+    @target_app.get("/web/usage.html", include_in_schema=False)
+    async def usage_dashboard():
+        if not usage_page.exists():
+            return JSONResponse({"error": "usage.html not found"}, status_code=404)
+        return FileResponse(str(usage_page))
+
+    if dist_dir.exists():
+        target_app.mount(
+            "/web", StaticFiles(directory=str(dist_dir), html=True), name="web"
+        )
+        return
+
+    @target_app.get("/web", include_in_schema=False)
+    @target_app.get("/web/{path:path}", include_in_schema=False)
+    async def web_ui_not_built(path: str = ""):
+        return JSONResponse({"error": UI_NOT_BUILT}, status_code=503)
+
+
+mount_web_ui(app, WEB_DIST, WEB_DIR)
 
 # ─── REST: Version (stale-process guard) ──────────────────────────────────────
 
@@ -784,7 +912,12 @@ async def list_projects(base: str | None = None):
 
 @app.get("/")
 async def root():
-    return FileResponse(str(WEB_DIR / "index.html"))
+    # Never FileResponse(WEB_DIR/"index.html"): that is the un-built Vite
+    # source shell, which this served unconditionally — even on machines that
+    # had built dist/ — so the documented entry URL (start.sh prints
+    # http://localhost:8765) was blank everywhere. One code path owns the
+    # shell, and the redirect is correct in both the built and unbuilt cases.
+    return RedirectResponse("/web/")
 
 # ─── WebSocket: /ws/chat ──────────────────────────────────────────────────────
 
@@ -1078,7 +1211,15 @@ async def issues_sync_push(s: ProjectSession = Depends(_resolve_session)):
 
 @app.get("/api/settings")
 async def get_settings():
-    return GLOBAL_SETTINGS
+    """Settings with every credential masked.
+
+    This used to return GLOBAL_SETTINGS verbatim, which handed the caller
+    webhook_secret, the usage hub tokens and the control-plane token itself.
+    Masking is by key-name suffix rather than a hand-kept list, so a secret
+    added later is covered on the day it is added.
+    """
+
+    return redact_settings(GLOBAL_SETTINGS)
 
 
 @app.get("/api/compatibility")
@@ -1088,6 +1229,11 @@ async def get_compatibility():
 
 @app.post("/api/settings")
 async def post_settings(body: dict = Body(...), response: Response = None):
+    # The settings panel GETs the whole object and POSTs the whole object back.
+    # Now that GET masks credentials, a save would otherwise write the mask over
+    # every secret — including the token the caller authenticated with. Drop any
+    # secret-named key the client returned still masked; it means "unchanged".
+    body = strip_redacted(body)
     valid_keys = set(_SETTINGS_DEFAULTS.keys())
     unknown = sorted(set(body) - valid_keys - {"worker_provider"})
     if unknown:
@@ -1167,7 +1313,10 @@ async def post_settings(body: dict = Body(...), response: Response = None):
         GLOBAL_SETTINGS[k] = v
     snapshot = dict(GLOBAL_SETTINGS)
     await asyncio.to_thread(_save_settings, snapshot)
-    return GLOBAL_SETTINGS
+    # Masked, exactly like the GET. The panel replaces its whole form state
+    # with this response body, so returning it raw handed every secret back on
+    # the first toggle and defeated the masking two functions above.
+    return redact_settings(GLOBAL_SETTINGS)
 
 # ─── REST: Status ─────────────────────────────────────────────────────────────
 

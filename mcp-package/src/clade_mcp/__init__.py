@@ -6,7 +6,7 @@ import asyncio
 
 from .server import run_server
 
-__version__ = "0.2.0"
+__version__ = "0.3.1"
 
 
 def main() -> None:

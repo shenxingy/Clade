@@ -70,6 +70,33 @@ from provider_registry import DiscoveryFailure, NativeProfileResolver
 _ALLOWED_EFFORTS: Final = frozenset({"low", "medium", "high", "xhigh", "max"})
 
 
+def _prompt_cache_flags() -> str:
+    """Let workers in different worktrees share a prompt-cache prefix.
+
+    The default Claude Code system prompt embeds per-machine sections — cwd,
+    environment info, memory paths, git status. Clade gives every worker its own
+    git worktree, so those sections differ for every worker by construction and
+    no two spawns can ever share a cached prefix. On a fan-out that is not a
+    missed optimisation, it is N cache MISSES where N-1 could have been hits:
+    Anthropic prices a 5-minute cache write at 1.25x base input and a cache read
+    at 0.1x, so the shared prefix costs 12.5x more than it needs to.
+
+    `--exclude-dynamic-system-prompt-sections` moves exactly those sections into
+    the first user message. Same information, same position in the conversation
+    for the agent's purposes, different position for the cache. The CLI's own
+    help says it "Improves cross-user prompt-cache reuse", and notes it is
+    ignored when a custom system prompt is supplied — which Clade does not do
+    for worker spawns.
+
+    Verified present in CLI 2.1.258. Off via `worker_shared_prompt_cache`.
+    """
+    from config import GLOBAL_SETTINGS  # lazy: keep this module a leaf
+
+    if not GLOBAL_SETTINGS.get("worker_shared_prompt_cache", True):
+        return ""
+    return " --exclude-dynamic-system-prompt-sections"
+
+
 def _structured_output_flags() -> str:
     """Ask the agent to report its own usage instead of guessing from its prose.
 
@@ -217,7 +244,14 @@ class ClaudeProvider(WorkerProvider):
             "image_input": CapabilityState.CONDITIONAL,
             "reasoning_control": CapabilityState.CONDITIONAL,
         }
-        return CapabilitySet(states, {name: source for name in states})
+        # A CONDITIONAL with no condition written down is not a state, it is a
+        # shrug. `sources` exists to carry that, and it was the adapter name for
+        # every key — the same uniform value that made it useless to read.
+        return CapabilitySet(states, {**{name: source for name in states}, **{
+            "native_rate_limits": f"{source}: depends on the account plan",
+            "image_input": f"{source}: depends on the resolved model",
+            "reasoning_control": f"{source}: depends on the resolved model",
+        }})
 
     def resolve_effort(
         self, requested: str | None, resolved_model: str | None
@@ -243,6 +277,7 @@ class ClaudeProvider(WorkerProvider):
             f"--model {shlex.quote(model)} --dangerously-skip-permissions"
         )
         cmd += _structured_output_flags()
+        cmd += _prompt_cache_flags()
         wire_effort, _ = self.resolve_effort(effort, model)
         if wire_effort:
             cmd += f" --effort {wire_effort}"
@@ -291,6 +326,7 @@ class ClaudeProvider(WorkerProvider):
             f"{_fallback_flag(requested_model)}"
         )
         cmd += _structured_output_flags()
+        cmd += _prompt_cache_flags()
         wire_effort, _ = self.resolve_effort(effort, model)
         if wire_effort:
             cmd += f" --effort {wire_effort}"
@@ -319,14 +355,25 @@ class CodexProvider(WorkerProvider):
             "repository_write": CapabilityState.SUPPORTED,
             "structured_events": CapabilityState.UNSUPPORTED,
             "native_resume": CapabilityState.UNSUPPORTED,
-            "subagents": CapabilityState.CONDITIONAL,
+            # Was CONDITIONAL with no condition expressed anywhere, which read
+            # as "sometimes, depending". It does not: `codex exec` spawns no
+            # sub-agent, so a run that needs to subdivide cannot on this
+            # runtime. UNSUPPORTED is what makes a `subagents: required` task
+            # refuse this route instead of being admitted and then serialised.
+            "subagents": CapabilityState.UNSUPPORTED,
             "hooks": CapabilityState.SUPPORTED,
             "status_renderer": CapabilityState.CONDITIONAL,
             "native_rate_limits": CapabilityState.CONDITIONAL,
             "image_input": CapabilityState.CONDITIONAL,
             "reasoning_control": CapabilityState.SUPPORTED,
         }
-        return CapabilitySet(states, {name: source for name in states})
+        return CapabilitySet(states, {**{name: source for name in states}, **{
+            "subagents": f"{source}: codex exec has no headless sub-agent spawn",
+            "status_renderer": f"{source}: native status_line is fixed-field; "
+                               "a command-backed renderer needs a patched build",
+            "native_rate_limits": f"{source}: depends on the account plan",
+            "image_input": f"{source}: depends on the resolved model",
+        }})
 
     def build_command(
         self,

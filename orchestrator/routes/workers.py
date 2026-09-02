@@ -8,7 +8,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 
 from session import ProjectSession, _resolve_session, registry
-from worker_tldr import _generate_code_tldr
+from repo_map import _generate_code_tldr
 
 logger = logging.getLogger(__name__)
 

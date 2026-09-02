@@ -1,11 +1,28 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Associative arrays (declare -A, used for the dedup set below) need bash 4;
+# macOS ships bash 3.2, where `set -euo pipefail` turns that into an outright
+# abort. Re-exec into a brew bash. Same guard as run-tasks-parallel.sh:22-32;
+# `exec` preserves file descriptors, so the /proc/self/fd/1 probe below is
+# unaffected.
+if [[ "${BASH_VERSINFO[0]}" -lt 4 ]]; then
+  if [[ -x /opt/homebrew/bin/bash ]]; then
+    exec /opt/homebrew/bin/bash "$0" "$@"
+  elif [[ -x /usr/local/bin/bash ]]; then
+    exec /usr/local/bin/bash "$0" "$@"
+  else
+    echo "ERROR: bash 4+ required (associative arrays). Install with: brew install bash" >&2
+    exit 1
+  fi
+fi
+
 # Cross-platform readlink -f (macOS lacks -f flag)
 _readlink_f() {
   if readlink -f "$1" 2>/dev/null; then return; fi
-  # macOS fallback
-  python3 -c "import os; print(os.path.realpath('$1'))" 2>/dev/null || echo "$1"
+  # macOS fallback. Pass the path as argv, never interpolated into the Python
+  # source: a path containing a quote broke the fallback (or injected into it).
+  python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1" 2>/dev/null || echo "$1"
 }
 
 # ─── Usage ───────────────────────────────────────────────────────────────────

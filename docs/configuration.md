@@ -9,11 +9,13 @@
 1. [Required](#required)
 2. [Optional](#optional)
 3. [Tuning](#tuning)
-4. [Add a correction rule manually](#add-a-correction-rule-manually)
-5. [Adjust quality gate thresholds](#adjust-quality-gate-thresholds)
-6. [Add a new hook](#add-a-new-hook)
-7. [Add a new agent](#add-a-new-agent)
-8. [Add a new skill](#add-a-new-skill)
+4. [Control-plane authentication](#control-plane-authentication)
+5. [Standing multi-agent orchestration](#standing-multi-agent-orchestration)
+6. [Add a correction rule manually](#add-a-correction-rule-manually)
+7. [Adjust quality gate thresholds](#adjust-quality-gate-thresholds)
+8. [Add a new hook](#add-a-new-hook)
+9. [Add a new agent](#add-a-new-agent)
+10. [Add a new skill](#add-a-new-skill)
 
 ---
 
@@ -62,6 +64,100 @@ and a CI gate fails on drift — so "every supported key" is enforced, not just
 asserted. Each key's meaning lives as a comment beside it in
 `orchestrator/config.py:_SETTINGS_DEFAULTS`; JSON cannot carry those comments,
 so read them there rather than guessing from the value.
+
+## Control-plane authentication
+
+Every orchestrator route requires a bearer token. This is not optional and not
+a preference: `orchestrator/start.sh` binds `0.0.0.0` whenever it detects
+Tailscale, so the server is offered to the whole tailnet by default, and every
+mutating route here can open a session whose workers run with permissions
+bypassed as the account that started the server.
+
+The token is minted on first start and written to
+`~/.claude/orchestrator-settings.json` under `api_token`, in a file the server
+chmods to `0600`. The startup log prints the sign-in URL on the run that
+created it:
+
+```
+Control-plane token minted. Open the UI with: http://<host>:<port>/web/?token=<value>
+```
+
+Open that URL once. The page stores the token, strips it from the address bar,
+and sends it on every later request. To sign in from another device, append
+`?token=<value>` to the UI URL there too, reading the value out of the settings
+file.
+
+For scripted access, send it as a header:
+
+```bash
+curl -H "Authorization: Bearer $(jq -r .api_token ~/.claude/orchestrator-settings.json)" \
+  http://127.0.0.1:8765/api/status
+```
+
+Three deliberate exceptions:
+
+| Path | Why it is exempt |
+|------|------------------|
+| `/`, `/web/*`, `/api/version` | The SPA shell and the stale-process probe. Neither reads nor mutates project state. |
+| `/api/webhooks/github` | GitHub signs these with `webhook_secret`, and that path already fails closed on its own. |
+| `/api/usage/ingest` | Remote `usage-agent.py` nodes authenticate with `usage_hub_token` — but only while `usage_ingest_token` is set. Leave it empty and the route falls back to requiring the control-plane token, closing the old "empty = open ingest" default. |
+
+`GET /api/settings` masks every credential it returns, and a save that echoes a
+mask back leaves the stored secret alone.
+
+Setting `api_allow_unauthenticated` to `true` serves the control plane with no
+authentication at all. It exists so the choice is explicit rather than implied
+by an empty config; with no token and no opt-out, the server rejects.
+
+## Standing multi-agent orchestration
+
+By default Claude Code waits to be asked before it fans work out to agents. The
+`Workflow` tool is explicitly opt-in, and a task that would obviously benefit
+from parallelism does not on its own satisfy that opt-in.
+
+One settings key changes that:
+
+```bash
+./install.sh --ultracode          # <15 agents per run
+./install.sh --ultracode=large    # up to 50
+./install.sh --ultracode=small    # under 5
+```
+
+which merges into `~/.claude/settings.json`:
+
+```json
+{ "ultracode": true, "workflowSizeGuideline": "large" }
+```
+
+With it on, Claude plans a workflow for each substantive task instead of waiting
+for you to type `ultracode` in the prompt. It also raises reasoning effort to
+xhigh, so **it spends materially more per turn** — that is the right trade when
+you are driving a fleet from the terminal and the wrong one if you installed
+Clade for its commit hook. Off by default for that reason.
+
+Turn it off with `jq 'del(.ultracode)' ~/.claude/settings.json | sponge` or by
+editing the file.
+
+Two related environment keys, both in the `env` block of the same file:
+
+| key | default | what it does |
+|-----|---------|--------------|
+| `CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY` | 10 | how many read-only tools and subagents run at once |
+| `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` | 3, set to **1** by `install.sh` | layers of nesting below the main loop |
+
+The depth cap is deliberate — it enforces "subagents must not delegate
+recursively" — and it costs a workflow nothing, because a Workflow script
+orchestrates from the lead rather than by nesting.
+
+**Check whether a run used its parallelism**, rather than assuming:
+
+```bash
+python3 configs/scripts/workflow-scorecard.py --since 7
+```
+
+A single-agent tail over 15% means the shape was wrong: a barrier where a
+pipeline would do, or units too coarse. Measured across 89 runs on the author's
+account, 45% of all multi-agent wall clock was spent waiting on one agent.
 
 ## Add a correction rule manually
 

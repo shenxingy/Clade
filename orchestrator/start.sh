@@ -59,6 +59,36 @@ else
   echo "  All dependencies present."
 fi
 
+# ─── Build the web UI ───────────────────────────────────────────────────────
+
+# Build the React UI if it is not built. dist/ is gitignored (committing it was
+# ruled out in docs/goals/align-elites.md), so a fresh checkout has no UI at all
+# and /web answers 503 until this runs. Non-fatal in both legs: the API is
+# useful without the browser UI, and a node problem must not stop the server.
+# Staleness, not existence. dist/ is gitignored, so `git pull` never touches it:
+# an existence check means every machine that ran the orchestrator before a UI
+# change keeps serving the OLD bundle forever — which after the auth change
+# meant serving a pre-auth bundle that cannot sign in.
+_web_needs_build() {
+  local dist="$SCRIPT_DIR/web/dist/index.html"
+  [[ -f "$dist" ]] || return 0
+  local newest
+  newest=$(find "$SCRIPT_DIR/web/src" "$SCRIPT_DIR/web/index.html" \
+                "$SCRIPT_DIR/web/package.json" -newer "$dist" -print -quit 2>/dev/null)
+  [[ -n "$newest" ]]
+}
+
+if _web_needs_build; then
+  if command -v npm >/dev/null 2>&1; then
+    echo "Building web UI (missing or out of date)..."
+    ( cd "$SCRIPT_DIR/web" && npm ci --silent && npm run build ) \
+      || echo "  WARNING: web build failed — API still serves; /web returns 503"
+  else
+    echo "  Web UI not built and npm not found:"
+    echo "    cd orchestrator/web && npm ci && npm run build"
+  fi
+fi
+
 # ─── Start server ─────────────────────────────────────────────────────────────
 
 echo ""
@@ -101,6 +131,13 @@ if [[ -n "$TAILSCALE_IP" ]]; then
 else
   BIND_HOST="127.0.0.1"
 fi
+
+# Binding 0.0.0.0 above offers the control plane to the whole tailnet, and every
+# mutating route can spawn a worker running with permissions bypassed. Say where
+# the token is; the server logs the full sign-in URL on the run that mints it.
+SETTINGS_FILE="$HOME/.claude/orchestrator-settings.json"
+echo "Sign in with the control-plane token: ${SETTINGS_FILE} → api_token"
+echo "  (open http://<host>:${PORT}/web/?token=<value> once per browser)"
 echo ""
 
 if [[ -n "$PROJECT_DIR" ]]; then

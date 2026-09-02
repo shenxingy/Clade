@@ -18,7 +18,24 @@ set -uo pipefail
 CLAUDE_BIN="${CLADE_CLAUDE_BIN:-$HOME/.local/bin/claude}"
 RESEARCH_DIR="$HOME/.claude/research"
 LOG="$RESEARCH_DIR/radar-cron.log"
-LOCK="/tmp/clade-radar.lock"
+
+# Lock location: a per-user scratch root, never a fixed /tmp path. On a shared
+# host the first account to create /tmp/clade-radar.lock owns it, and every
+# other account's `exec 9>` fails — taking the `|| exit 0` branch BEFORE the
+# first log() call, so the weekly sweep silently never runs and leaves no trace.
+# cron has no XDG_RUNTIME_DIR, so the ${TMPDIR:-/tmp}/clade-$EUID leg inside the
+# helper is the NORMAL path here; $RESEARCH_DIR (already $HOME-private) is the
+# last resort if even that is unusable.
+_RADAR_RUNTIME_LIB="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/../hooks/lib/runtime-dir.sh"
+# shellcheck source=/dev/null
+[[ -f "$_RADAR_RUNTIME_LIB" ]] && . "$_RADAR_RUNTIME_LIB" 2>/dev/null
+if [[ -n "${CLADE_RADAR_LOCK:-}" ]]; then
+  LOCK="$CLADE_RADAR_LOCK"
+elif declare -f clade_runtime_dir >/dev/null 2>&1 && _RADAR_RT=$(clade_runtime_dir 2>/dev/null); then
+  LOCK="$_RADAR_RT/radar.lock"
+else
+  LOCK="$RESEARCH_DIR/.radar.lock"
+fi
 # A sweep that searches, reads, and triages is not a 60-second job; but an
 # unattended run that hangs must not still be holding the lock next week.
 TIMEOUT_SECS="${CLADE_RADAR_TIMEOUT:-2700}"
@@ -33,7 +50,9 @@ if [[ ! -x "$CLAUDE_BIN" ]]; then
 fi
 
 # flock -n: if last week's run is somehow still going, skip rather than stack.
-exec 9>"$LOCK" || exit 0
+# Log the open failure: an unopenable lock used to end the run before the first
+# log line, which is indistinguishable from "cron never fired".
+exec 9>"$LOCK" || { log "SKIP: cannot open lock $LOCK"; exit 0; }
 if ! flock -n 9; then
   log "SKIP: a radar run is already in progress"
   exit 0

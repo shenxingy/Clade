@@ -92,7 +92,17 @@ def test_pipeline_contract_and_resources_ship_to_every_distribution() -> None:
     ):
         assert required in prompt
 
+    # What this actually guards is that the copies match the canonical skill.
+    # Naming every file instead made adding a reference a test failure — the
+    # same doc-drift shape this repo keeps rediscovering, and it fired the day
+    # brand-differentiation.md was added. So derive the set, and keep a floor
+    # underneath it so an empty or gutted canonical directory still fails.
     expected_references = {
+        path.name for path in (CANONICAL / "references").glob("*.md")
+    }
+    expected_scripts = {path.name for path in (CANONICAL / "scripts").glob("*.py")}
+
+    required_references = {
         "platform-android.md",
         "platform-apple.md",
         "platform-cross-platform.md",
@@ -100,8 +110,13 @@ def test_pipeline_contract_and_resources_ship_to_every_distribution() -> None:
         "platform-web.md",
         "platform-windows.md",
         "ui-ux-benchmark.md",
+        # The owner's standing design brief. It was hand-typed at this skill for
+        # five months while the skill held none of it; losing the file again is
+        # the failure worth pinning.
+        "brand-differentiation.md",
     }
-    expected_scripts = {"detect_interface_platform.py"}
+    assert required_references <= expected_references
+    assert expected_scripts == {"detect_interface_platform.py"}
 
     for distributed in (CANONICAL, PLUGIN, MCP):
         assert {

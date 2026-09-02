@@ -139,6 +139,16 @@ change harder to understand, omit it.
 
 ### 4. Choose the visual checkpoint
 
+**Brand surfaces first**: if this is a brand's own site or landing page, if
+sibling products must not look related, or if "make it distinctive" is part of
+the ask, load `references/brand-differentiation.md` and follow it before
+choosing anything visual. It carries the standing constraints — the visual-school
+pool, the four-dimension palette method, the banned default palettes and
+typefaces, the signature-interaction rules, and the anti-laziness checklist.
+Those constraints were being hand-typed into prompts for five months while this
+skill did not contain them; the one thing not to do is design from taste and
+then check the file afterwards.
+
 Decide whether a preview reduces meaningful rework:
 
 | Situation | Default checkpoint |
@@ -313,6 +323,10 @@ Start the implementation handoff with:
 - **Platform**: [detected target(s), inputs, and platform reference loaded]
 - **Design system**: [source and tokens/components used, or none]
 - **Benchmark**: [reference set, reusable pattern, counterexample, rejected choice]
+- **Brand differentiation** (brand surfaces only): [visual school and why; the
+  four palette decisions; typeface and why; signature interaction and how it
+  belongs to both school and subject; and the final test — beside a typical
+  Linear or Vercel site, are these visibly two different companies?]
 - **Native vs custom**: [platform skeleton / product brain / brand expression]
 - **Visual checkpoint**: [real surface / HTML study / native preview / direct implementation — why]
 - **State and motion**: [states covered; each motion's job or no-motion decision]

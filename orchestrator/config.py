@@ -16,6 +16,7 @@ import subprocess
 import time
 from pathlib import Path
 
+from api_auth import generate_token
 from execution_envelope import InvalidExecutionConfig, validate_model_id
 from typing import Any
 
@@ -120,6 +121,13 @@ _SETTINGS_DEFAULTS = {
     # prose for a `tokens: N/N` line the CLI does not emit, i.e. cost 0.0 and a
     # token budget that cannot fire. Kill switch only — see agent_output.py.
     "worker_structured_output": True,
+    # Pass --exclude-dynamic-system-prompt-sections to worker spawns, which
+    # moves cwd / env / memory-path / git-status out of the system prompt and
+    # into the first user message. Every worker gets its own git worktree, so
+    # those sections differ per worker and no two spawns can share a cached
+    # prefix — a fan-out of N is N cache writes at 1.25x base input where N-1
+    # could have been reads at 0.1x. Off restores the old prompt shape.
+    "worker_shared_prompt_cache": True,
     # Refuse to run a worker in the shared checkout when git worktree isolation
     # fails. Off restores the old silent fallback, in which an agent spawned
     # with --dangerously-skip-permissions edits the user's own working tree.
@@ -199,6 +207,10 @@ _SETTINGS_DEFAULTS = {
     "worker_env_allow": ["GH_TOKEN", "GITHUB_TOKEN"],
     "notification_webhook": "",
     "auto_scale": False,
+    # Auto-scale floor: while auto_scale is on and work is pending, keep
+    # spawning until this many workers are running (still bounded by
+    # max_workers, the global cap and the 30s spawn cooldown). Read in
+    # session._autoscale_should_spawn.
     "min_workers": 1,
     "webhook_secret": "",
     # Accept GitHub webhook events with no signature. Off: an unsigned event is
@@ -206,12 +218,23 @@ _SETTINGS_DEFAULTS = {
     # auto_start spawns with permissions bypassed, and start.sh binds 0.0.0.0
     # on a Tailscale host, so "warn and continue" was never a control.
     "webhook_allow_unauthenticated": False,
+    # Bearer token every control-plane route requires. Minted on first start by
+    # ensure_api_token() and stored here, in a file _save_settings() chmods to
+    # 0600 — so the token is readable by the account running the orchestrator
+    # and by nobody else on the machine. Rotate by clearing this key and
+    # restarting, or by POSTing a new value.
+    "api_token": "",
+    # Serve the control plane with no authentication at all. Off, and the same
+    # deliberate-opt-out shape as webhook_allow_unauthenticated above: with no
+    # token configured the server rejects rather than opens, because every
+    # mutating route here can spawn a worker that runs with permissions
+    # bypassed. Turn this on only for a single-user host you fully control.
+    "api_allow_unauthenticated": False,
     "coverage_scan": False,
     "dep_update_scan": False,
     "mutation_scan": False,  # patrol lane: mutmut survivors → test-gap tasks (ratchet)
     "mutation_targets": [],  # paths to mutate (project-relative); empty = lane no-ops
     "patrol_schedule": "",
-    "patrol_auto_ideas": False,
     "research_schedule": "",
     "usage_provider": "claude",
     "minimax_api_key": "",
@@ -305,36 +328,15 @@ _SETTINGS_DEFAULTS = {
     # today's behavior (raw text hydrated verbatim). Fail-open: a distillation
     # error/timeout falls back to the raw text — this never blocks hydration.
     "hydration_distillation": False,
+    # Kill switch for the reaction subsystem (orchestrator/reactions.py),
+    # read in worker.py when the executor is constructed. The rule list
+    # itself is NOT a setting: reactions.ReactionExecutor.DEFAULT_CONFIGS is
+    # the single source of truth. A "reaction_configs" key lived here until
+    # 2026-09 carrying a drifted copy of 3 of those 5 rules that nothing
+    # ever read — and because __init__ replaces rather than merges, wiring
+    # it would have deleted two rules for anyone who copied the generated
+    # reference file.
     "reactions_enabled": True,
-    "reaction_configs": [
-        {
-            "name": "repeated_tool_failure",
-            "event_type": "error",
-            "event_match": r"(?:tool|command).*failed|exit code [1-9]",
-            "threshold": 3,
-            "window_seconds": 300,
-            "action": "escalate",
-            "action_payload": {"strategy": "suggest_alternative"},
-        },
-        {
-            "name": "same_tool_repeated",
-            "event_type": "tool_call",
-            "event_match": r"^(?:bash|shell|exec):",
-            "threshold": 5,
-            "window_seconds": 180,
-            "action": "warn",
-            "action_payload": {"message": "Same tool called 5+ times — consider alternative approach"},
-        },
-        {
-            "name": "loop_detected",
-            "event_type": "state_change",
-            "event_match": r"loop.*detected",
-            "threshold": 1,
-            "window_seconds": 0,
-            "action": "abort",
-            "action_payload": {"message": "Behavioral loop detected — aborting task"},
-        },
-    ],
 }
 
 
@@ -417,6 +419,31 @@ def _save_settings(s: dict) -> None:
 
 
 GLOBAL_SETTINGS: dict = _load_settings()
+
+
+# ─── Control-plane token ──────────────────────────────────────────────────────
+
+
+def ensure_api_token() -> tuple[str, bool]:
+    """Return the control-plane token, minting and persisting one if unset.
+
+    Returns ``(token, minted)`` so the caller can log the full sign-in URL only
+    on the run that created the token, rather than reprinting a live credential
+    into the log on every restart.
+
+    Called from the server's lifespan startup. Anything that imports this module
+    without starting the server — the test suite, the CLIs — leaves the token
+    alone, so importing does not write to the user's settings file.
+    """
+
+    existing = str(GLOBAL_SETTINGS.get("api_token") or "").strip()
+    if existing:
+        return existing, False
+    token = generate_token()
+    GLOBAL_SETTINGS["api_token"] = token
+    _save_settings(GLOBAL_SETTINGS)
+    return token, True
+
 
 # ─── Project Scanner ──────────────────────────────────────────────────────────
 

@@ -1,6 +1,6 @@
 [English](README.md) | **中文**
 
-# clade-mcp 0.2.0
+# clade-mcp 0.3.1
 
 Provider-neutral MCP server，将 **34 个 Clade coding skills** 暴露为可调用工具。
 Skill prompt 可以通过 Claude 或 Codex 执行，适用于 Claude Desktop、Cursor、
@@ -8,7 +8,7 @@ Windsurf 及其他 MCP 客户端。
 
 它是 [Clade](https://github.com/shenxingy/clade) 自主编码框架的一部分。
 
-## 0.2.0 新功能
+## 0.3.1 新功能
 
 - 通过 `codex exec --json` 原生执行 Codex runtime
 - `CLADE_RUNTIME=auto`：优先使用已安装的 Claude，否则使用 Codex

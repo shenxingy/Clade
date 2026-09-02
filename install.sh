@@ -441,6 +441,53 @@ if command -v jq &>/dev/null && [[ -f "$CLAUDE_DIR/settings.json" ]]; then
   fi
 fi
 
+# ─── 8c. Optional: standing multi-agent orchestration (--ultracode) ──
+# Off unless asked for. `ultracode: true` makes Claude Code plan a Workflow for
+# every substantive task instead of waiting to be asked — the difference between
+# "I told it to open agents" and "it opens them". Verified in the 2.1.258
+# settings schema: "Enable ultracode for the session: xhigh effort plus standing
+# dynamic-workflow orchestration. Requires workflows to be enabled and an
+# xhigh-capable model."
+#
+# NOT a default, deliberately. It raises effort to xhigh and authorises
+# multi-agent fan-out on ordinary tasks, so it spends materially more per turn.
+# That is the right trade for someone driving a fleet from the terminal and the
+# wrong one for someone who installed this to get a commit hook.
+#
+# workflowSizeGuideline bounds the blast radius: small <5 agents, medium <15
+# (the default when unset), large <50.
+_ultracode_requested=false
+_ultracode_size="medium"
+for arg in "$@"; do
+  [[ "$arg" == "--ultracode" ]] && _ultracode_requested=true
+  if [[ "$arg" == --ultracode=* ]]; then
+    _ultracode_requested=true
+    _ultracode_size="${arg#--ultracode=}"
+  fi
+done
+if [[ "$_ultracode_requested" == true ]]; then
+  case "$_ultracode_size" in
+    small|medium|large) ;;
+    *) echo "  WARNING: --ultracode=$_ultracode_size is not small|medium|large; using medium"
+       _ultracode_size="medium" ;;
+  esac
+  if command -v jq &>/dev/null && [[ -f "$CLAUDE_DIR/settings.json" ]]; then
+    # Merge, never replace: settings.json holds the user's own keys.
+    if jq --arg sz "$_ultracode_size" \
+         '. + {ultracode: true, workflowSizeGuideline: $sz}' \
+         "$CLAUDE_DIR/settings.json" > "$CLAUDE_DIR/.settings.json.$$" 2>/dev/null; then
+      mv "$CLAUDE_DIR/.settings.json.$$" "$CLAUDE_DIR/settings.json"
+      echo "  Standing multi-agent orchestration ON (ultracode, workflowSizeGuideline=$_ultracode_size)"
+      echo "    Turn it off with: jq 'del(.ultracode)' ~/.claude/settings.json"
+    else
+      rm -f "$CLAUDE_DIR/.settings.json.$$"
+      echo "  WARNING: could not set ultracode in settings.json"
+    fi
+  else
+    echo "  WARNING: --ultracode needs jq and an existing $CLAUDE_DIR/settings.json"
+  fi
+fi
+
 # ─── 9. Set up shell aliases (cc + claude bypass) ────────────────────
 
 echo "Configuring shell aliases..."
@@ -503,6 +550,71 @@ find "$SCRIPT_DIR/configs" -type f \
   | LC_ALL=C sort | xargs "${_SHA256[@]}" 2>/dev/null \
   | "${_SHA256[@]}" | cut -d' ' -f1 > "$CLAUDE_DIR/.kit-checksum"
 echo "  Written .kit-source-dir + .kit-checksum for stale-script detection"
+
+# ─── 11b. Report installed files this repo does not install ──────────
+# Skills are MIRRORED (rm -rf per skill dir, see the skills loop above), but
+# hooks and scripts are plain copies — nothing ever prunes them. A file an
+# older version of this repo deployed, or one dropped in by hand, therefore
+# survives every reinstall unseen.
+#
+# Report only, never delete: 0164075 backported iloop-hook.sh after 909092f
+# had deleted it, so "absent from the repo today" is not the same as "safe to
+# remove", and ~/.claude/hooks is shared with whatever else the user installs.
+#
+# The expected set is what install.sh DEPLOYS, not what configs/ contains.
+# Deriving it from configs/ alone reports ~/.claude/scripts/mcp_server.py —
+# installed above from orchestrator/mcp_server.py — as an orphan.
+{
+  _clade_unowned() {
+    local dir="$1"
+    local expected="$2"
+    local installed
+    [[ -d "$dir" ]] || return 0
+    installed=$(
+      for _f in "$dir"/*; do
+        [[ -f "$_f" ]] && printf '%s\n' "${_f##*/}"
+      done
+    )
+    comm -23 \
+      <(printf '%s\n' "$installed" | grep -v '^$' | LC_ALL=C sort) \
+      <(printf '%s\n' "$expected" | grep -v '^$' | LC_ALL=C sort -u)
+  }
+
+  _expected_hooks=$(
+    for _f in "$SCRIPT_DIR/configs/hooks/"*.sh; do
+      [[ -f "$_f" ]] && printf '%s\n' "${_f##*/}"
+    done
+  )
+  _expected_scripts=$(
+    for _f in "$SCRIPT_DIR/configs/scripts/"*.sh "$SCRIPT_DIR/configs/scripts/"*.py; do
+      [[ -f "$_f" ]] && printf '%s\n' "${_f##*/}"
+    done
+    # Installed out of configs/ — keep in step with the mcp_server.py copy above.
+    printf '%s\n' "mcp_server.py"
+  )
+
+  _unowned=""
+  while IFS= read -r _name; do
+    [[ -n "$_name" ]] && _unowned+="  hooks/$_name"$'\n'
+  done < <(_clade_unowned "$CLAUDE_DIR/hooks" "$_expected_hooks")
+  while IFS= read -r _name; do
+    [[ -n "$_name" ]] && _unowned+="  scripts/$_name"$'\n'
+  done < <(_clade_unowned "$CLAUDE_DIR/scripts" "$_expected_scripts")
+
+  if [[ -n "$_unowned" ]]; then
+    _unowned_count=$(printf '%s' "$_unowned" | grep -c '^')
+    echo ""
+    echo "Files in ~/.claude/hooks and ~/.claude/scripts that Clade does not install:"
+    printf '%s' "$_unowned" | head -20
+    if [[ "$_unowned_count" -gt 20 ]]; then
+      echo "  ... and $((_unowned_count - 20)) more"
+    fi
+    echo "  Clade never removes these. Review and delete manually if unwanted."
+  fi
+
+  unset -f _clade_unowned
+  unset _expected_hooks _expected_scripts _unowned _unowned_count _name _f
+} || true
 
 # ─── 12. Summary ─────────────────────────────────────────────────────
 
@@ -581,6 +693,11 @@ echo "Optional — enable memory sync across machines:"
 echo "  ./install.sh --sync                       # auto-detect NFS or GitHub"
 echo "  ./install.sh --sync=nfs:/path/to/nfs      # specify NFS path"
 echo "  ./install.sh --sync=github                # force GitHub backend"
+echo ""
+echo "Optional — standing multi-agent orchestration (spends materially more):"
+echo "  ./install.sh --ultracode                   # plan a workflow per task, <15 agents"
+echo "  ./install.sh --ultracode=large             # same, up to 50 agents"
+echo "  ./install.sh --ultracode=small             # same, under 5 agents"
 echo ""
 echo "If Clade saves you time, a star helps others find it:"
 echo "  https://github.com/shenxingy/Clade"

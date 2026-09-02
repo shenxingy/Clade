@@ -16,25 +16,39 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # from _score_task being scheduled during import_from_proposed tests).
 # Pure functions (_extract_tldr_sections) are loaded from the real module so they
 # can be tested directly in test_worker_modules.py.
+#
+# Six of those pure functions moved to repo_map.py when worker_tldr was split, so
+# repo_map gets the same treatment: real bodies for the deterministic helpers,
+# a stub for _generate_code_tldr (mocked for tree-walk speed, not to avoid an
+# LLM call — it makes none). Dropping either mock silently changes what a large
+# part of the suite exercises.
 import importlib.util as _ilu
 
-_wt_spec = _ilu.spec_from_file_location(
-    "worker_tldr_real",
-    Path(__file__).parent.parent / "worker_tldr.py",
+_rm_spec = _ilu.spec_from_file_location(
+    "repo_map_real",
+    Path(__file__).parent.parent / "repo_map.py",
 )
-_wt_real = _ilu.module_from_spec(_wt_spec)
-_wt_spec.loader.exec_module(_wt_real)  # type: ignore[union-attr]
+_rm_real = _ilu.module_from_spec(_rm_spec)
+_rm_spec.loader.exec_module(_rm_real)  # type: ignore[union-attr]
 
+_mock_repo_map = MagicMock()
+_mock_repo_map._generate_code_tldr = MagicMock(return_value="")
+_mock_repo_map._extract_tldr_sections = _rm_real._extract_tldr_sections
+_mock_repo_map._extract_entity_name = _rm_real._extract_entity_name
+_mock_repo_map._prune_tldr_to_entities = _rm_real._prune_tldr_to_entities
+_mock_repo_map._parse_fault_entity_names = _rm_real._parse_fault_entity_names
+_mock_repo_map._keyword_filter_tldr = _rm_real._keyword_filter_tldr
+_mock_repo_map._span_evict_tldr = _rm_real._span_evict_tldr
+# worker_tldr._localize_tldr_for_task calls this one through the module, and
+# test_pure_judge_flags drives that coroutine against the REAL worker_tldr — an
+# auto-MagicMock here makes its centrality comparison raise TypeError.
+_mock_repo_map._pagerank_centrality = _rm_real._pagerank_centrality
+sys.modules.setdefault("repo_map", _mock_repo_map)
+
+# worker_tldr keeps only the two coroutines that spend money.
 _mock_worker_tldr = MagicMock()
 _mock_worker_tldr._score_task = AsyncMock(return_value=None)
-_mock_worker_tldr._generate_code_tldr = MagicMock(return_value="")
-_mock_worker_tldr._extract_tldr_sections = _wt_real._extract_tldr_sections
 _mock_worker_tldr._localize_tldr_for_task = AsyncMock(return_value="")
-_mock_worker_tldr._extract_entity_name = _wt_real._extract_entity_name
-_mock_worker_tldr._prune_tldr_to_entities = _wt_real._prune_tldr_to_entities
-_mock_worker_tldr._parse_fault_entity_names = _wt_real._parse_fault_entity_names
-_mock_worker_tldr._keyword_filter_tldr = _wt_real._keyword_filter_tldr
-_mock_worker_tldr._span_evict_tldr = _wt_real._span_evict_tldr
 sys.modules.setdefault("worker_tldr", _mock_worker_tldr)
 
 _wr_spec = _ilu.spec_from_file_location(

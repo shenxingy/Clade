@@ -93,9 +93,17 @@ USED=$((TOTAL - REMAINS))
 USAGE_PCT=$(awk "BEGIN {printf \"%.1f\", ($USED/$TOTAL)*100}")
 
 # ─── Calculate pace ───
-now=$(date +%s)
-day_of_month=$(date +%-d)
-days_in_month=$(date -d "$(date -d "+1 month" +%Y-%m-01) -1 day" +%d)
+# BSD date (macOS, a documented platform) has neither `-d` nor the glibc `%-d`
+# padding extension, so both of these produced an EMPTY days_in_month — and with
+# no `set -e` the script carried on to divide by nothing in awk below and to
+# evaluate `$((days_in_month - day_of_month))`. python3 is already a hard
+# dependency (the API response is parsed with it above), so this adds none.
+_dates=$(python3 -c 'import calendar,datetime; d=datetime.date.today(); print(d.day, calendar.monthrange(d.year,d.month)[1])' 2>/dev/null)
+day_of_month=${_dates%% *}
+days_in_month=${_dates##* }
+# Explicit numeric guard: an empty or malformed value must not reach the awk
+# division or the arithmetic expansion.
+[[ "$day_of_month" =~ ^[0-9]+$ && "$days_in_month" =~ ^[0-9]+$ ]] || { day_of_month=1; days_in_month=30; }
 elapsed_pct=$(awk "BEGIN {printf \"%.1f\", ($day_of_month/$days_in_month)*100}")
 delta=$(awk "BEGIN {printf \"%.1f\", $USAGE_PCT - $elapsed_pct * 0.95}")
 remaining_days=$((days_in_month - day_of_month))

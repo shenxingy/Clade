@@ -2,7 +2,7 @@
 
 ## Project Type
 - Type: cli + skill-system
-- Frontend: Vite + React + TypeScript UI under orchestrator/web/src/ (served from web/dist; not the primary interface)
+- Frontend: Vite + React + TypeScript UI under orchestrator/web/src/. `web/dist` is the ONLY servable root — `orchestrator/start.sh` builds it on first run, or `cd orchestrator/web && npm ci && npm run build` by hand. Without it `/web` returns 503 naming that command; `web/` itself is a source tree and is never mounted, and `/` redirects to `/web/`.
 - Backend: FastAPI (orchestrator/, port 8000) — optional, CLI layer works standalone
 - Test command: cd orchestrator && .venv/bin/python -m pytest tests/ -v
 - Verify command: cd orchestrator && find . \( -name .venv -o -name node_modules -o -name __pycache__ \) -prune -o -name "*.py" -print | xargs -n1 .venv/bin/python -m py_compile
@@ -70,6 +70,23 @@ python3 configs/scripts/red-phase-audit.py 30
 # clean 0% exactly like a clean codebase — this one has done that before.
 python3 configs/scripts/red-phase-audit.py --self-test
 
+# 2c. Same question of the polling instrument. `workflow-scorecard.py --polls`
+#     counts repeated status reads per background job; its mutation guard once
+#     matched the `>/` of `2>/dev/null`, so every session reported zero.
+python3 configs/scripts/workflow-scorecard.py --self-test
+
+# How well did a multi-agent run use its parallelism? Every Workflow run writes
+# per-agent transcripts under ~/.claude*/projects/<slug>/<session>/subagents/
+# workflows/, and until 2026-09-02 nothing read them: /retro mines git history,
+# session-scorecard.sh mines corrections, and the PROCESS went unmeasured.
+# Measured across 89 parallel runs on this account (1777 agents, 49.9h): 45% of
+# all makespan was spent with exactly ONE agent still running, and 55 of the 89
+# had a tail over 15%. The shape matters more than the agent count — a
+# 110-agent pipeline() scored 80% utilisation with a 0% tail, while a 10-agent
+# parallel() barrier scored 55% with 19%.
+python3 configs/scripts/workflow-scorecard.py --project Clade --since 7
+python3 configs/scripts/workflow-scorecard.py --since 0 --json   # all runs, machine-readable
+
 # Native Codex plugin — regenerate after changing a shipped canonical skill
 python3 configs/scripts/regen-codex-plugin.py
 python3 configs/scripts/regen-codex-plugin.py --check
@@ -90,15 +107,40 @@ python3 configs/scripts/regen-codex-plugin.py --check
   selection stays the user's.
 
 **Correction-pairing pipeline** (the learn-from-corrections loop — captures the "AI did X → it got rejected" pair so a rule is grounded in the real diff, not just words):
-- `edit-shadow-detector.sh` (PostToolUse, async) logs files Claude writes → session-keyed shadow at `/tmp/claude-edit-shadows/session-<session_id>.jsonl`
+- `edit-shadow-detector.sh` (PostToolUse, async) logs files Claude writes → session-keyed shadow at `<runtime>/claude-edit-shadows/session-<session_id>.jsonl`, where `<runtime>` is `$XDG_RUNTIME_DIR/clade` or `${TMPDIR:-/tmp}/clade-$EUID` (`configs/hooks/lib/runtime-dir.sh`) — a fixed `/tmp` path is squattable, and on this 40-account host it silently disabled pairing for every account but the one that created the directory
 
 **Per-attempt checkpoints** (separate from the correction pipeline above): `worker-checkpoint.sh` (PostToolUse Edit|Write, async) commits the whole worktree into a shadow repo OUTSIDE it, once per agent write. A worker commits exactly once — at the end of verification — and `stop()` force-removes the worktree, so "correct at call 14, wrong at 15" had no record. A separate `--git-dir` means a separate index, so checkpoints cannot contend with the worker's own commits (measured, see `tests/test-hooks.sh`). The final SHA and count land in the evidence bundle before cleanup deletes the repo. Setting: `worker_checkpoint_shadow`.
-- `revert-detector.sh` (PreToolUse Bash, async) on `git revert/reset/restore` cross-refs that shadow → writes `reverted_files` + `repeat` into `~/.claude/corrections/history.jsonl`
+- `revert-detector.sh` (PreToolUse Bash, async) on `git revert/reset/restore` cross-refs that shadow **against the command's own pathspec** → writes `reverted_files` (the intersection), `session_files` (the loose session list, under its true name), `revert_scope`, `revert_paths` and `repeat` into `~/.claude/corrections/history.jsonl`. `repeat` is meaningful only when `revert_scope` is `paths`: `git revert` takes no pathspec, `git reset --hard` cannot take one, and the hook is async, so for those the file set is not knowable at hook time — `reverted_files` is `[]` and `repeat` is `null`. Records written before 2026-09 carry the old semantics.
 - `correction-detector.sh` (UserPromptSubmit, **sync**) on an explicit "that's wrong" surfaces those rejected files into the rule-extraction context
+- **Nothing raw is persisted:** `correction-detector.sh` masks the prompt through
+  `redact.py` before any disk write, and all three persistence sites consume the
+  masked value. Redaction runs *after* the correction gate — this is a sync
+  `UserPromptSubmit` hook, so python3 must not spawn on prompts that write
+  nothing — and *before* `cp_bound_prompt`, since clipping first can cut a token
+  below its detection threshold and persist a partial credential. With python3
+  unavailable the hook detects with a fallback pattern and **withholds the whole
+  prompt** rather than substituting: those patterns are fixed-count, so a
+  substitution masks a token's prefix and leaves its tail on disk (measured: 16
+  of 48 characters survived).
 - **The gate is the wiring, not code:** the two silent-signal hooks are `async` (output never fed back) → a bare revert stays data-only; only an explicit correction (sync hook) escalates to context. `repeat=true` is stored for auto-audit but never auto-writes a rule (avoids noise).
-- Shared helpers: `hooks/lib/correction-pair.sh` (session key + shadow read). `history.jsonl`/shadow are compact JSONL (one object per line). Tests: `tests/test-correction-pairing.sh`.
+- Shared helpers: `hooks/lib/correction-pair.sh` (session key + shadow read) and `hooks/lib/runtime-dir.sh` (per-user scratch root; fails closed on a squatted path — not a symlink, owned by our euid, mode 0700). `history.jsonl`/shadow are compact JSONL (one object per line). Tests: `tests/test-correction-pairing.sh`.
 
-### Orchestrator Layer (`orchestrator/`)
+### Orchestrator Layer (`orchestrator/`) — DORMANT as of 2026-09-02
+
+> **The GUI is not in use.** The owner works entirely in the terminal; the
+> FastAPI server, its React UI and the worker-pool / task-queue / routing /
+> evidence stack behind them are deliberately dormant. It may be rebuilt, so
+> nothing here is deleted and CI keeps it green — but this is **not**
+> load-bearing code, and a finding here does not weigh the same as one on the
+> terminal path (`configs/` skills, hooks, scripts, and the Codex plugin).
+>
+> The measurable consequence, and the reason this note exists: no `tasks.db` on
+> the author's host carries the current schema and no evidence store exists, so
+> every number this repository has about worker parallelism actually comes from
+> Claude Code's own Workflow/subagent layer — which this orchestrator does not
+> control. Auditing an unrun system as if it were load-bearing is how effort
+> gets spent on a control that never applies.
+
 Key modules (import DAG — leaf → root):
 
 ```
@@ -111,11 +153,13 @@ agent_output.py      ← stdlib-only contract for reading a spawned agent's own 
 pytest_report.py     ← stdlib-only pytest-output contract: colour-proof result parsing, verbosity normalization, colour-free subprocess env (shared by worker_utils, worker_tldr, evals/)
 ideas.py             ← IdeasManager, async idea CRUD
 process_manager.py   ← ProcessPool, start.sh lifecycle
-worker_tldr.py       ← TLDR generation, localization, fault location, scoring (imports fault_localize)
+repo_map.py          ← deterministic repository-structure analysis: AST/tree-sitter TLDR, entity pruning, PageRank centrality. Pure and synchronous — no LLM call, no subprocess, no DB (imports fault_localize)
+worker_tldr.py       ← task-specific localization, fault location, SBFL, repro-test generation, scoring — the half that spends money (imports repo_map, fault_localize)
 worker_review.py     ← oracle + PR review
 worker_utils.py      ← output helpers, lint reflection, LoopDetectionService, worker-state helpers
 worker_hydrate.py    ← _pre_hydrate (GitHub issue/PR pre-hydration)
 condensers.py        ← Condenser ABC + implementations
+api_auth.py          ← stdlib-only bearer-token guard for the control plane (ASGI middleware, so it covers websockets too) + settings-secret masking
 runtime_redaction.py ← stdlib-only secret/path redaction before persistence
 evidence_bundle.py   ← versioned immutable attempt evidence + digest-chain contract
 event_stream.py      ← crash-safe JSONL event logging
@@ -124,7 +168,6 @@ reactions.py         ← ReactionExecutor
 error_classifier.py  ← error classify/summarize + retry decisions
 session_tree.py      ← SessionTree
 usage_tracker.py     ← multi-machine ccusage ingestion (used by routes/usage.py)
-compression_feedback.py ← compression UX feedback (consumed by /handoff skill)
 execution_envelope.py ← versioned immutable execution contract (runtime/provider/protocol/model split)
 worker_envelope.py   ← versioned terminal contract emitted by workers
 handoff_registry.py  ← typed worker-handoff schemas + prompt-safe projections
@@ -181,6 +224,17 @@ routes/providers.py  ← Secret-safe provider/model registry inspection + refres
 Every `orchestrator/*.py` and `orchestrator/routes/*.py` must appear above —
 CI's "Architecture map coverage" gate fails on any module missing from this file.
 
+`orchestrator/task_factory/` is excluded from that gate by `check-arch-map.py`'s
+`SKIP_DIRS`, so its four modules are listed here for the reader rather than
+enforced. All four are lazy-imported from `session.py`:
+
+```
+ci_watcher.py     ← failed GitHub Actions run → task
+coverage_scan.py  ← coverage gap → task
+dep_update.py     ← outdated dependency → task
+mutation_scan.py  ← surviving mutant → task
+```
+
 ### Key File Map
 | File | Purpose |
 |------|---------|
@@ -198,7 +252,8 @@ CI's "Architecture map coverage" gate fails on any module missing from this file
 | `worker_runtime.py` | Runtime route resolution and fail-closed task outcome persistence |
 | `worker_sandbox.py` | Landlock ruleset that PREVENTS the git control-surface escape `worker_git_surface_guard` only detects (`worker_sandbox`, default off) |
 | `worker_evidence.py` | Evidence attempt lifecycle, Git/test/oracle/cost/artifact projection, and terminal delivery candidate |
-| `worker_tldr.py` | `_generate_code_tldr`, `_score_task` — TLDR + scoring (leaf) |
+| `repo_map.py` | `_generate_code_tldr`, `_pagerank_centrality`, `_keyword_filter_tldr` — builds the map of a repository. Split out of `worker_tldr.py` at 1459 of the 1500-line ceiling; the boundary is "map the repo" vs "narrow that map to a task", and the purity of this half is what the split buys |
+| `worker_tldr.py` | `_localize_tldr_for_task`, `_localize_fault`, `_sbfl_prepass`, `_score_task` — narrows the map for one task |
 | `agent_output.py` | `parse_agent_output` / `absorb_agent_result` — the agent's self-reported `total_cost_usd` and usage, and the prose projection every log consumer reads (leaf) |
 | `pytest_report.py` | `parse_results` / `force_verbose` / `color_free_env` — the one definition of how pytest output is read back (leaf) |
 | `worker_review.py` | `_write_pr_review`, `_oracle_review`, `_write_progress_entry` (leaf) |
@@ -214,10 +269,11 @@ CI's "Architecture map coverage" gate fails on any module missing from this file
 | `routes/workers.py` | Worker control + inspection routes (9 handlers) |
 | `routes/ideas.py` | Ideas API routes (CRUD, evaluate, execute, promote) |
 | `webhook_trust.py` | `is_trusted_actor` — a signature proves the event came from GitHub, not that its author may direct a permission-bypassed worker |
+| `api_auth.py` | `TokenAuthMiddleware` — default-closed authorisation for all 93 routes and both websockets. Middleware, not per-route `Depends`, because the next route added would silently forget the dependency and because `BaseHTTPMiddleware` never sees a websocket scope |
 | `routes/usage.py` | Usage dashboard API routes |
 | `web/src/` | Vite + React + TypeScript UI source (App.tsx, components/, stores/, hooks/, lib/) |
-| `web/index.html` | Vite shell (`<div id="root">` + main.tsx); server serves `web/dist` build when present |
-| `web/usage.html` | Standalone usage dashboard (served at `/web/usage.html`) |
+| `web/index.html` | Vite *source* shell (`<div id="root">` + main.tsx) — the build entry, never served. It loads `/src/main.tsx`, which no browser executes. |
+| `web/usage.html` | Standalone usage dashboard. Served by an explicit route registered BEFORE the `/web` mount — `vite.config.ts` declares no `publicDir`, so the build never copies it into `dist/` and the mount alone 404s it on every machine that built. |
 
 ## Settings
 
@@ -225,7 +281,7 @@ Global settings stored at `~/.claude/orchestrator-settings.json`. Defaults defin
 
 ## DB Migrations
 
-Add try/except `ALTER TABLE` blocks in `task_schema.py:ensure_schema()`. New columns added to `_ALLOWED_TASK_COLS` in `config.py`.
+Add try/except `ALTER TABLE` blocks in `task_schema.py:ensure_schema()`. New columns added to `_ALLOWED_TASK_COLS` in `config.py`. And remove the new column from `LEGACY_SCHEMA` in `orchestrator/tests/test_task_schema_upgrade.py`, so the upgrade-path test actually exercises the migration — on a fresh DB the column is already in the CREATE block and the ALTER can only fail into a bare `except`.
 
 ## Commits
 
@@ -236,12 +292,55 @@ committer "type: message" file1 file2 file3
 
 Conventional commit types: `feat` / `fix` / `refactor` / `test` / `chore` / `docs` / `perf`
 
+## Release Versioning
+
+One base version spans every surface, and until 2026-09-02 nothing said so —
+which is how mcp-package sat at 0.2.0 for 241 commits while the plugin manifests
+advertised 0.3.1.
+
+`plugins/clade/.codex-plugin/plugin.json` is CANONICAL and hand-maintained.
+`regen-cc-plugin.py:canonical_version()` strips the `+codex.<stamp>` build
+metadata and writes the base into `.claude-plugin/plugin.json` and
+`marketplace.json`, so never hand-edit those two — the drift gate reverts you.
+The stamp exists to bust the Codex plugin cache; refresh it whenever generated
+plugin content changes.
+
+The same base must appear at five mcp-package sites, none of them generated:
+
+```
+mcp-package/pyproject.toml             version = "x.y.z"
+mcp-package/server.json                "version"  (twice: server, and the pypi pin)
+mcp-package/src/clade_mcp/__init__.py  __version__
+mcp-package/src/clade_mcp/server.py    SERVER_VERSION  ← what clients are told
+```
+
+Both package READMEs carry it in prose on their first lines as well.
+`test_clade_mcp_runtime.py::test_release_version_surfaces_are_aligned` is the
+only gate over any of this, it covers the mcp-package half only, and its
+`expected` is a hard-coded literal — so cutting a release means editing the
+gate, which is the hand-sync it was meant to prevent. Deriving it from
+`pyproject.toml` and extending it to the plugin manifests is open work.
+
 ## CI (GitHub Actions)
 
 Before committing, ensure CI will pass by running locally:
 ```bash
 # 1. Python syntax check (all modules — same find-based sweep CI runs)
 cd orchestrator && find . \( -name .venv -o -name node_modules -o -name __pycache__ \) -prune -o -name "*.py" -print | xargs -n1 .venv/bin/python -m py_compile
+
+# 1b. Python lint gate. py_compile proves a file PARSES; it cannot see a name
+#     that is never bound. Both F821 hits on this gate's first run were live
+#     NameErrors that had shipped under a green syntax gate — Worker.stop()
+#     called an unimported preserve_worktree_wip, so every worker stop path
+#     raised before cleanup. Rules and the MEASURED ignore baseline live in
+#     orchestrator/ruff.toml; the version is pinned in requirements-dev.txt and
+#     CI reads it from there. `--config` is not optional: the file sits under
+#     orchestrator/ but governs the whole tree. The ignore list shrinks and
+#     never grows; BLE001 (435 blind excepts, 89 swallowing into a bare pass)
+#     is deliberately not selected yet. [lint.per-file-ignores] is NOT a
+#     baseline — it parks known live NameErrors, and each entry must be deleted
+#     in the same commit as its fix.
+ruff check --config orchestrator/ruff.toml .
 
 # 2. Tests, plus the two offline evals the same `pytest` job runs
 cd orchestrator && .venv/bin/python -m pytest tests/ -v
@@ -252,6 +351,13 @@ cd orchestrator && .venv/bin/python evals/run_hack_eval.py
 #     control. A harness that cannot fire reports a clean 0% exactly like a
 #     clean codebase — this one has shipped that failure before.
 python3 configs/scripts/red-phase-audit.py --self-test
+
+# 2c. Same question of the polling instrument, in the same `pytest` job.
+#     `workflow-scorecard.py --polls` counts repeated status reads per
+#     background job; its mutation guard matched the `>/` of `2>/dev/null`, so
+#     every session ever scanned reported zero polls and the number read as
+#     discipline. Second instrument in this repo to ship unable to fire.
+python3 configs/scripts/workflow-scorecard.py --self-test
 
 # 3. Shell syntax check (hooks, scripts, installer)
 bash -n configs/hooks/*.sh configs/scripts/*.sh install.sh
@@ -301,16 +407,28 @@ python3 configs/scripts/check-action-pinning.py
 #      table stopped at Phase 13 while TODO tracked a finished Phase 14.
 python3 configs/scripts/check-roadmap-authority.py
 
+# 10d. Progress-log cap — the /sync skill caps PROGRESS.md at 100 lines and
+#      prescribes docs/progress-archive/. Stated in prose only, the file reached
+#      1,209 lines and the directory was never created. Same shape as every
+#      other drift here: a rule nothing checked.
+python3 configs/scripts/archive-progress.py --check      # --apply to archive
+
+# 10e. Layer declaration — docs/layers.json says which surfaces actually run and
+#      how much a finding in each is worth. The /review, /cso and /next skills
+#      read it. It exists because an audit spent most of its effort on the
+#      dormant orchestrator and nothing in the tree said it was dormant.
+python3 configs/scripts/check-layers.py
+
 # 11. Shellcheck (CI installs shellcheck; local may not). The `bash` prefix is
 #     required — checks.sh is mode 100644, so invoking it directly exits 126 —
 #     and the file list must match CI's, which is every hook and script plus
 #     the installer. The line here used to be neither: it ran one file, and
 #     did not run at all.
-bash configs/scripts/checks.sh shellcheck configs/hooks/*.sh configs/scripts/*.sh install.sh
+bash configs/scripts/checks.sh shellcheck configs/hooks/*.sh configs/hooks/lib/*.sh configs/scripts/*.sh install.sh
 
-# 12. Every suite the `shell-tests` job runs — all 18, not a convenient subset
+# 12. Every suite the `shell-tests` job runs — all 19, not a convenient subset
 for t in loop checks skill-routing pr-scope-policy audit worktree-env \
-         rule-injector mailbox-drain correction-pairing hooks \
+         rule-injector mailbox-drain correction-pairing hooks session-scorecard \
          post-compact-reinject context-warning-drain ensure-dev-server \
          quiet-run scan-health pre-tool-guardian loop-args memory-watchdog; do
   bash "tests/test-$t.sh" >/dev/null || echo "FAILED: $t"
@@ -351,8 +469,8 @@ enforces that yet, which is precisely why it keeps recurring.
 
 On push/PR to `main`, four workflow files fire:
 
-- `ci.yml` — `syntax-check` (11 gates), `pytest` (suite + 2 offline evals),
-  `shell-tests` (18 suites), `install-test`. `run_hack_eval.py` scores
+- `ci.yml` — `syntax-check` (19 gates), `pytest` (suite + 2 offline evals),
+  `shell-tests` (19 suites), `install-test`. `run_hack_eval.py` scores
   `judge_diversity.test_integrity` against the labelled reward-hack corpus in
   `evals/hack_cases/` — read its README before changing either, because that
   gate's floor and ceiling are measured, not chosen.
@@ -385,11 +503,41 @@ confirm the check list actually grew before reading green as evidence.
 - Settings → `config.py:_SETTINGS_DEFAULTS` only
 - DB migrations → try/except ALTER TABLE in `task_schema.ensure_schema()`
 - Never return `error.message` in 500 responses
+- `orchestrator/mcp_server.py` and `mcp-package/src/clade_mcp/server.py` serve an
+  asyncio event loop, and the MCP SDK dispatches `tools/call` concurrently. Every
+  shellout there must be `asyncio.create_subprocess_*` + `wait_for`, or
+  `asyncio.to_thread`; a bare `subprocess.run` freezes every concurrent MCP call
+  for the whole timeout.
+- Shipped hooks and scripts target bash 3.2 and a BSD userland — macOS is a
+  documented platform. Reach for capability detection with a fallback
+  (`command -v X`, `stat -c … || stat -f …`), not `uname` branching. A script
+  that genuinely needs bash 4 carries the `BASH_VERSINFO` re-exec guard from
+  `run-tasks-parallel.sh`. Per-user runtime state goes through
+  `configs/hooks/lib/runtime-dir.sh`, never a fixed `/tmp` path.
 - If you fan out your own Task-tool subagents within one task: **serialize any
   subagent that writes/builds/runs tests** (they race on the same worktree's
   build artifacts and test state); reads (grep/analysis/research) may run in
   parallel freely. Geoffrey Huntley: uncoordinated parallel writers to shared
   build/test state is a real race, not a hypothetical one.
+- **Prefer `pipeline()` to `parallel()` whenever the work has stages, and cut
+  more units than you have slots.** Measured across 89 parallel Workflow runs on
+  this account (1777 agents, 49.9h), 45% of all makespan was spent with exactly
+  ONE agent still running. The shape decides that, not the agent count: this
+  repository's 110-agent `pipeline()` finished with a **0%** single-agent tail at
+  80% utilisation *despite* its slowest agent taking 6.9x the median, while a
+  10-agent `parallel()` barrier with a far narrower 2.0x spread wasted 19% of its
+  makespan. A pipeline absorbs variance; a barrier converts it into idle
+  capacity. When a stage genuinely needs every prior result at once (dedup,
+  early-exit on zero, "compare against the others"), a barrier is correct — say
+  so in a comment, because it is the exception.
+- **Size units, or give the queue depth instead.** A fan-out cut by *topic*
+  produces units of wildly different length with no way to rebalance, which is
+  what produced that 2.0x. You do not need duration estimates if there are more
+  units than slots — the queue packs them. That is the half of CPU work-stealing
+  that transfers; the migration half does not, because an agent cannot be
+  preempted or moved mid-flight.
+- Check the result: `python3 configs/scripts/workflow-scorecard.py --since 7`.
+  A tail over 15% means the shape was wrong.
 
 ## Auto-Promoted Rules
 <!-- Promoted from .claude/corrections/rules.md via /audit. Each rule lists its original recording date. -->
@@ -409,3 +557,7 @@ confirm the check list actually grew before reading green as evidence.
 - [2026-05-06] design-scope (edge-case): When designing a learning/automation/observability feature, default to ~/.claude/ universal scope unless the value is genuinely repo-local — not bake it into the project you happen to be sitting in. Cross-project applicability is the input dimension I keep missing: dotfiles deploy is global, memory-sync is global, hooks are global, so "learn from commits" should be too. Should have asked "does this live in ~/.claude/ or in <project>/?" before drafting architecture. [auto-promoted 2026-05-25]
 - [2026-05-06] topic-pivot (edge-case): When the user's next message is in a domain with zero overlap with current conversation (e.g. commit-archeology → trial pricing strategy in a project with no pricing), ONE-line confirm scope before investing in investigation — wrong-session / mis-pasted prompts are a real failure mode. The 5-second "wait, is this for this repo?" check saves a 10-minute scan of a project that doesn't have the topic at all. [auto-promoted 2026-05-25]
 - [2026-05-07] reduction-recommendation (deploy-gap): Before recommending "remove/disable X" to fix bloat, verify (a) X is actually running, (b) what value X provides beyond the immediate context, (c) whether the bloat is from X itself or from X-being-loaded-in-the-wrong-place. Recommended killing the clade MCP server to fix "95 skill descriptions dropped" without checking it was actively running, what external tools depend on it, or that the real issue was Claude-Code-as-MCP-client double-loading skills. Should have run `ps aux | grep mcp` and read the .mcp.json before proposing the cut. [auto-promoted 2026-05-25]
+- [2026-07-14] codex-plugin-dev (deploy-gap): When iterating on a locally-installed Codex/CC plugin that ships hooks, warn up front that each hook-file change forces a "hooks need review" re-trust prompt and point to the dev bypass (`--dangerously-bypass-hook-trust`, global + DANGEROUS) — instead of leaving the user to hit the recurring nag and ask why their own edits aren't trusted. [auto-promoted 2026-09-01]
+- [2026-08-10] own-tooling (settings-disconnect): When my own tooling fails mid-task and I work around it with a flag, fix the tool in the same pass — raise the bad default AND surface the escape hatch — instead of reporting the gap and asking for direction. `loop-runner.sh` defaulted the supervisor planning budget to 120s and blew it twice (its own comment recorded the earlier incident), yet `--supervisor-timeout` was never listed in `print_usage`, so the "workaround" was undiscoverable and the default was never revisited. A flag nobody can find is not a mitigation. Corollary: a source file sitting exactly at the 1500-line ceiling is a blocked file — split it (CLAUDE.md prescribes this) rather than trimming the fix to fit or reaching for LINE_LIMIT_EXCEPTIONS, which is for upstream-synced code only. [auto-promoted 2026-09-01]
+- [2026-08-15] response-length (constraint-violation): Match answer length to the question's size even during sustained analytical work — a three-part question deserves a three-part answer, not another six-section report with tables. Signal I missed: the user surfaced an ELI5 output style ("short sentences, short paragraphs, 2 options max, only what's necessary") immediately after six consecutive long structured reports; that is feedback on register, not a research request. The existing global rule only covers colloquial/venting messages, so I read "they're still asking analytical questions" as license to keep expanding. Catch it by checking whether the LAST answer was long before writing the next one, not by waiting for the register to change. [auto-promoted 2026-09-01]
+- [2026-08-16] verification-reporting (inaccurate-self-reporting): Read the WHOLE result before drawing a conclusion from it, and run every suite the gate runs — not a `tail -4` snapshot or the subset I remember. Twice in one session I turned partial evidence into a completion claim: a mid-stream "7 passed, 5 failed" counter caught by `tail -4` (the real result was 187/187), and two red CI runs from skipping pytest and test-checks.sh locally. Both are exactly arXiv:2605.29442's S7, 22.58% of real-world agent failures and growing. Catch it by asking "is this output complete?" before "what does this output mean?". [auto-promoted 2026-09-01]

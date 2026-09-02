@@ -1,7 +1,26 @@
 -r requirements.txt
-pytest==9.0.2
+# 9.0.3, not 9.0.2: GHSA-6w46-j5rx-g56g (tmpdir handling) is fixed there.
+pytest==9.0.3
 pytest-asyncio==1.3.0
 # configs/scripts/equip_common.py (exercised by tests/test_equip.py) hard-requires
 # PyYAML at import time; pin it explicitly rather than rely on an incidental
 # transitive dependency from another package.
 PyYAML==6.0.3
+
+# Lint gate. ci.yml's syntax-check job greps THIS line for the version it
+# installs, so a local `ruff check` and CI can never disagree. Pinned rather
+# than floating: an unpinned linter turns the gate red on Astral's release
+# schedule instead of ours. Rules live in orchestrator/ruff.toml; the selected
+# set was measured green against the whole tree at this exact version.
+ruff==0.15.4
+
+# tree-sitter plus the Go grammar. tests/test_pagerank_and_jsparse.py's two
+# TestTreeSitterParse Go cases gate on `_HAS_GO`, and they had never run once:
+# requirements-treesitter.txt is installed by no workflow and no script, and the
+# pytest job installs this file only. They are the ONLY coverage of
+# worker_tldr._parse_with_treesitter's SUCCESS path — the two cases that did run
+# cover graceful degradation alone. Go unblocks both; the remaining grammars in
+# requirements-treesitter.txt are exercised by no test and stay optional there.
+# Both wheels are abi3 manylinux — no compiler needed on the runner.
+tree-sitter==0.25.2
+tree-sitter-go==0.25.0

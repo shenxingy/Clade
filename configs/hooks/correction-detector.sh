@@ -39,6 +39,87 @@ if ! $MATCHED; then
   exit 0
 fi
 
+# ─── Redact secrets BEFORE any disk write ─────────────────────────────
+# Everything below persists the prompt: history.jsonl and, further down,
+# cross-project-rules.jsonl. On installs where ~/.claude/corrections is a
+# symlink into a shared mount those files are group-readable at 0664, so a
+# credential pasted into a correction ("no, that's wrong, the key is …") used
+# to land there verbatim and stay. The MODEL still sees the prompt unmasked —
+# it is the user's own message, already in the transcript — only the persisted
+# copy is masked.
+#
+# Placed AFTER the correction gate on purpose: this is a sync UserPromptSubmit
+# hook, and spawning python3 on every prompt (~31ms) would tax the common path
+# that exits above without writing anything.
+#
+# Redact THEN bound (cp_bound_prompt runs later, on PROMPT_SAFE): clipping
+# first can cut a token below its length threshold — `sk-` plus 15 of 20
+# required chars stops matching — and persist a partial credential.
+#
+# The helpers live here rather than in lib/correction-pair.sh so a missing or
+# stale lib cannot silently restore the unmasked write path.
+
+# Fallback DETECTION ERE (POSIX, no \b — mirrors configs/scripts/checks.sh
+# SECRET_ERE plus the sk-/sk_ shapes redact.py knows). Open-ended {N,} counts
+# so a longer token still matches. Used only when python3 or redact.py is
+# unavailable.
+# The SAME string appears in configs/scripts/checks.sh as SECRET_ERE, and
+# tests/test-checks.sh asserts they are byte-identical. Two divergent copies is
+# what the 2026-09-02 review found: this one had no leading boundary (so
+# `task_<32 alnum>` false-positived) and was missing four shapes redact.py
+# masks, while checks.sh had the boundary and was missing others. A fallback
+# detector that disagrees with the real one is a fallback nobody can reason
+# about, so the copies are now pinned equal by a test rather than by intent.
+CD_SECRET_ERE='-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16,}|gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,}|sk-ant-[A-Za-z0-9_-]{40,}|(^|[^A-Za-z0-9_-])sk-(proj-)?[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{35,}|xox[baprs]-[A-Za-z0-9-]{10,}|(^|[^A-Za-z0-9_])(sk|rk|pk)_(live|test)_[A-Za-z0-9]{20,}|(^|[^A-Za-z0-9_])(sk|rk|ak)_[A-Za-z0-9]{32,}|eyJ[A-Za-z0-9_=-]{10,}[.]eyJ[A-Za-z0-9_=-]{10,}[.][A-Za-z0-9_=-]{10,}|(^|[^A-Za-z0-9_])[A-Z_]*(API_?KEY|SECRET|PASSWORD|PASSWD|TOKEN|AUTH)[A-Z_]*[[:space:]:=]+["'"'"']?[^[:space:]"'"'"']{12,}'
+
+# Sibling copy first. The same relative path resolves in BOTH layouts:
+# in-repo configs/hooks/../scripts, installed ~/.claude/hooks/../scripts.
+_cd_redact_py() {
+  local sib
+  sib="$(cd "$(dirname "$0")/../scripts" 2>/dev/null && pwd)"
+  if [[ -n "$sib" && -f "$sib/redact.py" ]]; then
+    printf '%s' "$sib/redact.py"
+  elif [[ -f "$HOME/.claude/scripts/redact.py" ]]; then
+    printf '%s' "$HOME/.claude/scripts/redact.py"
+  fi
+}
+
+# _cd_redact_prompt <text> — echo text with credentials masked. Never fails
+# open: a redact.py that raises on import (a malformed pattern does) exits
+# non-zero, so control falls through to the degraded path below rather than
+# returning the raw text.
+_cd_redact_prompt() {
+  local text="$1" py masked rc
+  py="$(_cd_redact_py)"
+  if [[ -n "$py" ]] && command -v python3 >/dev/null 2>&1; then
+    if masked=$(printf '%s' "$text" | python3 "$py" 2>/dev/null); then
+      printf '%s' "$masked"
+      return 0
+    fi
+  fi
+  # Degraded path: DETECT and withhold, never substitute. A sed replacement
+  # with these patterns would mask only the matched prefix and leave the rest
+  # of the token on disk — `sk_` + 48 hex loses 32 chars and keeps 16 — and a
+  # partial credential is still a credential. It also cannot reach a PEM body,
+  # which sed sees one line at a time. Dropping the text of one correction is
+  # cheaper than persisting any part of a key.
+  printf '%s' "$text" | grep -qE -e "$CD_SECRET_ERE" 2>/dev/null
+  rc=$?
+  if [[ $rc -eq 0 ]]; then
+    printf '[prompt withheld: secret detected, redactor unavailable]'
+  elif [[ $rc -ge 2 ]]; then
+    printf '[prompt withheld: redactor unavailable]'   # grep itself errored
+  else
+    printf '%s' "$text"
+  fi
+}
+
+PROMPT_SAFE="$(_cd_redact_prompt "$PROMPT")"
+# Fail closed. If the redactor produced nothing at all, the record keeps its
+# timestamp/project/type (the counting signal) but no text — never the raw
+# prompt, which is exactly the leak this block exists to stop.
+[[ -z "$PROMPT_SAFE" ]] && PROMPT_SAFE="[prompt withheld: redactor unavailable]"
+
 # Log to correction history
 CORRECTIONS_DIR="$HOME/.claude/corrections"
 mkdir -p "$CORRECTIONS_DIR"
@@ -52,36 +133,61 @@ PROJECT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 # truncated the history for every reader.
 source "$LIBDIR/correction-pair.sh" 2>/dev/null || true
 
+# ─── Domain, computed BEFORE the record is written ────────────────────
+# This used to run after the append, so `domain` was never a field of a history
+# record — 0 of 983. session-scorecard.sh selects `.domain` from this file to
+# decide which rules had a correction in their area this session, so every
+# record classified as `unknown`, the domain match never fired, and
+# `record_rule_hit` fired for every rule on every run. Rule-effectiveness
+# counts were noise measuring nothing.
+#
+# The detection was also nested inside the stats-file branch, so a machine
+# without stats.json computed no domain at all. It is unconditional now: the
+# history record needs it whether or not the counter file exists.
+if [[ -d "$PROJECT" ]]; then
+  source "$LIBDIR/domain-detect.sh" 2>/dev/null
+  pushd "$PROJECT" >/dev/null 2>&1 && detect_domain 2>/dev/null; popd >/dev/null 2>&1
+fi
+DOMAIN="${DOMAIN:-unknown}"
+
 if declare -f cp_append_history >/dev/null 2>&1; then
   cp_append_history "$HISTORY_FILE" \
     --arg ts "$TIMESTAMP" \
-    --arg prompt "$(cp_bound_prompt "$PROMPT")" \
+    --arg prompt "$(cp_bound_prompt "$PROMPT_SAFE")" \
     --arg project "$PROJECT" \
+    --arg domain "$DOMAIN" \
     --arg type "explicit" \
-    '{timestamp: $ts, prompt: $prompt, project: $project, type: $type}'
+    '{timestamp: $ts, prompt: $prompt, project: $project, domain: $domain, type: $type}'
 else
   jq -nc \
     --arg ts "$TIMESTAMP" \
-    --arg prompt "$PROMPT" \
+    --arg prompt "$PROMPT_SAFE" \
     --arg project "$PROJECT" \
+    --arg domain "$DOMAIN" \
     --arg type "explicit" \
-    '{timestamp: $ts, prompt: $prompt, project: $project, type: $type}' >> "$HISTORY_FILE"
+    '{timestamp: $ts, prompt: $prompt, project: $project, domain: $domain, type: $type}' >> "$HISTORY_FILE"
 fi
 
 # ─── Auto-increment domain stats ──────────────────────────────────────
 STATS_FILE="$CORRECTIONS_DIR/stats.json"
+_STATS_SEED='{"frontend":0,"backend":0,"schema":0,"ml":0,"ios":0,"android":0,"systems":0,"academic":0,"unknown":0}'
 # Initialize stats.json on first run
 if [[ ! -f "$STATS_FILE" ]] && command -v jq &>/dev/null; then
-  echo '{"frontend":0,"backend":0,"schema":0,"ml":0,"ios":0,"android":0,"systems":0,"academic":0,"unknown":0}' > "$STATS_FILE"
+  printf '%s\n' "$_STATS_SEED" > "$STATS_FILE"
+fi
+# SELF-HEAL. The increment below is `jq ... file > tmp && mv || rm -f tmp`, which
+# fails silently when the file is not valid JSON — and it was: the real file on
+# the author's machine held two nested sets of unresolved `<<<<<<< Updated
+# upstream` / `>>>>>>> Stashed changes` conflict markers, so every increment had
+# been a no-op for an unknown length of time and nobody could tell, because a
+# counter that stops counting looks exactly like a quiet week.
+if [[ -f "$STATS_FILE" ]] && command -v jq &>/dev/null \
+   && ! jq -e . "$STATS_FILE" >/dev/null 2>&1; then
+  cp -f "$STATS_FILE" "$STATS_FILE.corrupt.$(date -u +%Y%m%dT%H%M%SZ)" 2>/dev/null || true
+  printf '%s\n' "$_STATS_SEED" > "$STATS_FILE"
 fi
 if [[ -f "$STATS_FILE" ]] && command -v jq &>/dev/null; then
-  # Detect domain from recent changes in this project (avoid subshell so DOMAIN is set in parent)
-  if [[ -d "$PROJECT" ]]; then
-    source "$LIBDIR/domain-detect.sh" 2>/dev/null
-    pushd "$PROJECT" >/dev/null 2>&1 && detect_domain 2>/dev/null; popd >/dev/null 2>&1
-  fi
-  DOMAIN="${DOMAIN:-unknown}"
-  # Atomically increment the counter for this domain
+  # Atomically increment the counter for the domain resolved above.
   TMP_STATS=$(mktemp)
   jq --arg d "$DOMAIN" '.[$d] = ((.[$d] // 0) + 1)' "$STATS_FILE" > "$TMP_STATS" 2>/dev/null \
     && mv "$TMP_STATS" "$STATS_FILE" \
@@ -143,9 +249,22 @@ CONTEXT="A user correction was detected in the prompt above. After addressing th
      asked to confirm first, to stay in scope, to not touch something
    - premature-action: acted before gathering enough project state
    - scope-overreach: turned a bounded request into a broader intervention
+   Configuration class (what the system failed to learn):
+   - standing-preference: the user is supplying the same context AGAIN because
+     nothing retained it. The tell is a repeat, not a defect — each individual
+     answer may have been correct. If you find yourself reading a long brief
+     that feels familiar, or the user says any of \"I keep telling you\",
+     \"every time\", \"还是\", \"又\", treat it as this class even though nothing
+     is broken. It is the only class whose evidence is a count.
 3. Append a rule to $RULES_PATH in this format:
    - [YYYY-MM-DD] <domain> (<root-cause>): <do this> instead of <not this>
    Example: - [2026-02-25] imports (settings-disconnect): Use @/ path aliases and verify tsconfig paths are set — not bare relative paths that break on move
+3b. EXCEPT for standing-preference, where a rule line is the wrong artifact.
+   A repeated brief needs a home, not a reminder. Put a PROCEDURE in a skill
+   under configs/skills/, and a RULE in CLAUDE.md, then write the rule line
+   pointing at that home. Check the home is not already there and empty: a
+   brief aimed at a skill that lacks its constraints is why it gets re-typed,
+   and that is exactly what frontend-design was for five months.
 4. In one sentence: how could you have caught this BEFORE the user pointed it out? (e.g., 'I should have checked cross-platform compat when using shell builtins')
 5. Keep rules.md under $RULES_LIMIT RULE lines — retire the least useful rules
    when over. The header block at the top of the file (the format spec and the
@@ -164,7 +283,7 @@ if command -v jq &>/dev/null; then
   declare -f cp_recent_files >/dev/null 2>&1 && _recent_files=$(cp_recent_files "$(cp_session_key "$INPUT")" 8)
   _reverted=""
   [[ -f "$HISTORY_FILE" ]] && _reverted=$(tail -n 200 "$HISTORY_FILE" 2>/dev/null \
-    | jq -r --arg proj "$PROJECT" 'select(.type=="implicit-revert" and .project==$proj) | (.reverted_files // [])[]' 2>/dev/null)
+    | jq -r --arg proj "$PROJECT" 'select(.type=="implicit-revert" and .project==$proj) | (.reverted_files // [])[], (.session_files // [])[]' 2>/dev/null)
   _combined=$(printf '%s\n%s\n' "$_reverted" "$_recent_files" | awk 'NF' | sort -u | head -10)
   if [[ -n "$_combined" ]]; then
     _bullets=$(while IFS= read -r _p; do [[ -n "$_p" ]] && printf '  - %s\n' "$_p"; done <<< "$_combined")
@@ -177,7 +296,7 @@ fi
 
 # Write cross-project marker for auto-audit aggregation
 if [[ -n "$CROSS_FILE" ]] && command -v jq &>/dev/null; then
-  RULE_TEXT_PREVIEW=$(echo "$PROMPT" | head -c 120)
+  RULE_TEXT_PREVIEW=$(echo "$PROMPT_SAFE" | head -c 120)
   CROSS_HASH=$(echo -n "${DOMAIN}:${RULE_TEXT_PREVIEW}" | { command -v sha256sum >/dev/null 2>&1 && sha256sum || shasum -a 256; } 2>/dev/null | cut -c1-8)
   jq -nc \
     --arg ts "$TIMESTAMP" \

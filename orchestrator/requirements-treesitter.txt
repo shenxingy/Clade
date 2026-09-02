@@ -1,14 +1,26 @@
 # Optional: multi-language TLDR/localization via tree-sitter (audit 2026-06-18).
 #
-# Clade's structure map uses the stdlib `ast` for Python and a regex fallback for
-# JS/TS. Installing these grammars upgrades JS/TS to real AST and adds Go/Rust/
-# Java/Ruby/C/C++/C#/PHP — `worker_tldr._parse_with_treesitter` lazy-imports each
-# and degrades gracefully when absent, so this file is NOT required to run Clade.
+# Clade's structure map uses the stdlib `ast` for Python, a tuned regex for
+# JS/TS, and tree-sitter for the languages below. `worker_tldr._parse_with_
+# treesitter` lazy-imports each grammar and degrades gracefully when one is
+# absent, so this file is NOT required to run Clade.
 #
 #   pip install -r requirements-treesitter.txt
 #
+# `tree-sitter` and `tree-sitter-go` moved to requirements-dev.txt on 2026-09-02:
+# tests/test_pagerank_and_jsparse.py's two Go cases gate on the Go grammar and
+# had never run, because nothing installed this file. Installing this one is
+# additive — it adds the seven languages that still have no test.
+#
+# NOT LISTED, deliberately: tree-sitter-typescript and tree-sitter-javascript.
+# `_TS_EXT_TO_MODULE` (worker_tldr.py) maps no .ts/.js/.tsx/.jsx extension, so
+# those grammars are never loaded no matter what is installed. JS/TS stay on
+# `_parse_js_ts_regex` by design — it catches the `export const x = …` idiom
+# (schemas, arrow fns) that a function/class/interface node-set misses. They
+# were listed here until 2026-09-02, which told a reader that installing this
+# file upgrades TS parsing to a real AST. It does not.
+#
 tree-sitter>=0.25,<0.26
-tree-sitter-go
 tree-sitter-rust
 tree-sitter-java
 tree-sitter-ruby
@@ -16,5 +28,3 @@ tree-sitter-c
 tree-sitter-cpp
 tree-sitter-c-sharp
 tree-sitter-php
-tree-sitter-typescript
-tree-sitter-javascript

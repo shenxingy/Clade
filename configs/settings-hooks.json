@@ -327,7 +327,6 @@
             "description": "Track user prompts for analytics and loop detection",
             "type": "command",
             "command": "~/.claude/hooks/prompt-tracker.sh",
-            "async": true,
             "timeout": 5
           },
           {

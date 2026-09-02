@@ -8,6 +8,21 @@
 
 set -uo pipefail
 
+# Associative arrays (declare -A) need bash 4; macOS ships bash 3.2. Re-exec
+# into a brew bash rather than silently collapsing every DOMAIN_COUNTS[$key]
+# to index 0 — this file has no `set -e`, so bash 3.2 produced wrong CLUSTERING
+# OUTPUT rather than an error. Same guard as run-tasks-parallel.sh:22-32.
+if [[ "${BASH_VERSINFO[0]}" -lt 4 ]]; then
+  if [[ -x /opt/homebrew/bin/bash ]]; then
+    exec /opt/homebrew/bin/bash "$0" "$@"
+  elif [[ -x /usr/local/bin/bash ]]; then
+    exec /usr/local/bin/bash "$0" "$@"
+  else
+    echo "ERROR: bash 4+ required (associative arrays). Install with: brew install bash" >&2
+    exit 1
+  fi
+fi
+
 RULES_FILE="${1:-$HOME/.claude/corrections/rules.md}"
 
 if [[ ! -f "$RULES_FILE" ]]; then
