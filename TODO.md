@@ -595,12 +595,22 @@ re-running the gates.
       only parallelism available to Codex is Clade spawning N `codex exec`
       processes from outside, which the worker pool can already do and which
       nothing measures.
-- [ ] 🟡 The polling rule ("one Monitor, then yield") lives only as prose in the
-      global instructions. Nothing enforces it and nothing counts violations,
-      which is the same shape as every gate this audit found broken. The
-      measurable version: `workflow-scorecard.py` could read the lead session's
-      own transcript and report poll-calls-per-background-job alongside the
-      straggler numbers.
+- [x] 🟡 **The polling rule now has a number.** DONE 2026-09-02.
+      `workflow-scorecard.py --polls` reads lead-session transcripts and reports
+      repeated status reads per background job, beside the straggler figures. A
+      poll is a status-only Bash call that is not the first of its kind — the
+      repetition is what makes it a poll, since checking once is a check.
+      **The first version could not fire, which is the finding.** Its mutation
+      guard was a bare `>>?[^&]`, and that matches the `>/` of `2>/dev/null`, so
+      every status command that silenced stderr was classified as mutating and
+      every session ever scanned reported zero polls. Zero read as discipline.
+      Fixed, and it now reports 30 polls against 35 jobs in one recent session
+      and 8 against 30 in another.
+      Because this is the second instrument here to ship unable to fire, it has
+      a `--self-test` with a positive and a negative control, wired into the
+      same CI job as `red-phase-audit.py --self-test`. Reintroducing the
+      original regex fails it.
+
 - [ ] 🟡 The learning system does not measurably learn. The rework rate has been
       flat at 9-15% for six months while `corrections/` accumulated rules, and
       nothing closes the loop from "rule written" to "defect not repeated".

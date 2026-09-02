@@ -70,6 +70,11 @@ python3 configs/scripts/red-phase-audit.py 30
 # clean 0% exactly like a clean codebase — this one has done that before.
 python3 configs/scripts/red-phase-audit.py --self-test
 
+# 2c. Same question of the polling instrument. `workflow-scorecard.py --polls`
+#     counts repeated status reads per background job; its mutation guard once
+#     matched the `>/` of `2>/dev/null`, so every session reported zero.
+python3 configs/scripts/workflow-scorecard.py --self-test
+
 # How well did a multi-agent run use its parallelism? Every Workflow run writes
 # per-agent transcripts under ~/.claude*/projects/<slug>/<session>/subagents/
 # workflows/, and until 2026-09-02 nothing read them: /retro mines git history,
@@ -346,6 +351,13 @@ cd orchestrator && .venv/bin/python evals/run_hack_eval.py
 #     control. A harness that cannot fire reports a clean 0% exactly like a
 #     clean codebase — this one has shipped that failure before.
 python3 configs/scripts/red-phase-audit.py --self-test
+
+# 2c. Same question of the polling instrument, in the same `pytest` job.
+#     `workflow-scorecard.py --polls` counts repeated status reads per
+#     background job; its mutation guard matched the `>/` of `2>/dev/null`, so
+#     every session ever scanned reported zero polls and the number read as
+#     discipline. Second instrument in this repo to ship unable to fire.
+python3 configs/scripts/workflow-scorecard.py --self-test
 
 # 3. Shell syntax check (hooks, scripts, installer)
 bash -n configs/hooks/*.sh configs/scripts/*.sh install.sh

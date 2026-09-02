@@ -214,6 +214,13 @@ jobs:
       - name: Red-phase audit self-test (can the harness go red?)
         run: python3 configs/scripts/red-phase-audit.py --self-test
 
+      # Same question of the poll detector, and it is not hypothetical: the
+      # mutation guard matched the `>/` of `2>/dev/null`, so every session ever
+      # scanned reported zero polls. A detector that cannot fire reports a
+      # disciplined session exactly like an undisciplined one.
+      - name: Poll-detector self-test (can it go red?)
+        run: python3 configs/scripts/workflow-scorecard.py --self-test
+
       - name: Score the test-integrity detector against the reward-hack corpus
         run: |
           cd orchestrator
