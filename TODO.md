@@ -449,7 +449,18 @@ re-running the gates.
       `CLAUDE.md` still claiming 17.
 
 - [ ] 🟡 `ReactionConfig.action` is decorative: "escalate"/"abort"/"notify" is never dispatched, every triggered reaction is consumed by a `logger.warning`. So `reactions_enabled` switches off log lines, not behaviour. Either dispatch the actions or rename the field to what it is.
-- [ ] 🟡 `test_release_version_surfaces_are_aligned` hard-codes the expected version, so cutting a release means editing the gate — the hand-sync it exists to prevent. Derive it from `mcp-package/pyproject.toml` and extend it to the plugin manifests.
+- [x] 🟡 **The version-alignment gate required the hand-sync it exists to
+      prevent.** DONE 2026-09-02. The expected version was a literal in the
+      test, so cutting a release meant editing the gate that catches a missed
+      edit — the same failure it guards against, one level up. It is derived
+      from `mcp-package/pyproject.toml` now.
+      It also covered four surfaces where there are six: `.claude-plugin/plugin.json`
+      and the generated `plugins/clade/.codex-plugin/plugin.json` each carry a
+      version and neither was checked, so either could have shipped stale with
+      the suite green. The Codex manifest is compared on the part before the
+      semver build metadata it is regenerated with. Red-phase confirmed on each
+      surface separately, and on a bumped `pyproject.toml`.
+
 - [ ] 🔵 Patrol reports are written and never read. `start.sh` writes `~/.claude/patrol-report-DATE.md` and nothing parses it back; `patrol_auto_ideas` was the flag for that missing ingestion and was deleted rather than left as a published lie. Re-propose with a real design.
 - [ ] 🔵 `reactions.create_executor_from_config` has zero production callers and reads a settings key that no longer exists. Removing it means dropping three tests in `test_leaf_modules.py`.
 - [ ] 🔵 Nothing enforces the top-level `docs/*.md` header convention; two of fourteen files had drifted off it and no gate noticed. Cheapest control: assert in `check-references.py` that every top-level `docs/*.md` links `../README.md` in its first three lines.
