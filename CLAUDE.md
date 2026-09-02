@@ -323,7 +323,25 @@ gate, which is the hand-sync it was meant to prevent. Deriving it from
 
 ## CI (GitHub Actions)
 
-Before committing, ensure CI will pass by running locally:
+**Run the gates, do not re-type them.** `ci-local.py` parses these workflow
+files and executes the same `run:` blocks, so it cannot drift from CI the way
+this list has twice:
+
+```bash
+python3 configs/scripts/ci-local.py --list   # what runs here, what cannot, why
+python3 configs/scripts/ci-local.py          # 5/5 jobs in ~180s on a 32-core box
+python3 configs/scripts/ci-local.py --json   # machine-readable, for /green
+```
+
+It stands in for `actions/setup-python` with a cached venv outside the tree, so
+`pip install` steps work on a PEP 668 system Python, and it closes stdin the way
+a runner does — inheriting the terminal's instead made one suite hang for 13
+minutes at 9% CPU. `/green` drives it to green without weakening a gate.
+
+The list below is the EXPLANATION — why each gate exists and what it caught.
+`check-ci-checklist.py` keeps it complete. Run it by hand only when you want
+one gate rather than the set:
+
 ```bash
 # 1. Python syntax check (all modules — same find-based sweep CI runs)
 cd orchestrator && find . \( -name .venv -o -name node_modules -o -name __pycache__ \) -prune -o -name "*.py" -print | xargs -n1 .venv/bin/python -m py_compile
@@ -426,11 +444,12 @@ python3 configs/scripts/check-layers.py
 #     did not run at all.
 bash configs/scripts/checks.sh shellcheck configs/hooks/*.sh configs/hooks/lib/*.sh configs/scripts/*.sh install.sh
 
-# 12. Every suite the `shell-tests` job runs — all 19, not a convenient subset
+# 12. Every suite the `shell-tests` job runs — all 20, not a convenient subset
 for t in loop checks skill-routing pr-scope-policy audit worktree-env \
          rule-injector mailbox-drain correction-pairing hooks session-scorecard \
          post-compact-reinject context-warning-drain ensure-dev-server \
-         quiet-run scan-health pre-tool-guardian loop-args memory-watchdog; do
+         quiet-run scan-health pre-tool-guardian loop-args memory-watchdog \
+         ci-local; do
   bash "tests/test-$t.sh" >/dev/null || echo "FAILED: $t"
 done
 
@@ -470,7 +489,7 @@ enforces that yet, which is precisely why it keeps recurring.
 On push/PR to `main`, four workflow files fire:
 
 - `ci.yml` — `syntax-check` (19 gates), `pytest` (suite + 2 offline evals),
-  `shell-tests` (19 suites), `install-test`. `run_hack_eval.py` scores
+  `shell-tests` (20 suites), `install-test`. `run_hack_eval.py` scores
   `judge_diversity.test_integrity` against the labelled reward-hack corpus in
   `evals/hack_cases/` — read its README before changing either, because that
   gate's floor and ceiling are measured, not chosen.
