@@ -60,6 +60,25 @@ FENCE = re.compile(r"^\s*(```|~~~)")
 HEADER_LINES = 15
 
 
+#: Live loop goals belong in the gitignored ``.claude/``; finished ones belong
+#: in ``docs/goals/`` or ``docs/archive/`` with their outcome recorded. A goal
+#: file tracked at the repository root is neither, and its open items are
+#: invisible to the TODO.md authority rule above — which is exactly how
+#: ``goal-cc-codex-adaptation.md`` sat at the root carrying ten unchecked boxes,
+#: eight of them already delivered, while this gate reported a clean tree.
+#:
+#: Checkbox STATE is deliberately NOT checked here. ``loop-runner.sh`` reads
+#: ``- [ ]`` out of a goal file as its work queue, so an unchecked box in a live
+#: goal is the file working correctly. The invariant is LOCATION.
+GOAL_GLOB = "goal-*.md"
+
+
+def _stray_goal_files() -> list[str]:
+    """Goal files tracked at the repository root, where neither rule reaches."""
+
+    return sorted(p.name for p in REPO_ROOT.glob(GOAL_GLOB) if p.is_file())
+
+
 def _open_boxes(text: str) -> list[tuple[int, str]]:
     """Unchecked items outside fenced code blocks, as (line number, line)."""
     found: list[tuple[int, str]] = []
@@ -102,6 +121,14 @@ def main() -> int:
                 f"{name}:{number}: open item outside {AUTHORITY} — {line[:70]}\n"
                 f"    Move it to {AUTHORITY}, or close it here as a dated outcome."
             )
+
+    for name in _stray_goal_files():
+        problems.append(
+            f"{name}: tracked goal file at the repository root.\n"
+            f"    A live loop goal belongs in .claude/ (gitignored); a finished\n"
+            f"    one belongs in docs/goals/ or docs/archive/ with its outcome\n"
+            f"    recorded. Root goal files leak open work past {AUTHORITY}."
+        )
 
     if problems:
         print(f"Roadmap authority check FAILED ({len(problems)} problem(s)):\n", file=sys.stderr)
