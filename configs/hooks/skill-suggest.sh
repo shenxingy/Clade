@@ -110,21 +110,43 @@ fi
 [[ -z "$SUGGESTIONS" ]] && exit 0
 
 # ─── Throttle by suggestion category (not file extension) ───────────
-# Overridable for tests (tests/test-skill-routing.sh)
-THROTTLE_DIR="${SKILL_SUGGEST_THROTTLE_DIR:-/tmp/claude-skill-suggest}"
-mkdir -p "$THROTTLE_DIR"
-# Use first matched suggestion type as throttle key
-CATEGORY=$(echo -n "$SUGGESTIONS" | head -1 | cut -d' ' -f1-2 | tr ' /' '_' | tr '[:upper:]' '[:lower:]')
-THROTTLE_FILE="$THROTTLE_DIR/$CATEGORY"
-
-if [[ -f "$THROTTLE_FILE" ]]; then
-  LAST=$(cat "$THROTTLE_FILE" 2>/dev/null || echo 0)
-  NOW=$(date +%s)
-  if [[ $((NOW - LAST)) -lt 300 ]]; then
-    exit 0
+# Overridable for tests (tests/test-skill-routing.sh).
+#
+# The default is a PER-USER scratch dir, never a fixed /tmp path. The throttle
+# key is derived from the suggestion text, not from the user, so a shared
+# /tmp/claude-skill-suggest made this cross-user interference rather than a
+# private throttle: account B's mkdir -p succeeded against account A's
+# directory, B then read A's timestamp and suppressed its OWN suggestion for
+# 300s because someone else edited a blog file — and B's write back failed.
+# Sourced here, after the SKILL_SUGGEST_INNER re-exec, so it loads once.
+THROTTLE_DIR="${SKILL_SUGGEST_THROTTLE_DIR:-}"
+if [[ -n "$THROTTLE_DIR" ]]; then
+  mkdir -p "$THROTTLE_DIR" 2>/dev/null
+else
+  _SS_RUNTIME_LIB="$(cd "$(dirname "$0")" && pwd)/lib/runtime-dir.sh"
+  # shellcheck source=/dev/null
+  [[ -f "$_SS_RUNTIME_LIB" ]] && . "$_SS_RUNTIME_LIB" 2>/dev/null
+  if declare -f clade_state_dir >/dev/null 2>&1; then
+    THROTTLE_DIR=$(clade_state_dir claude-skill-suggest 2>/dev/null) || THROTTLE_DIR=""
   fi
 fi
-date +%s > "$THROTTLE_FILE"
+
+# Fail OPEN: with no usable throttle dir, emit the suggestion unthrottled. An
+# occasional repeated hint beats a silently suppressed one.
+if [[ -n "$THROTTLE_DIR" && -d "$THROTTLE_DIR" ]]; then
+  # Use first matched suggestion type as throttle key
+  CATEGORY=$(echo -n "$SUGGESTIONS" | head -1 | cut -d' ' -f1-2 | tr ' /' '_' | tr '[:upper:]' '[:lower:]')
+  THROTTLE_FILE="$THROTTLE_DIR/$CATEGORY"
+
+  if [[ -f "$THROTTLE_FILE" ]]; then
+    LAST=$(cat "$THROTTLE_FILE" 2>/dev/null || echo 0)
+    NOW=$(date +%s)
+    if [[ $((NOW - LAST)) -lt 300 ]]; then
+      exit 0
+    fi
+  fi
+  date +%s > "$THROTTLE_FILE" 2>/dev/null
+fi
 
 jq -n --arg ctx "$SUGGESTIONS" \
   '{"hookSpecificOutput":{"additionalContext":$ctx}}'

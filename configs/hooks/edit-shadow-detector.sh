@@ -16,7 +16,11 @@ FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
 LIBDIR="$(cd "$(dirname "$0")" && pwd)/lib"
 source "$LIBDIR/correction-pair.sh" 2>/dev/null || true
 
-SHADOW_DIR="${CP_SHADOW_DIR:-/tmp/claude-edit-shadows}"
+# lib/correction-pair.sh derives this from lib/runtime-dir.sh: a per-user
+# scratch root, not a fixed /tmp path another account can own. Empty means no
+# usable root — record nothing rather than write somewhere unowned.
+SHADOW_DIR="${CP_SHADOW_DIR:-}"
+[[ -z "$SHADOW_DIR" ]] && exit 0
 mkdir -p "$SHADOW_DIR" 2>/dev/null
 
 # Session-scoped key: canonical session_id (correlates across hook types), with a
@@ -34,6 +38,15 @@ jq -nc \
   '{timestamp: $ts, file: $file}' >> "$SHADOW_FILE" 2>/dev/null
 
 # Clean up shadow files older than 8 hours
-find "$SHADOW_DIR" -name "session-*.jsonl" -mmin +480 -delete 2>/dev/null
+find "$SHADOW_DIR" -maxdepth 1 -name "session-*.jsonl" -mmin +480 -delete 2>/dev/null
+
+# One-time sweep of the pre-2026-09 fixed path, so shadows written before the
+# move to a per-user root do not linger forever. `-user` keeps this to our own
+# leftovers — the sticky bit on /tmp would refuse anything else anyway.
+_LEGACY_SHADOWS="/tmp/claude-edit-shadows"
+if [[ "$SHADOW_DIR" != "$_LEGACY_SHADOWS" && -d "$_LEGACY_SHADOWS" ]]; then
+  find "$_LEGACY_SHADOWS" -maxdepth 1 -user "${EUID:-$(id -u)}" \
+    -name "session-*.jsonl" -mmin +480 -delete 2>/dev/null
+fi
 
 exit 0

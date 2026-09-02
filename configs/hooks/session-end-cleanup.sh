@@ -2,8 +2,9 @@
 # session-end-cleanup.sh — Delete the ending session's correction-pairing shadow.
 # Triggered by SessionEnd (all reasons: clear, logout, prompt_input_exit, other).
 #
-# edit-shadow-detector.sh writes /tmp/claude-edit-shadows/session-<id>.jsonl and
-# revert-detector/correction-detector read it (see lib/correction-pair.sh).
+# edit-shadow-detector.sh writes <runtime>/claude-edit-shadows/session-<id>.jsonl
+# and revert-detector/correction-detector read it (see lib/correction-pair.sh;
+# <runtime> comes from lib/runtime-dir.sh and is private to this user).
 # Nothing ever deleted them except the detector's own 8-hour sweep, so a machine
 # that runs many short sessions accumulated one stale file per session.
 #
@@ -23,8 +24,12 @@ SESSION_ID=$(printf '%s' "$INPUT" | jq -r '.session_id // empty' 2>/dev/null || 
 LIBDIR="$(cd "$(dirname "$0")" && pwd)/lib"
 source "$LIBDIR/correction-pair.sh" 2>/dev/null || true
 
-# Same default and same CP_SHADOW_DIR override the writers use.
-SHADOW_DIR="${CP_SHADOW_DIR:-/tmp/claude-edit-shadows}"
+# Same derived root and same CP_SHADOW_DIR override the writers use
+# (lib/correction-pair.sh → lib/runtime-dir.sh: a per-user scratch dir, not a
+# fixed /tmp path). Empty means no root was resolvable — nothing of ours to
+# clean, so do nothing rather than guess at a path.
+SHADOW_DIR="${CP_SHADOW_DIR:-}"
+[[ -z "$SHADOW_DIR" ]] && exit 0
 [[ -d "$SHADOW_DIR" ]] || exit 0
 
 # Same sanitizer as cp_session_key, applied to the id we already proved present

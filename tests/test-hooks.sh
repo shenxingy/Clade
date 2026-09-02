@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # test-hooks.sh — Hook delivery-channel tests (Claude Code 2.1 adaptation).
 #
+#   lib/runtime-dir.sh      per-user scratch root: XDG/TMPDIR legs, squat and
+#                           ownership guards, and the two hooks that derive
+#                           their directory from it
+#   session-context.sh      SessionStart context BUDGET: rules tail, whole
+#                           lines, drop notice, file caps, ceiling warning
 #   session-end-cleanup.sh  SessionEnd shadow cleanup: attribution, missing
 #                           session_id, missing dir, CP_SHADOW_DIR override
 #   post-edit-check.sh      findings → stderr + exit 2; clean → silent exit 0
@@ -21,6 +26,9 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CLEANUP_HOOK="$REPO_ROOT/configs/hooks/session-end-cleanup.sh"
 POST_EDIT_HOOK="$REPO_ROOT/configs/hooks/post-edit-check.sh"
 SKILL_SUGGEST="$REPO_ROOT/configs/hooks/skill-suggest.sh"
+SESSION_CONTEXT="$REPO_ROOT/configs/hooks/session-context.sh"
+EDIT_SHADOW="$REPO_ROOT/configs/hooks/edit-shadow-detector.sh"
+RUNTIME_LIB="$REPO_ROOT/configs/hooks/lib/runtime-dir.sh"
 SETTINGS="$REPO_ROOT/configs/settings-hooks.json"
 
 # ─── Test framework (mirrors tests/test-correction-pairing.sh) ───────
@@ -510,6 +518,271 @@ else
 fi
 
 rm -rf "$CK_ROOT"
+
+
+# ─── 5. lib/runtime-dir.sh — per-user scratch root ───────────────────
+# Every lock, pid file and shadow dir used to be a fixed /tmp path. On aries
+# (40+ accounts, dotfiles over NFS) /tmp/claude-edit-shadows was owned by one
+# account and every other account's append was a silent EACCES, so correction
+# pairing was off for everyone else. These pin the replacement's contract.
+
+section "lib/runtime-dir.sh — per-user scratch root"
+
+# Run clade_runtime_dir with the three inputs cleared, then whatever KEY=VAL
+# pairs the caller passes. `env` applies -u before assignments, so a caller can
+# still set one of the cleared names.
+rt() {
+  env -u CLADE_RUNTIME_DIR -u XDG_RUNTIME_DIR -u TMPDIR "$@" \
+    bash -c '. "$0"; clade_runtime_dir' "$RUNTIME_LIB"
+}
+
+# --- explicit override wins, and the directory is created 0700 ---
+RT_OVR="$TMP_ROOT/rt-override"
+out=$(rt CLADE_RUNTIME_DIR="$RT_OVR")
+assert_eq "$out" "$RT_OVR" "CLADE_RUNTIME_DIR is honoured verbatim"
+assert_eq "$(stat -c %a "$RT_OVR" 2>/dev/null || stat -f %Lp "$RT_OVR" 2>/dev/null)" "700" \
+  "the runtime root is created mode 0700"
+
+# --- XDG leg lands in a clade/ subdir, never the bare XDG dir ---
+RT_XDG="$TMP_ROOT/rt-xdg"
+mkdir -p "$RT_XDG"
+out=$(rt XDG_RUNTIME_DIR="$RT_XDG")
+assert_eq "$out" "$RT_XDG/clade" "XDG_RUNTIME_DIR gets a clade/ subdirectory, not the bare dir"
+
+# --- TMPDIR leg is keyed by euid (cron has no XDG_RUNTIME_DIR) ---
+RT_TMP="$TMP_ROOT/rt-tmp"
+mkdir -p "$RT_TMP"
+out=$(rt TMPDIR="$RT_TMP")
+assert_eq "$out" "$RT_TMP/clade-$(id -u)" "with no XDG_RUNTIME_DIR the root is \$TMPDIR/clade-\$EUID"
+
+# --- SQUAT GUARD: a symlink planted at the target must be refused ---
+# This is the assertion that makes the finding real: /tmp is world-writable and
+# sticky, so another account can create /tmp/clade-<our-uid> before we do.
+RT_LINK="$TMP_ROOT/rt-symlink"
+mkdir -p "$TMP_ROOT/rt-elsewhere"
+ln -s "$TMP_ROOT/rt-elsewhere" "$RT_LINK"
+out=$(rt CLADE_RUNTIME_DIR="$RT_LINK" 2>/dev/null); rc=$?
+assert_eq "$rc" "1" "a symlinked runtime root is refused"
+assert_eq "$out" "" "a refused root prints nothing (callers must not derive a path)"
+
+# --- a world-writable pre-existing dir is tightened, not accepted as-is ---
+RT_OPEN="$TMP_ROOT/rt-open"
+mkdir -p "$RT_OPEN"; chmod 0777 "$RT_OPEN"
+out=$(rt CLADE_RUNTIME_DIR="$RT_OPEN" 2>/dev/null); rc=$?
+mode=$(stat -c %a "$RT_OPEN" 2>/dev/null || stat -f %Lp "$RT_OPEN" 2>/dev/null)
+if [[ "$rc" -ne 0 || "$mode" == "700" ]]; then
+  pass "a mode-0777 root is chmodded to 0700 or refused (got rc=$rc mode=$mode)"
+else
+  fail "a mode-0777 root is chmodded to 0700 or refused" "rc=$rc mode=$mode"
+fi
+
+# --- OWNERSHIP GUARD: CI cannot create a dir owned by another user, so stub
+#     stat on PATH and prove the check actually consults it ---
+SHIM="$TMP_ROOT/shim"
+mkdir -p "$SHIM"
+REAL_STAT="$(command -v stat)"
+{
+  printf '#!/usr/bin/env bash\n'
+  printf 'if [[ "${1:-}" == "-c" && "${2:-}" == "%%u" ]] || [[ "${1:-}" == "-f" && "${2:-}" == "%%u" ]]; then\n'
+  printf '  echo 999999; exit 0\n'
+  printf 'fi\n'
+  printf 'exec %s "$@"\n' "$REAL_STAT"
+} > "$SHIM/stat"
+chmod +x "$SHIM/stat"
+RT_OWN="$TMP_ROOT/rt-owner"
+out=$(env PATH="$SHIM:$PATH" CLADE_RUNTIME_DIR="$RT_OWN" \
+  bash -c '. "$0"; clade_runtime_dir' "$RUNTIME_LIB" 2>/dev/null); rc=$?
+assert_eq "$rc" "1" "a root reported as owned by another uid is refused"
+assert_eq "$out" "" "a foreign-owned root prints nothing"
+
+# --- clade_state_dir nests under the root ---
+out=$(env CLADE_RUNTIME_DIR="$RT_OVR" bash -c '. "$0"; clade_state_dir claude-edit-shadows' "$RUNTIME_LIB")
+assert_eq "$out" "$RT_OVR/claude-edit-shadows" "clade_state_dir nests under the runtime root"
+[[ -d "$RT_OVR/claude-edit-shadows" ]] \
+  && pass "clade_state_dir creates the subdirectory" \
+  || fail "clade_state_dir creates the subdirectory"
+
+# --- END TO END: the writer derives its dir from the root, and the SessionEnd
+#     cleanup removes exactly that file. No CP_SHADOW_DIR is set here. ---
+RT_E2E="$TMP_ROOT/rt-e2e"
+printf '{"session_id":"%s","tool_input":{"file_path":"/x/y.py"}}' "$SID_A" \
+  | env -u CP_SHADOW_DIR CLADE_RUNTIME_DIR="$RT_E2E" bash "$EDIT_SHADOW" >/dev/null 2>&1
+E2E_FILE="$RT_E2E/claude-edit-shadows/session-$SID_A.jsonl"
+[[ -f "$E2E_FILE" ]] \
+  && pass "edit-shadow-detector writes under the derived runtime root" \
+  || fail "edit-shadow-detector writes under the derived runtime root" "no $E2E_FILE"
+printf '{"session_id":"%s","hook_event_name":"SessionEnd"}' "$SID_A" \
+  | env -u CP_SHADOW_DIR CLADE_RUNTIME_DIR="$RT_E2E" bash "$CLEANUP_HOOK" >/dev/null 2>&1
+[[ -f "$E2E_FILE" ]] \
+  && fail "session-end-cleanup removes the derived-path shadow" "file survived" \
+  || pass "session-end-cleanup removes the derived-path shadow"
+
+# --- no hook may fall back to the shared /tmp default any more ---
+_leftover=$(grep -nE '(CP_SHADOW_DIR|SHADOW_DIR|THROTTLE_DIR)=.*/tmp/claude-' \
+  "$REPO_ROOT"/configs/hooks/*.sh "$REPO_ROOT"/configs/hooks/lib/*.sh 2>/dev/null)
+if [[ -z "$_leftover" ]]; then
+  pass "no hook defaults a state directory to a shared /tmp path"
+else
+  fail "no hook defaults a state directory to a shared /tmp path" "$(tr '\n' ' ' <<< "$_leftover")"
+fi
+
+# --- with no usable root, the writer records nothing rather than guessing ---
+out=$(printf '{"session_id":"%s","tool_input":{"file_path":"/x/y.py"}}' "$SID_A" \
+  | env -u CP_SHADOW_DIR CLADE_RUNTIME_DIR="$TMP_ROOT/rt-symlink" bash "$EDIT_SHADOW" 2>&1)
+assert_eq "$?" "0" "edit-shadow-detector exits 0 when no runtime root resolves"
+assert_eq "$out" "" "edit-shadow-detector is silent when no runtime root resolves"
+
+# --- skill-suggest derives its throttle dir from the same root ---
+RT_SS="$TMP_ROOT/rt-skill"
+out=$(printf '{"tool_input":{"file_path":"src/blog/posts/hello.md"}}' \
+  | env -u SKILL_SUGGEST_THROTTLE_DIR CLADE_RUNTIME_DIR="$RT_SS" bash "$SKILL_SUGGEST" 2>/dev/null)
+assert_contains "$out" "blog-seo-check" "skill-suggest still emits with a derived throttle dir"
+if compgen -G "$RT_SS/claude-skill-suggest/*" >/dev/null 2>&1; then
+  pass "skill-suggest stamps the throttle under the derived runtime root"
+else
+  fail "skill-suggest stamps the throttle under the derived runtime root" \
+    "nothing in $RT_SS/claude-skill-suggest"
+fi
+out=$(printf '{"tool_input":{"file_path":"src/blog/posts/hello.md"}}' \
+  | env -u SKILL_SUGGEST_THROTTLE_DIR CLADE_RUNTIME_DIR="$RT_SS" bash "$SKILL_SUGGEST" 2>/dev/null)
+assert_eq "$out" "" "a second suggestion within 300s is throttled by the derived dir"
+
+# ─── 6. session-context.sh — SessionStart context budget ─────────────
+# A real 2026-09-02 injection measured 24,057 chars, 82.7% of it the
+# correction-rules block (`tail -25` of a file with no byte cap). The 20KB
+# skill catalog deleted in 8406ed4 pushed hook output past the harness inline
+# limit (30.8KB) and the WHOLE additionalContext was silently written to a file
+# instead of entering context. These assertions are what keeps that measured.
+
+section "session-context.sh — context budget"
+
+BUDGET_HOME="$TMP_ROOT/budget-home"
+mkdir -p "$BUDGET_HOME/.claude/corrections"
+# Freeze the audit clock: run_auto_audit rewrites rules.md when .last-audit is
+# stale, which would make every assertion below depend on wall time.
+touch "$BUDGET_HOME/.claude/corrections/.last-audit"
+GRULES="$BUDGET_HOME/.claude/corrections/rules.md"
+
+BPROJ="$TMP_ROOT/budget-proj"
+mkdir -p "$BPROJ"
+git -C "$BPROJ" init -q -b main . >/dev/null 2>&1
+git -C "$BPROJ" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init >/dev/null 2>&1
+
+ctx() {  # extra env as KEY=VAL args
+  echo '{}' | env "$@" HOME="$BUDGET_HOME" CLAUDE_PROJECT_DIR="$BPROJ" \
+    bash "$SESSION_CONTEXT" | jq -r '.hookSpecificOutput.additionalContext // empty'
+}
+
+# 200 rules × ~500 bytes ≈ 100KB. Each ends in a unique sentinel so a
+# mid-sentence cut is detectable.
+: > "$GRULES"
+for i in $(seq -w 1 200); do
+  printf -- '- [2026-09-01] domain-%s (edge-case): %s #RULE-%s-END\n' \
+    "$i" "$(head -c 440 < /dev/zero | tr '\0' 'x')" "$i" >> "$GRULES"
+done
+
+OUT=$(ctx CLADE_X=1)
+assert_eq "$?" "0" "session-context exits 0 with a 100KB rules file"
+
+# BUDGET HOLDS — without the fix this is ~24,000 and the assertion fails by an
+# order of magnitude.
+if [[ ${#OUT} -lt 12000 ]]; then
+  pass "a 100KB rules.md yields an injection under 12,000 chars (${#OUT})"
+else
+  fail "a 100KB rules.md yields an injection under 12,000 chars" "got ${#OUT}"
+fi
+
+# WHOLE LINES ONLY: every rule that starts also ends. A byte cut would leave a
+# started rule with no sentinel.
+starts=$(grep -o -- '- \[2026-09-01\] domain-[0-9]*' <<< "$OUT" | wc -l | tr -d ' ')
+ends=$(grep -o '#RULE-[0-9]*-END' <<< "$OUT" | wc -l | tr -d ' ')
+assert_eq "$ends" "$starts" "every emitted rule is a whole line (no mid-rule byte cut)"
+[[ "$ends" -gt 0 ]] \
+  && pass "the budget keeps at least one rule ($ends kept)" \
+  || fail "the budget keeps at least one rule" "kept none"
+
+# NEWEST KEPT: recency is the whole point of a tail.
+assert_contains "$OUT" "#RULE-200-END" "the newest rule survives the budget"
+if grep -q '#RULE-001-END' <<< "$OUT"; then
+  fail "the oldest rule is dropped" "RULE-001 is still injected"
+else
+  pass "the oldest rule is dropped"
+fi
+
+# DROP NOTICE, with the count and the tool that fixes the cause.
+notice=$(grep -oE '\([0-9]+ older rules not shown[^)]*\)' <<< "$OUT" | head -1)
+if [[ -n "$notice" ]]; then
+  pass "the dropped rules are reported, not silently discarded"
+else
+  fail "the dropped rules are reported, not silently discarded" "no notice in output"
+fi
+assert_contains "$notice" "/audit" "the drop notice names the tool that fixes the cause"
+dropped=$(sed -E 's/^\(([0-9]+).*/\1/' <<< "$notice")
+assert_eq "$dropped" "$(( 200 - ends ))" "the reported drop count matches what was withheld"
+
+# ENV OVERRIDE is wired (settings/wiring is the failure pattern this repo keeps hitting).
+OUT_SMALL=$(ctx CLADE_RULES_BUDGET_BYTES=800)
+small_ends=$(grep -o '#RULE-[0-9]*-END' <<< "$OUT_SMALL" | wc -l | tr -d ' ')
+if [[ "$small_ends" -lt "$ends" && "$small_ends" -gt 0 ]]; then
+  pass "CLADE_RULES_BUDGET_BYTES=800 shrinks the block ($ends → $small_ends rules)"
+else
+  fail "CLADE_RULES_BUDGET_BYTES=800 shrinks the block" "$ends → $small_ends"
+fi
+
+# NO NOTICE WHEN IT FITS, and every rule is verbatim.
+: > "$GRULES"
+for i in 1 2 3; do
+  printf -- '- [2026-09-01] tiny-%s (edge-case): short rule %s #RULE-00%s-END\n' "$i" "$i" "$i" >> "$GRULES"
+done
+OUT=$(ctx CLADE_X=1)
+if grep -q 'older rules not shown' <<< "$OUT"; then
+  fail "no drop notice when everything fits" "notice present with only 3 rules"
+else
+  pass "no drop notice when everything fits"
+fi
+for i in 1 2 3; do
+  assert_contains "$OUT" "#RULE-00$i-END" "small rules.md is injected in full (rule $i)"
+done
+
+# BOTH SOURCES REPRESENTED: the project file must not starve the global one.
+mkdir -p "$BPROJ/.claude/corrections"
+touch "$BPROJ/.claude/corrections/.last-audit"
+: > "$GRULES"
+: > "$BPROJ/.claude/corrections/rules.md"
+for i in $(seq -w 1 60); do
+  printf -- '- [2026-09-01] g-%s (edge-case): %s #RULE-%s-END\n' \
+    "$i" "$(head -c 440 < /dev/zero | tr '\0' 'g')" "$i" >> "$GRULES"
+  printf -- '- [2026-09-01] p-%s (edge-case): %s #PROJ-%s-END\n' \
+    "$i" "$(head -c 440 < /dev/zero | tr '\0' 'p')" "$i" >> "$BPROJ/.claude/corrections/rules.md"
+done
+OUT=$(ctx CLADE_X=1)
+assert_contains "$OUT" "#PROJ-60-END" "the newest project rule is injected"
+assert_contains "$OUT" "#RULE-60-END" "the global file is not starved to zero by the project half"
+
+# HANDOFF CAP: an unbounded handoff was the next overflow waiting to happen.
+# The /pickup imperative is appended AFTER the body, so it must survive.
+mkdir -p "$BPROJ/.claude"
+head -c 40000 < /dev/zero | tr '\0' 'y' > "$BPROJ/.claude/handoff-2026-09-02.md"
+printf '\nHANDOFF-TAIL-SENTINEL\n' >> "$BPROJ/.claude/handoff-2026-09-02.md"
+OUT=$(ctx CLADE_X=1)
+if [[ ${#OUT} -lt 12000 ]]; then
+  pass "a 40KB handoff stays inside the ceiling (${#OUT} chars)"
+else
+  fail "a 40KB handoff stays inside the ceiling" "got ${#OUT}"
+fi
+assert_contains "$OUT" "/pickup" "the /pickup imperative survives handoff truncation"
+assert_contains "$OUT" "truncated:" "truncation is marked, not silent"
+if grep -q 'HANDOFF-TAIL-SENTINEL' <<< "$OUT"; then
+  fail "the handoff body is actually capped" "the 40KB tail was injected in full"
+else
+  pass "the handoff body is actually capped"
+fi
+rm -f "$BPROJ/.claude/handoff-2026-09-02.md"
+
+# CEILING WARNING: warn, never truncate — the guidance blocks are appended last.
+OUT=$(ctx CLADE_CTX_CEILING_BYTES=100)
+assert_contains "$OUT" "over the 100 budget" "an over-ceiling payload says so"
+assert_contains "$OUT" "Close the loop" "the ceiling warning does not truncate the trailing sections"
 
 # ─── Summary ─────────────────────────────────────────────────────────
 

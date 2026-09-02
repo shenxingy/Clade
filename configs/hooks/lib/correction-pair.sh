@@ -19,7 +19,22 @@
 # to $PPID only when absent (older Claude Code). session_id keeps the three hooks
 # correlated across event types — $PPID can differ per hook invocation.
 
-CP_SHADOW_DIR="${CP_SHADOW_DIR:-/tmp/claude-edit-shadows}"
+# Shadow location: a PER-USER scratch root, never a fixed /tmp path. A fixed
+# path is first-writer-wins on a shared host — measured on aries, where
+# /tmp/claude-edit-shadows was owned by one account and every other account's
+# appends were a silent EACCES, so correction pairing was off for everyone else.
+# CP_SHADOW_DIR stays the override name: the test suites and
+# session-end-cleanup.sh already read it.
+_CP_LIBDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "$_CP_LIBDIR/runtime-dir.sh" 2>/dev/null || true
+if [[ -z "${CP_SHADOW_DIR:-}" ]]; then
+  if declare -f clade_state_dir >/dev/null 2>&1; then
+    CP_SHADOW_DIR=$(clade_state_dir claude-edit-shadows 2>/dev/null) || CP_SHADOW_DIR=""
+  else
+    CP_SHADOW_DIR=""
+  fi
+fi
 
 # cp_session_key <input_json> — echo a stable, filesystem-safe per-session key.
 cp_session_key() {
@@ -35,7 +50,10 @@ cp_session_key() {
 }
 
 # cp_shadow_file <session_key> — echo the shadow log path for a session.
+# Returns 1 (printing nothing) when no scratch root is available, so a caller
+# can never derive "/session-<key>.jsonl" from an empty directory.
 cp_shadow_file() {
+  [[ -n "${CP_SHADOW_DIR:-}" ]] || return 1
   printf '%s/session-%s.jsonl' "$CP_SHADOW_DIR" "$1"
 }
 

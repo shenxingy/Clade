@@ -9,14 +9,30 @@
 # logged "No claude worker processes to kill" and freed no memory at all.
 #
 # The rows below are real `ps -eo pid=,etimes=,comm=,args=` shapes.
+#
+# Also covers the runtime paths: the pid file moved off the fixed
+# /tmp/memory-watchdog.pid (first-writer-wins on a shared host) into this
+# user's private runtime dir, and the pid write + EXIT trap moved BELOW the
+# source guard — sourcing this file used to write and then delete the pid file
+# of whatever watchdog was actually live on the machine.
 
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+WATCHDOG="$REPO_ROOT/configs/scripts/memory-watchdog.sh"
+
+MW_SANDBOX="$(mktemp -d /tmp/clade-mw-test-XXXXXX)"
+case "$MW_SANDBOX" in
+  /tmp/clade-mw-test-*) : ;;
+  *) echo "FATAL: sandbox '$MW_SANDBOX' is not under /tmp — aborting"; exit 1 ;;
+esac
+trap 'rm -rf "$MW_SANDBOX"' EXIT
+export MW_PID_FILE="$MW_SANDBOX/watchdog.pid"
+export MW_LOG_FILE="$MW_SANDBOX/watchdog.log"
 
 # shellcheck source=/dev/null
-source "$REPO_ROOT/configs/scripts/memory-watchdog.sh"
+source "$WATCHDOG"
 
 PASS=0
 FAIL=0
@@ -95,6 +111,87 @@ if printf '%s' "$WORKER_ARGS" | grep -qE "claude[[:space:]].*[[:space:]]-p[[:spa
   fail "the old pattern is documented as non-matching" "it matched — the premise of this fix is wrong"
 else
   pass "the old pattern matches none of the commands worker_provider builds"
+fi
+
+section "Sourcing must not touch live watchdog state"
+
+# The regression: `echo $$ > "$PID_FILE"` and `trap 'rm -f "$PID_FILE"' EXIT`
+# ran at file scope, above the source guard. This suite sources the script, so
+# every run wrote and then deleted a real watchdog's pid file.
+if [[ -e "$MW_PID_FILE" ]]; then
+  fail "sourcing writes no pid file" "created $MW_PID_FILE"
+else
+  pass "sourcing writes no pid file"
+fi
+if [[ -e "$MW_LOG_FILE" ]]; then
+  fail "sourcing writes no log file" "created $MW_LOG_FILE"
+else
+  pass "sourcing writes no log file"
+fi
+
+# Structural guard on the same defect, independent of MW_PID_FILE: the old code
+# ignored every override, so an assertion phrased only in terms of the sandbox
+# path could not see it. The pid write must sit BELOW the source guard.
+_guard_ln=$(grep -n 'BASH_SOURCE\[0\]}" != "\${0}' "$WATCHDOG" | head -1 | cut -d: -f1)
+_write_ln=$(grep -n 'echo \$\$ > "\$PID_FILE"' "$WATCHDOG" | head -1 | cut -d: -f1)
+if [[ -n "$_guard_ln" && -n "$_write_ln" && "$_write_ln" -gt "$_guard_ln" ]]; then
+  pass "the pid write is below the source guard (line $_write_ln > $_guard_ln)"
+else
+  fail "the pid write is below the source guard" \
+    "guard at '${_guard_ln:-?}', write at '${_write_ln:-?}'"
+fi
+
+section "Runtime paths are per-user, not a fixed /tmp path"
+
+if grep -qE '^(PID_FILE|LOG_FILE)="?/tmp/' "$WATCHDOG"; then
+  fail "no state path is hardcoded under /tmp" "a fixed /tmp assignment survives"
+else
+  pass "no state path is hardcoded under /tmp"
+fi
+
+assert_eq "$MW_PID_FILE" "$(_mw_pid_file)" "MW_PID_FILE overrides the derived path"
+
+# With no override, the pid file lands under the private runtime root.
+MW_RT="$MW_SANDBOX/rt"
+out=$( MW_PID_FILE= CLADE_RUNTIME_DIR="$MW_RT" _mw_pid_file )
+assert_eq "$MW_RT/memory-watchdog.pid" "$out" "the pid file derives from the runtime root"
+
+# A squatted (symlinked) root is refused by the helper, so the watchdog falls
+# back to $HOME rather than writing into a directory it does not own.
+mkdir -p "$MW_SANDBOX/elsewhere"
+ln -s "$MW_SANDBOX/elsewhere" "$MW_SANDBOX/squat"
+out=$( MW_PID_FILE= CLADE_RUNTIME_DIR="$MW_SANDBOX/squat" HOME="$MW_SANDBOX/fakehome" _mw_pid_file )
+assert_eq "$MW_SANDBOX/fakehome/.claude/memory-watchdog.pid" "$out" \
+  "an unusable runtime root falls back to \$HOME, never to a shared /tmp path"
+
+# The log is long-lived, so it belongs in $HOME — not a runtime dir systemd
+# reaps on last logout.
+if grep -q 'LOG_FILE="${MW_LOG_FILE:-$HOME/.claude/memory-watchdog.log}"' "$WATCHDOG"; then
+  pass "the log defaults under \$HOME, not the runtime dir"
+else
+  fail "the log defaults under \$HOME, not the runtime dir"
+fi
+
+section "--stop resolves the same path the daemon wrote"
+
+out=$(MW_PID_FILE="$MW_SANDBOX/absent.pid" bash "$WATCHDOG" --stop 2>&1); rc=$?
+assert_eq "1" "$rc" "--stop exits 1 when no watchdog is running"
+if grep -q 'No running memory watchdog' <<< "$out"; then
+  pass "--stop names the pid file it looked for"
+else
+  fail "--stop names the pid file it looked for" "got: $out"
+fi
+
+sleep 60 &
+VICTIM=$!
+printf '%s\n' "$VICTIM" > "$MW_SANDBOX/live.pid"
+MW_PID_FILE="$MW_SANDBOX/live.pid" bash "$WATCHDOG" --stop >/dev/null 2>&1
+assert_eq "0" "$?" "--stop exits 0 when it stops a running watchdog"
+wait "$VICTIM" 2>/dev/null
+if kill -0 "$VICTIM" 2>/dev/null; then
+  fail "--stop actually signals the recorded pid" "pid $VICTIM is still alive"
+else
+  pass "--stop actually signals the recorded pid"
 fi
 
 printf "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
