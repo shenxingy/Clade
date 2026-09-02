@@ -109,6 +109,8 @@ GOLDEN_TOP3: list[tuple[str, str]] = [
     ("优化 iOS 原生 App", "frontend-design"),
     ("优化 Windows 桌面软件", "frontend-design"),
     ("redesign Electron desktop app UI", "frontend-design"),
+    ("design a soft-premium theme version", "frontend-design"),
+    ("用工业粗野主义主题设计一个界面版本", "frontend-design"),
     # Chinese triggers — substring match requires the phrase to literally
     # appear in the skill's frontmatter (verified by grep, all unique).
     ("提交", "commit"),
@@ -169,6 +171,8 @@ DISAMBIGUATION_RANK1: list[tuple[str, str]] = [
     ("优化 Windows 桌面软件", "frontend-design"),
     ("redesign Electron desktop app UI", "frontend-design"),
     ("build Flutter mobile interface", "frontend-design"),
+    ("design a named visual theme variant", "frontend-design"),
+    ("用可调预设设计一个 UI 版本", "frontend-design"),
 ]
 
 
