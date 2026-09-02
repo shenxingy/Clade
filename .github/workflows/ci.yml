@@ -154,6 +154,13 @@ jobs:
       - name: Roadmap authority
         run: python3 configs/scripts/check-roadmap-authority.py
 
+      # The /sync skill caps PROGRESS.md at 100 lines and prescribes
+      # docs/progress-archive/. It said so in prose only, so the file reached
+      # 1,209 lines and the archive directory was never created. A cap stated
+      # in prose drifts; this one is checked.
+      - name: Progress log cap
+        run: python3 configs/scripts/archive-progress.py --check
+
       # CLAUDE.md's pre-commit checklist claims to be what makes CI pass. It
       # had drifted twice (df802c3, then again by 2026-08-29), both times
       # leaving a local run green against a list that did not cover the build.

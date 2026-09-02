@@ -435,7 +435,19 @@ re-running the gates.
       to 41, and red-phase confirms the attribution assertion fails without the
       fix.
 
-- [ ] 🟡 `PROGRESS.md` is 1209 lines against the 100-line cap its own owning skill sets, and the `docs/progress-archive/` the skill prescribes was never created. Same problem the TODO archive just fixed, one file over.
+- [x] 🟡 **`PROGRESS.md` was 1,209 lines against the 100-line cap its own
+      skill sets.** DONE 2026-09-02. The `/sync` skill says keep it under 100
+      lines and move older entries to `docs/progress-archive/YYYY-MM.md`. It
+      said so in prose only, so the file grew to twelve times the cap and the
+      archive directory was never created — the same shape as every other drift
+      in this audit, a rule with nothing checking it.
+      `configs/scripts/archive-progress.py` now splits the file by dated entry,
+      keeps the newest that fit plus anything marked `[ACTIVE]`, and writes the
+      rest to the month file the skill names. 65 entries in, 5 kept, 60
+      archived across three months, 65 entries out — nothing lost. `--check`
+      runs in CI as syntax-check gate 18, and adding it immediately caught
+      `CLAUDE.md` still claiming 17.
+
 - [ ] 🟡 `ReactionConfig.action` is decorative: "escalate"/"abort"/"notify" is never dispatched, every triggered reaction is consumed by a `logger.warning`. So `reactions_enabled` switches off log lines, not behaviour. Either dispatch the actions or rename the field to what it is.
 - [ ] 🟡 `test_release_version_surfaces_are_aligned` hard-codes the expected version, so cutting a release means editing the gate — the hand-sync it exists to prevent. Derive it from `mcp-package/pyproject.toml` and extend it to the plugin manifests.
 - [ ] 🔵 Patrol reports are written and never read. `start.sh` writes `~/.claude/patrol-report-DATE.md` and nothing parses it back; `patrol_auto_ideas` was the flag for that missing ingestion and was deleted rather than left as a published lie. Re-propose with a real design.

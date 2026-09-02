@@ -395,6 +395,12 @@ python3 configs/scripts/check-action-pinning.py
 #      table stopped at Phase 13 while TODO tracked a finished Phase 14.
 python3 configs/scripts/check-roadmap-authority.py
 
+# 10d. Progress-log cap — the /sync skill caps PROGRESS.md at 100 lines and
+#      prescribes docs/progress-archive/. Stated in prose only, the file reached
+#      1,209 lines and the directory was never created. Same shape as every
+#      other drift here: a rule nothing checked.
+python3 configs/scripts/archive-progress.py --check      # --apply to archive
+
 # 11. Shellcheck (CI installs shellcheck; local may not). The `bash` prefix is
 #     required — checks.sh is mode 100644, so invoking it directly exits 126 —
 #     and the file list must match CI's, which is every hook and script plus
@@ -445,7 +451,7 @@ enforces that yet, which is precisely why it keeps recurring.
 
 On push/PR to `main`, four workflow files fire:
 
-- `ci.yml` — `syntax-check` (17 gates), `pytest` (suite + 2 offline evals),
+- `ci.yml` — `syntax-check` (18 gates), `pytest` (suite + 2 offline evals),
   `shell-tests` (19 suites), `install-test`. `run_hack_eval.py` scores
   `judge_diversity.test_integrity` against the labelled reward-hack corpus in
   `evals/hack_cases/` — read its README before changing either, because that
