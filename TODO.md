@@ -360,6 +360,50 @@ re-running the gates.
 - [ ] 🔵 Nothing enforces the top-level `docs/*.md` header convention; two of fourteen files had drifted off it and no gate noticed. Cheapest control: assert in `check-references.py` that every top-level `docs/*.md` links `../README.md` in its first three lines.
 - [ ] 🔵 The global agent rules assert that `/sync` flags a README over 300 lines. The shipped skill has no such logic — its only line-count rule caps `PROGRESS.md` at 100. Implement the check or correct the claim.
 - [ ] 🔵 Web lint has no home. The `npm run lint` script was deleted because eslint was never installed; re-adding it properly needs a `web` job in `ci.yml` and the coupled CLAUDE.md checklist line, which `check-ci-checklist.py` enforces.
+### Review of the review — 2026-09-02, second pass
+
+- [ ] 🔴 **The orchestrator has never run.** No `tasks.db` on this host carries
+      the current schema: three exist, two hold zero rows, the third holds 12
+      and predates `agent_runtime`, `provider` and the evidence bundle entirely.
+      No evidence store exists at all. So `worker_pool.py`, `worker_routing.py`,
+      `cascade_policy.py`, `evidence_bundle.py`, `routing_break_even.py` and
+      `attempt_telemetry.py` — the layer this audit spent most of its effort on,
+      and the layer that owns worker parallelism — have no production usage
+      data whatsoever. Every measured number about parallelism in this repository
+      comes from Claude Code's Workflow/subagent layer, which the orchestrator
+      does not control. Decide deliberately: run it on one real project for a
+      week and let the evidence store fill, or mark the layer experimental and
+      stop auditing it as if it were load-bearing. Auditing an unrun system is
+      how a "control that never applies" gets built in the first place.
+- [ ] 🟡 `CapabilityState` for `"subagents"` is declared for both providers and
+      read by nothing — two definitions, zero consumers. Codex's is
+      `CONDITIONAL` with no condition expressed anywhere. Either route on it
+      (a fan-out plan should refuse to hand parallel sub-work to a runtime that
+      cannot subdivide) or delete the key.
+- [ ] 🟡 **Codex cannot fan out, and that is why it is slower.** `codex exec`
+      exposes 15 flags and not one concerns agents, delegation or concurrency.
+      The CLI's own `features list` shows `multi_agent stable true` — but only
+      the interactive TUI reaches it — `multi_agent_v2 stable false`, and
+      `enable_fanout removed`. So a Codex worker is one linear agent, while a
+      Claude worker can spawn its own subagents. Comparing their wall-clock as
+      if they were peers is comparing a fan-out against a single thread. The
+      only parallelism available to Codex is Clade spawning N `codex exec`
+      processes from outside, which the worker pool can already do and which
+      nothing measures.
+- [ ] 🟡 The polling rule ("one Monitor, then yield") lives only as prose in the
+      global instructions. Nothing enforces it and nothing counts violations,
+      which is the same shape as every gate this audit found broken. The
+      measurable version: `workflow-scorecard.py` could read the lead session's
+      own transcript and report poll-calls-per-background-job alongside the
+      straggler numbers.
+- [ ] 🟡 The learning system does not measurably learn. The rework rate has been
+      flat at 9-15% for six months while `corrections/` accumulated rules, and
+      nothing closes the loop from "rule written" to "defect not repeated".
+      There is no measurement of whether any individual rule ever prevented
+      anything. Before adding more capture, measure the existing rules'
+      effect — `rule-effectiveness.sh` exists and its hit counts are known noise
+      (see the `.domain` item above).
+
 ### Adversarial review of the audit branch — 2026-09-02
 
 166 agents reviewed the branch across seven dimensions; each finding was then
