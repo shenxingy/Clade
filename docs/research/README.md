@@ -55,6 +55,11 @@ The gaps cluster into 5 themes. This is the strategic read — *where the most e
 
 Grouped by [watch-list](../who-to-learn-from.md) tier. `Gaps` = count of open `needs_work_items`.
 
+### Agent orchestration efficiency (2026-09-02)
+| Source | Status | Gaps | Core lesson | Doc |
+|--------|--------|------|-------------|-----|
+| **Our own 89 workflow runs** | 🔨 | 3 | The process data was already being written and nothing had ever read it. Measured across 89 parallel runs (1777 agents, 49.9h): **45% of all makespan was spent with exactly one agent still running**. Agent count is not the problem — barriers are. A 110-agent `pipeline()` scored 80% utilisation with a **0%** tail despite a 6.9x straggler spread; a 10-agent `parallel()` barrier scored 55% with a 19% tail. A pipeline absorbs variance; a barrier converts it into idle capacity. Also measured: 25% of the lead session's shell calls were pure status polls | [→](2026-09-02-agent-orchestration-efficiency.md) |
+
 ### Ecosystem audit (2026-08-29)
 | Source | Status | Gaps | Core lesson | Doc |
 |--------|--------|------|-------------|-----|
