@@ -70,6 +70,18 @@ python3 configs/scripts/red-phase-audit.py 30
 # clean 0% exactly like a clean codebase — this one has done that before.
 python3 configs/scripts/red-phase-audit.py --self-test
 
+# How well did a multi-agent run use its parallelism? Every Workflow run writes
+# per-agent transcripts under ~/.claude*/projects/<slug>/<session>/subagents/
+# workflows/, and until 2026-09-02 nothing read them: /retro mines git history,
+# session-scorecard.sh mines corrections, and the PROCESS went unmeasured.
+# Measured across 89 parallel runs on this account (1777 agents, 49.9h): 45% of
+# all makespan was spent with exactly ONE agent still running, and 55 of the 89
+# had a tail over 15%. The shape matters more than the agent count — a
+# 110-agent pipeline() scored 80% utilisation with a 0% tail, while a 10-agent
+# parallel() barrier scored 55% with 19%.
+python3 configs/scripts/workflow-scorecard.py --project Clade --since 7
+python3 configs/scripts/workflow-scorecard.py --since 0 --json   # all runs, machine-readable
+
 # Native Codex plugin — regenerate after changing a shipped canonical skill
 python3 configs/scripts/regen-codex-plugin.py
 python3 configs/scripts/regen-codex-plugin.py --check
