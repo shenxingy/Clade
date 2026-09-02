@@ -92,9 +92,39 @@ def test_extract_token_ignores_non_bearer_authorization():
 # ─── Path classification ──────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("path", ["/", "/api/version", "/web/", "/web/index.html"])
+@pytest.mark.parametrize(
+    "path", ["/", "/api/version", "/web", "/web/", "/web/index.html", "/assets/x.js", "/favicon.ico"]
+)
 def test_public_paths(path):
     assert is_public_path(path)
+
+
+@pytest.mark.parametrize("path", ["/webhook", "/website", "/web-admin", "/assets-private/x"])
+def test_prefix_confusion_is_not_public(path):
+    """A bare startswith("/web") would have opened every route beginning /web.
+
+    None of these exists today. That is the point: the middleware's whole claim
+    is that a route added tomorrow is guarded by default.
+    """
+
+    assert not is_public_path(path)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/web/../api/tasks",
+        "/web/../../api/settings",
+        "/assets/../api/tasks",
+        "/../api/tasks",
+    ],
+)
+def test_dot_dot_is_never_public(path):
+    """Nothing normalises the path between here and the router today — but a TLS
+    front end would, and then the middleware and the router would disagree about
+    which route a request names."""
+
+    assert not is_public_path(path)
 
 
 @pytest.mark.parametrize(

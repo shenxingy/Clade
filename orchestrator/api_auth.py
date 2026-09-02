@@ -60,8 +60,12 @@ TOKEN_QUERY_PARAM = "token"
 # that exists precisely so an operator can tell whether a *stale* process is
 # running before they can be expected to hold a credential. None of these read
 # or mutate project state.
-PUBLIC_EXACT = frozenset({"/", "/api/version"})
-PUBLIC_PREFIXES = ("/web/", "/web", "/favicon.ico", "/assets/")
+PUBLIC_EXACT = frozenset({"/", "/web", "/api/version", "/favicon.ico"})
+# Prefixes match on a SEGMENT boundary, never as a bare string prefix. A plain
+# startswith("/web") would have made "/webhook" and "/website" public — a route
+# nobody has added yet, which is exactly the drift this middleware exists to
+# stop. The mount root itself is in PUBLIC_EXACT above instead.
+PUBLIC_PREFIXES = ("/web/", "/assets/")
 
 # Endpoints that authenticate their callers themselves, with a *different*
 # credential that a third party legitimately holds. Guarding them with the
@@ -167,8 +171,19 @@ def extract_token(scope: Mapping[str, Any]) -> str:
 
 
 def is_public_path(path: str) -> bool:
-    """True for paths served without any credential."""
+    """True for paths served without any credential.
 
+    A path containing a ``..`` segment is never public, whatever it looks like.
+    Nothing between this middleware and the router normalises the path, so
+    ``/web/../api/tasks`` cannot today reach the guarded route it names — but
+    that is a property of the current stack, not of this function, and a
+    normalising proxy in front (``caddy-setup.sh`` puts one there) would change
+    it. Refusing the shape outright costs nothing: no legitimate client sends
+    it, and StaticFiles rejects it a layer later anyway.
+    """
+
+    if ".." in path.split("/"):
+        return False
     return path in PUBLIC_EXACT or path.startswith(PUBLIC_PREFIXES)
 
 
