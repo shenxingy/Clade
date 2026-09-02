@@ -244,7 +244,14 @@ class ClaudeProvider(WorkerProvider):
             "image_input": CapabilityState.CONDITIONAL,
             "reasoning_control": CapabilityState.CONDITIONAL,
         }
-        return CapabilitySet(states, {name: source for name in states})
+        # A CONDITIONAL with no condition written down is not a state, it is a
+        # shrug. `sources` exists to carry that, and it was the adapter name for
+        # every key — the same uniform value that made it useless to read.
+        return CapabilitySet(states, {**{name: source for name in states}, **{
+            "native_rate_limits": f"{source}: depends on the account plan",
+            "image_input": f"{source}: depends on the resolved model",
+            "reasoning_control": f"{source}: depends on the resolved model",
+        }})
 
     def resolve_effort(
         self, requested: str | None, resolved_model: str | None
@@ -348,14 +355,25 @@ class CodexProvider(WorkerProvider):
             "repository_write": CapabilityState.SUPPORTED,
             "structured_events": CapabilityState.UNSUPPORTED,
             "native_resume": CapabilityState.UNSUPPORTED,
-            "subagents": CapabilityState.CONDITIONAL,
+            # Was CONDITIONAL with no condition expressed anywhere, which read
+            # as "sometimes, depending". It does not: `codex exec` spawns no
+            # sub-agent, so a run that needs to subdivide cannot on this
+            # runtime. UNSUPPORTED is what makes a `subagents: required` task
+            # refuse this route instead of being admitted and then serialised.
+            "subagents": CapabilityState.UNSUPPORTED,
             "hooks": CapabilityState.SUPPORTED,
             "status_renderer": CapabilityState.CONDITIONAL,
             "native_rate_limits": CapabilityState.CONDITIONAL,
             "image_input": CapabilityState.CONDITIONAL,
             "reasoning_control": CapabilityState.SUPPORTED,
         }
-        return CapabilitySet(states, {name: source for name in states})
+        return CapabilitySet(states, {**{name: source for name in states}, **{
+            "subagents": f"{source}: codex exec has no headless sub-agent spawn",
+            "status_renderer": f"{source}: native status_line is fixed-field; "
+                               "a command-backed renderer needs a patched build",
+            "native_rate_limits": f"{source}: depends on the account plan",
+            "image_input": f"{source}: depends on the resolved model",
+        }})
 
     def build_command(
         self,
