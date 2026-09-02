@@ -65,9 +65,22 @@ fi
 # ruled out in docs/goals/align-elites.md), so a fresh checkout has no UI at all
 # and /web answers 503 until this runs. Non-fatal in both legs: the API is
 # useful without the browser UI, and a node problem must not stop the server.
-if [[ ! -d "$SCRIPT_DIR/web/dist" ]]; then
+# Staleness, not existence. dist/ is gitignored, so `git pull` never touches it:
+# an existence check means every machine that ran the orchestrator before a UI
+# change keeps serving the OLD bundle forever — which after the auth change
+# meant serving a pre-auth bundle that cannot sign in.
+_web_needs_build() {
+  local dist="$SCRIPT_DIR/web/dist/index.html"
+  [[ -f "$dist" ]] || return 0
+  local newest
+  newest=$(find "$SCRIPT_DIR/web/src" "$SCRIPT_DIR/web/index.html" \
+                "$SCRIPT_DIR/web/package.json" -newer "$dist" -print -quit 2>/dev/null)
+  [[ -n "$newest" ]]
+}
+
+if _web_needs_build; then
   if command -v npm >/dev/null 2>&1; then
-    echo "Building web UI (first run)..."
+    echo "Building web UI (missing or out of date)..."
     ( cd "$SCRIPT_DIR/web" && npm ci --silent && npm run build ) \
       || echo "  WARNING: web build failed — API still serves; /web returns 503"
   else

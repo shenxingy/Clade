@@ -340,11 +340,36 @@ def test_every_mutating_route_on_the_real_app_is_guarded():
 
     import server  # noqa: PLC0415 - import cost is paid once, inside the test
 
+    def _walk(container):
+        """Every route, including those inside an included router.
+
+        fastapi 0.141 stopped flattening `include_router` into `app.routes` and
+        wraps each one in `_IncludedRouter` instead. A flat walk therefore
+        reached 35 of the 93 routes while reporting success — the exact shape of
+        gate this repository keeps finding: it runs, it passes, it checks a
+        third of what it claims to.
+        """
+
+        for route in getattr(container, "routes", []):
+            yield route
+            # fastapi 0.141 wraps each include_router in _IncludedRouter, which
+            # exposes its children as `original_router`, not `routes`.
+            nested = getattr(route, "original_router", None) or (
+                route if hasattr(route, "routes") else None
+            )
+            if nested is not None and nested is not route:
+                yield from _walk(nested)
+            elif nested is route:
+                yield from _walk(route)
+
     settings = {"api_token": TOKEN}
+    seen_api = 0
     unguarded = []
-    for route in server.app.routes:
+    for route in _walk(server.app):
         path = getattr(route, "path", "")
         methods = getattr(route, "methods", None) or set()
+        if path.startswith("/api/") or path.startswith("/ws/"):
+            seen_api += 1
         if not path.startswith("/api/"):
             continue
         if not (methods & {"POST", "PUT", "DELETE", "PATCH"}):
@@ -355,6 +380,8 @@ def test_every_mutating_route_on_the_real_app_is_guarded():
 
     # Only the endpoints that authenticate their own callers may be open.
     assert set(unguarded) <= {"/api/webhooks/github"}, unguarded
+    # And the walk must actually have reached the route table, not a slice of it.
+    assert seen_api >= 85, f"route walk reached only {seen_api} /api and /ws routes"
 
 
 def test_settings_route_masks_secrets_in_its_response_shape():

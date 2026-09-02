@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import subprocess
 import time
 from contextlib import asynccontextmanager
@@ -69,6 +70,37 @@ from compatibility_telemetry import (
 
 logger = logging.getLogger(__name__)
 
+
+class _TokenRedactingFilter(logging.Filter):
+    """Keep the control-plane token out of the server's own log.
+
+    A browser cannot set headers on a WebSocket handshake, so the SPA passes the
+    token as `?token=` — and uvicorn logs the handshake line, query string and
+    all, at INFO. The credential therefore landed in the server log on every
+    connect and reconnect. The same applies to the sign-in URL an operator pastes
+    once. Masking at the logging layer covers every emitter without changing the
+    wire protocol.
+    """
+
+    _PATTERN = re.compile(r"([?&]token=)[^&\s\"']+")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            if isinstance(record.msg, str) and "token=" in record.msg:
+                record.msg = self._PATTERN.sub(r"\1<redacted>", record.msg)
+            if record.args:
+                record.args = tuple(
+                    self._PATTERN.sub(r"\1<redacted>", a) if isinstance(a, str) else a
+                    for a in record.args
+                )
+        except Exception:  # never let logging hygiene break a request
+            pass
+        return True
+
+
+for _log_name in ("uvicorn", "uvicorn.error", "uvicorn.access", "websockets.server"):
+    logging.getLogger(_log_name).addFilter(_TokenRedactingFilter())
+
 # ─── App ──────────────────────────────────────────────────────────────────────
 
 
@@ -86,14 +118,18 @@ async def lifespan(app: FastAPI):
             "with permissions bypassed."
         )
     elif _minted:
-        logger.info(
+        # WARNING, not INFO: uvicorn's default logging config does not enable
+        # the application logger at INFO, so this line — the one-time credential
+        # handoff the docs tell the operator to look for — was never printed at
+        # all. A credential handoff is not routine information anyway.
+        logger.warning(
             "Control-plane token minted. Open the UI with: "
             "http://<host>:<port>/web/?token=%s  (stored in %s)",
             _token,
             _settings_file,
         )
     else:
-        logger.info(
+        logger.warning(
             "Control-plane token loaded from %s — append ?token=<value> once to "
             "sign the browser in.",
             _settings_file,
@@ -1277,7 +1313,10 @@ async def post_settings(body: dict = Body(...), response: Response = None):
         GLOBAL_SETTINGS[k] = v
     snapshot = dict(GLOBAL_SETTINGS)
     await asyncio.to_thread(_save_settings, snapshot)
-    return GLOBAL_SETTINGS
+    # Masked, exactly like the GET. The panel replaces its whole form state
+    # with this response body, so returning it raw handed every secret back on
+    # the first toggle and defeated the masking two functions above.
+    return redact_settings(GLOBAL_SETTINGS)
 
 # ─── REST: Status ─────────────────────────────────────────────────────────────
 

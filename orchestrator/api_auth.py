@@ -247,13 +247,20 @@ class TokenAuthMiddleware:
 
         settings = self._settings() or {}
 
+        # The documented meaning is "serves the control plane with no
+        # authentication at all", so it has to be checked BEFORE the token, not
+        # only as a fallback when none is configured. Nested under `if not
+        # expected` it was inert on every machine that had ever started the
+        # server — which is every machine, since ensure_api_token mints one —
+        # while the startup log dutifully warned that auth was off.
+        if settings.get("api_allow_unauthenticated", False):
+            return True, ""
+
         if is_self_authenticated(path, settings):
             return True, ""
 
         expected = str(settings.get("api_token") or "").strip()
         if not expected:
-            if settings.get("api_allow_unauthenticated", False):
-                return True, ""
             return False, (
                 "Control plane is not configured: api_token is unset. Restart the "
                 "orchestrator to mint one, or set api_allow_unauthenticated to serve "
@@ -261,7 +268,14 @@ class TokenAuthMiddleware:
             )
 
         presented = extract_token(scope)
-        if presented and hmac.compare_digest(presented, expected):
+        # Compare BYTES. hmac.compare_digest raises TypeError on str inputs
+        # holding any character above U+00FF, so `?token=%C3%A9` from an
+        # unauthenticated client turned the guard into an unhandled 500 —
+        # a crash oracle that also tells the caller the path exists.
+        if presented and hmac.compare_digest(
+            presented.encode("utf-8", "surrogateescape"),
+            expected.encode("utf-8", "surrogateescape"),
+        ):
             return True, ""
         return False, "Missing or invalid API token."
 
