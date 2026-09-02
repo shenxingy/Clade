@@ -170,11 +170,22 @@ app.add_middleware(TokenAuthMiddleware, settings_getter=lambda: GLOBAL_SETTINGS)
 # state the policy in one place, with CORS_ORIGINS still available to name exact
 # extra origins. The regex now allows https so a TLS front end (see
 # orchestrator/caddy-setup.sh) is not silently blocked.
-_cors_origins = [o for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
+_cors_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
+
+# Origins the browser UI may be served from. Starlette compares allow_origins
+# entries with `==` (starlette/middleware/cors.py:103), so the former
+# "http://localhost:*" default was dead text and this regex was doing all the
+# work unnoticed. Second octet pinned to 64-127 because Tailscale's CGNAT range
+# is 100.64.0.0/10 — the old \d+ also granted 100.0.0.0/8, which is publicly
+# routable, so any host under e.g. http://100.20.1.5 held a CORS grant.
+_CORS_ORIGIN_REGEX = (
+    r"https?://(localhost|127\.0\.0\.1|"
+    r"100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3})(:\d+)?"
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
-    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|100\.\d+\.\d+\.\d+)(:\d+)?",
+    allow_origin_regex=_CORS_ORIGIN_REGEX,
     allow_methods=["*"],
     allow_headers=["*"],
 )
