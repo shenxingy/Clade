@@ -362,19 +362,27 @@ re-running the gates.
 - [ ] 🔵 Web lint has no home. The `npm run lint` script was deleted because eslint was never installed; re-adding it properly needs a `web` job in `ci.yml` and the coupled CLAUDE.md checklist line, which `check-ci-checklist.py` enforces.
 ### Review of the review — 2026-09-02, second pass
 
-- [ ] 🔴 **The orchestrator has never run.** No `tasks.db` on this host carries
-      the current schema: three exist, two hold zero rows, the third holds 12
-      and predates `agent_runtime`, `provider` and the evidence bundle entirely.
-      No evidence store exists at all. So `worker_pool.py`, `worker_routing.py`,
-      `cascade_policy.py`, `evidence_bundle.py`, `routing_break_even.py` and
-      `attempt_telemetry.py` — the layer this audit spent most of its effort on,
-      and the layer that owns worker parallelism — have no production usage
-      data whatsoever. Every measured number about parallelism in this repository
-      comes from Claude Code's Workflow/subagent layer, which the orchestrator
-      does not control. Decide deliberately: run it on one real project for a
-      week and let the evidence store fill, or mark the layer experimental and
-      stop auditing it as if it were load-bearing. Auditing an unrun system is
-      how a "control that never applies" gets built in the first place.
+- [x] 🔴 **The orchestrator has never run — and that is deliberate.** The
+      measurement stands: no `tasks.db` on this host carries the current schema
+      (three exist, two hold zero rows, the third holds 12 and predates
+      `agent_runtime`, `provider` and the evidence bundle), and no evidence store
+      exists at all. **DECIDED 2026-09-02 by the owner: the GUI is dormant —
+      effectively fully disabled — and all work happens in the terminal. It may
+      be rebuilt later, so nothing is deleted.** So this was never a defect; it
+      is the expected consequence of a decision that had not been written down
+      anywhere. What follows from it is a scope rule, below.
+- [ ] 🟡 **Scope rule not yet enforced anywhere: the orchestrator is not
+      load-bearing.** `worker_pool.py`, `worker_routing.py`, `cascade_policy.py`,
+      `evidence_bundle.py`, `routing_break_even.py` and `attempt_telemetry.py`
+      are dormant-path code. This audit spent most of its effort there while every
+      measured parallelism number in the repository came from Claude Code's
+      Workflow/subagent layer, which the orchestrator does not control. Keep the
+      layer building and green — CI covers it — but weigh findings there below
+      terminal-path findings, and treat new orchestrator work as opt-in rather
+      than as debt. Auditing an unrun system is how effort gets spent on a
+      control that never applies. Nothing in the repo says this yet except
+      `CLAUDE.md`'s new note; a mechanical version would be a marker the audit
+      skills read.
 - [ ] 🟡 `CapabilityState` for `"subagents"` is declared for both providers and
       read by nothing — two definitions, zero consumers. Codex's is
       `CONDITIONAL` with no condition expressed anywhere. Either route on it

@@ -120,7 +120,22 @@ python3 configs/scripts/regen-codex-plugin.py --check
 - **The gate is the wiring, not code:** the two silent-signal hooks are `async` (output never fed back) → a bare revert stays data-only; only an explicit correction (sync hook) escalates to context. `repeat=true` is stored for auto-audit but never auto-writes a rule (avoids noise).
 - Shared helpers: `hooks/lib/correction-pair.sh` (session key + shadow read) and `hooks/lib/runtime-dir.sh` (per-user scratch root; fails closed on a squatted path — not a symlink, owned by our euid, mode 0700). `history.jsonl`/shadow are compact JSONL (one object per line). Tests: `tests/test-correction-pairing.sh`.
 
-### Orchestrator Layer (`orchestrator/`)
+### Orchestrator Layer (`orchestrator/`) — DORMANT as of 2026-09-02
+
+> **The GUI is not in use.** The owner works entirely in the terminal; the
+> FastAPI server, its React UI and the worker-pool / task-queue / routing /
+> evidence stack behind them are deliberately dormant. It may be rebuilt, so
+> nothing here is deleted and CI keeps it green — but this is **not**
+> load-bearing code, and a finding here does not weigh the same as one on the
+> terminal path (`configs/` skills, hooks, scripts, and the Codex plugin).
+>
+> The measurable consequence, and the reason this note exists: no `tasks.db` on
+> the author's host carries the current schema and no evidence store exists, so
+> every number this repository has about worker parallelism actually comes from
+> Claude Code's own Workflow/subagent layer — which this orchestrator does not
+> control. Auditing an unrun system as if it were load-bearing is how effort
+> gets spent on a control that never applies.
+
 Key modules (import DAG — leaf → root):
 
 ```
