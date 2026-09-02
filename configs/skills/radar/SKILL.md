@@ -57,11 +57,37 @@ what does that pattern say is structurally missing?"**
 
 Read it as a JSON stream (`jq -c '.'`), and cluster on:
 
-- Recurring `domain` + root-cause pairs — three corrections of the same class is
-  a design signal, not three mistakes.
+- Recurring `project` + `type` pairs, and recurring language in `prompt` — three
+  corrections of the same class is a design signal, not three mistakes.
 - Entries carrying `reverted_files` — a rejected diff is the strongest evidence
-  available; the words may be vague, the diff never is.
+  available; the words may be vague, the diff never is. Read the caveat below
+  before trusting this field.
 - `repeat: true` — flagged recurrence, already computed.
+
+**Know the schema before you grep it.** `history.jsonl` records are
+`{timestamp, prompt, project, type}`, plus `reverted_files` and `repeat` on
+some. There is no `domain` and no `root_cause` — this spec asked for both until
+2026-08-31, which sent three runs looking for fields that were never written.
+`domain` lives in the *other* file, `cross-project-rules.jsonl`.
+
+**Two serialization styles, one file.** Records written up to 2026-08-14 are
+spaced (`{"timestamp": "..."`), records from 2026-08-15 on are compact
+(`{"timestamp":"..."`). At the 2026-08-31 sweep that was 853 spaced and 110
+compact out of 963. Any pattern keyed to one style silently drops the other —
+grepping `'"prompt":"'` returns 110 and reads like the whole file. Parse with
+`jq`, which handles both; never line-grep this file for a count. The same trap
+is live in `configs/scripts/session-scorecard.sh`, whose awk matches only the
+compact form (it windows on recent records, so it is latent, not currently wrong).
+
+**`reverted_files` is not a revert set.** `revert-detector.sh:57` fills it from
+`cp_recent_files(session_key, 20)` — the last 20 distinct files Claude touched
+*in that session* — and never intersects them with what the git command actually
+names. So `git checkout -- one_file.py` is recorded as reverting up to twenty
+unrelated files, including scratch paths and files from other projects. `repeat`
+is then computed by intersecting those same session lists
+(`revert-detector.sh:66`), so it largely measures *session length and overlap*,
+not that the same mistake recurred. Treat both as weak hints, and confirm any
+cluster against the actual diff before calling it evidence.
 
 A cluster that keeps recurring despite an existing rule means the rule is the
 wrong instrument. Escalate it to something structural — a hook, a CI gate, a
