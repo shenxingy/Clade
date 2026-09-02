@@ -116,6 +116,33 @@ import pytest  # noqa: E402
 _HAS_GO = wt._get_ts_parser("tree_sitter_go") is not None
 
 
+class TestTreeSitterGrammarIsInstalled:
+    """The two Go tests below gate on `_HAS_GO`, and until 2026-09-02 nothing
+    installed the grammar: `requirements-treesitter.txt` is referenced by no
+    workflow and no script, and the pytest job installs `requirements-dev.txt`
+    only. Both tests therefore skipped on every CI run since they were written,
+    and a skipped test reports the same green as a passing one — so the SUCCESS
+    path of `_parse_with_treesitter` has never once been exercised, while these
+    two cases are its only coverage.
+
+    Pin the wiring, not just the behaviour: if the grammar pin is dropped from
+    requirements-dev.txt, the Go tests would silently go back to skipping and
+    nothing else would notice. This test is what notices.
+    """
+
+    def test_dev_requirements_pin_the_go_grammar(self):
+        req = (_ORCH / "requirements-dev.txt").read_text(encoding="utf-8")
+        pins = [line.split("#", 1)[0].strip() for line in req.splitlines()]
+        assert any(p.startswith("tree-sitter==") for p in pins), (
+            "requirements-dev.txt must pin `tree-sitter` — without it "
+            "TestTreeSitterParse's Go cases skip and the feature ships untested"
+        )
+        assert any(p.startswith("tree-sitter-go==") for p in pins), (
+            "requirements-dev.txt must pin `tree-sitter-go` — it is the grammar "
+            "_HAS_GO probes, and both skipif decorators below gate on it alone"
+        )
+
+
 class TestTreeSitterParse:
     def test_unknown_ext_returns_none(self):
         # .py is handled by the stdlib ast path, not tree-sitter → None here.
@@ -137,7 +164,7 @@ class TestTreeSitterParse:
         # bare keyword nodes filtered out
         assert "struct" not in sigs and "func" not in sigs
 
-    @pytest.mark.skipif(not _HAS_GO, reason="tree-sitter not installed")
+    @pytest.mark.skipif(not _HAS_GO, reason="tree-sitter-go not installed")
     def test_generate_tldr_includes_go(self, tmp_path):
         (tmp_path / "svc.go").write_text("package main\nfunc Ping() string { return \"ok\" }\n")
         tldr = wt._generate_code_tldr(str(tmp_path))

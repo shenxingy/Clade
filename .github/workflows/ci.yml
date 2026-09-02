@@ -31,6 +31,29 @@ jobs:
             python -m py_compile "$f" && echo "OK: $f" || exit 1
           done
 
+      # py_compile proves a file PARSES. It cannot see a name that is never
+      # bound, so this repo shipped two live NameErrors under a green syntax
+      # gate — both of which this linter found on its first run (they are named
+      # in orchestrator/ruff.toml, parked there so this gate could land green,
+      # each to be deleted with its one-line fix).
+      #
+      # Rules and the MEASURED ignore baseline live in orchestrator/ruff.toml.
+      # The version is read out of orchestrator/requirements-dev.txt so a local
+      # `ruff check` and this step can never disagree about which ruff ran.
+      # This installs a TOOL, not project dependencies: the stdlib-only rule for
+      # the configs/scripts/ gates below is untouched, and the shellcheck step
+      # further down already apt-installs its tool the same way.
+      - name: Python lint gate (ruff)
+        run: |
+          pin="$(grep -E '^ruff==[0-9]' orchestrator/requirements-dev.txt || true)"
+          if [ -z "$pin" ]; then
+            echo "::error::orchestrator/requirements-dev.txt has no 'ruff==<version>' pin; this gate reads the version from there"
+            exit 1
+          fi
+          echo "Installing $pin"
+          pip install "$pin"
+          ruff check --config orchestrator/ruff.toml .
+
       - name: Shell syntax check (hooks)
         run: |
           echo "Checking shell syntax..."
@@ -50,7 +73,7 @@ jobs:
       - name: Shellcheck gate (shared checks.sh)
         run: |
           command -v shellcheck >/dev/null || sudo apt-get install -y shellcheck
-          bash configs/scripts/checks.sh shellcheck configs/hooks/*.sh configs/scripts/*.sh install.sh
+          bash configs/scripts/checks.sh shellcheck configs/hooks/*.sh configs/hooks/lib/*.sh configs/scripts/*.sh install.sh
 
       - name: Install test (dry run)
         run: |
@@ -240,6 +263,9 @@ jobs:
       - name: Run correction-pairing tests
         run: bash tests/test-correction-pairing.sh
 
+      - name: Run session-scorecard tests
+        run: bash tests/test-session-scorecard.sh
+
       # Hook delivery channels (CC 2.1): SessionEnd shadow cleanup (attribution,
       # no session_id, missing dir, CP_SHADOW_DIR override), post-edit-check
       # exit-2 asyncRewake findings vs silent success, skill-suggest sync
@@ -311,6 +337,52 @@ jobs:
       # Cross-Project Rules surviving reinstall, settings merge, symlinks
       - name: Run install test
         run: bash tests/test-install.sh
+
+  # Nothing told this repo when a pinned dependency became vulnerable, and the
+  # first run's answer was not "slightly behind": fastapi==0.131.0 required
+  # `starlette<1.0.0`, and 0.52.1 is the last 0.x starlette ever published, so
+  # the pin locked an unauthenticated control plane to two HIGH advisories with
+  # no in-range remedy. The reason nobody knew is that nobody looked.
+  #
+  # Weekly, never per-push: an advisory can drop with no code change here, and a
+  # gate that reddens every open PR on someone else's disclosure schedule
+  # teaches people to ignore red. Same trigger as real-api-loop — but this job
+  # is NOT key-gated: it needs network, not credentials, so it runs on forks
+  # too. Do not move it into the key-gated set by analogy.
+  dependency-audit:
+    name: Dependency Audit (weekly)
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
+        with:
+          python-version: "3.12"
+
+      # pip-audit resolves the FULL transitive set, not just what these files
+      # name — `cryptography` reaches this project only via mcp -> pyjwt[crypto]
+      # and is exactly where the next HIGH turned up. Pinned like every other
+      # tool here so the gate does not change under us.
+      - name: Audit Python dependencies
+        run: |
+          pip install pip-audit==2.10.1
+          pip-audit --progress-spinner=off \
+            -r orchestrator/requirements.txt \
+            -r orchestrator/requirements-dev.txt
+
+      # Deliberately NOT `npm audit --omit=dev`. Omitting dev is what let a
+      # manual check report "0 vulnerabilities" while four highs sat in the
+      # build toolchain — a vite dev-server arbitrary-file-read among them,
+      # which matters on any machine where someone runs `npm run dev`.
+      # `--audit-level=high` is also deliberate: the build chain keeps producing
+      # lows, and a job nobody can keep green is a job nobody reads.
+      - name: Audit npm dependencies
+        run: |
+          cd orchestrator/web
+          npm ci
+          npm audit --audit-level=high
 
   # Key-gated REAL-API tier (two-tier pattern): one cheap live-CLI loop
   # scenario (~$0.05) that catches mock-vs-real claude drift — flag changes,

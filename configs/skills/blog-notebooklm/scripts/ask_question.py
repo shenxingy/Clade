@@ -11,6 +11,7 @@ See: https://github.com/microsoft/playwright/issues/36139
 
 import argparse
 import json
+import os
 import sys
 import time
 import re
