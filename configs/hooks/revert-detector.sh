@@ -48,7 +48,10 @@ CORRECTIONS_DIR="$HOME/.claude/corrections"
 mkdir -p "$CORRECTIONS_DIR" 2>/dev/null
 HISTORY_FILE="$CORRECTIONS_DIR/history.jsonl"
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-PROJECT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+# PROJECT is assigned after rd_revert_base is defined — see below. It is not
+# $CLAUDE_PROJECT_DIR, which names the session's repository rather than the one
+# the git command touched.
+PROJECT=""
 
 # ─── Parse the revert command's own pathspec ──────────────────────────
 # `reverted_files` used to be filled straight from cp_recent_files(session, 20) —
@@ -193,10 +196,19 @@ else
   REVERT_SCOPE="unknown"    # e.g. `git restore --staged` with no path
 fi
 
+# The repository the command actually operated on, which is not necessarily the
+# session's. `cd <other repo> && git checkout -- <path>` is the dominant real
+# shape — 68 of 92 informative records on the author's machine began with it —
+# and every one of those was filed under the session's project instead. That
+# made `repeat` compare a file against reverts in a repository it was never in,
+# so recurrence could neither be detected across sessions in the right repo nor
+# be trusted when it did fire. rd_revert_base already computed the right answer
+# for shadow matching; only the record kept using the wrong one.
+PROJECT=$(rd_revert_base "$COMMAND" "$INPUT")
+
 _matched=""
 if [[ "$REVERT_SCOPE" == "paths" ]]; then
-  _base=$(rd_revert_base "$COMMAND" "$INPUT")
-  _matched=$(rd_match_shadow "$_base" "$_paths" "$_session_files")
+  _matched=$(rd_match_shadow "$PROJECT" "$_paths" "$_session_files")
 fi
 
 REVERTED_FILES_JSON=$(rd_json_array "$_matched")

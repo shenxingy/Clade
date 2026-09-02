@@ -41,6 +41,19 @@ assert_contains() {
     [[ "$VERBOSE" == "-v" ]] && echo "    output: $(head -8 <<< "$haystack")"
   fi
 }
+# Equality, not substring. `.project` has to be exactly the repository the
+# command touched: asserting that the record merely CONTAINS a path passes when
+# it holds the session's project and the foreign one both. This helper did not
+# exist when the project-attribution assertions were first written, so those two
+# calls ran as an undefined command — bash printed to stderr, the suite counted
+# nothing, and the run stayed green at the same 39 tests. A test that cannot
+# fail is the defect it was written to catch.
+assert_eq() {
+  local got="$1" want="$2" msg="$3"
+  TESTS_RUN=$((TESTS_RUN + 1))
+  if [[ "$got" == "$want" ]]; then pass "$msg"
+  else fail "$msg" "expected '$want', got '$got'"; fi
+}
 assert_not_contains() {
   local haystack="$1" needle="$2" msg="$3"
   TESTS_RUN=$((TESTS_RUN + 1))
@@ -133,6 +146,19 @@ revert_in "cd /tmp/other-repo && git checkout -- codex-rs/Cargo.lock" "$SID" \
 LAST=$(tail -n 1 "$HISTORY")
 assert_contains "$LAST" '"reverted_files":[]' "a foreign-repo revert claims none of this session's files"
 assert_contains "$LAST" "codex-rs/Cargo.lock" "revert_paths keeps the raw pathspec for audit"
+
+# The record must be filed under the repository the command touched, not the
+# session's. 68 of 92 informative records on the author's machine began `cd
+# <other repo> &&` and every one was filed under the session's project, so
+# `repeat` compared a file against reverts in a repository it had never been in.
+assert_eq "$(jq -r '.project' <<< "$LAST")" "/tmp/other-repo" \
+  "the record is filed under the repo the command operated on"
+
+# With no `cd`, the session's own directory is still the right answer.
+revert_in "git checkout -- src/util.py" "$SID" \
+  | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
+assert_eq "$(jq -r '.project' <<< "$(tail -n 1 "$HISTORY")")" "$PROJ" \
+  "a plain revert is still filed under the session's project"
 
 # ─── 3c. flag parsing and compound commands ──────────────────────────
 section "revert-detector — pathspec parsing"

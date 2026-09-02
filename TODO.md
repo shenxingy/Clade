@@ -404,7 +404,23 @@ re-running the gates.
       written and that repeat detection survives storing no text.
 
 - [ ] 🟡 `session-scorecard.sh` selects `.domain` from `history.jsonl`, a field that file has never carried (0 of 983 records). Every record classifies as `unknown`, the domain match never fires, and `record_rule_hit` fires for every rule every run — rule-effectiveness counts are noise. Needs a decision first: have `correction-detector.sh` write `domain` into `history.jsonl` (it computes it but writes it only to the cross-project file), or drop domain-keyed hit tracking.
-- [ ] 🟡 `revert-detector.sh` records `project` from `$CLAUDE_PROJECT_DIR` rather than the directory the git command actually ran in — measured wrong on 68 of 92 informative records, all of which begin `cd <other repo>`. `rd_revert_base` already computes the right directory.
+- [x] 🟡 **`revert-detector.sh` filed every revert under the wrong repository.**
+      DONE 2026-09-02. It recorded `project` from `$CLAUDE_PROJECT_DIR` — the
+      session's repo — while the command usually operated on another: 68 of 92
+      informative records began `cd <other repo> && git …`. `repeat` keys on
+      `.project`, so it compared a file against reverts in a repository it had
+      never been in, and could neither detect recurrence in the right repo nor
+      be trusted when it fired. `rd_revert_base` already computed the right
+      directory for shadow matching; only the record kept using the wrong one,
+      so the fix is to assign `PROJECT` from it and let the shadow match reuse
+      that single value.
+      **The first version of the test was itself the bug it was testing.** It
+      called `assert_eq`, which this suite never defined, so both assertions ran
+      as an undefined command: bash wrote to stderr, the suite counted nothing,
+      and the run stayed green at exactly 39 tests. Defining the helper took it
+      to 41, and red-phase confirms the attribution assertion fails without the
+      fix.
+
 - [ ] 🟡 `PROGRESS.md` is 1209 lines against the 100-line cap its own owning skill sets, and the `docs/progress-archive/` the skill prescribes was never created. Same problem the TODO archive just fixed, one file over.
 - [ ] 🟡 `ReactionConfig.action` is decorative: "escalate"/"abort"/"notify" is never dispatched, every triggered reaction is consumed by a `logger.warning`. So `reactions_enabled` switches off log lines, not behaviour. Either dispatch the actions or rename the field to what it is.
 - [ ] 🟡 `test_release_version_surfaces_are_aligned` hard-codes the expected version, so cutting a release means editing the gate — the hand-sync it exists to prevent. Derive it from `mcp-package/pyproject.toml` and extend it to the plugin manifests.
