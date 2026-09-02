@@ -161,6 +161,13 @@ jobs:
       - name: Progress log cap
         run: python3 configs/scripts/archive-progress.py --check
 
+      # An audit of this repository spent most of its effort on the orchestrator,
+      # a layer switched off months earlier. Nothing in the tree said so. This
+      # keeps the declaration matching the tree, so the marker cannot rot into
+      # the same silence it was written to break.
+      - name: Layer declaration
+        run: python3 configs/scripts/check-layers.py
+
       # CLAUDE.md's pre-commit checklist claims to be what makes CI pass. It
       # had drifted twice (df802c3, then again by 2026-08-29), both times
       # leaving a local run green against a list that did not cover the build.

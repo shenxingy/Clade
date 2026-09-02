@@ -558,18 +558,20 @@ re-running the gates.
       be rebuilt later, so nothing is deleted.** So this was never a defect; it
       is the expected consequence of a decision that had not been written down
       anywhere. What follows from it is a scope rule, below.
-- [ ] 🟡 **Scope rule not yet enforced anywhere: the orchestrator is not
-      load-bearing.** `worker_pool.py`, `worker_routing.py`, `cascade_policy.py`,
-      `evidence_bundle.py`, `routing_break_even.py` and `attempt_telemetry.py`
-      are dormant-path code. This audit spent most of its effort there while every
-      measured parallelism number in the repository came from Claude Code's
-      Workflow/subagent layer, which the orchestrator does not control. Keep the
-      layer building and green — CI covers it — but weigh findings there below
-      terminal-path findings, and treat new orchestrator work as opt-in rather
-      than as debt. Auditing an unrun system is how effort gets spent on a
-      control that never applies. Nothing in the repo says this yet except
-      `CLAUDE.md`'s new note; a mechanical version would be a marker the audit
-      skills read.
+- [x] 🟡 **The scope rule is mechanical now, not a note.** DONE 2026-09-02.
+      `docs/layers.json` declares each surface as `load-bearing`, `dormant` or
+      `generated`, with the reason and the date, and defines that vocabulary in
+      the file itself rather than somewhere a reader has to find. The
+      orchestrator is `dormant` with an explicit "do not delete, do not treat as
+      debt; CI keeps it compiling and that is the contract".
+      `/review`, `/cso` and `/next` each read it before ranking anything, so the
+      marker changes what an audit does rather than merely existing.
+      `configs/scripts/check-layers.py` keeps the declaration matching the tree —
+      unknown status, path that does not exist, dormant with no reason, and an
+      unclaimed source directory each fail it, checked one at a time. It caught
+      two unclaimed directories on its first run, which is why the `cli` layer
+      lists eight paths and not five.
+
 - [x] 🟡 **`subagents` was declared for both providers, read by nothing, and
       wrong.** DONE 2026-09-02. The routing machinery already existed:
       `resolve_capabilities` enforces a task's `execution_requirements` against

@@ -7,6 +7,24 @@ You are the CSO (Chief Security Officer) skill. You perform a systematic securit
 
 ---
 
+## Weigh findings by whether the layer runs
+
+Before ranking anything, read `docs/layers.json`. It declares which surfaces of
+this repository are actually run and how much a finding in each one is worth:
+
+- **load-bearing** — a defect here is a defect. Rank normally.
+- **dormant** — builds and passes CI but is not run. Report findings, and rank
+  them *below* any load-bearing finding. Do not propose deleting the layer and
+  do not present its gaps as debt; new work there is opt-in.
+- **generated** — never edit directly. The finding belongs in the source surface
+  plus its regen script, not in the copy.
+
+This exists because an audit of this repository spent most of its effort on the
+orchestrator, a layer the owner had switched off months earlier. Nothing in the
+tree said so, so the effort looked well spent right up until it was reported.
+
+---
+
 ## Phase 0: Context Gathering
 
 ```bash
