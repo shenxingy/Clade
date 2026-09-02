@@ -254,6 +254,17 @@ git -C "$D" add config.txt
 ( cd "$D" && HOME="$ISO" bash "$ISO/checks.sh" staged ) >/dev/null 2>&1
 assert_eq 0 $? "fallback ERE does not fire on task_<32 alnum>"
 
+# ─── The fallback pattern has two homes; pin them equal ──────────────
+# checks.sh's SECRET_ERE and correction-detector.sh's CD_SECRET_ERE are the
+# same detector, used when python3 or redact.py is unavailable. The 2026-09-02
+# review found them diverged in BOTH directions — one had the leading boundary
+# that keeps `task_<32>` out and was missing four shapes; the other had the
+# shapes and false-positived on ordinary words. A fallback that disagrees with
+# the real detector is one nobody can reason about.
+CHECKS_ERE=$(grep '^SECRET_ERE=' "$CHECKS" | cut -d= -f2-)
+HOOK_ERE=$(grep '^CD_SECRET_ERE=' "$REPO_ROOT/configs/hooks/correction-detector.sh" | cut -d= -f2-)
+assert_eq "$CHECKS_ERE" "$HOOK_ERE" "checks.sh and correction-detector.sh share one secret pattern"
+
 # ─── checks.sh shellcheck ────────────────────────────────────────────
 echo "── checks.sh shellcheck ──"
 

@@ -46,7 +46,7 @@ CONVENTIONAL_RE='^(feat|fix|refactor|test|chore|docs|perf|style|ci|build)(\(.+\)
 # "mirrors" claim is load-bearing rather than decorative: this ERE is what runs
 # when python3 is unavailable, and a pattern that exists only in redact.py is a
 # pattern the commit gate does not have.
-SECRET_ERE='-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{22}|sk-ant-[A-Za-z0-9_-]{40}|AIza[0-9A-Za-z_-]{35}|xox[baprs]-[A-Za-z0-9-]{10}|(^|[^A-Za-z0-9_])(sk|rk|ak)_[A-Za-z0-9]{32}'
+SECRET_ERE='-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16,}|gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,}|sk-ant-[A-Za-z0-9_-]{40,}|(^|[^A-Za-z0-9_-])sk-(proj-)?[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{35,}|xox[baprs]-[A-Za-z0-9-]{10,}|(^|[^A-Za-z0-9_])(sk|rk|pk)_(live|test)_[A-Za-z0-9]{20,}|(^|[^A-Za-z0-9_])(sk|rk|ak)_[A-Za-z0-9]{32,}|eyJ[A-Za-z0-9_=-]{10,}[.]eyJ[A-Za-z0-9_=-]{10,}[.][A-Za-z0-9_=-]{10,}|(^|[^A-Za-z0-9_])[A-Z_]*(API_?KEY|SECRET|PASSWORD|PASSWD|TOKEN|AUTH)[A-Z_]*[[:space:]:=]+["'"'"']?[^[:space:]"'"'"']{12,}'
 
 _redact_py() {
   if [[ -f "$SELF_DIR/redact.py" ]]; then

@@ -63,7 +63,14 @@ fi
 # SECRET_ERE plus the sk-/sk_ shapes redact.py knows). Open-ended {N,} counts
 # so a longer token still matches. Used only when python3 or redact.py is
 # unavailable.
-CD_SECRET_ERE='-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16,}|gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,}|sk-ant-[A-Za-z0-9_-]{40,}|sk-(proj-)?[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{35,}|xox[baprs]-[A-Za-z0-9-]{10,}|(sk|rk|ak)_[A-Za-z0-9]{32,}'
+# The SAME string appears in configs/scripts/checks.sh as SECRET_ERE, and
+# tests/test-checks.sh asserts they are byte-identical. Two divergent copies is
+# what the 2026-09-02 review found: this one had no leading boundary (so
+# `task_<32 alnum>` false-positived) and was missing four shapes redact.py
+# masks, while checks.sh had the boundary and was missing others. A fallback
+# detector that disagrees with the real one is a fallback nobody can reason
+# about, so the copies are now pinned equal by a test rather than by intent.
+CD_SECRET_ERE='-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16,}|gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,}|sk-ant-[A-Za-z0-9_-]{40,}|(^|[^A-Za-z0-9_-])sk-(proj-)?[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{35,}|xox[baprs]-[A-Za-z0-9-]{10,}|(^|[^A-Za-z0-9_])(sk|rk|pk)_(live|test)_[A-Za-z0-9]{20,}|(^|[^A-Za-z0-9_])(sk|rk|ak)_[A-Za-z0-9]{32,}|eyJ[A-Za-z0-9_=-]{10,}[.]eyJ[A-Za-z0-9_=-]{10,}[.][A-Za-z0-9_=-]{10,}|(^|[^A-Za-z0-9_])[A-Z_]*(API_?KEY|SECRET|PASSWORD|PASSWD|TOKEN|AUTH)[A-Z_]*[[:space:]:=]+["'"'"']?[^[:space:]"'"'"']{12,}'
 
 # Sibling copy first. The same relative path resolves in BOTH layouts:
 # in-repo configs/hooks/../scripts, installed ~/.claude/hooks/../scripts.
