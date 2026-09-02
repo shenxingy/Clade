@@ -360,6 +360,70 @@ re-running the gates.
 - [ ] 🔵 Nothing enforces the top-level `docs/*.md` header convention; two of fourteen files had drifted off it and no gate noticed. Cheapest control: assert in `check-references.py` that every top-level `docs/*.md` links `../README.md` in its first three lines.
 - [ ] 🔵 The global agent rules assert that `/sync` flags a README over 300 lines. The shipped skill has no such logic — its only line-count rule caps `PROGRESS.md` at 100. Implement the check or correct the claim.
 - [ ] 🔵 Web lint has no home. The `npm run lint` script was deleted because eslint was never installed; re-adding it properly needs a `web` job in `ci.yml` and the coupled CLAUDE.md checklist line, which `check-ci-checklist.py` enforces.
+### Adversarial review of the audit branch — 2026-09-02
+
+166 agents reviewed the branch across seven dimensions; each finding was then
+put to three independent refuters and kept only if fewer than two could refute
+it. 28 survived. The critical one and eight real defects are fixed on the
+branch; what follows is the residue, all of it prose that is now wrong rather
+than code that is broken.
+
+The review's own most useful output was structural: **three separate gates in
+this branch existed, were documented as working, and did not check what they
+claimed** — the CI-checklist gate was blind to the gate just added to it, the
+"walks the real route table" test reached 37 of 93 routes after the FastAPI
+bump, and the checklist's own suite and gate counts had drifted. A control whose
+failure mode is silence needs a test that proves it can fail.
+
+- [ ] 🔵 `orchestrator/ruff.toml`'s "Known live bugs" block still describes two
+      parked per-file-ignores in the present tense. Both bugs were fixed and both
+      entries deleted in the same commit, so a maintainer triaging a
+      worktree-cleanup failure is told `Worker.stop()` currently raises. Rewrite
+      as a past-tense note about what the gate's first run found.
+- [ ] 🔵 `docs/MIGRATE_FROM_HERMES.md` still lists `compression_feedback.py` as
+      "present in Clade today"; the module was deleted by this branch.
+      `check-references.py` does not resolve backticked `orchestrator/*.py`
+      paths, which is why nothing caught it — teaching it to would also have
+      caught the stale CLAUDE.md map line.
+- [ ] 🔵 The 0.3.1 CHANGELOG section omits the release's own security work — the
+      two HIGH starlette advisories, prompt redaction, per-user runtime paths,
+      the MCP event-loop fix — and the two compatibility notes an upgrader needs
+      (`/web` now 503s until built, `reaction_configs` and `patrol_auto_ideas`
+      removed). Its `[0.3.1]` compare link also points at a tag the release
+      deliberately did not create.
+- [ ] 🔵 `configs/skills/brief/prompt.md` probes the orchestrator with an
+      unauthenticated curl and now reports it offline. Add the bearer header the
+      way `docs/configuration.md` documents, then regenerate the mcp-package
+      mirror.
+- [ ] 🔵 `configs/scripts/usage-agent.py`'s docstring and `CLAUDE.md`'s usage line
+      still say "leave empty for open ingest". Ingest is exempt from the control
+      plane only while `usage_ingest_token` is set, so an empty token now means
+      the node must send the hub's `api_token` instead.
+- [ ] 🔵 `session-context.sh`'s dropped-rules notice counts header and blank lines
+      as rules, so it reports more dropped than exist.
+- [ ] 🔵 `CLAUDE.md`'s redaction paragraph justifies withhold-don't-substitute with
+      "those patterns are fixed-count", which stopped being the reason when the
+      pattern gained `{n,}` quantifiers. The reason that survives inspection is
+      that a line-oriented sed cannot reach a PEM body and any partial mask still
+      persists part of a credential.
+- [ ] 🟡 The weekly `dependency-audit` job will be red on its first scheduled run:
+      `npm audit --audit-level=high` against the unchanged lockfile reports
+      findings in the vite/postcss build chain. Either land `npm audit fix` with
+      the gate or scope the first run to the Python half.
+- [ ] 🟡 Anthropic's documented fix for the other half of the prompt-cache miss —
+      stagger a fan-out so the first response primes the shared prefix before
+      the rest are sent — is not implemented. Only the system-prompt half is.
+      Claude Code already does this inside its own Workflow runtime.
+- [ ] 🟡 Adversarial verification with N skeptics is measurably overspent:
+      Terminal-Bench V2 puts pairwise verification at 73.1% with one judge and
+      77.5% with sixteen. This session ran three refuters per finding. One
+      better-calibrated verifier returning a score plus its evidence belongs in
+      `worker_review.py` instead.
+- [ ] 🔵 Three tests in `test_static_serving.py` use `with TestClient(...)`, which
+      runs the FastAPI lifespan and therefore mints a control-plane token into
+      the developer's real settings file. They exercise routing only and do not
+      need it.
+
 - [ ] 🔵 `orchestrator/tests/test_worker_modules.py` is 1446 lines, 54 under the ceiling. The natural split lifts the autoscale and fan-out sections into their own file.
 - [ ] 🔵 `tests/test-loop.sh` is 1442 lines, 58 under the ceiling, and the loop-runner split just pushed it there by adding deploy-parity entries. It is now the closest first-party file to the gate after `test_worker_modules.py`.
 - [ ] 🟡 `loop_verify.sh`'s `node_verify` hardcodes `--model sonnet` while every other LLM node in the group uses `$SUPERVISOR_MODEL`, so `/loop --model` never reaches the verify node. Pre-existing, surfaced by the extraction and moved unchanged rather than fixed inside a behaviour-preserving move.
