@@ -402,12 +402,19 @@ re-running the gates.
       version*, which is the only form in which it makes sense. Client
       specifics — the brand names and internal domains — are deliberately not
       in the public repo; only the reusable method is.
-- [ ] 🟡 The correction taxonomy has no class for "the user stated a standing
-      preference". `correction-detector.sh` injects nine root-cause classes and
-      `templates/corrections/rules.md` lists five; none covers a preference, so a
-      brief only enters the learning pipeline if it happens to arrive as a
-      complaint. Add the class, or accept that `prompt-tracker.sh` is the only
-      path for preferences and say so in both files.
+- [x] 🟡 **The correction taxonomy had no class for a standing preference, so
+      the most expensive failure in the log was invisible to it.** All nine
+      classes describe something wrong with an answer. A repeated brief has no
+      wrong answer — each instance was answered correctly, which is exactly why
+      no correction was ever recorded and nothing ever escalated. Measured at
+      the time: 386,760 prompts, 2,990 fingerprints, nine past the repeat
+      threshold, and one 9,181-character brief typed fifteen times over five
+      months. Added `standing-preference` to `correction-detector.sh` and made
+      it promotable in `rule-utils.sh`, since persisting into every session is
+      the whole remedy rather than a side effect. It routes differently too: a
+      repeated brief needs a home, not a reminder, so step 3b sends a procedure
+      to a skill and a rule to CLAUDE.md and checks the home is not already
+      there and empty. Red-phase checked in `test-audit.sh`.
 - [ ] 🔵 `install.sh --ultracode` has no test. `tests/test-install.sh` covers the
       spawn-depth merge next to it; the same shape applies — assert the two keys
       land, that an existing `settings.json` key survives the merge, and that an

@@ -111,12 +111,23 @@ rule_exists_in_file() {
 # to a taxonomy built only from defect classes: a correction about either one
 # had nowhere to go except `edge-case`, the bucket this gate withholds. The
 # most common real-world failure was being systematically suppressed.
-RULE_PROMOTABLE_ROOT_CAUSES="security async-race deploy-gap settings-disconnect data-loss inaccurate-self-reporting constraint-violation"
+#
+# `standing-preference` was added for the same reason one level up: it is the
+# only class whose evidence is a COUNT rather than an incident, and there was
+# nowhere to file it. Measured on this machine's own log at the time: 386,760
+# prompts, 2,990 distinct fingerprints, nine of them past the repeat threshold,
+# and one 9,181-character design brief hand-typed fifteen times across five
+# months at a skill that did not contain a single one of its constraints. Every
+# instance was answered correctly, so no correction was ever recorded and the
+# taxonomy never saw it. Promotable because persisting into every session is
+# not a side effect of the class — it is the entire remedy.
+RULE_PROMOTABLE_ROOT_CAUSES="security async-race deploy-gap settings-disconnect data-loss inaccurate-self-reporting constraint-violation standing-preference"
 
 rule_earns_promotion() {
   case "${1:-}" in
     security|async-race|deploy-gap|settings-disconnect|data-loss) return 0 ;;
     inaccurate-self-reporting|constraint-violation) return 0 ;;
+    standing-preference) return 0 ;;
     *) return 1 ;;
   esac
 }

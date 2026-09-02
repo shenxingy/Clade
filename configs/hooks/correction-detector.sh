@@ -224,9 +224,22 @@ CONTEXT="A user correction was detected in the prompt above. After addressing th
      asked to confirm first, to stay in scope, to not touch something
    - premature-action: acted before gathering enough project state
    - scope-overreach: turned a bounded request into a broader intervention
+   Configuration class (what the system failed to learn):
+   - standing-preference: the user is supplying the same context AGAIN because
+     nothing retained it. The tell is a repeat, not a defect — each individual
+     answer may have been correct. If you find yourself reading a long brief
+     that feels familiar, or the user says any of \"I keep telling you\",
+     \"every time\", \"还是\", \"又\", treat it as this class even though nothing
+     is broken. It is the only class whose evidence is a count.
 3. Append a rule to $RULES_PATH in this format:
    - [YYYY-MM-DD] <domain> (<root-cause>): <do this> instead of <not this>
    Example: - [2026-02-25] imports (settings-disconnect): Use @/ path aliases and verify tsconfig paths are set — not bare relative paths that break on move
+3b. EXCEPT for standing-preference, where a rule line is the wrong artifact.
+   A repeated brief needs a home, not a reminder. Put a PROCEDURE in a skill
+   under configs/skills/, and a RULE in CLAUDE.md, then write the rule line
+   pointing at that home. Check the home is not already there and empty: a
+   brief aimed at a skill that lacks its constraints is why it gets re-typed,
+   and that is exactly what frontend-design was for five months.
 4. In one sentence: how could you have caught this BEFORE the user pointed it out? (e.g., 'I should have checked cross-platform compat when using shell builtins')
 5. Keep rules.md under $RULES_LIMIT RULE lines — retire the least useful rules
    when over. The header block at the top of the file (the format spec and the
