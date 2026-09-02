@@ -1,13 +1,18 @@
 ---
 name: 2026-09-02-agent-orchestration-efficiency.md
 date: 2026-09-02
-status: partially-integrated
+status: integrated
 review_date: 2026-12-01
 summary:
   - "Measured, not estimated: across all 89 parallel Workflow runs on this account (1777 agents, 49.9 hours of makespan), 22.5 hours — 45% — was spent with exactly ONE agent still running. 55 of the 89 runs have a tail over 15%; 52 run under 55% utilisation. Nothing had ever read the data that says so."
   - "The result that changes how to write a workflow: agent count is not the problem, BARRIERS are. On this session's own runs a 110-agent pipeline() scored 80% utilisation with a 0% tail despite a 6.9x straggler spread, while a 10-agent parallel() barrier scored 55% with 19% of its makespan waiting on one agent."
   - "The lead session's own waste, from its transcript: 702 turns, 946k output tokens, and 81 of 321 Bash calls (25%) were pure status polls of background jobs against 3 uses of Monitor. 76 stop-hook interrupts, most of them while ten subagents were mid-write and committing would have been wrong."
   - "The verification pass that ran BEFORE implementation is the opposite of waste: it corrected about half the audit's specifics and killed four findings that were not defects, two of which would have been actively harmful to implement."
+  - "The theory is cleaner than expected and mostly bad news for sophistication: Graham's list-scheduling bound (2 - 1/m) requires NO duration knowledge, its only precondition being that no slot idles while work is ready — exactly what a parallel() barrier violates. Perfect duration knowledge buys only LPT's 4/3. So the whole value of estimation is the gap between 2 and 4/3, and Clade was not collecting the 2."
+  - "Prediction is measured impossible, not merely hard: 8 frontier models predicting their own token cost on SWE-bench Verified scored Pearson r 0.05-0.39, and runs on the SAME task differ by up to 30x. HPC scheduling separately found that injecting +5% to +100% error into runtime estimates barely moved FCFS performance — accuracy was never the objective."
+  - "Hedged and tied requests are rejected with reasons recorded, because their headline numbers (24x tail cut for 2% load; -38% for <1%) are the most likely thing to be cited by analogy and both depend on properties Clade lacks: a queueing phase, and cancellable not-yet-started work."
+  - "No mainstream agent framework does dynamic load balancing — verified in LangGraph, CrewAI, OpenHands and the OpenAI Agents SDK source. Claude Code's own subagents are the exception and the model to copy. Anthropic's 16-agent C compiler fixed its stragglers with GRAIN SIZE."
+  - "The largest measured lever is not scheduling: worktree-per-worker made every fan-out N cache writes (1.25x base input) where N-1 could have been reads (0.1x). Fixed in this branch."
   - "Rework has not improved in six months: 184 targeted fixes landed within 7 days of a feature on the same file, out of 864 commits, and the monthly rate sits flat at 9-15% while the correction-capture machinery has been accumulating rules the whole time. Normalising by touch count also KILLED the obvious hypothesis — the highest rework rates are small hooks and gate scripts, not the oversized hub files, which top the raw list only because they are touched constantly."
 integrated_items:
   - "configs/scripts/workflow-scorecard.py — reads the per-agent transcripts every Workflow run already writes and reports peak/mean concurrency, utilisation, the single-agent tail share, and the straggler ratio. Stdlib-only. Before it, 80 MB of process data existed for this project alone across 56 projects and not one line of code opened any of it."
@@ -15,6 +20,8 @@ integrated_items:
   - "Global instruction rule: one Monitor, then yield. Never poll a background job in a loop."
 needs_work_items:
   - "Nothing yet enforces pipeline-over-barrier when a fan-out has stages; the scorecard reports the tail after the fact rather than preventing it."
+  - "Anthropic's documented fix for the first cache mechanism — stagger the fan-out so the first response primes the prefix — is not implemented; only the system-prompt half is."
+  - "Adversarial verification with N skeptics is measurably overspent (Terminal-Bench V2: 73.1% at K=1 to 77.5% at K=16). One better-calibrated verifier belongs in worker_review.py instead."
   - "Unit sizing is still done by topic rather than by estimated size, which is what produced the 2.0x straggler in this session's implementation wave."
   - "Derived-fact syncs (doc-align) ran three times because each wave added scripts; they should run once, after all writers finish."
 ---
@@ -230,6 +237,25 @@ test that proves it can fail** — the red phase — and this repository already
 knows that (`red-phase-audit.py`, `--self-test`) without applying it to its own
 hooks.
 
+## A negative result: the three generated surfaces are not the problem
+
+Worth checking, because the setup looks expensive: every shipped skill exists in
+up to four places — `configs/skills/` as canonical, then generated copies in
+`mcp-package/skills/`, `plugins/clade/skills/`, and a generated `agents/` tree —
+each with its own regeneration script and CI drift gate. 560 source files
+producing 184 generated ones.
+
+Measured over the same 865 commits: **8 are pure regeneration churn, about 1%**,
+and 52 touch a generated surface at all. The drift gates catch staleness at
+commit time rather than letting it accumulate, which is the whole point of
+having them, and the cost of running four regen scripts is not showing up in the
+history.
+
+Do not spend effort here. The one visible wart is a sync / revert / re-sync
+triple around the `research` skill (`5e8f4ed` → `0807199` → `2749a8c`), which is
+three commits for one regeneration — the same "run the derived-fact sync once,
+at the end" lesson as `doc-align`, not a structural problem with generation.
+
 ## The verification pass paid for itself
 
 The obvious place to cut, if the goal is fewer tokens, is the read-only pass
@@ -252,6 +278,111 @@ faith, the fix sounded obvious, and implementing it would have introduced a
 defect. Verification before implementation is not overhead on a fan-out of ten
 writing agents; it is what stops ten agents confidently implementing the wrong
 thing in parallel.
+
+## What the outside world says, and what it kills
+
+Six research lanes, sourced to primary papers and to framework source rather
+than docs. The useful half is what they *reject*.
+
+### The theory gives a cleaner answer than expected
+
+Graham's list-scheduling bound is **2 − 1/m, and it requires no duration
+knowledge at all**. Its only precondition is that no slot sits idle while work
+is ready — which is exactly what a `parallel()` barrier violates. Knowing every
+duration perfectly buys LPT's 4/3 − 1/(3m).
+
+So the entire value of duration estimation is the gap between 2 and 4/3, and
+Clade is not even collecting the 2. Fixing the barrier is worth more than any
+estimator could be, which is why the change that shipped today is a rule about
+shape and not a predictor.
+
+### Prediction is not merely hard, it is measured impossible
+
+"How Do AI Agents Spend Your Money?" (arXiv 2604.22750, Microsoft Research +
+Stanford) had eight frontier models inspect a repository and predict their own
+token cost on SWE-bench Verified before executing: **Pearson r between 0.05 and
+0.39**, systematically biased low, and in-context examples of human cost
+breakdowns did not fix the bias. Underneath that is a floor no model can beat:
+**runs on the same task differ by up to 30x in total tokens.**
+
+And accuracy is not the objective anyway. HPC scheduling work that injected
+deliberate error into runtime estimates — +5%, +10%, +20%, +40%, +100% — found
+FCFS performance barely moved. Retire "we need a duration estimate" as a
+requirement.
+
+### Three classical fixes that do not transfer, and exactly why
+
+These are the ones most likely to be proposed by analogy, so the reasons are
+recorded rather than the verdicts.
+
+- **Hedged requests** (Dean & Barroso: p99.9 1800 ms → 74 ms for 2% extra load).
+  That 24x is real and irrelevant. The paper says why in its own words: it is
+  hedging *queueing* delay, and "once a request is actually scheduled and begins
+  execution, the variability of its completion time goes down substantially".
+  98% of hedges never run, which is what makes them cost 2%. A Clade agent has
+  no queue phase — `worker.py` spawns the CLI and it starts spending
+  immediately. The variance *is* the service time. A hedge here is a second
+  full-price agent that runs to completion with certainty.
+- **Tied requests** (−38% p99.9 for under 1% overhead — the best ratio in the
+  literature). It works entirely by cancelling work *that has not started*.
+  Clade has nothing in that state; killing a worker stops future spend and
+  refunds nothing, and `worker_evidence.py` already books the sunk tokens.
+- **Work stealing.** The randomised deque exists to keep scheduling overhead
+  negligible against nanosecond tasks, and a steal moves an *unstarted* frame.
+  Neither property holds. What does transfer is the trivial part: a queue deeper
+  than the slot count.
+
+**MapReduce backup tasks** are the interesting middle case. Disabling them made
+a sort take 44% longer — five of ~1700 tasks held the job for 300 seconds — and
+the trigger was not a prediction but a *phase predicate*: most tasks are done,
+these few are not. That predicate transfers and costs nothing to compute. The
+economics do not: one duplicate against 1700 is "a few percent", one duplicate
+in a fan-out of eight is +12.5%.
+
+### Nobody else has solved this either
+
+Read in source, not documentation: LangGraph's `PregelRunner.tick` drains all
+futures before the next superstep; CrewAI spawns an unbounded thread per async
+task and then joins **in submission order**, so even result processing is
+head-of-line blocked behind the straggler; OpenHands' `DelegateTool` is
+literally start-all / join-all with `max_children=5`, and non-blocking
+delegation is an open feature request; the OpenAI Agents SDK documents
+`asyncio.gather` as the whole parallelism story; AutoGen runs exactly one agent
+at a time.
+
+**Not one mainstream framework does dynamic load balancing across agents.** The
+exception is Claude Code's own subagents, which are background-by-default and
+not barrier-synchronous — the model to copy.
+
+The one published multi-agent run with real numbers points the same way as the
+measurement above: Anthropic's 16-agent C compiler used file-lock task claiming,
+and its straggler fix was **grain size**.
+
+### The largest lever is not scheduling at all
+
+Two mechanisms, both documented by Anthropic, mean a Clade fan-out pays a cache
+**write** (1.25x base input) for a prefix a sibling could have **read** (0.1x) —
+12.5x on the shared part of the prompt:
+
+1. "A cache entry only becomes available after the first response begins… If you
+   need cache hits for parallel requests, wait for the first response before
+   sending subsequent requests." A simultaneous fan-out is N misses by
+   construction.
+2. The default system prompt embeds the working directory, so
+   worktree-per-worker guarantees no two workers share a prefix even
+   sequentially.
+
+The second is fixed as of this branch — `--exclude-dynamic-system-prompt-sections`
+on every worker spawn, behind `worker_shared_prompt_cache`. The first needs a
+stagger, which Claude Code already implements inside its own Workflow runtime.
+
+### And a finding that indicts this session's own method
+
+Terminal-Bench V2 pairwise verification accuracy: a discrete judge goes from
+**73.1% at K=1 to 77.5% at K=16**. Sixteen times the verification spend for 4.4
+points. This session ran three refuters per finding on 28 findings. A single
+better-calibrated verifier returning a score plus its evidence is the cheaper
+shape, and `worker_review.py` is where that belongs.
 
 ## What changed today
 
