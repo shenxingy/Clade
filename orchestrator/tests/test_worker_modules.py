@@ -7,7 +7,7 @@ import subprocess
 
 import pytest
 
-from worker_tldr import (
+from repo_map import (
     _extract_tldr_sections, _generate_code_tldr,
     _extract_entity_name, _prune_tldr_to_entities, _parse_fault_entity_names,
     _keyword_filter_tldr, _span_evict_tldr,

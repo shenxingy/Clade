@@ -35,7 +35,7 @@ from task_queue import TaskQueue
 from ideas import IdeasManager
 from swarm import SwarmManager
 from worker import WorkerPool, _rank_tasks
-from worker_tldr import _generate_code_tldr
+from repo_map import _generate_code_tldr
 from worker_review import _escalate_oracle_reject_plateau
 from run_budget import budget_from_settings, check_budget
 from reset_handoff import build_handoff_seed, render_seed

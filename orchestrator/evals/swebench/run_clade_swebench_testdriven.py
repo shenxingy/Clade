@@ -13,6 +13,7 @@ from pathlib import Path
 
 _ORCH = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ORCH))
+import repo_map                  # noqa: E402
 import worker_tldr as wt          # noqa: E402
 import worker_review as wr        # noqa: E402
 from datasets import load_dataset  # noqa: E402
@@ -100,7 +101,10 @@ async def solve(inst, repo_dir, cid) -> dict:
             repro_path.unlink(missing_ok=True)
             sh("docker exec {} bash -lc 'rm -f /testbed/test_clade_repro.py'".format(cid))
 
-    tldr = wt._generate_code_tldr(str(repo_dir))
+    # _generate_code_tldr moved to repo_map when worker_tldr was split at the
+    # 1500-line ceiling. wt._localize_tldr_for_task below is unchanged: the
+    # split boundary is "map the repo" (repo_map) vs "narrow it to a task".
+    tldr = repo_map._generate_code_tldr(str(repo_dir))
     try:
         local = await wt._localize_tldr_for_task(inst["problem_statement"], tldr, repo_dir)
     except Exception:

@@ -26,9 +26,12 @@ from config import (
     _format_task_schema_block,
 )
 from worker_tldr import (
-    _generate_code_tldr, _localize_tldr_for_task, _localize_fault,
-    _prune_tldr_to_entities, _parse_fault_entity_names, _find_caller_hints,
-    _generate_repro_test, _sbfl_prepass, _span_evict_tldr,
+    _localize_tldr_for_task, _localize_fault, _find_caller_hints,
+    _generate_repro_test, _sbfl_prepass,
+)
+from repo_map import (
+    _generate_code_tldr, _prune_tldr_to_entities, _parse_fault_entity_names,
+    _span_evict_tldr,
 )
 from condensers import ObservationMaskingCondenser
 from worker_utils import (

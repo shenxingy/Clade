@@ -1229,6 +1229,14 @@ fi
 if should_run "deploy"; then
 section "Deployed Script Verification"
 
+# A dropped `. loop_*.sh` source line leaves every extracted node undefined.
+for sibling in loop_args.sh loop_verify.sh loop_bounds.sh loop_score.sh; do
+  TESTS_RUN=$((TESTS_RUN + 1))
+  if grep -q "_sibling_script $sibling" "$ORIG_DIR/configs/scripts/loop-runner.sh"
+  then pass "loop-runner.sh sources $sibling"
+  else fail "loop-runner.sh does not source $sibling" "extracted nodes undefined"; fi
+done
+
 DEPLOY_DIR="$HOME/.claude/scripts"
 
 if [[ ! -d "$DEPLOY_DIR" ]]; then
@@ -1236,7 +1244,7 @@ if [[ ! -d "$DEPLOY_DIR" ]]; then
   # sense on machines that ran install.sh. Skipping is not a failure.
   echo "  (no deployed kit at $DEPLOY_DIR — skipping deploy verification)"
 else
-for script in loop-runner.sh loop_args.sh loop_checkpoint.py loop_goal.py loop_json.py run-tasks-parallel.sh run-tasks.sh; do
+for script in loop-runner.sh loop_args.sh loop_verify.sh loop_bounds.sh loop_score.sh loop_checkpoint.py loop_goal.py loop_json.py run-tasks-parallel.sh run-tasks.sh; do
   src="$ORIG_DIR/configs/scripts/$script"
   dst="$DEPLOY_DIR/$script"
   TESTS_RUN=$((TESTS_RUN + 1))
