@@ -33,48 +33,61 @@ from typing import Iterable
 
 # ─── Patterns ─────────────────────────────────────────────────────────────────
 # (kind, regex, group_index_for_value)
+#
+# Every pattern below compiles with re.ASCII, and that flag is load-bearing
+# rather than tidy. Python's \w — and therefore \b — is Unicode-aware by
+# default, so 是 and к are word characters and there is NO word boundary between
+# them and the `s` of `sk-`. A key pasted inside Chinese or Cyrillic prose
+# escaped every \b-anchored pattern here entirely:
+#
+#     不对，改回原来的写法，key是sk-ant-api03-<45 chars>   → 0 hits before
+#
+# That is not an edge case for this repository. correction-detector.sh is the
+# main caller and its own trigger list is 不要|别用|错了|改回|不对 — the CJK path
+# is the one the redactor exists to serve, and it was the one path that did not
+# work. re.ASCII restores ASCII \b semantics; the `task_<32 alnum>` exclusion
+# the generic pattern depends on is unaffected, because `k` and `_` are ASCII
+# word characters either way.
+_A = re.ASCII
 _PATTERNS: list[tuple[str, re.Pattern, int]] = [
     # Anthropic — sk-ant-{api03|admin01}-... (real keys are long; require ≥40 chars)
-    ("anthropic_key", re.compile(r"\bsk-ant-[a-zA-Z0-9_-]{40,}\b"), 0),
+    ("anthropic_key", re.compile(r"\bsk-ant-[a-zA-Z0-9_-]{40,}\b", _A), 0),
     # OpenAI — sk-... or sk-proj-... (≥20 alnum after prefix to avoid matching
     # benign strings like "sk-foo" in code samples)
-    ("openai_key", re.compile(r"\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}\b"), 0),
+    ("openai_key", re.compile(r"\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}\b", _A), 0),
     # GitHub — ghp_/gho_/ghu_/ghs_/ghr_ + 36 chars
-    ("github_token", re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,}\b"), 0),
+    ("github_token", re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,}\b", _A), 0),
     # AWS access key ID
-    ("aws_access_key", re.compile(r"\bAKIA[0-9A-Z]{16}\b"), 0),
+    ("aws_access_key", re.compile(r"\bAKIA[0-9A-Z]{16}\b", _A), 0),
     # AWS secret — only inside an env-style assignment so we don't mask
     # arbitrary 40-char b64 blobs.
     ("aws_secret_key",
-     re.compile(r"AWS_SECRET_ACCESS_KEY[\s:=]+['\"]?([A-Za-z0-9/+=]{40})['\"]?"), 1),
+     re.compile(r"AWS_SECRET_ACCESS_KEY[\s:=]+['\"]?([A-Za-z0-9/+=]{40})['\"]?", _A), 1),
     # Google API key
-    ("google_api_key", re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b"), 0),
+    ("google_api_key", re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b", _A), 0),
     # Slack tokens
-    ("slack_token", re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"), 0),
+    ("slack_token", re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b", _A), 0),
     # Stripe keys — test keys leak as readily as live ones and were previously
     # matched by nothing: the generic entry below cannot span `test_` either.
-    ("stripe_key", re.compile(r"\b(?:sk|rk|pk)_(?:live|test)_[A-Za-z0-9]{20,}\b"), 0),
+    ("stripe_key", re.compile(r"\b(?:sk|rk|pk)_(?:live|test)_[A-Za-z0-9]{20,}\b", _A), 0),
     # Underscore-prefixed vendor keys (sk_<hex> and the same shape from other
     # vendors). Placed after stripe_key for readability only: sk_live_/sk_test_
     # can never reach 32 alnum before the second underscore, so the specific
     # label always wins regardless of order. The \b is what keeps `task_<32
     # alnum>` out — measured 0 hits repo-wide and 0 in a 2.8MB real prompt
     # corpus, where every one of the 14 `sk_` occurrences sits inside `task_…`.
-    ("generic_secret_key", re.compile(r"\b(?:sk|rk|ak)_[A-Za-z0-9]{32,}\b"), 0),
+    ("generic_secret_key", re.compile(r"\b(?:sk|rk|ak)_[A-Za-z0-9]{32,}\b", _A), 0),
     # JWT (header.payload.sig — three b64url segments)
-    ("jwt", re.compile(
-        r"\beyJ[A-Za-z0-9_=-]{10,}\.eyJ[A-Za-z0-9_=-]{10,}\.[A-Za-z0-9_=-]{10,}\b"
-    ), 0),
+    ("jwt", re.compile(r"\beyJ[A-Za-z0-9_=-]{10,}\.eyJ[A-Za-z0-9_=-]{10,}\.[A-Za-z0-9_=-]{10,}\b", _A), 0),
     # Generic env-style assignments — last resort, narrow keyword list
     ("env_secret", re.compile(
         r"(?i)\b(?:api[_-]?key|secret|password|passwd|token|auth)"
-        r"[\s:=]+['\"]([^'\"\s]{12,})['\"]"
+        r"[\s:=]+['\"]([^'\"\s]{12,})['\"]",
+        _A,
     ), 1),
     # PEM private key blocks
-    ("private_key", re.compile(
-        r"-----BEGIN (?:RSA |OPENSSH |DSA |EC |PGP )?PRIVATE KEY-----"
-        r"[\s\S]*?-----END (?:RSA |OPENSSH |DSA |EC |PGP )?PRIVATE KEY-----"
-    ), 0),
+    ("private_key", re.compile(r"-----BEGIN (?:RSA |OPENSSH |DSA |EC |PGP )?PRIVATE KEY-----"
+        r"[\s\S]*?-----END (?:RSA |OPENSSH |DSA |EC |PGP )?PRIVATE KEY-----", _A), 0),
 ]
 
 

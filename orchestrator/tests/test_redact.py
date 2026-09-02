@@ -206,3 +206,55 @@ def test_cli_json_output_shape() -> None:
     assert "redacted" in payload
     assert "hits" in payload
     assert payload["hits"][0]["kind"] == "github_token"
+
+# ─── Non-ASCII context ────────────────────────────────────────────────────────
+# Python's \w, and therefore \b, is Unicode-aware by default: 是 and к are word
+# characters, so there is no boundary between them and the `s` of `sk-`. Every
+# \b-anchored pattern in redact.py silently failed on a key pasted into Chinese
+# or Cyrillic prose — which is the path that matters, because the main caller is
+# correction-detector.sh and its own trigger list is 不要|别用|错了|改回|不对.
+
+
+def test_key_in_chinese_prose_is_detected() -> None:
+    """The case the redactor exists for, and the one that did not work."""
+
+    text = "不对，改回原来的写法，key是" + "sk-ant-" + "api03-" + "A" * 45
+    masked, hits = redact_mod.redact(text)
+    assert hits, "a key adjacent to CJK text must still be detected"
+    assert "sk-ant-" not in masked
+
+
+def test_github_token_after_chinese_is_detected() -> None:
+    text = "别用这个，token是" + "ghp_" + "a" * 36
+    masked, hits = redact_mod.redact(text)
+    assert hits
+    assert "ghp_" not in masked
+
+
+def test_aws_key_between_chinese_is_detected() -> None:
+    text = "错了，密钥" + "AKIA" + "IOSFODNN7EXAMPLE" + "别提交"
+    masked, hits = redact_mod.redact(text)
+    assert hits
+    assert "AKIA" not in masked
+
+
+def test_key_after_cyrillic_is_detected() -> None:
+    masked, hits = redact_mod.redact("ключ" + "sk_" + "b" * 40)
+    assert hits
+    assert "sk_" not in masked
+
+
+def test_task_id_in_chinese_prose_is_still_not_a_secret() -> None:
+    """The ASCII fix must not cost the false-positive guard."""
+
+    _, hits = redact_mod.redact("这是一个" + "task_" + "c" * 32 + "的任务")
+    assert not hits
+
+
+def test_every_pattern_is_ascii_anchored() -> None:
+    """A pattern added later without re.ASCII reopens the whole hole."""
+
+    import re
+
+    missing = [kind for kind, rx, _ in redact_mod._PATTERNS if not rx.flags & re.ASCII]
+    assert not missing, f"patterns missing re.ASCII: {missing}"
