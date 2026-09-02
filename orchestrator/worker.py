@@ -582,7 +582,11 @@ class Worker:
             event_content=activity,
         )
         for reaction in triggered:
-            logger.warning(
+            # The reaction's own action decides the level. A flat warning here
+            # was what made ReactionConfig.action decorative: escalate, abort
+            # and warn all arrived as the same line.
+            logger.log(
+                reaction.config.level,
                 "Worker %s reaction triggered: %s — %s",
                 self.id, reaction.config.name, reaction.message
             )
@@ -656,7 +660,9 @@ class Worker:
                 event_content=self.failure_context[:500],
             )
             for reaction in triggered:
-                logger.warning("Worker %s reaction: %s — %s", self.id, reaction.config.name, reaction.message)
+                logger.log(reaction.config.level,
+                           "Worker %s reaction: %s — %s",
+                           self.id, reaction.config.name, reaction.message)
         elif self.status == "done":
             self._reaction_executor.record_event("state_change", event_name="worker_done")
 

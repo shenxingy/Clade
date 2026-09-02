@@ -448,7 +448,28 @@ re-running the gates.
       runs in CI as syntax-check gate 18, and adding it immediately caught
       `CLAUDE.md` still claiming 17.
 
-- [ ] 🟡 `ReactionConfig.action` is decorative: "escalate"/"abort"/"notify" is never dispatched, every triggered reaction is consumed by a `logger.warning`. So `reactions_enabled` switches off log lines, not behaviour. Either dispatch the actions or rename the field to what it is.
+- [x] 🟡 **`ReactionConfig.action` was decorative.** DONE 2026-09-02. Both
+      consumers in `worker.py` swallowed every triggered reaction into a flat
+      `logger.warning`, so `abort`, `escalate` and `warn` were the same event
+      with different spelling — and one shipped default carried the message
+      *"Behavioral loop detected — aborting task"* while nothing aborted
+      anything. The field decides the reported level now, through an explicit
+      `ACTION_LEVELS` table, and an action the module cannot dispatch raises
+      `UnknownReactionAction` when the executor is built rather than being
+      ignored when it fires. A silent no-op is what made it decorative.
+      The `loop_detected` default no longer claims an abort; it escalates and
+      says the worker continues. Eleven tests, three of which fail against the
+      old module: the two levels are distinguishable, an unknown action is
+      refused, and no shipped message promises an abort.
+
+- [ ] 🔵 **Decide whether a reaction should be able to stop a worker.** The
+      `abort` action maps to CRITICAL and dispatches no kill path, which is
+      honest but not the original intent. Wiring one needs a worker-side
+      contract first: what the task's status becomes, whether it is retried,
+      what the evidence bundle records, and whether a regex match on a poll
+      string is enough evidence to end a run. Referenced from the comment at the
+      top of `orchestrator/reactions.py`.
+
 - [x] 🟡 **The version-alignment gate required the hand-sync it exists to
       prevent.** DONE 2026-09-02. The expected version was a literal in the
       test, so cutting a release meant editing the gate that catches a missed

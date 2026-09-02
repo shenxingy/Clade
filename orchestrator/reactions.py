@@ -23,6 +23,33 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+# ─── Actions ───────────────────────────────────────────────────────────────────
+# `action` was decorative: every triggered reaction was consumed by a flat
+# logger.warning at both call sites, so "abort" and "warn" were the same event
+# with different spelling and `reactions_enabled` switched off log lines rather
+# than behaviour. The field now decides the level a reaction is reported at, and
+# an unknown action is refused when the executor is built rather than ignored
+# when it fires — a silent no-op is what made this decorative in the first place.
+#
+# What is deliberately NOT here: anything that stops a worker. `abort` names an
+# intent nothing implements, and wiring a kill path from a regex match on a poll
+# string is a much larger decision than this module should make on its own. It
+# is mapped to CRITICAL so it is at least visible, and the DEFAULT_CONFIGS entry
+# that used it says so. Dispatching a real abort needs a worker-side contract
+# for what the task's state becomes; see TODO.md.
+ACTION_LEVELS: dict[str, int] = {
+    "warn": logging.WARNING,
+    "notify": logging.WARNING,
+    "escalate": logging.ERROR,
+    "abort": logging.CRITICAL,
+    "retry": logging.WARNING,
+}
+
+
+class UnknownReactionAction(ValueError):
+    """Raised when a config names an action this module cannot dispatch."""
+
+
 # ─── Configuration ─────────────────────────────────────────────────────────────
 
 @dataclass
@@ -36,10 +63,15 @@ class ReactionConfig:
     threshold: int = 3  # trigger after N occurrences
     window_seconds: float = 300.0  # reset counter after this window
     # Action
-    action: str = "warn"  # "warn" | "escalate" | "abort" | "retry" | "notify"
+    action: str = "warn"  # one of ACTION_LEVELS — validated by ReactionExecutor
     action_payload: dict[str, Any] = field(default_factory=dict)
     # Cooldown
     cooldown_seconds: float = 60.0  # don't re-trigger within this window
+
+    @property
+    def level(self) -> int:
+        """The logging level this action reports at."""
+        return ACTION_LEVELS.get(self.action, logging.WARNING)
 
     def matches(self, event_type: str, event_name: str = "", event_content: str = "") -> bool:
         if self.event_type != event_type:
@@ -111,8 +143,12 @@ class ReactionExecutor:
             event_match=r"loop.*detected",
             threshold=1,
             window_seconds=0,
-            action="abort",
-            action_payload={"message": "Behavioral loop detected — aborting task"},
+            # Was action="abort" with a message claiming the task was being
+            # aborted. Nothing aborts anything; it was reported and the worker
+            # carried on. Reported at ERROR now, and the message says what
+            # actually happens.
+            action="escalate",
+            action_payload={"message": "Behavioral loop detected — worker continues, needs a human"},
         ),
         ReactionConfig(
             name="context_near_limit",
@@ -133,6 +169,12 @@ class ReactionExecutor:
         # no reaction is ever tracked, triggered or logged.
         self.enabled = enabled
         self.configs = configs or list(self.DEFAULT_CONFIGS)
+        unknown = sorted({c.action for c in self.configs} - set(ACTION_LEVELS))
+        if unknown:
+            raise UnknownReactionAction(
+                f"reaction action(s) {unknown} cannot be dispatched; "
+                f"known actions are {sorted(ACTION_LEVELS)}"
+            )
         self._reactions: dict[str, list[Reaction]] = {c.name: [] for c in self.configs}
         self._event_counts: dict[str, list[tuple[float, int]]] = {}  # event_key → [(timestamp, count)]
         self._last_action: dict[str, float] = {}  # reaction_name → last_triggered timestamp
@@ -195,9 +237,11 @@ class ReactionExecutor:
                 self._reactions[config.name].append(reaction)
                 self._last_action[config.name] = now
                 triggered.append(reaction)
-                logger.info(
-                    "Reaction triggered: %s (count=%d, threshold=%d) — action=%s",
-                    config.name, total_count, config.threshold, config.action
+                logger.log(
+                    config.level,
+                    "Reaction triggered: %s (count=%d, threshold=%d) — action=%s: %s",
+                    config.name, total_count, config.threshold, config.action,
+                    reaction.message,
                 )
 
         return triggered
