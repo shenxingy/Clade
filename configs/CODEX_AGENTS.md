@@ -1,3 +1,51 @@
+# Clade Ground Rules for Codex
+
+## Repository Delivery
+
+- One PR equals one independently reviewable and reversible feature, fix, or
+  refactor. Keep its tests, generated contracts, migrations, and documentation
+  in the same delivery unit; split independent behavior into separate or
+  explicitly stacked PRs.
+- Stage and commit only task-owned paths. Preserve unrelated user or agent
+  changes, and use the repository's commit convention.
+- A commit preserves work but does not grant push, PR, merge, deployment, or
+  outbound-message authority. Resolve those transitions from the user request
+  and trusted repository policy.
+
+## Verification Discipline
+
+- The local run is the gate; hosted CI is the receipt. Run the repository's
+  real documented gates before publication. Use `$clade:green` when installed
+  to derive runnable jobs from GitHub Actions instead of maintaining a second
+  checklist.
+- Never weaken, skip, ignore, or mask a gate merely to make it green. Do not
+  append `|| true`, pipe a failing gate into a successful final command, or
+  treat an unavailable lane as passing.
+- Read complete results before reporting them. Name every skipped or
+  unavailable lane and its reason; a partial suite cannot support a claim about
+  the whole build.
+
+## Communication and Evidence
+
+- Match response length to the question while keeping paths, commands, flags,
+  errors, and measurements exact.
+- Separate verified, unverified, and unmeasurable results. Every completion
+  claim names the command or live observation that supports it.
+- Lead with the outcome, then assumptions and untested boundaries. Surface a
+  blocker once with the evidence already gathered instead of retrying blindly.
+
+## Engineering Checks
+
+- Trace settings from definition through read, callsite, and observable effect.
+  A documented or parsed setting that never changes behavior is incomplete.
+- Check first-run, empty, null, duplicate, concurrent, timeout, and
+  cross-platform behavior in proportion to the change.
+- Validate untrusted data at the system boundary and keep credentials out of
+  commands, logs, committed policy, and model-visible output.
+- Source is not deployment, configuration is not loading, and definition is
+  not execution. Verify the runtime or deployed artifact when the request is
+  about live behavior.
+
 ## Adaptive Delegation
 
 Before broad repository reads, decide whether the task is better handled by the

@@ -30,8 +30,8 @@ codex plugin add clade@clade
 
 The plugin under `plugins/clade/` contains:
 
-- 25 core workflows: commit, Codex usage pace, security review, release documentation, frontend
-  design, handoff/pickup, incident response, investigation, architecture maps,
+- 26 core workflows: commit, Codex usage pace, security review, release documentation, frontend
+  design, local CI repair, handoff/pickup, incident response, investigation, architecture maps,
   PR review/merge, research, retrospectives, project review, sync, verification,
   worktrees, and supporting decision workflows.
 - A `SessionStart` hook that injects concise branch, recent-commit, dirty-tree,
@@ -53,6 +53,37 @@ python3 configs/scripts/regen-codex-plugin.py --check
 Edit canonical skills under `configs/skills/`, not the generated copies under
 `plugins/clade/skills/`. Curated membership lives in
 `plugins/clade/skills.list`.
+
+`$clade:green` is portable outside the Clade repository. Its generated skill
+bundles a byte-identical copy of `configs/scripts/ci-local.py`, resolves that
+copy from the installed plugin root, and derives the target repository's real
+GitHub Actions jobs before attempting a repair.
+
+## Claude-to-Codex Migration Contract
+
+Clade does not bulk-import the full Claude installation into Codex. That would
+duplicate native plugin skills and would copy hooks, agents, output styles, and
+state paths whose lifecycle or trust semantics differ between runtimes.
+
+The machine-readable [`configs/codex-migration.json`](../configs/codex-migration.json)
+records every configuration surface as native, a native subset, a semantic
+adaptation, or an intentional exclusion. It also classifies every canonical
+Claude skill exactly once: either it appears in `plugins/clade/skills.list`, or
+it matches one documented exclusion group. CI fails when a new skill is added
+without an explicit Codex disposition.
+
+The installer adapts the provider-neutral parts of Clade's global policy into
+the managed block in `~/.codex/AGENTS.md`: atomic PR scope, local-CI-first
+verification, evidence completeness, concise response register, configuration
+wiring, and deployment proof. It leaves model selection, trust, permissions,
+MCP authentication, and personal plugin settings under the user's own
+`~/.codex/config.toml`.
+
+Claude output styles have no distributable one-to-one Codex primitive. Their
+Evidence First and Terse invariants are therefore carried as durable Codex
+guidance, without claiming system-prompt equivalence. Claude lifecycle
+orchestration and the MCP bridge stay outside the native plugin until they have
+real native semantics.
 
 ## State and Guidance
 

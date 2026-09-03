@@ -1,3 +1,33 @@
+---
+name: green
+description: "Run the repository's real CI gates locally and drive them to green — read the failing step, fix the cause, re-run only that job, repeat. Use before pushing, after a red hosted run, or whenever \"make CI pass\" is the ask. Never weakens a gate to make it pass."
+---
+
+# Clade for Codex
+
+This workflow runs **directly in Codex**. Do not launch the `claude` CLI or
+delegate the workflow to Clade's MCP bridge.
+
+Codex compatibility rules:
+
+- Plugin skills are namespaced. Invoke this workflow explicitly as
+  `$clade:green`; a bare `$name` does not select the installed Clade plugin.
+- Read the nearest `AGENTS.md` files for repository instructions. If a project
+  has only `CLAUDE.md`, treat it as legacy project guidance and read it too.
+- Store new Clade working state under `.clade/` (or `~/.clade/` for personal
+  state). Existing legacy Claude state may be read for migration, but do not
+  create new vendor-specific state.
+- A `/skill-name` reference means the corresponding Codex
+  `$clade:skill-name` plugin skill, or the same workflow invoked naturally when
+  explicit skill invocation is not available.
+- Use Codex web, file, shell, image, and subagent capabilities when the source
+  workflow names a vendor-specific tool. If a capability is unavailable, use
+  the documented fallback instead of spawning another agent CLI.
+- Paths such as `<plugin-root>/...` are relative to the installed Clade plugin
+  containing this `SKILL.md`; resolve that root before invoking a helper.
+
+## Canonical Clade workflow
+
 # /green — take the build from red to green on hardware you already own
 
 Hosted CI is billed per job, rounded up to the minute, and multiplied by
@@ -5,7 +35,7 @@ platform (Linux 1x, Windows 2x, macOS 10x). Pushing to find out whether a
 change compiles is the most expensive possible way to ask that question, and
 the slowest. This skill asks it locally.
 
-`~/.claude/scripts/ci-local.py` parses `.github/workflows/*.yml` and runs the same
+`<plugin-root>/skills/green/scripts/ci-local.py` parses `.github/workflows/*.yml` and runs the same
 `run:` blocks, so it cannot drift from CI the way a hand-maintained checklist
 does — one such checklist in this toolkit was wrong twice.
 
@@ -32,7 +62,7 @@ worse than a red build, because a red build is still telling the truth.
 ### 1. See the plan before running it
 
 ```bash
-python3 ~/.claude/scripts/ci-local.py --list
+python3 <plugin-root>/skills/green/scripts/ci-local.py --list
 ```
 
 Read what will be skipped and why. A job needing a platform this machine is not
@@ -43,7 +73,7 @@ here; say so rather than reporting a clean run that covered less than it looks.
 ### 2. Run
 
 ```bash
-python3 ~/.claude/scripts/ci-local.py --json
+python3 <plugin-root>/skills/green/scripts/ci-local.py --json
 ```
 
 Use `--json`: it gives the failing job, the step name, the exit code, the exact
@@ -71,7 +101,7 @@ For each entry in `failed`:
 ### 4. Fix the cause, then re-run only that job
 
 ```bash
-python3 ~/.claude/scripts/ci-local.py --job "<job name>" --json
+python3 <plugin-root>/skills/green/scripts/ci-local.py --job "<job name>" --json
 ```
 
 Re-running one job keeps the loop short. Re-run the **full** set once at the
@@ -113,3 +143,19 @@ State plainly:
 - if you touched a gate at all, say exactly what and why, at the top
 
 Never report "CI will pass" from a subset. Report what ran.
+
+## Delivery completion
+
+If this workflow changes files or external state:
+
+- Inspect the real final state before responding, including `git status` for a
+  repository task.
+- Never report `DONE` while task-owned changes are uncommitted. Use or continue
+  `$clade:delivery` and create a repository-compliant checkpoint or preserve
+  the work when committing is unavailable.
+- When the user request or trusted repository policy makes publication,
+  deployment, or live verification part of the task, do not silently downgrade
+  the result to local-only work.
+- If a required delivery transition lacks authority, credentials, a destination,
+  or reachable external state, report `BLOCKED` or `NEEDS_CONTEXT` rather than
+  appending a "not committed/pushed/deployed" caveat after `DONE`.

@@ -62,7 +62,7 @@ codex plugin add clade@clade
 ```
 
 安装后启动新的 Codex thread，并通过插件限定名 `$clade:review`、
-`$clade:verify`、`$clade:investigate` 等技能直接运行 Clade。首次使用时
+`$clade:verify`、`$clade:investigate`、`$clade:green` 等技能直接运行 Clade。首次使用时
 打开 `/hooks`，检查并信任 Clade 的 session context 和危险命令防护 hooks。
 原生插件无需安装 Claude Code。
 

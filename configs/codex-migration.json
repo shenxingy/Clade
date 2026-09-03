@@ -1,0 +1,165 @@
+{
+  "schema_version": "clade.codex-migration/v1",
+  "surfaces": [
+    {
+      "id": "global-instructions",
+      "claude_source": "configs/CLAUDE.md",
+      "codex_target": "configs/CODEX_AGENTS.md",
+      "status": "native",
+      "reason": "The installer merges a bounded Clade-managed block into ~/.codex/AGENTS.md without replacing user-authored guidance."
+    },
+    {
+      "id": "skills",
+      "claude_source": "configs/skills",
+      "codex_target": "plugins/clade/skills",
+      "status": "native-subset",
+      "reason": "Developer workflows are selected by plugins/clade/skills.list and generated with Codex-native paths and tool semantics."
+    },
+    {
+      "id": "subagents",
+      "claude_source": "configs/agents",
+      "codex_target": "configs/codex-agents",
+      "status": "native-subset",
+      "reason": "Codex ships two bounded profiles with explicit sandbox, ownership, verifier, and no-recursion contracts instead of copying Claude agent prompts."
+    },
+    {
+      "id": "hooks",
+      "claude_source": "configs/settings-hooks.json",
+      "codex_target": "plugins/clade/hooks/hooks.json",
+      "status": "native-subset",
+      "reason": "Only session context and destructive-command protection have native Codex event and trust semantics; Claude-only lifecycle hooks stay excluded."
+    },
+    {
+      "id": "output-styles",
+      "claude_source": "configs/output-styles",
+      "codex_target": "configs/CODEX_AGENTS.md",
+      "status": "semantic-adaptation",
+      "reason": "Codex has no distributable equivalent of Claude system-prompt output styles, so their evidence and response-register invariants are adapted as durable guidance."
+    },
+    {
+      "id": "settings",
+      "claude_source": "templates/settings.json",
+      "codex_target": null,
+      "status": "intentional-exclusion",
+      "reason": "Model, trust, permission, MCP authentication, and personal plugin controls remain user-scoped config.toml state and are never overwritten by the repository installer."
+    },
+    {
+      "id": "mcp-bridge",
+      "claude_source": "mcp/clade.mcp.json",
+      "codex_target": null,
+      "status": "intentional-exclusion",
+      "reason": "The MCP bridge is for external clients; installing it inside Codex beside the native plugin duplicates skills and creates nested Codex sessions."
+    }
+  ],
+  "policy_parity": [
+    {
+      "id": "atomic-pull-requests",
+      "source": "configs/CLAUDE.md",
+      "source_contains": "One PR = one independently reviewable and reversible feature",
+      "target": "configs/CODEX_AGENTS.md",
+      "target_contains": "One PR equals one independently reviewable and reversible feature"
+    },
+    {
+      "id": "local-ci-first",
+      "source": "configs/CLAUDE.md",
+      "source_contains": "the local run is the gate",
+      "target": "configs/CODEX_AGENTS.md",
+      "target_contains": "The local run is the gate; hosted CI is the receipt."
+    },
+    {
+      "id": "evidence-first",
+      "source": "configs/output-styles/evidence-first.md",
+      "source_contains": "Distinguish the three states, always",
+      "target": "configs/CODEX_AGENTS.md",
+      "target_contains": "Separate verified, unverified, and unmeasurable results."
+    },
+    {
+      "id": "terse-register",
+      "source": "configs/output-styles/terse.md",
+      "source_contains": "Match your response length to the question",
+      "target": "configs/CODEX_AGENTS.md",
+      "target_contains": "Match response length to the question"
+    },
+    {
+      "id": "settings-wiring",
+      "source": "configs/CLAUDE.md",
+      "source_contains": "Settings/wiring",
+      "target": "configs/CODEX_AGENTS.md",
+      "target_contains": "Trace settings from definition through read, callsite, and observable effect."
+    },
+    {
+      "id": "deployment-proof",
+      "source": "configs/CLAUDE.md",
+      "source_contains": "Source ≠ deployed. Config ≠ loaded. Defined ≠ called.",
+      "target": "configs/CODEX_AGENTS.md",
+      "target_contains": "Source is not deployment"
+    }
+  ],
+  "skill_exclusions": [
+    {
+      "id": "marketing-domain-bundles",
+      "patterns": [
+        "ads",
+        "ads-*",
+        "blog",
+        "blog-*",
+        "email-*",
+        "outbound",
+        "seo",
+        "seo-*"
+      ],
+      "reason": "Large marketing suites stay available through the Claude framework and MCP catalog; loading them into the developer-focused Codex plugin would create discovery noise."
+    },
+    {
+      "id": "claude-orchestration-lifecycle",
+      "patterns": [
+        "audit",
+        "batch-tasks",
+        "codex-orchestrate",
+        "iloop",
+        "loop",
+        "pipeline",
+        "poke",
+        "start"
+      ],
+      "reason": "These workflows depend on Claude Workflow, Stop-hook, job-registry, or cross-runtime launch semantics and require a separate native design."
+    },
+    {
+      "id": "claude-installation-and-learning",
+      "patterns": [
+        "equip",
+        "generate-hook",
+        "init-profile",
+        "learn",
+        "skill-new",
+        "slt"
+      ],
+      "reason": "These workflows mutate or interpret Claude-specific installation, hook, correction, profile, skill-authoring, or status-line state."
+    },
+    {
+      "id": "covered-by-native-codex-workflows",
+      "patterns": [
+        "qa-explore",
+        "ship",
+        "trim-tests"
+      ],
+      "reason": "Native frontend-design, review, verify, and delivery workflows cover the supported behavior without carrying a second overlapping command."
+    },
+    {
+      "id": "specialized-opt-in-workflows",
+      "patterns": [
+        "banana",
+        "brief",
+        "domain-model",
+        "landscape",
+        "localize",
+        "minimax-usage",
+        "model-research",
+        "muller-brockmann-grid-systems",
+        "radar",
+        "vignelli-canon-design-system"
+      ],
+      "reason": "These specialized or provider-specific workflows remain opt-in through Claude or MCP until a Codex-native product use case justifies plugin discovery cost."
+    }
+  ]
+}
