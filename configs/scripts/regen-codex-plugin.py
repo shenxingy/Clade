@@ -130,6 +130,30 @@ FORBIDDEN_NATIVE_TEXT = (
     ".claude/",
 )
 
+# A canonical skill may name a runtime-installed helper. Rewrite that path
+# before the general Claude-to-Codex adaptation so the generated workflow uses
+# the helper bundled inside its own plugin directory.
+SKILL_TEXT_REPLACEMENTS = {
+    "green": (
+        (
+            "~/.claude/scripts/ci-local.py",
+            "<plugin-root>/skills/green/scripts/ci-local.py",
+        ),
+    ),
+}
+
+# Keep deterministic helpers canonical under configs/scripts/. The generated
+# plugin receives byte-identical copies rather than a second hand-maintained
+# implementation under the skill directory.
+DECLARED_RESOURCES = {
+    "green": (
+        (
+            REPO_ROOT / "configs" / "scripts" / "ci-local.py",
+            Path("scripts/ci-local.py"),
+        ),
+    ),
+}
+
 
 def _read_manifest() -> list[str]:
     names: list[str] = []
@@ -192,7 +216,11 @@ def _render_skill(name: str) -> str:
         raise ValueError(f"{name}: no executable instructions")
 
     native_core = name in NATIVE_CORE_SKILLS
-    base_adapt = (lambda value: value) if native_core else _adapt
+
+    def base_adapt(value: str) -> str:
+        for source, target in SKILL_TEXT_REPLACEMENTS.get(name, ()):
+            value = value.replace(source, target)
+        return value if native_core else _adapt(value)
 
     def adapt(value: str) -> str:
         return _namespace_plugin_skill_refs(base_adapt(value))
@@ -256,6 +284,15 @@ def _copy_resources(source_dir: Path, dest_dir: Path) -> None:
             shutil.copy2(child, target)
 
 
+def _copy_declared_resources(name: str, dest_dir: Path) -> None:
+    for source, relative_target in DECLARED_RESOURCES.get(name, ()):
+        if not source.is_file():
+            raise FileNotFoundError(f"missing declared resource for {name}: {source}")
+        target = dest_dir / relative_target
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+
+
 def generate(dest: Path) -> None:
     if dest.exists():
         shutil.rmtree(dest)
@@ -265,6 +302,7 @@ def generate(dest: Path) -> None:
         skill_dest.mkdir()
         (skill_dest / "SKILL.md").write_text(_render_skill(name), encoding="utf-8")
         _copy_resources(SOURCE_ROOT / name, skill_dest)
+        _copy_declared_resources(name, skill_dest)
 
 
 def _tree_hashes(root: Path) -> dict[str, str]:

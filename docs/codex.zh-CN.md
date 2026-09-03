@@ -29,8 +29,8 @@ codex plugin add clade@clade
 
 `plugins/clade/` 包含：
 
-- 25 个核心 workflows：commit、Codex usage pace、安全审查、release 文档、frontend design、
-  handoff/pickup、incident、investigation、architecture map、PR review/merge、
+- 26 个核心 workflows：commit、Codex usage pace、安全审查、release 文档、frontend design、
+  本地 CI 修复、handoff/pickup、incident、investigation、architecture map、PR review/merge、
   research、retro、项目 review、sync、verification、worktree 与决策辅助流程
 - `SessionStart` hook：只读注入 branch、recent commits、dirty tree、handoff、
   repository guidance 和 delivery completion，不修改仓库
@@ -48,6 +48,30 @@ python3 configs/scripts/regen-codex-plugin.py --check
 
 应修改 `configs/skills/` 下的 canonical skills，而不是直接修改
 `plugins/clade/skills/` 的生成文件。发布列表位于 `plugins/clade/skills.list`。
+
+`$clade:green` 可以在 Clade 仓库之外运行。生成后的 skill 会携带一份与
+`configs/scripts/ci-local.py` 字节一致的 runner，从已安装 plugin root 解析它，
+然后读取目标仓库真正的 GitHub Actions jobs 再进行修复。
+
+## Claude → Codex 迁移契约
+
+Clade 不会把完整 Claude 安装批量导入 Codex。这样会重复安装原生 plugin skills，
+也会复制生命周期、信任模型或状态路径不兼容的 hooks、agents 与 output styles。
+
+机器可读的 [`configs/codex-migration.json`](../configs/codex-migration.json)
+把每个配置面标记为原生、原生子集、语义适配或明确排除；同时要求每个 canonical
+Claude skill 只能有一个 Codex 去向：进入 `plugins/clade/skills.list`，或匹配一个
+写明理由的排除组。新增 skill 没有声明 Codex 去向时，CI 会直接失败。
+
+Installer 会把全局策略中 provider-neutral 的部分适配到
+`~/.codex/AGENTS.md` 托管区块：原子 PR、本地 CI 优先、完整证据、简洁表达、
+配置 wiring 与部署验证。模型、trust、permissions、MCP 认证和个人 plugin 设置
+继续由用户自己的 `~/.codex/config.toml` 管理。
+
+Claude output styles 在 Codex 中没有可分发的一一对应 primitive。因此 Evidence
+First 与 Terse 的约束以持久 Codex guidance 表达，但不声称与 system prompt
+等价。Claude lifecycle orchestration 和 MCP bridge 在拥有真实原生语义前仍不会
+装入 native plugin。
 
 ## State 与仓库指引
 

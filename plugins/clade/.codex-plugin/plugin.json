@@ -1,6 +1,6 @@
 {
   "name": "clade",
-  "version": "0.3.1+codex.20260902231825",
+  "version": "0.3.1+codex.20260903015309",
   "description": "Native Codex workflows, usage visibility, and safety hooks from the Clade autonomous coding toolkit.",
   "author": {
     "name": "Xingy Shen",
@@ -32,6 +32,7 @@
     "defaultPrompt": [
       "Use Clade to verify this project's behavior anchors.",
       "Use Clade to investigate this failure before fixing it.",
+      "Use Clade to run the repository's real CI gates locally and fix failures without weakening them.",
       "Use Clade to review this project and converge on a clean result.",
       "Use Clade to show my Codex usage pace and configure the status line."
     ]

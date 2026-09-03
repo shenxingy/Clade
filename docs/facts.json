@@ -91,7 +91,7 @@
     },
     {
       "name": "codex_plugin_skills",
-      "value": 25,
+      "value": 26,
       "derive": {
         "type": "count_glob",
         "pattern": "plugins/clade/skills/*/"
@@ -99,6 +99,8 @@
       "patterns": [
         "ships (\\d+) provider-native core workflows",
         "plugin \\((\\d+) generated core skills",
+        "Native Codex plugin\\*\\* — (\\d+) core workflows",
+        "带 (\\d+) 个核心 workflows",
         "plugin\uff08(\\d+) \u4e2a\u6838\u5fc3 skills",
         "^- (\\d+) core workflows:",
         "^- (\\d+) \u4e2a\u6838\u5fc3 workflows\uff1a"

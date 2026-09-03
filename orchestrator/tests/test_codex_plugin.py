@@ -61,7 +61,8 @@ def test_codex_plugin_skills_are_generated_and_provider_native() -> None:
     )
     assert result.returncode == 0, result.stderr
     skills = list((PLUGIN_ROOT / "skills").glob("*/SKILL.md"))
-    assert len(skills) == 25
+    assert len(skills) == 26
+    assert "green" in {path.parent.name for path in skills}
     merged = "\n".join(path.read_text(encoding="utf-8") for path in skills).lower()
     for forbidden in ("claude -p", "--dangerously-skip-permissions", "~/.claude/", ".claude/"):
         assert forbidden not in merged

@@ -66,7 +66,7 @@ codex plugin add clade@clade
 
 Start a new Codex thread, then invoke a workflow naturally or explicitly with
 the plugin-qualified names `$clade:review`, `$clade:verify`,
-`$clade:investigate`, and the other bundled skills. Open `/hooks` once to
+`$clade:investigate`, `$clade:green`, and the other bundled skills. Open `/hooks` once to
 review and trust Clade's session-context and command-safety hooks.
 
 Run `$clade:codex-usage setup minimal` for a compact native footer.
@@ -75,7 +75,7 @@ Run `$clade:codex-usage setup minimal` for a compact native footer.
 never reads or exposes Codex credentials.
 
 The native plugin runs directly in Codex and does **not** require Claude Code.
-It currently ships 25 provider-native core workflows; Claude-specific overnight
+It currently ships 26 provider-native core workflows; Claude-specific overnight
 orchestration remains in the full framework. See [Native Codex Support](docs/codex.md).
 
 ### MCP Server Only

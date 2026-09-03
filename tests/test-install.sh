@@ -187,6 +187,15 @@ grep -q '^## Delivery Completion$' "$CODEX_DIR/AGENTS.md" \
 grep -q 'Never report `DONE` while task-owned changes are uncommitted' "$CODEX_DIR/AGENTS.md" \
   && pass "Codex dirty-DONE guard installed" \
   || fail "Codex dirty-DONE guard installed"
+grep -q 'The local run is the gate; hosted CI is the receipt.' "$CODEX_DIR/AGENTS.md" \
+  && pass "Codex local-CI-first policy installed" \
+  || fail "Codex local-CI-first policy installed"
+grep -q 'Separate verified, unverified, and unmeasurable results.' "$CODEX_DIR/AGENTS.md" \
+  && pass "Codex evidence-first policy installed" \
+  || fail "Codex evidence-first policy installed"
+grep -q 'Trace settings from definition through read, callsite, and observable effect.' "$CODEX_DIR/AGENTS.md" \
+  && pass "Codex settings-wiring policy installed" \
+  || fail "Codex settings-wiring policy installed"
 
 script_count=$(ls "$CLAUDE_DIR/scripts/"*.sh 2>/dev/null | wc -l | tr -d ' ')
 [[ "$script_count" -gt 0 ]] && pass "scripts installed ($script_count)" || fail "scripts installed"

@@ -134,7 +134,7 @@ This MCP server is one part of Clade. The full framework includes:
 - **32 hooks** — safety guardian, correction learning, type-checking, session context
 - **42 shell scripts + 31 Python utilities** — commits, loops, parallel tasks, health scanning
 - **37 agents** — code, security, compliance, marketing, research, and verification specialists
-- **Native Codex plugin** — 25 core workflows, usage visibility, and lifecycle safety hooks
+- **Native Codex plugin** — 26 core workflows, usage visibility, and lifecycle safety hooks
 - **Orchestrator** — FastAPI web UI with task queue, worker pool, GitHub sync
 
 Install the full framework:
