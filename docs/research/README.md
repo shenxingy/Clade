@@ -55,6 +55,11 @@ The gaps cluster into 5 themes. This is the strategic read — *where the most e
 
 Grouped by [watch-list](../who-to-learn-from.md) tier. `Gaps` = count of open `needs_work_items`.
 
+### Codex GPT-5.6 generation (2026-09-05)
+| Source | Status | Gaps | Core lesson | Doc |
+|--------|--------|------|-------------|-----|
+| **openai/codex @ `4df8027a97`, the live model catalog, this host's Codex databases** | 🔨 | 4 | Reading upstream mattered less than re-reading ourselves. Almost nothing in the GPT-5.6 generation is a capability this toolkit lacks; what the sweep found is **three things this repository had written down that are false**. Both destructive-command guardians allow every recursive delete an agent actually writes — variable, command-substitution and glob targets all pass, while the literal forms are blocked. "Codex cannot fan out" is wrong and is encoded three times (a capability declaration, the tests pinning it, an open roadmap item), disproved by two spawn edges in this host's database and then reproduced live. The cheap Codex tier is set to the catalog's middle tier. What IS new upstream and worth naming: `ultra` is an effort level meaning automatic delegation, not a model; every 5.6 model is `code_mode_only`; and the base prompt traded engineering advice for a request-verb authority envelope and a destructive-action protocol | [→](2026-09-05-codex-gpt56-and-harness-review.md) |
+
 ### Agent orchestration efficiency (2026-09-02)
 | Source | Status | Gaps | Core lesson | Doc |
 |--------|--------|------|-------------|-----|
