@@ -41,17 +41,27 @@ These facts come from the installed CLI, its on-disk state, and the upstream
 source — not from a search result. Anything below can be re-checked with the
 command shown.
 
-### Version lag
+### Which versions this was read against
 
 | Surface | Here | Upstream | Check |
 |---|---|---|---|
-| Codex CLI | 0.145.0 (standalone package dir holds 0.144.6) | 0.153.4 stable, 2026-09-04 | `codex --version`; `gh api repos/openai/codex/releases` |
+| Codex CLI | 0.153.4 — was 0.145.0 when the sweep began | 0.153.4 stable, 2026-09-04 | `codex --version`; `gh api repos/openai/codex/releases` |
 | Claude Code CLI | 2.1.261 | — | `claude --version` |
 | Clade Codex tiers | cheap `gpt-5.6-terra`, strong `gpt-5.6-sol` | catalog lists `gpt-5.6-luna` as the "fast and affordable" tier | `orchestrator/config.py:312`, `configs/codex-agents/*.toml` |
 
-Eight minor releases sit between the installed CLI and upstream. Every claim in
-this document about *behaviour* was checked against the upstream source at
-`4df8027a97`; every claim about *what runs here* was checked against 0.145.0.
+The CLI updated itself mid-review, which is worth stating rather than hiding:
+`threads.cli_version` in the state database records 573 sessions on 0.145.0 up
+to 2026-09-04 22:06 and everything after on 0.153.4. The host is now level with
+upstream stable. Where a fact below depends on the older build it says so, and
+the two are separated because the review's central finding was first observed
+on 0.145.0 and then reproduced live on 0.153.4.
+
+Every claim about *behaviour* was checked against the upstream source at
+`4df8027a97`. Note that `codex --version` here runs through a wrapper script
+(`~/.local/bin/codex` → `codex-statusline`), and that
+`~/.codex/packages/standalone/current` still points at a 0.144.6 release
+directory, so neither of those is a reliable version oracle — the state
+database is.
 
 ### The live model catalog (`~/.codex/models_cache.json`, fetched 2026-09-05T01:50Z)
 
@@ -232,6 +242,31 @@ Clade states the opposite in three places:
 - `TODO.md:624` — an open item, "Codex cannot fan out, and that is why it is slower … the only parallelism available to Codex is Clade spawning N `codex exec` processes from outside".
 
 And it states the correct thing in a fourth: `configs/skills/codex-orchestrate/prompt.md:3` calls itself "the manual version of Codex's native fan-out (`model_reasoning_effort = ultra`)" and even names a slot cap. The skill on the live terminal path was right; the dormant layer's capability table and the roadmap item were wrong.
+
+Then it was reproduced live, on the current build, rather than left resting on
+two historical rows. A `codex exec --json` run in a scratch directory, read-only
+sandbox, model `gpt-5.6-terra` at low effort, asked to delegate one bounded
+lookup:
+
+```
+codex exec --json --skip-git-repo-check -s read-only -m gpt-5.6-terra \
+  -c model_reasoning_effort=low "Delegate to the clade_cheap_explorer subagent …" < /dev/null
+```
+
+The event stream carried a `collab_tool_call` item, so the collaboration tools
+were present in a headless turn, and the database gained a third
+`source='exec'` spawn edge: child `01a072b1-0c12…`, depth 1,
+`agent_role: clade_cheap_explorer`, nickname Volta, 55,549 tokens, parent
+recorded at `cli_version 0.153.4`. Headless Codex delegates, today, on the
+version this host runs.
+
+Two practical notes from that run. The spawn itself never appears in the JSONL
+— only the `wait` call does, and it reports `receiver_thread_ids: []` — so a
+supervisor that watches `codex exec --json` cannot see its worker's children
+and must read the state database to know they happened. And the child answered
+that its search was blocked, which is what a `read-only` sandbox plus a
+delegated shell command produces; a real delegating worker needs its sandbox
+set for the child's work, not just the parent's.
 
 The honest replacement value is CONDITIONAL with the condition written down —
 delegation depends on the resolved model's catalog `multi_agent_version`

@@ -631,6 +631,14 @@ re-running the gates.
       only parallelism available to Codex is Clade spawning N `codex exec`
       processes from outside, which the worker pool can already do and which
       nothing measures.
+      **FALSIFIED 2026-09-05 — do not act on the premise above.** A headless
+      `codex exec` does spawn subagents; the gate is the resolved model's
+      catalog `multi_agent_version`, not the session source. Observed twice in
+      `~/.codex/state_5.sqlite` on 0.145.0 and reproduced live on 0.153.4. What
+      survives of this item is the measurement half: nothing here counts a
+      Codex worker's children, and the JSONL stream cannot supply them. See
+      the 2026-09-05 section below and
+      [the review](docs/research/2026-09-05-codex-gpt56-and-harness-review.md).
 - [x] 🟡 **The polling rule now has a number.** DONE 2026-09-02.
       `workflow-scorecard.py --polls` reads lead-session transcripts and reports
       repeated status reads per background job, beside the straggler figures. A
@@ -822,8 +830,8 @@ record is wrong**. The four below were reproduced by hand before filing.
 
 - [ ] 🟡 **"Codex cannot fan out" is false, and it is written down three
       times.** `~/.codex/state_5.sqlite` holds two `source='exec'` parent
-      threads that spawned depth-1 children on CLI 0.145.0 — the version
-      installed here — using Clade's own roles: `clade_cheap_explorer`
+      threads that spawned depth-1 children on CLI 0.145.0, using Clade's own
+      roles: `clade_cheap_explorer`
       (99,654 tokens, 2026-08-01) and `clade_cheap_worker` (58,092 tokens,
       2026-09-02). Upstream says why: the predicate that adds the spawn tools
       to a turn reads only the resolved model's `multi_agent_version` and never
@@ -842,6 +850,13 @@ record is wrong**. The four below were reproduced by hand before filing.
       CONDITIONAL must change with it, and `configs/skills/codex-orchestrate/prompt.md:3`
       was right all along — it calls itself the manual version of native
       `ultra` fan-out.
+      Reproduced live on 2026-09-05 against CLI 0.153.4: a headless
+      `codex exec --json` run asked to delegate emitted a `collab_tool_call`
+      and created a third `source='exec'` spawn edge (child depth 1, role
+      `clade_cheap_explorer`, 55,549 tokens). The spawn is invisible in the
+      JSONL — only the `wait` item appears, with an empty
+      `receiver_thread_ids` — so a supervisor watching the event stream cannot
+      see its worker's children and must read `~/.codex/state_5.sqlite`.
 
 - [ ] 🔵 **The cheap Codex tier is set to the middle tier.** Both the live
       catalog and upstream's bundled one encode `gpt-5.4-mini` ("small, fast,
