@@ -631,6 +631,14 @@ re-running the gates.
       only parallelism available to Codex is Clade spawning N `codex exec`
       processes from outside, which the worker pool can already do and which
       nothing measures.
+      **FALSIFIED 2026-09-05 — do not act on the premise above.** A headless
+      `codex exec` does spawn subagents; the gate is the resolved model's
+      catalog `multi_agent_version`, not the session source. Observed twice in
+      `~/.codex/state_5.sqlite` on 0.145.0 and reproduced live on 0.153.4. What
+      survives of this item is the measurement half: nothing here counts a
+      Codex worker's children, and the JSONL stream cannot supply them. See
+      the 2026-09-05 section below and
+      [the review](docs/research/2026-09-05-codex-gpt56-and-harness-review.md).
 - [x] 🟡 **The polling rule now has a number.** DONE 2026-09-02.
       `workflow-scorecard.py --polls` reads lead-session transcripts and reports
       repeated status reads per background job, beside the straggler figures. A
@@ -776,6 +784,133 @@ failure mode is silence needs a test that proves it can fail.
       red-phase checked separately.
 
 - [ ] 🔵 `node_test_sample` and `node_health_check` communicate through three bare globals (`LAST_TEST_OUTPUT`, `LAST_TEST_RESULT`, `PREV_FAILED`) that are now a cross-file coupling between `loop_verify.sh` and `loop-runner.sh`. Sourced shell makes it work; the `# Writes:` header is the only thing recording it.
+
+### Codex GPT-5.6 review — 2026-09-05
+
+Filed from [`docs/research/2026-09-05-codex-gpt56-and-harness-review.md`](docs/research/2026-09-05-codex-gpt56-and-harness-review.md).
+23 readers over the upstream source at `4df8027a97`, the 0.150–0.153 release
+notes, the live model catalog with its per-model system prompts, this host's
+Codex state databases, and the wider field. The yield is the same shape as the
+2026-08-29 sweep: almost nothing upstream is a capability this toolkit lacks,
+and what the sweep actually found is places where **this repository's own
+record is wrong**. The four below were reproduced by hand before filing.
+
+- [ ] 🔴 **Both guardians allow every recursive delete an agent actually
+      writes.** Measured with a probe that feeds real `PreToolUse` payloads to
+      `configs/hooks/pre-tool-guardian.sh` and
+      `plugins/clade/hooks/pre_tool_guardian.py`: both block the literal
+      catastrophic forms, and both ALLOW the same recursive-force delete when
+      the target is written as `$BUILD_DIR/`, `"$BUILD_DIR"/`, `${OUT}/`,
+      `$OUT/` plus a star, `$(pwd)/` plus a star, `./` plus a star, or a bare
+      star after a `cd`. The force-push rows are the control: both hooks ran
+      and both acted, so those ALLOWs are decisions, not a dead hook. In Claude
+      Code every Bash call is a fresh shell, so a variable set in an earlier
+      call is unset in this one and the target expands to the filesystem root —
+      the exact string `tests/test-pre-tool-guardian.sh` asserts a block for
+      when it is typed literally. `rm --preserve-root` does not help, because
+      the expanded argument is root-plus-star rather than root.
+      The fix shape is already in the same file: the force-push branch answers
+      `{"decision":"allow","updatedInput":{…}}`. Rewriting an unassigned
+      `$NAME` target to `${NAME:?guardian: recursive delete on an unset
+      variable}` leaves a set variable untouched and makes an unset one abort
+      naming itself; command substitution and glob-only targets have no safe
+      rewrite and should be refused. Needs the mirrored change in the Codex
+      hook and cases in `tests/test-pre-tool-guardian.sh`, which today contains
+      no unset-variable or glob-target case at all.
+
+- [ ] 🟡 **The two guardians have drifted, and the parity pair is untested.**
+      The shell hook blocks a recursive delete of `/home`, `/etc`, `/usr`,
+      `/var`, `/sys`, `/proc`, `/boot`; the Codex mirror's regex covers only
+      root, `~`, `$HOME` and `${HOME}` at token start, so it allows what the
+      Claude side blocks. `configs/codex-migration.json` records the two as a
+      parity pair and `orchestrator/tests/test_codex_migration_policy.py`
+      checks that pairing, but nothing feeds one command to both hooks and
+      compares verdicts. That table-driven test is the durable fix; aligning
+      the regex alone would drift again.
+
+- [ ] 🟡 **"Codex cannot fan out" is false, and it is written down three
+      times.** `~/.codex/state_5.sqlite` holds two `source='exec'` parent
+      threads that spawned depth-1 children on CLI 0.145.0, using Clade's own
+      roles: `clade_cheap_explorer`
+      (99,654 tokens, 2026-08-01) and `clade_cheap_worker` (58,092 tokens,
+      2026-09-02). Upstream says why: the predicate that adds the spawn tools
+      to a turn reads only the resolved model's `multi_agent_version` and never
+      the session source, and `SessionSource::Exec` is whitelisted as a
+      delegation root beside Cli and Mcp. So `orchestrator/worker_provider.py:363`
+      (`subagents: UNSUPPORTED`, sourced "codex exec has no headless sub-agent
+      spawn"), the docstring and `test_codex_subagents_is_not_a_shrug` in
+      `orchestrator/tests/test_subagents_capability.py`, and the open item at
+      the end of the 2026-09-02 audit section are all built on a false premise.
+      The honest value is CONDITIONAL **with the condition written down** —
+      delegation depends on the resolved model's catalog `multi_agent_version`
+      (Sol and Terra carry v2, Luna v1) and, under v1, on explicit authorization
+      in the prompt or `AGENTS.md`, which the managed block already grants when
+      it tells Codex to delegate to `clade_cheap_explorer`. That is very likely
+      what authorized both observed spawns. Note the test that forbids
+      CONDITIONAL must change with it, and `configs/skills/codex-orchestrate/prompt.md:3`
+      was right all along — it calls itself the manual version of native
+      `ultra` fan-out.
+      Reproduced live on 2026-09-05 against CLI 0.153.4: a headless
+      `codex exec --json` run asked to delegate emitted a `collab_tool_call`
+      and created a third `source='exec'` spawn edge (child depth 1, role
+      `clade_cheap_explorer`, 55,549 tokens). The spawn is invisible in the
+      JSONL — only the `wait` item appears, with an empty
+      `receiver_thread_ids` — so a supervisor watching the event stream cannot
+      see its worker's children and must read `~/.codex/state_5.sqlite`.
+
+- [ ] 🔵 **The cheap Codex tier is set to the middle tier.** Both the live
+      catalog and upstream's bundled one encode `gpt-5.4-mini` ("small, fast,
+      cost-efficient") → `gpt-5.6-luna` and `gpt-5.4` ("strong model for
+      everyday coding") → `gpt-5.6-terra`, so OpenAI's own lineage puts Luna in
+      the cheap slot. Clade sets Terra as `codex_cheap_model`
+      (`orchestrator/config.py:312`, `templates/orchestrator-settings.example.json:116`,
+      `docs/codex.md:215`), as the model of both profiles in
+      `configs/codex-agents/`, and instructs Codex in prose to use it
+      (`configs/CODEX_AGENTS.md:69`). Luna appears nowhere in the repository.
+      The two profiles exist for bounded read-only discovery and one low-risk
+      implementation, which is the cheap slot's job. Luna has the same tool
+      surface, the same context window and the same effort ladder minus
+      `ultra`, which a bounded subagent has no use for. Per-token prices are
+      not in either catalog, so the saving is not quantified here.
+
+- [ ] 🟡 **`AGENTS.override.md` outranks `AGENTS.md`, so the managed block can
+      be installed and never read.** Codex resolves instructions
+      first-filename-wins with no merge, at both scopes:
+      `LOCAL_AGENTS_MD_FILENAME = "AGENTS.override.md"` is probed before
+      `AGENTS.md` in `codex-rs/codex-home/src/instructions/mod.rs:10` (home) and
+      `codex-rs/core/src/agents_md.rs:42` (project), verified at the
+      `rust-v0.153.4` tag. `install.sh` merges the Clade block into
+      `~/.codex/AGENTS.md` and is careful in every other respect, but if an
+      override file exists beside it Codex reads that instead and the merge is
+      invisible. The string appears nowhere in this repository. Fix: warn at
+      install time naming the shadowing file, never delete it (same report-only
+      policy as the orphan sweep), plus a case in `tests/test-install.sh`. The
+      same precedence also makes a claim wrong in four places — `docs/codex.md`
+      states the order as AGENTS.md then CLAUDE.md, two skill surface files
+      repeat it, and `configs/skills/delivery/scripts/git_context.py` implements
+      that flat probe in code.
+
+- [ ] 🟡 **The Codex `SessionStart` hook misses `clear`, and the reason it
+      matters is already written down on the Claude side.**
+      `configs/settings-hooks.json:6` runs on `startup|clear|fork` and carries
+      the rationale in its own description field: clear and fork mint a new
+      session id with no baseline, so a startup-only matcher silently disables
+      the stop gate for every cleared or forked session.
+      `plugins/clade/hooks/hooks.json:5` says `startup|resume|compact`. Same
+      lesson, learned on one surface, not carried to the other. Fix is the
+      matcher plus an assertion in `orchestrator/tests/test_codex_plugin.py`,
+      which today pins only which event names exist, not their matchers.
+
+- [ ] 🔵 **A fabrication record went stale and now suppresses a real feature.**
+      `docs/research/2026-08-29-ecosystem-audit.md:51` records `PostModelSwitch`
+      and `--restricted` as fabrications that do not exist in CLI 2.1.236. Both
+      shipped since: `grep -ac` against the installed 2.1.258 binary counts 38
+      occurrences of `PreModelSwitch` and 17 of `PostModelSwitch`, and
+      `--restricted` is in `claude --help`. The entry was correct when written
+      and is read by later audit rounds as a standing claim, so left alone it
+      does the inverse of its purpose. Amended in place this round; the general
+      rule is that a "does not exist" finding needs a version stamp, because
+      absence is only ever true of one build.
 
 ---
 
