@@ -873,6 +873,45 @@ record is wrong**. The four below were reproduced by hand before filing.
       `ultra`, which a bounded subagent has no use for. Per-token prices are
       not in either catalog, so the saving is not quantified here.
 
+- [ ] 🟡 **`AGENTS.override.md` outranks `AGENTS.md`, so the managed block can
+      be installed and never read.** Codex resolves instructions
+      first-filename-wins with no merge, at both scopes:
+      `LOCAL_AGENTS_MD_FILENAME = "AGENTS.override.md"` is probed before
+      `AGENTS.md` in `codex-rs/codex-home/src/instructions/mod.rs:10` (home) and
+      `codex-rs/core/src/agents_md.rs:42` (project), verified at the
+      `rust-v0.153.4` tag. `install.sh` merges the Clade block into
+      `~/.codex/AGENTS.md` and is careful in every other respect, but if an
+      override file exists beside it Codex reads that instead and the merge is
+      invisible. The string appears nowhere in this repository. Fix: warn at
+      install time naming the shadowing file, never delete it (same report-only
+      policy as the orphan sweep), plus a case in `tests/test-install.sh`. The
+      same precedence also makes a claim wrong in four places — `docs/codex.md`
+      states the order as AGENTS.md then CLAUDE.md, two skill surface files
+      repeat it, and `configs/skills/delivery/scripts/git_context.py` implements
+      that flat probe in code.
+
+- [ ] 🟡 **The Codex `SessionStart` hook misses `clear`, and the reason it
+      matters is already written down on the Claude side.**
+      `configs/settings-hooks.json:6` runs on `startup|clear|fork` and carries
+      the rationale in its own description field: clear and fork mint a new
+      session id with no baseline, so a startup-only matcher silently disables
+      the stop gate for every cleared or forked session.
+      `plugins/clade/hooks/hooks.json:5` says `startup|resume|compact`. Same
+      lesson, learned on one surface, not carried to the other. Fix is the
+      matcher plus an assertion in `orchestrator/tests/test_codex_plugin.py`,
+      which today pins only which event names exist, not their matchers.
+
+- [ ] 🔵 **A fabrication record went stale and now suppresses a real feature.**
+      `docs/research/2026-08-29-ecosystem-audit.md:51` records `PostModelSwitch`
+      and `--restricted` as fabrications that do not exist in CLI 2.1.236. Both
+      shipped since: `grep -ac` against the installed 2.1.258 binary counts 38
+      occurrences of `PreModelSwitch` and 17 of `PostModelSwitch`, and
+      `--restricted` is in `claude --help`. The entry was correct when written
+      and is read by later audit rounds as a standing claim, so left alone it
+      does the inverse of its purpose. Amended in place this round; the general
+      rule is that a "does not exist" finding needs a version stamp, because
+      absence is only ever true of one build.
+
 ---
 
 ## Design Decisions
