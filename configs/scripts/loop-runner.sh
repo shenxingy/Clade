@@ -149,6 +149,12 @@ log_error()   { echo "[$(date '+%H:%M:%S')] [ERROR] $*" | tee -a "$LOG_DIR/loop.
 . "$(_sibling_script loop_bounds.sh)"
 # shellcheck source=loop_score.sh
 . "$(_sibling_script loop_score.sh)"
+# loop_verify.sh must be sourced BELOW _timeout and the log_* helpers, which it
+# calls — it now asserts that at source time and refuses to load otherwise, so
+# moving this line above them fails the run here with a message naming the
+# missing helper rather than mid-iteration hours later. It carries its own
+# verify state (LOOP_VERIFY_*, reached only through its accessors) and assigns
+# nothing else into this namespace, so nothing in this file may read it.
 # shellcheck source=loop_verify.sh
 . "$(_sibling_script loop_verify.sh)"
 
