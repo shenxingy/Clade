@@ -70,10 +70,41 @@ def _statements(command: str) -> list[str]:
 
 
 def _recursive_force(statement: str) -> bool:
-    return bool(
-        re.search(r"\brm\b[^\n]*(?:-[a-zA-Z]*r|--recursive\b)", statement)
-        and re.search(r"\brm\b[^\n]*(?:-[a-zA-Z]*f|--force\b)", statement)
-    )
+    """Read -r and -f from the OPTION tokens of an rm statement, never operands.
+
+    This used to test the whole statement for ``-[a-zA-Z]*r`` and
+    ``-[a-zA-Z]*f``, so any hyphen inside a FILENAME supplied the flags.
+    Reproduced 2026-09-07: a plain ``rm -f`` on a path under /home whose
+    basename contains a hyphen, letters and an r was blocked as a catastrophic
+    recursive delete with no -r in the command at all.
+
+    It is the over-blocking mirror of the under-blocking fixed on 2026-09-05,
+    and one root cause serves both: matching command TEXT instead of
+    classifying tokens. A token supplies flags only when it starts with ``-``,
+    and after a ``--`` nothing does. GNU rm permutes, so an option may follow
+    an operand — what an operand may never do is BE one.
+    """
+    recursive = force = False
+    end_of_options = False
+    after = re.sub(r"^.*\brm\b", "", statement, count=1)
+    for token in after.split():
+        if token == "--":
+            end_of_options = True
+            continue
+        if end_of_options or not token.startswith("-") or token == "-":
+            continue
+        if token.startswith("--"):
+            name = token.split("=", 1)[0]
+            if name == "--recursive":
+                recursive = True
+            elif name == "--force":
+                force = True
+            continue
+        if "r" in token:
+            recursive = True
+        if "f" in token:
+            force = True
+    return recursive and force
 
 
 def _delete_targets(statement: str) -> list[str]:

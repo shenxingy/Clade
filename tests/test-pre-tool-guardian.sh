@@ -230,6 +230,66 @@ assert_parity "force push to a feature branch" 'git push --force origin feature/
 assert_parity "SQL DROP"                  'psql -c "DROP DATABASE prod"'
 assert_parity "ordinary command"          'git status'
 
+# ─── Flags come from options, never from an operand ──────────────────
+#
+# The guard decided that -r and -f were passed by testing the whole statement
+# for `-[a-zA-Z]*r` and `-[a-zA-Z]*f`. Any hyphen inside a FILENAME supplies
+# them. Reproduced 2026-09-07: a plain `rm -f` on a path under /home whose
+# basename contains a hyphen, some letters and an r was blocked as a
+# catastrophic recursive delete, with no -r in the command at all.
+#
+# It is the over-blocking mirror of the under-blocking fixed the day before,
+# and one root cause serves both: the guard matched command TEXT instead of
+# classifying tokens. A token supplies flags only when it STARTS with `-`;
+# after a `--` nothing does. GNU rm permutes, so an option may follow an
+# operand — what it may never do is BE one.
+section "Flags are read from options, not from filenames"
+assert_verdict "hyphenated filename does not supply -r" \
+  'rm -f /home/alexshen/notes/my-report.txt'                                  ALLOW
+assert_verdict "the reproduction from the radar run" \
+  'rm -f /home/alexshen/.claude/research/.radar-write-probe'                  ALLOW
+assert_verdict "another hyphenated basename" \
+  'rm -f /home/alexshen/x-ray.log'                                            ALLOW
+assert_verdict "hyphenated dir name does not supply -r" \
+  'rm -f /home/alexshen/my-project/notes.txt'                                 ALLOW
+# The other direction is what the guard is for, and it must not move.
+assert_verdict "a real -r on the same path still blocks" \
+  'rm -rf /home/alexshen/notes/my-report.txt'                                 BLOCK
+assert_verdict "options after the operand still count (GNU permutes)" \
+  'rm /home/alexshen/notes -rf'                                               BLOCK
+assert_verdict "long options count too" \
+  'rm --recursive --force /home/alexshen/notes'                               BLOCK
+assert_verdict "after -- a dash token is a filename, not an option" \
+  'rm -f -- /home/alexshen/-r-file.txt'                                       ALLOW
+assert_verdict "-- does not disarm a real recursive delete" \
+  'rm -rf -- /home/alexshen/notes'                                            BLOCK
+
+section "The rewrite and refuse paths read flags the same way"
+# Both were added on 2026-09-05 and inherited the same text match, so a plain
+# single-file delete was being rewritten or refused on the strength of its
+# filename.
+assert_verdict "non-recursive delete of a variable path is untouched" \
+  'rm -f $BUILD_DIR/my-report.txt'                                            ALLOW
+assert_verdict "non-recursive delete under a substitution is untouched" \
+  'rm -f $(pwd)/my-report.txt'                                                ALLOW
+assert_verdict "non-recursive delete of a bare glob is untouched" \
+  'rm -f ./*'                                                                 ALLOW
+# And the recursive forms they were built for still fire.
+assert_verdict "recursive delete of a variable path is still rewritten" \
+  'rm -rf $BUILD_DIR/my-report.txt'                                           REWRITE
+assert_verdict "recursive delete under a substitution is still refused" \
+  'rm -rf $(pwd)/my-report.txt'                                               BLOCK
+
+section "Parity — flag parsing agrees across both guardians"
+assert_parity "hyphenated filename, -f only"  'rm -f /home/alexshen/notes/my-report.txt'
+assert_parity "the radar reproduction"        'rm -f /home/alexshen/.claude/research/.radar-write-probe'
+assert_parity "real -r on the same path"      'rm -rf /home/alexshen/notes/my-report.txt'
+assert_parity "options after the operand"     'rm /home/alexshen/notes -rf'
+assert_parity "long options"                  'rm --recursive --force /home/alexshen/notes'
+assert_parity "dash token after --"           'rm -f -- /home/alexshen/-r-file.txt'
+assert_parity "non-recursive variable path"   'rm -f $BUILD_DIR/my-report.txt'
+assert_parity "recursive variable path"       'rm -rf $BUILD_DIR/my-report.txt'
+
 # ─── Other guardian rules still fire ─────────────────────────────────
 section "Other rules — unaffected by the rm change"
 assert_verdict "force push to main"        'git push --force origin main'         BLOCK
