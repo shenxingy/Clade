@@ -701,7 +701,7 @@ re-running the gates.
       counting stays structurally impossible. Evidence and the rejected option
       are in the item above.
 
-- [ ] 🔴 **The catastrophic-`rm` guard reads flags out of FILENAMES, and it is
+- [x] 🔴 **The catastrophic-`rm` guard reads flags out of FILENAMES, and it is
       the same textual-matching defect as the literal-path blindness already on
       record.** `pre-tool-guardian.sh:115-116` (and the duplicate pair at
       `169-170`) test the whole statement string for `\brm\b.*-[a-zA-Z]*r` and
@@ -724,6 +724,20 @@ re-running the gates.
       always-on destructive block, the highest-stakes guard in the stack, and
       that run had no execute permission, so not one test could be run against
       a change to it. Needs a lead session with a working verifier.
+      DONE 2026-09-07. The verifier it was waiting for is the suite built
+      the day before, so this was fixed with tests rather than by reading.
+      Both guardians now classify tokens: a token supplies flags only when
+      it starts with `-`, after a `--` nothing does, long forms are read by
+      name, and an option may still follow an operand because GNU rm
+      permutes — what an operand may never do is BE one. The dangerous-path
+      match is unchanged; only the flag question moved.
+      The blast radius was wider than filed: the rewrite and refuse paths
+      added on 2026-09-05 had copied the same text match, so a plain
+      single-file `rm -f` of a variable path was being rewritten and one
+      under a command substitution refused, both on the strength of a
+      hyphen in the filename. Seven assertions failed before the fix; the
+      suite is 95 cases with 30 of them parity checks, and the seventeen
+      ordinary commands sweep clean.
 
 - [ ] 🟡 **`domain` is now written on every correction record and is `unknown`
       on every one of them.** Moving the call before the append

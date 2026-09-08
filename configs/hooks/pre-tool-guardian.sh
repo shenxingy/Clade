@@ -108,12 +108,50 @@ DANGEROUS_ROOT='(^|[[:space:]])/([[:space:]]|$|\*)'
 #     set of rm lines, so `rm -r a` on one line plus `rm -f /home/b` on another
 #     combined into a block that neither statement earned.
 # `tr` (not sed \n, which BSD sed rejects) keeps this portable to macOS.
+# rm_scan_flags <statement> — sets RM_RECURSIVE / RM_FORCE from the OPTION
+# tokens of an rm statement, never from its operands.
+#
+# The rule used to be two greps over the whole statement for `-[a-zA-Z]*r` and
+# `-[a-zA-Z]*f`, so any hyphen inside a FILENAME supplied the flags. Reproduced
+# 2026-09-07: `rm -f <path under /home>/.radar-write-probe` was blocked as a
+# catastrophic recursive delete, with no `-r` in the command at all — the `-wr`
+# of the basename matched. That is a large share of ordinary cleanup.
+#
+# It is the over-blocking mirror of the under-blocking fixed on 2026-09-05, and
+# one root cause serves both: the guard matched command TEXT instead of
+# classifying tokens. A token supplies flags only when it STARTS with `-`, and
+# after a `--` nothing does. GNU rm permutes its arguments, so an option may
+# legitimately follow an operand — what an operand may never do is BE one.
+RM_RECURSIVE=false
+RM_FORCE=false
+rm_scan_flags() {
+  local after tok end_opts=false
+  RM_RECURSIVE=false
+  RM_FORCE=false
+  after=$(printf '%s' "$1" | sed -E 's/^.*\brm\b//')
+  while IFS= read -r tok; do
+    [[ -z "$tok" ]] && continue
+    if [[ "$tok" == "--" ]]; then end_opts=true; continue; fi
+    $end_opts && continue
+    case "$tok" in
+      --recursive|--recursive=*) RM_RECURSIVE=true ;;
+      --force|--force=*)         RM_FORCE=true ;;
+      --*)                       : ;;
+      -?*)
+        [[ "$tok" == *r* ]] && RM_RECURSIVE=true
+        [[ "$tok" == *f* ]] && RM_FORCE=true
+        ;;
+    esac
+  done <<< "$(printf '%s' "$after" | tr ' \t' '\n\n')"
+}
+
 RM_STATEMENTS=$(printf '%s' "$COMMAND" | tr ';|&' '\n\n\n' | grep -E '\brm\b' || true)
 CATASTROPHIC_RM=false
 while IFS= read -r _stmt; do
   [[ -z "$_stmt" ]] && continue
-  echo "$_stmt" | grep -qE '\brm\b.*-[a-zA-Z]*r' || continue
-  echo "$_stmt" | grep -qE '\brm\b.*-[a-zA-Z]*f' || continue
+  rm_scan_flags "$_stmt"
+  $RM_RECURSIVE || continue
+  $RM_FORCE || continue
   if echo "$_stmt" | grep -qE "$DANGEROUS_NAMED_PATHS" \
     || echo "$_stmt" | grep -qE "$DANGEROUS_ROOT"; then
     CATASTROPHIC_RM=true
@@ -166,8 +204,9 @@ if (( _quotes % 2 == 0 )); then
   while IFS= read -r _stmt; do
     [[ -z "$_stmt" ]] && continue
     [[ -n "$_unresolved_var" || -n "$_refuse_reason" ]] && break
-    echo "$_stmt" | grep -qE '\brm\b.*-[a-zA-Z]*r' || continue
-    echo "$_stmt" | grep -qE '\brm\b.*-[a-zA-Z]*f' || continue
+    rm_scan_flags "$_stmt"
+    $RM_RECURSIVE || continue
+    $RM_FORCE || continue
 
     # Everything after the rm, minus its flags, is a candidate target.
     _after=$(printf '%s' "$_stmt" | sed -E 's/^.*\brm\b//')
