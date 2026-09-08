@@ -39,11 +39,33 @@ def _mounted_static_dirs(app: FastAPI) -> list[Path]:
     return dirs
 
 
+@pytest.fixture(autouse=True)
+def never_boot_the_real_server(monkeypatch):
+    """No test in this file may run the app lifespan.
+
+    ``TestClient`` used as a context manager runs it, and this app's lifespan
+    mints a control-plane token into the developer's real
+    ``~/.claude/orchestrator-settings.json`` (``config.ensure_api_token``),
+    starts the usage poller and spawns ``status_loop``. Every test here asks a
+    routing question, and routes are registered at import — so the client for
+    ``server.app`` is built without ``with`` (the throwaway ``FastAPI()`` apps
+    below declare no lifespan of their own). This fixture fails loudly if that
+    regresses.
+    """
+
+    def _boom(*_args, **_kwargs):
+        raise AssertionError(
+            "the app lifespan ran: a routing test must not boot the server "
+            "(it mints an API token into the real settings file)"
+        )
+
+    monkeypatch.setattr(server, "ensure_api_token", _boom)
+
+
 def test_root_redirects_to_web():
     """`/` must hand off to the one code path that owns the shell."""
 
-    with TestClient(server.app, follow_redirects=False) as client:
-        r = client.get("/")
+    r = TestClient(server.app, follow_redirects=False).get("/")
     assert r.status_code in (307, 308), r.status_code
     assert r.headers["location"] == "/web/"
 
@@ -51,8 +73,7 @@ def test_root_redirects_to_web():
 def test_root_never_returns_the_unbuilt_vite_shell():
     """The regression this file exists for: `/` used to return `main.tsx`."""
 
-    with TestClient(server.app, follow_redirects=False) as client:
-        r = client.get("/")
+    r = TestClient(server.app, follow_redirects=False).get("/")
     assert "main.tsx" not in r.text
 
 
@@ -84,8 +105,7 @@ def test_usage_dashboard_has_its_own_route_not_just_the_mount():
 
 
 def test_usage_dashboard_is_served():
-    with TestClient(server.app) as client:
-        r = client.get("/web/usage.html")
+    r = TestClient(server.app).get("/web/usage.html")
     assert r.status_code == 200, r.status_code
     assert "Clade — Usage by Machine" in r.text
 
