@@ -13,11 +13,9 @@ actions after repeated failures (e.g., 3 failed tool calls → suggest alternati
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -291,21 +289,3 @@ class ReactionExecutor:
                 for c in self.configs
             ],
         }
-
-
-# ─── Integration helpers ───────────────────────────────────────────────────────
-
-def create_executor_from_config(config_dict: dict[str, Any] | None = None) -> ReactionExecutor:
-    """Create a ReactionExecutor from a config dict (for settings loading)."""
-    if not config_dict:
-        return ReactionExecutor()
-
-    configs = []
-    for c in config_dict.get("reactions", []):
-        try:
-            configs.append(ReactionConfig(**c))
-        except Exception:
-            logger.warning("Invalid reaction config: %s", c)
-            continue
-
-    return ReactionExecutor(configs if configs else None)
