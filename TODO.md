@@ -522,11 +522,27 @@ re-running the gates.
       surface separately, and on a bumped `pyproject.toml`.
 
 - [ ] 🔵 Patrol reports are written and never read. `start.sh` writes `~/.claude/patrol-report-DATE.md` and nothing parses it back; `patrol_auto_ideas` was the flag for that missing ingestion and was deleted rather than left as a published lie. Re-propose with a real design.
-- [ ] 🔵 `reactions.create_executor_from_config` has zero production callers and reads a settings key that no longer exists. Removing it means dropping three tests in `test_leaf_modules.py`.
-- [ ] 🔵 Nothing enforces the top-level `docs/*.md` header convention; two of fourteen files had drifted off it and no gate noticed. Cheapest control: assert in `check-references.py` that every top-level `docs/*.md` links `../README.md` in its first three lines.
-- [ ] 🔵 The global agent rules assert that `/sync` flags a README over 300 lines. The shipped skill has no such logic — its only line-count rule caps `PROGRESS.md` at 100. Implement the check or correct the claim.
+- [x] 🔵 `reactions.create_executor_from_config` has zero production callers and reads a settings key that no longer exists. Removing it means dropping three tests in `test_leaf_modules.py`.
+- [x] 🔵 Nothing enforces the top-level `docs/*.md` header convention; two of fourteen files had drifted off it and no gate noticed. Cheapest control: assert in `check-references.py` that every top-level `docs/*.md` links `../README.md` in its first three lines.
+- [x] 🔵 The global agent rules assert that `/sync` flags a README over 300 lines. The shipped skill has no such logic — its only line-count rule caps `PROGRESS.md` at 100. Implement the check or correct the claim.
 - [ ] 🔵 Web lint has no home. The `npm run lint` script was deleted because eslint was never installed; re-adding it properly needs a `web` job in `ci.yml` and the coupled CLAUDE.md checklist line, which `check-ci-checklist.py` enforces.
-### Standing-brief configuration — 2026-09-02
+### Standing-brief configuration — 2026-09-02 DONE 2026-09-08 — removed, with the three tests that only covered it. DONE 2026-09-08 — `check-references.py` now asserts every top-level `docs/*.md` links back to the README in its first lines, and the two drifted files were fixed. Red-phase checked against a deliberately broken page. DONE 2026-09-08 — implemented in the skill rather than by correcting the claim, and the generated mirrors were regenerated.
+      **INVESTIGATED 2026-09-08 — the premise is inverted.** Nothing reads the
+      report because it has never once been produced: no
+      `~/.claude/patrol-report-*.md` has ever existed on this host and no
+      `start.sh --patrol` appears in six months of history; the only automatic
+      trigger lives in the dormant orchestrator. The ingestion is also largely
+      already built — the report's Raw Findings section already parses as the
+      `===TASK===` format `run-tasks.sh` consumes.
+      What was actually broken is the scanner's precision, and that half is now
+      FIXED: its prunes were anchored at the scan root, so every nested
+      `node_modules`, `dist`, `.venv` and `.claude/worktrees` copy sailed through.
+      On this repository the scan emitted **217 task blocks; it now emits 5**.
+      Building ingestion on top of the old output would have queued a thousand
+      "split typescript.js" tasks.
+      REMAINS YOURS TO DECIDE: whether patrol should run at all, given that it
+      never has. If it should, the ingestion bridge is a few lines, not a
+      pipeline.
 
 - [x] 🔴 **The repeat-brief detector had never spoken.** `prompt-tracker.sh` was
       async and reported through `systemMessage`, which an async hook cannot
@@ -581,10 +597,10 @@ re-running the gates.
       repeated brief needs a home, not a reminder, so step 3b sends a procedure
       to a skill and a rule to CLAUDE.md and checks the home is not already
       there and empty. Red-phase checked in `test-audit.sh`.
-- [ ] 🔵 `install.sh --ultracode` has no test. `tests/test-install.sh` covers the
+- [x] 🔵 `install.sh --ultracode` has no test. `tests/test-install.sh` covers the
       spawn-depth merge next to it; the same shape applies — assert the two keys
       land, that an existing `settings.json` key survives the merge, and that an
-      invalid size falls back to medium rather than writing garbage.
+      invalid size falls back to medium rather than writing garbage. ALREADY DONE — and it was already done when the item was filed. `43d3b7a` closed it eleven minutes after `a662335` opened it; only the checkbox was never ticked. All three named behaviours are covered by "Suite 10" in `tests/test-install.sh`, including the `cleanupPeriodDays=4242` canary for the key-survival case.
 
 ### Review of the review — 2026-09-02, second pass
 
@@ -739,7 +755,7 @@ re-running the gates.
       suite is 95 cases with 30 of them parity checks, and the seventeen
       ordinary commands sweep clean.
 
-- [ ] 🟡 **`domain` is now written on every correction record and is `unknown`
+- [x] 🟡 **`domain` is now written on every correction record and is `unknown`
       on every one of them.** Moving the call before the append
       (`correction-detector.sh:147`) fixed the *field's absence*, not its
       *value*: measured on this machine, all 32 records carrying `domain`
@@ -758,7 +774,7 @@ re-running the gates.
       propagates into `stats.json` and every rule-miss count. Pick the meaning
       first. Note `_STATS_SEED` (`correction-detector.sh:173`) also lacks four
       domains `detect_domain` can return (`devops`, `security`, `cli`,
-      `mobile`), so those increments land on a key that was never seeded.
+      `mobile`), so those increments land on a key that was never seeded. DONE 2026-09-08 — the classifier was starved of input, not of vocabulary, exactly as the item argued. This is the one that unblocks rule-effectiveness matching.
 
 
 ### Adversarial review of the audit branch — 2026-09-02
@@ -776,31 +792,31 @@ claimed** — the CI-checklist gate was blind to the gate just added to it, the
 bump, and the checklist's own suite and gate counts had drifted. A control whose
 failure mode is silence needs a test that proves it can fail.
 
-- [ ] 🔵 `orchestrator/ruff.toml`'s "Known live bugs" block still describes two
+- [x] 🔵 `orchestrator/ruff.toml`'s "Known live bugs" block still describes two
       parked per-file-ignores in the present tense. Both bugs were fixed and both
       entries deleted in the same commit, so a maintainer triaging a
       worktree-cleanup failure is told `Worker.stop()` currently raises. Rewrite
       as a past-tense note about what the gate's first run found.
-- [ ] 🔵 `docs/MIGRATE_FROM_HERMES.md` still lists `compression_feedback.py` as
+- [x] 🔵 `docs/MIGRATE_FROM_HERMES.md` still lists `compression_feedback.py` as
       "present in Clade today"; the module was deleted by this branch.
       `check-references.py` does not resolve backticked `orchestrator/*.py`
       paths, which is why nothing caught it — teaching it to would also have
       caught the stale CLAUDE.md map line.
-- [ ] 🔵 The 0.3.1 CHANGELOG section omits the release's own security work — the
+- [x] 🔵 The 0.3.1 CHANGELOG section omits the release's own security work — the
       two HIGH starlette advisories, prompt redaction, per-user runtime paths,
       the MCP event-loop fix — and the two compatibility notes an upgrader needs
       (`/web` now 503s until built, `reaction_configs` and `patrol_auto_ideas`
       removed). Its `[0.3.1]` compare link also points at a tag the release
       deliberately did not create.
-- [ ] 🔵 `configs/skills/brief/prompt.md` probes the orchestrator with an
+- [x] 🔵 `configs/skills/brief/prompt.md` probes the orchestrator with an
       unauthenticated curl and now reports it offline. Add the bearer header the
       way `docs/configuration.md` documents, then regenerate the mcp-package
       mirror.
-- [ ] 🔵 `configs/scripts/usage-agent.py`'s docstring and `CLAUDE.md`'s usage line
+- [x] 🔵 `configs/scripts/usage-agent.py`'s docstring and `CLAUDE.md`'s usage line
       still say "leave empty for open ingest". Ingest is exempt from the control
       plane only while `usage_ingest_token` is set, so an empty token now means
       the node must send the hub's `api_token` instead.
-- [ ] 🔵 `session-context.sh`'s dropped-rules notice counts header and blank lines
+- [x] 🔵 `session-context.sh`'s dropped-rules notice counts header and blank lines
       as rules, so it reports more dropped than exist.
 - [ ] 🔵 `CLAUDE.md`'s redaction paragraph justifies withhold-don't-substitute with
       "those patterns are fixed-count", which stopped being the reason when the
@@ -817,7 +833,7 @@ failure mode is silence needs a test that proves it can fail.
       inside the existing range (vite 6.4.1 → 6.4.3, postcss 8.5.8 → 8.5.26,
       nanoid 3.3.11 → 3.3.18) and `package.json` is untouched. Verified the way
       CI will run it — `npm ci` from the new lockfile, then audit, then build —
-      all three clean.
+      all three clean. DONE 2026-09-08 — rewritten as a past-tense record of what the gate's first run found. Verified that every config-bearing line is byte-identical and that F821 still fires. DONE 2026-09-08. DONE 2026-09-08 — added to both language files. DONE 2026-09-08, and the review caught it half-finished. The premise was also wrong: the route and port were correct, the real defect was a bare `curl` with no bearer token. The first delivery fixed that and left the mcp-package mirror stale, which turns a green gate red; the lead regenerated it before landing. DONE 2026-09-08, both halves. The docstring told operators ingest was open by default, which stopped being true when `TokenAuthMiddleware` landed: `/api/usage/ingest` is exempt from the control-plane token only WHILE `usage_ingest_token` is set, so leaving it empty requires a token rather than removing the need for one. `CLAUDE.md` said the same thing wrongly and is corrected, including the distinction from the separate `usage_hub_token` setting an orchestrator-running node uses. DONE 2026-09-08 — it counts rules now, pinned by a test.
 
 - [ ] 🟡 Anthropic's documented fix for the other half of the prompt-cache miss —
       stagger a fan-out so the first response primes the shared prefix before
@@ -828,13 +844,25 @@ failure mode is silence needs a test that proves it can fail.
       77.5% with sixteen. This session ran three refuters per finding. One
       better-calibrated verifier returning a score plus its evidence belongs in
       `worker_review.py` instead.
-- [ ] 🔵 Three tests in `test_static_serving.py` use `with TestClient(...)`, which
+- [x] 🔵 Three tests in `test_static_serving.py` use `with TestClient(...)`, which
       runs the FastAPI lifespan and therefore mints a control-plane token into
       the developer's real settings file. They exercise routing only and do not
-      need it.
+      need it. DONE 2026-09-08 — the routing tests no longer boot the server that mints a token.
+      **INVESTIGATED 2026-09-08 — half is already built, half is your call.**
+      Measured against the tree: `oracle_verdict_samples` defaults to 1 and a
+      default review spends two judge subprocesses, one per pass — not N
+      skeptics. The only place N>1 is forced is a security or data-sensitive
+      diff, bumped to 3 as a deliberate control on the auto-merge gate, and the
+      cited numbers (73.1% at K=1 vs 77.5% at K=16) are a COST argument, not a
+      correctness one — cutting it would be weakening a gate, which this sweep
+      is not allowed to do.
+      What is genuinely unbuilt is replacing the categorical confidence with a
+      calibrated numeric score, which moves the threshold that authorises
+      auto-merge. Nothing here measures oracle confidence today, so the
+      threshold is yours to pick before anyone can implement it.
 
-- [ ] 🔵 `orchestrator/tests/test_worker_modules.py` is 1446 lines, 54 under the ceiling. The natural split lifts the autoscale and fan-out sections into their own file.
-- [ ] 🔵 `tests/test-loop.sh` is 1442 lines, 58 under the ceiling, and the loop-runner split just pushed it there by adding deploy-parity entries. It is now the closest first-party file to the gate after `test_worker_modules.py`.
+- [x] 🔵 `orchestrator/tests/test_worker_modules.py` is 1446 lines, 54 under the ceiling. The natural split lifts the autoscale and fan-out sections into their own file.
+- [x] 🔵 `tests/test-loop.sh` is 1442 lines, 58 under the ceiling, and the loop-runner split just pushed it there by adding deploy-parity entries. It is now the closest first-party file to the gate after `test_worker_modules.py`.
 - [x] 🟡 **`--model` did not reach every node, in three places rather than one.**
       DONE 2026-09-02. `loop_verify.sh`'s verify node and `loop-runner.sh`'s
       fix-task planner both ran a literal `--model sonnet` while every other LLM
@@ -845,9 +873,9 @@ failure mode is silence needs a test that proves it can fail.
       until you asked which node ran what.
       `tests/test-loop-args.sh` now fails on any `--model <literal>` in the loop
       script group and on any prompt naming a model in prose. Both guards were
-      red-phase checked separately.
+      red-phase checked separately. DONE 2026-09-08 — autoscale and fan-out moved verbatim into `test_autoscale_and_fanout.py`; the total test count is unchanged. DONE 2026-09-08 — the environment suites moved into a sourced sibling (`tests/test-loop-env.sh`), so the entry point named by CI and the checklist stays `tests/test-loop.sh` and neither needed editing.
 
-- [ ] 🔵 `node_test_sample` and `node_health_check` communicate through three bare globals (`LAST_TEST_OUTPUT`, `LAST_TEST_RESULT`, `PREV_FAILED`) that are now a cross-file coupling between `loop_verify.sh` and `loop-runner.sh`. Sourced shell makes it work; the `# Writes:` header is the only thing recording it.
+- [x] 🔵 `node_test_sample` and `node_health_check` communicate through three bare globals (`LAST_TEST_OUTPUT`, `LAST_TEST_RESULT`, `PREV_FAILED`) that are now a cross-file coupling between `loop_verify.sh` and `loop-runner.sh`. Sourced shell makes it work; the `# Writes:` header is the only thing recording it. DONE 2026-09-08 — the verify state is a declared interface rather than three loose globals, with behaviour unchanged.
 
 ### Codex GPT-5.6 review — 2026-09-05
 
