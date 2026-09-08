@@ -75,8 +75,13 @@ These are present in Clade today, inspired by Hermes's design:
 | Clade | Inspired by Hermes | What it does |
 |---|---|---|
 | `orchestrator/error_classifier.py` | `agent/error_classifier.py` | Structured taxonomy for Claude subprocess failures (auth / rate_limit / context_overflow / timeout / …) with recovery hints. |
-| `orchestrator/compression_feedback.py` | `agent/manual_compression_feedback.py` | User-facing summary for context compression (before/after counts, "denser summaries" caveat). |
 | `configs/scripts/redact.py` + `secret-scanner.sh` hook | `agent/redact.py` | Detects common credential patterns in prompts and warns the user. |
 | Owner-only `chmod 0600` on `tasks.db` and `orchestrator-settings.json` | Hermes's cron job-file hardening | Limits blast radius of accidentally world-readable settings. |
+
+One borrowing has since been **withdrawn**: the orchestrator's `compression_feedback.py`,
+ported from `agent/manual_compression_feedback.py`, was deleted on 2026-09-02
+(`66a0851`) because nothing consumed it — the architecture map claimed the
+`/handoff` skill did, but the skill never referenced it and its only importer
+was its own test. Clade has no context-compression summary today.
 
 See `docs/research/` and the project changelog for additions over time.
