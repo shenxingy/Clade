@@ -696,6 +696,51 @@ re-running the gates.
       counting stays structurally impossible. Evidence and the rejected option
       are in the item above.
 
+- [ ] 🔴 **The catastrophic-`rm` guard reads flags out of FILENAMES, and it is
+      the same textual-matching defect as the literal-path blindness already on
+      record.** `pre-tool-guardian.sh:115-116` (and the duplicate pair at
+      `169-170`) test the whole statement string for `\brm\b.*-[a-zA-Z]*r` and
+      `.*-[a-zA-Z]*f` to decide that `-r` and `-f` were passed. Any hyphen in an
+      operand can supply them. Reproduced 2026-09-07 on this host: `rm -f
+      /home/alexshen/.claude/research/.radar-write-probe` was blocked as
+      "Catastrophic rm -rf blocked on system/home directory" — there is **no
+      `-r` flag in that command at all**; the `-wr` inside the filename
+      `.radar-write-probe` matched, `-f` matched the real flag, and `/home`
+      matched `DANGEROUS_NAMED_PATHS`. So any non-recursive `rm -f` under
+      `/home` whose filename contains a hyphen followed by letters and an `r`
+      is blocked, which is a large share of ordinary cleanup.
+      This is the OVER-blocking mirror of the under-blocking already logged in
+      `~/.claude/research/known-concepts.md` (2026-09-05, "literal-path guard
+      blindness": the same guard allows `rm -rf $VAR/`, `${VAR}/` and bare
+      globs). One root cause, both directions: the guard matches command TEXT
+      instead of parsing argv. Fix is to classify tokens — options only before
+      the first non-option operand — not to add more regex.
+      **Not fixed in the 2026-09-07 radar run on purpose:** this is the
+      always-on destructive block, the highest-stakes guard in the stack, and
+      that run had no execute permission, so not one test could be run against
+      a change to it. Needs a lead session with a working verifier.
+
+- [ ] 🟡 **`domain` is now written on every correction record and is `unknown`
+      on every one of them.** Moving the call before the append
+      (`correction-detector.sh:147`) fixed the *field's absence*, not its
+      *value*: measured on this machine, all 32 records carrying `domain`
+      (2026-09-02 → 2026-09-07, every record since the field was added) are
+      `"unknown"`, so the rule-effectiveness matching the move was meant to
+      restore still never fires. Cause is in the classifier's INPUT, not its
+      vocabulary (distinct from the item above): `domain-detect.sh:15` derives
+      the file list from `git diff --name-only --diff-filter=ACMR HEAD`, which
+      **exits 0 with empty output on a clean tree**, so the `||` fallbacks never
+      run and every grep misses. UserPromptSubmit is exactly when the tree tends
+      to be clean — the user says "that's wrong" after the work was committed.
+      The fix is a design choice, which is why it is filed: the session shadow
+      (`cp_recent_files`, already read in this same hook) is the obvious
+      alternative input, but it changes what `domain` MEANS — "files in the diff
+      right now" vs "files Claude touched this session" — and that redefinition
+      propagates into `stats.json` and every rule-miss count. Pick the meaning
+      first. Note `_STATS_SEED` (`correction-detector.sh:173`) also lacks four
+      domains `detect_domain` can return (`devops`, `security`, `cli`,
+      `mobile`), so those increments land on a key that was never seeded.
+
 
 ### Adversarial review of the audit branch — 2026-09-02
 

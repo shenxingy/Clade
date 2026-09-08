@@ -110,11 +110,47 @@ rd_revert_base() {
   printf '%s' "${cwd:-${CLAUDE_PROJECT_DIR:-$(pwd)}}"
 }
 
+# rd_is_redirect <token> — true when the token OPENS a shell redirection, so it
+# is part of the plumbing rather than a pathspec. `rd_segments` splits on ; | &
+# but not on redirections, so without this every `git checkout -- src/ 2>/dev/null`
+# filed `2>/dev/null` as a path it reverted. Measured on this machine's real
+# history.jsonl: 4 of the 7 `revert_scope:"paths"` records carried such a token
+# (`2>/dev/null`, `>/dev/null`, `2>`).
+#
+# This is the SECOND time a parser here has read the `>` of `2>/dev/null` as
+# content: `workflow-scorecard.py`'s mutation guard did it too, and reported
+# zero polls for every session ever scanned (see CLAUDE.md). Splitting a command
+# string on whitespace and keeping what does not look like a flag is the shape
+# that keeps producing it.
+#
+# Digit-prefixed forms cover `2>`/`2>>`; the bare `&>`/`>&` arrive as `>` because
+# `rd_segments` already split them on `&`.
+rd_is_redirect() {
+  case "$1" in
+    '>'*|'<'*)                     return 0 ;;
+    [0-9]'>'*|[0-9]'<'*)           return 0 ;;
+    [0-9][0-9]'>'*|[0-9][0-9]'<'*) return 0 ;;
+    *)                             return 1 ;;
+  esac
+}
+
+# rd_redirect_is_bare <token> — true when the token is the operator ALONE (`>`,
+# `2>`, `<<<`), so its target is the NEXT token and must be skipped too.
+# `>/dev/null` carries its own target and consumes nothing further.
+rd_redirect_is_bare() {
+  case "$1" in
+    *'>'|*'<') return 0 ;;
+    *)         return 1 ;;
+  esac
+}
+
 # rd_revert_pathspec <command> — one pathspec token per line, empty when the
 # command names none. Tokens are emitted RAW: a glob or $(...) is not expanded,
 # it simply fails to match, which is the correct fail-open here. Splitting is on
 # whitespace, so a quoted path containing a space splits into fragments that
-# match nothing — also fail-open (an empty set, never a wrong file).
+# match nothing — also fail-open (an empty set, never a wrong file). Dropping a
+# redirection likewise only ever SHRINKS the set, so the failure direction stays
+# "no file" rather than "the wrong file".
 rd_revert_pathspec() {
   local seg tok i n ddash seen_ddash
   local -a words
@@ -131,13 +167,22 @@ rd_revert_pathspec() {
           if [[ "${words[$i]}" == "--" ]]; then ddash=$i; break; fi
         done
         for (( i=ddash+1; ddash >= 0 && i<n; i++ )); do
-          printf '%s\n' "$(rd_unquote "${words[$i]}")"
+          tok="${words[$i]}"
+          if rd_is_redirect "$tok"; then
+            rd_redirect_is_bare "$tok" && i=$((i+1))
+            continue
+          fi
+          printf '%s\n' "$(rd_unquote "$tok")"
         done
         ;;
       restore)
         seen_ddash=false
         for (( i=2; i<n; i++ )); do
           tok="${words[$i]}"
+          if rd_is_redirect "$tok"; then
+            rd_redirect_is_bare "$tok" && i=$((i+1))
+            continue
+          fi
           if $seen_ddash; then printf '%s\n' "$(rd_unquote "$tok")"; continue; fi
           case "$tok" in
             --)             seen_ddash=true ;;

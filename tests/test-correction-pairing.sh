@@ -241,6 +241,39 @@ LAST=$(jq -c '.reverted_files' <<< "$(tail -n 1 "$HISTORY")")
 assert_contains "$LAST" "src/app.py" "checkout -- . matches everything under the base (app.py)"
 assert_contains "$LAST" "src/util.py" "checkout -- . matches everything under the base (util.py)"
 
+# ─── 3d. a shell redirection is plumbing, not a pathspec ─────────────
+# Field data: 4 of the 7 real `revert_scope:"paths"` records on the author's
+# machine filed a redirection token as a reverted path — `2>/dev/null`,
+# `>/dev/null`, `2>`. Same defect class as workflow-scorecard.py's mutation
+# guard matching the `>/` of `2>/dev/null` (CLAUDE.md), which is why it is
+# pinned here rather than left to review.
+section "revert-detector — redirections are not pathspecs"
+
+revert_in 'git checkout -- .claude-plugin/ 2>/dev/null' "$SID" \
+  | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
+LAST=$(jq -c '.revert_paths' <<< "$(tail -n 1 "$HISTORY")")
+assert_contains "$LAST" ".claude-plugin/" "attached redirect: the real pathspec survives"
+assert_not_contains "$LAST" "2>/dev/null" "attached redirect: 2>/dev/null is not a path"
+
+revert_in 'git restore --staged :/ >/dev/null 2>&1' "$SID" \
+  | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
+LAST=$(jq -c '.revert_paths' <<< "$(tail -n 1 "$HISTORY")")
+assert_not_contains "$LAST" "/dev/null" "restore: >/dev/null is not a path"
+assert_not_contains "$LAST" '"2>"' "restore: a bare 2> operator is not a path"
+
+# The case that makes this a correctness bug and not just noise: a SEPARATED
+# redirect target is a real filename, so the old parser could match it against
+# the shadow and name a file the revert never touched.
+revert_in 'git checkout -- src/app.py > src/util.py' "$SID" \
+  | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
+LAST=$(tail -n 1 "$HISTORY")
+assert_contains "$(jq -c '.reverted_files' <<< "$LAST")" "src/app.py" \
+  "separated redirect: the reverted file is still found"
+assert_not_contains "$(jq -c '.reverted_files' <<< "$LAST")" "src/util.py" \
+  "separated redirect: the redirect TARGET is never reported as reverted"
+assert_not_contains "$(jq -c '.revert_paths' <<< "$LAST")" "src/util.py" \
+  "separated redirect: the redirect target is not a pathspec"
+
 # ─── 4. explicit correction surfaces the concrete pair (gate: open) ──
 section "correction-detector — concrete signal on explicit correction"
 OUT=$(correct_in "no, that's wrong — revert it, use the config value instead" "$SID" \
