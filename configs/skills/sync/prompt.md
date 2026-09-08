@@ -115,6 +115,57 @@ If none exist, skip silently.
 
 ---
 
+## Step 3e: README length check
+
+A README is a landing page, not a reference manual: the cap is 300 lines.
+Check every README at the repository root — `README.md` and its localized
+siblings — and name the sections that should move into `docs/`.
+
+```bash
+# Each oversized README, then its `##` sections largest-first.
+for f in README.md README.*.md; do
+  [ -f "$f" ] || continue
+  n=$(awk 'END {print NR}' "$f")
+  [ "$n" -gt 300 ] || continue
+  echo "OVER CAP: $f — $n lines (cap 300)"
+  awk '/^## /{if (h != "") printf "  %5d  %s\n", NR - s, h; h = $0; s = NR}
+       END {if (h != "") printf "  %5d  %s\n", NR - s + 1, h}' "$f" | sort -rn
+done
+```
+
+Nothing printed: every README is inside the cap. Say nothing and move on.
+
+The section sizes are a ranking hint, not a measurement — a `##` line inside a
+fenced code block counts as a heading here. Read the file before trusting a
+surprising number.
+
+When a README is over the cap, name the move candidates. Four things stay in
+the README however large it grows — install, the key-features table, the
+command table, and the links into `docs/` — so the candidates are the largest
+of what is left, and each candidate names the `docs/` file it would become.
+
+Then record the flag so it outlives the session. Only when `TODO.md` exists,
+and only when it is not already carrying this flag:
+
+```bash
+grep -Fq "over the 300-line landing-page cap" TODO.md
+```
+
+If that matches nothing, add one unchecked item per oversized README, in this
+wording — the fixed phrase is what the grep above matches on the next run, so
+keep it verbatim:
+
+```
+- [ ] README.md is over the 300-line landing-page cap (310 lines). Move
+      "Skills" (64 lines) and "MCP Server" (32 lines) into docs/, leaving a
+      link behind.
+```
+
+Do NOT move the sections yourself. This skill writes `TODO.md` and
+`PROGRESS.md` only; splitting a README is a separate edit with its own review.
+
+---
+
 ## Step 4: Print summary
 
 Always end with a summary:
@@ -123,9 +174,12 @@ Always end with a summary:
 Sync complete:
   📋 TODO.md: 3 items checked off, 1 new sub-task added
   📝 PROGRESS.md: Session summary appended
+  📏 README.md: 310 lines — over the 300 cap, flagged in TODO.md
 
   Run /commit to commit all changes (pushes by default; use --no-push to skip).
 ```
+
+Drop the 📏 line when every README is inside the cap.
 
 ---
 
