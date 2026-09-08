@@ -51,6 +51,13 @@ _capped_read() {
 # worse than an absent one. Pure POSIX awk — no gawk 3-arg match(), no GNU-only
 # flags.
 #
+# `n` counts dropped RULES, not dropped lines. A rules.md opens with a header
+# block that says of itself "This header is not a rule and does not count
+# toward the limit", and its rules are often blank-line separated; counting
+# those inflated the notice (a 40-rule file reported 77 dropped) and made it
+# fire at all on a file where only the header fell outside the budget. A rule
+# line is `^- [`, the same definition `lib/rule-utils.sh:count_rules` uses.
+#
 # The count rides on stdout rather than a global because every caller reads this
 # through `$(...)`, and a command substitution runs in a SUBSHELL — a global set
 # inside it never reaches the caller. Use _rules_count/_rules_body to split.
@@ -62,12 +69,14 @@ _rules_tail() {
     END {
       t = 0; start = n + 1
       for (i = n; i >= 1; i--) { if (t + s[i] > b) break; t += s[i]; start = i }
-      print "__DROPPED__ " (start - 1)
+      d = 0
+      for (i = 1; i < start; i++) if (l[i] ~ /^- \[/) d++
+      print "__DROPPED__ " d
       for (i = start; i <= n; i++) print l[i]
     }' "$f" 2>/dev/null
 }
 
-# _rules_count <_rules_tail output> — echo the dropped-line count (0 on garbage).
+# _rules_count <_rules_tail output> — echo the dropped-rule count (0 on garbage).
 _rules_count() {
   local n
   n=$(printf '%s\n' "$1" | head -1 | awk '{print $2}')
