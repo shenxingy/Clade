@@ -23,7 +23,33 @@ if [[ -z "$FILE_PATH" ]]; then
   exit 0
 fi
 
-cd "${CLAUDE_PROJECT_DIR:-$(pwd)}" 2>/dev/null || exit 0
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+cd "$PROJECT_DIR" 2>/dev/null || exit 0
+
+# ─── The edit has to be one this project owns ─────────────────────────
+# The hook used to type-check whatever `file_path` named, with the PROJECT as
+# cwd. A scratch probe written to /tmp that imports a repository module then
+# failed on the import every single time, and every failure woke the session
+# with a finding about a file the project does not contain. Observed three
+# times in one session on 2026-09-08, each one an interruption carrying
+# nothing. A nonexistent path was worse than useless: `mypy: can't read file`
+# was reported under the heading "Type-check errors after editing", which is a
+# false statement about the code.
+#
+# Same shape as the guardian defect fixed the day before — the input was
+# matched and never classified. `pwd -P` rather than `realpath -m`, because
+# shipped hooks target bash 3.2 and a BSD userland.
+case "$FILE_PATH" in
+  /*) _abs="$FILE_PATH" ;;
+  *)  _abs="$PROJECT_DIR/$FILE_PATH" ;;
+esac
+[[ -f "$_abs" ]] || exit 0
+_proj_real=$(cd "$PROJECT_DIR" 2>/dev/null && pwd -P) || exit 0
+_file_dir=$(cd "$(dirname "$_abs")" 2>/dev/null && pwd -P) || exit 0
+case "$_file_dir/" in
+  "$_proj_real"/*) : ;;
+  *) exit 0 ;;
+esac
 
 # Both findings accumulate into one message: asyncRewake fires a single wake per
 # run, so emitting them separately would silently drop whichever came second.

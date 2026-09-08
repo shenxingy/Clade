@@ -231,6 +231,44 @@ run_post_edit "$PROJ/a.txt"
 assert_eq "$RC" "0" "2 dirty files stay below the default threshold (no wake)"
 assert_eq "$(cat "$STDERR_F")" "" "sub-threshold dirty tree writes nothing to stderr"
 
+# --- a path OUTSIDE the project is not this hook's business ---------
+#
+# The hook type-checked whatever `file_path` named and then ran the checker
+# with the PROJECT as cwd, so a scratch probe written to /tmp that imports a
+# repository module always failed on the import and woke the session with a
+# finding about a file the project does not contain. Observed three times in
+# one session on 2026-09-08, each one an interruption carrying nothing.
+#
+# It is the same shape as the guardian defect fixed the day before: the input
+# was matched, never classified. A finding is only a finding about a file the
+# project owns.
+OUTSIDE="$TMP_ROOT/outside.py"
+printf 'import definitely_not_a_real_module\n' > "$OUTSIDE"
+run_post_edit "$OUTSIDE"
+assert_eq "$RC" "0" "a file outside the project exits 0"
+assert_eq "$(cat "$STDERR_F")" "" "a file outside the project never wakes Claude"
+
+# --- a path that does not exist is a tool error, not a finding -------
+# `mypy: can't read file ... No such file or directory` was being reported as
+# "Type-check errors after editing", which is a false statement about the code.
+GONE="$PROJ/deleted_right_after_the_write.py"
+run_post_edit "$GONE"
+assert_eq "$RC" "0" "a vanished file exits 0"
+assert_eq "$(cat "$STDERR_F")" "" "a vanished file never wakes Claude"
+
+# --- the containment check must not swallow a real finding -----------
+# The point of the hook survives: a broken file INSIDE the project still wakes.
+if command -v mypy >/dev/null 2>&1 || command -v pyright >/dev/null 2>&1; then
+  BROKEN="$PROJ/broken.py"
+  printf 'def f(x: int) -> str:\n    return x\n' > "$BROKEN"
+  run_post_edit "$BROKEN"
+  assert_eq "$RC" "2" "a type error inside the project still wakes Claude"
+  assert_contains "$(cat "$STDERR_F")" "broken.py" "the finding names the file"
+  rm -f "$BROKEN"
+else
+  echo "  (skipped: no mypy or pyright on PATH — the positive control needs one)"
+fi
+
 # --- uncommitted files at/over the threshold: finding reaches stderr, exit 2 ---
 # Pin the threshold explicitly: this asserts the delivery contract, not the
 # default's value, which the assertions above own.
