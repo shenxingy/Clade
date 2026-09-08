@@ -144,8 +144,46 @@ source "$LIBDIR/correction-pair.sh" 2>/dev/null || true
 # The detection was also nested inside the stats-file branch, so a machine
 # without stats.json computed no domain at all. It is unconditional now: the
 # history record needs it whether or not the counter file exists.
+#
+# ── The second half: the INPUT, not the vocabulary ──
+# Moving the call fixed the field's ABSENCE, not its VALUE. Every record written
+# since still read `unknown` — 37 of 37 on this machine, 2026-09-02 → 2026-09-08
+# — because detect_domain's default input was `git diff … HEAD`, and
+# UserPromptSubmit is precisely when that is empty: the user says "that's wrong"
+# after the work has been committed.
+#
+# WHAT `domain` MEANS, now decided rather than inherited: the area of the work
+# being rejected. A correction rejects what CLAUDE did, so the primary evidence
+# is the session edit shadow — the files Claude wrote — which is the only record
+# of that work surviving a commit. The working tree and the last commit remain
+# below it inside domain-detect.sh, for sessions with no shadow (no session_id,
+# no scratch root, another machine).
+#
+# The redefinition propagates into stats.json and every rule-miss count, which
+# is why this was filed as a decision rather than patched. It costs nothing to
+# adopt: there is no domain series to invalidate, only a broken one to start —
+# every record carrying the field reads `unknown`, and stats.json's `unknown`
+# bucket holds 554 of its 616 counts.
+DOMAIN_FILES=""
+if declare -f cp_recent_files >/dev/null 2>&1; then
+  # The same eight files the concrete-signal block lists further down, so the
+  # domain and the evidence shown to the model describe the same work. The
+  # shadow stores ABSOLUTE paths; strip the project prefix so the classifier
+  # sees the shape git emits and no directory ABOVE the project can decide the
+  # domain (a checkout under ~/auth-svc/ would otherwise read as `security`).
+  DOMAIN_FILES=$(cp_recent_files "$(cp_session_key "$INPUT")" 8 2>/dev/null \
+    | while IFS= read -r _dp; do
+        [[ -n "$_dp" ]] || continue
+        printf '%s\n' "${_dp#"${PROJECT%/}/"}"
+      done)
+fi
 if [[ -d "$PROJECT" ]]; then
   source "$LIBDIR/domain-detect.sh" 2>/dev/null
+  pushd "$PROJECT" >/dev/null 2>&1 && detect_domain "$DOMAIN_FILES" 2>/dev/null; popd >/dev/null 2>&1
+fi
+# An explicit list never cascades, so a shadow that classifies to nothing (only
+# .md files, say) must not end the search — retry against the repository.
+if [[ "${DOMAIN:-unknown}" == "unknown" && -n "$DOMAIN_FILES" && -d "$PROJECT" ]]; then
   pushd "$PROJECT" >/dev/null 2>&1 && detect_domain 2>/dev/null; popd >/dev/null 2>&1
 fi
 DOMAIN="${DOMAIN:-unknown}"
@@ -170,7 +208,13 @@ fi
 
 # ─── Auto-increment domain stats ──────────────────────────────────────
 STATS_FILE="$CORRECTIONS_DIR/stats.json"
-_STATS_SEED='{"frontend":0,"backend":0,"schema":0,"ml":0,"ios":0,"android":0,"systems":0,"academic":0,"unknown":0}'
+# Every domain detect_domain can return, and nothing else. Four were missing —
+# devops, security, cli and mobile — so their increments landed on a key nothing
+# had seeded. jq's `// 0` hid it, but a fresh stats.json then advertised a
+# smaller vocabulary than the classifier has, and `cli` is the single most
+# likely domain for a shell-heavy repository. Pinned by tests/test-correction-
+# pairing.sh, which reads the vocabulary out of lib/domain-detect.sh.
+_STATS_SEED='{"frontend":0,"backend":0,"schema":0,"ml":0,"ios":0,"android":0,"mobile":0,"systems":0,"devops":0,"security":0,"cli":0,"academic":0,"unknown":0}'
 # Initialize stats.json on first run
 if [[ ! -f "$STATS_FILE" ]] && command -v jq &>/dev/null; then
   printf '%s\n' "$_STATS_SEED" > "$STATS_FILE"

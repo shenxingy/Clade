@@ -176,6 +176,92 @@ CDREC2=$(grep '"type":"explicit"' "$HISTORY" 2>/dev/null | tail -n 1)
 assert_eq "$(jq -r '.domain' <<< "${CDREC2:-\{\}}" 2>/dev/null)" "frontend" \
   "the domain is the one detect_domain resolved, not the unknown fallback"
 
+
+# ─── 3a2b. the domain survives a CLEAN tree ──────────────────────────
+# The test above stages a file, which is why it never saw this: measured on the
+# author's machine 2026-09-08, all 37 history records carrying `domain` were
+# "unknown". Moving the call before the append fixed the field's ABSENCE, not
+# its VALUE. The defect is the classifier's INPUT — `git diff --name-only
+# --diff-filter=ACMR HEAD` exits 0 with EMPTY output on a clean tree, so the
+# `||` fallbacks behind it were dead code and every grep missed. And
+# UserPromptSubmit is exactly when the tree tends to be clean: the user says
+# "that's wrong" after the work was committed.
+section "correction-detector — domain on a clean tree"
+
+CD_CLEAN="$TMP_ROOT/domain-clean"
+mkdir -p "$CD_CLEAN/src"
+git -C "$CD_CLEAN" init -q >/dev/null 2>&1
+git -C "$CD_CLEAN" config user.email t@example.com >/dev/null 2>&1
+git -C "$CD_CLEAN" config user.name t >/dev/null 2>&1
+echo "# repo" > "$CD_CLEAN/CLAUDE.md"
+: > "$CD_CLEAN/src/Widget.tsx"
+git -C "$CD_CLEAN" add -A >/dev/null 2>&1
+git -C "$CD_CLEAN" commit -qm "add widget" >/dev/null 2>&1
+assert_eq "$(git -C "$CD_CLEAN" status --porcelain 2>/dev/null | wc -l | tr -d ' ')" "0" \
+  "fixture tree is clean, the state the hook actually fires in"
+
+# (a) with a session shadow: the files Claude WROTE decide the domain. This is
+# the meaning the fix picks — a correction rejects what Claude did, and the
+# shadow is the only record of that work which survives a commit.
+CD_SID_A="cccccccc-1111-2222-3333-444444444444"
+shadow_in "$CD_CLEAN/src/Widget.tsx" "$CD_SID_A" | bash "$SHADOW_HOOK"
+correct_in "no, that is wrong, you broke the component again" "$CD_SID_A" \
+  | CLAUDE_PROJECT_DIR="$CD_CLEAN" bash "$CORRECTION_HOOK" >/dev/null 2>&1
+assert_eq "$(jq -r '.domain' <<< "$(grep '"type":"explicit"' "$HISTORY" | tail -n 1)")" "frontend" \
+  "a clean tree still classifies, from the files Claude touched this session"
+
+# (b) no shadow at all — an older Claude Code with no session_id, another
+# machine, or a session whose first prompt is the correction. The last commit is
+# the only evidence left, and it beats "unknown".
+CD_SID_B="dddddddd-1111-2222-3333-444444444444"
+correct_in "no, that is wrong, you broke the component again" "$CD_SID_B" \
+  | CLAUDE_PROJECT_DIR="$CD_CLEAN" bash "$CORRECTION_HOOK" >/dev/null 2>&1
+assert_eq "$(jq -r '.domain' <<< "$(grep '"type":"explicit"' "$HISTORY" | tail -n 1)")" "frontend" \
+  "with no shadow, a clean tree falls back to the last commit, not unknown"
+
+# (c) the priority order is the design decision, so it is pinned: when the two
+# inputs disagree, what CLAUDE wrote wins over what happens to be uncommitted.
+# The tree here holds a .py the user edited; the shadow holds Claude's .tsx.
+CD_SID_C="eeeeeeee-1111-2222-3333-444444444444"
+printf 'x = 1\n' > "$CD_CLEAN/src/user_edit.py"
+shadow_in "$CD_CLEAN/src/Widget.tsx" "$CD_SID_C" | bash "$SHADOW_HOOK"
+correct_in "no, that is wrong, you broke the component again" "$CD_SID_C" \
+  | CLAUDE_PROJECT_DIR="$CD_CLEAN" bash "$CORRECTION_HOOK" >/dev/null 2>&1
+assert_eq "$(jq -r '.domain' <<< "$(grep '"type":"explicit"' "$HISTORY" | tail -n 1)")" "frontend" \
+  "the session shadow outranks the working tree when they disagree"
+rm -f "$CD_CLEAN/src/user_edit.py"
+
+# (d) the same starvation in the library itself, isolated from the hook.
+# detect_domain with no argument must not answer "unknown" in a repository whose
+# only evidence is its history.
+section "domain-detect — a clean repository is still classifiable"
+CD_LIB_OUT=$( cd "$CD_CLEAN" && source "$REPO_ROOT/configs/hooks/lib/domain-detect.sh" \
+              && detect_domain && echo "$DOMAIN" )
+assert_eq "$CD_LIB_OUT" "frontend" \
+  "detect_domain with no argument classifies a clean tree from its last commit"
+
+# An explicitly passed list must NOT cascade — a caller that names its own input
+# gets an answer about that input, which is what tests/test-skill-routing.sh
+# asserts of this same function.
+CD_LIB_EXPL=$( cd "$CD_CLEAN" && source "$REPO_ROOT/configs/hooks/lib/domain-detect.sh" \
+               && detect_domain "docs/readme.md" && echo "$DOMAIN" )
+assert_eq "$CD_LIB_EXPL" "unknown" \
+  "an explicit file list is classified as given, never widened to the repo"
+
+# ─── 3a2c. stats.json seeds the classifier's whole vocabulary ────────
+# `_STATS_SEED` listed nine of the thirteen domains detect_domain can return;
+# devops, security, cli and mobile were missing, so those increments landed on a
+# key nothing had ever seeded. jq's `// 0` hides it, but a fresh stats.json then
+# advertises a smaller vocabulary than the classifier has — and `cli` is the
+# single most likely domain for a shell-heavy repository.
+section "correction-detector — the stats seed covers every domain"
+CD_VOCAB=$(grep -oE 'DOMAIN="[a-z]+"' "$REPO_ROOT/configs/hooks/lib/domain-detect.sh" \
+           | sed 's/^DOMAIN="//; s/"$//' | sort -u)
+CD_SEED=$(grep -m1 '^_STATS_SEED=' "$CORRECTION_HOOK" | sed "s/^_STATS_SEED='//; s/'\$//")
+CD_SEED_KEYS=$(jq -r 'keys[]' <<< "$CD_SEED" 2>/dev/null | sort -u)
+CD_MISSING=$(comm -23 <(printf '%s\n' "$CD_VOCAB") <(printf '%s\n' "$CD_SEED_KEYS") | tr '\n' ' ' | sed 's/ *$//')
+assert_eq "$CD_MISSING" "" "no domain detect_domain can return is missing from the stats seed"
+
 # ─── 3a3. a corrupt stats.json self-heals instead of no-opping forever ─
 # The increment is `jq … file > tmp && mv || rm -f tmp`, which fails silently on
 # invalid JSON. The real file on the author's machine held two nested sets of
