@@ -70,6 +70,54 @@ versioning for the `clade-mcp` Python package and tagged public releases.
 - The destructive-command guardian matched substrings rather than command
   positions, and never actually blocked `rm -rf ~`. It now also blocks the
   `pkill -f` pattern that kills its own launcher
+- The FastAPI pin locked the orchestrator to starlette's last vulnerable
+  release. `fastapi==0.131.0` required `starlette<1.0.0`, and 0.52.1 is the
+  last 0.x starlette ever published, so this was a security floor rather than
+  version lag — no release inside the pin carried a remedy. Two HIGH
+  advisories were live on it: `GHSA-wqp7-x3pw-xc5r`, SSRF and NTLM credential
+  theft through UNC paths in `StaticFiles`, which `server.py` mounts at `/web`,
+  and `GHSA-82w8-qh3p-5jfq`, `request.form()` size and count limits silently
+  ignored for `application/x-www-form-urlencoded`; two MODERATE ones went with
+  them. `fastapi` moves to 0.141.1, which asks only for `starlette>=0.46.0`,
+  and starlette is pinned directly at 1.6.0 in `orchestrator/requirements.txt`
+  with each advisory named beside the pin, so the floor is visible in this
+  repository instead of hidden in another package's metadata
+- The correction pipeline wrote the user's prompt to disk verbatim, in three
+  places: `history.jsonl`, a lib-missing fallback nobody had noticed, and the
+  cross-project-rules preview. `redact.py` had existed the whole time and was
+  never called there. It is now, once — after the correction gate, so `python3`
+  does not spawn on prompts that write nothing, and before the prompt is
+  clipped, since clipping first can cut a token below its detection threshold
+  and leave a partial credential on disk. Where `python3` is unavailable the
+  hook detects with a fallback pattern and withholds the whole prompt rather
+  than substituting: the prescribed `sed` fallback was measured leaving 16 of a
+  48-character key behind. `redact.py` also gained the underscore key shape no
+  existing pattern could reach, and `checks.sh`'s inline fallback carries it too
+- Structured events, SQLite runtime text, traces, sessions and provider streams
+  are redacted before persistence (`orchestrator/runtime_redaction.py`), and
+  worker stdout and stderr go through a streaming redactor, so a raw credential
+  never reaches a log file or a database row
+- Seven hook and script call sites wrote to fixed, predictable `/tmp` paths —
+  the edit shadows, the skill-suggest throttle, the radar and sync-push locks,
+  the watchdog pid and log. On a shared host the first account to create
+  `/tmp/claude-edit-shadows` owns it and every other account's hook fails open,
+  which had silently disabled correction pairing for all but one of 40 accounts
+  with nothing saying so. All seven now derive from
+  `configs/hooks/lib/runtime-dir.sh`, which fails closed on a squatted path:
+  not a symlink, owned by our euid, mode 0700. Old paths are abandoned rather
+  than migrated, and the sweep only ever touches our own stale files
+- The prompt secret-scanner never once warned. Its only output is
+  `hookSpecificOutput.additionalContext` and it was configured `async: true`,
+  which has no channel back into the turn, so every credential warning was
+  discarded. It runs sync now, like `correction-detector.sh` beside it
+- One MCP skill invocation froze every concurrent request behind it.
+  `mcp_server.py` called `subprocess.run` with a 300-second timeout inside an
+  `async def`, so a single run blocked the event loop for its whole duration —
+  and `task_factory/ci_watcher.py` called `check_output` with no timeout at all
+  inside a coroutine the status loop schedules. Both use
+  `asyncio.create_subprocess_exec` with `wait_for` now; the timeout and
+  cancellation paths SIGKILL the whole process group and drain the pipes, so an
+  agent run that spawned its own tools leaves nothing behind
 
 ### Added
 
@@ -248,6 +296,18 @@ versioning for the `clade-mcp` Python package and tagged public releases.
   bundles keep resolving
 - `worker_sandbox` (Landlock) and `worker_checkpoint_shadow` ship default off;
   `worker_git_surface_guard` and `worker_require_worktree` are on
+- `/web` answers 503 until the UI is built. `web/dist` is the only servable
+  root and is gitignored, so a fresh checkout has no UI: `orchestrator/start.sh`
+  builds it on first run, or build it by hand with `cd orchestrator/web && npm
+  ci && npm run build`. The previous fallback mounted the Vite *source* tree,
+  whose `index.html` loads `/src/main.tsx` — a page no browser can execute
+- The `reaction_configs` and `patrol_auto_ideas` settings are removed. Both were
+  published in the settings reference and read by nothing; wiring
+  `reaction_configs` as published would have been worse than deleting it, since
+  `config.py`'s copy carried three of the five rules in
+  `reactions.DEFAULT_CONFIGS` and `ReactionExecutor` replaces rather than
+  merges, so copying the generated reference file would silently drop two
+  reaction rules. `reactions_enabled` and `min_workers` are now real instead
 - The FastAPI multi-worker orchestrator remains Claude-specific
 
 ### Upgrade
@@ -312,6 +372,9 @@ codex plugin add clade@clade
 - Initial `clade-mcp` package with 29 coding workflows and Claude execution
 - Claude Code skills, hooks, agents, scripts, and the FastAPI orchestrator
 
-[0.3.1]: https://github.com/shenxingy/Clade/compare/v0.2.0...v0.3.1
+<!-- 0.3.1 shipped untagged: the release commit says tagging and publishing
+     stay an operator decision, so this compare link names that commit
+     rather than a v0.3.1 tag that does not exist. -->
+[0.3.1]: https://github.com/shenxingy/Clade/compare/v0.2.0...32961e4
 [0.2.0]: https://github.com/shenxingy/Clade/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/shenxingy/Clade/releases/tag/v0.1.0

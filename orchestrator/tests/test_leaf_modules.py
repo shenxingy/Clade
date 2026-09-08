@@ -169,7 +169,8 @@ class TestBuildCausalChain:
 
 # ─── Reactions Tests ──────────────────────────────────────────────────────────
 
-from reactions import ReactionConfig, ReactionExecutor, create_executor_from_config
+import reactions
+from reactions import ReactionConfig, ReactionExecutor
 
 
 class TestReactionConfig:
@@ -231,22 +232,22 @@ class TestReactionExecutor:
         assert "configs" in s
 
 
-class TestCreateExecutorFromConfig:
-    def test_empty_config(self):
-        ex = create_executor_from_config(None)
-        assert isinstance(ex, ReactionExecutor)
-        assert len(ex.configs) > 0  # uses defaults
+def test_create_executor_from_config_stays_removed():
+    """The settings-loading factory is gone, and re-adding it needs a decision.
 
-    def test_custom_config(self):
-        cfg = {"reactions": [{"name": "my_r", "event_type": "error", "threshold": 2}]}
-        ex = create_executor_from_config(cfg)
-        assert any(c.name == "my_r" for c in ex.configs)
-
-    def test_invalid_entry_skipped(self):
-        cfg = {"reactions": [{"invalid_key": 999}]}
-        ex = create_executor_from_config(cfg)
-        # invalid entry skipped; falls back to defaults
-        assert isinstance(ex, ReactionExecutor)
+    `create_executor_from_config` shipped in the first commit of
+    `reactions.py` (a2868c4) and never acquired a production caller: `worker.py` — the only
+    non-test consumer of `reactions` — constructs `ReactionExecutor(enabled=...)`
+    directly. The dict it parsed was keyed on `"reactions"`, which has never
+    existed in `config.py:_SETTINGS_DEFAULTS`; the nearest real key,
+    `reaction_configs`, was itself deleted in 2026-09 (see
+    `test_config_settings.test_removed_settings_keys_stay_removed`) because it
+    held a drifted partial copy of `ReactionExecutor.DEFAULT_CONFIGS` and
+    `__init__` REPLACES rather than merges the rule list. So the factory was a
+    loader for a settings path that was deliberately closed: putting it back
+    means reopening that decision, not restoring a helper.
+    """
+    assert not hasattr(reactions, "create_executor_from_config")
 
 
 # ─── SessionTree Tests ────────────────────────────────────────────────────────

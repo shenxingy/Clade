@@ -263,6 +263,84 @@ printf 'CONVERGED=false\nITERATION=3\n' > "$RL/.claude/loop-state"
 OUT=$(run_session_context "$RL")
 assert_not_contains "$OUT" "Loop:" "the stale KEY=VALUE path is not read"
 
+# ─── Dropped-rules notice counts RULES, not lines ─────────────────────
+# The notice reads "(N older rules not shown — run /audit …)", but N was the
+# number of dropped LINES. A rules.md carries a header block that says of
+# itself "This header is not a rule and does not count toward the limit", plus
+# blank separators, so a session was told more rules had been withheld than
+# exist. `configs/hooks/lib/rule-utils.sh:count_rules` already defines a rule
+# line as `^- [`; the notice now counts by the same definition.
+#
+# The sibling budget assertions for this hook (whole-line cutting, newest-kept,
+# the env override, the ceiling warning) live in tests/test-hooks.sh section 6.
+
+echo "── session-context.sh dropped-rules count ──"
+
+RC_HOME="$TMP_ROOT/rules-home"
+mkdir -p "$RC_HOME/.claude/corrections"
+# Freeze the audit clock: run_auto_audit rewrites rules.md when .last-audit is
+# stale, which would make every count below depend on wall time.
+touch "$RC_HOME/.claude/corrections/.last-audit"
+RC_RULES="$RC_HOME/.claude/corrections/rules.md"
+
+RC_REPO="$TMP_ROOT/repo-rules-count"
+make_repo "$RC_REPO"
+
+rules_ctx() {  # <budget-bytes>
+  echo '{}' | HOME="$RC_HOME" CLAUDE_PROJECT_DIR="$RC_REPO" \
+    CLADE_RULES_BUDGET_BYTES="$1" bash "$SESSION_CONTEXT" \
+    | jq -r '.hookSpecificOutput.additionalContext // empty'
+}
+
+# Corpus 1: the real file shape — header block, then rules separated by blanks.
+{
+  echo "Claude auto-maintains this file — newest rules at the bottom, max 50 RULE lines."
+  echo "Format: \`- [YYYY-MM-DD] <domain> (<root-cause>): <do this> instead of <not this>\`"
+  echo "Root-cause categories: settings-disconnect | edge-case | async-race | security"
+  echo "This header is not a rule and does not count toward the limit — do not trim it."
+  echo "---"
+  echo ""
+} > "$RC_RULES"
+for i in $(seq -w 1 40); do
+  printf -- '- [2026-09-01] domain-%s (edge-case): %s #CRULE-%s-END\n\n' \
+    "$i" "$(head -c 400 < /dev/zero | tr '\0' 'z')" "$i" >> "$RC_RULES"
+done
+
+OUT=$(rules_ctx 2000)
+kept=$(grep -o '#CRULE-[0-9]*-END' <<< "$OUT" | wc -l | tr -d ' ')
+notice=$(grep -oE '\([0-9]+ older rules not shown[^)]*\)' <<< "$OUT" | head -1)
+reported=$(sed -E 's/^\(([0-9]+).*/\1/' <<< "$notice")
+TESTS_RUN=$((TESTS_RUN + 1))
+if [[ "$kept" -gt 0 && "$kept" -lt 40 ]]; then
+  pass "the 2000-byte budget drops some rules and keeps some ($kept of 40 kept)"
+else
+  fail "the 2000-byte budget drops some rules and keeps some" "kept $kept of 40"
+fi
+assert_eq "$(( 40 - kept ))" "$reported" \
+  "the drop notice counts dropped rules, not the header and blank lines with them"
+
+# Corpus 2: every rule fits; only the header falls outside the budget. Nothing
+# a session cares about was withheld, so there must be no notice at all.
+# The header has to be big to reach this: the global file's share of the budget
+# has a 500-byte floor (session-context.sh `_REMAIN` clamp), so a five-line
+# header fits no matter how small CLADE_RULES_BUDGET_BYTES is set.
+: > "$RC_RULES"
+for i in $(seq 1 12); do
+  printf 'Header line %s — this header is not a rule and does not count toward the limit; %s\n' \
+    "$i" "$(head -c 60 < /dev/zero | tr '\0' 'h')" >> "$RC_RULES"
+done
+echo "---" >> "$RC_RULES"
+for i in 1 2 3; do
+  printf -- '- [2026-09-01] a-%s (edge-case): r%s #KRULE-%s-END\n' "$i" "$i" "$i" >> "$RC_RULES"
+done
+
+OUT=$(rules_ctx 500)
+for i in 1 2 3; do
+  assert_contains "$OUT" "#KRULE-$i-END" "every rule fits in the 500-byte budget (rule $i)"
+done
+assert_not_contains "$OUT" "older rules not shown" \
+  "a header that falls outside the budget is not reported as dropped rules"
+
 # ─── Summary ──────────────────────────────────────────────────────────
 echo ""
 echo "── Results: $TESTS_PASSED/$TESTS_RUN passed ──"

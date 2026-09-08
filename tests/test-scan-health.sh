@@ -230,6 +230,77 @@ else
   note "live http reachability probe (python3/curl not available)"
 fi
 
+
+# ─── Suite: vendored trees are not this scan's business ──────────────
+#
+# The prunes were anchored at the scan root — `! -path "./node_modules/*"` —
+# so they matched a vendor directory only when it sat directly beneath it.
+# Every NESTED copy sailed through: this repository's own
+# orchestrator/web/node_modules and orchestrator/web/dist, and the per-package
+# copies in any monorepo. Measured across the 13 patrol-eligible projects on
+# this host, the large-file check emitted 1,494 task blocks of which 1,346
+# named vendored files or duplicates inside .claude/worktrees — 90% noise, and
+# the reason nothing was ever built on top of these reports.
+#
+# A scanner that reports a thousand "split typescript.js" tasks has not found
+# a thousand problems; it has found one bug in itself.
+
+section "Large-file scan skips vendored trees at any depth"
+
+PROJ_VENDOR="$(mktemp -d "$SANDBOX/proj-vendor.XXXXXX")"
+mkdir -p "$PROJ_VENDOR/.claude"
+
+# A nested vendor copy, exactly the shape this repository has.
+mkdir -p "$PROJ_VENDOR/web/node_modules/react-dom/cjs"
+awk 'BEGIN { for (i = 0; i < 1600; i++) print "// vendored" }' \
+  > "$PROJ_VENDOR/web/node_modules/react-dom/cjs/react-dom.development.js"
+
+# A nested build output, and a nested virtualenv.
+mkdir -p "$PROJ_VENDOR/web/dist/assets" "$PROJ_VENDOR/api/.venv/lib/python3.12/site-packages/pkg"
+awk 'BEGIN { for (i = 0; i < 1600; i++) print "// bundled" }' \
+  > "$PROJ_VENDOR/web/dist/assets/index-ABC.js"
+awk 'BEGIN { for (i = 0; i < 1600; i++) print "# installed" }' \
+  > "$PROJ_VENDOR/api/.venv/lib/python3.12/site-packages/pkg/big.py"
+
+# A worktree copy — a duplicate of first-party code, not a second defect.
+mkdir -p "$PROJ_VENDOR/.claude/worktrees/task-1/src"
+awk 'BEGIN { for (i = 0; i < 1600; i++) print "# copy" }' \
+  > "$PROJ_VENDOR/.claude/worktrees/task-1/src/app.py"
+
+OUT=$(run_scan "$PROJ_VENDOR"); RC=$?
+assert_rc_zero "$RC" "vendored-only project exits 0"
+assert_not_contains "$OUT" "react-dom" "a nested node_modules is not reported"
+assert_not_contains "$OUT" "index-ABC" "a nested dist bundle is not reported"
+assert_not_contains "$OUT" "site-packages" "a nested virtualenv is not reported"
+assert_not_contains "$OUT" "worktrees" "a worktree copy is not reported as its own file"
+
+# The other direction is the point of the scan and must not move: first-party
+# code over the ceiling still gets reported.
+awk 'BEGIN { for (i = 0; i < 1600; i++) print "# first party" }' \
+  > "$PROJ_VENDOR/big_module.py"
+OUT=$(run_scan "$PROJ_VENDOR"); RC=$?
+assert_contains "$OUT" "big_module" "a first-party file over the ceiling is still reported"
+
+
+# The TODO scan has the same blindness, and on this repository it was the
+# larger half: a worktree holds a full copy of the tree, so every marker in it
+# is counted again per worktree. Measured here — 217 task blocks before both
+# fixes, 34 after the large-file half alone, and nearly all 34 were the same
+# two files seen once per worktree.
+section "TODO scan skips vendored and worktree copies"
+
+PROJ_TODOS="$(mktemp -d "$SANDBOX/proj-todos.XXXXXX")"
+mkdir -p "$PROJ_TODOS/.claude/worktrees/task-1/src" "$PROJ_TODOS/web/node_modules/pkg" "$PROJ_TODOS/src"
+printf '# TODO: real one\n' > "$PROJ_TODOS/src/app.py"
+printf '# TODO: the same file, seen through a worktree\n' > "$PROJ_TODOS/.claude/worktrees/task-1/src/app.py"
+printf '// TODO: someone else vendored this\n' > "$PROJ_TODOS/web/node_modules/pkg/index.js"
+
+OUT=$(run_scan "$PROJ_TODOS"); RC=$?
+assert_rc_zero "$RC" "TODO scan exits 0"
+assert_contains "$OUT" "src_app.py" "a first-party TODO is still reported"
+assert_not_contains "$OUT" "worktrees" "a worktree copy of the same TODO is not reported again"
+assert_not_contains "$OUT" "node_modules" "a vendored TODO is not reported"
+
 # ─── Summary ─────────────────────────────────────────────────────────
 
 echo ""

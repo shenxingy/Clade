@@ -5,17 +5,30 @@ usage-agent — standalone Claude Code usage reporter.
 For machines that DON'T run the orchestrator but DO use Claude Code on the
 same account. Polls `ccusage --json` and pushes to a hub orchestrator.
 
-Setup (per server):
-  1. Install ccusage:        npm install -g ccusage
-  2. Set env vars:
-       export CLADE_USAGE_HUB_URL="http://hub.host:8000"
-       export CLADE_USAGE_HUB_TOKEN="shared-secret"      # optional, must match hub's usage_ingest_token
-       export CLADE_MACHINE_ID="prod-server-1"           # optional, defaults to hostname
-  3. Run as cron / systemd:  python3 usage-agent.py --interval 900
-     Or one-shot:            python3 usage-agent.py --once
+Setup (per node):
+  1. Install ccusage:  npm install -g ccusage
+  2. Point it at the hub. Every flag below except --since-days falls back to an
+     env var, and the flag wins when both are given:
+       --hub URL        CLADE_USAGE_HUB_URL    required; exits 2 without it
+       --token TOKEN    CLADE_USAGE_HUB_TOKEN  sent as `Authorization: Bearer`
+       --machine-id ID  CLADE_MACHINE_ID       defaults to the hostname
+       --interval SECS  CLADE_USAGE_INTERVAL   loop mode only; default 900,
+                                               floored at 60
+       --since-days N   (flag only)            default 7; 0 pushes all-time
+  3. Run it one of two ways:
+       cron:            python3 usage-agent.py --hub http://hub:8000 --once
+       systemd / nohup: python3 usage-agent.py --hub http://hub:8000 --interval 900
+     `--once` runs a single cycle and exits non-zero when the push failed,
+     which is what makes it the cron form. Without it the process loops
+     forever and a failed cycle is logged rather than fatal, so a cron entry
+     that omits `--once` leaves another daemon behind on every tick.
 
-Hub-side: configure usage_ingest_token in ~/.claude/orchestrator-settings.json
-to enforce token; leave empty for open ingest (LAN/Tailscale only).
+Hub-side token: required, and no longer "empty means open". `/api/usage/ingest`
+is exempt from the control-plane middleware only while `usage_ingest_token` is
+set in ~/.claude/orchestrator-settings.json — set it, and --token must match it.
+Leave it empty and the endpoint falls back to the control plane, so --token must
+carry the hub's `api_token` instead (minted into that same settings file on
+first start). Only `api_allow_unauthenticated` serves ingest with no credential.
 """
 
 from __future__ import annotations

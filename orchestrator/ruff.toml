@@ -11,8 +11,9 @@
 # heredoc and treat the block as the guard doing its job, not as an obstacle.
 #
 # WHY py_compile was not enough: it proves a file parses. It cannot see a name
-# that is never bound. Both F821 hits below are live NameErrors that shipped
-# under a green py_compile gate.
+# that is never bound. This gate's first run found two F821s, and both were live
+# NameErrors that had shipped under a green py_compile gate; the note over
+# [lint.per-file-ignores] below records what they were.
 
 target-version = "py312"
 
@@ -54,30 +55,35 @@ ignore = [
     "B905",  # zip() without explicit strict=
 ]
 
-# ─── Known live bugs, not style debt ────────────────────────────────────────
-# The gate's first run found exactly two F821s across 310 files, and BOTH are
-# real NameErrors reachable at runtime. They are parked here ONLY so this gate
-# could land green; each entry is meant to be deleted in the same commit as its
-# one-line fix. Do not add to this table — a new F821 must fail the build.
+# ─── Per-file ignores: EMPTY, and meant to stay that way ────────────────────
+# This table parks NOTHING today. Read no live bug into it — the tree has zero
+# F821s, and that is the state this gate is holding.
 #
-#  1. orchestrator/worker.py's Worker.stop() awaits preserve_worktree_wip().
-#     The function is defined in worker_utils.py and is missing from that
-#     module's `from worker_utils import (...)` list, so stop() raises NameError
-#     before _cleanup_worktree() runs — the WIP is never preserved and the
-#     worktree is never removed. Reached from routes/workers.py, worker_pool's
-#     timeout/stuck kills, swarm.py and session.py, none of which wrap the call.
-#     Fix: add `preserve_worktree_wip,` to that import list.
+# WHY THE TABLE EXISTS AT ALL. This gate's first run (b7ac7e2, 2026-09-02)
+# found exactly two F821s across 310 files, and both were real NameErrors
+# reachable at runtime rather than style debt:
 #
-#  2. configs/skills/blog-notebooklm/scripts/ask_question.py:175 reads
-#     os.environ inside an `except Exception` handler, in a module that never
-#     imports os — the error handler itself raises.
-#     Fix: add `import os` to the stdlib import block.
+#  1. orchestrator/worker.py's Worker.stop() awaited preserve_worktree_wip()
+#     without importing it from worker_utils, so stop() raised NameError before
+#     _cleanup_worktree() ran — the WIP was never preserved and the worktree
+#     never removed, on every stop path (routes/workers.py, worker_pool's
+#     timeout/stuck kills, swarm.py and session.py, none of which wrapped it).
+#
+#  2. configs/skills/blog-notebooklm/scripts/ask_question.py read os.environ
+#     inside an `except Exception` handler, in a module that never imported os
+#     — the error handler itself raised.
+#
+# BOTH WERE FIXED IN THAT SAME COMMIT and their two parked entries deleted with
+# them, which is the whole rule this table lives under: an entry is a known live
+# bug, never a baseline, and it is deleted in the same commit as its one-line
+# fix. Do not add one to make a build green — a new F821 must fail the build.
+#
+# If you ever do add one: write `**/worker.py`, not `orchestrator/worker.py`,
+# because per-file-ignores resolve against the directory ruff was invoked from,
+# and this gate has to behave identically for `ruff check --config
+# orchestrator/ruff.toml .` at the repo root (CI) and `ruff check .` inside
+# orchestrator/ (the obvious local run). A path unambiguous tree-wide needs no
+# such glob — but confirm it is: configs/skills/blog-notebooklm/scripts/ and
+# configs/scripts/blog/blog-notebooklm/ hold DIFFERENT ask_question.py files,
+# and only one of them ever carried bug 2 above.
 [lint.per-file-ignores]
-# `**/worker.py` rather than `orchestrator/worker.py` because per-file-ignores
-# resolve against the directory ruff was invoked from, and this gate has to
-# behave identically for `ruff check --config orchestrator/ruff.toml .` at the
-# repo root (CI) and `ruff check .` inside orchestrator/ (the obvious local
-# run). `orchestrator/worker.py` is the only worker.py in the tree. The
-# blog-notebooklm entry needs no such glob: it is never reached from inside
-# orchestrator/, and `configs/scripts/blog/blog-notebooklm/ask_question.py` is
-# a DIFFERENT file that does not carry the bug and must stay covered.

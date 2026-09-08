@@ -15,6 +15,7 @@ End-of-session documentation ritual. Reviews what was done and updates project d
 1. Reviews recent git history to understand what was accomplished
 2. Auto-updates TODO.md (checks off completed items)
 3. Appends a session summary to PROGRESS.md
+4. Flags a root README over the 300-line landing-page cap, naming the sections that should move to `docs/`
 
 ## Usage
 

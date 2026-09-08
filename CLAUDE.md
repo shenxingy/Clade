@@ -42,8 +42,17 @@ cd orchestrator && .venv/bin/python -m pytest tests/ -v
 cd orchestrator && find . \( -name .venv -o -name node_modules -o -name __pycache__ \) -prune -o -name "*.py" -print | xargs -n1 .venv/bin/python -m py_compile
 
 # Multi-machine usage tracking — see orchestrator/usage_tracker.py
-#   Hub:  start orchestrator normally, optionally set usage_ingest_token in ~/.claude/orchestrator-settings.json
-#   Node (no orchestrator): python3 configs/scripts/usage-agent.py --hub http://hub:8000 [--token X] [--once]
+#   A token is NOT optional here, which this line used to imply. `/api/usage/ingest`
+#   is exempt from the control-plane token only WHILE `usage_ingest_token` is set
+#   (api_auth.py:80, SELF_AUTHENTICATED_IF_SET); leave it empty and the endpoint
+#   falls back to the control plane, so a token is still required — just a
+#   different one. Either way the node sends `Authorization: Bearer`.
+#   Hub:  start orchestrator normally, set usage_ingest_token in ~/.claude/orchestrator-settings.json
+#   Node (no orchestrator): python3 configs/scripts/usage-agent.py --hub http://hub:8000 --token X [--once]
+#     (--token defaults to $CLADE_USAGE_HUB_TOKEN and must match the hub's usage_ingest_token)
+#   Node WITH an orchestrator: it pushes through the `usage_hub_token` setting
+#     instead (config.py:319 → server.py:161) — a different mechanism, easily
+#     confused with the env var above.
 #   Dashboard: http://hub:8000/web/usage.html
 # Per-machine ccusage data is stored in ~/.claude/orchestrator/usage.db.
 

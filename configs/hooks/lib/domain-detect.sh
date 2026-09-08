@@ -1,21 +1,44 @@
 #!/usr/bin/env bash
-# domain-detect.sh — Shared domain detection from git diff file extensions
+# domain-detect.sh — Shared domain detection from a list of touched files
 # Source this file, then call detect_domain [FILES_STRING]
 #
 # Usage:
 #   source "$LIBDIR/domain-detect.sh"
-#   detect_domain                    # auto-detect from git diff HEAD
+#   detect_domain                    # auto-detect from the repository
 #   detect_domain "$FILE_LIST"       # pass explicit file list
 #   echo "$DOMAIN"                   # result in $DOMAIN
+#
+# THE INPUT WAS THE DEFECT. The no-argument form used to read exactly one thing:
+#
+#     files=$(git diff --name-only --diff-filter=ACMR HEAD 2>/dev/null \
+#          || git diff --name-only --cached 2>/dev/null || echo "")
+#
+# `git diff` exits 0 with EMPTY output on a clean tree, so `||` never fired:
+# both fallbacks were dead code, reachable only when git itself errored, which
+# is not the case that happens. Every grep below then missed and every caller
+# got "unknown". Measured on the author's machine 2026-09-08 — 37 of 37
+# correction records carrying `domain`, and 554 of 616 stats.json counts.
+# `--cached` could not have helped either: it is a strict SUBSET of `diff HEAD`.
+#
+# The no-argument form now CASCADES over the repository's evidence, most
+# immediate first, and stops at the first input that actually classifies:
+#
+#   1. tracked changes     (git diff --diff-filter=ACMR HEAD)
+#   2. untracked new files (git ls-files --others) — a file Claude created and
+#      never staged is invisible to `git diff HEAD`, which is its own starvation
+#   3. the last commit     (git show --name-only HEAD) — the clean-tree case,
+#      and the one that matters at UserPromptSubmit and TaskCompleted, both of
+#      which fire when the work has just been committed
+#
+# An EXPLICIT list never cascades: a caller that names its own input gets an
+# answer about that input, not about the repository around it.
+#
+# Each candidate is capped: this runs inside a sync UserPromptSubmit hook, and
+# the greps below should not be handed an unbounded file list.
 
-detect_domain() {
-  local files="${1:-}"
-
-  if [[ -z "$files" ]]; then
-    files=$(git diff --name-only --diff-filter=ACMR HEAD 2>/dev/null \
-         || git diff --name-only --cached 2>/dev/null \
-         || echo "")
-  fi
+# _detect_domain_classify <files> — the vocabulary. Sets DOMAIN.
+_detect_domain_classify() {
+  local files="$1"
 
   DOMAIN="unknown"
 
@@ -131,4 +154,28 @@ detect_domain() {
     DOMAIN="cli"
     return
   fi
+}
+
+# detect_domain [FILES_STRING] — public entry point. Sets DOMAIN.
+# Always assigns DOMAIN, and always returns 0: outside a git repository every
+# candidate is empty, and callers read $DOMAIN unguarded.
+detect_domain() {
+  DOMAIN="unknown"
+
+  if [[ -n "${1:-}" ]]; then
+    _detect_domain_classify "$1"
+    return 0
+  fi
+
+  local candidate
+  for candidate in \
+    "$(git diff --name-only --diff-filter=ACMR HEAD 2>/dev/null | head -n 200)" \
+    "$(git ls-files --others --exclude-standard 2>/dev/null | head -n 200)" \
+    "$(git show --pretty=format: --name-only HEAD 2>/dev/null | head -n 200)"
+  do
+    [[ -n "$candidate" ]] || continue
+    _detect_domain_classify "$candidate"
+    [[ "$DOMAIN" != "unknown" ]] && return 0
+  done
+  return 0
 }

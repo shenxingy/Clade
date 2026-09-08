@@ -32,6 +32,8 @@ _scan_todos() {
     --include="*.jsx" \
     --exclude-dir=".git" --exclude-dir="node_modules" --exclude-dir=".venv" \
     --exclude-dir="venv" --exclude-dir="dist" --exclude-dir="build" \
+    --exclude-dir="site-packages" --exclude-dir="vendor" --exclude-dir="target" \
+    --exclude-dir=".next" --exclude-dir=".claude" \
     -E "(TODO|FIXME|HACK|XXX):" . 2>/dev/null || true)
 
   [[ -z "$matches" ]] && return
@@ -233,8 +235,9 @@ _scan_large_files() {
   local large_files
   large_files=$(find . \
     -type f \( -name "*.py" -o -name "*.js" -o -name "*.ts" -o -name "*.tsx" -o -name "*.sh" -o -name "*.go" -o -name "*.rs" \) \
-    ! -path "./.git/*" ! -path "./node_modules/*" ! -path "./.venv/*" ! -path "./venv/*" \
-    ! -path "./dist/*" ! -path "./build/*" \
+    ! -path "*/.git/*" ! -path "*/node_modules/*" ! -path "*/.venv/*" ! -path "*/venv/*" \
+    ! -path "*/dist/*" ! -path "*/build/*" ! -path "*/site-packages/*" \
+    ! -path "*/.claude/worktrees/*" ! -path "*/vendor/*" ! -path "*/target/*" ! -path "*/.next/*" \
     -exec awk 'END {if (NR > 1500) print FILENAME ":" NR}' {} \; 2>/dev/null || true)
 
   [[ -z "$large_files" ]] && return

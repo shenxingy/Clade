@@ -7,15 +7,84 @@
 # one-shot syntax fixer, the baseline health check, the project verify_cmd
 # sample, and the LLM verify node. Loop control and goal state stay behind.
 #
-# Sourced, not executed: it sets and reads the same globals in the caller as
-# when these functions were inline, so the source line in loop-runner.sh must
+# Sourced, not executed: it reads the caller's run configuration and defines
+# functions in the caller's shell, so the source line in loop-runner.sh must
 # come before any call site.
 #
 # Reads:  SYNTAX_CHECK_TIMEOUT, TEST_SAMPLE_TIMEOUT, SUPERVISOR_TIMEOUT,
 #         SUPERVISOR_MODEL, LOG_DIR, ITERATION, ITERATION_START_COMMIT,
 #         PURE_JUDGE_FLAGS
-# Writes: LAST_TEST_OUTPUT, LAST_TEST_RESULT, PREV_FAILED
 # Uses:   log_info/log_success/log_warn, _timeout from loop-runner.sh
+#         — asserted below, not assumed.
+# Writes: nothing in the caller's namespace. The verify state this file carries
+#         between its own nodes is declared, initialised and reached only
+#         through the accessors in the next block.
+
+# ─── The interface with the caller — asserted, not commented ─────────
+#
+# A sourced file has no imports and no exports. Everything it needs is whatever
+# the caller happened to define above the `.` line, and everything it assigns
+# lands in the caller's global scope. Until 2026-09 both halves of that were
+# recorded only by the `Uses:`/`Writes:` lines above — a comment cannot fail.
+# Both halves are now enforced: half 1 is checked here at source time, half 2
+# is owned here rather than left loose in loop-runner.sh's namespace.
+#
+# Half 1 — what the caller must already define. Left unchecked, a dropped or
+# renamed helper (or a source line moved above _timeout) surfaces as
+# "command not found" deep inside an iteration, hours into an unattended run,
+# with the loop still reporting progress. One pass over four names at source
+# time turns that into a message naming exactly what is missing.
+_loop_verify_require_caller() {
+  local missing="" fn
+  for fn in "$@"; do
+    declare -f "$fn" >/dev/null 2>&1 || missing="$missing $fn"
+  done
+  if [ -n "$missing" ]; then
+    printf 'loop_verify.sh: sourced by a caller that does not define:%s\n' \
+      "$missing" >&2
+    return 1
+  fi
+  return 0
+}
+if ! _loop_verify_require_caller log_info log_success log_warn _timeout; then
+  # Sourcing is the supported mode, and there `return` fails the `.` line —
+  # under the caller's `set -e` that ends the run. Run directly, `return` is
+  # itself an error, so fall through to `exit` rather than reporting a missing
+  # interface and then leaving with status 0.
+  return 1 2>/dev/null || exit 1
+fi
+
+# Half 2 — the state this file carries between its own nodes and across
+# iterations. node_test_sample runs the project's verify_cmd; the NEXT
+# iteration's node_health_check reuses that result instead of running the whole
+# suite a second time. No caller reads or writes any of it, so it is namespaced
+# to this file and reached through the accessors below — the coupling is a
+# named interface between two functions, not three bare globals that happen to
+# share a shell.
+#
+# Initialised here so the defaults are stated once instead of implied by a
+# `${VAR:-0}` at each read. Both defaults preserve the prior behaviour exactly,
+# including its sharp edge: an iteration that never reached node_test_sample
+# leaves the next node_health_check reporting the baseline healthy from this
+# default rather than from a measurement.
+LOOP_VERIFY_LAST_TEST_RESULT=0   # exit status of the last verify_cmd run
+LOOP_VERIFY_LAST_TEST_OUTPUT=""  # its combined output, trailing newlines trimmed
+LOOP_VERIFY_PREV_FAILED=""       # failed-count of the run before it, for the
+                                 # fix-rate delta. Written and read by
+                                 # node_test_sample alone; empty until a count
+                                 # parses out of a run.
+
+# Producer — node_test_sample records one verify_cmd run.
+verify_state_record_test_run() {
+  LOOP_VERIFY_LAST_TEST_RESULT="$1"
+  LOOP_VERIFY_LAST_TEST_OUTPUT="$2"
+}
+# Consumers — node_health_check reads the run carried forward. Command
+# substitution is lossless for the output: it was captured with $(cat …), so it
+# already carries no trailing newline for a second $() to trim.
+verify_state_last_result() { printf '%s' "$LOOP_VERIFY_LAST_TEST_RESULT"; }
+verify_state_last_output() { printf '%s' "$LOOP_VERIFY_LAST_TEST_OUTPUT"; }
+# ────────────────────────────────────────────────────────────────
 
 # ─── [DET] NODE: SYNTAX CHECK ───────────────────────────────────
 # Checks syntax of all files changed since HEAD. No LLM calls.
@@ -137,8 +206,8 @@ node_health_check() {
     out=$(_timeout "$TEST_SAMPLE_TIMEOUT" bash -c "$verify_cmd" 2>&1) || broken=1
   else
     # Reuse the previous iteration's result — avoids a second full test run.
-    [ "${LAST_TEST_RESULT:-0}" -ne 0 ] && broken=1
-    out="${LAST_TEST_OUTPUT:-}"
+    [ "$(verify_state_last_result)" -ne 0 ] && broken=1
+    out=$(verify_state_last_output)
   fi
 
   if [ "$broken" -ne 0 ]; then
@@ -178,19 +247,19 @@ node_test_sample() {
 
   # Carry the result forward so the next iteration's health_check can reuse it
   # rather than running the whole suite a second time.
-  LAST_TEST_OUTPUT=$(cat "$tmp_out")
-  LAST_TEST_RESULT=$rc
+  local out; out=$(cat "$tmp_out")
+  verify_state_record_test_run "$rc" "$out"
 
   # #3: per-iteration fix-rate — log the failed-count delta vs the prior iteration.
-  local cur_failed; cur_failed=$(_parse_failed_count "$LAST_TEST_OUTPUT")
+  local cur_failed; cur_failed=$(_parse_failed_count "$out")
   if [ -n "$cur_failed" ]; then
-    if [ -n "${PREV_FAILED:-}" ]; then
-      local repaired=$((PREV_FAILED - cur_failed))
-      printf '%s\t%s\t%s\t%s\n' "${ITERATION:-0}" "$PREV_FAILED" "$cur_failed" "$repaired" \
+    if [ -n "$LOOP_VERIFY_PREV_FAILED" ]; then
+      local repaired=$((LOOP_VERIFY_PREV_FAILED - cur_failed))
+      printf '%s\t%s\t%s\t%s\n' "${ITERATION:-0}" "$LOOP_VERIFY_PREV_FAILED" "$cur_failed" "$repaired" \
         >> "$LOG_DIR/fix-rate.tsv"
-      log_info "[METRIC] iter ${ITERATION:-0} fix-rate: failed ${PREV_FAILED}→${cur_failed} (repaired ${repaired})"
+      log_info "[METRIC] iter ${ITERATION:-0} fix-rate: failed ${LOOP_VERIFY_PREV_FAILED}→${cur_failed} (repaired ${repaired})"
     fi
-    PREV_FAILED=$cur_failed
+    LOOP_VERIFY_PREV_FAILED=$cur_failed
   fi
 
   rm -f "$tmp_out"
