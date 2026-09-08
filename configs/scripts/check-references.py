@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Fail when a markdown link, anchor, or shipped path does not resolve.
+"""Fail when a markdown link, anchor, or shipped path does not resolve, or when
+a top-level `docs/` page has lost its back link to the README.
 
 Clade already recomputes *counts* (`doc-align.py`) and *module coverage*
 (`check-arch-map.py`), but nothing checked that a link points at something
@@ -12,6 +13,13 @@ suppressing real ones — prose, regexes, and templates all look like links.
 Every exclusion below is deliberate and narrow; when in doubt the checker
 reports, because a silenced class is a class nobody looks at again.
 
+The header check is the same shape of problem one level up: `configs/CLAUDE.md`
+states the docs header convention in prose, nothing read it back, and two of the
+fourteen top-level pages had drifted off it before a hand audit noticed. Only
+the back link is asserted — it is what a reader actually navigates by, and it is
+unambiguous, whereas the language-toggle line reads differently depending on
+whether a translation exists.
+
 Usage:
   check-references.py [--root REPO_ROOT] [--quiet]
 """
@@ -19,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+import itertools
 import re
 import sys
 from pathlib import Path
@@ -77,6 +86,47 @@ def markdown_files(root: Path):
         yield p
 
 
+# ─── docs/ header convention ────────────────────────────────────────────────
+# configs/CLAUDE.md: "docs/ files: line 1 = language toggle, line 3 = back link
+# to README, then internal TOC." The back link is the checkable half: a page
+# that lost it is a dead end for a reader who arrived from a search result.
+DOCS_HEADER_LINES = 3
+_ZH_PAGE = ".zh-CN.md"
+
+
+def readme_backlink_for(name: str) -> str:
+    """A Chinese page links the Chinese README; every other page links README.md.
+
+    Accepting either everywhere would let an English page satisfy the check with
+    the `../README.zh-CN.md` that already sits in its language-toggle line.
+    """
+    return "../README.zh-CN.md" if name.endswith(_ZH_PAGE) else "../README.md"
+
+
+def check_docs_headers(root: Path) -> list[str]:
+    """Every top-level docs/*.md links its README within the first lines."""
+    problems: list[str] = []
+    docs = root / "docs"
+    if not docs.is_dir():
+        return problems
+
+    for md in sorted(docs.glob("*.md")):        # top level only: subdirectories
+        rel = md.relative_to(root)              # hold archives, not reader pages
+        expected = readme_backlink_for(md.name)
+        try:
+            with md.open(encoding="utf-8", errors="replace") as fh:
+                head = "".join(itertools.islice(fh, DOCS_HEADER_LINES))
+        except OSError as exc:
+            problems.append(f"{rel}: unreadable ({exc})")
+            continue
+        targets = {t.partition("#")[0] for _, t in _LINK.findall(head)}
+        if expected not in targets:
+            problems.append(
+                f"{rel}: no link to {expected} in the first {DOCS_HEADER_LINES} "
+                "lines (docs header convention)")
+    return problems
+
+
 def check(root: Path) -> list[str]:
     anchor_cache: dict[Path, set[str]] = {}
     problems: list[str] = []
@@ -127,15 +177,16 @@ def main() -> int:
     args = ap.parse_args()
 
     root = Path(args.root).resolve()
-    problems = check(root)
+    problems = check(root) + check_docs_headers(root)
 
     if problems:
-        print(f"check-references: {len(problems)} unresolved reference(s):")
+        print(f"check-references: {len(problems)} problem(s):")
         for p in problems:
             print(f"  {p}")
         return 1
     if not args.quiet:
-        print("check-references: every markdown link, anchor, and path resolves ✓")
+        print("check-references: every markdown link, anchor, and path resolves, "
+              "and every top-level docs/ page links back to its README ✓")
     return 0
 
 
