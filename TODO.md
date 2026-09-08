@@ -386,7 +386,12 @@ re-running the gates.
 
 - [ ] 🔴 **Rotate these 13 credentials.** Masking removed them from disk; it
       does not un-expose them. Owner action — nothing in this repository can do
-      it. Ordered by blast radius; the "where" column is the project slug the
+      it.
+      **DEFERRED BY THE OWNER, 2026-09-07** — read and judged not worth
+      acting on in the short term. Left filed rather than closed, because
+      the exposure does not expire on its own and the list is the only
+      record of which accounts it names. Do not re-raise it as a finding;
+      it is a decision, not an oversight. Ordered by blast radius; the "where" column is the project slug the
       credential appeared under, which is what identifies the account to rotate
       in.
 
