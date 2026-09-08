@@ -60,6 +60,47 @@ semantic versioning。
   `configs/scripts/check-action-pinning.py` 强制
 - 危险命令 guardian 此前按子串而非命令位置匹配，并且从未真正拦住 `rm -rf ~`。
   现在它还会拦截会杀掉自己启动进程的 `pkill -f` 模式
+- FastAPI 的 pin 把 orchestrator 锁死在 starlette 最后一个有漏洞的版本上。
+  `fastapi==0.131.0` 要求 `starlette<1.0.0`，而 0.52.1 是 0.x 系列发布过的最后
+  一个版本 —— 所以这不是版本滞后，而是一条 pin 之内无解的安全下限。当时它上面
+  有两个 HIGH：`GHSA-wqp7-x3pw-xc5r`，通过 `StaticFiles` 的 UNC 路径实现 SSRF
+  与 NTLM 凭据窃取，而 `server.py` 正是把 `StaticFiles` 挂在 `/web` 上；以及
+  `GHSA-82w8-qh3p-5jfq`，`request.form()` 对
+  `application/x-www-form-urlencoded` 静默忽略大小与数量上限。另有两个
+  MODERATE。现在 `fastapi` 升到 0.141.1（只要求 `starlette>=0.46.0`），并在
+  `orchestrator/requirements.txt` 里直接 pin `starlette==1.6.0`，每条 advisory
+  都写在 pin 旁边 —— 安全下限落在本仓库自己的文件里，而不是藏在另一个包的
+  metadata 中
+- correction 流水线曾把用户的 prompt 原样写到三个地方：`history.jsonl`、一条
+  谁都没注意到的 lib 缺失回退写入，以及 cross-project-rules 预览。`redact.py`
+  一直存在，但这条路径上从未调用过它。现在会调用，且只调用一次 —— 在
+  correction 判定之后，这样对不产生任何写入的 prompt 就不会启动 `python3`；
+  又在裁剪 prompt 之前，因为先裁剪可能把一个 token 截到检测阈值以下，从而把
+  半截凭据留在磁盘上。`python3` 不可用时，hook 用回退模式检测并整条扣留 prompt
+  而不是做替换：实测那套 sed 回退会把一个 48 字符 key 留下 16 个字符。
+  `redact.py` 另外补上了现有模式都够不到的下划线 key 形状，`checks.sh` 的内联
+  回退也同步带上了它
+- 结构化事件、SQLite 中的运行时文本、traces、sessions 与 provider 流在持久化前
+  统一脱敏（`orchestrator/runtime_redaction.py`），worker 的 stdout 与 stderr
+  也经过流式 redactor，因此原始凭据不会落到日志文件或数据库行里
+- 七处 hook 与 script 调用点写在固定、可预测的 `/tmp` 路径上 —— edit shadows、
+  skill-suggest 节流、radar 与 sync-push 锁、watchdog 的 pid 与日志。在共享主机
+  上，第一个创建 `/tmp/claude-edit-shadows` 的账户就占有了它，其余账户的 hook
+  全部 fail open：这台 40 个账户的机器上，除一个账户外所有人的 correction
+  pairing 都被静默关掉了，且没有任何提示。现在七处全部改由
+  `configs/hooks/lib/runtime-dir.sh` 派生，它在路径被抢占时 fail closed ——
+  必须不是 symlink、属主为当前 euid、权限 0700。旧路径直接弃用而非迁移，清理
+  也只会碰我们自己留下的陈旧文件
+- prompt secret-scanner 一次都没有真正告警过。它唯一的输出是
+  `hookSpecificOutput.additionalContext`，却被配成 `async: true` —— 异步 hook
+  没有回到本轮对话的通道，所以每一条凭据告警都被直接丢弃。现在它与旁边的
+  `correction-detector.sh` 一样同步执行
+- 一次 MCP skill 调用会冻结排在它后面的所有并发请求。`mcp_server.py` 在
+  `async def` 里调用了带 300 秒超时的 `subprocess.run`，一次运行就把 event loop
+  堵死整个时长；而 `task_factory/ci_watcher.py` 在 status loop 调度的协程里调用
+  `check_output` 且完全没有超时。两处现在都改用
+  `asyncio.create_subprocess_exec` 加 `wait_for`；超时与取消路径都会 SIGKILL
+  整个进程组并排空管道，因此一个自己又派生了工具的 agent 运行不会留下残留进程
 
 ### 新增
 
@@ -210,6 +251,17 @@ semantic versioning。
 - 被取代的模型 ID 仍被接受，既有 task 行与 evidence bundle 继续可解析
 - `worker_sandbox`（Landlock）与 `worker_checkpoint_shadow` 默认关闭；
   `worker_git_surface_guard` 与 `worker_require_worktree` 默认开启
+- `/web` 在 UI 构建之前返回 503。`web/dist` 是唯一可服务的根目录，而它被
+  gitignore，所以全新检出没有 UI：`orchestrator/start.sh` 会在首次运行时构建，
+  也可以手动执行 `cd orchestrator/web && npm ci && npm run build`。此前的回退是
+  挂载 Vite 的 *源码* 树，其 `index.html` 加载 `/src/main.tsx` —— 没有任何浏览器
+  能执行这个页面
+- 删除 `reaction_configs` 与 `patrol_auto_ideas` 两个设置项。它们都被发布在设置
+  参考里却无人读取；而把 `reaction_configs` 按发布的样子接上去比删掉更糟：
+  `config.py` 里的那份副本只包含 `reactions.DEFAULT_CONFIGS` 五条规则中的三条，
+  且 `ReactionExecutor` 是整体替换而非合并，任何照抄生成的参考文件的人都会
+  静默丢掉两条 reaction 规则。`reactions_enabled` 与 `min_workers` 现在是真的
+  生效了
 - FastAPI multi-worker orchestrator 仍为 Claude-specific
 
 ### 升级
@@ -271,6 +323,8 @@ codex plugin add clade@clade
 - 初版 `clade-mcp`，包含 29 个 coding workflows，通过 Claude 执行
 - Claude Code skills、hooks、agents、scripts 与 FastAPI orchestrator
 
-[0.3.1]: https://github.com/shenxingy/Clade/compare/v0.2.0...v0.3.1
+<!-- 0.3.1 发布时没有打 tag：release commit 里写明打 tag 与发布仍由操作者决定，
+     因此这里的 compare 链接指向该 commit，而不是并不存在的 v0.3.1 tag。 -->
+[0.3.1]: https://github.com/shenxingy/Clade/compare/v0.2.0...32961e4
 [0.2.0]: https://github.com/shenxingy/Clade/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/shenxingy/Clade/releases/tag/v0.1.0
