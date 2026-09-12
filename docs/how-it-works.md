@@ -42,7 +42,7 @@
 | `notify-telegram.sh` | Notification | Forwards Claude notifications to Telegram |
 | `session-end-cleanup.sh` | SessionEnd | Removes <runtime>/claude-edit-shadows/session-<session_id>.jsonl when session terminates |
 
-All hooks are shell scripts — zero API cost, sub-second execution.
+Most hooks are shell scripts — zero API cost, sub-second execution. Two are `type: "prompt"` LLM hooks and cost a model call each time they fire: `stop-completeness-check` (asks whether the user's tasks are actually done before a stop) and the pre-compact state saver. Budget for those two; the other thirty cost nothing.
 
 **`post-tool-use-lint.sh`** runs your project's `verify_cmd` after every file edit. On failure it writes `.claude/lint-feedback.md` and exits with code 2 — Claude sees the error output and fixes it in the next turn. Configure via `.claude/orchestrator.json`:
 
@@ -152,7 +152,7 @@ The status line shows `dir  git:(branch)  ● (4d)` — the quota pace indicator
 
 ### Display Modes
 
-Four modes — cycle with `slt`, or set directly:
+Five modes — cycle with `slt`, or set directly:
 
 | Mode | Example | When to use |
 |------|---------|-------------|

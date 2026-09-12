@@ -157,6 +157,34 @@ MODEL_CALLS=$(grep -cE -- 'claude .*--model "\$SUPERVISOR_MODEL"|--model "\$SUPE
 check "every claude call takes its model from \$SUPERVISOR_MODEL" \
   "$([[ "$MODEL_CALLS" -ge 3 ]] && echo yes || echo no)" "found $MODEL_CALLS"
 
+section "documented overrides are assignable, not readonly"
+
+# --max-consecutive-failures was documented in SKILL.md and the ceiling it
+# raises was declared `readonly`, so passing the flag printed
+# "loop_args.sh: line 68: MAX_CONSECUTIVE_FAILURES: readonly variable" and the
+# override was discarded. The file already keeps SUPERVISOR_TIMEOUT writable
+# with a comment saying exactly why; this one was missed.
+run_dry --max-consecutive-failures 5 "$GOAL" --dry-run
+check "no readonly error when overriding the failure ceiling" \
+  "$([[ "$OUT" != *"readonly variable"* ]] && echo yes || echo no)" \
+  "$(grep -o '.*readonly variable' <<< "$OUT" | head -1)"
+
+# Every ceiling the usage text offers must be writable, not just this one.
+READONLY_OVERRIDES=""
+while read -r flag var; do
+  [[ -z "$flag" ]] && continue
+  if grep -qE "^readonly ${var}=" "$REPO_ROOT/configs/scripts/loop-runner.sh"; then
+    READONLY_OVERRIDES="$READONLY_OVERRIDES $flag"
+  fi
+done <<'PAIRS'
+--max-consecutive-failures MAX_CONSECUTIVE_FAILURES
+--supervisor-timeout SUPERVISOR_TIMEOUT
+--max-iter MAX_ITER
+--max-workers MAX_WORKERS
+PAIRS
+check "no documented override targets a readonly variable" \
+  "$([[ -z "$READONLY_OVERRIDES" ]] && echo yes || echo no)" "readonly:$READONLY_OVERRIDES"
+
 printf "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
 if [[ "$TESTS_FAILED" -eq 0 ]]; then
   printf "  ${GREEN}ALL PASSED${NC} (%d/%d)\n" "$TESTS_PASSED" "$TESTS_RUN"

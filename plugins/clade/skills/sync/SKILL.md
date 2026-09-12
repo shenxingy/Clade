@@ -75,7 +75,7 @@ Build a mental model of: what features were added, what bugs were fixed, what wa
 
 ## Step 3: Update PROGRESS.md
 
-Append a session summary to PROGRESS.md. Follow this format:
+Add the session summary at the TOP of PROGRESS.md, immediately below the archive-pointer line — the log is newest-first and `archive-progress.py` keeps the newest entries that fit under the cap. Appending puts today's work first in line to be archived. Follow this format:
 
 ```markdown
 ### YYYY-MM-DD — [Brief session description]
@@ -252,7 +252,7 @@ End-of-session documentation ritual. Reviews what was done and updates project d
 
 1. Reviews recent git history to understand what was accomplished
 2. Auto-updates TODO.md (checks off completed items)
-3. Appends a session summary to PROGRESS.md
+3. Prepends a session summary to PROGRESS.md (newest-first; appending puts today's work first in line to be archived)
 4. Flags a root README over the 300-line landing-page cap, naming the sections that should move to `docs/`
 
 ## Usage

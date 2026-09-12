@@ -76,7 +76,10 @@ readonly PURE_JUDGE_FLAGS=(--setting-sources "" --disallowed-tools Edit,Write,Ba
 # ────────────────────────────────────────────────────────────────
 # ─── BLUEPRINT HARD LIMITS ──────────────────────────────────────
 readonly MAX_CONSECUTIVE_NO_COMMITS=3   # consecutive empty iters → force stop
-readonly MAX_CONSECUTIVE_FAILURES=3     # consecutive worker failures (ran but no commits) → force stop
+# NOT readonly: overridden by --max-consecutive-failures N, the same way
+# SUPERVISOR_TIMEOUT below is. It WAS readonly, so passing the documented flag
+# aborted the run with "readonly variable" instead of raising the ceiling.
+MAX_CONSECUTIVE_FAILURES=3     # consecutive worker failures (ran but no commits) → force stop
 readonly SYNTAX_CHECK_TIMEOUT=30        # syntax check timeout (seconds)
 readonly TEST_SAMPLE_TIMEOUT=120        # verify_cmd timeout (seconds)
 # NOT readonly: override with --supervisor-timeout N. 120s was the default

@@ -2,12 +2,12 @@
 # statusline-toggle (slt) — control Claude Code status line display.
 # Compatible with Bash 3.2+ (macOS default).
 #
-# MODES   (~/.claude/.statusline-mode):   symbol | percent | number | off
+# MODES   (~/.claude/.statusline-mode):   symbol | percent | number | bar | off
 # THEMES  (~/.claude/.statusline-theme):  see: slt theme
 #
 # Usage:
 #   slt                   cycle mode: symbol → percent → number → bar → off → symbol
-#   slt symbol/percent/number/off  set mode directly
+#   slt symbol/percent/number/bar/off  set mode directly
 #   slt theme             list all themes
 #   slt theme <name>      set theme + show stage meanings
 

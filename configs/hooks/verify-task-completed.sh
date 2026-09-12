@@ -55,7 +55,7 @@ fi
 # ─── Run project-level type checks ───────────────────────────────────
 
 if $STRICT_MODE; then
-  echo "High error rate detected for $DOMAIN — running stricter checks..." >&2
+  echo "$DOMAIN carries $DOMAIN_COUNT correction(s), peak $PEAK_COUNT — running stricter checks..." >&2
 fi
 
 run_typecheck_for_project "$(pwd)" "$STRICT_MODE"

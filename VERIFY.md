@@ -4,7 +4,7 @@
 
 **Project type:** cli + skill-system + orchestrator (FastAPI)
 **Last full pass:** 2026-07-29
-**Coverage:** 95 ✅, 0 ❌, 4 ⚠, 0 ⬜ untested
+**Coverage:** 96 ✅, 0 ❌, 4 ⚠, 0 ⬜ untested
 
 ---
 
@@ -29,7 +29,7 @@
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
 | CX1 | `.agents/plugins/marketplace.json` installs `plugins/clade/` as a valid Codex plugin | ✅ | 2026-07-13 | validated and installed locally as `clade@clade` |
-| CX2 | All 25 curated Codex skills match their canonical sources and contain no nested `claude -p` execution | ✅ | 2026-07-29 | `regen-codex-plugin.py --check` reports no drift |
+| CX2 | All 26 curated Codex skills match their canonical sources and contain no nested `claude -p` execution | ✅ | 2026-07-29 | `regen-codex-plugin.py --check` reports no drift |
 | CX3 | Native lifecycle hooks inject read-only session context and guard destructive Bash commands | ✅ | 2026-07-13 | regression tests cover force-push rewriting/blocking and recursive deletion |
 | CX4 | `clade-mcp` selects Claude, Codex, or auto runtime without changing the backwards-compatible default | ✅ | 2026-07-13 | unit tests and MCP initialization handshake pass |
 | CX5 | `$codex-usage` reads authenticated rate-limit snapshots without opening credentials and safely merges native footer fields | ✅ | 2026-07-13 | unit tests cover protocol messages, pace calculation, config preservation, idempotence, and malformed config |

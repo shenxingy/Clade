@@ -121,6 +121,16 @@ backlog.
   replacing user values, refreshed the local Codex plugin cache, and removed
   completed local/remote branch state. Final delivery returns to synchronized
   `main`.
+- [ ] 🔵 **`templates/CLAUDE.md` is orphaned — confirm deletion.** install.sh
+      §10 was the only code that read it and was removed 2026-09-12 as dead
+      (§8 already deploys `configs/CLAUDE.md`, the maintained source, and §10
+      copied a frozen 2026-02 snapshot only when the target lacked "Agent
+      Ground Rules" — so on any machine that had installed once it did nothing,
+      and on a fresh one it raced §8 with stale content). The live project
+      template is `configs/templates/CLAUDE.md`, which `test-pr-scope-policy.sh`
+      now pins instead. Nothing reads the root copy. Deleting it needs your
+      word; leaving it is one more frozen file that will be mistaken for source.
+
 - [ ] **Conditional watch:** add Beads-style agent-filed note-to-self entries
   only when measured loop-runner cross-iteration context loss recurs.
   *Condition checked 2026-08-29: not triggered — no such loss has been measured
@@ -209,7 +219,7 @@ choice with a real tradeoff, which is why they are recorded instead of built.
   implementation.
 - [x] **Dependency scanning — decided and built.** `pip-audit` and `npm audit`
       run weekly in `ci.yml`'s `dependency-audit` job as of 2026-09-02, and the
-      four highs the npm half found were fixed on 2026-09-12. What remains
+      four highs the npm half found were fixed on 2026-09-02 (`a9cb20e`). What remains
       genuinely undecided is narrower than the original item: a Dependabot
       config and a CodeQL step. Neither is scheduled; say so rather than
       leaving the whole question open, which made the built half invisible.

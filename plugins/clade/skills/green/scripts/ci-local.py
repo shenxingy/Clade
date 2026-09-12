@@ -6,7 +6,7 @@ Why
 ---
 Hosted CI minutes are billed per job, rounded UP to the minute, per job, and
 multiplied by platform: Linux 1x, Windows 2x, macOS 10x. A four-job workflow
-whose jobs take 24s, 39s, 60s and 73s bills **four minutes**, not three. Push
+whose jobs take 24s, 39s, 60s and 73s bills **five minutes**, not three. Push
 fifty times in a day and that is 200 minutes for work a 32-core machine sitting
 idle on the same desk would have done in ninety seconds.
 
@@ -18,7 +18,7 @@ Why derive instead of duplicate
 -------------------------------
 This repository already had a hand-written "run these before committing"
 checklist in CLAUDE.md, and it drifted twice: 4 of 7 gates in 2026-08, then 7
-of 11 plus 0 of 18 shell suites. A second gate (`check-ci-checklist.py`) now
+of 11 plus 0 of 17 shell suites. A second gate (`check-ci-checklist.py`) now
 compares the two lists, which works but means maintaining both. This script
 does not maintain a list at all — it reads the workflow files and runs what
 they run, so it cannot drift by construction.

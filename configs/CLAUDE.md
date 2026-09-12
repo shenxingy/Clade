@@ -24,7 +24,7 @@ These rules enable autonomous, unattended operation across all projects.
 ## CI — run it on hardware you already own
 
 **Hosted CI is billed per job, rounded up to the minute, per job.** A workflow
-whose four jobs take 24s, 39s, 60s and 73s bills four minutes, not three. The
+whose four jobs take 24s, 39s, 60s and 73s bills five minutes, not three. The
 platform multiplies it: Linux 1x, Windows 2x, **macOS 10x**. Public
 repositories get standard runners free; private ones do not, and that is where
 the bill comes from.
@@ -46,7 +46,7 @@ It parses `.github/workflows/*.yml` and executes the same `run:` blocks, so it
 works on any repository and **cannot drift from CI by construction**. A
 hand-maintained "run these before committing" list is the thing that drifts:
 one such list in this toolkit was wrong twice, covering 4 of 7 gates and later
-7 of 11 plus 0 of 18 suites, both times looking authoritative.
+7 of 11 plus 0 of 17 suites, both times looking authoritative.
 
 **Reading its output honestly.** A skipped job is reported with its reason and
 never dropped — "nothing ran" and "everything passed" must not look alike. Jobs

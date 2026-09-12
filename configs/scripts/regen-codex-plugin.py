@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -294,15 +295,33 @@ def _copy_declared_resources(name: str, dest_dir: Path) -> None:
 
 
 def generate(dest: Path) -> None:
+    """Build into a staging directory, then swap.
+
+    This used to `rmtree(dest)` first and render inside the loop, so a skill
+    that failed validation — `_render_skill` raises on forbidden text such as a
+    `~/.claude/` path, which Codex does not have — left the tree holding 1 of
+    26 skills and every test that reads a generated path failing with
+    FileNotFoundError. The destination is only replaced once the whole set has
+    been rendered successfully.
+    """
+    staging = dest.with_name(dest.name + f".staging.{os.getpid()}")
+    if staging.exists():
+        shutil.rmtree(staging)
+    staging.mkdir(parents=True)
+    try:
+        for name in _read_manifest():
+            skill_dest = staging / name
+            skill_dest.mkdir()
+            (skill_dest / "SKILL.md").write_text(_render_skill(name), encoding="utf-8")
+            _copy_resources(SOURCE_ROOT / name, skill_dest)
+            _copy_declared_resources(name, skill_dest)
+    except BaseException:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+
     if dest.exists():
         shutil.rmtree(dest)
-    dest.mkdir(parents=True)
-    for name in _read_manifest():
-        skill_dest = dest / name
-        skill_dest.mkdir()
-        (skill_dest / "SKILL.md").write_text(_render_skill(name), encoding="utf-8")
-        _copy_resources(SOURCE_ROOT / name, skill_dest)
-        _copy_declared_resources(name, skill_dest)
+    staging.rename(dest)
 
 
 def _tree_hashes(root: Path) -> dict[str, str]:

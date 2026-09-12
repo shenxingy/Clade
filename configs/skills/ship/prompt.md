@@ -14,7 +14,14 @@ them through `/create-pr` first.
 
 ## Steps
 
-### Step 1: Pre-flight
+### Step 0: `--dry-run`
+
+With `--dry-run`, run Steps 1-5 as ANALYSIS ONLY: make no `Edit` call, never
+reach the `committer`, never create a PR or a tag. Emit the final report with
+every line prefixed `would:`. The flag was in the argument-hint and no step
+branched on it, so a run asking to preview bumped the version and opened a PR.
+
+## Step 1: Pre-flight
 
 1. Check working tree is clean: `git status --porcelain`. If dirty, report what's uncommitted and STOP with BLOCKED.
 2. Confirm `gh` CLI is available: `gh --version`. If missing, skip Step 7 (PR) and warn.

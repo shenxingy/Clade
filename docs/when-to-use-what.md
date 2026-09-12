@@ -194,7 +194,7 @@ For most day-to-day work — bug fixes, small features, refactoring, codebase qu
 
 ### `slt`
 **When:** Controlling the statusline display.
-- `slt` cycles through modes: symbol → percent → number → off
+- `slt` cycles through modes: symbol → percent → number → bar → off
 - `slt theme` lists themes; `slt theme <name>` sets one
 
 ## Content families

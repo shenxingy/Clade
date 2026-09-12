@@ -94,7 +94,7 @@ assert_contains \
   "Multiple commits do not make a multi-feature branch acceptable." \
   "installed global rules carry PR invariant"
 assert_contains \
-  "templates/CLAUDE.md" \
+  "configs/templates/CLAUDE.md" \
   "use stacked PRs and require each branch" \
   "project template carries stacked-PR rule"
 

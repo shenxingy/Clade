@@ -1,6 +1,6 @@
 ---
 name: document-release
-description: "Post-ship documentation sync — updates README, CHANGELOG, AGENTS.md, ARCHITECTURE, and TODOS after a release. Ensures docs never drift from code. Run after /commit or /ship before closing a PR."
+description: "Post-ship documentation sync — updates README, CHANGELOG, AGENTS.md, and TODOS after a release. Ensures docs never drift from code. Run after /commit or /ship before closing a PR."
 ---
 
 # Clade for Codex

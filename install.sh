@@ -542,23 +542,13 @@ setup_alias "$HOME/.zshrc"
 setup_alias "$HOME/.bashrc"
 echo "  Run: source ~/.zshrc  (or open a new terminal) to activate"
 
-# ─── 10. Deploy Agent Ground Rules to ~/.claude/CLAUDE.md ────────────
-
-GLOBAL_CLAUDE="$CLAUDE_DIR/CLAUDE.md"
-TEMPLATE_CLAUDE="$SCRIPT_DIR/templates/CLAUDE.md"
-
-if [[ -f "$TEMPLATE_CLAUDE" ]]; then
-  echo "Configuring ~/.claude/CLAUDE.md..."
-  if [[ ! -f "$GLOBAL_CLAUDE" ]]; then
-    cp "$TEMPLATE_CLAUDE" "$GLOBAL_CLAUDE"
-    echo "  Created ~/.claude/CLAUDE.md with Agent Ground Rules"
-  elif ! grep -q "Agent Ground Rules" "$GLOBAL_CLAUDE" 2>/dev/null; then
-    { echo ""; cat "$TEMPLATE_CLAUDE"; } >> "$GLOBAL_CLAUDE"
-    echo "  Appended Agent Ground Rules to existing ~/.claude/CLAUDE.md"
-  else
-    echo "  ~/.claude/CLAUDE.md already has Agent Ground Rules — skipping"
-  fi
-fi
+# ─── 10. (removed) Agent Ground Rules deployment ─────────────────────
+# Section 8 already deploys configs/CLAUDE.md — the maintained source — to
+# ~/.claude/CLAUDE.md, preserving the Cross-Project Rules tail. This section
+# copied templates/CLAUDE.md instead, a frozen 2026-02 snapshot, and only when
+# the target did not already contain "Agent Ground Rules". On any machine that
+# had ever installed, it printed "already has ... skipping" and did nothing; on
+# a fresh one it raced §8 with stale content. Removed 2026-09-12.
 
 # ─── 10b. Verify doc-align facts ─────────────────────────────────────
 # Installation must not mutate its source checkout. Report stale derived

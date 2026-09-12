@@ -35,7 +35,7 @@ cd orchestrator && ./start.sh
 # → Opens http://localhost:8765 in your browser
 ```
 
-The FastAPI backend requires Python 3.9+. The React UI must be built —
+The FastAPI backend requires Python 3.10+. The React UI must be built —
 `start.sh` does it for you on first run, or `cd orchestrator/web && npm ci &&
 npm run build` by hand. Until it is built, `/web` answers 503 naming that
 command and `/` redirects there; the API itself is unaffected. There is no

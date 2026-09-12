@@ -5,6 +5,19 @@ current coherent delivery slice.
 
 - default: checkpoint locally; publish only when the active delivery record or
   repository policy already authorizes it
+
+**Optional oracle gate.** When `CLADE_ORACLE_GATE=1` is set in the environment,
+run the same judge the orchestrator uses over the staged diff before committing:
+
+```bash
+# Repo-relative; the installed copy is on PATH as oracle-review.sh
+configs/scripts/oracle-review.sh --staged --task "<the commit message>"
+```
+
+Exit 0 approves. Exit 1 is a rejection — report what it said and fix the diff
+rather than committing over it. Exit 2 means it could not review (no key, no
+model); that is NOT approval, so say the gate did not run. The variable was
+documented in `CLAUDE.md` and read by nothing until 2026-09-12.
 - `--publish`: user explicitly requests publishing the owned branch after green
   checkpoints
 - `--candidate`: run complete candidate verification and bind it to exact HEAD

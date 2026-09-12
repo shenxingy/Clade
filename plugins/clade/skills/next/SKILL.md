@@ -1,6 +1,6 @@
 ---
 name: next
-description: "\\\"What should I work on next?\\\" — two modes. Fast mode (default): one-shot recommendation from docs + git state, ≤10 lines, no interview. Deep mode (`/next deep` or when user asks to explore priorities): multi-round interview to surface the best move."
+description: "\\\"What should I work on next?\\\" — two modes. Fast mode (default): one-shot recommendation from docs + git state, ≤15 lines, no interview. Deep mode (`/next deep` or when user asks to explore priorities): multi-round interview to surface the best move."
 ---
 
 # Clade for Codex

@@ -26,7 +26,7 @@ cd clade
 claude
 ```
 
-**Requirements:** `jq` for settings merge. Python 3.9+ for the orchestrator. Everything else is optional.
+**Requirements:** `jq` for settings merge. Python 3.10+ for the orchestrator. Everything else is optional.
 
 **Test your changes:** After modifying a hook or script, run `./install.sh` to redeploy, then open a fresh Claude Code session to verify it fires correctly.
 

@@ -45,7 +45,7 @@ Build a mental model of: what features were added, what bugs were fixed, what wa
 
 ## Step 3: Update PROGRESS.md
 
-Append a session summary to PROGRESS.md. Follow this format:
+Add the session summary at the TOP of PROGRESS.md, immediately below the archive-pointer line — the log is newest-first and `archive-progress.py` keeps the newest entries that fit under the cap. Appending puts today's work first in line to be archived. Follow this format:
 
 ```markdown
 ### YYYY-MM-DD — [Brief session description]

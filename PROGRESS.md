@@ -55,7 +55,7 @@ documented as working, and never fires.** Found eleven times.
 - **Instruments that could not fire.** `prompt-tracker.sh` had never delivered a
   message in 386,760 prompts. `session-scorecard.sh` read a field present in 0
   of 983 records. `rule-effectiveness.json` is empty because the classifier
-  emits eleven closed labels while rules are filed under free text. `stats.json`
+  emits thirteen closed labels (twelve domains plus `unknown`) while rules are filed under free text. `stats.json`
   held unresolved git conflict markers. The poll counter written the same day
   reported zero everywhere because its guard matched the `>/` of `2>/dev/null`.
 - **Both new instruments now carry `--self-test`,** run in CI.

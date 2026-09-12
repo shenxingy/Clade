@@ -28,9 +28,21 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 LAYERS = REPO / "docs" / "layers.json"
 
-# Directories that hold source belonging to a surface. Anything here must be
-# claimed. Docs, tests and CI config are not surfaces and are not listed.
-SOURCE_ROOTS = ("configs", "orchestrator", "mcp-package", "plugins", "templates")
+# Top-level directories that are NOT surfaces: docs, tests, CI config, build
+# output, and anything git ignores. Everything else at the top level holds
+# source and must be claimed by a layer.
+#
+# This was a hard-coded allowlist of five names, which made the gate's claim
+# false: TODO.md said "an unclaimed source directory fails it", and a NEW
+# top-level directory — the case that actually happens — was invisible because
+# it was not one of the five. The list is derived from the tree now, so adding
+# a surface and forgetting to declare it is what fails.
+NOT_SURFACES = frozenset({
+    # "logs" is runtime output and gitignored; the rest are docs/CI/build.
+    "docs", "tests", "evals", "examples", "scripts", "logs",
+    ".github", ".git", ".claude", ".claude-plugin", ".agents", ".venv",
+    "node_modules", "__pycache__", "dist", "build",
+})
 
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -78,16 +90,18 @@ def main() -> int:
             if not _DATE.match(str(layer.get("since", ""))):
                 problems.append(f"{name}: {status} without a YYYY-MM-DD 'since'")
 
-    # Coverage: every source directory reaches a declared path.
-    for root in SOURCE_ROOTS:
-        base = REPO / root
-        if not base.is_dir():
+    # Coverage: every top-level source directory reaches a declared path.
+    # Derived from the tree, not from a list — a directory added tomorrow is
+    # checked without anyone remembering to add its name here.
+    for base in sorted(REPO.iterdir()):
+        if not base.is_dir() or base.name in NOT_SURFACES or base.name.startswith("."):
             continue
-        covered = any(
-            raw == root or raw.startswith(f"{root}/") for raw in claimed
-        )
+        root = base.name
+        covered = any(raw == root or raw.startswith(f"{root}/") for raw in claimed)
         if not covered:
-            problems.append(f"source root {root}/ is not claimed by any layer")
+            problems.append(
+                f"source directory {root}/ is not claimed by any layer in docs/layers.json"
+            )
 
     # configs/ has sub-surfaces; each immediate child holding source must be claimed.
     configs = REPO / "configs"

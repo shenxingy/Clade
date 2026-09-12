@@ -294,7 +294,7 @@ versioning for the `clade-mcp` Python package and tagged public releases.
   to a hub needs the token configured on both ends
 - Superseded model ids are still accepted, so existing task rows and evidence
   bundles keep resolving
-- `worker_sandbox` (Landlock) and `worker_checkpoint_shadow` ship default off;
+- `worker_sandbox` (Landlock) ships default off; `worker_checkpoint_shadow` ships ON;
   `worker_git_surface_guard` and `worker_require_worktree` are on
 - `/web` answers 503 until the UI is built. `web/dist` is the only servable
   root and is gitignored, so a fresh checkout has no UI: `orchestrator/start.sh`

@@ -5,7 +5,7 @@
 pass". Nothing checked that claim, and it has now drifted twice:
 
   2026-08-22 (`df802c3`)  the list covered 4 of CI's 7 gates
-  2026-08-29              7 of 11 syntax-check gates, 0 of 18 shell suites,
+  2026-08-29              7 of 11 syntax-check gates, 0 of 17 shell suites,
                           and no mention of validate-plugin.yml at all
 
 Both times the fix was to edit prose, and the file's closing instruction — "If

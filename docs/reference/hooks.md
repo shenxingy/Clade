@@ -208,4 +208,4 @@ The remaining hooks in this group are deliberately NOT turned into `action: "blo
 3. **Stop hooks must check `stop_hook_active`** to avoid infinite loops
 4. **Prompt/Agent hooks** only support specific events (not TeammateIdle)
 5. **JSON on stdout must be clean** — shell profile output can break parsing
-6. **Async hook results** delivered on next conversation turn, not immediately
+6. **A plain `async: true` hook delivers NOTHING.** Its stdout is discarded — `systemMessage` included — so an async hook cannot speak to the turn at all. Only `asyncRewake` delivers, and only on exit code 2, surfacing the hook's stderr as a system reminder on the next turn. A clean run must exit 0 silently. See the delivery-contract paragraph above; this list used to contradict it.

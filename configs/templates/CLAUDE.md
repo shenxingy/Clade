@@ -56,6 +56,17 @@ These rules apply to ALL agents (Claude Code sessions) across all projects. They
 - Conventional commit format required: `feat/fix/refactor/test/chore/docs/perf`
 - Commit small and often — each logical unit gets its own commit
 
+## Pull Requests
+
+- One PR = one independently reviewable and reversible feature, bug fix, or
+  refactor. Tests, migrations, generated contracts, and docs for that same
+  behavior stay with it.
+- Multiple commits do not make a multi-feature branch acceptable. Separate
+  roadmap phases and independently useful capabilities into separate PRs.
+- When features depend on each other, use stacked PRs and require each branch
+  to pass its own CI. Never reuse a final aggregate branch's green result as
+  the only evidence for every layer.
+
 ## Communication
 - When blocked on something requiring human input: write to `.claude/blockers.md` and stop
   - Format: `## Blocker [datetime]\n[what you need]\n[what you tried]`

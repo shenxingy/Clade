@@ -29,10 +29,11 @@ and ``plugins/clade/skills/`` already use. Real files rather than a symlink:
 git clones on Windows without symlink support would otherwise deliver 37
 one-line text files to the loader.
 
-Hooks are deliberately NOT shipped by this plugin. ``configs/hooks/`` holds 31
+Hooks are deliberately NOT shipped by this plugin. ``configs/hooks/`` holds 32
 scripts, several of which are coupled to the maintainer's environment
 (``notify-telegram.sh`` wants a bot token, ``memory-sync.sh`` and
-``sync-pull.sh`` touch a personal sync remote). Which subset is safe to run on
+``sync-health.sh`` touch a personal sync remote — the earlier text named
+``sync-pull.sh``, which does not exist). Which subset is safe to run on
 a stranger's machine is a product decision, not a drift-gate decision, so the
 manifest says what actually ships instead of advertising hooks it does not
 install. The loader looks for ``hooks/hooks.json`` at the plugin root; create

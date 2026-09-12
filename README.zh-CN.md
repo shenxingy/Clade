@@ -166,7 +166,7 @@ Commit Lessons 与 Doc Align 在 Claude 完整框架中本地运行，未启用�
 |-------|------|
 | `/commit` | 创建适配仓库的 checkpoint commits；已有授权时发布 |
 | `/sync` | 勾掉完成的 TODO，追加会话总结到 PROGRESS.md |
-| `/review` | 8 阶段覆盖式审查 — 发现并修复问题，循环到干净为止 |
+| `/review` | 逐条走完 VERIFY.md 的每个 checkpoint，当场修复失败项直到全部通过 |
 | `/green` | 在本机跑仓库真实的 CI 闸门并修到绿 — 绝不通过削弱闸门取胜 |
 
 ### 自主运行

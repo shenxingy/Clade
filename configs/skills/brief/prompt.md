@@ -35,7 +35,7 @@ Generate a concise morning briefing for the current project. Follow these steps:
 
    In every non-`200` case, say which one it was and move on. Do not guess,
    interpolate, or carry over counts from a previous run.
-4. If PROGRESS.md exists, read its last 2000 characters to find the most recent lesson entry.
+4. If PROGRESS.md exists, read the FIRST `### YYYY-MM-DD` block after the header — the log is newest-first, so the last 2000 characters are its oldest entries.
 5. Read TODO.md to find the next 3 open `- [ ]` items.
 
 Then output a concise markdown briefing with exactly these sections:

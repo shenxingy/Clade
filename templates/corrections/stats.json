@@ -5,7 +5,11 @@
   "ml": 0,
   "ios": 0,
   "android": 0,
+  "mobile": 0,
   "systems": 0,
+  "devops": 0,
+  "security": 0,
+  "cli": 0,
   "academic": 0,
   "unknown": 0
 }
