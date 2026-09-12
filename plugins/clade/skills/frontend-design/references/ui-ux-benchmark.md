@@ -146,6 +146,30 @@ comprehension. Keep high-frequency actions restrained, make exits no slower
 than entrances, avoid layout movement on hover, and obey reduced-motion
 preferences. Platform timings are reference points, not universal tokens.
 
+### Ordinary micro-interaction baseline (expressive web and brand surfaces)
+
+Separate from any signature moment, an expressive web or brand surface carries
+one ordinary micro-interaction set, driven by the project's motion tokens so it
+cannot drift between pages. On these surfaces the set below is the default, and
+the guidance above about starting from no animation applies to *additional*
+motion, not to this baseline:
+
+- **Entrance** — a short fade, optionally with a small translate, on first
+  viewport entry for hero, section and card groups. Stagger siblings by
+  40–80 ms; never re-run on scroll-back; reserve space so nothing shifts layout.
+- **Hover and keyboard focus** — an animated transition on every interactive
+  element whose hover or focus state changes: colour, border, elevation or
+  transform, never layout.
+- **Buttons** — a distinct pressed/active feedback in addition to hover and focus.
+- **Cards** — one restrained hover feedback (lift, border, or ground shift), the
+  same one on every card in the product.
+
+Use one easing pair from the token scale, not a new curve per component: a
+decelerating curve such as `cubic-bezier(0.2, 0, 0, 1)` for entrances and
+hover-in, and a slightly faster symmetric or accelerating curve for exits and
+hover-out. Two durations and two curves, tokenized, cover the whole ordinary
+set. Linear is not an easing choice.
+
 ## 7. Outcome comparison
 
 For optimization, compare the same task before and after. At minimum record:

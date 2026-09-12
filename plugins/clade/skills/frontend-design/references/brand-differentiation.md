@@ -92,7 +92,9 @@ Choose each dimension explicitly and record the reason in `BRAND.md`.
   terracotta 20 · crimson 0 · magenta 330. A school may justify going outside
   this: brutalist black-and-white with fluorescent green or yellow; Y2K chrome
   with electric pink; dark luxury black with gold or champagne; analog kraft
-  paper with ink blue.
+  paper with ink blue. These are the *school arguing for the hue*, not a licence
+  to reach for it — outside the school that earns it the ban below stands, and
+  the argument goes in `BRAND.md`.
 - **D. Accent strategy** — monochrome / complementary clash / analogous /
   triadic (hardest)
 
@@ -101,7 +103,19 @@ Banned as defaults, each because it was actually produced and looked derivative:
 - Dark grey ground + low-saturation blue-violet + off-white text — the Linear
   knockoff
 - Warm off-white + ochre + dark brown serif — the Anthropic knockoff
-- Gradients with no reason
+- **Over-saturated purple, magenta, hot pink, or any neon or fluorescent hue as
+  the primary or across a large surface.** These read cheap before they read
+  distinctive, and they are the fastest tell of an unconsidered palette. This
+  ban is about cheapness, not homogeneity, and the two are separate failures:
+  the knockoff bans above exist because a shared reference set produced sibling
+  sites, and this one survives independently of them.
+- Gradients with no reason. A gradient that survives that test is still
+  bounded: two stops, from the same role ramp or from two hues within roughly
+  30° of each other, and no more than two or three steps of lightness travel.
+  It should read as one colour shifting, not as two colours meeting. A gradient
+  spanning complementary or triadic hues, or crossing more than a third of the
+  wheel, is the mesh-background tell — it needs a school that owns it (Gradient
+  Mesh / Liquid, Aurora, Synthwave) and a written argument.
 - Three or more primaries at equal weight
 
 Deliver a full 11-step tonal scale per role colour, a semantic mapping table,
@@ -129,6 +143,17 @@ Quicksand.
 
 Two families at most, and only with real contrast between them.
 
+A type system is not a size ladder. Give every step a **line height** in the
+same table: ~1.5 unitless for body and anything that wraps, 1.1–1.25 for display
+sizes, tighter only above ~40px. Never a px line height on body copy — a px
+value does not grow when the reader enlarges text and the lines collide
+(WCAG 2.2 SC 1.4.12).
+
+Pick at most **three weights** per family — say 400 body, 500 UI label, 700
+heading — and map each to a role in `BRAND.md`. Use no weight outside that set,
+and never one the webfont does not actually ship: synthetic bold and oblique are
+a defect. A variable font still gets a declared set of named stops.
+
 ## Step 5 — One signature interaction, matched to the school
 
 It must serve this brand's subject, and it must belong to the chosen school. A
@@ -148,6 +173,10 @@ those remain fine for ordinary micro-interaction, 200–400 ms, restrained.
 
 Hard constraints, none negotiable:
 
+- **It lives in the layout.** The signature goes inside a normal block — the
+  hero, one feature card, one bento cell — and a reader meets it by scrolling at
+  their usual pace. It is a piece of the page's content, not a section the page
+  stops for.
 - **No scroll-jacking.** The reader scrolls at their own pace; the animation
   happens alongside. No pin-and-scrub sequences.
 - **Must answer the pointer** — hover, cursor position, or viewport entry. An
@@ -200,6 +229,10 @@ Whatever the school:
 - [ ] Is the school something other than Modern SaaS Minimal — or is there a
       real argument for it?
 - [ ] Did the palette avoid dark-grey-plus-low-saturation-blue-violet?
+- [ ] Is it free of over-saturated purple, magenta, hot pink and neon — or does
+      the chosen school argue for the one that remains?
+- [ ] Is every gradient two stops within ~30° of hue, or argued for by the school?
+- [ ] Does the type table give a line height and a weight role to every step?
 - [ ] Did it avoid warm-off-white-plus-ochre-plus-serif?
 - [ ] Is the body face something other than Inter, or is Inter argued for?
 - [ ] Does the signature interaction belong to the chosen school, and to the

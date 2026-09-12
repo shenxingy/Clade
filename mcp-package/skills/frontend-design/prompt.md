@@ -241,6 +241,15 @@ If asked to author a design system, ship:
 - Prefer the project's component library. Use shadcn, MUI, Ant Design, Radix,
   SwiftUI/UIKit/AppKit, WinUI, Compose/Material, Flutter, or other declared
   primitives rather than rebuilding their contracts from scratch.
+- **Define the shared control set once, before the first screen**: button
+  (every variant and size), text input and its field states, card/surface, and
+  navigation. Each gets its spacing, radius, border, type and state values
+  written into the design-system file, and every screen reuses that definition.
+  A second button style, a card whose radius differs from the one two sections
+  up, or a nav that changes between pages is an inconsistency defect, not a
+  per-page decision. Where the chosen school makes a component shape non-default
+  (`references/brand-differentiation.md` Step 6), state that shape once for the
+  whole set rather than per screen.
 - Prove hierarchy in grayscale through size, weight, order, and space before
   relying on color.
 - Use constrained type, spacing, radius, elevation, color, and motion scales.
@@ -312,9 +321,17 @@ Start the implementation handoff with:
   `N/A` for a Micro change that reuses an established direction]
 - **Benchmark**: [reference set, reusable pattern, counterexample, rejected choice]
 - **Brand differentiation** (brand surfaces only): [visual school and why; the
-  four palette decisions; typeface and why; signature interaction and how it
-  belongs to both school and subject; and the final test — beside a typical
-  Linear or Vercel site, are these visibly two different companies?]
+  four palette decisions; typeface and why, with its line heights and its weight
+  set; signature interaction, **the technology chosen to build it and why that
+  one over the alternatives**, and how it belongs to both school and subject;
+  and the final test — beside a typical Linear or Vercel site, are these visibly
+  two different companies?]
+- **Core components**: [button per variant, text input, card, navigation —
+  radius, border, padding, elevation, and hover/focus/pressed treatment, stated
+  once. Every screen consumes these; a screen needing a new component adds it
+  here first.]
+- **Screens in scope**: [the enumerated screens or routes this spec governs, so
+  "implemented consistently across all of them" is checkable rather than felt.]
 - **Native vs custom**: [platform skeleton / product brain / brand expression]
 - **Visual checkpoint**: [real surface / HTML study / native preview / direct implementation — why]
 - **State and motion**: [states covered; each motion's job or no-motion decision]
@@ -327,6 +344,11 @@ Before reporting completion:
 - confirm every pipeline phase is represented or marked `N/A` with a reason;
 - run project tests, design-system checks, and selected platform verification;
 - inspect the real rendered/native result rather than trusting source alone;
+- confirm every screen named in **Screens in scope** was implemented against the
+  design note, and name any screen deliberately left on the old system;
+- confirm no implemented screen introduces a colour, font, radius, or motion
+  duration that is absent from the design note — cross-screen consistency is the
+  deliverable, not a side effect;
 - preserve task-owned work through the repository delivery workflow;
 - use `DONE_WITH_CONCERNS` when human/device/production evidence needed for the
   user's stated outcome remains unavailable.
