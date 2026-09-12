@@ -103,6 +103,10 @@ exit code and turns a red run green.
   with a 0% single-agent tail at 80% utilisation despite a 6.9x straggler
   spread, while a 10-agent barrier with a 2.0x spread wasted 19%. Check any run
   with `workflow-scorecard.py`; a tail over 15% means the shape was wrong.
+- **A stage that fans out per FINDING needs a cap.** Its width is chosen by the
+  previous stage, not by you: two audits turned 17 units into 100 and 107 agents
+  because the verify stage spawned one per reported finding. Rank and slice
+  before fanning out, and log what the cap dropped.
 - Subagents must not delegate recursively — enforced, not merely asked:
   `install.sh` sets `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1`. A Workflow script
   orchestrates from the lead, so its agents never need to nest and the cap costs

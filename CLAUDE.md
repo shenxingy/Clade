@@ -568,6 +568,14 @@ confirm the check list actually grew before reading green as evidence.
   units than slots — the queue packs them. That is the half of CPU work-stealing
   that transfers; the migration half does not, because an agent cannot be
   preempted or moved mid-flight.
+- **Bound a data-dependent stage.** `pipeline(items, find, verify)` where the
+  verify stage fans out one agent per finding does not have `items.length`
+  agents — it has however many the finders chose to report. Two audits on
+  2026-09-12 turned 17 units into 100 and 107 agents that way, past this
+  session's own 50-agent guideline, and the width was decided by how much the
+  hunters felt like reporting. Sort by severity and `.slice(0, N)` before the
+  fan-out, and `log()` what the cap dropped — a silent truncation reads as
+  "everything was verified".
 - Check the result: `python3 configs/scripts/workflow-scorecard.py --since 7`.
   A tail over 15% means the shape was wrong.
 
