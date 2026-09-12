@@ -90,8 +90,13 @@ If a rule was added:
 2. If no description, ask for what/context/impact
 3. Conduct RCA together (ask clarifying questions if needed)
 4. Write the incident entry to `.claude/incidents.md`
-5. Offer to extract a rule — get user confirmation before appending
-6. Confirm logging is complete
+5. **Append the prevention work to `TODO.md`.** The entry's Prevention field is
+   already the follow-up task; a postmortem whose prevention lives only in an
+   incidents file is a postmortem nobody acts on. One checkbox per preventable
+   cause, each naming the file or gate that would have caught it. Say so if
+   there is genuinely nothing to prevent — that is a finding, not an omission.
+6. Offer to extract a rule — get user confirmation before appending
+7. Confirm logging is complete, and name the TODO items you added
 
 
 ---
