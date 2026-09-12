@@ -384,45 +384,11 @@ re-running the gates.
       rotation rather than masking, and that is the owner's call. The command is
       in the report.
 
-- [ ] 🔴 **Rotate these 13 credentials.** Masking removed them from disk; it
-      does not un-expose them. Owner action — nothing in this repository can do
-      it.
-      **DEFERRED BY THE OWNER, 2026-09-07** — read and judged not worth
-      acting on in the short term. Left filed rather than closed, because
-      the exposure does not expire on its own and the list is the only
-      record of which accounts it names. Do not re-raise it as a finding;
-      it is a decision, not an oversight. Ordered by blast radius; the "where" column is the project slug the
-      credential appeared under, which is what identifies the account to rotate
-      in.
-
-      | Rotate | Kind | Shape | Where it appeared |
-      |---|---|---|---|
-      | 1 | Stripe **live secret** | `sk_live_…SefN` | `projects` |
-      | 2 | Stripe **live secret** | `sk_live_…s2V7` | `projects`, `faceswap-platform-100` |
-      | 3 | Stripe **live secret** | `sk_live_…liem` | prompt history (already masked) |
-      | 4 | Anthropic API key | `sk-ant-api03…90XX` | `Clade-task-1` worktree |
-      | 5 | Sentry auth token | `sntryu_6…c6c0` | `faceswap-platform-100` |
-      | 6 | Resend token | `resend-t…cret` | `internal-server-infra` |
-      | 7 | OpenAI-shaped key | `sk-cp-X4…XxMM` | `call-agent`, `shared` |
-      | 8 | TinyFish key | `sk-tinyf…_5N2` | `tinyfish-partnership-research` |
-      | 9 | TinyFish key | `sk-tinyf…_5n2` | same, case variant (already masked) |
-      | 10 | 67-char `sk_` key | `sk_d698e…5c8a` | home, `projects` |
-      | 11 | 67-char `sk_` key | `sk_d698e…891a` | home |
-      | 12 | JWT | `eyJhbGci…06II` | `faceswap-platform-100` |
-      | 13 | JWT | `eyJhbGci…_yjE` | `faceswap-platform-100` |
-
-      **Need nothing**, listed so they are not chased: the five `pk_live_`
-      publishable keys (they ship in browser JavaScript), everything matching
-      `_test_`, `pub043e3…7aa1` (a public DSN), `vak_live…_xxx` (a placeholder),
-      `ghp_bad0…0000` and `xoxb-tes…oken` (fixtures), and four `env_secret`
-      matches that are code fragments rather than secrets.
-
-      **Re-running the census will now under-report.** Rows 3 and 9 were only in
-      files already scrubbed, so a fresh sweep cannot see them — the evidence was
-      removed, the exposure was not. This table is the record; the sweep is not.
-      To re-check what is still on disk:
-      `python3 configs/scripts/scrub-corrections.py --dir ~/.claude` (dry run by
-      default), and see the two session transcripts below.
+- [x] 🔴 **Credential rotation — owner decided not to rotate.** 2026-09-12: the
+      13 credentials found by the census were masked from disk; the owner
+      判断 rotation is not needed and closed it. The census table and the
+      re-check command stay in git history if that changes. Nothing further to
+      do here.
 
 - [ ] 🟡 **Two session transcripts still hold 12 occurrences.** Mode 0600,
       owner-only, and they are the harness's own resumable state, so they were
