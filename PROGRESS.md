@@ -6,65 +6,67 @@
 
 Older entries live in [docs/progress-archive/](docs/progress-archive/) — 60 archived, newest month first.
 
----
-### 2026-08-30 — Software-Fundamentals Review (Ng, *AI Engineering Skills Map*)
-
-Read the article's five areas against this repository and checked each claim
-against the tree rather than agreeing with it in prose. Most of it described
-things already in place; one item was a real hole.
-
-- **Shipped (`#88`):** four GitHub Action references were pinned to mutable
-  tags while eight others carried full commit SHAs — and the four were both
-  `uses:` in `pr-honeypot-check.yml` and both in `vouch-gate.yml`, the two
-  workflows that run on `pull_request_target` with `issues: write` /
-  `pull-requests: write` against fork PRs. That is the one context where a
-  moved tag executes attacker-influenced code holding this repository's write
-  token. `configs/scripts/check-action-pinning.py` now fails CI on any
-  unpinned reference; local `./` actions are exempt and `docker://` is
-  reported rather than silently passed.
-- **Measured and rejected — database indexing.** The `tasks` table declares no
-  index and `WHERE status = …` is its dominant filter, so `EXPLAIN QUERY PLAN`
-  reports `SCAN tasks`. The largest real `tasks.db` on this machine holds
-  **12 rows**. Indexing that is the premature abstraction this repository's
-  engineering values warn against, so nothing was changed. Recorded here so
-  the finding is not rediscovered and "fixed" later.
-- **Assessed as already covered:** system architecture (strict import DAG with
-  a CI gate, file-size limits, architecture-map coverage), testing strategy,
-  security and reliability (the 2026-08-29 wave), and production operation
-  (`event_stream`, `tracing`, and `notification_webhook` alerting on
-  run_complete / high_failure_rate / loop_converged).
-- **Deferred, with the decisions written down rather than left in a
-  conversation:** see the two 2026-08-30 entries in [TODO.md](TODO.md).
+Older entries live in [docs/progress-archive/](docs/progress-archive/) — 3 archived, newest month first.
 
 ---
-### 2026-07-29 — Delivery Lifecycle Hardening + Loop Checkpoint Recovery
+### 2026-09-12 — CI moved to hardware we already own, plus the fixer
 
-- Added a safe `abandon` transition to the `delivery` skill controller for
-  superseded, unpublished work: an exact-head lease, a non-empty reason, and
-  idempotency only for the same head+reason. Published GitHub PR work may
-  abandon only after a live forge check proves the PR is CLOSED (not OPEN or
-  MERGED) at the recorded head; abandonment terminalizes the branch lease
-  without deleting work (`9975895`).
-- Hardened abandonment to discover PRs by the recorded branch instead of
-  trusting a possibly-stale `published` flag: an unrecorded OPEN PR now blocks
-  abandonment, and an unrecorded MERGED PR at the exact recorded head is
-  flagged for reconciliation rather than mislabeled abandoned (`26e88ec`).
-- Fixed `PATCH /api/tasks/{id}` to revalidate the effective persisted
-  connection against the effective runtime whenever either `connection` or
-  `agent_runtime` changes, not only when a fresh `connection` value is
-  supplied — an invalid connection/runtime pairing is now rejected at
-  mutation time instead of first failing at task execution (`c5a5c92`).
-- Made `loop-runner.sh` checkpoint recovery crash-safe and explicit: only an
-  identity-matched `--resume` restores a checkpoint, a normal launch ignores a
-  stale one, and `--help` has no side effects (`25949fe`).
-- Refreshed the installed Codex plugin cache version for the delivery workflow
-  changes that preceded Loop recovery (`8d93e1e`); Loop itself is distributed
-  through Claude/MCP and was installed separately from merged `main`.
-- The documentation convergence Loop reproduced a follow-on control-flow gap:
-  workers committed and verified the requested state, but the coordinator left
-  all 5 goal checkboxes open and exited `stuck_no_commits`. The unsafe
-  worker-side marking experiment remains retired; a coordinator-owned,
-  phase-safe replacement is promoted to the P0 follow-on in `TODO.md`.
+The owner's standing position, said out loud again because nothing retained it:
+hosted CI costs money, we have a Linux server and a Mac and a Windows box, and
+the principle applies to every project. An auto-promoted rule already ended with
+*"that is the ci-cost rule above"* — there was no ci-cost rule above. That is the
+`standing-preference` class this repo added to its own taxonomy ten days
+earlier: the tell is a repeat, not a defect.
+
+- **Measured first.** Hosted CI bills per job, rounded up per job, Linux 1x /
+  Windows 2x / macOS 10x. This repo's four jobs take 24s, 39s, 60s and 73s and
+  bill **four** minutes. Clade is public, so its runners are free and the saving
+  here is latency; the money is in the private repos. The policy therefore went
+  in the **global** file, not this one.
+- **Shipped `configs/scripts/ci-local.py` (#91).** Parses the workflow files and
+  runs the same `run:` blocks, so it cannot drift from CI by construction —
+  which matters because the hand-written checklist in `CLAUDE.md` drifted twice.
+  5/5 jobs in ~180s.
+- **Three defects found by running it, not by reasoning about it.** Inheriting
+  the terminal's stdin hung a suite for 13 minutes at 9% CPU and produced five
+  phantom failures. `actions/setup-python` had to be stood in for, because a
+  distribution-managed Python refuses `pip install` under PEP 668. And a job
+  whose every step was skipped reported as **passed** — the exact lie the tool
+  exists to prevent.
+- **Shipped `/green`,** the repair half. Its first rule outranks its goal: never
+  weaken a gate to make it pass, with the cheats named.
+- **Drilled it.** Removed `re.ASCII` from `redact.py` to reintroduce the CJK
+  bypass. Five tests went red, the failing test named the cause, the fix
+  restored the cause, net diff zero, no test file touched.
+
+---
+### 2026-09-02 — Full audit: eleven controls that existed and never applied
+
+A whole-repository review, filed to [TODO.md](TODO.md) before any fix, then
+implemented. The recurring defect had one shape: **a control that exists, is
+documented as working, and never fires.** Found eleven times.
+
+- **Security.** The orchestrator control plane had no authentication and
+  `/ws/chat` started a permission-skipping PTY — unauthenticated RCE over the
+  tailnet. Closed with default-deny ASGI middleware. Separately, `redact.py`
+  used Unicode `\b`, so a key pasted in Chinese prose was never matched.
+- **A retrospective scrub** (`scrub-corrections.py`). The filed item said two
+  files; it was three, because two were `.bak-*` copies. A raw scan of JSONL
+  also misses a key that begins a line. A census of 1,039 transcripts found 158
+  occurrences.
+- **Instruments that could not fire.** `prompt-tracker.sh` had never delivered a
+  message in 386,760 prompts. `session-scorecard.sh` read a field present in 0
+  of 983 records. `rule-effectiveness.json` is empty because the classifier
+  emits eleven closed labels while rules are filed under free text. `stats.json`
+  held unresolved git conflict markers. The poll counter written the same day
+  reported zero everywhere because its guard matched the `>/` of `2>/dev/null`.
+- **Both new instruments now carry `--self-test`,** run in CI.
+- **Encoded three standing briefs** that were being re-typed: `/landscape`, the
+  recovered design methodology, and `install.sh --ultracode`. Added
+  `standing-preference` to the correction taxonomy — the only class whose
+  evidence is a count rather than an incident.
+- **`docs/layers.json`** now declares which surfaces actually run, because this
+  audit spent most of its effort on a layer switched off months earlier.
 
 ---
 ### 2026-07-28 — Local Rollout + Research Program Closeout
@@ -91,10 +93,4 @@ things already in place; one item was a real hole.
   merge-commit for child topology, rebase for one coherent commit, explicit
   choice for ambiguous multi-commit history, and exact-head locking for every
   automated merge.
-
----
-
-### 2026-03-01 — Loop: docs-review-goal
-
-Docs accuracy sweep: cleared BRAINSTORM.md, fixed Phase 8/9 ordering in TODO.md, updated session-report filename format, updated VISION.md skills list, updated CLAUDE.md file map.
 

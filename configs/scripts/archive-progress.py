@@ -62,11 +62,47 @@ def split_entries(text: str) -> tuple[str, list[tuple[str, str]]]:
     return header, entries
 
 
+_LINK = re.compile(r"\]\((?!https?://|#|/|\.\./)([^)\s]+)\)")
+
+
+def _reroot_links(body: str) -> str:
+    """An entry moving into docs/progress-archive/ takes its links with it.
+
+    `[TODO.md](TODO.md)` resolves from the repository root and not from two
+    levels down, so archiving silently created dead links — caught by
+    check-references.py on the first real archive run.
+    """
+    return _LINK.sub(lambda m: f"](../../{m.group(1)})", body)
+
+
+_POINTER = (
+    "\nOlder entries live in [docs/progress-archive/](docs/progress-archive/)"
+    " — {n} archived, newest month first.\n"
+)
+
+
+def render_header(header: str, moved_count: int) -> str:
+    """The header exactly as it will be written, pointer included.
+
+    The planner and the writer used to build this separately, so they disagreed
+    about how many lines the header would occupy and the tool produced a file
+    its own --check rejected. Guessing a constant reserve papered over one case
+    and not another; sharing the renderer removes the class.
+    """
+    if not moved_count:
+        return header
+    return header.rstrip("\n") + "\n" + _POINTER.format(n=moved_count) + "\n"
+
+
 def plan(header: str, entries: list[tuple[str, str]]) -> tuple[list, list]:
-    """Newest entries that fit under the cap stay; [ACTIVE] always stays."""
+    """Newest entries that fit under the cap stay; [ACTIVE] always stays.
+
+    Budgeted against the header AS RENDERED — the pointer line is part of the
+    file, so it is part of the cap.
+    """
     kept: list[tuple[str, str]] = []
     moved: list[tuple[str, str]] = []
-    used = len(header.splitlines())
+    used = len(render_header(header, 1).splitlines())
     for month, body in entries:
         size = len(body.splitlines())
         if "[ACTIVE]" in body or used + size <= CAP:
@@ -122,18 +158,15 @@ def main() -> int:
                 "> its 100-line cap. History, not current state; open work lives in\n"
                 "> [TODO.md](../../TODO.md).\n\n"
             )
-        target.write_text(existing.rstrip("\n") + "\n\n" + "".join(bodies).strip("\n") + "\n",
+        moved_text = _reroot_links("".join(bodies).strip("\n"))
+        target.write_text(existing.rstrip("\n") + "\n\n" + moved_text + "\n",
                           encoding="utf-8")
         print(f"  wrote {target.relative_to(REPO)}")
 
-    pointer = (
-        f"\nOlder entries live in [docs/progress-archive/]"
-        f"(docs/progress-archive/) — {len(moved)} archived,"
-        f" newest month first.\n"
+    PROGRESS.write_text(
+        render_header(header, len(moved)) + "".join(b for _, b in kept).lstrip("\n"),
+        encoding="utf-8",
     )
-    new_header = header.rstrip("\n") + "\n" + pointer
-    PROGRESS.write_text(new_header + "\n" + "".join(b for _, b in kept).lstrip("\n"),
-                        encoding="utf-8")
     print(f"  PROGRESS.md now {len(PROGRESS.read_text(encoding='utf-8').splitlines())} lines")
     return 0
 
