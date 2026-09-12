@@ -3,10 +3,12 @@
 # Triggered by TaskCompleted
 # Exit 2 = block completion, exit 0 = allow
 #
-# Reads ~/.claude/corrections/stats.json for error rates per domain.
-# High error rate domains (>0.3) → strict checks (type-check + build/test)
-# Low error rate domains (<0.1) → basic checks only
-# Default (no stats or medium error rate) → standard checks
+# Reads ~/.claude/corrections/stats.json, which holds per-domain correction
+# COUNTS (integers, unbounded) written by correction-detector.sh.
+# A domain carrying >=3 corrections and at least half the worst domain's count
+#   → strict checks (type-check + build/test)
+# Everything else → standard checks
+# There is no true error RATE here: nothing records the denominator.
 #
 # Supported: TypeScript, Python, Rust, Go, Swift, Kotlin/Java, LaTeX
 
@@ -24,18 +26,29 @@ STRICT_MODE=false
 if [[ -f "$STATS_FILE" ]] && command -v jq &>/dev/null; then
   detect_domain
 
-  # Read error rate for this domain
-  ERROR_RATE=$(jq -r --arg d "$DOMAIN" '.[$d] // 0' "$STATS_FILE" 2>/dev/null)
+  # stats.json holds unbounded COUNTS, not rates. This block used to compare
+  # them against 0.3 and 0.1 as if they were fractions, so a domain went strict
+  # forever after its first recorded correction (a real file held frontend=17,
+  # devops=30) and a domain at 0 stayed relaxed forever. The gate never adapted;
+  # it latched.
+  #
+  # There is no denominator to turn a count into a true error rate — nothing
+  # records opportunities. What the counts DO support is a comparison between
+  # domains: strict for a domain carrying a meaningful share of this machine's
+  # corrections. `unknown` is excluded because it is the unclassified bucket,
+  # not a domain, and it dominates every real one.
+  DOMAIN_COUNT=$(jq -r --arg d "$DOMAIN" '(.[$d] // 0) | floor' "$STATS_FILE" 2>/dev/null || echo 0)
+  PEAK_COUNT=$(jq -r 'del(.unknown) | [.[] | numbers] | (max // 0) | floor' "$STATS_FILE" 2>/dev/null || echo 0)
 
-  if [[ -n "$ERROR_RATE" ]]; then
-    IS_HIGH=$(awk "BEGIN {print ($ERROR_RATE > 0.3) ? 1 : 0}")
-    IS_LOW=$(awk "BEGIN {print ($ERROR_RATE < 0.1) ? 1 : 0}")
-
-    if [[ "$IS_HIGH" -eq 1 ]]; then
-      STRICT_MODE=true
-    elif [[ "$IS_LOW" -eq 1 ]]; then
-      :
-    fi
+  # Strict when this domain is at least half as corrected as the worst one, and
+  # has enough absolute history for that ratio to mean anything.
+  # `unknown` is never strict-eligible either. It is what detect_domain returns
+  # when it cannot classify, it outnumbers every real domain (554 vs 30 on this
+  # machine), and treating it as a domain would put almost every task in strict
+  # mode — the same latch, one level over.
+  if [[ "$DOMAIN" != "unknown" && "${DOMAIN_COUNT:-0}" -ge 3 && "${PEAK_COUNT:-0}" -gt 0 ]] \
+     && [[ $(( DOMAIN_COUNT * 2 )) -ge "$PEAK_COUNT" ]]; then
+    STRICT_MODE=true
   fi
 fi
 

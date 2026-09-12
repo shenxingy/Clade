@@ -37,7 +37,7 @@ Set these in `~/.claude/settings.json` under `"env"`:
 | File | What to tune |
 |------|-------------|
 | `~/.claude/corrections/rules.md` | Add/edit correction rules directly |
-| `~/.claude/corrections/stats.json` | Adjust error rates per domain (0-1) to control quality gate strictness |
+| `~/.claude/corrections/stats.json` | Per-domain correction COUNTS (integers) that drive quality-gate strictness |
 | `~/.claude/orchestrator-settings.json` | Override orchestrator defaults — model, worker pool, GitHub sync, auto-retry, etc. |
 
 ### Orchestrator settings
@@ -172,18 +172,20 @@ Edit `~/.claude/corrections/rules.md`:
 Edit `~/.claude/corrections/stats.json`:
 ```json
 {
-  "frontend": 0.4,
-  "backend": 0.05,
-  "ml": 0.2,
+  "frontend": 18,
+  "devops": 30,
+  "backend": 12,
+  "ml": 4,
   "ios": 0,
   "android": 0,
   "systems": 0,
   "academic": 0,
-  "schema": 0.2
+  "schema": 0,
+  "unknown": 554
 }
 ```
 
-`> 0.3` triggers strict mode (adds build + test checks). `< 0.1` triggers relaxed mode (basic checks only). Domains: `frontend`, `backend`, `ml`, `ios`, `android`, `systems` (Rust/Go), `academic` (LaTeX), `schema`.
+A domain with at least 3 corrections **and** at least half the worst real domain's count triggers strict mode (adds build + test checks); everything else runs the standard checks. These are counts, not rates — nothing records a denominator — so the comparison is between domains. `unknown` is the unclassified bucket and is excluded from both sides. Domains: `frontend`, `backend`, `ml`, `devops`, `security`, `ios`, `android`, `systems` (Rust/Go), `academic` (LaTeX), `schema`.
 
 ## Enable end-to-end browser verification
 
