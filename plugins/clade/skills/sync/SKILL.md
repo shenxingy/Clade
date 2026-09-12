@@ -206,7 +206,9 @@ Sync complete:
   📝 PROGRESS.md: Session summary appended
   📏 README.md: 310 lines — over the 300 cap, flagged in TODO.md
 
-  Run /commit to commit all changes (pushes by default; use --no-push to skip).
+  Run /commit to commit all changes. It checkpoints LOCALLY by default and
+  publishes only with `--publish` or an existing delivery/repository
+  authority — there is no `--no-push`, and there never was.
 ```
 
 Drop the 📏 line when every README is inside the cap.
@@ -250,8 +252,8 @@ End-of-session documentation ritual. Reviews what was done and updates project d
 
 ```
 /sync            # Update TODO.md + PROGRESS.md
-/commit          # Commit all changes (code + docs) split by module + push
-/commit --no-push  # Commit only, skip push
+/commit          # Commit all changes (code + docs) split by module — local only
+/commit --publish  # Commit, then publish the owned branch
 ```
 
 ## Delivery completion

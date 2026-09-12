@@ -2,7 +2,7 @@
 name: ship
 description: Full release pipeline — tests → coverage → review gate → version bump → CHANGELOG → commit → PR
 when_to_use: "ship a release, full release pipeline, version bump, create PR, CHANGELOG update, release this feature — NOT for committing mid-session (use /commit)"
-argument-hint: '[--dry-run] [--skip-tests] [--no-pr]'
+argument-hint: '[--dry-run] [--no-bump] [--no-pr]'
 user_invocable: true
 ---
 

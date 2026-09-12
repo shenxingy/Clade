@@ -100,11 +100,18 @@ A FastAPI + vanilla JS web UI for parallel agent orchestration:
 
 ```
 orchestrator/server.py      # FastAPI backend (PTY management, SQLite task queue)
-orchestrator/web/index.html # Single-file SPA (no build step)
-orchestrator/start.sh       # Launch script
+orchestrator/web/src/       # Vite + React + TypeScript source
+orchestrator/web/index.html # Vite entry shell — the build input, never served
+orchestrator/web/dist/      # The ONLY servable root; /web is 503 until it exists
+orchestrator/start.sh       # Launch script (builds dist/ on first run)
 ```
 
-The GUI is deliberately self-contained — no bundler, no framework. This makes it easy to modify.
+Build it by hand with `cd orchestrator/web && npm ci && npm run build`.
+
+**This layer is dormant** — see `docs/layers.json`. The owner works entirely in
+the terminal, so the server and its UI are kept building and green but are not
+in use. Nothing here is deleted, and a finding here weighs less than one on the
+terminal path.
 
 For deeper context, see:
 - [`docs/research/2026-04-07-claude-hooks.md`](docs/research/2026-04-07-claude-hooks.md) — Claude Code hook system design and patterns

@@ -144,7 +144,7 @@
           },
           {
             "id": "edit-shadow-detector",
-            "description": "Detect edits that shadow or conflict with recent changes",
+            "description": "Log written files to the session shadow for correction pairing",
             "type": "command",
             "command": "~/.claude/hooks/edit-shadow-detector.sh",
             "async": true,

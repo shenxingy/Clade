@@ -56,5 +56,7 @@ Read steps from TODO.md, auto-plan implementation details, and run them sequenti
 
 ## After batch-tasks completes
 
-Run `/commit` to push worker output (tasks run in-tree; changes may not be committed yet).
+Run `/commit` to commit worker output (tasks run in-tree; changes may not be
+committed yet). It does not push — publication needs `--publish` or an existing
+delivery authority.
 Run `/review` to verify behavior anchors still pass after autonomous changes.

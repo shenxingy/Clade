@@ -15,7 +15,7 @@
 |----|-----------|--------|----------|-------|
 | I1 | `./install.sh` runs without errors — no missing source files, no broken symlinks | ✅ | 2026-07-29 | fresh and idempotent installs pass in an isolated HOME (46/46 `tests/test-install.sh`) |
 | I2 | All skills from `configs/skills/` are installed to `~/.claude/skills/` | ✅ | 2026-07-29 | 132/132 skills installed and validated |
-| I3 | All hooks from `configs/hooks/` are installed to `~/.claude/hooks/` | ✅ | 2026-07-13 | 30/30 hooks installed and executable |
+| I3 | All hooks from `configs/hooks/` are installed to `~/.claude/hooks/` | ✅ | 2026-09-12 | 32/32 hooks installed and executable (count derived from `ls configs/hooks/*.sh`) |
 | I4 | All scripts from `configs/scripts/` are installed to `~/.claude/scripts/` | ✅ | 2026-07-29 | 35 shell scripts plus 16 Python helpers installed |
 | I5 | All templates from `configs/templates/` are installed to `~/.claude/templates/` | ✅ | 2026-04-12 | |
 | I6 | `~/.local/bin/slt` symlink exists and points to `statusline-toggle.sh` | ✅ | 2026-04-12 | |

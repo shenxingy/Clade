@@ -122,11 +122,12 @@ if [[ -f "$SCRIPT_DIR/orchestrator/mcp_server.py" ]]; then
   chmod +x "$CLAUDE_DIR/scripts/mcp_server.py"
   echo "  Installed: MCP server (mcp_server.py)"
   echo ""
-  echo "  MCP Server setup:"
-  echo "    Add to ~/.claude/settings.json:"
-  echo '    { "mcpServers": { "clade": { "command": "python", "args": ["'"$CLAUDE_DIR/scripts/mcp_server.py"'"] } } }'
+  echo "  MCP server — for EXTERNAL clients only (Cursor, Cline, Claude Desktop):"
+  echo "    { \"mcpServers\": { \"clade\": { \"command\": \"python\", \"args\": [\"$CLAUDE_DIR/scripts/mcp_server.py\"] } } }"
   echo ""
-  echo "  Then restart Claude Code and use skills via MCP tool calls."
+  echo "  Do NOT register it inside Claude Code or Codex. Skills are already"
+  echo "  native there; mounting this duplicates every one of them and spawns"
+  echo "  nested agent sessions."
 fi
 
 # ─── 4. Mirror repo-managed skills; preserve unrelated user skills ─────

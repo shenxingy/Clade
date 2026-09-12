@@ -13,7 +13,7 @@ Searches the web for latest Claude model information, compares benchmarks and pr
 ## What it does
 
 1. Searches for latest Claude model announcements, benchmarks, and pricing
-2. Compares against the current guide in `docs/research/models.md`
+2. Compares against the current guide in `docs/reference/models.md`
 3. Shows what changed (new models, price changes, benchmark updates)
 4. With `--apply`: updates `models.md`, `session-context.sh` model guidance, and `batch-tasks/prompt.md` model assignment
 

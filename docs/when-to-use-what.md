@@ -50,8 +50,10 @@ For most day-to-day work — bug fixes, small features, refactoring, codebase qu
 
 ### `/map`
 **When:** Onboarding to an unfamiliar codebase, or before dispatching agents.
-- Generates file ownership map (from git log), module dependency graph, entry points
-- Saved as `.claude/AGENTS.md` — workers read this to avoid stepping on each other
+- Generates a module dependency graph with a Mermaid diagram, entry points, and
+  file ownership from git log
+- Saved as `ARCHITECTURE.md` — not `.claude/AGENTS.md`, which the orchestrator
+  writes through a different flow
 - Run once at project start, re-run after major refactors
 
 ## Task Execution

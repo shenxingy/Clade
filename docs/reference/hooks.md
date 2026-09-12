@@ -11,7 +11,7 @@ integrated_items:
   - "All major lifecycle hooks implemented (SessionStart, PreToolUse, PostToolUse, Stop, PreCompact, SessionEnd, TaskCompleted, Notification, UserPromptSubmit) — settings.json 全部有配置"
   - "Command, prompt, agent 三种 hook type 全部使用"
   - "Auto-format/lint on edit, block dangerous commands, verify completion patterns — 全部实现"
-  - "SessionEnd hook used for shadow cleanup — removes /tmp/claude-edit-shadows/session-<session_id>.jsonl when session terminates"
+  - "SessionEnd hook used for shadow cleanup — removes <runtime>/claude-edit-shadows/session-<session_id>.jsonl when session terminates"
 needs_work_items: []
 reference_items:
   - "SubagentStart/SubagentStop hooks — not implemented. 早期理由「Clade 只用 subprocess worker，场景不匹配」已过期：configs/agents/ 现有 37 个 agent 定义，多个 skill 会 fan-out 到 Task subagent，而且 Claude Code 2.1.221 把默认 spawn 深度从 1 提到 3。真正的现状是尚未评估，不是不适用"
@@ -197,9 +197,9 @@ That is acceptable only when the output was never worth acting on:
   `asyncRewake` interrupt on every markdown edit would cost far more attention
   than the warning is worth. Left async knowingly, not by oversight.
 
-- **`prompt-tracker.sh`** (UserPromptSubmit, async) — Analytics hook tracking user prompts for correction learning and loop detection. Produces no output to Claude; runs async because it is pure telemetry. Waking the LLM or waiting on the result adds latency with zero benefit to the interaction.
+- **`prompt-tracker.sh`** (UserPromptSubmit, **sync**) — Notices when the same standing brief is being typed again and says so through `hookSpecificOutput.additionalContext`, once per pattern. It was async and reported through `systemMessage` until 2026-09-02, which delivered nothing: an async hook has no channel back into the turn, and across 386,760 logged prompts with nine patterns past its own threshold it had never once spoken. It is bounded (capped log, tail-only scan) precisely so it can afford to be sync, and it stores fingerprints only — never prompt text.
 
-These hooks are deliberately NOT turned into `action: "block"` prompt hooks or sync command hooks with statusMessage — the cost (context wake, prompt latency, LLM invocation) exceeds the value (advisory noise for the former, telemetry-only for the latter). This trade-off is intentional and should not be changed to "proper" sync hooks without first confirming the value justifies the latency cost.
+The remaining hooks in this group are deliberately NOT turned into `action: "block"` prompt hooks or sync command hooks with statusMessage — the cost (context wake, prompt latency, LLM invocation) exceeds the value (advisory noise for the former, telemetry-only for the latter). This trade-off is intentional and should not be changed to "proper" sync hooks without first confirming the value justifies the latency cost.
 
 ## Key Gotchas
 

@@ -86,8 +86,8 @@ If you want Clade tools in another MCP client:
 pip install --upgrade clade-mcp
 ```
 
-Version 0.2.0 adds the Codex execution runtime while keeping Claude as the
-backwards-compatible default. See [MCP Server](#mcp-server--use-skills-in-any-ai-editor)
+The Codex execution runtime arrived in 0.2.0 and keeps Claude as the
+backwards-compatible default; the package is now at 0.3.1. See [MCP Server](#mcp-server--use-skills-in-any-ai-editor)
 below for configuration and the [MCP package guide](mcp-package/README.md) for
 all runtime and sandbox options.
 
@@ -152,7 +152,7 @@ external side effects.
 | You correct Claude | `correction-detector.sh` | Logs correction, prompts Claude to save a reusable rule |
 | Claude marks task done | `verify-task-completed.sh` | Adaptive quality gate: compile + lint, build + test in strict mode |
 
-See [How It Works](docs/how-it-works.md) for the hook reference. 31 hooks ship; the guide documents the ones you are likely to tune — `ls configs/hooks/` is the complete list.
+See [How It Works](docs/how-it-works.md) for the hook reference. 32 hooks ship; the guide documents the ones you are likely to tune — `ls configs/hooks/` is the complete list.
 
 ## Self-Learning Mechanisms
 
@@ -179,6 +179,7 @@ See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, de
 | `/commit` | Create repository-adaptive checkpoint commits; publish when authorized |
 | `/sync` | Check off completed TODOs, append session summary to PROGRESS.md |
 | `/review` | Walks every VERIFY.md checkpoint, fixing failures in-session until all pass |
+| `/green` | Runs the repo's real CI gates locally and drives them green — never weakens a gate |
 
 ### Autonomous Operation
 
@@ -205,6 +206,7 @@ See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, de
 | `/investigate` | Root cause analysis — no fix without confirmed hypothesis |
 | `/incident DESC` | Incident response — diagnose, postmortem, follow-up tasks |
 | `/cso` | Security audit (OWASP + STRIDE) |
+| `/landscape` | Whole-system report — every part, surface, owner, gap, and abandoned attempt, as a published artifact |
 | `/map` | Generate ARCHITECTURE.md with module graph + file ownership |
 
 ### Research & Planning
@@ -247,7 +249,7 @@ silently rather than failing the run.
 | Guide | Contents |
 |-------|----------|
 | [Native Codex Support](docs/codex.md) | Plugin installation, native skills/hooks, MCP runtime selection, compatibility boundaries |
-| [MCP Package](mcp-package/README.md) | clade-mcp 0.2.0 installation, runtime selection, sandbox and skill catalog |
+| [MCP Package](mcp-package/README.md) | clade-mcp 0.3.1 installation, runtime selection, sandbox and skill catalog |
 | [0.2.0 Release Notes](docs/releases/v0.2.0.md) | Native Codex support, MCP changes, upgrade steps, and validation results |
 | [Changelog](CHANGELOG.md) | Release history and upgrade notes |
 | [Maximize Throughput](docs/throughput.md) | Skip permissions, batch tasks, parallel worktrees, terminal + voice |

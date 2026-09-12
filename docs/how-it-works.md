@@ -29,7 +29,7 @@
 | `post-tool-use-lint.sh` | PostToolUse (Edit/Write) | Runs project verify_cmd; exits 2 on failure so Claude fixes it immediately |
 | `post-tool-use-failure.sh` | PostToolUse (failure) | Logs tool failures for pattern tracking |
 | `rule-injector.sh` | PostToolUse (Edit/Write) | Injects path-scoped rules from `.claude/rules/` + `~/.claude/rules/` when the edited file matches their `paths:` frontmatter (once per session per rule) |
-| `edit-shadow-detector.sh` | PostToolUse (Edit/Write) | Detects when edits shadow other files; async warning via systemMessage |
+| `edit-shadow-detector.sh` | PostToolUse (Edit/Write) | Logs every file Claude writes to a session-keyed shadow, for correction pairing; async, data-only, no output |
 | `worker-checkpoint.sh` | PostToolUse (Edit/Write) | One shadow-repo commit per agent write, so a failed attempt can say *when* it went wrong. Orchestrator workers only — inert unless `CLADE_WORKER_SHADOW_DIR` is set |
 | `failure-detector.sh` | PostToolUse (Bash) | Tracks consecutive Bash failures; injects debugging pressure |
 | `memory-sync.sh` | PostToolUse (Write/Edit) | Syncs memory files to NFS/GitHub when written |
@@ -40,7 +40,7 @@
 | `stop-check.sh` | Stop | Blocks stop if uncommitted changes or blockers.md has entries |
 | `verify-task-completed.sh` | TaskCompleted | Runs quality gate after task completion |
 | `notify-telegram.sh` | Notification | Forwards Claude notifications to Telegram |
-| `session-end-cleanup.sh` | SessionEnd | Removes /tmp/claude-edit-shadows/session-<session_id>.jsonl when session terminates |
+| `session-end-cleanup.sh` | SessionEnd | Removes <runtime>/claude-edit-shadows/session-<session_id>.jsonl when session terminates |
 
 All hooks are shell scripts — zero API cost, sub-second execution.
 
@@ -91,13 +91,13 @@ Claude auto-selects agents. Haiku agents are fast and cheap for mechanical check
 - **Reads AGENTS.md** before planning: injects file ownership into each task description; flags overlapping file claims for review
 - **Scout scoring**: tasks scoring 0–49 are skipped (a GitHub Issue is created in their place); tasks scoring 50–79 are flagged with a `# WARNING` comment and run with caution; 80–100 run normally
 
-**`/model-research`** searches the web for latest Claude model announcements, benchmarks, and pricing. Compares against the current guide and shows what changed. With `--apply`, updates `docs/research/models.md`, the session-context model guidance, and batch-tasks model assignment criteria.
+**`/model-research`** searches the web for latest Claude model announcements, benchmarks, and pricing. Compares against the current guide and shows what changed. With `--apply`, updates `docs/reference/models.md`, the session-context model guidance, and batch-tasks model assignment criteria.
 
 **`/worktree`** creates or inspects an isolated Git workspace with explicit ownership and delivery routing (`"task prompt"` | `--list` | `--preserve` | `--clean <delivery-id>`). It resolves a destination **outside the repository root** — deliberately not `.claude/worktrees/`, which Claude Code 2.1.236 claims as its own managed pool and deletes along with a session (see `orchestrator/worker.py:236-239`). Use when running parallel sessions on the same repo.
 
 **`/research`** runs a structured deep-dive on a topic — web search, synthesize findings, save to `docs/research/<topic>.md`. Useful before starting a complex feature.
 
-**`/map`** generates a codebase map: file → branch ownership from `git log`, module dependency graph, and entry points. Output is saved as `.claude/AGENTS.md` for workers to use.
+**`/map`** generates a codebase map: module dependency graph, entry points, and file → branch ownership from `git log`. Output is saved as `ARCHITECTURE.md` with a Mermaid module diagram. (`.claude/AGENTS.md` is written by the orchestrator's own flow, not by `/map`.)
 
 **`/incident`** activates incident response mode: diagnose the issue, propose a root cause, draft a postmortem, and add follow-up tasks to TODO.md.
 
@@ -127,19 +127,24 @@ Next session starts         session-context.sh            Claude follows
 
 Over time, Claude's behavior aligns to your style automatically. The quality gate (`verify-task-completed.sh`) also adapts — domains where Claude makes more errors get stricter checks.
 
-Error rates are tracked per domain in `~/.claude/corrections/stats.json`:
+Correction COUNTS are tracked per domain in `~/.claude/corrections/stats.json`
+— integers, incremented once per explicit correction by `correction-detector.sh`:
 ```json
 {
-  "frontend": 0.35,  // >0.3 = strict mode (adds build + test)
-  "backend": 0.05,   // <0.1 = relaxed mode (basic checks only)
-  "ml": 0.2,         // ML/AI training code
-  "ios": 0,          // Swift / Xcode
-  "android": 0,      // Kotlin / Gradle
-  "systems": 0,      // Rust / Go
-  "academic": 0,     // LaTeX
-  "schema": 0.2
+  "frontend": 18,    // Web UI
+  "devops": 30,      // CI, containers, infra
+  "backend": 12,     // Server / API
+  "ml": 4,           // ML/AI training code
+  "security": 4,
+  "schema": 0, "ios": 0, "android": 0, "systems": 0, "academic": 0,
+  "unknown": 554     // Unclassified — never a domain, excluded from the gate
 }
 ```
+`verify-task-completed.sh` goes strict for a domain with at least 3 corrections
+and at least half the worst real domain's count. There is no error *rate* here:
+nothing records the denominator, so the comparison is between domains. Reading
+these integers as 0–1 fractions is what the gate used to do, and it meant a
+domain latched into strict mode permanently after its first correction.
 
 ## Status Line
 

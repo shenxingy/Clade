@@ -8,12 +8,23 @@ Part of the [Clade](https://github.com/shenxingy/clade) autonomous coding framew
 
 ## What's New in 0.3.1
 
+- Every release-version surface is checked against one source. The gate derives
+  the expected version from `pyproject.toml` and covers both plugin manifests,
+  so cutting a release no longer means editing the gate
+- Secret redaction is ASCII-anchored: a key pasted inside CJK or Cyrillic prose
+  was never matched before, because Python's `\b` is Unicode-aware
+
+## Runtime support (since 0.2.0)
+
+Provider selection is not new in this release — it shipped in 0.2.0 and is
+listed here because it is what most people configure first:
+
 - Native Codex execution through `codex exec --json`, selected with
   `CLADE_RUNTIME=codex`
 - Conservative `auto` runtime selection: Claude when available, otherwise Codex
 - Configurable Codex sandbox with an explicit, opt-in permission bypass
-- 34 bundled workflows, up from 29 in 0.1.0
 - Runtime name reported by `clade_list_skills` for configuration diagnostics
+- 34 bundled workflows, up from 29 in 0.1.0
 
 Upgrade with:
 

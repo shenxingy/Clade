@@ -80,7 +80,7 @@ codex plugin add clade@clade
 pip install --upgrade clade-mcp
 ```
 
-0.2.0 新增 Codex execution runtime，同时继续以 Claude 作为向后兼容的默认值。
+Codex execution runtime 自 0.2.0 起提供，Claude 仍是向后兼容的默认值；当前包版本 0.3.1。
 配置见下方 [MCP Server](#mcp-server--在任何-ai-编辑器中使用-skills)，完整参数见
 [MCP package 中文指南](mcp-package/README.zh-CN.md)。
 
@@ -142,7 +142,7 @@ Clade 把六个维度分开处理，避免一次“看起来是绿的”运行�
 | 你纠正 Claude | `correction-detector.sh` | 记录纠正，提示 Claude 保存可复用的规则 |
 | Claude 标记任务完成 | `verify-task-completed.sh` | 自适应质量门禁：compile + lint，严格模式额外 build + test |
 
-完整 hook 参考（32 个 hooks）见 [How It Works](docs/how-it-works.md)。
+hook 参考见 [How It Works](docs/how-it-works.md)——它只写常用可调的那些；完整列表用 `ls configs/hooks/`（共 32 个）。
 
 ## 自学习机制
 
@@ -167,7 +167,7 @@ Commit Lessons 与 Doc Align 在 Claude 完整框架中本地运行，未启用�
 | `/commit` | 创建适配仓库的 checkpoint commits；已有授权时发布 |
 | `/sync` | 勾掉完成的 TODO，追加会话总结到 PROGRESS.md |
 | `/review` | 8 阶段覆盖式审查 — 发现并修复问题，循环到干净为止 |
-| `/verify` | 验证项目行为锚点（compile、test、lint） |
+| `/green` | 在本机跑仓库真实的 CI 闸门并修到绿 — 绝不通过削弱闸门取胜 |
 
 ### 自主运行
 
@@ -194,6 +194,7 @@ Commit Lessons 与 Doc Align 在 Claude 完整框架中本地运行，未启用�
 | `/investigate` | 根因分析 — 假设未确认不动手修 |
 | `/incident DESC` | 事故响应 — 诊断、复盘、后续任务 |
 | `/cso` | 安全审计（OWASP + STRIDE） |
+| `/landscape` | 全系统报告 — 每个部分、每个入口、负责人、差距、以及放弃过的尝试，产出为发布的 artifact |
 | `/map` | 生成 ARCHITECTURE.md（模块图 + 文件归属） |
 
 ### 调研与规划
@@ -233,7 +234,7 @@ Go、Swift、Kotlin/Java、LaTeX）。逐语言的检查器与测试运行器对
 | 指南 | 内容 |
 |------|------|
 | [Codex 原生支持](docs/codex.zh-CN.md) | Plugin 安装、原生 skills/hooks、MCP runtime 与兼容边界 |
-| [MCP Package](mcp-package/README.zh-CN.md) | clade-mcp 0.2.0 安装、runtime、sandbox 与 skills 列表 |
+| [MCP Package](mcp-package/README.zh-CN.md) | clade-mcp 0.3.1 安装、runtime、sandbox 与 skills 列表 |
 | [0.2.0 Release Notes](docs/releases/v0.2.0.md#中文说明) | Codex 原生支持、MCP 变更、升级步骤与验证结果 |
 | [更新记录](CHANGELOG.zh-CN.md) | Release 历史与升级说明 |
 | [最大化产出](docs/throughput.md) | 跳过权限确认、批量任务、并行 worktrees、终端与语音 |

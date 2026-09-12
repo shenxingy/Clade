@@ -20,7 +20,7 @@
 A multi-surface coding automation toolkit:
 
 - **CLI layer** (`configs/`) — skills, hooks, scripts installed via `./install.sh`
-- **Codex plugin** (`plugins/clade/`) — 25 generated native skills plus Codex hooks, distributed by `.agents/plugins/marketplace.json`
+- **Codex plugin** (`plugins/clade/`) — 26 generated native skills plus Codex hooks, distributed by `.agents/plugins/marketplace.json`
 - **MCP package** (`mcp-package/`) — provider-selectable Claude/Codex execution for external MCP clients
 - **Orchestrator layer** (`orchestrator/`) — FastAPI web server with worker pool, task queue, GitHub sync, iteration loops
 
@@ -184,7 +184,7 @@ reset_handoff.py     ← compact typed context seeds for clean loop resets
 run_contract.py      ← repository-owned autonomous-run policy (optional CLADE_WORKFLOW.md)
 run_budget.py        ← pure run-budget policy + trace attribution
 merge_policy.py      ← truthful pull-request history selection
-judge_diversity.py   ← deterministic review checks independent of the LLM oracle, plus 8 test-integrity signals (counted from the diff, fed to the oracle, never an auto-fail); scored by evals/run_hack_eval.py — 100% recall / 7.1% false alarms on a 30-case adversarial corpus
+judge_diversity.py   ← deterministic review checks independent of the LLM oracle, plus 9 test-integrity signals (counted from the diff, fed to the oracle, never an auto-fail); scored by evals/run_hack_eval.py — 100% recall / 7.1% false alarms on a 30-case adversarial corpus
 status_snapshot.py   ← provider-neutral status truth rendered by surface adapters
 worker_phase_graph.py ← declared worker/task/loop lifecycle graph (additive observability)
 worker_sandbox.py    ← stdlib-only Landlock confinement: makes the shared .git/hooks and .git/config unwritable to a worker (default off)
@@ -275,7 +275,7 @@ mutation_scan.py  ← surviving mutant → task
 | `process_manager.py` | `ProcessPool`, `StartProcess` — start.sh lifecycle control |
 | `usage_tracker.py` | Multi-machine ccusage ingestion (`~/.claude/orchestrator/usage.db`) |
 | `routes/tasks.py` | Task CRUD, bulk actions, and on-demand verified evidence attempts |
-| `routes/workers.py` | Worker control + inspection routes (9 handlers) |
+| `routes/workers.py` | Worker control + inspection routes (10 handlers) |
 | `routes/ideas.py` | Ideas API routes (CRUD, evaluate, execute, promote) |
 | `webhook_trust.py` | `is_trusted_actor` — a signature proves the event came from GitHub, not that its author may direct a permission-bypassed worker |
 | `api_auth.py` | `TokenAuthMiddleware` — default-closed authorisation for all 93 routes and both websockets. Middleware, not per-route `Depends`, because the next route added would silently forget the dependency and because `BaseHTTPMiddleware` never sees a websocket scope |
@@ -324,11 +324,12 @@ mcp-package/src/clade_mcp/server.py    SERVER_VERSION  ← what clients are told
 ```
 
 Both package READMEs carry it in prose on their first lines as well.
-`test_clade_mcp_runtime.py::test_release_version_surfaces_are_aligned` is the
-only gate over any of this, it covers the mcp-package half only, and its
-`expected` is a hard-coded literal — so cutting a release means editing the
-gate, which is the hand-sync it was meant to prevent. Deriving it from
-`pyproject.toml` and extending it to the plugin manifests is open work.
+`test_clade_mcp_runtime.py::test_release_version_surfaces_are_aligned` gates all
+six: it DERIVES the expected version from `mcp-package/pyproject.toml`, so
+cutting a release no longer means editing the gate — that hand-edit was the
+failure the gate existed to catch, one level up. It covers the two plugin
+manifests as well, comparing the Codex one on the part before its `+codex.`
+build metadata.
 
 ## CI (GitHub Actions)
 
@@ -490,10 +491,13 @@ failed its first CI run after a clean local sweep. Parse what you need
 `~/.claude/scripts/loop-runner.sh` matches source. A stale local install fails
 it with no repository defect — the fix is `./install.sh`, not a code change.
 
-This checklist has now drifted twice. It covered 4 of 7 gates until 2026-08-22
-(`df802c3`), then 7 of 11 `syntax-check` gates and 0 of 17 shell suites until
-2026-08-29. **If you add a CI step, add it here in the same commit** — nothing
-enforces that yet, which is precisely why it keeps recurring.
+This checklist drifted twice before anything watched it: 4 of 7 gates until
+2026-08-22 (`df802c3`), then 7 of 11 `syntax-check` gates and 0 of 17 shell
+suites until 2026-08-29. `check-ci-checklist.py` (item 15) now enforces the
+superset and runs in CI, and `ci-local.py` runs the gates so nobody has to
+re-type them. **When you add a CI step, add its explanation here in the same
+commit** — the gate will tell you if you forget, which is the part that was
+missing both times.
 
 On push/PR to `main`, four workflow files fire:
 

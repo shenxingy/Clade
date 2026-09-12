@@ -131,6 +131,25 @@ if [[ -d "$SCRIPT_DIR/configs/templates" && -d "$CLAUDE_DIR/templates" ]]; then
   echo "  Removed: templates/"
 fi
 
+# ─── 6b. Remove output styles (mirror of install.sh §8d) ─────────────
+# Named files only, never the directory: it is the one place a user keeps
+# hand-authored styles beside the shipped ones, and install.sh deliberately
+# activates none of them. Missing entirely until 2026-09-12, so an uninstall
+# left every shipped style behind while claiming to remove what was deployed.
+
+echo "Removing output styles..."
+if [[ -d "$SCRIPT_DIR/configs/output-styles" && -d "$CLAUDE_DIR/output-styles" ]]; then
+  _removed_styles=0
+  for src in "$SCRIPT_DIR/configs/output-styles/"*.md; do
+    [[ -e "$src" ]] || continue
+    if rm -f "$CLAUDE_DIR/output-styles/$(basename "$src")" 2>/dev/null; then
+      _removed_styles=$((_removed_styles + 1))
+    fi
+  done
+  rmdir "$CLAUDE_DIR/output-styles" 2>/dev/null || true
+  echo "  Removed: $_removed_styles output style(s)"
+fi
+
 # ─── 7. Remove models.env + statusline (install.sh §5, §6d) ──────────
 
 rm -f "$CLAUDE_DIR/models.env" && echo "Removed models.env" || true

@@ -94,7 +94,7 @@ Every project has shared facts that drift: skill counts in README, version numbe
 
 **`derive` types (V1):** `count_glob` (count files/dirs matching glob). More to come (`http_get_json`, `count_lines`, etc.) when needed. No shell-injection surface — safe primitives only.
 
-**Auto-runs on every install.** `install.sh` calls `refresh` so `facts.json` always reflects the filesystem (skill/hook/agent/script counts). `apply` is opt-in (you decide when to rewrite docs).
+**Checked on every install, never written.** `install.sh` runs `doc-align.py verify` — read-only — and reports stale derived facts; installation must not mutate its source checkout. Run `doc-align.py sync` (refresh + apply) yourself when the counts change. Modes: `refresh` (re-derive), `verify` (report only), `apply` (rewrite docs), `sync` (refresh + apply).
 
 **Real-time guard.** A PostToolUse:Edit hook (`doc-align-check.sh`) fires whenever Claude edits a `*.md` and flags drift inline — so a stale count never reaches commit.
 

@@ -11,7 +11,7 @@ The user's input after `/model-research` determines the action:
 
 ## Step 1: Read current model guide
 
-Read `docs/research/models.md` in the project root (or the installed copy at `~/.claude/` if running outside the kit repo). This is the baseline to compare against.
+Read `docs/reference/models.md` in the project root (or the installed copy at `~/.claude/` if running outside the kit repo). This is the baseline to compare against.
 
 Note the current:
 - Model IDs and versions
@@ -85,7 +85,7 @@ If nothing has changed, report that and stop — don't make unnecessary updates.
 
 If the user passed `--apply` AND there are meaningful changes:
 
-### 4a. Update `docs/research/models.md`
+### 4a. Update `docs/reference/models.md`
 
 Update the model comparison tables, benchmark data, pricing, and selection rules. Preserve the overall document structure. Update the "Last updated" date at the top.
 
