@@ -50,8 +50,9 @@ For most day-to-day work — bug fixes, small features, refactoring, codebase qu
 
 ### `/map`
 **When:** Onboarding to an unfamiliar codebase, or before dispatching agents.
-- Generates a module dependency graph with a Mermaid diagram, entry points, and
-  file ownership from git log
+- Generates a module dependency graph with a Mermaid diagram, plus key
+  components and data flow. It reads the tree, not git history — there is no
+  ownership output; `/landscape` is the skill that answers who owns what
 - Saved as `ARCHITECTURE.md` — not `.claude/AGENTS.md`, which the orchestrator
   writes through a different flow
 - Run once at project start, re-run after major refactors

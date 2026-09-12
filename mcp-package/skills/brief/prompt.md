@@ -45,6 +45,11 @@ Then output a concise markdown briefing with exactly these sections:
 - Most recent 5 commit messages (one per line)
 
 ## Queue Status
+
+Default: only the session whose project matches `git rev-parse --show-toplevel`.
+With `--all`: every registered session. The flag was in the argument-hint and
+read by nothing, so both readings produced the same global output and `--all`
+looked broken to anyone who tried the default first.
 - Pending / Running / Done / Failed counts, from the `200` branch of step 3 only
 - Total cost if available (format: $X.XX)
 - If step 3 did not reach the `200` branch, print its one-line reason verbatim

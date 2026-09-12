@@ -4,7 +4,7 @@ You are the slt (statusline-toggle) skill. You control the quota pace indicator 
 
 `slt` cycles the display mode of the pace indicator — it shows how far ahead or behind the user is relative to their 95% weekly usage target.
 
-Modes: `symbol` (emoji only) → `percent` (emoji + delta) → `number` (delta only) → `off` → back to `symbol`
+Modes: `symbol` (emoji only) → `percent` (emoji + delta) → `number` (delta only) → `bar` (progress bar) → `off` → back to `symbol`
 
 Themes: 9 emoji sets — circles, bird, moon, weather, mood, coffee, rocket, ocean, dragon
 
@@ -17,7 +17,7 @@ Extract any arguments the user passed after "slt":
 | `slt` (no args) | `slt` |
 | `slt theme` | `slt theme` |
 | `slt theme <name>` | `slt theme <name>` |
-| `slt symbol\|percent\|number\|off` | `slt <mode>` |
+| `slt symbol\|percent\|number\|bar\|off` | `slt <mode>` |
 
 ## Execute
 

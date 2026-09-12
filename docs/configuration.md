@@ -185,7 +185,7 @@ Edit `~/.claude/corrections/stats.json`:
 }
 ```
 
-A domain with at least 3 corrections **and** at least half the worst real domain's count triggers strict mode (adds build + test checks); everything else runs the standard checks. These are counts, not rates — nothing records a denominator — so the comparison is between domains. `unknown` is the unclassified bucket and is excluded from both sides. Domains: `frontend`, `backend`, `ml`, `devops`, `security`, `ios`, `android`, `systems` (Rust/Go), `academic` (LaTeX), `schema`.
+A domain with at least 3 corrections **and** at least half the worst real domain's count triggers strict mode (adds build + test checks); everything else runs the standard checks. These are counts, not rates — nothing records a denominator — so the comparison is between domains. `unknown` is the unclassified bucket and is excluded from both sides. Domains, matching `_STATS_SEED` in `correction-detector.sh`: `frontend`, `backend`, `cli` (shell), `mobile` (Dart/Flutter), `ml`, `devops`, `security`, `ios`, `android`, `systems` (Rust/Go), `academic` (LaTeX), `schema`. `cli` is the one a shell-heavy repository like this one resolves to most often.
 
 ## Enable end-to-end browser verification
 

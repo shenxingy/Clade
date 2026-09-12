@@ -12,7 +12,15 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 from agent_runtime import normalize_agent_runtime
-from config import _MODEL_ALIASES
+from config import _MODEL_ALIASES, _SETTINGS_DEFAULTS
+
+# The fallback when a Codex tier setting is absent must be the DEFAULT for that
+# setting, not a literal beside it. Two sites here hard-coded "gpt-5.6-terra"
+# while _SETTINGS_DEFAULTS said "gpt-5.6-luna", so a machine with no explicit
+# setting routed cheap work to the mid tier and every doc describing the default
+# was wrong about what that machine actually ran.
+_CODEX_CHEAP_DEFAULT = str(_SETTINGS_DEFAULTS.get("codex_cheap_model") or "gpt-5.6-luna")
+_CODEX_STRONG_DEFAULT = str(_SETTINGS_DEFAULTS.get("codex_strong_model") or "gpt-5.6-sol")
 from cascade_policy import VerifierContract, decide as decide_cascade
 
 
@@ -77,11 +85,11 @@ def resolve_worker_route(
         model = requested_model
         if auto and (score is not None or critical):
             if critical or (score is not None and score < 50):
-                model = str(settings.get("codex_strong_model") or "gpt-5.6-sol")
+                model = str(settings.get("codex_strong_model") or _CODEX_STRONG_DEFAULT)
                 effort = "high"
                 reason = "critical/low readiness: strong Codex tier"
             elif score is not None and score >= 80:
-                model = str(settings.get("codex_cheap_model") or "gpt-5.6-terra")
+                model = str(settings.get("codex_cheap_model") or _CODEX_CHEAP_DEFAULT)
                 effort = effort or "low"
                 reason = "high readiness: cheap Codex tier"
 
@@ -106,7 +114,7 @@ def resolve_worker_route(
         model = (
             _MODEL_ALIASES["haiku"]
             if agent_runtime == "claude"
-            else str(settings.get("codex_cheap_model") or "gpt-5.6-terra")
+            else str(settings.get("codex_cheap_model") or _CODEX_CHEAP_DEFAULT)
         )
         effort = None if agent_runtime == "claude" else "low"
         reason = cascade.reason
@@ -114,7 +122,7 @@ def resolve_worker_route(
         model = (
             _MODEL_ALIASES["sonnet"]
             if agent_runtime == "claude"
-            else str(settings.get("codex_strong_model") or "gpt-5.6-sol")
+            else str(settings.get("codex_strong_model") or _CODEX_STRONG_DEFAULT)
         )
         effort = "high"
         reason = cascade.reason

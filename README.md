@@ -207,7 +207,7 @@ See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, de
 | `/incident DESC` | Incident response — diagnose, postmortem, follow-up tasks |
 | `/cso` | Security audit (OWASP + STRIDE) |
 | `/landscape` | Whole-system report — every part, surface, owner, gap, and abandoned attempt, as a published artifact |
-| `/map` | Generate ARCHITECTURE.md with module graph + file ownership |
+| `/map` | Generate ARCHITECTURE.md with a Mermaid module graph (tree only, no git history) |
 
 ### Research & Planning
 

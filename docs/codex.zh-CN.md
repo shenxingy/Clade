@@ -175,7 +175,7 @@ FastAPI orchestrator 已能把 `codex exec` 当作一等 worker provider。全�
 `route_reason` 供审计。
 
 开启 `auto_model_routing` 后，只有高 readiness 任务才使用默认廉价层
-`gpt-5.6-terra`；low readiness 或 critical-path 任务升级到默认强层
+`gpt-5.6-luna`；low readiness 或 critical-path 任务升级到默认强层
 `gpt-5.6-sol`。该开关仍默认关闭，需 routing replay eval 证明质量/美元和
 质量/总时间都不退化后再考虑默认开启。
 

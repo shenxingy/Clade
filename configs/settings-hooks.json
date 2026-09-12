@@ -70,7 +70,7 @@
         "hooks": [
           {
             "id": "session-end-cleanup",
-            "description": "Delete this session's correction-pairing shadow (/tmp/claude-edit-shadows/session-<session_id>.jsonl). No matcher on purpose: every end reason (clear, logout, prompt_input_exit, other) retires that session_id, and the next session gets a new one. Attribution-scoped — it unlinks only the file keyed by the ending session_id, so a parallel live session's shadow is never touched.",
+            "description": "Delete this session's correction-pairing shadow (<runtime>/claude-edit-shadows/session-<session_id>.jsonl). No matcher on purpose: every end reason (clear, logout, prompt_input_exit, other) retires that session_id, and the next session gets a new one. Attribution-scoped — it unlinks only the file keyed by the ending session_id, so a parallel live session's shadow is never touched.",
             "type": "command",
             "command": "~/.claude/hooks/session-end-cleanup.sh",
             "timeout": 5
@@ -91,7 +91,7 @@
           },
           {
             "id": "revert-detector",
-            "description": "Detect and warn on git revert/reset commands",
+            "description": "Record a git revert/reset against the session edit shadow (async, data-only — it does not warn)",
             "type": "command",
             "command": "~/.claude/hooks/revert-detector.sh",
             "if": "Bash(git *)",

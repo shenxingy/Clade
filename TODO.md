@@ -8,7 +8,7 @@
 
 > Vision and architecture: see [VISION.md](VISION.md)
 
-Phases 1–13 complete.
+Phases 1–14 complete.
 
 ---
 
@@ -207,13 +207,12 @@ choice with a real tradeoff, which is why they are recorded instead of built.
   architectural fork with a real cost (a second place for a rule to be wrong,
   and a migration for every existing control), not a gap with an obvious
   implementation.
-- [ ] **Decide whether to add dependency/supply-chain scanning.** There is no
-  Dependabot config and no `pip-audit` / `npm audit` / CodeQL step; `#88` closed
-  the *action-pinning* hole but scanning dependencies is a different question.
-  **Not added along with `#88` on purpose:** that PR fixed an inconsistency in a
-  control the repo had already chosen, whereas this would be a new capability
-  with ongoing noise costs, and it deserves its own decision.
-
+- [x] **Dependency scanning — decided and built.** `pip-audit` and `npm audit`
+      run weekly in `ci.yml`'s `dependency-audit` job as of 2026-09-02, and the
+      four highs the npm half found were fixed on 2026-09-12. What remains
+      genuinely undecided is narrower than the original item: a Dependabot
+      config and a CodeQL step. Neither is scheduled; say so rather than
+      leaving the whole question open, which made the built half invisible.
 - [x] **Webhook authorisation — decided 2026-08-29: fail closed, and check the
   actor.** An unsigned event is now refused rather than warned about
   (`webhook_allow_unauthenticated` opts back in, deliberately), and
@@ -488,11 +487,11 @@ re-running the gates.
       surface separately, and on a bumped `pyproject.toml`.
 
 - [ ] 🔵 Patrol reports are written and never read. `start.sh` writes `~/.claude/patrol-report-DATE.md` and nothing parses it back; `patrol_auto_ideas` was the flag for that missing ingestion and was deleted rather than left as a published lie. Re-propose with a real design.
-- [x] 🔵 `reactions.create_executor_from_config` has zero production callers and reads a settings key that no longer exists. Removing it means dropping three tests in `test_leaf_modules.py`.
-- [x] 🔵 Nothing enforces the top-level `docs/*.md` header convention; two of fourteen files had drifted off it and no gate noticed. Cheapest control: assert in `check-references.py` that every top-level `docs/*.md` links `../README.md` in its first three lines.
-- [x] 🔵 The global agent rules assert that `/sync` flags a README over 300 lines. The shipped skill has no such logic — its only line-count rule caps `PROGRESS.md` at 100. Implement the check or correct the claim.
+- [x] 🔵 `reactions.create_executor_from_config` has zero production callers and reads a settings key that no longer exists. Removing it means dropping three tests in `test_leaf_modules.py`. DONE 2026-09-08 — removed, with the three tests that only covered it.
+- [x] 🔵 Nothing enforces the top-level `docs/*.md` header convention; two of fourteen files had drifted off it and no gate noticed. Cheapest control: assert in `check-references.py` that every top-level `docs/*.md` links `../README.md` in its first three lines. DONE 2026-09-08 — `check-references.py` now asserts every top-level `docs/*.md` links back to the README in its first lines, and the two drifted files were fixed. Red-phase checked against a deliberately broken page.
+- [x] 🔵 The global agent rules assert that `/sync` flags a README over 300 lines. The shipped skill has no such logic — its only line-count rule caps `PROGRESS.md` at 100. Implement the check or correct the claim. DONE 2026-09-08 — implemented in the skill rather than by correcting the claim, and the generated mirrors were regenerated.
 - [ ] 🔵 Web lint has no home. The `npm run lint` script was deleted because eslint was never installed; re-adding it properly needs a `web` job in `ci.yml` and the coupled CLAUDE.md checklist line, which `check-ci-checklist.py` enforces.
-### Standing-brief configuration — 2026-09-02 DONE 2026-09-08 — removed, with the three tests that only covered it. DONE 2026-09-08 — `check-references.py` now asserts every top-level `docs/*.md` links back to the README in its first lines, and the two drifted files were fixed. Red-phase checked against a deliberately broken page. DONE 2026-09-08 — implemented in the skill rather than by correcting the claim, and the generated mirrors were regenerated.
+### Standing-brief configuration — 2026-09-02
       **INVESTIGATED 2026-09-08 — the premise is inverted.** Nothing reads the
       report because it has never once been produced: no
       `~/.claude/patrol-report-*.md` has ever existed on this host and no
@@ -608,24 +607,20 @@ re-running the gates.
       on Codex and admitted on Claude, a preferred one degrades rather than
       failing, and no CONDITIONAL is allowed to ship without a stated condition.
 
-- [ ] 🟡 **Codex cannot fan out, and that is why it is slower.** `codex exec`
-      exposes 15 flags and not one concerns agents, delegation or concurrency.
-      The CLI's own `features list` shows `multi_agent stable true` — but only
-      the interactive TUI reaches it — `multi_agent_v2 stable false`, and
-      `enable_fanout removed`. So a Codex worker is one linear agent, while a
-      Claude worker can spawn its own subagents. Comparing their wall-clock as
-      if they were peers is comparing a fan-out against a single thread. The
-      only parallelism available to Codex is Clade spawning N `codex exec`
-      processes from outside, which the worker pool can already do and which
-      nothing measures.
-      **FALSIFIED 2026-09-05 — do not act on the premise above.** A headless
-      `codex exec` does spawn subagents; the gate is the resolved model's
-      catalog `multi_agent_version`, not the session source. Observed twice in
-      `~/.codex/state_5.sqlite` on 0.145.0 and reproduced live on 0.153.4. What
-      survives of this item is the measurement half: nothing here counts a
-      Codex worker's children, and the JSONL stream cannot supply them. See
-      the 2026-09-05 section below and
-      [the review](docs/research/2026-09-05-codex-gpt56-and-harness-review.md).
+- [x] 🟡 **Codex fan-out: the premise was wrong and the measurement shipped.**
+      The original item said `codex exec` cannot subdivide. It can — measured
+      2026-09-05 on this host's `~/.codex/state_5.sqlite`, which holds
+      `source='exec'` parent threads with depth-1 children, reproduced live on
+      CLI 0.153.4. The gate is the resolved model's catalog
+      `multi_agent_version`, not the session source, so the capability is
+      CONDITIONAL with the condition written down rather than UNSUPPORTED.
+      The measurement half shipped too: `workflow-scorecard.py --codex-children`
+      counts what a Codex worker actually delegated, with a self-test that
+      distinguishes a real zero from an unreadable state file.
+      **Still genuinely open, and narrower:** nothing counts N externally
+      spawned `codex exec` processes as one fan-out. That is Clade's own
+      parallelism over Codex, not Codex's, and the worker pool that would do it
+      is in the dormant layer.
 - [x] 🟡 **The polling rule now has a number.** DONE 2026-09-02.
       `workflow-scorecard.py --polls` reads lead-session transcripts and reports
       repeated status reads per background job, beside the straggler figures. A
@@ -966,6 +961,13 @@ record is wrong**. The four below were reproduced by hand before filing.
       profiles are `gpt-5.6-luna`; `codex_strong_model` stays Sol. The
       generated settings reference was regenerated rather than hand-edited.
 
+      **Amended 2026-09-12:** two doc pages still named Terra as the cheap
+      default — `docs/codex.md:223` and `docs/codex.zh-CN.md:178` — and
+      `worker_routing.py` hard-coded `gpt-5.6-terra` as the fallback for a
+      missing setting at two sites, so a machine with no explicit setting
+      routed cheap work to the mid tier. Both fallbacks now read
+      `_SETTINGS_DEFAULTS`, which removes the duplicate literal rather than
+      re-syncing it.
 - [x] 🟡 **`AGENTS.override.md` outranks `AGENTS.md`, so the managed block can
       be installed and never read.** Codex resolves instructions
       first-filename-wins with no merge, at both scopes:

@@ -9,7 +9,7 @@
 
 ## Features (Behavior Anchors)
 - install.sh: running `./install.sh` copies skills/hooks/scripts/agents/output-styles to ~/.claude/ without errors, and activates no output style
-- slt: running `slt` cycles the statusline mode (symbol → percent → number → off)
+- slt: running `slt` cycles the statusline mode (symbol → percent → number → bar → off)
 - /commit: creates repository-adaptive checkpoint commits and publishes when the active delivery or repository policy authorizes it
 - /loop: given a goal file, runs supervisor+worker iterations until converged or max-iter
 - committer: `committer "type: msg" file1 file2` stages only named files and commits
@@ -95,6 +95,12 @@ python3 configs/scripts/workflow-scorecard.py --self-test
 # parallel() barrier scored 55% with 19%.
 python3 configs/scripts/workflow-scorecard.py --project Clade --since 7
 python3 configs/scripts/workflow-scorecard.py --since 0 --json   # all runs, machine-readable
+
+# Did a Codex worker actually delegate? `codex exec` CAN subdivide — measured
+# 2026-09-05, the gate is the resolved model's catalog multi_agent_version, not
+# the session source. This counts the children, and its self-test distinguishes
+# a real zero from an unreadable state file.
+python3 configs/scripts/workflow-scorecard.py --codex-children
 
 # Native Codex plugin — regenerate after changing a shipped canonical skill
 python3 configs/scripts/regen-codex-plugin.py
@@ -496,8 +502,13 @@ This checklist drifted twice before anything watched it: 4 of 7 gates until
 suites until 2026-08-29. `check-ci-checklist.py` (item 15) now enforces the
 superset and runs in CI, and `ci-local.py` runs the gates so nobody has to
 re-type them. **When you add a CI step, add its explanation here in the same
-commit** — the gate will tell you if you forget, which is the part that was
-missing both times.
+commit.** The gate catches a forgotten entry as long as the new step invokes
+something `ARTEFACT_PATTERNS` already recognises, or lands in `syntax-check` or
+`shell-tests`, whose step counts it also compares. A step running a tool no
+pattern names is invisible to it — the gate's own documented blind spot
+(`check-ci-checklist.py:67-74`), which fired the day the ruff step landed. **A
+new KIND of gate therefore needs its pattern added to that script in the same
+commit too.**
 
 On push/PR to `main`, four workflow files fire:
 

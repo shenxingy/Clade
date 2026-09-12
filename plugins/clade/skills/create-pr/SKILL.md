@@ -103,6 +103,14 @@ must run before ready.
 
 ## 5. Publish and record
 
+**`--dry-run` stops here.** Report the resolved base, the scope verdict, the
+candidate-evidence status, and the PR title and body you would post — then stop
+without pushing and without calling `gh pr create`. This flag was in the
+argument-hint and read by nothing, so a run that asked to preview published a
+PR instead; of every flag in this toolkit that is the one whose absence is
+visible to other people.
+
+
 Push with an explicit same-name refspec/upstream only under recorded push
 authority. Then create or update the PR through the selected forge adapter.
 

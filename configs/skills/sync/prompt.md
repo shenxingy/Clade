@@ -74,14 +74,21 @@ Guidelines:
 
 ## Step 3b: Prune old entries
 
-If PROGRESS.md exceeds 100 lines:
-1. Identify entries older than 30 days (by their `### YYYY-MM-DD` headers)
-2. If the entry is NOT marked with `[ACTIVE]`, move it to `docs/progress-archive/YYYY-MM.md` (create the file if needed, append to it)
-3. Keep PROGRESS.md under 100 lines — the most recent entries stay
-4. Show what was archived:
-   ```
-   Archived 3 old entries to docs/progress-archive/2026-01.md
-   ```
+If PROGRESS.md exceeds 100 lines, run the tool CI gates on rather than
+archiving by hand:
+
+```bash
+python3 configs/scripts/archive-progress.py --apply
+```
+
+It keeps the newest entries that fit under the cap plus anything marked
+`[ACTIVE]`, writes the rest to `docs/progress-archive/YYYY-MM.md`, reroots their
+links, and refreshes the single archive pointer in the header. **Age is not the
+criterion — the cap is.** This file used to say "older than 30 days", which
+disagreed with the gate: a 40-day entry stays if it fits, and a 2-day entry
+moves if it does not.
+
+Report what it printed.
 
 ---
 

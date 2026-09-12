@@ -46,6 +46,14 @@ If on the base branch (main/master) with no recent changes: ask the user which r
 
 ---
 
+## Step 0b: `--dry-run`
+
+When invoked with `--dry-run`, run Steps 1-6 as ANALYSIS ONLY: make no `Edit`
+call and never reach the `committer` in Step 7. Emit the Step 7 report block
+with every line prefixed `would update:`. The flag was advertised in the
+argument-hint and read by nothing, so a run asking to preview rewrote and
+committed the docs.
+
 ## Step 1: Diff analysis
 
 Classify changes into categories:

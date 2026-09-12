@@ -23,9 +23,9 @@
 | `session-context.sh` | SessionStart | Injects git state, model guidance, correction rules into context |
 | `pre-tool-guardian.sh` | PreToolUse (Bash) | Blocks dangerous commands (force-push, rm -rf, migrations outside dev mode) |
 | `linter-config-guard.sh` | PreToolUse (Edit/Write) | Guards linter config files from accidental overwrite |
-| `revert-detector.sh` | PreToolUse (Bash) | Detects git revert/reset attempts and warns |
+| `revert-detector.sh` | PreToolUse (Bash), async | Records a git revert/reset against the session's edit shadow for correction pairing. **Silent by design** — async hooks have no channel back into the turn, and the gate is that only an explicit "that's wrong" escalates to context |
 | `permission-request.sh` | PermissionRequest | Handles elevated permission requests |
-| `post-edit-check.sh` | PostToolUse (Edit/Write) | Runs async verify_cmd after edits (type-check, tests); results delivered via asyncRewake on next turn |
+| `post-edit-check.sh` | PostToolUse (Edit/Write) | Per-file type check (tsc / pyright / mypy / cargo check / go vet / …) plus an uncommitted-file nudge; wakes Claude via asyncRewake **only on failure** (exit 2 + stderr) |
 | `post-tool-use-lint.sh` | PostToolUse (Edit/Write) | Runs project verify_cmd; exits 2 on failure so Claude fixes it immediately |
 | `post-tool-use-failure.sh` | PostToolUse (failure) | Logs tool failures for pattern tracking |
 | `rule-injector.sh` | PostToolUse (Edit/Write) | Injects path-scoped rules from `.claude/rules/` + `~/.claude/rules/` when the edited file matches their `paths:` frontmatter (once per session per rule) |
@@ -35,7 +35,7 @@
 | `memory-sync.sh` | PostToolUse (Write/Edit) | Syncs memory files to NFS/GitHub when written |
 | `doc-align-check.sh` | PostToolUse (Edit/Write) | Advisory: warns if edited markdown disagrees with docs/facts.json; async systemMessage only |
 | `correction-detector.sh` | UserPromptSubmit | Detects correction patterns; saves rules to corrections/rules.md |
-| `prompt-tracker.sh` | UserPromptSubmit | Tracks prompts for correction learning stats; pure telemetry, no output to Claude |
+| `prompt-tracker.sh` | UserPromptSubmit, **sync** | Fingerprints long prompts and, once per pattern, injects a note through `hookSpecificOutput.additionalContext` when the same standing brief is being typed again. Stores fingerprints only, never prompt text |
 | `pre-compact.sh` | PreCompact | Saves session state before context compression |
 | `stop-check.sh` | Stop | Blocks stop if uncommitted changes or blockers.md has entries |
 | `verify-task-completed.sh` | TaskCompleted | Runs quality gate after task completion |
@@ -54,7 +54,7 @@ All hooks are shell scripts — zero API cost, sub-second execution.
 
 Common values: `"tsc --noEmit"` (TypeScript), `"python3 -m py_compile <file>"` (Python), `"cargo check"` (Rust), `"go build ./..."` (Go). Leave unset to disable.
 
-**`post-edit-check.sh`** runs **async background checks** (type-check, test suite) in parallel while Claude continues working. Results are delivered on the next conversation turn via `asyncRewake` — Claude will see any failures and can fix them then. This is for expensive checks (full test suites, type-checking large codebases) where waiting synchronously would be slower than proceeding and fixing failures later.
+**`post-edit-check.sh`** type-checks the edited file in the background while Claude keeps working, and wakes Claude on the next turn via `asyncRewake` **only when the check fails** (exit 2, findings on stderr); a clean check exits 0 silently. It does not run `verify_cmd` and it does not run a test suite — type-checking a large codebase is the expensive thing it exists to move off the critical path. The project-level test gate is `verify-task-completed.sh`.
 
 ## Agents (specialized sub-agents)
 
@@ -97,7 +97,7 @@ Claude auto-selects agents. Haiku agents are fast and cheap for mechanical check
 
 **`/research`** runs a structured deep-dive on a topic — web search, synthesize findings, save to `docs/research/<topic>.md`. Useful before starting a complex feature.
 
-**`/map`** generates a codebase map: module dependency graph, entry points, and file → branch ownership from `git log`. Output is saved as `ARCHITECTURE.md` with a Mermaid module diagram. (`.claude/AGENTS.md` is written by the orchestrator's own flow, not by `/map`.)
+**`/map`** generates a codebase map: module dependency graph and key components, saved as `ARCHITECTURE.md` with a Mermaid module diagram. It reads the tree only — no git history, and no ownership data. For who-owns-what, use `/landscape`. (`.claude/AGENTS.md` is written by the orchestrator's own flow, not by `/map`.)
 
 **`/incident`** activates incident response mode: diagnose the issue, propose a root cause, draft a postmortem, and add follow-up tasks to TODO.md.
 

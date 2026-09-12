@@ -195,7 +195,7 @@ Commit Lessons 与 Doc Align 在 Claude 完整框架中本地运行，未启用�
 | `/incident DESC` | 事故响应 — 诊断、复盘、后续任务 |
 | `/cso` | 安全审计（OWASP + STRIDE） |
 | `/landscape` | 全系统报告 — 每个部分、每个入口、负责人、差距、以及放弃过的尝试，产出为发布的 artifact |
-| `/map` | 生成 ARCHITECTURE.md（模块图 + 文件归属） |
+| `/map` | 生成 ARCHITECTURE.md（Mermaid 模块图；只读目录树，不读 git 历史，无归属数据） |
 
 ### 调研与规划
 

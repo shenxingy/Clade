@@ -220,7 +220,7 @@ default". The default `claude` path is byte-identical to before — verified by
 Haiku, which does not support the control.
 
 With `auto_model_routing` enabled, high-readiness Codex tasks use
-`codex_cheap_model` (`gpt-5.6-terra` by default), while critical-path or
+`codex_cheap_model` (`gpt-5.6-luna` by default), while critical-path or
 low-readiness tasks use `codex_strong_model` (`gpt-5.6-sol` by default).
 Routing remains off by default until replay evaluation demonstrates that both
 verified success per dollar and per wall-hour hold for a task class.

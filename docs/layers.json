@@ -18,7 +18,10 @@
         "configs/codex-agents",
         "configs/output-styles",
         "configs/templates",
-        "templates"
+        "templates",
+        "plugins/clade/hooks",
+        "plugins/clade/skills.list",
+        "plugins/clade/.codex-plugin"
       ],
       "reason": "The terminal is where all work happens. Every measured number in this repository comes from here or from the Claude Code layer it drives.",
       "since": "2026-09-02",
@@ -47,9 +50,9 @@
       "name": "codex-plugin",
       "status": "generated",
       "paths": [
-        "plugins/clade"
+        "plugins/clade/skills"
       ],
-      "reason": "Derived from configs/skills. Regenerate with configs/scripts/regen-codex-plugin.py.",
+      "reason": "Derived from configs/skills via plugins/clade/skills.list. Regenerate with configs/scripts/regen-codex-plugin.py. Only skills/ is generated — the hooks, the skills.list manifest and .codex-plugin/plugin.json beside it are hand-maintained and belong to the cli layer.",
       "since": "2026-09-02"
     }
   ]

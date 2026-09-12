@@ -10,11 +10,20 @@ Windsurf 及其他 MCP 客户端。
 
 ## 0.3.1 新功能
 
+- 所有发布版本号面统一由一个来源校验：闸门从 `pyproject.toml` 派生期望值，
+  并覆盖两个 plugin manifest，发版不再需要改闸门本身
+- Secret 脱敏改为 ASCII 锚定：此前粘在中文或西里尔文里的 key 永远匹配不到，
+  因为 Python 的 `\b` 是 Unicode 语义
+
+## Runtime 支持（自 0.2.0 起）
+
+Provider 选择不是本次新增——它在 0.2.0 就有了；列在这里是因为它通常是第一个要配的东西：
+
 - 通过 `codex exec --json` 原生执行 Codex runtime
 - `CLADE_RUNTIME=auto`：优先使用已安装的 Claude，否则使用 Codex
 - 可配置 Codex sandbox；跳过 permission 必须显式开启
-- 内置 workflows 从 0.1.0 的 29 个增加到 34 个
 - `clade_list_skills` 会显示当前 runtime，便于诊断配置
+- 内置 workflows 从 0.1.0 的 29 个增加到 34 个
 
 升级：
 
