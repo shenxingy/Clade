@@ -118,8 +118,10 @@ If recording fails after PR creation, re-query by head and repair the existing
 record; do not create another PR.
 
 Wait for this PR's remote checks. Fix failures with new checkpoint commits,
-rerun full candidate verification for the new SHA, push, and update the same
-PR. Completion reports the URL, base/head, stack position, exact evidence, and
+rerun full candidate verification for the new SHA, push, update the same PR,
+and record `publish` again so `pull_request.head_sha` names the pushed head
+(`published` stays true; a new candidate does not un-publish the delivery).
+Completion reports the URL, base/head, stack position, exact evidence, and
 remaining external review—not “ready” while gates are pending.
 
 ## Codex surface adapter

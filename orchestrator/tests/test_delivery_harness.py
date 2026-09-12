@@ -644,6 +644,10 @@ def test_export_patch_preserves_tracked_and_untracked_changes(
     assert state["artifacts"][-1]["kind"] == "patch"
 
 
+MERGE_SHA = "a" * 40
+MOVED_HEAD = "f" * 40
+
+
 def _fake_gh(
     bin_dir: Path,
     *,
@@ -651,32 +655,64 @@ def _fake_gh(
     commit_count: int = 2,
     pr_state: str = "OPEN",
     listed_pr_state: str | None = None,
+    merge_sha: str | None = None,
+    merged_head: str | None = None,
+    mergeable_sequence: list[str] | None = None,
+    pr_overrides: dict[int, dict] | None = None,
 ) -> Path:
+    """Write a `gh` stub answering `pr view`, `repo view`, and `pr list`.
+
+    `pr_state`/`merge_sha`/`merged_head` shape the default PR; `pr_overrides`
+    patches individual PR numbers so one stub can answer for several records;
+    `mergeable_sequence` replays one `mergeable` value per `pr view` call
+    (the last value repeats) to imitate GitHub's asynchronous recompute.
+    """
+
     check = (
         '{"name":"Tests","status":"IN_PROGRESS","conclusion":""}'
         if pending
         else '{"name":"Tests","status":"COMPLETED","conclusion":"SUCCESS"}'
     )
+    counter = bin_dir / "mergeable-calls"
+    if counter.exists():
+        counter.unlink()
     script = bin_dir / "gh"
     script.write_text(
         f"""#!/usr/bin/env python3
 import json
 import sys
+from pathlib import Path
 args = sys.argv[1:]
+HEAD = {_git(bin_dir.parent, 'rev-parse', 'HEAD')!r}
+OVERRIDES = { {str(k): v for k, v in (pr_overrides or {}).items()}!r}
+SEQUENCE = {mergeable_sequence!r}
 if args[:2] == ["pr", "view"]:
-    print(json.dumps({{
-        "number": 17,
-        "url": "https://github.com/acme/repo/pull/17",
-        "state": {json.dumps(pr_state)},
+    number = int(args[2])
+    merged = {pr_state!r} == "MERGED"
+    fact = {{
+        "number": number,
+        "url": f"https://github.com/acme/repo/pull/{{number}}",
+        "state": {pr_state!r},
         "isDraft": False,
-        "mergeable": "MERGEABLE",
-        "mergeStateStatus": "CLEAN",
+        # Real gh reports UNKNOWN for both fields once a PR is merged.
+        "mergeable": "UNKNOWN" if merged else "MERGEABLE",
+        "mergeStateStatus": "UNKNOWN" if merged else "CLEAN",
         "headRefName": "agent/fixture",
-        "headRefOid": {json.dumps(_git(bin_dir.parent, "rev-parse", "HEAD"))},
+        "headRefOid": {merged_head!r} or HEAD,
         "baseRefName": "main",
         "statusCheckRollup": [{check}],
         "commits": [{{"oid": str(index)}} for index in range({commit_count})],
-    }}))
+        "mergeCommit": {{"oid": {merge_sha!r}}} if {merge_sha!r} else None,
+        "mergedAt": "2026-09-12T03:00:29Z" if merged else None,
+        "mergedBy": {{"login": "integrator"}} if merged else None,
+    }}
+    fact.update(OVERRIDES.get(str(number), {{}}))
+    if SEQUENCE:
+        counter = Path(__file__).with_name("mergeable-calls")
+        calls = int(counter.read_text()) if counter.exists() else 0
+        counter.write_text(str(calls + 1))
+        fact["mergeable"] = SEQUENCE[min(calls, len(SEQUENCE) - 1)]
+    print(json.dumps(fact))
 elif args[:2] == ["repo", "view"]:
     print(json.dumps({{
         "mergeCommitAllowed": True,
@@ -684,12 +720,12 @@ elif args[:2] == ["repo", "view"]:
         "squashMergeAllowed": True,
     }}))
 elif args[:2] == ["pr", "list"]:
-    if "--head" in args and {json.dumps(listed_pr_state)} is not None:
+    if "--head" in args and {listed_pr_state!r} is not None:
         print(json.dumps([{{
             "number": 17,
             "url": "https://github.com/acme/repo/pull/17",
-            "state": {json.dumps(listed_pr_state)},
-            "headRefOid": {json.dumps(_git(bin_dir.parent, "rev-parse", "HEAD"))},
+            "state": {listed_pr_state!r},
+            "headRefOid": HEAD,
         }}]))
     else:
         print("[]")

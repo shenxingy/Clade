@@ -25,6 +25,7 @@ reviewable unit:
 probe → start → build → checkpoint* → candidate → publish/update
       → review/CI → ready → integrate → clean
       ↘ abandon superseded work under exact leases → clean
+      ↘ reconcile a merge the forge confirms but no READY lock covers → clean
 ```
 
 Do not stop after creating a branch or editing files. Do not guess repository
@@ -268,8 +269,12 @@ python3 "$DELIVERY_PY" publish \
 ```
 
 Wait for the PR's own remote checks. Review/CI fixes become new checkpoint
-commits, followed by a new candidate record. Do not claim ready while checks,
-required reviews, or conversations are unresolved.
+commits, followed by a new candidate record and a `publish` update so
+`pull_request.head_sha` names the pushed head. `published` stays true through
+that sequence: a checkpoint commit reports CHECKPOINT until the new candidate
+is recorded, and neither the candidate nor the update un-publishes the PR. Do
+not claim ready while checks, required reviews, or conversations are
+unresolved.
 
 ## 7. Ready and integrate
 
@@ -293,6 +298,12 @@ READY fails closed when:
 - the requested strategy is disabled;
 - live children would be broken by ancestry rewriting.
 
+`mergeable: UNKNOWN` is not a refusal: GitHub computes mergeability
+asynchronously and reports UNKNOWN for tens of seconds after a parent lands or
+a PR is retargeted. The controller re-queries with backoff for
+`--mergeable-timeout` seconds (default 45) and fails, naming the wait, only if
+it never settles.
+
 `auto` chooses only when the history semantics are unambiguous:
 
 - merge when live children require ancestry preservation;
@@ -315,6 +326,52 @@ python3 "$DELIVERY_PY" merged \
   --id "<id>" --head-sha "<locked-head>" \
   --merge-sha "<landed-sha>" --strategy "<strategy>"
 ```
+
+### Merges the READY lock did not cover
+
+A merge can land without a matching lock: an out-of-band `gh pr merge`, a
+crash between the merge and `merged`, or a PR that moved and merged at a head
+the lock never named. The forge's verdict is an external fact this controller
+exists to record, so `merged` then confirms it against the forge instead of
+refusing: the PR must be MERGED and its merge commit must equal `--merge-sha`
+(and its head must equal `--head-sha` when given). Nothing about `ready` is
+weakened — that gate is for merges that have not happened yet.
+
+The locked path stays forge-free: when a READY lock exists and `--head-sha` is
+omitted or names the locked head, `merged` records the lock as before, because
+`--match-head-commit` already made the merge land at that head. A lock that
+turned out stale is covered only when `--head-sha` names the head that
+actually merged, or through `reconcile --id`, which always asks the forge.
+
+The record says what the evidence did not cover, rather than hiding it:
+
+- `merge.reconciled_from_forge: true`
+- `merge.ready_skipped: true` when no lock named the merged head;
+- `merge.candidate_stale: true` with `merge.candidate_head` when the candidate
+  evidence is for another SHA or absent — the merged head was never verified
+  by this delivery;
+- `merge.strategy_source`: `argument`, `ready`, `inferred` (multi-parent
+  landed commit), or `unknown` — the forge does not expose the merge method.
+
+`merged` is idempotent for the same merge SHA and refuses a different one.
+
+To sweep records left behind this way:
+
+```bash
+python3 "$DELIVERY_PY" reconcile --id "<id>" [--apply]
+python3 "$DELIVERY_PY" reconcile --all [--apply]
+```
+
+Dry-run by default: every record not yet MERGED, CLEAN, or ABANDONED is
+reported as `merge`, `skip`, or `error` with its reason. `--apply` records
+MERGED only where the forge confirms it, and repeating it on a record that
+already reached MERGED succeeds. An open PR is never touched; a
+closed-unmerged PR is a skip that names `abandon`, because dispositioning work
+is an explicit, reasoned transition. `--all` never searches the forge for a
+record without a PR number and takes neither `--pr` nor `--strategy`. `--id`
+on such a record adopts only a merged PR at the exact recorded head — the same
+lease `abandon` honours; a merged PR at a later head is reported and can be
+recorded explicitly with `merged --pr <n> --merge-sha <landed-sha>`.
 
 Stacks merge bottom-up. After a parent lands, synchronously retarget/restack
 each child, push only with a verified force-with-lease on owned branches,
@@ -342,9 +399,9 @@ not a CI, review, or integration bypass.
 For GitHub-backed unpublished records, the controller also discovers PRs by
 the recorded branch instead of trusting a possibly stale `published` flag.
 Any unrecorded OPEN PR blocks abandonment; an unrecorded MERGED PR at the exact
-recorded head must be reconciled rather than mislabeled abandoned. Terminal
-PRs at later heads are retained as related audit evidence for a superseded
-stale record.
+recorded head must be reconciled (`reconcile --id <id> --apply`, §7) rather
+than mislabeled abandoned. Terminal PRs at later heads are retained as related
+audit evidence for a superseded stale record.
 
 Abandonment terminalizes the branch lease but does not delete work. Preserve
 anything still needed, remove only the owned worktree/branch under recorded
