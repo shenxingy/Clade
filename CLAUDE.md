@@ -393,6 +393,11 @@ python3 configs/scripts/red-phase-audit.py --self-test
 #     discipline. Second instrument in this repo to ship unable to fire.
 python3 configs/scripts/workflow-scorecard.py --self-test
 
+# 2d. And of the skill-contract gate. Its first version accepted the bare word
+#     rather than the literal `--flag`, so it could not fire — flag names are
+#     common English words.
+python3 configs/scripts/check-skill-contracts.py --self-test
+
 # 3. Shell syntax check (hooks, scripts, installer)
 bash -n configs/hooks/*.sh configs/scripts/*.sh install.sh
 
@@ -453,6 +458,12 @@ python3 configs/scripts/archive-progress.py --check      # --apply to archive
 #      dormant orchestrator and nothing in the tree said it was dormant.
 python3 configs/scripts/check-layers.py
 
+# 10f. Skill contracts — a skill must not advertise what it does not do. Every
+#      `--flag` in an argument-hint must appear in the body, and every path the
+#      front matter names must resolve. /create-pr advertised --dry-run and only
+#      ever published; a run asking to preview opened a real PR.
+python3 configs/scripts/check-skill-contracts.py
+
 # 11. Shellcheck (CI installs shellcheck; local may not). The `bash` prefix is
 #     required — checks.sh is mode 100644, so invoking it directly exits 126 —
 #     and the file list must match CI's, which is every hook and script plus
@@ -512,7 +523,7 @@ commit too.**
 
 On push/PR to `main`, four workflow files fire:
 
-- `ci.yml` — `syntax-check` (19 gates), `pytest` (suite + 2 offline evals),
+- `ci.yml` — `syntax-check` (20 gates), `pytest` (suite + 2 offline evals),
   `shell-tests` (20 suites), `install-test`. `run_hack_eval.py` scores
   `judge_diversity.test_integrity` against the labelled reward-hack corpus in
   `evals/hack_cases/` — read its README before changing either, because that

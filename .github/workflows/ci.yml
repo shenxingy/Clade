@@ -171,6 +171,15 @@ jobs:
       - name: Layer declaration
         run: python3 configs/scripts/check-layers.py
 
+      # A skill must not advertise what it does not do. Three convergence
+      # rounds found 61, 25 and 26 issues and the count was not falling,
+      # because the issues were the same few CLASSES recurring across 138
+      # skills. This gates the largest: /create-pr advertised --dry-run and
+      # only ever published, which opened a real PR for a run asking to
+      # preview. Its own --self-test runs in the pytest job.
+      - name: Skill contracts
+        run: python3 configs/scripts/check-skill-contracts.py
+
       # CLAUDE.md's pre-commit checklist claims to be what makes CI pass. It
       # had drifted twice (df802c3, then again by 2026-08-29), both times
       # leaving a local run green against a list that did not cover the build.
@@ -230,6 +239,13 @@ jobs:
       # disciplined session exactly like an undisciplined one.
       - name: Poll-detector self-test (can it go red?)
         run: python3 configs/scripts/workflow-scorecard.py --self-test
+
+      # Fourth instrument in this repo to arrive with the question answered.
+      # Its first version accepted the bare word instead of the literal --flag,
+      # and could not fire: flag names are common English words, so /brief
+      # passed with its --all handling deleted.
+      - name: Skill-contract gate self-test (can it go red?)
+        run: python3 configs/scripts/check-skill-contracts.py --self-test
 
       - name: Score the test-integrity detector against the reward-hack corpus
         run: |
