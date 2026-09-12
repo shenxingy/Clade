@@ -76,6 +76,11 @@ Merge queues and auto-merge are repository integrations, not bypasses. Use the
 native queue when required; otherwise execute exactly the emitted strategy and
 head lock.
 
+`mergeable: UNKNOWN` right after a parent landed or a child was retargeted is
+GitHub still computing, not a verdict; the controller re-queries with backoff
+for `--mergeable-timeout` seconds (default 45) and fails only if it never
+settles. Do not read that transient as a conflict.
+
 ## 4. Record and repair descendants
 
 After forge confirmation, retrieve the actual landed commit and record:
@@ -85,6 +90,17 @@ python3 "$DELIVERY_PY" merged \
   --id "<id>" --head-sha "<locked-head>" \
   --merge-sha "<landed-sha>" --strategy "<actual-strategy>"
 ```
+
+If the forge reports the PR merged but no READY lock covers that head — an
+out-of-band `gh pr merge`, a crash after the merge, a PR that moved and merged
+at a head the lock never named — `merged` confirms `--merge-sha` against the
+PR's merge commit and records `reconciled_from_forge`, `ready_skipped`, and
+`candidate_stale` instead of refusing forever. That is recording a fact, not a
+bypass: the pre-merge gates in §2–§3 are unchanged, and with a lock present
+`merged --head-sha <locked-head>` still records the lock without asking the
+forge; pass the head that actually merged, or use `reconcile --id`, when the
+lock is stale. `reconcile --all` (dry-run by default) sweeps every PR-bearing
+record the same way and never touches an open PR.
 
 For stacks, merge bottom-up. If a parent was squash/rebase merged, every child
 must be retargeted/restacked onto current base, pushed only with an explicit
