@@ -89,8 +89,9 @@ Choose each dimension explicitly and record the reason in `BRAND.md`.
   accents or the reverse; high difficulty, high payoff)
 - **C. Primary hue** — cobalt 220 · electric blue 210 · indigo 240 ·
   blue-violet-grey 250 · emerald 160 · deep green 150 · teal 180 · amber 40 ·
-  terracotta 20 · crimson 0 · magenta 330. A school may justify going outside
-  this: brutalist black-and-white with fluorescent green or yellow; Y2K chrome
+  terracotta 20 · crimson 0 · magenta 330 (**only at low saturation** — see the
+  ban below; a vivid magenta needs a school that earns it). A school may justify
+  going outside this list too: brutalist black-and-white with fluorescent green or yellow; Y2K chrome
   with electric pink; dark luxury black with gold or champagne; analog kraft
   paper with ink blue. These are the *school arguing for the hue*, not a licence
   to reach for it — outside the school that earns it the ban below stands, and
