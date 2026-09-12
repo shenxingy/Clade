@@ -65,6 +65,12 @@ _STEP_KEY = re.compile(r"^        ([a-z-]+):\s*(.*)$")
 _EXPR = re.compile(r"\$\{\{")
 
 # Runner label -> the platform.system() value that can execute it.
+# Job-level keys whose semantics this runner does not reproduce.
+_UNMODELLED_JOB_KEYS = frozenset({"strategy", "container", "services", "defaults"})
+# Step-level keys likewise. `if:` is the sharp one — a step-level condition
+# silently changes what a job covers.
+_UNMODELLED_STEP_KEYS = frozenset({"if", "continue-on-error"})
+
 _PLATFORM = {
     "ubuntu": "Linux",
     "macos": "Darwin",
@@ -89,6 +95,12 @@ class Job:
     runs_on: str = ""
     condition: str = ""
     steps: list[Step] = field(default_factory=list)
+    # Workflow constructs this line-based parser does NOT model. Anything here
+    # makes the job a loud skip rather than a partial run: a matrix job silently
+    # collapsed to one leg, or a container job run on the host, is a green that
+    # covered less than it appears to — the failure this tool exists to prevent,
+    # arriving from a new direction.
+    unmodelled: list[str] = field(default_factory=list)
 
     @property
     def display(self) -> str:
@@ -199,6 +211,8 @@ def parse_workflow(path: Path) -> tuple[list[Job], str]:
                     step.name = value
                 elif key == "working-directory":
                     step.working_directory = value
+                elif key in _UNMODELLED_STEP_KEYS and current is not None:
+                    current.unmodelled.append(f"step-level {key}")
                 continue
             # `env:` children sit deeper; capture simple literal pairs only.
             env_match = re.match(r"^          ([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$", raw)
@@ -209,6 +223,8 @@ def parse_workflow(path: Path) -> tuple[list[Job], str]:
         jk = _KEY.match(raw)
         if jk:
             key, value = jk.group(1), jk.group(2).strip()
+            if key in _UNMODELLED_JOB_KEYS:
+                current.unmodelled.append(key)
             if key == "name":
                 current.name = value.strip('"')
             elif key == "runs-on":
@@ -237,6 +253,11 @@ def step_skip_reason(step: Step) -> str | None:
 
 def skip_reason(job: Job, on_block: str, include_conditional: bool) -> str | None:
     """Why this job will not run here, or None if it will."""
+    if job.unmodelled:
+        what = ", ".join(sorted(set(job.unmodelled)))
+        return f"uses {what}, which this runner does not model — run it hosted, or split the job"
+    if "${{" in job.runs_on:
+        return "runs-on is an expression (matrix leg) — run each leg on its own machine"
     if "pull_request_target" in on_block and "pull_request:" not in on_block:
         return "runs on GitHub's side only (pull_request_target)"
     if job.condition and not include_conditional:
@@ -514,6 +535,9 @@ def main() -> int:
             {
                 "repo": str(repo),
                 "platform": local_platform(),
+                # /green's report contract asks how long the whole thing took.
+                # A stated field with no way to obtain it gets omitted or invented.
+                "seconds": round(sum(r.seconds for r in ran), 1),
                 "passed": [r.job.display for r in ran if r.status == "pass"],
                 "skipped": [{"job": r.job.display, "reason": r.reason} for r in skipped],
                 "failed": [

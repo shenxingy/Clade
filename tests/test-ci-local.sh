@@ -101,6 +101,24 @@ jobs:
         env:
           TOKEN: ${{ secrets.SOME_TOKEN }}
         run: echo secret-step-ran
+
+  matrixed:
+    name: Matrix Job
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - name: Matrix step
+        run: echo matrix-ran
+
+  conditional_step:
+    name: Step Level If
+    runs-on: ubuntu-latest
+    steps:
+      - name: Only sometimes
+        if: github.ref == 'refs/heads/main'
+        run: echo conditional-step-ran
 YAML
 
 run_it() { python3 "$RUNNER" --repo "$FAKE" "$@" 2>&1; }
@@ -116,7 +134,7 @@ assert_contains "$OUT" "needs Darwin" "a macOS job says which platform it needs"
 # of this assertion looked for the string "5" anywhere in the output, which is
 # a proxy, not a check, and it failed for the right reason.
 LISTED=$(grep -cE '^  \[(run |skip)\] ' <<< "$OUT" || true)
-assert_eq "$LISTED" "5" "exactly the 5 real jobs are listed, not the on: triggers"
+assert_eq "$LISTED" "7" "exactly the 7 real jobs are listed, not the on: triggers"
 PHANTOM=$(grep -cE '\] (push|pull_request|schedule|workflow_dispatch) ' <<< "$OUT" || true)
 assert_eq "$PHANTOM" "0" "no trigger name is parsed as a job"
 
@@ -155,10 +173,30 @@ OUT="$(run_it --job "Needs A Secret")"
 assert_contains "$OUT" "0/0 job(s) passed" "a job with no runnable step is not counted as passed"
 assert_contains "$OUT" "every step skipped" "and the reason names why it ran nothing"
 
+# ─── 4b. Constructs the parser cannot model are LOUD skips ───────────
+# A matrix job quietly collapsed to one leg, or a container job run on the
+# host, is a green that covered less than it appears to — the same
+# nothing-ran-looks-like-all-passed failure arriving from a new direction.
+section "unmodelled workflow constructs are refused, not half-run"
+OUT="$(run_it --list)"
+assert_contains "$OUT" "does not model" "a matrix job is skipped with a reason naming why"
+if grep -A1 'Matrix Job' <<< "$OUT" | grep -q 'strategy'; then
+  pass "the matrix job names strategy: as the construct"
+else
+  fail "the matrix job names strategy: as the construct" "$(grep -A1 'Matrix Job' <<< "$OUT")"
+fi
+if grep -A1 'Step Level If' <<< "$OUT" | grep -q 'step-level if'; then
+  pass "a step-level if: makes the job a skip"
+else
+  fail "a step-level if: makes the job a skip" "$(grep -A1 'Step Level If' <<< "$OUT")"
+fi
+OUT="$(run_it --job "Matrix Job")"
+assert_contains "$OUT" "0/0 job(s) passed" "a matrix job is never counted as passed"
+
 # ─── 5. JSON is usable by an automatic fixer ─────────────────────────
 section "the JSON carries what a fixer needs"
 JSON="$(run_it --json)"
-for field in '"job": "Bad Job"' '"step": "This one fails"' '"exit_code": 3' '"command"' '"output_tail"'; do
+for field in '"job": "Bad Job"' '"step": "This one fails"' '"exit_code": 3' '"command"' '"output_tail"' '"seconds"'; do
   assert_contains "$JSON" "$field" "json carries $field"
 done
 if python3 -c "import json,sys; json.load(sys.stdin)" <<< "$JSON" 2>/dev/null; then

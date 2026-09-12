@@ -31,6 +31,7 @@ ARCHIVE_DIR = REPO / "docs" / "progress-archive"
 CAP = 100
 
 _ENTRY = re.compile(r"^### (\d{4})-(\d{2})-\d{2}\b")
+_ENTRY_ANY = re.compile(r"^### \d{4}-\d{2}-\d{2}\b", re.M)
 _SEPARATOR = "---"
 
 
@@ -81,17 +82,34 @@ _POINTER = (
 )
 
 
-def render_header(header: str, moved_count: int) -> str:
+_POINTER_LINE = re.compile(r"^Older entries live in \[docs/progress-archive/\].*$", re.M)
+
+
+def _strip_pointers(header: str) -> str:
+    """Remove any pointer this script wrote on an earlier run.
+
+    It used to APPEND one per run, so a second archive left two lines claiming
+    different totals — 60 and 3, when the archive held 63. A stale count in the
+    file that owns the count is worse than no count.
+    """
+    return _POINTER_LINE.sub("", header).rstrip("\n") + "\n"
+
+
+def render_header(header: str, archived_total: int) -> str:
     """The header exactly as it will be written, pointer included.
 
     The planner and the writer used to build this separately, so they disagreed
     about how many lines the header would occupy and the tool produced a file
     its own --check rejected. Guessing a constant reserve papered over one case
     and not another; sharing the renderer removes the class.
+
+    `archived_total` is everything in the archive, not this run's moves — the
+    reader wants to know how much history is elsewhere, not how much moved today.
     """
-    if not moved_count:
-        return header
-    return header.rstrip("\n") + "\n" + _POINTER.format(n=moved_count) + "\n"
+    base = _strip_pointers(header)
+    if not archived_total:
+        return base
+    return base.rstrip("\n") + "\n" + _POINTER.format(n=archived_total) + "\n"
 
 
 def plan(header: str, entries: list[tuple[str, str]]) -> tuple[list, list]:
@@ -128,8 +146,31 @@ def main() -> int:
     header, entries = split_entries(text)
     kept, moved = plan(header, entries)
 
+    archived_total = 0
+    if ARCHIVE_DIR.is_dir():
+        for existing_file in ARCHIVE_DIR.glob("*.md"):
+            archived_total += len(_ENTRY_ANY.findall(existing_file.read_text(encoding="utf-8")))
+
     if not moved:
         print(f"PROGRESS.md: {total} lines, {len(entries)} entries — under the {CAP}-line cap")
+        # Nothing to move, but the pointer must still be right: the archive
+        # exists independently of whether this run added to it, and a header
+        # with no pointer hides its entries as effectively as a wrong count does.
+        #
+        # Only when there is something to point AT, or a stale pointer to
+        # remove. A repository under the cap with no archive is a no-op, and a
+        # tool that rewrites a file it had nothing to say about is one more
+        # thing to explain in a diff.
+        stale = bool(_POINTER_LINE.search(header))
+        if not archived_total and not stale:
+            return 0
+        wanted = render_header(header, archived_total) + "".join(b for _, b in entries).lstrip("\n")
+        if args.apply and wanted != text:
+            PROGRESS.write_text(wanted, encoding="utf-8")
+            print(f"  refreshed the archive pointer ({archived_total} archived)")
+        elif not args.apply and wanted != text:
+            print(f"  the archive pointer is stale ({archived_total} archived) — --apply refreshes it")
+            return 0
         return 0
 
     print(f"PROGRESS.md: {total} lines, {len(entries)} entries — over the {CAP}-line cap")
@@ -164,7 +205,7 @@ def main() -> int:
         print(f"  wrote {target.relative_to(REPO)}")
 
     PROGRESS.write_text(
-        render_header(header, len(moved)) + "".join(b for _, b in kept).lstrip("\n"),
+        render_header(header, archived_total + len(moved)) + "".join(b for _, b in kept).lstrip("\n"),
         encoding="utf-8",
     )
     print(f"  PROGRESS.md now {len(PROGRESS.read_text(encoding='utf-8').splitlines())} lines")

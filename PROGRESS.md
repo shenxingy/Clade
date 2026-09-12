@@ -4,9 +4,7 @@
 > not stale by virtue of being old; do not read them as current state. Open work
 > lives in [TODO.md](TODO.md). Decided 2026-08-29.
 
-Older entries live in [docs/progress-archive/](docs/progress-archive/) — 60 archived, newest month first.
-
-Older entries live in [docs/progress-archive/](docs/progress-archive/) — 3 archived, newest month first.
+Older entries live in [docs/progress-archive/](docs/progress-archive/) — 63 archived, newest month first.
 
 ---
 ### 2026-09-12 — CI moved to hardware we already own, plus the fixer

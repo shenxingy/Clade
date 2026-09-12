@@ -151,3 +151,31 @@ def test_rerunning_is_idempotent(big_repo: Path) -> None:
     first = (big_repo / "PROGRESS.md").read_bytes()
     _run(big_repo, "--apply")
     assert (big_repo / "PROGRESS.md").read_bytes() == first
+
+
+def test_pointer_is_replaced_not_appended(big_repo: Path) -> None:
+    """Two runs used to leave two pointer lines claiming different totals.
+
+    The real file ended up saying "60 archived" and "3 archived" on consecutive
+    lines while the archive held 63. A stale count in the file that owns the
+    count is worse than no count.
+    """
+    _run(big_repo, "--apply")
+    # Add more entries and archive again, so a second pointer would appear.
+    text = (big_repo / "PROGRESS.md").read_text(encoding="utf-8")
+    extra = "".join(_entry(f"2026-1{n}-01", 20, link=True) for n in range(3))
+    head, _, rest = text.partition("---\n")
+    (big_repo / "PROGRESS.md").write_text(head + extra + "---\n" + rest, encoding="utf-8")
+    _run(big_repo, "--apply")
+
+    final = (big_repo / "PROGRESS.md").read_text(encoding="utf-8")
+    pointers = [ln for ln in final.splitlines() if "docs/progress-archive/" in ln]
+    assert len(pointers) == 1, f"expected one pointer line, got {len(pointers)}: {pointers}"
+
+    archived = sum(
+        p.read_text(encoding="utf-8").count("\n### ")
+        for p in (big_repo / "docs" / "progress-archive").glob("*.md")
+    )
+    assert f"{archived} archived" in pointers[0], (
+        f"pointer says {pointers[0]!r} but the archive holds {archived}"
+    )
