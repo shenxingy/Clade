@@ -22,6 +22,16 @@ Scores blog posts for AI citation readiness across ChatGPT, Perplexity, and
 Google AI Overviews. Generates citation capsules and a 0-100 AI Citation
 Readiness score with platform-specific recommendations.
 
+**Engine coverage, and its limits.** The scoring below is calibrated on
+ChatGPT, Perplexity and Google AI Overviews, where citation sources are
+measurable. Three of the engines a brand actually needs behave differently and
+this skill does not score them: **Grok** grounds on live X posts, so the lever
+is X presence rather than anything on the page; **Meta AI** draws on Facebook
+and Instagram surfaces; **DeepSeek** publishes no crawler and no index. Say so
+in the report rather than implying a blog post alone covers them —
+`configs/skills/seo-geo/prompt.md` carries the per-platform table and
+`skills/blog/references/ai-crawler-guide.md` the crawler facts.
+
 ## Cross-reference
 
 This skill covers FLOW surface 3 (AI assistant citations: ChatGPT, Perplexity, Claude, Gemini, Copilot, You.com) and contributes to surface 2 (SERP plus AI Overviews). Surface mapping: `skills/blog/references/flow-alignment.md`.

@@ -144,7 +144,24 @@ platform's answers. Retrieval bots (user-triggered) may not fully respect robots
 | YouBot | You.com | AI search engine | Yes |
 | PhindBot | Phind | Developer-focused AI search | Yes |
 | ExaBot | Exa | Neural search engine | Yes |
+| MistralAI-User | Mistral | User retrieval (Le Chat) | Yes — documented at docs.mistral.ai/robots |
 | CCBot | Common Crawl | Open dataset (used by many LLMs) | Yes |
+
+### Engines you CANNOT govern through robots.txt
+
+Verified 2026-09-12. These reach your pages without an identifiable token, so a
+`User-agent:` line for them is decoration — listing them in the table above
+would tell a reader they had control they do not have.
+
+| Engine | Operator | Why robots.txt does not apply | Where the lever actually is |
+|--------|----------|-------------------------------|------------------------------|
+| **Grok** | xAI | No published crawler token and no documented IP range. Fetches arrive looking like ordinary browser traffic, with no AI-bot signal to match on. Third-party guides cite `xAI-Bot`; xAI has published nothing confirming it | Grok grounds heavily on **live X posts**. Presence, mentions and replies on X are the surface — not your robots.txt, and not your sitemap |
+| **DeepSeek** | DeepSeek | Publishes no crawler user agent. Its web fetches are indistinguishable from a browser in server logs | Nothing to allow or block. Treat it as reading whatever is publicly rendered; server-side rendering matters, access control does not |
+| **Meta AI** | Meta | `Meta-ExternalAgent` above covers bulk collection, but the assistant's in-product answers also draw on Facebook and Instagram surfaces you do not serve | Owned-profile content on Meta's own platforms, plus the Bing index it supplements with |
+
+The practical consequence: **an "AI crawler access" audit that reports a clean
+robots.txt has said nothing about Grok or DeepSeek.** Report those two as
+*ungoverned* rather than *allowed* — the distinction is the whole point.
 
 ### robots.txt Strategy by Bot Type
 

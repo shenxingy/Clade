@@ -143,21 +143,29 @@ Content with multi-modal elements sees **156% higher selection rates**.
 
 ## AI Crawler Detection
 
-Check `robots.txt` for these AI crawlers:
+**The crawler table lives in one place:**
+`configs/skills/blog/references/ai-crawler-guide.md`. Read it rather than the
+short list this section used to carry — that copy had drifted, listing
+`anthropic-ai` (deprecated) and missing `Google-Extended`, `Claude-SearchBot`,
+`Claude-User`, `Perplexity-User`, `Applebot-Extended`, `Meta-ExternalAgent`,
+`Amazonbot`, `DuckAssistBot` and `MistralAI-User`. Two tables for one fact is
+how the wrong one gets read.
 
-| Crawler | Owner | Purpose |
-|---------|-------|---------|
-| GPTBot | OpenAI | ChatGPT web search |
-| OAI-SearchBot | OpenAI | OpenAI search features |
-| ChatGPT-User | OpenAI | ChatGPT browsing |
-| ClaudeBot | Anthropic | Claude web features |
-| PerplexityBot | Perplexity | Perplexity AI search |
-| CCBot | Common Crawl | Training data (often blocked) |
-| anthropic-ai | Anthropic | Claude training |
-| Bytespider | ByteDance | TikTok/Douyin AI |
-| cohere-ai | Cohere | Cohere models |
+What that guide adds beyond a list:
 
-**Recommendation:** Allow GPTBot, OAI-SearchBot, ClaudeBot, PerplexityBot for AI search visibility. Block CCBot and training crawlers if desired.
+- **Each provider runs three bots** — training, search-indexing, retrieval.
+  Blocking the search-indexing bot is what removes you from that platform's
+  answers; blocking only the training bot does not.
+- **`Google-Extended` is the Gemini lever** and it is separate from
+  `Googlebot`. Disallowing it removes you from Gemini grounding while leaving
+  classic Search untouched — the single most consequential line in most
+  robots.txt files, and the one most often set by accident.
+- **Cloudflare blocks AI crawlers by default.** A correct robots.txt in front
+  of a default Cloudflare config still yields zero AI visibility. Check the
+  edge before auditing the file.
+- **Grok and DeepSeek cannot be governed at all** — no published token, fetches
+  indistinguishable from a browser. Report them as *ungoverned*, never as
+  *allowed*: a clean robots.txt has said nothing about either.
 
 ---
 
@@ -206,9 +214,19 @@ New standard (December 2025) for machine-readable AI licensing terms.
 | Platform | Key Citation Sources | Optimization Focus |
 |----------|---------------------|-------------------|
 | **Google AI Overviews** | Top-10 ranking pages (92%) | Traditional SEO + passage optimization |
+| **Google AI Mode / Gemini** | Google index + Gemini grounding | Same SEO base, but gated on `Google-Extended` — a site can rank in Search and be absent here |
 | **ChatGPT** | Wikipedia (47.9%), Reddit (11.3%) | Entity presence, authoritative sources |
 | **Perplexity** | Reddit (46.7%), Wikipedia | Community validation, discussions |
 | **Bing Copilot** | Bing index, authoritative sites | Bing SEO, IndexNow |
+| **Claude** | Live web fetch at answer time | Server-rendered HTML and a clean `Claude-SearchBot` allow; no separate index to rank in |
+| **Grok (xAI)** | **Live X posts**, then the open web | The lever is X presence — mentions, replies, and your own account. Page-level SEO barely reaches it, and no robots.txt directive does |
+| **Meta AI** | Facebook/Instagram surfaces + Bing | Owned-profile content on Meta's platforms; `Meta-ExternalAgent` covers only the bulk crawl |
+| **DeepSeek** | Whatever renders publicly | Server-side rendering only. No token, no index, no access control |
+
+**Scoring must not average these.** A brand can be strong in ChatGPT and absent
+from Grok, because one reads Wikipedia and the other reads X. Report per
+platform and say which surfaces were not measurable rather than folding them
+into one number.
 
 ---
 
@@ -217,7 +235,7 @@ New standard (December 2025) for machine-readable AI licensing terms.
 Generate `GEO-ANALYSIS.md` with:
 
 1. **GEO Readiness Score: XX/100**
-2. **Platform breakdown** (Google AIO, ChatGPT, Perplexity scores)
+2. **Platform breakdown** — Google AIO, Google AI Mode/Gemini, ChatGPT, Perplexity, Bing Copilot, Claude, Grok, Meta AI, DeepSeek. Score each separately; mark *ungoverned* (Grok, DeepSeek) and *not measured* rather than scoring them 0
 3. **AI Crawler Access Status** (which crawlers allowed/blocked)
 4. **llms.txt Status** (present, missing, recommendations)
 5. **Brand Mention Analysis** (presence on Wikipedia, Reddit, YouTube, LinkedIn)
