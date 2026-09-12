@@ -10,7 +10,6 @@ actions; this tool records and validates them instead of inventing authority.
 from __future__ import annotations
 
 import argparse
-import datetime as dt
 import json
 import os
 import re
@@ -23,6 +22,19 @@ from pathlib import Path
 from typing import Any, Iterator
 
 import git_context
+from delivery_forge import (
+    DeliveryError,
+    check_rollup,
+    gh_children,
+    gh_methods,
+    gh_pr,
+    gh_prs_by_head,
+    merge_record_from_pr,
+    pr_abandonment_fact,
+    run_command,
+    settle_mergeability,
+    utc_now as _now,
+)
 
 try:
     import fcntl
@@ -43,44 +55,20 @@ STATES = (
     "ABANDONED",
 )
 TERMINAL_STATES = {"CLEAN", "ABANDONED"}
+# States from which a forge-confirmed merge may still be recorded. MERGED is
+# excluded (idempotent re-record is handled separately) and so are the
+# terminal states; BLOCKED is included because a block is a pause, not a
+# disposition.
+MERGE_RECORDABLE_STATES = {"BUILD", "CHECKPOINT", "PUBLISHED", "READY", "BLOCKED"}
+# GitHub computes `mergeable` asynchronously and reports UNKNOWN until it has;
+# `ready` re-queries with backoff for this many seconds before failing.
+DEFAULT_MERGEABLE_TIMEOUT = 45.0
 SAFE_ID = re.compile(r"[^A-Za-z0-9._-]+")
 AUTHORITY_VALUES = {"pending", "task-request", "repository-policy"}
 
 
-class DeliveryError(RuntimeError):
-    """Typed user-facing delivery failure."""
-
-
-def _now() -> str:
-    return dt.datetime.now(dt.timezone.utc).isoformat()
-
-
-def _run(
-    args: list[str],
-    *,
-    cwd: Path,
-    timeout: float = 15,
-    check: bool = False,
-) -> subprocess.CompletedProcess[str]:
-    try:
-        result = subprocess.run(
-            args,
-            cwd=cwd,
-            text=True,
-            capture_output=True,
-            timeout=timeout,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise DeliveryError(f"command failed: {' '.join(args)}: {exc}") from exc
-    if check and result.returncode != 0:
-        detail = result.stderr.strip() or result.stdout.strip() or "unknown error"
-        raise DeliveryError(f"command failed: {' '.join(args)}: {detail}")
-    return result
-
-
 def _git(root: Path, *args: str, check: bool = False) -> subprocess.CompletedProcess[str]:
-    return _run(["git", *args], cwd=root, check=check)
+    return run_command(["git", *args], cwd=root, check=check)
 
 
 def _root(repo: Path) -> Path:
@@ -475,7 +463,12 @@ def cmd_candidate(args: argparse.Namespace) -> dict[str, Any]:
         state["head_sha"] = sha
         state["base_sha"] = base_sha
         state["verification"]["candidate"] = candidate
-        state["state"] = "BUILD"
+        # A published delivery stays PUBLISHED: new evidence for a re-verified
+        # head does not un-publish the PR. `restack` already keeps the same
+        # invariant; dropping to BUILD here left merged deliveries stranded
+        # (see cmd_merged). `pull_request.head_sha` still names the head at
+        # the last `publish`, so a stale PR record remains visible.
+        state["state"] = "PUBLISHED" if state.get("published") else "BUILD"
         _write_state(root, state)
     return state
 
@@ -567,125 +560,6 @@ def cmd_publish(args: argparse.Namespace) -> dict[str, Any]:
     return state
 
 
-def _check_rollup(checks: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
-    pending: list[str] = []
-    failing: list[str] = []
-    for item in checks:
-        name = item.get("name") or item.get("context") or "unnamed-check"
-        status = str(item.get("status") or "").upper()
-        conclusion = str(item.get("conclusion") or "").upper()
-        if status and status != "COMPLETED":
-            pending.append(name)
-        elif conclusion not in {"SUCCESS", "NEUTRAL", "SKIPPED"}:
-            failing.append(name)
-    return pending, failing
-
-
-def _gh_pr(root: Path, pr: str) -> dict[str, Any]:
-    fields = (
-        "number,url,state,isDraft,mergeable,mergeStateStatus,headRefName,"
-        "headRefOid,baseRefName,statusCheckRollup,commits"
-    )
-    result = _run(
-        ["gh", "pr", "view", pr, "--json", fields],
-        cwd=root,
-        timeout=15,
-    )
-    if result.returncode != 0:
-        raise DeliveryError(result.stderr.strip() or "unable to inspect PR")
-    try:
-        return json.loads(result.stdout)
-    except json.JSONDecodeError as exc:
-        raise DeliveryError("gh returned invalid PR JSON") from exc
-
-
-def _gh_prs_by_head(root: Path, branch: str) -> list[dict[str, Any]]:
-    result = _run(
-        [
-            "gh",
-            "pr",
-            "list",
-            "--state",
-            "all",
-            "--head",
-            branch,
-            "--limit",
-            "100",
-            "--json",
-            "number,url,state,headRefOid",
-        ],
-        cwd=root,
-        timeout=15,
-    )
-    if result.returncode != 0:
-        raise DeliveryError(
-            result.stderr.strip() or "unable to discover PRs for delivery branch"
-        )
-    try:
-        data = json.loads(result.stdout)
-    except json.JSONDecodeError as exc:
-        raise DeliveryError("gh returned invalid branch PR JSON") from exc
-    if not isinstance(data, list):
-        raise DeliveryError("gh returned non-list branch PR JSON")
-    return data
-
-
-def _pr_abandonment_fact(pr: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "number": pr.get("number"),
-        "url": pr.get("url"),
-        "state": str(pr.get("state") or "").upper(),
-        "head_sha": pr.get("headRefOid"),
-    }
-
-
-def _gh_methods(root: Path) -> list[str]:
-    result = _run(
-        [
-            "gh",
-            "repo",
-            "view",
-            "--json",
-            "mergeCommitAllowed,rebaseMergeAllowed,squashMergeAllowed",
-        ],
-        cwd=root,
-        timeout=15,
-    )
-    if result.returncode != 0:
-        raise DeliveryError(result.stderr.strip() or "unable to inspect merge policy")
-    data = json.loads(result.stdout)
-    return [
-        method
-        for field, method in (
-            ("squashMergeAllowed", "squash"),
-            ("rebaseMergeAllowed", "rebase"),
-            ("mergeCommitAllowed", "merge"),
-        )
-        if data.get(field)
-    ]
-
-
-def _gh_children(root: Path, branch: str) -> list[dict[str, Any]]:
-    result = _run(
-        [
-            "gh",
-            "pr",
-            "list",
-            "--state",
-            "open",
-            "--base",
-            branch,
-            "--json",
-            "number,url,headRefName,baseRefName",
-        ],
-        cwd=root,
-        timeout=15,
-    )
-    if result.returncode != 0:
-        raise DeliveryError(result.stderr.strip() or "unable to inspect child PRs")
-    return json.loads(result.stdout)
-
-
 def cmd_merge_plan(args: argparse.Namespace) -> dict[str, Any]:
     root = _root(args.repo.resolve())
     state = _read_state(root, args.id)
@@ -700,14 +574,29 @@ def cmd_merge_plan(args: argparse.Namespace) -> dict[str, Any]:
     if not pr_number:
         raise DeliveryError("delivery has no PR; pass --pr")
 
-    pr = _gh_pr(root, pr_number)
+    pr = gh_pr(root, pr_number)
+    if str(pr.get("state")).upper() != "OPEN":
+        raise DeliveryError(f"PR is not open: {pr.get('state')}")
+    timeout = getattr(args, "mergeable_timeout", DEFAULT_MERGEABLE_TIMEOUT)
+    pr, mergeability_queries = settle_mergeability(
+        root, pr_number, pr, timeout=timeout
+    )
+    # The re-query may have observed a state change (merged or closed while
+    # waiting), so the open check runs again on the settled snapshot.
     if str(pr.get("state")).upper() != "OPEN":
         raise DeliveryError(f"PR is not open: {pr.get('state')}")
     if pr.get("isDraft"):
         raise DeliveryError("PR is still draft")
-    if str(pr.get("mergeable")).upper() != "MERGEABLE":
+    mergeable = str(pr.get("mergeable") or "").upper()
+    if mergeable == "UNKNOWN":
+        raise DeliveryError(
+            "PR mergeability is still UNKNOWN after "
+            f"{mergeability_queries} queries over {timeout:g}s; GitHub computes "
+            "it asynchronously — retry ready shortly or raise --mergeable-timeout"
+        )
+    if mergeable != "MERGEABLE":
         raise DeliveryError(f"PR is not mergeable: {pr.get('mergeable')}")
-    pending, failing = _check_rollup(pr.get("statusCheckRollup") or [])
+    pending, failing = check_rollup(pr.get("statusCheckRollup") or [])
     if pending:
         raise DeliveryError(f"required checks are pending: {', '.join(pending)}")
     if failing:
@@ -721,8 +610,8 @@ def cmd_merge_plan(args: argparse.Namespace) -> dict[str, Any]:
             f"{candidate.get('head_sha')} != PR head {pr.get('headRefOid')}"
         )
 
-    methods = _gh_methods(root)
-    children = _gh_children(root, pr["headRefName"])
+    methods = gh_methods(root)
+    children = gh_children(root, pr["headRefName"])
     requested = args.strategy
     if children:
         if requested in {"squash", "rebase"}:
@@ -776,6 +665,7 @@ def cmd_merge_plan(args: argparse.Namespace) -> dict[str, Any]:
         "strategy": strategy,
         "reason": reason,
         "children": children,
+        "mergeability_queries": mergeability_queries,
         "command": [
             "gh",
             "pr",
@@ -789,34 +679,277 @@ def cmd_merge_plan(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_ready(args: argparse.Namespace) -> dict[str, Any]:
-    plan = cmd_merge_plan(args)
     root = _root(args.repo.resolve())
+    current = _read_state(root, args.id).get("state")
+    if current == "MERGED" or current in TERMINAL_STATES:
+        raise DeliveryError(f"cannot lock READY from delivery state {current}")
+    plan = cmd_merge_plan(args)
     with _locked_state_dir(root):
         state = _read_state(root, args.id)
+        # The plan may have waited on mergeability; re-check under the lock
+        # so a merge or abandonment recorded meanwhile is not overwritten.
+        if state["state"] == "MERGED" or state["state"] in TERMINAL_STATES:
+            raise DeliveryError(
+                f"delivery moved to {state['state']} during merge planning"
+            )
         state["state"] = "READY"
         state["ready"] = {**plan, "recorded_at": _now()}
         _write_state(root, state)
     return state
 
 
+# ─── Forge-confirmed merge recording ─────────────────────────────────────────
+#
+# `ready` is the pre-merge gate and stays strict: open PR, MERGEABLE, green
+# checks, candidate evidence for the exact head. But a merge can land without
+# that lock — an out-of-band `gh pr merge`, a crash between the merge and
+# `merged`, a lock taken at an older head — and the forge's verdict is exactly
+# the kind of external fact this controller exists to record. The helpers
+# below accept a merge only when the forge confirms it and record what the
+# evidence did NOT cover (`ready_skipped`, `candidate_stale`) instead of
+# refusing forever or silently equating heads.
+
+
+def _pr_number(state: dict[str, Any], override: Any = None) -> str | None:
+    number = override or (state.get("pull_request") or {}).get("number")
+    return str(number) if number else None
+
+
+def _existing_merge(state: dict[str, Any], merge_sha: str | None) -> bool:
+    """True when the same merge is already recorded; raise on a conflict."""
+
+    current = state.get("state")
+    if current in TERMINAL_STATES:
+        raise DeliveryError(
+            f"cannot record a merge for terminal delivery state {current}"
+        )
+    if current != "MERGED":
+        return False
+    recorded = (state.get("merge") or {}).get("merge_sha")
+    if merge_sha is None or recorded == merge_sha:
+        return True
+    raise DeliveryError(
+        f"delivery is already merged with a different merge SHA: {recorded}"
+    )
+
+
+def _record_merge(
+    root: Path,
+    initial: dict[str, Any],
+    merge: dict[str, Any],
+) -> dict[str, Any]:
+    """Write MERGED under the lock unless the record moved during forge I/O."""
+
+    with _locked_state_dir(root):
+        state = _read_state(root, initial["delivery_id"])
+        if state.get("updated_at") != initial.get("updated_at"):
+            raise DeliveryError(
+                "delivery changed during forge verification; retry merged"
+            )
+        state["state"] = "MERGED"
+        state["merge"] = merge
+        _write_state(root, state)
+    return state
+
+
 def cmd_merged(args: argparse.Namespace) -> dict[str, Any]:
     root = _root(args.repo.resolve())
-    with _locked_state_dir(root):
-        state = _read_state(root, args.id)
-        ready = state.get("ready")
-        if not ready:
-            raise DeliveryError("delivery was not READY")
-        if args.head_sha and args.head_sha != ready.get("head_sha"):
-            raise DeliveryError("merged head SHA does not match locked READY head")
-        state["state"] = "MERGED"
-        state["merge"] = {
+    initial = _read_state(root, args.id)
+    if _existing_merge(initial, args.merge_sha):
+        return initial
+
+    ready = initial.get("ready")
+    if ready and args.head_sha in (None, ready.get("head_sha")):
+        # Locked path: READY named this head and the integrator reports the
+        # landed SHA. Unchanged from before the forge-backed path existed.
+        merge = {
             "strategy": args.strategy or ready["strategy"],
             "head_sha": ready["head_sha"],
             "merge_sha": args.merge_sha,
             "merged_at": _now(),
         }
-        _write_state(root, state)
-    return state
+        return _record_merge(root, initial, merge)
+
+    # No usable lock: only the forge can confirm this merge.
+    if initial.get("state") not in MERGE_RECORDABLE_STATES:
+        raise DeliveryError(
+            f"cannot record a merge from delivery state {initial.get('state')!r}"
+        )
+    if initial.get("forge") != "github":
+        raise DeliveryError(
+            "delivery was not READY and no supported forge can confirm the merge"
+        )
+    pr_number = _pr_number(initial, args.pr)
+    if not pr_number:
+        raise DeliveryError(
+            "delivery was not READY and has no PR to confirm the merge; pass --pr"
+        )
+    pr = gh_pr(root, pr_number)
+    merge = merge_record_from_pr(
+        root,
+        initial,
+        pr,
+        merge_sha=args.merge_sha,
+        head_sha=args.head_sha,
+        strategy=args.strategy,
+    )
+    return _record_merge(root, initial, merge)
+
+
+def _reconcile_plan(
+    root: Path,
+    state: dict[str, Any],
+    *,
+    pr_override: Any = None,
+    strategy: str | None = None,
+    discover: bool = True,
+) -> dict[str, Any]:
+    """Decide what a forge-backed reconcile would do to one record.
+
+    Returns ``{"action": "merge" | "skip" | "error", "reason": ..., "merge":
+    record-or-None}``. Open PRs are always a skip; closed-unmerged PRs are a
+    skip that names `abandon`, because dispositioning work is an explicit,
+    reasoned transition and not something a sweep should invent. With
+    ``discover`` false a record without a PR number is skipped instead of
+    searched for by branch (the `--all` sweep, which must stay cheap).
+    """
+
+    item: dict[str, Any] = {
+        "delivery_id": state.get("delivery_id"),
+        "state": state.get("state"),
+        "pr": _pr_number(state, pr_override),
+        "action": "skip",
+        "reason": None,
+        "merge": None,
+    }
+    current = state.get("state")
+    if current in TERMINAL_STATES:
+        item["reason"] = f"terminal state {current}"
+        return item
+    if current == "MERGED":
+        item["reason"] = "already merged"
+        return item
+    if current not in MERGE_RECORDABLE_STATES:
+        item["reason"] = f"state {current!r} cannot record a merge"
+        return item
+    if state.get("forge") != "github":
+        item["reason"] = "no supported forge adapter"
+        return item
+
+    try:
+        pr_number = item["pr"]
+        if not pr_number and not discover:
+            item["reason"] = "no recorded PR (reconcile --id discovers one by branch)"
+            return item
+        if not pr_number:
+            # No recorded PR: adopt only a merged PR at the exact recorded head,
+            # the same lease `abandon` honours. A merged PR at a later head is
+            # reported, not adopted — name it with `merged --pr` to be explicit.
+            branch = state.get("branch")
+            recorded_head = state.get("head_sha")
+            if not branch:
+                item["reason"] = "no recorded PR and no branch to discover one"
+                return item
+            later: list[Any] = []
+            for found in gh_prs_by_head(root, branch):
+                if str(found.get("state") or "").upper() != "MERGED":
+                    continue
+                if found.get("headRefOid") == recorded_head:
+                    pr_number = str(found.get("number"))
+                    break
+                later.append(found.get("number"))
+            if not pr_number:
+                item["reason"] = (
+                    "no recorded PR and no merged PR at the recorded head"
+                    + (
+                        f"; merged PRs at other heads: {', '.join(f'#{n}' for n in later)}"
+                        if later
+                        else ""
+                    )
+                )
+                return item
+            item["pr"] = pr_number
+        pr = gh_pr(root, pr_number)
+        live_state = str(pr.get("state") or "").upper()
+        if live_state == "OPEN":
+            item["reason"] = "PR is open"
+            return item
+        if live_state == "CLOSED":
+            item["reason"] = "PR closed without merge; disposition it with abandon"
+            return item
+        item["merge"] = merge_record_from_pr(root, state, pr, strategy=strategy)
+        item["action"] = "merge"
+        item["reason"] = (
+            "forge confirms merge"
+            + ("; candidate evidence is stale" if item["merge"]["candidate_stale"] else "")
+        )
+    except DeliveryError as exc:
+        item["action"] = "error"
+        item["reason"] = str(exc)
+    return item
+
+
+def cmd_reconcile(args: argparse.Namespace) -> dict[str, Any]:
+    """Sweep PR-bearing non-terminal records and record forge-confirmed merges.
+
+    Dry-run unless ``--apply``. Never touches a record whose PR is open, and
+    never abandons anything.
+    """
+
+    root = _root(args.repo.resolve())
+    if args.all and (args.pr or args.strategy):
+        # A sweep must not assert per-record facts the operator did not check
+        # per record: one PR number or one merge method cannot be true of all.
+        raise DeliveryError("--pr and --strategy apply to reconcile --id only")
+    if args.all:
+        listing = cmd_list(argparse.Namespace(repo=args.repo, all=False))
+        records = [
+            state
+            for state in listing["deliveries"]
+            if state.get("state") in MERGE_RECORDABLE_STATES
+        ]
+    else:
+        records = [_read_state(root, args.id)]
+
+    results = [
+        _reconcile_plan(
+            root,
+            state,
+            pr_override=None if args.all else args.pr,
+            strategy=args.strategy,
+            discover=not args.all,
+        )
+        for state in records
+    ]
+
+    if args.apply:
+        for state, item in zip(records, results):
+            if item["action"] != "merge":
+                continue
+            try:
+                _record_merge(root, state, item["merge"])
+                item["state_after"] = "MERGED"
+            except DeliveryError as exc:
+                item["action"] = "error"
+                item["reason"] = str(exc)
+                item["merge"] = None
+        only = results[0] if not args.all else None
+        # `--id --apply` is the remedy `abandon` prescribes; repeating it on a
+        # record that already reached MERGED must succeed like `merged` does.
+        if only and only["action"] != "merge" and only["reason"] != "already merged":
+            raise DeliveryError(
+                f"reconcile did not record a merge: {only['reason']}"
+            )
+
+    summary: dict[str, int] = {"merge": 0, "skip": 0, "error": 0}
+    for item in results:
+        summary[item["action"]] += 1
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "mode": "apply" if args.apply else "dry-run",
+        "results": results,
+        "summary": summary,
+    }
 
 
 def cmd_abandon(args: argparse.Namespace) -> dict[str, Any]:
@@ -854,22 +987,27 @@ def cmd_abandon(args: argparse.Namespace) -> dict[str, Any]:
             raise DeliveryError(
                 "published PR abandonment requires a supported forge closure check"
             )
-        live_pr = _gh_pr(root, str(pr_number))
+        live_pr = gh_pr(root, str(pr_number))
         live_state = str(live_pr.get("state") or "").upper()
+        if live_state == "MERGED":
+            raise DeliveryError(
+                f"published delivery PR #{pr_number} is merged; reconcile it "
+                f"instead of abandoning (reconcile --id {initial['delivery_id']} --apply)"
+            )
         if live_state != "CLOSED":
             raise DeliveryError(
                 f"published delivery PR is not closed: {live_state or 'UNKNOWN'}"
             )
         if live_pr.get("headRefOid") != recorded_head:
             raise DeliveryError("closed PR head SHA does not match recorded delivery head")
-        closed_pr = _pr_abandonment_fact(live_pr)
+        closed_pr = pr_abandonment_fact(live_pr)
     elif initial.get("ready"):
         raise DeliveryError("READY delivery has no pull request to verify closed")
     elif initial.get("forge") == "github" and initial.get("branch"):
-        discovered = _gh_prs_by_head(root, initial["branch"])
+        discovered = gh_prs_by_head(root, initial["branch"])
         for live_pr in discovered:
             live_state = str(live_pr.get("state") or "").upper()
-            fact = _pr_abandonment_fact(live_pr)
+            fact = pr_abandonment_fact(live_pr)
             if live_state == "OPEN":
                 raise DeliveryError(
                     f"unrecorded PR #{fact['number']} is still open for delivery branch"
@@ -883,7 +1021,8 @@ def cmd_abandon(args: argparse.Namespace) -> dict[str, Any]:
                 if live_state == "MERGED":
                     raise DeliveryError(
                         f"recorded delivery head is already merged in PR "
-                        f"#{fact['number']}; reconcile it instead of abandoning"
+                        f"#{fact['number']}; reconcile it instead of abandoning "
+                        f"(reconcile --id {initial['delivery_id']} --apply)"
                     )
                 closed_pr = fact
             else:
@@ -935,7 +1074,7 @@ def cmd_export_patch(args: argparse.Namespace) -> dict[str, Any]:
         root, "ls-files", "--others", "--exclude-standard", "-z"
     )
     for relative in filter(None, untracked_result.stdout.split("\0")):
-        patch = _run(
+        patch = run_command(
             ["git", "diff", "--binary", "--no-index", "--", "/dev/null", relative],
             cwd=root,
         )
@@ -1032,6 +1171,22 @@ def cmd_verify_clean(args: argparse.Namespace) -> dict[str, Any]:
 
 def _common_repo(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--repo", type=Path, default=Path.cwd())
+
+
+def _finite_seconds(value: str) -> float:
+    """argparse type: a finite, non-negative number of seconds.
+
+    `inf` and `nan` parse as floats and would turn the bounded mergeability
+    wait into an unbounded one.
+    """
+
+    try:
+        seconds = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"not a number: {value!r}") from exc
+    if seconds != seconds or seconds in (float("inf"), float("-inf")) or seconds < 0:
+        raise argparse.ArgumentTypeError(f"must be a finite, non-negative number of seconds: {value!r}")
+    return seconds
 
 
 def _add_runtime(parser: argparse.ArgumentParser) -> None:
@@ -1143,15 +1298,42 @@ def build_parser() -> argparse.ArgumentParser:
             choices=("auto", "squash", "rebase", "merge"),
             default="auto",
         )
+        command.add_argument(
+            "--mergeable-timeout",
+            type=_finite_seconds,
+            default=DEFAULT_MERGEABLE_TIMEOUT,
+            help=(
+                "seconds to keep re-querying while GitHub still reports "
+                "mergeable=UNKNOWN (default %(default)s)"
+            ),
+        )
         command.set_defaults(handler=handler)
 
     merged = sub.add_parser("merged")
     _common_repo(merged)
     merged.add_argument("--id", required=True)
+    merged.add_argument("--pr", help="PR to confirm against when no READY lock covers the merge")
     merged.add_argument("--head-sha")
     merged.add_argument("--merge-sha", required=True)
     merged.add_argument("--strategy", choices=("squash", "rebase", "merge"))
     merged.set_defaults(handler=cmd_merged)
+
+    reconcile = sub.add_parser(
+        "reconcile",
+        help="record forge-confirmed merges for stuck records (dry-run unless --apply)",
+    )
+    _common_repo(reconcile)
+    target = reconcile.add_mutually_exclusive_group(required=True)
+    target.add_argument("--id")
+    target.add_argument("--all", action="store_true")
+    reconcile.add_argument("--pr", help="PR to confirm against (with --id only)")
+    reconcile.add_argument(
+        "--strategy",
+        choices=("squash", "rebase", "merge"),
+        help="merge method actually used (with --id only)",
+    )
+    reconcile.add_argument("--apply", action="store_true")
+    reconcile.set_defaults(handler=cmd_reconcile)
 
     abandon = sub.add_parser("abandon")
     _common_repo(abandon)
