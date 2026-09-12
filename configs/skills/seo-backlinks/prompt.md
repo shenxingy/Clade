@@ -212,7 +212,7 @@ the reality is we simply lack data.
 | Moz rate limit | Free tier: 1 req/10s | Wait 10 seconds, retry. Built into script. |
 | Bing site not verified | Site not verified in Bing | Verify at https://www.bing.com/webmasters |
 | CC download timeout | Large graph file, slow connection | Use `--timeout 180` flag |
-| DataForSEO unavailable | Extension not installed | Run `./extensions/dataforseo/install.sh` |
+| DataForSEO unavailable | Extension not installed | Run the dataforseo integration (NOT SHIPPED — no installer exists in this repository; see TODO.md) |
 | No backlink data returned | Domain too new or very small | Note: small sites may have <10 backlinks |
 
 **Fallback cascade:**

@@ -225,14 +225,18 @@ orchestrate itself, so it is not enumerated below.
 23. **seo-image-gen** -- AI image generation for SEO assets via Gemini (extension mirror)
 24. **seo-flow** -- FLOW framework integration (Find -> Leverage -> Optimize -> Win, 41 AI prompts, CC BY 4.0)
 
-### Optional Extensions
+### Optional extensions — NOT SHIPPED
 
-The following ship in `extensions/` rather than `skills/` and require a separate
-installer to activate (see each extension's `install.sh`/`install.ps1`):
+This section described an `extensions/` directory with per-integration
+installers. **That directory has never existed in this repository** — `git
+ls-files extensions` and `git log --diff-filter=D -- extensions` are both empty.
+Five sites told the reader to run `./extensions/<name>/install.sh`, and none of
+them could ever have worked.
 
-- **seo-firecrawl** -- Full-site crawling and site mapping via Firecrawl MCP. Install
-  via `extensions/firecrawl/install.sh` (Unix) or `extensions/firecrawl/install.ps1`
-  (Windows). Once installed, invoke via `/seo firecrawl <command>`.
+Firecrawl, DataForSEO and Banana are reachable only if you have already wired
+their MCP servers yourself. The skills that use them are written to degrade:
+each says "if the tool is available". Treat the absence as the default, not the
+exception.
 
 ## Subagents
 

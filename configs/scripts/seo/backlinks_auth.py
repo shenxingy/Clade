@@ -339,7 +339,7 @@ TIER 2: + BING WEBMASTER TOOLS API (free, verified sites)
 PREMIUM: DATAFORSEO EXTENSION (paid, most comprehensive)
 ----------------------------------------------------------
   For full commercial-grade backlink data, install the DataForSEO extension:
-    ./extensions/dataforseo/install.sh
+    the dataforseo integration (NOT SHIPPED — no installer exists in this repository; see TODO.md)
 
   Provides: 35+ trillion links, real-time updates, toxic scoring,
             anchor text, competitor gap analysis, link velocity.

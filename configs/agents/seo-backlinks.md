@@ -106,4 +106,4 @@ If any check fails, fix the report before returning it.
 - If Common Crawl download times out, skip CC metrics and note the timeout
 - If no sources return data, report: "No backlink data available. Run `/seo backlinks setup`."
 - Never fail silently — always report what succeeded and what failed
-- If all free sources fail, suggest DataForSEO extension: `./extensions/dataforseo/install.sh`
+- If all free sources fail, suggest DataForSEO extension: the dataforseo integration (NOT SHIPPED — no installer exists in this repository; see TODO.md)

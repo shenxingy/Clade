@@ -30,7 +30,7 @@ This skill has two components with distinct roles:
 
 This skill requires the banana extension to be installed:
 ```bash
-./extensions/banana/install.sh
+the banana integration (NOT SHIPPED — no installer exists in this repository; see TODO.md)
 ```
 
 **Check availability:** Before using any image generation tool, verify the MCP server
@@ -142,12 +142,12 @@ Approximate costs (gemini-3.1-flash):
 
 | Error | Resolution |
 |-------|-----------|
-| MCP not configured | Run `./extensions/banana/install.sh` |
+| MCP not configured | Run the banana integration (NOT SHIPPED — no installer exists in this repository; see TODO.md) |
 | API key invalid | New key at https://aistudio.google.com/apikey |
 | Rate limited (429) | Wait 60s, retry. Free tier: ~10 RPM / ~500 RPD |
 | `IMAGE_SAFETY` | Rephrase prompt - see `references/prompt-engineering.md` Safety section |
 | MCP unavailable | Fall back: `python3 scripts/generate.py --prompt "..." --aspect-ratio "16:9"` |
-| Extension not installed | Show install instructions: `./extensions/banana/install.sh` |
+| Extension not installed | Show install instructions: the banana integration (NOT SHIPPED — no installer exists in this repository; see TODO.md) |
 
 ## Cross-Skill Integration
 

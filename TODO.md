@@ -121,6 +121,45 @@ backlog.
   replacing user values, refreshed the local Codex plugin cache, and removed
   completed local/remote branch state. Final delivery returns to synchronized
   `main`.
+- [ ] 🔴 **The DataForSEO integration is prose.** 180 mentions across the tree
+      are written as though a client is installed. There is none: no MCP
+      registration, no credentials, no `.mcp.json` entry beyond the `clade`
+      server. Five sites told the reader to run `./extensions/<name>/install.sh`
+      and `extensions/` **has never existed** — `git ls-files extensions` and
+      `git log --diff-filter=D -- extensions` are both empty. Two skills call
+      `python scripts/dataforseo_costs.py check <endpoint>` a mandatory
+      pre-flight before every paid call; that script does not exist either.
+      The dead installer references were rewritten on 2026-09-12 to say so.
+      What remains open is the decision: ship a real integration (client +
+      registration + the cost gate the skills already assume), or rewrite the
+      25 SEO skills to stop presenting a paid API as their default path.
+- [ ] 🟡 **The tool names in `seo-geo/prompt.md:279` were deleted upstream.**
+      `ai_opt_llm_ment_top_domains` and `ai_optimization_llm_response` were real
+      in DataForSEO MCP v2 and removed in v3.0.0 on 2026-08-11, which replaced
+      ~79 per-endpoint tools with four generic ones (`api_request`, plus three
+      docs tools); v2 is marked deprecated. An instruction naming them resolves
+      to nothing on any current install. Fix by writing against `api_request`
+      with the REST path, or by pinning `dataforseo-mcp-server@2.9.13` in the
+      skill's prerequisites and saying it is deprecated.
+- [ ] 🟡 **145 skill references drop a path segment.** Skills say
+      `scripts/moz_api.py`; the file is at `configs/scripts/seo/moz_api.py` and
+      installs to `~/.claude/scripts/seo/moz_api.py`. The `seo/` segment is
+      missing at every site, so the path resolves neither in the repo nor after
+      an install. One systematic rename, but it needs a decision about the
+      canonical reference form first.
+- [ ] 🔵 **A gate for "if a document tells you to run it, it must exist" was
+      built and withdrawn.** `check-references.py` strips inline code spans by
+      design — a span showing bracket-paren link syntax documents that syntax — so
+      every runnable path is invisible to it, which is why the five dead
+      installers survived. A replacement was written and iterated three times
+      and still ran at roughly 30% precision: the repo's own `scripts/X.py`
+      convention, and skills that legitimately name files in the READER's
+      project (`lib/github-client.ts`), are indistinguishable from a dead path
+      without knowing intent. It was not shipped, because a gate at 30%
+      precision gets ignored or worked around, which is worse than none. Revisit
+      after the 145-site convention above is settled — that removes most of the
+      ambiguity.
+
 - [ ] 🔵 **`templates/CLAUDE.md` is orphaned — confirm deletion.** install.sh
       §10 was the only code that read it and was removed 2026-09-12 as dead
       (§8 already deploys `configs/CLAUDE.md`, the maintained source, and §10

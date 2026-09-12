@@ -30,7 +30,7 @@ across 10 API modules with 79+ MCP tools.
 
 This skill requires the DataForSEO extension to be installed:
 ```bash
-./extensions/dataforseo/install.sh
+the dataforseo integration (NOT SHIPPED — no installer exists in this repository; see TODO.md)
 ```
 
 **Check availability:** Before using any DataForSEO tool, verify the MCP server
@@ -387,7 +387,7 @@ When DataForSEO MCP tools are available, other claude-seo skills can leverage li
 
 ## Error Handling
 
-- **MCP server not connected**: Report that DataForSEO extension is not installed or MCP server is unreachable. Suggest running `./extensions/dataforseo/install.sh`
+- **MCP server not connected**: Report that DataForSEO extension is not installed or MCP server is unreachable. Suggest running the dataforseo integration (NOT SHIPPED — no installer exists in this repository; see TODO.md)
 - **API authentication failed**: Report invalid credentials. Suggest checking DataForSEO API login/password in MCP config
 - **Rate limit exceeded**: Report the limit hit and suggest waiting before retrying
 - **No results returned**: Report "no data found" for the query rather than guessing. Suggest broadening the query or checking location/language codes
