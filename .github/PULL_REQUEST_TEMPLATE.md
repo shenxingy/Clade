@@ -15,10 +15,11 @@
 
 ## Testing
 
-- [ ] I tested this locally with `./install.sh` on a clean setup
-- [ ] Hooks fire correctly (verified via Claude Code session)
-- [ ] Shell scripts pass `bash -n` syntax check
-- [ ] Python files pass `python -m py_compile`
+- [ ] `python3 configs/scripts/ci-local.py` passed locally — it runs the real
+      workflow gates, so this replaces re-listing them here. Paste its summary line.
+- [ ] Anything it reported as **skipped** is listed below, with the reason
+- [ ] Hooks fire correctly (verified in a Claude Code session) — the one thing
+      `ci-local.py` genuinely cannot check
 
 ## Checklist
 

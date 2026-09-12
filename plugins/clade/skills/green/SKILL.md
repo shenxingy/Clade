@@ -65,6 +65,12 @@ worse than a red build, because a red build is still telling the truth.
 python3 <plugin-root>/skills/green/scripts/ci-local.py --list
 ```
 
+If the answer is `ci-local: no .github/workflows under <path>`, this repository
+has no hosted CI to mirror. Exit 1 there means **nothing to run**, not *red* —
+say so, then fall back to the gates the project documents itself (its
+`AGENTS.md`, `AGENTS.md`, or `Makefile`) and report which of those you ran.
+Never report a build green on the strength of a runner that found no gates.
+
 Read what will be skipped and why. A job needing a platform this machine is not
 belongs on the machine that has it, not on a hosted runner at 2x or 10x. Jobs
 requiring a repository secret or `pull_request_target` genuinely cannot run
@@ -124,13 +130,32 @@ runs everything.
 Pull the failure down rather than pushing again to watch it:
 
 ```bash
-gh run view <run-id> --log-failed | tail -60
+gh run list --status failure --limit 5          # find the run
+gh run view <run-id> --log-failed | tail -60    # one run's failing step
 ```
+
+For several failed runs at once, `~/.clade/scripts/scan-ci-failures.sh . 5`
+already collects each run's failing step with its log tail. Read its output
+rather than re-implementing it — it emits `===TASK===` blocks, so take the
+prose and ignore the framing.
 
 Then reproduce it locally with `--job` and continue from step 3. Note that
 GitHub expires logs; if they are gone, identify the failing commit and
 reconstruct the cause from the diff — `git show <sha>` against the test that
 broke is usually enough.
+
+### 6. Before reporting green, look at what you touched
+
+```bash
+git diff --stat HEAD -- .github/workflows/ '*test*' '*conftest*' \
+  ruff.toml pytest.ini setup.cfg tox.ini package.json
+```
+
+Every file listed is a gate. Name each one at the top of the report with its
+reason, or undo it — an empty output here is the claim you are making when you
+report green. An anti-cheat rule enforced only by the honesty of the agent it
+constrains is the weakest form there is, and that agent is under pressure to
+produce green.
 
 ## Report
 

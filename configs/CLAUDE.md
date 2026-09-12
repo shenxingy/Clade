@@ -60,6 +60,11 @@ belongs on your Mac and a Windows job on your Windows box — over SSH or by
 running an agent locally on that machine — not on a hosted runner at 10x or 2x.
 `--list` names the platform each skipped job needs.
 
+**The other machine has its own checkout.** Push the branch, or sync the working
+tree, before running the gate there — otherwise you have tested a different tree
+than the one you are about to push, which is a false green of exactly the kind
+this whole arrangement exists to prevent.
+
 **Keep hosted CI for what only it can do:** fork PRs from people whose machines
 you do not trust, the clean-machine property (a fresh checkout with no local
 state), and platforms you do not own. Deleting a hosted workflow whose gate now

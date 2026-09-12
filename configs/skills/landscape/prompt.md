@@ -100,22 +100,40 @@ place — stakeholder framing and mandatory rationale — and nothing else.
 Ranked by measured yield on a real repository, not by intuition. The three
 signals people reach for first — unmerged branches, closed-unmerged PRs,
 won't-fix issues — yielded 0, 1 and 0 on this repo, because it squash-merges and
-deletes branches. Run the top tier always:
+deletes branches. Run the top two tiers always — a path-based sweep alone misses the majority
+of abandonments:
 
 1. **Deleted plan and goal files, and what they left unmet.** Highest yield by a
    wide margin: 14 files and 63 unfinished criteria on Clade. For each path ever
    deleted under `goals/`, `goal-*`, `loop-*`, or a tasks file, recover the last
    version and count its unchecked boxes. A goal file that died 11 open and 0
    done is a loop that delivered nothing, and that is the story.
-2. **Items removed from a TODO while still unchecked**, in a commit that checked
+2. **Removal commits over surviving files — the pickaxe tier.** Every signal
+   below can only see an experiment that OWNED a file. Measured on this
+   repository: 87 commits carry an abandonment verb and only 11 of them deleted
+   any path, so **87% of the abandonment record lives inside files that still
+   exist**. Run
+
+   ```bash
+   git log --all -i --oneline \
+     --grep='revert\|abandon\|no longer\|drop \|remove \|dead code\|unused\|gave up\|did not work'
+   ```
+
+   take the capability noun out of each subject, then confirm it is gone from
+   HEAD with `git log --all -S'<symbol>' --oneline` and `git grep -n '<symbol>'`.
+   This is the tier that finds an approach tried INSIDE an existing module — a
+   transport, a protocol, a device pairing — which is the shape of the
+   phone-to-PC Bluetooth attempt the owner asks about by name. Report each as:
+   what it was, the commit that removed it, and whether anything replaced it.
+3. **Items removed from a TODO while still unchecked**, in a commit that checked
    nothing off — deletion as a silent decision.
-3. **Prose decision markers the owner already wrote** — won't-fix, superseded,
+4. **Prose decision markers the owner already wrote** — won't-fix, superseded,
    rejected, `[~]`.
-4. **Paths deleted and still absent from HEAD**, with a separate "killed then
+5. **Paths deleted and still absent from HEAD**, with a separate "killed then
    revived" list — a resurrection explains current state better than a deletion.
-5. **Directories that exist only in history.** The cheapest command in the set
+6. **Directories that exist only in history.** The cheapest command in the set
    and it names every abandoned subsystem in one line.
-6. **Dead paths still referenced by live code** — these are current bugs, not
+7. **Dead paths still referenced by live code** — these are current bugs, not
    history; report them as such.
 
 Refactoring also deletes code. The discriminator: an abandoned experiment leaves
