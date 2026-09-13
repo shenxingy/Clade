@@ -7,7 +7,7 @@ Why
 Hosted CI minutes are billed per job, rounded UP to the minute, per job, and
 multiplied by platform: Linux 1x, Windows 2x, macOS 10x. A four-job workflow
 whose jobs take 24s, 39s, 60s and 73s bills **five minutes**, not three. Push
-fifty times in a day and that is 200 minutes for work a 32-core machine sitting
+fifty times in a day and that is 250 minutes for work a 32-core machine sitting
 idle on the same desk would have done in ninety seconds.
 
 The saving is only real on PRIVATE repositories — public repos get standard

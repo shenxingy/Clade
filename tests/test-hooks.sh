@@ -960,6 +960,47 @@ assert_contains "$out" "additionalContext" "repeat detection survives storing no
 
 rm -f "$PT_LOG" "$PT_SEEN"
 
+section "verify-task-completed can actually block"
+
+# The hook's own header says "Exit 2 = block completion", and it could not: the
+# script ended with `exit $?` placed AFTER `( _track_commit_granularity ) &`,
+# and backgrounding a subshell always sets $? to 0. A failing type check exited
+# 0, which the hook contract reads as "success, proceed" and under which stderr
+# is not surfaced — so the failure neither blocked the task nor reached Claude.
+# Every doc calls this the project-level quality gate. It was inert.
+VTC_DIR="$(mktemp -d "${TMPDIR:-/tmp}/clade-vtc.XXXXXX")"
+mkdir -p "$VTC_DIR/lib" "$VTC_DIR/proj"
+cp "$REPO_ROOT/configs/hooks/verify-task-completed.sh" "$VTC_DIR/"
+cp "$REPO_ROOT/configs/hooks/lib/domain-detect.sh" "$VTC_DIR/lib/"
+
+printf 'run_typecheck_for_project() { echo "stub: FAILED" >&2; return 2; }\n' \
+  > "$VTC_DIR/lib/typecheck.sh"
+CLAUDE_PROJECT_DIR="$VTC_DIR/proj" bash "$VTC_DIR/verify-task-completed.sh" </dev/null >/dev/null 2>&1
+VTC_FAIL_RC=$?
+if [[ "$VTC_FAIL_RC" -eq 2 ]]; then
+  pass "a failing type check exits 2, which is what blocks completion"
+else
+  fail "a failing type check exits 2, which is what blocks completion" "got $VTC_FAIL_RC"
+fi
+
+printf 'run_typecheck_for_project() { return 0; }\n' > "$VTC_DIR/lib/typecheck.sh"
+CLAUDE_PROJECT_DIR="$VTC_DIR/proj" bash "$VTC_DIR/verify-task-completed.sh" </dev/null >/dev/null 2>&1
+VTC_PASS_RC=$?
+if [[ "$VTC_PASS_RC" -eq 0 ]]; then
+  pass "a passing type check exits 0 and does not block"
+else
+  fail "a passing type check exits 0 and does not block" "got $VTC_PASS_RC"
+fi
+
+# The background stats call must not sit between the check and the exit again.
+if grep -qE '^exit "\$TYPECHECK_RC"$' "$REPO_ROOT/configs/hooks/verify-task-completed.sh"; then
+  pass "the exit code is a captured variable, not \$? after a background job"
+else
+  fail "the exit code is a captured variable, not \$? after a background job" \
+       "$(grep -n '^exit' "$REPO_ROOT/configs/hooks/verify-task-completed.sh")"
+fi
+rm -rf "$VTC_DIR"
+
 # ─── Summary ─────────────────────────────────────────────────────────
 
 echo ""

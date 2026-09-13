@@ -18,7 +18,7 @@ earlier: the tell is a repeat, not a defect.
 
 - **Measured first.** Hosted CI bills per job, rounded up per job, Linux 1x /
   Windows 2x / macOS 10x. This repo's four jobs take 24s, 39s, 60s and 73s and
-  bill **four** minutes. Clade is public, so its runners are free and the saving
+  bill **five** minutes. Clade is public, so its runners are free and the saving
   here is latency; the money is in the private repos. The policy therefore went
   in the **global** file, not this one.
 - **Shipped `configs/scripts/ci-local.py` (#91).** Parses the workflow files and

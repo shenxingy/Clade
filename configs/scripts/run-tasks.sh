@@ -233,25 +233,46 @@ rollback_to_checkpoint() {
 
 # ─── Failure reporting ───────────────────────────────────────────────
 
-append_to_progress_md() {
+# PROGRESS.md is newest-first and archive-progress.py parses entries as
+# `^### YYYY-MM-DD`. This used to APPEND `### Batch Task Failures (2026-09-12)`
+# at the bottom: the heading matched no entry pattern, so the archiver folded it
+# into the body of the OLDEST entry and filed today's failures under that
+# entry's month on the next run — reproduced landing a 2026-09 block in
+# docs/progress-archive/2026-04.md. /brief never saw it either, since /brief
+# reads the FIRST dated block. It is written as a conforming entry at the top now.
+prepend_to_progress_md() {
   local progress_file="PROGRESS.md"
   if [[ ! -f "$progress_file" ]]; then return 0; fi
 
-  local date_str
+  local date_str entry tmp
   date_str=$(date +%Y-%m-%d)
 
-  {
-    echo ""
-    echo "### Batch Task Failures ($date_str)"
+  entry=$(
+    echo "### $date_str — Batch task failures"
     echo ""
     for i in "${!FAILED_TASKS[@]}"; do
       echo "- **${FAILED_TASKS[$i]}**: ${FAILED_ERRORS[$i]}"
     done
     echo "- _Lesson_: Review logs in \`$LOG_DIR/\` for details. Consider adding more specific plans for these tasks."
     echo ""
-  } >> "$progress_file"
+    echo "---"
+  )
 
-  echo "📝 Failures appended to PROGRESS.md"
+  # Insert just after the separator that precedes the first entry, so the new
+  # block sits above it with exactly one rule between them — not two.
+  tmp="${progress_file}.batch.$$"
+  if grep -qE '^### [0-9]{4}-[0-9]{2}-[0-9]{2}' "$progress_file"; then
+    awk -v entry="$entry" '
+      !done && prev == "---" && /^### [0-9]{4}-[0-9]{2}-[0-9]{2}/ { print entry; done = 1 }
+      { print; prev = $0 }
+      END { if (!done) print entry }
+    ' "$progress_file" > "$tmp" && mv "$tmp" "$progress_file"
+  else
+    printf '\n%s\n' "$entry" >> "$progress_file"
+  fi
+  rm -f "$tmp" 2>/dev/null || true
+
+  echo "📝 Failures written to the top of PROGRESS.md"
 }
 
 create_github_issue() {
@@ -411,7 +432,7 @@ if [[ $failed -gt 0 ]]; then
   echo ""
 
   # Append failures to PROGRESS.md
-  append_to_progress_md
+  prepend_to_progress_md
 
   # Create GitHub Issue
   create_github_issue

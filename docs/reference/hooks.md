@@ -9,7 +9,7 @@ summary:
   - "Claude Code hooks system: lifecycle events, types, exit codes, patterns"
 integrated_items:
   - "All major lifecycle hooks implemented (SessionStart, PreToolUse, PostToolUse, Stop, PreCompact, SessionEnd, TaskCompleted, Notification, UserPromptSubmit) — settings.json 全部有配置"
-  - "Command, prompt, agent 三种 hook type 全部使用"
+  - "Command 与 prompt 两种 hook type 在用；agent type 目前未使用（树中无任何 agent hook）"
   - "Auto-format/lint on edit, block dangerous commands, verify completion patterns — 全部实现"
   - "SessionEnd hook used for shadow cleanup — removes <runtime>/claude-edit-shadows/session-<session_id>.jsonl when session terminates"
 needs_work_items: []

@@ -58,7 +58,15 @@ if $STRICT_MODE; then
   echo "$DOMAIN carries $DOMAIN_COUNT correction(s), peak $PEAK_COUNT — running stricter checks..." >&2
 fi
 
+# Capture the verdict BEFORE anything else touches $?. This hook's own header
+# says "Exit 2 = block completion", and it could not: the last statement was
+# `exit $?` sitting after `( _track_commit_granularity ) &`, and backgrounding a
+# subshell always sets $? to 0. So a failing type check exited 0 — which the
+# hook contract reads as "success, proceed" AND suppresses stderr under, so the
+# failure neither blocked the task nor reached Claude. The gate every doc calls
+# the project-level quality gate was inert on every failure path.
 run_typecheck_for_project "$(pwd)" "$STRICT_MODE"
+TYPECHECK_RC=$?
 
 # Track commit granularity stats (non-blocking)
 _track_commit_granularity() {
@@ -73,4 +81,4 @@ _track_commit_granularity() {
 }
 ( _track_commit_granularity ) &
 
-exit $?
+exit "$TYPECHECK_RC"
