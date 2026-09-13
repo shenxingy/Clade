@@ -25,7 +25,7 @@ Runs once at the start of `/blog write` or `/blog rewrite`. Enumerates the proje
 - **MCP servers loaded**: `nanobanana-mcp`, `dataforseo-mcp`, others. Detected via tool availability, not by reading `.mcp.json` (the file may declare servers that failed to start).
 - **Env vars present**: `GOOGLE_AI_API_KEY`, `UNSPLASH_ACCESS_KEY`, `PEXELS_API_KEY`, `PIXABAY_API_KEY`. Key names only; values never read or logged.
 - **Optional Python deps**: `patchright`, `weasyprint`, `google-genai`, `requests`. Probed via `importlib.util.find_spec()`.
-- **Project-root context files**: `BRAND.md`, `VOICE.md`, `DISCOURSE.md`. Loaded via `scripts/load_untrusted_root.py` (the existing v1.8.3 helper).
+- **Project-root context files**: `BRAND.md`, `VOICE.md`, `DISCOURSE.md`. Loaded via `load_untrusted_root.py`.
 - **Agents available**: `blog-reviewer` is mandatory; `blog-researcher`, `blog-writer`, `blog-seo`, `blog-translator` are optional.
 - **Helper scripts present**: `scripts/lint_prose.py`, `scripts/analyze_blog.py`, the new `scripts/blog_preflight.py` itself.
 
@@ -146,7 +146,7 @@ Bypass is intended for two cases: (1) the contract has a false positive the user
 - `skills/blog/references/visual-media.md`: image and asset standards consumed by Gate 5
 - `skills/blog/references/schema-stack.md`: JSON-LD structure validated by Gate 3 step 5
 - `agents/blog-reviewer.md`: the reviewer agent that produces the Gate 4 scorecard
-- `scripts/load_untrusted_root.py`: the v1.8.3 helper used for project-root file loading in Gate 1
+- `load_untrusted_root.py`: fences project-root files as untrusted data in Gate 1 (`~/.claude/scripts/`, from `configs/scripts/`)
 - `scripts/lint_prose.py`: the v1.8.4 prose linter run as part of Gate 4's editorial-heuristics scoring
 - `tests/test_blog_delivery_contract.py`: coherence test that asserts this contract and its implementation stay in sync
 

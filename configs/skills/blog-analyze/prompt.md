@@ -38,7 +38,7 @@ Reference documents (paths from repo root):
 ### Optional Modes (v1.8.0)
 
 - `--rubric`: in addition to the 100-point score, emit the ordinal 0-4 editorial-heuristics rubric with P0-P3 severity tags. See `skills/blog/references/editorial-heuristics.md`. The 100-point JSON schema is preserved; the rubric is added as a sibling `rubric` field.
-- `--cognitive-load`: run `scripts/cognitive_load.py` against the post and embed the per-section load heatmap as a sibling `cognitive_load` field. See `skills/blog/references/cognitive-load.md`.
+- `--cognitive-load`: run `~/.claude/scripts/blog/cognitive_load.py` against the post and embed the per-section load heatmap as a sibling `cognitive_load` field. See `skills/blog/references/cognitive-load.md`.
 
 Both modes are additive. The default behavior (no flags) is unchanged from v1.7.1.
 
@@ -204,7 +204,7 @@ Rubric JSON schema:
 
 ### Step 4.6: Optional Cognitive Load Heatmap (--cognitive-load)
 
-When `--cognitive-load` is passed, run `scripts/cognitive_load.py <file> --format json` and embed the result under a `cognitive_load` field in JSON output, or append a `### Cognitive Load Heatmap` markdown section in markdown output. See `skills/blog/references/cognitive-load.md` for thresholds and interpretation.
+When `--cognitive-load` is passed, run `python3 ~/.claude/scripts/blog/cognitive_load.py <file> --format json` and embed the result under a `cognitive_load` field in JSON output, or append a `### Cognitive Load Heatmap` markdown section in markdown output. See `skills/blog/references/cognitive-load.md` for thresholds and interpretation.
 
 ### Step 5: Generate Report
 

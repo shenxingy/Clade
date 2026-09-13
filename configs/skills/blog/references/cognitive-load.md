@@ -2,7 +2,7 @@
 
 A reader has finite working memory. A blog post that introduces too many new concepts, named entities, or numeric claims in too short a span will lose them. Most readability scores (Flesch, Gunning Fog) measure surface-level prose difficulty; this reference adds the dimension they miss: **how much the reader must actively hold to follow a section**.
 
-Run the cognitive-load analyzer (`scripts/cognitive_load.py`) on long-form B2B posts (1,500+ words). It produces a heatmap of sections by load.
+Run the cognitive-load analyzer (`~/.claude/scripts/blog/cognitive_load.py`) on long-form B2B posts (1,500+ words). It produces a heatmap of sections by load.
 
 Adapted from the impeccable plugin's UI cognitive-load reference (Paul Bakaus, Apache 2.0).
 
@@ -58,7 +58,7 @@ If a section forces the reader to hold more than four things at once to make sen
 |---|---|---|---|
 | New named entities per 100 words | 1 to 3 | 4 to 6 | 7+ |
 | Numeric claims per 100 words | 1 to 3 | 4 to 5 | 6+ |
-| New jargon terms per 100 words | 0 to 1 | 2 to 3 | 4+ |
+| New jargon terms per section | 0 to 1 | 2 to 3 | 4+ |
 | Forward references per section | 0 | 1 | 2+ |
 | Nested clauses per sentence average | < 1.5 | 1.5 to 2.5 | > 2.5 |
 
@@ -68,16 +68,23 @@ A section that triggers two or more "overloaded" rows is a P1; break it up befor
 
 ## What the analyzer measures
 
-`scripts/cognitive_load.py` segments the post by H2 and computes per-section:
+`~/.claude/scripts/blog/cognitive_load.py` segments the post by H2 and computes per-section:
 
 1. **new_entity_density**: capitalized phrases not seen in prior sections, normalized per 100 words. High counts signal too many proper nouns introduced at once.
 2. **numeric_claim_density**: count of numbers (percentages, counts, currencies, dates) per 100 words.
-3. **jargon_introduction_count**: words that match a domain-jargon list and have not been defined in or before the section. The default list lives at the top of `scripts/cognitive_load.py` and covers SEO/GEO/web-vitals terms. To extend for a different domain, pass `--jargon <path-to-newline-delimited-file>`; entries augment the defaults rather than replacing them.
+3. **jargon_introduction_count**: words that match a domain-jargon list and have not been defined in or before the section. A per-section COUNT, not a density — the threshold row above said "per 100 words" for one release line while the metric name, the report column and the worked example below all used the raw count; the row was the outlier and now agrees with them. The default list lives at the top of `~/.claude/scripts/blog/cognitive_load.py` and covers SEO/GEO/web-vitals terms. To extend for a different domain, pass `--jargon <path-to-newline-delimited-file>`; entries augment the defaults rather than replacing them.
 4. **forward_reference_count**: phrases like "as we will see," "discussed below," "later in this post."
 5. **avg_clause_depth**: average count of subordinate-clause markers per sentence (commas, semicolons, "which," "that," parentheticals).
 6. **load_score**: composite 0 to 100 where higher is more loaded.
 
 The composite uses the threshold table above. Each "overloaded" signal contributes 25 points, each "borderline" contributes 10, capped at 100.
+
+Two denominators are guarded, because the first run against a real document in this repository produced `avg_clause_depth` of **27.0** and `33.3` entities per 100 words:
+
+- **Sections under 40 prose words are listed but not scored.** A density over six words is arithmetic, not a finding, and an unscored row is honest where a fabricated number is not. They are excluded from the overall.
+- **A bullet or a blank line ends a sentence.** A section written as an unpunctuated list would otherwise be one sentence holding every comma in it.
+
+Tables, fenced code, inline code and HTML comments are not prose and are excluded from every word count.
 
 ---
 

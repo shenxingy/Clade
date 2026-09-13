@@ -88,16 +88,36 @@ def _git(*args: str) -> str:
                           text=True, check=False).stdout
 
 
-def deleted_lines(rng: str | None) -> list[tuple[str, str]]:
-    """(file, removed line) for every deletion in the diff."""
+def diff_lines(rng: str | None) -> tuple[list[tuple[str, str]], dict[str, str]]:
+    """((file, removed line)..., {file: all added text}).
+
+    The added text matters as much as the removed. Rewriting one number in a
+    long line deletes and re-adds the WHOLE line, so every other fact on it
+    looks removed. Checking the additions is what tells the two apart.
+    """
     args = ["diff", "-U0"] + ([rng] if rng else ["HEAD"])
     out, current, rows = _git(*args), "", []
+    added: dict[str, list[str]] = {}
     for line in out.splitlines():
         if line.startswith("+++ b/"):
             current = line[6:]
         elif line.startswith("-") and not line.startswith("---"):
             rows.append((current, line[1:]))
-    return rows
+        elif line.startswith("+") and not line.startswith("+++"):
+            added.setdefault(current, []).append(line[1:])
+    return rows, {f: "\n".join(v) for f, v in added.items()}
+
+
+# Append-only records by this repository's own convention. A past value is
+# SUPPOSED to survive here — "the plugin advertised 37 agents and loaded none"
+# is history, and correcting it would be falsifying the record. Reported in a
+# separate bucket rather than mixed in with the likely misses.
+_HISTORICAL = ("CHANGELOG.md", "docs/research/", "docs/progress-archive/",
+               "PROGRESS.md", "docs/incidents/")
+
+
+def is_historical(rel: str) -> bool:
+    return any(marker in rel for marker in _HISTORICAL)
 
 
 def facts_in(line: str) -> set[str]:
@@ -123,9 +143,9 @@ def _tree_files() -> list[Path]:
     return out
 
 
-def survivors(rng: str | None) -> list[tuple[str, str, list[str]]]:
-    """(changed file, fact, [files where it survives])."""
-    rows = deleted_lines(rng)
+def survivors(rng: str | None) -> list[tuple[str, str, list[str], list[str]]]:
+    """(changed file, fact, [live survivors], [historical survivors])."""
+    rows, added = diff_lines(rng)
     if not rows:
         return []
 
@@ -133,6 +153,11 @@ def survivors(rng: str | None) -> list[tuple[str, str, list[str]]]:
     wanted: dict[str, set[str]] = {}
     for f, line in rows:
         for fact in facts_in(line):
+            # Present in what the same file ADDED? Then it did not change; the
+            # line around it did. This was 1 of the 3 findings on the gate's
+            # first real run — "138 skills" on a line whose agent count moved.
+            if fact in added.get(f, ""):
+                continue
             wanted.setdefault(fact, set()).add(f)
     if not wanted:
         return []
@@ -150,7 +175,9 @@ def survivors(rng: str | None) -> list[tuple[str, str, list[str]]]:
                 hits[fact].append(rel)
 
     return [
-        (", ".join(sorted(wanted[fact])), fact, sorted(files))
+        (", ".join(sorted(wanted[fact])), fact,
+         sorted(f for f in files if not is_historical(f)),
+         sorted(f for f in files if is_historical(f)))
         for fact, files in sorted(hits.items())
         if files
     ]
@@ -203,21 +230,35 @@ def main() -> int:
         return self_test()
 
     found = survivors(args.rng)
+    live = [row for row in found if row[2]]
     if not found:
         print("check-sibling-facts: no changed fact survives anywhere else")
         return 0
 
-    print(f"check-sibling-facts: {len(found)} changed fact(s) still present elsewhere —\n")
-    for changed, fact, files in found:
-        print(f"  {fact}")
-        print(f"    changed in: {changed}")
-        for f in files[:6]:
-            print(f"    still in:   {f}")
-        if len(files) > 6:
-            print(f"    …and {len(files) - 6} more")
-        print()
-    print("Each is a site the change did not reach — or a coincidence. Check, do not assume.")
-    return 1 if args.strict else 0
+    if live:
+        print(f"check-sibling-facts: {len(live)} changed fact(s) still present elsewhere —\n")
+        for changed, fact, files, hist in live:
+            print(f"  {fact}")
+            print(f"    changed in: {changed}")
+            for f in files[:6]:
+                print(f"    still in:   {f}")
+            if len(files) > 6:
+                print(f"    …and {len(files) - 6} more")
+            if hist:
+                print(f"    (also in {len(hist)} historical record(s), which is correct)")
+            print()
+        print("Each is a site the change did not reach — or a coincidence. "
+              "Check, do not assume.")
+
+    hist_only = [row for row in found if not row[2] and row[3]]
+    if hist_only:
+        print(f"\n{len(hist_only)} fact(s) survive ONLY in append-only records "
+              f"(changelog, research, progress archive). That is correct — a past "
+              f"value is supposed to stay in the record:")
+        for _, fact, _, hist in hist_only:
+            print(f"  {fact} — {', '.join(hist[:3])}")
+
+    return 1 if (args.strict and live) else 0
 
 
 if __name__ == "__main__":

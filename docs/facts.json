@@ -39,7 +39,7 @@
     },
     {
       "name": "agents",
-      "value": 37,
+      "value": 38,
       "derive": {
         "type": "count_glob",
         "pattern": "configs/agents/*.md"
@@ -79,7 +79,7 @@
     },
     {
       "name": "python_scripts",
-      "value": 33,
+      "value": 34,
       "derive": {
         "type": "count_glob",
         "pattern": "configs/scripts/*.py"
