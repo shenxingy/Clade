@@ -143,42 +143,18 @@ backlog.
       per crawler as allowed / blocked / ungoverned, never "not found".
       13 assertions in `tests/test-seo-geo.sh`, wired into CI; removing Step 0
       fails six of them.
-- [ ] 🟡 **The tool names in `seo-geo/prompt.md:279` were deleted upstream.**
-      `ai_opt_llm_ment_top_domains` and `ai_optimization_llm_response` were real
-      in DataForSEO MCP v2 and removed in v3.0.0 on 2026-08-11, which replaced
-      ~79 per-endpoint tools with four generic ones (`api_request`, plus three
-      docs tools); v2 is marked deprecated. An instruction naming them resolves
-      to nothing on any current install. Fix by writing against `api_request`
-      with the REST path, or by pinning `dataforseo-mcp-server@2.9.13` in the
-      skill's prerequisites and saying it is deprecated.
-- [x] 🟡 **Skill references dropped a path segment — 67 sites, not 145.**
-      The count was wrong for the same reason the defect existed: it matched by
-      BASENAME, and 88 of the 145 were skill-local `scripts/X` references that
-      resolve correctly against `configs/skills/<skill>/scripts/`. Acting on the
-      inflated number would have rewritten 88 working references, including 77
-      to `run.py`, which exists in three skills' own directories.
-      Canonical form settled: a shared script is cited by its installed path
-      `~/.claude/scripts/<sub>/<name>`, a skill's own stays skill-relative.
-      Ambiguous basenames (`fetch_page.py` is under both `ads/` and `seo/`) are
-      resolved by the citing skill's family. 67 script sites and 55 cross-skill
-      reference sites converted; all 77 installed paths verified present after
-      `./install.sh`.
-- [x] 🔵 **The runnable-path gate now exists and blocks.** Revisited once the
-      convention above was settled, as that entry said to. Only paths in a
-      skill's OWN namespace are examined (`scripts/`, `references/`, `assets/`,
-      `agents/`, `~/.claude/{scripts,skills,agents,hooks,output-styles}/`), which
-      is what removes the false-alarm class that withdrew attempt one: a skill
-      naming `lib/github-client.ts` in the READER's project is never looked at.
-      Runtime state a skill writes (`~/.claude/corrections/`, `scripts/data/`),
-      template placeholders (`scripts/x.py`), globs, and paths a paragraph
-      explicitly says are absent are all excluded — each of those was a measured
-      false positive, 111 findings down to 22.
-      Precision on the final 22: hand-checked, all real. 19 distinct (file, path)
-      pairs are baselined IN the script so it blocks from day one; the list
-      shrinks only, and a stale entry also fails. Several name a DataForSEO
-      helper, and under "paid APIs are never a dependency" those sites want
-      reworking rather than a new script — which is why they are debt, not a
-      quick fix.
+- [x] 🟡 **The dead DataForSEO tool names now carry a version gate.**
+      `seo-geo` had already been corrected; the live citations were in
+      `seo-dataforseo`, whose 84 tool names are ALL v2 names. v3.0.0
+      (2026-08-11) replaced ~79 per-endpoint tools with `api_request` plus three
+      docs tools and deprecated v2, so on a v3 install none of them resolve —
+      and the skill is `user_invocable: false`, so a caller sees a sub-skill
+      that silently found no tools rather than an error naming the cause.
+      Rewriting 84 names against `api_request` was not done, deliberately:
+      DataForSEO is a paid API and nothing may depend on it. Instead SKILL.md,
+      prompt.md and the tool catalogue each open with the version gate, what to
+      check, the two ways forward, and the statement that the keyless path for
+      the same questions is `/seo` and `/seo geo`.
 
 - [ ] 🟡 **Convergence is not proven, and round 6 says why.** Rounds 1-5 audited
       the tree and found 61, 25, 34, - and 23; 43% of the last were siblings of
@@ -473,8 +449,14 @@ re-running the gates.
 - [ ] 🟡 **Two session transcripts still hold 12 occurrences.** Mode 0600,
       owner-only, and they are the harness's own resumable state, so they were
       deliberately left alone: for a leaked key the remedy is rotation, after
-      which every copy is inert. Scrub them only if you want the plaintext gone
-      before rotating:
+      which every copy is inert.
+
+      **The owner has since declined rotation** (2026-09-12), which inverts
+      this. With no rotation coming, the plaintext in those two files stays
+      live indefinitely, so scrubbing is the only remaining mitigation rather
+      than an optional tidy-up before a rotation that would make it moot. Left
+      for the owner rather than done: these are their own session files, and
+      scrubbing edits the harness's resumable state.
       `python3 configs/scripts/scrub-corrections.py ~/.claude/projects/-home-alexshen-projects/438ce949-b228-4732-8f6e-7bfc8a3feae7.jsonl ~/.claude/projects/-home-alexshen-projects-business-business-tools-tinyfish-partnership-research/ad98341a-1dcf-42ee-b85b-3ab4eb5461e4.jsonl --apply`
 
 - [x] 🔴 **`prompt-tracker.sh` was writing the first 100 characters of every

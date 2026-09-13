@@ -1,5 +1,13 @@
 # DataForSEO MCP Tool Catalog
 
+> **This is the v2 catalogue.** DataForSEO MCP v3.0.0 (2026-08-11)
+> replaced these per-endpoint tools with `api_request` plus three docs
+> tools, and deprecated v2. On a v3 install none of the names below
+> resolve. `ai_optimization_llm_response` and
+> `ai_opt_llm_ment_top_domains` are the two this repository has been
+> caught citing as though they were current.
+
+
 > Load this reference when you need to find a specific DataForSEO MCP tool
 > that is not covered by the main SKILL.md commands. These are utility tools
 > available for internal use but without dedicated `/seo dataforseo` commands.
