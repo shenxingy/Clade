@@ -224,7 +224,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # fetch-depth 2, not the default 1: tests/test_sibling_facts_range.py
+      # ::test_a_resolvable_range_still_reports shells the gate with
+      # `--range HEAD~1..HEAD` and asserts it does NOT print "RANGE NOT
+      # CHECKED". Under a depth-1 checkout HEAD~1 does not exist, the gate
+      # correctly refuses, and the test fails on the runner while passing on
+      # every developer machine. 0c7bf91 fixed this class for the syntax-check
+      # job (`git fetch --deepen=1`, line 210) and missed that the TEST for it
+      # runs here — three consecutive pushes were red on exactly this.
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+        with:
+          fetch-depth: 2
 
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
