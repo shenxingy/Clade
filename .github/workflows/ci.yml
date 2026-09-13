@@ -193,7 +193,19 @@ jobs:
         run: python3 configs/scripts/check-runnable-paths.py
 
       - name: Sibling facts (report only)
-        run: python3 configs/scripts/check-sibling-facts.py --range origin/main...HEAD || true
+        # On a PUSH to main, actions/checkout leaves origin/main at the pushed
+        # SHA, so `origin/main...HEAD` is empty and this reported a clean tree
+        # on every commit it was supposed to examine. `${{ github.event_name }}`
+        # picks the range that has content, and `|| true` is gone: the script
+        # exits 0 on findings by design, and the only thing `|| true` was
+        # hiding was the RuntimeError a broken range now raises on purpose.
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --no-tags --depth=50 origin "${{ github.base_ref }}"
+            python3 configs/scripts/check-sibling-facts.py --range "origin/${{ github.base_ref }}...HEAD"
+          else
+            python3 configs/scripts/check-sibling-facts.py --range 'HEAD~1..HEAD'
+          fi
 
       # CLAUDE.md's pre-commit checklist claims to be what makes CI pass. It
       # had drifted twice (df802c3, then again by 2026-08-29), both times

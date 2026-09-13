@@ -113,17 +113,32 @@ def diff_lines(rng: str | None) -> tuple[list[tuple[str, str]], dict[str, str]]:
     out, current, rows = _git(*args), "", []
     added: dict[str, list[str]] = {}
     for line in out.splitlines():
+        # The trailing space matters. `line.startswith("---")` also matches a
+        # CONTENT line like `--range x`, which was then dropped from `rows`
+        # entirely; the mirror case (`++`) was counted as an addition, so an
+        # unchanged fact on it was chased. 12 such lines exist in this tree.
         if line.startswith("+++ "):
             # A DELETED file's header is `+++ /dev/null`. Only reassigning on
             # `+++ b/` left `current` pointing at whichever file came before it
             # in the diff, so every line of a deleted file was attributed there.
             tail = line[4:]
+            if tail.startswith('"') and tail.endswith('"'):
+                # core.quotePath is on by default, so a non-ASCII filename
+                # arrives as `+++ "b/\344\270\255.md"`. Unquoted, the b/ test
+                # failed, `current` became "", and the file that made the change
+                # was reported as its own survivor with a blank "changed in:".
+                try:
+                    tail = (tail[1:-1].encode("latin-1", "backslashreplace")
+                            .decode("unicode_escape")
+                            .encode("latin-1").decode("utf-8", "replace"))
+                except (UnicodeDecodeError, UnicodeEncodeError):
+                    tail = tail[1:-1]
             current = tail[2:] if tail.startswith("b/") else ""
         elif line.startswith("--- ") or line.startswith("+++ "):
             continue
-        elif line.startswith("-") and not line.startswith("---"):
+        elif line.startswith("-") and not line.startswith("--- "):
             rows.append((current, line[1:]))
-        elif line.startswith("+") and not line.startswith("+++"):
+        elif line.startswith("+") and not line.startswith("+++ "):
             added.setdefault(current, []).append(line[1:])
     return rows, {f: "\n".join(v) for f, v in added.items()}
 
@@ -155,7 +170,12 @@ def _tree_files() -> list[Path]:
     for path in REPO.rglob("*"):
         if not path.is_file() or path.suffix not in _TEXT_SUFFIX:
             continue
-        if _SKIP_DIRS & set(path.parts):
+        # RELATIVE to the repository. rglob yields absolute paths, so testing
+        # `path.parts` tested every ancestor above the checkout too: a clone
+        # under any directory named logs/, build/, dist/, .venv/ or
+        # node_modules/ scanned ZERO files and printed the clean sentence, in
+        # --strict as well.
+        if _SKIP_DIRS & set(path.relative_to(REPO).parts):
             continue
         if path.resolve() == Path(__file__).resolve():
             continue  # this file's docstring quotes the facts it exists to catch

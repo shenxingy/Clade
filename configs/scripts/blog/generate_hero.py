@@ -168,8 +168,12 @@ def download(url: str, dest_stem: Path) -> Path:
     with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
         blob = response.read()
         ctype = (response.headers.get("Content-Type") or "").split(";")[0].strip()
-    ext = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp",
-           "image/gif": ".gif"}.get(ctype)
+    # No .gif: Gate 2 accepts png/jpg/jpeg/webp, so writing hero.gif produced a
+    # file the very next gate does not recognise, and exit 0 said it was fine.
+    ext = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}.get(ctype)
+    if ctype == "image/gif":
+        raise ValueError("refusing a GIF: Gate 2 accepts "
+                         + "/".join(HERO_NAMES) + " and not hero.gif")
     if not ext:
         # A declared non-image type is refused OUTRIGHT. Falling back to the URL
         # suffix here meant a URL with no extension defaulted to ".jpg", so an
@@ -295,24 +299,33 @@ def main() -> int:
     if big_enough:
         ranked = big_enough
     elif ranked:
-        print(f"  no result reaches {TARGET_W}px; taking the widest available "
-              f"({max((r[1].get('width') or 0) for r in ranked)}px)", file=sys.stderr)
+        # Name the candidate actually taken. Printing the widest available while
+        # ranked[0] is chosen on relevance described a different decision.
+        print(f"  no result reaches {TARGET_W}px; taking the top-ranked candidate "
+              f"({ranked[0][1].get('width') or 0}px, widest available "
+              f"{max((r[1].get('width') or 0) for r in ranked)}px)", file=sys.stderr)
 
     best = ranked[0][1]
-    # A hero from an earlier run under a different extension would sit beside
-    # the new one, and Gate 2 accepts the FIRST name it finds — so the page
-    # could keep pointing at the stale image while a fresh one lay unused.
+    # Download FIRST, to a temporary name. Sweeping the old hero before the
+    # download meant a network failure left the draft with no hero at all —
+    # destroying a working image to make room for one that never arrived.
+    try:
+        staged = download(best.get("url"), args.draft / ".hero-incoming")
+    except (urllib.error.URLError, socket.timeout, OSError, ValueError) as exc:
+        print(f"download failed ({exc}); the existing hero, if any, is untouched."
+              f"\n{BLOCK_MESSAGE}", file=sys.stderr)
+        return 1
+
+    # Only now is it safe: a hero from an earlier run under a different
+    # extension would sit beside the new one, and Gate 2 accepts the FIRST name
+    # it finds, so the page could keep pointing at the stale image.
     for stale in HERO_NAMES:
         target = args.draft / stale
         if target.exists():
             target.unlink()
             print(f"  removed the previous {stale}")
-
-    try:
-        path = download(best.get("url"), args.draft / "hero")
-    except (urllib.error.URLError, socket.timeout, OSError, ValueError) as exc:
-        print(f"download failed ({exc}).\n{BLOCK_MESSAGE}", file=sys.stderr)
-        return 1
+    path = args.draft / ("hero" + staged.suffix)
+    staged.replace(path)
 
     width, height = best.get("width") or 0, best.get("height") or 0
     resized = _fit_to_target(path)
@@ -419,6 +432,36 @@ def self_test() -> int:
 
     with tempfile.TemporaryDirectory() as tmp:
         (Path(tmp) / "hero-credit.txt").write_text(credit, encoding="utf-8")
+
+    # A GIF is not a name Gate 2 accepts, so writing hero.gif and exiting 0
+    # handed the next gate a file it does not recognise.
+    class _GifResp:
+        headers = {"Content-Type": "image/gif"}
+
+        def read(self):
+            return b"GIF89a"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    saved_open = urllib.request.urlopen
+    urllib.request.urlopen = lambda *a, **k: _GifResp()
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            try:
+                # A .png URL serving image/gif. With a .gif URL the suffix
+                # fallback refuses it anyway, so that fixture could not tell
+                # the explicit refusal from its absence; here, dropping the
+                # refusal writes GIF bytes into hero.png.
+                download("https://e.test/x.png", Path(tmp) / "hero")
+                problems.append("GIF bytes were written under a .png name")
+            except ValueError:
+                pass
+    finally:
+        urllib.request.urlopen = saved_open
 
     if "no key" not in BLOCK_MESSAGE.lower():
         problems.append("the block message does not say the keyless rung exists")

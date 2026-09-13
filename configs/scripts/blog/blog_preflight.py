@@ -55,6 +55,9 @@ OPTIONAL_AGENTS = ("blog-researcher", "blog-writer", "blog-seo", "blog-translato
 HELPER_SCRIPTS = ("analyze_blog.py", "lint_prose.py", "cognitive_load.py")
 ROOT_CONTEXT = ("BRAND.md", "VOICE.md", "DISCOURSE.md")
 
+# Must match blog_render._count_words: this gate audits the number that writes.
+_WORD_RE = re.compile(r"[A-Za-z][A-Za-z'’-]*|[\u4e00-\u9fff\u3040-\u30ff]")
+
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1", "example.com",
                "example.org", "example.net"}
 HERO_NAMES = ("hero.png", "hero.jpg", "hero.jpeg", "hero.webp")
@@ -238,25 +241,46 @@ def gate3(draft: Path) -> dict:
     if findings:
         return _blocked("3 visual verification", "; ".join(findings), findings=findings)
 
-    if not (has_module("patchright") or has_module("playwright")):
-        # Loud, and its own status. The contract permits proceeding; it does not
-        # permit calling this a pass.
-        return _skipped(
-            "3 visual verification",
-            "patchright/playwright not installed — screenshots, SVG overflow, "
-            "dark-mode and console-error checks did NOT run. JSON-LD was checked "
-            "and is valid. Install patchright for full Gate 3 coverage.")
-    # Installing patchright must not turn four unrun checks into a PASS. This
-    # returned _passed the moment the module was importable, so the ONLY
-    # difference the install made was replacing an honest SKIP with a false
-    # pass — the gate got weaker as the machine got more capable.
+    # The report is EVIDENCE that the viewport loop ran, and it is read before
+    # asking whether a browser is importable here — the loop may have run on
+    # another machine or in CI, and this process only scores its result.
+    #
+    # Reading it after the patchright check, as the first version did, meant the
+    # report was unreachable on a machine without a browser, so `--strict` could
+    # never exit 0: it treats skip as block, and every path returned skip. The
+    # documented ship path was unreachable while the gate looked stricter.
+    report = draft / "preview" / "visual-report.json"
+    if report.is_file():
+        try:
+            data = json.loads(report.read_text(encoding="utf-8", errors="replace"))
+        except json.JSONDecodeError as exc:
+            return _blocked("3 visual verification",
+                            f"preview/visual-report.json is not valid JSON: {exc}")
+        failures = data.get("failures") or []
+        if failures:
+            return _blocked("3 visual verification", "; ".join(map(str, failures[:6])),
+                            findings=failures)
+        widths = data.get("viewports") or []
+        if len(widths) < 3:
+            return _blocked("3 visual verification",
+                            f"only {len(widths)} viewport(s) reported; the contract "
+                            f"requires 375, 768 and 1280")
+        return _passed("3 visual verification",
+                       f"JSON-LD valid; {len(widths)} viewports rendered clean per "
+                       f"preview/visual-report.json")
+
+    have_browser = has_module("patchright") or has_module("playwright")
     return _skipped(
         "3 visual verification",
-        "JSON-LD is valid. Screenshots, SVG overflow, dark-mode and "
-        "console-error checks did NOT run here: they need a live browser at "
-        "three viewports, which the skill drives. A browser is available "
-        "(patchright/playwright importable), so run that loop — this process "
-        "does not, and will not report a pass it did not earn.")
+        "JSON-LD is valid, and preview/visual-report.json is absent, so the "
+        "screenshot, SVG-overflow, dark-mode and console-error checks did NOT "
+        "run. "
+        + ("A browser IS available here — run the skill's viewport loop and write "
+           "its result to that file, which this gate scores."
+           if have_browser else
+           "No browser is installed (patchright/playwright), so this machine "
+           "cannot run the loop. Install patchright, or score a report produced "
+           "elsewhere."))
 
 
 def validate_jsonld(html: str) -> list[str]:
@@ -413,7 +437,12 @@ def gate5(draft: Path, project: Path, check_links: bool) -> dict:
                 # exactly the pages a hand-written renderer produces.
                 body = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", html, flags=re.S | re.I)
                 body = re.sub(r"<[^>]+>", " ", body)
-            actual = len(re.findall(r"[A-Za-z][A-Za-z'’-]*", _unescape(body)))
+            # The SAME pattern blog_render uses to produce this field. Counting
+            # only Latin letters here while the renderer counts CJK made every
+            # Chinese or Japanese post claim N words against 0 measured — the two
+            # halves of one contract disagreeing because one was fixed and its
+            # sibling was not.
+            actual = len(_WORD_RE.findall(_unescape(body)))
             if not actual:
                 problems.append("JSON-LD declares a wordCount but the page has no prose")
             elif abs(claimed - actual) > 0.05 * actual:
@@ -618,6 +647,30 @@ def self_test() -> int:
             encoding="utf-8")
         if gate5(draft, root, check_links=False)["status"] != "block":
             problems.append("Gate 5 passed a page with no og:image")
+
+        # A CJK page must not be blocked for claiming words the gate cannot see.
+        # blog_render counts CJK when it writes wordCount; counting only Latin
+        # letters here made every Chinese or Japanese post read as 0 actual.
+        cjk_body = "\u8fc1\u79fb\u5931\u8d25\u5f80\u5f80\u4e0d\u5728\u67b6\u6784\u3002" * 30
+        cjk_count = len(_WORD_RE.findall(cjk_body))
+        if cjk_count == 0:
+            problems.append("the word pattern Gate 5 audits cannot see CJK prose")
+        cjk = Path(tmp) / "cjk"
+        cjk.mkdir()
+        (cjk / "p.md").write_text("# T\n", encoding="utf-8")
+        (cjk / "hero.png").write_bytes(b"\x89PNG")
+        cjk_ld = json.dumps({"@type": "BlogPosting", "headline": "T",
+                             "image": "hero.png", "datePublished": "2026-01-01",
+                             "author": "A", "wordCount": cjk_count})
+        (cjk / "p.html").write_text(
+            f'<html><head><link rel="canonical" href="https://e.test/p">'
+            f'<meta property="og:image" content="hero.png">'
+            f'<script type="application/ld+json">{cjk_ld}</script></head>'
+            f'<body><article><img src="hero.png">{cjk_body}</article></body></html>',
+            encoding="utf-8")
+        cjk_result = gate5(cjk, cjk, check_links=False)
+        if cjk_result["status"] != "pass":
+            problems.append(f"a truthful CJK wordCount was blocked: {cjk_result['reason']}")
 
         # The chain halts on the first block rather than reporting later gates.
         empty = root / "e"

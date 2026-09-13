@@ -66,6 +66,25 @@ Renders the `.html` in headless `patchright` at three viewport widths and checks
 4. **Console errors**: capture browser console output during render. Assert zero errors.
 5. **JSON-LD validation**: parse the `<script type="application/ld+json">` block. Assert valid JSON. Assert `@type: BlogPosting` with required fields (`headline`, `image`, `datePublished`, `author`).
 
+### How the result reaches Gate 4 and the exit code
+
+The viewport loop belongs to the skill; `blog_preflight.py` scores its result.
+Write `<draft-folder>/preview/visual-report.json`:
+
+```json
+{"viewports": [375, 768, 1280], "failures": []}
+```
+
+`failures` is a list of strings, one per defect, and any entry blocks. Fewer
+than three viewports blocks. **Absent, the gate reports SKIP, not PASS** — and
+because `--strict` treats a skip as a block, an absent report is what makes the
+strict ship path unreachable until the loop has actually run.
+
+The gate reads the report BEFORE asking whether a browser is importable, because
+the loop may have run on another machine or in CI and this process only scores
+the result. Reading it afterwards made the report unreachable wherever no
+browser was installed, so `--strict` could never exit 0 on any path.
+
 ### Graceful degradation
 
 If `patchright` is not installed, Gate 3 emits a loud warning and proceeds without blocking. The user may be on a constrained machine. CI and `tests/test_blog_delivery_contract.py` require it, so the project as a whole always has Gate 3 coverage even when individual sessions don't.
