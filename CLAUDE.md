@@ -79,6 +79,12 @@ python3 configs/scripts/red-phase-audit.py 30
 # clean 0% exactly like a clean codebase — this one has done that before.
 python3 configs/scripts/red-phase-audit.py --self-test
 
+# 2b2. Ask every OTHER --self-test the same question. Removing one guard must
+#      turn that script's self-test red. Five self-tests written on 2026-09-12
+#      could not fail, including one where deleting an entire licence allowlist
+#      still printed PASSED. Runs inside the pytest job.
+cd orchestrator && .venv/bin/python -m pytest tests/test_self_tests_can_fire.py -q
+
 # 2c. Same question of the polling instrument. `workflow-scorecard.py --polls`
 #     counts repeated status reads per background job; its mutation guard once
 #     matched the `>/` of `2>/dev/null`, so every session reported zero.

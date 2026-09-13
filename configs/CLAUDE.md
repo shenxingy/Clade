@@ -75,6 +75,36 @@ reporting its absence as a gap.
 completion before every push, and never chain it behind `echo` — that masks the
 exit code and turns a red run green.
 
+## A self-test is not evidence until a mutation makes it fail
+
+Writing `--self-test` is the easy half. The half that matters is deleting one
+guard and confirming the test notices, because a clean run and a broken run
+print the same sentence otherwise — and the sentence reads as proof.
+
+Measured, in one toolkit, on one day: **five of the self-tests written that day
+could not fail.** The shapes recur, so they are worth naming:
+
+- `for x in BAD: assert x not in ALLOWLIST` is vacuously true when the
+  allowlist is EMPTY. Deleting the entire allowlist printed PASSED.
+- A fixture that already contains the construct under test. Fencing a block
+  that began with its own `## ` line meant asserting on an empty section.
+- A control that calls the helper directly instead of going through the entry
+  point, so removing the call from the entry point changes nothing it sees.
+- An assertion indexed by position (`findings[1]`) when the list is
+  conditional, so it silently reads a different signal.
+- The mirror image: a control that FAILS on a machine with an optional
+  dependency installed, because the code path it targets is skipped there.
+
+The rule: for every guard a script claims, remove it and run the self-test. If
+it stays green, the property is claimed and not checked. Keep the mutations in
+a test file so the answer stays true — `test_self_tests_can_fire.py` is that
+file here, and a mutation whose anchor no longer matches is a failure, not a
+silent skip.
+
+Applies one level up too. Three of that file's own first mutations were no-ops:
+a mutation the control cannot distinguish from the original is not testing
+anything either.
+
 ## Change a fact everywhere it is stated, not where you found it
 
 Before editing a number, a path, a flag or a named behaviour, grep the whole

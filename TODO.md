@@ -180,6 +180,18 @@ backlog.
       reworking rather than a new script — which is why they are debt, not a
       quick fix.
 
+- [ ] 🟡 **Convergence is not proven, and round 6 says why.** Rounds 1-5 audited
+      the tree and found 61, 25, 34, - and 23; 43% of the last were siblings of
+      earlier fixes, which the sibling gate now catches mechanically. Round 6
+      changed the question and audited the SEVEN SCRIPTS WRITTEN THAT DAY, with
+      every finding independently refuted before counting. It confirmed 34.
+      New code carries defects at a rate manual review does not catch, and five
+      of the 34 were self-tests that could not fail — the exact class the day
+      was spent gating. Both structural answers are now in place
+      (`check-sibling-facts.py`, `test_self_tests_can_fire.py`). What is NOT
+      established is whether a second pass over the same scope, after fixes,
+      returns near zero. Run it before claiming convergence.
+
 - [ ] 🔵 **`templates/CLAUDE.md` is orphaned — confirm deletion.** install.sh
       §10 was the only code that read it and was removed 2026-09-12 as dead
       (§8 already deploys `configs/CLAUDE.md`, the maintained source, and §10
