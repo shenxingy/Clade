@@ -75,6 +75,21 @@ reporting its absence as a gap.
 completion before every push, and never chain it behind `echo` — that masks the
 exit code and turns a red run green.
 
+## Paid APIs are opt-in, never a dependency
+
+A skill, script or workflow must produce a complete result with no account, no
+key and no spend. A paid source is an accelerator the user may already have
+configured — never the default path, and never the reason a dimension goes
+unreported.
+
+Two failure modes this exists to stop, both found in this toolkit on
+2026-09-12: a family of 25 skills written around a paid API with **no client,
+no credentials and five installer paths that had never existed**, and a skill
+that described what to score while naming only a paid way to obtain it.
+
+When the free path genuinely cannot answer something, say so in those words.
+"Not measured" is a finding; a zero, or silence, is a lie.
+
 ## Communication
 - When blocked on something requiring human input: write to `.claude/blockers.md` and stop
   - Format: `## Blocker [datetime]\n[what you need]\n[what you tried]`

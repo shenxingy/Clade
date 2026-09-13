@@ -373,6 +373,14 @@ jobs:
       - name: Run local-CI runner tests
         run: bash tests/test-ci-local.sh
 
+      # The GEO skill described what to score and never said how to obtain it,
+      # and its only named integration was a PAID one whose tool names had been
+      # deleted upstream. The owner's constraint is no APIs that cost money, so
+      # this pins both: the skill states its acquisition, and every tool it
+      # names is free and keyless.
+      - name: Run SEO/GEO skill tests
+        run: bash tests/test-seo-geo.sh
+
   install-test:
     name: Install Test
     runs-on: ubuntu-latest

@@ -121,18 +121,28 @@ backlog.
   replacing user values, refreshed the local Codex plugin cache, and removed
   completed local/remote branch state. Final delivery returns to synchronized
   `main`.
-- [ ] 🔴 **The DataForSEO integration is prose.** 180 mentions across the tree
-      are written as though a client is installed. There is none: no MCP
-      registration, no credentials, no `.mcp.json` entry beyond the `clade`
-      server. Five sites told the reader to run `./extensions/<name>/install.sh`
-      and `extensions/` **has never existed** — `git ls-files extensions` and
-      `git log --diff-filter=D -- extensions` are both empty. Two skills call
-      `python scripts/dataforseo_costs.py check <endpoint>` a mandatory
-      pre-flight before every paid call; that script does not exist either.
-      The dead installer references were rewritten on 2026-09-12 to say so.
-      What remains open is the decision: ship a real integration (client +
-      registration + the cost gate the skills already assume), or rewrite the
-      25 SEO skills to stop presenting a paid API as their default path.
+- [x] 🔴 **DataForSEO: decided — no paid APIs, and the free path is now the
+      default.** 2026-09-12, owner's call. No integration is being built; what
+      changed instead:
+      `/seo` carries a **free-by-default policy** naming the keyless tools that
+      do the work (`fetch_page.py --googlebot`, `parse_html.py`,
+      `capture_screenshot.py`, `commoncrawl_graph.py`, curl for
+      robots/llms/sitemap/JSON-LD), marks DataForSEO/Moz/Ahrefs/Semrush as
+      opt-in only, and states plainly that a paid source may never be the reason
+      a dimension goes unreported. The same rule went into `configs/CLAUDE.md`
+      for every project.
+      **`seo-geo` was not runnable and now is.** It described what to score and
+      never said how to obtain it — no fetch, no robots.txt read, no llms.txt
+      read — and the only integration it named was the paid one. It has a Step 0
+      that acquires everything free and keyless, verified end to end against a
+      live site: browser vs non-JS fetch (174,476 B both ways, so no JS gap),
+      robots.txt 200, llms.txt 404, zero JSON-LD blocks.
+      Running it surfaced an interpretation trap I fell into myself: a
+      `User-Agent: * / Allow: /` robots.txt names zero AI tokens and permits all
+      of them, so "0 crawlers found" inverts the answer. The skill now resolves
+      per crawler as allowed / blocked / ungoverned, never "not found".
+      13 assertions in `tests/test-seo-geo.sh`, wired into CI; removing Step 0
+      fails six of them.
 - [ ] 🟡 **The tool names in `seo-geo/prompt.md:279` were deleted upstream.**
       `ai_opt_llm_ment_top_domains` and `ai_optimization_llm_response` were real
       in DataForSEO MCP v2 and removed in v3.0.0 on 2026-08-11, which replaced

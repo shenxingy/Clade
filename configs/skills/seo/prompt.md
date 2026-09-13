@@ -21,6 +21,36 @@ e-commerce, publishers, agencies). Orchestrates 24 sub-skills (21 core + 1 frame
 integration + 2 extension mirrors) and 18 sub-agents. A separate optional Firecrawl
 extension is also installable (see "Optional Extensions" below).
 
+## Free by default — paid APIs are never a dependency
+
+**No skill in this family may require an API that costs money.** Every audit
+must produce a complete report with no account, no key and no spend. A paid
+source is an accelerator a user may already have, never the path.
+
+The free, keyless tools that carry the work — all in `~/.claude/scripts/seo/`:
+
+| Need | Tool | Cost |
+|---|---|---|
+| Page HTML, and a second fetch as a non-JS crawler | `fetch_page.py --googlebot` | free, keyless |
+| Parse that HTML | `parse_html.py` | free, keyless |
+| Rendered screenshot / visual | `capture_screenshot.py`, `analyze_visual.py` | free, local Playwright |
+| Backlink graph | `commoncrawl_graph.py`, `verify_backlinks.py` | free, keyless |
+| robots.txt, llms.txt, sitemap, JSON-LD | `curl` + the served HTML | free, keyless |
+| Own-property analytics | `gsc_query.py`, `gsc_inspect.py` | free, your own OAuth |
+
+Free but rate-limited or key-gated on a free tier — usable, still not required:
+PageSpeed Insights, CrUX, GA4, Bing Webmaster.
+
+**Paid, and therefore opt-in only:** DataForSEO, Moz, Ahrefs, Semrush. A skill
+may use one when the user has already configured it. It may not assume it, and
+it may not report a dimension as unscored because a paid source was absent —
+score it from the free path or say `not measured`.
+
+**Say what free cannot do.** Actual AI citations — whether ChatGPT or Perplexity
+cited a domain — are only observable through a paid endpoint. The free path
+scores *citability*, whether a page is shaped to be cited. Never present the
+second as evidence of the first.
+
 ## Quick Reference
 
 | Command | What it does |

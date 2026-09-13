@@ -63,6 +63,62 @@ the contradiction in the report.
 
 ---
 
+## Step 0 — Acquire the evidence (free, keyless, no account)
+
+**This skill never needed a paid API and must not acquire one.** Everything
+scored below comes off the page and its origin. Until 2026-09-12 the prompt
+described what to score and never said how to obtain it, so a run had to invent
+its own acquisition or score from memory of the URL.
+
+Run these first. `<url>` is the argument; `<origin>` is its scheme + host.
+
+```bash
+# 1. The page as a normal browser sees it
+python3 ~/.claude/scripts/seo/fetch_page.py <url> -o /tmp/geo-page.html
+
+# 2. The page as a crawler that does NOT execute JavaScript sees it
+python3 ~/.claude/scripts/seo/fetch_page.py <url> --googlebot -o /tmp/geo-bot.html
+wc -c /tmp/geo-page.html /tmp/geo-bot.html
+
+# 3. Crawler access
+curl -sS -w '\nHTTP %{http_code}\n' <origin>/robots.txt
+
+# 4. llms.txt — record presence, assign no citation weight (see below)
+curl -sS -w '\nHTTP %{http_code}\n' <origin>/llms.txt
+
+# 5. Structured data actually present in the served HTML
+python3 - <<'EOF'
+import re, json, pathlib
+html = pathlib.Path('/tmp/geo-page.html').read_text(errors='replace')
+for m in re.findall(r'<script[^>]*application/ld\+json[^>]*>(.*?)</script>', html, re.S|re.I):
+    try:
+        d = json.loads(m)
+    except ValueError:
+        print('  INVALID JSON-LD block'); continue
+    for node in (d if isinstance(d, list) else [d]):
+        print('  @type:', node.get('@type'))
+EOF
+```
+
+**Reading step 3 — a wildcard is not an absence.** Counting named AI tokens is
+not the check. `User-Agent: * / Allow: /` names none of them and permits all of
+them; a run that greps for `GPTBot` and reports "0 AI crawlers configured" has
+inverted the answer. Resolve it in this order, which is how a crawler resolves
+it: the most specific matching `User-agent` group wins, and only if no group
+names the crawler does `*` apply. Report per crawler as **allowed**, **blocked**
+or **ungoverned** — never as "not found". (Verified against a live site on
+2026-09-12: four lines, zero named tokens, every AI crawler allowed.)
+
+**Reading step 2.** A large size gap is the finding: the smaller document is
+what an AI crawler without a JS engine receives. Quote both byte counts in the
+report. If the bot fetch is a fraction of the browser fetch, no amount of
+passage optimisation matters — the passages are not in what gets read.
+
+**If a fetch fails,** say which one and score the rest. A report that silently
+omits a dimension because its input was unavailable is the failure this
+repository keeps finding in its own instruments: report `not measured`, never a
+zero, and never a score computed from a page you did not retrieve.
+
 ## GEO Analysis Criteria (Updated)
 
 ### 1. Citability Score (25%)
@@ -274,9 +330,28 @@ Generate `GEO-ANALYSIS.md` with:
 4. Implement comprehensive entity linking (sameAs across platforms)
 5. Develop unique tools or calculators
 
-## DataForSEO Integration (Optional)
+## Paid AI-visibility APIs — deliberately NOT a dependency
 
-If DataForSEO MCP tools are available, use `ai_optimization_chat_gpt_scraper` to check what ChatGPT web search returns for target queries (real GEO visibility check) and `ai_opt_llm_ment_search` with `ai_opt_llm_ment_top_domains` for LLM mention tracking across AI platforms.
+**Do not require, and do not default to, an API that costs money.** This skill
+must produce a complete report with no account, no key and no spend. Everything
+in Step 0 and every criterion below satisfies that.
+
+What that costs you, stated plainly rather than papered over: **you cannot
+measure actual citations.** Whether ChatGPT or Perplexity cited this domain last
+week is only observable through a paid endpoint or a vendor dashboard. This
+skill therefore scores *citability* — whether the page is shaped to be cited —
+and must never present that as evidence that it *was* cited. Two different
+claims; only the first is in scope here.
+
+Two more honest limits:
+
+- The tool names an earlier version of this file recommended
+  (`ai_opt_llm_ment_top_domains`, `ai_optimization_llm_response`) were removed
+  from the DataForSEO MCP server in v3.0.0 on 2026-08-11. Anything written
+  against them resolves to nothing today.
+- The citation-source percentages in the platform table are undated
+  third-party studies. Treat them as directional. They are the shape of the
+  answer, not this month's number.
 
 ## Error Handling
 
