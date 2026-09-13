@@ -46,7 +46,10 @@ HERO_NAMES = ("hero.png", "hero.jpg", "hero.jpeg", "hero.webp")
 _UNSUPPORTED = {
     "reference-style link": re.compile(r"^\s*\[[^\]]+\]:\s+\S+", re.M),
     "footnote": re.compile(r"\[\^[^\]]+\]"),
-    "nested list": re.compile(r"^(?:\t| {4,})(?:[-*+]|\d+[.)])\s+", re.M),
+    # Two spaces is a nested list in CommonMark and in every editor's default.
+    # Requiring four meant the commonest nesting was flattened with no warning,
+    # which the docstring explicitly promises not to do.
+    "nested list": re.compile(r"^(?:\t| {2,})(?:[-*+]|\d+[.)])\s+", re.M),
 }
 
 _CSS = """\
@@ -118,12 +121,13 @@ def to_html(md: str) -> tuple[str, list[str]]:
 def _inline(text: str) -> str:
     out = _html.escape(text, quote=False)
     out = re.sub(r"`([^`]+)`", lambda m: f"<code>{m.group(1)}</code>", out)
-    out = re.sub(r"!\[([^\]]*)\]\(([^)\s]+)(?:\s+\"([^\"]*)\")?\)",
-                 lambda m: f'<img src="{_html.escape(m.group(2), quote=True)}" '
-                           f'alt="{_html.escape(m.group(1), quote=True)}">', out)
+    # The line was already escaped above, so `&` is now `&amp;`. Escaping the
+    # captured URL a SECOND time produced `&amp;amp;` and every link with a
+    # query string resolved to a 404 that Gate 5 then reported as a dead link.
+    out = re.sub(r"!\[([^\]]*)\]\(([^)\s]+)(?:\s+&quot;([^&]*)&quot;)?\)",
+                 lambda m: f'<img src="{m.group(2)}" alt="{m.group(1)}">', out)
     out = re.sub(r"\[([^\]]+)\]\(([^)\s]+)\)",
-                 lambda m: f'<a href="{_html.escape(m.group(2), quote=True)}">'
-                           f'{m.group(1)}</a>', out)
+                 lambda m: f'<a href="{m.group(2)}">{m.group(1)}</a>', out)
     out = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", out)
     out = re.sub(r"(?<![*\w])\*([^*\n]+)\*(?!\*)", r"<em>\1</em>", out)
     return out
@@ -203,6 +207,14 @@ def _fallback(md: str) -> str:
             para.append(lines[i].strip()); i += 1
         if para:
             out.append(f"<p>{_inline(' '.join(para))}</p>")
+        else:
+            # The paragraph loop refuses lines matching its exclusion pattern.
+            # If no branch above claimed such a line, `i` never advances and the
+            # converter spins forever on a document it merely cannot format.
+            # Found by mutating the fence check: the hang, not a wrong result,
+            # was the failure. Emit it verbatim rather than dropping it.
+            out.append(f"<p>{_inline(lines[i].strip())}</p>")
+            i += 1
     return "\n".join(out)
 
 
@@ -233,7 +245,7 @@ def build_page(meta: dict, body_html: str, slug: str, hero: str | None) -> str:
     # inside <article> too — and the page failed the ±5% honesty check this
     # very field exists for. Caught by the renderer's own self-test against the
     # gate's own rule.
-    word_count = len(re.findall(r"[A-Za-z][A-Za-z'’-]*", re.sub(r"<[^>]+>", " ", article)))
+    word_count = _count_words(article)
 
     ld = {"@context": "https://schema.org", "@type": "BlogPosting",
           "headline": title, "image": hero or "", "datePublished": date,
@@ -269,6 +281,39 @@ def build_page(meta: dict, body_html: str, slug: str, hero: str | None) -> str:
 </body>
 </html>
 """
+
+
+def _strip_leading_h1(md: str) -> str:
+    """Drop the document's own H1; the page renders one from the title.
+
+    `re.sub(r"^#\\s+.*$", "", md, count=1, flags=re.M)` deleted the first line
+    starting with "# " ANYWHERE, so a shell comment inside a fenced code block
+    became the victim whenever the post had no H1 of its own — silently, in the
+    reader's code sample.
+    """
+    lines, out, fenced, dropped = md.splitlines(keepends=True), [], False, False
+    for line in lines:
+        stripped = line.lstrip()
+        if stripped.startswith(("```", "~~~")):
+            fenced = not fenced
+        elif not fenced and not dropped and re.match(r"#\s+\S", stripped):
+            dropped = True
+            continue
+        out.append(line)
+    return "".join(out)
+
+
+def _count_words(html_fragment: str) -> int:
+    """Words a reader sees. Tags out, entities resolved, THEN counted.
+
+    Stripping tags with a regex leaves `&amp;` `&lt;` `&nbsp;` in the text, and
+    "amp", "lt" and "nbsp" match the word pattern. A page with a table of
+    ampersands claimed more words than it had and was blocked by Gate 5's
+    honesty check — the renderer failing the gate it feeds.
+    """
+    text = re.sub(r"<[^>]+>", " ", html_fragment)
+    text = _html.unescape(text)
+    return len(re.findall(r"[A-Za-z][A-Za-z'’-]*|[\u4e00-\u9fff\u3040-\u30ff]", text))
 
 
 def _first_h1(body: str) -> str | None:
@@ -349,7 +394,7 @@ def main() -> int:
     slug = args.md.stem
 
     meta, body_md = split_frontmatter(args.md.read_text(encoding="utf-8", errors="replace"))
-    body_md = re.sub(r"^#\s+.*$", "", body_md, count=1, flags=re.M)   # h1 comes from meta
+    body_md = _strip_leading_h1(body_md)
     body_html, warnings = to_html(body_md)
     hero = find_hero(out_dir)
 
@@ -425,17 +470,56 @@ def self_test() -> int:
                        "<pre><code>", "<blockquote>", 'href="https://e.test/x"'):
             if anchor not in page:
                 problems.append(f"markdown not converted: {anchor}")
-        if "not markdown" in page and "<em>" in page.split("<pre>")[-1].split("</pre>")[0]:
+
+        # The fixture fence must CONTAIN emphasis markers, or the assertion is
+        # vacuous: the first version fenced the literal text "not markdown",
+        # which has no asterisks, so deleting the fence handling left it green.
+        fenced_page = build_page({}, to_html("```\ncode *with* stars\n```\n")[0],
+                                 "p", None)
+        inside = fenced_page.split("<pre>")[-1].split("</pre>")[0]
+        if "*with*" not in inside:
+            problems.append("the code-fence control lost its own emphasis markers")
+        if "<em>" in inside:
             problems.append("emphasis was applied inside a code fence")
+
+        # An entity is not a word. `&amp;` counted as "amp", inflating wordCount
+        # until the page failed the Gate 5 check that reads that very field.
+        if _count_words("<p>a &amp; b &lt; c</p>") != 3:
+            problems.append(
+                f"entities counted as words: got {_count_words('<p>a &amp; b &lt; c</p>')}")
+
+        # The h1 strip must not reach inside a fenced block.
+        stripped = _strip_leading_h1("Intro line.\n\n```\n# not a heading\n```\n")
+        if "# not a heading" not in stripped:
+            problems.append("the h1 strip deleted a comment inside a code fence")
+        if _strip_leading_h1("# Real Title\n\nBody.\n").lstrip().startswith("#"):
+            problems.append("the h1 strip did not remove a real leading h1")
+
+        # A URL must be escaped once, not twice.
+        linked, _ = to_html("See [it](https://e.test/x?a=1&b=2).\n")
+        if "&amp;amp;" in linked:
+            problems.append("a URL was HTML-escaped twice")
 
         if "<h1>A Real Post</h1>" not in page:
             problems.append("the h1 is missing or duplicated")
         if page.count("<h1") != 1:
             problems.append(f"expected exactly one h1, found {page.count('<h1')}")
 
-        warned = to_html("[ref]: https://e.test\nSee [ref].")[1]
-        if not warned:
-            problems.append("an unsupported construct produced no warning")
+        # Force the built-in converter. `to_html` returns early with no warnings
+        # when the `markdown` package is installed, so this control FAILED the
+        # whole self-test on any machine that had it — the opposite of a dead
+        # assertion, and just as wrong.
+        saved = globals()["_installed"]
+        globals()["_installed"] = lambda name: False if name == "markdown" else saved(name)
+        try:
+            for construct, text in (
+                    ("reference-style link", "[ref]: https://e.test\n\nSee [ref].\n"),
+                    ("footnote", "A claim[^1].\n\n[^1]: the note.\n"),
+                    ("nested list", "- one\n  - nested\n")):
+                if not to_html(text)[1]:
+                    problems.append(f"the fallback converter did not warn on a {construct}")
+        finally:
+            globals()["_installed"] = saved
 
     if problems:
         for line in problems:

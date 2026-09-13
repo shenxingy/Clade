@@ -62,12 +62,18 @@ SOURCE_AUTHORITY = {"unsplash": 1.0, "pexels": 0.9, "wikimedia": 0.8,
 # wrong is a licence violation, not a style preference.
 SAFE_LICENSES = ("cc0", "pdm", "by", "by-sa")
 
+# The names Gate 2 accepts, so a stale hero under a different extension can be
+# removed rather than left beside the new one for the gate to find first.
+HERO_NAMES = ("hero.png", "hero.jpg", "hero.jpeg", "hero.webp")
+
 TARGET_W, TARGET_H = 1200, 630
 TARGET_RATIO = TARGET_W / TARGET_H
 TIMEOUT = 20
 STOPWORDS = {"the", "a", "an", "and", "or", "of", "for", "to", "in", "on", "is",
              "it", "at", "what", "why", "how", "your", "you", "we", "our", "with",
-             "actually", "really", "guide", "complete", "ultimate", "best"}
+             "actually", "really", "guide", "complete", "ultimate", "best",
+             "more", "less", "most", "than", "about", "into", "from", "that",
+             "this", "these", "those", "when", "where", "which", "who"}
 
 
 def build_query(title: str, tags: list[str]) -> str:
@@ -181,6 +187,33 @@ def download(url: str, dest_stem: Path) -> Path:
     return path
 
 
+def _fit_to_target(path: Path) -> bool:
+    """Centre-crop to 1200x630 with Pillow. False when it is not installed.
+
+    There was no crop, resize or re-encode anywhere in this file: the script
+    named for a 1200x630 hero delivered whatever Openverse happened to have,
+    exited 0, and let a warning carry the difference.
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        return False
+    try:
+        with Image.open(path) as img:
+            img = img.convert("RGB")
+            src_w, src_h = img.size
+            scale = max(TARGET_W / src_w, TARGET_H / src_h)
+            resized = img.resize((max(TARGET_W, int(src_w * scale)),
+                                  max(TARGET_H, int(src_h * scale))), Image.LANCZOS)
+            left = (resized.width - TARGET_W) // 2
+            top = (resized.height - TARGET_H) // 2
+            resized.crop((left, top, left + TARGET_W, top + TARGET_H)).save(path)
+        return True
+    except Exception as exc:  # noqa: BLE001 - a bad image must not lose the download
+        print(f"  could not resize ({exc}); keeping the original", file=sys.stderr)
+        return False
+
+
 def keyed_rungs_available() -> list[str]:
     """Rungs 2 and 3 — reported, never required."""
     out = []
@@ -223,8 +256,13 @@ def main() -> int:
         print(f"note: higher rungs are configured ({', '.join(keyed)}). This script "
               f"takes rung 4; run the keyed rung first if you prefer it.", file=sys.stderr)
 
-    terms = ([args.query] if args.query
+    # --query used to become a SINGLE term, which disabled relaxation: the
+    # override was the one path guaranteed to hit rung 5 on a specific query.
+    terms = (args.query.split() if args.query
              else build_query(args.title, args.tags.split(",")).split())
+    if not terms:
+        print("nothing to search for: pass --title or --query", file=sys.stderr)
+        return 2
     print(f"openverse query: {' '.join(terms)!r}")
 
     try:
@@ -250,21 +288,49 @@ def main() -> int:
                   f"{(result.get('title') or '')[:56]}")
         return 0
 
+    # Prefer a source at least as wide as the target. The ranking already
+    # weighted size, but weighting let a 640px image win on relevance and the
+    # script — named for a 1200x630 hero — shipped it with a warning and exit 0.
+    big_enough = [pair for pair in ranked if (pair[1].get("width") or 0) >= TARGET_W]
+    if big_enough:
+        ranked = big_enough
+    elif ranked:
+        print(f"  no result reaches {TARGET_W}px; taking the widest available "
+              f"({max((r[1].get('width') or 0) for r in ranked)}px)", file=sys.stderr)
+
     best = ranked[0][1]
+    # A hero from an earlier run under a different extension would sit beside
+    # the new one, and Gate 2 accepts the FIRST name it finds — so the page
+    # could keep pointing at the stale image while a fresh one lay unused.
+    for stale in HERO_NAMES:
+        target = args.draft / stale
+        if target.exists():
+            target.unlink()
+            print(f"  removed the previous {stale}")
+
     try:
         path = download(best.get("url"), args.draft / "hero")
     except (urllib.error.URLError, socket.timeout, OSError, ValueError) as exc:
         print(f"download failed ({exc}).\n{BLOCK_MESSAGE}", file=sys.stderr)
         return 1
 
-    (args.draft / "hero-credit.txt").write_text(credit_text(best), encoding="utf-8")
+    width, height = best.get("width") or 0, best.get("height") or 0
+    resized = _fit_to_target(path)
+    if resized:
+        width, height = TARGET_W, TARGET_H
+    (args.draft / "hero-credit.txt").write_text(
+        credit_text(best) + f"\nDelivered as {width}x{height}"
+        + (" (cropped and resized to the 1200x630 target)" if resized else "")
+        + ".\n", encoding="utf-8")
     print(f"wrote {path} ({(best.get('width') or 0)}x{(best.get('height') or 0)}, "
           f"CC {(best.get('license') or '').upper()})")
     print(f"wrote {args.draft / 'hero-credit.txt'}")
-    if (best.get("width") or 0) < TARGET_W:
-        print(f"  warning: {best.get('width')}px wide, under the {TARGET_W}px target. "
-              f"Upscaling is not done here; re-run with a different --query for a "
-              f"larger source.")
+    if not resized and (best.get("width") or 0) < TARGET_W:
+        print(f"  warning: {best.get('width')}x{best.get('height')}, under the "
+              f"{TARGET_W}x{TARGET_H} the contract asks for, and Pillow is not "
+              f"installed so nothing was resized. `pip install Pillow`, or re-run "
+              f"with a different --query for a larger source. The credit file "
+              f"records the size actually delivered.", file=sys.stderr)
     return 0
 
 
@@ -274,9 +340,16 @@ def self_test() -> int:
 
     problems: list[str] = []
 
-    query = build_query("What a Migration Actually Costs for Your Team", ["database"])
-    if "migration" not in query or "your" in query.split():
-        problems.append(f"query building kept filler or dropped the subject: {query!r}")
+    # Short title, so the 5-term cap cannot hide a stopword that slipped
+    # through: the first fixture was long enough that "your" fell off the end
+    # regardless of whether the filter ran.
+    query = build_query("Why Your Team Costs More", ["database"])
+    kept = set(query.split())
+    if "database" not in kept or "costs" not in kept:
+        problems.append(f"query building dropped the subject: {query!r}")
+    for filler in ("why", "your", "the", "more"):
+        if filler in kept:
+            problems.append(f"query building kept the stopword {filler!r}: {query!r}")
 
 
     wide = {"title": "server rack", "width": 1200, "height": 630, "source": "flickr",
@@ -286,6 +359,13 @@ def self_test() -> int:
     terms = {"server", "rack"}
     if not score(wide, terms) > score(tall, terms):
         problems.append("a portrait image did not rank below a wide one")
+    # Same pixel count and same relevance, differing ONLY in aspect. The first
+    # control compared 1200x630 against 600x1200, where the width term alone
+    # decided it, so deleting the aspect weighting left the control green.
+    square = {**wide, "width": 869, "height": 869}
+    near = {**wide, "width": 869, "height": 457}
+    if not score(near, terms) > score(square, terms):
+        problems.append("aspect ratio is not weighted: a square tied a 1.9:1 crop")
     if not score(wide, terms) > score(off_topic, terms):
         problems.append("an off-topic image did not rank below a relevant one")
     if not score({**wide, "source": "unsplash"}, terms) > score(
@@ -313,9 +393,20 @@ def self_test() -> int:
     if tried[0] != "alpha beta gamma delta":
         problems.append("relaxation did not try the most specific query first")
 
-    for licence in ("nc", "by-nc", "by-nd", "by-nc-sa"):
+    # `for x in (...): if x in SAFE_LICENSES` is vacuously satisfied when
+    # SAFE_LICENSES is EMPTY, so deleting the entire allowlist printed PASSED —
+    # the one control over the licence rule could not fail on its removal.
+    if not SAFE_LICENSES:
+        problems.append("SAFE_LICENSES is empty; no image would ever be accepted")
+    for licence in ("cc0", "by"):
+        if licence not in SAFE_LICENSES:
+            problems.append(f"{licence} must be accepted for a commercial hero")
+    for licence in ("nc", "by-nc", "by-nd", "by-nc-sa", "by-nc-nd"):
         if licence in SAFE_LICENSES:
             problems.append(f"{licence} is not safe for a commercial hero")
+    # And the filter must actually use it: a non-commercial result is dropped.
+    if [r for r in [{"license": "by-nc"}] if (r.get("license") or "") in SAFE_LICENSES]:
+        problems.append("a non-commercial licence passed the allowlist")
 
     credit = credit_text({"title": "T", "creator": "C", "license": "by",
                           "license_version": "2.0",

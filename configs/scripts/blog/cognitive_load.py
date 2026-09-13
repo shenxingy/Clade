@@ -24,7 +24,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import pathlib
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -113,7 +115,10 @@ def strip_noise(text: str) -> str:
     text = re.sub(r"~~~.*?~~~", " ", text, flags=re.S)
     text = re.sub(r"<!--.*?-->", " ", text, flags=re.S)
     text = re.sub(r"`[^`\n]+`", " ", text)
-    text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)   # keep link text
+    # Bounded on both halves. `\[([^\]]*)\]\([^)]*\)` is O(n^2) on a document
+    # full of unmatched `[`: the engine restarts at every bracket and scans to
+    # end-of-text each time. Measured 22s on a 100 KB file of `[` characters.
+    text = re.sub(r"\[([^\]\n]{0,300})\]\(([^)\s\n]{0,500})\)", r"\1", text)
     text = re.sub(r"^\s{0,3}\|.*\|\s*$", " ", text, flags=re.M)  # tables
     return text
 
@@ -131,8 +136,15 @@ def split_sections(text: str) -> list[tuple[str, str]]:
     return sections
 
 
+# Latin words, OR runs of CJK ideographs and kana. A Chinese or Japanese post
+# scored 0 prose words in every section under an ASCII-only pattern, so every
+# section came back unscored and the overall load read 0 — a clean bill of
+# health produced by the analyser being unable to see the text at all.
+_WORD_RE = re.compile(r"[A-Za-z][A-Za-z'’-]*|[\u4e00-\u9fff\u3040-\u30ff]")
+
+
 def _words(text: str) -> list[str]:
-    return re.findall(r"[A-Za-z][A-Za-z'’-]*", text)
+    return _WORD_RE.findall(text)
 
 
 def measure(sections, jargon: set[str]) -> list[dict]:
@@ -155,7 +167,11 @@ def measure(sections, jargon: set[str]) -> list[dict]:
         seen_entities |= entities
 
         lowered = body.lower()
-        present = {term for term in jargon if term in lowered}
+        # Word boundaries. A bare `in` matched "geo" inside "geometry", "rag"
+        # inside "storage" and "cls" inside "clsid", so ordinary prose was
+        # reported as introducing domain jargon.
+        present = {term for term in jargon
+                   if re.search(r"(?<![\w-])" + re.escape(term) + r"(?![\w-])", lowered)}
         new_jargon = present - defined_jargon
         defined_jargon |= present
 
@@ -307,7 +323,11 @@ def main() -> int:
     match = re.search(r"^#\s+(.+?)\s*$", text, re.M)
     title = match.group(1) if match else args.path.stem
 
-    rows = measure(split_sections(text), jargon)
+    # strip_noise BEFORE splitting. Splitting the raw text made a `## ` line
+    # inside a fenced code block a section of the post: a fixture with two such
+    # lines produced sections named "Fake heading one" and "Fake heading two".
+    # lint_prose.py had this exact bug and was fixed; this file was not checked.
+    rows = measure(split_sections(strip_noise(text)), jargon)
     total = sum(r["words"] for r in rows)
 
     if args.format == "json":
@@ -329,6 +349,8 @@ def main() -> int:
 
 
 def self_test() -> int:
+    import tempfile
+
     problems: list[str] = []
 
     dense = (
@@ -369,10 +391,50 @@ def self_test() -> int:
     if classify(cool) != "healthy":
         problems.append(f"clean section classified {classify(cool)}, expected healthy")
 
-    # Code must not be counted as prose: the same text fenced scores nothing.
-    fenced = "## Sample\n\n```\n" + dense + "\n```\n"
-    if measure(split_sections(fenced), set(DEFAULT_JARGON))[0]["load_score"] != 0:
-        problems.append("a fenced code block was scored as prose")
+    # Code must not be counted as prose. The first version of this control
+    # fenced `dense` under a "## Sample" heading and asserted section 0 scored
+    # 0 — but `dense` STARTS with its own "## " line, so section 0 was empty and
+    # scored 0 whatever strip_noise did. Deleting the code-stripping entirely
+    # left it green. It now compares the same body scored bare against scored
+    # fenced, and checks that a heading inside the fence is not a section.
+    body = dense.split("\n", 1)[1]
+    bare = measure(split_sections("## Sample\n\n" + body), set(DEFAULT_JARGON))[0]
+    fenced = measure(split_sections(strip_noise("## Sample\n\n```\n" + body + "\n```\n")),
+                     set(DEFAULT_JARGON))[0]
+    if bare["words"] == 0:
+        problems.append("the fenced-code control scores an empty section, so it cannot fail")
+    if fenced["words"] != 0:
+        problems.append(f"a fenced code block was counted as {fenced['words']} prose words")
+
+    # Through the SAME door main() uses. Calling strip_noise here directly made
+    # the control blind to whether main() calls it at all: deleting it from
+    # main() left this green, which is the defect this control exists for.
+    with tempfile.TemporaryDirectory() as tmp:
+        doc = pathlib.Path(tmp) / "p.md"
+        doc.write_text("# T\n\n## Real\n\n" + body + "\n\n```\n## Fake heading\n```\n",
+                       encoding="utf-8")
+        out = subprocess.run([sys.executable, str(pathlib.Path(__file__).resolve()),
+                              str(doc), "--format", "json"],
+                             capture_output=True, text=True, check=False)
+        try:
+            sections = [r["section"] for r in json.loads(out.stdout)["sections"]]
+        except (json.JSONDecodeError, KeyError):
+            sections = []
+            problems.append("the CLI did not return parseable JSON")
+        if "Fake heading" in sections:
+            problems.append("a heading inside a fenced block became a section")
+
+    # A CJK post must not report zero words everywhere.
+    cjk = measure(split_sections("## 章节\n\n" + "这是一段中文正文,用来测试分词。" * 6),
+                  set(DEFAULT_JARGON))[0]
+    if cjk["words"] == 0:
+        problems.append("a CJK section reported 0 prose words")
+
+    # Jargon must not fire on an English word that merely contains a term.
+    if measure(split_sections("## S\n\n" + "The geometry of storage is a serpentine "
+                              "problem for any team that ships. " * 4),
+               set(DEFAULT_JARGON))[0]["jargon_introduction_count"]:
+        problems.append("substring jargon match: geometry/storage/serpentine fired")
 
     # A density needs a denominator, and a bullet list is not one sentence.
     tiny_rows = measure(split_sections("## Tiny\n\nAcme Corp and Globex.\n"), set(DEFAULT_JARGON))

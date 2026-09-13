@@ -43,6 +43,7 @@ Stdlib only — the syntax-check CI job installs no dependencies.
 from __future__ import annotations
 
 import argparse
+import pathlib
 import re
 import subprocess
 import sys
@@ -84,8 +85,21 @@ _TEXT_SUFFIX = {".md", ".py", ".sh", ".json", ".yml", ".yaml", ".toml", ".txt"}
 
 
 def _git(*args: str) -> str:
-    return subprocess.run(["git", *args], cwd=REPO, capture_output=True,
-                          text=True, check=False).stdout
+    """Raise on a failed git call.
+
+    This returned only .stdout with check=False, so a bad revision range, a
+    detached worktree or a missing origin produced an empty diff — and an empty
+    diff is indistinguishable from "nothing changed". The CI line runs
+    `--range origin/main...HEAD`, which is exactly the invocation that fails on
+    a fresh clone with no origin/main, and it reported a clean result.
+    """
+    proc = subprocess.run(["git", *args], cwd=REPO, capture_output=True,
+                          text=True, check=False)
+    if proc.returncode:
+        raise RuntimeError(
+            f"git {' '.join(args)} failed ({proc.returncode}): "
+            f"{proc.stderr.strip()[:300]}")
+    return proc.stdout
 
 
 def diff_lines(rng: str | None) -> tuple[list[tuple[str, str]], dict[str, str]]:
@@ -99,8 +113,14 @@ def diff_lines(rng: str | None) -> tuple[list[tuple[str, str]], dict[str, str]]:
     out, current, rows = _git(*args), "", []
     added: dict[str, list[str]] = {}
     for line in out.splitlines():
-        if line.startswith("+++ b/"):
-            current = line[6:]
+        if line.startswith("+++ "):
+            # A DELETED file's header is `+++ /dev/null`. Only reassigning on
+            # `+++ b/` left `current` pointing at whichever file came before it
+            # in the diff, so every line of a deleted file was attributed there.
+            tail = line[4:]
+            current = tail[2:] if tail.startswith("b/") else ""
+        elif line.startswith("--- ") or line.startswith("+++ "):
+            continue
         elif line.startswith("-") and not line.startswith("---"):
             rows.append((current, line[1:]))
         elif line.startswith("+") and not line.startswith("+++"):
@@ -149,7 +169,6 @@ def survivors(rng: str | None) -> list[tuple[str, str, list[str], list[str]]]:
     if not rows:
         return []
 
-    changed = {f for f, _ in rows}
     wanted: dict[str, set[str]] = {}
     for f, line in rows:
         for fact in facts_in(line):
@@ -162,6 +181,13 @@ def survivors(rng: str | None) -> list[tuple[str, str, list[str], list[str]]]:
     if not wanted:
         return []
 
+    # Word-boundary search, case-insensitively, because the extractor is
+    # case-insensitive: "Five Gates" was extracted verbatim and then looked for
+    # with a case-SENSITIVE test, so a title-cased fact never found its
+    # lower-cased sibling. And a bare `in` made "22 gates" match "122 gates".
+    probes = {fact: re.compile(r"(?<![\w-])" + re.escape(fact) + r"(?![\w-])", re.I)
+              for fact in wanted}
+
     hits: dict[str, list[str]] = {fact: [] for fact in wanted}
     for path in _tree_files():
         rel = str(path.relative_to(REPO))
@@ -169,9 +195,14 @@ def survivors(rng: str | None) -> list[tuple[str, str, list[str], list[str]]]:
             text = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        for fact in wanted:
-            # A file the diff already touched is not a survivor of itself.
-            if rel not in changed and fact in text:
+        for fact, probe in probes.items():
+            # PER-FACT, not global. The exemption is only "a file that changed
+            # this fact is not a survivor of itself"; excluding every file the
+            # diff touched silenced the tool on exactly the commits it exists
+            # for — one that fixes a fact in two of four places touches both.
+            if rel in wanted[fact]:
+                continue
+            if probe.search(text):
                 hits[fact].append(rel)
 
     return [
@@ -207,15 +238,123 @@ def self_test() -> int:
         if not should_find and got:
             problems.append(f"invented a fact in {line!r}: {got}")
 
+    problems.extend(_survivor_controls())
+
     if problems:
         for line in problems:
             print(f"SELF-TEST FAILED: {line}")
         return 1
     print(
         "SELF-TEST PASSED: the extractor finds counted nouns, arrow chains, "
-        "versioned literals and spelled-out counts, and stays quiet on ordinary\n        prose and on bare identifiers."
+        "versioned literals and spelled-out counts and stays quiet on ordinary "
+        "prose and bare identifiers; and the survivor search reports a sibling "
+        "in a file the same commit touched, matches case-insensitively, "
+        "respects word boundaries, and stays quiet on a fact the diff re-added."
     )
     return 0
+
+
+def _survivor_controls() -> list[str]:
+    """Exercise survivors(), not just the extractor.
+
+    The first version of this self-test called facts_in and nothing else. Three
+    separate mutations of the survivor search — making the changed-file
+    exemption global, dropping the word boundary, dropping case-insensitivity —
+    all left it green. A gate whose self-test covers only its cheapest half is
+    the failure this repository keeps finding in its own instruments, and this
+    one shipped it while its docstring argued against exactly that.
+    """
+    import tempfile
+
+    problems: list[str] = []
+    saved_diff, saved_tree, saved_repo = diff_lines, _tree_files, REPO
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        (root / "a.md").write_text("we ship 32 hooks today\n", encoding="utf-8")
+        (root / "b.md").write_text("also 32 hooks here\n", encoding="utf-8")
+        (root / "c.md").write_text("Thirty Hooks, title-cased\n", encoding="utf-8")
+        (root / "d.md").write_text("we counted 132 hooks in total\n", encoding="utf-8")
+
+        globals()["REPO"] = root
+        globals()["_tree_files"] = lambda: sorted(root.glob("*.md"))
+
+        def scenario(rows, added):
+            globals()["diff_lines"] = lambda _rng: (rows, added)
+            return {fact: (live, hist) for _c, fact, live, hist in survivors(None)}
+
+        # 1. The motivating case, and the one the global exemption broke: a.md
+        #    changed "32 hooks", b.md changed a DIFFERENT fact in the same
+        #    commit, and b.md still holds "32 hooks" so it is a survivor.
+        #
+        #    b.md must change a fact of its own. With b.md changing nothing the
+        #    global and per-fact exemptions are the same set, and the mutation
+        #    that made the exemption global left this test green — a control
+        #    that cannot distinguish the defect is not testing for it.
+        found = scenario([("a.md", "we ship 32 hooks today"),
+                          ("b.md", "and 9 agents run nightly")],
+                         {"a.md": "we ship 33 hooks today",
+                          "b.md": "and 10 agents run nightly"})
+        if "32 hooks" not in found:
+            problems.append("survivor search missed a sibling entirely")
+        elif "b.md" not in found["32 hooks"][0]:
+            problems.append("a file the same commit touched was exempted globally")
+
+        # 2. The file that changed the fact is not a survivor of itself.
+        if "a.md" in found.get("32 hooks", ([], []))[0]:
+            problems.append("the changing file was reported as its own survivor")
+
+        # 3. A boundary: 132 must not satisfy a search for 32.
+        if "d.md" in found.get("32 hooks", ([], []))[0]:
+            problems.append("substring match: '132 hooks' satisfied '32 hooks'")
+
+        # 4. Case-insensitive, because the extractor is.
+        found = scenario([("a.md", "thirty hooks were shipped")],
+                         {"a.md": "forty hooks were shipped"})
+        if "c.md" not in found.get("thirty hooks", ([], []))[0]:
+            problems.append("case-sensitive search missed a title-cased sibling")
+
+        # 5. A fact the diff RE-ADDED did not change; the line around it did.
+        found = scenario([("a.md", "we ship 32 hooks today")],
+                         {"a.md": "we ship 32 hooks today, plus one more"})
+        if "32 hooks" in found:
+            problems.append("a fact present in the diff's own additions was chased")
+
+        # 6. A deleted file's hunk header is `+++ /dev/null`. Attributing its
+        #    removed lines to whichever file preceded it in the diff makes every
+        #    fact in a deleted file look like a change to an unrelated one.
+        # Restore the REAL diff_lines: scenario() replaced it, and leaving the
+        # stub in place made this whole control read a fixed row list instead of
+        # parsing anything. The mutation harness is what exposed that — a dead
+        # assertion inside the self-test written to catch dead assertions.
+        globals()["diff_lines"] = saved_diff
+        globals()["REPO"] = saved_repo
+        saved_git = _git
+        globals()["_git"] = lambda *a: (
+            "--- a/keep.md\n+++ b/keep.md\n@@ -1 +1 @@\n-we ship 32 hooks\n+we ship 33 hooks\n"
+            "--- a/gone.md\n+++ /dev/null\n@@ -1 +0,0 @@\n-this had 77 agents in it\n")
+        try:
+            rows, _added = diff_lines(None)
+        finally:
+            globals()["_git"] = saved_git
+        misattributed = [line for f, line in rows if f == "keep.md" and "77 agents" in line]
+        if misattributed:
+            problems.append("a deleted file's lines were attributed to the file before it")
+        globals()["REPO"] = root
+
+        # 7. A failed git call must raise rather than read as a clean tree.
+        globals()["diff_lines"] = saved_diff
+        globals()["REPO"] = saved_repo
+        try:
+            _git("rev-parse", "definitely-not-a-ref-xyz")
+            problems.append("a failing git call returned quietly")
+        except RuntimeError:
+            pass
+
+    globals()["diff_lines"] = saved_diff
+    globals()["_tree_files"] = saved_tree
+    globals()["REPO"] = saved_repo
+    return problems
 
 
 def main() -> int:

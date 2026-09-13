@@ -249,12 +249,28 @@ def self_test() -> int:
         except ValueError:
             pass
 
+        # A FIFO. This control lived only in the pytest suite, so `--self-test`
+        # passed with the regular-file check deleted — and `--self-test` is what
+        # runs on a machine that has the script but not the suite. No writer is
+        # opened: without O_NONBLOCK this call never returns, so "it returns at
+        # all" is half the assertion.
+        if hasattr(os, "mkfifo"):
+            fifo = os.path.join(tmp, "FIFO.md")
+            os.mkfifo(fifo)
+            try:
+                read_untrusted(fifo, DEFAULT_MAX_BYTES)
+                problems.append("positive control did not fire: a fifo was read")
+            except ValueError:
+                pass
+            except OSError as exc:
+                problems.append(f"a fifo raised the wrong error: {exc}")
+
     if problems:
         for line in problems:
             print(f"SELF-TEST FAILED: {line}")
         return 1
     print(
-        "SELF-TEST PASSED: refuses symlinks and oversize files, warns on "
+        "SELF-TEST PASSED: refuses symlinks, fifos and oversize files, warns on "
         "injection-shaped text, stays quiet on prose, and issues a fresh "
         "unpredictable nonce per load."
     )

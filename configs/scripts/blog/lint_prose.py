@@ -53,10 +53,20 @@ def _phrase_tables() -> tuple[list[str], list[str], list[str]]:
 
 AI_PHRASES, AI_TRIGGER_WORDS, TRANSITION_WORDS = _phrase_tables()
 
-# Fallback only for the transition list, which signal 8 cannot run without.
-if not TRANSITION_WORDS:
-    TRANSITION_WORDS = ["first", "next", "additionally", "crucially", "furthermore",
-                        "moreover", "however", "finally", "importantly", "notably"]
+# Signal 8's own examples are "First... Next... Additionally... Crucially...".
+# analyze_blog.TRANSITION_WORDS is a READABILITY list — however, therefore,
+# furthermore, consequently — and contains none of first, next or crucially, so
+# borrowing it alone to avoid duplication produced a signal that could not
+# detect the pattern the reference names. The capsule openers are declared here
+# because they are THIS signal's definition, and the borrowed list is unioned in
+# because those are legitimate capsule openers too.
+CAPSULE_OPENERS = {
+    "first", "second", "third", "next", "then", "finally", "lastly",
+    "additionally", "crucially", "importantly", "notably", "ultimately",
+    "meanwhile", "overall", "essentially", "fundamentally", "critically",
+}
+TRANSITION_WORDS = sorted(CAPSULE_OPENERS | {t.lower() for t in TRANSITION_WORDS
+                                             if " " not in t})
 
 # ─── Thresholds (ai-slop-detection.md) ───
 QUESTION_H2_RATIO = 0.70          # 1. > 70% of H2s ending in ?
@@ -116,8 +126,8 @@ _WRAPUP = re.compile(
 _KEY_INSIGHT = re.compile(
     r"(?:^|\.\s+)(?:the\s+key\s+insight\s+is|what(?:'s|\s+is)\s+important\s+here\s+is"
     r"|the\s+key\s+takeaway\s+is|the\s+important\s+thing\s+(?:here\s+)?is)\b",
-    re.I,
-)
+    re.I | re.M,   # without re.M, `^` meant start-of-DOCUMENT, so the tell was
+)                  # invisible anywhere but the first sentence of the whole post
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+(?=[A-Z\"'(])")
 _WORD = re.compile(r"[A-Za-z][A-Za-z'’-]*")
 _LIST_ITEM = re.compile(r"^\s{0,3}(?:[-*+]|\d+[.)])\s+(.*)$", re.M)
@@ -177,7 +187,10 @@ def structural(raw: str, prose: str) -> list[dict]:
             round(ratio, 2), QUESTION_H2_RATIO))
 
     # 2. The Heres opener
-    heres = len(re.findall(r"(?:^|\n)\s*Here(?:'s|\s+(?:are|is))\b", prose))
+    # PARAGRAPH starts, not line starts. `\n` matches any wrap, so re-wrapping
+    # the same prose changed the count, and the message says "paragraph(s)".
+    heres = sum(1 for para in re.split(r"\n\s*\n", prose)
+                if re.match(r"\s*Here(?:'s|\s+(?:are|is))\b", para))
     allowed = max(HERE_OPENERS_PER_1500, round(HERE_OPENERS_PER_1500 * total_words / 1500))
     out.append(_finding(
         "here_openers", heres >= allowed,
@@ -270,13 +283,21 @@ def structural(raw: str, prose: str) -> list[dict]:
         f"summary; cut it and let the sentence stand.", ki, 0))
 
     # 10. Listicle introduction bloat
+    # Only for a document that IS a listicle. The signal fired on any essay with
+    # a list past the 250-word mark, which is most long-form writing: the
+    # reference calls it "Listicle introduction bloat", and a listicle is a post
+    # whose body is mostly the list.
+    items_all = _LIST_ITEM.findall(raw)
     first_list = _LIST_ITEM.search(raw)
-    if first_list:
+    listicle = (len(items_all) >= 5
+                and sum(len(words(i)) for i in items_all) >= 0.35 * max(total_words, 1))
+    if first_list and listicle:
         intro = len(words(strip_noise(raw[:first_list.start()])))
         out.append(_finding(
             "listicle_intro_bloat", intro > LISTICLE_INTRO_WORDS,
-            f"{intro} words before the first list item. A listicle should get to "
-            f"the list.", intro, LISTICLE_INTRO_WORDS))
+            f"{intro} words before the first list item, in a document that is "
+            f"{len(items_all)} list items. A listicle should get to the list.",
+            intro, LISTICLE_INTRO_WORDS))
 
     return out
 
@@ -437,8 +458,13 @@ def main() -> int:
         print(f"lint_prose: no such file: {args.path}", file=sys.stderr)
         return 1
 
-    result = analyze(args.path.read_text(encoding="utf-8", errors="replace"),
-                     args.first_order)
+    try:
+        text = args.path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        # is_file() passes on a file this process cannot open.
+        print(f"lint_prose: cannot read {args.path}: {exc}", file=sys.stderr)
+        return 1
+    result = analyze(text, args.first_order)
     if args.format == "json":
         print(json.dumps(result, indent=2))
     else:
@@ -484,10 +510,59 @@ def self_test() -> int:
             problems.append(f"positive control did not fire: {name}")
     if clean["fired"]:
         problems.append(f"negative control fired on human prose: {clean['fired']}")
+    # All FOUR, not one. Checking only symmetric_list_bloat meant any of the
+    # other three could be promoted into the blocking set and the banner would
+    # still claim they were held out.
+    for signal in ("paragraph_shape_flatness", "paragraph_sentence_flatness",
+                   "opening_word_repetition", "symmetric_list_bloat"):
+        if signal not in ADVISORY:
+            problems.append(f"{signal} left the advisory bucket")
     if "symmetric_list_bloat" not in dirty["advisory"]:
-        problems.append("the measured-noisy list signal is not in the advisory bucket")
+        problems.append("the measured-noisy list signal did not reach the advisory bucket")
     if set(dirty["fired"]) & ADVISORY:
         problems.append("an advisory signal leaked into the blocking set")
+
+    # Signal 8's own examples must be detectable.
+    capsules = "\n\n".join(f"## Section {i}\n\n{w.title()}, the thing happened here "
+                            f"and it mattered to the team."
+                            for i, w in enumerate(("first", "next", "crucially",
+                                                   "additionally")))
+    if "capsule_transitions" not in analyze(capsules, include_first=False)["fired"]:
+        problems.append("capsule_transitions misses the four openers the spec names")
+
+    # At the start of a LINE that is not preceded by ". " — after a heading,
+    # which is where the tell actually appears. The first fixture put it after
+    # a full stop, which the `\.\s+` alternative matches without re.M, so the
+    # control could not tell the two apart.
+    if "key_insight_tell" not in analyze(
+            "## A section\n\nThe key insight is that it works\n",
+            include_first=False)["fired"]:
+        problems.append("key_insight_tell only matches at the start of the document")
+
+    # here_openers must not change when the same prose is re-wrapped.
+    # The wrapped form must put a "Here" at the start of a LINE that is NOT a
+    # paragraph start. The first fixture wrapped only after the "Here", so both
+    # splits counted three and the control could not see the difference.
+    flat = ("One paragraph that mentions it. Here's one thing.\n\n"
+            "Another paragraph. Here are two things.\n\n"
+            "A third paragraph. Here is a third thing.\n\nAnd a fourth one.")
+    wrapped = ("One paragraph that mentions it.\nHere's one thing.\n\n"
+               "Another paragraph.\nHere are two things.\n\n"
+               "A third paragraph.\nHere is a third thing.\n\nAnd a fourth one.")
+    def _signal(text, name):
+        # BY NAME. Indexing structural()[1] read whichever finding happened to
+        # be second, and question_cadence_h2 is omitted entirely when the
+        # fixture has no H2 — so the control was reading three_clause_rhythm.
+        return next((f["value"] for f in structural(text, text) if f["signal"] == name), None)
+
+    if _signal(flat, "here_openers") != _signal(wrapped, "here_openers"):
+        problems.append("here_openers changes when the same prose is re-wrapped")
+
+    # An essay is not a listicle.
+    essay = ("## S\n\n" + "A paragraph of ordinary argument that runs on. " * 60
+             + "\n\n- one\n- two\n")
+    if "listicle_intro_bloat" in analyze(essay, include_first=False)["fired"]:
+        problems.append("listicle_intro_bloat fired on an essay with a short list")
 
     # A structural signal must survive a pure vocabulary swap — that is the point.
     swapped = sloppy.replace("The key insight is", "The thing is")

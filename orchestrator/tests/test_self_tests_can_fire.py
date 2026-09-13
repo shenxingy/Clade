@@ -1,0 +1,239 @@
+"""Ask every --self-test whether it can still go red.
+
+This repository has now shipped SIX instruments that could not fire, and the
+failure mode is always the same: a clean run and a broken run print the same
+sentence, so the gate reads as evidence while measuring nothing.
+
+  red-phase-audit.py     reported 0% because the harness could not fire
+  workflow-scorecard.py  matched the `>/` of `2>/dev/null`, so every session
+                         reported zero polls and it read as discipline
+  check-skill-contracts  accepted the bare word, and flag names are common
+                         English, so /brief passed with its --all handling gone
+  generate_hero.py       `for lic in (...): assert lic not in SAFE_LICENSES` is
+                         vacuously true when the tuple is EMPTY — deleting the
+                         entire licence allowlist still printed PASSED
+  cognitive_load.py      fenced its fixture under a heading the fixture already
+                         contained, so it asserted on an empty section
+  check-sibling-facts    exercised only the extractor; three mutations of the
+                         survivor search all left it green
+
+Each entry below removes ONE guard and requires the script's own --self-test to
+notice. A mutation that stays green is not a style complaint: it names a
+property the instrument claims and does not check.
+
+Adding a self-test to a script means adding its mutations here.
+"""
+
+from __future__ import annotations
+
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+import pytest
+
+REPO = Path(__file__).resolve().parents[2]
+
+# script -> [(what the mutation removes, exact source before, exact source after)]
+MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
+    "configs/scripts/check-sibling-facts.py": [
+        ("the per-fact exemption becomes global",
+         "if rel in wanted[fact]:",
+         "if rel in {f for fs in wanted.values() for f in fs}:"),
+        ("the word boundary around a fact",
+         'probes = {fact: re.compile(r"(?<![\\w-])" + re.escape(fact) + r"(?![\\w-])", re.I)',
+         "probes = {fact: re.compile(re.escape(fact))"),
+        ("case-insensitive survivor search",
+         're.escape(fact) + r"(?![\\w-])", re.I)',
+         're.escape(fact) + r"(?![\\w-])")'),
+        ("the git failure check",
+         "if proc.returncode:",
+         "if False:"),
+        ("the diff's own additions are chased again",
+         'if fact in added.get(f, ""):',
+         "if False:"),
+        ("a deleted file inherits the previous file's name",
+         'current = tail[2:] if tail.startswith("b/") else ""',
+         'current = tail[2:] if tail.startswith("b/") else current'),
+    ],
+    "configs/scripts/blog/cognitive_load.py": [
+        ("noise stripping before the section split",
+         "rows = measure(split_sections(strip_noise(text)), jargon)",
+         "rows = measure(split_sections(text), jargon)"),
+        ("CJK from the word pattern",
+         '_WORD_RE = re.compile(r"[A-Za-z][A-Za-z\'’-]*|[\\u4e00-\\u9fff\\u3040-\\u30ff]")',
+         '_WORD_RE = re.compile(r"[A-Za-z][A-Za-z\'’-]*")'),
+        ("word boundaries from the jargon match",
+         'present = {term for term in jargon\n                   if re.search(r"(?<![\\w-])" + re.escape(term) + r"(?![\\w-])", lowered)}',
+         "present = {term for term in jargon if term in lowered}"),
+        ("the fenced-code stripper",
+         'text = re.sub(r"```.*?```", " ", text, flags=re.S)',
+         "text = text"),
+        ("the short-section floor",
+         "if count < MIN_SCORABLE_WORDS:",
+         "if False:"),
+    ],
+    "configs/scripts/load_untrusted_root.py": [
+        ("symlink refusal",
+         'flags = os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0)',
+         "flags = os.O_RDONLY | os.O_NONBLOCK"),
+        ("nonce freshness",
+         "nonce = nonce or secrets.token_hex(16)",
+         'nonce = nonce or "a" * 32'),
+        ("the size cap",
+         "if st.st_size > max_bytes:",
+         "if False:"),
+        ("the regular-file check",
+         "if not _stat.S_ISREG(st.st_mode):",
+         "if False:"),
+        ("the injection scan",
+         "return [src for src, rx in _PATTERNS if rx.search(text)]",
+         "return []"),
+    ],
+    "configs/scripts/blog/lint_prose.py": [
+        ("the capsule-opener set the spec names",
+         'TRANSITION_WORDS = sorted(CAPSULE_OPENERS | {t.lower() for t in TRANSITION_WORDS',
+         'TRANSITION_WORDS = sorted(set() | {t.lower() for t in TRANSITION_WORDS'),
+        ("re.MULTILINE from the key-insight tell",
+         "    re.I | re.M,   # without re.M, `^` meant start-of-DOCUMENT, so the tell was",
+         "    re.I,          # without re.M, `^` meant start-of-DOCUMENT, so the tell was"),
+        ("paragraph-scoped Here counting",
+         'heres = sum(1 for para in re.split(r"\\n\\s*\\n", prose)',
+         'heres = sum(1 for para in re.split(r"\\n", prose)'),
+        ("the listicle precondition",
+         "if first_list and listicle:",
+         "if first_list:"),
+        ("three signals leave the advisory bucket",
+         'ADVISORY = {\n    "paragraph_shape_flatness",\n    "paragraph_sentence_flatness",\n    "opening_word_repetition",\n    "symmetric_list_bloat",\n}',
+         'ADVISORY = {\n    "symmetric_list_bloat",\n}'),
+    ],
+    "configs/scripts/blog/blog_render.py": [
+        ("entity resolution before counting words",
+         "    text = _html.unescape(text)",
+         "    text = text"),
+        ("fence awareness in the h1 strip",
+         'elif not fenced and not dropped and re.match(r"#\\s+\\S", stripped):',
+         'elif not dropped and re.match(r"#\\s+\\S", stripped):'),
+        ("single-escaping of link URLs",
+         "lambda m: f'<a href=\"{m.group(2)}\">{m.group(1)}</a>', out)",
+         "lambda m: f'<a href=\"{_html.escape(m.group(2), quote=True)}\">{m.group(1)}</a>', out)"),
+        ("fence detection in the fallback converter",
+         'if line.startswith("```") or line.startswith("~~~"):',
+         'if line.startswith("\\u0000"):'),
+        ("the nested-list warning",
+         '"nested list": re.compile(r"^(?:\\t| {2,})(?:[-*+]|\\d+[.)])\\s+", re.M),',
+         '"nested list": re.compile(r"^(?:\\t| {99,})(?:[-*+]|\\d+[.)])\\s+", re.M),'),
+    ],
+    "configs/scripts/blog/blog_preflight.py": [
+        ("the mandatory-agent check",
+         "        return _blocked(\"1 capability discovery\",",
+         "        return _passed(\"1 capability discovery\","),
+        ("the hero requirement",
+         'missing.append("hero image (" + "/".join(HERO_NAMES) + ")")',
+         "pass"),
+        ("the BLOCKING: true branch",
+         'if verdict.lower() == "true":',
+         "if False:"),
+        ("the canonical requirement",
+         "problems.append(\"<link rel=canonical> is not set\")",
+         "pass"),
+        ("the og:image requirement",
+         'problems.append("og:image is not set — the social-preview asset is load-bearing")',
+         "pass"),
+        ("the halt-on-first-block rule",
+         'if results[-1]["status"] == "block":',
+         "if False:"),
+        ("JSON-LD required-field validation",
+         'problems.append(f"BlogPosting is missing required field {field!r}")',
+         "pass"),
+    ],
+    "configs/scripts/blog/generate_hero.py": [
+        ("the licence allowlist",
+         'SAFE_LICENSES = ("cc0", "pdm", "by", "by-sa")',
+         "SAFE_LICENSES = ()"),
+        ("non-commercial licences enter the allowlist",
+         'SAFE_LICENSES = ("cc0", "pdm", "by", "by-sa")',
+         'SAFE_LICENSES = ("cc0", "pdm", "by", "by-sa", "by-nc")'),
+        ("aspect-ratio weighting",
+         "fit = max(0.0, 1.0 - abs(ratio - TARGET_RATIO) / TARGET_RATIO)",
+         "fit = 1.0"),
+        ("relevance weighting",
+         "relevance = hits / max(len(query_terms), 1)",
+         "relevance = 1.0"),
+        ("source authority",
+         'authority = next((v for k, v in SOURCE_AUTHORITY.items() if k in provider), 0.6)',
+         "authority = 1.0"),
+        ("query relaxation",
+         "    for i in range(len(terms)):",
+         "    for i in range(1):"),
+        ("stopword filtering in the query",
+         "if w not in STOPWORDS and len(w) > 2]",
+         "if len(w) > 2]"),
+    ],
+}
+
+
+def _cases():
+    for script, muts in MUTATIONS.items():
+        for name, old, new in muts:
+            yield pytest.param(script, name, old, new, id=f"{Path(script).stem}:{name[:40]}")
+
+
+@pytest.mark.parametrize("script,name,old,new", list(_cases()))
+def test_removing_a_guard_turns_the_self_test_red(script, name, old, new):
+    target = REPO / script
+    source = target.read_text(encoding="utf-8")
+    assert old in source, (
+        f"the mutation anchor for {name!r} no longer appears in {script}. "
+        f"The code moved; update the anchor, do not delete the case — an "
+        f"unanchored mutation silently stops testing.")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        backup = Path(tmp) / "backup"
+        shutil.copy(target, backup)
+        try:
+            target.write_text(source.replace(old, new, 1), encoding="utf-8")
+            result = subprocess.run([sys.executable, str(target), "--self-test"],
+                                    capture_output=True, text=True, timeout=180)
+        finally:
+            shutil.copy(backup, target)
+
+    assert result.returncode != 0, (
+        f"{script} --self-test PASSES with {name} removed.\n"
+        f"That property is claimed and not checked.\n{result.stdout[-600:]}")
+
+
+@pytest.mark.parametrize("script", sorted(MUTATIONS))
+def test_the_unmutated_self_test_passes(script):
+    result = subprocess.run([sys.executable, str(REPO / script), "--self-test"],
+                            capture_output=True, text=True, timeout=180)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_every_script_with_a_self_test_is_covered():
+    """A script that gained --self-test and no mutations is untested by this file."""
+    have = set(MUTATIONS)
+    missing = []
+    for path in sorted((REPO / "configs" / "scripts").rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        rel = str(path.relative_to(REPO))
+        if rel in have:
+            continue
+        if "--self-test" in path.read_text(encoding="utf-8", errors="replace"):
+            missing.append(rel)
+    # Recorded, not silent: these are the self-tests still unproven.
+    # Still unproven. Each is a self-test nothing has shown can fail; the list
+    # shrinks as mutations are added, and never grows.
+    known_gap = {
+        "configs/scripts/red-phase-audit.py",
+        "configs/scripts/workflow-scorecard.py",
+        "configs/scripts/check-skill-contracts.py",
+        "configs/scripts/check-runnable-paths.py",
+    }
+    unexpected = sorted(set(missing) - known_gap)
+    assert not unexpected, (
+        f"these scripts have a --self-test that nothing proves can fire: {unexpected}. "
+        f"Add their mutations to MUTATIONS.")

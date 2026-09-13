@@ -38,7 +38,9 @@ import re
 import socket
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
+from html import unescape as _unescape
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -244,9 +246,17 @@ def gate3(draft: Path) -> dict:
             "patchright/playwright not installed — screenshots, SVG overflow, "
             "dark-mode and console-error checks did NOT run. JSON-LD was checked "
             "and is valid. Install patchright for full Gate 3 coverage.")
-    return _passed("3 visual verification",
-                   "JSON-LD valid; browser checks available — run them from the "
-                   "skill, which owns the viewport loop")
+    # Installing patchright must not turn four unrun checks into a PASS. This
+    # returned _passed the moment the module was importable, so the ONLY
+    # difference the install made was replacing an honest SKIP with a false
+    # pass — the gate got weaker as the machine got more capable.
+    return _skipped(
+        "3 visual verification",
+        "JSON-LD is valid. Screenshots, SVG overflow, dark-mode and "
+        "console-error checks did NOT run here: they need a live browser at "
+        "three viewports, which the skill drives. A browser is available "
+        "(patchright/playwright importable), so run that loop — this process "
+        "does not, and will not report a pass it did not earn.")
 
 
 def validate_jsonld(html: str) -> list[str]:
@@ -328,7 +338,16 @@ def gate5(draft: Path, project: Path, check_links: bool) -> dict:
             elif not ok:
                 problems.append(f"{label} {url} — {detail}")
         elif not url.startswith("data:"):
-            if not (draft / url).exists() and not (project / url.lstrip("/")).exists():
+            # Strip the query and fragment and percent-decode before touching
+            # the filesystem. `hero.png?v=2` and `img/my%20hero.png` were both
+            # reported missing while sitting right there on disk.
+            local = urllib.parse.unquote(urllib.parse.urlsplit(url).path)
+            if not local:
+                return
+            candidates = [draft / local, project / local.lstrip("/")]
+            if local.startswith("/"):
+                candidates.append(draft / local.lstrip("/"))
+            if not any(c.exists() for c in candidates):
                 problems.append(f"{label} {url} does not exist on disk")
 
     for src in parser.imgs:
@@ -352,7 +371,17 @@ def gate5(draft: Path, project: Path, check_links: bool) -> dict:
     marked = "hypothetical" in html.lower() or "for illustration" in html.lower()
     if not marked:
         for code in parser.codes:
-            if re.fullmatch(r"[\w./-]+\.[A-Za-z0-9]{1,5}", code or ""):
+            # A version number is not a filename. `3.11`, `v1.2.3`, `0.5` and
+            # `1.9.0` all satisfy "word chars, a dot, a short suffix", so a
+            # correct draft mentioning a Python version was blocked for naming
+            # a file that does not exist.
+            if not re.fullmatch(r"[\w./-]+\.[A-Za-z0-9]{1,5}", code or ""):
+                continue
+            if re.fullmatch(r"v?\d+(?:\.\d+)+", code):
+                continue                                   # 3.11, v1.2.3, 0.5.0
+            if not re.search(r"\.[A-Za-z][A-Za-z0-9]{0,4}$", code):
+                continue                                   # suffix must be alphabetic
+            if True:
                 if not (project / code).exists() and not (draft / code).exists():
                     problems.append(f"<code>{code}</code> names no file in the project "
                                     f"and the page is not marked hypothetical")
@@ -367,9 +396,27 @@ def gate5(draft: Path, project: Path, check_links: bool) -> dict:
         for node in (data if isinstance(data, list) else [data]):
             if not (isinstance(node, dict) and node.get("wordCount")):
                 continue
-            claimed = int(node["wordCount"])
-            actual = len(re.findall(r"[A-Za-z][A-Za-z'’-]*", " ".join(parser.article_text)))
-            if actual and abs(claimed - actual) > 0.05 * actual:
+            try:
+                claimed = int(str(node["wordCount"]).strip().replace(",", ""))
+            except (TypeError, ValueError):
+                # `int("1,715")` and `int("about 1700")` raised straight out of
+                # gate5, so a malformed field killed the run instead of failing
+                # it, and preflight-report.json was never written.
+                problems.append(
+                    f"JSON-LD wordCount is not a number: {node['wordCount']!r}")
+                continue
+            body = " ".join(parser.article_text)
+            if not body.strip():
+                # _Tags counts only text inside <article>. A page that uses
+                # <main> or a bare <body> gave an empty string, `actual` was 0,
+                # and `if actual and ...` skipped the honesty check silently on
+                # exactly the pages a hand-written renderer produces.
+                body = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", html, flags=re.S | re.I)
+                body = re.sub(r"<[^>]+>", " ", body)
+            actual = len(re.findall(r"[A-Za-z][A-Za-z'’-]*", _unescape(body)))
+            if not actual:
+                problems.append("JSON-LD declares a wordCount but the page has no prose")
+            elif abs(claimed - actual) > 0.05 * actual:
                 problems.append(
                     f"JSON-LD wordCount {claimed} vs {actual} actual "
                     f"({abs(claimed - actual) / actual:.0%} off, tolerance 5%)")
@@ -495,6 +542,28 @@ def self_test() -> int:
 
         if gate2(draft)["status"] != "pass":
             problems.append(f"Gate 2 blocked a complete draft: {gate2(draft)['reason']}")
+
+        # Gate 1 BLOCKS without the reviewer. Only the empty-folder case was
+        # covered, which fails on everything at once, so deleting this one
+        # requirement changed nothing the self-test could see.
+        import types as _types
+        saved_dir = globals()["claude_dir"]
+        globals()["claude_dir"] = lambda: Path(tmp) / "no-such-claude"
+        try:
+            if gate1(draft, Path(tmp) / "no-such-project")["status"] != "block":
+                problems.append("Gate 1 passed with the mandatory reviewer agent absent")
+        finally:
+            globals()["claude_dir"] = saved_dir
+        del _types
+
+        # Gate 2 must block on the hero ALONE, with the other three present.
+        hero_only = Path(tmp) / "hero-missing"
+        hero_only.mkdir()
+        (hero_only / "p.md").write_text("# T\n", encoding="utf-8")
+        (hero_only / "p.html").write_text("<html></html>", encoding="utf-8")
+        (hero_only / "p.pdf").write_bytes(b"%PDF")
+        if gate2(hero_only)["status"] != "block":
+            problems.append("Gate 2 passed a draft with no hero image")
 
         # Gate 3 must never call an unrun browser check a pass.
         g3 = gate3(draft)
