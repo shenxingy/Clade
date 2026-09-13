@@ -464,6 +464,11 @@ python3 configs/scripts/check-layers.py
 #      ever published; a run asking to preview opened a real PR.
 python3 configs/scripts/check-skill-contracts.py
 
+# 10g. Sibling facts — before changing a stated fact, find every other place
+#      that states it. 43% of round 5's findings were siblings of earlier
+#      fixes. Reports, never blocks; --strict makes it fail.
+python3 configs/scripts/check-sibling-facts.py
+
 # 11. Shellcheck (CI installs shellcheck; local may not). The `bash` prefix is
 #     required — checks.sh is mode 100644, so invoking it directly exits 126 —
 #     and the file list must match CI's, which is every hook and script plus
@@ -523,7 +528,7 @@ commit too.**
 
 On push/PR to `main`, four workflow files fire:
 
-- `ci.yml` — `syntax-check` (20 gates), `pytest` (suite + 2 offline evals),
+- `ci.yml` — `syntax-check` (21 gates), `pytest` (suite + 2 offline evals),
   `shell-tests` (21 suites), `install-test`. `run_hack_eval.py` scores
   `judge_diversity.test_integrity` against the labelled reward-hack corpus in
   `evals/hack_cases/` — read its README before changing either, because that

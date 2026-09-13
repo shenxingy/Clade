@@ -75,6 +75,22 @@ reporting its absence as a gap.
 completion before every push, and never chain it behind `echo` — that masks the
 exit code and turns a red run green.
 
+## Change a fact everywhere it is stated, not where you found it
+
+Before editing a number, a path, a flag or a named behaviour, grep the whole
+repository for it. Fix every site in the same commit.
+
+This is measured, not a preference. Five audit rounds over one toolkit found
+61, 25, 34 and 23 issues and the count would not fall, because **43% of the
+last round were siblings of the previous rounds' own fixes** — a value
+corrected in the file someone was reading and left standing in three others.
+One of them was a sentence pointing at a section inverted an hour earlier.
+
+`check-sibling-facts.py` asks this mechanically of a diff: for every fact a
+change removes, does the old value survive elsewhere? It reports rather than
+blocks, because it cannot know intent — but an unexplained survivor is almost
+always a site the change did not reach.
+
 ## Paid APIs are opt-in, never a dependency
 
 A skill, script or workflow must produce a complete result with no account, no

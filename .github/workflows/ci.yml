@@ -180,6 +180,16 @@ jobs:
       - name: Skill contracts
         run: python3 configs/scripts/check-skill-contracts.py
 
+      # Reports, never blocks. Five convergence rounds found 61, 25, 34, - and
+      # 23 issues, and the count would not fall because 43% of each round were
+      # SIBLINGS of the previous round's own fixes: a fact corrected in the file
+      # someone was looking at and left standing in three others. This asks, of
+      # every fact a diff removes, whether it survives elsewhere. It cannot know
+      # intent, so it prints and exits 0; --strict is for a human who wants it
+      # to fail.
+      - name: Sibling facts (report only)
+        run: python3 configs/scripts/check-sibling-facts.py --range origin/main...HEAD || true
+
       # CLAUDE.md's pre-commit checklist claims to be what makes CI pass. It
       # had drifted twice (df802c3, then again by 2026-08-29), both times
       # leaving a local run green against a list that did not cover the build.

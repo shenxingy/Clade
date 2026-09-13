@@ -986,6 +986,48 @@ assert_contains "$out" "additionalContext" "a genuine repeated brief still speak
 
 rm -f "$PT_LOG" "$PT_SEEN"
 
+section "linter-config-guard reads the payload Claude Code actually sends"
+
+# It read the TOP level of the hook payload (`.file_path`) while Claude Code
+# sends `{"tool_name":...,"tool_input":{"file_path":...}}` — the shape every
+# other Edit|Write hook here reads and the shape this harness models. FILE_PATH
+# was therefore always empty and the guard exited before matching anything.
+# Two docs advertised it as blocking edits to linter config; nothing was blocked.
+# Third hook in this repository found documented-as-active and inert.
+LCG="$REPO_ROOT/configs/hooks/linter-config-guard.sh"
+
+LCG_OUT=$(printf '{"tool_name":"Edit","tool_input":{"file_path":"/tmp/.eslintrc.json"}}' | bash "$LCG" 2>/dev/null)
+assert_contains "$LCG_OUT" '"decision": "block"' "a linter config edit is blocked in the real payload shape"
+
+# Build the payload with python3 rather than printf: printf turns \n into a
+# real newline, and a raw newline inside a JSON string is invalid, so the hook's
+# json.load failed and the content came back empty. The first version of this
+# assertion failed for that reason and not because the guard was broken.
+LCG_JSON=$(python3 -c 'import json;print(json.dumps({"tool_name":"Write","tool_input":{"file_path":"/tmp/pyproject.toml","content":"[tool.ruff]\nignore=[\"ALL\"]"}}))')
+LCG_OUT=$(printf '%s' "$LCG_JSON" | bash "$LCG" 2>/dev/null)
+assert_contains "$LCG_OUT" '"decision": "block"' "a [tool.ruff] section in pyproject.toml is blocked"
+
+LCG_OUT=$(printf '{"tool_name":"Edit","tool_input":{"file_path":"/tmp/app.py"}}' | bash "$LCG" 2>/dev/null)
+if [[ -z "$LCG_OUT" ]]; then
+  pass "an ordinary source file is not blocked"
+else
+  fail "an ordinary source file is not blocked" "$LCG_OUT"
+fi
+
+# Every Edit|Write hook must agree on where the path lives, or the next one
+# written by copying a neighbour inherits whichever shape it copied.
+LCG_TOPLEVEL=0
+for h in post-edit-check doc-align-check linter-config-guard rule-injector skill-suggest; do
+  f="$REPO_ROOT/configs/hooks/$h.sh"
+  [[ -f "$f" ]] || continue
+  grep -q "tool_input" "$f" || LCG_TOPLEVEL=$((LCG_TOPLEVEL+1))
+done
+if [[ "$LCG_TOPLEVEL" -eq 0 ]]; then
+  pass "every Edit|Write hook reads the nested tool_input"
+else
+  fail "every Edit|Write hook reads the nested tool_input" "$LCG_TOPLEVEL read the top level"
+fi
+
 section "verify-task-completed can actually block"
 
 # The hook's own header says "Exit 2 = block completion", and it could not: the
