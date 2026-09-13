@@ -22,6 +22,7 @@ import os
 import re
 import shlex
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Mapping
@@ -615,6 +616,26 @@ async def _run_repro_filter(
         repro_file.unlink(missing_ok=True)
 
 
+def _launcher_runs(command: str) -> bool:
+    """On PATH is not the same as usable.
+
+    `shutil.which` finds `~/.local/bin/pytest`, whose shebang python resolves
+    its packages through the USER SITE directory — computed from $HOME. A
+    worker spawned with a different HOME gets "ModuleNotFoundError: pytest" from
+    a launcher that `which` said was there, the parser sees no result lines, and
+    the baseline comes back empty. The docstring below already argues that a
+    gate measuring nothing reports the same thing as a gate that passes; this
+    is the check that makes the argument true.
+    """
+    if not shutil.which(command):
+        return False
+    try:
+        return subprocess.run([command, "--version"], capture_output=True,
+                              timeout=15, check=False).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def _pytest_launcher(project_dir: Path) -> str | None:
     """How to invoke pytest for `project_dir`, or None when it cannot be.
 
@@ -636,7 +657,7 @@ def _pytest_launcher(project_dir: Path) -> str | None:
         return shlex.quote(str(venv_pytest))
     if not ((project_dir / "pytest.ini").exists() or (project_dir / "pyproject.toml").exists()):
         return None
-    if shutil.which("pytest"):
+    if _launcher_runs("pytest"):
         return "pytest"
     return f"{shlex.quote(sys.executable)} -m pytest"
 

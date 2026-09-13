@@ -168,6 +168,18 @@ backlog.
       established is whether a second pass over the same scope, after fixes,
       returns near zero. Run it before claiming convergence.
 
+- [ ] 🔵 **Three resolve-eval fixtures hard-code `python -m pytest`.**
+      `evals/resolve_cases/synthetic-*.json` name a bare `python`, whose
+      packages resolve through the user site directory computed from $HOME. The
+      harness scores them fine on a normal machine and on CI; under a different
+      HOME the subprocess cannot import pytest, the parser sees no result lines,
+      and three tests fail. `_pytest_launcher` was hardened for exactly this
+      (it now verifies the launcher RUNS, not just that `which` finds it), but
+      these fixtures bypass it by naming their own command. Either template the
+      interpreter for BUNDLED cases only — a user-supplied `test_cmd` must
+      never be rewritten, the harness promises to run what it is given — or
+      state in the fixtures that they assume pytest on the default `python`.
+
 - [ ] 🔵 **`templates/CLAUDE.md` is orphaned — confirm deletion.** install.sh
       §10 was the only code that read it and was removed 2026-09-12 as dead
       (§8 already deploys `configs/CLAUDE.md`, the maintained source, and §10

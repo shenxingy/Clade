@@ -358,7 +358,8 @@ class TestDetectDepCycle:
 
 # ─── _format_oracle_rejection Tests ──────────────────────────────────────────
 
-import sys, os
+import sys
+import types, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from worker_review import _format_oracle_rejection
 
@@ -639,7 +640,8 @@ class TestPytestLauncher:
 
     def test_bare_pytest_only_when_it_resolves(self, tmp_path, monkeypatch):
         import worker_utils
-        monkeypatch.setattr(worker_utils.shutil, "which", lambda n: "/usr/bin/pytest")
+        # Stub the runnability seam too:  alone no longer decides.
+        monkeypatch.setattr(worker_utils, "_launcher_runs", lambda c: c == "pytest")
         assert worker_utils._pytest_launcher(self._proj(tmp_path)) == "pytest"
 
     def test_falls_back_to_this_interpreter_when_pytest_is_not_on_path(self, tmp_path, monkeypatch):
@@ -657,8 +659,36 @@ class TestPytestLauncher:
 
     def test_pytest_ini_also_counts_as_a_marker(self, tmp_path, monkeypatch):
         import worker_utils
-        monkeypatch.setattr(worker_utils.shutil, "which", lambda n: "/usr/bin/pytest")
+        # Stub the RUNNABILITY seam, not just `which`. On PATH is no longer
+        # enough: a `pytest` whose packages come from the user site directory
+        # cannot run under a different $HOME, so `_pytest_launcher` verifies it
+        # executes before returning the bare name.
+        monkeypatch.setattr(worker_utils, "_launcher_runs", lambda c: c == "pytest")
         assert worker_utils._pytest_launcher(self._proj(tmp_path, marker="pytest.ini")) == "pytest"
+
+    def test_a_pytest_on_path_that_cannot_run_falls_back(self, tmp_path, monkeypatch):
+        # `shutil.which` finds ~/.local/bin/pytest; its shebang python resolves
+        # packages through the user site directory, computed from $HOME. A
+        # worker with a different HOME got ModuleNotFoundError from a launcher
+        # `which` said was there, the parser saw no result lines, and the
+        # baseline came back empty — regression detection silently disabled.
+        import worker_utils
+        monkeypatch.setattr(worker_utils.shutil, "which", lambda n: "/usr/bin/pytest")
+        monkeypatch.setattr(worker_utils.subprocess, "run",
+                            lambda *a, **k: types.SimpleNamespace(returncode=1))
+        launcher = worker_utils._pytest_launcher(self._proj(tmp_path, marker="pytest.ini"))
+        assert launcher != "pytest"
+        assert "-m pytest" in launcher
+
+    def test_a_launcher_that_is_absent_is_not_run(self, tmp_path, monkeypatch):
+        import worker_utils
+        monkeypatch.setattr(worker_utils.shutil, "which", lambda n: None)
+        called = []
+        monkeypatch.setattr(worker_utils.subprocess, "run",
+                            lambda *a, **k: called.append(a) or
+                            types.SimpleNamespace(returncode=0))
+        worker_utils._pytest_launcher(self._proj(tmp_path, marker="pytest.ini"))
+        assert not called, "spawned a process for a command that is not on PATH"
 
     def test_a_venv_path_containing_a_space_is_quoted(self, tmp_path):
         from worker_utils import _pytest_launcher

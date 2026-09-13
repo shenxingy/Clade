@@ -171,6 +171,13 @@ def test_no_gate_requires_an_api_key(tmp_path, monkeypatch):
     preflight = _load("blog_preflight.py")
     for key in preflight.ENV_KEYS:
         monkeypatch.delenv(key, raising=False)
+    # Point Gate 1 at THIS repository's agents. The first version passed
+    # tmp_path as the project, so the reviewer agent was found only via
+    # ~/.claude/agents — which exists on a machine that has run install.sh and
+    # not on a CI runner. It passed locally and failed hosted, which is exactly
+    # the class ci-local.py cannot catch: it runs in an environment that
+    # already has the state.
+    monkeypatch.setattr(preflight, "claude_dir", lambda: REPO / "configs")
     good = json.dumps({"@type": "BlogPosting", "headline": "H", "image": "hero.png",
                        "datePublished": "2026-01-01", "author": "A"})
     (tmp_path / "p.md").write_text("# T\n", encoding="utf-8")
