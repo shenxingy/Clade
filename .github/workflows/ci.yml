@@ -204,6 +204,10 @@ jobs:
             git fetch --no-tags --depth=50 origin "${{ github.base_ref }}"
             python3 configs/scripts/check-sibling-facts.py --range "origin/${{ github.base_ref }}...HEAD"
           else
+            # actions/checkout is shallow by default, so HEAD~1 is not present
+            # and the script — correctly — refuses to call an unresolvable
+            # range a clean tree.
+            git fetch --no-tags --deepen=1 || true
             python3 configs/scripts/check-sibling-facts.py --range 'HEAD~1..HEAD'
           fi
 

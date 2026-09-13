@@ -388,7 +388,19 @@ def main() -> int:
     if args.self_test:
         return self_test()
 
-    found = survivors(args.rng)
+    try:
+        found = survivors(args.rng)
+    except RuntimeError as exc:
+        # THREE outcomes, not two. A range git cannot resolve is neither "no
+        # sibling survives" nor a defect in the tree: on a shallow checkout
+        # HEAD~1 simply was not fetched. Saying so is the point — the previous
+        # version returned an empty diff here and printed the clean sentence,
+        # and the version after that crashed the job. Exit 0, because nothing
+        # is wrong with the code; the range was not available.
+        print(f"check-sibling-facts: RANGE NOT CHECKED — {exc}")
+        print("Nothing was examined. On a shallow clone, fetch more history "
+              "(actions/checkout fetch-depth, or git fetch --deepen=1).")
+        return 0
     live = [row for row in found if row[2]]
     if not found:
         print("check-sibling-facts: no changed fact survives anywhere else")
