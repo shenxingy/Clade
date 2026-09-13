@@ -958,6 +958,32 @@ pt_run "$PT_KEY $PT_BRIEF" >/dev/null
 out=$(pt_run "$PT_KEY $PT_BRIEF")
 assert_contains "$out" "additionalContext" "repeat detection survives storing no prompt text"
 
+
+# 8. Machine-generated text is not a brief the user typed. Background-task
+#    completions and system reminders arrive on this channel wearing a user
+#    role, and they are long and near-identical — exactly the shape this hook
+#    detects. It reported "asked for 31 times" at a task notification on
+#    2026-09-12. A detector that fires on the harness talking to itself teaches
+#    the reader to dismiss it, and the one real signal goes with the rest.
+pt_reset
+PT_NOISE="$(python3 -c "print('background job completed with a long summary line. '*8)")"
+for marker in "<task-notification> x" "<system-reminder> y" "[SYSTEM NOTIFICATION] z" \
+              "Stop hook feedback: w" "UserPromptSubmit hook additional context: v"; do
+  for _ in 1 2 3 4; do pt_run "$marker $PT_NOISE" >/dev/null; done
+done
+PT_NOISE_LINES=$(wc -l < "$PT_LOG" | tr -d ' ')
+if [[ "${PT_NOISE_LINES:-0}" -eq 0 ]]; then
+  pass "machine-generated text is never fingerprinted"
+else
+  fail "machine-generated text is never fingerprinted" "$PT_NOISE_LINES line(s) logged"
+fi
+
+# And the real signal still works after the filter.
+pt_reset
+pt_run "$PT_BRIEF" >/dev/null; pt_run "$PT_BRIEF" >/dev/null
+out=$(pt_run "$PT_BRIEF")
+assert_contains "$out" "additionalContext" "a genuine repeated brief still speaks on the third"
+
 rm -f "$PT_LOG" "$PT_SEEN"
 
 section "verify-task-completed can actually block"

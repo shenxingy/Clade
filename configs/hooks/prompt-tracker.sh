@@ -50,6 +50,27 @@ prompt=$(printf '%s' "$input" | jq -r '.prompt // .message // ""' 2>/dev/null ||
 # every "ok" and "continue" — 386k lines of noise that buried the real signal.
 [[ ${#prompt} -lt $MIN_CHARS ]] && exit 0
 
+# MACHINE-GENERATED TEXT IS NOT A BRIEF THE USER TYPED.
+#
+# Background-task completions, system reminders and hook output all arrive on
+# this channel wearing a user role. They are long, highly repetitive, and
+# structurally identical to each other — which is exactly the shape this hook
+# was built to detect — so they sail past every fingerprint and every band.
+# Measured 2026-09-12: it reported "this brief has been asked for 31 times" at a
+# `<task-notification>`, and 6 and 3 times at two others earlier the same
+# session. Every one of those was the harness talking to itself.
+#
+# The cost is not just noise. The whole point of this hook is to tell the owner
+# a STANDING PREFERENCE went unlearned; a detector that fires on machinery
+# teaches the reader to dismiss it, and then the one real signal — a design
+# brief typed fifteen times over five months — gets dismissed with the rest.
+case "$prompt" in
+  *"<system-reminder>"*|*"<task-notification>"*|*"[SYSTEM NOTIFICATION"*|\
+  *"<local-command-"*|*"<command-name>"*|*"Stop hook feedback:"*|\
+  *"UserPromptSubmit hook additional context:"*)
+    exit 0 ;;
+esac
+
 # ─── Fingerprints ────────────────────────────────────────────────────────────
 # `exact`   — the whole prompt, normalised. Catches a literal re-paste.
 # `shape`   — the 24 distinct long words, sorted. Catches the same brief pasted
