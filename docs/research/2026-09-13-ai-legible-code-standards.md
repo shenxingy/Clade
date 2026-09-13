@@ -46,12 +46,30 @@ Published artifact (company intranet):
 | Ronacher: 35h, 75k lines, 79 commits, ~$1200, "absolutely nothing of value" | **Confirmed.** Both token figures are his and measure different things: ~4B ChatGPT-subscription, ~1B raw-API at ~$1200 | n=1 |
 | arXiv:2605.31170 shows agents evolving private languages | **Out of domain.** Text-mining of Moltbook, a Reddit-like site for agents. No code, no repos. 518 of 232,000 posts (0.223%) of agents *discussing* conlangs | measured |
 | METR attributed the telegraphic style to "the medium" | **METR attributed it to nothing.** "telegraphic"/"terse"/"shorthand" appear zero times in 3,901 lines. METR traced the `zz` prefix to a reverse-alphabetical sort in the reading tool | measured |
-| @tenobrus coined "machineslop" | **No evidence found.** "machine slop" predates Astra. His verified Astra post is about neuralese/CoT monitorability, publicly rebutted | asserted |
+| @tenobrus coined "machineslop"; greenfield-only drift | **Contradicted by the primary.** Ronacher's run was a **CPython fork** — brownfield, very large — and he states "I have since encountered the same issues with regular programming with Astra, so it's not a result of just the factory", naming TypeScript and "code that actually gets committed". "machine slop" also predates Astra | measured |
 | Kilo corroborates compression | **Qualitatively only.** One engineer, one prototype, no numbers at all. Kilo calls it "convergent, unsurprising, arguably correct" | n=1 |
 | OpenAI concedes Astra is harder to monitor | **Confirmed, stronger than reported** — but the card is not an alarm document; Astra improved on nearly every alignment axis | measured |
 
 Practitioners contradict each other on the remedy (one *adds* AGENTS.md scaffolding, Kilo
 says delete half). Net: one credible anecdote plus a mechanism.
+
+### 1b. Ronacher cites none of the corroborations attributed to him
+
+Every outbound link on his post, extracted: two Wikipedia articles (Neijuan, Agricultural
+Involution), an OpenAI developer blog, one `openai/codex` permalink, `collusion.wiki`, and
+two of his own earlier posts. **No arXiv paper, no METR report, no Kilo, no @tenobrus, no
+Astra system card.** Those sources exist independently and some are strong, but the chain of
+evidence was assembled by the commentary, not by the engineer whose run is its foundation.
+
+And his actual claim is far narrower than "GPT-6 writes code humans cannot read". He locates
+the leakage in code *one step removed* from normal source ("mostly in tests, but also
+JavaScript or CSS embedded in HTML") and where nobody is watching ("when it goes all bananza
+with subagents"). The acute loss is **following the change while it happens** — once the
+model abandoned the edit tool for Python string splicing, "you're going to have to resort to
+using the diff viewer of the final artifacts."
+
+**That is an observability failure, not a style failure**, and observability has a
+targetable surface.
 
 ## 2. The axis that actually carves the practices
 
@@ -69,7 +87,7 @@ Six adversarial passes rejected "human-bandwidth artifact vs real rule". The axi
   cases vs 19% for line-level.
 - **PERCEPTUAL** (line length, punctuation, formatting) — the only genuine bandwidth class.
   arXiv:2605.20049, minimal pairs, 6 pairs / 33 tasks / **660 trials**, hidden-test graded:
-  **0.913 clean vs 0.921 messy**. Cleanliness bought no correctness. Layout compression is
+  **0.913 clean vs 0.921 messy**. Cleanliness bought no correctness. (COI worth noting and it strengthens the null: both authors are SonarSource and "cleanliness" is their own rule set — they had every incentive to find an effect. Do not quote its token savings per task: median −4.5%, sign flips on 11 of 27 tasks.) Layout compression is
   24.5% token saving for ≤4.2pp accuracy.
 
 ## 3. Why more gates is not the answer
@@ -144,3 +162,6 @@ rationale — "Read tool default = 2000 lines" — is a harness constant. This s
   is the absent checker, not absent annotations.
 - I attributed the architecture rules to the project `CLAUDE.md`. **They are in
   `configs/CLAUDE.md:196`**, the shipped template.
+- Two reviewers read arXiv:2603.24755 and reported erosion slightly differently (2.2x/80%
+  versus 2.3x more verbose / 2.0x more eroded / 77%). Direction is not in doubt; re-read the
+  source before quoting an exact multiple onward.
