@@ -32,7 +32,7 @@ The point: **a draft can score zero on a phrase blocklist and still be obviously
 
 This is what the existing AI-detection in `blog-analyze` and `blog-rewrite` already covers. Documented here for completeness.
 
-**Trigger phrases** (full list in `agents/blog-reviewer.md` and `scripts/analyze_blog.py`):
+**Trigger phrases** (full list in `agents/blog-reviewer.md` and `~/.claude/scripts/blog/analyze_blog.py`):
 
 - "In today's digital landscape" / "In the ever-evolving"
 - "It's important to note" / "It is worth mentioning"
@@ -83,9 +83,34 @@ These are the patterns LLMs default to **after** the obvious vocabulary is repla
 
 10. **Listicle introduction bloat.** Before the actual list, three or more paragraphs of "context." Real listicles get to the list. Flag if > 250 words of pre-list intro.
 
+### Measured false-alarm rates — read before acting on a rhythm signal
+
+`lint_prose.py` was run over 30 human-written documents in this repository
+(docs/ and skill references, each over 3 KB). **That population is technical
+documentation, not the consumer long-form these thresholds were written for**,
+and technical writing legitimately has flatter paragraph shapes and more uniform
+list items. Read these as a floor on false alarms, not as a verdict on the spec:
+
+| Signal | Fired on human prose |
+|---|---|
+| `paragraph_shape_flatness` | 70% |
+| `symmetric_list_bloat` | 63% |
+| `paragraph_sentence_flatness` | 50% |
+| `opening_word_repetition` | 43% |
+| every other signal | 0-6% |
+
+A signal that fires on seven of ten human documents does not discriminate, and a
+linter that cries wolf gets bypassed — the exact failure this delivery contract
+exists to prevent. Those four are therefore **advisory**: computed, printed, and
+excluded from the exit code unless `--strict` is passed. The ten structural tics
+decide the run, and fire on 6% of the same corpus.
+
+Nothing is silently dropped. If you are linting consumer long-form rather than
+technical documentation, `--strict` restores the specification's behaviour.
+
 ### Rhythmic signals to compute
 
-- **Sentence-length flatness within paragraphs.** Compute SD of sentence length per paragraph; flag any paragraph with internal SD < 4.
+- **Sentence-length flatness within paragraphs.** Compute SD of sentence length per paragraph; flag any paragraph with internal SD < 4 **and** a coefficient of variation (SD/mean) under 0.35. The absolute floor alone penalises SHORT sentences rather than flat ones: "Migrations fail on the boring parts. Not the schema. The seventeen scripts nobody remembered, each pointing at a column that moved." runs 6/3/12 words — four-fold variation — and scores SD 3.7. Flatness is relative.
 - **Opening-word repetition.** Count first-word frequencies across all sentences. Flag if the top three first-words account for > 25% of all sentence openings.
 - **Paragraph-shape flatness.** Compute SD of paragraph word counts across the post; flag if < 25 (real long-form varies dramatically).
 

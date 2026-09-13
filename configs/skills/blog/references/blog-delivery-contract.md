@@ -2,7 +2,9 @@
 
 The contract every blog must pass before being presented to the user. Five gates that fire automatically between content generation and delivery, plus an iteration loop that retries failures up to three times before escalating.
 
-This contract is the v1.9.0 answer to a failure pattern from the v1.8.x cycle: skills had reviewers, but the reviewer ran as advisory and the writer presented sloppy drafts anyway. The fix is infrastructure, not effort. Same shape as `scripts/lint_prose.py` (v1.8.4) and `tests/test_installer_sync.py` (v1.8.6).
+This contract is the v1.9.0 answer to a failure pattern from the v1.8.x cycle: skills had reviewers, but the reviewer ran as advisory and the writer presented sloppy drafts anyway. The fix is infrastructure, not effort. Same shape as `~/.claude/scripts/blog/lint_prose.py` and `tests/test-install.sh`: a rule nothing executes is a preference.
+
+> Both of those citations were false when this paragraph was written. `lint_prose.py` was specified in v1.8.4 and shipped in v1.9.1; `tests/test_installer_sync.py` never existed at all, and the installer check it named is `tests/test-install.sh`. A contract whose own precedents are phantom is the failure it describes, one level up.
 
 ## Gate summary
 
@@ -27,7 +29,7 @@ Runs once at the start of `/blog write` or `/blog rewrite`. Enumerates the proje
 - **Optional Python deps**: `patchright`, `weasyprint`, `google-genai`, `requests`. Probed via `importlib.util.find_spec()`.
 - **Project-root context files**: `BRAND.md`, `VOICE.md`, `DISCOURSE.md`. Loaded via `load_untrusted_root.py`.
 - **Agents available**: `blog-reviewer` is mandatory; `blog-researcher`, `blog-writer`, `blog-seo`, `blog-translator` are optional.
-- **Helper scripts present**: `scripts/lint_prose.py`, `scripts/analyze_blog.py`, the new `scripts/blog_preflight.py` itself.
+- **Helper scripts present**: `~/.claude/scripts/blog/lint_prose.py`, `~/.claude/scripts/blog/analyze_blog.py`, the new `scripts/blog_preflight.py` itself.
 
 ### Failure modes
 
@@ -147,7 +149,7 @@ Bypass is intended for two cases: (1) the contract has a false positive the user
 - `skills/blog/references/schema-stack.md`: JSON-LD structure validated by Gate 3 step 5
 - `agents/blog-reviewer.md`: the reviewer agent that produces the Gate 4 scorecard
 - `load_untrusted_root.py`: fences project-root files as untrusted data in Gate 1 (`~/.claude/scripts/`, from `configs/scripts/`)
-- `scripts/lint_prose.py`: the v1.8.4 prose linter run as part of Gate 4's editorial-heuristics scoring
+- `~/.claude/scripts/blog/lint_prose.py`: the v1.8.4 prose linter run as part of Gate 4's editorial-heuristics scoring
 - `tests/test_blog_delivery_contract.py`: coherence test that asserts this contract and its implementation stay in sync
 
 ## How this contract maps to the v1.8.x lesson
