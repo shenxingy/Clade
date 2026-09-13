@@ -79,7 +79,7 @@
     },
     {
       "name": "python_scripts",
-      "value": 34,
+      "value": 35,
       "derive": {
         "type": "count_glob",
         "pattern": "configs/scripts/*.py"

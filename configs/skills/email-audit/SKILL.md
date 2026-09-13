@@ -361,7 +361,7 @@ Before delivering audit results:
 Load on demand:
 - `references/deliverability-rules.md` - Scoring thresholds and compliance rules
 - `references/mcp-integration.md` - Provider-specific setup and DNS configuration
-- `references/compliance.md` - Compliance rules and regulatory requirements
+- `~/.claude/skills/ads/references/compliance.md` - Compliance rules and regulatory requirements
 
 ## Success Criteria
 

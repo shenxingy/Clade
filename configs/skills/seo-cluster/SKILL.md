@@ -305,7 +305,7 @@ After cluster planning or execution completes, offer:
 
 ## Security
 
-- All URLs fetched via `python scripts/fetch_page.py` (SSRF protection via `validate_url()`)
+- All URLs fetched via `python ~/.claude/scripts/seo/fetch_page.py` (SSRF protection via `validate_url()`)
 - No credentials stored or transmitted
 - Output files contain no PII or API keys
 - DataForSEO cost checks run before every API call

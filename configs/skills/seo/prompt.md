@@ -88,10 +88,10 @@ second as evidence of the first.
 When the user invokes `/seo audit`, delegate to subagents in parallel:
 1. Detect business type (SaaS, local, ecommerce, publisher, agency, other)
 2. Spawn subagents: seo-technical, seo-content, seo-schema, seo-sitemap, seo-performance, seo-visual, seo-geo
-3. If Google API credentials detected (`python scripts/google_auth.py --check`), also spawn seo-google agent
+3. If Google API credentials detected (`python ~/.claude/scripts/seo/google_auth.py --check`), also spawn seo-google agent
 4. If local business detected, also spawn seo-local agent
 5. If local business detected AND DataForSEO MCP available, also spawn seo-maps agent
-6. If backlink APIs detected (`python scripts/backlinks_auth.py --check`), also spawn seo-backlinks agent
+6. If backlink APIs detected (`python ~/.claude/scripts/seo/backlinks_auth.py --check`), also spawn seo-backlinks agent
 7. If Firecrawl MCP available, use `firecrawl_map` to discover all site URLs before analysis
 8. If content strategy signals detected (blog, pillar pages, topic clusters), also spawn seo-cluster agent
 9. If e-commerce detected, also spawn seo-ecommerce agent
@@ -103,7 +103,7 @@ When the user invokes `/seo audit`, delegate to subagents in parallel:
 15. **Offer PDF report**: "Generate a professional PDF report? Use `/seo google report full`"
 
 For individual commands, load the relevant sub-skill directly.
-After any analysis command completes, offer to generate a PDF report via `scripts/google_report.py`.
+After any analysis command completes, offer to generate a PDF report via `~/.claude/scripts/seo/google_report.py`.
 
 ## Synthesis Methodology
 

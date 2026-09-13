@@ -464,6 +464,15 @@ python3 configs/scripts/check-layers.py
 #      ever published; a run asking to preview opened a real PR.
 python3 configs/scripts/check-skill-contracts.py
 
+# 10f. Runnable paths — if a skill tells you to run it, it must exist.
+#      check-references.py strips inline code spans by design, so every runnable
+#      path was invisible to it; that is how five installer paths that had never
+#      existed survived every gate. A first attempt was withdrawn at ~30%
+#      precision. This one measured 22 findings, all real, after the reference
+#      convention was settled. 19 known phantoms are baselined in the script and
+#      that list shrinks only; a NEW one fails the build.
+python3 configs/scripts/check-runnable-paths.py
+
 # 10g. Sibling facts — before changing a stated fact, find every other place
 #      that states it. 43% of round 5's findings were siblings of earlier
 #      fixes. Reports, never blocks; --strict makes it fail.
@@ -528,7 +537,7 @@ commit too.**
 
 On push/PR to `main`, four workflow files fire:
 
-- `ci.yml` — `syntax-check` (21 gates), `pytest` (suite + 2 offline evals),
+- `ci.yml` — `syntax-check` (22 gates), `pytest` (suite + 2 offline evals),
   `shell-tests` (21 suites), `install-test`. `run_hack_eval.py` scores
   `judge_diversity.test_integrity` against the labelled reward-hack corpus in
   `evals/hack_cases/` — read its README before changing either, because that

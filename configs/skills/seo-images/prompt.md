@@ -106,7 +106,7 @@ In November 2025, Google's Chromium team reversed its 2022 decision and announce
 
 #### Detected lazy-loader methods (`lazy_method` field)
 
-`scripts/parse_html.py` classifies each image's lazy-loading mechanism via the
+`~/.claude/scripts/seo/parse_html.py` classifies each image's lazy-loading mechanism via the
 `lazy_method` field on every image entry. Five values:
 
 | `lazy_method` | Signal detected | Common stack |

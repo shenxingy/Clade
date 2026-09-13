@@ -23,10 +23,10 @@ and AI citation platforms. Preserves the author's voice while applying the
 6 pillars of optimization.
 
 **Key references:**
-- `references/quality-scoring.md` - 5-category scoring (Content 30, SEO 25, E-E-A-T 15, Technical 15, AI Citation 15)
-- `references/eeat-signals.md` - Experience, expertise, authority, trust markers
-- `references/internal-linking.md` - Linking strategy and anchor text rules
-- `references/visual-media.md` - Image sourcing and chart styling
+- `~/.claude/skills/blog/references/quality-scoring.md` - 5-category scoring (Content 30, SEO 25, E-E-A-T 15, Technical 15, AI Citation 15)
+- `~/.claude/skills/blog/references/eeat-signals.md` - Experience, expertise, authority, trust markers
+- `~/.claude/skills/blog/references/internal-linking.md` - Linking strategy and anchor text rules
+- `~/.claude/skills/blog/references/visual-media.md` - Image sourcing and chart styling
 - `skills/blog/references/synthesis-contract.md` - 6 LAWs for re-citation hygiene during rewrite (v1.8.0; cross-skill ref lives in the orchestrator's references dir)
 - `skills/blog/references/research-quality.md` - cross-source clustering for replacement-statistic research (v1.8.0)
 
@@ -39,7 +39,7 @@ For 21 evidence-led optimization prompts (AI-detector test, CTR audit, schema, P
 ### Phase 1: Audit (Read-Only)
 
 1. **Read the blog post** - Detect format (MDX, markdown, HTML)
-2. **Run the quality checklist** against `references/quality-scoring.md`:
+2. **Run the quality checklist** against `~/.claude/skills/blog/references/quality-scoring.md`:
    - Count fabricated vs sourced statistics
    - Check answer-first formatting (H2 -> stat in first sentence?)
    - Count images and charts (type diversity?)
@@ -130,7 +130,7 @@ When the post needs more visual elements, invoke the `blog-chart` sub-skill:
 3. Embed the returned SVG directly within a `<figure>` wrapper
 4. Target 2-4 charts per 2,000-word post
 
-See `references/visual-media.md` for chart type selection and styling rules.
+See `~/.claude/skills/blog/references/visual-media.md` for chart type selection and styling rules.
 
 ### Phase 4: Content Rewrite
 
@@ -180,7 +180,7 @@ Every H2 section MUST open with a 40-60 word paragraph containing:
 
 #### 4h. Add Video Embeds
 If the post lacks YouTube video embeds:
-- Search 2-3 relevant videos using quality criteria from `references/video-embeds.md`
+- Search 2-3 relevant videos using quality criteria from `~/.claude/skills/blog/references/video-embeds.md`
 - Embed using platform-appropriate format (srcdoc lazy loading)
 - Place: 1 after introduction, 1-2 in mid-article sections
 - Include noscript fallback for AI crawlers
@@ -211,7 +211,7 @@ for AI systems to extract and cite in their responses.
 ```
 
 Capsules map to the "AI Citation Readiness" category (15 points) in
-`references/quality-scoring.md`.
+`~/.claude/skills/blog/references/quality-scoring.md`.
 
 #### 4l. Anti-AI-Detection Patterns
 Apply these transformations to reduce AI-detectable writing patterns:

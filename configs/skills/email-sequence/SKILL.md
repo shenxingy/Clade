@@ -32,8 +32,8 @@ Read the business profile for context:
 - `email-profile.md` (project root)
 
 Load reference files for frameworks and benchmarks:
-- `references/copy-frameworks.md`
-- `references/benchmarks.md`
+- `~/.claude/skills/ads/references/copy-frameworks.md`
+- `~/.claude/skills/ads/references/benchmarks.md`
 
 ### Step 2: Gather Sequence Requirements
 

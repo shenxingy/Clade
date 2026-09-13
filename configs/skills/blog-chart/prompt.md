@@ -21,7 +21,7 @@ Generates dark-mode-compatible inline SVG charts for blog posts. Invoked
 internally by `blog-write` and `blog-rewrite` when chart-worthy data is
 identified. Not a standalone user-facing command.
 
-**Styling source of truth:** `references/visual-media.md`
+**Styling source of truth:** `~/.claude/skills/blog/references/visual-media.md`
 
 ## Input Format
 

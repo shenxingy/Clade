@@ -62,7 +62,7 @@ Read the blog post and extract:
 
 ### Step 2: Score Each Category
 
-Load `references/quality-scoring.md` for the full checklist. Score each:
+Load `~/.claude/skills/blog/references/quality-scoring.md` for the full checklist. Score each:
 
 #### Content Quality (30 points)
 | Check | Points | Pass Criteria |

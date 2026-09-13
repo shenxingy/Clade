@@ -146,7 +146,7 @@ For each new post entry, recommend a content template from these 12 available:
 `product-review`, `thought-leadership`, `roundup`, `tutorial`,
 `news-analysis`, `data-research`, `faq-knowledge`
 
-Reference: `references/content-templates.md` for full template details.
+Reference: `~/.claude/skills/blog/references/content-templates.md` for full template details.
 
 #### Monthly Calendar Format
 
@@ -265,7 +265,7 @@ Channel timing rules:
 - **YouTube**: Plan companion video for pillar posts only (resource-intensive)
 - **Twitter/X**: Same day as publish (thread key takeaways)
 
-Reference: `references/distribution-playbook.md` for detailed channel tactics.
+Reference: `~/.claude/skills/blog/references/distribution-playbook.md` for detailed channel tactics.
 
 ### Step 5.7: Freshness Automation
 

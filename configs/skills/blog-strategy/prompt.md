@@ -156,7 +156,7 @@ For each cluster, specify:
 | ... | ... | ... | ... | ... | ... |
 ```
 
-Reference: `references/internal-linking.md` for hub-and-spoke model and anchor text rules.
+Reference: `~/.claude/skills/blog/references/internal-linking.md` for hub-and-spoke model and anchor text rules.
 
 ### Step 5: Differentiation Strategy
 
@@ -205,7 +205,7 @@ Structure every piece of content for AI citability:
 - 80% of LLM citations come from outside the top 100 organic results
 - Monitor monthly: search 10-20 target queries on each platform, log citations
 
-Reference: `references/geo-optimization.md` for detailed GEO tactics.
+Reference: `~/.claude/skills/blog/references/geo-optimization.md` for detailed GEO tactics.
 
 ### Step 5.6: Content Scoring Targets
 
@@ -242,7 +242,7 @@ Strategy by platform:
 - **Perplexity**: Maximize external citation count (8+ per post), use structured data tables, cite authoritative sources
 - **AI Overviews**: Complete topic cluster coverage, implement all relevant schema types, achieve featured snippet format
 
-Reference: `references/geo-optimization.md` for platform-specific optimization guides.
+Reference: `~/.claude/skills/blog/references/geo-optimization.md` for platform-specific optimization guides.
 
 ### Step 6: Distribution Channel Strategy
 
@@ -260,7 +260,7 @@ from off-site signals). Plan brand presence:
 
 Budget allocation recommendation: **40% owned content / 60% earned media and distribution**.
 
-Reference: `references/distribution-playbook.md` for detailed channel tactics and templates.
+Reference: `~/.claude/skills/blog/references/distribution-playbook.md` for detailed channel tactics and templates.
 
 ### Step 7: Measurement Framework
 
@@ -356,10 +356,10 @@ Output format:
 [KPIs and tracking approach - traditional SEO + AI citation metrics]
 
 ## Reference Documents
-- `references/internal-linking.md` - Hub-and-spoke model, anchor text rules
-- `references/distribution-playbook.md` - Channel tactics and templates
-- `references/geo-optimization.md` - GEO platform-specific optimization
-- `references/content-templates.md` - 12 content templates with structures
+- `~/.claude/skills/blog/references/internal-linking.md` - Hub-and-spoke model, anchor text rules
+- `~/.claude/skills/blog/references/distribution-playbook.md` - Channel tactics and templates
+- `~/.claude/skills/blog/references/geo-optimization.md` - GEO platform-specific optimization
+- `~/.claude/skills/blog/references/content-templates.md` - 12 content templates with structures
 
 ## Next Steps
 1. Run `/blog calendar` to create the first month's editorial calendar

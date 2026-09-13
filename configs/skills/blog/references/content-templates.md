@@ -515,7 +515,10 @@ of the scoring rubric. The template ensures nothing is forgotten.
 
 ### Modifying an Existing Template
 
-Templates are editable markdown files in `~/.claude/skills/templates/`.
+Templates are the sections of this file, installed at
+`~/.claude/skills/blog/references/content-templates.md`. Earlier revisions
+pointed at `~/.claude/skills/templates/`, which never existed and is not a skill, so
+every instruction below was addressed to an empty path.
 Changes take effect immediately: no restart needed.
 
 1. Open the template file you want to modify

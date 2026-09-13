@@ -187,6 +187,11 @@ jobs:
       # every fact a diff removes, whether it survives elsewhere. It cannot know
       # intent, so it prints and exits 0; --strict is for a human who wants it
       # to fail.
+      # Blocks on a NEW phantom, and on a baseline entry that no longer fires.
+      # The 19 known ones are recorded IN the script; that list shrinks only.
+      - name: Runnable paths
+        run: python3 configs/scripts/check-runnable-paths.py
+
       - name: Sibling facts (report only)
         run: python3 configs/scripts/check-sibling-facts.py --range origin/main...HEAD || true
 

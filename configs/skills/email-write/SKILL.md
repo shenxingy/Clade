@@ -36,7 +36,7 @@ If no profile exists or user provides new context, ask for:
 
 ### 2. Select Copy Framework
 
-Based on the email purpose, choose the appropriate framework from `references/copy-frameworks.md`:
+Based on the email purpose, choose the appropriate framework from `~/.claude/skills/ads/references/copy-frameworks.md`:
 
 | Email Purpose | Recommended Framework | Why |
 |--------------|----------------------|-----|
@@ -96,7 +96,7 @@ Generate preheader recommendation (30-80 characters):
 
 ### 5. Compose Email Body
 
-Apply the chosen framework structure. Load full framework details from `references/copy-frameworks.md` before writing.
+Apply the chosen framework structure. Load full framework details from `~/.claude/skills/ads/references/copy-frameworks.md` before writing.
 
 **General Email Writing Rules:**
 
@@ -110,7 +110,7 @@ Apply the chosen framework structure. Load full framework details from `referenc
 
 **Framework-Specific Structure:**
 
-Load the full structure from `references/copy-frameworks.md` and apply. Each framework has:
+Load the full structure from `~/.claude/skills/ads/references/copy-frameworks.md` and apply. Each framework has:
 - Section breakdown (e.g., PAS: Problem → Agitate → Solve)
 - Transition phrases
 - Example templates
@@ -289,14 +289,14 @@ If any gate fails, revise before output.
 
 ## Error Handling
 
-- If `references/copy-frameworks.md` is missing, warn user and use basic AIDA structure
+- If `~/.claude/skills/ads/references/copy-frameworks.md` is missing, warn user and use basic AIDA structure
 - If `email-profile.md` is missing, prompt user for context (don't fail)
 - If subject line scores are all below 70, generate new variants
 - If HTML template fails validation, fall back to plain-text only and warn user
 
 ## Resources
 
-- `references/copy-frameworks.md` - Full framework structures and examples
+- `~/.claude/skills/ads/references/copy-frameworks.md` - Full framework structures and examples
 - `email-profile.md` - User's business context and preferences (optional)
 
 ## Example Invocation

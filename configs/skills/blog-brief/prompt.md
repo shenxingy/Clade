@@ -20,9 +20,9 @@ Generates comprehensive content briefs that guide blog writing for maximum
 impact on both Google rankings and AI citation platforms.
 
 Reference documents:
-- `references/content-templates.md`: template selection criteria
-- `references/distribution-playbook.md`: channel-specific distribution tactics
-- `references/internal-linking.md`: link architecture patterns
+- `~/.claude/skills/blog/references/content-templates.md`: template selection criteria
+- `~/.claude/skills/blog/references/distribution-playbook.md`: channel-specific distribution tactics
+- `~/.claude/skills/blog/references/internal-linking.md`: link architecture patterns
 - `skills/blog/references/research-quality.md` - 5-dim quality rubric, pre-flight trap classes, freshness floors (v1.8.0; cross-skill ref lives in the orchestrator's references dir)
 - `skills/blog/references/synthesis-contract.md` - 6 LAWs for synthesis output (v1.8.0)
 
@@ -58,7 +58,7 @@ Using WebSearch:
 ### Step 2.5: Template Recommendation
 
 Analyze the topic, search intent, and competitive landscape to recommend one
-of 12 content templates. Load `references/content-templates.md` for selection
+of 12 content templates. Load `~/.claude/skills/blog/references/content-templates.md` for selection
 criteria.
 
 **Available templates:**

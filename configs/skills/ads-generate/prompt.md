@@ -25,7 +25,7 @@ profile. Uses banana-claude as the image generation provider.
 
 - Requires banana-claude (v1.4.1+) with nanobanana-mcp configured
 - Run `/banana setup` to configure API key and MCP
-- Fallback: if banana is not available, use `scripts/generate_image.py` (deprecated)
+- Fallback: if banana is not available, use `~/.claude/scripts/ads/generate_image.py` (deprecated)
 
 If banana-claude is not installed, this skill will display setup instructions
 and stop. It will never fail silently.

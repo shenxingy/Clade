@@ -41,7 +41,7 @@ When only Common Crawl is available, cap the maximum health score at 70/100 and 
 - **Signup:** https://moz.com/products/api (credit card required, not charged)
 - **Data:** Domain Authority (0-100), Page Authority, Spam Score (1-17%), link counts,
   referring domains, anchor text distribution
-- **Script:** `scripts/moz_api.py`
+- **Script:** `~/.claude/scripts/seo/moz_api.py`
 - **Commands:** `metrics`, `domains`, `anchors`, `pages`
 - **Blind spots:** No link velocity, no toxic link patterns beyond Spam Score,
   3-day update lag, smaller index than Ahrefs/Semrush
@@ -52,7 +52,7 @@ When only Common Crawl is available, cap the maximum health score at 70/100 and 
 - **Signup:** https://www.bing.com/webmasters (Microsoft account)
 - **Unique feature:** Competitor backlink comparison (no other free tool offers this)
 - **Data:** Inbound links with anchor text, source URL, discovery date
-- **Script:** `scripts/bing_webmaster.py`
+- **Script:** `~/.claude/scripts/seo/bing_webmaster.py`
 - **Commands:** `links`, `counts`, `compare`
 - **Blind spots:** Only Bing-indexed pages (~15% of web), verified sites only,
   no authority metrics, no spam scoring
@@ -62,7 +62,7 @@ When only Common Crawl is available, cap the maximum health score at 70/100 and 
 - **Releases:** Quarterly (e.g., cc-main-2025-18)
 - **No auth needed:** Public data, free to download
 - **Data:** Domain-level in-degree, PageRank, harmonic centrality, referring domains
-- **Script:** `scripts/commoncrawl_graph.py`
+- **Script:** `~/.claude/scripts/seo/commoncrawl_graph.py`
 - **Cache:** `~/.cache/claude-seo/commoncrawl/` (90-day TTL)
 - **Blind spots:** No anchor text, no page-level data, monthly/quarterly freshness,
   domain-level only (e.g., "nytimes.com links to example.com" but not which page)
@@ -70,7 +70,7 @@ When only Common Crawl is available, cap the maximum health score at 70/100 and 
 ### Verification Crawler (Always Available)
 - **No auth needed:** Uses existing fetch_page.py + parse_html.py
 - **Data:** Binary verification (link exists/lost/moved), anchor text, rel attributes
-- **Script:** `scripts/verify_backlinks.py`
+- **Script:** `~/.claude/scripts/seo/verify_backlinks.py`
 - **Input:** JSON file with `[{"source_url": "..."}]` entries
 - **Polite crawling:** 1-second delay between requests to same domain
 - **Best for:** Checking if known backlinks still exist, monitoring link health

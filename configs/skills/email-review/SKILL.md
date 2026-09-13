@@ -301,7 +301,7 @@ For each category:
 
 Consult knowledge files for edge cases:
 - `references/technical-standards.md` - HTML/CSS email rules
-- `references/compliance.md` - CAN-SPAM, GDPR, CASL requirements
+- `~/.claude/skills/ads/references/compliance.md` - CAN-SPAM, GDPR, CASL requirements
 - `references/deliverability-rules.md` - Deliverability scoring and spam signal reference
 
 ### Step 5: Generate Report

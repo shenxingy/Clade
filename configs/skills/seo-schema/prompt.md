@@ -37,7 +37,7 @@ metadata:
 
 ## Schema Type Status (as of Feb 2026)
 
-Read `references/schema-types.md` for the full list. Key rules:
+Read `~/.claude/skills/seo/references/schema-types.md` for the full list. Key rules:
 
 ### ACTIVE (recommend freely):
 Organization, LocalBusiness, SoftwareApplication, WebApplication, Product (with Certification markup as of April 2025), ProductGroup, Offer, Service, Article, BlogPosting, NewsArticle, Review, AggregateRating, BreadcrumbList, WebSite, WebPage, Person, ProfilePage, ContactPage, VideoObject, ImageObject, Event, JobPosting, Course, DiscussionForumPosting

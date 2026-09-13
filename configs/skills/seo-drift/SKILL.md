@@ -90,9 +90,9 @@ Captures the current state of a page and stores it.
 
 **Steps:**
 1. Validate URL (SSRF protection via `google_auth.validate_url()`)
-2. Fetch page via `scripts/fetch_page.py`
-3. Parse HTML via `scripts/parse_html.py`
-4. Optionally fetch CWV via `scripts/pagespeed_check.py` (use `--skip-cwv` to skip)
+2. Fetch page via `~/.claude/scripts/seo/fetch_page.py`
+3. Parse HTML via `~/.claude/scripts/seo/parse_html.py`
+4. Optionally fetch CWV via `~/.claude/scripts/seo/pagespeed_check.py` (use `--skip-cwv` to skip)
 5. Hash HTML body and schema content (SHA-256)
 6. Store snapshot in SQLite
 
@@ -182,7 +182,7 @@ When drift is detected, recommend the appropriate specialized skill:
 
 ## Security
 
-- **All URL fetching** goes through `scripts/fetch_page.py` which enforces SSRF protection
+- **All URL fetching** goes through `~/.claude/scripts/seo/fetch_page.py` which enforces SSRF protection
   (blocks private IPs, loopback, reserved ranges, GCP metadata endpoints)
 - **No curl, no subprocess HTTP calls** -- only the project's validated fetch pipeline
 - **All SQLite queries** use parameterized placeholders (`?`), never string interpolation

@@ -151,24 +151,34 @@ backlog.
       to nothing on any current install. Fix by writing against `api_request`
       with the REST path, or by pinning `dataforseo-mcp-server@2.9.13` in the
       skill's prerequisites and saying it is deprecated.
-- [ ] 🟡 **145 skill references drop a path segment.** Skills say
-      `scripts/moz_api.py`; the file is at `configs/scripts/seo/moz_api.py` and
-      installs to `~/.claude/scripts/seo/moz_api.py`. The `seo/` segment is
-      missing at every site, so the path resolves neither in the repo nor after
-      an install. One systematic rename, but it needs a decision about the
-      canonical reference form first.
-- [ ] 🔵 **A gate for "if a document tells you to run it, it must exist" was
-      built and withdrawn.** `check-references.py` strips inline code spans by
-      design — a span showing bracket-paren link syntax documents that syntax — so
-      every runnable path is invisible to it, which is why the five dead
-      installers survived. A replacement was written and iterated three times
-      and still ran at roughly 30% precision: the repo's own `scripts/X.py`
-      convention, and skills that legitimately name files in the READER's
-      project (`lib/github-client.ts`), are indistinguishable from a dead path
-      without knowing intent. It was not shipped, because a gate at 30%
-      precision gets ignored or worked around, which is worse than none. Revisit
-      after the 145-site convention above is settled — that removes most of the
-      ambiguity.
+- [x] 🟡 **Skill references dropped a path segment — 67 sites, not 145.**
+      The count was wrong for the same reason the defect existed: it matched by
+      BASENAME, and 88 of the 145 were skill-local `scripts/X` references that
+      resolve correctly against `configs/skills/<skill>/scripts/`. Acting on the
+      inflated number would have rewritten 88 working references, including 77
+      to `run.py`, which exists in three skills' own directories.
+      Canonical form settled: a shared script is cited by its installed path
+      `~/.claude/scripts/<sub>/<name>`, a skill's own stays skill-relative.
+      Ambiguous basenames (`fetch_page.py` is under both `ads/` and `seo/`) are
+      resolved by the citing skill's family. 67 script sites and 55 cross-skill
+      reference sites converted; all 77 installed paths verified present after
+      `./install.sh`.
+- [x] 🔵 **The runnable-path gate now exists and blocks.** Revisited once the
+      convention above was settled, as that entry said to. Only paths in a
+      skill's OWN namespace are examined (`scripts/`, `references/`, `assets/`,
+      `agents/`, `~/.claude/{scripts,skills,agents,hooks,output-styles}/`), which
+      is what removes the false-alarm class that withdrew attempt one: a skill
+      naming `lib/github-client.ts` in the READER's project is never looked at.
+      Runtime state a skill writes (`~/.claude/corrections/`, `scripts/data/`),
+      template placeholders (`scripts/x.py`), globs, and paths a paragraph
+      explicitly says are absent are all excluded — each of those was a measured
+      false positive, 111 findings down to 22.
+      Precision on the final 22: hand-checked, all real. 19 distinct (file, path)
+      pairs are baselined IN the script so it blocks from day one; the list
+      shrinks only, and a stale entry also fails. Several name a DataForSEO
+      helper, and under "paid APIs are never a dependency" those sites want
+      reworking rather than a new script — which is why they are debt, not a
+      quick fix.
 
 - [ ] 🔵 **`templates/CLAUDE.md` is orphaned — confirm deletion.** install.sh
       §10 was the only code that read it and was removed 2026-09-12 as dead

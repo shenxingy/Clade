@@ -287,7 +287,7 @@ clade/
 │   ├── hooks/               # 32 event hooks
 │   ├── agents/              # 38 agent definitions
 │   ├── output-styles/       # 2 output styles (system-prompt register; opt-in)
-│   └── scripts/             # 42 shell + 34 Python utilities
+│   └── scripts/             # 42 shell + 35 Python utilities
 ├── plugins/clade/           # Native Codex plugin (26 generated core skills + hooks)
 ├── .agents/plugins/         # Codex marketplace manifest
 ├── orchestrator/            # ← THE EXECUTION ADAPTER

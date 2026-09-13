@@ -106,7 +106,7 @@ Save to `~/.config/claude-seo/google-api.json`:
 ## Step 8: Verify Setup
 
 ```bash
-python scripts/google_auth.py --check
+python ~/.claude/scripts/seo/google_auth.py --check
 ```
 
 Expected output at Tier 2 (full):
