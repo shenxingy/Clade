@@ -93,7 +93,7 @@ never enabled by default.
 
 | Skill | Description |
 |-------|-------------|
-| **commit** | Analyze changes, split into logical commits by module, push |
+| **commit** | Repository-adaptive checkpoint commits, splitting changes by module; publishing stays separately authorized |
 | **create-pr** | Publish or update one exact-SHA pull request |
 | **delivery** | Run the full checkpoint, review, integration, and cleanup workflow |
 | **loop** | Clade goal-driven Blueprint loop (NOT the CC built-in interval poller) |

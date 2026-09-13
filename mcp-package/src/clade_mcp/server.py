@@ -278,7 +278,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
 
     try:
         runtime = get_runtime()
-        result = runtime.execute(exec_prompt, Path(project_dir), timeout=300)
+        result = await runtime.aexecute(exec_prompt, Path(project_dir), timeout=300)
         if result.ok:
             return CallToolResult(
                 content=[TextContent(type="text", text=result.text)],
@@ -291,7 +291,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
             )],
             is_error=True,
         )
-    except TimeoutExpired:
+    except (asyncio.TimeoutError, TimeoutExpired):
+        # asyncio.TimeoutError is what the non-blocking path raises; TimeoutExpired
+        # stays for any caller still on the synchronous wrapper.
         return CallToolResult(
             content=[TextContent(type="text", text=f"Skill '{skill_name}' timed out after 300s")],
             is_error=True,
