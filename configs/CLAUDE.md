@@ -60,6 +60,14 @@ belongs on your Mac and a Windows job on your Windows box — over SSH or by
 running an agent locally on that machine — not on a hosted runner at 10x or 2x.
 `--list` names the platform each skipped job needs.
 
+**The local run cannot see the clean-machine property, so ask for half of it.**
+`--clean-home` points HOME at an empty directory for every step, which catches
+the cheap half: a test that passes only because THIS machine has `~/.claude`
+installed. Measured — three consecutive pushes were green locally and red hosted
+on exactly that, a test that found an agent file only because `install.sh` had
+run. It is not a substitute for a fresh checkout on a fresh runner; it is the
+part you can have in 200 seconds.
+
 **The other machine has its own checkout.** Push the branch, or sync the working
 tree, before running the gate there — otherwise you have tested a different tree
 than the one you are about to push, which is a false green of exactly the kind

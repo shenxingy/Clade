@@ -49,6 +49,7 @@ import platform
 import re
 import shutil
 import subprocess
+import tempfile
 import sys
 import time
 from dataclasses import dataclass, field
@@ -370,6 +371,17 @@ def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int) -> 
 
         cwd = repo / step.working_directory if step.working_directory else repo
         env = dict(os.environ)
+        if _CLEAN_HOME:
+            # A hosted runner has no ~/.claude, no installed skills, no agents,
+            # no shell history. A test that passes here because THIS machine has
+            # that state is the one class a local runner cannot otherwise see —
+            # measured: three consecutive pushes were green locally and red
+            # hosted, on a test that found an agent only because install.sh had
+            # run. Not a substitute for the clean-machine property, but it
+            # catches the cheap half of it.
+            env["HOME"] = str(_CLEAN_HOME)
+            env["CLAUDE_CONFIG_DIR"] = str(_CLEAN_HOME / ".claude")
+            env["XDG_CACHE_HOME"] = str(_CLEAN_HOME / ".cache")
         env.update({k: v for k, v in step.env.items() if not _EXPR.search(v)})
         # CI=true is what most tools read to pick non-interactive output.
         env.setdefault("CI", "true")
@@ -451,6 +463,9 @@ def collect_jobs(repo: Path, include_conditional: bool) -> list[tuple[Job, str |
     return out
 
 
+_CLEAN_HOME: Path | None = None
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description="Run this repository's GitHub Actions gates locally.",
@@ -463,6 +478,10 @@ def main() -> int:
                          "the tiers a repo deliberately keeps off every push; some "
                          "spend real money. Prints what it is about to run first.")
     ap.add_argument("--list", action="store_true", help="Show the plan and exit.")
+    ap.add_argument("--clean-home", action="store_true",
+                    help="Run every step with HOME pointed at an empty directory, "
+                         "so a step that passes only because this machine has "
+                         "~/.claude installed fails here instead of on the runner.")
     ap.add_argument("--json", action="store_true", help="Machine-readable result.")
     ap.add_argument("--tail", type=int, default=40, help="Failure output lines (default 40).")
     ap.add_argument("--timeout", type=int, default=900,
@@ -501,6 +520,12 @@ def main() -> int:
             for job in conditional:
                 print(f"  · {job.display}   ({job.workflow})")
             print("  Some conditional tiers spend money or touch the network.\n")
+
+    global _CLEAN_HOME
+    if args.clean_home:
+        _CLEAN_HOME = Path(tempfile.mkdtemp(prefix="ci-local-home-"))
+        (_CLEAN_HOME / ".claude").mkdir(parents=True, exist_ok=True)
+        print(f"clean HOME: {_CLEAN_HOME}  (no ~/.claude, no installed skills)")
 
     if args.list:
         print(f"ci-local: {repo.name} on {local_platform()}\n")
@@ -573,7 +598,8 @@ def main() -> int:
     total = sum(r.seconds for r in ran)
     print(
         f"ci-local: {len(ran) - len(failed)}/{len(ran)} job(s) passed in {total:.0f}s"
-        f"{f', {len(failed)} failed' if failed else ''}"
+        + ("  [clean HOME]" if _CLEAN_HOME else "")
+        + (f", {len(failed)} failed" if failed else "")
     )
     for r in skipped:
         print(f"  skipped {r.job.display}: {r.reason}")
