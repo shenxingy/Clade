@@ -3,8 +3,9 @@
 `configs/scripts/red-phase-audit.py` runs the tests a commit ADDS against that
 commit's parent. One that already passes did not need the change — the retroactive
 form of the TDD red phase, and the additive half of the hole
-`judge_diversity.test_integrity` is blind to (115 of the last 133 test-carrying
-commits in this repo were purely additive).
+`judge_diversity.test_integrity` is blind to (most test-carrying commits in this
+repo are purely additive; see that function's docstring for why no ratio is
+quoted).
 
 The first version of this tool reported a clean 0% fire rate across every commit
 it examined. The rate was an artifact: it passed `--timeout` to a pytest without

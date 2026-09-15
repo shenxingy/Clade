@@ -126,9 +126,9 @@ class TestFixIntentCriterion:
 
     def test_fix_task_criterion_also_judges_ADDED_tests(self):
         # The subtractive half was the whole criterion until 2026-08-21, while
-        # 115 of the last 133 test-carrying commits here were purely additive —
-        # so the oracle was handed a rule that could not apply to 86% of the
-        # test traffic it was gating. A new test that asserts a call's return
+        # most test-carrying commits here are purely additive — so the oracle
+        # was handed a rule that could not apply to the majority of the test
+        # traffic it was gating. A new test that asserts a call's return
         # value instead of the effect subtracts nothing and arrives unflagged.
         block = wr._build_oracle_task_block("fix: crash on empty input", None)
         assert "ADDED tests" in block

@@ -65,9 +65,15 @@ cd orchestrator && find . \( -name .venv -o -name node_modules -o -name __pycach
 # Red-phase audit — run the tests a commit ADDS against its parent. One that
 # already passes needed nothing from the change: it pins existing behaviour, or
 # nothing. Covers the additive case judge_diversity.test_integrity is blind to
-# (115 of the last 133 test-carrying commits here were purely additive).
-# Measured on this repo: fires on ~17% of checked commits. Diagnostic, not a gate
-# — a test that passes at base can be a deliberate characterization test.
+# (most test-carrying commits here are purely additive — no figure is quoted
+# because 'purely additive' was never defined: re-deriving it gave 75 of 133
+# under 'deletes no line from any test file' and 82 under another reading,
+# against the 115 this line used to assert).
+# Diagnostic, not a gate — a test that passes at base can be a deliberate
+# characterization test. No fire rate is quoted here on purpose: the script
+# samples candidates[::step][:limit], so the rate is a function of the limit
+# you pass — measured 19% at 25, 29% at 30, 29% at the default 40, 33% at 21.
+# An earlier '~17%' reproduced at none of them and had no recorded provenance.
 # The interpreter is found automatically; RED_PHASE_PYTHON only overrides it.
 # Pass an absolute path or a repo-relative one — a venv python is a symlink to
 # the system python, so the script uses abspath rather than resolve() to avoid
@@ -78,6 +84,17 @@ python3 configs/scripts/red-phase-audit.py 30
 # control; CI runs this on every push. A harness that cannot fire reports a
 # clean 0% exactly like a clean codebase — this one has done that before.
 python3 configs/scripts/red-phase-audit.py --self-test
+
+# Which numbers does this repository assert about ITSELF, and does anything
+# derive them? Not whether they are right — it cannot know that, and pretending
+# otherwise is the failure it exists to expose. Five audit rounds fixed numbers
+# one at a time and the count would not fall, because the mechanism was never
+# named. A 2026-09-14 re-verification found "~17%", "241 commits", "115 of the
+# last 133", "~94k lines" and "~0.03% of the window" all unreproducible; only
+# the detector score had a derivation available, and nothing used it.
+# Report-only and hand-run on purpose: --strict is for once the list is triaged.
+python3 configs/scripts/check-asserted-numbers.py
+python3 configs/scripts/check-asserted-numbers.py --self-test
 
 # 2b2. Ask every OTHER --self-test the same question. Removing one guard must
 #      turn that script's self-test red. Five self-tests written on 2026-09-12

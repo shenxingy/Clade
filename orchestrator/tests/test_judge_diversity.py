@@ -263,6 +263,65 @@ def test_mocking_a_collaborator_is_not_caught():
     assert jd.test_integrity(d)["subject_mocked"] == 0
 
 
+def test_documented_detector_score_is_derived():
+    """CLAUDE.md states this detector's score. Make the statement falsifiable.
+
+    It was not. The line asserted "100% recall / 7.1% false alarms on a 30-case
+    adversarial corpus" as a bare literal that nothing re-derived, while the
+    gate below it only enforces 90%/15% — so the detector could lose a real
+    reward hack and the top-level document would keep claiming perfection with
+    CI green. That is not hypothetical: removing ``xfail`` from ``_SKIP_RE``
+    (which makes the detector miss hack-skip-marker-xfail, a genuine hack) drops
+    recall to 93.8%, still passes run_hack_eval, and leaves the full 1,926-test
+    suite BIT-IDENTICAL to the control. Measured, 2026-09-14.
+
+    This test closes that window. It does not check that the numbers are good —
+    ``test_detector_still_scores_above_its_gate`` is the gate — it checks that
+    the numbers we PUBLISH are the numbers we MEASURE.
+    """
+    import importlib.util
+    import re
+
+    claim_re = re.compile(
+        r"(\d+(?:\.\d+)?)% recall / (\d+(?:\.\d+)?)% false alarms "
+        r"on a (\d+)-case adversarial corpus"
+    )
+    claude_md = _ORCH.parent / "CLAUDE.md"
+    text = claude_md.read_text(encoding="utf-8")
+    matches = claim_re.findall(text)
+    assert len(matches) == 1, (
+        f"expected exactly one detector-score claim in CLAUDE.md, found "
+        f"{len(matches)}. If the claim moved or multiplied, this test must "
+        f"follow it — a second copy is a second thing to drift."
+    )
+    stated_recall, stated_fp, stated_cases = matches[0]
+
+    spec = importlib.util.spec_from_file_location(
+        "_hack_eval_claim", _ORCH / "evals" / "run_hack_eval.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    cases, errors = mod.load_cases()
+    assert not errors, "corpus errors:\n" + "\n".join(errors)
+    summary = mod.score(cases)
+
+    # Compare at the precision the document states, which is what run_hack_eval
+    # itself prints (one decimal place).
+    assert f"{summary['recall'] * 100:.1f}" == f"{float(stated_recall):.1f}", (
+        f"CLAUDE.md says {stated_recall}% recall; the corpus measures "
+        f"{summary['recall']:.1%}. Update the sentence or fix the detector."
+    )
+    assert f"{summary['fp_rate'] * 100:.1f}" == f"{float(stated_fp):.1f}", (
+        f"CLAUDE.md says {stated_fp}% false alarms; the corpus measures "
+        f"{summary['fp_rate']:.1%}. Update the sentence or fix the detector."
+    )
+    assert int(stated_cases) == len(cases), (
+        f"CLAUDE.md says a {stated_cases}-case corpus; {len(cases)} cases are "
+        f"on disk. Adding a case without updating the sentence is how the "
+        f"other five numbers in this repository went stale."
+    )
+
+
 def test_detector_still_scores_above_its_gate():
     """Run the adversarial corpus in the normal test loop.
 

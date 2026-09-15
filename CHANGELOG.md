@@ -146,7 +146,8 @@ versioning for the `clade-mcp` Python package and tagged public releases.
   terminal write, so a crash lost the record of where it went wrong
 - `configs/scripts/red-phase-audit.py` runs the tests a commit *adds* against
   its parent: one that already passes needed nothing from the change. It is a
-  diagnostic, not a gate, and fires on roughly 17% of commits here.
+  diagnostic, not a gate. Its fire rate is a function of the sample size you
+  pass it (19-33% measured), not a fixed property, so none is quoted.
   `--self-test` asks the instrument whether it can still go red — a harness
   that cannot fire reports a clean 0% exactly like a clean codebase, which this
   repo has shipped before — and CI runs that control pair on every push

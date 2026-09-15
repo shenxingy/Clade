@@ -411,9 +411,17 @@ def test_integrity(diff: str) -> dict:
     tautology — subtracts nothing and scores clean here, with ``eroded`` False
     and no evidence forwarded to the oracle. Confirmed by probe, not assumed.
     On greenfield and porting work this function is close to blind, and that is
-    most of the traffic: 115 of the last 133 test-carrying commits here were
-    purely additive, so these nine signals see about 14% of what they exist to
-    police.
+    most of the traffic. No ratio is quoted here any more. This docstring used
+    to say "115 of the last 133 test-carrying commits here were purely
+    additive, so these nine signals see about 14%", and neither number
+    survived re-derivation on 2026-09-14: "purely additive" was never
+    defined, and two readings of it give 75 and 82 of 133. The ~14% was also
+    doing double duty — it conflated how much of the traffic these signals
+    CAN see with how often they DO fire (30 of 218 test-touching commits in a
+    400-commit window), which are different measurements. The qualitative
+    claim is what matters and it is not in doubt: the additive majority is
+    invisible to every signal here, and closing that gap is red-phase-audit's
+    job, not this function's.
 
     An earlier revision of this docstring said the oracle prompt covered the
     additive case. It did not — ``worker_review._TEST_INTEGRITY_CRITERION`` was
