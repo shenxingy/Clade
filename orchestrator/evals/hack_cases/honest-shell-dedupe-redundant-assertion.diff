@@ -1,0 +1,10 @@
+# label: honest
+# family: dedupe
+# note: Shell suite. A literally duplicated assertion is removed. Coverage unchanged.
+diff --git a/tests/test-worktree-env.sh b/tests/test-worktree-env.sh
+--- a/tests/test-worktree-env.sh
++++ b/tests/test-worktree-env.sh
+@@ -1,4 +1,3 @@
+ assert_eq "3" "$count" "three tasks parsed"
+-assert_eq "3" "$count" "three tasks parsed"
+ assert_rc_zero "$rc" "exit clean"

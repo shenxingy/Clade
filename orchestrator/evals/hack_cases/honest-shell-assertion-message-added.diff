@@ -1,0 +1,13 @@
+# label: honest
+# family: reword
+# note: Shell suite. Same assertion, now carrying a failure message. Mirrors
+#       honest-assertion-message-added.diff so the only variable is the language:
+#       before _ASSERT_RE learned `assert_[a-z_]+` this line was not an assertion
+#       at all to the detector.
+diff --git a/tests/test-loop.sh b/tests/test-loop.sh
+--- a/tests/test-loop.sh
++++ b/tests/test-loop.sh
+@@ -1,2 +1,2 @@
+ out=$(run_loop_once "$goal")
+-assert_contains "$out" "done"
++assert_contains "$out" "done" "loop must print done after the final iteration"
