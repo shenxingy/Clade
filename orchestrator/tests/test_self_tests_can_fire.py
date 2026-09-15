@@ -181,6 +181,68 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
          "if w not in STOPWORDS and len(w) > 2]",
          "if len(w) > 2]"),
     ],
+    # The four below were the entire `known_gap` until 2026-09-15: every script
+    # CI runs under the banner "can the harness go red?", exempted from the file
+    # that asks exactly that. Two of them needed work before a mutation could
+    # reach them, and both gaps were in the guard that mattered most.
+    "configs/scripts/red-phase-audit.py": [
+        ("the requirement that the added test PASSED at its base commit",
+         "fired = total > 0 and passed > 0",
+         "fired = total > 0"),
+        ("the fire decision entirely",
+         "fired = total > 0 and passed > 0",
+         "fired = False"),
+        # These two guards are the reason the script is trustworthy: its first
+        # version passed an unrecognised argument to pytest, so every commit
+        # reported 0 passed and the 0% fire rate read as good news. Inline in
+        # run_at_base they were unreachable from --self-test and BOTH could be
+        # deleted with it staying green. classify_pytest_output() exists so the
+        # self-test can drive them directly.
+        ("the pytest usage-error guard",
+         'if "unrecognized arguments" in out or "usage:" in out.lower()[:400]:',
+         "if False:"),
+        ("the no-result-line guard",
+         'if not re.search(r"\\d+ (passed|failed|error|skipped)", out):',
+         "if False:"),
+        ("the healthy-run passed-count parse",
+         'm_pass = re.search(r"(\\d+) passed", out)',
+         "m_pass = None"),
+    ],
+    "configs/scripts/workflow-scorecard.py": [
+        ("the repeat requirement — the FIRST status read becomes a poll",
+         "if seen[key] > 1:",
+         "if seen[key] > 0:"),
+        ("the poll counter",
+         "polls += 1",
+         "polls += 0"),
+    ],
+    "configs/scripts/check-skill-contracts.py": [
+        # The historical bug itself. It stayed green here until the bad-skill
+        # fixture was given the bare word to match on — a control that cannot
+        # fail on the defect the gate was written for is not a control.
+        ("the literal --flag requirement (the original bare-word bug)",
+         'if f"--{flag}" not in body:',
+         "if flag not in body:"),
+        ("the flag check entirely",
+         'if f"--{flag}" not in body:',
+         "if False:"),
+        ("the front-matter path existence check",
+         "if not (directory / rel).exists():",
+         "if False:"),
+    ],
+    "configs/scripts/check-runnable-paths.py": [
+        ("the existence check — every referenced path resolves",
+         "if candidate.exists():",
+         "if True:"),
+    ],
+    "configs/scripts/check-asserted-numbers.py": [
+        ("the self-scope requirement — third-party numbers get reported as ours",
+         'if kind in {"count-of-n", "multiple", "loc"} and not SELF_SCOPE_RE.search(window):',
+         "if False:"),
+        ("the fire-rate pattern",
+         '("rate", re.compile(r"fires on (?:~|roughly |about )?(\\d+(?:\\.\\d+)?)\\s?%")),',
+         ""),
+    ],
 }
 
 
@@ -233,15 +295,13 @@ def test_every_script_with_a_self_test_is_covered():
             continue
         if "--self-test" in path.read_text(encoding="utf-8", errors="replace"):
             missing.append(rel)
-    # Recorded, not silent: these are the self-tests still unproven.
-    # Still unproven. Each is a self-test nothing has shown can fail; the list
-    # shrinks as mutations are added, and never grows.
-    known_gap = {
-        "configs/scripts/red-phase-audit.py",
-        "configs/scripts/workflow-scorecard.py",
-        "configs/scripts/check-skill-contracts.py",
-        "configs/scripts/check-runnable-paths.py",
-    }
+    # EMPTY, and it stays empty. This set held exactly the four scripts CI runs
+    # under the banner "can the harness go red?" — the meta-gate exempting the
+    # gates it exists to police, which is the same recursion as every instrument
+    # named in this file's docstring. An empty escape hatch is the point: a
+    # one-entry list is a parking space with a precedent. A script that gains
+    # --self-test now gains mutations in the same commit, or this test fails.
+    known_gap: set[str] = set()
     unexpected = sorted(set(missing) - known_gap)
     assert not unexpected, (
         f"these scripts have a --self-test that nothing proves can fire: {unexpected}. "

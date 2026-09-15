@@ -181,7 +181,15 @@ def self_test() -> int:
             "---\nname: bad-skill\nargument-hint: '[--phantom]'\n---\n\nBody.\n",
             encoding="utf-8",
         )
-        (bad / "prompt.md").write_text("This workflow does one thing, always.\n", encoding="utf-8")
+        # The body carries the BARE word on purpose. The first version of this
+        # gate accepted the bare word instead of the literal `--flag`, and with
+        # a fixture body that did not contain it the self-test passed under that
+        # exact bug — proven by mutation on 2026-09-15. A control that cannot
+        # fail on the defect the gate was written for is not a control.
+        (bad / "prompt.md").write_text(
+            "This workflow is not a phantom; it does one thing, always.\n",
+            encoding="utf-8",
+        )
 
         missing = root / "missing-path"
         missing.mkdir()

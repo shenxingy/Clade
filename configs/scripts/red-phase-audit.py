@@ -77,6 +77,28 @@ def added_tests(sha):
     return {k: v for k, v in out.items() if v}
 
 
+def classify_pytest_output(out: str, n_nodes: int) -> tuple[int, int, str]:
+    """Read one pytest run's output. Extracted so the self-test can reach it.
+
+    These two guards are why this script is trustworthy at all: its first
+    version passed an unrecognised argument, so pytest exited with a usage
+    error, every commit reported "0 passed", and a 0% fire rate read as good
+    news. Inline inside run_at_base they were unreachable without provoking a
+    real broken pytest run, so a mutation deleting either one left --self-test
+    green — measured 2026-09-15, which is exactly the "instrument that cannot
+    fire" failure this file exists to prevent, one level down.
+
+    A run that could not execute must never be reported as "nothing fired".
+    """
+    if "unrecognized arguments" in out or "usage:" in out.lower()[:400]:
+        return 0, 0, "pytest usage error -- harness bug, not a finding"
+    if not re.search(r"\d+ (passed|failed|error|skipped)", out):
+        return 0, 0, f"no result line: {out.strip()[-60:]}"
+    m_pass = re.search(r"(\d+) passed", out)
+    passed = int(m_pass.group(1)) if m_pass else 0
+    return passed, n_nodes, "ran"
+
+
 def run_at_base(sha, files_and_tests, workdir):
     """Run the added node ids against sha's parent. Returns (passed, total, note)."""
     rc, parent, _ = git(["rev-parse", f"{sha}~1"])
@@ -123,14 +145,7 @@ def run_at_base(sha, files_and_tests, workdir):
                  "PY_COLORS": "0", "NO_COLOR": "1"},
         )
         out = proc.stdout + proc.stderr
-        # A run that could not execute must never be reported as "nothing fired".
-        if "unrecognized arguments" in out or "usage:" in out.lower()[:400]:
-            return 0, 0, "pytest usage error -- harness bug, not a finding"
-        if not re.search(r"\d+ (passed|failed|error|skipped)", out):
-            return 0, 0, f"no result line: {out.strip()[-60:]}"
-        m_pass = re.search(r"(\d+) passed", out)
-        passed = int(m_pass.group(1)) if m_pass else 0
-        return passed, len(node_ids), "ran"
+        return classify_pytest_output(out, len(node_ids))
     except subprocess.TimeoutExpired:
         return 0, 0, "timeout"
     finally:
@@ -221,6 +236,28 @@ def self_test() -> int:
                     )
         finally:
             REPO = prev_repo
+
+    # THIRD CONTROL: the two run-failure guards, driven directly. The end-to-end
+    # controls above always get a working pytest, so neither guard is reached by
+    # them and both could be deleted without turning this self-test red.
+    for label, out, want_note in (
+        ("usage error", "ERROR: unrecognized arguments: --nonesuch\nusage: pytest [options]",
+         "pytest usage error"),
+        ("no result line", "collected 0 items\n\nsome unparseable output\n", "no result line"),
+    ):
+        passed, total, note = classify_pytest_output(out, 3)
+        if (passed, total) != (0, 0) or want_note not in note:
+            failures.append(
+                f"{label} control: a run that could not execute was reported as "
+                f"passed={passed} total={total} note={note!r} — a broken run must "
+                f"never look like 'nothing fired'"
+            )
+    passed, total, note = classify_pytest_output("3 passed, 1 skipped in 0.2s", 3)
+    if (passed, total, note) != (3, 3, "ran"):
+        failures.append(
+            f"healthy control: a normal pytest run parsed as "
+            f"passed={passed} total={total} note={note!r}, expected (3, 3, 'ran')"
+        )
 
     if failures:
         print("\nSELF-TEST FAILED — this audit cannot be trusted:")
