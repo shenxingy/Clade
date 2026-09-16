@@ -27,7 +27,6 @@ needs_work_items:
   - "Run red-phase-audit.py against the PR's commits in the pytest job (report-only, fail on a NEW fire) — it covers the 86% additive blind spot, is live (4 of 21 sampled commits fired), and CI currently runs only its --self-test"
   - "Add a type checker over annotations already written — orchestrator core is 97.4% parameter-annotated and 83.7% return-annotated with ZERO checkers in CI or requirements-dev.txt"
   - "Pre-push hook for the four drift gates (2.6s total; they are 33 of 72 failing CI steps in repo history = 46%, and .git/hooks/ is empty)"
-  - "Measure our OWN erosion before gating it: complexity + docstring density per commit by author. The erosion figures (arXiv:2603.24755 v2: 2.3x verbose / 2.0x eroded / 77% of trajectories, 473 repos) are someone else's corpus."
 reference_items:
   - "WITHDRAWN: gating E701/E702 as a 'machineslop signature'. Of the 18 violations in configs/, 12 are deliberate self-evident idioms (aligned threshold ladder claude-usage-watch.py, cursor-advance blog_render.py); the other 6 are all in vignelli_system.py from one upstream-absorption commit 1ab573b, so 'deliberate' was never ours to claim for them. Perceptual class, no measured correctness effect — withdrawn on 12 examined cases and 6 inherited ones."
   - "DO NOT adopt `ruff format --check`: 312 of 344 files would reformat for the one axis measured as nearly free (24.5% token saving for <=4.2pp accuracy)."
@@ -233,3 +232,33 @@ Still open and recorded rather than fixed: changing an **existing** assertion me
 `expectations_changed` in every language, because `_skeleton` blanks every literal alike and
 this repo's shell helpers take the message as an optional positional argument — so
 `assert_contains a b` and `assert_contains a b msg` are indistinguishable by arity.
+
+## 8. Our own erosion, measured 2026-09-16
+
+The open question this document called "the one measurement that would convert most of
+this page from inherited evidence into local fact" is answered, by
+`configs/scripts/erosion-trend.py`. Sampled over each layer's own history, comparing
+against the earliest sample holding at least half the final file count — a first-to-last
+delta measures the project being born, not its code eroding:
+
+| Layer | window | mean complexity | docstring % | mean fn length | comment ratio |
+|---|---|---|---|---|---|
+| `configs/` (load-bearing) | 2026-06-09 → 2026-09-16, 100 → 139 files | 7.409 → 7.372 (**−0.5%**) | 76.5 → 59.3 (**−22.5%**) | 8.20 → 7.59 (−7.4%) | 0.056 → 0.065 (+16.1%) |
+| `orchestrator/` (dormant) | 2026-07-28 → 2026-09-16, 159 → 198 files | 4.418 → 4.178 (**−5.4%**) | 23.4 → 25.0 (+6.8%) | 4.93 → 4.78 (−3.0%) | 0.052 → 0.064 (+23.1%) |
+
+**We do not reproduce the complexity erosion the literature describes.** Mean complexity is
+flat to falling in both layers, function length is falling, and comment density is rising.
+What IS eroding is documentation: `configs/` lost **17 points** of docstring coverage
+(76.5% → 59.3%) while growing by 39 files.
+
+Three things this does not license. It cannot separate agent-written from human-written
+code — agency is recorded nowhere in this tree, so this is a trend, not a contrast, and it
+is not a replication of arXiv:2603.24755. The confounds are real and unremoved: the layer
+grew ~40% over each window, and new files land with their own baseline. And a flat mean
+hides its tail — `configs/` has carried a single 127-complexity function throughout.
+
+**Consequence for the complexity gate:** the case for one just got weaker, not stronger.
+The controlled study says cleanliness bought no correctness; our own complexity is not
+rising; so a complexity gate would spend rules on a class that is measured inert HERE as
+well as in the literature. The docstring slide is the finding worth acting on, and it is a
+retrieval-class property, not a perceptual one.

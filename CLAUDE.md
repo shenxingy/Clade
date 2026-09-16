@@ -96,6 +96,15 @@ python3 configs/scripts/red-phase-audit.py --self-test
 python3 configs/scripts/check-asserted-numbers.py
 python3 configs/scripts/check-asserted-numbers.py --self-test
 
+# Does OUR code erode the way the literature says? Measured 2026-09-16: no, for
+# complexity — configs/ is 7.409 -> 7.372 (-0.5%) and orchestrator/ -5.4% over
+# comparable windows. What IS eroding is documentation: configs/ lost 17 points
+# of docstring coverage (76.5% -> 59.3%) while growing 39 files. It compares
+# against the earliest sample holding half the final file count, because a
+# first-to-last delta measures the project being born (+93%, from 1 file).
+# It cannot separate agent- from human-written code; agency is recorded nowhere.
+python3 configs/scripts/erosion-trend.py --samples 14 --path configs/
+
 # 2b2. Ask every OTHER --self-test the same question. Removing one guard must
 #      turn that script's self-test red. Five self-tests written on 2026-09-12
 #      could not fail, including one where deleting an entire licence allowlist
