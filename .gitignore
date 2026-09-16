@@ -13,6 +13,13 @@ orchestrator/caddy.log
 # a path whose parent directory is excluded. The nested
 # `.claude/equipment/.gitignore` still keeps the clone cache out.
 !.claude/equipment/
+# This repository's own pre-commit gate — the four drift checks, ~1s. It is
+# tracked because it IS the gate: ignored, it would exist only on the machine
+# that wrote it, which is the same "it works here" failure the fleet audit found
+# on four other boxes. checks.sh runs it when the repo being committed to has it,
+# so it reaches every contributor through `committer` and stays out of the 40+
+# unrelated repositories committer.sh also serves.
+!.claude/pre-commit.sh
 orchestrator/.claude/
 
 # Build artifacts

@@ -127,8 +127,32 @@ check_commit_msg() {
   fi
 }
 
+# A repository may add its OWN pre-commit gates without any of them landing in
+# this file or in committer.sh. Both ship globally — committer.sh runs in 40+
+# repositories on this account — so a Clade-specific drift check wired here
+# would fire in every unrelated repo on the machine. Instead: if the repo being
+# committed to carries an executable .claude/pre-commit.sh, run it.
+#
+# Why this is worth a hook at all, measured on Clade's own CI history: of the
+# last 200 runs, 27 failed, and 7 of those 27 (26%) failed on a drift gate and
+# nothing else — a red run, a push, and a round trip for a check that takes
+# about a second locally. Those are the cheapest possible failures and the only
+# thing standing between them and green was that nobody ran the command.
+run_repo_pre_commit() {
+  local root hook
+  root=$(git rev-parse --show-toplevel 2>/dev/null) || return 0
+  hook="$root/.claude/pre-commit.sh"
+  [[ -x "$hook" ]] || return 0
+  if ! (cd "$root" && bash "$hook"); then
+    echo "  → blocked by $hook (the repo's own pre-commit gate)" >&2
+    return 1
+  fi
+  return 0
+}
+
 cmd_staged() {
   check_staged_secrets || return 1
+  run_repo_pre_commit || return 1
   # Run shellcheck on the staged shell files (working-tree content — committer
   # stages the working tree immediately before this runs, so the two match).
   # No mapfile: macOS ships bash 3.2.

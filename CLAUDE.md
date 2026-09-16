@@ -351,6 +351,14 @@ Add try/except `ALTER TABLE` blocks in `task_schema.py:ensure_schema()`. New col
 committer "type: message" file1 file2 file3
 ```
 
+`committer` runs `.claude/pre-commit.sh` before it commits: the four drift gates,
+about one second. They are 26% of this repository's failed CI runs — 7 of the last
+27 failed on a drift gate and nothing else, which is a red run and a round trip for
+a check that costs a second locally. It is scoped to the four GENERATED surfaces on
+purpose; `ci-local.py` remains the gate before a push. A bare `git commit` bypasses
+it, which is accepted: `.git/hooks` is not versioned, so a hook there would exist
+only on the machine that installed it — the drift this gate exists to catch.
+
 Conventional commit types: `feat` / `fix` / `refactor` / `test` / `chore` / `docs` / `perf`
 
 ## Release Versioning
