@@ -65,7 +65,12 @@ _ssh() {
 
 report_host() {
   local host="$1" path="$2" out state head dirty
+  # The fetch is not optional. Without it `HEAD..@{u}` is measured against
+  # whatever that machine last fetched, and a host 270 commits behind reports
+  # "0 behind" — which is the worst possible output, because it is the one a
+  # reader acts on. Observed on all four hosts the first time this ran.
   out=$(_ssh "$host" "cd '$path' 2>/dev/null || { echo NOPATH; exit 0; }
+        git fetch --quiet origin 2>/dev/null || echo 'fetchfail=1'
         printf 'head=%s\n' \"\$(git rev-parse --short HEAD 2>/dev/null)\"
         printf 'dirty=%s\n' \"\$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')\"
         printf 'behind=%s\n' \"\$(git rev-list --count HEAD..@{u} 2>/dev/null || echo '?')\"")
@@ -84,7 +89,12 @@ report_host() {
     printf '  %-12s DIRTY (%s file(s)) at %s — skipped, needs its owner\n' "$host" "$dirty" "$head"
     return 5
   fi
-  printf '  %-12s %s, %s commit(s) behind upstream\n' "$host" "$head" "${state:-?}"
+  if printf '%s' "$out" | grep -q 'fetchfail=1'; then
+    printf '  %-12s %s, %s behind — WARNING: fetch failed, that count is against a stale ref\n' \
+      "$host" "$head" "${state:-?}"
+  else
+    printf '  %-12s %s, %s commit(s) behind upstream\n' "$host" "$head" "${state:-?}"
+  fi
   return 0
 }
 
