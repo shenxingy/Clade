@@ -1,0 +1,548 @@
+<title>Clade 改动总账</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;700&family=Noto+Sans+SC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+:root{
+  --paper:#FAF9F6; --raise:#F3F1EC; --ink:#1C1F26; --muted:#6E7480;
+  --rule:#E2E0DA; --hair:#EBE9E3;
+  --accent:#1F5E68; --accent-soft:#E4EFF0;
+  --del:#A33A32; --del-bg:#FBEEEC; --add:#2E6B47; --add-bg:#EBF4EE;
+  --warn:#8A6510; --warn-bg:#FAF2DF;
+  --shadow:0 1px 2px rgba(28,31,38,.05);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#15171B; --raise:#1C1F25; --ink:#E8EAEE; --muted:#949AA6;
+    --rule:#2A2E36; --hair:#23272E;
+    --accent:#58B0BC; --accent-soft:#16333A;
+    --del:#E08C85; --del-bg:#2C1C1B; --add:#7FC49B; --add-bg:#16271E;
+    --warn:#D0A43A; --warn-bg:#2A2313;
+    --shadow:0 1px 2px rgba(0,0,0,.3);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#15171B; --raise:#1C1F25; --ink:#E8EAEE; --muted:#949AA6;
+  --rule:#2A2E36; --hair:#23272E;
+  --accent:#58B0BC; --accent-soft:#16333A;
+  --del:#E08C85; --del-bg:#2C1C1B; --add:#7FC49B; --add-bg:#16271E;
+  --warn:#D0A43A; --warn-bg:#2A2313;
+  --shadow:0 1px 2px rgba(0,0,0,.3);
+}
+*{box-sizing:border-box}
+body{background:var(--paper); color:var(--ink);
+  font-family:"Noto Sans SC",-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+  font-weight:300; line-height:1.75; -webkit-font-smoothing:antialiased;}
+.wrap{max-width:1080px; margin:0 auto; padding:0 28px 96px}
+code,.mono{font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+code{font-size:.87em; background:var(--raise); padding:.1em .38em; border-radius:3px;
+  border:1px solid var(--hair); font-weight:400}
+a{color:var(--accent); text-decoration:none; border-bottom:1px solid color-mix(in srgb,var(--accent) 35%,transparent)}
+a:hover{border-bottom-color:var(--accent)}
+a:focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:2px}
+
+/* ── masthead ─────────────────────────────────────── */
+.mast{padding:64px 0 34px; border-bottom:2px solid var(--ink)}
+.eyebrow{font-family:"JetBrains Mono",monospace; font-size:11.5px; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--muted); margin:0 0 18px}
+h1{font-family:"Noto Serif SC",Georgia,serif; font-weight:700; font-size:clamp(34px,5.2vw,52px);
+  line-height:1.16; margin:0 0 20px; text-wrap:balance; letter-spacing:-.01em}
+.standfirst{font-size:18px; max-width:36em; margin:0; color:var(--ink); font-weight:300}
+.standfirst strong{font-weight:500}
+.meta{display:flex; flex-wrap:wrap; gap:10px 26px; margin-top:26px;
+  font-family:"JetBrains Mono",monospace; font-size:12px; color:var(--muted)}
+.meta b{color:var(--ink); font-weight:500}
+
+/* ── section headers ──────────────────────────────── */
+h2{font-family:"Noto Serif SC",Georgia,serif; font-weight:700; font-size:26px;
+  margin:72px 0 6px; padding-top:22px; border-top:1px solid var(--rule); text-wrap:balance}
+h2 .num{display:block; font-family:"JetBrains Mono",monospace; font-size:11.5px;
+  letter-spacing:.14em; color:var(--accent); font-weight:500; margin-bottom:9px}
+.lede{color:var(--muted); max-width:40em; margin:0 0 30px; font-size:15.5px}
+
+/* ── the contract box ─────────────────────────────── */
+.contract{background:var(--accent-soft); border-left:3px solid var(--accent);
+  padding:22px 26px; margin:30px 0 0; border-radius:0 4px 4px 0}
+.contract p{margin:0 0 10px; font-size:15px; max-width:44em}
+.contract p:last-child{margin-bottom:0}
+
+/* ── ledger entries ───────────────────────────────── */
+.entry{display:grid; grid-template-columns:132px 1fr; gap:0 30px;
+  padding:30px 0; border-bottom:1px solid var(--hair)}
+.entry:last-child{border-bottom:none}
+.rail{font-family:"JetBrains Mono",monospace; font-size:11.5px; line-height:1.7;
+  color:var(--muted); display:flex; flex-direction:column; gap:7px}
+.rail .idx{font-size:21px; font-weight:700; color:var(--accent); line-height:1}
+.rail .sha{color:var(--ink); font-weight:500}
+.rail .tag{display:inline-block; padding:1px 7px; border-radius:2px; font-size:10px;
+  letter-spacing:.06em; text-transform:uppercase; align-self:flex-start}
+.tag.fix{background:var(--del-bg); color:var(--del)}
+.tag.add{background:var(--add-bg); color:var(--add)}
+.tag.doc{background:var(--accent-soft); color:var(--accent)}
+.body h3{font-family:"Noto Serif SC",Georgia,serif; font-size:19px; font-weight:500;
+  margin:0 0 10px; line-height:1.4; text-wrap:balance}
+.body p{margin:0 0 13px; font-size:15px; max-width:42em}
+.body p:last-child{margin-bottom:0}
+.where{font-family:"JetBrains Mono",monospace; font-size:12px; color:var(--muted);
+  margin:0 0 14px; word-break:break-all}
+
+/* ── diff blocks ──────────────────────────────────── */
+.diff{border:1px solid var(--rule); border-radius:4px; overflow:hidden; margin:14px 0 16px;
+  background:var(--raise)}
+.diff-head{font-family:"JetBrains Mono",monospace; font-size:11.5px; padding:7px 13px;
+  border-bottom:1px solid var(--rule); color:var(--muted); background:var(--paper);
+  display:flex; justify-content:space-between; gap:14px; flex-wrap:wrap}
+.diff-head b{color:var(--ink); font-weight:500}
+.diff-body{overflow-x:auto}
+.diff pre{margin:0; padding:11px 0; font-family:"JetBrains Mono",monospace;
+  font-size:12.5px; line-height:1.68; min-width:min-content}
+.diff .l{display:block; padding:0 14px 0 30px; position:relative; white-space:pre}
+.diff .l::before{position:absolute; left:12px; width:12px; color:var(--muted); opacity:.75}
+.diff .d{background:var(--del-bg); color:var(--del)}
+.diff .d::before{content:"−"; color:var(--del)}
+.diff .a{background:var(--add-bg); color:var(--add)}
+.diff .a::before{content:"+"; color:var(--add)}
+.diff .c{color:var(--muted)}
+
+/* ── prose before/after ───────────────────────────── */
+.ba{display:grid; grid-template-columns:1fr 1fr; gap:0; border:1px solid var(--rule);
+  border-radius:4px; overflow:hidden; margin:14px 0 16px}
+.ba > div{padding:14px 17px}
+.ba .was{background:var(--del-bg); border-right:1px solid var(--rule)}
+.ba .now{background:var(--add-bg)}
+.ba h4{margin:0 0 8px; font-family:"JetBrains Mono",monospace; font-size:10.5px;
+  letter-spacing:.11em; text-transform:uppercase; font-weight:500}
+.ba .was h4{color:var(--del)} .ba .now h4{color:var(--add)}
+.ba p{margin:0; font-size:14px; line-height:1.68; max-width:none}
+@media(max-width:720px){
+  .ba{grid-template-columns:1fr}
+  .ba .was{border-right:none; border-bottom:1px solid var(--rule)}
+  .entry{grid-template-columns:1fr; gap:14px}
+  .rail{flex-direction:row; flex-wrap:wrap; align-items:baseline; gap:6px 14px}
+}
+
+/* ── verification strip ───────────────────────────── */
+.verify{border-left:2px solid var(--accent); padding:3px 0 3px 15px; margin:14px 0 0;
+  font-size:13.5px; color:var(--muted)}
+.verify b{color:var(--ink); font-weight:500; font-family:"JetBrains Mono",monospace; font-size:12.5px}
+
+/* ── tables ───────────────────────────────────────── */
+.scroll{overflow-x:auto; margin:22px 0; border:1px solid var(--rule); border-radius:4px}
+table{border-collapse:collapse; width:100%; font-size:14px; min-width:640px}
+th{text-align:left; font-weight:500; font-size:11px; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--muted); padding:11px 15px; border-bottom:1px solid var(--rule);
+  background:var(--raise); white-space:nowrap}
+td{padding:13px 15px; border-bottom:1px solid var(--hair); vertical-align:top; line-height:1.62}
+tr:last-child td{border-bottom:none}
+td.n{font-family:"JetBrains Mono",monospace; font-variant-numeric:tabular-nums; white-space:nowrap}
+.grade{font-family:"JetBrains Mono",monospace; font-size:10.5px; padding:2px 7px; border-radius:2px;
+  letter-spacing:.05em; text-transform:uppercase; white-space:nowrap}
+.g-ok{background:var(--add-bg); color:var(--add)}
+.g-bad{background:var(--del-bg); color:var(--del)}
+.g-part{background:var(--warn-bg); color:var(--warn)}
+
+/* ── plan / open lists ────────────────────────────── */
+.plan{display:grid; gap:0; margin:22px 0; border:1px solid var(--rule); border-radius:4px; overflow:hidden}
+.plan .row{display:grid; grid-template-columns:150px 1fr; gap:0 24px; padding:16px 20px;
+  border-bottom:1px solid var(--hair); align-items:start}
+.plan .row:last-child{border-bottom:none}
+.plan .k{font-family:"JetBrains Mono",monospace; font-size:12px; color:var(--accent); font-weight:500}
+.plan .v{font-size:14.5px}
+.plan .v b{font-weight:500}
+@media(max-width:720px){.plan .row{grid-template-columns:1fr; gap:6px}}
+ul.open{list-style:none; padding:0; margin:22px 0}
+ul.open li{padding:14px 0 14px 26px; border-bottom:1px solid var(--hair); position:relative;
+  font-size:15px; max-width:46em}
+ul.open li:last-child{border-bottom:none}
+ul.open li::before{content:"○"; position:absolute; left:2px; top:14px; color:var(--warn)}
+ul.open b{font-weight:500}
+footer{margin-top:76px; padding-top:24px; border-top:2px solid var(--ink);
+  font-family:"JetBrains Mono",monospace; font-size:11.5px; color:var(--muted); line-height:1.85}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="wrap">
+
+<header class="mast">
+  <p class="eyebrow">Clade · 内部审计 · 2026-09-16</p>
+  <h1>Clade 改动总账</h1>
+  <p class="standfirst">上一版发表页只写了结论。这一页写的是<strong>证据</strong>：每一处改动的原文、现文、文件行号、commit，以及你可以自己跑一遍的验收命令。<strong>看不到 diff 就无法判断，这是我在别人身上挑了一整轮的毛病，自己交付时又犯了一次。</strong></p>
+  <div class="meta">
+    <span>范围 <b>e0cc0e7 → bba042c</b></span>
+    <span><b>14</b> commits</span>
+    <span><b>61</b> 文件 · <b>+2219 / −203</b></span>
+    <span>机器 <b>5 台已部署</b>（1 台不可达）</span>
+    <span>门禁 <b>ci-local 5/5</b></span>
+  </div>
+</header>
+
+<h2><span class="num">§ 00 — 先说清楚</span>这一页怎么用</h2>
+<p class="lede">这是一份对账凭证，不是报告。它的唯一任务是让你能否证我。</p>
+<div class="contract">
+  <p><strong>每条改动给四样东西：</strong>①原文逐字 ②现文逐字 ③<code>文件:行号</code> 与 commit SHA ④一条你能在本机跑、能判真假的验收命令。</p>
+  <p><strong>凡是我"发现"的问题，都给了可复现的测量</strong>——不是"这里有风险"，而是"跑这条命令，它现在返回 X，改之前返回 Y"。</p>
+  <p><strong>我自己出的错也在里面。</strong>这一轮我三次拿错数字：把相对路径当绝对路径算校验和、用 <code>tail</code> 的退出码判断 gate、变异体放错目录导致自检假阴性。都在下面标了出来，因为一份只记录别人错误的总账没有用。</p>
+</div>
+
+<h2><span class="num">§ 01 — 源文件</span>东西是从哪来的</h2>
+<p class="lede">发表页的 HTML 此前<strong>不在仓库里</strong>——它只存在于内部 hub 上。这本身是个缺陷：没有源就没有 diff，没有 diff 就没有这一页。</p>
+
+<div class="scroll"><table>
+<thead><tr><th>来源</th><th>怎么取到的</th><th>现在放在哪</th></tr></thead>
+<tbody>
+<tr><td><b>发表页 v4 的 HTML</b></td>
+    <td class="n">curl https://artifacts.internal.scam.ai/<wbr>code-standards-after-machineslop/</td>
+    <td>快照进仓库 <code>docs/artifacts/code-standards-after-machineslop/index.html</code>，与既有的 <code>ui-ux-decision-atlas/</code> 同一惯例。此前该页没有仓库副本，所以无法 diff。</td></tr>
+<tr><td><b>研究文档 markdown</b></td>
+    <td class="n">docs/research/2026-09-13-ai-legible-code-standards.md</td>
+    <td>原地修改，前置 frontmatter 的 <code>needs_work_items</code> 已完成项逐条移除</td></tr>
+<tr><td><b>一手文献</b></td>
+    <td class="n">arxiv.org/abs/&lt;id&gt; 与 /abs/&lt;id&gt;v1</td>
+    <td>逐篇抓取正文比对；版本差异是这一轮最大的一类错误来源（见 §03）</td></tr>
+<tr><td><b>仓库自身测量</b></td>
+    <td class="n">在 aries 上直接跑命令</td>
+    <td>每条都带命令与分母，见下方各条目的验收行</td></tr>
+<tr><td><b>各机器状态</b></td>
+    <td class="n">ssh -o BatchMode=yes -o ConnectTimeout=8</td>
+    <td>五台实际连过；alexxe 超时，<b>报为不可达而不是"已最新"</b></td></tr>
+</tbody>
+</table></div>
+
+<h2><span class="num">§ 02 — 发表页</span>原文 → 现文，逐处</h2>
+<p class="lede">九处更正，全部就地修改并具名。左边是 rev 4 的逐字原文，右边是 rev 6 现在的文本。</p>
+
+<div class="entry">
+  <div class="rail"><span class="idx">1</span><span class="tag fix">数字错</span><span>§02 柱状图</span><span class="sha">最醒目的一处</span></div>
+  <div class="body">
+    <h3>人写的上下文文件"+4%"——论文说的是 2.4%，且不显著</h3>
+    <div class="ba">
+      <div class="was"><h4>rev 4 原文</h4><p>Human-written context file — gain is <em>non-obvious knowledge only</em> ······ <b>+4%</b><br><span style="opacity:.75">（整页唯一一根绿柱，对两根红柱）</span></p></div>
+      <div class="now"><h4>rev 6 现文</h4><p>Human-written context file — <em>not statistically significant</em> (p = 0.21) ······ <b>+2.4%</b><br><span style="opacity:.75">柱体降到 45% 不透明度；图注补了整段更正说明</span></p></div>
+    </div>
+    <p>arXiv:2602.11988 <b>v2 §4.2</b> 原话是 “neither statistically significant”。+4% 是 <b>v1</b> 的说法，也是二手摘要（InfoQ 等）的说法——<strong>这份文档从它自己批判的那一层继承了数字</strong>。第一轮验证判成"凭空捏造"，对抗轮去抓了 v1 原文，把性质从捏造纠正为版本过时。</p>
+    <p class="verify"><b>怎么核：</b>打开 <a href="https://arxiv.org/abs/2602.11988v1">/abs/2602.11988v1</a> 与 <a href="https://arxiv.org/abs/2602.11988v2">v2</a>，对比摘要与 §4.2。</p>
+  </div>
+</div>
+
+<div class="entry">
+  <div class="rail"><span class="idx">2</span><span class="tag fix">推断错</span><span>§02 图注</span></div>
+  <div class="body">
+    <h3>"收益全部来自代码里读不出来的知识"——论文根本没做这个分解</h3>
+    <div class="ba">
+      <div class="was"><h4>rev 4 原文</h4><p>gain is <b>non-obvious knowledge only</b></p></div>
+      <div class="now"><h4>rev 6 现文</h4><p>the paper runs <b>no</b> decomposition by knowledge type — 那是作者的<b>建议</b>被当成了论文的<b>发现</b>，而其唯一的分类消融发现没有任何类别显著影响准确率</p></div>
+    </div>
+    <p class="verify"><b>怎么核：</b>v2 的 §B / Table 7（category-removal ablation），以及摘要里 “useful for specifying non-standard coding practices” 的语气——那是 recommendation 不是 finding。</p>
+  </div>
+</div>
+
+<div class="entry">
+  <div class="rail"><span class="idx">3</span><span class="tag fix">数量级</span><span>§05</span></div>
+  <div class="body">
+    <h3>"2461 行的文件只占 1M 窗口的 0.03%"——错约两个数量级</h3>
+    <div class="ba">
+      <div class="was"><h4>rev 4 原文</h4><p>a 2,461-line file is <b>~0.03%</b> of the window</p></div>
+      <div class="now"><h4>rev 6 现文</h4><p>a 2,461-line file is <b>~2.1–2.7%</b> of the window（89,907 字节 ÷ 3.3–4.2 字节/token）</p></div>
+    </div>
+    <p>这句话是"规则要绑属性不要绑 harness 常量"那个论证的<strong>唯一支撑</strong>。论证在更小的边际上仍然成立，但支撑必须是真的。</p>
+    <p class="verify"><b>怎么核：</b><code>wc -c configs/scripts/seo/google_report.py</code> → 89907。</p>
+  </div>
+</div>
+
+<div class="entry">
+  <div class="rail"><span class="idx">4</span><span class="tag fix">结论反了</span><span>§03 检索类</span></div>
+  <div class="body">
+    <h3>"file-level 恢复 50% vs line-level 19%"——数字真，排序与论文相反</h3>
+    <div class="ba">
+      <div class="was"><h4>rev 4 原文</h4><p>Fixing <em>file-level</em> localisation recovers <b>50%</b> of unresolved cases against <b>19%</b> for line-level.</p></div>
+      <div class="now"><h4>rev 6 现文</h4><p>file-level 解决 14/28 个 file-miss，line-level 33/175；对 209 个未解决实例分别是 <b>6.7%</b> 与 <b>15.8%</b>——<b>按实际恢复的案例数，line-level 是 file-level 的两倍多</b></p></div>
+    </div>
+    <p>50% 与 19% 是<strong>条件概率</strong>，原文把它们当成了两者的排序。这正是这份文档指控 Ronacher 引用链的那个失败模式，出现在它自己身上。</p>
+    <p class="verify"><b>怎么核：</b>arXiv:2601.18044 §5.4，分母是 209。</p>
+  </div>
+</div>
+
+<div class="entry">
+  <div class="rail"><span class="idx">5</span><span class="tag fix">说反了</span><span>§03 感知类</span></div>
+  <div class="body">
+    <h3>"SonarSource 有一切动机找到效应却没找到"——他们找到了，还放在摘要第二句</h3>
+    <div class="ba">
+      <div class="was"><h4>rev 4 原文</h4><p>both authors are SonarSource ... and they had <b>every incentive to find an effect</b>.</p></div>
+      <div class="now"><h4>rev 6 现文</h4><p>They <b>did</b> find effects and led with them — token 少 7–8%、文件重访少 34%，结论是 “traditional maintainability principles remain highly relevant” — 这让<b>正确性</b>那个零结果更有分量而不是更少：那是唯一一条与他们自身利益相反的轴</p></div>
+    </div>
+    <p class="verify"><b>怎么核：</b>arXiv:2605.20049 摘要后半段。</p>
+  </div>
+</div>
+
+<div class="entry">
+  <div class="rail"><span class="idx">6</span><span class="tag fix">分母错</span><span>§02 散文遵守率</span></div>
+  <div class="body">
+    <h3>"~64%，跨 1,650 session / 16,050 次观察"——64% 不是这个总体的均值</h3>
+    <div class="ba">
+      <div class="was"><h4>rev 4 原文</h4><p>Across <b>1,650 sessions and 16,050 observations</b>, an agent followed ... only ~64% of the time</p></div>
+      <div class="now"><h4>rev 6 现文</h4><p>在研究的主样本池上——<b>1,150 次非基线运行 / 11,637 个函数</b>，单一代码库、Sonnet 4.6、一条 <code>// @tracked</code> 注解——才是 ~64%（全语料确实是 1,650/16,050，但其中约十分之一是构造上必然 0% 的无配置基线，所以总均值不是这个数）</p></div>
+    </div>
+    <p class="verify"><b>怎么核：</b>arXiv:2605.10039 §4，"ixartz Sonnet 4.6 primary pool"。</p>
+  </div>
+</div>
+
+<div class="entry">
+  <div class="rail"><span class="idx">7</span><span class="tag fix">本可查证</span><span>§05 侵蚀</span></div>
+  <div class="body">
+    <h3>"两个 reviewer 读同一篇读出不同结果"——是 v1 与 v2 的版本差异，抓一次就能了结</h3>
+    <div class="ba">
+      <div class="was"><h4>rev 4 原文</h4><p>Two reviewers read the same paper and reported these slightly differently — 2.2×/80% versus 2.3×/2.0×/77%. The direction is not in doubt; <b>re-read the source before quoting an exact multiple onward.</b></p></div>
+      <div class="now"><h4>rev 6 现文</h4><p><a href="https://arxiv.org/abs/2603.24755">arXiv:2603.24755</a> — <b>v1</b>：48 个仓库、93 个 checkpoint、2.2× 啰嗦、侵蚀上升 80%。<b>v2</b>：473 个仓库、196 个 checkpoint、2.3×/2.0×/77%。v2 取代 v1，上面用的是 v2 的数。两位 reviewer 各自忠实于自己读的版本。</p></div>
+    </div>
+    <p><strong>发表一条"请自行重读"的未决警告，而 <code>/abs/&lt;id&gt;v1</code> 一次抓取就能解决——这是最廉价的一种失败。</strong></p>
+  </div>
+</div>
+
+<div class="entry">
+  <div class="rail"><span class="idx">8</span><span class="tag fix">无标识符</span><span>§05 侵蚀</span></div>
+  <div class="body">
+    <h3>整页最可引用的那个数字，发出去时读者无从查证</h3>
+    <p class="where">grep -oi '24755\|SlopCodeBench' index.html → <b>0 次</b>（同页另有两个 arXiv 编号是标了的）</p>
+    <p>一篇主题是"引用链会脱离原始出处流传"的文章，自己的头号统计量没有编号。rev 6 已补上，并同时链接 v1 与 v2。</p>
+    <p class="verify"><b>怎么核：</b><code>curl -s &lt;url&gt; | grep -c 24755</code> — 现在应 ≥ 1。</p>
+  </div>
+</div>
+
+<div class="entry">
+  <div class="rail"><span class="idx">9</span><span class="tag fix">过度解读</span><span>§05 行数分布</span></div>
+  <div class="body">
+    <h3>"1401–1500 空档是规则驱动行为的签名"——单独看大约是 1/20 的巧合</h3>
+    <div class="ba">
+      <div class="was"><h4>rev 4 原文</h4><p>An empty band below a ceiling is <b>the signature of a rule that drives behaviour</b> rather than one nothing approaches.</p></div>
+      <div class="now"><h4>rev 6 现文</h4><p>492 个文件里 <b>30 个是逐字节重复的生成副本</b>，相邻档只有 3 个和 5 个不同文件，所以空档大约是 1/20 的巧合。真正支撑它的证据不是概率——<b>十个文件在自己的文件头里写明是被这条上限逼着拆的</b>：<code>loop_args/bounds/score/verify.sh</code>、<code>worker_pool.py</code>、<code>task_schema.py</code>、<code>repo_map.py</code>（"extracted from worker_tldr.py at 1459 of the 1500"），另加三个测试模块。</p></div>
+    </div>
+    <p class="verify"><b>怎么核：</b><code>grep -l "1500-line\|1500 test_conventions" configs/ orchestrator/ -r | head</code></p>
+  </div>
+</div>
+
+<div class="entry">
+  <div class="rail"><span class="idx">10</span><span class="tag fix">归因错</span><span>§03 标点</span></div>
+  <div class="body">
+    <h3>"18 处违规全是刻意的可读写法"——其中 6 处不是我们写的</h3>
+    <div class="ba">
+      <div class="was"><h4>rev 4 原文</h4><p>then read the eighteen violations in load-bearing code. <b>They are deliberate, self-evident idioms</b></p></div>
+      <div class="now"><h4>rev 6 现文</h4><p>十二处是刻意的自明写法；<b>另外六处不是我们能称之为"刻意"的</b>——<code>git blame</code> 把 <code>vignelli_system.py</code> 的全部六处指向同一个 commit <code>1ab573b</code>，那是从 <code>maxsoweski/claude-design-skills</code> 吸收上游的提交。撤回的建议仍然撤回，但依据是"检视了 12 处 + 继承了 6 处"，不是"检视了 18 处"。</p></div>
+    </div>
+    <p class="verify"><b>怎么核：</b><code>git log -1 --format=%s 1ab573b</code> → “feat(skills): absorb Muller-Brockmann grid and Vignelli canon from maxsoweski/claude-design-skills…”</p>
+  </div>
+</div>
+
+<h2><span class="num">§ 03 — 代码</span>每处改动的真实 diff</h2>
+<p class="lede">下面是 git 里的实际增删行，不是复述。每条带 commit、文件、以及"改之前是什么样"的可复现证明。</p>
+
+<div class="entry">
+  <div class="rail"><span class="idx">A</span><span class="tag fix">检测器失明</span><span class="sha">4aa865d</span><span>judge_diversity.py</span></div>
+  <div class="body">
+    <h3>测试完整性检测器看不见任何一条 shell 断言</h3>
+    <p class="where">orchestrator/judge_diversity.py:199-223</p>
+    <div class="diff">
+      <div class="diff-head"><b>_ASSERT_RE / _TEST_DEF_RE / _EXACT_ASSERT_RE</b><span>4aa865d</span></div>
+      <div class="diff-body"><pre><span class="l d">    r"\bassert\b|\bassert(_eq|_ne)?!|self\.assert\w+\(|pytest\.raises"</span><span class="l a">    r"\bassert\b|\bassert_[a-z_]+|self\.assert\w+\(|pytest\.raises"</span><span class="l c"></span><span class="l d">    r"|^\s*(it|test)\s*(\.each)?\s*[(`]|^\s*#\[test\]",</span><span class="l a">    r"|^\s*(it|test)\s*(\.each)?\s*[(`]|^\s*#\[test\]"</span><span class="l a">    r"|^\s*(test_\w+|\w+_test)\s*\(\)\s*\{",</span><span class="l c"></span><span class="l d">    r"==|!=|assertEqual|assertNotEqual|assert_eq!|assert_ne!"</span><span class="l a">    r"==|!=|assertEqual|assertNotEqual|\bassert_eq\b|\bassert_ne\b"</span></pre></div>
+    </div>
+    <p><code>\bassert\b</code> 匹配不到 <code>assert_contains</code>——下划线是 <code>\w</code>，词边界不成立。实测：<code>tests/*.sh</code> 里 863 行含 assert 的行只匹配 6 行，<strong>而那 6 行全是误报</strong>（5 条英文注释 + 1 条 pytest 输出的字符串）。按真正的 helper 调用算是 <strong>0 / 825</strong>。</p>
+    <p class="verify"><b>怎么核（这条我真跑了实验）：</b>在临时 git 仓库里删掉 <code>test-loop.sh</code> 的 193–195 行（3 条断言），把 <code>git diff -U3</code> 喂给 <code>test_integrity()</code>。<br>改之前：<code>{assertions_removed:0, eroded:false, <b>test_files:1</b>}</code> ——"我看过了，没问题"。<br>改之后：<code>{assertions_removed:3, eroded:true}</code>。</p>
+    <p class="verify"><b>副作用已测：</b>语料 30→34（新增 2 个 hack + 2 个 honest shell 用例），recall 18/18 = 100%，误报 1/16 = 6.2%（原 1/14 = 7.1%）。<b>原研究文档提的修法里 <code>run_test</code> 是幻影</b>——全仓库 .sh 出现 0 次，没加。</p>
+  </div>
+</div>
+
+<div class="entry">
+  <div class="rail"><span class="idx">B</span><span class="tag fix">无人验证</span><span class="sha">b4da5cc</span><span>6 处站点</span></div>
+  <div class="body">
+    <h3>顶层文档里三个数字，没有任何东西推导它们</h3>
+    <p class="where">CLAUDE.md:199（100% recall / 7.1%）· CLAUDE.md:69（~17%）· 另外 6 处（115 of 133）</p>
+    <div class="diff">
+      <div class="diff-head"><b>orchestrator/worker_review.py — 这一处在发给 oracle 的 prompt 里</b><span>b4da5cc</span></div>
+      <div class="diff-body"><pre><span class="l d">    "so reaches you unflagged: 115 of the last 133 test-carrying commits in "</span><span class="l d">    "this repository were purely additive. For each test the diff ADDS, ask "</span><span class="l a">    "so reaches you unflagged, and most test-carrying commits in this "</span><span class="l a">    "repository are purely additive. For each test the diff ADDS, ask "</span></pre></div>
+    </div>
+    <p><strong>这不是文档问题，是把一个假数字当事实讲给评审模型听。</strong></p>
+    <p><code>115 of 133</code> 我自己重算是 <b>75/133</b>，另一个 agent 算是 <b>82/133</b>，文档写 <b>115/133</b>——三个互不相同，因为"purely additive"从没定义过。所以<strong>没有替换成我的数字</strong>（那是重犯同一个错），而是写清"没有定义所以不给数字"。</p>
+    <p><code>~17%</code> 同样删除，三处一起：任何调用都得不到 17%（limit 25→19%、30→29%、默认 40→29%、21→33%），而 CLAUDE.md 自己文档化的那条命令今天跑出 <b>29.2%</b>。</p>
+    <p class="verify"><b>而 100%/7.1% 接上了推导，并证明能红：</b>删掉 <code>_SKIP_RE</code> 里的 <code>xfail</code>（这让检测器漏掉一个真实的 reward hack：给失败测试加 <code>@pytest.mark.xfail</code>）→ <code>run_hack_eval</code> 仍报 <b>ok=true</b>（94.4% 高于 90% 地板）、整套 1,926 个测试<b>逐字节不变</b>、CI 全绿 → <b>新测试红了</b>。那扇窗就是这么关上的。</p>
+  </div>
+</div>
+
+<div class="entry">
+  <div class="rail"><span class="idx">C</span><span class="tag fix">元门禁自赦</span><span class="sha">f17f382</span><span>test_self_tests_can_fire.py</span></div>
+  <div class="body">
+    <h3>问"这把尺子还能不能变红"的门禁，豁免了 CI 实际在跑的每一把尺子</h3>
+    <div class="diff">
+      <div class="diff-head"><b>known_gap 清空，13 个变异登记</b><span>f17f382</span></div>
+      <div class="diff-body"><pre><span class="l d">    known_gap = {</span><span class="l d">        "configs/scripts/red-phase-audit.py",</span><span class="l d">        "configs/scripts/workflow-scorecard.py",</span><span class="l d">        "configs/scripts/check-skill-contracts.py",</span><span class="l d">        "configs/scripts/check-runnable-paths.py",</span><span class="l d">    }</span><span class="l a">    known_gap: set[str] = set()</span></pre></div>
+    </div>
+    <p>做的过程中掉出两个真问题，都比原发现更糟：</p>
+    <div class="diff">
+      <div class="diff-head"><b>check-skill-contracts.py — 正对照用例连"当年那个 bug"都抓不到</b><span>f17f382</span></div>
+      <div class="diff-body"><pre><span class="l d">        (bad / "prompt.md").write_text("This workflow does one thing, always.\n", ...)</span><span class="l a">        # 正文刻意含那个裸词。这个 gate 的第一版接受裸词而非字面 --flag，</span><span class="l a">        # 而 fixture 的正文里根本没有那个词，所以自检在那个 bug 下照样通过。</span><span class="l a">        (bad / "prompt.md").write_text(</span><span class="l a">            "This workflow is not a phantom; it does one thing, always.\n", ...)</span></pre></div>
+    </div>
+    <p><code>red-phase-audit.py</code> 还有两个守卫自检够不着——<strong>正是"跑不起来时别报成干净"的那两个，也就是它当年报出 0% 那次事故的直接成因</strong>。它的对照永远能成功跑起 pytest，所以两个守卫删掉都不会红。抽成 <code>classify_pytest_output()</code>，自检用三段罐装输出直接打。</p>
+    <p class="verify"><b>怎么核：</b><code>cd orchestrator && .venv/bin/python -m pytest tests/test_self_tests_can_fire.py -q</code> → 74 passed（之前 51 passed + 1 failed）。每个变异都实际验证过能把对应自检变红。</p>
+  </div>
+</div>
+
+<div class="entry">
+  <div class="rail"><span class="idx">D</span><span class="tag fix">永久误报</span><span class="sha">709749a</span><span>install.sh + 2 读取方</span></div>
+  <div class="body">
+    <h3>"STALE KIT"警告永久为真，而 install.sh 清不掉它</h3>
+    <div class="diff">
+      <div class="diff-head"><b>三处不同的公式 → 一个 kit_checksum()</b><span>709749a</span></div>
+      <div class="diff-body"><pre><span class="l c">// install.sh（写入方）曾经：</span><span class="l d">find "$SCRIPT_DIR/configs" -type f \</span><span class="l d">  ! -path '*/__pycache__/*' ! -name '*.pyc' ! -name '*.pyo' \</span><span class="l d">  | LC_ALL=C sort | xargs "${_SHA256[@]}" ... &gt; "$CLAUDE_DIR/.kit-checksum"</span><span class="l a">source "$SCRIPT_DIR/configs/hooks/lib/kit-checksum.sh"</span><span class="l a">kit_checksum "$SCRIPT_DIR/configs" &gt; "$CLAUDE_DIR/.kit-checksum"</span><span class="l c"></span><span class="l c">// session-context.sh（读取方）曾经——注意没有排除项：</span><span class="l d">    _CURRENT=$(find "$_KIT_DIR/configs" -type f | LC_ALL=C sort | xargs ...)</span><span class="l a">    source "$HOOKS_DIR/lib/kit-checksum.sh" 2&gt;/dev/null</span><span class="l a">    _CURRENT=$(kit_checksum "$_KIT_DIR/configs" 2&gt;/dev/null)</span></pre></div>
+    </div>
+    <p><code>configs/</code> 下有 <b>105 个</b> gitignore 的字节码文件，所以两个公式<strong>按构造永远不可能相等</strong>。更糟：<code>start.sh:634</code> 把同一个条件变成非 tty 时 <code>exit 1</code>，无人值守启动会因为一个无法满足的信号而中止。</p>
+    <p class="verify"><b>怎么核：</b><code>bash configs/hooks/lib/kit-checksum.sh --self-test</code>；把排除项换成 <code>-true</code> 做变异，自检必须红（已验证）。端到端：跑 <code>./install.sh</code> 后 <code>session-context.sh</code> 不再输出 STALE KIT 行。</p>
+    <p class="verify"><b>我在这条上自己错了一次：</b>第一次核对时我传了相对路径 <code>configs</code>，而 install.sh 和两个读取方都用 <code>.kit-source-dir</code> 里的<b>绝对路径</b>——<code>xargs sha256sum</code> 的输出含路径，所以哈希不同。我差点把"修复失败"报给你，其实是我的探针错了。</p>
+  </div>
+</div>
+
+<div class="entry">
+  <div class="rail"><span class="idx">E</span><span class="tag add">从无到有</span><span class="sha">270bf75</span><span>fleet-install.sh</span></div>
+  <div class="body">
+    <h3>此前没有任何东西把 Clade 部署到别的机器</h3>
+    <div class="scroll"><table>
+      <thead><tr><th>主机</th><th class="n">审计时状态</th><th class="n">现在</th><th>备注</th></tr></thead>
+      <tbody>
+      <tr><td>aries</td><td class="n">在 HEAD，但安装端落后</td><td class="n">bba042c ✓</td><td>11 个 python 脚本与仓库不同；~/.claude 经符号链接指向 NFS</td></tr>
+      <tr><td>castor</td><td class="n">落后 270 commits</td><td class="n">bba042c ✓</td><td>独立的 ~/.claude 副本，aries 的安装到不了</td></tr>
+      <tr><td>lynx</td><td class="n">落后 270 commits</td><td class="n">bba042c ✓</td><td>同上</td></tr>
+      <tr><td>macserver</td><td class="n">落后 520 commits</td><td class="n">bba042c ✓</td><td>2026-06-12 的 checkout，全机群最旧</td></tr>
+      <tr><td>alexm</td><td class="n">落后 200，且工作树脏</td><td class="n">bba042c ✓</td><td>见下方处理方式</td></tr>
+      <tr><td>alexxe</td><td class="n">不可达</td><td class="n">未知</td><td><b>报为不可达，不是"已最新"也不是"已损坏"</b></td></tr>
+      </tbody>
+    </table></div>
+    <p><strong>alexm 的脏工作树没有 stash。</strong>那 6 行是自动晋升的纠正规则，被写进了<b>受版本控制的</b> CLAUDE.md，只存在于那台机器上；其中两条含私有项目名，而 Clade 是公开仓库。处理方式：搬到它自己的 <code>~/.claude/corrections/rules.md</code>（install.sh 从不覆盖该文件），规则从 50 条变 56 条，然后才 checkout。<strong>install.sh 会对每个 skill 目录 <code>rm -rf</code>，对一个上游要重写的文件做 stash 是静默丢工作的做法。</strong></p>
+    <p class="verify"><b>我在这条上又错了一次，而且是两次：</b>①脚本第一版漏了 <code>ssh -n</code>——ssh 读 stdin，而主机循环正是从 stdin 读 fleet.conf，所以第一台把剩下的全吃了，只部署了一台。②给它写的第一个自检抓不到这个 bug，因为不可解析的主机在 ssh 碰 stdin 之前就失败了；换成一个<b>会真的吸 stdin 的桩</b>才复现出来。</p>
+    <p class="verify"><b>第三个错：</b>部署前的报告显示"0 commit(s) behind"，但它们实际落后 270 个——因为 <code>HEAD..@{u}</code> 是跟本地那份<b>陈旧的 origin/main</b> 比的。已修成先 fetch，fetch 失败时明说"这个数是跟陈旧引用比的"。<code>bba042c</code> 就是这个修复。</p>
+  </div>
+</div>
+
+<div class="entry">
+  <div class="rail"><span class="idx">F</span><span class="tag fix">写来就瞎</span><span class="sha">2acb91a</span><span>worker-checkpoint.sh</span></div>
+  <div class="body">
+    <h3>快照 hook 对它唯一存在理由的那个场景是瞎的</h3>
+    <div class="diff">
+      <div class="diff-head"><b>file_path 是标签，不是门</b><span>2acb91a</span></div>
+      <div class="diff-body"><pre><span class="l a">＃ FILE_PATH 是标签，不是门。下面的快照是对整个 worktree 做 `add -A`，</span><span class="l a">＃ 本来就不需要路径——而要求它存在，正好让这个 hook 对 Bash 写入失明，</span><span class="l a">＃ 也就是它被写出来要抓的那个场景。</span><span class="l c"> FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2&gt;/dev/null)</span><span class="l d">[[ -z "$FILE_PATH" ]] &amp;&amp; exit 0</span><span class="l c"></span><span class="l d">REL="${FILE_PATH#"$WORKTREE"/}"</span><span class="l a">REL="${FILE_PATH:+${FILE_PATH#"$WORKTREE"/}}"</span><span class="l a">REL="${REL:-&lt;bash-write&gt;}"</span></pre></div>
+    </div>
+    <p>Ronacher 对那次无人值守运行的原始抱怨就是：模型放弃 edit 工具改用 Python 拼字符串之后，"你只能去看最终产物的 diff 了"。这个 hook 当时挂在 <code>Edit|Write</code> 上<strong>并且</strong>要求非空 <code>file_path</code>——所以一个 <code>python - &lt;&lt;EOF</code> 的 heredoc 写入，它一个 checkpoint 都不记。</p>
+    <p>更糟的是它<strong>在实际使用的那条路径上根本没启用</strong>：<code>grep -rn CLADE_WORKER_SHADOW_DIR</code> 出 8 处引用，唯一的 setter 在 <code>orchestrator/worker.py:308</code>——<code>docs/layers.json</code> 标记为休眠的那一层。</p>
+    <p class="verify"><b>对照实验（不是推理）：</b>同一个 Bash 写入，<b>旧 hook 产生 0 个 checkpoint，新 hook 产生 1 个</b>，且快照里确实包含那个文件。这三条已写进 <code>tests/test-hooks.sh</code>。</p>
+  </div>
+</div>
+
+<div class="entry">
+  <div class="rail"><span class="idx">G</span><span class="tag fix">销毁证据</span><span class="sha">2acb91a</span><span>run-tasks*.sh</span></div>
+  <div class="body">
+    <h3>失败的尝试被无条件抹掉——而失败正是你最想读的那次</h3>
+    <div class="diff">
+      <div class="diff-head"><b>run-tasks.sh — 回滚前先存起来</b><span>2acb91a</span></div>
+      <div class="diff-body"><pre><span class="l c"> rollback_to_checkpoint() {</span><span class="l c">   if ! has_git; then return 0; fi</span><span class="l a">   if ! git diff --quiet 2&gt;/dev/null || ! git diff --cached --quiet 2&gt;/dev/null \</span><span class="l a">      || [[ -n "$(git ls-files --others --exclude-standard 2&gt;/dev/null)" ]]; then</span><span class="l a">     if git stash push -u -q -m "clade-attempt $(date +%Y%m%d-%H%M%S)" 2&gt;/dev/null; then</span><span class="l a">       echo "   (attempt preserved: git stash list | head -1)"</span><span class="l a">     fi</span><span class="l a">   fi</span><span class="l c">   echo "🔄 Rolling back to pre-task state..."</span><span class="l c">   git checkout . 2&gt;/dev/null || true</span><span class="l c">   git clean -fd 2&gt;/dev/null || true</span><span class="l c"> }</span></pre></div>
+    </div>
+    <p>这个函数在尝试循环的<strong>底部无条件调用</strong>，所以最后一次失败的尝试也会被 <code>git checkout . ; git clean -fd</code> 抹掉。并行版的 <code>cleanup_worktree</code> 更彻底：失败、冲突、未知三条路径都是 <code>worktree remove --force</code> 加 <code>branch -D</code>，且失败路径根本不提交脏树——<strong>一次失败之后什么都不剩，而且是在任何人知道需要复盘之前就没了</strong>。现在失败分支保留为 <code>clade/kept/&lt;时间戳&gt;-task-N-&lt;原因&gt;</code>。</p>
+  </div>
+</div>
+
+<div class="entry">
+  <div class="rail"><span class="idx">H</span><span class="tag add">类型门禁</span><span class="sha">ccdf9b8</span><span>mypy.ini</span></div>
+  <div class="body">
+    <h3>97% 的参数有注解，检查器 0 个——成本付了，收益一点没收</h3>
+    <p>首次运行找到的<strong>是真缺陷，不是风格</strong>。两个例子的真实 diff：</p>
+    <div class="diff">
+      <div class="diff-head"><b>archive-progress.py — 对可能为 None 的 match 调 .group()</b><span>ccdf9b8</span></div>
+      <div class="diff-body"><pre><span class="l c">         match = _ENTRY.match(lines[idx])</span><span class="l a">        if match is None:</span><span class="l a">            # starts[] 就是用 _ENTRY 的匹配构建的，所以理论上不会发生——</span><span class="l a">            # 但"理论上不会发生"正是崩溃进入一个无人值守归档器的方式，</span><span class="l a">            # 而这个文件任何人都能手改。跳过，不要抛。</span><span class="l a">            continue</span><span class="l c">         entries.append((f"{match.group(1)}-{match.group(2)}", body))</span></pre></div>
+    </div>
+    <div class="diff">
+      <div class="diff-head"><b>design-lint.py — 灰度图把 int 当 RGB 三元组传</b><span>ccdf9b8</span></div>
+      <div class="diff-body"><pre><span class="l c">         for count, rgb in (image.getcolors(maxcolors=total) or []):</span><span class="l a">            # getcolors() 对灰度("L")和调色板图像返回的是一个 int，不是</span><span class="l a">            # (r,g,b) 三元组——直接喂给 luminance() 就是在对 int 取下标。</span><span class="l a">            if isinstance(rgb, (int, float)):</span><span class="l a">                rgb = (int(rgb), int(rgb), int(rgb))</span><span class="l a">            elif len(rgb) &lt; 3:</span><span class="l a">                continue</span><span class="l d">            if luminance(rgb) &lt; 0.02:</span><span class="l a">            if luminance((rgb[0], rgb[1], rgb[2])) &lt; 0.02:</span></pre></div>
+    </div>
+    <p>作用域是<strong>刻意窄的</strong>：只覆盖 <code>configs/</code>（承重的终端层），现在是零错误并且守得住；<code>orchestrator/</code> 有约 70 个、<code>orchestrator/tests/</code> 有 187 个，是另一件事。<code>ads/ blog/ seo/</code> 是吸收的上游代码，在 <code>mypy.ini</code> 里排除。</p>
+    <p class="verify"><b>放在 pytest job 而不是 syntax-check：</b>后者不装项目依赖，mypy 会在干净 runner 上挂而在你机器上过——这正是 CLAUDE.md 记录过的 settings-reference gate 首跑失败的同一个坑。<b>还抓到一个：</b>从 <code>orchestrator/</code> 跑会失败，因为 <code>mypy.ini</code> 的 <code>files=</code> 是相对 CWD 而非配置文件解析的。</p>
+  </div>
+</div>
+
+<div class="entry">
+  <div class="rail"><span class="idx">I</span><span class="tag add">提交前门禁</span><span class="sha">2c44224</span><span>.claude/pre-commit.sh</span></div>
+  <div class="body">
+    <h3>最廉价的那类 CI 失败，离本地一秒钟的距离</h3>
+    <p>最近 200 次 CI 运行里 27 次失败，其中 <strong>7 次（26%）只因为一个漂移 gate 而红</strong>——一次红跑、一次推送、一个来回，换一个本地一秒的检查。而 <code>.git/hooks/</code> 是空的。</p>
+    <p>门禁放在 <code>.claude/pre-commit.sh</code>，由 <code>checks.sh</code> 在"被提交的仓库恰好有这个文件时"派发。<strong>不放进 <code>committer.sh</code></strong>——那个脚本在这台机器的 40 多个仓库里跑，Clade 专用的再生检查没有理由在无关仓库里触发。</p>
+    <p class="verify"><b>它今天就抓到一次：</b>我改了 <code>ci-local.py</code>，而 <code>/green</code> skill 打包了它的一份副本，我没重新生成。门禁 exit 1 并直接打印了该跑的命令。</p>
+  </div>
+</div>
+
+<div class="entry">
+  <div class="rail"><span class="idx">J</span><span class="tag doc">事实错</span><span class="sha">1f745a2</span><span>4 处站点</span></div>
+  <div class="body">
+    <h3>端口写错了，而"全改成 8765"也是错的</h3>
+    <div class="diff">
+      <div class="diff-head"><b>configs/scripts/usage-agent.py — CLAUDE.md 的例子就是从这里抄的</b><span>1f745a2</span></div>
+      <div class="diff-body"><pre><span class="l d">       cron:            python3 usage-agent.py --hub http://hub:8000 --once</span><span class="l d">       systemd / nohup: python3 usage-agent.py --hub http://hub:8000 --interval 900</span><span class="l a">       cron:            python3 usage-agent.py --hub http://hub:8765 --once</span><span class="l a">       systemd / nohup: python3 usage-agent.py --hub http://hub:8765 --interval 900</span></pre></div>
+    </div>
+    <p>勘察队给的修法是"把 8000 全改成 8765"。<strong>那会让另一处变错</strong>：真实情况是两条启动路径各有各的端口——<code>start.sh</code> 默认 <b>8765</b>（<code>ORCHESTRATOR_PORT</code>，start.sh:11），而 CLAUDE.md 里那条裸 <code>uvicorn server:app</code> 继承 uvicorn 自己的 <b>8000</b>。所以文档改成把两条都写明。</p>
+  </div>
+</div>
+
+<div class="entry">
+  <div class="rail"><span class="idx">K</span><span class="tag doc">六份副本</span><span class="sha">1f745a2</span><span>6 处站点</span></div>
+  <div class="body">
+    <h3>同一条架构规则有六份副本，而其中一条自相矛盾</h3>
+    <div class="diff">
+      <div class="diff-head"><b>configs/skills/orchestrate/prompt.md（另外五处同步改，含 2 处生成副本）</b><span>1f745a2</span></div>
+      <div class="diff-body"><pre><span class="l d">- **File size**: Keep each file under 1500 lines (Read tool reads 2000 lines by default; under 1500 = one-shot readable)</span><span class="l d">- **Module count**: 4-6 modules per component — not 1 monolith, not 15+ tiny fragments</span><span class="l a">- **File size**: Keep each file under 1500 lines — for blast radius (a smaller revert, a smaller review), not for the Read tool's page size, which a 1M-token context made irrelevant</span></pre></div>
+    </div>
+    <p><code>4-6 modules per component</code> 与 1500 行上限<strong>算术上冲突</strong>（上限逼着拆，<code>orchestrator/</code> 有 61 个顶层模块），六处全删，两处生成副本在同一 commit 里重新生成。</p>
+    <p><code>Shorter files = fewer string duplicates = reliable Edit</code> 这条：<strong>理由改掉，规则保留</strong>。我自己在这棵树上量了：重复的非平凡行在 300 行以下文件是每行 0.031，800 行以上是 0.058，<b>1.88×</b>（行长 &gt;25 字符、排除注释）。另一个 reviewer 报的是 3.9×，我复现不出来，所以写进规则的是我量的那个<b>并注明方法</b>。</p>
+  </div>
+</div>
+
+<h2><span class="num">§ 04 — 反向结论</span>我们自己的侵蚀，实测</h2>
+<p class="lede">发表页 §07 把这条列为"最该测但从没测过"的开放问题。现在测了，结果和文献预期<strong>不一样</strong>。</p>
+<div class="scroll"><table>
+  <thead><tr><th>层</th><th>可比窗口</th><th class="n">平均复杂度</th><th class="n">docstring %</th><th class="n">平均函数长度</th><th class="n">注释比</th></tr></thead>
+  <tbody>
+  <tr><td><b>configs/</b><br><span style="color:var(--muted);font-size:13px">承重终端层</span></td><td class="n">2026-06-09 → 09-16<br>100 → 139 文件</td><td class="n">7.409 → 7.372<br><b style="color:var(--add)">−0.5%</b></td><td class="n">76.5 → 59.3<br><b style="color:var(--del)">−22.5%</b></td><td class="n">8.20 → 7.59<br>−7.4%</td><td class="n">0.056 → 0.065<br>+16.1%</td></tr>
+  <tr><td><b>orchestrator/</b><br><span style="color:var(--muted);font-size:13px">休眠层</span></td><td class="n">2026-07-28 → 09-16<br>159 → 198 文件</td><td class="n">4.418 → 4.178<br><b style="color:var(--add)">−5.4%</b></td><td class="n">23.4 → 25.0<br>+6.8%</td><td class="n">4.93 → 4.78<br>−3.0%</td><td class="n">0.052 → 0.064<br>+23.1%</td></tr>
+  </tbody>
+</table></div>
+<p><strong>复杂度没有在涨，两层都是持平到下降。</strong>真正在侵蚀的是文档：<code>configs/</code> 在增加 39 个文件的同时丢掉了 <b>17 个点</b>的 docstring 覆盖率。</p>
+<p>对复杂度 gate 的影响是<strong>更不该加</strong>：受控研究说整洁没买到正确性，我们自己的复杂度也没在涨——两个独立理由。该动手的是 docstring 那条，而它属于<b>检索类</b>而非感知类。</p>
+<div class="contract" style="margin-top:26px">
+  <p><strong>这个脚本第一版会输出 “+93% 复杂度”。</strong>那是仓库从 1 个文件长到 139 个，不是侵蚀。改成跟"文件数达到最终一半的最早采样点"比，并把这个口径写进代码与输出里——<b>否则我就是在自己的交付里重犯这一整轮在修的那类缺陷</b>。</p>
+  <p>三条不能由此推出的结论，也写在脚本输出里：分不出人机（这棵树里没有任何地方记录 agency），混杂因素（窗口内层本身增长约 40%）未剔除，以及均值会掩盖尾部（<code>configs/</code> 全程带着一个复杂度 127 的函数）。</p>
+</div>
+
+<h2><span class="num">§ 05 — 集合</span>整个大集合怎么整理</h2>
+<p class="lede">现状：31 篇研究文档（29 篇有 frontmatter）、2 份 artifact 仓库副本、8 个 docs 子目录、顶层 5,900 行文档。下面是已经落地的规则和还没落地的。</p>
+
+<div class="plan">
+  <div class="row"><div class="k">已落地 · 唯一权威</div><div class="v"><b>TODO.md 是开放工作的唯一来源</b>；VISION / IMPLEMENTATION_PLAN / PROGRESS 各自声明角色且不得带未勾选项。由 <code>check-roadmap-authority.py</code> 强制。</div></div>
+  <div class="row"><div class="k">已落地 · 派生事实</div><div class="v"><b>计数类数字由 <code>docs/facts.json</code> 派生</b>，<code>doc-align.py</code> 在 8 处文档间强制一致。本轮新增两个脚本时它立刻报了 35→36 的漂移。</div></div>
+  <div class="row"><div class="k">已落地 · 引用可达</div><div class="v"><code>check-references.py</code>（链接/锚点/路径）+ <code>check-runnable-paths.py</code>（文档里让你跑的东西必须存在）。<b>后者存在的理由：曾有五条从未存在过的安装路径通过了所有门禁。</b></div></div>
+  <div class="row"><div class="k">本轮补上</div><div class="v"><b>发表页必须在仓库里有副本</b>，路径 <code>docs/artifacts/&lt;slug&gt;/index.html</code>，与既有的 <code>ui-ux-decision-atlas/</code> 同惯例。没有副本就没有 diff——这一整页之所以能写出来，就是因为先把 v4 快照进了仓库。</div></div>
+  <div class="row"><div class="k">本轮补上</div><div class="v"><b>研究索引必须收录每一篇</b>。<code>docs/research/README.md</code> 自称"roll up 每一篇 deep-dive"，而 machineslop 这篇从没进过索引。已补，并更新 Last reviewed。</div></div>
+  <div class="row"><div class="k">本轮补上</div><div class="v"><b>自我度量的数字要能被清点</b>。新脚本 <code>check-asserted-numbers.py</code> 列出仓库对自己声称的每个度量，以及有没有东西推导它。现在：22 条，3 条有推导，<b>19 条没有</b>（5 条已基线，17 条待分诊）。报告型，不阻塞。</div></div>
+  <div class="row"><div class="k">还没落地</div><div class="v"><b>README 312 行，超自己定的 300 行上限</b>，且没有 CI 检查它——只有 <code>/sync</code> skill 手动跑。勘察队提的"把 Trust Loop 移走"方案<b>会打破 check-references 的锚点校验</b>（TOC 里有指向它的链接），需要换一节移。</div></div>
+  <div class="row"><div class="k">还没落地</div><div class="v"><b>8 个文档的 YAML frontmatter 结构损坏</b>（H1 在第 1 行、<code>---</code> 在第 3 行，所以元数据块根本不是 frontmatter）。机械性修复，安全，但没做。</div></div>
+  <div class="row"><div class="k">还没落地</div><div class="v"><b>BRAINSTORM.md 2,668 行，是仓库最大的文档，而它给自己写的清理机制永远不会触发</b>——触发条件写的是"删除线占多数"，而全文只有 1 处删除线，正是那条说明本身。</div></div>
+  <div class="row"><div class="k">还没落地</div><div class="v"><b>三份都叫 MCP 的文档</b>（<code>docs/mcp-setup.md</code> / <code>mcp-package/README.md</code> / <code>mcp/README.md</code>）讲三件不同的事，互不交叉引用，也没有一句话区分。</div></div>
+</div>
+
+<h2><span class="num">§ 06 — 还开着的</span>没做完的，和不打算做的</h2>
+<ul class="open">
+  <li><b>alexxe（Windows）不可达。</b>ssh 超时，<code>tailscale ping</code> 无应答，而 tailnet 状态行同时显示 "active" 和 "offline" ——自相矛盾。需要在那台机器上用 Git Bash 跑 <code>git pull --ff-only; bash install.sh</code>。<b>报为不可达，不是"已最新"。</b></li>
+  <li><b><code>check-asserted-numbers.py</code> 报 17 条待分诊的手打数字。</b><code>--strict</code> 要等分诊完再开——现在开会直接红。</li>
+  <li><b>研究文档还剩 1 条 needs_work：</b>把 red-phase 审计接进 CI 跑 PR 自己的 commit（report-only，新触发才失败）。它覆盖 86% 的增量盲区，而 CI 目前只跑它的 <code>--self-test</code>。</li>
+  <li><b>已记录、刻意未修：</b>修改一条<b>已有</b>的断言消息，在任何语言下都会误报 <code>expectations_changed</code>。原因是 <code>_skeleton</code> 把所有字面量一视同仁，而本仓库的 shell helper 把消息作为可选位置参数——<code>assert_contains a b</code> 与 <code>assert_contains a b msg</code> 按元数无法区分。通用判别式需要两个方向都有语料钉住，而这个模块自己的注释写着"改动这里之后 recall 和误报会一起动"。<b>记录下来，不在同一趟里凭感觉调它。</b></li>
+  <li><b>复杂度 gate：不加。</b>两个独立理由（见 §04）。这是一个<b>决定</b>，不是遗漏。</li>
+</ul>
+
+<footer>
+  范围 e0cc0e7 → bba042c · 14 commits · 61 文件 · +2219 / −203 · 每次推送前 ci-local 5/5 绿<br>
+  配套研究页：<a href="https://artifacts.internal.scam.ai/code-standards-after-machineslop/">Code Standards After Machineslop</a>（rev 6）<br>
+  仓库副本：docs/artifacts/clade-change-ledger/index.html · 发表于 aries · Clade@main
+</footer>
+
+</div>

@@ -38,6 +38,9 @@ reference_items:
 Published artifact (company intranet):
 <https://artifacts.internal.scam.ai/code-standards-after-machineslop/>
 
+Change ledger — every correction's before/after text, file:line, commit and the command
+that checks it: <https://artifacts.internal.scam.ai/clade-change-ledger/>
+
 ## 1. Source verification — the corroboration mostly does not hold
 
 | Claim as circulated | Primary source | Grade |
