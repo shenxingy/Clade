@@ -1,0 +1,13 @@
+# ~/.claude/fleet.conf — the machines `fleet-install.sh` deploys to.
+#
+# One "host path" per line. `host` is anything your ssh config resolves
+# (a tailnet name, an ssh alias, user@ip); `path` is that machine's Clade
+# checkout, which is frequently NOT the same path as here — case differs
+# across filesystems and home directories differ across platforms.
+#
+# This file is deliberately outside the repository: hostnames and home
+# directory paths are yours, and Clade is public.
+#
+# build-box     /home/you/projects/Clade
+# mac-mini      /Users/you/projects/clade
+# gpu-node      /home/you/src/Clade

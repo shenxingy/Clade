@@ -65,7 +65,7 @@
     },
     {
       "name": "scripts",
-      "value": 42,
+      "value": 43,
       "derive": {
         "type": "count_glob",
         "pattern": "configs/scripts/*.sh"

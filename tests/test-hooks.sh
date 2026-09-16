@@ -1112,6 +1112,31 @@ else
        "only $KC_SITES of 3 call kit_checksum"
 fi
 
+# ─── fleet-install: every host must be visited ───────────────────────
+#
+# ssh reads stdin and the host loop reads the fleet file from stdin, so without
+# `ssh -n` the first host eats the rest of the file and hosts 2..n vanish with
+# no error — indistinguishable from a one-machine fleet. The first version of
+# its self-test could not catch this, because an unresolvable host fails before
+# ssh touches stdin; the control needs a stub that actually drains it.
+
+if bash "$REPO_ROOT/configs/scripts/fleet-install.sh" --self-test >/dev/null 2>&1; then
+  pass "fleet-install self-test passes"
+else
+  fail "fleet-install self-test passes" \
+       "$(bash "$REPO_ROOT/configs/scripts/fleet-install.sh" --self-test 2>&1 | head -3)"
+fi
+
+FI_MUT=$(mktemp)
+sed 's/^SSH_OPTS="-n /SSH_OPTS="/' "$REPO_ROOT/configs/scripts/fleet-install.sh" > "$FI_MUT"
+if bash "$FI_MUT" --self-test >/dev/null 2>&1; then
+  fail "dropping 'ssh -n' turns the fleet-install self-test red" \
+       "it stayed green — the stdin-drain control is not reproducing the bug"
+else
+  pass "dropping 'ssh -n' turns the fleet-install self-test red"
+fi
+rm -f "$FI_MUT"
+
 # ─── Summary ─────────────────────────────────────────────────────────
 
 echo ""

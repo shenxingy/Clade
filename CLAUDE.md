@@ -105,6 +105,16 @@ python3 configs/scripts/check-asserted-numbers.py --self-test
 # It cannot separate agent- from human-written code; agency is recorded nowhere.
 python3 configs/scripts/erosion-trend.py --samples 14 --path configs/
 
+# Bring every machine to HEAD and reinstall the kit. Nothing in this repository
+# deployed Clade anywhere but the box you were sitting on, and machines drifted
+# silently: on 2026-09-16 two Linux boxes were 270 commits behind, a Mac 520,
+# and one host advertised itself reachable on the tailnet while refusing every
+# connection. The host list is ~/.claude/fleet.conf — OUTSIDE the repo, because
+# hostnames and home paths are yours and this repo is public. A dirty worktree
+# is reported and SKIPPED, never stashed: install.sh rm -rf's each skill dir.
+bash configs/scripts/fleet-install.sh            # report, change nothing
+bash configs/scripts/fleet-install.sh --apply    # pull --ff-only + ./install.sh
+
 # 2b2. Ask every OTHER --self-test the same question. Removing one guard must
 #      turn that script's self-test red. Five self-tests written on 2026-09-12
 #      could not fail, including one where deleting an entire licence allowlist
