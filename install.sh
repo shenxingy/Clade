@@ -562,10 +562,8 @@ fi
 echo "Writing kit version markers..."
 echo "$SCRIPT_DIR" > "$CLAUDE_DIR/.kit-source-dir"
 # Combined checksum of all source configs — session-context.sh and start.sh compare against this
-find "$SCRIPT_DIR/configs" -type f \
-  ! -path '*/__pycache__/*' ! -name '*.pyc' ! -name '*.pyo' \
-  | LC_ALL=C sort | xargs "${_SHA256[@]}" 2>/dev/null \
-  | "${_SHA256[@]}" | cut -d' ' -f1 > "$CLAUDE_DIR/.kit-checksum"
+source "$SCRIPT_DIR/configs/hooks/lib/kit-checksum.sh"
+kit_checksum "$SCRIPT_DIR/configs" > "$CLAUDE_DIR/.kit-checksum"
 echo "  Written .kit-source-dir + .kit-checksum for stale-script detection"
 
 # ─── 11b. Report installed files this repo does not install ──────────

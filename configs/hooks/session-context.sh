@@ -393,7 +393,8 @@ KIT_CHECKSUM_FILE="$HOME/.claude/.kit-checksum"
 if [[ -f "$KIT_SOURCE_FILE" && -f "$KIT_CHECKSUM_FILE" ]]; then
   _KIT_DIR=$(cat "$KIT_SOURCE_FILE")
   if [[ -d "$_KIT_DIR/configs" ]]; then
-    _CURRENT=$(find "$_KIT_DIR/configs" -type f | LC_ALL=C sort | xargs "${_SHA256[@]}" 2>/dev/null | "${_SHA256[@]}" | cut -d' ' -f1)
+    source "$HOOKS_DIR/lib/kit-checksum.sh" 2>/dev/null
+    _CURRENT=$(kit_checksum "$_KIT_DIR/configs" 2>/dev/null)
     _INSTALLED=$(cat "$KIT_CHECKSUM_FILE")
     if [[ "$_CURRENT" != "$_INSTALLED" ]]; then
       CONTEXT="${CONTEXT}\n⚠ STALE KIT: configs/ changed since last install.sh — run: cd $_KIT_DIR && ./install.sh\n"

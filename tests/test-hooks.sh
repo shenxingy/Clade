@@ -1069,6 +1069,49 @@ else
 fi
 rm -rf "$VTC_DIR"
 
+# ─── kit-checksum: the staleness detector must be able to say "clean" ───
+#
+# It could not. install.sh excluded __pycache__/*.pyc/*.pyo when writing
+# .kit-checksum; session-context.sh and start.sh recomputed it with a bare
+# `find -type f`. Any tree that has run a Python script under configs/ carries
+# gitignored bytecode — 105 files on the author's box — so the two formulas
+# differed by construction and the STALE KIT banner was permanently true.
+# start.sh turned the same condition into `exit 1` on a non-tty run.
+
+if bash "$REPO_ROOT/configs/hooks/lib/kit-checksum.sh" --self-test >/dev/null 2>&1; then
+  pass "kit-checksum self-test passes on the real library"
+else
+  fail "kit-checksum self-test passes on the real library" \
+       "$(bash "$REPO_ROOT/configs/hooks/lib/kit-checksum.sh" --self-test 2>&1)"
+fi
+
+# And it must be ABLE to fail: drop the bytecode exclusion and the self-test
+# has to notice, or it is one more instrument that cannot go red.
+KC_MUT=$(mktemp)
+sed "s|! -path '\*/__pycache__/\*' ! -name '\*.pyc' ! -name '\*.pyo' |-true |" \
+    "$REPO_ROOT/configs/hooks/lib/kit-checksum.sh" > "$KC_MUT"
+if bash "$KC_MUT" --self-test >/dev/null 2>&1; then
+  fail "removing the bytecode exclusion turns the kit-checksum self-test red" \
+       "it stayed green — the self-test does not check the property it claims"
+else
+  pass "removing the bytecode exclusion turns the kit-checksum self-test red"
+fi
+rm -f "$KC_MUT"
+
+# All three call sites must go through the one function, or they drift again.
+KC_SITES=0
+for f in install.sh configs/hooks/session-context.sh configs/scripts/start.sh; do
+  if grep -q 'kit_checksum "' "$REPO_ROOT/$f"; then
+    KC_SITES=$((KC_SITES + 1))
+  fi
+done
+if [[ $KC_SITES -eq 3 ]]; then
+  pass "all three kit-checksum call sites use the shared function"
+else
+  fail "all three kit-checksum call sites use the shared function" \
+       "only $KC_SITES of 3 call kit_checksum"
+fi
+
 # ─── Summary ─────────────────────────────────────────────────────────
 
 echo ""

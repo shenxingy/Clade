@@ -621,7 +621,9 @@ _check_startup_health() {
     local _kit_dir _current _installed
     _kit_dir=$(cat "$_kit_source")
     if [[ -d "$_kit_dir/configs" ]]; then
-      _current=$(find "$_kit_dir/configs" -type f | LC_ALL=C sort | xargs "${_SHA256[@]}" 2>/dev/null | "${_SHA256[@]}" | cut -d' ' -f1)
+      source "$HOME/.claude/hooks/lib/kit-checksum.sh" 2>/dev/null \
+        || source "$_kit_dir/configs/hooks/lib/kit-checksum.sh" 2>/dev/null
+      _current=$(kit_checksum "$_kit_dir/configs" 2>/dev/null)
       _installed=$(cat "$_kit_checksum")
       if [[ "$_current" != "$_installed" ]]; then
         echo "⚠ Kit scripts are stale — configs/ changed since last install.sh"
