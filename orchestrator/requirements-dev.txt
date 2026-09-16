@@ -24,3 +24,11 @@ ruff==0.15.4
 # Both wheels are abi3 manylinux — no compiler needed on the runner.
 tree-sitter==0.25.2
 tree-sitter-go==0.25.0
+# Type checker over annotations this repository already wrote. It was measured at
+# 97.3% parameter coverage in orchestrator core and 87.9% in configs/ with ZERO
+# checkers anywhere — the cost of the annotations paid, none of the benefit
+# collected. Scoped to configs/ (the load-bearing terminal layer) because that
+# scope is at zero errors and can be held there; orchestrator/ carries ~70 and is
+# a separate piece of work. Pinned so CI and local agree; the CI step greps this
+# file for the version the way the ruff step does.
+mypy==2.3.1

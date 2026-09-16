@@ -430,6 +430,22 @@ cd orchestrator && find . \( -name .venv -o -name node_modules -o -name __pycach
 #     in the same commit as its fix.
 ruff check --config orchestrator/ruff.toml .
 
+# 1c. Type gate over the load-bearing layer. Types were WRITTEN and never READ:
+#     97.3% of orchestrator core parameters and 87.9% of configs/ carried
+#     annotations with ZERO checkers anywhere, so the cost was paid and none of
+#     the benefit collected. Runs in the `pytest` job, not `syntax-check`,
+#     because `pip install -r requirements-dev.txt` already runs there — one pin
+#     line governs local and CI with no second grep-install block to drift. Runs
+#     from the REPOSITORY ROOT: mypy.ini's `files =` resolves against the working
+#     directory, so `cd orchestrator` first checks nothing and exits non-zero.
+#     Scope is configs/ only and it sits at ZERO — orchestrator/ carries ~70 and
+#     orchestrator/tests/ 187, which is separate work; ads/, blog/ and seo/ are
+#     absorbed upstream code and are excluded in mypy.ini. Its first run found
+#     three real defects, not style: a `.group()` on a possibly-None match in an
+#     unattended archiver, an int passed where an (r,g,b) tuple was expected on
+#     greyscale images, and a str shadowing a list[str].
+python3 -m mypy --config-file mypy.ini
+
 # 2. Tests, plus the two offline evals the same `pytest` job runs
 cd orchestrator && .venv/bin/python -m pytest tests/ -v
 cd orchestrator && .venv/bin/python evals/run_provider_conformance.py

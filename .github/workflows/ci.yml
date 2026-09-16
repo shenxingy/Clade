@@ -246,6 +246,24 @@ jobs:
           cd orchestrator
           pip install -r requirements-dev.txt
 
+      # Types were written and never read: 97.3% of orchestrator core parameters
+      # and 87.9% of configs/ carried annotations with ZERO checkers anywhere, so
+      # the cost was paid and none of the benefit collected. This step lives in
+      # the pytest job, NOT syntax-check, because `pip install -r
+      # requirements-dev.txt` already runs here — one pin line governs local and
+      # CI, with no second grep-install block to drift. Scope is configs/ only
+      # (see mypy.ini): that scope is at zero and can be held there, while
+      # orchestrator/ carries ~70 errors and is separate work. Its first run
+      # found three real defects, not style: a `.group()` on a possibly-None
+      # match in an unattended archiver, an int passed where an (r,g,b) tuple was
+      # expected for greyscale images, and a str shadowing a list[str].
+      # Runs from the REPOSITORY ROOT, not from orchestrator/. mypy.ini's
+      # `files = configs/scripts` is resolved against the working directory, not
+      # against the config file, so a `cd orchestrator` first makes it check
+      # nothing and exit non-zero — caught here before it shipped.
+      - name: Type gate over the load-bearing layer (mypy)
+        run: python -m mypy --config-file mypy.ini
+
       - name: Run tests
         run: |
           cd orchestrator

@@ -122,7 +122,7 @@ def load_skill(skill_md: Path) -> dict | None:
 
 def iter_skills(skills_dir: Path) -> list[dict]:
     """All parsed skills under skills_dir/*/SKILL.md, sorted by directory."""
-    skills = []
+    skills: list[dict] = []
     if not skills_dir.is_dir():
         return skills
     for skill_path in sorted(skills_dir.iterdir()):

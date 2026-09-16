@@ -246,7 +246,7 @@ def classify_flat_item(path: Path, kind: str, upstream_hashes: dict[str, dict[st
 
 def classify_agents(agents_dir: Path, upstream_hashes: dict[str, dict[str, str]]) -> list[dict]:
     """Agents are single .md files, not dirs."""
-    results = []
+    results: list[dict] = []
     if not agents_dir.is_dir():
         return results
     for f in sorted(agents_dir.glob("*.md")):
@@ -260,7 +260,7 @@ def classify_scripts(scripts_dir: Path, upstream_hashes: dict[str, dict[str, str
     Subdirectories (e.g. a scripts/ads/ bundle) are not descended into — this
     is a top-level inventory pass, not a recursive one.
     """
-    results = []
+    results: list[dict] = []
     if not scripts_dir.is_dir():
         return results
     for f in sorted(scripts_dir.iterdir()):
@@ -272,7 +272,7 @@ def classify_scripts(scripts_dir: Path, upstream_hashes: dict[str, dict[str, str
 def classify_hooks(hooks_dir: Path, upstream_hashes: dict[str, dict[str, str]]) -> list[dict]:
     """Hooks are flat files directly under hooks_dir (hooks/lib/ helpers are
     not themselves hooks and are not descended into)."""
-    results = []
+    results: list[dict] = []
     if not hooks_dir.is_dir():
         return results
     for f in sorted(hooks_dir.iterdir()):
@@ -385,11 +385,11 @@ def main() -> int:
     if wildcard_agents or broad_agents:
         print()
         if wildcard_agents:
-            names = ", ".join(a["name"] for a in wildcard_agents)
-            print(f"  {len(wildcard_agents)} agent(s) declare a WILDCARD tool grant — requires explicit human consent: {names}")
+            wildcard_names = ", ".join(a["name"] for a in wildcard_agents)
+            print(f"  {len(wildcard_agents)} agent(s) declare a WILDCARD tool grant — requires explicit human consent: {wildcard_names}")
         if broad_agents:
-            names = ", ".join(a["name"] for a in broad_agents)
-            print(f"  {len(broad_agents)} agent(s) declare an unusually broad tool allowlist — review before adopting: {names}")
+            broad_names = ", ".join(a["name"] for a in broad_agents)
+            print(f"  {len(broad_agents)} agent(s) declare an unusually broad tool allowlist — review before adopting: {broad_names}")
 
     return 0
 

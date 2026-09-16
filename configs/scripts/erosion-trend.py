@@ -288,6 +288,8 @@ def self_test() -> int:
                  "        return 1\n"
                  "    return 0\n")
     m_nested, m_collapsed = measure_source(nested), measure_source(collapsed)
+    if m_nested is None or m_collapsed is None:
+        return _fail(["a BoolOp control failed to parse"])
     if m_nested["complexity_sum"] != m_collapsed["complexity_sum"]:
         failures.append(
             f"collapsing three nested ifs into one `and` chain moved complexity "
@@ -305,6 +307,8 @@ def self_test() -> int:
         "    )\n"
     )
     m_reflowed = measure_source(reflowed)
+    if m_reflowed is None:
+        return _fail(["the reformatting control failed to parse"])
     if m_reflowed["complexity_sum"] != m_simple["complexity_sum"]:
         failures.append(
             f"pure reformatting moved complexity "

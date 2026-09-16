@@ -59,6 +59,11 @@ def split_entries(text: str) -> tuple[str, list[tuple[str, str]]]:
         hi = block_start(n + 1) if n + 1 < len(starts) else len(lines)
         body = "".join(lines[lo:hi])
         match = _ENTRY.match(lines[idx])
+        if match is None:
+            # starts[] was built from _ENTRY matches, so this cannot happen —
+            # but "cannot happen" is how a crash gets into an archiver that runs
+            # unattended over a file anyone can hand-edit. Skip, do not raise.
+            continue
         entries.append((f"{match.group(1)}-{match.group(2)}", body))
     return header, entries
 

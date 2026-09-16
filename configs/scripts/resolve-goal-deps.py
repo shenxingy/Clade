@@ -73,7 +73,10 @@ def merge_frontmatter(parent: dict, child: dict) -> dict:
         elif isinstance(child_val, list) and isinstance(merged[key], list):
             # Concatenate lists, dedupe while preserving order
             seen = set()
-            merged[key] = [x for x in merged[key] + child_val if not (x in seen or seen.add(x))]
+            # `seen.add(x)` returns None, which is falsy — that is what makes
+            # this the standard order-preserving dedupe, not a mistake.
+            merged[key] = [x for x in merged[key] + child_val
+                           if not (x in seen or seen.add(x))]  # type: ignore[func-returns-value]
         else:
             # Scalar: child wins
             merged[key] = child_val

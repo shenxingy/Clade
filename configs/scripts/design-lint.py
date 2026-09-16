@@ -344,7 +344,14 @@ def lint_render(path: Path, report: Report, label: str) -> None:
         total = image.width * image.height
         dark = 0
         for count, rgb in (image.getcolors(maxcolors=total) or []):
-            if luminance(rgb) < 0.02:
+            # getcolors() yields a plain int per colour on greyscale ("L") and
+            # palette images, not an (r, g, b) tuple — passing that straight to
+            # luminance() indexes an int. Normalise instead of assuming RGB.
+            if isinstance(rgb, (int, float)):
+                rgb = (int(rgb), int(rgb), int(rgb))
+            elif len(rgb) < 3:
+                continue
+            if luminance((rgb[0], rgb[1], rgb[2])) < 0.02:
                 dark += count
         focal = dark / total
 

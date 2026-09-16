@@ -62,6 +62,11 @@ ARTEFACT_PATTERNS = (
     re.compile(r"\b(pytest)\b"),
     re.compile(r"(claude plugin validate)"),
     re.compile(r"\b(ruff)\b"),
+    # Added the same commit as the mypy step, per the rule stated directly
+    # below — the ruff step is the recorded precedent for what happens when a
+    # new kind of gate lands without its pattern: this script stayed green with
+    # the checklist missing it.
+    re.compile(r"\b(mypy)\b"),
 )
 
 # ARTEFACT_PATTERNS is an ALLOWLIST, and that is this check's own blind spot:

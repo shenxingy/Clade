@@ -595,9 +595,9 @@ def main() -> int:
                     print(f"  | {line}")
         print()
 
-    total = sum(r.seconds for r in ran)
+    total_seconds = sum((r.seconds for r in ran), 0.0)
     print(
-        f"ci-local: {len(ran) - len(failed)}/{len(ran)} job(s) passed in {total:.0f}s"
+        f"ci-local: {len(ran) - len(failed)}/{len(ran)} job(s) passed in {total_seconds:.0f}s"
         + ("  [clean HOME]" if _CLEAN_HOME else "")
         + (f", {len(failed)} failed" if failed else "")
     )

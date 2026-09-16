@@ -136,7 +136,7 @@ def cmd_check(facts: dict, repo_root: Path, fix: bool = False) -> int:
 
     if fix:
         # group by file; apply edits in reverse-position order so offsets stay valid
-        by_file = {}
+        by_file: dict[Path, list] = {}
         for d in drifts:
             by_file.setdefault(d["abs_path"], []).append(d)
         for path, ds in by_file.items():
