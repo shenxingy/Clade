@@ -295,10 +295,15 @@ def test_every_script_with_a_self_test_is_covered():
             continue
         if "--self-test" in path.read_text(encoding="utf-8", errors="replace"):
             missing.append(rel)
-    # EMPTY, and it stays empty. This set held exactly the four scripts CI runs
-    # under the banner "can the harness go red?" — the meta-gate exempting the
-    # gates it exists to police, which is the same recursion as every instrument
-    # named in this file's docstring. An empty escape hatch is the point: a
+    # EMPTY, and it stays empty. This set held four scripts: the three CI runs
+    # under the banner "can the harness go red?" (red-phase-audit,
+    # workflow-scorecard, check-skill-contracts) plus check-runnable-paths,
+    # which CI runs as a plain gate and never with --self-test. So the exemption
+    # list was a strict superset of the self-tests CI exercises — the meta-gate
+    # exempting the gates it exists to police, which is the same recursion as
+    # every instrument named in this file's docstring. (An earlier phrasing said
+    # "exactly the four scripts CI runs"; that is off by one and was refuted on
+    # 2026-09-16 — the set identity does not hold, the recursion does.) An empty escape hatch is the point: a
     # one-entry list is a parking space with a precedent. A script that gains
     # --self-test now gains mutations in the same commit, or this test fails.
     known_gap: set[str] = set()

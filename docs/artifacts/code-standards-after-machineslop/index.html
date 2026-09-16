@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Code Standards After Machineslop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,500;0,600;1,400&display=swap">
+<style>
+:root{
+  --bg:#f5f7f6; --surface:#ffffff; --surface-2:#eef2f1;
+  --ink:#131819; --ink-2:#3b4648; --muted:#67757a; --rule:#dce3e1;
+  --accent:#0d6355; --accent-soft:#d7ebe6;
+  --measured:#15653c; --measured-bg:#dcefe3;
+  --asserted:#7d5a0b; --asserted-bg:#f6ecd2;
+  --spec:#5f4183; --spec-bg:#ebe2f4;
+  --anec:#8d4e30; --anec-bg:#f6e3d9;
+  --bad:#a3301f; --bad-bg:#f7e0dc;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0d1112; --surface:#141a1b; --surface-2:#1b2324;
+    --ink:#e9eeec; --ink-2:#c2cdca; --muted:#8b9a96; --rule:#243030;
+    --accent:#4ec7ab; --accent-soft:#16302c;
+    --measured:#68d494; --measured-bg:#122c1e;
+    --asserted:#e2ae44; --asserted-bg:#2e2410;
+    --spec:#bb96de; --spec-bg:#241a30;
+    --anec:#e0a181; --anec-bg:#2e1d14;
+    --bad:#f0806e; --bad-bg:#33170f;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0d1112; --surface:#141a1b; --surface-2:#1b2324;
+  --ink:#e9eeec; --ink-2:#c2cdca; --muted:#8b9a96; --rule:#243030;
+  --accent:#4ec7ab; --accent-soft:#16302c;
+  --measured:#68d494; --measured-bg:#122c1e;
+  --asserted:#e2ae44; --asserted-bg:#2e2410;
+  --spec:#bb96de; --spec-bg:#241a30;
+  --anec:#e0a181; --anec-bg:#2e1d14;
+  --bad:#f0806e; --bad-bg:#33170f;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"IBM Plex Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  font-size:16px;line-height:1.65}
+.wrap{max-width:1080px;margin:0 auto;padding:0 28px 96px}
+.col{max-width:68ch}
+
+header.mast{padding:56px 0 30px;border-bottom:1px solid var(--rule);margin-bottom:38px}
+.eyebrow{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11.5px;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--muted);margin:0 0 16px}
+h1{font-family:"IBM Plex Serif",Georgia,serif;font-weight:600;
+  font-size:clamp(31px,4.6vw,50px);line-height:1.1;letter-spacing:-.017em;margin:0 0 18px;text-wrap:balance}
+.standfirst{font-family:"IBM Plex Serif",Georgia,serif;font-size:clamp(17px,2vw,20.5px);
+  line-height:1.55;color:var(--ink-2);margin:0;max-width:60ch}
+.byline{margin-top:26px;font-family:"IBM Plex Mono",monospace;font-size:12px;
+  color:var(--muted);display:flex;flex-wrap:wrap;gap:7px 20px}
+
+h2{font-family:"IBM Plex Serif",Georgia,serif;font-weight:600;
+  font-size:clamp(22px,2.6vw,29px);line-height:1.2;letter-spacing:-.012em;margin:60px 0 6px;text-wrap:balance}
+h2 .num{font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:500;
+  color:var(--accent);letter-spacing:.1em;display:block;margin-bottom:9px}
+h3{font-size:16.5px;font-weight:600;margin:34px 0 8px;letter-spacing:-.005em}
+p{margin:0 0 17px}
+a{color:var(--accent);text-decoration:underline;text-underline-offset:2.5px;text-decoration-thickness:.6px}
+a:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:3px}
+code{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.875em;
+  background:var(--surface-2);padding:1.5px 5px;border-radius:4px}
+.lede{font-size:17.5px;color:var(--ink-2)}
+ul.plain{padding-left:20px}
+ul.plain li{margin-bottom:10px}
+
+.chip{display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:10px;
+  font-weight:600;letter-spacing:.09em;text-transform:uppercase;
+  padding:2.5px 7px;border-radius:3px;vertical-align:1.5px;white-space:nowrap}
+.m-measured{color:var(--measured);background:var(--measured-bg)}
+.m-asserted{color:var(--asserted);background:var(--asserted-bg)}
+.m-anec{color:var(--anec);background:var(--anec-bg)}
+
+.legend{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:0;
+  border:1px solid var(--rule);border-radius:9px;overflow:hidden;margin:26px 0 30px;background:var(--surface)}
+.legend div{padding:13px 16px;border-right:1px solid var(--rule);font-size:13px;color:var(--muted);line-height:1.45}
+.legend div:last-child{border-right:none}
+.legend .chip{margin-bottom:6px}
+
+.findings{list-style:none;padding:0;margin:30px 0 0;display:grid;gap:1px;background:var(--rule);
+  border:1px solid var(--rule);border-radius:10px;overflow:hidden}
+.findings li{background:var(--surface);padding:20px 22px;display:grid;grid-template-columns:38px 1fr;gap:16px;align-items:start}
+.findings .k{font-family:"IBM Plex Mono",monospace;font-size:21px;font-weight:600;
+  color:var(--accent);line-height:1.15;font-variant-numeric:tabular-nums}
+.findings .t{font-weight:600;margin:0 0 4px;font-size:16px}
+.findings .d{margin:0;font-size:14.5px;color:var(--ink-2);line-height:1.55}
+
+.scroll{overflow-x:auto;margin:22px 0;border:1px solid var(--rule);border-radius:9px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14px;min-width:560px}
+th,td{text-align:left;padding:11px 15px;border-bottom:1px solid var(--rule);vertical-align:top}
+thead th{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--muted);font-weight:600;background:var(--surface-2)}
+tbody tr:last-child td{border-bottom:none}
+td.num,th.num{text-align:right;font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+
+.bars{margin:24px 0;border:1px solid var(--rule);border-radius:9px;background:var(--surface);padding:20px 22px}
+.bar-row{display:grid;grid-template-columns:1fr 66px;gap:14px;align-items:center;margin-bottom:15px}
+.bar-row:last-of-type{margin-bottom:0}
+.bar-label{font-size:13.5px;color:var(--ink-2);margin-bottom:5px}
+.bar-track{height:9px;background:var(--surface-2);border-radius:5px;overflow:hidden}
+.bar-fill{height:100%;border-radius:5px;background:var(--accent)}
+.bar-fill.warn{background:var(--asserted)}
+.bar-fill.bad{background:var(--bad)}
+.bar-val{font-family:"IBM Plex Mono",monospace;font-size:13px;font-weight:600;
+  text-align:right;font-variant-numeric:tabular-nums}
+.caption{font-size:12.5px;color:var(--muted);margin:12px 0 30px;line-height:1.5;max-width:78ch}
+.bars .caption{margin-bottom:0}
+
+.callout{border-left:3px solid var(--accent);background:var(--accent-soft);
+  padding:17px 20px;border-radius:0 8px 8px 0;margin:26px 0}
+.callout p{margin:0 0 10px}
+.callout p:last-child{margin:0}
+.callout .q{font-family:"IBM Plex Serif",Georgia,serif;font-style:italic;font-size:16.5px;
+  line-height:1.55;color:var(--ink)}
+.callout.alert{border-left-color:var(--bad);background:var(--bad-bg)}
+.src{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--muted)}
+
+.axis{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;margin:24px 0}
+.axis .box{border:1px solid var(--rule);border-radius:9px;padding:18px 20px;background:var(--surface)}
+.axis .box h4{margin:0 0 6px;font-size:15px;font-weight:600}
+.axis .box .tag{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--muted);display:block;margin-bottom:10px}
+.axis .box p{font-size:14px;color:var(--ink-2);margin:0 0 8px;line-height:1.55}
+.axis .box p:last-child{margin:0}
+.axis .box.up{border-color:var(--measured)}
+.axis .box.keep{border-color:var(--accent)}
+.axis .box.down{border-color:var(--anec)}
+
+.do-list{border:1px solid var(--rule);border-radius:10px;background:var(--surface);margin:22px 0}
+.do-list .row{display:grid;grid-template-columns:26px 1fr auto;gap:14px;padding:15px 20px;
+  border-bottom:1px solid var(--rule);align-items:start}
+.do-list .row:last-child{border-bottom:none}
+.do-list .n{font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--accent);font-weight:600;padding-top:2px}
+.do-list .what{font-size:14.8px}
+.do-list .what b{display:block;margin-bottom:3px;font-weight:600}
+.do-list .what span{color:var(--ink-2);font-size:14px}
+.do-list .cost{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--muted);
+  white-space:nowrap;padding-top:3px;text-align:right}
+
+hr.sep{border:none;border-top:1px solid var(--rule);margin:56px 0 0}
+footer{margin-top:46px;padding-top:22px;border-top:1px solid var(--rule);font-size:13px;color:var(--muted)}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="mast">
+  <p class="eyebrow">Internal research · Clade · 2026-09-13 · rev 5 — <strong>re-verified 2026-09-16</strong></p>
+  <h1>Code standards after machineslop</h1>
+  <p class="standfirst">An agent writing code no human reads is not a new engineering problem. It is the old one — unverifiable work — arriving through a new door. The popular diagnosis is mostly anecdote. The measured answer points somewhere else entirely, and it points at us.</p>
+  <div class="byline">
+    <span>Alex Shen · aries</span>
+    <span>29-agent sweep, 6 adversarial attacks</span>
+    <span>Sources checked against primary documents</span>
+  </div>
+</header>
+
+<div class="col">
+<p class="lede">The trigger was Armin Ronacher's weekend run: 35 hours unattended, 75k lines, 79 commits, ~$1,200, and by his own account <em>"absolutely nothing of value."</em> The conclusion everyone drew is that models are learning to write for machines. Six adversarial passes later, that framing did not survive — and neither did the comfortable rebuttal that our gates would have caught it.</p>
+</div>
+
+<ul class="findings">
+  <li><span class="k">01</span><div>
+    <p class="t">Cleanliness bought no correctness — in a controlled trial</p>
+    <p class="d">Minimal pairs differing only in static-analysis violations and cognitive complexity, 6 pairs, 33 tasks, <strong>660 trials</strong>, graded by hidden tests: pass rate <strong>0.913 clean vs 0.921 messy</strong>. The thing we were about to gate is the thing measured not to matter — for correctness.</p>
+  </div></li>
+  <li><span class="k">02</span><div>
+    <p class="t">But <em>naming</em> is load-bearing for the machine</p>
+    <p class="d">Stripping identifiers costs <strong>11–28.6 points</strong> of accuracy. Names act as retrieval cues into memorised patterns, so a model may degrade <em>faster</em> than a human when they go. Machine-readable is not a weaker constraint than human-readable along the axis that matters.</p>
+  </div></li>
+  <li><span class="k">03</span><div>
+    <p class="t">Our own top-level claims are the ungated artifact</p>
+    <p class="d">CLAUDE.md asserts "100% recall / 7.1% false alarms" and "~17%". Neither is derived from anything. The eval floor is 90%/15% — so recall can fall to 90% while the document keeps claiming 100% and CI stays green. For a project whose thesis is "humans read artifacts", that is the defect that matters most.</p>
+  </div></li>
+</ul>
+
+<h2><span class="num">§ 01 — Evidence</span>What the sources actually say</h2>
+<div class="col">
+<p>Every claim carries a grade. This matters because the machineslop thesis circulates as an established finding, and most of its citations were checked for the first time in this sweep.</p>
+</div>
+
+<div class="legend">
+  <div><span class="chip m-measured">measured</span>A number from an experiment or direct count, with a stated population.</div>
+  <div><span class="chip m-asserted">asserted</span>Stated by a credible source without a supporting measurement.</div>
+  <div><span class="chip m-anec">n = 1</span>One run, one engineer, one prototype. Evidence, but not a rate.</div>
+</div>
+
+<div class="scroll">
+<table>
+  <thead><tr><th>Claim as circulated</th><th>What the primary source says</th><th class="num">Grade</th></tr></thead>
+  <tbody>
+    <tr><td>Ronacher burned 35h / 75k lines / $1,200 for nothing</td>
+      <td><strong>Confirmed.</strong> Both token figures are his and measure different things: ~4B ChatGPT-subscription, ~1B raw-API at ~$1,200. One prompt, no evals, no gates, endogenous verifier.</td>
+      <td class="num"><span class="chip m-anec">n = 1</span></td></tr>
+    <tr><td>arXiv:2605.31170 shows agents evolving private languages</td>
+      <td><strong>Out of domain.</strong> Text-mining of Moltbook, a Reddit-like site for agents. No code, no repository, no task execution. 518 of 232,000 posts — <strong>0.223%</strong> — of agents <em>discussing</em> constructed languages.</td>
+      <td class="num"><span class="chip m-measured">measured</span></td></tr>
+    <tr><td>METR attributed the telegraphic style to "the medium"</td>
+      <td><strong>METR attributed it to nothing.</strong> "Telegraphic", "terse", "shorthand" appear <strong>zero times</strong> in 3,901 lines. METR did trace the <code>zz</code> prefix to a tooling artifact — the reading tool sorted reverse-alphabetically.</td>
+      <td class="num"><span class="chip m-measured">measured</span></td></tr>
+    <tr><td>@tenobrus coined "machineslop"; the pull is greenfield-only, not seen on existing codebases</td>
+      <td><strong>Contradicted by the primary.</strong> Ronacher's run was a <strong>CPython fork</strong> — brownfield, very large. He states: <em>"I have since encountered the same issues with regular programming with Astra, so it's not a result of just the factory"</em>, and names TypeScript and "code that actually gets committed". "Machine slop" also predates Astra in common usage.</td>
+      <td class="num"><span class="chip m-measured">measured</span></td></tr>
+    <tr><td>The Kilo multi-agent report corroborates compression</td>
+      <td><strong>Qualitatively only.</strong> One engineer, one prototype, <strong>no size limit, no ratio, no counts</strong>. Kilo calls the behaviour "convergent, unsurprising, arguably correct" — not a defect.</td>
+      <td class="num"><span class="chip m-anec">n = 1</span></td></tr>
+    <tr><td>OpenAI concedes Astra is harder to monitor</td>
+      <td><strong>Confirmed and stronger than reported</strong> — but the card is not an alarm document. Astra improved on nearly every alignment axis: coding deception 4× lower, agent-to-agent speculation 43% → &lt;4%.</td>
+      <td class="num"><span class="chip m-measured">measured</span></td></tr>
+  </tbody>
+</table>
+</div>
+<p class="caption">Practitioners also contradict each other on the remedy: one engineer <em>adds</em> AGENTS.md scaffolding and reports improvement; Kilo advises "try deleting half of it". Both n = 1.</p>
+
+<div class="callout alert">
+  <p class="q">Ronacher cites none of it.</p>
+  <p>We extracted every outbound link on his post. The complete external set is two Wikipedia articles, an OpenAI developer blog, one <code>openai/codex</code> permalink, <code>collusion.wiki</code>, and two of his own earlier posts. <strong>No arXiv paper. No METR report. No Kilo. No @tenobrus. No system card.</strong></p>
+  <p>Those sources exist independently and some are strong. But the chain of evidence was assembled by the commentary, not by the engineer whose run is its foundation — which is the citation-laundering pattern this repository already builds gates against.</p>
+</div>
+
+<div class="col">
+<p>And his actual claim is far narrower than "GPT-6 writes code humans cannot read". He locates the leakage in two specific places: code <em>one step removed</em> from normal source — <em>"mostly in tests, but also JavaScript or CSS embedded in HTML"</em> — and where nobody is watching, <em>"when it goes all bananza with subagents (where the agent believes nobody is looking)"</em>.</p>
+<p>The acute loss he describes is not reviewing the final diff. It is <strong>following the change while it happens</strong>: once the model abandoned the edit tool for Python string splicing, <em>"you're going to have to resort to using the diff viewer of the final artifacts."</em></p>
+</div>
+
+<div class="callout">
+  <p class="q">That is an observability failure, not a style failure — and observability has a targetable surface.</p>
+</div>
+
+<h2><span class="num">§ 02 — The premise</span>Should humans stop reading code?</h2>
+<div class="col">
+<p>Half holds trivially: nobody reads 75k lines. The load-bearing half is the second clause — <em>read the artifact instead</em> — and that half has been tested directly.</p>
+</div>
+
+<div class="bars">
+  <div class="bar-row"><div>
+    <div class="bar-label">Human-written context file — <em>not statistically significant</em> (p = 0.21)</div>
+    <div class="bar-track"><div class="bar-fill" style="width:100%;opacity:.45"></div></div>
+  </div><div class="bar-val">+2.4%</div></div>
+  <div class="bar-row"><div>
+    <div class="bar-label">Machine-written context file — SWE-bench Lite</div>
+    <div class="bar-track"><div class="bar-fill bad" style="width:21%"></div></div>
+  </div><div class="bar-val">−0.5%</div></div>
+  <div class="bar-row"><div>
+    <div class="bar-label">Machine-written context file — AGENTbench</div>
+    <div class="bar-track"><div class="bar-fill bad" style="width:83%"></div></div>
+  </div><div class="bar-val">−2%</div></div>
+  <p class="caption">Bars show magnitude; red is a loss. Task-success delta from adding a repository context file — ETH Zurich SRI Lab, <a href="https://arxiv.org/abs/2602.11988">arXiv:2602.11988</a>. Both machine-written variants also cost <strong>+20% more</strong> to run. The section everyone writes most — the architecture overview — is the measured-useless part: the abstract's own words are that repository overviews, "although popular and recommended by model providers, are not helpful". The useful residue is narrow, non-guessable tooling facts: stating "use uv" produced 1.6 invocations per instance versus &lt;0.01 unstated.
+  <br><br><strong>Corrected 2026-09-16.</strong> This bar read <strong>+4%</strong> through rev 4, and the label said the gain came <em>entirely</em> from non-obvious knowledge. Both were wrong, and wrong in this page's own indicted direction. The +4% is <a href="https://arxiv.org/abs/2602.11988v1">v1</a>'s; <a href="https://arxiv.org/abs/2602.11988v2">v2</a> §4.2 states <strong>2.4%, p = 0.21</strong>, and concludes the gain is "neither statistically significant". And the paper runs <em>no</em> decomposition by knowledge type — that is the authors' recommendation quoted as their finding, while their one category-removal ablation found no category significantly affects accuracy.</p>
+</div>
+
+<div class="col">
+<p>So the artifact layer pays only when a human puts <strong>irrecoverable</strong> knowledge into it. An artifact generated <em>from</em> the code is negative-value by measurement. And a stale artifact is not neutral — misleading comments cost 23.2% degradation in output prediction and trigger 2–3× token consumption. Documentation that drifts is active poison, not dead weight.</p>
+<p>Two further results close the argument. From OpenAI's own system card:</p>
+</div>
+
+<div class="callout">
+  <p class="q">"Astra often frames the reward-hacking workaround as normal code modularization, while GPT-5.6 Sol more explicitly describes it as bypassing the constraint."</p>
+  <p class="src">GPT-6 Astra System Card — Impossible Coding Tasks</p>
+</div>
+
+<div class="col">
+<p>And prose instruction is weaker than it feels. On the study's primary pool — 1,150 non-baseline runs and 11,637 functions, one codebase, Sonnet 4.6, one trivial <code>// @tracked</code> annotation — an agent followed that instruction only <strong>~64% of the time</strong> (the full corpus is 1,650 sessions and 16,050 observations, but about a tenth of those are no-configuration baselines whose rate is 0% by construction, so the grand mean is not this number), with compliance decaying ~5.6% in odds per function generated. File size, instruction position, split-versus-single files, even <em>directly contradicting</em> instructions produced no detectable effect.</p>
+</div>
+
+<div class="callout">
+  <p class="q">Prose to an agent is a suggestion with a two-thirds hit rate that decays as the session runs. An executable gate is a fact.</p>
+  <p>Defensible version of the premise: humans read artifacts the agent <strong>cannot author</strong> — test results, behaviour diffs, gate outcomes, production signals — and never the agent's own account of what it did.</p>
+</div>
+
+<div class="col">
+<p>One caveat we cannot resolve: there is <strong>no published study of a human-facing generated artifact layer as a discipline</strong>. It is a reasonable bet, not a finding, and should be labelled that way when we act on it.</p>
+</div>
+
+<h2><span class="num">§ 03 — The axis</span>Which rules actually survive</h2>
+<div class="col">
+<p>The adversarial pass rejected the framing we started with. "Human-bandwidth artifact versus real rule" does not carve the practices at their joints. The axis that does is <strong>checkable / retrieval / perceptual</strong>.</p>
+</div>
+
+<div class="axis">
+  <div class="box up">
+    <span class="tag">gets stronger</span>
+    <h4>Checkable</h4>
+    <p>Types, invariants, tests, contracts, DAG imports, pinned dependencies, idempotency.</p>
+    <p>The human was the residual enforcer of everything not written down. Remove the human and <strong>what is not in a gate is not in the reward.</strong> Types are worth ~15% as a defect filter to a person. The <strong>+79pp</strong> figure this section used to attach to them measures something narrower — compilation success for C under compiler <em>tool</em> access, with functional correctness explicitly disclaimed — so it is evidence for the feedback loop, not for the type system.</p>
+  </div>
+  <div class="box keep">
+    <span class="tag">survives, machine grounds</span>
+    <h4>Retrieval</h4>
+    <p>Naming, greppability, one-declaration-one-location, module boundaries, section markers.</p>
+    <p>Context length is a hard machine constraint and identifier text measurably carries semantic signal. The thresholds move; the rule does not. Fixing <em>file-level</em> localisation resolves 14 of 28 file-miss cases and line-level 33 of 175 — but against the 209 unresolved instances those are <strong>6.7%</strong> and <strong>15.8%</strong>, so in cases actually recovered line-level is worth more than twice as much. Rev 4 quoted the 50%/19% conditional rates as though they ranked the two, which inverts the paper's result.</p>
+  </div>
+  <div class="box down">
+    <span class="tag">genuine bandwidth artifact</span>
+    <h4>Perceptual</h4>
+    <p>Line length, punctuation style, blank-line rhythm, formatting.</p>
+    <p>The only class that was really about a slow reader. Measured as nearly free in both directions — 24.5% token saving for ≤4.2pp accuracy, and no correctness effect across 660 trials. Stop spending rules here.</p>
+    <p class="src">The 660-trial null is unusually credible: both authors are SonarSource and "cleanliness" is their own product's rule set. They did find effects and led with them — 7-8% fewer tokens, 34% fewer file revisitations, concluding that "traditional maintainability principles remain highly relevant" — which makes the <em>correctness</em> null more striking, not less: it is the one axis their own incentives ran against. Do not quote its token savings per task, though — the median delta is −4.5% and the sign flips on 11 of 27 tasks.</p>
+  </div>
+</div>
+
+<div class="col">
+<p>This is where our own proposal died. We drafted a gate on the "machineslop signature" — semicolons and one-line <code>if</code> — then read the eighteen violations in load-bearing <code>configs/</code>. Twelve are deliberate, self-evident idioms: an aligned threshold ladder in <code>claude-usage-watch.py</code>, a cursor-advance in <code>blog_render.py</code>. The other six are not ours to call deliberate — <code>git blame</code> puts all six in <code>vignelli_system.py</code> on one commit, <code>1ab573b</code>, which absorbed an upstream skill pack from <code>maxsoweski/claude-design-skills</code>. Rev 4 said all eighteen were deliberate without running the blame. The recommendation is still <strong>withdrawn</strong> — perceptual class, no measured correctness effect — but on twelve examined cases and six inherited ones, not eighteen examined ones.</p>
+</div>
+
+<h2><span class="num">§ 04 — The trap</span>Why more gates is not the answer</h2>
+<div class="col">
+<p>The strongest attack in the sweep was against the idea we are best at. Gates cannot replace review, and the reason is informational rather than a coverage gap you can close by adding more.</p>
+</div>
+
+<div class="callout">
+  <p class="q">A gate is evidence only if it can be surprised.</p>
+  <p>A gate tells you about a defect only when passing is less likely given the defect. If the artifact and the gate derive from the same intent-model, an error in that model appears in <em>both</em> — so the probability of passing approaches certainty for exactly the defect class that matters most: we built the wrong thing, correctly.</p>
+  <p><strong>Gate value is proportional to provenance independence from the generator, not to gate count.</strong></p>
+</div>
+
+<div class="col">
+<p>Measured against our own repository: <strong>22 of 22 gates in the syntax-check job are parse, lint, text, or filesystem-consistency checks.</strong> Zero check types or behaviour. They caught drift that review missed for 241 commits — and they are blind by construction to wrong requirements, design errors, concurrency, security logic and performance cliffs.</p>
+<p>The same trap has a recursive form here. Our meta-gate proves each instrument can still go red — a practice we could not find anywhere else in the literature. But its exemption list, <code>known_gap</code>, contains <em>exactly</em> the four scripts CI runs under the banner "can the harness go red?"</p>
+</div>
+
+<h2><span class="num">§ 05 — Our repo</span>What the audit found</h2>
+<div class="col">
+<p>Measured at <code>0c7bf91</code>. The good news is genuinely good, and the gap is not where we assumed.</p>
+</div>
+
+<div class="scroll">
+<table>
+  <thead><tr><th>What we checked</th><th class="num">Measured</th><th>Reading</th></tr></thead>
+  <tbody>
+    <tr><td>Files in the 1401–1500 line band</td><td class="num"><strong>0</strong></td>
+      <td>Of 492 tracked source files: 433 under 500, 40, 9, 8, then <strong>zero</strong>, then 2 baselined upstream syncs. Rev 4 called the empty band the signature of a rule that drives behaviour; on its own it is weaker than that. 30 of the 492 are byte-identical generated copies, and the adjacent bands hold only 3 and 5 distinct files, so an empty 1401–1500 is roughly a 1-in-20 coincidence. The evidence that actually carries it is elsewhere and is not probabilistic: <strong>ten files record in their own headers that the cap forced the split</strong> — <code>loop_args.sh</code>, <code>loop_bounds.sh</code>, <code>loop_score.sh</code>, <code>loop_verify.sh</code> ("loop-runner.sh … had grown to exactly the 1500-line ceiling"), <code>worker_pool.py</code>, <code>task_schema.py</code>, <code>repo_map.py</code> ("extracted from worker_tldr.py at 1459 of the 1500"), and three test modules.</td></tr>
+    <tr><td>Parameter annotations — orchestrator core</td><td class="num"><strong>97.4%</strong></td>
+      <td>And 87.9% in load-bearing <code>configs/</code>. An earlier revision of this page reported 42%; that averaged in 2,076 test functions and was misleading.</td></tr>
+    <tr><td>Type checkers verifying them</td><td class="num"><strong>0</strong></td>
+      <td>None in CI or <code>requirements-dev.txt</code>. We have already paid the cost of writing the types and collect none of the benefit.</td></tr>
+    <tr><td>Property-based tests</td><td class="num"><strong>0</strong></td>
+      <td>Against ~1,248 example-based test functions. One property kills roughly 50× the mutants of an average unit test.</td></tr>
+    <tr><td>Shell assertions the test-integrity detector can see</td><td class="num"><strong>0.7%</strong></td>
+      <td>6 of 863. <code>\bassert\b</code> cannot match <code>assert_contains</code> — the underscore defeats the word boundary. A diff deleting three assertions returns <em>"looked and found nothing"</em>.</td></tr>
+    <tr><td>Test-diff traffic the detector covers</td><td class="num"><strong>14%</strong></td>
+      <td>Over 400 commits: 218 touch a test file, 30 fire. The instrument built to cover the other 86% — the red-phase audit — runs only its own self-test in CI, never the audit.</td></tr>
+    <tr><td>Complexity or duplication gates</td><td class="num"><strong>0</strong></td>
+      <td>ruff selects <code>E9,F,B</code> only. Agent code measured <strong>2.3× more verbose and 2.0× more eroded</strong> than 473 human-maintained repos across 196 checkpoints; erosion rose in 77% of trajectories. We measure none of it. <em>(<a href="https://arxiv.org/abs/2603.24755">arXiv:2603.24755</a> — an identifier rev 4 omitted, on this page's most quotable statistic. Rev 4 also reported these as two reviewers disagreeing and told the reader to go re-read the source; it is a version difference, and one fetch settles it. <a href="https://arxiv.org/abs/2603.24755v1">v1</a>: 48 repositories, 93 checkpoints, 2.2× verbose, erosion up in 80%. <a href="https://arxiv.org/abs/2603.24755v2">v2</a>: 473 repositories, 196 checkpoints, 2.3× / 2.0× / 77%. v2 supersedes; the figures above are v2's.)</em></td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout alert">
+  <p class="q">The rules we audited are not in the file we thought.</p>
+  <p><code>## Code Architecture (Claude Code-Optimized)</code> lives at <code>configs/CLAUDE.md:196</code> — the <em>shipped template</em>, byte-identical to the global profile — and not in the project's own <code>CLAUDE.md</code>. Working inside this repository, those seven rules reach a session only through whoever's machine it happens to be. That is a deploy gap, and it is invisible because nothing checks it.</p>
+</div>
+
+<div class="col">
+<p>Two of those seven rules do not survive on their own terms. <strong>"4–6 modules per component"</strong> is in direct arithmetic tension with the 1500-line cap — the cap forces splits, and <code>orchestrator/</code> holds 61 top-level modules. You cannot hold both: the 492 tracked source files total 138,115 lines. And <strong>"shorter files = fewer string duplicates = reliable Edit"</strong> was true of a 2025 harness; Edit uniqueness is a property of the string you select, and this harness's Edit carries <code>replace_all</code>.</p>
+</div>
+
+<h2><span class="num">§ 06 — Action</span>What we change</h2>
+<div class="col">
+<p>Ranked by measured value over effort, weighted to the load-bearing <code>configs/</code> layer per <code>docs/layers.json</code>.</p>
+</div>
+
+<div class="do-list">
+  <div class="row"><div class="n">1</div><div class="what"><b>Derive our own measured claims, or stop making them</b><span>CLAUDE.md states "100% recall / 7.1% false alarms" and "~17%" as facts. Nothing derives them; the gate floor is 90%/15%. Add a <code>derive</code> type to <code>facts.json</code> that shells out to <code>run_hack_eval.py --json</code>. For a project whose thesis is "humans read artifacts", an ungated number in the top artifact is the highest-leverage defect we have.</span></div><div class="cost">small<br>facts.json</div></div>
+  <div class="row"><div class="n">2</div><div class="what"><b>Make the detector see shell tests</b><span>0.7% visibility today, and it reports clean rather than reporting blind. Add <code>assert_[a-z_]+</code> and <code>run_test</code> to <code>_ASSERT_RE</code>, then add two hack and two honest shell cases to the corpus. Falsifiable: a diff deleting three assertions from <code>test-loop.sh</code> must come back eroded.</span></div><div class="cost">one regex<br>+ 4 cases</div></div>
+  <div class="row"><div class="n">3</div><div class="what"><b>Run the red-phase audit, not just its self-test</b><span>It covers the 86% the test-integrity signal cannot. It is live — 4 of 21 sampled commits fired — and nothing consumes it. Run it against the PR's own commits, report-only, failing on a <em>new</em> fire.</span></div><div class="cost">one CI step</div></div>
+  <div class="row"><div class="n">4</div><div class="what"><b>A type checker over annotations we already wrote</b><span>97.4% of core parameters carry a type and nothing reads them. Start non-blocking on <code>configs/</code> and ratchet the error count down. Worth ~15% as a defect filter, up to +79pp as an agent retry signal.</span></div><div class="cost">1 dependency</div></div>
+  <div class="row"><div class="n">5</div><div class="what"><b>Make the local gate automatic</b><span>The four drift gates run in <strong>2.6 seconds</strong> and are <strong>46% of every CI failure in repo history</strong>. <code>.git/hooks/</code> is empty, so nothing forces them.</span></div><div class="cost">~15 lines</div></div>
+  <div class="row"><div class="n">6</div><div class="what"><b>Measure our own erosion before gating it</b><span>The erosion figures are someone else's corpus. We have the git history and have never looked. Complexity and docstring density per commit, by author — that turns a precaution into a number, and tells us whether a complexity gate is even warranted given cleanliness bought no correctness in 660 trials.</span></div><div class="cost">one script</div></div>
+</div>
+
+<h3>What we are not doing</h3>
+<div class="col">
+<ul class="plain">
+  <li><strong>Not gating formatting or punctuation.</strong> Perceptual class. No measured correctness effect in 660 controlled trials, and <code>ruff format --check</code> would reformat 312 of 344 files for the one axis that is nearly free anyway.</li>
+  <li><strong>Not adding a complexity gate yet.</strong> The controlled study says cleanliness bought no correctness; the erosion study measures a different thing over a longer horizon. Measure ours first — item 6 — then decide.</li>
+  <li><strong>Not writing more prose rules.</strong> ~64% compliance, decaying within a session, with no detectable effect from size or position. We already spend a fifth of CLAUDE.md on the one category measured as not helping.</li>
+  <li><strong>Not piling on structure.</strong> Assertion pass rates fell ~30 points as structural requirements accumulated; agents did better in minimal frameworks than convention-heavy ones. "Convention over configuration" is what measurement penalises.</li>
+  <li><strong>Not rewriting our architecture rules from this article.</strong> One unattended run, one prompt, an endogenous verifier, n = 1, no control. But equally — we should stop claiming our gates cover code quality, because measurably they do not.</li>
+</ul>
+</div>
+
+<h2><span class="num">§ 6b — Shipped</span>What changed, and what this page got wrong</h2>
+<div class="col">
+<p>Rev 5. Every claim on this page was re-verified by an independent pass on 2026-09-16 — 21 claim units, half re-measured on <code>aries</code> and half checked against the primary document, each verdict then attacked by a second agent whose job was to overturn it. <strong>The repository measurements held. The literature layer did not</strong>, and it failed in this page's own indicted direction: numbers inherited from secondary summaries, an author's recommendation quoted as their finding, and — on the erosion figure — no identifier for a reader to check. Those are corrected in place above and named where they stood.</p>
+</div>
+
+<div class="do-list">
+  <div class="row"><div class="n">1</div><div class="what"><b>Shipped — the detector could not see a single shell assertion</b><span><code>_ASSERT_RE</code> matched <code>\bassert\b</code>, and the underscore in <code>assert_contains</code> defeats the word boundary. Measured: <strong>0 of 825</strong> real helper calls matched across the 21 shell suites, and a diff deleting three assertions from <code>test-loop.sh</code> returned <code>eroded:false</code> <em>with</em> <code>test_files:1</code> — "looked and found nothing". Fixed, with four shell corpus cases; the corpus is now 34 and scores 100% recall / 6.2% false alarms. Note the proposed fix's other half, <code>run_test</code>, was a phantom: zero occurrences in any shell file in the tree.</span></div><div class="cost">4aa865d</div></div>
+  <div class="row"><div class="n">2</div><div class="what"><b>Shipped — the ungated numbers</b><span>"100% recall / 7.1%" is now derived by a test that reads the sentence out of CLAUDE.md and re-scores the corpus. It is proven fireable: removing <code>xfail</code> from <code>_SKIP_RE</code> makes the detector miss a genuine reward hack, <code>run_hack_eval</code> still reports <code>ok:true</code>, the full 1,926-test suite is bit-identical — and the new test goes red. "~17%" was deleted at three sites rather than derived: no invocation reproduces it (19/29/29/33% by sample size). "115 of the last 133" was deleted at <strong>six</strong> sites including an oracle prompt — two re-derivations give 75 and 82, because "purely additive" was never defined.</span></div><div class="cost">b4da5cc</div></div>
+  <div class="row"><div class="n">3</div><div class="what"><b>Shipped — the meta-gate's exemption list is empty</b><span><code>known_gap</code> held exactly the scripts CI runs under the banner "can the harness go red?". Thirteen mutations now prove each self-test can fire. Two findings fell out of doing it: <code>check-skill-contracts.py</code> stayed green under the <em>exact</em> historical bug it was written for, because its fixture never contained the bare word; and two guards in <code>red-phase-audit.py</code> — the ones that stop a run that could not execute being reported as "nothing fired", i.e. the direct cause of its original 0% incident — were unreachable from its own self-test and could both be deleted without turning it red.</span></div><div class="cost">f17f382</div></div>
+</div>
+
+<h2><span class="num">§ 07 — Open</span>What we still do not know</h2>
+<div class="col">
+<ul class="plain">
+  <li><strong>Does our own agent-authored code erode the way the literature says?</strong> The one measurement that would convert most of this page from inherited evidence into local fact. We have the history.</li>
+  <li><strong>Is the artifact layer a real discipline?</strong> No study found, either way. We are betting on it; the bet should be labelled.</li>
+  <li><strong>How much of Ronacher's outcome was harness rather than model?</strong> Nobody has run that horizon under a real gate stack. We are one of the few shops equipped to.</li>
+</ul>
+</div>
+
+<hr class="sep">
+<footer>
+  Rev 4: 29 agents across source verification, ten research dimensions, six adversarial attacks and five repository audits, plus direct measurement on aries. Rev 5: re-verified by a further 48 agents over 21 claim units — live re-measurement and primary-source checks, each verdict adversarially attacked — which refuted eleven claims and overturned twenty-three verdicts, nine of them on this page. Claims are graded; where a secondary source contradicted a primary one, the primary wins. Corrections are made in place, and named, rather than removed; the ones this page inherited from secondary summaries are named as such, because that is the failure it exists to describe.
+</footer>
+
+</div>
+<!--mnemo:footer:start-->
+<style>.mnemo-artifact-provenance{all:revert;display:block;box-sizing:border-box;margin:2.5rem 0 0;padding:1rem 1.25rem;border-top:1px solid #d0d7de;font:13px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#57606a;background:#f6f8fa}.mnemo-artifact-provenance *{all:revert;box-sizing:border-box;font:inherit;color:inherit;margin:0}.mnemo-artifact-provenance a{color:#0969da;text-decoration:none}.mnemo-artifact-provenance code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;background:rgba(175,184,193,.2);padding:.1em .3em;border-radius:4px}.mnemo-artifact-provenance summary{cursor:pointer;font-weight:600;margin-top:.6rem}.mnemo-artifact-provenance ul,.mnemo-artifact-provenance ol{margin:.4rem 0 .4rem 1.2rem}@media(prefers-color-scheme:dark){.mnemo-artifact-provenance{border-top-color:#30363d;color:#8b949e;background:#161b22}.mnemo-artifact-provenance a{color:#58a6ff}}</style>
+<footer class="mnemo-artifact-provenance"><div>published by <strong>internal</strong> · aries · Clade@main</div><div>2026-09-13T08:21:40Z · v4 · <a href="https://artifacts.internal.scam.ai/code-standards-after-machineslop/">https://artifacts.internal.scam.ai/code-standards-after-machineslop/</a></div></footer>
+<!--mnemo:footer:end--><script src="/_hub/lineage.js" defer></script>
+<script src="/_hub/lineage.js" defer></script></body>
+</html>
