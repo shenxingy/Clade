@@ -3,7 +3,7 @@
 <!-- Legend: ✅ pass  ❌ fail  ⚠ known limitation  ⬜ not yet tested -->
 
 **Project type:** cli + skill-system + orchestrator (FastAPI)
-**Last full pass:** 2026-07-29
+**Last full pass:** 2026-09-16
 **Coverage:** 96 ✅, 0 ❌, 4 ⚠, 0 ⬜ untested
 
 ---
@@ -14,9 +14,9 @@
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
 | I1 | `./install.sh` runs without errors — no missing source files, no broken symlinks | ✅ | 2026-07-29 | fresh and idempotent installs pass in an isolated HOME (46/46 `tests/test-install.sh`) |
-| I2 | All skills from `configs/skills/` are installed to `~/.claude/skills/` | ✅ | 2026-07-29 | 132/132 skills installed and validated |
+| I2 | All skills from `configs/skills/` are installed to `~/.claude/skills/` | ✅ | 2026-07-29 | 138 shipped skills all installed and validated. `~/.claude/skills/` holds 140: install.sh mirrors each shipped skill dir with `rm -rf` but never prunes a directory the repo does not ship, so locally-added skills survive — count the repo's, not the installed set's. |
 | I3 | All hooks from `configs/hooks/` are installed to `~/.claude/hooks/` | ✅ | 2026-09-12 | 32/32 hooks installed and executable (count derived from `ls configs/hooks/*.sh`) |
-| I4 | All scripts from `configs/scripts/` are installed to `~/.claude/scripts/` | ✅ | 2026-07-29 | 35 shell scripts plus 16 Python helpers installed |
+| I4 | All scripts from `configs/scripts/` are installed to `~/.claude/scripts/` | ✅ | 2026-07-29 | 43 shell + 37 Python at `configs/scripts/` top level, all installed. `~/.claude/scripts/` holds 44 and 38 — scripts are plain copies that nothing prunes, so a script deleted from the repo lingers in the install. |
 | I5 | All templates from `configs/templates/` are installed to `~/.claude/templates/` | ✅ | 2026-04-12 | |
 | I6 | `~/.local/bin/slt` symlink exists and points to `statusline-toggle.sh` | ✅ | 2026-04-12 | |
 | I7 | `~/.local/bin/committer` symlink exists and points to `committer.sh` | ✅ | 2026-04-12 | |
@@ -86,7 +86,7 @@
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
 | SH1 | All `configs/hooks/*.sh` pass `bash -n` | ✅ | 2026-07-13 | all 32 hooks pass |
-| SH2 | All `configs/scripts/*.sh` pass `bash -n` | ✅ | 2026-07-13 | all 42 scripts pass |
+| SH2 | All `configs/scripts/*.sh` pass `bash -n` | ✅ | 2026-07-13 | all 43 scripts pass |
 | SH3 | `install.sh` + `uninstall.sh` pass `bash -n` | ✅ | 2026-06-04 | uninstall.sh rewritten to derive removal lists from configs/ |
 
 ## Orchestrator — Python Syntax & Tests
@@ -115,7 +115,7 @@
 
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
-| SK1 | Every dir in `configs/skills/` contains `SKILL.md` | ✅ | 2026-07-29 | 132/132 skill dirs pass `validate-skills.py` with zero warnings |
+| SK1 | Every dir in `configs/skills/` contains `SKILL.md` | ✅ | 2026-07-29 | 138 shipped skill dirs pass `validate-skills.py` with zero warnings |
 | SK2 | `/review` skill: prompt.md contains all 7 steps and convergence condition | ✅ | 2026-04-15 | 9 steps total; original Steps 1-7 all present + new 5.4 (E2E) + 5.5 (SEO) |
 | SK3 | `/verify` skill: prompt.md contains VERIFY.md coverage section and `VERIFY_COVERAGE` footer field | ✅ | 2026-04-10 | |
 | SK4 | `/commit` skill: references `committer` script; `git add .` only appears in prohibition rule | ✅ | 2026-04-10 | |

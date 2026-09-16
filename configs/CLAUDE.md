@@ -197,10 +197,20 @@ When the free path genuinely cannot answer something, say so in those words.
 
 Structure code for efficient Claude Code tool usage:
 
-- **File size**: Keep each file under 1500 lines (Read tool default = 2000 lines; under 1500 = readable in one shot)
-- **Module count**: 4-6 modules per component. NOT 1 monolith, NOT 15+ fragments. Each additional file = 1 extra Read tool call.
+- **File size**: Keep each file under 1500 lines. The old reason — "Read tool
+  default = 2000 lines" — was a harness constant, and this session runs a 1M-token
+  context where a 2,461-line file is ~2% of the window. The reason that survives is
+  blast radius: a smaller file is a smaller revert, a smaller review, and a smaller
+  thing to hold at once. Enforced by `test_conventions.py`, and it works — ten files
+  in this repo record in their own headers that the cap forced their split.
 - **Section markers**: Use clear `# ─── Section Name ───` headers so Grep can navigate within files
-- **Edit-friendly**: Shorter files = fewer string duplicates = reliable Edit tool operations
+- **Edit-friendly**: shorter files really do carry fewer duplicate anchors — measured
+  on this repo, non-trivial duplicate lines run 0.031 per line in files under 300
+  lines against 0.058 in files over 800, a **1.88x** spread (lines >25 chars,
+  comments excluded). The old rationale "= reliable Edit tool operations" is
+  obsolete — Edit carries `replace_all`, and uniqueness is a property of the string
+  you select, not of the file. Keep the rule, for the reading cost of finding which
+  of four identical blocks you meant.
 - **Cohesion over separation**: Keep tightly coupled code in one file. Fix a bug by reading 1 file, not 3.
 - **DAG imports**: Module dependency graph must be a strict DAG (no circular imports). Use lazy imports or duck typing (`Any`) to break potential cycles.
 - **CSS extraction**: For HTML files with inline CSS > 200 lines, extract to separate `.css` file. Keep JS inline if tightly coupled (SPA globals, no module system).

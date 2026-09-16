@@ -300,5 +300,5 @@ clade/
 │       └── src/             # React + Vite UI (served from dist/)
 ├── docs/                    # Guides and research
 ├── adapters/openclaw/       # OpenClaw integration (mobile monitoring)
-└── templates/               # Settings, CLAUDE.md templates
+└── templates/               # settings.json + orchestrator-settings.example.json (generated)
 ```

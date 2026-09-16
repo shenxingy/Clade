@@ -193,8 +193,7 @@ If the user wants to modify tasks, edit `.claude/proposed-tasks.md` directly and
 
 All tasks must follow these structure rules (Claude Code-optimized):
 
-- **File size**: Keep each file under 1500 lines (Read tool reads 2000 lines by default; under 1500 = one-shot readable)
-- **Module count**: 4-6 modules per component — not 1 monolith, not 15+ tiny fragments
+- **File size**: Keep each file under 1500 lines — for blast radius (a smaller revert, a smaller review), not for the Read tool's page size, which a 1M-token context made irrelevant
 - **Section markers**: Use `# ─── Section Name ───` headers for Grep-navigable files
 - **Cohesion**: Keep tightly coupled code in one file — fix a bug by reading 1 file, not 3
 - **DAG imports**: Module deps must form a strict DAG (no circular imports)

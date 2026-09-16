@@ -4,6 +4,13 @@
 
 # MCP Setup Guide
 
+> **This layer is dormant.** `docs/layers.json` declares it so: the owner works
+> entirely in the terminal, and the FastAPI server, its React UI and the worker
+> pool behind them are kept building and green but are not in use. Nothing here
+> is deleted and it may be rebuilt — but this is not load-bearing code, and a
+> finding here weighs less than one on the terminal path (`configs/`).
+
+
 Model Context Protocol (MCP) servers extend Claude workers with additional capabilities: web search, browser automation, filesystem access, database queries, and more.
 
 The orchestrator automatically detects `.claude/mcp.json` in a project directory and passes it to workers via `--mcp-config`.

@@ -180,7 +180,7 @@ backlog.
       never be rewritten, the harness promises to run what it is given — or
       state in the fixtures that they assume pytest on the default `python`.
 
-- [ ] 🔵 **`templates/CLAUDE.md` is orphaned — confirm deletion.** install.sh
+- [x] 🔵 **`templates/CLAUDE.md` is orphaned — confirm deletion.** DONE 2026-09-16: deleted. install.sh
       §10 was the only code that read it and was removed 2026-09-12 as dead
       (§8 already deploys `configs/CLAUDE.md`, the maintained source, and §10
       copied a frozen 2026-02 snapshot only when the target lacked "Agent

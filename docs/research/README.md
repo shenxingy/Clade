@@ -21,7 +21,7 @@ Each deep-dive in this folder has YAML frontmatter (`status`, `summary`, `integr
 > conditional watches; the server rollout and branch cleanup are complete. Do
 > not reopen the historical lists without new evidence.
 
-- **Last reviewed:** 2026-07-28 (full expert/project re-screen and backlog reconciliation; prior 2026-07-15) · **Cadence:** refresh when a deep-dive's `status` changes or a new one lands.
+- **Last reviewed:** 2026-09-16 (machineslop deep-dive indexed after its re-verification; prior full re-screen 2026-07-28) · **Cadence:** refresh when a deep-dive's `status` changes or a new one lands.
 
 **Status:** ✅ integrated (absorbed) · 📘 reference (studied, nothing to build) · 🔨 needs_work (open gaps)
 
@@ -54,6 +54,12 @@ The gaps cluster into 5 themes. This is the strategic read — *where the most e
 ## Index of deep-dives
 
 Grouped by [watch-list](../who-to-learn-from.md) tier. `Gaps` = count of open `needs_work_items`.
+
+### Code standards after machineslop (2026-09-13, re-verified 2026-09-16)
+
+| Source | Status | Gaps | Core lesson | Doc |
+|--------|--------|------|-------------|-----|
+| **Ronacher's unattended Astra run, 6 cited sources checked against their primaries, 5 repository audits — then 48 agents re-verifying all of it** | 🔨 | 4 | The axis that carves code practice is not human-vs-machine but **checkable / retrieval / perceptual**: checkable properties get STRONGER with no human reader (the human was the residual enforcer of everything not written down), retrieval survives on purely machine grounds (stripping identifiers costs 11–28.6 points), and only perceptual ones were ever bandwidth artifacts — 660 controlled trials found cleanliness bought **no** correctness. So gate naming and behaviour, not formatting. But the sharper lesson is about this document itself: the re-verification pass refuted **eleven** of its own claims, and they failed in exactly the direction it indicts others for — a number inherited from a secondary summary (+4% was v1's; v2 says 2.4%, p = 0.21), an author's *recommendation* quoted as their *finding*, and its own headline erosion statistic published with no arXiv identifier at all. Locally it found three real defects, all shipped: the test-integrity detector could not see a single shell assertion (0 of 825), CLAUDE.md's "100% recall" was derived by nothing while one undetected hack still passes the gate floor, and the meta-gate's exemption list held exactly the gates CI runs under "can the harness go red?" | [→](2026-09-13-ai-legible-code-standards.md) |
 
 ### Codex GPT-5.6 generation (2026-09-05)
 | Source | Status | Gaps | Core lesson | Doc |

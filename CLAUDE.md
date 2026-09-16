@@ -3,7 +3,11 @@
 ## Project Type
 - Type: cli + skill-system
 - Frontend: Vite + React + TypeScript UI under orchestrator/web/src/. `web/dist` is the ONLY servable root — `orchestrator/start.sh` builds it on first run, or `cd orchestrator/web && npm ci && npm run build` by hand. Without it `/web` returns 503 naming that command; `web/` itself is a source tree and is never mounted, and `/` redirects to `/web/`.
-- Backend: FastAPI (orchestrator/, port 8000) — optional, CLI layer works standalone
+- Backend: FastAPI (orchestrator/) — optional, CLI layer works standalone. TWO start
+  paths with DIFFERENT ports, which is why a single number here was wrong:
+  `orchestrator/start.sh` defaults to **8765** (`ORCHESTRATOR_PORT`, start.sh:11), while
+  the bare `uvicorn server:app` below inherits uvicorn's own **8000**. Match the port to
+  the command you actually ran.
 - Test command: cd orchestrator && .venv/bin/python -m pytest tests/ -v
 - Verify command: cd orchestrator && find . \( -name .venv -o -name node_modules -o -name __pycache__ \) -prune -o -name "*.py" -print | xargs -n1 .venv/bin/python -m py_compile
 
@@ -48,12 +52,12 @@ cd orchestrator && find . \( -name .venv -o -name node_modules -o -name __pycach
 #   falls back to the control plane, so a token is still required — just a
 #   different one. Either way the node sends `Authorization: Bearer`.
 #   Hub:  start orchestrator normally, set usage_ingest_token in ~/.claude/orchestrator-settings.json
-#   Node (no orchestrator): python3 configs/scripts/usage-agent.py --hub http://hub:8000 --token X [--once]
+#   Node (no orchestrator): python3 configs/scripts/usage-agent.py --hub http://hub:8765 --token X [--once]
 #     (--token defaults to $CLADE_USAGE_HUB_TOKEN and must match the hub's usage_ingest_token)
 #   Node WITH an orchestrator: it pushes through the `usage_hub_token` setting
 #     instead (config.py:319 → server.py:161) — a different mechanism, easily
 #     confused with the env var above.
-#   Dashboard: http://hub:8000/web/usage.html
+#   Dashboard: http://hub:8765/web/usage.html
 # Per-machine ccusage data is stored in ~/.claude/orchestrator/usage.db.
 
 # MCP server — exposes skills to external AI coding tools (Cursor, Cline, etc.)
@@ -607,6 +611,15 @@ types. Close and reopen the PR (or push to its head) to get a real run, and
 confirm the check list actually grew before reading green as evidence.
 
 ## Code Rules
+
+> The general architecture rules (file size, section markers, cohesion, DAG
+> imports, CSS extraction) are NOT repeated here. They live once, in the shipped
+> template at `configs/CLAUDE.md`, and reach a session through the global
+> profile. That is a real deploy gap — working inside this repository they
+> arrive by accident of whose machine it is — and the fix is not a seventh copy
+> to drift: the two that matter are ENFORCED rather than written down. The
+> 1500-line cap is `test_conventions.py`, and the DAG is `check-arch-map.py`
+> plus the import graph. Everything below is specific to this repository.
 
 - Keep all files < 1500 lines (Read tool default = 2000 lines)
 - No circular imports — module deps must form a strict DAG

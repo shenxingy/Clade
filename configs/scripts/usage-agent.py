@@ -16,8 +16,8 @@ Setup (per node):
                                                floored at 60
        --since-days N   (flag only)            default 7; 0 pushes all-time
   3. Run it one of two ways:
-       cron:            python3 usage-agent.py --hub http://hub:8000 --once
-       systemd / nohup: python3 usage-agent.py --hub http://hub:8000 --interval 900
+       cron:            python3 usage-agent.py --hub http://hub:8765 --once
+       systemd / nohup: python3 usage-agent.py --hub http://hub:8765 --interval 900
      `--once` runs a single cycle and exits non-zero when the push failed,
      which is what makes it the cron form. Without it the process loops
      forever and a failed cycle is logged rather than fatal, so a cron entry

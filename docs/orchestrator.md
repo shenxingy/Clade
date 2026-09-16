@@ -4,6 +4,13 @@
 
 # Orchestrator Web UI
 
+> **This layer is dormant.** `docs/layers.json` declares it so: the owner works
+> entirely in the terminal, and the FastAPI server, its React UI and the worker
+> pool behind them are kept building and green but are not in use. Nothing here
+> is deleted and it may be rebuilt — but this is not load-bearing code, and a
+> finding here weighs less than one on the terminal path (`configs/`).
+
+
 ## Table of Contents
 
 1. [Overview](#overview)
