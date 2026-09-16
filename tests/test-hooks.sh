@@ -1069,6 +1069,52 @@ else
 fi
 rm -rf "$VTC_DIR"
 
+# ─── worker-checkpoint must see a write that never touched Edit/Write ───
+#
+# It did not. The hook was wired to PostToolUse Edit|Write and additionally
+# exited 0 on an empty .tool_input.file_path — so an agent writing through a
+# `python - <<EOF` heredoc produced no checkpoint at all. That is the precise
+# failure mode the unattended-run literature names ("once the model abandoned
+# the edit tool for Python string splicing…"), i.e. the hook was blind in the
+# one case it exists for. The path was only ever a commit-message label; the
+# snapshot is `git add -A` over the whole worktree.
+
+WC_DIR=$(mktemp -d)
+(
+  cd "$WC_DIR" || exit 1
+  git init -q .
+  git config user.email t@example.com; git config user.name t
+  echo base > file.txt; git add -A; git -c core.hooksPath=/dev/null commit -qm base
+) >/dev/null 2>&1
+echo "written by bash, not by Edit" > "$WC_DIR/from-bash.txt"
+WC_SHADOW="$WC_DIR/.shadow.git"
+WC_OUT=$(CLADE_WORKER_SHADOW_DIR="$WC_SHADOW" CLADE_WORKER_WORKTREE="$WC_DIR" \
+  bash "$REPO_ROOT/configs/hooks/worker-checkpoint.sh" \
+  <<< '{"tool_name":"Bash","tool_input":{"command":"python - <<EOF"}}' 2>&1)
+WC_N=$(git --git-dir="$WC_SHADOW" rev-list --count HEAD 2>/dev/null || echo 0)
+if [[ "${WC_N:-0}" -ge 1 ]]; then
+  pass "a Bash write with no file_path still produces a checkpoint"
+else
+  fail "a Bash write with no file_path still produces a checkpoint" \
+       "shadow has $WC_N commit(s); hook said: $WC_OUT"
+fi
+# And the snapshot must actually contain the file the Bash tool wrote.
+if git --git-dir="$WC_SHADOW" --work-tree="$WC_DIR" show --name-only --format= HEAD 2>/dev/null \
+   | grep -q "from-bash.txt"; then
+  pass "the checkpoint contains the file written outside Edit/Write"
+else
+  fail "the checkpoint contains the file written outside Edit/Write" \
+       "$(git --git-dir="$WC_SHADOW" show --name-only --format= HEAD 2>&1 | head -3)"
+fi
+# The hook must still be inert when no shadow dir is configured.
+if bash "$REPO_ROOT/configs/hooks/worker-checkpoint.sh" \
+   <<< '{"tool_name":"Bash","tool_input":{}}' >/dev/null 2>&1; then
+  pass "worker-checkpoint stays inert without CLADE_WORKER_SHADOW_DIR"
+else
+  fail "worker-checkpoint stays inert without CLADE_WORKER_SHADOW_DIR" "non-zero exit"
+fi
+rm -rf "$WC_DIR"
+
 # ─── kit-checksum: the staleness detector must be able to say "clean" ───
 #
 # It could not. install.sh excluded __pycache__/*.pyc/*.pyo when writing

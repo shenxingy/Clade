@@ -40,8 +40,18 @@ def test_a_resolvable_range_still_reports():
     out = _run("--range", "HEAD~1..HEAD")
     assert out.returncode == 0
     assert "RANGE NOT CHECKED" not in out.stdout
+    # THREE outcomes, not two. The third — a fact that survives only in an
+    # append-only record (changelog, research doc, progress archive) — is a
+    # deliberate branch at check-sibling-facts.py:426 and this assertion did not
+    # know about it, so the suite went red the first time a real commit produced
+    # one (deleting the "4-6 modules" rule from configs/CLAUDE.md while the
+    # research doc that argued for its deletion kept quoting it, which is exactly
+    # what an append-only record is FOR). A test that enumerates a subset of a
+    # tool's outcomes fails on correct behaviour; keep this list in step with the
+    # script's print sites.
     assert ("no changed fact survives" in out.stdout
-            or "still present elsewhere" in out.stdout)
+            or "still present elsewhere" in out.stdout
+            or "survive ONLY in append-only records" in out.stdout), out.stdout
 
 
 def test_strict_does_not_fail_on_an_unavailable_range():

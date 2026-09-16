@@ -30,7 +30,7 @@
 | `post-tool-use-failure.sh` | PostToolUse (failure) | Logs tool failures for pattern tracking |
 | `rule-injector.sh` | PostToolUse (Edit/Write) | Injects path-scoped rules from `.claude/rules/` + `~/.claude/rules/` when the edited file matches their `paths:` frontmatter (once per session per rule) |
 | `edit-shadow-detector.sh` | PostToolUse (Edit/Write) | Logs every file Claude writes to a session-keyed shadow, for correction pairing; async, data-only, no output |
-| `worker-checkpoint.sh` | PostToolUse (Edit/Write) | One shadow-repo commit per agent write, so a failed attempt can say *when* it went wrong. Orchestrator workers only — inert unless `CLADE_WORKER_SHADOW_DIR` is set |
+| `worker-checkpoint.sh` | PostToolUse (Edit/Write **and Bash**) | One shadow-repo commit per agent write, so a failed attempt can say *when* it went wrong. Armed by `run-tasks-parallel.sh` on the terminal path and by orchestrator workers; inert unless `CLADE_WORKER_SHADOW_DIR` is set. It watches Bash too, because an agent that abandons the edit tool for a `python - <<EOF` heredoc is exactly the case a checkpointer exists for |
 | `failure-detector.sh` | PostToolUse (Bash) | Tracks consecutive Bash failures; injects debugging pressure |
 | `memory-sync.sh` | PostToolUse (Write/Edit) | Syncs memory files to NFS/GitHub when written |
 | `doc-align-check.sh` | PostToolUse (Edit/Write) | Advisory: warns if edited markdown disagrees with docs/facts.json; async systemMessage only |

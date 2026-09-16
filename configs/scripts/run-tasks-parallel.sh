@@ -360,6 +360,18 @@ run_task_in_worktree() {
   # project bootstrap). Best-effort by design — never blocks the spawn.
   bootstrap_worktree_env "$task_idx" "$wt_dir" "$log_file"
 
+  # Arm the per-attempt checkpoint. worker-checkpoint.sh has existed and been
+  # tested since it was written, and it was INERT everywhere that matters: its
+  # only setter was orchestrator/worker.py, in the layer docs/layers.json marks
+  # dormant. So the terminal path — the one actually used — kept no record of a
+  # worker's intermediate states, and "correct at call 14, wrong at 15" was
+  # unrecoverable because the worktree is force-removed below. The shadow repo
+  # lives OUTSIDE the worktree so its index never contends with the worker's own
+  # commits, and it survives cleanup_worktree.
+  export CLADE_WORKER_TASK_ID="${CLADE_WORKER_TASK_ID:-batch-${TIMESTAMP}-${task_idx}}"
+  export CLADE_WORKER_WORKTREE="$wt_dir"
+  export CLADE_WORKER_SHADOW_DIR="${CLADE_WORKER_SHADOW_DIR_BASE:-$REPO_ROOT/$LOG_DIR/shadow}/task-${task_idx}.git"
+
   local succeeded=false
   for attempt in $(seq 1 "$max_attempts"); do
     if [[ $attempt -gt 1 ]]; then
@@ -426,15 +438,36 @@ merge_worktree() {
   else
     echo "MERGE CONFLICT for task $task_idx — aborting merge, running serially"
     git merge --abort 2>/dev/null
-    cleanup_worktree "$task_idx"
+    cleanup_worktree "$task_idx" conflict
     return 1
   fi
 }
 
+# `keep` as the second argument preserves the branch under clade/kept/ instead of
+# deleting it. The failure, conflict and unknown paths all used to call this with
+# no argument, so a merge conflict or a failed task left NOTHING: the worktree was
+# force-removed and the branch -D'd in the same breath, and the only artefact a
+# post-mortem could have used was gone before anyone knew there was a post-mortem.
+# Deleting the record of the runs that went wrong, and keeping only the ones that
+# went right, is the exact shape of survivorship bias.
 cleanup_worktree() {
   local task_idx="$1"
+  local keep="${2:-}"
   local wt_dir="$WORKTREE_BASE/task-${task_idx}"
   local branch_name="batch/task-${task_idx}-${TIMESTAMP}"
+
+  if [[ -n "$keep" ]]; then
+    # Commit whatever the attempt left behind before the worktree goes away.
+    if [[ -d "$wt_dir" ]] && ! (cd "$wt_dir" && git diff --quiet && git diff --cached --quiet) 2>/dev/null; then
+      (cd "$wt_dir" && git add -A && git -c core.hooksPath=/dev/null commit -q \
+         -m "wip(task-${task_idx}): uncommitted state preserved by ${keep}") 2>/dev/null || true
+    fi
+    git worktree remove "$wt_dir" --force 2>/dev/null
+    git branch -m "$branch_name" "clade/kept/${TIMESTAMP}-task-${task_idx}-${keep}" 2>/dev/null \
+      || git branch -D "$branch_name" 2>/dev/null
+    echo "[$task_idx] kept as clade/kept/${TIMESTAMP}-task-${task_idx}-${keep}" >&2
+    return 0
+  fi
 
   git worktree remove "$wt_dir" --force 2>/dev/null
   git branch -D "$branch_name" 2>/dev/null
@@ -518,9 +551,9 @@ for i in $(seq 1 "$TOTAL"); do
     fi
   elif [[ "$result" == "failed" ]]; then
     FAILED=$((FAILED + 1))
-    cleanup_worktree "$i"
+    cleanup_worktree "$i" failed
   else
-    cleanup_worktree "$i"
+    cleanup_worktree "$i" unknown
   fi
   COMPLETED=$((COMPLETED + 1))
   update_progress "merging" "$COMPLETED" "$TOTAL" "$SUCCESS" "$FAILED"

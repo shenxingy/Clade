@@ -223,9 +223,22 @@ checkpoint_before_task() {
   fi
 }
 
-# Rollback working tree to the checkpoint state
+# Rollback working tree to the checkpoint state.
+#
+# This runs UNCONDITIONALLY at the bottom of the attempt loop, so it fires on the
+# last failed attempt too — `git checkout . ; git clean -fd` against a tree the
+# agent just worked in. Whatever it produced was gone before anyone could look at
+# it, and the failure is the case you most want to read. So: stash it under a
+# named ref first. The stash costs nothing when the tree is clean, it is never
+# popped automatically, and `git stash list` is where a post-mortem starts.
 rollback_to_checkpoint() {
   if ! has_git; then return 0; fi
+  if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null \
+     || [[ -n "$(git ls-files --others --exclude-standard 2>/dev/null)" ]]; then
+    if git stash push -u -q -m "clade-attempt $(date +%Y%m%d-%H%M%S)" 2>/dev/null; then
+      echo "   (attempt preserved: git stash list | head -1)"
+    fi
+  fi
   echo "🔄 Rolling back to pre-task state..."
   git checkout . 2>/dev/null || true
   git clean -fd 2>/dev/null || true

@@ -29,8 +29,14 @@ INPUT=$(cat)
 SHADOW="${CLADE_WORKER_SHADOW_DIR:-}"
 [[ -z "$SHADOW" ]] && exit 0
 
+# FILE_PATH is a LABEL, not a gate. The snapshot below is `add -A` over the whole
+# worktree, so it never needed a path — and requiring one made this hook blind to
+# a Bash-tool write, which is precisely the failure it exists to catch. Ronacher's
+# primary complaint about the unattended run was the model abandoning the edit
+# tool for Python string splicing: "you're going to have to resort to using the
+# diff viewer of the final artifacts." A checkpointer that only sees Edit|Write
+# records nothing for exactly that run.
 FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
-[[ -z "$FILE_PATH" ]] && exit 0
 
 WORKTREE="${CLADE_WORKER_WORKTREE:-$PWD}"
 [[ -d "$WORKTREE" ]] || exit 0
@@ -46,7 +52,8 @@ if [[ ! -d "$SHADOW" ]]; then
   git --git-dir="$SHADOW" config core.hooksPath /dev/null 2>/dev/null
 fi
 
-REL="${FILE_PATH#"$WORKTREE"/}"
+REL="${FILE_PATH:+${FILE_PATH#"$WORKTREE"/}}"
+REL="${REL:-<bash-write>}"
 TOOL=$(echo "$INPUT" | jq -r '.tool_name // "edit"' 2>/dev/null)
 
 git --git-dir="$SHADOW" --work-tree="$WORKTREE" add -A >/dev/null 2>&1 || exit 0

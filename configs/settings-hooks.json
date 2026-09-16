@@ -1,5 +1,5 @@
 {
-  "_comment": "Hooks section to merge into ~/.claude/settings.json — reference copy",
+  "_comment": "Hooks section to merge into ~/.claude/settings.json \u2014 reference copy",
   "hooks": {
     "SessionStart": [
       {
@@ -7,7 +7,7 @@
         "hooks": [
           {
             "id": "session-baseline",
-            "description": "Capture git dirty baseline for session-scoped stop-check. Must cover clear/fork too: those mint a NEW session_id with no baseline file, and stop-check.sh fails open when the baseline is missing — so a startup-only matcher silently disables the stop gate for every cleared or forked session. Deliberately NOT on resume: resume keeps the original session_id, and re-baselining would reclassify this session's own uncommitted work as pre-existing.",
+            "description": "Capture git dirty baseline for session-scoped stop-check. Must cover clear/fork too: those mint a NEW session_id with no baseline file, and stop-check.sh fails open when the baseline is missing \u2014 so a startup-only matcher silently disables the stop gate for every cleared or forked session. Deliberately NOT on resume: resume keeps the original session_id, and re-baselining would reclassify this session's own uncommitted work as pre-existing.",
             "type": "command",
             "command": "~/.claude/hooks/session-baseline.sh",
             "timeout": 5
@@ -56,7 +56,7 @@
         "hooks": [
           {
             "id": "post-compact-reinject",
-            "description": "Re-inject the pinned task goal/state after context compaction — the startup matcher never fires on source=compact, so the PreCompact-saved goal was silently lost after auto-compaction",
+            "description": "Re-inject the pinned task goal/state after context compaction \u2014 the startup matcher never fires on source=compact, so the PreCompact-saved goal was silently lost after auto-compaction",
             "type": "command",
             "command": "~/.claude/hooks/post-compact-reinject.sh",
             "timeout": 5,
@@ -70,7 +70,7 @@
         "hooks": [
           {
             "id": "session-end-cleanup",
-            "description": "Delete this session's correction-pairing shadow (<runtime>/claude-edit-shadows/session-<session_id>.jsonl). No matcher on purpose: every end reason (clear, logout, prompt_input_exit, other) retires that session_id, and the next session gets a new one. Attribution-scoped — it unlinks only the file keyed by the ending session_id, so a parallel live session's shadow is never touched.",
+            "description": "Delete this session's correction-pairing shadow (<runtime>/claude-edit-shadows/session-<session_id>.jsonl). No matcher on purpose: every end reason (clear, logout, prompt_input_exit, other) retires that session_id, and the next session gets a new one. Attribution-scoped \u2014 it unlinks only the file keyed by the ending session_id, so a parallel live session's shadow is never touched.",
             "type": "command",
             "command": "~/.claude/hooks/session-end-cleanup.sh",
             "timeout": 5
@@ -91,7 +91,7 @@
           },
           {
             "id": "revert-detector",
-            "description": "Record a git revert/reset against the session edit shadow (async, data-only — it does not warn)",
+            "description": "Record a git revert/reset against the session edit shadow (async, data-only \u2014 it does not warn)",
             "type": "command",
             "command": "~/.claude/hooks/revert-detector.sh",
             "if": "Bash(git *)",
@@ -119,7 +119,7 @@
         "hooks": [
           {
             "id": "post-edit-check",
-            "description": "Run background checks (type-check, lint) after file edits and wake Claude when they FAIL. asyncRewake is the delivery channel: the check can take 180s so it must not block the turn, but a plain async hook's output goes nowhere — the old systemMessage was written into a void. The hook now exits 2 with its findings on stderr, which asyncRewake surfaces as a system reminder; a clean check exits 0 silently and never wakes Claude. asyncRewake implies async, so it is the only flag needed here. Findings are phrased inside the hook's own stderr, because the command hook schema has no field for customizing the wake text.",
+            "description": "Run background checks (type-check, lint) after file edits and wake Claude when they FAIL. asyncRewake is the delivery channel: the check can take 180s so it must not block the turn, but a plain async hook's output goes nowhere \u2014 the old systemMessage was written into a void. The hook now exits 2 with its findings on stderr, which asyncRewake surfaces as a system reminder; a clean check exits 0 silently and never wakes Claude. asyncRewake implies async, so it is the only flag needed here. Findings are phrased inside the hook's own stderr, because the command hook schema has no field for customizing the wake text.",
             "type": "command",
             "command": "~/.claude/hooks/post-edit-check.sh",
             "asyncRewake": true,
@@ -136,7 +136,7 @@
           },
           {
             "id": "rule-injector",
-            "description": "Inject path-scoped rules (.claude/rules/*.md + ~/.claude/rules/*.md) when the edited file matches their paths: frontmatter — once per session per rule",
+            "description": "Inject path-scoped rules (.claude/rules/*.md + ~/.claude/rules/*.md) when the edited file matches their paths: frontmatter \u2014 once per session per rule",
             "type": "command",
             "command": "~/.claude/hooks/rule-injector.sh",
             "timeout": 5,
@@ -152,7 +152,7 @@
           },
           {
             "id": "worker-checkpoint",
-            "description": "Snapshot the worktree into a shadow repo after each agent write (orchestrator workers only; inert without CLADE_WORKER_SHADOW_DIR)",
+            "description": "Snapshot the worktree into a shadow repo after each agent write, including writes made through Bash rather than Edit/Write (armed by run-tasks-parallel.sh on the terminal path and by orchestrator workers; inert without CLADE_WORKER_SHADOW_DIR)",
             "type": "command",
             "command": "~/.claude/hooks/worker-checkpoint.sh",
             "timeout": 10,
@@ -176,7 +176,7 @@
           },
           {
             "id": "skill-suggest",
-            "description": "Suggest relevant skills after file edits (blog→SEO/GEO, schema→validate, etc.). Runs SYNC on purpose: its only output is hookSpecificOutput.additionalContext, which a background hook cannot deliver, so async:true discarded every suggestion. asyncRewake was rejected — waking Claude mid-turn for an advisory hint is not worth the interruption (see .claude/decisions.md). Being on the Edit/Write critical path, its cost is bounded twice: this 5s hook timeout, and a `timeout 5` re-exec inside the script itself that also kills a stalled content probe.",
+            "description": "Suggest relevant skills after file edits (blog\u2192SEO/GEO, schema\u2192validate, etc.). Runs SYNC on purpose: its only output is hookSpecificOutput.additionalContext, which a background hook cannot deliver, so async:true discarded every suggestion. asyncRewake was rejected \u2014 waking Claude mid-turn for an advisory hint is not worth the interruption (see .claude/decisions.md). Being on the Edit/Write critical path, its cost is bounded twice: this 5s hook timeout, and a `timeout 5` re-exec inside the script itself that also kills a stalled content probe.",
             "type": "command",
             "command": "~/.claude/hooks/skill-suggest.sh",
             "timeout": 5
@@ -200,6 +200,14 @@
             "command": "~/.claude/hooks/memory-sync.sh",
             "async": true,
             "timeout": 10
+          },
+          {
+            "id": "worker-checkpoint",
+            "description": "Snapshot the worktree into a shadow repo after each agent write, including writes made through Bash rather than Edit/Write (armed by run-tasks-parallel.sh on the terminal path and by orchestrator workers; inert without CLADE_WORKER_SHADOW_DIR)",
+            "type": "command",
+            "command": "~/.claude/hooks/worker-checkpoint.sh",
+            "timeout": 10,
+            "async": true
           }
         ]
       },
@@ -208,14 +216,14 @@
         "hooks": [
           {
             "id": "mailbox-drain",
-            "description": "Mid-flight worker steering: drain .claude/worker-inbox-<task>.md into context after any tool call (orchestrator workers only — no-op unless CLADE_WORKER_TASK_ID is set)",
+            "description": "Mid-flight worker steering: drain .claude/worker-inbox-<task>.md into context after any tool call (orchestrator workers only \u2014 no-op unless CLADE_WORKER_TASK_ID is set)",
             "type": "command",
             "command": "~/.claude/hooks/mailbox-drain.sh",
             "timeout": 5
           },
           {
             "id": "context-warning-drain",
-            "description": "Deliver the ~80%-context-budget nudge worker.py writes to .claude/context-warning-<task>.md (orchestrator workers only — no-op unless CLADE_WORKER_TASK_ID is set)",
+            "description": "Deliver the ~80%-context-budget nudge worker.py writes to .claude/context-warning-<task>.md (orchestrator workers only \u2014 no-op unless CLADE_WORKER_TASK_ID is set)",
             "type": "command",
             "command": "~/.claude/hooks/context-warning-drain.sh",
             "timeout": 5
@@ -241,7 +249,7 @@
             "id": "stop-completeness-check",
             "description": "LLM check that all user tasks are complete before stopping",
             "type": "prompt",
-            "prompt": "Return {\"ok\":true} if all user tasks are complete, {\"ok\":false,\"reason\":\"one line\"} if something is clearly unfinished AND automatable. API errors → always {\"ok\":true}. Deferred/awaiting user input → {\"ok\":true}. JSON only, no other output.",
+            "prompt": "Return {\"ok\":true} if all user tasks are complete, {\"ok\":false,\"reason\":\"one line\"} if something is clearly unfinished AND automatable. API errors \u2192 always {\"ok\":true}. Deferred/awaiting user input \u2192 {\"ok\":true}. JSON only, no other output.",
             "timeout": 30,
             "statusMessage": "Checking completion..."
           }
@@ -266,7 +274,7 @@
             "id": "precompact-state-save",
             "description": "Prompt LLM to save active task state to compact-state.md before context compaction",
             "type": "prompt",
-            "prompt": "[PreCompact State Checkpoint]\n\nContext compaction is about to happen. If you are in the middle of an active task, use the Write tool to save your state to .claude/compact-state.md BEFORE compaction.\n\nFormat (keep it short — this file is re-read at session start):\n```\n# Compact State — {ISO timestamp}\n## Identity\n{1 line: your current role — e.g. \"Claude Code assistant, Clade project, implementing X\"}\n## Active Task\n{1-2 sentences: what you are working on}\n## Progress\n{bullet list: what has been completed}\n## Next Step\n{exactly what to do next — be specific enough to resume without re-reading the conversation}\n## Key Context\n{critical facts that would be lost: file paths, error messages, variable names, architectural decisions}\n```\n\nThen output: > [Compact Checkpoint] State saved to .claude/compact-state.md\n\nIf you are NOT in the middle of an active task (conversation is idle or task is complete), skip this entirely.",
+            "prompt": "[PreCompact State Checkpoint]\n\nContext compaction is about to happen. If you are in the middle of an active task, use the Write tool to save your state to .claude/compact-state.md BEFORE compaction.\n\nFormat (keep it short \u2014 this file is re-read at session start):\n```\n# Compact State \u2014 {ISO timestamp}\n## Identity\n{1 line: your current role \u2014 e.g. \"Claude Code assistant, Clade project, implementing X\"}\n## Active Task\n{1-2 sentences: what you are working on}\n## Progress\n{bullet list: what has been completed}\n## Next Step\n{exactly what to do next \u2014 be specific enough to resume without re-reading the conversation}\n## Key Context\n{critical facts that would be lost: file paths, error messages, variable names, architectural decisions}\n```\n\nThen output: > [Compact Checkpoint] State saved to .claude/compact-state.md\n\nIf you are NOT in the middle of an active task (conversation is idle or task is complete), skip this entirely.",
             "statusMessage": "Checkpointing task state before compaction..."
           }
         ]
