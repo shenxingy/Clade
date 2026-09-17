@@ -1244,6 +1244,72 @@ else
        "no union attribute for the correction log"
 fi
 
+# ─── the path-scoped rule channel must not be wired-and-empty ────────
+#
+# install.sh created ~/.claude/rules from the day rule-injector.sh landed and
+# nothing ever wrote into it. A hook that is silent on no-match is silent on an
+# empty channel too, so "working" and "has no content" looked identical. Found
+# 2026-09-17; these cases exist so it cannot happen again quietly.
+
+RI_N=$(ls "$REPO_ROOT"/configs/rules/*.md 2>/dev/null | wc -l | tr -d ' ')
+if [[ "${RI_N:-0}" -gt 0 ]]; then
+  pass "configs/rules/ carries content for the rule-injector channel ($RI_N files)"
+else
+  fail "configs/rules/ carries content for the rule-injector channel" \
+       "the hook is wired and the channel is empty"
+fi
+
+# A rule file without a `paths:` key is IGNORED by the hook, silently. That is
+# the single way to add a file here and have it do nothing.
+RI_BAD=""
+for f in "$REPO_ROOT"/configs/rules/*.md; do
+  [ -f "$f" ] || continue
+  head -12 "$f" | grep -qE '^paths:' || RI_BAD="$RI_BAD $(basename "$f")"
+done
+if [[ -z "$RI_BAD" ]]; then
+  pass "every rule file declares paths: (without it the hook ignores the file)"
+else
+  fail "every rule file declares paths:" "missing in:$RI_BAD"
+fi
+
+# install.sh must actually deploy them — the defect was the missing copy, not
+# the missing content.
+if grep -q 'configs/rules' "$REPO_ROOT/install.sh"; then
+  pass "install.sh deploys configs/rules/ to ~/.claude/rules/"
+else
+  fail "install.sh deploys configs/rules/ to ~/.claude/rules/" "no deploy block"
+fi
+
+# End to end, hermetically. This suite runs under a fake $HOME (line 75), so a
+# test that reads ~/.claude/rules measures the install, not the channel — the
+# first version of this case did exactly that and failed for the wrong reason.
+# Build a throwaway project carrying a project-level rules dir instead.
+RI_PROJ=$(mktemp -d)
+mkdir -p "$RI_PROJ/.claude/rules" "$RI_PROJ/tests"
+cp "$REPO_ROOT/configs/rules/shell-scripts.md" "$RI_PROJ/.claude/rules/"
+: > "$RI_PROJ/tests/test-probe.sh"
+RI_OUT=$(printf '{"tool_input":{"file_path":"%s/tests/test-probe.sh"},"session_id":"ri-%s"}' \
+  "$RI_PROJ" "$RANDOM$$" \
+  | CLAUDE_PROJECT_DIR="$RI_PROJ" bash "$REPO_ROOT/configs/hooks/rule-injector.sh" 2>&1)
+if printf '%s' "$RI_OUT" | grep -q "additionalContext"; then
+  pass "a shipped rule file injects when its paths: glob matches"
+else
+  fail "a shipped rule file injects when its paths: glob matches" \
+       "len=${#RI_OUT} out=[${RI_OUT:0:160}]"
+fi
+# Dedup: the same session must not be injected twice.
+RI_SESS="ri-dedup-$RANDOM$$"
+printf '{"tool_input":{"file_path":"%s/tests/test-probe.sh"},"session_id":"%s"}' "$RI_PROJ" "$RI_SESS" \
+  | CLAUDE_PROJECT_DIR="$RI_PROJ" bash "$REPO_ROOT/configs/hooks/rule-injector.sh" >/dev/null 2>&1
+RI_TWICE=$(printf '{"tool_input":{"file_path":"%s/tests/test-probe.sh"},"session_id":"%s"}' "$RI_PROJ" "$RI_SESS" \
+  | CLAUDE_PROJECT_DIR="$RI_PROJ" bash "$REPO_ROOT/configs/hooks/rule-injector.sh" 2>&1)
+if [[ -z "$RI_TWICE" ]]; then
+  pass "a rule is injected at most once per session"
+else
+  fail "a rule is injected at most once per session" "second call returned ${#RI_TWICE} chars"
+fi
+rm -rf "$RI_PROJ"
+
 # ─── Summary ─────────────────────────────────────────────────────────
 
 echo ""

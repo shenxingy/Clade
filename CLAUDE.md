@@ -78,6 +78,17 @@ cd orchestrator && find . \( -name .venv -o -name node_modules -o -name __pycach
 # samples candidates[::step][:limit], so the rate is a function of the limit
 # you pass — measured 19% at 25, 29% at 30, 29% at the default 40, 33% at 21.
 # An earlier '~17%' reproduced at none of them and had no recorded provenance.
+# SCOPE, and it is narrower than this file implied until 2026-09-17:
+# RED_PHASE_SUBDIR defaults to `orchestrator` — the layer docs/layers.json marks
+# DORMANT. Pointed at the terminal path it measures NOTHING: measured, with
+# RED_PHASE_SUBDIR=configs it checks 0 of 25 sampled commits ("out of scope"),
+# because configs/ carries no pytest suite and this repo's load-bearing tests are
+# the 26 SHELL suites in tests/, which the script says outright it cannot see.
+# It used to print "FIRED on 0 (0% of checked)" in that case — a rate over a zero
+# denominator, i.e. the script announcing the exact failure it exists to detect.
+# It now refuses to print a rate when nothing was checked.
+# So: a real instrument, on the dormant half. Do not wire it into CI as a gate
+# over the terminal path; it cannot see it.
 # The interpreter is found automatically; RED_PHASE_PYTHON only overrides it.
 # Pass an absolute path or a repo-relative one — a venv python is a symlink to
 # the system python, so the script uses abspath rather than resolve() to avoid
@@ -367,6 +378,33 @@ file carrying conflict markers. Both pinned by `tests/test-hooks.sh`.
 
 **When asked whether things are synced, check all three.** A clean `git status`
 here says nothing about the other two.
+
+## Path-scoped rules — the channel that was wired and empty
+
+`configs/rules/*.md` carry rules that only matter for certain files. Each declares
+a `paths:` glob in YAML front matter; `rule-injector.sh` (PostToolUse Edit|Write)
+injects the body **at the moment a matching file is edited**, not at session start.
+`install.sh` deploys them to `~/.claude/rules/`; a project may also carry
+`.claude/rules/`, which is read first.
+
+This exists because the alternative measurably does not work. A prose rule in a
+context file is followed ~64% of the time and decays ~5.6% in odds per function
+generated, with no detectable effect from file size or position (arXiv:2605.10039)
+— so moving a rule earlier in CLAUDE.md buys nothing, and CLAUDE.md is already 750
+lines. The change here is **proximity, not enforcement**: the rule arrives with the
+edit it governs. That is a bet, not a measured result, and it should be labelled
+that way until the adoption is re-measured.
+
+**It shipped broken and silent.** `install.sh` created `~/.claude/rules` from the
+day the hook landed and nothing ever wrote into it. The hook is silent on no-match
+by design, so an empty channel and a working one produced identical output — the
+same shape as every other instrument this repo has found unable to fire. Pinned now
+by four cases in `tests/test-hooks.sh`, including one that fails if `configs/rules/`
+is empty and one that fails if a rule file omits `paths:` (without which the hook
+ignores it, silently).
+
+A rule file with no `paths:` key is ignored. Keep each short: it is injected into
+context, so a long rule is the context bloat it was meant to avoid.
 
 ## Settings
 

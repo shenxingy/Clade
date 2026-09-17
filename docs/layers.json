@@ -13,6 +13,7 @@
       "paths": [
         "configs/skills",
         "configs/hooks",
+        "configs/rules",
         "configs/scripts",
         "configs/agents",
         "configs/codex-agents",

@@ -19,6 +19,14 @@ TESTS_RUN=0; TESTS_PASSED=0; TESTS_FAILED=0
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[0;33m'; NC='\033[0m'
 pass() { TESTS_RUN=$((TESTS_RUN+1)); TESTS_PASSED=$((TESTS_PASSED+1)); echo -e "  ${GREEN}✓${NC} $1"; }
 fail() { TESTS_RUN=$((TESTS_RUN+1)); TESTS_FAILED=$((TESTS_FAILED+1)); echo -e "  ${RED}✗${NC} $1"; [[ -n "${2:-}" ]] && echo -e "    ${RED}→ $2${NC}"; }
+# A skip is NOT a pass. Two branches below used to call pass() on their own skip
+# path, so this suite reported a green tick whether the live fetch ran or not —
+# the same "an instrument that cannot fire looks exactly like a clean result"
+# defect this repository has now found in four of its own tools. Skips are
+# counted separately and printed in the summary so "nothing ran" and
+# "everything passed" cannot look alike.
+TESTS_SKIPPED=0
+skip() { TESTS_SKIPPED=$((TESTS_SKIPPED+1)); echo -e "  ${YELLOW:-}○${NC} SKIP $1"; }
 section() { echo ""; echo -e "${YELLOW}━━━ $1 ━━━${NC}"; }
 has() { grep -qF -- "$2" "$1" && pass "$3" || fail "$3" "missing: $2"; }
 
@@ -68,15 +76,18 @@ if python3 -c "import requests" 2>/dev/null; then
   if timeout 45 python3 "$FETCHER" https://example.com -o "$OUT" >/dev/null 2>&1 && [[ -s "$OUT" ]]; then
     pass "a live keyless fetch returns a non-empty page"
   else
-    pass "live fetch skipped (no network) — offline is not a defect"
+    skip "live fetch (no network) — offline is not a defect, but it is not a pass"
   fi
   rm -f "$OUT"
 else
-  pass "live fetch skipped (requests not installed)"
+  skip "live fetch (requests not installed)"
 fi
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+if [[ $TESTS_SKIPPED -gt 0 ]]; then
+  echo -e "  ${TESTS_SKIPPED} skipped (reported, never counted as passed)"
+fi
 if [[ $TESTS_FAILED -eq 0 ]]; then echo -e "  ${GREEN}ALL PASSED${NC} ($TESTS_PASSED/$TESTS_RUN)"
 else echo -e "  ${RED}$TESTS_FAILED FAILED${NC} / $TESTS_PASSED passed / $TESTS_RUN total"; fi
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

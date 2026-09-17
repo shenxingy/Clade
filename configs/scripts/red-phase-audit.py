@@ -313,10 +313,25 @@ def main():
     print(f"checked {checked} commits, skipped {skipped}")
     for reason, n in sorted(skip_reasons.items(), key=lambda kv: -kv[1]):
         print(f"    {n:>3}  {reason}")
-    print(f"FIRED on {fired} ({fired/max(1,checked)*100:.0f}% of checked)")
-    print(f"\nSCOPE: python tests under {SUBDIR}/ only. Shell suites in tests/ "
+    if checked == 0:
+        # A rate over a zero denominator is the failure this whole script exists
+        # to prevent, printed by the script itself. Pointed at configs/ — the
+        # load-bearing layer — it checks 0 of 25 commits ("out of scope") and
+        # used to print "FIRED on 0 (0% of checked)", which reads as good news.
+        # `max(1, checked)` was doing it: it turns "measured nothing" into "0%".
+        print("NO RESULT: 0 commits were in scope, so nothing was measured.")
+        print("This is NOT a 0% fire rate. See SCOPE below.")
+    else:
+        print(f"FIRED on {fired} ({fired/checked*100:.0f}% of checked)")
+    print(f"\nSCOPE: python tests under {SUBDIR}/ only (RED_PHASE_SUBDIR, default "
+          f"'orchestrator'). Shell suites in tests/ "
           f"({len(list((Path(REPO) / 'tests').glob('test-*.sh')))} of them) are not "
           "measured by this audit at all.")
+    if SUBDIR == "orchestrator":
+        print("      NOTE: that default is the layer docs/layers.json marks DORMANT. "
+              "This audit does not measure the terminal path (configs/), whose tests "
+              "are the shell suites above. Measured 2026-09-17: RED_PHASE_SUBDIR=configs "
+              "checks 0 of 25 sampled commits, because configs/ carries no pytest suite.")
     if hits:
         print("\nCommits whose added tests already passed before the change:")
         for sha, p, t, at in hits[:10]:

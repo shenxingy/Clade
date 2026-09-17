@@ -24,7 +24,7 @@ summary: >
   Artifact: https://artifacts.internal.scam.ai/code-standards-after-machineslop/
 integrated_items: []
 needs_work_items:
-  - "Run red-phase-audit.py against the PR's commits in the pytest job (report-only, fail on a NEW fire) — it covers the 86% additive blind spot, is live (4 of 21 sampled commits fired), and CI currently runs only its --self-test"
+  - "WITHDRAWN 2026-09-17: 'run red-phase-audit.py against the PR's commits in the pytest job'. It does NOT cover the 86% additive blind spot on the layer that matters — RED_PHASE_SUBDIR defaults to `orchestrator` (the layer docs/layers.json marks dormant), and with RED_PHASE_SUBDIR=configs it checks 0 of 25 sampled commits because configs/ has no pytest suite and this repo's load-bearing tests are the 26 shell suites in tests/, which the script states it cannot measure. Wiring it would have put a gate over the dormant half while reporting coverage of the live one. Fixed instead: it no longer prints a rate over a zero denominator, and both CLAUDE.md and its own SCOPE line now say which layer it sees."
 reference_items:
   - "WITHDRAWN: gating E701/E702 as a 'machineslop signature'. Of the 18 violations in configs/, 12 are deliberate self-evident idioms (aligned threshold ladder claude-usage-watch.py, cursor-advance blog_render.py); the other 6 are all in vignelli_system.py from one upstream-absorption commit 1ab573b, so 'deliberate' was never ours to claim for them. Perceptual class, no measured correctness effect — withdrawn on 12 examined cases and 6 inherited ones."
   - "DO NOT adopt `ruff format --check`: 312 of 344 files would reformat for the one axis measured as nearly free (24.5% token saving for <=4.2pp accuracy)."

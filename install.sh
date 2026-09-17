@@ -237,6 +237,21 @@ for sub_dir in "$SCRIPT_DIR/configs/scripts/"/*/; do
   echo "  Installed scripts/$sub_name/: $(ls "$sub_dir" | wc -l | tr -d ' ') files"
 done
 
+# Deploy path-scoped rules. rule-injector.sh (PostToolUse Edit|Write) reads
+# ~/.claude/rules/*.md and injects the bodies of the files whose `paths:` glob
+# matches what is being edited — so a rule that only matters for shell scripts
+# reaches the session at the moment a shell script is written, instead of
+# sitting in a 750-line CLAUDE.md that is read once at session start.
+#
+# This block is why it works at all. install.sh:29 has created ~/.claude/rules
+# since the hook landed, nothing ever wrote into it, and the channel sat wired
+# and EMPTY — a hook with no content, silent by design, indistinguishable from a
+# hook that is working. Found 2026-09-17.
+if [[ -d "$SCRIPT_DIR/configs/rules" ]]; then
+  cp "$SCRIPT_DIR/configs/rules/"*.md "$CLAUDE_DIR/rules/" 2>/dev/null || true
+  echo "  Installed rules/: $(ls "$SCRIPT_DIR/configs/rules/"*.md 2>/dev/null | wc -l | tr -d ' ') path-scoped rule files"
+fi
+
 # Deploy models.env (canonical model IDs)
 if [[ -f "$SCRIPT_DIR/configs/models.env" ]]; then
   cp "$SCRIPT_DIR/configs/models.env" "$CLAUDE_DIR/models.env"
