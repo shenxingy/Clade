@@ -119,7 +119,7 @@ git add -- "$@"
 
 # Pre-commit gate (fail-closed): staged-secret scan + shellcheck on staged .sh.
 # Escape hatches: CLADE_ALLOW_SECRETS=1 / CLADE_SKIP_SHELLCHECK=1 (see checks.sh)
-if [[ -n "$CHECKS_SH" ]] && ! bash "$CHECKS_SH" staged; then
+if [[ -n "$CHECKS_SH" ]] && ! bash "$CHECKS_SH" staged "$MSG"; then
   git restore --staged :/ 2>/dev/null || true
   echo "Aborted: pre-commit checks failed — nothing committed." >&2
   exit 1

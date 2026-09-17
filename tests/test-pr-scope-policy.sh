@@ -1,6 +1,24 @@
 #!/usr/bin/env bash
 # Regression guard for adaptive atomic delivery across planning, checkpoint,
 # PR creation, review, integration, cleanup, and every distribution.
+#
+# WHAT THIS PROVES, said plainly because it was nearly deleted wholesale on a
+# reviewer's assumption that it was all redundant prose-checking:
+#
+#   * The four `skills.list` assertions are NOT prose checks. Those manifests are
+#     HAND-MAINTAINED INPUTS to regen-codex-plugin.py and regen-mcp-package.sh
+#     (regen-codex-plugin.py:27 reads it, :166 validates it). They are the only
+#     thing verifying that create-pr and delivery are SHIPPED at all. Keep them.
+#   * The rest assert that a policy SENTENCE exists in a hand-maintained file.
+#     That is a consistency gate over a practice standard — it proves the text is
+#     written, never that anything obeys it. It is worth keeping only because
+#     nothing else notices if the sentence is deleted, and it must not be mistaken
+#     for evidence that the policy is followed. The repo's own measurement: 0 of 91
+#     PRs merged in 90 days carried a review event, while every sentence below was
+#     present the whole time.
+#   * One assertion WAS redundant and is gone: plugins/clade/skills/create-pr/
+#     SKILL.md is GENERATED (regen-codex-plugin.py:364), so regen-codex-plugin.py
+#     --check already proves it byte-identical to the configs/ source asserted above.
 
 set -uo pipefail
 
@@ -85,10 +103,6 @@ assert_contains \
   "configs/skills/ship/prompt.md" \
   "features already reviewed in" \
   "release cannot bypass feature review"
-assert_contains \
-  "plugins/clade/skills/create-pr/SKILL.md" \
-  "One PR = one independently reviewable and reversible delivery unit." \
-  "generated Codex skill carries policy"
 assert_contains \
   "configs/CLAUDE.md" \
   "Multiple commits do not make a multi-feature branch acceptable." \

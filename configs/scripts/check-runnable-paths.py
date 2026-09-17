@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+import os
 import re
 import sys
 from pathlib import Path
@@ -259,6 +260,45 @@ def scan() -> tuple[list[str], list[str], int]:
     return phantoms, missing, checked
 
 
+# A path documented as a BARE COMMAND must be executable. `oracle-review.sh` was
+# mode 100644 while CLAUDE.md documented running it directly, so the documented
+# control exited 126 — a gate that cannot start, which is this repository's most
+# repeated defect shape. Scope is deliberately narrow: only paths a doc invokes
+# with no interpreter in front of them. The wider rule ("a shebang implies +x")
+# was measured first and rejected — it fires on 20+ files, every sourced
+# `hooks/lib/*.sh` and every hook `settings-hooks.json` calls as `bash <path>`,
+# which is a gate that fires on honest work. Today this one covers 3 paths and
+# has no false positives.
+_BARE_CMD = re.compile(r"^\s*(configs/(?:scripts|hooks)/[A-Za-z0-9_./-]+\.(?:sh|py))\b", re.M)
+
+
+def scan_exec_bits() -> list[str]:
+    """Paths a doc tells you to run directly that are not executable."""
+    docs = [REPO / "CLAUDE.md", *(REPO / "docs").rglob("*.md"),
+            *(SKILLS.rglob("*.md"))]
+    bad: list[str] = []
+    seen: set[str] = set()
+    for doc in docs:
+        if not doc.is_file():
+            continue
+        try:
+            text = doc.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for m in _BARE_CMD.finditer(text):
+            rel = m.group(1)
+            if rel in seen:
+                continue
+            target = REPO / rel
+            if not target.is_file():
+                continue          # a phantom; the path scan above owns that case
+            seen.add(rel)
+            if not os.access(target, os.X_OK):
+                bad.append(f"{doc.relative_to(REPO)}: {rel} — documented as a bare "
+                           f"command but not executable (would exit 126)")
+    return bad
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[1])
     ap.add_argument("--quiet", action="store_true")
@@ -269,6 +309,7 @@ def main() -> int:
         return self_test()
 
     phantoms, missing, checked = scan()
+    not_exec = scan_exec_bits()
 
     if args.quiet:
         unknown = sum(
@@ -276,8 +317,9 @@ def main() -> int:
             if (lambda m: (m.group(1), m.group(2)) not in BASELINE if m else True)(
                 re.match(r"(\S+?):\d+: (\S+) —", line)))
         print(f"check-runnable-paths: {checked} checked, {len(phantoms)} phantom(s) "
-              f"({unknown} not on the baseline), {len(missing)} missing a path segment")
-        return 1 if unknown else 0
+              f"({unknown} not on the baseline), {len(missing)} missing a path segment, "
+              f"{len(not_exec)} not executable")
+        return 1 if (unknown or not_exec) else 0
 
     if missing:
         print(f"{len(missing)} reference(s) name a SHARED script without its "
@@ -313,6 +355,14 @@ def main() -> int:
             print(f"  …and {len(known) - 5} more")
         print()
 
+    if not_exec:
+        print(f"{len(not_exec)} path(s) documented as a bare command but not executable:")
+        for line in not_exec:
+            print(f"  {line}")
+        print("\nFix with `chmod +x`. A documented control that exits 126 is a lie in "
+              "the docs, and it reads as a gate that passed.")
+        return 1
+
     if fresh:
         print(f"{len(fresh)} NEW path(s) a skill tells you to use, which do not exist:")
         for line in fresh:
@@ -325,7 +375,8 @@ def main() -> int:
 
     print(f"check-runnable-paths: {checked} owned path(s) across "
           f"{len(list(SKILLS.iterdir()))} skills — every one resolves"
-          + (f" ({len(missing)} cite a shared script without its segment)" if missing else ""))
+          + (f" ({len(missing)} cite a shared script without its segment)" if missing else "")
+          + ", and every bare-command path is executable")
     return 1 if missing else 0
 
 
@@ -374,6 +425,7 @@ def self_test() -> int:
         (seg / "SKILL.md").write_text("Run `scripts/moz_api.py` now.\n", encoding="utf-8")
 
         phantoms, missing, checked = scan()
+    not_exec = scan_exec_bits()
 
     SKILLS, SHARED, AGENTS, REPO = saved
 

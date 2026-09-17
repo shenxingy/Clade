@@ -143,7 +143,12 @@ run_repo_pre_commit() {
   root=$(git rev-parse --show-toplevel 2>/dev/null) || return 0
   hook="$root/.claude/pre-commit.sh"
   [[ -x "$hook" ]] || return 0
-  if ! (cd "$root" && bash "$hook"); then
+  # The commit message is passed through as $1 so a repo's own gate can look at
+  # it. PLUMBING ONLY — committer.sh ships to 40+ repositories on this account
+  # and to every public install, so no message CHECK belongs here; that lives in
+  # the repo's own .claude/pre-commit.sh, which is the whole point of the
+  # dispatch. A hook that ignores $1 is unaffected.
+  if ! (cd "$root" && bash "$hook" "${1:-}"); then
     echo "  → blocked by $hook (the repo's own pre-commit gate)" >&2
     return 1
   fi
@@ -152,7 +157,7 @@ run_repo_pre_commit() {
 
 cmd_staged() {
   check_staged_secrets || return 1
-  run_repo_pre_commit || return 1
+  run_repo_pre_commit "${1:-}" || return 1
   # Run shellcheck on the staged shell files (working-tree content — committer
   # stages the working tree immediately before this runs, so the two match).
   # No mapfile: macOS ships bash 3.2.
@@ -168,7 +173,7 @@ cmd_staged() {
 
 case "${1:-}" in
   staged)
-    cmd_staged || exit 1
+    cmd_staged "${2:-}" || exit 1
     ;;
   commit-msg)
     check_commit_msg "${2:-}" || exit 1

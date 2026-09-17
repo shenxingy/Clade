@@ -156,6 +156,36 @@ backlog.
       check, the two ways forward, and the statement that the keyless path for
       the same questions is `/seo` and `/seo geo`.
 
+- [ ] 🟡 **Re-measure the path-scoped rule channel on 2026-11-16, and delete it if
+      it did not land.** `configs/rules/` shipped 2026-09-17 as the answer to
+      "move the review to where the writing happens". It is a BET, not a measured
+      result: the evidence behind it is that a prose rule in a context file is
+      followed ~64% of the time and decays within a session (arXiv:2605.10039),
+      so proximity *should* beat position — and no study says it does. Every
+      other change in that batch is a correction; this one is a hypothesis, and
+      it is the only thing in this repository with a delete-by date, which is
+      itself the gap two independent reviewers named: 26 proposed actions, two
+      withdrawal conditions.
+
+      What to run, and what each answer means:
+
+      ```bash
+      # 1. Is the channel reaching sessions at all? Sentinels are per session per
+      #    rule file and are garbage-collected after 7 days, so this is a 7-day rate.
+      cat ~/.claude-profiles/*/projects/*/.claude/sessions/*.rules-injected \
+        2>/dev/null | sort | uniq -c | sort -rn
+      # 2. Are the rules still TRUE? Each one states a measured fact. Re-run the
+      #    measurements named inside configs/rules/*.md; a rule whose fact no
+      #    longer holds is worse than no rule.
+      python3 configs/scripts/check-asserted-numbers.py
+      ```
+
+      **Zero injections, or rules whose facts no longer reproduce → delete
+      `configs/rules/`, the install.sh deploy block and the four cases in
+      tests/test-hooks.sh.** Do not keep it on the argument that it ought to work.
+      A channel nobody reaches is the wired-and-empty defect it was built to fix,
+      one level up.
+
 - [ ] 🟡 **Convergence is not proven, and round 6 says why.** Rounds 1-5 audited
       the tree and found 61, 25, 34, - and 23; 43% of the last were siblings of
       earlier fixes, which the sibling gate now catches mechanically. Round 6
