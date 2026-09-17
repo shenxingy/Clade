@@ -112,6 +112,25 @@ mkdir -p "$SYNC_DIR"/{skills,memory,hooks,hooks/lib,scripts,corrections,projects
 if [[ ! -d "$SYNC_DIR/.git" ]]; then
   git -C "$SYNC_DIR" init --quiet
 fi
+
+# Append-only logs merge by UNION, not by conflict. Written every run, not only
+# at init, because the machines that need it most are the ones set up before
+# this existed. Without it, two machines appending to the same correction log
+# produce a rebase conflict, an autostash pop that writes marker text into the
+# working tree, and a `-X ours` merge that resolves an append-only file by
+# throwing away the other machine's appends. Measured on this account
+# 2026-09-17: 178 correction rules survived only in git history, and every
+# disappearance sat inside a `sync:` or `Merge` commit.
+cat > "$SYNC_DIR/.gitattributes" <<'ATTRS'
+# Append-only logs: keep BOTH sides on conflict. Union is the correct semantics
+# for a file every machine only ever adds lines to, and it is what stops
+# `-X ours` from silently deleting another machine's work.
+corrections/rules.md                  merge=union
+corrections/cross-project-rules.jsonl merge=union
+corrections/rules-archive.md          merge=union
+memory/*.md                           merge=union
+projects-memory/**/MEMORY.md          merge=union
+ATTRS
 # Add/update GitHub remote if we have a URL
 if [[ -n "$SYNC_REPO_URL" ]]; then
   git -C "$SYNC_DIR" remote add origin "$SYNC_REPO_URL" 2>/dev/null || \

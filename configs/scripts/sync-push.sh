@@ -52,6 +52,29 @@ fi
 
 cd "$SYNC_DIR"
 
+# NEVER stage a file carrying conflict markers. This is not hygiene — it is the
+# bug that ate the correction log. `git pull --rebase --autostash` leaves marker
+# text in the working tree when the AUTOSTASH POP conflicts (not the rebase), and
+# `git rebase --abort` does not clean that up. The next run's `git add -A` then
+# committed the markers, and the run after that conflicted on a file that already
+# contained markers, so they nested and multiplied. Measured on this account
+# 2026-09-17: 11 marker lines, two levels deep, sitting in a file injected into
+# every session's context.
+_marker_files=""
+while IFS= read -r _f; do
+  [ -f "$_f" ] || continue
+  if grep -qE '^(<<<<<<< |=======$|>>>>>>> )' "$_f" 2>/dev/null; then
+    _marker_files="$_marker_files $_f"
+  fi
+done < <(git ls-files -mo --exclude-standard 2>/dev/null)
+if [ -n "$_marker_files" ]; then
+  echo "[$(date)] sync-push REFUSED: conflict markers in$_marker_files" \
+    >> "$CLAUDE_DIR/.sync-conflicts.log"
+  echo "sync-push: conflict markers present, refusing to commit:$_marker_files" >&2
+  echo "sync-push: resolve them by hand, then the next sync will proceed." >&2
+  exit 1
+fi
+
 git add -A 2>/dev/null || exit 0
 
 # Nothing to commit?
@@ -65,11 +88,22 @@ HAS_REMOTE=$(git remote 2>/dev/null | grep -c origin || true)
 if [[ "$SYNC_BACKEND" == "github" ]] || [[ "$HAS_REMOTE" -gt 0 ]]; then
   # Pull --rebase first to integrate any remote changes
   git pull --rebase --autostash --quiet 2>/dev/null || {
-    # Conflict — abort rebase, merge with ours strategy
+    # Conflict. `-X ours` used to run here unconditionally, and on an APPEND-ONLY
+    # log that is the wrong semantics: "ours wins" discards whatever the other
+    # machine appended. Traced on this account 2026-09-17 — 191 rule
+    # disappearances from corrections/rules.md, every one inside a `sync:` or
+    # `Merge` commit and NOT ONE inside an audit/promote commit, which is what a
+    # deliberate retirement would look like. 178 rules survived only in history.
+    #
+    # `.gitattributes` now marks those files `merge=union`, so git concatenates
+    # both sides and they never reach this path. What does reach it is a genuine
+    # conflict in a non-append file, and there `ours` is still the safest default
+    # for an unattended sync — but it is RECORDED per file, never silent.
     git rebase --abort 2>/dev/null || true
     REMOTE_BRANCH=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo "origin/master")
+    _conflicted=$(git diff --name-only "$REMOTE_BRANCH"...HEAD 2>/dev/null | tr '\n' ' ')
     git merge --no-edit -X ours "$REMOTE_BRANCH" 2>/dev/null || true
-    echo "[$(date)] sync conflict on $(hostname) — merged with ours strategy" \
+    echo "[$(date)] sync conflict on $(hostname) — merged -X ours; their side dropped for:$_conflicted" \
       >> "$CLAUDE_DIR/.sync-conflicts.log"
   }
 

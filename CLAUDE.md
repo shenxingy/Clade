@@ -336,6 +336,38 @@ mutation_scan.py  ← surviving mutant → task
 | `web/index.html` | Vite *source* shell (`<div id="root">` + main.tsx) — the build entry, never served. It loads `/src/main.tsx`, which no browser executes. |
 | `web/usage.html` | Standalone usage dashboard. Served by an explicit route registered BEFORE the `/web` mount — `vite.config.ts` declares no `publicDir`, so the build never copies it into `dist/` and the mount alone 404s it on every machine that built. |
 
+## The dotfiles sync store — a THIRD remote, and it was eating data
+
+`~/.claude/{skills,hooks,scripts,corrections}` can be symlinks into a sync store
+(`~/.claude/.sync-config` → `SYNC_DIR`) that is **its own git repository with its
+own GitHub remote**. So "everything is pushed" has three answers, not one: this
+repo's `origin`, the machines in `~/.claude/fleet.conf`, and that store. Nothing
+said so, which is how the next defect went unseen for months.
+
+`sync-push.sh` ran `git pull --rebase --autostash` and, on conflict,
+`git merge -X ours`. Two failures compounded:
+
+- The **autostash pop** (not the rebase) writes `<<<<<<< Updated upstream` /
+  `>>>>>>> Stashed changes` into the working tree, and `git rebase --abort` does
+  not clean that. The next run's `git add -A` committed the markers; the run
+  after conflicted on a file that already held them, so they NESTED. Found
+  2026-09-17: 11 marker lines two deep in `corrections/rules.md`, a file injected
+  into every session's context. `correction-detector.sh` already carried a
+  self-heal for exactly this in `stats.json` — the symptom was patched twice and
+  the producer never was.
+- **`-X ours` on an append-only log discards the other machine's appends.**
+  Measured: 191 rule disappearances from `corrections/rules.md`, every one inside
+  a `sync:` or `Merge` commit and **not one** inside an audit/promote commit,
+  which is what a deliberate retirement looks like. 178 rules survived only in
+  git history; they are now parked in `corrections/rules-archive.md`.
+
+Fixed by `.gitattributes merge=union` on the append-only files (verified to keep
+both sides where `-X ours` dropped one), plus a guard that refuses to commit any
+file carrying conflict markers. Both pinned by `tests/test-hooks.sh`.
+
+**When asked whether things are synced, check all three.** A clean `git status`
+here says nothing about the other two.
+
 ## Settings
 
 Global settings stored at `~/.claude/orchestrator-settings.json`. Defaults defined in `config.py:_SETTINGS_DEFAULTS`. To add a new setting: add to `_SETTINGS_DEFAULTS`, NOT task_queue.py.

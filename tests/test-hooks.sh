@@ -1183,6 +1183,67 @@ else
 fi
 rm -f "$FI_MUT"
 
+# ─── sync-push must refuse to commit conflict markers ────────────────
+#
+# It did not, and that is what ate the correction log. `git pull --rebase
+# --autostash` leaves marker text in the tree when the AUTOSTASH POP conflicts;
+# `git rebase --abort` does not clean it; the next run's `git add -A` committed
+# it; and the run after that conflicted on a file that already held markers, so
+# they nested. Measured 2026-09-17 on the real store: 11 marker lines two levels
+# deep in a file injected into every session's context, and 178 correction rules
+# surviving only in git history because `-X ours` resolved an append-only log by
+# discarding the other machine's appends.
+
+SP_HOME=$(mktemp -d)
+SP_DIR="$SP_HOME/store"
+mkdir -p "$SP_HOME/.claude" "$SP_DIR/corrections"
+# sync-push hardcodes CLAUDE_DIR="$HOME/.claude" and sources .sync-config from
+# it, so the harness sets HOME rather than the variables the script overwrites.
+printf 'SYNC_BACKEND=nfs\nSYNC_DIR=%s\n' "$SP_DIR" > "$SP_HOME/.claude/.sync-config"
+(
+  cd "$SP_DIR" || exit 1
+  git init -q .; git config user.email t@e.com; git config user.name t
+  printf -- '- rule one\n' > corrections/rules.md
+  git add -A; git -c core.hooksPath=/dev/null commit -qm base
+) >/dev/null 2>&1
+
+# A tree carrying markers must NOT be committed.
+printf -- '- rule one\n<<<<<<< Updated upstream\n=======\n- rule two\n>>>>>>> Stashed changes\n' \
+  > "$SP_DIR/corrections/rules.md"
+SP_OUT=$(HOME="$SP_HOME" bash "$REPO_ROOT/configs/scripts/sync-push.sh" 2>&1 || true)
+SP_N=$(cd "$SP_DIR" && git rev-list --count HEAD)
+if [[ "$SP_N" -eq 1 ]]; then
+  pass "sync-push refuses to commit a tree carrying conflict markers"
+else
+  fail "sync-push refuses to commit a tree carrying conflict markers" \
+       "commits went 1 -> $SP_N; output: $SP_OUT"
+fi
+if printf '%s' "$SP_OUT" | grep -q "conflict markers"; then
+  pass "sync-push says WHY it refused"
+else
+  fail "sync-push says WHY it refused" "output did not name conflict markers: $SP_OUT"
+fi
+
+# And a clean tree must still commit — a guard that blocks everything is not a guard.
+printf -- '- rule one\n- rule two\n' > "$SP_DIR/corrections/rules.md"
+HOME="$SP_HOME" bash "$REPO_ROOT/configs/scripts/sync-push.sh" >/dev/null 2>&1 || true
+SP_N2=$(cd "$SP_DIR" && git rev-list --count HEAD)
+if [[ "$SP_N2" -eq 2 ]]; then
+  pass "sync-push still commits a clean tree"
+else
+  fail "sync-push still commits a clean tree" "commits stayed at $SP_N2"
+fi
+rm -rf "$SP_HOME"
+
+# The append-only logs must be declared merge=union, or two machines appending
+# to the same file resolve by one of them losing.
+if grep -qE '^corrections/rules\.md +merge=union' "$REPO_ROOT/configs/scripts/sync-setup.sh"; then
+  pass "sync-setup declares corrections/rules.md as merge=union"
+else
+  fail "sync-setup declares corrections/rules.md as merge=union" \
+       "no union attribute for the correction log"
+fi
+
 # ─── Summary ─────────────────────────────────────────────────────────
 
 echo ""
