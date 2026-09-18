@@ -339,6 +339,7 @@ def test_statusline_falls_back_to_git_head_for_the_branch(tmp_path: Path, monkey
 
 def test_launcher_hands_off_to_the_helper_and_stays_silent_without_it(tmp_path: Path) -> None:
     import subprocess
+    import time
 
     env = dict(os.environ, KIMI_CODE_HOME=str(tmp_path), CLADE_KIMI_USAGE_HELPER=str(SCRIPT))
     (tmp_path / kimi_usage.STYLE_NAME).write_text("icon\n", encoding="utf-8")
@@ -363,11 +364,36 @@ def test_launcher_hands_off_to_the_helper_and_stays_silent_without_it(tmp_path: 
     assert result.stdout.count("\n") == 1
     assert "proj git:(main)" in _plain(result.stdout) and "5h 40%" in _plain(result.stdout)
 
-    env["CLADE_KIMI_USAGE_HELPER"] = str(tmp_path / "missing.py")
+    # An idle Kimi session re-runs the command every second with the same
+    # snapshot: the launcher must replay its memo without starting Python.
+    # Prove it by swapping the helper for a file Python cannot run — a fresh
+    # render would print nothing, so any output here came from the memo.
+    broken = tmp_path / "broken.py"
+    broken.write_text("this is not python\n", encoding="utf-8")
+    env["CLADE_KIMI_USAGE_HELPER"] = str(broken)
+    replay = subprocess.run(
+        ["bash", str(LAUNCHER)], input=json.dumps(_payload()), capture_output=True, text=True, env=env, timeout=30
+    )
+    assert replay.returncode == 0 and replay.stdout == result.stdout
+    assert [path.name for path in tmp_path.glob(".clade-usage-memo-*")] == [".clade-usage-memo-s1"]
+    # Another session's snapshot is a miss; the broken helper then yields the
+    # documented silence, exit 0.
     silent = subprocess.run(
-        ["bash", str(LAUNCHER)], input="{}", capture_output=True, text=True, env=env, timeout=30
+        ["bash", str(LAUNCHER)], input=json.dumps(_payload(sessionId="s2")), capture_output=True, text=True, env=env, timeout=30
     )
     assert silent.returncode == 0 and silent.stdout == ""
+    # A rewritten cache invalidates the memo inside the minute.
+    os.utime(tmp_path / kimi_usage.CACHE_NAME, (time.time() + 5, time.time() + 5))
+    stale = subprocess.run(
+        ["bash", str(LAUNCHER)], input=json.dumps(_payload()), capture_output=True, text=True, env=env, timeout=30
+    )
+    assert stale.returncode == 0 and stale.stdout == ""
+    # Missing helper: silent and green, before anything else is consulted.
+    env["CLADE_KIMI_USAGE_HELPER"] = str(tmp_path / "missing.py")
+    missing = subprocess.run(
+        ["bash", str(LAUNCHER)], input="{}", capture_output=True, text=True, env=env, timeout=30
+    )
+    assert missing.returncode == 0 and missing.stdout == ""
 
 
 # ─── tui.toml wiring ───
@@ -588,7 +614,13 @@ def test_refresh_cache_records_rows_seen_and_errors(fake_kimi_web, monkeypatch: 
 def test_refresh_command_writes_the_cache_under_a_lock(fake_kimi_web, monkeypatch: pytest.MonkeyPatch) -> None:
     _server, home = fake_kimi_web
     monkeypatch.setenv("KIMI_CODE_HOME", str(home))
+    old_memo = home / ".clade-usage-memo-gone"
+    old_memo.write_text("k\nline\n", encoding="utf-8")
+    os.utime(old_memo, (1, 1))
+    fresh_memo = home / ".clade-usage-memo-live"
+    fresh_memo.write_text("k\nline\n", encoding="utf-8")
     assert kimi_usage.main(["refresh", "--session", "s9", "--context-tokens", "3"]) == 0
+    assert not old_memo.exists() and fresh_memo.exists()  # day-old memos are pruned
     cache = kimi_usage.read_cache(home)
     assert cache is not None and cache["seen"] == {"s9": 3}
     assert [row["window"] for row in cache["rows"]] == ["5h", "month"]

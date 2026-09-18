@@ -656,8 +656,23 @@ def refresh_cache(
     return data
 
 
+def _prune_memos(home: Path, max_age: float = 86400.0) -> None:
+    """The launcher keeps one replay memo per session; drop day-old ones."""
+    now = time.time()
+    try:
+        for path in home.glob(".clade-usage-memo-*"):
+            try:
+                if now - path.stat().st_mtime > max_age:
+                    path.unlink()
+            except OSError:
+                pass
+    except OSError:
+        pass
+
+
 def _refresh_locked(home: Path, session_id: str | None, context_tokens: int | None) -> int:
     """`refresh` under an advisory lock so concurrent footers spawn ONE server."""
+    _prune_memos(home)
     try:
         import fcntl
     except ImportError:
