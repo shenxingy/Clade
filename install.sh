@@ -660,6 +660,12 @@ if [[ -d "$KIMI_DIR" ]]; then
   cp "$SCRIPT_DIR/configs/kimi-agents/"*.md "$KIMI_DIR/agents/"
   echo "  Installed: $(ls "$SCRIPT_DIR/configs/kimi-agents/"*.md | xargs -I{} basename {} | tr '\n' ' ')"
 
+  echo "Installing Kimi Code bridge hooks..."
+  mkdir -p "$KIMI_DIR/hooks"
+  cp "$SCRIPT_DIR/configs/kimi-hooks/"*.sh "$KIMI_DIR/hooks/"
+  chmod +x "$KIMI_DIR/hooks/"*.sh
+  echo "  Installed: $(ls "$SCRIPT_DIR/configs/kimi-hooks/"*.sh | xargs -I{} basename {} | tr '\n' ' ')"
+
   KIMI_CONFIG="$KIMI_DIR/config.toml"
   if [[ -f "$KIMI_CONFIG" ]]; then
     # Insert a root-level `key = value` line only if that key is not already
@@ -681,6 +687,25 @@ if [[ -d "$KIMI_DIR" ]]; then
     _kimi_root_insert 'default_permission_mode = "yolo"'
     _kimi_root_insert "extra_skill_dirs = [\"$CLAUDE_DIR/skills\"]"
     unset -f _kimi_root_insert
+
+    # [[hooks]] is an array-of-tables, not a root scalar: a new entry is
+    # always safe to APPEND at EOF (unlike the bare keys above, a `[[hooks]]`
+    # header always starts its own table regardless of what precedes it).
+    # Idempotency is keyed on the exact `command` value — never re-append the
+    # same hook, and never touch a hooks entry the user added by hand.
+    _KIMI_GUARDIAN_CMD="$KIMI_DIR/hooks/decision-to-kimi.sh $CLAUDE_DIR/hooks/pre-tool-guardian.sh"
+    if ! grep -qF "command = \"$_KIMI_GUARDIAN_CMD\"" "$KIMI_CONFIG"; then
+      {
+        printf '\n[[hooks]]\n'
+        printf 'event = "PreToolUse"\n'
+        printf 'matcher = "Bash"\n'
+        printf 'command = "%s"\n' "$_KIMI_GUARDIAN_CMD"
+        printf 'timeout = 5\n'
+      } >> "$KIMI_CONFIG"
+      echo "  Configured: PreToolUse/Bash hook -> Clade's dangerous-command guardian (translated via decision-to-kimi.sh)"
+    fi
+    unset _KIMI_GUARDIAN_CMD
+
     echo "  Configured: default_permission_mode (yolo if unset), extra_skill_dirs -> $CLAUDE_DIR/skills"
   fi
   unset KIMI_CONFIG
@@ -757,7 +782,7 @@ echo "  Skills:   $(ls -d "$CLAUDE_DIR/skills/"*/ 2>/dev/null | wc -l) skills"
 echo "  Scripts:  $(ls "$CLAUDE_DIR/scripts/"*.sh 2>/dev/null | wc -l) scripts"
 echo "  Commands: $(ls "$CLAUDE_DIR/commands/"*.md 2>/dev/null | wc -l) commands"
 if [[ -d "$HOME/.kimi-code" ]]; then
-  echo "  Kimi:     $(ls "$HOME/.kimi-code/agents/"*.md 2>/dev/null | wc -l) bridge agents (+ all $(ls -d "$CLAUDE_DIR/skills/"*/ 2>/dev/null | wc -l) skills via extra_skill_dirs)"
+  echo "  Kimi:     $(ls "$HOME/.kimi-code/agents/"*.md 2>/dev/null | wc -l) bridge agents, $(ls "$HOME/.kimi-code/hooks/"*.sh 2>/dev/null | wc -l) bridge hooks (+ all $(ls -d "$CLAUDE_DIR/skills/"*/ 2>/dev/null | wc -l) skills via extra_skill_dirs)"
 fi
 echo ""
 echo "Next steps:"

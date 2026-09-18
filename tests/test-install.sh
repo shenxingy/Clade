@@ -1040,6 +1040,48 @@ grep -q '^\[providers\."managed:kimi-code"\]$' "$KIMI_CFG" \
   && pass "pre-existing [providers...] section preserved" \
   || fail "pre-existing [providers...] section preserved"
 
+section "Kimi bridge: dangerous-command guardian hook"
+
+# Kimi does not recognize Claude Code's {"decision":"block",...} convention
+# (verified live against Kimi 2.0.0 — it silently ALLOWS the command), so
+# decision-to-kimi.sh translates it into Kimi's own
+# {"hookSpecificOutput":{"permissionDecision":"deny",...}} shape. Test the
+# REAL shipped composition: the deployed adapter wrapping the deployed
+# pre-tool-guardian.sh, exactly as install.sh wires them in config.toml.
+diff -q "$SRC/configs/kimi-hooks/decision-to-kimi.sh" "$HOME/.kimi-code/hooks/decision-to-kimi.sh" >/dev/null 2>&1 \
+  && pass "decision-to-kimi.sh deployed to ~/.kimi-code/hooks/ byte-for-byte" \
+  || fail "decision-to-kimi.sh deployed to ~/.kimi-code/hooks/ byte-for-byte"
+[[ -x "$HOME/.kimi-code/hooks/decision-to-kimi.sh" ]] \
+  && pass "decision-to-kimi.sh is executable" \
+  || fail "decision-to-kimi.sh is executable"
+
+_kimi_guardian_cmd="$HOME/.kimi-code/hooks/decision-to-kimi.sh $HOME/.claude/hooks/pre-tool-guardian.sh"
+grep -qF "command = \"$_kimi_guardian_cmd\"" "$KIMI_CFG" \
+  && pass "[[hooks]] wires PreToolUse/Bash to the guardian adapter" \
+  || fail "[[hooks]] wires PreToolUse/Bash to the guardian adapter"
+grep -A3 '\[\[hooks\]\]' "$KIMI_CFG" | grep -q 'event = "PreToolUse"' \
+  && pass "guardian hook declares event = PreToolUse" \
+  || fail "guardian hook declares event = PreToolUse"
+
+# Functional: a force-push to main must be denied WITH the guardian's own
+# reason text, and a safe command must pass through untouched. This is the
+# exact composition Kimi invokes at runtime, not just the adapter in
+# isolation.
+_guardian_deny=$(printf '{"tool_name":"Bash","tool_input":{"command":"git push --force origin main"}}' \
+  | "$HOME/.kimi-code/hooks/decision-to-kimi.sh" "$HOME/.claude/hooks/pre-tool-guardian.sh")
+if printf '%s' "$_guardian_deny" | grep -q '"permissionDecision": *"deny"' \
+   && printf '%s' "$_guardian_deny" | grep -q 'Force push to main/master blocked'; then
+  pass "force-push to main is denied with the guardian's own reason text"
+else
+  fail "force-push to main is denied with the guardian's own reason text" "$_guardian_deny"
+fi
+_guardian_allow=$(printf '{"tool_name":"Bash","tool_input":{"command":"echo hi"}}' \
+  | "$HOME/.kimi-code/hooks/decision-to-kimi.sh" "$HOME/.claude/hooks/pre-tool-guardian.sh")
+[[ -z "$_guardian_allow" ]] \
+  && pass "a safe command produces no deny output (allowed)" \
+  || fail "a safe command produces no deny output (allowed)" "$_guardian_allow"
+unset _kimi_guardian_cmd _guardian_deny _guardian_allow
+
 section "Kimi bridge: idempotent re-run and non-destructive of a user override"
 
 # A user (or Kimi itself) may set a different mode by hand — install.sh must
@@ -1066,11 +1108,12 @@ grep -q '^default_permission_mode = "manual"$' "$KIMI_CFG" \
 
 perm_count=$(grep -cE '^default_permission_mode[[:space:]]*=' "$KIMI_CFG")
 skills_count=$(grep -cE '^extra_skill_dirs[[:space:]]*=' "$KIMI_CFG")
-if [[ "$perm_count" -eq 1 && "$skills_count" -eq 1 ]]; then
-  pass "re-run is idempotent (no duplicate keys after 2 runs)"
+hooks_count=$(grep -cF '[[hooks]]' "$KIMI_CFG")
+if [[ "$perm_count" -eq 1 && "$skills_count" -eq 1 && "$hooks_count" -eq 1 ]]; then
+  pass "re-run is idempotent (no duplicate keys or hook blocks after 2 runs)"
 else
-  fail "re-run is idempotent (no duplicate keys after 2 runs)" \
-       "default_permission_mode x$perm_count, extra_skill_dirs x$skills_count"
+  fail "re-run is idempotent (no duplicate keys or hook blocks after 2 runs)" \
+       "default_permission_mode x$perm_count, extra_skill_dirs x$skills_count, [[hooks]] x$hooks_count"
 fi
 if [[ "$before_lines" -eq "$after_lines" ]]; then
   pass "idempotent re-run does not grow the file"
@@ -1091,7 +1134,7 @@ bash "$SRC/install.sh" </dev/null >/dev/null 2>&1 || true
   && pass "a deleted bridge agent is restored on the next install" \
   || fail "a deleted bridge agent is restored on the next install"
 
-unset KIMI_CFG first_bracket_line perm_line skills_line before_lines after_lines perm_count skills_count
+unset KIMI_CFG first_bracket_line perm_line skills_line before_lines after_lines perm_count skills_count hooks_count
 
 # ─── Summary ─────────────────────────────────────────────────────────
 

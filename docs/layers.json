@@ -18,6 +18,7 @@
         "configs/agents",
         "configs/codex-agents",
         "configs/kimi-agents",
+        "configs/kimi-hooks",
         "configs/output-styles",
         "configs/templates",
         "templates",
