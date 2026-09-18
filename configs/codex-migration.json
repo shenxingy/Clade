@@ -160,6 +160,15 @@
         "vignelli-canon-design-system"
       ],
       "reason": "These specialized or provider-specific workflows remain opt-in through Claude or MCP until a Codex-native product use case justifies plugin discovery cost."
+    },
+    {
+      "id": "owner-infrastructure-workflows",
+      "patterns": [
+        "converge-loop",
+        "obs-review-loop",
+        "internal-deploy"
+      ],
+      "reason": "These workflows encode the owner's private machine topology (intranet hosts, hub paths, process-manager names, observability credential locations) resolved at runtime from repo docs or the operator's private instructions; shipping them in the public plugin would leak internal infrastructure."
     }
   ]
 }
