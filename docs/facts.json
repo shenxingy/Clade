@@ -39,7 +39,7 @@
     },
     {
       "name": "agents",
-      "value": 38,
+      "value": 39,
       "derive": {
         "type": "count_glob",
         "pattern": "configs/agents/*.md"

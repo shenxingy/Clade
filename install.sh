@@ -646,6 +646,50 @@ echo "  Written .kit-source-dir + .kit-checksum for stale-script detection"
   unset _expected_hooks _expected_scripts _unowned _unowned_count _name _f
 } || true
 
+# ─── 11c. Kimi Code CLI bridge (opportunistic) ────────────────────────
+# Moonshot AI's Kimi Code CLI (package @moonshot-ai/kimi-code, bin `kimi`,
+# https://moonshotai.github.io/kimi-code/) is a third agent runtime alongside
+# Claude Code and Codex. Only act
+# if the user has already run it at least once on this machine (its own
+# first-run creates ~/.kimi-code) — never fabricate its config from nothing,
+# since region/oauth/device_id are Kimi's own bootstrap state, not ours.
+KIMI_DIR="$HOME/.kimi-code"
+if [[ -d "$KIMI_DIR" ]]; then
+  echo "Installing Kimi Code bridge agents..."
+  mkdir -p "$KIMI_DIR/agents"
+  cp "$SCRIPT_DIR/configs/kimi-agents/"*.md "$KIMI_DIR/agents/"
+  echo "  Installed: $(ls "$SCRIPT_DIR/configs/kimi-agents/"*.md | xargs -I{} basename {} | tr '\n' ' ')"
+
+  KIMI_CONFIG="$KIMI_DIR/config.toml"
+  if [[ -f "$KIMI_CONFIG" ]]; then
+    # Insert a root-level `key = value` line only if that key is not already
+    # present ANYWHERE in the file (never overwrite a value the user or Kimi
+    # itself set) and only BEFORE the first `[table]` header — TOML resolves
+    # a bare key to whichever table most recently opened, so appending at EOF
+    # would silently nest it under the last `[section]` instead of the root.
+    _kimi_root_insert() {
+      local line="$1"
+      local key="${line%%=*}"
+      key="${key% }"
+      grep -qE "^${key}[[:space:]]*=" "$KIMI_CONFIG" && return 0
+      awk -v line="$line" '
+        !inserted && /^\[/ { print line; inserted=1 }
+        { print }
+        END { if (!inserted) print line }
+      ' "$KIMI_CONFIG" > "$KIMI_CONFIG.clade-tmp" && mv "$KIMI_CONFIG.clade-tmp" "$KIMI_CONFIG"
+    }
+    _kimi_root_insert 'default_permission_mode = "yolo"'
+    _kimi_root_insert "extra_skill_dirs = [\"$CLAUDE_DIR/skills\"]"
+    unset -f _kimi_root_insert
+    echo "  Configured: default_permission_mode (yolo if unset), extra_skill_dirs -> $CLAUDE_DIR/skills"
+  fi
+  unset KIMI_CONFIG
+else
+  echo "Kimi Code CLI not detected (~/.kimi-code missing) — skipping Kimi bridge"
+  echo "  (install Kimi Code (@moonshot-ai/kimi-code) globally, then re-run install.sh, to enable it)"
+fi
+unset KIMI_DIR
+
 # ─── 12. Summary ─────────────────────────────────────────────────────
 
 echo ""
@@ -712,6 +756,9 @@ echo "  Codex:    $(ls "$CODEX_DIR/agents/"*.toml 2>/dev/null | wc -l) agent def
 echo "  Skills:   $(ls -d "$CLAUDE_DIR/skills/"*/ 2>/dev/null | wc -l) skills"
 echo "  Scripts:  $(ls "$CLAUDE_DIR/scripts/"*.sh 2>/dev/null | wc -l) scripts"
 echo "  Commands: $(ls "$CLAUDE_DIR/commands/"*.md 2>/dev/null | wc -l) commands"
+if [[ -d "$HOME/.kimi-code" ]]; then
+  echo "  Kimi:     $(ls "$HOME/.kimi-code/agents/"*.md 2>/dev/null | wc -l) bridge agents (+ all $(ls -d "$CLAUDE_DIR/skills/"*/ 2>/dev/null | wc -l) skills via extra_skill_dirs)"
+fi
 echo ""
 echo "Next steps:"
 echo "  1. source ~/.zshrc   (or ~/.bashrc) to activate shell aliases"

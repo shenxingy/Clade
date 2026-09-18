@@ -966,6 +966,133 @@ else
 fi
 mv "$SETTINGS.bak" "$SETTINGS" 2>/dev/null || true
 
+# ─── Suite 11: Kimi Code CLI bridge (opportunistic) ───────────────────
+# Kimi is a third agent runtime (npm @moonshot-ai/kimi-code, bin `kimi`).
+# install.sh only touches it when ~/.kimi-code already exists — it must
+# never fabricate that directory for a machine that never installed Kimi.
+
+section "Kimi bridge: absent when ~/.kimi-code does not exist"
+
+[[ ! -e "$HOME/.kimi-code" ]] \
+  && pass "install.sh does not create ~/.kimi-code on a machine without Kimi" \
+  || fail "install.sh does not create ~/.kimi-code on a machine without Kimi" \
+       "found $HOME/.kimi-code after a run with no pre-existing Kimi install"
+
+section "Kimi bridge: agents + config wiring when Kimi is present"
+
+# Seed a config.toml shaped like Kimi's real one: a root-level scalar first,
+# then table sections — this is what makes "insert before the first [table]"
+# a real constraint and not a no-op. A TOML bare key after a [table] header
+# belongs to THAT table, not the root; appending at EOF would silently nest
+# the new keys under [services.moonshot_fetch.oauth] instead of the root.
+mkdir -p "$HOME/.kimi-code"
+cat > "$HOME/.kimi-code/config.toml" <<'EOF'
+default_model = "kimi-code/kimi-for-coding"
+
+[providers."managed:kimi-code"]
+type = "kimi"
+
+[services.moonshot_fetch.oauth]
+storage = "file"
+EOF
+
+kimi_log="$SANDBOX/install-kimi.log"
+if bash "$SRC/install.sh" </dev/null >"$kimi_log" 2>&1; then
+  pass "install.sh exits 0 with ~/.kimi-code present"
+else
+  fail "install.sh exits 0 with ~/.kimi-code present" "see $kimi_log"
+fi
+
+KIMI_CFG="$HOME/.kimi-code/config.toml"
+
+diff -q "$SRC/configs/kimi-agents/ask-claude.md" "$HOME/.kimi-code/agents/ask-claude.md" >/dev/null 2>&1 \
+  && pass "ask-claude.md deployed to ~/.kimi-code/agents/ byte-for-byte" \
+  || fail "ask-claude.md deployed to ~/.kimi-code/agents/ byte-for-byte"
+diff -q "$SRC/configs/kimi-agents/ask-codex.md" "$HOME/.kimi-code/agents/ask-codex.md" >/dev/null 2>&1 \
+  && pass "ask-codex.md deployed to ~/.kimi-code/agents/ byte-for-byte" \
+  || fail "ask-codex.md deployed to ~/.kimi-code/agents/ byte-for-byte"
+
+# The load-bearing property: the new keys land BEFORE the first [table] line,
+# i.e. at TOML root scope — not appended after it into the wrong table.
+first_bracket_line=$(grep -n '^\[' "$KIMI_CFG" | head -1 | cut -d: -f1)
+perm_line=$(grep -n '^default_permission_mode[[:space:]]*=' "$KIMI_CFG" | head -1 | cut -d: -f1)
+skills_line=$(grep -n '^extra_skill_dirs[[:space:]]*=' "$KIMI_CFG" | head -1 | cut -d: -f1)
+if [[ -n "$perm_line" && -n "$first_bracket_line" && "$perm_line" -lt "$first_bracket_line" ]]; then
+  pass "default_permission_mode inserted at TOML root scope (before first [table])"
+else
+  fail "default_permission_mode inserted at TOML root scope" \
+       "perm_line=$perm_line first_bracket_line=$first_bracket_line"
+fi
+if [[ -n "$skills_line" && -n "$first_bracket_line" && "$skills_line" -lt "$first_bracket_line" ]]; then
+  pass "extra_skill_dirs inserted at TOML root scope (before first [table])"
+else
+  fail "extra_skill_dirs inserted at TOML root scope" \
+       "skills_line=$skills_line first_bracket_line=$first_bracket_line"
+fi
+grep -q '^default_permission_mode = "yolo"$' "$KIMI_CFG" \
+  && pass "default_permission_mode set to yolo" \
+  || fail "default_permission_mode set to yolo"
+grep -qF "extra_skill_dirs = [\"$HOME/.claude/skills\"]" "$KIMI_CFG" \
+  && pass "extra_skill_dirs points at this machine's ~/.claude/skills" \
+  || fail "extra_skill_dirs points at this machine's ~/.claude/skills"
+# Original sections must survive untouched — this is a targeted insert, not a rewrite.
+grep -q '^\[providers\."managed:kimi-code"\]$' "$KIMI_CFG" \
+  && pass "pre-existing [providers...] section preserved" \
+  || fail "pre-existing [providers...] section preserved"
+
+section "Kimi bridge: idempotent re-run and non-destructive of a user override"
+
+# A user (or Kimi itself) may set a different mode by hand — install.sh must
+# never clobber an existing value, only fill in a missing key.
+python3 - "$KIMI_CFG" <<'PY'
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+path.write_text(path.read_text().replace(
+    'default_permission_mode = "yolo"',
+    'default_permission_mode = "manual"',
+))
+PY
+
+before_lines=$(wc -l < "$KIMI_CFG")
+kimi_log2="$SANDBOX/install-kimi-2.log"
+bash "$SRC/install.sh" </dev/null >"$kimi_log2" 2>&1 || true
+after_lines=$(wc -l < "$KIMI_CFG")
+
+grep -q '^default_permission_mode = "manual"$' "$KIMI_CFG" \
+  && pass "re-run never overwrites a user-set default_permission_mode" \
+  || fail "re-run never overwrites a user-set default_permission_mode" \
+       "expected manual to survive, see $KIMI_CFG"
+
+perm_count=$(grep -cE '^default_permission_mode[[:space:]]*=' "$KIMI_CFG")
+skills_count=$(grep -cE '^extra_skill_dirs[[:space:]]*=' "$KIMI_CFG")
+if [[ "$perm_count" -eq 1 && "$skills_count" -eq 1 ]]; then
+  pass "re-run is idempotent (no duplicate keys after 2 runs)"
+else
+  fail "re-run is idempotent (no duplicate keys after 2 runs)" \
+       "default_permission_mode x$perm_count, extra_skill_dirs x$skills_count"
+fi
+if [[ "$before_lines" -eq "$after_lines" ]]; then
+  pass "idempotent re-run does not grow the file"
+else
+  fail "idempotent re-run does not grow the file" "before=$before_lines after=$after_lines"
+fi
+
+section "Kimi bridge: gone when ~/.kimi-code is gone"
+
+# Baseline: install.sh must never fabricate ~/.kimi-code for a machine that
+# doesn't have it (already asserted above). Prove the CONVERSE mutation
+# would be caught too: delete a bridge agent and confirm a re-run restores
+# it (this IS an unconditional copy, unlike the config.toml patch above,
+# which must never overwrite).
+rm -f "$HOME/.kimi-code/agents/ask-claude.md"
+bash "$SRC/install.sh" </dev/null >/dev/null 2>&1 || true
+[[ -f "$HOME/.kimi-code/agents/ask-claude.md" ]] \
+  && pass "a deleted bridge agent is restored on the next install" \
+  || fail "a deleted bridge agent is restored on the next install"
+
+unset KIMI_CFG first_bracket_line perm_line skills_line before_lines after_lines perm_count skills_count
+
 # ─── Summary ─────────────────────────────────────────────────────────
 
 echo ""

@@ -285,7 +285,7 @@ clade/
 ├── configs/                 # ← THE PRODUCT CENTER
 │   ├── skills/              # 138 skill definitions
 │   ├── hooks/               # 32 event hooks
-│   ├── agents/              # 38 agent definitions
+│   ├── agents/              # 39 agent definitions
 │   ├── output-styles/       # 2 output styles (system-prompt register; opt-in)
 │   └── scripts/             # 43 shell + 37 Python utilities
 ├── plugins/clade/           # Native Codex plugin (26 generated core skills + hooks)

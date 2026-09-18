@@ -2666,3 +2666,38 @@ The following are architecture invariants, not optional implementation ideas:
 Implementation should proceed in the ordered phases above. Updating individual
 model IDs or adding another `if provider == ...` branch before Phase 0 would
 extend the current coupling and should be rejected in review.
+
+#### 2026-09-17 status — a minimal bridge exists; the phases above do not
+
+Personal, machine-level Kimi Code CLI (`@moonshot-ai/kimi-code`, bin `kimi`)
+support was added — `install.sh` deploys `configs/kimi-agents/` to
+`~/.kimi-code/agents/` and, only when `~/.kimi-code` already exists, sets
+`default_permission_mode` and `extra_skill_dirs` in `~/.kimi-code/config.toml`
+(never overwriting a value already there). This is **not** the universal
+execution vocabulary above — no runtime/provider/protocol/model separation, no
+capability negotiation, no `clade.execution/v1` envelope. It is two narrow,
+verified facts:
+
+- Kimi's own `SKILL.md` format and directory/flat-form discovery rules are
+  close enough to Clade's that pointing `extra_skill_dirs` at `~/.claude/skills`
+  surfaces all of it — measured live: `kimi -p` counted 142 skills (140 Clade +
+  2 Kimi built-in) with no per-skill porting.
+- Kimi's custom-agent format (`~/.kimi-code/agents/*.md`, frontmatter +
+  system-prompt body) is close enough to Claude Code's Task-tool subagents
+  that `second-opinion-codex.md`/`second-opinion-gemini.md` ported to Kimi
+  (`ask-claude.md`, `ask-codex.md`) with only the shell-out command changed —
+  verified live, both directions: `configs/agents/second-opinion-kimi.md`
+  (Claude → Kimi) and `configs/kimi-agents/ask-claude.md` /
+  `configs/kimi-agents/ask-codex.md` (Kimi → Claude, Kimi → Codex) each
+  round-tripped a real prompt through the target CLI and back.
+
+One incompatibility found in the process: Kimi's `--plan` mode flag cannot be
+combined with `-p`/`--prompt` (the CLI rejects it outright) — the read-only
+equivalent for a non-interactive relay call is `--agent explore`, not `--plan`.
+
+None of this reduces the case for Phase 0-5. It is a hand-wired special case
+for exactly the "another runtime, another branch" shape the note above warns
+against — acceptable as a personal convenience on one machine, not a
+substitute for the architecture if Kimi support is ever made a real Clade
+surface (mcp-package, a generated plugin, fleet-wide rollout beyond
+`install.sh`'s opportunistic copy).
