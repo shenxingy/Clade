@@ -2731,14 +2731,31 @@ Two more surfaces checked, both verified live against Kimi 2.0.0:
   the same live verification before trusting it — the protocol mismatch
   above is exactly the kind of thing "the event names line up" does not
   prove.
-- **Usage/quota checking.** Kimi's `/usage` is TUI-only; there is no
-  documented REST route for it (`kimi web`'s local server responds `200` to
-  `/api/v1/sessions` but `404`s `/api/v1/usage`, `/api/v1/quota`, and every
-  other REST guess tried live — the `/api/v1/meta` response lists `usage` as
-  an active server *feature*, which is presumably reachable over the
-  WebSocket RPC channel the TUI itself uses, not a plain HTTP endpoint).
-  `configs/skills/codex-usage/prompt.md` states this repository's own
-  standing principle explicitly: "Do not call private HTTP endpoints
-  directly." No `/kimi-usage` skill was built, on that principle — reverse-
-  engineering an undocumented WebSocket protocol is exactly what it warns
-  against, not a gap this note is deferring.
+- **Usage/quota checking — corrected 2026-09-18.** The first pass here
+  concluded there was no documented route, having tried `/api/v1/usage` and
+  `/api/v1/quota` live and got `404`s. The route exists and is documented:
+  `GET /api/v1/oauth/usage` on the `kimi web` local server
+  (reference/server-api.md, "Login and usage"), bearer-authenticated with
+  `~/.kimi-code/server.token`, answering `{ usages: { limit5h, limit7d,
+  monthTotal, monthCode }, extraUsage }` with `usedRatio` and an RFC3339
+  `resetAt` per window. Two REST guesses were treated as a survey of the API;
+  the actual reference (`llms-full.txt` on the docs site) was one fetch away.
+  The principle the first pass cited — "do not call private HTTP endpoints" —
+  was right and now cuts the other way: this is Kimi's analogue of `codex
+  app-server` + `account/rateLimits/read`, and `/kimi-usage`
+  (`configs/skills/kimi-usage/`) uses it exactly as `codex-usage` uses
+  Codex's, reusing a running instance or starting `kimi web --no-open` on a
+  loopback port for one call. What it still refuses: reading
+  `~/.kimi-code/credentials/` or calling `api.kimi.com/coding/v1/usages`
+  directly, which is what the community HUD plugin (`FinbackYu/kimi-code-hud`)
+  does. Not on principle alone — the access token there lives 15 minutes and
+  Kimi rotates the refresh token under a cross-process lock with a
+  tombstone-on-conflict path (`revokedTombstone` in the OAuth manager), so a
+  foreign refresher is a way to log the user out; and a read-only token goes
+  stale after 15 idle minutes, so a standalone `/kimi-usage` from Claude Code
+  would fail exactly when nothing else is keeping it fresh. Upstream has open
+  requests for the same data in the footer payload (MoonshotAI/kimi-code
+  #872, #1835, #3231, #2483) and an unanswered policy question about the
+  direct endpoint (#2937); a PR adding the managed quota to the
+  `status_line.command` snapshot would make the cache-and-spawn machinery
+  here unnecessary, and is the right long-term fix.
