@@ -2701,3 +2701,44 @@ against — acceptable as a personal convenience on one machine, not a
 substitute for the architecture if Kimi support is ever made a real Clade
 surface (mcp-package, a generated plugin, fleet-wide rollout beyond
 `install.sh`'s opportunistic copy).
+
+##### Addendum — hooks are compatible in shape, not in protocol; usage has no supported API
+
+Two more surfaces checked, both verified live against Kimi 2.0.0:
+
+- **Hooks.** Kimi's `[[hooks]]` system (`~/.kimi-code/config.toml`) uses
+  almost the same event vocabulary as Claude Code (`PreToolUse`,
+  `PostToolUse`, `SessionStart`, `Stop`, `UserPromptSubmit`, `PreCompact`,
+  `Notification`, ...) and the same stdin JSON field names
+  (`hook_event_name`, `session_id`, `cwd`, `tool_name`, `tool_input`). It is
+  **not** compatible in blocking protocol, though: Claude Code's hooks here
+  signal a block by printing `{"decision":"block","reason":...}` to stdout
+  and exiting 0 — verified live that Kimi silently **allows** the command
+  when given that exact output, because Kimi only checks the exit code
+  (`2` = block) or `{"hookSpecificOutput":{"permissionDecision":"deny",
+  "permissionDecisionReason":...}}`. `configs/kimi-hooks/decision-to-kimi.sh`
+  is a thin translation shim — it runs a Claude-Code-style hook script
+  unmodified and re-emits its decision in Kimi's shape — wired by
+  `install.sh` as a `PreToolUse`/`Bash` hook over the *existing*
+  `~/.claude/hooks/pre-tool-guardian.sh` (zero duplication of the guardian
+  logic itself). Verified live, both directions: a `git push --force origin
+  main` attempt through a real Kimi session was denied with the guardian's
+  own reason text; a safe command passed through untouched. Only this one
+  hook is ported — `PostToolUse`'s correction-pairing loop
+  (`edit-shadow-detector.sh`/`revert-detector.sh`/`rule-injector.sh`),
+  `SessionStart`'s context injection, and the rest of the ~29 Claude Code
+  hook wirings in `configs/settings-hooks.json` are not, and each would need
+  the same live verification before trusting it — the protocol mismatch
+  above is exactly the kind of thing "the event names line up" does not
+  prove.
+- **Usage/quota checking.** Kimi's `/usage` is TUI-only; there is no
+  documented REST route for it (`kimi web`'s local server responds `200` to
+  `/api/v1/sessions` but `404`s `/api/v1/usage`, `/api/v1/quota`, and every
+  other REST guess tried live — the `/api/v1/meta` response lists `usage` as
+  an active server *feature*, which is presumably reachable over the
+  WebSocket RPC channel the TUI itself uses, not a plain HTTP endpoint).
+  `configs/skills/codex-usage/prompt.md` states this repository's own
+  standing principle explicitly: "Do not call private HTTP endpoints
+  directly." No `/kimi-usage` skill was built, on that principle — reverse-
+  engineering an undocumented WebSocket protocol is exactly what it warns
+  against, not a gap this note is deferring.
