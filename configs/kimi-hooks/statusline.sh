@@ -53,7 +53,7 @@ sid=$(printf '%s' "$sid" | tr -cd 'A-Za-z0-9_-' | cut -c1-64)
 memo="$home/.clade-usage-memo-${sid:--}"
 
 key="$(printf '%s' "$payload" | cksum | cut -d' ' -f1)"
-key="$key-$(_mtime "$home/.clade-usage-cache.json")-$(_mtime "$home/.clade-usage-style")-$(_mtime "$home/.clade-usage-theme")"
+key="$key-$(_mtime "$home/.clade-usage-cache.json")-$(_mtime "$home/.clade-usage-style")-$(_mtime "$home/.clade-usage-theme")-$(_mtime "$home/tui.toml")"
 
 if [ -f "$memo" ] && [ $(( $(date +%s) - $(_mtime "$memo") )) -lt 60 ] \
    && [ "$(sed -n '1p' "$memo")" = "$key" ]; then

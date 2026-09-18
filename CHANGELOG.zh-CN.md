@@ -13,7 +13,8 @@ semantic versioning。
   有则含周窗口、月窗口及其 kimi/code 拆分），并提供 `setup` / `style` / `theme`
   配置 Kimi footer。`install.sh` 在检测到 Kimi Code 且用户没有自定义状态栏命令时，
   会把 `~/.kimi-code/tui.toml` 的 `[status_line]` 接到 Clade 的指示器上——
-  `[Ask When Needed]  K2.8 Preview  Clade git:(main)  ● +3% (29d) · 5h 0% (5h)`
+  `Clade git:(main)  ● +3% (29d) · 5h 0% (5h)`（Kimi 自己的 `[status_line]
+  items` 列表可把模式徽标或模型名加回来）
   ——即 Claude Code 状态栏与 `codex-usage setup` 在 Kimi 侧的对应物。数据来自
   Kimi 自己有文档的本地服务 API（`kimi web` 的 `GET /api/v1/oauth/usage`，
   loopback token），优先复用运行中的实例，否则为本次调用临时启动一个；从不读取

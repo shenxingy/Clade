@@ -79,6 +79,14 @@ WINDOWS: tuple[tuple[str, str, int | None], ...] = (
     ("monthTotal", "month", None),
 )
 PERMISSION_BADGES = {"yolo": "Ask When Needed", "auto": "Never Ask"}
+# Footer slots, in Kimi's own vocabulary (`[status_line] items` in tui.toml):
+# mode, goal, model, tasks, cwd, git, tips. The snapshot carries data for four
+# of them; goal/tasks/tips are skipped. The default is the Clade convention
+# every surface shares — project, branch, pace — the Claude Code status line
+# and `codex-usage` minimal show exactly that. A user who wants the mode badge
+# or the model back sets `items` the way they would for the built-in footer.
+RENDERABLE_ITEMS = ("mode", "model", "cwd", "git")
+DEFAULT_ITEMS = ("cwd", "git")
 
 RESET = "\033[0m"
 DIM = "\033[2m"
@@ -778,6 +786,47 @@ def _git_branch(cwd: str) -> str | None:
     return None
 
 
+def _slot_pieces(payload: dict[str, Any], items: tuple[str, ...] | list[str]) -> list[str]:
+    """Render the requested footer slots from the snapshot, in the given order.
+
+    `cwd` and `git` fuse into one `dir git:(branch)` piece when adjacent, the
+    way the Claude Code status line draws them."""
+    pieces: list[str] = []
+    cwd = payload.get("cwd")
+    cwd = cwd if isinstance(cwd, str) and cwd else None
+    branch = payload.get("gitBranch")
+    if (not isinstance(branch, str) or not branch) and cwd:
+        branch = _git_branch(cwd)
+    branch = branch if isinstance(branch, str) and branch else None
+    previous = ""
+    for item in items:
+        if item == "mode":
+            badges = []
+            mode = payload.get("permissionMode")
+            if isinstance(mode, str) and mode in PERMISSION_BADGES:
+                badges.append(PERMISSION_BADGES[mode])
+            if payload.get("planMode"):
+                badges.append("plan")
+            if badges:
+                pieces.append("\033[1;33m" + " ".join(f"[{badge}]" for badge in badges) + RESET)
+        elif item == "model":
+            model = payload.get("model")
+            if isinstance(model, str) and model:
+                pieces.append(model)
+        elif item == "cwd" and cwd:
+            pieces.append(f"\033[36m{os.path.basename(cwd.rstrip('/')) or cwd}{RESET}")
+        elif item == "git" and branch:
+            badge = f"\033[1;34mgit:(\033[0;31m{branch}\033[1;34m){RESET}"
+            if previous == "cwd" and pieces:
+                pieces[-1] += " " + badge
+            else:
+                pieces.append(badge)
+        else:
+            continue
+        previous = item
+    return pieces
+
+
 def statusline(payload: dict[str, Any], home: Path | None = None, now: float | None = None) -> str:
     """Footer line 1 for Kimi's [status_line].command — cache in, no network."""
     home = home or kimi_home()
@@ -791,27 +840,7 @@ def statusline(payload: dict[str, Any], home: Path | None = None, now: float | N
     if needs_refresh(cache, session_id, context_tokens, now):
         _detach_refresh(home, session_id, context_tokens)
 
-    pieces: list[str] = []
-    badges = []
-    mode = payload.get("permissionMode")
-    if isinstance(mode, str) and mode in PERMISSION_BADGES:
-        badges.append(PERMISSION_BADGES[mode])
-    if payload.get("planMode"):
-        badges.append("plan")
-    if badges:
-        pieces.append("\033[1;33m" + " ".join(f"[{badge}]" for badge in badges) + RESET)
-    model = payload.get("model")
-    if isinstance(model, str) and model:
-        pieces.append(model)
-    cwd = payload.get("cwd")
-    if isinstance(cwd, str) and cwd:
-        location = f"\033[36m{os.path.basename(cwd.rstrip('/')) or cwd}{RESET}"
-        branch = payload.get("gitBranch")
-        if not isinstance(branch, str) or not branch:
-            branch = _git_branch(cwd)
-        if branch:
-            location += f" \033[1;34mgit:(\033[0;31m{branch}\033[1;34m){RESET}"
-        pieces.append(location)
+    pieces = _slot_pieces(payload, status_line_items(home))
     segment = usage_segment(_rows_field(cache), style, _theme_name(home), now)
     if segment:
         pieces.append(segment)
@@ -861,6 +890,27 @@ def _status_line_table(lines: list[str]) -> tuple[int | None, int, int | None, s
         if match:
             return start, end, index, _toml_unescape(match.group(1))
     return start, end, None, None
+
+
+def status_line_items(home: Path | None = None) -> tuple[str, ...]:
+    """Kimi's own `[status_line] items` list when tui.toml sets one, filtered
+    to the slots the snapshot can feed; otherwise Clade's default."""
+    import re
+
+    try:
+        lines = ((home or kimi_home()) / "tui.toml").read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return DEFAULT_ITEMS
+    start, end, _index, _command = _status_line_table(lines)
+    if start is None:
+        return DEFAULT_ITEMS
+    items_re = re.compile(r"^\s*items\s*=\s*\[([^\]]*)\]")
+    for line in lines[start + 1 : end]:
+        match = items_re.match(line)
+        if match:
+            wanted = re.findall(r'"([^"]*)"', match.group(1))
+            return tuple(item for item in wanted if item in RENDERABLE_ITEMS)
+    return DEFAULT_ITEMS
 
 
 def status_line_wired(text: str) -> bool:

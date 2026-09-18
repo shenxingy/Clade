@@ -118,8 +118,17 @@ and `/codex-usage` use. `install.sh` also wires Kimi's footer (`[status_line]`
 in `~/.kimi-code/tui.toml`) to the same indicator:
 
 ```text
-[Ask When Needed]  K2.8 Preview  Clade git:(main)  ● +3% (29d) · 5h 0% (5h)
+Clade git:(main)  ● +3% (29d) · 5h 0% (5h)
 ```
+
+Left to right: project directory and branch, then the long window's pace
+(`●` and `+3%` — used% minus 95% of the elapsed share of the month, or of the
+week when the plan has one — with time to reset), then the rolling 5-hour
+window's used% and its reset. Kimi's own second footer line (`context: …`)
+stays. The default slots are the same three every Clade surface shows; Kimi's
+own `[status_line] items` list in `tui.toml` (`mode`, `model`, `cwd`, `git`)
+picks and orders them — `goal`, `tasks` and `tips` are not in the snapshot
+Kimi hands a custom command, so they cannot be drawn.
 
 The data comes from Kimi Code's own documented local API (`kimi web`,
 `GET /api/v1/oauth/usage`): a running instance is reused, otherwise one is

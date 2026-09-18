@@ -294,14 +294,35 @@ def test_statusline_renders_from_the_cache_without_refreshing(tmp_path: Path, mo
     monkeypatch.setattr(kimi_usage, "_detach_refresh", lambda *a: pytest.fail("no refresh due"))
     line = _plain(kimi_usage.statusline(_payload(), tmp_path, NOW))
     delta = kimi_usage._signed(float(kimi_usage.pace_row(_rows_ahead())["pace_delta"]))
+    assert line == f"proj git:(main)  ◉ {delta} (15d) · 5h 40% (3h)"
+
+
+def test_statusline_honors_kimis_own_items_list(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    kimi_usage.write_cache(
+        {"fetched_at": NOW - 10, "source": "test", "rows": _rows_ahead(), "seen": {"s1": 10}},
+        tmp_path,
+    )
+    monkeypatch.setattr(kimi_usage, "_detach_refresh", lambda *a: None)
+    delta = kimi_usage._signed(float(kimi_usage.pace_row(_rows_ahead())["pace_delta"]))
+    tui = tmp_path / "tui.toml"
+    tui.write_text(STOCK_TUI + '\n[status_line]\nitems = ["mode", "goal", "model", "tasks", "cwd", "git", "tips"]\n', encoding="utf-8")
+    assert kimi_usage.status_line_items(tmp_path) == ("mode", "model", "cwd", "git")
+    line = _plain(kimi_usage.statusline(_payload(), tmp_path, NOW))
     assert line == f"[Never Ask] [plan]  K2.8 Preview  proj git:(main)  ◉ {delta} (15d) · 5h 40% (3h)"
+    tui.write_text(STOCK_TUI + '\n[status_line]\nitems = ["git", "mode"]\n', encoding="utf-8")
+    line = _plain(kimi_usage.statusline(_payload(planMode=False), tmp_path, NOW))
+    assert line == f"git:(main)  [Never Ask]  ◉ {delta} (15d) · 5h 40% (3h)"
+    tui.write_text(STOCK_TUI, encoding="utf-8")  # no active table: the default
+    assert kimi_usage.status_line_items(tmp_path) == kimi_usage.DEFAULT_ITEMS
+    tui.write_text(STOCK_TUI + '\n[status_line]\nitems = ["tips"]\n', encoding="utf-8")
+    assert _plain(kimi_usage.statusline(_payload(), tmp_path, NOW)) == f"◉ {delta} (15d) · 5h 40% (3h)"
 
 
 def test_statusline_cold_cache_detaches_a_refresh_and_still_draws_the_rest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     detached: list[tuple[Any, ...]] = []
     monkeypatch.setattr(kimi_usage, "_detach_refresh", lambda *a: detached.append(a))
     line = _plain(kimi_usage.statusline(_payload(permissionMode="manual", planMode=False), tmp_path, NOW))
-    assert line == "K2.8 Preview  proj git:(main)"
+    assert line == "proj git:(main)"
     assert detached == [(tmp_path, "s1", 10)]
 
 

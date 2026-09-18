@@ -1167,12 +1167,35 @@ _sl_line="${_sl_out%rc=*}"
   && pass "launcher prints exactly one line (Kimi takes only the first)" \
   || fail "launcher prints exactly one line" "$_sl_line"
 _sl_plain=$(printf '%s' "$_sl_line" | sed 's/\x1b\[[0-9;]*m//g')
-printf '%s' "$_sl_plain" | grep -qF '[Never Ask]  K2.8 Preview  proj git:(feat/x)' \
-  && pass "line carries mode badge, model, directory and branch from the payload" \
-  || fail "line carries mode badge, model, directory and branch from the payload" "$_sl_plain"
+printf '%s' "$_sl_plain" | grep -qE '^proj git:\(feat/x\)  ' \
+  && pass "line opens with directory and branch (the Clade convention), no mode/model by default" \
+  || fail "line opens with directory and branch (the Clade convention), no mode/model by default" "$_sl_plain"
 printf '%s' "$_sl_plain" | grep -qE '◉ \+12% \(1[45]d\) · 5h 40% \(3h\)' \
   && pass "line carries the month pace (+12%) and the 5h burst window (40%, 3h)" \
   || fail "line carries the month pace and the 5h burst window" "$_sl_plain"
+# Kimi's own `[status_line] items` list chooses the slots: with mode and
+# model requested, the badge and model name come back, in that order. The
+# launcher's per-session memo keys on tui.toml's mtime at one-second
+# resolution, so an edit inside the same second as the last render would
+# replay the old line — drop the memo, as a minute's passing would.
+_sl_tui_bak="$SANDBOX/tui.toml.items-bak"
+cp "$KIMI_TUI" "$_sl_tui_bak"
+rm -f "$HOME/.kimi-code/.clade-usage-memo-"*
+python3 - "$KIMI_TUI" <<'PY'
+import re, sys
+from pathlib import Path
+path = Path(sys.argv[1])
+# Anchor on the ACTIVE table header: the stock file's commented example
+# (`# [status_line]`) contains the same text and must not be the one edited.
+path.write_text(re.sub(r"(?m)^\[status_line\]\n", '[status_line]\nitems = ["mode","model","cwd","git","tips"]\n', path.read_text(), count=1))
+PY
+_sl_items=$(printf '%s' "$_sl_payload" | "$HOME/.kimi-code/hooks/statusline.sh" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g')
+printf '%s' "$_sl_items" | grep -qF '[Never Ask]  K2.8 Preview  proj git:(feat/x)  ' \
+  && pass "[status_line] items brings the mode badge and model back in Kimi's order" \
+  || fail "[status_line] items brings the mode badge and model back in Kimi's order" "$_sl_items"
+cp "$_sl_tui_bak" "$KIMI_TUI"
+rm -f "$HOME/.kimi-code/.clade-usage-memo-"*
+unset _sl_tui_bak _sl_items
 # `style off` must yield NO line: that is the documented signal that hands
 # footer line 1 back to Kimi's built-in slots (goal, tasks, tips).
 printf 'off\n' > "$HOME/.kimi-code/.clade-usage-style"

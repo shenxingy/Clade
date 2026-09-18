@@ -14,7 +14,8 @@ versioning for the `clade-mcp` Python package and tagged public releases.
   `setup` / `style` / `theme` for the Kimi footer. `install.sh` now wires
   `[status_line]` in `~/.kimi-code/tui.toml` to Clade's indicator when Kimi
   Code is present and no user-authored status line command exists —
-  `[Ask When Needed]  K2.8 Preview  Clade git:(main)  ● +3% (29d) · 5h 0% (5h)`
+  `Clade git:(main)  ● +3% (29d) · 5h 0% (5h)` (Kimi's own `[status_line]
+  items` list adds the mode badge or model back)
   — the Kimi counterpart of the Claude Code status line and `codex-usage
   setup`. The data path is Kimi's documented local server API (`kimi web`,
   `GET /api/v1/oauth/usage`, loopback token), reusing a running instance or

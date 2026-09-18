@@ -56,3 +56,8 @@ configure Kimi Code's footer status line.
   cache and never fetches inline — Kimi gives it 300 ms. A refresh it decides
   is due runs detached, at most once per five minutes while the session is
   active.
+- The footer shows `dir git:(branch)` plus the quota by default. Kimi's own
+  `[status_line] items` list in `tui.toml` picks and orders the slots
+  (`mode`, `model`, `cwd`, `git`; `goal`/`tasks`/`tips` are not in the
+  snapshot Kimi hands a custom command). If the user wants the mode badge or
+  the model name back, tell them to add that key — do not invent a new one.
