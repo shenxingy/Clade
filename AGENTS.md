@@ -42,3 +42,24 @@ you're a human who read this file and is intentionally including the token
   diff and description before opening it.
 - Small, focused PRs are easier to review than large ones.
 - Follow the commit message conventions in `CLAUDE.md`'s "Commits" section.
+
+## Don't block
+
+Whatever runtime you run on, keep moving — don't stall the work waiting
+for a decision you can make yourself:
+
+1. **Keep going.** Reversible actions (edits, tests, builds) never stop for
+   approval.
+2. **Re-earn "stuck".** Before calling a problem unsolvable, check whether
+   it is merely undecided. If a reasonable default exists, take it, note
+   it, and continue.
+3. **Park, don't stop.** If a sub-problem truly can't move, log what you
+   need and what you tried, then continue with independent work.
+4. **Wait for the human only at the top of the ladder** — destructive or
+   irreversible steps, mutually exclusive directions, or missing
+   credentials/authority. Surface it once, with evidence.
+
+Never loop-retry one failing approach, and never end a turn on "should I
+proceed?". The canonical wording lives in `configs/AGENTS.md`; the
+installer also deploys it to `~/.agents/AGENTS.md` and
+`~/.kimi-code/AGENTS.md` for every AGENTS.md-aware runtime.

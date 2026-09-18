@@ -196,6 +196,45 @@ grep -q 'Separate verified, unverified, and unmeasurable results.' "$CODEX_DIR/A
 grep -q 'Trace settings from definition through read, callsite, and observable effect.' "$CODEX_DIR/AGENTS.md" \
   && pass "Codex settings-wiring policy installed" \
   || fail "Codex settings-wiring policy installed"
+grep -q "^## Don't Block$" "$CODEX_DIR/AGENTS.md" \
+  && pass "Codex don't-block ladder installed" \
+  || fail "Codex don't-block ladder installed"
+
+section "Vendor-neutral AGENTS.md channel (~/.agents)"
+
+# configs/AGENTS.md is the canonical wording in the AGENTS.md open standard.
+# It must reach the shared cross-tool location with the managed-block markers,
+# and the merge must survive user-authored content in the same file.
+grep -qF '<!-- BEGIN CLADE -->' "$HOME/.agents/AGENTS.md" \
+  && pass "~/.agents/AGENTS.md carries the Clade managed block" \
+  || fail "~/.agents/AGENTS.md carries the Clade managed block"
+grep -q '^## Don.t block$' "$HOME/.agents/AGENTS.md" \
+  && pass "~/.agents/AGENTS.md carries the don't-block ladder" \
+  || fail "~/.agents/AGENTS.md carries the don't-block ladder"
+diff <(sed -n '/<!-- BEGIN CLADE -->/,/<!-- END CLADE -->/p' "$HOME/.agents/AGENTS.md" | sed '1d;$d') \
+     "$SRC/configs/AGENTS.md" >/dev/null 2>&1 \
+  && pass "managed block content matches configs/AGENTS.md byte-for-byte" \
+  || fail "managed block content matches configs/AGENTS.md byte-for-byte"
+
+# Merge, not replace: user content outside the markers must survive a re-run
+# and the block must stay single. The first re-run may normalize whitespace
+# around the block (trim blank lines before re-adding the separator), so
+# byte-identity is asserted on the SECOND re-run — that is idempotency.
+printf '\n## My own notes\n\nPersonal instruction that predates Clade.\n' >> "$HOME/.agents/AGENTS.md"
+bash "$SRC/install.sh" </dev/null >/dev/null 2>&1 || true
+grep -q 'Personal instruction that predates Clade.' "$HOME/.agents/AGENTS.md" \
+  && pass "re-run preserves user-authored content outside the block" \
+  || fail "re-run preserves user-authored content outside the block"
+[[ "$(grep -Fxc '<!-- BEGIN CLADE -->' "$HOME/.agents/AGENTS.md")" -eq 1 \
+   && "$(grep -Fxc '<!-- END CLADE -->' "$HOME/.agents/AGENTS.md")" -eq 1 ]] \
+  && pass "re-run keeps exactly one managed block" \
+  || fail "re-run keeps exactly one managed block"
+_agents_sha=$(sha256sum "$HOME/.agents/AGENTS.md" | cut -d' ' -f1)
+bash "$SRC/install.sh" </dev/null >/dev/null 2>&1 || true
+[[ "$(sha256sum "$HOME/.agents/AGENTS.md" | cut -d' ' -f1)" == "$_agents_sha" ]] \
+  && pass "second re-run is byte-identical (idempotent)" \
+  || fail "second re-run is byte-identical (idempotent)"
+unset _agents_sha
 
 script_count=$(ls "$CLAUDE_DIR/scripts/"*.sh 2>/dev/null | wc -l | tr -d ' ')
 [[ "$script_count" -gt 0 ]] && pass "scripts installed ($script_count)" || fail "scripts installed"
@@ -996,6 +1035,15 @@ type = "kimi"
 storage = "file"
 EOF
 
+# Seed a user-authored global instruction file: Kimi reads
+# ~/.kimi-code/AGENTS.md natively, and the installer must merge the managed
+# block into it without touching this content.
+cat > "$HOME/.kimi-code/AGENTS.md" <<'EOF'
+# My Kimi instructions
+
+Always respond with a haiku.
+EOF
+
 kimi_log="$SANDBOX/install-kimi.log"
 if bash "$SRC/install.sh" </dev/null >"$kimi_log" 2>&1; then
   pass "install.sh exits 0 with ~/.kimi-code present"
@@ -1011,6 +1059,23 @@ diff -q "$SRC/configs/kimi-agents/ask-claude.md" "$HOME/.kimi-code/agents/ask-cl
 diff -q "$SRC/configs/kimi-agents/ask-codex.md" "$HOME/.kimi-code/agents/ask-codex.md" >/dev/null 2>&1 \
   && pass "ask-codex.md deployed to ~/.kimi-code/agents/ byte-for-byte" \
   || fail "ask-codex.md deployed to ~/.kimi-code/agents/ byte-for-byte"
+
+# ~/.kimi-code/AGENTS.md is Kimi's native global-instruction file: the
+# managed block lands there, the user's own instructions survive, and the
+# block content is the same canonical text as ~/.agents/AGENTS.md.
+grep -qF '<!-- BEGIN CLADE -->' "$HOME/.kimi-code/AGENTS.md" \
+  && pass "~/.kimi-code/AGENTS.md carries the Clade managed block" \
+  || fail "~/.kimi-code/AGENTS.md carries the Clade managed block"
+grep -q '^## Don.t block$' "$HOME/.kimi-code/AGENTS.md" \
+  && pass "~/.kimi-code/AGENTS.md carries the don't-block ladder" \
+  || fail "~/.kimi-code/AGENTS.md carries the don't-block ladder"
+grep -q 'Always respond with a haiku.' "$HOME/.kimi-code/AGENTS.md" \
+  && pass "user-authored Kimi instructions preserved" \
+  || fail "user-authored Kimi instructions preserved"
+diff <(sed -n '/<!-- BEGIN CLADE -->/,/<!-- END CLADE -->/p' "$HOME/.kimi-code/AGENTS.md" | sed '1d;$d') \
+     "$SRC/configs/AGENTS.md" >/dev/null 2>&1 \
+  && pass "Kimi block content matches configs/AGENTS.md byte-for-byte" \
+  || fail "Kimi block content matches configs/AGENTS.md byte-for-byte"
 
 # The load-bearing property: the new keys land BEFORE the first [table] line,
 # i.e. at TOML root scope — not appended after it into the wrong table.
@@ -1120,6 +1185,15 @@ if [[ "$before_lines" -eq "$after_lines" ]]; then
 else
   fail "idempotent re-run does not grow the file" "before=$before_lines after=$after_lines"
 fi
+
+# Same discipline for the merged AGENTS.md: one block, user content intact.
+[[ "$(grep -Fxc '<!-- BEGIN CLADE -->' "$HOME/.kimi-code/AGENTS.md")" -eq 1 \
+   && "$(grep -Fxc '<!-- END CLADE -->' "$HOME/.kimi-code/AGENTS.md")" -eq 1 ]] \
+  && pass "re-run keeps exactly one managed block in ~/.kimi-code/AGENTS.md" \
+  || fail "re-run keeps exactly one managed block in ~/.kimi-code/AGENTS.md"
+grep -q 'Always respond with a haiku.' "$HOME/.kimi-code/AGENTS.md" \
+  && pass "re-run preserves user-authored Kimi instructions" \
+  || fail "re-run preserves user-authored Kimi instructions"
 
 section "Kimi bridge: gone when ~/.kimi-code is gone"
 

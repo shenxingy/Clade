@@ -75,9 +75,9 @@ without an explicit Codex disposition.
 The installer adapts the provider-neutral parts of Clade's global policy into
 the managed block in `~/.codex/AGENTS.md`: atomic PR scope, local-CI-first
 verification, evidence completeness, concise response register, configuration
-wiring, and deployment proof. It leaves model selection, trust, permissions,
-MCP authentication, and personal plugin settings under the user's own
-`~/.codex/config.toml`.
+wiring, deployment proof, and the don't-block escalation ladder. It leaves
+model selection, trust, permissions, MCP authentication, and personal plugin
+settings under the user's own `~/.codex/config.toml`.
 
 Claude output styles have no distributable one-to-one Codex primitive. Their
 Evidence First and Terse invariants are therefore carried as durable Codex
@@ -99,6 +99,15 @@ reports the conflict and never deletes or moves the override.
 New runtime state is written under `.clade/` or `~/.clade/`; native workflows
 may read legacy Claude state when migrating an existing project but do not
 create new vendor-specific state.
+
+The canonical wording of the shared policy lives in `configs/AGENTS.md`, the
+kit's AGENTS.md open-standard file, rather than in any vendor's channel.
+`install.sh` merges the same marked block into the cross-tool location
+`~/.agents/AGENTS.md` (read by OpenCode, Goose, and other AAIF-convention
+runtimes) and, when the Kimi bridge is active, into `~/.kimi-code/AGENTS.md`,
+which Kimi Code reads natively as its global instruction file. Each vendor
+channel (Claude's `~/.claude/CLAUDE.md`, this Codex block) adapts that text
+instead of restating it from scratch.
 
 Every generated native skill also ends with the same delivery boundary: a
 writable task cannot report `DONE` with task-owned uncommitted changes, and a
@@ -227,8 +236,8 @@ verified success per dollar and per wall-hour hold for a task class.
 
 `./install.sh` also installs two native profiles under `~/.codex/agents/` and
 merges an idempotent managed block into `~/.codex/AGENTS.md` without replacing
-user instructions. The block carries both adaptive-delegation rules and the
-delivery-completion invariant. The lead keeps architecture and
+user instructions. The block carries adaptive-delegation rules, the
+delivery-completion invariant, and the don't-block escalation ladder. The lead keeps architecture and
 ambiguous/high-risk work, delegates bounded read-only discovery to
 `clade_cheap_explorer`, and uses `clade_cheap_worker` only with explicit file
 ownership and a deterministic verifier. Spark is not assumed or installed as

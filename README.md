@@ -55,6 +55,8 @@ cd clade && ./install.sh
 
 Installs skills, hooks, agents, scripts, and safety guardian. Start a new Claude Code session to activate.
 
+The same run also wires the other runtimes it detects: a managed policy block in `~/.codex/AGENTS.md` (Codex), bridge agents/hooks for Kimi Code (`~/.kimi-code/`), and the vendor-neutral ground rules from `configs/AGENTS.md` at `~/.agents/AGENTS.md` and `~/.kimi-code/AGENTS.md` — the same don't-block policy text for every AGENTS.md-aware runtime. See [docs/codex.md](docs/codex.md) for the per-vendor contract.
+
 > **Requires:** `jq`. **Platform:** Linux, macOS, and Windows via Git Bash (native CMD/PowerShell without bash is out of scope).
 
 ### Codex — Native Plugin
