@@ -74,7 +74,13 @@ report_host() {
         printf 'head=%s\n' \"\$(git rev-parse --short HEAD 2>/dev/null)\"
         printf 'dirty=%s\n' \"\$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')\"
         printf 'behind=%s\n' \"\$(git rev-list --count HEAD..@{u} 2>/dev/null || echo '?')\"")
-  if [ -z "$out" ] || printf '%s' "$out" | grep -qiE 'timed out|refused|not known|No route|Permission denied'; then
+  # "Could not resolve hostname" is OpenSSH's own fixed-format prefix; the
+  # getaddrinfo error text after the colon is resolver/OS-dependent (glibc
+  # says "Name or service not known" for a permanent DNS failure and
+  # "Temporary failure in name resolution" for EAI_AGAIN — seen live on a
+  # GitHub-hosted runner where the developer machine that wrote this pattern
+  # only ever produced the first). Match the prefix, not the suffix.
+  if [ -z "$out" ] || printf '%s' "$out" | grep -qiE 'timed out|refused|not known|No route|Permission denied|Could not resolve hostname'; then
     printf '  %-12s UNREACHABLE  (%s)\n' "$host" "$(printf '%s' "$out" | head -1 | cut -c1-60)"
     return 3
   fi
@@ -136,6 +142,26 @@ self_test() {
   if ! printf '%s' "$out" | grep -q 'UNREACHABLE'; then
     echo "SELF-TEST FAILED: an unreachable host was not reported as unreachable"
     rm -rf "$tmp"; return 1
+  fi
+  # A DNS resolver failure is classified by OpenSSH's own fixed-format prefix
+  # ("Could not resolve hostname"), not by the getaddrinfo error text after
+  # the colon — that text is resolver/OS-dependent (glibc: "Name or service
+  # not known" for a permanent failure, "Temporary failure in name
+  # resolution" for EAI_AGAIN). This exact gap let a hosted GitHub Actions
+  # runner — whose resolver produced the second string, never seen on the
+  # developer machine that wrote the original pattern — silently misreport an
+  # unreachable host as "?  commit(s) behind" instead of UNREACHABLE.
+  cat > "$tmp/ssh-stub-dns" <<'STUB'
+#!/usr/bin/env bash
+echo "ssh: Could not resolve hostname stub-host: Temporary failure in name resolution" >&2
+exit 255
+STUB
+  chmod +x "$tmp/ssh-stub-dns"
+  printf 'stub-host /tmp/nope\n' > "$tmp/dns.conf"
+  out=$(CLADE_FLEET_CONF="$tmp/dns.conf" CLADE_FLEET_SSH="$tmp/ssh-stub-dns" bash "$0" 2>&1)
+  if ! printf '%s' "$out" | grep -q 'UNREACHABLE'; then
+    echo "SELF-TEST FAILED: 'Temporary failure in name resolution' was not classified UNREACHABLE"
+    printf '%s\n' "$out"; rm -rf "$tmp"; return 1
   fi
   # EVERY host must be visited. ssh reads stdin and the host loop reads the
   # fleet file from stdin, so without `ssh -n` host 1 eats the rest of the file
