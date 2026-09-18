@@ -7,6 +7,20 @@ versioning for the `clade-mcp` Python package and tagged public releases.
 
 ## Unreleased
 
+### Added
+
+- `/kimi-usage`: Kimi Code plan-quota usage (5-hour, weekly where the plan has
+  one, monthly with its kimi/code split) against Clade's 95% target pace, plus
+  `setup` / `style` / `theme` for the Kimi footer. `install.sh` now wires
+  `[status_line]` in `~/.kimi-code/tui.toml` to Clade's indicator when Kimi
+  Code is present and no user-authored status line command exists —
+  `Clade git:(main)  ● +3% (29d) · 5h 0% (5h)` (Kimi's own `[status_line]
+  items` list adds the mode badge or model back)
+  — the Kimi counterpart of the Claude Code status line and `codex-usage
+  setup`. The data path is Kimi's documented local server API (`kimi web`,
+  `GET /api/v1/oauth/usage`, loopback token), reusing a running instance or
+  starting one for the call; the OAuth credential file is never read.
+
 ## [0.3.1] — 2026-09-02
 
 ### Security

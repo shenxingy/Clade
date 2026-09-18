@@ -995,6 +995,19 @@ type = "kimi"
 [services.moonshot_fetch.oauth]
 storage = "file"
 EOF
+# Kimi writes tui.toml on its first TUI run; the stock file ends with a
+# COMMENTED [status_line] example naming the very path we wire. That comment
+# is the trap: a substring check reads it as "already wired" on every
+# machine, so the assertions below require an ACTIVE command line.
+cat > "$HOME/.kimi-code/tui.toml" <<'EOF'
+theme = "auto" # "auto" | "dark" | "light" | custom theme name
+
+[editor]
+command = "" # Empty uses $VISUAL / $EDITOR
+
+# [status_line]
+# command = "~/.kimi-code/statusline.sh"
+EOF
 
 kimi_log="$SANDBOX/install-kimi.log"
 if bash "$SRC/install.sh" </dev/null >"$kimi_log" 2>&1; then
@@ -1082,6 +1095,125 @@ _guardian_allow=$(printf '{"tool_name":"Bash","tool_input":{"command":"echo hi"}
   || fail "a safe command produces no deny output (allowed)" "$_guardian_allow"
 unset _kimi_guardian_cmd _guardian_deny _guardian_allow
 
+section "Kimi bridge: quota status line"
+
+# Kimi's footer line 1 is replaced by whatever `[status_line] command` in
+# tui.toml prints (300 ms deadline, first stdout line only, non-zero exit or
+# empty line = built-in footer). install.sh wires the deployed launcher,
+# which hands off to the kimi-usage skill helper. Test the shipped
+# composition: the deployed launcher over the deployed helper, rendering
+# from a cache fixture — never from the network, which the hot path must
+# not touch. `[editor] command` above is the decoy: it sits in a different
+# table and must be neither counted nor edited.
+diff -q "$SRC/configs/kimi-hooks/statusline.sh" "$HOME/.kimi-code/hooks/statusline.sh" >/dev/null 2>&1 \
+  && pass "statusline.sh deployed to ~/.kimi-code/hooks/ byte-for-byte" \
+  || fail "statusline.sh deployed to ~/.kimi-code/hooks/ byte-for-byte"
+[[ -x "$HOME/.kimi-code/hooks/statusline.sh" ]] \
+  && pass "statusline.sh is executable" \
+  || fail "statusline.sh is executable"
+[[ -f "$HOME/.claude/skills/kimi-usage/scripts/kimi_usage.py" ]] \
+  && pass "kimi-usage helper deployed under ~/.claude/skills/" \
+  || fail "kimi-usage helper deployed under ~/.claude/skills/"
+
+KIMI_TUI="$HOME/.kimi-code/tui.toml"
+_sl_cmd_line="command = \"$HOME/.kimi-code/hooks/statusline.sh\""
+_sl_active=$(awk '/^\[status_line\]/{t=1; next} /^\[/{t=0} t && /^command[[:space:]]*=/' "$KIMI_TUI")
+[[ "$_sl_active" == "$_sl_cmd_line" ]] \
+  && pass "tui.toml [status_line] command points at the deployed launcher" \
+  || fail "tui.toml [status_line] command points at the deployed launcher" "got: $_sl_active"
+grep -qF '# command = "~/.kimi-code/statusline.sh"' "$KIMI_TUI" \
+  && pass "Kimi's commented [status_line] example is left untouched" \
+  || fail "Kimi's commented [status_line] example is left untouched"
+grep -q '^command = "" # Empty uses' "$KIMI_TUI" \
+  && pass "[editor] command in the neighbouring table is untouched" \
+  || fail "[editor] command in the neighbouring table is untouched"
+grep -q 'Configured: tui.toml \[status_line\]' "$kimi_log" \
+  && pass "install log reports the status line wiring" \
+  || fail "install log reports the status line wiring" "see $kimi_log"
+
+# Functional render through the real launcher. A fresh cache (fetched now,
+# windows unexpired) means no refresh is due, so nothing is spawned. The
+# month row is 60% used at 50% elapsed: delta = 60 - 47.5 = +12.5 -> "+12%",
+# past the +5 threshold, so the circles theme shows its top symbol ◉.
+_sl_now=$(date +%s)
+python3 - "$HOME/.kimi-code/.clade-usage-cache.json" "$_sl_now" <<'PY'
+import json, sys
+path, now = sys.argv[1], int(sys.argv[2])
+month = 30 * 86400
+json.dump({
+    "fetched_at": now,
+    "source": "fixture",
+    "rows": [
+        {"id": "limit5h", "window": "5h", "period_s": 18000, "used_percent": 40.0,
+         "remaining_percent": 60.0, "resets_at": now + 3 * 3600, "resets_in": "3h",
+         "elapsed_percent": 40.0, "pace_delta": 2.0, "projected_percent": 100.0},
+        {"id": "monthTotal", "window": "month", "period_s": month, "used_percent": 60.0,
+         "remaining_percent": 40.0, "resets_at": now + month // 2, "resets_in": "15d",
+         "elapsed_percent": 50.0, "pace_delta": 12.5, "projected_percent": 120.0,
+         "code_percent": 10.0, "kimi_percent": 50.0},
+    ],
+    "extra_usage": None,
+    "seen": {},
+}, open(path, "w"))
+PY
+_sl_payload='{"model":"K2.8 Preview","cwd":"/tmp/proj","gitBranch":"feat/x","permissionMode":"auto","planMode":false,"contextTokens":10,"sessionId":"s1","version":"2.0.1"}'
+_sl_out=$(printf '%s' "$_sl_payload" | "$HOME/.kimi-code/hooks/statusline.sh" 2>/dev/null; echo "rc=$?")
+_sl_rc="${_sl_out##*rc=}"
+_sl_line="${_sl_out%rc=*}"
+[[ "$_sl_rc" == "0" ]] \
+  && pass "launcher exits 0" \
+  || fail "launcher exits 0" "rc=$_sl_rc"
+[[ "$(printf '%s' "$_sl_line" | grep -c .)" == "1" ]] \
+  && pass "launcher prints exactly one line (Kimi takes only the first)" \
+  || fail "launcher prints exactly one line" "$_sl_line"
+_sl_plain=$(printf '%s' "$_sl_line" | sed 's/\x1b\[[0-9;]*m//g')
+printf '%s' "$_sl_plain" | grep -qE '^proj git:\(feat/x\)  ' \
+  && pass "line opens with directory and branch (the Clade convention), no mode/model by default" \
+  || fail "line opens with directory and branch (the Clade convention), no mode/model by default" "$_sl_plain"
+printf '%s' "$_sl_plain" | grep -qE '◉ \+12% \(1[45]d\) · 5h 40% \(3h\)' \
+  && pass "line carries the month pace (+12%) and the 5h burst window (40%, 3h)" \
+  || fail "line carries the month pace and the 5h burst window" "$_sl_plain"
+# Kimi's own `[status_line] items` list chooses the slots: with mode and
+# model requested, the badge and model name come back, in that order. The
+# launcher's per-session memo keys on tui.toml's mtime at one-second
+# resolution, so an edit inside the same second as the last render would
+# replay the old line — drop the memo, as a minute's passing would.
+_sl_tui_bak="$SANDBOX/tui.toml.items-bak"
+cp "$KIMI_TUI" "$_sl_tui_bak"
+rm -f "$HOME/.kimi-code/.clade-usage-memo-"*
+python3 - "$KIMI_TUI" <<'PY'
+import re, sys
+from pathlib import Path
+path = Path(sys.argv[1])
+# Anchor on the ACTIVE table header: the stock file's commented example
+# (`# [status_line]`) contains the same text and must not be the one edited.
+path.write_text(re.sub(r"(?m)^\[status_line\]\n", '[status_line]\nitems = ["mode","model","cwd","git","tips"]\n', path.read_text(), count=1))
+PY
+_sl_items=$(printf '%s' "$_sl_payload" | "$HOME/.kimi-code/hooks/statusline.sh" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g')
+printf '%s' "$_sl_items" | grep -qF '[Never Ask]  K2.8 Preview  proj git:(feat/x)  ' \
+  && pass "[status_line] items brings the mode badge and model back in Kimi's order" \
+  || fail "[status_line] items brings the mode badge and model back in Kimi's order" "$_sl_items"
+cp "$_sl_tui_bak" "$KIMI_TUI"
+rm -f "$HOME/.kimi-code/.clade-usage-memo-"*
+unset _sl_tui_bak _sl_items
+# `style off` must yield NO line: that is the documented signal that hands
+# footer line 1 back to Kimi's built-in slots (goal, tasks, tips).
+printf 'off\n' > "$HOME/.kimi-code/.clade-usage-style"
+_sl_off=$(printf '%s' "$_sl_payload" | "$HOME/.kimi-code/hooks/statusline.sh" 2>/dev/null)
+[[ -z "$_sl_off" ]] \
+  && pass "style off prints nothing (built-in footer returns)" \
+  || fail "style off prints nothing (built-in footer returns)" "$_sl_off"
+rm -f "$HOME/.kimi-code/.clade-usage-style"
+# Missing helper: the launcher must stay silent and green, never break a footer.
+mv "$HOME/.claude/skills/kimi-usage/scripts/kimi_usage.py" "$SANDBOX/kimi_usage.py.moved"
+_sl_missing=$(printf '%s' "$_sl_payload" | "$HOME/.kimi-code/hooks/statusline.sh" 2>&1; echo "rc=$?")
+[[ "$_sl_missing" == "rc=0" ]] \
+  && pass "launcher without its helper exits 0 with no output" \
+  || fail "launcher without its helper exits 0 with no output" "$_sl_missing"
+mv "$SANDBOX/kimi_usage.py.moved" "$HOME/.claude/skills/kimi-usage/scripts/kimi_usage.py"
+rm -f "$HOME/.kimi-code/.clade-usage-cache.json"
+unset _sl_cmd_line _sl_active _sl_now _sl_payload _sl_out _sl_rc _sl_line _sl_plain _sl_off _sl_missing
+
 section "Kimi bridge: idempotent re-run and non-destructive of a user override"
 
 # A user (or Kimi itself) may set a different mode by hand — install.sh must
@@ -1120,6 +1252,34 @@ if [[ "$before_lines" -eq "$after_lines" ]]; then
 else
   fail "idempotent re-run does not grow the file" "before=$before_lines after=$after_lines"
 fi
+_sl_count=$(awk '/^\[status_line\]/{t=1; next} /^\[/{t=0} t && /^command[[:space:]]*=/' "$KIMI_TUI" | wc -l | tr -d ' ')
+[[ "$_sl_count" == "1" ]] \
+  && pass "re-run leaves exactly one [status_line] command (no duplicate wiring)" \
+  || fail "re-run leaves exactly one [status_line] command" "found $_sl_count"
+
+# A footer the user wrote themselves is theirs: install.sh must report it
+# and leave it, never swap in Clade's.
+python3 - "$KIMI_TUI" "$HOME" <<'PY'
+import sys
+from pathlib import Path
+path, home = Path(sys.argv[1]), sys.argv[2]
+path.write_text(path.read_text().replace(
+    f'command = "{home}/.kimi-code/hooks/statusline.sh"',
+    'command = "~/my-own-hud.sh"',
+))
+PY
+kimi_log3="$SANDBOX/install-kimi-3.log"
+bash "$SRC/install.sh" </dev/null >"$kimi_log3" 2>&1 || true
+grep -qF 'command = "~/my-own-hud.sh"' "$KIMI_TUI" \
+  && pass "a user-authored status line command survives a re-run" \
+  || fail "a user-authored status line command survives a re-run" "see $KIMI_TUI"
+! grep -qF "$HOME/.kimi-code/hooks/statusline.sh" "$KIMI_TUI" \
+  && pass "Clade's command is not added beside the user's" \
+  || fail "Clade's command is not added beside the user's" "see $KIMI_TUI"
+grep -q 'Skipped: Kimi status line' "$kimi_log3" \
+  && pass "install log says the status line was skipped, and why" \
+  || fail "install log says the status line was skipped, and why" "see $kimi_log3"
+unset _sl_count kimi_log3 KIMI_TUI
 
 section "Kimi bridge: gone when ~/.kimi-code is gone"
 

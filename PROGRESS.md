@@ -4,7 +4,22 @@
 > not stale by virtue of being old; do not read them as current state. Open work
 > lives in [TODO.md](TODO.md). Decided 2026-08-29.
 
-Older entries live in [docs/progress-archive/](docs/progress-archive/) — 63 archived, newest month first.
+Older entries live in [docs/progress-archive/](docs/progress-archive/) — 64 archived, newest month first.
+
+---
+### 2026-09-18 — Kimi quota in the footer, through the documented door
+
+The 2026-09-17 note said Kimi had no usage API and declined to build one on
+principle. Two REST guesses had been read as a survey; the reference lists
+`GET /api/v1/oauth/usage` on `kimi web`, with the schema. So `/kimi-usage` and
+a `[status_line]` footer now exist on the same shape as `codex-usage`: the
+product's own local server, its own loopback token, reuse-or-spawn, and the
+OAuth credential file untouched — Kimi rotates refresh tokens under a lock
+with a tombstone on conflict, which is the concrete reason, not just the rule.
+Verified in a real Kimi 2.0.1 TUI; the render path is ~40 ms inside the 300 ms
+budget. Cost that remains: a refresh boots a ~600 MB server for ~2 s, at most
+every five minutes while a session is active — the upstream payload PR that
+would remove it is in TODO.md.
 
 ---
 ### 2026-09-12 — CI moved to hardware we already own, plus the fixer
@@ -78,17 +93,4 @@ documented as working, and never fires.** Found eleven times.
 - Refreshed the installed Clade Codex plugin from the repository source with a
   cache-busted version, pruned stale remote-tracking refs, and closed every
   unconditional item promoted by the July expert/project re-screen.
-
----
-### 2026-07-28 — Provider-Neutral Positioning + Truthful Merge History
-
-- Repositioned English/Chinese public docs around native Claude/Codex/MCP
-  surfaces and shared identity, evidence, evaluation, delivery, and fleet
-  contracts without implying that evidence grants publication authority.
-- Documented human-grounded correction pairing and corrected stale
-  Claude-only/Hermes migration claims.
-- Replaced Orchestrator's hard-coded squash merge with live policy:
-  merge-commit for child topology, rebase for one coherent commit, explicit
-  choice for ambiguous multi-commit history, and exact-head locking for every
-  automated merge.
 

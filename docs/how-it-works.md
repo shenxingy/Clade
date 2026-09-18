@@ -111,6 +111,33 @@ Cleanup verifies the landed result before deleting the feature branch.
 
 **`/minimax-usage`** checks your Minimax Coding Plan usage. Configure `MINIMAX_CODING_API_KEY` and `MINIMAX_GROUP_ID` environment variables first.
 
+**`/kimi-usage`** shows the Kimi Code managed-plan windows — the rolling 5-hour
+limit, the weekly limit where the plan has one, and the monthly limit with its
+kimi/code split — against the same 95% target pace the Claude Code status line
+and `/codex-usage` use. `install.sh` also wires Kimi's footer (`[status_line]`
+in `~/.kimi-code/tui.toml`) to the same indicator:
+
+```text
+Clade git:(main)  ● +3% (29d) · 5h 0% (5h)
+```
+
+Left to right: project directory and branch, then the long window's pace
+(`●` and `+3%` — used% minus 95% of the elapsed share of the month, or of the
+week when the plan has one — with time to reset), then the rolling 5-hour
+window's used% and its reset. Kimi's own second footer line (`context: …`)
+stays. The default slots are the same three every Clade surface shows; Kimi's
+own `[status_line] items` list in `tui.toml` (`mode`, `model`, `cwd`, `git`)
+picks and orders them — `goal`, `tasks` and `tips` are not in the snapshot
+Kimi hands a custom command, so they cannot be drawn.
+
+The data comes from Kimi Code's own documented local API (`kimi web`,
+`GET /api/v1/oauth/usage`): a running instance is reused, otherwise one is
+started on a loopback port for the call and shut down. The footer renders from
+a cache inside Kimi's 300 ms budget and refreshes at most every five minutes
+while the session is active. Nothing reads or refreshes the OAuth credential in
+`~/.kimi-code/credentials/`. `/kimi-usage style off` hands footer line 1 back
+to Kimi's built-in slots; `/kimi-usage setup off` removes the wiring.
+
 ## Correction Learning Loop
 
 The most distinctive feature. Here's how it works:
@@ -283,7 +310,7 @@ clade/
 ├── install.sh               # One-command deployment
 ├── uninstall.sh             # Removes what install.sh deployed
 ├── configs/                 # ← THE PRODUCT CENTER
-│   ├── skills/              # 138 skill definitions
+│   ├── skills/              # 139 skill definitions
 │   ├── hooks/               # 32 event hooks
 │   ├── agents/              # 39 agent definitions
 │   ├── output-styles/       # 2 output styles (system-prompt register; opt-in)

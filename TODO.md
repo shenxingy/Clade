@@ -596,6 +596,21 @@ re-running the gates.
 - [x] 🔵 Nothing enforces the top-level `docs/*.md` header convention; two of fourteen files had drifted off it and no gate noticed. Cheapest control: assert in `check-references.py` that every top-level `docs/*.md` links `../README.md` in its first three lines. DONE 2026-09-08 — `check-references.py` now asserts every top-level `docs/*.md` links back to the README in its first lines, and the two drifted files were fixed. Red-phase checked against a deliberately broken page.
 - [x] 🔵 The global agent rules assert that `/sync` flags a README over 300 lines. The shipped skill has no such logic — its only line-count rule caps `PROGRESS.md` at 100. Implement the check or correct the claim. DONE 2026-09-08 — implemented in the skill rather than by correcting the claim, and the generated mirrors were regenerated.
 - [ ] 🔵 Web lint has no home. The `npm run lint` script was deleted because eslint was never installed; re-adding it properly needs a `web` job in `ci.yml` and the coupled CLAUDE.md checklist line, which `check-ci-checklist.py` enforces.
+- [ ] 🔵 **Kimi footer quota: upstream the payload, retire the spawn.** `/kimi-usage`
+      and `~/.kimi-code/hooks/statusline.sh` (2026-09-18) get plan usage through
+      `kimi web`'s documented `GET /api/v1/oauth/usage`, which means the footer's
+      background refresh boots a ~600 MB Kimi server for ~2 s up to every five
+      minutes unless one is already running. Kimi's `status_line.command`
+      snapshot carries only session state, and upstream already has open requests
+      for the managed quota in the footer (MoonshotAI/kimi-code #872, #1835,
+      #3231; ACP frames #2483; direct-endpoint policy #2937 unanswered). The
+      repository accepts community TUI PRs (#2255 shipped the status line itself).
+      A PR adding `usage: { limit5h, limit7d, monthTotal, monthCode }` to the
+      snapshot — the exact analogue of Claude Code's `rate_limits` — would let the
+      helper read it from stdin as `claude-usage-watch.py --statusline-input` does
+      and delete the cache-and-spawn path. Until then the Kimi wiring is skipped
+      under Git Bash (Kimi runs the command via cmd.exe), same gap as the guardian
+      hook.
 ### Standing-brief configuration — 2026-09-02
       **INVESTIGATED 2026-09-08 — the premise is inverted.** Nothing reads the
       report because it has never once been produced: no
