@@ -1,5 +1,5 @@
 ---
-paths: "**/*.css, **/*.scss, **/*.less, **/*.tsx, **/*.jsx, **/*.vue, **/*.svelte, **/*.astro, **/*.html"
+paths: "**/*.css, **/*.scss, **/*.less, **/*.tsx, **/*.jsx, **/*.vue, **/*.svelte, **/*.astro, **/*.html, **/*motion*.ts, **/*motion*.js, **/*animation*.ts, **/*animation*.js, **/*hero*.ts, **/*hero*.js, **/*scroll*.ts, **/*scroll*.js, **/*.glsl"
 ---
 **UI file — "design sense" here is a set of checkable rules, not adjectives.**
 Full text: the `frontend-design` skill's `references/design-rules.md`; the
@@ -20,6 +20,13 @@ review loop and Definition of Done in `references/design-review.md` beside it.
   never `transition: all` or a layout property, nothing infinite outside
   loaders, and guard with `prefers-reduced-motion`.
 - **One primary action per viewport.** Accent only on action, state, key data.
+- **A hero intro or scroll-driven product story is the one exception to the
+  table**, and it is storyboarded before it is coded (`references/signature-
+  motion.md` §6). Native scroll only — never `wheel`/`touchmove` +
+  `preventDefault`; `scrub` maps progress with `ease: none`; intro 1.8–2.6 s
+  then idle ≤ 1 micro-motion per 8–12 s; pointer 4–12 px / 2–5°; cap DPR at 2,
+  pause off-screen, poster before the first frame; the motion must show the
+  product with the copy removed.
 - **Every state ships**: hover, focus, pressed, selected, disabled, loading,
   error, empty; a field also has label, helper, error, required, autofill and
   overflow. Never remove `outline` without a `:focus-visible` replacement.
