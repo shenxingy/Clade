@@ -43,6 +43,13 @@ Before making visual choices:
    screenshot, or a grep can check it; "premium, modern, polished" is not a
    brief, and that file is what the brief decomposes into. A Micro change
    applies the sections the touched component reaches.
+7. Read `references/signature-motion.md` when the ask names a hero animation,
+   a scroll-driven or "Apple-style" product story, a 3D showcase, kinetic
+   typography or a motion identity (眼前一亮 / 主视觉动效 / 滚动驱动动画), or
+   whenever the profile sets `motion` to 4–5 or names a `signature`. It carries
+   the vocabulary, the two archetypes with their timing budgets, the four
+   implementation routes and when each fits, the semantic-motion rule, and the
+   storyboard that must exist before any code.
 
 For a mixed-platform product, share product logic, content, and brand tokens,
 then translate platform contracts separately. Do not average incompatible
@@ -176,6 +183,7 @@ Decide whether a preview reduces meaningful rework:
 | Native app with uncertain hierarchy, density, color, or type | HTML is allowed as a clearly labelled **visual hypothesis only** |
 | Native interaction, window, menu, focus, touch, pointer, haptic, or accessibility behavior | Use SwiftUI/Compose/WinUI/XAML or the platform's real preview/simulator |
 | Small reversible change under an established system | Implement directly and inspect the rendered result |
+| Signature motion — hero intro, scroll-driven product story, 3D showcase | The storyboard table from `references/signature-motion.md` §6 first, then a rendered checkpoint of the signature moment alone before the full build |
 
 **Three materially different directions before one is chosen** — Full-lane
 greenfield or reframe only. Each direction is a Style DNA card with a different
@@ -191,6 +199,17 @@ modal, tooltip, tabs, toast, status tags, a chart, the empty and loading states,
 and one motion example, in every state `references/design-rules.md` §7 lists.
 Skip it and the first-page button, the dashboard button and the settings-page
 input drift apart; the lab is where the token scale is proven once.
+
+**Signature motion is storyboarded before it is coded.** For a hero intro or a
+scroll-driven product story, fill the segment table in
+`references/signature-motion.md` §6 — range, product, camera, light, copy, page
+state per segment — choose the implementation route by the shot (frame
+sequence + canvas + ScrollTrigger by default; real-time 3D only when the user
+must control the product), and state the budgets: intro length and its four
+beats, idle cadence, pointer response, pinned chapter length, frame counts per
+device, the reduced-motion static state. The motion must show the product's
+capability with the copy removed; "add some cool animation" is not a brief and
+is answered with the storyboard, not with fade-ins.
 
 Once a direction is chosen, prefer one recommended checkpoint. Produce a second
 variant only when a real tradeoff remains unresolved by evidence; do not
@@ -408,6 +427,10 @@ Start the implementation handoff with:
 - **Native vs custom**: [platform skeleton / product brain / brand expression]
 - **Visual checkpoint**: [real surface / HTML study / native preview / direct implementation — why]
 - **State and motion**: [states covered; each motion's job or no-motion decision]
+- **Signature motion** (only when one exists): [archetype — scroll story or
+  hero intro; route and why; the storyboard table or its location; intro /
+  idle / pointer budgets; frame counts per device; reduced-motion state; the
+  §7 acceptance items not yet met]
 - **Verification**: [source, rendered/interactive, and outcome evidence; explicit unrun gates]
 - **Review loop**: [widths captured; P0/P1 count at start → at end; P2/P3
   left and their owner; `design-lint source` FAIL/WARN counts before and after]

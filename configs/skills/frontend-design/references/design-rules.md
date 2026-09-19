@@ -159,6 +159,12 @@ spatial continuity, guide attention. A motion that names none is removed.
 - `prefers-reduced-motion` is honoured wherever motion exists. (lint: FAIL)
 - Loading reserves its space so nothing shifts; animation never blocks input;
   focus and scroll position survive a route change. (shot)
+- A signature piece — a hero intro, a scroll-driven product story, a 3D
+  showcase — is the one place on a page allowed past this table. Its own
+  budgets (intro 1.8–2.6 s in four beats, idle at most one micro-motion per
+  8–12 s, pointer 4–12 px / 2–5°, a pinned 100vh scene over 400–500vh of
+  native scroll, DPR capped at 2, no scroll-jacking) and the storyboard that
+  precedes it are in `signature-motion.md`.
 
 ## 7. States — a component is not done at "default"
 
