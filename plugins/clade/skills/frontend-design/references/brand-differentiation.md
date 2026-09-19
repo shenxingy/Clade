@@ -167,6 +167,12 @@ technical, single-stroke ink redrawn slowly for Japanese minimal, CRT scanlines
 and VHS glitch for retro-futurism, gold leaf flaking for dark luxury, landmark
 plots with readable values for scientific, torn-paper collage for analog.
 
+How to design and build the piece — the archetypes (hero intro → idle →
+reactive, or a scroll-scrubbed product story), the route choice by shot, the
+timing and pointer budgets, and the storyboard that precedes any code — is
+`signature-motion.md`. This step decides *what* the signature is and that it
+belongs to the school; that file decides how it is made.
+
 Any technology is fine — SVG, Canvas 2D, Lottie, Rive, CSS, Three.js, React
 Three Fiber, Babylon, OGL, raw GLSL, video with WebGL post-processing, WebGPU,
 a physics engine. The earlier restriction to Framer Motion or GSAP was dropped;

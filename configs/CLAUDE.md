@@ -157,6 +157,12 @@ When the free path genuinely cannot answer something, say so in those words.
 - **Recommendation = decision for low-stakes A/B/C**: If you've enumerated options, marked one as recommended, and the action is reversible (commits, file edits, doc reorganization, choice of where to write a section), just do the recommended one. Don't ask "A or B?" after writing "I recommend A" — the user reads the recommendation, picks "A" 95% of the time, and the round-trip wastes a turn. Reserve A/B/C-and-ask for irreversible actions or genuine architectural forks where you'd be uncertain even after thinking longer.
 - **Stop hook nagging ≠ user input needed**: When a Stop hook complains about uncommitted files mid-task, this is a process signal, not a user question. If the project rule is "commit small and often" and `committer` is available — commit and move on. Don't escalate the hook output to the user as a decision point.
 - **Deployment topology**: Before checking localhost, scan for known deployment URLs (Tailscale internal domain, env vars like SITE_URL, INTERNAL_HOST). Default-to-localhost assumption produces wrong-context reads when the real service is remote.
+- **Don't block — climb the ladder** (canonical wording: `configs/AGENTS.md`, deployed to `~/.agents/AGENTS.md` and `~/.kimi-code/AGENTS.md` for other runtimes):
+  1. *Keep going* — reversible actions never stop for approval (above).
+  2. *Re-earn "stuck"* — undecided ≠ undecidable. If a reasonable default exists, take it, log one line to `.claude/decisions.md`, and continue. A reversible wrong choice is cheaper than an unanswered question.
+  3. *Park, don't stop* — a sub-problem that truly can't move goes to `.claude/skipped.md` (what you need / what you tried); continue with independent work. One open question never idles the rest.
+  4. *Only then wait* — stop solely for destructive/irreversible steps, mutually exclusive directions, or missing credentials/authority; surface once with evidence to `.claude/blockers.md` (below) and keep everything else moving.
+  Never loop-retry one failing approach; never end a turn on "should I proceed?"
 
 ## Adaptive Delegation
 - Decide before broad repository reads whether the lead should solve the task or use one direct subagent.

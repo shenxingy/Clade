@@ -35,7 +35,7 @@ routing, delivery state, and multi-project fleet truth.
 3. [The Trust Loop](#the-trust-loop)
 4. [What It Does](#what-it-does)
 5. [Self-Learning Mechanisms](#self-learning-mechanisms)
-6. [Skills](#skills-139)
+6. [Skills](#skills-142)
 7. [Supported Languages](#supported-languages)
 8. [Documentation](#documentation)
 9. [Dotfile Sync](#dotfile-sync)
@@ -54,6 +54,8 @@ cd clade && ./install.sh
 ```
 
 Installs skills, hooks, agents, scripts, and safety guardian. Start a new Claude Code session to activate.
+
+The same run also wires the other runtimes it detects: a managed policy block in `~/.codex/AGENTS.md` (Codex), bridge agents/hooks for Kimi Code (`~/.kimi-code/`), and the vendor-neutral ground rules from `configs/AGENTS.md` at `~/.agents/AGENTS.md` and `~/.kimi-code/AGENTS.md` — the same don't-block policy text for every AGENTS.md-aware runtime. See [docs/codex.md](docs/codex.md) for the per-vendor contract.
 
 > **Requires:** `jq`. **Platform:** Linux, macOS, and Windows via Git Bash (native CMD/PowerShell without bash is out of scope).
 
@@ -170,7 +172,7 @@ turns an inferred revert or async signal into an automatic rule.
 
 See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, detectors, schemas, and tunable env vars.
 
-## Skills (139)
+## Skills (142)
 
 ### Core Workflow
 

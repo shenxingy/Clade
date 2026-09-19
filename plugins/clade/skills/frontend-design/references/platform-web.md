@@ -43,8 +43,9 @@ and PWAs.
 ## Verification
 
 - Run repository types, lint, tests, and build.
-- Run `design-lint html <artifact>` and read PASS, WARN, FAIL, and SKIP
-  truthfully.
+- Run `design-lint html <artifact>` on rendered pages and `design-lint source
+  <src-dir>` on the source tree, and read PASS, WARN, FAIL, and SKIP
+  truthfully — a WARN is a site to fix or justify, not noise.
 - Inspect the live page at every declared viewport, both appearance modes where
   supported, keyboard-only, reduced motion, zoom/text enlargement, slow/loading,
   empty, and error states.

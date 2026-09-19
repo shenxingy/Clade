@@ -107,6 +107,49 @@ if [[ -f "$CODEX_OVERRIDE" && -s "$CODEX_OVERRIDE" ]]; then
   echo ""
 fi
 
+# Merge a Clade-managed block into an instruction file without ever touching
+# content outside the markers. Same guarantees as the Codex merge above: a
+# well-formed existing block is replaced in place; a file without the block
+# is preserved verbatim and the block appended; malformed marker text (user
+# content that happens to contain the marker line) never causes content loss.
+AGENTS_BEGIN='<!-- BEGIN CLADE -->'
+AGENTS_END='<!-- END CLADE -->'
+_merge_managed_block() {
+  local target="$1" begin="$2" end="$3" source="$4"
+  local tmp; tmp="$(mktemp)"
+  if [[ -f "$target" ]]; then
+    local b_count e_count
+    b_count=$(grep -Fxc "$begin" "$target" || true)
+    e_count=$(grep -Fxc "$end" "$target" || true)
+    if [[ "$b_count" -eq 1 && "$e_count" -eq 1 ]]; then
+      # Strip the old block, then trim leading/trailing blank lines from the
+      # remainder so the separator below is added exactly once — without the
+      # trim, every re-run grows the file by one blank line and the sha drifts.
+      awk -v begin="$begin" -v end="$end" '
+        $0 == begin { skip=1; next }
+        $0 == end { skip=0; next }
+        !skip { lines[++n] = $0 }
+        END {
+          s = 1; e = n
+          while (s <= e && lines[s] == "") s++
+          while (e >= s && lines[e] == "") e--
+          for (i = s; i <= e; i++) print lines[i]
+        }
+      ' "$target" > "$tmp"
+    else
+      cat "$target" > "$tmp"
+    fi
+  fi
+  {
+    cat "$tmp"
+    [[ ! -s "$tmp" ]] || printf '\n'
+    printf '%s\n' "$begin"
+    cat "$source"
+    printf '%s\n' "$end"
+  } > "$target"
+  rm -f "$tmp"
+}
+
 # ─── 4b. Install MCP Server ─────────────────────────────────────────────
 _echo() { printf '%s\n' "$*"; }
 
@@ -277,6 +320,18 @@ if [[ -f "$SCRIPT_DIR/configs/CLAUDE.md" ]]; then
     echo "  Installed CLAUDE.md (agent ground rules)"
   fi
 fi
+
+# Deploy the vendor-neutral AGENTS.md ground rules (canonical source:
+# configs/AGENTS.md). AGENTS.md is the open cross-vendor instruction
+# standard, so this one text reaches every AGENTS.md-aware runtime: the
+# shared ~/.agents/AGENTS.md (OpenCode, Goose, and other AAIF-convention
+# tools) and — in the Kimi bridge below — ~/.kimi-code/AGENTS.md, which
+# Kimi Code reads natively as global instructions. Merged as a marked
+# block, never replacing user-authored instructions in those files.
+mkdir -p "$HOME/.agents"
+_merge_managed_block "$HOME/.agents/AGENTS.md" "$AGENTS_BEGIN" "$AGENTS_END" \
+  "$SCRIPT_DIR/configs/AGENTS.md"
+echo "  Installed ~/.agents/AGENTS.md (vendor-neutral ground rules)"
 
 # ─── 6. Copy commands ────────────────────────────────────────────────
 
@@ -665,6 +720,14 @@ if [[ -d "$KIMI_DIR" ]]; then
   cp "$SCRIPT_DIR/configs/kimi-hooks/"*.sh "$KIMI_DIR/hooks/"
   chmod +x "$KIMI_DIR/hooks/"*.sh
   echo "  Installed: $(ls "$SCRIPT_DIR/configs/kimi-hooks/"*.sh | xargs -I{} basename {} | tr '\n' ' ')"
+
+  # Kimi Code reads $KIMI_CODE_HOME/AGENTS.md natively as its global
+  # instruction file (docs: customization/agents.html "Instruction Files").
+  # Ship the same canonical block as ~/.agents/AGENTS.md, merged so
+  # user-authored Kimi instructions survive the install.
+  _merge_managed_block "$KIMI_DIR/AGENTS.md" "$AGENTS_BEGIN" "$AGENTS_END" \
+    "$SCRIPT_DIR/configs/AGENTS.md"
+  echo "  Installed ~/.kimi-code/AGENTS.md (vendor-neutral ground rules)"
 
   KIMI_CONFIG="$KIMI_DIR/config.toml"
   if [[ -f "$KIMI_CONFIG" ]]; then

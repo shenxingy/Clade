@@ -76,6 +76,7 @@ These rules apply to ALL agents (Claude Code sessions) across all projects. They
 ## Autonomy
 - Proceed WITHOUT asking for: file edits, test runs, builds, type-checks, lint
 - Ask the user BEFORE: deleting files, modifying .env, running migrations, force-pushing
+- **Don't block — climb the ladder**: (1) keep going — reversible actions never stop for approval; (2) re-earn "stuck" — undecided ≠ undecidable, so take a reasonable default, log one line, and continue; (3) park, don't stop — log what you need/tried in the blocker log and continue with independent work; (4) only then wait for the human — destructive/irreversible steps, mutually exclusive directions, or missing credentials/authority. Never loop-retry one approach; never end a turn on "should I proceed?"
 
 ## Context Management
 - Context window ~80% full → run `/handoff` to save state, then start a new session with `/pickup`

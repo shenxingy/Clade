@@ -9,6 +9,28 @@ semantic versioning。
 
 ### 新增
 
+- `/frontend-design` 现在把"设计感"作为可检查的规则携带，而不是形容词。
+  `references/design-rules.md` 写明 4px 间距网格、字体上限（最多 2 个字族、
+  4–6 个字号、3–4 个字重）、动效时长表、状态清单、四个审查宽度和营销套话禁用
+  表，每条都写成 lint、截图或 grep 能检查的形式；`references/design-review.md`
+  是截图审查循环：P0–P3 严重度阶梯、二十条审查问题和逐页 Definition of Done。
+  流水线新增 Style DNA 步骤、新产品先出三个明显不同的方向、业务页之前先建组件
+  样板页、先打磨一个代表页再扩展。`design-lint source <dir>` 是这些规则里静态可
+  见的那一半——间距网格、字体与几何尺度、动效表、token 纪律、文案——覆盖
+  CSS/SCSS、HTML、JSX/TSX、Vue、Svelte、Astro 代码树，只在两条可访问性底线上
+  FAIL，其余以带具体位置的 WARN 报告；顺手修掉的一个盲点是：移除 outline 的
+  `:focus` 规则不再被当作"已恢复焦点样式"，`html` lane 同样受益。
+  `configs/rules/frontend.md` 会在编辑 UI 文件的那一刻注入短版规则。
+  `references/signature-motion.md` 覆盖动效表之外唯一允许越界的地方——主视觉
+  intro 与滚动驱动的产品叙事：词汇（scrub、pin、scrollytelling、分镜编排）、
+  两种原型及其预算（intro 1.8–2.6 秒分四拍、idle 每 8–12 秒至多一次细微动作、
+  指针响应 4–12px / 2–5°、100vh 场景 pin 在 400–500vh 滚动距离上）、四种实现
+  路线及各自适用场景（默认序列帧 + canvas + ScrollTrigger，只有用户需要操控
+  产品时才用实时 3D）、"动效必须表达产品能力"的语义规则及一个检测类产品的
+  完整示例，以及写代码之前必须先有的分镜表。`design-lint source` 会读
+  `.js`/`.ts`，但只做三项运行时检查：滚动劫持（`wheel`/`touchmove` +
+  `preventDefault`、整页吸附库）、未封顶的 `devicePixelRatio`、没有可见性门控
+  的渲染循环。
 - `/kimi-usage`：按 Clade 的 95% 目标节奏展示 Kimi Code 套餐额度（5 小时窗口、
   有则含周窗口、月窗口及其 kimi/code 拆分），并提供 `setup` / `style` / `theme`
   配置 Kimi footer。`install.sh` 在检测到 Kimi Code 且用户没有自定义状态栏命令时，

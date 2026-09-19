@@ -424,3 +424,390 @@ def test_single_file_target_is_labelled_by_its_filename(tmp_path, capsys):
     payload = json.loads(capsys.readouterr().out)
     targets = {f["target"] for f in payload["findings"]}
     assert targets == {"solo.html"}
+
+
+# ─── Source lane: design-rules.md decomposed into static checks ─────────────
+#
+# Each fixture plants exactly the violation its test names, and the clean
+# fixture at the end plants none — so a regression that stops a check firing
+# and a regression that makes it fire on good code are both caught. The
+# thresholds under test are the essay's numbers (4-px grid, 4–6 sizes, 3–4
+# weights, ≤2 families, 400 ms, 16 px), not measured fire rates.
+
+
+def _run_source(tmp_path, files: dict[str, str]):
+    for name, body in files.items():
+        target = tmp_path / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(body)
+    report = design_lint.Report(lane="source")
+    paths = design_lint.collect(tmp_path, "source")
+    design_lint.lint_source(paths, tmp_path, report)
+    return report
+
+
+def _maybe(report, check):
+    return next((f for f in report.findings if f.check == check), None)
+
+
+_GUARD = "@media (prefers-reduced-motion: reduce) { * { animation: none; transition: none; } }\n"
+
+
+def test_off_grid_spacing_is_named_with_file_and_line(tmp_path):
+    report = _run_source(tmp_path, {"a.css": ".x { padding: 13px 27px; }\n.y { gap: 16px; }\n"})
+    grid = _finding(report, "source.spacing.grid")
+    assert grid.severity == "WARN"
+    assert grid.measured == 1 and "a.css:1" in grid.detail and "13px 27px" in grid.detail
+
+
+def test_on_grid_spacing_passes_and_hairline_nudges_are_ignored(tmp_path):
+    report = _run_source(tmp_path, {"a.css": ".x { padding: 8px 16px; margin-top: 1px; gap: 24px; }\n"})
+    assert _finding(report, "source.spacing.grid").severity == "PASS"
+
+
+def test_spacing_resolves_tokens_and_rem_before_judging(tmp_path):
+    # 0.8125rem is 13px; a var() to it must be seen through, not skipped.
+    report = _run_source(tmp_path, {
+        "tokens.css": ":root { --space-odd: 0.8125rem; }\n",
+        "b.css": ".x { padding: var(--space-odd); }\n",
+    })
+    grid = _finding(report, "source.spacing.grid")
+    assert grid.severity == "WARN" and "b.css:1" in grid.detail
+
+
+def test_tailwind_arbitrary_spacing_counts_as_off_grid(tmp_path):
+    report = _run_source(tmp_path, {"Card.tsx": '<div className="p-[13px] mt-4" />\n'})
+    grid = _finding(report, "source.spacing.grid")
+    assert grid.severity == "WARN" and "p-[13px]" in grid.detail
+
+
+def test_react_style_object_values_are_read_one_property_at_a_time(tmp_path):
+    # `{ paddingTop: '13px', color: '#fff' }` on one line: the spacing check
+    # must see 13px and the colour check must still see #fff.
+    report = _run_source(tmp_path, {
+        "Box.tsx": "const s = { paddingTop: '13px', color: '#fff' };\n"})
+    assert _finding(report, "source.spacing.grid").severity == "WARN"
+    colour = _finding(report, "source.color.literal")
+    assert colour.severity == "WARN" and "color: #fff" in colour.detail
+
+
+def test_seven_font_sizes_warn_with_rem_normalised_to_px(tmp_path):
+    css = "".join(f".s{i} {{ font-size: {v}; }}\n"
+                  for i, v in enumerate(["12px", "14px", "1rem", "18px", "20px", "24px", "2rem"]))
+    sizes = _finding(_run_source(tmp_path, {"a.css": css}), "source.type.sizes")
+    assert sizes.severity == "WARN" and sizes.measured == 7 and "32px" in sizes.detail
+
+
+def test_six_font_sizes_pass_and_tailwind_steps_count_as_sizes(tmp_path):
+    report = _run_source(tmp_path, {
+        "a.css": ".s { font-size: 13px; } .t { font-size: 40px; }\n",
+        "A.tsx": '<p className="text-sm text-lg text-2xl text-[56px]" />\n'})
+    sizes = _finding(report, "source.type.sizes")
+    assert sizes.severity == "PASS" and sizes.measured == 6
+
+
+def test_five_weights_and_three_families_warn_generic_families_ignored(tmp_path):
+    css = ("".join(f".w{w} {{ font-weight: {w}; }}\n" for w in (300, 400, 500, 600, 700))
+           + '.a { font-family: "Inter", sans-serif; }\n'
+           + '.b { font-family: Georgia, serif; }\n'
+           + '.c { font-family: "JetBrains Mono", monospace; }\n'
+           + '.d { font-family: system-ui; }\n')
+    report = _run_source(tmp_path, {"a.css": css})
+    assert _finding(report, "source.type.weights").measured == 5
+    families = _finding(report, "source.type.families")
+    assert families.severity == "WARN" and families.measured == 3
+
+
+def test_radius_variants_collapse_to_one_pill_and_five_values_warn(tmp_path):
+    css = ".a { border-radius: 4px; } .b { border-radius: 6px; } .c { border-radius: 8px; }\n" \
+          ".d { border-radius: 12px; } .e { border-radius: 9999px; } .f { border-radius: 50%; }\n"
+    radius = _finding(_run_source(tmp_path, {"a.css": css}), "source.geometry.radius")
+    assert radius.severity == "WARN" and radius.measured == 5 and "pill" in radius.detail
+
+
+def test_four_shadows_warn_three_pass(tmp_path):
+    shadows = ["0 1px 2px rgba(0,0,0,.1)", "0 2px 8px rgba(0,0,0,.1)",
+               "0 8px 24px rgba(0,0,0,.2)", "0 0 0 1px #000"]
+    css = "".join(f".s{i} {{ box-shadow: {s}; }}\n" for i, s in enumerate(shadows))
+    assert _finding(_run_source(tmp_path, {"a.css": css}), "source.geometry.shadow").measured == 4
+    css3 = "".join(f".s{i} {{ box-shadow: {s}; }}\n" for i, s in enumerate(shadows[:3]))
+    assert _finding(_run_source(tmp_path, {"a.css": css3}), "source.geometry.shadow").severity == "PASS"
+
+
+def test_durations_over_400ms_warn_but_a_loader_spin_is_exempt(tmp_path):
+    css = (".panel { transition: opacity 800ms; }\n"
+           ".spinner { animation: spin 1s linear infinite; }\n"
+           "@keyframes spin { to { transform: rotate(360deg); } }\n" + _GUARD)
+    report = _run_source(tmp_path, {"a.css": css})
+    duration = _finding(report, "source.motion.duration")
+    assert duration.severity == "WARN" and duration.measured == 1 and "800ms" in duration.detail
+    assert _finding(report, "source.motion.infinite").severity == "PASS"
+
+
+def test_ambient_infinite_animation_warns(tmp_path):
+    css = ".orb { animation: float 6s ease-in-out infinite; }\n" + _GUARD
+    infinite = _finding(_run_source(tmp_path, {"a.css": css}), "source.motion.infinite")
+    assert infinite.severity == "WARN" and "float" in infinite.detail
+
+
+def test_tailwind_animate_bounce_is_ambient_but_custom_animate_is_not_judged(tmp_path):
+    report = _run_source(tmp_path, {
+        "A.tsx": '<div className="animate-bounce" /><div className="animate-in" />\n' + _GUARD})
+    infinite = _finding(report, "source.motion.infinite")
+    assert infinite.severity == "WARN" and infinite.measured == 1
+
+
+def test_layout_transitions_and_bare_shorthand_warn_transform_passes(tmp_path):
+    bad = ".a { transition: width 200ms; } .b { transition: .2s; } .c { transition: all 150ms; }\n" + _GUARD
+    prop = _finding(_run_source(tmp_path, {"a.css": bad}), "source.motion.property")
+    assert prop.severity == "WARN" and prop.measured == 3
+    good = ".a { transition: transform 150ms, opacity 150ms; }\n" + _GUARD
+    assert _finding(_run_source(tmp_path, {"a.css": good}), "source.motion.property").severity == "PASS"
+
+
+def test_tailwind_transition_all_warns(tmp_path):
+    report = _run_source(tmp_path, {"A.tsx": '<a className="transition-all duration-200" />\n' + _GUARD})
+    assert _finding(report, "source.motion.property").severity == "WARN"
+
+
+def test_keyframe_translating_past_16px_warns_8px_passes(tmp_path):
+    big = "@keyframes rise { from { transform: translateY(40px); } to { transform: none; } }\n.a{animation: rise 200ms}\n" + _GUARD
+    move = _finding(_run_source(tmp_path, {"a.css": big}), "source.motion.displacement")
+    assert move.severity == "WARN" and "rise" in move.detail and "40px" in move.detail
+    small = big.replace("40px", "8px")
+    assert _finding(_run_source(tmp_path, {"a.css": small}), "source.motion.displacement").severity == "PASS"
+
+
+def test_motion_without_reduced_motion_guard_fails_anywhere_in_the_tree_passes(tmp_path):
+    css = ".a { transition: opacity 150ms; }\n"
+    assert _finding(_run_source(tmp_path, {"a.css": css}), "source.motion.reduced").severity == "FAIL"
+    report = _run_source(tmp_path, {"a.css": css, "globals.css": _GUARD})
+    assert _finding(report, "source.motion.reduced").severity == "PASS"
+
+
+def test_use_reduced_motion_hook_counts_as_a_guard(tmp_path):
+    report = _run_source(tmp_path, {
+        "A.tsx": 'const r = useReducedMotion();\n<div className="duration-200" />\n'})
+    assert _finding(report, "source.motion.reduced").severity == "PASS"
+
+
+def test_no_motion_at_all_skips_rather_than_passing(tmp_path):
+    assert _finding(_run_source(tmp_path, {"a.css": ".a { color: red; }\n"}), "source.motion").severity == "SKIP"
+
+
+def test_outline_none_without_restore_fails_and_the_removing_rule_is_not_a_restore(tmp_path):
+    # `button:focus { outline: none }` mentions `outline` inside a :focus rule —
+    # the naive regex counted that as a restore and passed the exact defect.
+    css = "button:focus { outline: none; }\n"
+    focus = _finding(_run_source(tmp_path, {"a.css": css}), "source.focus")
+    assert focus.severity == "FAIL" and "a.css:1" in focus.detail
+
+
+def test_outline_none_with_focus_visible_restore_passes(tmp_path):
+    css = "button:focus { outline: none; }\nbutton:focus-visible { box-shadow: 0 0 0 2px #000; }\n"
+    assert _finding(_run_source(tmp_path, {"a.css": css}), "source.focus").severity == "PASS"
+
+
+def test_tailwind_outline_none_needs_a_focus_visible_ring(tmp_path):
+    bare = {"A.tsx": '<button className="outline-none" />\n'}
+    assert _finding(_run_source(tmp_path, bare), "source.focus").severity == "FAIL"
+    ringed = {"A.tsx": '<button className="outline-none focus-visible:ring-2" />\n'}
+    assert _finding(_run_source(tmp_path, ringed), "source.focus").severity == "PASS"
+
+
+def test_html_lane_shares_the_focus_restore_fix(tmp_path):
+    html = "<html><head><style>button:focus { outline: none; }</style></head><body><button>x</button></body></html>"
+    assert _finding(_run_html(tmp_path, html), "html.focus").severity == "FAIL"
+
+
+def test_colour_literals_in_components_warn_but_token_definitions_do_not(tmp_path):
+    tokens = {"tokens.css": ":root { --ink: #222222; --bg: rgb(255,255,255); }\n.a { color: var(--ink); }\n"}
+    assert _finding(_run_source(tmp_path, tokens), "source.color.literal").severity == "PASS"
+    literal = {"Btn.tsx": '<button className="bg-[#3b82f6]" style={{ color: "#fff" }} />\n'}
+    colour = _finding(_run_source(tmp_path, literal), "source.color.literal")
+    assert colour.severity == "WARN" and colour.measured == 2
+
+
+def test_shadow_colours_are_not_double_counted_as_literals(tmp_path):
+    css = ".a { box-shadow: 0 1px 2px rgba(0,0,0,.1); }\n"
+    assert _finding(_run_source(tmp_path, {"a.css": css}), "source.color.literal").severity == "PASS"
+
+
+def test_marketing_slop_is_named_by_phrase_and_line_specific_copy_passes(tmp_path):
+    slop = {"index.html": "<h1>Revolutionize your workflow</h1>\n<p>Get started today. 赋能企业</p>\n"}
+    copy = _finding(_run_source(tmp_path, slop), "source.copy.slop")
+    assert copy.severity == "WARN" and copy.measured == 3
+    assert "index.html:1" in copy.detail and "Revolutionize" in copy.detail and "赋能" in copy.detail
+    specific = {"index.html": "<p>Upload a document and receive a tampering report in under 30 seconds.</p>\n"}
+    assert _finding(_run_source(tmp_path, specific), "source.copy.slop").severity == "PASS"
+
+
+def test_copy_in_jsx_text_is_read_and_css_only_trees_skip(tmp_path):
+    jsx = {"Hero.tsx": "export const H = () => <h1>Unlock the power of AI</h1>;\n"}
+    assert _finding(_run_source(tmp_path / "jsx", jsx), "source.copy.slop").severity == "WARN"
+    css_only = _run_source(tmp_path / "css", {"a.css": ".a{}"})
+    assert _finding(css_only, "source.copy.slop").severity == "SKIP"
+
+
+def test_unmeasurable_rules_are_reported_as_a_skip_not_omitted(tmp_path):
+    report = _run_source(tmp_path, {"a.css": ".a { padding: 8px; }\n"})
+    skip = _finding(report, "source.unmeasured")
+    assert skip.severity == "SKIP" and "screenshot" in skip.detail
+
+
+def test_collect_skips_build_output_and_minified_files(tmp_path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "node_modules" / "x").mkdir(parents=True)
+    (tmp_path / "dist").mkdir()
+    (tmp_path / "src" / "a.css").write_text(".a{}")
+    (tmp_path / "src" / "b.min.css").write_text(".a{}")
+    (tmp_path / "node_modules" / "x" / "c.css").write_text(".a{}")
+    (tmp_path / "dist" / "d.css").write_text(".a{}")
+    paths = design_lint.collect(tmp_path, "source")
+    assert [p.name for p in paths] == ["a.css"]
+
+
+def test_main_source_exit_code_is_0_on_warn_only_and_1_on_fail(tmp_path, capsys):
+    (tmp_path / "a.css").write_text(".a { padding: 13px; }\n")
+    assert design_lint.main(["source", str(tmp_path), "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["lane"] == "source" and not payload["failed"]
+    (tmp_path / "b.css").write_text(".b { transition: opacity 100ms; }\n")
+    assert design_lint.main(["source", str(tmp_path), "--json"]) == 1
+
+
+def test_clean_source_tree_raises_no_warn_or_fail(tmp_path):
+    # Negative control: a tree obeying every rule must be silent, so a check
+    # that starts firing on good code is caught as surely as one that stops.
+    clean = {
+        "tokens.css": (":root { --ink: #1a1a1a; --bg: #ffffff; --accent: #0a7d3c; "
+                       "--space-2: 8px; --space-4: 16px; --radius: 8px; "
+                       "--shadow-float: 0 8px 24px rgba(0,0,0,.16); }\n" + _GUARD),
+        "app.css": (".card { padding: var(--space-4); border-radius: var(--radius); "
+                    "font-size: 16px; font-weight: 400; font-family: \"Inter\", sans-serif; "
+                    "transition: transform 160ms, opacity 160ms; }\n"
+                    ".card h2 { font-size: 18px; font-weight: 600; margin: 0 0 var(--space-2); }\n"
+                    ".menu { box-shadow: var(--shadow-float); }\n"
+                    "button:focus { outline: none; }\nbutton:focus-visible { outline: 2px solid var(--accent); }\n"),
+        "Page.tsx": ('export const P = () => <main className="p-4 gap-6 text-sm">'
+                     "Upload a file and get a report in under 30 seconds.</main>;\n"),
+    }
+    report = _run_source(tmp_path, clean)
+    noisy = [f for f in report.findings if f.severity in ("WARN", "FAIL")]
+    assert noisy == [], [f.detail for f in noisy]
+    assert _finding(report, "source.spacing.grid").severity == "PASS"
+    assert _finding(report, "source.focus").severity == "PASS"
+    assert _finding(report, "source.motion.reduced").severity == "PASS"
+
+
+# ─── Source lane: motion-runtime checks (signature-motion.md §5) ────────────
+#
+# Script files (.js/.ts) get ONLY these checks; the spacing/type/colour rules
+# never read them. Each fixture plants one property, and one test pins the
+# "runtime files are not design-scanned" boundary itself.
+
+
+def _sites(tmp_path, name, body):
+    return _run_source(tmp_path / name.replace("/", "_").split(".")[0], {name: body})
+
+
+def test_wheel_listener_with_prevent_default_is_scroll_jacking(tmp_path):
+    js = "window.addEventListener('wheel', (e) => { e.preventDefault(); scrollTo(pos); });\n"
+    jack = _finding(_sites(tmp_path, "scroll.js", js), "source.motion.scrolljack")
+    assert jack.severity == "WARN" and "scroll.js:1" in jack.detail
+
+
+def test_wheel_listener_without_prevent_default_passes(tmp_path):
+    js = "window.addEventListener('wheel', () => track());\n"
+    assert _finding(_sites(tmp_path, "scroll.js", js), "source.motion.scrolljack").severity == "PASS"
+
+
+def test_page_snapping_library_import_is_scroll_jacking(tmp_path):
+    ts = "import fullpage from 'fullpage.js';\n"
+    jack = _finding(_sites(tmp_path, "page.ts", ts), "source.motion.scrolljack")
+    assert jack.severity == "WARN" and "fullpage.js" in jack.detail
+
+
+def test_uncapped_device_pixel_ratio_warns_capped_passes(tmp_path):
+    bare = "canvas.width = rect.width * window.devicePixelRatio;\n"
+    dpr = _finding(_sites(tmp_path, "canvas.ts", bare), "source.motion.dpr")
+    assert dpr.severity == "WARN" and "canvas.ts:1" in dpr.detail
+    capped = "const dpr = Math.min(window.devicePixelRatio || 1, 2);\n"
+    assert _finding(_sites(tmp_path, "canvas2.ts", capped), "source.motion.dpr").severity == "PASS"
+
+
+def test_r3f_dpr_prop_counts_as_a_cap(tmp_path):
+    tsx = "<Canvas dpr={[1, 2]} frameloop=\"demand\">{scene}</Canvas>\n"
+    report = _sites(tmp_path, "Scene.tsx", tsx)
+    # No raw devicePixelRatio read at all → the check has nothing to judge.
+    assert _finding(report, "source.motion.dpr").severity == "SKIP"
+
+
+def test_raf_loop_without_visibility_gate_warns(tmp_path):
+    js = "function loop() { draw(); requestAnimationFrame(loop); }\nrequestAnimationFrame(loop);\n"
+    loop = _finding(_sites(tmp_path, "loop.js", js), "source.motion.render-loop")
+    assert loop.severity == "WARN" and "loop.js:1" in loop.detail
+
+
+def test_raf_loop_with_intersection_observer_anywhere_passes(tmp_path):
+    files = {
+        "loop.js": "function loop() { draw(); requestAnimationFrame(loop); }\nrequestAnimationFrame(loop);\n",
+        "gate.ts": "new IntersectionObserver(([e]) => { running = e.isIntersecting; }).observe(el);\n",
+    }
+    assert _finding(_run_source(tmp_path, files), "source.motion.render-loop").severity == "PASS"
+
+
+def test_single_raf_hop_is_not_a_loop_but_set_animation_loop_is(tmp_path):
+    hop = "requestAnimationFrame(() => el.classList.add('in'));\n"
+    assert _finding(_sites(tmp_path, "hop.js", hop), "source.motion.render-loop").severity == "SKIP"
+    three = "renderer.setAnimationLoop(render);\n"
+    assert _finding(_sites(tmp_path, "three.js", three), "source.motion.render-loop").severity == "WARN"
+
+
+def test_runtime_files_get_no_spacing_type_or_colour_checks(tmp_path):
+    # A `padding: '13px'` and a hex literal inside a .ts file are not design
+    # decisions the lint may judge — only the runtime checks read script files.
+    ts = "const theme = { padding: '13px', color: '#ff0000', fontSize: '15px' };\n"
+    report = _sites(tmp_path, "theme.ts", ts)
+    assert _finding(report, "source.spacing.grid").severity == "SKIP"
+    assert _finding(report, "source.color.literal").severity == "PASS"
+    assert _finding(report, "source.type.sizes").severity == "SKIP"
+
+
+def test_reduced_motion_guard_in_a_ts_file_covers_a_css_transition(tmp_path):
+    files = {
+        "a.css": ".a { transition: opacity 150ms; }\n",
+        "motion.ts": "const mm = window.matchMedia('(prefers-reduced-motion: reduce)');\n",
+    }
+    assert _finding(_run_source(tmp_path, files), "source.motion.reduced").severity == "PASS"
+
+
+def test_collect_includes_scripts_but_skips_declaration_files(tmp_path):
+    (tmp_path / "a.ts").write_text("export {}")
+    (tmp_path / "a.d.ts").write_text("export {}")
+    (tmp_path / "b.mjs").write_text("export {}")
+    assert [p.name for p in design_lint.collect(tmp_path, "source")] == ["a.ts", "b.mjs"]
+
+
+def test_no_script_files_skips_the_runtime_checks_rather_than_passing(tmp_path):
+    report = _run_source(tmp_path, {"a.css": ".a { padding: 8px; }\n"})
+    assert _finding(report, "source.motion.runtime").severity == "SKIP"
+    assert _maybe(report, "source.motion.scrolljack") is None
+
+
+def test_clean_scroll_story_runtime_raises_no_warn(tmp_path):
+    # Negative control for the runtime checks: a frame-sequence scroll story
+    # done by the book — native scroll, capped DPR, gated loop, guard present.
+    files = {
+        "story.ts": (
+            "const dpr = Math.min(window.devicePixelRatio || 1, 2);\n"
+            "const io = new IntersectionObserver(([e]) => { visible = e.isIntersecting; });\n"
+            "function loop() { if (visible) draw(); requestAnimationFrame(loop); }\n"
+            "requestAnimationFrame(loop);\n"
+            "gsap.matchMedia().add('(prefers-reduced-motion: no-preference)', build);\n"),
+    }
+    report = _run_source(tmp_path, files)
+    noisy = [f for f in report.findings if f.severity in ("WARN", "FAIL")]
+    assert noisy == [], [f.detail for f in noisy]
+    assert _finding(report, "source.motion.dpr").severity == "PASS"
+    assert _finding(report, "source.motion.render-loop").severity == "PASS"

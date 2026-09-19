@@ -25,6 +25,24 @@
   unavailable lane and its reason; a partial suite cannot support a claim about
   the whole build.
 
+## Don't Block
+
+Default to motion; stop only at the top of the ladder.
+
+- Keep going: reversible actions (edits, test runs, builds, local commits)
+  never stop for approval.
+- Re-earn "stuck": undecided is not undecidable. If a reasonable default
+  exists, take it, note it in one line in the workspace's decision log, and
+  continue.
+- Park, don't stop: a sub-problem that truly cannot move now gets logged —
+  what you need, what you tried — and the rest of the task continues. One
+  open question never idles independent work.
+- Only then wait for the human: destructive or irreversible steps, mutually
+  exclusive directions, or missing credentials/authority. Surface once,
+  with the evidence already gathered — not after exhausting retries.
+- Never loop-retry one failing approach, and never end a turn on "should I
+  proceed?". The canonical wording is installed at `~/.agents/AGENTS.md`.
+
 ## Communication and Evidence
 
 - Match response length to the question while keeping paths, commands, flags,
