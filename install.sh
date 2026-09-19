@@ -772,6 +772,37 @@ if [[ -d "$KIMI_DIR" ]]; then
     echo "  Configured: default_permission_mode (yolo if unset), extra_skill_dirs -> $CLAUDE_DIR/skills"
   fi
   unset KIMI_CONFIG
+
+  # Footer line 1 -> Clade's quota pace indicator: the Kimi counterpart of
+  # the Claude Code statusLine wired in §8 and of `codex-usage setup`. Kimi
+  # reads `[status_line] command` from ~/.kimi-code/tui.toml and runs it
+  # with a 300 ms deadline; the launcher deployed above hands off to the
+  # kimi-usage skill's helper, which renders from a cache and refreshes it
+  # through Kimi's own documented local API (`kimi web`, GET
+  # /api/v1/oauth/usage) — never from the OAuth credential file. The helper
+  # edits that one key only: a command that is not ours is reported and
+  # left alone, and `kimi-usage setup off` (or deleting the line) restores
+  # the built-in footer. Wiring only — nothing here boots a Kimi server.
+  # Not wired under Git Bash: Kimi runs the command through cmd.exe there,
+  # which cannot execute a bash launcher.
+  _KIMI_USAGE_HELPER="$CLAUDE_DIR/skills/kimi-usage/scripts/kimi_usage.py"
+  if [[ -n "$HOOK_BASH" ]]; then
+    echo "  Skipped: Kimi status line (Git Bash: Kimi runs status_line.command via cmd.exe)"
+  elif [[ -z "$PYTHON" ]]; then
+    echo "  Skipped: Kimi status line (no python3 on PATH)"
+  elif [[ ! -f "$KIMI_DIR/tui.toml" ]]; then
+    # Kimi writes tui.toml on its first TUI run; same rule as config.toml
+    # above — patch Kimi's file, never fabricate it.
+    echo "  Skipped: Kimi status line (no tui.toml yet — run kimi once, then re-run install.sh or /kimi-usage setup)"
+  elif [[ -f "$_KIMI_USAGE_HELPER" ]]; then
+    if _kimi_sl_out=$("$PYTHON" "$_KIMI_USAGE_HELPER" setup 2>&1); then
+      echo "  Configured: tui.toml [status_line] -> $KIMI_DIR/hooks/statusline.sh (quota pace; \`kimi-usage setup off\` restores the built-in footer)"
+    else
+      echo "  Skipped: Kimi status line — ${_kimi_sl_out#kimi-usage: }"
+    fi
+    unset _kimi_sl_out
+  fi
+  unset _KIMI_USAGE_HELPER
 else
   echo "Kimi Code CLI not detected (~/.kimi-code missing) — skipping Kimi bridge"
   echo "  (install Kimi Code (@moonshot-ai/kimi-code) globally, then re-run install.sh, to enable it)"
