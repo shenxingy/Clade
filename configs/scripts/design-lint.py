@@ -15,7 +15,10 @@ Four lanes, each usable on its own:
                              HTML, JSX/TSX, Vue, Svelte, Astro — against the
                              checkable half of the skill's design-rules.md:
                              spacing grid, type-scale caps, motion table,
-                             token discipline, copy (stdlib only)
+                             token discipline, copy; plus .js/.ts for the
+                             motion-runtime checks only (scroll-jacking,
+                             uncapped DPR, a render loop with no visibility
+                             gate) from signature-motion.md (stdlib only)
 
 Exit status is 0 when every check passes, 1 when any FAIL is recorded, and 2
 on a usage/environment error.  `--json` emits the full findings for machines.
@@ -804,6 +807,12 @@ SOURCE_SUFFIXES = {".css", ".scss", ".less", ".html", ".htm",
                    ".tsx", ".jsx", ".vue", ".svelte", ".astro"}
 SOURCE_MARKUP_SUFFIXES = {".html", ".htm", ".vue", ".svelte", ".astro"}
 SOURCE_SCRIPT_SUFFIXES = {".tsx", ".jsx"}
+# Plain script files carry the scroll story's runtime (GSAP, canvas, Three.js)
+# and get ONLY the motion-runtime checks — never spacing, type or colour: a
+# `padding: 13` inside a PDF library is not a design decision, and the guard
+# that matters (`useReducedMotion`, `matchMedia('(prefers-reduced-motion')`)
+# lives here as often as in a stylesheet.
+SOURCE_RUNTIME_SUFFIXES = {".js", ".mjs", ".cjs", ".ts", ".mts", ".cts"}
 SOURCE_SKIP_DIRS = {"node_modules", "dist", "build", "out", "coverage", "vendor",
                     ".git", ".next", ".nuxt", ".svelte-kit", ".turbo",
                     "storybook-static", "__pycache__"}
@@ -894,6 +903,29 @@ _TW_COLOR = re.compile(
 _TW_OUTLINE_NONE = re.compile(r"(?<![\w-])outline-none(?![\w-])")
 _TW_FOCUS_RESTORE = re.compile(r"(?<![\w-])focus(?:-visible|-within)?:(?:ring|outline|border|shadow)")
 
+# ─── Motion runtime (signature-motion.md §5) ───
+#
+# Three properties of a scroll story or hero piece that a static read CAN see.
+# Scroll-jacking: a wheel/touch listener that calls preventDefault, or a
+# page-snapping library. DPR: `devicePixelRatio` used with no Math.min/clamp
+# nearby — the 2–3x canvas that drops frames on phones. Render loop: a
+# requestAnimationFrame loop or setAnimationLoop with no visibility gate
+# anywhere in the tree, so the canvas keeps drawing off-screen and after the
+# intro. Each is a WARN naming the site; a legitimate drag handler or a demand
+# frameloop is the reviewer's call, not this instrument's.
+_WHEEL_LISTENER = re.compile(
+    r"addEventListener\s*\(\s*['\"](?:wheel|mousewheel|DOMMouseScroll|touchmove)['\"]", re.I)
+_PREVENT_DEFAULT = re.compile(r"\.preventDefault\s*\(")
+_SCROLLJACK_LIB = re.compile(
+    r"['\"](?:fullpage\.js|fullpage|@fullpage/[\w-]+|pagepiling(?:\.js)?|jquery\.scrollify|"
+    r"scrollify|onepage-scroll)['\"]", re.I)
+_DPR_USE = re.compile(r"devicePixelRatio")
+_DPR_CAP = re.compile(r"Math\.min\s*\(|clamp\s*\(|dpr\s*[=:]\s*\{?\s*\[|setPixelRatio\s*\(\s*Math\.min", re.I)
+_RENDER_LOOP = re.compile(r"\bsetAnimationLoop\s*\(|\brequestAnimationFrame\s*\(")
+_VISIBILITY_GATE = re.compile(
+    r"IntersectionObserver|visibilitychange|document\.hidden|isIntersecting|\bonEnter\b|"
+    r"\bonLeave\b|\bonToggle\b|\binView\b|\buseInView\b|frameloop\s*=\s*['\"]demand", re.I)
+
 
 @dataclass
 class _Site:
@@ -930,6 +962,12 @@ class _SourceScan:
     has_guard: bool = False
     kills_outline: list[_Site] = field(default_factory=list)
     restores_focus: bool = False
+    script_files: int = 0
+    scrolljack: list[_Site] = field(default_factory=list)
+    dpr_uncapped: list[_Site] = field(default_factory=list)
+    dpr_capped: int = 0
+    render_loops: list[_Site] = field(default_factory=list)
+    has_visibility_gate: bool = False
 
 
 def _blank_comments(text: str) -> str:
@@ -1121,6 +1159,33 @@ def _scan_copy(text: str, label: str, suffix: str, scan: _SourceScan) -> None:
         scan.slop.append(_Site(label, _line_of(prose, m.start()), f"“{m.group(0)}”"))
 
 
+def _scan_runtime(text: str, label: str, scan: _SourceScan) -> None:
+    """The motion-runtime checks: run on every script-bearing file."""
+    scan.script_files += 1
+    if _VISIBILITY_GATE.search(text):
+        scan.has_visibility_gate = True
+    for m in _WHEEL_LISTENER.finditer(text):
+        if _PREVENT_DEFAULT.search(text):
+            scan.scrolljack.append(_Site(label, _line_of(text, m.start()),
+                                         m.group(0)[:40] + " + preventDefault()"))
+    for m in _SCROLLJACK_LIB.finditer(text):
+        scan.scrolljack.append(_Site(label, _line_of(text, m.start()), m.group(0)))
+    for m in _DPR_USE.finditer(text):
+        window = text[max(0, m.start() - 80):m.end() + 80]
+        if _DPR_CAP.search(window):
+            scan.dpr_capped += 1
+        else:
+            scan.dpr_uncapped.append(_Site(label, _line_of(text, m.start()),
+                                           text[m.start():m.end() + 24].split("\n")[0]))
+    loops = list(_RENDER_LOOP.finditer(text))
+    # One requestAnimationFrame is a "next frame" hop; a loop calls it from
+    # inside itself, so it shows up at least twice. setAnimationLoop is a loop
+    # by definition.
+    if any("setAnimationLoop" in m.group(0) for m in loops) or len(loops) >= 2:
+        scan.render_loops.append(_Site(label, _line_of(text, loops[0].start()),
+                                       f"{len(loops)} render-loop call(s)"))
+
+
 def _emit_scale(report: Report, check: str, tag: str, found: dict, cap: int, noun: str,
                 key_fmt=str) -> None:
     if not found:
@@ -1168,12 +1233,17 @@ def lint_source(paths: list[Path], root: Path, report: Report) -> None:
         text = _blank_comments(raw)
         if _MOTION_GUARD.search(text):
             scan.has_guard = True
+        if suffix in SOURCE_RUNTIME_SUFFIXES:
+            _scan_runtime(text, label, scan)       # runtime checks only, by design
+            continue
         if _FOCUS_RESTORE.search(text):
             scan.restores_focus = True
         _scan_declarations(text, label, props, scan)
         _scan_tailwind(text, label, scan)
         _scan_keyframes(text, label, scan)
         _scan_copy(text, label, suffix, scan)
+        if suffix in SOURCE_SCRIPT_SUFFIXES or suffix in SOURCE_MARKUP_SUFFIXES:
+            _scan_runtime(text, label, scan)
 
     report.add("source.scope", "PASS", tag,
                f"{len(texts)} file(s): " + ", ".join(f"{n} {s}" for s, n in sorted(by_suffix.items())))
@@ -1254,6 +1324,43 @@ def lint_source(paths: list[Path], root: Path, report: Report) -> None:
                        "anywhere under this root — if the guard lives in a global stylesheet "
                        "outside it, run on the directory that contains both")
 
+    # -- motion runtime (signature-motion.md §5) ------------------------------
+    if not scan.script_files:
+        report.add("source.motion.runtime", "SKIP", tag,
+                   "no script-bearing files — scroll-jacking, DPR and render-loop checks did not run")
+    else:
+        if scan.scrolljack:
+            report.add("source.motion.scrolljack", "WARN", tag,
+                       f"{len(scan.scrolljack)} site(s) intercept the user's scroll: "
+                       f"{_first(scan.scrolljack)} — pin the scene, never decide the page's "
+                       f"scroll for the reader (a drag handler is the reviewer's call)",
+                       measured=len(scan.scrolljack), threshold=0)
+        else:
+            report.add("source.motion.scrolljack", "PASS", tag,
+                       f"no wheel/touch interception or page-snapping library in "
+                       f"{scan.script_files} script-bearing file(s)")
+        if scan.dpr_uncapped:
+            report.add("source.motion.dpr", "WARN", tag,
+                       f"{len(scan.dpr_uncapped)} devicePixelRatio use(s) with no cap nearby: "
+                       f"{_first(scan.dpr_uncapped)} — cap at 2 (Math.min) or a 3x canvas "
+                       f"drops frames on phones", measured=len(scan.dpr_uncapped), threshold=0)
+        elif scan.dpr_capped:
+            report.add("source.motion.dpr", "PASS", tag,
+                       f"devicePixelRatio capped at all {scan.dpr_capped} use(s)")
+        else:
+            report.add("source.motion.dpr", "SKIP", tag, "devicePixelRatio not used")
+        if scan.render_loops and not scan.has_visibility_gate:
+            report.add("source.motion.render-loop", "WARN", tag,
+                       f"{len(scan.render_loops)} render loop(s) with no visibility gate "
+                       f"anywhere under this root: {_first(scan.render_loops)} — pause "
+                       f"off-screen (IntersectionObserver, visibilitychange) and stop after "
+                       f"the intro", measured=len(scan.render_loops), threshold=0)
+        elif scan.render_loops:
+            report.add("source.motion.render-loop", "PASS", tag,
+                       f"{len(scan.render_loops)} render loop(s) and a visibility gate is present")
+        else:
+            report.add("source.motion.render-loop", "SKIP", tag, "no render loop found")
+
     # -- focus visibility -----------------------------------------------------
     if not scan.kills_outline:
         report.add("source.focus", "SKIP", tag, "nothing removes the focus outline")
@@ -1307,11 +1414,12 @@ def collect(target: Path, lane: str) -> list[Path]:
     if lane == "html":
         return sorted(target.rglob("*.html"))
     if lane == "source":
+        wanted = SOURCE_SUFFIXES | SOURCE_RUNTIME_SUFFIXES
         return sorted(
             p for p in target.rglob("*")
-            if p.is_file() and p.suffix.lower() in SOURCE_SUFFIXES
+            if p.is_file() and p.suffix.lower() in wanted
             and not (SOURCE_SKIP_DIRS & set(p.relative_to(target).parts[:-1]))
-            and not p.name.endswith((".min.css", ".min.js")))
+            and not p.name.endswith((".min.css", ".min.js", ".d.ts")))
     return sorted(target.rglob("*.pptx"))
 
 

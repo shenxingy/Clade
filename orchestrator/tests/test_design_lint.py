@@ -698,3 +698,116 @@ def test_clean_source_tree_raises_no_warn_or_fail(tmp_path):
     assert _finding(report, "source.spacing.grid").severity == "PASS"
     assert _finding(report, "source.focus").severity == "PASS"
     assert _finding(report, "source.motion.reduced").severity == "PASS"
+
+
+# ─── Source lane: motion-runtime checks (signature-motion.md §5) ────────────
+#
+# Script files (.js/.ts) get ONLY these checks; the spacing/type/colour rules
+# never read them. Each fixture plants one property, and one test pins the
+# "runtime files are not design-scanned" boundary itself.
+
+
+def _sites(tmp_path, name, body):
+    return _run_source(tmp_path / name.replace("/", "_").split(".")[0], {name: body})
+
+
+def test_wheel_listener_with_prevent_default_is_scroll_jacking(tmp_path):
+    js = "window.addEventListener('wheel', (e) => { e.preventDefault(); scrollTo(pos); });\n"
+    jack = _finding(_sites(tmp_path, "scroll.js", js), "source.motion.scrolljack")
+    assert jack.severity == "WARN" and "scroll.js:1" in jack.detail
+
+
+def test_wheel_listener_without_prevent_default_passes(tmp_path):
+    js = "window.addEventListener('wheel', () => track());\n"
+    assert _finding(_sites(tmp_path, "scroll.js", js), "source.motion.scrolljack").severity == "PASS"
+
+
+def test_page_snapping_library_import_is_scroll_jacking(tmp_path):
+    ts = "import fullpage from 'fullpage.js';\n"
+    jack = _finding(_sites(tmp_path, "page.ts", ts), "source.motion.scrolljack")
+    assert jack.severity == "WARN" and "fullpage.js" in jack.detail
+
+
+def test_uncapped_device_pixel_ratio_warns_capped_passes(tmp_path):
+    bare = "canvas.width = rect.width * window.devicePixelRatio;\n"
+    dpr = _finding(_sites(tmp_path, "canvas.ts", bare), "source.motion.dpr")
+    assert dpr.severity == "WARN" and "canvas.ts:1" in dpr.detail
+    capped = "const dpr = Math.min(window.devicePixelRatio || 1, 2);\n"
+    assert _finding(_sites(tmp_path, "canvas2.ts", capped), "source.motion.dpr").severity == "PASS"
+
+
+def test_r3f_dpr_prop_counts_as_a_cap(tmp_path):
+    tsx = "<Canvas dpr={[1, 2]} frameloop=\"demand\">{scene}</Canvas>\n"
+    report = _sites(tmp_path, "Scene.tsx", tsx)
+    # No raw devicePixelRatio read at all → the check has nothing to judge.
+    assert _finding(report, "source.motion.dpr").severity == "SKIP"
+
+
+def test_raf_loop_without_visibility_gate_warns(tmp_path):
+    js = "function loop() { draw(); requestAnimationFrame(loop); }\nrequestAnimationFrame(loop);\n"
+    loop = _finding(_sites(tmp_path, "loop.js", js), "source.motion.render-loop")
+    assert loop.severity == "WARN" and "loop.js:1" in loop.detail
+
+
+def test_raf_loop_with_intersection_observer_anywhere_passes(tmp_path):
+    files = {
+        "loop.js": "function loop() { draw(); requestAnimationFrame(loop); }\nrequestAnimationFrame(loop);\n",
+        "gate.ts": "new IntersectionObserver(([e]) => { running = e.isIntersecting; }).observe(el);\n",
+    }
+    assert _finding(_run_source(tmp_path, files), "source.motion.render-loop").severity == "PASS"
+
+
+def test_single_raf_hop_is_not_a_loop_but_set_animation_loop_is(tmp_path):
+    hop = "requestAnimationFrame(() => el.classList.add('in'));\n"
+    assert _finding(_sites(tmp_path, "hop.js", hop), "source.motion.render-loop").severity == "SKIP"
+    three = "renderer.setAnimationLoop(render);\n"
+    assert _finding(_sites(tmp_path, "three.js", three), "source.motion.render-loop").severity == "WARN"
+
+
+def test_runtime_files_get_no_spacing_type_or_colour_checks(tmp_path):
+    # A `padding: '13px'` and a hex literal inside a .ts file are not design
+    # decisions the lint may judge — only the runtime checks read script files.
+    ts = "const theme = { padding: '13px', color: '#ff0000', fontSize: '15px' };\n"
+    report = _sites(tmp_path, "theme.ts", ts)
+    assert _finding(report, "source.spacing.grid").severity == "SKIP"
+    assert _finding(report, "source.color.literal").severity == "PASS"
+    assert _finding(report, "source.type.sizes").severity == "SKIP"
+
+
+def test_reduced_motion_guard_in_a_ts_file_covers_a_css_transition(tmp_path):
+    files = {
+        "a.css": ".a { transition: opacity 150ms; }\n",
+        "motion.ts": "const mm = window.matchMedia('(prefers-reduced-motion: reduce)');\n",
+    }
+    assert _finding(_run_source(tmp_path, files), "source.motion.reduced").severity == "PASS"
+
+
+def test_collect_includes_scripts_but_skips_declaration_files(tmp_path):
+    (tmp_path / "a.ts").write_text("export {}")
+    (tmp_path / "a.d.ts").write_text("export {}")
+    (tmp_path / "b.mjs").write_text("export {}")
+    assert [p.name for p in design_lint.collect(tmp_path, "source")] == ["a.ts", "b.mjs"]
+
+
+def test_no_script_files_skips_the_runtime_checks_rather_than_passing(tmp_path):
+    report = _run_source(tmp_path, {"a.css": ".a { padding: 8px; }\n"})
+    assert _finding(report, "source.motion.runtime").severity == "SKIP"
+    assert _maybe(report, "source.motion.scrolljack") is None
+
+
+def test_clean_scroll_story_runtime_raises_no_warn(tmp_path):
+    # Negative control for the runtime checks: a frame-sequence scroll story
+    # done by the book — native scroll, capped DPR, gated loop, guard present.
+    files = {
+        "story.ts": (
+            "const dpr = Math.min(window.devicePixelRatio || 1, 2);\n"
+            "const io = new IntersectionObserver(([e]) => { visible = e.isIntersecting; });\n"
+            "function loop() { if (visible) draw(); requestAnimationFrame(loop); }\n"
+            "requestAnimationFrame(loop);\n"
+            "gsap.matchMedia().add('(prefers-reduced-motion: no-preference)', build);\n"),
+    }
+    report = _run_source(tmp_path, files)
+    noisy = [f for f in report.findings if f.severity in ("WARN", "FAIL")]
+    assert noisy == [], [f.detail for f in noisy]
+    assert _finding(report, "source.motion.dpr").severity == "PASS"
+    assert _finding(report, "source.motion.render-loop").severity == "PASS"
