@@ -1167,3 +1167,17 @@ record is wrong**. The four below were reproduced by hand before filing.
 | CLI loop | Pure bash (loop-runner.sh) | No Python dependency, safe for self-modification |
 
 ---
+
+## 2026-09-18 converge-loop 实战暴露的 loop-runner 缺陷（business/artifact 收敛 run 实录）
+
+- [ ] 🟠 `node_commit_changes` 清扫无差别——worker 在 repo 内建的嵌套 git 对象（13,053 个文件，logs/claude-tasks/shadow/*.git）被整体扫进 main 并推送（business `e03bb70c`，已 revert `fa81f743`）。清扫应排除 `.git`、logs/、node_modules/ 或仅限 task-owned paths（与 CODEX_AGENTS.md 的 stage-only-task-owned-paths 同规则）。
+- [ ] 🟠 脏工作树让 hydrate_context 爆炸——context 含 13,094 行 git status 时 supervisor 传参超 ARG_MAX（`/usr/bin/timeout: Argument list too long`，exit 126）。hydrate 应对 git status 截断/排除未跟踪目录，或 context 经 stdin/文件传入而非 argv。
+- [ ] 🟡 goal 复选框无自动勾稽——6 迭代全程 "10 unchecked"，收敛只能靠人工核验后勾。score_and_write 应把已完成 work item 回写 goal（`_From:` 段对账），否则收敛判定恒为 not-done。
+- [ ] 🟡 loop 在任何 cwd 的 repo 原地跑 `pnpm build` 类门——会打断从该 checkout 服务的生产进程（本次直接把 companyOS 运行中构建的静态资产搞成 503）。goal/loop 文档应要求 worker 门在 worktree 或要求 lead 确认目标 checkout 非生产服务源；或在 loop_args 加 `--worktree` 默认。
+- [ ] 🟡 目标文件必须是 checkbox 列表——纯 prose goal 会让 supervisor 返回 0 任务（stuck_no_tasks）。loop_args 起步检查应直接报 "goal 无 - [ ] 项" 而非跑三轮空转。
+
+## 2026-09-19 design-sense-as-rules follow-ups (PR feat/design-rules)
+
+- [ ] 🟡 `design-lint source` thresholds are the essay's numbers (4-px grid, ≤2 families, 4–6 sizes, 3–4 weights, ≤4 radii, ≤3 shadows, 400 ms, 16 px), not measured fire rates. Measured once on business/company-os (579 files): 643/1950 spacing off-grid (33%), 411 `transition-all` sites, 114/585 durations > 400 ms — a mixed tree, not a clean one. Run it on a tree the owner considers clean, record the WARN counts per check in the script docstring, and only then decide whether any WARN deserves a threshold rather than "each site needs a written reason".
+- [ ] 🟡 The review loop in `design-review.md` asks for captures at 390/768/1280/1440, but nothing in the skill produces them — the agent reaches for Playwright by hand each time. A `design-shots` helper (Playwright, four widths + dark mode, one PNG per width, optional ruler overlay) would make the loop's first step mechanical; `seo-visual` already carries the Playwright pattern to borrow.
+- [ ] 🟠 `configs/scripts/design-lint.py` is at 1,489 of the 1,500-line ceiling after the `source` lane and its runtime checks landed. The next change to it must split first, not trim: the source lane (`# ─── Lane: source` through `lint_source`) is self-contained except for `Report`, `resolve_value`, `custom_properties`, `_STYLE_BLOCK` and `_FOCUS_RESTORE`, which the `html` lane shares — move those five into `design_lint_common.py`, the lane into `design_lint_source.py`, and keep `design-lint.py` as the CLI. `test_design_lint.py` loads the script by path (hyphenated name), so the split module needs the same `spec_from_file_location` treatment; `install.sh` already copies every `configs/scripts/*.py`, so deployment needs no change.
