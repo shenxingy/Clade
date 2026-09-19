@@ -155,8 +155,10 @@ the guidance above about starting from no animation applies to *additional*
 motion, not to this baseline:
 
 - **Entrance** — a short fade, optionally with a small translate, on first
-  viewport entry for hero, section and card groups. Stagger siblings by
-  40–80 ms; never re-run on scroll-back; reserve space so nothing shifts layout.
+  viewport entry for hero, section and card groups. Stagger siblings within
+  the range `design-rules.md` §6 sets for expressive surfaces, cap the chain
+  near eight siblings, never re-run on scroll-back, and reserve space so
+  nothing shifts layout.
 - **Hover and keyboard focus** — an animated transition on every interactive
   element whose hover or focus state changes: colour, border, elevation or
   transform, never layout.

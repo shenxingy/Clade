@@ -67,6 +67,12 @@ Before making visual choices:
    whenever the user asks for a theme, preset, style, or alternate version, and
    whenever the visual direction is materially undecided. A Micro change under
    an established system may reuse the existing direction and mark this `N/A`.
+6. Read `references/design-rules.md` — the checkable floor: the spacing grid,
+   the type-scale caps, the motion duration table, the state list, the review
+   widths, and the copy ban. Every rule there is phrased so `design-lint`, a
+   screenshot, or a grep can check it; "premium, modern, polished" is not a
+   brief, and that file is what the brief decomposes into. A Micro change
+   applies the sections the touched component reaches.
 
 For a mixed-platform product, share product logic, content, and brand tokens,
 then translate platform contracts separately. Do not average incompatible
@@ -91,6 +97,15 @@ the decision risk:
 State the lane and rationale. A skipped phase is not invisible: mark it `N/A`
 with a concrete reason.
 
+## Review-only requests
+
+When the ask is to review, audit, or 挑毛病 an existing surface rather than to
+build one, run phase 1 (baseline captures) and phase 6 (the review in
+`references/design-review.md`) and skip the rest with `N/A`. Deliver findings
+by P0–P3 severity, each with the rule it breaks and the fix; then apply the
+fixes unless the user asked for a report only. No adjectives — "modern, clean,
+professional" is not a finding.
+
 ## Seven-phase pipeline
 
 ### 1. Lock the problem
@@ -104,6 +119,28 @@ Draft the one-line `Design Read` and a `clade.design-direction/v1` profile from
 `references/design-direction-profiles.md`. Treat both as hypotheses until the
 benchmark confirms them. For redesigns, choose `preserve`, `evolve`, or
 `reframe` explicitly; never smuggle a reframe into a request for polish.
+
+For greenfield and reframe work, also write the **Style DNA** — six lines,
+each concrete enough to grep or screenshot against:
+
+```text
+Personality:       three adjectives — precise, trustworthy, calm (not cold)
+Must not read as:  the AI SaaS template; purple gradients; glassmorphism;
+                   floating orbs; every block in a rounded card
+Signature marks:   3–5 repeated features — large condensed headlines; mono for
+                   data and status; hairline borders on a visible grid; one
+                   green for action and success; panels slide 8 px on open
+Density:           marketing surfaces loose, working surfaces compact
+Radius:            container 8 / button 6 / tag 999 — not every element a pill
+Shadow:            only on what floats; cards separate by border, ground, space
+```
+
+"Premium, modern, techy" is not a DNA. "Techy" has to say which typeface,
+radius, border, colour, motion and density. Reference products are allowed only
+as split borrowings — A's density, B's type register, C's motion speed — never
+one product's page structure. Style comes from repeated choices, not from
+personality on all five axes (type, colour, geometry, imagery, motion) at
+once: pick one or two as the identity and keep the rest quiet.
 
 For optimization, establish the baseline before editing: capture the current
 rendered surface and important flows, list observed failures, and tie each
@@ -170,9 +207,24 @@ Decide whether a preview reduces meaningful rework:
 | Native interaction, window, menu, focus, touch, pointer, haptic, or accessibility behavior | Use SwiftUI/Compose/WinUI/XAML or the platform's real preview/simulator |
 | Small reversible change under an established system | Implement directly and inspect the rendered result |
 
-Prefer one recommended direction. Produce a second variant only when a real
-tradeoff remains unresolved by evidence; do not generate decorative option
-sprawl.
+**Three materially different directions before one is chosen** — Full-lane
+greenfield or reframe only. Each direction is a Style DNA card with a different
+school, type strategy, geometry, density and motion character, plus why it fits
+this product and what could go wrong with it. Three recolours of one layout are
+not three directions. Pick one, or ask the owner to, then proceed. Under an
+established design system, or for Micro and Standard work, mark this `N/A`.
+
+**Component lab before business pages.** Before the first real screen, build a
+`/design-lab` — a Storybook story, a dev route, or one standalone HTML page —
+that shows the type scale, the palette, buttons, inputs, select, card, table,
+modal, tooltip, tabs, toast, status tags, a chart, the empty and loading states,
+and one motion example, in every state `references/design-rules.md` §7 lists.
+Skip it and the first-page button, the dashboard button and the settings-page
+input drift apart; the lab is where the token scale is proven once.
+
+Once a direction is chosen, prefer one recommended checkpoint. Produce a second
+variant only when a real tradeoff remains unresolved by evidence; do not
+generate decorative option sprawl.
 
 When `composition` or `motion` is 4 or 5, require a rendered checkpoint before
 committing to the direction. When comparing versions, hold content, tasks, and
@@ -202,11 +254,20 @@ Apply this precedence order when rules conflict:
 This is not a choice between native and custom. Keep the platform skeleton,
 invent the product brain, and express the brand without breaking either.
 
+**One representative page first.** Polish one representative screen to the
+Definition of Done in `references/design-review.md`, then extend that language
+to the rest. Never build ten pages in one pass: the rules drift a little per
+page and the drift compounds until the pages no longer read as one product.
+Tokens only — no colour, size, spacing, radius or shadow outside the scale
+without a written reason at the site; `design-lint source` names each one.
+
 ### 6. Verify the implementation
 
 Use three evidence tiers:
 
-1. **Source/static** — types, lint, hard-rule grep, semantics, token usage.
+1. **Source/static** — types, lint, hard-rule grep, semantics, token usage,
+   and `design-lint source <dir>` for the spacing grid, type-scale caps, motion
+   table, token discipline and copy.
 2. **Rendered/interactive** — real viewports or native previews, screenshots,
    focus order, keyboard/touch/pointer behavior, state transitions, contrast,
    text scaling, reduced motion, overflow, and realistic data.
@@ -219,6 +280,14 @@ reference. For HTML/web output, run `design-lint html <artifact>` and inspect th
 live result at every declared viewport. A clean static check does not prove a
 rendered rule. For decks, run `design-lint deck` and, once rendered,
 `design-lint render`.
+
+Then run the review in `references/design-review.md`: capture the page at
+390 / 768 / 1280 / 1440 (or the declared breakpoints), list findings by P0–P3
+with no adjectives, fix them in code, re-capture, and repeat until no P0 or P1
+remains. Run `design-lint source` before the loop and again after; its WARN
+lines are questions the review answers with a fix or a written reason, never
+noise. The first generated version is a structural draft — report the counts
+at the start and at the end of the loop, not "looks good now".
 
 Do not claim user testing, assistive-technology coverage, device coverage, or
 production improvement unless it actually occurred. Report an unrun tier as a
@@ -349,6 +418,10 @@ Start the implementation handoff with:
 - **Design direction**: [Design Read; `clade.design-direction/v1` preset,
   variant, mode, family, composition/motion/density, source, and overrides; or
   `N/A` for a Micro change that reuses an established direction]
+- **Style DNA** (greenfield / reframe): [personality; must-not-read-as;
+  signature marks; density; radius; shadow]
+- **Directions considered** (Full greenfield / reframe): [three, one line each,
+  and why the chosen one]
 - **Benchmark**: [reference set, reusable pattern, counterexample, rejected choice]
 - **Brand differentiation** (brand surfaces only): [visual school and why; the
   four palette decisions; typeface and why, with its line heights and its weight
@@ -366,6 +439,8 @@ Start the implementation handoff with:
 - **Visual checkpoint**: [real surface / HTML study / native preview / direct implementation — why]
 - **State and motion**: [states covered; each motion's job or no-motion decision]
 - **Verification**: [source, rendered/interactive, and outcome evidence; explicit unrun gates]
+- **Review loop**: [widths captured; P0/P1 count at start → at end; P2/P3
+  left and their owner; `design-lint source` FAIL/WARN counts before and after]
 - **Measured worst contrast**: [ratio and tool/lane, or truthful reason it was not measurable]
 ```
 
@@ -379,6 +454,9 @@ Before reporting completion:
 - confirm no implemented screen introduces a colour, font, radius, or motion
   duration that is absent from the design note — cross-screen consistency is the
   deliverable, not a side effect;
+- walk the Definition of Done in `references/design-review.md` item by item for
+  every screen in scope, and name the items that are not met rather than
+  rounding them up;
 - preserve task-owned work through the repository delivery workflow;
 - use `DONE_WITH_CONCERNS` when human/device/production evidence needed for the
   user's stated outcome remains unavailable.
@@ -400,7 +478,14 @@ for compatibility; the workflow covers web, mobile, desktop, and native apps.
 ```
 /frontend-design        # Run the platform-aware interface pipeline
 /frontend-design profile=soft-premium motion=1
+/frontend-design review <path-or-url>   # P0–P3 review of an existing surface, fixes applied
 ```
+
+"Design sense" is carried as checkable rules, not adjectives: the spacing
+grid, type-scale caps, motion duration table, state list and review widths in
+`references/design-rules.md`; the screenshot review loop, severity ladder and
+Definition of Done in `references/design-review.md`; and `design-lint source
+<dir>` for the half of those rules a static check can see.
 
 Every invocation classifies the target platform and task size, reads the shared
 benchmark contract plus the relevant platform adapter, then runs all seven

@@ -16,7 +16,14 @@ for compatibility; the workflow covers web, mobile, desktop, and native apps.
 ```
 /frontend-design        # Run the platform-aware interface pipeline
 /frontend-design profile=soft-premium motion=1
+/frontend-design review <path-or-url>   # P0–P3 review of an existing surface, fixes applied
 ```
+
+"Design sense" is carried as checkable rules, not adjectives: the spacing
+grid, type-scale caps, motion duration table, state list and review widths in
+`references/design-rules.md`; the screenshot review loop, severity ladder and
+Definition of Done in `references/design-review.md`; and `design-lint source
+<dir>` for the half of those rules a static check can see.
 
 Every invocation classifies the target platform and task size, reads the shared
 benchmark contract plus the relevant platform adapter, then runs all seven
