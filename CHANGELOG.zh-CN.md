@@ -21,6 +21,16 @@ semantic versioning。
   FAIL，其余以带具体位置的 WARN 报告；顺手修掉的一个盲点是：移除 outline 的
   `:focus` 规则不再被当作"已恢复焦点样式"，`html` lane 同样受益。
   `configs/rules/frontend.md` 会在编辑 UI 文件的那一刻注入短版规则。
+  `references/signature-motion.md` 覆盖动效表之外唯一允许越界的地方——主视觉
+  intro 与滚动驱动的产品叙事：词汇（scrub、pin、scrollytelling、分镜编排）、
+  两种原型及其预算（intro 1.8–2.6 秒分四拍、idle 每 8–12 秒至多一次细微动作、
+  指针响应 4–12px / 2–5°、100vh 场景 pin 在 400–500vh 滚动距离上）、四种实现
+  路线及各自适用场景（默认序列帧 + canvas + ScrollTrigger，只有用户需要操控
+  产品时才用实时 3D）、"动效必须表达产品能力"的语义规则及一个检测类产品的
+  完整示例，以及写代码之前必须先有的分镜表。`design-lint source` 会读
+  `.js`/`.ts`，但只做三项运行时检查：滚动劫持（`wheel`/`touchmove` +
+  `preventDefault`、整页吸附库）、未封顶的 `devicePixelRatio`、没有可见性门控
+  的渲染循环。
 - `/kimi-usage`：按 Clade 的 95% 目标节奏展示 Kimi Code 套餐额度（5 小时窗口、
   有则含周窗口、月窗口及其 kimi/code 拆分），并提供 `setup` / `style` / `theme`
   配置 Kimi footer。`install.sh` 在检测到 Kimi Code 且用户没有自定义状态栏命令时，

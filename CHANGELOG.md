@@ -25,7 +25,19 @@ versioning for the `clade-mcp` Python package and tagged public releases.
   measured sites elsewhere; the fix it found on the way is that a `:focus`
   rule that removes the outline no longer counts as restoring it, in the
   `html` lane too. `configs/rules/frontend.md` injects the short form at the
-  moment a UI file is edited.
+  moment a UI file is edited. `references/signature-motion.md` covers the one
+  place allowed past the motion table — hero intros and scroll-driven product
+  stories: the vocabulary (scrub, pin, scrollytelling, choreography), the two
+  archetypes with their budgets (intro 1.8–2.6 s in four beats, idle at most
+  one micro-motion per 8–12 s, pointer 4–12 px / 2–5°, a pinned 100vh scene
+  over 400–500vh), the four implementation routes and when each fits (frame
+  sequence + canvas + ScrollTrigger by default, real-time 3D only when the
+  user controls the product), the semantic-motion rule with a worked example
+  for a detection product, and the storyboard table that precedes any code.
+  `design-lint source` reads `.js`/`.ts` for three runtime checks only:
+  scroll-jacking (`wheel`/`touchmove` + `preventDefault`, page-snapping
+  libraries), an uncapped `devicePixelRatio`, and a render loop with no
+  visibility gate.
 - `/kimi-usage`: Kimi Code plan-quota usage (5-hour, weekly where the plan has
   one, monthly with its kimi/code split) against Clade's 95% target pace, plus
   `setup` / `style` / `theme` for the Kimi footer. `install.sh` now wires
