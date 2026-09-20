@@ -1,6 +1,6 @@
 ---
 name: frontend-design
-description: "Create, prototype, redesign, audit, or optimize production-grade interfaces and presentation surfaces across websites, responsive/mobile web, iOS/iPadOS/macOS, Android, Windows, Electron/Tauri, Flutter/React Native, and other local/native apps. Use for UI/UX design, visual polish, named or tunable themes and design variants, components, interaction states, cursor or motion decisions, design systems, decks, and requests such as 设计页面、优化网页/界面/UI、设计主题/视觉风格/界面版本、优化手机端 UI、原生 App 或桌面软件设计. Runs a platform-aware benchmark, reusable design-direction profiles, an optional HTML or native preview checkpoint, implementation, accessibility checks, and rendered/live verification."
+description: "Create, prototype, redesign, audit, or optimize production-grade interfaces across websites, responsive/mobile web, iOS/iPadOS/macOS, Android, Windows, Electron/Tauri, Flutter/React Native, and other local/native apps — UI/UX, visual polish, named or tunable themes and design variants, components, interaction and motion, design systems, and decks, including requests such as 设计页面、优化网页/界面/UI、设计主题/视觉风格/界面版本. Runs a platform-aware benchmark, design-direction profiles, an optional preview checkpoint, implementation, accessibility checks, and rendered/live verification."
 ---
 
 # Clade for Codex

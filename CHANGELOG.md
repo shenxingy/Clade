@@ -7,6 +7,22 @@ versioning for the `clade-mcp` Python package and tagged public releases.
 
 ## Unreleased
 
+### Changed
+
+- The model-facing skill listing is trimmed from 38,660 to 33,998 characters
+  and the budget fraction lowered from 0.06 to 0.05 (a 200k-window cap of
+  40,000 chars; what is actually sent is the listing itself, ~8.5k tokens).
+  The longest descriptions — frontend-design, the two design-system canons,
+  localize, radar, codex-orchestrate, outbound, banana and ten more — keep
+  every golden-set trigger (gated by `test_routing_eval.py`) but drop the
+  redundant prose; the email family gained an `email` hub so the six
+  `email-*` sub-skills are name-only like the blog/seo/ads families (81
+  name-only overrides). Minimum viable fraction is now 0.0425; 0.05 leaves
+  ~6,000 chars of headroom, roughly 15 more skills. Note: the Codex plugin
+  carries only `description`, so platform and Chinese triggers that the
+  `test_frontend_design_pipeline.py` contract requires must stay in
+  frontend-design's description, not just its `when_to_use`.
+
 ### Fixed
 
 - Skills nobody had used yet could not be auto-selected. Claude Code lists

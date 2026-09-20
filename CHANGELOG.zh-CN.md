@@ -7,6 +7,20 @@ semantic versioning。
 
 ## Unreleased
 
+### 变更
+
+- 面向模型的技能清单从 38,660 字符精简到 33,998，预算分数从 0.06 降到
+  0.05（200k 窗口的预算上限为 40,000 字符；实际发送的是清单本身，约
+  8.5k token）。最长的描述——frontend-design、两个设计系统 canon、
+  localize、radar、codex-orchestrate、outbound、banana 等十余个——保留
+  全部 golden-set 触发词（由 `test_routing_eval.py` 门禁保证），只删冗余
+  叙述；email 家族新增 `email` hub，六个 `email-*` 子技能与 blog/seo/ads
+  家族一样改为 name-only（共 81 个 name-only override）。当前最小可用分数
+  为 0.0425；0.05 留有约 6,000 字符余量，约可容纳 15 个新技能。注意：
+  Codex 插件只携带 `description`，所以 `test_frontend_design_pipeline.py`
+  契约要求的平台词和中文触发词必须留在 frontend-design 的 description
+  里，不能只放在 `when_to_use`。
+
 ### 修复
 
 - 从未被调用过的技能无法被自动选中。Claude Code 把技能清单塞进一个字符预算

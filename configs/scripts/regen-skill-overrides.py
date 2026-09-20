@@ -45,18 +45,19 @@ OUTPUT = REPO / "configs" / "settings-skill-overrides.json"
 
 # A hub is the skill the family's triggers route through. Its sub-skills are
 # reached by the hub or by an explicit /name, never by their own description.
-HUB_FAMILIES = ("blog", "seo", "ads")
+HUB_FAMILIES = ("blog", "seo", "ads", "email")
 # Sub-skills that must keep a description anyway (none today; the hubs carry
 # the family triggers). Add a name here with the reason in the commit body.
 EXEMPT: frozenset[str] = frozenset()
 
-# check-skill-listing.py measured the model-facing listing at 38,660 chars
-# against a 200k-window budget of 800,000 × fraction (2026-09-20, 142 skills,
-# 75 name-only): 0.05 fit with 3% headroom, so 0.06 (48,000 chars, about
-# 12k tokens — 6% of a 200k window, 1.6% of 1M) leaves room for ~25 more
-# skills before the gate asks for a trim. Change only with a new measurement
-# in the same commit.
-BUDGET_FRACTION = 0.06
+# check-skill-listing.py measured the model-facing listing at 33,950 chars
+# against a 200k-window budget of 800,000 × fraction (2026-09-20, 143 skills,
+# 81 name-only, after the description trims and the email hub): minimum
+# fraction 0.0424, so 0.05 (40,000 chars, about 10k tokens of CAP — what is
+# actually sent is the listing itself, ~8.5k tokens) leaves ~6,000 chars of
+# headroom, roughly 15 more skills before the gate asks for a trim. Change
+# only with a new measurement in the same commit.
+BUDGET_FRACTION = 0.05
 
 
 def name_only_skills(skills_dir: Path = SKILLS) -> list[str]:

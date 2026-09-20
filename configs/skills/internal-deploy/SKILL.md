@@ -1,6 +1,6 @@
 ---
 name: internal-deploy
-description: Deploy to the company intranet and prove the served state — publish a single HTML report to the Artifact Hub (slug directory + manifest under the hub root), or rebuild and reload an app behind its process manager and reverse proxy, then smoke-verify over the internal URL and report exactly what changed. NOT public/cloud deployment, NOT CI pipeline configuration.
+description: Deploy to the company intranet and prove the served state — publish a single HTML report to the Artifact Hub (slug directory + manifest under the hub root), or rebuild and reload an app behind its process manager and reverse proxy, then smoke-verify the internal URL and report exactly what changed. NOT public/cloud deployment or CI pipeline configuration.
 when_to_use: "内网部署, 部署artifact, 发布到内网, artifact hub发布, internal deploy, intranet deploy, 发布报告到hub, 部署后验证, deploy and verify, smoke verify"
 user_invocable: true
 ---

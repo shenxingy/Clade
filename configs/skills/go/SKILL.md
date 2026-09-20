@@ -1,6 +1,6 @@
 ---
 name: go
-description: Accept the recommendation from the most recent A/B/C option set and execute it without re-asking. Use when the user says "按你推荐的来" / "go with your pick" — they glanced at the options, the recommendation looked right, they don't want to re-read all of them.
+description: Accept the recommendation from the most recent A/B/C option set and execute it without re-asking — for "按你推荐的来" / "go with your pick", when the user glanced at the options and wants the recommended branch executed immediately.
 when_to_use: "按推荐的来, 按你说的来, 按推荐来, go with your recommendation, your call, take the default, just pick — fired after you offered enumerated options (A/B/C) and the user wants the recommended branch executed immediately"
 user_invocable: true
 ---

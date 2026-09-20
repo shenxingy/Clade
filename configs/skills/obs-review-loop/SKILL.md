@@ -1,6 +1,6 @@
 ---
 name: obs-review-loop
-description: Real-user observability review — pull recent Sentry errors, PostHog behavior data, and application logs for an app, exclude internal traffic, triage what real users actually hit, fix obvious bugs, and assess whether the "how do we know this succeeded" monitoring mechanism is complete. NOT a marketing analytics review, NOT a one-off error dump.
+description: Real-user observability review — pull recent Sentry errors, PostHog behavior data, and application logs, exclude internal traffic, triage what real users actually hit, fix obvious bugs, and assess whether the "how do we know this succeeded" monitoring is complete. NOT marketing analytics or a one-off error dump.
 when_to_use: "看看sentry, posthog数据, 用户真实数据, sentry报错, 用户行为分析, 数据库log, real user data, observability review, error triage, 报错修复, 用户反映和统计对比"
 user_invocable: true
 ---

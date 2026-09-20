@@ -1,6 +1,6 @@
 ---
 name: converge-loop
-description: Multi-round gap-analysis convergence loop — sweep a product across dimensions (UIUX, login, services, payments, system), fix what is fixable each round, re-audit, and stop only when consecutive rounds find nothing new. Produces a categorized Chinese report. NOT a one-shot audit, NOT the corrections-rules meta-audit (use /audit for that).
+description: Multi-round gap-analysis convergence loop — sweep a product across dimensions (UIUX, login, services, payments, system), fix what is fixable each round, re-audit, and stop when consecutive rounds find nothing new. Produces a categorized Chinese report. NOT a one-shot audit or the corrections-rules meta-audit (/audit).
 when_to_use: "直到converge, 收敛循环, gap分析, 找出所有问题, loop审核, 一轮一轮查, 找不出新毛病, converge loop, gap analysis loop, keep fixing until converged"
 user_invocable: true
 ---
