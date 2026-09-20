@@ -21,6 +21,9 @@ from typing import Any
 
 
 TARGET_RATE = 0.95
+# Projected utilization past which "ahead of target" is a blowout, not a grade:
+# 125% runs the quota out with a fifth of the window still to go.
+OVERPACE_PROJECTED = 125.0
 APP_SERVER_TIMEOUT = 10.0
 FULL_STATUS_LINE = [
     "model-with-reasoning",
@@ -198,8 +201,15 @@ def _style_name() -> str:
     return name if name in STYLES else "minimal"
 
 
-def _symbol(delta: float, theme: str) -> str:
+def _overpacing(delta: float, projected: float) -> bool:
+    """Ahead of target AND burning fast enough to run dry before the reset."""
+    return delta >= 5 and projected > OVERPACE_PROJECTED
+
+
+def _symbol(delta: float, theme: str, projected: float) -> str:
     symbols = THEMES[theme]
+    if _overpacing(delta, projected):
+        return symbols[0]
     if delta < -15:
         return symbols[0]
     if delta < -5:
@@ -310,6 +320,7 @@ def format_rows(
 
     primary = rows[0]
     delta = float(primary["pace_delta"])
+    projected = float(primary.get("projected_percent") or 0.0)
     sign, display_delta = _compact_delta(delta)
     if project is None:
         project, detected_branch = _project_context()
@@ -319,17 +330,18 @@ def format_rows(
         return f"{context}{sign}{display_delta}% ({primary['resets_in']})"
     if style == "icon":
         return (
-            f"{context} {_symbol(delta, theme)} "
+            f"{context} {_symbol(delta, theme, projected)} "
             f"{sign}{display_delta}% ({primary['resets_in']})"
         )
 
     lines = []
     for row in rows:
         delta = float(row["pace_delta"])
+        projected = float(row.get("projected_percent") or 0.0)
         sign, display_delta = _compact_delta(delta)
         lines.append(
             f"{row['name']} {row['window']}: {row['used_percent']}% used · "
-            f"{_symbol(delta, theme)} {sign}{display_delta}% pace · "
+            f"{_symbol(delta, theme, projected)} {sign}{display_delta}% pace · "
             f"resets in {row['resets_in']}"
         )
     return "\n".join(lines)

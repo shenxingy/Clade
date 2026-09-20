@@ -8,6 +8,12 @@ Metric: delta = usage% - elapsed% × 0.95
   delta < 0  → behind 95% target
   Linear: moving 1pt always requires the same amount of work, any day of the week.
 
+  A positive delta does NOT on its own mean the burn is healthy, because the
+  +5 that earns the top badge means a different overshoot at every point in
+  the window: 145% projected at 10% elapsed, 101% at 90% (95 + 500/elapsed%).
+  Past OVERPACE_PROJECTED the run exhausts the window before 80% of it has
+  passed, and the scale shows that as the bottom level, not the top one.
+
 Modes  (~/.claude/.statusline-mode):   symbol | percent | off
 Themes (~/.claude/.statusline-theme):  circles | bird | plant
 
@@ -26,10 +32,17 @@ THEME_FILE   = Path.home() / ".claude" / ".statusline-theme"
 CACHE_TTL       = 300
 CACHE_TTL_STALE = 3600 * 24 * 7  # use stale cache for up to 7d (full period) if API is unavailable
 TARGET_RATE  = 0.95   # 95% weekly utilization = "excellent"
+# Projected utilization past which "ahead of target" is a blowout, not a grade:
+# 125% runs the quota out with a fifth of the window still to go. The badge and
+# the colour share one predicate so they cannot disagree — they did, with the
+# docs calling >100% "Overpacing" while the colour painted it the best green.
+OVERPACE_PROJECTED = 125.0
 
 # ─── Themes ───
-# Four levels: [far behind, behind, on track, ahead]
+# Four levels: [far behind or overpacing, behind, on track, ahead]
 # delta thresholds: < -15  /  -15 to -5  /  -5 to +5  /  > +5
+# The scale is two-sided: level 0 is "wrong amount of quota for the time left",
+# which under-use and a projected blowout both are.
 
 THEMES = {
     "circles": ["○",  "◑",  "●",  "◉" ],
@@ -92,8 +105,13 @@ def _theme():
         return "plain"
     return t
 
-def _symbol(delta):
+def _overpacing(delta, projected):
+    """Ahead of target AND burning fast enough to run dry before the reset."""
+    return delta >= 5 and projected > OVERPACE_PROJECTED
+
+def _symbol(delta, projected):
     levels = THEMES[_theme()]
+    if _overpacing(delta, projected): return levels[0]
     if delta < -15: return levels[0]
     if delta < -5:  return levels[1]
     if delta < 5:   return levels[2]
@@ -104,9 +122,13 @@ def _symbol(delta):
 
 RESET = "\033[0m"
 
-def _color(projected):
+def _color(projected, delta):
     # Muted palette — low saturation so the indicator doesn't steal attention.
     # 0% → soft red  →  50% → amber  →  95% → sage green  →  >100% → slightly brighter green
+    # The one case that IS meant to steal attention: a projection that empties
+    # the window early. Without it 101% and 205% were painted the same green.
+    if _overpacing(delta, projected):
+        return "\033[38;2;185;28;28m"   # overpacing — quota gone before reset
     if projected > 100:
         return "\033[38;2;85;160;85m"    # soft bright green, no bold
     p = max(0.0, min(projected, 95.0))
@@ -264,10 +286,10 @@ def run():
     # Delta: how far ahead/behind the 95% weekly target pace
     # Linear: 1pt delta always = 1% of weekly quota, regardless of day
     delta     = usage - elapsed * TARGET_RATE
-    projected = (usage / elapsed * 100) if elapsed > 0 else 0  # for color only
+    projected = (usage / elapsed * 100) if elapsed > 0 else 0  # colour AND the overpace guard
 
-    sym = _symbol(delta)
-    col = _color(projected)
+    sym = _symbol(delta, projected)
+    col = _color(projected, delta)
 
     sign = "+" if delta >= 0 else ""
     pct  = f"{sign}{delta:.0f}%"

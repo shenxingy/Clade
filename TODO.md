@@ -1187,3 +1187,20 @@ record is wrong**. The four below were reproduced by hand before filing.
 - [x] 🟡 ~~Trim the longest model-facing descriptions to bring the fraction back to 0.04~~ **Done 2026-09-20, landing at 0.05 instead of 0.04 — decision recorded:** every named skill was trimmed (radar, localize, codex-orchestrate, frontend-design, banana, plus the next tier: outbound, seo, loop, qa-explore, domain-model, landscape, equip, review, audit, internal-deploy, skill-new, obs-review-loop, converge-loop, go) and the email hub (next item) made email-check name-only. Listing: 38,660 → 33,998 chars; minimum fraction 0.0424. Two things moved the target: (1) the fraction is a CAP, not the cost — what is sent is the listing itself (~8.5k tokens), so the trims are the saving and the fraction is only the ratchet; (2) 0.04 would leave ~zero headroom, so the next skill added would break the gate. 0.05 keeps ~6,000 chars (~15 skills) of headroom, matching the previous commit's headroom convention. Constraint discovered: the Codex plugin carries only `description`, so the platform/Chinese triggers that `test_frontend_design_pipeline.py` requires must live in frontend-design's description, not only in `when_to_use` — and every trim must keep the golden-set phrases in `test_routing_eval.py` literally (substring matching).
 - [x] 🟡 ~~The six `email-*` skills have no hub~~ **Done 2026-09-20:** added the `email` hub (configs/skills/email/SKILL.md, routes check|audit|plan|review|sequence|write like `/blog`), `email-*` are name-only (81 overrides), `email` added to the codex-migration marketing-domain-bundles exclusion, and a golden routing test ("email inbox triage deliverability sequence" → email) wires the hub into `test_routing_eval.py`.
 - [ ] 🟡 `RESERVED_CHARS = 8000` (bundled skills always kept in full) was measured from one session on Claude Code 2.1.258. Re-measure after each Claude Code upgrade: run `claude -p ok --debug` on a 200k model and compare the "Skill listing over budget: N skills, K chars" line with `check-skill-listing.py --no-overrides`. (2026-09-20: still on 2.1.258, no re-measure needed; also pending when quota resets Sep 21 — a headless Haiku re-run of the 7 selection prompts against the trimmed listing, since the weekly limit blocked it today. The live install was verified arithmetically instead: `check-skill-listing.py --skills ~/.claude/skills --overrides ~/.claude/settings.json --usage ~/.claude.json` → fits, 0 dropped.)
+
+## 2026-09-20 pace-scale follow-ups
+
+- [ ] 🔵 **`claude-usage-watch.py:_elapsed_pct` hard-codes a 7-day period.**
+  Pointed at any longer window it clamps elapsed to 0, and `delta` silently
+  collapses to raw usage% while `projected` reads 0 — an "ahead" badge painted
+  the low-usage red. It cannot fire today because Claude Code's `seven_day`
+  really is seven days, and `test_claude_usage_watch.py` pins the clamp so the
+  trap is visible rather than latent. Take the period from the payload if a
+  second window is ever surfaced there.
+- [ ] 🔵 **The Kimi month window's START is inferred, not read.** Kimi's
+  `/api/v1/oauth/usage` returns only `usedRatio` and `resetAt` (verified
+  2026-09-20), so `_month_period` assumes the window opened exactly one
+  calendar month before the reset. That is right for a subscription renewing
+  on a fixed day and wrong for anything else, and nothing detects the
+  difference. Revisit with the upstream payload work in the Kimi footer item
+  above.

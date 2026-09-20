@@ -80,6 +80,12 @@ def test_normalize_calculates_weekly_pace_and_orders_codex_first() -> None:
     assert "◉ +12% pace" in codex_usage.format_rows(
         rows, theme="circles", style="detail"
     )
+    # Ahead of target is the top badge only while the projection stays sane:
+    # past 125% the burn empties the window with a fifth of it still to run.
+    assert codex_usage._symbol(12.5, "circles", 120.0) == "◉"
+    assert codex_usage._symbol(12.5, "circles", 125.1) == "○"
+    assert codex_usage._symbol(-20.0, "circles", 300.0) == "○"
+    assert codex_usage._symbol(0.0, "circles", 300.0) == "●"
     assert codex_usage.format_rows(
         rows, style="minimal", project="xingyushen", branch="main"
     ) == "xingyushen git:(main)+12% (4d)"

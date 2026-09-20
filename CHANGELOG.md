@@ -9,6 +9,19 @@ versioning for the `clade-mcp` Python package and tagged public releases.
 
 ### Changed
 
+- The quota pace scale is two-sided. `delta = used% − elapsed% × 0.95` is the
+  same number at every point in the window, but what a `+5` implies about the
+  overshoot is not: `95 + 500/elapsed%` projected, so 145% a tenth of the way
+  in and 101% at nine tenths. The top badge and the >100% green were therefore
+  shown for a burn that empties the window early — measured on the Kimi footer,
+  which has no `limit7d` and so paces against the 30-day month: `◉ +11% (27d)`
+  in the brightest green for 20.25% used at 9.9% elapsed, 204% projected, quota
+  gone on 2 October with 15 days left. Past 125% projected (the quota runs out
+  with a fifth of the window to go) the symbol drops to level 0 and the figure
+  turns red, on all three surfaces — `claude-usage-watch.py` (`slt`),
+  `kimi_usage.py` and `codex_usage.py`. Full weekly use is untouched: 100% used
+  at 93.8% elapsed is 107% projected and keeps its top badge.
+
 - The model-facing skill listing is trimmed from 38,660 to 33,998 characters
   and the budget fraction lowered from 0.06 to 0.05 (a 200k-window cap of
   40,000 chars; what is actually sent is the listing itself, ~8.5k tokens).
