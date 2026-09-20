@@ -104,6 +104,7 @@ GOLDEN_TOP3: list[tuple[str, str]] = [
     ("Google Ads Performance Max quality score", "ads-google"),
     ("Meta ads pixel CAPI Advantage+", "ads-meta"),
     ("generate an image design a logo", "banana"),
+    ("email inbox triage deliverability sequence", "email"),
     ("design UI component with the design system", "frontend-design"),
     ("优化网页 UI", "frontend-design"),
     ("优化 iOS 原生 App", "frontend-design"),

@@ -1,6 +1,6 @@
 ---
 name: codex-orchestrate
-description: Orchestrate a fleet of parallel `codex exec` workers with you (Claude Code) as the supervisor — spawn one per isolated git worktree, dispatch headless, verify each INDEPENDENTLY, PR/merge. The manual "codex-ultracode" pattern for fanning out real implementation, research, or review work onto Codex. Bakes in the hard gotchas (stdin blocking, background tracking, don't-trust-self-reports, writer isolation). Triggers on — orchestrate codex, codex workers, codex fleet, spawn codex, delegate to codex in parallel, manual ultracode, 开 codex 小弟, 派 codex worker — NOT for a single cross-vendor opinion (use the `second-opinion-codex` agent), NOT for web-UI worker decomposition (use `/orchestrate`).
+description: "Orchestrate a fleet of parallel `codex exec` workers with you as supervisor — one per isolated git worktree, dispatched headless, each verified INDEPENDENTLY, then PR/merge. The manual \"codex-ultracode\" fan-out pattern with the hard gotchas baked in (stdin blocking, background tracking, don't-trust-self-reports, writer isolation). Triggers: orchestrate codex, codex workers/fleet, spawn codex, delegate to codex in parallel, manual ultracode, 开 codex 小弟, 派 codex worker — NOT for a single cross-vendor opinion (second-opinion-codex agent) or web-UI worker decomposition (/orchestrate)."
 ---
 
 # Codex Orchestrate — you supervise a fleet of `codex exec` workers

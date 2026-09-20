@@ -1,7 +1,7 @@
 ---
 name: radar
-description: "Autonomous discovery of concepts, methods, and vocabulary we have NOT heard of yet — sweeps broadly, diffs against a known-concepts ledger, and reports only what is genuinely new plus whether it names a gap in this stack. Built because 'graph engineering' had to arrive by word of mouth: a fixed topic list can only refresh what you already named, so it can never surface the thing you did not know to look for. Use for periodic/scheduled discovery, 'what's new in agent engineering', 'what are we missing', 'anything we haven't heard of'. Triggers: radar, discover, what's new, unknown unknowns, 新概念, 我们没听过的, 有什么没跟上的 — NOT for researching a topic you can already name (use /research), NOT for model releases (use /model-research), NOT for internal priorities (use /next)."
-when_to_use: "periodic discovery of unknown-unknowns, scheduled concept sweeps, 'what has the field started saying that we don't say' — NOT for a named topic (/research), model releases (/model-research), or internal priorities (/next)"
+description: "Autonomous discovery of concepts, methods, and vocabulary we have NOT heard of yet — sweeps broadly, diffs against a known-concepts ledger, and reports only what is genuinely new plus whether it names a gap in this stack. A fixed topic list can only refresh what you already named; radar surfaces what you did not know to look for."
+when_to_use: "periodic/scheduled discovery of unknown-unknowns, concept sweeps, what's new in agent engineering, what are we missing, 新概念, 我们没听过的, 有什么没跟上的 — NOT for a named topic (/research), model releases (/model-research), or internal priorities (/next)"
 user_invocable: true
 ---
 

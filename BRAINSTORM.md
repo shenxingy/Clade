@@ -2759,3 +2759,68 @@ Two more surfaces checked, both verified live against Kimi 2.0.0:
   direct endpoint (#2937); a PR adding the managed quota to the
   `status_line.command` snapshot would make the cache-and-spawn machinery
   here unnecessary, and is the right long-term fix.
+
+## [Research] 2026-09-20 — Popular Agent Skills: sources to watch and what is worth absorbing
+
+Surveyed by a read-only research agent on 2026-09-20 (07:40–07:50 UTC); every
+number below is as displayed by the named source at that time, and "not shown"
+means the source displays no such metric. Prompted by the owner's question
+"现在是否有一些很火的 skill 值得学习，有什么 source". Triage rule applied:
+"different" is not "deficient" — a gap is only something Clade has nothing
+comparable to.
+
+### Sources (registries and aggregators)
+
+| Source | Lists | Popularity metric | Notes |
+|---|---|---|---|
+| skills.sh (Vercel) — https://skills.sh, API https://skills.sh/docs/api, audits https://skills.sh/audits | all-time / trending / hot leaderboards, packs, topics, official, audits | installs via `npx skills` telemetry | automated security audits since 2026-02 (Gen Agent Trust Hub + Socket + Snyk); malicious skills hidden; vendor onboarding docs inflate raw installs (Lark 16.3M, Azure 14.6M) |
+| anthropics/skills — https://github.com/anthropics/skills | 19 example skills + spec + template | 177,220★ | Apache-2.0 for frontend-design / skill-creator / mcp-builder / webapp-testing; docx/pdf/pptx/xlsx proprietary |
+| Agent Skills standard — https://agentskills.io, https://github.com/agentskills/agentskills | SKILL.md spec, ~45 client showcase | 25,527★ | Claude Code documents its frontmatter keys as extensions of this |
+| obra/superpowers — https://github.com/obra/superpowers (+ superpowers-marketplace) | 15 workflow skills | 288,949★; 1,009,371 installs on claude.com/plugins | also in the official marketplace |
+| Official plugin marketplace — https://claude.com/plugins, https://github.com/anthropics/claude-plugins-official | 310 plugins | per-plugin installs, "Anthropic Verified" badge | 36,519★ |
+| Community marketplace — https://github.com/anthropics/claude-plugins-community | 2,282 plugins, SHA-pinned | not shown | automated validation + safety screening on entry |
+| Awesome lists | ComposioHQ/awesome-claude-skills 75,360★; hesreallyhim/awesome-claude-code 54,332★; VoltAgent/awesome-agent-skills 34,625★ | curation only | the first two are the ones to watch; travisvn's list is stale (last push 2026-04-28) |
+| ClaudSkills — https://claudskills.com | 191,034+ SKILL.md files | installs; free A–F static security grade | independent |
+| claudemarketplaces.com | 23,600+ skills, 2,700+ marketplaces | installs + stars | independent |
+| ClawHub — https://clawhub.ai | OpenClaw skills | downloads | site of the Feb 2026 malicious-skill campaign (Snyk ToxicSkills) |
+
+### Skills that are demonstrably popular, with the Clade fit
+
+| Skill (source) | Metric | Fit |
+|---|---|---|
+| find-skills (vercel-labs/skills) | #1 skills.sh, 3.5M installs | covered: /equip + /research; registry search is the only delta |
+| grill-me (mattpocock/skills) | #2, 1.2M | covered by plan-mode interview, /orchestrate, /next deep — technique worth reading |
+| tdd (mattpocock) / test-driven-development (superpowers) | 933.5K / 231.1K | **gap**: rules/tests.md and red-phase-audit.py check test quality; nothing drives test-first |
+| frontend-design (anthropics) | #6, 903.8K; #1 on claude.com/plugins | covered, Clade's is broader |
+| agent-browser (vercel-labs) / webapp-testing | 890.7K / 160.0K | covered: /qa-explore, verify-app; a tool, not a skill |
+| handoff (mattpocock) | 835.7K | covered: /handoff, /pickup |
+| vercel-react-best-practices, web-design-guidelines (vercel-labs/agent-skills) | 727.8K / 649.9K | low: absorb as a path-scoped rule only if React projects matter |
+| code-review (mattpocock) | 583.6K | covered: /review-pr, code-reviewer, CC /code-review |
+| caveman (JuliusBrussee) | 523.7K; 106,842★ | covered: output-styles/terse.md; its proxy is a product |
+| skill-creator (anthropics) | 385.9K | covered: /skill-new |
+| brainstorming / writing-plans / executing-plans / systematic-debugging / verification-before-completion / subagent-driven-development (superpowers) | 369K … 195K each | covered: plan mode, /orchestrate, /batch-tasks, /investigate, /verify, /codex-orchestrate, /worktree |
+| ui-ux-pro-max (nextlevelbuilder) | 363.4K; 129,151★ | covered: /frontend-design + grid/canon + dataviz; its asset DB is different, not deficient |
+| mcp-builder (anthropics) | 116.5K | low gap: nothing comparable, niche |
+| pptx / pdf / docx / xlsx (anthropics) | 171K–224K | proprietary; install from source, cannot absorb |
+| karpathy-guidelines (multica-ai) | 214,211★ | covered: configs/CLAUDE.md + learned corrections |
+| gstack (garrytan) | 133,728★ | covered: /ship /cso /retro /document-release /investigate /qa-explore; small gaps: /benchmark, /canary |
+| ECC (affaan-m) | 263,136★; 301 skills | covered: /cso, correction pipeline ≈ "instincts"; small gap: no self-scan of the installed harness (hooks, MCP, permissions) |
+| claude-mem (thedotmack), planning-with-files (OthmanAdi) | 94,302★ / 27,006★ | covered: /handoff, /pickup, corrections, auto-memory, post-compact-reinject |
+| security-guidance, Ralph Loop, Feature Dev, Code Simplifier (official) | 196K–347K installs | covered: /cso, /loop, /orchestrate + /delivery, CC /simplify |
+| Trail of Bits skills | pack 365.2K | recipes absorbable into /cso references with attribution (CC-BY-SA-4.0) |
+
+### Trends worth knowing (2026)
+
+- Vendor and framework packs dominate raw install counts (Azure, Lark, HeyGen, remotion, expo, supabase); the official marketplace is mostly vendor MCP bundles.
+- Design skills top both leaderboards (frontend-design, web-design-guidelines, ui-ux-pro-max, taste-skill's design-taste-frontend at 497.5K).
+- Meta skills (skill-creator, mcp-builder, writing-great-skills) and per-skill context-cost tooling (`/skill-doctor`, the Stats tab, "Not used recently") — the same budget mechanism this repository measured on 2026-09-20.
+- Memory/planning skills are a new category (claude-mem, planning-with-files; awesome-claude-code added a Memory section).
+- Security: Snyk ToxicSkills (2026-02-05) — 36.82% of 3,984 scanned skills had a flaw, 76 confirmed malicious, 91% via prompt injection; skills.sh now audits before listing; Anthropic sanitises synced skill frontmatter and pins community plugins to SHAs. Clade's /equip screening is the local counterpart; the uncovered practice is scanning the *installed* harness.
+
+### Net gaps to consider (candidates for /equip, not decisions)
+
+1. A test-first workflow skill (tdd) — Clade checks tests after the fact and never drives red→green→refactor.
+2. A harness self-scan (installed hooks, MCP servers, permissions, plugin SHAs) — ECC's AgentShield shape.
+3. Optionally gstack's /benchmark and /canary.
+
+Everything else surveyed is covered or vendor-specific.

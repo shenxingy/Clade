@@ -103,6 +103,7 @@
         "ads-*",
         "blog",
         "blog-*",
+        "email",
         "email-*",
         "outbound",
         "seo",

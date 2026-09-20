@@ -421,10 +421,10 @@ Add try/except `ALTER TABLE` blocks in `task_schema.py:ensure_schema()`. New col
 committer "type: message" file1 file2 file3
 ```
 
-`committer` runs `.claude/pre-commit.sh` before it commits: the four drift gates,
+`committer` runs `.claude/pre-commit.sh` before it commits: the five drift gates,
 about one second. They are 26% of this repository's failed CI runs — 7 of the last
 27 failed on a drift gate and nothing else, which is a red run and a round trip for
-a check that costs a second locally. It is scoped to the four GENERATED surfaces on
+a check that costs a second locally. It is scoped to the five GENERATED surfaces on
 purpose; `ci-local.py` remains the gate before a push. A bare `git commit` bypasses
 it, which is accepted: `.git/hooks` is not versioned, so a hook there would exist
 only on the machine that installed it — the drift this gate exists to catch.
@@ -567,6 +567,20 @@ python3 configs/scripts/validate-skills.py configs/skills
 #     false; it had drifted to 33 of 75 keys, one of them no longer a setting.
 python3 configs/scripts/regen-settings-example.py --check   # regenerate without --check
 
+# 8c. Skill overrides drift gate — configs/settings-skill-overrides.json is
+#     GENERATED from the skills tree: every hub-family sub-skill (blog-*, seo-*,
+#     ads-*) listed `name-only`, plus the skillListingBudgetFraction that fits.
+#     Why it exists: Claude Code lists skills to the model inside a character
+#     budget of window × bytes/token × fraction (default 1% = 8,000 chars on a
+#     200k model) and, over budget, keeps descriptions by USAGE score — a skill
+#     nobody has invoked scores 0 and is listed by name only, so it can never be
+#     auto-selected. Measured 2026-09-20 (Claude Code 2.1.258): listing 66,408
+#     chars over 166 skills; 103 of Clade's 144 never used; on a stock install
+#     a 200k model drops all 142 and a 1M model drops 95 — the 95 name-only
+#     lines this repository's own sessions had been showing. install.sh merges
+#     the file into ~/.claude/settings.json, the user's own entries winning.
+python3 configs/scripts/regen-skill-overrides.py --check      # regenerate without --check
+
 # 9. Architecture map coverage — every orchestrator module listed in this file
 python3 configs/scripts/check-arch-map.py
 
@@ -603,6 +617,18 @@ python3 configs/scripts/check-layers.py
 #      front matter names must resolve. /create-pr advertised --dry-run and only
 #      ever published; a run asking to preview opened a real PR.
 python3 configs/scripts/check-skill-contracts.py
+
+# 10h. Skill listing budget — with the shipped overrides and fraction, does the
+#      whole model-facing listing fit a FRESH install on a 200k model, so no
+#      description is dropped? Reimplements the binary's arithmetic (entry =
+#      `- name: description - when_to_use` capped at 1536; greedy fill by usage
+#      score; ~8,000 chars reserved for the bundled skills that always keep
+#      theirs). Validated: with this machine's usage history it predicts the 95
+#      name-only skills the session prompt actually showed. Prints the minimum
+#      fraction when it fails; --usage ~/.claude.json shows what this machine
+#      keeps; --no-overrides shows the stock situation. Its --self-test has
+#      mutations in test_self_tests_can_fire.py.
+python3 configs/scripts/check-skill-listing.py
 
 # 10f. Runnable paths — if a skill tells you to run it, it must exist.
 #      check-references.py strips inline code spans by design, so every runnable
@@ -677,7 +703,7 @@ commit too.**
 
 On push/PR to `main`, four workflow files fire:
 
-- `ci.yml` — `syntax-check` (22 gates), `pytest` (suite + 2 offline evals),
+- `ci.yml` — `syntax-check` (24 gates), `pytest` (suite + 2 offline evals),
   `shell-tests` (21 suites), `install-test`. `run_hack_eval.py` scores
   `judge_diversity.test_integrity` against the labelled reward-hack corpus in
   `evals/hack_cases/` — read its README before changing either, because that

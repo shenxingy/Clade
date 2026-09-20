@@ -7,6 +7,37 @@ semantic versioning。
 
 ## Unreleased
 
+### 变更
+
+- 面向模型的技能清单从 38,660 字符精简到 33,998，预算分数从 0.06 降到
+  0.05（200k 窗口的预算上限为 40,000 字符；实际发送的是清单本身，约
+  8.5k token）。最长的描述——frontend-design、两个设计系统 canon、
+  localize、radar、codex-orchestrate、outbound、banana 等十余个——保留
+  全部 golden-set 触发词（由 `test_routing_eval.py` 门禁保证），只删冗余
+  叙述；email 家族新增 `email` hub，六个 `email-*` 子技能与 blog/seo/ads
+  家族一样改为 name-only（共 81 个 name-only override）。当前最小可用分数
+  为 0.0425；0.05 留有约 6,000 字符余量，约可容纳 15 个新技能。注意：
+  Codex 插件只携带 `description`，所以 `test_frontend_design_pipeline.py`
+  契约要求的平台词和中文触发词必须留在 frontend-design 的 description
+  里，不能只放在 `when_to_use`。
+
+### 修复
+
+- 从未被调用过的技能无法被自动选中。Claude Code 把技能清单塞进一个字符预算
+  （上下文窗口 × 每 token 字节数 × `skillListingBudgetFraction`，默认 1%——
+  200k 模型上是 8,000 字符）；超预算时按每个技能的使用得分保留描述，其余只列名
+  字；从未用过的技能得分为 0。2026-09-20 用 Claude Code 2.1.258 实测：清单
+  66,408 字符、166 个技能，Clade 的 144 个技能里 103 个从未用过，默认设置下
+  200k 模型会丢掉全部 142 个 Clade 描述，1M 模型丢掉 95 个。现在
+  `configs/settings-skill-overrides.json`（由 `regen-skill-overrides.py` 生成、
+  有漂移门禁）把所有 blog/seo/ads 子技能列为 `name-only`——仍由其 hub 通过
+  Skill 工具分发——并把预算分数设为 0.06；`install.sh` 把它合并进
+  `~/.claude/settings.json`，用户自己的条目优先。`check-skill-listing.py`
+  复算预算，把"全新安装的 200k 模型能放下整份面向模型的清单"作为门禁，并能
+  展示本机历史会保留什么（`--usage ~/.claude.json`）或默认情况
+  （`--no-overrides`）。改动后，200k 的 Haiku 会话对七条针对最新技能的请求
+  全部选中了预期技能。
+
 ### 新增
 
 - `/frontend-design` 现在把"设计感"作为可检查的规则携带，而不是形容词。

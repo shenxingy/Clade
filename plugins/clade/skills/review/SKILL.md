@@ -1,6 +1,6 @@
 ---
 name: review
-description: "Clade coverage-driven project review — walks every VERIFY.md checkpoint, fixes failures in-session, converges when all checkpoints pass. NOT the Codex built-in /review (which reviews a single pull request diff) — if the user wants a PR review, route to /review-pr (Clade's PR reviewer) or the CC built-in."
+description: "Clade coverage-driven project review — walks every VERIFY.md checkpoint, fixes failures in-session, converges when all pass. NOT the Codex built-in /review (single PR diff) — route PR reviews to /review-pr or the CC built-in."
 ---
 
 # Clade for Codex

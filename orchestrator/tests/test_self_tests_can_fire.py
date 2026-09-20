@@ -257,6 +257,23 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
          '("rate", re.compile(r"fires on (?:~|roughly |about )?(\\d+(?:\\.\\d+)?)\\s?%")),',
          ""),
     ],
+    "configs/scripts/check-skill-listing.py": [
+        ("the bundled-skill reserve — the budget reads 8,000 chars larger than it is",
+         "    listing = total + reserved\n",
+         "    listing = total\n"),
+        ("the 1536-char description cap",
+         "    if len(desc) > DESC_CAP:\n",
+         "    if False:\n"),
+        ("descending usage order — a never-used skill would outrank a used one",
+         "    candidates.sort(key=lambda n: -scores[n])",
+         "    candidates.sort(key=lambda n: scores[n])"),
+        ("the name-only override",
+         '    forced = {s["name"] for s in skills if overrides.get(s["name"]) == "name-only"}',
+         "    forced = set()"),
+        ("the 0.1 score floor — a skill unused for a year would decay to nothing",
+         "max(0.5 ** (days / 7), 0.1)",
+         "0.5 ** (days / 7)"),
+    ],
 }
 
 

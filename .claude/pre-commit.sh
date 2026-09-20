@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Clade's own pre-commit gate: the four drift checks, and nothing else.
+# Clade's own pre-commit gate: the five drift checks, and nothing else.
 #
 # They are here rather than in committer.sh or checks.sh because both of those
 # ship globally — committer.sh runs in 40+ repositories on this account — and a
@@ -44,6 +44,8 @@ run "Claude Code plugin manifest drift — run: python3 configs/scripts/regen-cc
     python3 configs/scripts/regen-cc-plugin.py --check
 run "settings reference drift — run: python3 configs/scripts/regen-settings-example.py" \
     python3 configs/scripts/regen-settings-example.py --check
+run "skill overrides drift — run: python3 configs/scripts/regen-skill-overrides.py" \
+    python3 configs/scripts/regen-skill-overrides.py --check
 
 if [[ $FAILED -ne 0 ]]; then
   echo ""

@@ -1,6 +1,6 @@
 ---
 name: skill-new
-description: "Scaffold a new Clade skill end-to-end — interviews for use cases and trigger phrases, generates SKILL.md + prompt.md with spec-validated frontmatter (bilingual triggers, NOT-for disambiguation), wires golden-set routing tests, and runs the lint gate before committing"
+description: "Scaffold a new Clade skill end-to-end — interview for use cases and trigger phrases, generate SKILL.md + prompt.md with spec-validated frontmatter (bilingual triggers, NOT-for disambiguation), wire golden-set routing tests, and run the lint gate before committing"
 when_to_use: "create a new skill, scaffold a skill, add a skill, write a new slash command, build a skill for X, 新建技能, 创建技能, 写个新技能 — NOT for hook generation (use /generate-hook), NOT for absorbing external skill repos (use /equip)"
 user_invocable: true
 argument-hint: '[skill-name or one-line description of what it should do]'

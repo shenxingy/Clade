@@ -1,7 +1,7 @@
 ---
 name: outbound
-description: Verify an artifact that is about to leave the building — a partnership brief, pitch page, press release, customer email, RFP response, or any document sent to someone outside the org. Runs six checks before send — premise, confidentiality forward-test, evidence class, cold read by recipient personas, AI read, and tone metrics — and returns what to change with replacement copy. Use before sending anything outward-facing that carries customer detail, factual claims about a counterparty, or an ask.
-when_to_use: "before sending, check this before it goes out, outbound review, pitch review, is this safe to send, cold read, how does this land, review before I email them, partnership brief review, 发出去之前检查, 对外物料审查 — NOT for reviewing code (use /review-pr), NOT for the corrections meta-file (use /audit), NOT for blog or ad copy quality (use /blog-audit, /ads-audit)"
+description: Verify an artifact about to leave the building — partnership brief, pitch page, press release, customer email, RFP response, or any document sent outside the org. Six checks before send — premise, confidentiality forward-test, evidence class, cold read by recipient personas, AI read, tone metrics — returning what to change with replacement copy.
+when_to_use: "before sending, check this before it goes out, outbound review, pitch review, is this safe to send, cold read, how does this land, review before I email them, partnership brief review, 发出去之前检查, 对外物料审查 — NOT for code review (/review-pr), the corrections meta-file (/audit), or blog/ad copy quality (/blog-audit, /ads-audit)"
 user_invocable: true
 allowed-tools:
   - Read
