@@ -38,6 +38,12 @@ from pathlib import Path
 from typing import Any
 
 TARGET_RATE = 0.95
+# Projected utilization past which "ahead of target" is a blowout, not a grade:
+# 125% runs the quota out with a fifth of the window still to go. It matters far
+# more here than on a weekly window — this plan has no limit7d, so pace_row()
+# falls through to a 30-DAY window, where +5 delta three days in is 145%
+# projected and a fortnight of lockout, and the old scale called it "crushing it".
+OVERPACE_PROJECTED = 125.0
 BOOT_TIMEOUT = 30.0
 REQUEST_TIMEOUT = 8.0
 SHUTDOWN_GRACE = 3.0
@@ -475,8 +481,15 @@ def _style_name(home: Path | None = None) -> str:
     return name if name in STYLES else "icon"
 
 
-def _symbol(delta: float, theme: str) -> str:
+def _overpacing(delta: float, projected: float) -> bool:
+    """Ahead of target AND burning fast enough to run dry before the reset."""
+    return delta >= 5 and projected > OVERPACE_PROJECTED
+
+
+def _symbol(delta: float, theme: str, projected: float) -> str:
     symbols = THEMES[theme]
+    if _overpacing(delta, projected):
+        return symbols[0]
     if delta < -15:
         return symbols[0]
     if delta < -5:
@@ -491,9 +504,13 @@ def _signed(delta: float) -> str:
     return f"{'+' if display >= 0 else ''}{display}%"
 
 
-def _pace_color(projected: float) -> str:
+def _pace_color(projected: float, delta: float) -> str:
     # Same muted gradient as the Claude Code status line: soft red at 0%
     # projected, amber at 50%, sage green at 95%, a shade brighter past 100%.
+    # Overpacing gets the burst window's red instead: 101% and 205% projected
+    # were the same green, and 205% is the one that runs dry a fortnight early.
+    if _overpacing(delta, projected):
+        return "\033[38;2;185;28;28m"
     if projected > 100:
         return "\033[38;2;85;160;85m"
     p = max(0.0, min(projected, 95.0))
@@ -527,8 +544,9 @@ def usage_segment(
     if pace is not None:
         resets_at = pace.get("resets_at")
         delta = float(pace["pace_delta"])
-        sym = _symbol(delta, theme)
-        col = _pace_color(float(pace["projected_percent"])) if color else ""
+        projected = float(pace.get("projected_percent") or 0.0)
+        sym = _symbol(delta, theme, projected)
+        col = _pace_color(projected, delta) if color else ""
         end = RESET if color else ""
         if isinstance(resets_at, (int, float)) and resets_at < now:
             # Last cycle's numbers: neutral symbol, dimmed, no pace claimed.
@@ -563,7 +581,8 @@ def format_rows(rows: list[dict[str, Any]], theme: str, now: float | None = None
         line = f"  {labels[row['window']].ljust(width)}  {used:>3}% used"
         if row["window"] != "5h":
             delta = float(row["pace_delta"])
-            line += f" · {_symbol(delta, theme)} {_signed(delta)} pace"
+            projected = float(row.get("projected_percent") or 0.0)
+            line += f" · {_symbol(delta, theme, projected)} {_signed(delta)} pace"
         line += f" · resets in {row['resets_in']}"
         if "code_percent" in row:
             kimi = int(round(float(row["kimi_percent"])))

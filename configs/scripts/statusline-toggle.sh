@@ -58,7 +58,7 @@ _show_theme_stages() {
   local l1; l1=$(_field "$data" 6)
   local l2; l2=$(_field "$data" 7)
   local l3; l3=$(_field "$data" 8)
-  echo "  $e0  $l0     (delta < -15%)"
+  echo "  $e0  $l0     (delta < -15%, or projected > 125%)"
   echo "  $e1  $l1     (-15% to -5%)"
   echo "  $e2  $l2     (-5% to +5%)"
   echo "  $e3  $l3     (delta > +5%)"

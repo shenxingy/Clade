@@ -182,12 +182,53 @@ def test_usage_segment_marks_a_rolled_over_window_as_stale() -> None:
 
 
 def test_symbol_thresholds_and_theme_fallback() -> None:
-    assert kimi_usage._symbol(-20, "circles") == "○"
-    assert kimi_usage._symbol(-10, "circles") == "◑"
-    assert kimi_usage._symbol(0, "circles") == "●"
-    assert kimi_usage._symbol(6, "dragon") == "👑"
+    assert kimi_usage._symbol(-20, "circles", 50.0) == "○"
+    assert kimi_usage._symbol(-10, "circles", 80.0) == "◑"
+    assert kimi_usage._symbol(0, "circles", 95.0) == "●"
+    assert kimi_usage._symbol(6, "dragon", 110.0) == "👑"
     assert kimi_usage._signed(-0.4) == "+0%"
     assert kimi_usage._signed(-7.6) == "-8%"
+
+
+def test_a_blowout_projection_loses_the_top_badge_and_turns_red() -> None:
+    """A positive delta alone never earns the badge — the projection decides.
+
+    The +5 that used to earn it means a different overshoot at every point in
+    the window (95 + 500/elapsed%), so on the 30-day month it read "crushing
+    it" three days in while projecting a fortnight of lockout.
+    """
+    # Ahead of target and landing just past it: still the top badge.
+    assert kimi_usage._symbol(12.5, "circles", 120.0) == "◉"
+    # Same delta, same "ahead", but the quota empties with a fifth left to run.
+    assert kimi_usage._symbol(12.5, "circles", 125.1) == "○"
+    # The real 2026-09-20 reading: +11% at 9.9% elapsed = 204% projected.
+    assert kimi_usage._symbol(10.8, "circles", 203.8) == "○"
+    # Being BEHIND is untouched by the guard, whatever the projection says.
+    assert kimi_usage._symbol(0.0, "circles", 300.0) == "●"
+    assert kimi_usage._symbol(-20.0, "circles", 300.0) == "○"
+    # The colour follows the same predicate, so the two cannot disagree.
+    assert kimi_usage._pace_color(203.8, 10.8) == "\033[38;2;185;28;28m"
+    assert kimi_usage._pace_color(120.0, 12.5) == "\033[38;2;85;160;85m"
+
+
+def test_month_window_blowout_renders_end_to_end() -> None:
+    """The live 2026-09-20 reading, pinned to its own dates.
+
+    Kimi exposes no `limit7d` on this plan, so `pace_row()` falls through to
+    the 30-day month: 20.25% used against 9.9% elapsed is 204% projected — the
+    quota empties on 2 October with 15 days of the window still to run. The
+    scale rendered that as its top badge in the brightest green.
+    """
+    reset = datetime(2026, 10, 18, tzinfo=timezone.utc).timestamp()
+    now = datetime(2026, 9, 20, 23, 33, tzinfo=timezone.utc).timestamp()
+    rows = kimi_usage.normalize(
+        _quota(monthTotal={"usedRatio": 0.2025, "resetAt": _iso(reset)}), now=now
+    )
+    month = rows[-1]
+    assert month["window"] == "month" and month["period_s"] == 30 * 86400
+    assert month["elapsed_percent"] == 9.9
+    assert month["pace_delta"] == 10.8 and month["projected_percent"] == 203.8
+    assert kimi_usage.usage_segment(rows, "icon", "circles", now, color=False) == "○ +11% (27d)"
 
 
 def test_format_rows_reads_like_the_usage_panel_plus_pace() -> None:

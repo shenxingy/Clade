@@ -207,15 +207,22 @@ The indicator shows `delta = usage% − elapsed% × 0.95`:
 - **positive** = ahead of target (`+8%` means you've used 8% more than the target pace)
 - **negative** = behind target (`−12%` means you're lagging behind)
 
+A positive delta is not automatically good. The same `+5` that earns the top
+badge means a different overshoot at every point in the window — `95 + 500/elapsed%`
+projected, so 145% three days into a month and 101% on the last day. Once the
+projection passes **125%** (the quota runs out with a fifth of the window still
+to go) both the symbol and the colour report it as a failure, not as the top grade.
+
 This is linear: 1pt delta always represents the same amount of token usage, regardless of the day of the week. (Unlike a projected-end% metric, which would count the same tokens as more significant early in the week.)
 
 ### Color Gradient
 
-Color is based on projected week-end utilization (a separate calculation used only for coloring). Muted palette — low saturation so the indicator doesn't compete with the prompt:
+Color is based on projected week-end utilization — a separate calculation from the delta, and since the overpace guard landed it decides the symbol as well. Muted palette — low saturation so the indicator doesn't compete with the prompt:
 
 | Color | Projected utilization | Meaning |
 |-------|-----------------------|---------|
-| Soft green | > 100% | Overpacing |
+| Red | > 125% (and ahead of target) | Overpacing — quota gone before the window ends |
+| Soft green | 100–125% | Fully used, lands just past target |
 | Sage green | ~95% | Excellent — right on target |
 | Amber | ~50% | Moderate usage |
 | Soft red | ~0% | Very low usage |
@@ -240,10 +247,13 @@ Each theme maps to four delta thresholds:
 
 | Stage | Delta | Meaning |
 |-------|-------|---------|
-| level 0 | < −15% | Far behind target |
+| level 0 | < −15%, or projected > 125% | Far behind target, **or** overpacing |
 | level 1 | −15% to −5% | A bit behind |
 | level 2 | −5% to +5% | On track |
-| level 3 | > +5% | Ahead of target |
+| level 3 | > +5%, projected ≤ 125% | Ahead of target |
+
+The scale is two-sided: level 0 is "wrong amount of quota for the time left",
+and both under-use and a projected blowout are that.
 
 ```bash
 slt theme           # list all themes (current marked with →)

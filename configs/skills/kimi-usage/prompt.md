@@ -34,6 +34,11 @@ configure Kimi Code's footer status line.
 - The pace symbol and `+N%` / `-N%` compare the long window (weekly if the
   plan has one, otherwise monthly) against a 95% target: `delta = used% −
   elapsed% × 0.95`. Positive means ahead of the target pace, negative behind.
+  Positive is not automatically good: once the projection passes 125% (quota
+  gone with a fifth of the window left) the symbol drops to the bottom level
+  and the figure turns red. On this plan that matters — Kimi exposes no
+  `limit7d`, so the pace window is the 30-day month, where +5 three days in
+  already projects 145%.
   The 5-hour window is a burst cap, so it is shown as used% plus time to
   reset, not as a pace.
 - `kimi N% · code N%` splits the monthly total between the Kimi app and Kimi
