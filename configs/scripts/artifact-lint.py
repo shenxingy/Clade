@@ -209,7 +209,11 @@ class _Page(HTMLParser):
                 self._svg = {"big": big, "in_figure": self._fig_depth > 0,
                              "labelled": bool(a.get("aria-label") or a.get("aria-labelledby")) and a.get("role", "") == "img",
                              "colors": set(), "fonts": [], "titled": False,
-                             "current": False}
+                             "current": False,
+                             # a palette reference figure is the one drawing whose
+                             # job is to show many literal colours; it opts out of
+                             # the palette and theme counts, explicitly, per figure
+                             "ignore_palette": "palette" in a.get("data-artifact-lint", "")}
                 if big:
                     self.big_svgs.append(self._svg)
         elif self._svg_depth and self._svg is not None:
@@ -381,8 +385,10 @@ def lint_html(html: str, *, declared_type: str | None = None) -> tuple[list[Find
     literal_sites = len(re.findall(r"#[0-9a-fA-F]{3,6}\b", re.sub(r":root\s*\{[^}]*\}|\[data-theme[^{]*\{[^}]*\}|@media[^{]*\{[^{]*:root[^{]*\{[^}]*\}", "", css)))
     if has_tokens and literal_sites > 12:
         add("color-literals", "WARN" if literal_sites > 24 else "INFO", f"{literal_sites} hex literals outside the token blocks; components should read var(--…)")
-    if "font-family" in css and not re.search(r"font-family\s*:[^;]*,", css):
-        add("font-fallback", "WARN", "a font-family with no fallback stack; an intranet page cannot fetch a face it names")
+    bare_fonts = [v.strip() for v in re.findall(r"font-family\s*:([^;}]+)", css)
+                  if "," not in v and "var(" not in v and "inherit" not in v]
+    if bare_fonts:
+        add("font-fallback", "WARN", f"a font-family with no fallback stack ({bare_fonts[0][:40]!r}); an intranet page cannot fetch a face it names")
     if _PLACEHOLDER.search(text):
         add("placeholder", "FAIL", "placeholder text left in the visible page (lorem ipsum / TBD / TODO: / XXX / FIXME)")
     banned = _BANNED_COPY.search(text)
@@ -476,13 +482,14 @@ def lint_html(html: str, *, declared_type: str | None = None) -> tuple[list[Find
     if small:
         add("svg-text-size", "WARN", f"{len(small)} chart(s) with text under 10px at drawn scale (smallest {min(small):g}); tick labels must be legible in a screenshot")
     palette: set[str] = set()
-    for s in p.big_svgs:
+    counted = [s for s in p.big_svgs if not s["ignore_palette"]]
+    for s in counted:
         cs = s["colors"]
         assert isinstance(cs, set)
         palette |= {c for c in cs if not _GREY.match(c)}
     if len(palette) > 8:
-        add("svg-palette", "WARN", f"{len(palette)} distinct chromatic colours across the page's charts; ≤ 8 categorical hues, assigned in fixed order, one meaning each")
-    if p.big_svgs and "prefers-color-scheme" in css and not any(s["current"] for s in p.big_svgs) and palette:
+        add("svg-palette", "WARN", f"{len(palette)} distinct chromatic colours across the page's charts; ≤ 8 categorical hues, assigned in fixed order, one meaning each (a palette swatch figure may carry data-artifact-lint=\"ignore-palette\")")
+    if counted and "prefers-color-scheme" in css and not any(s["current"] for s in counted) and palette:
         add("svg-theme", "WARN", "charts use only literal colours while the page has a dark mode; text and axes should use currentColor / var(--ink) so they survive the theme")
 
     stats: dict[str, object] = {
@@ -634,6 +641,10 @@ def _self_test() -> int:
                      ("svg-aria", "WARN"), ("svg-text-size", "WARN"), ("svg-palette", "WARN"),
                      ("type-undeclared", "INFO")):
         expect(bids.get(fid) == lvl, f"bad page should carry {fid}={lvl}, got {bids.get(fid)}")
+    swatch = _BAD.replace('<figure><svg viewBox="0 0 600 200">', '<figure><svg viewBox="0 0 600 200" data-artifact-lint="ignore-palette">')
+    sids = {f for f, _, _ in lint_html(swatch)[0]}
+    expect("svg-palette" not in sids, "a figure marked ignore-palette is left out of the palette count")
+    expect("svg-text-size" in sids, "the opt-out covers colours only, not the other figure checks")
     tables_only = re.sub(r"<figure>.*?</figure>", "", _BAD, flags=re.S)
     tids = {f: lvl for f, lvl, _ in lint_html(tables_only)[0]}
     expect(tids.get("wall-of-tables") == "WARN", "six tables and no figure is a wall of tables")
@@ -656,6 +667,9 @@ def _self_test() -> int:
     wl2, _ = lint_html(broken)
     expect(any(f == "worklog-header" for f, _, _ in wl2), "a work-log missing Blockers is flagged")
 
+    # a stack held in a custom property is a stack
+    tok = _GOOD.replace("body{font-family:Menlo,monospace;", "body{font-family:var(--mono);").replace(":root{--ink:#0a0a0a;", ":root{--mono:Menlo,monospace;--ink:#0a0a0a;")
+    expect("font-fallback" not in {f for f, _, _ in lint_html(tok)[0]}, "font-family: var(--stack) is not a bare face")
     # a single-theme declaration silences the theme checks, and only those
     st = _GOOD.replace("@media (prefers-color-scheme: dark){:root:not([data-theme=\"light\"]){--ink:#eee;--bg:#111}}", "<!--artifact:single-theme-->")
     st = st.replace("</style></head>", "</style><!--artifact:single-theme--></head>")

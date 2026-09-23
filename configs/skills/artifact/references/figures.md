@@ -166,7 +166,10 @@ body { background: var(--bg); color: var(--ink); }
 
 In the SVG: `fill="currentColor"` and `stroke="currentColor"` for text, axes
 and ticks; `fill="var(--c1)"` for series; `stroke="var(--grid)"` for grid
-lines. A literal hex inside a chart is the one colour that carries meaning
+lines. The one figure allowed to carry many literal hexes is a palette swatch
+whose job is to show them; mark it `data-artifact-lint="ignore-palette"` on
+the `<svg>` and say so in its caption — the lint then leaves that figure out
+of the palette and theme counts and nothing else. A literal hex inside a chart is the one colour that carries meaning
 and has been checked on both grounds — and even that is better as a token.
 Inline the SVG; an `<img src="chart.svg">` cannot see the page's tokens, so
 `currentColor` resolves to nothing across that boundary. *(lint:
