@@ -1221,5 +1221,10 @@ Shipped: `/artifact` skill + references, `configs/scripts/artifact-lint.py`
       TODO · Blockers header; ship the header in the protocol's page template.
 - [ ] Measure reading, not only structure: page-level reads from the hub's
       access logs, so "legible at a glance" becomes a behaviour, not a claim.
+- [ ] Ship `/artifact` natively in the Codex plugin: today it sits in the
+      `specialized-opt-in-workflows` exclusion because its prompt leans on the
+      Claude-bundled `dataviz` / `artifact-diagramming` skills and on
+      `~/.claude/scripts/artifact-lint.py`; a native version bundles the lint
+      the way `/green` bundles `ci-local.py` and inlines the figure rules.
 - [ ] Contrast in the lint: `design-lint html` already computes the pairs;
       wire it into `artifact-lint` as an optional check instead of a second run.
