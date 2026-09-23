@@ -17,7 +17,7 @@ The strongest pages share one decoded shape (claim headline, number strip
 with denominators, graded verdict, colour key and terms, claim headings,
 reading lines under tables, an instruction as the close). Shipped as the
 `/artifact` skill with three references, `artifact-lint.py` (22 checks,
-bilingual, `--survey`, 15 pinned mutations), a path-scoped rule, and an
+bilingual, `--survey`, 17 pinned mutations), a path-scoped rule, and an
 internal exemplar page rendered in both themes. Study:
 docs/research/2026-09-23-artifact-standard.md.
 

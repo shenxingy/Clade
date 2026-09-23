@@ -1209,7 +1209,7 @@ record is wrong**. The four below were reproduced by hand before filing.
 
 Study: [docs/research/2026-09-23-artifact-standard.md](docs/research/2026-09-23-artifact-standard.md).
 Shipped: `/artifact` skill + references, `configs/scripts/artifact-lint.py`
-(22 checks, `--survey`, `--self-test` with 15 pinned mutations),
+(22 checks, `--survey`, `--self-test` with 17 pinned mutations),
 `configs/rules/artifact.md`, `/landscape` pointer, the internal exemplar page.
 
 - [ ] Publisher head standard upstream: the memory system's artifact publisher

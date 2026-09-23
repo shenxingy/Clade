@@ -56,7 +56,7 @@ this public copy; the internal exemplar page carries them.
   (fixed by also reading `id`/`class` and in-page nav text); charset/viewport
   order was scored as a defect; an abstract placed in a `<div>` was scored
   missing. The self-test carries fixtures for each, and
-  `orchestrator/tests/test_self_tests_can_fire.py` carries 15 mutations
+  `orchestrator/tests/test_self_tests_can_fire.py` carries 17 mutations
   that must turn it red.
 
 ## 2. What the hub looks like
@@ -94,8 +94,10 @@ Reproduce: `python3 configs/scripts/artifact-lint.py --survey <hub root>
 --alias <owner-id>=<name> …`. The table is the script's own output.
 
 **Reading the table.** The owner's pages are at or above the most-published
-author's on eight of ten structural checks; the two where they trail are the
-next-step section (29% vs 40%) and figures (39% vs 47%). "Missing content"
+author's on six of ten structural checks; of the four where they trail, two
+are within a few points (headline as a claim 59% vs 64%, deck 92% vs 96%) and
+two are substantive — the next-step section (29% vs 40%) and figures (39% vs
+47%). "Missing content"
 is, measured, three sections: key & terms, limits, next step. "Stated
 unclearly" is, measured, the absence of a figure and of a denominator beside
 the rate. Neither is an authoring-talent gap — no group clears 62% on any of
@@ -182,7 +184,7 @@ live in the skill's references; the convergence is the point:
 | spines | `…/references/spines.md` | universal front and back matter; one body spine per type (finding, status, architecture, rca, handoff, decision, reference, worklog) |
 | figures | `…/references/figures.md` | procedure, 32 sourced rules, Okabe–Ito and Tol hexes, the two-theme token pattern, chart anatomy, checklist |
 | diagrams | `…/references/diagrams.md` | which diagram for which question, C4 notation rules, six-class legend with light/dark tokens, Mermaid vs SVG |
-| lint | `configs/scripts/artifact-lint.py` | 22 checks (FAIL/WARN/INFO), `<meta name="artifact-type">` profiles, `--survey`, `--self-test`; 15 mutations pinned |
+| lint | `configs/scripts/artifact-lint.py` | 22 checks (FAIL/WARN/INFO), `<meta name="artifact-type">` profiles, `--survey`, `--self-test`; 17 mutations pinned |
 | rule | `configs/rules/artifact.md` | injected when a `**/artifacts/**/*.html` (and siblings) is edited |
 | `/landscape` | `configs/skills/landscape/prompt.md` | now points at the artifact references instead of carrying its own diagram rules |
 | exemplar | internal hub, slug `artifact-standard` | the study as a page, written with the skill, linted clean, screenshot in both themes |
@@ -196,7 +198,7 @@ cannot check is stated as a screenshot-review item, not left implicit.
 |---|---|---|---|
 | 1 | structural extraction of 66 + 63 pages; first heuristic survey | five mis-firing heuristics (§1) | all five; self-test fixtures |
 | 2 | calibrated survey; the strongest pages re-linted | strongest page: 1 FAIL (remote font), 2 WARN (literal chart colours, 107 literal hex) — all real | thresholds; role detection via ids |
-| 3 | the exemplar page written with the skill, linted, rendered light/dark/phone | see the exemplar's own "loop" section | |
+| 3 | the exemplar page written with the skill, linted with both lints, rendered light/dark/phone | a palette swatch figure legitimately carries 15 literal colours; `font-family: var(--stack)` was scored as a bare face (a lint defect); the page's own description of the placeholder check tripped it; the nav removed its focus outline; dark-mode chips had 2.3:1 text | lint: a per-figure `data-artifact-lint="ignore-palette"` opt-out and token-stack recognition, each with a fixture and a mutation; page: three wording/CSS fixes. No rule or threshold changed — converged |
 
 Convergence criterion: a round that changes no rule and no threshold.
 
