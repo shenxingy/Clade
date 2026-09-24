@@ -41,6 +41,7 @@ python3 configs/scripts/codex-plugin-update.py
 cachebuster。脚本将完整旧版本备份到 `~/.clade/codex-plugin-backups/`，调用
 官方安装命令，再恢复缺失的旧路径。安装失败或中断也会尝试恢复；校验摘要，
 拒绝覆盖不同内容，不修改 hook 逻辑或信任设置。CLI 替换过程仍有短暂窗口，
+已失效的缓存别名会报告并跳过；bundle 内或指向有效 bundle 的符号链接会被拒绝。
 脚本返回后再恢复其他会话。直接用 CLI/app 更新不受此保护。
 
 旧会话退出前保留备份与旧目录。进程被强制终止时，可在普通终端运行：

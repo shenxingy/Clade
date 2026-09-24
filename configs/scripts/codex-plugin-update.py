@@ -48,6 +48,11 @@ def snapshot(home: Path, backups: Path) -> Path:
     saved = Path(tempfile.mkdtemp(prefix="clade-", dir=backups))
     versions = {}
     for bundle in sorted(root.iterdir()) if root.exists() else []:
+        if bundle.is_symlink() and not bundle.exists():
+            # Historical aliases may outlive their target. They are already
+            # unusable, not installed bundles; never follow or recreate them.
+            print(f"Skipping dangling cache alias: {bundle}", flush=True)
+            continue
         plain_path(bundle)
         name = version_name(bundle.name)
         manifest = bundle / ".codex-plugin/plugin.json"

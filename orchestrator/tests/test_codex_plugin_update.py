@@ -135,3 +135,15 @@ def test_symlink_and_concurrent_update_refuse_before_cli(updater, tmp_path, monk
 def test_first_install_without_old_cache(updater, tmp_path, monkeypatch):
     monkeypatch.setattr(updater.subprocess, "run", lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0))
     assert updater.update(tmp_path / "codex", tmp_path / "backups") == 0
+
+
+def test_historical_dangling_alias_does_not_prevent_bundle_backup(updater, tmp_path, capsys):
+    home = tmp_path / "codex"
+    old = bundle(home, "old")
+    alias = old.parent / "0.3.1"
+    alias.symlink_to("removed-version", target_is_directory=True)
+    saved = updater.snapshot(home, tmp_path / "backups")
+    assert "Skipping dangling cache alias" in capsys.readouterr().out
+    index = json.loads((saved / "snapshot.json").read_text())
+    assert list(index["versions"]) == ["old"]
+    assert alias.is_symlink()

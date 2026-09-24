@@ -45,6 +45,8 @@ old bundles under `~/.clade/codex-plugin-backups/`, runs the official
 `codex plugin add`, then restores missing old paths even if installation fails
 or is interrupted. Checksums and conflicts are checked before restoration;
 existing different files, hook logic and trust settings are never replaced.
+Already broken cache aliases are reported and skipped; symlinks in a bundle
+or to a live bundle are rejected.
 This does not make the CLI's replacement atomic: resume other sessions only
 after the helper returns. Raw CLI/app updates do not use this protection.
 
