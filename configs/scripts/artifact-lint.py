@@ -10,7 +10,7 @@ prose, and a rule the script cannot check is not in this file.
     python3 artifact-lint.py page.html            # findings, exit 1 on FAIL
     python3 artifact-lint.py page.html --strict   # WARN also fails
     python3 artifact-lint.py page.html --json
-    python3 artifact-lint.py --survey /srv/artifacts --alias ben-ren=benren
+    python3 artifact-lint.py --survey /path/to/hub --alias jane-doe=jdoe
     python3 artifact-lint.py --self-test
 
 Why it exists — measured on 2026-09-23 over one company artifact hub (936
@@ -607,7 +607,7 @@ on the 31,903-row test split it is the same model as its control. Judge it where
 <h2>Colour key and terms</h2><p>Solid chips are models; tinted chips are datasets.</p>
 <h2 id="b">Why the AUC went up anyway</h2><p>The set is self-made; 54 of 54 originals share one producer.</p>
 <h2>Limitations and claims we do not make</h2><p>Not tested on scans.</p>
-<h2 id="next">Judge it where it ships.</h2><p>Score on the customer's real fraud set, owner Stephen, by 2026-09-30.</p>
+<h2 id="next">Judge it where it ships.</h2><p>Score on the customer's real fraud set, owner named, by 2026-09-30.</p>
 <h2 id="method">How this was measured</h2><p>Re-scored with the sweep harness, five seeds, the same split.</p>
 <h2>Sources and reproduction</h2><p>runs/v9/, seed 0-4.</p>
 </body></html>"""
@@ -698,18 +698,18 @@ def _self_test() -> int:
     # survey grouping on a temp hub
     import tempfile
     with tempfile.TemporaryDirectory() as tmp:
-        for i, (who, html) in enumerate((("person:ben-ren", _GOOD), ("benren", _BAD), ("alex", _BAD), ("alex", _GOOD), ("x", _WORKLOG))):
+        for i, (who, html) in enumerate((("person:jane-doe", _GOOD), ("jdoe", _BAD), ("kim", _BAD), ("kim", _GOOD), ("x", _WORKLOG))):
             d = os.path.join(tmp, f"worklog-{i}" if html is _WORKLOG else f"p{i}")
             os.makedirs(d)
             with open(os.path.join(d, "index.html"), "w", encoding="utf-8") as fh:
                 fh.write(html)
             with open(os.path.join(d, "manifest.json"), "w", encoding="utf-8") as fh:
                 json.dump({"owner": who, "published_at": "2026-09-23T00:00:00Z"}, fh)
-        rows, table = survey(tmp, {"ben-ren": "ben"}, min_n=1)
+        rows, table = survey(tmp, {"jane-doe": "jane"}, min_n=1)
         expect(len(rows) == 5, f"survey lints every page, got {len(rows)}")
-        expect(sum(1 for r in rows if r["group"] == "ben") == 1, "owner prefix is stripped and aliased")
+        expect(sum(1 for r in rows if r["group"] == "jane") == 1, "owner prefix is stripped and aliased")
         expect(any(r["kind"] == "worklog" for r in rows), "worklog- slugs are linted as work-logs")
-        expect("alex" in table and "ben" in table, "survey table lists every group")
+        expect("kim" in table and "jane" in table, "survey table lists every group")
 
     if failures:
         print("artifact-lint --self-test: FAIL")

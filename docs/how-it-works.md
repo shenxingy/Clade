@@ -97,7 +97,7 @@ Claude auto-selects agents. Haiku agents are fast and cheap for mechanical check
 
 **`/research`** runs a structured deep-dive on a topic — web search, synthesize findings, save to `docs/research/<topic>.md`. Useful before starting a complex feature.
 
-**`/map`** generates a codebase map: module dependency graph and key components, saved as `ARCHITECTURE.md` with a Mermaid module diagram. It reads the tree only — no git history, and no ownership data. For who-owns-what, use `/landscape`. (`.claude/AGENTS.md` is written by the orchestrator's own flow, not by `/map`.)
+**`/map`** generates a codebase map: module dependency graph and key components, saved as `ARCHITECTURE.md` with a Mermaid module diagram. It reads the tree only — no git history, and no ownership data. For who-owns-what, use `/landscape`; for any single report page (finding, status, RCA, handoff) use `/artifact`, whose `references/` hold the section spine, figure and diagram rules and whose `artifact-lint.py` checks a page before it is published. (`.claude/AGENTS.md` is written by the orchestrator's own flow, not by `/map`.)
 
 **`/incident`** activates incident response mode: diagnose the issue, propose a root cause, draft a postmortem, and add follow-up tasks to TODO.md.
 

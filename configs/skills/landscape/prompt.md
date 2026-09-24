@@ -73,7 +73,8 @@ Body:
     different outcome.
 12. **Gap** — a capability ladder, never a two-column table. Per capability:
     five named levels, today's level, **the evidence for that level**, the
-    target, and the specific blocker on the next rung.
+    target, and the specific blocker on the next rung — and **why the gap is
+    where it is** (`id="why"`): the mechanism, and the explanations ruled out.
 13. **Next step, expanded** — exactly one action, with definition of done,
     verifier, owner, blast radius, and what it explicitly is not. One. A list of
     five is a backlog and defers the decision the report exists to force.
@@ -84,7 +85,9 @@ Back matter:
 
 15. **Glossary** — PhD, PM and SWE do not share a referent for "agent",
     "worker", "task" or "attempt".
-16. **Evidence and provenance** — for every number: source, method, date.
+16. **Evidence, provenance and what was done** (`id="method"`) — for every
+    number: source, method, date; and the research log — what was read, run
+    and compared, in order — so a successor can repeat it.
 17. **What this report does not cover** — the declared scope boundary.
 
 **Deliberately excluded as ceremony**, so nobody adds them back: code-level

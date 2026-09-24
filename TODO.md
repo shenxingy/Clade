@@ -1212,11 +1212,15 @@ Shipped: `/artifact` skill + references, `configs/scripts/artifact-lint.py`
 (24 checks, `--survey`, `--self-test` with 19 pinned mutations),
 `configs/rules/artifact.md`, `/landscape` pointer, the internal exemplar page.
 
-- [ ] Publisher head standard upstream: the memory system's artifact publisher
-      emits pages that start with `<title>` — 341 of the hub's 384 head-standard
-      failures at the evening snapshot (331 of 386 at the morning one). Fix opened as a PR on that repository (2026-09-23, eight tests,
-      byte-preserving and idempotent); the repository owner merges. Re-run
-      `artifact-lint.py --survey` after it lands to confirm the failure share
+- [x] Publisher head standard upstream: the memory system's artifact publisher
+      emitted pages that start with `<title>` — 341 of the hub's 384 head-standard
+      failures at the evening snapshot (331 of 386 at the morning one). Fixed
+      and merged on that repository on 2026-09-24 (eight tests, byte-preserving
+      and idempotent).
+- [ ] Confirm the publisher fix is LIVE, not only merged: a smoke page
+      submitted without a doctype was still served without one right after the
+      merge, so the live checkout had not pulled. Re-run
+      `artifact-lint.py --survey` once it has and confirm the failure share
       drops below 5%.
 - [ ] Run `artifact-lint.py` in the publish path as a non-blocking WARN so a
       page learns its findings at publish time, not in an audit.

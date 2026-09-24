@@ -194,7 +194,8 @@ Commit Lessons 与 Doc Align 在 Claude 完整框架中本地运行，未启用�
 | `/investigate` | 根因分析 — 假设未确认不动手修 |
 | `/incident DESC` | 事故响应 — 诊断、复盘、后续任务 |
 | `/cso` | 安全审计（OWASP + STRIDE） |
-| `/landscape` | 全系统报告 — 每个部分、每个入口、负责人、差距、以及放弃过的尝试，产出为发布的 artifact |
+| `/artifact` | 一页 PhD、PM、工程师都能一眼看懂的报告 — 按页面类型的骨架（为什么是这个数、做了什么、下一步）、论文级的图、亮暗双主题，发布前由 `artifact-lint.py` 检查 |
+| `/landscape` | 全系统报告 — 每个部分、每个入口、负责人、差距、以及放弃过的尝试，产出为发布的 artifact（即 `/artifact` 的架构骨架放大到全系统） |
 | `/map` | 生成 ARCHITECTURE.md（Mermaid 模块图；只读目录树，不读 git 历史，无归属数据） |
 
 ### 调研与规划

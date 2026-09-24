@@ -4,13 +4,10 @@ sure we are, what the next step is, and the evidence for all three.
 
 ## Why this skill exists
 
-Measured on 2026-09-23 over one company's artifact hub — 936 report pages
-and 107 work-logs (`docs/research/2026-09-23-artifact-standard.md`): 72% of
-pages had no section explaining why the numbers look like this, 88% none
-saying what was done to find out, 71% no next-step section, 68% no limits
-section, 66% no sources section, 53% no key or terms section, 35% a topic
-label instead of a finding for a headline, and 32% carried any figure; no
-page passed every check. The pages readers forward all share one
+Measured on 2026-09-23 over one company's artifact hub, 936 report pages
+(`docs/research/2026-09-23-artifact-standard.md` holds the full table): 72%
+never explain why the numbers look like this, 88% never say what was done to
+find out, and no page passes every check. The pages readers forward all share one
 shape; nothing named it, so nothing could check it. This skill names it and
 `artifact-lint.py` checks it.
 

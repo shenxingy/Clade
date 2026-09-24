@@ -52,7 +52,12 @@ For most day-to-day work — bug fixes, small features, refactoring, codebase qu
 **When:** Onboarding to an unfamiliar codebase, or before dispatching agents.
 - Generates a module dependency graph with a Mermaid diagram, plus key
   components and data flow. It reads the tree, not git history — there is no
-  ownership output; `/landscape` is the skill that answers who owns what
+  ownership output; `/landscape` is the skill that answers who owns what.
+  For one report page of any other kind — a finding, a status, an RCA, a
+  handoff — use `/artifact`: it carries the section spine, the figure and
+  colour rules and the lint; `/landscape` is that skill's architecture spine
+  at whole-system scale, and `/internal-deploy` only publishes what either
+  produced
 - Saved as `ARCHITECTURE.md` — not `.claude/AGENTS.md`, which the orchestrator
   writes through a different flow
 - Run once at project start, re-run after major refactors
