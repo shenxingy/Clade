@@ -1214,9 +1214,15 @@ Shipped: `/artifact` skill + references, `configs/scripts/artifact-lint.py`
 
 - [ ] Publisher head standard upstream: the memory system's artifact publisher
       emits pages that start with `<title>` — 331 of the hub's 386 head-standard
-      failures. One fix there beats 331 page edits; needs the owner of that repo.
+      failures. Fix opened as a PR on that repository (2026-09-23, eight tests,
+      byte-preserving and idempotent); the repository owner merges. Re-run
+      `artifact-lint.py --survey` after it lands to confirm the failure share
+      drops below 5%.
 - [ ] Run `artifact-lint.py` in the publish path as a non-blocking WARN so a
       page learns its findings at publish time, not in an audit.
+- [x] The owner's four hub pages with no `<h1>` (a styled `div` as the title)
+      were repaired on 2026-09-23: heading layer, head standard, declared
+      artifact-type; republished, backups kept outside the hub.
 - [ ] Work-log template: 93 of 106 hub work-logs lack the Goal · Now · Human
       TODO · Blockers header; ship the header in the protocol's page template.
 - [ ] Measure reading, not only structure: page-level reads from the hub's

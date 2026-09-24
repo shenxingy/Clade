@@ -209,7 +209,10 @@ Convergence criterion: a round that changes no rule and no threshold.
   behaviour. Nginx access logs would give page-level reads; not built.
 - **The publisher template** emits no doctype, charset or viewport — 331 of
   the 386 head-standard failures. That is one upstream fix in the memory
-  system's publisher, not 331 page edits; filed as the exemplar's next step.
+  system's publisher, not 331 page edits; opened as a PR on that repository
+  the same day (a `_normalize_head()` step before the provenance footer,
+  byte-preserving, idempotent, opt-out marker, eight tests). The four owner
+  pages that had no `<h1>` were repaired and republished.
 - **Heuristics are regexes**, bilingual but approximate; a Chinese heading
   under six characters is always a label to the lint, and a section role is
   found only through heading words, `id`/`class`, or nav text.

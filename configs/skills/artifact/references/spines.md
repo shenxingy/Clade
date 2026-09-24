@@ -215,6 +215,71 @@ Publish to a stable slug so the page versions in place. *(lint:
   reads 不 / 是 / 为什么 / 边界 / 下一步 as it reads their English
   counterparts.
 
+## Devices worth copying — decoded from the hub's sixteen strongest pages
+
+Read in full on 2026-09-23 (twelve rendered and inspected), chosen by lint
+cleanliness, figure count and being forwarded. Each device below is one
+concrete thing a page did that made it legible; use them as parts.
+
+**Front matter**
+- **Evidence-grade chips as a legend at the top** — "Measured / published ·
+  vendor's own claim · our inference" — and every number on the page wears
+  one. The reader never has to ask how sure.
+- **A boxed TL;DR with three labelled lines**: *Who it's for · Why now ·
+  Status*. Fits a demo brief in eight lines.
+- **"Read this first: six things that will otherwise cost you a day"** at
+  the top of a handoff — numbered traps, each with what to do instead.
+- **Reading paths by reader and time budget**: "Only five minutes: §… → §… ·
+  To review the architecture: §… · To manage progress: §…", plus
+  "reading time ~40 min" in the stamp.
+- **A state strip** (round 1 analysed · round 2 live · prevalence still
+  open) beside the stamp, so the document's own status is a field.
+
+**Numbers**
+- **A reproduction table with a `match` column** — eleven metrics, ours vs
+  theirs, every row "match" — before any new claim is made.
+- **"Why I trust this evaluation"** as a heading, with the leakage checks
+  listed (overlap = 0 on cluster / case id / hash / loan id).
+- **A matched-control paragraph**: 20/20 failing documents show the
+  property, 0/30 controls do, 100% separation — three tiles.
+- **A funnel with a status pill per stage** (52,573 → 16,493 → 15,332 →
+  ~18,700, each DONE), and "removed, never deleted — every removal logged".
+- **A matrix with a state legend** (RUN · WARM · — · DL) for what runs when.
+- **A "gap" column** on a dot plot, with the axis labelled "← toward genuine
+  · toward forged →" so the direction needs no legend.
+
+**Argument**
+- **A "Falsification" section**: the claim, the test that would kill it,
+  and the result — followed by "What would be required (not generated
+  here)".
+- **"Established / Not established"** as the closing pair, one list each.
+- **"Read the *forged max* column, not the AUC"** — a reading instruction
+  as a heading, when the obvious number misleads.
+- **A causal chain with a verified link per step** ("1 · The first bands
+  were invented … 2 · The replacement asked the wrong question … 4 ·
+  Deepest, and still open") — each link measured, not inferred.
+- **"Signals we do not lean on"** and **"Results that were cut, and must
+  stay cut"** — the negative space stated.
+- **"What the marketing leaves out"** in a vendor brief.
+- **A "Delivered capability and boundary" column** in the PR table, so every
+  merged change states what it does not claim.
+- **Per-chapter fixed skeleton in a long chronicle**: the problem entering →
+  the mechanism (with the real constants) → why this over the alternatives
+  → measured → what broke → what it taught; plus "seven terms carry the
+  whole story" and "the clock of the system — constants that recur".
+- **"It happens"**: one real, cited case per item in a manual (a DOJ
+  prosecution beside each forgery type), then "what it leaves behind".
+- **A before → after pair with the entire pixel diff boxed in red**.
+- **A live progress line for a running job** ("2250/2000 cells · 112.5% ·
+  1,186 min elapsed · $417.91 of the $250 cap") on a page that reports it.
+
+**Close**
+- **"The gap, in one sentence"**, then **"Next steps, ranked against the
+  North Star"**, then **"Provenance of every number here"**.
+- **"Other people tell parts of this better. Read them first."** — a
+  curated source strip with one line on why each is worth the click.
+- **"The shape it should have been"** as the last section of a post-mortem.
+
 ## Anti-patterns the sources name, seen on the hub
 
 1. A topic for a headline ("Model Update", "PDF 检测评估") — 35% of pages.
