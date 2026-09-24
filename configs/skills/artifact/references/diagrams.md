@@ -22,8 +22,9 @@ the inline-SVG mechanics; this file is the notation and colour discipline.
 | When does each thing land? | Now / next / later swimlane, not a Gantt | — | ≤ 12 |
 | What are the exact numbers per part? | **A table**, beside the diagram | — | — |
 
-A status page draws L1 and L2 and stops; component diagrams are for a part
-under active change, and code diagrams are never drawn by hand.
+Choose from the reader's question, not the page label. A status page may need
+only a progress/gap table; add L1/L2 when system relationships explain the state.
+Component diagrams are for a part under active change; generate code diagrams.
 
 ## Notation rules (checkable)
 

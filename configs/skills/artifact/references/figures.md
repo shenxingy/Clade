@@ -49,8 +49,9 @@ and `diagrams.md` beside this file covers architecture drawings.
    the graphic or leading the caption, never both. [Wilke ch. 22]
 4. Never ship a library default unedited — defaults fit any plot and optimise
    none. [Rougier, rule 5]
-5. Figure 1 is the summary: input, output, what the work enables. Three to six
-   figures per document; start near the raw data. [Huang; Wilke ch. 29]
+5. When figures help, figure 1 summarises the central result or mechanism.
+   Start near the raw data; choose the count for the reader's questions rather
+   than filling a quota. [adapted from Huang; Wilke ch. 29]
 
 **Colour**
 6. Match scheme to data: qualitative for categories, sequential for ordered
@@ -171,8 +172,10 @@ whose job is to show them; mark it `data-artifact-lint="ignore-palette"` on
 the `<svg>` and say so in its caption — the lint then leaves that figure out
 of the palette and theme counts and nothing else. A literal hex inside a chart is the one colour that carries meaning
 and has been checked on both grounds — and even that is better as a token.
-Inline the SVG; an `<img src="chart.svg">` cannot see the page's tokens, so
-`currentColor` resolves to nothing across that boundary. *(lint:
+Inline theme-aware SVG; an `<img src="chart.svg">` cannot see the page's
+tokens. Its `currentColor` resolves in the SVG's own document (often black),
+not the parent page. Give external assets their own complete paint/background
+or an appropriate variant, and inspect the real composite in both themes. *(lint:
 `svg-theme`, `svg-palette`, `color-literals`.)*
 
 ## Chart anatomy that reads — the conventions worth copying
@@ -225,8 +228,9 @@ screenshot review.
 9. Bars/areas start at 0 (linear) or 1 (log).
 10. Comparable panels share range, scale and ticks.
 11. Marks ≥ 3:1 and text ≥ 4.5:1 against the adjacent ground, in both themes.
-12. Smallest chart text ≥ 10 px at drawn scale; ticks legible in a 1280 px
-    screenshot. *(lint: `svg-text-size`)*
+12. Smallest chart text ≥ 10 px at drawn scale *(lint: `svg-text-size`)*,
+    but this is only a source floor. Check actual displayed text at each width;
+    split/reflow the figure if phone scaling makes its labels unreadable.
 13. Output is inline SVG with real `<text>`, `viewBox`, no fixed width/height.
 14. `role="img"` and an `aria-label` (or a leading `<title>`) on every chart.
     *(lint: `svg-aria`)*

@@ -23,6 +23,11 @@ for the subject and the reader's one question, then proceed.
 
 ### Step 0 — Read the brief, fix the frame
 
+Read the routing table in `references/spines.md` and the acceptance contract
+in `references/review.md` before drafting. Subject alone does not select a
+format: the same model can need a finding, decision or status page. State the
+primary reader's assumed knowledge and the answers they must leave with.
+
 Write down, before anything else:
 
 - **Subject** — one concrete thing (a model version, a system, an incident).
@@ -42,26 +47,30 @@ Write down, before anything else:
   visual identity. If nothing resolves, use the token pattern in
   `references/figures.md` and say so on the page.
 
-### Step 1 — Numbers before prose
+### Step 1 — Evidence before prose
 
-Build a facts table first: `fact · value · population/denominator · window ·
-source (path, command, commit, channel) · date · grade`. Grade every row
+Build an evidence table first: `claim · observation/value · population
+(if quantitative) · window · source (path, command, commit, channel) · date
+· grade`. Grade every row
 **verified** (you ran it or read it from an artefact), **inferred** (derived
 from verified rows) or **speculation** (a hypothesis). A fact that cannot be
 recovered is written as "not measured" — never as a zero and never omitted.
-The table becomes the number strip, the verdict grading and the sources
-section; nothing on the page cites a number that is not in it.
+The table supplies the verdict and sources, and a number strip only when the
+reader's question is quantitative. Qualitative observations belong here too;
+nothing on the page cites a number that is not in it.
 
 ### Step 2 — The spine
 
-Read `references/spines.md` and write the page in that order for the type;
-pick the parts from `references/anatomy.md` — the element inventory of the
+Read the selected spine in `references/spines.md`; use its questions to order
+the page. Pick the parts from `references/anatomy.md` — the element inventory of the
 strongest published reports, slides and decks — instead of inventing
 sections.
-The universal front matter is not optional for an argued page: header stamp
-with the date · headline that could be false · deck ≤ 120 words with the two
-numbers · number strip with denominators · graded verdict · key & terms with
-one colour per entity. Then, before the type's body sections, **why the numbers look like this** —
+An argued page opens with the dated subject, conclusion/current state,
+certainty and next action. Use the front matter in `spines.md`, combining
+short sections where helpful. Quantitative claims need denominators; a
+qualitative decision needs its trade-off, not a manufactured number strip.
+Define unfamiliar terms at first use, and keep colour meanings consistent.
+Then answer **why this is the current state / why the numbers look like this** —
 the mechanism, what was ruled out, how sure (`id="why"`). Then the body
 sections as **claim headings** with eyebrow labels. Then the back matter:
 what did not work · limits and claims we do not make · **one** next step
@@ -72,6 +81,10 @@ cover. Those three — why, what was done, what next — are the questions the
 owner asked for by name three times; a page that answers them is
 systematic, one that does not is a table with a title.
 
+Run the meaning edit in `references/review.md` before styling: the headline,
+summary, captions and body must agree, and an unfamiliar reader must not need
+the originating conversation to interpret them.
+
 Mark section roles as data: `id="key"`, `id="why"`, `id="limits"`,
 `id="next"`, `id="method"`, `id="sources"`, and an in-page nav for anything
 over ~2,500 words. Every
@@ -80,9 +93,12 @@ table gets a "Reading:" line beneath it. Declare the type in the head:
 
 ### Step 3 — Figures
 
-Read `references/figures.md`; load the bundled `dataviz` skill for the
-palette validator. Choose the one to three comparisons the page turns on and
-draw each as inline SVG: message first, form from the data's job, colour by
+Read `references/figures.md`; if the bundled `dataviz` skill is available,
+use its palette validator; otherwise measure the actual foreground/background
+pairs with an available contrast tool and record the result. Choose only the
+comparisons that clarify the reader's question;
+zero figures is valid when prose or a lookup table answers it better. For
+charts, prefer inline SVG: message first, form from the data's job, colour by
 job from Okabe–Ito or Tol in fixed order, threshold lines labelled, `n =` on
 every row, caption that states the takeaway, `role="img"` and an
 `aria-label`. Colours are tokens or `currentColor`, so the figure survives
@@ -93,14 +109,16 @@ For a deck, the slide and deck inventories, the five canonical orders and the
 twenty checkable rules in `references/anatomy.md` are the content rules; the
 Slides artifact type is the container.
 
-### Step 4 — Diagrams (architecture, status, handoff pages)
+### Step 4 — Diagrams (when relationships explain the answer)
 
 Read `references/diagrams.md`; load the bundled `artifact-diagramming` skill
-for the SVG mechanics. Draw the C4 context (L1) and container (L2) views
-with a key on the drawing, ≤ 20 elements, one abstraction level, every line
-labelled and one-directional, status styling for planned and deprecated
-parts, and the parts-inventory table beside the container view. Hand-author
-the SVG; Mermaid cannot take theme tokens or draw a legend.
+for the SVG mechanics when available; otherwise use `references/diagrams.md`
+directly. Architecture pages usually need C4 context (L1) and container (L2)
+views. A status or handoff page needs them only when system relationships
+answer the reader's question; a progress/gap table or task flow may fit better.
+Use a key, one abstraction level and labelled directional relationships.
+Prefer inline SVG for controlled layout and theme tokens. If another renderer
+fits, inspect its exported output in the target container and both themes.
 
 ### Step 5 — Build
 
@@ -127,40 +145,38 @@ rule nobody else can see. For a page that will be judged on its design, also
 run `python3 ~/.claude/scripts/design-lint.py html <page.html>` for the
 contrast pairs and type-size floors.
 
-### Step 7 — Look at it
+### Step 7 — Render, read, repair, repeat
 
-Render before publishing, in both themes, at desktop and phone width:
+Execute `references/review.md`: inspect the first screen, full page and every
+figure in all four theme/viewport combinations; check relevant interaction,
+JavaScript-off and enlargement states. Verify actual theme activation and
+computed paint when an image disappears. A captured screenshot is not a pass.
 
-```bash
-google-chrome --headless=new --no-sandbox --hide-scrollbars --window-size=1280,2400 \
-  --screenshot=light.png file://$PWD/page.html
-google-chrome --headless=new --no-sandbox --hide-scrollbars --window-size=1280,2400 \
-  --force-dark-mode --screenshot=dark.png file://$PWD/page.html
-google-chrome --headless=new --no-sandbox --hide-scrollbars --window-size=390,3000 \
-  --screenshot=phone.png file://$PWD/page.html
-```
-
-(`chromium` or the Playwright chromium build serve the same flags.) Open the
-images and look for: an unreadable contrast pair, a chart whose labels
-collide or clip, a figure that lost its colours in dark mode, a table that
-scrolls the page sideways, a headline that wraps into four lines. Fix, and
-look once more. Do not publish a page you have not seen.
+Perform the fresh-reader review against the acceptance answers, without
+supplying those answers to the reviewer. Fix misunderstandings and visual
+failures on the page, then render and review the affected areas again. Save
+`artifact-review.md` with the exact revision, evidence, defects, repairs and
+PASS / NEEDS_REVISION / UNVERIFIED verdict. Required checks that cannot run
+leave an unverified draft; they do not become silent skips.
 
 ### Step 8 — Publish and report
 
 Hub: hand the file to `/internal-deploy` (mode A) — slug, manifest, served
-URL verified over HTTPS. Claude Artifact: the Artifact tool, with the
+URL verified over HTTPS. Open the served page in its actual wrapper and repeat
+the first-screen, figure, theme and essential-control checks; publishing may
+change rendering even when the local file passed. Claude Artifact: the
+Artifact tool, with the
 `artifact-design` skill loaded. Work-log: the stable `worklog-<branch>` slug
 with the header passed as data as well as prose. Report the URL, the lint
-summary (FAIL/WARN counts, and the WARNs kept with their reasons), the two
-screenshots' paths, and the facts that could not be measured.
+summary (FAIL/WARN counts and retained reasons), the review verdict and evidence
+paths, and the facts or checks that could not be established.
 
 ## Output
 
 - The page file, linted clean or with every remaining WARN explained on it.
-- Light and dark screenshots you have looked at.
+- The complete applicable render matrix, inspected, and `artifact-review.md`.
 - The published URL (or file path) and a five-line summary: headline · the
-  two numbers · the verdict grade · the next step and owner · what was not
+  key evidence · the verdict grade · the next step and owner · what was not
   measured.
 
 ## Common issues

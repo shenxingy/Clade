@@ -33,7 +33,42 @@ sentences.
 
 Full citations are at the end of this file.
 
-## The universal front matter — every argued page, in this order
+## Route the reader's question before choosing the spine
+
+The topic supplies the facts; the reader's task chooses the artifact. The same
+model evaluation can support a finding, a ship/no-ship decision, or a status
+update. Name one primary question before drafting.
+
+| Reader question | Type | First-screen answer | Useful visual, only if needed |
+|---|---|---|---|
+| What did we learn, and does the evidence support it? | `finding` | Result, baseline, population, uncertainty | Comparison or distribution with the decision threshold |
+| Where are we now, and what is stopping progress? | `status` | Goal vs current state, dated change, blocker, owner/next action | Progress/gap table; trend if comparable observations exist |
+| How does this system work? | `architecture` | Purpose, boundary, live vs planned, entry point | Context then containers; one real task traced through them |
+| What broke, why, and is it fixed? | `rca` | Impact, present recovery state, confirmed cause vs hypothesis | Incident timeline or evidenced causal chain |
+| What should we choose, and why? | `decision` | Recommendation, decisive trade-off, decision owner/deadline | Options matrix with consistent criteria; sensitivity if measured |
+| How can I take over and continue? | `handoff` | Current state, first executable step, traps and open work | Task/dependency flow when it prevents a mistake |
+| Where do I find or learn this specific thing? | `reference` | Scope, lookup route, definitions and a worked example | Indexed table or annotated example |
+| What is this branch doing right now? | `worklog` | Goal, now, human action, blockers, freshness | Compact state list; timeline below it |
+
+Use a table for lookup, prose for a short argument, a chart for a pattern,
+and a diagram for relationships. A concept explanation fits a reference with
+a worked example unless there is a new finding to argue. For a mixed brief,
+choose the primary question and link supporting views; split pages only when
+readers have independent tasks.
+
+Choose the **container separately**: HTML for a linked/asynchronous report;
+slides for a presented sequence; an editable document for collaboration;
+interactive controls when changing a parameter/filter answers a real question.
+An exported image/PDF needs its own visible labels, background and source/date;
+it cannot depend on the HTML page's hover, CSS or surrounding explanation.
+
+The spines below are question coverage, not a mandatory count of sections.
+Combine short answers and mark genuine unknowns. Never fabricate numbers,
+causes, failed experiments or a diagram to satisfy a template. A compact
+answer should not grow an empty research-report shell. Apply `review.md` to
+test whether this choice actually works for a newcomer.
+
+## The shared front matter — answer first, details after
 
 An *argued* page is a finding, status report, architecture page, RCA, handoff
 or decision memo. A reference register and a work-log have their own shape
@@ -49,16 +84,17 @@ or decision memo. A reference register and a work-log have their own shape
    no finding yet, the headline is the question, ending in `?`. A noun phrase
    is a label; a label makes the reader read the body to learn the point.
    *(lint: `title-claim`.)*
-2. **Deck.** ≤ 120 words directly under the headline: what was measured, on
-   what population, the two numbers that matter, and what the reader should
+2. **Deck.** ≤ 120 words directly under the headline: the subject, conclusion,
+   key evidence (with population for measurements), and what the reader should
    do. This is the BLUF; a reader who stops here must leave with the right
    belief. Whatever a skill calls this paragraph — deck, bottom line, BLUF —
    it is one contract: the conclusion the reader acts on comes before any
    rounds, dates or timeline. *(lint: `deck`.)*
-3. **Number strip.** Three to five numbers, each with its **denominator and
-   window** on the same line: *"0 / 24 held-out frauds flagged at τ"*,
+3. **Key evidence.** For quantitative questions, a compact number strip, each
+   with its **denominator and window** on the same line: *"0 / 24 held-out frauds flagged at τ"*,
    *"33.4% recall of 12,152 forgeries at 1% real-clean FPR (n = 1,921)"*. A
-   rate without its population is a mood. *(lint: `denominators`.)*
+   rate without its population is a mood. For a qualitative page, state the
+   decisive evidence or trade-off instead; do not manufacture metrics. *(lint: `denominators`.)*
 4. **Verdict, graded.** For each headline claim: **Reproduced / Confirmed /
    Not supported / Not measured**, with a visible confidence mark (●●●○) and
    one line of why. Verified fact, inference and speculation are separated
@@ -73,8 +109,9 @@ or decision memo. A reference register and a work-log have their own shape
 
 ## The two sections the owner keeps asking for by name
 
-Before the type's own body sections, every argued page carries these two,
-because they are the questions the reader asks after the number strip and
+Every argued page answers these two questions, combining brief answers with
+existing sections where helpful,
+because they are the questions the reader asks after the summary and
 they were re-typed as a brief three times before being written down here:
 
 - **Why the numbers look like this.** The mechanism behind the headline
@@ -83,6 +120,8 @@ they were re-typed as a brief three times before being written down here:
   the model learned the generators' fingerprint, and here is the ablation
   that says so". A number without its cause is a rumour with a decimal
   point. *(lint: `why` — WARN on finding, status, rca and decision pages.)*
+  If a cause has not been established, say so and separate candidate explanations
+  from evidence; a required why section is not permission to invent causality.
   Mark it `id="why"`.
 - **What I did to find this out.** The research log, in order: what was read,
   what was run, what was compared against what, what was tried and dropped

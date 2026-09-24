@@ -26,7 +26,7 @@ the standard, so nothing could check it. This does.
 Levels: FAIL blocks publishing (a page that cannot be read or does not render
 on the intranet); WARN needs a fix or a written reason; INFO is a measurement.
 The page declares its type with `<meta name="artifact-type" content="...">`
-— finding | status | architecture | rca | handoff | reference | worklog |
+— finding | status | architecture | rca | handoff | decision | reference | worklog |
 landing — and the checks that only make sense for an argued page (claim
 headings, limits, next step) relax for a reference register or a work-log.
 An undeclared page is linted as a finding, the strictest shape, and told so.
@@ -51,7 +51,7 @@ from typing import Iterable, TypedDict
 # bilingual, and a rule that only reads English would score half the pages
 # as headless.
 
-TYPES = ("finding", "status", "architecture", "rca", "handoff",
+TYPES = ("finding", "status", "architecture", "rca", "handoff", "decision",
          "reference", "worklog", "landing")
 
 _CLAIM_EN = re.compile(
@@ -372,7 +372,7 @@ def lint_html(html: str, *, declared_type: str | None = None) -> tuple[list[Find
             add("type-unknown", "WARN", f"artifact-type {kind!r} is not one of {', '.join(TYPES)}")
         kind = "finding"
         add("type-undeclared", "INFO", "no <meta name=\"artifact-type\">; linted as a finding (the strictest shape)")
-    argued = kind in ("finding", "status", "architecture", "rca", "handoff")
+    argued = kind in ("finding", "status", "architecture", "rca", "handoff", "decision")
 
     # — build: does it render on an intranet, in both themes? —
     head = html[:1500]
@@ -425,9 +425,9 @@ def lint_html(html: str, *, declared_type: str | None = None) -> tuple[list[Find
         deck_len = len(deck.split()) + len(_CJK.findall(deck)) // 2
         total = sum(len(x.split()) + len(_CJK.findall(x)) // 2 for x in lead)
         if deck_len < 35 and total < 60 and not _DECK_HINT.search(" ".join(p.role_hints) + " " + all_heads[:400]):
-            add("deck", "WARN", "no abstract under the headline (≥ 35 words: what was measured, on what, the two numbers that matter, what to do)")
+            add("deck", "WARN", "no abstract under the headline (≥ 35 words: subject, current conclusion, key evidence, what to do)")
         elif not re.search(r"\d", deck):
-            add("deck-number", "INFO", "the abstract carries no number; a status without a figure is a mood")
+            add("deck-number", "INFO", "the abstract carries no number; check whether quantitative evidence is relevant to the reader question")
     if kind != "landing" and not _ASOF.search(text[:1800]):
         add("as-of", "FAIL" if argued else "WARN", "no date in the first screen (an 'as of' or 'compiled' stamp); an undated report is wrong within a week and nobody can tell")
     if len(h2) < 3 and words > 600 and kind not in ("worklog", "landing"):
@@ -453,7 +453,7 @@ def lint_html(html: str, *, declared_type: str | None = None) -> tuple[list[Find
         add("key-terms", "WARN", "figures/tables but no key: a section that defines each named entity and metric (with its denominator) and fixes one colour per entity for the whole page")
     if argued and not _LIMITS.search(roles):
         add("limits", "WARN", "no limits section (what is not covered, not measured, or claimed); silence reads as 'everything is fine'")
-    if kind in ("finding", "status", "rca", "handoff") and not _NEXT.search(roles):
+    if kind in ("finding", "status", "rca", "handoff", "decision") and not _NEXT.search(roles):
         add("next", "WARN", "no next-step section; a report that forces no decision is a diary")
     if argued and not _SOURCES.search(roles):
         add("sources", "WARN", "no sources/evidence/reproduce section; every number needs a place it came from")

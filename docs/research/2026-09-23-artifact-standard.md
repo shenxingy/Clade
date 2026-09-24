@@ -22,6 +22,28 @@ summary: >
 
 # The artifact standard
 
+**Follow-up, 2026-09-24:** the owner's next requirement was to verify that a
+reader without project knowledge understands the current state, and that the
+delivered figures are visible and aligned. The standard now routes by reader
+question in [spines.md](../../configs/skills/artifact/references/spines.md),
+and owns the language → render → fresh-reader → repair loop in
+[review.md](../../configs/skills/artifact/references/review.md). A structural
+lint pass is not a visual or comprehension pass. These instructions are wired
+through the skill summary, executable prompt and path-scoped rule; they are
+an agent-executed review contract, not a new automatic publisher hook.
+
+Validation used explicitly synthetic status pages: one with black-on-black
+figure paint in dark mode, one corrected. Both passed structural lint with
+zero FAIL/WARN. Chrome rendered light/dark × 1280×900/390×844 for each;
+an independent model reviewer given only screenshots found the invisible
+chart and correctly distinguished indexed files, remaining work and untested
+search accuracy. A separate 200% text-enlargement check found a clipped chart
+title; shortening it and re-rendering removed the clipping, then the reviewer
+rechecked it. This is process evidence, not a human usability study or a
+reproduction of the owner's missing original black artifact. That original
+and its served wrapper remain unverified. The previous hub survey below is
+unchanged.
+
 **The question, verbatim (owner, 2026-09-23, translated):** look at how we
 publish artifacts, content first. Go to the intranet hub and look at the many
 pages the most-published colleague has put up: where does his thinking come
