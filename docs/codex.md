@@ -26,6 +26,42 @@ codex plugin marketplace add /absolute/path/to/Clade
 codex plugin add clade@clade
 ```
 
+## Updating while sessions exist
+
+An existing thread can keep executing hooks from its original version even
+after a plugin update ([related upstream issue](https://github.com/openai/codex/issues/36605)).
+On Codex CLI 0.156.1, reinstalling Clade removed the old cache and blocked even
+`pwd` in another thread because `pre_tool_guardian.py` no longer existed.
+
+Pause other sessions' tool work while updating. From a Clade checkout, use:
+
+```bash
+python3 configs/scripts/codex-plugin-update.py
+```
+
+The helper uses the already configured `clade@clade` marketplace. For local
+development, update the source manifest's cachebuster first. It saves complete
+old bundles under `~/.clade/codex-plugin-backups/`, runs the official
+`codex plugin add`, then restores missing old paths even if installation fails
+or is interrupted. Checksums and conflicts are checked before restoration;
+existing different files, hook logic and trust settings are never replaced.
+This does not make the CLI's replacement atomic: resume other sessions only
+after the helper returns. Raw CLI/app updates do not use this protection.
+
+Keep snapshots and restored versions while old threads still use them. If the
+updater is killed before cleanup, use an ordinary terminal to recover:
+
+```bash
+python3 configs/scripts/codex-plugin-update.py --restore /path/to/printed/backup
+```
+
+Confirm the updater has exited before manually removing a stale `update.lock`
+directory in the backup root. Missing files with no prior snapshot must be
+restored from the exact trusted release, never an arbitrary newer hook or a
+disabled safety check. Start a new thread to load newly added skills; restoring
+old files does not refresh a thread's skill catalog. Native Windows behavior
+has not been exercised for this helper.
+
 ## What Is Native
 
 The plugin under `plugins/clade/` contains:
