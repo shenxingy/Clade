@@ -167,8 +167,15 @@ from git. List them as questions for a human rather than inventing an answer.
 
 ## Diagrams
 
-Load the `artifact-diagramming` skill before drawing, and `artifact-design`
-before writing the page.
+The page itself follows the `artifact` skill —
+`configs/skills/artifact/references/spines.md` (front matter, claim
+headings, back matter), `configs/skills/artifact/references/figures.md`
+(colour tokens for both themes, Okabe–Ito/Tol palettes, captions) and
+`configs/skills/artifact/references/diagrams.md` (C4 notation, the six-class
+legend) — and it is linted with `python3 ~/.claude/scripts/artifact-lint.py
+<page>` before it is published; a landscape is that skill's `architecture`
+spine at whole-system scale. Load the `artifact-diagramming` skill before drawing,
+and `artifact-design` before writing the page.
 
 - Colour carries meaning or it is not used. One hue per semantic class, and the
   page must be legible in both themes.

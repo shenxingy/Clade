@@ -89,6 +89,8 @@ GOLDEN_TOP3: list[tuple[str, str]] = [
     ("record a learning remember this pattern", "learn"),
     ("weekly retrospective commit stats", "retro"),
     ("research competitors and external tools", "research"),
+    ("write a report page for the artifact hub", "artifact"),
+    ("做一页报告 研究报告页", "artifact"),
     # environment / tooling
     ("toggle statusline quota indicator", "slt"),
     ("check API usage quota", "minimax-usage"),
@@ -165,6 +167,9 @@ DISAMBIGUATION_RANK1: list[tuple[str, str]] = [
     # wins outright.)
     ("add a new skill", "skill-new"),
     ("write a new slash command", "skill-new"),
+    # one report page with its figures, NOT the cross-repo /landscape, the hub
+    # publishing mechanics (/internal-deploy) or product UI (/frontend-design)
+    ("research finding page paper-quality figure", "artifact"),
     # interface-design umbrella: platform-specific UI requests must beat ads,
     # localization, and design-system siblings that also mention app/UI terms.
     ("优化手机端 UI", "frontend-design"),

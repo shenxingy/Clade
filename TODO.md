@@ -1204,3 +1204,33 @@ record is wrong**. The four below were reproduced by hand before filing.
   on a fixed day and wrong for anything else, and nothing detects the
   difference. Revisit with the upstream payload work in the Kimi footer item
   above.
+
+## 2026-09-23 artifact standard follow-ups (PR feat/artifact-skill)
+
+Study: [docs/research/2026-09-23-artifact-standard.md](docs/research/2026-09-23-artifact-standard.md).
+Shipped: `/artifact` skill + references, `configs/scripts/artifact-lint.py`
+(24 checks, `--survey`, `--self-test` with 19 pinned mutations),
+`configs/rules/artifact.md`, `/landscape` pointer, the internal exemplar page.
+
+- [ ] Publisher head standard upstream: the memory system's artifact publisher
+      emits pages that start with `<title>` — 341 of the hub's 384 head-standard
+      failures at the evening snapshot (331 of 386 at the morning one). Fix opened as a PR on that repository (2026-09-23, eight tests,
+      byte-preserving and idempotent); the repository owner merges. Re-run
+      `artifact-lint.py --survey` after it lands to confirm the failure share
+      drops below 5%.
+- [ ] Run `artifact-lint.py` in the publish path as a non-blocking WARN so a
+      page learns its findings at publish time, not in an audit.
+- [x] The owner's four hub pages with no `<h1>` (a styled `div` as the title)
+      were repaired on 2026-09-23: heading layer, head standard, declared
+      artifact-type; republished, backups kept outside the hub.
+- [ ] Work-log template: 93 of 106 hub work-logs lack the Goal · Now · Human
+      TODO · Blockers header; ship the header in the protocol's page template.
+- [ ] Measure reading, not only structure: page-level reads from the hub's
+      access logs, so "legible at a glance" becomes a behaviour, not a claim.
+- [ ] Ship `/artifact` natively in the Codex plugin: today it sits in the
+      `specialized-opt-in-workflows` exclusion because its prompt leans on the
+      Claude-bundled `dataviz` / `artifact-diagramming` skills and on
+      `~/.claude/scripts/artifact-lint.py`; a native version bundles the lint
+      the way `/green` bundles `ci-local.py` and inlines the figure rules.
+- [ ] Contrast in the lint: `design-lint html` already computes the pairs;
+      wire it into `artifact-lint` as an optional check instead of a second run.

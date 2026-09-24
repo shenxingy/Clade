@@ -4,7 +4,24 @@
 > not stale by virtue of being old; do not read them as current state. Open work
 > lives in [TODO.md](TODO.md). Decided 2026-08-29.
 
-Older entries live in [docs/progress-archive/](docs/progress-archive/) — 64 archived, newest month first.
+Older entries live in [docs/progress-archive/](docs/progress-archive/) — 65 archived, newest month first.
+
+---
+### 2026-09-23 — The artifact standard: a spine, a lint, and a survey of 1,032 pages
+
+The owner asked why hub pages "lack content or state things unclearly" and
+how the most-published colleague's pages differ. Measured, not guessed: over
+936 report pages 72% never explain why the numbers look like this, 88% never
+say what was done to find out, 71% have no next-step section, 68% no limits,
+53% no key or terms, 32% carry a figure, and none passes every check —
+hub-wide, not personal.
+The strongest pages share one decoded shape (claim headline, number strip
+with denominators, graded verdict, colour key and terms, claim headings,
+reading lines under tables, an instruction as the close). Shipped as the
+`/artifact` skill with four references, `artifact-lint.py` (24 checks,
+bilingual, `--survey`, 19 pinned mutations), a path-scoped rule, and two
+internal exemplar pages rendered in both themes. Study:
+docs/research/2026-09-23-artifact-standard.md.
 
 ---
 ### 2026-09-18 — Kimi quota in the footer, through the documented door
@@ -80,17 +97,4 @@ documented as working, and never fires.** Found eleven times.
   evidence is a count rather than an incident.
 - **`docs/layers.json`** now declares which surfaces actually run, because this
   audit spent most of its effort on a layer switched off months earlier.
-
----
-### 2026-07-28 — Local Rollout + Research Program Closeout
-
-- Installed merged `main` into this server's Claude and Codex user
-  distributions; source-parity and preservation assertions passed without
-  printing credential or connection values.
-- Expanded the local Orchestrator settings through the canonical loader/saver:
-  current runtime, connection, provider, and semantic merge fields are present;
-  the retired `worker_provider` field is absent; the file is owner-only.
-- Refreshed the installed Clade Codex plugin from the repository source with a
-  cache-busted version, pruned stale remote-tracking refs, and closed every
-  unconditional item promoted by the July expert/project re-screen.
 
