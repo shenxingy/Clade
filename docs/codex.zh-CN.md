@@ -25,6 +25,36 @@ codex plugin marketplace add /absolute/path/to/Clade
 codex plugin add clade@clade
 ```
 
+## 有旧会话时更新
+
+旧 thread 可能继续执行原版本 hook（[上游相关问题](https://github.com/openai/codex/issues/36605)）。
+实测 Codex CLI 0.156.1 重装插件会删除旧缓存，其他 thread 因缺失
+`pre_tool_guardian.py` 而连 `pwd` 都无法执行。
+
+更新期间先暂停其他会话的工具操作，在 Clade checkout 中运行：
+
+```bash
+python3 configs/scripts/codex-plugin-update.py
+```
+
+它使用已配置的 `clade@clade` marketplace；本地开发先更新源 manifest 的
+cachebuster。脚本将完整旧版本备份到 `~/.clade/codex-plugin-backups/`，调用
+官方安装命令，再恢复缺失的旧路径。安装失败或中断也会尝试恢复；校验摘要，
+拒绝覆盖不同内容，不修改 hook 逻辑或信任设置。CLI 替换过程仍有短暂窗口，
+已失效的缓存别名会报告并跳过；bundle 内或指向有效 bundle 的符号链接会被拒绝。
+脚本返回后再恢复其他会话。直接用 CLI/app 更新不受此保护。
+
+旧会话退出前保留备份与旧目录。进程被强制终止时，可在普通终端运行：
+
+```bash
+python3 configs/scripts/codex-plugin-update.py --restore /path/to/printed/backup
+```
+
+只有确认更新进程已退出，才能手动删除备份目录里的残留 `update.lock`。
+无备份时必须从可信的相同版本恢复，不能替换成任意新版 hook 或关闭检查。
+新技能仍需新开 thread 加载；恢复旧文件不会刷新技能清单。本工具尚未在原生
+Windows 环境实测。
+
 ## 原生能力
 
 `plugins/clade/` 包含：

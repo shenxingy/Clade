@@ -10,6 +10,17 @@
 
 Phases 1–14 complete.
 
+## Codex plugin update compatibility
+
+- [ ] Retire the retained-cache workaround only after an upstream Codex release
+  preserves old session hook paths or atomically refreshes live hook engines.
+  Related: [openai/codex#36605](https://github.com/openai/codex/issues/36605).
+  Reproduce an update with two live threads: old hook and skill paths must remain
+  usable, new threads must load the new bundle. CLI 0.156.1 cleared old Clade
+  paths; `configs/scripts/codex-plugin-update.py` now snapshots/restores complete
+  bundles. Raw CLI/app updates, SIGKILL during replacement, and native Windows
+  are outside the verified protection; retained backups support manual recovery.
+
 ---
 
 ## Completed Phases
