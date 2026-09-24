@@ -19,7 +19,9 @@ summary.
    target; resolves the organisation's design system before styling anything.
 2. Collects every number with its source, population, window and date, and
    grades each claim verified / inferred / speculation.
-3. Writes the spine for the type (`references/spines.md`): a headline that
+3. Writes the spine for the type (`references/spines.md`), picking parts from
+   the element inventory of the strongest published reports, slides and decks
+   (`references/anatomy.md`): a headline that
    is a finding, a ≤120-word deck, a number strip with denominators, a graded
    verdict, a key-and-terms section with one colour per entity, claim
    headings with eyebrow labels, and the back matter — what did not work,

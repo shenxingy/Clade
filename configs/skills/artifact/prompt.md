@@ -30,7 +30,13 @@ Write down, before anything else:
 - **The reader's question** — the one sentence the page must answer.
 - **Type** — from the list above; it selects the spine and the lint profile.
 - **Publish target** — the artifact hub (via `/internal-deploy`), a Claude
-  Artifact, or a file in the repo.
+  Artifact, or a file in the repo. For a Claude Artifact, check the published
+  Artifact types first (`Artifact` tool, `action: "list_types"`): a deck goes
+  to the **Slides** type (16:9, its own layout/diagram/font references) and a
+  document people will edit together to the **Docs** type; a design mock-up
+  to **Design**; only a single-page report is a hand-built HTML page. The
+  spine, figure and colour rules below apply to all of them; what changes is
+  the container.
 - **Design system** — search before styling: the project's `DESIGN_SYSTEM.md`
   or tokens file, the organisation's design-system repository or hub page,
   the operator's private machine map. Apply it; never invent a per-page
@@ -49,7 +55,10 @@ section; nothing on the page cites a number that is not in it.
 
 ### Step 2 — The spine
 
-Read `references/spines.md` and write the page in that order for the type.
+Read `references/spines.md` and write the page in that order for the type;
+pick the parts from `references/anatomy.md` — the element inventory of the
+strongest published reports, slides and decks — instead of inventing
+sections.
 The universal front matter is not optional for an argued page: header stamp
 with the date · headline that could be false · deck ≤ 120 words with the two
 numbers · number strip with denominators · graded verdict · key & terms with
@@ -74,6 +83,10 @@ every row, caption that states the takeaway, `role="img"` and an
 `aria-label`. Colours are tokens or `currentColor`, so the figure survives
 the dark theme. A table stays a table when the reader looks values up; it
 gets a chart above it when the point is a pattern.
+
+For a deck, the slide and deck inventories, the five canonical orders and the
+twenty checkable rules in `references/anatomy.md` are the content rules; the
+Slides artifact type is the container.
 
 ### Step 4 — Diagrams (architecture, status, handoff pages)
 

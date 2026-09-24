@@ -220,3 +220,32 @@ Convergence criterion: a round that changes no rule and no threshold.
   message true) remains the screenshot review.
 - **The organisation's design system** is resolved at run time from the
   machine map, not shipped here — this repository is public.
+
+## 8. Round two — the owner's follow-up, same day
+
+The owner asked whether the findings had actually been fixed, and what the
+hub's and the world's best pages are built from.
+
+- **Fixed.** The publisher head-standard fix went in as a PR on the memory
+  system's repository (8 tests, full suite green); the owner's four hub
+  pages with no `<h1>` were repaired and republished (two through the
+  publisher, two replaced in place because they carry assets the publisher
+  would drop). Backups kept outside the hub.
+- **Read.** Twenty of the hub's strongest pages (lint-ranked, spread across
+  eight authors; sixteen rendered and inspected). Their devices are now the
+  "Devices worth copying" section of `spines.md`. Tallied into ten families,
+  a page averages 4.0 of the ten; thirteen of twenty have a claim headline,
+  ten a limits statement, four a glossary, none all ten — the same three
+  gaps the hub-wide survey found.
+- **The world.** Two further research passes produced the element inventory
+  in `references/anatomy.md`: forty-eight observed report-page elements
+  (kept to twenty-six), six recurring section orders, ten things the best
+  do, eight anti-patterns; twelve slide elements, eleven deck elements, five
+  deck orders, twenty checkable rules, and Duarte's presentation / slidedoc /
+  document split. Paywalled outlets were not asserted from memory.
+- **Containers.** Claude Code's published artifact types on this account
+  (Slides, Docs, Design, Design System) are now the skill's publish-target
+  step: a deck goes to Slides, a co-edited document to Docs, a mock-up to
+  Design; only a single-page report is hand-built HTML.
+- **Published.** A second internal page, the exemplar gallery, written with
+  the skill: 0 FAIL / 0 WARN, both themes reviewed.
