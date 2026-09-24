@@ -1,5 +1,16 @@
 # Clade Ground Rules for Codex
 
+## Artifact reports across projects
+
+For artifact/report pages, research findings, status, decision or architecture
+reports, use `$clade:artifact` before drafting, in any repository. Follow its
+reader-question routing and `references/review.md` acceptance loop; reuse the
+project's design system. Inspect the rendered output and run a fresh-reader
+review before calling it ready. Missing rendering evidence is UNVERIFIED, not
+PASS. Product UI and marketing sites still use `$clade:frontend-design`.
+If the skill is unavailable, report that installation gap instead of silently
+claiming the artifact standard was followed.
+
 ## Repository Delivery
 
 - One PR equals one independently reviewable and reversible feature, fix, or

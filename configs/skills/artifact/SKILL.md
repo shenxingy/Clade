@@ -1,6 +1,6 @@
 ---
 name: artifact
-description: "Write a single-page HTML report artifact that a PhD, a PM and an engineer can read at a glance — a research finding, status report, architecture page, RCA, handoff or work-log — with the section spine, publication-quality figures, colour tokens for both themes and a mechanical lint (artifact-lint.py) run before it is published to an artifact hub or as a Claude Artifact."
+description: "Create and review artifact/report pages: research findings, project status, architecture, decisions, handoffs and reference pages. Select the structure from the reader question, write understandable copy, then inspect rendered figures and perform a fresh-reader review. Use for 写artifact、做报告、状态报告、架构报告; product UI and marketing sites use frontend-design."
 when_to_use: "write an artifact page, report page, research finding page, status report page, RCA page, handoff page, paper-quality figure, chart colours for a report, architecture diagram for a report, 写artifact, 发一个artifact, 做一页报告, 研究报告页, 汇报页面, 论文图, 图表配色, 架构图页面 — NOT for a whole-system cross-repo landscape (use /landscape), the hub publishing mechanics alone (use /internal-deploy), product UI or a marketing site (use /frontend-design), or a blog chart (use /blog-chart)"
 argument-hint: '[type: finding|status|architecture|rca|handoff|decision|reference|worklog] [source files or notes]'
 user_invocable: true

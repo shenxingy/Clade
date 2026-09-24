@@ -135,6 +135,10 @@ FORBIDDEN_NATIVE_TEXT = (
 # before the general Claude-to-Codex adaptation so the generated workflow uses
 # the helper bundled inside its own plugin directory.
 SKILL_TEXT_REPLACEMENTS = {
+    "artifact": (
+        ("~/.claude/scripts/artifact-lint.py", "<plugin-root>/skills/artifact/scripts/artifact-lint.py"),
+        ("~/.claude/scripts/design-lint.py", "<plugin-root>/skills/artifact/scripts/design-lint.py"),
+    ),
     "green": (
         (
             "~/.claude/scripts/ci-local.py",
@@ -147,6 +151,10 @@ SKILL_TEXT_REPLACEMENTS = {
 # plugin receives byte-identical copies rather than a second hand-maintained
 # implementation under the skill directory.
 DECLARED_RESOURCES = {
+    "artifact": (
+        (REPO_ROOT / "configs/scripts/artifact-lint.py", Path("scripts/artifact-lint.py")),
+        (REPO_ROOT / "configs/scripts/design-lint.py", Path("scripts/design-lint.py")),
+    ),
     "green": (
         (
             REPO_ROOT / "configs" / "scripts" / "ci-local.py",

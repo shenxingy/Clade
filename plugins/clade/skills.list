@@ -4,6 +4,7 @@
 #   python3 configs/scripts/regen-codex-plugin.py
 #
 # Runtime-specific orchestration stays excluded until it has a native adapter.
+artifact
 commit
 create-pr
 codex-usage
