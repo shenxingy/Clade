@@ -1,6 +1,6 @@
 ---
 name: artifact
-description: "Write a single-page HTML report artifact that a PhD, a PM and an engineer can read at a glance — a research finding, status report, architecture page, RCA, handoff or work-log — with the section spine, publication-quality figures, colour tokens for both themes and a mechanical lint (artifact-lint.py) run before it is published to an artifact hub or as a Claude Artifact."
+description: "Create and review artifact/report pages: research findings, project status, architecture, decisions, handoffs and reference pages. Select the structure from the reader question, write understandable copy, then inspect rendered figures and perform a fresh-reader review. Use for 写artifact、做报告、状态报告、架构报告; product UI and marketing sites use frontend-design."
 when_to_use: "write an artifact page, report page, research finding page, status report page, RCA page, handoff page, paper-quality figure, chart colours for a report, architecture diagram for a report, 写artifact, 发一个artifact, 做一页报告, 研究报告页, 汇报页面, 论文图, 图表配色, 架构图页面 — NOT for a whole-system cross-repo landscape (use /landscape), the hub publishing mechanics alone (use /internal-deploy), product UI or a marketing site (use /frontend-design), or a blog chart (use /blog-chart)"
 argument-hint: '[type: finding|status|architecture|rca|handoff|decision|reference|worklog] [source files or notes]'
 user_invocable: true
@@ -15,26 +15,27 @@ summary.
 
 ## What it does
 
-1. Reads the brief and fixes the page's type, reader question and publish
-   target; resolves the organisation's design system before styling anything.
+1. Reads `references/review.md` to set acceptance answers, then routes the
+   reader's question through `references/spines.md` to choose the type and
+   container; resolves the organisation's design system.
 2. Collects every number with its source, population, window and date, and
    grades each claim verified / inferred / speculation.
-3. Writes the spine for the type (`references/spines.md`), picking parts from
-   the element inventory of the strongest published reports, slides and decks
-   (`references/anatomy.md`): a headline that
-   is a finding, a ≤120-word deck, a number strip with denominators, a graded
-   verdict, a key-and-terms section with one colour per entity, claim
-   headings with eyebrow labels, a section on why the numbers look like this
-   (mechanism, what was ruled out), and the back matter — what did not work,
-   limits and claims not made, one next step with an owner, what was done to
-   find this out, sources and reproduction, what the page does not cover.
-4. Draws the one to three figures the page turns on (`references/figures.md`)
+3. Uses the selected spine as question coverage, combining short answers and
+   choosing only relevant parts from `references/anatomy.md`. Argued pages
+   lead with the answer, evidence and uncertainty; reference/worklog pages
+   retain their lookup/state structure. No invented metrics or empty sections.
+4. Draws the figures needed to answer the question (`references/figures.md`)
    and, for architecture pages, C4 context and container diagrams with a
    legend (`references/diagrams.md`) — inline SVG, tokens for both themes,
    captions that state the takeaway.
-5. Runs `python3 ~/.claude/scripts/artifact-lint.py <page>` and fixes every
-   FAIL and WARN (or writes the reason on the page), then screenshots the
-   page in light and dark before publishing.
+5. Edits language for meaning, first-use definitions and consistency against
+   the facts, using `references/review.md`.
+6. Runs `python3 ~/.claude/scripts/artifact-lint.py <page>`; fixes every FAIL
+   and fixes or explains WARNs. Reviews all figures and the first screen in
+   light/dark at desktop/phone widths, then performs a fresh-reader review.
+   Repairs and re-renders until the applicable checks pass; records evidence
+   in `artifact-review.md`. Checks the served output after authorized publishing.
+   An invisible figure or wrong takeaway blocks completion even with clean lint.
 
 ## Usage
 

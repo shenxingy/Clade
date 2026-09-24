@@ -61,7 +61,7 @@ def test_codex_plugin_skills_are_generated_and_provider_native() -> None:
     )
     assert result.returncode == 0, result.stderr
     skills = list((PLUGIN_ROOT / "skills").glob("*/SKILL.md"))
-    assert len(skills) == 26
+    assert len(skills) == 27
     assert "green" in {path.parent.name for path in skills}
     merged = "\n".join(path.read_text(encoding="utf-8") for path in skills).lower()
     for forbidden in ("claude -p", "--dangerously-skip-permissions", "~/.claude/", ".claude/"):
@@ -78,6 +78,7 @@ def test_codex_plugin_skills_are_generated_and_provider_native() -> None:
     assert "`$clade:delivery`" in (
         PLUGIN_ROOT / "skills" / "commit" / "SKILL.md"
     ).read_text()
+
     assert "core contract: `clade.execution/v1`" in (
         PLUGIN_ROOT / "skills" / "provider" / "SKILL.md"
     ).read_text()
@@ -87,6 +88,24 @@ def test_codex_plugin_skills_are_generated_and_provider_native() -> None:
     assert "missing progress or quota data as `0`" in (
         PLUGIN_ROOT / "skills" / "status" / "SKILL.md"
     ).read_text()
+
+
+
+def test_artifact_helpers_run_outside_clade_without_claude_install(tmp_path) -> None:
+    """Cross the distribution boundary: run the bundled helper from another project."""
+    skill = PLUGIN_ROOT / "skills/artifact"
+    text = (skill / "SKILL.md").read_text()
+    assert "references/review.md" in text
+    assert (skill / "references/review.md").is_file()
+    for name in ("artifact-lint.py", "design-lint.py"):
+        helper = skill / "scripts" / name
+        assert helper.read_bytes() == (REPO_ROOT / "configs/scripts" / name).read_bytes()
+        assert f"<plugin-root>/skills/artifact/scripts/{name}" in text
+    result = subprocess.run(
+        [sys.executable, str(skill / "scripts/artifact-lint.py"), "--self-test"],
+        cwd=tmp_path, capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_delivery_lifecycle_has_semantic_parity_across_distributions() -> None:

@@ -149,7 +149,6 @@
     {
       "id": "specialized-opt-in-workflows",
       "patterns": [
-        "artifact",
         "banana",
         "brief",
         "domain-model",

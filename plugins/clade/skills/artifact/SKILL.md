@@ -1,3 +1,33 @@
+---
+name: artifact
+description: "Create and review artifact/report pages: research findings, project status, architecture, decisions, handoffs and reference pages. Select the structure from the reader question, write understandable copy, then inspect rendered figures and perform a fresh-reader review. Use for 写artifact、做报告、状态报告、架构报告; product UI and marketing sites use frontend-design."
+---
+
+# Clade for Codex
+
+This workflow runs **directly in Codex**. Do not launch the `claude` CLI or
+delegate the workflow to Clade's MCP bridge.
+
+Codex compatibility rules:
+
+- Plugin skills are namespaced. Invoke this workflow explicitly as
+  `$clade:artifact`; a bare `$name` does not select the installed Clade plugin.
+- Read the nearest `AGENTS.md` files for repository instructions. If a project
+  has only `CLAUDE.md`, treat it as legacy project guidance and read it too.
+- Store new Clade working state under `.clade/` (or `~/.clade/` for personal
+  state). Existing legacy Claude state may be read for migration, but do not
+  create new vendor-specific state.
+- A `/skill-name` reference means the corresponding Codex
+  `$clade:skill-name` plugin skill, or the same workflow invoked naturally when
+  explicit skill invocation is not available.
+- Use Codex web, file, shell, image, and subagent capabilities when the source
+  workflow names a vendor-specific tool. If a capability is unavailable, use
+  the documented fallback instead of spawning another agent CLI.
+- Paths such as `<plugin-root>/...` are relative to the installed Clade plugin
+  containing this `SKILL.md`; resolve that root before invoking a helper.
+
+## Canonical Clade workflow
+
 You are the Artifact skill. You write one HTML page that a reader with three
 heads — PhD, PM, engineer — can read at a glance: what the problem is now, how
 sure we are, what the next step is, and the evidence for all three.
@@ -136,14 +166,14 @@ container.
 ### Step 6 — Lint
 
 ```bash
-python3 ~/.claude/scripts/artifact-lint.py <page.html>            # inside this repo: configs/scripts/artifact-lint.py
-python3 ~/.claude/scripts/artifact-lint.py <page.html> --strict   # WARN also fails
+python3 <plugin-root>/skills/artifact/scripts/artifact-lint.py <page.html>            # inside this repo: configs/scripts/artifact-lint.py
+python3 <plugin-root>/skills/artifact/scripts/artifact-lint.py <page.html> --strict   # WARN also fails
 ```
 
 Every FAIL is fixed. Every WARN is fixed or its reason is written on the page
 (in the sources or limits section) — a lint you silence in your head is a
 rule nobody else can see. For a page that will be judged on its design, also
-run `python3 ~/.claude/scripts/design-lint.py html <page.html>` for the
+run `python3 <plugin-root>/skills/artifact/scripts/design-lint.py html <page.html>` for the
 contrast pairs and type-size floors.
 
 ### Step 7 — Render, read, repair, repeat
@@ -212,3 +242,65 @@ dark redefinitions under the media query; re-run the palette validator with
 **Cause:** the page was styled for the open web.
 **Fix:** inline the face as a data: URI or use the local stack; the intranet
 never fetches it, so the page was already rendering the fallback.
+
+## Additional skill reference
+
+# Artifact
+
+One page that answers, from its first screen, what the problem is now, how
+sure we are, and what the next step is — then carries the evidence. The
+executable instructions live in `prompt.md`; this body is the Codex-facing
+summary.
+
+## What it does
+
+1. Reads `references/review.md` to set acceptance answers, then routes the
+   reader's question through `references/spines.md` to choose the type and
+   container; resolves the organisation's design system.
+2. Collects every number with its source, population, window and date, and
+   grades each claim verified / inferred / speculation.
+3. Uses the selected spine as question coverage, combining short answers and
+   choosing only relevant parts from `references/anatomy.md`. Argued pages
+   lead with the answer, evidence and uncertainty; reference/worklog pages
+   retain their lookup/state structure. No invented metrics or empty sections.
+4. Draws the figures needed to answer the question (`references/figures.md`)
+   and, for architecture pages, C4 context and container diagrams with a
+   legend (`references/diagrams.md`) — inline SVG, tokens for both themes,
+   captions that state the takeaway.
+5. Edits language for meaning, first-use definitions and consistency against
+   the facts, using `references/review.md`.
+6. Runs `python3 <plugin-root>/skills/artifact/scripts/artifact-lint.py <page>`; fixes every FAIL
+   and fixes or explains WARNs. Reviews all figures and the first screen in
+   light/dark at desktop/phone widths, then performs a fresh-reader review.
+   Repairs and re-renders until the applicable checks pass; records evidence
+   in `artifact-review.md`. Checks the served output after authorized publishing.
+   An invisible figure or wrong takeaway blocks completion even with clean lint.
+
+## Usage
+
+```
+/artifact finding notes/v9-xref.md          # a research result page
+/artifact status                            # where the project stands, from the repo + hub
+/artifact architecture apps/halo            # as-built system page with C4 L1 + L2
+/artifact rca incident-2026-09-21.md        # post-mortem in the SRE field order
+/artifact worklog                           # the living Goal · Now · Human TODO · Blockers page
+```
+
+Publishing goes through `/internal-deploy` (hub) or the Artifact tool
+(Claude Artifacts); this skill owns what is on the page, not where it lands.
+
+## Delivery completion
+
+If this workflow changes files or external state:
+
+- Inspect the real final state before responding, including `git status` for a
+  repository task.
+- Never report `DONE` while task-owned changes are uncommitted. Use or continue
+  `$clade:delivery` and create a repository-compliant checkpoint or preserve
+  the work when committing is unavailable.
+- When the user request or trusted repository policy makes publication,
+  deployment, or live verification part of the task, do not silently downgrade
+  the result to local-only work.
+- If a required delivery transition lacks authority, credentials, a destination,
+  or reachable external state, report `BLOCKED` or `NEEDS_CONTEXT` rather than
+  appending a "not committed/pushed/deployed" caveat after `DONE`.

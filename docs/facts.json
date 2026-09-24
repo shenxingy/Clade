@@ -91,7 +91,7 @@
     },
     {
       "name": "codex_plugin_skills",
-      "value": 26,
+      "value": 27,
       "derive": {
         "type": "count_glob",
         "pattern": "plugins/clade/skills/*/"

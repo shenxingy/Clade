@@ -30,7 +30,7 @@ codex plugin add clade@clade
 
 The plugin under `plugins/clade/` contains:
 
-- 26 core workflows: commit, Codex usage pace, security review, release documentation, frontend
+- 27 core workflows: commit, Codex usage pace, security review, release documentation, frontend
   design, local CI repair, handoff/pickup, incident response, investigation, architecture maps,
   PR review/merge, research, retrospectives, project review, sync, verification,
   worktrees, and supporting decision workflows.
@@ -261,3 +261,13 @@ provider-neutral (see above); the remaining Codex-worker gaps before the
 orchestrator layer is fully provider-neutral are **JSONL event streaming,
 thread resume semantics, and structured-result/usage accounting** — tracked as
 Phase 2 in `worker_provider.py`.
+
+## Artifact reports across projects
+
+`$clade:artifact` selects a report structure from the reader question, then
+checks language, rendered figures and fresh-reader comprehension. The plugin
+bundles its lint tools and review reference, so another repository does not
+need a Claude installation. Global Clade instructions route artifact/report
+tasks here; product UI and marketing pages continue through frontend-design.
+Use a new thread after updating the plugin. Each project supplies its own
+facts, audience and design system; an unavailable render lane is unverified.

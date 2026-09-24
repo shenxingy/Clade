@@ -8,6 +8,15 @@ channels (`~/.claude/CLAUDE.md`, the Codex managed block) carry adapted
 wording of the same rules; this file is the canonical source they adapt
 from. Edit it here and re-run `install.sh`.
 
+## Artifact reports across projects
+
+For artifact/report pages in any project, load the installed `artifact` skill
+before drafting. It selects the structure from the reader's question and owns
+the rendered-output and fresh-reader review in `references/review.md`. Reuse
+the project's design system; missing review evidence is UNVERIFIED. If the
+skill is unavailable, name the installation gap instead of claiming compliance.
+Product UI and marketing sites use `frontend-design` instead.
+
 ## Don't block
 
 Default state is motion. When something stalls you, climb this ladder —

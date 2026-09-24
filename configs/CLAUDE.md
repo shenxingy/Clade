@@ -145,6 +145,11 @@ When the free path genuinely cannot answer something, say so in those words.
 "Not measured" is a finding; a zero, or silence, is a lie.
 
 ## Communication
+- For artifact/report pages in any project, use `/artifact` before drafting.
+  Its reader-question routing and `references/review.md` govern structure,
+  wording, rendered figures and fresh-reader review. Reuse the project's design
+  system; missing review evidence is UNVERIFIED. Product UI and marketing sites
+  still use `/frontend-design`. Report a missing skill instead of claiming compliance.
 - When blocked on something requiring human input: write to `.claude/blockers.md` and stop
   - Format: `## Blocker [datetime]\n[what you need]\n[what you tried]`
 - Don't loop retrying what you cannot fix — surface it clearly, then stop

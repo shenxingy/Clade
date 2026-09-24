@@ -77,7 +77,7 @@ Run `$clade:codex-usage setup minimal` for a compact native footer.
 never reads or exposes Codex credentials.
 
 The native plugin runs directly in Codex and does **not** require Claude Code.
-It currently ships 26 provider-native core workflows; Claude-specific overnight
+It currently ships 27 provider-native core workflows; Claude-specific overnight
 orchestration remains in the full framework. See [Native Codex Support](docs/codex.md).
 
 ### MCP Server Only
