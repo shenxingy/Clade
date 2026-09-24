@@ -15,12 +15,10 @@ sentences.
   forward share one shape — a headline that is a finding, a number strip, a
   graded verdict, a key-and-terms section, sections whose headings are claims,
   a "what to do, in order" close. The hub as a whole does not: of its 936
-  report pages, 72% have no section explaining why the numbers look like
-  this, 88% no account of what was done to find out, 71% no next-step
-  section, 68% no limits section, 66% no sources section, 53% no key, 35% a
-  topic label for a headline, and 32% carry any figure. No page passes every
-  check; two answer all five of why, method, limits, next and key. The gap
-  is the missing standard, not any one author.
+  report pages, 72% never explain why the numbers look like this and 88%
+  never say what was done to find out; no page passes every check. The full
+  table, per author, is in the study — this file states the rules, the study
+  holds the numbers. The gap is the missing standard, not any one author.
 - **Answer-first writing.** BLUF (US Army AR 25-50), Minto's pyramid and SCQA,
   Amazon's six-page narrative, Alley's assertion–evidence headings.
 - **Engineering documents.** Google design docs (Ubl: goals, non-goals,
@@ -54,9 +52,9 @@ or decision memo. A reference register and a work-log have their own shape
 2. **Deck.** ≤ 120 words directly under the headline: what was measured, on
    what population, the two numbers that matter, and what the reader should
    do. This is the BLUF; a reader who stops here must leave with the right
-   belief. `/internal-deploy` calls the same paragraph the **Bottom line** —
-   one contract, two names: the conclusion the reader acts on comes before
-   any rounds, dates or timeline. *(lint: `deck`.)*
+   belief. Whatever a skill calls this paragraph — deck, bottom line, BLUF —
+   it is one contract: the conclusion the reader acts on comes before any
+   rounds, dates or timeline. *(lint: `deck`.)*
 3. **Number strip.** Three to five numbers, each with its **denominator and
    window** on the same line: *"0 / 24 held-out frauds flagged at τ"*,
    *"33.4% recall of 12,152 forgeries at 1% real-clean FPR (n = 1,921)"*. A

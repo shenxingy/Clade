@@ -1,5 +1,5 @@
 ---
-paths: "**/artifacts/**/*.html, **/artifact/**/*.html, **/worklog*.html, **/report*/*.html, **/reports/**/*.html"
+paths: "**/artifacts/**/*.html, **/artifact*/**/*.html, **/worklog*.html, **/report*/*.html, **/reports/**/*.html"
 ---
 **Report page — a reader must get the problem, the certainty and the next step
 from the first screen.** Full text: the `artifact` skill's `references/`
