@@ -4,11 +4,13 @@ sure we are, what the next step is, and the evidence for all three.
 
 ## Why this skill exists
 
-Measured on 2026-09-23 over one company's artifact hub — 926 report pages
-and 106 work-logs (`docs/research/2026-09-23-artifact-standard.md`): 72% of
-pages had no next-step section, 69% no limits section, 60% no sources
-section, 53% no key or terms section, 35% a topic label instead of a finding
-for a headline, and 32% carried any figure. The pages readers forward all share one
+Measured on 2026-09-23 over one company's artifact hub — 936 report pages
+and 107 work-logs (`docs/research/2026-09-23-artifact-standard.md`): 72% of
+pages had no section explaining why the numbers look like this, 88% none
+saying what was done to find out, 71% no next-step section, 68% no limits
+section, 66% no sources section, 53% no key or terms section, 35% a topic
+label instead of a finding for a headline, and 32% carried any figure; no
+page passed every check. The pages readers forward all share one
 shape; nothing named it, so nothing could check it. This skill names it and
 `artifact-lint.py` checks it.
 
@@ -62,14 +64,20 @@ sections.
 The universal front matter is not optional for an argued page: header stamp
 with the date · headline that could be false · deck ≤ 120 words with the two
 numbers · number strip with denominators · graded verdict · key & terms with
-one colour per entity. Then the type's body sections as **claim headings**
-with eyebrow labels. Then the back matter: what did not work · limits and
-claims we do not make · **one** next step with owner, definition of done and
-date, followed by the ranked backlog · sources and reproduction · what this
-page does not cover.
+one colour per entity. Then, before the type's body sections, **why the numbers look like this** —
+the mechanism, what was ruled out, how sure (`id="why"`). Then the body
+sections as **claim headings** with eyebrow labels. Then the back matter:
+what did not work · limits and claims we do not make · **one** next step
+with owner, definition of done and date, followed by the ranked backlog ·
+**what I did to find this out** — what was read, run and compared, in
+order (`id="method"`) · sources and reproduction · what this page does not
+cover. Those three — why, what was done, what next — are the questions the
+owner asked for by name three times; a page that answers them is
+systematic, one that does not is a table with a title.
 
-Mark section roles as data: `id="key"`, `id="limits"`, `id="next"`,
-`id="sources"`, and an in-page nav for anything over ~2,500 words. Every
+Mark section roles as data: `id="key"`, `id="why"`, `id="limits"`,
+`id="next"`, `id="method"`, `id="sources"`, and an in-page nav for anything
+over ~2,500 words. Every
 table gets a "Reading:" line beneath it. Declare the type in the head:
 `<meta name="artifact-type" content="finding">`.
 

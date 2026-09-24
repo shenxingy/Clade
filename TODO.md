@@ -1209,12 +1209,12 @@ record is wrong**. The four below were reproduced by hand before filing.
 
 Study: [docs/research/2026-09-23-artifact-standard.md](docs/research/2026-09-23-artifact-standard.md).
 Shipped: `/artifact` skill + references, `configs/scripts/artifact-lint.py`
-(22 checks, `--survey`, `--self-test` with 17 pinned mutations),
+(24 checks, `--survey`, `--self-test` with 19 pinned mutations),
 `configs/rules/artifact.md`, `/landscape` pointer, the internal exemplar page.
 
 - [ ] Publisher head standard upstream: the memory system's artifact publisher
-      emits pages that start with `<title>` — 331 of the hub's 386 head-standard
-      failures. Fix opened as a PR on that repository (2026-09-23, eight tests,
+      emits pages that start with `<title>` — 341 of the hub's 384 head-standard
+      failures at the evening snapshot (331 of 386 at the morning one). Fix opened as a PR on that repository (2026-09-23, eight tests,
       byte-preserving and idempotent); the repository owner merges. Re-run
       `artifact-lint.py --survey` after it lands to confirm the failure share
       drops below 5%.

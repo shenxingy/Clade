@@ -24,9 +24,10 @@ summary.
    (`references/anatomy.md`): a headline that
    is a finding, a ≤120-word deck, a number strip with denominators, a graded
    verdict, a key-and-terms section with one colour per entity, claim
-   headings with eyebrow labels, and the back matter — what did not work,
-   limits and claims not made, one next step with an owner, sources and
-   reproduction, what the page does not cover.
+   headings with eyebrow labels, a section on why the numbers look like this
+   (mechanism, what was ruled out), and the back matter — what did not work,
+   limits and claims not made, one next step with an owner, what was done to
+   find this out, sources and reproduction, what the page does not cover.
 4. Draws the one to three figures the page turns on (`references/figures.md`)
    and, for architecture pages, C4 context and container diagrams with a
    legend (`references/diagrams.md`) — inline SVG, tokens for both themes,

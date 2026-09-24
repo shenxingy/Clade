@@ -14,10 +14,13 @@ sentences.
   `docs/research/2026-09-23-artifact-standard.md`). The pages people actually
   forward share one shape — a headline that is a finding, a number strip, a
   graded verdict, a key-and-terms section, sections whose headings are claims,
-  a "what to do, in order" close. The hub as a whole does not: 72% of its
-  926 report pages have no next-step section, 69% no limits section, 60% no
-  sources section, 53% no key, 35% a topic label for a headline, and 32%
-  carry any figure. The gap is the missing standard, not any one author.
+  a "what to do, in order" close. The hub as a whole does not: of its 936
+  report pages, 72% have no section explaining why the numbers look like
+  this, 88% no account of what was done to find out, 71% no next-step
+  section, 68% no limits section, 66% no sources section, 53% no key, 35% a
+  topic label for a headline, and 32% carry any figure. No page passes every
+  check; two answer all five of why, method, limits, next and key. The gap
+  is the missing standard, not any one author.
 - **Answer-first writing.** BLUF (US Army AR 25-50), Minto's pyramid and SCQA,
   Amazon's six-page narrative, Alley's assertion–evidence headings.
 - **Engineering documents.** Google design docs (Ubl: goals, non-goals,
@@ -69,6 +72,26 @@ or decision memo. A reference register and a work-log have their own shape
    the hub that readers found legible all carry this section; 53% of pages
    have none. *(lint: `key-terms` — fires when there are figures or tables
    and no key.)* Mark the section `id="key"` so tools find it.
+
+## The two sections the owner keeps asking for by name
+
+Before the type's own body sections, every argued page carries these two,
+because they are the questions the reader asks after the number strip and
+they were re-typed as a brief three times before being written down here:
+
+- **Why the numbers look like this.** The mechanism behind the headline
+  number, the alternative explanations that were ruled out and how, and how
+  sure that leaves us. Not "the recall is 33%" but "the recall is 33% because
+  the model learned the generators' fingerprint, and here is the ablation
+  that says so". A number without its cause is a rumour with a decimal
+  point. *(lint: `why` — WARN on finding, status, rca and decision pages.)*
+  Mark it `id="why"`.
+- **What I did to find this out.** The research log, in order: what was read,
+  what was run, what was compared against what, what was tried and dropped
+  (link the failed-attempts section), with dates. It sits near the end, just
+  before the sources, and it is what lets a reader weigh the result and a
+  successor repeat it. *(lint: `method` — WARN on every argued page.)* Mark it
+  `id="method"`.
 
 ## The body — one spine per type
 
@@ -175,10 +198,12 @@ Publish to a stable slug so the page versions in place. *(lint:
    definition of done, verifier, owner and date; a list of five is a backlog
    and defers the decision the page exists to force. The backlog follows,
    ranked, each item with an owner. *(lint: `next`.)*
-9. **Sources and reproduction.** For every number: where it came from, the
-   method, the date; the command that rebuilds the page's figures; the
-   commit. *(lint: `sources`.)*
-10. **What this page does not cover.** The declared scope boundary — "nothing
+9. **What I did to find this out.** The research log described above: what
+   was read, run and compared, in order, with dates. *(lint: `method`.)*
+10. **Sources and reproduction.** For every number: where it came from, the
+    date; the command that rebuilds the page's figures; the commit. *(lint:
+    `sources`.)*
+11. **What this page does not cover.** The declared scope boundary — "nothing
     missing" is only honest if what is out of scope is written down.
 
 ## Writing rules that make the spine legible
@@ -188,9 +213,9 @@ Publish to a stable slug so the page versions in place. *(lint:
   heading (*"What exists, and what each one is"*, *"Why recall is stuck at
   about a quarter"*). Test: can the heading be false? *(lint:
   `headings-claim` — WARN below one claim in three.)*
-- **Mark section roles as data.** `id="key"`, `id="limits"`, `id="next"`,
-  `id="sources"` on the heading or section, and an in-page nav that links to
-  them. Claim headings hide the role words; the id is what a tool — and the
+- **Mark section roles as data.** `id="key"`, `id="why"`, `id="limits"`,
+  `id="next"`, `id="method"`, `id="sources"` on the heading or section, and an
+  in-page nav that links to them. Claim headings hide the role words; the id is what a tool — and the
   next agent — keys on. The same lesson that put the work-log header into
   the manifest as data: seven markup shapes for four labels, and a scraper
   that mistook a blocker paragraph for three tasks.

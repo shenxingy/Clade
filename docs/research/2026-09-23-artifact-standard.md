@@ -8,13 +8,16 @@ summary: >
   content or state things unclearly", what the most-published colleague does
   differently, how the best external practice structures a technical page and
   draws a publication-quality figure, and how to make the generator do it every
-  time. Measured on all 1,032 live pages: the gap is hub-wide, not personal —
-  72% of report pages have no next-step section, 69% no limits section, 53%
-  no key or terms, 32% carry any figure, and 2 of 926 pass every check. The
+  time. Measured on all live pages (1,043 by evening): the gap is hub-wide,
+  not personal — 72% of report pages never explain why the numbers look like
+  this, 88% never say what was done to find out, 71% have no next-step
+  section, 68% no limits section, 53% no key or terms, 32% carry any figure,
+  and none of 936 passes every check. The
   pages people forward share one shape; nothing named it, so nothing could
   check it. Result: the /artifact skill (section spines per page type, figure
-  and colour rules, diagram notation), artifact-lint.py (22 mechanical checks,
-  bilingual, with --survey), a path-scoped rule, and a published exemplar page.
+  and colour rules, diagram notation), artifact-lint.py (24 mechanical checks,
+  bilingual, with --survey), a path-scoped rule, and two published exemplar
+  pages.
 ---
 
 # The artifact standard
@@ -43,8 +46,10 @@ this public copy; the internal exemplar page carries them.
   protocol; the rest as a `finding`, the strictest shape. Groups are the
   manifest `owner` (fallback `publisher`) with prefixes stripped and two
   spellings aliased per person.
-- **Population.** 1,032 live pages: 926 report pages and 106 work-logs.
-  Snapshot taken 2026-09-23 on the serving host.
+- **Population.** 1,032 live pages at the morning snapshot (926 report pages
+  and 106 work-logs); 1,043 by the evening re-run (936 + 107) that added the
+  `why` and `method` checks. Numbers below are from the evening run unless
+  marked; the hub grew by 11 pages during the day.
 - **Reading.** Three of the most-forwarded pages read in full, plus the
   structural extraction (headings, figures, tables, tokens, fonts) of every
   page by the two most-published authors — 117 and 49 report pages.
@@ -56,52 +61,54 @@ this public copy; the internal exemplar page carries them.
   (fixed by also reading `id`/`class` and in-page nav text); charset/viewport
   order was scored as a defect; an abstract placed in a `<div>` was scored
   missing. The self-test carries fixtures for each, and
-  `orchestrator/tests/test_self_tests_can_fire.py` carries 17 mutations
+  `orchestrator/tests/test_self_tests_can_fire.py` carries 19 mutations
   that must turn it red.
 
 ## 2. What the hub looks like
 
-Share of the 926 report pages carrying each finding (WARN or FAIL):
+Share of the 936 report pages carrying each finding (WARN or FAIL), evening
+run with the 24-check lint:
 
 | Finding | Share | What it means |
 |---|---|---|
-| no next-step section | 72% | the page forces no decision |
-| no limits section | 69% | silence reads as "everything is fine" |
-| no sources / reproduce section | 60% | numbers with nowhere to go |
+| no section saying what was done to find this out (`method`) | 88% | a result the reader cannot weigh or repeat |
+| no section explaining why the numbers look like this (`why`) | 72% | a number without its cause |
+| no next-step section | 71% | the page forces no decision |
+| no limits section | 68% | silence reads as "everything is fine" |
+| no sources / reproduce section | 66% | numbers with nowhere to go |
 | no key & terms section | 53% | entities and metrics never defined; colours never fixed |
-| head standard failed (no doctype / charset / viewport) | 42% | 331 pages start with `<title>` — the publisher template, not the authors |
+| head standard failed (no doctype / charset / viewport) | 41% | 341 of the 384 start with `<title>` — the publisher template, not the authors |
 | headline is a topic label | 35% | the reader must read the body to learn the point |
 | no date in the first screen | 22% | wrong within a week, undetectably |
-| external script / stylesheet / font | 17% + 8% | renders the fallback on the intranet |
+| external script / stylesheet / font | 17% + 9% | renders the fallback on the intranet |
 | wall of tables, no figure | 13% | |
 | carries any figure at all | 32% | |
-| passes every check | 2 of 926 | |
+| passes every check | 0 of 936 | two answer all five of why, method, limits, next, key |
 
-Work-logs: 93 of 106 lack the protocol header (Goal · Now · Human TODO ·
-Blockers). Median report page is 1,351 words; the 90th percentile is 5,838;
+Work-logs: 93 of 107 lack the protocol header (Goal · Now · Human TODO ·
+Blockers). Median report page is 1,355 words; the 90th percentile is 5,838;
 15 pages exceed 20,000 words.
 
 By author (share of pages **without** the finding, higher is better):
 
-| group | n | any figure | title is a claim | deck | dated | claim headings | key & terms | limits | next | sources | no external refs |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| most-published author | 117 | 47% | 64% | 96% | 79% | 83% | 32% | 38% | 40% | 45% | 74% |
-| this toolkit's owner | 49 | 39% | 59% | 92% | 90% | 86% | 43% | 49% | 29% | 49% | 80% |
-| everyone else (≥ 20 pages each, 4 groups) | 27–48 | 7–52% | 56–91% | 96–100% | 53–100% | 58–96% | 11–62% | 21–48% | 6–33% | 26–50% | 56–78% |
-| unattributed | 612 | 29% | 66% | 90% | 76% | 83% | 50% | 28% | 27% | 38% | 89% |
+| group | n | any figure | title is a claim | deck | dated | claim headings | key & terms | why | method | limits | next | sources | no external refs |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| most-published author | 118 | 47% | 64% | 96% | 80% | 83% | 33% | 32% | 17% | 38% | 40% | 36% | 74% |
+| this toolkit's owner | 51 | 41% | 59% | 96% | 92% | 86% | 45% | 37% | 20% | 59% | 37% | 53% | 80% |
+| everyone else (≥ 20 pages each, 4 groups) | 27–49 | 7–53% | 57–89% | 94–100% | 50–100% | 59–96% | 11–61% | 14–48% | 10–11% | 20–48% | 12–33% | 19–39% | 56–81% |
+| unattributed | 612 | 29% | 66% | 90% | 76% | 83% | 50% | 27% | 12% | 28% | 27% | 32% | 89% |
 
 Reproduce: `python3 configs/scripts/artifact-lint.py --survey <hub root>
 --alias <owner-id>=<name> …`. The table is the script's own output.
 
 **Reading the table.** The owner's pages are at or above the most-published
-author's on six of ten structural checks; of the four where they trail, two
-are within a few points (headline as a claim 59% vs 64%, deck 92% vs 96%) and
-two are substantive — the next-step section (29% vs 40%) and figures (39% vs
-47%). "Missing content"
-is, measured, three sections: key & terms, limits, next step. "Stated
-unclearly" is, measured, the absence of a figure and of a denominator beside
-the rate. Neither is an authoring-talent gap — no group clears 62% on any of
-the three sections — it is the absence of a named standard.
+author's on nine of twelve structural checks; they trail on the headline as
+a claim (59% vs 64%), the next-step section (37% vs 40%, within noise) and
+figures (41% vs 47%). "Missing content" is, measured, five sections: key &
+terms, why, limits, next step, method. "Stated unclearly" is, measured, the
+absence of a figure and of a denominator beside the rate. Neither is an
+authoring-talent gap — no group clears 62% on any of the five sections, and
+no group clears 20% on method — it is the absence of a named standard.
 
 ## 3. What the strongest pages do — the shape, decoded
 
@@ -184,7 +191,7 @@ live in the skill's references; the convergence is the point:
 | spines | `…/references/spines.md` | universal front and back matter; one body spine per type (finding, status, architecture, rca, handoff, decision, reference, worklog) |
 | figures | `…/references/figures.md` | procedure, 32 sourced rules, Okabe–Ito and Tol hexes, the two-theme token pattern, chart anatomy, checklist |
 | diagrams | `…/references/diagrams.md` | which diagram for which question, C4 notation rules, six-class legend with light/dark tokens, Mermaid vs SVG |
-| lint | `configs/scripts/artifact-lint.py` | 22 checks (FAIL/WARN/INFO), `<meta name="artifact-type">` profiles, `--survey`, `--self-test`; 17 mutations pinned |
+| lint | `configs/scripts/artifact-lint.py` | 24 checks (FAIL/WARN/INFO), `<meta name="artifact-type">` profiles, `--survey`, `--self-test`; 19 mutations pinned |
 | rule | `configs/rules/artifact.md` | injected when a `**/artifacts/**/*.html` (and siblings) is edited |
 | `/landscape` | `configs/skills/landscape/prompt.md` | now points at the artifact references instead of carrying its own diagram rules |
 | exemplar | internal hub, slug `artifact-standard` | the study as a page, written with the skill, linted clean, screenshot in both themes |
@@ -249,3 +256,11 @@ hub's and the world's best pages are built from.
   Design; only a single-page report is hand-built HTML.
 - **Published.** A second internal page, the exemplar gallery, written with
   the skill: 0 FAIL / 0 WARN, both themes reviewed.
+- **The owner's standing requirement, encoded.** Asked for by name three
+  times — a report must explain *why the data looks like this*, say *what
+  research was done*, and give *the next action*. The first spine carried
+  the third and only implied the first two, so they became required
+  sections (`why`, `method`) with lint checks, a rule line in the private
+  instructions and a corrections entry pointing at the home. Re-measured with
+  the 24-check lint: 72% of hub pages lack the why section, 88% the method
+  section; no page passes every check.

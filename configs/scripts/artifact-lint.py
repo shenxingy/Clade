@@ -13,13 +13,15 @@ prose, and a rule the script cannot check is not in this file.
     python3 artifact-lint.py --survey /srv/artifacts --alias ben-ren=benren
     python3 artifact-lint.py --self-test
 
-Why it exists — measured on 2026-09-23 over one company artifact hub (926
-report pages plus 106 work-logs) with this script's --survey: 72% of pages
-had no next-step section, 69% no limits section, 60% no sources section, 53%
-no key or terms section, 35% a topic label for a headline, 42% failed the
-head standard, and 32% carried any figure at all. Two pages of 926 were
-clean. The gap was hub-wide, not one author's: nothing named the standard,
-so nothing could check it. This does.
+Why it exists — measured on 2026-09-23 over one company artifact hub (936
+report pages plus 107 work-logs) with this script's --survey: 72% of pages
+had no section explaining why the numbers look like this, 88% none saying
+what was done to find out, 71% no next-step section, 68% no limits section,
+66% no sources section, 53% no key or terms section, 35% a topic label for a
+headline, 41% failed the head standard, and 32% carried any figure at all.
+No page of 936 passed every check; two answered all five of why, method,
+limits, next and key. The gap was hub-wide, not one author's: nothing named
+the standard, so nothing could check it. This does.
 
 Levels: FAIL blocks publishing (a page that cannot be read or does not render
 on the intranet); WARN needs a fix or a written reason; INFO is a measurement.
@@ -68,9 +70,20 @@ _KEY_TERMS = re.compile(
     r"|what these words mean|how to read|reading (the|this) (page|table|chart)"
     r"|口径|术语|名词|怎么读|读法|符号说明|图例", re.I)
 _SOURCES = re.compile(
-    r"\bsources?\b|evidence|provenance|method(ology)?|reproduc"
+    r"\bsources?\b|evidence|provenance|reproduc"
     r"|where (it|this|everything|things) (lives?|came from)|appendix"
-    r"|来源|方法|复现|怎么造|出处|证据|附录", re.I)
+    r"|来源|复现|出处|证据|附录", re.I)
+# the two sections the owner kept asking for by name: why the numbers look
+# like this (the mechanism, what was ruled out) and what was done to find out
+_WHY = re.compile(
+    r"\bwhy\b|because|mechanism|what drives|root cause|\bcauses?\b|explain"
+    r"|how it happens|where (the|this|that) (gain|number|gap|difference) comes from"
+    r"|为什么|原因|机制|怎么来的|来自哪|根因|解释", re.I)
+_METHOD = re.compile(
+    r"what (i|we) did|how (this|it|that) was (measured|built|done|counted|found)"
+    r"|what (was|i|we) read|method(ology)?|research (log|process|done|notes?)"
+    r"|how (we|i) (did|measured|counted|found)|measured how"
+    r"|我做了|做了什么|做了哪些|研究过程|怎么测|怎么算|怎么做的|方法|怎么造", re.I)
 _LIMITS = re.compile(
     r"limit|not (yet )?(done|covered)|does not cover|do not cover|not covered"
     r"|claims we do not|what (it|this) is not|unknown|could ?n.t (establish|see)"
@@ -444,6 +457,10 @@ def lint_html(html: str, *, declared_type: str | None = None) -> tuple[list[Find
         add("next", "WARN", "no next-step section; a report that forces no decision is a diary")
     if argued and not _SOURCES.search(roles):
         add("sources", "WARN", "no sources/evidence/reproduce section; every number needs a place it came from")
+    if kind in ("finding", "status", "rca", "decision") and not _WHY.search(roles):
+        add("why", "WARN", "no section explaining why the numbers look like this (the mechanism, and what was ruled out); a number without its cause is a rumour with a decimal point")
+    if argued and not _METHOD.search(roles):
+        add("method", "WARN", "no section saying what was done to find this out (what was read, run, compared, in order); a reader cannot weigh a result without its method")
     if argued and kind in ("finding", "status", "handoff") and not _FAILED.search(roles + " " + text[:4000]):
         add("failed-attempts", "INFO", "nothing about what was tried and did not work; a reader without that re-proposes it")
     if words > 2500 and p.anchors < 5:
@@ -505,8 +522,8 @@ def lint_html(html: str, *, declared_type: str | None = None) -> tuple[list[Find
 
 _PREFIX = re.compile(r"^(person|declared):")
 
-SURVEY_IDS = ("title-claim", "deck", "as-of", "headings-claim", "key-terms", "limits",
-              "next", "sources", "wall-of-tables", "figcaption", "external-refs", "theme", "toc")
+SURVEY_IDS = ("title-claim", "deck", "as-of", "headings-claim", "key-terms", "why", "method",
+              "limits", "next", "sources", "wall-of-tables", "figcaption", "external-refs", "theme", "toc")
 
 
 def survey(root: str, aliases: dict[str, str], min_n: int = 5) -> tuple[list[Row], str]:
@@ -591,6 +608,7 @@ on the 31,903-row test split it is the same model as its control. Judge it where
 <h2 id="b">Why the AUC went up anyway</h2><p>The set is self-made; 54 of 54 originals share one producer.</p>
 <h2>Limitations and claims we do not make</h2><p>Not tested on scans.</p>
 <h2 id="next">Judge it where it ships.</h2><p>Score on the customer's real fraud set, owner Stephen, by 2026-09-30.</p>
+<h2 id="method">How this was measured</h2><p>Re-scored with the sweep harness, five seeds, the same split.</p>
 <h2>Sources and reproduction</h2><p>runs/v9/, seed 0-4.</p>
 </body></html>"""
 
@@ -636,7 +654,8 @@ def _self_test() -> int:
     for fid, lvl in (("head-standard", "FAIL"), ("external-refs", "FAIL"), ("placeholder", "FAIL"),
                      ("as-of", "FAIL"), ("h1", "WARN"), ("title-claim", "WARN"), ("deck", "WARN"),
                      ("headings-claim", "WARN"), ("key-terms", "WARN"), ("limits", "WARN"),
-                     ("next", "WARN"), ("sources", "WARN"), ("theme", "WARN"), ("tokens", "WARN"),
+                     ("next", "WARN"), ("sources", "WARN"), ("why", "WARN"), ("method", "WARN"),
+                     ("theme", "WARN"), ("tokens", "WARN"),
                      ("font-fallback", "WARN"), ("copy", "WARN"), ("figcaption", "WARN"),
                      ("svg-aria", "WARN"), ("svg-text-size", "WARN"), ("svg-palette", "WARN"),
                      ("type-undeclared", "INFO")):
@@ -697,7 +716,7 @@ def _self_test() -> int:
         for f in failures:
             print("  -", f)
         return 1
-    print("artifact-lint --self-test: PASSED (good page clean, bad page carries 22 findings, heuristics fire in both languages, survey groups)")
+    print("artifact-lint --self-test: PASSED (good page clean, bad page carries 24 findings, heuristics fire in both languages, survey groups)")
     return 0
 
 

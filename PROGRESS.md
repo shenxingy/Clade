@@ -11,14 +11,16 @@ Older entries live in [docs/progress-archive/](docs/progress-archive/) — 65 ar
 
 The owner asked why hub pages "lack content or state things unclearly" and
 how the most-published colleague's pages differ. Measured, not guessed: over
-926 report pages 72% have no next-step section, 69% no limits, 53% no key or
-terms, 32% carry a figure, and 2 pass every check — hub-wide, not personal.
+936 report pages 72% never explain why the numbers look like this, 88% never
+say what was done to find out, 71% have no next-step section, 68% no limits,
+53% no key or terms, 32% carry a figure, and none passes every check —
+hub-wide, not personal.
 The strongest pages share one decoded shape (claim headline, number strip
 with denominators, graded verdict, colour key and terms, claim headings,
 reading lines under tables, an instruction as the close). Shipped as the
-`/artifact` skill with three references, `artifact-lint.py` (22 checks,
-bilingual, `--survey`, 17 pinned mutations), a path-scoped rule, and an
-internal exemplar page rendered in both themes. Study:
+`/artifact` skill with four references, `artifact-lint.py` (24 checks,
+bilingual, `--survey`, 19 pinned mutations), a path-scoped rule, and two
+internal exemplar pages rendered in both themes. Study:
 docs/research/2026-09-23-artifact-standard.md.
 
 ---

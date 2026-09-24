@@ -11,10 +11,15 @@ from the first screen.** Full text: the `artifact` skill's `references/`
   denominator and window · graded verdict (verified / inferred / speculation)
   · key & terms with one colour per entity, reused everywhere on the page.
 - **Headings are claims; labels are eyebrows.** Mark roles as data:
-  `id="key"`, `id="limits"`, `id="next"`, `id="sources"`.
+  `id="key"`, `id="why"`, `id="limits"`, `id="next"`, `id="method"`,
+  `id="sources"`.
+- **Why the numbers look like this** (mechanism, what was ruled out) before
+  the body; **what I did to find out** (read, ran, compared, in order) before
+  the sources — the two sections the owner asks for by name.
 - **Back matter:** what did not work · limits and claims we do not make ·
-  ONE next step with owner and date, then the backlog · sources/reproduce ·
-  what this page does not cover. Every table gets a "Reading:" line.
+  ONE next step with owner and date, then the backlog · what I did ·
+  sources/reproduce · what this page does not cover. Every table gets a
+  "Reading:" line.
 - **Figures:** inline SVG, tokens or `currentColor`, ≤ 8 categorical hues from
   Okabe–Ito/Tol in fixed order, bars from zero, `n =` on rows, threshold lines
   labelled, caption = takeaway, `role="img"` + `aria-label`, legible in a
