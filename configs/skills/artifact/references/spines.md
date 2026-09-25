@@ -147,6 +147,39 @@ On wide screens put it in a **left rail**, where the whole map is visible at
 once and the current entry is a bookmark in it; collapse to a pinned bar below
 about 1024px, and hide it in print. *(lint: `nav-position`.)*
 
+The whole thing is about twenty lines. Verified in a headless browser (scroll
+to the middle section, exactly one link carries `aria-current`):
+
+```html
+<nav class="rail" aria-label="Sections">
+  <a href="#why">Why the numbers</a><a href="#method">What I did</a><a href="#next">Next</a>
+</nav>
+<style>
+  body{display:grid;grid-template-columns:1fr;gap:2rem}
+  .rail{position:sticky;top:0;align-self:start;display:none}
+  .rail a{display:block;padding:.25rem 0;color:var(--muted-foreground);text-decoration:none}
+  .rail a[aria-current="true"]{color:var(--foreground);font-weight:600}
+  @media (min-width:1024px){body{grid-template-columns:12rem 1fr}.rail{display:block}}
+  @media print{.rail{display:none}}
+</style>
+<script>
+(() => {
+  const links = new Map([...document.querySelectorAll('.rail a')].map(a => [a.hash.slice(1), a]));
+  const visible = new Set();
+  const io = new IntersectionObserver(es => {
+    for (const e of es) e.isIntersecting ? visible.add(e.target.id) : visible.delete(e.target.id);
+    const current = [...links.keys()].find(id => visible.has(id));   // topmost in document order
+    links.forEach(a => a.removeAttribute('aria-current'));
+    if (current) links.get(current).setAttribute('aria-current', 'true');
+  }, {rootMargin: '-10% 0px -70% 0px'});
+  for (const id of links.keys()) { const el = document.getElementById(id); if (el) io.observe(el); }
+})();
+</script>
+```
+
+Without JavaScript it degrades to a plain list of links, which is what the page
+had anyway. Below 1024px it collapses; a phone reader gets the pinned bar.
+
 The usual better answer is to **split**: one answer page that holds the finding
 and the decision, linking sub-pages for the atlas, the catalogue and the raw
 inventory. Splitting by sub-problem keeps each page's reader question intact;
