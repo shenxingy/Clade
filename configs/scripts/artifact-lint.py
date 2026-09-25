@@ -28,7 +28,9 @@ on the intranet); WARN needs a fix or a written reason; INFO is a measurement.
 The page declares its type with `<meta name="artifact-type" content="...">`
 — finding | status | architecture | rca | handoff | decision | reference | worklog |
 landing — and the checks that only make sense for an argued page (claim
-headings, limits, next step) relax for a reference register or a work-log.
+headings, next step, why) relax for a reference register or a work-log. The
+limits check does not relax: a register is exactly where a reader turns "not
+listed" into "does not exist", so it owes a line on what it does not cover.
 An undeclared page is linted as a finding, the strictest shape, and told so.
 
 stdlib only: CI's syntax-check job installs no project dependencies.
@@ -346,6 +348,12 @@ class Row(TypedDict):
     claim_ratio: float | None
 
 
+# A page longer than this needs an index that follows the reader. 6,000 words
+# is the top 9% of one company hub (97 of 1,065 pages, measured 2026-09-24);
+# below it a reader can hold the shape of the page in their head.
+_LONG_PAGE = 6000
+
+
 def lint_html(html: str, *, declared_type: str | None = None) -> tuple[list[Finding], dict[str, object]]:
     p = _Page()
     p.feed(html)
@@ -451,8 +459,9 @@ def lint_html(html: str, *, declared_type: str | None = None) -> tuple[list[Find
     n_figs = len([s for s in p.big_svgs]) + p.tags["img"] + p.tags["canvas"]
     if (n_figs >= 2 or n_tables >= 3) and not _KEY_TERMS.search(roles):
         add("key-terms", "WARN", "figures/tables but no key: a section that defines each named entity and metric (with its denominator) and fixes one colour per entity for the whole page")
-    if argued and not _LIMITS.search(roles):
-        add("limits", "WARN", "no limits section (what is not covered, not measured, or claimed); silence reads as 'everything is fine'")
+    if (argued or kind == "reference") and not _LIMITS.search(roles):
+        add("limits", "WARN", "no limits section (what is not covered, not measured, or claimed); "
+                              "silence reads as 'everything is fine', and in a register as 'does not exist'")
     if kind in ("finding", "status", "rca", "handoff", "decision") and not _NEXT.search(roles):
         add("next", "WARN", "no next-step section; a report that forces no decision is a diary")
     if argued and not _SOURCES.search(roles):
@@ -465,6 +474,15 @@ def lint_html(html: str, *, declared_type: str | None = None) -> tuple[list[Find
         add("failed-attempts", "INFO", "nothing about what was tried and did not work; a reader without that re-proposes it")
     if words > 2500 and p.anchors < 5:
         add("toc", "WARN", f"{words} words and no in-page navigation (≥ 5 #anchor links)")
+    if words > _LONG_PAGE and p.anchors >= 5:
+        pinned = bool(re.search(r"position\s*:\s*(?:sticky|fixed)", css, re.I))
+        follows = bool(re.search(r"IntersectionObserver|aria-current|scroll-?spy|:target", html, re.I))
+        if not (pinned and follows):
+            lack = "is not pinned" if not pinned else "never marks the current section"
+            add("nav-position", "WARN",
+                f"{words} words and the section index {lack}; a reader two thirds down a page this "
+                "long cannot tell where they are or what is left — pin it (position: sticky) and mark "
+                "the current section (IntersectionObserver + aria-current), or split the page")
     if words > 20000:
         add("length", "WARN", f"{words} words on one page; split by sub-problem, not by length, and keep the answer page short")
 
@@ -694,6 +712,35 @@ def _self_test() -> int:
     st = st.replace("</style></head>", "</style><!--artifact:single-theme--></head>")
     st_f, _ = lint_html(st)
     expect("theme" not in {f for f, _, _ in st_f}, "single-theme declaration is honoured")
+
+    # a section reachable only from the index still counts — the shape hub pages
+    # actually have: the label is a styled <div>, and the only thing naming it is
+    # the nav link. Without nav text in `roles` the lint reports five sections
+    # missing from a page that has them.
+    div_only = _BAD.replace("<body>", '<body><nav><a href="#m">Method</a><a href="#l">Limits</a>'
+                                      '<a href="#n">Next</a><a href="#w">Why</a>'
+                                      '<a href="#s">Sources</a></nav>')
+    dids = {f for f, _, _ in lint_html(div_only)[0]}
+    expect(not ({"method", "limits", "next", "why", "sources"} & dids),
+           f"a section named only by an in-page index link counts as present, got {sorted(dids)}")
+
+    # a register still owes its limits, and only its limits
+    ref = _BAD.replace("<html><head>", '<html><head><meta name="artifact-type" content="reference">')
+    rids = {f: lvl for f, lvl, _ in lint_html(ref)[0]}
+    expect(rids.get("limits") == "WARN", "a register with no limits section is flagged: 'not listed' reads as 'does not exist'")
+    expect("next" not in rids and "why" not in rids, "next-step and why do relax for a register")
+    expect("headings-claim" not in rids, "label headings are correct in a register")
+
+    # a long page needs an index that follows the reader
+    long_page = _GOOD.replace("</body>", ("<p>" + ("evidence " * 600) + "</p>") * 11 + "</body>")
+    lids = {f: lvl for f, lvl, _ in lint_html(long_page)[0]}
+    expect(lids.get("nav-position") == "WARN", f"a {_LONG_PAGE}+ word page whose index is neither pinned nor position-aware is flagged, got {lids.get('nav-position')}")
+    pinned = long_page.replace("body{font-family:Menlo,monospace;", "nav{position:sticky;top:0}body{font-family:Menlo,monospace;")
+    pinned = pinned.replace('<nav><a href="#a">a</a>', '<nav><a href="#a" aria-current="true">a</a>')
+    expect("nav-position" not in {f for f, _, _ in lint_html(pinned)[0]}, "a pinned index that marks the current section passes")
+    half = long_page.replace("body{font-family:Menlo,monospace;", "nav{position:sticky;top:0}body{font-family:Menlo,monospace;")
+    expect("nav-position" in {f for f, _, _ in lint_html(half)[0]}, "pinning alone is not enough; the index must say where the reader is")
+    expect("nav-position" not in {f for f, _, _ in lint_html(_GOOD)[0]}, "a short page is not asked for a pinned index")
 
     # survey grouping on a temp hub
     import tempfile
