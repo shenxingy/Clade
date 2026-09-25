@@ -65,7 +65,11 @@ if provided. A deliberately single-theme page must remain readable under
 both OS settings; record the design choice, not a pretend dark-mode pass.
 
 Wait for fonts and images, reveal lazy content by scrolling, and record failed
-requests and page errors. Then inspect **every figure at its displayed size**:
+requests and page errors. On a page past ~6,000 words, capture one screenshot
+at roughly two thirds scroll and answer from that image alone: can the reader
+say which section they are in and how much is left? A section index that has
+scrolled away, or one that never marks the current entry, fails this even
+though the first screen passed. Then inspect **every figure at its displayed size**:
 use per-figure crops or section screenshots if a full-page image is downscaled.
 Inspect raster pictures, external SVGs and canvas output as well as inline SVG.
 A thumbnail of a long page cannot establish that its smallest label is readable.

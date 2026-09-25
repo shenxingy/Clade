@@ -130,12 +130,38 @@ they were re-typed as a brief three times before being written down here:
   successor repeat it. *(lint: `method` — WARN on every argued page.)* Mark it
   `id="method"`.
 
+## An index that follows the reader, once the page is longer than one sitting
+
+Past about **6,000 words** — the top 9% of one company hub, 97 of 1,065 pages
+measured 2026-09-24 — a reader loses the shape of the page. A list of links at
+the top is not enough; by the time it has scrolled away the reader cannot say
+where they are, what is left, or how much of the argument they have already
+had. Two obligations, and they are cheap:
+
+- **Pin it** (`position: sticky`), so the map is reachable from anywhere.
+- **Mark where the reader is** — `IntersectionObserver` sets `aria-current` on
+  the entry for the section in view. This is the half people skip, and it is
+  the half that answers "where am I".
+
+On wide screens put it in a **left rail**, where the whole map is visible at
+once and the current entry is a bookmark in it; collapse to a pinned bar below
+about 1024px, and hide it in print. *(lint: `nav-position`.)*
+
+The usual better answer is to **split**: one answer page that holds the finding
+and the decision, linking sub-pages for the atlas, the catalogue and the raw
+inventory. Splitting by sub-problem keeps each page's reader question intact;
+splitting by length does not. The hub's strongest teardown page is the
+counter-example that made this rule — 25,159 words, 18th longest of 1,065,
+with a pinned 15-link bar that never says which of the 15 you are in.
+
 ## The body — one spine per type
 
 Declare the type in the page head: `<meta name="artifact-type"
-content="finding">`. The lint relaxes claim-heading, limits and next-step
-checks for `reference` and `worklog`; an undeclared page is linted as a
-`finding`, the strictest shape.
+content="finding">`. The lint relaxes claim-heading, next-step and why
+checks for `reference` and `worklog`. **Limits does not relax**: a register is
+exactly where a reader turns "not listed" into "does not exist", so it owes a
+line on what it does not cover. An undeclared page is linted as a `finding`,
+the strictest shape.
 
 ### `finding` — a research result
 
@@ -269,10 +295,13 @@ Publish to a stable slug so the page versions in place. *(lint:
 - **Verified / inferred / speculation are marked**, per claim, with a
   consistent device (●●●○ dots, a chip, a fenced block) — never by tone.
 - **Length.** Amazon's calibration: six narrative pages (~3,000 words) that a
-  room reads in twenty minutes, appendix unbounded. The hub's median page is
-  ~2,000 words; pages above 20,000 words exist and are unread. Split by
-  sub-problem, never by length, and keep the answer page short. Above ~2,500
-  words, add an in-page nav. *(lint: `toc`, `length`.)*
+  room reads in twenty minutes, appendix unbounded. One company hub's median
+  page is **1,223 words** (n = 1,065, measured 2026-09-24) and 21 pages run
+  past 20,000. Whether anyone finishes those is not known — the hub records no
+  reading data — so the rule is not "long is unread": split by sub-problem,
+  never by length, and keep the answer page short. Above ~2,500 words add an
+  in-page nav; past ~6,000 that nav must follow the reader (see the index
+  section above). *(lint: `toc`, `length`, `nav-position`.)*
 - **Both languages, same rules.** A Chinese page has the same spine; the lint
   reads 不 / 是 / 为什么 / 边界 / 下一步 as it reads their English
   counterparts.
@@ -282,6 +311,12 @@ Publish to a stable slug so the page versions in place. *(lint:
 Read in full on 2026-09-23 (twelve rendered and inspected), chosen by lint
 cleanliness, figure count and being forwarded. Each device below is one
 concrete thing a page did that made it legible; use them as parts.
+
+One more page was read end to end on 2026-09-24 — the doc-fraud teardown of
+eleven vendors (25,159 words, 28 figures, 23 tables, 13 of 13 section headings
+stating a finding). Its comparison devices were not in this list and are
+grouped under **Comparison tables** below; its failure is the one that produced
+the index rule above.
 
 **Front matter**
 - **Evidence-grade chips as a legend at the top** — "Measured / published ·
@@ -309,6 +344,29 @@ concrete thing a page did that made it legible; use them as parts.
 - **A matrix with a state legend** (RUN · WARM · — · DL) for what runs when.
 - **A "gap" column** on a dot plot, with the axis labelled "← toward genuine
   · toward forged →" so the direction needs no legend.
+
+**Comparison tables** *(from the 2026-09-24 teardown)*
+- **An evidence-class chip on every cell**, not a source line under the
+  table: `API` documented · `DEMO` seen in a tour or video · `MKT`/`TAPE`
+  claimed in marketing or on tape · `INF.` our inference — all 77 cells of an
+  11 × 7 matrix wear one. A shipped API and a claim made on a podcast stop
+  reading alike, which is the whole risk of a competitor table.
+- **Say what a blank means**, under the table: *"A dot means no public
+  evidence, not proof of absence."* Without that line every hole is read as a
+  measured zero, and a comparison table is mostly holes.
+- **A negative-space tile** when the finding is what nobody does: `0 / 11`
+  *publish a trusted share, or show a re-typeset fake flagged*. The hole is
+  the result, so it gets a tile like any other number.
+- **A depth scale defined once, then counted per subject**: L0 verdict · L1
+  score · L2 reason list · L3 located evidence · L4 forensic detail · L5
+  cross-document · L6 action, counted per vendor and heat-mapped. It answers
+  *how deep does each one go*, which a has-the-feature tick cannot.
+- **A verdict on every row of a catalogue** — `COPY` / `AVOID` on each
+  rebuilt screen, each carrying the file path and timecode it came from. A
+  neutral catalogue defers the decision it was gathered to make.
+- **Provenance in the method section, not the footer**: commit, branch, the
+  directory on the host, and one line saying whose numbers these are —
+  *"vendor numbers are their own claims, not verified by us."*
 
 **Argument**
 - **A "Falsification" section**: the claim, the test that would kill it,
