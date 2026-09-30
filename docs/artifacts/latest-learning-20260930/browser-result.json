@@ -1,0 +1,130 @@
+{
+  "kind": "local-browser-learning-probe",
+  "browser": "154.0.8037.92",
+  "seconds": 0.808,
+  "browser_context_limit": 2,
+  "gpu_used": false,
+  "remote_requests_intended": false,
+  "checks": {
+    "control_requests_succeed": true,
+    "enforced_same_origin_allowed": true,
+    "enforced_other_origin_blocked_before_server": true,
+    "enforced_redirect_blocked_before_target": true,
+    "report_only_requests_succeed": true,
+    "responsive_height_600_default_150": true,
+    "explicit_resize_updates_to_900": true,
+    "child_opt_in_required": true
+  },
+  "network": [
+    {
+      "mode": "control",
+      "fetch": {
+        "same_origin": {
+          "ok": true
+        },
+        "other_origin": {
+          "ok": true
+        },
+        "same_origin_redirect": {
+          "ok": true
+        }
+      },
+      "console_errors": []
+    },
+    {
+      "mode": "enforce",
+      "fetch": {
+        "same_origin": {
+          "ok": true
+        },
+        "other_origin": {
+          "ok": false,
+          "error": "TypeError"
+        },
+        "same_origin_redirect": {
+          "ok": false,
+          "error": "TypeError"
+        }
+      },
+      "console_errors": [
+        "Failed to load resource: net::ERR_NETWORK_ACCESS_REVOKED",
+        "Failed to load resource: net::ERR_UNSAFE_REDIRECT"
+      ]
+    },
+    {
+      "mode": "report-only",
+      "fetch": {
+        "same_origin": {
+          "ok": true
+        },
+        "other_origin": {
+          "ok": true
+        },
+        "same_origin_redirect": {
+          "ok": true
+        }
+      },
+      "console_errors": []
+    }
+  ],
+  "server_hits": {
+    "first": {
+      "/control": 1,
+      "/enforce": 1,
+      "/favicon.ico": 5,
+      "/same-control": 1,
+      "/same-enforce": 1,
+      "/redirect/control": 1,
+      "/redirect-target/control": 1,
+      "/redirect/enforce": 1,
+      "/report-only": 1,
+      "/same-report-only": 1,
+      "/redirect/report-only": 1,
+      "/redirect-target/report-only": 1,
+      "/frames": 1,
+      "/child": 2,
+      "/frames-no-opt-in": 1,
+      "/child-no-opt-in": 2
+    },
+    "second": {
+      "/other-control": 1,
+      "/other-report-only": 1
+    }
+  },
+  "frames": {
+    "css_supported": true,
+    "request_resize_supported": true,
+    "initial": [
+      {
+        "id": "control",
+        "height": 150
+      },
+      {
+        "id": "responsive",
+        "height": 600
+      }
+    ],
+    "after_request_resize": 900,
+    "without_child_opt_in": 150
+  },
+  "limits": [
+    "one Linux Chrome build, loopback HTTP only",
+    "no WebRTC, workers or hostile-code security audit",
+    "report-only delivery to a reporting endpoint not tested",
+    "no Firefox, Safari or hosted wrapper"
+  ],
+  "script_sha256": "4c8b1b6c1f240bc25d839b63c6b6768f61f901d755b08a2851bb103f22389d37",
+  "resource_probe": {
+    "cpu_affinity": 32,
+    "load": [
+      5.92236328125,
+      5.72216796875,
+      6.12109375
+    ],
+    "ram_available_kib": 66972840,
+    "gpu_util_percent": 0,
+    "gpu_free_mib": 18822,
+    "other_user_workloads": "observed and preserved",
+    "native_threads": 1
+  }
+}

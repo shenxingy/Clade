@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="artifact-type" content="finding"><title>最新多源学习 · 2026-09-30</title><style>
+:root{color-scheme:light;--bg:#f5f7f6;--surface:#fff;--ink:#131819;--secondary:#3b4648;--muted:#536165;--rule:#c8d2cf;--accent:#0d6355}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#0d1112;--surface:#141a1b;--ink:#e9eeec;--secondary:#c2cdca;--muted:#a1b0ac;--rule:#405451;--accent:#4ec7ab}}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#0d1112;--surface:#141a1b;--ink:#e9eeec;--secondary:#c2cdca;--muted:#a1b0ac;--rule:#405451;--accent:#4ec7ab}
+*{box-sizing:border-box}html{font-size:16px}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Noto Sans CJK SC","Microsoft YaHei",sans-serif;line-height:1.8}
+main{max-width:960px;margin:auto;padding:40px 28px 64px}header{border-bottom:1px solid var(--rule);padding-bottom:24px}
+h1{font-size:clamp(1.8rem,4vw,2.6rem);line-height:1.35;margin:12px 0 18px}h2{font-size:1.4rem;line-height:1.5;margin:0 0 12px}h3{font-size:1.12rem;margin:0 0 8px}
+p{margin:0 0 14px}.stamp,.note{color:var(--muted);font-size:.9rem}.deck{font-size:1.12rem;color:var(--secondary)}
+section{margin-top:30px}.item{background:var(--surface);padding:22px;border:1px solid var(--rule);border-radius:8px}.eyebrow{color:var(--accent);font-size:.9rem;font-weight:650;margin-bottom:6px}
+a{color:var(--accent);text-underline-offset:3px;overflow-wrap:anywhere}a:focus-visible{outline:3px solid var(--accent);outline-offset:4px}
+nav{display:flex;flex-wrap:wrap;gap:8px 20px;margin-top:16px}code{font-family:ui-monospace,monospace;font-size:.9em;overflow-wrap:anywhere}.grade{font-weight:650}
+.table-wrap{overflow-x:auto;border:1px solid var(--rule);border-radius:6px}table{border-collapse:collapse;width:100%;min-width:610px;background:var(--surface)}th,td{text-align:left;vertical-align:top;padding:12px;border-bottom:1px solid var(--rule);font-size:.94rem}th{color:var(--secondary)}tr:last-child td{border-bottom:0}
+ul,ol{padding-left:1.5em}li{margin-bottom:8px}footer{border-top:1px solid var(--rule);margin-top:30px;padding-top:20px;color:var(--muted);font-size:.9rem}
+@media(max-width:600px){main{padding:24px 18px 44px}.item{padding:18px}h1{font-size:1.8rem}}
+@media print{main{max-width:none}nav{display:none}.item{break-inside:avoid}}
+
+.source-list li{margin-bottom:14px}section section{margin-top:18px}
+</style></head><body><main>
+<header>
+<p class="stamp">多源学习记录 · 截至 2026-09-30 · Codex 整理<br>主检索窗口：9 月 15–30 日；旧论文的新解读和未标首发日期的文档单独注明。</p>
+<h1>平均成功率不能代表稳定性；浏览器边界已有局部实测</h1>
+<p class="deck">本轮筛选 24 个主题，覆盖 AI 模型、表格与语音、浏览器、开发工具和基础设施。最有用的收获是：区分稳定成功与偶然成功，检查引用是否真的支持主张，并把接口与执行边界变成可验证的行为。</p>
+<p><strong>已完成：</strong>22 项来源的相关正文或文档阅读、2 篇论文的摘要筛选；Chrome 本地实验 8/8 项通过。<strong>仍未知：</strong>新模型、新工具对 Clade 的实际收益。阅读深度、背景材料与可用状态见下方目录。</p>
+<p>本轮所选材料已整理完；没有据此认定最新知识已穷尽。现在可以复用这些方法，下一步需要具体任务或数据集来验证收益。</p>
+<nav aria-label="页面目录"><a href="#learn">学到的方法</a><a href="#new-fields">新方向</a><a href="#experiment">本地实测</a><a href="#sources">24 项来源</a><a href="#limits">循环边界</a></nav>
+</header>
+<section id="why"><h2>学习要留下能改变做法的结论</h2>
+<p>这次从多个发布方的最新材料出发，把新版本、实验方法、实际适用条件分开。对 Clade 的价值判断是本次推断；保留日期和证据等级，方便以后有真实任务时复查。</p></section>
+<section id="learn"><h2>六个可以带走的方法</h2>
+<p class="note"><strong>证据读法：</strong>原文核对＝来源明确描述过；方法建议＝本次阅读后的推断；算术示例＝人为构造并验算；本地观察＝脚本实际运行。下面六项均为“原文核对 + 方法建议”，不代表 Clade 已取得成效；第一项另含算术示例。</p>
+<section class="item"><h3>1. 稳定性需要单独测量</h3>
+<p><a href="https://huggingface.co/blog/ibm-research/altk-evolve-consistency">IBM Research 的一致性文章（09-15）</a>提示：固定任务集及重复次数 k，同时报告平均成功率、至少一次成功的任务比例和全部 k 次成功的任务比例。下面是算术示例，没有调用模型。</p>
+<p class="note">1 表示成功，0 表示失败。每组相同 4 个任务，每任务 3 次，共 12 次；手机可横向滚动查看全部指标。</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="合成稳定性示例，可横向滚动"><table><thead><tr><th scope="col">示例</th><th scope="col">四个任务的三次结果</th><th scope="col">平均成功</th><th scope="col">全部三次成功<br>Pass^3</th><th scope="col">至少一次成功<br>Pass@3</th></tr></thead><tbody>
+<tr><th scope="row">A</th><td>111 · 111 · 000 · 000</td><td>6/12 = 50%</td><td>2/4 = 50%</td><td>2/4 = 50%</td></tr>
+<tr><th scope="row">B</th><td>110 · 101 · 010 · 001</td><td>6/12 = 50%</td><td>0/4 = 0%</td><td>4/4 = 100%</td></tr></tbody></table></div>
+<p class="note">两组均成功 6/12 次（50%），但 A 有 2/4 个任务三次全成功，B 为 0/4；平均值掩盖了这个差异。<a href="consistency-example.json">计算数据</a>。文章中的单步重采样分析没有重放整个环境，不能直接充当端到端 Pass^k。</p>
+</section>
+<section class="item"><h3>2. 核对事实，也核对它归属于哪个来源</h3>
+<p><a href="https://huggingface.co/blog/MultiverseComputingCAI/getting-the-source-right-not-just-the-fact-source">来源核验文章（09-29）</a>把回答拆成主张，先匹配来源，再判定是否支持、引用是否正确，最后修复或回退。实际可借鉴的是保存来源标识，避免从多篇材料拼出一句话后挂错引用。</p>
+<p class="note">底层论文首发于 06-16、08-27 修订，09-29 是解读日期。原实验中的“处理完成”包含回退；不能全部计为完成了有内容的回答。医学轨迹结果未在本项目复现。</p>
+</section>
+<section class="item"><h3>3. 新模型上线时，先核对接口行为</h3>
+<p><a href="https://platform.claude.com/docs/en/models/sonnet-5-5/migration-guide">Sonnet 5.5 迁移文档</a>列出 thinking、历史消息和工具选择的变化。例如严格参数校验不保证一定调用工具；读取响应应按内容块类型处理。这类变化可能先影响正确性，再影响速度。</p>
+<p class="note">09-28 发布；未调用 API。<a href="https://openai.com/index/introducing-gpt-6-1-sol/">09-29 的 GPT-6.1 Sol</a>也应按模型与推理档位共同评估；官方成绩没有证明当前任务会得到同样收益。</p>
+</section>
+<section class="item"><h3>4. 接收事件、执行任务、完成任务是三个状态</h3>
+<p><a href="https://developers.openai.com/plugins/build/mcp-events">OpenAI 的 MCP Events 文档</a>描述 webhook 接收与异步执行：2xx 只确认接收；重试需要稳定的事件标识和幂等写入；恢复还取决于重放能力。集成仅覆盖草案的一部分，不能把文档中的所有协议能力都当成现有功能。</p>
+<p class="note">截至 09-30 文档已读，初次发布日期未确定；未接入服务。<a href="https://blog.google/innovation-and-ai/technology/developers-tools/build-real-time-voice-applications-gemini-audio/">Google 09-15 的实时语音更新</a>让对话在工具执行时继续，也需要分别维护对话和任务状态。</p>
+</section>
+<section class="item"><h3>5. 性能数字必须带上测量条件</h3>
+<p><a href="https://huggingface.co/blog/tokenizers-v1">Tokenizers v1 候选版（09-21）</a>通过复用内存、缓存及向量化优化处理；比较时应检查 token ID 一致，并区分重复输入与新文档。<a href="https://huggingface.co/blog/transformers-llama-cpp-quants">Transformers 的 GGUF 实验支持（09-22）</a>则提醒：能加载格式与能用当前设备的加速内核是两回事；首批打包内核面向 MPS。</p>
+<p class="note">没有做本机性能试验。比较吞吐时要统一是否包含提示词处理、批次、输入长度和硬件，不能把文中的不同计时区间直接相除。</p>
+</section>
+<section class="item"><h3>6. 失败证据应该能被下一步直接使用</h3>
+<p><a href="https://blog.cloudflare.com/voidzero-update/">Vitest 5 的 09-28 更新说明</a>介绍把浏览器交互、断言与页面快照留在 Trace View，并检测未等待的异步断言。<a href="https://blog.cloudflare.com/real-time-issue-detection/">Cloudflare 09-30 的故障检测 Beta</a>把重复异常与日志、堆栈、追踪、版本信息交给后续诊断。可借鉴的是让失败自带上下文，而非只传一个红色状态。</p>
+<p class="note">已读发布说明；没有安装工具或连接生产账户。聚类算法、告警重试和误报率仍未知。</p>
+</section>
+</section>
+<section id="new-fields"><h2>两个值得了解的新方向</h2><p class="note">证据等级：原文核对；下述适用判断属于方法建议，未做模型实验。</p>
+<h3>表格模型：把已知行作为预测上下文</h3>
+<p><a href="https://huggingface.co/blog/nvidia/kumo-tabular">NVIDIA Kumo-Tabular（09-29）</a>使用带标签的上下文行预测查询行，查询只关注上下文，从而可复用上下文的缓存。它延续了表格上下文学习路线；新意在具体结构和效率设计。模型与推理代码已公开，完整训练配方和数据生成器仍计划发布。</p>
+<p class="note">数值、类别之外的字段需要预处理；选样、分布变化和数据泄漏仍须在真实数据上检查。没有下载权重或进行 GPU 推理。</p>
+<h3>语音合成：听得清、等得短、像本人要分别评估</h3>
+<p><a href="https://huggingface.co/blog/open-tts-leaderboard">Open TTS Leaderboard（09-30）</a>分开检查转写错误率、生成吞吐、首段音频等待时间和声音相似度。错误率低不等于自然，声音嵌入相似也不等于听众偏好。</p>
+<p class="note">当前范围为指定英语样本与硬件；完整评测脚本尚待公开。没有做音频生成或听评。可以先学其指标分工，暂不把名次推广到中文语音。</p>
+</section>
+<section id="experiment"><h2>已实测：浏览器的 8 项行为符合预期</h2><p class="note">证据等级：本地观察；以下结论仅覆盖明确列出的测试场景。</p>
+<p>本机 Linux Chrome 154.0.8037.92，两个本地 HTTP 服务；脚本把网络测试限制为两个并发浏览器上下文。最终运行耗时 0.808 秒，8/8 项断言通过。证据是 <a href="browser-result.json">逐项结果与服务端命中记录</a>，复现入口为 <a href="browser_probe.py">browser_probe.py</a>。</p>
+<ul><li><strong>连接限制：</strong>对照组同源、跨源和重定向均成功；强制模式允许同源请求，拦下跨源请求和重定向，对应目标端命中为零；仅报告模式仍允许请求。</li>
+<li><strong>iframe 内容高度：</strong>父页设置自适应尺寸，子页明确同意后，高度从默认 150px 变成 600px；内容变化后调用 <code>requestResize()</code> 更新到 900px；缺少子页同意时仍为 150px。</li></ul>
+<p>文档依据：<a href="https://developer.chrome.com/blog/connection-allowlist-announcement">连接允许列表说明（09-23，能力从 Chrome 152 起）</a>与<a href="https://developer.chrome.com/blog/responsive-iframes">自适应 iframe 指南（09-16，Chrome 154 稳定版 09-22）</a>。</p>
+<p class="note">范围仅限一个 Chrome 构建、回环 HTTP 和这些固定场景；未测 Safari、Firefox、WebRTC、Worker、报告上报、恶意代码隔离或线上嵌入。不把这个实验称作完整安全审计。</p>
+</section>
+<section id="sources"><h2>24 项来源，按阅读深度和可用状态查阅</h2>
+<p>“原文已读”只证明来源中的描述已核对；“摘要筛选”不等于全文研究。发布日期指本页列出的文章或版本，另有说明的除外。更细的主张、链接、范围见 <a href="evidence.json">证据清单</a>。</p>
+<ol class="source-list"><li id="source-sonnet-contract"><a href="https://www.anthropic.com/claude-sonnet-5-5">Sonnet 5.5</a> — 09-28 · 已发布；迁移文档已读，API 未测。</li>
+<li id="source-sol-release"><a href="https://openai.com/index/introducing-gpt-6-1-sol/">GPT-6.1 Sol</a> — 09-29 · 已发布；发布说明已读，模型对照未做。</li>
+<li id="source-mcp-events"><a href="https://developers.openai.com/plugins/build/mcp-events">MCP Events</a> — 首发日期未确定 · 集成文档和草案已读；不是所有实现通用的正式扩展。</li>
+<li id="source-live-audio"><a href="https://blog.google/innovation-and-ai/technology/developers-tools/build-real-time-voice-applications-gemini-audio/">Gemini 实时语音</a> — 09-15 · 已发布；异步工具机制已读，Transcribe 首发在 8 月。</li>
+<li id="source-agenthabit"><a href="https://arxiv.org/abs/2609.32795">AgentHabit</a> — 09-26 v1 · 方法正文已读；按轨迹统计行为，软件工程类别被排除，不能直接视为编码评测。</li>
+<li id="source-consistency"><a href="https://huggingface.co/blog/ibm-research/altk-evolve-consistency">ALTK 一致性</a> — 09-15 · 作者文章已读；仅构造合成算术例，模型试验 0 次。</li>
+<li id="source-provenance"><a href="https://huggingface.co/blog/MultiverseComputingCAI/getting-the-source-right-not-just-the-fact-source">来源归属核验</a> — 09-29 · 新解读已读；论文 06-16 首发、08-27 修订，非本月新论文。</li>
+<li id="source-responsive-iframes"><a href="https://developer.chrome.com/blog/new-in-chrome-154">Chrome 自适应 iframe</a> — 09-22 稳定版 · 指南已读；尺寸与同意条件本地实测。</li>
+<li id="source-connection-allowlists"><a href="https://developer.chrome.com/blog/connection-allowlist-announcement">Connection-Allowlist</a> — 09-23 文章 · Chrome 152+，社区规范仍是草案；本地 fetch 与重定向实测。</li>
+<li id="source-actions-protection"><a href="https://github.blog/changelog/2026-09-17-workflow-execution-protections-in-github-actions-generally-available/">Actions 执行保护</a> — 09-17 · GA，说明已读；先评估再强制执行，账户策略未改。</li>
+<li id="source-actions-counts"><a href="https://github.blog/changelog/2026-09-25-changes-to-query-results-in-the-github-actions-api-and-ui/">Actions 查询计数</a> — 09-25 · 逐步推出，说明已读；大结果集计数有上限，实时 JSON 格式未测。</li>
+<li id="source-miri-cache"><a href="https://blog.rust-lang.org/2026/09/21/github-actions-leaking-secrets-when-miri-output-is-cached/">Miri 缓存泄密</a> — 09-21 · 官方安全分析已读；环境变量可能进入可读缓存，未认定本仓库受影响。</li>
+<li id="source-postgres-beta"><a href="https://www.postgresql.org/about/news/postgresql-19-beta-4-released-3386/">PostgreSQL 19 beta4</a> — 09-24 · 测试版；发布说明已读，SQL/PGQ 属性图功能已撤回，非正式版能力。</li>
+<li id="source-gguf-transformers"><a href="https://huggingface.co/blog/transformers-llama-cpp-quants">Transformers + GGUF</a> — 09-22 · 实验实现；文章已读，首批打包内核限 MPS，没有 RTX 性能数据。</li>
+<li id="source-node-shared-memory"><a href="https://nodejs.org/en/blog/release/v22.23.3">Node 22.23.3</a> — 09-23 · LTS；说明已读，原生 API 扩展共享内存支持，不代表 JS 自动提速。</li>
+<li id="source-mergeheir"><a href="https://arxiv.org/abs/2609.32422">MergeHeir</a> — 09-26 v1 · 仅摘要筛选；模型合并的能力保留与幻觉问题，未复现。</li>
+<li id="source-ars"><a href="https://arxiv.org/abs/2609.34484">ARS 机器人奖励</a> — 09-28 v1 · 仅摘要筛选；用事件核验区分错误操作与任务进展，未复现。</li>
+<li id="source-kumo"><a href="https://huggingface.co/blog/nvidia/kumo-tabular">Kumo-Tabular</a> — 09-29 · 方法文章已读；权重与推理代码公开，完整训练配方仍待发布。</li>
+<li id="source-tts-evaluation"><a href="https://huggingface.co/blog/open-tts-leaderboard">Open TTS Leaderboard</a> — 09-30 · 评测方法已读；英语范围，评测脚本待发布，没有音频试验。</li>
+<li id="source-tokenizers-v1"><a href="https://huggingface.co/blog/tokenizers-v1">Tokenizers v1</a> — 09-21 · 候选版；优化机制已读，未将其写成稳定 1.0，也未跑性能测试。</li>
+<li id="source-eval-cards"><a href="https://huggingface.co/blog/evaleval-aisi">Evaluation Cards</a> — 09-22 · AISI / EvalEval 文章已读；记录模型、协议和运行条件，不自动解决评测污染。</li>
+<li id="source-cf-cli"><a href="https://blog.cloudflare.com/cloudflare-cf-cli-launch/">Cloudflare cf CLI</a> — 09-28 · 开放 Beta；共享 API schema 与类型化配置说明已读，未安装或迁移。</li>
+<li id="source-cf-issues"><a href="https://blog.cloudflare.com/real-time-issue-detection/">Cloudflare 故障检测</a> — 09-30 · Beta；官方说明经委派研究员阅读，未试用账户功能。</li>
+<li id="source-voidzero-vitest"><a href="https://blog.cloudflare.com/voidzero-update/">VoidZero / Vitest 5</a> — 09-28 文章 · Vitest 5 于 9 月发布；Trace View 与失败检测说明已读，未跑项目基准。</li></ol>
+</section>
+<section id="method"><h2>循环从发现，走到机制、边界和验证</h2>
+<p>先跨发布方扫描近期 AI 与工程更新，再追读迁移文档和方法章节；接着追查稳定性、引用归属与硬件条件；刷新 Hugging Face、Cloudflare 的最新目录，补入表格、语音与开发工具；最后核对所选来源状态并完成浏览器实验。最后一次扩展仍有新内容，所以没有记录“连续无新知”这种并未发生的结果。</p>
+<p class="note">批处理前检查了 CPU、内存和其他用户负载。实验时可用 CPU 32、负载约 5.92、可用内存约 63.9 GiB；RTX 3090 空闲显存约 18.4 GiB。限制本机库线程为 1，没有适用的 GPU 工作；未影响其他用户进程。渲染验证使用四个有界并行视口。</p>
+</section>
+<section id="next"><h2>下一次有真实任务时，优先验证这三件事</h2>
+<ol><li>固定任务集，重复运行并同时报告平均、至少一次和全部成功；保存每次失败轨迹。</li><li>用混合来源的回答，检查每条主张的引用归属，把修复回答与回退分开计数。</li><li>遇到浏览器嵌入或外部事件需求时，复用这次边界实验，再补目标浏览器、网络和重放场景。</li></ol>
+<p>这些是学习后的候选实验；负责实施与排期的是 Clade 维护者，当前没有排期。实际收益尚未验证，运行策略没有因此改变。</p>
+</section>
+<section id="limits"><h2>这一批已闭合，最新知识仍会继续出现</h2>
+<p>24 项所选主题均有出处、状态和适用边界；可在本机低成本验证的浏览器行为已有证据。剩余重要问题需要真实数据集、模型调用、产品账户或特定硬件，继续读公告不能替代这些实验。</p>
+<p>覆盖范围主要是 AI、开发工具和基础设施，不包括所有领域，也没有逐一展开发布方目录中的所有链接。Agents API 的 09-10 首发和 vLLM 0.29.0 的 09-09 发布属于窗口外背景；Holo4 已筛选，方法与现有工具编排重合，未新增结论。没有建立无人值守定时任务，没有改写模型权重。</p>
+</section>
+<footer>本地研究与实验记录 · 代码基线 fe929190b280 · 与先前的 <a href="../learning-radar-20260930/nanoharness.html">NanoHarness 专题</a>分开保存，后续候选记入 BRAINSTORM。</footer>
+</main></body></html>

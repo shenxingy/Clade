@@ -1,0 +1,64 @@
+{
+  "kind": "synthetic-worked-example",
+  "agent_trials": 0,
+  "examples": {
+    "A": {
+      "outcomes": [
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "tasks": 4,
+      "runs_per_task": 3,
+      "mean": 0.5,
+      "pass_all": 0.5,
+      "pass_any": 0.5
+    },
+    "B": {
+      "outcomes": [
+        [
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          0,
+          1
+        ],
+        [
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          1
+        ]
+      ],
+      "tasks": 4,
+      "runs_per_task": 3,
+      "mean": 0.5,
+      "pass_all": 0.0,
+      "pass_any": 1.0
+    }
+  }
+}

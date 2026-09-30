@@ -1,0 +1,367 @@
+{
+  "as_of": "2026-09-30",
+  "window": "2026-09-15 through 2026-09-30; explicit background exceptions",
+  "scope": "recent AI, developer tools and engineering practices across primary publishers",
+  "items": [
+    {
+      "id": "sonnet-contract",
+      "date": "2026-09-28",
+      "publisher": "Anthropic",
+      "status": "available",
+      "url": "https://www.anthropic.com/claude-sonnet-5-5",
+      "related_url": "https://platform.claude.com/docs/en/models/sonnet-5-5/migration-guide",
+      "claim": "Model changes can break thinking, history and tool-choice contracts; strict input validation does not force a call.",
+      "evidence_scope": "primary docs read; no API trial",
+      "grade": "source_verified",
+      "read_on": "2026-09-30",
+      "population": "source-described scope; no local model population"
+    },
+    {
+      "id": "sol-release",
+      "date": "2026-09-29",
+      "publisher": "OpenAI",
+      "status": "available",
+      "url": "https://openai.com/index/introducing-gpt-6-1-sol/",
+      "related_url": "https://openai.com/index/devday-2026-recap/",
+      "claim": "Evaluate model/effort pairs on workload; vendor scores do not establish local gains.",
+      "evidence_scope": "release read; no model comparison",
+      "grade": "source_verified",
+      "read_on": "2026-09-30",
+      "population": "source-described scope; no local model population"
+    },
+    {
+      "id": "mcp-events",
+      "date": null,
+      "publisher": "OpenAI / MCP",
+      "status": "documented integration of draft extension",
+      "url": "https://developers.openai.com/plugins/build/mcp-events",
+      "related_url": "https://github.com/modelcontextprotocol/experimental-ext-triggers-events/blob/main/docs/design-sketch-proposal.md",
+      "claim": "Receipt, asynchronous execution, retries and replay are separate states.",
+      "evidence_scope": "primary docs read 2026-09-30; initial publication day not established",
+      "grade": "source_verified",
+      "read_on": "2026-09-30",
+      "population": "source-described scope; no local model population"
+    },
+    {
+      "id": "live-audio",
+      "date": "2026-09-15",
+      "publisher": "Google DeepMind",
+      "status": "released",
+      "url": "https://blog.google/innovation-and-ai/technology/developers-tools/build-real-time-voice-applications-gemini-audio/",
+      "related_url": null,
+      "claim": "Conversation can continue while tool calls execute; task and conversation state need separate handling.",
+      "evidence_scope": "release read; no audio API trial; Transcribe release was in August",
+      "grade": "source_verified",
+      "read_on": "2026-09-30",
+      "population": "source-described scope; no local model population"
+    },
+    {
+      "id": "agenthabit",
+      "date": "2026-09-26",
+      "publisher": "AgentHabit authors",
+      "status": "preprint v1",
+      "url": "https://arxiv.org/abs/2609.32795",
+      "related_url": "https://arxiv.org/html/2609.32795v1",
+      "claim": "Use trajectory-grounded categorical behavior distributions and independently calibrated judges.",
+      "evidence_scope": "full method read; software-engineering categories excluded; artifacts planned, not located",
+      "grade": "source_verified",
+      "read_on": "2026-09-30",
+      "population": "source-described scope; no local model population"
+    },
+    {
+      "id": "consistency",
+      "date": "2026-09-15",
+      "publisher": "IBM Research",
+      "status": "author engineering article",
+      "url": "https://huggingface.co/blog/ibm-research/altk-evolve-consistency",
+      "related_url": null,
+      "claim": "Report all-runs success alongside mean and any-run success with fixed k.",
+      "evidence_scope": "article read; synthetic arithmetic only; no model benchmark",
+      "grade": "source_verified",
+      "read_on": "2026-09-30",
+      "population": "source-described scope; no local model population"
+    },
+    {
+      "id": "provenance",
+      "date": "2026-09-29",
+      "publisher": "Multiverse Computing",
+      "status": "author explanatory article",
+      "url": "https://huggingface.co/blog/MultiverseComputingCAI/getting-the-source-right-not-just-the-fact-source",
+      "related_url": "https://arxiv.org/abs/2606.18037",
+      "claim": "A claim must match its attributed source, not merely pooled evidence.",
+      "evidence_scope": "article read; underlying paper first submitted June 16, revised August 27",
+      "grade": "source_verified",
+      "read_on": "2026-09-30",
+      "population": "source-described scope; no local model population"
+    },
+    {
+      "id": "responsive-iframes",
+      "date": "2026-09-22",
+      "publisher": "Chrome",
+      "status": "Chrome 154 stable",
+      "url": "https://developer.chrome.com/blog/new-in-chrome-154",
+      "related_url": "https://developer.chrome.com/blog/responsive-iframes",
+      "claim": "Parent sizing and child consent enable native embed sizing; dynamic changes require requestResize.",
+      "evidence_scope": "local behavior observed; guide dated September 16",
+      "grade": "source_verified_and_locally_observed",
+      "read_on": "2026-09-30",
+      "population": "one Linux Chrome 154.0.8037.92; loopback HTTP fixtures"
+    },
+    {
+      "id": "connection-allowlists",
+      "date": "2026-09-23",
+      "publisher": "Chrome / WICG",
+      "status": "Chrome 152+; draft community specification",
+      "url": "https://developer.chrome.com/blog/connection-allowlist-announcement",
+      "related_url": "https://wicg.github.io/connection-allowlists/",
+      "claim": "Put network restrictions in the browser boundary; use report-only before enforcement and preserve compatibility limits.",
+      "evidence_scope": "local fetch/redirect behavior observed; article date is not feature debut",
+      "grade": "source_verified_and_locally_observed",
+      "read_on": "2026-09-30",
+      "population": "one Linux Chrome 154.0.8037.92; loopback HTTP fixtures"
+    },
+    {
+      "id": "actions-protection",
+      "date": "2026-09-17",
+      "publisher": "GitHub",
+      "status": "GA",
+      "url": "https://github.blog/changelog/2026-09-17-workflow-execution-protections-in-github-actions-generally-available/",
+      "related_url": null,
+      "claim": "Evaluate policies before enforcing them; target actor, event and workflow file.",
+      "evidence_scope": "release read; account policy not changed",
+      "grade": "source_verified",
+      "read_on": "2026-09-30",
+      "population": "source-described scope; no local model population"
+    },
+    {
+      "id": "actions-counts",
+      "date": "2026-09-25",
+      "publisher": "GitHub",
+      "status": "rolling out",
+      "url": "https://github.blog/changelog/2026-09-25-changes-to-query-results-in-the-github-actions-api-and-ui/",
+      "related_url": null,
+      "claim": "Propagate exact, capped and unknown count semantics instead of fabricating denominators.",
+      "evidence_scope": "release read; live API response serialization not checked",
+      "grade": "source_verified",
+      "read_on": "2026-09-30",
+      "population": "source-described scope; no local model population"
+    },
+    {
+      "id": "miri-cache",
+      "date": "2026-09-21",
+      "publisher": "Rust Security Response",
+      "status": "advisory",
+      "url": "https://blog.rust-lang.org/2026/09/21/github-actions-leaking-secrets-when-miri-output-is-cached/",
+      "related_url": null,
+      "claim": "Build artifacts and caches can copy process environment across trust boundaries.",
+      "evidence_scope": "advisory read; no claim this repository is affected",
+      "grade": "source_verified",
+      "read_on": "2026-09-30",
+      "population": "source-described scope; no local model population"
+    },
+    {
+      "id": "postgres-beta",
+      "date": "2026-09-24",
+      "publisher": "PostgreSQL",
+      "status": "19 Beta 4",
+      "url": "https://www.postgresql.org/about/news/postgresql-19-beta-4-released-3386/",
+      "related_url": null,
+      "claim": "Track withdrawn features as well as additions: SQL/PGQ was reverted before GA.",
+      "evidence_scope": "release read; no database migration",
+      "grade": "source_verified",
+      "read_on": "2026-09-30",
+      "population": "source-described scope; no local model population"
+    },
+    {
+      "id": "gguf-transformers",
+      "date": "2026-09-22",
+      "publisher": "Hugging Face",
+      "status": "experimental main-branch integration",
+      "url": "https://huggingface.co/blog/transformers-llama-cpp-quants",
+      "related_url": null,
+      "claim": "File-format loading, packed kernels, hardware support and eval interfaces are separate capabilities.",
+      "evidence_scope": "primary article read; packed inference initially MPS-only; no local model run",
+      "grade": "source_verified",
+      "read_on": "2026-09-30",
+      "population": "source-described scope; no local model population"
+    },
+    {
+      "id": "node-shared-memory",
+      "date": "2026-09-23",
+      "publisher": "Node.js",
+      "status": "22.23.3 LTS",
+      "url": "https://nodejs.org/en/blog/release/v22.23.3",
+      "related_url": null,
+      "claim": "N-API shared-buffer support adds a native-extension option, not an automatic application speedup.",
+      "evidence_scope": "release read; native memory lifetime not tested",
+      "grade": "source_verified",
+      "read_on": "2026-09-30",
+      "population": "source-described scope; no local model population"
+    },
+    {
+      "id": "mergeheir",
+      "date": "2026-09-26",
+      "publisher": "MergeHEIR authors",
+      "status": "preprint v1",
+      "url": "https://arxiv.org/abs/2609.32422",
+      "related_url": null,
+      "claim": "Model merge repair must also preserve inherited task capabilities.",
+      "evidence_scope": "abstract screening only; no training or reproduction",
+      "grade": "source_verified",
+      "read_on": "2026-09-30",
+      "population": "source-described scope; no local model population"
+    },
+    {
+      "id": "ars",
+      "date": "2026-09-28",
+      "publisher": "ARS authors",
+      "status": "preprint v1",
+      "url": "https://arxiv.org/abs/2609.34484",
+      "related_url": null,
+      "claim": "Progress rewards must reject wrong-object and task-irrelevant activity.",
+      "evidence_scope": "abstract screening only; proposal/verification overlaps prior learning",
+      "grade": "source_verified",
+      "read_on": "2026-09-30",
+      "population": "source-described scope; no local model population"
+    },
+    {
+      "id": "kumo",
+      "date": "2026-09-29",
+      "publisher": "NVIDIA",
+      "status": "model/code release",
+      "url": "https://huggingface.co/blog/nvidia/kumo-tabular",
+      "related_url": null,
+      "claim": "Labeled context rows can condition tabular prediction; context/query shift remains a risk.",
+      "evidence_scope": "method read; no inference run; training data generator not yet released",
+      "grade": "source_verified",
+      "read_on": "2026-09-30",
+      "population": "source-described scope; no local model population"
+    },
+    {
+      "id": "tts-evaluation",
+      "date": "2026-09-30",
+      "publisher": "Open TTS Leaderboard authors",
+      "status": "evaluation platform announcement",
+      "url": "https://huggingface.co/blog/open-tts-leaderboard",
+      "related_url": null,
+      "claim": "Separate intelligibility, first-audio latency, throughput, voice identity and listener preference.",
+      "evidence_scope": "method read; scripts announced for later release; no audio generation",
+      "grade": "source_verified",
+      "read_on": "2026-09-30",
+      "population": "source-described scope; no local model population"
+    },
+    {
+      "id": "tokenizers-v1",
+      "date": "2026-09-21",
+      "publisher": "Hugging Face",
+      "status": "release candidate",
+      "url": "https://huggingface.co/blog/tokenizers-v1",
+      "related_url": null,
+      "claim": "Reuse allocation buffers and compare warm cache with distinct documents while preserving token IDs.",
+      "evidence_scope": "method read; no tokenizer timing run",
+      "grade": "source_verified",
+      "read_on": "2026-09-30",
+      "population": "source-described scope; no local model population"
+    },
+    {
+      "id": "eval-cards",
+      "date": "2026-09-22",
+      "publisher": "UK AISI / EvalEval",
+      "status": "shared evaluation infrastructure",
+      "url": "https://huggingface.co/blog/evaleval-aisi",
+      "related_url": null,
+      "claim": "Publish evaluation configuration and run context as structured data, not only a score.",
+      "evidence_scope": "article read; no external schema integration",
+      "grade": "source_verified",
+      "read_on": "2026-09-30",
+      "population": "source-described scope; no local model population"
+    },
+    {
+      "id": "cf-cli",
+      "date": "2026-09-28",
+      "publisher": "Cloudflare",
+      "status": "open beta",
+      "url": "https://blog.cloudflare.com/cloudflare-cf-cli-launch/",
+      "related_url": null,
+      "claim": "Generate CLI and SDK surfaces from a shared schema; structured agent output and typed configuration reduce interface drift.",
+      "evidence_scope": "primary release read; not installed or used against an account",
+      "grade": "source_verified",
+      "read_on": "2026-09-30",
+      "population": "source-described scope; no local product trial"
+    },
+    {
+      "id": "cf-issues",
+      "date": "2026-09-30",
+      "publisher": "Cloudflare",
+      "status": "beta",
+      "url": "https://blog.cloudflare.com/real-time-issue-detection/",
+      "related_url": null,
+      "claim": "Attach recurrence, stack, logs, traces and version context when escalating an issue to an agent.",
+      "evidence_scope": "primary release read by delegated researcher; no account trial; clustering and retry behavior unverified",
+      "grade": "source_verified",
+      "read_on": "2026-09-30",
+      "population": "source-described scope; no local product trial"
+    },
+    {
+      "id": "voidzero-vitest",
+      "date": "2026-09-28",
+      "publisher": "Cloudflare / VoidZero",
+      "status": "article; Vitest 5 released during September",
+      "url": "https://blog.cloudflare.com/voidzero-update/",
+      "related_url": null,
+      "claim": "Preserve browser interactions, assertions and DOM snapshots; detect unawaited assertions and repeat intermittent tests.",
+      "evidence_scope": "primary release read; no tool installation or project benchmark",
+      "grade": "source_verified",
+      "read_on": "2026-09-30",
+      "population": "source-described scope; no local product trial"
+    }
+  ],
+  "loop_log": [
+    {
+      "pass": "broad scan",
+      "scope": "AI releases, research, browsers, infrastructure",
+      "outcome": "separate independent publishers; follow current primary material"
+    },
+    {
+      "pass": "contract and mechanism reading",
+      "scope": "model migration, events, browser boundaries, CI and runtime releases",
+      "outcome": "extract operational rules and distinguish availability from announcements"
+    },
+    {
+      "pass": "evidence and reliability follow-up",
+      "scope": "consistency, attribution, quantization",
+      "outcome": "add synthetic metric example and identify benchmark limitations"
+    },
+    {
+      "pass": "refresh latest primary indexes",
+      "scope": "Hugging Face and Cloudflare September 21–30 updates",
+      "outcome": "new useful items found: Kumo, TTS evaluation, tokenizers, evaluation cards, cf and issue detection"
+    },
+    {
+      "pass": "close selected-source frontier",
+      "scope": "release statuses, source dates, test scope and known limitations",
+      "outcome": "24 selected topics recorded; local browser experiment passed 8/8; selected batch closed, not a zero-novelty or exhaustive-internet claim"
+    }
+  ],
+  "screened_background": [
+    {
+      "topic": "Agents API",
+      "date": "2026-09-10",
+      "reason": "Sep 29 recap repeats an older beta; outside main window",
+      "url": "https://openai.com/index/introducing-the-agents-api/"
+    },
+    {
+      "topic": "vLLM 0.29.0",
+      "date": "2026-09-09",
+      "reason": "outside main window",
+      "url": "https://github.com/vllm-project/vllm/releases"
+    },
+    {
+      "topic": "Holo4",
+      "date": "2026-09-28",
+      "reason": "screened; overlaps GUI/code/tool orchestration, benchmark not reproduced",
+      "url": "https://huggingface.co/blog/Hcompany/holo4"
+    }
+  ],
+  "not_exhaustive": "No claim of zero remaining novelty. Other domains and unexpanded publisher links remain outside this batch; no scheduled background loop established."
+}

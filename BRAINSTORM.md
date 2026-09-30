@@ -12,6 +12,34 @@ Past resolved/deferred items live in [`docs/archive/BRAINSTORM-resolved.md`](doc
 
 ---
 
+## [Research] 2026-09-30 — Broader current learning across AI and engineering
+
+Expanded beyond individual authors to 24 selected topics from model vendors,
+research teams, Chrome, GitHub, Rust, PostgreSQL, Node, Hugging Face, NVIDIA and
+Cloudflare. [Chinese reading guide](docs/artifacts/latest-learning-20260930/index.html)
+and [source evidence](docs/artifacts/latest-learning-20260930/evidence.json) preserve
+article/version dates, release status, reading depth and limitations. Main window:
+September 15–30, with explicit older-paper and undated-document exceptions.
+
+New reusable lessons: measure all-runs success separately from mean and any-run
+success; validate claim-to-source attribution; check model migration contracts;
+separate event receipt, execution and completion; compare performance under the
+same hardware/input/timing conditions; retain diagnostic context with failures.
+Kumo-Tabular and the September 30 TTS leaderboard extend the reading beyond coding
+agents. Model/product performance remains unmeasured; no policy change follows.
+
+Local evidence: Chrome 154.0.8037.92 passed 8/8 assertions for connection allowlist
+fetch/redirect behavior and iframe sizing/child consent. [Reproducer](docs/artifacts/latest-learning-20260930/browser_probe.py)
+and [result](docs/artifacts/latest-learning-20260930/browser-result.json) are bounded
+to loopback HTTP and one browser build, not a security audit. The consistency
+comparison is a synthetic worked example, with zero model trials.
+
+The selected batch is closed, not an exhaustive survey or a demonstrated absence
+of new knowledge. Remaining validation needs actual workloads, model calls or
+product accounts. Candidate next experiments: fixed-task repeated trials,
+claim-source checking with mixed evidence, and target-browser/event-replay tests
+when relevant. These remain inbox proposals; no TODO entries were added.
+
 ## [Research] 2026-09-30 — Recent lessons for the terminal agent workflow
 
 **Recommendation:** first design a task-stratified comparison of lead-only execution
