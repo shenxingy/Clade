@@ -1,5 +1,8 @@
 # Artifact review — 2026-09-30
 
+The initial review below is retained as history. The follow-up review at the end
+records the current revisions of both pages.
+
 - Artifact: `index.html`, SHA256 `c4e0a3984140f5ce28219e650ac995588a84e7aff3bc7d8436af340f81c56238`.
 - Reader: Chinese-speaking Clade maintainer familiar with coding agents.
 - Question: What recent work is worth learning from, and what comes first?
@@ -72,3 +75,92 @@ Verdict: **PASS for this local research artifact**. No benchmark reproduction,
 paid inference, vendor product trial, deployment or runtime modification was
 performed. Full application CI is not claimed; this is a documentation-only
 checkpoint with artifact verification and the repository's pre-commit drift gates.
+
+## Follow-up: NanoHarness learning and verifier calibration
+
+Current artifact revisions:
+
+- `index.html`: SHA256 `c324254d5f1c2a0eb64912645038d33cdc0062ccd11302ce7f7268f646b05212`.
+- `nanoharness.html`: SHA256 `5c5d5fde331a439af9a566cd9783e84bd1344cfb4f6ab2269a811dcbcff80bae`.
+
+The new page is a finding report for the same reader. Its question is: what did
+we learn from NanoHarness, what has Clade actually verified, and what comes next?
+The intended answer is to calibrate the final verifier before comparing delegation;
+two historical local-fix verifiers are now calibrated, while model effects remain
+unmeasured. The original page links this work and updates its next-action status.
+
+### Reproducible local evidence
+
+```sh
+python3 docs/artifacts/learning-radar-20260930/preflight.py --output /tmp/clade-nanoharness-preflight
+python3 -m py_compile docs/artifacts/learning-radar-20260930/preflight.py
+```
+
+The actual output directory was the operator's Clade state directory under
+`research-learning-20260930/deep-dive/`. All four full logs were inspected;
+`preflight-result.json` preserves commit/test/log hashes, exit codes, exact
+failures, skip checks, timings and the resource probe. Fixed tests were held
+constant, and only the implementation file changed between red and green:
+
+- Corrupt statistics recovery: old implementation 43/46 passes with exactly
+  three expected failures; fixed implementation 46/46, exit 0.
+- Prompt noise filtering: old implementation 137/138 passes with exactly one
+  expected failure; fixed implementation 138/138, exit 0.
+
+All four suites had no skips. An independent read-only reviewer checked the
+runner, result JSON and four full logs and accepted only the verifier-readiness
+claim. This is not a full current-repository test run or a model A/B experiment.
+Agent trial count is zero. Compilation of the Python helper passed.
+
+### Current rendered review
+
+Both pages passed strict artifact lint: 0 FAIL, 0 WARN, 2 INFO each. The original
+has 8/10 claim headings; the new page has 5/8. Design lint passed four checks for
+each page. Browser-computed contrast again measured at least 5.9767:1 in light
+and 7.8111:1 in dark, across four text colors and two surfaces.
+
+The existing `render.py` now accepts `CLADE_REVIEW_PAGE` and
+`CLADE_REVIEW_OUTPUT`. The original page's current captures and `render.json`
+replace the earlier batch under `research-learning-20260930/`; the new page's
+are under `deep-dive/render/`. Each JSON records its exact artifact hash.
+Both pages were captured at 1280×900 and 390×844 in light and dark, including
+first/full/table/source views, 200% text enlargement, and scrolled mobile tables.
+The lead inspected the new page's first/full matrix, table detail and enlarged
+mobile views, plus the original page's changed first-screen/next-action regions.
+The independent readers inspected the supplied full matrices as well.
+
+There was no document overflow at either text size, page error or failed request.
+Actual color-scheme activation, JavaScript-off text equality, keyboard navigation,
+local links/anchors and mobile table scrolling passed. The render helper was
+corrected to strip URL fragments before checking local-file existence and rerun
+successfully; the report link itself was valid. No figures or hosted wrapper
+are in scope.
+
+Fresh-reader review of the new page received the page, captures, audience and
+question, without expected answers. It correctly distinguished local verifier
+calibration, paper results, unmeasured agent performance and the proposed
+controlled comparison. It read the red/green table correctly, including mobile
+scrolling and 200% text, and returned **PASS** with no material issue.
+The original reader separately returned **PASS (bounded re-review)** for the
+updated original page: progress and next-action claims are consistent, and the
+unperformed model experiment remains explicit. These are model comprehension
+proxies; source verification was performed separately by the lead.
+
+### Resources and scope
+
+Before execution: CPU affinity 32; load 5.08 / 6.73 / 6.45; available RAM 64 GiB;
+GPU utilization 0%, free VRAM 18,822 MiB. Other users' processes were preserved.
+Four verifier workers with native-library threads capped at 1 finished four
+suites in 16.669 seconds (about 0.24 suites/second). Rendering used four bounded
+contexts per page; capture/check batches took 3.18 seconds for the original and
+3.30 seconds for the new page. These workloads did not need GPU inference.
+
+Verdict: **PASS for the local learning report and historical verifier calibration**.
+Paper benchmark reproduction, model A/B, production traffic, external product
+trials and full application CI remain unperformed and are not claimed. The two
+historical tasks cover local shell-hook repairs only. No production policy,
+model route or compression setting changed.
+
+Final local checkpoint gates: `bash .claude/pre-commit.sh` passed all five
+repository drift checks (exit 0), and `git diff --check` passed. These gates do
+not substitute for the full CI required before any later publication.

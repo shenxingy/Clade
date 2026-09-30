@@ -19,6 +19,22 @@ and Clade's existing bounded delegation. New research supports testing where eac
 harness component helps; it does not establish gains for Clade. Full Chinese
 reading guide: [learning radar](docs/artifacts/learning-radar-20260930/index.html).
 
+**Learning follow-up, Sep 30:** [Deep reading and a concrete comparison protocol](docs/artifacts/learning-radar-20260930/nanoharness.html)
+are complete. The paper's specialized roles and binary-reconstruction setting are
+narrower than generic multi-agent coding; ProgramBench's fully-resolved metric
+must not be conflated with partial test scores. No author implementation was
+confirmed; a same-named repository has different attribution. These findings do
+not justify changing production defaults.
+
+Local verifier calibration is now reproducible with
+`python3 docs/artifacts/learning-radar-20260930/preflight.py --output /tmp/clade-nanoharness-preflight`.
+At fixed test versions, restoring the old implementation produces exactly three
+expected failures for corrupt correction stats (43/46 pass) and one for prompt
+noise filtering (137/138 pass); fixed implementations pass 46/46 and 138/138.
+[Evidence](docs/artifacts/learning-radar-20260930/preflight-result.json) records
+SHAs, failure names, exit codes and log hashes. This calibrates two local-fix
+verifiers, not model performance: agent A/B trials remain zero.
+
 ### Tools and approaches surveyed
 
 | Source / date | New evidence | What to borrow / limitation |

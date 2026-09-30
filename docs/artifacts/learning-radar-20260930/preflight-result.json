@@ -1,0 +1,115 @@
+{
+  "kind": "historical-verifier-calibration",
+  "agent_trials": 0,
+  "snapshot_rule": "fixed snapshot and tests; red restores only owned implementation from parent",
+  "workers": 4,
+  "native_threads": 1,
+  "gpu_used": false,
+  "seconds": 16.669,
+  "checks": [
+    {
+      "case": "stats-recovery",
+      "verifier_ready": true
+    },
+    {
+      "case": "prompt-noise",
+      "verifier_ready": true
+    }
+  ],
+  "lanes": [
+    {
+      "case": "stats-recovery",
+      "lane": "red",
+      "fixed_commit": "f66656b08949d18953de6cfe243549182ca110df",
+      "parent_commit": "9ad3dac344554d3423255dcc384e5bb869a826eb",
+      "implementation": "configs/hooks/correction-detector.sh",
+      "command": [
+        "bash",
+        "tests/test-correction-pairing.sh"
+      ],
+      "test_sha256": "45c3bbdbcc9370e75c279fde28e3100d501d68502ea7d56785f7b7e30aea7ac5",
+      "exit_code": 1,
+      "passed_assertions": 43,
+      "failed_assertions": [
+        "a stats.json full of conflict markers is rebuilt into valid JSON",
+        "the correction that found it is still counted",
+        "the unreadable file is kept beside it, not discarded"
+      ],
+      "skip_detected": false,
+      "log": "stats-recovery-red.log",
+      "log_sha256": "3072850d03b7ddb04f7f6383506a8d9290b00700d2aadcedcabc1eef00c5e442",
+      "seconds": 2.027
+    },
+    {
+      "case": "stats-recovery",
+      "lane": "green",
+      "fixed_commit": "f66656b08949d18953de6cfe243549182ca110df",
+      "parent_commit": "9ad3dac344554d3423255dcc384e5bb869a826eb",
+      "implementation": "configs/hooks/correction-detector.sh",
+      "command": [
+        "bash",
+        "tests/test-correction-pairing.sh"
+      ],
+      "test_sha256": "45c3bbdbcc9370e75c279fde28e3100d501d68502ea7d56785f7b7e30aea7ac5",
+      "exit_code": 0,
+      "passed_assertions": 46,
+      "failed_assertions": [],
+      "skip_detected": false,
+      "log": "stats-recovery-green.log",
+      "log_sha256": "080ac970357e5291e27e85c30c0b4b608d755a259a8791877344ac28f5b46061",
+      "seconds": 2.058
+    },
+    {
+      "case": "prompt-noise",
+      "lane": "red",
+      "fixed_commit": "78013146bc0e154668d5f3fb0289fde0cae5d7fd",
+      "parent_commit": "f520313c9a00ff7ad4762be0090267a2afd5261c",
+      "implementation": "configs/hooks/prompt-tracker.sh",
+      "command": [
+        "bash",
+        "tests/test-hooks.sh"
+      ],
+      "test_sha256": "e99f5a84cdc08cf99535336e190a376080a403355d95cdb921fbafc8803ace1c",
+      "exit_code": 1,
+      "passed_assertions": 137,
+      "failed_assertions": [
+        "machine-generated text is never fingerprinted"
+      ],
+      "skip_detected": false,
+      "log": "prompt-noise-red.log",
+      "log_sha256": "cb23ab167de1920e3b52aa48f4952e1d22eb2420171fba8dec30b94c5fdbc3c2",
+      "seconds": 16.667
+    },
+    {
+      "case": "prompt-noise",
+      "lane": "green",
+      "fixed_commit": "78013146bc0e154668d5f3fb0289fde0cae5d7fd",
+      "parent_commit": "f520313c9a00ff7ad4762be0090267a2afd5261c",
+      "implementation": "configs/hooks/prompt-tracker.sh",
+      "command": [
+        "bash",
+        "tests/test-hooks.sh"
+      ],
+      "test_sha256": "e99f5a84cdc08cf99535336e190a376080a403355d95cdb921fbafc8803ace1c",
+      "exit_code": 0,
+      "passed_assertions": 138,
+      "failed_assertions": [],
+      "skip_detected": false,
+      "log": "prompt-noise-green.log",
+      "log_sha256": "6a676f57b0d65ef7ae0933b3f81f0e03b681f40e2e702262a0264df4973a1a07",
+      "seconds": 15.949
+    }
+  ],
+  "resource_probe": {
+    "cpu_affinity": 32,
+    "load": [
+      5.08,
+      6.73,
+      6.45
+    ],
+    "ram_available_gib": 64,
+    "gpu_util_percent": 0,
+    "gpu_free_mib": 18822,
+    "other_user_workloads": "observed and preserved"
+  }
+}

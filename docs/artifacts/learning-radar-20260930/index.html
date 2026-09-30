@@ -27,7 +27,8 @@ ul,ol{padding-left:1.5em}li{margin-bottom:8px}footer{border-top:1px solid var(--
 <p class="stamp">Clade 学习雷达 · 截至 2026-09-30 · Codex 研究整理<br>代码基线：fe929190b280 · 来源：论文原文、产品团队文章、仓库记录</p>
 <h1>最值得先学的是：验证哪些 agent 组件真的有用</h1>
 <p class="deck">9 月的新材料里，最贴近 Clade 的是 harness 的组件消融：固定模型和任务，逐项比较工具、委派、规划与压缩的收益。建议先设计一轮终端任务对照；缓存成本路由排第二，结构化判定与会话级评估作为后续学习项。</p>
-<p><span class="grade">已核验：</span>原文内容与发布日期。<span class="grade">推断：</span>以上学习顺序。<span class="grade">未测量：</span>这些方法在 Clade 的收益；尚未运行实验。</p>
+<p><span class="grade">已核验：</span>原文内容与发布日期。<span class="grade">推断：</span>以上学习顺序。<span class="grade">未测量：</span>这些方法在 Clade 的收益；尚未运行模型对照实验。</p>
+<p><strong>学习进展 · 2026-09-30：</strong>已完成 <a href="nanoharness.html">NanoHarness 深入学习与两个历史验证器的红绿校准</a>，并写出委派对照方案。</p>
 <nav aria-label="页面目录"><a href="#learn">四项新材料</a><a href="#next">建议先做什么</a><a href="#sources">证据与边界</a></nav>
 </header>
 
@@ -70,8 +71,8 @@ ul,ol{padding-left:1.5em}li{margin-bottom:8px}footer{border-top:1px solid var(--
 </section>
 
 <section id="next">
-<h2>下一步先写出终端委派对照方案</h2>
-<p><strong>建议负责人：</strong>Clade 维护者。<strong>建议时间：</strong>下一次评估迭代；2026-09-30 提议，未排期。</p>
+<h2>终端委派对照方案已写出，效果还需要实测</h2>
+<p><strong>建议负责人：</strong>Clade 维护者。<strong>状态：</strong>2026-09-30 已完成<a href="nanoharness.html#next">对照方案</a>与两个局部修复样本的验证器校准；模型试验未排期。</p>
 <p><strong>完成定义：</strong>选取有确定验证器的终端任务，覆盖只读发现、局部修复和较长实现；锁定模型、预算、任务版本及判断标准，写清主代理独立执行与现有受限委派两组的差异。按任务类型比较验证成功、错误放行、返工、耗时及总费用，并保存失败轨迹。</p>
 <p><strong>验收：</strong>另一位维护者能从方案复现两组运行；只改变委派这一项，缺失数据记为未知。正式推理实验、费用支出和规则变更均未执行。后续顺序：缓存成本 → 窄判定校准 → 会话级评估。</p>
 </section>

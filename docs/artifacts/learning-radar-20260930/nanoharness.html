@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="artifact-type" content="finding">
+<title>NanoHarness 学习与本地验证 · 2026-09-30</title>
+<style>
+:root{color-scheme:light;--bg:#f5f7f6;--surface:#fff;--ink:#131819;--secondary:#3b4648;--muted:#536165;--rule:#c8d2cf;--accent:#0d6355}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#0d1112;--surface:#141a1b;--ink:#e9eeec;--secondary:#c2cdca;--muted:#a1b0ac;--rule:#405451;--accent:#4ec7ab}}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#0d1112;--surface:#141a1b;--ink:#e9eeec;--secondary:#c2cdca;--muted:#a1b0ac;--rule:#405451;--accent:#4ec7ab}
+*{box-sizing:border-box}html{font-size:16px}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Noto Sans CJK SC","Microsoft YaHei",sans-serif;line-height:1.8}
+main{max-width:960px;margin:auto;padding:40px 28px 64px}header{border-bottom:1px solid var(--rule);padding-bottom:24px}
+h1{font-size:clamp(1.8rem,4vw,2.6rem);line-height:1.35;margin:12px 0 18px}h2{font-size:1.4rem;line-height:1.5;margin:0 0 12px}h3{font-size:1.12rem;margin:0 0 8px}
+p{margin:0 0 14px}.stamp,.note{color:var(--muted);font-size:.9rem}.deck{font-size:1.12rem;color:var(--secondary)}
+section{margin-top:30px}.item{background:var(--surface);padding:22px;border:1px solid var(--rule);border-radius:8px}.eyebrow{color:var(--accent);font-size:.9rem;font-weight:650;margin-bottom:6px}
+a{color:var(--accent);text-underline-offset:3px;overflow-wrap:anywhere}a:focus-visible{outline:3px solid var(--accent);outline-offset:4px}
+nav{display:flex;flex-wrap:wrap;gap:8px 20px;margin-top:16px}code{font-family:ui-monospace,monospace;font-size:.9em;overflow-wrap:anywhere}.grade{font-weight:650}
+.table-wrap{overflow-x:auto;border:1px solid var(--rule);border-radius:6px}table{border-collapse:collapse;width:100%;min-width:610px;background:var(--surface)}th,td{text-align:left;vertical-align:top;padding:12px;border-bottom:1px solid var(--rule);font-size:.94rem}th{color:var(--secondary)}tr:last-child td{border-bottom:0}
+ul,ol{padding-left:1.5em}li{margin-bottom:8px}footer{border-top:1px solid var(--rule);margin-top:30px;padding-top:20px;color:var(--muted);font-size:.9rem}
+@media(max-width:600px){main{padding:24px 18px 44px}.item{padding:18px}h1{font-size:1.8rem}}
+@media print{main{max-width:none}nav{display:none}.item{break-inside:avoid}}
+</style>
+
+</head><body><main>
+<header>
+<p class="stamp">NanoHarness 深入学习 · 截至 2026-09-30 · Codex<br>研究基线：Clade fe929190b280 · 论文 v1：2026-09-26</p>
+<h1>先校准验证器，再判断委派有没有收益</h1>
+<p class="deck">已读 NanoHarness 的实验设计、失败分析和适用边界，并把学习落实为可重跑的本地验证：两个历史缺陷在旧实现上都触发预期失败，修复实现均通过。下一步可用这些任务设计同模型委派试验；目前还没有 agent 对照结果。</p>
+<p><strong>已实测：</strong>2/2 历史任务的验证器能分辨缺陷。<strong>未测量：</strong>委派是否提高成功率、节省时间或费用。这两类结果必须分开。</p>
+<nav aria-label="页面目录"><a href="#learn">本地证据</a><a href="#why">学到什么</a><a href="#next">对照方案</a><a href="#sources">来源与复跑</a></nav>
+</header>
+<section id="key"><h2>红绿校准测试的是判定能力</h2>
+<p><strong>红组</strong>：在固定版本中，仅把待修文件换回父提交实现，保持测试不变。<strong>绿组</strong>：同一固定版本及其测试。红组只允许出现指定的回归失败，绿组必须全过。<strong>Agent 对照</strong>则要让模型实际完成任务；本次这类试验运行数为 0。</p></section>
+<section id="learn"><h2>两个历史缺陷都能被现有测试抓到</h2>
+<p class="note">手机可左右滑动表格。数值是各历史版本测试套件的断言计数，不是当前全仓库 CI，也不是模型成功率。</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="历史验证器结果，可横向滚动"><table><thead><tr><th scope="col">历史缺陷 / 固定版本</th><th scope="col">红组：旧实现</th><th scope="col">绿组：修复实现</th></tr></thead><tbody>
+<tr><td>损坏的纠错统计无法恢复<br><code>f66656b08949</code></td><td>43/46 通过，3 条预期失败<br>退出码 1</td><td>46/46 通过<br>退出码 0</td></tr>
+<tr><td>机器通知误记为重复用户需求<br><code>78013146bc0e</code></td><td>137/138 通过，1 条预期失败<br>退出码 1</td><td>138/138 通过<br>退出码 0</td></tr>
+</tbody></table></div>
+<p class="note">读法 / Reading：同一行使用相同测试 SHA256；差异只在待修实现。全部四次套件执行均无跳过。完整提交、断言名和日志哈希见 <a href="preflight-result.json">运行结果</a>。</p>
+<p>统计恢复的三条失败分别检查：损坏 JSON 是否恢复、触发恢复的纠正是否被计数、原损坏文件是否保留。重复检测的失败检查机器文本是否被写入指纹日志；修复后仍保留真人重复需求的正向信号。两个任务均是局部 shell hook 修复，尚不覆盖只读发现或长任务实现。</p>
+<p><strong>口径修正：</strong>第一个历史提交的标题提到 effectiveness counter，但实际重放的是损坏 <code>stats.json</code> 的恢复。规则领域名称不匹配的问题不在此验证范围。</p></section>
+<section id="why"><h2>论文的价值在于任务匹配，不能直接变成全局开关</h2>
+<p><a href="https://arxiv.org/html/2609.32459v1">NanoHarness 原文 §3–5、§7</a>：专门化角色负责行为分析、差分测试和提交检查；组件实验使用 200 个 ProgramBench 任务及两种模型，设置为非思考模式、温度 0。单独压缩的负效应不能否定完整组合。正文未明确给出重复次数或置信区间，本次也未定位到可确认属于作者的代码快照。</p>
+<p><a href="https://github.com/facebookresearch/ProgramBench">ProgramBench</a> 要求根据二进制与文档重建行为。其<a href="https://programbench.com/#faq">官方评分说明</a>把完整解决率与平均测试通过率分开；因此本文不把 NanoHarness 的 score 转写为成功交付率，也不与实时榜单直接比较。</p>
+<p><strong>对 Clade 的推断：</strong>子任务应绑定一个待消除的不确定性，例如定位失败输入或检查行为差异，并返回可独立核验的证据。现有受限委派规则已接近这个方向；是否带来净收益需要独立实测。</p>
+<p><strong>关于压缩的推断：</strong>下一轮应检查压缩后是否保留验收条件、已证伪假设、相关文件和验证结果，再观察失败变化。这里提出的是对照项目，没有改动运行时压缩行为。</p></section>
+<section class="item"><h2>探索是否有价值，要看它回答了什么问题</h2>
+<p>针对本地任务，我会把每轮探索写成“待确认行为 → 最小观察 → 结论 → 是否继续”。以机器通知误报为例，先确认通知是否写入指纹日志，再检查真人重复输入是否仍能触发信号；同一个问题已有直接证据后，不再扩大无关仓库扫描。</p>
+<p>可复用的委派任务卡：<strong>问题、允许读取的路径、可修改范围、资源上限、返回格式</strong>。返回内容必须包含结论、文件或命令证据、反例与未知项；主代理负责最终核验。这个例子是本次学习后的操作建议，符合现有规则，不是新增全局策略。</p></section>
+<section id="next"><h2>下一步的对照必须只改变委派这一项</h2>
+<p><strong>负责人：</strong>Clade 维护者。<strong>提议日期：</strong>2026-09-30；正式模型试验未排期。本次已完成阅读、校准和以下试验设计。</p>
+<ol>
+<li><strong>固定输入。</strong>在无修复提交历史的独立任务快照中运行；两组拿到同样的需求、工具和可信指令。最终评判测试由外部验证器持有，模型不能修改。以上两项只能作为局部修复的预实验，扩展结论前须补充新任务。</li>
+<li><strong>隔离变量。</strong>A 组主代理独立完成；B 组同一个主模型可启动一个同模型只读专门化子代理。固定版本、effort、总预算、上下文上限和超时；B 组预算包含子代理开销。不同时改变压缩、工具或技能。此试验是建议，未覆盖或改变本会话的委派规则。</li>
+<li><strong>区分两个问题。</strong>先检验委派本身；之后再单独比较便宜子模型策略。若一开始同时换模型，只能评价整套策略，无法归因于委派。</li>
+<li><strong>记录全部尝试。</strong>预先锁定试验次数，交替执行顺序。记录实际模型、工具/技能版本、缓存状态、重试、墙钟时间、父子用量、最终验证及错误放行。未知费用记为未知；失败尝试的费用也计入总费用。</li>
+<li><strong>接受反证。</strong>两组成功率相同而委派更慢或更贵，就保留独立执行。按任务分别展示差异与重复运行的离散程度；这两项校准不能支撑总体显著性结论，也不能作为盲测集反复调优。</li>
+</ol>
+<p><strong>完成定义：</strong>另一位维护者能重建相同任务与对照条件，复算验证成功率和“全部尝试总费用 / 验证成功交付数”；成功数为零时费用指标记为未定义。生产策略变更需要这些实际结果支持。</p></section>
+<section id="method"><h2>我核验了原文、出处和本地测试的失败路径</h2>
+<p>2026-09-30：读论文的组件定义、实验设置、失败分析与限制；核对 ProgramBench 官方任务和评分定义；搜索论文标题、编号、作者与代码链接；读取 Clade 历史修复，挑选单文件行为改动；在临时目录重放红绿实现，检查全部失败名、退出码、跳过和测试哈希。</p>
+<p>复跑由 <a href="preflight.py">preflight.py</a> 执行，不调用模型或外部服务。四个受限工作线程，原生库线程数为 1，16.669 秒完成四次套件执行。原始日志保存在本地研究证据目录；提交的 JSON 包含日志哈希。</p></section>
+<section id="sources"><h2>本地证据可以复跑，论文效果尚未复现</h2>
+<ul>
+<li><a href="https://arxiv.org/html/2609.32459v1">Hu 等：Beyond the Model，v1</a>：已读原文；外部性能结果未复现。</li>
+<li><a href="https://github.com/facebookresearch/ProgramBench">ProgramBench 官方仓库</a>与<a href="https://programbench.com/">官方评分说明</a>：已核对任务范围与指标定义，读取日期 2026-09-30。</li>
+<li><a href="https://github.com/HabitGraylight/NanoHarness#research-foundation-and-citation">同名 NanoHarness 仓库</a>：自引作者和研究出处不同，本次未确认其与该论文的关系，未当作作者实现。</li>
+<li><a href="preflight-result.json">本地红绿结果</a>：完整 commit、测试哈希、预期失败及耗时；<a href="index.html">上一轮学习雷达</a>保留其他三个方向。</li>
+</ul>
+<p>从含完整 Git 历史的 Clade 仓库根目录运行：</p>
+<pre style="white-space:pre-wrap;overflow-wrap:anywhere"><code>python3 docs/artifacts/learning-radar-20260930/preflight.py --output /tmp/clade-nanoharness-preflight</code></pre>
+<p class="note">依赖 Python 3.12+、Git、Bash、jq；缺依赖或出现非预期失败不能报通过。输出目录保存四份日志和 JSON；临时快照自动清理。脚本只运行已读过的本仓库历史测试。</p></section>
+<section id="limits"><h2>这次证据只支持验证器可用</h2>
+<p>本次没有运行模型 A/B、NanoHarness 基准或生产流量实验；不能声称委派更快、更省或更准确。历史样本只覆盖两个局部修复，测试通过不代表不存在其他缺陷。未确认论文代码快照和完整逐次轨迹，代码级复现仍有缺口。</p>
+<p>读到单个组件的负面结果后直接停用它，或把同名 GitHub 仓库当作作者实现，均不被本次证据支持。没有据此调整生产规则、压缩配置或模型路由。</p></section>
+<footer>学习状态：原文核对完成 · 本地验证器校准完成 · 模型效果未测量</footer>
+</main></body></html>
