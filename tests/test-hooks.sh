@@ -853,6 +853,50 @@ OUT=$(ctx CLADE_CTX_CEILING_BYTES=100)
 assert_contains "$OUT" "over the 100 budget" "an over-ceiling payload says so"
 assert_contains "$OUT" "Close the loop" "the ceiling warning does not truncate the trailing sections"
 
+# CONVERSATION MODE: a repository that is a conversation, not a codebase,
+# declares it with .claude/conversation-mode. It keeps its own lessons and the
+# language rule and loses the engineering scaffolding, other projects' rules and
+# automatic promotion. Measured on one such repository before the marker
+# existed: 103 promoted rules (90,172 chars) loaded into every chat.
+section "session-context.sh — conversation-mode projects"
+printf -- '- [2026-09-01] g-1 (edge-case): a global engineering rule #GLOBAL-RULE-END\n' > "$GRULES"
+# Ten rules: run_auto_audit does nothing below ten (auto-audit.sh, count_rules).
+: > "$BPROJ/.claude/corrections/rules.md"
+for i in $(seq -w 1 10); do
+  printf -- '- [2020-01-01] p-old-%s (deploy-gap): an old project lesson #PROJECT-RULE-END\n' "$i" \
+    >> "$BPROJ/.claude/corrections/rules.md"
+done
+rm -f "$BPROJ/.claude/corrections/.last-audit"   # the project audit is due
+printf '# proj\n' > "$BPROJ/CLAUDE.md"
+printf 'Tailscale IP: 100.64.0.99\n' > "$BUDGET_HOME/.claude/.env-fingerprint"   # fresh cache
+touch "$BPROJ/.claude/conversation-mode"
+OUT=$(ctx CLADE_X=1)
+assert_contains "$OUT" "#PROJECT-RULE-END" "conversation mode keeps the project's own lessons"
+assert_contains "$OUT" "same language the user writes in" "conversation mode keeps the language rule"
+for absent in "#GLOBAL-RULE-END" "Model guide" "Close the loop" "Recommended workflow" "Environment Fingerprint"; do
+  if grep -qF "$absent" <<< "$OUT"; then
+    fail "conversation mode leaves out: $absent" "still injected"
+  else
+    pass "conversation mode leaves out: $absent"
+  fi
+done
+if grep -q 'Auto-Promoted Rules' "$BPROJ/CLAUDE.md"; then
+  fail "conversation mode does not promote project rules into CLAUDE.md" "CLAUDE.md gained the block"
+else
+  pass "conversation mode does not promote project rules into CLAUDE.md"
+fi
+# Control: the same tree without the marker gets all of it back, so the
+# assertions above cannot pass because the sections were simply absent.
+rm -f "$BPROJ/.claude/conversation-mode"
+OUT=$(ctx CLADE_X=1)
+assert_contains "$OUT" "#GLOBAL-RULE-END" "control: without the marker, other projects' rules are injected"
+assert_contains "$OUT" "Close the loop" "control: without the marker, the engineering guidance is back"
+assert_contains "$OUT" "Environment Fingerprint" "control: without the marker, the host fingerprint is back"
+grep -q 'Auto-Promoted Rules' "$BPROJ/CLAUDE.md" \
+  && pass "control: without the marker, the due project audit promotes the rule" \
+  || fail "control: without the marker, the due project audit promotes the rule" "no promotion happened"
+rm -f "$BUDGET_HOME/.claude/.env-fingerprint"
+
 section "stop-check does not nag while subagents are writing"
 
 # The 2026-09-02 audit session took 76 stop-hook interrupts while ten agents

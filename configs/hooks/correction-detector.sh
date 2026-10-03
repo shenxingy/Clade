@@ -306,6 +306,23 @@ for rf in "$HOME/.claude/corrections/rules.md" "$PROJECT/.claude/corrections/rul
 done
 [[ -n "$_BEST_MATCH_HASH" ]] && record_rule_miss "$_BEST_MATCH_HASH" 2>/dev/null
 
+# ─── Conversation-mode projects ──────────────────────────────────────
+# A repository that is a conversation rather than a codebase declares it with
+# .claude/conversation-mode (see session-context.sh). There a slip is fixed in
+# the reply, lessons go where the project's own CLAUDE.md says, and the
+# engineering notice below — root causes for "what is wrong with the code",
+# a rule line for rules.md — does not apply. Measured on one such repository:
+# every correction became a rule, 103 of them were promoted into the context
+# loaded by every chat, and 13 recorded that an earlier rule had not prevented
+# the same mistake. The cross-project log is skipped too: it lives in the sync
+# store, which has its own remote, and conversation text does not belong there.
+if [[ -f "$PROJECT/.claude/conversation-mode" ]]; then
+  CONTEXT="A possible correction was detected in the prompt above (keyword: '${MATCHED_TERM}'). This project is in conversation mode. Keyword matching is often wrong: a question, a hedge, or text the user quoted or pasted is not a correction, so first decide whether the user is telling you that something you said or did was wrong. If not, ignore this note. If so, fix it in your reply in one plain sentence and carry on, with no apology paragraph. Record it only if the same kind of mistake has happened before, or it had real consequences (a wrong fact saved to a file, money, health, a decision made on it), and then only where this project's CLAUDE.md says lessons are kept. Do not append to .claude/corrections/rules.md."
+  jq -n --arg ctx "$CONTEXT" \
+    '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":$ctx}}'
+  exit 0
+fi
+
 # ─── Cross-project rule tracking ──────────────────────────────────────
 # Log to cross-project-rules.jsonl so auto-audit can detect multi-project patterns
 CROSS_FILE="$HOME/.claude/corrections/cross-project-rules.jsonl"
