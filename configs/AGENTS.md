@@ -17,6 +17,14 @@ the project's design system; missing review evidence is UNVERIFIED. If the
 skill is unavailable, name the installation gap instead of claiming compliance.
 Product UI and marketing sites use `frontend-design` instead.
 
+## External web retrieval
+
+For web searches and URL reading, use the installed `web-search` skill to
+select native tools or TinyFish, keeping analysis in the current session.
+Official documentation tools and explicit provider choices take precedence.
+If unavailable, use exposed native tools and name the routing installation gap.
+This does not apply to repository or file searches.
+
 ## Don't block
 
 Default state is motion. When something stalls you, climb this ladder —

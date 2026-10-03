@@ -68,7 +68,7 @@ has not been exercised for this helper.
 
 The plugin under `plugins/clade/` contains:
 
-- 27 core workflows: commit, Codex usage pace, security review, release documentation, frontend
+- 28 core workflows: commit, Codex usage pace, security review, release documentation, frontend
   design, local CI repair, handoff/pickup, incident response, investigation, architecture maps,
   PR review/merge, research, retrospectives, project review, sync, verification,
   worktrees, and supporting decision workflows.
