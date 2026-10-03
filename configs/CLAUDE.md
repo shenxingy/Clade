@@ -2,6 +2,14 @@
 
 These rules enable autonomous, unattended operation across all projects.
 
+## External web retrieval
+
+For web searches and URL reading, use the installed `web-search` skill to
+select native tools or TinyFish and keep analysis in the current session.
+Official documentation tools and user-selected/excluded providers take
+precedence. If the skill is unavailable, use exposed native tools and report
+the routing installation gap. Repository and file searches are unaffected.
+
 ## Commits
 - Use `committer "type: message" file1 file2` for all commits — NEVER `git add .`
   - `committer` is at `~/.local/bin/committer` (symlinked from `~/.claude/scripts/committer.sh`)
