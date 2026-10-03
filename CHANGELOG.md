@@ -38,6 +38,26 @@ versioning for the `clade-mcp` Python package and tagged public releases.
 
 ### Fixed
 
+- The stop-completeness check no longer sends the assistant back while it is
+  waiting on the user. Claude Code hands a Stop prompt hook to its evaluator as
+  a condition to judge — ok:true when the condition is met — and the prompt
+  opened with "all user tasks are complete", so a turn that ended on a question
+  to the user, whose larger goal was not done yet, judged not met. The
+  assistant was then sent back to say it was waiting, to print a bare
+  `{"ok":true}` into the conversation, or to answer for the user: all 15 field
+  blocks sampled on one machine were stops of that kind, and three of them had
+  it pick a phone colour, a watch material and a band on the user's behalf.
+  The prompt is now the condition "the assistant may stop now", with waiting
+  on the user, on background work (`background_tasks`) or on a second pass
+  (`stop_hook_active`) all counting as met; the old prompt carried no
+  `$ARGUMENTS`, so the evaluator never saw those two fields. Measured on Haiku
+  4.5, the default evaluator: on those 15 field stops the deployed prompt sent
+  back 7 of 45 judgements, main's 3 of 45, this one 0 of 90; on the synthetic
+  set main's prompt blocked a second pass 3 of 3 times and let 2 of 18 undone
+  stops through as "background work", this one 0 and 0.
+  `tests/evals/stop_completeness_eval.py` reruns the synthetic set; it calls a
+  real model, so it is opt-in and not in CI.
+
 - Skills nobody had used yet could not be auto-selected. Claude Code lists
   skills to the model inside a character budget (context window × bytes per
   token × `skillListingBudgetFraction`, default 1% — 8,000 characters on a
