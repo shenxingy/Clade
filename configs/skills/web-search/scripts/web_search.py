@@ -110,7 +110,8 @@ def public_url(value):
         raise RetrievalError("invalid_public_url") from None
 
 
-def route(operation, native, queries, pages, recurring, provider, credential):
+def route(operation, native, queries, pages, recurring, provider, credential, mcp="unavailable"):
+    credential = credential or mcp == "available"
     if provider == "native":
         selected = "native" if native == "available" else "blocked"
         reason = "explicit_native" if selected == "native" else "native_unavailable"
@@ -125,9 +126,13 @@ def route(operation, native, queries, pages, recurring, provider, credential):
         selected, reason = "native", "tinyfish_unconfigured"
     else:
         selected, reason = "blocked", "no_available_retrieval_backend"
+    transport = "mcp" if mcp == "available" else "api"
+    tinyfish_action = ("call_tinyfish_mcp_" + ("search" if operation == "search" else "fetch_content")
+                      if transport == "mcp" else "run_tinyfish_" + operation)
     return {"provider": selected, "operation": operation, "reason": reason,
+            "transport": transport if selected == "tinyfish" else selected,
             "executed": False, "next_action": "call_native_" + operation if selected == "native"
-            else ("run_tinyfish_" + operation if selected == "tinyfish" else "report_unavailable")}
+            else (tinyfish_action if selected == "tinyfish" else "report_unavailable")}
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -362,6 +367,7 @@ def parse_args(argv=None):
     plan = sub.add_parser("route")
     plan.add_argument("--operation", choices=("search", "fetch"), required=True)
     plan.add_argument("--native", choices=("available", "unavailable", "failed"), required=True)
+    plan.add_argument("--mcp", choices=("available", "unavailable", "failed"), default="unavailable")
     plan.add_argument("--queries", type=positive, default=1)
     plan.add_argument("--pages", type=positive, default=1)
     plan.add_argument("--recurring", action="store_true")
@@ -444,7 +450,7 @@ def main(argv=None):
                 credential = True
             except RetrievalError:
                 credential = False
-            result = route(args.operation, args.native, args.queries, args.pages, args.recurring, args.provider, credential)
+            result = route(args.operation, args.native, args.queries, args.pages, args.recurring, args.provider, credential, args.mcp)
         else:
             client = Client(read_key())
             if args.command == "search":
