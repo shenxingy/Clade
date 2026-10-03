@@ -2953,3 +2953,82 @@ Recommendations for later TODO triage (not automatically queued):
 
 Validation boundary: source and methodology inspection only. No installation,
 runtime routing change, paid automation, or live performance claim is included.
+
+### Follow-up — external providers versus native AI search
+
+The owner clarified the comparison: external retrieval providers versus the
+native search experience in Claude Code (CC), Codex (CX), Kimi and MiniMax.
+The provider table above does not rank those products. The current evidence
+does not justify replacing their native search with TinyFish for answer quality.
+
+Separate three experimental questions:
+
+1. Same model and workflow, different search/fetch backend: provider effect.
+2. Different models on one shared backend: model/tool-use effect.
+3. Each product's complete native workflow: user-visible product effect.
+
+Scores from these categories cannot be combined into one league table.
+
+#### Multiple evaluator sources and what they establish
+
+| Evidence source | Observation | Applicability |
+|---|---|---|
+| [OpenRouter BrowseComp](https://openrouter.ai/benchmarks/browsecomp/), last run August 18, 2026 | GPT-5.6 Sol high, nominal 25-turn: Perplexity 82.4% (632 questions), Parallel 77.9% (879), Exa 77.8% (1,241), OpenAI Native 77.8% (99). | Same-model configuration comparison, not matched-task causal evidence. Different verified-run counts; no published question-ID intersection or per-row confidence intervals for these rows. Excerpts only; not a Codex CLI trial. |
+| [OpenBenchmarks company search](https://github.com/openbenchmarks-labs/multi-turn-company-search), September 15, 2026 table | Search + fetch F1: Exa deep 48.2, Perplexity high 46.6, Parallel basic 42.3, TinyFish 30.2; 45 private questions, three trials, fixed GPT-5.6 Sol medium. | External providers only; native search explicitly disabled. Company-discovery performance differs from coding-document lookup. TinyFish is not uniformly competitive across task types. |
+| [Search Arena](https://arena.ai/leaderboard/search), August 24, 2026 snapshot | OpenAI and Anthropic integrated-search configurations lead the displayed preference board. | Independent human preference evidence for integrated systems. Not actual CC/CX CLI runs; no TinyFish, Kimi or MiniMax rows in the inspected 34-model board. It cannot rank all requested alternatives. |
+| [LiveBrowseComp](https://arxiv.org/html/2605.28721v1), May 27, 2026 preprint | A 335-question recent-fact evaluation changes rankings relative to static browsing benchmarks. | Shared Serper search and Jina reading scaffold, including Kimi/MiniMax models: not their native products. Supports fresh held-out evaluation, not a native-search ranking. |
+
+OpenRouter measures configurations exposed through its API, with request-level
+search budgets. Its results are weighted over verified runs. The small native
+sample and unequal task coverage prevent a claim that the observed 4.6-point
+Perplexity lead proves it is better than Codex. OpenRouter also sells search
+routing; independence from evaluated model vendors is not absence of commercial
+interest. OpenBenchmarks describes itself as independent; funding was not
+verified. Arena measures preference, which includes presentation as well as
+usefulness. The research paper is a preprint with a shared retrieval backend.
+
+The earlier Artificial Analysis and coding-documentation studies remain useful
+additional evidence. Neither supplies a complete CC/CX/Kimi/MiniMax native
+product comparison. Perplexity Search API and Perplexity Sonar are also distinct
+configurations; do not transfer a score from one to the other.
+
+#### Native product evidence boundaries
+
+| Product | Verified native surface | What remains unmeasured |
+|---|---|---|
+| Claude Code | `WebSearch` uses Anthropic's backend; `WebFetch` usually performs a separate model extraction. See [tools reference](https://code.claude.com/docs/en/tools-reference#websearch-tool-behavior). | No matched CC-native versus TinyFish trial identified in this bounded review. |
+| Codex | Native cached/live search, with behavior described in [OpenAI Docs](https://developers.openai.com/codex/config-basic/#web-search-mode). | OpenRouter's OpenAI Native API rows do not measure the full Codex CLI workflow. |
+| Kimi Code | Host-provided `WebSearch` and `FetchURL`; see [tool reference](https://www.kimi.com/code/docs/en/kimi-code-cli/reference/tools.html) and [configurable search/fetch services](https://www.kimi.com/code/docs/en/kimi-code-cli/configuration/config-files.html). | No matched comparison against the external providers identified. Kimi consumer Agentic Search is another product surface. |
+| MiniMax | Its [Token Plan product page](https://platform.minimax.io/subscribe/token-plan?tab=individual__monthly) lists an integrated `Web_search` MCP capability. | No reproducible comparison of current native search against these external providers identified. |
+
+MiniMax's [M2.5 release](https://www.minimax.io/blog/minimax-m25), February 12,
+2026, reports 76.3% BrowseComp with context management. This is older-model
+agentic-search evidence, not a current MiniMax native search-engine score.
+Likewise, do not convert Kimi swarm or model benchmark numbers into Kimi Code
+native retrieval rankings. Absence above is limited to the inspected sources.
+
+For an example of workflow sensitivity, [Anthropic's dynamic-filtering study](https://claude.com/blog/improved-web-search-with-dynamic-filtering)
+reports Opus 4.6 BrowseComp changing from 45.3% to 61.6% and Sonnet 4.6 from
+33.3% to 46.6%, without changing the model. This is vendor-reported API tool
+evaluation, not proof that Claude Code enables the same feature. It demonstrates
+why fixing a model name alone is insufficient.
+
+#### Revised practical recommendation
+
+Keep the currently working native search as a baseline, subject to the owner's
+provider exclusions. Test external search for a concrete shortcoming: missing
+sources, failed page reads, excessive context, limits, or cost. Perplexity,
+Exa and Parallel are plausible quality challengers on different workloads;
+TinyFish remains a cost-oriented Search + Fetch candidate with uneven results.
+There is no verified universal order placing these above or below all four AI
+products. Brave remains excluded; a native tool label alone does not attest to
+its provider's entire upstream supply chain.
+
+Extend the proposed trial in two separate lanes: (a) a fixed agent with native
+versus external retrieval, and (b) each requested CLI using its native workflow.
+Use the identical question IDs and a common time/cost cap; record exact product
+and model versions, enabled tools, fetch behavior, errors including failed runs,
+source-supported correctness, freshness, citation accuracy and latency. Report
+paired task outcomes and uncertainty, not a merged score from incompatible
+benchmarks. No cross-vendor model calls or product A/B runs were performed in
+this research follow-up.
