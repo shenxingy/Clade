@@ -38,6 +38,18 @@ versioning for the `clade-mcp` Python package and tagged public releases.
 
 ### Fixed
 
+- The correction detector no longer reads a hedge, a question or a paste as
+  the user correcting Claude. On one machine, bare "应该" — in spoken Chinese
+  usually "probably" — was the only trigger for 80 of 230 recorded
+  corrections; "要不要" ("whether") fired because it contains 不要; and pages
+  pasted into a prompt brought their own "Go back" and "actually". Each false
+  fire told the model a correction was detected and to write a rule, which is
+  how a project collected rules about remarks that corrected nothing. Matching
+  now skips `<pasted_content>` blocks and 要不要, keeps 你应该 and 不应该, and the
+  notice names the keyword and asks the model to decide whether the user is
+  rejecting anything before it writes a rule. Replaying all 230 recorded
+  triggers: 215 fired before, 134 now, none newly.
+
 - The stop-completeness check no longer sends the assistant back while it is
   waiting on the user. Claude Code hands a Stop prompt hook to its evaluator as
   a condition to judge — ok:true when the condition is met — and the prompt

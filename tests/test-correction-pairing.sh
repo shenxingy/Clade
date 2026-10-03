@@ -374,8 +374,35 @@ PROJ2="$TMP_ROOT/proj2"; mkdir -p "$PROJ2/.git"; echo "# p2" > "$PROJ2/CLAUDE.md
 OUT2=$(correct_in "no, use tabs instead" "no-shadow-session-xyz" \
         | CLAUDE_PROJECT_DIR="$PROJ2" bash "$CORRECTION_HOOK")
 CTX2=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<< "$OUT2" 2>/dev/null)
-assert_contains "$CTX2" "A user correction was detected" "correction still fires normally"
+assert_contains "$CTX2" "A possible correction was detected" "correction still fires normally"
 assert_not_contains "$CTX2" "Concrete signal" "no concrete-signal block when nothing was rejected"
+
+# ─── 5b. precision: the user's own words, not hedges or pastes ───────
+# Field data from one machine (230 explicit records, 19 projects): bare 应该
+# ("probably") was the ONLY trigger for 80 of them, 要不要 ("whether") for 7,
+# and in one project 25 of 83 came from text the user pasted or quoted. Each
+# false fire told the model "a user correction was detected — write a rule".
+section "correction-detector — fires on the user's words, not hedges or pastes"
+fires() {
+  correct_in "$1" "sess-precision" | CLAUDE_PROJECT_DIR="$PROJ2" bash "$CORRECTION_HOOK" 2>/dev/null \
+    | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null
+}
+_hist_before="$(wc -l < "$HISTORY" 2>/dev/null || echo 0)"
+assert_eq "$(fires '应该是我起了一个头，他才发现已经毕业七年了')" "" "bare 应该 (probably) is not a correction"
+assert_eq "$(fires '到底要不要买这个新手机？')" "" "要不要 (whether) is not a correction"
+assert_eq "$(fires '帮我看看 <pasted_content id="ab12">Go back to filtering menu. Actually the X is better instead. 不对的尺码请退货</pasted_content>')" "" \
+  "words inside a paste are not the user correcting"
+assert_eq "$(fires '看看这个 <pasted_content id="u1">wrong, revert it, 不对')" "" "an unterminated paste is still a paste"
+assert_eq "$(wc -l < "$HISTORY" 2>/dev/null || echo 0)" "$_hist_before" "none of those leaves a history record"
+assert_contains "$(fires '你应该先读一下配置文件')" "keyword: '你应该'" "你应该 still fires, and the notice names the keyword"
+assert_contains "$(fires '这个开关不应该放在最上面')" "keyword: '不应该'" "不应该 still fires"
+assert_contains "$(fires '要不要加测试？不要用 mock')" "keyword: '不要'" "a real 不要 beside 要不要 still fires"
+assert_contains "$(fires '不对，<pasted_content id="x1">plain page text</pasted_content> 用另一个')" "keyword: '不对'" \
+  "a correction typed outside a paste still fires"
+_ctx_en="$(fires 'no, that is wrong')"
+assert_contains "$_ctx_en" "keyword: 'wrong'" "an English keyword is named without its boundary characters"
+assert_contains "$_ctx_en" "First decide whether the user is rejecting something you did" \
+  "the notice asks for a judgement before any rule is written"
 
 # ─── 6. session-key fallback when session_id absent ──────────────────
 section "lib — \$PPID fallback when session_id missing"

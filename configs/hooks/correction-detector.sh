@@ -19,18 +19,52 @@ if [[ "$PROMPT" == \<* ]]; then
   exit 0
 fi
 
+# ─── Match what the user typed, not what they pasted ─────────────────
+# Matching runs on SCAN, not PROMPT. Claude Code wraps pasted text in
+# <pasted_content …>…</pasted_content>, and a pasted web page or review brings
+# its own "Go back to filtering menu", "actually" and "不对" — none of it the
+# user talking. "要不要" (whether) contains 不要 and is a question, not a
+# correction. Measured on one machine, 230 explicit records over 19 projects:
+# 7 fired on 要不要 alone, and in one project 25 of 83 fired on text the user
+# pasted or quoted rather than typed. Only the tagged part of that is visible
+# here; untagged quotes are left to the judgement the notice below asks for.
+_strip_pasted() {
+  local s="$1" out=""
+  while [[ "$s" == *"<pasted_content"* ]]; do
+    out+="${s%%<pasted_content*}"
+    s="${s#*<pasted_content}"
+    if [[ "$s" == *"</pasted_content>"* ]]; then
+      s="${s#*</pasted_content>}"
+    else
+      s=""   # unterminated: everything after the tag is still the paste
+    fi
+  done
+  printf '%s' "$out$s"
+}
+SCAN="$(_strip_pasted "$PROMPT")"
+SCAN="${SCAN//要不要/}"
+
 # Correction patterns (Chinese + English)
-# Matches: don't/别用/不要/错了/改回/wrong/revert/undo/actually...instead/should have/应该
+# Bare 应该 is out. In spoken Chinese it mostly means "probably" (应该是14,
+# 应该是我起的头) and it was the ONLY trigger for 80 of the 230 records — 35% of
+# everything this hook ever fired on. The forms aimed at the assistant stay:
+# 你应该 (you should have) and 不应该 (shouldn't).
 PATTERNS=(
-  '不要|别用|错了|改回|不对|别这样|重新|撤回|应该'
+  '不要|别用|错了|改回|不对|别这样|重新|撤回|你应该|不应该'
   '(^|[^a-zA-Z])(wrong|revert|undo|rollback|actually|instead|should have|shouldn'\''t have|go back|put back|change back|not what I)($|[^a-zA-Z])'
   '(^|[^a-zA-Z])(no,? *(use|do|make|try|put))($|[^a-zA-Z])'
 )
 
 MATCHED=false
-for pattern in "${PATTERNS[@]}"; do
-  if echo "$PROMPT" | grep -qiE "$pattern" 2>/dev/null; then
+MATCHED_TERM=""
+for i in "${!PATTERNS[@]}"; do
+  MATCHED_TERM=$(printf '%s' "$SCAN" | grep -oiE "${PATTERNS[$i]}" 2>/dev/null | head -n 1)
+  if [[ -n "$MATCHED_TERM" ]]; then
     MATCHED=true
+    # The English patterns capture one boundary character on each side.
+    if (( i > 0 )); then
+      MATCHED_TERM=$(printf '%s' "$MATCHED_TERM" | sed -E 's/^[^A-Za-z]+//; s/[^A-Za-z]+$//')
+    fi
     break
   fi
 done
@@ -277,7 +311,7 @@ done
 CROSS_FILE="$HOME/.claude/corrections/cross-project-rules.jsonl"
 
 # Remind Claude to extract a rule with root-cause analysis
-CONTEXT="A user correction was detected in the prompt above. After addressing the user's request:
+CONTEXT="A possible correction was detected in the prompt above (keyword: '${MATCHED_TERM}'). Keyword matching is often wrong: a question, a hedge, or text the user quoted or pasted is not a correction. First decide whether the user is rejecting something you did or said. If not, ignore this note entirely. If so, after addressing the user's request:
 1. Extract the lesson (what was wrong, what's correct)
 2. Identify the root cause — which category does this fall into?
    Defect classes (what is wrong with the code):
