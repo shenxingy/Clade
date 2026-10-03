@@ -94,6 +94,19 @@ fi
 
 CONTEXT=""
 
+# ─── Conversation-mode projects ──────────────────────────────────────
+# A repository that is a conversation rather than a codebase (a personal
+# assistant's persona, say) declares it with .claude/conversation-mode. Its
+# sessions keep the git state, handoffs, its own lessons and the language rule,
+# and skip the engineering scaffolding: host fingerprint, containers, other
+# projects' correction rules, model/verify/skill-routing guidance, kit and
+# revert warnings, and automatic promotion of its rules into CLAUDE.md.
+# Measured on one such repository before this existed: 103 promoted rules,
+# 90,172 characters, loaded into every chat, and its owner found the assistant
+# "too rigid, dogmatic" — procedure where a conversation was wanted.
+CONVERSATION_MODE=false
+[[ -f "${CLAUDE_PROJECT_DIR:-.}/.claude/conversation-mode" ]] && CONVERSATION_MODE=true
+
 # ─── Auto-pull from remote ────────────────────────────────────────────
 # Only pull if: tracking branch exists, working tree is clean, and remote has new commits
 # Throttle fetch to once per 5 minutes to avoid slow session startup
@@ -188,6 +201,7 @@ fi
 # Structured per-host facts that prevent wrong-context assumptions
 # (e.g. "is Aries this machine?", "what's already running locally?").
 # Cached for 1h since most checks are stable per session-day.
+if ! $CONVERSATION_MODE; then
 FP_CACHE_FILE="$HOME/.claude/.env-fingerprint"
 FP_TTL=3600
 _NOW=$(date +%s)
@@ -224,6 +238,7 @@ if [[ -s "$FP_CACHE_FILE" ]]; then
   FP_CONTENT=$(_capped_read "$FP_CACHE_FILE" 1500)
   CONTEXT="${CONTEXT}\n## Environment Fingerprint (this host)\n${FP_CONTENT}\nIf the user names a machine, cross-reference Host:/Tailscale IP/sibling projects above before assuming it's remote.\n"
 fi
+fi  # conversation mode skips the host fingerprint
 
 # Project Profile (project-specific topology and verification commands)
 PROJECT_PROFILE="${CLAUDE_PROJECT_DIR:-$(pwd)}/.claude/PROJECT_PROFILE.md"
@@ -233,7 +248,7 @@ if [[ -f "$PROJECT_PROFILE" ]]; then
 fi
 
 # Running docker containers — filtered to current project only
-if command -v docker &>/dev/null; then
+if command -v docker &>/dev/null && ! $CONVERSATION_MODE; then
   # Determine project slug: try docker compose name, fall back to dirname
   _PROJECT_SLUG=""
   if [[ -f "docker-compose.yml" || -f "docker-compose.yaml" || -f "compose.yml" || -f "compose.yaml" ]]; then
@@ -300,7 +315,7 @@ if [[ -f "$PROJECT_RULES" && "$PROJECT_RULES" != "$GLOBAL_RULES" ]]; then
   _P=$(_rules_body "$_RAW")
   [[ -n "$_P" ]] && COMBINED_RULES="${_P}\n"
 fi
-if [[ -f "$GLOBAL_RULES" ]]; then
+if [[ -f "$GLOBAL_RULES" ]] && ! $CONVERSATION_MODE; then
   _REMAIN=$(( CTX_RULES_BUDGET - ${#COMBINED_RULES} ))
   [[ $_REMAIN -lt 500 ]] && _REMAIN=500
   _RAW=$(_rules_tail "$GLOBAL_RULES" "$_REMAIN")
@@ -316,7 +331,7 @@ if [[ -n "$COMBINED_RULES" ]]; then
 fi
 
 # Learning → Rule promotion (convert high-confidence learnings to rules)
-if [[ -f "$HOOKS_DIR/learning-to-rule.sh" ]]; then
+if [[ -f "$HOOKS_DIR/learning-to-rule.sh" ]] && ! $CONVERSATION_MODE; then
   source "$HOOKS_DIR/learning-to-rule.sh" 2>/dev/null
   run_learning_promotion "${CLAUDE_PROJECT_DIR:-$(pwd)}" 2>/dev/null
   if [[ -n "${LEARNING_SUMMARY:-}" ]]; then
@@ -331,13 +346,13 @@ if [[ -f "$HOOKS_DIR/auto-audit.sh" ]]; then
 
   # Global auto-audit (checks its own .last-audit internally)
   run_auto_audit "global" 2>/dev/null
-  if [[ -n "${AUDIT_SUMMARY:-}" ]]; then
+  if [[ -n "${AUDIT_SUMMARY:-}" ]] && ! $CONVERSATION_MODE; then
     CONTEXT="${CONTEXT}\n${AUDIT_SUMMARY}\n"
   fi
 
   # Project-local auto-audit (independent timing from global)
   AUDIT_SUMMARY=""
-  if [[ -d "${CLAUDE_PROJECT_DIR:-.}/.claude/corrections" ]]; then
+  if [[ -d "${CLAUDE_PROJECT_DIR:-.}/.claude/corrections" ]] && ! $CONVERSATION_MODE; then
     run_auto_audit "${CLAUDE_PROJECT_DIR:-$(pwd)}" 2>/dev/null
     if [[ -n "${AUDIT_SUMMARY:-}" ]]; then
       CONTEXT="${CONTEXT}\n${AUDIT_SUMMARY}\n"
@@ -352,13 +367,13 @@ else
   else
     AUDIT_AGE_DAYS=999
   fi
-  if [[ $AUDIT_AGE_DAYS -ge 7 ]]; then
+  if [[ $AUDIT_AGE_DAYS -ge 7 ]] && ! $CONVERSATION_MODE; then
     CONTEXT="${CONTEXT}\nAudit reminder: rules haven't been audited in ${AUDIT_AGE_DAYS}+ days. Run /audit.\n"
   fi
 fi
 
 # Contradiction detection
-if [[ -f "$HOOKS_DIR/lib/contradiction-detect.sh" ]]; then
+if [[ -f "$HOOKS_DIR/lib/contradiction-detect.sh" ]] && ! $CONVERSATION_MODE; then
   source "$HOOKS_DIR/lib/contradiction-detect.sh" 2>/dev/null
   for rf in "$GLOBAL_RULES" "$PROJECT_RULES"; do
     [[ -f "$rf" ]] || continue
@@ -382,15 +397,15 @@ CONTEXT="${CONTEXT}\nIMPORTANT: Always respond in the same language the user wri
 # after the aliases moved to Opus 5 / Sonnet 5. The cost ratio below IS
 # checkable — $3/$15 vs $5/$25 per MTok, i.e. 60% — so it stays; the scores
 # do not, because no verified figure for the current generation was to hand.
-CONTEXT="${CONTEXT}\nModel guide: Sonnet is the default for most coding and costs 60% of Opus per token. Switch to Opus for: large refactors (10+ files), deep architectural reasoning, or outputs >64K tokens. Use Haiku for sub-agents doing mechanical checks. If you detect the user is about to do a complex multi-file refactor on Sonnet, suggest: 'This task may benefit from Opus — run /model to switch.'\n"
+$CONVERSATION_MODE || CONTEXT="${CONTEXT}\nModel guide: Sonnet is the default for most coding and costs 60% of Opus per token. Switch to Opus for: large refactors (10+ files), deep architectural reasoning, or outputs >64K tokens. Use Haiku for sub-agents doing mechanical checks. If you detect the user is about to do a complex multi-file refactor on Sonnet, suggest: 'This task may benefit from Opus — run /model to switch.'\n"
 
 # Close the loop principle
-CONTEXT="${CONTEXT}\nClose the loop: After completing any task, run the relevant verify command (compile/test/lint) and show its output — don't claim success without evidence. When fixing X, also check if related Y and Z are affected.\n"
+$CONVERSATION_MODE || CONTEXT="${CONTEXT}\nClose the loop: After completing any task, run the relevant verify command (compile/test/lint) and show its output — don't claim success without evidence. When fixing X, also check if related Y and Z are affected.\n"
 
 # Stale kit detection
 KIT_SOURCE_FILE="$HOME/.claude/.kit-source-dir"
 KIT_CHECKSUM_FILE="$HOME/.claude/.kit-checksum"
-if [[ -f "$KIT_SOURCE_FILE" && -f "$KIT_CHECKSUM_FILE" ]]; then
+if [[ -f "$KIT_SOURCE_FILE" && -f "$KIT_CHECKSUM_FILE" ]] && ! $CONVERSATION_MODE; then
   _KIT_DIR=$(cat "$KIT_SOURCE_FILE")
   if [[ -d "$_KIT_DIR/configs" ]]; then
     source "$HOOKS_DIR/lib/kit-checksum.sh" 2>/dev/null
@@ -405,7 +420,7 @@ fi
 # Revert rate check
 REVERT_COUNT=$(git log --oneline --since="7 days ago" --grep="^Revert" 2>/dev/null | wc -l | tr -d ' ')
 TOTAL_COUNT=$(git log --oneline --since="7 days ago" 2>/dev/null | wc -l | tr -d ' ')
-if [[ "${TOTAL_COUNT:-0}" -gt 10 && "${REVERT_COUNT:-0}" -gt 0 ]]; then
+if [[ "${TOTAL_COUNT:-0}" -gt 10 && "${REVERT_COUNT:-0}" -gt 0 ]] && ! $CONVERSATION_MODE; then
   REVERT_RATE=$(( REVERT_COUNT * 100 / TOTAL_COUNT ))
   if [[ "$REVERT_RATE" -gt 10 ]]; then
     CONTEXT="${CONTEXT}\n⚠ High revert rate this week: ${REVERT_COUNT}/${TOTAL_COUNT} commits (${REVERT_RATE}%)\n"
@@ -415,6 +430,7 @@ fi
 # ─── Context-Aware Skill Routing ──────────────────────────────────────
 # Detect project context and suggest the most relevant skills upfront
 SKILL_ROUTE=""
+if ! $CONVERSATION_MODE; then
 
 # Blog/content project
 if [[ -d "blog" || -d "posts" || -d "articles" ]]; then
@@ -477,6 +493,7 @@ if [[ -f "pyproject.toml" || -f "requirements.txt" || -f "package.json" || -f "C
   SKILL_ROUTE="${SKILL_ROUTE}Use /verify after code changes, /review for comprehensive testing\n"
 fi
 
+fi  # conversation mode skips skill routing
 if [[ -n "$SKILL_ROUTE" ]]; then
   CONTEXT="${CONTEXT}\nRecommended workflow:\n${SKILL_ROUTE}"
 fi

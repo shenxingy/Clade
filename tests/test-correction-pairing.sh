@@ -404,6 +404,32 @@ assert_contains "$_ctx_en" "keyword: 'wrong'" "an English keyword is named witho
 assert_contains "$_ctx_en" "First decide whether the user is rejecting something you did" \
   "the notice asks for a judgement before any rule is written"
 
+# ─── 5c. conversation-mode projects ──────────────────────────────────
+# A repository that is a conversation rather than a codebase (.claude/
+# conversation-mode) gets a notice that asks for a one-line fix instead of a
+# rule, and its text stays out of the cross-project log, which lives in the
+# sync store with its own remote: one machine's copy already held 87 previews
+# from such a repository.
+section "correction-detector — conversation-mode projects"
+_lines() { if [[ -f "$1" ]]; then wc -l < "$1" | tr -d ' '; else echo 0; fi; }
+CROSS="$HOME/.claude/corrections/cross-project-rules.jsonl"
+PROJC="$TMP_ROOT/proj-conv"; mkdir -p "$PROJC/.git" "$PROJC/.claude"; echo "# c" > "$PROJC/CLAUDE.md"
+touch "$PROJC/.claude/conversation-mode"
+_cross0=$(_lines "$CROSS"); _hist0=$(_lines "$HISTORY")
+CTXC=$(correct_in "不对，是我起的头" "sess-conv" | CLAUDE_PROJECT_DIR="$PROJC" bash "$CORRECTION_HOOK" 2>/dev/null \
+  | jq -r '.hookSpecificOutput.additionalContext // ""')
+assert_contains "$CTXC" "This project is in conversation mode" "conversation mode gets the conversation notice"
+assert_contains "$CTXC" "fix it in your reply in one plain sentence" "the notice asks for a one-line fix"
+assert_not_contains "$CTXC" "Append a rule to" "conversation mode is not told to append a rule"
+assert_not_contains "$CTXC" "Defect classes" "conversation mode does not get the code root-cause taxonomy"
+assert_eq "$(_lines "$CROSS")" "$_cross0" "conversation text stays out of the synced cross-project log"
+assert_eq "$(_lines "$HISTORY")" "$(( _hist0 + 1 ))" "the local history still counts it"
+# Control: the same words in an ordinary project get the old notice and log.
+CTXN=$(correct_in "不对，是我起的头" "sess-conv" | CLAUDE_PROJECT_DIR="$PROJ2" bash "$CORRECTION_HOOK" 2>/dev/null \
+  | jq -r '.hookSpecificOutput.additionalContext // ""')
+assert_contains "$CTXN" "Append a rule to" "control: an ordinary project still gets the rule-writing notice"
+assert_eq "$(_lines "$CROSS")" "$(( _cross0 + 1 ))" "control: an ordinary project still feeds the cross-project log"
+
 # ─── 6. session-key fallback when session_id absent ──────────────────
 section "lib — \$PPID fallback when session_id missing"
 echo '{"tool_input":{"file_path":"/tmp/x/nokey.py"}}' | bash "$SHADOW_HOOK"

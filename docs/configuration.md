@@ -12,10 +12,11 @@
 4. [Control-plane authentication](#control-plane-authentication)
 5. [Standing multi-agent orchestration](#standing-multi-agent-orchestration)
 6. [Add a correction rule manually](#add-a-correction-rule-manually)
-7. [Adjust quality gate thresholds](#adjust-quality-gate-thresholds)
-8. [Add a new hook](#add-a-new-hook)
-9. [Add a new agent](#add-a-new-agent)
-10. [Add a new skill](#add-a-new-skill)
+7. [Conversation-mode projects](#conversation-mode-projects)
+8. [Adjust quality gate thresholds](#adjust-quality-gate-thresholds)
+9. [Add a new hook](#add-a-new-hook)
+10. [Add a new agent](#add-a-new-agent)
+11. [Add a new skill](#add-a-new-skill)
 
 ---
 
@@ -166,6 +167,38 @@ Edit `~/.claude/corrections/rules.md`:
 - [2026-02-17] imports: Use @/ path aliases instead of relative paths
 - [2026-02-17] naming: Use camelCase for TypeScript variables, not snake_case
 ```
+
+## Conversation-mode projects
+
+Some repositories are conversations rather than codebases: a personal
+assistant's persona, a journal, a coaching log. The hooks are tuned for
+engineering work, and in such a repository they made the assistant run a chat
+like a build. Declare it with an empty marker file:
+
+```bash
+touch .claude/conversation-mode
+```
+
+What changes, and only in that repository:
+
+- **Corrections** (`correction-detector.sh`): the notice asks for a one-line fix
+  in the reply instead of a rule, records a lesson only if the mistake repeats
+  or had real consequences, and points at wherever the project's own CLAUDE.md
+  keeps lessons, never `.claude/corrections/rules.md`. The prompt is still
+  counted in the local `history.jsonl` but is not written to
+  `cross-project-rules.jsonl`, which lives in the sync store and its remote.
+- **Session start** (`session-context.sh`): the git state, handoffs, the
+  project's own rules and the language rule stay; the host fingerprint,
+  containers, other projects' correction rules, the model guide, "close the
+  loop", skill routing, kit and revert warnings go; and the project's rules are
+  no longer auto-promoted into its CLAUDE.md.
+- **Not changed**: the Stop completeness check is a prompt hook and cannot read
+  the marker. It treats waiting on the user as a correct stop, which is what a
+  conversation turn usually is.
+
+Measured on the repository this was written for: 103 rules, 90,172 characters,
+had been promoted into the CLAUDE.md loaded by every chat, and 13 of them
+recorded that an earlier rule had not prevented the same mistake.
 
 ## Adjust quality gate thresholds
 

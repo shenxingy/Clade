@@ -91,6 +91,19 @@ versioning for the `clade-mcp` Python package and tagged public releases.
 
 ### Added
 
+- Conversation-mode projects. A repository that is a conversation rather than a
+  codebase — a persona, a journal — can declare it with
+  `.claude/conversation-mode`. There the correction notice asks for a one-line
+  fix instead of a rule and points at the project's own lesson file; session
+  start keeps git state, handoffs, the project's rules and the language rule,
+  and drops the host fingerprint, other projects' rules, model and verify
+  guidance and skill routing; and project rules are no longer auto-promoted into
+  CLAUDE.md. Conversation text also stays out of `cross-project-rules.jsonl`,
+  which syncs to the dotfiles store's remote: one machine's copy already held 87
+  prompt previews from such a repository. Written for a persona repository that
+  had promoted 103 rules, 90,172 characters, into every chat. See
+  docs/configuration.md.
+
 - `/frontend-design` now carries "design sense" as checkable rules instead of
   adjectives. `references/design-rules.md` states the 4-px spacing grid, the
   type-scale caps (at most 2 families, 4–6 sizes, 3–4 weights), the motion
