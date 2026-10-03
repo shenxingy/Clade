@@ -490,6 +490,35 @@ else
   fail "every type:prompt hook carries a statusMessage" "missing on: $(tr '\n' ' ' <<< "$_missing")"
 fi
 
+# ─── stop-completeness-check: waiting on the user is a correct stop ──
+# Claude Code (2.1.288) hands a Stop prompt hook to its evaluator as a
+# CONDITION — "Judge whether the user-provided condition is met", ok:true when
+# met — with the conversation transcript above it. The old prompt opened with
+# "Return ok:true if all user tasks are complete", so a turn that ended on a
+# question to the user, whose larger goal was not done yet, judged NOT met and
+# the assistant was sent back to answer for them. Its "awaiting user input →
+# ok:true" clause lost to that framing: all 15 field blocks sampled on one
+# machine were the assistant waiting on the user or on a background agent, and
+# three of them made it pick a phone colour, a watch material and a band on
+# the user's behalf. The prompt also lacked $ARGUMENTS, so the evaluator never
+# saw stop_hook_active or background_tasks and blocked one stop twice running.
+# Measured with tests/evals/stop_completeness_eval.py on the default evaluator
+# (Haiku 4.5): the old prompt sent back 7 of 45 of those waiting stops and all
+# 3 guard cases; this one 0 of 90 and 0 of 6 over two runs, while still sending
+# back 36 of 36 stops that left their own work undone.
+_stop_prompt=$(jq -r '.hooks.Stop[].hooks[] | select(.id=="stop-completeness-check") | .prompt' "$SETTINGS" 2>/dev/null)
+assert_contains "$_stop_prompt" '$ARGUMENTS' "stop-completeness-check hands the hook input to its evaluator"
+assert_contains "$_stop_prompt" 'stop_hook_active' "stop-completeness-check never sends one stop back twice"
+assert_contains "$_stop_prompt" 'background_tasks' "stop-completeness-check lets a stop wait on background work"
+assert_contains "$_stop_prompt" 'Waiting for the user is a correct place to stop' \
+  "stop-completeness-check treats waiting on the user as a correct stop"
+if grep -qF 'all user tasks are complete' <<< "$_stop_prompt"; then
+  fail "stop-completeness-check does not ask whether the user's whole goal is done" \
+    "the 'all user tasks are complete' framing is back"
+else
+  pass "stop-completeness-check does not ask whether the user's whole goal is done"
+fi
+
 # ─── worker-checkpoint: per-tool-call workspace snapshots ─────────────────────
 # A worker commits exactly once, at the end of verification, and stop()
 # force-removes the worktree — so "correct at call 14, wrong at 15" had no
