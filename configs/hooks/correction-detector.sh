@@ -316,8 +316,12 @@ done
 # loaded by every chat, and 13 recorded that an earlier rule had not prevented
 # the same mistake. The cross-project log is skipped too: it lives in the sync
 # store, which has its own remote, and conversation text does not belong there.
-if [[ -f "$PROJECT/.claude/conversation-mode" ]]; then
-  CONTEXT="A possible correction was detected in the prompt above (keyword: '${MATCHED_TERM}'). This project is in conversation mode. Keyword matching is often wrong: a question, a hedge, or text the user quoted or pasted is not a correction, so first decide whether the user is telling you that something you said or did was wrong. If not, ignore this note. If so, fix it in your reply in one plain sentence and carry on, with no apology paragraph. Record it only if the same kind of mistake has happened before, or it had real consequences (a wrong fact saved to a file, money, health, a decision made on it), and then only where this project's CLAUDE.md says lessons are kept. Do not append to .claude/corrections/rules.md."
+# A session can be private wherever it was started: a personal-mode skill marks
+# it by touching ~/.claude/private-sessions/<session_id>.
+_CD_SID=$(printf '%s' "$INPUT" | jq -r '.session_id // empty' 2>/dev/null | tr -cd 'A-Za-z0-9-')
+if [[ -f "$PROJECT/.claude/conversation-mode" ]] \
+   || { [[ -n "$_CD_SID" ]] && [[ -f "$HOME/.claude/private-sessions/$_CD_SID" ]]; }; then
+  CONTEXT="A possible correction was detected in the prompt above (keyword: '${MATCHED_TERM}'). This project is in conversation mode. Keyword matching is often wrong: a question, a hedge, or text the user quoted or pasted is not a correction, so first decide whether the user is telling you that something you said or did was wrong. If not, ignore this note. If so, fix it in your reply in one plain sentence and carry on, with no apology paragraph. Record it only if the same kind of mistake has happened before, or it had real consequences (a wrong fact saved to a file, money, health, a decision made on it), and then only where this project's CLAUDE.md says lessons are kept. Do not append to .claude/corrections/rules.md, and write nothing about this conversation under ~/.claude: that directory syncs to a remote."
   jq -n --arg ctx "$CONTEXT" \
     '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":$ctx}}'
   exit 0

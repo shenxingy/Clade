@@ -873,6 +873,11 @@ touch "$BPROJ/.claude/conversation-mode"
 OUT=$(ctx CLADE_X=1)
 assert_contains "$OUT" "#PROJECT-RULE-END" "conversation mode keeps the project's own lessons"
 assert_contains "$OUT" "same language the user writes in" "conversation mode keeps the language rule"
+if grep -qxF "$BPROJ" "$BUDGET_HOME/.claude/private-projects" 2>/dev/null; then
+  pass "conversation mode registers the project as private for sync-push"
+else
+  fail "conversation mode registers the project as private for sync-push" "not in ~/.claude/private-projects"
+fi
 for absent in "#GLOBAL-RULE-END" "Model guide" "Close the loop" "Recommended workflow" "Environment Fingerprint"; do
   if grep -qF "$absent" <<< "$OUT"; then
     fail "conversation mode leaves out: $absent" "still injected"
@@ -1316,6 +1321,75 @@ else
   fail "sync-setup declares corrections/rules.md as merge=union" \
        "no union attribute for the correction log"
 fi
+
+# ─── sync-push must keep private content off the store's remote ──────
+#
+# The store has its own remote and `git add -A` stages whatever any writer left
+# in it; one machine pushed 87 previews of a personal conversation to GitHub
+# before anything noticed. The guard reads two files that live OUTSIDE the store.
+
+PV_HOME=$(mktemp -d); PV_DIR="$PV_HOME/store"
+mkdir -p "$PV_HOME/.claude" "$PV_DIR/corrections" "$PV_DIR/memory"
+printf 'SYNC_BACKEND=nfs\nSYNC_DIR=%s\n' "$PV_DIR" > "$PV_HOME/.claude/.sync-config"
+(
+  cd "$PV_DIR" || exit 1
+  git init -q .; git config user.email t@e.com; git config user.name t
+  printf '{"project":"/home/u/work","rule_text":"work row 1"}\n' > corrections/cross-project-rules.jsonl
+  printf '# rules\n' > CLAUDE.md
+  git add -A; git -c core.hooksPath=/dev/null commit -qm base
+) >/dev/null 2>&1
+printf '/Users/u/Code/_local/persona\n' > "$PV_HOME/.claude/private-projects"
+printf '# literal strings, one per line\nPERSONA-NAME\n' > "$PV_HOME/.claude/private-keywords"
+printf '{"project":"/home/u/work","rule_text":"work row 2"}\n{"project":"/Users/u/Code/_local/persona","rule_text":"private row"}\n' \
+  >> "$PV_DIR/corrections/cross-project-rules.jsonl"
+printf -- '- a rule that names PERSONA-NAME\n' >> "$PV_DIR/CLAUDE.md"
+printf 'ordinary note\n' > "$PV_DIR/memory/note.md"
+PV_ERR=$(HOME="$PV_HOME" bash "$REPO_ROOT/configs/scripts/sync-push.sh" 2>&1 >/dev/null || true)
+PV_LOG=$(cd "$PV_DIR" && git show HEAD:corrections/cross-project-rules.jsonl 2>/dev/null)
+assert_contains "$PV_LOG" "work row 2" "privacy: ordinary rows of a log still sync"
+if grep -q 'private row' <<< "$PV_LOG"; then
+  fail "privacy: a private project's row never reaches the store's history" "it was committed"
+else
+  pass "privacy: a private project's row never reaches the store's history"
+fi
+if grep -q 'private row' "$PV_DIR/corrections/cross-project-rules.jsonl"; then
+  fail "privacy: the row is gone from the log's working copy too" "still there"
+else
+  pass "privacy: the row is gone from the log's working copy too"
+fi
+if (cd "$PV_DIR" && git show HEAD:CLAUDE.md 2>/dev/null) | grep -q 'PERSONA-NAME'; then
+  fail "privacy: a file carrying a private keyword is withheld from the commit" "it was committed"
+else
+  pass "privacy: a file carrying a private keyword is withheld from the commit"
+fi
+if grep -q 'PERSONA-NAME' "$PV_DIR/CLAUDE.md"; then
+  pass "privacy: the withheld file is left in place, not discarded"
+else
+  fail "privacy: the withheld file is left in place, not discarded" "its change is gone"
+fi
+if (cd "$PV_DIR" && git show HEAD:memory/note.md 2>/dev/null) | grep -q 'ordinary note'; then
+  pass "privacy: unrelated files in the same sync still commit"
+else
+  fail "privacy: unrelated files in the same sync still commit" "memory/note.md missing"
+fi
+assert_contains "$PV_ERR" "withheld" "privacy: sync-push says what it withheld"
+if grep -q 'privacy' "$PV_HOME/.claude/.sync-conflicts.log" 2>/dev/null; then
+  pass "privacy: the sync log records what was removed or withheld"
+else
+  fail "privacy: the sync log records what was removed or withheld" "no privacy line"
+fi
+# Control: with no registry the same kind of row IS committed, so the absence
+# above was the guard's doing and not the harness's.
+rm -f "$PV_HOME/.claude/private-projects" "$PV_HOME/.claude/private-keywords"
+printf '{"project":"/Users/u/Code/_local/persona","rule_text":"private row 2"}\n' \
+  >> "$PV_DIR/corrections/cross-project-rules.jsonl"
+HOME="$PV_HOME" bash "$REPO_ROOT/configs/scripts/sync-push.sh" >/dev/null 2>&1 || true
+if (cd "$PV_DIR" && git show HEAD:corrections/cross-project-rules.jsonl 2>/dev/null) | grep -q 'private row 2'; then
+  pass "privacy control: without a registry the row would have been pushed"
+else
+  fail "privacy control: without a registry the row would have been pushed" "the control did not commit it"
+fi
+rm -rf "$PV_HOME"
 
 # ─── the path-scoped rule channel must not be wired-and-empty ────────
 #

@@ -429,6 +429,15 @@ CTXN=$(correct_in "不对，是我起的头" "sess-conv" | CLAUDE_PROJECT_DIR="$
   | jq -r '.hookSpecificOutput.additionalContext // ""')
 assert_contains "$CTXN" "Append a rule to" "control: an ordinary project still gets the rule-writing notice"
 assert_eq "$(_lines "$CROSS")" "$(( _cross0 + 1 ))" "control: an ordinary project still feeds the cross-project log"
+# A session marked private (a personal-mode skill touches the marker) behaves
+# the same wherever it was started, here in an ordinary project.
+mkdir -p "$HOME/.claude/private-sessions"; touch "$HOME/.claude/private-sessions/sess-private"
+_cross1=$(_lines "$CROSS")
+CTXP=$(correct_in "不对，你说反了" "sess-private" | CLAUDE_PROJECT_DIR="$PROJ2" bash "$CORRECTION_HOOK" 2>/dev/null \
+  | jq -r '.hookSpecificOutput.additionalContext // ""')
+assert_contains "$CTXP" "This project is in conversation mode" "a private session gets the conversation notice"
+assert_contains "$CTXP" "write nothing about this conversation under ~/.claude" "the notice keeps the session out of the synced directory"
+assert_eq "$(_lines "$CROSS")" "$_cross1" "a private session writes nothing to the cross-project log"
 
 # ─── 6. session-key fallback when session_id absent ──────────────────
 section "lib — \$PPID fallback when session_id missing"

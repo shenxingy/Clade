@@ -77,6 +77,51 @@ fi
 
 git add -A 2>/dev/null || exit 0
 
+# ─── Privacy: what is private never leaves this machine ──────────────────────
+# The store is a git repository with its own remote, and `git add -A` stages
+# whatever any hook or session wrote into it. On one machine that pushed 87
+# previews of a personal conversation to GitHub before anything noticed. This is
+# the exit check, so it holds whichever writer slipped:
+#   ~/.claude/private-projects  absolute project paths, one per line
+#                               (session-context.sh registers conversation-mode
+#                               projects here automatically)
+#   ~/.claude/private-keywords  literal strings that must never be pushed
+# Both live outside the sync dir, so they never sync themselves. An added line
+# that contains any of them is removed from an append-only log (*.jsonl), and
+# any other file carrying one is withheld from the commit — left in the working
+# tree, untouched, and named in the log.
+PRIVATE_PROJECTS_FILE="${CLADE_PRIVATE_PROJECTS:-$CLAUDE_DIR/private-projects}"
+PRIVATE_KEYWORDS_FILE="${CLADE_PRIVATE_KEYWORDS:-$CLAUDE_DIR/private-keywords}"
+_priv_pats=$(mktemp "${TMPDIR:-/tmp}/sync-private.XXXXXX")
+cat "$PRIVATE_PROJECTS_FILE" "$PRIVATE_KEYWORDS_FILE" 2>/dev/null \
+  | grep -v -E '^[[:space:]]*(#|$)' > "$_priv_pats" || true
+if [ -s "$_priv_pats" ]; then
+  _withheld=""
+  while IFS= read -r _f; do
+    git diff --cached -U0 -- "$_f" 2>/dev/null | grep '^+' | grep -v '^+++' \
+      | grep -qF -f "$_priv_pats" || continue
+    case "$_f" in
+      *.jsonl)
+        grep -v -F -f "$_priv_pats" "$_f" > "$_f.sync-private" || true
+        mv "$_f.sync-private" "$_f"
+        git add -- "$_f"
+        echo "[$(date)] sync-push privacy: removed private lines from $_f" \
+          >> "$CLAUDE_DIR/.sync-conflicts.log"
+        ;;
+      *)
+        git reset -q -- "$_f"
+        _withheld="$_withheld $_f"
+        ;;
+    esac
+  done < <(git diff --cached --name-only 2>/dev/null)
+  if [ -n "$_withheld" ]; then
+    echo "[$(date)] sync-push privacy: withheld private content in$_withheld" \
+      >> "$CLAUDE_DIR/.sync-conflicts.log"
+    echo "sync-push: withheld (private content, not committed):$_withheld" >&2
+  fi
+fi
+rm -f "$_priv_pats"
+
 # Nothing to commit?
 git diff --cached --quiet 2>/dev/null && exit 0
 
