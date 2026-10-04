@@ -19,8 +19,18 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
 
+      # Pinned, like every action in this repository. An unpinned install is a
+      # movable tag: CLI 2.1.288 started warning that "CLAUDE.md at the plugin
+      # root is not loaded as project context", --strict turns warnings into
+      # failures, and from 2026-10-03 every PR went red on a file none of them
+      # touched. Checked on main fe92919: 2.1.286 and 2.1.287 exit 0; 2.1.288 and
+      # 2.1.289 exit 1 on that one warning. The warning is true of this layout —
+      # the root CLAUDE.md is this repository's own development context, not
+      # plugin context — so resolve it before bumping (TODO.md, "plugin-root
+      # CLAUDE.md"), and bump by rerunning `claude plugin validate . --strict`
+      # with the new version first.
       - name: Install Claude Code CLI
-        run: npm install -g @anthropic-ai/claude-code
+        run: npm install -g @anthropic-ai/claude-code@2.1.287
 
       # --strict decision (verified locally on CLI v2.1.227, 2026-08-10, not
       # guessed): `claude plugin validate --help` confirms --strict is a real,
