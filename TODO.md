@@ -1263,3 +1263,17 @@ Shipped: `/artifact` skill + references, `configs/scripts/artifact-lint.py`
       Done when `claude plugin validate . --strict` exits 0 on the newest CLI and
       the pin is bumped.
 
+## 2026-10-03 local-gate findings (from the conversation-mode delivery)
+
+- [ ] 🟡 **`ci-local.py` runs a workflow's global installs on the developer's
+      machine.** Forcing the Linux jobs on macOS ran `validate-plugin.yml`'s
+      `npm install -g @anthropic-ai/claude-code`, which created a second,
+      global `claude` under `/opt/homebrew` that nobody asked for (removed by
+      hand). A step that installs into global state should be skipped with a
+      reason, or redirected into a throwaway prefix, the way `actions/setup-python`
+      is already replaced by a cached venv.
+- [ ] 🟢 **`tests/test-correction-pairing.sh:285` fails on macOS only.** It
+      compares `ls … | wc -l` to `"1"`; BSD `wc` pads with spaces, so the suite
+      reports 1 failure on every Mac and none on Linux. Trim the count
+      (`| tr -d ' '`) like the rest of the file does.
+
