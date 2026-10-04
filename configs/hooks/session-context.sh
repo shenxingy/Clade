@@ -106,6 +106,16 @@ CONTEXT=""
 # "too rigid, dogmatic" — procedure where a conversation was wanted.
 CONVERSATION_MODE=false
 [[ -f "${CLAUDE_PROJECT_DIR:-.}/.claude/conversation-mode" ]] && CONVERSATION_MODE=true
+# A conversation is private: register the project so sync-push.sh never pushes
+# a line that names it. Both spellings of the path, because a log records
+# whichever one the session was started with.
+if $CONVERSATION_MODE; then
+  _pp="${CLADE_PRIVATE_PROJECTS:-$HOME/.claude/private-projects}"
+  for _p in "${CLAUDE_PROJECT_DIR:-$PWD}" "$(cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null && pwd -P)"; do
+    [[ -n "$_p" ]] || continue
+    grep -qxF "$_p" "$_pp" 2>/dev/null || printf '%s\n' "$_p" >> "$_pp" 2>/dev/null || true
+  done
+fi
 
 # ─── Auto-pull from remote ────────────────────────────────────────────
 # Only pull if: tracking branch exists, working tree is clean, and remote has new commits

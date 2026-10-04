@@ -91,6 +91,15 @@ versioning for the `clade-mcp` Python package and tagged public releases.
 
 ### Added
 
+- A privacy guard at the sync store's exit. `sync-push.sh` refuses to push
+  anything that names a private project (`~/.claude/private-projects`) or a
+  private keyword (`~/.claude/private-keywords`): matching lines are removed from
+  append-only logs, any other matching file is withheld and logged. Session start
+  registers conversation-mode projects there automatically, and a session marked
+  in `~/.claude/private-sessions/` gets the conversation-mode correction notice
+  wherever it started. Written after one machine's store had pushed 87 previews
+  of a personal conversation to GitHub.
+
 - Conversation-mode projects. A repository that is a conversation rather than a
   codebase — a persona, a journal — can declare it with
   `.claude/conversation-mode`. There the correction notice asks for a one-line

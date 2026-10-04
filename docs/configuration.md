@@ -196,6 +196,28 @@ What changes, and only in that repository:
   the marker. It treats waiting on the user as a correct stop, which is what a
   conversation turn usually is.
 
+### Private stays on this machine
+
+The dotfiles sync store is a git repository with its own remote, and
+`sync-push.sh` stages everything in it. Before this guard, one machine pushed 87
+previews of a personal conversation to GitHub. Three pieces now keep private
+content local, whichever writer slips:
+
+- **The exit check.** `sync-push.sh` reads `~/.claude/private-projects` (absolute
+  project paths) and `~/.claude/private-keywords` (literal strings), one per
+  line, both outside the store so they never sync themselves. A staged line
+  containing any of them is removed from an append-only `*.jsonl` log; any other
+  file carrying one is withheld from the commit, left in place, and named in
+  `~/.claude/.sync-conflicts.log`.
+- **Registration.** Session start adds every conversation-mode project to
+  `~/.claude/private-projects` (both the given and the physical path).
+- **Private sessions.** A personal-mode skill can mark a session wherever it was
+  started: `touch ~/.claude/private-sessions/$CLAUDE_CODE_SESSION_ID`. The
+  correction hook then treats it like a conversation-mode project.
+
+Keep keywords specific — a word that also appears in ordinary work files will
+hold those files back too, and the log is where that shows up.
+
 Measured on the repository this was written for: 103 rules, 90,172 characters,
 had been promoted into the CLAUDE.md loaded by every chat, and 13 of them
 recorded that an earlier rule had not prevented the same mistake.
