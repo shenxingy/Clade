@@ -1249,3 +1249,17 @@ Shipped: `/artifact` skill + references, `configs/scripts/artifact-lint.py`
       the way `/green` bundles `ci-local.py` and inlines the figure rules.
 - [ ] Contrast in the lint: `design-lint html` already computes the pairs;
       wire it into `artifact-lint` as an optional check instead of a second run.
+
+## 2026-10-03 plugin validator pin follow-up
+
+- [ ] 🟡 **Resolve the plugin-root CLAUDE.md warning, then unpin the validator.**
+      `.github/workflows/validate-plugin.yml` installs Claude Code CLI 2.1.287
+      because 2.1.288+ warns "CLAUDE.md at the plugin root is not loaded as
+      project context" and `--strict` fails on it. The marketplace entry's
+      `source` is `./`, so the repository's own development CLAUDE.md sits at the
+      plugin root. Options: move the development context to `.claude/CLAUDE.md`
+      (every script and doc that names `CLAUDE.md` moves with it, including
+      `check-ci-checklist.py`), or give the plugin its own source directory.
+      Done when `claude plugin validate . --strict` exits 0 on the newest CLI and
+      the pin is bumped.
+
