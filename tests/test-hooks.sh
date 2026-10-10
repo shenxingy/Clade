@@ -11,6 +11,9 @@
 #   post-edit-check.sh      findings → stderr + exit 2; clean → silent exit 0
 #   skill-suggest.sh        synchronous delivery, bounded by an in-script
 #                           `timeout 5` even when the content probe hangs
+#   secret-scanner.sh       fires on a key-shaped string; injects a handling
+#                           note and no rotation advice (the nag drew two
+#                           corrections in four days)
 #   settings-hooks.json     the wiring that makes all three reachable
 #
 # Every path is redirected to throwaway dirs under /tmp; the real ~/.claude and
@@ -59,6 +62,13 @@ assert_contains() {
     fail "$msg" "output does not contain '$needle'"
     [[ "$VERBOSE" == "-v" ]] && echo "    output: $(head -8 <<< "$haystack")"
   fi
+}
+assert_not_contains() {
+  local haystack="$1" needle="$2" msg="$3"
+  if grep -qF "$needle" <<< "$haystack"; then
+    fail "$msg" "output unexpectedly contains '$needle'"
+    [[ "$VERBOSE" == "-v" ]] && echo "    output: $(head -8 <<< "$haystack")"
+  else pass "$msg"; fi
 }
 
 if ! command -v jq >/dev/null 2>&1; then
@@ -463,6 +473,39 @@ jq -e '.hooks.UserPromptSubmit[].hooks[] | select(.id=="secret-scanner") | has("
   "$SETTINGS" >/dev/null 2>&1 \
   && pass "secret-scanner stays synchronous" \
   || fail "secret-scanner stays synchronous"
+
+# ─── secret-scanner: a note on handling, never a nag ─────────────────
+# The hook fires on EVERY prompt carrying a key-shaped string, so whatever it
+# injects is re-issued to the model each time. It used to say "rotate the
+# secret and avoid pasting credentials", which the model relayed on every such
+# prompt; on the author's machine that drew two explicit corrections in four
+# days (2026-09-14, 2026-09-17: "不要轮换。你以后不要一直问我这个东西"). No rule
+# could fix it, because the advice arrived fresh with each prompt. The note now
+# says how to handle the value and leaves rotation to the user. Both halves are
+# pinned: the hook still FIRES (or the redaction contract would be untested),
+# and it no longer advises. Needs redact.py + python3; skipped cleanly without.
+section "secret-scanner — handling note, not rotation advice"
+SECRET_SCANNER="$REPO_ROOT/configs/hooks/secret-scanner.sh"
+if command -v python3 >/dev/null 2>&1; then
+  mkdir -p "$HOME/.claude/scripts"
+  cp "$REPO_ROOT/configs/scripts/redact.py" "$HOME/.claude/scripts/redact.py"
+  chmod +x "$HOME/.claude/scripts/redact.py"
+  # Split so this file carries no contiguous scannable literal (checks.sh
+  # scans every staged diff) — same convention as tests/test-checks.sh.
+  SS_TOKEN="ghp_""abcdefghijklmnopqrstuvwxyz0123456789"
+  SS_OUT=$(jq -n --arg p "here is the token, use it: $SS_TOKEN" '{prompt:$p}' \
+             | bash "$SECRET_SCANNER" 2>/dev/null)
+  SS_CTX=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<< "$SS_OUT" 2>/dev/null)
+  assert_contains "$SS_CTX" "credential" "scanner still fires on a key-shaped string"
+  assert_contains "$SS_CTX" "never echo it" "note says how to handle the value"
+  assert_not_contains "$SS_CTX" "rotate the secret" "note carries no rotation directive"
+  assert_not_contains "$SS_CTX" "avoid pasting" "note carries no paste-hygiene lecture"
+  # Negative control: a secret-free prompt injects nothing at all.
+  SS_QUIET=$(jq -n '{prompt:"please add a docstring to the parser"}' | bash "$SECRET_SCANNER" 2>/dev/null)
+  assert_eq "$SS_QUIET" "" "secret-free prompt injects nothing"
+else
+  echo "  python3 not found — secret-scanner behaviour cases skipped (CI has it)"
+fi
 
 jq -e '.hooks.PostToolUse[].hooks[] | select(.id=="edit-shadow-detector") | .async == true' \
   "$SETTINGS" >/dev/null 2>&1 \
