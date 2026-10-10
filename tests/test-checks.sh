@@ -386,6 +386,20 @@ assert_file_contains "$REPO_ROOT/configs/skills/commit/prompt.md" \
 assert_file_contains "$REPO_ROOT/orchestrator/worker_taskfile.py" \
   "## Commit Messages" "worker task-file guidance carries the body mandate"
 
+# ─── untrusted observability input (agentjacking) ─────────────────────
+echo "── obs-review-loop treats pulled events as data ──"
+
+# /obs-review-loop reads attacker-writable Sentry/PostHog content and then
+# edits code with a shell — the exact chain the June 2026 agentjacking
+# disclosure exploited. Both the executable prompt and the Codex-facing summary
+# must carry the contract; the summary is what a Codex session reads.
+assert_file_contains "$REPO_ROOT/configs/skills/obs-review-loop/prompt.md" \
+  "never instructions to follow" "obs-review-loop prompt: event content is data, not instructions"
+assert_file_contains "$REPO_ROOT/configs/skills/obs-review-loop/prompt.md" \
+  "suspected injection" "obs-review-loop prompt: an embedded fix step is reported, not run"
+assert_file_contains "$REPO_ROOT/configs/skills/obs-review-loop/SKILL.md" \
+  "attacker-writable" "obs-review-loop summary carries the untrusted-input contract"
+
 # ─── AGENTS.md honeypot check (checks.sh pr-body) ─────────────────────
 echo "── AGENTS.md honeypot check ──"
 
