@@ -74,6 +74,22 @@ Example:
 **Prevention:** Add startup checklist: (1) required envvars defined, (2) all config-loading hooks executed, (3) test startup on fresh container.
 ```
 
+### Agent-caused incidents: extra fields
+
+If the failure came from an agent run (unattended loop, dispatched worker,
+cron session) rather than a human-driven edit, the standard entry is not
+enough — agent incidents carry *delegated authority*, so the postmortem must
+reconstruct what the agent was allowed to do, not just what it did. Add:
+
+**Agent:** {which run/worker/session, with its log or evidence-bundle path}
+**Authority scope:** {permissions granted vs. the ones actually exercised}
+**Tool-call trace:** {replayable record — session transcript, hook log, or evidence bundle}
+**Blast radius:** {compute/API spend and external side effects (messages sent, pushes, deploys), not just code damage}
+**Facts vs. hypotheses:** {what the trace proves vs. what is inferred — mark each}
+
+An agent-incident postmortem that names no trace is UNVERIFIED by
+construction: an agent's own summary of its run is a claim, not evidence.
+
 ### Step 4: Extract Corrective Rule (Optional)
 If the incident reveals a pattern worth remembering, offer to append a rule to `corrections/rules.md`:
 

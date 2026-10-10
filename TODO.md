@@ -1216,6 +1216,211 @@ record is wrong**. The four below were reproduced by hand before filing.
   difference. Revisit with the upstream payload work in the Kimi footer item
   above.
 
+## 2026-09-21 radar sweep follow-ups
+
+- [ ] 🟠 **The correction-pairing shadow is blind to a Bash-side write — the
+  tool-bypass failure Ronacher named, on the pipeline that grounds every rule.**
+  `edit-shadow-detector.sh` is wired to `Edit|Write` only
+  (`configs/settings-hooks.json` PostToolUse) and reads nothing but
+  `tool_input.file_path` (`edit-shadow-detector.sh:13`), so a file rewritten
+  through the Bash tool — `python3 - <<EOF`, `sed -i`, `cat > f`, `tee` —
+  never enters the session shadow. Downstream, three consumers go quiet for
+  exactly those files: `correction-detector.sh`'s "Concrete signal" block
+  (files behind this correction), `revert-detector.sh`'s `reverted_files`
+  (shadow ∩ pathspec → `[]`, so `repeat` can never fire), and the shadow-first
+  `domain` classifier added 2026-09-08. Same shape as the `worker-checkpoint.sh`
+  blind spot fixed 2026-09-16 (`2acb91a`), but that fix took a snapshot; the
+  shadow needs file NAMES, which a PostToolUse Bash hook does not receive.
+  Capability we lack: pair a rejection with a file the agent changed from the
+  shell. Shape of a fix: PreToolUse Bash records `git status --porcelain` into
+  the session scratch (pre-tool-guardian.sh already runs there), PostToolUse
+  Bash diffs it and appends the delta to the shadow; untracked files need the
+  `--others --exclude-standard` half. Not built in the 2026-09-21 sweep: that
+  run had no execute permission, and this touches two hooks with an async
+  ordering question. How often it fires is NOT measured — the shadow records
+  what it saw, not what it missed.
+- [ ] 🟡 **Verify the 2026-09-21 sweep's four unrun changes on a machine with a
+  shell**, in this order: `bash tests/test-correction-pairing.sh` (worker gate,
+  §5b), `bash tests/test-hooks.sh` (secret-scanner note, needs python3),
+  `bash -n configs/scripts/radar-cron.sh` + a dry `--allowedTools` check
+  (`claude -p 'reply ok' --allowedTools "WebSearch,WebFetch(domain:arxiv.org)"`
+  must not treat the CSV as a prompt), then `./install.sh` so the deployed
+  copies under `~/.claude/` stop lagging the source. Until install.sh runs, the
+  live correction detector still records worker briefs and the live
+  secret-scanner still advises rotation.
+  **Partly closed 2026-09-28:** `install.sh` ran 2026-09-24 19:23 (deployed
+  `correction-detector.sh`, `secret-scanner.sh`, `radar-cron.sh` and
+  `skills/radar/SKILL.md` were byte-identical to source at the start of the
+  09-28 sweep), and `radar-cron.sh` is verified LIVE: the 09-28 cron log shows
+  ten FOLDED lines and that sweep's `WebSearch` calls succeeded. The two test
+  suites are still not known to have run, and the nine files are still
+  uncommitted in this tree.
+- [ ] 🟠 **`history.jsonl` keys a correction on the raw cwd, so one repository
+  is many "projects" and recurrence can never match.** First filed by the
+  2026-08-24 radar run (which never reached TODO.md — its digest sat in `$HOME`)
+  at 63 distinct keys / Clade spanning 6; measured 2026-09-21 at **128 distinct
+  keys over 1,223 records, Clade spanning 12** (`projects/Clade`,
+  `projects/clade`, `projects/clade/orchestrator`, four `.worktrees-Clade/task-N`,
+  a `.claude/worktrees/wf_*`, `/tmp/clade-fleet-fix`, three
+  `/tmp/claude-*/scratchpad/*`), faceswap-platform-100 spanning 12, 31 keys
+  under some `worktrees` path. The worker gate landed today removes the
+  worker-brief half; user-driven sessions in `~/projects/worktrees/product-*`
+  still fragment. `revert-detector.sh`'s `repeat` needs exact `project`
+  equality, and `cross-project-rules.jsonl`'s multi-project test counts these
+  as different projects, so the same mistake across three worktrees reads as
+  three first offences. Fix: an additive `repo` field = the main worktree's
+  toplevel (`git rev-parse --git-common-dir`, resolved absolute, `/.git`
+  stripped; `$PROJECT` itself when not a repo), written by both detectors and
+  used by `repeat`, session-scorecard and auto-audit in place of `project`.
+  Additive so no reader breaks. Not built in the 2026-09-21 sweep: the `domain`
+  field took two rounds of fixes when added without a runnable test, and this
+  run could not execute one.
+
+## 2026-09-28 radar sweep follow-ups
+
+Digest: `~/.claude/research/radar-2026-09-28.md`. This sweep could search the web
+but could not execute `bash`, `python3` or `git`, so everything below that was
+built is written and **unrun**.
+
+- [x] 🟠 **Run and commit the 2026-09-28 sweep's two changes.** — DONE
+  2026-10-10 (commit 43e4918 + 6ae2ab3). Both verification runs passed:
+  `test-correction-pairing.sh` 85/85 with all three prescribed mutation
+  checks going red as specified (rd_is_probe neutralized → §3e red; break-line
+  removed → cd-after-revert red; heredoc bypass → §3g first/third/last red),
+  file restored byte-identical after each. `test-checks.sh` 65/65 for the
+  obs-review-loop contract. `install.sh` ran the same day; deployed copies
+  verified byte-identical to source.
+  (1) `revert-detector.sh`: `revert_scope:"probe"` for a revert the same
+  command puts back (`git apply`/`git stash pop` after it, or the `MUTATION`
+  label), plus `cd` resolution (variables the command assigns, `~`, relative
+  joins, only a `cd` BEFORE the revert). Verify: `bash -n
+  configs/hooks/revert-detector.sh`, then `bash tests/test-correction-pairing.sh`
+  (§3e, §3f are new), then delete the `rd_is_probe` call and confirm §3e goes
+  red, then delete the `rd_is_revert_segment … && break` line and confirm the
+  "cd AFTER the revert" case goes red. Commit with `CLAUDE.md` and
+  `configs/skills/radar/SKILL.md`. (2) `/obs-review-loop` untrusted-input
+  contract: `bash tests/test-checks.sh`. Then `./install.sh`.
+- [ ] 🟠 **Run `/doctor prompt-audit` (Claude Code ≥ 2.1.283, 2026-09-25)
+  interactively over `~/.claude/CLAUDE.md`, `configs/CLAUDE.md` and the skills.**
+  It flags stale paths, dead commands, contradictions and prompting patterns
+  written for older models, which is the surface none of this repo's drift
+  gates reach: `check-references.py`/`check-runnable-paths.py`/
+  `check-sibling-facts.py` read this repository, and `/audit` reads only
+  `corrections/rules.md`, while the private global CLAUDE.md carries ~80
+  auto-promoted prose rules and Opus 5.5 became the default on 2026-09-22
+  (2.1.280). Not run by the sweep: it proposes edits to the owner's global
+  instructions, which is not an unattended change, and the local version was
+  not checkable (`claude --version` was gated; a 2026-09-22 session banner in
+  history.jsonl showed 2.1.278).
+- [ ] 🟡 **`pre-tool-guardian.sh` does not block fetch-and-execute** (`curl …
+  | sh`, `wget -O- … | bash`, `bash <(curl …)`), the execution step of the
+  June 2026 agentjacking attack (a crafted Sentry event made Claude Code,
+  Cursor and Codex run attacker code, 85% success across the agents tested). The
+  guardian's only related rule is the `ssh`/`bash -c` check at line 320. Not
+  built unattended: this is the always-on guard, legitimate installers use the
+  same shape (`curl -fsSL https://claude.ai/install.sh | bash`), so it needs an
+  allowlist decision and a calibration run — and the 2026-09-07 ledger already
+  records this guard failing in both directions from textual matching.
+- [ ] 🟡 **Most "explicit corrections" are not corrections.** Of the 45
+  `type:"explicit"` records 2026-09-21 → 09-28, by one reader's hand label, 14
+  reject or redirect something the agent did; the other 31 are approvals ("可以
+  直接往 main 提交"), questions ("代码在哪儿", "…对不对"), new task briefs and
+  pasted text. Only one class of false positive has been removed so far: worker
+  briefs, 2026-09-21. Every downstream count inherits the noise:
+  `session-scorecard.sh`'s per-rule misses, auto-audit's recurrence test, and
+  radar's own Lane C clusters. The matcher needs a labelled sample before it
+  changes; this week's 45 are a start. Not built: the matcher's vocabulary is
+  the whole behaviour, and changing it without a labelled set is a guess.
+
+## 2026-10-05 radar sweep follow-ups
+
+Digest: `~/.claude/research/radar-2026-10-05.md`. Same constraint as the last
+three sweeps: `bash`, `git` and script execution were gated, so nothing below
+that was built has been run.
+
+- [x] 🔴 **Land the radar backlog before it grows again.** — DONE 2026-10-10.
+  Committed per sweep: 09-21 batch (73123ca: correction-detector worker-brief
+  gate, secret-scanner de-nag, radar-cron fold-in), 09-28+10-05 batch
+  (43e4918: revert-detector probe scope + cd resolution + heredoc stripping,
+  pairing tests §3d–3g), obs-review-loop untrusted-input (6ae2ab3),
+  internal-deploy bottom-line contract (5b798d3). All suites green
+  (85/164/65), three mutation checks red-as-prescribed, `install.sh` deployed
+  and eight deployed copies verified byte-identical to source.
+- [x] 🟠 **Run the heredoc fix in `revert-detector.sh` (written 2026-10-05).** —
+  DONE 2026-10-10 (commit 43e4918). Verified as prescribed: `bash -n` clean,
+  `test-correction-pairing.sh` 85/85, and with the `rd_strip_heredocs` call
+  replaced by the raw command, §3g's first, third and last assertions went red
+  (git text in a heredoc body, a `cd` inside a body, `<<-` pathspec).
+  `rd_strip_heredocs` removes heredoc bodies before any parsing; the persisted
+  `prompt` keeps the raw command. Of 386 implicit-revert records all-time, 16
+  of the 323 unclipped ones (5%) contain no revert outside a heredoc body, and
+  up to 43 more clipped ones may be the same (upper bound 59, 15%). Verify:
+  `bash -n configs/hooks/revert-detector.sh`, then
+  `bash tests/test-correction-pairing.sh` (§3g is new), then replace
+  `COMMAND=$(rd_strip_heredocs "$RAW_COMMAND")` with `COMMAND="$RAW_COMMAND"`
+  and confirm §3g's first, third and last assertions go red.
+- [ ] 🟠 **A mutation probe with no label and no `git apply` is still a
+  rejection.** 2026-09-28 23:50Z (dictation): `sed -i … X; pytest …; git
+  checkout -- X`. The revert IS the restore, so the 09-28 `rd_is_probe` sees
+  it only if the agent printed `MUTATION`, and this one did not. A mechanism
+  signal exists: a path the same command wrote earlier (`sed -i <path>`, a
+  `> <path>` redirect) and then reverts is the agent undoing its own edit.
+  Not built: parsing `sed -i` targets in bash 3.2 needs its own test table,
+  and stacking a third unrun change on this hook is the wrong order.
+- [ ] 🟠 **Retire `rule-injector.sh` or stop it duplicating Claude Code.**
+  Claude Code loads `~/.claude/rules/*.md` and `.claude/rules/*.md` natively,
+  and a `paths:` rule loads when Read/Write/Edit touches a matching file
+  (code.claude.com/docs/en/memory, "Path-specific rules"). That is the same
+  directory, the same key and the same trigger as the hook. Measured over 2,363
+  local transcripts: the hook fired in 10 sessions; in 5 of them the native
+  loader delivered the same rule as a `nested_memory` attachment, 10 rule-pairs
+  in all, and in 5 of those 10 the native copy arrived first. The hook's only
+  extra reach is basename matching for slash-less patterns (`CLAUDE.md`,
+  `README.md`), which fired the Clade-specific `measured-claims.md` on files in
+  dictation, faceswap and addy repos. Recommended: drop the hook from
+  `settings-hooks.json`, rewrite slash-less patterns as `**/NAME`, move the
+  CLAUDE.md "Path-scoped rules" section and the four `tests/test-hooks.sh`
+  cases plus `tests/test-rule-injector.sh` to the native mechanism (and
+  `check-ci-checklist.py` with them). Not built: it removes a wired hook and a CI
+  suite, and nothing could be run.
+- [ ] 🟡 **`/equip` scans each skill alone; ColluSkill splits a payload across
+  skills.** arXiv:2608.09732 (August 2026) reports 96.0% attack success against
+  six per-skill scanners. Sub-payloads sit in separately packaged skills joined
+  by artifact flow, for example one skill writes a file that another runs.
+  `equip_audit.py` is per-skill by construction ("For each skill in the target,
+  runs red-flag checks"). Their chain-aware scanner cut success to 22.5% at 99.5%
+  benign allowance. Cheapest first slice: list the paths each skill writes and
+  the paths each skill executes or sources across the target AND the installed
+  set, and flag the overlaps. Needs a false-positive calibration run on the
+  vendored seo/blog/ads families before it can gate anything.
+- [ ] 🟡 **Hooks run `git` in whatever directory a session opens.** GitSpawn
+  (Manifold Security, disclosed 2026-09-02): a `.git/config` with
+  `core.fsmonitor` runs its helper on `git status`, outside any agent sandbox.
+  Vendors patched their own background git calls. 13 Clade hooks call git,
+  including the three SessionStart ones (`session-baseline.sh`,
+  `session-context.sh`, `commit-archeology.sh`), and none sets
+  `-c core.fsmonitor=false`. The exposure is a repo that arrives as a zip or on
+  a shared drive (clone does not carry `.git/config`), and an agent in bypass
+  mode would run `git status` itself anyway, so the hooks only make it fire
+  earlier. Fix shape: one `clade_git` wrapper in `hooks/lib` passing
+  `-c core.fsmonitor=false`, used by every hook.
+- [ ] 🟡 **Claude Code is at 2.1.283; 2.1.288 fixed PreToolUse hooks being
+  SKIPPED** "when matching failed or tool input couldn't serialize to JSON".
+  The call is now blocked instead. `pre-tool-guardian.sh` is a PreToolUse hook,
+  so on this host it fails open in that case until the CLI updates. 2.1.287 also
+  added Mods (unsandboxed TypeScript plugins that can rewrite tool calls and
+  approve permissions), so the one plugin enabled here,
+  `scamai-mnemo@scamai-internal`, needs re-reviewing whenever an update could
+  add a mod (`frontend-design@claude-plugins-official` is installed but not
+  enabled).
+  **Extended 2026-10-10:** the 2026-10-08 changelog adds `onFailure: "block"`
+  for command/HTTP hooks that can't start, time out, or exit unexpectedly —
+  explicit fail-closed instead of relying on the versioned default. After the
+  upgrade, set it on the guardian-class hooks (`pre-tool-guardian.sh`,
+  `secret-scanner.sh`) in `templates/settings.json` and `settings-hooks.json`,
+  and pin the behavior in `tests/test-hooks.sh`. Verify unknown-field tolerance
+  on the older CLI first (host may lag the field).
+
 ## 2026-09-23 artifact standard follow-ups (PR feat/artifact-skill)
 
 Study: [docs/research/2026-09-23-artifact-standard.md](docs/research/2026-09-23-artifact-standard.md).
@@ -1276,4 +1481,40 @@ Shipped: `/artifact` skill + references, `configs/scripts/artifact-lint.py`
       compares `ls … | wc -l` to `"1"`; BSD `wc` pads with spaces, so the suite
       reports 1 failure on every Mac and none on Linux. Trim the count
       (`| tr -d ' '`) like the rest of the file does.
+
+## 2026-10-10 radar sweep follow-ups
+
+Digest: `~/.claude/research/radar-2026-10-10.md`. Lane A live (6 probe
+families), Lane B re-read done (Anthropic harness piece unchanged), Lane C
+quiet. Built this run: `/incident` agent-caused-incident fields
+(`configs/skills/incident/prompt.md`, synced to both deploy copies).
+Queued below: what was not built and why.
+
+- [ ] 🟡 **Co-installed skill conflict ("One Skill Too Many",
+  arXiv:2610.11647, 2026-10-08).** Empirical: ~1 in 4 installed skills has a
+  same-job rival; substitution between rivals is decided at the FIRST skill
+  read; install location (not listing order) decides which runs; a pre-tool
+  hook at first read restores fidelity. We carry ~150 skills and our only
+  instrument is lexical: `test_routing_eval.py` DISAMBIGUATION_RANK1. Cheapest
+  slice: build a rivalry index over installed skills' descriptions (pairs
+  above a similarity threshold), then a PreToolUse hook on the Skill tool that
+  warns when the invoked skill has a known rival. Needs a calibration pass on
+  the installed set before it can gate; read the paper first to check the
+  hook's exact intervention shape.
+- [ ] 🟡 **Permission-minimality testing (Aletheia, 2026-09-30).** Method:
+  convert rule-requested authorities into typed permissions, rerun the task
+  with one permission removed at a time; tests still passing means the
+  permission was never needed (found all 314 AIShellJack inputs). Applies to
+  our own surface — `templates/settings.json` permissions and guardian rules
+  accrete, nothing ever removes one. Not built: needs a deterministic
+  rerun-the-task harness, which is the expensive half.
+- [ ] 🟡 **Verify evidence bundles sit outside worker-writable zones.**
+  Adversa's October digest reports harnesses (Claude Code, Codex, Antigravity,
+  OpenCode, Grok Build) let agents delete their own execution traces, and
+  frontier models do it unprompted — "logs the agent can write are not
+  evidence". Our evidence bundle is digest-chained by design (ledger
+  2026-08-15), but nobody has checked whether the chain anchor is writable by
+  the worker it records. Check: can a loop worker delete or rewrite its own
+  `logs/loop/` evidence without breaking the chain verification somewhere a
+  worker cannot touch?
 

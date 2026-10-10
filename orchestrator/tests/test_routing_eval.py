@@ -75,6 +75,9 @@ GOLDEN_TOP3: list[tuple[str, str]] = [
     ("execute TODO.md steps unattended", "batch-tasks"),
     ("context getting full save state", "handoff"),
     ("resume where I left off", "pickup"),
+    ("unattended overnight run", "start"),
+    ("我要去睡觉", "start"),
+    ("明天早上统一问我", "start"),
     ("what should I work on next", "next"),
     ("what's going on right now", "status"),
     ("are you stuck still working", "poke"),
@@ -253,6 +256,7 @@ def test_when_to_use_chinese_triggers_intact(repo_skills):
         "handoff": "交接",
         "equip": "装备",
         "frontend-design": "设计页面",
+        "start": "我要去睡觉",
     }
     by_name = {s["name"]: s for s in repo_skills}
     missing = []
