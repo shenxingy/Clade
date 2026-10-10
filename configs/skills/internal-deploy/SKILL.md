@@ -26,4 +26,8 @@ Key contracts:
   smoke the health endpoint plus key pages through the proxy URL, check
   process error logs, and state the rollback path before declaring done.
 - Report: URL + what changed (commits) + smoke evidence + parked items.
+- Bottom line first: every published report opens with a "Bottom line" section — the
+  conclusion the reader acts on, in one paragraph, before any rounds, dates or timeline.
+  The evidence sections follow it. A page whose first screen is a chronology gets sent
+  back (2026-09-23: "你不要给我时间线…直接给我最终的结论").
   Deploying is outward state: confirm ambiguous version intent first.

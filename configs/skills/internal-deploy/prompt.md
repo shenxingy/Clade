@@ -66,3 +66,7 @@ URL(s) · what changed (commits / artifact version) · smoke evidence
 - Bundling 收钱/login/auth-flow changes with unrelated work in one deploy.
 - Editing the proxy vhost or manifest schema without checking sibling
   configs for the established pattern first.
+
+## Report shape (both modes)
+
+The published page and the chat report both open with a **Bottom line**: the conclusion the reader acts on, in one paragraph, before any rounds, dates or timeline. Then the evidence. Never lead with a chronology.
