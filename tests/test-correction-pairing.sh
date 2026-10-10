@@ -77,6 +77,10 @@ export HOME="$TMP_ROOT/home"
 export CP_SHADOW_DIR="$TMP_ROOT/shadows"
 mkdir -p "$HOME/.claude" "$CP_SHADOW_DIR"
 HISTORY="$HOME/.claude/corrections/history.jsonl"
+# correction-detector.sh is silent inside a dispatched worker (§5b). A /loop
+# worker running this suite would inherit that marker and turn every
+# correction case red for a reason unrelated to the code under test.
+unset CLADE_WORKER_TASK_ID
 
 PROJ="$TMP_ROOT/proj"
 mkdir -p "$PROJ/.git"           # makes it a "real" project (project-local rules path)
@@ -360,6 +364,125 @@ assert_not_contains "$(jq -c '.reverted_files' <<< "$LAST")" "src/util.py" \
 assert_not_contains "$(jq -c '.revert_paths' <<< "$LAST")" "src/util.py" \
   "separated redirect: the redirect target is not a pathspec"
 
+# ─── 3e. a mutation probe is the agent's own test, not a rejection ──
+# The global CLAUDE.md requires deleting a guard and watching the test go red.
+# Agents do it in one command — save the diff, `git checkout -- src`, test,
+# `git apply` it back — and every one was recorded as an implicit-revert with
+# its session files attached: seven on 2026-09-23 alone, two `repeat:true`, and
+# correction-detector.sh surfaces those files to the next explicit correction.
+section "revert-detector — a mutation probe carries no rejection evidence"
+
+revert_in 'git diff -- src > /tmp/p.patch && git checkout -- src/app.py && npm test; git apply /tmp/p.patch' "$SID" \
+  | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
+LAST=$(tail -n 1 "$HISTORY")
+assert_contains "$LAST" '"revert_scope":"probe"' "revert then git apply is a probe"
+assert_contains "$LAST" '"reverted_files":[]' "probe: no file is claimed as rejected"
+assert_contains "$LAST" '"session_files":[]' "probe: the session list is not offered as evidence"
+assert_contains "$LAST" '"repeat":null' "probe: repeat is not computed"
+assert_contains "$(jq -c '.revert_paths' <<< "$LAST")" "src/app.py" "probe: the raw pathspec is still kept"
+
+revert_in 'git stash && git checkout -- src/app.py && make test; git stash pop' "$SID" \
+  | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
+assert_contains "$(tail -n 1 "$HISTORY")" '"revert_scope":"probe"' "revert then git stash pop is a probe"
+
+# The sed-then-restore shape has no restore step after the revert — the revert
+# IS the restore — so only the printed label identifies it.
+revert_in 'echo "=== MUTATION A ==="; sed -i s/x/y/ src/app.py && npm test; git checkout -- src/app.py' "$SID" \
+  | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
+assert_contains "$(tail -n 1 "$HISTORY")" '"revert_scope":"probe"' "a MUTATION-labelled command is a probe"
+
+# Controls. A restore BEFORE the revert is not a round-trip, and a lowercase
+# `mutation` in a real filename is not the label.
+revert_in 'git apply fix.patch; git checkout -- src/app.py' "$SID" \
+  | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
+LAST=$(tail -n 1 "$HISTORY")
+assert_contains "$LAST" '"revert_scope":"paths"' "git apply BEFORE the revert: still a real revert"
+assert_contains "$(jq -c '.reverted_files' <<< "$LAST")" "src/app.py" "git apply BEFORE the revert: evidence kept"
+revert_in 'git checkout -- orchestrator/task_factory/mutation_scan.py' "$SID" \
+  | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
+assert_contains "$(tail -n 1 "$HISTORY")" '"revert_scope":"paths"' "a file named mutation_*.py is not a probe"
+
+# ─── 3f. the project is where the revert ran, not the text of a `cd` ──
+# Field data 2026-09-21 → 09-28: records filed under the literal projects `$WT`
+# and `$SCR/repo`, one under `~/projects/Clade`, and a `cd` AFTER the revert
+# deciding the project of a revert that ran before it.
+section "revert-detector — the cd target is resolved, not copied"
+
+revert_in 'WT=/tmp/wt-a && cd "$WT" && git checkout -- src/app.py' "$SID" \
+  | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
+assert_eq "$(jq -r '.project' <<< "$(tail -n 1 "$HISTORY")")" "/tmp/wt-a" \
+  "a variable the command assigns is resolved"
+
+revert_in 'WT=/tmp/wt-b; cd ${WT}/sub && git checkout -- src/app.py' "$SID" \
+  | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
+assert_eq "$(jq -r '.project' <<< "$(tail -n 1 "$HISTORY")")" "/tmp/wt-b/sub" \
+  "\${NAME}/suffix is resolved with its suffix"
+
+revert_in 'cd "$UNSET_ELSEWHERE" && git checkout -- src/app.py' "$SID" \
+  | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
+assert_eq "$(jq -r '.project' <<< "$(tail -n 1 "$HISTORY")")" "$PROJ" \
+  "an unresolvable variable falls back to the session dir, never the raw text"
+
+revert_in 'cd ~/repo-x && git checkout -- src/app.py' "$SID" \
+  | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
+assert_eq "$(jq -r '.project' <<< "$(tail -n 1 "$HISTORY")")" "$HOME/repo-x" \
+  "a leading ~ is expanded"
+
+revert_in 'cd /tmp/svc && git checkout -- src/app.py && cd /tmp && echo done' "$SID" \
+  | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
+assert_eq "$(jq -r '.project' <<< "$(tail -n 1 "$HISTORY")")" "/tmp/svc" \
+  "a cd AFTER the revert does not decide where it ran"
+
+revert_in 'cd /tmp/mono && cd backend && git checkout -- src/app.py' "$SID" \
+  | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
+assert_eq "$(jq -r '.project' <<< "$(tail -n 1 "$HISTORY")")" "/tmp/mono/backend" \
+  "a relative cd is joined to the directory before it"
+
+# ─── 3g. a heredoc body is data, not a command ───────────────────────
+# Field data 2026-09-28 21:48Z: a python heredoc rewriting a README that
+# DOCUMENTED `git checkout -- …` and `cd ~/code/… && git pull` was logged as a
+# revert, under a project taken from the README's own text. Nothing was reverted.
+section "revert-detector — heredoc bodies are not parsed as commands"
+
+# BSD wc pads its count with spaces; compare bare numbers.
+hist_lines() { wc -l < "$HISTORY" | tr -d ' '; }
+_before=$(hist_lines)
+revert_in "cd /tmp/docs-repo && python3 - <<'EOF'
+s = '''To ship it:
+cd ~/code/elsewhere && git pull
+git checkout -- site/static/palette.json
+'''
+open('README.md', 'w').write(s)
+EOF
+git status --short" "$SID" | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
+assert_eq "$(hist_lines)" "$_before" "git text inside a heredoc body writes no record"
+
+# A real revert AFTER the heredoc still counts, and the heredoc's `cd` text does
+# not decide where it ran. The persisted prompt keeps the whole raw command.
+revert_in "cd /tmp/svc-h && cat > notes.md <<EOF
+cd ~/somewhere-else
+EOF
+git checkout -- src/app.py" "$SID" | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
+LAST=$(tail -n 1 "$HISTORY")
+assert_eq "$(jq -r '.project' <<< "$LAST")" "/tmp/svc-h" "a cd inside a heredoc body is not a cd"
+assert_contains "$(jq -c '.revert_paths' <<< "$LAST")" "src/app.py" "a revert after the heredoc keeps its pathspec"
+assert_contains "$(jq -r '.prompt' <<< "$LAST")" "somewhere-else" "the record keeps the raw command, body included"
+
+# Controls. A here-string `<<<` is not a heredoc, so a revert after it on the
+# next line still counts; and a `<<-` terminator may be tab-indented.
+_before=$(hist_lines)
+revert_in "jq -r .x <<< '{}'
+git checkout -- src/app.py" "$SID" | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
+assert_eq "$(hist_lines)" "$((_before + 1))" "a here-string does not swallow the next line"
+_before=$(hist_lines)
+revert_in "cat <<-END
+	git checkout -- inside/body.py
+	END
+git checkout -- src/app.py" "$SID" | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
+assert_eq "$(hist_lines)" "$((_before + 1))" "<<- ends at a tab-indented terminator"
+assert_not_contains "$(jq -c '.revert_paths' <<< "$(tail -n 1 "$HISTORY")")" "inside/body.py" \
+  "<<- body text is not read as a pathspec"
+
 # ─── 4. explicit correction surfaces the concrete pair (gate: open) ──
 section "correction-detector — concrete signal on explicit correction"
 OUT=$(correct_in "no, that's wrong — revert it, use the config value instead" "$SID" \
@@ -438,6 +561,24 @@ CTXP=$(correct_in "不对，你说反了" "sess-private" | CLAUDE_PROJECT_DIR="$
 assert_contains "$CTXP" "This project is in conversation mode" "a private session gets the conversation notice"
 assert_contains "$CTXP" "write nothing about this conversation under ~/.claude" "the notice keeps the session out of the synced directory"
 assert_eq "$(_lines "$CROSS")" "$_cross1" "a private session writes nothing to the cross-project log"
+
+# ─── 5d. GATE: a dispatched worker's brief is not a correction ────────
+# run-tasks-parallel.sh pipes the task brief into `claude -p` with
+# CLADE_WORKER_TASK_ID exported; that brief is the worker's one and only
+# "user prompt". Measured 2026-09-21: 13 of a fortnight's 72 explicit records
+# were /loop briefs, logged once per retry. The SAME prompt that fires in
+# case 5 must persist nothing and inject nothing here — the control is the
+# env var alone, so deleting the guard turns both assertions red.
+section "correction-detector — a worker session records no corrections"
+BEFORE_W="$(wc -l < "$HISTORY" 2>/dev/null || echo 0)"
+OUTW=$(correct_in "no, use tabs instead" "worker-session-abc" \
+        | CLADE_WORKER_TASK_ID="batch-20260921-1" CLAUDE_PROJECT_DIR="$PROJ2" bash "$CORRECTION_HOOK")
+AFTER_W="$(wc -l < "$HISTORY" 2>/dev/null || echo 0)"
+if [[ "$BEFORE_W" == "$AFTER_W" ]]; then
+  pass "worker brief persists no history record"
+else fail "worker brief persists no history record" "history grew $BEFORE_W → $AFTER_W"; fi
+assert_eq "$(jq -r '.hookSpecificOutput.additionalContext // ""' <<< "$OUTW" 2>/dev/null)" "" \
+  "worker brief injects no rule-extraction context"
 
 # ─── 6. session-key fallback when session_id absent ──────────────────
 section "lib — \$PPID fallback when session_id missing"

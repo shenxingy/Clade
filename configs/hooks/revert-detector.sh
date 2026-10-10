@@ -14,11 +14,52 @@ if [[ "$TOOL_NAME" != "Bash" ]]; then
   exit 0
 fi
 
-COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null || echo "")
+RAW_COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null || echo "")
 
-if [[ -z "$COMMAND" ]]; then
+if [[ -z "$RAW_COMMAND" ]]; then
   exit 0
 fi
+
+# ─── Heredoc bodies are data, not commands ───────────────────────────
+# rd_strip_heredocs <command> — the command with every heredoc BODY removed; the
+# line that opens the heredoc is kept, so commands after `<<'EOF' &&` still count.
+#
+# Agents write files through `python3 - <<'EOF'` and `cat > f <<EOF`, and the body
+# is often prose ABOUT git. Measured 2026-09-28 21:48Z: a python heredoc rewriting
+# a README whose text documented `git checkout -- site/static/palette.json` and
+# `cd ~/code/product/app-lego-mosaic && git pull` was logged as an implicit-revert
+# correction filed under the project `~/code/product/app-lego-mosaic` — a path on
+# another user's machine. Nothing was reverted. The 2026-09-28 `cd` resolution
+# alone does not fix it: it would expand the README's `~` and file the record
+# under `$HOME/code/product/app-lego-mosaic` instead.
+#
+# Recognises `<<WORD`, `<<'WORD'`, `<<"WORD"` and `<<-WORD` (leading tabs stripped
+# from the terminator), and never a here-string `<<<`. Known limits, both failing
+# toward silence: only the first heredoc on a line is tracked, and a `<<word`
+# inside a quoted string swallows the rest of the command.
+rd_strip_heredocs() {
+  local line delim="" strip_tabs=false t tab=$'\t' q="[\"']?"
+  local re_heredoc="(^|[^<])<<(-?)[[:space:]]*${q}([A-Za-z_][A-Za-z0-9_]*)${q}"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ -n "$delim" ]]; then
+      t="$line"
+      if $strip_tabs; then
+        while [[ "$t" == "$tab"* ]]; do t="${t#"$tab"}"; done
+      fi
+      [[ "$t" == "$delim" ]] && delim=""
+      continue
+    fi
+    printf '%s\n' "$line"
+    if [[ "$line" =~ $re_heredoc ]]; then
+      delim="${BASH_REMATCH[3]}"
+      strip_tabs=false
+      [[ -n "${BASH_REMATCH[2]}" ]] && strip_tabs=true
+    fi
+  done <<< "$1"
+}
+
+# Everything below reads COMMAND; only the persisted `prompt` keeps the raw text.
+COMMAND=$(rd_strip_heredocs "$RAW_COMMAND")
 
 # ─── Detect revert patterns ──────────────────────────────────────────
 REVERT_PATTERNS=(
@@ -89,25 +130,106 @@ rd_unquote() {
   printf '%s' "$t"
 }
 
+# rd_is_revert_segment <segment> — true when this one segment is itself a revert.
+rd_is_revert_segment() {
+  local seg="$1" pattern
+  for pattern in "${REVERT_PATTERNS[@]}"; do
+    [[ "$seg" =~ $pattern ]] && return 0
+  done
+  return 1
+}
+
 # rd_revert_base <command> <input_json> — the directory the git command ran in.
 # `cd <dir> && git ...` is the dominant real-world shape (68 of 68 informative
 # records on the author's machine begin with it), and it is exactly the case that
 # made the old records wrong: the session shadow is from one repo, the command
 # operates on another.
+#
+# Three ways the literal `cd` token was still the wrong answer, all measured in
+# history.jsonl between 2026-09-21 and 2026-09-28:
+# - `WT=/abs/path … cd "$WT"` filed records under a project literally named `$WT`
+#   (twice) and `$SCR/repo` (once). A variable the same command assigns is
+#   resolved here; one it does not assign is unknowable, and the session's own
+#   directory is the honest fallback — never the unexpanded text.
+# - `cd ~/projects/Clade` filed under `~/projects/Clade`, a second key for a repo
+#   every other record spells `/home/…/Clade`.
+# - The LAST `cd` won, even one AFTER the revert: `cd svc && git checkout -- src
+#   && cd .. && committer …` was filed under the parent. Only a `cd` that runs
+#   before the first revert segment can be where the revert ran.
 rd_revert_base() {
-  local cmd="$1" input="$2" seg base="" cwd=""
+  local cmd="$1" input="$2" seg base="" cwd="" assigns="" tok w line name rest val
+  local re_var='^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?(.*)$'
+  local re_assign='^[A-Za-z_][A-Za-z0-9_]*='
   local -a words
-  while IFS= read -r seg; do
-    read -ra words <<< "$seg"
-    [[ ${#words[@]} -ge 2 ]] || continue
-    [[ "${words[0]}" == "cd" ]] || continue
-    base="$(rd_unquote "${words[1]}")"
-  done < <(rd_segments "$cmd")
-  if [[ -n "$base" ]]; then printf '%s' "$base"; return 0; fi
   if command -v jq >/dev/null 2>&1; then
     cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null || true)
   fi
-  printf '%s' "${cwd:-${CLAUDE_PROJECT_DIR:-$(pwd)}}"
+  cwd="${cwd:-${CLAUDE_PROJECT_DIR:-$(pwd)}}"
+  while IFS= read -r seg; do
+    rd_is_revert_segment "$seg" && break
+    read -ra words <<< "$seg"
+    [[ ${#words[@]} -ge 1 ]] || continue
+    # remember NAME=value words in order; bash 3.2 has no associative arrays
+    for w in "${words[@]}"; do
+      [[ "$w" =~ $re_assign ]] && assigns="${assigns}${w}"$'\n'
+    done
+    [[ ${#words[@]} -ge 2 && "${words[0]}" == "cd" ]] || continue
+    tok="$(rd_unquote "${words[1]}")"
+    if [[ "$tok" =~ $re_var ]]; then
+      name="${BASH_REMATCH[1]}"; rest="${BASH_REMATCH[2]}"; val=""
+      while IFS= read -r line; do
+        [[ "$line" == "$name="* ]] && val="$(rd_unquote "${line#"$name="}")"
+      done <<< "$assigns"
+      tok="${val:+$val$rest}"
+    fi
+    case "$tok" in
+      '~')   tok="$HOME" ;;
+      '~/'*) tok="$HOME/${tok#\~/}" ;;
+    esac
+    # still carrying an expansion we cannot perform → unknowable, not a path
+    case "$tok" in
+      ''|*'$'*|*'`'*) base=""; continue ;;
+    esac
+    if [[ "$tok" == /* ]]; then base="$tok"; else base="${base:-$cwd}/$tok"; fi
+  done < <(rd_segments "$cmd")
+  printf '%s' "${base:-$cwd}"
+}
+
+# rd_is_probe <command> — true when the command puts back what it reverts, so the
+# revert is the agent's own mutation test rather than a rejected change.
+#
+# The global CLAUDE.md requires exactly this ("A self-test is not evidence until
+# a mutation makes it fail"), and agents follow it with one command: save the
+# diff, `git checkout -- src`, run the tests expecting red, `git apply` the diff
+# back. Every such command was recorded as an implicit-revert correction. Measured
+# on the author's machine, 2026-09-23 05:20–05:49: seven records, all mutation
+# probes, two of them `repeat:true`, up to 13 files in `reverted_files` and 20 in
+# `session_files` — and
+# correction-detector.sh surfaces those files to the NEXT explicit correction in
+# that project as "files behind this correction". The instrument the stack
+# mandates was feeding false evidence to the instrument that learns from it.
+#
+# Two signals, strongest first:
+# - a `git apply` / `git stash pop|apply` in a segment AFTER the revert — the
+#   round-trip itself, independent of anything the agent chose to print;
+# - the uppercase word MUTATION anywhere in the command — the label agents print
+#   for the probe. Weaker (it is a convention, not a mechanism) but it is the only
+#   signal for `sed -i … file; <test>; git checkout -- file`, where the revert IS
+#   the restore step. Case-sensitive on purpose: `git checkout --
+#   orchestrator/task_factory/mutation_scan.py` is a real revert of a real file.
+rd_is_probe() {
+  local cmd="$1" seg after=false
+  local re_label='(^|[^A-Za-z0-9_])MUTATION([^A-Za-z0-9_]|$)'
+  local re_restore='^[[:space:]]*git[[:space:]]+(apply|stash[[:space:]]+(pop|apply))([[:space:]]|$)'
+  [[ "$cmd" =~ $re_label ]] && return 0
+  while IFS= read -r seg; do
+    if ! $after; then
+      rd_is_revert_segment "$seg" && after=true
+      continue
+    fi
+    [[ "$seg" =~ $re_restore ]] && return 0
+  done < <(rd_segments "$cmd")
+  return 1
 }
 
 # rd_is_redirect <token> — true when the token OPENS a shell redirection, so it
@@ -240,6 +362,14 @@ elif echo "$COMMAND" | grep -qE 'git[[:space:]]+(revert|reset)' 2>/dev/null; the
 else
   REVERT_SCOPE="unknown"    # e.g. `git restore --staged` with no path
 fi
+# A mutation probe is recorded — dropping it would make a misclassified real
+# revert vanish without a trace — but it carries no evidence: no reverted_files,
+# no session_files (correction-detector.sh surfaces both as "files behind this
+# correction"), and repeat stays null. revert_paths keeps the raw pathspec.
+if rd_is_probe "$COMMAND"; then
+  REVERT_SCOPE="probe"
+  _session_files=""
+fi
 
 # The repository the command actually operated on, which is not necessarily the
 # session's. `cd <other repo> && git checkout -- <path>` is the dominant real
@@ -293,7 +423,7 @@ RECORD='{timestamp:$ts, prompt:$prompt, project:$project, type:$type,
 if declare -f cp_append_history >/dev/null 2>&1; then
   cp_append_history "$HISTORY_FILE" \
     --arg ts "$TIMESTAMP" \
-    --arg prompt "$(cp_bound_prompt "$COMMAND")" \
+    --arg prompt "$(cp_bound_prompt "$RAW_COMMAND")" \
     --arg project "$PROJECT" \
     --arg type "implicit-revert" \
     --argjson files "$REVERTED_FILES_JSON" \
@@ -305,7 +435,7 @@ if declare -f cp_append_history >/dev/null 2>&1; then
 else
   jq -nc \
     --arg ts "$TIMESTAMP" \
-    --arg prompt "$COMMAND" \
+    --arg prompt "$RAW_COMMAND" \
     --arg project "$PROJECT" \
     --arg type "implicit-revert" \
     --argjson files "$REVERTED_FILES_JSON" \
