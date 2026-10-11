@@ -19,7 +19,7 @@ configure Kimi Code's footer status line.
    | "setup", "wire the footer", "add it to my status line" | `setup` |
    | "setup off", "give me the built-in footer back" | `setup off` |
    | "style" or "list styles" | `style` |
-   | "minimal/icon/detail/off style" | `style minimal|icon|detail|off` |
+   | "minimal/icon/number/detail/off style" | `style minimal|icon|number|detail|off` |
    | "theme" or "list themes" | `theme` |
    | "theme NAME" | `theme NAME` |
    | "json" or machine-readable output | `--json` |
@@ -31,8 +31,9 @@ configure Kimi Code's footer status line.
 ## What the numbers mean
 
 - `N% used` is the window's consumed share as Kimi reports it (`usedRatio`).
-- The pace symbol and `+N%` / `-N%` compare the long window (weekly if the
-  plan has one, otherwise monthly) against a 95% target: `delta = used% −
+- The pace symbol (omitted by the `number` style) and `+N%` / `-N%` compare
+  the long window (weekly if the plan has one, otherwise monthly) against a
+  95% target: `delta = used% −
   elapsed% × 0.95`. Positive means ahead of the target pace, negative behind.
   Positive is not automatically good: once the projection passes 125% (quota
   gone with a fifth of the window left) the symbol drops to the bottom level

@@ -23,7 +23,7 @@ Commands:
                   cache only, never the network, and detaches ONE refresh
   refresh         fetch and rewrite the cache (what statusline detaches)
   setup [off]     wire/unwire [status_line].command in ~/.kimi-code/tui.toml
-  style [name]    minimal | icon | detail | off   (statusline only)
+  style [name]    minimal | icon | number | detail | off   (statusline only)
   theme [name]    the same emoji sets as slt / codex-usage
 """
 
@@ -65,7 +65,7 @@ SERVER_TOKEN_NAME = "server.token"
 STATUS_LINE_SCRIPT = ("hooks", "statusline.sh")
 OUR_COMMAND_MARKER = "statusline.sh"
 
-STYLES = ("minimal", "icon", "detail", "off")
+STYLES = ("minimal", "icon", "number", "detail", "off")
 THEMES = {
     "circles": ("○", "◑", "●", "◉"),
     "plain": ("--", "-", "+", "++"),
@@ -539,7 +539,10 @@ def usage_segment(
         if isinstance(resets_at, (int, float)) and resets_at < now:
             # Last cycle's numbers: neutral symbol, dimmed, no pace claimed.
             neutral = THEMES[theme][2]
-            parts.append(f"{DIM}{neutral} (?){RESET}" if color else f"{neutral} (?)")
+            if style == "number":
+                parts.append(f"{DIM}(?){RESET}" if color else "(?)")
+            else:
+                parts.append(f"{DIM}{neutral} (?){RESET}" if color else f"{neutral} (?)")
         else:
             left = _remaining(resets_at if isinstance(resets_at, (int, float)) else None, now)
             label = f"{pace['window']} " if style == "detail" else ""
@@ -1025,6 +1028,7 @@ def set_style(name: str | None, home: Path) -> int:
     examples = {
         "minimal": "Clade git:(main)  +3% (12d) · 5h 40%",
         "icon": "Clade git:(main)  ● +3% (12d) · 5h 40% (3h)",
+        "number": "Clade git:(main)  +3% (12d) · 5h 40% (3h)",
         "detail": "Clade git:(main)  ● month +3% (12d) · 5h 40% (3h)",
         "off": "Clade git:(main)             (built-in Kimi footer, no quota)",
     }
