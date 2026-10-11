@@ -117,32 +117,16 @@ def _symbol(delta, projected):
     if delta < 5:   return levels[2]
     return levels[3]
 
-# ─── Continuous truecolor gradient ───
-# Maps projected% to color: 0%=red  50%=yellow  95%=green  >100%=bold bright green
+# ─── Warm truecolor palette ───
+# Honey for ordinary pace; peach gently distinguishes severe overpacing.
 
 RESET = "\033[0m"
+PACE_HONEY = "\033[38;2;212;180;119m"  # #D4B477
+PACE_PEACH = "\033[38;2;210;160;135m"  # #D2A087
 
 def _color(projected, delta):
-    # Muted palette — low saturation so the indicator doesn't steal attention.
-    # 0% → soft red  →  50% → amber  →  95% → sage green  →  >100% → slightly brighter green
-    # The one case that IS meant to steal attention: a projection that empties
-    # the window early. Without it 101% and 205% were painted the same green.
-    if _overpacing(delta, projected):
-        return "\033[38;2;185;28;28m"   # overpacing — quota gone before reset
-    if projected > 100:
-        return "\033[38;2;85;160;85m"    # soft bright green, no bold
-    p = max(0.0, min(projected, 95.0))
-    if p <= 50:
-        t = p / 50.0
-        r = 160
-        g = int(75 + 50 * t)             # 75 → 125
-        b = int(75 - 20 * t)             # 75 → 55
-    else:
-        t = (p - 50.0) / 45.0
-        r = int(160 - 90 * t)            # 160 → 70
-        g = int(125 + 20 * t)            # 125 → 145
-        b = int(55 + 15 * t)             # 55 → 70
-    return f"\033[38;2;{r};{g};{b}m"
+    # Keep the signed pace and badge informative without an alarm-red accent.
+    return PACE_PEACH if _overpacing(delta, projected) else PACE_HONEY
 
 # ─── API / cache ───
 
