@@ -96,6 +96,8 @@ DEFAULT_ITEMS = ("cwd", "git")
 
 RESET = "\033[0m"
 DIM = "\033[2m"
+PACE_HONEY = "\033[38;2;212;180;119m"  # #D4B477
+PACE_PEACH = "\033[38;2;210;160;135m"  # #D2A087
 
 
 class UsageError(RuntimeError):
@@ -505,29 +507,15 @@ def _signed(delta: float) -> str:
 
 
 def _pace_color(projected: float, delta: float) -> str:
-    # Same muted gradient as the Claude Code status line: soft red at 0%
-    # projected, amber at 50%, sage green at 95%, a shade brighter past 100%.
-    # Overpacing gets the burst window's red instead: 101% and 205% projected
-    # were the same green, and 205% is the one that runs dry a fortnight early.
-    if _overpacing(delta, projected):
-        return "\033[38;2;185;28;28m"
-    if projected > 100:
-        return "\033[38;2;85;160;85m"
-    p = max(0.0, min(projected, 95.0))
-    if p <= 50:
-        t = p / 50.0
-        r, g, b = 160, int(75 + 50 * t), int(75 - 20 * t)
-    else:
-        t = (p - 50.0) / 45.0
-        r, g, b = int(160 - 90 * t), int(125 + 20 * t), int(55 + 15 * t)
-    return f"\033[38;2;{r};{g};{b}m"
+    # Match Claude and Codex: honey for ordinary pace, peach for overpacing.
+    return PACE_PEACH if _overpacing(delta, projected) else PACE_HONEY
 
 
 def _burst_color(used: float) -> str:
     if used >= 85:
-        return "\033[38;2;185;28;28m"
+        return PACE_PEACH
     if used >= 50:
-        return "\033[38;2;217;119;6m"
+        return PACE_HONEY
     return DIM
 
 
