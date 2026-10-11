@@ -90,6 +90,8 @@ GOLDEN_TOP3: list[tuple[str, str]] = [
     ("decompose goal into parallel worker tasks", "orchestrate"),
     ("verify behavior anchors after autonomous run", "verify"),
     ("record a learning remember this pattern", "learn"),
+    ("reverse engineer a shipped binary without source", "reverse-engineer-anything"),
+    ("decompile inspect Electron app ASAR", "reverse-engineer-anything"),
     ("weekly retrospective commit stats", "retro"),
     ("research competitors and external tools", "research"),
     ("write a report page for the artifact hub", "artifact"),
@@ -130,6 +132,8 @@ GOLDEN_TOP3: list[tuple[str, str]] = [
     ("报错 修复", "investigate"),
     ("保存 交接", "handoff"),
     ("新建技能", "skill-new"),
+    ("逆向工程", "reverse-engineer-anything"),
+    ("反编译", "reverse-engineer-anything"),
 ]
 
 
@@ -185,6 +189,10 @@ DISAMBIGUATION_RANK1: list[tuple[str, str]] = [
     ("design a named visual theme variant", "frontend-design"),
     ("用可调预设设计一个 UI 版本", "frontend-design"),
     ("run the real pre-push CI gates locally", "green"),
+    # shipped-binary reverse engineering via REA, NOT auditing your own
+    # project's source for vulnerabilities (/cso) or mapping a source repo
+    # (/map) — both named in its NOT-for clauses, which scoring strips.
+    ("reverse engineer binary", "reverse-engineer-anything"),
 ]
 
 
@@ -257,6 +265,7 @@ def test_when_to_use_chinese_triggers_intact(repo_skills):
         "equip": "装备",
         "frontend-design": "设计页面",
         "start": "我要去睡觉",
+        "reverse-engineer-anything": "逆向",
     }
     by_name = {s["name"]: s for s in repo_skills}
     missing = []

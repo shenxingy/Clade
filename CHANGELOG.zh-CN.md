@@ -92,6 +92,16 @@ semantic versioning。
   103 条规则（90,172 个字符）被晋升进每次对话都会加载的上下文。详见
   docs/configuration.md。
 
+- `/reverse-engineer-anything`，通过 `/equip` 从 [morluto/rea](https://github.com/morluto/rea)
+  （MIT，提交 `d28b41e`）吸收——本项目第一个 Layout F（`.agents/skills/`）上游。
+  技能承载 REA 的调查工作流（目标路由、证据分页、分阶段调查）和六份分目标参考
+  文档，与上游逐字节一致，使未来 `/equip sync rea` 保持干净的三方合并；REA 引擎
+  本身仍是外部 `rea-agents` npm 包，由用户单独安装（`npx rea-agents setup`，审计
+  中记为 DEP-01）。两个上游维护者内部技能经审查后跳过。为了让这类布局可被审计，
+  `equip_common.py` 的 `detect_upstream_skills_dir()` 现在也会探测 `.agents/skills/`
+  ——AGENTS.md 开放标准路径——在 `configs/skills/equip/references/project-layouts.md`
+  中记为 Layout F，并由 `test_equip.py` 覆盖。Codex 处置：`specialized-opt-in-workflows`。
+
 - `/frontend-design` 现在把"设计感"作为可检查的规则携带，而不是形容词。
   `references/design-rules.md` 写明 4px 间距网格、字体上限（最多 2 个字族、
   4–6 个字号、3–4 个字重）、动效时长表、状态清单、四个审查宽度和营销套话禁用

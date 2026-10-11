@@ -32,7 +32,7 @@ Clade 把 agent 的工作变成可复查的交付：解析后的执行身份、�
 3. [可信交付循环](#可信交付循环)
 4. [它做什么](#它做什么)
 5. [自学习机制](#自学习机制)
-6. [Skills](#skills-144)
+6. [Skills](#skills-145)
 7. [支持的语言](#支持的语言)
 8. [文档](#文档)
 9. [Dotfile 同步](#dotfile-同步)
@@ -158,7 +158,7 @@ Commit Lessons 与 Doc Align 在 Claude 完整框架中本地运行，未启用�
 
 详见 [Self-Learning Mechanisms](docs/learning-mechanisms.md)。
 
-## Skills (144)
+## Skills (145)
 
 ### 核心工作流
 
@@ -194,6 +194,7 @@ Commit Lessons 与 Doc Align 在 Claude 完整框架中本地运行，未启用�
 | `/investigate` | 根因分析 — 假设未确认不动手修 |
 | `/incident DESC` | 事故响应 — 诊断、复盘、后续任务 |
 | `/cso` | 安全审计（OWASP + STRIDE） |
+| `/reverse-engineer-anything` | 无源码逆向已发布软件 — 二进制、Electron/ASAR、APK、固件、网站 — 基于 REA CLI/MCP（[morluto/rea](https://github.com/morluto/rea)，已吸收的上游技能）；结论带证据引用 |
 | `/artifact` | 一页 PhD、PM、工程师都能一眼看懂的报告 — 按页面类型的骨架（为什么是这个数、做了什么、下一步）、论文级的图、亮暗双主题，发布前由 `artifact-lint.py` 检查 |
 | `/landscape` | 全系统报告 — 每个部分、每个入口、负责人、差距、以及放弃过的尝试，产出为发布的 artifact（即 `/artifact` 的架构骨架放大到全系统） |
 | `/map` | 生成 ARCHITECTURE.md（Mermaid 模块图；只读目录树，不读 git 历史，无归属数据） |

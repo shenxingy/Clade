@@ -159,7 +159,8 @@
         "model-research",
         "muller-brockmann-grid-systems",
         "radar",
-        "vignelli-canon-design-system"
+        "vignelli-canon-design-system",
+        "reverse-engineer-anything"
       ],
       "reason": "These specialized or provider-specific workflows remain opt-in through Claude or MCP until a Codex-native product use case justifies plugin discovery cost."
     },

@@ -113,6 +113,20 @@ versioning for the `clade-mcp` Python package and tagged public releases.
   had promoted 103 rules, 90,172 characters, into every chat. See
   docs/configuration.md.
 
+- `/reverse-engineer-anything`, absorbed from [morluto/rea](https://github.com/morluto/rea)
+  (MIT, commit `d28b41e`) via `/equip` — the project's first Layout-F
+  (`.agents/skills/`) upstream. The skill carries REA's investigation workflow
+  (target routing, evidence paging, staged investigations) plus six per-target
+  references, byte-identical to upstream so future `/equip sync rea` runs stay
+  clean 3-way merges; the REA engine itself remains an external `rea-agents`
+  npm package the user installs separately (`npx rea-agents setup`, DEP-01 in
+  the audit). Two maintainer-internal upstream skills were screened and
+  skipped. To make the layout auditable at all, `equip_common.py`'s
+  `detect_upstream_skills_dir()` now also probes `.agents/skills/` — the
+  AGENTS.md open-standard path — documented as Layout F in
+  `configs/skills/equip/references/project-layouts.md` and covered by
+  `test_equip.py`. Codex disposition: `specialized-opt-in-workflows`.
+
 - `/frontend-design` now carries "design sense" as checkable rules instead of
   adjectives. `references/design-rules.md` states the 4-px spacing grid, the
   type-scale caps (at most 2 families, 4–6 sizes, 3–4 weights), the motion

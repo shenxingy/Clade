@@ -9,3 +9,13 @@ upstreams:
   include: []
   exclude: []
   notes: ''
+- id: rea
+  repo: morluto/rea
+  branch: main
+  pinned_ref: null
+  last_synced_commit: d28b41ea4e93bb4c4d360a3bf2291ca83bb2b378
+  last_synced_version: null
+  last_synced_at: '2026-10-11T17:20:42.582820+00:00'
+  include: []
+  exclude: []
+  notes: ''

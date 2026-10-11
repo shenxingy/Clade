@@ -35,7 +35,7 @@ routing, delivery state, and multi-project fleet truth.
 3. [The Trust Loop](#the-trust-loop)
 4. [What It Does](#what-it-does)
 5. [Self-Learning Mechanisms](#self-learning-mechanisms)
-6. [Skills](#skills-144)
+6. [Skills](#skills-145)
 7. [Supported Languages](#supported-languages)
 8. [Documentation](#documentation)
 9. [Dotfile Sync](#dotfile-sync)
@@ -172,7 +172,7 @@ turns an inferred revert or async signal into an automatic rule.
 
 See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, detectors, schemas, and tunable env vars.
 
-## Skills (144)
+## Skills (145)
 
 ### Core Workflow
 
@@ -208,6 +208,7 @@ See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, de
 | `/investigate` | Root cause analysis — no fix without confirmed hypothesis |
 | `/incident DESC` | Incident response — diagnose, postmortem, follow-up tasks |
 | `/cso` | Security audit (OWASP + STRIDE) |
+| `/reverse-engineer-anything` | Reverse engineer shipped software without source — binaries, Electron/ASAR, APK, firmware, websites — via the REA CLI/MCP ([morluto/rea](https://github.com/morluto/rea), absorbed upstream); evidence-cited answers |
 | `/artifact` | One report page a PhD, a PM and an engineer can read at a glance — section spine per page type (why the numbers, what was done, next step), publication-quality figures, both themes, linted by `artifact-lint.py` before it is published |
 | `/landscape` | Whole-system report — every part, surface, owner, gap, and abandoned attempt, as a published artifact (the `/artifact` architecture spine at whole-system scale) |
 | `/map` | Generate ARCHITECTURE.md with a Mermaid module graph (tree only, no git history) |
