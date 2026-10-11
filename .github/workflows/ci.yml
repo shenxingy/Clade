@@ -386,6 +386,12 @@ jobs:
       - name: Run hook delivery tests
         run: bash tests/test-hooks.sh
 
+      # SessionStart context budget: rules tail, whole lines, drop notice,
+      # file caps, ceiling warning, conversation-mode projects
+      # (split out of test-hooks.sh when it crossed the 1500-line rule)
+      - name: Run session-context budget tests
+        run: bash tests/test-session-context.sh
+
       # Post-compaction re-injection (SessionStart source=compact): goal re-inject,
       # rule-sentinel re-arm, source guard, staleness guard, silent-when-empty
       - name: Run post-compact-reinject tests
