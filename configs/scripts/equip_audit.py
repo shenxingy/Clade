@@ -459,7 +459,7 @@ def main() -> int:
         cache_path = clone_or_update_cache(project, upstream)
         skill_dirs = upstream_skill_dirs(cache_path)
         if not skill_dirs:
-            print(f"ERROR: no skills/ or configs/skills/ dir (and no root SKILL.md) in {upstream.repo}", file=sys.stderr)
+            print(f"ERROR: no skills/, configs/skills/ or .agents/skills/ dir (and no root SKILL.md) in {upstream.repo}", file=sys.stderr)
             return 2
         # Container dir for the log line; a skill-at-root repo has none.
         audit_root = detect_upstream_skills_dir(cache_path) or cache_path

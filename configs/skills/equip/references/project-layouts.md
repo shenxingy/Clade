@@ -1,4 +1,4 @@
-<!-- Updated: 2026-04-20 -->
+<!-- Updated: 2026-10-11 -->
 
 # Project Layouts — Where Equipment Lives
 
@@ -86,6 +86,24 @@ named by upstream id, so `design-system` → `configs/skills/design-system/`).
 unsupported for this layout (it assumes `skills/<name>` paths) and degrades
 to the no-base behavior.
 
+### Layout F: "Agents-standard" (upstream-only; e.g., morluto/rea)
+
+```
+<repo>/
+  .agents/
+    skills/<name>/{SKILL.md,references/}
+  src/ ...            ← the repo's real product (CLI, MCP server, ...)
+```
+
+The repo ships skills under `.agents/skills/` — the AGENTS.md open-standard
+vendor-neutral path — typically alongside a non-skill product (an npm package,
+an MCP server). The skills are the absorbable equipment; the product itself
+stays an external dependency (note it as DEP-01 in the audit).
+
+**Signal**: `.agents/skills/` dir exists AND no `skills/` / `configs/skills/`
+container (those rank higher when committed — checked first by
+`equip_common.py:detect_upstream_skills_dir()`).
+
 ## Detection algorithm
 
 Used by `equip_common.py:detect_layout()` (LOCAL project side — Layout E is
@@ -98,8 +116,9 @@ an upstream shape and is detected separately, see below):
 5. Fallback: ask user
 
 Upstream side, `equip_common.py:upstream_skill_dirs()` resolves the skill
-list: container dir children for A/B/D, or `[repo root]` for **Layout E**
-(root `SKILL.md`, no container).
+list: container dir children for A/B/D/F (`skills/`, `configs/skills/` or
+`.agents/skills/`, in that precedence order), or `[repo root]` for
+**Layout E** (root `SKILL.md`, no container).
 
 ## Path mapping for sync
 

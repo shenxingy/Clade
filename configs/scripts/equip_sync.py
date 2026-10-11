@@ -376,7 +376,7 @@ def main() -> int:
 
     skill_dirs = upstream_skill_dirs(cache_path)
     if not skill_dirs:
-        print(f"ERROR: no skills dir (and no root SKILL.md) in {upstream.repo}", file=sys.stderr)
+        print(f"ERROR: no skills dir (checked skills/, configs/skills/, .agents/skills/; no root SKILL.md) in {upstream.repo}", file=sys.stderr)
         return 2
     upstream_by_name = {d.name: d for d in skill_dirs}
 

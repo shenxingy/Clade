@@ -333,8 +333,13 @@ def detect_upstream_dir(upstream_root: Path, candidates: list[str]) -> Optional[
 
 
 def detect_upstream_skills_dir(upstream_root: Path) -> Optional[Path]:
-    """Find where skills live in a cloned upstream repo."""
-    return detect_upstream_dir(upstream_root, ["skills", "configs/skills"])
+    """Find where skills live in a cloned upstream repo.
+
+    `.agents/skills/` is the AGENTS.md open-standard vendor-neutral path
+    (e.g. morluto/rea keeps its shipped skill there). It ranks last: a repo
+    that also commits `skills/` or `configs/skills/` uses those.
+    """
+    return detect_upstream_dir(upstream_root, ["skills", "configs/skills", ".agents/skills"])
 
 
 def is_single_skill_repo(upstream_root: Path) -> bool:

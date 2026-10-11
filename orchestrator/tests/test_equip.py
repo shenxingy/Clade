@@ -433,6 +433,23 @@ def test_upstream_skill_dirs_container_layout(tmp_path):
     assert [d.name for d in dirs] == ["bar", "foo"]
 
 
+def test_upstream_skill_dirs_agents_standard_layout(tmp_path):
+    # AGENTS.md open-standard vendor-neutral path (e.g. morluto/rea)
+    repo = tmp_path / "agents-standard"
+    for name in ("beta", "alpha"):
+        (repo / ".agents" / "skills" / name).mkdir(parents=True)
+    dirs = ec.upstream_skill_dirs(repo)
+    assert [d.name for d in dirs] == ["alpha", "beta"]
+
+
+def test_upstream_skill_dirs_prefers_plain_skills_over_agents_path(tmp_path):
+    repo = tmp_path / "both"
+    (repo / "skills" / "primary").mkdir(parents=True)
+    (repo / ".agents" / "skills" / "secondary").mkdir(parents=True)
+    dirs = ec.upstream_skill_dirs(repo)
+    assert [d.name for d in dirs] == ["primary"]
+
+
 def test_upstream_skill_dirs_single_skill_repo_yields_root(tmp_path):
     repo = tmp_path / "design-system"
     _make_single_skill_repo(repo)
