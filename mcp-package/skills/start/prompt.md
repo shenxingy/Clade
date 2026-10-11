@@ -23,6 +23,13 @@ Display the output to the user. That's it — no workers launched.
 
 For `--run`, `--hours N`, `--goal "X"`, `--budget N`, or `--resume`:
 
+The launch posture — this is the mode the owner describes as "我要睡了，有问题不要阻塞，明天早上统一问我":
+
+- **Non-blocking:** follow the Don't-block ladder. Park genuinely undecidable sub-problems into `.claude/blockers.md` with what was tried, and keep everything else moving. Never end a turn on "should I proceed?".
+- **Incremental:** commit each coherent, verified slice on its own; never accumulate a mega-diff overnight.
+- **Parallel-tolerant:** independent lanes run concurrently; lane A failing must not idle lane B.
+- **Morning handoff:** every parked question lands in `.claude/blockers.md` so the morning briefing (`/start` or `/brief`) surfaces them as one batch. The owner sleeps; questions don't get lost.
+
 Pass all flags through to start.sh:
 
 ```bash

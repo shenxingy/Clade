@@ -1,7 +1,7 @@
 ---
 name: start
 description: Autonomous session launcher — morning briefing, unattended overnight runs, cross-project patrol, auto-research
-when_to_use: "start session, morning session, autonomous run, launch agent — NOT for a briefing-only readout (use /brief); /start with no args includes the briefing then offers to launch work"
+when_to_use: "start session, morning session, autonomous run, launch agent, unattended overnight run, 过夜跑, 我要去睡觉, 我要睡了, 明天早上统一问我, 不要阻塞继续走 — NOT for a briefing-only readout (use /brief); /start with no args includes the briefing then offers to launch work"
 argument-hint: '[--morning] [--run] [--hours N] [--goal "X"] [--budget N] [--max-iter N] [--patrol] [--research] [--resume] [--stop] [--dry-run]'
 user_invocable: true
 ---
