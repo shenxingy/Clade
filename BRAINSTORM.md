@@ -12,6 +12,21 @@ Past resolved/deferred items live in [`docs/archive/BRAINSTORM-resolved.md`](doc
 
 ---
 
+## [Research] 2026-10-16 — An inspiration engine (`/spark`): exists? how? where?
+
+Full study: [docs/research/2026-10-16-inspiration-engines.md](docs/research/2026-10-16-inspiration-engines.md),
+with the owner's pasted brief verbatim in its appendix. Recommendation: a Clade
+skill `/spark` beside `/radar`. It runs on demand, starting from the owner's
+question and first take, and three independent operators are compared blind
+against a status-quo arm (Claude with the same files) and a plain arm. It is
+judged on whether a card is *acted on* within 14 days. Incubate it as a private
+skill in `~/.claude/skills/` and graduate it into `configs/skills/` only if it
+beats the status-quo arm after about 12 real questions.
+
+**Open, owner's call:** is "我们" the owner's own work (assumed) or a company-wide
+engine over the company corpus? The second changes the home. Nothing goes into
+TODO.md until that is answered.
+
 ## [Research] 2026-09-30 — Broader current learning across AI and engineering
 
 Expanded beyond individual authors to 24 selected topics from model vendors,
