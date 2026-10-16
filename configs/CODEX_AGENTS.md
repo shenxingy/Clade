@@ -11,6 +11,14 @@ PASS. Product UI and marketing sites still use `$clade:frontend-design`.
 If the skill is unavailable, report that installation gap instead of silently
 claiming the artifact standard was followed.
 
+## External web retrieval
+
+For web searches and URL reading, load `clade:web-search` (or the locally
+installed `web-search`) and follow its native/TinyFish routing in this session.
+Official documentation tools and explicit provider choices take precedence.
+If unavailable, use exposed native tools and name the routing installation gap.
+This does not apply to repository or file searches.
+
 ## Repository Delivery
 
 - One PR equals one independently reviewable and reversible feature, fix, or

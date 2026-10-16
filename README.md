@@ -35,7 +35,7 @@ routing, delivery state, and multi-project fleet truth.
 3. [The Trust Loop](#the-trust-loop)
 4. [What It Does](#what-it-does)
 5. [Self-Learning Mechanisms](#self-learning-mechanisms)
-6. [Skills](#skills-145)
+6. [Skills](#skills-146)
 7. [Supported Languages](#supported-languages)
 8. [Documentation](#documentation)
 9. [Dotfile Sync](#dotfile-sync)
@@ -77,7 +77,7 @@ Run `$clade:codex-usage setup minimal` for a compact native footer.
 never reads or exposes Codex credentials.
 
 The native plugin runs directly in Codex and does **not** require Claude Code.
-It currently ships 27 provider-native core workflows; Claude-specific overnight
+It currently ships 28 provider-native core workflows; Claude-specific overnight
 orchestration remains in the full framework. See [Native Codex Support](docs/codex.md).
 
 ### MCP Server Only
@@ -172,7 +172,7 @@ turns an inferred revert or async signal into an automatic rule.
 
 See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, detectors, schemas, and tunable env vars.
 
-## Skills (145)
+## Skills (146)
 
 ### Core Workflow
 

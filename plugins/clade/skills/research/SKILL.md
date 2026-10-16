@@ -30,17 +30,20 @@ Codex compatibility rules:
 
 Research external tools/competitors/approaches for a given topic and write a structured analysis to BRAINSTORM.md (project-scoped topics) or `~/.clade/research/` (personal topics — see Rules).
 
-## Capability Detection (run first)
+## Retrieval routing (run first)
 
-Detect available research tools before starting:
+Load the installed `web-search` skill when available. It selects native tools
+for small lookups and TinyFish for bulk/recurring collection or unavailable
+native retrieval, with excerpts, bounded output, private caching and explicit
+failure handoffs. Keep analysis in this session; do not launch another model
+CLI. Provider documentation tools and user-selected/excluded providers take
+precedence. If the skill is absent, use available native search and page tools.
 
-| Tier | Tools available | What you can do |
-|------|----------------|----------------|
-| **Tier 0** — Training data only | No MCP tools, web search unavailable | Use knowledge cutoff (Aug 2025). Mark all results with `⚠ Training data only — verify current status`. |
-| **Tier 1** — web search available | `web search` tool responds | Search with current year (2026) for up-to-date data. Max 5 searches. |
-| **Tier 2** — web search + web page fetch | Both tools available | Search for results, then fetch primary sources for depth. |
-
-Test by attempting a `web search` call. If it fails or returns no results → fall back to Tier 0 and note it prominently in the output.
+Start with at most 5 targeted searches. Expand only when an unresolved evidence
+gap justifies it. One empty search is not proof that live research is unavailable:
+revise the query or use the configured fallback. If all available retrieval
+paths fail, label current facts unverified; do not pass training knowledge off
+as live research.
 
 ## Steps
 
@@ -48,7 +51,7 @@ Test by attempting a `web search` call. If it fails or returns no results → fa
    - If **personal** → skip step 1, go to step 5 (write to ~/.clade/research/ instead)
    - If **project-scoped** → proceed with steps 1-5 (write to BRAINSTORM.md)
 1. Read `VISION.md`, `TODO.md`, and `BRAINSTORM.md` for project context (understand what already exists before researching)
-2. Detect research tier (see above). Run web search with current year (2026) for 3-5 relevant tools/approaches. Max 5 searches.
+2. Follow retrieval routing above. Search for 3-5 relevant tools/approaches and read primary sources. Add date filters when freshness matters; do not append a year to every query indiscriminately.
 3. For each result: extract key features, pricing/licensing, UX patterns, what they do well, what they do poorly
 4. Compare against current VISION.md — what gaps does this research reveal? what patterns can we borrow?
 5. Write findings:
@@ -87,7 +90,7 @@ Before starting research, check ALL of these:
 
 ## Rules
 - Always read VISION.md first — generic suggestions are noise, project-specific insights are signal
-- Always search with year 2026 for up-to-date information
+- Check source dates and current primary documentation for changing facts.
 - Be specific and actionable — "add OAuth2 login flow like tool X's 2-click setup" not "add authentication"
 - Mark entries as `[Research]` (not `[AI]`) so they're distinguishable in BRAINSTORM.md
 - Do NOT auto-process into GOALS.md or TODO.md — just write to BRAINSTORM.md inbox or personal research dir

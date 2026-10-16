@@ -59,7 +59,7 @@ Windows 环境实测。
 
 `plugins/clade/` 包含：
 
-- 27 个核心 workflows：commit、Codex usage pace、安全审查、release 文档、frontend design、
+- 28 个核心 workflows：commit、Codex usage pace、安全审查、release 文档、frontend design、
   本地 CI 修复、handoff/pickup、incident、investigation、architecture map、PR review/merge、
   research、retro、项目 review、sync、verification、worktree 与决策辅助流程
 - `SessionStart` hook：只读注入 branch、recent commits、dirty tree、handoff、
