@@ -92,14 +92,18 @@ pathspec, `git reset --hard` cannot take one, and the hook is async, so for thos
 forms the file set is not knowable at hook time — `reverted_files` is `[]` and
 `repeat` is `null`, which is honest rather than a substituted guess.
 
-**Exclude `revert_scope:"probe"` from any rejection cluster.** The marker exists
-only once the hook change written 2026-09-28 is installed; on 2026-10-05 it was
-not, and no record carried it.
-It marks a mutation test — save diff, revert, run tests, `git apply` it back —
-which the global CLAUDE.md *requires*. Records without the marker: a revert command that also contains `git apply`, `git stash pop` or the
-label `MUTATION` is a probe regardless of what its `revert_scope` says. On
-2026-09-23 seven consecutive records were exactly that, two with `repeat:true`;
-across all 103 `paths`-scoped records, 3 of the 6 `repeat:true` are probes.
+**Exclude `revert_scope:"probe"` from any rejection cluster — and do not trust
+its absence.** The marker has been installed since 2026-10-10, yet 0 of the 115
+records written 2026-10-05 → 10-12 carried it. It marks a mutation test — the
+practice the global CLAUDE.md *requires* — but only recognised the round-trip
+(`git apply`/`git stash pop` after the revert) and the label `MUTATION`, and the
+dominant real shape has neither: `sed -i X` or `python3 - "$f" <<'EOF'`, then
+the tests, then `git checkout -- X`. The same-command-edit signal written
+2026-10-12 covers that shape (64 of the 115 by replay); until it is installed,
+treat any revert command that also edits the path it reverts as a probe,
+whatever `revert_scope` says. On 2026-09-23 seven consecutive records were
+probes, two with `repeat:true`; across all 103 `paths`-scoped records then, 3 of
+the 6 `repeat:true` were probes.
 
 **Discount a record whose only revert sits inside a heredoc body.** Agents write
 files through `python3 - <<'EOF'`, and prose about git inside the body used to

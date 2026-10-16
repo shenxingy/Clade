@@ -37,8 +37,12 @@ fi
 # from the terminator), and never a here-string `<<<`. Known limits, both failing
 # toward silence: only the first heredoc on a line is tracked, and a `<<word`
 # inside a quoted string swallows the rest of the command.
-rd_strip_heredocs() {
-  local line delim="" strip_tabs=false t tab=$'\t' q="[\"']?"
+#
+# _rd_heredoc_split <command> <commands|bodies> — one walk, two views: the
+# command with every body removed, or ONLY the bodies (terminators excluded).
+# rd_mutates_reverted_path reads the second: a probe's edit often lives there.
+_rd_heredoc_split() {
+  local line delim="" strip_tabs=false t tab=$'\t' q="[\"']?" want="$2"
   local re_heredoc="(^|[^<])<<(-?)[[:space:]]*${q}([A-Za-z_][A-Za-z0-9_]*)${q}"
   while IFS= read -r line || [[ -n "$line" ]]; do
     if [[ -n "$delim" ]]; then
@@ -46,10 +50,11 @@ rd_strip_heredocs() {
       if $strip_tabs; then
         while [[ "$t" == "$tab"* ]]; do t="${t#"$tab"}"; done
       fi
-      [[ "$t" == "$delim" ]] && delim=""
+      if [[ "$t" == "$delim" ]]; then delim=""; continue; fi
+      [[ "$want" == "bodies" ]] && printf '%s\n' "$line"
       continue
     fi
-    printf '%s\n' "$line"
+    [[ "$want" == "commands" ]] && printf '%s\n' "$line"
     if [[ "$line" =~ $re_heredoc ]]; then
       delim="${BASH_REMATCH[3]}"
       strip_tabs=false
@@ -57,6 +62,8 @@ rd_strip_heredocs() {
     fi
   done <<< "$1"
 }
+rd_strip_heredocs() { _rd_heredoc_split "$1" commands; }
+rd_heredoc_bodies() { _rd_heredoc_split "$1" bodies; }
 
 # Everything below reads COMMAND; only the persisted `prompt` keeps the raw text.
 COMMAND=$(rd_strip_heredocs "$RAW_COMMAND")
@@ -209,14 +216,16 @@ rd_revert_base() {
 # that project as "files behind this correction". The instrument the stack
 # mandates was feeding false evidence to the instrument that learns from it.
 #
-# Two signals, strongest first:
+# Three signals, strongest first:
 # - a `git apply` / `git stash pop|apply` in a segment AFTER the revert — the
 #   round-trip itself, independent of anything the agent chose to print;
+# - the same command EDITS a path it reverts (rd_mutates_reverted_path below) —
+#   `sed -i … file; <test>; git checkout -- file`, where the revert IS the
+#   restore step. Wired at the call site, because it needs the pathspec;
 # - the uppercase word MUTATION anywhere in the command — the label agents print
-#   for the probe. Weaker (it is a convention, not a mechanism) but it is the only
-#   signal for `sed -i … file; <test>; git checkout -- file`, where the revert IS
-#   the restore step. Case-sensitive on purpose: `git checkout --
-#   orchestrator/task_factory/mutation_scan.py` is a real revert of a real file.
+#   for the probe. Weakest (a convention, not a mechanism). Case-sensitive on
+#   purpose: `git checkout -- orchestrator/task_factory/mutation_scan.py` is a
+#   real revert of a real file.
 rd_is_probe() {
   local cmd="$1" seg after=false
   local re_label='(^|[^A-Za-z0-9_])MUTATION([^A-Za-z0-9_]|$)'
@@ -229,6 +238,61 @@ rd_is_probe() {
     fi
     [[ "$seg" =~ $re_restore ]] && return 0
   done < <(rd_segments "$cmd")
+  return 1
+}
+
+# rd_mutates_reverted_path <command> <raw_command> <pathspec_lines> — true when
+# the same command also EDITS a path it reverts, so the change being "reverted"
+# never existed outside this one command and nobody can have rejected it.
+#
+# Measured on the author's machine, 2026-10-05 15:00Z → 2026-10-12: 115
+# implicit-revert records, every one `revert_scope:"paths"`, not one marked
+# `probe` — the hook carrying rd_is_probe had been installed since 2026-10-10
+# 01:12Z, and 55 of the 115 came after that. Replayed through this hook on
+# 2026-10-16 (a Python mirror written 2026-10-12 had predicted the same count),
+# 62 edit and revert the same file in one command — `sed -i` or `python3 -
+# "$f" <<'EOF'` → test → `git checkout -- "$f"`, or a chain that restores f and
+# applies the next mutation — and the older signals catch 2 more: 64 of 115
+# (56%) become `probe`, 50 stay `paths`, and one, a `git checkout` that only
+# ever ran inside a python heredoc body, now writes no record at all. Without it the
+# probe the global CLAUDE.md requires was the bulk of Lane C's "rejection"
+# evidence. NOT handled here, so still recorded as `paths`: 22 that restore a
+# file edited in an EARLIER tool call before re-running the tests, and 5 bare
+# `git restore --staged`, which change no file at all.
+#
+# An edit is an in-place `sed`/`perl`/`ruby -i`, a `python3 -c`, or a heredoc fed
+# to an interpreter (`python3 - <<'EOF'`, node/ruby/perl likewise) whose opener
+# line or BODY names the file. A body only counts behind an interpreter: `cat > notes.md
+# <<EOF` that merely mentions the file is prose, not an edit. A `$VAR` pathspec
+# matches `$VAR`/`${VAR}` in an editing segment; heredoc bodies are not searched
+# for variables, because a python body names the path literally. Every miss
+# fails toward the old behaviour (a `paths` record), never toward a lost one.
+rd_mutates_reverted_path() {
+  local cmd="$1" raw="$2" specs="$3" p var base seg bodies
+  local re_var='^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$'
+  # The interpreter opener is itself an editing segment: the dominant real shape
+  # passes the file as an argument, `python3 - "$f" <<'EOF'` (sys.argv[1]).
+  local re_interp='(^|[[:space:](])(python3?|node|ruby|perl)[[:space:]]+-([[:space:]].*)?<<'
+  local re_edit='(^|[[:space:](])((sed|perl|ruby)[[:space:]](.*[[:space:]])?(-[A-Za-z]*i|--in-place)|python3?[[:space:]]+-c([[:space:]]|$)|(python3?|node|ruby|perl)[[:space:]]+-([[:space:]].*)?<<)'
+  [[ -n "$specs" ]] || return 1
+  bodies=""
+  [[ "$cmd" =~ $re_interp ]] && bodies=$(rd_heredoc_bodies "$raw")
+  while IFS= read -r p; do
+    p="$(rd_unquote "$p")"; p="${p%/}"
+    var=""; base=""
+    if [[ "$p" =~ $re_var ]]; then var="${BASH_REMATCH[1]}"; else base="${p##*/}"; fi
+    [[ -n "$var" || ( -n "$base" && "$base" != "." && "$base" != ".." ) ]] || continue
+    while IFS= read -r seg; do
+      rd_is_revert_segment "$seg" && continue
+      [[ "$seg" =~ $re_edit ]] || continue
+      if [[ -n "$var" ]]; then
+        [[ "$seg" == *"\$$var"* || "$seg" == *"\${$var}"* ]] && return 0
+      else
+        [[ "$seg" == *"$base"* ]] && return 0
+      fi
+    done < <(rd_segments "$cmd")
+    [[ -n "$base" && -n "$bodies" && "$bodies" == *"$base"* ]] && return 0
+  done <<< "$specs"
   return 1
 }
 
@@ -366,7 +430,7 @@ fi
 # revert vanish without a trace — but it carries no evidence: no reverted_files,
 # no session_files (correction-detector.sh surfaces both as "files behind this
 # correction"), and repeat stays null. revert_paths keeps the raw pathspec.
-if rd_is_probe "$COMMAND"; then
+if rd_is_probe "$COMMAND" || rd_mutates_reverted_path "$COMMAND" "$RAW_COMMAND" "$_paths"; then
   REVERT_SCOPE="probe"
   _session_files=""
 fi

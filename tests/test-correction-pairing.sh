@@ -386,10 +386,13 @@ revert_in 'git stash && git checkout -- src/app.py && make test; git stash pop' 
 assert_contains "$(tail -n 1 "$HISTORY")" '"revert_scope":"probe"' "revert then git stash pop is a probe"
 
 # The sed-then-restore shape has no restore step after the revert — the revert
-# IS the restore — so only the printed label identifies it.
+# IS the restore. The label identifies it; so, since §3h, does the edit itself.
 revert_in 'echo "=== MUTATION A ==="; sed -i s/x/y/ src/app.py && npm test; git checkout -- src/app.py' "$SID" \
   | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
 assert_contains "$(tail -n 1 "$HISTORY")" '"revert_scope":"probe"' "a MUTATION-labelled command is a probe"
+revert_in 'echo "=== MUTATION A ==="; git checkout -- src/app.py' "$SID" \
+  | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
+assert_contains "$(tail -n 1 "$HISTORY")" '"revert_scope":"probe"' "the MUTATION label alone still marks a probe"
 
 # Controls. A restore BEFORE the revert is not a round-trip, and a lowercase
 # `mutation` in a real filename is not the label.
@@ -482,6 +485,65 @@ git checkout -- src/app.py" "$SID" | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HO
 assert_eq "$(hist_lines)" "$((_before + 1))" "<<- ends at a tab-indented terminator"
 assert_not_contains "$(jq -c '.revert_paths' <<< "$(tail -n 1 "$HISTORY")")" "inside/body.py" \
   "<<- body text is not read as a pathspec"
+
+# ─── 3h. a revert of a file the same command edits is a probe ───────
+# Field data 2026-10-05 → 10-12: 115 implicit-revert records, 0 marked probe,
+# 64 of them edit-then-revert (or revert-then-edit) one file in one command with
+# no label and no `git apply` — the dominant shape is `python3 - "$f" <<'EOF'`.
+section "revert-detector — an edit and a revert of the same file in one command"
+
+revert_in 'sed -i s/x/y/ src/app.py && npm test; git checkout -- src/app.py' "$SID" \
+  | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
+LAST=$(tail -n 1 "$HISTORY")
+assert_contains "$LAST" '"revert_scope":"probe"' "sed -i then revert of the same file is a probe"
+assert_contains "$LAST" '"reverted_files":[]' "edit probe: no file is claimed as rejected"
+
+revert_in 'F=src/app.py; sed -E -i "s/x/y/" "$F"; npm test; git checkout -- "$F"' "$SID" \
+  | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
+assert_contains "$(tail -n 1 "$HISTORY")" '"revert_scope":"probe"' "a \$VAR pathspec matches the edit of \$VAR"
+
+revert_in "f=src/app.py
+python3 - \"\$f\" <<'EOF'
+import sys
+p = sys.argv[1]
+open(p, 'a').write('#')
+EOF
+npm test
+git checkout -- \$f" "$SID" | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
+assert_contains "$(tail -n 1 "$HISTORY")" '"revert_scope":"probe"' "python3 - \"\$f\" <<EOF is an edit of \$f"
+
+revert_in "git checkout -- src/app.py && python3 - <<'EOF'
+p = 'src/app.py'
+open(p, 'a').write('#')
+EOF
+npm test" "$SID" | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
+assert_contains "$(tail -n 1 "$HISTORY")" '"revert_scope":"probe"' "restore then re-mutate via an interpreter body is a probe"
+
+# Controls: an edit of ANOTHER file, a read-only sed, and a non-interpreter
+# heredoc that merely names the file are not edits of what was reverted.
+revert_in 'sed -i s/x/y/ src/other.py; git checkout -- src/app.py' "$SID" \
+  | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
+LAST=$(tail -n 1 "$HISTORY")
+assert_contains "$LAST" '"revert_scope":"paths"' "an edit of a different file is not a probe"
+assert_contains "$(jq -c '.reverted_files' <<< "$LAST")" "src/app.py" "an edit of a different file: evidence kept"
+revert_in 'sed -n 1,5p src/app.py; git checkout -- src/app.py' "$SID" \
+  | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
+assert_contains "$(tail -n 1 "$HISTORY")" '"revert_scope":"paths"' "a read-only sed is not an edit"
+revert_in "cat > notes.md <<EOF
+see src/app.py
+EOF
+git checkout -- src/app.py" "$SID" | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
+assert_contains "$(tail -n 1 "$HISTORY")" '"revert_scope":"paths"' "a cat heredoc naming the file is prose, not an edit"
+revert_in "python3 - <<'EOF'
+print('unrelated')
+EOF
+git checkout -- src/app.py" "$SID" | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
+assert_contains "$(tail -n 1 "$HISTORY")" '"revert_scope":"paths"' "an interpreter body that never names the file is not an edit of it"
+# The revert segment names the file by definition, so it must never be read as
+# the edit: a comment about an EARLIER `sed -i` is a real revert of that edit.
+revert_in 'git checkout -- src/app.py  # undo the earlier sed -i experiment' "$SID" \
+  | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
+assert_contains "$(tail -n 1 "$HISTORY")" '"revert_scope":"paths"' "the revert segment itself is never read as the edit"
 
 # ─── 4. explicit correction surfaces the concrete pair (gate: open) ──
 section "correction-detector — concrete signal on explicit correction"
