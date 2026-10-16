@@ -123,8 +123,13 @@ and confirm the older half against the actual diff before calling it evidence.
 A cluster that keeps recurring despite an existing rule means the rule is the
 wrong instrument. Escalate it to something structural — a hook, a CI gate, a
 test — rather than rewording the prose. The `/generate-hook` skill exists for
-exactly that conversion, and `configs/hooks/lib/rule-effectiveness.sh` already
-tracks which rules keep getting missed.
+exactly that conversion. `configs/hooks/lib/rule-effectiveness.sh` was meant to
+track which rules keep getting missed, but it cannot fire: a miss needs a
+`rules.md` rule whose domain equals the correction's, and the two vocabularies
+are disjoint (13 fixed technical domains vs 224 free-form ones across 681 rules
+in 58 `rules.md` files, 0 shared — measured 2026-10-12). On the author's machine
+`rule-effectiveness.json` has been `{}` since 2026-04-15. Until that is fixed,
+find recurrence by clustering `history.jsonl` yourself, as above.
 
 ### 1. Sweep broadly — probes, not topics
 

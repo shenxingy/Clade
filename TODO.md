@@ -1410,6 +1410,13 @@ that was built has been run.
   cases plus `tests/test-rule-injector.sh` to the native mechanism (and
   `check-ci-checklist.py` with them). Not built: it removes a wired hook and a CI
   suite, and nothing could be run.
+  **Strengthened 2026-10-12:** a later Claude Code release "Fixed path-scoped
+  rules and nested CLAUDE.md files not loading when Claude views a file with a
+  single-file cat, head, tail, sed -n or grep command in the Bash tool"
+  (changelog, 2.1.29x). The native loader now also fires on Bash reads, which
+  the hook (PostToolUse Edit|Write) never saw, so the native mechanism's reach
+  is a strict superset except for the slash-less basename case. Lands with the
+  CLI upgrade below.
 - [ ] 🟡 **`/equip` scans each skill alone; ColluSkill splits a payload across
   skills.** arXiv:2608.09732 (August 2026) reports 96.0% attack success against
   six per-skill scanners. Sub-payloads sit in separately packaged skills joined
@@ -1447,6 +1454,15 @@ that was built has been run.
   `secret-scanner.sh`) in `templates/settings.json` and `settings-hooks.json`,
   and pin the behavior in `tests/test-hooks.sh`. Verify unknown-field tolerance
   on the older CLI first (host may lag the field).
+  **Extended 2026-10-12:** the host is still 2.1.283 (`~/.local/share/claude/
+  versions/`), now 13 releases behind 2.1.296 (2026-10-09). Two later fixes
+  touch this stack directly: a skill's `allowed-tools` and `effort` were
+  dropped "when the Skill tool finished before the response stream ended,
+  which denied the skill's Bash commands in `-p` runs" — the cron radar runs
+  `-p`; and `prompt`/`agent` hooks "written as instructions (such as 'Block
+  commands that...') allowing what they should block" (2.1.294). Ours are
+  phrased as conditions (`stop-completeness-check` judges MET / NOT MET), so
+  that one is `have it`; re-read both prompt hooks after the upgrade anyway.
 
 ## 2026-09-23 artifact standard follow-ups (PR feat/artifact-skill)
 
@@ -1545,3 +1561,45 @@ Queued below: what was not built and why.
   `logs/loop/` evidence without breaking the chain verification somewhere a
   worker cannot touch?
 
+## 2026-10-12 radar sweep follow-ups
+
+Digest: `~/.claude/research/radar-2026-10-12.md`. Weekly cron run; `bash`,
+`git` and file writes outside `$HOME`/repo were gated, `python3 -c` and `jq`
+ran. The 2026-10-05 🔴 ("radar's fixes never land") is CLOSED: the reflog shows
+the backlog committed and rebased onto `origin/main` on 2026-10-10. Built this
+run without being able to run it: the same-command-edit probe signal, verified
+and landed 2026-10-16 in #124 (item under 2026-10-05 above). This run's
+uncommitted edits sat in the checkout of an unrelated branch for four days. Queued here:
+
+- [ ] 🟠 **`rule-effectiveness.sh` cannot fire — the domain vocabularies are
+  disjoint.** `correction-detector.sh:304-320` records a miss only for a
+  `rules.md` rule whose domain EQUALS the correction's `$DOMAIN`. `$DOMAIN`
+  comes from `domain-detect.sh`'s 13 fixed values (frontend, backend, ml, cli,
+  …, unknown); rules are written with free-form topical domains. Measured
+  2026-10-12 on the author's machine: 681 rules across 58 `rules.md` files, 224
+  distinct domains, 0 in common. `~/.claude/corrections/rule-effectiveness.json`
+  is `{}`, mtime 2026-04-15. The hit side has the mirror-image defect:
+  `session-scorecard.sh:118-126` records a HIT for every rule whose domain had
+  no correction this session — with disjoint vocabularies, every rule, every
+  run, so were it running, every rule would read as effective. It runs only
+  from `/sync`; `scorecards.jsonl` was last written 2026-03-19. `/audit` (prompt.md:34,
+  65, 69), `/generate-hook` (prompt.md:16) and `/radar` all read that file as
+  evidence of which rules keep failing — they have been reading an empty
+  instrument. Not built because the match criterion is a design choice: (a)
+  word-overlap above a threshold with the domain gate dropped, (b) stamp each
+  rule with the detector's domain when it is written, or (c) match on
+  root-cause (`premature-action`, `inaccurate-self-reporting` …), the one
+  vocabulary both sides already share. Whichever is chosen, its first test is a
+  mutation: with the gate as it is today, the test must be red.
+- [ ] 🟡 **Promoted rules have no half-life.** 93 `[auto-promoted …]` lines in
+  the global `~/.claude/CLAUDE.md` (462 lines). `/audit` retires a promoted rule
+  only when a hook takes it over; `auto-audit.sh` archives `rules.md` lines
+  after 60 days but never touches a promoted one. Osmani, "Audit your Agent
+  files" (2026-08-27): "Your coding agent's configuration has a half-life";
+  Anthropic removed "more than 80% of [the Claude 5] system prompt with no
+  measurable loss"; his ablation is to rerun a task with the local layer
+  removed. DBNT (pypi `dbnt`) decays rule confidence with a 90-day half-life
+  unless revalidated. Shape still open (it needs a cheap, re-runnable ablation
+  harness), so this is a BRAINSTORM-grade item. Note the counter-evidence
+  Clade already cites: arXiv:2605.10039 found no detectable effect from file
+  size or position.
