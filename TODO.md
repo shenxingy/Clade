@@ -1359,14 +1359,41 @@ that was built has been run.
   `bash tests/test-correction-pairing.sh` (§3g is new), then replace
   `COMMAND=$(rd_strip_heredocs "$RAW_COMMAND")` with `COMMAND="$RAW_COMMAND"`
   and confirm §3g's first, third and last assertions go red.
-- [ ] 🟠 **A mutation probe with no label and no `git apply` is still a
-  rejection.** 2026-09-28 23:50Z (dictation): `sed -i … X; pytest …; git
-  checkout -- X`. The revert IS the restore, so the 09-28 `rd_is_probe` sees
-  it only if the agent printed `MUTATION`, and this one did not. A mechanism
-  signal exists: a path the same command wrote earlier (`sed -i <path>`, a
-  `> <path>` redirect) and then reverts is the agent undoing its own edit.
-  Not built: parsing `sed -i` targets in bash 3.2 needs its own test table,
-  and stacking a third unrun change on this hook is the wrong order.
+- [x] 🔴 **Land the same-command-edit probe signal (built 2026-10-12 by the
+  radar cron, UNRUN — bash and git were gated).** — DONE 2026-10-16 on branch
+  `fix/revert-probe-same-command-edit`. `bash -n` clean;
+  `test-correction-pairing.sh` 119/119 (one control added: a comment naming
+  `sed -i` inside the revert segment is not the edit — without it, deleting
+  the revert-segment skip in `rd_mutates_reverted_path` stayed green). Six
+  mutations each turned the suite red: the call site (5 assertions), the label
+  (1), the heredoc strip (3), the heredoc bodies (1), the `git apply` restore
+  (5), the revert-segment skip (1). The bash replay of the same 115 records
+  gives 64 `probe` / 50 `paths` / 1 no record, matching the Python mirror.
+  Was: a mutation probe with no
+  label and no `git apply` is still a rejection. Measured 2026-10-05 15:00Z →
+  10-12: 115 implicit-revert records, all `paths`, 0 `probe`, although the
+  hook carrying `rd_is_probe` was installed 2026-10-10 01:12Z (55 records came
+  after). Built: `rd_mutates_reverted_path` in `configs/hooks/revert-detector.sh`
+  (in-place `sed`/`perl`/`ruby -i`, `python3 -c`, or an interpreter heredoc
+  whose opener or body names the reverted path; `$VAR` pathspecs match
+  `$VAR`/`${VAR}`), `_rd_heredoc_split` shared by `rd_strip_heredocs` and the
+  new `rd_heredoc_bodies`, and `tests/test-correction-pairing.sh` §3h (8
+  assertions, 4 controls) plus a label-only case in §3e — the old label
+  fixture also edits its file, so without it deleting the label signal stays
+  green. A Python mirror of the rule marks 64 of the 115 (56%) and passes every
+  fixture. Verify, in order: `bash -n configs/hooks/revert-detector.sh`;
+  `bash tests/test-correction-pairing.sh` (§3g must stay green — the heredoc
+  walk was refactored); delete `|| rd_mutates_reverted_path "$COMMAND"
+  "$RAW_COMMAND" "$_paths"` from the call site and confirm §3h's first four
+  assertions go red; restore; `./install.sh`. Land it on its own branch — the
+  checkout was on `fix/warm-pace` when the edit was made.
+- [ ] 🟡 **The 51 revert records the edit signal does not cover.** 22 restore a
+  file edited in an EARLIER tool call, then re-run the tests (a probe split
+  across calls — needs the shadow's write time vs the last user turn, not the
+  command text); 14 bare "restore and confirm clean" commands; 5 `git restore
+  --staged` without `--worktree`/`-W`, which change no file and should not
+  match `REVERT_PATTERNS` at all (small: exclude in `rd_is_revert_segment` and
+  the top-level match, with a test).
 - [ ] 🟠 **Retire `rule-injector.sh` or stop it duplicating Claude Code.**
   Claude Code loads `~/.claude/rules/*.md` and `.claude/rules/*.md` natively,
   and a `paths:` rule loads when Read/Write/Edit touches a matching file
