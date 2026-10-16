@@ -170,6 +170,9 @@ def test_usage_segment_styles() -> None:
     assert kimi_usage.usage_segment(rows, "minimal", "circles", NOW, color=False) == (
         f"{delta} (15d) · 5h 40%"
     )
+    assert kimi_usage.usage_segment(rows, "number", "circles", NOW, color=False) == (
+        f"{delta} (15d) · 5h 40% (3h)"
+    )
     assert kimi_usage.usage_segment(rows, "off", "circles", NOW, color=False) == ""
     assert kimi_usage.usage_segment([], "icon", "circles", NOW, color=False) == ""
 
@@ -179,6 +182,7 @@ def test_usage_segment_marks_a_rolled_over_window_as_stale() -> None:
         _quota(monthTotal={"usedRatio": 0.3, "resetAt": _iso(NOW - 60)}), now=NOW - 3600
     )
     assert kimi_usage.usage_segment(rows, "icon", "circles", NOW, color=False) == "● (?)"
+    assert kimi_usage.usage_segment(rows, "number", "circles", NOW, color=False) == "(?)"
 
 
 def test_symbol_thresholds_and_theme_fallback() -> None:
@@ -190,7 +194,7 @@ def test_symbol_thresholds_and_theme_fallback() -> None:
     assert kimi_usage._signed(-7.6) == "-8%"
 
 
-def test_a_blowout_projection_loses_the_top_badge_and_turns_red() -> None:
+def test_a_blowout_projection_loses_the_top_badge_and_turns_peach() -> None:
     """A positive delta alone never earns the badge — the projection decides.
 
     The +5 that used to earn it means a different overshoot at every point in
@@ -207,8 +211,8 @@ def test_a_blowout_projection_loses_the_top_badge_and_turns_red() -> None:
     assert kimi_usage._symbol(0.0, "circles", 300.0) == "●"
     assert kimi_usage._symbol(-20.0, "circles", 300.0) == "○"
     # The colour follows the same predicate, so the two cannot disagree.
-    assert kimi_usage._pace_color(203.8, 10.8) == "\033[38;2;185;28;28m"
-    assert kimi_usage._pace_color(120.0, 12.5) == "\033[38;2;85;160;85m"
+    assert kimi_usage._pace_color(203.8, 10.8) == "\033[38;2;210;160;135m"
+    assert kimi_usage._pace_color(120.0, 12.5) == "\033[38;2;212;180;119m"
 
 
 def test_month_window_blowout_renders_end_to_end() -> None:
@@ -228,7 +232,12 @@ def test_month_window_blowout_renders_end_to_end() -> None:
     assert month["window"] == "month" and month["period_s"] == 30 * 86400
     assert month["elapsed_percent"] == 9.9
     assert month["pace_delta"] == 10.8 and month["projected_percent"] == 203.8
-    assert kimi_usage.usage_segment(rows, "icon", "circles", now, color=False) == "○ +11% (27d)"
+    assert kimi_usage.usage_segment(rows, "icon", "circles", now) == (
+        "○ \033[38;2;210;160;135m+11%\033[0m (27d)"
+    )
+    assert kimi_usage.usage_segment(rows, "number", "circles", now) == (
+        "\033[38;2;210;160;135m+11%\033[0m (27d)"
+    )
 
 
 def test_format_rows_reads_like_the_usage_panel_plus_pace() -> None:
@@ -404,7 +413,8 @@ def test_launcher_hands_off_to_the_helper_and_stays_silent_without_it(tmp_path: 
     import time
 
     env = dict(os.environ, KIMI_CODE_HOME=str(tmp_path), CLADE_KIMI_USAGE_HELPER=str(SCRIPT))
-    (tmp_path / kimi_usage.STYLE_NAME).write_text("icon\n", encoding="utf-8")
+    (tmp_path / kimi_usage.STYLE_NAME).write_text("number\n", encoding="utf-8")
+    (tmp_path / kimi_usage.THEME_NAME).write_text("dragon\n", encoding="utf-8")
     kimi_usage.write_cache(
         {"fetched_at": NOW, "source": "test", "rows": _rows_ahead(), "seen": {"s1": 10}}, tmp_path
     )
@@ -414,7 +424,7 @@ def test_launcher_hands_off_to_the_helper_and_stays_silent_without_it(tmp_path: 
 
     rows = kimi_usage.normalize(
         _quota(
-            limit5h={"usedRatio": 0.4, "resetAt": _iso(_time.time() + 3 * 3600)},
+            limit5h={"usedRatio": 0.9, "resetAt": _iso(_time.time() + 3 * 3600)},
             monthTotal={"usedRatio": 0.6, "resetAt": _iso(_time.time() + 15 * 86400)},
         )
     )
@@ -424,7 +434,10 @@ def test_launcher_hands_off_to_the_helper_and_stays_silent_without_it(tmp_path: 
     )
     assert result.returncode == 0
     assert result.stdout.count("\n") == 1
-    assert "proj git:(main)" in _plain(result.stdout) and "5h 40%" in _plain(result.stdout)
+    assert "proj git:(main)" in _plain(result.stdout) and "5h 90%" in _plain(result.stdout)
+    assert _plain(result.stdout).startswith("proj git:(main)  +")
+    assert "\033[38;2;212;180;119m" in result.stdout
+    assert "\033[38;2;210;160;135m5h 90%" in result.stdout
 
     # An idle Kimi session re-runs the command every second with the same
     # snapshot: the launcher must replay its memo without starting Python.
@@ -719,4 +732,6 @@ def test_main_reports_usage_errors_on_stderr_with_exit_2(tmp_path: Path, capsys:
     monkeypatch.setenv("KIMI_CODE_HOME", str(tmp_path))
     assert kimi_usage.main(["style", "icon"]) == 0
     assert (tmp_path / kimi_usage.STYLE_NAME).read_text(encoding="utf-8") == "icon\n"
+    assert kimi_usage.main(["style", "number"]) == 0
+    assert (tmp_path / kimi_usage.STYLE_NAME).read_text(encoding="utf-8") == "number\n"
     assert kimi_usage.main(["setup", "sideways"]) == 2

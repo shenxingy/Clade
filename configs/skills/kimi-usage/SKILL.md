@@ -2,7 +2,7 @@
 name: kimi-usage
 description: Show Kimi Code plan-quota usage and pace (5h / weekly / monthly windows), or wire the Kimi footer to Clade's quota pace indicator
 when_to_use: "Kimi usage, Kimi quota, Kimi Code limits, 5h limit, monthly limit, Kimi rate limit, Kimi pace, configure Kimi status line, Kimi footer"
-argument-hint: '[setup [off]|style [minimal|icon|detail|off]|theme [name]|--json]'
+argument-hint: '[setup [off]|style [minimal|icon|number|detail|off]|theme [name]|--json]'
 user_invocable: true
 ---
 
@@ -21,6 +21,7 @@ same indicator the Claude Code status line and `/codex-usage` show.
 /kimi-usage setup
 /kimi-usage setup off
 /kimi-usage style icon
+/kimi-usage style number
 /kimi-usage theme
 /kimi-usage theme dragon
 /kimi-usage --json
@@ -31,3 +32,8 @@ The helper talks to Kimi Code's own local server (`kimi web`, the documented
 `~/.kimi-code/server.token`. It reuses a running instance and otherwise starts
 one for the call and shuts it down. It never reads or refreshes the OAuth
 credential in `~/.kimi-code/credentials/`.
+
+Status line styles are `minimal` (pace plus 5-hour percentage), `icon` (the
+default themed pace symbol plus pace), `number` (pace without the symbol),
+`detail` (the long-window label plus symbol), and `off`. The `number` style
+keeps the numeric pace and the 5-hour reset timer while removing the emoji.

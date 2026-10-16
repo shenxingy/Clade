@@ -24,8 +24,8 @@ assert SPEC and SPEC.loader
 watch = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(watch)
 
-RED = "\033[38;2;185;28;28m"
-GREEN = "\033[38;2;85;160;85m"
+PEACH = "\033[38;2;210;160;135m"
+HONEY = "\033[38;2;212;180;119m"
 
 
 @pytest.fixture()
@@ -68,20 +68,20 @@ def test_symbol_covers_both_sides_of_the_scale(circles) -> None:
     assert watch._symbol(6, 110.0) == "◉"
 
 
-def test_a_blowout_projection_loses_the_top_badge_and_turns_red(circles) -> None:
+def test_a_blowout_projection_loses_the_top_badge_and_turns_peach(circles) -> None:
     """Ahead of target is the top grade only while the projection stays sane."""
     # Full use of the window, landing just past target: still the top badge.
     assert watch._symbol(10.9, 106.6) == "◉"
-    assert watch._color(106.6, 10.9) == GREEN
+    assert watch._color(106.6, 10.9) == HONEY
     # Same "ahead", but the quota empties with a fifth of the window to run.
     assert watch._symbol(10.9, 125.1) == "○"
-    assert watch._color(125.1, 10.9) == RED
+    assert watch._color(125.1, 10.9) == PEACH
     assert watch._symbol(19.1, 262.0) == "○"
-    assert watch._color(262.0, 19.1) == RED
+    assert watch._color(262.0, 19.1) == PEACH
     # Being behind, or on track, is untouched by the guard.
     assert watch._symbol(0.0, 300.0) == "●"
     assert watch._symbol(-20.0, 300.0) == "○"
-    assert watch._color(0.0, -20.0) != RED
+    assert watch._color(0.0, -20.0) == HONEY
 
 
 # ─── End to end, through the real statusline input ───
@@ -103,13 +103,13 @@ def test_a_week_used_well_keeps_the_top_badge(circles, monkeypatch, capsys) -> N
     """100% used with 10.4h left is near-perfect utilisation, not a failure."""
     out = _render(monkeypatch, capsys, 100.0, 10.4)
     assert out.startswith("◉ ") and "+11%" in out and "(10h)" in out
-    assert GREEN in out and RED not in out
+    assert HONEY in out and PEACH not in out
 
 
 def test_burning_the_week_down_early_reports_the_failure(circles, monkeypatch, capsys) -> None:
     """30% used with 6.2 days left projects 262% — dry by Wednesday."""
     out = _render(monkeypatch, capsys, 30.0, 6.2 * 24)
-    assert out.startswith("○ ") and RED in out and GREEN not in out
+    assert out.startswith("○ ") and PEACH in out and HONEY not in out
 
 
 def test_off_mode_prints_nothing(circles, monkeypatch, capsys) -> None:
