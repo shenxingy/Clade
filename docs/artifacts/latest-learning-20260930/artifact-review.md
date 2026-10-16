@@ -21,7 +21,7 @@ Initial status before drafting: UNVERIFIED; render and fresh-reader evidence wer
 
 ## Rendered evidence
 
-Evidence directory: `/home/alexshen/.clade/research-learning-20260930/latest/`.
+Evidence directory: `~/.clade/research-learning-20260930/latest/`.
 The committed `render-summary.json` ties computed paint, errors and resource settings to the exact page hash. Full text captures remain in that directory's `render.json`.
 
 - Light and dark × 1280×900 and 390×844: `{theme}-{width}-first.png`, `-full.png`, `-table.png`, `-sources.png`, `-zoom200.png`, `-zoom200-first.png`; mobile also `-table-right.png`.
