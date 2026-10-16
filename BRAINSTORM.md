@@ -12,6 +12,102 @@ Past resolved/deferred items live in [`docs/archive/BRAINSTORM-resolved.md`](doc
 
 ---
 
+## [Research] 2026-09-30 — Broader current learning across AI and engineering
+
+Expanded beyond individual authors to 24 selected topics from model vendors,
+research teams, Chrome, GitHub, Rust, PostgreSQL, Node, Hugging Face, NVIDIA and
+Cloudflare. [Chinese reading guide](docs/artifacts/latest-learning-20260930/index.html)
+and [source evidence](docs/artifacts/latest-learning-20260930/evidence.json) preserve
+article/version dates, release status, reading depth and limitations. Main window:
+September 15–30, with explicit older-paper and undated-document exceptions.
+
+New reusable lessons: measure all-runs success separately from mean and any-run
+success; validate claim-to-source attribution; check model migration contracts;
+separate event receipt, execution and completion; compare performance under the
+same hardware/input/timing conditions; retain diagnostic context with failures.
+Kumo-Tabular and the September 30 TTS leaderboard extend the reading beyond coding
+agents. Model/product performance remains unmeasured; no policy change follows.
+
+Local evidence: Chrome 154.0.8037.92 passed 8/8 assertions for connection allowlist
+fetch/redirect behavior and iframe sizing/child consent. [Reproducer](docs/artifacts/latest-learning-20260930/browser_probe.py)
+and [result](docs/artifacts/latest-learning-20260930/browser-result.json) are bounded
+to loopback HTTP and one browser build, not a security audit. The consistency
+comparison is a synthetic worked example, with zero model trials.
+
+The selected batch is closed, not an exhaustive survey or a demonstrated absence
+of new knowledge. Remaining validation needs actual workloads, model calls or
+product accounts. Candidate next experiments: fixed-task repeated trials,
+claim-source checking with mixed evidence, and target-browser/event-replay tests
+when relevant. These remain inbox proposals; no TODO entries were added.
+
+## [Research] 2026-09-30 — Recent lessons for the terminal agent workflow
+
+**Recommendation:** first design a task-stratified comparison of lead-only execution
+and Clade's existing bounded delegation. New research supports testing where each
+harness component helps; it does not establish gains for Clade. Full Chinese
+reading guide: [learning radar](docs/artifacts/learning-radar-20260930/index.html).
+
+**Learning follow-up, Sep 30:** [Deep reading and a concrete comparison protocol](docs/artifacts/learning-radar-20260930/nanoharness.html)
+are complete. The paper's specialized roles and binary-reconstruction setting are
+narrower than generic multi-agent coding; ProgramBench's fully-resolved metric
+must not be conflated with partial test scores. No author implementation was
+confirmed; a same-named repository has different attribution. These findings do
+not justify changing production defaults.
+
+Local verifier calibration is now reproducible with
+`python3 docs/artifacts/learning-radar-20260930/preflight.py --output /tmp/clade-nanoharness-preflight`.
+At fixed test versions, restoring the old implementation produces exactly three
+expected failures for corrupt correction stats (43/46 pass) and one for prompt
+noise filtering (137/138 pass); fixed implementations pass 46/46 and 138/138.
+[Evidence](docs/artifacts/learning-radar-20260930/preflight-result.json) records
+SHAs, failure names, exit codes and log hashes. This calibrates two local-fix
+verifiers, not model performance: agent A/B trials remain zero.
+
+### Tools and approaches surveyed
+
+| Source / date | New evidence | What to borrow / limitation |
+|---|---|---|
+| [NanoHarness](https://arxiv.org/html/2609.32459v1), Sep 26 | Component ablations on ProgramBench distinguish task-specific delegation from generic subagents and compression. | Compare components under fixed tasks/models. Results concern the paper's models and benchmark, not Clade. |
+| [Harness Tokenomics v2](https://arxiv.org/html/2609.28919v2), Sep 26; first submitted Sep 24 | Routing considers cache ownership and the cost of rebuilding context. | Attribute cache costs to session/subagent boundaries; published savings rely on emulation and dated vendor prices. |
+| [Jev in LangSmith](https://www.langchain.com/blog/jev-is-now-available-in-langsmith-evals), Sep 21, and [LangGraph examples](https://www.langchain.com/blog/building-prod-with-jev-and-langgraph), Sep 25 | Typed judgments and probabilities can feed explicit code-controlled workflows. | Evaluate narrow classification offline with an uncertain/review outcome; do not infer suitability for auto-approval from vendor examples. |
+| [Arize AX September update](https://arize.com/blog/new-in-arize-ax-september-2026-updates/), covering Aug 6–Sep 18 | Whole sessions can be annotated, queued and evaluated. | Review correction-to-delivery outcomes as one unit. Exact publication day is unspecified; product not trialed. |
+
+Reading: source observations are verified against primary pages on Sep 30;
+recommendations are inferences, and all Clade performance effects are unmeasured.
+Articles/papers were readable without payment. Implementation licenses, API prices
+and procurement/data terms were not audited; no adoption or purchase is proposed.
+
+### Gaps vs current VISION
+
+- VISION prioritizes verified delivery and no false approval. Measure completion
+  and verification failures as well as speed/cost when comparing delegation.
+- Basic cost and correction instrumentation already exists. `agent_output.py`
+  parses cache fields; `routing_break_even.py` uses upstream cost in observational
+  aggregates, explicitly without a matched counterfactual. These live in the
+  dormant orchestrator (`docs/layers.json`), so the useful question is how to
+  connect cache rebuild/switch boundaries to the load-bearing terminal path.
+- `session-scorecard.sh` and `loop_verify.sh` already track correction/revert and
+  repair outcomes. The Arize lesson is a whole-session review workflow, not a
+  claim that Clade lacks telemetry.
+- Anthropic's long-running harness search still led to the March article. This
+  scan did not establish a September update; it is not counted as new evidence.
+
+### Recommended additions to TODO.md — proposals only
+
+- [ ] First: write a reproducible terminal delegation comparison, stratified by
+  discovery, local fixes and longer implementation, with fixed model/budget,
+  independent verifiers, repeated trials and per-task failure/cost evidence.
+- [ ] Next: audit cache reads/creation and model-switch boundaries in actual
+  terminal sessions before changing routing policy.
+- [ ] Later: calibrate narrow typed judgments on held-out correction examples;
+  assess a session review object that reuses existing scorecard evidence.
+
+No TODO entries, runtime settings or dependencies were changed. No paid inference
+experiment was run. Search scope: five queries, then primary-source reads;
+focused recent scan, not an exhaustive ecosystem survey.
+
+---
+
 ## 2026-08-07 — Verification is applied to code and not to outbound artifacts
 
 Clade ships 84 business skills (blog 30, seo 25, ads 23, email 6) and every one of

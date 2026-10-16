@@ -1,0 +1,242 @@
+{
+  "sha256": "3367b0de0fdcc5489981b40c277df6b9cb9f6f7e20dab62fe7c96edc80432c11",
+  "seconds": 4.32,
+  "workers": 4,
+  "native_threads": 1,
+  "gpu": "not used; browser rendering only",
+  "resources_before": {
+    "cpu_affinity": 32,
+    "load": [
+      5.63330078125,
+      6.0576171875,
+      6.017578125
+    ],
+    "ram_available_kib": 68918384,
+    "gpu_util_percent_and_free_mib": "0, 18822",
+    "native_threads": 1,
+    "workers": 4,
+    "other_user_workloads": "observed and preserved"
+  },
+  "js_off_text_equal": true,
+  "links_local_and_anchors_valid": true,
+  "captures": [
+    {
+      "dark": false,
+      "background": "rgb(245, 247, 246)",
+      "foreground": "rgb(19, 24, 25)",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "contrast": [
+        {
+          "fg": "--ink",
+          "bg": "--bg",
+          "ratio": 16.64780901680967
+        },
+        {
+          "fg": "--ink",
+          "bg": "--surface",
+          "ratio": 17.91227453000492
+        },
+        {
+          "fg": "--secondary",
+          "bg": "--bg",
+          "ratio": 9.054350505821677
+        },
+        {
+          "fg": "--secondary",
+          "bg": "--surface",
+          "ratio": 9.742063462369488
+        },
+        {
+          "fg": "--muted",
+          "bg": "--bg",
+          "ratio": 5.976726175220529
+        },
+        {
+          "fg": "--muted",
+          "bg": "--surface",
+          "ratio": 6.430681655052552
+        },
+        {
+          "fg": "--accent",
+          "bg": "--bg",
+          "ratio": 6.654415835952432
+        },
+        {
+          "fg": "--accent",
+          "bg": "--surface",
+          "ratio": 7.159844467823816
+        }
+      ],
+      "keyboardFirstLink": "#learn",
+      "zoom200Overflow": false,
+      "errors": []
+    },
+    {
+      "dark": false,
+      "background": "rgb(245, 247, 246)",
+      "foreground": "rgb(19, 24, 25)",
+      "width": 390,
+      "scrollWidth": 390,
+      "contrast": [
+        {
+          "fg": "--ink",
+          "bg": "--bg",
+          "ratio": 16.64780901680967
+        },
+        {
+          "fg": "--ink",
+          "bg": "--surface",
+          "ratio": 17.91227453000492
+        },
+        {
+          "fg": "--secondary",
+          "bg": "--bg",
+          "ratio": 9.054350505821677
+        },
+        {
+          "fg": "--secondary",
+          "bg": "--surface",
+          "ratio": 9.742063462369488
+        },
+        {
+          "fg": "--muted",
+          "bg": "--bg",
+          "ratio": 5.976726175220529
+        },
+        {
+          "fg": "--muted",
+          "bg": "--surface",
+          "ratio": 6.430681655052552
+        },
+        {
+          "fg": "--accent",
+          "bg": "--bg",
+          "ratio": 6.654415835952432
+        },
+        {
+          "fg": "--accent",
+          "bg": "--surface",
+          "ratio": 7.159844467823816
+        }
+      ],
+      "keyboardFirstLink": "#learn",
+      "zoom200Overflow": false,
+      "errors": []
+    },
+    {
+      "dark": true,
+      "background": "rgb(13, 17, 18)",
+      "foreground": "rgb(233, 238, 236)",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "contrast": [
+        {
+          "fg": "--ink",
+          "bg": "--bg",
+          "ratio": 16.18926617914919
+        },
+        {
+          "fg": "--ink",
+          "bg": "--surface",
+          "ratio": 15.004892145572724
+        },
+        {
+          "fg": "--secondary",
+          "bg": "--bg",
+          "ratio": 11.644604954981867
+        },
+        {
+          "fg": "--secondary",
+          "bg": "--surface",
+          "ratio": 10.792709162589553
+        },
+        {
+          "fg": "--muted",
+          "bg": "--bg",
+          "ratio": 8.427694291395513
+        },
+        {
+          "fg": "--muted",
+          "bg": "--surface",
+          "ratio": 7.8111411894084
+        },
+        {
+          "fg": "--accent",
+          "bg": "--bg",
+          "ratio": 9.114934312101857
+        },
+        {
+          "fg": "--accent",
+          "bg": "--surface",
+          "ratio": 8.448104117481142
+        }
+      ],
+      "keyboardFirstLink": "#learn",
+      "zoom200Overflow": false,
+      "errors": []
+    },
+    {
+      "dark": true,
+      "background": "rgb(13, 17, 18)",
+      "foreground": "rgb(233, 238, 236)",
+      "width": 390,
+      "scrollWidth": 390,
+      "contrast": [
+        {
+          "fg": "--ink",
+          "bg": "--bg",
+          "ratio": 16.18926617914919
+        },
+        {
+          "fg": "--ink",
+          "bg": "--surface",
+          "ratio": 15.004892145572724
+        },
+        {
+          "fg": "--secondary",
+          "bg": "--bg",
+          "ratio": 11.644604954981867
+        },
+        {
+          "fg": "--secondary",
+          "bg": "--surface",
+          "ratio": 10.792709162589553
+        },
+        {
+          "fg": "--muted",
+          "bg": "--bg",
+          "ratio": 8.427694291395513
+        },
+        {
+          "fg": "--muted",
+          "bg": "--surface",
+          "ratio": 7.8111411894084
+        },
+        {
+          "fg": "--accent",
+          "bg": "--bg",
+          "ratio": 9.114934312101857
+        },
+        {
+          "fg": "--accent",
+          "bg": "--surface",
+          "ratio": 8.448104117481142
+        }
+      ],
+      "keyboardFirstLink": "#learn",
+      "zoom200Overflow": false,
+      "errors": []
+    }
+  ],
+  "screenshots_directory": "~/.clade/research-learning-20260930/latest",
+  "capture_states": [
+    "first",
+    "full",
+    "table",
+    "sources",
+    "zoom200",
+    "zoom200-first",
+    "table-right (390px only)"
+  ]
+}

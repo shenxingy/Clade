@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="artifact-type" content="decision">
+<title>Clade 学习雷达 · 2026-09-30</title>
+<style>
+:root{color-scheme:light;--bg:#f5f7f6;--surface:#fff;--ink:#131819;--secondary:#3b4648;--muted:#536165;--rule:#c8d2cf;--accent:#0d6355}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#0d1112;--surface:#141a1b;--ink:#e9eeec;--secondary:#c2cdca;--muted:#a1b0ac;--rule:#405451;--accent:#4ec7ab}}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#0d1112;--surface:#141a1b;--ink:#e9eeec;--secondary:#c2cdca;--muted:#a1b0ac;--rule:#405451;--accent:#4ec7ab}
+*{box-sizing:border-box}html{font-size:16px}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Noto Sans CJK SC","Microsoft YaHei",sans-serif;line-height:1.8}
+main{max-width:960px;margin:auto;padding:40px 28px 64px}header{border-bottom:1px solid var(--rule);padding-bottom:24px}
+h1{font-size:clamp(1.8rem,4vw,2.6rem);line-height:1.35;margin:12px 0 18px}h2{font-size:1.4rem;line-height:1.5;margin:0 0 12px}h3{font-size:1.12rem;margin:0 0 8px}
+p{margin:0 0 14px}.stamp,.note{color:var(--muted);font-size:.9rem}.deck{font-size:1.12rem;color:var(--secondary)}
+section{margin-top:30px}.item{background:var(--surface);padding:22px;border:1px solid var(--rule);border-radius:8px}.eyebrow{color:var(--accent);font-size:.9rem;font-weight:650;margin-bottom:6px}
+a{color:var(--accent);text-underline-offset:3px;overflow-wrap:anywhere}a:focus-visible{outline:3px solid var(--accent);outline-offset:4px}
+nav{display:flex;flex-wrap:wrap;gap:8px 20px;margin-top:16px}code{font-family:ui-monospace,monospace;font-size:.9em;overflow-wrap:anywhere}.grade{font-weight:650}
+.table-wrap{overflow-x:auto;border:1px solid var(--rule);border-radius:6px}table{border-collapse:collapse;width:100%;min-width:610px;background:var(--surface)}th,td{text-align:left;vertical-align:top;padding:12px;border-bottom:1px solid var(--rule);font-size:.94rem}th{color:var(--secondary)}tr:last-child td{border-bottom:0}
+ul,ol{padding-left:1.5em}li{margin-bottom:8px}footer{border-top:1px solid var(--rule);margin-top:30px;padding-top:20px;color:var(--muted);font-size:.9rem}
+@media(max-width:600px){main{padding:24px 18px 44px}.item{padding:18px}h1{font-size:1.8rem}}
+@media print{main{max-width:none}nav{display:none}.item{break-inside:avoid}}
+</style>
+</head>
+<body><main>
+<header>
+<p class="stamp">Clade 学习雷达 · 截至 2026-09-30 · Codex 研究整理<br>代码基线：fe929190b280 · 来源：论文原文、产品团队文章、仓库记录</p>
+<h1>最值得先学的是：验证哪些 agent 组件真的有用</h1>
+<p class="deck">9 月的新材料里，最贴近 Clade 的是 harness 的组件消融：固定模型和任务，逐项比较工具、委派、规划与压缩的收益。建议先设计一轮终端任务对照；缓存成本路由排第二，结构化判定与会话级评估作为后续学习项。</p>
+<p><span class="grade">已核验：</span>原文内容与发布日期。<span class="grade">推断：</span>以上学习顺序。<span class="grade">未测量：</span>这些方法在 Clade 的收益；尚未运行模型对照实验。</p>
+<p><strong>学习进展 · 2026-09-30：</strong>已完成 <a href="nanoharness.html">NanoHarness 深入学习与两个历史验证器的红绿校准</a>，并写出委派对照方案。</p>
+<nav aria-label="页面目录"><a href="#learn">四项新材料</a><a href="#next">建议先做什么</a><a href="#sources">证据与边界</a></nav>
+</header>
+
+<section id="key">
+<h2>这些术语描述的是 agent 如何完成任务</h2>
+<p><strong>Harness</strong> 是模型外的执行层，负责工具、上下文、委派与验证。<strong>消融</strong> 是固定其他条件、只改变一个组件的对照实验。<strong>缓存成本</strong> 包括上下文首次写入、重复读取，以及切换模型后的重建。<strong>会话级评估</strong> 检查从用户目标到最终交付的完整过程。</p>
+</section>
+
+<section id="why">
+<h2>Clade 已有委派规则，下一步要知道它在哪些任务上有效</h2>
+<p>仓库已经讨论生成与检查分离、失败回归和执行证据；当前规则也明确限定子代理职责。因此新的学习价值是测出适用边界。论文提供了拆分组件的方法；是否能提高 Clade 的可验证交付质量，需要本地任务证据。</p>
+</section>
+
+<section class="item" id="learn">
+<p class="eyebrow">优先 1 · 2026-09-26 · 研究论文</p>
+<h2>专门化委派值得验证，压缩收益不能默认成立</h2>
+<p><a href="https://arxiv.org/html/2609.32459v1">Beyond the Model / NanoHarness</a> 在仓库级软件生成基准 ProgramBench 的组件实验中发现，结构化工具和面向具体任务的子代理更稳定；通用子代理与上下文压缩单独加入时可能降分。这是论文结果，尚未在本项目复现。</p>
+<p><strong>可借鉴：</strong>用同一组终端任务比较“主代理独立执行”和“现有受限委派”，再单独研究压缩。<strong>边界：</strong>组件结论主要来自 ProgramBench、Qwen 与 DeepSeek，不能直接推广到所有模型；论文的完整组合仍有收益，不能据此认定压缩永远有害。</p>
+</section>
+
+<section class="item">
+<p class="eyebrow">优先 2 · 2026-09-24 首发，09-26 修订 · 研究论文</p>
+<h2>模型切换是否省钱，要算上缓存重建</h2>
+<p><a href="https://arxiv.org/html/2609.28919v2">Harness Tokenomics</a> 把路由决策放在会话开始、旁路任务和子代理启动等边界，并推导中途换模型何时能够回本。可借鉴的是成本核算方法。</p>
+<p><strong>可借鉴：</strong>在终端实际运行路径中，把切换边界、缓存重建与成功交付总费用对应起来。现有 <code>agent_output.py</code> 已解析缓存字段；<code>routing_break_even.py</code> 使用上游总费用作观察性统计，未建立缓存重建的对照。后两者属于当前休眠的 orchestrator，不能当作终端已实现。<strong>边界：</strong>论文依赖仿真、公开会话及特定日期的单厂商价格；其节省比例不是 Clade 的实测值。</p>
+</section>
+
+<section class="item">
+<p class="eyebrow">优先 3 · 2026-09-21 / 09-25 · 产品团队文章</p>
+<h2>窄范围判断可以返回类型和概率，再由代码决定流程</h2>
+<p><a href="https://www.langchain.com/blog/jev-is-now-available-in-langsmith-evals">LangSmith 接入 Jev</a>，让判断直接返回布尔概率、选项或等级；<a href="https://www.langchain.com/blog/building-prod-with-jev-and-langgraph">后续 LangGraph 示例</a> 展示如何把判断接入明确的流程。</p>
+<p><strong>可借鉴：</strong>先在离线数据上评估“是否发生用户纠正”“是否需要升级复核”等窄问题，给不确定结果保留复核路径。<strong>边界：</strong>速度和准确率来自作者选定场景，不能证明适合本项目；不把这种判定直接用作自动批准。接入依赖外部 API，价格、许可和数据条款尚未核验。</p>
+</section>
+
+<section class="item">
+<p class="eyebrow">优先 4 · 2026 年 9 月更新，覆盖 08-06 至 09-18 · 产品公告</p>
+<h2>完整会话应该能被标注、复核和评价</h2>
+<p><a href="https://arize.com/blog/new-in-arize-ax-september-2026-updates/">Arize AX 的会话级工作流</a> 支持对整个会话标注、加入复核队列并预览评估结果。公告只标到月份，不能把抓取日期当作发布日期。</p>
+<p><strong>可借鉴：</strong>把“用户纠正 → agent 修复 → 独立验证 → 最终交付”放到一个可复核对象中，检查中途成功是否真的兑现为交付。<strong>已有基础：</strong><code>session-scorecard.sh</code> 已记录会话纠正、提交和回退；<code>loop_verify.sh</code> 已记录修复变化。此项是补充完整会话的人工标注与复核路径，不是重新建设基础追踪，也不意味着要采购 Arize。</p>
+</section>
+
+<section id="next">
+<h2>终端委派对照方案已写出，效果还需要实测</h2>
+<p><strong>建议负责人：</strong>Clade 维护者。<strong>状态：</strong>2026-09-30 已完成<a href="nanoharness.html#next">对照方案</a>与两个局部修复样本的验证器校准；模型试验未排期。</p>
+<p><strong>完成定义：</strong>选取有确定验证器的终端任务，覆盖只读发现、局部修复和较长实现；锁定模型、预算、任务版本及判断标准，写清主代理独立执行与现有受限委派两组的差异。按任务类型比较验证成功、错误放行、返工、耗时及总费用，并保存失败轨迹。</p>
+<p><strong>验收：</strong>另一位维护者能从方案复现两组运行；只改变委派这一项，缺失数据记为未知。正式推理实验、费用支出和规则变更均未执行。后续顺序：缓存成本 → 窄判定校准 → 会话级评估。</p>
+</section>
+
+<section id="sources">
+<h2>证据支持学习方向，还不能证明本项目的收益</h2>
+<p class="note">下表前四行对应四个外部学习方向，后两行核对 Clade 已有基础。<strong>手机上可左右滑动表格，查看来源及证据等级。</strong></p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="证据表，可横向滚动"><table>
+<thead><tr><th scope="col">主张 / 观察</th><th scope="col">来源与版本</th><th scope="col">范围 / 等级</th></tr></thead>
+<tbody>
+<tr><td>组件收益随任务而变</td><td><a href="https://arxiv.org/html/2609.32459v1">NanoHarness §5、§7</a> · 09-26 v1</td><td>论文实验；原文已核验，结果未复现</td></tr>
+<tr><td>路由需要考虑缓存重建</td><td><a href="https://arxiv.org/html/2609.28919v2">Tokenomics §4、§8</a> · 09-26 v2</td><td>作者推导与仿真；原文已核验</td></tr>
+<tr><td>类型化判断能接入代码流程</td><td>上述 LangChain 文章 · 09-21、09-25</td><td>产品团队描述；未调用 API</td></tr>
+<tr><td>会话能作为完整复核单位</td><td>上述 Arize 9 月公告</td><td>产品团队描述；未试用产品</td></tr>
+<tr><td>验证交付、委派、回归已有基础</td><td><a href="../../../VISION.md">VISION</a>、<a href="../../../BRAINSTORM.md">BRAINSTORM</a>、<a href="../../who-to-learn-from.md">学习清单</a></td><td>仓库记录已读；学习优先级是本次推断</td></tr>
+<tr><td>成本和纠错已有采集，终端与休眠层须区分</td><td><a href="../../../orchestrator/routing_break_even.py">routing_break_even.py</a>、<a href="../../../configs/scripts/session-scorecard.sh">session-scorecard.sh</a>、<a href="../../layers.json">layers.json</a></td><td>源代码已读；运行效果未测</td></tr>
+</tbody></table></div>
+<p class="note">读法 / Reading：每行区分来源确实说过什么，以及我们实际验证到哪一步；没有一行代表 Clade 已取得性能收益。仓库链接适用于本地文件或保留仓库结构的预览。</p>
+</section>
+
+<section id="method">
+<h2>我先对照已有记录，再核验近期一手来源</h2>
+<p>2026-09-30：读取 VISION、TODO、BRAINSTORM 和学习清单；以 2026 年为条件执行五个搜索查询；打开论文正文、限制章节与产品团队文章，核对发布日期及修订；排除已吸收的通用建议，形成以上顺序。代码核查以 fe929190b280 为基线；主工作区学习清单与 TODO 的已有修改仅作背景，未带入此报告分支。</p>
+</section>
+
+<section id="limits">
+<h2>这轮研究没有覆盖整个生态，也没有运行效果实验</h2>
+<p>这是针对 Clade 的定向筛选，不是穷尽检索。Anthropic 的长任务 harness 文章搜索结果仍指向 3 月版本，本次未找到可核验的 9 月新实验，未将其列作新成果。工具协议、安全攻击和新模型能力尚未展开。没有进行基准复现、产品试用或采购评估；不声称模型调用费用、许可证兼容性或收益已经验证。</p>
+<p>设计沿用仓库已有 <code>code-standards-after-machineslop</code> 页面的灰绿配色，使用本地字体，并提高辅助文字对比度。本页以文字与证据表回答问题，无需图表。</p>
+</section>
+<footer>本地研究记录 · 建议进入 BRAINSTORM 待评估；未自动加入 TODO，未改变运行策略。</footer>
+</main></body></html>
