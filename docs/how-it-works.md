@@ -320,7 +320,7 @@ clade/
 ├── install.sh               # One-command deployment
 ├── uninstall.sh             # Removes what install.sh deployed
 ├── configs/                 # ← THE PRODUCT CENTER
-│   ├── skills/              # 145 skill definitions
+│   ├── skills/              # 146 skill definitions
 │   ├── hooks/               # 32 event hooks
 │   ├── agents/              # 39 agent definitions
 │   ├── output-styles/       # 2 output styles (system-prompt register; opt-in)

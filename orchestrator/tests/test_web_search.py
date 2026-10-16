@@ -219,6 +219,34 @@ def test_cli_missing_key_is_secret_free_and_explicitly_unavailable(tmp_path):
     assert json.loads(result.stdout)["code"] == "missing_tinyfish_key"
 
 
+@pytest.mark.skipif(os.name != "posix", reason="file modes are POSIX-only")
+def test_key_file_readable_by_others_is_refused(module, monkeypatch, tmp_path):
+    stored = "sk-tinyfish-" + "a" * 32
+    key = tmp_path / "tinyfish.key"
+    key.write_text(stored)
+    monkeypatch.setenv("TINYFISH_API_KEY", "")
+    monkeypatch.setenv("TINYFISH_API_KEY_FILE", str(key))
+    key.chmod(0o644)
+    with pytest.raises(module.RetrievalError) as refused:
+        module.read_key()
+    assert refused.value.code == "key_file_must_be_owner_only"
+    key.chmod(0o600)  # control: the same file, owner-only, is read
+    assert module.read_key() == stored
+
+
+def test_symlinked_state_directory_is_refused(module, monkeypatch, tmp_path):
+    real = tmp_path / "real"
+    real.mkdir()
+    link = tmp_path / "link"
+    link.symlink_to(real, target_is_directory=True)
+    monkeypatch.setenv("CLADE_SEARCH_STATE_DIR", str(link))
+    with pytest.raises(module.RetrievalError) as refused:
+        module.state_root()
+    assert refused.value.code == "unsafe_private_directory"
+    monkeypatch.setenv("CLADE_SEARCH_STATE_DIR", str(real))  # control: the target itself is fine
+    assert module.state_root() == real
+
+
 def test_installer_preserves_user_instructions_override_and_runs_from_unrelated_project(tmp_path):
     cc, cx = tmp_path / "cc", tmp_path / "cx"
     cx.mkdir()

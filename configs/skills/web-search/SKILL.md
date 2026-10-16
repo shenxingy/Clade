@@ -128,6 +128,9 @@ Add `--with-mcp` to connect the official remote MCP for the current profiles.
 Authentication headers are supplied through a private credential pipe; never
 run `scripts/mcp_headers.py` with model-visible output. No key is copied into
 MCP configuration. Existing unrelated MCP servers and settings are preserved.
+Verification status: Claude Code reads the `headersHelper` field it writes
+(present in 2.1.283), and the tests prove the helper emits the right header
+when run directly; an MCP call through it with a live key has not been run.
 
 Official contracts: [Search](https://docs.tinyfish.ai/search-api/reference),
 [Fetch](https://docs.tinyfish.ai/fetch-api/reference),
