@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import socket
+import shutil
 import subprocess
 import tarfile
 import time
@@ -163,6 +164,28 @@ def test_retention_only_deletes_verified_same_project_archives(instance, ops):
     assert unknown.exists()
 
 
+def test_next_backup_reaps_only_old_private_staging_directories(instance, ops, monkeypatch):
+    root, cfg = instance
+    directory = root / "backups"
+    directory.mkdir()
+    old = directory / ".partial-old00000"
+    fresh = directory / ".partial-new00000"
+    unknown = directory / ".partial-operator-backup"
+    for path in (old, fresh, unknown):
+        path.mkdir(mode=0o700)
+        (path / "copied-data").write_text("fixture")
+    os.utime(old, (time.time() - 90000, time.time() - 90000))
+    def offline(*args):
+        raise ops.TaskError("offline")
+    monkeypatch.setattr(ops, "probe", offline)
+    monkeypatch.setattr(ops, "health", lambda *args: {})
+    with pytest.raises(ops.TaskError, match="offline"):
+        ops.backup(root, cfg)
+    assert not old.exists()
+    assert (fresh / "copied-data").read_text() == "fixture"
+    assert (unknown / "copied-data").read_text() == "fixture"
+
+
 def test_event_log_is_bounded_and_private(instance, ops, monkeypatch):
     root, _ = instance
     monkeypatch.setattr(ops, "LOG_BYTES", 64)
@@ -172,6 +195,19 @@ def test_event_log_is_bounded_and_private(instance, ops, monkeypatch):
     assert len(paths) == 4
     assert all(p.stat().st_mode & 0o077 == 0 for p in paths)
     assert all(p.stat().st_size < 256 for p in paths)
+
+
+@pytest.mark.skipif(not shutil.which("systemd-analyze"), reason="systemd unit parser unavailable")
+def test_generated_unit_is_accepted_by_real_systemd_parser(tmp_path, ops):
+    # WorkingDirectory is a scalar path, unlike ExecStart's quoted argv.
+    from service import write_unit
+    root = tmp_path / "space and percent %"
+    root.mkdir()
+    (root / "data").mkdir()
+    unit = write_unit(root, "fixture", [shutil.which("true")])
+    result = subprocess.run(["systemd-analyze", "verify", "--man=no", str(unit)],
+                            capture_output=True, text=True, timeout=20)
+    assert result.returncode == 0, result.stderr
 
 
 @pytest.mark.skipif(not os.environ.get("CLADE_TEST_BD") or not os.environ.get("CLADE_TEST_DOLT"),

@@ -352,6 +352,14 @@ def backup(root: Path, cfg: dict[str, Any]) -> dict[str, Any]:
         raise TaskError("install maintenance with a systemd user manager before backup")
     destination = root / "backups"
     destination.mkdir(mode=0o700, exist_ok=True)
+    # SIGKILL can leave TemporaryDirectory copies behind. Only reap old,
+    # private staging names created by this helper, under the maintenance lock.
+    for abandoned in destination.iterdir():
+        if (re.fullmatch(r"\.partial-[a-z0-9_]{8}", abandoned.name) and
+                not abandoned.is_symlink() and abandoned.is_dir() and
+                abandoned.stat().st_uid == os.getuid() and not abandoned.stat().st_mode & 0o077 and
+                time.time() - abandoned.stat().st_mtime > 86400):
+            shutil.rmtree(abandoned)
     previous = optional_json(root / "maintenance" / "backup.json")
     try:
         probe(root, cfg)

@@ -45,7 +45,7 @@ def unit_quote(value: str) -> str:
 def write_unit(root: Path, prefix: str, command: list[str]) -> Path:
     unit = root / f"clade-tasks-{prefix}.service"
     unit.write_text("[Unit]\nDescription=Clade personal task database\n\n[Service]\n"
-                    f"WorkingDirectory={unit_quote(str(root / 'data'))}\n"
+                    f"WorkingDirectory={str(root / 'data').replace('%', '%%')}\n"
                     f"ExecStart={' '.join(map(unit_quote, command))}\n"
                     "Environment=GOMAXPROCS=2\nRestart=on-failure\nRestartSec=3\nUMask=0077\n"
                     "NoNewPrivileges=true\nStandardOutput=journal\nStandardError=journal\n"
