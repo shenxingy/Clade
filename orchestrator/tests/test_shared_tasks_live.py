@@ -298,6 +298,20 @@ def test_prepared_service_has_private_auth_and_no_anonymous_root(tmp_path, monke
             assert anonymous.returncode != 0
             # Failed authentication is different from a dead/unreachable service.
             assert "Access denied" in anonymous.stderr
+            # Observe SQL's file boundary, not just a configured variable or log.
+            export = tmp_path / "must-not-export.txt"
+            file_probe = subprocess.run([BD, "--json", "sql",
+                                         f"SELECT 'canary' INTO OUTFILE '{export}'"],
+                                        cwd=prepared["workspace"], env=env,
+                                        text=True, capture_output=True, timeout=15)
+            assert file_probe.returncode != 0, "SQL can export outside its private file directory"
+            assert not export.exists()
+            value = subprocess.run([BD, "--readonly", "--json", "sql",
+                                    "SELECT @@global.secure_file_priv AS value"],
+                                   cwd=prepared["workspace"], env=env,
+                                   text=True, capture_output=True, timeout=15)
+            assert value.returncode == 0, value.stderr
+            assert json.loads(value.stdout) == [{"value": str(root / "sql-files")}]
         finally:
             server.terminate()
             server.wait(timeout=15)

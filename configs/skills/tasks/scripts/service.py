@@ -13,7 +13,8 @@ import subprocess
 import sys
 import time
 
-from tasks import BD_VERSION, Beads, TaskError, bd_environment, ident, private_write
+from tasks import BD_VERSION, Beads, TaskError, bd_environment, ident, private_write, read_json
+from maintenance import configure, server_command
 
 DOLT_VERSION = "2.2.0"
 
@@ -65,9 +66,7 @@ def prepare(args: argparse.Namespace) -> dict:
     fd = os.open(credentials, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w") as stream:
         stream.write(f"[127.0.0.1:{args.port}]\npassword={password}\n")
-    command = [dolt, "sql-server", "--host", "127.0.0.1", "--port", str(args.port),
-               "--data-dir", str(data), "--socket", str(root / "mysql.sock"),
-               "--max-connections", "32", "--skip-root-user-initialization"]
+    command = server_command(root, dolt, args.port)
     env["BEADS_CREDENTIALS_FILE"] = str(credentials)
     checked(["git", "init", "-q", str(workspace)], root, env)
     for key, value in (("user.name", "Clade Tasks"), ("user.email", "tasks@localhost")):
@@ -109,19 +108,15 @@ def prepare(args: argparse.Namespace) -> dict:
     private_write(root / "service.json", {"schema_version": "clade.task-service/v1",
                   "command": command, "workspace": str(workspace), "project_id": context["project_id"],
                   "credentials_file": str(credentials), "bd": bd})
-    # systemd expands '%' even inside quotes; arguments are absolute, not shell text.
-    def quote(value: str) -> str:
-        if any(char in value for char in "\n\r$"):
-            raise TaskError("service paths must not contain newlines or dollar signs")
-        return '"' + value.replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%") + '"'
-    unit = root / f"clade-tasks-{prefix}.service"
-    unit.write_text("[Unit]\nDescription=Clade personal task database\n\n[Service]\n"
-                    f"WorkingDirectory={str(data).replace('%', '%%')}\nExecStart={' '.join(map(quote, command))}\n"
-                    "Environment=GOMAXPROCS=2\nRestart=on-failure\nRestartSec=3\nUMask=0077\n"
-                    "NoNewPrivileges=true\n\n[Install]\nWantedBy=default.target\n")
+    # Every prepared instance includes stable maintenance helpers and schedules;
+    # enabling them remains a deliberate operator action.
+    managed = configure(root, read_json(root / "service.json"), prefix)
+    unit = root / managed["unit"]
     return {"prepared": True, "running": False, "project_id": context["project_id"],
             "workspace": str(workspace), "credentials_file": str(credentials),
-            "unit": str(unit), "bd": bd}
+            "unit": str(unit), "bd": bd, "timers": managed["timers"],
+            "install_command": [sys.executable, str(root / "runtime" / "maintenance.py"),
+                                "--directory", str(root), "install"]}
 
 
 def main() -> int:

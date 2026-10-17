@@ -38,6 +38,15 @@ and transfers ownership explicitly. `status` reads a snapshot without mutation.
 `delivery start --project-id ... --task-id ... --session-id ...` retains an
 immutable task reference, separate from any orchestrator attempt ID.
 
+Explicit personal-service installation includes user systemd supervision,
+five-minute authenticated health checks, daily stopped-copy backups with
+isolated restore verification, bounded local operations logs and seven verified
+backup generations. `/status` and `/pipeline` read maintenance observations and
+flag stale checks or backups even while the database is unavailable. Task entry
+remains manual: timers neither scan plans nor launch model sessions. See the
+[service guide](../../configs/skills/tasks/references/service.md) for commands,
+recovery and the local-only alert/backup boundary.
+
 ## Future monitoring
 
 The old Web Orchestrator is preserved for a future agent monitor. It can consume
@@ -54,7 +63,8 @@ temporary services, repositories and credentials:
 ```bash
 CLADE_TEST_BD=/absolute/bin/bd CLADE_TEST_DOLT=/absolute/bin/dolt \
   orchestrator/.venv/bin/python -m pytest \
-  orchestrator/tests/test_shared_tasks_live.py -q
+  orchestrator/tests/test_shared_tasks_live.py \
+  orchestrator/tests/test_task_service_maintenance.py -q
 ```
 
 That lane requires the pinned binaries; a skipped lane is not evidence of a
