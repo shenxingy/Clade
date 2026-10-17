@@ -177,6 +177,7 @@ Commit Lessons 与 Doc Align 在 Claude 完整框架中本地运行，未启用�
 | `/loop GOAL` | 目标驱动改进循环 — 主管规划，workers 并行执行 |
 | `/iloop TASK` | 会话内迭代循环 — Stop hook 反复喂回提示词直到完成（无后台 workers） |
 | `/batch-tasks` | 通过无人值守会话执行 TODO 步骤（串行或并行） |
+| `/compute` | 大规模 CPU/GPU 任务：本地盘暂存、冒烟与 profiling、调度限流及恢复验证；读取私有 `~/.clade/compute-policy.md` |
 | `/orchestrate` | 把目标拆解为任务供 workers 执行 |
 | `/handoff` | 保存会话状态，供 agent 间上下文接力 |
 | `/pickup` | 从上次 handoff 恢复 — 零摩擦重启 |

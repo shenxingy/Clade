@@ -191,6 +191,7 @@ See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, de
 | `/loop GOAL` | Goal-driven improvement loop — supervisor plans, workers execute in parallel |
 | `/iloop TASK` | In-session iterative loop — Stop hook re-prompts until done (no background workers) |
 | `/batch-tasks` | Execute TODO steps via unattended sessions (serial or parallel) |
+| `/compute` | Profile and schedule large CPU/GPU batches with local staging, bounded queues and verified recovery; reads private `~/.clade/compute-policy.md` |
 | `/orchestrate` | Decompose goals into tasks for worker execution |
 | `/handoff` | Save session state for context relay between agents |
 | `/pickup` | Resume from previous handoff — zero-friction restart |
