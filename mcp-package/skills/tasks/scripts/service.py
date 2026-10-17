@@ -18,6 +18,41 @@ from tasks import BD_VERSION, Beads, TaskError, bd_environment, ident, private_w
 DOLT_VERSION = "2.2.0"
 
 
+def server_command(root: Path, dolt: str, port: int, *, readonly: bool = False) -> list[str]:
+    """Use JSON's YAML subset; SQL file access is confined before listening."""
+    files = root / "sql-files"
+    files.mkdir(mode=0o700, exist_ok=True)
+    private_write(root / "server.yaml", {
+        "listener": {"host": "127.0.0.1", "port": port, "max_connections": 32,
+                     "socket": str(root / "mysql.sock")},
+        "data_dir": str(root / "data"), "log_level": "info", "log_format": "json",
+        "behavior": {"read_only": readonly},
+        "system_variables": {"secure_file_priv": str(files)},
+    })
+    # In pinned 2.2.0 this flag is read independently of YAML config. Keep the
+    # anonymous-root integration probe: the help's blanket 'flags ignored' is
+    # misleading here (sqlserver.go passes apr.Contains directly to Serve).
+    return [dolt, "sql-server", "--config", str(root / "server.yaml"),
+            "--skip-root-user-initialization"]
+
+
+def unit_quote(value: str) -> str:
+    if any(char in value for char in "\n\r\t$"):
+        raise TaskError("service paths must not contain control characters or dollar signs")
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%") + '"'
+
+
+def write_unit(root: Path, prefix: str, command: list[str]) -> Path:
+    unit = root / f"clade-tasks-{prefix}.service"
+    unit.write_text("[Unit]\nDescription=Clade personal task database\n\n[Service]\n"
+                    f"WorkingDirectory={unit_quote(str(root / 'data'))}\n"
+                    f"ExecStart={' '.join(map(unit_quote, command))}\n"
+                    "Environment=GOMAXPROCS=2\nRestart=on-failure\nRestartSec=3\nUMask=0077\n"
+                    "NoNewPrivileges=true\nStandardOutput=journal\nStandardError=journal\n"
+                    "\n[Install]\nWantedBy=default.target\n")
+    return unit
+
+
 def checked(command: list[str], cwd: Path, env: dict[str, str], stdin: str | None = None) -> str:
     result = subprocess.run(command, cwd=cwd, env=env, input=stdin, text=True,
                             capture_output=True, timeout=60)
@@ -65,9 +100,7 @@ def prepare(args: argparse.Namespace) -> dict:
     fd = os.open(credentials, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w") as stream:
         stream.write(f"[127.0.0.1:{args.port}]\npassword={password}\n")
-    command = [dolt, "sql-server", "--host", "127.0.0.1", "--port", str(args.port),
-               "--data-dir", str(data), "--socket", str(root / "mysql.sock"),
-               "--max-connections", "32", "--skip-root-user-initialization"]
+    command = server_command(root, dolt, args.port)
     env["BEADS_CREDENTIALS_FILE"] = str(credentials)
     checked(["git", "init", "-q", str(workspace)], root, env)
     for key, value in (("user.name", "Clade Tasks"), ("user.email", "tasks@localhost")):
@@ -109,16 +142,7 @@ def prepare(args: argparse.Namespace) -> dict:
     private_write(root / "service.json", {"schema_version": "clade.task-service/v1",
                   "command": command, "workspace": str(workspace), "project_id": context["project_id"],
                   "credentials_file": str(credentials), "bd": bd})
-    # systemd expands '%' even inside quotes; arguments are absolute, not shell text.
-    def quote(value: str) -> str:
-        if any(char in value for char in "\n\r$"):
-            raise TaskError("service paths must not contain newlines or dollar signs")
-        return '"' + value.replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%") + '"'
-    unit = root / f"clade-tasks-{prefix}.service"
-    unit.write_text("[Unit]\nDescription=Clade personal task database\n\n[Service]\n"
-                    f"WorkingDirectory={str(data).replace('%', '%%')}\nExecStart={' '.join(map(quote, command))}\n"
-                    "Environment=GOMAXPROCS=2\nRestart=on-failure\nRestartSec=3\nUMask=0077\n"
-                    "NoNewPrivileges=true\n\n[Install]\nWantedBy=default.target\n")
+    unit = write_unit(root, prefix, command)
     return {"prepared": True, "running": False, "project_id": context["project_id"],
             "workspace": str(workspace), "credentials_file": str(credentials),
             "unit": str(unit), "bd": bd}
