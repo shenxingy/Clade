@@ -181,6 +181,8 @@ def health(root: Path, cfg: dict[str, Any]) -> dict[str, Any]:
         concerns.append("no fresh verified backup")
     if receipt.get("ok") is False:
         concerns.append("last backup or restore verification failed")
+    if verified and not backup_intact(root, cfg, receipt):
+        concerns.append("verified backup archive is missing or damaged")
     previous = optional_json(root / "maintenance" / "status.json")
     current = {"schema_version": HEALTH_SCHEMA, "project_id": cfg["project_id"],
                "observed_at": time.time(), "status": "DEGRADED" if concerns else "HEALTHY",
@@ -195,6 +197,20 @@ def health(root: Path, cfg: dict[str, Any]) -> dict[str, Any]:
                   file=sys.stderr)
     private_write(root / "maintenance" / "status.json", current)
     return current
+
+
+def backup_intact(root: Path, cfg: dict[str, Any], receipt: dict[str, Any]) -> bool:
+    name = receipt.get("archive")
+    if not isinstance(name, str) or not BACKUP_NAME.fullmatch(name):
+        return False
+    directory = root / "backups" / name
+    archive = directory / "payload.tar.gz"
+    try:
+        return (not directory.is_symlink() and not archive.is_symlink() and
+                receipt.get("project_id") == cfg["project_id"] and
+                digest(archive) == receipt.get("sha256"))
+    except OSError:
+        return False
 
 
 def regular_tree(path: Path) -> list[Path]:

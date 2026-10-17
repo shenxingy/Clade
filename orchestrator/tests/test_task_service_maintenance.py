@@ -62,6 +62,7 @@ def test_health_failure_and_recovery_are_durable_and_deduplicated(instance, ops,
     ops.private_write(root / "maintenance/backup.json", {"verified_at": time.time(), "ok": True})
     monkeypatch.setattr(ops, "active", lambda unit: True)
     monkeypatch.setattr(ops, "control", lambda *args: "enabled")
+    monkeypatch.setattr(ops, "backup_intact", lambda *args: True)
     def unavailable(*args):
         raise ops.TaskError("hidden connection details")
     monkeypatch.setattr(ops, "probe", unavailable)
@@ -74,6 +75,25 @@ def test_health_failure_and_recovery_are_durable_and_deduplicated(instance, ops,
     assert json.loads((root / "maintenance/alert.json").read_text())["status"] == "HEALTHY"
     assert "recovered" in capsys.readouterr().err
     assert (root / "maintenance/events.jsonl").read_text().count("health_transition") == 2
+
+
+def test_health_detects_archive_damage_despite_fresh_success_receipt(instance, ops, monkeypatch):
+    root, cfg = instance
+    monkeypatch.setattr(ops, "active", lambda unit: True)
+    monkeypatch.setattr(ops, "control", lambda *args: "enabled")
+    monkeypatch.setattr(ops, "probe", lambda *args: {})
+    saved = root / "backups" / "20261017T120000Z-1234abcd"
+    saved.mkdir(parents=True)
+    archive = saved / "payload.tar.gz"
+    archive.write_bytes(b"original data")
+    receipt = {"project_id": cfg["project_id"], "ok": True, "verified_at": time.time(),
+               "archive": saved.name, "sha256": ops.digest(archive)}
+    ops.private_write(root / "maintenance/backup.json", receipt)
+    assert ops.health(root, cfg)["status"] == "HEALTHY"
+    archive.write_bytes(b"corrupt! data")
+    assert "verified backup archive is missing or damaged" in ops.health(root, cfg)["concerns"]
+    archive.unlink()
+    assert ops.health(root, cfg)["status"] == "DEGRADED"
 
 
 def test_maintenance_lock_rejects_concurrency_and_releases_after_exception(instance, ops):
