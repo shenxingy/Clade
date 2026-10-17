@@ -142,10 +142,17 @@ def prepare(args: argparse.Namespace) -> dict:
     private_write(root / "service.json", {"schema_version": "clade.task-service/v1",
                   "command": command, "workspace": str(workspace), "project_id": context["project_id"],
                   "credentials_file": str(credentials), "bd": bd})
-    unit = write_unit(root, prefix, command)
+    # Every prepared instance includes stable maintenance helpers and schedules;
+    # enabling them remains a deliberate operator action.
+    from maintenance import configure
+    from tasks import read_json
+    managed = configure(root, read_json(root / "service.json"), prefix)
+    unit = root / managed["unit"]
     return {"prepared": True, "running": False, "project_id": context["project_id"],
             "workspace": str(workspace), "credentials_file": str(credentials),
-            "unit": str(unit), "bd": bd}
+            "unit": str(unit), "bd": bd, "timers": managed["timers"],
+            "install_command": [sys.executable, str(root / "runtime" / "maintenance.py"),
+                                "--directory", str(root), "install"]}
 
 
 def main() -> int:

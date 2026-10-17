@@ -349,7 +349,161 @@ _process_project() {
   _emit_check
 }
 
+# ─── Process Registered Task Services ────────────────────────────────────────
+
+# Registration and health JSON are data only.  The bounded parser below never
+# imports, evaluates, or executes anything from a registered instance path.
+_process_task_services() {
+  if ! python3 - "$HOME/.clade/task-services" "$FILTER" <<'PYEOF' 2>/dev/null
+import json
+import math
+import os
+import re
+import sys
+import time
+from pathlib import Path
+
+registry_dir = Path(sys.argv[1])
+project_filter = sys.argv[2].casefold()
+max_bytes = 64 * 1024
+max_files = 256
+registration_schema = "clade.task-service-registration/v1"
+health_schema = "clade.task-service-health/v1"
+
+
+def read_json(path):
+    try:
+        with path.open("rb") as stream:
+            raw = stream.read(max_bytes + 1)
+        if len(raw) > max_bytes:
+            return None
+        return json.loads(raw.decode("utf-8"))
+    except (OSError, UnicodeError, ValueError, TypeError):
+        return None
+
+
+def clean(value):
+    return re.sub(r"[|\r\n\x00-\x1f\x7f]", " ", str(value)).strip()
+
+
+def finite_number(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(float(value))
+    except (OverflowError, ValueError):
+        return False
+
+
+def emit(status, name, detail):
+    print("{}|tasks-{}|maintenance|{}".format(status, clean(name), clean(detail)))
+
+
+def emit_monitor(detail):
+    print("UNKNOWN|task-service-monitor|maintenance|{}".format(clean(detail)))
+
+
+def matches(name):
+    return not project_filter or project_filter in ("tasks-" + name).casefold()
+
+
+if registry_dir.is_dir():
+    try:
+        entries = []
+        has_more = False
+        with os.scandir(registry_dir) as stream:
+            for entry in stream:
+                if len(entries) >= max_files:
+                    has_more = True
+                    break
+                if entry.is_file() and entry.name.endswith(".json"):
+                    entries.append(Path(entry.path))
+        entries.sort()
+    except OSError:
+        entries = []
+        has_more = False
+    if has_more:
+        emit_monitor("registry has more than 256 entries")
+    for registration_path in entries:
+        registration = read_json(registration_path)
+        fallback_name = registration_path.stem
+        if not isinstance(registration, dict):
+            if project_filter and not matches(fallback_name):
+                continue
+            emit("UNKNOWN", fallback_name, "malformed task-service registration")
+            continue
+        name = registration.get("name")
+        project_id = registration.get("project_id")
+        directory = registration.get("directory")
+        if (
+            not isinstance(name, str)
+            or not name
+            or not re.fullmatch(r"[A-Za-z0-9_-]+", name)
+            or not isinstance(project_id, str)
+            or not project_id
+            or not isinstance(directory, str)
+            or not os.path.isabs(directory)
+            or "\x00" in directory
+            or registration.get("schema_version") != registration_schema
+        ):
+            if project_filter and (not isinstance(name, str) or not matches(name)):
+                continue
+            emit("UNKNOWN", fallback_name, "malformed task-service registration")
+            continue
+        if not matches(name):
+            continue
+        health_path = Path(directory) / "maintenance" / "status.json"
+        health = read_json(health_path)
+        if (
+            not isinstance(health, dict)
+            or health.get("schema_version") != health_schema
+            or health.get("project_id") != project_id
+            or not finite_number(health.get("observed_at"))
+            or health.get("status") not in {"HEALTHY", "DEGRADED"}
+            or not isinstance(health.get("concerns"), list)
+            or any(not isinstance(item, str) for item in health["concerns"])
+            or not isinstance(health.get("backup"), dict)
+        ):
+            emit("UNKNOWN", name, "invalid health status (schema or project mismatch)")
+            continue
+
+        now = time.time()
+        observation_age = now - float(health["observed_at"])
+        if observation_age > 900 or observation_age < -60:
+            emit("DEGRADED", name, "stale health (observation outside 900s freshness window)")
+            continue
+
+        verified_at = health["backup"].get("verified_at")
+        backup_age = None
+        if finite_number(verified_at):
+            try:
+                backup_age = now - float(verified_at)
+            except (OverflowError, ValueError):
+                backup_age = None
+        concerns = [clean(item) for item in health["concerns"] if clean(item)]
+        if backup_age is None or backup_age > 129600 or backup_age < -60:
+            detail = "backup not verified or stale"
+            if concerns:
+                detail += "; concerns: " + ", ".join(concerns)
+            emit("DEGRADED", name, detail)
+            continue
+
+        reported_status = health["status"]
+        if concerns and reported_status == "HEALTHY":
+            reported_status = "DEGRADED"
+        detail = "status " + health["status"].lower()
+        if concerns:
+            detail += "; concerns: " + ", ".join(concerns)
+        emit(reported_status, name, detail)
+PYEOF
+  then
+    echo "UNKNOWN|task-service-monitor|maintenance|task-service parser failure"
+  fi
+}
+
 # ─── Main ─────────────────────────────────────────────────────────────────────
+
+_process_task_services
 
 if [[ ! -f "$REGISTRY" ]]; then
   echo "UNKNOWN|pipeline-monitor|registry|~/.claude/pipeline-registry.yml not found" >&2

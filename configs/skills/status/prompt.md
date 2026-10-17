@@ -31,6 +31,10 @@ Unknown is a first-class value:
    `git_context.py` when installed; otherwise use read-only Git commands.
    When the Git-common `clade/tasks/binding.json` exists, resolve the installed
    tasks skill directory as TASKS_ROOT and run
+   `python3 "$TASKS_ROOT/scripts/maintenance.py" status` first. This reads
+   maintenance observations without requiring the database, and reports stale
+   health, missing/failed backups and restore verification. Treat an unmanaged
+   or unsupported service as unknown, not healthy. Then run
    `python3 "$TASKS_ROOT/scripts/tasks.py" snapshot`. Use its project/task/
    session IDs, ownership, ready set and submission evidence. An unavailable
    backend is unavailable, not zero tasks. Do not run claim or heartbeat here.

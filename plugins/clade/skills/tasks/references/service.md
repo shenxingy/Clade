@@ -29,23 +29,24 @@ python3 scripts/service.py --directory /absolute/local-disk/clade-tasks-personal
 The helper creates private data/workspace directories, creates a passworded
 SQL account before opening the listener, initializes one project, checks that
 anonymous root access fails, and stops the temporary setup server. It emits
-`project_id`, workspace, credentials-file and a systemd unit path. It refuses
+`project_id`, workspace, credentials-file, systemd units and an install command. It refuses
 existing directories and retains failed setup for diagnosis, without deleting
 or reinitializing it. The prepared service is **not running or enabled**.
 
-On Linux with a working systemd user manager, use the emitted unit path:
+On Linux with a working systemd user manager, run the emitted install command:
 
 ```bash
-systemctl --user link /absolute/local-disk/clade-tasks-personal/clade-tasks-myproject.service
-systemctl --user enable --now clade-tasks-myproject.service
-systemctl --user is-active clade-tasks-myproject.service
+python3 /absolute/local-disk/clade-tasks-personal/runtime/maintenance.py \
+  --directory /absolute/local-disk/clade-tasks-personal install
 ```
 
 Check the user manager's logout/reboot behavior (`loginctl show-user "$USER"
 -p Linger`); enabling a unit alone does not prove it survives logout. Enabling
 lingering requires the host's policy/authority. On other platforms, use the
 site's process supervisor with the explicit command in private `service.json`.
-Automatic boot recovery is unverified until actually observed.
+Automatic boot recovery is unverified until actually observed. The automatic
+maintenance installer is Linux/systemd-only; other supervisors need their own
+health, backup and recovery integration, not a claim that these timers run there.
 
 Bind the code repository using the values emitted by setup:
 
@@ -92,19 +93,66 @@ The service owns persistence and backup. A client must not start a substitute
 database when the server is unavailable. Existing code can be checkpointed;
 new claims wait for the real backend to return.
 
-For a full offline backup, stop this exact service, confirm it is stopped,
-copy/archive the entire private instance directory to a separate protected
-backup location, then restart and run a real snapshot query. Keep directory
-permissions private: the backup includes credentials and SQL privileges.
-Never copy live Dolt files as an allegedly consistent backup. JSONL task export
-alone does not preserve all tables/history/leases.
+Installation includes an actual initial backup and isolated restore check. A
+failed check fails installation; enabled timers alone are not success. Stable
+copies of the three helpers live under the private instance's `runtime/`, so
+timers do not depend on a temporary worktree or a plugin cache version.
 
-Test restoration into a separate private directory while the original is
-stopped: restore data plus privileges, adjust only machine-specific paths and
-port/client configuration, start the restored server, then verify project ID,
-task IDs, owners and accepted dependencies. Keep the prior backup generation.
-The live tests exercise process restart and a stopped-store copy/restore; they
-do not simulate power loss or prove a particular host's boot configuration.
+- Authenticated, strict read-only health checks run every five minutes. They
+  verify project identity, the actual client endpoint, SQL file restrictions,
+  enabled/active service and timers, and backup freshness. Observations older
+  than 15 minutes are degraded even if the last result was healthy.
+- A daily backup runs at 03:30 in the host's timezone, with up to ten minutes
+  of jitter. The persistent timer catches missed runs. It stops the exact
+  database unit, confirms it is inactive, copies data/workspace/credentials,
+  then restarts it before compression and restore verification. Claims are
+  briefly unavailable during the copy; do not create another database.
+- Every backup is extracted into a fresh temporary directory, verified against
+  file hashes, and started read-only on a separate loopback port. The copied
+  Beads port file, YAML, metadata and credentials are all redirected. Project
+  identity, task reads and full issue/dependency/event tables must be readable.
+  Only then is the archive published and counted toward the seven retained
+  verified generations. Failed attempts preserve the previous good backups.
+- A per-instance lock prevents overlapping maintenance. A restart receipt and
+  systemd `ExecStopPost` recovery resume the database after a failed or killed
+  backup helper. Recovery never initializes a new database or replaces data.
+- Service and timer logs go to journald using the host's retention policy.
+  Private `maintenance/events.jsonl` rotates at 1 MiB with three older files.
+  `status.json`, `alert.json` and `backup.json` preserve the latest observations;
+  failure/recovery alerts are deduplicated on state changes. `/status` and
+  `/pipeline` consume them locally, including stale timer observations. No
+  Telegram, email or webhook is enabled by this installer.
+
+The installer registers this instance in `~/.clade/task-services/`. The existing
+pipeline checker reads that registry alongside its YAML project registry. A
+broken database can therefore still have a readable maintenance status:
+
+```bash
+python3 scripts/maintenance.py --repo /absolute/code/repo status
+journalctl --user -u clade-tasks-myproject.service -u clade-tasks-myproject-health.service
+systemctl --user list-timers 'clade-tasks-myproject-*'
+```
+
+To trigger a backup now, start `clade-tasks-myproject-backup.service` through
+systemd (this preserves its crash-recovery hook). To repeat a restore drill:
+
+```bash
+python3 scripts/maintenance.py --directory /absolute/local-disk/clade-tasks-personal \
+  verify --archive /absolute/local-disk/clade-tasks-personal/backups/BACKUP_DIRECTORY
+```
+
+This verifies into a separate directory and never overwrites production. Keep
+backups private: they contain passwords and SQL privileges. These are local
+recovery copies on the same host, not protection against host/disk loss. An
+off-host destination and external alert recipient require explicit operator
+configuration. The tests do not simulate power loss or reboot the host.
+
+For an existing prepared instance, run the **newly installed skill's**
+`scripts/maintenance.py --directory /absolute/instance install`. It upgrades
+the unit/configuration and stable helpers, restarts the service, enables both
+timers, and performs the same initial backup/restore verification. It refuses
+a unit or project registration belonging to another instance. It does not
+reinitialize the project; existing bindings and session IDs remain valid.
 
 Pin all clients to the verified version. Upgrade with a backup and one named
 server operator; migration/restore is a separate operation, never an automatic
