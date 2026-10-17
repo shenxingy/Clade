@@ -13,44 +13,10 @@ import subprocess
 import sys
 import time
 
-from tasks import BD_VERSION, Beads, TaskError, bd_environment, ident, private_write
+from tasks import BD_VERSION, Beads, TaskError, bd_environment, ident, private_write, read_json
+from maintenance import configure, server_command
 
 DOLT_VERSION = "2.2.0"
-
-
-def server_command(root: Path, dolt: str, port: int, *, readonly: bool = False) -> list[str]:
-    """Use JSON's YAML subset; SQL file access is confined before listening."""
-    files = root / "sql-files"
-    files.mkdir(mode=0o700, exist_ok=True)
-    private_write(root / "server.yaml", {
-        "listener": {"host": "127.0.0.1", "port": port, "max_connections": 32,
-                     "socket": str(root / "mysql.sock")},
-        "data_dir": str(root / "data"), "log_level": "info", "log_format": "json",
-        "behavior": {"read_only": readonly},
-        "system_variables": {"secure_file_priv": str(files)},
-    })
-    # In pinned 2.2.0 this flag is read independently of YAML config. Keep the
-    # anonymous-root integration probe: the help's blanket 'flags ignored' is
-    # misleading here (sqlserver.go passes apr.Contains directly to Serve).
-    return [dolt, "sql-server", "--config", str(root / "server.yaml"),
-            "--skip-root-user-initialization"]
-
-
-def unit_quote(value: str) -> str:
-    if any(char in value for char in "\n\r\t$"):
-        raise TaskError("service paths must not contain control characters or dollar signs")
-    return '"' + value.replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%") + '"'
-
-
-def write_unit(root: Path, prefix: str, command: list[str]) -> Path:
-    unit = root / f"clade-tasks-{prefix}.service"
-    unit.write_text("[Unit]\nDescription=Clade personal task database\n\n[Service]\n"
-                    f"WorkingDirectory={str(root / 'data').replace('%', '%%')}\n"
-                    f"ExecStart={' '.join(map(unit_quote, command))}\n"
-                    "Environment=GOMAXPROCS=2\nRestart=on-failure\nRestartSec=3\nUMask=0077\n"
-                    "NoNewPrivileges=true\nStandardOutput=journal\nStandardError=journal\n"
-                    "\n[Install]\nWantedBy=default.target\n")
-    return unit
 
 
 def checked(command: list[str], cwd: Path, env: dict[str, str], stdin: str | None = None) -> str:
@@ -144,8 +110,6 @@ def prepare(args: argparse.Namespace) -> dict:
                   "credentials_file": str(credentials), "bd": bd})
     # Every prepared instance includes stable maintenance helpers and schedules;
     # enabling them remains a deliberate operator action.
-    from maintenance import configure
-    from tasks import read_json
     managed = configure(root, read_json(root / "service.json"), prefix)
     unit = root / managed["unit"]
     return {"prepared": True, "running": False, "project_id": context["project_id"],

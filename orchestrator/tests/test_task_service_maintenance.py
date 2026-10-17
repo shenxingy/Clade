@@ -220,11 +220,10 @@ def test_event_log_is_bounded_and_private(instance, ops, monkeypatch):
 @pytest.mark.skipif(not shutil.which("systemd-analyze"), reason="systemd unit parser unavailable")
 def test_generated_unit_is_accepted_by_real_systemd_parser(tmp_path, ops):
     # WorkingDirectory is a scalar path, unlike ExecStart's quoted argv.
-    from service import write_unit
     root = tmp_path / "space and percent %"
     root.mkdir()
     (root / "data").mkdir()
-    unit = write_unit(root, "fixture", [shutil.which("true")])
+    unit = ops.write_unit(root, "fixture", [shutil.which("true")])
     result = subprocess.run(["systemd-analyze", "verify", "--man=no", str(unit)],
                             capture_output=True, text=True, timeout=20)
     assert result.returncode == 0, result.stderr
