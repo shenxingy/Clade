@@ -88,6 +88,7 @@ Permission bypass 优先于 sandbox 设置，并向 Codex 传递
 | Skill | 功能 |
 |-------|------|
 | **commit** | 按模块拆分改动做检查点提交;推送需另行授权 |
+| **compute** | 大规模 CPU/GPU 任务的本地盘暂存、profiling、调度限流和恢复验证 |
 | **create-pr** | 发布或更新一个绑定精确 SHA 的 pull request |
 | **delivery** | 执行 checkpoint、审查、集成与清理的完整交付流程 |
 | **loop** | 目标驱动的自主改进循环 |

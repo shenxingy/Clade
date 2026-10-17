@@ -94,6 +94,7 @@ never enabled by default.
 | Skill | Description |
 |-------|-------------|
 | **commit** | Repository-adaptive checkpoint commits, splitting changes by module; publishing stays separately authorized |
+| **compute** | Profile and schedule large CPU/GPU batches with local staging, bounded queues and verified recovery |
 | **create-pr** | Publish or update one exact-SHA pull request |
 | **delivery** | Run the full checkpoint, review, integration, and cleanup workflow |
 | **loop** | Clade goal-driven Blueprint loop (NOT the CC built-in interval poller) |
