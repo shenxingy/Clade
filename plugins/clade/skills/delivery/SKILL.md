@@ -114,6 +114,15 @@ projection without importing controller internals:
 python3 "$DELIVERY_PY" evidence --id "<id>"
 ```
 
+For work claimed through `/tasks`, also pass `--project-id`, `--task-id` and
+`--session-id` together at START. These immutable fields form `task_ref` in
+state and evidence; they do not replace an orchestrator `attempt_id`. Keep the
+task holder and delivery owner aligned. After verification/checkpointing, use
+the task helper's `submit --delivery-id` to attach the exact committed head.
+Task acceptance requires a separate review; it neither proves a merge nor
+grants publication authority. A transferred task receives a new delivery for
+its new session rather than rewriting the old delivery's ownership.
+
 If the user or repository policy grants publication/integration authority
 after START, record only the newly granted actions through the controller:
 

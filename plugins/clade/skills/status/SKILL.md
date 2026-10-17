@@ -49,6 +49,11 @@ Unknown is a first-class value:
 1. Read conversation/runtime activity exposed by this surface.
 2. Inspect local Git without mutation. Prefer the delivery controller's
    `git_context.py` when installed; otherwise use read-only Git commands.
+   When the Git-common `clade/tasks/binding.json` exists, resolve the installed
+   tasks skill directory as TASKS_ROOT and run
+   `python3 "$TASKS_ROOT/scripts/tasks.py" snapshot`. Use its project/task/
+   session IDs, ownership, ready set and submission evidence. An unavailable
+   backend is unavailable, not zero tasks. Do not run claim or heartbeat here.
 3. Read Clade worker `status_snapshot` / `execution_envelope` if an
    orchestrator is reachable.
 4. Query forge/CI only when a related PR is in scope.

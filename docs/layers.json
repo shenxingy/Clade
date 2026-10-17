@@ -40,7 +40,7 @@
       ],
       "reason": "The web GUI is disabled by owner decision and the FastAPI server is not started in normal use. It may be rebuilt later, so it is kept building and green rather than deleted. Auditing an unrun system is how effort gets spent on a control that never applies.",
       "since": "2026-09-02",
-      "notes": "Do not delete. Do not treat as debt. CI keeps it compiling and tested; that is the contract."
+      "notes": "Preserve for a future monitor of native sessions and their child agents. The tasks skill exposes clade.task-snapshot/v1 and per-task history for that direction; the Web monitor is not implemented or activated yet. Beads owns shared tasks, so monitoring must not duplicate them into the legacy queue. CI keeps this layer compiling and tested."
     },
     {
       "name": "mcp-package",

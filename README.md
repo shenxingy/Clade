@@ -35,7 +35,7 @@ routing, delivery state, and multi-project fleet truth.
 3. [The Trust Loop](#the-trust-loop)
 4. [What It Does](#what-it-does)
 5. [Self-Learning Mechanisms](#self-learning-mechanisms)
-6. [Skills](#skills-146)
+6. [Skills](#skills-147)
 7. [Supported Languages](#supported-languages)
 8. [Documentation](#documentation)
 9. [Dotfile Sync](#dotfile-sync)
@@ -77,7 +77,7 @@ Run `$clade:codex-usage setup minimal` for a compact native footer.
 never reads or exposes Codex credentials.
 
 The native plugin runs directly in Codex and does **not** require Claude Code.
-It currently ships 28 provider-native core workflows; Claude-specific overnight
+It currently ships 29 provider-native core workflows; Claude-specific overnight
 orchestration remains in the full framework. See [Native Codex Support](docs/codex.md).
 
 ### MCP Server Only
@@ -95,7 +95,7 @@ all runtime and sandbox options.
 
 ## MCP Server — Use Skills in Any AI Editor
 
-The MCP package exposes 34 bundled Clade skills, plus compatible user-installed
+The MCP package exposes 35 bundled Clade skills, plus compatible user-installed
 skills, as callable tools via the [Model Context Protocol](https://modelcontextprotocol.io).
 It can execute them with either Claude or Codex.
 
@@ -172,7 +172,7 @@ turns an inferred revert or async signal into an automatic rule.
 
 See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, detectors, schemas, and tunable env vars.
 
-## Skills (146)
+## Skills (147)
 
 ### Core Workflow
 
@@ -195,6 +195,7 @@ See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, de
 | `/handoff` | Save session state for context relay between agents |
 | `/pickup` | Resume from previous handoff — zero-friction restart |
 | `/worktree` | Create git worktrees for parallel sessions |
+| `/tasks` | Share dependency-aware plans and claims across Codex, CC, Kimi and humans; review before unlocking downstream work ([setup](docs/reference/shared-tasks.md)) |
 | `/poke` | Heartbeat after `esc` — 3-line status, auto-continues if still progressing |
 | `/status` | Session dashboard — background agents, loops, worktrees, unpushed commits |
 | `/go` | Execute the recommendation from your most recent A/B/C option set |
