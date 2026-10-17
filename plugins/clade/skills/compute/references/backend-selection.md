@@ -20,6 +20,17 @@ configured resource selection and cgroup enforcement before assuming `--mem`
 or GPU requests isolate jobs. Work outside Slurm still consumes real capacity.
 Do not resume DOWN nodes merely to make a submission run.
 
+Inspect permitted account/partition/QOS associations and effective limits using
+site-provided read-only views (`sacctmgr show` where permitted), allocation
+details and pending reasons. Check user and account/group resource usage, running
+and submitted job limits, wall time and resource-minute budgets. Slurm has its
+own QOS/association precedence and exceptions; do not take the numeric minimum
+of every configured field. Verify accounting enforcement; hidden records are
+not evidence of no limit. Use the site's admission authority without changing
+associations/QOS or choosing another account to evade a quota. A submission may
+be rejected rather than queued when a limit is reached; retain its plan and
+reason, with bounded retries only for conditions that can clear.
+
 Use an array with a measured concurrency cap (`--array=0-N%K`) for independent
 shards, explicit CPU/memory/time/GPU requirements, and a stable index-to-shard
 manifest. Split resource classes into separate arrays. The order in a nodelist
@@ -33,7 +44,8 @@ policy. A signal handler helps graceful stops; periodic checkpoints are needed
 for abrupt loss. Never assume `--requeue` preserves process memory.
 
 Sources: [job arrays](https://slurm.schedmd.com/job_array.html),
-[sbatch resource requests and requeue](https://slurm.schedmd.com/sbatch.html).
+[sbatch resource requests and requeue](https://slurm.schedmd.com/sbatch.html),
+[resource-limit hierarchy and enforcement](https://slurm.schedmd.com/resource_limits.html).
 
 ## GNU Parallel and systemd
 

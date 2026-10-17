@@ -32,7 +32,7 @@ Clade 把 agent 的工作变成可复查的交付：解析后的执行身份、�
 3. [可信交付循环](#可信交付循环)
 4. [它做什么](#它做什么)
 5. [自学习机制](#自学习机制)
-6. [Skills](#skills-147)
+6. [Skills](#skills-148)
 7. [支持的语言](#支持的语言)
 8. [文档](#文档)
 9. [Dotfile 同步](#dotfile-同步)
@@ -87,7 +87,7 @@ Codex execution runtime 自 0.2.0 起提供，Claude 仍是向后兼容的默认
 ## MCP Server — 在任何 AI 编辑器中使用 Skills
 
 MCP package 通过 [Model Context Protocol](https://modelcontextprotocol.io)
-暴露 35 个内置 Clade skills，并可选择通过 Claude 或 Codex 执行。
+暴露 36 个内置 Clade skills，并可选择通过 Claude 或 Codex 执行。
 
 **Claude Desktop，或使用 Claude runtime 的其他客户端：**
 ```json
@@ -158,7 +158,7 @@ Commit Lessons 与 Doc Align 在 Claude 完整框架中本地运行，未启用�
 
 详见 [Self-Learning Mechanisms](docs/learning-mechanisms.md)。
 
-## Skills (147)
+## Skills (148)
 
 ### 核心工作流
 

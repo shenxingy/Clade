@@ -18,6 +18,24 @@ repositories. Current user instructions supersede older personal preferences;
 they do not implicitly waive site restrictions or grant administrator access.
 If the profile is missing, use known authorized resources and record defaults;
 do not invent remote hosts, reservations, or permission to displace others.
+The profile is optional: a standalone local machine can use a bounded local
+runner after the same preflight. No specific host, quota value or scheduler is
+required by Clade itself.
+
+Resolve the site's effective limits for the chosen user, group/project/account,
+partition/queue and service class (such as QOS), using its documented precedence.
+Check CPU/GPU/RAM, concurrent and submitted job counts, wall time/compute credits,
+and storage bytes/inodes where applicable. Record scope, source, current usage
+and remaining allowance; include other jobs/sessions charged to that scope.
+Do not give each host or worker a fresh copy of a fleet-wide allowance. Derive
+this run's budget from the effective remaining quotas, its actual allocation,
+project/user caps, physical headroom and enforced cgroup/OS limits together.
+An idle host or free VRAM is not an allocation. Personal preferences and
+dedicated-host permission cannot relax site restrictions or other binding caps.
+If quota details are hidden, use the site's authoritative admission system and
+record what remains unknown; missing visibility is not unlimited entitlement.
+If neither authorized limits nor authoritative admission can be established,
+keep that lane PREPARED/BLOCKED instead of guessing a fleet-wide allowance.
 
 Before starting even a compute smoke run, state its host, backend, resource
 limits, and scratch location. Follow the profile's host tiers; within a tier,
@@ -44,7 +62,8 @@ Capture a timestamped snapshot on each candidate host:
   network/I/O pressure. Resolve symlinks: a path named `ssd` may still be NFS.
 - Scheduler allocations plus work outside it. Recheck at admission; the
   snapshot is not a reservation. Coordinate our simultaneous sessions through
-  the existing scheduler or one shared per-user admission mechanism.
+  the existing scheduler or one shared admission mechanism covering every
+  applicable quota scope, including aggregate user/project limits across hosts.
 
 For NFS/network-backed random I/O or many small files, stage the required inputs
 to verified host-local SSD/NVMe before compute. Bound transfers independently
@@ -73,10 +92,12 @@ prefetch buffers and library thread pools. Set BLAS/OpenMP/framework threads
 explicitly so outer workers do not multiply inner threads without a budget.
 Do not use GPU for a CPU-only tool or infer acceleration from utilization.
 
-Choose worker count from the minimum of allocated CPU, measured peak RAM with
-headroom, VRAM, scratch, and observed storage/network limits. A zero budget means
-QUEUED. Preserve personal shared-host caps; dedicated-host permission changes
-the budget only for that run. Record the measurements and selected limits.
+Choose worker count from the effective budget above, measured peak RAM with
+headroom, VRAM, scratch, and observed storage/network limits. With no execution
+headroom, submit only a request that can eventually fit, within submission
+limits; report QUEUED only with backend acceptance. Preserve personal shared-host
+caps; dedicated-host permission changes only the owner's cap for that run.
+Record the measurements and selected limits.
 For RAM, subtract shared overhead and reserve first, then divide by measured
 per-worker peak: `floor((budget - shared - reserve) / worker_peak)`. Recheck the
 aggregate at that concurrency; neither RSS sums nor this estimate are a limit.
@@ -96,6 +117,9 @@ Submit through the selected backend with explicit CPU/RAM/GPU/time requests
 and OS-enforced limits where supported. Keep one authority for admission;
 nested Ray/Dask/Parallel workers must fit inside its allocation. Full hosts
 leave work pending in a durable queue, with its job ID and reason recorded.
+Respect pending-job/submission caps too; retain excess shards in the durable
+manifest instead of flooding the scheduler. If even one shard exceeds a hard
+per-job limit, reduce/repartition it or report BLOCKED; waiting cannot fix it.
 Pressure during execution stops new admissions, checkpoints at safe boundaries
 and requeues unfinished work. Do not evict other users or run a busy retry loop.
 Use bounded backoff and a real backend/timer wake-up; a note saying "queued" is
@@ -139,6 +163,7 @@ testing alone cannot prove power-loss recovery.
 Keep private execution evidence under the task's existing evidence directory or
 `~/.clade/compute/<run-id>/`: preflight timestamps, selected backend/version and
 placement, code/input IDs, resource requests and enforced limits, staging checks,
+effective quota scopes/usage and admission decisions,
 smoke/profiling measurements, worker/shard tuning, queue IDs, recovery test and
 resume command, checkpoint locations, output validation and final job status.
 

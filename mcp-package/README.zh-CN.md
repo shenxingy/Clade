@@ -142,7 +142,7 @@ MCP server 只是 Clade 的一个入口。完整框架还包含：
 - **32 个 hooks**
 - **42 个 shell scripts + 31 个 Python utilities**
 - **37 个专业 agents**
-- 带 29 个核心 workflows、usage visibility 与安全 hooks 的 Codex 原生 plugin
+- 带 30 个核心 workflows、usage visibility 与安全 hooks 的 Codex 原生 plugin
 - FastAPI orchestrator、task queue、worker pool 与 GitHub sync
 
 ```bash

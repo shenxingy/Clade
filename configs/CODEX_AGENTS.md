@@ -23,9 +23,11 @@ This does not apply to repository or file searches.
 
 Before large CPU/GPU experiments or data batches, load `clade:compute` (or the
 installed `compute` skill) and read `~/.clade/compute-policy.md` when present.
-Honor its host tiers, shared-host budgets and site scheduler requirements;
-keep private topology out of public repositories. Inspect live CPU/RAM/GPU/VRAM,
-cgroup limits, other workloads and storage. Stage network-backed hot data to
+Apply personal host preferences only within site rules, effective
+user/group/project quotas and actual allocations; share remaining allowances
+across concurrent jobs/hosts. Keep private topology and quota values out of
+public repositories. Inspect live CPU/RAM/GPU/VRAM, cgroup limits, other workloads
+and storage. Stage network-backed hot data to
 verified local disk; smoke-test correctness and recovery, then profile before
 choosing concurrency, shards and backend. Prefer established schedulers and
 bounded dynamic dispatch. Full resources mean durable queueing, not
