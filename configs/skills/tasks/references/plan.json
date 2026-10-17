@@ -1,0 +1,36 @@
+{
+  "plan_id": "feature-example-v1",
+  "tasks": [
+    {
+      "key": "contract",
+      "title": "Agree on the API contract",
+      "description": "Document request, response and error examples.",
+      "acceptance": "Examples and compatibility reviewed.",
+      "owns": ["docs/api.md"]
+    },
+    {
+      "key": "backend",
+      "title": "Implement the backend",
+      "description": "Implement the accepted API contract.",
+      "acceptance": "Backend tests pass and the implementation is reviewed.",
+      "depends_on": ["contract"],
+      "owns": ["src/backend/"]
+    },
+    {
+      "key": "frontend",
+      "title": "Implement the frontend",
+      "description": "Use the accepted API contract.",
+      "acceptance": "UI interactions and error states are verified.",
+      "depends_on": ["contract"],
+      "owns": ["src/frontend/"]
+    },
+    {
+      "key": "integration",
+      "title": "Verify the integrated feature",
+      "description": "Exercise both independently reviewed implementations together.",
+      "acceptance": "Integration tests pass against the intended combined commits.",
+      "depends_on": ["backend", "frontend"],
+      "owns": ["tests/integration/"]
+    }
+  ]
+}

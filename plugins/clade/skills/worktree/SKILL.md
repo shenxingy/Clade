@@ -28,7 +28,8 @@ and the current runtime surface overlay.
 - Parallel writers receive separate worktrees/clones/containers/detached
   snapshots and non-overlapping delivery units.
 - Do not write tracked `TASK.md` or other Clade bookkeeping into an arbitrary
-  repository. Task/ownership/progress live in Git-common delivery state.
+  repository. Delivery ownership lives in Git-common state; shared task
+  ownership and dependencies live in the bound Beads service when `/tasks` is used.
 - Completion publishes/reviews through repository policy; it does not locally
   merge every worktree into whichever branch happens to be active.
 - Remove only a worktree and branch owned by the selected terminal delivery.
@@ -46,6 +47,9 @@ and the current runtime surface overlay.
    - unsupported client: report required isolation instead of sharing a branch.
 4. Create a delivery record containing task source, base SHA, owner, optional
    stack parent, runtime, surface, and publication authorities.
+   For a shared task, verify the live claim first and pass `--project-id`,
+   `--task-id` and `--session-id` together. Worktrees share the Git-common task
+   binding; never initialize a separate task database inside each worktree.
 5. Pass the task through runtime-native context/handoff, not a tracked project
    file.
 

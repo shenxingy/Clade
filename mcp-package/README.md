@@ -2,7 +2,7 @@
 
 # clade-mcp 0.3.1
 
-Provider-neutral MCP server that exposes **34 AI coding skills** as callable tools — autonomous commits, reviews, incident response, security audits, and more. Skill prompts can run through Claude or Codex.
+Provider-neutral MCP server that exposes **35 AI coding skills** as callable tools — autonomous commits, reviews, incident response, security audits, and more. Skill prompts can run through Claude or Codex.
 
 Part of the [Clade](https://github.com/shenxingy/clade) autonomous coding framework.
 
@@ -24,7 +24,7 @@ listed here because it is what most people configure first:
 - Conservative `auto` runtime selection: Claude when available, otherwise Codex
 - Configurable Codex sandbox with an explicit, opt-in permission bypass
 - Runtime name reported by `clade_list_skills` for configuration diagnostics
-- 34 bundled workflows, up from 29 in 0.1.0
+- 35 bundled workflows, up from 29 in 0.1.0
 
 Upgrade with:
 
@@ -89,7 +89,7 @@ The permission bypass takes precedence over the sandbox setting and passes
 Codex's `--dangerously-bypass-approvals-and-sandbox` flag. It is intentionally
 never enabled by default.
 
-## Available Skills (34)
+## Available Skills (35)
 
 | Skill | Description |
 |-------|-------------|
@@ -127,6 +127,7 @@ never enabled by default.
 | **poke** | Heartbeat after esc — 3-line status, continue if progressing |
 | **status** | Session dashboard — background agents, loops, worktrees, unpushed commits |
 | **go** | Execute the recommendation from your most recent A/B/C option set |
+| **tasks** | Shared Beads-backed task planning, binding, sessions, snapshots, and guarded handoffs |
 
 ## How It Works
 
@@ -141,11 +142,11 @@ Skills from `~/.claude/skills/` (installed by the legacy full framework) are als
 
 This MCP server is one part of Clade. The full framework includes:
 
-- **146 skills** — coding, research, SEO, content, paid ads, and email workflows
+- **147 skills** — coding, research, SEO, content, paid ads, and email workflows
 - **32 hooks** — safety guardian, correction learning, type-checking, session context
 - **43 shell scripts + 41 Python utilities** — commits, loops, parallel tasks, health scanning
 - **37 agents** — code, security, compliance, marketing, research, and verification specialists
-- **Native Codex plugin** — 28 core workflows, usage visibility, and lifecycle safety hooks
+- **Native Codex plugin** — 29 core workflows, usage visibility, and lifecycle safety hooks
 - **Orchestrator** — FastAPI web UI with task queue, worker pool, GitHub sync
 
 Install the full framework:

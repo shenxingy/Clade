@@ -77,6 +77,9 @@ def _start(
     delivery_id: str = "fixture",
     authorities: bool = True,
     attempt_id: str | None = None,
+    project_id: str | None = None,
+    task_id: str | None = None,
+    session_id: str | None = None,
 ) -> dict:
     _git(repo, "switch", "-q", "-c", "agent/fixture")
     args = [
@@ -94,6 +97,12 @@ def _start(
     ]
     if attempt_id:
         args.extend(["--attempt-id", attempt_id])
+    if project_id:
+        args.extend(["--project-id", project_id])
+    if task_id:
+        args.extend(["--task-id", task_id])
+    if session_id:
+        args.extend(["--session-id", session_id])
     if authorities:
         args.extend(
             [
@@ -140,6 +149,7 @@ def test_delivery_evidence_projection_links_attempt_and_omits_private_state(
     assert evidence == {
         "schema_version": "clade.delivery-evidence/v1",
         "attempt_id": "attempt-17",
+        "task_ref": None,
         "delivery_id": "fixture",
         "state": "PUBLISHED",
         "base": {"ref": "main", "sha": started["base_sha"]},
@@ -232,6 +242,112 @@ def test_start_is_idempotent_and_creates_branch_lease(git_repo: Path) -> None:
     assert profile["branch"]["owner"] == "session"
     assert profile["branch"]["owner_id"] == "test:session"
     assert profile["authorization"]["commit"]["decision"] == "allowed"
+
+
+def test_start_task_ref_roundtrips_to_evidence_and_allows_dotted_task_id(
+    git_repo: Path,
+) -> None:
+    started = _start(
+        git_repo,
+        project_id="project-1",
+        task_id="bd.123",
+        session_id="session-1",
+    )
+
+    evidence = _delivery(git_repo, "evidence", "--id", "fixture")
+
+    task_ref = {
+        "project_id": "project-1",
+        "task_id": "bd.123",
+        "session_id": "session-1",
+    }
+    assert started["task_ref"] == task_ref
+    assert evidence["task_ref"] == task_ref
+
+
+def test_start_rejects_conflicting_task_ref_for_existing_delivery(
+    git_repo: Path,
+) -> None:
+    _start(
+        git_repo,
+        project_id="project-1",
+        task_id="task-1",
+        session_id="session-1",
+    )
+
+    result = _delivery(
+        git_repo,
+        "start",
+        "--id",
+        "fixture",
+        "--owner",
+        "test:session",
+        "--runtime",
+        "codex",
+        "--branch",
+        "agent/fixture",
+        "--base",
+        "main",
+        "--project-id",
+        "project-1",
+        "--task-id",
+        "task-2",
+        "--session-id",
+        "session-1",
+        expected=2,
+    )
+
+    assert "different facts" in result["error"]
+
+
+def test_start_rejects_partial_task_ref(git_repo: Path) -> None:
+    result = _delivery(
+        git_repo,
+        "start",
+        "--id",
+        "fixture",
+        "--owner",
+        "test:session",
+        "--runtime",
+        "codex",
+        "--branch",
+        "main",
+        "--base",
+        "main",
+        "--project-id",
+        "project-1",
+        expected=2,
+    )
+
+    assert "must be provided together" in result["error"]
+
+
+def test_start_preserves_idempotence_for_legacy_record_without_task_ref(
+    git_repo: Path,
+) -> None:
+    first = _start(git_repo)
+    state_path = git_repo / ".git" / "clade" / "deliveries" / "fixture.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state.pop("task_ref")
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+
+    repeated = _delivery(
+        git_repo,
+        "start",
+        "--id",
+        "fixture",
+        "--owner",
+        "test:session",
+        "--runtime",
+        "codex",
+        "--branch",
+        "agent/fixture",
+        "--base",
+        "main",
+    )
+
+    assert "task_ref" not in repeated
+    assert repeated["delivery_id"] == first["delivery_id"]
 
 
 def test_new_head_invalidates_candidate_evidence(git_repo: Path) -> None:

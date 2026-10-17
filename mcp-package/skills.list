@@ -38,5 +38,6 @@ slt
 start
 status
 sync
+tasks
 verify
 worktree

@@ -61,7 +61,8 @@ def test_codex_plugin_skills_are_generated_and_provider_native() -> None:
     )
     assert result.returncode == 0, result.stderr
     skills = list((PLUGIN_ROOT / "skills").glob("*/SKILL.md"))
-    assert len(skills) == 28
+    assert len(skills) == 29
+    assert "tasks" in {path.parent.name for path in skills}
     assert "web-search" in {path.parent.name for path in skills}
     assert "green" in {path.parent.name for path in skills}
     merged = "\n".join(path.read_text(encoding="utf-8") for path in skills).lower()
@@ -105,6 +106,20 @@ def test_artifact_helpers_run_outside_clade_without_claude_install(tmp_path) -> 
     result = subprocess.run(
         [sys.executable, str(skill / "scripts/artifact-lint.py"), "--self-test"],
         cwd=tmp_path, capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_tasks_helper_matches_canonical_and_runs_outside_clade(tmp_path) -> None:
+    canonical = REPO_ROOT / "configs" / "skills" / "tasks" / "scripts" / "tasks.py"
+    generated = PLUGIN_ROOT / "skills" / "tasks" / "scripts" / "tasks.py"
+    assert generated.read_bytes() == canonical.read_bytes()
+    result = subprocess.run(
+        [sys.executable, str(generated), "--help"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
 

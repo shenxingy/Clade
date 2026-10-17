@@ -36,6 +36,18 @@ completion-status: DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT
 
 Resume work from the most recent handoff file.
 
+## Shared task pickup
+
+If Git-common `clade/tasks/binding.json` exists, first load `/tasks` and read
+its snapshot. A handoff's task reference must match this project and the live
+owner. Use a fresh session ID and claim ready work, or receive an explicit
+holder-guarded handoff; do not reuse the previous session's identity. Preserve
+the original objective when choosing among ready tasks. A task blocked on a
+dependency is not runnable just because a handoff lists it as the next step.
+An unavailable task backend blocks new claims, but existing work can still be
+checkpointed. If no Markdown handoff exists, continue from the shared task
+record and acceptance criteria instead of stopping at Step 1.
+
 ## Execution Steps
 
 ### Step 1: Find Handoff File

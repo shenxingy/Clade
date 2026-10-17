@@ -67,6 +67,14 @@ ls .clade/handoff-*.md 2>/dev/null | wc -l
 
 ### Step 3: Write Handoff File
 
+When working on a shared `/tasks` task, include `project_id`, `task_id`,
+`session_id`, delivery ID and checkpoint SHA in the handoff. Read the live task
+before reporting its state. With a known recipient, preserve the code first
+and use the task helper's holder-guarded `handoff` with that recipient's fresh
+session ID and resume context. Without a recipient, retain ownership and name
+the pending handoff; writing Markdown alone neither releases nor transfers it.
+Submitted tasks require review or `request-changes`, not a silent reassignment.
+
 Save to: `.clade/handoff-{YYYY-MM-DD-HH-MM}.md`
 
 **INITIAL TEMPLATE** (use for first handoff):

@@ -2,7 +2,7 @@
 
 # clade-mcp 0.3.1
 
-Provider-neutral MCP server，将 **34 个 Clade coding skills** 暴露为可调用工具。
+Provider-neutral MCP server，将 **35 个 Clade coding skills** 暴露为可调用工具。
 Skill prompt 可以通过 Claude 或 Codex 执行，适用于 Claude Desktop、Cursor、
 Windsurf 及其他 MCP 客户端。
 
@@ -23,7 +23,7 @@ Provider 选择不是本次新增——它在 0.2.0 就有了；列在这里是�
 - `CLADE_RUNTIME=auto`：优先使用已安装的 Claude，否则使用 Codex
 - 可配置 Codex sandbox；跳过 permission 必须显式开启
 - `clade_list_skills` 会显示当前 runtime，便于诊断配置
-- 内置 workflows 从 0.1.0 的 29 个增加到 34 个
+- 内置 workflows 从 0.1.0 的 29 个增加到 35 个
 
 升级：
 
@@ -83,7 +83,7 @@ clade-mcp  # 启动 stdio MCP server
 Permission bypass 优先于 sandbox 设置，并向 Codex 传递
 `--dangerously-bypass-approvals-and-sandbox`。Clade 永远不会默认开启它。
 
-## 内置 Skills（34）
+## 内置 Skills（35）
 
 | Skill | 功能 |
 |-------|------|
@@ -121,6 +121,7 @@ Permission bypass 优先于 sandbox 设置，并向 Codex 传递
 | **poke** | 按 esc 后的三行进度心跳 |
 | **status** | 显示 agents、loops、worktrees 和未推送 commits |
 | **go** | 执行最近一次 A/B/C 选项中的推荐项 |
+| **tasks** | 共享 Beads 任务规划、绑定、session、快照与受保护交接 |
 
 ## 工作机制
 
@@ -140,7 +141,7 @@ MCP server 只是 Clade 的一个入口。完整框架还包含：
 - **32 个 hooks**
 - **42 个 shell scripts + 31 个 Python utilities**
 - **37 个专业 agents**
-- 带 28 个核心 workflows、usage visibility 与安全 hooks 的 Codex 原生 plugin
+- 带 29 个核心 workflows、usage visibility 与安全 hooks 的 Codex 原生 plugin
 - FastAPI orchestrator、task queue、worker pool 与 GitHub sync
 
 ```bash

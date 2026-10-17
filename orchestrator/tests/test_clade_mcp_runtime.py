@@ -83,9 +83,12 @@ def test_packaged_server_registers_v2_low_level_handlers() -> None:
 def test_editable_install_resolves_curated_bundled_skills() -> None:
     expected = REPO_ROOT / "mcp-package" / "skills"
     assert server.BUNDLED_SKILLS_DIR == expected
-    assert len(list(server.BUNDLED_SKILLS_DIR.glob("*/SKILL.md"))) == 34
-    for name in ("delivery", "provider", "status"):
+    assert len(list(server.BUNDLED_SKILLS_DIR.glob("*/SKILL.md"))) == 35
+    for name in ("delivery", "provider", "status", "tasks"):
         assert (server.BUNDLED_SKILLS_DIR / name / "SKILL.md").is_file()
+    for name in ("tasks.py", "service.py"):
+        bundled = server.BUNDLED_SKILLS_DIR / "tasks" / "scripts" / name
+        assert bundled.read_bytes() == (REPO_ROOT / "configs" / "skills" / "tasks" / "scripts" / name).read_bytes()
 
 
 def test_bundled_skill_resolution_prefers_wheel_then_editable(tmp_path) -> None:

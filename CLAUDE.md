@@ -18,6 +18,7 @@
 - /loop: given a goal file, runs supervisor+worker iterations until converged or max-iter
 - committer: `committer "type: msg" file1 file2` stages only named files and commits
 - loop-runner.sh: runs background loop — supervisor plans tasks, workers execute in parallel via worktrees
+- /tasks: imports a shared Beads dependency graph, atomically claims ready work, and releases downstream tasks only after explicit acceptance; see docs/reference/shared-tasks.md
 
 ## What This Project Is
 

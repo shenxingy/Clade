@@ -213,6 +213,7 @@ def _delivery_evidence_projection(state: dict[str, Any]) -> dict[str, Any]:
     return {
         "schema_version": "clade.delivery-evidence/v1",
         "attempt_id": state.get("attempt_id"),
+        "task_ref": state.get("task_ref"),
         "delivery_id": state["delivery_id"],
         "state": state["state"],
         "base": {"ref": state.get("base_ref"), "sha": state.get("base_sha")},
@@ -263,6 +264,22 @@ def cmd_start(args: argparse.Namespace) -> dict[str, Any]:
             "preserve or disposition them first"
         )
 
+    task_ref_values = (args.project_id, args.task_id, args.session_id)
+    if any(value is not None for value in task_ref_values) and not all(
+        value is not None for value in task_ref_values
+    ):
+        raise DeliveryError(
+            "--project-id, --task-id, and --session-id must be provided together"
+        )
+    task_ref = (
+        {
+            "project_id": _safe_id(args.project_id),
+            "task_id": _safe_id(args.task_id),
+            "session_id": _safe_id(args.session_id),
+        }
+        if all(value is not None for value in task_ref_values)
+        else None
+    )
     delivery_id = _safe_id(args.id or f"delivery-{uuid.uuid4().hex[:12]}")
     path = _state_path(root, delivery_id)
     requested_branch = args.branch or repository["current_branch"]
@@ -314,6 +331,7 @@ def cmd_start(args: argparse.Namespace) -> dict[str, Any]:
         "schema_version": SCHEMA_VERSION,
         "delivery_id": delivery_id,
         "attempt_id": _safe_id(args.attempt_id) if args.attempt_id else None,
+        "task_ref": task_ref,
         "task_source": args.task_source,
         "owner": args.owner,
         "runtime": args.runtime,
@@ -351,7 +369,8 @@ def cmd_start(args: argparse.Namespace) -> dict[str, Any]:
         if path.exists():
             existing = _read_state(root, delivery_id)
             immutable = (
-                "branch", "base_sha", "owner", "repository_root", "attempt_id"
+                "branch", "base_sha", "owner", "repository_root", "attempt_id",
+                "task_ref",
             )
             if all(existing.get(key) == state.get(key) for key in immutable):
                 return existing
@@ -1224,6 +1243,9 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument("--base")
     start.add_argument("--parent")
     start.add_argument("--attempt-id")
+    start.add_argument("--project-id")
+    start.add_argument("--task-id")
+    start.add_argument("--session-id")
     start.add_argument("--create-branch", action="store_true")
     start.add_argument("--allow-dirty", action="store_true")
     start.add_argument("--push-authority", default="pending")
