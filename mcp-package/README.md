@@ -89,11 +89,12 @@ The permission bypass takes precedence over the sandbox setting and passes
 Codex's `--dangerously-bypass-approvals-and-sandbox` flag. It is intentionally
 never enabled by default.
 
-## Available Skills (35)
+## Available Skills (36)
 
 | Skill | Description |
 |-------|-------------|
 | **commit** | Repository-adaptive checkpoint commits, splitting changes by module; publishing stays separately authorized |
+| **compute** | Profile and schedule large CPU/GPU batches with local staging, bounded queues and verified recovery |
 | **create-pr** | Publish or update one exact-SHA pull request |
 | **delivery** | Run the full checkpoint, review, integration, and cleanup workflow |
 | **loop** | Clade goal-driven Blueprint loop (NOT the CC built-in interval poller) |
@@ -142,11 +143,11 @@ Skills from `~/.claude/skills/` (installed by the legacy full framework) are als
 
 This MCP server is one part of Clade. The full framework includes:
 
-- **147 skills** — coding, research, SEO, content, paid ads, and email workflows
+- **148 skills** — coding, research, SEO, content, paid ads, and email workflows
 - **32 hooks** — safety guardian, correction learning, type-checking, session context
 - **43 shell scripts + 41 Python utilities** — commits, loops, parallel tasks, health scanning
 - **37 agents** — code, security, compliance, marketing, research, and verification specialists
-- **Native Codex plugin** — 29 core workflows, usage visibility, and lifecycle safety hooks
+- **Native Codex plugin** — 30 core workflows, usage visibility, and lifecycle safety hooks
 - **Orchestrator** — FastAPI web UI with task queue, worker pool, GitHub sync
 
 Install the full framework:

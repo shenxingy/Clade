@@ -35,7 +35,7 @@ routing, delivery state, and multi-project fleet truth.
 3. [The Trust Loop](#the-trust-loop)
 4. [What It Does](#what-it-does)
 5. [Self-Learning Mechanisms](#self-learning-mechanisms)
-6. [Skills](#skills-147)
+6. [Skills](#skills-148)
 7. [Supported Languages](#supported-languages)
 8. [Documentation](#documentation)
 9. [Dotfile Sync](#dotfile-sync)
@@ -77,7 +77,7 @@ Run `$clade:codex-usage setup minimal` for a compact native footer.
 never reads or exposes Codex credentials.
 
 The native plugin runs directly in Codex and does **not** require Claude Code.
-It currently ships 29 provider-native core workflows; Claude-specific overnight
+It currently ships 30 provider-native core workflows; Claude-specific overnight
 orchestration remains in the full framework. See [Native Codex Support](docs/codex.md).
 
 ### MCP Server Only
@@ -95,7 +95,7 @@ all runtime and sandbox options.
 
 ## MCP Server — Use Skills in Any AI Editor
 
-The MCP package exposes 35 bundled Clade skills, plus compatible user-installed
+The MCP package exposes 36 bundled Clade skills, plus compatible user-installed
 skills, as callable tools via the [Model Context Protocol](https://modelcontextprotocol.io).
 It can execute them with either Claude or Codex.
 
@@ -172,7 +172,7 @@ turns an inferred revert or async signal into an automatic rule.
 
 See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, detectors, schemas, and tunable env vars.
 
-## Skills (147)
+## Skills (148)
 
 ### Core Workflow
 
@@ -191,6 +191,7 @@ See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, de
 | `/loop GOAL` | Goal-driven improvement loop — supervisor plans, workers execute in parallel |
 | `/iloop TASK` | In-session iterative loop — Stop hook re-prompts until done (no background workers) |
 | `/batch-tasks` | Execute TODO steps via unattended sessions (serial or parallel) |
+| `/compute` | Profile and schedule large CPU/GPU batches with local staging, bounded queues and verified recovery; reads private `~/.clade/compute-policy.md` |
 | `/orchestrate` | Decompose goals into tasks for worker execution |
 | `/handoff` | Save session state for context relay between agents |
 | `/pickup` | Resume from previous handoff — zero-friction restart |

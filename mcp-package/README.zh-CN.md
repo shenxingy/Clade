@@ -83,11 +83,12 @@ clade-mcp  # 启动 stdio MCP server
 Permission bypass 优先于 sandbox 设置，并向 Codex 传递
 `--dangerously-bypass-approvals-and-sandbox`。Clade 永远不会默认开启它。
 
-## 内置 Skills（35）
+## 内置 Skills（36）
 
 | Skill | 功能 |
 |-------|------|
 | **commit** | 按模块拆分改动做检查点提交;推送需另行授权 |
+| **compute** | 大规模 CPU/GPU 任务的本地盘暂存、profiling、调度限流和恢复验证 |
 | **create-pr** | 发布或更新一个绑定精确 SHA 的 pull request |
 | **delivery** | 执行 checkpoint、审查、集成与清理的完整交付流程 |
 | **loop** | 目标驱动的自主改进循环 |
@@ -141,7 +142,7 @@ MCP server 只是 Clade 的一个入口。完整框架还包含：
 - **32 个 hooks**
 - **42 个 shell scripts + 31 个 Python utilities**
 - **37 个专业 agents**
-- 带 29 个核心 workflows、usage visibility 与安全 hooks 的 Codex 原生 plugin
+- 带 30 个核心 workflows、usage visibility 与安全 hooks 的 Codex 原生 plugin
 - FastAPI orchestrator、task queue、worker pool 与 GitHub sync
 
 ```bash

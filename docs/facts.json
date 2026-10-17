@@ -3,7 +3,7 @@
   "facts": [
     {
       "name": "skills",
-      "value": 147,
+      "value": 148,
       "derive": {
         "type": "count_glob",
         "pattern": "configs/skills/*/"
@@ -91,7 +91,7 @@
     },
     {
       "name": "codex_plugin_skills",
-      "value": 29,
+      "value": 30,
       "derive": {
         "type": "count_glob",
         "pattern": "plugins/clade/skills/*/"
@@ -108,7 +108,7 @@
     },
     {
       "name": "mcp_skills",
-      "value": 35,
+      "value": 36,
       "derive": {
         "type": "count_glob",
         "pattern": "mcp-package/skills/*/"

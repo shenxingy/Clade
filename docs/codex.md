@@ -68,10 +68,10 @@ has not been exercised for this helper.
 
 The plugin under `plugins/clade/` contains:
 
-- 29 core workflows: commit, Codex usage pace, security review, release documentation, frontend
+- 30 core workflows: commit, Codex usage pace, security review, release documentation, frontend
   design, local CI repair, handoff/pickup, incident response, investigation, architecture maps,
   PR review/merge, research, retrospectives, project review, sync, verification,
-  worktrees, and supporting decision workflows.
+  worktrees, compute profiling/scheduling/recovery, and supporting decision workflows.
 - A `SessionStart` hook that injects concise branch, recent-commit, dirty-tree,
   handoff, repository-guidance, and delivery-completion context without mutating
   the repository.

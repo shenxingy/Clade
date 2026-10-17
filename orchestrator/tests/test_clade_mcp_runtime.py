@@ -83,8 +83,8 @@ def test_packaged_server_registers_v2_low_level_handlers() -> None:
 def test_editable_install_resolves_curated_bundled_skills() -> None:
     expected = REPO_ROOT / "mcp-package" / "skills"
     assert server.BUNDLED_SKILLS_DIR == expected
-    assert len(list(server.BUNDLED_SKILLS_DIR.glob("*/SKILL.md"))) == 35
-    for name in ("delivery", "provider", "status", "tasks"):
+    assert len(list(server.BUNDLED_SKILLS_DIR.glob("*/SKILL.md"))) == 36
+    for name in ("compute", "delivery", "provider", "status", "tasks"):
         assert (server.BUNDLED_SKILLS_DIR / name / "SKILL.md").is_file()
     for name in ("tasks.py", "service.py"):
         bundled = server.BUNDLED_SKILLS_DIR / "tasks" / "scripts" / name

@@ -6,6 +6,7 @@
 # Runtime-specific orchestration stays excluded until it has a native adapter.
 artifact
 commit
+compute
 create-pr
 codex-usage
 cso

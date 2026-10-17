@@ -25,7 +25,7 @@
 A multi-surface coding automation toolkit:
 
 - **CLI layer** (`configs/`) — skills, hooks, scripts installed via `./install.sh`
-- **Codex plugin** (`plugins/clade/`) — 27 generated native skills plus Codex hooks, distributed by `.agents/plugins/marketplace.json`
+- **Codex plugin** (`plugins/clade/`) — 30 generated native skills plus Codex hooks, distributed by `.agents/plugins/marketplace.json`
 - **MCP package** (`mcp-package/`) — provider-selectable Claude/Codex execution for external MCP clients
 - **Orchestrator layer** (`orchestrator/`) — FastAPI web server with worker pool, task queue, GitHub sync, iteration loops
 

@@ -10,6 +10,21 @@ Official documentation tools and user-selected/excluded providers take
 precedence. If the skill is unavailable, use exposed native tools and report
 the routing installation gap. Repository and file searches are unaffected.
 
+## Large compute and experiments
+
+Before large CPU/GPU experiments or data batches, load the installed `compute`
+skill and read `~/.clade/compute-policy.md` when present. Apply personal host
+preferences only within site rules, effective user/group/project quotas and
+actual allocations; share remaining allowances across concurrent jobs/hosts.
+Keep private topology and quota values out of public repositories. Inspect live
+CPU/RAM/GPU/VRAM, cgroup limits, other workloads and storage. Stage network-backed hot data to verified local disk;
+smoke-test correctness and recovery, then profile before choosing concurrency,
+shards and backend. Prefer established schedulers and bounded dynamic dispatch.
+Full resources mean durable queueing, not oversubscription. Require validated
+checkpoints, an exact resume command and verified restart support before
+unattended scale. Record placement, measured throughput, limits and recovery
+evidence. Missing tooling or a broken scheduler is a named gap, never a pass.
+
 ## Commits
 - Use `committer "type: message" file1 file2` for all commits — NEVER `git add .`
   - `committer` is at `~/.local/bin/committer` (symlinked from `~/.claude/scripts/committer.sh`)
