@@ -89,7 +89,7 @@ The permission bypass takes precedence over the sandbox setting and passes
 Codex's `--dangerously-bypass-approvals-and-sandbox` flag. It is intentionally
 never enabled by default.
 
-## Available Skills (35)
+## Available Skills (36)
 
 | Skill | Description |
 |-------|-------------|

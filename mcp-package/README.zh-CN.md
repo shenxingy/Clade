@@ -83,7 +83,7 @@ clade-mcp  # 启动 stdio MCP server
 Permission bypass 优先于 sandbox 设置，并向 Codex 传递
 `--dangerously-bypass-approvals-and-sandbox`。Clade 永远不会默认开启它。
 
-## 内置 Skills（35）
+## 内置 Skills（36）
 
 | Skill | 功能 |
 |-------|------|
