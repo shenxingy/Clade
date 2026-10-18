@@ -9,6 +9,20 @@ versioning for the `clade-mcp` Python package and tagged public releases.
 
 ### Changed
 
+- `auto-audit.sh` no longer grows a CLAUDE.md without limit. Claude Code loads
+  every instruction file whole, into every session and every subagent, and only
+  warns past max(40,000, window × 0.05 × chars/token) per file — 40,000 chars on
+  a 200k-context model. Nothing checked it: promotion grew one project's
+  CLAUDE.md to 127,095 chars and the global one to 73,577, and a session there
+  loaded 237k chars against a 150k limit. A promotion that would push its target
+  past `CLADE_CLAUDE_MD_BUDGET` (default 40,000 bytes) is now withheld and named,
+  and stays in `rules.md` until `/audit` consolidates — the skill gained a
+  budget step (archive verbatim, path-scope file-bound rules, one line per
+  principle). Promoted rules are inserted at the end of their own section instead
+  of at end of file, which had put 27 global rules inside the section that
+  happened to come last; and a project without a CLAUDE.md keeps its rule instead
+  of losing it — the old branch wrote nowhere and still removed the line.
+
 - The quota pace scale is two-sided. `delta = used% − elapsed% × 0.95` is the
   same number at every point in the window, but what a `+5` implies about the
   overshoot is not: `95 + 500/elapsed%` projected, so 145% a tenth of the way

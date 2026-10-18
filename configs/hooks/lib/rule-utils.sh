@@ -131,3 +131,77 @@ rule_earns_promotion() {
     *) return 1 ;;
   esac
 }
+
+# ─── claude_md_budget / promotion_fits ───────────────────────────────
+# Claude Code loads every instruction file whole — into every session AND every
+# subagent — and only WARNS past its limits. Per file the limit is
+# max(40000, context window × 0.05 × chars-per-token); in total it is
+# max(120000, that). On a 200k-context model that is 40,000 per file and
+# 120,000 in total; on a 1M model, 150,000 for both (Claude Code 2.1.283,
+# read from the binary 2026-10-18). Nothing here checked either limit, so
+# promotion grew one project's CLAUDE.md to 127,095 chars (158 rules, 82 of
+# them already archived verbatim elsewhere) and the global one to 73,577; one
+# session there loaded 237k chars against a 150k limit.
+#
+# The budget is the SMALLEST per-file limit Claude Code applies, so a target
+# that fits it fits every model. Bytes rather than characters: `wc -c` is the
+# same on GNU and BSD, and it over-counts CJK, so the gate trips early, never
+# late. CLADE_CLAUDE_MD_BUDGET overrides it.
+claude_md_budget() {
+  local b="${CLADE_CLAUDE_MD_BUDGET:-40000}"
+  [[ "$b" =~ ^[0-9]+$ ]] || b=40000
+  echo "$b"
+}
+
+# Would appending ENTRY keep TARGET within the budget? The +2 covers the
+# newline and a possible blank line before a newly created section heading.
+promotion_fits() {
+  local target="${1:-}" entry="${2:-}"
+  local size budget
+  size=$(wc -c < "$target" 2>/dev/null | tr -d ' ') || size=0
+  budget=$(claude_md_budget)
+  (( ${size:-0} + ${#entry} + 2 <= budget ))
+}
+
+# ─── append_to_section ───────────────────────────────────────────────
+# Insert LINE as the last entry of the section whose heading line starts with
+# HEADING, or create the section at end of file when there is none.
+#
+# Appending at end of file assumed the section was the file's last. Once a later
+# section existed — the global file's "## Internal Machine Map" — 27 promoted
+# rules landed inside it, where neither a reader nor `/audit` looked for them.
+# The section ends at the next "# " or "## " heading; deeper headings belong to
+# it. Values go through ENVIRON, not `awk -v`, which would expand the
+# backslashes rule text carries. The file is rewritten in place (cat >), not
+# replaced (mv), so a symlinked CLAUDE.md stays a symlink.
+append_to_section() {
+  local file="${1:-}" heading="${2:-}" line="${3:-}"
+  [[ -f "$file" ]] || return 1
+  local tmp
+  tmp=$(mktemp) || return 1
+  if HEADING="$heading" LINE="$line" awk '
+      { buf[NR] = $0 }
+      END {
+        h = ENVIRON["HEADING"]; start = 0; last = 0; ended = 0
+        for (i = 1; i <= NR; i++) {
+          if (!start) {
+            if (index(buf[i], h) == 1) { start = i; last = i }
+            continue
+          }
+          if (ended) continue
+          if (substr(buf[i], 1, 2) == "# " || substr(buf[i], 1, 3) == "## ") { ended = 1; continue }
+          if (buf[i] !~ /^[ \t]*$/) last = i
+        }
+        for (i = 1; i <= NR; i++) {
+          print buf[i]
+          if (start && i == last) {
+            if (last == start) print ""
+            print ENVIRON["LINE"]
+          }
+        }
+        if (!start) { print ""; print h; print ""; print ENVIRON["LINE"] }
+      }' "$file" > "$tmp"; then
+    cat "$tmp" > "$file"
+  fi
+  rm -f "$tmp"
+}

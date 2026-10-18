@@ -78,6 +78,36 @@ For each rule in RULES_FILE:
 - Check `cross-project-rules.jsonl` for rules with same hash in different projects
 - These are strong candidates for global CLAUDE.md promotion
 
+### Step 3b: Check the instruction budget
+
+Claude Code loads `CLAUDE_TARGET`, and every file it `@`-imports, whole into every
+session and every subagent, and only warns past its limits: 40,000 chars per file
+and 120,000 in total on a 200k-context model, 150,000 for both on a 1M one.
+`auto-audit.sh` refuses any promotion that would push `CLAUDE_TARGET` past
+`CLADE_CLAUDE_MD_BUDGET` (default 40,000 bytes) and names it as "withheld (over
+the … budget)". Those rules are waiting for this step.
+
+Measure `wc -c` of `CLAUDE_TARGET`. If it is over the budget, or the promotions
+below would push it over, CONSOLIDATE before promoting anything:
+
+1. **Archive first, verbatim.** Append the full text of every promoted rule you
+   are about to rewrite or remove to `~/.claude/corrections/promoted-archive.md`
+   (global) or `.claude/corrections/promoted-archive.md` (project) — or to the
+   lessons archive `CLAUDE_TARGET` already points to, if it has one. Rules leave
+   loaded context; they never leave the repository.
+2. **File-bound rules → path-scoped files** (Step 4.1) — but only when the work
+   the rule governs necessarily reads or edits a matching file. A rule about
+   running a command, deploying, reading logs or analytics, or talking to the
+   owner never fires from a glob; it stays in `CLAUDE_TARGET`.
+3. **Rules another loaded file already states → remove** from `CLAUDE_TARGET`
+   (they are archived by 1). Partial coverage is not coverage.
+4. **Everything else → one line each,** clustered: several incidents of one
+   principle become one bullet. Imperative, at most ~280 chars, keeping the
+   command, path or number that makes it actionable and the "not Y" half when
+   the wrong default is not obvious. The incident story stays in the archive.
+
+Report the size before and after in the summary.
+
 ### Step 4: Execute promotions
 
 For PROMOTE rules, **automatically**:
@@ -98,7 +128,8 @@ For PROMOTE rules, **automatically**:
    `.claude/rules/<domain>.md` already exists, append the rule line to its body
    (and widen `paths:` if needed) rather than creating a second file.
 2. Rules that apply to **every session regardless of file** (process, commit,
-   communication, autonomy): append to `CLAUDE_TARGET`, tagged with `[auto-promoted YYYY-MM-DD]`.
+   communication, autonomy): append to `CLAUDE_TARGET`, tagged with `[auto-promoted YYYY-MM-DD]`,
+   as the one-line form from Step 3b — never past the budget.
    Route by matching the rule's domain to an **existing** heading in `CLAUDE_TARGET` —
    read its headings first; section names vary per project, so do not assume fixed names:
    - shell / deploy / commit / autonomy rules → the agent-rules section (e.g. "# Agent Ground Rules")

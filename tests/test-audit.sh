@@ -266,6 +266,118 @@ assert_contains "$OUT" "spec compliance checker" \
   "withheld excerpts are named, not just counted"
 rm -rf "$H"
 
+# ─── Instruction budget on CLAUDE.md promotion ───────────────────────
+# Claude Code loads every instruction file whole and only warns past
+# max(40000, window × 0.05 × chars/token) per file. Nothing here checked it, so
+# promotion grew one project's CLAUDE.md to 127k chars and the global one to 73k.
+echo ""
+echo "Instruction budget gate:"
+
+H="$(make_aged_home)"
+# 200 bytes already in the target, budget 150: nothing can fit.
+head -c 200 /dev/zero | tr '\0' 'x' > "$H/.claude/CLAUDE.md"
+OUT="$(CLADE_CLAUDE_MD_BUDGET=150 run_audit "$H")"
+PROMOTED="$(grep -cE '^- \[' "$H/.claude/CLAUDE.md" 2>/dev/null)"
+[[ "${PROMOTED:-0}" -eq 0 ]] \
+  && pass "over budget: no rule is appended to CLAUDE.md" \
+  || fail "over budget: $PROMOTED rules appended anyway"
+grep -q "config defined is not config loaded" "$H/.claude/corrections/rules.md" \
+  && pass "over-budget rule stays in rules.md for /audit" \
+  || fail "over-budget rule vanished from rules.md"
+assert_contains "$OUT" "over the 150-byte CLAUDE.md budget" \
+  "summary counts over-budget refusals and states the budget"
+assert_contains "$OUT" "deploy: config defined is not config" \
+  "over-budget refusals are named, not just counted"
+rm -rf "$H"
+
+# Under the default budget the same rules still promote — the gate must not
+# simply refuse everything.
+H="$(make_aged_home)"
+run_audit "$H" >/dev/null
+PROMOTED="$(grep -cE '^- \[' "$H/.claude/CLAUDE.md" 2>/dev/null)"
+[[ "${PROMOTED:-0}" -eq 4 ]] \
+  && pass "under the default budget the 4 damaging rules still promote" \
+  || fail "default budget: expected 4 promotions, got ${PROMOTED:-0}"
+rm -rf "$H"
+
+# A non-numeric override falls back to the default rather than to 0.
+H="$(make_aged_home)"
+CLADE_CLAUDE_MD_BUDGET=lots run_audit "$H" >/dev/null
+PROMOTED="$(grep -cE '^- \[' "$H/.claude/CLAUDE.md" 2>/dev/null)"
+[[ "${PROMOTED:-0}" -eq 4 ]] \
+  && pass "a non-numeric budget falls back to the default" \
+  || fail "non-numeric budget: expected 4 promotions, got ${PROMOTED:-0}"
+rm -rf "$H"
+
+echo ""
+echo "Promotion lands inside its section:"
+
+# Appending at end of file put 27 promoted rules inside the global file's
+# "## Internal Machine Map", the section that happened to come last.
+H="$(make_aged_home)"
+cat > "$H/.claude/CLAUDE.md" <<'MD'
+# Agent Ground Rules
+
+## Auto-Promoted Rules
+
+- [2026-01-01] old (security): an earlier promoted rule
+
+## Internal Machine Map
+
+### Hosts
+machine map text
+MD
+run_audit "$H" >/dev/null
+CM="$H/.claude/CLAUDE.md"
+NEW_LINE="$(grep -n 'sanitize the token' "$CM" | cut -d: -f1)"
+OLD_LINE="$(grep -n 'an earlier promoted rule' "$CM" | cut -d: -f1)"
+MAP_LINE="$(grep -n '^## Internal Machine Map' "$CM" | cut -d: -f1)"
+[[ -n "$NEW_LINE" && "$NEW_LINE" -gt "${OLD_LINE:-0}" && "$NEW_LINE" -lt "${MAP_LINE:-0}" ]] \
+  && pass "promoted rule is inserted after the section's last rule, before the next section" \
+  || fail "promoted rule at line ${NEW_LINE:-none}; section rule at ${OLD_LINE:-?}, next section at ${MAP_LINE:-?}"
+[[ "$(tail -n 1 "$CM")" == "machine map text" ]] \
+  && pass "the following section is left intact at end of file" \
+  || fail "file now ends with: $(tail -n 1 "$CM")"
+[[ "$(grep -c '^## Auto-Promoted Rules' "$CM")" -eq 1 ]] \
+  && pass "no second Auto-Promoted section is created" \
+  || fail "Auto-Promoted section duplicated"
+rm -rf "$H"
+
+# A symlinked CLAUDE.md (profiles link it) must stay a symlink.
+H="$(make_aged_home)"
+mkdir -p "$H/real"
+: > "$H/real/CLAUDE.md"
+rm -f "$H/.claude/CLAUDE.md"
+ln -s "$H/real/CLAUDE.md" "$H/.claude/CLAUDE.md"
+run_audit "$H" >/dev/null
+[[ -L "$H/.claude/CLAUDE.md" ]] && grep -q 'sanitize the token' "$H/real/CLAUDE.md" \
+  && pass "a symlinked CLAUDE.md stays a symlink and its target receives the rule" \
+  || fail "symlinked CLAUDE.md was replaced or not written"
+rm -rf "$H"
+
+echo ""
+echo "No promotion target:"
+
+# The old branch wrote nowhere when the target was missing and still removed
+# the line from rules.md, so a project without a CLAUDE.md lost the rule.
+H="$(make_aged_home)"
+P="$H/proj"
+mkdir -p "$P/.claude"
+mv "$H/.claude/corrections" "$P/.claude/corrections"
+OUT="$(
+  export HOME="$H"
+  # shellcheck source=/dev/null
+  source "$AUTO_AUDIT"
+  run_auto_audit "$P" 2>/dev/null
+  echo -e "${AUDIT_SUMMARY:-}"
+)"
+grep -q "config defined is not config loaded" "$P/.claude/corrections/rules.md" \
+  && pass "with no CLAUDE.md the rule stays in rules.md" \
+  || fail "rule was removed from rules.md although nothing received it"
+assert_contains "$OUT" "kept in rules.md (no $P/CLAUDE.md)" \
+  "summary says why the rule was kept"
+rm -rf "$H"
+
 echo ""
 if [[ $TESTS_FAILED -eq 0 ]]; then
   echo -e "  ${GREEN}ALL $TESTS_RUN TESTS PASSED${NC}"
