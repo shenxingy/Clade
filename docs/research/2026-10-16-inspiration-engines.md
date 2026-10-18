@@ -1,7 +1,7 @@
 ---
 title: Inspiration engines — has anyone built a good one, how should ours work, and where should it live
 date: 2026-10-16
-review_date: 2026-10-16
+review_date: 2026-10-18
 status: needs_work
 summary: >
   The owner read a ChatGPT answer on "has anyone built a good inspiration generator"
@@ -17,12 +17,15 @@ summary: >
   lost that lead once 43 experts spent 100+ hours each executing them. Home: a Clade
   skill (/spark) beside /radar, incubated as a private personal skill until it beats
   simply asking Claude in a session with the same files. Company memory comes later, as
-  a private overlay.
+  a private overlay. UPDATED 2026-10-18: the owner split it in two — (A) project
+  breakthrough, where a project's own trail and metric act as the verifier, and (B)
+  big-direction collisions between new things in the world and our portfolio. A is built
+  first, piloted on the face-swap SaaS; B becomes a lane of /radar.
 integrated_items: []
 needs_work_items:
-  - "Owner decision: scope. Is this for the owner's own work (default assumed here), or a company-wide engine over the company corpus? The second moves the home to the company-memory system."
-  - "Build v0 /spark as a private personal skill (~1 day): first take → retrieval → 3 operators + status-quo + plain arms → shared card schema → blind rating → ledger."
-  - "After ~12 real questions: decide graduation into configs/skills/ against the status-quo arm (rule in §Evaluation)."
+  - "A (project breakthrough): round 1 run by hand on the face-swap SaaS (2026-10-18) — trail ledger, bottleneck, experiments. Codify the steps that worked into a private skill only after the round's experiments report back."
+  - "B (big-direction collision): add a collision lane to /radar — new concepts from the sweep × the project portfolio, a few notes per month, judged by the owner."
+  - "The single-engine /spark v0 below is superseded by the split; its operators, evidence pass and blind arms survive as parts of A and B."
 reference_items:
   - "Buy option: InfraNodus MCP, 14-day trial, then paid; no user study. A blinded comparison arm only, and only for public-source questions."
   - "For measurable company problems (e.g. detector evals) the class with objective outcome evidence is verifier-grounded search (AlphaEvolve-style), which is a different project from an inspiration engine."
@@ -71,10 +74,36 @@ the result that would kill each idea. Count success only after you act.
 - The company corpus is a later private overlay.
 - Not a Mnemo feature now, and not a standalone product.
 
-**Scope assumption, to confirm.** "我们" is read here as *the owner's own work*.
-If it means a company-wide engine for Scam.ai teams, the home becomes the
-company-memory system, because only it holds that corpus. That is not
-recommended before its retrieval improves (see §Placement).
+**Scope — answered 2026-10-18 by splitting it.** See the next section.
+
+## Update 2026-10-18 — two engines, not one
+
+The owner's correction: "inspiration" is two different jobs, and the single
+`/spark` design above mixed them, leaning towards the second.
+
+| | **A. Project breakthrough** | **B. Big-direction collision** |
+|---|---|---|
+| Question | This project is stuck — what moves the metric next? | What do new things in the world make possible for what we already have? |
+| Input | The project's own trail: metrics, what changed when, what each change was meant to move, failed attempts | New concepts, papers and products × the project portfolio |
+| Verifier | **Yes** — the project's own metric (activation, conversion, revenue, model eval) | None; the owner's judgment, paid back over months |
+| Cadence | On demand, when a project plateaus | Low frequency, few notes |
+| Evidence class | The only class with objective outcome evidence: verifier-grounded loops (Co-Scientist with a lab, AlphaEvolve with an evaluator) | Little evidence; the most prone to impressive-sounding noise |
+| Home | A Clade skill that runs inside any project directory and reads that project's trail through the project's own credentials; no project data in Clade | A collision lane in `/radar`, which already sweeps for new concepts weekly and lacks only the "collide with our projects" step |
+
+**A's loop:**
+1. Rebuild the trail as a ledger: change → hypothesis → metric before/after → verdict.
+2. Locate the bottleneck by leverage, with the arithmetic shown.
+3. Retrieve same-purpose, different-mechanism practice from outside.
+4. Propose experiments, each with a predicted effect, a test that is
+   detectable at the project's traffic, and a kill criterion.
+5. Measure the result and write it back to the ledger.
+
+**What changes from the design below.**
+- The single-engine `/spark` is superseded.
+- A comes first, piloted by hand before anything is codified.
+- B reuses radar's ledger instead of a new one.
+- The operators, the evidence pass and the blind comparison arms are kept as
+  parts of both.
 
 ## What exists, and what is proven
 
