@@ -128,7 +128,10 @@ Read `references/figures.md`; if the bundled `dataviz` skill is available,
 use its palette validator; otherwise measure the actual foreground/background
 pairs with an available contrast tool and record the result. Choose only the
 comparisons that clarify the reader's question;
-zero figures is valid when prose or a lookup table answers it better. For
+zero figures is valid when prose or a lookup table answers it better — unless
+the brief names a figure type ("flow chart", "structure diagram", "timeline"):
+then draw that figure, and if you think another form reads better, argue it on
+the page beside the figure instead of substituting a table. For
 charts, prefer inline SVG: message first, form from the data's job, colour by
 job from Okabe–Ito or Tol in fixed order, threshold lines labelled, `n =` on
 every row, caption that states the takeaway, `role="img"` and an
