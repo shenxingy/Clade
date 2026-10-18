@@ -1646,8 +1646,9 @@ total limit". Fixed so far: the promotion gate (#134). Open:
   should say so themselves: accept a recorded `ci-local.py` pass in place of
   completed remote checks (or `gh pr merge --auto` where protection requires
   them). Regenerate the plugin and mcp-package copies.
-- [ ] 🔵 **`/artifact` allows zero figures even when the brief names a figure
-  type.** `configs/skills/artifact/prompt.md` ("zero figures is valid when prose
+- [x] 🔵 **DONE 2026-10-18 — a named figure type is now drawn, alternatives argued
+  beside it.** Was: `/artifact` allows zero figures even when the brief names a figure
+  type. `configs/skills/artifact/prompt.md` ("zero figures is valid when prose
   or a lookup table answers it better") contradicts a promoted rule. When the
   brief names a flow chart or a structure diagram, draw it and argue the
   alternative on the page. Add that exception and regenerate the derived

@@ -9,6 +9,11 @@ versioning for the `clade-mcp` Python package and tagged public releases.
 
 ### Changed
 
+- `/artifact` no longer lets a page drop a figure the brief asked for by name.
+  Its figure step said "zero figures is valid when prose or a lookup table
+  answers it better" with no exception, which is how a brief asking for a use
+  case flow chart shipped as a page with a table and no figure. When the brief
+  names a figure type, the page draws it and argues any better form beside it.
 - The delivery controller no longer waits on hosted checks. Clade's stated
   policy is that the full local run gates and hosted CI is the receipt, and the
   owner's standing rule says the same (merge once the local gate is green), but
