@@ -1603,3 +1603,50 @@ uncommitted edits sat in the checkout of an unrelated branch for four days. Queu
   harness), so this is a BRAINSTORM-grade item. Note the counter-evidence
   Clade already cites: arXiv:2605.10039 found no detectable effect from file
   size or position.
+  **2026-10-18:** the count is no longer 93. The global file's promoted rules
+  were consolidated by hand into 9,997 chars of one-line principles (73,577 →
+  38,458 chars for the whole file; full text in
+  `~/.claude/corrections/promoted-archive.md`). Since #134, `auto-audit.sh`
+  refuses any promotion past a 40,000-byte budget. That caps growth, but it is
+  still not a half-life: nothing re-validates a rule that is already in.
+
+## 2026-10-18 instruction-budget follow-ups
+
+Found while consolidating a project CLAUDE.md (127k → 12k chars) and the global
+one (73.6k → 38.5k) after Claude Code warned "237.0k chars, over the 150.0k-char
+total limit". Fixed so far: the promotion gate (#134). Open:
+
+- [ ] 🟡 **Path-scoped rules do not fire on shell file access.** Claude Code
+  loads a `paths:` rule after a Read, and `rule-injector.sh` loads one after an
+  Edit or Write. A `cat`, `sed -i` or heredoc write never triggers either.
+  Measured 2026-10-18 over the author's 40 most recent main-session transcripts
+  (regex count, so approximate): 484 Read calls against 6,890 Bash calls that
+  read through `cat`/`head`/`tail`/`sed -n`, and 373 Edit/Write calls against
+  2,738 Bash calls with a write shape (`sed -i`, a redirect to a file, a heredoc,
+  `tee`). Most file access never fires a scoped rule. Fix: add
+  `rule-injector.sh` to the EXISTING PostToolUse `Bash` block in
+  `settings-hooks.json`. When `file_path` is empty, match path-like tokens from
+  `.tool_input.command` (each glob compiled to an ERE once per rule file, to
+  stay inside 5 s). Subagents carry the parent's `session_id`, so the
+  once-per-session sentinel suppresses a rule in every subagent after the first
+  injection. Log one subagent's hook input to see whether it carries
+  `agent_id`, and key the sentinel on it. Pin it with a `tests/test-rule-injector.sh`
+  case (`sed -i … tests/test_x.py` injects a `**/test_*` rule) plus a mutation,
+  and update the hook header and CLAUDE.md "Path-scoped rules" in the same
+  commit, since both say Edit|Write only.
+- [ ] 🟡 **The delivery skills wait on hosted checks; the owner's standing rule
+  is not to.** `create-pr/prompt.md` ("Wait for this PR's remote checks"),
+  `delivery/prompt.md` (same) and `merge-pr/prompt.md` ("requires completed
+  successful checks"), plus the `ready` controller, which refuses while any
+  check is pending. The owner's rule, promoted 2026-09-24: once the local gate
+  is green, merge and let hosted CI be the receipt (不要等，直接合并). The
+  global CLAUDE.md now says its rule overrides a skill's wait. The skills
+  should say so themselves: accept a recorded `ci-local.py` pass in place of
+  completed remote checks (or `gh pr merge --auto` where protection requires
+  them). Regenerate the plugin and mcp-package copies.
+- [ ] 🔵 **`/artifact` allows zero figures even when the brief names a figure
+  type.** `configs/skills/artifact/prompt.md` ("zero figures is valid when prose
+  or a lookup table answers it better") contradicts a promoted rule. When the
+  brief names a flow chart or a structure diagram, draw it and argue the
+  alternative on the page. Add that exception and regenerate the derived
+  copies.
