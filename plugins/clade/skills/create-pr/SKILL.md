@@ -125,12 +125,17 @@ python3 "$DELIVERY_PY" publish \
 If recording fails after PR creation, re-query by head and repair the existing
 record; do not create another PR.
 
-Wait for this PR's remote checks. Fix failures with new checkpoint commits,
-rerun full candidate verification for the new SHA, push, update the same PR,
-and record `publish` again so `pull_request.head_sha` names the pushed head
-(`published` stays true; a new candidate does not un-publish the delivery).
-Completion reports the URL, base/head, stack position, exact evidence, and
-remaining external review—not “ready” while gates are pending.
+Do not wait on hosted checks: the exact-head candidate is the gate and hosted
+CI is the receipt. When integration is authorized, go straight to `ready`:
+with `--checks receipt`, the default, pending checks do not block, a failed
+one does, and branch protection gets auto-merge, never a bypass. When a check
+fails, before or after the merge, fix forward with new checkpoint commits,
+rerun full candidate verification for the new SHA, push, update the same PR
+(or open a follow-up after a merge), and record `publish` again so
+`pull_request.head_sha` names the pushed head (`published` stays true; a new
+candidate does not un-publish the delivery). Completion reports the URL,
+base/head, stack position, exact evidence, the hosted checks still running,
+and remaining external review.
 
 ## Codex surface adapter
 

@@ -9,6 +9,18 @@ versioning for the `clade-mcp` Python package and tagged public releases.
 
 ### Changed
 
+- The delivery controller no longer waits on hosted checks. Clade's stated
+  policy is that the full local run gates and hosted CI is the receipt, and the
+  owner's standing rule says the same (merge once the local gate is green), but
+  `ready`/`merge-plan` refused while ANY check was still running, so every
+  merge sat polling. Now the exact-head candidate is the gate: pending checks are
+  listed in the plan (`pending_checks`) and do not block; a FAILED check still
+  refuses; a PR GitHub reports `BLOCKED` (required checks or reviews) gets
+  `gh pr merge --auto`, so branch protection decides and is never bypassed.
+  `--checks gate` restores waiting. The create-pr, delivery, merge-pr and commit
+  skills now say the same; pinned by four controller tests, each shown to go red
+  when its guard is removed.
+
 - `auto-audit.sh` no longer grows a CLAUDE.md without limit. Claude Code loads
   every instruction file whole, into every session and every subagent, and only
   warns past max(40,000, window × 0.05 × chars/token) per file — 40,000 chars on

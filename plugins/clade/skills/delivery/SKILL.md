@@ -277,7 +277,8 @@ python3 "$DELIVERY_PY" publish \
   --base "<base>" --head-sha "$(git rev-parse HEAD)" [--draft]
 ```
 
-Wait for the PR's own remote checks. Review/CI fixes become new checkpoint
+Do not wait on the PR's hosted checks before `ready`: the exact-head
+candidate is the gate and hosted CI is the receipt (§7). Review/CI fixes become new checkpoint
 commits, followed by a new candidate record and a `publish` update so
 `pull_request.head_sha` names the pushed head. `published` stays true through
 that sequence: a checkpoint commit reports CHECKPOINT until the new candidate
@@ -302,7 +303,12 @@ python3 "$DELIVERY_PY" ready \
 READY fails closed when:
 
 - the PR is draft, closed, conflicting, or not mergeable;
-- any check is pending or failed;
+- any check has failed (a red receipt on this head is a defect to fix first);
+- a check is still pending AND `--checks gate` was passed. With the default
+  `--checks receipt`, pending checks do not block — the candidate is the gate —
+  and the plan lists them in `pending_checks`. A PR GitHub reports `BLOCKED`
+  (required checks or reviews outstanding) gets `gh pr merge --auto`, so branch
+  protection still decides; record `merged` once the forge lands it;
 - candidate evidence is missing or for another SHA;
 - the requested strategy is disabled;
 - live children would be broken by ancestry rewriting.

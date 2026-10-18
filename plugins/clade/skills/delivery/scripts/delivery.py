@@ -616,10 +616,8 @@ def cmd_merge_plan(args: argparse.Namespace) -> dict[str, Any]:
     if mergeable != "MERGEABLE":
         raise DeliveryError(f"PR is not mergeable: {pr.get('mergeable')}")
     pending, failing = check_rollup(pr.get("statusCheckRollup") or [])
-    if pending:
-        raise DeliveryError(f"required checks are pending: {', '.join(pending)}")
     if failing:
-        raise DeliveryError(f"required checks failed: {', '.join(failing)}")
+        raise DeliveryError(f"checks failed: {', '.join(failing)}")
     candidate = state.get("verification", {}).get("candidate")
     if not candidate:
         raise DeliveryError("no candidate verification is recorded")
@@ -628,6 +626,18 @@ def cmd_merge_plan(args: argparse.Namespace) -> dict[str, Any]:
             "candidate evidence is stale: "
             f"{candidate.get('head_sha')} != PR head {pr.get('headRefOid')}"
         )
+    # The exact-head candidate IS the gate: Clade's stated policy is that the
+    # full local run gates and hosted CI is the receipt (configs/CLAUDE.md, "CI
+    # — run it on hardware you already own"). Waiting on every hosted check
+    # contradicted that and the owner's standing "不要等，直接合并". A FAILED
+    # check still refuses — a red receipt on this head is a defect to fix, not
+    # a formality. Branch protection is never bypassed: a BLOCKED PR (required
+    # checks or reviews outstanding) gets GitHub auto-merge, which lands only
+    # once protection is satisfied. `--checks gate` restores waiting.
+    checks_mode = getattr(args, "checks", "receipt")
+    if pending and checks_mode == "gate":
+        raise DeliveryError(f"checks are pending: {', '.join(pending)}")
+    auto_merge = str(pr.get("mergeStateStatus") or "").upper() == "BLOCKED"
 
     methods = gh_methods(root)
     children = gh_children(root, pr["headRefName"])
@@ -685,12 +695,16 @@ def cmd_merge_plan(args: argparse.Namespace) -> dict[str, Any]:
         "reason": reason,
         "children": children,
         "mergeability_queries": mergeability_queries,
+        "checks_mode": checks_mode,
+        "pending_checks": pending,
+        "auto_merge": auto_merge,
         "command": [
             "gh",
             "pr",
             "merge",
             str(pr["number"]),
             f"--{strategy}",
+            *(["--auto"] if auto_merge else []),
             "--match-head-commit",
             pr["headRefOid"],
         ],
@@ -1319,6 +1333,15 @@ def build_parser() -> argparse.ArgumentParser:
             "--strategy",
             choices=("auto", "squash", "rebase", "merge"),
             default="auto",
+        )
+        command.add_argument(
+            "--checks",
+            choices=("receipt", "gate"),
+            default="receipt",
+            help=(
+                "receipt (default): the exact-head candidate gates and pending "
+                "hosted checks do not block; gate: wait for every check"
+            ),
         )
         command.add_argument(
             "--mergeable-timeout",
