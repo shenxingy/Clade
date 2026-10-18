@@ -136,7 +136,7 @@
           },
           {
             "id": "rule-injector",
-            "description": "Inject path-scoped rules (.claude/rules/*.md + ~/.claude/rules/*.md) when the edited file matches their paths: frontmatter \u2014 once per session per rule",
+            "description": "Inject path-scoped rules (.claude/rules/*.md, nested <dir>/.claude/rules/*.md, ~/.claude/rules/*.md) when the edited file matches their paths: frontmatter \u2014 once per session per rule, and once per subagent (agent_id). Also wired on the Bash matcher below.",
             "type": "command",
             "command": "~/.claude/hooks/rule-injector.sh",
             "timeout": 5,
@@ -191,6 +191,13 @@
             "description": "Detect Bash command failures and inject diagnostic context",
             "type": "command",
             "command": "~/.claude/hooks/failure-detector.sh",
+            "timeout": 5
+          },
+          {
+            "id": "rule-injector",
+            "description": "Same hook as the Edit|Write entry, for files touched through the shell: path-like tokens of the command that exist as regular files after it ran (cat, sed -i, a heredoc write) are matched against paths: frontmatter. Measured 2026-10-18 over 40 sessions: 6,890 Bash reads vs 484 Read calls and 2,738 Bash writes vs 373 Edit/Write, so an Edit|Write-only matcher missed most file access. Runs SYNC: its only output is additionalContext, which an async hook cannot deliver.",
+            "type": "command",
+            "command": "~/.claude/hooks/rule-injector.sh",
             "timeout": 5
           },
           {

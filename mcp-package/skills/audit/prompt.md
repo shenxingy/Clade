@@ -122,9 +122,10 @@ For PROMOTE rules, **automatically**:
    ---
    - {rule text} [auto-promoted YYYY-MM-DD]
    ```
-   The rule-injector hook (PostToolUse on Edit|Write) injects these only when a
-   matching file is edited, once per session — a promoted rule that never leaves
-   its file domain must not burn base context in every session. If
+   The rule-injector hook (PostToolUse on Edit|Write and Bash) injects these only
+   when a matching file is edited or touched through the shell, once per session
+   — a promoted rule that never leaves its file domain must not burn base context
+   in every session. If
    `.claude/rules/<domain>.md` already exists, append the rule line to its body
    (and widen `paths:` if needed) rather than creating a second file.
 2. Rules that apply to **every session regardless of file** (process, commit,

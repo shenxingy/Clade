@@ -17,10 +17,11 @@
 # every compaction.
 #
 # It also clears the path-scoped rule sentinel (<session_id>.rules-injected) so
-# rules that compaction dropped re-inject on the next matching Edit/Write via
-# rule-injector.sh. Path-scoped rules matter most exactly when you next touch a
-# matching path, so re-arming on the next edit is the correct semantics (and
-# reuses the already-tested injector path instead of duplicating its parser).
+# rules that compaction dropped re-inject on the next matching Edit/Write or
+# Bash file access via rule-injector.sh. Path-scoped rules matter most exactly
+# when you next touch a matching path, so re-arming on the next touch is the
+# correct semantics (and reuses the already-tested injector path instead of
+# duplicating its parser).
 #
 # Output: hookSpecificOutput.additionalContext with the saved state. Silent
 # (no output, exit 0) whenever there is nothing fresh to restore.
@@ -42,13 +43,17 @@ if [ -n "$SOURCE" ] && [ "$SOURCE" != "compact" ]; then
 fi
 
 SESSION_ID=$(printf '%s' "$INPUT" | jq -r '.session_id // empty' 2>/dev/null || true)
+# Same reduction rule-injector.sh applies before naming its sentinel.
+SESSION_ID="${SESSION_ID//[^A-Za-z0-9_-]/_}"
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 CLAUDE_DIR="$PROJECT_DIR/.claude"
 
 # ─── Re-arm path-scoped rules dropped by compaction ──────────────────
 # rule-injector.sh injects each rule file at most once/session via this sentinel.
-# Compaction erases the injected rule text, so clear the sentinel: the next edit
-# to a matching path re-injects the rule through the already-tested injector.
+# Compaction erases the injected rule text, so clear the sentinel: the next
+# Edit/Write or Bash access to a matching path re-injects the rule through the
+# already-tested injector. Only the main thread's sentinel: a subagent's
+# (<session_id>.agent-<agent_id>.rules-injected) belongs to its own context.
 if [ -n "$SESSION_ID" ]; then
   rm -f "$CLAUDE_DIR/sessions/${SESSION_ID}.rules-injected" 2>/dev/null || true
 fi

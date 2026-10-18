@@ -28,7 +28,7 @@
 | `post-edit-check.sh` | PostToolUse (Edit/Write) | Per-file type check (tsc / pyright / mypy / cargo check / go vet / …) plus an uncommitted-file nudge; wakes Claude via asyncRewake **only on failure** (exit 2 + stderr) |
 | `post-tool-use-lint.sh` | PostToolUse (Edit/Write) | Runs project verify_cmd; exits 2 on failure so Claude fixes it immediately |
 | `post-tool-use-failure.sh` | PostToolUse (failure) | Logs tool failures for pattern tracking |
-| `rule-injector.sh` | PostToolUse (Edit/Write) | Injects path-scoped rules from `.claude/rules/` + `~/.claude/rules/` when the edited file matches their `paths:` frontmatter (once per session per rule) |
+| `rule-injector.sh` | PostToolUse (Edit/Write **and Bash**) | Injects path-scoped rules from `.claude/rules/`, nested `<dir>/.claude/rules/` (globs relative to `<dir>`) and `~/.claude/rules/` when the edited file — or an existing file named in a Bash command (`cat`, `sed -i`, a heredoc write) — matches their `paths:` frontmatter (once per session per rule, and once per subagent via `agent_id`) |
 | `edit-shadow-detector.sh` | PostToolUse (Edit/Write) | Logs every file Claude writes to a session-keyed shadow, for correction pairing; async, data-only, no output |
 | `worker-checkpoint.sh` | PostToolUse (Edit/Write **and Bash**) | One shadow-repo commit per agent write, so a failed attempt can say *when* it went wrong. Armed by `run-tasks-parallel.sh` on the terminal path and by orchestrator workers; inert unless `CLADE_WORKER_SHADOW_DIR` is set. It watches Bash too, because an agent that abandons the edit tool for a `python - <<EOF` heredoc is exactly the case a checkpointer exists for |
 | `failure-detector.sh` | PostToolUse (Bash) | Tracks consecutive Bash failures; injects debugging pressure |

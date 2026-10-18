@@ -33,8 +33,9 @@ paths: **/*.css
 {rule text}
 ```
 
-The rule-injector hook (PostToolUse on Edit|Write, already installed) injects
-the body only when an edited file matches `paths:`, once per session. Then run
+The rule-injector hook (PostToolUse on Edit|Write and Bash, already installed)
+injects the body only when a file edited, or named in a shell command, matches
+`paths:`, once per session. Then run
 Step 6 to retire the prose rule, with the pointer line
 `→ moved to .claude/rules/{domain}.md (path-scoped)` instead of a hook pointer,
 and skip Steps 3–5.
