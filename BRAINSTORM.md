@@ -23,9 +23,13 @@ judged on whether a card is *acted on* within 14 days. Incubate it as a private
 skill in `~/.claude/skills/` and graduate it into `configs/skills/` only if it
 beats the status-quo arm after about 12 real questions.
 
-**Open, owner's call:** is "我们" the owner's own work (assumed) or a company-wide
-engine over the company corpus? The second changes the home. Nothing goes into
-TODO.md until that is answered.
+**2026-10-18, owner's split:** two engines.
+- **A, project breakthrough.** A project's own trail and metric are the
+  verifier. Piloted by hand on the face-swap SaaS first.
+- **B, big-direction collision.** New things in the world × our portfolio,
+  as a `/radar` lane.
+
+See the study's "Update 2026-10-18" section.
 
 ## [Research] 2026-09-30 — Broader current learning across AI and engineering
 
