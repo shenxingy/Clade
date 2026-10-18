@@ -855,22 +855,20 @@ else:
     return script
 
 
-def test_merge_plan_blocks_pending_checks_and_locks_exact_head(
-    git_repo: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def _published_fixture(git_repo: Path, *, candidate: bool = True) -> None:
     _git(git_repo, "remote", "add", "origin", "https://github.com/acme/repo.git")
     _start(git_repo)
-    _delivery(
-        git_repo,
-        "candidate",
-        "--id",
-        "fixture",
-        "--command",
-        "full CI",
-        "--result",
-        "passed",
-    )
+    if candidate:
+        _delivery(
+            git_repo,
+            "candidate",
+            "--id",
+            "fixture",
+            "--command",
+            "full CI",
+            "--result",
+            "passed",
+        )
     _delivery(
         git_repo,
         "publish",
@@ -881,11 +879,29 @@ def test_merge_plan_blocks_pending_checks_and_locks_exact_head(
         "--url",
         "https://github.com/acme/repo/pull/17",
     )
+
+
+def _fake_env(git_repo: Path, **gh: object) -> dict[str, str]:
     bin_dir = git_repo / "fake-bin"
-    bin_dir.mkdir()
-    _fake_gh(bin_dir, pending=True)
+    bin_dir.mkdir(exist_ok=True)
+    _fake_gh(bin_dir, **gh)  # type: ignore[arg-type]
     env = dict(os.environ)
     env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
+    return env
+
+
+def test_merge_plan_pending_checks_block_only_in_gate_mode(
+    git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The exact-head candidate is the gate; hosted checks are the receipt.
+
+    Observed at the far side of the controller: the emitted merge command and
+    the plan's own record of what was still running.
+    """
+    _published_fixture(git_repo)
+    env = _fake_env(git_repo, pending=True)
+    head = _git(git_repo, "rev-parse", "HEAD")
 
     blocked = _delivery(
         git_repo,
@@ -894,12 +910,116 @@ def test_merge_plan_blocks_pending_checks_and_locks_exact_head(
         "fixture",
         "--pr",
         "17",
+        "--strategy",
+        "rebase",
+        "--checks",
+        "gate",
         env=env,
         expected=2,
     )
     assert "pending" in blocked["error"]
 
-    _fake_gh(bin_dir, pending=False)
+    plan = _delivery(
+        git_repo,
+        "merge-plan",
+        "--id",
+        "fixture",
+        "--pr",
+        "17",
+        "--strategy",
+        "rebase",
+        env=env,
+    )
+    assert plan["checks_mode"] == "receipt"
+    assert plan["pending_checks"] == ["Tests"]
+    assert plan["auto_merge"] is False
+    assert plan["command"] == [
+        "gh", "pr", "merge", "17", "--rebase", "--match-head-commit", head,
+    ]
+
+
+def test_merge_plan_receipt_mode_still_requires_the_exact_head_candidate(
+    git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _published_fixture(git_repo, candidate=False)
+    env = _fake_env(git_repo, pending=True)
+
+    refused = _delivery(
+        git_repo,
+        "merge-plan",
+        "--id",
+        "fixture",
+        "--pr",
+        "17",
+        "--strategy",
+        "rebase",
+        env=env,
+        expected=2,
+    )
+    assert "no candidate verification" in refused["error"]
+
+
+def test_merge_plan_refuses_a_failed_check_in_receipt_mode(
+    git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _published_fixture(git_repo)
+    failed = [{"name": "Tests", "status": "COMPLETED", "conclusion": "FAILURE"}]
+    env = _fake_env(git_repo, pr_overrides={17: {"statusCheckRollup": failed}})
+
+    refused = _delivery(
+        git_repo,
+        "merge-plan",
+        "--id",
+        "fixture",
+        "--pr",
+        "17",
+        "--strategy",
+        "rebase",
+        env=env,
+        expected=2,
+    )
+    assert "checks failed: Tests" in refused["error"]
+
+
+def test_merge_plan_queues_auto_merge_when_protection_blocks(
+    git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Branch protection is honoured, never bypassed: BLOCKED → auto-merge."""
+    _published_fixture(git_repo)
+    env = _fake_env(
+        git_repo, pending=True, pr_overrides={17: {"mergeStateStatus": "BLOCKED"}}
+    )
+    head = _git(git_repo, "rev-parse", "HEAD")
+
+    plan = _delivery(
+        git_repo,
+        "merge-plan",
+        "--id",
+        "fixture",
+        "--pr",
+        "17",
+        "--strategy",
+        "squash",
+        env=env,
+    )
+    assert plan["auto_merge"] is True
+    assert plan["command"] == [
+        "gh", "pr", "merge", "17", "--squash", "--auto",
+        "--match-head-commit", head,
+    ]
+    assert "--admin" not in plan["command"]
+
+
+def test_merge_plan_locks_exact_head_and_refuses_ambiguous_auto(
+    git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _published_fixture(git_repo)
+    env = _fake_env(git_repo, pending=False)
+
     ambiguous = _delivery(
         git_repo,
         "merge-plan",
@@ -924,6 +1044,7 @@ def test_merge_plan_blocks_pending_checks_and_locks_exact_head(
         env=env,
     )
     assert plan["strategy"] == "rebase"
+    assert plan["pending_checks"] == []
     assert plan["head_sha"] == _git(git_repo, "rev-parse", "HEAD")
     assert plan["command"][-2:] == ["--match-head-commit", plan["head_sha"]]
 

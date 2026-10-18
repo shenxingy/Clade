@@ -9,6 +9,14 @@ semantic versioning。
 
 ### 变更
 
+- delivery 控制器不再等待托管 CI。Clade 明确的策略是“完整的本地运行才是门禁，托管
+  CI 只是回执”，owner 的常设规则也一样（本地门禁通过就合并），但 `ready`/`merge-plan`
+  只要还有任何检查在跑就拒绝，于是每次合并都在轮询。现在以当前 head 的 candidate 证据
+  为门禁：仍在运行的检查列在计划的 `pending_checks` 里，不再阻塞；失败的检查依然拒绝；
+  GitHub 报告为 `BLOCKED`（必需检查或评审未满足）的 PR 改用 `gh pr merge --auto`，由
+  分支保护决定，绝不绕过。`--checks gate` 可恢复等待。create-pr、delivery、merge-pr、
+  commit 四个 skill 的说明同步更新；四个控制器测试锁定行为，每个都验证过删掉对应守卫会变红。
+
 - `auto-audit.sh` 不再无上限地撑大 CLAUDE.md。Claude Code 把每个指令文件整份
   加载进每个会话和每个子代理，超过单文件 max(40,000, 窗口 × 0.05 × 每 token 字符数)
   只会警告——200k 上下文模型上就是 40,000 字符。此前没有任何检查：提升让一个项目的

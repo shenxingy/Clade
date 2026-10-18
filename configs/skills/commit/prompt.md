@@ -135,4 +135,4 @@ and report why. “Done with uncommitted changes” is not a completion state.
 Report commit SHA/message, files, focused/candidate evidence, branch/upstream,
 whether publication occurred and under what authority, active delivery id, and
 the next required transition. Do not claim PR-ready without exact candidate
-evidence and remote checks.
+evidence; name any hosted checks still running as the receipt, not the gate.

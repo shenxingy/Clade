@@ -52,7 +52,9 @@ tests/migrations/generated files/docs remain with their behavior.
 
 Block—not warn—when:
 
-- any required check is pending, failing, cancelled, or unavailable;
+- any check has failed or was cancelled (pending hosted checks do not block:
+  the exact-head candidate is the gate; `--checks gate` restores waiting, and a
+  protection-`BLOCKED` PR is queued with auto-merge rather than bypassed);
 - required review/CODEOWNERS/conversation gates are unresolved;
 - PR is draft, conflicting, closed, or not mergeable;
 - base/head changed after candidate/review evidence;
@@ -74,7 +76,8 @@ python3 "$DELIVERY_PY" ready \
 ```
 
 The controller verifies the recorded candidate SHA equals the current PR head,
-requires completed successful checks, discovers enabled methods and child PRs,
+refuses any failed check (pending ones are the receipt unless `--checks gate`),
+discovers enabled methods and child PRs,
 and emits one exact command containing:
 
 ```text

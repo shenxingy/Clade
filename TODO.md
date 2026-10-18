@@ -1634,8 +1634,10 @@ total limit". Fixed so far: the promotion gate (#134). Open:
   case (`sed -i … tests/test_x.py` injects a `**/test_*` rule) plus a mutation,
   and update the hook header and CLAUDE.md "Path-scoped rules" in the same
   commit, since both say Edit|Write only.
-- [ ] 🟡 **The delivery skills wait on hosted checks; the owner's standing rule
-  is not to.** `create-pr/prompt.md` ("Wait for this PR's remote checks"),
+- [x] 🟡 **DONE 2026-10-18 — the delivery controller treats hosted checks as the
+  receipt (`--checks receipt` default; failed checks still refuse; BLOCKED →
+  auto-merge).** Was: the delivery skills wait on hosted checks; the owner's standing rule
+  is not to. `create-pr/prompt.md` ("Wait for this PR's remote checks"),
   `delivery/prompt.md` (same) and `merge-pr/prompt.md` ("requires completed
   successful checks"), plus the `ready` controller, which refuses while any
   check is pending. The owner's rule, promoted 2026-09-24: once the local gate
