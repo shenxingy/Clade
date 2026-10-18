@@ -9,6 +9,37 @@ versioning for the `clade-mcp` Python package and tagged public releases.
 
 ### Changed
 
+- Path-scoped rules now fire on shell file access. `rule-injector.sh` was wired
+  to Edit|Write only, and agents touch files through Bash: in the author's 40
+  latest main-session transcripts (approximate regex counts), 6,890 Bash reads
+  (`cat`/`head`/`tail`/`sed -n`) against 484 Read calls, and 2,738 Bash writes
+  against 373 Edit/Write. The hook is now also on the PostToolUse `Bash` matcher
+  and takes the command's path-like tokens that exist as regular files after it
+  ran — `cat f`, `sed -i … f`, a heredoc write — resolving relative ones against
+  the hook's `cwd`. Tokens are never expanded: one carrying a glob metacharacter
+  is skipped, and at most 40 files are matched per command. Two more gaps closed
+  in the same hook: it walks nested `<dir>/.claude/rules` up to the project root
+  (globs relative to `<dir>`, as Claude Code itself treats them), so a session
+  started at a monorepo root gets an app's rules; and its once-per-session
+  sentinel includes `agent_id`, because subagents share the parent's
+  `session_id` and no subagent could receive a rule the main thread had already
+  been given. Each rule file's globs compile to two EREs in one awk pass per
+  call: 30 rule files × 15 globs × 40 files runs in 0.16 s on bash 5.2 (0.53 s
+  on bash 3.2.57 with a busybox userland, in a container), inside the 5 s hook
+  timeout. Because one command can now match many rules, the hook keeps its
+  output under Claude Code's 10,000-character `additionalContext` cap (past it
+  Claude sees only a 2,000-character preview): rules that do not fit are named,
+  not marked delivered, and inject on the next matching access. A relative token
+  after a leading `cd DIR` resolves against DIR; nested rules inside
+  `node_modules`, `vendor`, `third_party`, `site-packages` or `.git` are never
+  read, and `claudeMdExcludes` is honoured; one unreadable rule file no longer
+  silences the rest; identical rule text from two copies is injected once; and a
+  NUL in the command can no longer shift the session id into the sentinel path.
+  Overlap: current Claude Code also loads a path-scoped rule natively on a
+  single-file `cat` or `head`, so on those commands a rule can arrive twice
+  until the "Retire `rule-injector.sh`" re-measure in TODO.md settles it. The
+  suite's last section removes each guard from a copy of the hook and requires
+  itself to go red, so CI re-checks the mutations.
 - `/artifact` no longer lets a page drop a figure the brief asked for by name.
   Its figure step said "zero figures is valid when prose or a lookup table
   answers it better" with no exception, which is how a brief asking for a use

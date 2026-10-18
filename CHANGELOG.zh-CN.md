@@ -9,6 +9,29 @@ semantic versioning。
 
 ### 变更
 
+- 按路径加载的规则现在在 shell 访问文件时也会触发。`rule-injector.sh` 原先只挂在
+  Edit|Write 上，而代理主要通过 Bash 碰文件：作者最近 40 个主会话 transcript 里
+  （正则近似计数），Bash 读取（`cat`/`head`/`tail`/`sed -n`）6,890 次对 Read 484 次，
+  Bash 写入 2,738 次对 Edit/Write 373 次。该 hook 现在也挂在 PostToolUse 的 `Bash` matcher 上，取命令里
+  执行后仍作为普通文件存在的路径型 token——`cat f`、`sed -i … f`、heredoc 写入——
+  相对路径按 hook 输入的 `cwd` 解析。token 从不展开：带 glob 元字符的直接跳过，
+  每条命令最多匹配 40 个文件。同一个 hook 里另补两个缺口：向上遍历到项目根的嵌套
+  `<dir>/.claude/rules`（glob 相对 `<dir>`，与 Claude Code 自身一致），在 monorepo
+  根启动的会话也能拿到子应用的规则；每会话一次的哨兵文件名加入 `agent_id`，因为
+  子代理共用父会话的 `session_id`，主线程注入过的规则，子代理此前再也收不到。
+  每个规则文件的 glob 每次调用只经一次 awk 编译成两个 ERE：30 个规则文件 × 15 个
+  glob × 40 个文件在 bash 5.2 上耗时 0.16 秒（容器里 bash 3.2.57 + busybox 用户态
+  0.53 秒），远在 5 秒 hook 超时内。由于一条命令现在可能命中很多规则，hook 把输出
+  控制在 Claude Code 的 10,000 字符 `additionalContext` 上限以内（超过后 Claude 只
+  看到 2,000 字符预览）：放不下的规则会列出名字、不记为已送达，在下一次匹配访问时
+  注入。命令开头 `cd DIR` 之后的相对 token 按 DIR 解析；`node_modules`、`vendor`、
+  `third_party`、`site-packages`、`.git` 里的嵌套规则一律不读，并遵守
+  `claudeMdExcludes`；一个不可读的规则文件不再让其余规则全部失效；两份副本里相同的
+  规则文本只注入一次；命令里的 NUL 也不能再把 session id 挪进哨兵文件路径。
+  重叠：当前 Claude Code 在单文件 `cat` 或 `head` 时也会原生加载路径规则，所以在这类
+  命令上同一规则可能到达两次，由 TODO.md 里“Retire `rule-injector.sh`”的重新测量来
+  定。测试套件最后一节会从 hook 副本里逐个删掉每个防护并要求自身变红，CI 每次都会重跑
+  这些变异。
 - `/artifact` 不再允许省掉需求里点名要的图。它的出图步骤写着“当文字或查找表更合适时，
   不出图也可以”，没有例外——一份点名要“用例流程图”的需求就这样交出了只有表格、没有图的
   页面。现在需求点名图的类型时，页面必须画出来；如果认为另一种形式更好，就在图旁边论证。

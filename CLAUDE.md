@@ -383,10 +383,41 @@ here says nothing about the other two.
 ## Path-scoped rules — the channel that was wired and empty
 
 `configs/rules/*.md` carry rules that only matter for certain files. Each declares
-a `paths:` glob in YAML front matter; `rule-injector.sh` (PostToolUse Edit|Write)
-injects the body **at the moment a matching file is edited**, not at session start.
-`install.sh` deploys them to `~/.claude/rules/`; a project may also carry
-`.claude/rules/`, which is read first.
+a `paths:` glob in YAML front matter; `rule-injector.sh` (PostToolUse on Edit|Write
+**and Bash**) injects the body **at the moment a matching file is touched**, not at
+session start. `install.sh` deploys them to `~/.claude/rules/`; a project may also
+carry `.claude/rules/`, which is read first, and any directory under the project
+may carry a nested `<dir>/.claude/rules/` whose globs are relative to `<dir>`.
+
+**Until 2026-10-18 it mostly could not fire.** Agents touch files through the
+shell: over the author's 40 latest sessions (approximate regex counts), 6,890
+Bash reads (`cat`/`head`/`tail`/`sed -n`) against 484 Read calls, and 2,738 Bash
+writes against 373 Edit/Write — and the hook was Edit|Write only. On Bash it
+now takes path-like tokens of the command that exist as regular files after it
+ran (never expanded, glob tokens skipped, at most 40 files), resolving relative
+ones after a leading `cd DIR` against DIR. It also walks nested `.claude/rules`
+dirs up to the project root, which Claude Code honours natively but the hook
+never scanned — skipping third-party trees (`node_modules`, `vendor`, …) and any
+file `claudeMdExcludes` names — and keys its once-per-session sentinel on
+`agent_id` too, because subagents share the parent's `session_id`, so no
+subagent could get a rule the main thread had.
+
+**One command can match many rules, and Claude Code caps a hook's
+`additionalContext` at 10,000 characters**: past that Claude sees a 2,000-character
+preview and is not asked to read the rest. So the hook stops adding rule bodies
+short of the cap (`CTX_BUDGET`), names the rules it held back, and does not
+record them as delivered — they inject on the next matching access. Identical rule text from
+two copies (a worktree's checkout of a root rule) is injected once.
+
+**It overlaps the native loader.** Current Claude Code docs say a path-scoped
+rule also loads when Claude views a matching file with a single-file `cat` or
+`head`, so on those commands a rule can arrive twice. The "Retire
+`rule-injector.sh`" item in `TODO.md` gates removing the overlap on a re-measure.
+
+`tests/test-rule-injector.sh` pins all of it, and its last suite removes each
+guard from a copy of the hook in turn and requires the suite to go red, beside
+a no-op control that must stay green, so CI re-checks that every guard is
+observed rather than trusting a one-off mutation run.
 
 This exists because the alternative measurably does not work. A prose rule in a
 context file is followed ~64% of the time and decays ~5.6% in odds per function

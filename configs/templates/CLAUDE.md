@@ -26,9 +26,11 @@
 # Path-Scoped Rules (.claude/rules/)
 # Rules that only matter when editing certain files belong in `.claude/rules/*.md`
 # (project) or `~/.claude/rules/*.md` (global) — NOT in CLAUDE.md. The
-# rule-injector hook (PostToolUse on Edit|Write) injects a rule's body only when
-# an edited file matches its `paths:` frontmatter, once per session per rule —
-# keeping base context lean as the rule corpus grows. Format:
+# rule-injector hook (PostToolUse on Edit|Write and Bash) injects a rule's body
+# only when a file edited, or named in a shell command, matches its `paths:`
+# frontmatter, once per session per rule — keeping base context lean as the
+# rule corpus grows. A nested `<dir>/.claude/rules/` applies to files under
+# `<dir>`, with globs relative to `<dir>`. Format:
 #   ---
 #   paths: orchestrator/**/*.py, tests/*.py
 #   ---

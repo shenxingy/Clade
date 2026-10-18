@@ -280,11 +280,12 @@ for sub_dir in "$SCRIPT_DIR/configs/scripts/"/*/; do
   echo "  Installed scripts/$sub_name/: $(ls "$sub_dir" | wc -l | tr -d ' ') files"
 done
 
-# Deploy path-scoped rules. rule-injector.sh (PostToolUse Edit|Write) reads
-# ~/.claude/rules/*.md and injects the bodies of the files whose `paths:` glob
-# matches what is being edited — so a rule that only matters for shell scripts
-# reaches the session at the moment a shell script is written, instead of
-# sitting in a 750-line CLAUDE.md that is read once at session start.
+# Deploy path-scoped rules. rule-injector.sh (PostToolUse Edit|Write and Bash)
+# reads ~/.claude/rules/*.md and injects the bodies of the files whose `paths:`
+# glob matches what is being edited or touched through the shell — so a rule
+# that only matters for shell scripts reaches the session at the moment a shell
+# script is written, instead of sitting in a 750-line CLAUDE.md that is read
+# once at session start.
 #
 # This block is why it works at all. install.sh:29 has created ~/.claude/rules
 # since the hook landed, nothing ever wrote into it, and the channel sat wired

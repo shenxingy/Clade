@@ -183,8 +183,11 @@ backlog.
       ```bash
       # 1. Is the channel reaching sessions at all? Sentinels are per session per
       #    rule file and are garbage-collected after 7 days, so this is a 7-day rate.
+      #    Since 2026-10-18 a subagent writes its own <sid>.agent-<id> sentinel,
+      #    and the hook also fires on Bash: compare against post-change weeks only.
+      #    Sentinels also hold `#<cksum> <size>` body keys now; drop those lines.
       cat ~/.claude-profiles/*/projects/*/.claude/sessions/*.rules-injected \
-        2>/dev/null | sort | uniq -c | sort -rn
+        2>/dev/null | grep -v '^#' | sort | uniq -c | sort -rn
       # 2. Are the rules still TRUE? Each one states a measured fact. Re-run the
       #    measurements named inside configs/rules/*.md; a rule whose fact no
       #    longer holds is worse than no rule.
@@ -1417,6 +1420,12 @@ that was built has been run.
   the hook (PostToolUse Edit|Write) never saw, so the native mechanism's reach
   is a strict superset except for the slash-less basename case. Lands with the
   CLI upgrade below.
+  **Changed 2026-10-18:** the hook now also runs on Bash (any command naming an
+  existing file, writes included — the native fix covers single-file reads),
+  walks nested `<dir>/.claude/rules`, and dedups per subagent. "Strict superset"
+  no longer holds; re-measure the overlap before retiring it. Until then a
+  single-file `cat`/`head` of a matching file can deliver a rule twice (native +
+  hook) on a CLI that has the native fix.
 - [ ] 🟡 **`/equip` scans each skill alone; ColluSkill splits a payload across
   skills.** arXiv:2608.09732 (August 2026) reports 96.0% attack success against
   six per-skill scanners. Sub-payloads sit in separately packaged skills joined
@@ -1616,7 +1625,22 @@ Found while consolidating a project CLAUDE.md (127k → 12k chars) and the globa
 one (73.6k → 38.5k) after Claude Code warned "237.0k chars, over the 150.0k-char
 total limit". Fixed so far: the promotion gate (#134). Open:
 
-- [ ] 🟡 **Path-scoped rules do not fire on shell file access.** Claude Code
+- [x] 🟡 **Path-scoped rules do not fire on shell file access.** — DONE
+  2026-10-18 on branch `feat/rule-injector-shell-access`: wired on the existing
+  PostToolUse `Bash` block; command tokens that exist as files after the run
+  (glob tokens skipped, ≤ 40 files, relative to `.cwd`); nested
+  `<dir>/.claude/rules` walked up to the project root; sentinel keyed on
+  `agent_id`. Review round (same branch): output kept under the 10,000-character
+  `additionalContext` cap with held-back rules left undelivered, a leading `cd`
+  honoured, third-party trees and `claudeMdExcludes` skipped, unreadable rule
+  files skipped, identical text deduped, NUL-safe input. Pinned by
+  `tests/test-rule-injector.sh`, whose last suite removes each guard from a copy
+  of the hook and requires the suite to go red (with a no-op control that must
+  stay green), so CI re-runs the mutations; 30 rules × 15 globs × 40 files in
+  about 0.16 s. Live check 2026-10-18: a headless session in a project with a
+  nested `paths:` rule ran only `head -3 <matching file>` through Bash, and the
+  rule arrived in context. `agent_id` is still taken from the documented 2.1.283
+  hook-input schema, not from a logged subagent payload. Original item: Claude Code
   loads a `paths:` rule after a Read, and `rule-injector.sh` loads one after an
   Edit or Write. A `cat`, `sed -i` or heredoc write never triggers either.
   Measured 2026-10-18 over the author's 40 most recent main-session transcripts
@@ -1646,6 +1670,19 @@ total limit". Fixed so far: the promotion gate (#134). Open:
   should say so themselves: accept a recorded `ci-local.py` pass in place of
   completed remote checks (or `gh pr merge --auto` where protection requires
   them). Regenerate the plugin and mcp-package copies.
+- [ ] 🟡 **On or after 2026-10-25: did any rule moved out of always-loaded
+  context stop working?** On 2026-10-18 one project moved 54 promoted rules from
+  its CLAUDE.md into path-scoped `.claude/rules/` files, and the global file's
+  96 rules were condensed to one line per principle. A rule that keeps getting
+  violated after the move is the measurable failure. For each correction
+  recorded since 2026-10-18 (`grep -h '^- \[2026-10-\(1[89]\|2[0-9]\)\]'
+  <project>/.claude/corrections/rules.md ~/.claude/corrections/rules.md`), grep
+  its key phrase in that project's `.claude/rules/*.md` and in
+  `~/.claude/corrections/promoted-archive.md`. A hit means the moved or
+  condensed rule did not hold. Move it back into CLAUDE.md (the work it governs
+  evidently touched no matching file) or sharpen its line. Pair the result with
+  which scoped files actually fired: `cat <project>/.claude/sessions/*.rules-injected
+  | grep -v '^#' | sort | uniq -c`.
 - [x] 🔵 **DONE 2026-10-18 — a named figure type is now drawn, alternatives argued
   beside it.** Was: `/artifact` allows zero figures even when the brief names a figure
   type. `configs/skills/artifact/prompt.md` ("zero figures is valid when prose
