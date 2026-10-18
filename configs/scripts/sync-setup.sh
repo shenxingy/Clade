@@ -128,6 +128,7 @@ cat > "$SYNC_DIR/.gitattributes" <<'ATTRS'
 corrections/rules.md                  merge=union
 corrections/cross-project-rules.jsonl merge=union
 corrections/rules-archive.md          merge=union
+corrections/promoted-archive.md       merge=union
 memory/*.md                           merge=union
 projects-memory/**/MEMORY.md          merge=union
 ATTRS

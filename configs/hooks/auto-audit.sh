@@ -61,10 +61,13 @@ run_auto_audit() {
   local redundant=0
   local archived=0
   local withheld=0
+  local over_budget=0
+  local no_target=0
   local lines_to_remove=()
   local promoted_names=()
   local archived_names=()
   local withheld_names=()
+  local over_budget_names=()
 
   mkdir -p "$(dirname "$ARCHIVE_FILE")"
 
@@ -113,13 +116,22 @@ run_auto_audit() {
     fi
 
     if [[ "$timer_elapsed" -eq 1 && "$age" -ge 14 ]]; then
-      # Append to CLAUDE.md under ## Auto-Promoted Rules
-      if [[ -f "$CLAUDE_TARGET" ]]; then
-        if ! grep -q "## Auto-Promoted Rules" "$CLAUDE_TARGET" 2>/dev/null; then
-          printf '\n## Auto-Promoted Rules\n\n' >> "$CLAUDE_TARGET"
-        fi
-        printf '%s [auto-promoted %s]\n' "$line" "$(date +%Y-%m-%d)" >> "$CLAUDE_TARGET"
+      local entry="$line [auto-promoted $(date +%Y-%m-%d)]"
+      # No target: keep the rule. The old branch wrote nowhere and still
+      # removed the line from rules.md, so a project without a CLAUDE.md
+      # lost every rule it "promoted".
+      if [[ ! -f "$CLAUDE_TARGET" ]]; then
+        no_target=$((no_target + 1))
+        continue
       fi
+      # Over budget: keep the rule in rules.md and name it — /audit
+      # consolidates the target, then promotes (see claude_md_budget).
+      if ! promotion_fits "$CLAUDE_TARGET" "$entry"; then
+        over_budget=$((over_budget + 1))
+        over_budget_names+=("${domain}: ${text:0:48}")
+        continue
+      fi
+      append_to_section "$CLAUDE_TARGET" "## Auto-Promoted Rules" "$entry"
       lines_to_remove+=("$line")
       promoted=$((promoted + 1))
       promoted_names+=("${domain}: ${text:0:60}")
@@ -205,14 +217,15 @@ run_auto_audit() {
         continue
       fi
 
-      # Promote to global CLAUDE.md
-      if ! grep -q "## Cross-Project Rules" "$global_claude" 2>/dev/null; then
-        printf '\n## Cross-Project Rules\n\n' >> "$global_claude"
+      # Promote to global CLAUDE.md — inside its section, within budget.
+      [[ -f "$global_claude" ]] || continue
+      local xentry="- $rule_text [cross-project $(date +%Y-%m-%d)]"
+      if ! promotion_fits "$global_claude" "$xentry"; then
+        over_budget=$((over_budget + 1))
+        over_budget_names+=("cross-project: ${rule_text:0:48}")
+        continue
       fi
-      # Format string must NOT start with "-" or bash printf parses it as an
-      # option ("invalid option" → nothing written). Keep "%s\n" as the format
-      # and build the dash-prefixed line as the argument.
-      printf '%s\n' "- $rule_text [cross-project $(date +%Y-%m-%d)]" >> "$global_claude"
+      append_to_section "$global_claude" "## Cross-Project Rules" "$xentry"
       cross_promoted=$((cross_promoted + 1))
     done
   fi
@@ -260,7 +273,7 @@ run_auto_audit() {
 
   # ─── Build summary ──────────────────────────────────────────────
   local summary=""
-  local changes=$((promoted + redundant + archived + cross_promoted + cross_withheld + withheld))
+  local changes=$((promoted + redundant + archived + cross_promoted + cross_withheld + withheld + over_budget + no_target))
 
   if [[ "$changes" -gt 0 ]]; then
     summary="Auto-audit completed: "
@@ -268,6 +281,8 @@ run_auto_audit() {
     [[ "$redundant" -gt 0 ]] && summary="${summary}${redundant} redundant removed, "
     [[ "$archived" -gt 0 ]] && summary="${summary}${archived} archived, "
     [[ "$withheld" -gt 0 ]] && summary="${summary}${withheld} withheld (low-severity), "
+    [[ "$over_budget" -gt 0 ]] && summary="${summary}${over_budget} withheld (over the $(claude_md_budget)-byte CLAUDE.md budget), "
+    [[ "$no_target" -gt 0 ]] && summary="${summary}${no_target} kept in rules.md (no ${CLAUDE_TARGET}), "
     [[ "$cross_promoted" -gt 0 ]] && summary="${summary}${cross_promoted} cross-project promoted, "
     [[ "$cross_withheld" -gt 0 ]] && summary="${summary}${cross_withheld} cross-project withheld (not rule-shaped), "
     summary="${summary%%, }"
@@ -280,6 +295,12 @@ run_auto_audit() {
     if [[ "$withheld" -gt 0 ]]; then
       summary="${summary}\n  Withheld from CLAUDE.md — promote deliberately via /audit if one earns it:"
       for name in "${withheld_names[@]}"; do
+        summary="${summary}\n  → ${name}"
+      done
+    fi
+    if [[ "$over_budget" -gt 0 ]]; then
+      summary="${summary}\n  Over the CLAUDE.md budget — run /audit to consolidate (one-liners, path-scoped rules, archive the full text), then these promote:"
+      for name in "${over_budget_names[@]}"; do
         summary="${summary}\n  → ${name}"
       done
     fi
