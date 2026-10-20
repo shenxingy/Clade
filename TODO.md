@@ -1690,3 +1690,99 @@ total limit". Fixed so far: the promotion gate (#134). Open:
   brief names a flow chart or a structure diagram, draw it and argue the
   alternative on the page. Add that exception and regenerate the derived
   copies.
+
+## 2026-10-19 radar sweep follow-ups
+
+Digest: `~/.claude/research/radar-2026-10-19.md`. Weekly cron run. As on
+10-12, `bash`, `bash -n`, `git` and every test run needed approval nobody was
+present to give; `grep`, `jq` and `stat` ran, so every count below was
+computed. New instrument this run: Claude Code writes a
+`hook_non_blocking_error` attachment into the transcript whenever it rejects a
+hook's output. Tallied over every transcript on the author's machine, it
+exposed two hooks that have delivered nothing (the command is now in
+`configs/skills/radar/SKILL.md`, Lane C).
+
+- [x] 🟠 **Verify and land this run's edits.** — DONE 2026-10-19. The hook fix
+  landed in #139: `bash -n` clean; `test-hooks.sh` and `test-skill-routing.sh`
+  (48/48) green; deleting `"hookEventName":"PostToolUse",` turned §3 and §3b
+  red; 313 rejections re-counted across both profiles (2026-08-26 → 10-19,
+  deduped). The rule and radar docs land with this section. Was: uncommitted in the `main`
+  checkout: `configs/hooks/skill-suggest.sh` (adds `"hookEventName":"PostToolUse"`;
+  Claude Code rejected all 309 of its outputs, 2026-08-26 → 10-18 on 2.1.236 →
+  2.1.283), `configs/skills/generate-hook/prompt.md` (the template taught the
+  same event-less shape to every generated hook), `tests/test-hooks.sh` (§3
+  asserts the event name; new §3b checks every `"hookSpecificOutput"` literal in
+  `configs/hooks/*.sh`, 16 today, with a ≥10 count guard against a vacuous
+  pass), `configs/rules/measured-claims.md` (installed globally, it told every
+  repo to run a Clade-only script; seen live injecting into a docforensics
+  README read), `configs/skills/radar/SKILL.md`. Steps: `bash -n
+  configs/hooks/skill-suggest.sh`; `bash tests/test-hooks.sh`; `bash
+  tests/test-skill-routing.sh`; mutation: delete `"hookEventName":"PostToolUse",`
+  from skill-suggest.sh, and §3's new assertion AND §3b must both go red; restore;
+  `./install.sh`; land on its own branch via `/create-pr`. Live proof after
+  install: edit any `*_test.py`, and the transcript must show the suggestion,
+  with no new `hook_non_blocking_error` for `PostToolUse:Edit`.
+- [ ] 🔴 **`pre-tool-guardian.sh` rewrites have never applied, and would break
+  commands if they did.** Both rewrite branches (force push → `--force-with-lease`,
+  `pre-tool-guardian.sh:278-287`; unset-variable recursive delete →
+  `${VAR:?…}`, `:251-259`) answer `{"decision":"allow","updatedInput":…}`.
+  Claude Code rejects it: "top-level decision is the legacy approve|block field;
+  for "allow" use hookSpecificOutput.permissionDecision". 41 rejections in
+  transcripts, 2026-09-22 → 10-19, on 2.1.258 and 2.1.283. Each one ran the
+  ORIGINAL command. So the 2026-09-06 unset-variable delete guard has protected
+  nothing. The rewrites themselves are also wrong. Of the 41 (the categories
+  overlap):
+  - 14 would have turned `--force-with-lease` into `--force-with-lease-with-lease`
+    (`sed 's/--force\b/…'` matches inside it);
+  - 7 would have put `--force-with-lease` on `git worktree remove` or `rm`,
+    because the trigger is "`git push` anywhere AND `--force`/`-f` anywhere";
+  - 2 would have corrupted a ref (`feat/verdict-c-f-split` →
+    `feat/verdict-c--force-with-lease-split`, via the greedy `-f\b` sed).
+
+  **Fixing the schema alone would turn these into live breakage.** Order:
+  (1) tests first. `classify()` in `tests/test-pre-tool-guardian.sh:50-55` is a
+  substring check: any `updatedInput` reads REWRITE, so it cannot tell an
+  accepted output from a rejected one, and parity compares verdicts, not
+  shapes. Assert the Claude Code schema (`.hookSpecificOutput.hookEventName ==
+  "PreToolUse"`, `.permissionDecision`), the rewritten command's exact text,
+  and `--force-with-lease` / `git worktree remove --force` / `-f`-in-a-ref-name
+  all left untouched. Each must be red against today's hook. (2) Make the
+  trigger segment-aware: only a `--force`/`-f` TOKEN of a `git push` segment.
+  The Codex mirror `plugins/clade/hooks/pre_tool_guardian.py:192-201` already
+  has the token-exact regex and the right output shape, but it still rewrites
+  non-push segments. (3) Only then emit `hookSpecificOutput`. Also check before
+  the CLI upgrade past 2.1.283: the guardian's BLOCKS still ride the legacy
+  top-level `"decision":"block"`, which current docs no longer list for
+  PreToolUse. If a later version drops it, every guardian block (force push to
+  main, `rm -rf ~`, `DROP TABLE`) becomes a non-blocking error. Re-run the
+  `hook_non_blocking_error` tally after upgrading.
+- [ ] 🟡 **The cron radar cannot verify anything it builds** — and it leaves
+  its edits uncommitted in whatever checkout is open: on `fix/warm-pace` for
+  four days after 10-12, and on `main` on 10-19, where an unrelated session's
+  Stop hook found them. Option (c) below fixes that half on its own.
+  `radar-cron.sh:118-133` allows `WebSearch` plus `WebFetch` on 13 hosts, and
+  acceptEdits adds file edits, but not `bash`/`git`/tests. So the skill's
+  "build and verify now" can only ever yield "built, unrun" for code, as on
+  10-12 and again today. Not widened here, because it is a security fork:
+  acceptEdits plus running a script the agent can edit is arbitrary code
+  execution in a run that also reads untrusted web content. Options: (a) allow
+  only `Bash(bash -n:*)` (parse, never execute); (b) run tests under Claude
+  Code's Bash sandbox with network off, which removes the exfiltration leg of
+  the lethal trifecta; (c) keep it as is, but have `radar-cron.sh` open a draft
+  branch with the edits so they never sit uncommitted in someone's checkout.
+- [ ] 🟡 **A batch worker that times out loses a patch that may already pass.**
+  `run-tasks-parallel.sh:376-409`: on exit 124 the next attempt runs `git
+  checkout . && git clean -fd`, and after the last attempt the task is
+  PERMANENTLY FAILED. The worktree is never checked. Field data ("Harness or
+  Model?", arXiv:2609.11987): 22 of 81 runs cancelled at the wall-clock ceiling
+  had already produced a passing patch. The batch runner has no per-task
+  verifier to check with (no `verify` field), so adding one is the design step;
+  the shadow checkpoint repo already preserves the state to check.
+- [ ] 🔵 **Redirect-written mutation probes still file as rejections.**
+  `rd_mutates_reverted_path` (`revert-detector.sh:270-297`) knows in-place
+  sed/perl/ruby, `python3 -c` and interpreter heredocs. It does not know `git
+  show REV:f > f; <tests>; git checkout -- f` or `echo … >> f`. A jq replay over
+  the whole `history.jsonl` finds 4 such records (2 in the 10-12 → 10-19 window,
+  one carrying a false `reverted_files`). The fix is to treat a `>`/`>>`/`tee`
+  whose target basename equals a reverted path as an edit. It is small, but not
+  built: the frequency is low and this run could not run the suite.

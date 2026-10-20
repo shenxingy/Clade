@@ -9,8 +9,10 @@ paths: CLAUDE.md, README.md, docs/**/*.md, configs/CLAUDE.md
   already misled someone here.
 - **Either derive it or delete it.** Five self-measurements were found
   unreproducible in one pass (`~17%`, `241 commits`, `115 of the last 133`,
-  `~94k lines`, `~0.03% of the window`). Run
+  `~94k lines`, `~0.03% of the window`). In Clade, run
   `python3 configs/scripts/check-asserted-numbers.py` before adding another.
+  This rule is installed globally and that script exists only in Clade; in any
+  other repository, name the command or file each number came from.
 - **Changing a stated fact means changing every site.** 43% of one audit round's
   findings were siblings of the previous round's own fixes. `grep` for the value
   before you edit it; `check-sibling-facts.py` reports survivors after.

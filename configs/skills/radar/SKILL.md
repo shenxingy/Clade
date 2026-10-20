@@ -98,10 +98,14 @@ records written 2026-10-05 → 10-12 carried it. It marks a mutation test — th
 practice the global CLAUDE.md *requires* — but only recognised the round-trip
 (`git apply`/`git stash pop` after the revert) and the label `MUTATION`, and the
 dominant real shape has neither: `sed -i X` or `python3 - "$f" <<'EOF'`, then
-the tests, then `git checkout -- X`. The same-command-edit signal written
-2026-10-12 covers that shape (64 of the 115 by replay); until it is installed,
-treat any revert command that also edits the path it reverts as a probe,
-whatever `revert_scope` says. On 2026-09-23 seven consecutive records were
+the tests, then `git checkout -- X`. The same-command-edit signal (landed
+2026-10-16 in #124) now covers that shape: 5 of the 40 implicit-revert records
+of 2026-10-12 → 10-19 came out `probe`. Three shapes still read as `paths`, so
+discount them by hand: a shell redirect into the reverted file (`git show
+REV:f > f`, `echo … >> f`; 2 that week, 4 in the whole file), a generator run
+and then discarded (`npx tsx gen.mjs; git diff out.json; git checkout --
+out.json`; 3 that week), and a mutation made in an EARLIER tool call than the
+revert. On 2026-09-23 seven consecutive records were
 probes, two with `repeat:true`; across all 103 `paths`-scoped records then, 3 of
 the 6 `repeat:true` were probes.
 
@@ -130,6 +134,23 @@ are disjoint (13 fixed technical domains vs 224 free-form ones across 681 rules
 in 58 `rules.md` files, 0 shared — measured 2026-10-12). On the author's machine
 `rule-effectiveness.json` has been `{}` since 2026-04-15. Until that is fixed,
 find recurrence by clustering `history.jsonl` yourself, as above.
+
+**Also read Claude Code's own verdict on our hooks.** A hook whose output Claude
+Code rejects still runs, exits 0 and passes its tests, and delivers nothing.
+The only record is a `hook_non_blocking_error` attachment in the session
+transcript. Tally them every run (add any other profile's `projects/` dir):
+
+```bash
+grep -rh --include='*.jsonl' '"type":"hook_non_blocking_error"' ~/.claude/projects \
+  | jq -rc 'select(.attachment.type? == "hook_non_blocking_error")
+      | [.attachment.hookName, (.attachment.stderr | gsub("\\s+"; " ") | .[0:90])] | @tsv' \
+  | sort | uniq -c | sort -rn
+```
+
+The 2026-10-19 sweep found two dead hooks this way, both with green suites,
+because each suite read the hook's output and never what Claude Code did with
+it: `skill-suggest.sh` (309 rejections since 2026-08-26, no `hookEventName`) and
+the rewrites in `pre-tool-guardian.sh` (41, a top-level `decision:"allow"`).
 
 ### 1. Sweep broadly — probes, not topics
 
