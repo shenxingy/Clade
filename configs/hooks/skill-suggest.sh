@@ -148,7 +148,13 @@ if [[ -n "$THROTTLE_DIR" && -d "$THROTTLE_DIR" ]]; then
   date +%s > "$THROTTLE_FILE" 2>/dev/null
 fi
 
+# hookEventName is REQUIRED inside hookSpecificOutput. Without it Claude Code
+# rejects the whole output ("hookSpecificOutput is missing required field
+# hookEventName", a hook_non_blocking_error) and the suggestion never reaches
+# the model. This line shipped without it: transcripts on the author's machine
+# hold 309 such rejections, 2026-08-26 → 2026-10-18 on Claude Code 2.1.236 →
+# 2.1.283, so going sync (above) had delivered nothing either.
 jq -n --arg ctx "$SUGGESTIONS" \
-  '{"hookSpecificOutput":{"additionalContext":$ctx}}'
+  '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":$ctx}}'
 
 exit 0
