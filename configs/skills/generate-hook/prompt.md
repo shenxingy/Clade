@@ -71,9 +71,10 @@ INPUT=$(cat)
 if [[ "$VIOLATION_FOUND" == "true" ]]; then
   # Warn mode (not blocking) — change exit to 2 to block
   echo "[{hook-name}] Warning: {rule description}" >&2
-  # Return feedback to Claude
+  # Return feedback to Claude. hookEventName is required: without it Claude
+  # Code rejects the whole object and Claude never sees the message.
   jq -n --arg msg "{feedback message}" \
-    '{"hookSpecificOutput":{"additionalContext":$msg}}'
+    '{"hookSpecificOutput":{"hookEventName":"{PreToolUse|PostToolUse}","additionalContext":$msg}}'
   exit 0  # warn only; change to exit 2 to block
 fi
 

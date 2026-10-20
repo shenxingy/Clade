@@ -367,6 +367,10 @@ else
   fail "emits hookSpecificOutput.additionalContext" "output: $(head -3 <<< "$out")"
 fi
 assert_contains "$out" "blog-seo-check" "suggestion content survives the timeout re-exec"
+# The check above passed for the hook's whole life while Claude Code rejected
+# every output it produced: it reads the field Claude Code never got to.
+evt=$(jq -r '.hookSpecificOutput.hookEventName // empty' <<< "$out" 2>/dev/null)
+assert_eq "$evt" "PostToolUse" "names hookEventName (Claude Code drops the output without it)"
 
 # --- no match → no output ---
 fresh_throttle
@@ -412,6 +416,39 @@ fresh_throttle
 out=$(printf '{"tool_input":{"file_path":"src/blog/posts/hello.md"}}' \
   | SKILL_SUGGEST_INNER=1 SKILL_SUGGEST_THROTTLE_DIR="$THROTTLE" bash "$SKILL_SUGGEST" 2>/dev/null)
 assert_contains "$out" "additionalContext" "inner (already-bounded) invocation runs the body"
+
+# ─── 3b. every hookSpecificOutput names its event ────────────────────
+# Claude Code validates hook output and drops an object that fails, recording
+# a hook_non_blocking_error in the transcript: "hookSpecificOutput is missing
+# required field hookEventName". skill-suggest.sh shipped that shape and the
+# /generate-hook template taught it, so the class is checked statically over
+# every hook rather than per hook. Each line that OPENS a quoted
+# "hookSpecificOutput" key must name hookEventName on it or the next two lines
+# (inline jq templates and multi-line heredoc objects both fit). The count
+# guard keeps the check from passing vacuously if the scan finds nothing.
+
+section "hooks — every hookSpecificOutput names its hookEventName"
+
+hso_checked=0
+hso_missing=""
+for h in "$REPO_ROOT"/configs/hooks/*.sh; do
+  while IFS=: read -r ln _; do
+    hso_checked=$((hso_checked + 1))
+    window=$(sed -n "${ln},$((ln + 2))p" "$h")
+    [[ "$window" == *hookEventName* ]] || hso_missing="$hso_missing $(basename "$h"):$ln"
+  done < <(grep -n '"hookSpecificOutput"' "$h" | grep -v '^[0-9]*:[[:space:]]*#')
+done
+if [[ $hso_checked -ge 10 ]]; then
+  pass "scan found $hso_checked hookSpecificOutput literals (the check can fire)"
+else
+  fail "scan found hookSpecificOutput literals" "only $hso_checked — the check is vacuous"
+fi
+if [[ -z "$hso_missing" ]]; then
+  pass "every hookSpecificOutput literal in configs/hooks names hookEventName"
+else
+  fail "every hookSpecificOutput literal in configs/hooks names hookEventName" \
+    "missing at:$hso_missing"
+fi
 
 # ─── 4. settings-hooks.json wiring ───────────────────────────────────
 # A hook script that is not wired is dead code; assert the delivery channel.
