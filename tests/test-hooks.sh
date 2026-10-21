@@ -450,6 +450,35 @@ else
     "missing at:$hso_missing"
 fi
 
+# ─── 3c. no PreToolUse hook answers with a top-level decision ────────
+# For PreToolUse the top-level {"decision":…} is the legacy field: "block" is
+# still honoured, "allow" is rejected outright — 41 times for pre-tool-guardian
+# (2026-09-22 → 10-19), each running the command it meant to rewrite. The hooks
+# wired to PreToolUse in settings-hooks.json must speak hookSpecificOutput only.
+# (Stop hooks legitimately use a top-level decision; they are not scanned.)
+section "PreToolUse hooks never answer with a top-level decision"
+ptu_checked=0
+ptu_bad=""
+while IFS= read -r ptu_cmd; do
+  ptu_file="$REPO_ROOT/configs/hooks/$(basename "${ptu_cmd%% *}")"
+  [[ -f "$ptu_file" ]] || continue
+  ptu_checked=$((ptu_checked + 1))
+  if grep -nE '"decision"[[:space:]]*:|[{,][[:space:]]*decision[[:space:]]*:' "$ptu_file" \
+       | grep -v '^[0-9]*:[[:space:]]*#' >/dev/null; then
+    ptu_bad="$ptu_bad $(basename "$ptu_file")"
+  fi
+done < <(jq -r '.hooks.PreToolUse[]?.hooks[]?.command' "$REPO_ROOT/configs/settings-hooks.json")
+if [[ $ptu_checked -ge 2 ]]; then
+  pass "scanned $ptu_checked PreToolUse hook scripts (the check can fire)"
+else
+  fail "scanned PreToolUse hook scripts" "only $ptu_checked — the check is vacuous"
+fi
+if [[ -z "$ptu_bad" ]]; then
+  pass "no PreToolUse hook emits a top-level decision"
+else
+  fail "no PreToolUse hook emits a top-level decision" "found in:$ptu_bad"
+fi
+
 # ─── 4. settings-hooks.json wiring ───────────────────────────────────
 # A hook script that is not wired is dead code; assert the delivery channel.
 
@@ -968,8 +997,17 @@ section "linter-config-guard reads the payload Claude Code actually sends"
 # Third hook in this repository found documented-as-active and inert.
 LCG="$REPO_ROOT/configs/hooks/linter-config-guard.sh"
 
+# lcg_denied <output> → "deny" when the output is Claude Code's PreToolUse deny
+# (the legacy top-level {"decision":"block"} was replaced on 2026-10-20).
+lcg_denied() { jq -r 'select(has("decision")|not) | .hookSpecificOutput | select(.hookEventName=="PreToolUse") | .permissionDecision // empty' <<< "$1" 2>/dev/null; }
+
 LCG_OUT=$(printf '{"tool_name":"Edit","tool_input":{"file_path":"/tmp/.eslintrc.json"}}' | bash "$LCG" 2>/dev/null)
-assert_contains "$LCG_OUT" '"decision": "block"' "a linter config edit is blocked in the real payload shape"
+assert_eq "$(lcg_denied "$LCG_OUT")" "deny" "a linter config edit is denied in the real payload shape"
+
+# The old heredoc spliced the path into a JSON string unescaped: a quote in it
+# made the output invalid JSON, a non-blocking error, and an unblocked write.
+LCG_OUT=$(python3 -c 'import json;print(json.dumps({"tool_name":"Edit","tool_input":{"file_path":"/tmp/we\"ird/.eslintrc.json"}}))' | bash "$LCG" 2>/dev/null)
+assert_eq "$(lcg_denied "$LCG_OUT")" "deny" "a path with a quote in it still produces a valid deny"
 
 # Build the payload with python3 rather than printf: printf turns \n into a
 # real newline, and a raw newline inside a JSON string is invalid, so the hook's
@@ -977,7 +1015,7 @@ assert_contains "$LCG_OUT" '"decision": "block"' "a linter config edit is blocke
 # assertion failed for that reason and not because the guard was broken.
 LCG_JSON=$(python3 -c 'import json;print(json.dumps({"tool_name":"Write","tool_input":{"file_path":"/tmp/pyproject.toml","content":"[tool.ruff]\nignore=[\"ALL\"]"}}))')
 LCG_OUT=$(printf '%s' "$LCG_JSON" | bash "$LCG" 2>/dev/null)
-assert_contains "$LCG_OUT" '"decision": "block"' "a [tool.ruff] section in pyproject.toml is blocked"
+assert_eq "$(lcg_denied "$LCG_OUT")" "deny" "a [tool.ruff] section in pyproject.toml is denied"
 
 LCG_OUT=$(printf '{"tool_name":"Edit","tool_input":{"file_path":"/tmp/app.py"}}' | bash "$LCG" 2>/dev/null)
 if [[ -z "$LCG_OUT" ]]; then

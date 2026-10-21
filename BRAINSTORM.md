@@ -2827,8 +2827,9 @@ Two more surfaces checked, both verified live against Kimi 2.0.0:
   `Notification`, ...) and the same stdin JSON field names
   (`hook_event_name`, `session_id`, `cwd`, `tool_name`, `tool_input`). It is
   **not** compatible in blocking protocol, though: Claude Code's hooks here
-  signal a block by printing `{"decision":"block","reason":...}` to stdout
-  and exiting 0 — verified live that Kimi silently **allows** the command
+  signalled a block by printing `{"decision":"block","reason":...}` to stdout
+  and exiting 0 (the guardian moved to `hookSpecificOutput` deny on 2026-10-20,
+  and the shim reads both shapes) — verified live that Kimi silently **allows** the command
   when given that exact output, because Kimi only checks the exit code
   (`2` = block) or `{"hookSpecificOutput":{"permissionDecision":"deny",
   "permissionDecisionReason":...}}`. `configs/kimi-hooks/decision-to-kimi.sh`

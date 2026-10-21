@@ -71,14 +71,16 @@
 | H1 | `pre-tool-guardian.sh` passes `bash -n` syntax check | ✅ | 2026-04-10 | |
 | H2 | `pre-tool-guardian.sh` blocks `alembic upgrade` when dev-mode is OFF | ✅ | 2026-04-10 | guardian intercepted test command containing pattern — live proof |
 | H3 | `pre-tool-guardian.sh` allows `alembic upgrade` when dev-mode is ON | ✅ | 2026-04-10 | source verified: `if [[ "$DEV_MODE" == false ]]` gate at line 40 |
-| H4 | `pre-tool-guardian.sh` blocks `rm -rf /` regardless of dev-mode | ✅ | 2026-04-10 | source verified: lines 78-96 |
-| H5 | `pre-tool-guardian.sh` blocks `git push --force origin main` regardless of dev-mode | ✅ | 2026-04-10 | source verified: lines 99-108 |
+| H4 | `pre-tool-guardian.sh` blocks `rm -rf /` regardless of dev-mode | ✅ | 2026-10-20 | `tests/test-pre-tool-guardian.sh` "Catastrophic rm — true positives" (line references dropped: they drifted) |
+| H5 | `pre-tool-guardian.sh` blocks `git push --force origin main` regardless of dev-mode | ✅ | 2026-10-20 | test suite "main and master stay blocked, in every spelling" (11 cases incl. `HEAD:main`, `+main`, `bash -c`); live `claude -p` 2.1.283 denied it with the new reason |
 | H6 | All other hooks pass `bash -n` syntax check | ✅ | 2026-07-13 | all 32 hooks pass |
-| H7 | `pre-tool-guardian.sh` does NOT block when migration pattern appears only in a variable assignment string (false-positive fix) | ✅ | 2026-04-10 | SCANNABLE strips `VAR='...'` and `VAR="..."` lines (guardian.sh:47-50) |
+| H7 | `pre-tool-guardian.sh` does NOT block when migration pattern appears only in a variable assignment string (false-positive fix) | ✅ | 2026-04-10 | SCANNABLE strips `VAR='...'` and `VAR="..."` lines (migrations section of the guardian) |
 | H8 | `session-baseline.sh` captures sorted `git status --porcelain` output keyed by `session_id` at SessionStart, excluding `.claude/` paths | ✅ | 2026-04-15 | tested in /tmp repo: baseline file written to `.claude/sessions/<sid>.baseline`, `.claude/` paths filtered out |
 | H9 | `stop-check.sh` ignores pre-existing dirty files (present in baseline) and blocks only on session-produced changes — prevents deadlock between parallel CC sessions on same repo | ✅ | 2026-04-15 | tested: preexisting dirt → exit 0 silent; new session file → exit 2 with filename in output |
 | H10 | `stop-check.sh` circuit breaker: exits 0 when `stop_hook_active=true` (Claude Code retry) AND after 2 consecutive attempt-counter blocks | ✅ | 2026-04-15 | both escape paths verified — prevents LLM from being trapped in stop-hook loop |
 | H11 | `pre-tool-guardian.sh` blocks env-prefixed migrations (`DATABASE_URL="..." alembic upgrade`) and compound statements (`VAR=x && alembic upgrade`) while still allowing pure assignment lines containing the pattern | ✅ | 2026-04-15 | 9/9 regression+new tests pass (/tmp/guardian-tests.sh). Fix: strip regex now anchors to end-of-line — pure assignments stripped, env-prefix commands scanned. Resolves former KL1 false-negative. |
+| H12 | `pre-tool-guardian.sh` rewrites actually take effect, and never grant permission | ✅ | 2026-10-20 | live `claude -p` 2.1.283 on a stale clone: `git push -f origin feat/x` ran as `--force-with-lease` and was rejected "(stale info)", keeping another agent's commit; a rewritten unallowed `touch` was still denied. Before: 41 rejected rewrites, each running the original |
+| H13 | `pre-tool-guardian.sh` never crashes into a silent allow | ✅ | 2026-10-20 | 20,111 real commands replayed: 10 exit-1 crashes before, 0 after; the suite now reads a non-zero exit as CRASH |
 
 ## Shell Script Integrity
 <!-- All scripts must be syntactically valid. -->

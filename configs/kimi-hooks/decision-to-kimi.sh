@@ -15,6 +15,18 @@
 # This script is the translation shim — the wrapped script itself (and
 # Claude Code's own use of it via settings-hooks.json) is untouched.
 #
+# Three input shapes, since pre-tool-guardian.sh moved to Claude Code's current
+# schema on 2026-10-20 (its legacy top-level decision was deprecated, and the
+# "allow" form was rejected outright):
+#   {"decision":"block","reason":…}                         legacy → deny
+#   {"hookSpecificOutput":{"permissionDecision":"deny",…}}  current → deny
+#   {"hookSpecificOutput":{"updatedInput":{"command":…}}}   a REWRITE → deny,
+#     naming the safer command. Kimi's support for rewriting input is not
+#     verified, so the shim does not forward it; before 2026-10-20 it dropped
+#     rewrites and Kimi ran the ORIGINAL command (an unset-variable recursive
+#     delete, a plain force push). Refusing with the safer command in the
+#     reason lets the model run that instead.
+#
 # Usage, as a Kimi [[hooks]] `command`:
 #   /path/to/decision-to-kimi.sh /path/to/claude-style-hook.sh
 #
@@ -31,10 +43,15 @@ fi
 INPUT=$(cat)
 OUTPUT=$(printf '%s' "$INPUT" | "$WRAPPED" 2>/dev/null)
 
-DECISION=$(printf '%s' "$OUTPUT" | jq -r '.decision // empty' 2>/dev/null || true)
-if [[ "$DECISION" == "block" ]]; then
-  REASON=$(printf '%s' "$OUTPUT" | jq -r '.reason // empty' 2>/dev/null || true)
-  jq -n --arg reason "${REASON:-blocked by $(basename "$WRAPPED")}" \
+REASON=$(printf '%s' "$OUTPUT" | jq -r '
+  if .decision? == "block" then (.reason // "")
+  elif .hookSpecificOutput?.permissionDecision? == "deny" then (.hookSpecificOutput.permissionDecisionReason // "")
+  elif (.hookSpecificOutput?.updatedInput?.command? | type) == "string" then
+    "Refused as written. Run this safer form instead: " + .hookSpecificOutput.updatedInput.command
+      + (if (.hookSpecificOutput.additionalContext // "") != "" then " — " + .hookSpecificOutput.additionalContext else "" end)
+  else empty end' 2>/dev/null || true)
+if [[ -n "$REASON" ]]; then
+  jq -n --arg reason "$REASON" \
     '{hookSpecificOutput: {permissionDecision: "deny", permissionDecisionReason: $reason}}' \
     2>/dev/null
 fi
