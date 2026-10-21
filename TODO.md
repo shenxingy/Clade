@@ -1815,7 +1815,26 @@ exposed two hooks that have delivered nothing (the command is now in
   Fix: move the rm and pkill statement detection onto the same quote- and
   heredoc-aware walk, in both guardians. Measure by replaying the same 20,111
   commands; the extraction recipe is in this item's commit.
-- [ ] 🟡 **The cron radar cannot verify anything it builds** — and it leaves
+- [x] 🟡 **The cron radar cannot verify anything it builds** — DONE
+  2026-10-20, options (b) and (c) together, in the wrapper rather than the
+  agent's permissions:
+  - `radar-cron.sh` makes a worktree of the kit on a fresh `radar/<date>`
+    branch from origin/main, outside `~/.claude`, and runs the agent with it as
+    cwd. Measured on 2.1.283 with `acceptEdits`: outside its cwd the agent is
+    refused even a Read, so no other checkout is reachable; `--add-dir` grants
+    the read-only inputs.
+  - Afterwards the wrapper runs `bash -n` on changed shell files and the
+    suites that name a changed file, inside bwrap with no network and the
+    filesystem read-only except the worktree. A suite's write outside the
+    worktree never reaches the host; this is tested.
+  - It commits to the local branch with the results in the message, removes
+    the worktree, and never pushes, because the run read the open web and
+    private history.
+  - `session-context.sh` lists `radar/*` branches when a session opens the kit.
+  - Pinned by `tests/test-radar-cron.sh` (24 cases); 7 mutations each go red.
+
+  The agent's own permissions are unchanged (no Bash), so option (a) was not
+  needed. Was: the cron radar cannot verify anything it builds — and it leaves
   its edits uncommitted in whatever checkout is open: on `fix/warm-pace` for
   four days after 10-12, and on `main` on 10-19, where an unrelated session's
   Stop hook found them. Option (c) below fixes that half on its own.

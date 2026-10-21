@@ -195,6 +195,23 @@ if [[ -n "$BRANCH" ]]; then
   CONTEXT="${CONTEXT}Branch: ${BRANCH}\n"
 fi
 
+# Radar edits awaiting review. The weekly radar cron commits its code edits to
+# a local radar/<date> branch of the kit repository instead of whatever
+# checkout is open (radar-cron.sh), and never pushes them. Nothing else
+# surfaces those branches, so list them when a session opens that repository
+# or one of its worktrees.
+_KIT_SRC=$(cat "$HOME/.claude/.kit-source-dir" 2>/dev/null || true)
+if [[ -n "$_KIT_SRC" ]]; then
+  _HERE_GIT=$(cd "$(git rev-parse --git-common-dir 2>/dev/null || echo /nonexistent)" 2>/dev/null && pwd -P)
+  _KIT_GIT=$(cd "$_KIT_SRC" 2>/dev/null && cd "$(git rev-parse --git-common-dir 2>/dev/null || echo /nonexistent)" 2>/dev/null && pwd -P)
+  if [[ -n "$_HERE_GIT" && "$_HERE_GIT" == "$_KIT_GIT" ]]; then
+    RADAR_BRANCHES=$(git for-each-ref --format='  %(refname:short) — %(subject)' 'refs/heads/radar/' 2>/dev/null | head -5)
+    if [[ -n "$RADAR_BRANCHES" ]]; then
+      CONTEXT="${CONTEXT}Radar edits awaiting review (unattended, never pushed; read with git log -p origin/main..<branch>, then land via PR or delete):\n${RADAR_BRANCHES}\n"
+    fi
+  fi
+fi
+
 # SSH server / host info
 if [[ -n "$SSH_CONNECTION" ]]; then
   CLIENT_IP="${SSH_CONNECTION%% *}"

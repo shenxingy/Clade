@@ -253,12 +253,23 @@ it is worth a file.
 
 **When the harness refuses the write** — it treats `~/.claude/**` as a
 sensitive path in every mode short of bypass, so an unattended `acceptEdits`
-run cannot reach its own ledger — stage the two files in `$HOME` under exactly
-these names: `~/radar-YYYY-MM-DD.md` and `~/known-concepts-append-YYYY-MM-DD.md`.
-`radar-cron.sh` folds both into place before and after each sweep. Do not end
-the run by asking a human to `cat >>` them: four such requests sat unactioned
-for five weeks (2026-08-17 → 2026-09-21) while every sweep in between diffed
-the field against a ledger missing its predecessors' findings.
+run cannot reach its own ledger — stage the two files under exactly these
+names: `radar-YYYY-MM-DD.md` and `known-concepts-append-YYYY-MM-DD.md`, in the
+directory the cron prompt names (`.radar-staged/` inside the run's worktree;
+older runs used `$HOME`). `radar-cron.sh` folds both into place before and
+after each sweep. Do not end the run by asking a human to `cat >>` them: four
+such requests sat unactioned for five weeks (2026-08-17 → 2026-09-21) while
+every sweep in between diffed the field against a ledger missing its
+predecessors' findings.
+
+**Code edits in an unattended run** go only into the worktree the cron gives
+you as your working directory, on its own `radar/<date>` branch. You cannot run
+bash or git there, and you do not need to: the wrapper runs `bash -n` and the
+affected shell suites in a no-network sandbox, commits to that local branch
+with the results, and leaves it for review — it never pushes. Do not edit any
+other checkout (you cannot reach one), and do not call an edit verified. Until
+2026-10-20 the agent edited whichever Clade checkout was open: the 10-12 run's
+edits sat on `fix/warm-pace` for four days and the 10-19 run's on `main`.
 
 Close with one line that is honest about coverage: which probe families ran,
 how many candidates were examined, and what was NOT swept. A radar that hides

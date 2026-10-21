@@ -459,6 +459,9 @@ jobs:
       - name: Run SEO/GEO skill tests
         run: bash tests/test-seo-geo.sh
 
+      - name: Run radar-cron isolation tests
+        run: bash tests/test-radar-cron.sh
+
   install-test:
     name: Install Test
     runs-on: ubuntu-latest

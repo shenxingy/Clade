@@ -84,7 +84,8 @@ cd orchestrator && find . \( -name .venv -o -name node_modules -o -name __pycach
 # DORMANT. Pointed at the terminal path it measures NOTHING: measured, with
 # RED_PHASE_SUBDIR=configs it checks 0 of 25 sampled commits ("out of scope"),
 # because configs/ carries no pytest suite and this repo's load-bearing tests are
-# the 26 SHELL suites in tests/, which the script says outright it cannot see.
+# the shell suites in tests/ (28 files on 2026-10-20), which the script says
+# outright it cannot see.
 # It used to print "FIRED on 0 (0% of checked)" in that case — a rate over a zero
 # denominator, i.e. the script announcing the exact failure it exists to detect.
 # It now refuses to print a rate when nothing was checked.
@@ -683,13 +684,13 @@ python3 configs/scripts/check-sibling-facts.py
 #     did not run at all.
 bash configs/scripts/checks.sh shellcheck configs/hooks/*.sh configs/hooks/lib/*.sh configs/scripts/*.sh install.sh
 
-# 12. Every suite the `shell-tests` job runs — all 22, not a convenient subset
+# 12. Every suite the `shell-tests` job runs — all 23, not a convenient subset
 for t in loop checks skill-routing pr-scope-policy audit worktree-env \
          rule-injector mailbox-drain correction-pairing hooks session-context \
          session-scorecard \
          post-compact-reinject context-warning-drain ensure-dev-server \
          quiet-run scan-health pre-tool-guardian loop-args memory-watchdog \
-         ci-local seo-geo; do
+         ci-local seo-geo radar-cron; do
   bash "tests/test-$t.sh" >/dev/null || echo "FAILED: $t"
 done
 
@@ -737,7 +738,7 @@ commit too.**
 On push/PR to `main`, four workflow files fire:
 
 - `ci.yml` — `syntax-check` (24 gates), `pytest` (suite + 2 offline evals),
-  `shell-tests` (22 suites), `install-test`. `run_hack_eval.py` scores
+  `shell-tests` (23 suites), `install-test`. `run_hack_eval.py` scores
   `judge_diversity.test_integrity` against the labelled reward-hack corpus in
   `evals/hack_cases/` — read its README before changing either, because that
   gate's floor and ceiling are measured, not chosen.
