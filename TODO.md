@@ -1751,6 +1751,24 @@ exposed two hooks that have delivered nothing (the command is now in
   - **Proof.** 12 mutations each go red. Live `claude -p`: on a stale clone
     the rewrite was rejected "(stale info)", keeping the other agent's commit;
     a force push to main was denied with the new reason.
+  - **Adversarial review of the first cut.** It found that reading a statement
+    only when its first word is `git` let these through, all blocked by the
+    old text match:
+    - a push behind a prefix (`timeout 120`, `sudo -u bob`), a group (`{ }`),
+      a keyword (`then`, `do`) or a function;
+    - a script fed to a shell on stdin (`… | bash`, `bash <<EOF`, `ssh host <<EOF`).
+
+    Now:
+    - the first `git`, shell, `ssh` or `eval` word in the statement decides;
+    - a shell is read by its `-c` argument, or by the whole command when it
+      reads stdin;
+    - a script file argument is not read, so `bash run.sh "…push…"` is no
+      longer a false block;
+    - `HEAD` and `@` destinations count as the current branch.
+
+    On the 20,111-command replay this changed no verdict. 177/177 cases
+    pass under mawk, BWK awk (the macOS family) and busybox awk; 8 further
+    mutations go red.
 
   Was: rewrites have never applied, and would break
   commands if they did.** Both rewrite branches (force push → `--force-with-lease`,

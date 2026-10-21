@@ -306,11 +306,14 @@ fi
 # statement a force is a `--force` token, a short-option cluster containing f
 # (-f, -uf), or a `+refspec`; `--force-with-lease` / `--force-if-includes` are
 # already safe. A ref is main when the DESTINATION of a refspec (after the last
-# `:`, minus `+` and refs/heads/) is main or master; with no refspec at all the
-# pushed branch is the current one, read from the session's cwd unless the
-# command changed directory or used `git -C`. `ssh … "…"`, `bash -c "…"` and
-# eval carry the push in one quoted token, so their argument is split on
-# separators and checked for the same three facts — block only, never rewritten.
+# `:`, minus `+` and refs/heads/) is main or master; with no refspec at all, or
+# a destination of HEAD or @, the pushed branch is the current one, read from
+# the session's cwd unless the command changed directory or used `git -C`.
+# `ssh host "…"`, `bash -c "…"` and eval carry the push in one quoted token, so
+# their argument is split on separators and checked for the same three facts —
+# block only, never rewritten; and a shell that reads its script from stdin
+# (`… | bash`, `bash <<EOF`) gets that check over the whole command, since the
+# script is only there as text.
 #
 # Prints: none | block<TAB>main|branch|delete|nested | rewrite<NL><new command>
 read -r -d '' GD_PUSH_AWK <<'AWK'
@@ -326,29 +329,76 @@ function dst_of(r,   p) {
   sub(/^refs\/heads\//, "", r)
   return r
 }
-function nested(k,   s, j, n, parts) {
-  s = ""
-  for (j = k + 1; j <= nt; j++) s = s " " tv[j]
-  n = split(s, parts, /[;&|\n]/)
+# facts(text) — the three facts of a force push to main, read from TEXT. Used
+# only where the command cannot be walked: a string handed to bash -c / eval /
+# ssh, and the whole command when a shell reads its script from stdin.
+function facts(text,   n, parts, j, p) {
+  n = split(text, parts, /[;&|\n]/)
   for (j = 1; j <= n; j++) {
-    s = " " parts[j] " "
-    if (s ~ /[ \t]git[ \t]+([^ \t]+[ \t]+)*push[ \t]/ &&
-        (s ~ /[ \t](--force|--force-with-lease[^ \t]*|-[A-Za-z]*f[A-Za-z]*)[ \t]/ || s ~ /[ \t]\+[^ \t]/) &&
-        s ~ /[ \t:+\/](main|master)[ \t'"]/) block("nested")
+    p = " " parts[j] " "
+    if (p ~ /[ \t'"(]git[ \t]+([^ \t]+[ \t]+)*push[ \t]/ &&
+        (p ~ /[ \t](--force|--force-with-lease[^ \t]*|-[A-Za-z]*f[A-Za-z]*)[ \t'"]/ || p ~ /[ \t]\+[^ \t]/) &&
+        p ~ /[ \t:+\/'"](main|master)([ \t'"]|\\)/) return 1
+  }
+  return 0
+}
+function nested(start,   s, j) {
+  s = ""
+  for (j = start; j <= nt; j++) s = s " " tv[j]
+  if (facts(s)) block("nested")
+}
+function is_shell(w) { return (w == "bash" || w == "sh" || w == "zsh" || w == "dash" || w == "ksh") }
+function is_kw(w) {
+  return (w == "{" || w == "}" || w == "!" || w == "if" || w == "then" || w == "elif" || w == "else" ||
+          w == "fi" || w == "for" || w == "while" || w == "until" || w == "do" || w == "done" || w == "time")
+}
+# A shell given -c runs its next argument; given a script file it runs that
+# file, which is not in the command; given neither (or -s) it reads its script
+# from stdin — `echo … | bash`, `bash <<EOF` — and that script is only visible
+# as text somewhere in this command.
+function analyze_shell(k,   j, v) {
+  for (j = k + 1; j <= nt; j++) {
+    v = tv[j]
+    if (v == "-c" || (v ~ /^-[A-Za-z]+$/ && index(v, "c") > 0)) { nested(j + 1); return }
+    if (v == "-s") { stdin_shell = 1; return }
+    if (v == "-o" || v == "+o" || v == "-O" || v == "+O" || v == "--rcfile" || v == "--init-file") { j++; continue }
+    if (v ~ /^[-+]/) continue
+    return
+  }
+  stdin_shell = 1
+}
+# ssh [options] host [command…]: the remote command is what follows the host.
+# With no command, ssh runs a shell that reads stdin.
+function analyze_ssh(k,   j, v) {
+  for (j = k + 1; j <= nt; j++) {
+    v = tv[j]
+    if (v ~ /^-[BbcDEeFIiJLlmOopQRSWw]$/) { j++; continue }
+    if (v ~ /^-/) continue
+    break
+  }
+  if (j > nt) return
+  if (j == nt) { stdin_shell = 1; return }
+  nested(j + 1)
+}
+# analyze — one statement. The command can sit behind any prefix (timeout 60,
+# sudo -u bob, nice -n 19, xargs -I{}, env -C dir, then, do, {), and listing
+# prefixes was how the first cut of this walk let `timeout 120 git push --force
+# origin main` through. So the first word this guard reads decides: git, a
+# shell, ssh or eval. A bare `git` argument to echo is read too; that errs
+# toward checking, never toward skipping.
+function analyze(   k, w) {
+  k = 1
+  while (k <= nt && (tv[k] ~ /^[A-Za-z_][A-Za-z0-9_]*=/ || is_kw(tv[k]))) k++
+  if (k <= nt) { w = tv[k]; sub(/.*\//, "", w); if (w == "cd" || w == "pushd") { cd_seen = 1; return } }
+  for (k = 1; k <= nt; k++) {
+    w = tv[k]; sub(/.*\//, "", w)
+    if (w == "git") { analyze_git(k); return }
+    if (is_shell(w)) { analyze_shell(k); return }
+    if (w == "ssh") { analyze_ssh(k); return }
+    if (w == "eval") { nested(k + 1); return }
   }
 }
-function analyze(   k, w, hasC, j, v, skipnext, dd, npos, nf, np, lease, allrefs, nrefs, mainref, del, r, plus, raw, newv, pk) {
-  k = 1
-  while (k <= nt && tv[k] ~ /^[A-Za-z_][A-Za-z0-9_]*=/) k++
-  while (k <= nt && (tv[k] == "sudo" || tv[k] == "command" || tv[k] == "env" || tv[k] == "nohup" || tv[k] == "time" || tv[k] == "exec")) {
-    k++
-    while (k <= nt && (tv[k] ~ /^[A-Za-z_][A-Za-z0-9_]*=/ || tv[k] ~ /^-/)) k++
-  }
-  if (k > nt) return
-  w = tv[k]; sub(/.*\//, "", w)
-  if (w == "cd" || w == "pushd") { cd_seen = 1; return }
-  if (w == "ssh" || w == "bash" || w == "sh" || w == "zsh" || w == "eval") { nested(k); return }
-  if (w != "git") return
+function analyze_git(k,   hasC, j, v, skipnext, dd, npos, nf, np, lease, allrefs, nrefs, mainref, del, headref, r, plus, raw, newv, pk) {
   k++; hasC = 0
   while (k <= nt) {
     v = tv[k]
@@ -359,7 +409,7 @@ function analyze(   k, w, hasC, j, v, skipnext, dd, npos, nf, np, lease, allrefs
   }
   if (k > nt || tv[k] != "push") return
   pk = k
-  skipnext = 0; dd = 0; npos = 0; nf = 0; np = 0; lease = 0; allrefs = 0; nrefs = 0; mainref = 0; del = 0
+  skipnext = 0; dd = 0; npos = 0; nf = 0; np = 0; lease = 0; allrefs = 0; nrefs = 0; mainref = 0; del = 0; headref = 0
   for (j = pk + 1; j <= nt; j++) {
     v = tv[j]
     if (skipnext) { skipnext = 0; continue }
@@ -391,12 +441,14 @@ function analyze(   k, w, hasC, j, v, skipnext, dd, npos, nf, np, lease, allrefs
       mainref = 1
       if (substr(r, 1, 1) == ":") del = 1
     }
+    # HEAD and @ name the current branch, which the text does not.
+    if (dst_of(r) == "HEAD" || dst_of(r) == "@") headref = 1
     if (plus) { np++; PI[np] = j }
   }
   if (del && mainref) { block("delete"); return }
   if (nf == 0 && np == 0 && !lease) return
   if (mainref || (allrefs && (nf > 0 || np > 0))) { block("main"); return }
-  if (nrefs == 0 && !allrefs && !cd_seen && !hasC && (ENVIRON["GD_BRANCH"] == "main" || ENVIRON["GD_BRANCH"] == "master")) { block("branch"); return }
+  if ((nrefs == 0 || headref) && !allrefs && !cd_seen && !hasC && (ENVIRON["GD_BRANCH"] == "main" || ENVIRON["GD_BRANCH"] == "master")) { block("branch"); return }
   if (nf == 0 && np == 0) return
   for (j = 1; j <= nf; j++) {
     v = tv[FI[j]]
@@ -413,7 +465,7 @@ function analyze(   k, w, hasC, j, v, skipnext, dd, npos, nf, np, lease, allrefs
 }
 { cmd = (NR == 1) ? $0 : cmd RS $0 }
 END {
-  n = length(cmd); i = 1; q = ""; in_tok = 0; nt = 0; ne = 0; hd_n = 0; blocked = ""; cd_seen = 0
+  n = length(cmd); i = 1; q = ""; in_tok = 0; nt = 0; ne = 0; hd_n = 0; blocked = ""; cd_seen = 0; stdin_shell = 0
   while (i <= n) {
     c = substr(cmd, i, 1)
     if (q == "'") { if (c == "'") q = ""; else tok_val = tok_val c; i++; continue }
@@ -468,6 +520,7 @@ END {
     start_tok(); tok_val = tok_val c; i++
   }
   end_seg()
+  if (stdin_shell && facts(cmd)) block("nested")
   if (blocked != "") { print "block\t" blocked; exit }
   if (ne == 0) { print "none"; exit }
   for (a = 2; a <= ne; a++) {
@@ -489,7 +542,7 @@ if [[ "$COMMAND" == *push* ]]; then
       case "$_gp" in
         *branch) _why="it pushes the current branch, which is ${GD_BRANCH}" ;;
         *delete) _why="it deletes main/master on the remote" ;;
-        *nested) _why="a wrapped command (ssh, bash -c, eval) force-pushes main/master" ;;
+        *nested) _why="a wrapped or piped shell command (ssh, bash -c, eval, … | bash) force-pushes main/master" ;;
         *)       _why="it names main/master" ;;
       esac
       gd_deny "Force push to main/master blocked: ${_why}. This destroys shared history. Use --force-with-lease on a feature branch, or ask the user explicitly. Command: $COMMAND"

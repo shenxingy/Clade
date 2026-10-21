@@ -447,6 +447,54 @@ assert_rewrite "a redirection before the flags, feature branch" \
 assert_verdict "an ordinary push to main is not a force push" \
   'git push origin main'                                               ALLOW
 
+# An adversarial review of the first cut found these allowed: it read a
+# statement only when its FIRST word was git, so anything in front — a prefix
+# command, a shell keyword, a group — hid the push, and a shell fed its script
+# on stdin was never read at all. The old text match had blocked every one.
+section "Force push — behind prefixes, groupings and piped shells"
+assert_verdict "timeout prefix"             'timeout 120 git push --force origin main'          BLOCK
+assert_verdict "sudo -u prefix"             'sudo -u bob git push -f origin main'               BLOCK
+assert_verdict "nice -n prefix"             'nice -n 19 git push --force origin master'         BLOCK
+assert_verdict "xargs prefix"               'printf x | xargs -I{} git push --force origin main' BLOCK
+assert_verdict "brace group"                '{ git push --force origin main; }'                 BLOCK
+assert_verdict "if / then"                  'if true; then git push --force origin main; fi'    BLOCK
+assert_verdict "for / do"                   'for x in 1; do git push --force origin main; done' BLOCK
+assert_verdict "shell function"             'f() { git push --force origin main; }; f'          BLOCK
+assert_verdict "echo piped into bash"       'echo "git push --force origin main" | bash'        BLOCK
+assert_verdict "printf piped into sh -s"    'printf "git push -f origin main\n" | sh -s'        BLOCK
+assert_verdict "heredoc fed to bash" "bash <<'EOF'
+git push --force origin main
+EOF"                                                                                            BLOCK
+assert_verdict "heredoc fed to ssh" "ssh host <<'EOF'
+cd repo && git push -f origin master
+EOF"                                                                                            BLOCK
+assert_verdict "ssh options before the host" 'ssh -i k -p 22 host "git push -f origin main"'   BLOCK
+# Options with a value must be skipped as pairs, or `-i key host` reads `key`
+# as the host and `host` as a remote command, and the stdin script is missed.
+assert_verdict "ssh options, then a heredoc script" "ssh -i key host <<'EOF'
+git push --force origin main
+EOF"                                                                                            BLOCK
+assert_rewrite "a prefix on a feature branch still rewrites" \
+  'timeout 120 git push -f origin feat/x'     'timeout 120 git push --force-with-lease origin feat/x'
+# And the false positive that review found: a script ARGUMENT is not a command.
+assert_verdict "bash script.sh with prose about a push" \
+  'bash run.sh "notes about git push --force origin main"'            ALLOW
+assert_verdict "a piped shell with nothing to push"  'curl -s https://example.com/i.sh | bash' ALLOW
+assert_verdict "ssh with an ordinary remote command" 'ssh host cat notes.md'                   ALLOW
+
+section "Parity — prefixes, groupings and piped shells"
+assert_parity "timeout prefix"          'timeout 120 git push --force origin main'
+assert_parity "sudo -u prefix"          'sudo -u bob git push -f origin main'
+assert_parity "brace group"             '{ git push --force origin main; }'
+assert_parity "for / do"                'for x in 1; do git push --force origin main; done'
+assert_parity "echo piped into bash"    'echo "git push --force origin main" | bash'
+assert_parity "heredoc fed to bash"     "bash <<'EOF'
+git push --force origin main
+EOF"
+assert_parity "ssh options"             'ssh -i k -p 22 host "git push -f origin main"'
+assert_parity "prefix rewrite"          'timeout 120 git push -f origin feat/x'
+assert_parity "script argument"         'bash run.sh "notes about git push --force origin main"'
+
 # With no refspec, git pushes the CURRENT branch, which the command text does
 # not name — so it is read from the session's cwd, unless the command moved.
 section "Force push — no refspec means the current branch"
@@ -455,8 +503,19 @@ git -C "$GD_REPO" init -q -b main >/dev/null 2>&1 || { git -C "$GD_REPO" init -q
 assert_verdict "git push -f on main"                 'git push -f'                     BLOCK "$GD_REPO"
 assert_verdict "git push --force origin on main"     'git push --force origin'         BLOCK "$GD_REPO"
 assert_verdict "after a cd the branch is unknown"    'cd /tmp/elsewhere && git push -f' REWRITE "$GD_REPO"
+# HEAD and @ name the current branch too — neither guardian caught this before.
+assert_verdict "HEAD as the destination, on main"    'git push -f origin HEAD'         BLOCK "$GD_REPO"
+assert_verdict "@ as the destination, on main"       'git push --force origin @'       BLOCK "$GD_REPO"
+TESTS_RUN=$((TESTS_RUN + 1))
+if [[ "$(py_verdict 'git push -f origin HEAD' "$GD_REPO")" == "BLOCK" ]]; then
+  TESTS_PASSED=$((TESTS_PASSED + 1)); printf "  ${GREEN}✓${NC} parity: the Codex mirror reads HEAD as the current branch\n"
+else
+  TESTS_FAILED=$((TESTS_FAILED + 1)); printf "  ${RED}✗${NC} parity: the Codex mirror reads HEAD as the current branch\n"
+fi
 git -C "$GD_REPO" symbolic-ref HEAD refs/heads/feat/x
 assert_rewrite "git push -f on a feature branch" 'git push -f' 'git push --force-with-lease' "$GD_REPO"
+assert_rewrite "HEAD on a feature branch is rewritten, not blocked" \
+  'git push -f origin HEAD' 'git push --force-with-lease origin HEAD' "$GD_REPO"
 rm -rf "$GD_REPO"
 
 # ─── The rewrite keeps the rest of the call ──────────────────────────

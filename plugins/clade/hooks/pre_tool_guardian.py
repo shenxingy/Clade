@@ -167,8 +167,9 @@ def _unresolved_delete(command: str) -> tuple[str, str] | None:
 # the reasoning is recorded there. Quotes, backslashes, comments and heredoc
 # bodies are honoured; statements split on ; & | ( ) ` $( and newlines, but
 # not on the & of 2>&1; only a `git [global opts] push` statement is read.
-_WRAPPERS = frozenset({"sudo", "command", "env", "nohup", "time", "exec"})
-_NESTERS = frozenset({"ssh", "bash", "sh", "zsh", "eval"})
+_SHELLS = frozenset({"bash", "sh", "zsh", "dash", "ksh"})
+_KEYWORDS = frozenset({"{", "}", "!", "if", "then", "elif", "else", "fi",
+                       "for", "while", "until", "do", "done", "time"})
 _ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 
 
@@ -305,43 +306,100 @@ def _dst(ref: str) -> str:
     return re.sub(r"^refs/heads/", "", ref.rsplit(":", 1)[-1])
 
 
-def _nested_force_main(values: list[str]) -> bool:
-    joined = "".join(" " + v for v in values)
-    for part in re.split(r"[;&|\n]", joined):
+def _facts(text: str) -> bool:
+    """The three facts of a force push to main, read from TEXT — only where
+    the command cannot be walked (bash -c / eval / ssh strings, and the whole
+    command when a shell reads its script from stdin)."""
+    for part in re.split(r"[;&|\n]", text):
         p = " " + part + " "
-        if (re.search(r"[ \t]git[ \t]+(?:[^ \t]+[ \t]+)*?push[ \t]", p)
-                and (re.search(r"[ \t](?:--force|--force-with-lease[^ \t]*|-[A-Za-z]*f[A-Za-z]*)[ \t]", p)
+        if (re.search(r"[ \t'\"(]git[ \t]+(?:[^ \t]+[ \t]+)*?push[ \t]", p)
+                and (re.search(r"[ \t](?:--force|--force-with-lease[^ \t]*|-[A-Za-z]*f[A-Za-z]*)[ \t'\"]", p)
                      or re.search(r"[ \t]\+[^ \t]", p))
-                and re.search(r"[ \t:+/](?:main|master)[ \t'\"]", p)):
+                and re.search(r"[ \t:+/'\"](?:main|master)(?:[ \t'\"]|\\)", p)):
             return True
     return False
+
+
+def _nested_force_main(values: list[str]) -> bool:
+    return _facts("".join(" " + v for v in values))
+
+
+def _shell_reads(vals: list[str], k: int) -> tuple[str, int]:
+    """("c", start) for -c, ("stdin", 0) when the shell reads its script from
+    stdin, ("file", 0) when it runs a script file the command does not show."""
+    j = k + 1
+    while j < len(vals):
+        v = vals[j]
+        if v == "-c" or (re.match(r"^-[A-Za-z]+$", v) and "c" in v):
+            return ("c", j + 1)
+        if v == "-s":
+            return ("stdin", 0)
+        if v in ("-o", "+o", "-O", "+O", "--rcfile", "--init-file"):
+            j += 2
+            continue
+        if v[:1] in ("-", "+"):
+            j += 1
+            continue
+        return ("file", 0)
+    return ("stdin", 0)
+
+
+def _ssh_command(vals: list[str], k: int) -> int | None:
+    """Index of the remote command after `ssh [opts] host`; -1 when there is
+    none (ssh then runs a shell on stdin); None when there is no host."""
+    j = k + 1
+    while j < len(vals):
+        v = vals[j]
+        if re.match(r"^-[BbcDEeFIiJLlmOopQRSWw]$", v):
+            j += 2
+            continue
+        if v.startswith("-"):
+            j += 1
+            continue
+        break
+    if j >= len(vals):
+        return None
+    return -1 if j == len(vals) - 1 else j + 1
 
 
 def _force_push(command: str, branch: str) -> tuple[str, str] | None:
     """("block", main|branch|delete|nested), ("rewrite", new command) or None."""
     blocked = ""
     cd_seen = False
+    stdin_shell = False
     edits: list[tuple[int, int, str]] = []
     for seg in _segments(command):
         vals = [t[2] for t in seg]
         k = 0
-        while k < len(seg) and _ASSIGN.match(vals[k]):
+        while k < len(seg) and (_ASSIGN.match(vals[k]) or vals[k] in _KEYWORDS):
             k += 1
-        while k < len(seg) and vals[k] in _WRAPPERS:
-            k += 1
-            while k < len(seg) and (_ASSIGN.match(vals[k]) or vals[k].startswith("-")):
-                k += 1
-        if k >= len(seg):
-            continue
-        word = vals[k].rsplit("/", 1)[-1]
-        if word in ("cd", "pushd"):
+        if k < len(seg) and vals[k].rsplit("/", 1)[-1] in ("cd", "pushd"):
             cd_seen = True
             continue
-        if word in _NESTERS:
-            if _nested_force_main(vals[k + 1:]):
+        # The command can sit behind any prefix (timeout 60, sudo -u bob,
+        # xargs -I{}, then, do, {): the first word this guard reads decides.
+        k = next((i for i, v in enumerate(vals)
+                  if v.rsplit("/", 1)[-1] in ("git", "ssh", "eval") or v.rsplit("/", 1)[-1] in _SHELLS), None)
+        if k is None:
+            continue
+        word = vals[k].rsplit("/", 1)[-1]
+        if word in _SHELLS:
+            how, start = _shell_reads(vals, k)
+            if how == "c" and _nested_force_main(vals[start:]):
+                blocked = blocked or "nested"
+            elif how == "stdin":
+                stdin_shell = True
+            continue
+        if word == "ssh":
+            at = _ssh_command(vals, k)
+            if at == -1:
+                stdin_shell = True
+            elif at is not None and _nested_force_main(vals[at:]):
                 blocked = blocked or "nested"
             continue
-        if word != "git":
+        if word == "eval":
+            if _nested_force_main(vals[k + 1:]):
+                blocked = blocked or "nested"
             continue
         k += 1
         has_c = False
@@ -365,7 +423,7 @@ def _force_push(command: str, branch: str) -> tuple[str, str] | None:
         pk = k
         skip = dd = False
         npos = nrefs = 0
-        lease = allrefs = mainref = delete = False
+        lease = allrefs = mainref = delete = headref = False
         forces: list[int] = []
         pluses: list[int] = []
         for j in range(pk + 1, len(seg)):
@@ -414,6 +472,9 @@ def _force_push(command: str, branch: str) -> tuple[str, str] | None:
                 mainref = True
                 if ref.startswith(":"):
                     delete = True
+            # HEAD and @ name the current branch, which the text does not.
+            if _dst(ref) in ("HEAD", "@"):
+                headref = True
             if plus:
                 pluses.append(j)
         if delete and mainref:
@@ -424,7 +485,7 @@ def _force_push(command: str, branch: str) -> tuple[str, str] | None:
         if mainref or (allrefs and (forces or pluses)):
             blocked = blocked or "main"
             continue
-        if (nrefs == 0 and not allrefs and not cd_seen and not has_c
+        if ((nrefs == 0 or headref) and not allrefs and not cd_seen and not has_c
                 and branch in ("main", "master")):
             blocked = blocked or "branch"
             continue
@@ -443,6 +504,8 @@ def _force_push(command: str, branch: str) -> tuple[str, str] | None:
             edits.append((seg[j][0], seg[j][1], raw))
         if not forces and not lease:
             edits.append((seg[pk][1], seg[pk][1], " --force-with-lease"))
+    if stdin_shell and _facts(command):
+        blocked = blocked or "nested"
     if blocked:
         return ("block", blocked)
     if not edits:
@@ -504,7 +567,7 @@ def evaluate(command: str, branch: str = "") -> dict | None:
             why = {
                 "branch": f"it pushes the current branch, which is {branch}",
                 "delete": "it deletes main/master on the remote",
-                "nested": "a wrapped command (ssh, bash -c, eval) force-pushes main/master",
+                "nested": "a wrapped or piped shell command (ssh, bash -c, eval, … | bash) force-pushes main/master",
             }.get(detail, "it names main/master")
             return _deny(
                 f"Force push to main/master blocked: {why}. This destroys shared history. "
