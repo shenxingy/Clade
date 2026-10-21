@@ -1722,7 +1722,55 @@ exposed two hooks that have delivered nothing (the command is now in
   `./install.sh`; land on its own branch via `/create-pr`. Live proof after
   install: edit any `*_test.py`, and the transcript must show the suggestion,
   with no new `hook_non_blocking_error` for `PostToolUse:Edit`.
-- [ ] 🔴 **`pre-tool-guardian.sh` rewrites have never applied, and would break
+- [x] 🔴 **`pre-tool-guardian.sh` rewrites have never applied, and would break
+  commands if they did.** — DONE 2026-10-20, in the order below.
+  - **Tests first.** `classify()` now reads the schema the runtime accepts:
+    LEGACY, NO-EVENT, REWRITE-ESCALATES, REWRITE-NO-ALLOW and CRASH are all
+    failures. Against the old guardians, 100 of 144 cases were red.
+  - **Statement-aware trigger.** An awk walk honours quotes, comments and
+    heredoc bodies, and reads only a `git [opts] push` statement, plus wrapped
+    `ssh` / `bash -c` / `eval` for blocks. It also blocks force or delete of
+    main by refspec destination, and by the cwd's current branch when no
+    refspec is given.
+  - **Schema.** Rewrites are `hookSpecificOutput.updatedInput` with NO
+    `permissionDecision`. Measured live on 2.1.283: "allow" bypasses
+    permission prompts; omitted, a rewritten unallowed command was still
+    denied. Blocks are `permissionDecision: "deny"`.
+  - **A second defect found on the way.** The guardian crashed (`set -e` +
+    `rm_scan_flags` returning 1) on 10 of 20,111 replayed real commands.
+    That is a non-blocking error, so the command ran with every later check
+    skipped. After the fix: 0 crashes, 0 legacy outputs. All 69 changed
+    verdicts were reviewed; each was an old false positive.
+  - **Same pass:**
+    - `linter-config-guard.sh` moved to deny, and its path is now JSON-escaped.
+    - The Kimi shim reads the current shape and turns a rewrite into a deny
+      that names the safer command. The old shim + new guardian would have let
+      `git push --force origin main` through under Kimi.
+    - The Codex mirror got the same walk, keeping its own contract (Codex
+      0.163 requires "allow" with updatedInput).
+  - **Proof.** 12 mutations each go red. Live `claude -p`: on a stale clone
+    the rewrite was rejected "(stale info)", keeping the other agent's commit;
+    a force push to main was denied with the new reason.
+  - **Adversarial review of the first cut.** It found that reading a statement
+    only when its first word is `git` let these through, all blocked by the
+    old text match:
+    - a push behind a prefix (`timeout 120`, `sudo -u bob`), a group (`{ }`),
+      a keyword (`then`, `do`) or a function;
+    - a script fed to a shell on stdin (`… | bash`, `bash <<EOF`, `ssh host <<EOF`).
+
+    Now:
+    - the first `git`, shell, `ssh` or `eval` word in the statement decides;
+    - a shell is read by its `-c` argument, or by the whole command when it
+      reads stdin;
+    - a script file argument is not read, so `bash run.sh "…push…"` is no
+      longer a false block;
+    - `HEAD` and `@` destinations count as the current branch.
+
+    On the 20,111-command replay this changed no verdict. 177/177 cases
+    pass under mawk, BWK awk (the macOS family) and busybox awk; 8 further
+    mutations go red.
+
+  Was: rewrites have never applied, and would break
   commands if they did.** Both rewrite branches (force push → `--force-with-lease`,
   `pre-tool-guardian.sh:278-287`; unset-variable recursive delete →
   `${VAR:?…}`, `:251-259`) answer `{"decision":"allow","updatedInput":…}`.
@@ -1756,6 +1804,17 @@ exposed two hooks that have delivered nothing (the command is now in
   PreToolUse. If a later version drops it, every guardian block (force push to
   main, `rm -rf ~`, `DROP TABLE`) becomes a non-blocking error. Re-run the
   `hook_non_blocking_error` tally after upgrading.
+- [ ] 🟡 **The two guardians still disagree on 160 of 20,111 real commands,
+  all outside force push.** This is down from 192; the 2026-10-20 force-push
+  walk fixed 33 and introduced none of its own. What remains is older:
+  - the Codex mirror has no self-killing `pkill -f` rule (48);
+  - the two split `rm` statements differently around newlines and heredoc
+    bodies (59 where only the mirror blocks, 35 where only it rewrites, plus
+    smaller sets).
+
+  Fix: move the rm and pkill statement detection onto the same quote- and
+  heredoc-aware walk, in both guardians. Measure by replaying the same 20,111
+  commands; the extraction recipe is in this item's commit.
 - [ ] 🟡 **The cron radar cannot verify anything it builds** — and it leaves
   its edits uncommitted in whatever checkout is open: on `fix/warm-pace` for
   four days after 10-12, and on `main` on 10-19, where an unrelated session's

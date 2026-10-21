@@ -46,16 +46,20 @@ PROTECTED_FILES=(
     ".stylua.toml"
 )
 
+# lcg_deny <reason> — Claude Code's PreToolUse deny. The legacy top-level
+# {"decision":"block"} is deprecated for PreToolUse, and the old heredoc spliced
+# $FILE_PATH into a JSON string unescaped, so a path with a quote in it produced
+# invalid JSON, a non-blocking error, and an unblocked write. jq escapes it.
+lcg_deny() {
+    jq -n --arg r "$1" \
+        '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
+    exit 0
+}
+
 for protected in "${PROTECTED_FILES[@]}"; do
     if [[ "$BASENAME" == "$protected" ]]; then
         echo "linter-config-guard: blocked write to '$FILE_PATH'" >&2
-        cat <<EOF
-{
-  "decision": "block",
-  "reason": "Writing to linter/formatter config files is not allowed. Modifying '$FILE_PATH' could silence code-quality checks and introduce silent regressions. To fix lint errors, fix the code — not the linter config."
-}
-EOF
-        exit 0
+        lcg_deny "Writing to linter/formatter config files is not allowed. Modifying '$FILE_PATH' could silence code-quality checks and introduce silent regressions. To fix lint errors, fix the code — not the linter config."
     fi
 done
 
@@ -65,13 +69,7 @@ if [[ "$BASENAME" == "pyproject.toml" ]]; then
     NEW_CONTENT=$(echo "$INPUT" | python3 -c "import sys,json; d=json.load(sys.stdin); ti=d.get('tool_input') or {}; print(ti.get('new_string','') or ti.get('content','') or d.get('new_string','') or d.get('content',''))" 2>/dev/null || true)
     if echo "$NEW_CONTENT" | grep -qE '^\[tool\.(ruff|mypy|pylint|flake8|pyright)\]'; then
         echo "linter-config-guard: blocked linter section write to pyproject.toml" >&2
-        cat <<EOF
-{
-  "decision": "block",
-  "reason": "Modifying linter/type-checker sections in 'pyproject.toml' is not allowed. This could disable code-quality enforcement. Fix the underlying code issues instead."
-}
-EOF
-        exit 0
+        lcg_deny "Modifying linter/type-checker sections in 'pyproject.toml' is not allowed. This could disable code-quality enforcement. Fix the underlying code issues instead."
     fi
 fi
 

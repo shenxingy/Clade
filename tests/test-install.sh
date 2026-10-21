@@ -1158,7 +1158,27 @@ _guardian_allow=$(printf '{"tool_name":"Bash","tool_input":{"command":"echo hi"}
 [[ -z "$_guardian_allow" ]] \
   && pass "a safe command produces no deny output (allowed)" \
   || fail "a safe command produces no deny output (allowed)" "$_guardian_allow"
-unset _kimi_guardian_cmd _guardian_deny _guardian_allow
+# A guardian REWRITE is not forwarded to Kimi (its support for rewriting input
+# is unverified). Until 2026-10-20 the shim dropped rewrites and Kimi ran the
+# original command; now it refuses and names the safer form.
+_guardian_rw=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"rm -rf $BUILD_DIR/"}}' \
+  | "$HOME/.kimi-code/hooks/decision-to-kimi.sh" "$HOME/.claude/hooks/pre-tool-guardian.sh")
+if [[ "$(jq -r '.hookSpecificOutput.permissionDecision // empty' <<< "$_guardian_rw" 2>/dev/null)" == "deny" ]] \
+   && printf '%s' "$_guardian_rw" | grep -qF 'BUILD_DIR:?'; then
+  pass "a guardian rewrite reaches Kimi as a deny naming the safer command"
+else
+  fail "a guardian rewrite reaches Kimi as a deny naming the safer command" "$_guardian_rw"
+fi
+# Other Claude-style hooks may still answer with the legacy top-level shape.
+_legacy_hook="$SANDBOX/legacy-hook.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'cat >/dev/null' \
+  'printf "%s" "{\"decision\":\"block\",\"reason\":\"legacy reason\"}"' > "$_legacy_hook"
+chmod +x "$_legacy_hook"
+_legacy_out=$(printf '{}' | "$HOME/.kimi-code/hooks/decision-to-kimi.sh" "$_legacy_hook")
+[[ "$(jq -r '.hookSpecificOutput.permissionDecisionReason // empty' <<< "$_legacy_out" 2>/dev/null)" == "legacy reason" ]] \
+  && pass "a legacy top-level block is still translated to Kimi's deny" \
+  || fail "a legacy top-level block is still translated to Kimi's deny" "$_legacy_out"
+unset _kimi_guardian_cmd _guardian_deny _guardian_allow _guardian_rw _legacy_hook _legacy_out
 
 section "Kimi bridge: quota status line"
 

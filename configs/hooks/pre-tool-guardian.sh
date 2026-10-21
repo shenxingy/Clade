@@ -7,25 +7,67 @@
 #   2. Are catastrophically destructive (rm -rf /, DROP DATABASE)
 #   3. Could corrupt parallel agent sessions (force push to main)
 #
-# Output: JSON {"decision":"block","reason":"..."} to block, or exit 0 to allow
+# Output — Claude Code's PreToolUse schema, nothing else:
+#   block   {"hookSpecificOutput":{"hookEventName":"PreToolUse",
+#             "permissionDecision":"deny","permissionDecisionReason":"..."}}
+#   rewrite {"hookSpecificOutput":{"hookEventName":"PreToolUse",
+#             "updatedInput":{<tool_input with command replaced>},
+#             "additionalContext":"..."}}
+#   allow   exit 0 with no output
+#
+# Why the rewrite carries NO permissionDecision. Until 2026-10-20 both rewrite
+# branches answered {"decision":"allow","updatedInput":…}. Claude Code rejects
+# that object ("top-level decision is the legacy approve|block field") and runs
+# the ORIGINAL command: 41 rejections in transcripts, 2026-09-22 → 10-19, so the
+# unset-variable delete guard and the force-push rewrite had protected nothing.
+# The fix is not "allow": "allow" also bypasses permission prompts and deny
+# rules, so a guard that only meant to defuse a command would have granted it.
+# updatedInput WITHOUT a decision rewrites and leaves the normal permission
+# flow in place — verified live on 2.1.283: an unallowed `touch` rewritten this
+# way was still denied, an allowed one ran in its rewritten form.
+#
+# No `set -e`, on purpose. A failed test inside a check must not abort the
+# guard: rm_scan_flags used to return the status of its last `[[ … ]] && …`,
+# so any statement whose last option token lacked an `f` killed the hook with
+# exit 1 — a non-blocking error to Claude Code, which then ran the command with
+# every later check (force push, DROP, pkill) skipped. Ten of 20,111 real
+# commands replayed on 2026-10-20 crashed it that way.
 
-set -euo pipefail
+set -uo pipefail
 
 # Read JSON input from stdin
 INPUT=$(cat)
 
-TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null || echo "")
+TOOL_NAME=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null || echo "")
 
 # Only act on Bash tool
 if [[ "$TOOL_NAME" != "Bash" ]]; then
   exit 0
 fi
 
-COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null || echo "")
+COMMAND=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null || echo "")
+TOOL_INPUT=$(printf '%s' "$INPUT" | jq -c '.tool_input // {}' 2>/dev/null || echo '{}')
+HOOK_CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // ""' 2>/dev/null || echo "")
 
 if [[ -z "$COMMAND" ]]; then
   exit 0
 fi
+
+# ─── Output helpers ───────────────────────────────────────────────────
+# gd_deny <reason> — refuse the call; Claude sees the reason.
+gd_deny() {
+  jq -n --arg r "$1" \
+    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
+  exit 0
+}
+# gd_rewrite <new-command> <why> — run a safer command in place of the
+# proposed one. The rest of tool_input (description, timeout,
+# run_in_background) is carried over; updatedInput replaces the whole input.
+gd_rewrite() {
+  jq -n --argjson ti "$TOOL_INPUT" --arg c "$1" --arg why "$2" \
+    '{hookSpecificOutput:{hookEventName:"PreToolUse",updatedInput:($ti + {command:$c}),additionalContext:$why}}'
+  exit 0
+}
 
 # ─── Dev mode check ───────────────────────────────────────────────────
 # When ~/.claude/.dev-mode exists, skip migration blocking.
@@ -50,7 +92,7 @@ if [[ "$DEV_MODE" == false ]]; then
 #   - Shell comments:       # alembic upgrade head
 #   - String assignments:   INPUT='{"command":"alembic upgrade",...}'
 #   - Heredoc data lines:   VAR="alembic upgrade head"
-SCANNABLE=$(echo "$COMMAND" \
+SCANNABLE=$(printf '%s\n' "$COMMAND" \
   | grep -v '^\s*#' \
   | grep -vE "^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*='[^']*'[[:space:]]*;?[[:space:]]*$" \
   | grep -vE '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*="[^"]*"[[:space:]]*;?[[:space:]]*$' \
@@ -73,11 +115,8 @@ MIGRATION_PATTERNS=(
 )
 
 for pattern in "${MIGRATION_PATTERNS[@]}"; do
-  if echo "$SCANNABLE" | grep -qF "$pattern"; then
-    jq -n \
-      --arg reason "Database migration detected: '$pattern' cannot run inside Claude Code (interactive prompts / timeouts). Run manually in your terminal: $COMMAND" \
-      '{"decision":"block","reason":$reason}'
-    exit 0
+  if printf '%s\n' "$SCANNABLE" | grep -qF "$pattern"; then
+    gd_deny "Database migration detected: '$pattern' cannot run inside Claude Code (interactive prompts / timeouts). Run manually in your terminal: $COMMAND"
   fi
 done
 fi  # end dev-mode gate
@@ -138,11 +177,12 @@ rm_scan_flags() {
       --force|--force=*)         RM_FORCE=true ;;
       --*)                       : ;;
       -?*)
-        [[ "$tok" == *r* ]] && RM_RECURSIVE=true
-        [[ "$tok" == *f* ]] && RM_FORCE=true
+        if [[ "$tok" == *r* ]]; then RM_RECURSIVE=true; fi
+        if [[ "$tok" == *f* ]]; then RM_FORCE=true; fi
         ;;
     esac
   done <<< "$(printf '%s' "$after" | tr ' \t' '\n\n')"
+  return 0
 }
 
 RM_STATEMENTS=$(printf '%s' "$COMMAND" | tr ';|&' '\n\n\n' | grep -E '\brm\b' || true)
@@ -152,17 +192,14 @@ while IFS= read -r _stmt; do
   rm_scan_flags "$_stmt"
   $RM_RECURSIVE || continue
   $RM_FORCE || continue
-  if echo "$_stmt" | grep -qE "$DANGEROUS_NAMED_PATHS" \
-    || echo "$_stmt" | grep -qE "$DANGEROUS_ROOT"; then
+  if printf '%s\n' "$_stmt" | grep -qE "$DANGEROUS_NAMED_PATHS" \
+    || printf '%s\n' "$_stmt" | grep -qE "$DANGEROUS_ROOT"; then
     CATASTROPHIC_RM=true
     break
   fi
 done <<< "$RM_STATEMENTS"
 if [[ "$CATASTROPHIC_RM" == true ]]; then
-  jq -n \
-    --arg cmd "$COMMAND" \
-    '{"decision":"block","reason":("Catastrophic rm -rf blocked on system/home directory. Command: " + $cmd + ". If intentional, run manually in your terminal.")}'
-  exit 0
+  gd_deny "Catastrophic rm -rf blocked on system/home directory. Command: $COMMAND. If intentional, run manually in your terminal."
 fi
 
 # ─── Recursive delete on a target the guardian cannot resolve ─────────
@@ -232,7 +269,7 @@ if (( _quotes % 2 == 0 )); then
       [[ -z "$_var" ]] && continue
       [[ "$_SHELL_OWNED" == *" $_var "* ]] && continue
       # Assigned in this same command, so this shell will have it.
-      if echo "$COMMAND" | grep -qE "(^|[[:space:];&|(])(export[[:space:]]+)?${_var}="; then
+      if printf '%s\n' "$COMMAND" | grep -qE "(^|[[:space:];&|(])(export[[:space:]]+)?${_var}="; then
         continue
       fi
       _unresolved_var="$_var"
@@ -241,58 +278,285 @@ if (( _quotes % 2 == 0 )); then
   done <<< "$RM_STATEMENTS"
 
   if [[ -n "$_refuse_reason" ]]; then
-    jq -n \
-      --arg cmd "$COMMAND" \
-      --arg why "$_refuse_reason" \
-      '{"decision":"block","reason":("Recursive delete refused: " + $why + ". Name the directory explicitly, or run it manually after checking what it expands to. Command: " + $cmd)}'
-    exit 0
+    gd_deny "Recursive delete refused: ${_refuse_reason}. Name the directory explicitly, or run it manually after checking what it expands to. Command: $COMMAND"
   fi
 
   if [[ -n "$_unresolved_var" ]]; then
     _guard_msg="pre-tool-guardian: refusing a recursive delete on unset ${_unresolved_var}"
     _SAFE_RM=${COMMAND//\$\{${_unresolved_var}\}/\$\{${_unresolved_var}:?${_guard_msg}\}}
     _SAFE_RM=${_SAFE_RM//\$${_unresolved_var}/\$\{${_unresolved_var}:?${_guard_msg}\}}
-    jq -n \
-      --arg safer "$_SAFE_RM" \
-      '{"decision":"allow","updatedInput":{"command":$safer}}'
-    exit 0
+    gd_rewrite "$_SAFE_RM" "pre-tool-guardian rewrote \$${_unresolved_var} to \${${_unresolved_var}:?…} in a recursive delete: each Bash call is a fresh shell, so a variable set in an earlier call is unset here and the target would expand to the filesystem root. The command runs unchanged when the variable is set."
   fi
 fi
 
 
-# ─── Force push to main/master ────────────────────────────────────────
-# Force-pushing to shared branches destroys history. Block unconditionally.
-# Handles flags before or after branch name: git push --force origin main, git push origin main -f
-if echo "$COMMAND" | grep -qE 'git[[:space:]]+push[[:space:]]' \
-  && echo "$COMMAND" | grep -qE '(--force\b|-f\b)' \
-  && echo "$COMMAND" | grep -qE '\b(main|master)\b'; then
-  jq -n \
-    --arg cmd "$COMMAND" \
-    '{"decision":"block","reason":("Force push to main/master blocked. This destroys shared history. Use --force-with-lease on a feature branch, or ask the user explicitly. Command: " + $cmd)}'
-  exit 0
-fi
+# ─── Force push ───────────────────────────────────────────────────────
+# Read as shell, not as text. The old rule was "`git push` anywhere AND
+# --force/-f anywhere AND main anywhere", plus a sed over the whole string.
+# Replayed over the 41 commands it fired on (2026-09-22 → 10-19), had its output
+# ever been accepted it would have turned 14 `--force-with-lease` into
+# `--force-with-lease-with-lease`, put `--force-with-lease` on 7 `git worktree
+# remove --force` / `rm -f` statements, and corrupted 2 ref names
+# (`feat/verdict-c-f-split`) — and it blocked `git push origin main && rm -f x`.
+#
+# The awk below walks the command once, honouring quotes, backslashes,
+# comments and heredoc bodies (data, never commands), splits it into
+# statements on ; & | ( ) ` $( and newlines (but not on the & of 2>&1), and
+# looks only at a statement whose command is `git [global opts] push`. In that
+# statement a force is a `--force` token, a short-option cluster containing f
+# (-f, -uf), or a `+refspec`; `--force-with-lease` / `--force-if-includes` are
+# already safe. A ref is main when the DESTINATION of a refspec (after the last
+# `:`, minus `+` and refs/heads/) is main or master; with no refspec at all, or
+# a destination of HEAD or @, the pushed branch is the current one, read from
+# the session's cwd unless the command changed directory or used `git -C`.
+# `ssh host "…"`, `bash -c "…"` and eval carry the push in one quoted token, so
+# their argument is split on separators and checked for the same three facts —
+# block only, never rewritten; and a shell that reads its script from stdin
+# (`… | bash`, `bash <<EOF`) gets that check over the whole command, since the
+# script is only there as text.
+#
+# Prints: none | block<TAB>main|branch|delete|nested | rewrite<NL><new command>
+read -r -d '' GD_PUSH_AWK <<'AWK'
+function start_tok() { if (!in_tok) { in_tok = 1; tok_start = i; tok_val = "" } }
+function flush_tok() {
+  if (in_tok) { nt++; ts[nt] = tok_start; te[nt] = i - 1; tv[nt] = tok_val; in_tok = 0 }
+}
+function end_seg() { flush_tok(); if (nt > 0) analyze(); nt = 0 }
+function block(code) { if (blocked == "") blocked = code }
+function add_edit(s, e, t) { ne++; es[ne] = s; ee[ne] = e; et[ne] = t }
+function dst_of(r,   p) {
+  while ((p = index(r, ":")) > 0) r = substr(r, p + 1)
+  sub(/^refs\/heads\//, "", r)
+  return r
+}
+# facts(text) — the three facts of a force push to main, read from TEXT. Used
+# only where the command cannot be walked: a string handed to bash -c / eval /
+# ssh, and the whole command when a shell reads its script from stdin.
+function facts(text,   n, parts, j, p) {
+  n = split(text, parts, /[;&|\n]/)
+  for (j = 1; j <= n; j++) {
+    p = " " parts[j] " "
+    if (p ~ /[ \t'"(]git[ \t]+([^ \t]+[ \t]+)*push[ \t]/ &&
+        (p ~ /[ \t](--force|--force-with-lease[^ \t]*|-[A-Za-z]*f[A-Za-z]*)[ \t'"]/ || p ~ /[ \t]\+[^ \t]/) &&
+        p ~ /[ \t:+\/'"](main|master)([ \t'"]|\\)/) return 1
+  }
+  return 0
+}
+function nested(start,   s, j) {
+  s = ""
+  for (j = start; j <= nt; j++) s = s " " tv[j]
+  if (facts(s)) block("nested")
+}
+function is_shell(w) { return (w == "bash" || w == "sh" || w == "zsh" || w == "dash" || w == "ksh") }
+function is_kw(w) {
+  return (w == "{" || w == "}" || w == "!" || w == "if" || w == "then" || w == "elif" || w == "else" ||
+          w == "fi" || w == "for" || w == "while" || w == "until" || w == "do" || w == "done" || w == "time")
+}
+# A shell given -c runs its next argument; given a script file it runs that
+# file, which is not in the command; given neither (or -s) it reads its script
+# from stdin — `echo … | bash`, `bash <<EOF` — and that script is only visible
+# as text somewhere in this command.
+function analyze_shell(k,   j, v) {
+  for (j = k + 1; j <= nt; j++) {
+    v = tv[j]
+    if (v == "-c" || (v ~ /^-[A-Za-z]+$/ && index(v, "c") > 0)) { nested(j + 1); return }
+    if (v == "-s") { stdin_shell = 1; return }
+    if (v == "-o" || v == "+o" || v == "-O" || v == "+O" || v == "--rcfile" || v == "--init-file") { j++; continue }
+    if (v ~ /^[-+]/) continue
+    return
+  }
+  stdin_shell = 1
+}
+# ssh [options] host [command…]: the remote command is what follows the host.
+# With no command, ssh runs a shell that reads stdin.
+function analyze_ssh(k,   j, v) {
+  for (j = k + 1; j <= nt; j++) {
+    v = tv[j]
+    if (v ~ /^-[BbcDEeFIiJLlmOopQRSWw]$/) { j++; continue }
+    if (v ~ /^-/) continue
+    break
+  }
+  if (j > nt) return
+  if (j == nt) { stdin_shell = 1; return }
+  nested(j + 1)
+}
+# analyze — one statement. The command can sit behind any prefix (timeout 60,
+# sudo -u bob, nice -n 19, xargs -I{}, env -C dir, then, do, {), and listing
+# prefixes was how the first cut of this walk let `timeout 120 git push --force
+# origin main` through. So the first word this guard reads decides: git, a
+# shell, ssh or eval. A bare `git` argument to echo is read too; that errs
+# toward checking, never toward skipping.
+function analyze(   k, w) {
+  k = 1
+  while (k <= nt && (tv[k] ~ /^[A-Za-z_][A-Za-z0-9_]*=/ || is_kw(tv[k]))) k++
+  if (k <= nt) { w = tv[k]; sub(/.*\//, "", w); if (w == "cd" || w == "pushd") { cd_seen = 1; return } }
+  for (k = 1; k <= nt; k++) {
+    w = tv[k]; sub(/.*\//, "", w)
+    if (w == "git") { analyze_git(k); return }
+    if (is_shell(w)) { analyze_shell(k); return }
+    if (w == "ssh") { analyze_ssh(k); return }
+    if (w == "eval") { nested(k + 1); return }
+  }
+}
+function analyze_git(k,   hasC, j, v, skipnext, dd, npos, nf, np, lease, allrefs, nrefs, mainref, del, headref, r, plus, raw, newv, pk) {
+  k++; hasC = 0
+  while (k <= nt) {
+    v = tv[k]
+    if (v == "-C" || v == "-c" || v == "--git-dir" || v == "--work-tree" || v == "--namespace") { if (v != "-c") hasC = 1; k += 2; continue }
+    if (v ~ /^--(git-dir|work-tree)=/) { hasC = 1; k++; continue }
+    if (v ~ /^-/) { k++; continue }
+    break
+  }
+  if (k > nt || tv[k] != "push") return
+  pk = k
+  skipnext = 0; dd = 0; npos = 0; nf = 0; np = 0; lease = 0; allrefs = 0; nrefs = 0; mainref = 0; del = 0; headref = 0
+  for (j = pk + 1; j <= nt; j++) {
+    v = tv[j]
+    if (skipnext) { skipnext = 0; continue }
+    if (v ~ /^[0-9]*[<>]/ || v ~ /^&>/) { if (v ~ /^[0-9]*[<>]+&?$/ || v ~ /^&>>?$/) skipnext = 1; continue }
+    if (!dd && v == "--") { dd = 1; continue }
+    if (!dd && v ~ /^--/) {
+      if (v == "--force") { nf++; FI[nf] = j }
+      else if (v ~ /^--force-with-lease/ || v == "--force-if-includes") lease = 1
+      else if (v == "--all" || v == "--mirror" || v == "--branches") allrefs = 1
+      else if (v == "--delete") del = 1
+      else if (v == "--repo" || v == "--receive-pack" || v == "--exec" || v == "--push-option") skipnext = 1
+      continue
+    }
+    if (!dd && v ~ /^-[^-]/) {
+      if (v == "-o") { skipnext = 1; continue }
+      # Only an alphanumeric cluster is short options. git rejects a malformed
+      # `-f-with-lease`, so it is left alone rather than "repaired".
+      if (v !~ /^-[A-Za-z0-9]+$/) continue
+      if (index(v, "d") > 0) del = 1
+      if (index(v, "f") > 0) { nf++; FI[nf] = j }
+      continue
+    }
+    npos++
+    if (npos == 1) continue
+    nrefs++
+    r = v; plus = 0
+    if (substr(r, 1, 1) == "+") { plus = 1; r = substr(r, 2) }
+    if (dst_of(r) == "main" || dst_of(r) == "master") {
+      mainref = 1
+      if (substr(r, 1, 1) == ":") del = 1
+    }
+    # HEAD and @ name the current branch, which the text does not.
+    if (dst_of(r) == "HEAD" || dst_of(r) == "@") headref = 1
+    if (plus) { np++; PI[np] = j }
+  }
+  if (del && mainref) { block("delete"); return }
+  if (nf == 0 && np == 0 && !lease) return
+  if (mainref || (allrefs && (nf > 0 || np > 0))) { block("main"); return }
+  if ((nrefs == 0 || headref) && !allrefs && !cd_seen && !hasC && (ENVIRON["GD_BRANCH"] == "main" || ENVIRON["GD_BRANCH"] == "master")) { block("branch"); return }
+  if (nf == 0 && np == 0) return
+  for (j = 1; j <= nf; j++) {
+    v = tv[FI[j]]
+    if (v == "--force" || v == "-f") newv = "--force-with-lease"
+    else { newv = v; gsub(/f/, "", newv); newv = (newv == "-") ? "--force-with-lease" : newv " --force-with-lease" }
+    add_edit(ts[FI[j]], te[FI[j]], newv)
+  }
+  for (j = 1; j <= np; j++) {
+    raw = substr(cmd, ts[PI[j]], te[PI[j]] - ts[PI[j]] + 1)
+    sub(/\+/, "", raw)
+    add_edit(ts[PI[j]], te[PI[j]], raw)
+  }
+  if (nf == 0 && !lease) add_edit(te[pk] + 1, te[pk], " --force-with-lease")
+}
+{ cmd = (NR == 1) ? $0 : cmd RS $0 }
+END {
+  n = length(cmd); i = 1; q = ""; in_tok = 0; nt = 0; ne = 0; hd_n = 0; blocked = ""; cd_seen = 0; stdin_shell = 0
+  while (i <= n) {
+    c = substr(cmd, i, 1)
+    if (q == "'") { if (c == "'") q = ""; else tok_val = tok_val c; i++; continue }
+    if (q == "\"") {
+      if (c == "\\" && i < n) {
+        nc = substr(cmd, i + 1, 1)
+        if (nc == "\\" || nc == "\"" || nc == "$" || nc == "`") { tok_val = tok_val nc; i += 2; continue }
+      }
+      if (c == "\"") q = ""; else tok_val = tok_val c
+      i++; continue
+    }
+    if (c == "\\") {
+      if (i < n && substr(cmd, i + 1, 1) == "\n") { i += 2; continue }
+      start_tok(); if (i < n) tok_val = tok_val substr(cmd, i + 1, 1); i += 2; continue
+    }
+    if (c == "'" || c == "\"") { start_tok(); q = c; i++; continue }
+    if (c == " " || c == "\t") { flush_tok(); i++; continue }
+    if (c == "#" && !in_tok) { while (i <= n && substr(cmd, i, 1) != "\n") i++; continue }
+    if (c == "\n") {
+      end_seg(); i++
+      for (h = 1; h <= hd_n; h++) {
+        while (i <= n) {
+          e = index(substr(cmd, i), "\n")
+          line = (e > 0) ? substr(cmd, i, e - 1) : substr(cmd, i)
+          i = (e > 0) ? i + e : n + 1
+          if (hd_strip[h]) sub(/^\t+/, "", line)
+          if (line == hd_delim[h]) break
+        }
+      }
+      hd_n = 0
+      continue
+    }
+    if (c == "$" && substr(cmd, i + 1, 1) == "(") { end_seg(); i += 2; continue }
+    if (c == ";" || c == "|" || c == "(" || c == ")" || c == "`") { end_seg(); i++; continue }
+    if (c == "&") {
+      if ((i > 1 && (substr(cmd, i - 1, 1) == ">" || substr(cmd, i - 1, 1) == "<")) || substr(cmd, i + 1, 1) == ">") {
+        start_tok(); tok_val = tok_val c; i++; continue
+      }
+      end_seg(); i++; continue
+    }
+    if (c == "<" && substr(cmd, i, 2) == "<<" && substr(cmd, i, 3) != "<<<") {
+      flush_tok(); j = i + 2; strip = 0
+      if (substr(cmd, j, 1) == "-") { strip = 1; j++ }
+      while (substr(cmd, j, 1) == " " || substr(cmd, j, 1) == "\t") j++
+      qc = substr(cmd, j, 1); if (qc == "'" || qc == "\"") j++; else qc = ""
+      word = ""
+      while (j <= n && substr(cmd, j, 1) ~ /[A-Za-z0-9_]/) { word = word substr(cmd, j, 1); j++ }
+      if (qc != "" && substr(cmd, j, 1) == qc) j++
+      if (word != "") { hd_n++; hd_delim[hd_n] = word; hd_strip[hd_n] = strip }
+      i = j; continue
+    }
+    start_tok(); tok_val = tok_val c; i++
+  }
+  end_seg()
+  if (stdin_shell && facts(cmd)) block("nested")
+  if (blocked != "") { print "block\t" blocked; exit }
+  if (ne == 0) { print "none"; exit }
+  for (a = 2; a <= ne; a++) {
+    s0 = es[a]; e0 = ee[a]; t0 = et[a]; b = a - 1
+    while (b >= 1 && es[b] < s0) { es[b + 1] = es[b]; ee[b + 1] = ee[b]; et[b + 1] = et[b]; b-- }
+    es[b + 1] = s0; ee[b + 1] = e0; et[b + 1] = t0
+  }
+  out = cmd
+  for (a = 1; a <= ne; a++) out = substr(out, 1, es[a] - 1) et[a] substr(out, ee[a] + 1)
+  print "rewrite"; printf "%s", out
+}
+AWK
 
-# ─── Rewrite force push on feature branches ───────────────────────────
-# git push --force / -f on non-main branches is risky — rewrite to --force-with-lease
-# which refuses to overwrite if the remote was updated by someone else.
-if echo "$COMMAND" | grep -qE 'git[[:space:]]+push[[:space:]]' \
-  && echo "$COMMAND" | grep -qE '(--force\b|-f\b)'; then
-  SAFER=$(echo "$COMMAND" \
-    | sed 's/--force\b/--force-with-lease/g' \
-    | sed 's/\(git[[:space:]]*push[[:space:]].*\)-f\b/\1--force-with-lease/g')
-  jq -n \
-    --arg safer "$SAFER" \
-    '{"decision":"allow","updatedInput":{"command":$safer}}'
-  exit 0
+if [[ "$COMMAND" == *push* ]]; then
+  GD_BRANCH=$(git -C "${HOOK_CWD:-$PWD}" symbolic-ref --short -q HEAD 2>/dev/null || true)
+  _gp=$(printf '%s' "$COMMAND" | GD_BRANCH="$GD_BRANCH" LC_ALL=C awk 'BEGIN { RS = "\001" } '"$GD_PUSH_AWK" 2>/dev/null || true)
+  case "$_gp" in
+    block*)
+      case "$_gp" in
+        *branch) _why="it pushes the current branch, which is ${GD_BRANCH}" ;;
+        *delete) _why="it deletes main/master on the remote" ;;
+        *nested) _why="a wrapped or piped shell command (ssh, bash -c, eval, … | bash) force-pushes main/master" ;;
+        *)       _why="it names main/master" ;;
+      esac
+      gd_deny "Force push to main/master blocked: ${_why}. This destroys shared history. Use --force-with-lease on a feature branch, or ask the user explicitly. Command: $COMMAND"
+      ;;
+    rewrite*)
+      gd_rewrite "${_gp#rewrite$'\n'}" "pre-tool-guardian rewrote a force push to --force-with-lease, which refuses to overwrite the remote branch if someone else updated it since your last fetch. Only the git push statement changed."
+      ;;
+  esac
 fi
 
 # ─── SQL DROP DATABASE / DROP TABLE ──────────────────────────────────
 # These are irreversible. Redirect to manual execution.
-if echo "$COMMAND" | grep -qiE '\bDROP[[:space:]]+(DATABASE|TABLE|SCHEMA)\b'; then
-  jq -n \
-    --arg cmd "$COMMAND" \
-    '{"decision":"block","reason":("SQL DROP statement blocked. Irreversible operation must be run manually in your terminal after review. Command: " + $cmd)}'
-  exit 0
+if printf '%s\n' "$COMMAND" | grep -qiE '\bDROP[[:space:]]+(DATABASE|TABLE|SCHEMA)\b'; then
+  gd_deny "SQL DROP statement blocked. Irreversible operation must be run manually in your terminal after review. Command: $COMMAND"
 fi
 
 # ─── Self-killing pkill -f ───────────────────────────────────────────
@@ -307,24 +571,20 @@ fi
 # separator or an opening quote. Matching it anywhere caught prose: this very
 # guard's own commit message ("block the pkill -f shape that kills its own
 # launcher") was refused, which is the failure mode the rule below warns about.
-if echo "$COMMAND" | grep -qE '(^|[;&|(]|[[:space:]]&&[[:space:]]|["'"'"'])[[:space:]]*pkill[[:space:]]+(-[a-zA-Z]*f|--full)'; then
-  _PK_PAT=$(echo "$COMMAND" \
+if printf '%s\n' "$COMMAND" | grep -qE '(^|[;&|(]|[[:space:]]&&[[:space:]]|["'"'"'])[[:space:]]*pkill[[:space:]]+(-[a-zA-Z]*f|--full)'; then
+  _PK_PAT=$(printf '%s\n' "$COMMAND" \
     | sed -nE "s/.*(^|[;&|('\"]|[[:space:]])pkill[[:space:]]+(-[a-zA-Z]*f|--full)[[:space:]]+['\"]?([^'\"[:space:]]+).*/\3/p" \
-    | head -1)
+    | head -1 || true)
   if [[ -n "$_PK_PAT" ]]; then
     # Occurrences of the pattern in the command the shell will carry.
-    _PK_N=$(echo "$COMMAND" | grep -oF -- "$_PK_PAT" | wc -l | tr -d ' ')
+    _PK_N=$(printf '%s\n' "$COMMAND" | grep -oF -- "$_PK_PAT" | wc -l | tr -d ' ')
     # A wrapped/remote one-liner carries the pattern in the wrapper's own argv,
     # so a single textual occurrence is still a self-match there.
     _PK_WRAPPED=false
-    echo "$COMMAND" | grep -qE '(^|[[:space:]])(ssh|bash[[:space:]]+-c|sh[[:space:]]+-c)([[:space:]]|$)' \
+    printf '%s\n' "$COMMAND" | grep -qE '(^|[[:space:]])(ssh|bash[[:space:]]+-c|sh[[:space:]]+-c)([[:space:]]|$)' \
       && _PK_WRAPPED=true
     if [[ "${_PK_N:-0}" -ge 2 || "$_PK_WRAPPED" == true ]]; then
-      jq -n \
-        --arg pat "$_PK_PAT" \
-        --arg cmd "$COMMAND" \
-        '{"decision":"block","reason":("pkill -f " + $pat + " will match the command line of the shell running it, so this kills its own launcher (exit 255/144) and everything after it never runs. Fixes: put the pkill in a script file, so the pattern is not in the caller argv; anchor the pattern (\"name\\.py --flag\"); and in monitors use the bracket trick pgrep \"na[m]e\". Command: " + $cmd)}'
-      exit 0
+      gd_deny "pkill -f ${_PK_PAT} will match the command line of the shell running it, so this kills its own launcher (exit 255/144) and everything after it never runs. Fixes: put the pkill in a script file, so the pattern is not in the caller argv; anchor the pattern (\"name\\.py --flag\"); and in monitors use the bracket trick pgrep \"na[m]e\". Command: $COMMAND"
     fi
   fi
 fi
