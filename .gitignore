@@ -30,3 +30,6 @@ mcp-package/build/
 # Type checker cache
 .mypy_cache/
 **/.mypy_cache/
+
+# radar-cron.sh stages its digest here inside the run worktree; never committed
+.radar-staged/
