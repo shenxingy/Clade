@@ -13,7 +13,9 @@ count_rules() {
   local file="${1:-}"
   RULE_COUNT=0
   [[ -f "$file" ]] || return
-  RULE_COUNT=$(grep -c '^- \[' "$file" 2>/dev/null || echo 0)
+  # `grep -c` prints "0" and exits 1 on no match; `|| echo 0` inside the
+  # substitution would make it "0\n0".
+  RULE_COUNT=$(grep -c '^- \[' "$file" 2>/dev/null) || RULE_COUNT=0
 }
 
 # ─── parse_rules ─────────────────────────────────────────────────────

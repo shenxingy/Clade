@@ -154,7 +154,7 @@ make_aged_home() {
 
 H="$(make_aged_home)"
 OUT="$(run_audit "$H")"
-PROMOTED="$(grep -cE '^- \[' "$H/.claude/CLAUDE.md" 2>/dev/null || echo 0)"
+PROMOTED="$(grep -cE '^- \[' "$H/.claude/CLAUDE.md" 2>/dev/null)" || PROMOTED=0
 
 assert_contains "$OUT" "withheld (low-severity)" "reports withheld count instead of silently dropping"
 [[ "$PROMOTED" -eq 4 ]] \
