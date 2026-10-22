@@ -132,11 +132,13 @@ if [[ "$lines" -gt "$MAX_LINES" ]]; then
 fi
 
 tail_n=$(tail -n "$SCAN_LINES" "$LOG_FILE" 2>/dev/null || true)
-n_exact=$(printf '%s\n' "$tail_n" | grep -cF "\"exact\":\"${exact}\"" 2>/dev/null || echo 0)
+# `grep -c` prints "0" and exits 1 on no match: default AFTER the substitution,
+# never `|| echo 0` inside it, which yields "0\n0" and breaks the arithmetic.
+n_exact=$(printf '%s\n' "$tail_n" | grep -cF "\"exact\":\"${exact}\"" 2>/dev/null) || n_exact=0
 n_shape=0
 while IFS= read -r band; do
   [[ -z "$band" ]] && continue
-  hit=$(printf '%s\n' "$tail_n" | grep -cF "\"${band}\"" 2>/dev/null || echo 0)
+  hit=$(printf '%s\n' "$tail_n" | grep -cF "\"${band}\"" 2>/dev/null) || hit=0
   [[ "$hit" -gt "$n_shape" ]] && n_shape="$hit"
 done <<< "$bands"
 count=$(( n_exact > n_shape ? n_exact : n_shape ))

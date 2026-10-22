@@ -874,6 +874,19 @@ out=$( cd "$SC_REPO" && printf '%s' "{\"session_id\":\"$SC_SESSION\",\"stop_hook
 rc=$?
 assert_eq "$rc" "2" "STOP_CHECK_AGENT_IDLE_S=0 restores the unconditional check"
 
+# 4. A blockers.md touched this session that holds no "## Blocker" heading (only
+#    resolved entries) must count as zero, not crash the count. `grep -c ... ||
+#    echo 0` produced "0\n0" and printed "integer expression expected" on every
+#    stop in a repo whose blockers were all resolved (2026-10-22).
+touch -d '1 hour ago' "$SC_REPO/.claude/sessions/$SC_SESSION.baseline" 2>/dev/null \
+  || touch -t "$(date -v-1H +%Y%m%d%H%M 2>/dev/null || echo 200001010000)" "$SC_REPO/.claude/sessions/$SC_SESSION.baseline"
+printf '## RESOLVED 2026-10-22 — nothing open\n' > "$SC_REPO/.claude/blockers.md"
+rm -f "$SC_REPO/.claude/sessions/$SC_SESSION.stop_attempts"
+out=$( cd "$SC_REPO" && printf '%s' "{\"session_id\":\"$SC_SESSION\",\"stop_hook_active\":false}" \
+      | HOME="$SC_HOME" CLAUDE_PROJECT_DIR="$SC_REPO" STOP_CHECK_AGENT_IDLE_S=0 bash "$STOP_CHECK" 2>&1 )
+assert_not_contains "$out" "integer expression expected" "a blockers file with no open blocker counts as zero"
+assert_not_contains "$out" "blocker(s) recorded" "and is not reported as a blocker"
+
 rm -rf "$SC_HOME" "$SC_REPO"
 
 section "prompt-tracker notices a re-typed standing brief"
@@ -1388,6 +1401,19 @@ else
   fail "a rule is injected at most once per session" "second call returned ${#RI_TWICE} chars"
 fi
 rm -rf "$RI_PROJ"
+
+section "rule-utils counts zero rules as 0"
+
+# `grep -c` prints "0" and exits 1 on no match, so `|| echo 0` inside the
+# substitution made RULE_COUNT "0\n0" for a rules file with no rules.
+RU_FILE="$(mktemp "${TMPDIR:-/tmp}/clade-ru.XXXXXX")"
+printf '# Correction Rules\n\nno rules yet\n' > "$RU_FILE"
+RU_OUT=$( source "$REPO_ROOT/configs/hooks/lib/rule-utils.sh"; count_rules "$RU_FILE"; printf '%s' "$RULE_COUNT" )
+assert_eq "$RU_OUT" "0" "count_rules on a file with no rules gives 0"
+printf -- '- [2026-10-22] x (edge-case): one rule\n' >> "$RU_FILE"
+RU_OUT=$( source "$REPO_ROOT/configs/hooks/lib/rule-utils.sh"; count_rules "$RU_FILE"; printf '%s' "$RULE_COUNT" )
+assert_eq "$RU_OUT" "1" "and 1 once a rule is added"
+rm -f "$RU_FILE"
 
 # ─── Summary ─────────────────────────────────────────────────────────
 

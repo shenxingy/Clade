@@ -131,7 +131,9 @@ if [ -f "$BLOCKER_FILE" ]; then
   BLOCKER_MTIME=$(stat -c %Y "$BLOCKER_FILE" 2>/dev/null || stat -f %m "$BLOCKER_FILE" 2>/dev/null || echo 0)
   BASELINE_MTIME=$(stat -c %Y "$BASELINE_FILE" 2>/dev/null || stat -f %m "$BASELINE_FILE" 2>/dev/null || echo 0)
   if [ "$BLOCKER_MTIME" -gt "$BASELINE_MTIME" ]; then
-    BLOCKER_COUNT=$(grep -c "^## Blocker" "$BLOCKER_FILE" 2>/dev/null || echo 0)
+    # `grep -c` prints "0" AND exits 1 on no match, so `|| echo 0` inside the
+    # substitution yields "0\n0" and breaks the -gt test below.
+    BLOCKER_COUNT=$(grep -c "^## Blocker" "$BLOCKER_FILE" 2>/dev/null) || BLOCKER_COUNT=0
     if [ "${BLOCKER_COUNT:-0}" -gt 0 ]; then
       issues+=("${BLOCKER_COUNT} blocker(s) recorded this session in .claude/blockers.md")
     fi
