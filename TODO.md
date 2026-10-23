@@ -1864,3 +1864,186 @@ exposed two hooks that have delivered nothing (the command is now in
   one carrying a false `reverted_files`). The fix is to treat a `>`/`>>`/`tee`
   whose target basename equals a reverted path as an edit. It is small, but not
   built: the frequency is low and this run could not run the suite.
+
+## 2026-10-22 Workflow efficiency audit follow-ups
+
+Audit of every Workflow run still on disk on aries: **316 runs, 3,646 agents,
+218,031 API calls, 2026-09-22 → 2026-10-22, both profiles** (older transcripts
+are purged by Claude Code's 30-day `cleanupPeriodDays` default). 40-agent audit
+workflow `wf_5a4854b2-6a4`: 12 worst runs diagnosed one by one, 6 dimensions,
+one adversarial verifier per diagnosis and per dimension, then a completeness
+critic and 3 gap-fillers. Raw data, per-agent work and the preprocessing script:
+`~/.claude/research/workflow-audit-2026-10-22/` (private, outside the repo).
+Money figures are **list-price equivalents at Opus 5.5 rates, per API call:
+$20,252 total**. The account is on a subscription, so the real currency is quota
+(see Q-items), not dollars. Levers overlap; do not add their percentages.
+
+Verdict: the biggest wall-clock sink is NOT script shape. Of 367 h of parallel
+makespan, 35.6% is deliberate one-agent stages and only 17.3% is stragglers;
+38% of serial-stage time is agents sleeping on external jobs. The cheap wins are
+(1) fix the instrument, which misdiagnoses half the runs it flags and double
+counts tokens; (2) stop foreground waits from expiring the 5-minute subagent
+cache; (3) stop failing silently (usage-limit nulls, truncated handoffs,
+placeholder args); (4) a lean agent type for read-only roles. Effort and model
+tiering are real but unmeasured. Each needs a paired A/B before rollout.
+
+### Instrument — `configs/scripts/workflow-scorecard.py`
+
+- [ ] 🔴 **The scorecard counts every API call about 1.9 times.** `read_agent()`
+  (`:162-184`) sums usage and `turns` per transcript RECORD, but one API message
+  is split across several records that each repeat its usage (one transcript:
+  163 assistant records, 87 message ids). Across the corpus: 413,161 records vs
+  218,031 calls; cache_read 46.4B, not 88.2B. `in_tokens` (`_INPUT_FIELDS`,
+  `:71-77`) also adds cache reads at full weight and the comment calls it cost.
+  It overstates input 7.6x at 0.1x weights and 11.9x at Opus 5.5's real 0.05x.
+  Fix: key usage by `message.id` (input fields once, output = max over the id),
+  count turns as distinct ids. Emit input / cache_read / cache_create / output
+  separately, plus a cost field priced per model from the binary's tier table.
+  Add a two-records-one-message fixture to `--self-test` and a mutation to
+  `test_self_tests_can_fire.py`. Fix the ids BEFORE writing any ledger row (below).
+- [ ] 🔴 **The tail verdict treats deliberate one-agent stages as stragglers.**
+  `sweep()` (`:187-234`) keeps an integer, not the running set. So
+  `tail_alone` cannot tell a lone build, fix or synth stage (35.6% of 367 h
+  over 259 parallel runs) from an agent that outlived its siblings (17.3%).
+  `_verdict()` (`:936-953`) prints "straggler tail" on 182 of 258 parallel runs.
+  85 of those (47%) have outlived < 15%, and 83 of the 85 are serial-dominated.
+  For them, pipeline() cannot help, so the advice is wrong. 12 of the top 15 runs
+  by the tool's own ranking are misdiagnosed. Fix: credit lone time to an agent
+  id. Emit `serial_frac`, `outlived_frac` and `idle_frac`. Verdict order:
+  sequential → outlived ≥ 0.15 "straggler, pipeline() or finer units" → serial
+  ≥ 0.25 "serial stage <label> alone N min, shorten or overlap it" → low util.
+  List every verdict that holds, not the first. Print a "longest serial stage"
+  line next to "largest tail".
+- [ ] 🟡 **The main mode has no self-test.** `--self-test` (`:996-998`) runs only
+  the poll and codex-children self-tests. Changing `if running == 1:` to `== 99`
+  and the straggler verdict to `if False:` still prints PASSED (reproduced). Add
+  `self_test_sweep()`: three synthetic runs written as `agent-*.jsonl` files and
+  read through `scan_workflow()`. They are a barrier with one 3x agent, a
+  fan-out → lone build → fan-out chain, and a queued pipeline with a 6x spread.
+  Add mutations for the running-set check, the serial/outlived test, the verdict
+  order and the 0.15 threshold.
+- [ ] 🟡 **The guidance's figures can no longer be re-derived and have drifted.**
+  "89 runs / 1,777 agents / 45%" and "110-agent pipeline, 0% tail" came from
+  transcripts purged after 30 days, and no ledger kept them. Today's population
+  gives 52.9% single-agent (35.6% serial + 17.3% outlived), and 70.5% of runs are
+  flagged (was 61.8%). Add `--ledger PATH` (default
+  `~/.claude/workflow-scorecard/runs.jsonl`): one per-call-deduplicated row per
+  run_id, append-only. Then restate or delete the figures at every site, in one
+  commit: `CLAUDE.md:150-154`, `:800-806`, `:812`, `:825`;
+  `configs/CLAUDE.md:213-219` (then `./install.sh` for `~/.claude/CLAUDE.md`);
+  `docs/research/2026-09-02-agent-orchestration-efficiency.md:7-8`, `:121`;
+  `docs/research/README.md:74`; and `docs/configuration.md:159-161` if it still
+  quotes them. Add the figures to `check-asserted-numbers.py`'s patterns.
+- [ ] 🔵 **The scorecard ignores labels, phases, outcomes, model and effort it
+  already has on disk.** `agent-*.meta.json` carries label and phase for 94.8% of
+  agents. `journal.jsonl` carries started/result/failed: 202 agents without a
+  result in 59 runs, and 39 `failed`. Transcripts carry `message.model` and
+  effort. None are read; `_identity()` guesses identity from the brief, which is
+  boilerplate in 314 of 315 runs. Add per-phase rows (n, wall time, within-phase
+  spread), an outcome column, per-agent model and effort, a first-turn-context
+  median, a long-gap cache-miss share, and returned-result size. Rename `util`
+  to `util_vs_peak`, because the denominator is the peak reached, not the cap.
+
+### Speed and cost levers (guidance plus hooks)
+
+- [ ] 🟡 **Foreground waits longer than 5 minutes expire the subagent prompt
+  cache.** Subagents get a 5-minute TTL only. 1,459 cache misses follow a gap over
+  300 s (median 585 s). They carry 548M of 1,342M cache writes (41%) and cost
+  $2,631 of $20,252 (13.0%). 82.5% of that cost follows a Bash `until …; do
+  sleep N; done` poll. Waits are 102.7 h, 38% of serial-stage agent time.
+  Fix: every blocking wait ≤ 270 s per Bash call (re-check, then sleep again), or
+  detach the job and end the agent once its result path is recorded. Put this in
+  the workflow guidance and in a warn-only PreToolUse Bash rule in
+  `pre-tool-guardian.sh` that fires only when the hook input has `agent_id`.
+  Estimated −$2.4k (−12%), or ~0.27 weekly caps a week. Do NOT set a 1-hour
+  subagent TTL: the 2x write premium cancels it on quota.
+- [ ] 🟡 **Every workflow subagent re-reads ~54k tokens of instructions and skill
+  listing on every call.** Turn-1 context has a median of 72.6k tokens, of which
+  only the 18.9k tools+system prefix is shared between siblings. Agent
+  frontmatter `omitClaudeMd` exists in 2.1.283 (verified in the binary), and
+  `agentType` is the only per-agent lever `agent()` takes. Ship
+  `configs/agents/wf-reader.md`: a tools allowlist without Skill, Artifact,
+  SendFeedback, ReportFindings or ListAgents, `omitClaudeMd: true`, and a ~1.5k
+  body restating the reader rules. Use it only for host-safe read-only roles
+  (1,885 agents with no ssh, systemd or ops use): −6 to −7%. Before adoption,
+  run a smoke test that a custom agentType with a schema still gets
+  StructuredOutput, plus a small quality A/B. Writers keep CLAUDE.md, because the
+  committer and push rules must reach them.
+- [ ] 🟡 **Every `agent()` without `effort` runs at xhigh.** The owner's
+  `effortLevel` is inherited. 0 agents ran at `low`; mechanical stages ran at
+  xhigh 302 of 314 times. The observational output-only floor for a per-stage
+  table is $570–835 (2.8–4.1%). The ceiling is unmeasured, and no run ever scored
+  the same items at two efforts. Run the paired A/B first: ~20 known-answer
+  items with seeded false claims, xhigh vs medium/low, per-call metrics. Then
+  publish the stage table (low for collect/inventory/classify, medium for
+  single-claim verify, default for implement, judge and synth). Model switching
+  is NOT the main lever: Sonnet 5 reads cost the same as Opus 5.5 reads, the
+  realistic move is 8.6%, and Haiku's 200k window cannot hold 59% of agents.
+- [ ] 🔵 **Serial stages need their own rule; the guidance only covers
+  stragglers.** Add next to the pipeline bullet (`configs/CLAUDE.md:213-219` and
+  its mirror in `CLAUDE.md`): "A one-agent stage is on the critical path for its
+  whole length. Shorten it: a tight brief, a per-stage effort, keep-warm waits,
+  and return as soon as the artifact the next stage consumes is frozen." Also
+  "units that each build their own worktree from origin/main go in
+  `pipeline(UNITS, implVerify, landBehindMutex)`, not a for-await loop". That
+  loop shape appears in 3 of 294 scripts; it cost ~4–8 h in `wf_03143d52-955`.
+  Recoverable time from reshaping is small (~9–20 h of 272 h serial-agent time).
+  In 3 of 5 cases, the "this could overlap" diagnoses were refuted by a hidden
+  data dependency.
+
+### Silent failures (outcome)
+
+- [ ] 🟡 **Usage-limit nulls hide inside "completed" runs.** 90 agents (32
+  agent-h) died on usage limits (46 weekly, 44 five-hour). 64 of them were in 16
+  runs reported `completed`, and at least one run (`wf_c0717cfa-12b`) shipped a
+  judgement whose audit and critic the lead filled in alone.
+  `resumeFromRunId` was used on 4 of 324 launches. Fix: guidance that a script
+  counts nulls per stage and returns `{incomplete, failed:[labels], resume}`
+  instead of feeding nulls downstream. Add a pre-launch quota gate: 7-day ≥ 90%,
+  or 5-hour plus projected burn ≥ 100%, means defer or switch account. That gate
+  would have deferred 77 of the 82 metered losses. Prerequisite:
+  `claude-usage-watch.py:28-29` reads only the primary profile. Resolve it from
+  `CLAUDE_CONFIG_DIR` and keep the 5-hour window.
+- [ ] 🟡 **Prior results are silently truncated inside prompts.** About 81 of 294
+  scripts apply `.slice(…)` to a `JSON.stringify`'d result inside an `agent()`
+  prompt without a `log()`. That is 26–28% of scripts, mostly docforensics.
+  48 of 66 checkable sites actually cut; the median share lost is 41%. Build
+  `configs/scripts/check-workflow-script.py`: a stdlib regex for this rule
+  (~80% precision at script level), with optional node+acorn AST rules for
+  unlogged array caps (6 scripts) and uncapped agent-width fan-outs (2). Print
+  "not checked" when no parser is found. Add `--self-test`, mutations and a
+  `--survey` mode. Wire it as a report-only PreToolUse hook on `Workflow`. The
+  hook must resolve `scriptPath` and saved `name` inputs, not only `script`.
+- [ ] 🔵 **Placeholder args reach Workflow.** 10 of 324 launches carried
+  placeholder or partial args, repeated in 5 sessions. One of them
+  (`wf_f95c1fbf-fbb`) completed with an empty result instead of failing.
+  A sentinel-pattern check on args would catch 9 of 10 with 0 false positives
+  on this corpus. Add it to the same Workflow hook. Convention: more than a
+  handful of items go in a scratch JSON file; args carries the path and an
+  expected count that the script asserts.
+- [ ] 🔵 **Workflow results overflow the 8,000-char notification.** 92% do
+  (259 of 281); the cap is in the 2.1.283 binary. The lead then digs through
+  journals: ~266 reads, ~1.8M chars. Rule: the last stage writes full results to
+  a file and returns ≤ 6k chars (verdict, counts with denominators, open items,
+  path).
+- [ ] 🔵 **Fix rounds bounce through the lead.** 20 strict corrective re-runs
+  took 33.2 h of 508.6 h makespan (6.5%), and there were 38 lead-only relaunches
+  right after a reviewing run. Rule: verify → fix → re-check, at most 2 rounds
+  inside the script, returning only units still open.
+- [ ] 🔵 **AskUserQuestion freezes the lead while a workflow finishes.** 7
+  completions sat unread for 36.5 completion-hours, behind 4 of 26 questions in
+  59 sessions. Rule or warn-hook: with a live background task, ask in plain text
+  and end the turn.
+- [ ] 🔵 **Outcome is unmeasured, and the two correction signals cannot measure
+  it.** Hand-labelled owner messages within 6 h of a run give a 10.5% rejection
+  rate on 124 observable runs (lower bound). Of 13 rejections, 7 were a misread
+  goal or premise, and 6 runs with execution defects had passed verify; the
+  defects appeared on the owner's devices. Explicit correction records have 33%
+  precision and 41% recall. 172 of 220 implicit-revert records come from
+  subagents. Fixes: `revert-detector.sh` tags or skips calls whose hook input
+  has `agent_id`; add `correction-detector.sh` patterns (不太对|理解错|打不开…)
+  and drop the tag-question shape; add a scorecard `--outcome` mode that emits
+  the 6-hour windows for weekly labelling. Guidance: a 3-line launch contract
+  (objective, acceptance criteria, premises) before ≥ 5-agent runs started from
+  a long brief. UI verify stages need a device matrix (webkit iPhone, the
+  owner's screens, elementFromPoint).
