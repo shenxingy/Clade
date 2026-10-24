@@ -221,7 +221,7 @@ Reuse still-valid evidence when these surfaces are unchanged. For missing or
 stale evidence, record the concrete gap and its next verification action in the
 existing task/status record; do not mark the onboarding task complete. Detailed
 acceptance is in the installed `document-release` skill's
-`references/repository-entrypoints.md`. This sync step does not expand its
+`../document-release/references/repository-entrypoints.md`. This sync step does not expand its
 write scope or require a redesign on every code change. When README work is
 already authorized, continue that work instead of asking the owner to repeat it.
 
