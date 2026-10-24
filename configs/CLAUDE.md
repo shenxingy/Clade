@@ -227,6 +227,11 @@ When the free path genuinely cannot answer something, say so in those words.
     to verify one claim, the default to implement, review adversarially, judge
     or synthesize. On 15 known-answer claims low and medium matched xhigh's
     accuracy at 29–52% of its output tokens; only xhigh reproduced an edge case.
+  - Give a host-safe read-only stage `agentType: "wf-reader"` (turn-1 context
+    95.8k → 5.4k tokens, same accuracy on those claims). Its frontmatter hook
+    holds Bash to a read allowlist (no `python3`, `gh`, `curl` or writes), but
+    not where hooks are off (`disableAllHooks`, managed hook policy); never use
+    `clade:wf-reader`, the unguarded plugin copy. Writers keep the default type.
   - Keep each blocking Bash wait ≤ 270 s or detach the job: the subagent cache
     lives 5 min, and 41% of cache writes followed a longer gap.
   - Count nulls per stage and return `{incomplete, failed:[labels], resume}`:

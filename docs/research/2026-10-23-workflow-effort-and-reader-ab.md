@@ -113,11 +113,14 @@ How to read the tables:
 
 ## Not done
 
-- **wf-reader is not adopted.** Its smoke test passed: StructuredOutput
-  returned 16/16 and the turn-1 context contained no CLAUDE.md and no skill
-  listing. Read-only, however, is still only an instruction. Bash runs anything
-  under a bypassPermissions parent, and TODO.md requires a control that denies
-  a write command, shown live, before any guidance routes work to this agent.
+- **wf-reader adoption (closed 2026-10-24).** It was held back until
+  read-only was a control rather than an instruction. #160 added a frontmatter
+  PreToolUse hook that holds Bash to a read allowlist. The live smoke ran under
+  a bypassPermissions parent with a test double carrying wf-reader's exact
+  frontmatter: the hook denied `touch`, `git commit` and `gh pr comment`, the
+  reads ran, and nothing was written. The guidance now routes host-safe
+  read-only stages to it. Limits: the hook does not run where hooks are off,
+  and the plugin copy `clade:wf-reader` is unguarded.
 - Other stage types (implement, synthesize, judge) were not measured. The
   stage table keeps the default for them on purpose.
 - n is small. The scorecard's per-phase rows (model and effort per agent) can

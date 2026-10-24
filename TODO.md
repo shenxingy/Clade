@@ -2062,7 +2062,7 @@ tiering are real but unmeasured. Each needs a paired A/B before rollout.
   run a smoke test that a custom agentType with a schema still gets
   StructuredOutput, plus a small quality A/B. Writers keep CLAUDE.md, because the
   committer and push rules must reach them.
-- [ ] 🟡 **Adopt `wf-reader` only after its two checks pass.** Checks (1) and (2) PASSED 2026-10-23 (16/16 StructuredOutput, no CLAUDE.md or skill listing in turn-1 context; 15/15 vs the default type's 15/15 with turn-1 context 95.8k → 5.4k tokens — `docs/research/2026-10-23-workflow-effort-and-reader-ab.md`). Still open: the write-deny control below. After
+- [x] 🟡 **Adopt `wf-reader` only after its two checks pass.** DONE 2026-10-24 — adopted in `configs/CLAUDE.md` § Adaptive Delegation after a live smoke under a bypassPermissions parent: a test double carrying wf-reader's exact frontmatter (tools + hook) ran `cat`/`ls`, and the hook denied `touch`, `git commit --allow-empty` and `gh pr comment` with its allowlist message; the scratch repo showed no new file and no new commit. wf-reader itself declined all three writes from its brief before reaching the hook. No `disableAllHooks`/managed hook policy was set on the host. Checks (1) and (2) PASSED 2026-10-23 (16/16 StructuredOutput, no CLAUDE.md or skill listing in turn-1 context; 15/15 vs the default type's 15/15 with turn-1 context 95.8k → 5.4k tokens — `docs/research/2026-10-23-workflow-effort-and-reader-ab.md`). Still open: the write-deny control below. After
   `./install.sh`: (1) a smoke test that `agent({agentType: "wf-reader", schema})`
   returns StructuredOutput (the 2.1.283 binary appends StructuredOutput to an
   explicit `tools` list in schema mode, and refuses the spawn if a deny covers
@@ -2268,3 +2268,17 @@ to a differently named upstream such as `origin/main`). Not built in that fix:
   sits beside the global rule "ask before git push to shared/protected
   branches". Decide whether committer should refuse a push to the remote's
   default branch unless `--push-default` is given.
+
+## 2026-10-24 instruction-budget follow-up
+
+- [ ] 🟡 **`configs/CLAUDE.md` has no size gate, and the installed global file is
+  at the limit.** The template is installed as the global CLAUDE.md, which
+  Claude Code loads into every session and caps at 40,000 chars per file on a
+  200k-context model (a warning, not a truncation). The template grew from
+  20,322 to 24,078 chars between 2026-10-18 and 2026-10-24, six PRs each adding
+  guidance; with the owner's private tail (~15.5k chars) the installed file
+  projects to 39,535 chars after this change, 465 under the limit. `auto-audit.sh`
+  already refuses promotions past 40,000 bytes (#134), but nothing stops the
+  template itself from growing. Add a ceiling for `configs/CLAUDE.md` to a CI
+  gate (a figure with headroom for a private tail, e.g. 24,000 chars), so the
+  next guidance addition has to tighten something else in the same change.
