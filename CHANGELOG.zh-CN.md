@@ -9,6 +9,7 @@ semantic versioning。
 
 ### 变更
 
+- 新增精简的工作流只读 agent `wf-reader`（`configs/agents/wf-reader.md`），已发布但尚未采用。审计显示子代理首轮上下文中位数 72.6k token，其中约 54k 是每次重读的 CLAUDE.md 和 skill 清单；这个 agent 两者都不加载（没有 `Skill` 工具，并设 `omitClaudeMd: true`）。只读仅靠指令约束（Bash 不受限），所以在 StructuredOutput 冒烟测试、Bash 限制检查和质量 A/B 通过前，不会有工作流使用它。agent 数量现为 40。
 - 两个纠错信号现在度量的是 owner，而不是 agent。`revert-detector.sh` 在子代理（`agent_id`）或派发的 worker 里执行回退时不再记录：作者机器上 2026-09-22 至 10-22 的 220 条隐式回退记录中有 172 条来自 Workflow 子代理自己的运行。`correction-detector.sh` 不再把“对不对”这类附加疑问当作纠正。在 364 条人工标注的 owner 消息（37 条否定）上，精确率从 41% 升到 57%，召回不变（35%）。新增 8 种漏掉的否定说法（不太对、理解错、没懂等）——它们把同一标注集提升到 66%/51%，但这是样本内结果。`session-scorecard.sh` 不再把 `probe` 变异测试算作纠正。
 - `configs/CLAUDE.md`（安装为全局 CLAUDE.md）的 Workflow 指引补上了 2026-10-22 审计（作者账号上 316 次运行）在拖尾之外的发现：单 agent 阶段要靠缩短本身（更紧的任务说明、单独的 `effort`、提前返回）；阻塞式等待每次不超过 270 秒或改为脱离，因为子代理缓存只活 5 分钟、41% 的缓存写入发生在更长的间隔之后；脚本按阶段统计 null 并返回 `{incomplete, failed, resume}`；额度到 7 天 ≥ 90% 或 5 小时加预计消耗 ≥ 100% 时推迟或换账号；完整结果写文件、返回不超过 6k 字符；修复轮在脚本内完成（最多 2 轮）；运行进行中用纯文本提问；5 个以上 agent 的长任务先写 3 行启动约定，UI 验证用设备矩阵。通过合并精简原有条目，这个每个会话都加载的文件净增 1,077 字符。
 - 配额节奏（`slt`）现在读取当前 profile 自己账号的额度。`claude-usage-watch.py` 原来固定读 `~/.claude` 下的令牌和缓存，所以在 `CLAUDE_CONFIG_DIR` profile 下，状态栏显示的是主账号的额度、还会覆盖主账号的缓存；作者机器上该 profile 自己的缓存自 2026-08-28 起就没更新过。令牌文件、macOS 钥匙串条目和缓存现在按 Claude Code 2.1.283 的规则解析，每个配置目录各有自己的缓存；没有自己读数的 profile 显示为空，不再显示别的账号。新增 10 个测试用例，其中 7 个在旧脚本上失败。

@@ -14,7 +14,7 @@ integrated_items:
   - "SessionEnd hook used for shadow cleanup — removes <runtime>/claude-edit-shadows/session-<session_id>.jsonl when session terminates"
 needs_work_items: []
 reference_items:
-  - "SubagentStart/SubagentStop hooks — not implemented. 早期理由「Clade 只用 subprocess worker，场景不匹配」已过期：configs/agents/ 现有 37 个 agent 定义，多个 skill 会 fan-out 到 Task subagent，而且 Claude Code 2.1.221 把默认 spawn 深度从 1 提到 3。真正的现状是尚未评估，不是不适用"
+  - "SubagentStart/SubagentStop hooks — not implemented. 早期理由「Clade 只用 subprocess worker，场景不匹配」已过期：configs/agents/ 现有 40 个 agent 定义，多个 skill 会 fan-out 到 Task subagent，而且 Claude Code 2.1.221 把默认 spawn 深度从 1 提到 3。真正的现状是尚未评估，不是不适用"
   - "TeammateIdle hook — 仅适用于 multi-agent team workflow，Clade 用 WorkerPool 模式不适用，not implemented"
 
 ## Overview
