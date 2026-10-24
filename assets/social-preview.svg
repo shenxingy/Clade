@@ -1,130 +1,108 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640" fill="none">
+  <!--
+    GitHub social preview, 1280x640. Upload by hand: Settings → General →
+    Social preview → Edit → Upload an image. There is no API for it, so the
+    live card only changes when someone re-uploads assets/social-preview.png.
+
+    No counts on purpose. The previous card said "29 Skills · 14 Hooks ·
+    5 Agents" while the tree held 148 / 34 / 40: a hand-uploaded image cannot
+    be kept in step by doc-align, so it states only facts that do not move.
+
+    Render: rsvg-convert -w 1280 -h 640 social-preview.svg -o social-preview.png
+    Content stays >= 88px from every edge: X/Twitter crops 2:1 to 1.91:1.
+  -->
+  <defs>
+    <radialGradient id="glow" cx="0.72" cy="0.5" r="0.45">
+      <stop offset="0" stop-color="#1f6feb" stop-opacity="0.22" />
+      <stop offset="1" stop-color="#1f6feb" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
   <!-- Background -->
   <rect width="1280" height="640" fill="#0d1117" />
+  <rect width="1280" height="640" fill="url(#glow)" />
 
-  <!-- === CLADOGRAM (right side, proper right-angle branching) === -->
-  <!--
-    Structure:
-    root ──┬── upper ──┬── hooks ──┬── h1
-           │           │           └── h2
-           │           │
-           │           └── skills ──┬── s1
-           │                        ├── s2
-           │                        └── s3
-           │
-           └── lower ──┬── agents ──┬── a1
-                       │            └── a2
-                       │
-                       └── orchestrator ── o1
-  -->
-  <g transform="translate(720, 295)" stroke-linecap="round">
-    <!-- Root node -->
-    <circle cx="0" cy="0" r="5" fill="#e6edf3" />
+  <!-- === CLADOGRAM (right-angle bifurcating; branch colours match the legend) === -->
+  <g stroke-linecap="round" stroke-linejoin="round">
+    <!-- Root + trunk -->
+    <line x1="800" y1="320" x2="856" y2="320" stroke="#e6edf3" stroke-width="4" opacity="0.7" />
+    <line x1="856" y1="200" x2="856" y2="440" stroke="#e6edf3" stroke-width="3.5" opacity="0.55" />
 
-    <!-- Root trunk (horizontal) -->
-    <line x1="5" y1="0" x2="50" y2="0" stroke="#e6edf3" stroke-width="2.5" opacity="0.4" />
+    <!-- Upper clade -->
+    <line x1="856" y1="200" x2="936" y2="200" stroke="#e6edf3" stroke-width="3" opacity="0.5" />
+    <line x1="936" y1="140" x2="936" y2="260" stroke="#e6edf3" stroke-width="3" opacity="0.45" />
 
-    <!-- First split: vertical line at x=50 -->
-    <line x1="50" y1="-95" x2="50" y2="105" stroke="#e6edf3" stroke-width="2" opacity="0.3" />
+    <!-- skills (blue) -->
+    <line x1="936" y1="140" x2="1040" y2="140" stroke="#79c0ff" stroke-width="3.5" />
+    <line x1="1040" y1="104" x2="1040" y2="176" stroke="#79c0ff" stroke-width="2.5" opacity="0.7" />
+    <line x1="1040" y1="104" x2="1176" y2="104" stroke="#79c0ff" stroke-width="2" opacity="0.6" />
+    <line x1="1040" y1="128" x2="1160" y2="128" stroke="#79c0ff" stroke-width="2" opacity="0.6" />
+    <line x1="1040" y1="152" x2="1168" y2="152" stroke="#79c0ff" stroke-width="2" opacity="0.6" />
+    <line x1="1040" y1="176" x2="1152" y2="176" stroke="#79c0ff" stroke-width="2" opacity="0.6" />
+    <circle cx="1176" cy="104" r="4" fill="#79c0ff" />
+    <circle cx="1160" cy="128" r="4" fill="#79c0ff" />
+    <circle cx="1168" cy="152" r="4" fill="#79c0ff" />
+    <circle cx="1152" cy="176" r="4" fill="#79c0ff" />
+    <circle cx="1040" cy="140" r="7" fill="#79c0ff" />
 
-    <!-- ═══ UPPER BRANCH (hooks + skills) ═══ -->
-    <!-- Horizontal to second split -->
-    <line x1="50" y1="-95" x2="130" y2="-95" stroke="#e6edf3" stroke-width="2" opacity="0.3" />
-    <!-- Second split: vertical -->
-    <line x1="130" y1="-155" x2="130" y2="-30" stroke="#e6edf3" stroke-width="1.5" opacity="0.25" />
+    <!-- hooks (green) -->
+    <line x1="936" y1="260" x2="1040" y2="260" stroke="#7ee787" stroke-width="3.5" />
+    <line x1="1040" y1="236" x2="1040" y2="284" stroke="#7ee787" stroke-width="2.5" opacity="0.7" />
+    <line x1="1040" y1="236" x2="1160" y2="236" stroke="#7ee787" stroke-width="2" opacity="0.6" />
+    <line x1="1040" y1="260" x2="1176" y2="260" stroke="#7ee787" stroke-width="2" opacity="0.6" />
+    <line x1="1040" y1="284" x2="1144" y2="284" stroke="#7ee787" stroke-width="2" opacity="0.6" />
+    <circle cx="1160" cy="236" r="4" fill="#7ee787" />
+    <circle cx="1176" cy="260" r="4" fill="#7ee787" />
+    <circle cx="1144" cy="284" r="4" fill="#7ee787" />
+    <circle cx="1040" cy="260" r="7" fill="#7ee787" />
 
-    <!-- ── HOOKS branch (green) ── -->
-    <line x1="130" y1="-155" x2="220" y2="-155" stroke="#7ee787" stroke-width="2" opacity="0.6" />
-    <!-- hooks split vertical -->
-    <line x1="220" y1="-180" x2="220" y2="-130" stroke="#7ee787" stroke-width="1.5" opacity="0.4" />
-    <!-- h1 -->
-    <line x1="220" y1="-180" x2="310" y2="-180" stroke="#7ee787" stroke-width="1.2" opacity="0.35" />
-    <circle cx="310" cy="-180" r="2.5" fill="#7ee787" opacity="0.7" />
-    <!-- h2 -->
-    <line x1="220" y1="-155" x2="310" y2="-155" stroke="#7ee787" stroke-width="1.2" opacity="0.35" />
-    <circle cx="310" cy="-155" r="2" fill="#7ee787" opacity="0.55" />
-    <!-- h3 -->
-    <line x1="220" y1="-130" x2="310" y2="-130" stroke="#7ee787" stroke-width="1.2" opacity="0.35" />
-    <circle cx="310" cy="-130" r="1.5" fill="#7ee787" opacity="0.4" />
-    <!-- hooks main node -->
-    <circle cx="220" cy="-155" r="4" fill="#7ee787" />
+    <!-- Lower clade -->
+    <line x1="856" y1="440" x2="936" y2="440" stroke="#e6edf3" stroke-width="3" opacity="0.5" />
+    <line x1="936" y1="380" x2="936" y2="500" stroke="#e6edf3" stroke-width="3" opacity="0.45" />
 
-    <!-- ── SKILLS branch (blue) ── -->
-    <line x1="130" y1="-30" x2="220" y2="-30" stroke="#79c0ff" stroke-width="2" opacity="0.55" />
-    <!-- skills split vertical -->
-    <line x1="220" y1="-65" x2="220" y2="10" stroke="#79c0ff" stroke-width="1.5" opacity="0.35" />
-    <!-- s1 -->
-    <line x1="220" y1="-65" x2="330" y2="-65" stroke="#79c0ff" stroke-width="1.2" opacity="0.3" />
-    <circle cx="330" cy="-65" r="2.5" fill="#79c0ff" opacity="0.6" />
-    <!-- s2 -->
-    <line x1="220" y1="-40" x2="330" y2="-40" stroke="#79c0ff" stroke-width="1.2" opacity="0.3" />
-    <circle cx="330" cy="-40" r="2" fill="#79c0ff" opacity="0.5" />
-    <!-- s3 -->
-    <line x1="220" y1="-15" x2="330" y2="-15" stroke="#79c0ff" stroke-width="1.2" opacity="0.3" />
-    <circle cx="330" cy="-15" r="2" fill="#79c0ff" opacity="0.45" />
-    <!-- s4 -->
-    <line x1="220" y1="10" x2="330" y2="10" stroke="#79c0ff" stroke-width="1.2" opacity="0.3" />
-    <circle cx="330" cy="10" r="1.5" fill="#79c0ff" opacity="0.35" />
-    <!-- skills main node -->
-    <circle cx="220" cy="-30" r="5" fill="#79c0ff" />
+    <!-- agents (orange) -->
+    <line x1="936" y1="380" x2="1040" y2="380" stroke="#f0883e" stroke-width="3.5" />
+    <line x1="1040" y1="356" x2="1040" y2="404" stroke="#f0883e" stroke-width="2.5" opacity="0.7" />
+    <line x1="1040" y1="356" x2="1168" y2="356" stroke="#f0883e" stroke-width="2" opacity="0.6" />
+    <line x1="1040" y1="380" x2="1152" y2="380" stroke="#f0883e" stroke-width="2" opacity="0.6" />
+    <line x1="1040" y1="404" x2="1176" y2="404" stroke="#f0883e" stroke-width="2" opacity="0.6" />
+    <circle cx="1168" cy="356" r="4" fill="#f0883e" />
+    <circle cx="1152" cy="380" r="4" fill="#f0883e" />
+    <circle cx="1176" cy="404" r="4" fill="#f0883e" />
+    <circle cx="1040" cy="380" r="7" fill="#f0883e" />
 
-    <!-- ═══ LOWER BRANCH (agents + orchestrator) ═══ -->
-    <!-- Horizontal to third split -->
-    <line x1="50" y1="105" x2="130" y2="105" stroke="#e6edf3" stroke-width="2" opacity="0.3" />
-    <!-- Third split: vertical -->
-    <line x1="130" y1="65" x2="130" y2="150" stroke="#e6edf3" stroke-width="1.5" opacity="0.25" />
+    <!-- verification gates (purple) -->
+    <line x1="936" y1="500" x2="1040" y2="500" stroke="#d2a8ff" stroke-width="3.5" />
+    <line x1="1040" y1="488" x2="1040" y2="512" stroke="#d2a8ff" stroke-width="2.5" opacity="0.7" />
+    <line x1="1040" y1="488" x2="1160" y2="488" stroke="#d2a8ff" stroke-width="2" opacity="0.6" />
+    <line x1="1040" y1="512" x2="1144" y2="512" stroke="#d2a8ff" stroke-width="2" opacity="0.6" />
+    <circle cx="1160" cy="488" r="4" fill="#d2a8ff" />
+    <circle cx="1144" cy="512" r="4" fill="#d2a8ff" />
+    <circle cx="1040" cy="500" r="7" fill="#d2a8ff" />
 
-    <!-- ── AGENTS branch (orange) ── -->
-    <line x1="130" y1="65" x2="220" y2="65" stroke="#f0883e" stroke-width="2" opacity="0.5" />
-    <!-- agents split vertical -->
-    <line x1="220" y1="45" x2="220" y2="85" stroke="#f0883e" stroke-width="1.5" opacity="0.3" />
-    <!-- a1 -->
-    <line x1="220" y1="45" x2="310" y2="45" stroke="#f0883e" stroke-width="1.2" opacity="0.3" />
-    <circle cx="310" cy="45" r="2" fill="#f0883e" opacity="0.55" />
-    <!-- a2 -->
-    <line x1="220" y1="85" x2="310" y2="85" stroke="#f0883e" stroke-width="1.2" opacity="0.3" />
-    <circle cx="310" cy="85" r="1.5" fill="#f0883e" opacity="0.4" />
-    <!-- agents main node -->
-    <circle cx="220" cy="65" r="4" fill="#f0883e" />
-
-    <!-- ── ORCHESTRATOR branch (purple) ── -->
-    <line x1="130" y1="150" x2="220" y2="150" stroke="#d2a8ff" stroke-width="1.8" opacity="0.45" />
-    <!-- orchestrator split vertical -->
-    <line x1="220" y1="135" x2="220" y2="170" stroke="#d2a8ff" stroke-width="1.2" opacity="0.25" />
-    <!-- o1 -->
-    <line x1="220" y1="135" x2="310" y2="135" stroke="#d2a8ff" stroke-width="1" opacity="0.25" />
-    <circle cx="310" cy="135" r="1.5" fill="#d2a8ff" opacity="0.4" />
-    <!-- o2 -->
-    <line x1="220" y1="170" x2="310" y2="170" stroke="#d2a8ff" stroke-width="1" opacity="0.25" />
-    <circle cx="310" cy="170" r="1.5" fill="#d2a8ff" opacity="0.35" />
-    <!-- orchestrator main node -->
-    <circle cx="220" cy="150" r="3.5" fill="#d2a8ff" />
+    <!-- Root node, drawn last so it sits on the trunk -->
+    <circle cx="800" cy="320" r="9" fill="#e6edf3" />
   </g>
 
-  <!-- Title -->
-  <text x="100" y="235" fill="#e6edf3" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="76" letter-spacing="-1.5">Clade</text>
+  <!-- Wordmark -->
+  <text x="88" y="222" fill="#f0f6fc" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="148" letter-spacing="-4">Clade</text>
 
-  <!-- Tagline -->
-  <text x="104" y="290" fill="#8b949e" font-family="Helvetica, Arial, sans-serif" font-weight="400" font-size="22" letter-spacing="3">AUTONOMOUS CODING, EVOLVED</text>
+  <!-- Value line (README: "Clade turns agent work into reviewable delivery") -->
+  <text x="92" y="306" fill="#e6edf3" font-family="Helvetica, Arial, sans-serif" font-weight="400" font-size="44" letter-spacing="-0.5">Turns agent work into</text>
+  <text x="92" y="362" fill="#e6edf3" font-family="Helvetica, Arial, sans-serif" font-weight="400" font-size="44" letter-spacing="-0.5">reviewable delivery.</text>
 
-  <!-- Stats row -->
-  <circle cx="110" cy="348" r="5" fill="#79c0ff" />
-  <text x="124" y="354" fill="#79c0ff" font-family="Helvetica, Arial, sans-serif" font-weight="600" font-size="19">29 Skills</text>
+  <!-- Legend: same four colours as the branches -->
+  <text x="92" y="432" font-family="Helvetica, Arial, sans-serif" font-weight="600" font-size="27"><tspan fill="#79c0ff">skills</tspan><tspan fill="#6e7681" dx="11">·</tspan><tspan fill="#7ee787" dx="11">hooks</tspan><tspan fill="#6e7681" dx="11">·</tspan><tspan fill="#f0883e" dx="11">agents</tspan><tspan fill="#6e7681" dx="11">·</tspan><tspan fill="#d2a8ff" dx="11">verification gates</tspan></text>
 
-  <circle cx="268" cy="348" r="5" fill="#7ee787" />
-  <text x="282" y="354" fill="#7ee787" font-family="Helvetica, Arial, sans-serif" font-weight="600" font-size="19">14 Hooks</text>
+  <!-- Works with -->
+  <text x="92" y="508" fill="#8b949e" font-family="Helvetica, Arial, sans-serif" font-weight="400" font-size="22">for</text>
+  <rect x="134" y="476" width="168" height="46" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5" />
+  <text x="218" y="507" text-anchor="middle" fill="#e6edf3" font-family="Helvetica, Arial, sans-serif" font-weight="600" font-size="22">Claude Code</text>
+  <rect x="314" y="476" width="104" height="46" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5" />
+  <text x="366" y="507" text-anchor="middle" fill="#e6edf3" font-family="Helvetica, Arial, sans-serif" font-weight="600" font-size="22">Codex</text>
+  <rect x="430" y="476" width="88" height="46" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5" />
+  <text x="474" y="507" text-anchor="middle" fill="#e6edf3" font-family="Helvetica, Arial, sans-serif" font-weight="600" font-size="22">MCP</text>
 
-  <circle cx="418" cy="348" r="5" fill="#f0883e" />
-  <text x="432" y="354" fill="#f0883e" font-family="Helvetica, Arial, sans-serif" font-weight="600" font-size="19">5 Agents</text>
-
-  <circle cx="558" cy="348" r="5" fill="#d2a8ff" />
-  <text x="572" y="354" fill="#d2a8ff" font-family="Helvetica, Arial, sans-serif" font-weight="600" font-size="19">MCP Server</text>
-
-  <!-- Install box -->
-  <rect x="100" y="390" width="400" height="46" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1" />
-  <text x="120" y="420" fill="#8b949e" font-family="Consolas, 'Liberation Mono', monospace" font-size="16">$</text>
-  <text x="140" y="420" fill="#c9d1d9" font-family="Consolas, 'Liberation Mono', monospace" font-size="16">pip install clade-mcp</text>
-
-  <!-- Bottom tagline -->
-  <text x="100" y="490" fill="#484f58" font-family="Helvetica, Arial, sans-serif" font-weight="400" font-size="16">Turn Claude Code and Codex from chat assistants into autonomous coding systems</text>
+  <!-- Address, for when the image travels without its link -->
+  <text x="92" y="572" fill="#8b949e" font-family="Menlo, Consolas, 'Liberation Mono', monospace" font-size="20">github.com/shenxingy/clade</text>
 </svg>
