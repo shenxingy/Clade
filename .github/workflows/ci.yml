@@ -484,6 +484,14 @@ jobs:
       - name: Run workflow-preflight hook tests
         run: bash tests/test-workflow-preflight.sh
 
+      # wf-reader's Bash is read-only by CONTROL, not instruction: a hook in
+      # the agent's frontmatter denies every call off a read allowlist. Both
+      # directions are asserted (reads that must run, and each real write,
+      # launch or escape), plus the wiring: with the script missing, the
+      # frontmatter command must exit 2 (block), never 1 (run unchecked).
+      - name: Run wf-reader guard tests
+        run: bash tests/test-wf-reader-guard.sh
+
   install-test:
     name: Install Test
     runs-on: ubuntu-latest

@@ -58,6 +58,130 @@ REPO = Path(__file__).resolve().parents[2]
 # the hook carries two awk programs whose option-parsing lines are alike, so a
 # duplicated anchor would mutate whichever comes first and test nothing.
 HOOK_SUITES: dict[str, dict] = {
+    # wf-reader-guard: the deny-by-default Bash allowlist of the wf-reader
+    # agent. Absent on purpose, each because removing it alone changes no
+    # verdict, which a mutation of it shows: the `(`/`)` rule and the two
+    # process-substitution checks (a word that opens with `(` is never an
+    # allowlisted command, and bash rejects `(` in argument position, so the
+    # allowlist and bash's own parser catch what is left); the VAR=value
+    # check (an assignment word is never an allowlisted command either — the
+    # check exists for its clearer reason); the unreadable-input deny (an
+    # unread tool_name falls to "names no tool"); the missing-command deny (jq
+    # prints `null`, which is not a command); the escaping of `"` in a reason
+    # (wr_show strips quotes before any word reaches one); and the ;;, empty
+    # pipeline stage, unterminated-quote and trailing-backslash refusals,
+    # which bash would reject as a syntax error before running anything.
+    "configs/hooks/wf-reader-guard.sh": {
+        "suite": "tests/test-wf-reader-guard.sh",
+        "hook_var": "WF_READER_GUARD",
+        "env": {},
+        "fail_fast_env": {"WF_READER_GUARD_FAIL_FAST": "1"},
+        "mutations": [
+            ("the allowlist itself — an unknown command would run",
+             [("""    *) wr_deny "'$(wr_show "$cmd")' is not on the read allowlist" ;;""", "    *) ;;")]),
+            # ── sed ──
+            ("sed short options other than -n -e -E -r (-i)",
+             [('*[!nEr]*) wr_deny "the sed option', '*[!nEr]*) : "the sed option')]),
+            ("sed long options (--in-place)",
+             [("""      --*) wr_deny "the sed option $(wr_show "$a"); sed may only print""",
+               """      --*) : "the sed option $(wr_show "$a"); sed may only print""")]),
+            ("the print-only sed script grammar",
+             [('if [[ -n "$part" ]] && ! [[ "$part" =~ $WR_SED_CMD_RE ]]; then', "if false; then")]),
+            ("a script given with -e being checked",
+             [('wr_sed_script "$a"; have_script=1; want_script=0', "have_script=1; want_script=0")]),
+            ("the first word after -- being the script",
+             [('(( have_script )) || { wr_sed_script "$a"; have_script=1; }\n      continue',
+               "have_script=1\n      continue")]),
+            ("sed without -n", [('(( saw_n )) || wr_deny "sed without -n"', ":")]),
+            ("-ne ending a cluster (a read that must pass)",
+             [('if [[ "$cl" == *e ]]; then cl="${cl%e}"; want_script=1; fi', ":")]),
+            # ── globs that would expand into an option ──
+            ("the unquoted-glob refusal",
+             [("(( S_GLOB[k] )) && wr_deny", "false && wr_deny")]),
+            ("a brace counting as a glob",
+             [("      '*'|'?'|'['|'{') w_text+=", "      '*'|'?'|'[') w_text+=")]),
+            # ── find, rg, grep, sort, uniq, file ──
+            ("find -delete", [("      -delete|-rm|-exec|", "      -rm|-exec|")]),
+            ("find -rm (bfs)", [("-delete|-rm|-exec|", "-delete|-exec|")]),
+            ("find -exec", [("|-rm|-exec|-execdir|", "|-rm|-execdir|")]),
+            ("find -execdir, -ok and -okdir", [("|-execdir|-ok|-okdir|", "|")]),
+            ("find -fprint and -fls", [("|-fprint|-fprint0|-fprintf|-fls)", ")")]),
+            ("ugrep's --filter, --pager, --view and --save-config",
+             [("      --filter|--filter=*|--pager|--pager=*|--view|--view=*|--save-config|--save-config=*)",
+               "      --never-an-option)")]),
+            ("rg --pre", [("--pre*|--ho*) wr_deny", "--ho*) wr_deny")]),
+            ("rg --hostname-bin", [("--pre*|--ho*) wr_deny", "--pre*) wr_deny")]),
+            ("sort -o", [('      -*o*) wr_deny "sort -o, which writes a file" ;;', "      -*o*) ;;")]),
+            ("sort --output and its abbreviations", [("      --o*|--co*) wr_deny", "      --co*) wr_deny")]),
+            ("sort --compress-program", [("      --o*|--co*) wr_deny", "      --o*) wr_deny")]),
+            ("uniq's second file name as its output",
+             [('(( files <= 1 )) || wr_deny "uniq', 'true || wr_deny "uniq')]),
+            ("uniq -f N taking its count (a read that must pass)",
+             [('if [[ -n "${S_VAL[k+1]:-}" && "${S_VAL[k+1]}" != *[!0-9]* ]]; then k=$(( k + 1 )); fi', ":")]),
+            ("file -C", [('      -*C*) wr_deny "file -C', '      -*Q*) wr_deny "file -C')]),
+            ("file --compile", [('      --co*) wr_deny "file --compile', '      --zz*) wr_deny "file --compile')]),
+            # ── git ──
+            ("git options before the subcommand",
+             [('      -*) wr_deny "the git option', '      -*) k=$(( k + 1 )); : "the git option')]),
+            ("the read-only git subcommand list",
+             [("""    *) wr_deny "git $(wr_show "$sub"), which is not""", """    *) : "git $(wr_show "$sub"), which is not""")]),
+            ("git log/show/diff --output",
+             [('          --ou*) wr_deny "git $sub --output', '          --zz*) wr_deny "git $sub --output')]),
+            ("--output-indicator-* not read as --output (a read that must pass)",
+             [("          --output-indicator-*) ;;\n", "")]),
+            ("git grep -O", [('          -*O*) wr_deny "git grep -O', '          -*Q*) wr_deny "git grep -O')]),
+            ("git grep --open-files-in-pager and its abbreviations",
+             [('          --op*) wr_deny "git grep', '          --zz*) wr_deny "git grep')]),
+            ("git branch/tag only with --list",
+             [('(( listing )) || wr_deny "git $sub without --list', 'true || wr_deny "git $sub without --list')]),
+            ("git branch/tag options outside the listing allowlist",
+             [('        wr_deny "git $sub $(wr_show "$a") (git $sub may only list',
+               '        : "git $sub $(wr_show "$a") (git $sub may only list')]),
+            ("tag -a (annotate) kept apart from branch -a (all)",
+             [('        if [[ "$sub" == branch ]]; then', "        if true; then")]),
+            ("git remote beyond -v", [('          *) wr_deny "git remote', '          *) : "git remote')]),
+            # ── redirections ──
+            ("output redirection only to /dev/null",
+             [('[[ "$target" == /dev/null ]] || wr_deny', "true || wr_deny")]),
+            ("fd duplication only to a number",
+             [('          || wr_deny "the redirection $rop$(wr_show', '          || : "the redirection $rop$(wr_show')]),
+            ("bash's /dev/tcp and /dev/udp", [("          /dev/tcp/*|/dev/udp/*) wr_deny", "          /dev/zz/*) wr_deny")]),
+            ("the read-write redirection <>",
+             [("""            '>') wr_deny "the read-write redirection <>" ;;""",
+               """            '>') wr_emit r '<'; i=$(( i + 2 )) ;;""")]),
+            ("here-documents", [("""            '<') wr_deny "here-documents and here-strings" ;;""",
+                                 """            '<') wr_emit r '<'; i=$(( i + 2 )) ;;""")]),
+            # ── the tokenizer ──
+            ("backticks", [("""w_quoted=1; i=$(( i + 2 )) ;;\n      '`') wr_deny "command substitution" ;;""",
+                            """w_quoted=1; i=$(( i + 2 )) ;;\n      '`') w_text+="$c"; w_open=1; i=$(( i + 1 )) ;;""")]),
+            ("backticks inside double quotes",
+             [("""            '`') wr_deny "command substitution" ;;\n            '$')""",
+               """            '`') w_text+="$c"; i=$(( i + 1 )) ;;\n            '$')""")]),
+            ("a $ expansion", [("""          *) wr_deny "a \\$ expansion (variables""",
+                                """          *) w_text+='$'; w_open=1; i=$(( i + 1 )) ;; # (variables""")]),
+            ("a $ expansion inside double quotes",
+             [("""                *) wr_deny "a \\$ expansion inside double quotes""",
+               """                *) w_text+='$'; i=$(( i + 1 )) ;; # inside double quotes""")]),
+            ("a background job", [("""          *) wr_deny "a background job (&)" ;;""",
+                                   """          *) wr_emit op ';'; i=$(( i + 1 )) ;;""")]),
+            ("the |& pipe", [("""          '&') wr_deny "the |& pipe" ;;""",
+                              """          '&') wr_emit op '|'; i=$(( i + 2 )) ;;""")]),
+            ("a comment", [('        (( w_open )) || wr_deny "a shell comment"', "        :")]),
+            ("quoted text is one word (a read that must pass)",
+             [("""        q="${rest%%"'"*}\"""", '        q=""')]),
+            # ── the hook input ──
+            ("a control character", [('  control) wr_deny "the command contains a control character" ;;', "  control) ;;")]),
+            ("the length cap", [("(( ${#COMMAND} <= WR_MAX_LEN )) || wr_deny", "true || wr_deny")]),
+            ("naming jq when it is missing",
+             [('command -v jq >/dev/null 2>&1 || wr_deny "the guard reads the call with jq, and jq is not installed"', ":")]),
+            ("other tools left alone (a call that must pass)",
+             [('[[ -n "$TOOL_NAME" && "$TOOL_NAME" != "Bash" ]] && exit 0', ":")]),
+            ("an input naming no tool",
+             [('[[ "$TOOL_NAME" == "Bash" ]] || wr_deny "the hook input names no tool"', ":")]),
+            ("the reason pointing at the Read tool",
+             [("Use the Read tool (or Grep/Glob where listed), or Bash limited to", "Bash is limited to")]),
+        ],
+    },
     "configs/hooks/pre-tool-guardian.sh": {
         "suite": "tests/test-pre-tool-guardian.sh",
         "hook_var": "GUARDIAN_HOOK",

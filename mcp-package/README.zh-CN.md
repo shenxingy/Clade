@@ -162,7 +162,7 @@ clade-mcp  # 启动 stdio MCP server，等待客户端连接
 MCP server 只是 Clade 的一个入口。完整框架还包含：
 
 - **138 个 skills**
-- **34 个 hooks**
+- **35 个 hooks**
 - **42 个 shell scripts + 31 个 Python utilities**
 - **37 个专业 agents**
 - 带 30 个核心 workflows、usage visibility 与安全 hooks 的 Codex 原生 plugin

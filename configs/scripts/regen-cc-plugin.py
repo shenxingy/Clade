@@ -39,6 +39,13 @@ manifest says what actually ships instead of advertising hooks it does not
 install. The loader looks for ``hooks/hooks.json`` at the plugin root; create
 that file when the curation question is settled and teach this script to
 generate it.
+
+One consequence reaches an agent: the loader ignores a plugin agent's
+``hooks:`` frontmatter, so the mirrored ``agents/wf-reader.md``
+(``clade:wf-reader``) runs without the Bash guard that makes the install.sh
+copy read-only. Only ``agentType: "wf-reader"`` is guarded, and only in a
+session whose hooks run (not under ``disableAllHooks`` or a managed
+``allowManagedHooksOnly``).
 """
 
 from __future__ import annotations
