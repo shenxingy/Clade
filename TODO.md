@@ -1889,7 +1889,7 @@ tiering are real but unmeasured. Each needs a paired A/B before rollout.
 
 ### Instrument — `configs/scripts/workflow-scorecard.py`
 
-- [ ] 🔴 **The scorecard counts every API call about 1.9 times.** `read_agent()`
+- [x] 🔴 **The scorecard counts every API call about 1.9 times.** DONE 2026-10-23 — usage keyed by `message.id` (output = max), turns = distinct ids, input / cache read / cache write / output separate, `cost_usd` per model from the 2.1.283 catalog (unknown model or fast mode → null); on the audit's 316 runs 218,629 calls (old tool 414,461), cache_read 46.47B, 548M long-gap writes. `read_agent()`
   (`:162-184`) sums usage and `turns` per transcript RECORD, but one API message
   is split across several records that each repeat its usage (one transcript:
   163 assistant records, 87 message ids). Across the corpus: 413,161 records vs
@@ -1901,7 +1901,7 @@ tiering are real but unmeasured. Each needs a paired A/B before rollout.
   separately, plus a cost field priced per model from the binary's tier table.
   Add a two-records-one-message fixture to `--self-test` and a mutation to
   `test_self_tests_can_fire.py`. Fix the ids BEFORE writing any ledger row (below).
-- [ ] 🔴 **The tail verdict treats deliberate one-agent stages as stragglers.**
+- [x] 🔴 **The tail verdict treats deliberate one-agent stages as stragglers.** DONE 2026-10-23 — running set credits lone time to an agent; `serial_frac` / `outlived_frac` / `idle_frac` reproduce 35.5% / 17.3% / 1.6% of 368 h over the same 259 parallel runs; every verdict that holds is listed; "Longest serial stage" prints beside "Largest tail", which ranks only flagged runs; the straggler line names the agent credited with the outlived time, not the slowest one (they differed in 31 of 106 straggler runs on this host); 86 of the old tool's 184 straggler runs no longer are.
   `sweep()` (`:187-234`) keeps an integer, not the running set. So
   `tail_alone` cannot tell a lone build, fix or synth stage (35.6% of 367 h
   over 259 parallel runs) from an agent that outlived its siblings (17.3%).
@@ -1914,7 +1914,7 @@ tiering are real but unmeasured. Each needs a paired A/B before rollout.
   ≥ 0.25 "serial stage <label> alone N min, shorten or overlap it" → low util.
   List every verdict that holds, not the first. Print a "longest serial stage"
   line next to "largest tail".
-- [ ] 🟡 **The main mode has no self-test.** `--self-test` (`:996-998`) runs only
+- [x] 🟡 **The main mode has no self-test.** DONE 2026-10-23 — `self_test_sweep()` reads six fixture runs (barrier, fan-out → build → fan-out, queued 6x pipeline, back-to-back with the pricing edges, and both thresholds held exactly on and just under) through `find_workflow_dirs()`/`scan_workflow()`, compares whole verdict strings and renders the table and summary; fixtures in `scorecard_fixtures.py`; 34 mutations in `test_self_tests_can_fire.py`, each shown red, plus 2 for the Codex self-test that moved to `codex_children.py`. `--self-test` (`:996-998`) runs only
   the poll and codex-children self-tests. Changing `if running == 1:` to `== 99`
   and the straggler verdict to `if False:` still prints PASSED (reproduced). Add
   `self_test_sweep()`: three synthetic runs written as `agent-*.jsonl` files and
@@ -1934,8 +1934,8 @@ tiering are real but unmeasured. Each needs a paired A/B before rollout.
   `docs/research/2026-09-02-agent-orchestration-efficiency.md:7-8`, `:121`;
   `docs/research/README.md:74`; and `docs/configuration.md:159-161` if it still
   quotes them. Add the figures to `check-asserted-numbers.py`'s patterns.
-- [ ] 🔵 **The scorecard ignores labels, phases, outcomes, model and effort it
-  already has on disk.** `agent-*.meta.json` carries label and phase for 94.8% of
+- [x] 🔵 **The scorecard ignores labels, phases, outcomes, model and effort it
+  already has on disk.** DONE 2026-10-23 — reads meta.json and journal.jsonl; per-phase rows, outcome column, per-agent model/effort (`agent_rows`), first-turn-context median (72.6k on the audit runs), long-gap miss share, result sizes; `util` → `util_vs_peak`. `agent-*.meta.json` carries label and phase for 94.8% of
   agents. `journal.jsonl` carries started/result/failed: 202 agents without a
   result in 59 runs, and 39 `failed`. Transcripts carry `message.model` and
   effort. None are read; `_identity()` guesses identity from the brief, which is

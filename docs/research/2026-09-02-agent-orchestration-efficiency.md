@@ -72,6 +72,14 @@ anything, so "how many agents" answers nothing. Five numbers do:
 `tail1` is the straggler tax in its purest form: everyone else has finished and
 paid, and the run cannot end.
 
+**Renamed and split on 2026-10-23.** `util` is now `util_vs_peak`, because its
+denominator is the peak reached, not the cap. `tail1` is now two numbers:
+`outlived` (a lone agent that outlasted siblings it started with, which is the
+straggler tax described above) and `serial` (a lone agent that overlapped no
+other agent, which is a one-agent stage that pipeline() cannot shorten). The
+merged number gave both the straggler verdict. The tables below keep the column
+names the tool printed when they were measured.
+
 One correction the first measurement forced. A run that never had two agents in
 flight has a 100% tail by construction — one agent alone *is* the whole run.
 Counting those as stragglers inflated the aggregate badly; they were four of the

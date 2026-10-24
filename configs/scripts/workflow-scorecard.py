@@ -12,34 +12,62 @@ the *process*: every ``Workflow`` run writes a full per-agent transcript under
 and as of 2026-09-02 not one line of code in this repository opened those files.
 80 MB of them existed for this project alone, across 56 projects, and the only
 way anyone learned whether a fan-out was efficient was to notice it felt slow.
+Beside each transcript sit ``agent-*.meta.json`` (the label and phase the script
+gave the agent) and the run's ``journal.jsonl`` (started / result / failed).
 
-What it measures, and why these five numbers
---------------------------------------------
+What it measures
+----------------
 A fan-out costs a slot for its whole makespan whether or not the slot is doing
 anything, so "how many agents" is not the interesting number. These are:
 
-``peak``       the most agents ever running at once — the parallelism actually
-               reached, which is usually below the configured cap.
-``mean``       average concurrency across the run, from a timeline sweep.
-``util``       mean/peak. Capacity bought that was actually in use.
-``tail1``      share of the makespan spent with exactly ONE agent still running.
-               This is the straggler tax in its purest form: everyone else has
-               finished and paid, and the run cannot end.
-``straggler``  slowest/median agent duration.
+``peak``          the most agents ever running at once — the parallelism
+                  actually reached, which is usually below the configured cap.
+``mean``          average concurrency across the run, from a timeline sweep.
+``util_vs_peak``  mean/peak. The denominator is the peak REACHED, not the cap
+                  the script asked for, so a run that never filled its slots can
+                  still score high. Called ``util`` until 2026-10-23, which read
+                  as "share of the cap in use".
+``serial``        share of the makespan one agent ran alone having overlapped no
+                  other agent at all: a deliberate one-agent stage (scout, build,
+                  fix, synth, a sequential loop step). pipeline() cannot shorten
+                  it; only a shorter stage, or one overlapped with others, can.
+``outlived``      share of the makespan one agent ran alone after starting
+                  alongside siblings that all finished: the straggler tax.
+                  Everyone else has finished and paid, and the run cannot end.
+                  This is what pipeline() or finer units fix.
+``idle``          share of the makespan with no agent running: lead-side gaps.
+``straggler``     slowest/median agent duration.
 
-The first run of this script, on the session that wrote it, found the result
-that matters: a 90-agent ``pipeline()`` scored 77% utilisation with a 0% tail
-despite a 6.7x straggler, while a 10-agent ``parallel()`` barrier scored 55%
-with 19% of its makespan waiting on one agent. Agent count is not the problem.
-Barriers are.
+serial and outlived were one number, ``tail1``, until 2026-10-23. The merged
+number called a lone build stage a straggler and prescribed pipeline() for it.
+The first run of this script, on the session that wrote it, found a 90-agent
+``pipeline()`` at 77% utilisation with a 0% tail despite a 6.7x straggler, and a
+10-agent ``parallel()`` barrier at 55% with 19% of its makespan on one agent —
+both read with the merged metric, from transcripts since purged.
+
+Tokens and cost
+---------------
+Claude Code writes one API response as one transcript record per content block
+(thinking, text, tool_use), and every record repeats the request's usage. So
+usage is keyed by ``message.id``: input fields once, output as the max over the
+id's records (the last one is final), and ``turns`` is the number of distinct
+ids. Until 2026-10-23 this summed per record and counted every call about 1.9
+times. Input, cache read, cache write and output are reported separately
+because they are priced differently — the old single ``in_tokens`` added cache
+reads at full input weight. ``cost_usd`` is a list-price equivalent from the
+rate table below; a model the table does not carry makes the cost null.
 
 Reading the output
 ------------------
-High ``tail1`` means the shape is wrong: a barrier where a pipeline would do, or
-units so coarse that one of them dominates. High ``straggler`` with low
-``tail1`` is fine — that is a pipeline absorbing variance, which is what it is
-for. Low ``util`` with low ``tail1`` means the run never had enough queued work
-to fill its slots.
+High ``outlived`` means the shape is wrong: a barrier where a pipeline would do,
+or units so coarse that one of them dominates. High ``serial`` is a different
+problem with a different fix: the one-agent stage is the critical path, so
+shorten it or overlap it. High ``straggler`` with low ``outlived`` is fine —
+that is a pipeline absorbing variance, which is what it is for. Low
+``util_vs_peak`` means the run never had enough queued work to fill the slots
+it did reach. Every verdict that holds is printed, worst first. Under a
+straggler verdict the table names the agent the outlived time was credited to,
+which is often not the slowest agent: that one is frequently the serial stage.
 
 The other two modes
 -------------------
@@ -51,7 +79,8 @@ reads Claude Code's own transcripts, and a Codex worker leaves no equivalent:
 the spawn is absent from ``codex exec --json`` — only the ``wait`` item shows,
 with an empty ``receiver_thread_ids`` — so comparing a Claude worker's
 wall-clock against a Codex worker's compared a fan-out against an unknown. The
-spawns are persisted in ``~/.codex/state_5.sqlite``; this reads them read-only.
+spawns are persisted in ``~/.codex/state_5.sqlite``; ``codex_children.py``
+beside this file reads them read-only.
 
 Stdlib only, on purpose: the syntax-check CI job installs no dependencies.
 """
@@ -63,18 +92,66 @@ import datetime
 import json
 import os
 import re
-import sqlite3
 import statistics
 import sys
 from pathlib import Path
+from typing import Any
 
-# One assistant turn can carry several usage blocks; these are the fields that
-# together make up what the run actually cost to read and to write.
-_INPUT_FIELDS = (
-    "input_tokens",
-    "cache_read_input_tokens",
-    "cache_creation_input_tokens",
+from codex_children import (
+    CodexStateUnavailable,
+    print_codex_children,
+    scan_codex_children,
+    self_test_codex_children,
 )
+
+# ─── Rates ──────────────────────────────────────────────────────────────────
+# USD per million tokens: (input, cache read, 5-minute cache write, 1-hour cache
+# write, output). Source: the model catalog baked into the Claude Code 2.1.283
+# binary (its `pricing_tiers` and each model's `pricing` key), read 2026-10-23.
+# It agrees with the claude-api skill bundled with that version (model table
+# cached 2026-06-24; the cache multipliers are in its shared/prompt-caching.md).
+# These are list prices, so a cost here is a list-price EQUIVALENT: an account on
+# a subscription pays in quota, not dollars. Keyed by model id; a dated snapshot
+# (`claude-haiku-4-5-20251001`) loses its date before the lookup. A model this
+# table does not carry is priced as null, never as its nearest neighbour, and so
+# is fast mode (`usage.speed == "fast"`), which bills at a different rate.
+# Refresh the table when a model launches.
+_RATES: dict[str, tuple[float, float, float, float, float]] = {
+    "claude-fable-5-1": (10.0, 0.25, 12.5, 20.0, 50.0),
+    "claude-mythos-5-1": (10.0, 0.25, 12.5, 20.0, 50.0),
+    "claude-fable-5": (10.0, 1.0, 12.5, 20.0, 50.0),
+    "claude-mythos-5": (10.0, 1.0, 12.5, 20.0, 50.0),
+    "claude-opus-5-5": (4.0, 0.2, 5.0, 8.0, 20.0),
+    "claude-opus-5": (5.0, 0.5, 6.25, 10.0, 25.0),
+    "claude-opus-4-8": (5.0, 0.5, 6.25, 10.0, 25.0),
+    "claude-opus-4-7": (5.0, 0.5, 6.25, 10.0, 25.0),
+    "claude-opus-4-6": (5.0, 0.5, 6.25, 10.0, 25.0),
+    "claude-sonnet-5": (2.0, 0.2, 2.5, 4.0, 10.0),
+    "claude-sonnet-4-6": (3.0, 0.3, 3.75, 6.0, 15.0),
+    "claude-haiku-4-5": (1.0, 0.1, 1.25, 2.0, 5.0),
+}
+_SNAPSHOT_DATE = re.compile(r"-\d{8}$")
+
+# Claude Code writes this as the model of a message it made itself (a usage-limit
+# notice, an interrupted turn). It is not an API call and carries no tokens.
+_SYNTHETIC = "<synthetic>"
+
+# A cache miss, as the 2026-10-22 audit defined it: a call after the first whose
+# context is over 20k tokens and more than half re-written. Subagents get the
+# 5-minute cache TTL only, so a miss that follows a gap longer than that is the
+# cache expiring under a long tool call, not a prompt that changed.
+_CACHE_TTL_S = 300
+_MISS_MIN_CONTEXT = 20_000
+_MISS_SHARE = 0.5
+
+
+def _rates_for(model: str | None, speed: str | None) -> tuple[float, ...] | None:
+    if not model or speed not in (None, "standard"):
+        return None
+    return _RATES.get(_SNAPSHOT_DATE.sub("", model.replace("[1m]", "")))
+
+
+# ─── Transcripts ────────────────────────────────────────────────────────────
 
 
 def _parse_ts(raw: str) -> datetime.datetime | None:
@@ -105,8 +182,9 @@ def _first_text(message: object) -> str:
 def _identity(prompt: str) -> str:
     """A short tag for an agent, derived from its brief.
 
-    There is no label field in the transcript — the ``label:`` a workflow script
-    passes does not survive into the file — so this reads the brief. Workflow
+    The fallback only. The ``label`` and ``phase`` a workflow script passes are
+    in ``agent-*.meta.json`` and ``journal.jsonl``, and ``scan_workflow`` reads
+    those first; this reads the brief for an agent that has neither. Workflow
     prompts in this repository put the distinguishing text on a line starting
     with a heading-ish marker, so prefer one of those; otherwise fall back to
     the first non-empty line.
@@ -140,17 +218,66 @@ def _identity(prompt: str) -> str:
     return (lines[0] if lines else "(empty brief)")[:58]
 
 
-class AgentRun:
-    __slots__ = ("agent_id", "start", "end", "out_tokens", "in_tokens", "turns", "tag")
+class Call:
+    """One API response, however many transcript records it was written as."""
 
+    __slots__ = ("model", "speed", "input", "cache_read", "write_5m", "write_1h", "output", "first", "last")
+
+    def __init__(self, message: dict, usage: dict, stamp: datetime.datetime | None) -> None:
+        self.model = message.get("model")
+        self.speed = usage.get("speed")
+        self.input = usage.get("input_tokens") or 0
+        self.cache_read = usage.get("cache_read_input_tokens") or 0
+        split = usage.get("cache_creation")
+        self.write_1h = (split.get("ephemeral_1h_input_tokens") or 0) if isinstance(split, dict) else 0
+        # Without the split every write is a 5-minute write: the default TTL,
+        # and the only one subagents get.
+        self.write_5m = (usage.get("cache_creation_input_tokens") or 0) - self.write_1h
+        self.output = 0
+        self.first = stamp
+        self.last = stamp
+
+    @property
+    def cache_create(self) -> int:
+        return self.write_5m + self.write_1h
+
+    @property
+    def context(self) -> int:
+        return self.input + self.cache_read + self.cache_create
+
+    def cost(self) -> float | None:
+        if not (self.context or self.output):
+            return 0.0
+        rates = _rates_for(self.model, self.speed)
+        if rates is None:
+            return None  # unpriced, never a guess
+        price_in, price_read, price_5m, price_1h, price_out = rates
+        return (
+            self.input * price_in
+            + self.cache_read * price_read
+            + self.write_5m * price_5m
+            + self.write_1h * price_1h
+            + self.output * price_out
+        ) / 1e6
+
+
+def _most_common(counts: dict[str, int]) -> str | None:
+    return max(counts, key=lambda key: (counts[key], key)) if counts else None
+
+
+class AgentRun:
     def __init__(self, agent_id: str) -> None:
         self.agent_id = agent_id
         self.start: datetime.datetime | None = None
         self.end: datetime.datetime | None = None
-        self.out_tokens = 0
-        self.in_tokens = 0
-        self.turns = 0
+        self.calls: dict[str, Call] = {}
+        self.synthetic: set[str] = set()
+        self.efforts: dict[str, int] = {}
         self.tag = ""
+        self.label: str | None = None
+        self.phase: str | None = None
+        self.outcome = "unknown"
+        self.result_chars: int | None = None
 
     @property
     def seconds(self) -> float:
@@ -158,102 +285,367 @@ class AgentRun:
             return 0.0
         return (self.end - self.start).total_seconds()
 
+    @property
+    def name(self) -> str:
+        return self.label or self.tag or self.agent_id[:12]
+
+    @property
+    def turns(self) -> int:
+        return len(self.calls)
+
+    def total(self, field: str) -> int:
+        return sum(getattr(call, field) for call in self.calls.values())
+
+    @property
+    def cost(self) -> float | None:
+        costs = [call.cost() for call in self.calls.values()]
+        return None if any(cost is None for cost in costs) else sum(c for c in costs if c is not None)
+
+    @property
+    def unpriced_models(self) -> set[str]:
+        return {
+            f"{call.model} ({call.speed})" if call.speed not in (None, "standard") else str(call.model)
+            for call in self.calls.values()
+            if call.cost() is None
+        }
+
+    @property
+    def models(self) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for call in self.calls.values():
+            key = str(call.model)
+            counts[key] = counts.get(key, 0) + 1
+        return counts
+
+    @property
+    def first_context(self) -> int | None:
+        """Context of the agent's first API call: the fixed cost every call re-reads."""
+        for call in self.calls.values():
+            return call.context
+        return None
+
+    def long_gap_miss_writes(self) -> int:
+        """Cache writes on calls that missed the cache after a gap longer than its TTL."""
+        written = 0
+        previous: Call | None = None
+        for call in self.calls.values():
+            if previous is not None and call.first and previous.last:
+                gap = (call.first - previous.last).total_seconds()
+                context = call.context
+                if (
+                    gap > _CACHE_TTL_S
+                    and context > _MISS_MIN_CONTEXT
+                    and call.cache_create > _MISS_SHARE * context
+                ):
+                    written += call.cache_create
+            previous = call
+        return written
+
 
 def read_agent(path: Path) -> AgentRun:
     run = AgentRun(path.stem.replace("agent-", ""))
     with path.open(encoding="utf-8", errors="replace") as handle:
-        for line in handle:
+        for number, line in enumerate(handle):
             try:
                 record = json.loads(line)
             except (ValueError, TypeError):
+                continue
+            if not isinstance(record, dict):
                 continue
             stamp = _parse_ts(record.get("timestamp", ""))
             if stamp:
                 run.start = stamp if run.start is None else min(run.start, stamp)
                 run.end = stamp if run.end is None else max(run.end, stamp)
-            if record.get("type") == "assistant":
-                run.turns += 1
             message = record.get("message") or {}
-            usage = message.get("usage") if isinstance(message, dict) else None
-            if isinstance(usage, dict):
-                run.out_tokens += usage.get("output_tokens") or 0
-                for field in _INPUT_FIELDS:
-                    run.in_tokens += usage.get(field) or 0
-            if not run.tag and record.get("type") == "user":
+            if record.get("type") == "user" and not run.tag:
                 run.tag = _identity(_first_text(message))
+            if record.get("type") != "assistant" or not isinstance(message, dict):
+                continue
+            usage = message.get("usage")
+            if not isinstance(usage, dict):
+                continue
+            if message.get("model") == _SYNTHETIC:
+                run.synthetic.add(str(message.get("id") or number))
+                continue
+            # One API response is written as one record per content block, and
+            # each record repeats the request's usage. Summing per record is the
+            # ~1.9x double count; the message id is what names one call.
+            key = message.get("id") or f"record-{number}"
+            call = run.calls.get(key)
+            if call is None:
+                call = run.calls[key] = Call(message, usage, stamp)
+                effort = record.get("perTurnEffort") or record.get("effort")
+                if isinstance(effort, str):
+                    run.efforts[effort] = run.efforts.get(effort, 0) + 1
+            # Output grows as the response streams; the last record is final.
+            call.output = max(call.output, usage.get("output_tokens") or 0)
+            if stamp:
+                call.last = stamp
     return run
 
 
-def sweep(runs: list[AgentRun]) -> dict:
-    """Timeline sweep over agent spans: peak, mean, and the single-agent tail."""
-
-    spans = [(r.start, r.end) for r in runs if r.start and r.end]
-    if not spans:
+def _read_meta(path: Path) -> dict:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, ValueError):
         return {}
-    first = min(s for s, _ in spans)
-    last = max(e for _, e in spans)
+    return data if isinstance(data, dict) else {}
+
+
+def read_journal(directory: Path) -> dict[str, dict]:
+    """Label, phase, outcome and returned-result size per agent, from journal.jsonl.
+
+    An agent's outcome is its last terminal event: ``ok`` for a result,
+    ``null result`` for a result that is null, ``failed`` for a failure. One
+    that started and has neither is ``no result`` — a run killed mid-stage, or
+    an agent that died on a usage limit. With no journal at all an agent is
+    ``unknown``, which is not the same thing as fine.
+    """
+
+    entries: dict[str, dict] = {}
+    try:
+        handle = (directory / "journal.jsonl").open(encoding="utf-8", errors="replace")
+    except OSError:
+        return entries
+    with handle:
+        for line in handle:
+            try:
+                event = json.loads(line)
+            except (ValueError, TypeError):
+                continue
+            agent = event.get("agentId") if isinstance(event, dict) else None
+            if not isinstance(agent, str):
+                continue
+            entry = entries.setdefault(agent, {"outcome": "no result"})
+            kind = event.get("type")
+            if kind == "started":
+                entry.setdefault("label", event.get("label"))
+                entry.setdefault("phase", event.get("phase"))
+            elif kind == "result":
+                result = event.get("result")
+                entry["outcome"] = "ok" if result is not None else "null result"
+                text = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False)
+                entry["result_chars"] = len(text)
+            elif kind == "failed":
+                entry["outcome"] = "failed"
+    return entries
+
+
+# ─── Timeline sweep ─────────────────────────────────────────────────────────
+
+
+def sweep(runs: list[AgentRun]) -> dict[str, Any]:
+    """Timeline sweep over agent spans, crediting every lone second to an agent.
+
+    The sweep keeps the SET of running agents, not a count, so the time one
+    agent spends alone belongs to a named agent. That agent is then classified:
+    ``serial`` if it overlapped no other agent at any point (a one-agent stage),
+    ``outlived`` if it ran alongside siblings and outlasted them (a straggler).
+    The two need opposite advice, and a counter cannot tell them apart.
+    """
+
+    by_id = {r.agent_id: r for r in runs}
+    bounds = {r.agent_id: (r.start, r.end) for r in runs if r.start and r.end}
+    if not bounds:
+        return {}
+    first = min(start for start, _ in bounds.values())
+    last = max(end for _, end in bounds.values())
     makespan = (last - first).total_seconds()
     if makespan <= 0:
         return {}
 
-    events: list[tuple[datetime.datetime, int]] = []
-    for start, end in spans:
-        events.append((start, 1))
-        events.append((end, -1))
-    events.sort(key=lambda pair: (pair[0], -pair[1]))
+    events: list[tuple[datetime.datetime, int, str]] = []
+    for agent, (start, end) in bounds.items():
+        if end > start:  # a zero-length span adds nothing, and would never leave the set
+            events.append((start, 1, agent))
+            events.append((end, -1, agent))
+    # At one instant an agent that ends leaves before one that starts joins:
+    # back-to-back agents on one slot are a queue, not two agents in flight.
+    events.sort(key=lambda event: (event[0], event[1]))
 
-    running = 0
+    running: set[str] = set()
     peak = 0
     area = 0.0
-    alone = 0.0
+    idle = 0.0
+    alone_by: dict[str, float] = {}
     previous = first
-    for stamp, delta in events:
+    for stamp, delta, agent in events:
         width = (stamp - previous).total_seconds()
-        area += running * width
-        if running == 1:
-            alone += width
-        running += delta
-        peak = max(peak, running)
+        area += len(running) * width
+        if len(running) == 1:
+            only = next(iter(running))
+            alone_by[only] = alone_by.get(only, 0.0) + width
+        elif not running:
+            idle += width
+        if delta > 0:
+            running.add(agent)
+        else:
+            running.discard(agent)
+        peak = max(peak, len(running))
         previous = stamp
+
+    serial = 0.0
+    outlived = 0.0
+    lone: list[dict[str, Any]] = []
+    for agent, alone in alone_by.items():
+        if alone <= 0:
+            continue
+        start, end = bounds[agent]
+        overlapped = any(
+            other_start < end and other_end > start
+            for other, (other_start, other_end) in bounds.items()
+            if other != agent
+        )
+        kind = "outlived" if overlapped else "serial"
+        if kind == "serial":
+            serial += alone
+        else:
+            outlived += alone
+        member = by_id[agent]
+        lone.append({
+            "agent": agent,
+            "name": member.name,
+            "phase": member.phase,
+            "kind": kind,
+            "alone_s": alone,
+            "seconds": member.seconds,
+        })
+    lone.sort(key=lambda entry: -entry["alone_s"])
+    serial_stages = [entry for entry in lone if entry["kind"] == "serial"]
+    stragglers = [entry for entry in lone if entry["kind"] == "outlived"]
 
     durations = sorted(r.seconds for r in runs if r.seconds)
     median = statistics.median(durations) if durations else 0.0
     slowest = max(durations) if durations else 0.0
     mean_conc = area / makespan
     return {
-        "agents": len(spans),
+        "agents": len(bounds),
         "makespan_s": makespan,
         "peak": peak,
         "mean_concurrency": mean_conc,
-        "utilisation": (mean_conc / peak) if peak else 0.0,
-        "tail_alone": alone / makespan,
+        "util_vs_peak": (mean_conc / peak) if peak else 0.0,
+        # serial + outlived: the old single-agent "tail", kept for continuity.
+        "tail_alone": (serial + outlived) / makespan,
+        "serial_frac": serial / makespan,
+        "outlived_frac": outlived / makespan,
+        "idle_frac": idle / makespan,
         "straggler": (slowest / median) if median else 0.0,
         "median_s": median,
         "slowest_s": slowest,
         "started_at": first.isoformat(),
+        "lone": lone[:5],
+        "longest_serial": serial_stages[0] if serial_stages else None,
+        # The agent the straggler verdict is about. Not the slowest agent: when
+        # a run has both verdicts the slowest is often the serial stage.
+        "top_outlived": stragglers[0] if stragglers else None,
     }
 
 
-def scan_workflow(directory: Path) -> dict | None:
-    runs = [read_agent(p) for p in sorted(directory.glob("agent-*.jsonl"))]
-    runs = [r for r in runs if r.start]
+def _phase_rows(runs: list[AgentRun]) -> list[dict[str, Any]]:
+    """One row per phase, in the order phases started: n, wall time, spread."""
+
+    groups: dict[str, list[AgentRun]] = {}
+    for run in sorted(runs, key=lambda r: r.start or datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)):
+        groups.setdefault(run.phase or "(no phase)", []).append(run)
+    rows = []
+    for phase, members in groups.items():
+        durations = sorted(member.seconds for member in members)
+        median = statistics.median(durations)
+        starts = [member.start for member in members if member.start]
+        ends = [member.end for member in members if member.end]
+        rows.append({
+            "phase": phase,
+            "n": len(members),
+            "wall_s": (max(ends) - min(starts)).total_seconds() if starts and ends else 0.0,
+            "median_s": median,
+            "max_s": durations[-1],
+            "spread": (durations[-1] / median) if median else 0.0,
+        })
+    return rows
+
+
+def scan_workflow(directory: Path) -> dict[str, Any] | None:
+    journal = read_journal(directory)
+    runs: list[AgentRun] = []
+    for path in sorted(directory.glob("agent-*.jsonl")):
+        run = read_agent(path)
+        if not run.start:
+            continue
+        meta = _read_meta(path.with_name(path.stem + ".meta.json"))
+        entry = journal.get(run.agent_id, {})
+        run.label = meta.get("description") or entry.get("label")
+        run.phase = meta.get("workflowPhase") or entry.get("phase")
+        run.outcome = entry.get("outcome", "unknown")
+        run.result_chars = entry.get("result_chars")
+        runs.append(run)
     if not runs:
         return None
     stats = sweep(runs)
     if not stats:
         return None
+
+    first = min(r.start for r in runs if r.start)
     slowest = max(runs, key=lambda r: r.seconds)
-    stats.update(
-        {
-            "sequential": stats["peak"] <= 1,
-            "run_id": directory.name,
-            "out_tokens": sum(r.out_tokens for r in runs),
-            "in_tokens": sum(r.in_tokens for r in runs),
-            "turns": sum(r.turns for r in runs),
-            "slowest_tag": slowest.tag,
-            "slowest_agent": slowest.agent_id,
-        }
-    )
+    cache_create = sum(r.total("cache_create") for r in runs)
+    unpriced = sorted({model for r in runs for model in r.unpriced_models})
+    firsts = [r.first_context for r in runs if r.first_context is not None]
+    results = [r.result_chars for r in runs if r.result_chars is not None]
+    outcomes: dict[str, int] = {}
+    models: dict[str, int] = {}
+    efforts: dict[str, int] = {}
+    for r in runs:
+        outcomes[r.outcome] = outcomes.get(r.outcome, 0) + 1
+        for model, count in r.models.items():
+            models[model] = models.get(model, 0) + count
+        effort = _most_common(r.efforts) or "unknown"
+        efforts[effort] = efforts.get(effort, 0) + 1
+
+    stats.update({
+        "sequential": stats["peak"] <= 1,
+        "run_id": directory.name,
+        "turns": sum(r.turns for r in runs),
+        "input_tokens": sum(r.total("input") for r in runs),
+        "cache_read_tokens": sum(r.total("cache_read") for r in runs),
+        "cache_create_tokens": cache_create,
+        "out_tokens": sum(r.total("output") for r in runs),
+        "cost_usd": None if unpriced else sum(r.cost or 0.0 for r in runs),
+        "unpriced_models": unpriced,
+        "synthetic_messages": sum(len(r.synthetic) for r in runs),
+        "first_turn_context_median": statistics.median(firsts) if firsts else None,
+        "long_gap_miss_share": (
+            sum(r.long_gap_miss_writes() for r in runs) / cache_create if cache_create else None
+        ),
+        "result_chars_median": statistics.median(results) if results else None,
+        "result_chars_max": max(results) if results else None,
+        "outcomes": outcomes,
+        "models": models,
+        "efforts": efforts,
+        "phases": _phase_rows(runs),
+        "slowest_tag": slowest.name,
+        "slowest_agent": slowest.agent_id,
+        "agent_rows": [
+            {
+                "agent": r.agent_id,
+                "name": r.name,
+                "phase": r.phase,
+                "start_s": (r.start - first).total_seconds() if r.start else None,
+                "seconds": r.seconds,
+                "turns": r.turns,
+                "model": _most_common(r.models),
+                "effort": _most_common(r.efforts),
+                "outcome": r.outcome,
+                "result_chars": r.result_chars,
+                "first_context": r.first_context,
+                "input_tokens": r.total("input"),
+                "cache_read_tokens": r.total("cache_read"),
+                "cache_create_tokens": r.total("cache_create"),
+                "out_tokens": r.total("output"),
+                "cost_usd": r.cost,
+            }
+            for r in sorted(runs, key=lambda r: r.start or first)
+        ],
+    })
+    stats["verdicts"] = _verdicts(stats)
     return stats
 
 
@@ -484,442 +876,165 @@ def self_test_polls() -> int:
     return 0
 
 
+# ─── Sweep self-test ────────────────────────────────────────────────────────
+# The main mode ran unguarded until 2026-10-23: `--self-test` covered polls and
+# Codex children only, and changing the lone-agent check to `== 99` or the
+# straggler verdict to `if False:` still printed PASSED. The fixtures, in
+# scorecard_fixtures.py, are runs written to disk the way Claude Code writes them
+# — every API call as TWO records sharing one message id — and read back through
+# find_workflow_dirs() and scan_workflow(), the same path the table takes. The
+# table and the summary are then rendered from those rows, because a line the
+# owner reads is a claim too: the first version of this test checked only the
+# dicts, and deleting "Longest serial stage" stayed green.
 
 
-# ─── Codex children ─────────────────────────────────────────────────────────
-# A Claude agent's fan-out is in the transcripts read above. A Codex worker's is
-# nowhere this repository could see it. Reproduced on 2026-09-05 against CLI
-# 0.153.4: a headless `codex exec --json` run spawned a depth-1
-# `clade_cheap_explorer` child, and the event stream carried only the `wait`
-# item — with an empty `receiver_thread_ids`. The spawn itself never appears in
-# the JSONL, so a supervisor watching the stream cannot know its worker fanned
-# out, and every wall-clock comparison drawn between a Claude worker and a Codex
-# worker was made against an unknown number of uncounted children.
-#
-# They are on disk. `~/.codex/state_5.sqlite` persists every spawn as a row in
-# `thread_spawn_edges`, and the parent's `threads.source` says whether the run
-# was headless (`exec`) or interactive (`cli`) — a subagent's own source is the
-# JSON `{"subagent": {"thread_spawn": {...}}}` carrying its parent, depth and
-# agent role. Read-only, stdlib `sqlite3`, no write of any kind.
-#
-# The one thing this must never do is answer 0 when it could not look. A missing
-# database and a worker that never delegated produce the same number, and that
-# confusion is the whole finding here — so an unreadable database RAISES and
-# only a real read returns a count.
+def self_test_sweep() -> int:
+    """Can the sweep, the verdicts, the token ledger and the table still go red?"""
 
-_CODEX_STATE_DB = "~/.codex/state_5.sqlite"
-
-# `id` and `source` are the only two columns this needs. The rest arrived over
-# the 0.1xx series, so ask the schema rather than assume it: an older or newer
-# Codex should degrade to fewer details, not to an exception.
-_THREAD_COLUMNS = (
-    "id",
-    "source",
-    "cwd",
-    "cli_version",
-    "created_at",
-    "updated_at",
-    "tokens_used",
-    "agent_role",
-    "agent_nickname",
-    "model",
-)
-
-
-class CodexStateUnavailable(RuntimeError):
-    """The state database could not be read.
-
-    Deliberately not degraded into an empty result: "there was nothing to read"
-    and "the worker spawned nothing" are different findings and must not print
-    the same number.
-    """
-
-
-def _open_codex_state(path: Path) -> sqlite3.Connection:
-    if not path.exists():
-        raise CodexStateUnavailable(f"no Codex state database at {path}")
-    try:
-        # mode=ro is a real read-only handle: it cannot write, and it still
-        # reads a live WAL correctly. `immutable=1` would be faster and wrong —
-        # Codex may be writing this file right now.
-        connection = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True)
-        tables = {
-            row[0]
-            for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        }
-    except sqlite3.Error as exc:
-        raise CodexStateUnavailable(f"cannot read {path}: {exc}") from exc
-    missing = sorted({"threads", "thread_spawn_edges"} - tables)
-    if missing:
-        connection.close()
-        raise CodexStateUnavailable(
-            f"{path} has no {', '.join(missing)} table — Codex's schema has moved"
-        )
-    return connection
-
-
-def _spawn_meta(raw: object) -> dict:
-    """The `thread_spawn` block out of a subagent thread's ``source``, or ``{}``."""
-
-    if not isinstance(raw, str) or "{" not in raw:
-        return {}
-    try:
-        payload = json.loads(raw)
-    except (TypeError, ValueError):
-        return {}
-    subagent = payload.get("subagent") if isinstance(payload, dict) else None
-    spawn = subagent.get("thread_spawn") if isinstance(subagent, dict) else None
-    return spawn if isinstance(spawn, dict) else {}
-
-
-def _source_kind(raw: object) -> str:
-    """``threads.source`` is a bare word for a root and JSON for a subagent."""
-
-    if not isinstance(raw, str):
-        return "unknown"
-    text = raw.strip()
-    if text.startswith("{"):
-        return "subagent" if _spawn_meta(text) else "unknown"
-    return text.strip('"').lower()
-
-
-def _descend(root: str, edges: dict[str, list[str]]) -> list[tuple[str, int]]:
-    """Every thread below one root, breadth-first, with cycles refused.
-
-    Grandchildren count: a child that delegates again is still work the parent
-    caused, and 12 of this host's edges have a subagent parent.
-    """
-
-    found: list[tuple[str, int]] = []
-    seen = {root}
-    queue = [(child, 1) for child in edges.get(root, ())]
-    while queue:
-        thread_id, level = queue.pop(0)
-        if thread_id in seen:
-            continue
-        seen.add(thread_id)
-        found.append((thread_id, level))
-        queue.extend((grandchild, level + 1) for grandchild in edges.get(thread_id, ()))
-    return found
-
-
-def scan_codex_children(
-    db_path: str | None = None,
-    since_days: float | None = None,
-    cwd_filter: str | None = None,
-    parent_filter: str | None = None,
-) -> dict:
-    """Count the subagents each headless ``codex exec`` thread spawned.
-
-    Raises ``CodexStateUnavailable`` rather than returning zeros when the
-    database is absent, unreadable, or no longer carries these tables.
-    """
-
-    path = Path(os.path.expanduser(db_path or _CODEX_STATE_DB)).resolve()
-    connection = _open_codex_state(path)
-    try:
-        present = {row[1] for row in connection.execute("PRAGMA table_info(threads)")}
-        columns = [name for name in _THREAD_COLUMNS if name in present]
-        if "id" not in columns or "source" not in columns:
-            raise CodexStateUnavailable(f"{path}: threads carries no id/source column")
-        threads: dict[str, dict] = {}
-        for row in connection.execute(f"SELECT {', '.join(columns)} FROM threads"):
-            record = dict(zip(columns, row))
-            threads[record["id"]] = record
-        edges: dict[str, list[str]] = {}
-        for parent, child in connection.execute(
-            "SELECT parent_thread_id, child_thread_id FROM thread_spawn_edges"
-        ):
-            edges.setdefault(parent, []).append(child)
-    except sqlite3.Error as exc:
-        raise CodexStateUnavailable(f"cannot read {path}: {exc}") from exc
-    finally:
-        connection.close()
-
-    cutoff = None
-    if since_days:
-        cutoff = datetime.datetime.now().timestamp() - since_days * 86400
-
-    roots = []
-    for record in threads.values():
-        if _source_kind(record.get("source")) != "exec":
-            continue
-        if cutoff is not None and (record.get("created_at") or 0) < cutoff:
-            continue
-        if cwd_filter and cwd_filter not in (record.get("cwd") or ""):
-            continue
-        if parent_filter and not record["id"].startswith(parent_filter):
-            continue
-        roots.append(record)
-    roots.sort(key=lambda record: record.get("created_at") or 0)
-
-    runs: list[dict] = []
-    roles: dict[str, int] = {}
-    direct_total = 0
-    child_tokens = 0
-    deepest = 0
-    for record in roots:
-        descendants = _descend(record["id"], edges)
-        if not descendants:
-            continue
-        children: list[dict] = []
-        run_tokens = 0
-        for thread_id, level in descendants:
-            child = threads.get(thread_id, {})
-            meta = _spawn_meta(child.get("source"))
-            depth = meta.get("depth")
-            if not isinstance(depth, int):
-                depth = level
-            role = meta.get("agent_role") or child.get("agent_role") or "(unnamed)"
-            tokens = child.get("tokens_used") or 0
-            started = child.get("created_at") or 0
-            ended = child.get("updated_at") or 0
-            children.append(
-                {
-                    "thread": thread_id,
-                    "depth": depth,
-                    "role": role,
-                    "nickname": meta.get("agent_nickname") or child.get("agent_nickname"),
-                    "model": child.get("model"),
-                    "tokens": tokens,
-                    "seconds": max(0, ended - started) if started and ended else 0,
-                    # An edge whose thread row is gone is still evidence a spawn
-                    # happened; say so rather than dropping it.
-                    "thread_row": bool(child),
-                }
-            )
-            roles[role] = roles.get(role, 0) + 1
-            run_tokens += tokens
-            deepest = max(deepest, depth)
-        direct = len(edges.get(record["id"], ()))
-        direct_total += direct
-        child_tokens += run_tokens
-        runs.append(
-            {
-                "parent": record["id"],
-                "cwd": record.get("cwd"),
-                "cli_version": record.get("cli_version"),
-                "model": record.get("model"),
-                "parent_tokens": record.get("tokens_used") or 0,
-                "started_at": record.get("created_at") or 0,
-                "direct": direct,
-                "descendants": len(children),
-                "child_tokens": run_tokens,
-                "children": children,
-            }
-        )
-
-    return {
-        "db": str(path),
-        "exec_threads": len(roots),
-        "exec_parents": len(runs),
-        "direct_children": direct_total,
-        "descendants": sum(run["descendants"] for run in runs),
-        "child_tokens": child_tokens,
-        "max_depth": deepest,
-        "roles": dict(sorted(roles.items(), key=lambda pair: (-pair[1], pair[0]))),
-        "runs": runs,
-    }
-
-
-def _print_codex_children(report: dict) -> None:
-    if report["runs"]:
-        print(
-            f"{'parent':14} {'started':17} {'cli':>8} {'kids':>5} {'sub':>4} "
-            f"{'tokens':>10}  roles"
-        )
-    for run in report["runs"]:
-        when = (
-            datetime.datetime.fromtimestamp(run["started_at"]).strftime("%Y-%m-%d %H:%M")
-            if run["started_at"]
-            else "?"
-        )
-        names = sorted({child["role"] for child in run["children"]})
-        print(
-            f"{run['parent'][:13]:14} {when:17} {(run['cli_version'] or '?'):>8} "
-            f"{run['direct']:5d} {run['descendants']:4d} {run['child_tokens']:10,d}  "
-            f"{', '.join(names)}"
-        )
-        if run["cwd"]:
-            print(f"{'':14} {run['cwd']}")
-    print()
-    if report["exec_parents"]:
-        print(
-            f"{report['exec_parents']} of {report['exec_threads']} headless "
-            f"`codex exec` threads fanned out: {report['descendants']} "
-            f"{'child' if report['descendants'] == 1 else 'children'} "
-            f"({report['direct_children']} direct, depth {report['max_depth']}), "
-            f"{report['child_tokens']:,} tokens."
-        )
-        print(
-            "None of that is in `codex exec --json` — the spawn item never reaches "
-            "the stream, so this database is the only place to count it."
-        )
-    else:
-        print(
-            f"0 of {report['exec_threads']} headless `codex exec` threads spawned a "
-            f"subagent in this window. The database was read, so this is a measured "
-            f"zero, not a blind one."
-        )
-
-def _codex_fixture(path: Path, threads: list[tuple], edges: list[tuple[str, str]]) -> None:
-    """A minimal `state_5.sqlite` — the two tables and the columns this reads."""
-
-    connection = sqlite3.connect(str(path))
-    with connection:
-        connection.execute(
-            "CREATE TABLE threads (id TEXT PRIMARY KEY, source TEXT NOT NULL, cwd TEXT,"
-            " cli_version TEXT, created_at INTEGER, updated_at INTEGER,"
-            " tokens_used INTEGER, agent_role TEXT, agent_nickname TEXT, model TEXT)"
-        )
-        connection.execute(
-            "CREATE TABLE thread_spawn_edges (parent_thread_id TEXT NOT NULL,"
-            " child_thread_id TEXT PRIMARY KEY, status TEXT NOT NULL)"
-        )
-        connection.executemany(
-            "INSERT INTO threads (id, source, cwd, cli_version, created_at, updated_at,"
-            " tokens_used, agent_role, agent_nickname, model) VALUES (?,?,?,?,?,?,?,?,?,?)",
-            threads,
-        )
-        connection.executemany(
-            "INSERT INTO thread_spawn_edges VALUES (?, ?, 'open')", edges
-        )
-    connection.close()
-
-
-def _child_source(parent: str, depth: int, role: str) -> str:
-    return json.dumps(
-        {"subagent": {"thread_spawn": {
-            "parent_thread_id": parent, "depth": depth,
-            "agent_path": f"/root/{role}", "agent_nickname": "Volta", "agent_role": role,
-        }}}
-    )
-
-
-def self_test_codex_children() -> int:
-    """Can the Codex child counter tell a real zero from a blind one?
-
-    The failure this guards against is the one the poll detector already shipped
-    once: an instrument that cannot look reports the same 0 as a worker that
-    never delegated. So there are four controls — a run that fanned out, a run
-    that genuinely did not, a database that is not there, and a schema that has
-    moved. The last two must refuse to answer rather than answer zero.
-    """
-
+    import contextlib
+    import io
     import tempfile
 
-    now = int(datetime.datetime.now().timestamp())
+    from scorecard_fixtures import RUNS, write_sweep_fixtures
+
     failures: list[str] = []
+
+    def expect(label: str, actual: object, wanted: object) -> None:
+        close = (
+            isinstance(actual, float) and isinstance(wanted, (int, float))
+            and abs(actual - wanted) < 1e-9
+        )
+        if not close and actual != wanted:
+            failures.append(f"{label}: expected {wanted!r}, got {actual!r}")
+
+    def agents(row: dict) -> dict[str, dict]:
+        return {agent["name"]: agent for agent in row["agent_rows"]}
 
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
+        write_sweep_fixtures(root)
+        rows = {}
+        for directory in find_workflow_dirs([root], None):
+            row = scan_workflow(directory)
+            if row:
+                rows[row["run_id"]] = row
 
-        # Positive: one headless parent with a child and a grandchild, one
-        # headless parent that spawned nothing (the denominator), and an
-        # interactive parent whose child must not be counted as headless.
-        hot = root / "hot.sqlite"
-        _codex_fixture(
-            hot,
-            [
-                ("p-exec", "exec", "/w/clade", "0.153.4", now - 600, now, 54856, None, None, "gpt-5.6-terra"),
-                ("c1", _child_source("p-exec", 1, "clade_cheap_explorer"), "/w/clade", "0.153.4",
-                 now - 500, now - 100, 55549, "clade_cheap_explorer", "Volta", "gpt-5.6-terra"),
-                ("c2", _child_source("c1", 2, "clade_cheap_worker"), "/w/clade", "0.153.4",
-                 now - 400, now - 200, 1000, "clade_cheap_worker", "Ampere", "gpt-5.6-luna"),
-                ("p-quiet", "exec", "/w/clade", "0.153.4", now - 900, now - 800, 700, None, None, "gpt-5.6-sol"),
-                ("p-cli", "cli", "/w/other", "0.153.4", now - 900, now - 800, 900, None, None, "gpt-5.6-sol"),
-                ("c3", _child_source("p-cli", 1, "reviewer"), "/w/other", "0.153.4",
-                 now - 880, now - 810, 4242, "reviewer", "Curie", "gpt-5.6-sol"),
-            ],
-            [("p-exec", "c1"), ("c1", "c2"), ("p-cli", "c3")],
-        )
+    missing = set(RUNS) - set(rows)
+    if missing:
+        print(f"SELF-TEST FAILED: fixture runs not read back: {sorted(missing)}")
+        return 1
+    barrier, chain, queue = rows["wf_barrier"], rows["wf_fanout_build"], rows["wf_queue"]
+    sequential, hit, miss = rows["wf_sequential"], rows["wf_edge_hit"], rows["wf_edge_miss"]
+    straggler = "straggler, pipeline() or finer units — one agent outlived its siblings for {}% of the makespan"
 
-        # Negative: a database with only interactive work in it. Zero here is a
-        # measurement, and must be reported as one.
-        cold = root / "cold.sqlite"
-        _codex_fixture(
-            cold,
-            [
-                ("q-cli", "cli", "/w/clade", "0.153.4", now - 900, now - 800, 900, None, None, "gpt-5.6-sol"),
-                ("q-child", _child_source("q-cli", 1, "reviewer"), "/w/clade", "0.153.4",
-                 now - 880, now - 810, 4242, "reviewer", "Curie", "gpt-5.6-sol"),
-            ],
-            [("q-cli", "q-child")],
-        )
+    # A — one agent outlived its siblings for 5 of 30 minutes, and the slots it
+    # reached sat mostly empty: both verdicts, straggler first, whole strings.
+    expect("barrier peak", barrier["peak"], 6)
+    expect("barrier outlived", barrier["outlived_frac"], 5 / 30)
+    expect("barrier serial", barrier["serial_frac"], 0.0)
+    expect("barrier util_vs_peak", barrier["util_vs_peak"], 95 / 30 / 6)
+    expect("barrier verdicts", barrier["verdicts"], [
+        straggler.format(17), "low util, not enough queued work to keep the 6 slots it reached busy",
+    ])
+    # At Opus 5.5 list rates: 12 calls of 2 input, 30k read, 1k write, 120 out.
+    expect("barrier cost", barrier["cost_usd"], 12 * (2 * 4 + 30_000 * 0.2 + 1_000 * 5 + 120 * 20) / 1e6)
 
-        # Schema drift: the threads table alone. Answering 0 from this would be
-        # the same lie as answering 0 from a missing file.
-        partial = root / "partial.sqlite"
-        connection = sqlite3.connect(str(partial))
-        with connection:
-            connection.execute("CREATE TABLE threads (id TEXT PRIMARY KEY, source TEXT NOT NULL)")
-        connection.close()
+    # B — the lone build is serial, not a straggler, and the advice says so.
+    expect("chain serial", chain["serial_frac"], 20 / 44)
+    expect("chain outlived", chain["outlived_frac"], 3 / 44)
+    expect("chain idle", chain["idle_frac"], 1 / 44)
+    expect("chain verdicts", chain["verdicts"], ["serial stage build alone 20 min, shorten or overlap it"])
+    expect("chain longest serial", (chain["longest_serial"] or {}).get("name"), "build")
+    expect(
+        "chain phases (meta.json wins over the journal)",
+        [(p["phase"], p["n"], p["wall_s"] / 60) for p in chain["phases"]],
+        [("Scout", 4, 12.0), ("Build", 1, 20.0), ("Check", 4, 11.0)],
+    )
+    expect("chain outcomes", chain["outcomes"], {"ok": 6, "null result": 1, "no result": 1, "failed": 1})
+    expect("chain result chars", (chain["result_chars_median"], chain["result_chars_max"]), (400, 400))
+    # Eight agents with two calls and a build with four, every call two records.
+    expect("chain turns", chain["turns"], 20)
+    expect("chain input", chain["input_tokens"], 40)
+    expect("chain output", chain["out_tokens"], 20 * 120)
+    expect("chain cache read", chain["cache_read_tokens"], 18 * 30_000)
+    expect("chain cache write", chain["cache_create_tokens"], 17 * 1_000 + 40_000 + 15_000 + 10_000)
+    # Three build calls follow a gap past the TTL; only the 40k full rewrite is
+    # a miss. The 15k one is under the 20k floor, the 10k one under half.
+    expect("chain long-gap miss share", chain["long_gap_miss_share"], 40_000 / 82_000)
+    expect("chain first-turn context", chain["first_turn_context_median"], 31_002)
+    expect("chain effort", chain["efforts"], {"xhigh": 9})
 
-        try:
-            fired = scan_codex_children(str(hot), since_days=None)
-        except CodexStateUnavailable as exc:
-            fired = None
-            failures.append(f"positive control could not read its own fixture: {exc}")
+    # C — a 6x spread a pipeline absorbed: no tail to speak of.
+    expect("queue peak", queue["peak"], 4)
+    expect("queue straggler", queue["straggler"], 6.0)
+    expect("queue outlived", queue["outlived_frac"], 0.5 / 20.5)
+    expect("queue verdicts", queue["verdicts"], ["wide spread, absorbed — this is what a pipeline is for"])
+    expect("queue outcomes", queue["outcomes"], {"unknown": 30})
 
-        if fired is not None:
-            if fired["exec_parents"] != 1:
-                failures.append(f"positive control: expected 1 headless parent, got {fired['exec_parents']}")
-            if fired["exec_threads"] != 2:
-                failures.append(f"positive control: expected 2 headless threads, got {fired['exec_threads']}")
-            if fired["direct_children"] != 1:
-                failures.append(f"positive control: expected 1 direct child, got {fired['direct_children']}")
-            if fired["descendants"] != 2:
-                failures.append(
-                    f"positive control: expected 2 descendants (the grandchild counts), "
-                    f"got {fired['descendants']}"
-                )
-            if fired["child_tokens"] != 56549:
-                failures.append(f"positive control: expected 56,549 child tokens, got {fired['child_tokens']}")
-            if fired["max_depth"] != 2:
-                failures.append(f"positive control: expected depth 2, got {fired['max_depth']}")
-            if "clade_cheap_explorer" not in fired["roles"]:
-                failures.append(f"positive control: lost the agent roles, got {fired['roles']}")
-            if "reviewer" in fired["roles"]:
-                failures.append("positive control: counted an interactive parent's child as headless")
+    # D — back-to-back is sequential; the pricing edges price or refuse to.
+    by_agent = agents(sequential)
+    expect("sequential verdicts", sequential["verdicts"], ["sequential — one agent at a time, no parallelism to waste"])
+    expect("sequential turns (a <synthetic> record is not a call)", sequential["turns"], 7)
+    expect("sequential synthetic messages", sequential["synthetic_messages"], 1)
+    expect("sequential cost", sequential["cost_usd"], None)
+    expect("sequential unpriced", sequential["unpriced_models"], ["claude-imaginary-9", "claude-opus-5-5 (fast)"])
+    expect("first cost", by_agent["first"]["cost_usd"], 2 * (2 * 4 + 30_000 * 0.2 + 1_000 * 5 + 120 * 20) / 1e6)
+    # Haiku 4.5 once the date is stripped: 1k 5-minute write at 1.25, 2k 1-hour at 2.
+    expect(
+        "dated snapshot cost, 1-hour writes at their own rate", by_agent["dated"]["cost_usd"],
+        2 * (2 * 1 + 30_000 * 0.1 + 1_000 * 1.25 + 2_000 * 2 + 120 * 5) / 1e6,
+    )
+    expect("fast-mode cost", by_agent["fast"]["cost_usd"], None)
 
-        try:
-            quiet = scan_codex_children(str(cold), since_days=None)
-        except CodexStateUnavailable as exc:
-            quiet = None
-            failures.append(f"negative control refused a readable database: {exc}")
+    # E, F — the thresholds from both sides. E sits ON outlived 0.15 and serial
+    # 0.25 and gets both verdicts; F sits just under both and gets neither.
+    expect("edge hit outlived", hit["outlived_frac"], 0.15)
+    expect("edge hit serial", hit["serial_frac"], 0.25)
+    expect("edge hit verdicts", hit["verdicts"], [
+        straggler.format(15), "serial stage merge alone 10 min, shorten or overlap it",
+    ])
+    # The straggler is scan-2; the slowest agent is the serial merge.
+    expect("edge hit straggler agent", (hit["top_outlived"] or {}).get("name"), "scan-2")
+    expect("edge hit slowest agent", hit["slowest_tag"], "merge")
+    expect("edge miss shares", (miss["outlived_frac"], miss["serial_frac"]), (0.145, 0.245))
+    expect("edge miss verdicts", miss["verdicts"], ["packed"])
 
-        if quiet is not None and (quiet["descendants"] or quiet["exec_parents"]):
-            failures.append(
-                f"negative control fired: {quiet['exec_parents']} parents, "
-                f"{quiet['descendants']} children"
-            )
-
-        try:
-            scan_codex_children(str(root / "absent.sqlite"), since_days=None)
-        except CodexStateUnavailable:
-            pass
-        else:
-            failures.append(
-                "a missing database answered instead of refusing — its 0 would read "
-                "as 'the worker never fanned out'"
-            )
-
-        try:
-            scan_codex_children(str(partial), since_days=None)
-        except CodexStateUnavailable:
-            pass
-        else:
-            failures.append("a database with no thread_spawn_edges answered instead of refusing")
+    # The table and the summary, as the owner reads them.
+    ordered = [rows[name] for name in sorted(rows)]
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        _print_runs(ordered)
+        _print_summary(ordered)
+    printed = [line.strip() for line in buffer.getvalue().splitlines()]
+    for wanted in (
+        "Totals: 6 runs (5 parallel), 69 agents, 139 API calls;",
+        "Largest tail: wf_edge_hit — scan-2 outlived its siblings for 15% of 40.0m (~6 min of "
+        "wall clock). Split that unit, or move the stage into a pipeline() so freed slots refill.",
+        "Longest serial stage: wf_fanout_build — build ran alone 20 min of 44.0m. pipeline() "
+        "cannot shorten a one-agent stage: shorten the stage or overlap it.",
+        "straggler: scan-2 (Scan) ran alone 6.0m after its siblings finished "
+        "(slowest agent 10.0m vs 9.0m median)",
+        "straggler: unit-6 (Fan-out) ran alone 5.0m after its siblings finished "
+        "(slowest agent 30.0m vs 10.0m median)",
+    ):
+        if not any(line.startswith(wanted) for line in printed):
+            failures.append(f"table/summary line missing: {wanted!r}")
+    stragglers = [line for line in printed if line.startswith("straggler: ")]
+    expect("straggler detail lines (one per flagged run)", len(stragglers), 2)
 
     if failures:
         for line in failures:
             print(f"SELF-TEST FAILED: {line}")
         return 1
     print(
-        "SELF-TEST PASSED: the Codex child counter finds a headless fan-out, "
-        "reports a real zero as measured, and refuses to answer when it cannot read."
+        "SELF-TEST PASSED: the sweep tells a lone build stage from a straggler and "
+        "names the right agent, holds both thresholds, lists every verdict that "
+        "holds, counts each API call once, and prices only what the table carries."
     )
     return 0
+
+
+# ─── Verdicts ───────────────────────────────────────────────────────────────
 
 def _poll_verdict(stats: dict) -> str:
     if stats["jobs"] == 0:
@@ -933,24 +1048,170 @@ def _poll_verdict(stats: dict) -> str:
     return "yielded"
 
 
-def _verdict(stats: dict) -> str:
-    """One phrase naming the dominant inefficiency, or none.
+# A run is a straggler run when one agent outlived its siblings for this share
+# of the makespan, and serial-bound when one-agent stages took this share.
+_OUTLIVED_FLAG = 0.15
+_SERIAL_FLAG = 0.25
+_UTIL_FLOOR = 0.55
 
-    A run that never had two agents in flight is not a straggler problem — its
-    tail is 100% by construction, because one agent alone IS the whole run.
-    Counting those as tails inflates the aggregate badly: they were 4 of the 5
-    worst-looking runs the first time this was measured.
+
+def _verdicts(stats: dict) -> list[str]:
+    """Every verdict that holds, worst first — not only the first one.
+
+    Order: sequential, straggler, serial stage, low util. A sequential run gets
+    that verdict alone: one agent at a time IS the whole run, so its serial
+    share is 100% by construction and tells a reader nothing to act on.
     """
 
     if stats["peak"] <= 1:
-        return "sequential — one agent at a time, no parallelism to waste"
-    if stats["tail_alone"] >= 0.15:
-        return "straggler tail — a barrier where a pipeline would do, or units too coarse"
-    if stats["utilisation"] < 0.55:
-        return "slots idle — not enough queued work to keep them full"
-    if stats["straggler"] >= 4 and stats["tail_alone"] < 0.05:
-        return "wide spread, absorbed — this is what a pipeline is for"
-    return "packed"
+        return ["sequential — one agent at a time, no parallelism to waste"]
+    found: list[str] = []
+    if stats["outlived_frac"] >= _OUTLIVED_FLAG:
+        found.append(
+            f"straggler, pipeline() or finer units — one agent outlived its "
+            f"siblings for {stats['outlived_frac'] * 100:.0f}% of the makespan"
+        )
+    if stats["serial_frac"] >= _SERIAL_FLAG:
+        stage = stats.get("longest_serial") or {}
+        found.append(
+            f"serial stage {stage.get('name', '?')} alone "
+            f"{stage.get('alone_s', 0.0) / 60:.0f} min, shorten or overlap it"
+        )
+    if stats["util_vs_peak"] < _UTIL_FLOOR:
+        found.append(
+            f"low util, not enough queued work to keep the {stats['peak']} "
+            f"slots it reached busy"
+        )
+    if found:
+        return found
+    if stats["straggler"] >= 4 and stats["outlived_frac"] < 0.05:
+        return ["wide spread, absorbed — this is what a pipeline is for"]
+    return ["packed"]
+
+
+# ─── Output ─────────────────────────────────────────────────────────────────
+
+
+def _human(count: float | None) -> str:
+    if count is None:
+        return "n/a"
+    for size, suffix in ((1e9, "B"), (1e6, "M"), (1e3, "k")):
+        if abs(count) >= size:
+            return f"{count / size:.1f}{suffix}"
+    return f"{count:.0f}"
+
+
+def _cost(value: float | None) -> str:
+    return "unpriced" if value is None else f"${value:,.2f}"
+
+
+def _outcome(row: dict) -> str:
+    counts = row["outcomes"]
+    if counts.get("unknown") == row["agents"]:
+        return "no journal"
+    text = f"{counts.get('ok', 0)}/{row['agents']} ok"
+    for kind in ("failed", "no result", "null result", "unknown"):
+        if counts.get(kind):
+            text += f", {counts[kind]} {kind}"
+    return text
+
+
+def _print_runs(rows: list[dict]) -> None:
+    print(
+        f"{'run':16} {'n':>4} {'makespan':>9} {'peak':>4} {'util_vs_peak':>12} "
+        f"{'serial':>6} {'outlived':>8} {'idle':>5} {'strag':>6} {'turns':>6} "
+        f"{'cost':>10}  outcome"
+    )
+    for row in rows:
+        print(
+            f"{row['run_id'][:16]:16} {row['agents']:4d} "
+            f"{row['makespan_s'] / 60:8.1f}m {row['peak']:4d} "
+            f"{row['util_vs_peak'] * 100:11.0f}% {row['serial_frac'] * 100:5.0f}% "
+            f"{row['outlived_frac'] * 100:7.0f}% {row['idle_frac'] * 100:4.0f}% "
+            f"{row['straggler']:5.1f}x {row['turns']:6d} {_cost(row['cost_usd']):>10}  "
+            f"{_outcome(row)}"
+        )
+        pad = " " * 16
+        for verdict in row["verdicts"]:
+            print(f"{pad} {verdict}")
+        top = row["top_outlived"]
+        if row["outlived_frac"] >= _OUTLIVED_FLAG and top:
+            # Name the agent the lone time was credited to, never the slowest
+            # one: in 31 of 106 straggler runs on the author's host (2026-10-23)
+            # the slowest agent was a different one, often the serial stage.
+            phase = f" ({top['phase']})" if top["phase"] else ""
+            print(
+                f"{pad} straggler: {top['name']}{phase} ran alone {top['alone_s'] / 60:.1f}m "
+                f"after its siblings finished (slowest agent {row['slowest_s'] / 60:.1f}m "
+                f"vs {row['median_s'] / 60:.1f}m median)"
+            )
+        miss = row["long_gap_miss_share"]
+        print(
+            f"{pad} tokens: input {_human(row['input_tokens'])} · cache read "
+            f"{_human(row['cache_read_tokens'])} · cache write {_human(row['cache_create_tokens'])} "
+            f"· output {_human(row['out_tokens'])} · first-turn context "
+            f"{_human(row['first_turn_context_median'])} · long-gap misses "
+            f"{'n/a' if miss is None else f'{miss * 100:.0f}%'} of writes"
+        )
+        models = ", ".join(f"{name} x{n}" for name, n in sorted(row["models"].items(), key=lambda p: -p[1]))
+        efforts = ", ".join(f"{name} x{n}" for name, n in sorted(row["efforts"].items(), key=lambda p: -p[1]))
+        results = (
+            "results n/a" if row["result_chars_median"] is None
+            else f"results median {_human(row['result_chars_median'])} chars, "
+                 f"max {_human(row['result_chars_max'])}"
+        )
+        print(f"{pad} calls by model: {models or 'none'} · agents by effort: {efforts} · {results}")
+        if row["unpriced_models"]:
+            print(f"{pad} unpriced: {', '.join(row['unpriced_models'])} (not in the rate table)")
+        if len(row["phases"]) > 1:
+            for phase in row["phases"]:
+                print(
+                    f"{pad}   phase {phase['phase'][:20]:20} n={phase['n']:<3d} "
+                    f"wall {phase['wall_s'] / 60:6.1f}m  median {phase['median_s'] / 60:5.1f}m  "
+                    f"spread {phase['spread']:4.1f}x"
+                )
+
+
+def _print_summary(rows: list[dict]) -> None:
+    parallel_rows = [r for r in rows if r["peak"] > 1]
+    priced = [r for r in rows if r["cost_usd"] is not None]
+    print()
+    print(
+        f"Totals: {len(rows)} runs ({len(parallel_rows)} parallel), "
+        f"{sum(r['agents'] for r in rows):,} agents, {sum(r['turns'] for r in rows):,} API calls; "
+        f"input {_human(sum(r['input_tokens'] for r in rows))}, cache read "
+        f"{_human(sum(r['cache_read_tokens'] for r in rows))}, cache write "
+        f"{_human(sum(r['cache_create_tokens'] for r in rows))}, output "
+        f"{_human(sum(r['out_tokens'] for r in rows))}; "
+        f"{_cost(sum(r['cost_usd'] for r in priced))} list-price equivalent over "
+        f"{len(priced)} priced runs ({len(rows) - len(priced)} unpriced)."
+    )
+    if not parallel_rows:
+        return
+    # Rank by minutes lost, not by the largest fraction: 19% of 20 minutes is a
+    # worse run than 21% of 10, and the fraction alone inverts that. Rank only
+    # the runs the straggler verdict flagged: an unflagged run with more lone
+    # minutes used to win the ranking and then suppress the line.
+    flagged = [r for r in parallel_rows if r["outlived_frac"] >= _OUTLIVED_FLAG]
+    if flagged:
+        worst = max(flagged, key=lambda r: r["makespan_s"] * r["outlived_frac"])
+        recovered = worst["makespan_s"] * worst["outlived_frac"] / 60
+        culprit = (worst["top_outlived"] or {}).get("name", "one agent")
+        print(
+            f"Largest tail: {worst['run_id']} — {culprit} outlived its siblings for "
+            f"{worst['outlived_frac'] * 100:.0f}% of {worst['makespan_s'] / 60:.1f}m "
+            f"(~{recovered:.0f} min of wall clock). Split that unit, or move the stage "
+            f"into a pipeline() so freed slots refill."
+        )
+    staged = [r for r in parallel_rows if r["longest_serial"]]
+    if staged:
+        longest = max(staged, key=lambda r: r["longest_serial"]["alone_s"])
+        stage = longest["longest_serial"]
+        print(
+            f"Longest serial stage: {longest['run_id']} — {stage['name']} ran alone "
+            f"{stage['alone_s'] / 60:.0f} min of {longest['makespan_s'] / 60:.1f}m. "
+            f"pipeline() cannot shorten a one-agent stage: shorten the stage or overlap it."
+        )
 
 
 def main() -> int:
@@ -989,12 +1250,15 @@ def main() -> int:
     parser.add_argument(
         "--self-test",
         action="store_true",
-        help="Ask the poll detector and the Codex child counter whether they can still go red.",
+        help=(
+            "Ask the sweep and verdicts, the poll detector and the Codex child "
+            "counter whether they can still go red."
+        ),
     )
     args = parser.parse_args()
 
     if args.self_test:
-        results = [self_test_polls(), self_test_codex_children()]
+        results = [self_test_sweep(), self_test_polls(), self_test_codex_children()]
         return 1 if any(results) else 0
 
     roots = default_roots()
@@ -1029,7 +1293,7 @@ def main() -> int:
             json.dump(report, sys.stdout, indent=2)
             sys.stdout.write("\n")
             return 0
-        _print_codex_children(report)
+        print_codex_children(report)
         return 0
 
     if args.polls:
@@ -1084,40 +1348,8 @@ def main() -> int:
         print("Widen it with --since 0, or point at a root with --root.")
         return 0
 
-    print(
-        f"{'run':16} {'n':>4} {'makespan':>9} {'peak':>5} {'mean':>5} "
-        f"{'util':>5} {'tail1':>6} {'strag':>6} {'out tok':>9}"
-    )
-    for row in rows:
-        print(
-            f"{row['run_id'][:16]:16} {row['agents']:4d} "
-            f"{row['makespan_s'] / 60:8.1f}m {row['peak']:5d} "
-            f"{row['mean_concurrency']:5.1f} {row['utilisation'] * 100:4.0f}% "
-            f"{row['tail_alone'] * 100:5.0f}% {row['straggler']:5.1f}x "
-            f"{row['out_tokens']:9,d}"
-        )
-        print(f"{'':16} {_verdict(row)}")
-        if row["tail_alone"] >= 0.15:
-            print(
-                f"{'':16} slowest: {row['slowest_s'] / 60:.1f}m vs "
-                f"{row['median_s'] / 60:.1f}m median — {row['slowest_tag']}"
-            )
-
-    # Rank by minutes lost, not by the largest fraction: 19% of 20 minutes is a
-    # worse run than 21% of 10, and the fraction alone inverts that.
-    parallel_rows = [r for r in rows if r["peak"] > 1]
-    if not parallel_rows:
-        return 0
-    worst = max(parallel_rows, key=lambda r: r["makespan_s"] * r["tail_alone"])
-    if worst["tail_alone"] >= 0.15:
-        recovered = worst["makespan_s"] * worst["tail_alone"] / 60
-        print()
-        print(
-            f"Largest tail: {worst['run_id']} spent {worst['tail_alone'] * 100:.0f}% of "
-            f"{worst['makespan_s'] / 60:.1f}m waiting on one agent "
-            f"(~{recovered:.0f} min of wall clock)."
-        )
-        print("Split that unit, or move the stage into a pipeline() so freed slots refill.")
+    _print_runs(rows)
+    _print_summary(rows)
     return 0
 
 
