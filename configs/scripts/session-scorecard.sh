@@ -60,10 +60,19 @@ IMPLICIT_CORRECTIONS=0
 # configs/hooks/lib/correction-pair.sh), and a whole-stream parse aborts at the
 # first bad byte and silently loses every record after it. The old awk was immune
 # to that because it was line-scoped; this keeps that property.
+#
+# A `revert_scope:"probe"` record is not counted. It is the mutation test the
+# global CLAUDE.md requires — revert-detector.sh keeps the record so a
+# misclassified real revert leaves a trace, but strips its evidence because it
+# is not a rejection — and this counter was the one reader still charging it
+# −0.05: 11 of the 220 implicit-revert records of 2026-09-22 → 10-22 on the
+# author's machine. Subagent and worker reverts are not filtered here because
+# revert-detector.sh no longer writes them.
 _classify_corrections() {
   jq -rR --arg since "$1" '
     fromjson? // empty
     | select((.timestamp // "") >= $since)
+    | select((.revert_scope // "") != "probe")
     | if ((.type // "") | startswith("implicit")) then "implicit" else "explicit" end
   ' "$HISTORY_FILE" 2>/dev/null
 }

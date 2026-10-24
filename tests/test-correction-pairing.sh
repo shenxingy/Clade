@@ -545,6 +545,41 @@ revert_in 'git checkout -- src/app.py  # undo the earlier sed -i experiment' "$S
   | CLAUDE_PROJECT_DIR="$PROJ" bash "$REVERT_HOOK"
 assert_contains "$(tail -n 1 "$HISTORY")" '"revert_scope":"paths"' "the revert segment itself is never read as the edit"
 
+# ─── 3i. only the main thread's reverts are the owner's signal ───────
+# Field data 2026-09-22 → 10-22: 172 of 220 implicit-revert records were issued
+# by Workflow subagents inside their own runs — mutation probes, worktree resets,
+# cleanup — and every reader of history.jsonl counted them as the owner
+# rejecting a change. Claude Code puts `agent_id` in the hook input exactly when
+# the call runs inside a subagent; `agent_type` alone is the main thread of a
+# `--agent` session. A dispatched worker carries CLADE_WORKER_TASK_ID instead.
+section "revert-detector — a subagent's or worker's revert is not a correction"
+revert_in_as() {   # <command> <session> <extra-json-object>
+  jq -n --arg c "$1" --arg s "$2" --argjson x "$3" \
+    '{tool_name:"Bash", tool_input:{command:$c}, session_id:$s} + $x'
+}
+# reverts_recorded <hook> <extra-json> [env-assignment] — how many records one
+# revert of src/app.py adds. Shared with the mutation suite (§8).
+reverts_recorded() {
+  local hook="$1" extra="$2" before after
+  before=$(hist_lines)
+  revert_in_as 'git checkout -- src/app.py' "$SID" "$extra" \
+    | env ${3:+"$3"} CLAUDE_PROJECT_DIR="$PROJ" bash "$hook"
+  after=$(hist_lines)
+  echo $(( after - before ))
+}
+assert_eq "$(reverts_recorded "$REVERT_HOOK" '{"agent_id":"a1b2c3d4e5f60718"}')" "0" \
+  "a revert inside a subagent (agent_id set) writes no record"
+assert_eq "$(reverts_recorded "$REVERT_HOOK" '{}' CLADE_WORKER_TASK_ID=batch-20261023-1)" "0" \
+  "a revert inside a dispatched worker writes no record"
+# Controls: the same revert on the main thread, a main thread started with
+# --agent (agent_type, no agent_id), and a null agent_id are all recorded.
+assert_eq "$(reverts_recorded "$REVERT_HOOK" '{}')" "1" \
+  "control: the same revert on the main thread is recorded"
+assert_eq "$(reverts_recorded "$REVERT_HOOK" '{"agent_type":"code-reviewer"}')" "1" \
+  "control: agent_type without agent_id is the main thread, still recorded"
+assert_eq "$(reverts_recorded "$REVERT_HOOK" '{"agent_id":null}')" "1" \
+  "control: a null agent_id is the main thread, still recorded"
+
 # ─── 4. explicit correction surfaces the concrete pair (gate: open) ──
 section "correction-detector — concrete signal on explicit correction"
 OUT=$(correct_in "no, that's wrong — revert it, use the config value instead" "$SID" \
@@ -642,6 +677,45 @@ else fail "worker brief persists no history record" "history grew $BEFORE_W → 
 assert_eq "$(jq -r '.hookSpecificOutput.additionalContext // ""' <<< "$OUTW" 2>/dev/null)" "" \
   "worker brief injects no rule-extraction context"
 
+# ─── 5e. recall: rejections the keyword list missed; precision: tags ──
+# Hand-labelled set, 364 owner messages typed after Workflow runs: the hook as
+# of 2026-10-22 fired on 32 and caught 13 of the 37 rejections (precision 41%,
+# recall 35%). 9 of its 19 false fires were a 对不对 tag question ("…, right?"),
+# which carries 不对 inside it; the strip alone gives precision 57%. The added
+# phrasings are measured only in-sample (see the hook's comment). The prompts
+# below are synthetic, one per shape — the owner's own messages stay out of this
+# public repository.
+section "correction-detector — missed rejection phrasings, and tag questions"
+# fires_with <hook> <prompt> — like fires(), against any copy of the hook.
+fires_with() {
+  correct_in "$2" "sess-recall" | CLAUDE_PROJECT_DIR="$PROJ2" bash "$1" 2>/dev/null \
+    | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null
+}
+assert_contains "$(fires '这个结果不太对，再查一下')" "keyword: '不太对'" "不太对 (not quite right) fires"
+assert_contains "$(fires '你理解错我的意思')" "keyword: '理解错'" "理解错 (misunderstood) fires"
+assert_contains "$(fires '你这里没懂我要什么')" "keyword: '没懂'" "没懂 (did not get it) fires"
+assert_contains "$(fires '这两版我都不满意')" "keyword: '不满意'" "不满意 (not satisfied) fires"
+assert_contains "$(fires '手机上还是打不开')" "keyword: '打不开'" "打不开 (will not open) fires"
+assert_contains "$(fires '这几个任务做多了')" "keyword: '做多了'" "做多了 (did too much) fires"
+assert_contains "$(fires '改完变成四不像了')" "keyword: '四不像'" "四不像 (neither one thing nor the other) fires"
+assert_contains "$(fires '这一页说得太多了')" "keyword: '说得太多'" "说得太多 (says too much) fires"
+_hist_tag="$(wc -l < "$HISTORY" 2>/dev/null || echo 0)"
+assert_eq "$(fires '所以我们已经有单独的仓库了，对不对？')" "" "a 对不对 tag question is not a correction"
+assert_eq "$(fires '你算一下这几个数对不对得上')" "" "对不对 inside a question is not a correction"
+assert_eq "$(wc -l < "$HISTORY" 2>/dev/null || echo 0)" "$_hist_tag" "neither tag question leaves a history record"
+# Controls: the strip ignores word boundaries, so it must not eat a real 不对
+# that sits beside another 对 — after a word ending in 对, after another 不对,
+# or after a tag in unpunctuated dictation — nor one the tag merely follows.
+assert_contains "$(fires '不对不对，换一个方案')" "keyword: '不对'" "不对不对 (no, no) is still a rejection"
+assert_contains "$(fires '不对不对不对')" "keyword: '不对'" "a longer run of 不对 is still a rejection"
+assert_contains "$(fires '不对，我们只要第二版，对不对？')" "keyword: '不对'" "a rejection followed by a tag still fires"
+assert_contains "$(fires '这个结论绝对不对')" "keyword: '不对'" "绝对不对 (absolutely wrong) is still a rejection"
+assert_contains "$(fires '两份表的比对不对，数据错位了')" "keyword: '不对'" "比对不对 (the comparison is wrong) is still a rejection"
+assert_contains "$(fires '这是同一个库对不对不对是两个库')" "keyword: '不对'" "a tag running into 不对 still fires"
+assert_contains "$(fires '是这样对不对不对不对换一个')" "keyword: '不对'" "a tag running into 不对不对 still fires"
+# ...while a tag after a word ending in 对 is still only a tag.
+assert_eq "$(fires '这次的比对对不对？')" "" "a tag after a word ending in 对 is not a correction"
+
 # ─── 6. session-key fallback when session_id absent ──────────────────
 section "lib — \$PPID fallback when session_id missing"
 echo '{"tool_input":{"file_path":"/tmp/x/nokey.py"}}' | bash "$SHADOW_HOOK"
@@ -717,6 +791,75 @@ AFTER_N="$(wc -l < "$HISTORY" 2>/dev/null || echo 0)"
 if [[ "$BEFORE_N" == "$AFTER_N" ]]; then
   pass "non-correction prompt persists nothing"
 else fail "non-correction prompt persists nothing" "history grew $BEFORE_N → $AFTER_N"; fi
+
+# ─── 8. mutations: each guard of §3i and §5e, removed, turns its case red ──
+# A case that cannot fail is not evidence. Each mutant below is a copy of the
+# hook with ONE guard deleted, placed beside the real lib/ and scripts/ so it
+# still runs; the case that pins that guard is re-run against it and must see
+# the old behaviour. The control rewords a comment and must stay correct. An
+# anchor that no longer occurs exactly once is a failure, not a skip.
+section "mutations — each new guard, removed, turns its case red"
+MUT_ROOT="$TMP_ROOT/mut"
+mkdir -p "$MUT_ROOT/configs/hooks"
+ln -s "$REPO_ROOT/configs/hooks/lib" "$MUT_ROOT/configs/hooks/lib"
+ln -s "$REPO_ROOT/configs/scripts" "$MUT_ROOT/configs/scripts"
+# mutant <src> <name> <anchor> <replacement> — literal text, not a regex.
+mutant() {
+  local out="$MUT_ROOT/configs/hooks/$2"
+  MUT_A="$3" MUT_R="$4" awk '
+    { buf = buf (NR > 1 ? "\n" : "") $0 }
+    END {
+      a = ENVIRON["MUT_A"]; r = ENVIRON["MUT_R"]; s = buf; out = ""; n = 0
+      while ((i = index(s, a)) > 0) { out = out substr(s, 1, i - 1) r; s = substr(s, i + length(a)); n++ }
+      if (n != 1) exit 3
+      printf "%s\n", out s
+    }' "$1" > "$out" || return 1
+  printf '%s' "$out"
+}
+anchor_lost() { fail "mutation '$1': its anchor no longer matches the hook exactly once"; }
+
+_m="the agent_id guard"
+if M=$(mutant "$REVERT_HOOK" m-agent.sh 'if [[ -n "$AGENT_ID" ]]; then' 'if false; then'); then
+  assert_eq "$(reverts_recorded "$M" '{"agent_id":"a1b2c3d4e5f60718"}')" "1" "mutant without $_m: a subagent revert is recorded again"
+else anchor_lost "$_m"; fi
+
+_m="the worker guard"
+if M=$(mutant "$REVERT_HOOK" m-worker.sh 'if [[ -n "${CLADE_WORKER_TASK_ID:-}" ]]; then' 'if false; then'); then
+  assert_eq "$(reverts_recorded "$M" '{}' CLADE_WORKER_TASK_ID=batch-20261023-1)" "1" "mutant without $_m: a worker revert is recorded again"
+else anchor_lost "$_m"; fi
+
+_m="the added phrasings"
+if M=$(mutant "$CORRECTION_HOOK" m-phrasings.sh '|不太对|理解错|没懂|不满意|打不开|做多了|四不像|说的太多|说得太多'\''' "'"); then
+  assert_eq "$(fires_with "$M" '这个结果不太对，再查一下')" "" "mutant without $_m: 不太对 no longer fires"
+else anchor_lost "$_m"; fi
+
+_m="the 对不对 strip"
+if M=$(mutant "$CORRECTION_HOOK" m-tag.sh 'SCAN="${SCAN//对不对/}"' ':'); then
+  assert_contains "$(fires_with "$M" '所以我们已经有单独的仓库了，对不对？')" "keyword: '不对'" "mutant without $_m: the tag question fires again"
+else anchor_lost "$_m"; fi
+
+_m="the 不对不对 split"
+if M=$(mutant "$CORRECTION_HOOK" m-double.sh 'while [[ "$SCAN" == *不对不对* ]]; do SCAN="${SCAN//不对不对/不对 不对}"; done' ':'); then
+  assert_eq "$(fires_with "$M" '不对不对，换一个方案')" "" "mutant without $_m: 不对不对 is swallowed by the strip"
+else anchor_lost "$_m"; fi
+
+# One pass leaves a pair when a tag runs into 不对不对: the shortest input that
+# tells the loop from a single substitution (found by enumerating every string
+# of up to 10 characters over 不/对/绝/X).
+_m="the split loop"
+if M=$(mutant "$CORRECTION_HOOK" m-once.sh 'while [[ "$SCAN" == *不对不对* ]]; do SCAN="${SCAN//不对不对/不对 不对}"; done' 'SCAN="${SCAN//不对不对/不对 不对}"'); then
+  assert_eq "$(fires_with "$M" '是这样对不对不对不对换一个')" "" "mutant splitting once instead of $_m: a tag running into 不对不对 is swallowed"
+else anchor_lost "$_m"; fi
+
+_m="the 对-word split"
+if M=$(mutant "$CORRECTION_HOOK" m-word.sh 'for _w in 绝对 比对 核对 校对 相对 针对 配对; do SCAN="${SCAN//${_w}不对/${_w} 不对}"; done' ':'); then
+  assert_eq "$(fires_with "$M" '这个结论绝对不对')" "" "mutant without $_m: 绝对不对 is swallowed by the strip"
+else anchor_lost "$_m"; fi
+
+_m="a reworded comment (no-op control)"
+if M=$(mutant "$CORRECTION_HOOK" m-noop.sh 'A tag question asks; it does not reject' 'A tag question asks, it does not reject'); then
+  assert_eq "$(fires_with "$M" '所以我们已经有单独的仓库了，对不对？')" "" "control mutant ($_m): the tag question stays silent"
+else anchor_lost "$_m"; fi
 
 # ─── Summary ─────────────────────────────────────────────────────────
 echo ""

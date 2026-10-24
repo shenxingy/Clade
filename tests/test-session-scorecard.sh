@@ -98,6 +98,46 @@ run_scorecard "$D"
 assert_eq "$(last_field "$D" .corrections)" "1" "explicit counted separately"
 assert_eq "$(last_field "$D" .implicit_corrections)" "1" "implicit-revert counted as implicit"
 
+# ─── 4b. a mutation probe is not a correction ────────────────────────
+# revert-detector.sh records the mutation test the global CLAUDE.md requires as
+# `revert_scope:"probe"` and strips its evidence, because it is not a rejection.
+# This counter was the one reader still charging it −0.05: 11 of the 220
+# implicit-revert records of 2026-09-22 → 10-22 on the author's machine.
+section "counting — a probe is not an implicit correction"
+rec_probe() { printf '{"timestamp":"%s","prompt":"x","project":"/p","type":"implicit-revert","revert_scope":"%s"}\n' "$1" "$2"; }
+# probe_case <scorecard script> — one probe + one real revert; the implicit
+# count lands in PROBE_IMPLICIT. Called directly, never in $(…): new_case must
+# bump CASE_N in THIS shell, or the next case reuses this sandbox (see new_case).
+probe_case() {
+  new_case
+  { rec_probe "$NOW" probe; rec_probe "$NOW" paths; } > "$D/home/.claude/corrections/history.jsonl"
+  ( HOME="$D/home" CLAUDE_PROJECT_DIR="$D/proj" bash "$1" ) >/dev/null 2>&1
+  PROBE_IMPLICIT=$(last_field "$D" .implicit_corrections)
+}
+probe_case "$SCORECARD"
+assert_eq "$PROBE_IMPLICIT" "1" "a probe record is not counted; the real revert beside it is"
+
+# Mutation: the same case against a copy without the filter must count both.
+# An anchor that no longer occurs exactly once is a failure, not a skip.
+SC_MUT="$TMP_ROOT/scripts-mut/session-scorecard.sh"
+mkdir -p "$(dirname "$SC_MUT")"
+ln -s "$REPO_ROOT/configs/hooks" "$TMP_ROOT/hooks"   # the script sources ../hooks/lib
+if MUT_A='    | select((.revert_scope // "") != "probe")
+' awk '
+    { buf = buf $0 "\n" }
+    END {
+      a = ENVIRON["MUT_A"]; s = buf; out = ""; n = 0
+      while ((i = index(s, a)) > 0) { out = out substr(s, 1, i - 1); s = substr(s, i + length(a)); n++ }
+      if (n != 1) exit 3
+      printf "%s", out s
+    }' "$SCORECARD" > "$SC_MUT"; then
+  probe_case "$SC_MUT"
+  assert_eq "$PROBE_IMPLICIT" "2" "mutant without the probe filter counts the probe again"
+else
+  TESTS_RUN=$((TESTS_RUN + 1))
+  fail "mutation 'the probe filter': its anchor no longer matches the script exactly once"
+fi
+
 # ─── 5. records outside the window are excluded ──────────────────────
 section "window — old records excluded"
 new_case
