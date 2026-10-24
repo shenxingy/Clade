@@ -199,17 +199,14 @@ When the free path genuinely cannot answer something, say so in those words.
   Never loop-retry one failing approach; never end a turn on "should I proceed?"
 
 ## Adaptive Delegation
-- Decide before broad repository reads whether the lead should solve the task or use one direct subagent.
+- Before broad repository reads, decide whether the lead solves the task or one direct subagent does.
 - Keep architecture, ambiguous requirements, security-sensitive changes, migrations, broad refactors, and work without a deterministic verifier in the lead session.
 - Use `Explore` for bounded read-heavy discovery and `bounded-implementer` for one low-risk change only when file ownership and a deterministic verifier are explicit.
-- **Hand-rolled fan-out**: at most three agents for genuinely independent
-  read-only work. Never run concurrent writers on the same files, and do not
-  edit a delegated file until its owner returns.
-- **A planned Workflow run is exempt from that three.** Its size is governed by
-  `workflowSizeGuideline` in settings, and the cap exists to stop an unplanned
-  spray of Agent calls, not to stop a script that assigns disjoint file
-  ownership. Read as a blanket rule it silently fought every workflow — it sat
-  in context while a 166-agent review ran on 2026-09-02.
+- **Hand-rolled fan-out**: at most three agents, for independent read-only
+  work. Never run concurrent writers on the same files or edit a delegated
+  file before its owner returns. A planned Workflow run is exempt
+  (`workflowSizeGuideline` sizes it): the three stops an unplanned spray of
+  Agent calls, and as a blanket rule it fought a 166-agent review.
 - **Prefer `pipeline()` to `parallel()` whenever the work has stages, and cut
   more units than there are slots.** Measured across 89 parallel runs (1777
   agents, 49.9 h): 45% of all makespan was spent with exactly one agent still
@@ -218,15 +215,34 @@ When the free path genuinely cannot answer something, say so in those words.
   spread, while a 10-agent barrier with a 2.0x spread wasted 19%. Check any run
   with `workflow-scorecard.py`; a tail over 15% means the shape was wrong.
 - **A stage that fans out per FINDING needs a cap.** Its width is chosen by the
-  previous stage, not by you: two audits turned 17 units into 100 and 107 agents
-  because the verify stage spawned one per reported finding. Rank and slice
-  before fanning out, and log what the cap dropped.
-- Subagents must not delegate recursively — enforced, not merely asked:
-  `install.sh` sets `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1`. A Workflow script
-  orchestrates from the lead, so its agents never need to nest and the cap costs
-  it nothing. Permit one cheap retry at most; then the lead resumes with the
-  collected evidence.
-- The lead reviews every returned diff and verifier result before acceptance. Cross-vendor delegation remains explicit-only.
+  previous stage, not by you: two audits turned 17 units into 100 and
+  107 agents. Rank and slice before fanning out, and log what the cap dropped.
+- **Workflow scripts** (316 runs, one account, 2026-09-22 → 10-22):
+  - A one-agent stage is on the critical path, and reshaping recovers little
+    even though the scorecard counts it as tail. Shorten it: a tight brief, its
+    own `effort`, a return once the next stage's input is frozen (waits were
+    38% of its time). Per-worktree units go in
+    `pipeline(UNITS, implVerify, landBehindMutex)`, not a for-await loop.
+  - Keep each blocking Bash wait ≤ 270 s or detach the job: the subagent cache
+    lives 5 min, and 41% of cache writes followed a longer gap.
+  - Count nulls per stage and return `{incomplete, failed:[labels], resume}`:
+    64 of 90 usage-limit deaths hid in 16 "completed" runs. At 7-day quota
+    ≥ 90%, or 5-hour use plus projected burn ≥ 100%, defer or switch account.
+  - Write full results to a file and return ≤ 6k chars: the completion notice
+    cuts at 8,000, and 259 of 281 results overflowed.
+  - Fix inside the script (verify → fix → re-check, ≤ 2 rounds): 38 relaunches
+    went through the lead.
+  - While a run is live, ask in plain text and end the turn: AskUserQuestion
+    left 7 finished runs unread, 36.5 h in all.
+  - Open a ≥ 5-agent run from a long brief with 3 lines (objective, acceptance
+    criteria, premises): 7 of 13 rejected runs misread one. Verify UI on a
+    device matrix (WebKit iPhone, the user's screens): the other 6 passed
+    verify and broke on a device.
+- Subagents must not delegate recursively; `install.sh` sets
+  `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1`, harmless to Workflow, which
+  orchestrates from the lead. A direct subagent gets one cheap retry at most;
+  then the lead resumes with the collected evidence.
+- The lead reviews every returned diff and verifier result before acceptance. Cross-vendor delegation is explicit-only.
 
 ## Context Management
 - Context window ~80% full → run `/handoff` to save state, then start a new session with `/pickup`
