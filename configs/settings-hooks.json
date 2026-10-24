@@ -124,6 +124,19 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "id": "ask-while-live",
+            "description": "Refuse AskUserQuestion while a background task this session launched (Workflow, background Bash, async Agent, Monitor) is still running. The question parks the session until a human answers, so the task's completion notice cannot wake it: on 59 lead sessions that ran a Workflow, 4 of 26 questions were open when one finished and 7 completions sat unread for 36.5 h. The model is told to ask in plain text and end its turn instead. Main thread only (exits on agent_id); reads the transcript, never writes.",
+            "type": "command",
+            "command": "~/.claude/hooks/ask-while-live.sh",
+            "timeout": 5,
+            "statusMessage": "Checking for running background tasks..."
+          }
+        ]
       }
     ],
     "PostToolUse": [

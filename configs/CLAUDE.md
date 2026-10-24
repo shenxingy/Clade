@@ -243,7 +243,8 @@ When the free path genuinely cannot answer something, say so in those words.
   - Fix inside the script (verify → fix → re-check, ≤ 2 rounds): 38 relaunches
     went through the lead.
   - While a run is live, ask in plain text and end the turn: AskUserQuestion
-    left 7 finished runs unread, 36.5 h in all.
+    left 7 finished runs unread, 36.5 h in all. `ask-while-live.sh` refuses
+    the call while any background task is live.
   - Open a ≥ 5-agent run from a long brief with 3 lines (objective, acceptance
     criteria, premises): 7 of 13 rejected runs misread one. Verify UI on a
     device matrix (WebKit iPhone, the user's screens): the other 6 passed

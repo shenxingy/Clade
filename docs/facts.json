@@ -21,7 +21,7 @@
     },
     {
       "name": "hooks",
-      "value": 33,
+      "value": 34,
       "derive": {
         "type": "count_glob",
         "pattern": "configs/hooks/*.sh"
@@ -34,7 +34,9 @@
         "hooks/\\s+# (\\d+) \u4e2a\u4e8b\u4ef6 hooks",
         "all (\\d+) hooks pass",
         "hook \u53c2\u8003\uff08(\\d+) \u4e2a hooks\uff09",
-        "^- \\*\\*(\\d+) \u4e2a hooks\\*\\*"
+        "^- \\*\\*(\\d+) \u4e2a hooks\\*\\*",
+        "(\\d+) hooks ship",
+        "`ls configs/hooks/`\uff08\u5171 (\\d+) \u4e2a\uff09"
       ]
     },
     {
