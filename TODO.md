@@ -1815,6 +1815,83 @@ exposed two hooks that have delivered nothing (the command is now in
   Fix: move the rm and pkill statement detection onto the same quote- and
   heredoc-aware walk, in both guardians. Measure by replaying the same 20,111
   commands; the extraction recipe is in this item's commit.
+- [x] 🔴 **A here-string hid a force push to main from both guardians.** DONE
+  2026-10-23. `read -r b <<<"$(date)"; git push --force origin main` was
+  allowed while the bare push was denied: the walk excluded `<<<` at its first
+  `<`, so the second `<` opened a heredoc that took the next quote or word.
+  The first fix walked quoted `$( … )` and `$'…'` too, and a review found it
+  had opened four new holes (arithmetic `<<` read as a heredoc, a `cd` inside
+  a quoted substitution, `$$'`, quotes inside backticks) beside nine older
+  ones (an unquoted heredoc body runs `$( )`; delimiters like `END-OF`;
+  `git pu""sh`; `SHELL=/bin/bash git push`, `sudo -u git`, `su -c`; quoting
+  inside `bash -c`/`eval`/`ssh` strings; `main>/dev/null`; `--mirror`,
+  `-c alias.p='push --force'`, `-c remote.*.push`, `heads/main`, globs).
+  Every one is closed in the awk and the Codex mirror: the walk now reads
+  arithmetic, heredoc delimiters as words, unquoted heredoc bodies,
+  backticks, `$$`, `case` patterns, glued redirections and `$'…'` escapes
+  as the shell does, scopes a `cd` to the subshell, pipeline or `||` it is
+  in, walks every string another shell parses again (block-only), and reads
+  a ref computed by `$( )` as the session branch. Verifying it found
+  three more, closed the same way: `$"main"`, an alias chain given with `-c`
+  (`git -c alias.q=p -c alias.p='push --force' q origin main`), and an alias
+  set by `GIT_CONFIG_KEY_n`/`VALUE_n` or `GIT_CONFIG_PARAMETERS` in front of
+  git. 120 cases in `tests/test-pre-tool-guardian.sh`, each asserted of both
+  guardians: 84 fail on the old hooks, and 8 of the 36 that pass there fail
+  on the first fix. 81 mutations per guardian in
+  `test_self_tests_can_fire.py`, each red.
+  Replayed all 259,057 unique Bash commands in every Claude Code transcript
+  on the author's machine: 2 verdicts changed, both on commands that probe
+  this guard (one now blocked, one now allowed), 0 disagreements between the
+  guardians, 0 crashes, the same under mawk, busybox awk and BWK awk
+  20231127. A grammar fuzz of 14,041 generated commands (5,849 of them push
+  main under some shell), run under bash, zsh and dash with git, ssh, sudo
+  and su stubbed, found 2 misses, both readings only dash gives (below). A
+  second fuzz, 10,468 commands wrapping a push in shell noise (7,381 push
+  main under bash or zsh), found 0 that the old hooks blocked and the new
+  ones let run, 2,674 the other way round, and 1 miss in both, a zsh reading
+  (below). The push awk is a single-quoted literal: read from a heredoc it
+  would cost about 10 ms per call. Against the hook before the fix
+  (whole-hook medians, 300 paired runs), a Bash call costs 3.5 to 3.6 ms
+  less, except one holding a `$'…'` string, which the walk now reads: 1.0 ms
+  more.
+- [ ] 🟡 **What the force-push walk still cannot see.** Measured on the fixed
+  hooks, both guardians alike.
+  - A push whose command or ref comes from a variable, a function or an
+    alias defined in the same command: `p=push; git $p -f origin main`,
+    `g() { git "$@"; }; g push -f origin main`, and in zsh an alias defined
+    on an earlier line. Also a git alias or `GIT_CONFIG_*` setting made
+    outside the command, or in a file `-c include.path=` names.
+  - Wrappers that run a string other than `bash -c`, `eval`, `ssh` and
+    `su -c`: `watch`, `script -c`, `flock -c`, `env -S`.
+  - What a program prints into a shell (`… | bash`, and in zsh every
+    `cmd | sh <<EOF`, which feeds both) is matched as text only.
+  - dash has no `((`, `$[ ]` or `$'…'`: it reads `((` as two subshells,
+    `$[1<<2]` as a word and a heredoc, and `$'…'` as `$` and a plain quoted
+    string. The walk reads all three as bash and zsh do, which matters only
+    for a string dash runs (`sh -c '…'` where sh is dash). Every miss the
+    grammar fuzz found on the final code was one of these dash readings.
+  - Brace expansion builds words the walk takes literally. `{git,push}
+    --force origin main`, `git {push,} -f origin main` and `git push {-f,}
+    origin main` are allowed, and `git push -f origin {main,}` is rewritten
+    to a `--force-with-lease` push to main, under bash and zsh. None of the
+    1,163 `git … push` commands in the transcript replay uses a brace. Fix:
+    walk the brace-expanded reading too, block-only, as for the `$$` readings.
+  - A `cd` is taken to leave main whenever it may have run: `cd src && git
+    push --force` from a subdirectory of the same checkout, `cd /nonexistent;
+    git push --force`, `false && cd /tmp; git push --force` and `if false;
+    then cd /tmp; fi; git push --force` are rewritten to
+    `--force-with-lease`, which still rewrites main. So is a ref that
+    `xargs -I{}` fills in (`echo main | xargs -I{} git push -f origin {}`).
+    Fix: resolve a literal cd target against the session cwd and read its
+    branch, and count a cd only when it surely ran.
+  - zsh reads an unquoted `(` inside a word as a glob group that runs past
+    blanks, newlines and `#` to the next `;` or `&`: `echo \$(`, then
+    `echo # & git push -f` on the next line, runs the push in zsh (bash
+    rejects it), while the walk reads the `#` as a comment.
+  - The subagent-wait awk still reads `$'…'` as plain single quotes and an
+    unquoted arithmetic `<<` as a heredoc, and leaves a quoted `$( … )`
+    unread, so `echo $'it\'s'; sleep 600` loses its warning. Warn-only, so a
+    missed warning, not a missed block.
 - [x] 🟡 **The cron radar cannot verify anything it builds** — DONE
   2026-10-20, options (b) and (c) together, in the wrapper rather than the
   agent's permissions:
