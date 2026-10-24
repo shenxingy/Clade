@@ -1985,7 +1985,7 @@ tiering are real but unmeasured. Each needs a paired A/B before rollout.
   run a smoke test that a custom agentType with a schema still gets
   StructuredOutput, plus a small quality A/B. Writers keep CLAUDE.md, because the
   committer and push rules must reach them.
-- [ ] 🟡 **Adopt `wf-reader` only after its two checks pass.** After
+- [ ] 🟡 **Adopt `wf-reader` only after its two checks pass.** Checks (1) and (2) PASSED 2026-10-23 (16/16 StructuredOutput, no CLAUDE.md or skill listing in turn-1 context; 15/15 vs the default type's 15/15 with turn-1 context 95.8k → 5.4k tokens — `docs/research/2026-10-23-workflow-effort-and-reader-ab.md`). Still open: the write-deny control below. After
   `./install.sh`: (1) a smoke test that `agent({agentType: "wf-reader", schema})`
   returns StructuredOutput (the 2.1.283 binary appends StructuredOutput to an
   explicit `tools` list in schema mode, and refuses the spawn if a deny covers
@@ -2000,7 +2000,7 @@ tiering are real but unmeasured. Each needs a paired A/B before rollout.
   check the prefix syntax live), or give `wf-reader` a frontmatter PreToolUse
   Bash hook; and the smoke test must show a write command (`touch`, `git
   commit`, `gh pr comment`) is denied.
-- [ ] 🟡 **Every `agent()` without `effort` runs at xhigh.** The owner's
+- [x] 🟡 **Every `agent()` without `effort` runs at xhigh.** — DONE 2026-10-23 — paired A/B on 15 known-answer claims (Opus 5.5): low and medium matched xhigh's accuracy at 29–52% of its output tokens; only xhigh reproduced an edge case. Stage table in `configs/CLAUDE.md` § Adaptive Delegation; data in `docs/research/2026-10-23-workflow-effort-and-reader-ab.md`. Implement/judge/synth stages were not measured and keep the default. Was: The owner's
   `effortLevel` is inherited. 0 agents ran at `low`; mechanical stages ran at
   xhigh 302 of 314 times. The observational output-only floor for a per-stage
   table is $570–835 (2.8–4.1%). The ceiling is unmeasured, and no run ever scored

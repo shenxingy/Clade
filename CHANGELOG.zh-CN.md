@@ -9,6 +9,8 @@ semantic versioning。
 
 ### 变更
 
+- Workflow 指引现在按阶段设置 `effort`：收集、清点、分类用 `low`，核查单条结论用 `medium`，实现、对抗性评审、裁决和综合保持默认。2026-10-22 的审计发现所有 `agent()` 都继承 xhigh，但缺少同题对比。在本仓库固定快照上用 16 道题（8 道埋错，1 道因歧义剔除）做成对 A/B：xhigh、medium、low 都是 15/15，输出 token 分别只需 xhigh 的 52%（medium）和 29%（low）；只有 xhigh 复现了一个边界反例，所以对抗性评审保持默认。同一实验在 Opus 5.5、medium 下测试了新的 `wf-reader`：同样 15/15，首轮上下文从 95.8k 降到 5.4k token，cache 读取减少 92%。它仍未被采用：在写操作拒绝机制被实际验证之前，只读只是一条指令。数据和方法见 `docs/research/2026-10-23-workflow-effort-and-reader-ab.md`。
+
 - `workflow-scorecard.py` 不再把每次 API 调用重复计约 1.9 次，也不再把单 agent 的构建阶段误判为拖尾。用量改按 `message.id` 去重：输入计一次、输出取最大值、轮次按不同 id 计；输入、缓存读、缓存写、输出分开报告，并按模型给出 `cost_usd`（未知模型给 null，不猜）。在 2026-10-22 审计的 316 次运行上，API 调用从 414,461 更正为 218,629。单 agent 尾巴拆成 `serial`（单 agent 阶段，pipeline() 缩短不了）、`outlived`（真拖尾）和 `idle`：在 259 次并行运行的 368 小时里分别占 35.5% / 17.3% / 1.6%；旧判定称为拖尾的 184 次中有 86 次不再是。同时读取每个 agent 的标签、阶段、结果、模型和 effort。`util` 更名为 `util_vs_peak`。主模式新增 `self_test_sweep()`（六组固定数据），`test_self_tests_can_fire.py` 为它新增 34 个变异。
 - `pre-tool-guardian.sh` 现在会在子代理的前台等待可能超过其 5 分钟提示缓存时提醒（只提醒、从不拦截）。审计中 1,459 次缓存失效发生在超过 300 秒的间隔之后，占全部缓存写入的 41%，其中 82.5% 的成本跟在 Bash 的 sleep/轮询/等待之后。仅在钩子输入带 `agent_id`、子代理没有 1 小时缓存、不是 `run_in_background`、有效超时超过 270 秒时才检查；会解析 heredoc、后台任务、嵌套 `bash -c`/`ssh`/`eval`，识别 until/while 轮询、`tail -f`、`watch`、`gh pr checks --watch` 等。在作者机器 224,870 次子代理 Bash 调用中回放 16,043 次：对 1,655 次超过 270 秒的前台调用提醒了 1,313 次，0 次崩溃，0 次改变拒绝/改写结论。87 个守卫每个删掉都会让测试变红。
 - 新增精简的工作流只读 agent `wf-reader`（`configs/agents/wf-reader.md`），已发布但尚未采用。审计显示子代理首轮上下文中位数 72.6k token，其中约 54k 是每次重读的 CLAUDE.md 和 skill 清单；这个 agent 两者都不加载（没有 `Skill` 工具，并设 `omitClaudeMd: true`）。只读仅靠指令约束（Bash 不受限），所以在 StructuredOutput 冒烟测试、Bash 限制检查和质量 A/B 通过前，不会有工作流使用它。agent 数量现为 40。
