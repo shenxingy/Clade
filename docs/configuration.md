@@ -154,11 +154,32 @@ orchestrates from the lead rather than by nesting.
 
 ```bash
 python3 configs/scripts/workflow-scorecard.py --since 7
+python3 configs/scripts/workflow-scorecard.py --since 0 --ledger   # keep one row per finished run
+python3 configs/scripts/workflow-scorecard.py --ledger-summary     # the figures, from the ledger
+python3 configs/scripts/workflow-scorecard.py --outcome            # owner messages after each run, to label
 ```
 
-A single-agent tail over 15% means the shape was wrong: a barrier where a
-pipeline would do, or units too coarse. Measured across 89 runs on the author's
-account, 45% of all multi-agent wall clock was spent waiting on one agent.
+An `outlived` share of 15% or more means the shape was wrong: a barrier where a
+pipeline would do, or units too coarse. A high `serial` share is a one-agent
+stage instead, which only a shorter stage fixes. Over 285 parallel runs on the
+author's two profiles (4,038 agents, 394 h, started 2026-09-22 → 10-24 UTC),
+16.9% of makespan was an agent outliving its siblings and 35.5% was one-agent
+stages: `--ledger-summary --recorded-before 2026-10-24T03:34Z` over the
+author's ledger.
+
+Claude Code deletes transcripts after 30 days, and a figure derived from them
+goes too. `--ledger [PATH]` appends one row per finished run to
+`$CLAUDE_CONFIG_DIR/workflow-scorecard/runs.jsonl` (`~/.claude/…` when the
+variable is unset or empty), and the scan reads that config dir's own
+`projects/` too. It is append-only, counted per API call, and writes nothing
+for a run still in flight. A row records one end of a run: a run resumed under
+its run id that ends again gets a second row, and a reader takes the last one
+per run id. Run it under one profile: every profile's runs land in every
+profile's ledger. `--ledger-summary [PATH]` reads that back into the figures
+above; `--recorded-before WHEN` keeps only the rows a statement was made from.
+`--outcome` prints, per end of each finished run, what the owner typed in its
+lead session in the 6 hours after it, as JSONL with `label: null` for weekly
+labelling by hand.
 
 ## Add a correction rule manually
 

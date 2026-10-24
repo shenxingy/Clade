@@ -208,20 +208,20 @@ When the free path genuinely cannot answer something, say so in those words.
   (`workflowSizeGuideline` sizes it): the three stops an unplanned spray of
   Agent calls, and as a blanket rule it fought a 166-agent review.
 - **Prefer `pipeline()` to `parallel()` whenever the work has stages, and cut
-  more units than there are slots.** Measured across 89 parallel runs (1777
-  agents, 49.9 h): 45% of all makespan was spent with exactly one agent still
-  running. Shape decides that, not agent count — a 110-agent pipeline finished
-  with a 0% single-agent tail at 80% utilisation despite a 6.9x straggler
-  spread, while a 10-agent barrier with a 2.0x spread wasted 19%. Check any run
-  with `workflow-scorecard.py`; a tail over 15% means the shape was wrong.
+  more units than there are slots.** Over 285 parallel runs (4,038 agents,
+  394 h, 2026-09-22 → 10-24, the author's two profiles; `--ledger-summary
+  --recorded-before 2026-10-24T03:34Z` on their ledger), 17% of makespan was
+  one agent outliving its siblings: idle slots a barrier leaves and a pipeline
+  refills. `workflow-scorecard.py` calls it `outlived`; 15% or more means the
+  shape was wrong.
 - **A stage that fans out per FINDING needs a cap.** Its width is chosen by the
   previous stage, not by you: two audits turned 17 units into 100 and
   107 agents. Rank and slice before fanning out, and log what the cap dropped.
-- **Workflow scripts** (316 runs, one account, 2026-09-22 → 10-22):
-  - A one-agent stage is on the critical path, and reshaping recovers little
-    even though the scorecard counts it as tail. Shorten it: a tight brief, its
-    own `effort`, a return once the next stage's input is frozen (waits were
-    38% of its time). Per-worktree units go in
+- **Workflow scripts** (316 runs, two profiles, 2026-09-22 → 10-22):
+  - A one-agent stage (the scorecard's `serial`) is on the critical path, and
+    reshaping recovers little. Shorten it: a tight brief, its own `effort`, a
+    return once the next stage's input is frozen (waits were 38% of its time).
+    Per-worktree units go in
     `pipeline(UNITS, implVerify, landBehindMutex)`, not a for-await loop.
   - Set `effort` per stage: `low` to collect, inventory or classify, `medium`
     to verify one claim, the default to implement, review adversarially, judge

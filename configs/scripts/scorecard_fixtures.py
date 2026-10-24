@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""scorecard_fixtures.py — synthetic Workflow runs for workflow-scorecard.py's sweep self-test.
+"""scorecard_fixtures.py — synthetic Workflow runs for workflow-scorecard.py's self-tests.
 
-Data only. Every check on these runs lives in ``self_test_sweep()`` in
-workflow-scorecard.py, beside the code it checks, and every mutation that proves
-those checks can fire targets that file. This module holds no guard of its own;
-it was split out on 2026-10-23 because the scorecard had reached its 1500-line
-cap.
+Data only. Every check on these runs lives beside the code it checks: the sweep's
+in ``self_test_sweep()`` in workflow-scorecard.py, the ledger's and the outcome
+windows' in scorecard_ledger.py. Every mutation that proves those checks can fire
+targets one of those two files. This module holds no guard of its own; it was
+split out on 2026-10-23 because the scorecard had reached its 1500-line cap.
 
 The runs are written the way Claude Code writes them. Every API call is TWO
 assistant records sharing one ``message.id``, the second carrying the final
@@ -219,3 +219,68 @@ def write_sweep_fixtures(root: Path) -> None:
     # E's 6: the largest flagged tail is E's, not F's.
     _edge_run(run_dir("wf_edge_hit"), 40, 6, 10)
     _edge_run(run_dir("wf_edge_miss"), 50, 7.25, 12.25)
+
+
+# ─── Lead session ───────────────────────────────────────────────────────────
+# The transcript of the session that launched the runs, beside its session
+# directory: <projects>/<project>/<session>.jsonl. Shapes as Claude Code 2.1.283
+# writes them. The Workflow tool's result names the run and its task id; the
+# task-notification that ends it arrives either as a user record or as a
+# queued_command attachment; what the owner typed while the lead was busy is a
+# queued_command whose origin kind is "human".
+
+
+def lead_launch(run_id: str, task_id: str, minute: float) -> dict[str, Any]:
+    return {
+        "type": "user",
+        "timestamp": stamp(minute),
+        "message": {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": f"toolu_{task_id}", "content": "launched"},
+        ]},
+        "toolUseResult": {"status": "async_launched", "taskId": task_id, "runId": run_id},
+    }
+
+
+def lead_notification(task_id: str, status: str, minute: float, *, queued: bool = False) -> dict[str, Any]:
+    text = (
+        f"<task-notification>\n<task-id>{task_id}</task-id>\n<tool-use-id>toolu_{task_id}</tool-use-id>\n"
+        f"<status>{status}</status>\n<summary>Dynamic workflow {status}</summary>\n</task-notification>"
+    )
+    if queued:
+        return {"type": "attachment", "timestamp": stamp(minute), "attachment": {
+            "type": "queued_command", "commandMode": "task-notification", "prompt": text,
+        }}
+    return {"type": "user", "timestamp": stamp(minute), "message": {"role": "user", "content": text}}
+
+
+def lead_typed(minute: float, content: object, **extra: Any) -> dict[str, Any]:
+    record: dict[str, Any] = {"type": "user", "timestamp": stamp(minute), "message": {"role": "user", "content": content}}
+    record.update(extra)
+    return record
+
+
+def lead_queued(minute: float, prompt: str, origin: str = "human") -> dict[str, Any]:
+    return {"type": "attachment", "timestamp": stamp(minute), "attachment": {
+        "type": "queued_command", "commandMode": "prompt", "prompt": prompt, "origin": {"kind": origin},
+    }}
+
+
+def lead_assistant(minute: float, text: str) -> dict[str, Any]:
+    # The Grep input holds the literal "user", so this line passes read_lead's
+    # substring speed-up and reaches the role check. Without it the speed-up
+    # dropped the record first and no role check could be shown to matter.
+    return {"type": "assistant", "timestamp": stamp(minute), "message": {
+        "role": "assistant", "model": "claude-opus-5-5", "content": [
+            {"type": "text", "text": text},
+            {"type": "tool_use", "id": "toolu_grep", "name": "Grep", "input": {"pattern": "user"}},
+        ],
+    }}
+
+
+def write_lead_session(
+    projects: Path, records: list[dict[str, Any]], session: str = "fixture-session",
+) -> Path:
+    path = projects / "-fixture-project" / f"{session}.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(json.dumps(record, ensure_ascii=False) + "\n" for record in records), encoding="utf-8")
+    return path

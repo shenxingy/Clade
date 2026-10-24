@@ -40,10 +40,11 @@ anything, so "how many agents" is not the interesting number. These are:
 
 serial and outlived were one number, ``tail1``, until 2026-10-23. The merged
 number called a lone build stage a straggler and prescribed pipeline() for it.
-The first run of this script, on the session that wrote it, found a 90-agent
-``pipeline()`` at 77% utilisation with a 0% tail despite a 6.7x straggler, and a
-10-agent ``parallel()`` barrier at 55% with 19% of its makespan on one agent —
-both read with the merged metric, from transcripts since purged.
+The first run of this script, on 2026-09-02 on the session that wrote it, found
+a 90-agent ``pipeline()`` at 77% utilisation with a 0% tail despite a 6.7x
+straggler, and a 10-agent ``parallel()`` barrier at 55% with 19% of its makespan
+on one agent. Both are historical: read with the merged metric, from
+transcripts since purged, and kept in no ledger until ``--ledger`` existed.
 
 Tokens and cost
 ---------------
@@ -69,10 +70,18 @@ it did reach. Every verdict that holds is printed, worst first. Under a
 straggler verdict the table names the agent the outlived time was credited to,
 which is often not the slowest agent: that one is frequently the serial stage.
 
-The other two modes
--------------------
+The other modes
+---------------
 ``--polls`` counts repeated status reads per background job in a lead session:
 the polling rule, with a number attached.
+
+``--ledger [PATH]`` appends one row per end of a finished run to an append-only
+JSONL ledger, because the transcripts behind every figure here are deleted after 30
+days. ``--ledger-summary [PATH]`` reads it back into the figures the guidance
+quotes, and ``--recorded-before`` pins them to the rows a statement was made
+from. ``--outcome`` prints what the owner typed in each run's lead session in
+the 6 hours after it ended, for weekly hand labelling. All three live in
+``scorecard_ledger.py`` beside this file.
 
 ``--codex-children`` counts what a Codex worker delegated. Everything above
 reads Claude Code's own transcripts, and a Codex worker leaves no equivalent:
@@ -102,6 +111,17 @@ from codex_children import (
     print_codex_children,
     scan_codex_children,
     self_test_codex_children,
+)
+from scorecard_ledger import (
+    config_dir,
+    default_ledger_path,
+    emit_outcomes,
+    parse_when,
+    print_ledger_summary,
+    record_ledger,
+    self_test_ledger,
+    self_test_outcome,
+    self_test_summary,
 )
 
 # ─── Rates ──────────────────────────────────────────────────────────────────
@@ -681,6 +701,11 @@ def default_roots() -> list[Path]:
     profiles = home / ".claude-profiles"
     if profiles.is_dir():
         roots.extend(sorted(p / "projects" for p in profiles.iterdir() if p.is_dir()))
+    # The config dir --ledger writes into, wherever $CLAUDE_CONFIG_DIR puts it.
+    # Without it a ledger pass from elsewhere scanned nothing and said so as 0.
+    configured = config_dir() / "projects"
+    if all(configured.resolve() != root.resolve() for root in roots):
+        roots.append(configured)
     return roots
 
 
@@ -1214,7 +1239,7 @@ def _print_summary(rows: list[dict]) -> None:
         )
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Measure parallel efficiency of past Workflow runs.",
         epilog="With no arguments, scans every profile for runs in the last 7 days.",
@@ -1230,12 +1255,16 @@ def main() -> int:
     parser.add_argument("--since", type=float, default=7.0, help="Days back (default 7; 0 = all).")
     parser.add_argument("--json", action="store_true", help="Emit JSON instead of a table.")
     parser.add_argument("--root", action="append", help="Extra projects/ root to scan.")
-    parser.add_argument(
+    # One mode per call: combined, the first one would return and the others
+    # would be skipped without a word, and a skipped ledger write looks like a
+    # quiet week.
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--polls",
         action="store_true",
         help="Report status-polling per background job from lead-session transcripts.",
     )
-    parser.add_argument(
+    mode.add_argument(
         "--codex-children",
         action="store_true",
         help=(
@@ -1247,19 +1276,70 @@ def main() -> int:
         "--codex-db",
         help="Codex state database to read (default ~/.codex/state_5.sqlite).",
     )
+    mode.add_argument(
+        "--ledger",
+        nargs="?",
+        const="",
+        metavar="PATH",
+        help=(
+            "Append one row per end of a finished run in the window to an append-only JSONL "
+            "ledger. Default: <config dir>/workflow-scorecard/runs.jsonl, where the "
+            "config dir is $CLAUDE_CONFIG_DIR, or ~/.claude when it is unset or empty. "
+            "An end already there is skipped, a resumed run's later end is a new row, "
+            "and a run in flight waits."
+        ),
+    )
+    mode.add_argument(
+        "--ledger-summary",
+        nargs="?",
+        const="",
+        metavar="PATH",
+        help=(
+            "Read the ledger (default as for --ledger) back into the figures the guidance "
+            "quotes: runs, agents, hours, the serial and outlived shares weighted by "
+            "makespan, and the flag counts. A resumed run's last row is the run."
+        ),
+    )
+    parser.add_argument(
+        "--recorded-before",
+        type=parse_when,
+        metavar="WHEN",
+        help="With --ledger-summary: only rows recorded before this ISO date or time (UTC when no zone).",
+    )
+    mode.add_argument(
+        "--outcome",
+        action="store_true",
+        help=(
+            "Print, per end of each finished run, the owner's messages in its lead session "
+            "within 6 hours after it, as JSONL with label null, for hand labelling."
+        ),
+    )
     parser.add_argument(
         "--self-test",
         action="store_true",
         help=(
-            "Ask the sweep and verdicts, the poll detector and the Codex child "
-            "counter whether they can still go red."
+            "Ask the sweep and verdicts, the ledger and its summary, the outcome windows, "
+            "the poll detector and the Codex child counter whether they can still go red."
         ),
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    if args.recorded_before is not None and args.ledger_summary is None:
+        parser.error("--recorded-before only applies to --ledger-summary")
 
     if args.self_test:
-        results = [self_test_sweep(), self_test_polls(), self_test_codex_children()]
+        results = [
+            self_test_sweep(),
+            self_test_ledger(main),
+            self_test_summary(main),
+            self_test_outcome(main),
+            self_test_polls(),
+            self_test_codex_children(),
+        ]
         return 1 if any(results) else 0
+
+    if args.ledger_summary is not None:
+        ledger = Path(os.path.expanduser(args.ledger_summary)) if args.ledger_summary else default_ledger_path()
+        return print_ledger_summary(ledger, args.recorded_before, args.json, _OUTLIVED_FLAG, _UTIL_FLOOR)
 
     roots = default_roots()
     if args.root:
@@ -1330,13 +1410,20 @@ def main() -> int:
     if args.session:
         directories = [d for d in directories if args.session in str(d)]
 
-    rows = []
+    scanned = []
     for directory in directories:
         stats = scan_workflow(directory)
         if stats:
             stats["project"] = directory.parts[-5]
             stats["session"] = directory.parts[-4]
-            rows.append(stats)
+            scanned.append((directory, stats))
+    rows = [stats for _, stats in scanned]
+
+    if args.ledger is not None:
+        ledger = Path(os.path.expanduser(args.ledger)) if args.ledger else default_ledger_path()
+        return record_ledger(scanned, ledger, as_json=args.json)
+    if args.outcome:
+        return emit_outcomes(scanned)
 
     if args.json:
         json.dump(rows, sys.stdout, indent=2)

@@ -171,7 +171,7 @@ This MCP server is one part of Clade. The full framework includes:
 
 - **148 skills** — coding, research, SEO, content, paid ads, and email workflows
 - **35 hooks** — safety guardian, correction learning, type-checking, session context
-- **43 shell scripts + 44 Python utilities** — commits, loops, parallel tasks, health scanning
+- **43 shell scripts + 45 Python utilities** — commits, loops, parallel tasks, health scanning
 - **40 agents** — code, security, compliance, marketing, research, and verification specialists
 - **Native Codex plugin** — 30 core workflows, usage visibility, and lifecycle safety hooks
 - **Orchestrator** — FastAPI web UI with task queue, worker pool, GitHub sync

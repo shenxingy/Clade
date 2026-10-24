@@ -1999,7 +1999,7 @@ tiering are real but unmeasured. Each needs a paired A/B before rollout.
   fan-out → lone build → fan-out chain, and a queued pipeline with a 6x spread.
   Add mutations for the running-set check, the serial/outlived test, the verdict
   order and the 0.15 threshold.
-- [ ] 🟡 **The guidance's figures can no longer be re-derived and have drifted.**
+- [x] 🟡 **The guidance's figures can no longer be re-derived and have drifted.** DONE 2026-10-24 (ledger seeded: the 343-row seed copied unchanged to the owner's default ledger path, md5 591621ef…, and `--ledger-summary --recorded-before 2026-10-24T03:34Z` reproduces every figure below) — `workflow-scorecard.py --ledger [PATH]` (default `$CLAUDE_CONFIG_DIR`, else `~/.claude`, `/workflow-scorecard/runs.jsonl`; code in `scorecard_ledger.py`; the scan also reads that config dir's own `projects/`) appends one row per END of a finished run (the last launch's terminal task-notification in the lead transcript, else 24 h with no change), per API call, without `agent_rows`, append-only under a lock, keyed by run id and `ended_at`: a run resumed under its run id that ends again gets a new row (5 of 358 run ids on this host were launched twice), and a reader takes the last row per run id. `--ledger-summary [PATH] [--recorded-before WHEN]` reads it back into the quoted figures. Restated at every site from a ledger of the 343 finished runs on disk at 2026-10-24 03:33 UTC, as `--ledger-summary --recorded-before 2026-10-24T03:34Z` prints them: 285 parallel runs started 2026-09-22 → 10-24 UTC (4,038 agents, 394 h, both profiles), 52.4% single-agent = 35.5% serial + 16.9% outlived, 108 of 285 outlived ≥ 15% (201 on the merged tail), 109 of 285 under 55% util. The 110-/10-agent pair is marked historical (2026-09-02) in the research doc and dropped from the guidance; `configs/CLAUDE.md` net −76 chars; "one account" corrected to two profiles; `check-asserted-numbers.py` tracks `workflow-runs` / `agent-hours` / `makespan-share` (underived: the ledger is the owner's, not CI's). Remaining operational step: nothing appends to the ledger yet — run `--ledger` weekly under ONE profile with `--since` ≥ 7 (scheduling is the owner's call).
   "89 runs / 1,777 agents / 45%" and "110-agent pipeline, 0% tail" came from
   transcripts purged after 30 days, and no ledger kept them. Today's population
   gives 52.9% single-agent (35.6% serial + 17.3% outlived), and 70.5% of runs are
@@ -2208,8 +2208,8 @@ tiering are real but unmeasured. Each needs a paired A/B before rollout.
   completions sat unread for 36.5 completion-hours, behind 4 of 26 questions in
   59 sessions. Rule or warn-hook: with a live background task, ask in plain text
   and end the turn.
-- [ ] 🔵 **Outcome is unmeasured, and the two correction signals cannot measure
-  it.** Hand-labelled owner messages within 6 h of a run give a 10.5% rejection
+- [x] 🔵 **Outcome is unmeasured, and the two correction signals cannot measure
+  it.** DONE 2026-10-23 — the last open part, `--outcome`, landed (below). Hand-labelled owner messages within 6 h of a run give a 10.5% rejection
   rate on 124 observable runs (lower bound). Of 13 rejections, 7 were a misread
   goal or premise, and 6 runs with execution defects had passed verify; the
   defects appeared on the owner's devices. Explicit correction records have 33%
@@ -2230,8 +2230,23 @@ tiering are real but unmeasured. Each needs a paired A/B before rollout.
     messages (37 rejections), all 5 fires it removed on 490 unlabelled
     messages were tags. 8 added phrasings reach 66% / 51% only in-sample (0
     rejections caught outside it; 4 never a sole trigger, unmeasured);
-    `session-scorecard.sh` stops counting mutation probes. Still open: the
-    `--outcome` mode (the guidance half landed in #146).
+    `session-scorecard.sh` stops counting mutation probes. The guidance half
+    landed in #146.
+  - [x] **The `--outcome` mode** — DONE 2026-10-24 — `workflow-scorecard.py
+    --outcome` prints JSONL per end of each finished run whose last 6 h window
+    has closed: `run_id`, `end`/`ends`, `completed_at` (that end's last agent
+    stop), `session`, `messages[]` (`at`, `after_min`, `source`, `text`) and
+    `label: null`. A run resumed under its run id gets a window for each
+    earlier end, closed at the relaunch, so the reaction that prompted the
+    relaunch is kept. Owner messages follow the audit's definition (non-meta
+    user text, no tool result, no leading `<` or harness prefix, plus
+    human-origin queued commands; pastes become `[pasted]`, a repeat is kept
+    once), redacted through redact.py and then cut to 300 chars. Runs in
+    flight, with an open window, or with no lead transcript are counted on
+    stderr. Windows overlap, so per-run counts are not the audit's (on this
+    host 2026-10-24 03:36 UTC: 337 windows for 336 runs, 219 with a message;
+    one resumed run gained its first-end window, holding the owner's
+    reaction 29 min after that end).
 
 ## 2026-10-23 committer push-target follow-ups
 
