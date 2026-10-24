@@ -1958,6 +1958,16 @@ tiering are real but unmeasured. Each needs a paired A/B before rollout.
   Estimated −$2.4k (−12%), or ~0.27 weekly caps a week. Do NOT set a 1-hour
   subagent TTL: the 2x write premium cancels it on quota. — guidance half DONE
   2026-10-23 (`configs/CLAUDE.md` § Adaptive Delegation, "Workflow scripts")
+  - [x] Hook half DONE 2026-10-23 — `pre-tool-guardian.sh` warns, never blocks, a
+    subagent call (agent_id) whose foreground wait can outlast 270 s within its
+    effective timeout, unless the environment sets the subagent TTL to 1 hour.
+    Replayed 16,043 of the 224,870 Workflow-subagent Bash calls on this machine
+    (2026-09-22 → 10-23; every one with an effective timeout over 270 s plus
+    2,000 sampled from the rest): it warned before 1,313 of the 1,655 foreground
+    calls that ran past 270 s, with 0 crashes and 0 changed deny/rewrite
+    verdicts. For the guidance half, which stays open: the detach must outlive
+    the agent (`nohup … &`), since 2.1.283 terminates a synchronous subagent's
+    run_in_background jobs at its final response.
 - [x] 🟡 **Every workflow subagent re-reads ~54k tokens of instructions and skill
   listing on every call.** — DONE 2026-10-23 (agent half; adoption is the open
   item below) — `configs/agents/wf-reader.md` ships unadopted: tool list Read,

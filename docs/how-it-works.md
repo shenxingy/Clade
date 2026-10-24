@@ -21,7 +21,7 @@
 | Hook | Trigger | What it does |
 |------|---------|-------------|
 | `session-context.sh` | SessionStart | Injects git state, model guidance, correction rules into context |
-| `pre-tool-guardian.sh` | PreToolUse (Bash) | Blocks dangerous commands (force-push, rm -rf, migrations outside dev mode) |
+| `pre-tool-guardian.sh` | PreToolUse (Bash) | Blocks dangerous commands (force-push, rm -rf, migrations outside dev mode). Inside a subagent, warns — never blocks — when a foreground wait (`until … sleep`, `sleep 600`, `tail -f`, …) can outlive the subagent prompt cache (5 minutes by default) |
 | `linter-config-guard.sh` | PreToolUse (Edit/Write) | Guards linter config files from accidental overwrite |
 | `revert-detector.sh` | PreToolUse (Bash), async | Records a git revert/reset against the session's edit shadow for correction pairing. Main thread only: a subagent's (`agent_id`) or dispatched worker's revert writes nothing. **Silent by design** — async hooks have no channel back into the turn, and the gate is that only an explicit "that's wrong" escalates to context |
 | `permission-request.sh` | PermissionRequest | Handles elevated permission requests |
