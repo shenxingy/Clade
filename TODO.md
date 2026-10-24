@@ -2043,7 +2043,12 @@ tiering are real but unmeasured. Each needs a paired A/B before rollout.
     keeps `five_hour`, and 10 new test cases in `test_claude_usage_watch.py`
     pin it (7 red on the old script; the 3 that stay green pin the `~/.claude`
     fallback and the primary's unsuffixed Keychain item).
-  - [ ] The gate must not trust the cache's age. With `--statusline-input` and a
+  - [x] Gate DONE 2026-10-23 — `configs/hooks/workflow-preflight.sh` (PreToolUse
+    `Workflow`) warns at 7-day ≥ 90% or 5-hour ≥ 85% on a reading under 10
+    minutes old, after refreshing it with `claude-usage-watch.py --refresh-only`;
+    an older reading is ignored, never trusted. The projected-burn variant is
+    not built: nothing on disk gives a run's quota cost before it starts.
+  - [x] The gate must not trust the cache's age (DONE, above). With `--statusline-input` and a
     usable `rate_limits` payload (the normal status-line case),
     `claude-usage-watch.py` neither reads nor writes `usage-watch-cache.json`,
     so a profile's cache can be arbitrarily old. Reject a cache whose `_at` is
@@ -2059,7 +2064,14 @@ tiering are real but unmeasured. Each needs a paired A/B before rollout.
     :1131 reader also expects keys this cache never holds (`usage_pct`,
     `elapsed_pct`, `remaining_days`), so its pace is always 0; a path fix alone
     would not make it correct.
-- [ ] 🟡 **Prior results are silently truncated inside prompts.** About 81 of 294
+- [x] 🟡 **Prior results are silently truncated inside prompts.** DONE
+  2026-10-23 — `configs/scripts/check-workflow-script.py` rule
+  `silent-truncation`, a warn from the Workflow preflight hook (inline `script`,
+  `scriptPath` and saved `name` launches) plus `--survey` and `--self-test`.
+  Survey 2026-10-23: 96 of 324 unique persisted scripts, 191 sites; 34 of 34
+  hand-checked scripts real. The array-cap and agent-width fan-out rules were
+  measured and NOT shipped: 3 of 5 and 2 of 2 real (below the 80% bar / n too
+  small), and no JS parser exists on the host. Was: About 81 of 294
   scripts apply `.slice(…)` to a `JSON.stringify`'d result inside an `agent()`
   prompt without a `log()`. That is 26–28% of scripts, mostly docforensics.
   48 of 66 checkable sites actually cut; the median share lost is 41%. Build
@@ -2069,7 +2081,12 @@ tiering are real but unmeasured. Each needs a paired A/B before rollout.
   "not checked" when no parser is found. Add `--self-test`, mutations and a
   `--survey` mode. Wire it as a report-only PreToolUse hook on `Workflow`. The
   hook must resolve `scriptPath` and saved `name` inputs, not only `script`.
-- [ ] 🔵 **Placeholder args reach Workflow.** 10 of 324 launches carried
+- [x] 🔵 **Placeholder args reach Workflow.** DONE 2026-10-23 — the preflight
+  hook DENIES a whole-leaf sentinel (upper-case dunder value, `{"__see"|"__file"…}`
+  key, `(see …)`, lone `...`/`<token>`/`placeholder`/elision marker) and warns on
+  stringified args. Replayed over all 370 Workflow launches on this host: 9 of
+  the 10 known bad launches denied plus one later `__LOAD__` launch, 0 real
+  args denied; the tenth was a real empty list. Was: 10 of 324 launches carried
   placeholder or partial args, repeated in 5 sessions. One of them
   (`wf_f95c1fbf-fbb`) completed with an empty result instead of failing.
   A sentinel-pattern check on args would catch 9 of 10 with 0 false positives
