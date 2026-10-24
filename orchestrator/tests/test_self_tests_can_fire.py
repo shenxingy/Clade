@@ -26,10 +26,12 @@ Adding a self-test to a script means adding its mutations here.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -413,3 +415,292 @@ def test_every_script_with_a_self_test_is_covered():
     assert not unexpected, (
         f"these scripts have a --self-test that nothing proves can fire: {unexpected}. "
         f"Add their mutations to MUTATIONS.")
+
+
+# ─── Hook suites ──────────────────────────────────────────────────────
+#
+# The same question for a guard that lives in a shell hook and is tested by a
+# shell suite rather than a --self-test. The hook is mutated in a COPY and the
+# suite pointed at it through its override variable, so the tree is never
+# written. A mutation can take several (old, new) edits: a gate that two
+# checks implement together is removed by removing both.
+#
+# pre-tool-guardian's subagent-wait rule, run as GUARDIAN_WAITS_ONLY=1. Its
+# fork-free pre-checks are not listed alone, on purpose: the `"agent_id"`
+# string test, the wait-word test, the `"timeout"`-key test and the `> 270000`
+# test. Each is a fast path that a later check repeats (the non-empty agent_id
+# test, the awk itself, the effective-timeout test, the awk capping every wait
+# at the call's timeout), so removing one alone changes latency and no verdict
+# — which is what a mutation of any of them shows. Where it matters they are
+# removed together with their counterpart. Two more are deliberately absent:
+# the `{` that opens a brace group (its close is listed, and a group never
+# opened is never closed, so the same case decides both) and the depth cap of
+# 6 nested scripts (a guard against runaway recursion, not a verdict).
+#
+# Every anchor must occur exactly once: the edit replaces the first match, and
+# the hook carries two awk programs whose option-parsing lines are alike, so a
+# duplicated anchor would mutate whichever comes first and test nothing.
+HOOK_SUITES: dict[str, dict] = {
+    "configs/hooks/pre-tool-guardian.sh": {
+        "suite": "tests/test-pre-tool-guardian.sh",
+        "hook_var": "GUARDIAN_HOOK",
+        "env": {"GUARDIAN_WAITS_ONLY": "1"},
+        "fail_fast_env": {"GUARDIAN_FAIL_FAST": "1"},
+        "mutations": [
+            ("the agent_id gate — the main thread would be warned",
+             [("[[ \"$INPUT\" == *'\"agent_id\"'* ]] || return 0", ":"),
+              ('[[ -n "$agent" && "$bg" != "true" ]]', '[[ "$bg" != "true" ]]')]),
+            ("the non-empty agent_id test",
+             [('[[ -n "$agent" && "$bg" != "true" ]]', '[[ "$bg" != "true" ]]')]),
+            ("the run_in_background gate",
+             [('[[ -n "$agent" && "$bg" != "true" ]]', '[[ -n "$agent" ]]')]),
+            ("the default for a call that sets no timeout, or 0",
+             [('gd_ms "$timeout" "$default";', 'gd_ms "$timeout" 600000;')]),
+            ("the 600 s ceiling on a call's timeout",
+             [("(( eff > max )) && eff=$max", ":")]),
+            ("the call's timeout as the bound of an unbounded wait",
+             [('GD_WAIT_BOUND_MS="$eff"', "GD_WAIT_BOUND_MS=600000"),
+              ("(( eff > GD_WAIT_LIMIT_S * 1000 )) || return 0", ":")]),
+            ("the 270 s limit",
+             [("if (r > limit)", "if (r > 0)")]),
+            ("GNU duration suffixes",
+             [('if (u == "m") v *= 60', "if (0) v *= 60")]),
+            ("an until/while loop around sleep",
+             [('if (LK[d, f] == "uw") { if (LS[d, f]) { r = INF;',
+               'if (LK[d, f] == "uw") { if (LS[d, f]) { r = 0;')]),
+            ("a for loop as count x sleep",
+             [("r = LC[d, f] * LSUM[d, f];", "r = LSUM[d, f];")]),
+            ("the $(seq …) count of a for loop",
+             [('if (TV[d, k] == "seq") LC[d, FORPEND[d]]', 'if (0) LC[d, FORPEND[d]]')]),
+            ("a timeout prefix bounding what it wraps",
+             [("if (secs > 0 && secs < sb) sb = secs", "if (0) sb = secs")]),
+            ("a job sent to the background with &",
+             [('bg = (sep == "&")', "bg = 0")]),
+            ("a ( … ) & group sent to the background",
+             [('if (!bg || GT[d, g] == "S") return', "return")]),
+            ("wait collecting a backgrounded wait",
+             [("if (BGMAX[d] > 0) add_wait(", "if (0) add_wait(")]),
+            ("reading a bash -c script",
+             [("if (j < n) { r = scan(TV[d, j + 1], eb, d + 1);", "if (j < n) { r = 0;")]),
+            ("reading an ssh remote command",
+             [('for (j += 2; j <= n; j++) script = script " " TV[d, j]\n    r = scan(script, eb, d + 1);',
+               'for (j += 2; j <= n; j++) script = script " " TV[d, j]\n    r = 0;')]),
+            # The shell's own bound goes too: left in, an unset bound reads as
+            # 0 and masks the mutation — this entry's first version did that.
+            ("a heredoc is read only when a shell reads it",
+             [("if (STDIN_SH[d]) { r = scan(body, min2(bound, SHB[d]), d + 1)",
+               "if (1) { r = scan(body, bound, d + 1)")]),
+            ("a heredoc fed to a shell is read",
+             [("if (STDIN_SH[d]) { r = scan(body", "if (0) { r = scan(body")]),
+            ("quoted text is one word, not commands",
+             [("if (c == \"\\047\" || c == \"\\\"\") { tstart(d); q = c; i++; continue }",
+               "if (0) { tstart(d); q = c; i++; continue }")]),
+            ("tail -f",
+             [('add_wait(d, sb, "tail -f", bg); return', "return")]),
+            ("python -c time.sleep",
+             [('add_wait(d, min2(secs, sb), "python time.sleep", bg)', "secs = 0")]),
+            ("a rewrite carrying the wait warning",
+             [('--arg why "$2${GD_WAIT_WARN:+ $GD_WAIT_WARN}"', '--arg why "$2"')]),
+            ("the warning reaching the model at all",
+             [('[[ -n "$GD_WAIT_WARN" ]] && gd_warn "$GD_WAIT_WARN"', ":")]),
+            ("a warning that never decides permission",
+             [('{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$c}}',
+               '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"allow",additionalContext:$c}}')]),
+            # ── the remedy the warning gives (review, 2026-10-23) ──
+            ("the recommended loop staying under 270 s",
+             [("bound the loop (for i in \\$(seq 1 26);", "bound the loop (for i in \\$(seq 1 40);")]),
+            ("nohup, not run_in_background, as the detach",
+             [("To outlast this agent, detach the job (nohup <job> > <log> 2>&1 &), record the log "
+               "path and end; run_in_background is no detach here, since a synchronous subagent's "
+               "background jobs end with its final response.",
+               "Or start the job with run_in_background, record where its result will land, and "
+               "end once that path is in your report.")]),
+            # ── the subagent TTL the environment sets ──
+            ("the TTL check at all",
+             [("  gd_subagent_ttl_1h && return 0", "  :")]),
+            ("CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL=1h",
+             [("in 1h) return 0 ;; 5m) return 1 ;; esac", "in 1h) ;; 5m) return 1 ;; esac")]),
+            ("the TTL variable outranking ENABLE_PROMPT_CACHING_1H",
+             [("in 1h) return 0 ;; 5m) return 1 ;; esac", "in 1h) return 0 ;; 5m) ;; esac")]),
+            ("reading the subagent TTL variable, not the main thread's",
+             [('case "${CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL:-}" in',
+               'case "${CLAUDE_CODE_PROMPT_CACHE_TTL:-}" in')]),
+            ("ENABLE_PROMPT_CACHING_1H",
+             [('gd_env_true "${ENABLE_PROMPT_CACHING_1H:-}" && return 0', "false && return 0")]),
+            ("FORCE_PROMPT_CACHING_5M outranking the rest",
+             [('gd_env_true "${FORCE_PROMPT_CACHING_5M:-}" && return 1', "false && return 1")]),
+            ("ENABLE_PROMPT_CACHING_1H_BEDROCK on Bedrock",
+             [('gd_env_true "${CLAUDE_CODE_USE_BEDROCK:-}" && gd_env_true "${ENABLE_PROMPT_CACHING_1H_BEDROCK:-}" && return 0',
+               "false && return 0")]),
+            ("ENABLE_PROMPT_CACHING_1H_BEDROCK only on Bedrock",
+             [('gd_env_true "${CLAUDE_CODE_USE_BEDROCK:-}" && gd_env_true "${ENABLE_PROMPT_CACHING_1H_BEDROCK:-}"',
+               'gd_env_true "${ENABLE_PROMPT_CACHING_1H_BEDROCK:-}"')]),
+            ("true, yes and on in any case",
+             [("1|[Tt][Rr][Uu][Ee]|[Yy][Ee][Ss]|[Oo][Nn]) return 0", "1) return 0")]),
+            ("0 and other words reading as off",
+             [('  case "$1" in 1|[Tt][Rr][Uu][Ee]|[Yy][Ee][Ss]|[Oo][Nn]) return 0 ;; esac\n  return 1',
+               '  [ -n "$1" ]')]),
+            # ── durations ──
+            ("the h suffix", [('else if (u == "h") v *= 3600', 'else if (u == "h") v *= 1')]),
+            ("the d suffix", [('else if (u == "d") v *= 86400', 'else if (u == "d") v *= 1')]),
+            ("sleep infinity", [('if (s == "infinity" || s == "inf") return INF', "if (0) return INF")]),
+            # ── for-loop counts ──
+            ("a {A..B} count",
+             [("if (v ~ /^\\{-?[0-9]+\\.\\.-?[0-9]+\\}$/) {", "if (0) {")]),
+            ("a word-list count",
+             [("} else if (v ~ /[*?[$`]/) return\n    else c++", "} else if (v ~ /[*?[$`]/) return\n    else c += 0")]),
+            ("a glob or $var word making the count unknown",
+             [("} else if (v ~ /[*?[$`]/) return", "} else if (0) return")]),
+            ("a sleep of unknown length making a for loop unknown",
+             [("if (LC[d, f] >= 0 && !LX[d, f])", "if (LC[d, f] >= 0)")]),
+            # ── command prefixes ──
+            ("an assignment before the command",
+             [("while (k <= n && TV[d, k] ~ /^[A-Za-z_][A-Za-z0-9_]*=/) k++", "while (0) k++")]),
+            ("sudo/nice/env/nohup/… prefixes", [("if (w in PFX) {", "if (0) {")]),
+            ("the nice prefix", [('PFX["nice"] = " -n --adjustment "; ', "")]),
+            ("the nohup prefix", [('PFX["nohup"] = " "; ', "")]),
+            ("the command prefix", [('; PFX["command"] = " "', "")]),
+            ("the sudo prefix", [('PFX["sudo"] = " -u -g -h -p -C -D -r -t -U "; ', "")]),
+            ("the env prefix", [('; PFX["env"] = " -u -C -S --unset --chdir "', "")]),
+            ("the stdbuf prefix", [('PFX["stdbuf"] = " -i -o -e "; ', "")]),
+            ("the ionice prefix", [('PFX["ionice"] = " -c -n -p -P -u "; ', "")]),
+            ("the exec prefix", [('; PFX["exec"] = " -a "', "")]),
+            ("the option values those prefixes take",
+             [('if (index(PFX[w], " " v " ") > 0) { k++; continue }', "if (0) { k++; continue }")]),
+            ("an assignment an env prefix carries",
+             [("if (v ~ /^-/ || v ~ /^[A-Za-z_][A-Za-z0-9_]*=/) continue", "if (v ~ /^-/) continue")]),
+            ("the signal and kill-after values of timeout",
+             [('if (v == "-s" || v == "-k" || v == "--signal" || v == "--kill-after") { k++; continue }',
+               "if (0) { k++; continue }")]),
+            # ── sleep arguments ──
+            ("sleep stopping at a redirect",
+             [("if (v ~ /^[0-9]*[<>]/ || v ~ /^&>/) break", "if (v ~ /^&>/) break")]),
+            ("sleep stopping at &>",
+             [("if (v ~ /^[0-9]*[<>]/ || v ~ /^&>/) break", "if (v ~ /^[0-9]*[<>]/) break")]),
+            # ── waiters ──
+            ("watch", [('if (w == "watch" || w == "pidwait")', 'if (w == "pidwait")')]),
+            ("pidwait", [('if (w == "watch" || w == "pidwait")', 'if (w == "watch")')]),
+            ("tail --follow", [('if (v ~ /^--follow/ || (v ~ /^-[A-Za-z0-9]+$/ && v ~ /[fF]/))',
+                                'if ((v ~ /^-[A-Za-z0-9]+$/ && v ~ /[fF]/))')]),
+            ("docker wait",
+             [('if (TV[d, k + 1] == "wait") add_wait(d, sb, "docker wait", bg)', 'if (0) add_wait(d, sb, "docker wait", bg)')]),
+            ("gh run watch", [('{ add_wait(d, sb, "gh run watch", bg); return }', "{ return }")]),
+            ("gh pr checks --watch",
+             [('if (TV[d, j] == "--watch") { add_wait(d, sb, "gh pr checks --watch", bg); return }',
+               'if (0) { add_wait(d, sb, "gh pr checks --watch", bg); return }')]),
+            ("inotifywait waiting without end by default",
+             [("    secs = INF\n    for (j = k + 1; j <= n; j++) {\n      v = TV[d, j]\n      if (v == \"-t\"",
+               "    secs = 0\n    for (j = k + 1; j <= n; j++) {\n      v = TV[d, j]\n      if (v == \"-t\"")]),
+            ("inotifywait -t",
+             [('if (v == "-t" || v == "--timeout") { r = dur(TV[d, j + 1]); if (r > 0) secs = r; j++ }',
+               "if (0) { j++ }")]),
+            ("inotifywait --timeout=",
+             [("else if (v ~ /^--timeout=/) { r = dur(substr(v, 11)); if (r > 0) secs = r }",
+               "else if (0) { secs = 0 }")]),
+            ("kubectl wait's 30 s default",
+             [("    secs = 30\n", "    secs = INF\n")]),
+            ("kubectl wait --timeout as a separate word",
+             [('if (v == "--timeout") { v = "--timeout=" TV[d, j + 1]; j++ }', "if (0) { j++ }")]),
+            ("kubectl wait's negative --timeout",
+             [("secs = (v ~ /^-/) ? INF : dur(v)", "secs = dur(v)")]),
+            ("kubectl wait's unreadable --timeout left uncounted",
+             [("secs = (v ~ /^-/) ? INF : dur(v)", "secs = (v ~ /^-/ || dur(v) < 0) ? INF : dur(v)")]),
+            ("a python while loop around time.sleep",
+             [("if (script ~ /(^|[^A-Za-z0-9_])while[ \\t(]/) {", "if (0) {")]),
+            # ── nested scripts ──
+            ("eval", [('if (w == "eval" && k < n) {', 'if (0 && k < n) {')]),
+            ("bash -lc and other combined flags",
+             [('if (v == "-c" || (v ~ /^-[A-Za-z]+$/ && index(v, "c") > 0)) {\n        if (j < n)',
+               'if (v == "-c") {\n        if (j < n)')]),
+            ("the values of bash -o / --rcfile",
+             [('if (v == "-o" || v == "+o" || v == "-O" || v == "+O" || v == "--rcfile" || v == "--init-file") { j++; continue }\n      if (v == "-s") break',
+               'if (v == "-s") break')]),
+            ("the option values of ssh",
+             [("      v = TV[d, j]\n      if (v ~ /^-[BbcDEeFIiJLlmOopQRSWw]$/) { j++; continue }",
+               "      v = TV[d, j]\n      if (0) { j++; continue }")]),
+            ("ssh reading its script from a heredoc",
+             [("if (j == n) { STDIN_SH[d] = 1; SHB[d] = sb; SHBG[d] = bg; return }", "if (j == n) return")]),
+            # ── the scanner ──
+            ("a comment skipped whole",
+             [('if (c == "#" && !INTOK[d]) { while (i <= n && substr(text, i, 1) != "\\n") i++; continue }',
+               'if (0) { while (i <= n && substr(text, i, 1) != "\\n") i++; continue }')]),
+            ("a # inside a word not starting a comment",
+             [('if (c == "#" && !INTOK[d]) { while (i <= n && substr(text, i, 1) != "\\n") i++; continue }',
+               'if (c == "#") { while (i <= n && substr(text, i, 1) != "\\n") i++; continue }')]),
+            ("a { …; } & group sent to the background",
+             [('if (w == "}") { close_group(d, bg); return }', 'if (w == "}") { close_group(d, 0); return }')]),
+            ("the tab strip of a <<- heredoc",
+             [('if (HDS[d, h]) sub(/^\\t+/, "", line)', 'if (0) sub(/^\\t+/, "", line)')]),
+            ("a here-string not sending its second < into the heredoc branch",
+             [('if (c == "<" && substr(text, i, 2) == "<<") {',
+               'if (c == "<" && substr(text, i, 2) == "<<" && substr(text, i, 3) != "<<<") {')]),
+            (">& read as a redirect, not a background job",
+             [('(substr(text, i - 1, 1) == ">" || substr(text, i - 1, 1) == "<")',
+               '(substr(text, i - 1, 1) == "<")')]),
+            ("&> read as a redirect, not a background job",
+             [('|| substr(text, i + 1, 1) == ">") {', ") {")]),
+            (") && not read as a background group",
+             [('substr(text, j + 1, 1) != "&" && ', "")]),
+            (") &> not read as a background group",
+             [(' && substr(text, j + 1, 1) != ">")', ")")]),
+        ],
+    },
+}
+
+
+def _run_suite(spec: dict, hook: Path, fail_fast: bool = False) -> subprocess.CompletedProcess:
+    """Run the suite against `hook`. fail_fast stops it at the first red case:
+    a mutation needs one, and the full list on every one of them would make
+    this the slowest test in the job."""
+    env = {**os.environ, **spec["env"], spec["hook_var"]: str(hook)}
+    if fail_fast:
+        env.update(spec.get("fail_fast_env", {}))
+    return subprocess.run(["bash", str(REPO / spec["suite"])], capture_output=True, text=True,
+                          timeout=300, env=env, cwd=REPO)
+
+
+@pytest.mark.parametrize("hook", sorted(HOOK_SUITES))
+def test_removing_a_hook_guard_turns_its_suite_red(hook):
+    """One test per hook, the mutations run concurrently: the suite takes a few
+    seconds and there are dozens of them, which as separate cases would add
+    minutes to the pytest job."""
+    spec = HOOK_SUITES[hook]
+    source = (REPO / hook).read_text(encoding="utf-8")
+    unanchored = [name for name, edits in spec["mutations"]
+                  for old, _ in edits if old not in source]
+    assert not unanchored, (
+        f"mutation anchors no longer appear in {hook}: {unanchored}. The code "
+        f"moved; update the anchor, do not delete the case — an unanchored "
+        f"mutation silently stops testing.")
+    ambiguous = [name for name, edits in spec["mutations"]
+                 for old, _ in edits if source.count(old) > 1]
+    assert not ambiguous, (
+        f"mutation anchors occur more than once in {hook}: {ambiguous}. The "
+        f"edit hits the first match, which may not be the guard named; widen "
+        f"the anchor until it is unique.")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        def one(i_mut):
+            i, (name, edits) = i_mut
+            mutated = source
+            for old, new in edits:
+                mutated = mutated.replace(old, new, 1)
+            assert mutated != source, name
+            path = Path(tmp) / f"m{i}-{Path(hook).name}"
+            path.write_text(mutated, encoding="utf-8")
+            return name, _run_suite(spec, path, fail_fast=True)
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            results = list(pool.map(one, enumerate(spec["mutations"])))
+
+    stayed_green = [name for name, res in results if res.returncode == 0]
+    assert not stayed_green, (
+        f"{spec['suite']} still PASSES with these removed from {hook}: {stayed_green}.\n"
+        f"Those properties are claimed and not checked.")
+
+
+@pytest.mark.parametrize("hook", sorted(HOOK_SUITES))
+def test_the_unmutated_hook_suite_passes(hook):
+    spec = HOOK_SUITES[hook]
+    result = _run_suite(spec, REPO / hook)
+    assert result.returncode == 0, result.stdout[-2000:] + result.stderr[-1000:]

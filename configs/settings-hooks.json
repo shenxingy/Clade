@@ -84,7 +84,7 @@
         "hooks": [
           {
             "id": "pre-tool-guardian",
-            "description": "Block dangerous Bash commands (force push, rm -rf, drop table, etc.)",
+            "description": "Block dangerous Bash commands (force push, rm -rf, drop table, etc.); warn a subagent whose wait would outlive its prompt cache (5 minutes by default)",
             "type": "command",
             "command": "~/.claude/hooks/pre-tool-guardian.sh",
             "timeout": 5
