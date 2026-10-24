@@ -139,6 +139,7 @@ Clade 把六个维度分开处理，避免一次“看起来是绿的”运行�
 | 在 git 仓库中打开会话 | `commit-archeology.sh` | 从 `git log` 挖掘重复修复模式（wiring/deploy/compat gap、Claude-overridden）— 注入 top 4 |
 | Claude 执行 bash 命令 | `pre-tool-guardian.sh` | **拦截**危险操作：数据库迁移、`rm -rf`、force push、`DROP TABLE`；子代理的等待若会超过其提示缓存时长（默认 5 分钟）则提醒（不拦截） |
 | Claude 启动 Workflow | `workflow-preflight.sh` | **拦截**占位符参数（`"__FILL__"`、`{"__see": …}`）；上一步结果在 prompt 里被无声截断、或配额读数新鲜且 7 天 ≥ 90% / 5 小时 ≥ 85% 时给出提醒 |
+| 后台任务还在跑时 Claude 想用 AskUserQuestion 提问 | `ask-while-live.sh` | **拒绝**该调用——提问会挂起会话，任务完成通知无法唤醒它；改为用普通文本提问并结束本轮 |
 | Claude 编辑代码 | `post-edit-check.sh` | 异步类型检查（tsc、pyright、cargo check、go vet 等） |
 | 你纠正 Claude | `correction-detector.sh` | 记录纠正，提示 Claude 保存可复用的规则 |
 | Claude 标记任务完成 | `verify-task-completed.sh` | 自适应质量门禁：compile + lint，严格模式额外 build + test |

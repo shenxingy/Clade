@@ -436,6 +436,15 @@ jobs:
       - name: Run pre-tool-guardian tests
         run: bash tests/test-pre-tool-guardian.sh
 
+      # ask-while-live refuses AskUserQuestion while a background task is
+      # live, because the question parks the session and the task's completion
+      # notice cannot wake it (4 of 26 questions, 7 completions unread for
+      # 36.5 h). Every launch and end shape seen on real transcripts, the
+      # malformed/FIFO/oversized inputs, a 100 MB timing bound, and a mutation
+      # suite that removes each guard and must go red.
+      - name: Run ask-while-live tests
+        run: bash tests/test-ask-while-live.sh
+
       # The watchdog's worker selection had no test and matched none of the
       # commands worker_provider.py builds, so it freed no memory under
       # pressure. Pure-function selection, exercised against synthetic

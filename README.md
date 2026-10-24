@@ -151,6 +151,7 @@ external side effects.
 | Session opens in a git repo | `commit-archeology.sh` | Mines `git log` for recurring fix patterns (wiring/deploy/compat gaps, Claude-overridden) — injects top 4 |
 | Claude runs a bash command | `pre-tool-guardian.sh` | **Blocks** dangerous ops: migrations, `rm -rf`, force push, `DROP TABLE`; warns a subagent whose wait would outlive its prompt cache (5 minutes by default) |
 | Claude launches a Workflow | `workflow-preflight.sh` | **Blocks** placeholder args (`"__FILL__"`, `{"__see": …}`); warns on a prior result cut silently inside a prompt, and on a fresh quota reading ≥ 90% (7-day) / ≥ 85% (5-hour) |
+| Claude asks you a question while a background task runs | `ask-while-live.sh` | **Refuses** AskUserQuestion — it parks the session, so the task's completion could not wake it; Claude asks in plain text instead |
 | Claude edits code | `post-edit-check.sh` | Async type-check (tsc, pyright, cargo check, go vet, etc.) |
 | You correct Claude | `correction-detector.sh` | Logs correction, prompts Claude to save a reusable rule |
 | Claude marks task done | `verify-task-completed.sh` | Adaptive quality gate: compile + lint, build + test in strict mode |
