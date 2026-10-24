@@ -2,11 +2,23 @@
 
 # clade-mcp 0.3.1
 
-Provider-neutral MCP server，将 **35 个 Clade coding skills** 暴露为可调用工具。
+Provider-neutral MCP server，将 **Clade coding workflows** 暴露为可调用工具。
 Skill prompt 可以通过 Claude 或 Codex 执行，适用于 Claude Desktop、Cursor、
 Windsurf 及其他 MCP 客户端。
 
 它是 [Clade](https://github.com/shenxingy/clade) 自主编码框架的一部分。
+
+## 目录
+
+- [0.3.1 新功能](#031-新功能)
+- [Runtime 支持（自 0.2.0 起）](#runtime-支持自-020-起)
+- [快速开始](#快速开始)
+- [Runtime 配置](#runtime-配置)
+- [内置 Skills（36）](#内置-skills36)
+- [工作机制](#工作机制)
+- [完整 Clade 框架](#完整-clade-框架)
+- [License](#license)
+
 
 ## 0.3.1 新功能
 
@@ -25,13 +37,21 @@ Provider 选择不是本次新增——它在 0.2.0 就有了；列在这里是�
 - `clade_list_skills` 会显示当前 runtime，便于诊断配置
 - 内置 workflows 从 0.1.0 的 29 个增加到 35 个
 
-升级：
+手动安装的用户先激活原 Python 环境，再升级：
 
 ```bash
-pip install --upgrade clade-mcp
+python -m pip install --upgrade clade-mcp
 ```
 
 ## 快速开始
+
+下面的 JSON 写入 MCP 客户端配置，需要 `uv` 和已登录的 agent CLI 在客户端的
+`PATH` 中。先把服务器启动工作目录设为目标仓库；服务器使用自己的当前目录，
+不会协商客户端 workspace。首次连接后调用 `clade_list_skills` 查看选中的 runtime。
+
+Claude runtime 会使用 `--dangerously-skip-permissions`，需要你自行提供隔离环境；
+客户端审批不能为该子进程提供 sandbox。Codex 默认使用 `workspace-write`，下方的
+Codex 配置显式选择此 runtime。默认值和 bypass 选项见[Runtime 配置](#runtime-配置)。
 
 ### Claude runtime
 
@@ -52,7 +72,8 @@ pip install --upgrade clade-mcp
 {
   "mcpServers": {
     "clade": {
-      "command": "clade-mcp",
+      "command": "uvx",
+      "args": ["clade-mcp"],
       "env": { "CLADE_RUNTIME": "codex" }
     }
   }
@@ -66,8 +87,10 @@ pip install --upgrade clade-mcp
 ### 手动安装
 
 ```bash
-pip install --upgrade clade-mcp
-clade-mcp  # 启动 stdio MCP server
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade clade-mcp
+clade-mcp  # 启动 stdio MCP server，等待客户端连接
 ```
 
 ## Runtime 配置
@@ -80,8 +103,8 @@ clade-mcp  # 启动 stdio MCP server
 | `CLADE_CODEX_SANDBOX` | `workspace-write` | `read-only`、`workspace-write` 或 `danger-full-access` |
 | `CLADE_CODEX_BYPASS_PERMISSIONS` | 未设置 | 仅在外部已经隔离的环境中设为 `1` |
 
-Permission bypass 优先于 sandbox 设置，并向 Codex 传递
-`--dangerously-bypass-approvals-and-sandbox`。Clade 永远不会默认开启它。
+**Codex 的** permission bypass 优先于 sandbox 设置，并向 Codex 传递
+`--dangerously-bypass-approvals-and-sandbox`。这个 Codex 选项默认关闭；Claude runtime 的权限绕过行为见上文。
 
 ## 内置 Skills（36）
 
@@ -112,7 +135,7 @@ Permission bypass 优先于 sandbox 设置，并向 Codex 传递
 | **orchestrate** | 把目标拆成 worker tasks |
 | **frontend-design** | 创建生产级前端界面 |
 | **audit** | 清理、提升和去重纠正规则 |
-| **merge-pr** | Squash merge PR 并清理分支 |
+| **merge-pr** | 按仓库规则合并精确审阅的 PR，再清理分支 |
 | **worktree** | 创建并行 session 使用的 git worktrees |
 | **pipeline** | 检查后台 pipelines 健康状态 |
 | **provider** | 切换 LLM provider |
