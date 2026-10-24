@@ -321,7 +321,7 @@ jobs:
 
       # The Workflow preflight hook's checker. Its controls go through
       # hook_main, the entry point the hook calls, so a guard removed from the
-      # hook path turns this red (its mutations live in test_self_tests_can_fire.py).
+      # hook path turns this red (its mutations live in test_hook_guards_can_fire.py).
       - name: Workflow-preflight self-test (can it go red?)
         run: python3 configs/scripts/check-workflow-script.py --self-test
 

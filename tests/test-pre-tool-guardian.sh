@@ -232,7 +232,7 @@ case_failed() {
 # done`.
 #
 # Defined here and run at the end; GUARDIAN_WAITS_ONLY=1 runs only this block.
-# orchestrator/tests/test_self_tests_can_fire.py does that against a mutated
+# orchestrator/tests/test_hook_guards_can_fire.py does that against a mutated
 # copy of the hook, once per guard it lists, and requires each to turn the
 # block red; it sets GUARDIAN_FAIL_FAST=1, which stops at the first red case.
 
@@ -549,7 +549,7 @@ chmod +x poll.sh"                                                               
 #
 # Every case runs through BOTH guardians (assert_both). Defined here and run
 # with the other force-push cases; GUARDIAN_PUSH_ONLY=1 runs only this block,
-# which is how orchestrator/tests/test_self_tests_can_fire.py mutates the awk
+# which is how orchestrator/tests/test_hook_guards_can_fire.py mutates the awk
 # and the Codex mirror. BOTH_CWD set to a repository on main makes the
 # session's branch main for the cases that read it.
 push_walk_cases() {
