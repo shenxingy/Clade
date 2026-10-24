@@ -1958,10 +1958,15 @@ tiering are real but unmeasured. Each needs a paired A/B before rollout.
   Estimated −$2.4k (−12%), or ~0.27 weekly caps a week. Do NOT set a 1-hour
   subagent TTL: the 2x write premium cancels it on quota. — guidance half DONE
   2026-10-23 (`configs/CLAUDE.md` § Adaptive Delegation, "Workflow scripts")
-- [ ] 🟡 **Every workflow subagent re-reads ~54k tokens of instructions and skill
-  listing on every call.** Turn-1 context has a median of 72.6k tokens, of which
-  only the 18.9k tools+system prefix is shared between siblings. Agent
-  frontmatter `omitClaudeMd` exists in 2.1.283 (verified in the binary), and
+- [x] 🟡 **Every workflow subagent re-reads ~54k tokens of instructions and skill
+  listing on every call.** — DONE 2026-10-23 (agent half; adoption is the open
+  item below) — `configs/agents/wf-reader.md` ships unadopted: tool list Read,
+  Grep, Glob, Bash, WebFetch, WebSearch (no Skill; on the native 2.1.283 build
+  Grep and Glob drop out whenever Bash is present), `omitClaudeMd: true`, a
+  1,705-char body (read-only by instruction only) and a 205-char description,
+  pinned by `orchestrator/tests/test_wf_reader_agent.py`. Was: Turn-1 context has a
+  median of 72.6k tokens, of which only the 18.9k tools+system prefix is
+  shared between siblings. Agent frontmatter `omitClaudeMd` exists in 2.1.283 (verified in the binary), and
   `agentType` is the only per-agent lever `agent()` takes. Ship
   `configs/agents/wf-reader.md`: a tools allowlist without Skill, Artifact,
   SendFeedback, ReportFindings or ListAgents, `omitClaudeMd: true`, and a ~1.5k
@@ -1970,6 +1975,21 @@ tiering are real but unmeasured. Each needs a paired A/B before rollout.
   run a smoke test that a custom agentType with a schema still gets
   StructuredOutput, plus a small quality A/B. Writers keep CLAUDE.md, because the
   committer and push rules must reach them.
+- [ ] 🟡 **Adopt `wf-reader` only after its two checks pass.** After
+  `./install.sh`: (1) a smoke test that `agent({agentType: "wf-reader", schema})`
+  returns StructuredOutput (the 2.1.283 binary appends StructuredOutput to an
+  explicit `tools` list in schema mode, and refuses the spawn if a deny covers
+  it — confirm it live) and that its turn-1 context really lacks CLAUDE.md and
+  the skill listing; (2) the small quality A/B against the default type. Only
+  then add the guidance that routes host-safe read-only roles to it. Read-only
+  is an instruction, not a control: `Bash` runs anything under a
+  bypassPermissions parent, and 2.1.283 ignores a frontmatter `permissionMode`
+  under a bypass, acceptEdits or auto parent. So that guidance must also make
+  adopting callers pass `agent()`'s `bashCommandClamp` listing the read forms
+  (each entry a `Bash(<command or prefix>)` rule, the binary's own wording;
+  check the prefix syntax live), or give `wf-reader` a frontmatter PreToolUse
+  Bash hook; and the smoke test must show a write command (`touch`, `git
+  commit`, `gh pr comment`) is denied.
 - [ ] 🟡 **Every `agent()` without `effort` runs at xhigh.** The owner's
   `effortLevel` is inherited. 0 agents ran at `low`; mechanical stages ran at
   xhigh 302 of 314 times. The observational output-only floor for a per-stage

@@ -39,7 +39,7 @@
     },
     {
       "name": "agents",
-      "value": 39,
+      "value": 40,
       "derive": {
         "type": "count_glob",
         "pattern": "configs/agents/*.md"
@@ -48,7 +48,9 @@
         "^\\d+ skills,\\s+\\d+ hooks,\\s+(\\d+) agents",
         "^\\d+ \u4e2a skills\u3001\\d+ \u4e2a hooks\u3001(\\d+) \u4e2a agents",
         "agents/\\s+# (\\d+) agent definitions",
-        "agents/\\s+# (\\d+) \u4e2a agent \u5b9a\u4e49"
+        "agents/\\s+# (\\d+) \u4e2a agent \u5b9a\u4e49",
+        "^- \\*\\*(\\d+) agents\\*\\*",
+        "configs/agents/ \u73b0\u6709 (\\d+) \u4e2a agent \u5b9a\u4e49"
       ]
     },
     {

@@ -67,8 +67,9 @@ Common values: `"tsc --noEmit"` (TypeScript), `"python3 -m py_compile <file>"` (
 | `verify-app` | Sonnet | Runtime verification — adapts to project type (web, Rust, Go, Swift, Gradle, LaTeX) |
 | `type-checker` | Haiku | Fast type/compilation check — auto-detects language (TS, Python, Rust, Go, Swift, Kotlin, LaTeX) |
 | `test-runner` | Haiku | Test execution — auto-detects framework (pytest, jest, cargo test, go test, swift test, gradle, make) |
+| `wf-reader` | Inherit | Lean agent type for Workflow readers: an explicit tool list without `Skill` (so no skill listing) and `omitClaudeMd: true` (so no CLAUDE.md). Read-only by instruction only — `Bash` is on the list and unrestricted, so adoption needs a per-spawn `bashCommandClamp` or a Bash hook on the agent. Not adopted: no workflow uses it until a StructuredOutput smoke test and a quality A/B pass (see TODO.md) |
 
-Claude auto-selects agents. Haiku agents are fast and cheap for mechanical checks; Sonnet agents reason deeper for reviews.
+Claude auto-selects agents. Haiku agents are fast and cheap for mechanical checks; Sonnet agents reason deeper for reviews. `wf-reader` is the exception: its description keeps it out of auto-selection, and it is meant to be spawned only by a workflow `agent()` that names it as `agentType`.
 
 ## Skills (slash commands)
 
@@ -322,7 +323,7 @@ clade/
 ├── configs/                 # ← THE PRODUCT CENTER
 │   ├── skills/              # 148 skill definitions
 │   ├── hooks/               # 32 event hooks
-│   ├── agents/              # 39 agent definitions
+│   ├── agents/              # 40 agent definitions
 │   ├── output-styles/       # 2 output styles (system-prompt register; opt-in)
 │   └── scripts/             # 43 shell + 41 Python utilities
 ├── plugins/clade/           # Native Codex plugin (30 generated core skills + hooks)
