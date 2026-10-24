@@ -2001,9 +2001,30 @@ tiering are real but unmeasured. Each needs a paired A/B before rollout.
   counts nulls per stage and returns `{incomplete, failed:[labels], resume}`
   instead of feeding nulls downstream. Add a pre-launch quota gate: 7-day ≥ 90%,
   or 5-hour plus projected burn ≥ 100%, means defer or switch account. That gate
-  would have deferred 77 of the 82 metered losses. Prerequisite:
-  `claude-usage-watch.py:28-29` reads only the primary profile. Resolve it from
-  `CLAUDE_CONFIG_DIR` and keep the 5-hour window.
+  would have deferred 77 of the 82 metered losses.
+  - [x] Prerequisite: `claude-usage-watch.py:28-29` read only the primary
+    profile. Resolve it from `CLAUDE_CONFIG_DIR` and keep the 5-hour window.
+    DONE 2026-10-23 — token, macOS Keychain item and cache now resolve from
+    `CLAUDE_CONFIG_DIR` (else `~/.claude`, also when it is empty), the cache
+    keeps `five_hour`, and 10 new test cases in `test_claude_usage_watch.py`
+    pin it (7 red on the old script; the 3 that stay green pin the `~/.claude`
+    fallback and the primary's unsuffixed Keychain item).
+  - [ ] The gate must not trust the cache's age. With `--statusline-input` and a
+    usable `rate_limits` payload (the normal status-line case),
+    `claude-usage-watch.py` neither reads nor writes `usage-watch-cache.json`,
+    so a profile's cache can be arbitrarily old. Reject a cache whose `_at` is
+    older than about 5 minutes, or refresh it by running the script without
+    `--statusline-input`.
+  - [ ] An account swap inside one profile (a re-login to another account) can
+    still show the previous account's reading: up to 5 minutes from the fresh
+    cache, up to 7 days from the stale fallback when the API is down. The cache
+    records no account. Store an account hash with it and drop a mismatch.
+  - [ ] Dormant layer, same blind spot: `orchestrator/server.py` reads
+    `~/.claude/usage-watch-cache.json` (:1131), `stats-cache.json` (:1048) and
+    `projects/` (:1077) from fixed paths, ignoring `CLAUDE_CONFIG_DIR`. The
+    :1131 reader also expects keys this cache never holds (`usage_pct`,
+    `elapsed_pct`, `remaining_days`), so its pace is always 0; a path fix alone
+    would not make it correct.
 - [ ] 🟡 **Prior results are silently truncated inside prompts.** About 81 of 294
   scripts apply `.slice(…)` to a `JSON.stringify`'d result inside an `agent()`
   prompt without a `log()`. That is 26–28% of scripts, mostly docforensics.

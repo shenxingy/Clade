@@ -24,7 +24,10 @@
 #
 # Gating (relic two-tier semantics, exit 0 on skip so keyless CI stays green):
 #   - no real `claude` on PATH                          → SKIP, exit 0
-#   - no ANTHROPIC_API_KEY and no ~/.claude/.credentials.json → SKIP, exit 0
+#   - no ANTHROPIC_API_KEY and no .credentials.json in the config dir
+#     ${CLAUDE_CONFIG_DIR:-~/.claude} → SKIP, exit 0. That is where the claude
+#     CLI looks when the variable is unset or a non-empty path; an EMPTY value,
+#     which the CLI reads as its working directory, is treated as unset here.
 #
 # INTERFERENCE — FIXED (was: KNOWN): on machines with Clade hooks deployed, a
 # Stop hook of type "prompt" made nested `claude -p` print the hook's own
@@ -80,8 +83,9 @@ if ! command -v claude >/dev/null 2>&1; then
   echo "SKIP: claude CLI not on PATH — real-API tier requires Claude Code installed"
   exit 0
 fi
-if [[ -z "${ANTHROPIC_API_KEY:-}" && ! -f "$HOME/.claude/.credentials.json" ]]; then
-  echo "SKIP: no credentials (ANTHROPIC_API_KEY unset and ~/.claude/.credentials.json missing)"
+_creds_file="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.credentials.json"
+if [[ -z "${ANTHROPIC_API_KEY:-}" && ! -f "$_creds_file" ]]; then
+  echo "SKIP: no credentials (ANTHROPIC_API_KEY unset and $_creds_file missing)"
   exit 0
 fi
 
