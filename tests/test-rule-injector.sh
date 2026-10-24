@@ -14,8 +14,12 @@
 # settings-hooks.json wiring, and a timing bound inside the 5 s hook timeout.
 # Also: a leading `cd DIR` in the command, the 10,000-character
 # additionalContext cap (held-back rules are not marked delivered), unreadable
-# rule files, third-party trees, claudeMdExcludes, identical rule text from two
-# copies, and NUL / path characters in the hook-input ids.
+# rule files, third-party trees (judged on the path as written AND on the
+# physical path, so a symlink into node_modules or out of the project — even
+# into a sibling sharing the root's name — is not scanned, while a project
+# rooted inside node_modules keeps its own rules),
+# claudeMdExcludes, identical rule text from two copies, and NUL / path
+# characters in the hook-input ids.
 # Every Bash-path case asserts on the emitted additionalContext.
 #
 # The last suite removes each guard of the hook in turn and requires this
@@ -571,6 +575,58 @@ for v in node_modules vendor third_party site-packages .git; do
   assert_not_contains "$(ctx_of "$OUT")" "VENDORED-BODY-$v" "rules inside $v/ are never injected"
 done
 
+# ...including when the path as written never names one. A dir is judged on
+# its PHYSICAL path too: linked/ -> node_modules/pkg is the package's tree.
+# Found 2026-10-23 — the written path alone injected VENDORED-BODY-node_modules.
+ln -s node_modules/pkg "$MONO/linked"
+OUT=$(bash_fixture n-link-vend "cat linked/lib/index.js" "$MONO" | run_mono)
+assert_empty "$OUT" "a symlink into node_modules/ injects nothing (judged on the physical path)"
+
+# A dir whose physical path lies outside the project is not this project's.
+# Named mono-ext on purpose: it shares the root's name as a string prefix, so
+# "inside" must mean below a path separator, not a string-prefix match.
+EXT="$MONO-ext"
+mkdir -p "$EXT/.claude/rules" "$EXT/lib"
+: > "$EXT/lib/x.js"
+printf -- '---\npaths: **\n---\nOUTSIDE-ROOT-BODY\n' > "$EXT/.claude/rules/x.md"
+ln -s "$EXT" "$MONO/ext"
+OUT=$(bash_fixture n-link-out "cat ext/lib/x.js" "$MONO" | run_mono)
+assert_empty "$OUT" "a symlink to a dir outside the project is not scanned for nested rules"
+
+# Control: a symlink to an ordinary in-project dir still loads that dir's rules.
+ln -s apps/sub "$MONO/alias"
+CTX=$(ctx_of "$(bash_fixture n-link-ok "cat alias/src/a/b.ts" "$MONO" | run_mono)")
+assert_contains "$CTX" "NESTED-TS-BODY" "control: a symlink to an in-project dir still loads its nested rules"
+assert_contains "$CTX" "(nested: alias)" "control: labelled with the path as written"
+
+# The written name still counts on its own: a node_modules that is itself a
+# symlink into an in-project store is physically store/web-nm/pkg, which names
+# no third-party tree — and it is still the packages' tree.
+mkdir -p "$MONO/apps/web" "$MONO/store/web-nm/pkg/.claude/rules" "$MONO/store/web-nm/pkg/lib"
+: > "$MONO/store/web-nm/pkg/lib/i.js"
+printf -- '---\npaths: **\n---\nSTORE-PKG-BODY\n' > "$MONO/store/web-nm/pkg/.claude/rules/x.md"
+ln -s ../../store/web-nm "$MONO/apps/web/node_modules"
+OUT=$(bash_fixture n-link-store "cat apps/web/node_modules/pkg/lib/i.js" "$MONO" | run_mono)
+assert_empty "$OUT" "a node_modules symlinked to an in-project store is still skipped by its name"
+
+# Both judgements are measured BELOW the project root: a project whose root
+# itself sits inside node_modules is the package, and its rules are its own.
+NMROOT="$SANDBOX/host/node_modules/pkg"
+mkdir -p "$NMROOT/.claude" "$NMROOT/apps/x/.claude/rules" "$NMROOT/apps/x/src"
+: > "$NMROOT/apps/x/src/f.js"
+printf -- '---\npaths: src/**\n---\nPKG-AS-PROJECT-BODY\n' > "$NMROOT/apps/x/.claude/rules/r.md"
+CTX=$(ctx_of "$(bash_fixture n-nmroot "cat apps/x/src/f.js" "$NMROOT" \
+  | HOME="$FAKE_HOME" CLAUDE_PROJECT_DIR="$NMROOT" bash "$HOOK")")
+assert_contains "$CTX" "PKG-AS-PROJECT-BODY" \
+  "a project whose root sits inside node_modules still scans its own nested rules"
+
+# Physical against physical: a project reached through a symlinked root (or
+# macOS's /tmp -> /private/tmp) still gets its nested rules.
+ln -s "$MONO" "$SANDBOX/mono-link"
+CTX=$(ctx_of "$(bash_fixture n-rootlink "cat apps/sub/src/a/b.ts" "$SANDBOX/mono-link" \
+  | HOME="$FAKE_HOME" CLAUDE_PROJECT_DIR="$SANDBOX/mono-link" bash "$HOOK")")
+assert_contains "$CTX" "NESTED-TS-BODY" "a project opened through a symlinked root still gets its nested rules"
+
 # claudeMdExcludes: absolute-path globs from the user, project and local
 # settings layers. A matching rules file never injects; others still do.
 for x in excl-local excl-proj excl-user; do
@@ -809,7 +865,9 @@ RI_CAN_DENY=1
 [[ -r "$RI_PROBE" ]] && RI_CAN_DENY=""
 chmod 644 "$RI_PROBE"
 
-# mutation EXPECT TARGET NAME ANCHOR REPLACEMENT — literal text, no regex.
+# mutation EXPECT TARGET NAME ANCHOR REPLACEMENT [ANCHOR REPLACEMENT ...] —
+# literal text, no regex. Extra pairs apply in order to the same copy, for a
+# property two guards hold between them.
 mutation() {
   local expect="$1" target="$2" name="$3" src out
   case "$target" in
@@ -817,18 +875,29 @@ mutation() {
     *) src="$SETTINGS" ;;
   esac
   out="$MUT_DIR/m$NMUT.$target"
-  if ! RI_A="$4" RI_R="$5" awk '
-      { buf = buf (NR > 1 ? "\n" : "") $0 }
-      END {
-        a = ENVIRON["RI_A"]; r = ENVIRON["RI_R"]; s = buf; out = ""; n = 0
-        while ((i = index(s, a)) > 0) { out = out substr(s, 1, i - 1) r; s = substr(s, i + length(a)); n++ }
-        if (n != 1) exit 3
-        printf "%s\n", out s
-      }' "$src" > "$out"; then
+  shift 3
+  if [[ "$#" -eq 0 || $(($# % 2)) -ne 0 ]]; then
     TESTS_RUN=$((TESTS_RUN + 1))
-    fail "mutation '$name': its anchor no longer matches the $target exactly once"
+    fail "mutation '$name': needs ANCHOR REPLACEMENT pairs, got $# argument(s)"
     return 0
   fi
+  cp "$src" "$out"
+  while [[ "$#" -ge 2 ]]; do
+    if ! RI_A="$1" RI_R="$2" awk '
+        { buf = buf (NR > 1 ? "\n" : "") $0 }
+        END {
+          a = ENVIRON["RI_A"]; r = ENVIRON["RI_R"]; s = buf; out = ""; n = 0
+          while ((i = index(s, a)) > 0) { out = out substr(s, 1, i - 1) r; s = substr(s, i + length(a)); n++ }
+          if (n != 1) exit 3
+          printf "%s\n", out s
+        }' "$out" > "$out.next"; then
+      TESTS_RUN=$((TESTS_RUN + 1))
+      fail "mutation '$name': its anchor no longer matches the $target exactly once"
+      return 0
+    fi
+    mv "$out.next" "$out"
+    shift 2
+  done
   MUT_NAMES[NMUT]="$name"; MUT_FILES[NMUT]="$out"
   MUT_TARGETS[NMUT]="$target"; MUT_EXPECT[NMUT]="$expect"
   NMUT=$((NMUT + 1))
@@ -894,11 +963,30 @@ mutation red hook "agent_id sanitization" \
 mutation red hook "once per session per rule file" \
   'case "$SENT" in *"$NL$f$NL"*) continue ;; esac' ':'
 mutation red hook "the nested-dir walk" \
-  'if [ -d "$rd" ] && ! is_vendored "$d"; then' 'if false; then'
-mutation red hook "third-party trees skipped" \
-  'if [ -d "$rd" ] && ! is_vendored "$d"; then' 'if [ -d "$rd" ]; then'
-mutation red hook "the walk stops at the project root" \
-  'case "$d" in "$PROJECT_DIR"/*) : ;; *) break ;; esac' 'case "$d" in /?*) : ;; *) break ;; esac'
+  '    if [ -d "$rd" ]; then' '    if false; then'
+mutation red hook "third-party trees skipped by the path as written" \
+  'if ! is_vendored "${d#"$PROJECT_DIR"/}" && physically_ours "$d"; then' \
+  'if physically_ours "$d"; then'
+mutation red hook "third-party trees skipped by the physical path" \
+  '  ! is_vendored "${p#"$PHYS_ROOT"/}"' '  :'
+mutation red hook "a dir physically outside the project is not scanned" \
+  'case "$p" in "$PHYS_ROOT"/*) : ;; *) return 1 ;; esac' ':'
+mutation red hook "the physical bound needs a path separator" \
+  'case "$p" in "$PHYS_ROOT"/*)' 'case "$p" in "$PHYS_ROOT"*)'
+mutation red hook "the written path is judged below the project root" \
+  'is_vendored "${d#"$PROJECT_DIR"/}"' 'is_vendored "$d"'
+mutation red hook "the physical path is judged below the physical root" \
+  '! is_vendored "${p#"$PHYS_ROOT"/}"' '! is_vendored "$p"'
+mutation red hook "the root is resolved physically too" \
+  'PHYS_ROOT=$(cd "$PROJECT_DIR" 2>/dev/null && pwd -P)' 'PHYS_ROOT=$PROJECT_DIR'
+# Two guards hold "never above the root" since the physical check: the walk's
+# lexical stop, and the physical-root bound that rejects whatever lies outside.
+# Either alone keeps n-outer green, so this mutant removes both. What the lexical
+# stop adds alone is cost — no subshell for a rules dir above the root — which
+# no assertion here can see.
+mutation red hook "the walk stops at the project root (lexical stop + physical bound)" \
+  'case "$d" in "$PROJECT_DIR"/*) : ;; *) break ;; esac' 'case "$d" in /?*) : ;; *) break ;; esac' \
+  'case "$p" in "$PHYS_ROOT"/*) : ;; *) return 1 ;; esac' ':'
 mutation red hook "each rules dir is scanned once" \
   '        *"$NL$rd$NL"*) : ;;' '        never-matches) : ;;'
 mutation red hook "only files under <dir> match its rules" \
