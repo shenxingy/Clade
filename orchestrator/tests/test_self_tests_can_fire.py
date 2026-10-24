@@ -6,7 +6,8 @@ sentence, so the gate reads as evidence while measuring nothing.
 
   red-phase-audit.py     reported 0% because the harness could not fire
   workflow-scorecard.py  matched the `>/` of `2>/dev/null`, so every session
-                         reported zero polls and it read as discipline
+                         reported zero polls and it read as discipline; its
+                         main mode had no self-test at all until 2026-10-23
   check-skill-contracts  accepted the bare word, and flag names are common
                          English, so /brief passed with its --all handling gone
   generate_hero.py       `for lic in (...): assert lic not in SAFE_LICENSES` is
@@ -37,6 +38,32 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[2]
+
+# workflow-scorecard.py's three verdict blocks, verbatim, so one mutation can
+# reorder them. Spelled out rather than sliced from the file: an anchor that
+# moves must fail loudly here, not silently match something else.
+_SCORECARD_STRAGGLER = (
+    '    if stats["outlived_frac"] >= _OUTLIVED_FLAG:\n'
+    "        found.append(\n"
+    '            f"straggler, pipeline() or finer units — one agent outlived its "\n'
+    "            f\"siblings for {stats['outlived_frac'] * 100:.0f}% of the makespan\"\n"
+    "        )\n"
+)
+_SCORECARD_SERIAL = (
+    '    if stats["serial_frac"] >= _SERIAL_FLAG:\n'
+    '        stage = stats.get("longest_serial") or {}\n'
+    "        found.append(\n"
+    "            f\"serial stage {stage.get('name', '?')} alone \"\n"
+    "            f\"{stage.get('alone_s', 0.0) / 60:.0f} min, shorten or overlap it\"\n"
+    "        )\n"
+)
+_SCORECARD_LOW_UTIL = (
+    '    if stats["util_vs_peak"] < _UTIL_FLOOR:\n'
+    "        found.append(\n"
+    "            f\"low util, not enough queued work to keep the {stats['peak']} \"\n"
+    '            f"slots it reached busy"\n'
+    "        )\n"
+)
 
 # script -> [(what the mutation removes, exact source before, exact source after)]
 MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
@@ -288,6 +315,127 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         ("the poll counter",
          "polls += 1",
          "polls += 0"),
+        # The main mode had NO self-test until 2026-10-23: `== 99` on the
+        # lone-agent check and `if False:` on the straggler verdict both still
+        # printed PASSED. Everything below goes through scan_workflow().
+        ("per-message usage keying — each record counted as an API call (the 1.9x double count)",
+         'key = message.get("id") or f"record-{number}"',
+         'key = f"record-{number}"'),
+        ("output as the max over one message's records — streamed partials summed",
+         'call.output = max(call.output, usage.get("output_tokens") or 0)',
+         'call.output += usage.get("output_tokens") or 0'),
+        ("the running-set check that credits lone time to an agent",
+         "if len(running) == 1:",
+         "if len(running) == 99:"),
+        ("the serial/outlived test — every lone agent called a straggler",
+         'kind = "outlived" if overlapped else "serial"',
+         'kind = "outlived"'),
+        ("the verdict order — straggler listed after low util",
+         _SCORECARD_STRAGGLER + _SCORECARD_SERIAL + _SCORECARD_LOW_UTIL,
+         _SCORECARD_SERIAL + _SCORECARD_LOW_UTIL + _SCORECARD_STRAGGLER),
+        ("every verdict that holds — only the first one kept",
+         "        return found\n",
+         "        return found[:1]\n"),
+        # The thresholds are held from both sides by the wf_edge_hit run (exactly
+        # 0.15 and 0.25) and wf_edge_miss (0.145 and 0.245). Bracketing them
+        # loosely let 0.10, 0.16, 0.01 and 0.45 all stay green.
+        ("the 0.15 straggler threshold, raised — an outlived share of exactly 15% goes unflagged",
+         "_OUTLIVED_FLAG = 0.15",
+         "_OUTLIVED_FLAG = 0.16"),
+        ("the 0.15 straggler threshold, lowered — a 14.5% outlived share gets flagged",
+         "_OUTLIVED_FLAG = 0.15",
+         "_OUTLIVED_FLAG = 0.14"),
+        ("the straggler threshold is inclusive (outlived >= 0.15)",
+         'if stats["outlived_frac"] >= _OUTLIVED_FLAG:',
+         'if stats["outlived_frac"] > _OUTLIVED_FLAG:'),
+        ("the 0.25 serial threshold, raised — a serial share of exactly 25% goes unflagged",
+         "_SERIAL_FLAG = 0.25",
+         "_SERIAL_FLAG = 0.26"),
+        ("the 0.25 serial threshold, lowered — a 24.5% serial share gets flagged",
+         "_SERIAL_FLAG = 0.25",
+         "_SERIAL_FLAG = 0.24"),
+        ("the serial threshold is inclusive (serial >= 0.25)",
+         'if stats["serial_frac"] >= _SERIAL_FLAG:',
+         'if stats["serial_frac"] > _SERIAL_FLAG:'),
+        ("the 0.55 util floor, lowered — a run at 53% of its peak reads as busy",
+         "_UTIL_FLOOR = 0.55",
+         "_UTIL_FLOOR = 0.5"),
+        # The advice is the point of the verdict. Comparing only the text before
+        # the first comma let both of these stay green.
+        ("the straggler advice — pipeline() or finer units",
+         'f"straggler, pipeline() or finer units — one agent outlived its "',
+         'f"straggler, add more agents — one agent outlived its "'),
+        ("the serial-stage advice — the misdiagnosis item (2) removed, put back",
+         "f\"{stage.get('alone_s', 0.0) / 60:.0f} min, shorten or overlap it\"",
+         "f\"{stage.get('alone_s', 0.0) / 60:.0f} min, use pipeline()\""),
+        ("null cost for an unknown model — it is priced at zero instead",
+         "return None  # unpriced, never a guess",
+         "return 0.0  # unpriced, never a guess"),
+        ("a sequential run gets that verdict alone",
+         'if stats["peak"] <= 1:',
+         "if False:"),
+        ("ends before starts at one instant — back-to-back agents counted as concurrent",
+         "events.sort(key=lambda event: (event[0], event[1]))",
+         "events.sort(key=lambda event: (event[0], -event[1]))"),
+        ("the cache-TTL gap in the long-gap miss share",
+         "gap > _CACHE_TTL_S",
+         "gap > 10 * _CACHE_TTL_S"),
+        ("a failed agent's outcome",
+         'entry["outcome"] = "failed"',
+         'entry["outcome"] = "ok"'),
+        ("a null result — the silent usage-limit null reads as ok",
+         'entry["outcome"] = "ok" if result is not None else "null result"',
+         'entry["outcome"] = "ok"'),
+        ("meta.json's label wins over the journal's",
+         'run.label = meta.get("description") or entry.get("label")',
+         'run.label = entry.get("label") or meta.get("description")'),
+        ("the <synthetic> exclusion — a usage-limit notice counted as an API call",
+         'if message.get("model") == _SYNTHETIC:',
+         "if False:"),
+        ("fast mode priced as null — it would be billed at standard rates",
+         'if not model or speed not in (None, "standard"):',
+         "if not model:"),
+        ("the dated-snapshot strip — a dated Haiku 4.5 snapshot id goes unpriced",
+         'return _RATES.get(_SNAPSHOT_DATE.sub("", model.replace("[1m]", "")))',
+         'return _RATES.get(model.replace("[1m]", ""))'),
+        ("1-hour cache writes at their own rate — priced as 5-minute writes",
+         'self.write_1h = (split.get("ephemeral_1h_input_tokens") or 0) if isinstance(split, dict) else 0',
+         "self.write_1h = 0"),
+        ("the 20k context floor of a long-gap cache miss",
+         "and context > _MISS_MIN_CONTEXT",
+         "and context > 0"),
+        ("the half-rewritten condition of a long-gap cache miss",
+         "and call.cache_create > _MISS_SHARE * context",
+         "and True"),
+        # The table and the summary are rendered by the self-test too.
+        ("the straggler line names the agent credited with the outlived time",
+         "f\"{pad} straggler: {top['name']}{phase} ran alone",
+         "f\"{pad} straggler: {row['slowest_tag']}{phase} ran alone"),
+        ("Largest tail names the agent credited with the outlived time",
+         'culprit = (worst["top_outlived"] or {}).get("name", "one agent")',
+         'culprit = worst["slowest_tag"]'),
+        ("Largest tail ranks only flagged runs — an unflagged one used to suppress the line",
+         'flagged = [r for r in parallel_rows if r["outlived_frac"] >= _OUTLIVED_FLAG]',
+         "flagged = parallel_rows"),
+        ("Largest tail ranks by minutes lost, not by fraction",
+         'worst = max(flagged, key=lambda r: r["makespan_s"] * r["outlived_frac"])',
+         'worst = max(flagged, key=lambda r: r["outlived_frac"])'),
+        ("the Longest serial stage line",
+         'staged = [r for r in parallel_rows if r["longest_serial"]]',
+         "staged = []"),
+        ("Longest serial stage picks the longest",
+         "longest = max(staged,",
+         "longest = min(staged,"),
+    ],
+    # Split out of workflow-scorecard.py on 2026-10-23 with its self-test. That
+    # self-test had no mutations here before the move.
+    "configs/scripts/codex_children.py": [
+        ("grandchildren — a child that delegates again is still work the parent caused",
+         "        queue.extend((grandchild, level + 1) for grandchild in edges.get(thread_id, ()))\n",
+         ""),
+        ("the headless-only filter — interactive threads counted as `codex exec`",
+         'if _source_kind(record.get("source")) != "exec":',
+         "if False:"),
     ],
     "configs/scripts/check-skill-contracts.py": [
         # The historical bug itself. It stayed green here until the bad-skill
