@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # test-checks.sh — Tests for the shared commit-path gate:
 #   configs/scripts/checks.sh    (staged-secret scan, shellcheck, commit-msg)
-#   configs/scripts/committer.sh (gate wiring, abort behavior)
+#   configs/scripts/committer.sh (gate wiring, abort behavior, push target)
 #
-# Uses throwaway git repos under /tmp; never touches the real $HOME and never
-# pushes (every committer call passes --no-push).
+# Uses throwaway git repos under /tmp and never touches the real $HOME. Every
+# committer call passes --no-push except the push-target section, which pushes
+# only to throwaway bare repositories under /tmp.
 #
 # Usage:
 #   bash tests/test-checks.sh        # Run all tests
@@ -101,8 +102,8 @@ CLEANUP_DIRS+=("$IDENTITY_HOME")
 export CLADE_GIT_IDENTITY_FILE="$IDENTITY_HOME/git-identity.json"
 python3 "$GIT_IDENTITY" pin --name Test --email test@example.com >/dev/null
 
-# Fresh throwaway repo with one initial commit (no remote — that is why every
-# committer call below uses --no-push).
+# Fresh throwaway repo with one initial commit and no remote; the committer
+# calls on it pass --no-push. The push-target section builds its own pairs.
 make_repo() {
   local d
   d="$(mktemp -d /tmp/clade-checks-test.XXXXXX)"
@@ -344,6 +345,281 @@ BODY="$(git -C "$D" log -1 --format=%B)"
 assert_contains "$BODY" "Agent-Signature: claude-opus-4-6" "worker commit records the resolved model as Agent-Signature"
 SIG_VAL="$(git -C "$D" log -1 --format='%(trailers:key=Agent-Signature,valueonly)' | tr -d '\n')"
 assert_eq "claude-opus-4-6" "$SIG_VAL" "git parses Agent-Signature as a real trailer (single -m block)"
+
+# ─── committer.sh push target ────────────────────────────────────────
+echo "── committer.sh pushes only to a same-named remote branch ──"
+
+# committer ended with a bare `git push`, so the push went wherever the branch
+# tracked. `git worktree add -b X <path> origin/main` makes origin/main the
+# upstream of X: push.default=upstream then put a feature commit on main, and
+# git's default (simple) refused it and committer exited non-zero after a
+# successful commit. These cases run WITHOUT --no-push against a local bare
+# remote, and with the global/system git config switched off so a caller's own
+# push.default, remote.pushDefault or branch.autoSetupMerge cannot decide them.
+PUSH_ROOT="$(mktemp -d /tmp/clade-push-test.XXXXXX)"
+CLEANUP_DIRS+=("$PUSH_ROOT")
+: > "$PUSH_ROOT/empty-gitconfig"
+SAVED_GIT_CONFIG_GLOBAL="${GIT_CONFIG_GLOBAL-__unset__}"
+SAVED_GIT_CONFIG_NOSYSTEM="${GIT_CONFIG_NOSYSTEM-__unset__}"
+export GIT_CONFIG_GLOBAL="$PUSH_ROOT/empty-gitconfig" GIT_CONFIG_NOSYSTEM=1
+
+# $PUSH_ROOT/<name> is a work repo whose main is published to the bare
+# $PUSH_ROOT/<name>.git as origin. Called directly, never in $(...), so the
+# directories stay under the one PUSH_ROOT the EXIT trap removes.
+new_push_pair() {
+  local w="$PUSH_ROOT/$1" r="$PUSH_ROOT/$1.git"
+  git init -q --bare "$r" 2>/dev/null
+  git init -q "$w" 2>/dev/null
+  git -C "$w" config user.email "test@example.com"
+  git -C "$w" config user.name "Test"
+  git -C "$w" config commit.gpgsign false
+  echo "init" > "$w/README.md"
+  git -C "$w" add README.md
+  git -C "$w" commit -qm "chore: init"
+  git -C "$w" branch -M main
+  git -C "$w" remote add origin "$r"
+  git -C "$w" push -q origin main:refs/heads/main 2>/dev/null
+  git -C "$w" fetch -q origin
+}
+remote_sha() { git -C "$1" rev-parse -q --verify "refs/heads/$2" 2>/dev/null || echo none; }
+
+# 1. A worktree branch tracking origin/main is NOT pushed to main.
+new_push_pair wt
+W="$PUSH_ROOT/wt-worktree"
+git -C "$PUSH_ROOT/wt" worktree add -q -b feat/wt "$W" origin/main 2>/dev/null
+git -C "$W" branch -q --set-upstream-to=origin/main
+git -C "$W" config push.default upstream
+MAIN_BEFORE="$(remote_sha "$PUSH_ROOT/wt.git" main)"
+echo "change" > "$W/wt.txt"
+OUT="$(cd "$W" && bash "$COMMITTER" "feat: worktree change" wt.txt 2>&1; echo "rc=$?")"
+assert_contains "$OUT" "rc=0" "branch tracking origin/main: committer exits 0 (the commit succeeded)"
+assert_eq "feat: worktree change" "$(git -C "$W" log -1 --format=%s)" "branch tracking origin/main: the commit landed locally"
+assert_eq "$MAIN_BEFORE" "$(remote_sha "$PUSH_ROOT/wt.git" main)" \
+  "branch tracking origin/main is never pushed to main (push.default=upstream)"
+assert_eq "none" "$(remote_sha "$PUSH_ROOT/wt.git" feat/wt)" \
+  "branch tracking origin/main is not published under its own name unasked"
+assert_contains "$OUT" "Not pushed: 'feat/wt' tracks 'origin/main'" "the skip names the mismatched upstream"
+assert_contains "$OUT" "git push -u origin HEAD:refs/heads/feat/wt" "the skip prints the explicit push command"
+
+git -C "$W" config push.default simple
+echo "again" > "$W/wt.txt"
+OUT="$(cd "$W" && bash "$COMMITTER" "fix: worktree follow-up" wt.txt 2>&1; echo "rc=$?")"
+assert_contains "$OUT" "rc=0" "branch tracking origin/main exits 0 under push.default=simple too"
+assert_eq "$MAIN_BEFORE" "$(remote_sha "$PUSH_ROOT/wt.git" main)" "push.default=simple: main is still untouched"
+
+# 2. No upstream → pushed to the same-named remote branch, upstream set.
+new_push_pair fresh
+F="$PUSH_ROOT/fresh"
+git -C "$F" checkout -q -b feat/new
+git -C "$F" branch -q --unset-upstream 2>/dev/null || true
+MAIN_BEFORE="$(remote_sha "$PUSH_ROOT/fresh.git" main)"
+echo "new" > "$F/new.txt"
+OUT="$(cd "$F" && bash "$COMMITTER" "feat: new branch" new.txt 2>&1; echo "rc=$?")"
+assert_contains "$OUT" "rc=0" "no upstream: committer exits 0"
+assert_eq "$(git -C "$F" rev-parse HEAD)" "$(remote_sha "$PUSH_ROOT/fresh.git" feat/new)" \
+  "no upstream: pushed to the same-named remote branch"
+assert_eq "origin|refs/heads/feat/new" \
+  "$(git -C "$F" config --get branch.feat/new.remote)|$(git -C "$F" config --get branch.feat/new.merge)" \
+  "no upstream: the push sets origin/feat/new as the upstream"
+assert_eq "$MAIN_BEFORE" "$(remote_sha "$PUSH_ROOT/fresh.git" main)" "no upstream: main is untouched"
+
+# 3. Same-named upstream → pushed to it (the branch case 2 just published).
+echo "more" > "$F/new.txt"
+OUT="$(cd "$F" && bash "$COMMITTER" "fix: follow-up" new.txt 2>&1; echo "rc=$?")"
+assert_contains "$OUT" "rc=0" "same-named upstream: committer exits 0"
+assert_eq "$(git -C "$F" rev-parse HEAD)" "$(remote_sha "$PUSH_ROOT/fresh.git" feat/new)" \
+  "same-named upstream: the new commit is pushed to it"
+
+# ... and ONLY to it: push.default=matching made a bare push publish every
+# same-named branch, including a local main that is ahead of origin/main.
+new_push_pair match
+M="$PUSH_ROOT/match"
+MAIN_BEFORE="$(remote_sha "$PUSH_ROOT/match.git" main)"
+git -C "$M" commit -q --allow-empty -m "chore: local-only main commit"
+git -C "$M" checkout -q -b feat/same
+git -C "$M" push -q -u origin HEAD:refs/heads/feat/same 2>/dev/null
+git -C "$M" config push.default matching
+echo "same" > "$M/same.txt"
+OUT="$(cd "$M" && bash "$COMMITTER" "feat: same-name change" same.txt 2>&1; echo "rc=$?")"
+assert_contains "$OUT" "rc=0" "same-named upstream under push.default=matching: exits 0"
+assert_eq "$(git -C "$M" rev-parse HEAD)" "$(remote_sha "$PUSH_ROOT/match.git" feat/same)" \
+  "push.default=matching: the current branch is pushed"
+assert_eq "$MAIN_BEFORE" "$(remote_sha "$PUSH_ROOT/match.git" main)" \
+  "push.default=matching: a local main ahead of origin is NOT pushed along with it"
+
+# 4. --no-push → nothing pushed, no upstream recorded.
+new_push_pair quiet
+Q="$PUSH_ROOT/quiet"
+git -C "$Q" checkout -q -b feat/quiet
+git -C "$Q" branch -q --unset-upstream 2>/dev/null || true
+echo "quiet" > "$Q/quiet.txt"
+OUT="$(cd "$Q" && bash "$COMMITTER" "feat: quiet change" quiet.txt --no-push 2>&1; echo "rc=$?")"
+assert_contains "$OUT" "rc=0" "--no-push: committer exits 0"
+assert_eq "none" "$(remote_sha "$PUSH_ROOT/quiet.git" feat/quiet)" "--no-push: nothing is pushed"
+assert_eq "" "$(git -C "$Q" config --get branch.feat/quiet.merge)" "--no-push: no upstream is recorded"
+
+# 5. Detached HEAD → skipped with a message, exit 0.
+new_push_pair detached
+X="$PUSH_ROOT/detached"
+git -C "$X" checkout -q --detach
+REFS_BEFORE="$(git -C "$PUSH_ROOT/detached.git" for-each-ref --format='%(refname) %(objectname)')"
+echo "detached" > "$X/detached.txt"
+OUT="$(cd "$X" && bash "$COMMITTER" "feat: detached change" detached.txt 2>&1; echo "rc=$?")"
+assert_contains "$OUT" "rc=0" "detached HEAD: committer exits 0 (the commit succeeded)"
+assert_contains "$OUT" "Not pushed: detached HEAD" "detached HEAD: the skip says why"
+assert_eq "$REFS_BEFORE" "$(git -C "$PUSH_ROOT/detached.git" for-each-ref --format='%(refname) %(objectname)')" \
+  "detached HEAD: the remote is untouched"
+assert_eq "feat: detached change" "$(git -C "$X" log -1 --format=%s)" "detached HEAD: the commit landed"
+
+# 6. No upstream and no origin remote → skipped with a message, exit 0.
+new_push_pair lonely
+L="$PUSH_ROOT/lonely"
+git -C "$L" remote remove origin
+echo "lonely" > "$L/lonely.txt"
+OUT="$(cd "$L" && bash "$COMMITTER" "feat: no remote" lonely.txt 2>&1; echo "rc=$?")"
+assert_contains "$OUT" "rc=0" "no remote at all: committer exits 0"
+assert_contains "$OUT" "has no 'origin' remote" "no remote at all: the skip says why"
+
+# 7. Tracking a LOCAL branch (remote ".") is a different-name upstream too:
+#    push.default=upstream used to push into this repository's own main.
+new_push_pair local
+LC="$PUSH_ROOT/local"
+git -C "$LC" checkout -q -b feat/local
+git -C "$LC" config branch.feat/local.remote .
+git -C "$LC" config branch.feat/local.merge refs/heads/main
+git -C "$LC" config push.default upstream
+LOCAL_MAIN_BEFORE="$(git -C "$LC" rev-parse main)"
+echo "local" > "$LC/local.txt"
+OUT="$(cd "$LC" && bash "$COMMITTER" "feat: local tracking" local.txt 2>&1; echo "rc=$?")"
+assert_contains "$OUT" "rc=0" "branch tracking a local branch: committer exits 0"
+assert_eq "$LOCAL_MAIN_BEFORE" "$(git -C "$LC" rev-parse main)" "branch tracking local main never moves main"
+assert_contains "$OUT" "git push -u origin HEAD:refs/heads/feat/local" \
+  "local-tracking skip suggests origin, never the '.' pseudo-remote"
+
+# 8. A push git rejects exits 3 (commit kept) and is never forced.
+new_push_pair race
+RC_DIR="$PUSH_ROOT/race"
+git -C "$RC_DIR" checkout -q -b feat/race
+git -C "$RC_DIR" push -q -u origin HEAD:refs/heads/feat/race 2>/dev/null
+OTHER="$(git -C "$RC_DIR" commit-tree -p HEAD -m "chore: another writer" "HEAD^{tree}")"
+git -C "$RC_DIR" push -q origin "$OTHER:refs/heads/feat/race" 2>/dev/null
+echo "mine" > "$RC_DIR/race.txt"
+OUT="$(cd "$RC_DIR" && bash "$COMMITTER" "feat: racing change" race.txt 2>&1; echo "rc=$?")"
+assert_contains "$OUT" "rc=3" "rejected push: exit 3, distinct from the 1 of a pre-commit refusal"
+assert_contains "$OUT" "Push FAILED" "rejected push: says the push, not the commit, failed"
+assert_eq "feat: racing change" "$(git -C "$RC_DIR" log -1 --format=%s)" "rejected push: the commit is kept"
+assert_eq "$OTHER" "$(remote_sha "$PUSH_ROOT/race.git" feat/race)" "rejected push: the remote branch is never forced"
+
+# 9. The push remote is the one `git push` itself would pick (a fork workflow):
+#    branch.<b>.pushRemote over remote.pushDefault over origin.
+new_push_pair tri
+T="$PUSH_ROOT/tri"
+git init -q --bare "$PUSH_ROOT/tri-fork.git" 2>/dev/null
+git -C "$T" remote add fork "$PUSH_ROOT/tri-fork.git"
+git -C "$T" config remote.pushDefault fork
+git -C "$T" checkout -q -b feat/tri
+git -C "$T" branch -q --unset-upstream 2>/dev/null || true
+echo "tri" > "$T/tri.txt"
+OUT="$(cd "$T" && bash "$COMMITTER" "feat: fork push" tri.txt 2>&1; echo "rc=$?")"
+assert_eq "$(git -C "$T" rev-parse HEAD)|none" \
+  "$(remote_sha "$PUSH_ROOT/tri-fork.git" feat/tri)|$(remote_sha "$PUSH_ROOT/tri.git" feat/tri)" \
+  "remote.pushDefault=fork: pushed to the fork, not origin"
+git -C "$T" config remote.pushDefault origin
+git -C "$T" checkout -q -b feat/tri2 main
+git -C "$T" branch -q --unset-upstream 2>/dev/null || true
+git -C "$T" config branch.feat/tri2.pushRemote fork
+echo "tri2" > "$T/tri2.txt"
+OUT="$(cd "$T" && bash "$COMMITTER" "feat: fork push two" tri2.txt 2>&1; echo "rc=$?")"
+assert_eq "$(git -C "$T" rev-parse HEAD)|none" \
+  "$(remote_sha "$PUSH_ROOT/tri-fork.git" feat/tri2)|$(remote_sha "$PUSH_ROOT/tri.git" feat/tri2)" \
+  "branch.<b>.pushRemote=fork wins over remote.pushDefault=origin"
+
+# 10. ... and branch.<b>.remote below both: a branch tracking up/<same-name>
+#     with no pushRemote/pushDefault goes to `up`, never to origin.
+new_push_pair route
+RT="$PUSH_ROOT/route"
+git init -q --bare "$PUSH_ROOT/route-up.git" 2>/dev/null
+git -C "$RT" remote add up "$PUSH_ROOT/route-up.git"
+git -C "$RT" checkout -q -b feat/up
+git -C "$RT" push -q -u up HEAD:refs/heads/feat/up 2>/dev/null
+echo "up" > "$RT/up.txt"
+OUT="$(cd "$RT" && bash "$COMMITTER" "feat: tracks up" up.txt 2>&1; echo "rc=$?")"
+assert_eq "$(git -C "$RT" rev-parse HEAD)|none" \
+  "$(remote_sha "$PUSH_ROOT/route-up.git" feat/up)|$(remote_sha "$PUSH_ROOT/route.git" feat/up)" \
+  "branch.<b>.remote=up (same-name upstream): pushed to up, not origin"
+#     remote.pushDefault=fork outranks branch.<b>.remote=origin.
+git init -q --bare "$PUSH_ROOT/route-fork.git" 2>/dev/null
+git -C "$RT" remote add fork "$PUSH_ROOT/route-fork.git"
+git -C "$RT" checkout -q -b feat/pd main
+git -C "$RT" push -q -u origin HEAD:refs/heads/feat/pd 2>/dev/null
+ORIGIN_PD_BEFORE="$(remote_sha "$PUSH_ROOT/route.git" feat/pd)"
+git -C "$RT" config remote.pushDefault fork
+echo "pd" > "$RT/pd.txt"
+OUT="$(cd "$RT" && bash "$COMMITTER" "feat: pushDefault over remote" pd.txt 2>&1; echo "rc=$?")"
+assert_eq "$(git -C "$RT" rev-parse HEAD)|$ORIGIN_PD_BEFORE" \
+  "$(remote_sha "$PUSH_ROOT/route-fork.git" feat/pd)|$(remote_sha "$PUSH_ROOT/route.git" feat/pd)" \
+  "remote.pushDefault=fork wins over branch.<b>.remote=origin"
+
+# 11. A tag (or any ref) named like the branch must not confuse the branch
+#     name: `symbolic-ref --short` answers `heads/<name>` then, which missed the
+#     branch's config, pushed to refs/heads/heads/<name> and rewrote its upstream.
+new_push_pair tagged
+TG="$PUSH_ROOT/tagged"
+git -C "$TG" checkout -q -b rel1 --track origin/main
+git -C "$TG" tag rel1
+git -C "$TG" config push.default upstream
+MAIN_BEFORE="$(remote_sha "$PUSH_ROOT/tagged.git" main)"
+echo "rel1" > "$TG/rel1.txt"
+OUT="$(cd "$TG" && bash "$COMMITTER" "feat: tagged branch tracking main" rel1.txt 2>&1; echo "rc=$?")"
+assert_contains "$OUT" "rc=0" "tag named like a branch tracking origin/main: exits 0"
+assert_eq "$MAIN_BEFORE|none|none" \
+  "$(remote_sha "$PUSH_ROOT/tagged.git" main)|$(remote_sha "$PUSH_ROOT/tagged.git" rel1)|$(remote_sha "$PUSH_ROOT/tagged.git" heads/rel1)" \
+  "tag named like a branch tracking origin/main: nothing is pushed anywhere"
+assert_eq "refs/heads/main" "$(git -C "$TG" config --get branch.rel1.merge)" \
+  "tag named like a branch tracking origin/main: its upstream config is kept"
+git -C "$TG" checkout -q -b rel2 main
+git -C "$TG" push -q -u origin HEAD:refs/heads/rel2 2>/dev/null
+git -C "$TG" tag rel2
+echo "rel2" > "$TG/rel2.txt"
+OUT="$(cd "$TG" && bash "$COMMITTER" "feat: tagged same-name branch" rel2.txt 2>&1; echo "rc=$?")"
+assert_eq "$(git -C "$TG" rev-parse HEAD)|none|refs/heads/rel2" \
+  "$(remote_sha "$PUSH_ROOT/tagged.git" rel2)|$(remote_sha "$PUSH_ROOT/tagged.git" heads/rel2)|$(git -C "$TG" config --get branch.rel2.merge)" \
+  "tag named like a same-name-tracking branch: pushed to refs/heads/<branch>, upstream kept"
+
+# 12. An autonomous worker never pushes, in the exact shape run-tasks-parallel.sh
+#     builds: `git branch batch/task-N-TS main` + `git worktree add`, so the
+#     branch has no upstream and the -u path would publish it to origin.
+new_push_pair worker
+WK="$PUSH_ROOT/worker-wt"
+git -C "$PUSH_ROOT/worker" branch batch/task-0-20261023 main
+git -C "$PUSH_ROOT/worker" worktree add -q "$WK" batch/task-0-20261023 2>/dev/null
+REFS_BEFORE="$(git -C "$PUSH_ROOT/worker.git" for-each-ref --format='%(refname) %(objectname)')"
+echo "worker" > "$WK/worker.txt"
+OUT="$(cd "$WK" && CLADE_WORKER_TASK_ID=batch-20261023-0 bash "$COMMITTER" "feat: worker change" worker.txt 2>&1; echo "rc=$?")"
+assert_contains "$OUT" "rc=0" "worker commit (CLADE_WORKER_TASK_ID): committer exits 0"
+assert_contains "$OUT" "Not pushed: autonomous worker commit" "worker commit: the skip says why"
+assert_eq "feat: worker change" "$(git -C "$WK" log -1 --format=%s)" "worker commit: the commit landed"
+assert_eq "$REFS_BEFORE" "$(git -C "$PUSH_ROOT/worker.git" for-each-ref --format='%(refname) %(objectname)')" \
+  "worker commit: the task branch is not published"
+assert_eq "" "$(git -C "$WK" config --get branch.batch/task-0-20261023.merge)" "worker commit: no upstream is recorded"
+
+# 13. HEAD symbolically pointing at a ref outside refs/heads/ (here a
+#     remote-tracking ref) is not a branch: skipped, never pushed as
+#     refs/heads/refs/remotes/... .
+new_push_pair oddhead
+OH="$PUSH_ROOT/oddhead"
+git -C "$OH" update-ref refs/remotes/origin/odd HEAD
+git -C "$OH" symbolic-ref HEAD refs/remotes/origin/odd
+REFS_BEFORE="$(git -C "$PUSH_ROOT/oddhead.git" for-each-ref --format='%(refname) %(objectname)')"
+echo "odd" > "$OH/odd.txt"
+OUT="$(cd "$OH" && bash "$COMMITTER" "feat: odd head" odd.txt 2>&1; echo "rc=$?")"
+assert_contains "$OUT" "rc=0" "HEAD on a non-branch ref: committer exits 0"
+assert_contains "$OUT" "which is not a local branch" "HEAD on a non-branch ref: the skip says why"
+assert_eq "$REFS_BEFORE" "$(git -C "$PUSH_ROOT/oddhead.git" for-each-ref --format='%(refname) %(objectname)')" \
+  "HEAD on a non-branch ref: the remote is untouched"
+
+if [[ "$SAVED_GIT_CONFIG_GLOBAL" == "__unset__" ]]; then unset GIT_CONFIG_GLOBAL; else export GIT_CONFIG_GLOBAL="$SAVED_GIT_CONFIG_GLOBAL"; fi
+if [[ "$SAVED_GIT_CONFIG_NOSYSTEM" == "__unset__" ]]; then unset GIT_CONFIG_NOSYSTEM; else export GIT_CONFIG_NOSYSTEM="$SAVED_GIT_CONFIG_NOSYSTEM"; fi
 
 # ─── commit-archeology.sh agent segmentation ─────────────────────────
 echo "── commit-archeology.sh agent segmentation ──"

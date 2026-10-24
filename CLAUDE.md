@@ -462,6 +462,17 @@ purpose; `ci-local.py` remains the gate before a push. A bare `git commit` bypas
 it, which is accepted: `.git/hooks` is not versioned, so a hook there would exist
 only on the machine that installed it — the drift this gate exists to catch.
 
+After the commit it pushes, but only to the remote branch with the same name as
+the local one (`<remote> HEAD:refs/heads/<branch>`, `-u` when there is no
+upstream). A branch tracking another name — `git worktree add -b X <path>
+origin/main` makes origin/main the upstream — is committed and not pushed, exit 0;
+a detached HEAD likewise. An autonomous worker (`CLADE_WORKER_TASK_ID` set) never
+pushes: its runner owns delivery — `run-tasks-parallel.sh` merges each
+`batch/task-*` branch locally, and `worker.py` gates its own `auto_push` — so the
+`-u` path would otherwise publish every unreviewed task branch. `--no-push` skips
+the push; a push git rejects exits 3, never forced. `tests/test-checks.sh` pins
+each case against a bare remote.
+
 Conventional commit types: `feat` / `fix` / `refactor` / `test` / `chore` / `docs` / `perf`
 
 ## Release Versioning
