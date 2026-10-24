@@ -583,6 +583,19 @@ python3 configs/scripts/workflow-scorecard.py --self-test
 #     common English words.
 python3 configs/scripts/check-skill-contracts.py --self-test
 
+# 2e. And of the Workflow preflight (`workflow-preflight.sh` → this script's
+#     --hook mode). Its controls run through hook_main, the hook's own entry
+#     point, and each of its mutations in test_self_tests_can_fire.py turns it
+#     red — including "a deadline in the script stage drops the deny", the
+#     property that makes the args check run first. A 2026-10-23 review
+#     removed 48 guards one at a time and 30 of the checker's stayed green in
+#     both this self-test and the suite (every truncation method, sink and
+#     exclusion but one, the quota numbers at their boundaries, the real
+#     deadline timer); each now has a control and a mutation. The shell
+#     wrapper's guards (4 of the 48 also stayed green) are mutated by
+#     tests/test-workflow-preflight.sh itself.
+python3 configs/scripts/check-workflow-script.py --self-test
+
 # 3. Shell syntax check (hooks, scripts, installer)
 bash -n configs/hooks/*.sh configs/scripts/*.sh install.sh
 
@@ -696,13 +709,13 @@ python3 configs/scripts/check-sibling-facts.py
 #     did not run at all.
 bash configs/scripts/checks.sh shellcheck configs/hooks/*.sh configs/hooks/lib/*.sh configs/scripts/*.sh install.sh
 
-# 12. Every suite the `shell-tests` job runs — all 23, not a convenient subset
+# 12. Every suite the `shell-tests` job runs — all 24, not a convenient subset
 for t in loop checks skill-routing pr-scope-policy audit worktree-env \
          rule-injector mailbox-drain correction-pairing hooks session-context \
          session-scorecard \
          post-compact-reinject context-warning-drain ensure-dev-server \
          quiet-run scan-health pre-tool-guardian loop-args memory-watchdog \
-         ci-local seo-geo radar-cron; do
+         ci-local seo-geo radar-cron workflow-preflight; do
   bash "tests/test-$t.sh" >/dev/null || echo "FAILED: $t"
 done
 
@@ -750,7 +763,7 @@ commit too.**
 On push/PR to `main`, four workflow files fire:
 
 - `ci.yml` — `syntax-check` (24 gates), `pytest` (suite + 2 offline evals),
-  `shell-tests` (23 suites), `install-test`. `run_hack_eval.py` scores
+  `shell-tests` (24 suites), `install-test`. `run_hack_eval.py` scores
   `judge_diversity.test_integrity` against the labelled reward-hack corpus in
   `evals/hack_cases/` — read its README before changing either, because that
   gate's floor and ceiling are measured, not chosen.

@@ -28,6 +28,12 @@ the primary account's quota. The cache keeps the whole API response, five_hour
 window included — but it is written only when this script calls the API. With
 --statusline-input and a usable rate_limits payload from Claude Code it is
 neither read nor written, so its "_at" can be arbitrarily old: check it.
+
+--refresh-only refreshes that cache when it is older than CACHE_TTL and prints
+nothing, whatever the status-line mode. It is for readers of the cache rather
+than of the symbol — the Workflow preflight's quota gate
+(check-workflow-script.py) — because a plain run returns at once under
+`slt off` and would leave the cache a launch gate reads frozen.
 """
 import hashlib, json, locale, os, subprocess, sys, time, unicodedata, urllib.request
 from datetime import datetime, timezone
@@ -341,5 +347,24 @@ def run():
         print(f"{sym} ({left})", end="")
 
 
+def refresh_only():
+    """Refresh the cache past CACHE_TTL; render nothing. See the module docstring."""
+    if _load_cache():
+        return
+    token = _load_token()
+    if not token:
+        return
+    fetched = _fetch(token)
+    if fetched and "seven_day" in fetched:
+        _save_cache(fetched)
+
+
+def main(argv):
+    if "--refresh-only" in argv:
+        refresh_only()
+    else:
+        run()
+
+
 if __name__ == "__main__":
-    run()
+    main(sys.argv[1:])

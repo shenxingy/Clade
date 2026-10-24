@@ -101,6 +101,19 @@
         ]
       },
       {
+        "matcher": "Workflow",
+        "hooks": [
+          {
+            "id": "workflow-preflight",
+            "description": "Check a Workflow launch before its agents run (configs/scripts/check-workflow-script.py --hook). DENY when args carry a placeholder sentinel (\"__FILL__\", {\"__see\": …}, \"(see packet file)\"): 10 of 324 launches on one host did, and one ran to completed on the placeholder. WARN, launch proceeds, when a stringified prior result is .slice()d into a prompt with no log() of the cut, when args is a JSON-encoded string, or when the profile's usage cache is under 10 min old and reads 7-day >= 90% or 5-hour >= 85%. Resolves script, scriptPath and saved name inputs. Fails open: no python3, a crash or a hang lets the launch through.",
+            "type": "command",
+            "command": "~/.claude/hooks/workflow-preflight.sh",
+            "timeout": 15,
+            "statusMessage": "Preflighting workflow launch..."
+          }
+        ]
+      },
+      {
         "matcher": "Edit|Write",
         "hooks": [
           {
