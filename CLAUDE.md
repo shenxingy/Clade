@@ -813,6 +813,27 @@ confirm the check list actually grew before reading green as evidence.
   units than slots — the queue packs them. That is the half of CPU work-stealing
   that transfers; the migration half does not, because an agent cannot be
   preempted or moved mid-flight.
+- **A one-agent stage is not a straggler, and reshaping recovers little of
+  it.** It sits on the critical path for its whole length, so shorten the stage
+  itself: a tight brief, its own `effort`, waits that keep the subagent cache
+  warm, and a return as soon as the artifact the next stage reads is frozen.
+  Over 316 runs on one account (2026-09-22 → 10-22), one-agent stages were a
+  larger sink than stragglers, and waits on external jobs were 38% of their
+  agent time. Overlapping them instead would have recovered only ~9–20 h of
+  272 h, and 3 of 5 audited "this could overlap" diagnoses were refuted by a
+  hidden data dependency. One shape is worth fixing: units that each build
+  their own worktree from origin/main go in
+  `pipeline(UNITS, implVerify, landBehindMutex)`, not a for-await loop
+  (3 of 294 scripts; one run lost ~4–8 h to it). Until `workflow-scorecard.py`
+  separates serial from outlived time, its tail counts a lone stage too, so a
+  tail over 15% on a serial-dominated run is not by itself a shape error.
+- **The other Workflow script rules live once, in `configs/CLAUDE.md`
+  § Adaptive Delegation**, which `install.sh` deploys as the global CLAUDE.md:
+  waits that keep the cache warm, nulls counted per stage and returned as a
+  resumable result, a deferred launch near the quota cap, a short return with
+  the full result in a file, fix rounds inside the script, no AskUserQuestion
+  while a run is live, a launch contract before large runs, and a device
+  matrix for UI verify. Change them there, not in a copy.
 - **Bound a data-dependent stage.** `pipeline(items, find, verify)` where the
   verify stage fans out one agent per finding does not have `items.length`
   agents — it has however many the finders chose to report. Two audits on

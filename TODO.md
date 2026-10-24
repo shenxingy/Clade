@@ -1956,7 +1956,8 @@ tiering are real but unmeasured. Each needs a paired A/B before rollout.
   the workflow guidance and in a warn-only PreToolUse Bash rule in
   `pre-tool-guardian.sh` that fires only when the hook input has `agent_id`.
   Estimated −$2.4k (−12%), or ~0.27 weekly caps a week. Do NOT set a 1-hour
-  subagent TTL: the 2x write premium cancels it on quota.
+  subagent TTL: the 2x write premium cancels it on quota. — guidance half DONE
+  2026-10-23 (`configs/CLAUDE.md` § Adaptive Delegation, "Workflow scripts")
 - [ ] 🟡 **Every workflow subagent re-reads ~54k tokens of instructions and skill
   listing on every call.** Turn-1 context has a median of 72.6k tokens, of which
   only the 18.9k tools+system prefix is shared between siblings. Agent
@@ -1979,8 +1980,10 @@ tiering are real but unmeasured. Each needs a paired A/B before rollout.
   single-claim verify, default for implement, judge and synth). Model switching
   is NOT the main lever: Sonnet 5 reads cost the same as Opus 5.5 reads, the
   realistic move is 8.6%, and Haiku's 200k window cannot hold 59% of agents.
-- [ ] 🔵 **Serial stages need their own rule; the guidance only covers
-  stragglers.** Add next to the pipeline bullet (`configs/CLAUDE.md:213-219` and
+- [x] 🔵 **Serial stages need their own rule; the guidance only covers
+  stragglers.** DONE 2026-10-23 — rule in `configs/CLAUDE.md` § Adaptive
+  Delegation, long form with the reshaping data in `CLAUDE.md` § Code Rules.
+  Add next to the pipeline bullet (`configs/CLAUDE.md:213-219` and
   its mirror in `CLAUDE.md`): "A one-agent stage is on the critical path for its
   whole length. Shorten it: a tight brief, a per-stage effort, keep-warm waits,
   and return as soon as the artifact the next stage consumes is frozen." Also
@@ -2001,7 +2004,8 @@ tiering are real but unmeasured. Each needs a paired A/B before rollout.
   counts nulls per stage and returns `{incomplete, failed:[labels], resume}`
   instead of feeding nulls downstream. Add a pre-launch quota gate: 7-day ≥ 90%,
   or 5-hour plus projected burn ≥ 100%, means defer or switch account. That gate
-  would have deferred 77 of the 82 metered losses.
+  would have deferred 77 of the 82 metered losses. Guidance half DONE
+  2026-10-23 (`configs/CLAUDE.md` § Adaptive Delegation, "Workflow scripts").
   - [x] Prerequisite: `claude-usage-watch.py:28-29` read only the primary
     profile. Resolve it from `CLAUDE_CONFIG_DIR` and keep the 5-hour window.
     DONE 2026-10-23 — token, macOS Keychain item and cache now resolve from
@@ -2042,16 +2046,20 @@ tiering are real but unmeasured. Each needs a paired A/B before rollout.
   on this corpus. Add it to the same Workflow hook. Convention: more than a
   handful of items go in a scratch JSON file; args carries the path and an
   expected count that the script asserts.
-- [ ] 🔵 **Workflow results overflow the 8,000-char notification.** 92% do
+- [x] 🔵 **Workflow results overflow the 8,000-char notification.** DONE
+  2026-10-23 — rule in `configs/CLAUDE.md` § Adaptive Delegation. 92% do
   (259 of 281); the cap is in the 2.1.283 binary. The lead then digs through
   journals: ~266 reads, ~1.8M chars. Rule: the last stage writes full results to
   a file and returns ≤ 6k chars (verdict, counts with denominators, open items,
   path).
-- [ ] 🔵 **Fix rounds bounce through the lead.** 20 strict corrective re-runs
+- [x] 🔵 **Fix rounds bounce through the lead.** DONE 2026-10-23 — rule in
+  `configs/CLAUDE.md` § Adaptive Delegation. 20 strict corrective re-runs
   took 33.2 h of 508.6 h makespan (6.5%), and there were 38 lead-only relaunches
   right after a reviewing run. Rule: verify → fix → re-check, at most 2 rounds
   inside the script, returning only units still open.
-- [ ] 🔵 **AskUserQuestion freezes the lead while a workflow finishes.** 7
+- [x] 🔵 **AskUserQuestion freezes the lead while a workflow finishes.** DONE
+  2026-10-23 — the rule, not a warn-hook, in `configs/CLAUDE.md` § Adaptive
+  Delegation. 7
   completions sat unread for 36.5 completion-hours, behind 4 of 26 questions in
   59 sessions. Rule or warn-hook: with a live background task, ask in plain text
   and end the turn.
@@ -2067,4 +2075,5 @@ tiering are real but unmeasured. Each needs a paired A/B before rollout.
   the 6-hour windows for weekly labelling. Guidance: a 3-line launch contract
   (objective, acceptance criteria, premises) before ≥ 5-agent runs started from
   a long brief. UI verify stages need a device matrix (webkit iPhone, the
-  owner's screens, elementFromPoint).
+  owner's screens, elementFromPoint). — guidance half DONE 2026-10-23
+  (`configs/CLAUDE.md` § Adaptive Delegation, "Workflow scripts")
