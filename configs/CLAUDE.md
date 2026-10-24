@@ -301,6 +301,9 @@ Structure code for efficient Claude Code tool usage:
   runnable first task with expected output, recovery/help, and a compact map of
   actual repository responsibilities and documentation. Cover language variants
   and independently distributed package READMEs.
+- **Open-source participation:** verify help, issue and contribution routes for
+  the intended audience; starter tasks need bounded actions and acceptance
+  checks, not just labels. Match claims and media to the obtainable version.
 - **Verify the presentation:** inspect desktop/phone and light/dark rendering,
   image loading, legibility at enlarged text, links and the first-use path.
   Keep media reproducible, accessible, reasonably sized and free of private data.
