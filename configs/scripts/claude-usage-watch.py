@@ -19,16 +19,27 @@ Themes (~/.claude/.statusline-theme):  circles | bird | plant
 
 slt            — cycle mode (symbol → percent → off → symbol)
 slt theme bird — set theme
+
+Account: the reading belongs to the Claude Code config dir this process runs
+under — CLAUDE_CONFIG_DIR when set to a non-empty path (a profile such as
+~/.claude-profiles/<name>), ~/.claude otherwise. The OAuth token and the cache
+both come from that dir, so a profile never shows, fetches with, or overwrites
+the primary account's quota. The cache keeps the whole API response, five_hour
+window included — but it is written only when this script calls the API. With
+--statusline-input and a usable rate_limits payload from Claude Code it is
+neither read nor written, so its "_at" can be arbitrarily old: check it.
 """
-import json, locale, os, subprocess, sys, time, urllib.request
+import hashlib, json, locale, os, subprocess, sys, time, unicodedata, urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
 USAGE_API    = "https://api.anthropic.com/api/oauth/usage"
-CREDS_FILE   = Path.home() / ".claude" / ".credentials.json"
-CACHE_FILE   = Path.home() / ".claude" / "usage-watch-cache.json"
+# Display preferences stay under ~/.claude: `slt` (statusline-toggle.sh) writes
+# them there, and they are not per-account. The credentials and the cache are
+# per-account and resolve through _config_dir() at call time.
 MODE_FILE    = Path.home() / ".claude" / ".statusline-mode"
 THEME_FILE   = Path.home() / ".claude" / ".statusline-theme"
+KEYCHAIN_SERVICE = "Claude Code-credentials"
 CACHE_TTL       = 300
 CACHE_TTL_STALE = 3600 * 24 * 7  # use stale cache for up to 7d (full period) if API is unavailable
 TARGET_RATE  = 0.95   # 95% weekly utilization = "excellent"
@@ -128,6 +139,46 @@ def _color(projected, delta):
     # Keep the signed pace and badge informative without an alarm-red accent.
     return PACE_PEACH if _overpacing(delta, projected) else PACE_HONEY
 
+# ─── Account: which config dir, which credentials, which cache ───
+# Follows Claude Code's own resolution as read from the 2.1.283 binary, with two
+# deliberate departures. Claude Code: the config dir is CLAUDE_CONFIG_DIR taken
+# as a raw path, or ~/.claude when the variable is unset; the credentials file
+# is <config dir>/.credentials.json; and the macOS Keychain item is "Claude
+# Code-credentials", suffixed with "-" + the first 8 hex digits of
+# sha256(NFC(raw CLAUDE_CONFIG_DIR)) when the variable is non-empty. The suffix
+# rule is followed exactly — the hash is over the raw string, trailing slash and
+# all, never the resolved path. Departures, both so that a status line never
+# reads a .credentials.json out of a project's working directory: an EMPTY value
+# means ~/.claude here, while Claude Code reads it as its working directory
+# (./.credentials.json); and a leading ~ is expanded here, while Claude Code
+# never expands it. Reading the fixed ~/.claude paths instead made every
+# profile show — and refresh — the primary account's quota. Not followed: the
+# binary's undocumented CLAUDE_SECURESTORAGE_CONFIG_DIR, which relocates the
+# credentials alone.
+
+def _config_dir_env():
+    """CLAUDE_CONFIG_DIR as set, "" when unset (the raw value the hash covers)."""
+    return os.environ.get("CLAUDE_CONFIG_DIR", "")
+
+def _config_dir():
+    # Empty counts as unset and ~ is expanded: deliberate departures from
+    # Claude Code, explained in the section comment above.
+    override = _config_dir_env()
+    return Path(override).expanduser() if override else Path.home() / ".claude"
+
+def _creds_file():
+    return _config_dir() / ".credentials.json"
+
+def _cache_file():
+    return _config_dir() / "usage-watch-cache.json"
+
+def _keychain_service():
+    override = _config_dir_env()
+    if not override:
+        return KEYCHAIN_SERVICE
+    digest = hashlib.sha256(unicodedata.normalize("NFC", override).encode("utf-8")).hexdigest()
+    return f"{KEYCHAIN_SERVICE}-{digest[:8]}"
+
 # ─── API / cache ───
 
 def _load_token():
@@ -135,7 +186,7 @@ def _load_token():
     if sys.platform == "darwin":
         try:
             raw = subprocess.check_output(
-                ["security", "find-generic-password", "-s", "Claude Code-credentials", "-w"],
+                ["security", "find-generic-password", "-s", _keychain_service(), "-w"],
                 text=True, stderr=subprocess.DEVNULL, timeout=5,
             ).strip()
             return json.loads(raw)["claudeAiOauth"]["accessToken"]
@@ -143,7 +194,7 @@ def _load_token():
             pass
     # Linux / fallback: read from .credentials.json
     try:
-        return json.loads(CREDS_FILE.read_text())["claudeAiOauth"]["accessToken"]
+        return json.loads(_creds_file().read_text())["claudeAiOauth"]["accessToken"]
     except Exception:
         return None
 
@@ -160,7 +211,7 @@ def _fetch(token):
 
 def _load_cache(max_age=CACHE_TTL):
     try:
-        d = json.loads(CACHE_FILE.read_text())
+        d = json.loads(_cache_file().read_text())
         if time.time() - d.get("_at", 0) < max_age:
             return d
     except Exception:
@@ -170,7 +221,7 @@ def _load_cache(max_age=CACHE_TTL):
 def _save_cache(d):
     try:
         d["_at"] = time.time()
-        CACHE_FILE.write_text(json.dumps(d))
+        _cache_file().write_text(json.dumps(d))
     except Exception:
         pass
 

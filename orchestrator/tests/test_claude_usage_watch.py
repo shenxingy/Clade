@@ -10,7 +10,12 @@ and the fact that the colour agrees with the symbol.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
+import json
+import subprocess
+import time
+import unicodedata
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -115,3 +120,223 @@ def test_burning_the_week_down_early_reports_the_failure(circles, monkeypatch, c
 def test_off_mode_prints_nothing(circles, monkeypatch, capsys) -> None:
     (circles / "mode").write_text("off")
     assert _render(monkeypatch, capsys, 100.0, 10.4) == ""
+
+
+# ─── Which account: CLAUDE_CONFIG_DIR, never the primary profile's files ───
+#
+# Under a profile (CLAUDE_CONFIG_DIR=~/.claude-profiles/<name>) the script read
+# the token and the cache from ~/.claude, so the status line showed the primary
+# account's quota and refreshed the primary cache, while the profile's own cache
+# went months without a write. Each test loads a FRESH copy of the script after
+# pointing HOME and CLAUDE_CONFIG_DIR at temp dirs, so neither this code nor an
+# older copy that resolves its paths at import time can touch the real
+# ~/.claude. The Keychain call and the network are stubbed in every test, and
+# the working directory is a temp dir holding a decoy .credentials.json: Claude
+# Code itself reads an EMPTY CLAUDE_CONFIG_DIR, or one starting with a literal
+# ~, relative to its working directory, and this script deliberately does not,
+# so any path that leaks into the cwd shows up as the decoy token being sent.
+
+PRIMARY_TOKEN = "fake-primary-token"
+PROFILE_TOKEN = "fake-profile-token"
+CWD_TOKEN = "fake-cwd-decoy-token"
+
+
+def _fake_creds(path: Path, token: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('{"claudeAiOauth": {"accessToken": "%s"}}' % token)
+
+
+def _api_reading(seven_day: float, five_hour: float) -> dict:
+    later = (datetime.now(timezone.utc) + timedelta(days=3)).isoformat()
+    soon = (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()
+    return {
+        "five_hour": {"utilization": five_hour, "resets_at": soon},
+        "seven_day": {"utilization": seven_day, "resets_at": later},
+    }
+
+
+class _FakeResponse:
+    def __init__(self, body: bytes) -> None:
+        self._body = body
+
+    def read(self) -> bytes:
+        return self._body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc) -> bool:
+        return False
+
+
+def _load_under(monkeypatch, home: Path, config_dir, *, api=None, keychain=None):
+    """A fresh module with HOME/CLAUDE_CONFIG_DIR set BEFORE it is executed.
+
+    Returns (module, sent) where `sent` collects the bearer tokens the module
+    tried to use. `api` is the JSON the fake endpoint returns (None = the call
+    fails); `keychain` is the token the fake `security` returns (None = no
+    Keychain item), consulted only when the test claims to be on macOS.
+    """
+    monkeypatch.setenv("HOME", str(home))
+    if config_dir is None:
+        monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    else:
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config_dir))
+    primary = home / ".claude"
+    primary.mkdir(parents=True, exist_ok=True)
+    (primary / ".statusline-mode").write_text("percent")
+    (primary / ".statusline-theme").write_text("circles")
+    cwd = home.parent / "cwd"
+    _fake_creds(cwd / ".credentials.json", CWD_TOKEN)
+    monkeypatch.chdir(cwd)
+
+    spec = importlib.util.spec_from_file_location("clade_claude_usage_watch_acct", SCRIPT)
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    sent: list = []
+    services: list = []
+
+    def fake_urlopen(req, timeout=None):
+        sent.append(req.get_header("Authorization"))
+        if api is None:
+            raise OSError("no network in tests")
+        return _FakeResponse(json.dumps(api).encode())
+
+    def fake_check_output(cmd, **kwargs):
+        services.append(cmd[cmd.index("-s") + 1])
+        if keychain is None:
+            raise subprocess.CalledProcessError(44, cmd)
+        return '{"claudeAiOauth": {"accessToken": "%s"}}' % keychain
+
+    monkeypatch.setattr(mod.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(mod.subprocess, "check_output", fake_check_output)
+    monkeypatch.setattr(mod.sys, "argv", ["claude-usage-watch.py"])
+    mod.services = services
+    return mod, sent
+
+
+def test_a_profile_fetches_with_its_own_token_and_caches_in_its_own_dir(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    home, profile = tmp_path / "home", tmp_path / "profiles" / "work"
+    _fake_creds(home / ".claude" / ".credentials.json", PRIMARY_TOKEN)
+    _fake_creds(profile / ".credentials.json", PROFILE_TOKEN)
+    # The primary cache is EXPIRED, so code that reads ~/.claude would refetch
+    # and overwrite it — exactly what the profile must never do.
+    primary_cache = home / ".claude" / "usage-watch-cache.json"
+    stale = dict(_api_reading(10.0, 5.0), _at=0)
+    primary_cache.write_text(json.dumps(stale))
+    before = primary_cache.read_bytes()
+
+    mod, sent = _load_under(monkeypatch, home, profile, api=_api_reading(40.0, 23.0))
+    monkeypatch.setattr(mod.sys, "platform", "linux")
+    mod.run()
+
+    assert sent == [f"Bearer {PROFILE_TOKEN}"]
+    profile_cache = profile / "usage-watch-cache.json"
+    assert profile_cache.exists(), "the profile's reading must be cached under CLAUDE_CONFIG_DIR"
+    cached = json.loads(profile_cache.read_text())
+    assert cached["seven_day"]["utilization"] == 40.0
+    # The 5-hour window is what a pre-launch quota gate reads; keep it.
+    assert cached["five_hour"]["utilization"] == 23.0
+    assert primary_cache.read_bytes() == before, "the primary cache must be untouched"
+    assert capsys.readouterr().out, "the profile's own reading must render"
+
+
+def test_a_profile_never_renders_the_primary_accounts_reading(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    """A fresh primary cache and a failed fetch: show nothing, not someone else."""
+    home, profile = tmp_path / "home", tmp_path / "profiles" / "work"
+    _fake_creds(home / ".claude" / ".credentials.json", PRIMARY_TOKEN)
+    _fake_creds(profile / ".credentials.json", PROFILE_TOKEN)
+    fresh = dict(_api_reading(99.0, 80.0), _at=time.time())
+    (home / ".claude" / "usage-watch-cache.json").write_text(json.dumps(fresh))
+
+    mod, sent = _load_under(monkeypatch, home, profile, api=None)
+    monkeypatch.setattr(mod.sys, "platform", "linux")
+    mod.run()
+
+    assert capsys.readouterr().out == "", "rendered another account's reading"
+    assert sent == [f"Bearer {PROFILE_TOKEN}"]
+    assert not (profile / "usage-watch-cache.json").exists()
+
+
+@pytest.mark.parametrize("config_dir_value", [None, ""])
+def test_without_a_profile_the_primary_dir_is_used(
+    tmp_path, monkeypatch, capsys, config_dir_value
+) -> None:
+    """Unset and empty both mean ~/.claude.
+
+    Unset is Claude Code's own rule. Empty is NOT: Claude Code 2.1.283 reads an
+    empty CLAUDE_CONFIG_DIR as a relative path and loads ./.credentials.json
+    from its working directory. This script deliberately falls back to
+    ~/.claude instead, so a status line never sends a token planted in a
+    project's working directory — the decoy there must not be the one sent.
+    """
+    home = tmp_path / "home"
+    _fake_creds(home / ".claude" / ".credentials.json", PRIMARY_TOKEN)
+
+    mod, sent = _load_under(monkeypatch, home, config_dir_value, api=_api_reading(40.0, 23.0))
+    monkeypatch.setattr(mod.sys, "platform", "linux")
+    mod.run()
+
+    assert sent == [f"Bearer {PRIMARY_TOKEN}"]
+    cached = json.loads((home / ".claude" / "usage-watch-cache.json").read_text())
+    assert cached["five_hour"]["utilization"] == 23.0
+    assert capsys.readouterr().out
+
+
+# Each case is (raw CLAUDE_CONFIG_DIR, as Claude Code hashes it; the dir the
+# credentials and cache resolve to). Built from tmp_path at run time.
+_KEYCHAIN_CASES = {
+    "plain": lambda t: (str(t / "profiles" / "work"), t / "profiles" / "work"),
+    # macOS hands out decomposed (NFD) paths; Claude Code hashes the NFC form.
+    "nfd": lambda t: (str(t / "profiles" / "cafe\u0301"), t / "profiles" / "cafe\u0301"),
+    # Shell tab completion adds the slash. Claude Code hashes the raw string, so
+    # the slash changes the item; hashing the resolved path would drop it and
+    # pick another account's item.
+    "trailing-slash": lambda t: (str(t / "profiles" / "work") + "/", t / "profiles" / "work"),
+    # An explicit CLAUDE_CONFIG_DIR=$HOME/.claude is still "set": Claude Code
+    # suffixes it, so it is NOT the primary's unsuffixed item.
+    "explicit-home-claude": lambda t: (str(t / "home" / ".claude"), t / "home" / ".claude"),
+    # A literal ~ (quoted in the shell): hashed raw, as Claude Code does, but
+    # the dir is expanded — the script's deliberate departure (see its comment).
+    "literal-tilde": lambda t: ("~/profiles/work", t / "home" / "profiles" / "work"),
+}
+
+
+@pytest.mark.parametrize("case", sorted(_KEYCHAIN_CASES))
+def test_macos_reads_the_profiles_own_keychain_item(tmp_path, monkeypatch, case) -> None:
+    """Claude Code names a profile's Keychain item after a hash of CLAUDE_CONFIG_DIR.
+
+    Expected suffix is computed here, independently of the script, from the rule
+    in the Claude Code 2.1.283 binary: "-" + sha256(NFC(raw value))[:8], over the
+    environment string exactly as set — not the resolved, normalised path.
+    """
+    home = tmp_path / "home"
+    raw, config_dir = _KEYCHAIN_CASES[case](tmp_path)
+    config_dir.mkdir(parents=True, exist_ok=True)
+    mod, sent = _load_under(
+        monkeypatch, home, raw, api=_api_reading(40.0, 23.0), keychain=PROFILE_TOKEN
+    )
+    monkeypatch.setattr(mod.sys, "platform", "darwin")
+    mod.run()
+
+    suffix = hashlib.sha256(unicodedata.normalize("NFC", raw).encode("utf-8")).hexdigest()[:8]
+    assert mod.services == [f"Claude Code-credentials-{suffix}"]
+    assert sent == [f"Bearer {PROFILE_TOKEN}"]
+    assert (config_dir / "usage-watch-cache.json").exists()
+
+
+def test_macos_primary_keeps_the_unsuffixed_keychain_item(tmp_path, monkeypatch) -> None:
+    home = tmp_path / "home"
+    mod, sent = _load_under(
+        monkeypatch, home, None, api=_api_reading(40.0, 23.0), keychain=PRIMARY_TOKEN
+    )
+    monkeypatch.setattr(mod.sys, "platform", "darwin")
+    mod.run()
+    assert mod.services == ["Claude Code-credentials"]
+    assert sent == [f"Bearer {PRIMARY_TOKEN}"]

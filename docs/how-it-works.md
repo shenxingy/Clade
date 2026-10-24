@@ -271,7 +271,7 @@ Theme is saved to `~/.claude/.statusline-theme` and persists across sessions.
 | 1h – 24h | hours | `18h`, `9h` |
 | < 1h | minutes | `45m`, `12m` |
 
-**How it works:** calls `GET https://api.anthropic.com/api/oauth/usage` (same source as `/usage`) every 5 minutes, reads `seven_day.utilization` and `resets_at`, computes `delta = utilization% − elapsed% × 0.95`. Token is read from `~/.claude/.credentials.json` — no extra setup needed.
+**How it works:** reads `seven_day.utilization` and `resets_at` and computes `delta = utilization% − elapsed% × 0.95`. The reading comes from the `rate_limits` Claude Code passes to the status line; when that is absent it calls `GET https://api.anthropic.com/api/oauth/usage` (same source as `/usage`) at most every 5 minutes and caches the whole response, five-hour window included — so the cache is refreshed only on that fallback path and can be far older than what the status line shows; check its `_at` before trusting it. Token and cache both live in the config dir Claude Code runs under — `$CLAUDE_CONFIG_DIR` when set to a non-empty path (a profile), `~/.claude` otherwise: its `.credentials.json` (on macOS, that dir's own Keychain item) and its `usage-watch-cache.json` — so a profile never shows the primary account's quota. No extra setup needed.
 
 ## Scripts (task runners)
 

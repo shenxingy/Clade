@@ -9,6 +9,8 @@ semantic versioning。
 
 ### 变更
 
+- 配额节奏（`slt`）现在读取当前 profile 自己账号的额度。`claude-usage-watch.py` 原来固定读 `~/.claude` 下的令牌和缓存，所以在 `CLAUDE_CONFIG_DIR` profile 下，状态栏显示的是主账号的额度、还会覆盖主账号的缓存；作者机器上该 profile 自己的缓存自 2026-08-28 起就没更新过。令牌文件、macOS 钥匙串条目和缓存现在按 Claude Code 2.1.283 的规则解析，每个配置目录各有自己的缓存；没有自己读数的 profile 显示为空，不再显示别的账号。新增 10 个测试用例，其中 7 个在旧脚本上失败。
+
 - 按路径加载的规则现在在 shell 访问文件时也会触发。`rule-injector.sh` 原先只挂在
   Edit|Write 上，而代理主要通过 Bash 碰文件：作者最近 40 个主会话 transcript 里
   （正则近似计数），Bash 读取（`cat`/`head`/`tail`/`sed -n`）6,890 次对 Read 484 次，
