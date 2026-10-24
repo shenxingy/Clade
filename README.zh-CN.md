@@ -144,7 +144,7 @@ Clade 把六个维度分开处理，避免一次“看起来是绿的”运行�
 | 你纠正 Claude | `correction-detector.sh` | 记录纠正，提示 Claude 保存可复用的规则 |
 | Claude 标记任务完成 | `verify-task-completed.sh` | 自适应质量门禁：compile + lint，严格模式额外 build + test |
 
-hook 参考见 [How It Works](docs/how-it-works.md)——它只写常用可调的那些；完整列表用 `ls configs/hooks/`（共 33 个）。
+hook 参考见 [How It Works](docs/how-it-works.md)——它只写常用可调的那些；完整列表用 `ls configs/hooks/`（共 34 个）。
 
 ## 自学习机制
 

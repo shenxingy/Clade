@@ -2105,8 +2105,12 @@ tiering are real but unmeasured. Each needs a paired A/B before rollout.
   right after a reviewing run. Rule: verify → fix → re-check, at most 2 rounds
   inside the script, returning only units still open.
 - [x] 🔵 **AskUserQuestion freezes the lead while a workflow finishes.** DONE
-  2026-10-23 — the rule, not a warn-hook, in `configs/CLAUDE.md` § Adaptive
-  Delegation. 7
+  2026-10-23 — the rule in `configs/CLAUDE.md` § Adaptive Delegation, and its
+  enforcement: `configs/hooks/ask-while-live.sh` (PreToolUse `AskUserQuestion`,
+  main thread only) refuses the call while a Workflow, background Bash, async
+  Agent or Monitor this session launched is still live. Replayed over the 26 real
+  questions in 59 lead sessions: all 4 audit cases refused, 12 of 26 refused in
+  all (each had a task live at that moment); 0.07 s on a 62 MB transcript. 7
   completions sat unread for 36.5 completion-hours, behind 4 of 26 questions in
   59 sessions. Rule or warn-hook: with a live background task, ask in plain text
   and end the turn.

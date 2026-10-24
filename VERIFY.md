@@ -73,7 +73,7 @@
 | H3 | `pre-tool-guardian.sh` allows `alembic upgrade` when dev-mode is ON | ✅ | 2026-04-10 | source verified: `if [[ "$DEV_MODE" == false ]]` gate at line 40 |
 | H4 | `pre-tool-guardian.sh` blocks `rm -rf /` regardless of dev-mode | ✅ | 2026-10-20 | `tests/test-pre-tool-guardian.sh` "Catastrophic rm — true positives" (line references dropped: they drifted) |
 | H5 | `pre-tool-guardian.sh` blocks `git push --force origin main` regardless of dev-mode | ✅ | 2026-10-20 | test suite "main and master stay blocked, in every spelling" (11 cases incl. `HEAD:main`, `+main`, `bash -c`); live `claude -p` 2.1.283 denied it with the new reason |
-| H6 | All other hooks pass `bash -n` syntax check | ✅ | 2026-07-13 | all 33 hooks pass |
+| H6 | All other hooks pass `bash -n` syntax check | ✅ | 2026-07-13 | all 34 hooks pass |
 | H7 | `pre-tool-guardian.sh` does NOT block when migration pattern appears only in a variable assignment string (false-positive fix) | ✅ | 2026-04-10 | SCANNABLE strips `VAR='...'` and `VAR="..."` lines (migrations section of the guardian) |
 | H8 | `session-baseline.sh` captures sorted `git status --porcelain` output keyed by `session_id` at SessionStart, excluding `.claude/` paths | ✅ | 2026-04-15 | tested in /tmp repo: baseline file written to `.claude/sessions/<sid>.baseline`, `.claude/` paths filtered out |
 | H9 | `stop-check.sh` ignores pre-existing dirty files (present in baseline) and blocks only on session-produced changes — prevents deadlock between parallel CC sessions on same repo | ✅ | 2026-04-15 | tested: preexisting dirt → exit 0 silent; new session file → exit 2 with filename in output |
@@ -88,7 +88,7 @@
 
 | ID | Checkpoint | Status | Verified | Notes |
 |----|-----------|--------|----------|-------|
-| SH1 | All `configs/hooks/*.sh` pass `bash -n` | ✅ | 2026-07-13 | all 33 hooks pass |
+| SH1 | All `configs/hooks/*.sh` pass `bash -n` | ✅ | 2026-07-13 | all 34 hooks pass |
 | SH2 | All `configs/scripts/*.sh` pass `bash -n` | ✅ | 2026-07-13 | all 43 scripts pass |
 | SH3 | `install.sh` + `uninstall.sh` pass `bash -n` | ✅ | 2026-06-04 | uninstall.sh rewritten to derive removal lists from configs/ |
 

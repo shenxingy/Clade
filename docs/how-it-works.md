@@ -324,7 +324,7 @@ clade/
 ├── uninstall.sh             # Removes what install.sh deployed
 ├── configs/                 # ← THE PRODUCT CENTER
 │   ├── skills/              # 148 skill definitions
-│   ├── hooks/               # 33 event hooks
+│   ├── hooks/               # 34 event hooks
 │   ├── agents/              # 40 agent definitions
 │   ├── output-styles/       # 2 output styles (system-prompt register; opt-in)
 │   └── scripts/             # 43 shell + 44 Python utilities

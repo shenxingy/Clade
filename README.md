@@ -156,7 +156,7 @@ external side effects.
 | You correct Claude | `correction-detector.sh` | Logs correction, prompts Claude to save a reusable rule |
 | Claude marks task done | `verify-task-completed.sh` | Adaptive quality gate: compile + lint, build + test in strict mode |
 
-See [How It Works](docs/how-it-works.md) for the hook reference. 33 hooks ship; the guide documents the ones you are likely to tune — `ls configs/hooks/` is the complete list.
+See [How It Works](docs/how-it-works.md) for the hook reference. 34 hooks ship; the guide documents the ones you are likely to tune — `ls configs/hooks/` is the complete list.
 
 ## Self-Learning Mechanisms
 

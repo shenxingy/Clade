@@ -21,7 +21,7 @@
     },
     {
       "name": "hooks",
-      "value": 33,
+      "value": 34,
       "derive": {
         "type": "count_glob",
         "pattern": "configs/hooks/*.sh"
