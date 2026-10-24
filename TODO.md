@@ -2077,6 +2077,23 @@ tiering are real but unmeasured. Each needs a paired A/B before rollout.
   check the prefix syntax live), or give `wf-reader` a frontmatter PreToolUse
   Bash hook; and the smoke test must show a write command (`touch`, `git
   commit`, `gh pr comment`) is denied.
+- [ ] 🔵 `doc-align.py sync` rewrites a count inside a DATED verification row and leaves the date alone. On 2026-10-23 it turned VERIFY.md H6/SH1 into "all 35 hooks pass" under a 2026-07-13 date, a day the 33rd hook did not exist; the date was then set by hand after `bash -n` was re-run on all 33. Letting the tool bump the date was rejected: it would date a check the tool never ran. Candidate: when a fix lands in a table row that carries a `YYYY-MM-DD`, print the row with "re-verify, then update its date" (report-only), plus a self-test case and its mutation.
+  - [x] Control half DONE 2026-10-23 — `wf-reader.md` wires a frontmatter
+    PreToolUse Bash hook, `bash ~/.claude/hooks/wf-reader-guard.sh || exit 2`.
+    Verified in the 2.1.283 binary: frontmatter `hooks:` is parsed for agents
+    under ~/.claude/agents and registered for that agent's session only, and a
+    PreToolUse entry that cannot load keeps the agent from loading. The guard
+    denies by default and allows a read allowlist (no interpreters, no
+    `$(…)`, output only to /dev/null); pinned by `tests/test-wf-reader-guard.sh`
+    (178 cases, also green under bash 3.2) and 54 mutations in
+    `test_self_tests_can_fire.py`, each shown red. Not covered: the plugin
+    mirror `clade:wf-reader`, whose `hooks:` the plugin loader ignores; and
+    any session where hooks are off — `disableAllHooks` in any settings file
+    (a repository's included), a managed `allowManagedHooksOnly`, or a managed
+    `strictPluginOnlyCustomization` covering hooks — where the agent still
+    loads with an unrestricted Bash. Still open here: the live smoke test
+    showing a denied write (recording that none of those settings is active
+    on the host), then the guidance.
 - [x] 🟡 **Every `agent()` without `effort` runs at xhigh.** — DONE 2026-10-23 — paired A/B on 15 known-answer claims (Opus 5.5): low and medium matched xhigh's accuracy at 29–52% of its output tokens; only xhigh reproduced an edge case. Stage table in `configs/CLAUDE.md` § Adaptive Delegation; data in `docs/research/2026-10-23-workflow-effort-and-reader-ab.md`. Implement/judge/synth stages were not measured and keep the default. Was: The owner's
   `effortLevel` is inherited. 0 agents ran at `low`; mechanical stages ran at
   xhigh 302 of 314 times. The observational output-only floor for a per-stage
