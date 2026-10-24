@@ -8,6 +8,35 @@ channels (`~/.claude/CLAUDE.md`, the Codex managed block) carry adapted
 wording of the same rules; this file is the canonical source they adapt
 from. Edit it here and re-run `install.sh`.
 
+## Repository entry points across projects
+
+Treat every repository's README as the product's first visit: discovery →
+understanding → credible proof → first successful use. Improving the wording
+alone does not complete repository onboarding work.
+
+- Study relevant projects' rendered READMEs, media and navigation, separately
+  for each product category. Record what a pattern helps a reader understand;
+  popularity is not proof that the pattern improves conversion.
+- Show the actual product or result near the opening: an authentic screenshot,
+  recorded terminal/demo, input/output comparison, or an explanatory diagram.
+  Logos and badges alone do not demonstrate the product. Match the medium to
+  the project; label fixtures, illustrative diagrams and unverified behavior.
+- Give a clear next action, honest prerequisites and maturity, a runnable first
+  task with an expected result, and recovery/help. Keep a compact map of real
+  repository responsibilities and the docs users and contributors need.
+- Cover localized and separately distributed package READMEs as entry points.
+  Use public relative links, meaningful alt text, readable media, maintained
+  assets and real license/status information. Never expose private data or
+  fabricate screenshots, testimonials, metrics or execution results.
+- Inspect the rendered result on desktop and phone, light and dark, including
+  image loading, enlargement, links and the first-use path. Fix the findings;
+  a source-only review cannot establish visual quality or usability.
+
+Apply this during repository creation, README/setup changes and documentation
+release review. The installed `document-release` skill carries the detailed
+`references/repository-entrypoints.md` acceptance standard; use `frontend-design`
+for visual work and report unavailable evidence instead of claiming it passed.
+
 ## Artifact reports across projects
 
 For artifact/report pages in any project, load the installed `artifact` skill

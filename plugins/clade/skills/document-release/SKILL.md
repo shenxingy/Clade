@@ -68,22 +68,39 @@ This classification determines which docs need updating.
 
 ## Step 2: README audit
 
-Read `README.md` (and variants like `README.zh-CN.md` if they exist).
+Read `references/repository-entrypoints.md` before auditing. Inventory root,
+localized and independently distributed package READMEs, with their setup and
+support destinations. A README is the first product visit: discovery →
+understanding → credible proof → first successful use. Text edits alone do not
+establish a usable entry point.
 
 **Check each section:**
 
 | Section | What to verify |
 |---|---|
+| First screen | Can a new reader identify the audience, outcome, maturity and next action? |
+| Product evidence | Does a real screenshot, terminal/demo, input/output comparison or diagram explain the product? Logos/badges alone do not count. Are fixtures and illustrations labeled? |
+| Presentation | Do images load and remain legible on phone/desktop and light/dark? Is there useful hierarchy rather than a wall of text? |
 | Feature list | Does it reflect new/removed features? |
 | Numeric counts | "N skills", "M hooks" — do the numbers match reality? |
 | Architecture diagram | Still accurate after structural changes? |
 | Install instructions | Still work? Any new steps needed? |
 | Quick start / examples | Still valid? New examples needed? |
 | Configuration | New env vars or config options documented? |
+| Repository and help map | Are real responsibilities, architecture/docs, support and contribution paths easy to find and reachable? |
 
 **For each stale section:**
 - Fix factual errors and outdated counts immediately (no permission needed)
-- For significant rewrites, show the proposed change and ask first
+- Implement reversible documentation and presentation fixes within the user's
+  authorized scope. Ask only for missing material facts, genuine conflicting
+  directions or an action that needs separate authority.
+
+For a new or substantially revised entry point, inspect relevant projects in
+the same category, including their actual rendered media and navigation. Do not
+copy one layout across unrelated products or treat stars as usability evidence.
+Run the first-use path in an isolated context, inspect the rendered README, and
+repair findings. Record source, rendered and runtime evidence separately;
+unavailable checks stay unverified. Use `frontend-design` for visual changes.
 
 **Numeric count rule:** If README mentions counts (e.g., "28 skills"), re-count the actual files:
 ```bash
@@ -190,7 +207,7 @@ Documentation sync complete:
 
 - ✅ **DONE** — all docs updated and committed
 - ⚠ **DONE_WITH_CONCERNS** — docs updated but some sections couldn't be auto-verified (e.g., diagram accuracy)
-- ❌ **BLOCKED** — key docs are missing (no README, no AGENTS.md) — ask user to create them first
+- ❌ **BLOCKED** — required facts, access, or authority are unavailable. Create missing documentation within the authorized scope; do not ask the user to write it merely because it does not exist.
 - ❓ **NEEDS_CONTEXT** — which release is this for? (asked if context is unclear)
 
 ---

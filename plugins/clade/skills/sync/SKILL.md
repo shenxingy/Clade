@@ -203,6 +203,28 @@ Do NOT move the sections yourself. This skill writes `TODO.md` and
 
 ---
 
+## Step 3f: Repository entry-point follow-through
+
+When this session creates a repository or changes its README, setup, advertised
+capabilities or first-use path, check the first-visitor journey as well as length:
+
+- root, language variants and independently distributed package entry points;
+- a clear audience/outcome, maturity and next action;
+- meaningful product/result media, not only a logo or badge row; fixture and
+  illustration labels, privacy, alt text and maintained asset paths;
+- runnable first task and expected result, recovery/help, and real repository
+  responsibilities linked to the relevant documentation;
+- actual rendered desktop/phone and light/dark evidence, plus exercised links
+  and first-use commands. A Markdown diff or image count is not a visual pass.
+
+Reuse still-valid evidence when these surfaces are unchanged. For missing or
+stale evidence, record the concrete gap and its next verification action in the
+existing task/status record; do not mark the onboarding task complete. Detailed
+acceptance is in the installed `document-release` skill's
+`../document-release/references/repository-entrypoints.md`. This sync step does not expand its
+write scope or require a redesign on every code change. When README work is
+already authorized, continue that work instead of asking the owner to repeat it.
+
 ## Step 4: Print summary
 
 Always end with a summary:
