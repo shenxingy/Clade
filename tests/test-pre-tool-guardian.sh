@@ -165,6 +165,40 @@ assert_parity() {
   return 0
 }
 
+# assert_both <label> <command> <verdict> [rewritten command]
+#
+# The verdict asserted of BOTH guardians at once, and on a REWRITE the command
+# each would run, which must match the expected one when it is given. A change
+# to how the force-push walk reads shell has to land in the awk and in the
+# Codex mirror together: assert_parity alone passes when both are wrong. The
+# payload's cwd is $BOTH_CWD when set, so a case can run on a branch.
+# GUARDIAN_SIDE=sh or py asserts one guardian only: the mutation harness
+# mutates one at a time, and running the other doubles its time for nothing.
+assert_both() {
+  local label="$1" cmd="$2" want="$3" sh="$3" py="$3" sh_new="" py_new="" side="${GUARDIAN_SIDE:-both}"
+  TESTS_RUN=$((TESTS_RUN + 1))
+  if [[ "$side" != py ]]; then
+    run_sh "$cmd" "${BOTH_CWD:-}"; sh=$(classify "$RUN_OUT" "$RUN_RC" claude)
+    sh_new=$(jq -r '.hookSpecificOutput.updatedInput.command // empty' <<< "$RUN_OUT" 2>/dev/null)
+  fi
+  if [[ "$side" != sh ]]; then
+    run_py "$cmd" "${BOTH_CWD:-}"; py=$(classify "$RUN_OUT" "$RUN_RC" codex)
+    py_new=$(jq -r '.hookSpecificOutput.updatedInput.command // empty' <<< "$RUN_OUT" 2>/dev/null)
+  fi
+  [[ "$side" == sh ]] && py_new=$sh_new
+  [[ "$side" == py ]] && sh_new=$py_new
+  if [[ "$sh" == "$want" && "$py" == "$want" && "$sh_new" == "$py_new" \
+        && ( $# -lt 4 || "$sh_new" == "$4" ) ]]; then
+    TESTS_PASSED=$((TESTS_PASSED + 1))
+    printf "  ${GREEN}✓${NC} %s\n" "$label"
+  else
+    printf "  ${RED}✗${NC} %s (want=%s shell=%s codex=%s)\n      cmd: %s\n" "$label" "$want" "$sh" "$py" "$cmd"
+    [[ -n "$sh_new$py_new" ]] && printf "      shell runs: %s\n      codex runs: %s\n" "$sh_new" "$py_new"
+    case_failed
+  fi
+  return 0
+}
+
 # finish — the summary line and the suite's exit status
 finish() {
   printf "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -179,6 +213,14 @@ finish() {
   exit $?
 }
 
+# case_failed — count a failure; under GUARDIAN_FAIL_FAST stop at the first
+# one. The mutation harness sets it: it needs one red case, not the whole list.
+case_failed() {
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+  [[ -n "${GUARDIAN_FAIL_FAST:-}" ]] && finish
+  return 0
+}
+
 # ─── Subagent waits that outlive the prompt cache ────────────────────
 #
 # A different kind of rule from everything else in this file: it never blocks.
@@ -190,7 +232,7 @@ finish() {
 # done`.
 #
 # Defined here and run at the end; GUARDIAN_WAITS_ONLY=1 runs only this block.
-# orchestrator/tests/test_self_tests_can_fire.py does that against a mutated
+# orchestrator/tests/test_hook_guards_can_fire.py does that against a mutated
 # copy of the hook, once per guard it lists, and requires each to turn the
 # block red; it sets GUARDIAN_FAIL_FAST=1, which stops at the first red case.
 
@@ -219,13 +261,6 @@ w_run() {
     $WAIT_ENV bash "$HOOK" 2>/dev/null)
   RUN_RC=$?
 }
-# w_failed — count a failure; under GUARDIAN_FAIL_FAST stop at the first one.
-# The mutation harness sets it: it needs one red case, not the whole list.
-w_failed() {
-  TESTS_FAILED=$((TESTS_FAILED + 1))
-  [[ -n "${GUARDIAN_FAIL_FAST:-}" ]] && finish
-  return 0
-}
 WAIT_CTX() { jq -r '.hookSpecificOutput.additionalContext // empty' <<< "$RUN_OUT" 2>/dev/null; }
 
 # assert_wait <label> <command> <want> <timeout-ms|-> <agent-id|-> [bg]
@@ -241,7 +276,7 @@ assert_wait() {
     printf "  ${GREEN}✓${NC} %s\n" "$label"
   else
     printf "  ${RED}✗${NC} %s (got=%s want=%s)\n      cmd: %s\n" "$label" "$got" "$want" "$cmd"
-    w_failed
+    case_failed
   fi
   return 0
 }
@@ -265,7 +300,7 @@ assert_wait_says() {
     printf "  ${GREEN}✓${NC} %s\n" "$label"
   else
     printf "  ${RED}✗${NC} %s\n      cmd:  %s\n      want: %s\n      got:  %s\n" "$label" "$cmd" "$*" "$ctx"
-    w_failed
+    case_failed
   fi
   return 0
 }
@@ -480,7 +515,7 @@ chmod +x poll.sh"                                                               
   if [[ -z "$_kimi" ]]; then
     TESTS_PASSED=$((TESTS_PASSED + 1)); printf "  ${GREEN}✓${NC} the Kimi shim passes a warning through as an allow\n"
   else
-    printf "  ${RED}✗${NC} the Kimi shim passes a warning through as an allow\n      got: %s\n" "$_kimi"; w_failed
+    printf "  ${RED}✗${NC} the Kimi shim passes a warning through as an allow\n      got: %s\n" "$_kimi"; case_failed
   fi
   # Not mirrored, on purpose: agent_id and the 5-minute subagent TTL are Claude
   # Code facts. Pinned so the divergence is visible, not discovered.
@@ -494,12 +529,276 @@ chmod +x poll.sh"                                                               
   if [[ -z "$_py" ]]; then
     TESTS_PASSED=$((TESTS_PASSED + 1)); printf "  ${GREEN}✓${NC} the Codex mirror does not carry this rule (known divergence)\n"
   else
-    printf "  ${RED}✗${NC} the Codex mirror does not carry this rule (known divergence)\n      got: %s\n" "$_py"; w_failed
+    printf "  ${RED}✗${NC} the Codex mirror does not carry this rule (known divergence)\n      got: %s\n" "$_py"; case_failed
   fi
+}
+
+# ─── Force push — what the walk must not lose ────────────────────────
+#
+# Found 2026-10-23: `read -r b <<<"$(date)"; git push --force origin main` was
+# ALLOWED by both guardians while the bare push was denied. The walk excluded
+# `<<<` at its first `<`, so the SECOND `<` started a heredoc: it took the next
+# word's opening quote, and every later quote was misread, or took an unquoted
+# word as a delimiter, and every later line was skipped as a heredoc body.
+# Siblings hid statements the same way, all allowed by both guardians: a
+# redirection in front of a stdin shell, a quoted command substitution, $'…'
+# quoting. A review of that fix found more, and four regressions it made
+# (arithmetic `<<` read as a heredoc, `cd` in a quoted substitution, `$$'`,
+# quotes inside backticks): each is a case below, and each case that guards a
+# regression passes on the code before the fix and fails on its first cut.
+#
+# Every case runs through BOTH guardians (assert_both). Defined here and run
+# with the other force-push cases; GUARDIAN_PUSH_ONLY=1 runs only this block,
+# which is how orchestrator/tests/test_hook_guards_can_fire.py mutates the awk
+# and the Codex mirror. BOTH_CWD set to a repository on main makes the
+# session's branch main for the cases that read it.
+push_walk_cases() {
+  local main_repo="$NOREPO_CWD/on-main"
+  git -C "$NOREPO_CWD" init -q -b main on-main >/dev/null 2>&1 ||
+    { git -C "$NOREPO_CWD" init -q on-main >/dev/null 2>&1; git -C "$main_repo" symbolic-ref HEAD refs/heads/main; }
+
+  section "Force push — a here-string never hides what follows it"
+  assert_both "the reported shape: <<<\"\$(date)\" then --force to main" \
+    'read -r b <<<"$(date)"; git push --force origin main'                       BLOCK
+  assert_both "<<<\"\$x\" then -f to main"   'read -r b <<<"$x"; git push -f origin main' BLOCK
+  assert_both "<<< word, push on the next line (the word is no heredoc delimiter)" \
+    $'read -r b <<< word\ngit push --force origin main'                           BLOCK
+  assert_both "<<<'lit', --force-with-lease to main on the next line" \
+    $'read -r b <<<\'lit\'\ngit push --force-with-lease origin main'              BLOCK
+  assert_both "a here-string, then && and a +main refspec" \
+    'cat <<<"$x" && git push origin +main'                                        BLOCK
+  assert_both "a here-string carrying a substitution, then master" \
+    $'grep -c x <<<"$(git log -1)"\ngit push -f origin master'                    BLOCK
+  assert_both "<<< word is no heredoc: the push on the next line is still read" \
+    $'read -r b <<< word\ngit push -f origin feat/x'                             REWRITE \
+    $'read -r b <<< word\ngit push --force-with-lease origin feat/x'
+  assert_both "a feature branch after a here-string is still rewritten" \
+    'read -r b <<<"$(date)"; git push --force origin feat/x'                      REWRITE \
+    'read -r b <<<"$(date)"; git push --force-with-lease origin feat/x'
+  assert_both "--force-with-lease to a feature branch stays allowed" \
+    'read -r b <<<"$(date)"; git push --force-with-lease origin feat/x'           ALLOW
+  assert_both "a push named inside a here-string fed to read is data" \
+    'read -r b <<<"git push --force origin main"'                                 ALLOW
+
+  section "Force push — a here-string or redirection that feeds a shell its script"
+  assert_both "bash <<<\"…\""                  'bash <<<"git push --force origin main"'  BLOCK
+  assert_both "bash <<< \"…\" (the target is the next word)" \
+    'bash <<< "git push -f origin main"'                                          BLOCK
+  assert_both "ssh host <<<\"…\""              'ssh host <<<"git push -f origin master"' BLOCK
+  assert_both "a here-string fed to a shell is walked as its script" \
+    "bash <<<'git push -f origin ma\"\"in'"                                        BLOCK
+  assert_both "bash 2>&1 <<EOF: a redirection is not the script file" \
+    $'bash 2>&1 <<\'EOF\'\ngit push --force origin main\nEOF'                     BLOCK
+  assert_both "ssh host 2>/dev/null <<EOF: nor the remote command" \
+    $'ssh host 2>/dev/null <<\'EOF\'\ngit push --force origin main\nEOF'          BLOCK
+  assert_both "ssh host bash <<EOF: a remote shell reading stdin" \
+    $'ssh host bash <<\'EOF\'\ngit push --force origin main\nEOF'                 BLOCK
+  assert_both "sudo -s <<EOF: a shell reading stdin" \
+    $'sudo -s <<\'EOF\'\ngit push --force origin main\nEOF'                       BLOCK
+  assert_both "a push-like word fed to a shell is walked as its script" \
+    'echo "git push --all -f" | bash'                                             BLOCK
+  assert_both "and so is a spliced one" "echo 'git pu\"\"sh -f origin main' | bash" BLOCK
+  assert_both "text a shell is fed is matched with its quotes removed" \
+    "printf '%s %s\\n' 'git push' '--force origin main' | bash"                    BLOCK
+  assert_both "and a delete of main in it" \
+    "printf '%s %s\\n' 'git push origin' '--delete main' | bash"                   BLOCK
+  assert_both "a script file fed a here-string reads it as data" \
+    'bash run.sh <<<"git push --force origin main"'                               ALLOW
+  assert_both "a redirection target after a push is not a ref" \
+    'git push -f origin feat/x > main'                                            REWRITE \
+    'git push --force-with-lease origin feat/x > main'
+
+  section "Force push — command substitutions are walked, quoted or not"
+  assert_both "echo \"\$(push)\""              'echo "$(git push --force origin main)"' BLOCK
+  assert_both "x=\"\$(push)\""                 'x="$(git push -f origin main)"'         BLOCK
+  assert_both "backticks inside double quotes" 'echo "`git push --force origin main`"'  BLOCK
+  assert_both "a here-string whose word runs the push" \
+    'read -r b <<<"$(git push --force origin main)"'                              BLOCK
+  assert_both "nested quoted substitutions"   'echo "$(echo "$(git push -f origin main)")"' BLOCK
+  assert_both "an unquoted substitution no longer cuts its statement in two" \
+    'git push --force $(git remote) main'                                         BLOCK
+  assert_both "the statement resumes after a quoted substitution" \
+    'git push --force "$(git remote)" main'                                       BLOCK
+  assert_both "a ( inside \$( does not close it" \
+    'echo "$( (true); git push --force origin main )"'                            BLOCK
+  assert_both "and its ) does not leave \$( open" \
+    'echo "$( (true) )"; git push --force origin main'                            BLOCK
+  assert_both "a backtick closes its own substitution" \
+    'echo "`date`"; git push --force origin main'                                 BLOCK
+  assert_both "an unterminated substitution keeps the statement around it" \
+    'git push --force origin main "$('                                            BLOCK
+  assert_both "a push inside backticks is rewritten in place" \
+    'x=`git push -f origin feat/x`'                                               REWRITE \
+    'x=`git push --force-with-lease origin feat/x`'
+  assert_both "a substitution as the ref, off main, is rewritten" \
+    'git push -f origin "$(git branch --show-current)"'                           REWRITE \
+    'git push --force-with-lease origin "$(git branch --show-current)"'
+  assert_both "a heredoc inside a substitution is still data" \
+    $'git commit -m "$(cat <<\'EOF\'\nfix: git push --force origin main is denied\nEOF\n)"' ALLOW
+  assert_both "a backtick ends at the next backtick, whatever the quotes inside it" \
+    "echo \"\`echo '\`\"; git push --force origin main"                           BLOCK
+  assert_both "and unquoted" "echo \`echo '\`; git push --force origin main"      BLOCK
+  assert_both "an escaped backtick inside backticks runs" \
+    'echo `echo \`git push -f origin main\``'                                     BLOCK
+  assert_both "a case pattern's ) does not close \$(" \
+    "x=\"\$(case a in a) echo \"it's\";; esac)\"; git push --force origin main"   BLOCK
+  assert_both "nor one written (a)" \
+    "x=\"\$(case a in (a) echo \"it's\";; esac)\"; git push --force origin main"  BLOCK
+  assert_both "nor a second pattern, after ;;" \
+    "x=\"\$(case a in b) true;; a) echo \"it's\";; esac)\"; git push --force origin main" BLOCK
+  assert_both "<( ( … ) ) is a subshell, not arithmetic" \
+    'diff <((git push -f origin main)) /dev/null'                                 BLOCK
+
+  section "Force push — arithmetic is not a command, and its << is a shift"
+  # A << read as a heredoc swallowed the rest, and the fail-closed reading of an
+  # unclosed heredoc still blocks a push to main after it, so each shape is
+  # also pinned by a rewrite, which only the walk proper produces.
+  assert_both "\"\$((1 << 20))\", push on the next line (the reported shape)" \
+    $'bs="$((1 << 20))"\ngit push --force origin main'                            BLOCK
+  assert_both "\"\$((1 << 20))\": the statement after it is read" \
+    $'bs="$((1 << 20))"\ngit push -f origin feat/x'                               REWRITE \
+    $'bs="$((1 << 20))"\ngit push --force-with-lease origin feat/x'
+  assert_both "\$((1 << 20)) unquoted" $'bs=$((1 << 20))\ngit push -f origin feat/x' REWRITE \
+    $'bs=$((1 << 20))\ngit push --force-with-lease origin feat/x'
+  assert_both "(( x = 1 << 3 ))"  $'((x = 1 << 3))\ngit push -f origin feat/x'   REWRITE \
+    $'((x = 1 << 3))\ngit push --force-with-lease origin feat/x'
+  assert_both "for (( … << … ))" \
+    $'for ((i = 0; i << 1; i++)); do :; done\ngit push -f origin feat/x'          REWRITE \
+    $'for ((i = 0; i << 1; i++)); do :; done\ngit push --force-with-lease origin feat/x'
+  assert_both "\$[1 << 2]"   $'echo $[1 << 2]\ngit push -f origin feat/x'         REWRITE \
+    $'echo $[1 << 2]\ngit push --force-with-lease origin feat/x'
+  assert_both "\$(( that closes with a lone ) is \$( and a subshell" \
+    'x=$((git push --force origin main) )'                                        BLOCK
+  assert_both "a word in arithmetic is not a command" \
+    'n=$(( bash )); echo "git push --force origin main"'                          ALLOW
+  assert_both "arithmetic inside a quoted string" \
+    'x="$((1 + 2))"; git push --force-with-lease origin feat/x'                   ALLOW
+
+  section "Force push — heredocs: the delimiter is a word, and a body can run"
+  assert_both "<<'END-OF', the reported shape" \
+    $'cat <<\'END-OF\'\nhi\nEND-OF\ngit push --force origin main'               BLOCK
+  assert_both "<<'END-OF': the statement after it is read" \
+    $'cat <<\'END-OF\'\nhi\nEND-OF\ngit push -f origin feat/x'                  REWRITE \
+    $'cat <<\'END-OF\'\nhi\nEND-OF\ngit push --force-with-lease origin feat/x'
+  assert_both "<<END.X"      $'cat <<END.X\nhi\nEND.X\ngit push -f origin feat/x'  REWRITE \
+    $'cat <<END.X\nhi\nEND.X\ngit push --force-with-lease origin feat/x'
+  assert_both "<<\\EOF, with an apostrophe in the body" \
+    $'cat <<\\EOF\nit\'s\nEOF\ngit push -f origin feat/x'                         REWRITE \
+    $'cat <<\\EOF\nit\'s\nEOF\ngit push --force-with-lease origin feat/x'
+  assert_both "an unquoted delimiter's body runs \$( )" \
+    $'cat > notes.md <<EOF\nresult: $(git push --force origin main 2>&1)\nEOF'    BLOCK
+  assert_both "and backticks" $'cat <<EOF\n`git push -f origin main`\nEOF'         BLOCK
+  assert_both "a quoted delimiter's body is data" \
+    $'cat > notes.md <<\'EOF\'\nresult: $(git push --force origin main 2>&1)\nEOF' ALLOW
+  assert_both "an escaped \$( in an unquoted body is data" \
+    $'cat <<EOF\n\\$(git push --force origin main) is escaped\nEOF'               ALLOW
+  assert_both "a delimiter that never comes is read as commands (fail closed)" \
+    $'cat <<EOF\nhi\nEOF; git push --force origin main'                           BLOCK
+  assert_both "in \$( ), EOF) ends the heredoc and closes it" \
+    $'x="$(cat <<EOF\nhi\nEOF)"; git push -f origin feat/x'                       REWRITE \
+    $'x="$(cat <<EOF\nhi\nEOF)"; git push --force-with-lease origin feat/x'
+  assert_both "in \$( ), a line starting with EOF and holding ) ends it too" \
+    $'x=$(cat <<EOF\nhi\nEOF x; git push -f origin feat/x)'                       REWRITE \
+    $'x=$(cat <<EOF\nhi\nEOF x; git push --force-with-lease origin feat/x)'
+
+  section "Force push — quoting that splices or hides a word"
+  assert_both "\$'it\\'s' does not end at its \\'" \
+    "echo \$'it\\'s'; git push --force origin main"                               BLOCK
+  assert_both "a \$'…' string is data"        "echo \$'git push --force origin main'" ALLOW
+  assert_both "\$'pu\\x73h' is push"          "git \$'pu\\x73h' -f origin main"    BLOCK
+  assert_both "and \$'ma\\x69n' is main"      "git push -f origin \$'ma\\x69n'"    BLOCK
+  assert_both "\$\"main\" is main (bash's translated string)" \
+    'git push -f origin $"main"'                                                  BLOCK
+  assert_both "and \$\"push\" is push"        'git $"push" --force origin main'   BLOCK
+  assert_both "\$\$'\\' is a PID and a plain string" \
+    "echo \$\$'a\\'; git push --force origin main"                                BLOCK
+  assert_both "zsh reads \$\$'…' as \$ and \$'…': that reading too" \
+    "echo \$\$'a\\' ; echo ' ; git push -f origin main"                           BLOCK
+  assert_both "\"\$\$(\" is a PID and text" \
+    "echo \"\$\$(it's)\"; git push --force origin main"                           BLOCK
+  assert_both 'git pu""sh'                     'git pu""sh --force origin main'     BLOCK
+  assert_both "git pu''sh"                     "git pu''sh --force origin main"     BLOCK
+  assert_both 'git pu\sh'                      'git pu\sh --force origin main'      BLOCK
+  assert_both "git pu\\<newline>sh"            $'git pu\\\nsh --force origin main'  BLOCK
+  assert_both "a computed subcommand is read as push" \
+    'git $(echo push) --force origin main'                                        BLOCK
+  assert_both "and never rewritten" 'git $(echo push) --force origin feat/x'      ALLOW
+  assert_both "main>/dev/null is the ref main" 'git push --force origin main>/dev/null' BLOCK
+  assert_both "main&>/dev/null"                'git push -f origin main&>/dev/null' BLOCK
+
+  section "Force push — what runs the push"
+  assert_both "SHELL=/bin/bash is an assignment, not a shell" \
+    'SHELL=/bin/bash git push --force origin main'                                BLOCK
+  assert_both "GIT_SSH=/usr/bin/ssh"  'GIT_SSH=/usr/bin/ssh git push --force origin main' BLOCK
+  assert_both "sudo -u git: the user is not the command" \
+    'sudo -u git git push --force origin main'                                    BLOCK
+  assert_both "su -c"                 "su git -c 'git push --force origin main'"  BLOCK
+  assert_both "bash -c, quotes in the ref" "bash -c 'git push -f origin ma\"in\"'" BLOCK
+  assert_both "eval, quotes in the ref"    "eval 'git push -f origin \"m\"ain'"    BLOCK
+  assert_both "bash -c, a spliced push"    "bash -c 'git pu\"\"sh -f origin main'" BLOCK
+  assert_both "ssh, quotes in the ref"     "ssh host 'git push -f origin ma\"\"in'" BLOCK
+  assert_both "bash -c's arguments are read as text too" \
+    "bash -c 'eval \"\$1\"' _ 'git push --force origin main'"                     BLOCK
+  assert_both "a push inside bash -c is never rewritten" \
+    "bash -c 'git push -f origin feat/x'"                                         ALLOW
+  assert_both "sudo -u sh: the user is not the command either" \
+    'sudo -u sh git push --force origin main'                                     BLOCK
+
+  section "Force push — git's own ways to force"
+  assert_both "--mirror"                       'git push --mirror origin'          BLOCK
+  assert_both "an alias given with -c"         "git -c alias.p='push --force' p origin main" BLOCK
+  assert_both "an alias that names another one" \
+    "git -c alias.q=p -c alias.p='push --force' q origin main"                    BLOCK
+  assert_both "an alias that pushes nothing"   "git -c alias.p=status p; git push origin main" ALLOW
+  assert_both "an alias given in GIT_CONFIG_KEY_n/VALUE_n" \
+    "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.p GIT_CONFIG_VALUE_0='push --force' git p origin main" BLOCK
+  assert_both "or in GIT_CONFIG_PARAMETERS" \
+    "GIT_CONFIG_PARAMETERS=\"'alias.p=push --force'\" git p origin main"         BLOCK
+  assert_both "a push refspec given with -c" \
+    'git -c remote.origin.push=+HEAD:refs/heads/main push origin'                 BLOCK
+  assert_both "heads/main is main"             'git push -f origin HEAD:heads/main' BLOCK
+  assert_both "a glob that covers main" \
+    "git push --force-with-lease origin 'refs/heads/*:refs/heads/*'"              BLOCK
+  assert_both "*:*"                            "git push --force-with-lease origin '*:*'" BLOCK
+  assert_both "a glob that does not" \
+    "git push --force-with-lease origin 'refs/heads/feat/*:refs/heads/feat/*'"    ALLOW
+  assert_both "the matching refspec, forced"   'git push -f origin :'              BLOCK
+  assert_both "and not forced"                 'git push origin :'                 ALLOW
+  assert_both "--all --force-with-lease"       'git push --all --force-with-lease origin' BLOCK
+
+  section "Force push — the session's branch, and when a cd changes it (on main)"
+  BOTH_CWD=$main_repo
+  assert_both "a cd inside \"\$( )\" changes nothing outside it" \
+    'x="$(cd /tmp && pwd)"; git push --force'                                     BLOCK
+  assert_both "the ROOT idiom" \
+    'ROOT="$(cd "$(dirname "$0")" && pwd)"; git push --force origin HEAD'         BLOCK
+  assert_both "nor inside ( )"            '(cd /tmp); git push --force'           BLOCK
+  assert_both "but it does for what runs inside the same ( )" \
+    '(cd /tmp && git push -f)'                                                    REWRITE \
+    '(cd /tmp && git push --force-with-lease)'
+  assert_both "a cd in a pipeline runs in a subshell" 'cd /tmp | true; git push -f' BLOCK
+  assert_both "a cd after || may not run"  'true || cd /tmp && git push -f'        BLOCK
+  assert_both "nor one sent to the background" 'cd /tmp & git push -f'            BLOCK
+  assert_both "2>/dev/null is a redirection, not a refspec" \
+    'git push --force origin 2>/dev/null'                                         BLOCK
+  assert_both "a ref computed by \$( ) is the session branch" \
+    'git push -f origin "$(git branch --show-current)"'                           BLOCK
+  assert_both "even over ssh, where it expands here" \
+    'ssh host "git push -f origin $(git branch --show-current)"'                  BLOCK
+  assert_both "a local shell reading stdin pushes this branch" \
+    $'bash <<\'EOF\'\ngit push -f\nEOF'                                           BLOCK
+  assert_both "a remote one does not" $'ssh host <<\'EOF\'\ngit push -f\nEOF'     ALLOW
+  assert_both "but a local one after it does" \
+    $'ssh host <<\'A\'\ntrue\nA\nbash <<\'B\'\ngit push -f\nB'                 BLOCK
+  BOTH_CWD=""
 }
 
 if [[ -n "${GUARDIAN_WAITS_ONLY:-}" ]]; then
   wait_cases
+  finish
+fi
+if [[ -n "${GUARDIAN_PUSH_ONLY:-}" ]]; then
+  push_walk_cases
   finish
 fi
 
@@ -910,6 +1209,7 @@ assert_parity "deleting main"                 'git push origin :main'
 assert_parity "bash -c"                       'bash -c "git push --force origin main"'
 assert_parity "malformed -f-with-lease"       'git push -q -f-with-lease origin feat/x'
 
+push_walk_cases
 wait_cases
 
 # ─── Summary ─────────────────────────────────────────────────────────

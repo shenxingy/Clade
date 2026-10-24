@@ -9,6 +9,7 @@ semantic versioning。
 
 ### 变更
 
+- `pre-tool-guardian.sh` 及其 Codex 镜像不再让 here-string 藏住推送到 main 的 force push。此前单独的 push 会被拦截，`read -r b <<<"$(date)"; git push --force origin main` 却被放行：force-push 解析在第一个 `<` 处跳过 `<<<`，第二个 `<` 随即被当成 heredoc 开头，吞掉下一个引号或之后的所有行。对第一版修复的审查发现了它引入的四处回归，以及九种更早就存在的藏匿方式。这些在两个守卫中全部修复，验证过程中另外发现的三处也一并修复。现在的解析能读懂算术（`$((1 << 20))` 是移位，不是 heredoc），把 heredoc 结束符当作完整的词，把未加引号结束符的 heredoc 正文当作会展开的文本，带引号或不带引号的命令替换都会解析（反引号在下一个反引号处结束），还能读懂 `$$`、`$'…'`、`$"…"`、`case` 模式以及紧贴 ref 的重定向（`main>/dev/null`）。`cd` 只有在它所在的替换、子 shell、管道或 `||` 之外才算数，因此在 main 上 `ROOT="$(cd … && pwd)"; git push --force` 重新被拦截。此外还能识别赋值前缀（`SHELL=/bin/bash`）、`sudo -u git`、`su -c`、`bash -c`/`eval`/`ssh` 字符串内的引号、`git pu""sh`、`--mirror`、`heads/main`、覆盖 main 的通配 refspec、由 `$( )` 计算出的 ref，以及在 git 命令行上给出的配置：`-c alias…`（包括别名链）、`-c remote.*.push`、`GIT_CONFIG_KEY_n`/`GIT_CONFIG_PARAMETERS`。`tests/test-pre-tool-guardian.sh` 新增 120 个用例，每个都同时断言两个守卫，其中 84 个在旧版上失败。`test_hook_guards_can_fire.py` 为每个守卫新增 81 个变异，均已验证会变红。用作者机器上全部记录中 259,057 条去重 Bash 命令回放，只有 2 个判定变化，都是针对这道防护的探测命令；在 mawk、busybox awk 和 BWK awk 20231127 下均无崩溃，两个守卫也无分歧。两个模糊测试在真实 shell 下运行了 24,509 条命令，没有发现回归，漏判都是已登记的问题。push 的 awk 程序改为单引号字面量，每次 Bash 调用比修复前快 3.5 ms（含 `$'…'` 字符串的命令慢 1.0 ms）。Codex 插件的缓存标记已刷新，安装时会拿到修复后的镜像。
 - 将仓库入口设为跨项目标准：按产品方向调研实际页面，展示可信的产品素材，
   验证首次使用路径并梳理仓库和文档导航；同步到全局规则、模板与文档工作流。
 
