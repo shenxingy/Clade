@@ -142,7 +142,8 @@ Once the scope is clear, decompose the work into tasks. Each task must be:
 
 **Repository onboarding:** For repository creation, substantial README/setup or
 open-source participation work, load `document-release` and its
-`references/repository-entrypoints.md` before decomposing the goal. Include the
+[repository entrypoint standard](../document-release/references/repository-entrypoints.md)
+before decomposing the goal. Include the
 relevant rendered presentation, first-use and community-route checks in task
 acceptance criteria. Identify which source or distribution each claim covers,
 give shared README/media files one owner, and make verification depend on the
