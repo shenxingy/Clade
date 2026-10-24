@@ -4,8 +4,8 @@ date: 2026-09-02
 status: integrated
 review_date: 2026-12-01
 summary:
-  - "Measured, not estimated: across all 89 parallel Workflow runs on this account (1777 agents, 49.9 hours of makespan), 22.5 hours — 45% — was spent with exactly ONE agent still running. 55 of the 89 runs have a tail over 15%; 52 run under 55% utilisation. Nothing had ever read the data that says so."
-  - "The result that changes how to write a workflow: agent count is not the problem, BARRIERS are. On this session's own runs a 110-agent pipeline() scored 80% utilisation with a 0% tail despite a 6.9x straggler spread, while a 10-agent parallel() barrier scored 55% with 19% of its makespan waiting on one agent."
+  - "Historical, measured 2026-09-02 on transcripts Claude Code has since deleted after 30 days, so it cannot be re-derived: across all 89 parallel Workflow runs on this account (1777 agents, 49.9 hours of makespan), 22.5 hours — 45% — was spent with exactly ONE agent still running. 55 of the 89 runs have a tail over 15%; 52 run under 55% utilisation. Nothing had ever read the data that says so. Restated 2026-10-24 with that tail split in two: over 285 parallel runs (4,038 agents, 394 h, started 2026-09-22 → 10-24 UTC, the author's two profiles), 52.4% of makespan had one agent alone, 35.5% of it one-agent stages and 16.9% an agent outliving its siblings; 108 of the 285 had an outlived share of 15% or more (workflow-scorecard.py --ledger-summary --recorded-before 2026-10-24T03:34Z over the author's ledger)."
+  - "Historical, 2026-09-02, one session's runs, transcripts since deleted: agent count is not the problem, BARRIERS are. A 110-agent pipeline() scored 80% utilisation with a 0% tail despite a 6.9x straggler spread, while a 10-agent parallel() barrier scored 55% with 19% of its makespan waiting on one agent."
   - "The lead session's own waste, from its transcript: 702 turns, 946k output tokens, and 81 of 321 Bash calls (25%) were pure status polls of background jobs against 3 uses of Monitor. 76 stop-hook interrupts, most of them while ten subagents were mid-write and committing would have been wrong."
   - "The verification pass that ran BEFORE implementation is the opposite of waste: it corrected about half the audit's specifics and killed four findings that were not defects, two of which would have been actively harmful to implement."
   - "The theory is cleaner than expected and mostly bad news for sophistication: Graham's list-scheduling bound (2 - 1/m) requires NO duration knowledge, its only precondition being that no slot idles while work is ready — exactly what a parallel() barrier violates. Perfect duration knowledge buys only LPT's 4/3. So the whole value of estimation is the gap between 2 and 4/3, and Clade was not collecting the 2."
@@ -22,7 +22,7 @@ needs_work_items:
   - "Nothing yet enforces pipeline-over-barrier when a fan-out has stages; the scorecard reports the tail after the fact rather than preventing it."
   - "Anthropic's documented fix for the first cache mechanism — stagger the fan-out so the first response primes the prefix — is not implemented; only the system-prompt half is."
   - "Adversarial verification with N skeptics is measurably overspent (Terminal-Bench V2: 73.1% at K=1 to 77.5% at K=16). One better-calibrated verifier belongs in worker_review.py instead."
-  - "Unit sizing is still done by topic rather than by estimated size, which is what produced the 2.0x straggler in this session's implementation wave."
+  - "Unit sizing is still done by topic rather than by estimated size, which is what produced the 2.0x straggler in this session's implementation wave (2026-09-02)."
   - "Derived-fact syncs (doc-align) ran three times because each wave added scripts; they should run once, after all writers finish."
 ---
 
@@ -88,7 +88,33 @@ them.
 
 ## The headline number
 
-Across every parallel Workflow run recorded on this account:
+**Historical.** The figures in this section and the next were measured on
+2026-09-02 from transcripts that Claude Code's 30-day cleanup
+(`cleanupPeriodDays`) has since deleted, and nothing kept them, so they cannot
+be re-derived. `workflow-scorecard.py --ledger` now appends one row per finished
+run, so the next figure can be. Re-measured on 2026-10-24 with the fixed
+scorecard, over the 343 finished runs then on disk (4 more were in flight), all
+written at 03:33 UTC to the ledger that seeds the author's. The table is what
+`workflow-scorecard.py --ledger-summary --recorded-before 2026-10-24T03:34Z`
+prints from that ledger:
+
+| started 2026-09-22 → 10-24 UTC, the author's two profiles | |
+|---|---|
+| runs with real parallelism | 285 (58 more ran one agent at a time) |
+| agents spawned in them | 4,038 |
+| total makespan | 394 h |
+| one agent alone | **52.4%** |
+| — of it a one-agent stage (`serial`) | 35.5% |
+| — of it an agent outliving its siblings (`outlived`) | 16.9% |
+| runs with `outlived` ≥ 15% | 108 of 285 |
+| runs with a merged tail ≥ 15% (the measure below) | 201 of 285 |
+| runs under 55% utilisation | 109 of 285 |
+
+Single-agent time is still about half of parallel makespan (45% then, 52.4%
+now, over different runs). Split, two thirds of it is one-agent stages, which no
+reshaping recovers, and one third is stragglers.
+
+On 2026-09-02, across every parallel Workflow run then recorded on this account:
 
 | | |
 |---|---|
@@ -100,11 +126,14 @@ Across every parallel Workflow run recorded on this account:
 | runs under 55% utilisation | 52 of 89 |
 | worst single run | 111 minutes lost to its tail |
 
-Nearly half of all multi-agent wall clock on this account is straggler tail.
+Nearly half of all multi-agent wall clock on this account was single-agent
+time, which this section then called straggler tail. The split above
+says most of it was not.
 
 ## Shape beats count
 
-This session ran five workflows. Their scorecards:
+This session ran five workflows on 2026-09-02. Their scorecards (historical:
+the transcripts are deleted):
 
 | workflow | agents | makespan | peak | util | tail1 | straggler |
 |---|---|---|---|---|---|---|

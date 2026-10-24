@@ -147,13 +147,21 @@ python3 configs/scripts/workflow-scorecard.py --self-test
 # per-agent transcripts under ~/.claude*/projects/<slug>/<session>/subagents/
 # workflows/, and until 2026-09-02 nothing read them: /retro mines git history,
 # session-scorecard.sh mines corrections, and the PROCESS went unmeasured.
-# Measured across 89 parallel runs on this account (1777 agents, 49.9h): 45% of
-# all makespan was spent with exactly ONE agent still running, and 55 of the 89
-# had a tail over 15%. The shape matters more than the agent count — a
-# 110-agent pipeline() scored 80% utilisation with a 0% tail, while a 10-agent
-# parallel() barrier scored 55% with 19%.
+# Over 285 parallel runs (4,038 agents, 394 h, started 2026-09-22 → 10-24 UTC,
+# the author's two profiles), one agent ran alone for 52.4% of makespan: 35.5%
+# one-agent stages, which pipeline() cannot shorten, and 16.9% an agent
+# outliving its siblings, which it can; 108 of the 285 lost 15% or more that
+# way. Those are the `--ledger-summary` line below, over the author's ledger.
+# Claude Code deletes transcripts after 30 days and the figures quoted here
+# before 2026-10-23 went with them, so `--ledger` keeps one row per finished
+# run's end, append-only, per API call (a resumed run's later end is a new row,
+# and a reader takes the last). `--outcome` prints what the owner typed in the
+# 6 h after each end, for weekly labelling by hand.
 python3 configs/scripts/workflow-scorecard.py --project Clade --since 7
 python3 configs/scripts/workflow-scorecard.py --since 0 --json   # all runs, machine-readable
+python3 configs/scripts/workflow-scorecard.py --since 0 --ledger # <config dir>/workflow-scorecard/runs.jsonl
+python3 configs/scripts/workflow-scorecard.py --ledger-summary --recorded-before 2026-10-24T03:34Z
+python3 configs/scripts/workflow-scorecard.py --outcome          # JSONL, label: null
 
 # Did a Codex worker actually delegate? `codex exec` CAN subdivide — measured
 # 2026-09-05, the gate is the resolved model's catalog multi_agent_version, not
@@ -823,36 +831,38 @@ confirm the check list actually grew before reading green as evidence.
   parallel freely. Geoffrey Huntley: uncoordinated parallel writers to shared
   build/test state is a real race, not a hypothetical one.
 - **Prefer `pipeline()` to `parallel()` whenever the work has stages, and cut
-  more units than you have slots.** Measured across 89 parallel Workflow runs on
-  this account (1777 agents, 49.9h), 45% of all makespan was spent with exactly
-  ONE agent still running. The shape decides that, not the agent count: this
-  repository's 110-agent `pipeline()` finished with a **0%** single-agent tail at
-  80% utilisation *despite* its slowest agent taking 6.9x the median, while a
-  10-agent `parallel()` barrier with a far narrower 2.0x spread wasted 19% of its
-  makespan. A pipeline absorbs variance; a barrier converts it into idle
-  capacity. When a stage genuinely needs every prior result at once (dedup,
-  early-exit on zero, "compare against the others"), a barrier is correct — say
-  so in a comment, because it is the exception.
+  more units than you have slots.** Over 285 parallel Workflow runs (4,038
+  agents, 394 h, started 2026-09-22 → 10-24 UTC, the author's two profiles;
+  `workflow-scorecard.py --ledger-summary --recorded-before 2026-10-24T03:34Z`),
+  16.9% of makespan was one agent outliving the siblings it started with, and
+  108 of the 285 lost 15% or more that way. That is the time a barrier turns
+  into idle slots and a pipeline refills: a pipeline absorbs variance; a
+  barrier converts it into idle capacity. (The 110-agent and 10-agent pair this
+  bullet cited is historical, measured 2026-09-02 on transcripts since deleted;
+  see docs/research/2026-09-02-agent-orchestration-efficiency.md.) When a stage
+  genuinely needs every prior result at once (dedup, early-exit on zero,
+  "compare against the others"), a barrier is correct — say so in a comment,
+  because it is the exception.
 - **Size units, or give the queue depth instead.** A fan-out cut by *topic*
   produces units of wildly different length with no way to rebalance, which is
-  what produced that 2.0x. You do not need duration estimates if there are more
-  units than slots — the queue packs them. That is the half of CPU work-stealing
-  that transfers; the migration half does not, because an agent cannot be
-  preempted or moved mid-flight.
+  what leaves one agent running after the rest. You do not need duration
+  estimates if there are more units than slots — the queue packs them. That is
+  the half of CPU work-stealing that transfers; the migration half does not,
+  because an agent cannot be preempted or moved mid-flight.
 - **A one-agent stage is not a straggler, and reshaping recovers little of
   it.** It sits on the critical path for its whole length, so shorten the stage
   itself: a tight brief, its own `effort`, waits that keep the subagent cache
   warm, and a return as soon as the artifact the next stage reads is frozen.
-  Over 316 runs on one account (2026-09-22 → 10-22), one-agent stages were a
-  larger sink than stragglers, and waits on external jobs were 38% of their
-  agent time. Overlapping them instead would have recovered only ~9–20 h of
-  272 h, and 3 of 5 audited "this could overlap" diagnoses were refuted by a
-  hidden data dependency. One shape is worth fixing: units that each build
-  their own worktree from origin/main go in
+  Over 316 runs on the author's two profiles (2026-09-22 → 10-22), one-agent
+  stages were a larger sink than stragglers, and waits on external jobs were
+  38% of their agent time. Overlapping them instead would have recovered only
+  ~9–20 h of 272 h, and 3 of 5 audited "this could overlap" diagnoses were
+  refuted by a hidden data dependency. One shape is worth fixing: units that
+  each build their own worktree from origin/main go in
   `pipeline(UNITS, implVerify, landBehindMutex)`, not a for-await loop
-  (3 of 294 scripts; one run lost ~4–8 h to it). Until `workflow-scorecard.py`
-  separates serial from outlived time, its tail counts a lone stage too, so a
-  tail over 15% on a serial-dominated run is not by itself a shape error.
+  (3 of 294 scripts; one run lost ~4–8 h to it). `workflow-scorecard.py`
+  reports the two apart since 2026-10-23: `serial` is a lone stage, `outlived`
+  a straggler, and only an outlived share is a shape error.
 - **The other Workflow script rules live once, in `configs/CLAUDE.md`
   § Adaptive Delegation**, which `install.sh` deploys as the global CLAUDE.md:
   waits that keep the cache warm, nulls counted per stage and returned as a
@@ -869,7 +879,7 @@ confirm the check list actually grew before reading green as evidence.
   fan-out, and `log()` what the cap dropped — a silent truncation reads as
   "everything was verified".
 - Check the result: `python3 configs/scripts/workflow-scorecard.py --since 7`.
-  A tail over 15% means the shape was wrong.
+  An `outlived` share of 15% or more means the shape was wrong.
 
 ## Auto-Promoted Rules
 <!-- Promoted from .claude/corrections/rules.md via /audit. Each rule lists its original recording date. -->

@@ -59,6 +59,14 @@ PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("multiple", re.compile(r"\b(\d+(?:\.\d+)?)x more\b")),
     ("loc", re.compile(r"\b(\d+(?:\.\d+)?)k[- ]line\b")),
     ("window-share", re.compile(r"\b(\d+(?:\.\d+)?)\s?% of the window\b")),
+    # The Workflow figures. "89 runs / 1,777 agents / 45% of makespan" stood in
+    # five files until 2026-10-23, derived from transcripts Claude Code deletes
+    # after 30 days; restated then from workflow-scorecard.py --ledger-summary
+    # over the author's ledger, which no CI job can read, so they stay
+    # underived here. These keep every restatement visible.
+    ("workflow-runs", re.compile(r"\b(\d[\d,]*) parallel (?:Workflow )?runs\b")),
+    ("agent-hours", re.compile(r"\b(\d{1,3}(?:,\d{3})+|\d+) agents, (\d+(?:\.\d+)?) ?h\b")),
+    ("makespan-share", re.compile(r"\b(\d+(?:\.\d+)?)\s?% of (?:all )?makespan\b")),
 ]
 
 # Assertions known to be underived, each a deliberate standing choice rather than
@@ -203,11 +211,22 @@ def self_test() -> int:
         if not any(f["kind"] == "rate" for f in found):
             failures.append(f"rate control did not fire: {found}")
 
+        # POSITIVE control 3: a Workflow figure with its population, the shape
+        # the 2026-10-23 restatement uses. Each part is its own kind.
+        (root / "docs" / "workflow.md").write_text(
+            "Over 12 parallel runs (1,234 agents, 56 h), 7.5% of makespan was one agent.\n",
+            encoding="utf-8",
+        )
+        kinds = {f["kind"] for f in scan(root)}
+        for kind in ("workflow-runs", "agent-hours", "makespan-share"):
+            if kind not in kinds:
+                failures.append(f"workflow control did not report {kind}: {sorted(kinds)}")
+
     if failures:
         for f in failures:
             print(f"SELF-TEST FAILED: {f}")
         return 1
-    print("SELF-TEST PASSED: negative control silent, both positive controls fired")
+    print("SELF-TEST PASSED: negative control silent, all three positive controls fired")
     return 0
 
 
