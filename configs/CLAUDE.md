@@ -223,6 +223,10 @@ When the free path genuinely cannot answer something, say so in those words.
     own `effort`, a return once the next stage's input is frozen (waits were
     38% of its time). Per-worktree units go in
     `pipeline(UNITS, implVerify, landBehindMutex)`, not a for-await loop.
+  - Set `effort` per stage: `low` to collect, inventory or classify, `medium`
+    to verify one claim, the default to implement, review adversarially, judge
+    or synthesize. On 15 known-answer claims low and medium matched xhigh's
+    accuracy at 29–52% of its output tokens; only xhigh reproduced an edge case.
   - Keep each blocking Bash wait ≤ 270 s or detach the job: the subagent cache
     lives 5 min, and 41% of cache writes followed a longer gap.
   - Count nulls per stage and return `{incomplete, failed:[labels], resume}`:
