@@ -12,6 +12,21 @@ Past resolved/deferred items live in [`docs/archive/BRAINSTORM-resolved.md`](doc
 
 ---
 
+## [Research] 2026-10-24 — Customer-facing README and setup
+
+Question: Which README and setup patterns fit a multi-runtime coding-agent toolkit?
+
+Reviewed 6 primary repositories in this project's direction;
+[this decision report](docs/research/customer-onboarding-20261024.html) records
+the source URLs, dated metadata, observed patterns, local gaps and limitations.
+
+The English and Chinese README now route readers by client. The setup guides distinguish shell commands from chat, describe installer replacements and runtime permissions, and explain discovery checks. Contribution instructions no longer require changing a personal installation as the first step.
+
+The changes address onboarding gaps against VISION.md;
+they do not establish new runtime capabilities or measured adoption gains.
+Recommendation applied in the proposed docs; no separate TODO items added.
+
+
 ## [Research] 2026-10-16 — An inspiration engine (`/spark`): exists? how? where?
 
 Full study: [docs/research/2026-10-16-inspiration-engines.md](docs/research/2026-10-16-inspiration-engines.md),

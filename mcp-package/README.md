@@ -2,9 +2,21 @@
 
 # clade-mcp 0.3.1
 
-Provider-neutral MCP server that exposes **35 AI coding skills** as callable tools — autonomous commits, reviews, incident response, security audits, and more. Skill prompts can run through Claude or Codex.
+Provider-neutral MCP server that exposes **Clade coding workflows** as callable tools — autonomous commits, reviews, incident response, security audits, and more. Skill prompts can run through Claude or Codex.
 
 Part of the [Clade](https://github.com/shenxingy/clade) autonomous coding framework.
+
+## Contents
+
+- [What's New in 0.3.1](#whats-new-in-031)
+- [Runtime support (since 0.2.0)](#runtime-support-since-020)
+- [Quick Start](#quick-start)
+- [Runtime Selection](#runtime-selection)
+- [Available Skills (36)](#available-skills-36)
+- [How It Works](#how-it-works)
+- [Full Clade Framework](#full-clade-framework)
+- [License](#license)
+
 
 ## What's New in 0.3.1
 
@@ -26,13 +38,24 @@ listed here because it is what most people configure first:
 - Runtime name reported by `clade_list_skills` for configuration diagnostics
 - 35 bundled workflows, up from 29 in 0.1.0
 
-Upgrade with:
+To upgrade a manual installation, activate its Python environment first:
 
 ```bash
-pip install --upgrade clade-mcp
+python -m pip install --upgrade clade-mcp
 ```
 
 ## Quick Start
+
+Add the JSON below to your MCP client's configuration. It requires `uv` and an
+installed, authenticated agent CLI on the client's `PATH`. Set the server's
+launch working directory to your intended repository: the server uses its own
+current directory rather than negotiating a client workspace. After connecting,
+call `clade_list_skills` to inspect the selected runtime without executing a task.
+
+The Claude runtime passes `--dangerously-skip-permissions`; use it with isolation
+you control. A client approval dialog does not sandbox that subprocess. Codex
+defaults to `workspace-write`; the Codex configuration below selects it explicitly.
+See [Runtime Selection](#runtime-selection) for defaults and bypass options.
 
 ### Claude runtime
 
@@ -55,7 +78,8 @@ Add to your MCP configuration:
 {
   "mcpServers": {
     "clade": {
-      "command": "clade-mcp",
+      "command": "uvx",
+      "args": ["clade-mcp"],
       "env": { "CLADE_RUNTIME": "codex" }
     }
   }
@@ -70,8 +94,10 @@ already load Clade workflows directly.
 ### Install manually
 
 ```bash
-pip install --upgrade clade-mcp
-clade-mcp  # starts the MCP server (stdio transport)
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade clade-mcp
+clade-mcp  # starts the stdio server and waits for a client
 ```
 
 ## Runtime Selection
@@ -85,9 +111,9 @@ clade-mcp  # starts the MCP server (stdio transport)
 | `CLADE_CODEX_SANDBOX` | `workspace-write` | `read-only`, `workspace-write`, or `danger-full-access` |
 | `CLADE_CODEX_BYPASS_PERMISSIONS` | unset | Set to `1` only inside an externally isolated environment |
 
-The permission bypass takes precedence over the sandbox setting and passes
+The **Codex** permission bypass takes precedence over its sandbox setting and passes
 Codex's `--dangerously-bypass-approvals-and-sandbox` flag. It is intentionally
-never enabled by default.
+never enabled by default; the Claude runtime behavior is described above.
 
 ## Available Skills (36)
 
@@ -118,7 +144,7 @@ never enabled by default.
 | **orchestrate** | Decompose goals into tasks for worker execution |
 | **frontend-design** | Create production-grade frontend interfaces |
 | **audit** | Audit correction rules meta-file (NOT a domain audit — use seo-audit/blog-audit/ads-audit) |
-| **merge-pr** | Squash-merge PR and clean up branch |
+| **merge-pr** | Merge the exact reviewed PR under repository policy, then clean up |
 | **worktree** | Create git worktrees for parallel sessions |
 | **pipeline** | Check health of background pipelines |
 | **provider** | Switch LLM provider |

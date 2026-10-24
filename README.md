@@ -1,320 +1,175 @@
-**English** | [中文](README.zh-CN.md)
+[English](README.md) | [中文](README.zh-CN.md)
 
-<p align="center">
-  <img src="assets/banner.svg" alt="Clade" width="800" />
-</p>
-
-<p align="center">
-  <a href="https://pypi.org/project/clade-mcp/"><img src="https://img.shields.io/pypi/v/clade-mcp?label=MCP%20Server&color=blue" alt="PyPI" /></a>
-  <a href="https://github.com/shenxingy/clade/blob/main/CONTRIBUTING.md"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome" /></a>
-  <a href="https://github.com/shenxingy/clade/labels/good%20first%20issue"><img src="https://img.shields.io/github/issues/shenxingy/clade/good%20first%20issue" alt="good first issue" /></a>
-</p>
+<p align="center"><img src="assets/banner.svg" alt="Clade" width="800"></p>
 
 # Clade
 
-**A provider-neutral delivery control plane for coding agents.**
+**Turn coding-agent work into a reviewable, verified delivery.**
 
-Clade turns agent work into reviewable delivery: resolved execution identity,
-immutable evidence, calibrated verification, correction learning, and truthful
-Git history. It ships native Claude Code and Codex surfaces plus an MCP bridge
-for other clients.
+Use Clade to plan changes, run your project's checks, and prepare commits and
+pull requests in the coding assistant you already use. It adds workflows and
+hooks to Claude Code and Codex, with an MCP bridge for other clients. Start
+with one task; the optional server is not required.
 
-Use the full **Claude Code framework**, the native **Codex plugin**, or the
-provider-neutral **MCP bridge**. The optional **Orchestrator** adds a
-provider/model registry, evidence and eval control plane, verifier-aware
-routing, delivery state, and multi-project fleet truth.
+[Choose your setup](#choose-a-setup) · [Try a workflow](#your-first-workflow) ·
+[Get help](#community-and-contributing)
 
-> If this saves you time, a star helps others find it. Something broken? [Open an issue](https://github.com/shenxingy/clade/issues/new/choose).
+<details>
+<summary>Contents</summary>
 
-> **Blog post:** [Building Clade](https://alexshen.dev/en/blog/clade) — motivation, design decisions, and lessons learned.
+- [Choose a setup](#choose-a-setup)
+- [Install](#install)
+- [Your first workflow](#your-first-workflow)
+- [What Clade helps with](#what-clade-helps-with)
+- [Runtime boundaries](#runtime-boundaries)
+- [Documentation](#documentation)
+- [Community and contributing](#community-and-contributing)
+- [Limitations and license](#limitations-and-license)
 
-## Table of Contents
+</details>
 
-1. [Install](#install)
-2. [MCP Server](#mcp-server--use-skills-in-any-ai-editor)
-3. [The Trust Loop](#the-trust-loop)
-4. [What It Does](#what-it-does)
-5. [Self-Learning Mechanisms](#self-learning-mechanisms)
-6. [Skills](#skills-148)
-7. [Supported Languages](#supported-languages)
-8. [Documentation](#documentation)
-9. [Dotfile Sync](#dotfile-sync)
-10. [Architecture](#architecture)
-11. [OpenClaw Integration](#openclaw-integration)
-12. [Contributing](#contributing)
-13. [License](#license)
+## Choose a setup
+
+| You use | Start here | What it installs |
+| --- | --- | --- |
+| Claude Code | [Full framework](docs/getting-started.md#claude-code) | Skills, hooks, agents, scripts, and safety guidance under `~/.claude/` |
+| Codex | [Native plugin](docs/getting-started.md#codex) | Provider-native skills and hooks through the Codex plugin marketplace |
+| Cursor, Windsurf, Claude Desktop, or another MCP client | [MCP bridge](docs/getting-started.md#mcp) | `clade-mcp`, which invokes a selected Claude or Codex CLI |
+| You need task queues, evidence APIs, or fleet views | [Optional Orchestrator](docs/orchestrator.md) | A separate local FastAPI control plane; the native surfaces work without it |
 
 ## Install
 
-### Claude Code — Full Framework
+See [Getting started](docs/getting-started.md) for prerequisites, side effects,
+verification, updating, and troubleshooting. The short paths are:
+
+### Claude Code
+
+Requires Git, Bash, Python 3, and `jq` for the settings merge (Python 3.11 is
+recommended). Run in a shell from a clone:
 
 ```bash
-git clone https://github.com/shenxingy/clade.git
-cd clade && ./install.sh
+git clone https://github.com/shenxingy/Clade.git clade
+cd clade
+./install.sh
 ```
 
-Installs skills, hooks, agents, scripts, and safety guardian. Start a new Claude Code session to activate.
+Open a new Claude Code session in the project you want to work on. The installer copies the
+framework into your user configuration. With `jq`, it replaces existing hook
+and status-line settings; [review the installation effects](docs/getting-started.md#claude-code)
+first. It does not install or share agent credentials.
 
-The same run also wires the other runtimes it detects: a managed policy block in `~/.codex/AGENTS.md` (Codex), bridge agents/hooks for Kimi Code (`~/.kimi-code/`), and the vendor-neutral ground rules from `configs/AGENTS.md` at `~/.agents/AGENTS.md` and `~/.kimi-code/AGENTS.md` — the same don't-block policy text for every AGENTS.md-aware runtime. See [docs/codex.md](docs/codex.md) for the per-vendor contract.
+### Codex
 
-> **Requires:** `jq`. **Platform:** Linux, macOS, and Windows via Git Bash (native CMD/PowerShell without bash is out of scope).
+Requires a plugin-capable Codex CLI and Python 3 for generated hooks. Run in a shell:
 
-### Codex — Native Plugin
-
-```bash
+```text
 codex plugin marketplace add shenxingy/Clade
 codex plugin add clade@clade
 ```
 
-Start a new Codex thread, then invoke a workflow naturally or explicitly with
-the plugin-qualified names `$clade:review`, `$clade:verify`,
-`$clade:investigate`, `$clade:green`, and the other bundled skills. Open `/hooks` once to
-review and trust Clade's session-context and command-safety hooks.
+Start a new Codex thread, run `/hooks` in Codex chat, and invoke a workflow such
+as `$clade:verify` or `$clade:review`. These are chat invocations, not shell
+commands. The native plugin does not require Claude Code.
 
-Run `$clade:codex-usage setup minimal` for a compact native footer.
-`$clade:codex-usage` defaults to the equally compact
-`project(branch)-9% (6d)` pace view; icon and detail styles are optional. It
-never reads or exposes Codex credentials.
+### MCP
 
-The native plugin runs directly in Codex and does **not** require Claude Code.
-It currently ships 30 provider-native core workflows; Claude-specific overnight
-orchestration remains in the full framework. See [Native Codex Support](docs/codex.md).
+Requires Python 3.10+, `uv` (for `uvx`), and an authenticated Claude or Codex
+CLI available on the client process's `PATH`. Add this configuration to an MCP
+client, then call `clade_list_skills` once:
 
-### MCP Server Only
-
-If you want Clade tools in another MCP client:
-
-```bash
-pip install --upgrade clade-mcp
-```
-
-The Codex execution runtime arrived in 0.2.0 and keeps Claude as the
-backwards-compatible default; the package is now at 0.3.1. See [MCP Server](#mcp-server--use-skills-in-any-ai-editor)
-below for configuration and the [MCP package guide](mcp-package/README.md) for
-all runtime and sandbox options.
-
-## MCP Server — Use Skills in Any AI Editor
-
-The MCP package exposes 36 bundled Clade skills, plus compatible user-installed
-skills, as callable tools via the [Model Context Protocol](https://modelcontextprotocol.io).
-It can execute them with either Claude or Codex.
-
-**Claude Desktop or another client using Claude as its runtime:**
-```json
-{
-  "mcpServers": {
-    "clade": { "command": "uvx", "args": ["clade-mcp"] }
-  }
-}
-```
-
-**Cursor / Windsurf:**
 ```json
 {
   "mcpServers": {
     "clade": {
-      "command": "clade-mcp",
+      "command": "uvx",
+      "args": ["clade-mcp"],
       "env": { "CLADE_RUNTIME": "codex" }
     }
   }
 }
 ```
 
-`CLADE_RUNTIME` accepts `claude` (the backwards-compatible default), `codex`, or
-`auto`. Prefer the native Codex plugin inside Codex itself; adding the MCP server
-there would duplicate skills and spawn nested agent sessions. The same applies
-inside the full Claude Code framework, where Clade skills are already native.
+This example selects Codex, with its default `workspace-write` sandbox.
+Call `clade_list_skills` to see the selected runtime and available skills without
+executing a coding task. Use [the setup guide](docs/getting-started.md#mcp) for
+the server working directory and Claude runtime's permission bypass, and
+[the MCP guide](mcp-package/README.md) for client-specific
+configuration. Do not mount MCP inside Claude Code or Codex when their native
+Clade surface is installed; that duplicates skills and can create nested agent
+sessions.
 
-## The Trust Loop
+## Your first workflow
 
-Clade keeps six concerns separate so a green-looking run cannot silently change
-runtime, account, history, or evidence semantics:
+Choose a small, reversible task in a repository with tests. In the agent chat,
+ask Clade to inspect the repository and propose the change. Before accepting the
+result, inspect the changed files and run the repository's own checks.
 
-| Layer | Contract |
-|---|---|
-| Execution identity | Agent runtime, native connection, inference provider, wire protocol, and opaque model are resolved independently |
-| Evidence | Every attempt can carry append-only task, timing, Git SHA, test, oracle, cost, artifact, and delivery evidence with digest-linked revisions |
-| Verifier calibration | Cheap→strong routing is default-off and requires deterministic verifier evidence; observational reports never mutate policy |
-| Correction learning | Explicit corrections pair rejected work with human context and create reviewable eval candidates; no automatic ground-truth path |
-| Delivery | Exact reviewed SHA, live PR topology, CI, and repository policy determine merge semantics; squash is never the universal default |
-| Fleet truth | Provider catalogs, task state, usage, evidence health, and delivery status remain provenance- and freshness-aware across projects |
+For Claude Code, a useful first command is `/verify` after a small change. For
+Codex, use `$clade:verify`; for MCP, call the corresponding `clade_verify` tool
+after discovering it with `clade_list_skills`. Clade's evidence and verification
+are review material, not permission to merge, push, or publish.
 
-Evidence and oracle approval are gates and audit material, not authorization to
-publish or merge. Repository policy and explicit authority still control
-external side effects.
+## What Clade helps with
 
-## What It Does
+| If you need to… | Use |
+| --- | --- |
+| Understand a new repository before editing | `/map`, `/investigate`, or the native equivalent |
+| Run the repository's real local CI gates | `/green` |
+| Check a task's behavior anchors | `/verify` |
+| Keep work isolated and reviewable | `/worktree`, `/commit`, and `/create-pr` |
+| Review a pull request or security boundary | `/review-pr`, `/cso`, or `/incident` |
+| Continue after context is exhausted | `/handoff` then `/pickup` |
+| Research an unfamiliar approach | `/research` |
 
-| When | What fires | Effect |
-|------|-----------|--------|
-| Session opens in a git repo | `session-context.sh` | Loads git context, handoff state, correction rules, model guidance |
-| Session opens in a git repo | `commit-archeology.sh` | Mines `git log` for recurring fix patterns (wiring/deploy/compat gaps, Claude-overridden) — injects top 4 |
-| Claude runs a bash command | `pre-tool-guardian.sh` | **Blocks** dangerous ops: migrations, `rm -rf`, force push, `DROP TABLE`; warns a subagent whose wait would outlive its prompt cache (5 minutes by default) |
-| Claude launches a Workflow | `workflow-preflight.sh` | **Blocks** placeholder args (`"__FILL__"`, `{"__see": …}`); warns on a prior result cut silently inside a prompt, and on a fresh quota reading ≥ 90% (7-day) / ≥ 85% (5-hour) |
-| Claude asks you a question while a background task runs | `ask-while-live.sh` | **Refuses** AskUserQuestion — it parks the session, so the task's completion could not wake it; Claude asks in plain text instead |
-| Claude edits code | `post-edit-check.sh` | Async type-check (tsc, pyright, cargo check, go vet, etc.) |
-| You correct Claude | `correction-detector.sh` | Logs correction, prompts Claude to save a reusable rule |
-| Claude marks task done | `verify-task-completed.sh` | Adaptive quality gate: compile + lint, build + test in strict mode |
+The complete skill usage guide is [When to Use What](docs/when-to-use-what.md).
+The full framework also includes correction pairing, document alignment, and
+delivery records; see [How It Works](docs/how-it-works.md) for their boundaries.
 
-See [How It Works](docs/how-it-works.md) for the hook reference. 34 hooks ship; the guide documents the ones you are likely to tune — `ls configs/hooks/` is the complete list.
+## Runtime boundaries
 
-## Self-Learning Mechanisms
-
-Three mechanisms keep Clade aligned with reality:
-
-- **Commit Lessons** *(reactive)* — `commit-archeology.sh` mines `git log` for recurring fix patterns (wiring-gap, deploy-gap, compat-gap, **claude-overridden**) and injects the top 4 at every session start.
-- **Doc Align** *(preventive)* — `doc-align.py` declares shared facts in `docs/facts.json` (auto-derived from filesystem); checks/auto-fixes drift across every `*.md`. A PostToolUse hook flags drift the moment you edit a doc, so stale counts never reach commit.
-- **Correction Pairing** *(human-grounded)* — explicit corrections pair rejected
-  work with the replacement context. Orchestrator corrections enter quarantine
-  as eval candidates; only explicit human review can promote corpus truth.
-
-Commit Lessons and Doc Align run locally in the full Claude distribution and
-silently no-op in repos that have not opted in. Correction evidence never
-turns an inferred revert or async signal into an automatic rule.
-
-See [Self-Learning Mechanisms](docs/learning-mechanisms.md) for full details, detectors, schemas, and tunable env vars.
-
-## Skills (148)
-
-### Core Workflow
-
-| Skill | What it does |
-|-------|-------------|
-| `/commit` | Create repository-adaptive checkpoint commits; publish when authorized |
-| `/sync` | Check off completed TODOs, append session summary to PROGRESS.md |
-| `/review` | Walks every VERIFY.md checkpoint, fixing failures in-session until all pass |
-| `/green` | Runs the repo's real CI gates locally and drives them green — never weakens a gate |
-
-### Autonomous Operation
-
-| Skill | What it does |
-|-------|-------------|
-| `/start` | Autonomous session launcher — morning brief, overnight runs, cross-project patrol |
-| `/loop GOAL` | Goal-driven improvement loop — supervisor plans, workers execute in parallel |
-| `/iloop TASK` | In-session iterative loop — Stop hook re-prompts until done (no background workers) |
-| `/batch-tasks` | Execute TODO steps via unattended sessions (serial or parallel) |
-| `/compute` | Profile and schedule large CPU/GPU batches with local staging, bounded queues and verified recovery; reads private `~/.clade/compute-policy.md` |
-| `/orchestrate` | Decompose goals into tasks for worker execution |
-| `/handoff` | Save session state for context relay between agents |
-| `/pickup` | Resume from previous handoff — zero-friction restart |
-| `/worktree` | Create git worktrees for parallel sessions |
-| `/tasks` | Share dependency-aware plans and claims across Codex, CC, Kimi and humans; review before unlocking downstream work ([setup](docs/reference/shared-tasks.md)) |
-| `/poke` | Heartbeat after `esc` — 3-line status, auto-continues if still progressing |
-| `/status` | Session dashboard — background agents, loops, worktrees, unpushed commits |
-| `/go` | Execute the recommendation from your most recent A/B/C option set |
-
-### Code Quality
-
-| Skill | What it does |
-|-------|-------------|
-| `/review-pr N` | AI code review on a PR diff — Critical / Warning / Suggestion |
-| `/merge-pr N` | Merge an exact reviewed PR with topology- and history-aware semantics, then clean up |
-| `/investigate` | Root cause analysis — no fix without confirmed hypothesis |
-| `/incident DESC` | Incident response — diagnose, postmortem, follow-up tasks |
-| `/cso` | Security audit (OWASP + STRIDE) |
-| `/reverse-engineer-anything` | Reverse engineer shipped software without source — binaries, Electron/ASAR, APK, firmware, websites — via the REA CLI/MCP ([morluto/rea](https://github.com/morluto/rea), absorbed upstream); evidence-cited answers |
-| `/artifact` | One report page a PhD, a PM and an engineer can read at a glance — section spine per page type (why the numbers, what was done, next step), publication-quality figures, both themes, linted by `artifact-lint.py` before it is published |
-| `/landscape` | Whole-system report — every part, surface, owner, gap, and abandoned attempt, as a published artifact (the `/artifact` architecture spine at whole-system scale) |
-| `/map` | Generate ARCHITECTURE.md with a Mermaid module graph (tree only, no git history) |
-
-### Research & Planning
-
-| Skill | What it does |
-|-------|-------------|
-| `/research TOPIC` | Deep web research, synthesize to docs/research/ |
-| `/model-research` | Latest Claude model data + auto-update configs |
-| `/next` | "What's next?" — fast 1-shot recommendation (default); `/next deep` for multi-round interview |
-| `/brief` | Morning briefing — overnight commits, costs, next steps |
-| `/retro` | Engineering retrospective from git history |
-| `/frontend-design` | Create production-grade frontend interfaces |
-
-### System
-
-| Skill | What it does |
-|-------|-------------|
-| `/audit` | Clean up correction rules — promote, deduplicate, remove stale |
-| `/document-release` | Post-ship doc sync (README, CHANGELOG, CLAUDE.md) |
-| `/pipeline` | Health check for background pipelines |
-| `/provider` | Switch LLM provider |
-| `slt` | Toggle statusline quota pace indicator |
-
-### Content families
-
-**Blog & Content** (30) · **SEO** (25) · **Paid Ads** (23) · **Email** (6) —
-per-skill tables live in [When to Use What](docs/when-to-use-what.md), which
-also carries the per-skill usage guidance for the core workflow commands above.
-
-## Supported Languages
-
-Detected per project, with hooks and agents adapting to what they find:
-TypeScript/JavaScript, Python, Rust, Go, Swift, Kotlin/Java, LaTeX. The
-per-language checker and test-runner table lives in
-[How It Works](docs/how-it-works.md). A check whose tool is not installed skips
-silently rather than failing the run.
+- The Claude framework is local shell configuration. It can write under your
+  home directory and merge settings; inspect `install.sh` before applying it.
+- The Codex plugin is a native Codex surface. It does not import the full Claude
+  installation or copy credentials, models, or personal state.
+- The MCP package launches the agent CLI selected by `CLADE_RUNTIME` in the
+  server's launch directory. Set that directory to the intended repository in
+  your client's launch settings. Codex defaults to `workspace-write`; the Claude
+  runtime bypasses CLI permission prompts. Client approvals do not provide a
+  sandbox for that subprocess. See [runtime setup](docs/getting-started.md#mcp).
+- Clade is experimental. Review plans, diffs, tests, and permissions; a green
+  report does not grant merge, push, or publish authority.
+- The Orchestrator is optional and currently a secondary control plane. The
+  CLI and native plugins remain usable without its web UI or database.
 
 ## Documentation
 
-| Guide | Contents |
-|-------|----------|
-| [Native Codex Support](docs/codex.md) | Plugin installation, native skills/hooks, MCP runtime selection, compatibility boundaries |
-| [MCP Package](mcp-package/README.md) | clade-mcp 0.3.1 installation, runtime selection, sandbox and skill catalog |
-| [0.2.0 Release Notes](docs/releases/v0.2.0.md) | Native Codex support, MCP changes, upgrade steps, and validation results |
+| Guide | Purpose |
+| --- | --- |
+| [Getting started](docs/getting-started.md) | Setup choices, first workflow, checks, updates, and troubleshooting |
+| [Native Codex support](docs/codex.md) | Plugin lifecycle, hooks, migration, and update recovery |
+| [MCP package](mcp-package/README.md) | Runtime selection, client configuration, and sandbox options |
+| [How It Works](docs/how-it-works.md) | Hooks, agents, skills, correction learning, and model selection |
+| [Configuration](docs/configuration.md) | Settings, thresholds, custom hooks, agents, and skills |
+| [When to Use What](docs/when-to-use-what.md) | Workflow choices and skill catalog |
+| [Orchestrator](docs/orchestrator.md) | Optional web control plane and its separate startup path |
 | [Changelog](CHANGELOG.md) | Release history and upgrade notes |
-| [Maximize Throughput](docs/throughput.md) | Skip permissions, batch tasks, parallel worktrees, terminal + voice |
-| [Orchestrator Web UI](docs/orchestrator.md) | Chat-to-plan, worker dashboard, settings, iteration loop |
-| [Overnight Operation](docs/autonomous-operation.md) | Task queue, parallel sessions, context relay, safety |
-| [How It Works](docs/how-it-works.md) | Hooks, agents, skills internals, correction learning, model selection |
-| [Configuration](docs/configuration.md) | Settings, thresholds, adding custom hooks/agents/skills |
-| [When to Use What](docs/when-to-use-what.md) | Which skill to reach for, per situation — core workflow commands in depth, content families by table |
-| [Who to Learn From](docs/who-to-learn-from.md) | Vetted watch-list of the agentic-coding frontier — people, repos, bot behavior, reviewed quarterly |
 
-## Dotfile Sync
+## Community and contributing
 
-Keep `~/.claude/` in sync across machines — memory, corrections, skills, hooks, and scripts.
+Questions belong in [Discussions](https://github.com/shenxingy/Clade/discussions).
+Use the [issue form](https://github.com/shenxingy/Clade/issues/new/choose) for a
+reproducible bug, and the [security policy](SECURITY.md) for vulnerabilities.
+Documentation, testing on another shell, issue triage, and scoped skills are all
+useful contributions. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and the
+[good first issues](https://github.com/shenxingy/Clade/labels/good%20first%20issue).
 
-```bash
-~/.claude/scripts/sync-setup.sh            # auto-detect NFS or GitHub
-~/.claude/scripts/sync-setup.sh --github   # explicit GitHub backend
-```
+## Limitations and license
 
-Fully automatic once configured. See [Configuration](docs/configuration.md) for details.
+Known limitations include non-code loops that may produce no diff, worker
+environments inheriting parent variables, and context budgets that require
+`/handoff` plus `/pickup` for long work. Test and review the behavior that
+matters to your repository; no aggregate skill count or successful hook run
+proves a complete delivery.
 
-## Architecture
-
-**Claude CLI layer** (`configs/` → installed to `~/.claude/`): Full skill, hook, script, and agent framework.
-
-**Codex plugin** (`plugins/clade/`): Generated provider-native core skills plus Codex lifecycle hooks. Distributed through `.agents/plugins/marketplace.json`.
-
-**Orchestrator** (`orchestrator/`): Optional evidence, evaluation, delivery, and
-fleet control plane. It resolves native runtime connections without copying
-credentials, watches workers, calibrates verifier-aware routing, records
-immutable attempt evidence, and exposes exact delivery state. Native CLI/plugin
-surfaces work independently.
-
-**Web UI** (`orchestrator/web/`): Read-only observation window. Task queue, worker status, cost dashboard, settings. No production logic — all executes via CLI.
-
-## OpenClaw Integration
-
-Monitor and control overnight loops from your phone via [OpenClaw](https://openclaw.ai).
-
-| Skill | Trigger | Effect |
-|-------|---------|--------|
-| clade-status | "how's the loop going" | Iteration progress, cost, commits |
-| clade-control | "start a loop to fix tests" | Start/stop autonomous loops |
-| clade-report | "what did it do overnight" | Session report, cost breakdown |
-
-See [`adapters/openclaw/README.md`](adapters/openclaw/README.md) for setup.
-
-## Contributing
-
-Contributions welcome — code, docs, issue triage, bug reports. See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-### Known Limitations
-
-1. **Loop on non-code tasks** (research/docs) fails silently — workers produce no diff, loop reports failure
-2. **Workers inherit parent env** — project-specific env vars leak into worker shells; sanitize before overnight runs
-3. **Context budget is per-session** — multi-day runs may exhaust context; use `/handoff` + `/pickup`
-
-## License
-
-[MIT](LICENSE)
+Clade is available under the [MIT License](LICENSE). Dependencies and agent
+providers retain their own terms.
