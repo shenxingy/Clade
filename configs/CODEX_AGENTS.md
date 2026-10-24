@@ -21,6 +21,11 @@ standard for repository creation or README/setup work, and
 `$clade:frontend-design` for visual implementation. Missing rendered or runtime
 evidence is unverified, not a pass; stars do not prove conversion.
 
+For open-source onboarding, verify help, issue and contribution routes for the
+intended audience. A label is not a starter task: give newcomers a bounded
+action and acceptance check. Match claims and media to the obtainable version;
+an internal feature is not a release. Carry these checks into task breakdowns.
+
 ## Artifact reports across projects
 
 For artifact/report pages, research findings, status, decision or architecture

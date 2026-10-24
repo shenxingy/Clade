@@ -18,6 +18,10 @@ question it answers and why it fits. Include a counterexample or rejected
 pattern. Stars help select references; they do not demonstrate causation,
 usability or conversion. Do not copy another project's artwork or claims.
 
+Use a research sample sized to the decision, not a fixed project quota. Separate
+direct alternatives from adjacent tools and engines when their audiences differ.
+Record observed patterns separately from proposed changes and measured outcomes.
+
 ## 2. Answer the first visitor's questions
 
 | Reader question | Required answer |
@@ -72,6 +76,10 @@ that hides the next action.
   a small local asset. Do not ship broken placeholder media links.
 - Keep versions, badges, screenshots, commands and stated platform support in
   agreement. Refresh or remove evidence when the demonstrated behavior changes.
+- If development and distribution use different trees, inspect both revisions.
+  Each README and image must describe its own obtainable version. A docs-only
+  integration does not ship internal features, validate a binary or open a
+  private repository; retain separate delivery and runtime evidence.
 
 ## 5. Make the repository navigable
 
@@ -86,6 +94,26 @@ A directory tree without responsibilities is not an architecture explanation.
 Make release/license information, contribution rules, support and private
 security reporting discoverable where applicable. Do not invent a community
 channel, release, maintainer response time or support promise.
+
+For open-source onboarding, follow the community routes as the intended reader.
+Check repository visibility, enabled channels, category/form destinations and
+whether contributions are accepted. Authenticated maintainer access does not
+prove public access. Distinguish questions, feature ideas, reproducible failures,
+private security reports and code contributions using existing channels where
+they serve the need. Explain review, sign-off and how a contribution lands.
+
+Give non-code contributors a small useful action too. If starter issues are
+advertised, inspect the actual issues: an empty label is not a task queue. A
+starter brief needs a bounded problem, relevant files or reproduction steps,
+an observable acceptance check and a reviewer or triage destination. Prepare
+missing briefs locally within scope; posting, channel creation, visibility
+changes and operating commitments require the corresponding authority.
+
+Keep proposed community operations separate from observed activity. Do not
+equate enabled Discussions, labels or stars with a healthy community. When
+measurement is requested, use observed first-use success, unanswered questions
+or contribution outcomes with dates and denominators; do not invent growth or
+add telemetry merely to improve a README.
 
 ## 6. Verify the journey, then report its limits
 

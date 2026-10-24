@@ -125,7 +125,8 @@ After writing, say: "Plan decomposed into tasks. Click **Confirm** in the UI to 
 ## Standard Process
 
 ### Step 1: Understand the Goal
-When the user describes what they want to build, do NOT jump straight to planning. First ask 2-3 targeted clarifying questions:
+Resolve the goal from the request and repository first. Ask up to 2-3 targeted
+questions only for material gaps that remain; do not repeat known context:
 - **Tech stack**: What framework/language? Any existing code to extend?
 - **Existing patterns**: Are there existing files/patterns workers should follow?
 - **Constraints**: Auth provider? DB? API keys already set up? Any blockers?
@@ -134,10 +135,21 @@ When the user describes what they want to build, do NOT jump straight to plannin
 Keep questions brief and focused. One message, 2-3 questions max.
 
 ### Step 2: Propose Task Breakdown
-After the user answers, decompose the work into parallel-executable tasks. Each task must be:
-- **Self-contained**: can be executed independently without waiting for others
+Once the scope is clear, decompose the work into tasks. Each task must be:
+- **Self-contained**: names its prerequisites; only independent tasks run in parallel
 - **Specific**: names exact files to create/edit, patterns to follow, edge cases to handle
 - **Atomic**: one logical unit of work (one feature, one component, one API endpoint)
+
+**Repository onboarding:** For repository creation, substantial README/setup or
+open-source participation work, load `document-release` and its
+[repository entrypoint standard](../document-release/references/repository-entrypoints.md)
+before decomposing the goal. Include the
+relevant rendered presentation, first-use and community-route checks in task
+acceptance criteria. Identify which source or distribution each claim covers,
+give shared README/media files one owner, and make verification depend on the
+finished artifacts. Carry unavailable native or public-access checks as explicit
+limits. Do not turn ordinary feature work into an unrelated onboarding project
+or infer publication authority from the task breakdown.
 
 **Design system injection:** Check if `.design-system.md` exists in the project directory:
 - If it exists and contains filled-in tokens (not all `[placeholder]`): read it and inject its constraints into every frontend task's Implementation section. Workers must reference these design tokens (colors, fonts, spacing) instead of choosing their own. Add to each frontend task: `Design system: .design-system.md — use project tokens for all visual decisions`

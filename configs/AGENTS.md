@@ -31,6 +31,10 @@ alone does not complete repository onboarding work.
 - Inspect the rendered result on desktop and phone, light and dark, including
   image loading, enlargement, links and the first-use path. Fix the findings;
   a source-only review cannot establish visual quality or usability.
+- For open-source onboarding, check that help, issue and contribution routes
+  work for the intended audience. Labels alone are not starter tasks: give a
+  newcomer a bounded action with an acceptance check. Match claims and media
+  to the version readers can obtain; an internal feature is not a release.
 
 Apply this during repository creation, README/setup changes and documentation
 release review. The installed `document-release` skill carries the detailed

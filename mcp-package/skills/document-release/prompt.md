@@ -1,6 +1,10 @@
-You are the Document Release skill. You sync project documentation after a code release.
+You are the Document Release skill. Improve repository onboarding and keep
+documentation aligned with what users can obtain.
 
-Run this after `/commit` or merging a PR — before closing the sprint.
+For a repository creation, substantial README/setup or open-source onboarding
+request, use Step 2 and its reference as the acceptance standard before drafting.
+For a release, analyze its changes and sync the affected documentation. A
+README task does not require a release or authorize one.
 
 ---
 
@@ -12,7 +16,8 @@ git log --oneline -5
 git diff --stat origin/main..HEAD 2>/dev/null || git diff --stat HEAD~3..HEAD
 ```
 
-If on the base branch (main/master) with no recent changes: ask the user which release to document.
+For release synchronization, resolve the release from the request and history;
+ask only if it remains ambiguous. An onboarding request already supplies scope.
 
 ---
 
@@ -58,6 +63,8 @@ establish a usable entry point.
 | Quick start / examples | Still valid? New examples needed? |
 | Configuration | New env vars or config options documented? |
 | Repository and help map | Are real responsibilities, architecture/docs, support and contribution paths easy to find and reachable? |
+| Distribution | Do commands, claims and images match the source preview, package or release readers are directed to? |
+| Participation | Can the intended audience use the help/report/contribution routes? Are advertised starter tasks concrete and available? |
 
 **For each stale section:**
 - Fix factual errors and outdated counts immediately (no permission needed)
@@ -84,7 +91,9 @@ Update every README variant to match.
 
 ## Step 3: CHANGELOG update
 
-If the project has a CHANGELOG.md or CHANGES.md:
+If the project has a CHANGELOG.md or CHANGES.md, follow its existing convention.
+For onboarding work, describe user-visible changes under Unreleased where that
+section is used; do not invent a release version or date.
 
 **Voice rules:**
 - User-facing language: "You can now..." not "We implemented..."
@@ -125,7 +134,7 @@ Update only what changed — don't add commentary or restructure.
 
 ---
 
-## Step 5: TODOS.md cleanup
+## Step 5: Task-list cleanup
 
 ```bash
 cat TODO.md 2>/dev/null || echo "No TODO.md"
@@ -139,7 +148,8 @@ Also scan changed files for inline `TODO`/`FIXME`/`HACK` comments added in this 
 ```bash
 git diff HEAD~5..HEAD | grep "^+" | grep -E "TODO|FIXME|HACK|XXX"
 ```
-Add them to TODOS.md under the appropriate section.
+Update the project's existing task-list file under the appropriate section;
+do not create a second TODO/TODOS spelling.
 
 ---
 
@@ -178,13 +188,14 @@ Documentation sync complete:
 - ✅ **DONE** — all docs updated and committed
 - ⚠ **DONE_WITH_CONCERNS** — docs updated but some sections couldn't be auto-verified (e.g., diagram accuracy)
 - ❌ **BLOCKED** — required facts, access, or authority are unavailable. Create missing documentation within the authorized scope; do not ask the user to write it merely because it does not exist.
-- ❓ **NEEDS_CONTEXT** — which release is this for? (asked if context is unclear)
+- ❓ **NEEDS_CONTEXT** — the requested scope or release remains ambiguous after inspection.
 
 ---
 
 ## What NOT to do
 
-- Rewrite or reorganize docs beyond what the release requires
+- Rewrite or reorganize docs beyond the requested onboarding or release scope
 - Delete existing CHANGELOG entries
-- Update docs that weren't affected by this release
-- Commit doc changes in a separate "cleanup" PR — include them with the release
+- Update unrelated docs
+- Split release-related docs into a separate "cleanup" PR; keep them with that
+  release. Standalone onboarding work is its own reviewable change.

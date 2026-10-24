@@ -9,6 +9,8 @@ semantic versioning。
 
 ### 变更
 
+- 仓库上手规范现在检查社区入口是否可用、入门任务是否具体，以及文档是否对应读者实际能获取的版本。`document-release` 也可在发布前处理 README 和开源上手优化，`orchestrate` 会把相关检查写入任务验收条件。
+
 - Workflow 指引现在把只读、不碰主机的阶段交给 `agentType: "wf-reader"`。在 2026-10-23 A/B 的 15 道已知答案题上，它和默认 agent 一样准确，首轮上下文从 95.8k 降到 5.4k token；#160 之后它的 Bash 由 frontmatter 钩子限制在只读白名单内，而不只是靠指令。在 bypassPermissions 父会话下的实测中，钩子拒绝了 `touch`、`git commit` 和 `gh pr comment`，读命令照常运行，没有任何写入。规则旁写明了限制：钩子关闭的环境下不生效，插件副本 `clade:wf-reader` 没有保护。写入类阶段保持默认类型。TODO.md 新增 `configs/CLAUDE.md` 的大小门禁：六天内从 20.3k 涨到 24.1k 字符，安装后的全局文件预计达到 39.5k，接近 Claude Code 40k 的单文件上限。
 
 - `workflow-scorecard.py --ledger [PATH]` 现在保存会随 transcript 一起消失的数字，`--ledger-summary` 负责读回。Claude Code 30 天后删除 transcript，到 2026-10-22 已无法从磁盘复现指南里的主要数字。ledger 为已结束运行的每一次结束追加一行到 `$CLAUDE_CONFIG_DIR/workflow-scorecard/runs.jsonl`（未设置或为空时为 `~/.claude/…`），按 API 调用计数、不含逐 agent 明细；扫描现在也会读取该配置目录自己的 `projects/`。ledger 只追加、加锁写入，仍在运行的不写入：最后一次启动收到终止状态的 task-notification，或 24 小时无变化，才算结束。以同一 run id 恢复后再次结束的运行会新增一行（作者主机上 358 个 run id 中有 5 个启动过两次），读取时每个 run id 取最后一行。`--ledger-summary [PATH] --recorded-before WHEN` 从这些行算出指南引用的数字，之后即使追加了新行，依据 ledger 给出的数字仍可复现。`--outcome` 对 6 小时窗口已关闭的已结束运行的每一次结束，输出主人随后在主会话里输入的消息，JSONL 格式、`label: null`，供每周人工标注；恢复过的运行，较早的那次结束也有自己的窗口，到重新启动时关闭。消息按 2026-10-22 审计的定义筛选，先经 redact.py 脱敏再截到 300 字符，无法输出的运行在 stderr 计数。指南数字已在所有位置按 `--ledger-summary --recorded-before 2026-10-24T03:34Z` 的输出重新给出：2026-09-22 → 10-24 UTC 开始的 285 次并行运行（4,038 个 agent、394 小时，作者的两个 profile）中，单 agent 独跑占 makespan 的 52.4%，其中单 agent 阶段 35.5%、拖尾 16.9%；285 次中有 108 次因拖尾损失 15% 以上。2026-09-02 的旧数字只留在研究记录中，标为历史。新增 54 个变异，每个都使自检变红，新检查在旧版 scorecard 上失败。
