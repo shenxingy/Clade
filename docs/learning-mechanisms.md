@@ -23,7 +23,10 @@ inventing automatic ground truth.
 The full Claude distribution keeps a short-lived edit shadow. A revert signal
 can mark that shadow as a rejected change, but it remains data-only. A later
 explicit correction supplies the human context that makes the pair useful.
-Unpaired async signals do not write durable rules.
+Unpaired async signals do not write durable rules. A revert run inside a
+subagent or a dispatched worker is not recorded at all: there is no human in
+it, and on the author's machine subagent reverts alone were 172 of the 220
+implicit-revert records written 2026-09-22 → 10-22.
 
 In the Orchestrator, an explicit correction against an evidence-backed attempt
 creates a sanitized quarantined eval candidate. Promotion requires an explicit

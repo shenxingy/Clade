@@ -23,7 +23,7 @@
 | `session-context.sh` | SessionStart | Injects git state, model guidance, correction rules into context |
 | `pre-tool-guardian.sh` | PreToolUse (Bash) | Blocks dangerous commands (force-push, rm -rf, migrations outside dev mode) |
 | `linter-config-guard.sh` | PreToolUse (Edit/Write) | Guards linter config files from accidental overwrite |
-| `revert-detector.sh` | PreToolUse (Bash), async | Records a git revert/reset against the session's edit shadow for correction pairing. **Silent by design** — async hooks have no channel back into the turn, and the gate is that only an explicit "that's wrong" escalates to context |
+| `revert-detector.sh` | PreToolUse (Bash), async | Records a git revert/reset against the session's edit shadow for correction pairing. Main thread only: a subagent's (`agent_id`) or dispatched worker's revert writes nothing. **Silent by design** — async hooks have no channel back into the turn, and the gate is that only an explicit "that's wrong" escalates to context |
 | `permission-request.sh` | PermissionRequest | Handles elevated permission requests |
 | `post-edit-check.sh` | PostToolUse (Edit/Write) | Per-file type check (tsc / pyright / mypy / cargo check / go vet / …) plus an uncommitted-file nudge; wakes Claude via asyncRewake **only on failure** (exit 2 + stderr) |
 | `post-tool-use-lint.sh` | PostToolUse (Edit/Write) | Runs project verify_cmd; exits 2 on failure so Claude fixes it immediately |

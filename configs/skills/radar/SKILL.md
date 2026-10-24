@@ -109,6 +109,16 @@ revert. On 2026-09-23 seven consecutive records were
 probes, two with `repeat:true`; across all 103 `paths`-scoped records then, 3 of
 the 6 `repeat:true` were probes.
 
+**Discount a subagent's revert in records written before 2026-10-23.**
+`revert-detector.sh` now writes nothing for a call whose hook input carries
+`agent_id` (a subagent) or that runs under `CLADE_WORKER_TASK_ID` (a dispatched
+worker), once that change is installed. Before it, 172 of the 220
+implicit-revert records of 2026-09-22 → 10-22 on the author's machine were
+issued by Workflow subagents inside their own runs — 157 of them from a
+worktree or `/tmp` working directory — and no field marks them. For older
+records, set aside any whose `project` is a worktree or scratch path before
+clustering, and confirm the rest against the session transcript.
+
 **Discount a record whose only revert sits inside a heredoc body.** Agents write
 files through `python3 - <<'EOF'`, and prose about git inside the body used to
 trigger the hook and choose its `project` (a `cd` in a README became the

@@ -2077,3 +2077,13 @@ tiering are real but unmeasured. Each needs a paired A/B before rollout.
   a long brief. UI verify stages need a device matrix (webkit iPhone, the
   owner's screens, elementFromPoint). — guidance half DONE 2026-10-23
   (`configs/CLAUDE.md` § Adaptive Delegation, "Workflow scripts")
+  - [x] **The two signal fixes** — DONE 2026-10-23 — `revert-detector.sh`
+    writes nothing for a subagent (`agent_id`) or dispatched-worker revert
+    (skipped, not tagged: every reader stays correct without a new filter);
+    `correction-detector.sh` strips the 对不对 tag (keeping 绝对不对 and
+    不对不对): precision 41% → 57% at recall 35% on the 364 labelled post-run
+    messages (37 rejections), all 5 fires it removed on 490 unlabelled
+    messages were tags. 8 added phrasings reach 66% / 51% only in-sample (0
+    rejections caught outside it; 4 never a sole trigger, unmeasured);
+    `session-scorecard.sh` stops counting mutation probes. Still open: the
+    `--outcome` mode (the guidance half landed in #146).

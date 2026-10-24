@@ -57,13 +57,67 @@ _strip_pasted() {
 SCAN="$(_strip_pasted "$PROMPT")"
 SCAN="${SCAN//要不要/}"
 
+# ─── A tag question asks; it does not reject ─────────────────────────
+# 对不对 ("right or not?") closes a statement the user wants confirmed, and it
+# carries 不对 inside it, so every confirmation question fired as a correction.
+# Measured on a hand-labelled set: 364 messages the owner typed in a Workflow
+# run's lead session within 6 h after the run ended (one owner, 2026-09-22 →
+# 10-22, mostly Chinese dictation), 37 of them labelled a rejection — the result
+# is wrong or the goal was misread (R, 16) or a delivered artifact has a concrete
+# flaw (D, 21). Replayed through this hook as of 2026-10-22, it fired on 32 and
+# 13 were R/D: precision 41%, recall 35%. 9 of the 19 false fires were a 对不对
+# tag. Stripping it leaves 23 fires, 13 R/D: precision 57%, recall unchanged.
+# That gain holds outside the set. The owner typed 849 main-thread messages on
+# the same machine 2026-08-26 → 10-23; on the 490 of them not in the labelled
+# set (unlabelled), the strip silenced 5 fires and all 5 were tag questions.
+# (The records the installed hooks actually wrote for the labelled messages,
+# older versions included, scored 33% and 41%.)
+#
+# The strip ignores word boundaries, so a real 不对 that sits beside another 对
+# is split off first, or the strip would delete it with the tag:
+#  - after a word ending in 对 — 绝对不对 (absolutely wrong), 比对不对 (the
+#    comparison is wrong) — a space goes between the word and 不对;
+#  - when 不对 follows 不对 — 不对不对 ("no, no"), or a tag running straight
+#    into a rejection in unpunctuated dictation (…对不对不对是两个…) — a space
+#    goes between them, repeated until no adjacent pair is left.
+# Of the 849 messages, none holds a 对-word or a tag right before 不对 and one
+# holds 不对不对, so this changes no measured result; it keeps what the hook
+# caught before the strip. Bash string ops are builtins, so none of it adds a
+# process to the sync path.
+#
+# Only 对不对 needs a rule. The other tags — 是不是, 对吧, 对吗, 是吗, a trailing
+# "right?" — hold no trigger, so they can only ride along with a trigger in the
+# statement they confirm, and that statement can itself be the rejection ("不对，
+# 我们只要第二版，对吧？"). In the 849 messages above, 24 sentences end in one of
+# them and none holds a trigger, so nothing is dropped for them.
+# Left firing on purpose: a bare trailing 不对 used as a tag. The same position
+# holds real rejections ("…这样显示就不对"); in the labelled set, sentence-final
+# 不对 was a tag once and a rejection four times.
+for _w in 绝对 比对 核对 校对 相对 针对 配对; do SCAN="${SCAN//${_w}不对/${_w} 不对}"; done
+while [[ "$SCAN" == *不对不对* ]]; do SCAN="${SCAN//不对不对/不对 不对}"; done
+SCAN="${SCAN//对不对/}"
+
 # Correction patterns (Chinese + English)
 # Bare 应该 is out. In spoken Chinese it mostly means "probably" (应该是14,
 # 应该是我起的头) and it was the ONLY trigger for 80 of the 230 records — 35% of
 # everything this hook ever fired on. The forms aimed at the assistant stay:
 # 你应该 (you should have) and 不应该 (shouldn't).
+#
+# Everything after 不应该 was added for rejections the earlier list missed on
+# the labelled set above, and is measured only there. 不太对 (not quite right;
+# 不对 needs the two characters side by side), 不满意, 没懂, 打不开 and 说的太多
+# are the only trigger in 6 labelled rejections, which lifts the replay to 29
+# fires, 19 R/D: precision 66%, recall 51%. That gain is IN-SAMPLE — each of
+# the 6 was read off the message it now matches. Across the 490 messages
+# outside the set the phrasings added 1 fire (不太对, in a request to tidy stale
+# docs, not a rejection) and caught no rejection. 理解错, 做多了 and 四不像
+# appear only in labelled rejections that already fire on another word, and
+# 说得太多 (the 得 spelling of 说的太多) appears nowhere: those four are
+# unmeasured, kept because each names a rejection outright. Still missed:
+# complaints with no rejection word at all ("the button should stay in one
+# place", "this page is too large").
 PATTERNS=(
-  '不要|别用|错了|改回|不对|别这样|重新|撤回|你应该|不应该'
+  '不要|别用|错了|改回|不对|别这样|重新|撤回|你应该|不应该|不太对|理解错|没懂|不满意|打不开|做多了|四不像|说的太多|说得太多'
   '(^|[^a-zA-Z])(wrong|revert|undo|rollback|actually|instead|should have|shouldn'\''t have|go back|put back|change back|not what I)($|[^a-zA-Z])'
   '(^|[^a-zA-Z])(no,? *(use|do|make|try|put))($|[^a-zA-Z])'
 )

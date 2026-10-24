@@ -3,7 +3,8 @@
 # Triggered by PreToolUse on Bash
 #
 # When a user (or Claude) runs git revert, git reset --hard, git checkout -- <file>,
-# or git restore <file>, log it as an implicit correction signal.
+# or git restore <file>, log it as an implicit correction signal. Only on the main
+# thread: a subagent's or a dispatched worker's revert writes nothing (see below).
 #
 # Fail-open: errors are silently ignored. Does NOT block the command.
 
@@ -11,6 +12,44 @@ INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null || echo "")
 
 if [[ "$TOOL_NAME" != "Bash" ]]; then
+  exit 0
+fi
+
+# ─── Only the main thread's reverts are the owner's signal ───────────
+# A subagent's revert is the agent's own work — a mutation probe, a worktree
+# reset, cleanup before a branch switch — not the owner rejecting a change. Measured on the author's machine: of 220 implicit-revert records
+# written 2026-09-22 → 10-22, 172 (78%) were issued by Workflow subagents inside
+# their own runs (157 with a worktree or /tmp cwd), 23 by lead sessions, and 25
+# could not be located in either.
+#
+# SKIPPED, not tagged — decided from what reads these records:
+# - session-scorecard.sh counts EVERY implicit record in its window, with no
+#   project filter, as a −0.05 penalty on the session score;
+# - correction-detector.sh surfaces the reverted_files/session_files of
+#   same-project records in the last 200 history lines as "files behind this
+#   correction". A subagent carries its parent's session_id, so its
+#   session_files are the whole parent session's shadow, and at 78% of the
+#   records it also crowds the 200-line window;
+# - `repeat` below compares against past records of the same project;
+# - the radar skill (Lane C) clusters this file by hand.
+# A tag would need a new filter in every one of them, including copies installed
+# on other machines that share history.jsonl through the sync store; a skip is
+# correct for all of them as they stand. And unlike rd_is_probe, which keeps its
+# record because a heuristic can misclassify a real revert, there is nothing to
+# misclassify here: Claude Code sets `agent_id` exactly when the call runs inside
+# a subagent and never on the main thread (2.1.283 hook-input schema: "Use this
+# field (not agent_type) to distinguish subagent calls"). What is given up: a
+# revert the owner asked for and the lead delegated. The owner's request is
+# then the explicit record, which correction-detector.sh writes itself.
+#
+# A dispatched worker (`claude -p` under run-tasks-parallel.sh / loop-runner.sh,
+# CLADE_WORKER_TASK_ID set) is the same case with no agent_id: there is no human
+# in it, which is why correction-detector.sh already goes silent on that marker.
+if [[ -n "${CLADE_WORKER_TASK_ID:-}" ]]; then
+  exit 0
+fi
+AGENT_ID=$(echo "$INPUT" | jq -r '.agent_id // empty' 2>/dev/null || echo "")
+if [[ -n "$AGENT_ID" ]]; then
   exit 0
 fi
 
