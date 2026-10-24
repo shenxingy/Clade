@@ -1,306 +1,150 @@
 [English](README.md) | **中文**
 
-<p align="center">
-  <img src="assets/banner.svg" alt="Clade" width="800" />
-</p>
-
-<p align="center">
-  <a href="https://pypi.org/project/clade-mcp/"><img src="https://img.shields.io/pypi/v/clade-mcp?label=MCP%20Server&color=blue" alt="PyPI" /></a>
-  <a href="https://github.com/shenxingy/clade/blob/main/CONTRIBUTING.md"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome" /></a>
-  <a href="https://github.com/shenxingy/clade/labels/good%20first%20issue"><img src="https://img.shields.io/github/issues/shenxingy/clade/good%20first%20issue" alt="good first issue" /></a>
-</p>
+<p align="center"><img src="assets/banner.svg" alt="Clade" width="800"></p>
 
 # Clade
 
-**面向 coding agents 的 provider-neutral 交付控制平面。**
+**把 coding agent 的工作变成可复查、可验证的交付。**
 
-Clade 把 agent 的工作变成可复查的交付：解析后的执行身份、不可变证据、
-校准过的验证、纠正学习，以及真实保留语义的 Git 历史。它同时提供 Claude Code
-完整框架、Codex 原生插件和面向其他客户端的 MCP bridge。
+在你已经使用的 coding assistant 中，用 Clade 规划改动、运行项目检查、准备 commit 和 PR。
+它为 Claude Code、Codex 添加工作流与 hooks，也能通过 MCP 接入其他客户端。
+从一个任务开始即可，可选服务器不是前置条件。
 
-可选的 **Orchestrator** 进一步提供 provider/model registry、证据与 eval
-控制平面、verifier-aware routing、交付状态，以及跨项目 fleet truth。
+[选择安装方式](#选择安装方式) · [试一个工作流](#第一次工作流) · [获取帮助](#社区与贡献)
 
-> 如果它帮你省了时间，点个 star 能帮更多人找到它。出问题了？[提 issue](https://github.com/shenxingy/clade/issues/new/choose)。
+<details>
+<summary>目录</summary>
 
-> **博客文章：** [Building Clade](https://alexshen.dev/zh/blog/clade) — 项目的动机、设计决策和经验教训。
+- [选择安装方式](#选择安装方式)
+- [安装](#安装)
+- [第一次工作流](#第一次工作流)
+- [Clade 能帮你什么](#clade-能帮你什么)
+- [运行时边界](#运行时边界)
+- [文档](#文档)
+- [社区与贡献](#社区与贡献)
+- [限制与许可证](#限制与许可证)
 
-## 目录
+</details>
 
-1. [安装](#安装)
-2. [MCP Server](#mcp-server--在任何-ai-编辑器中使用-skills)
-3. [可信交付循环](#可信交付循环)
-4. [它做什么](#它做什么)
-5. [自学习机制](#自学习机制)
-6. [Skills](#skills-148)
-7. [支持的语言](#支持的语言)
-8. [文档](#文档)
-9. [Dotfile 同步](#dotfile-同步)
-10. [架构](#架构)
-11. [OpenClaw 集成](#openclaw-集成)
-12. [贡献](#贡献)
-13. [License](#license)
+## 选择安装方式
+
+| 你使用 | 从这里开始 | 安装内容 |
+| --- | --- | --- |
+| Claude Code | [完整框架](docs/getting-started.zh-CN.md#claude-code) | `~/.claude/` 下的 skills、hooks、agents、scripts 和安全指导 |
+| Codex | [原生插件](docs/getting-started.zh-CN.md#codex) | 通过 Codex plugin marketplace 安装的原生 skills 和 hooks |
+| Cursor、Windsurf、Claude Desktop 或其他 MCP 客户端 | [MCP bridge](docs/getting-started.zh-CN.md#mcp) | `clade-mcp`，调用你选择的 Claude 或 Codex CLI |
+| 需要任务队列、证据 API 或 fleet 视图 | [可选 Orchestrator](docs/orchestrator.md) | 独立的本地 FastAPI 控制平面；原生入口不依赖它 |
 
 ## 安装
 
-### Claude Code — 完整框架
+完整的前置条件、副作用、验证、更新和排障见[上手指南](docs/getting-started.zh-CN.md)。
+最短路径如下：
+
+### Claude Code
+
+需要 Git、Bash、Python 3 和用于合并设置的 `jq`（推荐 Python 3.11）。在 clone 后的目录里运行：
 
 ```bash
-git clone https://github.com/shenxingy/clade.git
-cd clade && ./install.sh
+git clone https://github.com/shenxingy/Clade.git clade
+cd clade
+./install.sh
 ```
 
-安装 skills、hooks、agents、scripts 和安全守卫。启动新的 Claude Code 会话即可激活。
+安装后在你要处理的项目中打开新的 Claude Code 会话。安装器会把框架复制到用户配置目录；有 `jq` 时
+会替换现有 hooks 和状态栏设置。先查看[安装影响](docs/getting-started.zh-CN.md#claude-code)。
+它不会安装或共享 agent 凭证。
 
-> **依赖：** `jq`。**平台：** Linux、macOS，以及通过 Git Bash 的 Windows（不含 bash 的原生 CMD/PowerShell 不在支持范围内）。
+### Codex
 
-### Codex — 原生插件
+需要支持 plugin 的 Codex CLI 和 Python 3（生成的 hooks 使用）。在 shell 中运行：
 
-```bash
+```text
 codex plugin marketplace add shenxingy/Clade
 codex plugin add clade@clade
 ```
 
-安装后启动新的 Codex thread，并通过插件限定名 `$clade:review`、
-`$clade:verify`、`$clade:investigate`、`$clade:green` 等技能直接运行 Clade。首次使用时
-打开 `/hooks`，检查并信任 Clade 的 session context 和危险命令防护 hooks。
-原生插件无需安装 Claude Code。
+新建 Codex thread，在 Codex 聊天中运行 `/hooks`，然后调用 `$clade:verify` 或
+`$clade:review`。这些是聊天调用，不是 shell 命令。原生插件不需要 Claude Code。
 
-运行 `$clade:codex-usage setup minimal` 使用极简原生 footer。
-`$clade:codex-usage` 默认显示同样极简的 `project(branch)-9% (6d)` 节奏；
-图标和详细模式均为可选，而且不会读取或暴露 Codex 登录凭证。
+### MCP
 
-完整说明与兼容边界见 [Codex 原生支持](docs/codex.zh-CN.md)。
+需要 Python 3.10+、`uv` 和客户端 `PATH` 中已登录的 Claude 或 Codex CLI。
+将下面的 JSON 加入 MCP 客户端配置：
 
-### 仅 MCP Server
-
-如果希望在其他 MCP 客户端里使用 Clade skills：
-
-```bash
-pip install --upgrade clade-mcp
-```
-
-Codex execution runtime 自 0.2.0 起提供，Claude 仍是向后兼容的默认值；当前包版本 0.3.1。
-配置见下方 [MCP Server](#mcp-server--在任何-ai-编辑器中使用-skills)，完整参数见
-[MCP package 中文指南](mcp-package/README.zh-CN.md)。
-
-## MCP Server — 在任何 AI 编辑器中使用 Skills
-
-MCP package 通过 [Model Context Protocol](https://modelcontextprotocol.io)
-暴露 36 个内置 Clade skills，并可选择通过 Claude 或 Codex 执行。
-
-**Claude Desktop，或使用 Claude runtime 的其他客户端：**
-```json
-{
-  "mcpServers": {
-    "clade": { "command": "uvx", "args": ["clade-mcp"] }
-  }
-}
-```
-
-**Cursor / Windsurf：**
 ```json
 {
   "mcpServers": {
     "clade": {
-      "command": "clade-mcp",
+      "command": "uvx",
+      "args": ["clade-mcp"],
       "env": { "CLADE_RUNTIME": "codex" }
     }
   }
 }
 ```
 
-`CLADE_RUNTIME` 支持 `claude`（兼容旧版本的默认值）、`codex` 和 `auto`。
-在 Codex 自身内部应优先使用原生插件，避免重复加载 skills 和启动嵌套 agent；
-Claude Code 完整框架已经原生安装 Clade skills，也不应重复挂载 MCP server。
+此示例使用 Codex，默认 sandbox 为 `workspace-write`。
+调用一次 `clade_list_skills`，确认列出的 skills 和 runtime。这个调用不会执行编码任务。
+完整设置见 [MCP 指南](mcp-package/README.zh-CN.md)。若已有原生 Clade 入口，
+不要重复挂载 MCP，以免重复加载和启动嵌套 agent。
 
-## 可信交付循环
+## 第一次工作流
 
-Clade 把六个维度分开处理，避免一次“看起来是绿的”运行悄悄改变 runtime、
-账号、历史或证据语义：
+在一个有测试的小型、可回滚任务上试用。让 agent 先检查仓库并提出改动，然后审阅
+变更文件并运行仓库自己的检查。
 
-| 层 | 合同 |
-|---|---|
-| 执行身份 | 分别解析 agent runtime、原生 connection、inference provider、wire protocol 和 opaque model |
-| 证据 | attempt 以 digest-linked revision 追加 task、timing、Git SHA、测试、oracle、成本、artifact 和 delivery 证据 |
-| Verifier 校准 | cheap→strong routing 默认关闭，必须有 deterministic verifier 证据；观察报告不能自动改策略 |
-| 纠正学习 | 显式纠正把被拒工作与人工上下文配对，形成待审 eval candidate；不存在自动 ground truth |
-| 交付 | exact reviewed SHA、live PR topology、CI 和仓库策略共同决定 merge 语义；squash 不是通用默认值 |
-| Fleet truth | provider catalog、任务、usage、证据健康和 delivery 状态都保留 provenance 与 freshness |
+Claude Code 中可以在小改动后使用 `/verify`；Codex 使用 `$clade:verify`；MCP 则先用
+`clade_list_skills` 发现对应工具，再调用 `clade_verify`。Clade 的证据和验证是审阅
+材料，不代表自动获得 merge、push 或 publish 权限。
 
-证据和 oracle approval 是门禁与审计材料，不代表自动获得 publish/merge
-权限；外部副作用仍由仓库策略和明确授权决定。
+## Clade 能帮你什么
 
-## 它做什么
+| 你要做什么 | 使用 |
+| --- | --- |
+| 先理解一个新仓库 | `/map`、`/investigate` 或对应原生调用 |
+| 运行仓库真实的本地 CI 闸门 | `/green` |
+| 检查任务的行为锚点 | `/verify` |
+| 保持工作隔离且易审阅 | `/worktree`、`/commit`、`/create-pr` |
+| 审阅 PR 或安全边界 | `/review-pr`、`/cso`、`/incident` |
+| 上下文用尽后继续 | `/handoff`，然后 `/pickup` |
+| 研究陌生方案 | `/research` |
 
-| 时机 | 触发什么 | 效果 |
-|------|---------|------|
-| 在 git 仓库中打开会话 | `session-context.sh` | 加载 git 上下文、handoff 状态、纠正规则、模型指南 |
-| 在 git 仓库中打开会话 | `commit-archeology.sh` | 从 `git log` 挖掘重复修复模式（wiring/deploy/compat gap、Claude-overridden）— 注入 top 4 |
-| Claude 执行 bash 命令 | `pre-tool-guardian.sh` | **拦截**危险操作：数据库迁移、`rm -rf`、force push、`DROP TABLE`；子代理的等待若会超过其提示缓存时长（默认 5 分钟）则提醒（不拦截） |
-| Claude 启动 Workflow | `workflow-preflight.sh` | **拦截**占位符参数（`"__FILL__"`、`{"__see": …}`）；上一步结果在 prompt 里被无声截断、或配额读数新鲜且 7 天 ≥ 90% / 5 小时 ≥ 85% 时给出提醒 |
-| 后台任务还在跑时 Claude 想用 AskUserQuestion 提问 | `ask-while-live.sh` | **拒绝**该调用——提问会挂起会话，任务完成通知无法唤醒它；改为用普通文本提问并结束本轮 |
-| Claude 编辑代码 | `post-edit-check.sh` | 异步类型检查（tsc、pyright、cargo check、go vet 等） |
-| 你纠正 Claude | `correction-detector.sh` | 记录纠正，提示 Claude 保存可复用的规则 |
-| Claude 标记任务完成 | `verify-task-completed.sh` | 自适应质量门禁：compile + lint，严格模式额外 build + test |
+完整选择指南见 [When to Use What](docs/when-to-use-what.md)；hooks、agents、纠正学习
+和交付边界见 [How It Works](docs/how-it-works.md)。
 
-hook 参考见 [How It Works](docs/how-it-works.md)——它只写常用可调的那些；完整列表用 `ls configs/hooks/`（共 34 个）。
+## 运行时边界
 
-## 自学习机制
-
-三个机制让 Clade 与现实保持一致：
-
-- **Commit Lessons**（响应式）— `commit-archeology.sh` 从 `git log` 挖掘重复修复模式（wiring-gap、deploy-gap、compat-gap、**claude-overridden**），每次会话启动时注入 top 4。
-- **Doc Align**（预防式）— `doc-align.py` 在 `docs/facts.json` 中声明共享事实（从文件系统自动推导），检查/自动修复所有 `*.md` 的漂移。PostToolUse hook 在你编辑文档的瞬间标记漂移，过期数字到不了 commit。
-- **Correction Pairing**（人工定真）— 显式纠正把被拒工作与替代上下文配对；
-  Orchestrator 把它隔离成 eval candidate，只有显式人工 review 才能提升为 corpus truth。
-
-Commit Lessons 与 Doc Align 在 Claude 完整框架中本地运行，未启用的仓库静默
-跳过。推断出的 revert 或异步信号不会自动写成规则。
-
-详见 [Self-Learning Mechanisms](docs/learning-mechanisms.md)。
-
-## Skills (148)
-
-### 核心工作流
-
-| Skill | 功能 |
-|-------|------|
-| `/commit` | 创建适配仓库的 checkpoint commits；已有授权时发布 |
-| `/sync` | 勾掉完成的 TODO，追加会话总结到 PROGRESS.md |
-| `/review` | 逐条走完 VERIFY.md 的每个 checkpoint，当场修复失败项直到全部通过 |
-| `/green` | 在本机跑仓库真实的 CI 闸门并修到绿 — 绝不通过削弱闸门取胜 |
-
-### 自主运行
-
-| Skill | 功能 |
-|-------|------|
-| `/start` | 自主会话启动器 — 晨间简报、通宵运行、跨项目巡检 |
-| `/loop GOAL` | 目标驱动改进循环 — 主管规划，workers 并行执行 |
-| `/iloop TASK` | 会话内迭代循环 — Stop hook 反复喂回提示词直到完成（无后台 workers） |
-| `/batch-tasks` | 通过无人值守会话执行 TODO 步骤（串行或并行） |
-| `/compute` | 大规模 CPU/GPU 任务：本地盘暂存、冒烟与 profiling、调度限流及恢复验证；读取私有 `~/.clade/compute-policy.md` |
-| `/orchestrate` | 把目标拆解为任务供 workers 执行 |
-| `/handoff` | 保存会话状态，供 agent 间上下文接力 |
-| `/pickup` | 从上次 handoff 恢复 — 零摩擦重启 |
-| `/worktree` | 创建 git worktrees 支持并行会话 |
-| `/tasks` | Codex、CC、Kimi 和人共享依赖图、领取与交接，验收后解锁下游任务（[接入说明](docs/reference/shared-tasks.md)） |
-| `/poke` | 按 `esc` 后的心跳 — 3 行状态汇报，进展正常就继续 |
-| `/status` | 会话仪表盘 — 后台 agents、loops、worktrees、未推送 commits |
-| `/go` | 直接执行你最近一组 A/B/C 选项中的推荐项 |
-
-### 代码质量
-
-| Skill | 功能 |
-|-------|------|
-| `/review-pr N` | AI 审查 PR diff — Critical / Warning / Suggestion |
-| `/merge-pr N` | 按 topology 与 history 语义合并 exact reviewed PR，并清理分支 |
-| `/investigate` | 根因分析 — 假设未确认不动手修 |
-| `/incident DESC` | 事故响应 — 诊断、复盘、后续任务 |
-| `/cso` | 安全审计（OWASP + STRIDE） |
-| `/reverse-engineer-anything` | 无源码逆向已发布软件 — 二进制、Electron/ASAR、APK、固件、网站 — 基于 REA CLI/MCP（[morluto/rea](https://github.com/morluto/rea)，已吸收的上游技能）；结论带证据引用 |
-| `/artifact` | 一页 PhD、PM、工程师都能一眼看懂的报告 — 按页面类型的骨架（为什么是这个数、做了什么、下一步）、论文级的图、亮暗双主题，发布前由 `artifact-lint.py` 检查 |
-| `/landscape` | 全系统报告 — 每个部分、每个入口、负责人、差距、以及放弃过的尝试，产出为发布的 artifact（即 `/artifact` 的架构骨架放大到全系统） |
-| `/map` | 生成 ARCHITECTURE.md（Mermaid 模块图；只读目录树，不读 git 历史，无归属数据） |
-
-### 调研与规划
-
-| Skill | 功能 |
-|-------|------|
-| `/research TOPIC` | 深度网络调研，综合保存到 docs/research/ |
-| `/model-research` | 最新 Claude 模型数据 + 自动更新配置 |
-| `/next` | "下一步做什么" — 默认 1 次直给推荐；`/next deep` 多轮访谈 |
-| `/brief` | 早晨简报 — 过夜 commits、成本、下一步 |
-| `/retro` | 基于 git 历史的工程复盘 |
-| `/frontend-design` | 生产级前端界面生成 |
-
-### 系统
-
-| Skill | 功能 |
-|-------|------|
-| `/audit` | 清理纠正规则 — 升级、去重、删除过期 |
-| `/document-release` | 发布后文档同步（README、CHANGELOG、CLAUDE.md） |
-| `/pipeline` | 后台 pipeline 健康检查 |
-| `/provider` | 切换 LLM provider |
-| `slt` | 切换状态栏配额进度指示器 |
-
-### 内容家族
-
-**博客与内容**（30）· **SEO**（25）· **付费广告**（23）· **邮件**（6）——
-逐 skill 的表格见 [什么时候用什么](docs/when-to-use-what.md)。
-
-## 支持的语言
-
-按项目自动检测，hooks 与 agents 随之适配（TypeScript/JavaScript、Python、Rust、
-Go、Swift、Kotlin/Java、LaTeX）。逐语言的检查器与测试运行器对照表见
-[工作原理](docs/how-it-works.md)。工具未安装时对应检查静默跳过。
+- Claude 框架是本地 shell 配置，会写入 home 目录并合并设置；应用前请检查 `install.sh`。
+- Codex 插件是原生 Codex 入口，不会导入完整 Claude 安装，也不会复制凭证、模型或个人状态。
+- MCP 根据 `CLADE_RUNTIME` 启动 agent CLI，以服务器启动时的目录作为项目目录。
+  在客户端启动配置中指定目标仓库。Codex 默认使用 `workspace-write`；Claude runtime
+  会跳过 CLI 权限提示。客户端审批不能为子进程提供 sandbox；见[运行时设置](docs/getting-started.zh-CN.md#mcp)。
+- Orchestrator 是可选的次级控制平面；CLI 和原生插件不依赖它的 web UI 或数据库。
 
 ## 文档
 
 | 指南 | 内容 |
-|------|------|
-| [Codex 原生支持](docs/codex.zh-CN.md) | Plugin 安装、原生 skills/hooks、MCP runtime 与兼容边界 |
-| [MCP Package](mcp-package/README.zh-CN.md) | clade-mcp 0.3.1 安装、runtime、sandbox 与 skills 列表 |
-| [0.2.0 Release Notes](docs/releases/v0.2.0.md#中文说明) | Codex 原生支持、MCP 变更、升级步骤与验证结果 |
-| [更新记录](CHANGELOG.zh-CN.md) | Release 历史与升级说明 |
-| [最大化产出](docs/throughput.md) | 跳过权限确认、批量任务、并行 worktrees、终端与语音 |
-| [编排 Web UI](docs/orchestrator.md) | 聊天规划、worker 仪表盘、设置、迭代循环 |
-| [通宵自主运行](docs/autonomous-operation.md) | 任务队列、并行会话、上下文接力、安全保障 |
-| [工作原理](docs/how-it-works.md) | Hooks、agents、skills 内部机制、纠正学习、模型选择 |
-| [配置](docs/configuration.md) | 设置、阈值、添加自定义 hooks/agents/skills |
-| [什么时候用什么](docs/when-to-use-what.md) | 什么场景该用哪个 skill —— 核心工作流命令详解，内容家族按表索引 |
-| [向谁学习](docs/who-to-learn-from.md) | agentic-coding 前沿的甄选观察名单 —— 人、仓库、bot 行为，每季度复核 |
+| --- | --- |
+| [上手指南](docs/getting-started.zh-CN.md) | 选择入口、第一次工作流、验证、更新与排障 |
+| [Codex 原生支持](docs/codex.zh-CN.md) | 插件生命周期、hooks、迁移与更新恢复 |
+| [MCP package](mcp-package/README.zh-CN.md) | runtime、客户端配置与 sandbox |
+| [How It Works](docs/how-it-works.md) | hooks、agents、skills 与纠正学习 |
+| [Configuration](docs/configuration.md) | 设置、阈值及自定义扩展 |
+| [When to Use What](docs/when-to-use-what.md) | 工作流选择与 skill catalog |
+| [Orchestrator](docs/orchestrator.md) | 可选 web 控制平面及独立启动方式 |
+| [Changelog](CHANGELOG.zh-CN.md) | 版本历史与升级说明 |
 
-## Dotfile 同步
+## 社区与贡献
 
-让 `~/.claude/` 跨机器保持一致 — 记忆、纠正规则、skills、hooks、scripts。
+问题请发到 [Discussions](https://github.com/shenxingy/Clade/discussions)；可复现 bug 使用
+[issue 表单](https://github.com/shenxingy/Clade/issues/new/choose)；安全漏洞请看[安全政策](SECURITY.md)。
+文档、其他 shell 的测试、issue triage 和小范围 skills 都欢迎。请从
+[CONTRIBUTING.md](CONTRIBUTING.md) 和 [good first issues](https://github.com/shenxingy/Clade/labels/good%20first%20issue) 开始。
 
-```bash
-~/.claude/scripts/sync-setup.sh            # 自动检测 NFS 或 GitHub
-~/.claude/scripts/sync-setup.sh --github   # 显式指定 GitHub 后端
-```
+## 限制与许可证
 
-配置后完全自动。详见 [配置](docs/configuration.md)。
+已知限制包括：非代码任务的 loop 可能没有 diff，worker 会继承父进程环境变量，长任务
+需要用 `/handoff` 和 `/pickup` 管理上下文。请验证与你的仓库相关的行为；skill 数量或一次
+成功的 hook 运行都不能证明完整交付。
 
-## 架构
-
-**Claude CLI 层**（`configs/` → 安装到 `~/.claude/`）：完整的 skill、hook、
-script 与 agent 框架。
-
-**Codex 插件**（`plugins/clade/`）：由 canonical skills 生成的原生核心 skills，
-外加 Codex 生命周期 hooks，通过 `.agents/plugins/marketplace.json` 分发。
-
-**Orchestrator**（`orchestrator/`）：可选的证据、评测、交付与机队控制平面。它在
-不复制凭据的前提下解析原生 runtime 连接，监视 workers，校准 verifier 感知的路由，
-记录不可变的 attempt 证据，并暴露精确的交付状态。原生 CLI/插件面可独立工作。
-
-**Web UI**（`orchestrator/web/`）：只读观察窗口。任务队列、worker 状态、成本看板、
-设置。不含生产逻辑 —— 一切都通过 CLI 执行。
-
-完整目录树见 [工作原理](docs/how-it-works.md#repository-layout)。
-
-## OpenClaw 集成
-
-通过 [OpenClaw](https://openclaw.ai) 从手机监控和控制通宵循环。
-
-| Skill | 触发语 | 效果 |
-|-------|--------|------|
-| clade-status | "跑到哪了" | 迭代进度、成本、commits |
-| clade-control | "开始 loop 修测试" | 启动/停止自主循环 |
-| clade-report | "昨晚干了什么" | 会话报告、成本明细 |
-
-安装见 [`adapters/openclaw/README.md`](adapters/openclaw/README.md)。
-
-## 贡献
-
-欢迎贡献 — 代码、文档、issue 分类、bug 报告。详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
-
-### 已知限制
-
-1. **Loop 处理非代码任务**（调研/文档）时静默失败 — workers 没有 diff，loop 报告失败
-2. **Workers 继承父环境** — 项目特定的环境变量会泄漏到 worker shell；通宵运行前请清理
-3. **上下文预算按会话计** — 多天运行可能耗尽上下文；用 `/handoff` + `/pickup`
-
-## License
-
-[MIT](LICENSE)
+Clade 使用 [MIT License](LICENSE)。依赖和 agent provider 仍受各自条款约束。

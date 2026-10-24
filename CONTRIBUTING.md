@@ -1,6 +1,7 @@
 # Contributing to Clade
 
-Thanks for your interest in contributing! This project has 800+ clones and counting — every contribution helps.
+Thanks for contributing. Focused reports, documentation, tests, and small
+workflow improvements are welcome.
 
 ## Ways to Contribute
 
@@ -19,16 +20,22 @@ Contributions aren't just code:
 git clone https://github.com/YOUR_USERNAME/clade.git
 cd clade
 
-# 2. Install (deploys to ~/.claude/)
-./install.sh
-
-# 3. Open a new Claude Code session to activate
-claude
+# 2. Work from a branch and validate without changing your personal install.
+git checkout -b docs/your-change
+python3 configs/scripts/regen-codex-plugin.py --check
+python3 configs/scripts/validate-skills.py configs/skills --quiet
 ```
 
-**Requirements:** `jq` for settings merge. Python 3.10+ for the orchestrator. Everything else is optional.
+**Requirements:** Python 3.10+ for the orchestrator and MCP package; `jq` is
+needed when testing the Claude settings merge. The authoritative full test and
+syntax commands are in `CLAUDE.md`; setup and surface checks are in
+[Getting started](docs/getting-started.md).
 
-**Test your changes:** After modifying a hook or script, run `./install.sh` to redeploy, then open a fresh Claude Code session to verify it fires correctly.
+**Test your changes:** Run the focused checks first, then the relevant tests.
+Only deploy to `~/.claude/` in an isolated test profile or on a machine where
+you have reviewed the installer output; never use a real user's credentials or
+state as test fixtures. For behavior that depends on a fresh agent session,
+record that limitation in the PR.
 
 ## Commit Format
 
@@ -58,7 +65,8 @@ chore: bump orchestrator dependencies
 3. Verify syntax: `bash -n configs/hooks/your-hook.sh`
 4. Commit with Conventional Commits format
 5. Open a PR against `main`
-6. A maintainer will review within a few days
+6. A maintainer will review the scope, evidence, and compatibility before deciding
+   whether to merge
 
 Merge strategy follows the PR's actual history semantics. A single verified
 commit is normally rebased; curated independently useful commits may be
