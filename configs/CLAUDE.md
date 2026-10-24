@@ -185,7 +185,7 @@ When the free path genuinely cannot answer something, say so in those words.
 - When starting a task, switching focus, or reaching a milestone: `vt title "action - context"` (if VibeTunnel installed)
 
 ## Autonomy
-- Proceed WITHOUT asking for: file edits, test runs, builds, type-checks, lint, **commits via `committer`** (reversible with `git reset --soft HEAD~1`)
+- Proceed WITHOUT asking for: file edits, test runs, builds, type-checks, lint, **commits via `committer`** (reversible with `git reset --soft HEAD~1` until pushed; it pushes only to a same-name remote branch, never for a worker; `--no-push` keeps it local)
 - Ask the user BEFORE: deleting files, modifying .env, running migrations, force-pushing, `git push` to shared/protected branches
 - **Bug fix / gap closure without permission**: When a bug or a concrete, reversible gap is clearly identified with a clear implementation and no destructive side effects — build it immediately. "Should we fix?" or offering to "open a TODO" creates an unnecessary round-trip (identified ≠ executed). Ask only when the fix is ambiguous, destructive, or has architectural tradeoffs.
 - **Recommendation = decision for low-stakes A/B/C**: If you've enumerated options, marked one as recommended, and the action is reversible (commits, file edits, doc reorganization, choice of where to write a section), just do the recommended one. Don't ask "A or B?" after writing "I recommend A" — the user reads the recommendation, picks "A" 95% of the time, and the round-trip wastes a turn. Reserve A/B/C-and-ask for irreversible actions or genuine architectural forks where you'd be uncertain even after thinking longer.

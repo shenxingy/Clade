@@ -49,7 +49,7 @@ chore: bump orchestrator dependencies
 ~/.local/bin/committer "feat: your message" file1.sh file2.py
 ```
 
-`committer` is installed by `./install.sh`. It stages only named files, preventing parallel agents from accidentally staging each other's work.
+`committer` is installed by `./install.sh`. It stages only named files, preventing parallel agents from accidentally staging each other's work. After committing it pushes only to the remote branch with the same name as your local branch, so a branch started from `origin/main` is committed but never pushed onto `main`; pass `--no-push` to skip the push.
 
 ## PR Process
 

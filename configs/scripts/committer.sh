@@ -8,7 +8,16 @@
 # This script forces explicit file specification, preventing cross-agent contamination.
 #
 # Convention: conventional commit format required (feat/fix/refactor/test/chore/docs/perf)
-# Push: enabled by default. Pass --no-push to skip (e.g. parallel agent worktrees).
+# Push: on by default, and ONLY to the remote branch with the same name as the
+#   local branch (see "Push" at the bottom for the four cases). A branch that
+#   tracks a differently named branch — `git worktree add -b X <path>
+#   origin/main` gives X the upstream origin/main — is committed and NOT
+#   pushed. Autonomous workers (CLADE_WORKER_TASK_ID set — parallel agent
+#   worktrees, loop and orchestrator workers) never push; their runner merges
+#   or pushes. Pass --no-push to skip pushing anywhere else.
+# Exit: 0 committed (pushed, or the push skipped with a message saying why);
+#   3 committed, but the push itself failed; 1 a refusal before the commit, or
+#   the FATAL attribution check on the new HEAD.
 
 set -euo pipefail
 
@@ -51,7 +60,10 @@ if [[ -z "$MSG" ]]; then
   echo "    committer \"chore: update deps\" package.json pnpm-lock.yaml" >&2
   echo "" >&2
   echo "  Prefixes: feat fix refactor test chore docs perf style ci build" >&2
-  echo "  Flags:    --no-push  skip git push after commit" >&2
+  echo "  Flags:    --no-push  skip the push after the commit" >&2
+  echo "  Push:     only to the remote branch named like the local one; a branch" >&2
+  echo "            tracking another name (e.g. origin/main) is not pushed, and" >&2
+  echo "            nor is a worker commit (CLADE_WORKER_TASK_ID set)" >&2
   exit 1
 fi
 shift
@@ -150,7 +162,97 @@ if ! "$PYTHON_BIN" "$GIT_IDENTITY_PY" verify-head --repo .; then
 fi
 echo "Committed: $MSG"
 
-# Push
+# ─── Push ─────────────────────────────────────────────────────────────
+# Publish only to the remote branch with the SAME name as the local branch.
+# This used to be a bare `git push`, and its destination was whatever the
+# branch tracked. `git worktree add -b fix/x <path> origin/main` — the usual
+# way to start work — makes origin/main the upstream of fix/x, so:
+#   push.default=simple (git's default) refused it, and committer then exited
+#     non-zero after a successful commit, which a caller reads as "not
+#     committed";
+#   push.default=upstream pushed the feature commit straight onto main;
+#   push.default=matching pushed every same-named branch, not only this one.
+# An explicit `<remote> HEAD:refs/heads/<branch>` refspec takes push.default
+# out of it. Never forced: a rejected push stays rejected.
+#   autonomous worker      → skip with a message, exit 0 (see below)
+#   detached HEAD          → skip with a message, exit 0
+#   upstream, other name   → skip, print how to push it explicitly, exit 0
+#   upstream, same name    → push to it
+#   no upstream            → push -u to <remote>/<branch>, where <remote> is
+#                            the branch's configured push remote, else origin;
+#                            neither → skip with a message, exit 0
+# A push that git itself rejects exits 3, distinct from the 1 of a pre-commit refusal.
+#
+# Autonomous workers (CLADE_WORKER_TASK_ID set) never push. Their runner owns
+# delivery: run-tasks-parallel.sh merges each batch/task-* branch into the
+# main checkout locally and deletes it, and orchestrator/worker.py runs its
+# tests and oracle gate BEFORE its own auto_push and undoes the commit on
+# failure. A worker branch has no upstream, so the `-u` path below would
+# otherwise publish every unreviewed task branch and leave it on the remote.
+push_same_name_branch() {
+  local ref branch merge upstream_branch remote shown
+  if [[ -n "${CLADE_WORKER_TASK_ID:-}" ]]; then
+    echo "Not pushed: autonomous worker commit (CLADE_WORKER_TASK_ID is set); the runner that launched it integrates or pushes. The commit is kept." >&2
+    return 0
+  fi
+  # The full ref, not `--short`: when a tag or another ref shares the branch's
+  # name, `--short` answers `heads/<name>`, and every lookup below would miss
+  # the real branch's config and push to refs/heads/heads/<name>.
+  if ! ref=$(git symbolic-ref --quiet HEAD 2>/dev/null); then
+    echo "Not pushed: detached HEAD, so there is no branch to push. The commit is kept." >&2
+    return 0
+  fi
+  if [[ "$ref" != refs/heads/* ]]; then
+    echo "Not pushed: HEAD points at '$ref', which is not a local branch. The commit is kept." >&2
+    return 0
+  fi
+  branch="${ref#refs/heads/}"
+
+  # The remote `git push` itself would pick: branch.<b>.pushRemote overrides
+  # remote.pushDefault, which overrides branch.<b>.remote. "." means "this
+  # repository" (a branch tracking a LOCAL branch) and is never a push target.
+  remote=$(git config --get "branch.$branch.pushRemote" 2>/dev/null || true)
+  [[ -n "$remote" ]] || remote=$(git config --get remote.pushDefault 2>/dev/null || true)
+  [[ -n "$remote" ]] || remote=$(git config --get "branch.$branch.remote" 2>/dev/null || true)
+  [[ "$remote" != "." ]] || remote=""
+  if [[ -z "$remote" ]] && git remote get-url origin >/dev/null 2>&1; then
+    remote="origin"
+  fi
+
+  # Upstream = branch.<b>.merge. Any value names the branch it tracks; treat
+  # one that is set without branch.<b>.remote as an upstream too — skipping a
+  # push is the safe reading of a half-written tracking config.
+  merge=$(git config --get "branch.$branch.merge" 2>/dev/null || true)
+  upstream_branch="${merge#refs/heads/}"
+  if [[ -n "$merge" && "$upstream_branch" != "$branch" ]]; then
+    shown="$(git config --get "branch.$branch.remote" 2>/dev/null || true)"
+    if [[ -z "$shown" || "$shown" == "." ]]; then
+      shown="the local branch '$upstream_branch'"
+    else
+      shown="'$shown/$upstream_branch'"
+    fi
+    echo "Not pushed: '$branch' tracks $shown, not a branch named '$branch'. The commit is kept." >&2
+    echo "  To publish it under its own name: git push -u ${remote:-<remote>} HEAD:refs/heads/$branch" >&2
+    return 0
+  fi
+
+  if [[ -z "$remote" ]]; then
+    echo "Not pushed: '$branch' has no push remote configured and the repository has no 'origin' remote. The commit is kept." >&2
+    return 0
+  fi
+  if [[ -n "$merge" ]]; then
+    git push "$remote" "HEAD:refs/heads/$branch" || return 3
+  else
+    git push -u "$remote" "HEAD:refs/heads/$branch" || return 3
+  fi
+  return 0
+}
+
 if [[ "$DO_PUSH" == true ]]; then
-  git push
+  PUSH_RC=0
+  push_same_name_branch || PUSH_RC=$?
+  if [[ "$PUSH_RC" -ne 0 ]]; then
+    echo "Push FAILED (the commit above is kept locally; nothing was forced)." >&2
+    exit "$PUSH_RC"
+  fi
 fi

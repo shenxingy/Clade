@@ -2117,3 +2117,24 @@ tiering are real but unmeasured. Each needs a paired A/B before rollout.
     rejections caught outside it; 4 never a sole trigger, unmeasured);
     `session-scorecard.sh` stops counting mutation probes. Still open: the
     `--outcome` mode (the guidance half landed in #146).
+
+## 2026-10-23 committer push-target follow-ups
+
+Found while fixing committer's push target (it used to push a worktree branch
+to a differently named upstream such as `origin/main`). Not built in that fix:
+
+- [ ] 🟡 **`run-tasks.sh` does not export `CLADE_WORKER_TASK_ID`.** When
+  `/batch-tasks` calls the serial runner directly (not through loop-runner), its
+  workers commit on the user's current branch and committer treats them as
+  interactive, so they push. Export the variable there as
+  `run-tasks-parallel.sh` does, and add a case to the runner's tests.
+- [ ] 🟡 **`loop-runner.sh` `node_commit_changes` reads any non-zero committer
+  exit as "changes remain uncommitted".** A push that git rejects exits non-zero
+  after a successful commit, so the loop retries a commit that already exists.
+  Pass `--no-push` there (the loop delivers separately) or distinguish the push
+  exit code.
+- [ ] 🔵 **On `main` tracking `origin/main`, committer still pushes straight to
+  the default branch.** That is the same-name rule working as designed, but it
+  sits beside the global rule "ask before git push to shared/protected
+  branches". Decide whether committer should refuse a push to the remote's
+  default branch unless `--push-default` is given.

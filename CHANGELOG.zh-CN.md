@@ -9,6 +9,8 @@ semantic versioning。
 
 ### 变更
 
+- `committer` 现在只推送到与本地分支同名的远端分支，并使用显式 refspec `<remote> HEAD:refs/heads/<branch>`。原来的裸 `git push` 会把提交推到分支跟踪的任何地方。用 `git worktree add -b X <path> origin/main` 创建的分支跟踪 origin/main：在 `push.default=upstream` 下，功能提交会直接落到 main；在 git 默认的 `simple` 下推送被拒，committer 在提交成功后仍返回非零；在 `push.default=matching` 下，裸推送还会把领先 origin 的本地 main 一起推上去。现在以下情况只提交、不推送，打印原因并以 0 退出：分支跟踪不同名分支或本地分支（同时打印显式推送命令）、detached HEAD、HEAD 不在 `refs/heads/` 下，以及仓库没有任何远端。自主 worker（设置了 `CLADE_WORKER_TASK_ID`）从不推送，由启动它的 runner 负责合并或推送。分支名取自完整 ref，与分支同名的 tag 不会再把推送导向 `refs/heads/heads/<name>`。没有 upstream 的分支用 `-u` 推到 `git push` 本身会选的远端（pushRemote，其次 pushDefault，其次分支的 remote，最后 origin）。被 git 拒绝的推送以 3 退出，绝不强推；提交前的拒绝仍以 1 退出。`--no-push` 不变。`tests/test-checks.sh` 用临时 bare 远端以 49 条断言覆盖每种情况，其中 24 条在旧脚本上失败，19 个守卫变异均会让测试变红。
+
 - Workflow 指引现在按阶段设置 `effort`：收集、清点、分类用 `low`，核查单条结论用 `medium`，实现、对抗性评审、裁决和综合保持默认。2026-10-22 的审计发现所有 `agent()` 都继承 xhigh，但缺少同题对比。在本仓库固定快照上用 16 道题（8 道埋错，1 道因歧义剔除）做成对 A/B：xhigh、medium、low 都是 15/15，输出 token 分别只需 xhigh 的 52%（medium）和 29%（low）；只有 xhigh 复现了一个边界反例，所以对抗性评审保持默认。同一实验在 Opus 5.5、medium 下测试了新的 `wf-reader`：同样 15/15，首轮上下文从 95.8k 降到 5.4k token，cache 读取减少 92%。它仍未被采用：在写操作拒绝机制被实际验证之前，只读只是一条指令。数据和方法见 `docs/research/2026-10-23-workflow-effort-and-reader-ab.md`。
 
 - `workflow-scorecard.py` 不再把每次 API 调用重复计约 1.9 次，也不再把单 agent 的构建阶段误判为拖尾。用量改按 `message.id` 去重：输入计一次、输出取最大值、轮次按不同 id 计；输入、缓存读、缓存写、输出分开报告，并按模型给出 `cost_usd`（未知模型给 null，不猜）。在 2026-10-22 审计的 316 次运行上，API 调用从 414,461 更正为 218,629。单 agent 尾巴拆成 `serial`（单 agent 阶段，pipeline() 缩短不了）、`outlived`（真拖尾）和 `idle`：在 259 次并行运行的 368 小时里分别占 35.5% / 17.3% / 1.6%；旧判定称为拖尾的 184 次中有 86 次不再是。同时读取每个 agent 的标签、阶段、结果、模型和 effort。`util` 更名为 `util_vs_peak`。主模式新增 `self_test_sweep()`（六组固定数据），`test_self_tests_can_fire.py` 为它新增 34 个变异。
