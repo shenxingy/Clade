@@ -49,12 +49,26 @@
 #                                      apps/<app>/.claude/rules (observed
 #                                      2026-10-18), so a session started at a
 #                                      monorepo root still gets an app's rules.
-#                                      Never inside a third-party tree
-#                                      (node_modules, vendor, third_party,
-#                                      site-packages, .git): a Bash token can
-#                                      merely MENTION a path, and a package's
-#                                      own rules are not this project's.
+#                                      Never inside a third-party tree — see
+#                                      "Third-party trees" below.
 #   ~/.claude/rules/*.md               globs relative to $PROJECT
+#
+# Third-party trees (node_modules, vendor, third_party, site-packages, .git):
+# a Bash token can merely MENTION a path, and a package's own rules are not
+# this project's, so no nested dir under one is scanned. A dir is judged twice,
+# both times by its path relative to the project root: as written, and
+# PHYSICALLY — its `cd DIR && pwd -P` form below the root's own `pwd -P` form.
+# The written path alone let repo/linked -> node_modules/pkg through, and the
+# walk then injected the package's rules (found 2026-10-23). A dir whose
+# physical path lies outside the physical project root is not scanned either.
+# Measuring below the root is deliberate: a project whose root itself sits
+# inside node_modules IS the package, and its own nested rules load. Either
+# test failing skips the dir, so a workspace link that runs back into the
+# project (node_modules/@ws/app -> packages/app) is skipped by name — a missed
+# rule is cheaper than a package's rules read as ours. Only dirs that hold
+# .claude/rules are resolved, each once per call: one subshell apiece, plus
+# one for the root on first need.
+#
 # Unreadable rule files are skipped. Any rule file whose absolute path matches
 # a `claudeMdExcludes` glob (user, project, local and managed settings, merged —
 # the setting Claude Code applies to rules files) is skipped too.
@@ -308,28 +322,46 @@ RULE_DIRS=("$PROJECT_RULES")
 NDIRS=1
 DIR_SEEN="$NL$PROJECT_RULES$NL${GLOBAL_RULES:+$GLOBAL_RULES$NL}"
 
-# A third-party tree under the project: its rules are the package's, not ours.
+# A third-party tree: its rules are the package's, not ours. $1 is a path
+# RELATIVE to a project root, so a project whose root itself sits inside
+# node_modules (the package is the project) keeps its own nested rules.
 is_vendored() {
-  case "/${1#"$PROJECT_DIR"/}/" in
+  case "/$1/" in
     */node_modules/*|*/vendor/*|*/third_party/*|*/site-packages/*|*/.git/*) return 0 ;;
   esac
   return 1
 }
 
+# The same judgement on the PHYSICAL path ("Third-party trees", above): true
+# when $1 resolves, symlinks followed, to a dir strictly inside the physical
+# project root and under no third-party segment there. One subshell per call.
+PHYS_ROOT=""   # resolved on first use: most calls never reach a nested dir
+physically_ours() {
+  local p
+  [ -n "$PHYS_ROOT" ] || PHYS_ROOT=$(cd "$PROJECT_DIR" 2>/dev/null && pwd -P) || return 1
+  [ -n "$PHYS_ROOT" ] || return 1
+  p=$(cd "$1" 2>/dev/null && pwd -P) || return 1
+  case "$p" in "$PHYS_ROOT"/*) : ;; *) return 1 ;; esac
+  ! is_vendored "${p#"$PHYS_ROOT"/}"
+}
+
 # Nested: walk from each candidate's directory up to $PROJECT_DIR (exclusive).
+# A rules dir is judged once per call, kept or not.
 i=0
 while [ "$i" -lt "$NCANDS" ]; do
   d="${CANDS[$i]%/*}"
   while :; do
     case "$d" in "$PROJECT_DIR"/*) : ;; *) break ;; esac
     rd="$d/.claude/rules"
-    if [ -d "$rd" ] && ! is_vendored "$d"; then
+    if [ -d "$rd" ]; then
       case "$DIR_SEEN" in
         *"$NL$rd$NL"*) : ;;
         *)
           DIR_SEEN="$DIR_SEEN$rd$NL"
-          RULE_DIRS[NDIRS]="$rd"
-          NDIRS=$((NDIRS + 1))
+          if ! is_vendored "${d#"$PROJECT_DIR"/}" && physically_ours "$d"; then
+            RULE_DIRS[NDIRS]="$rd"
+            NDIRS=$((NDIRS + 1))
+          fi
           ;;
       esac
     fi

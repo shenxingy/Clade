@@ -398,10 +398,11 @@ now takes path-like tokens of the command that exist as regular files after it
 ran (never expanded, glob tokens skipped, at most 40 files), resolving relative
 ones after a leading `cd DIR` against DIR. It also walks nested `.claude/rules`
 dirs up to the project root, which Claude Code honours natively but the hook
-never scanned — skipping third-party trees (`node_modules`, `vendor`, …) and any
-file `claudeMdExcludes` names — and keys its once-per-session sentinel on
-`agent_id` too, because subagents share the parent's `session_id`, so no
-subagent could get a rule the main thread had.
+never scanned — skipping third-party trees (`node_modules`, `vendor`, …, judged
+on the physical path too, so a symlink into one or out of the project is not
+scanned) and any file `claudeMdExcludes` names — and keys its once-per-session
+sentinel on `agent_id` too, because subagents share the parent's `session_id`,
+so no subagent could get a rule the main thread had.
 
 **One command can match many rules, and Claude Code caps a hook's
 `additionalContext` at 10,000 characters**: past that Claude sees a 2,000-character
