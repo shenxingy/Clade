@@ -284,6 +284,25 @@ Structure code for efficient Claude Code tool usage:
 
 ## README & Docs
 
+- **Repository entry points:** every project must take a first visitor from
+  discovery to understanding, credible proof and first successful use. A prose
+  rewrite alone is incomplete. Research the rendered README, media and
+  navigation of relevant projects in that product's own category.
+- **Show the product:** use a real screenshot, terminal/demo recording,
+  input/output comparison or explanatory diagram near the opening. A logo and
+  badges are not product proof. Label fixtures and illustrations; never invent
+  UI, execution results, metrics, endorsements or privacy claims.
+- **Make trying it coherent:** clear next action, prerequisites and maturity,
+  runnable first task with expected output, recovery/help, and a compact map of
+  actual repository responsibilities and documentation. Cover language variants
+  and independently distributed package READMEs.
+- **Verify the presentation:** inspect desktop/phone and light/dark rendering,
+  image loading, legibility at enlarged text, links and the first-use path.
+  Keep media reproducible, accessible, reasonably sized and free of private data.
+  Repair findings; source inspection is not visual or user-testing evidence.
+- Apply `/document-release` and its `references/repository-entrypoints.md`
+  standard to repository creation and README/setup work; use `/frontend-design`
+  for visual implementation. Popularity is not evidence of conversion.
 - README is a landing page, not a reference manual. Target: 200–300 lines.
 - When README exceeds ~300 lines: move detailed sections to `docs/` files. Keep in README: install, key features table, command table, links to docs.
 - Every README must have a TOC (GitHub anchor format) when it has 5+ sections.

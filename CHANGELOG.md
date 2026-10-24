@@ -9,6 +9,10 @@ versioning for the `clade-mcp` Python package and tagged public releases.
 
 ### Changed
 
+- Make repository entry points a cross-project standard: relevant visual research,
+  credible product media, a verified first-use path and clear repository/docs
+  navigation, applied through global rules, templates and documentation skills.
+
 - Reorganize the English and Chinese README around client selection and a first
   workflow; add setup verification, installer side effects, troubleshooting and
   clearer contribution entry points.

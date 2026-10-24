@@ -1,5 +1,26 @@
 # Clade Ground Rules for Codex
 
+## Repository entry points across projects
+
+A README is the first product visit: discovery → understanding → credible proof
+→ first successful use. Wording alone does not complete onboarding work.
+Research rendered READMEs, visuals and navigation of relevant projects in each
+product's own category. Show an authentic screenshot, terminal/demo recording,
+input/output comparison or useful diagram near the opening; logos and badges
+alone are not product proof. Label fixture data and illustrative or unverified
+behavior; never invent UI, results, popularity or testimonials.
+
+Make the next action, prerequisites, maturity, first command and expected result
+clear. Include recovery/help and a compact map of the actual repository and
+docs. Cover language variants and independently distributed package READMEs.
+Keep media reproducible, accessible, reasonably sized and free of private data.
+Inspect desktop/phone and light/dark rendering, enlarged text, loaded images,
+links and the first-use path; repair findings before reporting completion.
+Use `$clade:document-release` and its `references/repository-entrypoints.md`
+standard for repository creation or README/setup work, and
+`$clade:frontend-design` for visual implementation. Missing rendered or runtime
+evidence is unverified, not a pass; stars do not prove conversion.
+
 ## Artifact reports across projects
 
 For artifact/report pages, research findings, status, decision or architecture

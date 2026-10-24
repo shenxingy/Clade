@@ -107,6 +107,18 @@ Structure code for efficient Claude Code tool usage:
 - **DAG imports**: Module dependency graph must be a strict DAG (no circular imports). Use lazy imports or duck typing (`Any`) to break potential cycles.
 - **CSS extraction**: For HTML files with inline CSS > 200 lines, extract to separate `.css` file. Keep JS inline if tightly coupled (SPA globals, no module system).
 
+## Repository entry points
+
+Treat README and setup as the first product visit, not only technical prose.
+Study relevant projects' rendered pages, show credible product/result evidence
+(real screenshot, recorded terminal/demo, input/output comparison or diagram),
+and make the first successful task and repository/documentation map clear.
+Logos and badges alone do not demonstrate the product. Keep fixtures and
+illustrations labeled, all language/package entry points consistent, and media
+accessible and free of private data. Inspect desktop/phone, light/dark, links
+and the first-use path before completion. Use the installed `document-release`
+skill's `references/repository-entrypoints.md` standard for the full checklist.
+
 ## Frontend Verification
 
 - For any change that renders or alters UI, verify it in a real browser before claiming done — compiling is not proof it works. Use the Playwright MCP (`mcp__playwright__*`; enable with `setup-browser-verify.sh`): navigate → screenshot → compare to intent → check console errors → fix and iterate. Show the evidence in your summary.
