@@ -340,3 +340,58 @@ def test_macos_primary_keeps_the_unsuffixed_keychain_item(tmp_path, monkeypatch)
     mod.run()
     assert mod.services == ["Claude Code-credentials"]
     assert sent == [f"Bearer {PRIMARY_TOKEN}"]
+
+
+# ─── --refresh-only: the cache a launch gate reads ───
+#
+# The Workflow preflight (check-workflow-script.py) warns before a launch when
+# the profile's cached 7-day or 5-hour reading is high, and ignores a cache
+# older than 10 minutes. The status line rarely writes that cache (with
+# --statusline-input it neither reads nor writes it), so the preflight asks
+# this script to refresh it first. A plain run returns before fetching when
+# the status line is switched off (`slt off`), which would leave the gate
+# silent forever on that machine; --refresh-only must refresh regardless and
+# print nothing, since its output is discarded.
+
+
+def test_refresh_only_writes_the_profile_cache_even_with_the_status_line_off(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    home, profile = tmp_path / "home", tmp_path / "profiles" / "work"
+    _fake_creds(profile / ".credentials.json", PROFILE_TOKEN)
+    mod, sent = _load_under(monkeypatch, home, profile, api=_api_reading(91.0, 40.0))
+    (home / ".claude" / ".statusline-mode").write_text("off")
+    monkeypatch.setattr(mod.sys, "platform", "linux")
+    mod.main(["--refresh-only"])
+
+    assert sent == [f"Bearer {PROFILE_TOKEN}"]
+    cached = json.loads((profile / "usage-watch-cache.json").read_text())
+    assert cached["seven_day"]["utilization"] == 91.0
+    assert cached["five_hour"]["utilization"] == 40.0
+    assert time.time() - cached["_at"] < 60
+    assert capsys.readouterr().out == "", "refresh-only renders nothing"
+
+
+def test_refresh_only_leaves_a_fresh_cache_alone(tmp_path, monkeypatch, capsys) -> None:
+    home, profile = tmp_path / "home", tmp_path / "profiles" / "work"
+    _fake_creds(profile / ".credentials.json", PROFILE_TOKEN)
+    fresh = dict(_api_reading(12.0, 3.0), _at=time.time())
+    profile.mkdir(parents=True, exist_ok=True)
+    (profile / "usage-watch-cache.json").write_text(json.dumps(fresh))
+    mod, sent = _load_under(monkeypatch, home, profile, api=_api_reading(91.0, 40.0))
+    monkeypatch.setattr(mod.sys, "platform", "linux")
+    mod.main(["--refresh-only"])
+
+    assert sent == [], "a cache younger than CACHE_TTL must not be refetched"
+    assert json.loads((profile / "usage-watch-cache.json").read_text())["seven_day"]["utilization"] == 12.0
+    assert capsys.readouterr().out == ""
+
+
+def test_main_without_flags_still_renders(tmp_path, monkeypatch, capsys) -> None:
+    home, profile = tmp_path / "home", tmp_path / "profiles" / "work"
+    _fake_creds(profile / ".credentials.json", PROFILE_TOKEN)
+    mod, sent = _load_under(monkeypatch, home, profile, api=_api_reading(40.0, 23.0))
+    monkeypatch.setattr(mod.sys, "platform", "linux")
+    mod.main([])
+    assert sent == [f"Bearer {PROFILE_TOKEN}"]
+    assert capsys.readouterr().out, "the status-line path must still render"

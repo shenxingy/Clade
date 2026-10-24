@@ -23,6 +23,7 @@
 | `session-context.sh` | SessionStart | Injects git state, model guidance, correction rules into context |
 | `pre-tool-guardian.sh` | PreToolUse (Bash) | Blocks dangerous commands (force-push, rm -rf, migrations outside dev mode). Inside a subagent, warns — never blocks — when a foreground wait (`until … sleep`, `sleep 600`, `tail -f`, …) can outlive the subagent prompt cache (5 minutes by default) |
 | `linter-config-guard.sh` | PreToolUse (Edit/Write) | Guards linter config files from accidental overwrite |
+| `workflow-preflight.sh` | PreToolUse (Workflow) | Runs `check-workflow-script.py --hook` on the launch. **Denies** args that carry a placeholder sentinel instead of data (`"__FILL__"`, `{"__see": …}`, `"(see packet file)"`, a lone `...`): 10 of 324 launches on one host did and one ran to "completed" on it; replayed over all 370 launches in that host's transcripts (2026-09-22 → 10-23), it denies 9 of those 10 plus one later placeholder launch, and no real data. **Warns** (the launch proceeds) when a stringified prior result is `.slice()`d into a prompt with no `log()` naming the cut, when `args` is a JSON-encoded string, and when the profile's usage cache is under 10 minutes old and reads 7-day ≥ 90% or 5-hour ≥ 85% — refreshing that cache first with `claude-usage-watch.py --refresh-only`, because the status line rarely writes it. Reads inline `script`, `scriptPath` and saved `name` launches. Fails open on every error |
 | `revert-detector.sh` | PreToolUse (Bash), async | Records a git revert/reset against the session's edit shadow for correction pairing. Main thread only: a subagent's (`agent_id`) or dispatched worker's revert writes nothing. **Silent by design** — async hooks have no channel back into the turn, and the gate is that only an explicit "that's wrong" escalates to context |
 | `permission-request.sh` | PermissionRequest | Handles elevated permission requests |
 | `post-edit-check.sh` | PostToolUse (Edit/Write) | Per-file type check (tsc / pyright / mypy / cargo check / go vet / …) plus an uncommitted-file nudge; wakes Claude via asyncRewake **only on failure** (exit 2 + stderr) |
@@ -42,7 +43,7 @@
 | `notify-telegram.sh` | Notification | Forwards Claude notifications to Telegram |
 | `session-end-cleanup.sh` | SessionEnd | Removes <runtime>/claude-edit-shadows/session-<session_id>.jsonl when session terminates |
 
-Most hooks are shell scripts — zero API cost, sub-second execution. Two are `type: "prompt"` LLM hooks and cost a model call each time they fire: `stop-completeness-check` (asks whether the assistant stopped partway through work it could finish on its own; waiting on the user is a correct stop) and the pre-compact state saver. Budget for those two; the other thirty cost nothing.
+Most hooks are shell scripts — zero API cost, sub-second execution. Two are `type: "prompt"` LLM hooks and cost a model call each time they fire: `stop-completeness-check` (asks whether the assistant stopped partway through work it could finish on its own; waiting on the user is a correct stop) and the pre-compact state saver. Budget for those two; the shell hooks make no model call.
 
 **`post-tool-use-lint.sh`** runs your project's `verify_cmd` after every file edit. On failure it writes `.claude/lint-feedback.md` and exits with code 2 — Claude sees the error output and fixes it in the next turn. Configure via `.claude/orchestrator.json`:
 
@@ -322,10 +323,10 @@ clade/
 ├── uninstall.sh             # Removes what install.sh deployed
 ├── configs/                 # ← THE PRODUCT CENTER
 │   ├── skills/              # 148 skill definitions
-│   ├── hooks/               # 32 event hooks
+│   ├── hooks/               # 33 event hooks
 │   ├── agents/              # 40 agent definitions
 │   ├── output-styles/       # 2 output styles (system-prompt register; opt-in)
-│   └── scripts/             # 43 shell + 43 Python utilities
+│   └── scripts/             # 43 shell + 44 Python utilities
 ├── plugins/clade/           # Native Codex plugin (30 generated core skills + hooks)
 ├── .agents/plugins/         # Codex marketplace manifest
 ├── orchestrator/            # ← THE EXECUTION ADAPTER

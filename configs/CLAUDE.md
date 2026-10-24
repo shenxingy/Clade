@@ -234,6 +234,12 @@ When the free path genuinely cannot answer something, say so in those words.
     ≥ 90%, or 5-hour use plus projected burn ≥ 100%, defer or switch account.
   - Write full results to a file and return ≤ 6k chars: the completion notice
     cuts at 8,000, and 259 of 281 results overflowed.
+  - Pass data, never a stand-in: past a handful of items, write a scratch JSON
+    file and pass its path plus a count the script asserts (10 of 324 launches
+    carried `"__FILL__"`, `{"__see": …}` or `"(see …)"`). Hand prior results on
+    as a path or a bounded summary field, not `JSON.stringify(r).slice(0, N)`:
+    48 of 66 such cuts dropped part of a result, unannounced.
+    `workflow-preflight.sh` denies the first and warns on the second.
   - Fix inside the script (verify → fix → re-check, ≤ 2 rounds): 38 relaunches
     went through the lead.
   - While a run is live, ask in plain text and end the turn: AskUserQuestion
