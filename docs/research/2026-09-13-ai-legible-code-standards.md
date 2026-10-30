@@ -21,7 +21,7 @@ summary: >
   held, the literature layer did not — eleven claims refuted and twenty-three verdicts
   overturned, corrected in place below and named. Three findings shipped: 4aa865d, b4da5cc,
   f17f382.
-  Artifact: https://artifacts.internal.scam.ai/code-standards-after-machineslop/
+  Artifact: docs/artifacts/code-standards-after-machineslop/index.html
 integrated_items: []
 needs_work_items:
   - "WITHDRAWN 2026-09-17: 'run red-phase-audit.py against the PR's commits in the pytest job'. It does NOT cover the 86% additive blind spot on the layer that matters — RED_PHASE_SUBDIR defaults to `orchestrator` (the layer docs/layers.json marks dormant), and with RED_PHASE_SUBDIR=configs it checks 0 of 25 sampled commits because configs/ has no pytest suite and this repo's load-bearing tests are the 26 shell suites in tests/, which the script states it cannot measure. Wiring it would have put a gate over the dormant half while reporting coverage of the live one. Fixed instead: it no longer prints a rate over a zero denominator, and both CLAUDE.md and its own SCOPE line now say which layer it sees."
@@ -35,11 +35,11 @@ reference_items:
 
 # Code Standards After Machineslop
 
-Published artifact (company intranet):
-<https://artifacts.internal.scam.ai/code-standards-after-machineslop/>
+Published artifact (repository copy):
+[docs/artifacts/code-standards-after-machineslop/index.html](../artifacts/code-standards-after-machineslop/index.html)
 
 Change ledger — every correction's before/after text, file:line, commit and the command
-that checks it: <https://artifacts.internal.scam.ai/clade-change-ledger/>
+that checks it: [docs/artifacts/clade-change-ledger/index.html](../artifacts/clade-change-ledger/index.html)
 
 ## 1. Source verification — the corroboration mostly does not hold
 
@@ -183,7 +183,7 @@ was the sole support for what follows, which survives on the smaller margin). **
 
 ## 7. Re-verification, 2026-09-16 — what this document got wrong
 
-48 agents over 21 claim units: ten re-measured live on `aries`, eleven checked against the
+48 agents over 21 claim units: ten re-measured live on the maintainer's machine, eleven checked against the
 primary document, every verdict then handed to a second agent whose only job was to
 overturn it. Net 112 confirmed / 28 partial / 10 drifted / 11 refuted, 23 verdicts
 overturned on the adversarial pass.
