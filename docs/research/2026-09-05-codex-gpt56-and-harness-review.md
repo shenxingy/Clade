@@ -254,7 +254,7 @@ parents**, which is the headless path Clade's Codex worker uses:
 
 | parent thread | when | CLI | child role | child tokens |
 |---|---|---|---|---|
-| `019fc0a0-64ef…` (a security review in `~/projects/internal/mnemo`) | 2026-08-01 23:59 | 0.145.0 | `clade_cheap_explorer` | 99,654 |
+| `019fc0a0-64ef…` (a security review in a private repository) | 2026-08-01 23:59 | 0.145.0 | `clade_cheap_explorer` | 99,654 |
 | `01a062bf-101e…` (an image-edit task in a scratchpad) | 2026-09-02 11:31 | 0.145.0 | `clade_cheap_worker` | 58,092 |
 
 The child ids differ from their parents, each carries
