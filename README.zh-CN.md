@@ -33,7 +33,7 @@
 | Claude Code | [完整框架](docs/getting-started.zh-CN.md#claude-code) | `~/.claude/` 下的 skills、hooks、agents、scripts 和安全指导 |
 | Codex | [原生插件](docs/getting-started.zh-CN.md#codex) | 通过 Codex plugin marketplace 安装的原生 skills 和 hooks |
 | Cursor、Windsurf、Claude Desktop 或其他 MCP 客户端 | [MCP bridge](docs/getting-started.zh-CN.md#mcp) | `clade-mcp`，调用你选择的 Claude 或 Codex CLI |
-| 需要任务队列、证据 API 或 fleet 视图 | [可选 Orchestrator](docs/orchestrator.md) | 独立的本地 FastAPI 控制平面；原生入口不依赖它 |
+| 偏好图形化项目与任务操作，或需要证据 API 和 fleet 视图 | [可选 Orchestrator](docs/orchestrator.md) | 在本地浏览器中打开项目、安排任务和查看结果；原生入口可独立使用 |
 
 ## 安装
 

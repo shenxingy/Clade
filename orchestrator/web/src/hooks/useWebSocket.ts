@@ -1,67 +1,53 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
-import type { WsMessage, StatusMessage } from '../lib/types';
+import { useEffect, useRef, useState } from 'react';
+import type { StatusMessage } from '../lib/types';
 import { withToken } from '../lib/auth';
 
-interface UseWebSocketOptions {
+export function useWebSocket({ sessionId, onStatus }: {
   sessionId: string | null;
   onStatus?: (msg: StatusMessage) => void;
-}
-
-export function useWebSocket({ sessionId, onStatus }: UseWebSocketOptions) {
-  const wsRef = useRef<WebSocket | null>(null);
+}) {
   const [connected, setConnected] = useState(false);
-  const pingRef = useRef<ReturnType<typeof setInterval>>(undefined);
   const onStatusRef = useRef(onStatus);
   onStatusRef.current = onStatus;
-
-  const connect = useCallback(() => {
-    if (!sessionId) return;
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
-
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    const ws = new WebSocket(withToken(`${protocol}//${host}/ws/status?session=${sessionId}`));
-
-    ws.onopen = () => {
-      setConnected(true);
-      // Send ping every 20s to keep alive
-      pingRef.current = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'ping' }));
-        }
-      }, 20_000);
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const msg: WsMessage = JSON.parse(event.data as string);
-        if (msg.type === 'status' && onStatusRef.current) {
-          onStatusRef.current(msg as StatusMessage);
-        }
-      } catch {
-        // ignore parse errors
-      }
-    };
-
-    ws.onclose = () => {
-      setConnected(false);
-      clearInterval(pingRef.current);
-      // Reconnect after 3s
-      setTimeout(connect, 3_000);
-    };
-
-    ws.onerror = () => ws.close();
-
-    wsRef.current = ws;
-  }, [sessionId]);
-
   useEffect(() => {
+    setConnected(false);
+    if (!sessionId) return;
+    let disposed = false;
+    let socket: WebSocket;
+    let retry: ReturnType<typeof setTimeout>;
+    let ping: ReturnType<typeof setInterval>;
+    const connect = () => {
+      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      socket = new WebSocket(withToken(`${protocol}//${location.host}/ws/status?session=${encodeURIComponent(sessionId)}`));
+      socket.onopen = () => {
+        if (disposed) return;
+        setConnected(true);
+        ping = setInterval(() => {
+          if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'ping' }));
+        }, 20_000);
+      };
+      socket.onmessage = event => {
+        if (disposed) return;
+        try {
+          const msg = JSON.parse(event.data as string) as StatusMessage;
+          if (msg.type === 'status' && msg.session_id === sessionId) onStatusRef.current?.(msg);
+        } catch { /* Ignore malformed frames; the next snapshot replaces them. */ }
+      };
+      socket.onclose = () => {
+        clearInterval(ping);
+        if (disposed) return;
+        setConnected(false);
+        retry = setTimeout(connect, 3_000);
+      };
+      socket.onerror = () => socket.close();
+    };
     connect();
     return () => {
-      clearInterval(pingRef.current);
-      wsRef.current?.close();
+      disposed = true;
+      clearInterval(ping);
+      clearTimeout(retry);
+      socket.close();
     };
-  }, [connect]);
-
+  }, [sessionId]);
   return { connected };
 }

@@ -332,6 +332,12 @@ async def create_session(body: dict):
     path = Path(path_str).expanduser().resolve()
     if not path.is_dir():
         raise HTTPException(status_code=400, detail=f"Directory not found: {path}")
+    # The GUI opens projects; alternate spellings must not start another agent.
+    # Explicit API callers can still create separate sessions for the same path.
+    if body.get("reuse_existing") is True:
+        for existing in registry.all():
+            if existing.project_dir.resolve() == path:
+                return existing.to_dict()
     try:
         rows = int(body.get("rows", 24))
         cols = int(body.get("cols", 80))

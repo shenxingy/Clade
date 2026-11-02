@@ -4,9 +4,21 @@
 > not stale by virtue of being old; do not read them as current state. Open work
 > lives in [TODO.md](TODO.md). Decided 2026-08-29.
 
-Older entries live in [docs/progress-archive/](docs/progress-archive/) — 65 archived, newest month first.
+Older entries live in [docs/progress-archive/](docs/progress-archive/) — 66 archived, newest month first.
 
 ---
+### 2026-11-02 — A graphical entry path for the optional Orchestrator
+
+Chose local Web for the owner's requested GUI alternative, retaining native
+TUI work. Connected the existing session/task APIs to browser project opening,
+task submission, run/retry and result inspection. Added visible connection and
+submission recovery, canonical-path session reuse, stale-socket isolation and
+keyboard-accessible dialogs. The composer exposes the existing automatic
+execution/push/merge settings before task submission. Browser regression tests
+use controlled HTTP/WebSocket fixtures; no real provider calls or production
+adoption are claimed. Design and verification boundaries are recorded in
+[the GUI decision](docs/design/gui-first-web.md); trial work is in TODO.md.
+
 ### 2026-09-23 — The artifact standard: a spine, a lint, and a survey of 1,032 pages
 
 The owner asked why hub pages "lack content or state things unclearly" and
@@ -68,33 +80,4 @@ earlier: the tell is a repeat, not a defect.
 - **Drilled it.** Removed `re.ASCII` from `redact.py` to reintroduce the CJK
   bypass. Five tests went red, the failing test named the cause, the fix
   restored the cause, net diff zero, no test file touched.
-
----
-### 2026-09-02 — Full audit: eleven controls that existed and never applied
-
-A whole-repository review, filed to [TODO.md](TODO.md) before any fix, then
-implemented. The recurring defect had one shape: **a control that exists, is
-documented as working, and never fires.** Found eleven times.
-
-- **Security.** The orchestrator control plane had no authentication and
-  `/ws/chat` started a permission-skipping PTY — unauthenticated RCE over the
-  tailnet. Closed with default-deny ASGI middleware. Separately, `redact.py`
-  used Unicode `\b`, so a key pasted in Chinese prose was never matched.
-- **A retrospective scrub** (`scrub-corrections.py`). The filed item said two
-  files; it was three, because two were `.bak-*` copies. A raw scan of JSONL
-  also misses a key that begins a line. A census of 1,039 transcripts found 158
-  occurrences.
-- **Instruments that could not fire.** `prompt-tracker.sh` had never delivered a
-  message in 386,760 prompts. `session-scorecard.sh` read a field present in 0
-  of 983 records. `rule-effectiveness.json` is empty because the classifier
-  emits thirteen closed labels (twelve domains plus `unknown`) while rules are filed under free text. `stats.json`
-  held unresolved git conflict markers. The poll counter written the same day
-  reported zero everywhere because its guard matched the `>/` of `2>/dev/null`.
-- **Both new instruments now carry `--self-test`,** run in CI.
-- **Encoded three standing briefs** that were being re-typed: `/landscape`, the
-  recovered design methodology, and `install.sh --ultracode`. Added
-  `standing-preference` to the correction taxonomy — the only class whose
-  evidence is a count rather than an incident.
-- **`docs/layers.json`** now declares which surfaces actually run, because this
-  audit spent most of its effort on a layer switched off months earlier.
 

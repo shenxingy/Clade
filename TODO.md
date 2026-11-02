@@ -10,6 +10,17 @@
 
 Phases 1–14 complete.
 
+## GUI-first local web trial — 2026-11-02
+
+- [ ] Validate the new browser project/task flow with representative GUI users
+  and a real provider on a disposable repository. Browser fixtures prove the
+  UI contract, not model execution, delivery or adoption. Include physical
+  mobile/keyboard/screen-reader use and browser engines beyond Chromium.
+- [ ] Evaluate GUI installation/distribution after that trial. Current startup
+  remains `./orchestrator/start.sh`; a desktop package, hosted service and
+  native-session observer are separate from the local GUI workflow. See
+  [design decision](docs/design/gui-first-web.md).
+
 ## Codex plugin update compatibility
 
 - [ ] Retire the retained-cache workaround only after an upstream Codex release

@@ -310,9 +310,12 @@ expect "a non-object tool_input: no output" ALLOW
 payload '{"script": "return 1", "args": ["__FILL__"]}' > "$TMP/deny-payload.json"
 printf 'import sys\nsys.stderr.write("Traceback (most recent call last): boom\\n")\nraise SystemExit(3)\n' > "$TMP/crash.py"
 printf 'import time\ntime.sleep(8)\n' > "$TMP/hang.py"
-# 300 KB: past any pipe buffer, so a hook that exits without reading stdin
-# breaks the writer's pipe and the writer's exit status shows it.
-python3 -c 'import json,sys; print(json.dumps({"tool_name": "Workflow", "cwd": sys.argv[1], "tool_input": {"script": "// " + "x" * 300000 + "\nreturn 1", "args": ["__FILL__"]}}))' "$TMP/proj" > "$TMP/big-payload.json"
+# 2 MiB: exceed the 512 KiB pipe that newer GNU cat uses for splice, as well
+# as Linux's default 1 MiB pipe-max-size. The former 300 KB fixture could fit
+# entirely without a reader, so removing a drain sometimes stayed green.
+# Keep this larger than the writer's buffer: its exit status must observe
+# whether the hook actually consumes stdin, not merely whether cat queued it.
+python3 -c 'import json,sys; print(json.dumps({"tool_name": "Workflow", "cwd": sys.argv[1], "tool_input": {"script": "// " + "x" * (2 * 1024 * 1024) + "\nreturn 1", "args": ["__FILL__"]}}))' "$TMP/proj" > "$TMP/big-payload.json"
 mkdir -p "$TMP/nopy"
 ln -sf "$(command -v dirname)" "$TMP/nopy/dirname"
 ln -sf "$(command -v cat)" "$TMP/nopy/cat"
@@ -332,18 +335,18 @@ wrapper_guard_cases() {
   OUT=$(CLADE_PREFLIGHT_SCRIPT="$TMP/missing.py" bash "$HOOK" < "$TMP/deny-payload.json" 2>/dev/null); RC=$?
   expect "a missing checker exits 0 silently" ALLOW
   st=$( { cat "$TMP/big-payload.json" | CLADE_PREFLIGHT_SCRIPT="$TMP/missing.py" bash "$HOOK" >/dev/null 2>&1; echo "${PIPESTATUS[0]} ${PIPESTATUS[1]}"; } )
-  if [[ "$st" == "0 0" ]]; then pass "a missing checker still drains stdin (300 KB writer exits 0)"
+  if [[ "$st" == "0 0" ]]; then pass "a missing checker still drains stdin (2 MiB writer exits 0)"
   else fail "a missing checker still drains stdin" "writer/hook status: $st"; fi
   OUT=$(PATH="$TMP/nopy" "$(command -v bash)" "$HOOK" < "$TMP/deny-payload.json" 2>/dev/null); RC=$?
   expect "no python3 on PATH: exit 0 silently" ALLOW
   st=$( { cat "$TMP/big-payload.json" | PATH="$TMP/nopy" "$(command -v bash)" "$HOOK" >/dev/null 2>&1; echo "${PIPESTATUS[0]} ${PIPESTATUS[1]}"; } )
-  if [[ "$st" == "0 0" ]]; then pass "no python3: stdin still drained (300 KB writer exits 0)"
+  if [[ "$st" == "0 0" ]]; then pass "no python3: stdin still drained (2 MiB writer exits 0)"
   else fail "no python3: stdin still drained" "writer/hook status: $st"; fi
   OUT=$(bash "$HOOK" < "$TMP/deny-payload.json" 2>/dev/null); RC=$?
   expect "control: the same payload through the real checker is denied" DENY "placeholder"
   st=$( { cat "$TMP/big-payload.json" | bash "$HOOK" >/dev/null 2>&1; echo "${PIPESTATUS[0]} ${PIPESTATUS[1]}"; } )
-  if [[ "$st" == "0 0" ]]; then pass "control: the real checker reads a 300 KB payload whole"
-  else fail "control: the real checker reads a 300 KB payload whole" "writer/hook status: $st"; fi
+  if [[ "$st" == "0 0" ]]; then pass "control: the real checker reads a 2 MiB payload whole"
+  else fail "control: the real checker reads a 2 MiB payload whole" "writer/hook status: $st"; fi
   if [[ -n "$HAVE_TIMEOUT" ]]; then
     OUT=$(CLADE_PREFLIGHT_TIMEOUT=abc bash "$HOOK" < "$TMP/deny-payload.json" 2>/dev/null); RC=$?
     expect "a non-numeric CLADE_PREFLIGHT_TIMEOUT falls back to 12 s; the deny still prints" DENY "placeholder"
