@@ -7,6 +7,18 @@
 Older entries live in [docs/progress-archive/](docs/progress-archive/) — 65 archived, newest month first.
 
 ---
+### 2026-11-02 — A graphical entry path for the optional Orchestrator
+
+Chose local Web for the owner's requested GUI alternative, retaining native
+TUI work. Connected the existing session/task APIs to browser project opening,
+task submission, run/retry and result inspection. Added visible connection and
+submission recovery, canonical-path session reuse, stale-socket isolation and
+keyboard-accessible dialogs. The composer exposes the existing automatic
+execution/push/merge settings before task submission. Browser regression tests
+use controlled HTTP/WebSocket fixtures; no real provider calls or production
+adoption are claimed. Design and verification boundaries are recorded in
+[the GUI decision](docs/design/gui-first-web.md); trial work is in TODO.md.
+
 ### 2026-09-23 — The artifact standard: a spine, a lint, and a survey of 1,032 pages
 
 The owner asked why hub pages "lack content or state things unclearly" and

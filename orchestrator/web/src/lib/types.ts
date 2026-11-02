@@ -1,6 +1,6 @@
 // ─── Core Types (mirrors FastAPI response shapes) ─────────────────
 
-export type TaskStatus = 'pending' | 'running' | 'done' | 'failed' | 'paused';
+export type TaskStatus = 'pending' | 'queued' | 'starting' | 'running' | 'done' | 'failed' | 'paused' | 'blocked' | 'interrupted' | 'cancelled';
 export type TaskType = 'AUTO' | 'HORIZONTAL' | 'VERTICAL';
 export type AgentRuntime = 'claude' | 'codex';
 export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';

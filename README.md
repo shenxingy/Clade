@@ -35,7 +35,7 @@ with one task; the optional server is not required.
 | Claude Code | [Full framework](docs/getting-started.md#claude-code) | Skills, hooks, agents, scripts, and safety guidance under `~/.claude/` |
 | Codex | [Native plugin](docs/getting-started.md#codex) | Provider-native skills and hooks through the Codex plugin marketplace |
 | Cursor, Windsurf, Claude Desktop, or another MCP client | [MCP bridge](docs/getting-started.md#mcp) | `clade-mcp`, which invokes a selected Claude or Codex CLI |
-| You need task queues, evidence APIs, or fleet views | [Optional Orchestrator](docs/orchestrator.md) | A separate local FastAPI control plane; the native surfaces work without it |
+| You prefer a graphical project/task workflow, or need evidence APIs and fleet views | [Optional Orchestrator](docs/orchestrator.md) | Local browser workspace for opening projects, queueing work and reviewing results; native surfaces work independently |
 
 ## Install
 

@@ -1,45 +1,22 @@
 import { useSessionStore } from '../../stores/sessionStore';
-import { Settings } from 'lucide-react';
-import { cn } from '../../lib/utils';
+import { Plus, Settings } from 'lucide-react';
 
-interface Props {
-  onSettingsOpen: () => void;
-}
-
-export function Header({ onSettingsOpen }: Props) {
+export function Header({ onSettingsOpen, onProjectOpen, ready }: {
+  onSettingsOpen: () => void; onProjectOpen: () => void; ready: boolean;
+}) {
   const { sessions, activeSessionId, setActiveSession } = useSessionStore();
-
-  return (
-    <header className="h-14 border-b border-border flex items-center px-4 gap-4 shrink-0">
-      <div className="flex items-center gap-2">
-        <span className="text-primary font-bold text-lg">◆</span>
-        <span className="font-bold text-foreground">Clade</span>
-      </div>
-
-      {/* Session tabs */}
-      <div className="flex items-center gap-1 flex-1 overflow-x-auto">
-        {sessions.map(session => {
-          const name = session.path?.split('/').pop() ?? session.name ?? session.session_id.slice(0, 8);
-          return (
-            <button
-              key={session.session_id}
-              onClick={() => setActiveSession(session.session_id)}
-              className={cn(
-                'flex items-center gap-1.5 px-3 py-1 rounded text-xs font-mono whitespace-nowrap transition-colors',
-                activeSessionId === session.session_id
-                  ? 'bg-accent text-foreground'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
-              )}
-            >
-              <span>{name}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      <button onClick={onSettingsOpen} className="p-2 rounded hover:bg-secondary text-muted-foreground hover:text-foreground">
-        <Settings size={16} />
-      </button>
-    </header>
-  );
+  return <header className="app-header">
+    <a href="#main-content" className="skip-link">Skip to workspace</a>
+    <span className="brand"><span aria-hidden="true">◆</span> Clade</span>
+    {ready && sessions.length > 0 && <>
+      <label htmlFor="active-project" className="sr-only">Active project</label>
+      <select id="active-project" className="ui-input project-select" value={activeSessionId ?? ''}
+        onChange={e => setActiveSession(e.target.value)}>
+        {sessions.map(s => <option key={s.session_id} value={s.session_id}>{s.name || s.path.split('/').pop()} — {s.path}</option>)}
+      </select>
+      <button className="ui-button" onClick={onProjectOpen}><Plus size={16} /><span>Open project</span></button>
+    </>}
+    <span className="flex-1" />
+    {ready && <button onClick={onSettingsOpen} className="ui-button ui-icon" aria-label="Settings"><Settings size={18} /></button>}
+  </header>;
 }

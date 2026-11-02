@@ -10,6 +10,10 @@
 > is deleted and it may be rebuilt — but this is not load-bearing code, and a
 > finding here weighs less than one on the terminal path (`configs/`).
 
+The GUI is also an optional entry point for users who prefer the browser.
+The owner continues to use the terminal; the local web workflow below does
+not require changing that habit.
+
 
 ## Table of Contents
 
@@ -52,6 +56,33 @@ that could not boot.
 
 Every route requires a bearer token — see
 [Control-plane authentication](configuration.md#control-plane-authentication).
+
+### Your first task in the browser
+
+1. Run `./orchestrator/start.sh` from the repository root and open the printed
+   sign-in URL. If the page asks for access, use that link or enter its token.
+2. Choose **Open project** and enter an existing folder on the machine running
+   Clade. Opening a project starts its configured agent session. Reopening the
+   same resolved folder reuses the session.
+3. Choose **New task** and describe the work and how to verify it. The form
+   shows whether automatic execution, push and merge are enabled; adjust these
+   in **Settings** before submitting if needed.
+4. **Add to queue** follows the current automatic-execution setting. With it
+   disabled, open the task and choose **Run task**. Failed, blocked or
+   interrupted tasks have **Retry task**, which returns them to the queue.
+5. Open a task to inspect its status, failure reason, logs, commit and attempt
+   evidence. Completion is not proof of verification or publication; inspect
+   the recorded results. **Refresh results** retrieves updated evidence/logs.
+
+Switch projects with the header selector. Task state is stored by the server,
+and the browser remembers the selected project. If the live connection drops,
+the task queue refreshes every five seconds; live agent views need that
+connection to recover. Independent native TUI sessions are not imported.
+
+This is a local web application, with the existing authenticated remote-access
+behavior. It is not a hosted service or a packaged desktop installer. See the
+[GUI design and verification note](design/gui-first-web.md) for boundaries and
+browser-test commands.
 
 ## Trust Pipeline
 

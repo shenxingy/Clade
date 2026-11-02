@@ -1,5 +1,7 @@
 import { authHeaders } from './auth';
 import type {
+  Session,
+  Task,
   EvalMetrics,
   EvidenceAttemptsResponse,
   ProviderRegistrySnapshot,
@@ -8,6 +10,14 @@ import type {
 // ─── API Base ─────────────────────────────────────────────────────
 
 const BASE = '/api';
+
+export class ApiError extends Error {
+  constructor(message: string, public status: number) { super(message); }
+}
+
+export function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Something went wrong. Please try again.';
+}
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
@@ -18,26 +28,32 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
     },
     body: body ? JSON.stringify(body) : undefined,
   });
+  const data = await res.json().catch(() => null);
   if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText);
-    throw new Error(`${method} ${path}: ${res.status} ${text}`);
+    const detail = data?.detail;
+    const message = typeof detail === 'string' ? detail
+      : Array.isArray(detail) && detail.every(item => typeof item === 'string') ? detail.join('. ')
+      : `Request failed (${res.status}). Please try again.`;
+    throw new ApiError(message, res.status);
   }
-  return res.json() as Promise<T>;
+  // Action endpoints can report a refusal in a successful HTTP response.
+  if (typeof data?.error === 'string') throw new ApiError(data.error, res.status);
+  return data as T;
 }
 
 // ─── Sessions ────────────────────────────────────────────────────
 
 export const sessions = {
-  list:   ()                    => req<unknown[]>('GET', '/sessions'),
-  create: (path: string)        => req<unknown>('POST', '/sessions', { path }),
+  list:   ()                    => req<Session[]>('GET', '/sessions'),
+  create: (path: string)        => req<Session>('POST', '/sessions', { path, reuse_existing: true }),
   delete: (sessionId: string)   => req<void>('DELETE', `/sessions/${sessionId}`),
 };
 
 // ─── Tasks (task IDs are strings, e.g. "85c92be0") ───────────────
 
 export const tasks = {
-  list:        (sessionId: string)                     => req<unknown[]>('GET', `/tasks?session=${sessionId}`),
-  add:         (sessionId: string, data: Record<string, unknown>) => req<unknown>('POST', `/tasks?session=${sessionId}`, data),
+  list:        (sessionId: string)                     => req<Task[]>('GET', `/tasks?session=${sessionId}`),
+  add:         (sessionId: string, data: Record<string, unknown>) => req<Task>('POST', `/tasks?session=${sessionId}`, data),
   update:      (taskId: string, sessionId: string, data: Record<string, unknown>) => req<unknown>('POST', `/tasks/${taskId}?session=${sessionId}`, data),
   delete:      (taskId: string, sessionId: string)     => req<void>('DELETE', `/tasks/${taskId}?session=${sessionId}`),
   run:         (taskId: string, sessionId: string)     => req<unknown>('POST', `/tasks/${taskId}/run?session=${sessionId}`),

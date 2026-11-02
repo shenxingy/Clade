@@ -5,11 +5,12 @@ interface SessionState {
   // Session management
   sessions: Session[];
   activeSessionId: string | null;
-  setActiveSession: (id: string) => void;
+  setActiveSession: (id: string | null) => void;
   setSessions: (sessions: Session[]) => void;
 
   // Live data (updated via WebSocket)
   tasks: Task[];
+  setTasks: (sessionId: string, tasks: Task[]) => void;
   workers: Worker[];          // array, matching server's WS payload
 
   // Global settings and usage (fetched separately, not from WS)
@@ -28,10 +29,19 @@ interface SessionState {
 export const useSessionStore = create<SessionState>((set) => ({
   sessions: [],
   activeSessionId: null,
-  setActiveSession: (id) => set({ activeSessionId: id }),
+  setActiveSession: (id) => {
+    try {
+      if (id) localStorage.setItem('clade.activeSession', id);
+      else localStorage.removeItem('clade.activeSession');
+    } catch { /* Storage is optional. */ }
+    set({ activeSessionId: id, tasks: [], workers: [], workerLogs: {}, costTotal: 0 });
+  },
   setSessions: (sessions) => set({ sessions }),
 
   tasks: [],
+  setTasks: (sessionId, tasks) => set(state => state.activeSessionId === sessionId
+    ? { tasks, costTotal: tasks.reduce((sum, t) => sum + (t.estimated_cost ?? 0), 0) }
+    : {}),
   workers: [],
   settings: null,
   setSettings: (s) => set({ settings: s }),
