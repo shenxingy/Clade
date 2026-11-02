@@ -34,7 +34,9 @@ export const useSessionStore = create<SessionState>((set) => ({
       if (id) localStorage.setItem('clade.activeSession', id);
       else localStorage.removeItem('clade.activeSession');
     } catch { /* Storage is optional. */ }
-    set({ activeSessionId: id, tasks: [], workers: [], workerLogs: {}, costTotal: 0 });
+    set(state => state.activeSessionId === id ? {} : {
+      activeSessionId: id, tasks: [], workers: [], workerLogs: {}, costTotal: 0,
+    });
   },
   setSessions: (sessions) => set({ sessions }),
 

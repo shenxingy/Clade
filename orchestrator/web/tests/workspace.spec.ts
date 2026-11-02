@@ -159,6 +159,18 @@ test('reconnecting the live stream preserves an unsent draft', async ({ page }) 
   await expect(page.getByLabel('What should the agent do?')).toHaveValue('Keep this draft through a connection loss');
 });
 
+test('reopening the active project preserves its queue without another status frame', async ({ page }) => {
+  const f = await fixture(page);
+  f.queues.alpha = [task('existing-task')];
+  await page.goto('/web/');
+  await expect(page.getByRole('button', { name: /Verify the existing-task/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Open project', exact: true }).click();
+  await page.getByLabel('Project folder').fill('/projects/alpha');
+  await page.getByRole('dialog').getByRole('button', { name: 'Open project', exact: true }).click();
+  await expect(page.getByRole('button', { name: /Verify the existing-task/ })).toBeVisible();
+  expect(f.requests.filter(r => r.startsWith('POST /api/sessions'))).toHaveLength(0);
+});
+
 for (const width of [390, 768, 1280, 1440]) {
   test(`keyboard forms and responsive layout at ${width}px`, async ({ page }) => {
     const f = await fixture(page);
