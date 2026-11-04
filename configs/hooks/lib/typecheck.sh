@@ -10,6 +10,14 @@
 
 # ─── Per-File Type Check ─────────────────────────────────────────────
 
+# True when the project configures mypy itself (cwd is the project root here).
+_project_has_mypy_config() {
+  [[ -f mypy.ini || -f .mypy.ini ]] && return 0
+  grep -qs '^\[tool\.mypy' pyproject.toml && return 0
+  grep -qs '^\[mypy' setup.cfg && return 0
+  return 1
+}
+
 run_typecheck_for_file() {
   local file_path="$1"
   local exit_code=0
@@ -47,7 +55,14 @@ run_typecheck_for_file() {
         result=$(pyright "$file_path" 2>&1 | tail -20)
         exit_code=$?
       elif command -v mypy &>/dev/null; then
-        result=$(mypy "$file_path" 2>&1 | tail -20)
+        # Only the edited file's own errors. A bare `mypy FILE` follows its imports and reported a
+        # sibling module's old errors, and every missing third-party stub (pandas, pyarrow,
+        # lightgbm), as "Type-check errors after editing FILE": 11 such errors in 2 files, 0 of them
+        # in the edited code, woke one session six times in 20 minutes (2026-11-04). The project's
+        # own mypy config, when it has one, still decides whether missing imports are errors.
+        local _mypy_flags=(--follow-imports=silent)
+        _project_has_mypy_config || _mypy_flags+=(--ignore-missing-imports)
+        result=$(mypy "${_mypy_flags[@]}" "$file_path" 2>&1 | tail -20)
         exit_code=$?
       else
         return 0
