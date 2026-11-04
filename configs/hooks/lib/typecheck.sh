@@ -18,6 +18,48 @@ _project_has_mypy_config() {
   return 1
 }
 
+# mypy output for FILE, less every error the file's HEAD version already had (matched by message, not by line,
+# since lines move). An agent editing a legacy file was woken on every edit by an error it did not write: one
+# `fcntl = None` fallback, unchanged since it was committed, re-reported after each of a dozen edits (2026-11-04).
+# A file git does not know, or output with no parseable error line (a crash), passes through unchanged.
+_mypy_new_only() {  # <file> <mypy output> <mypy flags...>
+  local f="$1" out="$2" dir base tmp before
+  shift 2
+  dir=$(cd "$(dirname "$f")" 2>/dev/null && pwd -P) || { printf '%s\n' "$out"; return 0; }
+  base=$(basename "$f")
+  if ! git -C "$dir" cat-file -e "HEAD:./$base" 2>/dev/null; then
+    printf '%s\n' "$out"; return 0
+  fi
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/clade-mypy-base.XXXXXX") || { printf '%s\n' "$out"; return 0; }
+  git -C "$dir" show "HEAD:./$base" > "$tmp/$base" 2>/dev/null
+  before=$(cd "$dir" && MYPYPATH="$dir${MYPYPATH:+:$MYPYPATH}" mypy "$@" "$tmp/$base" 2>&1)
+  rm -rf "$tmp"
+  python3 - "$out" "$before" <<'PY'
+import re, sys
+pat = re.compile(r'^.*?:\d+(?::\d+)?: error: (.*)$')
+now, before = sys.argv[1].splitlines(), sys.argv[2].splitlines()
+if not any(pat.match(l) for l in now):
+    print(sys.argv[1]); sys.exit(0)            # a crash or an unparsed message: report it as is
+seen = {}
+for l in before:
+    m = pat.match(l)
+    if m:
+        seen[m.group(1)] = seen.get(m.group(1), 0) + 1
+kept, dropped = [], 0
+for l in now:
+    m = pat.match(l)
+    if not m:
+        continue
+    if seen.get(m.group(1), 0) > 0:
+        seen[m.group(1)] -= 1; dropped += 1
+    else:
+        kept.append(l)
+if kept:
+    print('\n'.join(kept))
+    print(f"{len(kept)} new error(s) in this file" + (f"; {dropped} already in its HEAD version not shown" if dropped else ""))
+PY
+}
+
 run_typecheck_for_file() {
   local file_path="$1"
   local exit_code=0
@@ -62,8 +104,13 @@ run_typecheck_for_file() {
         # own mypy config, when it has one, still decides whether missing imports are errors.
         local _mypy_flags=(--follow-imports=silent)
         _project_has_mypy_config || _mypy_flags+=(--ignore-missing-imports)
-        result=$(mypy "${_mypy_flags[@]}" "$file_path" 2>&1 | tail -20)
+        result=$(mypy "${_mypy_flags[@]}" "$file_path" 2>&1)
         exit_code=$?
+        if [[ $exit_code -ne 0 ]]; then
+          result=$(_mypy_new_only "$file_path" "$result" "${_mypy_flags[@]}")
+          [[ -z "$result" ]] && exit_code=0
+        fi
+        result=$(printf '%s\n' "$result" | tail -20)
       else
         return 0
       fi
