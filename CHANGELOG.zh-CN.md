@@ -9,6 +9,7 @@ semantic versioning。
 
 ### 变更
 
+- 为中英文 README 增加工作流示意、首次检查和仓库地图，明确原生入口、MCP bridge 与可选适配器的边界。
 - 仓库上手规范现在检查社区入口是否可用、入门任务是否具体，以及文档是否对应读者实际能获取的版本。`document-release` 也可在发布前处理 README 和开源上手优化，`orchestrate` 会把相关检查写入任务验收条件。
 
 - Workflow 指引现在把只读、不碰主机的阶段交给 `agentType: "wf-reader"`。在 2026-10-23 A/B 的 15 道已知答案题上，它和默认 agent 一样准确，首轮上下文从 95.8k 降到 5.4k token；#160 之后它的 Bash 由 frontmatter 钩子限制在只读白名单内，而不只是靠指令。在 bypassPermissions 父会话下的实测中，钩子拒绝了 `touch`、`git commit` 和 `gh pr comment`，读命令照常运行，没有任何写入。规则旁写明了限制：钩子关闭的环境下不生效，插件副本 `clade:wf-reader` 没有保护。写入类阶段保持默认类型。TODO.md 新增 `configs/CLAUDE.md` 的大小门禁：六天内从 20.3k 涨到 24.1k 字符，安装后的全局文件预计达到 39.5k，接近 Claude Code 40k 的单文件上限。
