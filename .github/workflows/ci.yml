@@ -385,12 +385,17 @@ jobs:
         run: bash tests/test-session-scorecard.sh
 
       # Hook delivery channels (CC 2.1): SessionEnd shadow cleanup (attribution,
-      # no session_id, missing dir, CP_SHADOW_DIR override), post-edit-check
-      # exit-2 asyncRewake findings vs silent success, skill-suggest sync
+      # no session_id, missing dir, CP_SHADOW_DIR override), skill-suggest sync
       # delivery bounded by its in-script `timeout 5`, and the settings wiring
       # that makes all three reachable
       - name: Run hook delivery tests
         run: bash tests/test-hooks.sh
+
+      # post-edit-check: exit-2 asyncRewake findings vs silent success, the per-file mypy scope, errors already
+      # in the file's HEAD version, a crashed checker, nested worktrees
+      # (split out of test-hooks.sh when it crossed the 1500-line rule again)
+      - name: Run post-edit-check tests
+        run: bash tests/test-post-edit-check.sh
 
       # SessionStart context budget: rules tail, whole lines, drop notice,
       # file caps, ceiling warning, conversation-mode projects

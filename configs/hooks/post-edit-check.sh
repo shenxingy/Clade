@@ -51,6 +51,24 @@ case "$_file_dir/" in
   *) exit 0 ;;
 esac
 
+# ─── Check the file from its own checkout ─────────────────────────────
+# A git worktree nested in the project (.claude/worktrees/<name>/, where
+# Workflow agents work) is another checkout of the same package. Checked from
+# the project root, mypy resolved `import <package>` to the project's own copy,
+# so a function the worktree had just added read as "Module has no attribute":
+# the same five false findings woke one session six times on 2026-11-04 while
+# the worktree's code was correct. Run from the file's git toplevel instead;
+# the commit reminder below then counts that checkout's edits, which are the
+# ones its agent can commit.
+_file_top=$(git -C "$_file_dir" rev-parse --show-toplevel 2>/dev/null) || _file_top=""
+if [[ -n "$_file_top" ]]; then
+  _file_top_real=$(cd "$_file_top" 2>/dev/null && pwd -P) || _file_top_real=""
+  if [[ -n "$_file_top_real" && "$_file_top_real" != "$_proj_real" ]]; then
+    cd "$_file_top_real" 2>/dev/null || exit 0
+    FILE_PATH="$_abs"
+  fi
+fi
+
 # Both findings accumulate into one message: asyncRewake fires a single wake per
 # run, so emitting them separately would silently drop whichever came second.
 FINDINGS=""
