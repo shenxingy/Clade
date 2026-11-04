@@ -82,6 +82,10 @@ case "$TMP_ROOT" in
   *) echo "FATAL: sandbox '$TMP_ROOT' is not under /tmp — aborting"; exit 1 ;;
 esac
 trap 'rm -rf "$TMP_ROOT"' EXIT
+# The sandbox HOME isolates ~/.claude, but a type checker installed with `pip --user` lives under the
+# real HOME's ~/.local: without its user base, mypy crashed on import (ModuleNotFoundError), and the
+# post-edit positive control below passed on the crash's non-zero exit (2026-11-04).
+export PYTHONUSERBASE="${PYTHONUSERBASE:-$HOME/.local}"
 export HOME="$TMP_ROOT/home"
 mkdir -p "$HOME/.claude"
 
@@ -274,9 +278,39 @@ if command -v mypy >/dev/null 2>&1 || command -v pyright >/dev/null 2>&1; then
   run_post_edit "$BROKEN"
   assert_eq "$RC" "2" "a type error inside the project still wakes Claude"
   assert_contains "$(cat "$STDERR_F")" "broken.py" "the finding names the file"
+  # A diagnostic on the broken line, not a crashed checker: a crash also exits non-zero and names the
+  # file in the heading, so only "broken.py:2" proves the checker ran.
+  assert_contains "$(cat "$STDERR_F")" "broken.py:2" "the finding is a diagnostic on the broken line"
   rm -f "$BROKEN"
 else
   echo "  (skipped: no mypy or pyright on PATH — the positive control needs one)"
+fi
+
+# --- mypy reports only the edited file's own errors (2026-11-04) -----------
+# A bare `mypy FILE` followed the imports into a sibling module and reported its errors, and every
+# missing third-party stub, as findings about the edited file. These cases need mypy itself (pyright,
+# preferred when present, has its own import rules), and a project without its own mypy config.
+if command -v mypy >/dev/null 2>&1 && ! command -v pyright >/dev/null 2>&1; then
+  # Untracked files only: the uncommitted-file cases below count the tracked edits already in $PROJ.
+  printf 'def g(x: int) -> str:\n    return x\n' > "$PROJ/sibling_bad.py"
+  printf 'import sibling_bad\n\ndef h() -> int:\n    return 1\n' > "$PROJ/uses_sibling.py"
+  run_post_edit "$PROJ/uses_sibling.py"
+  assert_eq "$RC" "0" "a clean file is not blamed for an imported module's errors"
+  assert_eq "$(cat "$STDERR_F")" "" "an imported module's errors never wake Claude"
+  printf 'import definitely_not_a_real_module_xyz\n\ndef k() -> int:\n    return 2\n' > "$PROJ/uses_missing.py"
+  run_post_edit "$PROJ/uses_missing.py"
+  assert_eq "$RC" "0" "a missing third-party module is not a finding without a project mypy config"
+  printf 'import definitely_not_a_real_module_xyz\n\ndef m(x: int) -> str:\n    return x\n' > "$PROJ/uses_missing_bad.py"
+  run_post_edit "$PROJ/uses_missing_bad.py"
+  assert_eq "$RC" "2" "a real error in the edited file still wakes beside a missing import"
+  assert_contains "$(cat "$STDERR_F")" "uses_missing_bad.py:4" "that finding is the edited file's line 4"
+  printf '[mypy]\n' > "$PROJ/mypy.ini"
+  run_post_edit "$PROJ/uses_missing.py"
+  assert_eq "$RC" "2" "with the project's own mypy config, its rules on missing imports decide"
+  assert_contains "$(cat "$STDERR_F")" "uses_missing.py:1" "that finding is the missing import on line 1"
+  rm -f "$PROJ/mypy.ini" "$PROJ/sibling_bad.py" "$PROJ/uses_sibling.py" "$PROJ/uses_missing.py" "$PROJ/uses_missing_bad.py"
+else
+  echo "  (skipped: the import-scope cases need mypy without pyright on PATH)"
 fi
 
 # --- uncommitted files at/over the threshold: finding reaches stderr, exit 2 ---
