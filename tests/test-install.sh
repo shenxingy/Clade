@@ -165,6 +165,16 @@ else
   pass "install ships output styles without activating one"
 fi
 
+# Unset `attribution` makes Claude Code add `Co-Authored-By: Claude` to every
+# commit. A fresh install must turn both trailers off.
+if command -v jq &>/dev/null; then
+  jq -e '.attribution.commit == "" and .attribution.pr == ""' \
+    "$CLAUDE_DIR/settings.json" >/dev/null 2>&1 \
+    && pass "fresh install disables commit and PR attribution" \
+    || fail "fresh install disables commit and PR attribution" \
+            "attribution=$(jq -c '.attribution' "$CLAUDE_DIR/settings.json" 2>/dev/null)"
+fi
+
 # Mid-flight worker steering: mailbox-drain.sh ships with the hook set
 [[ -x "$CLAUDE_DIR/hooks/mailbox-drain.sh" ]] \
   && pass "mailbox-drain.sh installed and executable" \
@@ -351,6 +361,14 @@ if command -v jq &>/dev/null; then
     "$CLAUDE_DIR/settings.json" \
     > "$CLAUDE_DIR/settings.json.new" 2>/dev/null \
     && mv "$CLAUDE_DIR/settings.json.new" "$CLAUDE_DIR/settings.json"
+
+  # Upgrade state for attribution: a machine installed before it shipped has no
+  # `commit` key (so Claude co-authors every commit), and a user may have set
+  # `pr` themselves. The merge must fill the first and keep the second.
+  jq '.attribution = {pr: "user-pr-keep"}' \
+    "$CLAUDE_DIR/settings.json" \
+    > "$CLAUDE_DIR/settings.json.new" 2>/dev/null \
+    && mv "$CLAUDE_DIR/settings.json.new" "$CLAUDE_DIR/settings.json"
 fi
 
 # Seed a stale pre-migration mirror so the reinstall exercises the cleanup path
@@ -423,6 +441,15 @@ if command -v jq &>/dev/null; then
   [[ "$model_val" == "sentinel-model-keep" ]] \
     && pass "settings.json merge preserves unrelated keys" \
     || fail "settings.json merge preserves unrelated keys" "model='$model_val'"
+
+  attr_val=$(jq -c '.attribution' "$CLAUDE_DIR/settings.json" 2>/dev/null)
+  jq -e '.attribution.commit == ""' "$CLAUDE_DIR/settings.json" >/dev/null 2>&1 \
+    && pass "reinstall disables commit attribution on an upgraded settings.json" \
+    || fail "reinstall disables commit attribution on an upgraded settings.json" \
+            "attribution=$attr_val"
+  jq -e '.attribution.pr == "user-pr-keep"' "$CLAUDE_DIR/settings.json" >/dev/null 2>&1 \
+    && pass "reinstall keeps a user-set attribution value" \
+    || fail "reinstall keeps a user-set attribution value" "attribution=$attr_val"
 
   # The deny list is the only permission control that still binds under
   # --dangerously-skip-permissions, which is how every Clade worker spawns.

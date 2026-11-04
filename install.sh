@@ -485,6 +485,16 @@ else
   # thing standing between an autonomous worker and ~/.ssh.
   TEMPLATE_DENY=$(jq -c '.permissions.deny // []' "$SCRIPT_DIR/templates/settings.json")
 
+  # Commit/PR attribution. With `attribution` unset, Claude Code appends
+  # `Co-Authored-By: Claude …` to every commit and a "Generated with" line to
+  # every PR. The owner does not want either. Until 2026-11-04 nothing here set
+  # it, so it held only where someone had set it by hand: on 2026-11-04 four of
+  # five tailnet hosts had it unset in at least one profile, and the owner's
+  # commits still carried the trailer the day before. (includeCoAuthoredBy is
+  # the deprecated predecessor of this key.) Template keys fill in what is
+  # missing; a value the user set explicitly wins.
+  TEMPLATE_ATTRIBUTION=$(jq -c '.attribution // {}' "$SCRIPT_DIR/templates/settings.json")
+
   # Skill listing budget. Claude Code sends the model one line per skill inside
   # a character budget of window × bytes/token × skillListingBudgetFraction
   # (default 1% — 8,000 chars on a 200k model), and over budget it keeps
@@ -507,15 +517,17 @@ else
     # opted into. Existing user deny entries are preserved and de-duplicated.
     jq --argjson hooks "$HOOKS" --argjson sl "$STATUSLINE" --argjson deny "$TEMPLATE_DENY" \
        --argjson so "$SKILL_OVERRIDES" --argjson sf "$SKILL_FRACTION" \
+       --argjson attr "$TEMPLATE_ATTRIBUTION" \
       '.hooks = $hooks
        | .statusLine = $sl
        | .permissions = ((.permissions // {})
                          | .deny = ((.deny // []) + $deny | unique))
        | .skillOverrides = ($so + (.skillOverrides // {}))
-       | .skillListingBudgetFraction = (.skillListingBudgetFraction // $sf)' \
+       | .skillListingBudgetFraction = (.skillListingBudgetFraction // $sf)
+       | .attribution = ($attr + (.attribution // {}))' \
       "$CLAUDE_DIR/settings.json" > "$CLAUDE_DIR/.settings.json.$$"
     mv "$CLAUDE_DIR/.settings.json.$$" "$CLAUDE_DIR/settings.json"
-    echo "  Merged hooks + statusLine + deny rules + skill listing budget into existing settings.json"
+    echo "  Merged hooks + statusLine + deny rules + skill listing budget + commit attribution into existing settings.json"
   else
     # Fresh install: retain template defaults, but inject the same computed
     # hook/status-line commands as the merge path (including Windows wrappers).
