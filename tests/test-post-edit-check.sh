@@ -197,6 +197,17 @@ if command -v mypy >/dev/null 2>&1 && ! command -v pyright >/dev/null 2>&1; then
     pass "the old HEAD error is not repeated"
   fi
   git -C "$PROJ" checkout -- legacy_mod.py
+  # A package module with a relative import: its HEAD copy must be checked AS that module (--shadow-file). A copy in a
+  # temp dir could not resolve `from . import`, mypy stopped early, and every old error read as new (2026-11-04).
+  mkdir -p "$PROJ/pkgrel"
+  printf '' > "$PROJ/pkgrel/__init__.py"
+  printf 'def h() -> int:\n    return 1\n' > "$PROJ/pkgrel/helper.py"
+  printf 'from . import helper\n\nOLD: int = "x"\n' > "$PROJ/pkgrel/mod.py"
+  git -C "$PROJ" add pkgrel && git -C "$PROJ" commit -qm "pkgrel with an old error" >/dev/null
+  printf 'from . import helper\n\nOLD: int = "x"\n\n\ndef added() -> int:\n    return helper.h()\n' > "$PROJ/pkgrel/mod.py"
+  run_post_edit "$PROJ/pkgrel/mod.py"
+  assert_eq "$RC" "0" "a package module's old error is not new after an edit (relative import resolved)"
+  git -C "$PROJ" checkout -- pkgrel/mod.py
   # A crashed checker has no error line to compare: it must still wake Claude, never be filtered to silence.
   CRASH_BIN="$TMP_ROOT/crash-mypy-bin"; mkdir -p "$CRASH_BIN"
   printf '#!/bin/sh\necho "Traceback (most recent call last):"\necho "RuntimeError: fake mypy crash"\nexit 2\n' > "$CRASH_BIN/mypy"

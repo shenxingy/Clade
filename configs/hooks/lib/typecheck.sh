@@ -40,7 +40,10 @@ _mypy_new_only() {  # <file> <mypy output> <mypy flags...>
   if git -C "$dir" cat-file -e "HEAD:./$base" 2>/dev/null; then
     if tmp=$(mktemp -d "${TMPDIR:-/tmp}/clade-mypy-base.XXXXXX"); then
       git -C "$dir" show "HEAD:./$base" > "$tmp/$base" 2>/dev/null
-      before=$(cd "$dir" && MYPYPATH="$dir${MYPYPATH:+:$MYPYPATH}" mypy "$@" "$tmp/$base" 2>&1)
+      # --shadow-file checks the HEAD text AS the file at its own path: same module name, so a package module's relative
+      # imports resolve. A copy checked from a temp dir failed on them ("errors prevented further checking": 4 errors
+      # of its 13), and every one of the other 9 then read as new (docforensics model_localize.py, 2026-11-04).
+      before=$(mypy "$@" --shadow-file "$f" "$tmp/$base" "$f" 2>&1)
       rm -rf "$tmp"
     fi
   fi
@@ -67,7 +70,7 @@ for l in now:
 had = {}
 for l in before.splitlines():
     m = pat.match(l)
-    if m and os.path.basename(m.group(1)) == base:
+    if m and os.path.realpath(m.group(1)) == target_real:
         had[m.group(2)] = had.get(m.group(2), 0) + 1
 kept, old = [], 0
 for l, msg in mine:
