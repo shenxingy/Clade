@@ -28,16 +28,36 @@ Adding a self-test to a script means adding its mutations here.
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 import sys
-import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
 
 REPO = Path(__file__).resolve().parents[2]
+
+# ─── Restore journal for in-place mutations ───
+# A mutation is written into the real script (a self-test may re-enter it by module name, as workflow-scorecard.py
+# imports scorecard_ledger, so a sibling copy is not the same program). The original goes to JOURNAL first; a run that
+# is killed between the write and the restore (a CI step timeout, 2026-11-04: artifact-lint.py was left with
+# `if missing_head:` -> `if False:`, and the next run failed on a "moved" anchor and a broken self-test) leaves the
+# journal entry, and the next run restores it here, at import, before any anchor is read. .gitignore keeps it out.
+JOURNAL = REPO / ".self-test-mutation"
+
+
+def _restore_journal(journal: Path = JOURNAL, repo: Path = REPO) -> list[str]:
+    """Put back every original a killed run left in the journal; returns the restored relative paths."""
+    restored = []
+    for orig in sorted(journal.rglob("*.orig")) if journal.is_dir() else []:
+        rel = orig.relative_to(journal).with_suffix("")
+        (repo / rel).write_bytes(orig.read_bytes())
+        orig.unlink()
+        restored.append(str(rel))
+    return restored
+
+
+RESTORED_AT_IMPORT = _restore_journal()
 
 # workflow-scorecard.py's three verdict blocks, verbatim, so one mutation can
 # reorder them. Spelled out rather than sliced from the file: an anchor that
@@ -897,19 +917,59 @@ def test_removing_a_guard_turns_the_self_test_red(script, name, old, new):
         f"The code moved; update the anchor, do not delete the case — an "
         f"unanchored mutation silently stops testing.")
 
-    with tempfile.TemporaryDirectory() as tmp:
-        backup = Path(tmp) / "backup"
-        shutil.copy(target, backup)
-        try:
-            target.write_text(source.replace(old, new, 1), encoding="utf-8")
-            result = subprocess.run([sys.executable, str(target), "--self-test"],
-                                    capture_output=True, text=True, timeout=180)
-        finally:
-            shutil.copy(backup, target)
+    orig = JOURNAL / f"{script}.orig"
+    orig.parent.mkdir(parents=True, exist_ok=True)
+    orig.write_bytes(target.read_bytes())
+    try:
+        target.write_text(source.replace(old, new, 1), encoding="utf-8")
+        result = subprocess.run([sys.executable, str(target), "--self-test"],
+                                capture_output=True, text=True, timeout=180)
+    finally:
+        target.write_bytes(orig.read_bytes())
+        orig.unlink()
 
     assert result.returncode != 0, (
         f"{script} --self-test PASSES with {name} removed.\n"
         f"That property is claimed and not checked.\n{result.stdout[-600:]}")
+
+
+def test_a_killed_runs_mutation_is_restored_from_the_journal(tmp_path):
+    """A run killed mid-mutation leaves the original in the journal; the next run puts it back."""
+    repo, journal = tmp_path / "repo", tmp_path / "repo" / ".self-test-mutation"
+    (repo / "configs/scripts").mkdir(parents=True)
+    (journal / "configs/scripts").mkdir(parents=True)
+    (repo / "configs/scripts/x.py").write_text("if False:\n    pass\n")       # the mutant a kill left behind
+    (journal / "configs/scripts/x.py.orig").write_text("if guard:\n    pass\n")
+    assert _restore_journal(journal, repo) == ["configs/scripts/x.py"]
+    assert (repo / "configs/scripts/x.py").read_text() == "if guard:\n    pass\n"
+    assert not list(journal.rglob("*.orig"))
+    assert _restore_journal(journal, repo) == []
+
+
+def test_importing_this_file_restores_the_journal():
+    """The restore runs at import, before any anchor is read: a fresh interpreter importing this file puts back an
+    original a killed run left. The canary lives inside the ignored journal dir, so the tree never changes."""
+    canary = JOURNAL / "canary" / "x.txt"
+    orig = JOURNAL / ".self-test-mutation" / "canary" / "x.txt.orig"
+    canary.parent.mkdir(parents=True, exist_ok=True)
+    orig.parent.mkdir(parents=True, exist_ok=True)
+    canary.write_text("mutant\n")
+    orig.write_text("original\n")
+    try:
+        code = ("import importlib.util as u, sys; s = u.spec_from_file_location('m', sys.argv[1]); "
+                "m = u.module_from_spec(s); s.loader.exec_module(m); print(m.RESTORED_AT_IMPORT)")
+        out = subprocess.run([sys.executable, "-c", code, __file__], capture_output=True, text=True, timeout=60)
+        assert out.returncode == 0, out.stderr
+        assert ".self-test-mutation/canary/x.txt" in out.stdout
+        assert canary.read_text() == "original\n" and not orig.exists()
+    finally:
+        canary.unlink(missing_ok=True)
+        orig.unlink(missing_ok=True)
+
+
+def test_the_journal_is_ignored_by_git():
+    out = subprocess.run(["git", "-C", str(REPO), "check-ignore", "-q", str(JOURNAL / "configs/scripts/x.py.orig")])
+    assert out.returncode == 0, ".self-test-mutation/ must be in .gitignore"
 
 
 @pytest.mark.parametrize("script", sorted(MUTATIONS))

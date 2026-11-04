@@ -33,3 +33,6 @@ mcp-package/build/
 
 # radar-cron.sh stages its digest here inside the run worktree; never committed
 .radar-staged/
+
+# orchestrator/tests/test_self_tests_can_fire.py: originals of in-place mutations, restored by the next run after a kill
+/.self-test-mutation/
