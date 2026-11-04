@@ -69,6 +69,9 @@ trap 'rm -rf "$TMP_ROOT"' EXIT
 export PYTHONUSERBASE="${PYTHONUSERBASE:-$HOME/.local}"
 export HOME="$TMP_ROOT/home"
 mkdir -p "$HOME/.claude"
+# The repeat window (lib/typecheck.sh) would silence a case that re-reports an error an earlier case already
+# reported for the same file; every case below runs without it except the one that tests it.
+export POST_EDIT_REPEAT_WINDOW=0
 
 
 # ─── 2. post-edit-check.sh ───────────────────────────────────────────
@@ -209,6 +212,54 @@ if command -v mypy >/dev/null 2>&1 && ! command -v pyright >/dev/null 2>&1; then
   rm -f "$PROJ/fresh_new.py"
 else
   echo "  (skipped: the HEAD-baseline cases need mypy without pyright on PATH)"
+fi
+
+# --- only the edited file's own lines count; other files' errors are not this edit's (2026-11-04) ----------
+# mypy reported an imported module's errors even with --follow-imports=silent: editing tests/test_gc_tuning.py woke
+# a session about docforensics/gc_tuning.py. A fake mypy pins the shape: errors in two files.
+if ! command -v pyright >/dev/null 2>&1; then
+  OF_BIN="$TMP_ROOT/twofile-mypy-bin"; mkdir -p "$OF_BIN"
+  cat > "$OF_BIN/mypy" <<'SH'
+#!/bin/sh
+for a in "$@"; do f="$a"; done
+echo "other_mod.py:3: error: an error in another module  [assignment]"
+[ -n "${OF_MINE:-}" ] && echo "$(basename "$f"):2: error: the edited file's own error  [return-value]"
+echo "Found 2 errors in 2 files (checked 1 source file)"
+exit 1
+SH
+  chmod +x "$OF_BIN/mypy"
+  printf 'x = 1\n' > "$PROJ/edited_of.py"
+  OLD_PATH="$PATH"; export PATH="$OF_BIN:$PATH"
+  run_post_edit "$PROJ/edited_of.py"
+  assert_eq "$RC" "0" "an error only in another file does not wake Claude"
+  export OF_MINE=1
+  run_post_edit "$PROJ/edited_of.py"
+  unset OF_MINE; export PATH="$OLD_PATH"
+  assert_eq "$RC" "2" "the edited file's own error still wakes Claude beside another file's"
+  assert_contains "$(cat "$STDERR_F")" "the edited file's own error" "the finding is the edited file's error"
+  assert_not_contains "$(cat "$STDERR_F")" "an error in another module" "another file's error is not shown"
+  assert_contains "$(cat "$STDERR_F")" "1 in other files not shown" "the summary says another file's error was left out"
+  rm -f "$PROJ/edited_of.py"
+fi
+
+# --- an unfixed error is reported once per window, not after every edit (2026-11-04) ----------------------
+if command -v mypy >/dev/null 2>&1 && ! command -v pyright >/dev/null 2>&1; then
+  export POST_EDIT_REPEAT_WINDOW=1800
+  printf 'def r1(x: int) -> str:\n    return x\n' > "$PROJ/repeat_new.py"
+  run_post_edit "$PROJ/repeat_new.py"
+  assert_eq "$RC" "2" "a new error wakes Claude the first time"
+  printf 'def r1(x: int) -> str:\n    return x\n\n\ndef r2() -> int:\n    return 1\n' > "$PROJ/repeat_new.py"
+  run_post_edit "$PROJ/repeat_new.py"
+  assert_eq "$RC" "0" "the same unfixed error does not wake Claude again within the window"
+  printf 'def r1(x: int) -> str:\n    return x\n\n\ndef r2() -> int:\n    return "s"\n' > "$PROJ/repeat_new.py"
+  run_post_edit "$PROJ/repeat_new.py"
+  assert_eq "$RC" "2" "a different new error in the same file wakes Claude"
+  export POST_EDIT_REPEAT_WINDOW=0
+  run_post_edit "$PROJ/repeat_new.py"
+  assert_eq "$RC" "2" "with the window off every run reports (control)"
+  rm -f "$PROJ/repeat_new.py"
+else
+  echo "  (skipped: the repeat-window cases need mypy without pyright on PATH)"
 fi
 
 # --- a worktree nested in the project is checked from its own checkout (2026-11-04) ---
