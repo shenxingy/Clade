@@ -1,72 +1,105 @@
-# Clade MCP Server
+[English](README.md)
 
-Exposes Clade skills as MCP tools for **external** AI coding tools (Cursor, Cline, Continue, etc.).
+[Back to Clade](../README.md)
 
-## Why this directory?
+# Development MCP bridge
 
-`.mcp.json` at the repo root caused Claude Code itself to auto-spawn the MCP server in every session — duplicating every skill (e.g. `/blog-write` and `mcp__clade__clade_blog-write`) and overflowing the system prompt (95 skill descriptions dropped).
+This directory holds client configuration for the **source-tree MCP server** in
+`orchestrator/mcp_server.py`. For a new installation, use the
+[published MCP package](../mcp-package/README.md), which supports explicit Claude
+or Codex selection. Claude Code and Codex users with native Clade installed do
+not need either bridge.
 
-Moving the config to `mcp/clade.mcp.json` means Claude Code no longer auto-loads it, while external MCP clients can still point at this file or directly at `orchestrator/mcp_server.py`.
+This source bridge executes skills through Claude. Its compact discovery surface
+is useful when developing Clade's MCP integration; it is not the published
+`clade-mcp` package.
 
-## Use from Claude Code (this repo)
+## Contents
 
-You don't need MCP — skills are already native (`/blog-write`, `/commit`, etc.).
+- [How requests flow](#how-requests-flow)
+- [Connect from a source checkout](#connect-from-a-source-checkout)
+- [First check](#first-check)
+- [Compact mode](#compact-mode)
+- [Boundaries and help](#boundaries-and-help)
+- [Directory map](#directory-map)
 
-## Use from another MCP client
+## How requests flow
 
-Point your client's MCP config at `mcp_server.py`:
-
-```json
-{
-  "mcpServers": {
-    "clade": {
-      "command": "/home/alexshen/projects/clade/orchestrator/.venv/bin/python",
-      "args": ["/home/alexshen/projects/clade/orchestrator/mcp_server.py"]
-    }
-  }
-}
+```mermaid
+flowchart LR
+    Client[MCP client] --> Bridge[Source-tree bridge]
+    Bridge -->|Discovery| Catalog[Skill catalog]
+    Bridge -->|Run a skill| Claude[Claude CLI]
+    Claude --> Repo[Server working directory]
 ```
 
-Or copy `clade.mcp.json` into the client's expected location.
+Discovery reads the catalog. Executing a skill launches an agent that can edit
+files and commit changes; these are different operations.
 
-## Compact mode (default)
+## Connect from a source checkout
 
-By default the server runs in **compact mode** (`CLADE_MCP_COMPACT=1`): instead
-of enumerating ~95 per-skill tool definitions into the client's context (the
-same system-prompt overflow that hit Claude Code via the repo-root `.mcp.json`
-incident), it exposes a search-then-load surface:
-
-| Tool | Purpose |
-|------|---------|
-| `clade_list_skills` | Full catalog: name, description, argument hints |
-| `clade_search_skills` | Keyword search over name + description |
-| `clade_run_skill` | Execute a skill by name with an optional args string |
-
-(The three code-search tools `clade_search_class` / `clade_search_method` /
-`clade_search_code` are available in both modes.)
-
-To restore one-tool-per-skill enumeration, set the env var in your client's
-MCP config:
-
-```json
-{
-  "mcpServers": {
-    "clade": {
-      "command": "/home/alexshen/projects/clade/orchestrator/.venv/bin/python",
-      "args": ["/home/alexshen/projects/clade/orchestrator/mcp_server.py"],
-      "env": { "CLADE_MCP_COMPACT": "0" }
-    }
-  }
-}
-```
-
-Per-skill tool names (`clade_commit`, …) keep working in compact mode, so
-clients with cached tool lists don't break.
-
-## Restore project-root auto-spawn (not recommended)
+Requires Python 3.11, the Orchestrator dependencies, and an installed,
+authenticated Claude CLI for skill execution. This bridge reads skills from
+`~/.claude/skills/`; it does not bundle the clone's `configs/skills/`. If that
+directory is empty, discovery returns an empty catalog. Use the
+[published package](../mcp-package/README.md) for bundled workflows, or review
+and follow the [full-framework installation](../docs/getting-started.md#claude-code)
+first. From the Clade clone:
 
 ```bash
-git mv mcp/clade.mcp.json .mcp.json
+python3.11 -m venv orchestrator/.venv
+orchestrator/.venv/bin/python -m pip install -r orchestrator/requirements.txt
 ```
 
-Expect the "skill descriptions dropped" warning to return.
+Use absolute paths to your clone in your client's configuration:
+
+```json
+{
+  "mcpServers": {
+    "clade-source": {
+      "command": "/absolute/path/to/Clade/orchestrator/.venv/bin/python",
+      "args": ["/absolute/path/to/Clade/orchestrator/mcp_server.py"]
+    }
+  }
+}
+```
+
+Set the server's launch working directory in the client's launch settings to the
+repository you intend to work on. Do not copy the machine-specific paths from an
+existing local configuration. The JSON above is a template; replace both paths.
+
+## First check
+
+Connect the MCP client and call `clade_list_skills`. Expect a skill catalog before
+attempting execution. Then use `clade_search_skills` to find a workflow. Listing
+or searching does not establish authentication, a complete agent run, or the
+correctness of a future change.
+
+## Compact mode
+
+`CLADE_MCP_COMPACT=1` is the default. It exposes `clade_list_skills`,
+`clade_search_skills`, and `clade_run_skill`, plus code-search tools. Set
+`CLADE_MCP_COMPACT=0` in the client's server environment only if you need one
+advertised tool per skill. Per-skill names remain accepted in compact mode for
+clients with cached tool lists.
+
+## Boundaries and help
+
+Skill execution uses `claude -p` with `--dangerously-skip-permissions`. The client
+approval dialog is not a sandbox for that subprocess. Use an isolated project
+and review the plan, changed files, and checks before authorizing delivery.
+
+Keep this config outside the repository-root `.mcp.json`: automatically loading
+it alongside native Clade duplicates tools and adds another agent process.
+For normal setup, use [Getting started](../docs/getting-started.md#mcp).
+Report reproducible integration bugs through [Contributing](../CONTRIBUTING.md)
+without credentials or private source.
+
+## Directory map
+
+| Path | Purpose |
+| --- | --- |
+| `clade.mcp.json` | Local client-config example; replace its paths before use |
+| [`orchestrator/mcp_server.py`](../orchestrator/mcp_server.py) | Source-tree tools and Claude subprocess execution |
+| [`mcp-package/`](../mcp-package/) | Independently packaged bridge with Claude/Codex runtime selection |
+| [`configs/skills/`](../configs/skills/) | Canonical workflow prompts |

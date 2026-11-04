@@ -1,7 +1,5 @@
 [English](README.md) | [中文](README.zh-CN.md)
 
-<p align="center"><img src="assets/banner.svg" alt="Clade" width="800"></p>
-
 # Clade
 
 **Turn coding-agent work into a reviewable, verified delivery.**
@@ -14,6 +12,15 @@ with one task; the optional server is not required.
 [Choose your setup](#choose-a-setup) · [Try a workflow](#your-first-workflow) ·
 [Get help](#community-and-contributing)
 
+> **Experimental.** Start with a small task in a repository you can test.
+
+<picture>
+  <source media="(max-width: 600px)" srcset="assets/workflow-mobile.svg">
+  <img src="assets/workflow.svg" alt="Your repository task flows through Clade planning, changes and checks to a reviewable diff and verification evidence; commits and pull requests require authority" width="900">
+</picture>
+
+*Workflow illustration. [What is shown and how to verify it](docs/readme-media.md).*
+
 <details>
 <summary>Contents</summary>
 
@@ -22,6 +29,7 @@ with one task; the optional server is not required.
 - [Your first workflow](#your-first-workflow)
 - [What Clade helps with](#what-clade-helps-with)
 - [Runtime boundaries](#runtime-boundaries)
+- [Repository map](#repository-map)
 - [Documentation](#documentation)
 - [Community and contributing](#community-and-contributing)
 - [Limitations and license](#limitations-and-license)
@@ -109,6 +117,22 @@ Codex, use `$clade:verify`; for MCP, call the corresponding `clade_verify` tool
 after discovering it with `clade_list_skills`. Clade's evidence and verification
 are review material, not permission to merge, push, or publish.
 
+<details>
+<summary>Try a local repository check before installing</summary>
+
+From a clone of Clade with Python 3, run:
+
+```bash
+python3 configs/scripts/check-layers.py
+```
+
+A successful run prints `check-layers: 6 layers declared and consistent` followed
+by each layer's status. This exercises a real Clade repository check without an
+agent call. It does not validate your credentials or execute a coding workflow.
+[Recorded scope and reproduction](docs/readme-media.md#local-check).
+
+</details>
+
 ## What Clade helps with
 
 | If you need to… | Use |
@@ -141,6 +165,17 @@ delivery records; see [How It Works](docs/how-it-works.md) for their boundaries.
 - The Orchestrator is optional and currently a secondary control plane. The
   CLI and native plugins remain usable without its web UI or database.
 
+## Repository map
+
+| Path | Responsibility |
+| --- | --- |
+| [`configs/`](configs/) | Canonical skills, hooks, agents, scripts, and cross-project rules |
+| [`plugins/clade/`](plugins/clade/) | Native Codex plugin; generated skills come from `configs/` |
+| [`mcp-package/`](mcp-package/) | Published MCP bridge, runtime selection, and generated skill bundle |
+| [`templates/`](templates/) | Starting points for repository guidance, README, and project configuration |
+| [`docs/`](docs/) | Setup, architecture, reference, and contribution guidance |
+| [`orchestrator/`](orchestrator/), [`adapters/openclaw/`](adapters/openclaw/) | Optional, currently dormant control-plane and adapter code; see [layer status](docs/layers.json) |
+
 ## Documentation
 
 | Guide | Purpose |
@@ -152,6 +187,7 @@ delivery records; see [How It Works](docs/how-it-works.md) for their boundaries.
 | [Configuration](docs/configuration.md) | Settings, thresholds, custom hooks, agents, and skills |
 | [When to Use What](docs/when-to-use-what.md) | Workflow choices and skill catalog |
 | [Orchestrator](docs/orchestrator.md) | Optional web control plane and its separate startup path |
+| [README media](docs/readme-media.md) | Diagram scope, reference patterns, and a reproducible local check |
 | [Changelog](CHANGELOG.md) | Release history and upgrade notes |
 
 ## Community and contributing

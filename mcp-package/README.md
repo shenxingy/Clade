@@ -2,47 +2,32 @@
 
 # clade-mcp 0.3.1
 
-Provider-neutral MCP server that exposes **Clade coding workflows** as callable tools — autonomous commits, reviews, incident response, security audits, and more. Skill prompts can run through Claude or Codex.
+**Use Clade workflows from the MCP client you already use.** Connect the bridge,
+choose an authenticated Claude or Codex CLI, and start by discovering its tools.
+The bridge runs workflow prompts in your repository; it is not a hosted agent service.
 
-Part of the [Clade](https://github.com/shenxingy/clade) autonomous coding framework.
+[Connect a client](#quick-start) · [Runtime boundaries](#runtime-selection) ·
+[Help and updates](#help-and-updates)
+
+> **Experimental bridge.** Review the selected runtime's permissions before executing a task.
+
+<picture>
+  <source media="(max-width: 600px)" srcset="https://raw.githubusercontent.com/shenxingy/Clade/a2bfe93879e95616905bdb882acb4ed4ea94bbca/assets/mcp-bridge-mobile.svg">
+  <img src="https://raw.githubusercontent.com/shenxingy/Clade/a2bfe93879e95616905bdb882acb4ed4ea94bbca/assets/mcp-bridge.svg" alt="A workflow tool call goes from your MCP client through clade-mcp to the selected agent CLI, which runs in the server's launch directory" width="900">
+</picture>
+
+*Task execution diagram. Discovery with `clade_list_skills` does not run a coding task.*
 
 ## Contents
 
-- [What's New in 0.3.1](#whats-new-in-031)
-- [Runtime support (since 0.2.0)](#runtime-support-since-020)
 - [Quick Start](#quick-start)
 - [Runtime Selection](#runtime-selection)
 - [Available Skills (36)](#available-skills-36)
 - [How It Works](#how-it-works)
 - [Full Clade Framework](#full-clade-framework)
+- [Help and updates](#help-and-updates)
 - [License](#license)
 
-
-## What's New in 0.3.1
-
-- Every release-version surface is checked against one source. The gate derives
-  the expected version from `pyproject.toml` and covers both plugin manifests,
-  so cutting a release no longer means editing the gate
-- Secret redaction is ASCII-anchored: a key pasted inside CJK or Cyrillic prose
-  was never matched before, because Python's `\b` is Unicode-aware
-
-## Runtime support (since 0.2.0)
-
-Provider selection is not new in this release — it shipped in 0.2.0 and is
-listed here because it is what most people configure first:
-
-- Native Codex execution through `codex exec --json`, selected with
-  `CLADE_RUNTIME=codex`
-- Conservative `auto` runtime selection: Claude when available, otherwise Codex
-- Configurable Codex sandbox with an explicit, opt-in permission bypass
-- Runtime name reported by `clade_list_skills` for configuration diagnostics
-- 35 bundled workflows, up from 29 in 0.1.0
-
-To upgrade a manual installation, activate its Python environment first:
-
-```bash
-python -m pip install --upgrade clade-mcp
-```
 
 ## Quick Start
 
@@ -182,6 +167,19 @@ Install the full framework:
 git clone https://github.com/shenxingy/clade.git
 cd clade && ./install.sh
 ```
+
+## Help and updates
+
+For setup problems, report the selected runtime, client, working directory, and
+error text in [Clade Discussions](https://github.com/shenxingy/Clade/discussions).
+Keep credentials and private source out of reports. Start with `clade_list_skills`:
+it should return the catalog and selected runtime before you attempt a workflow.
+
+Manual installs update with `python -m pip install --upgrade clade-mcp` in the
+active virtual environment. See the [changelog](https://github.com/shenxingy/Clade/blob/main/CHANGELOG.md)
+for release details. The source map is `src/clade_mcp/server.py` (tools),
+`src/clade_mcp/runtime.py` (agent execution), and `skills/` (generated prompts).
+Edit canonical prompts in Clade's `configs/skills/`, then regenerate the bundle.
 
 ## License
 

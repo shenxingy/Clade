@@ -1,7 +1,5 @@
 [English](README.md) | **中文**
 
-<p align="center"><img src="assets/banner.svg" alt="Clade" width="800"></p>
-
 # Clade
 
 **把 coding agent 的工作变成可复查、可验证的交付。**
@@ -12,6 +10,15 @@
 
 [选择安装方式](#选择安装方式) · [试一个工作流](#第一次工作流) · [获取帮助](#社区与贡献)
 
+> **实验阶段。** 先在可运行检查的仓库里尝试一个小任务。
+
+<picture>
+  <source media="(max-width: 600px)" srcset="assets/workflow-mobile.zh-CN.svg">
+  <img src="assets/workflow.zh-CN.svg" alt="仓库任务经过 Clade 的规划、修改和检查，产出可审阅的差异及验证证据；提交与 PR 需要相应授权" width="900">
+</picture>
+
+*工作流示意。[图片范围与验证方式（英文）](docs/readme-media.md)。*
+
 <details>
 <summary>目录</summary>
 
@@ -20,6 +27,7 @@
 - [第一次工作流](#第一次工作流)
 - [Clade 能帮你什么](#clade-能帮你什么)
 - [运行时边界](#运行时边界)
+- [仓库结构](#仓库结构)
 - [文档](#文档)
 - [社区与贡献](#社区与贡献)
 - [限制与许可证](#限制与许可证)
@@ -97,6 +105,21 @@ Claude Code 中可以在小改动后使用 `/verify`；Codex 使用 `$clade:veri
 `clade_list_skills` 发现对应工具，再调用 `clade_verify`。Clade 的证据和验证是审阅
 材料，不代表自动获得 merge、push 或 publish 权限。
 
+<details>
+<summary>安装前，先试一次本地仓库检查</summary>
+
+在 Clade 的 clone 中使用 Python 3 运行：
+
+```bash
+python3 configs/scripts/check-layers.py
+```
+
+成功时会输出 `check-layers: 6 layers declared and consistent` 及各层状态。
+这是实际运行的仓库结构检查，不会调用 agent；它不验证登录凭证，也不代表已跑通编码工作流。
+[检查范围与复现说明（英文）](docs/readme-media.md#local-check)。
+
+</details>
+
 ## Clade 能帮你什么
 
 | 你要做什么 | 使用 |
@@ -121,6 +144,17 @@ Claude Code 中可以在小改动后使用 `/verify`；Codex 使用 `$clade:veri
   会跳过 CLI 权限提示。客户端审批不能为子进程提供 sandbox；见[运行时设置](docs/getting-started.zh-CN.md#mcp)。
 - Orchestrator 是可选的次级控制平面；CLI 和原生插件不依赖它的 web UI 或数据库。
 
+## 仓库结构
+
+| 路径 | 职责 |
+| --- | --- |
+| [`configs/`](configs/) | skills、hooks、agents、脚本和跨项目规则的源文件 |
+| [`plugins/clade/`](plugins/clade/) | Codex 原生插件；skills 从 `configs/` 生成 |
+| [`mcp-package/`](mcp-package/) | 发布的 MCP bridge、runtime 选择和生成的 skill bundle |
+| [`templates/`](templates/) | 仓库规则、README 与项目配置的起点 |
+| [`docs/`](docs/) | 上手、架构、参考与贡献文档 |
+| [`orchestrator/`](orchestrator/)、[`adapters/openclaw/`](adapters/openclaw/) | 可选、当前处于 dormant 状态的控制平面及适配器，见[分层状态](docs/layers.json) |
+
 ## 文档
 
 | 指南 | 内容 |
@@ -132,6 +166,7 @@ Claude Code 中可以在小改动后使用 `/verify`；Codex 使用 `$clade:veri
 | [Configuration](docs/configuration.md) | 设置、阈值及自定义扩展 |
 | [When to Use What](docs/when-to-use-what.md) | 工作流选择与 skill catalog |
 | [Orchestrator](docs/orchestrator.md) | 可选 web 控制平面及独立启动方式 |
+| [README 图片说明](docs/readme-media.md) | 示意图范围、参考方式与可复现的本地检查（英文） |
 | [Changelog](CHANGELOG.zh-CN.md) | 版本历史与升级说明 |
 
 ## 社区与贡献

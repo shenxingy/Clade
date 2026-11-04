@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 500" role="img" aria-labelledby="title desc">
+  <title id="title">MCP bridge</title>
+  <desc id="desc">Three connected stages stacked vertically: Your MCP client, clade-mcp, and Agent to repository.</desc>
+  <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M1 1L9 5L1 9" fill="none" stroke="#79c0ff" stroke-width="1.5"/></marker></defs>
+  <rect width="360" height="500" rx="18" fill="#0d1117"/>
+  <g font-family="system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+    <path d="M180 145V170" stroke="#79c0ff" stroke-width="2" marker-end="url(#arrow)"/>
+    <path d="M180 295V320" stroke="#79c0ff" stroke-width="2" marker-end="url(#arrow)"/>
+    <g>
+      <rect x="24" y="20" width="312" height="125" rx="14" fill="#161b22" stroke="#30363d" stroke-width="2"/>
+      <circle cx="52" cy="51" r="9" fill="#f0883e"/>
+      <text x="74" y="59" fill="#e6edf3" font-size="20" font-weight="700">Your MCP client</text>
+      <text x="44" y="105" fill="#e6edf3" font-size="18">Call a workflow tool</text>
+    </g>
+    <g>
+      <rect x="24" y="170" width="312" height="125" rx="14" fill="#161b22" stroke="#30363d" stroke-width="2"/>
+      <circle cx="52" cy="201" r="9" fill="#79c0ff"/>
+      <text x="74" y="209" fill="#e6edf3" font-size="20" font-weight="700">clade-mcp</text>
+      <text x="44" y="255" fill="#e6edf3" font-size="18">Select Claude or Codex</text>
+    </g>
+    <g>
+      <rect x="24" y="320" width="312" height="125" rx="14" fill="#161b22" stroke="#30363d" stroke-width="2"/>
+      <circle cx="52" cy="351" r="9" fill="#7ee787"/>
+      <text x="74" y="359" fill="#e6edf3" font-size="20" font-weight="700">Agent → repository</text>
+      <text x="44" y="393" fill="#e6edf3" font-size="16">Runs in server launch directory</text>
+      <text x="44" y="420" fill="#7ee787" font-size="16">Review the diff and checks</text>
+    </g>
+    <text x="180" y="475" text-anchor="middle" fill="#8b949e" font-size="12">Task execution diagram · discovery does not run a coding task</text>
+  </g>
+</svg>

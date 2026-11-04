@@ -9,6 +9,7 @@ versioning for the `clade-mcp` Python package and tagged public releases.
 
 ### Changed
 
+- Add product-specific workflow diagrams, first-use checks, repository maps, and clear native/MCP/optional-adapter entry points to the English and Chinese READMEs.
 - Repository onboarding guidance now checks usable community routes, concrete starter tasks and agreement with the version readers can obtain. `document-release` also handles README and open-source onboarding requests before a release, and `orchestrate` carries the relevant checks into task acceptance criteria.
 
 - Workflow guidance now routes host-safe read-only stages to `agentType: "wf-reader"`. On the 15 known-answer claims of the 2026-10-23 A/B it matched the default agent's accuracy with turn-1 context cut from 95.8k to 5.4k tokens, and since #160 its Bash is held to a read allowlist by a frontmatter hook rather than by instruction. A live smoke under a bypassPermissions parent showed the hook denying `touch`, `git commit` and `gh pr comment` while reads ran, with nothing written. Limits are stated beside the rule: the hook does not run where hooks are off, and the plugin copy `clade:wf-reader` is unguarded. Writers keep the default type. TODO.md gains a size gate for `configs/CLAUDE.md`: it grew from 20.3k to 24.1k chars in six days and the installed global file now projects to 39.5k of Claude Code's 40k per-file limit.

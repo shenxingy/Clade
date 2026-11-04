@@ -2,46 +2,31 @@
 
 # clade-mcp 0.3.1
 
-Provider-neutral MCP server，将 **Clade coding workflows** 暴露为可调用工具。
-Skill prompt 可以通过 Claude 或 Codex 执行，适用于 Claude Desktop、Cursor、
-Windsurf 及其他 MCP 客户端。
+**在你已有的 MCP 客户端中使用 Clade 工作流。** 连接 bridge，选择已登录的
+Claude 或 Codex CLI，先发现工具，再执行任务。它在你的仓库中运行工作流 prompt，
+不是托管 agent 服务。
 
-它是 [Clade](https://github.com/shenxingy/clade) 自主编码框架的一部分。
+[连接客户端](#快速开始) · [运行时边界](#runtime-配置) · [帮助与更新](#帮助与更新)
+
+> **实验阶段。** 执行任务前，先确认所选 runtime 的权限边界。
+
+<picture>
+  <source media="(max-width: 600px)" srcset="https://raw.githubusercontent.com/shenxingy/Clade/a2bfe93879e95616905bdb882acb4ed4ea94bbca/assets/mcp-bridge-mobile.svg">
+  <img src="https://raw.githubusercontent.com/shenxingy/Clade/a2bfe93879e95616905bdb882acb4ed4ea94bbca/assets/mcp-bridge.svg" alt="MCP 客户端的工作流调用经 clade-mcp 交给选定的 agent CLI，在服务器启动目录中执行" width="900">
+</picture>
+
+*任务执行示意。调用 `clade_list_skills` 发现工具时不会运行编码任务。*
 
 ## 目录
 
-- [0.3.1 新功能](#031-新功能)
-- [Runtime 支持（自 0.2.0 起）](#runtime-支持自-020-起)
 - [快速开始](#快速开始)
 - [Runtime 配置](#runtime-配置)
 - [内置 Skills（36）](#内置-skills36)
 - [工作机制](#工作机制)
 - [完整 Clade 框架](#完整-clade-框架)
+- [帮助与更新](#帮助与更新)
 - [License](#license)
 
-
-## 0.3.1 新功能
-
-- 所有发布版本号面统一由一个来源校验：闸门从 `pyproject.toml` 派生期望值，
-  并覆盖两个 plugin manifest，发版不再需要改闸门本身
-- Secret 脱敏改为 ASCII 锚定：此前粘在中文或西里尔文里的 key 永远匹配不到，
-  因为 Python 的 `\b` 是 Unicode 语义
-
-## Runtime 支持（自 0.2.0 起）
-
-Provider 选择不是本次新增——它在 0.2.0 就有了；列在这里是因为它通常是第一个要配的东西：
-
-- 通过 `codex exec --json` 原生执行 Codex runtime
-- `CLADE_RUNTIME=auto`：优先使用已安装的 Claude，否则使用 Codex
-- 可配置 Codex sandbox；跳过 permission 必须显式开启
-- `clade_list_skills` 会显示当前 runtime，便于诊断配置
-- 内置 workflows 从 0.1.0 的 29 个增加到 35 个
-
-手动安装的用户先激活原 Python 环境，再升级：
-
-```bash
-python -m pip install --upgrade clade-mcp
-```
 
 ## 快速开始
 
@@ -172,6 +157,17 @@ MCP server 只是 Clade 的一个入口。完整框架还包含：
 git clone https://github.com/shenxingy/clade.git
 cd clade && ./install.sh
 ```
+
+## 帮助与更新
+
+遇到配置问题，请在 [Clade Discussions](https://github.com/shenxingy/Clade/discussions)
+提供 runtime、客户端、工作目录及错误信息，不要附带凭证或私有源码。
+先调用 `clade_list_skills`；应能看到 catalog 和所选 runtime，再尝试执行工作流。
+
+手动安装在原虚拟环境中使用 `python -m pip install --upgrade clade-mcp` 更新。
+版本详情见[更新日志](https://github.com/shenxingy/Clade/blob/main/CHANGELOG.zh-CN.md)。
+源码入口为 `src/clade_mcp/server.py`（工具）、`src/clade_mcp/runtime.py`（agent 执行）
+和 `skills/`（生成的 prompt）。修改 prompt 时应编辑 Clade 的 `configs/skills/`，再生成 bundle。
 
 ## License
 
