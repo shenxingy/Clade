@@ -313,6 +313,41 @@ else
   echo "  (skipped: the import-scope cases need mypy without pyright on PATH)"
 fi
 
+# --- an error the file already had at HEAD is not a finding about this edit (2026-11-04) ---------
+# An agent editing a legacy file was woken after every edit by a `fcntl = None` fallback it never touched.
+if command -v mypy >/dev/null 2>&1 && ! command -v pyright >/dev/null 2>&1; then
+  printf 'import types\n\nmod: types.ModuleType = None\n' > "$PROJ/legacy_mod.py"
+  git -C "$PROJ" add legacy_mod.py && git -C "$PROJ" commit -qm "legacy file with an old error" >/dev/null
+  printf 'import types\n\nmod: types.ModuleType = None\n\ndef added() -> int:\n    return 1\n' > "$PROJ/legacy_mod.py"
+  run_post_edit "$PROJ/legacy_mod.py"
+  assert_eq "$RC" "0" "an error already in the file's HEAD version does not wake Claude"
+  printf 'import types\n\nmod: types.ModuleType = None\n\ndef added() -> str:\n    return 1\n' > "$PROJ/legacy_mod.py"
+  run_post_edit "$PROJ/legacy_mod.py"
+  assert_eq "$RC" "2" "a new error in a legacy file still wakes Claude"
+  assert_contains "$(cat "$STDERR_F")" "legacy_mod.py:6" "the finding is the new error's line"
+  if grep -q "legacy_mod.py:3" "$STDERR_F"; then
+    fail "the old HEAD error is not repeated" "stderr still lists legacy_mod.py:3"
+  else
+    pass "the old HEAD error is not repeated"
+  fi
+  git -C "$PROJ" checkout -- legacy_mod.py
+  # A crashed checker has no error line to compare: it must still wake Claude, never be filtered to silence.
+  CRASH_BIN="$TMP_ROOT/crash-mypy-bin"; mkdir -p "$CRASH_BIN"
+  printf '#!/bin/sh\necho "Traceback (most recent call last):"\necho "RuntimeError: fake mypy crash"\nexit 2\n' > "$CRASH_BIN/mypy"
+  chmod +x "$CRASH_BIN/mypy"
+  OLD_PATH="$PATH"; export PATH="$CRASH_BIN:$PATH"
+  run_post_edit "$PROJ/legacy_mod.py"
+  export PATH="$OLD_PATH"
+  assert_eq "$RC" "2" "a crashed checker on a tracked file still wakes Claude"
+  assert_contains "$(cat "$STDERR_F")" "fake mypy crash" "the crash text reaches Claude unfiltered"
+  printf 'def fresh(x: int) -> str:\n    return x\n' > "$PROJ/fresh_new.py"
+  run_post_edit "$PROJ/fresh_new.py"
+  assert_eq "$RC" "2" "a file git does not know yet reports every error"
+  rm -f "$PROJ/fresh_new.py"
+else
+  echo "  (skipped: the HEAD-baseline cases need mypy without pyright on PATH)"
+fi
+
 # --- uncommitted files at/over the threshold: finding reaches stderr, exit 2 ---
 # Pin the threshold explicitly: this asserts the delivery contract, not the
 # default's value, which the assertions above own.
