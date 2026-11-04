@@ -8,6 +8,10 @@
 # Supported: TypeScript/JS (monorepo-aware), Python (pyright/mypy/ruff),
 #            Rust (cargo), Go (go vet/build), Swift, Kotlin/Java (gradle), LaTeX (chktex)
 
+_TC_LIBDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+# shellcheck source=/dev/null
+[[ -f "$_TC_LIBDIR/runtime-dir.sh" ]] && . "$_TC_LIBDIR/runtime-dir.sh" 2>/dev/null
+
 # ─── Per-File Type Check ─────────────────────────────────────────────
 
 # True when the project configures mypy itself (cwd is the project root here).
@@ -18,45 +22,83 @@ _project_has_mypy_config() {
   return 1
 }
 
-# mypy output for FILE, less every error the file's HEAD version already had (matched by message, not by line,
-# since lines move). An agent editing a legacy file was woken on every edit by an error it did not write: one
-# `fcntl = None` fallback, unchanged since it was committed, re-reported after each of a dozen edits (2026-11-04).
-# A file git does not know, or output with no parseable error line (a crash), passes through unchanged.
+# mypy output for FILE, reduced to what this edit is about:
+#  - only FILE's own error lines. mypy reported an imported module's errors even with --follow-imports=silent
+#    (docforensics, 2026-11-04: editing tests/test_gc_tuning.py woke the session about docforensics/gc_tuning.py);
+#  - less every error FILE's HEAD version already had (matched by message, not line, since lines move): an agent
+#    editing a legacy file was woken after each of a dozen edits by a `fcntl = None` fallback it never touched;
+#  - less what was already reported for FILE within POST_EDIT_REPEAT_WINDOW seconds (default 1800): an agent's
+#    successive edits to one new file re-reported the same unfixed error each time. A message is reported again
+#    once the window has passed since it was last reported.
+# Output with no parseable error line (a crashed checker) passes through unchanged. With no usable state dir the
+# repeat window is skipped (fail open: a repeated finding beats a suppressed one).
 _mypy_new_only() {  # <file> <mypy output> <mypy flags...>
-  local f="$1" out="$2" dir base tmp before
+  local f="$1" out="$2" dir base tmp before="" seen=""
   shift 2
   dir=$(cd "$(dirname "$f")" 2>/dev/null && pwd -P) || { printf '%s\n' "$out"; return 0; }
   base=$(basename "$f")
-  if ! git -C "$dir" cat-file -e "HEAD:./$base" 2>/dev/null; then
-    printf '%s\n' "$out"; return 0
+  if git -C "$dir" cat-file -e "HEAD:./$base" 2>/dev/null; then
+    if tmp=$(mktemp -d "${TMPDIR:-/tmp}/clade-mypy-base.XXXXXX"); then
+      git -C "$dir" show "HEAD:./$base" > "$tmp/$base" 2>/dev/null
+      before=$(cd "$dir" && MYPYPATH="$dir${MYPYPATH:+:$MYPYPATH}" mypy "$@" "$tmp/$base" 2>&1)
+      rm -rf "$tmp"
+    fi
   fi
-  tmp=$(mktemp -d "${TMPDIR:-/tmp}/clade-mypy-base.XXXXXX") || { printf '%s\n' "$out"; return 0; }
-  git -C "$dir" show "HEAD:./$base" > "$tmp/$base" 2>/dev/null
-  before=$(cd "$dir" && MYPYPATH="$dir${MYPYPATH:+:$MYPYPATH}" mypy "$@" "$tmp/$base" 2>&1)
-  rm -rf "$tmp"
-  python3 - "$out" "$before" <<'PY'
-import re, sys
-pat = re.compile(r'^.*?:\d+(?::\d+)?: error: (.*)$')
-now, before = sys.argv[1].splitlines(), sys.argv[2].splitlines()
+  if [[ "${POST_EDIT_REPEAT_WINDOW:-1800}" != 0 ]] && declare -f clade_state_dir >/dev/null 2>&1; then
+    seen=$(clade_state_dir clade-post-edit-seen 2>/dev/null) || seen=""
+  fi
+  python3 - "$out" "$before" "$dir/$base" "$base" "$seen" "${POST_EDIT_REPEAT_WINDOW:-1800}" <<'PY'
+import hashlib, json, os, re, sys, time
+pat = re.compile(r'^(.*?):\d+(?::\d+)?: error: (.*)$')
+out, before, target, base, seen_dir, window = sys.argv[1:7]
+now = out.splitlines()
 if not any(pat.match(l) for l in now):
-    print(sys.argv[1]); sys.exit(0)            # a crash or an unparsed message: report it as is
-seen = {}
-for l in before:
-    m = pat.match(l)
-    if m:
-        seen[m.group(1)] = seen.get(m.group(1), 0) + 1
-kept, dropped = [], 0
+    print(out); sys.exit(0)                      # a crash or an unparsed message: report it as is
+target_real = os.path.realpath(target)
+mine, others = [], 0
 for l in now:
     m = pat.match(l)
     if not m:
         continue
-    if seen.get(m.group(1), 0) > 0:
-        seen[m.group(1)] -= 1; dropped += 1
+    if os.path.realpath(m.group(1)) == target_real:
+        mine.append((l, m.group(2)))
     else:
-        kept.append(l)
+        others += 1
+had = {}
+for l in before.splitlines():
+    m = pat.match(l)
+    if m and os.path.basename(m.group(1)) == base:
+        had[m.group(2)] = had.get(m.group(2), 0) + 1
+kept, old = [], 0
+for l, msg in mine:
+    if had.get(msg, 0) > 0:
+        had[msg] -= 1; old += 1
+    else:
+        kept.append((l, msg))
+if kept and seen_dir and os.path.isdir(seen_dir) and float(window) > 0:
+    p = os.path.join(seen_dir, hashlib.sha1(target_real.encode()).hexdigest() + '.json')
+    try:
+        rec = json.load(open(p))
+    except Exception:
+        rec = {}
+    t = time.time()
+    if all(t - rec.get(msg, 0) < float(window) for _, msg in kept):
+        sys.exit(0)                              # every one was already reported within the window
+    for _, msg in kept:
+        rec[msg] = t
+    try:
+        tmpf = p + '.tmp%d' % os.getpid()
+        json.dump(rec, open(tmpf, 'w')); os.replace(tmpf, p)
+    except OSError:
+        pass
 if kept:
-    print('\n'.join(kept))
-    print(f"{len(kept)} new error(s) in this file" + (f"; {dropped} already in its HEAD version not shown" if dropped else ""))
+    print('\n'.join(l for l, _ in kept))
+    notes = [f"{len(kept)} new error(s) in this file"]
+    if old:
+        notes.append(f"{old} already in its HEAD version not shown")
+    if others:
+        notes.append(f"{others} in other files not shown")
+    print('; '.join(notes))
 PY
 }
 
