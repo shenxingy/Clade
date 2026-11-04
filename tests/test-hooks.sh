@@ -348,6 +348,32 @@ else
   echo "  (skipped: the HEAD-baseline cases need mypy without pyright on PATH)"
 fi
 
+# --- a worktree nested in the project is checked from its own checkout (2026-11-04) ---
+# Checked from the project root, mypy resolved the worktree's `import pkgwt` to the project's copy, so a
+# function the worktree had just added read as "Module has no attribute" and woke the session about
+# correct code. The package is committed in $PROJ; only the worktree's copy gains new_fn.
+if command -v mypy >/dev/null 2>&1 && ! command -v pyright >/dev/null 2>&1; then
+  mkdir -p "$PROJ/pkgwt"; printf 'def old_fn() -> int:\n    return 1\n' > "$PROJ/pkgwt/__init__.py"
+  git -C "$PROJ" add pkgwt/__init__.py >/dev/null 2>&1; git -C "$PROJ" commit -qm "pkgwt" >/dev/null 2>&1
+  WT="$PROJ/.claude/worktrees/wt1"
+  git -C "$PROJ" worktree add -q -b wt1 "$WT" >/dev/null 2>&1
+  printf 'def old_fn() -> int:\n    return 1\n\ndef new_fn() -> int:\n    return 2\n' > "$WT/pkgwt/__init__.py"
+  mkdir -p "$WT/tests"
+  printf 'import pkgwt\n\ndef t() -> int:\n    return pkgwt.new_fn()\n' > "$WT/tests/uses_new.py"
+  run_post_edit "$WT/tests/uses_new.py"
+  assert_eq "$RC" "0" "a worktree file using its own checkout's new function is not a finding"
+  assert_eq "$(cat "$STDERR_F")" "" "the project's older copy of the package never wakes Claude"
+  printf 'import pkgwt\n\ndef t() -> str:\n    return pkgwt.new_fn()\n' > "$WT/tests/uses_new_bad.py"
+  run_post_edit "$WT/tests/uses_new_bad.py"
+  assert_eq "$RC" "2" "a real error in a worktree file still wakes Claude"
+  assert_contains "$(cat "$STDERR_F")" "uses_new_bad.py:4" "that finding is the worktree file's line 4"
+  git -C "$PROJ" worktree remove --force "$WT" >/dev/null 2>&1; git -C "$PROJ" branch -qD wt1 >/dev/null 2>&1
+  rm -rf "$PROJ/.claude"
+  git -C "$PROJ" rm -q -r pkgwt >/dev/null 2>&1; git -C "$PROJ" commit -qm "drop pkgwt" >/dev/null 2>&1
+else
+  echo "  (skipped: the worktree case needs mypy without pyright on PATH)"
+fi
+
 # --- uncommitted files at/over the threshold: finding reaches stderr, exit 2 ---
 # Pin the threshold explicitly: this asserts the delivery contract, not the
 # default's value, which the assertions above own.
