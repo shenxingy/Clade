@@ -39,7 +39,12 @@ files and commit changes; these are different operations.
 ## Connect from a source checkout
 
 Requires Python 3.11, the Orchestrator dependencies, and an installed,
-authenticated Claude CLI for skill execution. From the Clade clone:
+authenticated Claude CLI for skill execution. This bridge reads skills from
+`~/.claude/skills/`; it does not bundle the clone's `configs/skills/`. If that
+directory is empty, discovery returns an empty catalog. Use the
+[published package](../mcp-package/README.md) for bundled workflows, or review
+and follow the [full-framework installation](../docs/getting-started.md#claude-code)
+first. From the Clade clone:
 
 ```bash
 python3.11 -m venv orchestrator/.venv
