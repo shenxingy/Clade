@@ -55,7 +55,14 @@ import hashlib, json, os, re, sys, time
 pat = re.compile(r'^(.*?):\d+(?::\d+)?: error: (.*)$')
 out, before, target, base, seen_dir, window = sys.argv[1:7]
 now = out.splitlines()
+# mypy stops on a module-resolution clash ("Source file found twice under different module names", 2026-11-04: a test
+# that imports a sibling test by bare name) before it checks anything. If the HEAD version stops on the same clash, the
+# layout causes it, not the edit: say nothing. A clash the edit introduced is still reported.
+blocker = re.compile(r'^.*?: error: ((?:Source file found twice under different module names|Duplicate module named).*)$')
 if not any(pat.match(l) for l in now):
+    clashes = [m.group(1) for m in map(blocker.match, now) if m]
+    if clashes and all(c in {m.group(1) for m in map(blocker.match, before.splitlines()) if m} for c in clashes):
+        sys.exit(0)
     print(out); sys.exit(0)                      # a crash or an unparsed message: report it as is
 target_real = os.path.realpath(target)
 mine, others = [], 0
