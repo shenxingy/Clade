@@ -1,0 +1,57 @@
+{
+  "schema": "clade.context-policy/v1",
+  "_comment": "Hand-maintained, not generated. Read by configs/scripts/context-policy.py (install.sh section 8d, `status`, `--check`). Every value is a DEFAULT Clade owns only while ~/.claude/settings.json still holds exactly what Clade wrote (recorded in ~/.claude/.clade-context-state.json): a value the user sets, or a key the user deletes, is theirs from then on and is never rewritten or re-added. Change a value only with a new measurement in the same commit. While present, the key outranks a window Anthropic sets server-side (the clientdata tier) and the experiment tier on 2.1.283 and on 2.1.288+ alike, so context-policy.py retracts its value and writes none while Claude Code's global config caches a clientdata window (autoCompactWindowsCache, or rowan_thicket in the client-data cache). That is best-effort: the cache names are undocumented, read from the 2.1.283 binary, and the experiment tier is not detected, so re-verify on each Claude Code upgrade (TODO.md, 2026-11-05 context policy follow-ups).",
+  "claude_code": {
+    "autoCompactWindow": {
+      "value": 350000,
+      "enabled_by_default": false,
+      "min_cc_version": "2.1.236",
+      "verified_through_cc_version": "2.1.283",
+      "retire_from_cc_version": null,
+      "skip_when": {
+        "env": [
+          "CLAUDE_CODE_AUTO_COMPACT_WINDOW",
+          "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE",
+          "DISABLE_COMPACT",
+          "DISABLE_AUTO_COMPACT"
+        ],
+        "settings_false": [
+          "autoCompactEnabled"
+        ],
+        "model_settings_key": "autoCompactWindow",
+        "managed_settings": [
+          "/etc/claude-code/managed-settings.json",
+          "/Library/Application Support/ClaudeCode/managed-settings.json"
+        ]
+      },
+      "docs": "https://code.claude.com/docs/en/model-config",
+      "measurement": {
+        "source": "context-window research run on aries, 2026-11-05 (sweet_sim.py, quota_weight.py); the cited .out files are research outputs, not part of this repository",
+        "population": "30 days to 2026-11-05, aries, both profiles: 224 main + 5,891 subagent threads, 82.0B tokens / $32.2K at list price; replay with behaviour held fixed",
+        "trigger": "compaction fires at W - min(maxOut, 20000) - 13000 = 317,000 for W = 350,000 (default today: 967,000); formula read in the 2.1.283 and 2.1.318 binaries",
+        "cost": "350K saves $3,734 (11.6%) with 1,371 compactions (main 241 in 85 of 224 sessions, subagents 1,130 in 934 of 5,891 agents); 300K saves $3,885 (12.1%) with 2,416; 400K saves $3,304 (10.3%) with 827 (sweet_sim.out:23-25, :34-35)",
+        "robustness": "350K is maximin and min-regret across 5 simulation variants: saves at least $2,732 in every variant, max regret $545; 300K saves at least $2,062, regret $670 (sweet_sim.out:155)",
+        "quota": "fitted Max-5h weight of a cache read r ~= 0.028x uncached input (95% CI 0.022-0.036 with write/output weights at list, 0.015-0.050 all free); at r = 0.028 main-thread quota saved is 37.4% at 300K and 33.1% at 400K; 350K was not simulated under quota weighting (UNVERIFIED)",
+        "subagents": "on 2.1.283 subagents inherit the main window, so one value serves both; at r = 0.028 a 200K window costs subagents +16.9% quota, which is why the value never goes below 300K while they share it",
+        "confidence": "cost MEDIUM-HIGH, quota MEDIUM, quality LOW-MEDIUM: 'no performance loss' is not shown; the opt-in trial in TODO.md (2026-11-05 context policy follow-ups) exists to test it"
+      }
+    }
+  },
+  "codex": {
+    "mode": "report-only",
+    "verified_codex_version": "0.166.0",
+    "reference_model": "gpt-6-astra",
+    "reference_context_window": 272000,
+    "compact_fraction": 0.9,
+    "decision": "no change: gpt-6-astra already compacts at 244,800 (90% of its 272,000 window)",
+    "reason": "no per-model scoping: model_context_window would also clamp gpt-6.1-sol at 500K and every subagent; config.toml is user-scoped (configs/codex-migration.json)"
+  },
+  "kimi": {
+    "mode": "report-only",
+    "verified_kimi_version": "2.2.0",
+    "trigger_ratio": 0.85,
+    "reserved_context_size": 50000,
+    "decision": "deferred: Kimi idle since 2026-10-17; k3 compacts at 891,290 (0.85 x 1,048,576)",
+    "manual_option": "[models.\"kimi-code/k3\".overrides] max_input_size = 350000 compacts k3 at 297,500 and survives a model refresh; it also applies to k3 subagents, which were not simulated. Never use the global compaction_trigger_ratio or reserved_context_size: they hit every model, and the ratio's floor of 0.5 cannot reach 350K"
+  }
+}

@@ -902,6 +902,48 @@ MUTATIONS["configs/scripts/check-workflow-script.py"] = [
      "        if not isinstance(util, (int, float)):\n            util = 100"),
 ]
 
+
+# ─── context-policy.py ────────────────────────────────────────────────
+# Its own block, like check-workflow-script.py's above. Each mutation removes
+# one guard the context policy claims; its --self-test (the controls live in
+# configs/scripts/context_policy_selftest.py, which imports nothing from it)
+# runs the MUTATED script's `apply` and `--check` through its CLI against fake
+# `claude` binaries. tests/test-context-policy-install.sh mutates the rest
+# (write path, line scan, probe, sidecar, status) against its own suite.
+MUTATIONS["configs/scripts/context-policy.py"] = [
+    ("the version floor — an unverified Claude Code gets the key",
+     "    too_old = version < lo\n",
+     "    too_old = False\n"),
+    ("ownership by equality — opt-out would delete a value the user edited",
+     '    elif st["wrote"] is not None and not same_int(cur, st["wrote"]):',
+     "    elif False:"),
+    ("user_removed — a key the user deleted would be re-added",
+     '    if why or st["user_removed"]:',
+     "    if why:"),
+    ("skip_when env — a settings env override would not make Clade step aside",
+     'found += [f"{name} env.{k}" for k in skip["env"] if k in senv]',
+     "found += []"),
+    ("the retire comparison — retirement only above retire_from, not at it",
+     "retired = retire is not None and version >= retire",
+     "retired = retire is not None and version > retire"),
+    ("the version regex — any X.Y.Z line would read as Claude Code",
+     r'VERSION_LINE = re.compile(r"^(\d+)\.(\d+)\.(\d+)\b.*\(Claude Code\)")',
+     r'VERSION_LINE = re.compile(r"(\d+)\.(\d+)\.(\d+)")'),
+    ("user_owned — a value the user took over, then deleted, would be re-added",
+     '    if (st["wrote"] is not None or st["user_owned"]) and cur is None:',
+     '    if st["wrote"] is not None and cur is None:'),
+    ("fail closed — an unparseable managed-settings file would shadow nothing",
+     "isinstance(data, dict) else None",
+     "isinstance(data, dict) else {}"),
+    ("managed-settings.d — a drop-in that disables compaction would be ignored",
+     "files += [p, *(os.path.join(drop, n) for n in names)]",
+     "files += [p]"),
+    ("server tuning — Clade's value would override a window Anthropic caches in .claude.json",
+     '        if obj(cfg.get("autoCompactWindowsCache")):',
+     "        if False:"),
+]
+
+
 def _cases():
     for script, muts in MUTATIONS.items():
         for name, old, new in muts:
