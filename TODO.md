@@ -2296,7 +2296,7 @@ to a differently named upstream such as `origin/main`). Not built in that fix:
 
 ## 2026-11-05 context policy follow-ups
 
-Shipped on branch `feat/context-policy` as one opt-in PR: `configs/context-policy.json`
+Shipped in #175 (squash `1a3fdd6`) as one opt-in PR: `configs/context-policy.json`
 (`autoCompactWindow` 350000, `enabled_by_default: false`), `configs/scripts/context-policy.py`
 (its self-test controls in `configs/scripts/context_policy_selftest.py`), the retract step in
 `uninstall.sh`,
@@ -2306,9 +2306,24 @@ The value comes from a fixed-behaviour replay (30 days to 2026-11-05, aries, bot
 224 main + 5,891 subagent threads): cost MEDIUM-HIGH, quota MEDIUM, quality LOW-MEDIUM.
 "No performance loss" is not shown yet; the trial below is how it gets shown or refuted.
 
-- [ ] 🟡 **Run the measured trial on aries, then decide the default.** Freeze the
-  retrospective 30-day baseline to a file BEFORE enabling (transcripts expire after
-  30 days), then `./install.sh --context-policy` on aries only. 7 days minimum, 14 if
+**Rollout state, 2026-11-05 (pick up from here).**
+- Enabled on aries at 2026-11-05T21:56:10Z with `./install.sh --context-policy`: settings.json
+  holds `autoCompactWindow: 350000`, owner `clade`, choice `in` (`context-policy.py status`).
+  The second profile on that host shares the same settings.json, so it is enabled there too.
+- Baseline frozen BEFORE enabling, outside the repo:
+  `~/.local/share/clade/context-policy-baseline-2026-11-05/` on aries — the 6,883 transcripts of
+  the 30 days (`transcripts-30d.tar.zst`, 4.2 GB, `zstd -t` clean), their file list, and every
+  research report and script under `research/` (`research/r2/decision.md` is the decision;
+  `sweet_sim.py`, `quota_weight.py` and `local_quality.py` regenerate the numbers).
+- **It reaches new sessions only** (docs/configuration.md#context-window-policy): 2.1.283 reads
+  the key once at session start. The 13 sessions running at enable time (started 10-26 → 11-05)
+  keep compacting near 967K until restarted or given `/autocompact 350k`. The trial's
+  "after" population is therefore sessions started after 2026-11-05T21:56:10Z (or after a
+  `/autocompact 350k`), not every turn after that instant.
+
+- [ ] 🟡 **Run the measured trial on aries, then decide the default.** Baseline frozen and
+  the policy enabled on 2026-11-05 (rollout state above), so evaluate no earlier than
+  2026-11-12, counting only sessions started after the enable. 7 days minimum, 14 if
   any confidence interval spans a threshold. Expected volume: about 56 main and 264
   subagent compactions a week (241 and 1,130 per 30 days in the simulation), preTokens
   near 317K. Proxies and rollback thresholds — the thresholds are proposals, not
@@ -2384,3 +2399,7 @@ The value comes from a fixed-behaviour replay (30 days to 2026-11-05, aries, bot
 - [ ] 🔵 **Still unverified:** 2.1.318 was read from the binary, never run; whether a
   project-scope `.claude/settings.json` `autoCompactWindow` is honoured; compaction
   latency at 300–350K (the 97 s median was measured only near 967K).
+- [ ] 🟢 **Say "new sessions only" where the write happens.** `context-policy.py apply` prints
+  `set autoCompactWindow = 350000 …` and nothing about running sessions. Add one line: sessions
+  already running keep their window until restarted or given `/autocompact 350k`. Its test in
+  `tests/test-context-policy-install.sh` should assert the line on the write path only.
