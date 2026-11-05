@@ -207,6 +207,16 @@ is a no-op on 200K models. Clade never writes `CLAUDE_CODE_AUTO_COMPACT_WINDOW`,
 `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`, `modelSettings`, managed settings or a
 `--autocompact` wrapper, and never sets or clears `DISABLE_AUTOUPDATER`.
 
+**It reaches new sessions only.** Claude Code 2.1.283 reads `autoCompactWindow`
+once, when a session starts, and keeps it in the session's state; a later write
+to settings.json does not reach a session that is already running (read in the
+2.1.283 binary, and observed on the author's host: after the write, a running
+session reached 379K and a running workflow subagent 414K without compacting).
+`/autocompact` is the one path that updates a live session, so in a session that
+predates the install either run `/autocompact 350k` — it writes the same
+350000, so Clade still owns the value — or restart it with `claude --continue`.
+Subagents take the window of the session that launched them.
+
 **Why 350000.** A replay of 30 days of transcripts on the author's host, to
 2026-11-05, both profiles — 224 main and 5,891 subagent threads, 82.0B tokens,
 $32.2K at list price — with behaviour held fixed:
