@@ -2293,3 +2293,94 @@ to a differently named upstream such as `origin/main`). Not built in that fix:
   template itself from growing. Add a ceiling for `configs/CLAUDE.md` to a CI
   gate (a figure with headroom for a private tail, e.g. 24,000 chars), so the
   next guidance addition has to tighten something else in the same change.
+
+## 2026-11-05 context policy follow-ups
+
+Shipped on branch `feat/context-policy` as one opt-in PR: `configs/context-policy.json`
+(`autoCompactWindow` 350000, `enabled_by_default: false`), `configs/scripts/context-policy.py`
+(its self-test controls in `configs/scripts/context_policy_selftest.py`), the retract step in
+`uninstall.sh`,
+`install.sh` §8d with `--context-policy` / `--no-context-policy` / `CLADE_CONTEXT_POLICY`,
+`tests/test-context-policy-install.sh`, and [the docs](docs/configuration.md#context-window-policy).
+The value comes from a fixed-behaviour replay (30 days to 2026-11-05, aries, both profiles,
+224 main + 5,891 subagent threads): cost MEDIUM-HIGH, quota MEDIUM, quality LOW-MEDIUM.
+"No performance loss" is not shown yet; the trial below is how it gets shown or refuted.
+
+- [ ] 🟡 **Run the measured trial on aries, then decide the default.** Freeze the
+  retrospective 30-day baseline to a file BEFORE enabling (transcripts expire after
+  30 days), then `./install.sh --context-policy` on aries only. 7 days minimum, 14 if
+  any confidence interval spans a threshold. Expected volume: about 56 main and 264
+  subagent compactions a week (241 and 1,130 per 30 days in the simulation), preTokens
+  near 317K. Proxies and rollback thresholds — the thresholds are proposals, not
+  measurements:
+  1. Post-compaction tool-error excess, 30 turns after vs before, paired. Baseline
+     +2.10 pp [+0.49, +4.02], n = 23. Roll back if the trial mean is above +4.0 pp
+     with at least 30 events.
+  2. Same-file re-read within 20 turns after a compaction, and identical calls
+     re-done (baseline 1 in 708). Roll back if either reaches 2× baseline.
+  3. Owner corrections per 100 owner messages (correction-detector, precision
+     57–66%; hand-label every flagged message plus about 30 unflagged). Roll back if
+     above the baseline's Wilson 95% upper bound AND at least 2 are labelled "lost
+     context".
+  4. Session fixed-effects slopes. Roll back if tool misuse rises more than
+     +0.11 pp per 900K, or the tool-error slope turns positive.
+  5. Esc interrupts per 100 turns. Roll back if beyond Poisson noise.
+  6. Direct test, the only one that sees silent errors: 15–20 paired long-horizon
+     known-answer tasks, per-launch `--autocompact 350k` vs the default on the same
+     commit, graded blind. Roll back on 2 or more extra failures out of 20, or a pass
+     rate 10 pp or more lower.
+  7. Realised saving: main input volume per session (simulated −52%) and 5-hour
+     quota per unit of work. Not a quality rollback: below a 25% saving the premise
+     failed, so re-decide.
+
+  Rollback is `./install.sh --no-context-policy` or `CLADE_CONTEXT_POLICY=off`,
+  which removes only the value Clade owns; per user, `/autocompact auto`.
+- [ ] 🟡 **PR 2 — `configs/scripts/context-census.py`, the trial instrument.**
+  Report-only, about 400 lines, over N days: agentType mix, main and subagent
+  compaction counts and preTokens, volume per main session. Not inside
+  `workflow-scorecard.py`, which is at 1,444 of 1,500 lines. Snapshot the 30-day
+  baseline now.
+- [ ] 🟡 **PR 3 — flip `enabled_by_default` to true, only after the trial passes.**
+  It then rolls out fleet-wide through `fleet-install.sh`. Update, in the same PR, the
+  cases in `tests/test-context-policy-install.sh` that pin "a plain install writes
+  nothing" against the shipped policy, and record the trial's numbers in the commit.
+- [ ] 🔵 **PR 4 — a lean `wf-analyst` agent type**, after a paired known-answer A/B
+  the size of the 2026-10-23 effort A/B. Upper bound on the saving about 5.5B tokens
+  (at most 6.7%), an overestimate.
+- [ ] 🔵 **PR 5 — an agentType preflight suggestion**, only at 80% precision or
+  better on hand-labelled sites; a script-level rule would fire on 407 of 448 scripts.
+- [ ] 🔵 **PR 6 — Kimi k3 per-model override**, insert-if-absent
+  (`[models."kimi-code/k3".overrides] max_input_size = 350000`, compaction at
+  297,500), when Kimi is used again and after a subagent simulation: the override
+  also applies to k3 subagents.
+- [ ] 🟡 **`/model-research` re-verify step**, kept out of this PR to avoid an
+  mcp-package regeneration. Add to `configs/skills/model-research/prompt.md`: run
+  `python3 ~/.claude/scripts/context-policy.py status`; when Claude Code is newer than
+  `verified_through_cc_version`, re-verify the key's precedence and the trigger
+  formula (W − min(maxOut, 20000) − 13000) against
+  https://code.claude.com/docs/en/model-config with a throwaway `CLAUDE_CONFIG_DIR`,
+  then raise `verified_through_cc_version` — or, if the documented default is at or
+  below the cap, set `retire_from_cc_version` — in the same PR. model-research is in
+  `mcp-package/skills.list`, so run `configs/scripts/regen-mcp-package.sh` with it.
+- [ ] 🔵 **Upgrading Claude Code is an owner decision, not a Clade PR.**
+  `DISABLE_AUTOUPDATER=1` on aries has no recorded reason, and Clade neither sets nor
+  clears it. If the pin has none, dist-tag `stable` 2.1.311 adds per-model
+  `/autocompact` (2.1.288), subagent frontmatter (2.1.296) and idle compaction
+  (2.1.299). This change does not need the upgrade: the top-level key behaves the same
+  on both. Raise `verified_through_cc_version` only after a live check.
+- [ ] 🟡 **Re-verify the server-side window tier on every Claude Code upgrade.** In the
+  2.1.283 binary the window resolver checks `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, then the
+  settings key, then `clientdata` (a per-model window Anthropic sets per account,
+  cached in the global config as `autoCompactWindowsCache` and as `rowan_thicket` in
+  the client-data cache), then the experiment tier; cc-future.md reads the same order
+  in 2.1.318. `context-policy.py` (`server_tuning`) now retracts its value and writes
+  none while either cache is a non-empty object, and `status` lists it under
+  "shadowed by". That is best-effort: the cache names are undocumented, so a rename
+  goes unseen; the experiment tier is not detected; and a custom-OAuth install's
+  `.claude-custom-oauth.json` is not read. On each upgrade, check whether the order,
+  the cache names and the global-config location (`~/.claude.json`,
+  `$CLAUDE_CONFIG_DIR/.claude.json`, the legacy `.config.json`) still hold, and update
+  `server_tuning` before raising `verified_through_cc_version` past 2.1.288.
+- [ ] 🔵 **Still unverified:** 2.1.318 was read from the binary, never run; whether a
+  project-scope `.claude/settings.json` `autoCompactWindow` is honoured; compaction
+  latency at 300–350K (the 97 s median was measured only near 967K).

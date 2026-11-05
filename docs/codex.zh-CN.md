@@ -97,6 +97,10 @@ Installer 会把全局策略中 provider-neutral 的部分适配到
 `~/.codex/AGENTS.md` 托管区块：原子 PR、本地 CI 优先、完整证据、简洁表达、
 配置 wiring 与部署验证。模型、trust、permissions、MCP 认证和个人 plugin 设置
 继续由用户自己的 `~/.codex/config.toml` 管理。
+上下文压缩只报告、不配置：`context-policy.py status` 会打印 Codex 的压缩点
+（gpt-6-astra 为 244,800 tokens，在 codex 0.166.0 上推导），不会为此向
+`config.toml` 写入任何内容；见
+[Context window policy](configuration.md#context-window-policy)。
 
 Claude output styles 在 Codex 中没有可分发的一一对应 primitive。因此 Evidence
 First 与 Terse 的约束以持久 Codex guidance 表达，但不声称与 system prompt

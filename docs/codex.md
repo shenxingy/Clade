@@ -116,6 +116,10 @@ verification, evidence completeness, concise response register, configuration
 wiring, deployment proof, and the don't-block escalation ladder. It leaves
 model selection, trust, permissions, MCP authentication, and personal plugin
 settings under the user's own `~/.codex/config.toml`.
+Context compaction is reported, not configured: `context-policy.py status`
+prints where Codex compacts (gpt-6-astra at 244,800 tokens, derived on codex
+0.166.0) and nothing is written to `config.toml` for it; see
+[Context window policy](configuration.md#context-window-policy).
 
 Claude output styles have no distributable one-to-one Codex primitive. Their
 Evidence First and Terse invariants are therefore carried as durable Codex

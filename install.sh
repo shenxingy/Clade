@@ -617,6 +617,48 @@ if [[ "$_ultracode_requested" == true ]]; then
   fi
 fi
 
+# ─── 8d. Context policy (autoCompactWindow; opt-in until measured) ───
+# One key, top-level `autoCompactWindow` (configs/context-policy.json: 350000,
+# so a 1M model compacts near 317K instead of 967K), written by
+# configs/scripts/context-policy.py and ONLY while the sidecar
+# ~/.claude/.clade-context-state.json proves the value is Clade's. A value the
+# user sets, or a key the user deletes, is theirs from then on: never rewritten,
+# never re-added. That is what the `.x // $default` merge in §8 cannot do (it
+# re-seeds a deleted key, and it kept every host that installed under an older
+# shipped default on that old value), so this section does not use jq at all.
+# It steps aside for every more specific mechanism, retracts its value while
+# Claude Code's ~/.claude.json caches a window Anthropic tunes server-side,
+# fails closed when the Claude Code version is unreadable, and never touches
+# the network, an env var, modelSettings, ~/.codex or ~/.kimi-code.
+#
+# OFF unless asked for: the saving is simulated and the quality effect is not
+# yet measured (TODO.md, "2026-11-05 context policy follow-ups"). The choice
+# persists in the sidecar, because fleet-install.sh runs ./install.sh with no
+# arguments. A flag on the command line wins over CLADE_CONTEXT_POLICY.
+_cp_flag=""
+case "${CLADE_CONTEXT_POLICY:-}" in
+  on) _cp_flag="--opt-in" ;;
+  off) _cp_flag="--opt-out" ;;
+  "") ;;
+  *) echo "  WARNING: CLADE_CONTEXT_POLICY=${CLADE_CONTEXT_POLICY} is not on|off; ignored" ;;
+esac
+for arg in "$@"; do
+  [[ "$arg" == "--context-policy" ]] && _cp_flag="--opt-in"
+  [[ "$arg" == "--no-context-policy" ]] && _cp_flag="--opt-out"
+done
+echo "Context policy (autoCompactWindow)..."
+cp "$SCRIPT_DIR/configs/context-policy.json" "$CLAUDE_DIR/context-policy.json"
+if [[ -z "$PYTHON" ]]; then
+  echo "  Skipped: context policy (no python3); settings.json left as it was"
+else
+  _cp_args=(apply --claude-dir "$CLAUDE_DIR" --policy "$SCRIPT_DIR/configs/context-policy.json")
+  [[ -n "$_cp_flag" ]] && _cp_args+=("$_cp_flag")
+  "$PYTHON" "$SCRIPT_DIR/configs/scripts/context-policy.py" "${_cp_args[@]}" \
+    || echo "  WARNING: context policy step failed; settings.json left as it was"
+  unset _cp_args
+fi
+unset _cp_flag
+
 # ─── 9. Set up shell aliases (cc + claude bypass) ────────────────────
 
 echo "Configuring shell aliases..."
@@ -926,6 +968,11 @@ echo "Optional — standing multi-agent orchestration (spends materially more):"
 echo "  ./install.sh --ultracode                   # plan a workflow per task, <15 agents"
 echo "  ./install.sh --ultracode=large             # same, up to 50 agents"
 echo "  ./install.sh --ultracode=small             # same, under 5 agents"
+echo ""
+echo "Optional — context policy (autoCompactWindow 350000; opt-in while it is measured):"
+echo "  ./install.sh --context-policy              # write it, only where you have not set your own"
+echo "  ./install.sh --no-context-policy           # remove it, only if Clade wrote it"
+echo "  python3 ~/.claude/scripts/context-policy.py status   # owner, shadowing, Codex/Kimi report"
 echo ""
 echo "If Clade saves you time, a star helps others find it:"
 echo "  https://github.com/shenxingy/Clade"

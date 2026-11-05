@@ -11,12 +11,13 @@
 3. [Tuning](#tuning)
 4. [Control-plane authentication](#control-plane-authentication)
 5. [Standing multi-agent orchestration](#standing-multi-agent-orchestration)
-6. [Add a correction rule manually](#add-a-correction-rule-manually)
-7. [Conversation-mode projects](#conversation-mode-projects)
-8. [Adjust quality gate thresholds](#adjust-quality-gate-thresholds)
-9. [Add a new hook](#add-a-new-hook)
-10. [Add a new agent](#add-a-new-agent)
-11. [Add a new skill](#add-a-new-skill)
+6. [Context window policy](#context-window-policy)
+7. [Add a correction rule manually](#add-a-correction-rule-manually)
+8. [Conversation-mode projects](#conversation-mode-projects)
+9. [Adjust quality gate thresholds](#adjust-quality-gate-thresholds)
+10. [Add a new hook](#add-a-new-hook)
+11. [Add a new agent](#add-a-new-agent)
+12. [Add a new skill](#add-a-new-skill)
 
 ---
 
@@ -180,6 +181,157 @@ above; `--recorded-before WHEN` keeps only the rows a statement was made from.
 `--outcome` prints, per end of each finished run, what the owner typed in its
 lead session in the 6 hours after it, as JSONL with `label: null` for weekly
 labelling by hand.
+
+## Context window policy
+
+**Opt-in, and not yet shown to cost nothing in quality.** One settings key makes
+Claude Code compact a 1M-context session at about 317K tokens instead of 967K:
+
+```bash
+./install.sh --context-policy        # write it (only where you have not set your own)
+./install.sh --no-context-policy     # remove it (only if Clade wrote it)
+CLADE_CONTEXT_POLICY=on|off ./install.sh   # the same, for scripted installs
+python3 ~/.claude/scripts/context-policy.py status   # who owns it, what shadows it
+```
+
+**What is written.** A top-level integer in `~/.claude/settings.json`:
+
+```json
+{ "autoCompactWindow": 350000 }
+```
+
+Compaction fires at the window minus `min(maxOut, 20000)` minus 13,000, so
+350,000 − 33,000 = 317,000 on Opus 5.5 (formula read in the 2.1.283 and
+2.1.318 binaries). Claude Code caps the value at the model's own window, so it
+is a no-op on 200K models. Clade never writes `CLAUDE_CODE_AUTO_COMPACT_WINDOW`,
+`CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`, `modelSettings`, managed settings or a
+`--autocompact` wrapper, and never sets or clears `DISABLE_AUTOUPDATER`.
+
+**Why 350000.** A replay of 30 days of transcripts on the author's host, to
+2026-11-05, both profiles — 224 main and 5,891 subagent threads, 82.0B tokens,
+$32.2K at list price — with behaviour held fixed:
+
+| Window | Saving at list price | Compactions |
+|---|---|---|
+| 300K | $3,885 (12.1%) | 2,416 |
+| **350K** | **$3,734 (11.6%)** | **1,371** |
+| 400K | $3,304 (10.3%) | 827 |
+
+350K keeps 96% of the 300K saving with 43% fewer compactions, and it is the
+robust pick across the five simulation variants: it saves at least $2,732 in
+every one, with a maximum regret of $545 (300K: at least $2,062, regret $670).
+Fewer compactions matter because each one costs something: the 23 real
+compactions in that window (all near 967K) were followed by +2.10 pp tool errors
+over 30 turns [+0.49, +4.02].
+On quota, a fitted weight for a cache read of about 0.028× an uncached input
+token (95% CI 0.022–0.036) puts the main-thread quota saved at 37.4% for 300K and
+33.1% for 400K, against 30.3% for 200K; 350K itself was not simulated under that
+weight. The full record is the `measurement` block of
+[`configs/context-policy.json`](../configs/context-policy.json).
+
+Confidence: **cost MEDIUM-HIGH, quota MEDIUM, quality LOW-MEDIUM.** No session
+in the data ever compacted near 317K, so "no performance loss" rests on indirect
+evidence. That is why it is opt-in: the trial and its rollback thresholds are in
+[TODO.md](../TODO.md#2026-11-05-context-policy-follow-ups), and the default
+flips only after it passes.
+
+**Subagents share the value.** On 2.1.283 a subagent inherits the main window,
+and no setting separates them, so this one value serves both. The simulation
+saves subagents $1,873 (6.9%) at 350K, with 1,130 compactions in 934 of 5,891
+agents, and turns against them lower down: at 200K they cost 16.9% more quota
+under the fitted weight. Do not lower it below 300K while they share it.
+
+**Your value always wins.** Clade records what it wrote in
+`~/.claude/.clade-context-state.json` and changes or removes the key only while
+settings.json still holds exactly that value:
+
+- a value you set (by hand or `/autocompact N`) is yours: never rewritten, and
+  `--no-context-policy` leaves it alone. Clade records that it is yours, so
+  deleting it later does not hand the slot back;
+- a key you delete (or `/autocompact auto` on 2.1.283), whether Clade wrote it
+  or you did, is recorded and never re-added, until you run
+  `./install.sh --context-policy` again;
+- your on/off choice persists, because `fleet-install.sh` runs `./install.sh`
+  with no arguments;
+- `./uninstall.sh` retracts the value the same way `--no-context-policy` does
+  and removes the record. If the Claude Code version cannot be read it removes
+  nothing and keeps the record, the only proof that the value is Clade's.
+
+**Precedence, by Claude Code version.**
+
+- **2.1.283 (installed on aries):** `/autocompact N` overwrites this same key and
+  `/autocompact auto` deletes it, so the ownership check above is what protects
+  your choice. `modelSettings[model].autoCompactWindow` is ignored.
+- **2.1.288 and later** (2.1.318 read from the binary, not run): the top-level key
+  becomes the cross-model default. A per-model `/autocompact` value wins over it,
+  and `/autocompact auto` writes a per-model `auto` that falls back to the 967K
+  default without touching Clade's key.
+- The env var and managed settings outrank it, and so does a per-launch
+  `--autocompact` flag (read in 2.1.318); from 2.1.296 subagent frontmatter can
+  lower it further.
+- **On both versions it outranks a window Anthropic sets for your account
+  server-side, so Clade steps aside for one.** The 2.1.283 binary's window
+  resolver checks the env var, then this settings key, then the `clientdata`
+  tier, then the experiment tier. Claude Code caches the `clientdata` window in
+  its global config, per model, as `autoCompactWindowsCache` or as
+  `rowan_thicket` in the client-data cache (`clientDataCacheSlots.<slot>.data`,
+  or the legacy `clientDataCache`). While either is a non-empty object, Clade
+  removes a value it wrote and writes none (a value you set is left alone), and
+  `status` lists the cache under "shadowed by" and prints no compaction point.
+  Once the cache is null or empty again, the next install writes the value back.
+  The files read are `~/.claude.json` (beside `~/.claude`),
+  `$CLAUDE_CONFIG_DIR/.claude.json`, and the legacy `.config.json` in the config
+  directory, which 2.1.283 reads first when it exists; one that is absent,
+  unreadable or invalid is no signal. This is **best-effort**: the cache names
+  are undocumented and were read from the 2.1.283 binary, so a later version
+  that renames them goes unseen, and the experiment tier is not detected at all.
+  The fallback is the version check: on a Claude Code newer than the verified
+  one, `status` prints a NOTICE to re-verify, a follow-up in
+  [TODO.md](../TODO.md#2026-11-05-context-policy-follow-ups).
+
+**It steps aside** — writes nothing — when any more specific mechanism is
+present: `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`,
+`DISABLE_COMPACT` or `DISABLE_AUTO_COMPACT` (in settings `env` or the install
+environment), `autoCompactEnabled: false`, any `modelSettings.*.autoCompactWindow`,
+or managed settings that set `autoCompactWindow` or any of these. Managed
+settings means `managed-settings.json` and the `managed-settings.d/*.json`
+drop-ins beside it (dot-files skipped, as Claude Code skips them), and a
+managed file, or a `managed-settings.d` directory, that exists but cannot be
+read counts as setting all of them. It also writes nothing while a server-side
+window is cached (above).
+
+**It fails closed.** `claude` is looked up on PATH, then in `~/.local/bin` and
+`~/.claude/local` by path, because `fleet-install.sh` runs `./install.sh` over a
+non-interactive SSH shell that never sources the rc file adding `~/.local/bin`
+to PATH. The version comes from every line of `claude --version` (stdin closed,
+10 s timeout), else from a `.../versions/X.Y.Z` install path. Unknown, or below
+2.1.236, means nothing is written and nothing is removed. A version newer than `verified_through_cc_version` (2.1.283) still
+gets the value, which is documented and schema-checked, plus a notice to
+re-verify. `status` prints the same comparison and names
+`https://code.claude.com/docs/en/model-config` as the page to re-check; nothing
+here touches the network. It prints a compaction point only when nothing
+shadows the key, and for a value outside 100,000–1,000,000 (which Claude Code
+drops) it prints the default point, not one computed from the dropped value. A maintainer withdraws the value fleet-wide by setting
+`retire_from_cc_version`: the next install at or above that version removes the
+Clade-owned value and only that.
+
+**Codex and Kimi: report-only.** `status` reads a few non-secret keys of
+`~/.codex/config.toml` and `~/.kimi-code/config.toml`, prints where each
+compacts, and writes nothing to either.
+
+- **Codex** (derived on codex 0.166.0): gpt-6-astra already compacts at 244,800,
+  90% of its 272,000 window. No change.
+- **Kimi** (derived on kimi 2.2.0): k3 compacts at 891,290 (0.85 × 1,048,576).
+  Deferred while Kimi is idle. The manual option, if you want it, is a per-model
+  override that survives a model refresh:
+
+  ```toml
+  [models."kimi-code/k3".overrides]
+  max_input_size = 350000   # compacts at 297,500; also applies to k3 subagents (not simulated)
+  ```
+
+  Never use the global `compaction_trigger_ratio` or `reserved_context_size`:
+  they hit every model, and the ratio's floor of 0.5 cannot reach 350K.
 
 ## Add a correction rule manually
 

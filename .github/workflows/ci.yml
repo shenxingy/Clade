@@ -193,6 +193,19 @@ jobs:
       - name: Skill listing budget
         run: python3 configs/scripts/check-skill-listing.py
 
+      # configs/context-policy.json is the one value install.sh may write into
+      # a user's settings.json (`autoCompactWindow`, opt-in). Claude Code drops
+      # an out-of-range value silently (int 1e5-1e6, `.catch(void 0)`), so a
+      # bad edit would ship as a no-op nobody sees; --check refuses it, and
+      # a value whose measurement block names no population. The self-test
+      # runs `apply` and --check through the real CLI against fake claude
+      # binaries; its mutations live in orchestrator/tests/test_self_tests_can_fire.py.
+      - name: Context policy file
+        run: python3 configs/scripts/context-policy.py --check
+
+      - name: Context policy self-test (can it go red?)
+        run: python3 configs/scripts/context-policy.py --self-test
+
       # Reports, never blocks. Five convergence rounds found 61, 25, 34, - and
       # 23 issues, and the count would not fall because 43% of each round were
       # SIBLINGS of the previous round's own fixes: a fact corrected in the file
@@ -509,6 +522,13 @@ jobs:
       # Cross-Project Rules surviving reinstall, settings merge, symlinks
       - name: Run install test
         run: bash tests/test-install.sh
+
+      # install.sh §8d, the opt-in context policy: ownership by the sidecar,
+      # step-aside, fail-closed version detection, symlink-safe writes, Codex
+      # and Kimi untouched, then a guard-mutation suite. Its own step, not in
+      # shell-tests, because it runs install.sh against a throwaway $HOME.
+      - name: Run context-policy install test
+        run: bash tests/test-context-policy-install.sh
 
   # Nothing told this repo when a pinned dependency became vulnerable, and the
   # first run's answer was not "slightly behind": fastapi==0.131.0 required
