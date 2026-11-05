@@ -208,6 +208,22 @@ if command -v mypy >/dev/null 2>&1 && ! command -v pyright >/dev/null 2>&1; then
   run_post_edit "$PROJ/pkgrel/mod.py"
   assert_eq "$RC" "0" "a package module's old error is not new after an edit (relative import resolved)"
   git -C "$PROJ" checkout -- pkgrel/mod.py
+  # mypy stops on a module clash before checking anything when a test imports a sibling both by bare name and through
+  # its directory ("Source file found twice under different module names", docforensics tests, 2026-11-04). A clash
+  # the HEAD version already has is the layout's, not the edit's: silent. A clash the edit introduces is reported.
+  mkdir -p "$PROJ/clash"
+  printf 'X: int = 1\n' > "$PROJ/clash/test_b.py"
+  printf 'from test_b import X\nimport clash.test_b\n\nY = X\n' > "$PROJ/clash/test_a.py"
+  printf 'from test_b import X\n\nZ = X\n' > "$PROJ/clash/test_c.py"
+  git -C "$PROJ" add clash && git -C "$PROJ" commit -qm "clash fixture" >/dev/null
+  printf 'from test_b import X\nimport clash.test_b\n\nY = X\n\n\ndef more() -> int:\n    return Y\n' > "$PROJ/clash/test_a.py"
+  run_post_edit "$PROJ/clash/test_a.py"
+  assert_eq "$RC" "0" "a module clash the HEAD version already has is not reported after an edit"
+  git -C "$PROJ" checkout -- clash/test_a.py
+  printf 'from test_b import X\nimport clash.test_b\n\nZ = X\n' > "$PROJ/clash/test_c.py"
+  run_post_edit "$PROJ/clash/test_c.py"
+  assert_eq "$RC" "2" "a module clash the edit introduces is still reported"
+  git -C "$PROJ" checkout -- clash/test_c.py
   # A crashed checker has no error line to compare: it must still wake Claude, never be filtered to silence.
   CRASH_BIN="$TMP_ROOT/crash-mypy-bin"; mkdir -p "$CRASH_BIN"
   printf '#!/bin/sh\necho "Traceback (most recent call last):"\necho "RuntimeError: fake mypy crash"\nexit 2\n' > "$CRASH_BIN/mypy"
