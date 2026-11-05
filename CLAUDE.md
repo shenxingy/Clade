@@ -19,6 +19,7 @@
 - committer: `committer "type: msg" file1 file2` stages only named files and commits
 - loop-runner.sh: runs background loop — supervisor plans tasks, workers execute in parallel via worktrees
 - /tasks: imports a shared Beads dependency graph, atomically claims ready work, and releases downstream tasks only after explicit acceptance; see docs/reference/shared-tasks.md
+- context policy: `./install.sh --context-policy` writes top-level `autoCompactWindow: 350000` into `~/.claude/settings.json` only where the key is absent and records it in `~/.claude/.clade-context-state.json`; a plain `./install.sh` writes nothing (opt-in until measured), a value the user set is never touched again, a key the user deleted is not re-added until the next `--context-policy`, `--no-context-policy` (or `./uninstall.sh`) removes only a Clade-owned value, and while Claude Code's `.claude.json` caches a server-side window (`autoCompactWindowsCache`, `rowan_thicket`) it retracts its own value and writes none; see docs/configuration.md#context-window-policy
 
 ## What This Project Is
 
@@ -168,6 +169,11 @@ python3 configs/scripts/workflow-scorecard.py --outcome          # JSONL, label:
 # the session source. This counts the children, and its self-test distinguishes
 # a real zero from an unreadable state file.
 python3 configs/scripts/workflow-scorecard.py --codex-children
+
+# Context window policy (opt-in): who owns autoCompactWindow, what shadows it, the installed
+# Claude Code against the version the policy was verified through, and Codex/Kimi report-only.
+# Read-only and offline. Opt in/out with ./install.sh --context-policy / --no-context-policy.
+python3 configs/scripts/context-policy.py status
 
 # Native Codex plugin — regenerate after changing a shipped canonical skill
 python3 configs/scripts/regen-codex-plugin.py
@@ -647,6 +653,21 @@ python3 configs/scripts/regen-settings-example.py --check   # regenerate without
 #     the file into ~/.claude/settings.json, the user's own entries winning.
 python3 configs/scripts/regen-skill-overrides.py --check      # regenerate without --check
 
+# 8d. Context policy file + self-test — configs/context-policy.json holds the one
+#     value install.sh may write into a user's settings.json (`autoCompactWindow`
+#     350000, opt-in, §8d). Claude Code drops an out-of-range value silently
+#     (int 1e5–1e6 with `.catch(void 0)` in the 2.1.236–2.1.283 schema), so a bad
+#     edit would ship as a no-op nobody sees; --check refuses it, an unparseable
+#     version bound, a retire_from at or below the floor, a Codex/Kimi mode other
+#     than report-only, and a value whose measurement block names no population.
+#     --self-test (controls in context_policy_selftest.py) runs `apply` and
+#     --check through the real CLI against fake `claude` binaries, including a
+#     server-side window cached in .claude.json (retract, write nothing) and a
+#     null or empty cache (write), and counts a step only when apply exited 0;
+#     its mutations are in test_self_tests_can_fire.py.
+python3 configs/scripts/context-policy.py --check
+python3 configs/scripts/context-policy.py --self-test
+
 # 9. Architecture map coverage — every orchestrator module listed in this file
 python3 configs/scripts/check-arch-map.py
 
@@ -731,6 +752,16 @@ done
 # 13. The install-test job (its own CI job, not part of shell-tests)
 bash tests/test-install.sh
 
+# 13b. Same job: install.sh §8d, the opt-in context policy, against a throwaway
+#      $HOME with fake `claude` binaries on PATH — sidecar ownership, a user
+#      value or deletion never touched, step-aside for every skip_when and for
+#      managed files and drop-ins, retract-and-write-nothing while .claude.json
+#      caches a server-side window, fail closed on an unreadable version,
+#      symlink- and mode-preserving writes, ~/.codex and ~/.kimi-code
+#      byte-identical to an install.sh without §8d, uninstall.sh. Its last suite
+#      removes each guard from a copy of context-policy.py and requires red.
+bash tests/test-context-policy-install.sh
+
 # 14. Plugin manifest validator + component resolution (separate workflow;
 #     both need the claude CLI). --strict checks the manifest against a schema
 #     and is blind to a schema-valid manifest that resolves nothing, which is
@@ -771,7 +802,7 @@ commit too.**
 
 On push/PR to `main`, four workflow files fire:
 
-- `ci.yml` — `syntax-check` (24 gates), `pytest` (suite + 2 offline evals),
+- `ci.yml` — `syntax-check` (26 gates), `pytest` (suite + 2 offline evals),
   `shell-tests` (27 suites), `install-test`. `run_hack_eval.py` scores
   `judge_diversity.test_integrity` against the labelled reward-hack corpus in
   `evals/hack_cases/` — read its README before changing either, because that

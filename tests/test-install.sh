@@ -97,6 +97,17 @@ cp "$SRC/docs/facts.json" "$SANDBOX/facts-before-install.json"
 echo "Sandbox: $SANDBOX"
 echo "Fake HOME: $HOME"
 
+# Hermetic Claude Code. install.sh §8d (context policy) runs `claude --version`
+# whenever it has something to write or retract. A developer machine has a real
+# claude on PATH and CI's install-test job has none, so the same run would take
+# two paths; shadow it with a claude that is never there. The context policy's
+# own behaviour is pinned in tests/test-context-policy-install.sh.
+NO_CLAUDE_BIN="$SANDBOX/no-claude-bin"
+mkdir -p "$NO_CLAUDE_BIN"
+printf '#!/usr/bin/env bash\necho "claude: command not found" >&2\nexit 127\n' > "$NO_CLAUDE_BIN/claude"
+chmod +x "$NO_CLAUDE_BIN/claude"
+export PATH="$NO_CLAUDE_BIN:$PATH"
+
 # A shell rc file so the alias step has something to append to
 touch "$HOME/.bashrc"
 

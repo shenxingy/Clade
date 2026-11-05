@@ -9,7 +9,8 @@
 #   - ~/.claude/CLAUDE.md (may contain user content + auto-promoted rules)
 #   - ~/.claude/orchestrator-settings.json (user overrides; only the .example is removed)
 #   - Skills/agents/hooks not shipped by this repo
-#   - Non-hook settings in settings.json (env, permissions)
+#   - Non-hook settings in settings.json (env, permissions), and an
+#     autoCompactWindow the user set (only a Clade-owned one is retracted, §3b)
 
 set -euo pipefail
 
@@ -73,6 +74,25 @@ done
 rm -f "$CLAUDE_DIR/available_skills.md" "$CLAUDE_DIR/agents/available-skills.md"
 echo "  Removed: $removed skills (+ available_skills.md)"
 
+# ─── 3b. Retract the context policy (mirror of install.sh §8d) ───────
+# Before step 4 removes the scripts. `context-policy.py uninstall` removes
+# autoCompactWindow only if Clade wrote it and settings.json still holds exactly
+# that (a value the user set stays), then deletes the sidecar — unless the
+# Claude Code version was unreadable, which retracts nothing: the sidecar is
+# then kept as the only record that the value is Clade's.
+
+echo "Retracting the context policy..."
+if [[ ! -f "$CLAUDE_DIR/.clade-context-state.json" ]]; then
+  echo "  Nothing to retract (never applied)"
+elif command -v python3 &>/dev/null; then
+  python3 "$SCRIPT_DIR/configs/scripts/context-policy.py" uninstall --claude-dir "$CLAUDE_DIR" \
+    --policy "$SCRIPT_DIR/configs/context-policy.json" \
+    || echo "  WARNING: context policy retract failed; settings.json left as it was"
+else
+  echo "  Skipped (no python3): autoCompactWindow and ~/.claude/.clade-context-state.json left in place"
+fi
+rm -f "$CLAUDE_DIR/context-policy.json"
+
 # ─── 4. Remove scripts + symlinks (mirror of install.sh §5, §6b) ─────
 
 echo "Removing scripts..."
@@ -131,7 +151,7 @@ if [[ -d "$SCRIPT_DIR/configs/templates" && -d "$CLAUDE_DIR/templates" ]]; then
   echo "  Removed: templates/"
 fi
 
-# ─── 6b. Remove output styles (mirror of install.sh §8d) ─────────────
+# ─── 6b. Remove output styles (mirror of install.sh §6c-2) ───────────
 # Named files only, never the directory: it is the one place a user keeps
 # hand-authored styles beside the shipped ones, and install.sh deliberately
 # activates none of them. Missing entirely until 2026-09-12, so an uninstall
@@ -198,6 +218,7 @@ echo "Preserved:"
 echo "  - ~/.claude/corrections/ (user data)"
 echo "  - ~/.claude/CLAUDE.md (may contain user content + auto-promoted rules)"
 echo "  - ~/.claude/orchestrator-settings.json (user overrides)"
-echo "  - ~/.claude/settings.json (env, permissions — hooks/statusLine removed)"
+echo "  - ~/.claude/settings.json (env, permissions — hooks/statusLine removed;"
+echo "    autoCompactWindow removed only if Clade wrote it, kept if you set it)"
 echo "  - Skills/agents/hooks not shipped by this repo"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
