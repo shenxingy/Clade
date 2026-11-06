@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # auto-audit.sh — Programmatic rule promotion, archival, and cross-project aggregation
+# exists-for: no incident recorded (added 2026-04-13 in 13ce001); need: date-based promotion, dedup and archival of corrections/rules.md without waiting for a manual /audit · retire-when: the ablation in TODO.md 'Promoted rules have no half-life' shows promoted rules buy nothing, or nothing writes corrections/rules.md any more
 #
 # Called from session-context.sh when:
 #   1. .last-audit > 7 days old

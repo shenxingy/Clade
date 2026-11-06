@@ -1,5 +1,6 @@
 #!/bin/bash
 # stop-check.sh — Verify this session left a clean slate before stopping.
+# exists-for: no incident recorded (added 2026-04-08 in 98ae371; Hooks gap 3, docs/archive/BRAINSTORM-resolved.md); need: refuse a false-done stop that leaves this session's changes uncommitted · retire-when: only after an ablation shows sessions end with no more uncommitted work without it
 #
 # Session-scoped: only flags dirty files that appeared or changed status
 # DURING this session. Files already dirty at session start (e.g., from a

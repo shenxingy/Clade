@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # linter-config-guard.sh — PreToolUse hook (Edit|Write)
+# exists-for: no incident recorded (added 2026-04-08 in 8df8f49, ECC Plankton pattern; inert until 2026-09-12, 5c1ed0c); need: stop an agent silencing a check by editing its linter config · retire-when: only after an ablation shows agents leave linter, formatter and type-checker configs alone without it; it blocks, so a quiet log is no evidence
 # Blocks modifications to linter/formatter/type-checker config files.
 # ECC Plankton pattern: protect code-quality tooling from being silenced by LLMs.
 #

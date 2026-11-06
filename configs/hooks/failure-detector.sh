@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # failure-detector.sh — PostToolUse hook: track consecutive Bash failures → inject debugging pressure
+# exists-for: no incident recorded (added 2026-03-27 in d702c05, adapted from pua); need: break a spin of 2+ consecutive failing Bash commands · retire-when: an ablation shows sessions without it repeat a failing command no more often
 #
 # Counts consecutive Bash command failures per session. When a command fails 2+ times
 # in a row, injects escalating debugging guidance to break spinning patterns.

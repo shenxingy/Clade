@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # session-baseline.sh — SessionStart hook
+# exists-for: parallel sessions on one repo deadlocked: one window's uncommitted files tripped stop-check in another (fixed 2026-04-15 in 562bccb) · retire-when: stop-check.sh retires; it is the only reader of the baseline
 #
 # Captures git dirty state at session start so stop-check.sh can compute
 # session-scoped deltas — i.e., only block stops on changes THIS session

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # wf-reader-guard.sh — make the wf-reader agent's Bash read-only, by control
+# exists-for: wf-reader's 'read, never change' was an instruction only: under a bypassPermissions parent its Bash ran anything (Claude Code 2.1.283; added 2026-10-24 in ca92254, #160) · retire-when: Claude Code enforces an agent's frontmatter permissions under a bypass parent (verify in the installed binary), or wf-reader is retired
 #
 # Triggered: PreToolUse (matcher: Bash), wired ONLY in the `hooks:` frontmatter
 #            of configs/agents/wf-reader.md — never in settings-hooks.json.

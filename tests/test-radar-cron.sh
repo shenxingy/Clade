@@ -7,7 +7,8 @@
 # run that wrote them. radar-cron.sh now gives the agent its own worktree on a
 # radar/<date> branch, verifies what it changed (bash -n; the suites that name a
 # changed file, in a bubblewrap sandbox), commits to that local branch, removes
-# the worktree, and never pushes.
+# the worktree, and never pushes. After the sweep it runs keep-sessions.py
+# --apply, whose failure or hang is logged and never fails the run (§7).
 #
 # A stub stands in for claude: it records its cwd and edits files in it, the
 # way the agent does. Nothing here reaches the network or a model.
@@ -62,6 +63,10 @@ cat > "$T/claude" <<'EOF'
 pwd -P >> "$STUB_LOG"
 d="${CLADE_RADAR_DATE}"
 stage=".radar-staged"; [[ -d "$stage" ]] || stage="."
+# What Lane D handed over: the prompt, and the report as it stood when the agent ran.
+printf '%s\n' "$1" > "$STUB_LOG.prompt"
+rm -f "$STUB_LOG.friction"
+[[ -s "$stage/friction-$d.txt" ]] && cp "$stage/friction-$d.txt" "$STUB_LOG.friction"
 printf '# digest %s\n' "$d" > "$stage/radar-$d.md"
 printf 'new-concept (%s)\n' "$d" > "$stage/known-concepts-append-$d.md"
 case "${STUB_MODE:-edit}" in
@@ -75,7 +80,9 @@ EOF
 chmod +x "$T/claude"
 
 run_cron() {  # run_cron <date> <mode>
-  CLADE_CLAUDE_BIN="$T/claude" CLADE_RADAR_DATE="$1" STUB_MODE="$2" STUB_LOG="$T/stub.log" \
+  # An empty CLAUDE_CONFIG_DIR means ~/.claude: Lane D's scan must not reach the
+  # transcripts of the session running this suite.
+  CLAUDE_CONFIG_DIR= CLADE_CLAUDE_BIN="$T/claude" CLADE_RADAR_DATE="$1" STUB_MODE="$2" STUB_LOG="$T/stub.log" \
     CLADE_RADAR_LOCK="$T/radar.lock" CLADE_RADAR_WORKTREES="$T/wts" \
     bash "$CRON" >/dev/null 2>&1
 }
@@ -157,6 +164,65 @@ check "a session in the kit names radar/2026-01-05" '[[ "$SC_OUT" == *"radar/202
 mkdir -p "$T/other" && git -C "$T/other" init -q
 SC_OTHER=$(cd "$T/other" && printf '{"session_id":"t"}' | CLAUDE_PROJECT_DIR="$T/other" bash "$SESSION_HOOK" 2>/dev/null)
 check "a session in another repository does not" '[[ "$SC_OTHER" != *"radar/2026-01-05"* ]]'
+
+# ─── 7. Lane D: the wrapper runs what the agent cannot ───────────────
+section "Lane D's verdict ranking is made before the sweep and named in the prompt"
+check "with no transcripts, the prompt says Lane D was NOT MEASURED" \
+  'grep -q "Lane D was NOT MEASURED" "$T/stub.log.prompt"' "prompt: $(head -c 400 "$T/stub.log.prompt" 2>/dev/null)"
+NOW_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+mkdir -p "$HOME/.claude/projects/-p"
+cat > "$HOME/.claude/projects/-p/s1.jsonl" <<EOF
+{"type":"assistant","timestamp":"$NOW_TS","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"sleep 60"}}]}}
+{"type":"user","timestamp":"$NOW_TS","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"<tool_use_error>Blocked: sleep 60","is_error":true}]},"toolUseResult":"Error: Blocked"}
+EOF
+run_cron 2026-01-26 none
+check "the report was in the agent's staging dir when it ran" \
+  'grep -q "is_error · Bash:sleep" "$T/stub.log.friction"' "report: $(head -c 400 "$T/stub.log.friction" 2>/dev/null)"
+check "and the prompt names it, with no NOT MEASURED" \
+  'grep -q "friction-2026-01-26.txt" "$T/stub.log.prompt" && ! grep -q "NOT MEASURED" "$T/stub.log.prompt"'
+# Monday 08:07 is hours into the ISO week: the current week alone would be a
+# near-empty held-out column, which SKILL.md tells the grader reads as a burst.
+check "the report holds out two ISO weeks, not the hours of the current one" \
+  'grep -Eq "held out: [0-9]{4}-W[0-9]{2}, [0-9]{4}-W[0-9]{2} \(" "$T/stub.log.friction"' \
+  "report: $(grep -m1 "held out" "$T/stub.log.friction" 2>/dev/null)"
+
+# ─── 8. the weekly run keeps corrected sessions, and never fails for it ──
+# keep-sessions.py runs LAST, after the sweep, with --apply. A failure or a hang
+# is logged and changes neither the sweep nor the wrapper's exit status.
+section "keep-sessions runs after the sweep and cannot fail it"
+KS_SID="0f0f0f0f-1111-2222-3333-444444444444"
+KS_TRANSCRIPT="$HOME/.claude/projects/-kit/$KS_SID.jsonl"
+mkdir -p "$(dirname "$KS_TRANSCRIPT")" "$HOME/.claude/corrections"
+printf '{"type":"user","sessionId":"%s","message":{"content":"no, use the other one"}}\n' "$KS_SID" > "$KS_TRANSCRIPT"
+printf '{"timestamp":"2026-01-26T08:07:00Z","prompt":"no","project":"%s","type":"explicit","session_id":"%s","transcript_path":"%s"}\n' \
+  "$T/kit" "$KS_SID" "$KS_TRANSCRIPT" > "$HOME/.claude/corrections/history.jsonl"
+KS_KEPT="$HOME/.local/share/clade/sessions/$KS_SID"
+LOG_FILE="$HOME/.claude/research/radar-cron.log"
+run_cron 2026-01-26 none; KS_RC=$?
+check "the corrected session was kept" '[[ -f "$KS_KEPT/transcript.jsonl.gz" && -f "$KS_KEPT/manifest.json" ]]'
+check "the log carries its one-line summary" 'grep -q "KEEP-SESSIONS keep-sessions: kept 1 session (1 new" "$LOG_FILE"' \
+  "log tail: $(tail -n 3 "$LOG_FILE")"
+check "it ran after the sweep finished" \
+  '[[ $(grep -n "KEEP-SESSIONS keep-sessions: kept" "$LOG_FILE" | tail -n1 | cut -d: -f1) -gt $(grep -n "] DONE$" "$LOG_FILE" | tail -n1 | cut -d: -f1) ]]'
+check "the wrapper exits 0" '[[ $KS_RC -eq 0 ]]' "exit $KS_RC"
+
+printf 'import sys\nprint("boom: could not keep")\nsys.exit(3)\n' > "$T/failing-keep.py"
+: > "$T/stub.log"
+CLADE_KEEP_SESSIONS="$T/failing-keep.py" run_cron 2026-02-02 none; KS_RC=$?
+check "a failing keep-sessions is logged with its exit code" 'grep -q "KEEP-SESSIONS FAILED rc=3 (the sweep is unaffected): boom" "$LOG_FILE"'
+check "the sweep still ran" '[[ -s "$T/stub.log" ]] && [[ -f "$HOME/.claude/research/radar-2026-02-02.md" ]]'
+check "and the wrapper still exits 0" '[[ $KS_RC -eq 0 ]]' "exit $KS_RC"
+
+if command -v timeout >/dev/null 2>&1; then
+  printf 'import time\ntime.sleep(30)\n' > "$T/hanging-keep.py"
+  KS_START=$(date +%s)
+  CLADE_KEEP_SESSIONS="$T/hanging-keep.py" CLADE_KEEP_SESSIONS_TIMEOUT=1 run_cron 2026-02-09 none; KS_RC=$?
+  check "a hanging keep-sessions is cut off by the timeout" '[[ $(( $(date +%s) - KS_START )) -lt 25 ]]'
+  check "and logged as rc=124" 'grep -q "KEEP-SESSIONS FAILED rc=124" "$LOG_FILE"'
+  check "and the wrapper still exits 0" '[[ $KS_RC -eq 0 ]]' "exit $KS_RC"
+else
+  skip "a hanging keep-sessions is cut off" "no timeout(1) on this host"
+fi
 
 # ─── Summary ─────────────────────────────────────────────────────────
 printf "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
