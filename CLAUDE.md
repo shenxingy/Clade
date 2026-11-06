@@ -628,7 +628,7 @@ python3 configs/scripts/check-workflow-script.py --self-test
 #     symlink out of a session, or copied a session marked private would still
 #     print "kept N sessions". The self-test drives main() on a synthetic HOME
 #     with a negative control per exclusion, under umask 022 so the 0700/0600
-#     checks can fail; its 35 mutations are in
+#     checks can fail; its mutations are in
 #     orchestrator/tests/can_fire/keep_sessions.py, which
 #     test_self_tests_can_fire.py loads.
 python3 configs/scripts/keep-sessions.py --self-test

@@ -2464,7 +2464,7 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   any root. Dirs are 0700 and files 0600. A `--dest` inside a config dir or the sync store is
   refused. Private sessions are skipped: a `private-sessions` marker under any profile, a
   conversation-mode project, or `private-projects`. `radar-cron.sh` calls it last, weekly, and
-  it cannot fail the sweep. `--self-test` has 35 mutations, all red, in
+  it cannot fail the sweep. `--self-test` has 36 mutations, all red, in
   `orchestrator/tests/can_fire/keep_sessions.py`. Not done, each a separate decision:
   - Records written before Step 1 (all 1,625 non-probe records on the author's host on
     2026-11-06) carry no link and stay unlinkable. Matching `project` and `timestamp` against
