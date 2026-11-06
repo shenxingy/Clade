@@ -89,36 +89,43 @@ code." `--holdout DIR` adds a gate kept outside it:
   into another worktree of it, an empty DIR and an empty `--holdout` value are
   refused before anything runs.
 - Each top-level executable file in DIR is a scenario. It runs after the verify
-  node with cwd = the checkout root and stdin closed; exit 0 = satisfied, and
-  a scenario still running after 120 s is cut off and fails
-  (`CLADE_LOOP_HOLDOUT_TIMEOUT=N` changes the bound). Non-executable files are
-  notes and do not run.
+  node with cwd = the checkout root and stdin closed; exit 0 = satisfied. A
+  scenario still running after 120 s is cut off and fails
+  (`CLADE_LOOP_HOLDOUT_TIMEOUT=N` changes the bound): the loop's own watchdog
+  (python3, so no `timeout`/`gtimeout` is needed, stock macOS included) sends
+  SIGTERM to its whole process group, then SIGKILL 5 s later. Other files —
+  fixtures, expected outputs, helpers, notes — do not run.
 - A scenario must not write into the checkout. Whatever the scenarios create,
   change or delete there (tracked or untracked, ignored files aside) is put
-  back after they run and logged, so the iteration's commit cannot carry it.
-  The loop's own `.claude/`, log directory and state file are left alone.
+  back after they run, so the iteration's commit cannot carry it. The git
+  index is put back byte for byte, so skip-worktree (sparse checkout) and
+  intent-to-add entries survive. The loop's own `.claude/`, log directory and
+  state file are left alone.
 - A failing scenario keeps the iteration out of goal reconciliation and keeps
   the run from converging, even when the checklist is ticked. So does a set
   that can no longer run (deleted, or no longer executable).
-- Scenario names, paths and contents never enter a prompt: the supervisor sees
-  only "F of T held-out scenarios failed". Names and output go to the
-  human-facing `logs/loop/loop.log` and `logs/loop/iter-N-holdout.log`.
+- Scenario names, paths, contents and output never enter a prompt or any file
+  inside the checkout: the supervisor sees only "F of T held-out scenarios
+  failed", and `logs/loop/loop.log` and `last-progress` get counts (a failing
+  scenario is "scenario 2 of 3"). Names, exit codes, output and what was put
+  back go to `~/.claude/loop-holdout/<checkout>-<hash>/iter-N-holdout.log`,
+  outside the repository; the terminal is told the path at start and after
+  each check. `CLADE_LOOP_HOLDOUT_LOG_DIR` moves it, and is refused inside the
+  checkout, another worktree of it, or DIR.
 - A red holdout under a green `verify_cmd` logs `HOLDOUT FAILED — visible
-  verify_cmd passed`. A scenario added, removed or edited mid-run logs
-  `HOLDOUT CHANGED`; that iteration's pass does not count until the set passes
-  again unchanged, and the end-of-run report and `--status` say "scenario set
-  CHANGED mid-run at iteration N". A `verify_cmd` that changes after pre-flight
-  (including one deleted) is warned about once per change.
+  verify_cmd passed`. Any file under DIR added, removed, edited or chmod'ed
+  mid-run — a fixture or an expected output as much as a scenario, at any
+  depth — logs `HOLDOUT CHANGED`; that iteration's pass does not count until
+  the set passes again unchanged, and the end-of-run report and `--status`
+  say "scenario set CHANGED mid-run at iteration N". A `verify_cmd` that
+  changes after pre-flight (including one deleted) is warned about once per
+  change.
 
 Honest scope: the workers run as your user, so they can still read or write
-DIR by its absolute path. This makes the scenarios harder to rewrite, not
-impossible to rewrite. Never write the holdout path or a scenario into the goal
-file or a `--context` file: both are pasted into the supervisor prompt. The
-logs that do name DIR and every scenario, `loop.log` and `iter-N-holdout.log`,
-sit in `logs/loop` inside the checkout: no prompt carries them, but a worker is
-one `cat` away from them, and if `logs/` is not git-ignored a worker's commit
-can carry them into history. Keep `logs/` ignored, or pass `--log-dir` outside
-the checkout.
+DIR, and the holdout log, by absolute path. This makes the scenarios harder to
+rewrite, not impossible to rewrite. Never write the holdout path or a scenario
+into the goal file or a `--context` file: both are pasted into the supervisor
+prompt, and nothing checks them yet.
 
 Resume is explicit and fail-closed: the checkpoint must match the current
 checkout, goal path, branch, HEAD and `--holdout` directory. Resume with the

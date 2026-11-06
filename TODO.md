@@ -2521,12 +2521,27 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   scenario writes into the checkout is put back before the commit sweep; a pass on a scenario
   set that changed that iteration does not count, and the report and `--status` name the
   iteration; the per-scenario timeout is `CLADE_LOOP_HOLDOUT_TIMEOUT` (default 120 s).
-  `tests/test-loop-holdout.sh` (run by `tests/test-loop.sh`) carries the controls and 31 guard
-  mutations plus a no-op control.
+  Second review: nothing that names DIR or a scenario, and none of their output, is written
+  inside the checkout — names, exit codes, output and put-back paths go to
+  `~/.claude/loop-holdout/<checkout>-<hash>/` (`CLADE_LOOP_HOLDOUT_LOG_DIR`, refused inside
+  the checkout, a sibling worktree or DIR), and `loop.log`, `last-progress` and the resume
+  refusal in `loop.log` carry counts only; the change fingerprint covers every file under DIR
+  recursively (fixtures, expected outputs, helpers), by content and exec bit; the git index
+  is put back byte for byte instead of `read-tree`, which dropped skip-worktree and
+  intent-to-add entries (a sparse checkout's skipped files were then committed as deleted);
+  each scenario is bounded by a python3 watchdog that kills its whole process group, so no
+  `timeout`/`gtimeout` is needed (stock macOS ran scenarios unbounded), and `--holdout`
+  without python3 is refused. `tests/test-loop-holdout.sh` (run by `tests/test-loop.sh`)
+  carries the controls and 44 guard mutations plus a no-op control.
   Not done: scenario cwd = checkout root is unpinned by a mutation, because the loop itself
   runs from that root and the two cannot be told apart from the outside. Sandboxing workers
-  away from DIR is out of scope by design (same uid, see "Honest scope" below). The warning
-  when the goal or `--context` file names the holdout is the open item that follows.
+  away from DIR and the holdout log is out of scope by design (same uid, see "Honest scope"
+  below). The fingerprint does not follow a symlinked directory under DIR (it records the
+  target). A scenario's leftover child that outlives a scenario which exited normally is not
+  killed (only a cut-off scenario's group is). The supervisor and worker calls still use
+  `loop-runner.sh`'s `_timeout`, which runs unbounded with no `timeout`/`gtimeout` (the
+  scenario watchdog is holdout-only). The warning when the goal or `--context` file names
+  the holdout is the open item that follows.
   StrongDM's software factory, via
   Phelps, *When AI writes all the code* (2026-10-10): "A test, stored in the codebase, can be
   lazily rewritten to match the code." Every `/loop` gate lives in the tree a worker can merge

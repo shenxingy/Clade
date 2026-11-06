@@ -89,7 +89,7 @@ The loop runs as a deterministic + LLM hybrid state machine:
 [LLM] Fix node (if needed)  — one attempt to fix syntax failures
 [DET] Test sample           — runs CLAUDE.md verify_cmd if present
 [LLM] Final verify          — explicit pass required for completion evidence
-[DET] Holdout (--holdout)   — scenarios outside the repo; names never reach a prompt
+[DET] Holdout (--holdout)   — scenarios outside the repo; names never reach a prompt or the checkout
 [DET] Goal reconciliation  — coordinator marks exact task-bound goal items
 [DET] Commit changes        — sweeps leftovers and counts all worker commits
 [DET] Convergence check     — CONVERGED? max_iter? 3 consecutive empty iters?
@@ -247,8 +247,9 @@ Goal achieved → supervisor outputs STATUS: CONVERGED → loop exits.
 ## Rules
 
 - Resolve all paths to absolute before passing to script
-- With `--holdout DIR`: do NOT read DIR, list its files, or mention its path or
-  scenarios in `.claude/loop-context.md` or the goal file. Both reach the
+- With `--holdout DIR`: do NOT read DIR or the holdout log the runner names
+  (under `~/.claude/loop-holdout/`), list their files, or mention their paths
+  or scenarios in `.claude/loop-context.md` or the goal file. Both reach the
   supervisor prompt, and keeping the scenarios out of every prompt is the point.
   If the user asks for that, say why it defeats the holdout.
 - Always `run_in_background: true` — never block the session
