@@ -16,6 +16,9 @@
 #                           note and no rotation advice (the nag drew two
 #                           corrections in four days)
 #   settings-hooks.json     the wiring that makes all three reachable
+#   every configs/hooks/*.sh  one `# exists-for: … · retire-when: …` line near
+#                           the top, cross-checked against the wiring, with
+#                           mutations that must turn the check red
 #
 # Every path is redirected to throwaway dirs under /tmp; the real ~/.claude and
 # the real /tmp/claude-edit-shadows are never touched. No API calls.
@@ -1274,6 +1277,164 @@ printf -- '- [2026-10-22] x (edge-case): one rule\n' >> "$RU_FILE"
 RU_OUT=$( source "$REPO_ROOT/configs/hooks/lib/rule-utils.sh"; count_rules "$RU_FILE"; printf '%s' "$RULE_COUNT" )
 assert_eq "$RU_OUT" "1" "and 1 once a rule is added"
 rm -f "$RU_FILE"
+
+# ─── every hook names what it exists for and when it may retire ──────
+#
+# "Give every control an expiry condition, and write down the incident it
+# exists for" (Zaninotto, Marmelab, 2026-09-24). On 2026-11-05 a rough grep
+# found 18 of 35 hook headers naming no incident, and none saying when the hook
+# could go. Each configs/hooks/*.sh (lib/ excluded) now carries exactly one
+# line within its first 10:
+#   # exists-for: <incident or need, date, commit/PR> · retire-when: <condition>
+# A hook whose history records no incident says "no incident recorded (added
+# <date> in <sha>)" rather than inventing one. A retire-when that rests on zero
+# fires must name an ablation: a preventive guard that never fires may be
+# working, so silence alone only flags it for review.
+#
+# hp_problems prints one line per problem; no output means clean. The count
+# guard is the cross-check against settings-hooks.json: an empty or misdirected
+# glob would otherwise check nothing and print nothing, which reads as clean.
+# Every short sha must resolve to a commit, so a reference cannot be made up;
+# that part needs history and is skipped (and says so) in a shallow clone.
+# A #PR number is checked for form only: a new hook can cite its own open PR.
+
+section "hooks — every hook names what it exists for and when it may retire"
+
+HP_SEP=' · retire-when: '
+HP_RESOLVE=0
+if [[ "$(git -C "$REPO_ROOT" rev-parse --is-shallow-repository 2>/dev/null)" == "false" ]]; then
+  HP_RESOLVE=1
+fi
+
+hp_problems() {  # <hooks dir> <settings-hooks.json>
+  local dir="$1" settings="$2" f name n line ef rw tok checked=0 wired w
+  for f in "$dir"/*.sh; do
+    [[ -f "$f" ]] || continue
+    checked=$((checked + 1)); name=$(basename "$f")
+    n=$(grep -c '^# exists-for: ' "$f")
+    if [[ "$n" != 1 ]]; then echo "$name: ${n:-no} exists-for lines, want exactly 1"; continue; fi
+    line=$(head -n 10 "$f" | grep '^# exists-for: ')
+    if [[ -z "$line" ]]; then echo "$name: the exists-for line is not within the first 10 lines"; continue; fi
+    case "$line" in
+      *"$HP_SEP"*"$HP_SEP"*) echo "$name: more than one retire-when clause"; continue ;;
+      *"$HP_SEP"*) ;;
+      *) echo "$name: no '$HP_SEP' clause after exists-for"; continue ;;
+    esac
+    ef=${line#"# exists-for: "}; ef=${ef%%"$HP_SEP"*}
+    rw=${line#*"$HP_SEP"}
+    if grep -qE '<(incident|condition|date|sha)|(^|[^A-Za-z])TBD([^A-Za-z]|$)|\?\?\?' <<< "$line"; then
+      echo "$name: a template placeholder is still in the line"; continue
+    fi
+    [[ ${#ef} -ge 20 ]] || { echo "$name: exists-for is too short to say anything"; continue; }
+    [[ ${#rw} -ge 15 ]] || { echo "$name: retire-when is too short to be a condition"; continue; }
+    grep -qE '(^|[^0-9])20[0-9]{2}-[01][0-9]-[0-3][0-9]([^0-9]|$)' <<< "$ef" \
+      || { echo "$name: exists-for names no YYYY-MM-DD date"; continue; }
+    local shas
+    shas=$(grep -oE '[0-9A-Za-z_]+' <<< "$ef" | grep -xE '[0-9a-f]{7,40}')
+    if [[ -z "$shas" ]] && ! grep -qE '#[0-9]+' <<< "$ef"; then
+      echo "$name: exists-for names no commit sha or #PR"; continue
+    fi
+    if [[ "$HP_RESOLVE" == 1 ]]; then
+      for tok in $shas; do
+        git -C "$REPO_ROOT" cat-file -e "${tok}^{commit}" 2>/dev/null \
+          || echo "$name: $tok does not resolve to a commit"
+      done
+    fi
+    if tr 'A-Z' 'a-z' <<< "$rw" \
+         | grep -qE '(zero|no|never|0)[ -]+(fires?|fired|firing|hits?|triggers?|triggered|denies|denials|invocations?)' \
+       && ! grep -qi 'ablation' <<< "$rw"; then
+      echo "$name: retire-when rests on zero fires without an ablation"
+    fi
+  done
+  [[ "$checked" -gt 0 ]] || echo "no hook files under $dir: nothing was checked"
+  wired=$(jq -r '.. | .command? // empty' "$settings" 2>/dev/null \
+            | grep -oE 'hooks/[A-Za-z0-9_.-]+\.sh' | sed 's#^hooks/##' | sort -u)
+  [[ -n "$wired" ]] || echo "no hook is wired in $settings: the cross-check has nothing to anchor on"
+  for w in $wired; do
+    [[ -f "$dir/$w" ]] || echo "$w: wired in settings-hooks.json but not checked"
+  done
+}
+
+HP_N=$(ls "$REPO_ROOT"/configs/hooks/*.sh 2>/dev/null | wc -l | tr -d ' ')
+HP_WIRED=$(jq -r '.. | .command? // empty' "$SETTINGS" | grep -oE 'hooks/[A-Za-z0-9_.-]+\.sh' | sort -u | wc -l | tr -d ' ')
+HP_OUT=$(hp_problems "$REPO_ROOT/configs/hooks" "$SETTINGS")
+if [[ -z "$HP_OUT" ]]; then
+  pass "all $HP_N hooks carry one well-formed exists-for/retire-when line ($HP_WIRED wired in settings-hooks.json, all checked)"
+else
+  fail "every hook carries one well-formed exists-for/retire-when line" \
+       "$(printf '%s' "$HP_OUT" | head -8 | tr '\n' ';')"
+fi
+if [[ "$HP_RESOLVE" == 1 ]]; then
+  pass "every cited sha resolves to a commit in this repository"
+else
+  echo -e "  ${YELLOW}–${NC} sha resolution skipped: shallow clone or no git history (format still checked)"
+fi
+
+# The mutations. Each changes one copy of the hooks dir so that exactly one
+# guard above should object, and requires the output to name the problem.
+# A mutation that leaves the file unchanged proves nothing, so that fails too.
+HP_MUT="$TMP_ROOT/hp-mut"
+HP_VICTIM="pre-tool-guardian.sh"      # a preventive guard: the case that matters
+hp_copy() { rm -rf "$HP_MUT"; mkdir -p "$HP_MUT"; cp "$REPO_ROOT"/configs/hooks/*.sh "$HP_MUT/"; }
+hp_rewrite() {  # <awk program> — applied to the victim in the copy
+  awk "$1" "$REPO_ROOT/configs/hooks/$HP_VICTIM" > "$HP_MUT/$HP_VICTIM"
+}
+hp_expect_red() {  # <label> <text the output must contain> [settings]
+  local out
+  if cmp -s "$HP_MUT/$HP_VICTIM" "$REPO_ROOT/configs/hooks/$HP_VICTIM" && [[ -f "$HP_MUT/$HP_VICTIM" ]] && [[ -z "${3:-}" ]]; then
+    fail "mutation: $1" "the mutation did not change $HP_VICTIM, so it tests nothing"; return
+  fi
+  out=$(hp_problems "$HP_MUT" "${3:-$SETTINGS}")
+  if grep -qF "$2" <<< "$out"; then pass "mutation: $1 → red"
+  else fail "mutation: $1 → red" "checker stayed green on it: [$(printf '%s' "$out" | head -3 | tr '\n' ';')]"; fi
+}
+
+hp_copy
+HP_CTRL=$(hp_problems "$HP_MUT" "$SETTINGS")
+if [[ -z "$HP_CTRL" ]]; then pass "control: an unchanged copy of the hooks dir stays green"
+else fail "control: an unchanged copy of the hooks dir stays green" "$(printf '%s' "$HP_CTRL" | head -3 | tr '\n' ';')"; fi
+
+hp_copy; grep -v '^# exists-for: ' "$REPO_ROOT/configs/hooks/$HP_VICTIM" > "$HP_MUT/$HP_VICTIM"
+hp_expect_red "strip the header from $HP_VICTIM" "$HP_VICTIM: 0 exists-for lines"
+
+hp_copy; hp_rewrite '{ print } /^# exists-for: / { print }'
+hp_expect_red "duplicate the header" "$HP_VICTIM: 2 exists-for lines"
+
+hp_copy; hp_rewrite '/^# exists-for: / { held = $0; next } { print } NR == 12 { print held }'
+hp_expect_red "move the header below line 10" "not within the first 10 lines"
+
+hp_copy; hp_rewrite '/^# exists-for: / { i = index($0, " · retire-when: "); print substr($0, 1, i - 1) " - retire-when: " substr($0, i + length(" · retire-when: ")); next } { print }'
+hp_expect_red "break the retire-when separator" "no '$HP_SEP' clause"
+
+hp_copy; hp_rewrite '/^# exists-for: / { i = index($0, " · retire-when: "); print "# exists-for: an incident nobody wrote down" substr($0, i); next } { print }'
+hp_expect_red "drop the date and the commit from exists-for" "names no YYYY-MM-DD date"
+
+hp_copy; hp_rewrite '/^# exists-for: / { i = index($0, " · retire-when: "); print "# exists-for: an incident nobody wrote down, 2026-01-01" substr($0, i); next } { print }'
+hp_expect_red "drop only the commit from exists-for" "names no commit sha or #PR"
+
+hp_copy; hp_rewrite '/^# exists-for: / { i = index($0, " · retire-when: "); print substr($0, 1, i - 1) " · retire-when: zero fires in 60 days"; next } { print }'
+hp_expect_red "retire a preventive guard on zero fires" "rests on zero fires without an ablation"
+
+hp_copy; hp_rewrite '/^# exists-for: / { i = index($0, " · retire-when: "); print "# exists-for: 2026-01-01 #1" substr($0, i); next } { print }'
+hp_expect_red "shrink exists-for to a bare date and number" "exists-for is too short"
+
+hp_copy; hp_rewrite '/^# exists-for: / { i = index($0, " · retire-when: "); print substr($0, 1, i - 1) " · retire-when: later"; next } { print }'
+hp_expect_red "shrink retire-when to one word" "retire-when is too short"
+
+hp_copy; hp_rewrite '/^# exists-for: / { i = index($0, " · retire-when: "); print substr($0, 1, i - 1) " · retire-when: <condition>"; next } { print }'
+hp_expect_red "leave the template placeholder in" "template placeholder"
+
+if [[ "$HP_RESOLVE" == 1 ]]; then
+  hp_copy; hp_rewrite '/^# exists-for: / { i = index($0, " · retire-when: "); print "# exists-for: no incident recorded (added 2026-02-23 in 0000000)" substr($0, i); next } { print }'
+  hp_expect_red "cite a commit that does not exist" "0000000 does not resolve to a commit"
+fi
+
+hp_copy; rm -f "$HP_MUT"/*.sh
+hp_expect_red "an empty hooks dir (the vacuous pass)" "nothing was checked"
+hp_expect_red "an empty hooks dir leaves every wired hook unchecked" "wired in settings-hooks.json but not checked"
+
+hp_copy; printf '{}\n' > "$TMP_ROOT/hp-empty-settings.json"
+hp_expect_red "settings with no wiring to anchor the count" "nothing to anchor on" "$TMP_ROOT/hp-empty-settings.json"
 
 # ─── Summary ─────────────────────────────────────────────────────────
 

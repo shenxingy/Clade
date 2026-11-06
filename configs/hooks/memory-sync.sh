@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # memory-sync.sh — Auto-push after writes to synced ~/.claude/ directories (PostToolUse, async)
+# exists-for: no incident recorded (added 2026-03-19 in 485d6a9); need: push writes under synced ~/.claude dirs to the dotfiles sync store · retire-when: no machine keeps a ~/.claude/.sync-config, i.e. the sync store is retired
 #
 # Triggers sync-push.sh when Claude writes/edits a file under any synced dir:
 #   ~/.claude/memory/             (global memory)

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # context-warning-drain.sh — PostToolUse hook (all tools)
+# exists-for: worker.py wrote an ~80%-context nudge that nothing ever delivered, zero readers since it was introduced (found and fixed 2026-07-06 in a29363f) · retire-when: orchestrator/worker.py stops writing .claude/context-warning-<task>.md; that layer is dormant since 2026-09-02 (docs/layers.json)
 #
 # Round-4 dead-code fix (fennu2333 / Chorus): worker.py's poll_all() writes
 #   $CLAUDE_PROJECT_DIR/.claude/context-warning-<task_id>.md

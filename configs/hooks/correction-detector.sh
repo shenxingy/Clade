@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # correction-detector.sh — Detect user corrections and build a learning history
+# exists-for: no incident recorded (added 2026-02-18 in 5e9103b); need: capture explicit corrections into corrections/history.jsonl and stats.json so rules can be learned from them · retire-when: an ablation shows correction-mined rules give no lift, and verify-task-completed.sh, /audit and radar no longer read what it writes
 # Triggered by UserPromptSubmit
 # Reads JSON from stdin: {"prompt": "user's message", ...}
 # If a correction is detected, logs it, updates stats.json, and reminds Claude to extract rules.

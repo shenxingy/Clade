@@ -195,7 +195,11 @@ python3 configs/scripts/regen-codex-plugin.py --check
 
 ### CLI Layer (`configs/`)
 - `skills/` — skill prompts invoked via `/skill-name` in Claude Code
-- `hooks/` — pre/post hooks for Claude Code events (wired via `settings-hooks.json`)
+- `hooks/` — pre/post hooks for Claude Code events (wired via `settings-hooks.json`).
+  Each `hooks/*.sh` carries one `# exists-for: <incident or need, date, commit/PR> ·
+  retire-when: <condition>` line in its first 10 (`tests/test-hooks.sh`). Name a
+  recorded incident or write "no incident recorded"; a blocking guard retires on an
+  ablation, never on a quiet log.
 - `scripts/` — shell utilities (e.g., `committer.sh`)
 - `agents/` — subagent definitions for the Agent tool
 - `output-styles/` — system-prompt register overrides selected via `/config`. The
