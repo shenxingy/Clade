@@ -4,11 +4,16 @@
 Every check drives harness-usage.py's ``main()``, the entry point the owner
 runs, under a temporary HOME that holds fixture transcripts, two profiles'
 ``.claude.json`` and a fixture Clade checkout passed as ``--repo``. Nothing
-reads the real HOME, and nothing touches the network. Each rule the report
-claims has a positive and a negative control, and each guard in harness-usage.py
-has a mutation in orchestrator/tests/test_self_tests_can_fire.py that must turn
-this red. Not covered: the advisory lock (two processes racing would make the
-check flaky); it is the Workflow ledger's own ``_lock``.
+reads the real HOME, and nothing touches the network.
+
+What is proven checked is the list in orchestrator/tests/mutations_harness_usage.py:
+each entry removes one guard from harness-usage.py and must turn this red. A
+guard that list does not name is not claimed checked, and not every rule has
+both a positive and a negative control. Not covered: the advisory lock (two
+processes racing would make the check flaky; it is the Workflow ledger's own
+``_lock``), and a project dir that exists and cannot be listed (making one needs
+a permission the test cannot rely on: root ignores it); the same branch is
+checked through a ``projects`` that is a file.
 
 Stdlib only: the syntax-check CI job installs no dependencies.
 """
@@ -44,11 +49,19 @@ def _day(days_ago: int) -> str:
     return (_TODAY - datetime.timedelta(days=days_ago)).isoformat()
 
 
+def _iso(days_ago: int) -> str:
+    """``_ts`` as the report prints a timestamp: no milliseconds."""
+
+    return _ts(days_ago).replace(".000Z", "Z")
+
+
 D1, D3, OLD = 1, 3, 40
 
 # ─── Fixture checkout ───────────────────────────────────────────────────────
 
-SKILLS = ("alpha", "beta", "gamma", "delta", "errs", "subby", "blog", "blog-write", "blog-audit")
+# beta-pr sits beside beta the way the real tree's review-pr sits beside review: a prefix that is a skill but not a
+# hub family does not make a sub-skill.
+SKILLS = ("alpha", "beta", "beta-pr", "gamma", "delta", "errs", "subby", "blog", "blog-write", "blog-audit")
 
 
 def _hook(command: str, **extra: Any) -> dict[str, Any]:
@@ -61,8 +74,10 @@ HOOKS = {
         {"matcher": "Edit|Write", "hooks": [_hook("~/.claude/hooks/lint-guard.sh")]},
     ],
     "PostToolUse": [
+        # drain.sh is wired here and under "*": two wirings that both match an Edit, which counts once.
         {"matcher": "Edit|Write", "hooks": [_hook("~/.claude/hooks/inject.sh"),
-                                            _hook("~/.claude/hooks/suggest.sh", statusMessage="Suggesting skills...")]},
+                                            _hook("~/.claude/hooks/suggest.sh", statusMessage="Suggesting skills..."),
+                                            _hook("~/.claude/hooks/drain.sh")]},
         {"matcher": "Bash", "hooks": [_hook("~/.claude/hooks/mem.sh", **{"async": True}),
                                       _hook("~/.claude/hooks/ckpt.sh", **{"async": True})]},
         {"matcher": "*", "hooks": [_hook("~/.claude/hooks/drain.sh")]},
@@ -155,16 +170,21 @@ def _main_records() -> list[dict[str, Any]]:
         *_call("t3", "Skill", {"skill": "clade:blog-write"}, D1),
         *_call("t4", "Skill", {"skill": "errs"}, D1, result="Unknown skill", error=True),
         *_call("t5", "Skill", {"skill": "elsewhere"}, D1),
+        *_call("t11", "Skill", {"skill": "beta"}, D1, result="Permission to use Skill has been denied.", error=True,
+               denial="permission-rule"),
         *_call("t6", "Skill", {"skill": "alpha"}, OLD),
         {"type": "user", "uuid": _uuid(), "timestamp": _ts(D1),
          "message": {"content": "<command-message>beta</command-message>\n<command-name>/beta</command-name>"}},
         *_call("t7", "Bash", {"command": "rm -rf /"}, D3, result="PreToolUse:Bash hook error: refused",
                error=True, denial="permission-rule"),
         *_call("t8", "Edit", {"file_path": "x"}, D1),
-        _att(D1, "hook_success", command="~/.claude/hooks/inject.sh", stdout=_ctx("A"), content="", **edit),
+        _att(D1, "hook_success", command="~/.claude/hooks/inject.sh", content="", **edit,
+             stdout=json.dumps({**json.loads(_ctx("A")), "systemMessage": "Heads up"})),
         _att(D1, "hook_success", command="Suggesting skills...", stdout=_ctx("B"), content="", **edit),
         _att(D1, "hook_additional_context", content="A", **edit),
         _att(D1, "hook_additional_context", content="B", **edit),
+        # A system message pairs by the systemMessage its success handed over, not by additionalContext.
+        _att(D1, "hook_system_message", content="Heads up", **edit),
         _att(D1, "hook_blocking_error", blockingError={"blockingError": "no", "command": "~/.claude/hooks/inject.sh"},
              **edit),
         _att(D1, "async_hook_response", hookName="PostToolUse:Bash", hookEvent="PostToolUse", exitCode=1, stdout="",
@@ -226,18 +246,30 @@ def _write_lines(path: Path, records: list[dict[str, Any]]) -> None:
     path.write_text("".join(json.dumps(r) + "\n" for r in records))
 
 
-def _write_home(home: Path) -> None:
+def _first(records: list[dict[str, Any]], test: Callable[[dict[str, Any]], bool]) -> dict[str, Any]:
+    return next(record for record in records if test(record))
+
+
+def _write_home(home: Path, broken: bool = True) -> None:
     project = home / ".claude" / "projects" / "-p"
     records = _main_records()
     _write_lines(project / "s1.jsonl", records)
-    # A forked session copies records it inherited: same tool ids, same uuids. Counted once.
-    _write_lines(project / "s2.jsonl", records[:2] + [records[next(i for i, r in enumerate(records)
-                                                                    if r["type"] == "attachment")]])
+    # A forked session copies records it inherited: same tool ids, same uuids. Each is counted once: a tool call,
+    # an attachment, a typed /name, a stop_hook_summary and a compaction.
+    _write_lines(project / "s2.jsonl", records[:2] + [
+        _first(records, lambda r: r["type"] == "attachment"),
+        _first(records, lambda r: "<command-name>/beta" in str(r.get("message", {}).get("content"))),
+        _first(records, lambda r: r.get("subtype") == "stop_hook_summary"),
+        _first(records, lambda r: r.get("subtype") == "compact_boundary"),
+    ])
+    # The subagent's hook error is older than the main thread's last inject.sh trace: merged after it, it must
+    # not move the last fire back.
     subagent = [*_call("t9", "Skill", {"skill": "subby"}, D1, agent="a1"),
-                _att(D1, "hook_non_blocking_error", command="~/.claude/hooks/inject.sh", hookName="PostToolUse:Edit",
+                _att(D3, "hook_non_blocking_error", command="~/.claude/hooks/inject.sh", hookName="PostToolUse:Edit",
                      hookEvent="PostToolUse", toolUseID="t9", stderr="", exitCode=1)]
     _write_lines(project / "s1" / "subagents" / "agent-a1.jsonl", subagent)
-    (project / "broken.jsonl").mkdir()  # matched by the main-thread glob, cannot be opened: unreadable, not empty
+    if broken:
+        (project / "broken.jsonl").mkdir()  # matched by the main-thread glob, cannot be opened: unreadable, not empty
     (home / ".claude.json").write_text(json.dumps({"skillUsage": {
         "alpha": {"usageCount": 5, "lastUsedAt": _ms(D1)},
         "gamma": {"usageCount": 3, "lastUsedAt": _ms(2)},
@@ -245,20 +277,33 @@ def _write_home(home: Path) -> None:
     }}))
     profile = home / ".claude-profiles" / "p1"
     profile.mkdir(parents=True)
+    # gamma's newest use is in the profile read FIRST: the later profile's older lastUsedAt must not replace it.
     (profile / ".claude.json").write_text(json.dumps({"skillUsage": {
         "clade:alpha": {"usageCount": 2, "lastUsedAt": _ms(100)},
         "elsewhere": {"usageCount": 9, "lastUsedAt": _ms(D1)},
+        "gamma": {"usageCount": 1, "lastUsedAt": _ms(100)},
     }}))
+
+
+def _old_transcript(path: Path, days_ago: int) -> None:
+    """A transcript last written ``days_ago`` days back: the oldest survivor of an earlier cleanup."""
+
+    _write_lines(path, [_typed(days_ago, "an old session")])
+    stamp = datetime.datetime.fromisoformat(_ts(days_ago).replace("Z", "+00:00")).timestamp()
+    os.utime(path, (stamp, stamp))
 
 
 # ─── Running main() ─────────────────────────────────────────────────────────
 
 
 @contextlib.contextmanager
-def _home(home: Path) -> Iterator[None]:
+def _home(home: Path, config_dir: Path | None = None) -> Iterator[None]:
     saved = {key: os.environ.get(key) for key in ("HOME", "CLAUDE_CONFIG_DIR")}
     os.environ["HOME"] = str(home)
-    os.environ.pop("CLAUDE_CONFIG_DIR", None)
+    if config_dir is None:
+        os.environ.pop("CLAUDE_CONFIG_DIR", None)
+    else:
+        os.environ["CLAUDE_CONFIG_DIR"] = str(config_dir)
     try:
         yield
     finally:
@@ -269,18 +314,25 @@ def _home(home: Path) -> Iterator[None]:
                 os.environ[key] = value
 
 
-def _run(main: Callable[[list[str]], int], home: Path, repo: Path, argv: list[str],
-         failures: list[str]) -> str:
-    out = io.StringIO()
-    with _home(home), contextlib.redirect_stdout(out):
+def _invoke(main: Callable[[list[str]], int], home: Path, repo: Path, argv: list[str],
+            config_dir: Path | None = None) -> tuple[object, str, str]:
+    """(exit code, stdout, stderr) of one main() call; the code is a 'raised …' string when it crashed."""
+
+    out, err = io.StringIO(), io.StringIO()
+    with _home(home, config_dir), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
         try:
-            code = main(["--repo", str(repo), *argv])
+            code: object = main(["--repo", str(repo), *argv])
         except Exception as exc:  # a crash is a failed control, reported with the rest
-            failures.append(f"{argv}: raised {type(exc).__name__}: {exc}")
-            return ""
-    if code != 0:
-        failures.append(f"{argv}: exit {code}")
-    return out.getvalue()
+            code = f"raised {type(exc).__name__}: {exc}"
+    return code, out.getvalue(), err.getvalue()
+
+
+def _run(main: Callable[[list[str]], int], home: Path, repo: Path, argv: list[str],
+         failures: list[str], expect: int = 0, config_dir: Path | None = None) -> str:
+    code, out, _ = _invoke(main, home, repo, argv, config_dir)
+    if code != expect:
+        failures.append(f"{argv}: exit {code}, expected {expect}")
+    return out
 
 
 def _json(text: str, failures: list[str], what: str) -> dict[str, Any]:
@@ -315,25 +367,30 @@ def _report_checks(main: Callable[[list[str]], int], home: Path, repo: Path, fai
             s("alpha", "fires"), 2)
     _expect(failures, "alpha tool calls", s("alpha", "tool"), 2)
     _expect(failures, "clade:blog-write counts as blog-write", s("blog-write", "fires"), 1)
-    _expect(failures, "a typed /beta counts as a slash fire", (s("beta", "fires"), s("beta", "slash")), (1, 1))
+    _expect(failures, "a typed /beta is a slash fire, its fork copy is not; a denied Skill call is a deny",
+            tuple(s("beta", key) for key in ("fires", "tool", "slash", "denies", "rejections")), (2, 1, 1, 1, 0))
     _expect(failures, "an errored Skill call is a rejection", (s("errs", "fires"), s("errs", "rejections")), (1, 1))
     _expect(failures, "a subagent's Skill call is not main thread", s("subby", "fires"), 0)
     _expect(failures, "a skill Clade does not ship is foreign", report.get("foreign", {}).get("skill_calls"), 1)
     _expect(failures, "skillUsage sums profiles and the clade: spelling", s("alpha", "lifetime"), 7)
     _expect(failures, "skillUsage lastUsedAt in the window counts as use", s("gamma", "used_in_window"), True)
+    _expect(failures, "the newest lastUsedAt across profiles wins, not the profile read last",
+            s("gamma", "lifetime_last"), _iso(2))
+    _expect(failures, "a prefix that is a shipped skill but not a hub family makes no sub-skill",
+            (s("beta-pr", "hub"), sorted(_by_name(report, "hubs"))), (None, ["blog"]))
     hubs = _by_name(report, "hubs")
     _expect(failures, "a hub's family includes its sub-skills", hubs.get("blog", {}).get("family_fires"), 1)
     never = report.get("never_fired") or {}
     _expect(failures, "never-fired skills (no fire, no lastUsedAt in the window; a used hub family is not listed)",
-            never.get("skills"), ["delta", "subby"])
+            never.get("skills"), ["beta-pr", "delta", "subby"])
     _expect(failures, "never-fired hub sub-skills", never.get("sub_skills"), ["blog-audit"])
     _expect(failures, "the never-fired label", never.get("label"), "review candidates, not retire candidates")
 
     # Hooks: every attribution rule.
     _expect(failures, "guard.sh: a PreToolUse deny with no attachment, plus a non-blocking error",
             (h("guard.sh", "fires"), h("guard.sh", "denies"), h("guard.sh", "rejections")), (2, 1, 1))
-    _expect(failures, "inject.sh: its success, its paired context, its blocking error",
-            (h("inject.sh", "fires"), h("inject.sh", "context"), h("inject.sh", "denies")), (2, 1, 1))
+    _expect(failures, "inject.sh: its success, its paired context and system message, its blocking error",
+            (h("inject.sh", "fires"), h("inject.sh", "context"), h("inject.sh", "denies")), (2, 2, 1))
     _expect(failures, "suggest.sh: named by its statusMessage, context paired by content",
             (h("suggest.sh", "fires"), h("suggest.sh", "context")), (1, 1))
     _expect(failures, "mem.sh: an async failure named by its stderr", (h("mem.sh", "fires"), h("mem.sh", "rejections")),
@@ -356,11 +413,13 @@ def _report_checks(main: Callable[[list[str]], int], home: Path, repo: Path, fai
             (s("gamma", "fires"), s("delta", "fires")), (0, 0))
     events = {name: h(name, "events") for name in ("guard.sh", "lint-guard.sh", "inject.sh", "drain.sh", "fail.sh",
                                                    "precompact.sh", "perm.sh")}
-    _expect(failures, "wired events: calls, results by matcher, failures that are not denials, compactions; "
-            "None where the event is not in a transcript", events,
+    _expect(failures, "wired events: calls, results by matcher, failures that are not denials, compactions (the "
+            "fork's copy not again); an Edit counts once for drain.sh's two wirings; None where the event is not in "
+            "a transcript", events,
             {"guard.sh": 1, "lint-guard.sh": 1, "inject.sh": 1, "drain.sh": 5, "fail.sh": 1, "precompact.sh": 1,
              "perm.sh": None})
-    _expect(failures, "Stop hooks: one fire per stop_hook_summary entry, the hook_success not counted again",
+    _expect(failures, "Stop hooks: one fire per stop_hook_summary entry, the hook_success and the fork's copy of "
+            "the summary not counted again",
             (h("loop.sh", "fires"), h("check.sh", "fires"), h("Stop prompt hook", "fires")), (1, 1, 1))
     _expect(failures, "a Stop hook's error is an outcome, not a second fire", h("Stop prompt hook", "rejections"), 1)
     _expect(failures, "drain.sh: the only candidate through its '*' matcher; the 40-day-old trace is outside",
@@ -387,6 +446,8 @@ def _report_checks(main: Callable[[list[str]], int], home: Path, repo: Path, fai
     _expect(failures, "--include-subagents counts a subagent's Skill call", wide_skills.get("subby", {}).get("fires"), 1)
     _expect(failures, "--include-subagents counts a subagent's hook error",
             wide_hooks.get("inject.sh", {}).get("rejections"), 1)
+    _expect(failures, "the last fire is the newest across scopes, not the scope merged last",
+            wide_hooks.get("inject.sh", {}).get("last"), _iso(D1))
 
     longer = _json(_run(main, home, repo, ["--json", "--since", "50"], failures), failures, "since 50")
     _expect(failures, "--since 50 reaches the 40-day-old call and trace",
@@ -402,9 +463,60 @@ def _report_checks(main: Callable[[list[str]], int], home: Path, repo: Path, fai
         if phrase not in text:
             failures.append(f"text report: missing {phrase!r}")
 
+    # The copy install.sh puts in ~/.claude/scripts/ resolves its default --repo to $HOME: no checkout there.
+    code, out, err = _invoke(main, home, home, ["--json"])
+    _expect(failures, "a --repo that is not a checkout exits 2 with a message naming --repo, not a traceback",
+            (code, out, "pass --repo" in err), (2, "", True))
+
+
+def _usage_checks(main: Callable[[list[str]], int], home: Path, repo: Path, failures: list[str]) -> None:
+    """$CLAUDE_CONFIG_DIR's .claude.json is read, and one reached twice is read once."""
+
+    link = home / "link-p1"  # CLAUDE_CONFIG_DIR spelled through a link to a profile already read
+    link.symlink_to(home / ".claude-profiles" / "p1")
+    twice = _json(_run(main, home, repo, ["--json"], failures, config_dir=link), failures, "config dir = profile")
+    _expect(failures, "a profile reached again through $CLAUDE_CONFIG_DIR is read once",
+            (twice.get("read", {}).get("usage_profiles"), _by_name(twice, "skills").get("alpha", {}).get("lifetime")),
+            (2, 7))
+    other = home / "elsewhere"
+    other.mkdir()
+    (other / ".claude.json").write_text(json.dumps({"skillUsage": {"delta": {"usageCount": 4,
+                                                                              "lastUsedAt": _ms(D1)}}}))
+    own = _json(_run(main, home, repo, ["--json"], failures, config_dir=other), failures, "config dir elsewhere")
+    delta = _by_name(own, "skills").get("delta", {})
+    _expect(failures, "$CLAUDE_CONFIG_DIR's own .claude.json is a profile",
+            (own.get("read", {}).get("usage_profiles"), delta.get("lifetime"), delta.get("used_in_window")),
+            (3, 5, True))
+
+
+def _refused(main: Callable[[list[str]], int], home: Path, repo: Path, ledger: Path, failures: list[str],
+             what: str, needle: str) -> None:
+    """A ledger pass that must write nothing, exit 1 and name ``needle`` among its problems."""
+
+    out = _run(main, home, repo, ["--ledger", "--ledger-path", str(ledger), "--json"], failures, expect=1)
+    result = _json(out, failures, what)
+    _expect(failures, f"{what}: the ledger is not written and the problem is named",
+            (ledger.exists(), result.get("appended"), any(needle in p for p in result.get("refused") or [])),
+            (False, 0, True))
+
 
 def _ledger_checks(main: Callable[[list[str]], int], home: Path, repo: Path, failures: list[str]) -> None:
     ledger = home / "ledger.jsonl"
+    project = home / ".claude" / "projects"
+    # A day read short would be kept forever (the first row wins), so a pass that cannot read everything refuses.
+    _refused(main, home, repo, ledger, failures, "an unreadable transcript", "broken.jsonl: unreadable transcript")
+    (project / "-p" / "broken.jsonl").rmdir()
+    (home / ".claude-profiles" / "p2").mkdir()
+    (home / ".claude-profiles" / "p2" / "projects").write_text("")
+    _refused(main, home, repo, ledger, failures, "a projects/ that cannot be listed", "p2/projects: cannot be listed")
+    (home / ".claude-profiles" / "p2" / "projects").unlink()
+    (project / "-gone").symlink_to(home / "unmounted")
+    _refused(main, home, repo, ledger, failures, "a project dir linked to nothing", "-gone: a link to nothing")
+    (project / "-gone").unlink()
+    (home / ".claude-profiles" / "p3").symlink_to(home / "unmounted")
+    _refused(main, home, repo, ledger, failures, "a profile linked to nothing", "p3: a link to nothing")
+    (home / ".claude-profiles" / "p3").unlink()
+
     first = _json(_run(main, home, repo, ["--ledger", "--ledger-path", str(ledger), "--json"], failures),
                   failures, "ledger")
     _expect(failures, "--ledger appends one row per whole day and scope (29 days x 2)",
@@ -450,8 +562,20 @@ def _ledger_checks(main: Callable[[list[str]], int], home: Path, repo: Path, fai
             _by_name(gone, "skills").get("alpha", {}).get("fires"), 2)
 
 
+def _settings(home: Path, value: object) -> None:
+    (home / ".claude" / "settings.json").write_text(json.dumps({"cleanupPeriodDays": value}))
+
+
+def _pass(main: Callable[[list[str]], int], home: Path, repo: Path, failures: list[str], name: str) -> dict[str, Any]:
+    """One --ledger --json pass into a fresh ledger file."""
+
+    ledger = home / f"ledger-{name}.jsonl"
+    return _json(_run(main, home, repo, ["--ledger", "--ledger-path", str(ledger), "--json"], failures),
+                 failures, f"ledger {name}")
+
+
 def _retention_checks(main: Callable[[list[str]], int], home: Path, repo: Path, failures: list[str]) -> None:
-    (home / ".claude" / "settings.json").write_text(json.dumps({"cleanupPeriodDays": 5}))
+    _settings(home, 5)
     ledger = home / "ledger.jsonl"
     ledger.write_text('{"day": "torn')  # a write cut off mid-line: the next row must start on a fresh line
     result = _json(_run(main, home, repo, ["--ledger", "--ledger-path", str(ledger), "--json"], failures),
@@ -466,6 +590,50 @@ def _retention_checks(main: Callable[[list[str]], int], home: Path, repo: Path, 
     _expect(failures, "a shorter retention makes the older days PARTIAL", report.get("window", {}).get("sources"),
             {"live": 5, "ledger": 0, "partial": 25})
 
+    _settings(home, 1)
+    one = _pass(main, home, repo, failures, "one")
+    _expect(failures, "cleanupPeriodDays 1 leaves no whole day: nothing scanned, no ledger file",
+            (one.get("days"), one.get("appended"), (home / "ledger-one.jsonl").exists()), ([], 0, False))
+    _settings(home, True)
+    _expect(failures, "cleanupPeriodDays true is not 1: Claude Code stays on its default 30",
+            _pass(main, home, repo, failures, "bool").get("appended"), 58)
+
+    # Past the default 30 days, a day needs a transcript older than it: none here is.
+    _settings(home, 90)
+    _expect(failures, "a raised cleanupPeriodDays with no older transcript still records the default 29 days",
+            (lambda r: (r.get("appended"), r.get("first_whole")))(_pass(main, home, repo, failures, "raised")),
+            (58, _day(29)))
+    _old_transcript(home / ".claude" / "projects" / "-p" / "s0.jsonl", 70)
+    _expect(failures, "... and reaches back to the day after its oldest transcript (69 days x 2)",
+            (lambda r: (r.get("appended"), r.get("first_whole")))(_pass(main, home, repo, failures, "older")),
+            (138, _day(69)))
+
+    # A second config dir on the default deletes at 30 days, whatever the first one keeps.
+    other = home / ".claude-profiles" / "p2"
+    _old_transcript(other / "projects" / "-q" / "old.jsonl", 70)
+    (other / "settings.json").write_text(json.dumps({"model": "any"}))
+    _expect(failures, "a config dir that does not set cleanupPeriodDays holds the ledger to the default 30",
+            (lambda r: (r.get("appended"), r.get("first_whole"), r.get("retention_days")))(
+                _pass(main, home, repo, failures, "mixed")), (58, _day(29), 30))
+    shutil.rmtree(other)
+
+    # "Keep forever": no day older than every transcript is whole, and no date runs past year 1. The 99999 case
+    # is read through the report: a ledger pass without the bound would write 199,996 rows.
+    _settings(home, 99999)
+    forever = _json(_run(main, home, repo, ["--json", "--ledger-path", str(home / "none.jsonl")], failures),
+                    failures, "forever report")
+    _expect(failures, "cleanupPeriodDays 99999 (clamped to ten years): whole back to the oldest transcript, not 1753",
+            (forever.get("window", {}).get("retention_days"), forever.get("window", {}).get("first_whole")),
+            (3650, _day(69)))
+    _settings(home, 10**9)
+    huge = _json(_run(main, home, repo, ["--json", "--ledger-path", str(home / "none.jsonl")], failures),
+                 failures, "huge report")
+    _expect(failures, "cleanupPeriodDays 10**9 is clamped in the report, not an OverflowError",
+            (huge.get("window", {}).get("retention_days"), huge.get("window", {}).get("first_whole")),
+            (3650, _day(69)))
+    _expect(failures, "... and in the ledger, which records back to the oldest transcript (69 days x 2)",
+            _pass(main, home, repo, failures, "huge").get("appended"), 138)
+
 
 def run(main: Callable[[list[str]], int]) -> int:
     failures: list[str] = []
@@ -473,10 +641,11 @@ def run(main: Callable[[list[str]], int]) -> int:
     try:
         repo = root / "repo"
         _write_repo(repo)
-        for name, checks in (("report", _report_checks), ("ledger", _ledger_checks), ("retention", _retention_checks)):
+        for name, checks, broken in (("report", _report_checks, True), ("usage", _usage_checks, True),
+                                     ("ledger", _ledger_checks, True), ("retention", _retention_checks, False)):
             home = root / name
             home.mkdir()
-            _write_home(home)
+            _write_home(home, broken)
             checks(main, home, repo, failures)
     finally:
         shutil.rmtree(root, ignore_errors=True)
@@ -485,5 +654,5 @@ def run(main: Callable[[list[str]], int]) -> int:
         for failure in failures:
             print(f"  - {failure}")
         return 1
-    print("harness-usage self-test: all controls passed (report, attribution, window, ledger, retention).")
+    print("harness-usage self-test: all controls passed (report, attribution, window, profiles, ledger, retention).")
     return 0

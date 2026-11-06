@@ -184,7 +184,10 @@ python3 configs/scripts/outcome-scorecard.py --since 7 --repo shenxingy/Clade --
 # (synchronous PreToolUse) guard is never retired by zero fires; invocation is
 # not behaviour change. --ledger appends one row per whole UTC day and scope to
 # <config dir>/harness-usage/days.jsonl, because Claude Code deletes transcripts
-# after 30 days and a longer window needs them. It reads subagent transcripts
+# after 30 days and a longer window needs them; a pass that cannot read every
+# transcript (or finds a profile linked to nothing) writes nothing and exits 1.
+# Run it from a checkout: the copy install.sh puts in ~/.claude/scripts/ needs
+# --repo <checkout>. It reads subagent transcripts
 # too: 6,734 transcripts took 2 min 40 s on the author's host (2026-11-06),
 # and a first --ledger pass (29 days x 2 scopes) took 3 min 3 s.
 python3 configs/scripts/harness-usage.py --since 30
@@ -645,8 +648,9 @@ python3 configs/scripts/check-workflow-script.py --self-test
 #     those contexts carry no command and no shared call id. Pairing them by
 #     content brought that to 0 and 34 (the 34 are an older correction-detector
 #     message that no longer matches its source). The controls
-#     drive main() under a temporary HOME; the 69 mutations
-#     live in orchestrator/tests/mutations_harness_usage.py, which
+#     drive main() under a temporary HOME; the mutations, the list of guards
+#     the self-test is proven to check, live in
+#     orchestrator/tests/mutations_harness_usage.py, which
 #     test_self_tests_can_fire.py loads into its MUTATIONS (it sits near the
 #     1500-line cap).
 python3 configs/scripts/harness-usage.py --self-test

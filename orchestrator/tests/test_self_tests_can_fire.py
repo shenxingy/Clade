@@ -1326,7 +1326,7 @@ MUTATIONS["configs/scripts/outcome-scorecard.py"] = [
 
 
 # ─── harness-usage.py, from a sibling file ────────────────────────────
-# Its 69 mutations do not fit under this file's 1500-line cap, so they live in
+# Its mutations do not fit under this file's 1500-line cap, so they live in
 # mutations_harness_usage.py and join MUTATIONS here: the same test runs them,
 # and the coverage check below sees the script. Loaded by path, because the
 # journal test above imports this file outside any package.

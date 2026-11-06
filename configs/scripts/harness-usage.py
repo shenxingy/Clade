@@ -74,13 +74,33 @@ per COMPLETE UTC day and scope (main, subagents) to
 ``scorecard_ledger.py`` takes for the Workflow ledger. A day is recorded only
 when it is over and every transcript holding it is still on disk: an event on
 day D sits in a file modified on or after D, and the cleanup deletes by
-modification time, so the days from ``today - (retention - 1)`` to yesterday are
-whole. The retention is the smallest ``cleanupPeriodDays`` across the scanned
-config dirs. A per-run snapshot would overlap the previous one and could not be
-summed; a day row can. A day already in the file is skipped: the file is
-append-only and a row is never rewritten. The report reads it back: a day the
-ledger holds is taken from the ledger; any other day from live transcripts, and
-a day older than the retention with no ledger row is reported as PARTIAL.
+modification time, so a config dir keeping R days holds whole days from
+``today - (R - 1)`` to yesterday. Every config dir with a ``projects/``
+directory counts, each with its own ``settings.json`` value or, where it sets
+none, Claude Code's default 30; the latest first day across them wins. Past the
+default 30 days a day is whole only after the day that dir's oldest transcript
+was last written: everything the cleanup deleted there was written before that
+survivor, under whatever value was set then. So a ``cleanupPeriodDays`` raised
+today does not vouch for the days the old value already deleted, and with "keep
+forever" (99999) a day older than every transcript is evidence of nothing. A
+value is clamped to 0..3650 days, so no date runs past year 1. Not detected: a
+value raised from below 30.
+
+A pass that cannot read everything records nothing and exits 1, because the
+ledger keeps its first row for a day forever: an unreadable transcript, or a
+profile, ``projects/`` or project directory that is a link to nothing (an
+unmounted store) or exists and cannot be listed. A ``projects/`` that does not
+exist is a profile with no transcripts yet; an unmounted store whose mount point
+is an empty directory looks the same, and is not detected.
+
+A per-run snapshot would overlap the previous one and could not be summed; a day
+row can. A day already in the file is skipped: the file is append-only and a row
+is never rewritten. The report reads it back: a day the ledger holds is taken from
+the ledger; any other day from live transcripts, and a day before the first whole
+day with no ledger row is reported as PARTIAL.
+
+Run it from a checkout, or pass ``--repo``: ``install.sh`` copies this script to
+``~/.claude/scripts/``, where no checkout sits beside it.
 
 Stdlib only: the syntax-check CI job installs no dependencies.
 """
@@ -122,6 +142,7 @@ REPO = Path(__file__).resolve().parents[2]
 LEDGER_VERSION = 1
 DEFAULT_SINCE = 30
 DEFAULT_RETENTION = 30  # Claude Code's cleanupPeriodDays default
+MAX_RETENTION = 3650  # "keep forever" (99999 and up): no transcript is ten years old, and no date runs past year 1
 STOP_EVENTS = frozenset({"Stop", "SubagentStop"})
 FIELDS = ("fires", "tool", "slash", "context", "denies", "rejections", "timeouts")
 REVIEW_LABEL = "review candidates, not retire candidates"
@@ -401,6 +422,7 @@ class Scan:
         self.days: dict[tuple[str, str], Counts] = {}
         self.files: dict[tuple[str, str], set[str]] = {}
         self.read = {"transcripts": 0, "unreadable": 0, "malformed": 0, "truncated": 0, "undated": 0}
+        self.unreadable_paths: list[str] = []
         self.seen: set[str] = set()
 
     def skill_name(self, raw: object) -> str | None:
@@ -439,6 +461,7 @@ class Scan:
             records = list(iter_records(path, tally))
         except OSError:
             self.read["unreadable"] += 1
+            self.unreadable_paths.append(str(path))
             return
         self.read["transcripts"] += 1
         for name in ("malformed", "truncated"):
@@ -616,18 +639,107 @@ def default_ledger_path() -> Path:
     return config_dir() / "harness-usage" / "days.jsonl"
 
 
-def retention_days(roots: list[Path]) -> int:
-    """The smallest cleanupPeriodDays among the scanned config dirs' settings.json, else 30."""
+def cleanup_days(config: Path) -> int:
+    """A config dir's cleanupPeriodDays: its settings.json value clamped to 0..MAX_RETENTION, else the default 30.
 
-    found: list[int] = []
-    for root in roots:
+    No settings.json, a file that does not parse, no key, a bool or a non-number all leave Claude Code on its
+    default. A dir on the default still deletes at 30 days, so it is never left out.
+    """
+
+    try:
+        settings = json.loads((config / "settings.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        settings = None
+    value = settings.get("cleanupPeriodDays") if isinstance(settings, dict) else None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return DEFAULT_RETENTION
+    return int(max(0, min(value, MAX_RETENTION)))
+
+
+def _oldest_day(root: Path) -> datetime.date | None:
+    """The UTC day of the last write to the oldest main-thread transcript under ``root``, or None if it holds none."""
+
+    for path in find_transcripts([root], None):  # oldest first
         try:
-            value = json.loads((root.parent / "settings.json").read_text(encoding="utf-8")).get("cleanupPeriodDays")
-        except (OSError, ValueError, AttributeError):
+            return datetime.datetime.fromtimestamp(path.stat().st_mtime, datetime.timezone.utc).date()
+        except OSError:  # deleted since the listing
             continue
-        if isinstance(value, (int, float)) and not isinstance(value, bool):
-            found.append(int(value))
-    return min(found) if found else DEFAULT_RETENTION
+    return None
+
+
+def first_whole_day(roots: list[Path], today: datetime.date) -> tuple[datetime.date, int]:
+    """The oldest day every transcript holding it is still on disk, and the smallest retention among the roots.
+
+    Per root that exists, R = its config dir's cleanupPeriodDays keeps ``today - (R - 1)`` on. Past the default
+    30 days a day must also come after the day the root's oldest transcript was last written: whatever the cleanup
+    deleted there was written before that survivor, under whatever value was set then. The latest of the roots'
+    days wins.
+    """
+
+    default_first = today - datetime.timedelta(days=DEFAULT_RETENTION - 1)
+    firsts: list[datetime.date] = []
+    kept: list[int] = []
+    for root in roots:
+        if not os.path.isdir(root):
+            continue
+        days = cleanup_days(root.parent)
+        first = today - datetime.timedelta(days=days - 1)
+        if first < default_first:
+            oldest = _oldest_day(root)
+            vouched = oldest + datetime.timedelta(days=1) if oldest else default_first
+            first = max(first, min(vouched, default_first))
+        firsts.append(first)
+        kept.append(days)
+    return (max(firsts), min(kept)) if firsts else (default_first, DEFAULT_RETENTION)
+
+
+def _entries(path: Path | str) -> list[str]:
+    """The directories in ``path`` and the links in it that point nowhere; [] when it cannot be listed."""
+
+    try:
+        with os.scandir(path) as entries:
+            return sorted(e.path for e in entries if e.is_dir() or (e.is_symlink() and not os.path.exists(e.path)))
+    except OSError:
+        return []
+
+
+def _unreachable(path: str) -> str | None:
+    """Why the transcripts under ``path`` would silently read as none, or None when it can be listed."""
+
+    if os.path.islink(path) and not os.path.exists(path):
+        return f"{path}: a link to nothing (an unmounted store?)"
+    try:
+        with os.scandir(path):
+            return None
+    except OSError as exc:
+        return f"{path}: cannot be listed ({exc.strerror or exc})"
+
+
+def root_problems(roots: list[Path]) -> list[str]:
+    """Every place whose transcripts a scan would silently read as none.
+
+    A profile, config dir, ``projects/`` dir or project dir that is a link to nothing (an unmounted store), or
+    one that exists and cannot be listed. ``default_roots()`` leaves out a profile that is a link to nothing,
+    because it is not a directory, so the profiles are listed here too. A ``projects/`` that does not exist is a
+    profile with no transcripts yet, and is not a problem.
+    """
+
+    places: dict[str, bool] = {}  # path -> whether its project dirs are checked too
+    for profile in _entries(Path.home() / ".claude-profiles"):
+        places.setdefault(profile, False)
+    for root in roots:
+        places.setdefault(str(root.parent), False)
+        places[str(root)] = True
+    problems: list[str] = []
+    for place, deep in places.items():
+        if not os.path.lexists(place):
+            continue
+        problem = _unreachable(place)
+        if problem:
+            problems.append(problem)
+        elif deep:
+            problems.extend(found for found in map(_unreachable, _entries(place)) if found)
+    return problems
 
 
 def read_ledger(path: Path) -> dict[tuple[str, str], dict[str, Any]]:
@@ -713,27 +825,39 @@ def run_scan(roots: list[Path], scopes: tuple[str, ...], since: int, start_day: 
 def record_ledger(path: Path, roots: list[Path], skills: dict[str, str | None], attributor: Attributor,
                   as_json: bool) -> int:
     today = _today()
-    retention = retention_days(roots)
-    if retention < 2:
-        print(f"harness-usage: cleanupPeriodDays is {retention}; no whole day survives it, nothing recorded.")
-        return 0
-    first = today - datetime.timedelta(days=retention - 1)
+    first, retention = first_whole_day(roots, today)
     days = _days(first, today - datetime.timedelta(days=1))
-    scan = run_scan(roots, ("main", "subagents"), retention, first.isoformat(), skills, attributor)
+    summary: dict[str, Any] = {"ledger": str(path), "appended": 0, "already_present": 0, "days": [],
+                               "first_whole": first.isoformat(), "retention_days": retention}
+
+    def say(text: str) -> None:
+        print(json.dumps(summary, indent=2) if as_json else text)
+
+    if not days:
+        summary["read"] = {}
+        say(f"harness-usage: ledger {path}: no whole UTC day survives cleanupPeriodDays {retention}; "
+            "nothing recorded.")
+        return 0
+    summary["days"] = [days[0], days[-1]]
+    scan = run_scan(roots, ("main", "subagents"), (today - first).days + 1, first.isoformat(), skills, attributor)
+    summary["read"] = scan.read
+    problems = root_problems(roots) + [f"{p}: unreadable transcript" for p in scan.unreadable_paths]
+    if problems:
+        # The first row for a day is kept forever, so a day read short is never corrected: write nothing.
+        summary["refused"] = problems
+        say(f"harness-usage: ledger {path} NOT written; {len(problems)} problem(s) would record a day as whole "
+            "when it is not:\n" + "\n".join("  - " + p for p in problems)
+            + "\nFix or remove them and run again; a day still inside the retention is recorded then.")
+        return 1
     now = _iso(datetime.datetime.now(datetime.timezone.utc))
     rows = [{
         "ledger": LEDGER_VERSION, "day": day, "scope": scope, "recorded_at": now, "config_dir": str(config_dir()),
         "transcripts": len(scan.files.get((scope, day), ())), "counts": scan.days.get((scope, day), {}),
     } for day in days for scope in ("main", "subagents")]
-    appended, present = append_days(path, rows)
-    summary = {"ledger": str(path), "appended": appended, "already_present": present, "days": [days[0], days[-1]]
-               if days else [], "retention_days": retention, "read": scan.read}
-    if as_json:
-        print(json.dumps(summary, indent=2))
-    else:
-        span = f"{days[0]} → {days[-1]}" if days else "none"
-        print(f"harness-usage: ledger {path}: appended {appended} day-row(s), {present} already present "
-              f"(whole UTC days {span}, main + subagents; retention {retention} days).")
+    summary["appended"], summary["already_present"] = append_days(path, rows)
+    say(f"harness-usage: ledger {path}: appended {summary['appended']} day-row(s), {summary['already_present']} "
+        f"already present (whole UTC days {days[0]} → {days[-1]}, main + subagents; cleanupPeriodDays "
+        f"{retention}).")
     return 0
 
 
@@ -753,24 +877,23 @@ def wired_events(hook: Hook, totals: Counts) -> int | None:
     calls it passed. Each event is counted once even when two of the hook's wirings match it.
     """
 
-    keys: set[str] = set()
+    keys: list[str] = []
     observable = False
     for wiring in hook.wirings:
         if wiring.event in TOOL_EVENTS:
             observable = True
             prefix = f"event:{wiring.event}:"
-            keys.update(key for key in totals if key.startswith(prefix)
+            keys.extend(key for key in totals if key.startswith(prefix)
                         and _matches(wiring.matcher, key[len(prefix):]))
         elif wiring.event == "PreCompact":
             observable = True
-            keys.add("event:PreCompact")
-    return sum(int(totals.get(key, {}).get("events", 0)) for key in keys) if observable else None
+            keys.append("event:PreCompact")
+    return sum(int(totals.get(key, {}).get("events", 0)) for key in set(keys)) if observable else None
 
 
 def build_report(scan: Scan, ledger: dict[tuple[str, str], dict[str, Any]], ledger_path: Path,
-                 scopes: tuple[str, ...], window: list[str], retention: int,
+                 scopes: tuple[str, ...], window: list[str], first_whole: str, retention: int,
                  skills: dict[str, str | None], hooks: dict[str, Hook], attributor: Attributor) -> dict[str, Any]:
-    first_whole = (_today() - datetime.timedelta(days=retention - 1)).isoformat()
     totals: Counts = {}
     sources = {"live": 0, "ledger": 0, "partial": 0}
     for scope in scopes:
@@ -831,7 +954,8 @@ def build_report(scan: Scan, ledger: dict[tuple[str, str], dict[str, Any]], ledg
     never_hooks = [h for h in hook_rows if not h["fires"]]
     return {
         "window": {"days": len(window), "first": window[0], "last": window[-1], "scope": "+".join(scopes),
-                   "sources": sources, "retention_days": retention, "ledger": str(ledger_path)},
+                   "sources": sources, "first_whole": first_whole, "retention_days": retention,
+                   "ledger": str(ledger_path)},
         "read": dict(scan.read, usage_profiles=profiles, usage_unreadable=unreadable_usage),
         "skills": skill_rows,
         "hubs": hub_rows,
@@ -876,8 +1000,8 @@ def print_report(report: dict[str, Any]) -> None:
     src = w["sources"]
     print(f"Read {read['transcripts']} transcripts ({read['unreadable']} unreadable; {read['malformed']} malformed "
           f"and {read['truncated']} truncated lines; {read['undated']} undated traces). Day-scopes: {src['live']} "
-          f"live, {src['ledger']} from the ledger, {src['partial']} PARTIAL (older than the {w['retention_days']}-day "
-          f"transcript retention with no ledger row).")
+          f"live, {src['ledger']} from the ledger, {src['partial']} PARTIAL (before {w['first_whole']}, the oldest day "
+          f"whose transcripts are all still on disk, and no ledger row).")
     print(f"skillUsage read from {read['usage_profiles']} profile(s)"
           + (f"; unreadable: {', '.join(read['usage_unreadable'])}" if read["usage_unreadable"] else "") + ".")
     print("\n" + report["caveats"][0])
@@ -941,8 +1065,9 @@ def report_mode(args: argparse.Namespace, roots: list[Path], skills: dict[str, s
     scopes = ("main", "subagents") if args.include_subagents else ("main",)
     scan = run_scan(roots, scopes, args.since, window[0], skills, attributor)
     ledger_path = Path(args.ledger_path).expanduser() if args.ledger_path else default_ledger_path()
-    report = build_report(scan, read_ledger(ledger_path), ledger_path, scopes, window, retention_days(roots),
-                          skills, hooks, attributor)
+    first_whole, retention = first_whole_day(roots, today)
+    report = build_report(scan, read_ledger(ledger_path), ledger_path, scopes, window, first_whole.isoformat(),
+                          retention, skills, hooks, attributor)
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True))
     else:
@@ -969,7 +1094,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--ledger-path", metavar="PATH",
                         help="Ledger file to read and append (default <config dir>/harness-usage/days.jsonl).")
     parser.add_argument("--repo", metavar="DIR", default=str(REPO),
-                        help="The Clade checkout whose shipped skills and hooks are counted (default: this one).")
+                        help="The Clade checkout whose shipped skills and hooks are counted (default: the one this "
+                             "script sits in; required for the copy install.sh puts in ~/.claude/scripts/).")
     parser.add_argument("--self-test", action="store_true", help="Run the controls in harness_usage_selftest.py.")
     args = parser.parse_args(argv)
     if args.self_test:
@@ -979,6 +1105,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.since < 1:
         parser.error("--since must be at least 1")
     repo = Path(args.repo).expanduser()
+    if not (repo / "configs" / "settings-hooks.json").is_file() or not (repo / "configs" / "skills").is_dir():
+        print(f"harness-usage: {repo} is not a Clade checkout (no configs/settings-hooks.json and configs/skills/). "
+              "The copy install.sh puts in ~/.claude/scripts/ has no checkout beside it: pass --repo "
+              "<path to your Clade checkout>.", file=sys.stderr)
+        return 2
     skills, hooks = load_skills(repo), load_hooks(repo)
     attributor = Attributor(hooks)
     roots = default_roots()
