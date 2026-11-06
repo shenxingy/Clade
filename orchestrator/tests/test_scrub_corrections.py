@@ -156,3 +156,28 @@ def test_apply_preserves_the_file_mode(tmp_path: Path) -> None:
     _run(tmp_path, "--apply")
 
     assert log.stat().st_mode & 0o777 == 0o600
+
+
+def test_history_the_hook_already_masked_reports_clean(tmp_path: Path) -> None:
+    """A masked marker is not a credential to rotate.
+
+    correction-detector.sh persists `python3 redact.py` stdout, so a prompt that
+    quoted a key in an env-style assignment lands on disk as `token: ` and the
+    marker <redacted:github_token> in quotes. env_secret used to match it —
+    21+ non-quote characters in quotes — so this scrub, re-reading the history,
+    told the owner to rotate `<redacted:github_token>`. Found by the idempotence
+    property in test_redact_properties.py; this is what the owner was shown.
+    """
+    prompt = 'that is wrong, the config was token: "' + "ghp_" + "Z" * 36 + '"'
+    masked = subprocess.run(
+        [sys.executable, str(REPO / "configs" / "scripts" / "redact.py")],
+        input=prompt, capture_output=True, text=True, check=True,
+    ).stdout
+    assert masked.endswith('token: "' + "<redacted:github_token>" + '"'), masked
+    record = {"timestamp": "2026-11-05T00:00:00Z", "project": "/tmp/example", "prompt": masked}
+    (tmp_path / "history.jsonl").write_text(json.dumps(record) + "\n", encoding="utf-8")
+
+    result = _run(tmp_path)
+
+    assert result.returncode == 0
+    assert "clean: no credentials found" in result.stdout, result.stdout

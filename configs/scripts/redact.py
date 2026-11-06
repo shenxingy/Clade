@@ -48,13 +48,23 @@ from typing import Iterable
 # work. re.ASCII restores ASCII \b semantics; the `task_<32 alnum>` exclusion
 # the generic pattern depends on is unaffected, because `k` and `_` are ASCII
 # word characters either way.
+#
+# A pattern whose character class contains `-` (anthropic, openai, google,
+# slack, jwt) has NO trailing \b, and that is load-bearing too. `-` is not a
+# word character, so a key ending in `-` before a space has no boundary after
+# it: an open count backtracked off the dashes, and at its minimum length — or
+# at google's old fixed {35} — matched nothing at all, so the whole key went
+# out. `sk-` + 19 alnum + `-` and `AIza` + 34 + `-` both did, until
+# tests/test_redact_properties.py generated them. A greedy count consumes the
+# whole run of its class, so no trailing assertion is needed; the leading \b
+# stays, because that is what keeps `task_…` and `xsk-…` out.
 _A = re.ASCII
 _PATTERNS: list[tuple[str, re.Pattern, int]] = [
     # Anthropic — sk-ant-{api03|admin01}-... (real keys are long; require ≥40 chars)
-    ("anthropic_key", re.compile(r"\bsk-ant-[a-zA-Z0-9_-]{40,}\b", _A), 0),
+    ("anthropic_key", re.compile(r"\bsk-ant-[a-zA-Z0-9_-]{40,}", _A), 0),
     # OpenAI — sk-... or sk-proj-... (≥20 alnum after prefix to avoid matching
     # benign strings like "sk-foo" in code samples)
-    ("openai_key", re.compile(r"\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}\b", _A), 0),
+    ("openai_key", re.compile(r"\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}", _A), 0),
     # GitHub — ghp_/gho_/ghu_/ghs_/ghr_ + 36 chars
     ("github_token", re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,}\b", _A), 0),
     # AWS access key ID
@@ -64,9 +74,9 @@ _PATTERNS: list[tuple[str, re.Pattern, int]] = [
     ("aws_secret_key",
      re.compile(r"AWS_SECRET_ACCESS_KEY[\s:=]+['\"]?([A-Za-z0-9/+=]{40})['\"]?", _A), 1),
     # Google API key
-    ("google_api_key", re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b", _A), 0),
+    ("google_api_key", re.compile(r"\bAIza[0-9A-Za-z_-]{35,}", _A), 0),
     # Slack tokens
-    ("slack_token", re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b", _A), 0),
+    ("slack_token", re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}", _A), 0),
     # Stripe keys — test keys leak as readily as live ones and were previously
     # matched by nothing: the generic entry below cannot span `test_` either.
     ("stripe_key", re.compile(r"\b(?:sk|rk|pk)_(?:live|test)_[A-Za-z0-9]{20,}\b", _A), 0),
@@ -78,11 +88,16 @@ _PATTERNS: list[tuple[str, re.Pattern, int]] = [
     # corpus, where every one of the 14 `sk_` occurrences sits inside `task_…`.
     ("generic_secret_key", re.compile(r"\b(?:sk|rk|ak)_[A-Za-z0-9]{32,}\b", _A), 0),
     # JWT (header.payload.sig — three b64url segments)
-    ("jwt", re.compile(r"\beyJ[A-Za-z0-9_=-]{10,}\.eyJ[A-Za-z0-9_=-]{10,}\.[A-Za-z0-9_=-]{10,}\b", _A), 0),
-    # Generic env-style assignments — last resort, narrow keyword list
+    ("jwt", re.compile(r"\beyJ[A-Za-z0-9_=-]{10,}\.eyJ[A-Za-z0-9_=-]{10,}\.[A-Za-z0-9_=-]{10,}", _A), 0),
+    # Generic env-style assignments — last resort, narrow keyword list. The
+    # lookahead refuses a value that is exactly one of this module's own
+    # markers: after `token: `, a quoted <redacted:github_token> is 21+
+    # non-quote characters in quotes, so without it a second pass re-masked the
+    # marker, and scrub-corrections.py — which re-scans history the hooks
+    # already masked — reported `<redacted:…>` to the owner as a key to rotate.
     ("env_secret", re.compile(
         r"(?i)\b(?:api[_-]?key|secret|password|passwd|token|auth)"
-        r"[\s:=]+['\"]([^'\"\s]{12,})['\"]",
+        r"[\s:=]+['\"](?!<redacted:[a-z_]+>['\"])([^'\"\s]{12,})['\"]",
         _A,
     ), 1),
     # PEM private key blocks
@@ -107,21 +122,39 @@ class Hit:
 # ─── Public API ───────────────────────────────────────────────────────────────
 
 def scan(text: str) -> list[Hit]:
-    """Return all hits, ordered by start offset, non-overlapping (first wins)."""
+    """Return all hits, ordered by start offset and non-overlapping.
+
+    Overlapping matches are MERGED into one hit spanning their union, never
+    resolved by dropping one. "First listed wins" used to drop the later match
+    whole, and the later one is often the wider: a JWT whose segment holds
+    `-sk-ant-…` or `-AKIA…` kept its header, payload and signature in the clear
+    because aws_access_key / anthropic_key are listed before jwt, and an env
+    value or PEM body lost everything outside the inner token the same way. The
+    merged hit is labelled by its widest member (ties: the earlier-listed
+    pattern, so `sk-ant-…` stays anthropic_key and a stripe key stays
+    stripe_key). Found by tests/test_redact_properties.py.
+    """
     if not text:
         return []
-    hits: list[Hit] = []
-    occupied: list[tuple[int, int]] = []
-    for kind, pat, gi in _PATTERNS:
+    spans: list[tuple[int, int, int, str]] = []
+    for order, (kind, pat, gi) in enumerate(_PATTERNS):
         for m in pat.finditer(text):
             s, e = m.span(gi) if gi else m.span()
-            if any(not (e <= os_ or s >= oe) for os_, oe in occupied):
-                continue  # overlap with earlier hit — skip
-            occupied.append((s, e))
-            value = m.group(gi) if gi else m.group(0)
-            preview = _preview(value)
-            hits.append(Hit(kind=kind, start=s, end=e, preview=preview))
-    hits.sort(key=lambda h: h.start)
+            spans.append((s, e, order, kind))
+    spans.sort()
+    hits: list[Hit] = []
+    cur_s = cur_e = -1
+    best: tuple[int, int, str] | None = None  # (-width, order, kind)
+    for s, e, order, kind in spans:
+        if best is not None and s < cur_e:  # overlaps the open cluster
+            cur_e = max(cur_e, e)
+            best = min(best, (-(e - s), order, kind))
+            continue
+        if best is not None:
+            hits.append(Hit(kind=best[2], start=cur_s, end=cur_e, preview=_preview(text[cur_s:cur_e])))
+        cur_s, cur_e, best = s, e, (-(e - s), order, kind)
+    if best is not None:
+        hits.append(Hit(kind=best[2], start=cur_s, end=cur_e, preview=_preview(text[cur_s:cur_e])))
     return hits
 
 
