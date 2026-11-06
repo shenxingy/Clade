@@ -91,6 +91,9 @@ wall-clock against a Codex worker's compared a fan-out against an unknown. The
 spawns are persisted in ``~/.codex/state_5.sqlite``; ``codex_children.py``
 beside this file reads them read-only.
 
+Where the transcripts live, and the roots every mode scans, come from
+``transcripts.py`` beside this file.
+
 Stdlib only, on purpose: the syntax-check CI job installs no dependencies.
 """
 
@@ -113,7 +116,6 @@ from codex_children import (
     self_test_codex_children,
 )
 from scorecard_ledger import (
-    config_dir,
     default_ledger_path,
     emit_outcomes,
     parse_when,
@@ -123,6 +125,7 @@ from scorecard_ledger import (
     self_test_outcome,
     self_test_summary,
 )
+from transcripts import default_roots, find_transcripts
 
 # ─── Rates ──────────────────────────────────────────────────────────────────
 # USD per million tokens: (input, cache read, 5-minute cache write, 1-hour cache
@@ -695,20 +698,6 @@ def find_workflow_dirs(roots: list[Path], since_days: float | None) -> list[Path
     return sorted(found.values(), key=lambda p: p.stat().st_mtime)
 
 
-def default_roots() -> list[Path]:
-    home = Path.home()
-    roots = [home / ".claude" / "projects"]
-    profiles = home / ".claude-profiles"
-    if profiles.is_dir():
-        roots.extend(sorted(p / "projects" for p in profiles.iterdir() if p.is_dir()))
-    # The config dir --ledger writes into, wherever $CLAUDE_CONFIG_DIR puts it.
-    # Without it a ledger pass from elsewhere scanned nothing and said so as 0.
-    configured = config_dir() / "projects"
-    if all(configured.resolve() != root.resolve() for root in roots):
-        roots.append(configured)
-    return roots
-
-
 # ─── Polling ────────────────────────────────────────────────────────────────
 # The polling rule — start one Monitor, then yield, rather than re-running a
 # status command until something changes — lived only as prose in the global
@@ -811,21 +800,6 @@ def scan_session_polls(transcript: Path) -> dict | None:
         "jobs": jobs,
         "polls_per_job": (polls / jobs) if jobs else float(polls),
     }
-
-
-def find_transcripts(roots: list[Path], since_days: float | None) -> list[Path]:
-    found: dict[Path, Path] = {}
-    cutoff = None
-    if since_days is not None:
-        cutoff = datetime.datetime.now().timestamp() - since_days * 86400
-    for root in roots:
-        if not root.exists():
-            continue
-        for path in root.glob("*/*.jsonl"):
-            if cutoff is not None and path.stat().st_mtime < cutoff:
-                continue
-            found.setdefault(path.resolve(), path)
-    return sorted(found.values(), key=lambda p: p.stat().st_mtime)
 
 
 def self_test_polls() -> int:

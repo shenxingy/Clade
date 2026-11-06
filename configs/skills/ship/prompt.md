@@ -106,9 +106,19 @@ gh pr create \
 - [x] All tests pass
 - [x] Version bumped in source file
 - [x] CHANGELOG updated
+
+Review depth: <none | skimmed | read-in-full>
+Could not verify: <none | item (why); item (why)>
 BODY
 )"
 ```
+
+Fill the last two lines before creating the PR, spelled as `/create-pr` §4
+defines them: `Review depth: none | skimmed | read-in-full` (how far someone
+other than the author read the diff; `none` at creation unless a review already
+happened) and `Could not verify: none | <item>; <item>` (each item a few words
+with its reason in parentheses). `/retro` rolls them up; a placeholder left in
+place is counted as unfilled.
 
 Report: `✅ PR created: <url>`
 
