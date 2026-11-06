@@ -175,6 +175,17 @@ python3 configs/scripts/workflow-scorecard.py --outcome          # JSONL, label:
 python3 configs/scripts/outcome-scorecard.py --since 14 --tokens
 python3 configs/scripts/outcome-scorecard.py --since 7 --repo shenxingy/Clade --json
 
+# Where did the harness say no, and in how many sessions? Errors, PreToolUse
+# hook denials, permission refusals, timeouts, unchanged retries after one of
+# those, and hook_non_blocking_error, from the transcripts, ranked by DISTINCT
+# sessions then count, on discovery ISO weeks with the last week held out (it
+# prints the held-out span and warns below 7 days; radar passes
+# --holdout-weeks 2). Each family shows its full refusal text, the next 3 calls
+# and provenance. Friction is not a defect: a refusal can be a guard doing its
+# job. Radar Lane D.
+python3 configs/scripts/friction-rank.py                  # 30 days, main thread
+python3 configs/scripts/friction-rank.py --subagents --json
+
 # What did merged PRs say they could NOT verify? Every PR body carries
 # `Review depth: none | skimmed | read-in-full` and `Could not verify: none |
 # <item>; <item>` (create-pr §4, delivery §6, /ship, the PR template). This rolls
@@ -756,6 +767,21 @@ python3 configs/scripts/context-policy.py --self-test
 #     --jq string and an already-flat fixture left four mutations green.
 python3 configs/scripts/outcome-scorecard.py --self-test
 
+# 8f. Friction rank self-test. The correction channel is slow and yields generic
+#     rules; the harness's own verdicts, ranked by how many sessions they recur
+#     in, yield one-sentence harness repairs (Gorokh, 2026-10-08, one operator's
+#     fleet). friction-rank.py reads them through transcripts.py and never clips
+#     a verdict text — radar's hand tally cut stderr at 90 characters. The
+#     self-test drives main() on synthetic transcripts under --root with --now
+#     pinned: every verdict class, a quoted refusal that is NOT one, the family
+#     rules (heredocs stripped, cd skipped, option values skipped, subcommands
+#     kept), sessions before count, held-out weeks and their span, the window,
+#     main-thread-only, the refusals table's classes, the latest occurrence and
+#     unreadable transcripts. Its mutations are in
+#     orchestrator/tests/can_fire/friction_rank.py, which
+#     test_self_tests_can_fire.py loads.
+python3 configs/scripts/friction-rank.py --self-test
+
 # 9. Architecture map coverage — every orchestrator module listed in this file
 python3 configs/scripts/check-arch-map.py
 
@@ -890,7 +916,7 @@ commit too.**
 
 On push/PR to `main`, four workflow files fire:
 
-- `ci.yml` — `syntax-check` (27 gates), `pytest` (suite + 2 offline evals),
+- `ci.yml` — `syntax-check` (28 gates), `pytest` (suite + 2 offline evals),
   `shell-tests` (30 suites), `install-test`. `run_hack_eval.py` scores
   `judge_diversity.test_integrity` against the labelled reward-hack corpus in
   `evals/hack_cases/` — read its README before changing either, because that

@@ -277,6 +277,42 @@ the author backs is listed as a question, since a reader outside GitHub leaves
 no review there. On this repository's 35 PRs merged in the 14 days to
 2026-11-06, neither line appeared yet. `/retro` runs this as its Step 2c.
 
+**Rank where the harness said no.** Corrections are a slow signal; the harness's
+own verdicts, ranked by how many sessions they recur in, point at one-sentence
+harness repairs (Gorokh, 2026-10-08, one operator's fleet).
+
+```bash
+python3 configs/scripts/friction-rank.py                       # 30 days, main thread, every profile
+python3 configs/scripts/friction-rank.py --holdout-weeks 2       # early in a week: hold out the week before too
+python3 configs/scripts/friction-rank.py --subagents --since 14 --json
+```
+
+It reads the transcripts through `configs/scripts/transcripts.py` and counts
+six verdict classes: `is_error`, PreToolUse hook denials, permission refusals,
+timeouts, an unchanged retry of a call that drew one of those, and
+`hook_non_blocking_error`. A family is the class plus the tool and, for Bash,
+the first command's leading tokens (heredoc bodies stripped, a leading `cd DIR
+&&` skipped, an option's value never read as the command, so `sudo -u postgres
+psql` is `psql` and `git -C repo status` is `git status`, and `git commit` kept
+apart from `git push`). Families are ranked by distinct sessions, then count, on
+discovery ISO weeks; the last `--holdout-weeks` (default 1, the current week)
+are held out and shown beside them, so a burst in one week cannot choose its
+own ranking. The report prints how many days the held-out weeks span and warns
+below 7: on a Monday the current week holds hours, so `radar-cron.sh` passes
+`--holdout-weeks 2`. Each family prints its most common verdict text in full
+(never clipped; between equally common texts, the most recent), and that
+text's latest occurrence: provenance (session, file, record index) and the
+next 3 calls after it. A second table groups hook denials, permission refusals
+and hook errors by their first sentence across families. Main thread only
+unless `--subagents`, so radar's Lane D covers less than the hand tally it
+replaced, which grepped subagent transcripts too. A transcript that will not
+open is named in the report; when none will, the run is NOT MEASURED and exits
+1. Friction is not a defect: a refusal can be a
+guard doing its job, so read the text and the next calls before changing
+anything, and test a reworded refusal before keeping it. `/radar` runs it as
+Lane D; `radar-cron.sh` runs it before an unattended sweep and hands the agent
+the report.
+
 ## Context window policy
 
 **Opt-in, and not yet shown to cost nothing in quality.** One settings key makes
