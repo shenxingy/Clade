@@ -29,7 +29,7 @@ import json
 import re
 import sys
 from dataclasses import dataclass, asdict
-from typing import Iterable
+from typing import Iterable, Tuple
 
 
 # ─── Patterns ─────────────────────────────────────────────────────────────────
@@ -123,7 +123,15 @@ class Hit:
 # One run of verbatim text or one marker in a redacted string, with the span it
 # occupies there and the span of the input it stands for. A verbatim piece maps
 # one to one; a marker maps its whole width onto the hit it replaced.
-_Piece = tuple[int, int, int, int, bool]  # (out_start, out_end, in_start, in_end, is_marker)
+#
+# typing.Tuple, not `tuple[...]`: this line runs at import, and a subscripted
+# builtin raises TypeError there on Python 3.8, the oldest python3 this
+# repository names (context-policy.py). A redact.py that cannot import is not
+# a no-op: `--check` exits 1, so checks.sh refuses every commit that adds a
+# line and secret-scanner.sh flags every prompt. Annotations may say `tuple[...]`:
+# `from __future__ import annotations` never evaluates them.
+# tests/test_redact.py checks this file against that floor.
+_Piece = Tuple[int, int, int, int, bool]  # (out_start, out_end, in_start, in_end, is_marker)
 
 # How many times scan() reads the text, counting the first read. A later read
 # happens only when the one before it found something new, so text costs one read

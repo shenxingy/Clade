@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import ast
 import importlib.util
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 # Load redact.py as a module without polluting sys.path globally.
 # Register in sys.modules BEFORE exec_module so @dataclass on Python 3.14
@@ -258,3 +262,143 @@ def test_every_pattern_is_ascii_anchored() -> None:
 
     missing = [kind for kind, rx, _ in redact_mod._PATTERNS if not rx.flags & re.ASCII]
     assert not missing, f"patterns missing re.ASCII: {missing}"
+
+
+# ─── Oldest interpreter ──────────────────────────────────────────────────────
+# The hooks run redact.py under whatever `python3` the machine has:
+# correction-detector.sh and checks.sh call `python3 redact.py`, and
+# secret-scanner.sh runs it through its `#!/usr/bin/env python3` line. install.sh
+# accepts any python3 that starts. The oldest one this repository names is 3.8:
+# context-policy.py keeps its `tuple[...]` aliases under TYPE_CHECKING for "the
+# Python 3.8 install.sh accepts".
+#
+# A redact.py that cannot import there is worse than a no-op. A traceback exits
+# 1, which is what `--check` returns for a hit, so checks.sh refuses every
+# commit that adds a line and secret-scanner.sh tells the model every prompt
+# holds a credential. A module-level `_Piece = tuple[...]` did exactly that on
+# 3.8.
+#
+# CI runs 3.12, so importing the module there proves nothing about 3.8. The AST
+# check runs on every interpreter; the subprocess check runs where python3.8
+# exists and covers what the AST cannot see, such as a newer stdlib API.
+HOOK_PYTHON_FLOOR = (3, 8)
+_PEP585_BUILTINS = frozenset({"tuple", "list", "dict", "set", "frozenset", "type"})
+# Modules whose classes became subscriptable at runtime in 3.9 (PEP 585).
+# typing's own aliases (Tuple, Iterable, ...) always were.
+_PEP585_MODULES = frozenset({"collections", "collections.abc", "contextlib", "re"})
+_TYPE_NAMES = _PEP585_BUILTINS | {"int", "str", "bytes", "bytearray", "float", "complex", "bool", "object"}
+
+
+def newer_than_floor(source: str) -> list[str]:
+    """Constructs in `source` that a HOOK_PYTHON_FLOOR interpreter rejects or crashes on.
+
+    Grammar is ast.parse's feature_version. On top of that, two things parse
+    on 3.8 and raise when they run: a subscripted builtin or collections.abc
+    class (PEP 585, 3.9) and a `|` between types (PEP 604, 3.10). Annotations
+    are skipped only under `from __future__ import annotations`, which keeps
+    them unevaluated, and an `if TYPE_CHECKING:` body never runs. Function
+    bodies are checked: they run when the hook calls them.
+    """
+    try:
+        tree = ast.parse(source, feature_version=HOOK_PYTHON_FLOOR)
+    except SyntaxError as exc:
+        return [f"line {exc.lineno}: {exc.msg}"]
+    lazy = any(isinstance(n, ast.ImportFrom) and n.module == "__future__"
+               and any(a.name == "annotations" for a in n.names) for n in tree.body)
+    imported = {a.asname or a.name for n in ast.walk(tree)
+                if isinstance(n, ast.ImportFrom) and n.module in _PEP585_MODULES for a in n.names}
+
+    def generic(node: ast.AST) -> bool:
+        if isinstance(node, ast.Name):
+            return node.id in _PEP585_BUILTINS or node.id in imported
+        return isinstance(node, ast.Attribute) and ast.unparse(node.value) in _PEP585_MODULES
+
+    def is_type(node: ast.AST) -> bool:
+        return ((isinstance(node, ast.Constant) and node.value is None)
+                or (isinstance(node, ast.Name) and (node.id in _TYPE_NAMES or node.id in imported))
+                or (isinstance(node, ast.Subscript) and generic(node.value)))
+
+    found: list[str] = []
+
+    def visit(node: ast.AST) -> None:
+        if isinstance(node, ast.Subscript) and generic(node.value):
+            found.append(f"line {node.lineno}: {ast.unparse(node)} subscripts a builtin at runtime (3.9+)")
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr) and (is_type(node.left) or is_type(node.right)):
+            found.append(f"line {node.lineno}: {ast.unparse(node)} is a runtime union of types (3.10+)")
+        type_checking = isinstance(node, ast.If) and ast.unparse(node.test).endswith("TYPE_CHECKING")
+        for field, value in ast.iter_fields(node):
+            if (lazy and field in ("annotation", "returns")) or (type_checking and field == "body"):
+                continue
+            for child in value if isinstance(value, list) else [value]:
+                if isinstance(child, ast.AST):
+                    visit(child)
+
+    visit(tree)
+    return found
+
+
+_REDACT_SOURCE = _REDACT_PATH.read_text(encoding="utf-8")
+_PIECE_ALIAS = "_Piece = Tuple[int, int, int, int, bool]"
+
+
+def test_redact_runs_on_the_oldest_python_the_hooks_name() -> None:
+    assert newer_than_floor(_REDACT_SOURCE) == []
+
+
+def test_the_floor_check_finds_the_alias_that_broke_it() -> None:
+    """The mutation: put back the module-level `tuple[...]` the check exists for."""
+    assert _REDACT_SOURCE.count(_PIECE_ALIAS) == 1, "the alias moved; update the anchor, do not delete the case"
+    mutated = _REDACT_SOURCE.replace(_PIECE_ALIAS, _PIECE_ALIAS.replace("Tuple[", "tuple["))
+    assert newer_than_floor(mutated)
+
+
+# The checker's own controls: what it must report, and what it must leave alone.
+FLOOR_CASES = {
+    "a subscripted builtin at module level": ("X = tuple[int, str]\n", True),
+    "a subscripted builtin in a function body": ("def f():\n    return list[int]\n", True),
+    "a subscripted collections.abc import": ("from collections.abc import Callable\nX = Callable[[], int]\n", True),
+    "a subscripted module attribute": ("import re\nX = re.Pattern[str]\n", True),
+    "a union of types": ("X = int | None\n", True),
+    "an annotation with no __future__ import": ("def f(x: tuple[int]) -> None:\n    pass\n", True),
+    "grammar newer than the floor": ("match x:\n    case 1:\n        pass\n", True),
+    "annotations under the __future__ import": (
+        "from __future__ import annotations\nX: dict[str, int] = {}\n"
+        "def f(x: tuple[int]) -> list[int | None]:\n    y: set[str] = set()\n    return []\n", False),
+    "a TYPE_CHECKING body": ("from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    X = tuple[int]\n", False),
+    "typing's own alias": ("from typing import Tuple\nX = Tuple[int, int]\n", False),
+    "a | between flags and ints": ("import re\nF = re.I | re.M\nx = 1 | 2\n", False),
+    "an ordinary subscript": ("import sys\nx = sys.argv[1:]\n", False),
+}
+
+
+@pytest.mark.parametrize("name", list(FLOOR_CASES))
+def test_the_floor_check_reports_exactly_what_breaks_the_floor(name: str) -> None:
+    source, breaks = FLOOR_CASES[name]
+    assert bool(newer_than_floor(source)) is breaks, newer_than_floor(source)
+
+
+_FLOOR_PYTHON = shutil.which("python{}.{}".format(*HOOK_PYTHON_FLOOR))
+# Inputs that reach the merge and a second read, not only the import.
+_FLOOR_INPUTS = [
+    "key " + "sk-" + "a" * 24 + " end",
+    'sec' + 'ret: "' + "-----BEGIN " + "PRIVATE KEY-----\\nMIIE" + "0" * 16 + "\\n-----END " + "PRIVATE KEY-----" + '\\n"',
+    "AWS_SECRET_ACCESS_" + "KEY=" + "0" * 40 + "AK" + "IA" + "0" * 16,
+]
+
+
+def _run_under(python: str, script: Path, text: str, *argv: str) -> subprocess.CompletedProcess:
+    return subprocess.run([python, str(script), *argv], input=text, capture_output=True, text=True, timeout=30)
+
+
+@pytest.mark.skipif(_FLOOR_PYTHON is None, reason="no python3.8 on PATH; the AST check above still ran")
+def test_redact_under_the_floor_interpreter_matches_this_one(tmp_path: Path) -> None:
+    assert _FLOOR_PYTHON is not None
+    for text in _FLOOR_INPUTS:
+        here, there = _run_under(sys.executable, _REDACT_PATH, text), _run_under(_FLOOR_PYTHON, _REDACT_PATH, text)
+        assert (there.returncode, there.stdout, there.stderr) == (0, here.stdout, ""), text
+        assert "<redacted:" in there.stdout
+    assert _run_under(_FLOOR_PYTHON, _REDACT_PATH, "hello world", "--check").returncode == 0
+    # Control: the same run over the alias this file was fixed for must fail there.
+    broken = tmp_path / "redact.py"
+    broken.write_text(_REDACT_SOURCE.replace(_PIECE_ALIAS, _PIECE_ALIAS.replace("Tuple[", "tuple[")), encoding="utf-8")
+    assert _run_under(_FLOOR_PYTHON, broken, "hello world", "--check").returncode != 0
