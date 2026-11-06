@@ -2542,6 +2542,36 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   tail survives; idempotent). Its generator must insert separators, because the `redact.py`
   patterns are `\b`-anchored and fixed-length. Have `ci-local.py` rerun a failed step once and
   report a rerun-green as FLAKY, not green.
+  - DONE 2026-11-06 (test/redact-properties): the property half. `hypothesis==6.170.14` pinned;
+    `orchestrator/tests/test_redact_properties.py` reads redact.py's CLI output and checks that
+    no 8-char run of a separator-delimited credential survives, and that a second pass changes
+    and reports nothing — the second with no delimiting precondition, also searched over
+    credentials glued with no separator. Shrunk counterexamples are pinned, and 21 searched
+    mutations, two example-level ones (the label rule; a marker's end mapped by offset) and a
+    negative control per property live in the file. Four real
+    redact.py defects, fixed in the same PR (the first three found by its first runs, the fourth
+    in review, by asking what the generators could not reach): overlapping matches dropped the wider one
+    (a JWT around `-AKIA…` kept header and payload), env_secret re-matched its own marker
+    (scrub-corrections reported it as a key), a trailing `\b` after a `-` class missed
+    `AIza`+34+`-` and `sk-`+19+`-` entirely, and one read of the text was not a fixed point (a
+    PEM inside an env value left the rest of the value in the clear, and a second pass — or the
+    scrub — found the marker; an AKIA run glued to an AWS secret escaped the first pass).
+    `scan()` now re-reads its own redaction, at most 4 reads. Both rules are in
+    `configs/rules/tests.md`; `tests/test-loop-real.sh`'s flake policy now says FLAKY, not discard.
+    Review round 2: the fixed-point helper's module-level `_Piece = tuple[...]` made redact.py
+    fail to import on Python 3.8 (`--check` exited 1 on every input, so checks.sh would refuse
+    every commit that adds a line); now `typing.Tuple`, and `test_redact.py` checks the file
+    against a 3.8 floor (an AST check everywhere, a python3.8 run where one exists). The
+    marker-mapping rule of the fixed point is pinned through main() and checked as a property.
+  - OPEN: the `ci-local.py` FLAKY rerun waits for the ci-local unit (§ above) to merge.
+  - Not changed, deliberately: `orchestrator/runtime_redaction.py` (dormant layer) has the same
+    `AIza…{35}\b`, and `AIza`+34+`-` passes through it unmasked (checked by hand; its sequential
+    substitution does mask the JWT pin).
+  - Not changed, deliberately (outside this PR, none run by a hook): under python3.8 on
+    2026-11-06, `configs/scripts/artifact-lint.py`, `resolve-goal-deps.py` and
+    `scorecard_ledger.py` fail to import with the same `'type' object is not subscriptable`,
+    and `erosion-trend.py` with `module 'ast' has no attribute 'Match'` (a 3.10 API an AST check
+    cannot see). Decide the floor for skill-run scripts before extending the check to them.
 - [x] 🔵 **Say how deeply each PR was read, and roll up what could not be verified.** Osmani,
   *The Code Nobody Reads* (2026-09-28); Larson, *Speeding up code review with small-change*
   (2026-10-17) and *adopting verification pattern* (2026-10-30): "That list is your roadmap".
