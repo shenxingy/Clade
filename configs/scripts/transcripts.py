@@ -7,12 +7,14 @@ Every report script that mines Claude Code's own transcripts grew its own reader
 ``workflow-scorecard.py`` (agents, polls), ``scorecard_ledger.py`` (owner messages
 after a run), ``outcome-scorecard.py`` (tokens), and radar's manual tallies. Each
 re-derived where the files live, how a malformed line is skipped, and how a tool
-call meets its result, and they drifted. ``scan_session_polls`` split files with
-``str.splitlines()``, which also splits on U+2028, U+2029 and U+0085. JSON leaves
-those raw inside strings, so a record holding one breaks into two unparseable
-halves. Measured 2026-11-05: 2 of 240 main-thread transcripts modified in the
-previous 30 days on the author's host lost one record each that way. This module is
-the one place those answers live. It is a library, not a CLI.
+call meets its result, and they drifted. ``scan_session_polls`` splits files
+with ``str.splitlines()``, which also splits on U+2028, U+2029 and U+0085. JSON
+leaves those raw inside strings, so a record holding one breaks into two
+unparseable halves. Measured 2026-11-05: 2 of 240 main-thread transcripts
+modified in the previous 30 days on the author's host lost one record each that
+way. Both were tool results, which ``--polls`` does not count, so its figures
+are unaffected; a reader of results would not be. This module is the one place
+those answers live. It is a library, not a CLI.
 
 Where transcripts live
 ----------------------

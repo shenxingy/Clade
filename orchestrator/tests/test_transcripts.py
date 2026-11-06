@@ -5,7 +5,9 @@ transcripts by keys and types only (the module docstring lists them), with
 invented ids, commands and text. No real transcript content is committed.
 
 configs/scripts/ is stdlib-only and imported the way workflow-scorecard.py
-imports its siblings: by putting that directory on sys.path.
+imports its siblings: by putting that directory on sys.path. With
+CLADE_TRANSCRIPTS_DIR set, ``transcripts`` is imported from that directory
+instead: test_transcripts_can_fire.py points it at a mutated copy.
 """
 
 from __future__ import annotations
@@ -21,8 +23,9 @@ import pytest
 
 _REPO = Path(__file__).resolve().parents[2]
 _SCRIPTS = _REPO / "configs" / "scripts"
-if str(_SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(_SCRIPTS))
+_UNDER_TEST = os.environ.get("CLADE_TRANSCRIPTS_DIR") or str(_SCRIPTS)
+if _UNDER_TEST not in sys.path:
+    sys.path.insert(0, _UNDER_TEST)
 
 import transcripts as tr  # noqa: E402
 
@@ -304,6 +307,8 @@ def test_attachments_yield_hook_kinds_only_with_their_fields():
         _hook("hook_some_future_kind", hookEvent="Stop"),
         {"type": "system", "subtype": "stop_hook_summary", "hookInfos": [], "hookErrors": []},
         {"type": "attachment", "attachment": "not an object"},
+        # A record of another type is not an attachment, whatever it carries.
+        {"type": "user", "attachment": {"type": "hook_success", "hookEvent": "Stop"}},
         _hook("queued_command", prompt="typed while busy"),
     ]
     found = list(tr.attachments(records))
@@ -345,6 +350,7 @@ def test_attachments_carry_the_subagent_id():
     ("cat <<-EOF\n\tbody\n\t\tEOF\nnext", "cat <<-EOF\nnext"),
     ("cat <<EOF\nbody\n\tEOF\nstill body\nEOF\nnext", "cat <<EOF\nnext"),  # only <<- forgives tabs
     ("grep x <<< \"$s\"\ngit status", "grep x <<< \"$s\"\ngit status"),  # a here-string has no body
+    ("tr a b <<<abc\ngit status", "tr a b <<<abc\ngit status"),  # not even a bare-word one
     ("paste <<A <<B\na1\nA\nb1\nB\nwc", "paste <<A <<B\nwc"),  # two on one line: both bodies go
     ("cat <<EOF\nbody <<NOT\nEOF\nnext", "cat <<EOF\nnext"),  # a << inside a body opens nothing
     ('git commit -m "$(cat <<\'EOF\'\nfix: x\n\nrm -rf\nEOF\n)"', "git commit -m \"$(cat <<'EOF'\n)\""),
