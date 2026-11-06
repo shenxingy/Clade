@@ -949,6 +949,7 @@ MUTATIONS["configs/scripts/context-policy.py"] = [
 # Its --self-test drives main() on fixtures and a fake gh; one guard per entry.
 MUTATIONS["configs/scripts/pr-verification-gaps.py"] = [
     ("HTML comments are not read", '    text = _COMMENT.sub("", text)', "    text = text"),
+    ("a line opening in inline code quotes the format", 'r"^[\\s>*-]*(review depth', 'r"^[\\s>*`-]*(review depth'),
     ("an unclosed <!-- hides the rest of the body", '(?:-->|\\Z)"', '-->"'),
     ("fenced code is not read", "        if not fenced:", "        if True:"),
     ("the first line of a label counts", "found.setdefault(match.group(1).lower(), match.group(2).strip())",

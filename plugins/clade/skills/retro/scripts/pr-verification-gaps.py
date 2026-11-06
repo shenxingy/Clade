@@ -46,8 +46,9 @@ What it cannot see
   reads NOT MEASURED, never "nothing unverified".
 - Items are grouped by their words. Two phrasings of one gap count apart, which
   is why the delivery skills ask authors to reuse an earlier PR's wording.
-- Lines inside an HTML comment or a fenced code block are not read: the
-  template's comment explains the format, and a PR describing it quotes it.
+- Lines inside an HTML comment or a fenced code block, or opening in inline
+  code, are not read: the template's comment explains the format, and a PR
+  describing it quotes it.
 
 Data: one ``gh pr list --state merged --search merged:>=<day>`` (at most
 ``_GH_LIMIT`` PRs; reaching the cap is noted), plus ``gh repo view`` when no
@@ -80,8 +81,9 @@ _REPO_NAME = re.compile(r"^[\w.-]+/[\w.-]+$")
 
 # ─── Reading one PR body ────────────────────────────────────────────────────
 
-# A label at the start of a line, after any list bullet, quote marker or emphasis.
-_LINE = re.compile(r"^[\s>*`-]*(review depth|could not verify)[*`\s]*:[*`\s]*(.*?)[*`\s]*$", re.I)
+# A label at the start of a line, after any list bullet, quote marker or bold. Not after a backtick: a line that
+# opens with `Review depth: …` in inline code is quoting the format, as a PR describing it does.
+_LINE = re.compile(r"^[\s>*-]*(review depth|could not verify)[*`\s]*:[*`\s]*(.*?)[*`\s]*$", re.I)
 _DEPTH = re.compile(r"^(none|skimmed|read[- ]in[- ]full)\b[.,;:]?\s*(.*)$", re.I)
 _FENCE = re.compile(r"^\s*(```|~~~)")
 _REASON = re.compile(r"\s*\(([^()]*)\)$")
@@ -413,7 +415,7 @@ def _pr(number: int, body: str, days_ago: float, author: str = "owner",
 
 # What each PR must read as: (review depth state or value, could-not-verify state, its item keys).
 _EXPECTED = {
-    1: ("none", "stated", ["live hook firing", "macos run"]),
+    1: ("none", "stated", ["live hook firing", "macos run"]),            # after a line quoting the format
     2: ("read-in-full", "stated", ["live hook firing", "hosted ci"]),     # Markdown emphasis, case, a trailing period
     3: ("unfilled", "unfilled", []),                                      # the template, left as it was
     4: ("missing", "missing", []),                                        # only inside an HTML comment
@@ -434,8 +436,9 @@ _EXPECTED_RECURRING = [("macOS run", [1, 8, 9]), ("real API call", [9, 10]), ("h
 
 def _fixture_prs(now: datetime.datetime = _NOW) -> list[dict[str, Any]]:
     return [
-        _pr(1, "Fixes the hook.\r\n\r\nReview depth: none\r\nCould not verify: live hook firing (no Claude Code "
-               "session); macOS run (no Mac reachable)\r\n", 6, now=now),
+        _pr(1, "Fixes the hook.\r\n- `Review depth: skimmed` means someone else skimmed it.\r\n\r\nReview depth: none"
+               "\r\nCould not verify: live hook firing (no Claude Code session); macOS run (no Mac reachable)\r\n",
+            6, now=now),
         _pr(2, "- **Review depth:** read-in-full (by @alice)\n- **Could not verify:** **Live hook firing**.; "
                "`hosted CI` (pushed after the local gate)\n", 5, reviews=(("alice", "APPROVED"),), now=now),
         _pr(3, "Review depth: <none | skimmed | read-in-full>\nCould not verify: <none | item (why); item (why)>\n",

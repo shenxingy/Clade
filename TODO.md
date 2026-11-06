@@ -2537,7 +2537,7 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   `/retro` rolls recurring could-not-verify items into the top three.
   DONE 2026-11-06 (feat/pr-review-depth): `Review depth: none | skimmed | read-in-full` and
   `Could not verify: none | <item>; <item>` in the PR template, `/create-pr` §4, `/delivery` §6
-  and `/ship`; `configs/scripts/pr-verification-gaps.py` (self-test, 30 mutations) is `/retro`
+  and `/ship`; `configs/scripts/pr-verification-gaps.py` (self-test, 31 mutations) is `/retro`
   Step 2c, report only. Skeptic caveats kept: depth is labelled self-reported and checked against
   forge reviews; a window where no PR states a line reads NOT MEASURED (Clade's 35 PRs in the 14
   days to 2026-11-06 carry neither line yet).
