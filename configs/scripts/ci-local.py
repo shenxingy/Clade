@@ -32,6 +32,7 @@ Usage
     ci-local.py --json          machine-readable result, for an automatic fixer
     ci-local.py --repo PATH     another repository
     ci-local.py --strict        exit 2 when the run is not green (see below)
+    ci-local.py --no-rerun      a failed step is a failure at once, never rerun
 
 A skipped job is reported, never silently dropped: "nothing ran" and
 "everything passed" must not look the same, which is the failure mode two
@@ -60,11 +61,22 @@ Skips come in two kinds, and only one of them leaves the result intact:
              pass is unproven too. The hosted run executes these lanes; this
              run did not prove them, so a green here says nothing.
 
+A step that exits non-zero is rerun once — same command, env and directory.
+Red again, it failed as it always did. Green the second time, it is FLAKY:
+its job does not count as failed, and the run is not green either, because
+a pass on rerun is a failure nobody has explained (measured: one case of 206
+in a context-policy suite failed once on a host at load ~80 and passed on an
+immediate rerun, and the run said FAILED with no record that it was a flake).
+A step that hit the step timeout is not rerun. --no-rerun turns reruns off.
+
 Exit 1 when a job that ran failed. Otherwise any unproven lane makes the
-summary read PARTIAL, and a run in which no job ran at all reads NOTHING RAN;
-the JSON `verdict` is pass, partial, none or fail, and only pass is green.
-During the report-only rollout the exit code for partial and none is still 0;
---strict makes it 2, and the default flips on the date TODO.md names.
+summary read PARTIAL, a step that passed only on rerun makes it read FLAKY,
+and a run in which no job ran at all reads NOTHING RAN; the JSON `verdict` is
+pass, partial, flaky, none or fail (a run with both an unproven lane and a
+flaky step is partial, and still lists the flaky steps), and only pass is
+green. During the report-only rollout the exit code for partial, flaky and
+none is still 0; --strict makes it 2, and the default flips on the date
+TODO.md names.
 
 Stdlib only — the syntax-check job installs no dependencies.
 """
@@ -855,13 +867,17 @@ def job_needs_python(job: Job) -> bool:
 @dataclass
 class StepResult:
     name: str
-    status: str            # pass | fail | skip
+    status: str            # pass | flaky | fail | skip
     seconds: float = 0.0
     exit_code: int = 0
     reason: str = ""
     command: str = ""
     output_tail: str = ""
     unproven: bool = False
+    # Set only when the step was rerun: the exit code and output of the FIRST
+    # attempt. On a flaky step that output is the only evidence of the flake.
+    first_exit: int | None = None
+    first_output_tail: str = ""
 
 
 @dataclass
@@ -882,8 +898,40 @@ class JobResult:
         # Skipped for want of hosted context, or passed without part of it.
         return [s for s in self.steps if s.unproven and s.status != "fail"]
 
+    @property
+    def flaky_steps(self) -> list[StepResult]:
+        return [s for s in self.steps if s.status == "flaky"]
 
-def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int) -> JobResult:
+
+def _attempt(script: str, cwd: Path, env: dict[str, str], timeout: int,
+             tail_lines: int) -> tuple[int, float, str, bool]:
+    """Run one step once: (exit code, seconds, output tail, timed out). A
+    timeout reports exit 124, like coreutils `timeout`; only the flag tells
+    it apart from a step that exits 124 itself."""
+    t0 = time.time()
+    try:
+        proc = subprocess.run(
+            ["bash", "-eo", "pipefail", "-c", script],
+            cwd=cwd, env=env, capture_output=True, text=True,
+            # A hosted runner gives a step no interactive stdin. Inheriting
+            # the terminal's instead means one `read` anywhere in a suite
+            # hangs the whole run with no output and no clue why — measured
+            # at 13 minutes and 9% CPU before this was added.
+            stdin=subprocess.DEVNULL,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        # text=True is not applied to the partial output a timeout carries.
+        parts = [p.decode("utf-8", "replace") if isinstance(p, bytes) else (p or "")
+                 for p in (exc.stdout, exc.stderr)]
+        return 124, time.time() - t0, "\n".join("".join(parts).splitlines()[-tail_lines:]), True
+    combined = (proc.stdout or "") + (proc.stderr or "")
+    return (proc.returncode, time.time() - t0,
+            "\n".join(combined.splitlines()[-tail_lines:]), False)
+
+
+def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int,
+            rerun: bool = True) -> JobResult:
     result = JobResult(job=job, status="pass")
     started = time.time()
 
@@ -934,57 +982,57 @@ def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int) -> 
 
         if echo:
             print(f"    · {step.display} … ", end="", flush=True)
-        t0 = time.time()
-        try:
-            proc = subprocess.run(
-                ["bash", "-eo", "pipefail", "-c", step.run],
-                cwd=cwd, env=env, capture_output=True, text=True,
-                # A hosted runner gives a step no interactive stdin. Inheriting
-                # the terminal's instead means one `read` anywhere in a suite
-                # hangs the whole run with no output and no clue why — measured
-                # at 13 minutes and 9% CPU before this was added.
-                stdin=subprocess.DEVNULL,
-                timeout=timeout,
-            )
-        except subprocess.TimeoutExpired as exc:
-            elapsed = time.time() - t0
+        rc, elapsed, tail, timed_out = _attempt(step.run, cwd, env, timeout, tail_lines)
+        first_exit: int | None = None
+        first_tail = ""
+        # One rerun of a failed step, same command, env and cwd: green the
+        # second time is FLAKY, never pass. A step that hit the step timeout
+        # is NOT rerun — a hang is not a flake signal, and a second wait would
+        # double a cost that is already the whole step timeout (900 s default).
+        if rc != 0 and not timed_out and rerun:
+            if echo:
+                print(f"FAILED ({elapsed:.0f}s, exit {rc}), rerunning once … ", end="", flush=True)
+            first_exit, first_tail = rc, tail
+            rc, again, tail, timed_out = _attempt(step.run, cwd, env, timeout, tail_lines)
+            elapsed += again
+
+        if timed_out:
             if echo:
                 print(f"TIMED OUT ({elapsed:.0f}s)")
-            tail = (exc.stdout or b"").decode("utf-8", "replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
             result.steps.append(
                 StepResult(
                     step.display, "fail", elapsed, 124,
                     reason="; ".join(filter(None, [f"exceeded the {timeout}s step timeout",
                                                    plan.reason])),
-                    command=step.run,
-                    output_tail="\n".join(tail.splitlines()[-tail_lines:]),
+                    command=step.run, output_tail=tail, first_exit=first_exit,
                 )
             )
             result.status = "fail"
             break
 
-        elapsed = time.time() - t0
-        combined = (proc.stdout or "") + (proc.stderr or "")
-
-        if proc.returncode == 0:
+        if rc == 0:
+            flaky = first_exit is not None
             if echo:
-                print(f"ok ({elapsed:.0f}s)")
+                print(f"ok ({elapsed:.0f}s)" + (": FLAKY, it failed first" if flaky else ""))
             result.steps.append(
-                StepResult(step.display, "pass", elapsed, command=step.run,
-                           reason=plan.reason, unproven=plan.unproven)
+                StepResult(step.display, "flaky" if flaky else "pass", elapsed,
+                           command=step.run, reason=plan.reason, unproven=plan.unproven,
+                           first_exit=first_exit, first_output_tail=first_tail)
             )
+            # A flaky step does not end its job: the steps after it run, as after a pass.
             continue
 
         if echo:
-            print(f"FAILED ({elapsed:.0f}s, exit {proc.returncode})")
+            print(f"FAILED ({elapsed:.0f}s, exit {rc})")
         result.steps.append(
             StepResult(
-                step.display, "fail", elapsed, proc.returncode,
+                step.display, "fail", elapsed, rc,
                 # A step that ran without inherited env says so: that may be
                 # the whole cause, and a fixer should not chase it in the code.
                 reason=plan.reason,
                 command=step.run,
-                output_tail="\n".join(combined.splitlines()[-tail_lines:]),
+                # After a rerun, the rerun's output: that is the failure reported.
+                output_tail=tail, first_exit=first_exit,
             )
         )
         result.status = "fail"
@@ -1064,7 +1112,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(
         description="Run this repository's GitHub Actions gates locally.",
         epilog="A skipped job is always reported: nothing-ran must not look like all-passed. "
-               "Exit 1: a job failed. Exit 2: --strict and the verdict is partial or none.",
+               "Exit 1: a job failed. Exit 2: --strict and the verdict is partial, flaky "
+               "or none.",
     )
     ap.add_argument("--repo", type=Path, default=Path.cwd())
     ap.add_argument("--job", action="append", help="Job id or name (repeatable).")
@@ -1084,10 +1133,17 @@ def main() -> int:
     ap.add_argument("--strict", action=argparse.BooleanOptionalAction, default=False,
                     help="Exit 2 when nothing failed but the run is not green: a lane is "
                          "unproven (a job or step the hosted run executes and this runner "
-                         "could not prove), or no job ran at all.")
+                         "could not prove), a step passed only on its rerun (FLAKY), or "
+                         "no job ran at all.")
+    ap.add_argument("--no-rerun", action="store_true",
+                    help="Do not rerun a failed step. By default a step that exits "
+                         "non-zero runs once more with the same command, env and "
+                         "directory; a pass then is reported FLAKY, never green. A step "
+                         "that hit --timeout is never rerun.")
     ap.add_argument("--tail", type=int, default=40, help="Failure output lines (default 40).")
     ap.add_argument("--timeout", type=int, default=900,
-                    help="Per-step timeout in seconds (default 900). A hung step is a failure.")
+                    help="Per-step timeout in seconds (default 900). A hung step is a "
+                         "failure, and is not rerun.")
     args = ap.parse_args()
 
     repo = args.repo.resolve()
@@ -1148,21 +1204,29 @@ def main() -> int:
             continue
         if not args.json:
             print(f"  {job.display}")
-        results.append(run_job(job, repo, args.tail, echo=not args.json, timeout=args.timeout))
+        results.append(run_job(job, repo, args.tail, echo=not args.json, timeout=args.timeout,
+                               rerun=not args.no_rerun))
 
     ran = [r for r in results if r.status != "skip"]
     failed = [r for r in ran if r.status == "fail"]
     skipped = [r for r in results if r.status == "skip"]
     lanes = unproven_lanes(results)
+    # Steps that failed and then passed on their one rerun, in any job that ran
+    # — a failed job's earlier steps included, so the list is never partial.
+    flaky = [(r, s) for r in ran for s in r.flaky_steps]
     # Nothing ran is not a pass: every job was skipped, or none was parsed.
     # It read "pass" when this verdict was first added, and /green read that
     # as green — on a GitHub starter workflow whose steps were never parsed.
+    # Order: fail > none > partial > flaky > pass. A run that is both partial
+    # and flaky reads partial and still lists its flaky steps.
     if failed:
         verdict = "fail"
     elif not ran:
         verdict = "none"
     elif lanes:
         verdict = "partial"
+    elif flaky:
+        verdict = "flaky"
     else:
         verdict = "pass"
     exit_code = 1 if failed else (2 if verdict != "pass" and args.strict else 0)
@@ -1172,9 +1236,10 @@ def main() -> int:
             {
                 "repo": str(repo),
                 "platform": local_platform(),
-                # pass | partial | none | fail. PARTIAL: nothing that ran
-                # failed, and each lane in `unproven` was not proven here.
-                # NONE: no job ran at all. Only `pass` is green.
+                # pass | partial | flaky | none | fail. PARTIAL: nothing that
+                # ran failed, and each lane in `unproven` was not proven here.
+                # FLAKY: each step in `flaky` failed, then passed on its one
+                # rerun. NONE: no job ran at all. Only `pass` is green.
                 "verdict": verdict,
                 # /green's report contract asks how long the whole thing took.
                 # A stated field with no way to obtain it gets omitted or invented.
@@ -1191,12 +1256,23 @@ def main() -> int:
                 ],
                 "skipped": [{"job": r.job.display, "reason": r.reason, "unproven": r.unproven}
                             for r in skipped],
+                # Its job still counts as passed above, and the run is not
+                # green. The first attempt's output is the flake's evidence.
+                "flaky": [
+                    {"job": r.job.display, "workflow": r.job.workflow, "step": s.name,
+                     "first_exit": s.first_exit, "first_output_tail": s.first_output_tail}
+                    for r, s in flaky
+                ],
                 "failed": [
                     {
                         "job": r.job.display,
                         "workflow": r.job.workflow,
                         "step": (r.failed_step.name if r.failed_step else ""),
+                        # The rerun's exit code when there was one; first_exit
+                        # is the first attempt's, null when it was not rerun
+                        # (a timeout, or --no-rerun).
                         "exit_code": (r.failed_step.exit_code if r.failed_step else 0),
+                        "first_exit": (r.failed_step.first_exit if r.failed_step else None),
                         # e.g. a timeout, or env the step ran without.
                         "reason": (r.failed_step.reason if r.failed_step else ""),
                         "command": (r.failed_step.command if r.failed_step else ""),
@@ -1215,7 +1291,9 @@ def main() -> int:
         step = r.failed_step
         print(f"FAILED  {r.job.display}  ({r.job.workflow})")
         if step:
-            print(f"  step: {step.name}   exit {step.exit_code}")
+            again = (f" on rerun (first attempt exit {step.first_exit})"
+                     if step.first_exit is not None else "")
+            print(f"  step: {step.name}   exit {step.exit_code}{again}")
             if step.reason:
                 print(f"  note: {step.reason}")
             first = step.command.strip().splitlines()[0] if step.command.strip() else ""
@@ -1223,6 +1301,17 @@ def main() -> int:
             if step.output_tail:
                 for line in step.output_tail.splitlines():
                     print(f"  | {line}")
+        print()
+    # The first attempt's output is the only record of why a flaky step failed.
+    for r, step in flaky:
+        print(f"FLAKY   {r.job.display}  ({r.job.workflow})")
+        print(f"  step: {step.name}   first attempt exit {step.first_exit}, then passed on rerun")
+        if step.reason:
+            print(f"  note: {step.reason}")
+        first = step.command.strip().splitlines()[0] if step.command.strip() else ""
+        print(f"  command: {first}")
+        for line in step.first_output_tail.splitlines():
+            print(f"  | {line}")
         print()
 
     total_seconds = sum((r.seconds for r in ran), 0.0)
@@ -1233,8 +1322,13 @@ def main() -> int:
     )
     if lanes:
         summary += f", {len(lanes)} lane(s) unproven: " + ", ".join(ln.label for ln in lanes)
-    prefix = {"partial": "PARTIAL: ", "none": "NOTHING RAN: "}.get(verdict, "")
+    if flaky:
+        summary += f", {len(flaky)} step(s) flaky"
+    prefix = {"partial": "PARTIAL: ", "flaky": "FLAKY: ", "none": "NOTHING RAN: "}.get(verdict, "")
     print(f"ci-local: {prefix}{summary}")
+    if flaky:
+        print("  flaky: " + ", ".join(f"{r.job.display} › {s.name} (first exit {s.first_exit})"
+                                      for r, s in flaky))
     for ln in lanes:
         print(f"  unproven {ln.label}: {ln.reason}")
     for r in skipped:
@@ -1247,6 +1341,11 @@ def main() -> int:
               + strict_note)
     elif verdict == "none":
         print("  NOTHING RAN is not green: every job was skipped (reasons above)" + strict_note)
+    if flaky:
+        print("  FLAKY is not green: each flaky step failed, then passed on one rerun, and "
+              "nothing has explained the first failure. Investigate it from the first "
+              "attempt's output above; a pass on rerun is not a fix"
+              + (strict_note if verdict != "fail" else "."))
     return exit_code
 
 
