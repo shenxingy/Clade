@@ -216,6 +216,15 @@ jobs:
       - name: Outcome scorecard self-test (can it go red?)
         run: python3 configs/scripts/outcome-scorecard.py --self-test
 
+      # The verdict channel: errors, hook denials, permission refusals,
+      # timeouts, unchanged retries and hook errors from Claude Code's own
+      # transcripts, ranked by distinct sessions with held-out weeks. Report-only
+      # (radar Lane D). The self-test drives main() on synthetic transcripts,
+      # never the host's; its mutations live in
+      # orchestrator/tests/test_self_tests_can_fire.py.
+      - name: Friction rank self-test (can it go red?)
+        run: python3 configs/scripts/friction-rank.py --self-test
+
       # Reports, never blocks. Five convergence rounds found 61, 25, 34, - and
       # 23 issues, and the count would not fall because 43% of each round were
       # SIBLINGS of the previous round's own fixes: a fact corrected in the file

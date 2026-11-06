@@ -244,6 +244,33 @@ paginated GraphQL search at 10 PRs per page and notes it; any other repository
 gh cannot read is named as not measured, never counted as zero. `/retro` runs
 this as its Outcomes step.
 
+**Rank where the harness said no.** Corrections are a slow signal; the harness's
+own verdicts, ranked by how many sessions they recur in, point at one-sentence
+harness repairs (Gorokh, 2026-10-08, one operator's fleet).
+
+```bash
+python3 configs/scripts/friction-rank.py                       # 30 days, main thread, every profile
+python3 configs/scripts/friction-rank.py --subagents --since 14 --json
+```
+
+It reads the transcripts through `configs/scripts/transcripts.py` and counts
+six verdict classes: `is_error`, PreToolUse hook denials, permission refusals,
+timeouts, an unchanged retry of a call that drew one of those, and
+`hook_non_blocking_error`. A family is the class plus the tool and, for Bash,
+the first command's leading tokens (heredoc bodies stripped, a leading `cd DIR
+&&` skipped, `git commit` kept apart from `git push`). Families are ranked by
+distinct sessions, then count, on discovery ISO weeks; the last
+`--holdout-weeks` (default 1, the current week) are held out and shown beside
+them, so a burst in one week cannot choose its own ranking. Each family prints
+its most common verdict text in full (never clipped), the next 3 calls after
+its latest occurrence, and provenance (session, file, record index), and a
+second table groups refusals by their first sentence across families. Main
+thread only unless `--subagents`. Friction is not a defect: a refusal can be a
+guard doing its job, so read the text and the next calls before changing
+anything, and test a reworded refusal before keeping it. `/radar` runs it as
+Lane D; `radar-cron.sh` runs it before an unattended sweep and hands the agent
+the report.
+
 ## Context window policy
 
 **Opt-in, and not yet shown to cost nothing in quality.** One settings key makes
