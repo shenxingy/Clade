@@ -145,6 +145,12 @@ SKILL_TEXT_REPLACEMENTS = {
             "<plugin-root>/skills/green/scripts/ci-local.py",
         ),
     ),
+    "retro": (
+        (
+            "~/.claude/scripts/outcome-scorecard.py",
+            "<plugin-root>/skills/retro/scripts/outcome-scorecard.py",
+        ),
+    ),
 }
 
 # Keep deterministic helpers canonical under configs/scripts/. The generated
@@ -159,6 +165,17 @@ DECLARED_RESOURCES = {
         (
             REPO_ROOT / "configs" / "scripts" / "ci-local.py",
             Path("scripts/ci-local.py"),
+        ),
+    ),
+    "retro": (
+        (
+            REPO_ROOT / "configs" / "scripts" / "outcome-scorecard.py",
+            Path("scripts/outcome-scorecard.py"),
+        ),
+        # Its self-test imports the fixtures from beside it.
+        (
+            REPO_ROOT / "configs" / "scripts" / "outcome_scorecard_fixtures.py",
+            Path("scripts/outcome_scorecard_fixtures.py"),
         ),
     ),
 }
