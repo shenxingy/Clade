@@ -2540,6 +2540,11 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
     matches by basename, so project memories may be missed.
   - Jain, *Are Harnesses Worth the Cost?* (martinfowler.com, 2026-10-13): a model-tier A/B for
     implement stages, extending the 10-23 effort A/B.
-  - LangChain, *Agents Are Going Async* (2026-11-05): `codex-orchestrate` has no recorded pgid
-    for cancel and never uses `codex exec resume`.
+  - [x] LangChain, *Agents Are Going Async* (2026-11-05): `codex-orchestrate` has no recorded pgid
+    for cancel and never uses `codex exec resume`. DONE 2026-11-06 (docs/codex-orchestrate-steer):
+    both claims survived the verify-first pass; the skill gained § Steer, cancel, follow up
+    (dispatch records the wrapper's pid, cancel signals its whole session, resume takes `-C` and
+    every flag again), pinned by `test_codex_orchestrate_recipes.py`. Still open: no check
+    reached a model, because the checking Codex profile was logged out, so recall after resume
+    is unobserved and the research row's "~4x tokens" stays unmeasured.
   Each needs the two-skeptic pass before any work.
