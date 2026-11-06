@@ -193,6 +193,14 @@ OUT="$(run_it --job "Mac Only")"; RC=$?
 assert_eq "$RC" "0" "a job that cannot run here is not a failure"
 assert_contains "$OUT" "skipped Mac Only" "the skip is reported in the summary"
 assert_contains "$OUT" "0/0 job(s) passed" "zero jobs ran, and the summary says zero"
+# And zero jobs is not a pass. The verdict read "pass" here when it was first
+# added, and /green reads "pass" as green.
+assert_contains "$OUT" "ci-local: NOTHING RAN: 0/0" "the summary line says NOTHING RAN"
+VERDICT=$(python3 "$RUNNER" --repo "$FAKE" --job "Mac Only" --json 2>/dev/null \
+  | python3 -c "import json,sys; print(json.load(sys.stdin)['verdict'])" 2>/dev/null)
+assert_eq "$VERDICT" "none" "the JSON verdict is none, not pass, when no job ran"
+run_it --job "Mac Only" --strict >/dev/null; RC=$?
+assert_eq "$RC" "2" "--strict exits 2 when nothing ran"
 
 # A job whose every step is skipped executed NOTHING. Reporting it as passed is
 # the exact lie this tool exists to prevent, and the first version did it.
@@ -483,7 +491,313 @@ PY
 )
 assert_eq "$CHECK" "ok" "verdict, unproven, partial, skipped[].unproven and passed are exact"
 
-# ─── 8. Mutations: removing each guard turns this suite red ──────────
+# ─── 8. Lanes that read as reasoned, or as nothing ───────────────────
+# Each job here was reported as a REASONED skip, or not reported at all, by an
+# earlier version of this runner, while the hosted push/PR run executes it:
+#   - a secret or GitHub context inherited from workflow or job env made every
+#     step a "needs a repository secret" skip, and the run read pass;
+#   - a job-level if: on a push/PR condition read as a schedule tier;
+#   - GitHub's own starter template puts step dashes level with `steps:`, so no
+#     step parsed and the job read as setup-only;
+#   - a reusable workflow and a flow-style steps: list read as setup-only;
+#   - an env block scalar reached the step as the indicator `>-`.
+# Plus the shapes that must keep running: an if: always() job, `env: # note`,
+# a github-script `with: script: |`, and `defaults: run: shell: bash`.
+EDGES="$SANDBOX/edges"
+mkdir -p "$EDGES/.github/workflows"
+cat > "$EDGES/.github/workflows/edges.yml" <<'YAML'
+name: Edges
+on:
+  push:
+  pull_request:
+
+jobs:
+  job_secret:
+    name: Job Secret
+    runs-on: ubuntu-latest
+    env:
+      CI_LOCAL_T_COV: ${{ secrets.CODECOV_TOKEN }}
+    steps:
+      - name: Upload coverage
+        run: |
+          test -z "${CI_LOCAL_T_COV+set}"
+          touch .job-secret-ran
+      - name: Own secret
+        env:
+          CI_LOCAL_T_KEY: ${{ secrets.DEPLOY_KEY }}
+        run: touch .own-secret-ran
+
+  run_expr:
+    name: Run Expression
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print SHA
+        run: echo ${{ github.sha }} && touch .sha-ran
+      - name: After SHA
+        run: touch .after-sha-ran
+
+  runner_var:
+    name: Runner Variable
+    runs-on: ${{ vars.CI_RUNNER || 'windows-latest' }}
+    steps:
+      - name: On whatever runner
+        run: touch .runner-var-ran
+
+  pr_services:
+    name: PR Services
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+    steps:
+      - name: Needs postgres
+        run: touch .pr-services-ran
+
+  pr_only:
+    name: PR Only
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Only on a PR
+        run: touch .pr-only-ran
+
+  always_job:
+    name: Always Job
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Runs whatever happened
+        run: touch .always-job-ran
+
+  on_failure:
+    name: On Failure
+    if: ${{ failure() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Only after a failure
+        run: touch .on-failure-ran
+
+  block_env:
+    name: Block Scalar Env
+    runs-on: ubuntu-latest
+    env:
+      CI_LOCAL_T_OPTS: >-
+        --flag-a
+        --flag-b
+    steps:
+      - name: Reads the folded value
+        run: touch .block-env-ran
+
+  env_comment:
+    name: Env Comment
+    runs-on: ubuntu-latest
+    env: # shared settings
+      CI_LOCAL_T_C: c
+    steps:
+      - name: Env under a commented key
+        run: |
+          test "$CI_LOCAL_T_C" = c
+          touch .env-comment-ran
+
+  script_action:
+    name: Script Action
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            core.info('not an env value')
+      - name: After the script
+        run: touch .script-action-ran
+
+  reusable:
+    name: Reusable
+    uses: ./.github/workflows/called.yml
+
+  flow_steps:
+    name: Flow Steps
+    runs-on: ubuntu-latest
+    steps: [{name: Flow, run: touch .flow-ran}]
+
+  job_defaults:
+    name: Job Defaults
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - name: In app/
+        run: touch .job-defaults-ran
+YAML
+cat > "$EDGES/.github/workflows/inherit.yml" <<'YAML'
+name: Inherit
+on:
+  push:
+  pull_request:
+
+env:
+  CI_LOCAL_T_GH: ${{ github.token }}
+  CI_LOCAL_T_REPO: ${{ github.repository }}
+
+jobs:
+  wf_token:
+    name: Workflow Token
+    runs-on: ubuntu-latest
+    steps:
+      - name: Runs without the token
+        run: |
+          test -z "${CI_LOCAL_T_GH+set}"
+          test -z "${CI_LOCAL_T_REPO+set}"
+          touch .wf-token-ran
+YAML
+cat > "$EDGES/.github/workflows/shell.yml" <<'YAML'
+name: Shell
+on: [push]
+
+defaults:
+  run:
+    shell: bash   # what this runner does anyway
+
+jobs:
+  bash_defaults:
+    name: Bash Defaults
+    runs-on: ubuntu-latest
+    steps:
+      - name: Plain bash
+        run: touch .bash-defaults-ran
+YAML
+# GitHub's own starter template (python-app.yml): step dashes level with steps:.
+cat > "$EDGES/.github/workflows/starter.yml" <<'YAML'
+name: Python application
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Test with pytest
+      env:
+        CI_LOCAL_T_STARTER: s
+      run: |
+        test "$CI_LOCAL_T_STARTER" = s
+        touch .starter-ran
+YAML
+
+edges() { python3 "$RUNNER" --repo "$EDGES" "$@" 2>&1; }
+edge_ran() { [[ -e "$EDGES/.$1-ran" ]]; }
+
+section "an inherited secret, a push/PR if:, a starter template: unproven or run, never reasoned"
+OUT="$(edges --list)"
+eafter() { grep -A2 -F -- "$1" <<< "$OUT"; }
+assert_contains "$(eafter '] Job Secret')" "UNPROVEN step Upload coverage: runs without CI_LOCAL_T_COV" \
+  "a job-level secret is not a reasoned skip: its step runs without it, unproven"
+assert_contains "$(eafter '] Job Secret')" "1/2 runnable" "a secret the step declares itself is still the reasoned class"
+assert_contains "$(eafter '] Workflow Token')" "runs without CI_LOCAL_T_GH, CI_LOCAL_T_REPO" \
+  "a workflow-level github.token and a non-secret expression run unset, unproven"
+assert_contains "$(eafter '] Run Expression')" "UNPROVEN step Print SHA: uses a GitHub expression" \
+  "a \${{ }} in run: is UNPROVEN, not run and not reasoned"
+assert_contains "$(eafter '] Runner Variable')" "UNPROVEN — runs-on is an expression" \
+  "an expression runs-on with no strategy: is UNPROVEN, not a platform skip"
+assert_contains "$(eafter '] PR Services')" "UNPROVEN — uses services" \
+  "a services job with a PR condition is UNPROVEN, not a conditional tier"
+assert_contains "$(eafter '] PR Only')" "UNPROVEN — job-level if:" \
+  "a job gated on pull_request is UNPROVEN, not a conditional tier"
+assert_contains "$(eafter '] On Failure')" "is false on a passing run" "a job-level failure() is a reasoned skip"
+assert_lacks "$(eafter '] On Failure')" "UNPROVEN" "and not an unproven lane"
+assert_contains "$OUT" "[run ] Always Job" "a job-level if: always() runs"
+assert_contains "$(eafter '] Block Scalar Env')" "UNPROVEN — uses a job-level env block scalar" \
+  "an env block scalar is UNPROVEN, not the literal indicator"
+assert_contains "$OUT" "[run ] Env Comment" "env: # comment is still a plain mapping"
+assert_contains "$OUT" "[run ] Script Action" "a github-script with: script: | is not an env block scalar"
+assert_contains "$(eafter '] Reusable')" "UNPROVEN — uses a reusable workflow" \
+  "a reusable workflow is UNPROVEN, not a setup-only job"
+assert_contains "$(eafter '] Flow Steps')" "UNPROVEN — uses a steps: block it could not parse" \
+  "a steps: block that parses to nothing is UNPROVEN, not a setup-only job"
+assert_contains "$(eafter '] Job Defaults')" "UNPROVEN — uses defaults" "a job-level working-directory default is UNPROVEN"
+assert_contains "$OUT" "[run ] Bash Defaults" "defaults: run: shell: bash alone is modelled, not unproven"
+assert_contains "$(eafter '] build')" "1/1 runnable" "the GitHub starter template's step parses"
+
+section "the edges run: PARTIAL with each lane named, the right steps executed"
+rm -f "$EDGES"/.*-ran
+# A value the developer's shell exports must not stand in for one the hosted run sets.
+OUT="$(CI_LOCAL_T_GH=from-the-shell edges)"; RC=$?
+assert_eq "$RC" "0" "nothing failed: an inherited expression was unset, not left as its literal"
+assert_contains "$OUT" "ci-local: PARTIAL: 8/8 job(s) passed" "the summary is PARTIAL over the 8 jobs that ran"
+assert_contains "$OUT" "10 lane(s) unproven: Job Secret › Upload coverage, Run Expression › Print SHA, Runner Variable, PR Services, PR Only, Block Scalar Env, Reusable, Flow Steps, Job Defaults, Workflow Token › Runs without the token" \
+  "and names all ten unproven lanes on that line"
+for m in wf-token job-secret after-sha always-job env-comment script-action bash-defaults starter; do
+  if edge_ran "$m"; then pass "the .$m-ran step executed"; else fail "the .$m-ran step executed" "marker missing"; fi
+done
+for m in own-secret sha runner-var pr-services pr-only on-failure block-env flow job-defaults; do
+  if edge_ran "$m"; then fail "the .$m-ran lane was not executed here" "it executed"; else pass "the .$m-ran lane was not executed here"; fi
+done
+JSON="$(CI_LOCAL_T_GH=from-the-shell python3 "$RUNNER" --repo "$EDGES" --json --strict 2>/dev/null)"; RC=$?
+assert_eq "$RC" "2" "--strict exits 2 on the edges run"
+CHECK=$(python3 - "$JSON" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+problems = []
+if d.get("verdict") != "partial":
+    problems.append(f"verdict={d.get('verdict')!r}")
+got = sorted(f"{u['job']}|{u['step']}" for u in d.get("unproven", []))
+want = sorted(["Job Secret|Upload coverage", "Run Expression|Print SHA", "Runner Variable|",
+               "PR Services|", "PR Only|", "Block Scalar Env|", "Reusable|", "Flow Steps|",
+               "Job Defaults|", "Workflow Token|Runs without the token"])
+if got != want:
+    problems.append(f"unproven={got}")
+if sorted(d.get("partial", [])) != ["Job Secret", "Run Expression", "Workflow Token"]:
+    problems.append(f"partial={d.get('partial')}")
+want_passed = ["Always Job", "Bash Defaults", "Env Comment", "Job Secret", "Run Expression",
+               "Script Action", "Workflow Token", "build"]
+if sorted(d.get("passed", [])) != want_passed:
+    problems.append(f"passed={d.get('passed')}")
+skipped = {s["job"]: s.get("unproven") for s in d.get("skipped", [])}
+if skipped != {"Runner Variable": True, "PR Services": True, "PR Only": True, "On Failure": False,
+               "Block Scalar Env": True, "Reusable": True, "Flow Steps": True, "Job Defaults": True}:
+    problems.append(f"skipped={skipped}")
+print("; ".join(problems) or "ok")
+PY
+)
+assert_eq "$CHECK" "ok" "verdict, unproven, partial, passed and skipped are exact"
+OUT="$(edges --all --job "Always Job")"
+assert_lacks "$OUT" "normally-skipped" "--all does not announce an if: always() job as normally skipped"
+
+# A step that fails because it ran without inherited env says so: that may be
+# the whole cause, and a fixer must not chase it in the code.
+NOTE="$SANDBOX/note"; mkdir -p "$NOTE/.github/workflows"
+cat > "$NOTE/.github/workflows/note.yml" <<'YAML'
+name: Note
+on: [push]
+env:
+  CI_LOCAL_T_NEEDED: ${{ secrets.NEEDED }}
+jobs:
+  needs_it:
+    name: Needs It
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reads the inherited secret
+        run: test -n "${CI_LOCAL_T_NEEDED:-}"
+YAML
+OUT="$(python3 "$RUNNER" --repo "$NOTE" 2>&1)"; RC=$?
+assert_eq "$RC" "1" "a step that needs the env it ran without fails, as before"
+assert_contains "$OUT" "note: runs without CI_LOCAL_T_NEEDED" "the failure names the env it ran without"
+REASON=$(python3 "$RUNNER" --repo "$NOTE" --json 2>/dev/null \
+  | python3 -c "import json,sys; print(json.load(sys.stdin)['failed'][0].get('reason', ''))" 2>/dev/null)
+assert_contains "$REASON" "runs without CI_LOCAL_T_NEEDED" "and so does the JSON failed[].reason"
+
+# ─── 9. Mutations: removing each guard turns this suite red ──────────
 # A clean run and a run with a guard missing print the same "ALL PASSED"
 # unless something removes the guard and looks. Each entry edits ONE guard out
 # of a copy of ci-local.py, runs this suite against the copy, and requires it
@@ -533,13 +847,13 @@ mutation red "the reasoned-first order (unmodelled tested before pull_request_ta
 mutation red "unproven on an unmodelled job (services:)" \
   '"or split the job", unproven=True)' '"or split the job")'
 mutation red "an unevaluable step if: being unproven" \
-  'return _SUCCESS_PATH_IF.get(re.sub(r"\s+", "", cond))' \
-  'return _SUCCESS_PATH_IF.get(re.sub(r"\s+", "", cond), True)'
+  'return _SUCCESS_PATH_IF.get(re.sub(r"\s+", "", _unwrap(condition)))' \
+  'return _SUCCESS_PATH_IF.get(re.sub(r"\s+", "", _unwrap(condition)), True)'
 mutation red "failure() staying off the success path" '"failure()": False,' '"failure()": True,'
 mutation red "always() running on the success path" \
   '"success()": True, "always()": True,' '"success()": True, "always()": False,'
 mutation red "the --strict exit 2" \
-  'exit_code = 1 if failed else (2 if lanes and args.strict else 0)' 'exit_code = 1 if failed else 0'
+  'exit_code = 1 if failed else (2 if verdict != "pass" and args.strict else 0)' 'exit_code = 1 if failed else 0'
 mutation red "telling a secret from other GitHub context" \
   '_SECRET_REF = re.compile(r"\bsecrets\.|\bgithub\.token\b")' '_SECRET_REF = re.compile(r".")'
 mutation red "job-level env" \
@@ -572,16 +886,74 @@ mutation red "planning a --job conditional in full" \
 mutation red "unproven steps reaching the lane list" \
   'lanes.extend(Lane(r.job, s.name, s.reason) for s in r.unproven_steps)' 'pass'
 mutation red "the PARTIAL prefix on the summary line" \
-  "print(f\"ci-local: {'PARTIAL: ' if verdict == 'partial' else ''}{summary}\")" \
-  'print(f"ci-local: {summary}")'
+  'prefix = {"partial": "PARTIAL: ", "none": "NOTHING RAN: "}' 'prefix = {"none": "NOTHING RAN: "}'
+mutation red "the none verdict when no job ran" \
+  '    elif not ran:
+        verdict = "none"
+' ''
+mutation red "a workflow-level secret being inherited, not the reasoned class" \
+  '(workflow_env.keys() | job.env.keys())' 'job.env.keys()'
+mutation red "a job-level secret being inherited, not the reasoned class" \
+  '(workflow_env.keys() | job.env.keys())' 'workflow_env.keys()'
+mutation red "an inherited expression being unset, not the shell's value" \
+  'env.pop(key, None)' 'pass'
+mutation red "a step run without inherited env reaching the lane list" \
+  'if s.unproven and s.status != "fail"]' 'if s.unproven and s.status == "skip"]'
+mutation red "the failure naming the env its step ran without" \
+  '                reason=plan.reason,
+                command=step.run,' '                command=step.run,'
+mutation red "a \${{ }} in run: being unproven" \
+  'return StepPlan(False, "uses a GitHub expression that cannot be evaluated locally",
+                        unproven=True)' \
+  'return StepPlan(False, "uses a GitHub expression that cannot be evaluated locally")'
+mutation red "an expression runs-on being unproven" \
+  '"runs-on is an expression (matrix leg) — run each leg on its own machine",
+                    unproven=True)' \
+  '"runs-on is an expression (matrix leg) — run each leg on its own machine")'
+mutation red "no platform guess from an expression runs-on" \
+  'if "${{" not in job.runs_on:' 'if True:'
+mutation red "a push/PR job-level if: not being a conditional tier" \
+  'return "off" if _off_push_pr(_unwrap(condition)) else "unknown"' 'return "off"'
+mutation red "an unevaluable job-level if: being unproven" \
+  '"locally (--all runs it anyway)", unproven=True)' '"locally (--all runs it anyway)")'
+mutation red "a schedule tier being off the push/PR path" \
+  'not in _PUSH_PR_EVENTS' 'in _PUSH_PR_EVENTS'
+mutation red "a job-level always() running" \
+  'return "run" if fixed else "off"' 'return "off"'
+mutation red "a job-level failure() staying off a passing run" \
+  'return "run" if fixed else "off"' 'return "run"'
+mutation red "--all not announcing an always() job" \
+  'if j.condition and r is None and job_condition(j.condition) != "run"]' \
+  'if j.condition and r is None]'
+mutation red "steps whose dash sits level with steps:" \
+  '_STEP_DASH = re.compile(r"^( {4,})- \S")' '_STEP_DASH = re.compile(r"^( {6,})- \S")'
+mutation red "a steps: block that parsed to nothing being unproven" \
+  'if job.declares_steps and not job.steps:' 'if False:'
+mutation red "a reusable workflow being unproven" \
+  'current.unmodelled.append(f"a reusable workflow ({_scalar(value)[:60]})")' 'pass'
+mutation red "an env block scalar being unproven" \
+  'return bool(_BLOCK_SCALAR.fullmatch(_scalar(value)))' 'return False'
+mutation red "only a step's env: children being env" \
+  'if step_block == "env":' 'if True:'
+mutation red "env: # comment being a plain mapping" \
+  'bare = not _scalar(value)' 'bare = not value'
+mutation red "defaults: run: shell: bash alone being modelled" \
+  '    pairs = []
+    for ln in lines:' '    return False
+    pairs = []
+    for ln in lines:'
+mutation red "job-level defaults being unproven" \
+  'job.unmodelled.append("defaults")' 'pass'
 
 # A shared host and a 4-core hosted runner both run this: at most 4 at once.
 CL_JOBS=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)
 [[ "$CL_JOBS" =~ ^[0-9]+$ && "$CL_JOBS" -ge 1 ]] || CL_JOBS=2
 [[ "$CL_JOBS" -gt 4 ]] && CL_JOBS=4
+# A mutant that hangs or is starved on a loaded host must not pass for red:
+# only a run that printed a ✗ counts. 300 s is far past a red mutant's ~10 s.
 run_mutant() {
   if command -v timeout >/dev/null 2>&1; then
-    CI_LOCAL_RUNNER="$MUT_DIR/m$1.py" CI_LOCAL_MUTANT=1 timeout 120 \
+    CI_LOCAL_RUNNER="$MUT_DIR/m$1.py" CI_LOCAL_MUTANT=1 timeout 300 \
       bash "$REPO_ROOT/tests/test-ci-local.sh" > "$MUT_DIR/m$1.log" 2>&1
   else
     CI_LOCAL_RUNNER="$MUT_DIR/m$1.py" CI_LOCAL_MUTANT=1 \
@@ -606,13 +978,17 @@ done
 CL_I=0
 while [[ "$CL_I" -lt "$NMUT" ]]; do
   CL_RC="${MUT_RCS[$CL_I]}"
-  CL_FIRST=$(grep -m1 '✗' "$MUT_DIR/m$CL_I.log" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g; s/^ *✗ *//')
+  # The escape byte via printf: BSD sed reads `\x1b` as a literal x1b.
+  CL_FIRST=$(grep -m1 '✗' "$MUT_DIR/m$CL_I.log" 2>/dev/null \
+    | sed "s/$(printf '\033')\[[0-9;]*m//g; s/^ *✗ *//")
   CL_NAME="${MUT_NAMES[$CL_I]}"
   if [[ "${MUT_EXPECT[$CL_I]}" == green ]]; then
     if [[ "$CL_RC" -eq 0 ]]; then pass "control: $CL_NAME leaves the suite green"
     else fail "control: $CL_NAME leaves the suite green" "rc=$CL_RC, first failure: $CL_FIRST"; fi
+  elif [[ "$CL_RC" -eq 124 || -z "$CL_FIRST" ]] && [[ "$CL_RC" -ne 0 ]]; then
+    fail "without $CL_NAME: inconclusive" "rc=$CL_RC with no failed assertion (timed out or crashed)"
   elif [[ "$CL_RC" -ne 0 ]]; then
-    pass "without $CL_NAME: red — ${CL_FIRST:-rc=$CL_RC}"
+    pass "without $CL_NAME: red — $CL_FIRST"
   else
     fail "without $CL_NAME: the suite stayed GREEN" "this guard is claimed and not checked"
   fi
