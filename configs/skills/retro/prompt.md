@@ -104,6 +104,40 @@ merged PR, per settled PR and per kept PR.
 
 ---
 
+## Step 2c: What the PRs could not verify — candidate TODO entries
+
+Every PR body that `/create-pr`, `/delivery` and `/ship` write, and any
+repository PR template that adopted them, carries two fixed lines:
+`Review depth: none | skimmed | read-in-full` and
+`Could not verify: none | <item>; <item>`. One unverified item is a caveat. The
+same item in PR after PR is a capability the repository lacks, and that list is
+the roadmap. Roll them up for this repository over the same window in days as
+Step 2b:
+
+```bash
+python3 ~/.claude/scripts/pr-verification-gaps.py --since <days>
+```
+
+It reads every PR merged into this repository in the window, by any author
+(`gh pr list`), groups the "Could not verify" items by their words, and prints
+the top three that recur in 2 or more PRs as `- [ ]` candidate TODO entries,
+with their PR numbers and reasons. It also counts review depth and checks each
+claimed reading against the forge's reviews.
+
+- **Report only.** Show the candidates under "Next week focus". Do not write
+  TODO.md or any other file: which of them becomes work is the owner's call.
+- **Its population is this repository's merged PRs, any author**: the scope of
+  Steps 1–2, not Step 2b's. Put "stated in N of M PRs" on the Unverified line
+  itself. The PRs without the line are not counted as verified.
+- **Both lines are self-reported.** Report review depth as self-reported, and
+  name the PRs whose claimed reading no submitted review backs as questions,
+  not verdicts: a reader outside GitHub leaves no review there.
+- If a section says NOT MEASURED (no PR in the window states that line) or the
+  whole run does (gh missing or unauthenticated), report that with its reason.
+  Never write "nothing unverified" or zero recurring items in that case.
+
+---
+
 ## Step 3: Work session analysis
 
 Detect work sessions using 45-minute gap threshold between commits:
@@ -213,7 +247,9 @@ Save a JSON snapshot for future comparisons:
 mkdir -p .context/retros
 # write JSON with metrics to .context/retros/YYYY-MM-DD.json, including the
 # Step 2b outcome totals (kept, settled, reverted, fixed-forward, settling) so
-# the next retro compares outcomes, not only volume
+# the next retro compares outcomes, not only volume, and the Step 2c rollup
+# (PRs stating each line, the recurring items with their PR counts, the
+# review-depth counts) so a recurring gap that stops recurring is visible
 ```
 
 ---
@@ -239,6 +275,11 @@ Outcomes:   [from Step 2b, opening with its population — "PRs by <author>,
              review but the author's), tokens per kept PR. These are outcome
              SIGNALS: fix-forward precision is unmeasured, tokens are host-wide
              and not attributed per PR, and Codex/Kimi usage is not counted]
+Unverified: [from Step 2c, opening with "stated in N of M PRs merged into
+             <repo>, <window>"; the top recurring "Could not verify" items with
+             their PR counts (or NOT MEASURED, with its reason); review depth
+             counts, labelled self-reported, and the claims no forge review
+             backs]
 Sessions:   [from Step 3]
 Patterns:   [commit timing + type breakdown]
 Hotspots:   [top files]
@@ -253,7 +294,8 @@ What to improve:
   - [specific pattern, e.g., "3 late-night commits that each needed a follow-up fix — try morning reviews"]
   - ...
 
-Next week focus: [1-3 concrete suggestions based on the data]
+Next week focus: [1-3 concrete suggestions based on the data; the Step 2c
+                  candidates go here as candidates, not as written TODOs]
 ══════════════════════════════════════════════════════
 ```
 
