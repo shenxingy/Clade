@@ -175,6 +175,15 @@ python3 configs/scripts/workflow-scorecard.py --outcome          # JSONL, label:
 python3 configs/scripts/outcome-scorecard.py --since 14 --tokens
 python3 configs/scripts/outcome-scorecard.py --since 7 --repo shenxingy/Clade --json
 
+# What did merged PRs say they could NOT verify? Every PR body carries
+# `Review depth: none | skimmed | read-in-full` and `Could not verify: none |
+# <item>; <item>` (create-pr §4, delivery §6, /ship, the PR template). This rolls
+# them up for one repository, any author, and prints the top 3 items recurring
+# in 2+ PRs as candidate TODO entries; it writes nothing. Both lines are
+# self-reported: depth is checked against forge reviews, and a window where no
+# PR states a line reads NOT MEASURED, never "nothing unverified".
+python3 configs/scripts/pr-verification-gaps.py --since 14
+
 # Did a Codex worker actually delegate? `codex exec` CAN subdivide — measured
 # 2026-09-05, the gate is the resolved model's catalog multi_agent_version, not
 # the session source. This counts the children, and its self-test distinguishes
