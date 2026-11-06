@@ -36,7 +36,9 @@ What the consumer receives. correction-detector.sh pipes the prompt through
 `python3 redact.py` and persists stdout; secret-scanner.sh reads the exit code of
 `redact.py --check`. Both properties therefore read redact.py's main() — the CLI
 entry point, run in-process so a few hundred examples stay fast — never scan()'s
-spans.
+spans. One smaller property reads a helper instead: half of the rule that maps a
+later read back onto the input cannot be reached through main() with today's
+patterns, so `_to_input` is checked directly (section "Mapping a later read").
 
 Each counterexample Hypothesis shrank to is pinned below with @example, so it is
 re-run first on every run whether or not the random search finds it again. The
@@ -483,15 +485,98 @@ def test_undoing_the_label_rule_changes_a_label() -> None:
     assert any(_masked(mod, text) != expected for text, expected in LABEL_CASES.values())
 
 
+# ─── Mapping a later read back onto the input ─────────────────────────────────
+# scan()'s rule: a match in a later read is mapped back onto the input, and a
+# span that touches a marker takes the marker's WHOLE input span, never an offset
+# into it, because a marker is not as long as what it replaced. Only a later read
+# maps anything, and env_secret waits for one only when its value holds a PEM,
+# whose whitespace it cannot span, so every case below holds a PEM.
+#
+# Mapped by offset, a value ending on a marker went wrong two ways. On a PEM's
+# marker (22 characters for a key of 70 or more) the end fell short, inside the
+# PEM: the PEM's own hit still masked the rest, but the value measured narrower
+# than the PEM and took its label. On a marker LONGER than its key
+# (`<redacted:aws_access_key>` is 25 characters for a 20-character key) the end
+# ran past the key: the value swallowed its closing quote and the text after it,
+# and at the end of the input it ran past the input.
+_PEM = _PEM_BEGIN + "\nMIIE" + "0" * 16 + "\n" + _PEM_END
+MARKER_SPAN_CASES = {
+    "a value ending on a PEM's marker": (PIN_PEM_INSIDE_AN_ENV_VALUE.text(), ' tok' + 'en: "<redacted:env_secret>" '),
+    "a value ending on a marker longer than its key": (
+        'tok' + 'en: "' + _PEM + ",AK" + "IA" + "0" * 16 + '" and more', 'tok' + 'en: "<redacted:env_secret>" and more'),
+    "the same at the end of the input": (
+        'tok' + 'en: "' + _PEM + ",xo" + "xb-" + "0" * 10 + '"', 'tok' + 'en: "<redacted:env_secret>"'),
+}
+
+
+@pytest.mark.parametrize("name", list(MARKER_SPAN_CASES))
+def test_a_value_ending_on_a_marker_takes_the_markers_whole_input_span(name: str) -> None:
+    text, expected = MARKER_SPAN_CASES[name]
+    assert _masked(REDACT, text) == expected
+
+
+def test_mapping_the_end_by_offset_into_a_marker_changes_every_case() -> None:
+    """The mutation for the cases above, read through main() as the hooks read it."""
+    anchor = "end = in_e if marker else in_s + (e - out_s)"
+    source = REDACT_PATH.read_text(encoding="utf-8")
+    assert source.count(anchor) == 1, "the mapping moved; update the anchor, do not delete the case"
+    mod = _load("clade_redact_end_by_offset", source.replace(anchor, "end = in_s + (e - out_s)"))
+    changed = [name for name, (text, expected) in MARKER_SPAN_CASES.items() if _masked(mod, text) != expected]
+    assert changed == list(MARKER_SPAN_CASES)
+
+
+# The START half of the rule cannot be reached through main() today. Every
+# pattern begins at a quote, at a fixed prefix after \b (`sk-`, `AKIA`, `eyJ`, …)
+# or at `-----BEGIN`, and a marker's interior is `redacted:` plus a pattern's
+# name, so no later match starts strictly inside a marker. _to_input is a pure
+# function, so both halves are checked on it directly, against the rule spelled
+# out one character at a time.
+_KINDS = [kind for kind, _, _ in REDACT._PATTERNS]
+
+
+@st.composite
+def renderings(draw) -> tuple[list, int, int]:
+    """The pieces of a redacted text (adjacent markers included) and a span of it."""
+    text = draw(st.text(alphabet="ab -", min_size=1, max_size=40))
+    hits, pos = [], 0
+    while pos < len(text) and draw(st.booleans()):
+        start = draw(st.integers(pos, len(text) - 1))
+        end = draw(st.integers(start + 1, len(text)))
+        hits.append(REDACT.Hit(kind=draw(st.sampled_from(_KINDS)), start=start, end=end, preview=""))
+        pos = end
+    rendered, pieces = REDACT._render(text, hits)
+    s = draw(st.integers(0, len(rendered) - 1))
+    return pieces, s, draw(st.integers(s + 1, len(rendered)))
+
+
+def _union_of_inputs(pieces: list, s: int, e: int) -> tuple[int, int]:
+    """A verbatim character stands for itself; a marker's character, for the marker's whole input span."""
+    spans = [(in_s, in_e) if marker else (in_s + k - out_s, in_s + k - out_s + 1)
+             for out_s, out_e, in_s, in_e, marker in pieces for k in range(max(s, out_s), min(e, out_e))]
+    return min(a for a, _ in spans), max(b for _, b in spans)
+
+
+def assert_maps_whole_markers(mod: ModuleType, case: tuple[list, int, int]) -> None:
+    pieces, s, e = case
+    assert mod._to_input(pieces, s, e) == _union_of_inputs(pieces, s, e), f"[{s}, {e}) of {pieces}"
+
+
+@PROPERTY_SETTINGS
+@given(renderings())
+def test_a_span_of_the_redaction_maps_back_by_the_rule(case: tuple[list, int, int]) -> None:
+    assert_maps_whole_markers(REDACT, case)
+
+
 # ─── Mutations: each property must be able to go red ─────────────────────────
 # A search that stops at the first counterexample, generate phase only (the pins
 # above are not allowed to do the finding) and derandomized, so a mutation run is
 # the same run every time — a mutation test must not itself be flaky. Measured on
 # 2026-11-06, after the generators learned PEMs in env values, glued text and the
-# slack-into-openai chain: the slowest of the 19 searched mutations below went red
-# at example 141 (scan reading once, seen by idempotence), most within 60. On
-# 2026-11-05, before those generators, the slowest was 231. SEARCH_BUDGET leaves
-# room for generator changes to reshuffle the sequence.
+# slack-into-openai chain: the slowest of the 21 searched mutations below went red
+# at example 141 (scan reading once, seen by idempotence), most within 60; the two
+# marker-mapping ones at example 7. On 2026-11-05, before those generators, the
+# slowest was 231. SEARCH_BUDGET leaves room for generator changes to reshuffle
+# the sequence.
 SEARCH_BUDGET = 600
 
 
@@ -509,8 +594,9 @@ def _finds_counterexample(prop, mod: ModuleType, strategy: st.SearchStrategy) ->
     return False
 
 
-@pytest.mark.parametrize("prop, strategy", [(assert_no_surviving_run, documents()), (assert_idempotent, TEXTS)],
-                         ids=["leak", "idempotence"])
+@pytest.mark.parametrize("prop, strategy", [(assert_no_surviving_run, documents()), (assert_idempotent, TEXTS),
+                                             (assert_maps_whole_markers, renderings())],
+                         ids=["leak", "idempotence", "mapping"])
 def test_the_search_reports_nothing_on_the_shipped_module(prop, strategy) -> None:
     """The negative control: the same search, unmutated, must come back empty.
 
@@ -594,6 +680,10 @@ SOURCE_MUTATIONS = {
                                         assert_no_surviving_run, documents()),
     "scan reads the text once (idempotence)": ("_MAX_PASSES = 4\n", "_MAX_PASSES = 1\n",
                                                assert_idempotent, TEXTS),
+    "a marker's end mapped by offset": ("end = in_e if marker else in_s + (e - out_s)", "end = in_s + (e - out_s)",
+                                        assert_maps_whole_markers, renderings()),
+    "a marker's start mapped by offset": ("start = in_s if marker else in_s + (s - out_s)",
+                                          "start = in_s + (s - out_s)", assert_maps_whole_markers, renderings()),
 }
 
 
