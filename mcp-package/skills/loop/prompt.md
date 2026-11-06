@@ -21,7 +21,7 @@ Options:
 - `--max-workers N` — parallel workers per iteration (default: 4)
 - `--holdout DIR` — acceptance scenarios kept outside the repository (see the
   loop SKILL.md "Holdout scenarios"); pass the absolute path through to
-  `loop-runner.sh` unchanged
+  `loop-runner.sh` unchanged, on `--resume` too
 
 ---
 
@@ -121,7 +121,9 @@ Hard limits (not overridable by LLM):
 4. Choose recovery behavior:
    - No `--resume`: start fresh; stale state/checkpoints are never consumed
    - `--resume`: proceed directly to Step 4; the runner fails closed unless
-     checkpoint checkout, goal path, branch, and HEAD all match
+     checkpoint checkout, goal path, branch, HEAD and `--holdout` directory all
+     match. Pass the same `--holdout DIR` the interrupted run had: a resume
+     without it, or with another one, is refused
 
 ### Step 2: Analyze goal
 

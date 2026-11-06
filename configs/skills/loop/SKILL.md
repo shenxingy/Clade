@@ -85,29 +85,46 @@ code." `--holdout DIR` adds a gate kept outside it:
 
 - DIR must resolve outside the repository (`cd DIR && pwd -P` against
   `git rev-parse --show-toplevel`, and outside every other worktree of the same
-  repository). An in-repo DIR, a scenario symlinked into the repository, an
-  empty DIR and an empty `--holdout` value are refused before anything runs.
+  repository). An in-repo DIR, a scenario symlinked into the repository or
+  into another worktree of it, an empty DIR and an empty `--holdout` value are
+  refused before anything runs.
 - Each top-level executable file in DIR is a scenario. It runs after the verify
-  node with cwd = the checkout root and stdin closed; exit 0 = satisfied.
-  Non-executable files are notes and do not run.
+  node with cwd = the checkout root and stdin closed; exit 0 = satisfied, and
+  a scenario still running after 120 s is cut off and fails
+  (`CLADE_LOOP_HOLDOUT_TIMEOUT=N` changes the bound). Non-executable files are
+  notes and do not run.
+- A scenario must not write into the checkout. Whatever the scenarios create,
+  change or delete there (tracked or untracked, ignored files aside) is put
+  back after they run and logged, so the iteration's commit cannot carry it.
+  The loop's own `.claude/`, log directory and state file are left alone.
 - A failing scenario keeps the iteration out of goal reconciliation and keeps
-  the run from converging, even when the checklist is ticked.
+  the run from converging, even when the checklist is ticked. So does a set
+  that can no longer run (deleted, or no longer executable).
 - Scenario names, paths and contents never enter a prompt: the supervisor sees
   only "F of T held-out scenarios failed". Names and output go to the
   human-facing `logs/loop/loop.log` and `logs/loop/iter-N-holdout.log`.
 - A red holdout under a green `verify_cmd` logs `HOLDOUT FAILED — visible
-  verify_cmd passed`. A scenario edited mid-run logs `HOLDOUT CHANGED`, and a
-  `verify_cmd` that changes after pre-flight (including one deleted) is warned
-  about once per change.
+  verify_cmd passed`. A scenario added, removed or edited mid-run logs
+  `HOLDOUT CHANGED`; that iteration's pass does not count until the set passes
+  again unchanged, and the end-of-run report and `--status` say "scenario set
+  CHANGED mid-run at iteration N". A `verify_cmd` that changes after pre-flight
+  (including one deleted) is warned about once per change.
 
 Honest scope: the workers run as your user, so they can still read or write
 DIR by its absolute path. This makes the scenarios harder to rewrite, not
 impossible to rewrite. Never write the holdout path or a scenario into the goal
-file or a `--context` file: both are pasted into the supervisor prompt.
+file or a `--context` file: both are pasted into the supervisor prompt. The
+logs that do name DIR and every scenario, `loop.log` and `iter-N-holdout.log`,
+sit in `logs/loop` inside the checkout: no prompt carries them, but a worker is
+one `cat` away from them, and if `logs/` is not git-ignored a worker's commit
+can carry them into history. Keep `logs/` ignored, or pass `--log-dir` outside
+the checkout.
 
 Resume is explicit and fail-closed: the checkpoint must match the current
-checkout, goal path, branch, and HEAD. A normal launch starts fresh and never
-silently consumes an older checkpoint.
+checkout, goal path, branch, HEAD and `--holdout` directory. Resume with the
+same `--holdout DIR` the interrupted run had; a resume without it, or with
+another one, is refused rather than run with the held-out gate off. A normal
+launch starts fresh and never silently consumes an older checkpoint.
 
 Workers never mutate the shared goal file. The supervisor binds each task to
 exact goal line/text evidence, and the coordinator marks those items only
