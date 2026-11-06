@@ -36,8 +36,11 @@ ls .claude/handoff-*.md 2>/dev/null | wc -l
   - Add new Key Decisions if any were made this session
   - Carry Hypotheses forward: update each status from this session's evidence,
     keep every ruled-out entry, and rewrite the current one's "Drop it if" when
-    the evidence moved. Keep Stop conditions & out of scope unless the user
-    changed the scope. A v2 handoff has neither section: add both.
+    the evidence moved. A ruled-out entry carried over from an earlier handoff
+    shrinks to one line (the claim, and what ruled it out), so a long chain does
+    not push Next Steps and Meta down the file. Keep Stop conditions & out of
+    scope unless the user changed the scope. A v2 handoff has neither section:
+    add both.
 
 ### Step 3: Write Handoff File
 
