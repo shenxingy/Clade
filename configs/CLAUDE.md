@@ -61,9 +61,9 @@ start, which is the larger saving on a public repo where the minutes are free.
 
 ```bash
 python3 ~/.claude/scripts/ci-local.py --list   # what runs here, what cannot, and why
-python3 ~/.claude/scripts/ci-local.py          # run them; exit 1 on a failure, PARTIAL names unproven lanes
+python3 ~/.claude/scripts/ci-local.py          # run them; exit 1 on a failure, PARTIAL names unproven lanes, FLAKY names steps green only on rerun
 python3 ~/.claude/scripts/ci-local.py --json   # machine-readable, for an automatic fixer
-python3 ~/.claude/scripts/ci-local.py --strict # exit 2 on PARTIAL or NOTHING RAN, not only on a failure
+python3 ~/.claude/scripts/ci-local.py --strict # exit 2 on PARTIAL, FLAKY or NOTHING RAN, not only on a failure
 ```
 
 It parses `.github/workflows/*.yml` and executes the same `run:` blocks, so it
@@ -98,6 +98,17 @@ summary line reads `PARTIAL`, names each one, and the JSON lists them under
 their services exist) before reading a local run as a merge signal. `--strict`
 exits 2 on both; the default exit code is still 0 during a one-week
 report-only rollout.
+
+**A pass on rerun is FLAKY, not green.** A step that exits non-zero runs once
+more, with the same command, env and directory. Red again, it failed. Green the
+second time, the summary reads `FLAKY` and a line names each such step as
+`Job › Step (first exit N)`, with the first attempt's output above it; the JSON
+lists them under `flaky`. Its job does not count as failed, and the run is not
+green: the first failure is real and unexplained, so investigate it, and never
+read the rerun as the fix. A step that hit the step timeout is not rerun (a hang
+is not a flake, and a second wait doubles the cost). A run with an unproven lane
+as well reads `PARTIAL` and still lists the flaky steps. `--strict` exits 2 on
+FLAKY too; `--no-rerun` makes the first failure final.
 
 **Cross-platform work goes to the machine that has the platform.** A macOS job
 belongs on your Mac and a Windows job on your Windows box — over SSH or by

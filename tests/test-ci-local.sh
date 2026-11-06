@@ -15,9 +15,11 @@
 # secrets, unusual job ids, compound job-level if:, mixed triggers and gates
 # that are actions. Those lanes run on every hosted push and could not run
 # here; the suite asserts they come back UNPROVEN (summary PARTIAL, JSON
-# `unproven`, exit 2 under --strict) and never as passed. The last suite
-# removes each guard from a copy of ci-local.py and requires this suite to go
-# red; an anchor that no longer matches is a failure.
+# `unproven`, exit 2 under --strict) and never as passed. A step that passes
+# only on its rerun must come back FLAKY, never green (tests/lib/
+# ci-local-flaky.sh). The last suite removes each guard from a copy of
+# ci-local.py and requires this suite to go red; an anchor that no longer
+# matches is a failure.
 #
 # Usage:
 #   bash tests/test-ci-local.sh        # Run all tests
@@ -1147,6 +1149,12 @@ assert_eq "$CHECK" "ok" "verdict, unproven, passed and skipped are exact for act
 python3 "$RUNNER" --repo "$ACTS" --job "Lint Action" --strict >/dev/null 2>&1; RC=$?
 assert_eq "$RC" "2" "a run of only an action-gated job is not green under --strict"
 
+# ─── 8f. A step that passes only on rerun is FLAKY ──────────────────
+# Its fixtures, assertions and mutations live together in a sourced file,
+# because this one sits at the edge of the 1500-line cap.
+# shellcheck source=lib/ci-local-flaky.sh
+. "$REPO_ROOT/tests/lib/ci-local-flaky.sh"
+
 # ─── 9. Mutations: removing each guard turns this suite red ──────────
 # A clean run and a run with a guard missing print the same "ALL PASSED"
 # unless something removes the guard and looks. Each entry edits ONE guard out
@@ -1241,7 +1249,7 @@ mutation red "planning a --job conditional in full" \
 mutation red "unproven steps reaching the lane list" \
   'lanes.extend(Lane(r.job, s.name, s.reason) for s in r.unproven_steps)' 'pass'
 mutation red "the PARTIAL prefix on the summary line" \
-  'prefix = {"partial": "PARTIAL: ", "none": "NOTHING RAN: "}' 'prefix = {"none": "NOTHING RAN: "}'
+  'prefix = {"partial": "PARTIAL: ", "flaky"' 'prefix = {"flaky"'
 mutation red "the none verdict when no job ran" \
   '    elif not ran:
         verdict = "none"
@@ -1389,6 +1397,8 @@ mutation red "an action off the success path being reasoned" \
             pass'
 mutation red "uses: read as a YAML scalar" \
   'step.uses = _scalar(value)' 'step.uses = value'
+# The rerun and FLAKY guards: tests/lib/ci-local-flaky.sh, beside their fixtures.
+ci_local_flaky_mutations
 
 # A shared host and a 4-core hosted runner both run this: at most 4 at once.
 CL_JOBS=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)

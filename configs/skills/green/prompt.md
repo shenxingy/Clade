@@ -20,6 +20,8 @@ forbidden unless the user asks for it in those words:
 - adding the failing rule to an ignore list, baseline, or `per-file-ignores`
 - `continue-on-error`, `|| true`, or `echo` after the command — the last one
   masks the exit code and turns red into green while changing nothing
+- a retry loop, a longer sleep or a bigger timeout around a step that failed
+  once and then passed — that hides a flake instead of explaining it
 - widening a version range or unpinning a dependency to dodge a conflict
 
 If the honest fix is genuinely to change the gate — the test encoded the old
@@ -76,7 +78,7 @@ command, and the output tail, which is what you need to fix without guessing.
 Pass a job argument through as `--job <name>` when the user named one.
 
 Read `verdict` first, not the exit code — during the report-only rollout a
-`partial` or `none` run still exits 0 (`--strict` makes it 2):
+`partial`, `flaky` or `none` run still exits 0 (`--strict` makes it 2):
 
 - `pass` with a non-empty `passed` → green. Report and stop. Do not push
   unless asked.
@@ -86,12 +88,22 @@ Read `verdict` first, not the exit code — during the report-only rollout a
   and its reason, and say what would prove it — the hosted run, or a machine
   with the services it needs. Never shorten PARTIAL to "green" or "CI will
   pass".
+- `flaky` → **not green, and not fixed.** Nothing failed in the end, but each
+  entry in `flaky` (job, step, `first_exit`, `first_output_tail`) failed once
+  and passed on the one rerun ci-local gives every failed step. That first
+  failure is real and unexplained. Investigate it as in step 3b; never report
+  the rerun's pass as green or as a fix.
 - `none` → **not green: no job ran.** Every job was skipped; `skipped` and
   `unproven` say why. Report it as nothing proven, then fall back to the gates
   the project documents itself, as in step 1.
 - `fail` → continue below. A failed entry's `reason` can say the step ran
-  without inherited env; if so, that may be the whole cause. After the fix, a
-  re-run can come back `partial`, which is still not green.
+  without inherited env; if so, that may be the whole cause. A failed step was
+  already run twice (`first_exit` is the first attempt's code; `exit_code` and
+  `output_tail` are the rerun's), unless it hit the step timeout. After the fix,
+  a re-run can come back `partial` or `flaky`, which is still not green.
+
+A `partial` run lists its `flaky` steps too, and a `fail` run can carry them
+beside the failure: handle each of them as in step 3b as well.
 
 ### 3. Diagnose one failure at a time
 
@@ -107,6 +119,23 @@ For each entry in `failed`:
   bug.
 - Name the root cause before editing. "The test asserts an exact set of seven
   filenames and the change added an eighth" is a cause; "the test fails" is not.
+
+### 3b. A FLAKY step: find the cause, do not count the pass
+
+For each entry in `flaky`:
+
+- Read `first_output_tail` completely: it is the only record of the failure,
+  and it names the case that failed.
+- Try to make it fail again: run that step's command several times in the same
+  directory, and under load if the host was busy. A test that shares state,
+  depends on order, races a timer or a port, or reads the wall clock is the
+  usual cause; name the one you found.
+- If the cause is in the code or the test, fix it under the rule above — never
+  with a retry, a sleep or a skip — and re-run that job.
+- If it does not reproduce, stop and report it as FLAKY with the job, step,
+  first exit code and the first attempt's output. Do not run ci-local again
+  until it comes back green and call that green: a pass is what a flake does
+  most of the time.
 
 ### 4. Fix the cause, then re-run only that job
 
@@ -124,6 +153,9 @@ runs everything.
   skipped and why, stop.
 - **PARTIAL** (`verdict: partial`) → nothing left to fix here; report it as
   PARTIAL with the unproven lanes, stop. It is not a green result.
+- **FLAKY** (`verdict: flaky`, or flaky steps under another verdict) → report
+  each flaky step with what step 3b found, stop. It is not a green result, and
+  a flake you could not explain is not fixed.
 - **Nothing ran** (`verdict: none`) → report it, with every skip and its
   reason, stop. It is not a green result either.
 - **Same failure twice with different fixes** → stop and report. Two failed
@@ -170,13 +202,15 @@ produce green.
 
 State plainly:
 
-- the verdict — pass, PARTIAL, nothing ran, or fail — in the first line
+- the verdict — pass, PARTIAL, FLAKY, nothing ran, or fail — in the first line
 - which jobs ran, which passed, and **how long the whole thing took**
 - every **unproven** lane with its reason, and what would prove it
+- every **flaky** step with its first exit code, the failing case its first
+  output names, and the cause, or that none was found
 - every skipped job with its reason, including the platform it needs
 - for each fix: the root cause in one sentence, and the file changed
 - anything you chose **not** to fix and why
 - if you touched a gate at all, say exactly what and why, at the top
 
-Never report "CI will pass" from a subset, and never from a PARTIAL run or
-one where nothing ran. Report what ran.
+Never report "CI will pass" from a subset, and never from a PARTIAL or FLAKY
+run or one where nothing ran. Report what ran.

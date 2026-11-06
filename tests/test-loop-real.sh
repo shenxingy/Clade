@@ -9,7 +9,8 @@
 # Never chase a single flake, and never hide one either: re-run once; if it
 #   passes, report the pair as FLAKY (both outcomes, never a plain pass —
 #   configs/rules/tests.md); if it fails identically, apply the three-failure
-#   rule above.
+#   rule above. Under ci-local.py (--all) that one re-run is ci-local's own,
+#   and ci-local itself reports a pass on it as FLAKY, not green.
 # ─────────────────────────────────────────────────────────────────────────────
 #
 # Two-tier pattern: tests/test-loop.sh runs the full mock suites for free on

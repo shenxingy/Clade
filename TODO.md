@@ -2715,10 +2715,10 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   goal and `--context` files for the given and the physical DIR (and `~`-relative forms) and
   warn; scenario names are not searched, since a short name like `check` would fire on prose.
   Deferred from PR #189 (review 2026-11-06) to keep that PR to the gate itself.
-- [ ] 🔵 **Property tests and a FLAKY label.** Osmani, *Agentic Verification* (2026-10-14):
+- [x] 🔵 **Property tests and a FLAKY label.** Both halves DONE 2026-11-06 (below). Osmani, *Agentic Verification* (2026-10-14):
   "Example tests say what should happen; properties say what must not", and a retry-green test
   teaches the agent to retry. The tree has zero `hypothesis`/`@given`.
-  `tests/test-loop-real.sh:4-11` says "re-run once; if it passes, discard it".
+  `tests/test-loop-real.sh:4-12` says "re-run once; if it passes, discard it".
   M: pin `hypothesis` and add `orchestrator/tests/test_redact_properties.py` (no credential
   tail survives; idempotent). Its generator must insert separators, because the `redact.py`
   patterns are `\b`-anchored and fixed-length. Have `ci-local.py` rerun a failed step once and
@@ -2744,7 +2744,16 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
     every commit that adds a line); now `typing.Tuple`, and `test_redact.py` checks the file
     against a 3.8 floor (an AST check everywhere, a python3.8 run where one exists). The
     marker-mapping rule of the fixed point is pinned through main() and checked as a property.
-  - OPEN: the `ci-local.py` FLAKY rerun waits for the ci-local unit (§ above) to merge.
+  - [x] **DONE 2026-11-06 (feat/ci-local-flaky): `ci-local.py` reruns a failed step once and
+    reports a rerun-green as FLAKY, not green.** Same command, env and directory; its job is not
+    failed, the summary reads `FLAKY` (`PARTIAL` outranks it and still lists the flaky steps),
+    `--json` carries `verdict: flaky` and `flaky[]` with the first attempt's exit code and
+    output, a step red twice fails with the rerun's exit code and output, a step that hit the
+    step timeout is not rerun, `--no-rerun` turns reruns off, and `--strict` exits 2 on FLAKY.
+    `/green` investigates a flaky step and never counts it as fixed. Fixtures and 12 mutations
+    in `tests/lib/ci-local-flaky.sh`, sourced by `tests/test-ci-local.sh`. Measured motivation:
+    on a host at load ~80, one case of 206 in `tests/test-context-policy-install.sh` failed once
+    and passed 206/206 on an immediate rerun, and the run said FAILED with no record of a flake.
   - Not changed, deliberately: `orchestrator/runtime_redaction.py` (dormant layer) has the same
     `AIza…{35}\b`, and `AIza`+34+`-` passes through it unmasked (checked by hand; its sequential
     substitution does mask the JWT pin).
