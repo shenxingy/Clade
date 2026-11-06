@@ -19,6 +19,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parents[2]
 SCRUB = REPO / "configs" / "scripts" / "scrub-corrections.py"
 sys.path.insert(0, str(REPO / "configs" / "scripts"))
@@ -156,3 +158,44 @@ def test_apply_preserves_the_file_mode(tmp_path: Path) -> None:
     _run(tmp_path, "--apply")
 
     assert log.stat().st_mode & 0o777 == 0o600
+
+
+# What correction-detector.sh persists for each prompt, re-read by the scrub.
+# Assembled from pieces so no literal key or armour line trips the secret gate.
+_PEM = ("-----BEGIN " + "PRIVATE KEY-----" + "\\nMIIE" + "Q" * 24 + "\\n"
+        + "-----END " + "PRIVATE KEY-----")
+MASKED_HISTORY_PROMPTS = {
+    # env_secret matched its own marker: `token: "` + <redacted:github_token> + `"`.
+    "a marker alone in an env value": 'that is wrong, the config was tok' + 'en: "' + "ghp_" + "Z" * 36 + '"',
+    # One read masked only the PEM and left `<redacted:private_key>\\n` in the
+    # quotes (the YAML escape is two characters, not a newline), which env_secret
+    # then matched as a 24-character key.
+    "a PEM in a YAML double-quoted value": 'no, it is sec' + 'ret: "' + _PEM + '\\n"',
+}
+
+
+@pytest.mark.parametrize("name", list(MASKED_HISTORY_PROMPTS))
+def test_history_the_hook_already_masked_reports_clean(tmp_path: Path, name: str) -> None:
+    """A masked marker is not a credential to rotate.
+
+    correction-detector.sh persists `python3 redact.py` stdout, and this scrub
+    re-reads that history. Twice a marker in the persisted text matched again,
+    and the scrub told the owner to rotate `<redacted:…>`: the first case was
+    found by the idempotence property in test_redact_properties.py, the second
+    in review of it. This is what the owner was shown. The scrub can print a hit line and still end with "clean" (a hit
+    in the decoded record that never occurs literally in the raw line counts
+    zero), so the absence of any hit line is asserted on its own.
+    """
+    masked = subprocess.run(
+        [sys.executable, str(REPO / "configs" / "scripts" / "redact.py")],
+        input=MASKED_HISTORY_PROMPTS[name], capture_output=True, text=True, check=True,
+    ).stdout
+    assert "<redacted:" in masked, masked
+    record = {"timestamp": "2026-11-05T00:00:00Z", "project": "/tmp/example", "prompt": masked}
+    (tmp_path / "history.jsonl").write_text(json.dumps(record) + "\n", encoding="utf-8")
+
+    result = _run(tmp_path)
+
+    assert result.returncode == 0
+    assert "history.jsonl:" not in result.stdout, f"the scrub reported a hit in masked history:\n{result.stdout}"
+    assert "clean: no credentials found" in result.stdout, result.stdout
