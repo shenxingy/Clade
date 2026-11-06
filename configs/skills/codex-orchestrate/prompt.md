@@ -107,7 +107,7 @@ disown
 
 Poll `<done-flag>.2`. To cancel this round, run the cancel block with `<done-flag>.2`. Each observed on 0.167.0:
 
-- **`resume` works in the directory you run it from, not the session's.** Resumed from a different repository without `-C`, the header's `workdir:` line named that other repository. Run from your live checkout, the worker would edit the live checkout. Put `-C <worktree>` **before** `resume`: `codex exec resume --help` lists no `-C` of its own, and `codex exec -C <dir> resume …` was accepted and worked in `<dir>`.
+- **`resume` works in the directory you run it from, not the session's.** Resumed from a different repository without `-C`, the header's `workdir:` line named that other repository. Run from your live checkout, the worker would edit the live checkout. Put `-C <worktree>` **before** `resume`: `codex exec resume --help` lists no `-C` of its own, and `codex exec -C <dir> resume …` was accepted and worked in `<dir>`. After `resume`, `-C` or `--cd` is rejected before anything runs (`error: unexpected argument '-C' found`, exit 2), so that round writes `rc=2` and does no work.
 - **Flags and `-c` overrides do not carry over.** A session started with `-c model_reasoning_effort="low"` resumed at the config default (`high`). Pass `--dangerously-bypass-approvals-and-sandbox`, `-m` and every `-c` again.
 - **`-` reads the prompt from stdin.** The follow-up file is both the prompt and the stdin that reaches EOF, so the `< /dev/null` rule still holds.
 - **After a steer, say so.** Open the follow-up prompt with "your last turn was cancelled; run `git status` before you continue". A cancelled turn can leave edits half-applied.
