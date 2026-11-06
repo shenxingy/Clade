@@ -76,17 +76,32 @@ A v2 handoff (`STRUCTURED HANDOFF v2`) has no Hypotheses or Stop conditions
 section. Take the assumption Next Steps #1 rests on as the current hypothesis,
 mark it UNCONFIRMED, and re-check it the same way in Step 5.
 
+A v3 handoff whose Hypotheses section is `- none — mechanical work` has no
+hypothesis to re-check. Step 5 still runs check 1 (commits since Meta.HEAD) and
+check 3 (stop conditions), skips check 2, and then acts as **Holds**.
+
 ### Step 3: Verify Git State
 ```bash
 git branch --show-current
 git status -sb
-git log --oneline -10
+git merge-base --is-ancestor <Meta.HEAD> HEAD; echo "ancestor: $?"
+git log --oneline <Meta.HEAD>..HEAD
 ```
 
 If current branch doesn't match handoff Meta.Branch: warn the user but continue.
-Note every commit after Meta.HEAD (a v2 handoff has none: compare the log with
-its Done list): work that landed after the handoff may have moved the ground
-under its hypothesis.
+
+`<Meta.HEAD>..HEAD` lists every commit since the handoff, however many — a fixed
+`-10` window misses the 11th. Work that landed after the handoff may have moved
+the ground under its hypothesis; Step 5 checks whether it did.
+
+- **ancestor: 0** — the handoff's HEAD is still in this history; the log is the
+  complete list of what landed since (empty when nothing did).
+- **ancestor: 1** (rebased, squash-merged, or another branch) or **128** (this
+  clone does not have the commit) — the log cannot say what changed: **the
+  repository moved**. Step 5 takes the Contradicted path.
+
+A v2 handoff has no Meta.HEAD: run `git log --oneline -10` instead and compare it
+with the handoff's Done list.
 
 ### Step 4: Display Briefing (max 20 lines)
 
@@ -120,20 +135,24 @@ inertia, Breunig, 2026-10-14). So test the ground under them before the first ed
 
 **Once nothing is blocked (and an old handoff's goal is confirmed), re-check first.** Read-only and a few commands — not a re-investigation:
 1. **Repository**: did any commit after Meta.HEAD (Step 3) touch what the current
-   hypothesis cites? Do those files still say what its Evidence says?
+   hypothesis cites? Do those files still say what its Evidence says? If Step 3
+   found Meta.HEAD is not an ancestor of HEAD, the repository moved: Contradicted.
 2. **Verified facts**: re-run the cheapest check its Evidence or "Drop it if" line
    names — one test, one grep, one command. A fact the handoff marks "inferred" is
    not verified.
 3. **Stop conditions**: if "Done when" is already met, report that and stop — there
    is nothing to resume. Drop any proposed step that falls under "Out of scope".
 
-Print one line — `Re-check: {H} holds | contradicted | not re-checked — {evidence}` — and act on it:
+Print one line — `Re-check: {H} holds | contradicted | not re-checked — {evidence}`,
+or `Re-check: no hypothesis (mechanical work) — {evidence}` — and act on it:
 
-- **Holds** (the check supports it, or finds nothing against it): start the first
+- **Holds** (the check supports it, finds nothing against it, or there is no
+  hypothesis because the work is mechanical): start the first
   Next Step that still follows from it. Do NOT ask "shall I proceed?" — just start.
 - **Contradicted** (a "Drop it if" or "Stop and re-plan if" condition is met, or the
   repository moved under it): do not execute the old Next Steps. Treat the hypothesis
-  as ruled-out on the evidence you just saw (the next /handoff records it so), re-plan
+  as ruled-out on the evidence you just saw (the next /handoff records it so; a moved
+  repository alone does not falsify it, so record that one as UNCONFIRMED), re-plan
   from the Goal, the verified facts and the remaining hypotheses, state the new first
   step in one line and start it — still without asking. Ask only if the re-plan would
   change the Goal itself or take a destructive step.
