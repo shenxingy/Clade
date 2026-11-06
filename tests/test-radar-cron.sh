@@ -179,6 +179,11 @@ check "the report was in the agent's staging dir when it ran" \
   'grep -q "is_error · Bash:sleep" "$T/stub.log.friction"' "report: $(head -c 400 "$T/stub.log.friction" 2>/dev/null)"
 check "and the prompt names it, with no NOT MEASURED" \
   'grep -q "friction-2026-01-26.txt" "$T/stub.log.prompt" && ! grep -q "NOT MEASURED" "$T/stub.log.prompt"'
+# Monday 08:07 is hours into the ISO week: the current week alone would be a
+# near-empty held-out column, which SKILL.md tells the grader reads as a burst.
+check "the report holds out two ISO weeks, not the hours of the current one" \
+  'grep -Eq "held out: [0-9]{4}-W[0-9]{2}, [0-9]{4}-W[0-9]{2} \(" "$T/stub.log.friction"' \
+  "report: $(grep -m1 "held out" "$T/stub.log.friction" 2>/dev/null)"
 
 # ─── Summary ─────────────────────────────────────────────────────────
 printf "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"

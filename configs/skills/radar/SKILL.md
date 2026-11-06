@@ -152,16 +152,20 @@ faster and names a repair (Gorokh, 2026-10-08, one operator's fleet: the
 correction channel adopted 1 rule in 11 weeks). Run, every sweep:
 
 ```bash
-python3 ~/.claude/scripts/friction-rank.py --top 15     # 30 days, main thread, every profile
+python3 ~/.claude/scripts/friction-rank.py --top 15 --holdout-weeks 2   # 30 days, main thread, every profile
 ```
 
 It ranks errors, PreToolUse hook denials, permission refusals, timeouts,
 unchanged retries after one of those, and `hook_non_blocking_error`, by
-distinct sessions and then count, on discovery weeks with the current ISO week
-held out. Each family carries the full refusal text, the next 3 calls and
-provenance, and a second table regroups refusals by their first sentence
-across families. An unattended run cannot run a command, so `radar-cron.sh`
-runs it before the sweep and names the report file in the prompt; read that.
+distinct sessions and then count, on discovery weeks, with the last two ISO
+weeks held out: early in a week the current one alone holds hours, so the
+report prints the held-out span and warns below 7 days. Each family carries its
+most common verdict text in full and that text's latest occurrence: provenance
+and the next 3 calls after it. A second table regroups hook denials,
+permission refusals and hook errors by their first sentence across families.
+An unattended run cannot start `python3 <script>` (it waits for an approval
+nobody is there to give), so `radar-cron.sh` runs it before the sweep with the
+same flags and names the report file in the prompt; read that.
 
 Grade what it ranks, do not transcribe it:
 
@@ -170,19 +174,28 @@ Grade what it ranks, do not transcribe it:
   Read the refusal text and the next 3 calls. A guard is suspect when the
   calls after it reach the same end by another path, or when its text names no
   supported path.
-- **A family that is not held out again is a burst, not a pattern.** Prefer
-  those with sessions in both columns.
+- **A family that is not held out again is a burst, not a pattern**, when the
+  held-out weeks span 7 days or more. Below that the report says so, and an
+  empty held-out column is no evidence either way. Prefer families with
+  sessions in both columns.
 - **Test a reworded refusal before keeping it.** Gorokh records a guard whose
   added recovery guidance bought nothing (recovery took 2 calls before the
   change and 3 after). A rule A/B runs real sessions, so it stays opt-in (the
   paid-API rule).
 
 This supersedes the hand tally of `hook_non_blocking_error` that lived here,
-which clipped stderr to 90 characters — the text is the thing to read. It
-found two dead hooks on 2026-10-19, both with green suites, because each suite
-read the hook's output and never what Claude Code did with it:
-`skill-suggest.sh` (309 rejections since 2026-08-26, no `hookEventName`) and the
-rewrites in `pre-tool-guardian.sh` (41, a top-level `decision:"allow"`). A hook
+which clipped stderr to 90 characters — the text is the thing to read — for
+the main thread only. That tally grepped every transcript under `projects/`,
+subagents' included. Lane D reads subagent transcripts only with
+`--subagents`, because one Workflow fan-out can repeat a refusal a hundred
+times, so a hook that fails only inside subagents is missing from its report
+and from the cron sweep's. When a hook's health is the question, also run
+`friction-rank.py --subagents --holdout-weeks 2` and read its `hook:` rows.
+The old tally found two dead hooks on 2026-10-19, both with green suites,
+because each suite read the hook's output and never what Claude Code did with
+it: `skill-suggest.sh` (309 rejections since 2026-08-26, no `hookEventName`)
+and the rewrites in `pre-tool-guardian.sh` (41, a top-level
+`decision:"allow"`). A hook
 whose output Claude Code rejects still runs, exits 0 and passes its tests, and
 delivers nothing; the attachment is the only record, and Lane D reads it.
 
