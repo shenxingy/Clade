@@ -175,6 +175,15 @@ python3 configs/scripts/workflow-scorecard.py --outcome          # JSONL, label:
 python3 configs/scripts/outcome-scorecard.py --since 14 --tokens
 python3 configs/scripts/outcome-scorecard.py --since 7 --repo shenxingy/Clade --json
 
+# What did merged PRs say they could NOT verify? Every PR body carries
+# `Review depth: none | skimmed | read-in-full` and `Could not verify: none |
+# <item>; <item>` (create-pr §4, delivery §6, /ship, the PR template). This rolls
+# them up for one repository, any author, and prints the top 3 items recurring
+# in 2+ PRs as candidate TODO entries; it writes nothing. Both lines are
+# self-reported: depth is checked against forge reviews, and a window where no
+# PR states a line reads NOT MEASURED, never "nothing unverified".
+python3 configs/scripts/pr-verification-gaps.py --since 14
+
 # Did a Codex worker actually delegate? `codex exec` CAN subdivide — measured
 # 2026-09-05, the gate is the resolved model's catalog multi_agent_version, not
 # the session source. This counts the children, and its self-test distinguishes
@@ -195,7 +204,11 @@ python3 configs/scripts/regen-codex-plugin.py --check
 
 ### CLI Layer (`configs/`)
 - `skills/` — skill prompts invoked via `/skill-name` in Claude Code
-- `hooks/` — pre/post hooks for Claude Code events (wired via `settings-hooks.json`)
+- `hooks/` — pre/post hooks for Claude Code events (wired via `settings-hooks.json`).
+  Each `hooks/*.sh` carries one `# exists-for: <incident or need, date, commit/PR> ·
+  retire-when: <condition>` line in its first 10 (`tests/test-hook-provenance.sh`). Name a
+  recorded incident or write "no incident recorded"; a blocking guard retires on an
+  ablation, never on a quiet log.
 - `scripts/` — shell utilities (e.g., `committer.sh`)
 - `agents/` — subagent definitions for the Agent tool
 - `output-styles/` — system-prompt register overrides selected via `/config`. The
@@ -209,8 +222,20 @@ python3 configs/scripts/regen-codex-plugin.py --check
 - `edit-shadow-detector.sh` (PostToolUse, async) logs files Claude writes → session-keyed shadow at `<runtime>/claude-edit-shadows/session-<session_id>.jsonl`, where `<runtime>` is `$XDG_RUNTIME_DIR/clade` or `${TMPDIR:-/tmp}/clade-$EUID` (`configs/hooks/lib/runtime-dir.sh`) — a fixed `/tmp` path is squattable, and on this 40-account host it silently disabled pairing for every account but the one that created the directory
 
 **Per-attempt checkpoints** (separate from the correction pipeline above): `worker-checkpoint.sh` (PostToolUse **Edit|Write and Bash**, async) commits the whole worktree into a shadow repo OUTSIDE it, once per agent write. Until 2026-09-16 it was wired to Edit|Write only AND gated on a non-empty `tool_input.file_path`, so it was blind to a `python - <<EOF` heredoc — the one failure mode Ronacher's unattended run actually named. The path was only ever a commit-message label; the snapshot is `add -A`. In the same pass it stopped being inert on the terminal path: its only setter had been `orchestrator/worker.py`, in the layer `docs/layers.json` marks dormant, so the half of the system actually in use kept no checkpoints at all. `run-tasks-parallel.sh` now exports `CLADE_WORKER_SHADOW_DIR` per task. A worker commits exactly once — at the end of verification — and `stop()` force-removes the worktree, so "correct at call 14, wrong at 15" had no record. A separate `--git-dir` means a separate index, so checkpoints cannot contend with the worker's own commits (measured, see `tests/test-hooks.sh`). The final SHA and count land in the evidence bundle before cleanup deletes the repo. Setting: `worker_checkpoint_shadow`.
-- `revert-detector.sh` (PreToolUse Bash, async) on `git revert/reset/restore` cross-refs that shadow **against the command's own pathspec** → writes `reverted_files` (the intersection), `session_files` (the loose session list, under its true name), `revert_scope`, `revert_paths` and `repeat` into `~/.claude/corrections/history.jsonl`. `repeat` is meaningful only when `revert_scope` is `paths`: `git revert` takes no pathspec, `git reset --hard` cannot take one, and the hook is async, so for those the file set is not knowable at hook time — `reverted_files` is `[]` and `repeat` is `null`. Records written before 2026-09 carry the old semantics. `revert_scope:"probe"` marks a command that puts back what it reverted (`git apply`/`git stash pop` after the revert), edits the very path it reverts (`sed -i`, `python3 - "$f" <<'EOF'` — the dominant shape: 62 of the 115 implicit-revert records on the author's machine 2026-10-05 → 10-12, by a Python replay of the rule, none labelled), or carries the `MUTATION` label agents print — the mutation test the global CLAUDE.md requires, not a rejection — so it carries no `reverted_files`, no `session_files` and a null `repeat` (seven such records on 2026-09-23 had been feeding correction-detector false "files behind this correction"). `project` is the `cd` that runs BEFORE the revert, with `~` and variables the command itself assigns resolved; an unresolvable `$VAR` falls back to the session directory rather than being filed as a literal `$WT`. Heredoc bodies are stripped before any of this parsing, because agents write files through `python3 - <<'EOF'` and prose about git in the body used to trigger the hook and pick its project. Only the persisted `prompt` keeps the raw command. Only the main thread writes: a call whose hook input carries `agent_id` (a subagent) or that runs under `CLADE_WORKER_TASK_ID` (a dispatched worker) records nothing. Of the 220 implicit-revert records on the author's machine 2026-09-22 → 10-22, 172 were issued by Workflow subagents inside their own runs, and every reader — `session-scorecard.sh`, the concrete-signal block of `correction-detector.sh`, `repeat`, radar Lane C — counted them as the owner rejecting a change; skipping rather than tagging keeps all of them correct without a new filter.
+- `revert-detector.sh` (PreToolUse Bash, async) on `git revert/reset/restore` cross-refs that shadow **against the command's own pathspec** → writes `reverted_files` (the intersection), `session_files` (the loose session list, under its true name), `revert_scope`, `revert_paths`, `repeat`, `session_id` and `transcript_path` into `~/.claude/corrections/history.jsonl`. `repeat` is meaningful only when `revert_scope` is `paths`: `git revert` takes no pathspec, `git reset --hard` cannot take one, and the hook is async, so for those the file set is not knowable at hook time — `reverted_files` is `[]` and `repeat` is `null`. Records written before 2026-09 carry the old semantics. `revert_scope:"probe"` marks a command that puts back what it reverted (`git apply`/`git stash pop` after the revert), edits the very path it reverts (`sed -i`, `python3 - "$f" <<'EOF'` — the dominant shape: 62 of the 115 implicit-revert records on the author's machine 2026-10-05 → 10-12, by a Python replay of the rule, none labelled), or carries the `MUTATION` label agents print — the mutation test the global CLAUDE.md requires, not a rejection — so it carries no `reverted_files`, no `session_files` and a null `repeat` (seven such records on 2026-09-23 had been feeding correction-detector false "files behind this correction"). `project` is the `cd` that runs BEFORE the revert, with `~` and variables the command itself assigns resolved; an unresolvable `$VAR` falls back to the session directory rather than being filed as a literal `$WT`. Heredoc bodies are stripped before any of this parsing, because agents write files through `python3 - <<'EOF'` and prose about git in the body used to trigger the hook and pick its project. Only the persisted `prompt` keeps the raw command. Only the main thread writes: a call whose hook input carries `agent_id` (a subagent) or that runs under `CLADE_WORKER_TASK_ID` (a dispatched worker) records nothing. Of the 220 implicit-revert records on the author's machine 2026-09-22 → 10-22, 172 were issued by Workflow subagents inside their own runs, and every reader — `session-scorecard.sh`, the concrete-signal block of `correction-detector.sh`, `repeat`, radar Lane C — counted them as the owner rejecting a change; skipping rather than tagging keeps all of them correct without a new filter.
 - `correction-detector.sh` (UserPromptSubmit, **sync**) on an explicit "that's wrong" surfaces those rejected files into the rule-extraction context. Silent when `CLADE_WORKER_TASK_ID` is set: a dispatched worker's brief is its only "user prompt", reads like a correction ("fix any…", "instead of", "不要"), and was being persisted as one per retry — 13 of the 72 explicit records `~/.claude/corrections/history.jsonl` holds for 2026-09-07 → 2026-09-21 on the author's machine. A `对不对` tag question ("…, right?") no longer fires; a real 不对 beside another 对 (绝对不对, 不对不对, a tag running into 不对) is split off first, so it still does. On 364 hand-labelled owner messages typed after Workflow runs (37 rejections) the strip takes precision from 41% to 57% at unchanged recall (35%), and on the 490 other main-thread messages the owner typed on the same machine 2026-08-26 → 10-23 all 5 fires it removed were tag questions. Eight rejection phrasings were added too (不太对, 理解错, 没懂, 不满意, 打不开, 做多了, 四不像, 说的/得太多), but only in-sample: they lift the labelled replay to 66% precision and 51% recall because they were read off that set's misses, they caught no rejection among the 490 (one non-rejection fire), and four of them — 理解错, 做多了, 四不像, 说得太多 — are never a message's only trigger, so they are unmeasured
+- **Every record links to its session:** both detectors write `session_id` and
+  `transcript_path`, so a corrected session can be found and replayed as an eval
+  while its transcript lasts (Claude Code deletes transcripts after 30 days).
+  None of the 1,636 records in the author's history.jsonl on 2026-11-05 had
+  either: `correction-detector.sh` resolved the id only for its private-session
+  check, after the append. It now resolves both from the hook input before the
+  append, in the one `jq` call that check reuses, so the common path (no
+  correction) spawns nothing new. The id keeps `[A-Za-z0-9-]`; a transcript path
+  with a control character or over 1,024 characters is dropped, never trimmed.
+  Unknown is `null`, and records written before this change lack both keys.
+  The two hooks carry the filter verbatim (pinned by the test suite), and both
+  write paths (`cp_append_history` and the no-lib `jq >>`) are tested.
 - **Nothing raw is persisted:** `correction-detector.sh` masks the prompt through
   `redact.py` before any disk write, and all three persistence sites consume the
   masked value. Redaction runs *after* the correction gate — this is a sync
@@ -402,6 +427,29 @@ said so, which is how the next defect went unseen for months.
 Fixed by `.gitattributes merge=union` on the append-only files (verified to keep
 both sides where `-X ours` dropped one), plus a guard that refuses to commit any
 file carrying conflict markers. Both pinned by `tests/test-hooks.sh`.
+
+**Project auto-memory reaches the store only through `sync-link-projects.sh`**
+(run by `sync-pull.sh` at every session start). Until 2026-11-06 it never did:
+the linker matched projects by basename with `find -name` (so `clade` resolved
+to some repository's `.git/clade`), wrote links without the leading `-` Claude
+Code's slugs carry, died under `set -e` after its first entry, and never moved a
+local memory directory into the store. On the author's main host that left 24
+non-empty memory directories, including the one this repository's sessions
+load, with no git history. It now scans `~/.claude/projects`,
+`$CLAUDE_CONFIG_DIR/projects` and every `~/.claude-profiles/*/projects`, adopts
+a real memory directory into `projects-memory/<key>/` with a `.project-path`
+(verified by cksum, original kept as `memory.pre-sync-<stamp>`), links each
+entry at the slug Claude Code reads, and prunes links that are provably wrong.
+A private project is skipped in every pass, and a link it already has is
+replaced by a local copy. It commits whenever `projects-memory/` has anything
+uncommitted, so a commit lost to a killed run or a held lock is made next time.
+A store copy that differs is a conflict: written to
+`~/.claude/.sync-memory-conflicts`, which `sync-health.sh` prints at session
+start, and once a day to `~/.claude/.sync-conflicts.log`. The hook it runs in
+times out at 30 s, so adoption stops starting directories after
+`CLADE_SYNC_LINK_BUDGET` seconds (default 10) and the next session resumes.
+Run `bash configs/scripts/sync-link-projects.sh --dry-run` to see what it would
+do on a machine. Pinned by `tests/test-sync-link-projects.sh`.
 
 **When asked whether things are synced, check all three.** A clean `git status`
 here says nothing about the other two.
@@ -702,7 +750,8 @@ python3 configs/scripts/context-policy.py --self-test
 #     instrument that cannot fire reads "nothing reverted" as good news, so the
 #     self-test drives main() on fixtures and a fake gh (never the network),
 #     with a positive and a negative control per rule; its mutations are in
-#     test_self_tests_can_fire.py. No gh call carries --jq: the fixtures hold
+#     orchestrator/tests/can_fire/outcome_scorecard.py, which
+#     test_self_tests_can_fire.py loads. No gh call carries --jq: the fixtures hold
 #     gh's raw output and the fake gh records GhSource's arguments, because a
 #     --jq string and an already-flat fixture left four mutations green.
 python3 configs/scripts/outcome-scorecard.py --self-test
@@ -777,13 +826,13 @@ python3 configs/scripts/check-sibling-facts.py
 #     did not run at all.
 bash configs/scripts/checks.sh shellcheck configs/hooks/*.sh configs/hooks/lib/*.sh configs/scripts/*.sh install.sh
 
-# 12. Every suite the `shell-tests` job runs — all 27, not a convenient subset
+# 12. Every suite the `shell-tests` job runs — all 30, not a convenient subset
 for t in loop checks skill-routing pr-scope-policy audit worktree-env \
-         rule-injector mailbox-drain correction-pairing hooks post-edit-check session-context \
-         session-scorecard \
+         rule-injector mailbox-drain correction-pairing hooks hook-provenance \
+         sync-link-projects post-edit-check session-context session-scorecard \
          post-compact-reinject context-warning-drain ensure-dev-server \
          quiet-run scan-health pre-tool-guardian ask-while-live loop-args \
-         memory-watchdog ci-local seo-geo radar-cron workflow-preflight \
+         loop-holdout memory-watchdog ci-local seo-geo radar-cron workflow-preflight \
          wf-reader-guard; do
   bash "tests/test-$t.sh" >/dev/null || echo "FAILED: $t"
 done
@@ -842,7 +891,7 @@ commit too.**
 On push/PR to `main`, four workflow files fire:
 
 - `ci.yml` — `syntax-check` (27 gates), `pytest` (suite + 2 offline evals),
-  `shell-tests` (27 suites), `install-test`. `run_hack_eval.py` scores
+  `shell-tests` (30 suites), `install-test`. `run_hack_eval.py` scores
   `judge_diversity.test_integrity` against the labelled reward-hack corpus in
   `evals/hack_cases/` — read its README before changing either, because that
   gate's floor and ceiling are measured, not chosen.

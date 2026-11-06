@@ -2,7 +2,8 @@
 # sync-pull.sh — Pull latest from sync backend (run at session-start)
 #
 # - Pulls latest from git remote (GitHub or NFS-backed git)
-# - Re-links any new project memories that exist locally
+# - Adopts local project memories into the store and links store entries back
+#   (sync-link-projects.sh: see its header)
 
 set -euo pipefail
 
@@ -28,7 +29,7 @@ if [[ "$SYNC_BACKEND" == "github" ]] || [[ "$HAS_REMOTE" -gt 0 ]]; then
   }
 fi
 
-# ─── Re-link project memories ────────────────────────────────────────────────
+# ─── Adopt and link project memories ─────────────────────────────────────────
 
 "$(dirname "$0")/sync-link-projects.sh" 2>/dev/null || true
 

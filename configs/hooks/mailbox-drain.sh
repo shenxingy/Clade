@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # mailbox-drain.sh — PostToolUse hook (all tools)
+# exists-for: no incident recorded (added 2026-06-12 in 1468516); need: steer a running orchestrator worker mid-flight without killing it · retire-when: routes/tasks.py stops writing worker inboxes; that layer is dormant since 2026-09-02 (docs/layers.json)
 #
 # Mid-flight worker steering: orchestrator workers run as headless `claude -p`
 # processes, so the supervisor normally has no way to correct a misdirected

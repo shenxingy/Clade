@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # pre-compact.sh — Saves lightweight task state before Claude Code compacts the context.
+# exists-for: no incident recorded (added 2026-03-30 in 08cca1e); need: save the active task state before compaction so it can be reloaded · retire-when: an ablation over compacted sessions shows Claude Code's own summary keeps the task goal; post-compact-reinject.sh retires with it
 # Triggered by: PreCompact hook event
 # Purpose: After compaction, the session can reload .claude/compact-state.md to remember
 #          what was being worked on.

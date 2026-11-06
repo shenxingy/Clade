@@ -267,7 +267,13 @@ PR descriptions include:
 - exact local and remote evidence;
 - risk and rollback;
 - proposed merge strategy and whether working commits are checkpoints;
-- runtime identity required by repository agent instructions.
+- runtime identity required by repository agent instructions;
+- the two review lines, spelled exactly as `create-pr` §4 defines them:
+  `Review depth: none | skimmed | read-in-full`, how far someone other than
+  the author read the diff, updated when a review lands; and
+  `Could not verify: none | <item>; <item>`, each item a few words with its
+  reason in parentheses, reusing an earlier PR's wording for the same gap.
+  `/retro` rolls them up, so a missing line is an unmeasured PR.
 
 After create/update:
 

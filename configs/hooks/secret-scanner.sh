@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # secret-scanner.sh — Note (not block, not nag) when the user's prompt contains
 # something that looks like a credential.
+# exists-for: no incident recorded (added 2026-04-27 in ad4031f); need: tell the model not to repeat a credential pasted into a prompt · retire-when: only after an ablation shows the model does not re-emit a pasted credential without the note
 #
 # Triggered: UserPromptSubmit
 # Reads JSON from stdin: {"prompt": "...", ...}

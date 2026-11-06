@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # worker-checkpoint.sh — snapshot the worktree after every agent file write.
+# exists-for: a worker's work had no record between its single commit and the deletion of its worktree (added 2026-08-29 in ce44dbf) · retire-when: no runner sets CLADE_WORKER_SHADOW_DIR any more (run-tasks-parallel.sh, orchestrator/worker.py)
 # Triggered by PostToolUse on Edit|Write (async — data only, output unused).
 #
 # Clade can tell you THAT an attempt failed and hand back a digest-chained

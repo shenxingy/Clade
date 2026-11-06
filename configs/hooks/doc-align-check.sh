@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # doc-align-check.sh — Real-time doc-drift guard after .md edits.
+# exists-for: no incident recorded (added 2026-05-06 in 35d23e8); need: flag docs/facts.json drift right after a Markdown edit · retire-when: met while it stays async: its systemMessage reaches nobody (docs/reference/hooks.md, Intentional No-ops), so retire it or move it to asyncRewake
 # Triggered by PostToolUse on Edit|Write.
 #
 # If you edited a Markdown file in a repo with docs/facts.json, this runs

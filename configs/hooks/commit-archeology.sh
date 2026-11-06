@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # commit-archeology.sh (hook) — Inject recurring commit-pattern lessons at SessionStart.
+# exists-for: no incident recorded (added 2026-05-06 in c8dd7b6); need: surface recurring fix-commit patterns (wiring, deploy and compat gaps) at session start · retire-when: an ablation shows the injected lessons do not reduce the fix-commit patterns they report
 #
 # Reads cached patterns from ~/.claude/commit-lessons/<slug>.jsonl
 # (auto-refreshes if stale; auto-creates on first run).
