@@ -112,6 +112,10 @@ Options:
                         reconciliation and convergence. Refused when DIR
                         resolves inside the repository. Scenario names and paths
                         never reach a prompt; the supervisor sees counts only.
+                        What a scenario writes into the checkout is put back.
+                        Each scenario is cut off after 120s
+                        (CLADE_LOOP_HOLDOUT_TIMEOUT=N to change). --resume
+                        needs the same --holdout DIR as the interrupted run.
   --dry-run             preview iteration plan, no claude calls
   --resume              resume an identity-matched interrupted run
 EOF

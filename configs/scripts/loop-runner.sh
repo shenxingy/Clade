@@ -86,7 +86,11 @@ readonly MAX_CONSECUTIVE_NO_COMMITS=3   # consecutive empty iters → force stop
 MAX_CONSECUTIVE_FAILURES=3     # consecutive worker failures (ran but no commits) → force stop
 readonly SYNTAX_CHECK_TIMEOUT=30        # syntax check timeout (seconds)
 readonly TEST_SAMPLE_TIMEOUT=120        # verify_cmd timeout (seconds)
-readonly HOLDOUT_TIMEOUT=120            # per --holdout scenario timeout (seconds)
+# Per --holdout scenario timeout (seconds). Overridable the way
+# LOOP_START_EPOCH is, so the timeout branch is testable without a test that
+# waits two minutes; loop_holdout.sh refuses a value that is not a bound.
+HOLDOUT_TIMEOUT="${CLADE_LOOP_HOLDOUT_TIMEOUT:-120}"
+readonly HOLDOUT_TIMEOUT
 # NOT readonly: override with --supervisor-timeout N. 120s was the default
 # through two stuck runs (align-elites 3×120s; a 10-requirement goal died
 # supervisor_failed on iter 1). Planning cost scales with goal size — a measured
@@ -873,18 +877,25 @@ _save_checkpoint() {
   local phase="$2"
   local extra="${3:-}"
   local ckpt_file
+  # --opt=value: a fingerprint line can begin with "-", which argparse would
+  # otherwise read as the next option.
   ckpt_file=$(python3 "$(_sibling_script loop_checkpoint.py)" save \
     --goal "$GOAL_FILE" --iteration "$iteration" --phase "$phase" \
     --extra "$extra" --no-commits "${consecutive_no_commits:-0}" \
     --worker-failures "${consecutive_worker_failures:-0}" \
-    --iteration-start-commit "$ITERATION_START_COMMIT")
+    --iteration-start-commit "$ITERATION_START_COMMIT" \
+    --holdout="$(holdout_state_dir)" \
+    --holdout-fingerprint="$(holdout_state_fingerprint)" \
+    --holdout-changed-at="$(holdout_state_changed_at)")
   log_info "[CHECKPOINT] iter $iteration $phase → $ckpt_file"
 }
 
 _recover_checkpoint() {
   local recovered
+  # The --holdout directory is part of the identity: a resume that drops it
+  # would reconcile and converge with the held-out gate silently off.
   if ! recovered=$(python3 "$(_sibling_script loop_checkpoint.py)" recover \
-      --goal "$GOAL_FILE" 2>&1); then
+      --goal "$GOAL_FILE" --holdout="$(holdout_state_dir)" 2>&1); then
     log_error "[RECOVERY] $recovered"
     return 1
   fi
@@ -894,6 +905,9 @@ _recover_checkpoint() {
   RECOVERED_NO_COMMITS=$(printf '%s' "$recovered" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("consecutive_no_commits", 0))')
   RECOVERED_WORKER_FAILURES=$(printf '%s' "$recovered" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("consecutive_worker_failures", 0))')
   RECOVERED_START_COMMIT=$(printf '%s' "$recovered" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("iteration_start_commit", ""))')
+  holdout_state_restore \
+    "$(printf '%s' "$recovered" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("holdout_fingerprint", ""))')" \
+    "$(printf '%s' "$recovered" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("holdout_changed_at", ""))')"
   local ckpt_file
   ckpt_file=$(printf '%s' "$recovered" | python3 -c 'import json,sys; print(json.load(sys.stdin)["checkpoint_file"])')
   log_info "[RECOVERY] Resuming iteration $RECOVERED_ITERATION after $RECOVERED_PHASE → $ckpt_file"

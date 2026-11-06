@@ -21,7 +21,16 @@
 #   converge   a worker that ticks the goal itself, or a goal complete before
 #              the run, cannot converge while a scenario fails
 #   drift      a worker deleting verify_cmd from CLAUDE.md is reported
-#   tamper     a scenario edited mid-run is reported
+#   tamper     a scenario rewritten mid-run is reported, its pass does not count
+#              in the iteration that changed it, and the report says so
+#   resume     a run killed after its workers-done checkpoint cannot be resumed
+#              without its --holdout, or with another one; resumed with it, a
+#              scenario edited before the crash is still reported
+#   gone       a worker deleting the scenarios or dropping their exec bit gets
+#              no pass: reconciliation is skipped and the run does not converge
+#   timeout    a scenario that hangs is cut off at CLADE_LOOP_HOLDOUT_TIMEOUT
+#   checkout   what a scenario writes into the checkout is put back: no commit
+#              and no prompt carries it, and a worker's leftover change survives
 #
 # The last suite removes each guard from a copy of the scripts in turn and
 # requires the cases that pin it to go red, beside a no-op control that must
@@ -47,6 +56,10 @@ LH_MUTANT="${LH_MUTANT:-}"
 TEST_ROOT=$(mktemp -d /tmp/test-loop-holdout-XXXXXX)
 TEST_ROOT=$(cd "$TEST_ROOT" && pwd -P)
 trap 'rm -rf "$TEST_ROOT"' EXIT
+# Resume checkpoints live under $HOME/.claude/loop-checkpoints; keep every one
+# this suite writes (and the one the resume case leaves) out of the real HOME.
+export HOME="$TEST_ROOT/home"
+mkdir -p "$HOME"
 
 # Commit-creating fixtures need a pinned VCS identity; keep a parent's.
 if [[ -z "${CLADE_GIT_IDENTITY_FILE:-}" ]]; then
@@ -100,13 +113,37 @@ elif [[ "$args" == *"stream-json"* ]]; then
   if [[ -n "${MOCK_TAMPER:-}" ]]; then
     printf '# edited by a worker\n' >> "$MOCK_TAMPER"
   fi
+  if [[ -n "${MOCK_REWRITE_PASS:-}" ]]; then
+    printf '#!/bin/sh\nexit 0\n' > "$MOCK_REWRITE_PASS"
+  fi
+  case "${MOCK_GONE:-}" in
+    delete:*) rm -f "${MOCK_GONE#delete:}"/* ;;
+    chmod:*)  chmod -x "${MOCK_GONE#chmod:}"/* ;;
+  esac
+  if [[ -n "${MOCK_INTERRUPT:-}" ]]; then
+    printf '{"interrupted": true}\n' > .claude/interrupt-state.json
+  fi
   git commit -q -m "test: worker commit"
+  if [[ -n "${MOCK_LEFTOVER:-}" ]]; then
+    printf 'leftover\n' >> README.md
+  fi
   echo '{"type":"result","subtype":"success","result":"done"}'
 else
   echo '[]'
 fi
 EOF
 chmod +x "$TEST_ROOT/bin/claude"
+# The leftover sweep prefers a `committer` on PATH. The installed one needs a
+# kit under $HOME, which this suite replaces, and CI has none at all, so pin a
+# stand-in that commits exactly the files it is given.
+cat > "$TEST_ROOT/bin/committer" <<'EOF'
+#!/usr/bin/env bash
+msg="$1"
+shift
+git restore --staged :/ 2>/dev/null || true
+git add -- "$@" && git commit -q -m "$msg"
+EOF
+chmod +x "$TEST_ROOT/bin/committer"
 
 # new_repo NAME → path of a fresh checkout: verify_cmd `true`, one open item.
 new_repo() {
@@ -224,6 +261,8 @@ mkdir -p "$TEST_ROOT/scenario-link"
 ln -s "$REPO/acceptance/check" "$TEST_ROOT/scenario-link/check"
 git -C "$REPO" worktree add -q "$TEST_ROOT/sibling-wt" 2>/dev/null
 scenario "$TEST_ROOT/sibling-wt/acceptance" "check" 'exit 0'
+mkdir -p "$TEST_ROOT/scenario-link-wt"
+ln -s "$TEST_ROOT/sibling-wt/acceptance/check" "$TEST_ROOT/scenario-link-wt/check"
 mkdir -p "$TEST_ROOT/notes-only"
 printf 'a note\n' > "$TEST_ROOT/notes-only/README.md"
 
@@ -246,6 +285,13 @@ refused "a scenario symlinked into the checkout" "scenario check resolves inside
   --holdout "$TEST_ROOT/scenario-link"
 refused "a sibling worktree of the same repository" "another worktree of this same repository" \
   --holdout "$TEST_ROOT/sibling-wt/acceptance"
+refused "a scenario symlinked into a sibling worktree" \
+  "scenario check resolves into another worktree of this same repository" \
+  --holdout "$TEST_ROOT/scenario-link-wt"
+CLADE_LOOP_HOLDOUT_TIMEOUT=abc refused "a scenario timeout that is not a number" \
+  "CLADE_LOOP_HOLDOUT_TIMEOUT must be a whole number" --holdout "$TEST_ROOT/plain-out"
+CLADE_LOOP_HOLDOUT_TIMEOUT=0 refused "a scenario timeout of 0, which GNU timeout reads as none" \
+  "CLADE_LOOP_HOLDOUT_TIMEOUT must be a whole number" --holdout "$TEST_ROOT/plain-out"
 refused "a directory with no executable scenario" "holds no executable scenario" --holdout "$TEST_ROOT/notes-only"
 refused "a missing directory" "not a directory" --holdout "$TEST_ROOT/does-not-exist"
 refused "an empty --holdout value" "needs a directory argument" --holdout ""
@@ -299,12 +345,194 @@ fi
 
 # ─── tamper ──────────────────────────────────────────────────────────
 if want tamper; then
-section "tamper: a scenario edited mid-run is reported"
+section "tamper: a scenario rewritten to pass does not count in the iteration it changed"
+# The worker rewrites a failing scenario to `exit 0` in every iteration; from
+# the second on, the content is the same, so the set is unchanged.
 REPO=$(new_repo tamper)
 TAMPER_DIR="$TEST_ROOT/acceptance-tamper"
-scenario "$TAMPER_DIR" "check" 'exit 0'
-MOCK_TAMPER="$TAMPER_DIR/check" run_loop "$REPO" --max-iter 1 --holdout "$TAMPER_DIR"
+scenario "$TAMPER_DIR" "check-rw" 'exit 1'
+MOCK_REWRITE_PASS="$TAMPER_DIR/check-rw" run_loop "$REPO" --max-iter 2 --holdout "$TAMPER_DIR"
+LP=$(cat "$REPO/logs/loop/last-progress" 2>/dev/null)
+check "it reconciles once, on the next iteration's unchanged set" \
+  "$([[ "$(grep -c "Coordinator reconciled" <<< "$OUT")" -eq 1 ]] && echo yes || echo no)" \
+  "$(grep -c "Coordinator reconciled" <<< "$OUT") reconciliations"
+check "the run converges at iteration 2, not 1" \
+  "$([[ $RC -eq 0 ]] && has "$LP" "Iterations: 2")" "rc=$RC; $LP"
 check "the change is reported" "$(has "$OUT" "HOLDOUT CHANGED mid-run")"
+check "the iteration that changed it says it does not count" \
+  "$(has "$OUT" "the scenario set changed in this iteration — not counted as acceptance")"
+check "last-progress (what --status prints) carries the change" \
+  "$(has "$LP" "scenario set CHANGED mid-run at iteration 1")"
+check "the end-of-run report carries it" \
+  "$(has "$OUT" "Holdout:      all 1 scenario(s) passed at iteration 2; scenario set CHANGED mid-run at iteration 1")"
+check "the next supervisor prompt is told the pass did not count, by count only" \
+  "$(has "$(prompts)" "but the held-out set changed during that iteration")"
+check "and never the scenario's name" "$(lacks "$(prompts)" "check-rw")"
+
+REPO=$(new_repo tamper-tick)
+TAMPER2_DIR="$TEST_ROOT/acceptance-tamper-tick"
+scenario "$TAMPER2_DIR" "check-rw" 'exit 1'
+MOCK_REWRITE_PASS="$TAMPER2_DIR/check-rw" MOCK_TICK_GOAL="$REPO/.claude/goal.md" \
+  run_loop "$REPO" --max-iter 1 --holdout "$TAMPER2_DIR"
+check "rewrite plus a ticked goal does not converge in the same iteration" \
+  "$([[ $RC -eq 2 ]] && lacks "$OUT" "CONVERGED:")" "rc=$RC"
+check "and says why" "$(has "$OUT" "held-out scenario set changed in this iteration — not converged")"
+fi
+
+# ─── resume ──────────────────────────────────────────────────────────
+if want resume; then
+section "resume: a resumed run keeps the holdout it started with"
+# crash_after_workers REPO ARGS... — the worker raises the interrupt flag, so
+# the runner pauses right after its workers-done checkpoint; the test kills it
+# there with SIGKILL, the way a crash would, and clears the flag.
+crash_after_workers() {
+  local repo="$1" pid deadline
+  shift
+  rm -f "$PROMPTS"
+  ( cd "$repo" && PATH="$TEST_ROOT/bin:$PATH" LH_PROMPTS="$PROMPTS" MOCK_INTERRUPT=1 \
+      exec bash "$RUNNER" .claude/goal.md --max-workers 1 --state .claude/state.json \
+      --log-dir logs/loop "$@" ) > "$TEST_ROOT/crash.out" 2>&1 < /dev/null &
+  pid=$!
+  deadline=$((SECONDS + 90))
+  while ! grep -q "Interrupt detected" "$repo/logs/loop/loop.log" 2>/dev/null; do
+    if [[ $SECONDS -ge $deadline ]] || ! kill -0 "$pid" 2>/dev/null; then break; fi
+    sleep 0.2
+  done
+  kill -9 "$pid" 2>/dev/null
+  wait "$pid" 2>/dev/null
+  rm -f "$repo/.claude/interrupt-state.json"
+}
+REPO=$(new_repo resume)
+RESUME_DIR="$TEST_ROOT/acceptance-resume"
+scenario "$RESUME_DIR" "check" 'exit 1'
+# The worker also edits the scenario before the crash: the resumed run must
+# compare against the fingerprint the interrupted run had, not take a new one.
+MOCK_TAMPER="$RESUME_DIR/check" crash_after_workers "$REPO" --max-iter 2 --holdout "$RESUME_DIR"
+check "the crash left a workers-done checkpoint" \
+  "$(compgen -G "$HOME/.claude/loop-checkpoints/*/*/iter-000001-workers-done.json" >/dev/null && echo yes || echo no)" \
+  "$(tail -3 "$TEST_ROOT/crash.out" 2>/dev/null | tr '\n' ' ')"
+
+run_loop "$REPO" --resume --max-iter 2
+check "resume without --holdout is refused (exit 2)" "$([[ $RC -eq 2 ]] && echo yes || echo no)" "rc=$RC"
+check "it names the field and the fix" \
+  "$([[ "$OUT" == *"holdout_dir"* && "$OUT" == *"the interrupted run had --holdout $RESUME_DIR"* ]] && echo yes || echo no)" \
+  "$(grep -m2 -i 'holdout' <<< "$OUT")"
+check "it does not resume" "$(lacks "$OUT" "[RECOVERY] Resuming")"
+check "it does not converge" "$(lacks "$OUT" "CONVERGED")"
+check "the goal item stays unchecked" "$(has "$(cat "$REPO/.claude/goal.md")" "- [ ] exact item")"
+check "no claude call was made" "$([[ ! -s "$PROMPTS" ]] && echo yes || echo no)"
+
+run_loop "$REPO" --resume --max-iter 2 --holdout "$PASS_DIR"
+check "resume with a different --holdout is refused (exit 2)" "$([[ $RC -eq 2 ]] && echo yes || echo no)" "rc=$RC"
+check "and names the one the run had" "$(has "$OUT" "the interrupted run had --holdout $RESUME_DIR, not $PASS_DIR")"
+
+run_loop "$REPO" --resume --max-iter 1 --holdout "$RESUME_DIR"
+check "resume with the same --holdout continues at POST" \
+  "$(has "$OUT" "[RECOVERY] Resuming iteration 1 after workers-done")" "rc=$RC"
+check "the edit made before the crash is reported on resume" "$(has "$OUT" "HOLDOUT CHANGED mid-run")"
+check "the holdout still gates it: no convergence, exit 2" \
+  "$([[ $RC -eq 2 ]] && lacks "$OUT" "CONVERGED")" "rc=$RC"
+fi
+
+# ─── gone ────────────────────────────────────────────────────────────
+if want gone; then
+section "gone: a worker that removes the scenarios gets no pass"
+REPO=$(new_repo gone-delete)
+GONE_DIR="$TEST_ROOT/acceptance-gone-delete"
+scenario "$GONE_DIR" "check" 'exit 0'
+MOCK_GONE="delete:$GONE_DIR" run_loop "$REPO" --max-iter 1 --holdout "$GONE_DIR"
+check "delete: goal item stays unchecked" "$(has "$(cat "$REPO/.claude/goal.md")" "- [ ] exact item")"
+check "delete: no convergence, exit 2" "$([[ $RC -eq 2 ]] && lacks "$OUT" "CONVERGED")" "rc=$RC"
+check "delete: counted as failed" "$(has "$OUT" "the scenario set can no longer be run")"
+check "delete: goal reconciliation is skipped" "$(has "$OUT" "Skipping goal reconciliation")"
+check "delete: no '1 of 0' arithmetic in any message" "$(lacks "$OUT" "1 of 0")"
+check "delete: the divergence log says the scenarios cannot be run" \
+  "$(has "$OUT" "HOLDOUT FAILED — visible verify_cmd passed: the held-out scenarios cannot be run")"
+check "delete: last-progress says so too" \
+  "$(has "$(cat "$REPO/logs/loop/last-progress" 2>/dev/null)" "the scenarios could not be run at iteration 1")"
+
+REPO=$(new_repo gone-chmod)
+GONE2_DIR="$TEST_ROOT/acceptance-gone-chmod"
+scenario "$GONE2_DIR" "check" 'exit 0'
+MOCK_GONE="chmod:$GONE2_DIR" MOCK_TICK_GOAL="$REPO/.claude/goal.md" \
+  run_loop "$REPO" --max-iter 1 --holdout "$GONE2_DIR"
+check "chmod -x plus a ticked goal: no convergence, exit 2" \
+  "$([[ $RC -eq 2 ]] && lacks "$OUT" "CONVERGED:")" "rc=$RC"
+check "chmod -x: says the scenarios cannot be run" \
+  "$(has "$OUT" "the held-out acceptance scenarios cannot be run — not converged")"
+fi
+
+# ─── timeout ─────────────────────────────────────────────────────────
+if want timeout; then
+section "timeout: a scenario that hangs is cut off"
+if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; then
+  REPO=$(new_repo timeout)
+  SLOW_DIR="$TEST_ROOT/acceptance-slow"
+  scenario "$SLOW_DIR" "hangs" 'exec sleep 30'
+  T0=$SECONDS
+  CLADE_LOOP_HOLDOUT_TIMEOUT=2 run_loop "$REPO" --max-iter 1 --holdout "$SLOW_DIR"
+  check "counted as failed: no convergence, exit 2" "$([[ $RC -eq 2 ]] && lacks "$OUT" "CONVERGED")" "rc=$RC"
+  check "the run did not wait the scenario out" "$([[ $((SECONDS - T0)) -lt 30 ]] && echo yes || echo no)" \
+    "$((SECONDS - T0))s"
+  check "cut off at the configured bound" "$(has "$OUT" "holdout FAIL: hangs (timed out after 2s)")"
+  check "the detail log records it" \
+    "$(has "$(cat "$REPO/logs/loop/iter-1-holdout.log" 2>/dev/null)" "=== hangs: FAIL (timed out after 2s)")"
+else
+  echo "  (no timeout or gtimeout on PATH — the bound cannot be applied here; case not run)"
+fi
+fi
+
+# ─── checkout ────────────────────────────────────────────────────────
+if want checkout; then
+section "checkout: what a scenario writes there reaches no commit and no prompt"
+REPO=$(new_repo checkout-write)
+# Nothing ignored, so the loop's own files (logs/loop, .claude/, a root
+# --state file) are in the captures and the bookkeeping exclusions are
+# exercised. Then five seed commits, so the context's
+# `git diff --stat HEAD~5..HEAD` has a range in iteration 2 and would show a
+# swept file's name.
+: > "$REPO/.gitignore"
+git -C "$REPO" commit -q -am "test: ignore nothing"
+for i in 1 2 3 4; do git -C "$REPO" commit -q --allow-empty -m "test: seed $i"; done
+WRITE_DIR="$TEST_ROOT/acceptance-writes"
+# Every run: edit a tracked file, create a file and a directory, and write
+# under .claude/ (standing in for a human editing there meanwhile). The second
+# run also raises the stop sentinel, standing in for a human `--stop`.
+scenario "$WRITE_DIR" "scribbles" "printf 'scenario-scribble\n' >> README.md
+echo report > heldout-report-w3k.txt
+mkdir -p build-w3k/out && echo o > build-w3k/out/artifact.txt
+echo note > .claude/human-note.txt
+echo run >> '$TEST_ROOT/scribble-runs'
+if [ \"\$(wc -l < '$TEST_ROOT/scribble-runs')\" -eq 2 ]; then printf '{\"stop\":true}\n' > loop-state.json; fi
+exit 1"
+MOCK_LEFTOVER=1 run_loop "$REPO" --max-iter 3 --state loop-state.json --holdout "$WRITE_DIR"
+# What the consumers receive first (worktree, commits, prompts, the loop's own
+# files), the log message last: the mutation suite names the first check that
+# goes red, and that should be an effect, not a sentence.
+check "the file it created is gone" "$([[ ! -e "$REPO/heldout-report-w3k.txt" ]] && echo yes || echo no)"
+check "and the directory it made" "$([[ ! -e "$REPO/build-w3k" ]] && echo yes || echo no)"
+# Paths, not log text: with nothing ignored, run-tasks.sh's `git add -A` lets
+# the mock worker's commit carry logs/loop, whose detail log names them.
+PATHS=$(git -C "$REPO" log --name-only --format=)
+README_HIST=$(git -C "$REPO" log -p --format= -- README.md)
+check "no commit carries the created file" "$(lacks "$PATHS" "heldout-report-w3k")"
+check "or the directory it made" "$(lacks "$PATHS" "build-w3k")"
+check "no commit carries the scenario's edit to a tracked file" "$(lacks "$README_HIST" "scenario-scribble")"
+check "the worker's leftover change was still committed" "$(has "$README_HIST" "+leftover")"
+check "the worktree keeps no scenario edit" "$(lacks "$(cat "$REPO/README.md")" "scenario-scribble")"
+NSUP=$(grep -c "autonomous improvement loop" "$PROMPTS" 2>/dev/null || true)
+check "a second supervisor prompt was captured" "$([[ "${NSUP:-0}" -ge 2 ]] && echo yes || echo no)" "${NSUP:-0}"
+check "no prompt carries the created file's name" "$(lacks "$(prompts)" "heldout-report-w3k")"
+check "loop.log keeps the lines written while the scenarios ran" \
+  "$(has "$(cat "$REPO/logs/loop/loop.log" 2>/dev/null)" "holdout FAIL: scribbles (exit 1)")"
+check ".claude/ is left alone (a human may be editing there)" \
+  "$([[ -e "$REPO/.claude/human-note.txt" ]] && echo yes || echo no)"
+check "a --stop raised while the scenarios ran is honoured" \
+  "$([[ $RC -eq 0 ]] && has "$OUT" "Stop sentinel detected")" "rc=$RC"
+check "the write is reported, the loop's own files not counted" \
+  "$(has "$OUT" "the scenarios wrote 3 change(s) into the checkout")" "$(grep -o 'the scenarios wrote [0-9]* change' <<< "$OUT" | head -2 | tr '\n' ' ')"
+check "the detail log names what was put back" \
+  "$(has "$(cat "$REPO/logs/loop/iter-1-holdout.log" 2>/dev/null)" "created: heldout-report-w3k.txt")"
 fi
 
 # ─── Mutations ───────────────────────────────────────────────────────
@@ -349,7 +577,8 @@ mutation() {
   if [[ $((NMUT % 4)) -eq 0 ]]; then wait; fi
 }
 
-mutation green loop_holdout.sh "positive negative refuse converge drift tamper" \
+mutation green loop_holdout.sh \
+  "positive negative refuse converge drift tamper resume gone timeout checkout" \
   "no-op control (a comment reworded)" \
   "# Names and cksums of the scenario set" "# Names and checksums of the scenario set"
 mutation red loop-runner.sh "negative" "the holdout term of the reconcile gate" \
@@ -390,6 +619,50 @@ mutation red loop_holdout.sh "drift" "no divergence claim without a verify_cmd" 
 mutation red loop_verify.sh "drift" "one warning per change" \
   '  [ "v:$now" = "$LOOP_VERIFY_CMD_WARNED" ] && return 0
 ' ''
+mutation red loop_checkpoint.py "resume" "the --holdout term of the resume identity" \
+  'if recorded_holdout != args.holdout:' 'if False:'
+mutation red loop-runner.sh "resume" "the checkpoint recording the run's --holdout" \
+  '--holdout="$(holdout_state_dir)" \
+    --holdout-fingerprint=' '--holdout-fingerprint='
+mutation red loop-runner.sh "resume" "the baseline fingerprint restored on resume" \
+  '  holdout_state_restore \
+' '  : \
+'
+mutation red loop_holdout.sh "gone" "an unrunnable scenario set counted as failed" \
+  '    LOOP_HOLDOUT_LAST_FAILED=1
+    return 1' '    LOOP_HOLDOUT_LAST_FAILED=0
+    return 0'
+mutation red loop_holdout.sh "gone" "no '1 of 0' when nothing could run" \
+  '  if [ "$LOOP_HOLDOUT_LAST_TOTAL" -eq 0 ]; then
+    what=' '  if false; then
+    what='
+mutation red loop_holdout.sh "timeout" "the per-scenario timeout" \
+  '_timeout "${HOLDOUT_TIMEOUT:-120}" "$f"' '"$f"'
+mutation red loop_holdout.sh "refuse" "the scenario-timeout validation" \
+  'if [ "$timeout_ok" != "true" ]; then' 'if false; then'
+mutation red loop_holdout.sh "refuse" "the scenario-symlink-into-a-sibling-worktree refusal" \
+  'if [ "$there" = "$common" ]; then' 'if false; then'
+mutation red loop_holdout.sh "checkout" "putting back what the scenarios wrote" \
+  'restored=$(cd "$LOOP_HOLDOUT_CHECKOUT" && _holdout_restore "$cap" 2>>"$detail") || restored=""' \
+  'restored=0'
+mutation red loop_holdout.sh "checkout" "LOG_DIR left out of the put-back" \
+  '        case "$p" in "$log"|"$log"/*) continue ;; esac' '        :'
+mutation red loop_holdout.sh "checkout" "STATE_FILE left out of the put-back" \
+  'if [ -n "$state" ] && [ "$p" = "$state" ]; then continue; fi' ':'
+mutation red loop_holdout.sh "checkout" ".claude/ left out of the put-back" \
+  'case "$p" in .claude|.claude/*) continue ;; esac' ':'
+mutation red loop_holdout.sh "tamper" "a pass on a changed set not counted by node_holdout" \
+  '  if holdout_changed_this_check; then
+    log_warn "holdout: all' '  if false; then
+    log_warn "holdout: all'
+mutation red loop_holdout.sh "tamper" "a changed set blocking convergence" \
+  '  if holdout_changed_this_check; then
+    log_warn "Goal checklist' '  if false; then
+    log_warn "Goal checklist'
+mutation red loop_holdout.sh "tamper" "the change reaching last-progress and the report" \
+  '  if [ -n "$LOOP_HOLDOUT_CHANGED_AT" ]; then
+    line=' '  if false; then
+    line='
 wait
 
 i=0
