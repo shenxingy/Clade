@@ -2834,7 +2834,7 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
     every flag again), pinned by `test_codex_orchestrate_recipes.py`. Still open: no check
     reached a model, because the checking Codex profile was logged out, so recall after resume
     is unobserved and the research row's "~4x tokens" stays unmeasured.
-- [ ] 🔵 **`memory-sync.sh` commits at write time only under `~/.claude/projects`.** It
+- [x] 🔵 **`memory-sync.sh` commits at write time only under `~/.claude/projects`.** It
   matches `^$HOME/.claude/projects/[^/]+/memory/`, so a session running under
   `CLAUDE_CONFIG_DIR` (a `~/.claude-profiles/*` account) writes its project memory
   under `$CLAUDE_CONFIG_DIR/projects`, and that edit is not pushed when it is written.
@@ -2843,3 +2843,9 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   S: match every projects dir the linker scans (`$CLAUDE_CONFIG_DIR/projects`,
   `~/.claude-profiles/*/projects`), with a `tests/test-hooks.sh` case per dir.
   Found reviewing PR #188 (2026-11-06).
+  DONE 2026-11-06 (fix/memory-sync-profile-dirs): `is_project_memory` checks the three
+  projects dirs the linker scans, for Write/Edit and for the memory gates, and the Bash
+  pattern matches `~/.claude-profiles/<p>/projects/<slug>/memory` and
+  `$CLAUDE_CONFIG_DIR/projects/<slug>/memory`. `tests/test-hooks.sh` gains a case per dir,
+  two that must not push (beside `memory/`, and one level too deep), and a mutation that
+  drops the profile dirs. The three positive cases fail on the old hook.

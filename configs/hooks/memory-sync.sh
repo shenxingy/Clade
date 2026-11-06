@@ -4,7 +4,9 @@
 #
 # Triggers sync-push.sh when Claude writes/edits a file under any synced dir:
 #   ~/.claude/memory/             (global memory)
-#   ~/.claude/projects/*/memory/  (project memory)
+#   ~/.claude/projects/*/memory/  (project memory, and the same under
+#                                 $CLAUDE_CONFIG_DIR/projects and
+#                                 ~/.claude-profiles/*/projects)
 #   ~/.claude/skills/             (skills)
 #   ~/.claude/hooks/              (hooks)
 #   ~/.claude/scripts/            (scripts)
@@ -22,6 +24,21 @@ SYNC_CONFIG="$CLAUDE_DIR/.sync-config"
 
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
+
+# A project memory under any projects directory sync-link-projects.sh scans:
+# ~/.claude/projects, $CLAUDE_CONFIG_DIR/projects and
+# ~/.claude-profiles/*/projects. Matching ~/.claude/projects alone left every
+# session run under a profile (CLAUDE_CONFIG_DIR) unpushed until some other
+# trigger came along.
+is_project_memory() {   # PATH -> 0 when PATH is <projects dir>/<slug>/memory/...
+  local d rel
+  for d in "$CLAUDE_DIR/projects" ${CLAUDE_CONFIG_DIR:+"$CLAUDE_CONFIG_DIR/projects"} \
+           "$HOME"/.claude-profiles/*/projects; do
+    rel="${1#"$d"/}"
+    [[ "$rel" != "$1" && "$rel" == */* && "${rel#*/}" == memory/* ]] && return 0
+  done
+  return 1
+}
 
 is_synced_path=false
 # Bound for every tool: the memory-path test below reads it, and under `set -u`
@@ -41,14 +58,17 @@ if [[ "$TOOL_NAME" == "Write" || "$TOOL_NAME" == "Edit" ]]; then
       is_synced_path=true; break
     fi
   done
-  if [[ "$FILE_PATH" =~ ^$CLAUDE_DIR/projects/[^/]+/memory/ ]]; then
+  if is_project_memory "$FILE_PATH"; then
     is_synced_path=true
   fi
 
 elif [[ "$TOOL_NAME" == "Bash" ]]; then
   # ─── Bash: check if command touches a synced directory (covers rm/mv/mkdir) ─
   COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
-  if echo "$COMMAND" | grep -qE "(~/.claude|$CLAUDE_DIR)/(skills|memory|hooks|scripts|corrections|projects/[^/]+/memory)"; then
+  _synced_re="(~/.claude|$CLAUDE_DIR)/(skills|memory|hooks|scripts|corrections|projects/[^/]+/memory)"
+  _synced_re="$_synced_re|(~|$HOME)/\.claude-profiles/[^/]+/projects/[^/]+/memory"
+  [[ -n "${CLAUDE_CONFIG_DIR:-}" ]] && _synced_re="$_synced_re|$CLAUDE_CONFIG_DIR/projects/[^/]+/memory"
+  if echo "$COMMAND" | grep -qE "$_synced_re"; then
     is_synced_path=true
   fi
 fi
@@ -60,8 +80,7 @@ fi
 # Gates prevent low-value, duplicate, or premature memory writes from polluting sync.
 
 _is_memory_path=false
-if [[ "$FILE_PATH" == "$CLAUDE_DIR/memory/"* ]] || \
-   [[ "$FILE_PATH" =~ ^$CLAUDE_DIR/projects/[^/]+/memory/ ]]; then
+if [[ "$FILE_PATH" == "$CLAUDE_DIR/memory/"* ]] || is_project_memory "$FILE_PATH"; then
   _is_memory_path=true
 fi
 
