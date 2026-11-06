@@ -414,6 +414,14 @@ jobs:
       - name: Run hook delivery tests
         run: bash tests/test-hooks.sh
 
+      # Project auto-memory reaches the sync store: a real memory dir is
+      # adopted (verified copy, link back, commit), store entries link at
+      # Claude Code's own slug, wrong-target links are pruned, conflicts and
+      # private projects stay put, --dry-run changes nothing. Its last suite
+      # removes each guard of the linker and requires red.
+      - name: Run sync-link-projects tests
+        run: bash tests/test-sync-link-projects.sh
+
       # post-edit-check: exit-2 asyncRewake findings vs silent success, the per-file mypy scope, errors already
       # in the file's HEAD version, a crashed checker, nested worktrees
       # (split out of test-hooks.sh when it crossed the 1500-line rule again)

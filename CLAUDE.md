@@ -403,6 +403,21 @@ Fixed by `.gitattributes merge=union` on the append-only files (verified to keep
 both sides where `-X ours` dropped one), plus a guard that refuses to commit any
 file carrying conflict markers. Both pinned by `tests/test-hooks.sh`.
 
+**Project auto-memory reaches the store only through `sync-link-projects.sh`**
+(run by `sync-pull.sh` at every session start). Until 2026-11-06 it never did:
+the linker matched projects by basename with `find -name` (so `clade` resolved
+to some repository's `.git/clade`), wrote links without the leading `-` Claude
+Code's slugs carry, died under `set -e` after its first entry, and never moved a
+local memory directory into the store. On the author's main host that left 24
+non-empty memory directories, including the one this repository's sessions
+load, with no git history. It now adopts a real memory directory into
+`projects-memory/<key>/` with a `.project-path` (verified byte for byte, original
+kept as `memory.pre-sync-<stamp>`, then committed by `sync-push.sh`), links each
+entry at the slug Claude Code reads, and prunes links that are provably wrong. A
+store copy that differs, or a private project, is reported and left alone. Run
+`bash configs/scripts/sync-link-projects.sh --dry-run` to see what it would do
+on a machine. Pinned by `tests/test-sync-link-projects.sh`.
+
 **When asked whether things are synced, check all three.** A clean `git status`
 here says nothing about the other two.
 
@@ -765,9 +780,10 @@ python3 configs/scripts/check-sibling-facts.py
 #     did not run at all.
 bash configs/scripts/checks.sh shellcheck configs/hooks/*.sh configs/hooks/lib/*.sh configs/scripts/*.sh install.sh
 
-# 12. Every suite the `shell-tests` job runs — all 27, not a convenient subset
+# 12. Every suite the `shell-tests` job runs — all 28, not a convenient subset
 for t in loop checks skill-routing pr-scope-policy audit worktree-env \
-         rule-injector mailbox-drain correction-pairing hooks post-edit-check session-context \
+         rule-injector mailbox-drain correction-pairing hooks sync-link-projects \
+         post-edit-check session-context \
          session-scorecard \
          post-compact-reinject context-warning-drain ensure-dev-server \
          quiet-run scan-health pre-tool-guardian ask-while-live loop-args \
@@ -830,7 +846,7 @@ commit too.**
 On push/PR to `main`, four workflow files fire:
 
 - `ci.yml` — `syntax-check` (27 gates), `pytest` (suite + 2 offline evals),
-  `shell-tests` (27 suites), `install-test`. `run_hack_eval.py` scores
+  `shell-tests` (28 suites), `install-test`. `run_hack_eval.py` scores
   `judge_diversity.test_integrity` against the labelled reward-hack corpus in
   `evals/hack_cases/` — read its README before changing either, because that
   gate's floor and ceiling are measured, not chosen.
