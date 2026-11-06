@@ -2417,7 +2417,22 @@ re-fetched and match. The repository facts in items 1–3 were re-checked by han
 Evidence across the set is thin: only Gorokh (one operator), Spolin (one project's activity),
 Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
 
-- [ ] 🟠 **ci-local: a skipped test lane is not green.** Spolin, *The Factory Kitchen for AI
+- [x] 🟠 **DONE 2026-11-06 (fix/ci-local-unproven-lanes): steps 1–8 — reasoned skips are
+  tested first, a step-level `if:` is evaluated per step on the success path, the fifth class
+  is reported `unproven` (summary `PARTIAL`, JSON `verdict`/`unproven`/`partial`, `--strict`
+  exits 2), `/green` and both CLAUDE.md files say PARTIAL is not green, 16 mutations in
+  `tests/test-ci-local.sh`.** Also fixed, because modelling `if:` newly runs jobs that used to
+  be skipped: job- and workflow-level `env:` were silently dropped (a job declaring
+  `DATABASE_URL=sqlite…` ran against whatever the shell exported), env values kept their YAML
+  quotes, workflow-level `defaults:` was ignored, a column-0 comment inside `jobs:` dropped
+  every later job from the plan, and a step env using `github.*`/`runner.*` context was
+  labelled "needs a repository secret" (on the reference repo that hid the E2E suite's only
+  real step). Deliberately left as they were: a platform skip and a secret skip stay reasoned
+  classes (the spec keeps the four); a step skipped for a secret inside a job that otherwise
+  runs is still not listed in the summary; step-level `continue-on-error` stays unmodelled
+  (its job is unproven); `needs:` artifacts between jobs are not modelled; the M follow-up
+  `--changed BASE` (map a diff to the lanes it touches) is not started.
+  Was: **ci-local: a skipped test lane is not green.** Spolin, *The Factory Kitchen for AI
   Agents* (AppDirect, 2026-10-22): "12,731 unit tests passed while the endpoint returned a
   500 … agents have to identify which test lanes actually cover the surface they've changed".
   `configs/scripts/ci-local.py:583,606` return `1 if failed else 0`, so skipped jobs never
@@ -2441,6 +2456,17 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
      is harmless) plus a mutation that undoes the reorder.
   8. Regen the plugin.
   Size S–M.
+- [ ] 🟠 **On or after 2026-11-13: flip `ci-local.py` to exit 2 on an unproven lane by
+  default.** The report-only week started 2026-11-06. Change `--strict`'s default to True
+  (`--no-strict` keeps today's behaviour) and update every site that says "report-only":
+  the ci-local.py docstring and `--strict` comment, `configs/CLAUDE.md` § CI, the repo
+  CLAUDE.md § CI, `configs/skills/green/prompt.md` (then regen the plugin), both CHANGELOGs,
+  and the `--strict` assertions in `tests/test-ci-local.sh`. Before flipping, this repo's own
+  run must not be PARTIAL, or every local gate here exits 2: `Syntax Check › Sibling facts
+  (report only)` uses `${{ github.event_name }}` / `${{ github.base_ref }}`. Moving them to
+  `$GITHUB_EVENT_NAME` / `$GITHUB_BASE_REF` would make it run locally, but its push branch
+  runs `git fetch --deepen=1` against origin, so decide that first. Also check, over the
+  week, how often PARTIAL fired and on which lanes, before deciding the flip is not noise.
 - [ ] 🟠 **Correction records carry no session link, and transcripts expire at 30 days.**
   Migdal, *Your agent session transcripts are precious* (Quesma, 2026-10-01): "Sessions where an
   engineer corrected or reverted the agent are ready-made evals". Gorokh (below) is the measured
