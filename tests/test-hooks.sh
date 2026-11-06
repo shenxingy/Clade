@@ -1275,6 +1275,59 @@ RU_OUT=$( source "$REPO_ROOT/configs/hooks/lib/rule-utils.sh"; count_rules "$RU_
 assert_eq "$RU_OUT" "1" "and 1 once a rule is added"
 rm -f "$RU_FILE"
 
+section "memory-sync pushes after a Bash call into a synced dir"
+
+# Under `set -u` the Bash branch left FILE_PATH unset and the memory-path test
+# read it, so the hook exited 1 before sync-push on every Bash call that
+# touched a synced directory. sync-push is a stub here that leaves a marker;
+# the real one is never run, and nothing reaches the sync store.
+MS_HOME="$(mktemp -d "${TMPDIR:-/tmp}/clade-msync.XXXXXX")"
+mkdir -p "$MS_HOME/.claude/scripts" "$MS_HOME/.claude/skills/demo"
+: > "$MS_HOME/.claude/.sync-config"
+printf '#!/usr/bin/env bash\ntouch "%s/pushed"\n' "$MS_HOME" > "$MS_HOME/.claude/scripts/sync-push.sh"
+chmod +x "$MS_HOME/.claude/scripts/sync-push.sh"
+ms_run() {   # HOOK JSON -> sets ms_rc, ms_err; waits briefly for the backgrounded stub
+  rm -f "$MS_HOME/pushed"
+  ms_err=$(printf '%s' "$2" | HOME="$MS_HOME" bash "$1" 2>&1 >/dev/null); ms_rc=$?
+  local i; for i in 1 2 3 4 5 6 7 8 9 10; do [[ -f "$MS_HOME/pushed" ]] && break; sleep 0.2; done
+}
+ms_pushed() { [[ -f "$MS_HOME/pushed" ]] && echo yes || echo no; }
+MS_HOOK="$REPO_ROOT/configs/hooks/memory-sync.sh"
+
+ms_run "$MS_HOOK" '{"tool_name":"Bash","tool_input":{"command":"rm ~/.claude/memory/old-note.md"}}'
+assert_eq "$ms_rc" "0" "a Bash call into ~/.claude/memory exits 0"
+assert_not_contains "$ms_err" "unbound variable" "and does not die on an unset FILE_PATH"
+assert_eq "$(ms_pushed)" "yes" "and triggers sync-push"
+ms_run "$MS_HOOK" '{"tool_name":"Bash","tool_input":{"command":"mv ~/.claude/projects/-x/memory/a.md /tmp/"}}'
+assert_eq "$(ms_pushed)" "yes" "a Bash call into a project memory dir triggers sync-push"
+ms_run "$MS_HOOK" '{"tool_name":"Bash","tool_input":{"command":"ls ~/projects"}}'
+assert_eq "$ms_rc" "0" "a Bash call outside the synced dirs exits 0"
+assert_eq "$(ms_pushed)" "no" "and does not push"
+ms_run "$MS_HOOK" "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$MS_HOME/.claude/skills/demo/SKILL.md\"}}"
+assert_eq "$(ms_pushed)" "yes" "a Write into ~/.claude/skills still pushes"
+ms_run "$MS_HOOK" '{"tool_name":"Write","tool_input":{"file_path":"/tmp/elsewhere.md"}}'
+assert_eq "$(ms_pushed)" "no" "a Write elsewhere does not push"
+rm -f "$MS_HOME/.claude/.sync-config"
+ms_run "$MS_HOOK" '{"tool_name":"Bash","tool_input":{"command":"rm ~/.claude/memory/x.md"}}'
+assert_eq "$ms_rc$(ms_pushed)" "0no" "with sync not configured it exits 0 and pushes nothing"
+: > "$MS_HOME/.claude/.sync-config"
+
+# The guard is observed, not only claimed: without the FILE_PATH="" line the
+# first case above must fail again.
+MS_MUT="$MS_HOME/memory-sync.mutated.sh"
+grep -v '^FILE_PATH=""$' "$MS_HOOK" > "$MS_MUT"
+if cmp -s "$MS_HOOK" "$MS_MUT"; then
+  fail "mutation: the FILE_PATH initialisation line was found to remove" "anchor missing"
+else
+  ms_run "$MS_MUT" '{"tool_name":"Bash","tool_input":{"command":"rm ~/.claude/memory/old-note.md"}}'
+  if [[ "$ms_rc" != "0" && "$(ms_pushed)" == "no" ]]; then
+    pass "mutation: without the initialisation the Bash case fails again (rc=$ms_rc)"
+  else
+    fail "mutation: without the initialisation the Bash case fails again" "rc=$ms_rc pushed=$(ms_pushed)"
+  fi
+fi
+rm -rf "$MS_HOME"
+
 # ─── Summary ─────────────────────────────────────────────────────────
 
 echo ""

@@ -23,6 +23,11 @@ INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
 
 is_synced_path=false
+# Bound for every tool: the memory-path test below reads it, and under `set -u`
+# a Bash call left it unset, so the hook died there ("FILE_PATH: unbound
+# variable") before it reached sync-push. A synced change made through Bash
+# never pushed: 4,916 such failures in 30 days of one host's transcripts.
+FILE_PATH=""
 
 if [[ "$TOOL_NAME" == "Write" || "$TOOL_NAME" == "Edit" ]]; then
   # ─── Write/Edit: check file_path ─────────────────────────────────────────
