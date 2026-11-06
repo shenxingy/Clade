@@ -2546,19 +2546,23 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
     - [x] (a) DONE 2026-11-06 (docs/bounded-implementer-readonly): `bounded-implementer` and its
       Codex twin `clade_cheap_worker` now treat the verifier, the tests it runs and their
       fixtures as read-only, add test cases without weakening existing ones, and report a wrong
-      verifier instead of editing it. `test_native_delegation_agents.py` reads all three copies
-      the runtimes load. It is an instruction, not a control: nothing blocks the write, and a
-      path guard like wf-reader's would need the lead to hand the hook the verifier's paths.
+      verifier instead of editing it; both descriptions tell the lead so.
+      `test_native_delegation_agents.py` reads all three copies the runtimes load. It is an
+      instruction, not a control: nothing blocks the write, and a path guard like wf-reader's
+      would need the lead to hand the hook the verifier's paths.
     - [ ] (b) QUEUED, waiting on the owner's quota decision. Nothing has run, because the A/B
       spends subscription quota. Protocol and harness:
       `docs/research/2026-10-23-workflow-effort-and-reader-ab.md` § "Queued: model tier for
       implement stages". It replays 8 merged fixes with known answers, checked red at the parent
-      and green at the fix. The arms are Opus 5.5 xhigh, Sonnet 5 medium (the
-      bounded-implementer pin) and Opus 5.5 medium; Haiku is out on the 200k window. A
-      deterministic grader restores the tests before it runs them. List-price estimate: pilot
-      (3 agents) $9–18, minimum (36) $103–210, full (72) $207–420. It is framed on quality,
-      not cost: the DONE 2026-10-23 effort item rates model switching a small cost lever. Decide:
-      approve the pilot, then the minimum or full design, or drop it.
+      and green with only the fix's owned files. The arms are Opus 5.5 xhigh, Sonnet 5 medium
+      (the bounded-implementer pin) and Opus 5.5 medium; Haiku is out on the 200k window. The
+      deterministic grader runs the verifier on the pristine base plus only the agent's owned
+      files, so no edited test, conftest or helper reaches it, and `leaks.py` flags any call
+      that reaches outside the agent's own cell; `test_model_tier_ab_harness.py` covers all
+      three scripts. List-price estimate: pilot (3 agents) $9–18, minimum (36) $103–210, full
+      (72) $207–420. It is framed on quality, not cost: the DONE 2026-10-23 effort item rates
+      model switching a small cost lever. Decide: approve the pilot, then the minimum or full
+      design, or drop it.
   - LangChain, *Agents Are Going Async* (2026-11-05): `codex-orchestrate` has no recorded pgid
     for cancel and never uses `codex exec resume`.
-  Each needs the two-skeptic pass before any work.
+  Anhaia and LangChain each need the two-skeptic pass before any work.

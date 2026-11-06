@@ -33,9 +33,14 @@ const brief = (c) => {
   const cell = `${root}/${c.t.id}/${c.arm.id}-${c.r}`
   return [
     `Checkout: ${cell}. It is a git repository with one commit. Work only inside it and read nothing outside it.`,
+    // Every Bash call starts in the lead's working directory, not the cell, and
+    // leaks.py flags a command that does not begin with this cd.
+    `Every shell command starts outside the checkout, so begin each one with: cd ${cell} &&`,
+    'Give Read, Edit, Write, Grep and Glob absolute paths inside the checkout.',
     `Defect: ${c.t.statement}.`,
     `You own: ${c.t.owned.join(', ')}.`,
-    `Verifier, failing now: export PY=${py}; cd ${cell} && ${c.t.verifier}`,
+    // The same empty HOME the grader uses, inside the cell and excluded from git.
+    `Verifier, failing now: cd ${cell} && export PY=${py} HOME=${cell}/.ab-home && ${c.t.verifier}`,
     'The verifier, the tests it runs and their fixtures are read-only.',
     'Fix the defect in the files you own so that the verifier passes.',
   ].join('\n')
