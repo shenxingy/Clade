@@ -399,6 +399,7 @@ def test_redact_under_the_floor_interpreter_matches_this_one(tmp_path: Path) -> 
         assert "<redacted:" in there.stdout
     assert _run_under(_FLOOR_PYTHON, _REDACT_PATH, "hello world", "--check").returncode == 0
     # Control: the same run over the alias this file was fixed for must fail there.
+    assert _REDACT_SOURCE.count(_PIECE_ALIAS) == 1, "the alias moved; update the anchor, do not delete the control"
     broken = tmp_path / "redact.py"
     broken.write_text(_REDACT_SOURCE.replace(_PIECE_ALIAS, _PIECE_ALIAS.replace("Tuple[", "tuple[")), encoding="utf-8")
     assert _run_under(_FLOOR_PYTHON, broken, "hello world", "--check").returncode != 0
