@@ -29,6 +29,9 @@ fi
 if [[ -z "${1:-}" || "${1:-}" == "goal" ]]; then
   bash "$(cd "$(dirname "$0")" && pwd)/test-loop-goal.sh" || exit 1
 fi
+if [[ -z "${1:-}" || "${1:-}" == "holdout" ]]; then
+  bash "$(cd "$(dirname "$0")" && pwd)/test-loop-holdout.sh" || exit 1
+fi
 
 TESTS_RUN=0
 TESTS_PASSED=0

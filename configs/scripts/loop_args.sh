@@ -51,6 +51,14 @@ print(f'Interrupt state written to {path}')
       --context)      CONTEXT_FILE="$2"; shift 2 ;;
       --state)        STATE_FILE="$2"; shift 2 ;;
       --log-dir)      LOG_DIR="$2"; shift 2 ;;
+      --holdout)
+        # An empty value must not read as "no holdout": `--holdout "$UNSET"`
+        # would otherwise run the loop with its acceptance gate silently off.
+        if [ -z "${2:-}" ]; then
+          echo "ERROR: --holdout needs a directory argument" >&2
+          exit 1
+        fi
+        HOLDOUT_DIR="$2"; shift 2 ;;
       --resume)       RESUME=true; shift ;;
       --budget)       shift 2 ;;  # accepted but not used in Blueprint mode
       --exit-gate)    shift 2 ;;  # accepted but not used in Blueprint mode
@@ -98,6 +106,12 @@ Options:
   --context FILE        pre-generated context file
   --state FILE          state file (default: .claude/loop-state.json)
   --log-dir DIR         log directory (default: logs/loop)
+  --holdout DIR         acceptance scenarios kept OUTSIDE the repository. Every
+                        executable file in DIR runs after verify with cwd = the
+                        checkout root; exit 0 = satisfied. A failure blocks goal
+                        reconciliation and convergence. Refused when DIR
+                        resolves inside the repository. Scenario names and paths
+                        never reach a prompt; the supervisor sees counts only.
   --dry-run             preview iteration plan, no claude calls
   --resume              resume an identity-matched interrupted run
 EOF
