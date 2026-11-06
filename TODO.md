@@ -2553,13 +2553,15 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
     - [ ] (b) QUEUED, waiting on the owner's quota decision. Nothing has run, because the A/B
       spends subscription quota. Protocol and harness:
       `docs/research/2026-10-23-workflow-effort-and-reader-ab.md` § "Queued: model tier for
-      implement stages". It replays 8 merged fixes with known answers, checked red at the parent
-      and green with only the fix's owned files. The arms are Opus 5.5 xhigh, Sonnet 5 medium
-      (the bounded-implementer pin) and Opus 5.5 medium; Haiku is out on the 200k window. The
-      deterministic grader runs the verifier on the pristine base plus only the agent's owned
-      files, so no edited test, conftest or helper reaches it, and `leaks.py` flags any call
-      that reaches outside the agent's own cell; `test_model_tier_ab_harness.py` covers all
-      three scripts. List-price estimate: pilot (3 agents) $9–18, minimum (36) $103–210, full
+      implement stages". It replays 8 merged fixes with known answers, each repairing files its
+      parent already has, checked red at the parent and green with only the fix's owned files
+      (review replaced two tasks whose fix created its owned file). The arms are Opus 5.5
+      xhigh, Sonnet 5 medium (the bounded-implementer pin) and Opus 5.5 medium; Haiku is out on
+      the 200k window. The deterministic grader runs the verifier on the pristine base plus
+      only the agent's owned files, so no edited test, conftest or helper reaches it, and
+      `leaks.py` flags any call that reaches outside the agent's own cell, the bare root `/`
+      included; `test_model_tier_ab_harness.py` covers all three scripts. List-price
+      estimate: pilot (3 agents) $9–18, minimum (36) $103–210, full
       (72) $207–420. It is framed on quality, not cost: the DONE 2026-10-23 effort item rates
       model switching a small cost lever. Decide: approve the pilot, then the minimum or full
       design, or drop it.

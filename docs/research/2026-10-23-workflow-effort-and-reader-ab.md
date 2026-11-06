@@ -168,20 +168,23 @@ lives in [`model-tier-ab/`](model-tier-ab/).
 
 ### Tasks: eight replayed fixes with known answers
 
-Each task is a merged `fix` commit of this repository. The agent gets the
-parent tree plus the tests the fix added or changed. It must make them pass by
-editing the files the fix changed, and the fix itself is the known answer.
+Each task is a merged `fix` commit of this repository that repairs files its
+parent already has. The agent gets the parent tree plus the tests the fix added
+or changed. It must make them pass by editing the files the fix changed, and
+the fix itself is the known answer.
 
 | id | fix | date | the agent owns | verifier |
 |---|---|---|---|---|
-| scrub | `bb50fbd` | 09-02 | `configs/scripts/scrub-corrections.py` | pytest `test_scrub_corrections.py` |
-| codexupd | `e23e67f` | 09-24 | `configs/scripts/codex-plugin-update.py` | pytest `test_codex_plugin_update.py` |
 | archive | `4d480c6` | 09-12 | `configs/scripts/archive-progress.py` | pytest `test_archive_progress.py` |
 | scanhealth | `71379b4` | 09-08 | `configs/scripts/scan-health.sh` | `tests/test-scan-health.sh` |
 | rmflags | `af1c4b2` | 09-07 | `configs/hooks/pre-tool-guardian.sh` and its Codex twin | `tests/test-pre-tool-guardian.sh` |
 | redirect | `0b8e29a` | 09-07 | `configs/hooks/revert-detector.sh` | `tests/test-correction-pairing.sh` |
 | loopmodel | `0075a5d` | 09-02 | `configs/scripts/loop-runner.sh`, `loop_verify.sh` | `tests/test-loop-args.sh` |
 | droprules | `b0665f4` | 09-08 | `configs/hooks/session-context.sh` | `tests/test-skill-routing.sh` |
+| domain | `ff7ea66` | 09-08 | `configs/hooks/correction-detector.sh`, `lib/domain-detect.sh` | `tests/test-correction-pairing.sh` |
+| postedit | `c8fe850` | 09-08 | `configs/hooks/post-edit-check.sh` | `tests/test-hooks.sh` (the whole suite) |
+
+One task is pytest and seven are shell suites.
 
 - **Candidates.** 23 `fix` commits on main since 2026-09-01 change one or two
   hook or script files and one or two test files, and nothing else but docs,
@@ -191,13 +194,23 @@ editing the files the fix changed, and the fix itself is the known answer.
 - **Known-answer check** (`prep.sh`, 2026-11-06). A task is kept only if its
   verifier is red at the parent and green at the fix, with an empty `HOME`.
   11 of 12 passed. `b0234e1` (post-edit mypy) stayed red at the fix (exit 14,
-  cause not investigated) and was dropped. The table holds the first eight
-  kept, at most one per owned file. Reserves: `ff7ea66`, `c8fe850` (its
-  verifier is the whole `tests/test-hooks.sh`) and `c90dc31` (it shares
-  `archive-progress.py` with `4d480c6`). That sweep applied every non-test
-  path of each fix. Rerun later the same day with only the owned files (next
-  bullet), all 8 table tasks were still kept, in 71 s at a load average of
-  about 80 on 32 cores. The reserves were not rerun; `AB_TASKS_FILE` swaps one
+  cause not investigated) and was dropped. The table first held the first
+  eight tasks kept, at most one per owned file; `ff7ea66`, `c8fe850` and
+  `c90dc31` were reserves.
+- **Replaced on review: two tasks that were not fixes.** `bb50fbd` (scrub) and
+  `e23e67f` (codexupd) each created the script the agent would own, so their
+  parent had no such file. That task is writing a new file to a test, not
+  repairing a defect, and the table claims only the second kind. Both were
+  dropped. `ff7ea66` and `c8fe850` took their places: they are the reserves
+  that own a file no other task owns (`c90dc31` shares `archive-progress.py`
+  with `4d480c6`), and both repair files their parent has. `prep.sh` now drops
+  any task whose owned file is new at the parent, so a swapped-in task cannot
+  bring the other kind back; on the two old tasks it prints
+  `DROP scrub: owned file new at the parent` and the same for codexupd. The
+  composition changed with them: the two that left were pytest tasks, so one
+  pytest task remains. Built again with only the owned files, all 8 tasks of
+  the new table were kept (red at the parent, green with the owned files), in
+  306 s at a load average of 106–126 on 32 cores. `AB_TASKS_FILE` swaps a task
   in without editing `prep.sh`.
 - **The known answer is the base plus the owned files only**, which is the
   exact tree `grade.sh` builds. A fix whose test also needs one of its doc
@@ -216,11 +229,11 @@ editing the files the fix changed, and the fix itself is the known answer.
     directory holds anything but `base`, the cells and four small text files.
     It also refuses an `AB` that is not empty, or that sits inside a work tree.
   - Other cells are still in reach, and they matter: a later task's base holds
-    an earlier task's fix as ordinary history (`codexupd`'s base has
-    `scrub`'s fixed script), and a sibling arm's cell may hold its work in
-    progress. So the only place an agent may read is its own cell.
+    an earlier task's fix as ordinary history (`domain`'s base has
+    `redirect`'s fixed hook and its tests), and a sibling arm's cell may hold
+    its work in progress. So the only place an agent may read is its own cell.
   - Without the PR number, the statement gives nothing to look up.
-  - The fixes date from 2026-09-02 to 09-24, after Opus 5.5's stated training
+  - The fixes date from 2026-09-02 to 09-12, after Opus 5.5's stated training
     cutoff (June 2026). Before launch, read Sonnet 5's cutoff from the
     `claude-api` skill's model table and drop any task older than it.
   - The host's own checkout still holds every fix. A Workflow agent has no
@@ -231,8 +244,9 @@ editing the files the fix changed, and the fix itself is the known answer.
     compared before and after the run.
   - `leaks.py` reads each agent's transcript and maps its label
     `tier:<task>:<arm>:<rep>` to its one cell. It reports an absolute path
-    outside that cell (a sibling cell, another task, another checkout), `~`,
-    `$HOME`, a `..` component, a Bash command that does not begin with
+    outside that cell (a sibling cell, another task, another checkout), the
+    filesystem root as a bare `/` (`find / -name x`, `grep -r x /`, `cd /`),
+    `~`, `$HOME`, a `..` component, a Bash command that does not begin with
     `cd <own cell>`, a Read, Edit, Write, Grep or Glob whose path is missing,
     relative or outside the cell, any web, MCP or agent-spawning tool, and any
     transcript line it cannot parse. The only paths it allows outside the cell
@@ -310,6 +324,8 @@ Checked on hand-made cells (2026-11-06), where a cell stands in for an agent:
 | rmflags B | the known fix to the `configs/` file only | `fail` | |
 | rmflags C | untouched | `fail` | |
 
+`scrub` was still in the task table when these cells were graded; it left on
+review (see "Tasks"), but its cells still show the grader on a real tree.
 Grading twice printed the same rows, and every cell was byte-identical before
 and after (a hash of each file, `.git` included). The first version of this
 grader restored only the fix's test files, in place, and graded `scrub C`
@@ -422,10 +438,12 @@ Workflow does not (step 4). Nothing before step 4 calls a model.
    ```
 
    For the minimum design, the second line is
-   `prep.sh "$REPO" "$AB" 2 scrub codexupd archive scanhealth rmflags redirect`.
+   `prep.sh "$REPO" "$AB" 2 archive scanhealth rmflags redirect loopmodel droprules`.
    `prep.sh` prints `OK`, `DROP` or `TIMEOUT` per task and writes `args.json`.
-   The verifiers took 1–13 s per task on 2026-11-06, and several times that
-   under heavy load.
+   The first sweep's verifiers took 1–13 s per task on 2026-11-06, and
+   several times that under heavy load; `postedit` runs the whole
+   `tests/test-hooks.sh`. The 8-task build recorded under "Tasks" took 306 s
+   at a load average of 106–126, each verifier running twice.
 3. Check the quota. The global CLAUDE.md defers a run when the 7-day window is
    at 90% or more, or when the 5-hour window plus projected burn reaches 100%.
 4. Pilot. Start the lead Claude Code session in a fresh empty directory that is
