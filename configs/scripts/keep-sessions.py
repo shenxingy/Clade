@@ -31,13 +31,19 @@ Every history record is read with ``transcripts.iter_records``. Malformed lines
   by the cleanup, or written on another machine; a session kept on an earlier
   run is counted apart, because its copy is here).
 
-A linked session is **private**, and skipped, when a ``private-sessions/<id>``
-marker exists under any config directory (``~/.claude``, every
-``~/.claude-profiles/<p>``, ``$CLAUDE_CONFIG_DIR``), when the record's project
-holds ``.claude/conversation-mode``, or when it is listed in a config
-directory's ``private-projects``. The marker is checked when copying, not when
-the record was written, so a session marked private later is not copied again.
-A copy kept before it was marked is reported, never deleted.
+A session is **private**, and skipped, when a ``private-sessions/<id>`` marker
+exists under any config directory (``~/.claude``, every
+``~/.claude-profiles/<p>``, ``$CLAUDE_CONFIG_DIR``), or when one of its
+directories holds ``.claude/conversation-mode`` or is listed in any config
+directory's ``private-projects``. Its directories are the record's ``project``
+and every ``cwd`` its main transcript records. The record's alone would miss
+one: a revert record's ``project`` is where the reverting command ran, which
+can be another repository. Once the transcript is gone, the ``cwd`` list comes
+from the kept copy's manifest. Privacy is decided when copying, not when the
+record was written, and whether or not the transcript is still there: a private
+session is counted as private, never as unlinkable. So a session marked private
+later is not copied again, and a copy kept before it was marked is reported,
+never deleted, even after the cleanup has deleted its source.
 
 For each kept session, the main transcript and every regular file under its
 ``<session>/`` directory (subagent and Workflow transcripts, tool results) go
@@ -50,10 +56,12 @@ remote; a ``--dest`` inside either is refused. Directories are 0700 and files
 Redaction goes through ``redact.py`` beside this file. A JSONL record is
 re-serialized after every string in it, key or value, is masked, so a mask can
 never break the JSON. A ``.json`` file is treated the same way. Any other file
-that decodes as UTF-8 is masked as text. A file that does not decode (an image,
-a PDF page) cannot be redacted and is not kept. A symlink is never followed.
-The manifest records how many masks of each kind were applied, never the value
-or a preview of it.
+that decodes as UTF-8 is masked as text. Images and PDF pages are not kept,
+because redact.py reads text and a screenshot of a secret is not text. A file
+that does not decode is skipped. Base64 image or PDF data inside a record is
+replaced by a placeholder naming its media type and size. A symlink, to a file
+or a directory, is never followed. The manifest records how many masks of each
+kind were applied, never the value or a preview of it.
 
 Compression is gzip from the standard library: the zstd the TODO item named is
 not in it, and lzma, on one 8.1 MB transcript on the author's host
@@ -65,7 +73,9 @@ same host, under load.
 Re-running is idempotent. A file is rewritten only when its source changed
 (size or mtime) or the redaction patterns did, so a second run writes nothing.
 A source that is gone leaves its copy in place: nothing here deletes a kept
-session.
+session. A run stopped by SIGTERM (``timeout``) removes the file it was writing
+and exits 143. One killed outright (SIGKILL, a power cut) leaves a
+``.<name>.<pid>.tmp``, which the next ``--apply`` removes under the lock.
 
 Usage
 -----
@@ -83,6 +93,7 @@ Stdlib only, on purpose: cron runs it with whatever ``python3`` is on PATH.
 from __future__ import annotations
 
 import argparse
+import base64
 import codecs
 import contextlib
 import datetime
@@ -92,6 +103,7 @@ import io
 import json
 import os
 import re
+import signal
 import sys
 import tempfile
 from dataclasses import dataclass, field
@@ -112,6 +124,10 @@ NO_LINK = "no session link (written before the detectors recorded one, or the ho
 NOT_FOUND = "no transcript under any root (deleted by the 30-day cleanup, or written on another machine)"
 KEPT_EARLIER = "transcript gone, kept by an earlier run"
 BINARY = "binary: does not decode as UTF-8, so it cannot be redacted; not kept"
+# The redaction kind a base64 image or PDF payload is counted under in the manifest.
+OMITTED = "base64_payload"
+# What _write_private names its partial file; a run killed outright leaves one.
+_PARTIAL = re.compile(r"\..+\.[0-9]+\.tmp")
 
 
 # ─── Where things are ───────────────────────────────────────────────────────
@@ -180,6 +196,7 @@ class Session:
     session_id: str
     transcript: Path
     records: list[dict[str, Any]] = field(default_factory=list)
+    working_dirs: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -225,6 +242,29 @@ def locate(record: dict[str, Any], index: TranscriptIndex) -> tuple[str | None, 
     return sid, index.by_id.get(sid)
 
 
+def working_dirs(transcript: Path | None, kept: Path) -> list[str]:
+    """Every directory the session worked in, in first-seen order.
+
+    That is the ``cwd`` of each record in its main transcript, the first being
+    where it was started. Once the transcript is gone, it is the list the kept
+    copy's manifest saved, which is all that is left to say where the session
+    ran. A transcript that cannot be read gives none; it cannot be copied either.
+    """
+
+    if transcript is None:
+        saved = _load_manifest(kept / "manifest.json").get("working_dirs")
+        return [d for d in saved if isinstance(d, str)] if isinstance(saved, list) else []
+    found: dict[str, None] = {}
+    try:
+        for record in transcripts.iter_records(transcript):
+            cwd = record.get("cwd")
+            if isinstance(cwd, str) and cwd:
+                found.setdefault(cwd)
+    except OSError:
+        return []
+    return list(found)
+
+
 class Privacy:
     """The three private signals the correction hooks honour, read once."""
 
@@ -238,10 +278,15 @@ class Privacy:
                 continue
             self.projects.extend(p.strip().rstrip("/") for p in lines if p.strip().rstrip("/"))
 
-    def why(self, sid: str, project: object) -> str | None:
+    def why(self, sid: str, projects: Iterable[object]) -> str | None:
+        """Why session ``sid`` is private, or None; ``projects`` are the directories it is tied to."""
+
         if any((markers / sid).exists() for markers in self.marker_dirs):
             return "private-sessions marker"
-        if isinstance(project, str) and project.startswith("/"):
+        for project in projects:
+            # A relative path would resolve against this script's own cwd.
+            if not (isinstance(project, str) and project.startswith("/")):
+                continue
             if (Path(project) / ".claude" / "conversation-mode").exists():
                 return "conversation-mode project"
             if any(project == p or project.startswith(p + "/") for p in self.projects):
@@ -249,25 +294,32 @@ class Privacy:
         return None
 
 
+def _bump(counts: dict[str, int], key: str) -> None:
+    counts[key] = counts.get(key, 0) + 1
+
+
 def select(history: Path, index: TranscriptIndex, privacy: Privacy, dest: Path) -> Selection:
     sel = Selection()
     tally: dict[str, int] = {}
+    dirs: dict[str, list[str]] = {}  # session id -> working_dirs(), read once
     for record in transcripts.iter_records(history, tally):
         sel.records += 1
         if record.get("revert_scope") == "probe":
             sel.probe += 1
             continue
         sid, transcript = locate(record, index)
-        if sid is None or transcript is None:
-            if sid is None:
-                reason = NO_LINK
-            elif (dest / sid / "manifest.json").is_file():
-                reason = KEPT_EARLIER
-            else:
-                reason = NOT_FOUND
-            sel.unlinkable[reason] = sel.unlinkable.get(reason, 0) + 1
+        if sid is None:
+            _bump(sel.unlinkable, NO_LINK)
             continue
-        why = sel.private.get(sid) or privacy.why(sid, record.get("project"))
+        # Privacy is decided before a missing transcript sets the record aside: a
+        # session made private after it was kept still has a copy here once the
+        # cleanup has deleted its transcript, and the report must name it. The record's
+        # project alone is not enough. A revert record's project is where the
+        # reverting command ran (`cd ~/other && git restore …`), which can be
+        # another repository, so the session's own directories count too.
+        if sid not in dirs:
+            dirs[sid] = working_dirs(transcript, dest / sid)
+        why = sel.private.get(sid) or privacy.why(sid, [record.get("project"), *dirs[sid]])
         if why:
             sel.private[sid] = why
             sel.private_records += 1
@@ -275,7 +327,10 @@ def select(history: Path, index: TranscriptIndex, privacy: Privacy, dest: Path) 
             if earlier is not None:  # a session made private by a later record
                 sel.private_records += len(earlier.records)
             continue
-        session = sel.sessions.setdefault(sid, Session(sid, transcript))
+        if transcript is None:
+            _bump(sel.unlinkable, KEPT_EARLIER if (dest / sid / "manifest.json").is_file() else NOT_FOUND)
+            continue
+        session = sel.sessions.setdefault(sid, Session(sid, transcript, working_dirs=dirs[sid]))
         session.records.append({key: record.get(key) for key in ("timestamp", "type", "revert_scope")})
     sel.malformed = tally.get("malformed", 0) + tally.get("truncated", 0)
     sel.linked_records = sum(len(s.records) for s in sel.sessions.values())
@@ -301,15 +356,46 @@ def _mask(text: str, counts: dict[str, int]) -> str:
     return masked
 
 
+def _binary_payload(holder: dict[str, Any], key: str) -> bool:
+    """Whether ``holder[key]`` is base64 image or PDF data, which no text redaction can see into.
+
+    A transcript holds it in two shapes. Measured 2026-11-06 over the 688
+    main-thread and plain-Agent transcripts modified in the previous 30 days on
+    the author's host, printing JSON paths and counts only: 1,829 API source
+    blocks (``{"type": "base64", "media_type", "data"}``, inside a tool result)
+    and 1,829 Read results (``toolUseResult.file.base64``). No PDF was among
+    them; the API carries one in the same source shape.
+    """
+
+    if key == "data" and holder.get("type") == "base64":  # an API source block
+        return True
+    if key == "base64":  # a Read result's toolUseResult.file
+        return True
+    return False
+
+
 def scrub(value: Any, counts: dict[str, int]) -> Any:
-    """``value`` with every string in it, key or value, masked."""
+    """``value`` with every string in it, key or value, masked, and every base64 payload omitted.
+
+    An image or a PDF page is dropped here for the reason a binary file is not
+    kept: redact.py reads text, and a screenshot of a secret is not text. The
+    record keeps its shape, with a placeholder naming the media type and size.
+    """
 
     if isinstance(value, str):
         return _mask(value, counts)
     if isinstance(value, list):
         return [scrub(item, counts) for item in value]
     if isinstance(value, dict):
-        return {_mask(key, counts): scrub(item, counts) for key, item in value.items()}
+        out: dict[str, Any] = {}
+        for key, item in value.items():
+            if isinstance(item, str) and _binary_payload(value, key):
+                media = value.get("media_type") or value.get("type")
+                out[key] = f"<omitted: {len(item):,} base64 characters of {media if isinstance(media, str) else 'binary'}>"
+                _bump(counts, OMITTED)
+                continue
+            out[_mask(key, counts)] = scrub(item, counts)
+        return out
     return value
 
 
@@ -379,7 +465,12 @@ def _mkdir_private(path: Path) -> None:
 
 
 def _write_private(target: Path, data: Iterable[bytes]) -> None:
-    """Write ``target`` 0600, atomically: a reader never sees half a file."""
+    """Write ``target`` 0600, atomically: a reader never sees half a file.
+
+    The partial file is removed on any exception, and on SIGTERM inside
+    ``_sigterm_raises``. Only a kill that cannot be caught leaves it, and the
+    next ``--apply`` removes it (``remove_partials``).
+    """
 
     tmp = target.with_name(f".{target.name}.{os.getpid()}.tmp")
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
@@ -393,6 +484,50 @@ def _write_private(target: Path, data: Iterable[bytes]) -> None:
         with contextlib.suppress(OSError):
             os.unlink(tmp)
         raise
+
+
+def remove_partials(dest: Path) -> int:
+    """Remove the partial files of runs killed mid-write; returns how many.
+
+    Called only under the lock, so no live run is writing any of them. Only
+    ``_write_private``'s ``.<name>.<pid>.tmp`` is touched, never a kept file.
+    """
+
+    removed = 0
+    for top, _, files in os.walk(dest):
+        for name in files:
+            if _PARTIAL.fullmatch(name):
+                with contextlib.suppress(FileNotFoundError):
+                    os.unlink(Path(top) / name)
+                    removed += 1
+    return removed
+
+
+class Terminated(BaseException):
+    """SIGTERM, raised where the run is, so every ``finally`` and ``except BaseException`` on the way out runs."""
+
+
+@contextlib.contextmanager
+def _sigterm_raises() -> Iterator[None]:
+    """While the block runs, SIGTERM raises ``Terminated`` instead of ending the process where it stands.
+
+    radar-cron.sh runs this under ``timeout``, which sends SIGTERM, and Python's
+    default action for it exits without unwinding: ``_write_private`` never got
+    to remove its partial file, and each later kill added another.
+    """
+
+    def handler(signum: int, frame: Any) -> None:
+        raise Terminated(signum)
+
+    try:
+        previous = signal.signal(signal.SIGTERM, handler)
+    except ValueError:  # not the main thread, where no handler can be set
+        yield
+        return
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGTERM, signal.SIG_DFL if previous is None else previous)
 
 
 def _gzip(chunks: Iterable[str]) -> Iterator[bytes]:
@@ -429,7 +564,10 @@ def sources(session: Session) -> list[Source]:
     transcript = session.transcript
     found = [Source(TRANSCRIPT_NAME, transcript, transcript.name)]
     session_dir = transcript.with_suffix("")
-    if session_dir.is_dir() and not session_dir.is_symlink():
+    if session_dir.is_symlink():
+        # Named, never entered: os.walk would follow a symlink given as its top.
+        found.append(Source(SESSION_PREFIX, session_dir, f"{session_dir.name}/"))
+    elif session_dir.is_dir():
         for top, dirs, files in os.walk(session_dir, followlinks=False):
             dirs.sort()
             for name in sorted(files):
@@ -557,6 +695,8 @@ def keep(session: Session, dest: Path, fingerprint: str, apply: bool) -> Outcome
         "schema": SCHEMA,
         "session_id": session.session_id,
         "project_dir": session.transcript.parent.name,
+        # What the privacy check reads once the transcript is gone (working_dirs()).
+        "working_dirs": session.working_dirs,
         "corrections": sorted(
             {_dump(r): r for r in [*old_corrections, *session.records] if isinstance(r, dict)}.values(),
             key=lambda r: str(r.get("timestamp")),
@@ -614,6 +754,10 @@ def run(history: Path, dest: Path, apply: bool) -> int:
         print(f"              {count:,} {reason}")
     print(f"  private     {_n(len(sel.private), 'session')} ({_n(sel.private_records, 'record')}), skipped")
     print(f"  linked      {_n(sel.linked_records, 'record')} in {_n(len(sel.sessions), 'session')}")
+    if apply:
+        partials = remove_partials(dest)
+        if partials:
+            print(f"  removed {_n(partials, 'partial file')} a killed run left")
 
     fingerprint = redactor_fingerprint()
     totals = {"new": 0, "updated": 0, "unchanged": 0}
@@ -682,7 +826,7 @@ def main(argv: list[str] | None = None) -> int:
         if not args.apply:
             return run(history, dest, apply=False)
         _mkdir_private(dest)
-        with _lock(dest) as held:
+        with _sigterm_raises(), _lock(dest) as held:
             if not held:
                 print(f"keep-sessions: another run holds {dest / '.lock'}; nothing done")
                 return 0
@@ -690,14 +834,31 @@ def main(argv: list[str] | None = None) -> int:
     except OSError as exc:
         print(f"keep-sessions: FAILED: {exc}", file=sys.stderr)
         return 1
-
-
+    except Terminated:
+        # Through a pipe stdout is block-buffered and stderr is not: without this,
+        # the summary so far lands after the line radar-cron.sh logs (the last one).
+        sys.stdout.flush()
+        print("keep-sessions: terminated by SIGTERM; the file being written was removed, "
+              "every finished one is kept", file=sys.stderr)
+        return 128 + int(signal.SIGTERM)
 
 
 # ─── Self-test ──────────────────────────────────────────────────────────────
 # Drives main() in-process on a synthetic HOME: two linked sessions, and a
-# negative control for each exclusion. Every guard above has a mutation in
-# orchestrator/tests/test_self_tests_can_fire.py that must turn this red.
+# negative control for each exclusion. Each guard the module docstring or
+# docs/configuration.md relies on has a mutation in
+# orchestrator/tests/can_fire/keep_sessions.py that must turn this red. Not every
+# branch does. Those with no control, and why:
+#   - "not a regular file": the fixture would need a FIFO, and with the guard
+#     gone the read blocks forever instead of failing;
+#   - "unreadable" (lstat or the 8 KiB probe raising OSError): needs a race, or
+#     permissions that root ignores;
+#   - a relative project path is skipped: a control would have to chdir;
+#   - the lock's non-POSIX fallback, and SIGTERM outside the main thread;
+#   - gzip's fixed header mtime: nothing compares kept bytes, the manifest
+#     decides what is rewritten;
+#   - the type checks on a manifest's own fields (a top-level non-object and
+#     unparseable JSON are covered).
 
 # Built at runtime, so no scanner mistakes this file for a leak.
 _FAKE_KEY = "sk-ant-" + "api03-" + "Q" * 48
@@ -714,57 +875,98 @@ def _jsonl(*records: dict[str, Any]) -> str:
     return "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in records)
 
 
-def _turn(sid: str, text: str) -> dict[str, Any]:
-    return {"type": "user", "sessionId": sid, "message": {"role": "user", "content": text}}
+def _image_payload() -> str:
+    """A base64 PNG header and filler: what a screenshot looks like inside a record."""
+
+    return base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"PIXELS" * 64).decode()
+
+
+def _turn(sid: str, text: str, cwd: Path) -> dict[str, Any]:
+    return {"type": "user", "sessionId": sid, "cwd": str(cwd), "message": {"role": "user", "content": text}}
 
 
 def _fixture(home: Path) -> dict[str, Path]:
     """A HOME with two profiles, a correction history and the transcripts it names.
 
-    sess-a  linked by transcript_path; two records; subagent, meta, tool results,
-            an image, a file that stops decoding past 8 KiB, a symlink out
-    sess-b  linked by session_id alone, under the second profile; its project
-            /…/secretary must not match the private project /…/secret
-    sess-c  a probe                      sess-d  no transcript anywhere
-    sess-e  private-sessions marker under the second profile
-    sess-f  transcript_path outside every root
-    sess-g  conversation-mode project    sess-h  public record, then a private-projects one
+    sess-a    linked by transcript_path; two records. Its subagent transcript
+              holds a base64 image twice (tool result, Read result) and a lone
+              surrogate; meta.json has a secret as a key; under tool-results:
+              text, a .json that is not JSON, an image, a file that stops
+              decoding past 8 KiB, one with a character across the 8 KiB edge,
+              a symlink out and a symlinked directory
+    sess-b    linked by session_id alone, under the second profile, newer than
+              a stale copy under the first. It ran in /…/lab; its record's
+              project /…/secretary must not match the private /…/secret; its
+              <session>/ directory is a symlink; a second record names it by
+              session_id and sess-a by transcript_path
+    sess-c    a probe                       sess-d  no transcript anywhere
+    sess-e    private-sessions marker under the second profile
+    sess-f    transcript_path outside every root
+    sess-g    conversation-mode project, then a public record
+    sess-h    public record, then a private-projects one
+    sess-i    ran in a conversation-mode project; its one record is a revert
+              whose project is elsewhere
+    sess-j    transcript_path alone, to a file that is gone
+    bad name  a transcript whose name is not a session id
     and two records with no link, one id that is not an id, two unreadable lines.
     """
 
     main_root = home / ".claude" / "projects"
-    profile_root = home / ".claude-profiles" / "p1" / "projects"
-    diary, secret_project, work = home / "diary", home / "secret", home / "work"
-    for project in (diary, secret_project, work):
+    profile = home / ".claude-profiles" / "p1"
+    profile_root = profile / "projects"
+    diary, secret_project, work, lab = home / "diary", home / "secret", home / "work", home / "lab"
+    for project in (diary, secret_project, work, lab, home / "dotfiles", home / "store2"):
         project.mkdir(parents=True)
     _write(diary / ".claude" / "conversation-mode", "")
     _write(home / ".claude" / "private-projects", f"{secret_project}/\n")
-    _write(home / ".claude-profiles" / "p1" / "private-sessions" / "sess-e", "")
-    _write(home / ".claude" / ".sync-config", f"SYNC_BACKEND=git\nSYNC_DIR={home / 'dotfiles'}\n")
-    (home / "dotfiles").mkdir()
+    _write(profile / "private-sessions" / "sess-e", "")
+    # Quoted, and through a symlink; the profile's store is written with ~.
+    (home / "sync-link").symlink_to(home / "dotfiles")
+    _write(home / ".claude" / ".sync-config", f'SYNC_BACKEND=git\nSYNC_DIR="{home / "sync-link"}"\n')
+    _write(profile / ".sync-config", "SYNC_DIR=~/store2\n")
 
     paths: dict[str, Path] = {}
-    for sid, root in (("sess-a", main_root), ("sess-c", main_root), ("sess-e", main_root),
-                      ("sess-g", main_root), ("sess-h", main_root), ("sess-b", profile_root)):
+    ran_in = {"sess-b": lab, "sess-i": diary}
+    for sid, root in (("sess-a", main_root), ("sess-c", main_root), ("sess-e", main_root), ("sess-g", main_root),
+                      ("sess-h", main_root), ("sess-i", main_root), ("sess-b", profile_root)):
+        cwd = ran_in.get(sid, work)
         paths[sid] = _write(root / "-work" / f"{sid}.jsonl", _jsonl(
-            _turn(sid, f"first turn of {sid}"),
+            _turn(sid, f"first turn of {sid}", cwd),
             # U+2028 inside a string: a splitlines() reader breaks this record in two.
-            {"type": "assistant", "sessionId": sid, "message": {"content": [
-                {"type": "text", "text": "line separator MARKER-424242"}]}},
-            {"type": "user", "sessionId": sid, "message": {"content": [
+            {"type": "assistant", "sessionId": sid, "cwd": str(cwd), "message": {"content": [
+                {"type": "text", "text": "line\u2028separator MARKER-424242"}]}},
+            {"type": "user", "sessionId": sid, "cwd": str(cwd), "message": {"content": [
                 {"type": "tool_result", "tool_use_id": "t1", "content": f"export KEY={_FAKE_KEY}"}]}},
         ))
+    stale = _write(main_root / "-work" / "sess-b.jsonl", _jsonl(_turn("sess-b", "stale copy", lab)))
+    os.utime(stale, (paths["sess-b"].stat().st_mtime - 3600,) * 2)
+    paths["stale"] = stale
+    paths["bad"] = _write(main_root / "-work" / "bad name.jsonl", _jsonl(_turn("bad name", "not an id", work)))
+    _write(home / "outside-session" / "tool-results" / "leak.txt", f"never copied {_FAKE_TOKEN}\n")
+    (profile_root / "-work" / "sess-b").symlink_to(home / "outside-session")
+
     session_a = main_root / "-work" / "sess-a"
+    payload = _image_payload()
     _write(session_a / "subagents" / "agent-x.jsonl", _jsonl(
-        {"type": "user", "agentId": "x", "message": {"content": f"token {_FAKE_TOKEN}"}}))
+        {"type": "user", "agentId": "x", "message": {"content": f"token {_FAKE_TOKEN}"}},
+        {"type": "user", "agentId": "x",
+         "message": {"content": [{"type": "tool_result", "tool_use_id": "t2", "content": [
+             {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": payload}}]}]},
+         "toolUseResult": {"type": "image", "file": {"base64": payload, "type": "image/png", "originalSize": 400}}},
+    ) + '{"type":"assistant","agentId":"x","message":{"content":"lone \\udc80 surrogate"}}\n')
     _write(session_a / "subagents" / "agent-x.meta.json",
            json.dumps({"agentType": "x", "note": _FAKE_TOKEN, _FAKE_TOKEN: "a secret as a key"}))
     _write(session_a / "tool-results" / "out.txt", f"persisted output with {_FAKE_TOKEN} inside\n")
+    _write(session_a / "tool-results" / "partial.json", '{"note": "' + _FAKE_TOKEN + '", ')
     (session_a / "tool-results" / "shot.jpg").write_bytes(b"\xff\xd8\xff\xe0\x00\x10JFIF\x00" + bytes(range(256)))
     (session_a / "tool-results" / "late.log").write_bytes(b"a" * 9000 + b"\xff\xfe tail")
+    # "é" is two bytes, the first at offset 8191: the 8 KiB probe cuts it in half.
+    (session_a / "tool-results" / "wide.txt").write_bytes(b"a" * 8191 + f"é {_FAKE_TOKEN}\n".encode())
     _write(home / "outside.txt", f"never copied {_FAKE_TOKEN}\n")
     (session_a / "tool-results" / "escape.txt").symlink_to(home / "outside.txt")
-    paths["outside"] = _write(home / "elsewhere" / "sess-f.jsonl", _jsonl(_turn("sess-f", "outside every root")))
+    _write(home / "outside-dir" / "leak.txt", f"never copied {_FAKE_TOKEN}\n")
+    (session_a / "tool-results" / "linked").symlink_to(home / "outside-dir")
+    paths["outside"] = _write(home / "elsewhere" / "sess-f.jsonl", _jsonl(_turn("sess-f", "outside every root", work)))
 
     def link(sid: str, project: Path = work, **extra: Any) -> str:
         return json.dumps({"timestamp": "2026-11-05T12:00:00Z", "prompt": "[redacted prompt]", "project": str(project),
@@ -777,16 +979,21 @@ def _fixture(home: Path) -> dict[str, Path]:
         link("sess-a"),
         link("sess-a", type="implicit-revert", revert_scope="paths"),
         link("sess-b", project=home / "secretary", transcript_path=None, type="implicit-revert", revert_scope="paths"),
+        link("sess-b", transcript_path=str(paths["sess-a"]), timestamp="2026-11-05T13:00:00Z"),
         link("sess-c", type="implicit-revert", revert_scope="probe"),
         link("sess-d"),
         json.dumps(unlinked) + "\n",
         json.dumps({**unlinked, "timestamp": "2026-10-02T00:00:00Z"}) + "\n",
         json.dumps({**unlinked, "session_id": "../escape"}) + "\n",
+        json.dumps({**unlinked, "transcript_path": str(paths["bad"])}) + "\n",
         link("sess-e"),
         link("sess-f", transcript_path=str(paths["outside"])),
         link("sess-g", project=diary),
+        link("sess-g"),
         link("sess-h"),
         link("sess-h", project=secret_project),
+        link("sess-i", type="implicit-revert", revert_scope="paths"),
+        link("sess-j", session_id=None, transcript_path=str(main_root / "-work" / "sess-j.jsonl")),
         "<<<<<<< Updated upstream\n",
         "not json at all\n",
     ]))
@@ -801,13 +1008,27 @@ def _read_gz(path: Path) -> str:
         return handle.read()
 
 
-def _snapshot(root: Path) -> dict[str, tuple[int, int]]:
-    out: dict[str, tuple[int, int]] = {}
+def _snapshot(root: Path) -> dict[str, tuple[int, int, int]]:
+    """Every file under ``root``: inode, mtime and size. os.replace gives a rewritten file a new inode."""
+
+    out: dict[str, tuple[int, int, int]] = {}
     for top, _, files in os.walk(root):
         for name in files:
             st = os.stat(Path(top) / name)
-            out[str(Path(top, name).relative_to(root))] = (st.st_mtime_ns, st.st_size)
+            out[str(Path(top, name).relative_to(root))] = (st.st_ino, st.st_mtime_ns, st.st_size)
     return out
+
+
+def _tmp_files(root: Path) -> list[str]:
+    """Every ``*.tmp`` under ``root``, found by name alone, not by the pattern the sweep uses."""
+
+    return sorted(name for _, _, files in os.walk(root) for name in files if name.endswith(".tmp"))
+
+
+def _row(out: str, sid: str) -> str:
+    """The report line about one session."""
+
+    return next((line for line in out.splitlines() if line.startswith(f"  {sid}  ")), "")
 
 
 def self_test() -> int:
@@ -817,17 +1038,40 @@ def self_test() -> int:
         if not ok:
             failures.append(f"{label}{': ' + detail if detail else ''}")
 
+    class Piped(io.StringIO):
+        """stdout through a pipe, as radar-cron.sh reads it: text reaches the log only when flushed."""
+
+        def __init__(self, log: io.StringIO) -> None:
+            super().__init__()
+            self.log = log
+
+        def flush(self) -> None:
+            self.log.write(self.getvalue())
+            self.seek(0)
+            self.truncate()
+
     def call(*args: str) -> tuple[int, str]:
-        buffer = io.StringIO()
+        log = io.StringIO()
+        stdout = Piped(log)
         try:
-            with contextlib.redirect_stdout(buffer), contextlib.redirect_stderr(buffer):
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(log):
                 code = main(list(args))
-        except Exception as exc:  # a crash is a failed control, not a crashed self-test
-            return -1, f"{buffer.getvalue()}\nCRASHED: {type(exc).__name__}: {exc}"
-        return code, buffer.getvalue()
+        except (Exception, Terminated) as exc:  # a crash is a failed control, not a crashed self-test
+            stdout.flush()
+            return -1, f"{log.getvalue()}\nCRASHED: {type(exc).__name__}: {exc}"
+        stdout.flush()  # what the exit flushes
+        return code, log.getvalue()
+
+    # SIGTERM that reaches this handler got past main(): it would have killed a real run outright.
+    sigterm_leaked: list[int] = []
+
+    def fallback(signum: int, frame: Any) -> None:
+        sigterm_leaked.append(signum)
 
     saved = {key: os.environ.get(key) for key in ("HOME", "CLAUDE_CONFIG_DIR")}
     saved_patterns = list(redact._PATTERNS)
+    saved_redact, saved_geteuid = redact.redact, os.geteuid
+    saved_sigterm = signal.signal(signal.SIGTERM, fallback)
     # The mode checks below mean something only under a umask that would leave
     # a directory 0755 and a file 0644 if the code did not set them itself.
     saved_umask = os.umask(0o022)
@@ -840,15 +1084,20 @@ def self_test() -> int:
             dest = home / ".local" / "share" / "clade" / "sessions"
             kept_a, kept_b = dest / "sess-a", dest / "sess-b"
             tool_results = kept_a / SESSION_PREFIX / "tool-results"
+            agent_x = kept_a / SESSION_PREFIX / "subagents" / "agent-x.jsonl.gz"
 
             # 1. A dry run reports and writes nothing.
             code, out = call()
             expect("dry run exits 0", code == 0, out[-600:])
             expect("a dry run writes nothing", not (home / ".local").exists())
             for needle in ("would keep 2 sessions (2 new", "1 probe record", "2 unreadable lines",
-                           f"3 {NO_LINK}", f"2 {NOT_FOUND}", "3 sessions (4 records), skipped",
-                           "3 records in 2 sessions", "2 not kept"):
+                           f"4 {NO_LINK}", f"3 {NOT_FOUND}", "4 sessions (6 records), skipped",
+                           "4 records in 2 sessions"):
                 expect(f"dry-run report says {needle!r}", needle in out, out[-1500:])
+            expect("a dry run names sess-a's image, symlink and symlinked directory",
+                   "3 not kept" in _row(out, "sess-a"), _row(out, "sess-a"))
+            expect("a dry run names sess-b's symlinked session directory",
+                   "1 not kept" in _row(out, "sess-b"), _row(out, "sess-b"))
 
             # 2. --apply keeps the linked sessions and nothing else.
             code, out = call("--apply")
@@ -857,8 +1106,12 @@ def self_test() -> int:
             expect("sess-b, linked by session_id under another profile, is kept", (kept_b / TRANSCRIPT_NAME).is_file())
             for sid, why in (("sess-c", "a probe"), ("sess-d", "no transcript"), ("sess-e", "a private-sessions marker"),
                              ("sess-f", "a path outside every root"), ("sess-g", "a conversation-mode project"),
-                             ("sess-h", "a later private-projects record")):
+                             ("sess-h", "a later private-projects record"),
+                             ("sess-i", "it ran in a conversation-mode project, its record's project is elsewhere"),
+                             ("sess-j", "its transcript is gone"), ("bad name", "a name that is not a session id")):
                 expect(f"{sid} ({why}) is not kept", not (dest / sid).exists())
+            expect("the newest of two copies of a session is the one kept",
+                   "stale copy" not in _read_gz(kept_b / TRANSCRIPT_NAME) and "first turn of sess-b" in _read_gz(kept_b / TRANSCRIPT_NAME))
             text = _read_gz(kept_a / TRANSCRIPT_NAME)
             lines = text.split("\n")[:-1]
             expect("every source record is kept", len(lines) == 3, f"{len(lines)} lines")
@@ -869,10 +1122,12 @@ def self_test() -> int:
                     parsed += 1
             expect("every kept line is JSON", parsed == len(lines), f"{parsed} of {len(lines)}")
             expect("the transcript's key is masked", _FAKE_KEY not in text and "<redacted:anthropic_key>" in text)
-            expect("U+2028 survives inside its record", "line separator" in text)
-            for label, kept in (("a subagent transcript", kept_a / SESSION_PREFIX / "subagents" / "agent-x.jsonl.gz"),
+            expect("U+2028 survives inside its record", "line\u2028separator" in text)
+            for label, kept in (("a subagent transcript", agent_x),
                                 ("its meta.json, key and value", kept_a / SESSION_PREFIX / "subagents" / "agent-x.meta.json.gz"),
-                                ("a tool result", tool_results / "out.txt.gz")):
+                                ("a tool result", tool_results / "out.txt.gz"),
+                                ("a .json file that is not JSON, as text", tool_results / "partial.json.gz"),
+                                ("a file with a character across the 8 KiB edge", tool_results / "wide.txt.gz")):
                 body = _read_gz(kept)
                 expect(f"{label} is kept", bool(body))
                 expect(f"{label} is masked", bool(body) and _FAKE_TOKEN not in body and "<redacted:github_token>" in body)
@@ -881,17 +1136,33 @@ def self_test() -> int:
                 json.loads(meta)
             except ValueError:
                 failures.append("a masked meta.json is still JSON")
+            body = _read_gz(agent_x)
+            expect("no base64 image is kept, in a tool result or a Read result",
+                   _image_payload() not in body and body.count("<omitted:") == 2, f"{body.count('<omitted:')} omitted")
+            surrogate = []
+            for line in body.splitlines():
+                with contextlib.suppress(ValueError):
+                    surrogate.append(json.loads(line).get("message", {}).get("content"))
+            expect("a lone surrogate is kept as its JSON escape", "lone \udc80 surrogate" in surrogate)
             manifest = _load_manifest(kept_a / "manifest.json")
             skipped = manifest.get("skipped", {})
-            for name, why in (("shot.jpg", "binary"), ("late.log", "binary"), ("escape.txt", "symlink")):
-                expect(f"{name} is not kept", not (tool_results / f"{name}.gz").exists())
+            for name, why in (("shot.jpg", "binary"), ("late.log", "binary"), ("escape.txt", "symlink"),
+                              ("linked", "symlink")):
+                expect(f"{name} is not kept", not (tool_results / f"{name}.gz").exists() and not (tool_results / name).exists())
                 expect(f"the manifest says why {name} is not kept",
                        why in str(skipped.get(f"{SESSION_PREFIX}tool-results/{name}.gz")), json.dumps(skipped))
+            expect("a symlinked session directory is not entered", not (kept_b / SESSION_PREFIX).exists())
+            expect("and the manifest says so", "symlink" in str(_load_manifest(kept_b / "manifest.json").get("skipped", {})
+                                                                .get(SESSION_PREFIX)))
             expect("the manifest lists both corrections of sess-a", len(manifest.get("corrections", [])) == 2)
             expect("the manifest never holds a secret",
                    _FAKE_KEY not in json.dumps(manifest) and _FAKE_TOKEN not in json.dumps(manifest))
             masks = manifest.get("files", {}).get(TRANSCRIPT_NAME, {}).get("redactions", {})
             expect("the manifest counts the masks", masks.get("anthropic_key") == 1, json.dumps(masks))
+            omitted = manifest.get("files", {}).get(f"{SESSION_PREFIX}subagents/agent-x.jsonl.gz", {}).get("redactions", {})
+            expect("and the omitted images", omitted.get(OMITTED) == 2, json.dumps(omitted))
+            expect("the manifest saves where the session ran",
+                   _load_manifest(kept_b / "manifest.json").get("working_dirs") == [str(home / "lab")])
             for top, dirs, files in os.walk(dest):
                 for name in dirs:
                     mode = os.stat(Path(top) / name).st_mode & 0o777
@@ -917,7 +1188,7 @@ def self_test() -> int:
             try:
                 fcntl.flock(holder, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 with open(paths["sess-a"], "a", encoding="utf-8") as handle:
-                    handle.write(_jsonl(_turn("sess-a", "a later turn")))
+                    handle.write(_jsonl(_turn("sess-a", "a later turn", home / "work")))
                 code, out = call("--apply")
                 expect("a run that finds the lock held exits 0", code == 0, out[-300:])
                 expect("and says so", "another run holds" in out, out[-300:])
@@ -931,6 +1202,63 @@ def self_test() -> int:
             expect("a grown transcript is copied again", len(text.split("\n")) - 1 == 4 and "a later turn" in text)
             expect("an unchanged session is not rewritten",
                    _snapshot(kept_b) == {k[len("sess-b/"):]: v for k, v in before.items() if k.startswith("sess-b/")})
+
+            # 5b. SIGTERM mid-write (what `timeout` sends): the partial file is removed, the
+            #     earlier copy stays whole, and the handler main() replaced is put back.
+            with open(paths["sess-a"], "a", encoding="utf-8") as handle:
+                handle.write(_jsonl(_turn("sess-a", "SIGTERM-NOW", home / "work")))
+
+            def killing_redact(text: str) -> tuple[str, list[Any]]:
+                if "SIGTERM-NOW" in text:
+                    os.kill(os.getpid(), signal.SIGTERM)
+                return saved_redact(text)
+
+            setattr(redact, "redact", killing_redact)
+            try:
+                code, out = call("--apply")
+            finally:
+                setattr(redact, "redact", saved_redact)
+            expect("a run stopped by SIGTERM exits 143", code == 143, out[-600:])
+            expect("and says so in the line radar-cron.sh logs, the last",
+                   "terminated by SIGTERM" in out.strip().splitlines()[-1], out[-300:])
+            expect("SIGTERM does not get past main()", not sigterm_leaked)
+            expect("main() puts back the SIGTERM handler it replaced", signal.getsignal(signal.SIGTERM) is fallback)
+            expect("a run stopped by SIGTERM leaves no partial file", not _tmp_files(dest), ", ".join(_tmp_files(dest)))
+            text = _read_gz(kept_a / TRANSCRIPT_NAME)
+            expect("and the copy it was replacing stays whole", "a later turn" in text and "SIGTERM-NOW" not in text)
+
+            # 5c. A run killed outright left partial files: the next --apply removes them,
+            #     and nothing else. A manifest that does not parse, or is not an object, is
+            #     rebuilt rather than fatal.
+            stray = [kept_a / f".{TRANSCRIPT_NAME}.99999.tmp", kept_a / SESSION_PREFIX / "subagents" / ".agent-x.jsonl.gz.12345.tmp"]
+            for path in stray:
+                _write(path, "half a file")
+            _write(kept_a / "notes.tmp", "not ours")
+            _write(kept_a / "manifest.json", "[]")
+            _write(kept_b / "manifest.json", "{broken")
+            code, out = call("--apply")
+            expect("a run after a killed one exits 0", code == 0, out[-600:])
+            expect("it removes the partial files", not any(p.exists() for p in stray) and "removed 2 partial files" in out,
+                   out[-600:])
+            expect("and nothing else", (kept_a / "notes.tmp").is_file() and (dest / ".lock").is_file())
+            expect("an unreadable manifest is rebuilt", "(2 new" in out
+                   and _load_manifest(kept_a / "manifest.json").get("schema") == SCHEMA
+                   and _load_manifest(kept_b / "manifest.json").get("schema") == SCHEMA, out[-400:])
+            (kept_a / "notes.tmp").unlink(missing_ok=True)
+
+            # 5d. A write that fails is reported, fails the run, and leaves no partial file.
+            moved = kept_a / "moved.gz"
+            os.replace(kept_a / TRANSCRIPT_NAME, moved)
+            _write(kept_a / TRANSCRIPT_NAME / "x", "a directory where the copy goes")
+            try:
+                code, out = call("--apply")
+            finally:
+                (kept_a / TRANSCRIPT_NAME / "x").unlink()
+                (kept_a / TRANSCRIPT_NAME).rmdir()
+                os.replace(moved, kept_a / TRANSCRIPT_NAME)
+            expect("a failed write exits 1", code == 1, out[-600:])
+            expect("and names it", "FAILED sess-a" in out and "1 FAILED" in out, out[-600:])
+            expect("and leaves no partial file", not _tmp_files(dest), ", ".join(_tmp_files(dest)))
 
             # 6. A tool result deleted since keeps its copy, and the manifest says so,
             #    in a run where nothing else changed.
@@ -951,31 +1279,70 @@ def self_test() -> int:
 
             # 8. A transcript the cleanup deleted leaves its copy in place.
             paths["sess-b"].unlink()
+            paths["stale"].unlink()
             code, out = call("--apply")
             expect("a run after the source is gone exits 0", code == 0, out[-600:])
             expect("the copy outlives its source", (kept_b / TRANSCRIPT_NAME).is_file())
-            expect("the report counts it as kept earlier", f"1 {KEPT_EARLIER}" in out, out[-800:])
+            expect("the report counts it as kept earlier", f"2 {KEPT_EARLIER}" in out, out[-800:])
+
+            # 8b. ... and when that session is marked private afterwards, the copy is
+            #     reported, though nothing is left to locate.
+            marker = _write(home / ".claude" / "private-sessions" / "sess-b", "")
+            code, out = call("--apply")
+            expect("a kept session whose source is gone is reported once marked private",
+                   "remove it by hand" in _row(out, "sess-b") and "private-sessions marker" in _row(out, "sess-b"),
+                   out[-800:])
+            expect("and is no longer counted as kept earlier", KEPT_EARLIER not in out, out[-800:])
+            expect("and its copy is not deleted", (kept_b / TRANSCRIPT_NAME).is_file())
+            marker.unlink()
+
+            # 8c. ... and so when the directory it ran in becomes private, which only
+            #     its manifest still says.
+            _write(home / ".claude-profiles" / "p1" / "private-projects", f"{home / 'lab'}\n")
+            code, out = call("--apply")
+            expect("a kept session whose source is gone is reported once where it ran is private",
+                   "listed in private-projects" in _row(out, "sess-b"), out[-800:])
 
             # 9. A session marked private after it was kept is not copied again, and is reported.
             _write(home / ".claude" / "private-sessions" / "sess-a", "")
             with open(paths["sess-a"], "a", encoding="utf-8") as handle:
-                handle.write(_jsonl(_turn("sess-a", "after the marker")))
+                handle.write(_jsonl(_turn("sess-a", "after the marker", home / "work")))
             code, out = call("--apply")
             expect("a session marked private later is not copied again",
                    "after the marker" not in _read_gz(kept_a / TRANSCRIPT_NAME))
-            expect("its earlier copy is reported", "remove it by hand" in out, out[-600:])
+            expect("its earlier copy is reported", "remove it by hand" in _row(out, "sess-a"), out[-600:])
 
             # 10. A --dest that syncs to a remote is refused before anything is written.
-            for label, refused in (("inside ~/.claude", home / ".claude" / "kept"),
-                                   ("inside the profiles directory", home / ".claude-profiles" / "kept"),
-                                   ("inside the dotfiles sync store", home / "dotfiles" / "kept")):
+            (home / "claude-link").symlink_to(home / ".claude")
+            for label, refused, written in (
+                    ("inside ~/.claude", home / ".claude" / "kept", None),
+                    ("that is ~/.claude itself", home / ".claude", home / ".claude" / ".lock"),
+                    ("inside ~/.claude through a symlink", home / "claude-link" / "kept", home / ".claude" / "kept"),
+                    ("inside the profiles directory", home / ".claude-profiles" / "kept", None),
+                    ("inside the dotfiles sync store, configured quoted and through a symlink",
+                     home / "dotfiles" / "kept", None),
+                    ("inside a profile's sync store, configured with ~", home / "store2" / "kept", None)):
                 code, out = call("--apply", "--dest", str(refused))
                 expect(f"a --dest {label} is refused", code == 2 and "syncs to a remote" in out, out[-300:])
-                expect(f"and nothing is written {label}", not refused.exists())
+                expect(f"and nothing is written {label}", not (written or refused).exists())
+            theirs = home / "theirs"
+            theirs.mkdir()
+            setattr(os, "geteuid", lambda: saved_geteuid() + 1)
+            try:
+                code, out = call("--apply", "--dest", str(theirs))
+            finally:
+                setattr(os, "geteuid", saved_geteuid)
+            expect("a --dest owned by another user is refused", code == 2 and "another user" in out, out[-300:])
+            expect("and nothing is written there", not any(theirs.iterdir()))
             code, out = call("--dest", str(home / "elsewhere-kept"))
             expect("a --dest outside them is accepted", code == 0, out[-300:])
+            code, out = call("--history", str(home / "no-such-history"))
+            expect("a --history that does not exist exits 2", code == 2, out[-300:])
         finally:
             redact._PATTERNS[:] = saved_patterns
+            setattr(redact, "redact", saved_redact)
+            setattr(os, "geteuid", saved_geteuid)
+            signal.signal(signal.SIGTERM, saved_sigterm)
             os.umask(saved_umask)
             for key, value in saved.items():
                 if value is None:
@@ -988,7 +1355,8 @@ def self_test() -> int:
         for failure in failures:
             print(f"  - {failure}")
         return 1
-    print("keep-sessions self-test: passed (dry run, selection, privacy, redaction, modes, idempotence, lock, refusal)")
+    print("keep-sessions self-test: passed (dry run, selection, privacy, redaction, modes, idempotence, lock, "
+          "SIGTERM, refusal)")
     return 0
 
 

@@ -433,20 +433,28 @@ zcat ~/.local/share/clade/sessions/<session_id>/transcript.jsonl.gz | head
   that is not a `probe`. Records written before the detectors recorded a
   session are counted as unlinkable, with the reason.
 - **Redacted.** Every string goes through `redact.py`; JSONL and JSON are
-  re-serialized, so a mask never breaks a record. A file that is not UTF-8 (an
-  image, a PDF page) cannot be redacted and is not kept. Symlinks are not
-  followed.
+  re-serialized, so a mask never breaks a record. Images and PDF pages are not
+  kept, because `redact.py` reads text and a screenshot of a secret is not
+  text: a file that is not UTF-8 is skipped, and base64 image or PDF data
+  inside a record is replaced by a placeholder naming its media type and size.
+  Symlinks, to files or to directories, are not followed.
 - **Where.** `~/.local/share/clade/sessions/<session_id>/` (`--dest` moves it),
-  directories 0700 and files 0600, gzip-compressed. A `--dest` inside a Claude
-  config directory or the dotfiles sync store is refused: both sync to a remote.
-- **Private stays out.** A session with a `private-sessions/<id>` marker under
-  any profile, or a record from a conversation-mode or `private-projects`
-  project, is skipped. A copy kept before the marker appeared is reported,
-  never deleted.
+  directories 0700 and files 0600, gzip-compressed. A `--dest` that resolves
+  inside a Claude config directory, `~/.claude-profiles` or the dotfiles sync
+  store, symlinks included, is refused: they sync to a remote.
+- **Private stays out.** A session is skipped when it has a
+  `private-sessions/<id>` marker under any profile, or when the record's
+  project or any directory the session ran in (every `cwd` its transcript
+  records) is a conversation-mode project or is listed in `private-projects`.
+  The session's own directories matter because a revert record's project is
+  where the reverting command ran. A copy kept before the session became
+  private is reported, never deleted, including after its transcript is gone.
 - **When.** `radar-cron.sh` runs `--apply` after its weekly sweep. A failure is
   logged in `radar-cron.log` and never fails the sweep. Re-running is
   idempotent: only a source that changed, or a change to the redaction
-  patterns, rewrites a file, and nothing is deleted when a source is gone.
+  patterns, rewrites a file, and nothing is deleted when a source is gone. A
+  run that `timeout` stops removes the file it was writing; one killed outright
+  leaves a `.<name>.<pid>.tmp` that the next `--apply` removes.
 
 ## Conversation-mode projects
 

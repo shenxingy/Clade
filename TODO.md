@@ -2462,9 +2462,12 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   gzip (the standard library has no zstd) into `~/.local/share/clade/sessions/<id>/`. Records
   are selected by `transcript_path` under a transcript root, or by `session_id` found under
   any root. Dirs are 0700 and files 0600. A `--dest` inside a config dir or the sync store is
-  refused. Private sessions are skipped: a `private-sessions` marker under any profile, a
-  conversation-mode project, or `private-projects`. `radar-cron.sh` calls it last, weekly, and
-  it cannot fail the sweep. `--self-test` has 36 mutations, all red, in
+  refused. Private sessions are skipped: a `private-sessions` marker under any profile, or a
+  conversation-mode or `private-projects` directory among the record's project and every `cwd`
+  the session's transcript records (a revert record's project is where the command ran). A
+  copy kept before a session became private is reported, also once its transcript is gone.
+  `radar-cron.sh` calls it last, weekly, and it cannot fail the sweep; a run `timeout` stops
+  removes its partial file. `--self-test` has 77 mutations, all red, in
   `orchestrator/tests/can_fire/keep_sessions.py`. Not done, each a separate decision:
   - Records written before Step 1 (all 1,625 non-probe records on the author's host on
     2026-11-06) carry no link and stay unlinkable. Matching `project` and `timestamp` against
@@ -2472,7 +2475,10 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
     pick the wrong session, and every day it waits loses one more day.
   - A copy whose source is gone keeps the redaction it was written with. A new `redact.py`
     pattern re-redacts only sessions whose source still exists.
-  - Images and PDF pages under `tool-results/` are not kept, because they cannot be redacted.
+  - Images and PDF pages are not kept, because `redact.py` reads text and a screenshot of a
+    secret is not text: neither the files under `tool-results/` nor the base64 data inside a
+    record, which keeps a placeholder naming its media type and size. An eval that needs the
+    screenshot loses it.
 - [ ] 🟡 **Context inertia: `/pickup` executes the last session's hypothesis as orders, and the
   350K trial cannot see the failure. Do before the 2026-11-12 evaluation.** Breunig, *Context
   Inertia* (2026-10-14): "the model commits to a hypothesis, subtask, or goal … and keeps
