@@ -410,13 +410,21 @@ to some repository's `.git/clade`), wrote links without the leading `-` Claude
 Code's slugs carry, died under `set -e` after its first entry, and never moved a
 local memory directory into the store. On the author's main host that left 24
 non-empty memory directories, including the one this repository's sessions
-load, with no git history. It now adopts a real memory directory into
-`projects-memory/<key>/` with a `.project-path` (verified byte for byte, original
-kept as `memory.pre-sync-<stamp>`, then committed by `sync-push.sh`), links each
-entry at the slug Claude Code reads, and prunes links that are provably wrong. A
-store copy that differs, or a private project, is reported and left alone. Run
-`bash configs/scripts/sync-link-projects.sh --dry-run` to see what it would do
-on a machine. Pinned by `tests/test-sync-link-projects.sh`.
+load, with no git history. It now scans `~/.claude/projects`,
+`$CLAUDE_CONFIG_DIR/projects` and every `~/.claude-profiles/*/projects`, adopts
+a real memory directory into `projects-memory/<key>/` with a `.project-path`
+(verified by cksum, original kept as `memory.pre-sync-<stamp>`), links each
+entry at the slug Claude Code reads, and prunes links that are provably wrong.
+A private project is skipped in every pass, and a link it already has is
+replaced by a local copy. It commits whenever `projects-memory/` has anything
+uncommitted, so a commit lost to a killed run or a held lock is made next time.
+A store copy that differs is a conflict: written to
+`~/.claude/.sync-memory-conflicts`, which `sync-health.sh` prints at session
+start, and once a day to `~/.claude/.sync-conflicts.log`. The hook it runs in
+times out at 30 s, so adoption stops starting directories after
+`CLADE_SYNC_LINK_BUDGET` seconds (default 10) and the next session resumes.
+Run `bash configs/scripts/sync-link-projects.sh --dry-run` to see what it would
+do on a machine. Pinned by `tests/test-sync-link-projects.sh`.
 
 **When asked whether things are synced, check all three.** A clean `git status`
 here says nothing about the other two.
