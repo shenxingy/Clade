@@ -31,11 +31,27 @@ Usage
     ci-local.py --all           include conditional (schedule/dispatch) jobs
     ci-local.py --json          machine-readable result, for an automatic fixer
     ci-local.py --repo PATH     another repository
+    ci-local.py --strict        exit 2 when any lane is unproven (see below)
 
-Exit code is 0 only when every job that ran passed. A skipped job is reported,
-never silently dropped: "nothing ran" and "everything passed" must not look the
-same, which is the failure mode two instruments in this repository have already
-shipped.
+A skipped job is reported, never silently dropped: "nothing ran" and
+"everything passed" must not look the same, which is the failure mode two
+instruments in this repository have already shipped.
+
+Skips come in two kinds, and only one of them leaves the result intact:
+
+  skipped    a pull_request_target workflow or a schedule/dispatch tier (the
+             hosted push/PR run does not execute it either), a job for another
+             platform (proven on the machine that has it), a step that needs a
+             repository secret (a credential a local run should not hold).
+  unproven   a lane this runner cannot reproduce, such as a job using
+             services:, container:, strategy: or defaults:, or a step whose
+             `if:` or `${{ }}` expression it cannot evaluate. The hosted run
+             executes it; this run did not, so a green here says nothing about it.
+
+Exit 1 when a job that ran failed. Otherwise any unproven lane makes the
+summary read PARTIAL and fills the JSON's `unproven` list. During the
+report-only rollout the exit code for that is still 0; --strict makes it 2,
+and the default flips on the date TODO.md names.
 
 Stdlib only — the syntax-check job installs no dependencies.
 """
@@ -64,14 +80,25 @@ _KEY = re.compile(r"^    ([a-z-]+):\s*(.*)$")
 _STEP = re.compile(r"^      - (\S.*)$")
 _STEP_KEY = re.compile(r"^        ([a-z-]+):\s*(.*)$")
 _EXPR = re.compile(r"\$\{\{")
+_EXPR_SPAN = re.compile(r"\$\{\{(.*?)\}\}", re.S)
+# A credential a developer machine should not be holding. Every other
+# expression (github.*, runner.*, steps.*, matrix.*) is context this runner
+# does not have — which is a different thing, and was labelled as a secret
+# until 2026-11, hiding an E2E suite's only real step behind a "good reason".
+_SECRET_REF = re.compile(r"\bsecrets\.|\bgithub\.token\b")
+# `NAME: value` pairs of an env: block, at workflow, job and step depth.
+_ENV_PAIR_WORKFLOW = re.compile(r"^  ([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$")
+_ENV_PAIR_JOB = re.compile(r"^      ([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$")
+_ENV_PAIR_STEP = re.compile(r"^          ([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$")
 
-# Runner label -> the platform.system() value that can execute it.
 # Job-level keys whose semantics this runner does not reproduce.
 _UNMODELLED_JOB_KEYS = frozenset({"strategy", "container", "services", "defaults"})
-# Step-level keys likewise. `if:` is the sharp one — a step-level condition
-# silently changes what a job covers.
-_UNMODELLED_STEP_KEYS = frozenset({"if", "continue-on-error"})
+# Step-level keys likewise. A step-level `if:` used to be here and made the
+# whole job a skip; it is evaluated per step now (success_path_if), because
+# most of them guard an upload action and the job is perfectly runnable.
+_UNMODELLED_STEP_KEYS = frozenset({"continue-on-error"})
 
+# Runner label -> the platform.system() value that can execute it.
 _PLATFORM = {
     "ubuntu": "Linux",
     "macos": "Darwin",
@@ -85,7 +112,18 @@ class Step:
     run: str | None = None
     uses: str | None = None
     working_directory: str | None = None
+    condition: str = ""
     env: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def display(self) -> str:
+        # GitHub names an unnamed run step "Run <first line>"; so do we, so a
+        # lane named in a report can be found in the Actions log.
+        if self.name:
+            return self.name
+        if self.run:
+            return "Run " + self.run.strip().splitlines()[0][:60]
+        return self.uses or "?"
 
 
 @dataclass
@@ -95,6 +133,7 @@ class Job:
     workflow: str
     runs_on: str = ""
     condition: str = ""
+    env: dict[str, str] = field(default_factory=dict)
     steps: list[Step] = field(default_factory=list)
     # Workflow constructs this line-based parser does NOT model. Anything here
     # makes the job a loud skip rather than a partial run: a matrix job silently
@@ -114,6 +153,38 @@ def _dedent(lines: list[str]) -> str:
         return ""
     pad = min(len(ln) - len(ln.lstrip()) for ln in body)
     return "\n".join(ln[pad:] if ln.strip() else "" for ln in lines).strip("\n")
+
+
+def _scalar(value: str) -> str:
+    """A one-line YAML scalar as the runner sees it: surrounding quotes removed,
+    a trailing comment dropped. `CI: '1'` is the string 1, not '1' with quotes —
+    which is what every env value here was until 2026-11."""
+    v = value.strip()
+    if v[:1] == "'":
+        out, i = [], 1
+        while i < len(v):
+            if v[i] == "'":
+                if v[i + 1:i + 2] == "'":       # '' is an escaped quote
+                    out.append("'")
+                    i += 2
+                    continue
+                return "".join(out)
+            out.append(v[i])
+            i += 1
+        return v                                # unterminated: leave it alone
+    if v[:1] == '"':
+        out, i = [], 1
+        while i < len(v):
+            if v[i] == "\\" and i + 1 < len(v):
+                out.append(v[i + 1])
+                i += 2
+                continue
+            if v[i] == '"':
+                return "".join(out)
+            out.append(v[i])
+            i += 1
+        return v
+    return re.sub(r"(^|\s)#.*$", "", v).strip()
 
 
 def parse_workflow(path: Path) -> tuple[list[Job], str]:
@@ -137,10 +208,15 @@ def parse_workflow(path: Path) -> tuple[list[Job], str]:
     step: Step | None = None
     collecting: list[str] | None = None
     collect_indent = 0
-    # Only two-space keys UNDER `jobs:` are jobs. Without this the trigger names
-    # in the `on:` block (push, pull_request, schedule…) parse as jobs and the
-    # plan lists four phantom entries per workflow.
-    in_jobs = False
+    # Which top-level key we are under. Only two-space keys UNDER `jobs:` are
+    # jobs — without this the trigger names in the `on:` block (push,
+    # pull_request, schedule…) parse as jobs and the plan lists four phantom
+    # entries per workflow. `env:` and `defaults:` up here apply to every job.
+    section = ""
+    workflow_env: dict[str, str] = {}
+    workflow_unmodelled: list[str] = []
+    # True while reading the children of a job's own `env:` block.
+    in_job_env = False
 
     def close_step() -> None:
         nonlocal step, collecting
@@ -150,6 +226,27 @@ def parse_workflow(path: Path) -> tuple[list[Job], str]:
             current.steps.append(step)
         step = None
         collecting = None
+
+    def step_key(key: str, value: str) -> None:
+        """One `key: value` of the open step, whether it opened the step
+        (`- name: …`) or sat under it."""
+        nonlocal collecting, collect_indent
+        assert step is not None and current is not None
+        if key == "run":
+            if value == "|" or value.startswith("|"):
+                collecting, collect_indent = [], 8
+            else:
+                step.run = value
+        elif key == "uses":
+            step.uses = value
+        elif key == "name":
+            step.name = _scalar(value)
+        elif key == "working-directory":
+            step.working_directory = _scalar(value)
+        elif key == "if":
+            step.condition = value
+        elif key in _UNMODELLED_STEP_KEYS:
+            current.unmodelled.append(f"step-level {key}")
 
     for raw in lines:
         # A block scalar under `run: |` continues while indented past its key.
@@ -162,17 +259,38 @@ def parse_workflow(path: Path) -> tuple[list[Job], str]:
             if step is not None:
                 step.run = close_step_run
 
-        if raw and not raw[0].isspace():
-            close_step()
-            in_jobs = raw.startswith("jobs:")
-            current = None
+        # A comment is not a key. At column 0 it used to read as a new
+        # top-level section and silently end `jobs:` — every job after it
+        # vanished from the plan, not even listed as skipped.
+        if raw.lstrip().startswith("#"):
             continue
 
-        job_match = _JOB.match(raw) if in_jobs else None
+        if raw and not raw[0].isspace():
+            close_step()
+            section = raw.split(":", 1)[0].strip()
+            rest = raw.split(":", 1)[1].strip() if ":" in raw else ""
+            current = None
+            in_job_env = False
+            if section == "defaults":
+                # `defaults: run: working-directory/shell` moves or reinterprets
+                # every step. Dropping it silently runs them in the wrong place.
+                workflow_unmodelled.append("workflow-level defaults")
+            elif section == "env" and rest:
+                workflow_unmodelled.append("workflow-level env that is not a plain mapping")
+            continue
+
+        if section == "env" and raw.strip():
+            pair = _ENV_PAIR_WORKFLOW.match(raw)
+            if pair:
+                workflow_env[pair.group(1)] = _scalar(pair.group(2))
+            continue
+
+        job_match = _JOB.match(raw) if section == "jobs" else None
         if job_match:
             close_step()
             current = Job(id=job_match.group(1), name="", workflow=path.name)
             jobs.append(current)
+            in_job_env = False
             continue
 
         if current is None:
@@ -181,59 +299,56 @@ def parse_workflow(path: Path) -> tuple[list[Job], str]:
         step_match = _STEP.match(raw)
         if step_match:
             close_step()
+            in_job_env = False
             step = Step(name="")
-            rest = step_match.group(1)
-            key_match = re.match(r"([a-z-]+):\s*(.*)$", rest)
+            key_match = re.match(r"([a-z-]+):\s*(.*)$", step_match.group(1))
             if key_match:
-                key, value = key_match.group(1), key_match.group(2).strip()
-                if key == "uses":
-                    step.uses = value
-                elif key == "name":
-                    step.name = value
-                elif key == "run":
-                    if value == "|" or value.startswith("|"):
-                        collecting, collect_indent = [], 8
-                    else:
-                        step.run = value
+                step_key(key_match.group(1), key_match.group(2).strip())
             continue
 
         if step is not None:
             sk = _STEP_KEY.match(raw)
             if sk:
-                key, value = sk.group(1), sk.group(2).strip()
-                if key == "run":
-                    if value == "|" or value.startswith("|"):
-                        collecting, collect_indent = [], 8
-                    else:
-                        step.run = value
-                elif key == "uses":
-                    step.uses = value
-                elif key == "name":
-                    step.name = value
-                elif key == "working-directory":
-                    step.working_directory = value
-                elif key in _UNMODELLED_STEP_KEYS and current is not None:
-                    current.unmodelled.append(f"step-level {key}")
+                step_key(sk.group(1), sk.group(2).strip())
                 continue
             # `env:` children sit deeper; capture simple literal pairs only.
-            env_match = re.match(r"^          ([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$", raw)
+            env_match = _ENV_PAIR_STEP.match(raw)
             if env_match:
-                step.env[env_match.group(1)] = env_match.group(2).strip()
+                step.env[env_match.group(1)] = _scalar(env_match.group(2))
+                continue
+
+        if in_job_env:
+            pair = _ENV_PAIR_JOB.match(raw)
+            if pair:
+                current.env[pair.group(1)] = _scalar(pair.group(2))
                 continue
 
         jk = _KEY.match(raw)
         if jk:
+            # A four-space key is the job's, never a step's: the steps are over.
+            close_step()
             key, value = jk.group(1), jk.group(2).strip()
+            # A job's own `env:` — every step inherits it. Dropped until
+            # 2026-11, so a job declaring DATABASE_URL=sqlite ran against
+            # whatever DATABASE_URL the developer's shell happened to export.
+            in_job_env = key == "env" and not value
+            if key == "env" and value:
+                current.unmodelled.append("job-level env that is not a plain mapping")
             if key in _UNMODELLED_JOB_KEYS:
                 current.unmodelled.append(key)
             if key == "name":
-                current.name = value.strip('"')
+                current.name = _scalar(value)
             elif key == "runs-on":
                 current.runs_on = value
             elif key == "if":
                 current.condition = value
 
     close_step()
+    # Workflow env < job env < step env, the precedence GitHub applies.
+    for job in jobs:
+        job.unmodelled.extend(workflow_unmodelled)
+        for st in job.steps:
+            st.env = {**workflow_env, **job.env, **st.env}
     return jobs, on_block
 
 
@@ -243,41 +358,118 @@ def local_platform() -> str:
     return platform.system()
 
 
-def step_skip_reason(step: Step) -> str | None:
-    if step.uses and not step.run:
-        return "action, not a gate"
-    if step.run and _EXPR.search(step.run):
-        return "uses a GitHub expression that cannot be evaluated locally"
-    if any(_EXPR.search(v) for v in step.env.values()):
-        return "needs a repository secret"
-    return None
+# Step-level `if:` on the SUCCESS path — the only path a passing job takes,
+# since a failed step ends the job here as it does on GitHub. There the status
+# functions have fixed values and nothing else does: `steps.x.outputs`,
+# `github.ref` and `matrix.*` are context this runner does not have, so such a
+# step is skipped and the lane is UNPROVEN rather than guessed at.
+_SUCCESS_PATH_IF = {
+    "success()": True, "always()": True, "!cancelled()": True,
+    "!failure()": True, "true": True,
+    "failure()": False, "cancelled()": False, "!success()": False,
+    "false": False,
+}
 
-def skip_reason(job: Job, on_block: str, include_conditional: bool) -> str | None:
-    """Why this job will not run here, or None if it will."""
-    if job.unmodelled:
-        what = ", ".join(sorted(set(job.unmodelled)))
-        return f"uses {what}, which this runner does not model — run it hosted, or split the job"
-    if "${{" in job.runs_on:
-        return "runs-on is an expression (matrix leg) — run each leg on its own machine"
+
+def success_path_if(condition: str) -> bool | None:
+    """True or False when `condition` has a fixed value on the success path,
+    None when it depends on anything this runner cannot know."""
+    cond = _scalar(condition)
+    wrapped = re.fullmatch(r"\$\{\{(.*)\}\}", cond, re.S)
+    if wrapped:
+        cond = wrapped.group(1)
+    return _SUCCESS_PATH_IF.get(re.sub(r"\s+", "", cond))
+
+
+def _expression_kind(text: str) -> str | None:
+    """None, "secret" (a credential), or "expression" (GitHub context)."""
+    if not _EXPR.search(text):
+        return None
+    spans = _EXPR_SPAN.findall(text) or [text]
+    return "secret" if any(_SECRET_REF.search(sp) for sp in spans) else "expression"
+
+
+@dataclass(frozen=True)
+class StepPlan:
+    run: bool                # executes on the success path
+    reason: str = ""         # why not, when run is False
+    unproven: bool = False   # skipped for want of something only the hosted run has
+
+
+def plan_step(step: Step) -> StepPlan:
+    """What this runner does with one step on the success path, and whether a
+    skip leaves the lane unproven or is the same thing GitHub would do."""
+    if step.uses and not step.run:
+        return StepPlan(False, "action, not a gate")
+    if not step.run:
+        return StepPlan(False, "no run: block")
+    if step.condition:
+        verdict = success_path_if(step.condition)
+        cond = _scalar(step.condition)[:60]
+        if verdict is None:
+            return StepPlan(False, f"step-level if: {cond} cannot be evaluated locally",
+                            unproven=True)
+        if not verdict:
+            # GitHub skips it on a passing run too: nothing is left unproven.
+            return StepPlan(False, f"if: {cond} is false on the success path")
+    in_run = _expression_kind(step.run)
+    in_env = {_expression_kind(v) for v in step.env.values()} - {None}
+    if in_run == "secret" or "secret" in in_env:
+        return StepPlan(False, "needs a repository secret")
+    if in_run:
+        return StepPlan(False, "uses a GitHub expression that cannot be evaluated locally",
+                        unproven=True)
+    if in_env:
+        return StepPlan(False, "its env uses a GitHub expression that cannot be evaluated locally",
+                        unproven=True)
+    return StepPlan(True)
+
+
+@dataclass(frozen=True)
+class Skip:
+    reason: str
+    # True for the fifth class: the hosted push/PR run executes this lane and
+    # this run could not, so a local green says nothing about it.
+    unproven: bool = False
+
+
+def skip_reason(job: Job, on_block: str, include_conditional: bool) -> Skip | None:
+    """Why this job will not run here, or None if it will.
+
+    The reasoned classes are tested FIRST. A pull_request_target workflow or a
+    schedule tier does not run on the hosted push/PR path either, so it must not
+    be reported as an unproven lane merely because it also uses a construct this
+    runner cannot model — this repository's own honeypot-check and vouch-gate
+    were, until 2026-11, because the unmodelled test came first.
+    """
     if "pull_request_target" in on_block and "pull_request:" not in on_block:
-        return "runs on GitHub's side only (pull_request_target)"
+        return Skip("runs on GitHub's side only (pull_request_target)")
     if job.condition and not include_conditional:
         cond = job.condition.replace("github.event_name ==", "").strip()
-        return f"conditional — {cond[:60]} (use --all)"
+        return Skip(f"conditional — {cond[:60]} (use --all)")
     for label, system in _PLATFORM.items():
         if label in job.runs_on:
             if system != local_platform():
-                return f"needs {system}; this machine is {local_platform()}"
+                return Skip(f"needs {system}; this machine is {local_platform()}")
             break
+    # The fifth class: the hosted run executes these, this runner cannot.
+    if job.unmodelled:
+        what = ", ".join(sorted(set(job.unmodelled)))
+        return Skip(f"uses {what}, which this runner does not model — run it hosted, "
+                    "or split the job", unproven=True)
+    if "${{" in job.runs_on:
+        return Skip("runs-on is an expression (matrix leg) — run each leg on its own machine",
+                    unproven=True)
     if not any(s.run for s in job.steps):
-        return "no run: steps (setup-only job)"
-    runnable = [s for s in job.steps if s.run and not step_skip_reason(s)]
-    if not runnable:
-        # Every step was individually skipped — a secret, or a GitHub
-        # expression. Reporting the job as PASSED would be the exact lie this
-        # tool exists to prevent: it executed nothing.
-        reasons = sorted({step_skip_reason(s) or "" for s in job.steps if s.run})
-        return f"every step skipped — {'; '.join(r for r in reasons if r)}"
+        return Skip("no run: steps (setup-only job)")
+    plans = [plan_step(s) for s in job.steps if s.run]
+    if not any(p.run for p in plans):
+        # Every step was individually skipped. Reporting the job as PASSED
+        # would be the exact lie this tool exists to prevent: it executed
+        # nothing. Unproven if any of those skips was.
+        reasons = sorted({p.reason for p in plans})
+        return Skip(f"every step skipped — {'; '.join(reasons)}",
+                    unproven=any(p.unproven for p in plans))
     return None
 
 
@@ -336,6 +528,7 @@ class StepResult:
     reason: str = ""
     command: str = ""
     output_tail: str = ""
+    unproven: bool = False
 
 
 @dataclass
@@ -345,10 +538,15 @@ class JobResult:
     reason: str = ""
     seconds: float = 0.0
     steps: list[StepResult] = field(default_factory=list)
+    unproven: bool = False   # a skipped job of the fifth class
 
     @property
     def failed_step(self) -> StepResult | None:
         return next((s for s in self.steps if s.status == "fail"), None)
+
+    @property
+    def unproven_steps(self) -> list[StepResult]:
+        return [s for s in self.steps if s.status == "skip" and s.unproven]
 
 
 def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int) -> JobResult:
@@ -362,12 +560,15 @@ def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int) -> 
             extra_path = str(bindir)
 
     for step in job.steps:
-        reason = step_skip_reason(step)
-        if reason:
-            result.steps.append(StepResult(step.name or step.uses or "?", "skip", reason=reason))
+        plan = plan_step(step)
+        if not plan.run:
+            if step.run or step.uses:
+                # The job goes on: a skipped step is not a failed one. Whether
+                # the skip leaves the lane unproven is recorded, not decided here.
+                result.steps.append(StepResult(step.display, "skip", reason=plan.reason,
+                                               unproven=plan.unproven))
             continue
-        if not step.run:
-            continue
+        assert step.run is not None
 
         cwd = repo / step.working_directory if step.working_directory else repo
         env = dict(os.environ)
@@ -392,7 +593,7 @@ def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int) -> 
             env.pop("PYTHONHOME", None)
 
         if echo:
-            print(f"    · {step.name or '(unnamed step)'} … ", end="", flush=True)
+            print(f"    · {step.display} … ", end="", flush=True)
         t0 = time.time()
         try:
             proc = subprocess.run(
@@ -412,7 +613,7 @@ def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int) -> 
             tail = (exc.stdout or b"").decode("utf-8", "replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
             result.steps.append(
                 StepResult(
-                    step.name or "(unnamed)", "fail", elapsed, 124,
+                    step.display, "fail", elapsed, 124,
                     reason=f"exceeded the {timeout}s step timeout",
                     command=step.run,
                     output_tail="\n".join(tail.splitlines()[-tail_lines:]),
@@ -428,7 +629,7 @@ def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int) -> 
             if echo:
                 print(f"ok ({elapsed:.0f}s)")
             result.steps.append(
-                StepResult(step.name or "(unnamed)", "pass", elapsed, command=step.run)
+                StepResult(step.display, "pass", elapsed, command=step.run)
             )
             continue
 
@@ -436,7 +637,7 @@ def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int) -> 
             print(f"FAILED ({elapsed:.0f}s, exit {proc.returncode})")
         result.steps.append(
             StepResult(
-                step.name or "(unnamed)", "fail", elapsed, proc.returncode,
+                step.display, "fail", elapsed, proc.returncode,
                 command=step.run,
                 output_tail="\n".join(combined.splitlines()[-tail_lines:]),
             )
@@ -451,16 +652,62 @@ def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int) -> 
 
 # ─── Reporting ───────────────────────────────────────────────────────────────
 
-def collect_jobs(repo: Path, include_conditional: bool) -> list[tuple[Job, str | None]]:
+def collect_jobs(repo: Path, include_conditional: bool) -> list[tuple[Job, Skip | None]]:
     workflow_dir = repo / ".github" / "workflows"
     if not workflow_dir.is_dir():
         return []
-    out: list[tuple[Job, str | None]] = []
+    out: list[tuple[Job, Skip | None]] = []
     for path in sorted(workflow_dir.glob("*.y*ml")):
         jobs, on_block = parse_workflow(path)
         for job in jobs:
             out.append((job, skip_reason(job, on_block, include_conditional)))
     return out
+
+
+@dataclass(frozen=True)
+class Lane:
+    """One thing the hosted run executes that this run did not prove: a whole
+    job (step == "") or a single step of a job that otherwise ran."""
+    job: Job
+    step: str
+    reason: str
+
+    @property
+    def label(self) -> str:
+        return f"{self.job.display} › {self.step}" if self.step else self.job.display
+
+
+def unproven_lanes(results: list[JobResult]) -> list[Lane]:
+    lanes: list[Lane] = []
+    for r in results:
+        if r.status == "skip":
+            if r.unproven:
+                lanes.append(Lane(r.job, "", r.reason))
+            continue
+        lanes.extend(Lane(r.job, s.name, s.reason) for s in r.unproven_steps)
+    return lanes
+
+
+def print_plan(repo: Path, plan: list[tuple[Job, Skip | None]]) -> None:
+    print(f"ci-local: {repo.name} on {local_platform()}\n")
+    lanes: list[str] = []
+    for job, skip in plan:
+        plans = [(s, plan_step(s)) for s in job.steps if s.run]
+        runs = sum(1 for _, p in plans if p.run)
+        mark = "run " if skip is None else "skip"
+        print(f"  [{mark}] {job.display:32} {job.workflow:22} {runs}/{len(plans)} runnable")
+        if skip is not None:
+            print(f"         ↳ {'UNPROVEN — ' if skip.unproven else ''}{skip.reason}")
+            if skip.unproven:
+                lanes.append(job.display)
+            continue
+        for step, p in plans:
+            if p.unproven:
+                print(f"         ↳ UNPROVEN step {step.display}: {p.reason}")
+                lanes.append(f"{job.display} › {step.display}")
+    if lanes:
+        print(f"\n  {len(lanes)} lane(s) would be UNPROVEN — a run here cannot speak for: "
+              + ", ".join(lanes))
 
 
 _CLEAN_HOME: Path | None = None
@@ -469,7 +716,8 @@ _CLEAN_HOME: Path | None = None
 def main() -> int:
     ap = argparse.ArgumentParser(
         description="Run this repository's GitHub Actions gates locally.",
-        epilog="A skipped job is always reported: nothing-ran must not look like all-passed.",
+        epilog="A skipped job is always reported: nothing-ran must not look like all-passed. "
+               "Exit 1: a job failed. Exit 2: --strict and a lane is unproven.",
     )
     ap.add_argument("--repo", type=Path, default=Path.cwd())
     ap.add_argument("--job", action="append", help="Job id or name (repeatable).")
@@ -483,6 +731,11 @@ def main() -> int:
                          "so a step that passes only because this machine has "
                          "~/.claude installed fails here instead of on the runner.")
     ap.add_argument("--json", action="store_true", help="Machine-readable result.")
+    # Report-only for one week, then the default (TODO.md names the date):
+    # exit 2 changes what /green --json callers see, so it is opt-in first.
+    ap.add_argument("--strict", action=argparse.BooleanOptionalAction, default=False,
+                    help="Exit 2 when nothing failed but a lane is unproven — a job or "
+                         "step the hosted run executes and this runner could not.")
     ap.add_argument("--tail", type=int, default=40, help="Failure output lines (default 40).")
     ap.add_argument("--timeout", type=int, default=900,
                     help="Per-step timeout in seconds (default 900). A hung step is a failure.")
@@ -493,7 +746,11 @@ def main() -> int:
         print(f"ci-local: no .github/workflows under {repo}")
         return 1
 
-    plan = collect_jobs(repo, args.all)
+    # An explicitly named job runs even if it is conditional — but it is still
+    # planned in full. Clearing only the "conditional" verdict afterwards would
+    # now run a conditional job that also uses services:, because the reasoned
+    # classes are tested first and the unproven one was never reached.
+    plan = collect_jobs(repo, include_conditional=args.all or bool(args.job))
 
     if args.job:
         wanted = {w.lower() for w in args.job}
@@ -504,8 +761,6 @@ def main() -> int:
         if not plan:
             print(f"ci-local: no job matching {args.job}")
             return 1
-        # An explicitly named job runs even if it is conditional.
-        plan = [(j, None if r and r.startswith("conditional") else r) for j, r in plan]
 
     if args.all and not args.list:
         # The conditional tier is conditional for a reason. In this repository
@@ -528,14 +783,7 @@ def main() -> int:
         print(f"clean HOME: {_CLEAN_HOME}  (no ~/.claude, no installed skills)")
 
     if args.list:
-        print(f"ci-local: {repo.name} on {local_platform()}\n")
-        for job, reason in plan:
-            runs = sum(1 for s in job.steps if s.run and not step_skip_reason(s))
-            total = sum(1 for s in job.steps if s.run)
-            mark = "run " if reason is None else "skip"
-            print(f"  [{mark}] {job.display:32} {job.workflow:22} {runs}/{total} runnable")
-            if reason:
-                print(f"         ↳ {reason}")
+        print_plan(repo, plan)
         return 0
 
     if not shutil.which("bash"):
@@ -543,9 +791,10 @@ def main() -> int:
         return 1
 
     results: list[JobResult] = []
-    for job, reason in plan:
-        if reason:
-            results.append(JobResult(job=job, status="skip", reason=reason))
+    for job, skip in plan:
+        if skip is not None:
+            results.append(JobResult(job=job, status="skip", reason=skip.reason,
+                                     unproven=skip.unproven))
             continue
         if not args.json:
             print(f"  {job.display}")
@@ -554,17 +803,33 @@ def main() -> int:
     ran = [r for r in results if r.status != "skip"]
     failed = [r for r in ran if r.status == "fail"]
     skipped = [r for r in results if r.status == "skip"]
+    lanes = unproven_lanes(results)
+    verdict = "fail" if failed else ("partial" if lanes else "pass")
+    exit_code = 1 if failed else (2 if lanes and args.strict else 0)
 
     if args.json:
         json.dump(
             {
                 "repo": str(repo),
                 "platform": local_platform(),
+                # pass | partial | fail. PARTIAL means nothing that ran failed
+                # and at least one lane in `unproven` did not run: not green.
+                "verdict": verdict,
                 # /green's report contract asks how long the whole thing took.
                 # A stated field with no way to obtain it gets omitted or invented.
                 "seconds": round(sum(r.seconds for r in ran), 1),
+                # Jobs that ran with no step failing — as before. Those that
+                # also skipped an unproven step are named again in `partial`.
                 "passed": [r.job.display for r in ran if r.status == "pass"],
-                "skipped": [{"job": r.job.display, "reason": r.reason} for r in skipped],
+                "partial": [r.job.display for r in ran
+                            if r.status == "pass" and r.unproven_steps],
+                "unproven": [
+                    {"job": ln.job.display, "workflow": ln.job.workflow,
+                     "step": ln.step, "reason": ln.reason}
+                    for ln in lanes
+                ],
+                "skipped": [{"job": r.job.display, "reason": r.reason, "unproven": r.unproven}
+                            for r in skipped],
                 "failed": [
                     {
                         "job": r.job.display,
@@ -580,7 +845,7 @@ def main() -> int:
             sys.stdout, indent=2,
         )
         sys.stdout.write("\n")
-        return 1 if failed else 0
+        return exit_code
 
     print()
     for r in failed:
@@ -596,14 +861,24 @@ def main() -> int:
         print()
 
     total_seconds = sum((r.seconds for r in ran), 0.0)
-    print(
-        f"ci-local: {len(ran) - len(failed)}/{len(ran)} job(s) passed in {total_seconds:.0f}s"
+    summary = (
+        f"{len(ran) - len(failed)}/{len(ran)} job(s) passed in {total_seconds:.0f}s"
         + ("  [clean HOME]" if _CLEAN_HOME else "")
         + (f", {len(failed)} failed" if failed else "")
     )
+    if lanes:
+        summary += f", {len(lanes)} lane(s) unproven: " + ", ".join(ln.label for ln in lanes)
+    print(f"ci-local: {'PARTIAL: ' if verdict == 'partial' else ''}{summary}")
+    for ln in lanes:
+        print(f"  unproven {ln.label}: {ln.reason}")
     for r in skipped:
-        print(f"  skipped {r.job.display}: {r.reason}")
-    return 1 if failed else 0
+        if not r.unproven:
+            print(f"  skipped {r.job.display}: {r.reason}")
+    if verdict == "partial":
+        print("  PARTIAL is not green: the hosted run executes the lanes above and this one "
+              "did not. Prove them hosted (or where their services exist)"
+              + (" — exit 2 under --strict." if not args.strict else "."))
+    return exit_code
 
 
 if __name__ == "__main__":
