@@ -93,7 +93,36 @@ token/instructions, and forge conventions. The body records:
 - risk and rollback;
 - proposed merge strategy and why;
 - whether intermediate commits are review checkpoints;
-- required agent/runtime disclosure.
+- required agent/runtime disclosure;
+- the two review lines below.
+
+Every PR body carries these two lines, spelled exactly so, because `/retro`
+parses them (`pr-verification-gaps.py`). A repository template governs the rest
+of the body, not these words:
+
+```text
+Review depth: none | skimmed | read-in-full
+Could not verify: none | <item>; <item>
+```
+
+- **Review depth** is how far someone other than the author read the diff: a
+  human reviewer, or an independent review run such as `/review-pr` or a
+  second-opinion agent, optionally named after the value. The author's own
+  reading never counts, and a reading you did not see is never claimed, so at
+  creation the line is almost always `none`. When a review lands, update the
+  line: it states the depth at merge.
+- **Could not verify** lists what was not checked, each item a few words naming
+  the surface, with the reason in parentheses, items separated by `;`. Write
+  `none` only when every claim in the PR was checked. Reuse an earlier PR's
+  wording for the same gap: `/retro` counts items by their words, so a
+  rephrased item hides a gap that recurs.
+
+For example:
+
+```text
+Review depth: skimmed (by @reviewer)
+Could not verify: macOS run (no Mac reachable); live hook firing (needs an interactive session)
+```
 
 Do not include secrets, raw auth endpoints, machine-private paths, or claims of
 independent human approval.
