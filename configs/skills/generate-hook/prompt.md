@@ -124,7 +124,7 @@ A rule that is now hook-enforced must not keep burning prompt context as prose:
 - Hook scripts must be < 100 lines, fast (< 5s), and idempotent
 - Use `jq` for JSON parsing of hook input
 - Include the original rule text as a comment for traceability
-- Fill the `exists-for` line, on its own line within the first 10, from the rule's own date and the incident it records. If nothing records an incident, write `no incident recorded (added {date} in #{PR})`, never an invented one. A sha must be a real commit; a new hook may cite its own open PR. `retire-when` names the condition under which the hook may go. A blocking hook retires only after an ablation shows no harm, never because it stopped firing. `tests/test-hooks.sh` fails a `configs/hooks/*.sh` without this line
+- Fill the `exists-for` line, on its own line within the first 10, from the rule's own date and the incident it records. If nothing records an incident, write `no incident recorded (added {date} in #{PR})`, never an invented one. A sha must be a real commit; a new hook may cite its own open PR. `retire-when` names the condition under which the hook may go. A blocking hook retires only after an ablation shows no harm, never because it stopped firing. `tests/test-hook-provenance.sh` fails a `configs/hooks/*.sh` without this line, or with a `{…}` placeholder from this template still in it
 - Don't auto-install — always require user to run install.sh
 - Retirement (Step 6) is part of the job — a generated hook without the prose rule retired leaves double enforcement and the context bloat in place
 

@@ -414,6 +414,14 @@ jobs:
       - name: Run hook delivery tests
         run: bash tests/test-hooks.sh
 
+      # Every configs/hooks/*.sh names the incident it exists for and when it
+      # may retire: one well-formed line per hook, cross-checked against the
+      # wiring, no `<…>`/`{…}` placeholder, no zero-fires retirement without an
+      # ablation (a wording table), mutations that must go red
+      # (split out of test-hooks.sh when it would have crossed the 1500-line rule)
+      - name: Run hook provenance tests
+        run: bash tests/test-hook-provenance.sh
+
       # post-edit-check: exit-2 asyncRewake findings vs silent success, the per-file mypy scope, errors already
       # in the file's HEAD version, a crashed checker, nested worktrees
       # (split out of test-hooks.sh when it crossed the 1500-line rule again)
