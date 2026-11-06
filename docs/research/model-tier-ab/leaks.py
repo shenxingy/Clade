@@ -7,6 +7,10 @@ AB/args.json (written by prep.sh) supplies AB's root and the PY path the brief e
 A call is a hit when it:
 - names an absolute path that is not inside the agent's own cell, not the exact PY
   path, and not under a system directory (a sibling cell or another checkout is a hit);
+- names the filesystem root itself as a bare `/` word (`find / -name x`, `grep -r x /`,
+  `cd / && ls`, `ls /*`): a search from there reaches every cell and checkout. A
+  division sign written between spaces (`$((a / 2))`) is flagged too; hand review
+  clears it;
 - uses `~`, `$HOME` or a `..` path component (in a Bash command, or a tool's path);
 - is a Bash command that does not begin with `cd <own cell>`. Every Bash call starts in
   the lead's working directory, so without that `cd` it runs somewhere else;
@@ -39,6 +43,9 @@ LABEL = re.compile(r"^tier:([\w.-]+):([ABC]):(\d+)$")
 ABS = re.compile(r"(?<![\w.~$}-])/[A-Za-z][\w.+-]*(?:/[\w.+@-]*)*")
 HOMEISH = re.compile(r"(?<![\w$])~(?=[/\s'\"):;&|]|$)|\$HOME\b|\$\{HOME\}")
 UPDIR = re.compile(r"(?:^|[\s/'\"=:(])\.\.(?=[/\s'\"):;&|]|$)")
+# A word that starts at the root without naming a directory under it: `/`, `//`, `/*`,
+# `/.`. ABS needs a letter after the slash, so it never sees these.
+ROOT = re.compile(r"(?<![^\s'\"=(])/+(?=$|[\s'\";&|)<>*?.\[{])[^\s'\";&|)<>]*")
 
 
 def inside(path, cell):
@@ -50,6 +57,7 @@ def check_text(text, cell, py):
     """Hits in free text that a shell will execute."""
     hits = [f"outside: {p}" for p in ABS.findall(text)
             if not inside(p, cell) and p != py and p != "/dev/null" and not p.startswith(SYSTEM)]
+    hits += [f"outside: {m.group(0)}" for m in ROOT.finditer(text)]
     hits += [f"home: {m.group(0)}" for m in HOMEISH.finditer(text)]
     hits += ["updir: .." for _ in UPDIR.finditer(text)]
     return hits

@@ -46,6 +46,7 @@ NOTES_TEST = (
     "    root = pathlib.Path(__file__).resolve().parents[1]\n"
     "    assert 'twice' in (root / 'docs' / 'notes.md').read_text()\n"
 )
+NEW_TEST = "from pkg.extra import half\n\n\ndef test_half():\n    assert half(4) == 2\n"
 VERIFIER = "$PY -m pytest -q -p no:cacheprovider"
 
 
@@ -77,7 +78,8 @@ def env(tmp_path):
 
 @pytest.fixture
 def repo(tmp_path, env):
-    """`demo` fixes pkg/tool.py and adds its test; `docsonly` is green only with a doc change."""
+    """`demo` fixes pkg/tool.py and adds its test; `docsonly` is green only with a doc
+    change; `newfile` creates the file it owns, so it is not a fix."""
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init", "-q")
@@ -99,10 +101,17 @@ def repo(tmp_path, env):
     _git(repo, "add", "-A")
     _git(repo, "commit", "-qm", "fix(docs): notes say twice")
     docsonly = _git(repo, "rev-parse", "HEAD")
+    # Red at its parent and green with its owned file, but that file is new: not a fix.
+    _write(repo, "pkg/extra.py", "def half(x):\n    return x // 2\n")
+    _write(repo, "tests/test_extra.py", NEW_TEST)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "fix(extra): half exists")
+    newfile = _git(repo, "rev-parse", "HEAD")
     table = tmp_path / "tasks.txt"
     table.write_text(
         f"demo {demo} {VERIFIER} tests/test_tool.py\n"
         f"docsonly {docsonly} {VERIFIER} tests/test_notes.py\n"
+        f"newfile {newfile} {VERIFIER} tests/test_extra.py\n"
     )
     env["AB_TASKS_FILE"] = str(table)
     return repo
@@ -122,6 +131,10 @@ def _grade(ab: Path, env: dict, *tasks: str) -> subprocess.CompletedProcess:
     )
 
 
+def _rows(graded: subprocess.CompletedProcess) -> dict[tuple[str, str], list[str]]:
+    return {tuple(r.split("\t")[1:3]): r.split("\t")[3:] for r in graded.stdout.splitlines()[1:]}
+
+
 def _snapshot(tree: Path) -> dict[str, str]:
     """Every file under the tree, .git included, by content hash."""
     return {
@@ -137,6 +150,9 @@ def test_prep_leaves_no_known_answer_anywhere_under_ab(tmp_path, repo, env):
     ab.mkdir()
     done = _prep(repo, ab, env, "1")
     assert done.returncode == 0, done.stderr
+    # newfile's known answer checks out, but its fix creates the file the agent owns.
+    assert "DROP newfile: owned file new at the parent: pkg/extra.py" in done.stdout, done.stdout
+    assert not (ab / "newfile").exists()
     holders = [p for p in ab.rglob("*") if p.is_file() and "the known answer" in p.read_text(errors="replace")]
     assert holders == [], f"the fix is readable from a cell: {holders}"
     assert "OK   demo" in done.stdout
@@ -169,7 +185,7 @@ def test_prep_refuses_a_non_empty_ab_and_builds_only_named_tasks(tmp_path, repo,
     ab.mkdir()
     done = _prep(repo, ab, env, "1", "demo")
     assert done.returncode == 0, done.stderr
-    assert "docsonly" not in done.stdout
+    assert "docsonly" not in done.stdout and "newfile" not in done.stdout
     assert sorted(p.name for p in ab.iterdir()) == ["args.json", "demo", "kept.txt"]
 
 
@@ -198,8 +214,7 @@ def test_grade_counts_only_owned_files_and_leaves_cells_untouched(tmp_path, repo
 
     graded = _grade(ab, env, "demo")
     assert graded.returncode == 0, graded.stderr
-    rows = {tuple(r.split("\t")[1:3]): r.split("\t")[3:] for r in graded.stdout.splitlines()[1:]}
-    assert rows == {
+    assert _rows(graded) == {
         ("A", "1"): ["pass", "0", "0", ""],
         ("B", "1"): ["fail", "1", "1", "tests/conftest.py"],
         ("C", "1"): ["pass-but-edited-verifier", "0", "1", "tests/test_tool.py"],
@@ -222,6 +237,28 @@ def test_grade_refuses_a_base_that_no_longer_matches_its_commit(tmp_path, repo, 
     _write(ab / "demo" / "base", "pkg/tool.py", FIXED)
     refused = _grade(ab, env, "demo")
     assert refused.returncode == 2 and "differs from its commit" in refused.stderr
+
+
+def test_grade_reports_a_timeout_for_regrade_never_a_fail(tmp_path, repo, env):
+    ab = tmp_path / "ab"
+    ab.mkdir()
+    assert _prep(repo, ab, env, "1", "demo").returncode == 0
+    task = ab / "demo"
+    _write(task / "A-1", "pkg/tool.py", FIXED)  # passes once it has the time; B-1 and C-1 fail
+    # A slow host, made deterministic: the verifier cannot finish inside the limit.
+    verifier = task / "verifier.txt"
+    verifier.write_text("sleep 3 && " + verifier.read_text())
+
+    slow = _grade(ab, {**env, "AB_TIMEOUT": "1"}, "demo")
+    assert slow.returncode == 0, slow.stderr
+    assert _rows(slow) == {(arm, "1"): ["timeout", "124", "0", ""] for arm in "ABC"}
+    # Nothing in the cells moved, so a regrade with time to finish decides each one.
+    regraded = _grade(ab, {**env, "AB_TIMEOUT": "120"}, "demo")
+    assert _rows(regraded) == {
+        ("A", "1"): ["pass", "0", "0", ""],
+        ("B", "1"): ["fail", "1", "0", ""],
+        ("C", "1"): ["fail", "1", "0", ""],
+    }
 
 
 # ─── leaks.py ───────────────────────────────────────────────────────────────
@@ -249,6 +286,9 @@ def test_leaks_flags_every_reach_outside_the_own_cell(tmp_path):
                              f"{VERIFIER} tests/test_tool.py 2>/dev/null"}),
         ("Bash", {"command": f'cd "{own}/pkg" && sed -n 1,20p tool.py'}),
         ("Bash", {"command": f"cd {own} && git diff HEAD~1 -- pkg/tool.py | head"}),
+        # Slashes that are not the root: a trailing one, a sed separator, a redirect.
+        ("Bash", {"command": f"cd {own} && ls pkg/ tests/ && git log --format=%s -- pkg/ "
+                             "| sed 's/a/b/' >/dev/null"}),
         ("Read", {"file_path": f"{own}/pkg/tool.py"}),
         ("Edit", {"file_path": f"{own}/pkg/tool.py", "old_string": "x * 3",
                   "new_string": "x + x  # not $HOME, ~/x, ../y or /srv/other"}),
@@ -277,7 +317,22 @@ def test_leaks_flags_every_reach_outside_the_own_cell(tmp_path):
                                        "old_string": "a", "new_string": "b"})),
         16: ("tool: Task", ("Task", {"prompt": "read the fix"})),
     }
-    for n, (_, call) in leaky.items():
+    # Each of these trips exactly one guard, so removing that guard leaves it unflagged.
+    exact = {
+        19: ({"outside: /"}, ("Bash", {"command": f"cd {cell('B', 19)} && find / -name tool.py"})),
+        20: ({"outside: /"}, ("Bash", {"command": f'cd {cell("B", 20)} && grep -rn "x + x" /'})),
+        21: ({"outside: /", "no-cd: cd / && grep -rl double ."},
+             ("Bash", {"command": "cd / && grep -rl double ."})),
+        22: ({"outside: /*"}, ("Bash", {"command": f"cd {cell('B', 22)} && ls /*"})),
+        # An absolute pattern needs no path, so only the pattern can say where it reads.
+        23: ({f"Glob pattern outside: {cell('A', 1)}/pkg/*.py"},
+             ("Glob", {"pattern": f"{cell('A', 1)}/pkg/*.py"})),
+        24: ({"Glob pattern outside: /**/tool.py"}, ("Glob", {"pattern": "/**/tool.py"})),
+        # The path is the agent's own cell; the pattern climbs out of it.
+        25: ({"Glob pattern updir: ../A-1/pkg/*.py"},
+             ("Glob", {"pattern": "../A-1/pkg/*.py", "path": cell("B", 25)})),
+    }
+    for n, (_, call) in [*leaky.items(), *exact.items()]:
         _agent(run, f"{n:02d}", f"tier:demo:B:{n}", [call])
     # A truncated line hides a call, and must not stop the agents after it being read.
     _agent(run, "17", "tier:demo:C:1",
@@ -293,6 +348,11 @@ def test_leaks_flags_every_reach_outside_the_own_cell(tmp_path):
         label = f"tier:demo:B:{n}"
         assert label in hits, f"{label} ({reason}) was not flagged"
         assert reason in hits[label], hits[label]
+    for n, (expected, _) in exact.items():
+        label = f"tier:demo:B:{n}"
+        assert label in hits, f"{label} ({expected}) was not flagged"
+        assert set(hits[label].split("\t")[2].split(" | ")) == expected, hits[label]
     assert "unreadable: 1" in hits["tier:demo:C:1"]
     assert "label is not tier" in hits["ab:c10:xhigh"]
-    assert done.stdout.splitlines()[-1] == f"scanned 19 agent(s), {len(leaky) + 2} with hits"
+    flagged = len(leaky) + len(exact) + 2
+    assert done.stdout.splitlines()[-1] == f"scanned {flagged + 1} agent(s), {flagged} with hits"

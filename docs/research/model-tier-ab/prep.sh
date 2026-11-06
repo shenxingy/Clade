@@ -33,14 +33,14 @@ case $scratch/ in "$ab"/*) echo "TMPDIR is inside AB; point it elsewhere" >&2; e
 # shellcheck disable=SC2016  # $PY expands when the verifier runs, not here
 P='cd orchestrator && $PY -m pytest -q -p no:cacheprovider'
 TASKS="
-scrub      bb50fbd $P tests/test_scrub_corrections.py
-codexupd   e23e67f $P tests/test_codex_plugin_update.py
 archive    4d480c6 $P tests/test_archive_progress.py
 scanhealth 71379b4 bash tests/test-scan-health.sh
 rmflags    af1c4b2 bash tests/test-pre-tool-guardian.sh
 redirect   0b8e29a bash tests/test-correction-pairing.sh
 loopmodel  0075a5d bash tests/test-loop-args.sh
 droprules  b0665f4 bash tests/test-skill-routing.sh
+domain     ff7ea66 bash tests/test-correction-pairing.sh
+postedit   c8fe850 bash tests/test-hooks.sh
 "
 if [ -n "${AB_TASKS_FILE:-}" ]; then TASKS=$(cat "$AB_TASKS_FILE") || exit 2; fi
 
@@ -72,6 +72,16 @@ echo "$TASKS" | while read -r id fix verifier; do
   # only, which is exactly the tree grade.sh builds, so a task whose verifier also needs
   # the fix's docs is dropped here rather than failing every arm.
   owned=$(echo "$files" | grep -v -E '^(tests/|orchestrator/tests/)' | grep -v -E '(^docs/|\.md$)')
+  # A replayed FIX repairs files that already exist. A commit that creates an owned file
+  # asks for a new file written to a test, a different task (bb50fbd and e23e67f did
+  # that, and left the table on review), so it is dropped before anything is built.
+  new=$(echo "$owned" | while read -r f; do
+    [ -z "$f" ] || git -C "$repo" cat-file -e "$parent:$f" 2>/dev/null || echo "$f"
+  done)
+  if [ -n "$new" ]; then
+    echo "DROP $id: owned file new at the parent: $(echo "$new" | tr '\n' ' ')(a new-file task, not a fix)"
+    rm -rf "$t"; continue
+  fi
   echo "$tests" > "$t/protected.txt"
   echo "$owned" > "$t/owned.txt"
   echo "$verifier" > "$t/verifier.txt"
