@@ -464,9 +464,22 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         ("--recorded-before without --ledger-summary is refused, not ignored",
          "    if args.recorded_before is not None and args.ledger_summary is None:\n        parser.error(",
          "    if False:\n        parser.error("),
+    ],
+    # The transcript reader workflow-scorecard.py and scorecard_ledger.py
+    # import, split out on 2026-11-06 with default_roots() and config_dir().
+    # Its --self-test runs the self-tests of the scripts that import it; what
+    # it does on its own is pinned by test_transcripts.py.
+    "configs/scripts/transcripts.py": [
         ("the scan reads the config dir it writes the ledger into",
          "    if all(configured.resolve() != root.resolve() for root in roots):\n        roots.append(configured)",
          "    if False:\n        roots.append(configured)"),
+        # config_dir() moved here from scorecard_ledger.py with these two.
+        ("CLAUDE_CONFIG_DIR is honoured — the ledger lands in ~/.claude",
+         'override = os.environ.get("CLAUDE_CONFIG_DIR", "")',
+         'override = ""'),
+        ("an empty CLAUDE_CONFIG_DIR means ~/.claude, not the working directory",
+         "return Path(override).expanduser() if override else Path.home() / \".claude\"",
+         "return Path(override).expanduser() if override is not None else Path.home() / \".claude\""),
     ],
     # Split out of workflow-scorecard.py on 2026-10-23 with its self-test. That
     # self-test had no mutations here before the move.
@@ -523,12 +536,6 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         ("the one role check — an assistant record read as the owner",
          '    if record.get("type") == "user" and isinstance(message, dict):',
          "    if isinstance(message, dict):"),
-        ("CLAUDE_CONFIG_DIR is honoured — the ledger lands in ~/.claude",
-         'override = os.environ.get("CLAUDE_CONFIG_DIR", "")',
-         'override = ""'),
-        ("an empty CLAUDE_CONFIG_DIR means ~/.claude, not the working directory",
-         "return Path(override).expanduser() if override else Path.home() / \".claude\"",
-         "return Path(override).expanduser() if override is not None else Path.home() / \".claude\""),
         ("per-agent detail stays out of a ledger row",
          'kept = {key: value for key, value in row.items() if key != "agent_rows"}',
          "kept = dict(row)"),
@@ -943,6 +950,49 @@ MUTATIONS["configs/scripts/context-policy.py"] = [
      "        if False:"),
 ]
 
+
+# ─── pr-verification-gaps.py ──────────────────────────────────────────
+# /retro's rollup of the PR body lines `Review depth:` and `Could not verify:`.
+# Its --self-test drives main() on fixtures and a fake gh; one guard per entry.
+MUTATIONS["configs/scripts/pr-verification-gaps.py"] = [
+    ("HTML comments are not read", '    text = _COMMENT.sub("", text)', "    text = text"),
+    ("a line opening in inline code quotes the format", 'r"^[\\s>*-]*(review depth', 'r"^[\\s>*`-]*(review depth'),
+    ("an unclosed <!-- hides the rest of the body", '(?:-->|\\Z)"', '-->"'),
+    ("fenced code is not read", "        if not fenced:", "        if True:"),
+    ("the first line of a label counts", "found.setdefault(match.group(1).lower(), match.group(2).strip())",
+     "found[match.group(1).lower()] = match.group(2).strip()"),
+    ("a <placeholder> is unfilled, not a value", 'return not value or value.startswith("<") or "|" in value',
+     "return not value"),
+    ("the skills' own `a | b` format line is unfilled", ' or "|" in value', ""),
+    ("a trailing (reason) is not part of the item", "    if match and match.start() > 0:", "    if False:"),
+    ("items ignore case", "return label.lower(), label, reason", "return label, label, reason"),
+    ("items ignore * and backtick emphasis", '_EMPHASIS.sub("", text).split()', "text.split()"),
+    ("items ignore trailing punctuation", '.split()).rstrip(" .,:")', ".split())"),
+    ("an item counts once per PR", "if key and key not in seen:", "if key:"),
+    ("'none' is not an item", 'items = [item for item in items if item["key"] != "none"]', "items = items"),
+    ("the window's lower bound — gh's search returns the first day whole", "and start <= merged <= now:",
+     "and merged <= now:"),
+    ("an item recurs from 2 PRs, not 1", "_RECURS = 2", "_RECURS = 1"),
+    ("--top cuts the recurring list", '"recurring": recurring[:top]', '"recurring": recurring'),
+    ("a tie goes to the gap seen most recently", 'items.sort(key=lambda e: e["last_merged"], reverse=True)',
+     'items.sort(key=lambda e: e["item"].lower())'),
+    ("an item keeps its first wording", 'sorted(pulls, key=lambda r: r["merged_at"])',
+     'sorted(pulls, key=lambda r: r["merged_at"], reverse=True)'),
+    ("'read in full', spaced, is read-in-full", "read[- ]in[- ]full", "read-in-full"),
+    ("a pending review backs no claim", ' and review.get("state") != "PENDING"', ""),
+    ("the author's own review backs no claim", "if reviewer and reviewer != author and", "if reviewer and"),
+    ("the author matches in any case", "author = _login(pr).lower()", "author = _login(pr)"),
+    ("'none' with a forge review is reported", 'and row["reviewed_by_other"]]', "and False]"),
+    ("no could-not-verify line reads NOT MEASURED", '    if not gaps["stated"]:', "    if False:"),
+    ("no depth line reads NOT MEASURED", '    if not depth["stated"]:', "    if False:"),
+    ("the coverage caveat names the PRs without the line", '        if gaps["stated"] < total:', "        if False:"),
+    ("gh reads merged PRs", '"--state", "merged", ', ""),
+    ("gh reads from the window's first day", '"--search", f"merged:>={start:%Y-%m-%d}",', ""),
+    ("an unauthenticated gh is named", 'if re.search(r"gh auth login|not logged|HTTP 401|authentication", proc.stderr',
+     'if re.search(r"$^", proc.stderr'),
+    ("NOT MEASURED exits 1", 'so nothing can be stated.")\n    return 1', 'so nothing can be stated.")\n    return 0'),
+    ("a missing gh is NOT MEASURED", 'raise GhError("gh is not installed or not on PATH") from exc', "raise"),
+]
 
 # ─── outcome-scorecard.py ─────────────────────────────────────────────
 # Its own block, like the two above. Each mutation removes one guard the
