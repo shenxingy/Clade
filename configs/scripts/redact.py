@@ -24,6 +24,7 @@ credentials. Add new patterns as you discover them in the wild.
 from __future__ import annotations
 
 import argparse
+import bisect
 import json
 import re
 import sys
@@ -119,6 +120,27 @@ class Hit:
         return asdict(self)
 
 
+# One run of verbatim text or one marker in a redacted string, with the span it
+# occupies there and the span of the input it stands for. A verbatim piece maps
+# one to one; a marker maps its whole width onto the hit it replaced.
+_Piece = tuple[int, int, int, int, bool]  # (out_start, out_end, in_start, in_end, is_marker)
+
+# How many times scan() reads the text, counting the first read. A later read
+# happens only when the one before it found something new, so text costs one read
+# when it holds no secret and two when it does. Three is the most any input needs
+# with today's patterns: only two things make a later read find more — a PEM
+# hiding its whitespace from env_secret's value class, and aws_secret_key's fixed 40-char
+# value ending on a word character, which takes the \b from whatever is glued
+# after it — and what the second read masks ends on a non-word character or
+# inside quotes, so it unlocks nothing further. Measured, not only argued: no
+# text among 7,000 generated ones (2026-11-06) needed a fourth. The fourth is
+# headroom for a pattern added later. The loop ends without a bound too (each
+# read either widens the hits or stops it); the bound caps what an adversarial
+# input can cost the hook, and the idempotence property fails the day four reads
+# are not enough.
+_MAX_PASSES = 4
+
+
 # ─── Public API ───────────────────────────────────────────────────────────────
 
 def scan(text: str) -> list[Hit]:
@@ -133,19 +155,72 @@ def scan(text: str) -> list[Hit]:
     merged hit is labelled by its widest member (ties: the earlier-listed
     pattern, so `sk-ant-…` stays anthropic_key and a stripe key stays
     stripe_key). Found by tests/test_redact_properties.py.
+
+    The hits are also a FIXED POINT: scan() re-reads its own redaction and
+    widens the hits until that redaction matches nothing more. One read is not
+    enough, because masking changes what the patterns see. A PEM inside an env
+    value (`token: "k=<PEM>"`) is invisible to env_secret, whose value cannot
+    span the PEM's whitespace, until the PEM is a marker — and then the value
+    `k=<redacted:private_key>` matches; an AKIA run glued to the end of an AWS
+    secret has no \b until the secret is a marker. A single read left the
+    value's own characters in the clear and handed scrub-corrections.py, which
+    re-scans history the hooks already masked, a marker to report as a key to
+    rotate. A match in the redaction is mapped back onto the input (a span that
+    touches a marker takes the marker's whole input span) and merged with the
+    rest. Both shapes are generated and pinned in tests/test_redact_properties.py.
     """
     if not text:
         return []
+    spans = _matches(text)
+    hits = _merge(text, spans)
+    for _ in range(_MAX_PASSES - 1):
+        if not hits:
+            break
+        masked, pieces = _render(text, hits)
+        extra = _matches(masked)
+        if not extra:
+            break
+        spans += [(*_to_input(pieces, s, e), order, kind) for s, e, order, kind in extra]
+        widened = _merge(text, spans)
+        if widened == hits:
+            break  # nothing new: every later match lies inside what is already masked
+        hits = widened
+    return hits
+
+
+def redact(text: str, hits: Iterable[Hit] | None = None) -> tuple[str, list[Hit]]:
+    """Return (masked_text, hits).
+
+    Idempotent on its own output — a second pass changes nothing and finds
+    nothing — because scan() returns a fixed point (bounded at _MAX_PASSES
+    reads). Hits passed in explicitly are applied as given.
+    """
+    if not text:
+        return text, []
+    found = list(hits) if hits is not None else scan(text)
+    if not found:
+        return text, []
+    return _render(text, found)[0], found
+
+
+# ─── Internals ────────────────────────────────────────────────────────────────
+
+def _matches(text: str) -> list[tuple[int, int, int, str]]:
+    """Every match of every pattern, as (start, end, pattern order, kind)."""
     spans: list[tuple[int, int, int, str]] = []
     for order, (kind, pat, gi) in enumerate(_PATTERNS):
         for m in pat.finditer(text):
             s, e = m.span(gi) if gi else m.span()
             spans.append((s, e, order, kind))
-    spans.sort()
+    return spans
+
+
+def _merge(text: str, spans: list[tuple[int, int, int, str]]) -> list[Hit]:
+    """Overlapping spans become one hit over their union, labelled by its widest member."""
     hits: list[Hit] = []
     cur_s = cur_e = -1
     best: tuple[int, int, str] | None = None  # (-width, order, kind)
-    for s, e, order, kind in spans:
+    for s, e, order, kind in sorted(spans):
         if best is not None and s < cur_e:  # overlaps the open cluster
             cur_e = max(cur_e, e)
             best = min(best, (-(e - s), order, kind))
@@ -158,21 +233,35 @@ def scan(text: str) -> list[Hit]:
     return hits
 
 
-def redact(text: str, hits: Iterable[Hit] | None = None) -> tuple[str, list[Hit]]:
-    """Return (masked_text, hits). Idempotent — re-running on masked text is a no-op."""
-    if not text:
-        return text, []
-    found = list(hits) if hits is not None else scan(text)
-    if not found:
-        return text, []
+def _render(text: str, hits: list[Hit]) -> tuple[str, list[_Piece]]:
+    """The redacted text, and where each of its pieces came from in `text`."""
     out: list[str] = []
-    cursor = 0
-    for h in found:
-        out.append(text[cursor:h.start])
-        out.append(f"<redacted:{h.kind}>")
+    pieces: list[_Piece] = []
+    pos = cursor = 0
+    for h in hits:
+        for chunk, in_s, in_e, marker in ((text[cursor:h.start], cursor, h.start, False),
+                                          (f"<redacted:{h.kind}>", h.start, h.end, True)):
+            if chunk:
+                out.append(chunk)
+                pieces.append((pos, pos + len(chunk), in_s, in_e, marker))
+                pos += len(chunk)
         cursor = h.end
-    out.append(text[cursor:])
-    return "".join(out), found
+    tail = text[cursor:]
+    out.append(tail)
+    if tail:
+        pieces.append((pos, pos + len(tail), cursor, len(text), False))
+    return "".join(out), pieces
+
+
+def _to_input(pieces: list[_Piece], s: int, e: int) -> tuple[int, int]:
+    """Map the span [s, e) of a redacted text back onto the text it was made from."""
+    i = bisect.bisect_right([p[0] for p in pieces], s) - 1
+    out_s, _, in_s, _, marker = pieces[i]
+    start = in_s if marker else in_s + (s - out_s)
+    j = bisect.bisect_left([p[1] for p in pieces], e)
+    out_s, _, in_s, in_e, marker = pieces[j]
+    end = in_e if marker else in_s + (e - out_s)
+    return start, end
 
 
 def _preview(secret: str) -> str:

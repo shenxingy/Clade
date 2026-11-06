@@ -9,15 +9,20 @@ what must not"):
    can anchor on, leaves no run of 8 or more of its characters in the output —
    which includes, and is stronger than, "no 8-character tail survives".
 2. Redaction is idempotent on the text it returns: a second pass changes nothing
-   and reports nothing.
+   and reports nothing. This one has no delimiting precondition — it is also
+   searched over credentials glued together with no separator at all, because
+   it holds by construction: scan() iterates to a fixed point.
 
-What the first runs found in redact.py, all fixed in the same change and pinned
-below: overlapping matches resolved by dropping the later-listed one, so a JWT
-holding an `-AKIA…` or `-sk-ant-…` run kept its header and payload in the clear;
+What the runs found in redact.py, all fixed in the same change and pinned below:
+overlapping matches resolved by dropping the later-listed one, so a JWT holding
+an `-AKIA…` or `-sk-ant-…` run kept its header and payload in the clear;
 env_secret matching its own `<redacted:…>` marker, so a second pass (and
-scrub-corrections.py) reported the marker as a credential; and a trailing `\\b`
+scrub-corrections.py) reported the marker as a credential; a trailing `\\b`
 after a class containing `-`, so `AIza` + 34 + `-` or `sk-` + 19 + `-` was not
-masked at all.
+masked at all; and a single read of the text, so a PEM inside an env value left
+the rest of the value in the clear (env_secret cannot span the PEM's
+whitespace until the PEM is a marker) and an AKIA run glued to an AWS secret
+was found only by a second pass.
 
 Why the generator inserts separators. Every token pattern in redact.py is
 \\b-anchored at its start and several are fixed-length (`AKIA[0-9A-Z]{16}`).
@@ -40,9 +45,9 @@ a failure that appears once and not on a rerun is a real counterexample the
 search found by luck — pin it, do not rerun it away.
 
 The last section keeps the mutations in the file: a copy of redact.py with one
-pattern removed, or one of the fixes these properties forced undone, must make
-the property find a counterexample, and the same search over the shipped module
-must find none. A property that cannot go red when a pattern disappears is not
+pattern removed, or one of the fixes and guards these properties rely on undone,
+must make the property find a counterexample, and the same search over the
+shipped module must find none. A property that cannot go red when a pattern disappears is not
 checking that pattern.
 """
 
@@ -199,7 +204,14 @@ BARE_TOKENS: dict[str, st.SearchStrategy[str]] = {
     "github_token": st.builds(lambda c, b: f"gh{c}_{b}", _pick(*"pousr"), _chars(ALNUM, 36, 60)),
     "aws_access_key": st.builds(lambda b: f"AKIA{b}", _chars(UPPER_DIGITS, 16, 16)),
     "google_api_key": st.builds(lambda b: f"AIza{b}", _body(URLSAFE, 35, 35)),
-    "slack_token": st.builds(lambda c, b: f"xox{c}-{b}", _pick(*"baprs"), _body(ALNUM + "-", 10, 60)),
+    "slack_token": st.one_of(
+        st.builds(lambda c, b: f"xox{c}-{b}", _pick(*"baprs"), _body(ALNUM + "-", 10, 60)),
+        # The merge's union path: a later match that starts INSIDE an open cluster
+        # and runs past its end. slack_token's class stops at `_`; the openai key
+        # starting at the inner `sk-` does not, so only the union covers both.
+        st.builds(lambda c, b, k, t: f"xox{c}-{b}-sk-{k}_{t}", _pick(*"baprs"), _chars(ALNUM, 10, 30),
+                  _chars(ALNUM, 1, 12), _chars(URLSAFE, 19, 40)),
+    ),
     "stripe_key": st.builds(lambda p, m, b: f"{p}_{m}_{b}", _pick("sk", "rk", "pk"), _pick("live", "test"),
                             _chars(ALNUM, 20, 60)),
     "generic_secret_key": st.builds(lambda p, b: f"{p}_{b}", _pick("sk", "rk", "ak"), _chars(ALNUM, 32, 64)),
@@ -208,7 +220,8 @@ ANY_BARE = st.one_of(*BARE_TOKENS.values())
 
 
 @st.composite
-def _maybe_nested(draw, plain: st.SearchStrategy[str], short: st.SearchStrategy[str], delims: list[str]) -> str:
+def _maybe_nested(draw, plain: st.SearchStrategy[str], short: st.SearchStrategy[str], delims: list[str],
+                  inner: st.SearchStrategy[str] = ANY_BARE) -> str:
     """A container body, half the time with another credential inside it.
 
     A JWT segment, an env value or a PEM body may contain a run some OTHER
@@ -218,7 +231,7 @@ def _maybe_nested(draw, plain: st.SearchStrategy[str], short: st.SearchStrategy[
     if not draw(st.booleans()):
         return draw(plain)
     d = draw(st.sampled_from(delims))
-    return draw(short) + d + draw(ANY_BARE) + d + draw(short)
+    return draw(short) + d + draw(inner) + d + draw(short)
 
 
 _JWT_SEGMENT = _maybe_nested(_body(URLSAFE, 10, 60), _chars(URLSAFE, 0, 12), ["-"])
@@ -237,22 +250,33 @@ def _aws_secret(draw) -> Embedded:
 
 
 @st.composite
-def _env_secret(draw) -> Embedded:
-    keyword = draw(_pick("api_key", "API_KEY", "api-key", "apikey", "secret", "SECRET",
-                         "password", "Password", "passwd", "token", "TOKEN", "auth"))
-    assign = draw(_pick("=", ": ", " = ", ":"))
-    q = draw(_pick("'", '"'))
-    value = draw(_maybe_nested(_chars(ENV_VALUE_ALPHABET, 12, 60), _chars(ENV_VALUE_ALPHABET, 0, 12),
-                               ENV_INNER_DELIMS))
-    return Embedded(f"{keyword}{assign}{q}", value, q)
-
-
-@st.composite
 def _private_key(draw) -> Embedded:
     kind = draw(_pick("", "RSA ", "OPENSSH ", "DSA ", "EC ", "PGP "))
     lines = st.lists(_chars(B64, 1, 64), min_size=1, max_size=4).map("\n".join)
     body = draw(_maybe_nested(lines, _chars(B64, 0, 12), ["\n"]))
     return Embedded(f"-----BEGIN {kind}PRIVATE KEY-----\n", body, f"\n-----END {kind}PRIVATE KEY-----")
+
+
+# A coin flip, not st.one_of(ANY_BARE, pem): one_of flattens ANY_BARE's members
+# and would leave the PEM one choice in ten.
+_ENV_INNER = st.booleans().flatmap(lambda pem: _private_key().map(lambda e: e.fragment) if pem else ANY_BARE)
+
+
+@st.composite
+def _env_secret(draw) -> Embedded:
+    """An env-style assignment; its value may hold a bare token OR a whole PEM block.
+
+    The PEM is the case one read of the text cannot get right: env_secret's
+    value class excludes whitespace, so it matches only once the PEM is a marker,
+    and whatever else the value holds (`k=`, a YAML `\\n`) went out in the clear.
+    """
+    keyword = draw(_pick("api_key", "API_KEY", "api-key", "apikey", "secret", "SECRET",
+                         "password", "Password", "passwd", "token", "TOKEN", "auth"))
+    assign = draw(_pick("=", ": ", " = ", ":"))
+    q = draw(_pick("'", '"'))
+    value = draw(_maybe_nested(_chars(ENV_VALUE_ALPHABET, 12, 60), _chars(ENV_VALUE_ALPHABET, 0, 12),
+                               ENV_INNER_DELIMS, _ENV_INNER))
+    return Embedded(f"{keyword}{assign}{q}", value, q)
 
 
 EMBEDDED: dict[str, st.SearchStrategy[Embedded]] = {
@@ -274,7 +298,21 @@ def documents(draw) -> Doc:
     return Doc(tuple(parts))
 
 
-TEXTS = st.one_of(documents().map(Doc.text), st.text())
+@st.composite
+def glued(draw) -> str:
+    """Credentials and filler run together with NO separator.
+
+    Outside the leak property on purpose (`xAKIA…` is not a key to a \\b-anchored
+    pattern), but inside the idempotence one: whatever one pass masks, the next
+    must find nothing. `AWS_SECRET_ACCESS_KEY=` + 40 + `AKIA…` broke that until
+    scan() iterated, because the AKIA run has a \\b only once the secret before
+    it is a marker.
+    """
+    frags = st.one_of(st.one_of(*EMBEDDED.values()).map(lambda e: e.fragment), FILLER)
+    return "".join(draw(st.lists(frags, min_size=1, max_size=5)))
+
+
+TEXTS = st.one_of(documents().map(Doc.text), glued(), st.text())
 
 
 # ─── Properties ───────────────────────────────────────────────────────────────
@@ -348,6 +386,7 @@ def _one(emb: Embedded) -> Doc:
 
 _ANT = "sk-" + "ant-api03-" + "0" * 40
 _JWT_HEAD = "ey" + "J" + "0" * 10 + ".ey" + "J" + "0" * 10 + "."
+_PEM_BEGIN, _PEM_END = "-----BEGIN " + "PRIVATE KEY-----", "-----END " + "PRIVATE KEY-----"
 
 # 1. A JWT whose third segment holds an anthropic-shaped run. anthropic_key is
 #    listed before jwt, and scan() let the first-listed match win and DROPPED the
@@ -373,6 +412,27 @@ PIN_OPENAI_SHORTEST_TRAILING_DASH = _one(Embedded("", "sk-" + "0" * 19 + "-"))
 # 6. Not a redact.py defect — this file's oracle: a secret ending in `redacted`
 #    "survived" through the marker's own name until _unmarked() existed.
 PIN_SECRET_SPELLING_MARKER = _one(Embedded("api_" + "key='", "," + _ANT + ",redacted", "'"))
+# 7. A later match that starts inside an open cluster and runs past its end:
+#    slack_token stops at `_`, the openai key from the inner `sk-` does not. The
+#    merged hit must span the union; with `cur_e` not extended, 20 characters of
+#    the openai key went out. No defect in the shipped merge — this pins the half
+#    of it no generator reached, found by deleting `cur_e = max(cur_e, e)`.
+_SLACK_INTO_OPENAI = "xo" + "xb-0123456789-sk-" + "A" * 20 + "_" + "B" * 20
+PIN_UNION_PAST_THE_CLUSTER = _one(Embedded("", _SLACK_INTO_OPENAI))
+# 8. A PEM inside an env value. env_secret's value class excludes whitespace, so
+#    one read saw only the PEM, masked it, and left `realsecret…` in the clear.
+#    Fixed by scan() re-reading its own redaction until nothing more matches.
+PIN_PEM_INSIDE_AN_ENV_VALUE = _one(Embedded('tok' + 'en: "', "realsecret" + "0" * 12 + _PEM_BEGIN + "\nMIIE"
+                                            + "0" * 16 + "\n" + _PEM_END, '"'))
+# 9. The idempotence half of 8, in the shape a YAML file gives it: a double-quoted
+#    value that ends in a literal backslash-n after the PEM. The first pass left
+#    `<redacted:private_key>\n` in the quotes, the second re-masked it, and
+#    scrub-corrections.py reported the marker as a key to rotate.
+PIN_YAML_PEM_TEXT = 'sec' + 'ret: "' + _PEM_BEGIN + "\\nMIIE" + "0" * 16 + "\\n" + _PEM_END + '\\n"'
+# 10. An AKIA run glued to the end of an AWS secret: no \b before it until the
+#     secret is a marker, so a second pass found what the first had left. Found
+#     by an undelimited search during review; glued() now generates the shape.
+PIN_AWS_GLUED_TEXT = "AWS_SECRET_ACCESS_" + "KEY=" + "0" * 40 + "AK" + "IA" + "0" * 16
 
 
 @PROPERTY_SETTINGS
@@ -381,6 +441,8 @@ PIN_SECRET_SPELLING_MARKER = _one(Embedded("api_" + "key='", "," + _ANT + ",reda
 @example(PIN_GOOGLE_TRAILING_DASH)
 @example(PIN_OPENAI_SHORTEST_TRAILING_DASH)
 @example(PIN_SECRET_SPELLING_MARKER)
+@example(PIN_UNION_PAST_THE_CLUSTER)
+@example(PIN_PEM_INSIDE_AN_ENV_VALUE)
 def test_no_run_of_an_embedded_credential_survives(doc: Doc) -> None:
     assert_no_surviving_run(REDACT, doc)
 
@@ -389,17 +451,47 @@ def test_no_run_of_an_embedded_credential_survives(doc: Doc) -> None:
 @given(TEXTS)
 @example(PIN_JWT_AROUND_AKIA_TEXT)
 @example(PIN_ENV_MARKER_TEXT)
+@example(PIN_YAML_PEM_TEXT)
+@example(PIN_AWS_GLUED_TEXT)
 def test_redaction_is_idempotent_on_its_output(text: str) -> None:
     assert_idempotent(REDACT, text)
+
+
+# ─── Labels ───────────────────────────────────────────────────────────────────
+# Cosmetic next to a leak, but the label is what the owner reads in the persisted
+# history, and scan() documents a rule for it: a merged hit is labelled by its
+# widest member, ties going to the earlier-listed pattern.
+LABEL_CASES = {
+    "the widest member starts later": (" " + _SLACK_INTO_OPENAI + " ", " <redacted:openai_key> "),
+    "a tie goes to the earlier-listed pattern": (" " + _ANT + " ", " <redacted:anthropic_key> "),
+    "a PEM inside an env value is the env value": (PIN_YAML_PEM_TEXT, 'sec' + 'ret: "<redacted:env_secret>"'),
+}
+
+
+@pytest.mark.parametrize("name", list(LABEL_CASES))
+def test_a_merged_hit_is_labelled_by_its_widest_member(name: str) -> None:
+    text, expected = LABEL_CASES[name]
+    assert _masked(REDACT, text) == expected
+
+
+def test_undoing_the_label_rule_changes_a_label() -> None:
+    """The mutation for the cases above: keep the first member's label instead."""
+    anchor = "best = min(best, (-(e - s), order, kind))"
+    source = REDACT_PATH.read_text(encoding="utf-8")
+    assert source.count(anchor) == 1, "the label rule moved; update the anchor, do not delete the case"
+    mod = _load("clade_redact_first_label", source.replace(anchor, "best = best"))
+    assert any(_masked(mod, text) != expected for text, expected in LABEL_CASES.values())
 
 
 # ─── Mutations: each property must be able to go red ─────────────────────────
 # A search that stops at the first counterexample, generate phase only (the pins
 # above are not allowed to do the finding) and derandomized, so a mutation run is
 # the same run every time — a mutation test must not itself be flaky. Measured on
-# 2026-11-05: the slowest of the 16 mutations below went red at example 231 (the
-# openai trailing \b), most within 40; SEARCH_BUDGET leaves room for generator
-# changes to reshuffle the sequence.
+# 2026-11-06, after the generators learned PEMs in env values, glued text and the
+# slack-into-openai chain: the slowest of the 19 searched mutations below went red
+# at example 141 (scan reading once, seen by idempotence), most within 60. On
+# 2026-11-05, before those generators, the slowest was 231. SEARCH_BUDGET leaves
+# room for generator changes to reshuffle the sequence.
 SEARCH_BUDGET = 600
 
 
@@ -497,6 +589,11 @@ SOURCE_MUTATIONS = {
     "openai key gets its trailing \\b back": (r'(?:proj-)?[A-Za-z0-9_-]{20,}"', r'(?:proj-)?[A-Za-z0-9_-]{20,}\b"',
                                               assert_no_surviving_run, documents()),
     "re.ASCII dropped": ("_A = re.ASCII", "_A = 0", assert_no_surviving_run, documents()),
+    "union not extended": ("cur_e = max(cur_e, e)", "cur_e = cur_e", assert_no_surviving_run, documents()),
+    "scan reads the text once (leak)": ("_MAX_PASSES = 4\n", "_MAX_PASSES = 1\n",
+                                        assert_no_surviving_run, documents()),
+    "scan reads the text once (idempotence)": ("_MAX_PASSES = 4\n", "_MAX_PASSES = 1\n",
+                                               assert_idempotent, TEXTS),
 }
 
 
