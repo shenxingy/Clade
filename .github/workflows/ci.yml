@@ -348,6 +348,15 @@ jobs:
       - name: Workflow-preflight self-test (can it go red?)
         run: python3 configs/scripts/check-workflow-script.py --self-test
 
+      # keep-sessions.py copies the transcripts of corrected sessions, redacted,
+      # out of reach of Claude Code's 30-day cleanup. A keeper that silently
+      # stopped masking, followed a symlink out of a session, or copied a
+      # session marked private would still print "kept N sessions". The
+      # self-test drives main() on a synthetic HOME with a negative control per
+      # exclusion; its mutations live in orchestrator/tests/can_fire/keep_sessions.py.
+      - name: Session keeper self-test (can it go red?)
+        run: python3 configs/scripts/keep-sessions.py --self-test
+
       - name: Score the test-integrity detector against the reward-hack corpus
         run: |
           cd orchestrator
