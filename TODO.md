@@ -2452,6 +2452,19 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   Step 1, S, do first: write both fields from both detectors; pin them in
   `tests/test-correction-pairing.sh`; update the schema paragraph in
   `configs/skills/radar/SKILL.md`.
+  Step 1 DONE 2026-11-06 (fix/correction-session-link): both detectors write
+  `session_id` and `transcript_path` on both write paths (`null` when unknown;
+  a path with a control character or over 1,024 characters is dropped). The
+  correction detector resolves them in one `jq` call before the append, and its
+  private-session check reuses that call. The suite gains 47 cases: 41 fail on
+  the old hooks, and 13 of them are mutations. The radar schema paragraph
+  and CLAUDE.md are updated. The item stays open for Step 2.
+  Two constraints for Step 2:
+  - A session can be marked private after its record is written, so check the
+    `private-sessions` marker when copying, not when the record was written.
+  - `sync-setup.sh` writes no `.gitignore` for `corrections/history.jsonl`, so
+    a fresh sync store pushes this log to its remote. Records now also carry
+    `transcript_path`, but `project` already held the same home path.
   Step 2, M: `configs/scripts/keep-sessions.py`. It copies the transcripts of non-probe records
   through `redact.py` into zstd under `~/.local/share/clade/sessions/`, outside the synced
   `~/.claude`, mode 0700, idempotent, skipping private sessions. Keeping only corrected sessions
@@ -2529,12 +2542,20 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   tail survives; idempotent). Its generator must insert separators, because the `redact.py`
   patterns are `\b`-anchored and fixed-length. Have `ci-local.py` rerun a failed step once and
   report a rerun-green as FLAKY, not green.
-- [ ] 🔵 **Say how deeply each PR was read, and roll up what could not be verified.** Osmani,
+- [x] 🔵 **Say how deeply each PR was read, and roll up what could not be verified.** Osmani,
   *The Code Nobody Reads* (2026-09-28); Larson, *Speeding up code review with small-change*
   (2026-10-17) and *adopting verification pattern* (2026-10-30): "That list is your roadmap".
   34 of 34 recent Clade PRs had no reviewer but the author.
   S: `create-pr` emits a fixed-enum `review depth:` line and a `could not verify:` line.
   `/retro` rolls recurring could-not-verify items into the top three.
+  DONE 2026-11-06 (feat/pr-review-depth): `Review depth: none | skimmed | read-in-full` and
+  `Could not verify: none | <item>; <item>` in the PR template, `/create-pr` §4, `/delivery` §6
+  and `/ship`; `configs/scripts/pr-verification-gaps.py` (self-test, 31 mutations) is `/retro`
+  Step 2c, report only. Skeptic caveats kept: depth is labelled self-reported and checked against
+  forge reviews; a window where no PR states a line reads NOT MEASURED (Clade's 35 PRs in the 14
+  days to 2026-11-06 carry neither line yet).
+  - [ ] M, not done: split `outcome-scorecard.py`'s kept and fixed-forward rates by review depth.
+    Waits until merged PRs carry the line; until then every PR is "missing" and the split is empty.
 - [ ] 🔵 **Unverified: these leads never got the skeptic pass (rank cap).**
   - Anhaia (2026-11-05): agent memory you cannot `git diff`. `sync-link-projects.sh:44`
     matches by basename, so project memories may be missed.
@@ -2565,6 +2586,11 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
       (72) $207–420. It is framed on quality, not cost: the DONE 2026-10-23 effort item rates
       model switching a small cost lever. Decide: approve the pilot, then the minimum or full
       design, or drop it.
-  - LangChain, *Agents Are Going Async* (2026-11-05): `codex-orchestrate` has no recorded pgid
-    for cancel and never uses `codex exec resume`.
-  Anhaia and LangChain each need the two-skeptic pass before any work.
+  - [x] LangChain, *Agents Are Going Async* (2026-11-05): `codex-orchestrate` has no recorded pgid
+    for cancel and never uses `codex exec resume`. DONE 2026-11-06 (docs/codex-orchestrate-steer):
+    both claims survived the verify-first pass; the skill gained § Steer, cancel, follow up
+    (dispatch records the wrapper's pid, cancel signals its whole session, resume takes `-C` and
+    every flag again), pinned by `test_codex_orchestrate_recipes.py`. Still open: no check
+    reached a model, because the checking Codex profile was logged out, so recall after resume
+    is unobserved and the research row's "~4x tokens" stays unmeasured.
+  Anhaia needs the two-skeptic pass before any work.

@@ -150,6 +150,10 @@ SKILL_TEXT_REPLACEMENTS = {
             "~/.claude/scripts/outcome-scorecard.py",
             "<plugin-root>/skills/retro/scripts/outcome-scorecard.py",
         ),
+        (
+            "~/.claude/scripts/pr-verification-gaps.py",
+            "<plugin-root>/skills/retro/scripts/pr-verification-gaps.py",
+        ),
     ),
 }
 
@@ -176,6 +180,10 @@ DECLARED_RESOURCES = {
         (
             REPO_ROOT / "configs" / "scripts" / "outcome_scorecard_fixtures.py",
             Path("scripts/outcome_scorecard_fixtures.py"),
+        ),
+        (
+            REPO_ROOT / "configs" / "scripts" / "pr-verification-gaps.py",
+            Path("scripts/pr-verification-gaps.py"),
         ),
     ),
 }
