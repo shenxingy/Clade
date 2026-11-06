@@ -2529,12 +2529,20 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   tail survives; idempotent). Its generator must insert separators, because the `redact.py`
   patterns are `\b`-anchored and fixed-length. Have `ci-local.py` rerun a failed step once and
   report a rerun-green as FLAKY, not green.
-- [ ] 🔵 **Say how deeply each PR was read, and roll up what could not be verified.** Osmani,
+- [x] 🔵 **Say how deeply each PR was read, and roll up what could not be verified.** Osmani,
   *The Code Nobody Reads* (2026-09-28); Larson, *Speeding up code review with small-change*
   (2026-10-17) and *adopting verification pattern* (2026-10-30): "That list is your roadmap".
   34 of 34 recent Clade PRs had no reviewer but the author.
   S: `create-pr` emits a fixed-enum `review depth:` line and a `could not verify:` line.
   `/retro` rolls recurring could-not-verify items into the top three.
+  DONE 2026-11-06 (feat/pr-review-depth): `Review depth: none | skimmed | read-in-full` and
+  `Could not verify: none | <item>; <item>` in the PR template, `/create-pr` §4, `/delivery` §6
+  and `/ship`; `configs/scripts/pr-verification-gaps.py` (self-test, 30 mutations) is `/retro`
+  Step 2c, report only. Skeptic caveats kept: depth is labelled self-reported and checked against
+  forge reviews; a window where no PR states a line reads NOT MEASURED (Clade's 35 PRs in the 14
+  days to 2026-11-06 carry neither line yet).
+  - [ ] M, not done: split `outcome-scorecard.py`'s kept and fixed-forward rates by review depth.
+    Waits until merged PRs carry the line; until then every PR is "missing" and the split is empty.
 - [ ] 🔵 **Unverified: these leads never got the skeptic pass (rank cap).**
   - Anhaia (2026-11-05): agent memory you cannot `git diff`. `sync-link-projects.sh:44`
     matches by basename, so project memories may be missed.
