@@ -2506,7 +2506,14 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   - M: `configs/scripts/harness-usage.py`. Per shipped skill and hook, report fires, denies,
     rejections and last-fired from `skillUsage` and the transcript hook attachments, main
     thread only.
-  - S: a `# exists-for: … · retire-when: …` header on each hook, checked by `tests/test-hooks.sh`.
+  - [x] S: a `# exists-for: … · retire-when: …` header on each hook, checked by `tests/test-hooks.sh`.
+    DONE 2026-11-06 (docs/hook-provenance-headers): all 35 `configs/hooks/*.sh` carry the line,
+    from git archaeology. 10 name a recorded incident; 25 say "no incident recorded (added
+    <date> in <sha>)" plus the need they serve. The test checks one well-formed line per hook,
+    the cross-check against `settings-hooks.json`, and that every cited sha resolves. It
+    rejects a zero-fires retire-when with no ablation, and 13 mutations turn it red. Open for
+    the owner: `doc-align-check.sh`'s condition is already met, because it is async and its
+    `systemMessage` reaches nobody. The M bullet above stays open; it is another unit.
   - Caveats: zero fires never retires a preventive safety control, and only flags it for
     review. A 60-day window needs a ledger because transcripts are deleted at 30 days.
     Invocation is not behaviour change.
