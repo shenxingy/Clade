@@ -2347,12 +2347,31 @@ The value comes from a fixed-behaviour replay (30 days to 2026-11-05, aries, bot
   7. Realised saving: main input volume per session (simulated −52%) and 5-hour
      quota per unit of work. Not a quality rollback: below a 25% saving the premise
      failed, so re-decide.
+  8. Exploratory, NOT a rollback threshold: context inertia (Breunig, *Context
+     Inertia*, 2026-10-14 — a model "keeps pursuing [a hypothesis] after the evidence
+     says to stop", and compaction "potentially distills what's driving the model's
+     hyper-focus"). Edit size and thinking tokens per turn against context tokens,
+     before vs after, computed by `context-census.py` (PR 2) once it lands. The
+     source's evidence is secondhand and from hours-long autoresearch, not
+     interactive coding, so this proxy informs the decision and never triggers a
+     rollback. Prior art, not a new proposal: `/loop` already starts a fresh
+     supervisor every iteration (`loop-runner.sh`, `node_supervisor` over a context
+     rebuilt by `hydrate_context`), and the dormant orchestrator carries
+     `loop_context_mode=reset` (`orchestrator/config.py`; a full harness-level reset
+     was deferred as needing Anthropic API changes,
+     `docs/archive/BRAINSTORM-resolved.md`). Counter-evidence: arXiv:2610.35971 has
+     uninterrupted continuation winning in 216 of 224 budget-threshold configurations,
+     and in all four settings at the 75k cap (147,002 traces), and predicting a failing
+     run within the task at its early 5k–20k-token landmarks scores AUC 0.50 — so short
+     tasks are not reset, and no reset is triggered by a predicted failure.
 
   Rollback is `./install.sh --no-context-policy` or `CLADE_CONTEXT_POLICY=off`,
   which removes only the value Clade owns; per user, `/autocompact auto`.
 - [ ] 🟡 **PR 2 — `configs/scripts/context-census.py`, the trial instrument.**
   Report-only, about 400 lines, over N days: agentType mix, main and subagent
-  compaction counts and preTokens, volume per main session. Not inside
+  compaction counts and preTokens, volume per main session, and the trial's
+  exploratory proxy 8 (edit size and thinking tokens per turn against context
+  tokens). Not inside
   `workflow-scorecard.py`, which is at 1,444 of 1,500 lines. Snapshot the 30-day
   baseline now.
 - [ ] 🟡 **PR 3 — flip `enabled_by_default` to true, only after the trial passes.**
@@ -2469,13 +2488,24 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   through `redact.py` into zstd under `~/.local/share/clade/sessions/`, outside the synced
   `~/.claude`, mode 0700, idempotent, skipping private sessions. Keeping only corrected sessions
   is our narrowing (the essay keeps all), chosen for cost.
-- [ ] 🟡 **Context inertia: `/pickup` executes the last session's hypothesis as orders, and the
-  350K trial cannot see the failure. Do before the 2026-11-12 evaluation.** Breunig, *Context
+- [x] 🟡 **Context inertia: `/pickup` executes the last session's hypothesis as orders, and the
+  350K trial cannot see the failure. Do before the 2026-11-12 evaluation.** DONE 2026-11-06
+  (feat/handoff-hypotheses): handoff v3 writes `## Hypotheses` (evidence, status
+  current/UNCONFIRMED/ruled-out, "Drop it if") and `## Stop conditions & out of scope`; pickup
+  Step 5 re-checks the current hypothesis before acting (every commit since Meta.HEAD; the
+  cited files diffed by content from Meta.HEAD, so a rebase or squash merge still compares and
+  only a clone without Meta.HEAD reports "not re-checked"; the hypothesis's own drop condition;
+  the stop conditions), treats Next Steps as proposals, proceeds without asking when it holds
+  and re-plans when contradicted; proxy 8 added to the trial; pinned on all three surfaces by
+  `orchestrator/tests/test_handoff_pickup_contract.py`. Every mutation in its table must turn
+  it red; an edit the table does not list is not shown to be caught.
+  The deferred `/iloop --reset-every N` is split out below. Breunig, *Context
   Inertia* (2026-10-14): "the model commits to a hypothesis, subtask, or goal … and keeps
   pursuing it after the evidence says to stop", and compaction "potentially distills what's
   driving the model's hyper-focus". `configs/skills/pickup/prompt.md:68` says "Immediately start
   executing Next Steps #1". The handoff template records no tried or ruled-out hypotheses.
-  None of the trial's seven proxies (section above) measures persistence.
+  None of the trial's original seven proxies (section above) measures persistence; proxy 8,
+  added by this item, looks at it and is exploratory.
   Fix S:
   - Handoff gets `## Hypotheses` (each with evidence, status, and what would make me drop it)
     and `## Stop conditions`.
@@ -2487,9 +2517,12 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
     context tokens, from `context-census.py`. It is not a rollback threshold.
   - Prior art to cite rather than re-propose: `/loop` starts a fresh supervisor every iteration,
     and the dormant `loop_context_mode=reset` exists. Counter-evidence in the ledger:
-    arXiv:2610.35971 has continuation winning 216 of 224 configurations, so do not reset short
-    tasks.
-  Deferred, M: `/iloop --reset-every N`, which needs an external driver.
+    arXiv:2610.35971 has continuation winning 216 of 224 budget-threshold configurations, so do
+    not reset short tasks.
+- [ ] 🔵 **Deferred, M: `/iloop --reset-every N`.** Split out of the context-inertia item above,
+  whose S fix shipped without it. A Stop hook cannot clear context, so this needs an external
+  driver; the counter-evidence there (arXiv:2610.35971) argues for resetting on a fixed length,
+  size or plateau, never on a predicted failure, and not at all for short tasks.
 - [ ] 🟡 **friction-rank.py — a verdict channel ranked by distinct sessions.** Gorokh, *The loop
   learned slowly from corrections and faster from verdicts* (2026-10-08). On one operator's
   fleet, the correction channel adopted 1 rule in 11 weeks. An A/B of 7 mined rules found 0
