@@ -44,7 +44,11 @@ transcript for the subagent shape. Each line is one JSON object with a ``type``:
                 ``message.id``. A tool_use block has ``id``, ``name``, ``input``
                 and ``caller``. Also ``requestId``, ``timestamp``, ``uuid``,
                 ``parentUuid``, ``sessionId``, ``isSidechain``, ``cwd``,
-                ``gitBranch``, ``effort``/``perTurnEffort``.
+                ``gitBranch``, ``effort``/``perTurnEffort``, and on most
+                tool calls ``wireToolInputs`` (``{tool_use_id: input}``), the
+                input as the API carried it. In one transcript it differed from
+                ``input`` on 183 of 825 calls, mostly by a leading ``cd <dir>
+                &&`` that ``input`` lacks. ``tool_events`` reports ``input``.
 ``user``        ``message.content`` is a string (typed text) or a list. A list
                 can hold tool_result blocks: ``tool_use_id``, ``content`` (a
                 string, or a list of ``text``, ``image`` and ``tool_reference``
