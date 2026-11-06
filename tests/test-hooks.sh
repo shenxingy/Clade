@@ -1329,6 +1329,52 @@ else
     fail "mutation: without the initialisation the Bash case fails again" "rc=$ms_rc pushed=$(ms_pushed)"
   fi
 fi
+
+# A project memory under a profile's projects dir (CLAUDE_CONFIG_DIR, or any
+# ~/.claude-profiles/*/projects) is synced at write time too, as the linker
+# scans all three. The memory gates need a fresh file of 80+ bytes, and each
+# case a new name (24 h cooldown per name).
+MS_NOTE='A project memory long enough to pass the specificity gate: it records one fact, with its reason.'
+ms_note() { mkdir -p "$(dirname "$1")"; printf '%s\n' "$MS_NOTE" > "$1"; }
+ms_write() { printf '{"tool_name":"Write","tool_input":{"file_path":"%s"}}' "$1"; }
+MS_PROF="$MS_HOME/.claude-profiles/p1/projects"
+ms_note "$MS_PROF/-x/memory/profile-note.md"
+ms_run "$MS_HOOK" "$(ms_write "$MS_PROF/-x/memory/profile-note.md")"
+assert_eq "$ms_rc$(ms_pushed)" "0yes" "a Write into ~/.claude-profiles/<p>/projects/<slug>/memory pushes"
+ms_note "$MS_HOME/cfg/projects/-y/memory/config-note.md"
+rm -f "$MS_HOME/pushed"
+ms_err=$(ms_write "$MS_HOME/cfg/projects/-y/memory/config-note.md" \
+  | HOME="$MS_HOME" CLAUDE_CONFIG_DIR="$MS_HOME/cfg" bash "$MS_HOOK" 2>&1 >/dev/null); ms_rc=$?
+for _i in 1 2 3 4 5 6 7 8 9 10; do [[ -f "$MS_HOME/pushed" ]] && break; sleep 0.2; done
+assert_eq "$ms_rc$(ms_pushed)" "0yes" "a Write into \$CLAUDE_CONFIG_DIR/projects/<slug>/memory pushes"
+ms_note "$MS_PROF/-x/notes/not-memory.md"
+ms_run "$MS_HOOK" "$(ms_write "$MS_PROF/-x/notes/not-memory.md")"
+assert_eq "$(ms_pushed)" "no" "a Write beside memory/ in a profile's project does not push"
+ms_note "$MS_PROF/-x/sub/memory/too-deep.md"
+ms_run "$MS_HOOK" "$(ms_write "$MS_PROF/-x/sub/memory/too-deep.md")"
+assert_eq "$(ms_pushed)" "no" "nor does a memory/ one level too deep"
+ms_run "$MS_HOOK" '{"tool_name":"Bash","tool_input":{"command":"rm ~/.claude-profiles/p1/projects/-x/memory/old.md"}}'
+assert_eq "$ms_rc$(ms_pushed)" "0yes" "a Bash call into a profile's project memory pushes"
+# Observed, not claimed: without the profile dirs in is_project_memory's list,
+# a profile's memory is not pushed.
+MS_MUT2="$MS_HOME/memory-sync.no-profiles.sh"
+python3 - "$MS_HOOK" "$MS_MUT2" <<'PY'
+import sys
+src = open(sys.argv[1]).read()
+old = '${CLAUDE_CONFIG_DIR:+"$CLAUDE_CONFIG_DIR/projects"} \\\n           "$HOME"/.claude-profiles/*/projects; do'
+open(sys.argv[2], "w").write(src.replace(old, "; do") if src.count(old) == 1 else src)
+PY
+ms_note "$MS_PROF/-x/memory/mutant-note.md"
+if cmp -s "$MS_HOOK" "$MS_MUT2" || ! bash -n "$MS_MUT2"; then
+  fail "mutation: the profile projects dirs were found to remove" "anchor missing or mutant unparsable"
+else
+  ms_run "$MS_MUT2" "$(ms_write "$MS_PROF/-x/memory/mutant-note.md")"
+  if [[ "$ms_rc$(ms_pushed)" == "0no" ]]; then
+    pass "mutation: without the profile dirs a profile's memory is not pushed"
+  else
+    fail "mutation: without the profile dirs a profile's memory is not pushed" "rc=$ms_rc pushed=$(ms_pushed)"
+  fi
+fi
 rm -rf "$MS_HOME"
 
 # ─── Summary ─────────────────────────────────────────────────────────
