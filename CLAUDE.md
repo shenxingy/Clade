@@ -178,9 +178,11 @@ python3 configs/scripts/outcome-scorecard.py --since 7 --repo shenxingy/Clade --
 # Where did the harness say no, and in how many sessions? Errors, PreToolUse
 # hook denials, permission refusals, timeouts, unchanged retries after one of
 # those, and hook_non_blocking_error, from the transcripts, ranked by DISTINCT
-# sessions then count, on discovery ISO weeks with the last week held out. Each
-# family shows its full refusal text, the next 3 calls and provenance. Friction
-# is not a defect: a refusal can be a guard doing its job. Radar Lane D.
+# sessions then count, on discovery ISO weeks with the last week held out (it
+# prints the held-out span and warns below 7 days; radar passes
+# --holdout-weeks 2). Each family shows its full refusal text, the next 3 calls
+# and provenance. Friction is not a defect: a refusal can be a guard doing its
+# job. Radar Lane D.
 python3 configs/scripts/friction-rank.py                  # 30 days, main thread
 python3 configs/scripts/friction-rank.py --subagents --json
 
@@ -711,9 +713,13 @@ python3 configs/scripts/outcome-scorecard.py --self-test
 #     a verdict text — radar's hand tally cut stderr at 90 characters. The
 #     self-test drives main() on synthetic transcripts under --root with --now
 #     pinned: every verdict class, a quoted refusal that is NOT one, the family
-#     rules (heredocs stripped, cd skipped, subcommands kept), sessions before
-#     count, held-out weeks, the window and main-thread-only; its mutations are
-#     in test_self_tests_can_fire.py.
+#     rules (heredocs stripped, cd skipped, option values skipped, subcommands
+#     kept), sessions before count, held-out weeks and their span, the window,
+#     main-thread-only, the refusals table's classes, the latest occurrence and
+#     unreadable transcripts. Its mutations are in
+#     orchestrator/tests/can_fire_friction_rank.py, which
+#     test_self_tests_can_fire.py loads: that file reached 1,470 of its 1,500
+#     lines.
 python3 configs/scripts/friction-rank.py --self-test
 
 # 9. Architecture map coverage — every orchestrator module listed in this file
