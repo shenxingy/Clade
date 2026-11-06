@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # verify-task-completed.sh — Adaptive quality gate before marking a task as completed
+# exists-for: no incident recorded (added 2026-02-18 in 5e9103b; could not block until 2026-09-12, f520313); need: type-check and test before a task is marked completed · retire-when: only after an ablation shows tasks marked completed without it fail their checks no more often
 # Triggered by TaskCompleted
 # Exit 2 = block completion, exit 0 = allow
 #

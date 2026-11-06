@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # sync-health.sh — Detect dotfiles sync drift at session start
+# exists-for: dotfiles sync failed silently from 2026-04-01 to 2026-04-29 (added 2026-04-29 in 4fe2624) · retire-when: the sync store is retired (no ~/.claude/.sync-config on any machine)
 #
 # Runs on SessionStart. Checks for the silent-fail conditions that broke
 # sync from 2026-04-01 through 2026-04-29:

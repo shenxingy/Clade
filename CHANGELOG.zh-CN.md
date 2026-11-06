@@ -9,6 +9,7 @@ semantic versioning。
 
 ### 变更
 
+- `bounded-implementer` 及其 Codex 对应的 `clade_cheap_worker` 现在把 verifier、它运行的测试和这些测试的 fixture 视为只读。被委派的实现者可以新增测试用例，但不得削弱、跳过、删除或重新基线已有的断言或 fixture；verifier 看起来有误时，向 lead 报告，而不是改它。这是一条指令，不是强制控制。实现阶段的模型档位 A/B（在 8 个有已知答案的回放修复上比较 Opus 5.5 xhigh、Sonnet 5 medium 和 Opus 5.5 medium）已连同运行脚本写好并排队，尚未运行，等待额度决定：`docs/research/2026-10-23-workflow-effort-and-reader-ab.md`。
 - 为中英文 README 增加工作流示意、首次检查和仓库地图，明确原生入口、MCP bridge 与可选适配器的边界。
 - 仓库上手规范现在检查社区入口是否可用、入门任务是否具体，以及文档是否对应读者实际能获取的版本。`document-release` 也可在发布前处理 README 和开源上手优化，`orchestrate` 会把相关检查写入任务验收条件。
 

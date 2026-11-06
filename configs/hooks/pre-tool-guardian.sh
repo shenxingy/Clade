@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # pre-tool-guardian.sh — Block dangerous Bash commands before they execute
+# exists-for: no incident recorded (added 2026-02-23 in e434b46 for unattended runs, OpenClaw playbook); need: stop timing-out migrations, catastrophic deletes, force pushes to main and DROP before they run · retire-when: per check, only after an ablation shows no such command reaches execution without it; a check that never fires is flagged for review, not retired
 #
 # Triggered: PreToolUse (matcher: Bash)
 # Purpose:   Auto-block operations that either:

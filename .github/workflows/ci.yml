@@ -414,6 +414,14 @@ jobs:
       - name: Run hook delivery tests
         run: bash tests/test-hooks.sh
 
+      # Every configs/hooks/*.sh names the incident it exists for and when it
+      # may retire: one well-formed line per hook, cross-checked against the
+      # wiring, no `<…>`/`{…}` placeholder, no zero-fires retirement without an
+      # ablation (a wording table), mutations that must go red
+      # (split out of test-hooks.sh when it would have crossed the 1500-line rule)
+      - name: Run hook provenance tests
+        run: bash tests/test-hook-provenance.sh
+
       # Project auto-memory reaches the sync store: a real memory dir is
       # adopted (verified copy, link back, commit), store entries link at
       # Claude Code's own slug in ~/.claude, $CLAUDE_CONFIG_DIR and every
@@ -509,6 +517,15 @@ jobs:
       # supervisor budget defaulted to 120s through two separate stuck runs.
       - name: Run loop argument tests
         run: bash tests/test-loop-args.sh
+
+      # /loop --holdout DIR: acceptance scenarios the workers cannot see or
+      # commit to. Drives loop-runner.sh against a scratch repo with a mocked
+      # claude and asserts that a failing scenario blocks convergence, that no
+      # prompt names a scenario, and that a scenario's writes never reach a
+      # commit; its last section removes each guard and requires red. It
+      # shipped unwired: neither this job nor test-loop.sh ran it.
+      - name: Run loop holdout tests
+        run: bash tests/test-loop-holdout.sh
 
       # ci-local.py runs THESE workflows on a developer machine, so hosted
       # minutes are the receipt rather than the gate. The thing it must never

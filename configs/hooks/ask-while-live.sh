@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # ask-while-live.sh — refuse AskUserQuestion while this session has a live
 # background task, so its completion notice can still wake the session.
+# exists-for: 7 Workflow completions sat unread for 36.5 completion-hours behind 4 open AskUserQuestion prompts (measured 2026-10-22; added 2026-10-23 in 25330ba, #155) · retire-when: Claude Code itself wakes a session parked on AskUserQuestion when a background task finishes (verify on the installed version), or an ablation shows no completion goes unread without it
 #
 # Triggered: PreToolUse (matcher: AskUserQuestion), main thread only.
 #

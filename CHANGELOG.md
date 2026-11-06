@@ -9,6 +9,7 @@ versioning for the `clade-mcp` Python package and tagged public releases.
 
 ### Changed
 
+- `bounded-implementer` and its Codex twin `clade_cheap_worker` now treat the verifier, the tests it runs and their fixtures as read-only. A delegated implementer may add test cases but never weaken, skip, delete or re-baseline an existing assertion or fixture, and it reports a verifier that looks wrong instead of editing it. This is an instruction, not a control. A model-tier A/B for implement stages (Opus 5.5 xhigh, Sonnet 5 medium and Opus 5.5 medium on 8 replayed fixes with known answers) is written up with its harness and queued, not run, pending a quota decision: `docs/research/2026-10-23-workflow-effort-and-reader-ab.md`.
 - Add product-specific workflow diagrams, first-use checks, repository maps, and clear native/MCP/optional-adapter entry points to the English and Chinese READMEs.
 - Repository onboarding guidance now checks usable community routes, concrete starter tasks and agreement with the version readers can obtain. `document-release` also handles README and open-source onboarding requests before a release, and `orchestrate` carries the relevant checks into task acceptance criteria.
 

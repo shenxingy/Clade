@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # prompt-tracker.sh — notice when the same brief is being typed again, and say so.
+# exists-for: the owner kept hand-typing long standing briefs and nothing said so; the async original never spoke across 386,760 prompts (rewritten 2026-09-02 in ec7847d; added 2026-02-27 in 15049ea) · retire-when: its notices stop turning repeated briefs into skills (owner review), or Claude Code flags repeated prompts itself
 #
 # Why this was rewritten (2026-09-02)
 # -----------------------------------

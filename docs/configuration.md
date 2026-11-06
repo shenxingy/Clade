@@ -244,6 +244,38 @@ paginated GraphQL search at 10 PRs per page and notes it; any other repository
 gh cannot read is named as not measured, never counted as zero. `/retro` runs
 this as its Outcomes step.
 
+**Roll up what merged PRs could not verify.** Every PR body that `/create-pr`,
+`/delivery` and `/ship` write, and this repository's PR template, carries two
+fixed lines:
+
+```text
+Review depth: none | skimmed | read-in-full
+Could not verify: none | <item>; <item>
+```
+
+`Review depth` is how far someone other than the author read the diff, with an
+optional `(by …)`. `Could not verify` lists what was not checked, each item a few
+words naming the surface, with its reason in parentheses. One unverified item is
+a caveat; the same item in PR after PR is a missing capability.
+
+```bash
+python3 configs/scripts/pr-verification-gaps.py --since 14         # the repository gh resolves here
+python3 configs/scripts/pr-verification-gaps.py --repo OWNER/NAME --json
+```
+
+It reads every PR merged into one repository in the window, by any author, and
+groups the items by their words (case, emphasis, trailing punctuation and a
+trailing `(reason)` are ignored). The top `--top` (default 3) items that recur in
+2 or more PRs are printed as candidate `- [ ]` TODO entries; nothing is written.
+Lines inside an HTML comment or fenced code, or opening in inline code, are not
+read; a `<placeholder>` or the `a | b` format line counts as unfilled; and a PR
+without the line is not counted as verified: when no PR states it, the section
+says NOT MEASURED. Both lines are self-reported, so review depth is checked
+against the forge, and a claimed reading that no submitted review by anyone but
+the author backs is listed as a question, since a reader outside GitHub leaves
+no review there. On this repository's 35 PRs merged in the 14 days to
+2026-11-06, neither line appeared yet. `/retro` runs this as its Step 2c.
+
 ## Context window policy
 
 **Opt-in, and not yet shown to cost nothing in quality.** One settings key makes
@@ -566,9 +598,32 @@ capped at 10/run. Killed mutants drop from the baseline automatically.
 
 ## Add a new hook
 
-1. Create `configs/hooks/your-hook.sh`
+1. Create `configs/hooks/your-hook.sh`. Within its first 10 lines it must carry
+   exactly one provenance line, with ` · retire-when: ` (a middle dot) between
+   the two halves:
+
+   ```bash
+   # exists-for: <incident or need>, <YYYY-MM-DD>, <commit sha or #PR> · retire-when: <condition>
+   ```
+
+   - **exists-for** names the recorded incident the hook answers, its date and
+     the commit or PR that records it. If nothing records one, write
+     `no incident recorded (added <date> in <sha or #PR>)` and the need it
+     serves; never invent an incident. A cited sha must resolve to a commit; a
+     new hook may cite its own open PR.
+   - **retire-when** names the condition under which the hook may be removed.
+     A hook that blocks retires only after an ablation shows no harm without
+     it, because a guard that never fires may be working. For any hook, a
+     condition resting on it going quiet ("unused for 60 days", "has not
+     fired", "0 hits", "last fired 90 days ago") is refused unless it names an
+     ablation. The check matches these wordings, not the meaning, so state the
+     condition plainly rather than around it.
+   - `/generate-hook` emits this line for you to fill. A `<…>` or `{…}`
+     placeholder left in it is refused.
 2. Add the hook definition to `configs/settings-hooks.json`
-3. Run `./install.sh`
+3. Run `bash tests/test-hook-provenance.sh`: it checks the line on every hook,
+   and that every hook the settings wire is among those checked
+4. Run `./install.sh`
 
 ## Add a new agent
 
