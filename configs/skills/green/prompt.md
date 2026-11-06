@@ -42,19 +42,25 @@ say so, then fall back to the gates the project documents itself (its
 Never report a build green on the strength of a runner that found no gates.
 
 Read what will be skipped and why. A job needing a platform this machine is not
-belongs on the machine that has it, not on a hosted runner at 2x or 10x. A step
-that declares or uses a repository secret itself, a `pull_request_target`
-workflow, and a job whose `if:` is false on every push and pull_request (a
-schedule or dispatch tier) genuinely do not run here; say so rather than
-reporting a clean run that covered less than it looks.
+belongs on the machine that has it, not on a hosted runner at 2x or 10x. A
+workflow triggered by `pull_request_target` and by no push or pull_request, and
+a job whose `if:` is false on every push and pull_request (a schedule or
+dispatch tier), genuinely do not run here; say so rather than reporting a clean
+run that covered less than it looks.
 
 A `↳ UNPROVEN` line is different in kind: a lane the hosted run executes on
 every push that this runner cannot reproduce — a job using `services:`,
 `container:`, `strategy:`, a reusable workflow or a `defaults:` other than
-`run: shell: bash`; a `runs-on:` or job-level `if:` it cannot evaluate; a step
-whose `if:` or `${{ }}` expression it cannot evaluate. A step whose INHERITED
-env holds a `${{ }}` value (a workflow-level `GH_TOKEN: ${{ github.token }}`,
-a job-level `${{ secrets.X }}`) runs with that variable unset, and its pass is
+`run: shell: bash`, or one whose body it cannot read; a `runs-on:` or job-level
+`if:` it cannot evaluate; a step whose `if:` or `${{ }}` expression it cannot
+evaluate; a step that needs a repository secret — declared on the step,
+inherited from job or workflow env, or used in `run:` — which never runs here,
+because a tool run without it falls back to this machine's own credentials
+(`~/.aws`, `gh auth`, `~/.npmrc`); an action step other than checkout, cache,
+artifact upload/download or a `setup-*` action, so a job whose only gates are a
+lint action or a local composite is unproven, not setup-only. A step whose
+INHERITED env holds a non-secret `${{ }}` value (a workflow-level
+`REPO: ${{ github.repository }}`) runs with that variable unset, and its pass is
 unproven too. Those are usually the backend, E2E and migration lanes, the ones
 that cover the surface a change most often breaks. Name them before you run
 anything; they will not become green here.

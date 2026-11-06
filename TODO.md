@@ -2420,7 +2420,7 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
 - [x] 🟠 **DONE 2026-11-06 (fix/ci-local-unproven-lanes): steps 1–8 — reasoned skips are
   tested first, a step-level `if:` is evaluated per step on the success path, the fifth class
   is reported `unproven` (summary `PARTIAL`, JSON `verdict`/`unproven`/`partial`, `--strict`
-  exits 2), `/green` and both CLAUDE.md files say PARTIAL is not green, 39 mutations in
+  exits 2), `/green` and both CLAUDE.md files say PARTIAL is not green, 68 mutations in
   `tests/test-ci-local.sh`, each shown red beside a no-op control.** Also fixed, because modelling `if:` newly runs jobs that used to
   be skipped: job- and workflow-level `env:` were silently dropped (a job declaring
   `DATABASE_URL=sqlite…` ran against whatever the shell exported), env values kept their YAML
@@ -2437,15 +2437,25 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   2); GitHub's starter-template step style (dash level with `steps:`) parsed to no steps and
   read as setup-only; a reusable workflow and a flow-style `steps:` read as setup-only; an env
   block scalar reached the step as `>-`. `defaults: run: shell: bash` alone is modelled, and
-  `env: # note` is a plain mapping. Deliberately left as they
-  were: a platform skip and a secret skip stay reasoned
-  classes (the spec keeps the four); a step skipped for a secret inside a job that otherwise
-  runs is still not listed in the summary; step-level `continue-on-error` stays unmodelled
+  `env: # note` is a plain mapping. A second review round closed five more: a step that
+  INHERITED a secret ran with it unset, so aws/gh/npm/docker could fall back to this machine's
+  own credentials — now any secret, declared, inherited or in `run:`, keeps the step from
+  running and the lane is unproven (so the secret skip is no longer a reasoned class: three
+  remain); a job id with an uppercase or `_` first letter, a quoted id or a trailing comment
+  was not a job and its keys merged into the job above — every line at the `jobs:` indent is
+  now a job, and one whose body cannot be read (no `runs-on:` at four spaces, flow style,
+  another indent) is unproven; the compound job-level `if:` evaluator had no fixture
+  (`||`, `&&`, precedence, grouping, a quoted `||`, negation now each have one and a
+  mutation); `pull_request_target` was a substring test over the raw `on:` block, comments
+  included — triggers are now parsed (block, flow, quoted `"on":`) and the workflow is
+  GitHub-side only with no push/pull_request trigger; a job whose gates are actions (a lint
+  action, a local composite) read as setup-only — an action other than checkout, cache,
+  artifacts or `setup-*` is now an unproven gate. Deliberately left as they were: a platform
+  skip stays a reasoned class; step-level `continue-on-error` stays unmodelled
   (its job is unproven); `needs:` artifacts between jobs are not modelled; a step-level
   `shell:` other than bash and a workflow triggered only by `schedule`/`workflow_call` are not
-  modelled; a job indented other than two spaces under `jobs:` is not parsed (the run then
-  reads NOTHING RAN, not pass); the M follow-up `--changed BASE` (map a diff to the lanes it
-  touches) is not started.
+  modelled; env block scalars are flagged unproven, not folded; the M follow-up
+  `--changed BASE` (map a diff to the lanes it touches) is not started.
   Was: **ci-local: a skipped test lane is not green.** Spolin, *The Factory Kitchen for AI
   Agents* (AppDirect, 2026-10-22): "12,731 unit tests passed while the endpoint returned a
   500 … agents have to identify which test lanes actually cover the surface they've changed".

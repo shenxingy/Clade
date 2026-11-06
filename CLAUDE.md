@@ -549,16 +549,21 @@ a runner does — inheriting the terminal's instead made one suite hang for 13
 minutes at 9% CPU. `/green` drives it to green without weakening a gate.
 
 A lane it cannot reproduce — `services:`, `container:`, `strategy:`, a
-reusable workflow, a `defaults:` other than `run: shell: bash`, a `runs-on:` or
-job-level `if:` it cannot evaluate, a step whose `if:` or `${{ }}` expression it
-cannot evaluate, or a step run without a `${{ }}` env value it inherits — is
-reported **unproven** and the summary reads `PARTIAL`; a run where no job ran
+reusable workflow, a `defaults:` other than `run: shell: bash`, a job body it
+cannot read, a `runs-on:` or job-level `if:` it cannot evaluate, a step whose
+`if:` or `${{ }}` expression it cannot evaluate, a step that needs a repository
+secret (declared, inherited or in `run:` — never run here, since a tool run
+without it falls back to this machine's own credentials), an action step other
+than checkout, cache, artifacts or `setup-*` (a lint action, a local
+composite), or a step run without a non-secret `${{ }}` env value it inherits —
+is reported **unproven** and the summary reads `PARTIAL`; a run where no job ran
 reads `NOTHING RAN`. `--strict` exits 2 on either (the default flips after a
 report-only week, see TODO.md). Here that is one step: `Syntax Check › Sibling
 facts (report only)` picks its diff range with `${{ github.event_name }}`, so a
 local run does not execute it. Both `pull_request_target` workflows
-(`honeypot-check`, `vouch-gate`) are skipped as GitHub-side, and the four
-key-gated tiers gate on `schedule`/`workflow_dispatch`, which is harmless.
+(`honeypot-check`, `vouch-gate`) have no push or pull_request trigger and are
+skipped as GitHub-side, and the four key-gated tiers, the only steps here that
+use a secret, gate on `schedule`/`workflow_dispatch`, which is harmless.
 `tests/test-ci-local.sh` pins the classes and removes each guard from a copy of
 the runner to show the suite notices.
 
