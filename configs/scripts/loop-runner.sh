@@ -896,7 +896,13 @@ _recover_checkpoint() {
   # would reconcile and converge with the held-out gate silently off.
   if ! recovered=$(python3 "$(_sibling_script loop_checkpoint.py)" recover \
       --goal "$GOAL_FILE" --holdout="$(holdout_state_dir)" 2>&1); then
-    log_error "[RECOVERY] $recovered"
+    # The first line is the reason. A hint after it can name the interrupted
+    # run's --holdout directory, which must not reach loop.log (inside the
+    # checkout by default), so it goes to the terminal only.
+    log_error "[RECOVERY] ${recovered%%$'\n'*}"
+    case "$recovered" in
+      *$'\n'*) printf '%s\n' "${recovered#*$'\n'}" >&2 ;;
+    esac
     return 1
   fi
   RECOVERED_ITERATION=$(printf '%s' "$recovered" | python3 -c 'import json,sys; print(json.load(sys.stdin)["iteration"])')
@@ -937,7 +943,7 @@ run_dry_run_preview() {
   Iter/workers:   max-iter=$MAX_ITER max-workers=$MAX_WORKERS
   State/log:      $STATE_FILE (would NOT be written) / $LOG_DIR
   Verify cmd:     ${verify:-(none declared in CLAUDE.md)}
-  Holdout:        $(holdout_summary)
+  Holdout:        $(holdout_preview)
   Planned tasks:  $plan
 EOF
 }
@@ -970,6 +976,7 @@ run_blueprint_loop() {
   log_info "  Workers:      $WORKER_MODEL"
   log_info "  State file:   $STATE_FILE"
   log_info "  Holdout:      $(holdout_summary)"
+  holdout_announce
 
   # POST was already completed before the crash: finish its deterministic
   # convergence/state transition once, then continue at the next iteration.

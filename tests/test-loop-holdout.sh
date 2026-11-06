@@ -28,9 +28,19 @@
 #              scenario edited before the crash is still reported
 #   gone       a worker deleting the scenarios or dropping their exec bit gets
 #              no pass: reconciliation is skipped and the run does not converge
-#   timeout    a scenario that hangs is cut off at CLADE_LOOP_HOLDOUT_TIMEOUT
+#   timeout    with timeout and gtimeout hidden from PATH, a scenario that
+#              hangs is cut off at CLADE_LOOP_HOLDOUT_TIMEOUT, and a child it
+#              left running is killed with it
 #   checkout   what a scenario writes into the checkout is put back: no commit
 #              and no prompt carries it, and a worker's leftover change survives
+#   index      a scenario that stages a file gets the git index put back byte
+#              for byte: skip-worktree and intent-to-add entries survive, so no
+#              commit deletes a file a sparse checkout left out
+#   leak       with nothing git-ignored, no file in the checkout and no commit
+#              names a scenario or DIR or carries a scenario's output; the
+#              holdout log outside the repository does
+#   fixture    a fixture under DIR (nested, not executable) edited mid-run is
+#              reported, and that iteration's pass does not count
 #
 # The last suite removes each guard from a copy of the scripts in turn and
 # requires the cases that pin it to go red, beside a no-op control that must
@@ -56,6 +66,11 @@ LH_MUTANT="${LH_MUTANT:-}"
 TEST_ROOT=$(mktemp -d /tmp/test-loop-holdout-XXXXXX)
 TEST_ROOT=$(cd "$TEST_ROOT" && pwd -P)
 trap 'rm -rf "$TEST_ROOT"' EXIT
+# The PATH the runner gets after the stub bin/ (the timeout and refuse cases
+# swap in one with commands hidden), and an absolute outer bound for each run,
+# so hiding timeout from the runner does not take it from the harness too.
+LH_SYS_PATH="$PATH"
+LH_TIMEOUT=$(command -v timeout || command -v gtimeout || true)
 # Resume checkpoints live under $HOME/.claude/loop-checkpoints; keep every one
 # this suite writes (and the one the resume case leaves) out of the real HOME.
 export HOME="$TEST_ROOT/home"
@@ -120,10 +135,17 @@ elif [[ "$args" == *"stream-json"* ]]; then
     delete:*) rm -f "${MOCK_GONE#delete:}"/* ;;
     chmod:*)  chmod -x "${MOCK_GONE#chmod:}"/* ;;
   esac
+  if [[ -n "${MOCK_FIXTURE:-}" ]]; then
+    printf 'worker\n' > "$MOCK_FIXTURE"
+  fi
   if [[ -n "${MOCK_INTERRUPT:-}" ]]; then
     printf '{"interrupted": true}\n' > .claude/interrupt-state.json
   fi
   git commit -q -m "test: worker commit"
+  if [[ -n "${MOCK_ITA:-}" ]]; then
+    printf 'note\n' > "$MOCK_ITA"
+    git add -N -f "$MOCK_ITA"
+  fi
   if [[ -n "${MOCK_LEFTOVER:-}" ]]; then
     printf 'leftover\n' >> README.md
   fi
@@ -180,12 +202,47 @@ run_loop() {
   local repo="$1"
   shift
   rm -f "$PROMPTS"
-  OUT=$(cd "$repo" && PATH="$TEST_ROOT/bin:$PATH" LH_PROMPTS="$PROMPTS" \
-    timeout --kill-after=5s 90s bash "$RUNNER" .claude/goal.md --max-workers 1 \
+  OUT=$(cd "$repo" && PATH="$TEST_ROOT/bin:$LH_SYS_PATH" LH_PROMPTS="$PROMPTS" \
+    ${LH_TIMEOUT:+"$LH_TIMEOUT" --kill-after=5s 90s} bash "$RUNNER" .claude/goal.md --max-workers 1 \
     --state .claude/state.json --log-dir logs/loop "$@" 2>&1 < /dev/null)
   RC=$?
 }
 prompts() { cat "$PROMPTS" 2>/dev/null || true; }
+# The last supervisor prompt recorded (argv and stdin): what the iteration
+# that started last was told.
+last_supervisor_prompt() {
+  awk '/^=== ARGS$/ { if (rec ~ /autonomous improvement loop/) last = rec; rec = "" }
+       { rec = rec $0 "\n" }
+       END { if (rec ~ /autonomous improvement loop/) last = rec; printf "%s", last }' \
+    "$PROMPTS" 2>/dev/null
+}
+# hlog REPO N → iteration N's holdout log, from its default place outside the
+# repository: $HOME/.claude/loop-holdout/<checkout name>-<12 hex>.
+hlog() {
+  local f
+  for f in "$HOME/.claude/loop-holdout/$(basename "$1")"-????????????/"iter-$2-holdout.log"; do
+    [[ -f "$f" ]] && cat "$f"
+  done
+  return 0
+}
+# path_without TAG NAME... → a directory of symlinks to every command on the
+# suite's PATH except NAME..., first match winning as in a lookup. Bulk ln per
+# PATH directory: one process each, not one per command.
+path_without() {
+  local dir="$TEST_ROOT/path-without-$1" d n
+  shift
+  if [[ ! -d "$dir" ]]; then
+    mkdir -p "$dir"
+    local IFS=:
+    for d in $PATH; do
+      [[ -d "$d" && "$d" != "$TEST_ROOT"/* ]] || continue
+      ln -s "$d"/* "$dir"/ 2>/dev/null
+    done
+    unset IFS
+    for n in "$@"; do rm -f "$dir/$n"; done
+  fi
+  printf '%s' "$dir"
+}
 
 # A passing holdout with two scenarios and a note. The first drains stdin: if
 # the runner left the scenario list on its stdin, the second would never run.
@@ -210,15 +267,22 @@ run_loop "$REPO" --max-iter 2 --holdout "$PASS_DIR"
 check "run converges and exits 0" "$([[ $RC -eq 0 ]] && has "$OUT" "CONVERGED")" "rc=$RC"
 check "the iteration reconciled its goal item" "$(has "$OUT" "Coordinator reconciled 1 goal item(s)")"
 check "goal item ticked" "$(has "$(cat "$REPO/.claude/goal.md")" "- [x] exact item")"
-check "banner names the scenario count" "$(has "$OUT" "2 scenario(s) in $PASS_DIR")"
+check "banner names the scenario count, and not the directory" \
+  "$([[ "$OUT" == *"Holdout:      2 scenario(s), outside the repository"* ]] \
+     && lacks "$(cat "$REPO/logs/loop/loop.log" 2>/dev/null)" "$PASS_DIR")"
 check "both scenarios ran — the first did not swallow the list on stdin" \
   "$(has "$OUT" "holdout: all 2 scenario(s) passed")" "$(grep -o 'holdout: .*passed' <<< "$OUT" | head -1)"
 check "a non-executable file is a note, not a scenario" "$(has "$OUT" "1 non-executable file(s)")"
 check "scenario cwd is the checkout root" \
   "$([[ "$(cat "$TEST_ROOT/cwd-seen" 2>/dev/null)" == "$(cd "$REPO" && pwd -P)" ]] && echo yes || echo no)" \
   "saw: $(cat "$TEST_ROOT/cwd-seen" 2>/dev/null)"
-check "per-iteration detail log records the pass" \
-  "$(has "$(cat "$REPO/logs/loop/iter-1-holdout.log" 2>/dev/null)" "=== b-readme-grew: PASS")"
+check "the holdout log outside the repository records the pass by name" \
+  "$(has "$(hlog "$REPO" 1)" "=== b-readme-grew: PASS")"
+check "loop.log records it by position only" \
+  "$([[ "$(cat "$REPO/logs/loop/loop.log" 2>/dev/null)" == *"holdout scenario 2 of 2: PASS"* ]] \
+     && lacks "$(cat "$REPO/logs/loop/loop.log" 2>/dev/null)" "b-readme-grew")"
+check "nothing is left under logs/loop named after the holdout" \
+  "$([[ ! -e "$REPO/logs/loop/iter-1-holdout.log" ]] && echo yes || echo no)"
 check "last-progress reports the holdout" \
   "$(has "$(cat "$REPO/logs/loop/last-progress" 2>/dev/null)" "Holdout: all 2 scenario(s) passed at iteration 1")"
 check "no divergence reported when both gates agree" "$(lacks "$OUT" "HOLDOUT FAILED")"
@@ -234,7 +298,13 @@ run_loop "$REPO" --max-iter 2 --holdout "$FAIL_DIR"
 check "run gives up with exit 2" "$([[ $RC -eq 2 ]] && echo yes || echo no)" "rc=$RC"
 check "red holdout under a green verify_cmd is named" \
   "$(has "$OUT" "HOLDOUT FAILED — visible verify_cmd passed")"
-check "the human log names the failing scenario" "$(has "$OUT" "holdout FAIL: zz-secret-scenario (exit 3)")"
+check "the holdout log names the failing scenario and its exit code" \
+  "$(has "$(hlog "$REPO" 1)" "=== zz-secret-scenario: FAIL (exit 3)")"
+check "the terminal is told where that log is" \
+  "$(has "$OUT" "holdout: names, exit codes and output in $HOME/.claude/loop-holdout/negative-")"
+check "loop.log counts the failure without the name" \
+  "$([[ "$(cat "$REPO/logs/loop/loop.log" 2>/dev/null)" == *"holdout scenario 1 of 1: FAIL"* ]] \
+     && lacks "$(cat "$REPO/logs/loop/loop.log" 2>/dev/null)" "zz-secret-scenario")"
 check "goal reconciliation is skipped" "$(has "$OUT" "Skipping goal reconciliation")"
 check "goal item stays unchecked" "$(has "$(cat "$REPO/.claude/goal.md")" "- [ ] exact item")"
 check "last-progress reports the failure" \
@@ -295,12 +365,36 @@ CLADE_LOOP_HOLDOUT_TIMEOUT=0 refused "a scenario timeout of 0, which GNU timeout
 refused "a directory with no executable scenario" "holds no executable scenario" --holdout "$TEST_ROOT/notes-only"
 refused "a missing directory" "not a directory" --holdout "$TEST_ROOT/does-not-exist"
 refused "an empty --holdout value" "needs a directory argument" --holdout ""
+# The holdout log names every scenario: never inside the checkout, and not in
+# DIR either, where each write would read as a changed scenario set.
+CLADE_LOOP_HOLDOUT_LOG_DIR="$REPO/holdout-logs" refused "a holdout log directory inside the checkout" \
+  "the holdout log (it names every scenario and keeps their output) would be written inside the repository" \
+  --holdout "$TEST_ROOT/plain-out"
+CLADE_LOOP_HOLDOUT_LOG_DIR="$TEST_ROOT/plain-out/logs" refused "a holdout log directory inside DIR" \
+  "would be written inside the holdout directory" --holdout "$TEST_ROOT/plain-out"
+HOME="$REPO/home" refused "the default holdout log under a HOME inside the checkout" \
+  "the holdout log (it names every scenario and keeps their output) would be written inside the repository" \
+  --holdout "$TEST_ROOT/plain-out"
+HOME="$REPO/home" CLADE_LOOP_HOLDOUT_LOG_DIR="$TEST_ROOT/logs-outside" \
+  refused "a resume checkpoint, which records DIR, under a HOME inside the checkout" \
+  "the resume checkpoint (it records the holdout directory) would be written inside the repository" \
+  --holdout "$TEST_ROOT/plain-out"
+check "no refusal created a holdout log directory" \
+  "$([[ ! -e "$REPO/holdout-logs" && ! -e "$TEST_ROOT/plain-out/logs" && ! -e "$TEST_ROOT/logs-outside" ]] && echo yes || echo no)"
+NOPY_PATH=$(path_without nopython python3)
+check "precondition: python3 is hidden from that PATH" \
+  "$(PATH="$NOPY_PATH" command -v python3 >/dev/null 2>&1 && echo no || echo yes)"
+LH_SYS_PATH="$NOPY_PATH" refused "no python3, so no watchdog to bound a scenario" \
+  "needs python3" --holdout "$TEST_ROOT/plain-out"
 refused "dry-run with an in-repo directory" "resolves inside the repository" \
   --dry-run --holdout "$REPO/acceptance"
 
 run_loop "$REPO" --dry-run --holdout "$TEST_ROOT/plain-out"
 check "dry-run accepts a holdout outside the repository" "$([[ $RC -eq 0 ]] && echo yes || echo no)" "rc=$RC"
 check "dry-run shows it" "$(has "$OUT" "Holdout:        1 scenario(s) in $TEST_ROOT/plain-out")"
+check "dry-run says where the holdout log goes, and creates nothing there" \
+  "$([[ "$OUT" == *"holdout log in $HOME/.claude/loop-holdout/refuse-"* ]] \
+     && ! compgen -G "$HOME/.claude/loop-holdout/refuse-*" >/dev/null && echo yes || echo no)"
 check "--help documents --holdout" "$(has "$(bash "$RUNNER" --help 2>&1)" "--holdout DIR")"
 fi
 
@@ -321,7 +415,7 @@ REPO=$(new_repo converge-done)
 printf '# Goal\n\n- [x] exact item\n' > "$REPO/.claude/goal.md"
 MOCK_EMPTY_PLAN=1 run_loop "$REPO" --max-iter 1 --holdout "$FAIL_DIR"
 check "a goal complete before the run is checked against the holdout too" \
-  "$(has "$OUT" "holdout FAIL: zz-secret-scenario")"
+  "$(has "$OUT" "holdout scenario 1 of 1: FAIL")"
 check "and does not converge on a failing one" "$([[ $RC -eq 2 ]] && lacks "$OUT" "CONVERGED:")" "rc=$RC"
 fi
 
@@ -425,6 +519,10 @@ check "no claude call was made" "$([[ ! -s "$PROMPTS" ]] && echo yes || echo no)
 run_loop "$REPO" --resume --max-iter 2 --holdout "$PASS_DIR"
 check "resume with a different --holdout is refused (exit 2)" "$([[ $RC -eq 2 ]] && echo yes || echo no)" "rc=$RC"
 check "and names the one the run had" "$(has "$OUT" "the interrupted run had --holdout $RESUME_DIR, not $PASS_DIR")"
+check "loop.log, inside the checkout, keeps the refusal but not the directory it names" \
+  "$([[ "$(cat "$REPO/logs/loop/loop.log" 2>/dev/null)" == *"[RECOVERY] checkpoint does not match current run (holdout_dir)"* ]] \
+     && lacks "$(cat "$REPO/logs/loop/loop.log" 2>/dev/null)" "$RESUME_DIR")" \
+  "$(grep -m1 'RECOVERY' "$REPO/logs/loop/loop.log" 2>/dev/null)"
 
 run_loop "$REPO" --resume --max-iter 1 --holdout "$RESUME_DIR"
 check "resume with the same --holdout continues at POST" \
@@ -464,22 +562,29 @@ fi
 
 # ─── timeout ─────────────────────────────────────────────────────────
 if want timeout; then
-section "timeout: a scenario that hangs is cut off"
-if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; then
-  REPO=$(new_repo timeout)
-  SLOW_DIR="$TEST_ROOT/acceptance-slow"
-  scenario "$SLOW_DIR" "hangs" 'exec sleep 30'
-  T0=$SECONDS
-  CLADE_LOOP_HOLDOUT_TIMEOUT=2 run_loop "$REPO" --max-iter 1 --holdout "$SLOW_DIR"
-  check "counted as failed: no convergence, exit 2" "$([[ $RC -eq 2 ]] && lacks "$OUT" "CONVERGED")" "rc=$RC"
-  check "the run did not wait the scenario out" "$([[ $((SECONDS - T0)) -lt 30 ]] && echo yes || echo no)" \
-    "$((SECONDS - T0))s"
-  check "cut off at the configured bound" "$(has "$OUT" "holdout FAIL: hangs (timed out after 2s)")"
-  check "the detail log records it" \
-    "$(has "$(cat "$REPO/logs/loop/iter-1-holdout.log" 2>/dev/null)" "=== hangs: FAIL (timed out after 2s)")"
-else
-  echo "  (no timeout or gtimeout on PATH — the bound cannot be applied here; case not run)"
-fi
+section "timeout: with no timeout or gtimeout on PATH, a scenario that hangs is cut off"
+# Stock macOS has neither binary; the bound must hold without them. The
+# scenario also leaves a child running that would write a marker 3 s in: the
+# watchdog has to take the whole process group, not only the scenario.
+NOTO_PATH=$(path_without notimeout timeout gtimeout)
+check "precondition: timeout and gtimeout are hidden from that PATH" \
+  "$( (PATH="$NOTO_PATH"; command -v timeout || command -v gtimeout) >/dev/null 2>&1 && echo no || echo yes)"
+REPO=$(new_repo timeout)
+SLOW_DIR="$TEST_ROOT/acceptance-slow"
+scenario "$SLOW_DIR" "hangs" "( sleep 3; : > '$TEST_ROOT/orphan-wrote' ) &
+exec sleep 60"
+T0=$SECONDS
+LH_SYS_PATH="$NOTO_PATH" CLADE_LOOP_HOLDOUT_TIMEOUT=2 run_loop "$REPO" --max-iter 1 --holdout "$SLOW_DIR"
+ELAPSED=$((SECONDS - T0))
+# Past the child's 3 s whatever the run took, so a survivor would have written.
+sleep 4
+check "the run did not wait the scenario out" "$([[ $ELAPSED -lt 45 ]] && echo yes || echo no)" "${ELAPSED}s"
+check "counted as failed: no convergence, exit 2" "$([[ $RC -eq 2 ]] && lacks "$OUT" "CONVERGED")" "rc=$RC"
+check "the child it left running was killed with it" \
+  "$([[ ! -e "$TEST_ROOT/orphan-wrote" ]] && echo yes || echo no)"
+check "loop.log: cut off at the configured bound, by position" \
+  "$(has "$OUT" "holdout scenario 1 of 1: FAIL (cut off after 2s)")"
+check "the holdout log names it" "$(has "$(hlog "$REPO" 1)" "=== hangs: FAIL (cut off after 2s)")"
 fi
 
 # ─── checkout ────────────────────────────────────────────────────────
@@ -524,15 +629,108 @@ NSUP=$(grep -c "autonomous improvement loop" "$PROMPTS" 2>/dev/null || true)
 check "a second supervisor prompt was captured" "$([[ "${NSUP:-0}" -ge 2 ]] && echo yes || echo no)" "${NSUP:-0}"
 check "no prompt carries the created file's name" "$(lacks "$(prompts)" "heldout-report-w3k")"
 check "loop.log keeps the lines written while the scenarios ran" \
-  "$(has "$(cat "$REPO/logs/loop/loop.log" 2>/dev/null)" "holdout FAIL: scribbles (exit 1)")"
+  "$(has "$(cat "$REPO/logs/loop/loop.log" 2>/dev/null)" "holdout scenario 1 of 1: FAIL")"
 check ".claude/ is left alone (a human may be editing there)" \
   "$([[ -e "$REPO/.claude/human-note.txt" ]] && echo yes || echo no)"
 check "a --stop raised while the scenarios ran is honoured" \
   "$([[ $RC -eq 0 ]] && has "$OUT" "Stop sentinel detected")" "rc=$RC"
 check "the write is reported, the loop's own files not counted" \
   "$(has "$OUT" "the scenarios wrote 3 change(s) into the checkout")" "$(grep -o 'the scenarios wrote [0-9]* change' <<< "$OUT" | head -2 | tr '\n' ' ')"
-check "the detail log names what was put back" \
-  "$(has "$(cat "$REPO/logs/loop/iter-1-holdout.log" 2>/dev/null)" "created: heldout-report-w3k.txt")"
+check "the holdout log names what was put back" \
+  "$(has "$(hlog "$REPO" 1)" "created: heldout-report-w3k.txt")"
+fi
+
+# ─── index ───────────────────────────────────────────────────────────
+if want index; then
+section "index: a scenario that stages a file gets the index put back losslessly"
+# A file a sparse checkout leaves out (skip-worktree, absent on disk), and an
+# intent-to-add entry the worker leaves under .claude/ (which the commit sweep
+# never touches, so it survives to the next prompt). read-tree would drop both:
+# the first then reads as deleted and the sweep commits the deletion.
+REPO=$(new_repo index)
+(
+  cd "$REPO" || exit 1
+  printf 'sparse\n' > sparse-only.txt
+  git add sparse-only.txt
+  git commit -q -m "test: a file the sparse checkout leaves out"
+  git update-index --skip-worktree sparse-only.txt
+  rm sparse-only.txt
+)
+IDX_DIR="$TEST_ROOT/acceptance-index"
+scenario "$IDX_DIR" "stages" "printf 's\n' > staged-q9z.txt && git add staged-q9z.txt
+exit 1"
+MOCK_ITA=.claude/ita-note.txt run_loop "$REPO" --max-iter 2 --holdout "$IDX_DIR"
+check "no commit deletes the file the sparse checkout left out" \
+  "$(git -C "$REPO" cat-file -e HEAD:sparse-only.txt 2>/dev/null && echo yes || echo no)" \
+  "$(git -C "$REPO" log --name-status --format=%s | head -12 | tr '\n' ' ')"
+check "it is still skip-worktree in the index" \
+  "$([[ "$(git -C "$REPO" ls-files -v -- sparse-only.txt)" == "S sparse-only.txt" ]] && echo yes || echo no)" \
+  "$(git -C "$REPO" ls-files -v -- sparse-only.txt)"
+LAST=$(last_supervisor_prompt)
+check "a second supervisor prompt was captured" "$(has "$LAST" "Held-out acceptance")"
+check "the next prompt still sees the intent-to-add entry as one" "$(has "$LAST" " A .claude/ita-note.txt")"
+check "no prompt carries the path a scenario staged" "$(lacks "$(prompts)" "staged-q9z")"
+check "and the index does not keep it" "$(lacks "$(git -C "$REPO" status --porcelain)" "staged-q9z")"
+check "the holdout log says the index was put back" "$(has "$(hlog "$REPO" 1)" "changed: (the git index)")"
+check "no index backup is left in the git dir" \
+  "$(compgen -G "$REPO/.git/clade-holdout-*" >/dev/null && echo no || echo yes)"
+fi
+
+# ─── leak ────────────────────────────────────────────────────────────
+if want leak; then
+section "leak: nothing in the checkout names a scenario or carries its output"
+# Nothing ignored, so run-tasks.sh's `git add -A` puts logs/loop in the
+# worker's commit, and every file the loop writes there is one a later prompt
+# or commit can carry.
+REPO=$(new_repo leak)
+: > "$REPO/.gitignore"
+git -C "$REPO" commit -q -am "test: ignore nothing"
+LEAK_DIR="$TEST_ROOT/holdout-leak-v2m"
+# The output markers are computed, so they appear only in what the scenario
+# prints, never in its source.
+scenario "$LEAK_DIR" "zz-leaky-scenario" 'echo "SCENARIO-OUT-$((6*7))-MARK"
+echo "SCENARIO-ERR-$((6*7))-MARK" >&2
+exit 3'
+run_loop "$REPO" --max-iter 2 --holdout "$LEAK_DIR"
+HL=$(hlog "$REPO" 1)
+check "control: the holdout log outside the repository has the name and both output streams" \
+  "$([[ "$HL" == *"zz-leaky-scenario: FAIL (exit 3)"* && "$HL" == *SCENARIO-OUT-42-MARK* && "$HL" == *SCENARIO-ERR-42-MARK* ]] && echo yes || echo no)"
+check "control: the worker's commit did carry logs/loop" \
+  "$(has "$(git -C "$REPO" log --name-only --format=)" "logs/loop/loop.log")"
+LEAKED=$(grep -rlF -e zz-leaky-scenario -e holdout-leak-v2m -e SCENARIO-OUT-42 -e SCENARIO-ERR-42 \
+  -e "$HOME/.claude/loop-holdout" "$REPO" 2>/dev/null)
+check "no file in the checkout names the scenario, DIR, the holdout log or the output" \
+  "$([[ -z "$LEAKED" ]] && echo yes || echo no)" "$(tr '\n' ' ' <<< "$LEAKED")"
+HIST=$(git -C "$REPO" log --all -p)
+check "and no commit does" \
+  "$([[ "$HIST" != *zz-leaky-scenario* && "$HIST" != *holdout-leak-v2m* && "$HIST" != *SCENARIO-OUT-42* && "$HIST" != *SCENARIO-ERR-42* ]] && echo yes || echo no)"
+check "loop.log still counts the failure" \
+  "$(has "$(cat "$REPO/logs/loop/loop.log" 2>/dev/null)" "holdout: 1 of 1 scenario(s) FAILED")"
+check "the terminal is told where the holdout log is" \
+  "$(has "$OUT" "Holdout log:  $HOME/.claude/loop-holdout/leak-")"
+fi
+
+# ─── fixture ─────────────────────────────────────────────────────────
+if want fixture; then
+section "fixture: an edited fixture under DIR is a changed scenario set"
+# The scenario passes once README.md holds the line its expected-output
+# fixture names. A worker rewriting that fixture (nested, not executable) to
+# what it wrote makes the check pass without touching the scenario itself.
+REPO=$(new_repo fixture)
+FIX_DIR="$TEST_ROOT/acceptance-fixture"
+mkdir -p "$FIX_DIR/fixtures/expected"
+printf 'never-in-readme-r5t\n' > "$FIX_DIR/fixtures/expected/line.txt"
+scenario "$FIX_DIR" "check" "grep -qx \"\$(cat '$FIX_DIR/fixtures/expected/line.txt')\" README.md"
+MOCK_FIXTURE="$FIX_DIR/fixtures/expected/line.txt" run_loop "$REPO" --max-iter 2 --holdout "$FIX_DIR"
+LP=$(cat "$REPO/logs/loop/last-progress" 2>/dev/null)
+check "the run converges at iteration 2, not 1" \
+  "$([[ $RC -eq 0 ]] && has "$LP" "Iterations: 2")" "rc=$RC; $LP"
+check "it reconciles once, on the next iteration's unchanged set" \
+  "$([[ "$(grep -c "Coordinator reconciled" <<< "$OUT")" -eq 1 ]] && echo yes || echo no)" \
+  "$(grep -c "Coordinator reconciled" <<< "$OUT") reconciliations"
+check "the edit is reported" "$(has "$OUT" "HOLDOUT CHANGED mid-run")"
+check "last-progress names the iteration it changed in" \
+  "$(has "$LP" "scenario set CHANGED mid-run at iteration 1")"
 fi
 
 # ─── Mutations ───────────────────────────────────────────────────────
@@ -578,9 +776,9 @@ mutation() {
 }
 
 mutation green loop_holdout.sh \
-  "positive negative refuse converge drift tamper resume gone timeout checkout" \
+  "positive negative refuse converge drift tamper resume gone timeout checkout index leak fixture" \
   "no-op control (a comment reworded)" \
-  "# Names and cksums of the scenario set" "# Names and checksums of the scenario set"
+  "# Content digest of FILE" "# The content digest of FILE"
 mutation red loop-runner.sh "negative" "the holdout term of the reconcile gate" \
   ' \
        && [ "$holdout_result" -eq 0 ]; then' '; then'
@@ -636,8 +834,39 @@ mutation red loop_holdout.sh "gone" "no '1 of 0' when nothing could run" \
   '  if [ "$LOOP_HOLDOUT_LAST_TOTAL" -eq 0 ]; then
     what=' '  if false; then
     what='
-mutation red loop_holdout.sh "timeout" "the per-scenario timeout" \
-  '_timeout "${HOLDOUT_TIMEOUT:-120}" "$f"' '"$f"'
+mutation red loop_holdout.sh "timeout" "the per-scenario watchdog" \
+  '_holdout_bounded "${HOLDOUT_TIMEOUT:-120}" "$f"' '"$f"'
+mutation red loop_holdout.sh "timeout" "the watchdog taking the whole process group" \
+  '            os.killpg(child.pid, sig)' '            os.kill(child.pid, sig)'
+mutation red loop_holdout.sh "refuse" "no --holdout without python3 for the watchdog" \
+  'if ! command -v python3 >/dev/null 2>&1; then' 'if false; then'
+mutation red loop_holdout.sh "leak" "the holdout log kept outside the repository" \
+  'local f="$LOOP_HOLDOUT_LOG_DIR/iter-${ITERATION:-0}-holdout.log"' \
+  'local f="$LOG_DIR/iter-${ITERATION:-0}-holdout.log"'
+mutation red loop_holdout.sh "leak" "no scenario name in loop.log" \
+  'log_warn "  holdout scenario $total of $n: FAIL"' \
+  'log_warn "  holdout scenario $total of $n: FAIL ($name)"'
+mutation red loop_holdout.sh "leak" "the holdout log's location told to the terminal only" \
+  "_holdout_tell() { echo \"[\$(date '+%H:%M:%S')] [INFO]  \$*\" >&2; }" \
+  '_holdout_tell() { log_info "$*"; }'
+mutation red loop-runner.sh "resume" "the recovery hint naming DIR kept out of loop.log" \
+  '    log_error "[RECOVERY] ${recovered%%$'"'"'\n'"'"'*}"' '    log_error "[RECOVERY] $recovered"'
+mutation red loop_holdout.sh "refuse" "the holdout log refused inside the checkout" \
+  'if _holdout_lands_inside "the holdout log' 'if false && _holdout_lands_inside "the holdout log'
+mutation red loop_holdout.sh "refuse" "the holdout log refused inside DIR" \
+  'if _holdout_is_inside "$log_abs" "$abs"; then' 'if false; then'
+mutation red loop_holdout.sh "refuse" "the resume checkpoint refused inside the checkout" \
+  '     _holdout_lands_inside "the resume checkpoint' '     false && _holdout_lands_inside "the resume checkpoint'
+mutation red loop_holdout.sh "fixture" "the fingerprint walking DIR recursively" \
+  'find . -print0 2>/dev/null' 'find . -maxdepth 1 -print0 2>/dev/null'
+mutation red loop_holdout.sh "fixture" "the fingerprint covering file content" \
+  'printf '"'"'f %s %s %s\n'"'"' "$x" "$(_holdout_content_hash "$p")" "$p"' \
+  'printf '"'"'f %s %s %s\n'"'"' "$x" - "$p"'
+mutation red loop_holdout.sh "index" "the git index put back" \
+  '    _holdout_index_put_back "$idx_before" || return 1' '    :'
+mutation red loop_holdout.sh "index" "the index put back byte for byte, not with read-tree" \
+  'elif cp "$backup" "$lock" 2>/dev/null && mv -f "$lock" "$index"; then' \
+  'elif rm -f "$lock" && git read-tree HEAD; then'
 mutation red loop_holdout.sh "refuse" "the scenario-timeout validation" \
   'if [ "$timeout_ok" != "true" ]; then' 'if false; then'
 mutation red loop_holdout.sh "refuse" "the scenario-symlink-into-a-sibling-worktree refusal" \
