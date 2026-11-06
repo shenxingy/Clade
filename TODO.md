@@ -2708,13 +2708,19 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   pre-flight and warn if it changes.
   Honest scope: the worker runs as the same uid, so this makes the scenarios harder to rewrite,
   not impossible to rewrite.
-- [ ] 🔵 **`/loop --holdout`: warn when the goal or `--context` file names the holdout.** Both
+- [x] 🔵 **`/loop --holdout`: warn when the goal or `--context` file names the holdout.** Both
   files are pasted into the supervisor prompt, so a holdout path written there defeats the
   counts-only context. Today only the `/loop` skill text forbids it (`prompt.md` Rules,
   SKILL.md "Honest scope"); nothing checks it at run time. S: in `holdout_validate`, grep the
   goal and `--context` files for the given and the physical DIR (and `~`-relative forms) and
   warn; scenario names are not searched, since a short name like `check` would fire on prose.
   Deferred from PR #189 (review 2026-11-06) to keep that PR to the gate itself.
+  DONE 2026-11-06 (feat/loop-holdout-named-warning): `holdout_warn_named` in
+  `loop_holdout.sh`, called by `loop-runner.sh` right after `holdout_validate` (dry runs
+  included), searches both files for DIR as given, its physical path and the `~/` form of
+  each, only forms holding a `/`. A warning, not a refusal. `tests/test-loop-holdout.sh` case
+  `named`: three forms warned about, a bare-name DIR plus its basename and a scenario name not;
+  4 mutations, each red. The three positive cases fail on the old scripts.
 - [x] 🔵 **Property tests and a FLAKY label.** Both halves DONE 2026-11-06 (below). Osmani, *Agentic Verification* (2026-10-14):
   "Example tests say what should happen; properties say what must not", and a retry-green test
   teaches the agent to retry. The tree has zero `hypothesis`/`@given`.
