@@ -2505,7 +2505,13 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   headers name no incident (rough grep). Only `context-policy.json` carries `retire_from`.
   - M: `configs/scripts/harness-usage.py`. Per shipped skill and hook, report fires, denies,
     rejections and last-fired from `skillUsage` and the transcript hook attachments, main
-    thread only.
+    thread only. **DONE 2026-11-06 (feat/harness-usage)**: `--include-subagents`, `--since N`,
+    `--ledger` (one row per whole UTC day and scope), `--self-test` with 69 mutations.
+    - Found by its first run, not fixed there: `memory-sync.sh` dies at line 57
+      (`FILE_PATH: unbound variable` under `set -u`) on every Bash call that touches a synced
+      directory, because only the Write/Edit branch sets `FILE_PATH`. So a synced change made
+      through Bash never syncs. 4,916 async failures in 30 days of main-thread transcripts on
+      one host, last on 2026-11-06.
   - S: a `# exists-for: … · retire-when: …` header on each hook, checked by `tests/test-hooks.sh`.
   - Caveats: zero fires never retires a preventive safety control, and only flags it for
     review. A 60-day window needs a ledger because transcripts are deleted at 30 days.

@@ -175,6 +175,22 @@ python3 configs/scripts/workflow-scorecard.py --outcome          # JSONL, label:
 python3 configs/scripts/outcome-scorecard.py --since 14 --tokens
 python3 configs/scripts/outcome-scorecard.py --since 7 --repo shenxingy/Clade --json
 
+# Which shipped skills and hooks FIRE? Per skill in configs/skills/ (a hub's
+# sub-skills also roll up to it) and per hook wired in settings-hooks.json:
+# fires, denies, rejections, timeouts, last fire, and for a hook how many tool
+# calls and compactions it is wired on, from every profile's transcripts (main
+# thread unless --include-subagents) and .claude.json skillUsage. Report-only.
+# Never fired lists REVIEW candidates, not retire candidates; a preventive
+# (synchronous PreToolUse) guard is never retired by zero fires; invocation is
+# not behaviour change. --ledger appends one row per whole UTC day and scope to
+# <config dir>/harness-usage/days.jsonl, because Claude Code deletes transcripts
+# after 30 days and a longer window needs them. It reads subagent transcripts
+# too: 6,734 transcripts took 2 min 40 s on the author's host (2026-11-06),
+# and a first --ledger pass (29 days x 2 scopes) took 3 min 3 s.
+python3 configs/scripts/harness-usage.py --since 30
+python3 configs/scripts/harness-usage.py --include-subagents --json
+python3 configs/scripts/harness-usage.py --ledger
+
 # Did a Codex worker actually delegate? `codex exec` CAN subdivide — measured
 # 2026-09-05, the gate is the resolved model's catalog multi_agent_version, not
 # the session source. This counts the children, and its self-test distinguishes
@@ -620,6 +636,20 @@ python3 configs/scripts/check-skill-contracts.py --self-test
 #     wrapper's guards (4 of the 48 also stayed green) are mutated by
 #     tests/test-workflow-preflight.sh itself.
 python3 configs/scripts/check-workflow-script.py --self-test
+
+# 2f. And of the harness-usage report, in the same `pytest` job. A report that
+#     cannot attribute a hook's trace lists that hook as never fired, and the
+#     never-fired list is what a reviewer retires from. Its first draft, over
+#     335 main-thread transcripts (30 days to 2026-11-06, the author's host),
+#     left 179 SessionStart and 159 UserPromptSubmit traces unattributed:
+#     those contexts carry no command and no shared call id. Pairing them by
+#     content brought that to 0 and 34 (the 34 are an older correction-detector
+#     message that no longer matches its source). The controls
+#     drive main() under a temporary HOME; the 69 mutations
+#     live in orchestrator/tests/mutations_harness_usage.py, which
+#     test_self_tests_can_fire.py loads into its MUTATIONS (it sits near the
+#     1500-line cap).
+python3 configs/scripts/harness-usage.py --self-test
 
 # 3. Shell syntax check (hooks, scripts, installer)
 bash -n configs/hooks/*.sh configs/scripts/*.sh install.sh

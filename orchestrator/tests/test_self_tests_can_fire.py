@@ -27,6 +27,7 @@ Adding a self-test to a script means adding its mutations here.
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import subprocess
 import sys
@@ -1322,6 +1323,22 @@ MUTATIONS["configs/scripts/outcome-scorecard.py"] = [
      "if when is None or when < start or when > end:",
      "if when is None or when < start:"),
 ]
+
+
+# ─── harness-usage.py, from a sibling file ────────────────────────────
+# Its 69 mutations do not fit under this file's 1500-line cap, so they live in
+# mutations_harness_usage.py and join MUTATIONS here: the same test runs them,
+# and the coverage check below sees the script. Loaded by path, because the
+# journal test above imports this file outside any package.
+def _sibling(name: str) -> dict[str, list[tuple[str, str, str]]]:
+    spec = importlib.util.spec_from_file_location(name, Path(__file__).with_name(f"{name}.py"))
+    assert spec is not None and spec.loader is not None, f"cannot load {name}.py"
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.MUTATIONS
+
+
+MUTATIONS.update(_sibling("mutations_harness_usage"))
 
 
 def _cases():

@@ -622,7 +622,7 @@ def strip_heredocs(command: str) -> str:
 # fresh bytecode cache: a .pyc is trusted when the source's size and
 # whole-second mtime match, so a mutation and its restore of the same length
 # within one second would otherwise run the stale one.
-_CONSUMERS = ("workflow-scorecard.py",)
+_CONSUMERS = ("workflow-scorecard.py", "harness-usage.py")
 
 
 def _self_test() -> int:
