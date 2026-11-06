@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # post-compact-reinject.sh — SessionStart hook (matcher: compact)
+# exists-for: the PreCompact-saved task goal was silently lost on every compaction because SessionStart was wired for startup only (fixed 2026-07-05 in 677aa5d) · retire-when: pre-compact.sh retires, or Claude Code carries the pinned task state across compaction itself
 #
 # Closes a "Defined ≠ called" wiring hole. The PreCompact hook already SAVES
 # active task state to .claude/compact-state.md (pre-compact.sh), and

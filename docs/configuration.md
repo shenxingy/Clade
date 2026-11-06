@@ -13,11 +13,12 @@
 5. [Standing multi-agent orchestration](#standing-multi-agent-orchestration)
 6. [Context window policy](#context-window-policy)
 7. [Add a correction rule manually](#add-a-correction-rule-manually)
-8. [Conversation-mode projects](#conversation-mode-projects)
-9. [Adjust quality gate thresholds](#adjust-quality-gate-thresholds)
-10. [Add a new hook](#add-a-new-hook)
-11. [Add a new agent](#add-a-new-agent)
-12. [Add a new skill](#add-a-new-skill)
+8. [Keep corrected sessions](#keep-corrected-sessions)
+9. [Conversation-mode projects](#conversation-mode-projects)
+10. [Adjust quality gate thresholds](#adjust-quality-gate-thresholds)
+11. [Add a new hook](#add-a-new-hook)
+12. [Add a new agent](#add-a-new-agent)
+13. [Add a new skill](#add-a-new-skill)
 
 ---
 
@@ -244,6 +245,38 @@ paginated GraphQL search at 10 PRs per page and notes it; any other repository
 gh cannot read is named as not measured, never counted as zero. `/retro` runs
 this as its Outcomes step.
 
+**Roll up what merged PRs could not verify.** Every PR body that `/create-pr`,
+`/delivery` and `/ship` write, and this repository's PR template, carries two
+fixed lines:
+
+```text
+Review depth: none | skimmed | read-in-full
+Could not verify: none | <item>; <item>
+```
+
+`Review depth` is how far someone other than the author read the diff, with an
+optional `(by …)`. `Could not verify` lists what was not checked, each item a few
+words naming the surface, with its reason in parentheses. One unverified item is
+a caveat; the same item in PR after PR is a missing capability.
+
+```bash
+python3 configs/scripts/pr-verification-gaps.py --since 14         # the repository gh resolves here
+python3 configs/scripts/pr-verification-gaps.py --repo OWNER/NAME --json
+```
+
+It reads every PR merged into one repository in the window, by any author, and
+groups the items by their words (case, emphasis, trailing punctuation and a
+trailing `(reason)` are ignored). The top `--top` (default 3) items that recur in
+2 or more PRs are printed as candidate `- [ ]` TODO entries; nothing is written.
+Lines inside an HTML comment or fenced code, or opening in inline code, are not
+read; a `<placeholder>` or the `a | b` format line counts as unfilled; and a PR
+without the line is not counted as verified: when no PR states it, the section
+says NOT MEASURED. Both lines are self-reported, so review depth is checked
+against the forge, and a claimed reading that no submitted review by anyone but
+the author backs is listed as a question, since a reader outside GitHub leaves
+no review there. On this repository's 35 PRs merged in the 14 days to
+2026-11-06, neither line appeared yet. `/retro` runs this as its Step 2c.
+
 **Rank where the harness said no.** Corrections are a slow signal; the harness's
 own verdicts, ranked by how many sessions they recur in, point at one-sentence
 harness repairs (Gorokh, 2026-10-08, one operator's fleet).
@@ -449,6 +482,48 @@ Edit `~/.claude/corrections/rules.md`:
 - [2026-02-17] naming: Use camelCase for TypeScript variables, not snake_case
 ```
 
+## Keep corrected sessions
+
+A session where you corrected or reverted the agent is a ready-made eval, but
+Claude Code deletes its transcript 30 days after the last write. Each record in
+`~/.claude/corrections/history.jsonl` names its session (`session_id`,
+`transcript_path`), and `keep-sessions.py` copies those sessions somewhere the
+cleanup does not reach:
+
+```bash
+python3 configs/scripts/keep-sessions.py           # what it would keep; writes nothing
+python3 configs/scripts/keep-sessions.py --apply   # keep them
+zcat ~/.local/share/clade/sessions/<session_id>/transcript.jsonl.gz | head
+```
+
+- **What.** The main transcript and every file under its `<session>/`
+  directory (subagent and Workflow transcripts, tool results), for every record
+  that is not a `probe`. Records written before the detectors recorded a
+  session are counted as unlinkable, with the reason.
+- **Redacted.** Every string goes through `redact.py`; JSONL and JSON are
+  re-serialized, so a mask never breaks a record. Images and PDF pages are not
+  kept, because `redact.py` reads text and a screenshot of a secret is not
+  text: a file that is not UTF-8 is skipped, and base64 image or PDF data
+  inside a record is replaced by a placeholder naming its media type and size.
+  Symlinks, to files or to directories, are not followed.
+- **Where.** `~/.local/share/clade/sessions/<session_id>/` (`--dest` moves it),
+  directories 0700 and files 0600, gzip-compressed. A `--dest` that resolves
+  inside a Claude config directory, `~/.claude-profiles` or the dotfiles sync
+  store, symlinks included, is refused: they sync to a remote.
+- **Private stays out.** A session is skipped when it has a
+  `private-sessions/<id>` marker under any profile, or when the record's
+  project or any directory the session ran in (every `cwd` its transcript
+  records) is a conversation-mode project or is listed in `private-projects`.
+  The session's own directories matter because a revert record's project is
+  where the reverting command ran. A copy kept before the session became
+  private is reported, never deleted, including after its transcript is gone.
+- **When.** `radar-cron.sh` runs `--apply` after its weekly sweep. A failure is
+  logged in `radar-cron.log` and never fails the sweep. Re-running is
+  idempotent: only a source that changed, or a change to the redaction
+  patterns, rewrites a file, and nothing is deleted when a source is gone. A
+  run that `timeout` stops removes the file it was writing; one killed outright
+  leaves a `.<name>.<pid>.tmp` that the next `--apply` removes.
+
 ## Conversation-mode projects
 
 Some repositories are conversations rather than codebases: a personal
@@ -492,6 +567,21 @@ content local, whichever writer slips:
   `~/.claude/.sync-conflicts.log`.
 - **Registration.** Session start adds every conversation-mode project to
   `~/.claude/private-projects` (both the given and the physical path).
+- **Project memory.** `sync-link-projects.sh` (run at session start) moves each
+  project's auto-memory directory into the store so it has git history. It
+  covers `~/.claude/projects`, `$CLAUDE_CONFIG_DIR/projects` and every
+  `~/.claude-profiles/*/projects`. A project listed in
+  `~/.claude/private-projects`, or carrying `.claude/conversation-mode`, is
+  never moved or linked: its memory stays a local directory, and a link it
+  already had into the store is replaced by a local copy. A memory directory
+  whose store copy holds a different version of a file is left in place and
+  listed in `~/.claude/.sync-memory-conflicts`, which `sync-health.sh` prints at
+  the start of every session until you merge it by hand (the history is in
+  `~/.claude/.sync-conflicts.log`). The session-start hook times out at 30 s,
+  so the linker starts no new directory after `CLADE_SYNC_LINK_BUDGET` seconds
+  (default 10) and the next session resumes; to move a long backlog at once,
+  run `CLADE_SYNC_LINK_BUDGET=0 bash ~/.claude/scripts/sync-link-projects.sh`.
+  `sync-link-projects.sh --dry-run` lists what would move.
 - **Private sessions.** A personal-mode skill can mark a session wherever it was
   started: `touch ~/.claude/private-sessions/$CLAUDE_CODE_SESSION_ID`. The
   correction hook then treats it like a conversation-mode project.
@@ -587,9 +677,32 @@ capped at 10/run. Killed mutants drop from the baseline automatically.
 
 ## Add a new hook
 
-1. Create `configs/hooks/your-hook.sh`
+1. Create `configs/hooks/your-hook.sh`. Within its first 10 lines it must carry
+   exactly one provenance line, with ` · retire-when: ` (a middle dot) between
+   the two halves:
+
+   ```bash
+   # exists-for: <incident or need>, <YYYY-MM-DD>, <commit sha or #PR> · retire-when: <condition>
+   ```
+
+   - **exists-for** names the recorded incident the hook answers, its date and
+     the commit or PR that records it. If nothing records one, write
+     `no incident recorded (added <date> in <sha or #PR>)` and the need it
+     serves; never invent an incident. A cited sha must resolve to a commit; a
+     new hook may cite its own open PR.
+   - **retire-when** names the condition under which the hook may be removed.
+     A hook that blocks retires only after an ablation shows no harm without
+     it, because a guard that never fires may be working. For any hook, a
+     condition resting on it going quiet ("unused for 60 days", "has not
+     fired", "0 hits", "last fired 90 days ago") is refused unless it names an
+     ablation. The check matches these wordings, not the meaning, so state the
+     condition plainly rather than around it.
+   - `/generate-hook` emits this line for you to fill. A `<…>` or `{…}`
+     placeholder left in it is refused.
 2. Add the hook definition to `configs/settings-hooks.json`
-3. Run `./install.sh`
+3. Run `bash tests/test-hook-provenance.sh`: it checks the line on every hook,
+   and that every hook the settings wire is among those checked
+4. Run `./install.sh`
 
 ## Add a new agent
 

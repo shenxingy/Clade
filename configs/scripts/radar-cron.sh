@@ -14,6 +14,10 @@
 # Remove:
 #   crontab -l | grep -v radar-cron | crontab -
 #
+# After the sweep it runs keep-sessions.py --apply, the kit's one weekly
+# housekeeping job (the last section of this file); that step cannot fail
+# the sweep.
+#
 # ─── Where the sweep's code edits go ─────────────────────────────────
 # The skill builds small fixes as well as a digest. Until 2026-10-20 the agent
 # ran from cron's cwd ($HOME) and edited the Clade checkout in place, whatever
@@ -367,3 +371,31 @@ Digest: $RESEARCH_DIR/radar-$RUN_DATE.md"
     fi
   fi
 fi
+
+# ─── Keep the corrected sessions before the 30-day cleanup ───────────
+# Claude Code deletes a transcript 30 days after its last write, and a session
+# a correction points at is a ready-made eval only while it exists.
+# keep-sessions.py copies those sessions, redacted, to
+# ~/.local/share/clade/sessions/ (see its docstring). It runs here because this
+# is the one weekly job the kit already has, and LAST, so it can neither delay
+# nor fail the sweep: whatever it exits with is logged, the wrapper's own exit
+# status is unchanged, and a hang is cut off by the timeout where `timeout`
+# exists. Only its one-line summary reaches this log.
+KEEP_SESSIONS="${CLADE_KEEP_SESSIONS:-$(cd "$(dirname "$0")" 2>/dev/null && pwd)/keep-sessions.py}"
+KEEP_SESSIONS_TIMEOUT="${CLADE_KEEP_SESSIONS_TIMEOUT:-1800}"
+keep_sessions() {
+  local out rc
+  if ! command -v python3 >/dev/null 2>&1 || [[ ! -f "$KEEP_SESSIONS" ]]; then
+    log "KEEP-SESSIONS SKIPPED: no python3, or no $KEEP_SESSIONS"
+    return 0
+  fi
+  out=$(_timeout "$KEEP_SESSIONS_TIMEOUT" python3 "$KEEP_SESSIONS" --apply 2>&1 </dev/null)
+  rc=$?
+  if [[ $rc -eq 0 ]]; then
+    log "KEEP-SESSIONS $(printf '%s\n' "$out" | tail -n 1)"
+  else
+    log "KEEP-SESSIONS FAILED rc=$rc (the sweep is unaffected): $(printf '%s\n' "$out" | tail -n 1)"
+  fi
+  return 0
+}
+keep_sessions

@@ -615,7 +615,7 @@ def _unmeasured(reason: str, as_json: bool) -> int:
 # temporary --root with --now pinned to Friday 2026-11-06, so 2026-W45 is held
 # out and 2026-W44 is discovery. Every guard has a control that fires and one
 # that must not; their mutations are in orchestrator/tests/
-# can_fire_friction_rank.py, which test_self_tests_can_fire.py runs.
+# can_fire/friction_rank.py, which test_self_tests_can_fire.py runs.
 
 _NOW = "2026-11-06T12:00:00Z"
 _DISC, _HELD, _OLD = "2026-10-28T10:00:00Z", "2026-11-04T10:00:00Z", "2026-09-20T10:00:00Z"

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # edit-shadow-detector.sh — Track files Claude edits, for correction PAIRING.
+# exists-for: no incident recorded (added 2026-02-25 in 2e9b184); need: a per-session log of the files Claude wrote, so a revert or correction can be paired with the files behind it · retire-when: revert-detector.sh and correction-detector.sh both stop reading the shadow (lib/correction-pair.sh)
 # Triggered by PostToolUse on Edit|Write (async — data only, output unused).
 #
 # Records each file Claude writes to a session-scoped shadow log. revert-detector

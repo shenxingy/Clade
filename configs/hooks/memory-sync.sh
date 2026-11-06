@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # memory-sync.sh — Auto-push after writes to synced ~/.claude/ directories (PostToolUse, async)
+# exists-for: no incident recorded (added 2026-03-19 in 485d6a9); need: push writes under synced ~/.claude dirs to the dotfiles sync store · retire-when: no machine keeps a ~/.claude/.sync-config, i.e. the sync store is retired
 #
 # Triggers sync-push.sh when Claude writes/edits a file under any synced dir:
 #   ~/.claude/memory/             (global memory)
@@ -23,6 +24,11 @@ INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
 
 is_synced_path=false
+# Bound for every tool: the memory-path test below reads it, and under `set -u`
+# a Bash call left it unset, so the hook died there ("FILE_PATH: unbound
+# variable") before it reached sync-push. A synced change made through Bash
+# never pushed: 4,916 such failures in 30 days of one host's transcripts.
+FILE_PATH=""
 
 if [[ "$TOOL_NAME" == "Write" || "$TOOL_NAME" == "Edit" ]]; then
   # ─── Write/Edit: check file_path ─────────────────────────────────────────

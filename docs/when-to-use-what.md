@@ -75,6 +75,8 @@ For most day-to-day work — bug fixes, small features, refactoring, codebase qu
 - Supervisor plans tasks each iteration, workers execute in parallel via git worktrees
 - Runs unattended — leave it overnight, check results in the morning
 - Write a clear goal file first; vague goals produce endless loops
+- `--holdout DIR` adds acceptance scenarios kept outside the repository, where a
+  worker's commit cannot rewrite them; no prompt names them (see the loop skill)
 
 ### `/worktree`
 **When:** Running parallel Claude Code sessions on the same repo.
@@ -135,13 +137,14 @@ For most day-to-day work — bug fixes, small features, refactoring, codebase qu
 ### `/handoff`
 **When:** Context is getting full (~80%) or before stopping work.
 - Saves everything: what was done, what's pending, git state, exact next steps, gotchas
+- Records each hypothesis with its evidence, status (current / UNCONFIRMED / ruled-out) and what would drop it, plus stop conditions and scope
 - Enables the next session (or a fresh overnight agent) to resume without human re-briefing
 
 ### `/pickup`
 **When:** Starting a new session.
 - Reads the latest handoff file and presents a concise briefing
 - Verifies git state matches the handoff
-- Immediately starts executing the first Next Step
+- Re-checks the handoff's current hypothesis against the repo, then starts the first Next Step without asking — or re-plans when the check contradicts it
 
 ### `/poke`
 **When:** You hit `esc` during a long generation and want to confirm Claude isn't stuck.

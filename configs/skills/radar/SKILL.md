@@ -65,11 +65,27 @@ Read it as a JSON stream (`jq -c '.'`), and cluster on:
   before trusting this field.
 - `repeat: true` — flagged recurrence, already computed.
 
-**Know the schema before you grep it.** `history.jsonl` records are
-`{timestamp, prompt, project, type}`, plus `reverted_files` and `repeat` on
-some. There is no `domain` and no `root_cause` — this spec asked for both until
-2026-08-31, which sent three runs looking for fields that were never written.
-`domain` lives in the *other* file, `cross-project-rules.jsonl`.
+**Know the schema before you grep it.** Every `history.jsonl` record has
+`{timestamp, prompt, project, type}`. The rest depends on `type` and on when
+the record was written:
+
+- `type: "explicit"` (`correction-detector.sh`) adds `domain` from 2026-09-02.
+- `type: "implicit-revert"` (`revert-detector.sh`) adds `reverted_files` and
+  `repeat`, except on the oldest records, which carry neither. From 2026-09-02
+  it also adds `session_files`, `revert_scope` and `revert_paths`. Only a `revert_scope: "paths"` record is evidence of a
+  rejected file; `"probe"` is the agent's own mutation test.
+- Both types add `session_id` and `transcript_path` in records written since
+  2026-11; older records lack both keys. `transcript_path` is the session
+  transcript the correction happened in. It is `<session_id>.jsonl` under a
+  `projects/<slug>/` directory of the Claude config directory. Either field is
+  `null` when the hook input lacked it. A path holding a control character, or
+  longer than 1,024 characters, is also written as `null`.
+- Records without a session link can only be clustered by `project` and
+  `timestamp`. Claude Code deletes transcripts after 30 days by default
+  (`cleanupPeriodDays`), so a `transcript_path` may name a file that is gone.
+
+There is no `root_cause` field. This spec asked for one until 2026-08-31, which
+sent three runs looking for a field that was never written.
 
 **Two serialization styles, one file.** Records written up to 2026-08-14 are
 spaced (`{"timestamp": "..."`), records from 2026-08-15 on are compact

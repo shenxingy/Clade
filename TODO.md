@@ -2348,12 +2348,31 @@ The value comes from a fixed-behaviour replay (30 days to 2026-11-05, aries, bot
   7. Realised saving: main input volume per session (simulated −52%) and 5-hour
      quota per unit of work. Not a quality rollback: below a 25% saving the premise
      failed, so re-decide.
+  8. Exploratory, NOT a rollback threshold: context inertia (Breunig, *Context
+     Inertia*, 2026-10-14 — a model "keeps pursuing [a hypothesis] after the evidence
+     says to stop", and compaction "potentially distills what's driving the model's
+     hyper-focus"). Edit size and thinking tokens per turn against context tokens,
+     before vs after, computed by `context-census.py` (PR 2) once it lands. The
+     source's evidence is secondhand and from hours-long autoresearch, not
+     interactive coding, so this proxy informs the decision and never triggers a
+     rollback. Prior art, not a new proposal: `/loop` already starts a fresh
+     supervisor every iteration (`loop-runner.sh`, `node_supervisor` over a context
+     rebuilt by `hydrate_context`), and the dormant orchestrator carries
+     `loop_context_mode=reset` (`orchestrator/config.py`; a full harness-level reset
+     was deferred as needing Anthropic API changes,
+     `docs/archive/BRAINSTORM-resolved.md`). Counter-evidence: arXiv:2610.35971 has
+     uninterrupted continuation winning in 216 of 224 budget-threshold configurations,
+     and in all four settings at the 75k cap (147,002 traces), and predicting a failing
+     run within the task at its early 5k–20k-token landmarks scores AUC 0.50 — so short
+     tasks are not reset, and no reset is triggered by a predicted failure.
 
   Rollback is `./install.sh --no-context-policy` or `CLADE_CONTEXT_POLICY=off`,
   which removes only the value Clade owns; per user, `/autocompact auto`.
 - [ ] 🟡 **PR 2 — `configs/scripts/context-census.py`, the trial instrument.**
   Report-only, about 400 lines, over N days: agentType mix, main and subagent
-  compaction counts and preTokens, volume per main session. Not inside
+  compaction counts and preTokens, volume per main session, and the trial's
+  exploratory proxy 8 (edit size and thinking tokens per turn against context
+  tokens). Not inside
   `workflow-scorecard.py`, which is at 1,444 of 1,500 lines. Snapshot the 30-day
   baseline now.
 - [ ] 🟡 **PR 3 — flip `enabled_by_default` to true, only after the trial passes.**
@@ -2453,17 +2472,64 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   Step 1, S, do first: write both fields from both detectors; pin them in
   `tests/test-correction-pairing.sh`; update the schema paragraph in
   `configs/skills/radar/SKILL.md`.
+  Step 1 DONE 2026-11-06 (fix/correction-session-link): both detectors write
+  `session_id` and `transcript_path` on both write paths (`null` when unknown;
+  a path with a control character or over 1,024 characters is dropped). The
+  correction detector resolves them in one `jq` call before the append, and its
+  private-session check reuses that call. The suite gains 47 cases: 41 fail on
+  the old hooks, and 13 of them are mutations. The radar schema paragraph
+  and CLAUDE.md are updated. The item stays open for Step 2.
+  Two constraints for Step 2:
+  - A session can be marked private after its record is written, so check the
+    `private-sessions` marker when copying, not when the record was written.
+  - `sync-setup.sh` writes no `.gitignore` for `corrections/history.jsonl`, so
+    a fresh sync store pushes this log to its remote. Records now also carry
+    `transcript_path`, but `project` already held the same home path.
   Step 2, M: `configs/scripts/keep-sessions.py`. It copies the transcripts of non-probe records
   through `redact.py` into zstd under `~/.local/share/clade/sessions/`, outside the synced
   `~/.claude`, mode 0700, idempotent, skipping private sessions. Keeping only corrected sessions
   is our narrowing (the essay keeps all), chosen for cost.
-- [ ] 🟡 **Context inertia: `/pickup` executes the last session's hypothesis as orders, and the
-  350K trial cannot see the failure. Do before the 2026-11-12 evaluation.** Breunig, *Context
+  Step 2 DONE 2026-11-06 (feat/keep-sessions): `configs/scripts/keep-sessions.py`, built on
+  `transcripts.py` (and registered as its consumer). A dry run by default; `--apply` copies
+  the main transcript and its `<session>/` directory, every string masked by `redact.py`, as
+  gzip (the standard library has no zstd) into `~/.local/share/clade/sessions/<id>/`. Records
+  are selected by `transcript_path` under a transcript root, or by `session_id` found under
+  any root. Dirs are 0700 and files 0600. A `--dest` inside a config dir or the sync store is
+  refused. Private sessions are skipped: a `private-sessions` marker under any profile, or a
+  conversation-mode or `private-projects` directory among the record's project and every `cwd`
+  the session's transcript records (a revert record's project is where the command ran). A
+  copy kept before a session became private is reported, also once its transcript is gone.
+  `radar-cron.sh` calls it last, weekly, and it cannot fail the sweep; a run `timeout` stops
+  removes its partial file. `--self-test` has 77 mutations, all red, in
+  `orchestrator/tests/can_fire/keep_sessions.py`. Not done, each a separate decision:
+  - Records written before Step 1 (all 1,625 non-probe records on the author's host on
+    2026-11-06) carry no link and stay unlinkable. Matching `project` and `timestamp` against
+    a transcript's time span could recover the last 30 days, but it is a heuristic that can
+    pick the wrong session, and every day it waits loses one more day.
+  - A copy whose source is gone keeps the redaction it was written with. A new `redact.py`
+    pattern re-redacts only sessions whose source still exists.
+  - Images and PDF pages are not kept, because `redact.py` reads text and a screenshot of a
+    secret is not text: neither the files under `tool-results/` nor the base64 data inside a
+    record, which keeps a placeholder naming its media type and size. An eval that needs the
+    screenshot loses it.
+- [x] 🟡 **Context inertia: `/pickup` executes the last session's hypothesis as orders, and the
+  350K trial cannot see the failure. Do before the 2026-11-12 evaluation.** DONE 2026-11-06
+  (feat/handoff-hypotheses): handoff v3 writes `## Hypotheses` (evidence, status
+  current/UNCONFIRMED/ruled-out, "Drop it if") and `## Stop conditions & out of scope`; pickup
+  Step 5 re-checks the current hypothesis before acting (every commit since Meta.HEAD; the
+  cited files diffed by content from Meta.HEAD, so a rebase or squash merge still compares and
+  only a clone without Meta.HEAD reports "not re-checked"; the hypothesis's own drop condition;
+  the stop conditions), treats Next Steps as proposals, proceeds without asking when it holds
+  and re-plans when contradicted; proxy 8 added to the trial; pinned on all three surfaces by
+  `orchestrator/tests/test_handoff_pickup_contract.py`. Every mutation in its table must turn
+  it red; an edit the table does not list is not shown to be caught.
+  The deferred `/iloop --reset-every N` is split out below. Breunig, *Context
   Inertia* (2026-10-14): "the model commits to a hypothesis, subtask, or goal … and keeps
   pursuing it after the evidence says to stop", and compaction "potentially distills what's
   driving the model's hyper-focus". `configs/skills/pickup/prompt.md:68` says "Immediately start
   executing Next Steps #1". The handoff template records no tried or ruled-out hypotheses.
-  None of the trial's seven proxies (section above) measures persistence.
+  None of the trial's original seven proxies (section above) measures persistence; proxy 8,
+  added by this item, looks at it and is exploratory.
   Fix S:
   - Handoff gets `## Hypotheses` (each with evidence, status, and what would make me drop it)
     and `## Stop conditions`.
@@ -2475,9 +2541,12 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
     context tokens, from `context-census.py`. It is not a rollback threshold.
   - Prior art to cite rather than re-propose: `/loop` starts a fresh supervisor every iteration,
     and the dormant `loop_context_mode=reset` exists. Counter-evidence in the ledger:
-    arXiv:2610.35971 has continuation winning 216 of 224 configurations, so do not reset short
-    tasks.
-  Deferred, M: `/iloop --reset-every N`, which needs an external driver.
+    arXiv:2610.35971 has continuation winning 216 of 224 budget-threshold configurations, so do
+    not reset short tasks.
+- [ ] 🔵 **Deferred, M: `/iloop --reset-every N`.** Split out of the context-inertia item above,
+  whose S fix shipped without it. A Stop hook cannot clear context, so this needs an external
+  driver; the counter-evidence there (arXiv:2610.35971) argues for resetting on a fixed length,
+  size or plateau, never on a predicted failure, and not at all for short tasks.
 - [x] 🟡 **friction-rank.py — a verdict channel ranked by distinct sessions.** DONE 2026-11-06
   (feat/friction-rank): `configs/scripts/friction-rank.py` on `transcripts.py`, radar Lane D
   (it replaces the hand tally for the main thread only; that grep also read subagent
@@ -2489,8 +2558,8 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   sentence (16 in 11 sessions in discovery weeks, 9 in 5 sessions held out). Not done, on
   purpose: no refusal text was reworded (test first, below); `hook_blocking_error` and
   `hook_cancelled` are not counted. `orchestrator/tests/test_self_tests_can_fire.py` reached
-  1,470 of 1,500 lines, so friction-rank's mutations moved to `can_fire_friction_rank.py` beside
-  it, loaded by path; the next script that does not fit gets a sibling module the same way.
+  1,470 of 1,500 lines, so friction-rank's mutations moved out of it; they now sit in
+  `orchestrator/tests/can_fire/friction_rank.py`, which that file loads with every other per-script module.
   Gorokh, *The loop learned slowly from corrections and faster from verdicts* (2026-10-08). On one operator's
   fleet, the correction channel adopted 1 rule in 11 weeks. An A/B of 7 mined rules found 0
   helped and 3 hurt; the author says the 2-net-solve floor is not a significance test. Harness
@@ -2519,11 +2588,56 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   - M: `configs/scripts/harness-usage.py`. Per shipped skill and hook, report fires, denies,
     rejections and last-fired from `skillUsage` and the transcript hook attachments, main
     thread only.
-  - S: a `# exists-for: … · retire-when: …` header on each hook, checked by `tests/test-hooks.sh`.
+  - [x] S: a `# exists-for: … · retire-when: …` header on each hook, checked by
+    `tests/test-hook-provenance.sh` (split out of `tests/test-hooks.sh` for the 1500-line rule).
+    DONE 2026-11-06 (docs/hook-provenance-headers): all 35 `configs/hooks/*.sh` carry the line,
+    from git archaeology. 10 name a recorded incident; 25 say "no incident recorded (added
+    <date> in <sha>)" plus the need they serve. The test checks one well-formed line per hook,
+    the cross-check against `settings-hooks.json`, and that every cited sha resolves. It
+    refuses a `<…>` placeholder and the `{…}` ones `/generate-hook` emits, and a retire-when
+    that rests on zero fires and names no ablation. That last check matches wordings, not
+    meaning: a table of 22 phrasings it must refuse ("unused for 90 days", "has not fired",
+    "no denials in", "never triggered", "0 hits", "last fired … ago") and 12 near-misses it
+    must allow. 16 input mutations turn it red. `docs/configuration.md` "Add a new hook" states
+    the line. Open for the owner: `doc-align-check.sh`'s condition is already met, because it
+    is async and its `systemMessage` reaches nobody. The M bullet above stays open; it is
+    another unit.
   - Caveats: zero fires never retires a preventive safety control, and only flags it for
     review. A 60-day window needs a ledger because transcripts are deleted at 30 days.
     Invocation is not behaviour change.
-- [ ] 🟡 **`/loop` holdout scenarios outside the repository.** StrongDM's software factory, via
+- [x] 🟡 **`/loop` holdout scenarios outside the repository.** DONE 2026-11-06
+  (feat/loop-holdout): `loop-runner.sh --holdout DIR` with `configs/scripts/loop_holdout.sh`
+  — refused in-repo (also via symlink, scenario symlink, sibling worktree, empty DIR or empty
+  value), counts-only supervisor context, gates reconciliation and convergence, `HOLDOUT
+  FAILED — visible verify_cmd passed` and `HOLDOUT CHANGED` logged, `verify_cmd` snapshotted at
+  pre-flight and drift warned once per change. After review: the `--holdout` directory, the
+  baseline fingerprint and the change record live in the resume checkpoint
+  (`loop_checkpoint.py`), and a resume without the same `--holdout` is refused; whatever a
+  scenario writes into the checkout is put back before the commit sweep; a pass on a scenario
+  set that changed that iteration does not count, and the report and `--status` name the
+  iteration; the per-scenario timeout is `CLADE_LOOP_HOLDOUT_TIMEOUT` (default 120 s).
+  Second review: nothing that names DIR or a scenario, and none of their output, is written
+  inside the checkout — names, exit codes, output and put-back paths go to
+  `~/.claude/loop-holdout/<checkout>-<hash>/` (`CLADE_LOOP_HOLDOUT_LOG_DIR`, refused inside
+  the checkout, a sibling worktree or DIR), and `loop.log`, `last-progress` and the resume
+  refusal in `loop.log` carry counts only; the change fingerprint covers every file under DIR
+  recursively (fixtures, expected outputs, helpers), by content and exec bit; the git index
+  is put back byte for byte instead of `read-tree`, which dropped skip-worktree and
+  intent-to-add entries (a sparse checkout's skipped files were then committed as deleted);
+  each scenario is bounded by a python3 watchdog that kills its whole process group, so no
+  `timeout`/`gtimeout` is needed (stock macOS ran scenarios unbounded), and `--holdout`
+  without python3 is refused. `tests/test-loop-holdout.sh` (run by `tests/test-loop.sh`)
+  carries the controls and 44 guard mutations plus a no-op control.
+  Not done: scenario cwd = checkout root is unpinned by a mutation, because the loop itself
+  runs from that root and the two cannot be told apart from the outside. Sandboxing workers
+  away from DIR and the holdout log is out of scope by design (same uid, see "Honest scope"
+  below). The fingerprint does not follow a symlinked directory under DIR (it records the
+  target). A scenario's leftover child that outlives a scenario which exited normally is not
+  killed (only a cut-off scenario's group is). The supervisor and worker calls still use
+  `loop-runner.sh`'s `_timeout`, which runs unbounded with no `timeout`/`gtimeout` (the
+  scenario watchdog is holdout-only). The warning when the goal or `--context` file names
+  the holdout is the open item that follows.
+  StrongDM's software factory, via
   Phelps, *When AI writes all the code* (2026-10-10): "A test, stored in the codebase, can be
   lazily rewritten to match the code." Every `/loop` gate lives in the tree a worker can merge
   into. `loop_verify.sh` re-reads `verify_cmd` from the repo's CLAUDE.md on every iteration, and
@@ -2534,6 +2648,13 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   pre-flight and warn if it changes.
   Honest scope: the worker runs as the same uid, so this makes the scenarios harder to rewrite,
   not impossible to rewrite.
+- [ ] 🔵 **`/loop --holdout`: warn when the goal or `--context` file names the holdout.** Both
+  files are pasted into the supervisor prompt, so a holdout path written there defeats the
+  counts-only context. Today only the `/loop` skill text forbids it (`prompt.md` Rules,
+  SKILL.md "Honest scope"); nothing checks it at run time. S: in `holdout_validate`, grep the
+  goal and `--context` files for the given and the physical DIR (and `~`-relative forms) and
+  warn; scenario names are not searched, since a short name like `check` would fire on prose.
+  Deferred from PR #189 (review 2026-11-06) to keep that PR to the gate itself.
 - [ ] 🔵 **Property tests and a FLAKY label.** Osmani, *Agentic Verification* (2026-10-14):
   "Example tests say what should happen; properties say what must not", and a retry-green test
   teaches the agent to retry. The tree has zero `hypothesis`/`@given`.
@@ -2542,17 +2663,114 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   tail survives; idempotent). Its generator must insert separators, because the `redact.py`
   patterns are `\b`-anchored and fixed-length. Have `ci-local.py` rerun a failed step once and
   report a rerun-green as FLAKY, not green.
-- [ ] 🔵 **Say how deeply each PR was read, and roll up what could not be verified.** Osmani,
+  - DONE 2026-11-06 (test/redact-properties): the property half. `hypothesis==6.170.14` pinned;
+    `orchestrator/tests/test_redact_properties.py` reads redact.py's CLI output and checks that
+    no 8-char run of a separator-delimited credential survives, and that a second pass changes
+    and reports nothing — the second with no delimiting precondition, also searched over
+    credentials glued with no separator. Shrunk counterexamples are pinned, and 21 searched
+    mutations, two example-level ones (the label rule; a marker's end mapped by offset) and a
+    negative control per property live in the file. Four real
+    redact.py defects, fixed in the same PR (the first three found by its first runs, the fourth
+    in review, by asking what the generators could not reach): overlapping matches dropped the wider one
+    (a JWT around `-AKIA…` kept header and payload), env_secret re-matched its own marker
+    (scrub-corrections reported it as a key), a trailing `\b` after a `-` class missed
+    `AIza`+34+`-` and `sk-`+19+`-` entirely, and one read of the text was not a fixed point (a
+    PEM inside an env value left the rest of the value in the clear, and a second pass — or the
+    scrub — found the marker; an AKIA run glued to an AWS secret escaped the first pass).
+    `scan()` now re-reads its own redaction, at most 4 reads. Both rules are in
+    `configs/rules/tests.md`; `tests/test-loop-real.sh`'s flake policy now says FLAKY, not discard.
+    Review round 2: the fixed-point helper's module-level `_Piece = tuple[...]` made redact.py
+    fail to import on Python 3.8 (`--check` exited 1 on every input, so checks.sh would refuse
+    every commit that adds a line); now `typing.Tuple`, and `test_redact.py` checks the file
+    against a 3.8 floor (an AST check everywhere, a python3.8 run where one exists). The
+    marker-mapping rule of the fixed point is pinned through main() and checked as a property.
+  - OPEN: the `ci-local.py` FLAKY rerun waits for the ci-local unit (§ above) to merge.
+  - Not changed, deliberately: `orchestrator/runtime_redaction.py` (dormant layer) has the same
+    `AIza…{35}\b`, and `AIza`+34+`-` passes through it unmasked (checked by hand; its sequential
+    substitution does mask the JWT pin).
+  - Not changed, deliberately (outside this PR, none run by a hook): under python3.8 on
+    2026-11-06, `configs/scripts/artifact-lint.py`, `resolve-goal-deps.py` and
+    `scorecard_ledger.py` fail to import with the same `'type' object is not subscriptable`,
+    and `erosion-trend.py` with `module 'ast' has no attribute 'Match'` (a 3.10 API an AST check
+    cannot see). Decide the floor for skill-run scripts before extending the check to them.
+- [x] 🔵 **Say how deeply each PR was read, and roll up what could not be verified.** Osmani,
   *The Code Nobody Reads* (2026-09-28); Larson, *Speeding up code review with small-change*
   (2026-10-17) and *adopting verification pattern* (2026-10-30): "That list is your roadmap".
   34 of 34 recent Clade PRs had no reviewer but the author.
   S: `create-pr` emits a fixed-enum `review depth:` line and a `could not verify:` line.
   `/retro` rolls recurring could-not-verify items into the top three.
+  DONE 2026-11-06 (feat/pr-review-depth): `Review depth: none | skimmed | read-in-full` and
+  `Could not verify: none | <item>; <item>` in the PR template, `/create-pr` §4, `/delivery` §6
+  and `/ship`; `configs/scripts/pr-verification-gaps.py` (self-test, 31 mutations) is `/retro`
+  Step 2c, report only. Skeptic caveats kept: depth is labelled self-reported and checked against
+  forge reviews; a window where no PR states a line reads NOT MEASURED (Clade's 35 PRs in the 14
+  days to 2026-11-06 carry neither line yet).
+  - [ ] M, not done: split `outcome-scorecard.py`'s kept and fixed-forward rates by review depth.
+    Waits until merged PRs carry the line; until then every PR is "missing" and the split is empty.
 - [ ] 🔵 **Unverified: these leads never got the skeptic pass (rank cap).**
-  - Anhaia (2026-11-05): agent memory you cannot `git diff`. `sync-link-projects.sh:44`
-    matches by basename, so project memories may be missed.
+  - [x] Anhaia (2026-11-05): agent memory you cannot `git diff`. `sync-link-projects.sh:44`
+    matches by basename, so project memories may be missed. DONE 2026-11-06
+    (fix/memory-sync-link): the verify-first pass confirmed both claims and found
+    three more causes (no leading `-` in its slugs, `((n++))` under `set -e` ending
+    the run after one entry, no local → store direction). The linker now adopts real
+    memory dirs into the store (verified, original kept, committed), prunes
+    provably wrong links and links entries at Claude Code's own slug, in
+    `~/.claude/projects`, `$CLAUDE_CONFIG_DIR/projects` and every
+    `~/.claude-profiles/*/projects`. Private projects are skipped in every pass,
+    the commit follows the store's own `git status`, conflicts persist in
+    `~/.claude/.sync-memory-conflicts` (printed by `sync-health.sh`), and a 10 s
+    budget keeps it inside the 30 s hook. `tests/test-sync-link-projects.sh`:
+    114 cases, 64 red on the old linker, 39 guard mutations each red.
+    A `--dry-run` on the author's main host lists 20 adoptions (one of them a
+    second copy that will conflict) and 68 prunes across 4 config dirs. It has
+    not been run for real there: the first real run is the next session start
+    after `./install.sh`. Run the dry-run first.
+    Not done, on purpose: the essay's `memory-snapshot.sh` and an /audit memory
+    lane (the linker fix was preferred over a second snapshot path). 6 memory dirs
+    whose project is gone stay local, because the slug is lossy and no transcript
+    survives in any profile. The 15 legacy basename entries are not merged into the
+    new `.project-path` entries. A path spelled with different case on two hosts
+    gets one entry per spelling.
   - Jain, *Are Harnesses Worth the Cost?* (martinfowler.com, 2026-10-13): a model-tier A/B for
-    implement stages, extending the 10-23 effort A/B.
-  - LangChain, *Agents Are Going Async* (2026-11-05): `codex-orchestrate` has no recorded pgid
-    for cancel and never uses `codex exec resume`.
-  Each needs the two-skeptic pass before any work.
+    implement stages, extending the 10-23 effort A/B. Verify-first pass 2026-11-06: neither
+    claim refuted. `bounded-implementer.md` said nothing about its verifier being read-only, and
+    the ledger's 239,334 Workflow API calls were 98.2% Opus 5.5 with no implement stage ever
+    measured at another tier.
+    - [x] (a) DONE 2026-11-06 (docs/bounded-implementer-readonly): `bounded-implementer` and its
+      Codex twin `clade_cheap_worker` now treat the verifier, the tests it runs and their
+      fixtures as read-only, add test cases without weakening existing ones, and report a wrong
+      verifier instead of editing it; both descriptions tell the lead so.
+      `test_native_delegation_agents.py` reads all three copies the runtimes load. It is an
+      instruction, not a control: nothing blocks the write, and a path guard like wf-reader's
+      would need the lead to hand the hook the verifier's paths.
+    - [ ] (b) QUEUED, waiting on the owner's quota decision. Nothing has run, because the A/B
+      spends subscription quota. Protocol and harness:
+      `docs/research/2026-10-23-workflow-effort-and-reader-ab.md` § "Queued: model tier for
+      implement stages". It replays 8 merged fixes with known answers, each repairing files its
+      parent already has, checked red at the parent and green with only the fix's owned files
+      (review replaced two tasks whose fix created its owned file). The arms are Opus 5.5
+      xhigh, Sonnet 5 medium (the bounded-implementer pin) and Opus 5.5 medium; Haiku is out on
+      the 200k window. The deterministic grader runs the verifier on the pristine base plus
+      only the agent's owned files, so no edited test, conftest or helper reaches it, and
+      `leaks.py` flags any call that reaches outside the agent's own cell, the bare root `/`
+      included; `test_model_tier_ab_harness.py` covers all three scripts. List-price
+      estimate: pilot (3 agents) $9–18, minimum (36) $103–210, full
+      (72) $207–420. It is framed on quality, not cost: the DONE 2026-10-23 effort item rates
+      model switching a small cost lever. Decide: approve the pilot, then the minimum or full
+      design, or drop it.
+  - [x] LangChain, *Agents Are Going Async* (2026-11-05): `codex-orchestrate` has no recorded pgid
+    for cancel and never uses `codex exec resume`. DONE 2026-11-06 (docs/codex-orchestrate-steer):
+    both claims survived the verify-first pass; the skill gained § Steer, cancel, follow up
+    (dispatch records the wrapper's pid, cancel signals its whole session, resume takes `-C` and
+    every flag again), pinned by `test_codex_orchestrate_recipes.py`. Still open: no check
+    reached a model, because the checking Codex profile was logged out, so recall after resume
+    is unobserved and the research row's "~4x tokens" stays unmeasured.
+- [ ] 🔵 **`memory-sync.sh` commits at write time only under `~/.claude/projects`.** It
+  matches `^$HOME/.claude/projects/[^/]+/memory/`, so a session running under
+  `CLAUDE_CONFIG_DIR` (a `~/.claude-profiles/*` account) writes its project memory
+  under `$CLAUDE_CONFIG_DIR/projects`, and that edit is not pushed when it is written.
+  It is late, not lost: the next sync-push from any trigger (`git add -A`) or the
+  linker's status-based commit at the next session start picks it up.
+  S: match every projects dir the linker scans (`$CLAUDE_CONFIG_DIR/projects`,
+  `~/.claude-profiles/*/projects`), with a `tests/test-hooks.sh` case per dir.
+  Found reviewing PR #188 (2026-11-06).

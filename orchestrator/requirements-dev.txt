@@ -32,3 +32,8 @@ tree-sitter-go==0.25.0
 # a separate piece of work. Pinned so CI and local agree; the CI step greps this
 # file for the version the way the ruff step does.
 mypy==2.3.1
+# Property-based tests (tests/test_redact_properties.py): what must NOT happen,
+# for inputs nobody picked. Its first runs found three redaction defects in
+# configs/scripts/redact.py that test_redact.py's example tests had not. Pinned
+# so a Hypothesis release cannot change what a run explores under us.
+hypothesis==6.170.14

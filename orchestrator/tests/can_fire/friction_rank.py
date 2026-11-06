@@ -1,8 +1,7 @@
 """friction-rank.py's mutations, run by test_self_tests_can_fire.py.
 
 That file reached 1,470 of the 1,500-line cap with this block inside it, so the
-block lives here and is loaded by path (``_load_mutations``), which works both
-under pytest and when the file is imported on its own. The contract is the one
+block lives here, in can_fire/, which that file loads by path. The contract is the one
 that file's docstring states: each entry removes ONE guard, and the script's
 own --self-test must go red. Its --self-test drives main() on synthetic
 transcripts under --root, with --now pinned.
@@ -12,7 +11,7 @@ Not a test module (no ``test_`` prefix): pytest does not collect it.
 
 from __future__ import annotations
 
-MUTATIONS = [
+MUTATIONS: dict[str, list[tuple[str, str, str]]] = {"configs/scripts/friction-rank.py": [
     # ─── Verdict classes ───
     ("a hook denial needs an error or a denial kind — a cat quoting one counts",
      'if refused and text.startswith("PreToolUse:"):', 'if text.startswith("PreToolUse:"):'),
@@ -84,4 +83,4 @@ MUTATIONS = [
     # ─── Report ───
     ("exactly the next 3 calls", "_NEXT_CALLS = 3", "_NEXT_CALLS = 4"),
     ("the caveat is printed — friction read as a defect list", "    print(CAVEAT)\n", ""),
-]
+]}
