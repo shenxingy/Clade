@@ -13,3 +13,5 @@ Read `prompt.md` for the full loop, the exact dispatch command, and the verifica
 2. **One isolated git worktree per worker** off the latest main — parallel writers to shared build/test state race; core-engine changes merge **sequentially** so each builds on the last.
 3. **Verify independently — never trust the worker's self-report.** Re-run the tests yourself (a worker reported "996 passed"; the real number was 995 + 1 real failure). For core-engine changes run the FULL suite, not just the new test.
 4. **Dispatch via a tracked background call** (`run_in_background`), not `&` inside another command, or you lose the completion signal.
+
+One more, observed on codex-cli 0.167.0 rather than learned from a failure: **`codex exec resume` works in the directory you run it from, not the session's**. Put `-C <worktree>` before `resume`, or the follow-up edits wherever you stand. To cancel, signal the session the dispatch records in `<pgid-file>`. `prompt.md` § Steer, cancel, follow up has both.
