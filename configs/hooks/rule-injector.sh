@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # rule-injector.sh — PostToolUse hook (matchers: Edit|Write AND Bash)
+# exists-for: no incident recorded (added 2026-06-12 in c3662b3); need: deliver a path-scoped rule when a matching file is touched rather than in every session's context · retire-when: the re-measure in TODO.md 'Retire rule-injector.sh or stop it duplicating Claude Code' shows the native loader covers the reads and writes it catches
 #
 # Path-scoped rule injection: rules that only matter for certain files live in
 # rule files instead of CLAUDE.md, and get injected into context only when the

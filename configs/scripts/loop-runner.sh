@@ -11,6 +11,9 @@
 #   [DET] syntax_check      — validates all changed .py/.sh/.ts files
 #   [LLM] fix_syntax        — one attempt to fix failures; else revert
 #   [DET] test_sample       — runs CLAUDE.md verify_cmd if present
+#   [LLM] verify            — explicit final-state pass
+#   [DET] holdout           — --holdout scenarios outside the repository
+#   [DET] reconcile_goal    — coordinator ticks task-bound goal items
 #   [DET] commit_changes    — commits all worker output
 #   [DET] convergence_check — CONVERGED? max_iter? 3x no-commits?
 #
@@ -30,6 +33,7 @@
 #   --context FILE        pre-generated context file (passed to supervisor)
 #   --state FILE          state file (default: .claude/loop-state.json)
 #   --log-dir DIR         log directory (default: logs/loop)
+#   --holdout DIR         acceptance scenarios outside the repository (loop_holdout.sh)
 #   --dry-run             preview plan, no claude calls (see run_dry_run_preview)
 #   --resume              resume an identity-matched interrupted run
 
@@ -82,6 +86,11 @@ readonly MAX_CONSECUTIVE_NO_COMMITS=3   # consecutive empty iters → force stop
 MAX_CONSECUTIVE_FAILURES=3     # consecutive worker failures (ran but no commits) → force stop
 readonly SYNTAX_CHECK_TIMEOUT=30        # syntax check timeout (seconds)
 readonly TEST_SAMPLE_TIMEOUT=120        # verify_cmd timeout (seconds)
+# Per --holdout scenario timeout (seconds). Overridable the way
+# LOOP_START_EPOCH is, so the timeout branch is testable without a test that
+# waits two minutes; loop_holdout.sh refuses a value that is not a bound.
+HOLDOUT_TIMEOUT="${CLADE_LOOP_HOLDOUT_TIMEOUT:-120}"
+readonly HOLDOUT_TIMEOUT
 # NOT readonly: override with --supervisor-timeout N. 120s was the default
 # through two stuck runs (align-elites 3×120s; a 10-requirement goal died
 # supervisor_failed on iter 1). Planning cost scales with goal size — a measured
@@ -129,6 +138,7 @@ ITERATION=0
 ITERATION_START_COMMIT=""
 DRY_RUN=false
 RESUME=false
+HOLDOUT_DIR=""   # --holdout DIR; validated and resolved by loop_holdout.sh
 # ────────────────────────────────────────────────────────────────
 
 # ─── LOGGING ────────────────────────────────────────────────────
@@ -160,6 +170,10 @@ log_error()   { echo "[$(date '+%H:%M:%S')] [ERROR] $*" | tee -a "$LOG_DIR/loop.
 # nothing else into this namespace, so nothing in this file may read it.
 # shellcheck source=loop_verify.sh
 . "$(_sibling_script loop_verify.sh)"
+# loop_holdout.sh needs loop_verify.sh's _read_verify_cmd as well as the
+# helpers above, and asserts all of them when sourced. Its state is LOOP_HOLDOUT_*.
+# shellcheck source=loop_holdout.sh
+. "$(_sibling_script loop_holdout.sh)"
 
 # ────────────────────────────────────────────────────────────────
 
@@ -265,6 +279,9 @@ node_pre_flight() {
   identity_tsv=$(python3 "$(_sibling_script git_identity.py)" check --repo . --format tsv 2>&1) || { log_error "$identity_tsv"; return 1; }
   IFS=$'\t' read -r GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL <<< "$identity_tsv"
   export GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME="$GIT_AUTHOR_NAME" GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
+  # The visible gate as this run found it. A worker can edit CLAUDE.md, and
+  # node_test_sample re-reads it, so later reads are compared against this one.
+  verify_state_snapshot_cmd
   log_success "Pre-flight OK"
 }
 # ────────────────────────────────────────────────────────────────
@@ -295,6 +312,9 @@ node_hydrate_context() {
     echo ""
     echo "## Uncommitted Changes"
     git status -sb 2>/dev/null || echo "none"
+
+    # Counts only — loop_holdout.sh keeps scenario names and paths out of it.
+    holdout_context_block
 
     # Include pre-generated context if provided.
     # The whole block redirects into .claude/loop-context.md, so a CONTEXT_FILE
@@ -758,9 +778,14 @@ _check_convergence() {
       # having executed nothing.
       log_warn "Goal file has no '- [ ]' / '- [x]' items — convergence cannot be measured from it"
     elif [ "$remaining" = "0" ]; then
-      log_success "CONVERGED: 0 unchecked items remain in goal file (deterministic check)"
-      exit_reason="converged"
-      return 0
+      # --holdout: a ticked checklist is not acceptance while a held-out
+      # scenario fails (loop_holdout.sh says why). Falls through to the
+      # give-up conditions below instead of returning converged.
+      if ! holdout_blocks_convergence; then
+        log_success "CONVERGED: 0 unchecked items remain in goal file (deterministic check)"
+        exit_reason="converged"
+        return 0
+      fi
     elif [ "$remaining" -gt 0 ]; then
       log_info "Convergence check: $remaining unchecked items remain — not done yet"
     fi
@@ -827,6 +852,9 @@ generate_loop_report() {
       "$LOG_DIR/fix-rate.tsv")
     [ -n "$fixrate_summary" ] && log_info "  Fix-rate:     $fixrate_summary"
   fi
+  local holdout_line
+  holdout_line=$(holdout_report_line)
+  if [ -n "$holdout_line" ]; then log_info "  Holdout:      $holdout_line"; fi
   log_info "═══════════════════════════════════════════════"
 
   # Write last-progress file for --status command
@@ -837,6 +865,7 @@ generate_loop_report() {
     echo "Exit: $exit_reason"
     echo "Goal: $GOAL_FILE"
     [ -n "$fixrate_summary" ] && echo "Fix-rate: $fixrate_summary"
+    if [ -n "$holdout_line" ]; then echo "Holdout: $holdout_line"; fi
   } > "$LOG_DIR/last-progress"
   return 0
 }
@@ -848,19 +877,32 @@ _save_checkpoint() {
   local phase="$2"
   local extra="${3:-}"
   local ckpt_file
+  # --opt=value: a fingerprint line can begin with "-", which argparse would
+  # otherwise read as the next option.
   ckpt_file=$(python3 "$(_sibling_script loop_checkpoint.py)" save \
     --goal "$GOAL_FILE" --iteration "$iteration" --phase "$phase" \
     --extra "$extra" --no-commits "${consecutive_no_commits:-0}" \
     --worker-failures "${consecutive_worker_failures:-0}" \
-    --iteration-start-commit "$ITERATION_START_COMMIT")
+    --iteration-start-commit "$ITERATION_START_COMMIT" \
+    --holdout="$(holdout_state_dir)" \
+    --holdout-fingerprint="$(holdout_state_fingerprint)" \
+    --holdout-changed-at="$(holdout_state_changed_at)")
   log_info "[CHECKPOINT] iter $iteration $phase → $ckpt_file"
 }
 
 _recover_checkpoint() {
   local recovered
+  # The --holdout directory is part of the identity: a resume that drops it
+  # would reconcile and converge with the held-out gate silently off.
   if ! recovered=$(python3 "$(_sibling_script loop_checkpoint.py)" recover \
-      --goal "$GOAL_FILE" 2>&1); then
-    log_error "[RECOVERY] $recovered"
+      --goal "$GOAL_FILE" --holdout="$(holdout_state_dir)" 2>&1); then
+    # The first line is the reason. A hint after it can name the interrupted
+    # run's --holdout directory, which must not reach loop.log (inside the
+    # checkout by default), so it goes to the terminal only.
+    log_error "[RECOVERY] ${recovered%%$'\n'*}"
+    case "$recovered" in
+      *$'\n'*) printf '%s\n' "${recovered#*$'\n'}" >&2 ;;
+    esac
     return 1
   fi
   RECOVERED_ITERATION=$(printf '%s' "$recovered" | python3 -c 'import json,sys; print(json.load(sys.stdin)["iteration"])')
@@ -869,6 +911,9 @@ _recover_checkpoint() {
   RECOVERED_NO_COMMITS=$(printf '%s' "$recovered" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("consecutive_no_commits", 0))')
   RECOVERED_WORKER_FAILURES=$(printf '%s' "$recovered" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("consecutive_worker_failures", 0))')
   RECOVERED_START_COMMIT=$(printf '%s' "$recovered" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("iteration_start_commit", ""))')
+  holdout_state_restore \
+    "$(printf '%s' "$recovered" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("holdout_fingerprint", ""))')" \
+    "$(printf '%s' "$recovered" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("holdout_changed_at", ""))')"
   local ckpt_file
   ckpt_file=$(printf '%s' "$recovered" | python3 -c 'import json,sys; print(json.load(sys.stdin)["checkpoint_file"])')
   log_info "[RECOVERY] Resuming iteration $RECOVERED_ITERATION after $RECOVERED_PHASE → $ckpt_file"
@@ -898,6 +943,7 @@ run_dry_run_preview() {
   Iter/workers:   max-iter=$MAX_ITER max-workers=$MAX_WORKERS
   State/log:      $STATE_FILE (would NOT be written) / $LOG_DIR
   Verify cmd:     ${verify:-(none declared in CLAUDE.md)}
+  Holdout:        $(holdout_preview)
   Planned tasks:  $plan
 EOF
 }
@@ -929,6 +975,8 @@ run_blueprint_loop() {
   log_info "  Supervisor:   $SUPERVISOR_MODEL"
   log_info "  Workers:      $WORKER_MODEL"
   log_info "  State file:   $STATE_FILE"
+  log_info "  Holdout:      $(holdout_summary)"
+  holdout_announce
 
   # POST was already completed before the crash: finish its deterministic
   # convergence/state transition once, then continue at the next iteration.
@@ -1064,9 +1112,17 @@ run_blueprint_loop() {
     local verify_result
     verify_result=$(node_verify)
 
+    # [DET] holdout — --holdout scenarios outside the repository (loop_holdout.sh).
+    # Runs whatever the gates above said: the supervisor's next context needs
+    # the count, and a red holdout under a green verify_cmd is the signal.
+    local holdout_result=0
+    node_holdout || holdout_result=$?
+    holdout_note_divergence "$test_result"
+
     # Workers never edit the goal; the coordinator requires every gate.
     if [ "$all_workers_succeeded" = "true" ] && [ -z "$syntax_failures" ] \
-       && [ "$test_result" -eq 0 ] && _verify_passed "$verify_result"; then
+       && [ "$test_result" -eq 0 ] && _verify_passed "$verify_result" \
+       && [ "$holdout_result" -eq 0 ]; then
       node_reconcile_goal "$task_file" || true
     else
       log_warn "Skipping goal reconciliation because an execution or verification gate did not pass"
@@ -1143,6 +1199,9 @@ main() {
     print_usage
     exit 1
   fi
+
+  # Before the dry run too: an in-repo holdout is refused whatever the mode.
+  holdout_validate "$HOLDOUT_DIR" || exit 1
 
   if [ "$DRY_RUN" = "true" ]; then run_dry_run_preview; exit $?; fi
 

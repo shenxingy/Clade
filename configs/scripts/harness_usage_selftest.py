@@ -6,7 +6,7 @@ runs, under a temporary HOME that holds fixture transcripts, two profiles'
 ``.claude.json`` and a fixture Clade checkout passed as ``--repo``. Nothing
 reads the real HOME, and nothing touches the network.
 
-What is proven checked is the list in orchestrator/tests/mutations_harness_usage.py:
+What is proven checked is the list in orchestrator/tests/can_fire/harness_usage.py:
 each entry removes one guard from harness-usage.py and must turn this red. A
 guard that list does not name is not claimed checked, and not every rule has
 both a positive and a negative control. Not covered: the advisory lock (two

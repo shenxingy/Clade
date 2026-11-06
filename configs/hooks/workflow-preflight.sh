@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # workflow-preflight.sh — check a Workflow launch before its agents run
+# exists-for: 10 of 324 Workflow launches carried a placeholder for their data, and one ran to 'completed' on it with an empty result (added 2026-10-23 in ef9eda7, #154) · retire-when: the Workflow tool rejects placeholder args itself, or an ablation shows placeholder launches stop without it
 #
 # Triggered: PreToolUse (matcher: Workflow)
 # Purpose:   hand the launch to configs/scripts/check-workflow-script.py --hook,

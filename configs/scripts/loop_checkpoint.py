@@ -15,6 +15,9 @@ from typing import Any
 
 SCHEMA_VERSION = 1
 PHASES = {"pre-done", "workers-done", "post-done"}
+# The --holdout fields are additive within schema 1: a checkpoint written
+# before they existed came from a run that had no holdout, so a missing
+# holdout_dir reads as "" and still matches a resume without --holdout.
 
 
 def _git(*args: str) -> str:
@@ -78,12 +81,33 @@ def save(args: argparse.Namespace) -> int:
         "consecutive_no_commits": args.no_commits,
         "consecutive_worker_failures": args.worker_failures,
         "iteration_start_commit": args.iteration_start_commit,
+        "holdout_dir": args.holdout,
+        "holdout_fingerprint": args.holdout_fingerprint,
+        "holdout_changed_at": args.holdout_changed_at,
     }
     directory = _checkpoint_dir(identity)
     path = directory / f"iter-{args.iteration:06d}-{args.phase}.json"
     _write_atomic(path, payload)
     print(path)
     return 0
+
+
+def _holdout_hint(recorded: object, current: str) -> str:
+    """Say which --holdout the interrupted run had, so the fix is one flag."""
+    if not recorded:
+        return (
+            "  the interrupted run had no --holdout; resume without it, "
+            "or start a fresh run without --resume"
+        )
+    if not current:
+        return (
+            f"  the interrupted run had --holdout {recorded}; resume with the "
+            "same --holdout, or start a fresh run without --resume"
+        )
+    return (
+        f"  the interrupted run had --holdout {recorded}, not {current}; resume "
+        "with the same --holdout, or start a fresh run without --resume"
+    )
 
 
 def recover(args: argparse.Namespace) -> int:
@@ -111,6 +135,9 @@ def recover(args: argparse.Namespace) -> int:
     mismatches = [
         key for key, value in expected.items() if payload.get(key) != value
     ]
+    recorded_holdout = payload.get("holdout_dir", "")
+    if recorded_holdout != args.holdout:
+        mismatches.append("holdout_dir")
     if payload.get("phase") not in PHASES:
         mismatches.append("phase")
     if not isinstance(payload.get("iteration"), int) or payload["iteration"] < 1:
@@ -120,6 +147,8 @@ def recover(args: argparse.Namespace) -> int:
             f"checkpoint does not match current run ({', '.join(sorted(set(mismatches)))}): {path}",
             file=sys.stderr,
         )
+        if "holdout_dir" in mismatches:
+            print(_holdout_hint(recorded_holdout, args.holdout), file=sys.stderr)
         return 2
 
     payload["checkpoint_file"] = str(path)
@@ -154,12 +183,20 @@ def build_parser() -> argparse.ArgumentParser:
     save_parser.add_argument("--no-commits", default=0, type=int)
     save_parser.add_argument("--worker-failures", default=0, type=int)
     save_parser.add_argument("--iteration-start-commit", default="")
+    # Physical path of the run's --holdout directory; "" = no holdout.
+    save_parser.add_argument("--holdout", default="")
+    save_parser.add_argument("--holdout-fingerprint", default="")
+    save_parser.add_argument("--holdout-changed-at", default="")
     save_parser.set_defaults(func=save)
 
-    for command, func in (("recover", recover), ("clear", clear)):
-        command_parser = subparsers.add_parser(command)
-        command_parser.add_argument("--goal", required=True)
-        command_parser.set_defaults(func=func)
+    recover_parser = subparsers.add_parser("recover")
+    recover_parser.add_argument("--goal", required=True)
+    recover_parser.add_argument("--holdout", default="")
+    recover_parser.set_defaults(func=recover)
+
+    clear_parser = subparsers.add_parser("clear")
+    clear_parser.add_argument("--goal", required=True)
+    clear_parser.set_defaults(func=clear)
     return parser
 
 

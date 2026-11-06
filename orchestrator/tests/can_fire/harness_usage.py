@@ -1,6 +1,6 @@
 """Mutations for configs/scripts/harness-usage.py, merged into test_self_tests_can_fire.MUTATIONS.
 
-A sibling file because these entries do not fit under the 1500-line cap
+In can_fire/ because these entries do not fit under the 1500-line cap
 test_conventions.py holds test_self_tests_can_fire.py to (1,431 lines before
 them). That file loads this one into its MUTATIONS, so the same parametrized
 test runs every entry, and its coverage check sees the script. Same contract:

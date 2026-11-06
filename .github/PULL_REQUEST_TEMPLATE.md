@@ -21,6 +21,22 @@
 - [ ] Hooks fire correctly (verified in a Claude Code session) — the one thing
       `ci-local.py` genuinely cannot check
 
+## Review depth and what could not be verified
+
+<!-- Two fixed lines that /retro rolls up (configs/scripts/pr-verification-gaps.py).
+Keep the words before each colon as they are; replace each <placeholder>.
+- Review depth: how far someone OTHER than the author read this diff, one of
+  none, skimmed, read-in-full, optionally followed by who: skimmed (by @reviewer).
+  Your own reading never counts. Update the line when a review lands.
+- Could not verify: what you could not check, a few words per item naming the
+  surface, the reason in parentheses, items separated by semicolons:
+  macOS run (no Mac reachable); live hook firing (needs an interactive session).
+  Write none only when everything this PR claims was checked, and reuse an
+  earlier PR's wording for the same gap so the rollup can count it. -->
+
+Review depth: <none | skimmed | read-in-full>
+Could not verify: <none | item (why); item (why)>
+
 ## Checklist
 
 - [ ] Code follows the existing style and conventions

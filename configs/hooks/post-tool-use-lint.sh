@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # post-tool-use-lint.sh — fast per-file check (or full verify_cmd) after edits
+# exists-for: no incident recorded (added 2026-02-26 in 28e5dd1); need: run the project's verify_cmd, or a cheap per-file check, after each edit · retire-when: no project sets verify_cmd in .claude/orchestrator.json (an orchestrator-layer file, dormant since 2026-09-02), or post-edit-check.sh covers the same checks
 # Reads verify_cmd from .claude/orchestrator.json in the project directory.
 # When the edited file (tool_input.file_path from the hook's stdin JSON) has a
 # cheap single-file checker (.py / .sh / .js), that runs INSTEAD of the full

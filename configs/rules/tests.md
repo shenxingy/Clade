@@ -16,3 +16,12 @@ its own instruments have now been found unable to fire.
   each mutation must be shown to turn that self-test red.
 - Assert on the property, not on the prose. A test that greps for a sentence in a
   markdown file proves the sentence exists, not that anything obeys it.
+- **Property-first for a pure function** (text in, text out: a redactor, parser,
+  normaliser). Write a Hypothesis property for what must NOT happen before more
+  examples, pin each shrunk counterexample with `@example`, and keep a mutation
+  in the file that makes the property find one. `test_redact_properties.py` is
+  the model: its first runs found three defects the example tests in
+  `test_redact.py` had missed.
+- **A test that goes green on an unchanged rerun is FLAKY, not green.** Report
+  both outcomes and fix or pin the cause. "Re-run once; if it passes, discard
+  it" teaches the agent that retrying beats fixing.

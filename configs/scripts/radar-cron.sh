@@ -14,6 +14,10 @@
 # Remove:
 #   crontab -l | grep -v radar-cron | crontab -
 #
+# After the sweep it runs keep-sessions.py --apply, the kit's one weekly
+# housekeeping job (the last section of this file); that step cannot fail
+# the sweep.
+#
 # ─── Where the sweep's code edits go ─────────────────────────────────
 # The skill builds small fixes as well as a digest. Until 2026-10-20 the agent
 # ran from cron's cwd ($HOME) and edited the Clade checkout in place, whatever
@@ -188,8 +192,9 @@ else
 fi
 
 # Read-only inputs the lanes need, granted per run: the ledger and digests,
-# the correction history (Lane C), and transcripts for the hook-rejection
-# tally. Everything else outside the run directory is refused to the agent.
+# the correction history (Lane C), and the transcripts, which Lane D's report
+# cites by file and record and Lane C's own tallies read. Everything else
+# outside the run directory is refused to the agent.
 RADAR_ADD_DIRS=()
 for _d in "$RESEARCH_DIR" "$HOME/.claude/corrections" "$HOME/.claude/projects" "$HOME"/.claude-profiles/*/projects; do
   [[ -d "$_d" ]] && RADAR_ADD_DIRS+=(--add-dir "$_d")
@@ -244,13 +249,35 @@ else
 report fixes in the digest instead."
 fi
 
+# ─── Lane D's input ──────────────────────────────────────────────────
+# The agent runs read-only commands (grep, jq, find: the 2026-10-26 and 11-02
+# sweeps computed the old hook-error tally that way), but `python3 <script>`
+# waits for an approval nobody is there to give; both digests record it. So
+# friction-rank.py (beside this script), which ranks the harness's verdicts in
+# the transcripts by distinct sessions, is run here and handed over as a file.
+# A run that could not produce it says so in the prompt, so the digest cannot
+# read a missing report as a quiet week.
+# --holdout-weeks 2: this runs Monday morning, hours into the ISO week, so the
+# current week alone would hold out hours of data, and SKILL.md tells the grader
+# that a family absent from the held-out column is a burst.
+FRICTION_REPORT="$STAGE_DIR/friction-$RUN_DATE.txt"
+FRICTION_PY="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/friction-rank.py"
+if command -v python3 >/dev/null 2>&1 && [[ -f "$FRICTION_PY" ]] \
+   && _timeout 300 python3 "$FRICTION_PY" --top 15 --holdout-weeks 2 > "$FRICTION_REPORT" 2>&1; then
+  LANE_D="Lane D's report, from friction-rank.py, is $FRICTION_REPORT: read it rather than re-deriving it."
+  log "LANE D report at $FRICTION_REPORT"
+else
+  LANE_D="Lane D was NOT MEASURED this run (friction-rank.py did not produce a report; see $FRICTION_REPORT if it exists): say so in the digest."
+  log "LANE D NOT MEASURED"
+fi
+
 log "START weekly radar sweep"
 # --print: headless, one shot. Permission mode is explicit rather than inherited
 # from the interactive shell alias, which cron does not load.
 if ( cd "$RUN_DIR" && _timeout "$TIMEOUT_SECS" "$CLAUDE_BIN" \
      "/radar
 
-Run the full three-lane sweep unattended. $WHERE
+Run the full four-lane sweep unattended. $WHERE $LANE_D
 
 Write the digest to $STAGE_DIR/radar-$RUN_DATE.md and the ledger append to \
 $STAGE_DIR/known-concepts-append-$RUN_DATE.md — exactly those names — and the \
@@ -344,3 +371,31 @@ Digest: $RESEARCH_DIR/radar-$RUN_DATE.md"
     fi
   fi
 fi
+
+# ─── Keep the corrected sessions before the 30-day cleanup ───────────
+# Claude Code deletes a transcript 30 days after its last write, and a session
+# a correction points at is a ready-made eval only while it exists.
+# keep-sessions.py copies those sessions, redacted, to
+# ~/.local/share/clade/sessions/ (see its docstring). It runs here because this
+# is the one weekly job the kit already has, and LAST, so it can neither delay
+# nor fail the sweep: whatever it exits with is logged, the wrapper's own exit
+# status is unchanged, and a hang is cut off by the timeout where `timeout`
+# exists. Only its one-line summary reaches this log.
+KEEP_SESSIONS="${CLADE_KEEP_SESSIONS:-$(cd "$(dirname "$0")" 2>/dev/null && pwd)/keep-sessions.py}"
+KEEP_SESSIONS_TIMEOUT="${CLADE_KEEP_SESSIONS_TIMEOUT:-1800}"
+keep_sessions() {
+  local out rc
+  if ! command -v python3 >/dev/null 2>&1 || [[ ! -f "$KEEP_SESSIONS" ]]; then
+    log "KEEP-SESSIONS SKIPPED: no python3, or no $KEEP_SESSIONS"
+    return 0
+  fi
+  out=$(_timeout "$KEEP_SESSIONS_TIMEOUT" python3 "$KEEP_SESSIONS" --apply 2>&1 </dev/null)
+  rc=$?
+  if [[ $rc -eq 0 ]]; then
+    log "KEEP-SESSIONS $(printf '%s\n' "$out" | tail -n 1)"
+  else
+    log "KEEP-SESSIONS FAILED rc=$rc (the sweep is unaffected): $(printf '%s\n' "$out" | tail -n 1)"
+  fi
+  return 0
+}
+keep_sessions
