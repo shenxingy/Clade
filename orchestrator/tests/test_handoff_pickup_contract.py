@@ -10,10 +10,12 @@ Breunig, *Context Inertia*, 2026-10-14). /pickup used to say "Immediately start
 executing Next Steps #1", which carried the last session's hypothesis across
 the reset as orders. A Hypotheses section ALONE would carry the same inertia
 (the skeptic's warning), so the producer change and the consumer re-check are
-asserted together: the handoff records each hypothesis with evidence, status
-and a drop condition plus stop conditions; pickup parses both, re-checks the
-current hypothesis before it acts, keeps its no-"shall I proceed" autonomy, and
-re-plans when the check contradicts the hypothesis.
+pinned together: the handoff's instructions to record each hypothesis with
+evidence (inferences marked "inferred"), status and a drop condition plus stop
+conditions; pickup's instructions to parse both, re-check the current
+hypothesis before it acts, keep its no-"shall I proceed" autonomy, and re-plan
+when the check contradicts the hypothesis. These are instructions to a model;
+nothing here measures whether a model follows them.
 
 Each check reads the text a runtime hands the model — the canonical Claude Code
 skill (prompt.md + SKILL.md), the clade-mcp package copy, and the generated
@@ -25,13 +27,20 @@ entry removes or rewords one guard in the canonical text, and
 ``test_every_mutation_is_noticed`` requires at least one check to go red. A
 mutation whose anchor no longer matches fails rather than skips. The claim is
 exactly that table: every mutation in it must turn the suite red. An edit the
-table does not list is not shown to be caught. The checks are coupled to
-wording on purpose: a rewording that keeps the meaning breaks an anchor
-(loudly); a rewording that loses it is caught when a listed mutation covers it.
+table does not list is not shown to be caught.
 
-Verdict branches are pinned by their TRIGGER (the parenthetical after the
-label) and their BODY, not by the label alone: a label with its condition cut
-routes nothing.
+What one assertion checks: that a phrase is present in (or absent from) one
+section or bullet of the prose, after whitespace is collapsed. Not what the
+sentence around the phrase now means. Each assertion message says which phrase
+went missing, not which behaviour broke. The known limit follows from that: a
+substring pin cannot see an added disjunct or qualifier. "A changed history
+alone is not evidence against the hypothesis, unless the log is long" keeps
+every pinned phrase and passes. A rewording that drops a pinned phrase fails,
+whatever it means; one that keeps every pinned phrase passes, whatever it means.
+
+Verdict branches are pinned by phrases in their TRIGGER (the parenthetical
+after the label) and their BODY, not by the label alone: a label with its
+condition cut routes nothing.
 """
 
 from __future__ import annotations
@@ -127,7 +136,7 @@ def _recheck_body(step5: str) -> str:
     verdict branch. Grepping all of Step 5 would pass on words the verdict
     bullets repeat ('Drop it if'), and Step 3 repeats 'Meta.HEAD'."""
     start = step5.find("re-check first")
-    assert start != -1, "Step 5 has no re-check before acting"
+    assert start != -1, "Step 5 has no 're-check first'"
     end = step5.find("**Holds**", start)
     assert end != -1, "Step 5 has no **Holds** branch after the re-check"
     return step5[start:end]
@@ -185,9 +194,20 @@ def handoff_template_records_hypotheses_and_stop_conditions(handoff: str, pickup
 
         hyp = _section(template, HYPOTHESES)
         for status in STATUSES:
-            assert f"[{status}]" in hyp, f"Hypotheses has no [{status}] entry"
-        assert "Evidence:" in hyp, "Hypotheses records no evidence"
-        assert "Drop it if:" in hyp, "Hypotheses records no drop condition"
+            assert f"[{status}]" in hyp, f"the Hypotheses template has no [{status}] entry"
+        assert "Drop it if:" in hyp, "the Hypotheses template has no 'Drop it if:' field"
+
+        # The current hypothesis's Evidence line, and on it the producer half of
+        # pickup's 'A fact the handoff marks "inferred" is not verified': the
+        # writer is asked to label what it did not observe. Without the ask the
+        # label never appears and pickup reads every inference as observed.
+        # This checks that the line holds the word "inferred" in quotes, not
+        # how the sentence around it uses the word.
+        current = re.search(r"\[current\]\*\*[^\n]*\n {2}- Evidence: ([^\n]*)", hyp)
+        assert current and '"inferred"' in current.group(1), (
+            "the template's current hypothesis has no '- Evidence:' line, or that line no "
+            "longer contains '\"inferred\"'"
+        )
 
         stop = _section(template, re.escape(STOP))
         for field in ("Done when:", "Stop and re-plan if:", "Out of scope:"):
@@ -196,14 +216,14 @@ def handoff_template_records_hypotheses_and_stop_conditions(handoff: str, pickup
         # Each step names the hypothesis it rests on, so the steps that fall
         # with a contradicted hypothesis are visible to the re-plan.
         assert "(rests on H1)" in _section(template, "Next Steps"), (
-            "Next Steps no longer name the hypothesis they rest on"
+            "the Next Steps template no longer shows a step marked '(rests on H1)'"
         )
 
         # The re-check needs to know what landed after the handoff.
-        assert "- HEAD:" in _section(template, "Meta"), "Meta records no HEAD"
+        assert "- HEAD:" in _section(template, "Meta"), "the Meta template has no '- HEAD:' line"
 
     # pickup re-checks "the current one", which presumes there is one at most.
-    assert "At most one is current" in handoff, "the template allows several current hypotheses"
+    assert "At most one is current" in handoff, "the handoff no longer says 'At most one is current'"
 
 
 @_check
@@ -211,7 +231,7 @@ def handoff_templates_agree_on_section_headers(handoff: str, pickup: str) -> Non
     """SKILL.md says pickup parses 'these exact section headers' while prompt.md
     holds the authoritative template; one updated without the other is drift."""
     first, second = (_headings(t) for t in _handoff_templates(handoff))
-    assert first == second
+    assert first == second, f"the two handoff templates' headings differ: {first} vs {second}"
 
 
 @_check
@@ -220,17 +240,21 @@ def incremental_handoff_carries_hypotheses_forward(handoff: str, pickup: str) ->
     that is where ruled-out entries would be lost."""
     step2 = _section(handoff, r"Step 2: Detect Iteration Number")
     carry = _flat(_paragraph_with(step2, "Carry Hypotheses forward"))
-    assert "keep every ruled-out entry" in carry, "the incremental update drops ruled-out entries"
-    assert STOP in carry, f"the incremental update does not carry {STOP!r}"
+    assert "keep every ruled-out entry" in carry, (
+        "the carry-forward paragraph no longer says 'keep every ruled-out entry'"
+    )
+    assert STOP in carry, f"the carry-forward paragraph never names {STOP!r}"
     # Kept, but bounded: a session start auto-loads only the head of the file,
     # and Hypotheses sits above Next Steps and Meta.
-    assert "shrinks to one line" in carry, "carried ruled-out entries grow without bound"
+    assert "shrinks to one line" in carry, (
+        "the carry-forward paragraph no longer says a carried ruled-out entry 'shrinks to one line'"
+    )
 
 
 @_check
 def handoff_report_names_the_current_hypothesis(handoff: str, pickup: str) -> None:
     report = _section(handoff, r"Step 4: Report")
-    assert "Current hypothesis:" in report, "the handoff report hides the hypothesis Next rests on"
+    assert "Current hypothesis:" in report, "Step 4's report has no 'Current hypothesis:' line"
 
 
 # ─── Checks: what /pickup reads and does ─────────────────────────────────────
@@ -238,8 +262,8 @@ def handoff_report_names_the_current_hypothesis(handoff: str, pickup: str) -> No
 @_check
 def pickup_parses_every_section_the_resume_depends_on(handoff: str, pickup: str) -> None:
     parsed = _pickup_parse_list(pickup)
-    assert HYPOTHESES in parsed, f"pickup never reads {HYPOTHESES}: {parsed}"
-    assert STOP in parsed, f"pickup never reads {STOP}: {parsed}"
+    assert HYPOTHESES in parsed, f"Step 2's parse list has no **{HYPOTHESES}** bullet: {parsed}"
+    assert STOP in parsed, f"Step 2's parse list has no **{STOP}** bullet: {parsed}"
 
     # Every name pickup parses must be a heading the handoff actually writes;
     # a rename on one side silently empties that field on the other.
@@ -250,21 +274,28 @@ def pickup_parses_every_section_the_resume_depends_on(handoff: str, pickup: str)
                 f"pickup parses {name!r}, handoff writes only {heads}"
             )
 
-    # What each status means to the reader: the current one carries its
-    # falsifier, UNCONFIRMED is not fact, ruled-out is not re-tried.
+    # One phrase per status in Step 2's Hypotheses bullet: the current one's
+    # falsifier, UNCONFIRMED as not fact, ruled-out as not re-tried. Presence
+    # only — a qualifier added beside a phrase keeps it.
     hyp = _bullet(_section(pickup, r"Step 2: Read \+ Parse"), "- **Hypotheses**")
-    assert '"Drop it if"' in hyp, "pickup does not read the current hypothesis's drop condition"
-    assert "(not facts)" in hyp, "pickup reads UNCONFIRMED hypotheses as facts"
-    assert "do not re-try them" in hyp, "pickup re-tries ruled-out hypotheses"
+    assert '"Drop it if"' in hyp, "Step 2's Hypotheses bullet no longer mentions '\"Drop it if\"'"
+    assert "(not facts)" in hyp, "Step 2's Hypotheses bullet lost '(not facts)'"
+    assert "do not re-try them" in hyp, "Step 2's Hypotheses bullet lost 'do not re-try them'"
 
 
 @_check
 def pickup_treats_next_steps_as_proposals(handoff: str, pickup: str) -> None:
     parse = _section(pickup, r"Step 2: Read \+ Parse")
-    assert re.search(r"\*\*Next Steps\*\*:.*proposals, not orders", parse, flags=re.DOTALL)
-    # A handoff written before v3 has no Hypotheses section; pickup must still
-    # name an assumption to re-check rather than skip the re-check.
-    assert "v2 handoff" in parse and "UNCONFIRMED" in parse
+    assert re.search(r"\*\*Next Steps\*\*:.*proposals, not orders", parse, flags=re.DOTALL), (
+        "Step 2 no longer has 'proposals, not orders' after its **Next Steps** bullet"
+    )
+    # A handoff written before v3 has no Hypotheses section. This checks only
+    # that Step 2 still mentions a v2 handoff and UNCONFIRMED: removing the v2
+    # paragraph is caught ("v2 fallback dropped"), rewording what it tells
+    # pickup to do while keeping both words is not.
+    assert "v2 handoff" in parse and "UNCONFIRMED" in parse, (
+        "Step 2 no longer mentions both 'v2 handoff' and 'UNCONFIRMED'"
+    )
 
 
 @_check
@@ -288,35 +319,45 @@ def pickup_lists_every_commit_since_the_handoff(handoff: str, pickup: str) -> No
     merge, which is how this repository lands every PR, so content decides, not
     history), 128 (object absent — nothing can say, so not re-checked)."""
     step3 = _section(pickup, r"Step 3: Verify Git State")
-    assert "git log --oneline <Meta.HEAD>..HEAD" in step3, "Step 3 lists no commits since Meta.HEAD"
+    assert "git log --oneline <Meta.HEAD>..HEAD" in step3, (
+        "Step 3 lacks `git log --oneline <Meta.HEAD>..HEAD`"
+    )
     assert "git merge-base --is-ancestor <Meta.HEAD> HEAD" in step3, (
-        "Step 3 cannot tell a moved history from an unchanged one"
+        "Step 3 lacks `git merge-base --is-ancestor <Meta.HEAD> HEAD`"
     )
 
     moved = _bullet(step3, "- **ancestor: 1**")
     assert "squash-merged" in moved and "check 1 diffs the cited files" in moved, (
-        "a rebased or squash-merged history is not compared by content"
+        "the ancestor: 1 bullet lacks 'squash-merged' or 'check 1 diffs the cited files'"
     )
-    assert "not evidence against the hypothesis" in moved, "a changed history alone counts as evidence"
-    assert "Contradicted" not in moved, "a rebase or squash merge alone discards the old Next Steps"
+    assert "not evidence against the hypothesis" in moved, (
+        "the ancestor: 1 bullet lost 'not evidence against the hypothesis'"
+    )
+    assert "Contradicted" not in moved, "the ancestor: 1 bullet names Contradicted"
 
     absent = _bullet(step3, "- **ancestor: 128**")
-    assert "does not have the commit" in absent, "exit 128 is not classified"
+    assert "does not have the commit" in absent, "the ancestor: 128 bullet lost 'does not have the commit'"
     assert "check 1 cannot run" in absent and "Cannot-be-checked path" in absent, (
-        "a clone without Meta.HEAD is not routed to Cannot be checked"
+        "the ancestor: 128 bullet lacks 'check 1 cannot run' or 'Cannot-be-checked path'"
     )
 
     # Without this fallback every v2 handoff runs --is-ancestor on a HEAD it
     # never recorded and exits 128.
     v2 = _paragraph_with(step3, "A v2 handoff has no Meta.HEAD")
-    assert "git log --oneline -10" in v2 and "Done list" in v2, "a v2 handoff has no Step 3 fallback"
+    assert "git log --oneline -10" in v2 and "Done list" in v2, (
+        "Step 3's v2 paragraph lacks `git log --oneline -10` or 'Done list'"
+    )
 
 
 @_check
 def pickup_briefing_shows_the_hypothesis_and_proposals(handoff: str, pickup: str) -> None:
     briefing = _section(pickup, r"Step 4: Display Briefing")
-    assert "Hypothesis: {current hypothesis" in briefing, "the briefing hides the hypothesis"
-    assert "Proposed next (re-checked in Step 5):" in briefing, "the briefing presents Next Steps as the plan"
+    assert "Hypothesis: {current hypothesis" in briefing, (
+        "the briefing has no 'Hypothesis: {current hypothesis' line"
+    )
+    assert "Proposed next (re-checked in Step 5):" in briefing, (
+        "the briefing lost 'Proposed next (re-checked in Step 5):'"
+    )
 
 
 @_check
@@ -324,55 +365,69 @@ def pickup_rechecks_the_hypothesis_before_acting(handoff: str, pickup: str) -> N
     step5 = _section(pickup, r"Step 5:")
 
     # The old order: execute the last session's plan on sight.
-    assert "Immediately start executing" not in step5, "pickup still executes Next Steps as orders"
+    assert "Immediately start executing" not in step5, "Step 5 still says 'Immediately start executing'"
 
     recheck = step5.find("re-check first")
-    assert recheck != -1, "Step 5 has no re-check before acting"
+    assert recheck != -1, "Step 5 has no 're-check first'"
     start = step5.find("Do NOT ask")
-    assert start != -1, "Step 5 lost its no-'shall I proceed' autonomy"
-    assert recheck < start, "Step 5 acts before it re-checks"
+    assert start != -1, "Step 5 has no 'Do NOT ask'"
+    assert recheck < start, "Step 5's 'Do NOT ask' comes before its 're-check first'"
 
-    # Nothing before the re-check — Steps 1-4 or Step 5's preamble — starts work.
+    # No text ahead of 're-check first' (Steps 1-4 and Step 5's preamble)
+    # matches EARLY_START. It sees only the start phrasings that regex names.
     ahead = pickup[: pickup.index("re-check first")]
     early = EARLY_START.search(ahead)
-    assert not early, f"a start instruction runs ahead of the re-check: {early.group(0)!r}"
+    assert not early, f"text ahead of 're-check first' matches EARLY_START: {early.group(0)!r}"
 
-    # Nothing anywhere in the steps makes the re-check optional.
+    # No word OPTIONAL names (skip*, "if time allows", optional/optionally)
+    # appears in Execution Steps, except Step 2's "skips check 2". A qualifier
+    # phrased any other way ("only when the handoff is old") is not seen.
     optional = OPTIONAL.search(_section(pickup, r"Execution Steps"))
-    assert not optional, f"a qualifier makes the re-check optional: {optional.group(0)!r}"
+    assert not optional, f"Execution Steps contains an OPTIONAL word: {optional.group(0)!r}"
 
     flat5 = _flat(step5)
     assert "Print one line — `Re-check: {H} holds | contradicted | not re-checked" in flat5, (
-        "the verdict is never stated, so nobody can see which branch ran"
+        "Step 5 lost its 'Print one line — `Re-check: {H} holds | contradicted | not re-checked' instruction"
     )
-    assert "Contradicted wins" in flat5, "a check that could not run can outvote one that contradicts"
+    assert "Contradicted wins" in flat5, "Step 5 lost 'Contradicted wins'"
 
-    # The three outcomes, each by trigger and body, not by label.
+    # The three outcomes, each by phrases in its trigger and body, not by label.
     holds = _bullet(step5, "- **Holds**")
     holds_when = _trigger(holds)
     assert "the check supports it, finds nothing against it" in holds_when, (
-        "Holds no longer requires a check that ran"
+        "Holds' trigger lost 'the check supports it, finds nothing against it'"
     )
-    assert not re.search(r"not run|\bskip|unchecked", holds_when), f"Holds admits an un-run check: {holds_when!r}"
+    assert not re.search(r"not run|\bskip|unchecked", holds_when), (
+        f"Holds' trigger contains 'not run', 'skip' or 'unchecked': {holds_when!r}"
+    )
     assert "first Next Step that still follows from it" in holds, (
-        "Holds runs Next Steps #1 even when the stop conditions dropped it"
+        "Holds' body lost 'first Next Step that still follows from it'"
     )
 
     contradicted = _bullet(step5, "- **Contradicted**")
     contradicted_when = _trigger(contradicted)
-    for cond in ('"Drop it if"', '"Stop and re-plan if"', "no longer says what its Evidence says"):
-        assert cond in contradicted_when, f"Contradicted does not fire when {cond} is met"
-    assert "do not execute the old Next Steps" in contradicted
-    assert "Re-plan from the Goal" in contradicted, "a contradicted hypothesis is not re-planned"
-    assert "without asking" in contradicted, (
-        "a contradicted hypothesis must re-plan, not stall on a question"
+    for cond in (
+        '"Drop it if"',
+        '"Stop and re-plan if"',
+        "no longer says what its Evidence says",
+        # Check 2's mismatch: a re-run whose output differs from the recorded
+        # Evidence while the drop condition is not literally met.
+        "re-run no longer matches what its Evidence records",
+    ):
+        assert cond in contradicted_when, f"Contradicted's trigger lacks {cond!r}"
+    assert "do not execute the old Next Steps" in contradicted, (
+        "Contradicted's body lost 'do not execute the old Next Steps'"
     )
-    assert "so the next /handoff carries it" in contradicted, "the contradicted hypothesis is not recorded"
+    assert "Re-plan from the Goal" in contradicted, "Contradicted's body lost 'Re-plan from the Goal'"
+    assert "without asking" in contradicted, "Contradicted's body lost 'without asking'"
+    assert "so the next /handoff carries it" in contradicted, (
+        "Contradicted's body lost 'so the next /handoff carries it'"
+    )
 
     cannot = _bullet(step5, "- **Cannot be checked cheaply**")
-    assert "128" in _trigger(cannot), "a clone without Meta.HEAD is not a cannot-check case"
+    assert "128" in _trigger(cannot), "Cannot be checked's trigger does not mention 128"
     for must in ("UNCONFIRMED", "not re-checked", "tests it"):
-        assert must in cannot, f"Cannot be checked cheaply is an unconditioned bypass: no {must!r}"
+        assert must in cannot, f"Cannot be checked's body lacks {must!r}"
 
 
 @_check
@@ -380,22 +435,34 @@ def pickup_recheck_names_what_to_check(handoff: str, pickup: str) -> None:
     """The label 're-check first' with nothing under it re-checks nothing."""
     checks = _flat(_recheck_body(_section(pickup, r"Step 5:")))
     # 1. Repository: the cited files, by content, whatever the history did.
-    assert "still say what its Evidence says" in checks, "the re-check never compares the Evidence"
+    assert "still say what its Evidence says" in checks, "the re-check lost 'still say what its Evidence says'"
     assert "git diff --stat <Meta.HEAD> HEAD -- <cited paths>" in checks and "by content" in checks, (
-        "the re-check does not compare the cited files by content"
+        "the re-check lacks `git diff --stat <Meta.HEAD> HEAD -- <cited paths>` or 'by content'"
     )
-    assert "not in its Done list" in checks, "a v2 handoff has no repository check"
-    assert "128, this check cannot run: say so" in checks, "a check that cannot run is silent"
-    # 2. Verified facts: run the hypothesis's own falsifier; inferred is not verified.
-    assert '"Drop it if"' in checks, "the re-check never runs the hypothesis's drop condition"
+    assert "not in its Done list" in checks, "the re-check lost 'not in its Done list' (the v2 case)"
+    assert "128, this check cannot run: say so" in checks, (
+        "the re-check lost '128, this check cannot run: say so'"
+    )
+    # 2. Verified facts: the hypothesis's own falsifier; inferred is not
+    # verified; a re-run that no longer matches the Evidence is routed.
+    assert 're-run the cheapest check its Evidence or "Drop it if" line names' in checks, (
+        "check 2 lost 're-run the cheapest check its Evidence or \"Drop it if\" line names'"
+    )
     assert 'A fact the handoff marks "inferred" is not verified' in checks, (
-        "the re-check treats an inferred fact as verified"
+        "check 2 lost 'A fact the handoff marks \"inferred\" is not verified'"
     )
+    # Without a route, a mismatch whose drop condition is not met fits no
+    # verdict: not Holds (something is against it), not Contradicted (no
+    # trigger named it), not Cannot be checked (the check ran).
+    assert (
+        "re-run whose output no longer matches what its Evidence records takes the Contradicted branch"
+        in checks
+    ), "check 2 lost 're-run whose output no longer matches what its Evidence records takes the Contradicted branch'"
     # 3. Stop conditions: a met goal stops; out-of-scope steps are dropped.
     assert "Done when" in checks and "report that and stop" in checks, (
-        "a goal already met does not stop the resume"
+        "the re-check lacks 'Done when' or 'report that and stop'"
     )
-    assert "Out of scope" in checks, "out-of-scope steps are not dropped"
+    assert "Out of scope" in checks, "the re-check never mentions 'Out of scope'"
 
 
 @pytest.mark.parametrize("check", CHECKS, ids=lambda fn: fn.__name__)
@@ -404,7 +471,7 @@ def test_contract_holds(surface: str, check: Check) -> None:
     check(_skill_text(surface, "handoff"), _skill_text(surface, "pickup"))
 
 
-# ─── Mutations: every guard above is observed ────────────────────────────────
+# ─── Mutations: each listed edit must turn a check red ───────────────────────
 # (label, skill, regex, replacement). Applied to the canonical claude surface
 # with re.DOTALL | re.MULTILINE; the regex must match, and the result must
 # differ. R<n> labels are the reviewer mutations from the second review of
@@ -500,9 +567,18 @@ MUTATIONS: list[tuple[str, str, str, str]] = [
     ("Holds asks before starting", "pickup",
      r'Do NOT ask "shall I proceed\?" — just start\.', 'Ask "shall I proceed?" first.'),
     ("R16 Contradicted ignores a met drop condition", "pickup",
-     r'a "Drop it if" or "Stop and re-plan if" condition is met, or a\n  cited file', "a\n  cited file"),
+     r'a "Drop it if" or "Stop and re-plan if" condition is met, a\n  cited file', "a\n  cited file"),
     ("Contradicted no longer covers a changed cited file", "pickup",
-     r"or a\n  cited file no longer says what its Evidence says", "or a\n  later commit undid it"),
+     r"a\n  cited file no longer says what its Evidence says,", "a\n  later commit undid it,"),
+    # Third review of PR #179: a check 2 re-run that no longer matches its
+    # Evidence, while the drop condition is not met, fitted no verdict.
+    ("check 2 mismatch dropped from the Contradicted trigger", "pickup",
+     r", or check 2's re-run no longer\n  matches what its Evidence records\)", ")"),
+    ("check 2 mismatch fits no verdict (routing sentence cut)", "pickup",
+     r" A re-run whose output no longer matches what its Evidence\n   records takes the Contradicted branch,"
+     r" even when its drop condition is not met\.", ""),
+    ("check 2 mismatch routed to Holds", "pickup",
+     r"records takes the Contradicted branch", "records still Holds"),
     ("Contradicted keeps the old plan", "pickup",
      r"Re-plan from the\n  Goal, the verified facts and the remaining hypotheses, state the new first step in\n  one line and",
      "Take the next old step and"),
@@ -544,6 +620,12 @@ MUTATIONS: list[tuple[str, str, str, str]] = [
     ("drop condition removed from the templates", "handoff", r"Drop it if:", "Note:"),
     ("UNCONFIRMED status removed from the templates", "handoff", r"\*\*H3 \[UNCONFIRMED\]\*\*", "**H3**"),
     ("evidence removed from the templates", "handoff", r"^  - Evidence: ", "  - Notes: "),
+    # Third review: the producer half of 'A fact the handoff marks "inferred"
+    # is not verified' was unpinned. One mutation per template.
+    ("prompt.md template stops asking for \"inferred\"", "handoff",
+     r' Mark anything you did not observe "inferred"\.', ""),
+    ("SKILL.md template stops asking for \"inferred\"", "handoff",
+     r'; "inferred" when you did not', ""),
     ("re-plan condition removed from the templates", "handoff", r"^- Stop and re-plan if: [^\n]*\n", ""),
     ("handoff no longer names its no-hypothesis marker", "handoff",
      r'\n     Mechanical work with no hypothesis: write "- none — mechanical work"\.', ""),

@@ -148,7 +148,8 @@ inertia, Breunig, 2026-10-14). So test the ground under them before the first ed
    If Step 3 still got 128, this check cannot run: say so.
 2. **Verified facts**: re-run the cheapest check its Evidence or "Drop it if" line
    names — one test, one grep, one command. A fact the handoff marks "inferred" is
-   not verified.
+   not verified. A re-run whose output no longer matches what its Evidence
+   records takes the Contradicted branch, even when its drop condition is not met.
 3. **Stop conditions**: if "Done when" is already met, report that and stop — there
    is nothing to resume. Drop any proposed step that falls under "Out of scope".
 
@@ -159,8 +160,9 @@ Contradicted wins: one check that contradicts decides, even when another could n
 - **Holds** (the check supports it, finds nothing against it, or there is no
   hypothesis because the work is mechanical): start the first
   Next Step that still follows from it. Do NOT ask "shall I proceed?" — just start.
-- **Contradicted** (a "Drop it if" or "Stop and re-plan if" condition is met, or a
-  cited file no longer says what its Evidence says): do not execute the old Next Steps.
+- **Contradicted** (a "Drop it if" or "Stop and re-plan if" condition is met, a
+  cited file no longer says what its Evidence says, or check 2's re-run no longer
+  matches what its Evidence records): do not execute the old Next Steps.
   Record the hypothesis on the evidence you just saw — ruled-out when its "Drop it if"
   is met, otherwise UNCONFIRMED — so the next /handoff carries it. Re-plan from the
   Goal, the verified facts and the remaining hypotheses, state the new first step in
