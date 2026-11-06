@@ -125,7 +125,9 @@ Honest scope: the workers run as your user, so they can still read or write
 DIR, and the holdout log, by absolute path. This makes the scenarios harder to
 rewrite, not impossible to rewrite. Never write the holdout path or a scenario
 into the goal file or a `--context` file: both are pasted into the supervisor
-prompt, and nothing checks them yet.
+prompt. The runner warns, and does not refuse, when either names DIR as given,
+its physical path or its `~/` form; a scenario name is not searched for, since
+a short one would match prose.
 
 Resume is explicit and fail-closed: the checkpoint must match the current
 checkout, goal path, branch, HEAD and `--holdout` directory. Resume with the

@@ -437,6 +437,47 @@ holdout_validate() {
   return 0
 }
 
+# holdout_warn_named GIVEN FILE... — warn when a file names the holdout.
+# The goal file and the --context file are pasted into the supervisor prompt
+# whole, so a holdout path written in either tells the workers where the
+# scenarios live, and the counts-only context means nothing. A warning, not a
+# refusal: the /loop skill already forbids it, and this checks that it held.
+# Searched: DIR as given (trailing slashes dropped), its physical path, and the
+# ~/ form of each under $HOME; only forms holding a "/", so a bare name does
+# not fire on prose. Scenario names are not searched for the same reason: a
+# short one like `check` would.
+holdout_warn_named() {
+  local given="${1%/}" file form forms="" found
+  shift
+  [ -n "$given" ] && [ -n "${LOOP_HOLDOUT_DIR:-}" ] || return 0
+  for form in "$given" "$LOOP_HOLDOUT_DIR"; do
+    forms="$forms$form"$'\n'
+    if [ -n "${HOME:-}" ]; then
+      case "$form" in
+        "$HOME"/*) forms="$forms~/${form#"$HOME"/}"$'\n' ;;
+      esac
+    fi
+  done
+  for file in "$@"; do
+    [ -n "$file" ] && [ -f "$file" ] || continue
+    found=""
+    while IFS= read -r form; do
+      case "$form" in */*) ;; *) continue ;; esac
+      case "$found" in *"[$form]"*) continue ;; esac
+      if grep -qF -- "$form" "$file" 2>/dev/null; then
+        found="${found}[$form]"
+      fi
+    done <<EOF
+$forms
+EOF
+    if [ -n "$found" ]; then
+      echo "WARNING: --holdout: $file names the holdout directory ($found)." >&2
+      echo "  It is pasted into the supervisor prompt, so the workers learn where the scenarios live. Remove the path from it." >&2
+    fi
+  done
+  return 0
+}
+
 holdout_enabled() {
   [ -n "$LOOP_HOLDOUT_DIR" ]
 }

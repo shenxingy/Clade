@@ -1202,6 +1202,7 @@ main() {
 
   # Before the dry run too: an in-repo holdout is refused whatever the mode.
   holdout_validate "$HOLDOUT_DIR" || exit 1
+  holdout_warn_named "$HOLDOUT_DIR" "$GOAL_FILE" "$CONTEXT_FILE"
 
   if [ "$DRY_RUN" = "true" ]; then run_dry_run_preview; exit $?; fi
 

@@ -41,6 +41,8 @@
 #              holdout log outside the repository does
 #   fixture    a fixture under DIR (nested, not executable) edited mid-run is
 #              reported, and that iteration's pass does not count
+#   named      a goal or --context file naming DIR (as given, its physical
+#              path, or its ~/ form) gets a warning; a bare name does not
 #
 # The last suite removes each guard from a copy of the scripts in turn and
 # requires the cases that pin it to go red, beside a no-op control that must
@@ -733,6 +735,41 @@ check "last-progress names the iteration it changed in" \
   "$(has "$LP" "scenario set CHANGED mid-run at iteration 1")"
 fi
 
+# ─── named ───────────────────────────────────────────────────────────
+if want named; then
+section "named: a goal or --context file naming the holdout is warned about"
+# Both files are pasted into the supervisor prompt whole, so a holdout path in
+# either undoes the counts-only context. --dry-run validates the holdout too.
+REPO=$(new_repo named)
+NAMED_DIR="$HOME/acceptance-named"
+scenario "$NAMED_DIR" "check" 'exit 0'
+GOAL="$REPO/.claude/goal.md"
+NAMED_WARN="names the holdout directory"
+printf '# Goal\n\n- [ ] exact item (acceptance lives in %s/)\n' "$NAMED_DIR" > "$GOAL"
+run_loop "$REPO" --dry-run --holdout "$NAMED_DIR"
+check "a goal naming DIR gets a warning" \
+  "$(has "$OUT" "WARNING: --holdout: .claude/goal.md $NAMED_WARN")" "rc=$RC; $OUT"
+check "and the run still proceeds: a warning, not a refusal" "$([[ $RC -eq 0 ]] && echo yes || echo no)" "rc=$RC"
+printf '# Goal\n\n- [ ] exact item\n' > "$GOAL"
+printf 'The scenarios are in ~/acceptance-named.\n' > "$TEST_ROOT/named-context.md"
+run_loop "$REPO" --dry-run --holdout "$NAMED_DIR" --context "$TEST_ROOT/named-context.md"
+check "a --context file naming DIR's ~/ form gets a warning" \
+  "$(has "$OUT" "WARNING: --holdout: $TEST_ROOT/named-context.md $NAMED_WARN")" "$OUT"
+ln -s "$NAMED_DIR" "$TEST_ROOT/named-link"
+printf '# Goal\n\n- [ ] exact item (see %s)\n' "$NAMED_DIR" > "$GOAL"
+run_loop "$REPO" --dry-run --holdout "$TEST_ROOT/named-link"
+check "a goal naming the physical path behind a symlinked DIR gets a warning" \
+  "$(has "$OUT" "$NAMED_WARN")" "$OUT"
+# A DIR given as a bare name (a symlink in the checkout to a directory outside
+# it) is not searched: "ac" is in "exact" and "each".
+ln -s "$NAMED_DIR" "$REPO/ac"
+printf '# Goal\n\n- [ ] exact item, for each acceptance-named check\n' > "$GOAL"
+run_loop "$REPO" --dry-run --holdout ac
+check "a goal sharing only a bare DIR name, DIR's basename and a scenario name gets no warning" \
+  "$(lacks "$OUT" "$NAMED_WARN")" "rc=$RC; $OUT"
+check "and that bare-name holdout is accepted" "$([[ $RC -eq 0 ]] && echo yes || echo no)" "rc=$RC; $OUT"
+fi
+
 # ─── Mutations ───────────────────────────────────────────────────────
 # Each entry edits ONE guard out of a copy of the scripts and reruns the cases
 # that pin it; they must go red. The first entry is the control: a no-op edit
@@ -776,12 +813,21 @@ mutation() {
 }
 
 mutation green loop_holdout.sh \
-  "positive negative refuse converge drift tamper resume gone timeout checkout index leak fixture" \
+  "positive negative refuse converge drift tamper resume gone timeout checkout index leak fixture named" \
   "no-op control (a comment reworded)" \
   "# Content digest of FILE" "# The content digest of FILE"
 mutation red loop-runner.sh "negative" "the holdout term of the reconcile gate" \
   ' \
        && [ "$holdout_result" -eq 0 ]; then' '; then'
+mutation red loop-runner.sh "named" "the named-holdout warning call" \
+  '  holdout_warn_named "$HOLDOUT_DIR" "$GOAL_FILE" "$CONTEXT_FILE"
+' ''
+mutation red loop_holdout.sh "named" "the ~/ form of DIR in the named-holdout search" \
+  '"$HOME"/*) forms="$forms~/${form#"$HOME"/}"$'"'"'\n'"'"' ;;' '"$HOME"/*) ;;'
+mutation red loop_holdout.sh "named" "the physical path in the named-holdout search" \
+  'for form in "$given" "$LOOP_HOLDOUT_DIR"; do' 'for form in "$given"; do'
+mutation red loop_holdout.sh "named" "a bare name never searched for" \
+  'case "$form" in */*) ;; *) continue ;; esac' ':'
 mutation red loop-runner.sh "converge" "the holdout term of the convergence check" \
   'if ! holdout_blocks_convergence; then' 'if true; then'
 mutation red loop-runner.sh "negative" "the count in the supervisor context" \
