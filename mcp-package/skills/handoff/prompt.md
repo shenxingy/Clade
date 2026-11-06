@@ -34,6 +34,10 @@ ls .claude/handoff-*.md 2>/dev/null | wc -l
   - Append new Done items from this session's commits
   - Update Next Steps based on current git state and TODO.md
   - Add new Key Decisions if any were made this session
+  - Carry Hypotheses forward: update each status from this session's evidence,
+    keep every ruled-out entry, and rewrite the current one's "Drop it if" when
+    the evidence moved. Keep Stop conditions & out of scope unless the user
+    changed the scope. A v2 handoff has neither section: add both.
 
 ### Step 3: Write Handoff File
 
@@ -51,7 +55,7 @@ Save to: `.claude/handoff-{YYYY-MM-DD-HH-MM}.md`
 
 ```markdown
 # Handoff: {YYYY-MM-DD HH:MM}
-<!-- STRUCTURED HANDOFF v2 — preserve all section headers exactly -->
+<!-- STRUCTURED HANDOFF v3 — preserve all section headers exactly -->
 
 ## Goal
 {One sentence: the overall objective of this work session / task}
@@ -73,8 +77,27 @@ Save to: `.claude/handoff-{YYYY-MM-DD-HH-MM}.md`
 ## Key Decisions
 - **{Decision}**: {Rationale — why this over alternatives}
 
+## Hypotheses
+<!-- Every hypothesis this session acted on, INCLUDING the dropped ones.
+     Status: current | UNCONFIRMED | ruled-out. At most one is current.
+     Mechanical work with no hypothesis: write "- none — mechanical work". -->
+- **H1 [current]**: {The claim the In Progress work and Next Steps rest on}
+  - Evidence: {What you observed: command → output, file:line. Mark anything you did not observe "inferred".}
+  - Drop it if: {The specific, checkable observation that would falsify it}
+- **H2 [ruled-out]**: {A claim that was tried and dropped}
+  - Evidence: {The observation that ruled it out}
+- **H3 [UNCONFIRMED]**: {A claim raised but not yet tested — not a fact}
+  - Evidence: {Why it was raised}
+  - Drop it if: {What would rule it out}
+
+## Stop conditions & out of scope
+- Done when: {The observable condition that means the Goal is met — a test passes, a PR is open}
+- Stop and re-plan if: {A result that means the approach, not just one step, is wrong}
+- Out of scope: {What this task deliberately does not do, and why}
+
 ## Next Steps (ordered by priority)
-1. {Exact next action — specific file, specific change, specific command}
+<!-- Proposals, not orders: /pickup re-checks the current hypothesis before acting on them. -->
+1. {Exact next action — specific file, specific change, specific command} (rests on H1)
 2. {Second action}
 3. {Third action}
 
@@ -94,10 +117,27 @@ Save to: `.claude/handoff-{YYYY-MM-DD-HH-MM}.md`
 
 ## Meta
 - Branch: {git branch --show-current}
+- HEAD: {git rev-parse --short HEAD}
 - Uncommitted: {git status -sb output, or "clean"}
 - Build: {passing | failing | unknown — based on last verify/test run}
 - Session: {approximate duration}
 ```
+
+**Writing Hypotheses — why the section exists.** A session that has committed
+to a hypothesis keeps pursuing it after the evidence turns, and a summary that
+keeps "the current work" keeps that commitment too (context inertia, Breunig,
+2026-10-14). The next session's `/pickup` re-checks the current hypothesis
+before acting, and it can only do that with what you write here:
+
+- **Evidence is what you saw**, not how sure you are. "inferred" is an honest
+  label; an inference written as an observation is how a wrong hypothesis
+  survives the reset.
+- **"Drop it if" must be checkable** in a command or two. "If it doesn't work"
+  checks nothing.
+- **Keep ruled-out entries.** Each one stops the next session re-trying it.
+- **Next Steps never restate a hypothesis as fact.** "Fix the middleware bug"
+  hides the bet; "patch the middleware (rests on H1)" names it, so the steps
+  that fall with H1 are visible.
 
 ### Step 4: Report
 
@@ -108,6 +148,7 @@ Handoff saved: .claude/handoff-{timestamp}.md
 Goal: {one sentence}
 Done this session: {N items}
 Blockers: {none / list}
+Current hypothesis: {H-current, one line — or "none"}
 Next: {Step 1 from Next Steps}
 ```
 

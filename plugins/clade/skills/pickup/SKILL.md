@@ -63,16 +63,30 @@ Read the most recent handoff file completely.
 Parse these sections:
 - **Goal**: the one-sentence objective
 - **Blocked**: check if "none" or has real blockers
-- **Next Steps**: the ordered action list
-- **Meta**: branch, uncommitted status, build status
+- **Hypotheses**: the `current` one with its Evidence and "Drop it if" line, the
+  `UNCONFIRMED` ones (not facts), and the `ruled-out` ones (do not re-try them
+  unless new evidence reopens one)
+- **Stop conditions & out of scope**: when the Goal counts as met, which result
+  means re-plan, and what the task must not widen into
+- **Next Steps**: the ordered list of PROPOSED actions — written by a session
+  already committed to its hypothesis, so they are proposals, not orders
+- **Meta**: branch, HEAD, uncommitted status, build status
+
+A v2 handoff (`STRUCTURED HANDOFF v2`) has no Hypotheses or Stop conditions
+section. Take the assumption Next Steps #1 rests on as the current hypothesis,
+mark it UNCONFIRMED, and re-check it the same way in Step 5.
 
 ### Step 3: Verify Git State
 ```bash
 git branch --show-current
 git status -sb
+git log --oneline -10
 ```
 
 If current branch doesn't match handoff Meta.Branch: warn the user but continue.
+Note every commit after Meta.HEAD (a v2 handoff has none: compare the log with
+its Done list): work that landed after the handoff may have moved the ground
+under its hypothesis.
 
 ### Step 4: Display Briefing (max 20 lines)
 
@@ -84,27 +98,52 @@ Goal: {Goal section content}
 Done: {count of Done ✅ items}
 In Progress: {In Progress items if any}
 Blocked: {Blocked content OR "none"}
+Hypothesis: {current hypothesis, one line} [{status in the handoff}]
 
 Branch: {branch}  Build: {passing|failing|unknown}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Picking up at:
+Proposed next (re-checked in Step 5):
 → {Next Steps #1}
 → {Next Steps #2}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
-### Step 5: Resume or Pause
+### Step 5: Re-check the hypothesis, then resume
 
-**If Blocked is "none"**: Immediately start executing Next Steps #1. Do NOT ask "shall I proceed?" — just start.
+Executing the last session's Next Steps as orders carries its commitment to a
+hypothesis across the reset, even when the evidence has since turned (context
+inertia, Breunig, 2026-10-14). So test the ground under them before the first edit.
 
 **If Blocked has items**: List each blocker clearly. Ask user to resolve before continuing autonomously.
 
 **If handoff is >48 hours old**: Flag the age prominently. Ask user to confirm goal is still current before proceeding.
 
+**Once nothing is blocked (and an old handoff's goal is confirmed), re-check first.** Read-only and a few commands — not a re-investigation:
+1. **Repository**: did any commit after Meta.HEAD (Step 3) touch what the current
+   hypothesis cites? Do those files still say what its Evidence says?
+2. **Verified facts**: re-run the cheapest check its Evidence or "Drop it if" line
+   names — one test, one grep, one command. A fact the handoff marks "inferred" is
+   not verified.
+3. **Stop conditions**: if "Done when" is already met, report that and stop — there
+   is nothing to resume. Drop any proposed step that falls under "Out of scope".
+
+Print one line — `Re-check: {H} holds | contradicted | not re-checked — {evidence}` — and act on it:
+
+- **Holds** (the check supports it, or finds nothing against it): start the first
+  Next Step that still follows from it. Do NOT ask "shall I proceed?" — just start.
+- **Contradicted** (a "Drop it if" or "Stop and re-plan if" condition is met, or the
+  repository moved under it): do not execute the old Next Steps. Treat the hypothesis
+  as ruled-out on the evidence you just saw (the next /handoff records it so), re-plan
+  from the Goal, the verified facts and the remaining hypotheses, state the new first
+  step in one line and start it — still without asking. Ask only if the re-plan would
+  change the Goal itself or take a destructive step.
+- **Cannot be checked cheaply** (another host, credentials, a long run): proceed with
+  it UNCONFIRMED, say "not re-checked: {why}", and prefer a first step that tests it.
+
 ## Completion Status
 
-- **✅ DONE**: Handoff loaded and resumed (or blockers presented)
-- **⚠ DONE_WITH_CONCERNS**: Loaded but git state doesn't match, or handoff >48h old
+- **✅ DONE**: Handoff loaded, hypothesis re-checked, and resumed (or blockers presented)
+- **⚠ DONE_WITH_CONCERNS**: Loaded but git state doesn't match, handoff >48h old, or the re-check contradicted the handoff's hypothesis and the plan changed
 - **❌ BLOCKED**: No handoff file found, or file unreadable
 - **❓ NEEDS_CONTEXT**: Ask via AskUserQuestion
 
