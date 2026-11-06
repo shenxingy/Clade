@@ -792,6 +792,134 @@ if [[ "$BEFORE_N" == "$AFTER_N" ]]; then
   pass "non-correction prompt persists nothing"
 else fail "non-correction prompt persists nothing" "history grew $BEFORE_N → $AFTER_N"; fi
 
+# ─── 7b. every record links back to its session and transcript ───────
+# A corrected session is a ready-made eval only while its transcript can be
+# found, and Claude Code deletes transcripts after 30 days. None of the 1,636
+# records in the author's history.jsonl on 2026-11-05 carried a session field:
+# correction-detector.sh resolved the id only after its append, and
+# revert-detector.sh never did. Every assertion reads the record the hook
+# APPENDED — `tail -n 1` alone would hand back the previous case's record when a
+# call wrote nothing — and covers both hooks and both write paths: the lib's
+# cp_append_history, and the plain `jq >>` used when lib/correction-pair.sh is
+# missing.
+section "both detectors — every record carries session_id and transcript_path"
+
+# wrote_record <hook> <stdin-json> — the record this one call appended, or
+# NO-RECORD when it appended none.
+wrote_record() {
+  local before after
+  before=$(hist_lines)
+  printf '%s' "$2" | CLAUDE_PROJECT_DIR="$PROJ2" bash "$1" >/dev/null 2>&1
+  after=$(hist_lines)
+  if [[ "$after" -eq $(( before + 1 )) ]]; then tail -n 1 "$HISTORY"; else echo "NO-RECORD"; fi
+}
+# link_input <cd|rd> <extra-json> [prompt-or-command] — a hook input for one
+# detector: a correction prompt, or a Bash revert of src/app.py.
+link_input() {
+  if [[ "$1" == cd ]]; then
+    jq -nc --arg p "${3:-no, that is wrong, use the config value instead}" --argjson x "$2" '{prompt:$p} + $x'
+  else
+    jq -nc --arg c "${3:-git checkout -- src/app.py}" --argjson x "$2" \
+      '{tool_name:"Bash", tool_input:{command:$c}} + $x'
+  fi
+}
+# link_of <cd|rd> <hook> <extra-json> — [session_id, transcript_path] as written;
+# a missing key reads "<absent>", so an old record is not mistaken for a null one.
+link_of() {
+  local rec
+  rec=$(wrote_record "$2" "$(link_input "$1" "$3")")
+  if [[ "$rec" == NO-RECORD ]]; then echo NO-RECORD; return; fi
+  jq -c '[(if has("session_id") then .session_id else "<absent>" end),
+          (if has("transcript_path") then .transcript_path else "<absent>" end)]' <<< "$rec"
+}
+LINK_SID="99999999-8888-7777-6666-555555555555"
+LINK_TP="$HOME/.claude/projects/-proj/$LINK_SID.jsonl"
+link_both() { jq -nc --arg s "$LINK_SID" --arg t "$LINK_TP" '{session_id:$s, transcript_path:$t}'; }
+LINK_WANT=$(jq -nc --arg s "$LINK_SID" --arg t "$LINK_TP" '[$s, $t]')
+
+# The fallback write path: a copy of each hook beside every lib file EXCEPT
+# correction-pair.sh, so cp_append_history is undefined. Shared with §8.
+NOLIB_ROOT="$TMP_ROOT/nolib"
+mkdir -p "$NOLIB_ROOT/configs/hooks/lib"
+for _lf in "$REPO_ROOT"/configs/hooks/lib/*.sh; do
+  [[ "${_lf##*/}" == correction-pair.sh ]] || ln -s "$_lf" "$NOLIB_ROOT/configs/hooks/lib/${_lf##*/}"
+done
+ln -s "$REPO_ROOT/configs/scripts" "$NOLIB_ROOT/configs/scripts"
+CD_NOLIB="$NOLIB_ROOT/configs/hooks/correction-detector.sh"
+RD_NOLIB="$NOLIB_ROOT/configs/hooks/revert-detector.sh"
+cp "$CORRECTION_HOOK" "$CD_NOLIB"; cp "$REVERT_HOOK" "$RD_NOLIB"
+
+# Both write paths, each proven to be the path it claims. The lib path clips a
+# prompt past 1,800 characters and the fallback does not, so a long prompt is the
+# witness: without it a missing lib that still loaded would pass as "fallback".
+LINK_FILL=$(printf '%*s' 1900 '' | tr ' ' x)
+link_write_path() {   # <cd|rd> <hook> <lib|fallback> <long prompt-or-command>
+  local rec clip=false
+  [[ "$3" == lib ]] && clip=true
+  rec=$(wrote_record "$2" "$(link_input "$1" "$(link_both)" "$4")")
+  assert_eq "$(jq -r '.prompt | contains("[clipped")' <<< "$rec" 2>/dev/null)" "$clip" \
+    "$1/$3: the record came through the $3 write path"
+  assert_eq "$(jq -c '[.session_id, .transcript_path]' <<< "$rec" 2>/dev/null)" "$LINK_WANT" \
+    "$1/$3: the record carries the session id and transcript path it was given"
+  rec=$(wrote_record "$2" "$(link_input "$1" '{}')")
+  assert_eq "$(jq -c '[has("session_id"), .session_id, has("transcript_path"), .transcript_path]' <<< "$rec" 2>/dev/null)" \
+    '[true,null,true,null]' "$1/$3: with no session in the input both fields are null, not absent"
+}
+link_write_path cd "$CORRECTION_HOOK" lib      "no, that is wrong: $LINK_FILL"
+link_write_path cd "$CD_NOLIB"        fallback "no, that is wrong: $LINK_FILL"
+link_write_path rd "$REVERT_HOOK"     lib      "echo $LINK_FILL; git checkout -- src/app.py"
+link_write_path rd "$RD_NOLIB"        fallback "echo $LINK_FILL; git checkout -- src/app.py"
+
+# The same inputs to both detectors, so the shared filter cannot diverge in
+# behaviour. The id keeps only [A-Za-z0-9-], the character set of the
+# private-session marker check; a transcript path is dropped, never trimmed,
+# when it holds a control character, runs past 1,024 characters or is not a
+# string.
+LINK_1024="/$(printf '%*s' 1023 '' | tr ' ' a)"
+LINK_1025="/$(printf '%*s' 1024 '' | tr ' ' a)"
+link_cases() {   # <label> <extra-json> <expected [session_id, transcript_path]>
+  local k h
+  for k in cd rd; do
+    if [[ "$k" == cd ]]; then h="$CORRECTION_HOOK"; else h="$REVERT_HOOK"; fi
+    assert_eq "$(link_of "$k" "$h" "$2")" "$3" "$k: $1"
+  done
+}
+link_cases "a hostile session id keeps only [A-Za-z0-9-]" \
+  "$(jq -nc --arg t "$LINK_TP" '{session_id:"../../a b;c\u0007", transcript_path:$t}')" \
+  "$(jq -nc --arg t "$LINK_TP" '["abc", $t]')"
+link_cases "a newline in the transcript path drops it" \
+  "$(jq -nc --arg s "$LINK_SID" '{session_id:$s, transcript_path:"/tmp/a\nb.jsonl"}')" "[\"$LINK_SID\",null]"
+link_cases "a tab in the transcript path drops it" \
+  "$(jq -nc --arg s "$LINK_SID" '{session_id:$s, transcript_path:"/tmp/a\tb.jsonl"}')" "[\"$LINK_SID\",null]"
+link_cases "DEL in the transcript path drops it" \
+  "$(jq -nc --arg s "$LINK_SID" '{session_id:$s, transcript_path:"/tmp/a\u007fb.jsonl"}')" "[\"$LINK_SID\",null]"
+link_cases "a C1 control (U+0085, NEL) in the transcript path drops it" \
+  "$(jq -nc --arg s "$LINK_SID" '{session_id:$s, transcript_path:"/tmp/a\u0085b.jsonl"}')" "[\"$LINK_SID\",null]"
+link_cases "a non-string transcript path is dropped" \
+  "$(jq -nc --arg s "$LINK_SID" '{session_id:$s, transcript_path:5}')" "[\"$LINK_SID\",null]"
+link_cases "a 1,025-character transcript path is dropped" \
+  "$(jq -nc --arg s "$LINK_SID" --arg t "$LINK_1025" '{session_id:$s, transcript_path:$t}')" "[\"$LINK_SID\",null]"
+link_cases "a 1,024-character transcript path is kept" \
+  "$(jq -nc --arg s "$LINK_SID" --arg t "$LINK_1024" '{session_id:$s, transcript_path:$t}')" \
+  "$(jq -nc --arg s "$LINK_SID" --arg t "$LINK_1024" '[$s, $t]')"
+link_cases "a non-ASCII transcript path is not a control character" \
+  "$(jq -nc --arg s "$LINK_SID" '{session_id:$s, transcript_path:"/tmp/项目/a.jsonl"}')" \
+  "[\"$LINK_SID\",\"/tmp/项目/a.jsonl\"]"
+
+# A mutation probe drops its rejection evidence, not its link: it is still a
+# record of that session.
+assert_eq "$(jq -c '[.revert_scope, .session_id]' <<< "$(wrote_record "$REVERT_HOOK" \
+  "$(link_input rd "$(link_both)" 'git checkout -- src/app.py; git apply /tmp/p.patch')")")" \
+  "[\"probe\",\"$LINK_SID\"]" "rd: a probe record keeps its session link"
+
+# The filter is stated twice, once per hook; revert-detector.sh says it is
+# correction-detector.sh's character for character. Pinned, with a guard
+# against both extractions coming back empty and comparing equal.
+link_filter() { sed -n '/(\.session_id \/\/ "" | tostring/,/| join("\\t")/p' "$1"; }
+_lf_cd=$(link_filter "$CORRECTION_HOOK"); _lf_rd=$(link_filter "$REVERT_HOOK")
+assert_contains "$_lf_cd" "transcript_path" "the session-link filter is found in correction-detector.sh"
+assert_eq "$_lf_rd" "$_lf_cd" "revert-detector.sh carries correction-detector.sh's session-link filter verbatim"
+
 # ─── 8. mutations: each guard of §3i and §5e, removed, turns its case red ──
 # A case that cannot fail is not evidence. Each mutant below is a copy of the
 # hook with ONE guard deleted, placed beside the real lib/ and scripts/ so it
@@ -803,9 +931,11 @@ MUT_ROOT="$TMP_ROOT/mut"
 mkdir -p "$MUT_ROOT/configs/hooks"
 ln -s "$REPO_ROOT/configs/hooks/lib" "$MUT_ROOT/configs/hooks/lib"
 ln -s "$REPO_ROOT/configs/scripts" "$MUT_ROOT/configs/scripts"
-# mutant <src> <name> <anchor> <replacement> — literal text, not a regex.
+# mutant <src> <name> <anchor> <replacement> [root] — literal text, not a regex.
+# [root] defaults to MUT_ROOT; §7b's NOLIB_ROOT puts the mutant on the fallback
+# write path instead.
 mutant() {
-  local out="$MUT_ROOT/configs/hooks/$2"
+  local out="${5:-$MUT_ROOT}/configs/hooks/$2"
   MUT_A="$3" MUT_R="$4" awk '
     { buf = buf (NR > 1 ? "\n" : "") $0 }
     END {
@@ -854,6 +984,74 @@ else anchor_lost "$_m"; fi
 _m="the 对-word split"
 if M=$(mutant "$CORRECTION_HOOK" m-word.sh 'for _w in 绝对 比对 核对 校对 相对 针对 配对; do SCAN="${SCAN//${_w}不对/${_w} 不对}"; done' ':'); then
   assert_eq "$(fires_with "$M" '这个结论绝对不对')" "" "mutant without $_m: 绝对不对 is swallowed by the strip"
+else anchor_lost "$_m"; fi
+
+# §7b — the session link. Each mutant restores one way the old hooks lost it.
+NL=$'\n'
+_m="the session fields in correction-detector's record"
+if M=$(mutant "$CORRECTION_HOOK" m-cd-fields.sh ",${NL}            session_id: (\$sid | if . == \"\" then null else . end),${NL}            transcript_path: (\$tp | if . == \"\" then null else . end)}'" "}'"); then
+  assert_eq "$(link_of cd "$M" "$(link_both)")" '["<absent>","<absent>"]' "mutant without $_m: the record has no session link again"
+else anchor_lost "$_m"; fi
+
+_m="the session fields in revert-detector's record"
+if M=$(mutant "$REVERT_HOOK" m-rd-fields.sh ",${NL}         session_id:(\$sid | if . == \"\" then null else . end),${NL}         transcript_path:(\$tp | if . == \"\" then null else . end)}'" "}'"); then
+  assert_eq "$(link_of rd "$M" "$(link_both)")" '["<absent>","<absent>"]' "mutant without $_m: the record has no session link again"
+else anchor_lost "$_m"; fi
+
+# Each write path binds the resolved values itself; an empty binding on one path
+# leaves the other path green, so each is mutated on its own root.
+_m="correction-detector's lib-path binding"
+if M=$(mutant "$CORRECTION_HOOK" m-cd-bind-lib.sh "--arg sid \"\$_CD_SID\" \\${NL}    --arg tp \"\$_CD_TRANSCRIPT\" \\${NL}    \"\$CD_RECORD\"${NL}else" "--arg sid \"\" \\${NL}    --arg tp \"\" \\${NL}    \"\$CD_RECORD\"${NL}else"); then
+  assert_eq "$(link_of cd "$M" "$(link_both)")" '[null,null]' "mutant without $_m: the lib path writes no link"
+else anchor_lost "$_m"; fi
+
+_m="correction-detector's fallback-path binding"
+if M=$(mutant "$CORRECTION_HOOK" m-cd-bind-fb.sh "--arg sid \"\$_CD_SID\" \\${NL}    --arg tp \"\$_CD_TRANSCRIPT\" \\${NL}    \"\$CD_RECORD\" >>" "--arg sid \"\" \\${NL}    --arg tp \"\" \\${NL}    \"\$CD_RECORD\" >>" "$NOLIB_ROOT"); then
+  assert_eq "$(link_of cd "$M" "$(link_both)")" '[null,null]' "mutant without $_m: the fallback path writes no link"
+else anchor_lost "$_m"; fi
+
+_m="revert-detector's lib-path binding"
+if M=$(mutant "$REVERT_HOOK" m-rd-bind-lib.sh "--arg sid \"\$SESSION_ID\" \\${NL}    --arg tp \"\$TRANSCRIPT_PATH\" \\${NL}    \"\$RECORD\"${NL}else" "--arg sid \"\" \\${NL}    --arg tp \"\" \\${NL}    \"\$RECORD\"${NL}else"); then
+  assert_eq "$(link_of rd "$M" "$(link_both)")" '[null,null]' "mutant without $_m: the lib path writes no link"
+else anchor_lost "$_m"; fi
+
+_m="revert-detector's fallback-path binding"
+if M=$(mutant "$REVERT_HOOK" m-rd-bind-fb.sh "--arg sid \"\$SESSION_ID\" \\${NL}    --arg tp \"\$TRANSCRIPT_PATH\" \\${NL}    \"\$RECORD\" \\" "--arg sid \"\" \\${NL}    --arg tp \"\" \\${NL}    \"\$RECORD\" \\" "$NOLIB_ROOT"); then
+  assert_eq "$(link_of rd "$M" "$(link_both)")" '[null,null]' "mutant without $_m: the fallback path writes no link"
+else anchor_lost "$_m"; fi
+
+# The filter's three guards, removed from each hook in turn.
+_LINK_CTRL=$(jq -nc --arg s "$LINK_SID" '{session_id:$s, transcript_path:"/tmp/a\nb.jsonl"}')
+_LINK_LONG=$(jq -nc --arg s "$LINK_SID" --arg t "$LINK_1025" '{session_id:$s, transcript_path:$t}')
+_LINK_HOST=$(jq -nc --arg t "$LINK_TP" '{session_id:"../../a b;c\u0007", transcript_path:$t}')
+for _k in cd rd; do
+  if [[ "$_k" == cd ]]; then _src="$CORRECTION_HOOK"; else _src="$REVERT_HOOK"; fi
+  _m="$_k's control-character guard"
+  if M=$(mutant "$_src" "m-$_k-ctrl.sh" 'and (explode | all(. >= 32 and . != 127 and (. < 128 or . > 159)))' 'and true'); then
+    assert_eq "$(link_of "$_k" "$M" "$_LINK_CTRL")" "[\"$LINK_SID\",\"/tmp/a\\nb.jsonl\"]" "mutant without $_m: a newline reaches the record"
+  else anchor_lost "$_m"; fi
+  _m="$_k's length cap"
+  if M=$(mutant "$_src" "m-$_k-len.sh" 'type == "string" and length <= 1024' 'type == "string"'); then
+    assert_eq "$(link_of "$_k" "$M" "$_LINK_LONG")" "$(jq -nc --arg s "$LINK_SID" --arg t "$LINK_1025" '[$s, $t]')" "mutant without $_m: a 1,025-character path is kept"
+  else anchor_lost "$_m"; fi
+  _m="$_k's session-id character set"
+  if M=$(mutant "$_src" "m-$_k-sid.sh" 'map(select((. >= 48 and . <= 57) or (. >= 65 and . <= 90) or (. >= 97 and . <= 122) or . == 45))' 'map(.)'); then
+    assert_eq "$(link_of "$_k" "$M" "$_LINK_HOST")" "$(jq -nc --arg t "$LINK_TP" '["../../a b;c\u0007", $t]')" "mutant without $_m: a hostile id reaches the record unfiltered"
+  else anchor_lost "$_m"; fi
+done
+
+# The private-session check now reads the id resolved before the append. Cut
+# that and a session marked private gets the rule-writing notice again (§5c).
+fires_with_sid() {   # <hook> <prompt> <session_id>
+  correct_in "$2" "$3" | CLAUDE_PROJECT_DIR="$PROJ2" bash "$1" 2>/dev/null \
+    | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null
+}
+assert_contains "$(fires_with_sid "$CORRECTION_HOOK" "不对，你说反了" sess-private)" "This project is in conversation mode" \
+  "control: the real hook still recognises the private session"
+_m="the id the private-session check reuses"
+if M=$(mutant "$CORRECTION_HOOK" m-cd-private.sh '_CD_SID="${_CD_LINK%%"$_CD_TAB"*}"' '_CD_SID=""'); then
+  assert_not_contains "$(fires_with_sid "$M" "不对，你说反了" sess-private)" "This project is in conversation mode" \
+    "mutant without $_m: a private session is no longer recognised"
 else anchor_lost "$_m"; fi
 
 _m="a reworded comment (no-op control)"

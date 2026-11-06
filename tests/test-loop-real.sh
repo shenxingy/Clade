@@ -6,9 +6,10 @@
 # Three identical failures = content must change; the model consistently
 #   rejects the current prompt/task shape — update the test scenario, not
 #   the retry count.
-# Never chase a single flake; a lone failure with no reproduction is noise —
-#   re-run once; if it passes, discard it; if it fails identically, apply the
-#   three-failure rule above.
+# Never chase a single flake, and never hide one either: re-run once; if it
+#   passes, report the pair as FLAKY (both outcomes, never a plain pass —
+#   configs/rules/tests.md); if it fails identically, apply the three-failure
+#   rule above.
 # ─────────────────────────────────────────────────────────────────────────────
 #
 # Two-tier pattern: tests/test-loop.sh runs the full mock suites for free on

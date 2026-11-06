@@ -69,7 +69,7 @@ cd ../proj-feat-b && claude
 # close session
 
 # Session 2 (fresh context)
-/pickup   # reads handoff, immediately resumes next step
+/pickup   # reads handoff, re-checks its hypothesis, resumes (or re-plans)
 ```
 
 ## Safety Guarantees
