@@ -14,7 +14,9 @@
 #     green, and the steps after it still run;
 #   - red again is a failure, reported with the RERUN's exit code and output
 #     and the first attempt's exit code;
-#   - a step that hit the step timeout is not rerun;
+#   - a step that hit the step timeout is not rerun, and its failure names
+#     --timeout; the default timeout is 900 s scaled by load per CPU (1x-4x),
+#     printed at the start, with --timeout overriding it;
 #   - --no-rerun makes the flake a plain failure; --strict exits 2 on FLAKY;
 #   - verdict order fail > none > partial > flaky > pass, with the flaky steps
 #     still listed when the run reads PARTIAL or fails.
@@ -157,8 +159,39 @@ flaky_reset
 OUT="$(python3 "$RUNNER" --repo "$HANG" --timeout 3 2>&1)"; RC=$?
 assert_eq "$RC" "1" "a hung step fails the run"
 assert_eq "$(attempts "$HANG" hang)" "1" "and ran once: a hang is not a flake signal"
-assert_contains "$OUT" "exceeded the 3s step timeout" "the failure names the timeout"
+assert_contains "$OUT" "exceeded the 3s step timeout (--timeout N raises it)" "the failure names the timeout, and the flag that raises it"
 assert_lacks "$OUT" "rerun" "and no rerun is mentioned"
+assert_contains "$OUT" "step timeout 3 s (--timeout; --timeout N sets it)" "the run states the timeout it used, and where it came from"
+
+section "the default step timeout follows the host's load"
+# default_step_timeout read straight from the runner under test (a mutant
+# included): a fixed 900 s killed a pytest step that took 1,914 s at load ~80.
+CHECK=$(python3 - "$RUNNER" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("ci_local_under_test", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = mod  # dataclasses resolve their module through sys.modules
+spec.loader.exec_module(mod)
+cases = [((8, 32), 900), ((32, 32), 900), ((96, 32), 2700), ((400, 32), 3600),
+         ((None, 32), 900), ((5.0, None), 900), ((0.0, 4), 900)]
+bad = [(args, mod.default_step_timeout(*args)[0], want) for args, want in cases
+       if mod.default_step_timeout(*args)[0] != want]
+print("ok" if not bad else bad)
+PY
+)
+assert_eq "$CHECK" "ok" "900 s at or under one task per CPU, scaled with load, capped at 3,600 s, 900 s when load is unknown"
+OUT="$(python3 "$RUNNER" --repo "$FLAKY" --job "Flaky Job" 2>&1)"
+assert_contains "$OUT" "--timeout N sets it)" "with no --timeout the run prints the default it chose"
+CHECK=$(check_json "$(flaky_json --job "Flaky Job")" '
+if not isinstance(d.get("step_timeout"), int) or not 900 <= d["step_timeout"] <= 3600:
+    problems.append("step_timeout=%r" % d.get("step_timeout"))
+')
+assert_eq "$CHECK" "ok" "JSON: step_timeout is the default, between 900 and 3,600 s"
+CHECK=$(check_json "$(flaky_json --job "Flaky Job" --timeout 77)" '
+if d.get("step_timeout") != 77:
+    problems.append("step_timeout=%r" % d.get("step_timeout"))
+')
+assert_eq "$CHECK" "ok" "JSON: --timeout overrides the default"
 
 section "the verdict order: fail > partial > flaky, the flaky steps always listed"
 OUT="$(flaky_ci --job "Flaky Job" --job "Unproven Lane")"; RC=$?
@@ -219,6 +252,22 @@ ci_local_flaky_mutations() {
   mutation red "a flaky step keeping its first attempt's output" \
     'first_exit, first_tail = rc, tail' 'first_exit, first_tail = rc, ""'
   mutation red "the FLAKY prefix on the summary line" '"flaky": "FLAKY: ", ' ''
+  mutation red "the default timeout scaling with load" \
+    'factor = min(max(load1 / cpus, 1.0), STEP_TIMEOUT_MAX_FACTOR)' 'factor = 1.0'
+  mutation red "the 900 s floor under a light load" \
+    'min(max(load1 / cpus, 1.0), STEP_TIMEOUT_MAX_FACTOR)' 'min(load1 / cpus, STEP_TIMEOUT_MAX_FACTOR)'
+  mutation red "the 4x cap on the default timeout" \
+    'STEP_TIMEOUT_MAX_FACTOR = 4.0' 'STEP_TIMEOUT_MAX_FACTOR = 100.0'
+  mutation red "900 s when the load is unknown" \
+    '    if not load1 or not cpus or cpus < 1:
+        return STEP_TIMEOUT_BASE' '    if not load1 or not cpus or cpus < 1:
+        return 1'
+  mutation red "--timeout overriding the default" \
+    'if args.timeout is not None:' 'if False:'
+  mutation red "the flag named in a timeout failure" '"(--timeout N raises it)",' '"",'
+  mutation red "the line stating the step timeout" \
+    '        print(f"step timeout {step_timeout} s' '        if False: print(f"step timeout {step_timeout} s'
+  mutation red "step_timeout in the JSON" '"step_timeout": step_timeout,' ''
   mutation red "the line naming every flaky step" \
     '    if flaky:
         print("  flaky: "' '    if False:

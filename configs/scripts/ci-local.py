@@ -903,6 +903,36 @@ class JobResult:
         return [s for s in self.steps if s.status == "flaky"]
 
 
+# A fixed per-step timeout reads a loaded host as a hang. On a 32-core box at
+# load ~80, this repository's pytest step took 1,914 s against 528 s on a quiet
+# one, so the 900 s that suits a quiet machine killed a step that was only
+# waiting for CPU, and a timed-out step is never rerun. The default therefore
+# scales with how oversubscribed the host is when the run starts: 900 s at or
+# below one runnable task per CPU, up to 4x (3,600 s) so a real hang still ends.
+# Sampled once, at the start; --timeout sets it outright.
+STEP_TIMEOUT_BASE = 900
+STEP_TIMEOUT_MAX_FACTOR = 4.0
+
+
+def default_step_timeout(load1: float | None, cpus: int | None) -> tuple[int, str]:
+    """(seconds, why) for the default step timeout, from the 1-minute load
+    average and the CPU count. Either unknown (no os.getloadavg on Windows)
+    falls back to the base."""
+    if not load1 or not cpus or cpus < 1:
+        return STEP_TIMEOUT_BASE, f"{STEP_TIMEOUT_BASE} s, load unknown"
+    factor = min(max(load1 / cpus, 1.0), STEP_TIMEOUT_MAX_FACTOR)
+    return (int(STEP_TIMEOUT_BASE * factor),
+            f"{STEP_TIMEOUT_BASE} s x {factor:.1f}, load {load1:.0f} on {cpus} CPUs")
+
+
+def _host_load() -> tuple[float | None, int | None]:
+    try:
+        load1 = os.getloadavg()[0]
+    except (AttributeError, OSError):
+        load1 = None
+    return load1, os.cpu_count()
+
+
 def _attempt(script: str, cwd: Path, env: dict[str, str], timeout: int,
              tail_lines: int) -> tuple[int, float, str, bool]:
     """Run one step once: (exit code, seconds, output tail, timed out). A
@@ -988,7 +1018,7 @@ def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int,
         # One rerun of a failed step, same command, env and cwd: green the
         # second time is FLAKY, never pass. A step that hit the step timeout
         # is NOT rerun — a hang is not a flake signal, and a second wait would
-        # double a cost that is already the whole step timeout (900 s default).
+        # double a cost that is already the whole step timeout.
         if rc != 0 and not timed_out and rerun:
             if echo:
                 print(f"FAILED ({elapsed:.0f}s, exit {rc}), rerunning once … ", end="", flush=True)
@@ -1002,7 +1032,8 @@ def run_job(job: Job, repo: Path, tail_lines: int, echo: bool, timeout: int,
             result.steps.append(
                 StepResult(
                     step.display, "fail", elapsed, 124,
-                    reason="; ".join(filter(None, [f"exceeded the {timeout}s step timeout",
+                    reason="; ".join(filter(None, [f"exceeded the {timeout}s step timeout "
+                                                   "(--timeout N raises it)",
                                                    plan.reason])),
                     command=step.run, output_tail=tail, first_exit=first_exit,
                 )
@@ -1141,9 +1172,10 @@ def main() -> int:
                          "directory; a pass then is reported FLAKY, never green. A step "
                          "that hit --timeout is never rerun.")
     ap.add_argument("--tail", type=int, default=40, help="Failure output lines (default 40).")
-    ap.add_argument("--timeout", type=int, default=900,
-                    help="Per-step timeout in seconds (default 900). A hung step is a "
-                         "failure, and is not rerun.")
+    ap.add_argument("--timeout", type=int, default=None,
+                    help="Per-step timeout in seconds. Default: 900, scaled by the "
+                         "host's load per CPU at start (up to 3600), and printed. A "
+                         "hung step is a failure, and is not rerun.")
     args = ap.parse_args()
 
     repo = args.repo.resolve()
@@ -1196,6 +1228,13 @@ def main() -> int:
         print("ci-local: bash not found")
         return 1
 
+    if args.timeout is not None:
+        step_timeout, timeout_why = args.timeout, "--timeout"
+    else:
+        step_timeout, timeout_why = default_step_timeout(*_host_load())
+    if not args.json:
+        print(f"step timeout {step_timeout} s ({timeout_why}; --timeout N sets it)")
+
     results: list[JobResult] = []
     for job, skip in plan:
         if skip is not None:
@@ -1204,7 +1243,7 @@ def main() -> int:
             continue
         if not args.json:
             print(f"  {job.display}")
-        results.append(run_job(job, repo, args.tail, echo=not args.json, timeout=args.timeout,
+        results.append(run_job(job, repo, args.tail, echo=not args.json, timeout=step_timeout,
                                rerun=not args.no_rerun))
 
     ran = [r for r in results if r.status != "skip"]
@@ -1244,6 +1283,8 @@ def main() -> int:
                 # /green's report contract asks how long the whole thing took.
                 # A stated field with no way to obtain it gets omitted or invented.
                 "seconds": round(sum(r.seconds for r in ran), 1),
+                # Each step's limit: --timeout, or the load-scaled default.
+                "step_timeout": step_timeout,
                 # Jobs that ran with no step failing — as before. Those that
                 # also skipped an unproven step are named again in `partial`.
                 "passed": [r.job.display for r in ran if r.status == "pass"],

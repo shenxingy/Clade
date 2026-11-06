@@ -640,7 +640,10 @@ command, env and directory; green the second time it is **FLAKY** — its job is
 not failed, the summary reads `FLAKY` (or `PARTIAL`, which outranks it) and
 names each one as `Job › Step (first exit N)`, and the JSON lists it under
 `flaky`. A step that hit the step timeout is not rerun, and `--no-rerun` makes
-the first failure final. `--strict` exits 2 on PARTIAL, FLAKY or NOTHING RAN
+the first failure final. The step timeout is 900 s scaled by the host's load per
+CPU at the start (1x-4x, so 3,600 s at most); the run prints it, and
+`--timeout N` sets it: a fixed 900 s killed this repository's pytest step, which
+took 1,914 s at load ~80 on 32 cores. `--strict` exits 2 on PARTIAL, FLAKY or NOTHING RAN
 (the default flips after a report-only week, see TODO.md). Here the unproven
 lane is one step: `Syntax Check › Sibling facts (report only)` picks its diff
 range with `${{ github.event_name }}`, so a local run does not execute it. Both `pull_request_target` workflows

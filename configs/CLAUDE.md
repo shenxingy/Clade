@@ -108,7 +108,8 @@ green: the first failure is real and unexplained, so investigate it, and never
 read the rerun as the fix. A step that hit the step timeout is not rerun (a hang
 is not a flake, and a second wait doubles the cost). A run with an unproven lane
 as well reads `PARTIAL` and still lists the flaky steps. `--strict` exits 2 on
-FLAKY too; `--no-rerun` makes the first failure final.
+FLAKY too; `--no-rerun` makes the first failure final. The step timeout scales
+with load (900-3,600 s) and is printed; `--timeout N` sets it.
 
 **Cross-platform work goes to the machine that has the platform.** A macOS job
 belongs on your Mac and a Windows job on your Windows box — over SSH or by
