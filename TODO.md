@@ -2452,6 +2452,19 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   Step 1, S, do first: write both fields from both detectors; pin them in
   `tests/test-correction-pairing.sh`; update the schema paragraph in
   `configs/skills/radar/SKILL.md`.
+  Step 1 DONE 2026-11-06 (fix/correction-session-link): both detectors write
+  `session_id` and `transcript_path` on both write paths (`null` when unknown;
+  a path with a control character or over 1,024 characters is dropped). The
+  correction detector resolves them in one `jq` call before the append, and its
+  private-session check reuses that call. The suite gains 47 cases: 41 fail on
+  the old hooks, and 13 of them are mutations. The radar schema paragraph
+  and CLAUDE.md are updated. The item stays open for Step 2.
+  Two constraints for Step 2:
+  - A session can be marked private after its record is written, so check the
+    `private-sessions` marker when copying, not when the record was written.
+  - `sync-setup.sh` writes no `.gitignore` for `corrections/history.jsonl`, so
+    a fresh sync store pushes this log to its remote. Records now also carry
+    `transcript_path`, but `project` already held the same home path.
   Step 2, M: `configs/scripts/keep-sessions.py`. It copies the transcripts of non-probe records
   through `redact.py` into zstd under `~/.local/share/clade/sessions/`, outside the synced
   `~/.claude`, mode 0700, idempotent, skipping private sessions. Keeping only corrected sessions
