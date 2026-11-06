@@ -2403,3 +2403,143 @@ The value comes from a fixed-behaviour replay (30 days to 2026-11-05, aries, bot
   `set autoCompactWindow = 350000 …` and nothing about running sessions. Add one line: sessions
   already running keep their window until restarted or given `/autocompact 350k`. Its test in
   `tests/test-context-policy-install.sh` should assert the line on the write path only.
+
+## 2026-11-05 idea-essay sweep follow-ups
+
+Digest (Chinese): `~/.claude/research/essay-sweep-2026-11-05.md`; 81 concepts appended to
+`~/.claude/research/known-concepts.md`. An interactive sweep run as one Workflow (47 agents):
+8 lanes of practitioner, vendor and critique ESSAYS published 2026-09-01 → 11-05, all
+retrieved through TinyFish (62 searches, 91 fetches). arXiv was not swept; weekly /radar covers
+it. Of 57 unique candidates, the curator dropped 42, 15 were read in full and mapped onto this
+tree, and the gap claims of the top 11 each went to two skeptics, one per lens: "we already
+have it" and "the source does not say or support it". The quotes and dates of items 1–4 were
+re-fetched and match. The repository facts in items 1–3 were re-checked by hand on 2026-11-05.
+Evidence across the set is thin: only Gorokh (one operator), Spolin (one project's activity),
+Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
+
+- [ ] 🟠 **ci-local: a skipped test lane is not green.** Spolin, *The Factory Kitchen for AI
+  Agents* (AppDirect, 2026-10-22): "12,731 unit tests passed while the endpoint returned a
+  500 … agents have to identify which test lanes actually cover the surface they've changed".
+  `configs/scripts/ci-local.py:583,606` return `1 if failed else 0`, so skipped jobs never
+  reach the exit code. On a private multi-lane repo, `--list` runs 6 jobs and skips 8: backend
+  tests (`services`), frontend tests, API contract/fuzz, Playwright E2E and the migration check.
+  Five of those eight are skipped only for a step-level `if:`. The global "Land it" rule reads
+  exit 0 as a merge signal. A side bug: `skip_reason` (:255) tests `unmodelled` before
+  `pull_request_target`, so `--list` labels this repo's own `honeypot-check` and `vouch-gate`
+  "step-level if" instead of "GitHub's side only".
+  Fix:
+  1. Reorder `skip_reason`.
+  2. Model a step-level `if:` by running the job and skipping or flagging only that step. The
+     merit skeptic notes this repairs more than labelling would.
+  3. Label each remaining `services`/`container`/`strategy` skip as `unproven`, in its own JSON
+     field, and summarise as `PARTIAL: N ran passed, M lanes unproven: …`.
+  4. Ship report-only for a week, then exit 2. Exit 2 changes the `/green --json` contract, so
+     report-only first is the default rollout, not an option.
+  5. Make `/green` treat unproven as not green.
+  6. Add the fifth skip class to `configs/CLAUDE.md` § CI.
+  7. Add `tests/test-ci-local.sh` fixtures (a services job is unproven; `pull_request_target`
+     is harmless) plus a mutation that undoes the reorder.
+  8. Regen the plugin.
+  Size S–M.
+- [ ] 🟠 **Correction records carry no session link, and transcripts expire at 30 days.**
+  Migdal, *Your agent session transcripts are precious* (Quesma, 2026-10-01): "Sessions where an
+  engineer corrected or reverted the agent are ready-made evals". Gorokh (below) is the measured
+  half. `~/.claude/corrections/history.jsonl` has 1,634 records in four key shapes, and none
+  carries `session_id` or `transcript_path` (re-checked 2026-11-05). `correction-detector.sh`
+  appends at :292 and resolves `_CD_SID` only at :388. `revert-detector.sh`'s `RECORD` (:524)
+  has no such field. The oldest transcript on the host is from 2026-10-07, so each day without
+  the link permanently loses one day of corrected sessions.
+  Step 1, S, do first: write both fields from both detectors; pin them in
+  `tests/test-correction-pairing.sh`; update the schema paragraph in
+  `configs/skills/radar/SKILL.md`.
+  Step 2, M: `configs/scripts/keep-sessions.py`. It copies the transcripts of non-probe records
+  through `redact.py` into zstd under `~/.local/share/clade/sessions/`, outside the synced
+  `~/.claude`, mode 0700, idempotent, skipping private sessions. Keeping only corrected sessions
+  is our narrowing (the essay keeps all), chosen for cost.
+- [ ] 🟡 **Context inertia: `/pickup` executes the last session's hypothesis as orders, and the
+  350K trial cannot see the failure. Do before the 2026-11-12 evaluation.** Breunig, *Context
+  Inertia* (2026-10-14): "the model commits to a hypothesis, subtask, or goal … and keeps
+  pursuing it after the evidence says to stop", and compaction "potentially distills what's
+  driving the model's hyper-focus". `configs/skills/pickup/prompt.md:68` says "Immediately start
+  executing Next Steps #1". The handoff template records no tried or ruled-out hypotheses.
+  None of the trial's seven proxies (section above) measures persistence.
+  Fix S:
+  - Handoff gets `## Hypotheses` (each with evidence, status, and what would make me drop it)
+    and `## Stop conditions`.
+  - Pickup re-checks the current hypothesis against verified facts and the repo before acting,
+    treating Next Steps as proposals.
+  - Both changes land together: the skeptic warns that a Hypotheses section alone carries the
+    inertia across the reset.
+  - Add an exploratory proxy 8 to the trial: edit size and thinking tokens per turn against
+    context tokens, from `context-census.py`. It is not a rollback threshold.
+  - Prior art to cite rather than re-propose: `/loop` starts a fresh supervisor every iteration,
+    and the dormant `loop_context_mode=reset` exists. Counter-evidence in the ledger:
+    arXiv:2610.35971 has continuation winning 216 of 224 configurations, so do not reset short
+    tasks.
+  Deferred, M: `/iloop --reset-every N`, which needs an external driver.
+- [ ] 🟡 **friction-rank.py — a verdict channel ranked by distinct sessions.** Gorokh, *The loop
+  learned slowly from corrections and faster from verdicts* (2026-10-08). On one operator's
+  fleet, the correction channel adopted 1 rule in 11 weeks. An A/B of 7 mined rules found 0
+  helped and 3 hurt; the author says the 2-net-solve floor is not a significance test. Harness
+  verdicts ranked by recurrence across sessions yielded one-sentence harness repairs. Nothing on
+  the terminal path ranks `is_error`, hook denials, permission refusals, timeouts and unchanged
+  retries across sessions. Radar's manual tally clips stderr to 90 characters, the defect the
+  essay names.
+  A deep-reader prototype found the catastrophic-rm guard (`pre-tool-guardian.sh:732`) refusing
+  25 times in 16 sessions in 30 days on one profile. Five were misreads of heredoc bodies or
+  quoted grep patterns. The refusal names no supported path. A by-hand recount found the refusal
+  string in tool results of 32 main-thread sessions across profiles; that count is not
+  deduplicated.
+  M: stdlib, report-only; heredocs stripped before families are cut; ranked by distinct
+  sessions; discovery and held-out weeks; full refusal text plus the next 3 calls; `--self-test`
+  with mutations; replaces the radar tally as Lane D.
+  Skeptics' caveats:
+  - Friction is not a defect.
+  - The essay records a refusal-text change with no benefit, so test before rewording.
+  - Rule A/B runs real sessions, so it stays opt-in (paid-API rule). The floor and content-hash
+    design belongs in the rule-ablation item (§ 2026-10-12).
+- [ ] 🟡 **Harness-usage report and control expiry conditions.** Zaninotto, *The State Of AI
+  Harness Engineering 2026* (Marmelab, 2026-09-24): "give every control an expiry condition,
+  and write down the incident it exists for". On this host, 102 of 148 skills were never
+  invoked: 80 hub sub-skills, which undercount, and 22 first-party skills. 18 of 35 hook
+  headers name no incident (rough grep). Only `context-policy.json` carries `retire_from`.
+  - M: `configs/scripts/harness-usage.py`. Per shipped skill and hook, report fires, denies,
+    rejections and last-fired from `skillUsage` and the transcript hook attachments, main
+    thread only.
+  - S: a `# exists-for: … · retire-when: …` header on each hook, checked by `tests/test-hooks.sh`.
+  - Caveats: zero fires never retires a preventive safety control, and only flags it for
+    review. A 60-day window needs a ledger because transcripts are deleted at 30 days.
+    Invocation is not behaviour change.
+- [ ] 🟡 **`/loop` holdout scenarios outside the repository.** StrongDM's software factory, via
+  Phelps, *When AI writes all the code* (2026-10-10): "A test, stored in the codebase, can be
+  lazily rewritten to match the code." Every `/loop` gate lives in the tree a worker can merge
+  into. `loop_verify.sh` re-reads `verify_cmd` from the repo's CLAUDE.md on every iteration, and
+  `loop-runner.sh` pastes the whole goal file into the supervisor prompt.
+  M: `--holdout DIR`, refused if the directory is inside the toplevel. Each scenario is an
+  executable run in the loop's checkout. A `node_holdout` runs after `node_verify` and joins the
+  reconcile gate. Scenario names and paths never enter a prompt. Snapshot `verify_cmd` at
+  pre-flight and warn if it changes.
+  Honest scope: the worker runs as the same uid, so this makes the scenarios harder to rewrite,
+  not impossible to rewrite.
+- [ ] 🔵 **Property tests and a FLAKY label.** Osmani, *Agentic Verification* (2026-10-14):
+  "Example tests say what should happen; properties say what must not", and a retry-green test
+  teaches the agent to retry. The tree has zero `hypothesis`/`@given`.
+  `tests/test-loop-real.sh:4-11` says "re-run once; if it passes, discard it".
+  M: pin `hypothesis` and add `orchestrator/tests/test_redact_properties.py` (no credential
+  tail survives; idempotent). Its generator must insert separators, because the `redact.py`
+  patterns are `\b`-anchored and fixed-length. Have `ci-local.py` rerun a failed step once and
+  report a rerun-green as FLAKY, not green.
+- [ ] 🔵 **Say how deeply each PR was read, and roll up what could not be verified.** Osmani,
+  *The Code Nobody Reads* (2026-09-28); Larson, *Speeding up code review with small-change*
+  (2026-10-17) and *adopting verification pattern* (2026-10-30): "That list is your roadmap".
+  34 of 34 recent Clade PRs had no reviewer but the author.
+  S: `create-pr` emits a fixed-enum `review depth:` line and a `could not verify:` line.
+  `/retro` rolls recurring could-not-verify items into the top three.
+- [ ] 🔵 **Unverified: these leads never got the skeptic pass (rank cap).**
+  - Anhaia (2026-11-05): agent memory you cannot `git diff`. `sync-link-projects.sh:44`
+    matches by basename, so project memories may be missed.
+  - Jain, *Are Harnesses Worth the Cost?* (martinfowler.com, 2026-10-13): a model-tier A/B for
+    implement stages, extending the 10-23 effort A/B.
+  - LangChain, *Agents Are Going Async* (2026-11-05): `codex-orchestrate` has no recorded pgid
+    for cancel and never uses `codex exec resume`.
+  Each needs the two-skeptic pass before any work.
