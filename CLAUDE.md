@@ -786,13 +786,13 @@ python3 configs/scripts/check-sibling-facts.py
 #     did not run at all.
 bash configs/scripts/checks.sh shellcheck configs/hooks/*.sh configs/hooks/lib/*.sh configs/scripts/*.sh install.sh
 
-# 12. Every suite the `shell-tests` job runs — all 27, not a convenient subset
+# 12. Every suite the `shell-tests` job runs — all 28, not a convenient subset
 for t in loop checks skill-routing pr-scope-policy audit worktree-env \
          rule-injector mailbox-drain correction-pairing hooks post-edit-check session-context \
          session-scorecard \
          post-compact-reinject context-warning-drain ensure-dev-server \
          quiet-run scan-health pre-tool-guardian ask-while-live loop-args \
-         memory-watchdog ci-local seo-geo radar-cron workflow-preflight \
+         loop-holdout memory-watchdog ci-local seo-geo radar-cron workflow-preflight \
          wf-reader-guard; do
   bash "tests/test-$t.sh" >/dev/null || echo "FAILED: $t"
 done
@@ -851,7 +851,7 @@ commit too.**
 On push/PR to `main`, four workflow files fire:
 
 - `ci.yml` — `syntax-check` (27 gates), `pytest` (suite + 2 offline evals),
-  `shell-tests` (27 suites), `install-test`. `run_hack_eval.py` scores
+  `shell-tests` (28 suites), `install-test`. `run_hack_eval.py` scores
   `judge_diversity.test_integrity` against the labelled reward-hack corpus in
   `evals/hack_cases/` — read its README before changing either, because that
   gate's floor and ceiling are measured, not chosen.

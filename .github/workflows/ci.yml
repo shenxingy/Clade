@@ -486,6 +486,15 @@ jobs:
       - name: Run loop argument tests
         run: bash tests/test-loop-args.sh
 
+      # /loop --holdout DIR: acceptance scenarios the workers cannot see or
+      # commit to. Drives loop-runner.sh against a scratch repo with a mocked
+      # claude and asserts that a failing scenario blocks convergence, that no
+      # prompt names a scenario, and that a scenario's writes never reach a
+      # commit; its last section removes each guard and requires red. It
+      # shipped unwired: neither this job nor test-loop.sh ran it.
+      - name: Run loop holdout tests
+        run: bash tests/test-loop-holdout.sh
+
       # ci-local.py runs THESE workflows on a developer machine, so hosted
       # minutes are the receipt rather than the gate. The thing it must never
       # do is execute nothing and exit 0 — a green light for a broken push.
