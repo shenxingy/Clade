@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # skill-suggest.sh — Context-aware skill suggestion after file edits
+# exists-for: no incident recorded (added 2026-04-13 in 4fb2b75); need: suggest the matching skill after an edit (blog, API route, migration, ML config) · retire-when: a usage review shows its suggestions are not followed by the suggested skill, or skill auto-selection already picks them
 #
 # PostToolUse hook (Edit|Write) — checks what was just edited and suggests
 # relevant skills the user might want to run next.

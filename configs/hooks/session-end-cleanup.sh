@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # session-end-cleanup.sh — Delete the ending session's correction-pairing shadow.
+# exists-for: correction-pairing shadows were removed only by an 8-hour sweep, leaving one stale file per short session (added 2026-08-10 in b81ec79) · retire-when: edit-shadow-detector.sh retires; this deletes only the file that hook writes
 # Triggered by SessionEnd (all reasons: clear, logout, prompt_input_exit, other).
 #
 # edit-shadow-detector.sh writes <runtime>/claude-edit-shadows/session-<id>.jsonl

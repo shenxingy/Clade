@@ -216,6 +216,15 @@ jobs:
       - name: Outcome scorecard self-test (can it go red?)
         run: python3 configs/scripts/outcome-scorecard.py --self-test
 
+      # The verdict channel: errors, hook denials, permission refusals,
+      # timeouts, unchanged retries and hook errors from Claude Code's own
+      # transcripts, ranked by distinct sessions with held-out weeks. Report-only
+      # (radar Lane D). The self-test drives main() on synthetic transcripts,
+      # never the host's; its mutations live in
+      # orchestrator/tests/test_self_tests_can_fire.py.
+      - name: Friction rank self-test (can it go red?)
+        run: python3 configs/scripts/friction-rank.py --self-test
+
       # Reports, never blocks. Five convergence rounds found 61, 25, 34, - and
       # 23 issues, and the count would not fall because 43% of each round were
       # SIBLINGS of the previous round's own fixes: a fact corrected in the file
@@ -335,6 +344,15 @@ jobs:
       - name: Poll-detector self-test (can it go red?)
         run: python3 configs/scripts/workflow-scorecard.py --self-test
 
+      # The report on which shipped skills and hooks fire. An instrument that
+      # cannot attribute a trace reads every hook as never fired, which is the
+      # list a reviewer would retire from. The self-test drives main() under a
+      # temporary HOME with fixture transcripts, two profiles' .claude.json and
+      # a fixture checkout; its mutations live in
+      # orchestrator/tests/can_fire/harness_usage.py.
+      - name: Harness-usage self-test (can it go red?)
+        run: python3 configs/scripts/harness-usage.py --self-test
+
       # Fourth instrument in this repo to arrive with the question answered.
       # Its first version accepted the bare word instead of the literal --flag,
       # and could not fire: flag names are common English words, so /brief
@@ -347,6 +365,15 @@ jobs:
       # hook path turns this red (its mutations live in test_hook_guards_can_fire.py).
       - name: Workflow-preflight self-test (can it go red?)
         run: python3 configs/scripts/check-workflow-script.py --self-test
+
+      # keep-sessions.py copies the transcripts of corrected sessions, redacted,
+      # out of reach of Claude Code's 30-day cleanup. A keeper that silently
+      # stopped masking, followed a symlink out of a session, or copied a
+      # session marked private would still print "kept N sessions". The
+      # self-test drives main() on a synthetic HOME with a negative control per
+      # exclusion; its mutations live in orchestrator/tests/can_fire/keep_sessions.py.
+      - name: Session keeper self-test (can it go red?)
+        run: python3 configs/scripts/keep-sessions.py --self-test
 
       - name: Score the test-integrity detector against the reward-hack corpus
         run: |
@@ -413,6 +440,38 @@ jobs:
       # that makes all three reachable
       - name: Run hook delivery tests
         run: bash tests/test-hooks.sh
+
+      # Every configs/hooks/*.sh names the incident it exists for and when it
+      # may retire: one well-formed line per hook, cross-checked against the
+      # wiring, no `<…>`/`{…}` placeholder, no zero-fires retirement without an
+      # ablation (a wording table), mutations that must go red
+      # (split out of test-hooks.sh when it would have crossed the 1500-line rule)
+      - name: Run hook provenance tests
+        run: bash tests/test-hook-provenance.sh
+
+      # Project auto-memory reaches the sync store: a real memory dir is
+      # adopted (verified copy, link back, commit), store entries link at
+      # Claude Code's own slug in ~/.claude, $CLAUDE_CONFIG_DIR and every
+      # ~/.claude-profiles/*/projects, wrong-target links are pruned, private
+      # projects stay local in every pass, conflicts land in a state file that
+      # sync-health.sh prints, a time budget defers the rest, --dry-run
+      # changes nothing. Its last suite mutates one guard at a time and
+      # requires red: the slug's leading "-", the adopt pass, the commit and
+      # committing from the store's status, the clash, owner and
+      # several-candidates checks, the unreachable store, privacy in adopt,
+      # link and prune (two entry kinds), the .git and repository-subdirectory
+      # rules, the dry-run guards on adopt and detach, the stray-symlink
+      # exclusion, copy verification, the adopt ln guard, the late-write copy,
+      # the prune pass, the legacy keep, the dangling-link skip, the pass-3
+      # memory-root check and existing-directory skip, never replacing a link,
+      # following a chained link, the profile dirs, $CLAUDE_CONFIG_DIR, the
+      # budget, conflicts kept across a deferred run, the state file written
+      # and removed, the conflict log and its daily dedup, the .project-path
+      # traversal guard and sync-health.sh's notice; the lock and the
+      # 200-character key cap only where flock and a short TMPDIR exist. Not
+      # mutated: de-duplicating projects dirs by physical path.
+      - name: Run sync-link-projects tests
+        run: bash tests/test-sync-link-projects.sh
 
       # post-edit-check: exit-2 asyncRewake findings vs silent success, the per-file mypy scope, errors already
       # in the file's HEAD version, a crashed checker, nested worktrees
@@ -485,6 +544,15 @@ jobs:
       # supervisor budget defaulted to 120s through two separate stuck runs.
       - name: Run loop argument tests
         run: bash tests/test-loop-args.sh
+
+      # /loop --holdout DIR: acceptance scenarios the workers cannot see or
+      # commit to. Drives loop-runner.sh against a scratch repo with a mocked
+      # claude and asserts that a failing scenario blocks convergence, that no
+      # prompt names a scenario, and that a scenario's writes never reach a
+      # commit; its last section removes each guard and requires red. It
+      # shipped unwired: neither this job nor test-loop.sh ran it.
+      - name: Run loop holdout tests
+        run: bash tests/test-loop-holdout.sh
 
       # ci-local.py runs THESE workflows on a developer machine, so hosted
       # minutes are the receipt rather than the gate. The thing it must never

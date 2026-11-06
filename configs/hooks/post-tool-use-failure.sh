@@ -1,5 +1,6 @@
 #!/bin/bash
 # post-tool-use-failure.sh — Inject diagnostic context when a tool fails.
+# exists-for: no incident recorded (added 2026-04-08 in 54237d7; Hooks gap 6, docs/archive/BRAINSTORM-resolved.md); need: a recovery hint the moment a tool call fails · retire-when: an ablation shows failed tool calls take no more recovery turns without the hint
 # Hooks §Gap 6: Reduces recovery turns by providing immediate context on failure.
 # Event: PostToolUseFailure — fires after a tool returns an error.
 # Output: additionalContext injected as a system reminder for Claude to act on.

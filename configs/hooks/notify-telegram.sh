@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # notify-telegram.sh — Send Telegram notification when Claude needs attention
+# exists-for: no incident recorded (added 2026-02-18 in 5e9103b); need: a phone alert when a session waits on a permission prompt or sits idle · retire-when: no install sets TG_BOT_TOKEN and TG_CHAT_ID, or Claude Code's own notifications reach the phone
 # Triggered by Notification on permission_prompt|idle_prompt
 #
 # Setup: Set TG_BOT_TOKEN and TG_CHAT_ID in environment or ~/.claude/settings.json env

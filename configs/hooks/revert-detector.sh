@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # revert-detector.sh — Detect git revert/reset commands as implicit corrections
+# exists-for: no incident recorded (added 2026-02-25 in 2e9b184); need: record git revert, reset and restore as implicit corrections in corrections/history.jsonl · retire-when: session-scorecard.sh, correction-detector.sh and radar no longer read its records, or the correction channel is retired
 # Triggered by PreToolUse on Bash
 #
 # When a user (or Claude) runs git revert, git reset --hard, git checkout -- <file>,
@@ -516,12 +517,34 @@ if [[ "$REVERT_SCOPE" == "paths" ]]; then
   fi
 fi
 
+# ─── Session link: which transcript holds this revert ────────────────
+# Without it a record could not be traced back to the session that produced it,
+# and Claude Code deletes that session's transcript after 30 days. The filter is
+# correction-detector.sh's, character for character; the note there says why
+# each part is what it is, and tests/test-correction-pairing.sh feeds both hooks
+# the same inputs. A probe keeps its link: it is still a record of the session.
+RD_TAB=$'\t'
+_link=$(printf '%s' "$INPUT" | jq -r '
+  [ (.session_id // "" | tostring | explode
+       | map(select((. >= 48 and . <= 57) or (. >= 65 and . <= 90) or (. >= 97 and . <= 122) or . == 45))
+       | implode),
+    (.transcript_path // ""
+       | if type == "string" and length <= 1024
+            and (explode | all(. >= 32 and . != 127 and (. < 128 or . > 159)))
+         then . else "" end) ]
+  | join("\t")' 2>/dev/null)
+[[ "$_link" == *"$RD_TAB"* ]] || _link="$RD_TAB"
+SESSION_ID="${_link%%"$RD_TAB"*}"
+TRANSCRIPT_PATH="${_link#*"$RD_TAB"}"
+
 # jq filter, not a shell string — the $-names are jq variables bound by the
 # --arg/--argjson flags below.
 # shellcheck disable=SC2016
 RECORD='{timestamp:$ts, prompt:$prompt, project:$project, type:$type,
          reverted_files:$files, session_files:$session, revert_scope:$scope,
-         revert_paths:$paths, repeat:$repeat}'
+         revert_paths:$paths, repeat:$repeat,
+         session_id:($sid | if . == "" then null else . end),
+         transcript_path:($tp | if . == "" then null else . end)}'
 
 if declare -f cp_append_history >/dev/null 2>&1; then
   cp_append_history "$HISTORY_FILE" \
@@ -534,6 +557,8 @@ if declare -f cp_append_history >/dev/null 2>&1; then
     --arg scope "$REVERT_SCOPE" \
     --argjson paths "$REVERT_PATHS_JSON" \
     --argjson repeat "$REPEAT" \
+    --arg sid "$SESSION_ID" \
+    --arg tp "$TRANSCRIPT_PATH" \
     "$RECORD"
 else
   jq -nc \
@@ -546,6 +571,8 @@ else
     --arg scope "$REVERT_SCOPE" \
     --argjson paths "$REVERT_PATHS_JSON" \
     --argjson repeat "$REPEAT" \
+    --arg sid "$SESSION_ID" \
+    --arg tp "$TRANSCRIPT_PATH" \
     "$RECORD" \
     >> "$HISTORY_FILE" 2>/dev/null
 fi

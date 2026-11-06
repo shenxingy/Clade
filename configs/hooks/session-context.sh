@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # session-context.sh — Auto-load project context at session start
+# exists-for: no incident recorded (added 2026-02-18 in 5e9103b); need: load the handoff, learned rules and project context at session start · retire-when: an ablation of each block it injects shows no effect, or every block has a native loader (CLAUDE.md, auto memory, path-scoped rules)
 # Triggered by SessionStart
 
 cd "${CLAUDE_PROJECT_DIR:-$(pwd)}" 2>/dev/null || exit 0
