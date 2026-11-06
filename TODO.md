@@ -1813,8 +1813,9 @@ exposed two hooks that have delivered nothing (the command is now in
   the CLI upgrade past 2.1.283: the guardian's BLOCKS still ride the legacy
   top-level `"decision":"block"`, which current docs no longer list for
   PreToolUse. If a later version drops it, every guardian block (force push to
-  main, `rm -rf ~`, `DROP TABLE`) becomes a non-blocking error. Re-run the
-  `hook_non_blocking_error` tally after upgrading.
+  main, `rm -rf ~`, `DROP TABLE`) becomes a non-blocking error. Re-run radar
+  Lane D (`friction-rank.py`, which ranks `hook_non_blocking_error` with its
+  full stderr) after upgrading.
 - [ ] 🟡 **The two guardians still disagree on 160 of 20,111 real commands,
   all outside force push.** This is down from 192; the 2026-10-20 force-push
   walk fixed 33 and introduced none of its own. What remains is older:
@@ -2477,7 +2478,16 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
     arXiv:2610.35971 has continuation winning 216 of 224 configurations, so do not reset short
     tasks.
   Deferred, M: `/iloop --reset-every N`, which needs an external driver.
-- [ ] 🟡 **friction-rank.py — a verdict channel ranked by distinct sessions.** Gorokh, *The loop
+- [x] 🟡 **friction-rank.py — a verdict channel ranked by distinct sessions.** DONE 2026-11-06
+  (feat/friction-rank): `configs/scripts/friction-rank.py` on `transcripts.py`, radar Lane D
+  (the hand tally is gone; `radar-cron.sh` runs it before an unattended sweep), a CI self-test
+  with 23 mutations. First run, 30 days, main thread, every profile on the author's host:
+  1,031 verdicts in 220 families, from 335 sessions read, and no unchanged retry (6 in 3 sessions
+  with --subagents over 7 days); the rm guard's refusal ranked 3rd by first
+  sentence (16 in 11 sessions in discovery weeks, 9 in 5 sessions held out). Not done, on
+  purpose: no refusal text was reworded (test first, below); `hook_blocking_error` and
+  `hook_cancelled` are not counted; `orchestrator/tests/test_self_tests_can_fire.py` is at
+  ~1,470 of 1,500 lines, so the next script's mutations need a split. Gorokh, *The loop
   learned slowly from corrections and faster from verdicts* (2026-10-08). On one operator's
   fleet, the correction channel adopted 1 rule in 11 weeks. An A/B of 7 mined rules found 0
   helped and 3 hurt; the author says the 2-net-solve floor is not a significance test. Harness
