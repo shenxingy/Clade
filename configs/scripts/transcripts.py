@@ -36,7 +36,10 @@ What a record holds (Claude Code 2.1.283)
 -----------------------------------------
 Inspected 2026-11-05 with ``jq`` over keys and types only, never content: the
 240 main-thread transcripts above, plus one Workflow agent and one plain Agent
-transcript for the subagent shape. Each line is one JSON object with a ``type``:
+transcript for the subagent shape. ``toolUseResult``'s type was re-checked
+2026-11-06 over the 15 newest main-thread, 30 newest plain Agent and 40 newest
+Workflow agent transcripts on the same host (counts below). Each line is one
+JSON object with a ``type``:
 
 ``assistant``   ``message`` is one API response block: ``message.content`` is a
                 list holding ONE block (thinking, text or tool_use), and a
@@ -53,16 +56,20 @@ transcript for the subagent shape. Each line is one JSON object with a ``type``:
                 can hold tool_result blocks: ``tool_use_id``, ``content`` (a
                 string, or a list of ``text``, ``image`` and ``tool_reference``
                 items) and ``is_error``, which is sometimes absent on success.
-                The record also carries ``toolUseResult``, the tool's structured
-                output: for Bash ``stdout``, ``stderr``, ``interrupted``, and
-                ``timedOutAfterMs`` when the command outran its timeout (the
-                result then is NOT an error), and ``persistedOutputPath`` when
-                the output was too large and the transcript keeps only a
-                ``<persisted-output>`` preview. A denied call adds
-                ``toolDenialKind``: ``permission-rule`` (a permission rule, or a
-                PreToolUse hook: the result text starts ``PreToolUse:<Tool> hook
-                error:``) or ``user-rejected``. Workflow agent transcripts carry
-                no ``toolUseResult`` at all.
+                The record also carries ``toolUseResult``, whose type varies.
+                On a successful built-in call it is an object, the tool's
+                structured output: for Bash ``stdout``, ``stderr``,
+                ``interrupted``, and ``timedOutAfterMs`` when the command
+                outran its timeout (the result then is NOT an error), and
+                ``persistedOutputPath`` when the output was too large and the
+                transcript keeps only a ``<persisted-output>`` preview. On an
+                error or denied result it is a STRING (``Error: …``), and on
+                the MCP results seen a list of ``text`` items; neither carries
+                those fields. Main thread: 2,141 objects, 56 strings (every one
+                an error), 5 lists. A denied call adds ``toolDenialKind``:
+                ``permission-rule`` (a permission rule, or a PreToolUse hook:
+                the result text starts ``PreToolUse:<Tool> hook error:``) or
+                ``user-rejected``.
 ``attachment``  ``attachment.type`` names it. Hook kinds seen:
                 ``hook_success`` (command, content, stdout, stderr, exitCode,
                 durationMs), ``hook_additional_context`` (content),
@@ -72,10 +79,11 @@ transcript for the subagent shape. Each line is one JSON object with a ``type``:
                 (``timedOut``, ``timeoutMs``), ``hook_permission_decision``
                 (``decision``), ``hook_system_message`` (content) and
                 ``async_hook_response`` (``response`` object, ``processId``, no
-                ``toolUseID``). All but the last carry ``hookEvent``,
-                ``hookName`` (``PostToolUse:Bash``) and ``toolUseID``: a
-                ``toolu_`` id for tool events, an opaque id for Stop,
-                SessionStart and UserPromptSubmit. Non-hook kinds outnumber them
+                ``toolUseID``). All but the last carry ``hookEvent`` and
+                ``toolUseID``: a ``toolu_`` id for tool events, an opaque id
+                for Stop, SessionStart and UserPromptSubmit. All but
+                ``hook_permission_decision`` carry ``hookName``
+                (``PostToolUse:Bash``). Non-hook kinds outnumber them
                 (``total_tokens_reminder``, ``deferred_tools_record``,
                 ``queued_command``, …).
 ``system``      ``subtype``: ``stop_hook_summary`` (``hookInfos``,
@@ -86,7 +94,13 @@ other           ``permission-mode``, ``mode``, ``last-prompt``, ``ai-title``,
                 ``message``.
 
 Subagent records carry ``agentId`` and ``isSidechain: true``. Their
-``sessionId`` is the lead session's. A PreToolUse hook that DENIES a call leaves
+``sessionId`` is the lead session's. A plain Agent transcript's ``toolUseResult``
+is shaped as on the main thread (1,434 objects, 50 strings, every string an
+error). A Workflow agent transcript carries ``toolUseResult`` ONLY as the error
+string, never the object: 75 of 75 were strings on error results, and a
+successful result has none. So a timeout, an interruption or a persisted output
+cannot be read there. Its denials DO carry ``toolDenialKind`` (9 of those 75;
+18 of the 50 plain Agent strings). A PreToolUse hook that DENIES a call leaves
 no hook attachment: the denial is visible only as the tool_result and the
 ``toolDenialKind`` beside it.
 
@@ -142,53 +156,74 @@ def default_roots() -> list[Path]:
     return roots
 
 
+def _find(roots: list[Path], pattern: str, since_days: float | None, in_subagents_dir: bool) -> list[Path]:
+    """The files under ``roots`` matching ``pattern``, oldest first; the finders below share it.
+
+    ``in_subagents_dir`` also skips a run's journal and anything that is not a
+    regular file. The main-thread finder keeps the filter it had inside
+    workflow-scorecard.py before the move, which had neither.
+
+    Each file's mtime is read ONCE, inside ``try``. A file that is gone by
+    then is skipped: Claude Code's 30-day cleanup can delete one between the
+    glob and the stat, and a dangling symlink is listed by the glob and cannot
+    be stat'ed. Reading it twice (once to filter, again to sort) used to let
+    such a file abort the whole scan with FileNotFoundError.
+    """
+
+    cutoff = None
+    if since_days is not None:
+        cutoff = datetime.datetime.now().timestamp() - since_days * 86400
+    found: dict[Path, tuple[float, Path]] = {}
+    for root in roots:
+        if not root.exists():
+            continue
+        for path in root.glob(pattern):
+            if in_subagents_dir and (path.name in _NOT_TRANSCRIPTS or not path.is_file()):
+                continue
+            try:
+                mtime = path.stat().st_mtime
+            except OSError:
+                continue
+            if cutoff is not None and mtime < cutoff:
+                continue
+            found.setdefault(path.resolve(), (mtime, path))
+    return [path for _, path in sorted(found.values(), key=lambda item: item[0])]
+
+
 def find_transcripts(roots: list[Path], since_days: float | None) -> list[Path]:
     """Main-thread transcripts, ``<root>/<slug>/<session>.jsonl``, oldest first.
 
     ``since_days`` keeps files modified in that many days (None keeps all). A
     file reached through two roots is listed once, under the first root's path.
+    A file that vanishes during the scan is left out.
     """
 
-    found: dict[Path, Path] = {}
-    cutoff = None
-    if since_days is not None:
-        cutoff = datetime.datetime.now().timestamp() - since_days * 86400
-    for root in roots:
-        if not root.exists():
-            continue
-        for path in root.glob("*/*.jsonl"):
-            if cutoff is not None and path.stat().st_mtime < cutoff:
-                continue
-            found.setdefault(path.resolve(), path)
-    return sorted(found.values(), key=lambda p: p.stat().st_mtime)
+    return _find(roots, "*/*.jsonl", since_days, in_subagents_dir=False)
 
 
 def find_subagent_transcripts(roots: list[Path], since_days: float | None) -> list[Path]:
     """Subagent transcripts, ``<root>/<slug>/<session>/subagents/**/*.jsonl``, oldest first.
 
     Plain Agent/Task subagents and Workflow agents alike. A run's
-    ``journal.jsonl`` is skipped; ``since_days`` and deduplication work as in
+    ``journal.jsonl`` is skipped, and so is anything that is not a regular
+    file. ``since_days``, deduplication and a vanished file work as in
     ``find_transcripts``.
     """
 
-    found: dict[Path, Path] = {}
-    cutoff = None
-    if since_days is not None:
-        cutoff = datetime.datetime.now().timestamp() - since_days * 86400
-    for root in roots:
-        if not root.exists():
-            continue
-        for path in root.glob("*/*/subagents/**/*.jsonl"):
-            if path.name in _NOT_TRANSCRIPTS or not path.is_file():
-                continue
-            if cutoff is not None and path.stat().st_mtime < cutoff:
-                continue
-            found.setdefault(path.resolve(), path)
-    return sorted(found.values(), key=lambda p: p.stat().st_mtime)
+    return _find(roots, "*/*/subagents/**/*.jsonl", since_days, in_subagents_dir=True)
 
 
 def is_subagent_transcript(path: Path) -> bool:
-    """True for a file under a session's ``subagents/`` directory."""
+    """True for a file under a session's ``subagents/`` directory.
+
+    Judged from the path alone, by any parent component named ``subagents``.
+    Known limit: a root that itself sits under a directory of that name
+    (``CLAUDE_CONFIG_DIR=/x/subagents``) makes every transcript under it a
+    subagent's. Not anchored tighter on purpose: ``find_subagent_transcripts``
+    accepts any depth below ``subagents/``, so that a layout Claude Code adds
+    later is still found, and a classifier that knew only today's two layouts
+    would disagree with it.
+    """
 
     return "subagents" in path.parts[:-1]
 
@@ -197,7 +232,9 @@ def session_id(path: Path) -> str:
     """The lead session a transcript belongs to: the file stem, or the directory above ``subagents/``.
 
     Counting distinct sessions needs this: a subagent's file name is its agent
-    id, and its records' ``sessionId`` is the lead's.
+    id, and its records' ``sessionId`` is the lead's. The innermost
+    ``subagents`` component is used; the limit ``is_subagent_transcript``
+    names applies here too.
     """
 
     parts = path.parts[:-1]
@@ -264,8 +301,11 @@ class ToolEvent:
     transcript holds, which for a ``persisted_output`` call is Claude Code's
     preview, with the full output in that file. ``is_error`` is None without a
     result and False when the result omits the flag. ``timed_out_ms``,
-    ``interrupted`` and ``persisted_output`` come from ``toolUseResult``, which
-    Workflow agent transcripts do not carry, so None there means unknown.
+    ``interrupted`` and ``persisted_output`` are read only from a
+    ``toolUseResult`` OBJECT. An error or denied result carries a string there
+    instead, and a Workflow agent transcript never carries the object, so None
+    means unknown, not "no". ``denial_kind`` comes from ``toolDenialKind``,
+    which every transcript kind carries on a denial.
     """
 
     id: str
@@ -491,13 +531,18 @@ def strip_heredocs(command: str) -> str:
     the body is often prose ABOUT a command: a README documenting ``git
     checkout``, a fixture holding ``rm -rf``. Classify the command, not its
     data. The Python twin of ``rd_strip_heredocs`` in
-    ``configs/hooks/revert-detector.sh``, with one difference: every heredoc
+    ``configs/hooks/revert-detector.sh``, with two differences: every heredoc
     opened on a line is tracked, in order, where the shell version tracks only
-    the first. A ``<<-`` terminator may be indented with tabs.
+    the first; and the backslash-quoted ``<<\\WORD`` is recognised, which the
+    shell version's pattern does not. A ``<<-`` terminator may be indented with
+    tabs.
 
-    Known limits, both failing toward stripping too much: a ``<<word`` inside a
+    Known limits, all failing toward stripping too much: a ``<<word`` inside a
     quoted string or an arithmetic ``$((a<<b))`` opens a heredoc that is never
-    closed, and swallows the rest of the command.
+    closed; so does a delimiter holding a character outside ``[A-Za-z0-9_]``
+    (``<<END-OF-FILE``, ``<<'EOF.txt'``), of which only the leading identifier
+    is captured, so its real terminator never matches. Each swallows the rest of
+    the command.
     """
 
     kept: list[str] = []

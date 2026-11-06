@@ -10,8 +10,14 @@ cannot see the copy.
 Not mutated, on purpose: ``newline="\\n"`` on open() (text mode never splits on
 U+2028 either way; splitlines() is what did, and that mutation is listed), the
 profile sort in default_roots() (iterdir order often IS sorted, so a mutation
-could pass by luck), and the code under ``__main__`` (test_self_tests_can_fire.py
-runs it).
+could pass by luck), the ``at > 0`` guard in session_id() (only a relative path
+that starts at ``subagents/`` reaches it), and the code under ``__main__``
+(test_self_tests_can_fire.py runs it).
+
+A mutation that would pass by luck is written so it cannot: "oldest first" is
+mutated to newest first, not to unsorted, because an unsorted glob of three
+files can come back already in mtime order: about one chance in six wherever
+directory order is arbitrary.
 """
 
 from __future__ import annotations
@@ -43,31 +49,39 @@ MUTATIONS: list[tuple[str, str, str]] = [
      'encoding="utf-8", errors="replace", newline="\\n"', 'encoding="utf-8", newline="\\n"'),
     # ─── Discovery ───
     ("the journal is not a transcript",
-     "if path.name in _NOT_TRANSCRIPTS or not path.is_file():", "if not path.is_file():"),
-    ("main-thread transcripts deduplicate on the resolved path",
-     '        for path in root.glob("*/*.jsonl"):\n            if cutoff is not None and path.stat().st_mtime < cutoff:\n'
-     "                continue\n            found.setdefault(path.resolve(), path)",
-     '        for path in root.glob("*/*.jsonl"):\n            if cutoff is not None and path.stat().st_mtime < cutoff:\n'
-     "                continue\n            found.setdefault(path, path)"),
-    ("subagent transcripts deduplicate on the resolved path",
-     "                continue\n            found.setdefault(path.resolve(), path)\n"
-     "    return sorted(found.values(), key=lambda p: p.stat().st_mtime)\n\n\ndef is_subagent",
-     "                continue\n            found.setdefault(path, path)\n"
-     "    return sorted(found.values(), key=lambda p: p.stat().st_mtime)\n\n\ndef is_subagent"),
-    ("the since-days cutoff on main-thread transcripts",
-     '        for path in root.glob("*/*.jsonl"):\n            if cutoff is not None and path.stat().st_mtime < cutoff:',
-     '        for path in root.glob("*/*.jsonl"):\n            if False:'),
-    ("the since-days cutoff on subagent transcripts",
-     "                continue\n            if cutoff is not None and path.stat().st_mtime < cutoff:",
-     "                continue\n            if False:"),
+     "if in_subagents_dir and (path.name in _NOT_TRANSCRIPTS or not path.is_file()):",
+     "if in_subagents_dir and not path.is_file():"),
+    ("only regular files under subagents/",
+     "if in_subagents_dir and (path.name in _NOT_TRANSCRIPTS or not path.is_file()):",
+     "if in_subagents_dir and path.name in _NOT_TRANSCRIPTS:"),
+    ("transcripts deduplicate on the resolved path",
+     "found.setdefault(path.resolve(), (mtime, path))", "found.setdefault(path, (mtime, path))"),
+    ("the since-days cutoff",
+     "            if cutoff is not None and mtime < cutoff:", "            if False:"),
     ("oldest first",
-     "    return sorted(found.values(), key=lambda p: p.stat().st_mtime)\n\n\ndef find_subagent",
-     "    return list(found.values())[::-1]\n\n\ndef find_subagent"),
+     "sorted(found.values(), key=lambda item: item[0])]",
+     "sorted(found.values(), key=lambda item: item[0], reverse=True)]"),
+    ("a file that vanished mid-scan is skipped, not fatal",
+     "            try:\n                mtime = path.stat().st_mtime\n            except OSError:\n                continue\n",
+     "            mtime = path.stat().st_mtime\n"),
     ("a file under subagents/ is a subagent transcript",
      '    return "subagents" in path.parts[:-1]', "    return False"),
     ("a subagent's session is the directory above subagents/",
      "            return parts[at - 1]", "            return path.stem"),
     # ─── Tool events ───
+    # Three ways to pair by position instead of by id: the latest call, the
+    # oldest open call, the newest open call.
+    ("a result is paired by id, not with the latest call",
+     'event = events.get(str(block.get("tool_use_id")))',
+     "event = list(events.values())[-1] if events else None"),
+    ("a result is paired by id, not with the oldest open call",
+     'event = events.get(str(block.get("tool_use_id")))',
+     "event = next((e for e in events.values() if e.result_index is None), None)"),
+    ("a result is paired by id, not with the newest open call",
+     'event = events.get(str(block.get("tool_use_id")))',
+     "event = next((e for e in reversed(list(events.values())) if e.result_index is None), None)"),
+    ("an input that is not an object reads as {}",
+     "input=payload if isinstance(payload, dict) else {},", "input=payload,"),
     ("a repeated call id keeps the first call",
      '                if call_id in events:\n                    _bump(tally, "duplicate_calls")\n                    continue\n', ""),
     ("a repeated result keeps the first result",

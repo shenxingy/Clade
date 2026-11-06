@@ -124,6 +124,23 @@ def test_since_days_keeps_only_recent_files_and_sorts_oldest_first(tmp_path):
     assert tr.find_subagent_transcripts(roots, 30) == [paths["wf_agent"]]
 
 
+def test_a_file_that_vanishes_mid_scan_is_skipped_not_fatal(tmp_path):
+    """A dangling symlink is listed by the glob and cannot be stat'ed: the state
+    of a transcript Claude Code's 30-day cleanup deletes between the glob and
+    the stat. It used to abort the whole scan with FileNotFoundError."""
+
+    paths = _tree(tmp_path / "projects")
+    slug = tmp_path / "projects" / "-synthetic-project"
+    (slug / "deleted-mid-scan.jsonl").symlink_to(tmp_path / "nowhere.jsonl")
+    (slug / SESSION / "subagents" / "agent-gone.jsonl").symlink_to(tmp_path / "nowhere.jsonl")
+    (slug / SESSION / "subagents" / "a-directory.jsonl").mkdir()  # matched by the glob, not a transcript
+    roots = [tmp_path / "projects"]
+
+    for window in (None, 30):
+        assert tr.find_transcripts(roots, window) == [paths["main"]]
+        assert sorted(tr.find_subagent_transcripts(roots, window)) == sorted([paths["agent"], paths["wf_agent"]])
+
+
 def test_default_roots_covers_profiles_and_the_config_dir(tmp_path, monkeypatch):
     home = tmp_path / "home"
     (home / ".claude-profiles" / "b").mkdir(parents=True)
@@ -248,6 +265,32 @@ def test_tool_events_pair_each_call_with_its_full_result():
     assert inflight.result is None and inflight.is_error is None and inflight.result_index is None
 
 
+def test_tool_events_pair_by_id_when_parallel_results_arrive_out_of_order():
+    """Several calls open at once, their results back in neither call order nor
+    reverse call order: one API response with several tool_use blocks does
+    this. Pairing by position (the latest call, the oldest open call or the
+    newest open call) gets it wrong; only the id gets it right."""
+
+    records = [
+        _call("toolu_a", "Read", {"file_path": "/synthetic/a"}),
+        _call("toolu_b", "Read", {"file_path": "/synthetic/b"}),
+        _call("toolu_c", "Read", {"file_path": "/synthetic/c"}),
+        _result("toolu_b", "text of b"),
+        _result("toolu_a", "text of a", is_error=True),
+        _result("toolu_c", "text of c"),
+    ]
+    tally: dict[str, int] = {}
+
+    events = tr.tool_events(records, tally)
+
+    assert [(e.id, e.input["file_path"], e.result, e.result_index, e.is_error) for e in events] == [
+        ("toolu_a", "/synthetic/a", "text of a", 4, True),
+        ("toolu_b", "/synthetic/b", "text of b", 3, False),
+        ("toolu_c", "/synthetic/c", "text of c", 5, False),
+    ]
+    assert tally == {}
+
+
 def test_tool_events_count_orphans_and_duplicates_instead_of_guessing():
     records = [
         _result("toolu_before_the_file_began", "ok"),
@@ -258,12 +301,19 @@ def test_tool_events_count_orphans_and_duplicates_instead_of_guessing():
         {"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Bash", "input": {}}]}},
         {"type": "assistant", "message": {"content": "plain text, not a block list"}},
         "not even a dict",
+        _call("toolu_null_input", "Bash", None),  # type: ignore[arg-type]
+        _call("toolu_text_input", "mcp__synthetic__tool", "a bare string"),  # type: ignore[arg-type]
     ]
     tally: dict[str, int] = {}
 
     events = tr.tool_events(records, tally)  # type: ignore[arg-type]
 
-    assert [(e.id, e.input["command"], e.result) for e in events] == [("toolu_a", "first", "first result")]
+    # An input that is not an object reads as {}, so a consumer can .get() on it.
+    assert [(e.id, e.input, e.result) for e in events] == [
+        ("toolu_a", {"command": "first"}, "first result"),
+        ("toolu_null_input", {}, None),
+        ("toolu_text_input", {}, None),
+    ]
     assert tally == {"orphan_results": 1, "duplicate_calls": 1, "duplicate_results": 1}
 
 
@@ -356,6 +406,9 @@ def test_attachments_carry_the_subagent_id():
     ('git commit -m "$(cat <<\'EOF\'\nfix: x\n\nrm -rf\nEOF\n)"', "git commit -m \"$(cat <<'EOF'\n)\""),
     ("cat <<EOF\nnever closed\nrm -rf x", "cat <<EOF"),  # unterminated: the rest is body
     ("echo $((1<<2))", "echo $((1<<2))"),
+    # A documented limit, failing toward stripping too much: only the leading
+    # identifier of a non-identifier delimiter is captured, so it never closes.
+    ("cat <<END-OF-FILE\nbody\nEND-OF-FILE\nnext", "cat <<END-OF-FILE"),
 ])
 def test_strip_heredocs(command, expected):
     assert tr.strip_heredocs(command) == expected
@@ -369,7 +422,9 @@ def test_workflow_scorecard_polls_scans_main_thread_transcripts_from_every_root(
 
     The transcripts sit under ~/.claude/projects and are reached a second time
     through a profile symlink; a subagent transcript full of polls sits beside
-    them. One session must come back, counted once, without the subagent's.
+    them, and so does a transcript deleted mid-scan (a dangling symlink). One
+    session must come back, counted once, without the subagent's, and the
+    deleted file must not abort the report.
     """
 
     home = tmp_path / "home"
@@ -378,6 +433,7 @@ def test_workflow_scorecard_polls_scans_main_thread_transcripts_from_every_root(
     _write(projects / "-synthetic-project" / f"{SESSION}.jsonl", polls)
     _write(projects / "-synthetic-project" / SESSION / "subagents" / "agent-a1.jsonl",
            [_call(f"toolu_s{n}", "Bash", {"command": "git status"}, agentId="a1") for n in range(5)])
+    (projects / "-synthetic-project" / "deleted-mid-scan.jsonl").symlink_to(home / "nowhere.jsonl")
     (home / ".claude-profiles" / "p1").mkdir(parents=True)
     (home / ".claude-profiles" / "p1" / "projects").symlink_to(projects, target_is_directory=True)
     env = {k: v for k, v in os.environ.items() if k != "CLAUDE_CONFIG_DIR"}
