@@ -68,11 +68,15 @@ tokens: heredoc bodies are stripped first (``transcripts.strip_heredocs``), the
 rest is cut with ``shlex``, and what sets the scene is skipped: a leading ``cd
 DIR &&`` (and ``set``, ``export``, ``source``, ``pushd`` up to their
 separator), ``(``, ``{`` and ``!``, ``VAR=value`` assignments, and
-``sudo``/``env``/``nohup``/``time``/``timeout N``. A loop keeps its keyword
-(``Bash:for``, ``Bash:until``): the loop is the command.
+``sudo``/``env``/``nohup``/``time``/``timeout N`` with their options. A loop
+keeps its keyword (``Bash:for``, ``Bash:until``): the loop is the command.
 Then ``git commit`` keeps its subcommand (``_SUBCOMMANDS``), ``python3
-x/tool.py`` its script's basename, ``python3 -m pytest`` its module, and
-anything else its command word alone. A command shlex cannot cut is
+x/tool.py`` its script's basename, ``python3 -m pytest`` its module, ``bash -c``
+its flag (so does ``bash -lc``, and ``perl -ne`` is ``perl -e``), and anything
+else its command word alone. An option that takes a value takes the next word
+with it (``_VALUE_OPTIONS``), so that word is never read as the command or the
+subcommand: ``sudo -u postgres psql`` is ``Bash:psql``, ``kubectl -n web get``
+is ``Bash:kubectl get``. A command shlex cannot cut is
 ``Bash:<unparsed>``, never a guess. The family is the FIRST command: a guard
 that objects to an ``rm`` after ``git status &&`` files it under ``Bash:git
 status``, and the refusal text says why. The "refusals by first sentence"
@@ -85,7 +89,15 @@ session's. ISO weeks split the window: the last ``--holdout-weeks`` (default 1,
 counting the week ``now`` falls in) are held out, the rest are discovery. The
 ranking uses discovery only, and the held-out columns say whether a family
 recurred in weeks that did not choose it. A family seen only in held-out weeks
-ranks after every family seen in discovery.
+ranks after every family seen in discovery. The report prints how many days the
+held-out weeks span and warns below 7: early in a week the current one holds
+only hours, and a family missing from hours of data is not shown to be a
+burst. ``radar-cron.sh`` runs on Monday morning, so it passes
+``--holdout-weeks 2``.
+
+Each family shows its most common verdict text in full (between equally
+common texts, the most recent), and that text's latest occurrence: its
+provenance (session, file, record index) and the 3 calls after it.
 
 Main thread only by default: a Workflow agent's denials are a script's, and
 one fan-out can repeat one refusal a hundred times. ``--subagents`` adds
@@ -102,7 +114,9 @@ What it cannot see
 
 Stdlib only, on purpose: the syntax-check CI job installs no dependencies.
 Report-only: it exits 0 whatever it finds, and 1 only when nothing could be
-read, which it says as NOT MEASURED rather than as a clean zero.
+read (no transcript in the window, or none that would open), which it says as
+NOT MEASURED rather than as a clean zero. A transcript that will not open is
+named in the report and counted in neither transcripts nor sessions.
 """
 
 from __future__ import annotations
@@ -139,6 +153,8 @@ _REFUSALS = (HOOK_DENIAL, PERMISSION, HOOK_ERROR)
 
 _TIMEOUT_TEMPLATE = "Command did not complete within its"
 _NEXT_CALLS = 3
+# Fewer held-out days than this, and a family missing from them is not shown to be a burst.
+_SHORT_HOLDOUT_DAYS = 7
 
 
 def result_class(event: tr.ToolEvent) -> str | None:
@@ -196,6 +212,33 @@ _PRELUDES = frozenset({"cd", "pushd", "set", "export", "source", "."})
 _OPENERS = frozenset({"(", "{", "!"})
 _ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 _WORD = re.compile(r"^[a-z][a-z0-9_-]*$")
+_CLUSTER = re.compile(r"^-[A-Za-z]{2,}$")
+# Options that take the next word as their value: before the wrapped command
+# (`sudo -u postgres psql`), before the subcommand (`kubectl -n web get`), or
+# before an interpreter's script (`bash -o pipefail -c`). That word is neither
+# the command nor the subcommand. `--opt=value` is one token and needs no entry.
+_VALUE_OPTIONS: dict[str, frozenset[str]] = {name: frozenset(opts.split()) for name, opts in {
+    "sudo": "-u -g -C -D -h -p -r -t -T -U --user --group --chdir --host --prompt --role --type --other-user "
+            "--close-from --command-timeout",
+    "env": "-u -C -P --unset --chdir", "nice": "-n --adjustment", "timeout": "-s -k --signal --kill-after",
+    "time": "-f -o --format --output", "exec": "-a",
+    "git": "-C -c --git-dir --work-tree --namespace --config-env",
+    "docker": "-c -H -l --context --host --config --log-level", "gh": "-R --repo --hostname",
+    "kubectl": "-n -s --namespace --context --kubeconfig --cluster --server --user",
+    "helm": "-n --namespace --kube-context --kubeconfig",
+    "make": "-C -f -I -o -W --directory --file --makefile --include-dir",
+    "npm": "-w --prefix --workspace", "pnpm": "-C -F --dir --filter", "yarn": "--cwd",
+    "cargo": "-C -Z --manifest-path --config --color", "go": "-C", "uv": "-p --directory --project --python",
+    "poetry": "-C -P --directory --project", "tmux": "-L -S -f",
+    "systemctl": "-H -M -t -p -n -o -s --host --machine --type --property --lines --output --signal",
+    "aws": "--profile --region --output --endpoint-url", "gcloud": "--project --account --configuration --format",
+    "codex": "-m -c -C -s -a -p --model --config --cd --sandbox --ask-for-approval --profile",
+    "claude": "--model --permission-mode --output-format --settings --mcp-config",
+    "bash": "-o -O +o +O --rcfile --init-file", "sh": "-o +o", "zsh": "-o +o", "python": "-W -X", "python3": "-W -X",
+    "node": "-r --require --import --loader",
+}.items()}
+# The letter that makes an interpreter run inline text, inside a flag cluster too (`bash -lc`, `perl -ne`).
+_INLINE_LETTER = {"bash": "c", "sh": "c", "zsh": "c", "perl": "e", "ruby": "e", "node": "e", "bun": "e", "tsx": "e"}
 
 
 def _tokens(command: str) -> list[str] | None:
@@ -233,9 +276,10 @@ def bash_family(command: str) -> str:
         elif _ASSIGNMENT.match(tok):
             i += 1
         elif tok in _WRAPPERS:
+            takes_value = _VALUE_OPTIONS.get(tok, frozenset())
             i += 1
             while i < n and tokens[i].startswith("-"):
-                i += 1
+                i += 2 if tokens[i] in takes_value else 1
             if tok == "timeout" and i < n:
                 i += 1  # the duration
         else:
@@ -249,18 +293,53 @@ def bash_family(command: str) -> str:
             break
         rest.append(tok)
     if name in _SUBCOMMANDS:
-        sub = next((tok for tok in rest if _WORD.match(tok)), None)
+        sub = _subcommand(name, rest)
         return f"Bash:{name} {sub}" if sub else f"Bash:{name}"
     if name in _INTERPRETERS:
-        for at, tok in enumerate(rest):
-            if tok in ("-c", "-e", "-"):
-                return f"Bash:{name} {tok}"
-            if tok == "-m":
+        takes_value = _VALUE_OPTIONS.get(name, frozenset())
+        at = 0
+        while at < len(rest):
+            tok = rest[at]
+            flag = _inline_flag(name, tok)
+            if flag == "-m":
                 module = rest[at + 1] if at + 1 < len(rest) else ""
                 return f"Bash:{name} -m {module}".rstrip()
-            if not tok.startswith("-"):
+            if flag or tok == "-":
+                return f"Bash:{name} {flag or tok}"
+            if tok in takes_value:
+                at += 2
+                continue
+            if not tok.startswith(("-", "+")):
                 return f"Bash:{name} {os.path.basename(tok) or tok}"
+            at += 1
     return f"Bash:{name}"
+
+
+def _subcommand(name: str, rest: list[str]) -> str | None:
+    """The first plain word after ``name``, never the value of a global option before it (``git -C repo status``)."""
+
+    skip = False
+    for tok in rest:
+        if skip:
+            skip = False
+        elif tok in _VALUE_OPTIONS.get(name, ()):
+            skip = True
+        elif _WORD.match(tok):
+            return tok
+    return None
+
+
+def _inline_flag(name: str, tok: str) -> str | None:
+    """``-c``, ``-e`` or ``-m`` when ``tok`` makes interpreter ``name`` run inline text or a module, else None."""
+
+    if tok in ("-c", "-e", "-m"):
+        return tok
+    if not _CLUSTER.match(tok):
+        return None
+    if name in ("python", "python3"):  # python reads the text or the module after the cluster's LAST letter
+        return f"-{tok[-1]}" if tok[-1] in "cm" else None
+    letter = _INLINE_LETTER.get(name)
+    return f"-{letter}" if letter and letter in tok[1:] else None
 
 
 def tool_family(event: tr.ToolEvent) -> str:
@@ -358,6 +437,13 @@ def iso_week(when: datetime.datetime) -> str:
     return f"{year}-W{week:02d}"
 
 
+def _week_start(when: datetime.datetime) -> datetime.datetime:
+    """Monday 00:00 UTC of the ISO week ``when`` falls in."""
+
+    utc = when.astimezone(datetime.timezone.utc)
+    return (utc - datetime.timedelta(days=utc.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+
+
 def _split() -> dict[str, Any]:
     return {"sessions": set(), "count": 0}
 
@@ -377,6 +463,7 @@ def rank(occurrences: list[dict[str, Any]], start: datetime.datetime, now: datet
     """Families and refusal sentences, ranked; plus which ISO weeks were discovery and which held out."""
 
     held_weeks = {iso_week(now - datetime.timedelta(days=7 * k)) for k in range(holdout_weeks)}
+    held_start = max(_week_start(now) - datetime.timedelta(weeks=holdout_weeks - 1), start)
     window_weeks = {iso_week(now)}
     day = start
     while day < now:
@@ -394,6 +481,7 @@ def rank(occurrences: list[dict[str, Any]], start: datetime.datetime, now: datet
             continue
         week = iso_week(when)
         occ["week"] = week
+        occ["at"] = when.timestamp()
         part = "held_out" if week in held_weeks else "discovery"
         counts["verdicts"] += 1
         group = families.setdefault((occ["class"], occ["family"]), {
@@ -407,7 +495,7 @@ def rank(occurrences: list[dict[str, Any]], start: datetime.datetime, now: datet
         text = group["texts"].setdefault(occ["text"], {"count": 0, "sessions": set(), "latest": occ})
         text["count"] += 1
         text["sessions"].add(occ["session"])
-        if (occ["timestamp"] or "") >= (text["latest"]["timestamp"] or ""):
+        if occ["at"] >= text["latest"]["at"]:
             text["latest"] = occ
         if occ["class"] in _REFUSALS:
             said = first_sentence(occ["text"])
@@ -417,7 +505,7 @@ def rank(occurrences: list[dict[str, Any]], start: datetime.datetime, now: datet
             sentence[part]["sessions"].add(occ["session"])
             sentence[part]["count"] += 1
             sentence["families"].add(occ["family"])
-            if (occ["timestamp"] or "") >= (sentence["latest"]["timestamp"] or ""):
+            if occ["at"] >= sentence["latest"]["at"]:
                 sentence["latest"] = occ
 
     def finish(group: dict[str, Any]) -> None:
@@ -426,7 +514,10 @@ def rank(occurrences: list[dict[str, Any]], start: datetime.datetime, now: datet
 
     ranked_families = sorted(families.values(), key=_rank_key)
     for at, group in enumerate(ranked_families, 1):
-        texts = sorted(group["texts"].items(), key=lambda item: (-item[1]["count"], -len(item[1]["sessions"])))
+        # Between equally common texts the most recent leads, so a family of unique texts shows its newest one,
+        # not whichever the oldest file happened to hold.
+        texts = sorted(group["texts"].items(), key=lambda item: (-item[1]["count"], -len(item[1]["sessions"]),
+                                                                 -item[1]["latest"]["at"]))
         group["rank"] = at
         group["distinct_texts"] = len(texts)
         group["texts"] = [{"text": text, "count": info["count"], "sessions": len(info["sessions"]),
@@ -441,7 +532,8 @@ def rank(occurrences: list[dict[str, Any]], start: datetime.datetime, now: datet
         sentence["latest"] = _latest(sentence["latest"])
         finish(sentence)
     weeks = {"held_out": sorted(held_weeks),
-             "discovery": sorted(week for week in window_weeks if week not in held_weeks)}
+             "discovery": sorted(week for week in window_weeks if week not in held_weeks),
+             "held_out_days": round((now - held_start).total_seconds() / 86400, 1)}
     return ranked_families, ranked_sentences, weeks
 
 
@@ -463,8 +555,13 @@ def print_report(report: dict[str, Any], top: int) -> None:
     print()
     print(f"Window: {window['start'][:10]} → {window['end'][:10]} ({window['days']:g} days), {report['scope']}; "
           f"{read['transcripts']} transcripts, {read['sessions']} sessions, {read['tool_calls']} tool calls.")
-    print(f"Discovery weeks: {', '.join(weeks['discovery']) or 'none'}; held out: {', '.join(weeks['held_out'])}. "
-          "Ranked on discovery; held out says whether a family recurred in weeks that did not choose it.")
+    held_days = weeks["held_out_days"]
+    print(f"Discovery weeks: {', '.join(weeks['discovery']) or 'none'}; held out: {', '.join(weeks['held_out'])} "
+          f"({held_days:g} days). Ranked on discovery; held out says whether a family recurred in weeks that did not "
+          "choose it.")
+    if held_days < _SHORT_HOLDOUT_DAYS:
+        print(f"The held-out weeks span only {held_days:g} days: a family missing from them is not shown to be a "
+              "burst. --holdout-weeks 2 adds the week before.")
     skipped = [f"{read[key]} {label}" for key, label in (
         ("undated", "undated verdicts (not ranked)"), ("outside_window", "verdicts before the window"),
         ("malformed", "malformed lines"), ("truncated", "truncated last lines"))
@@ -491,9 +588,9 @@ def print_report(report: dict[str, Any], top: int) -> None:
         print(f"   {group['distinct_texts']} distinct texts; the most common, ×{head['count']} in "
               f"{head['sessions']} sessions, in full:")
         print(_indent(head["text"]))
-        print(f"   latest: session {latest['session']}, {latest['file']}, record {latest['record']}, "
-              f"{latest['timestamp']}")
-        print(f"   next {_NEXT_CALLS} calls: {_calls(latest['next_calls'])}")
+        print(f"   this text's latest occurrence: session {latest['session']}, {latest['file']}, "
+              f"record {latest['record']}, {latest['timestamp']}")
+        print(f"   the next {_NEXT_CALLS} calls after it: {_calls(latest['next_calls'])}")
     refusals = report["refusals"]
     if refusals:
         print("\nRefusals by first sentence (hook denials, permission refusals, hook errors), across families:")
@@ -518,7 +615,7 @@ def _unmeasured(reason: str, as_json: bool) -> int:
 # temporary --root with --now pinned to Friday 2026-11-06, so 2026-W45 is held
 # out and 2026-W44 is discovery. Every guard has a control that fires and one
 # that must not; their mutations are in orchestrator/tests/
-# test_self_tests_can_fire.py.
+# can_fire_friction_rank.py, which test_self_tests_can_fire.py runs.
 
 _NOW = "2026-11-06T12:00:00Z"
 _DISC, _HELD, _OLD = "2026-10-28T10:00:00Z", "2026-11-04T10:00:00Z", "2026-09-20T10:00:00Z"
@@ -608,8 +705,9 @@ def _build_fixture(root: Path) -> dict[str, Any]:
     s1.write(proj / "s1.jsonl")
 
     s2 = _Transcript(_DISC)
-    s2.bash("ssh lynx 'ls'", _RM.format("ssh lynx 'ls'"), error=True, denial="permission-rule")
+    s2.bash("ssh host1 'ls'", _RM.format("ssh host1 'ls'"), error=True, denial="permission-rule")
     s2.bash("sleep 60", _blocked(60), error=True)
+    s2.when = "2026-10-28T10:30:00Z"  # the later of the two hook errors: the report's next calls are this one's
     s2.hook("hook_non_blocking_error", _HOOK_STDERR)
     s2.bash("git push", "Exit code 1\nrejected", error=True)
     s2.parallel("npm run lint", "Exit code 1\nlint")
@@ -623,20 +721,28 @@ def _build_fixture(root: Path) -> dict[str, Any]:
     s3.write(proj / "s3.jsonl")
 
     s4 = _Transcript(_DISC)
-    for part in "abcd":
-        s4.bash(f"python3 -m pytest tests/{part} -q", "Exit code 1\n1 failed", error=True)
+    pytest_record = -1
+    for minute, part in enumerate("abcd"):  # one text four times, a minute apart: its latest is the last
+        s4.when = f"2026-10-28T09:0{minute}:00Z"
+        pytest_record = s4.bash(f"python3 -m pytest tests/{part} -q", "Exit code 1\n1 failed", error=True)
+    s4.when = _DISC
     s4.bash("npm test", _TIMEOUT_TEMPLATE + " 2m timeout and was moved to the background.", timed_out=True)
     s4.bash("curl https://example.invalid", "The user doesn't want to proceed with this tool use.",
             error=True, denial="user-rejected")
     s4.bash("make test", "Exit code 2\nFAIL", error=True)
-    s4.bash("make test", "Exit code 2\nFAIL", error=True)
+    s4.bash("make test", "Exit code 2\nFAIL again", error=True)  # the retry's own result is not its text
     s4.bash("tail -n 5 log.txt", "line")
     s4.bash("tail -n 5 log.txt", "line")
     s4.bash("make lint", "Exit code 2\nlint", error=True)
     s4.bash("make lint FIX=1", "fixed")
     s4.bash("cd /repo && cat > notes.md <<'EOF'\nit's a note\nEOF", "Exit code 1\nPermission denied", error=True)
     s4.bash("python3 configs/scripts/tool.py --check", "Exit code 1\ndrift", error=True)
+    s4.when = "2026-10-28T11:00:00Z"  # two texts once each, in file order: the newer one is shown
+    s4.bash("ruff check a.py", "Exit code 1\nE501 a.py", error=True)
+    s4.when = "2026-10-28T11:10:00Z"
+    ruff_record = s4.bash("ruff check b.py", "Exit code 1\nF401 b.py", error=True)
     s4.write(proj / "s4.jsonl")
+    (proj / "s9.jsonl").mkdir()  # listed as a transcript, and open() refuses it on every platform
 
     old = _Transcript(_OLD)
     old.bash("docker build .", "Exit code 1\nno Dockerfile", error=True)
@@ -650,7 +756,8 @@ def _build_fixture(root: Path) -> dict[str, Any]:
     agent.bash("sleep 60", _blocked(60), error=True)
     agent.bash("cargo build", _TIMEOUT_TEMPLATE + " 2m timeout and was moved to the background.", object_=False)
     agent.write(proj / "s1" / "subagents" / "agent-a1.jsonl")
-    return {"rm_record": rm_record, "rm_file": str(proj / "s1.jsonl"), "rm_text": _RM.format("cd /repo && rm -rf /x")}
+    return {"rm_record": rm_record, "rm_file": str(proj / "s1.jsonl"), "rm_text": _RM.format("cd /repo && rm -rf /x"),
+            "pytest_record": pytest_record, "ruff_record": ruff_record}
 
 
 def self_test(entry: Callable[[list[str]], int]) -> int:
@@ -693,13 +800,14 @@ def self_test(entry: Callable[[list[str]], int]) -> int:
         found = fams(report)
         hook = "hook:PostToolUse:Edit skill-suggest.sh"
         expect("the window's weeks", report.get("weeks"),
-               {"discovery": ["2026-W41", "2026-W42", "2026-W43", "2026-W44"], "held_out": ["2026-W45"]})
+               {"discovery": ["2026-W41", "2026-W42", "2026-W43", "2026-W44"], "held_out": ["2026-W45"],
+                "held_out_days": 4.5})
         expect("the families found, main thread, --since 30", sorted(found), sorted([
             (HOOK_DENIAL, "Bash:rm"), (HOOK_DENIAL, "Bash:ssh"), (IS_ERROR, "Bash:sleep"),
             (IS_ERROR, "Bash:git commit"), (IS_ERROR, "Bash:git push"), (IS_ERROR, "Bash:python3 -m pytest"),
             (IS_ERROR, "Bash:make test"), (IS_ERROR, "Bash:make lint"), (IS_ERROR, "Bash:cat"),
             (IS_ERROR, "Bash:python3 tool.py"), (IS_ERROR, "Bash:npm run"), (TIMEOUT, "Bash:npm test"),
-            (PERMISSION, "Bash:curl"),
+            (PERMISSION, "Bash:curl"), (IS_ERROR, "Bash:ruff"),
             (RETRY, "Bash:make test"), (HOOK_ERROR, hook)]))
         expect("the order: sessions first, then count", [(g["class"], g["family"]) for g in
                                                           report.get("families", [])[:4]],
@@ -714,6 +822,9 @@ def self_test(entry: Callable[[list[str]], int]) -> int:
         read = report.get("read", {})
         expect("undated verdicts", read.get("undated"), 1)
         expect("verdicts before the window", read.get("outside_window"), 1)
+        expect("an unreadable transcript is named, and counted in neither transcripts nor sessions",
+               ([u.split(": ")[0].endswith("s9.jsonl") for u in read.get("unreadable", [])],
+                read.get("transcripts"), read.get("sessions")), ([True], 6, 6))
         rm = found.get((HOOK_DENIAL, "Bash:rm")) or {"texts": [{}]}
         latest_disc: dict[str, Any] = next((t for t in rm["texts"] if t.get("text") == fixture["rm_text"]), {})
         expect("the refusal text, in full", bool(latest_disc), True)
@@ -722,8 +833,29 @@ def self_test(entry: Callable[[list[str]], int]) -> int:
                ("s1", fixture["rm_file"], fixture["rm_record"]))
         expect("the next calls", [c["family"] for c in prov.get("next_calls", [])],
                ["Bash:rm", "Bash:ls", "Bash:echo"])
-        hook_text = ((found.get((HOOK_ERROR, hook)) or {"texts": [{}]})["texts"][0]).get("text")
-        expect("the hook's stderr, in full", hook_text, _HOOK_STDERR)
+        hook_head = (found.get((HOOK_ERROR, hook)) or {"texts": [{}]})["texts"][0]
+        expect("the hook's stderr, in full", hook_head.get("text"), _HOOK_STDERR)
+        hook_latest = hook_head.get("latest", {})
+        expect("a hook error's next calls are the ones after it",
+               (hook_latest.get("session"), [c["family"] for c in hook_latest.get("next_calls", [])]),
+               ("s2", ["Bash:git push", "Bash:npm run", "Bash:npm run"]))
+        pytest_latest = ((found.get((IS_ERROR, "Bash:python3 -m pytest")) or {"texts": [{}]})["texts"][0]
+                         ).get("latest", {})
+        expect("a text's latest occurrence is its last, not its first",
+               (pytest_latest.get("record"), [c["family"] for c in pytest_latest.get("next_calls", [])]),
+               (fixture["pytest_record"], ["Bash:npm test", "Bash:curl", "Bash:make test"]))
+        ruff_head = (found.get((IS_ERROR, "Bash:ruff")) or {"texts": [{}]})["texts"][0]
+        expect("between equally common texts, the most recent is shown",
+               (ruff_head.get("text"), ruff_head.get("latest", {}).get("record")),
+               ("Exit code 1\nF401 b.py", fixture["ruff_record"]))
+        expect("a retry's text is the verdict it retried past",
+               [t["text"] for t in (found.get((RETRY, "Bash:make test")) or {"texts": []})["texts"]],
+               ["Exit code 2\nFAIL"])
+        expect("the refusals table holds hook denials, permission refusals and hook errors, and nothing else",
+               sorted((r["class"], r["sentence"]) for r in report.get("refusals", [])), sorted([
+                   (HOOK_DENIAL, "PreToolUse:Bash hook error: Catastrophic rm -rf blocked on system/home directory."),
+                   (PERMISSION, "The user doesn't want to proceed with this tool use."),
+                   (HOOK_ERROR, _HOOK_STDERR.split("\n", 1)[0])]))
         refusals = {r["sentence"]: r for r in report.get("refusals", [])}
         guard = refusals.get("PreToolUse:Bash hook error: Catastrophic rm -rf blocked on system/home directory.")
         expect("one refusal sentence across families",
@@ -732,10 +864,22 @@ def self_test(entry: Callable[[list[str]], int]) -> int:
 
         code, text = run(base)
         expect("exit code of the text report", code, 0)
-        for needle, why in ((CAVEAT, "the caveat"), (fixture["rm_text"], "the refusal text in full"),
-                            (_indent(_HOOK_STDERR.rstrip("\n")), "the hook stderr in full")):
+        for needle, why in ((CAVEAT, "the caveat"), (_RM.format("rm -rf /y"), "the newer refusal text, in full"),
+                            (_indent(_HOOK_STDERR.rstrip("\n")), "the hook stderr in full"),
+                            ("1 unreadable transcripts", "the unreadable transcript"),
+                            ("held out: 2026-W45 (4.5 days)", "the held-out span"),
+                            ("is not shown to be a burst", "the warning that 4.5 held-out days are too few")):
             if needle not in text:
                 failures.append(f"the text report lacks {why}")
+
+        two = run_json("the --holdout-weeks 2 run", [*base, "--holdout-weeks", "2"])
+        expect("--holdout-weeks 2 holds out the week before as well", two.get("weeks"),
+               {"discovery": ["2026-W41", "2026-W42", "2026-W43"], "held_out": ["2026-W44", "2026-W45"],
+                "held_out_days": 11.5})
+        expect("Bash:sleep with two weeks held out", split(fams(two).get((IS_ERROR, "Bash:sleep"))), (0, 0, 3, 3))
+        code, text = run([*base, "--holdout-weeks", "2"])
+        if "is not shown to be a burst" in text:
+            failures.append("11.5 held-out days drew the too-few-days warning")
 
         wide = fams(run_json("the --subagents run", [*base, "--subagents"]))
         expect("Bash:sleep with subagents: still 2 lead sessions", split(wide.get((IS_ERROR, "Bash:sleep"))),
@@ -754,13 +898,24 @@ def self_test(entry: Callable[[list[str]], int]) -> int:
         expect("exit code with no transcripts", code, 1)
         if "NOT MEASURED" not in text:
             failures.append(f"no transcripts must read as NOT MEASURED, not as zero friction: {text[-200:]}")
+        locked = Path(tmp) / "unreadable"
+        (locked / "-p" / "s.jsonl").mkdir(parents=True)
+        code, text = run(["--root", str(locked), "--now", _NOW])
+        expect("exit code when no transcript would open", code, 1)
+        if "NOT MEASURED" not in text:
+            failures.append(f"no readable transcript must read as NOT MEASURED, not as zero friction: {text[-200:]}")
 
     for command, family in (("FOO=1 timeout 60 git -C /r status", "Bash:git status"),
                             ("sudo -n systemctl restart x", "Bash:systemctl restart"),
                             ("python3 - <<'EOF'\nimport os\nEOF", "Bash:python3 -"),
                             ("# a note\nls -la", "Bash:ls"), ("echo \"it's", "Bash:<unparsed>"),
                             ("/usr/bin/grep -n x f", "Bash:grep"), ("cd /tmp", "Bash:cd"),
-                            ("( cd /x && make build )", "Bash:make build"), ("set -e; npm ci", "Bash:npm ci")):
+                            ("( cd /x && make build )", "Bash:make build"), ("set -e; npm ci", "Bash:npm ci"),
+                            ("sudo -u postgres psql -c 'select 1'", "Bash:psql"),
+                            ("timeout -s KILL 60 pytest -q", "Bash:pytest"), ("git -C repo status", "Bash:git status"),
+                            ("kubectl -n web get pods", "Bash:kubectl get"), ("bash -lc 'cd /x && make'", "Bash:bash -c"),
+                            ("python3 -um pytest", "Bash:python3 -m pytest"),
+                            ("bash -o pipefail -c 'a | b'", "Bash:bash -c"), ("bash -ex run.sh", "Bash:bash run.sh")):
         expect(f"the family of {command!r}", bash_family(command), family)
 
     if failures:
@@ -769,8 +924,10 @@ def self_test(entry: Callable[[list[str]], int]) -> int:
         return 1
     print("SELF-TEST PASSED: every verdict class (hook denial, permission refusal, timeout by object and by text, "
           "is_error, unchanged retry, hook error), the families (heredocs stripped, cd and wrappers skipped, "
-          "subcommands kept), the ranking by sessions and the held-out weeks, the window, main thread by default, "
-          "full texts, provenance and the next calls all fire on their controls and stay quiet on the rest.")
+          "option values skipped, subcommands kept, bash -lc is bash -c), the ranking by sessions, the held-out "
+          "weeks (1 and 2) and their span, the window, main thread by default, the refusals table's classes, full "
+          "texts, the latest occurrence and the next calls after it, and unreadable transcripts all fire on their "
+          "controls and stay quiet on the rest.")
     return 0
 
 
@@ -820,12 +977,18 @@ def main(argv: list[str] | None = None) -> int:
 
     tally: dict[str, int] = {}
     unreadable: list[str] = []
+    readable: list[Path] = []
     occurrences: list[dict[str, Any]] = []
     for path in paths:
         try:
             occurrences.extend(scan_transcript(path, tally))
         except OSError as exc:
             unreadable.append(f"{path}: {exc.strerror or exc}")
+        else:
+            readable.append(path)
+    if not readable:
+        return _unmeasured(f"none of the {len(paths)} transcripts could be read; the first: {unreadable[0]}",
+                           args.json)
     counts = {"undated": 0, "outside_window": 0, "verdicts": 0}
     families, refusals, weeks = rank(occurrences, start, now, args.holdout_weeks, counts)
     report: dict[str, Any] = {
@@ -834,7 +997,7 @@ def main(argv: list[str] | None = None) -> int:
         "window": {"start": start.isoformat(), "end": now.isoformat(), "days": args.since},
         "scope": "main thread and subagents" if args.subagents else "main thread only",
         "weeks": weeks,
-        "read": {"transcripts": len(paths) - len(unreadable), "sessions": len({tr.session_id(p) for p in paths}),
+        "read": {"transcripts": len(readable), "sessions": len({tr.session_id(p) for p in readable}),
                  "tool_calls": tally.get("tool_calls", 0), "records": tally.get("records", 0),
                  "malformed": tally.get("malformed", 0), "truncated": tally.get("truncated", 0),
                  "unreadable": unreadable, **counts},

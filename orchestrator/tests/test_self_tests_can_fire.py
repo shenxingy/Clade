@@ -27,6 +27,7 @@ Adding a self-test to a script means adding its mutations here.
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import subprocess
 import sys
@@ -1324,43 +1325,20 @@ MUTATIONS["configs/scripts/outcome-scorecard.py"] = [
 ]
 
 # ─── friction-rank.py ─────────────────────────────────────────────────
-# Harness verdicts ranked by distinct sessions. Its --self-test drives main() on synthetic transcripts under --root.
-# This file is near the 1500-line cap: the next script's block goes in a split, not here.
-MUTATIONS["configs/scripts/friction-rank.py"] = [
-    ("a hook denial needs an error or a denial kind — a cat quoting one counts",
-     'if refused and text.startswith("PreToolUse:"):', 'if text.startswith("PreToolUse:"):'),
-    ("permission refusals", "    if event.denial_kind is not None:\n        return PERMISSION", "    if False:\n        return PERMISSION"),
-    ("timeouts from the Bash object", "    if event.timed_out_ms is not None:\n        return TIMEOUT", "    if False:\n        return TIMEOUT"),
-    ("the timeout template only where no object was read — a log quoting it is a timeout",
-     "if event.interrupted is None and not event.is_error and text.startswith(_TIMEOUT_TEMPLATE):",
-     "if not event.is_error and text.startswith(_TIMEOUT_TEMPLATE):"),
-    ("the timeout template — a Workflow agent's timeout with no object is missed",
-     "if event.interrupted is None and not event.is_error and text.startswith(_TIMEOUT_TEMPLATE):", "if False:"),
-    ("a retry follows a verdict — an identical poll after a success counts",
-     "if i and classes[i - 1] and _same_call(events[i - 1], event)", "if i and _same_call(events[i - 1], event)"),
-    ("a retry has the same input — any next call of the same tool counts",
-     "if i and classes[i - 1] and _same_call(events[i - 1], event)", "if i and classes[i - 1] and events[i - 1].name == event.name"),
-    ("a retry is sent after the verdict — two identical calls in one batch count",
-     "and event.index > (events[i - 1].result_index or 0):", "and True:"),
-    ("hook errors are read from the attachments", "        if att.kind == HOOK_ERROR:", "        if False:"),
-    ("heredoc bodies are stripped before the family is cut",
-     'text = tr.strip_heredocs(command).replace("\\\\\\n", " ")', 'text = command.replace("\\\\\\n", " ")'),
-    ("a leading cd DIR && is skipped — every such command is Bash:cd", "        elif tok in _PRELUDES:", "        elif False:"),
-    ("a subshell's ( is skipped — ( cd x && make ) is Bash:(", "if tok in _SEPARATORS or tok in _OPENERS:", "if tok in _SEPARATORS:"),
-    ("subcommands are kept — git commit and git push are one family", "    if name in _SUBCOMMANDS:", "    if False:"),
-    ("main thread by default", "    if args.subagents:\n        paths +=", "    if True:\n        paths +="),
-    ("a subagent's session is its lead session's", "    session = tr.session_id(path)", "    session = path.stem"),
-    ("ranked by sessions, then count",
-     '    return (-len(disc["sessions"]), -disc["count"],', '    return (-disc["count"], -len(disc["sessions"]),'),
-    ("held-out weeks are held out", '        part = "held_out" if week in held_weeks else "discovery"', '        part = "discovery"'),
-    ("the window's start — a verdict older than --since is ranked", "        if when < start or when > now:", "        if when > now:"),
-    ("an undated verdict is not ranked",
-     '        if when is None:\n            counts["undated"] += 1\n            continue', "        if when is None:\n            when = now"),
-    ("a refusal's first sentence groups it across families", "    return line[:cut + 1] if cut != -1 else line", "    return line"),
-    ("exactly the next 3 calls", "_NEXT_CALLS = 3", "_NEXT_CALLS = 4"),
-    ("the caveat is printed — friction read as a defect list", "    print(CAVEAT)\n", ""),
-    ("no transcripts is NOT MEASURED, not zero friction", "    if not paths:\n        return _unmeasured(", "    if False:\n        return _unmeasured("),
-]
+# Harness verdicts ranked by distinct sessions. Its block lives in can_fire_friction_rank.py beside this file: this
+# one reached 1,470 of the 1,500-line cap, so a script whose mutations do not fit here gets a sibling module like it.
+
+
+def _load_mutations(module: str) -> list[tuple[str, str, str]]:
+    """``MUTATIONS`` from a sibling module, loaded by path so it works under pytest and on a bare import alike."""
+    spec = importlib.util.spec_from_file_location(module, Path(__file__).with_name(f"{module}.py"))
+    assert spec and spec.loader, f"no {module}.py beside {__file__}"
+    loaded = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(loaded)
+    return loaded.MUTATIONS
+
+
+MUTATIONS["configs/scripts/friction-rank.py"] = _load_mutations("can_fire_friction_rank")
 
 
 def _cases():
