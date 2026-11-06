@@ -2511,8 +2511,9 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   `$GITHUB_EVENT_NAME` / `$GITHUB_BASE_REF` would make it run locally, but its push branch
   runs `git fetch --deepen=1` against origin, so decide that first. Also check, over the
   week, how often PARTIAL fired and on which lanes, before deciding the flip is not noise.
-- [ ] 🟠 **Correction records carry no session link, and transcripts expire at 30 days.**
-  Migdal, *Your agent session transcripts are precious* (Quesma, 2026-10-01): "Sessions where an
+- [x] 🟠 **Correction records carry no session link, and transcripts expire at 30 days.**
+  Steps 1 and 2 DONE 2026-11-06 (#180, #191). The three decisions that remain are the
+  next item. Migdal, *Your agent session transcripts are precious* (Quesma, 2026-10-01): "Sessions where an
   engineer corrected or reverted the agent are ready-made evals". Gorokh (below) is the measured
   half. `~/.claude/corrections/history.jsonl` has 1,634 records in four key shapes, and none
   carries `session_id` or `transcript_path` (re-checked 2026-11-05). `correction-detector.sh`
@@ -2562,6 +2563,12 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
     secret is not text: neither the files under `tool-results/` nor the base64 data inside a
     record, which keeps a placeholder naming its media type and size. An eval that needs the
     screenshot loses it.
+- [ ] 🟡 **Owner: three decisions left by `keep-sessions.py` (#191).** Listed in full under
+  "Not done" in the item above. Time-sensitive: (1) whether to recover the pre-Step-1 records
+  by matching `project` and `timestamp` against transcript time spans, a heuristic that can
+  pick the wrong session; each day it waits, one more day of transcripts expires. Not
+  time-sensitive: (2) re-redacting a kept copy whose source is gone when `redact.py` gains a
+  pattern; (3) keeping images and PDF pages, which `redact.py` cannot read.
 - [x] 🟡 **Context inertia: `/pickup` executes the last session's hypothesis as orders, and the
   350K trial cannot see the failure. Do before the 2026-11-12 evaluation.** DONE 2026-11-06
   (feat/handoff-hypotheses): handoff v3 writes `## Hypotheses` (evidence, status
@@ -2630,7 +2637,9 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   - The essay records a refusal-text change with no benefit, so test before rewording.
   - Rule A/B runs real sessions, so it stays opt-in (paid-API rule). The floor and content-hash
     design belongs in the rule-ablation item (§ 2026-10-12).
-- [ ] 🟡 **Harness-usage report and control expiry conditions.** Zaninotto, *The State Of AI
+- [x] 🟡 **Harness-usage report and control expiry conditions.** Both units DONE 2026-11-06
+  (#192, #186); the memory-sync defect its first run found is fixed in #193. Open for the owner
+  only: `doc-align-check.sh`'s retirement (the sub-item below). Zaninotto, *The State Of AI
   Harness Engineering 2026* (Marmelab, 2026-09-24): "give every control an expiry condition,
   and write down the incident it exists for". On this host, 102 of 148 skills were never
   invoked: 80 hub sub-skills, which undercount, and 22 first-party skills. 18 of 35 hook
@@ -2647,7 +2656,8 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
       (`FILE_PATH: unbound variable` under `set -u`) on every Bash call that touches a synced
       directory, because only the Write/Edit branch sets `FILE_PATH`. So a synced change made
       through Bash never syncs. 4,916 async failures in 30 days of main-thread transcripts on
-      one host, last on 2026-11-06.
+      one host, last on 2026-11-06. Fixed in #193 (fix/memory-sync-bash-unbound); #197 then
+      matched the profile projects dirs too (the memory-sync item below).
   - [x] S: a `# exists-for: … · retire-when: …` header on each hook, checked by
     `tests/test-hook-provenance.sh` (split out of `tests/test-hooks.sh` for the 1500-line rule).
     DONE 2026-11-06 (docs/hook-provenance-headers): all 35 `configs/hooks/*.sh` carry the line,
@@ -2659,9 +2669,9 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
     meaning: a table of 22 phrasings it must refuse ("unused for 90 days", "has not fired",
     "no denials in", "never triggered", "0 hits", "last fired … ago") and 12 near-misses it
     must allow. 16 input mutations turn it red. `docs/configuration.md` "Add a new hook" states
-    the line. Open for the owner: `doc-align-check.sh`'s condition is already met, because it
-    is async and its `systemMessage` reaches nobody. The M bullet above stays open; it is
-    another unit.
+    the line. The M bullet above landed separately (#192).
+  - [ ] Owner: retire `doc-align-check.sh`? Its own retire-when condition is already met: it
+    is async, so its `systemMessage` reaches nobody. Retiring a hook is the owner's call.
   - Caveats: zero fires never retires a preventive safety control, and only flags it for
     review. A 60-day window needs a ledger because transcripts are deleted at 30 days.
     Invocation is not behaviour change.
@@ -2686,8 +2696,11 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   intent-to-add entries (a sparse checkout's skipped files were then committed as deleted);
   each scenario is bounded by a python3 watchdog that kills its whole process group, so no
   `timeout`/`gtimeout` is needed (stock macOS ran scenarios unbounded), and `--holdout`
-  without python3 is refused. `tests/test-loop-holdout.sh` (run by `tests/test-loop.sh`)
-  carries the controls and 44 guard mutations plus a no-op control.
+  without python3 is refused. `tests/test-loop-holdout.sh` (run by `tests/test-loop.sh`
+  through `tests/lib/loop-fixture.sh`) carries the controls and 44 guard mutations plus a
+  no-op control. #189 also gave that suite its own `shell-tests` step, on the wrong belief
+  that nothing ran it (only `tests/test-loop.sh` and the workflows were searched, not
+  `tests/lib/`), so it ran twice per push; #198 removed the step.
   Not done: scenario cwd = checkout root is unpinned by a mutation, because the loop itself
   runs from that root and the two cannot be told apart from the outside. Sandboxing workers
   away from DIR and the holdout log is out of scope by design (same uid, see "Honest scope"
@@ -2696,7 +2709,7 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   killed (only a cut-off scenario's group is). The supervisor and worker calls still use
   `loop-runner.sh`'s `_timeout`, which runs unbounded with no `timeout`/`gtimeout` (the
   scenario watchdog is holdout-only). The warning when the goal or `--context` file names
-  the holdout is the open item that follows.
+  the holdout is the item that follows (done, #200).
   StrongDM's software factory, via
   Phelps, *When AI writes all the code* (2026-10-10): "A test, stored in the codebase, can be
   lazily rewritten to match the code." Every `/loop` gate lives in the tree a worker can merge
@@ -2715,7 +2728,7 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   goal and `--context` files for the given and the physical DIR (and `~`-relative forms) and
   warn; scenario names are not searched, since a short name like `check` would fire on prose.
   Deferred from PR #189 (review 2026-11-06) to keep that PR to the gate itself.
-  DONE 2026-11-06 (feat/loop-holdout-named-warning): `holdout_warn_named` in
+  DONE 2026-11-06 (feat/loop-holdout-named-warning, #200): `holdout_warn_named` in
   `loop_holdout.sh`, called by `loop-runner.sh` right after `holdout_validate` (dry runs
   included), searches both files for DIR as given, its physical path and the `~/` form of
   each, only forms holding a `/`. A warning, not a refusal. `tests/test-loop-holdout.sh` case
@@ -2760,6 +2773,13 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
     in `tests/lib/ci-local-flaky.sh`, sourced by `tests/test-ci-local.sh`. Measured motivation:
     on a host at load ~80, one case of 206 in `tests/test-context-policy-install.sh` failed once
     and passed 206/206 on an immediate rerun, and the run said FAILED with no record of a flake.
+    That flake's cause is fixed, not only labelled (#195): its slow-`claude` case bounded the
+    wall time at 19 s against a fake answering at 20 s, and `apply` needed 28 s at that load.
+    The fake now answers at 90 s and the bound is 80 s; 206/206 at load ~90.
+    Same day, same host: a step that hits the step timeout is not rerun, and the pytest step
+    took 1,914 s at load ~80 (528 s on a quieter run), so a plain run failed on the fixed 900 s
+    timeout. #199 scales the default with the 1-minute load per CPU (900 s × 1 to 4) and prints
+    the value and why; `--timeout N` still sets it.
   - Not changed, deliberately: `orchestrator/runtime_redaction.py` (dormant layer) has the same
     `AIza…{35}\b`, and `AIza`+34+`-` passes through it unmasked (checked by hand; its sequential
     substitution does mask the JWT pin).
@@ -2782,10 +2802,12 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   days to 2026-11-06 carry neither line yet).
   - [ ] M, not done: split `outcome-scorecard.py`'s kept and fixed-forward rates by review depth.
     Waits until merged PRs carry the line; until then every PR is "missing" and the split is empty.
-- [ ] 🔵 **Unverified: these leads never got the skeptic pass (rank cap).**
+- [x] 🔵 **Unverified: these leads never got the skeptic pass (rank cap).** All three got a
+  verify-first pass on 2026-11-06 and none was refuted. Only Jain (b) is open, queued for the
+  owner's quota decision.
   - [x] Anhaia (2026-11-05): agent memory you cannot `git diff`. `sync-link-projects.sh:44`
     matches by basename, so project memories may be missed. DONE 2026-11-06
-    (fix/memory-sync-link): the verify-first pass confirmed both claims and found
+    (fix/memory-sync-link, #188): the verify-first pass confirmed both claims and found
     three more causes (no leading `-` in its slugs, `((n++))` under `set -e` ending
     the run after one entry, no local → store direction). The linker now adopts real
     memory dirs into the store (verified, original kept, committed), prunes
@@ -2806,12 +2828,12 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
     survives in any profile. The 15 legacy basename entries are not merged into the
     new `.project-path` entries. A path spelled with different case on two hosts
     gets one entry per spelling.
-  - Jain, *Are Harnesses Worth the Cost?* (martinfowler.com, 2026-10-13): a model-tier A/B for
+  - [ ] Jain, *Are Harnesses Worth the Cost?* (martinfowler.com, 2026-10-13): a model-tier A/B for
     implement stages, extending the 10-23 effort A/B. Verify-first pass 2026-11-06: neither
     claim refuted. `bounded-implementer.md` said nothing about its verifier being read-only, and
     the ledger's 239,334 Workflow API calls were 98.2% Opus 5.5 with no implement stage ever
     measured at another tier.
-    - [x] (a) DONE 2026-11-06 (docs/bounded-implementer-readonly): `bounded-implementer` and its
+    - [x] (a) DONE 2026-11-06 (docs/bounded-implementer-readonly, #187): `bounded-implementer` and its
       Codex twin `clade_cheap_worker` now treat the verifier, the tests it runs and their
       fixtures as read-only, add test cases without weakening existing ones, and report a wrong
       verifier instead of editing it; both descriptions tell the lead so.
@@ -2834,7 +2856,7 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
       model switching a small cost lever. Decide: approve the pilot, then the minimum or full
       design, or drop it.
   - [x] LangChain, *Agents Are Going Async* (2026-11-05): `codex-orchestrate` has no recorded pgid
-    for cancel and never uses `codex exec resume`. DONE 2026-11-06 (docs/codex-orchestrate-steer):
+    for cancel and never uses `codex exec resume`. DONE 2026-11-06 (docs/codex-orchestrate-steer, #184):
     both claims survived the verify-first pass; the skill gained § Steer, cancel, follow up
     (dispatch records the wrapper's pid, cancel signals its whole session, resume takes `-C` and
     every flag again), pinned by `test_codex_orchestrate_recipes.py`. Still open: no check
@@ -2849,7 +2871,7 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   S: match every projects dir the linker scans (`$CLAUDE_CONFIG_DIR/projects`,
   `~/.claude-profiles/*/projects`), with a `tests/test-hooks.sh` case per dir.
   Found reviewing PR #188 (2026-11-06).
-  DONE 2026-11-06 (fix/memory-sync-profile-dirs): `is_project_memory` checks the three
+  DONE 2026-11-06 (fix/memory-sync-profile-dirs, #197): `is_project_memory` checks the three
   projects dirs the linker scans, for Write/Edit and for the memory gates, and the Bash
   pattern matches `~/.claude-profiles/<p>/projects/<slug>/memory` and
   `$CLAUDE_CONFIG_DIR/projects/<slug>/memory`. `tests/test-hooks.sh` gains a case per dir,
