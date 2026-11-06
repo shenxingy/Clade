@@ -182,6 +182,68 @@ above; `--recorded-before WHEN` keeps only the rows a statement was made from.
 lead session in the 6 hours after it, as JSONL with `label: null` for weekly
 labelling by hand.
 
+**Check whether the merged work stuck**, not only how much ran. The scorecards
+above measure inputs, and volume does not track value: Faros AI's 2025 study of
+10k+ developers saw +98% PRs merged and +91% review time with no company-level
+gain, and the AIDev dataset of 456k agent-authored PRs found them accepted less
+often than human PRs (both as cited by the brief for this script, not
+re-verified here).
+
+```bash
+python3 configs/scripts/outcome-scorecard.py --since 14 --tokens   # every repo you merged into
+python3 configs/scripts/outcome-scorecard.py --repo OWNER/NAME --json
+```
+
+Each PR the author merged in the window is **reverted** (a later commit or PR
+reverts it by sha, exact `Revert "<title>"`, or a revert PR naming `#N`, at any
+time up to now), **fixed-forward** (a later `fix:`/`hotfix`/`bugfix` PR by
+anyone into the same base branch, within `--settle` days, shares a changed path
+other than TODO.md, PROGRESS.md, CHANGELOG\*.md, a `changelog/` directory,
+README\*.md, docs/facts.json or a lockfile), **settling** (younger than
+`--settle`, default 7 days, and never counted as kept) or **kept**. `--settle`
+bounds only the fix-forward search and the settled/kept split; a revert counts
+whenever it landed. The author's own PRs that revert another PR are listed as
+**revert** and not rated, by the same title rules, whether or not that PR was
+read: a revert of a PR merged before the window says "target outside the
+window". Undoing a change is not new work that stuck. The same base branch,
+because a repository that lands each change on `dev` and again on `main` would
+otherwise read the second landing as a fix of the first; PRs into a non-default
+base are still scored, and each repository's block says how many there were.
+The kept rate is over PRs
+at least `--settle` days old, so `--since 7` prints none (young PRs are still
+listed as reverted or fixed-forward); use `--since 14`.
+
+Fixed-forward is a signal whose precision has not been measured, and bad work
+that nobody touched again reads as kept. Each block prints how many
+fix-forwards shared a path that is not Markdown, and the paths they most often
+shared. Across the author's host (`--since 14` to 2026-11-06: 17 repositories,
+715 PRs by the author) it flagged 369, 247 of them through a non-Markdown path,
+and the most shared paths were a package version file (34), a per-app
+VERIFY.md checklist (23) and system and model docs — shared state that no path
+rule can tell from a repair. On this repository the shared paths are mostly
+context docs: over the same window, 15 of 33 PRs were fixed-forward and 6 of
+those shared only Markdown (CLAUDE.md, configs/CLAUDE.md, docs/how-it-works.md,
+which nearly every PR here edits); docs/how-it-works.md was the most shared
+path (×4). So read the fixed-forward count as inflated until a labelled sample
+measures it. Each block also reports the fan-in, every fix credited as the
+fix-forward of 3 or more PRs (`fan-in: #N fixed-forward K PRs`); a high fan-in
+usually means the fix touched a file those PRs share, such as an append-only
+log or manifest, not that it made K repairs.
+
+Review load is open-to-merge time (median, p90), the share merged with no
+review from anyone but the author, and median lines changed. `--tokens` divides
+this host's Claude Code transcript tokens by merged PRs; per settled and per
+kept PR it divides only the tokens spent up to now − `--settle`, when those PRs
+merged, because the last `--settle` days' tokens produced only PRs too young to
+settle. Those tokens are host-wide, not attributed per PR, and Codex and Kimi
+usage is not counted, so with `--repo` every per-PR figure overstates that
+repository set's cost, which the report says. When `gh pr list` times out with a
+gateway error (HTTP 502/503/504, which large monorepos hit because GraphQL
+computes every PR's files), the script re-reads the repository through a
+paginated GraphQL search at 10 PRs per page and notes it; any other repository
+gh cannot read is named as not measured, never counted as zero. `/retro` runs
+this as its Outcomes step.
+
 ## Context window policy
 
 **Opt-in, and not yet shown to cost nothing in quality.** One settings key makes

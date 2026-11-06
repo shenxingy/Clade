@@ -93,6 +93,47 @@ done | sort -rn | head -5
 
 ---
 
+## Step 2b: Outcome signals — did the merged work stick?
+
+Everything above counts volume, and volume is an input: many commits and merged
+PRs say nothing about whether the work held. Score the outcome too. Pass the
+retro window in days (`24h` → `1`, `7d` → `7`, `14d` → `14`, `30d` → `30`):
+
+```bash
+python3 <plugin-root>/skills/retro/scripts/outcome-scorecard.py --since <days> --tokens
+```
+
+It finds every repository where you merged a PR in the window (`gh search prs`)
+and gives each of your merged PRs one status: **reverted** (a later commit or PR
+reverts it by sha, exact title, or `#N`, at any time up to now), **fixed-forward**
+(a later fix-type PR by anyone into the same base branch, within 7 days, shares a
+non-bookkeeping file with it), **settling** (merged under 7 days ago, never
+counted as kept) or **kept**. The 7-day `--settle` bounds only fix-forwards and
+which PRs count as settled; a revert counts whenever it landed. Your own PRs
+that revert another PR are listed but not rated, even when that PR merged before
+the window. It also
+reports review load, and with `--tokens` the host's Codex tokens per
+merged PR, per settled PR and per kept PR.
+
+- **Its population is not the Metrics'.** Steps 1–2 read this repository's
+  `git log`, every author; this step scores YOUR PRs across every repository
+  you merged into. Write the population on the Outcomes line itself: author,
+  number of repositories, window (the script's first line states all three).
+  To score only this repository instead, add
+  `--repo "$(gh repo view --json nameWithOwner -q .nameWithOwner)"`; the
+  script then warns that the host-wide tokens overstate that repository's
+  cost per PR.
+- With a window of 7 days or less, no PR has had 7 days to settle, so the
+  script prints no kept rate. Young PRs can still be listed as reverted or
+  fixed-forward; report those counts, and "kept rate: not yet measurable",
+  never 0% or 100%. For a rate, run it once more with `--since 14`, which
+  scores the week before.
+- If the script says NOT MEASURED (gh missing or unauthenticated, script not
+  installed) or names a repository it could not read, report Outcomes as not
+  measured, with the reason. Never write zeros in that case.
+
+---
+
 ## Step 3: Work session analysis
 
 Detect work sessions using 45-minute gap threshold between commits:
@@ -200,7 +241,9 @@ Active days      6              5           +1    ↑
 Save a JSON snapshot for future comparisons:
 ```bash
 mkdir -p .context/retros
-# write JSON with metrics to .context/retros/YYYY-MM-DD.json
+# write JSON with metrics to .context/retros/YYYY-MM-DD.json, including the
+# Step 2b outcome totals (kept, settled, reverted, fixed-forward, settling) so
+# the next retro compares outcomes, not only volume
 ```
 
 ---
@@ -218,6 +261,14 @@ TL;DR: [one sentence — e.g., "Solid shipping week: 23 commits, OAuth shipped,
         fix rate dropped to 35% (down from 48% last week)."]
 
 Metrics:    [table from Step 2]
+Outcomes:   [from Step 2b, opening with its population — "PRs by <author>,
+             N repositories, <window>", which differs from the Metrics' scope —
+             then kept rate over SETTLED PRs (or "not yet measurable"), reverts,
+             fix-forwards (and how many shared a non-Markdown path), settling
+             count, review load (open→merge median and p90, share merged with no
+             review but the author's), tokens per kept PR. These are outcome
+             SIGNALS: fix-forward precision is unmeasured, tokens are host-wide
+             and not attributed per PR, and Codex/Kimi usage is not counted]
 Sessions:   [from Step 3]
 Patterns:   [commit timing + type breakdown]
 Hotspots:   [top files]
@@ -225,7 +276,7 @@ Ship of week: [Step 6]
 Trends:     [if applicable]
 
 What went well:
-  - [specific example from git log, not generic praise]
+  - [specific example from git log or the Outcomes, not generic praise]
   - ...
 
 What to improve:

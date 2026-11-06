@@ -164,6 +164,17 @@ python3 configs/scripts/workflow-scorecard.py --since 0 --ledger # <config dir>/
 python3 configs/scripts/workflow-scorecard.py --ledger-summary --recorded-before 2026-10-24T03:34Z
 python3 configs/scripts/workflow-scorecard.py --outcome          # JSONL, label: null
 
+# Did the merged work STICK? Everything above measures inputs (how much ran);
+# this scores the author's PRs merged in the window as reverted, fixed-forward
+# (a later fix into the same base sharing a file — a signal, precision
+# unmeasured), settling (younger than --settle 7, never kept) or kept, plus
+# review load; the author's own revert PRs are not rated. With --since 7 no PR
+# has settled, so no kept rate is printed (reverts and fix-forwards are still
+# listed); --since 14 gives a rate. --tokens adds host-wide Claude Code tokens
+# per merged PR, and per settled and kept PR from the tokens before now - settle.
+python3 configs/scripts/outcome-scorecard.py --since 14 --tokens
+python3 configs/scripts/outcome-scorecard.py --since 7 --repo shenxingy/Clade --json
+
 # Did a Codex worker actually delegate? `codex exec` CAN subdivide — measured
 # 2026-09-05, the gate is the resolved model's catalog multi_agent_version, not
 # the session source. This counts the children, and its self-test distinguishes
@@ -668,6 +679,22 @@ python3 configs/scripts/regen-skill-overrides.py --check      # regenerate witho
 python3 configs/scripts/context-policy.py --check
 python3 configs/scripts/context-policy.py --self-test
 
+# 8e. Outcome scorecard self-test. Every other scorecard measures INPUTS —
+#     workflow-scorecard (parallelism), session-scorecard (corrections), /retro
+#     (velocity) — so "the agents ran a lot" could pass for "the work was good".
+#     outcome-scorecard.py asks whether merged PRs stuck: reverted (by sha,
+#     exact title, or a revert PR naming #N), fixed-forward (a later fix by
+#     anyone into the same base branch sharing a non-bookkeeping path — a
+#     SIGNAL, precision unmeasured), settling (younger than --settle, never
+#     kept), and review load. An
+#     instrument that cannot fire reads "nothing reverted" as good news, so the
+#     self-test drives main() on fixtures and a fake gh (never the network),
+#     with a positive and a negative control per rule; its mutations are in
+#     test_self_tests_can_fire.py. No gh call carries --jq: the fixtures hold
+#     gh's raw output and the fake gh records GhSource's arguments, because a
+#     --jq string and an already-flat fixture left four mutations green.
+python3 configs/scripts/outcome-scorecard.py --self-test
+
 # 9. Architecture map coverage — every orchestrator module listed in this file
 python3 configs/scripts/check-arch-map.py
 
@@ -802,7 +829,7 @@ commit too.**
 
 On push/PR to `main`, four workflow files fire:
 
-- `ci.yml` — `syntax-check` (26 gates), `pytest` (suite + 2 offline evals),
+- `ci.yml` — `syntax-check` (27 gates), `pytest` (suite + 2 offline evals),
   `shell-tests` (27 suites), `install-test`. `run_hack_eval.py` scores
   `judge_diversity.test_integrity` against the labelled reward-hack corpus in
   `evals/hack_cases/` — read its README before changing either, because that

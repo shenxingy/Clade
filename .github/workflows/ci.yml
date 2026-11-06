@@ -206,6 +206,16 @@ jobs:
       - name: Context policy self-test (can it go red?)
         run: python3 configs/scripts/context-policy.py --self-test
 
+      # Every other scorecard here measures INPUTS (how much the agents ran);
+      # this one asks whether the PRs that merged stuck: reverts, fix-forwards
+      # (a signal whose precision is unmeasured) and review load. Volume does
+      # not track value, so an instrument that cannot fire here would read
+      # "nothing reverted" as good news. The self-test drives main() on
+      # fixtures and a fake gh, never the network; its mutations live in
+      # orchestrator/tests/test_self_tests_can_fire.py.
+      - name: Outcome scorecard self-test (can it go red?)
+        run: python3 configs/scripts/outcome-scorecard.py --self-test
+
       # Reports, never blocks. Five convergence rounds found 61, 25, 34, - and
       # 23 issues, and the count would not fall because 43% of each round were
       # SIBLINGS of the previous round's own fixes: a fact corrected in the file
