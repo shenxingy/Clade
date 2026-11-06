@@ -2420,18 +2420,32 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
 - [x] 🟠 **DONE 2026-11-06 (fix/ci-local-unproven-lanes): steps 1–8 — reasoned skips are
   tested first, a step-level `if:` is evaluated per step on the success path, the fifth class
   is reported `unproven` (summary `PARTIAL`, JSON `verdict`/`unproven`/`partial`, `--strict`
-  exits 2), `/green` and both CLAUDE.md files say PARTIAL is not green, 16 mutations in
-  `tests/test-ci-local.sh`.** Also fixed, because modelling `if:` newly runs jobs that used to
+  exits 2), `/green` and both CLAUDE.md files say PARTIAL is not green, 39 mutations in
+  `tests/test-ci-local.sh`, each shown red beside a no-op control.** Also fixed, because modelling `if:` newly runs jobs that used to
   be skipped: job- and workflow-level `env:` were silently dropped (a job declaring
   `DATABASE_URL=sqlite…` ran against whatever the shell exported), env values kept their YAML
   quotes, workflow-level `defaults:` was ignored, a column-0 comment inside `jobs:` dropped
   every later job from the plan, and a step env using `github.*`/`runner.*` context was
   labelled "needs a repository secret" (on the reference repo that hid the E2E suite's only
-  real step). Deliberately left as they were: a platform skip and a secret skip stay reasoned
+  real step). The PR #182 review round closed seven more ways a lane read as reasoned or as
+  nothing: a secret or `${{ }}` INHERITED from workflow/job env made every step a reasoned
+  "needs a repository secret" skip and the run read pass (now the step runs with that
+  variable unset and its pass is unproven; only a secret the step declares or uses itself is
+  the reasoned class); every job-level `if:` read as a schedule tier (now reasoned only when
+  false on every push and pull_request, `always()` runs, anything else is unproven); a run
+  where no job ran had `verdict: pass` (now `none`, summary `NOTHING RAN`, `--strict` exits
+  2); GitHub's starter-template step style (dash level with `steps:`) parsed to no steps and
+  read as setup-only; a reusable workflow and a flow-style `steps:` read as setup-only; an env
+  block scalar reached the step as `>-`. `defaults: run: shell: bash` alone is modelled, and
+  `env: # note` is a plain mapping. Deliberately left as they
+  were: a platform skip and a secret skip stay reasoned
   classes (the spec keeps the four); a step skipped for a secret inside a job that otherwise
   runs is still not listed in the summary; step-level `continue-on-error` stays unmodelled
-  (its job is unproven); `needs:` artifacts between jobs are not modelled; the M follow-up
-  `--changed BASE` (map a diff to the lanes it touches) is not started.
+  (its job is unproven); `needs:` artifacts between jobs are not modelled; a step-level
+  `shell:` other than bash and a workflow triggered only by `schedule`/`workflow_call` are not
+  modelled; a job indented other than two spaces under `jobs:` is not parsed (the run then
+  reads NOTHING RAN, not pass); the M follow-up `--changed BASE` (map a diff to the lanes it
+  touches) is not started.
   Was: **ci-local: a skipped test lane is not green.** Spolin, *The Factory Kitchen for AI
   Agents* (AppDirect, 2026-10-22): "12,731 unit tests passed while the endpoint returned a
   500 … agents have to identify which test lanes actually cover the surface they've changed".
@@ -2456,8 +2470,8 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
      is harmless) plus a mutation that undoes the reorder.
   8. Regen the plugin.
   Size S–M.
-- [ ] 🟠 **On or after 2026-11-13: flip `ci-local.py` to exit 2 on an unproven lane by
-  default.** The report-only week started 2026-11-06. Change `--strict`'s default to True
+- [ ] 🟠 **On or after 2026-11-13: flip `ci-local.py` to exit 2 on PARTIAL or NOTHING RAN
+  by default.** The report-only week started 2026-11-06. Change `--strict`'s default to True
   (`--no-strict` keeps today's behaviour) and update every site that says "report-only":
   the ci-local.py docstring and `--strict` comment, `configs/CLAUDE.md` § CI, the repo
   CLAUDE.md § CI, `configs/skills/green/prompt.md` (then regen the plugin), both CHANGELOGs,

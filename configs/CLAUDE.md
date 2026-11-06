@@ -63,7 +63,7 @@ start, which is the larger saving on a public repo where the minutes are free.
 python3 ~/.claude/scripts/ci-local.py --list   # what runs here, what cannot, and why
 python3 ~/.claude/scripts/ci-local.py          # run them; exit 1 on a failure, PARTIAL names unproven lanes
 python3 ~/.claude/scripts/ci-local.py --json   # machine-readable, for an automatic fixer
-python3 ~/.claude/scripts/ci-local.py --strict # exit 2 when a lane is unproven, not only on a failure
+python3 ~/.claude/scripts/ci-local.py --strict # exit 2 on PARTIAL or NOTHING RAN, not only on a failure
 ```
 
 It parses `.github/workflows/*.yml` and executes the same `run:` blocks, so it
@@ -75,17 +75,23 @@ one such list in this toolkit was wrong twice, covering 4 of 7 gates and later
 **Reading its output honestly.** A skipped job is reported with its reason and
 never dropped — "nothing ran" and "everything passed" must not look alike. It
 skips five classes, and only four leave the result intact: `pull_request_target`
-workflows (they act on the GitHub API, not the tree), steps needing a
-repository secret, conditional `schedule`/`workflow_dispatch` tiers (`--all`
-includes them), and jobs whose `runs-on` names a platform this machine is not
+workflows (they act on the GitHub API, not the tree), a step that declares or
+uses a repository secret itself, a job whose `if:` is false on every push and
+pull_request — a `schedule`/`workflow_dispatch` tier or `failure()` (`--all`
+includes them) — and jobs whose `runs-on` names a platform this machine is not
 (proven only on that machine). The fifth is a lane the hosted run executes and
 this runner cannot reproduce: a job using `services:`, `container:`,
-`strategy:` or `defaults:`, or a step whose `if:` or `${{ }}` expression it
-cannot evaluate. Those are **unproven**: the summary line reads `PARTIAL`, names
-each one, and the JSON lists them under `unproven`. **PARTIAL is not green** —
-prove those lanes hosted (or where their services exist) before reading a local
-run as a merge signal. `--strict` exits 2 on it; the default exit code is still
-0 during a one-week report-only rollout.
+`strategy:`, a reusable workflow or a `defaults:` other than `run: shell:
+bash`; a `runs-on:` or job-level `if:` it cannot evaluate; a step whose `if:`
+or `${{ }}` expression it cannot evaluate. A step whose *inherited* env holds a
+`${{ }}` value (a workflow-level `GH_TOKEN: ${{ github.token }}`) runs with
+that variable unset, and its pass is unproven too. Those are **unproven**: the
+summary line reads `PARTIAL`, names each one, and the JSON lists them under
+`unproven`. A run in which no job ran at all reads `NOTHING RAN` (JSON
+`verdict: none`). **Neither is green** — prove those lanes hosted (or where
+their services exist) before reading a local run as a merge signal. `--strict`
+exits 2 on both; the default exit code is still 0 during a one-week
+report-only rollout.
 
 **Cross-platform work goes to the machine that has the platform.** A macOS job
 belongs on your Mac and a Windows job on your Windows box — over SSH or by

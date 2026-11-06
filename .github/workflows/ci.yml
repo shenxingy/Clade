@@ -491,7 +491,8 @@ jobs:
       # do is execute nothing and exit 0 — a green light for a broken push.
       # This asserts it goes red on a failing step, stops a job at the first
       # failure like GitHub does, reports every skip with its reason, and
-      # reports a lane it cannot reproduce as UNPROVEN (PARTIAL), never passed.
+      # reports a lane it cannot reproduce as UNPROVEN (PARTIAL), never passed,
+      # and a run in which nothing ran as NOTHING RAN, never passed.
       - name: Run local-CI runner tests
         run: bash tests/test-ci-local.sh
 
