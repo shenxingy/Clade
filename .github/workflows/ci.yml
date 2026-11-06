@@ -344,6 +344,15 @@ jobs:
       - name: Poll-detector self-test (can it go red?)
         run: python3 configs/scripts/workflow-scorecard.py --self-test
 
+      # The report on which shipped skills and hooks fire. An instrument that
+      # cannot attribute a trace reads every hook as never fired, which is the
+      # list a reviewer would retire from. The self-test drives main() under a
+      # temporary HOME with fixture transcripts, two profiles' .claude.json and
+      # a fixture checkout; its mutations live in
+      # orchestrator/tests/can_fire/harness_usage.py.
+      - name: Harness-usage self-test (can it go red?)
+        run: python3 configs/scripts/harness-usage.py --self-test
+
       # Fourth instrument in this repo to arrive with the question answered.
       # Its first version accepted the bare word instead of the literal --flag,
       # and could not fire: flag names are common English words, so /brief

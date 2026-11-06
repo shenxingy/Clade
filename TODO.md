@@ -2587,7 +2587,17 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   headers name no incident (rough grep). Only `context-policy.json` carries `retire_from`.
   - M: `configs/scripts/harness-usage.py`. Per shipped skill and hook, report fires, denies,
     rejections and last-fired from `skillUsage` and the transcript hook attachments, main
-    thread only.
+    thread only. **DONE 2026-11-06 (feat/harness-usage)**: `--include-subagents`, `--since N`,
+    `--ledger` (one row per whole UTC day and scope), `--self-test` whose mutations live in
+    `orchestrator/tests/can_fire/harness_usage.py`.
+    - Known limits, kept after review (PR #192): a `cleanupPeriodDays` raised from below the
+      default 30 is not detected, so days the old value deleted can read as whole; an unmounted
+      store whose mount point is an empty directory reads as a profile with no transcripts.
+    - Found by its first run, not fixed there: `memory-sync.sh` dies at line 57
+      (`FILE_PATH: unbound variable` under `set -u`) on every Bash call that touches a synced
+      directory, because only the Write/Edit branch sets `FILE_PATH`. So a synced change made
+      through Bash never syncs. 4,916 async failures in 30 days of main-thread transcripts on
+      one host, last on 2026-11-06.
   - [x] S: a `# exists-for: … · retire-when: …` header on each hook, checked by
     `tests/test-hook-provenance.sh` (split out of `tests/test-hooks.sh` for the 1500-line rule).
     DONE 2026-11-06 (docs/hook-provenance-headers): all 35 `configs/hooks/*.sh` carry the line,
