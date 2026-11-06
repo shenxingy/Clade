@@ -416,9 +416,25 @@ jobs:
 
       # Project auto-memory reaches the sync store: a real memory dir is
       # adopted (verified copy, link back, commit), store entries link at
-      # Claude Code's own slug, wrong-target links are pruned, conflicts and
-      # private projects stay put, --dry-run changes nothing. Its last suite
-      # removes each guard of the linker and requires red.
+      # Claude Code's own slug in ~/.claude, $CLAUDE_CONFIG_DIR and every
+      # ~/.claude-profiles/*/projects, wrong-target links are pruned, private
+      # projects stay local in every pass, conflicts land in a state file that
+      # sync-health.sh prints, a time budget defers the rest, --dry-run
+      # changes nothing. Its last suite mutates one guard at a time and
+      # requires red: the slug's leading "-", the adopt pass, the commit and
+      # committing from the store's status, the clash, owner and
+      # several-candidates checks, the unreachable store, privacy in adopt,
+      # link and prune (two entry kinds), the .git and repository-subdirectory
+      # rules, the dry-run guards on adopt and detach, the stray-symlink
+      # exclusion, copy verification, the adopt ln guard, the late-write copy,
+      # the prune pass, the legacy keep, the dangling-link skip, the pass-3
+      # memory-root check and existing-directory skip, never replacing a link,
+      # following a chained link, the profile dirs, $CLAUDE_CONFIG_DIR, the
+      # budget, conflicts kept across a deferred run, the state file written
+      # and removed, the conflict log and its daily dedup, the .project-path
+      # traversal guard and sync-health.sh's notice; the lock and the
+      # 200-character key cap only where flock and a short TMPDIR exist. Not
+      # mutated: de-duplicating projects dirs by physical path.
       - name: Run sync-link-projects tests
         run: bash tests/test-sync-link-projects.sh
 
