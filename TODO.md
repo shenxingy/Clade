@@ -2510,7 +2510,16 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   - Caveats: zero fires never retires a preventive safety control, and only flags it for
     review. A 60-day window needs a ledger because transcripts are deleted at 30 days.
     Invocation is not behaviour change.
-- [ ] 🟡 **`/loop` holdout scenarios outside the repository.** StrongDM's software factory, via
+- [x] 🟡 **`/loop` holdout scenarios outside the repository.** DONE 2026-11-06
+  (feat/loop-holdout): `loop-runner.sh --holdout DIR` with `configs/scripts/loop_holdout.sh`
+  — refused in-repo (also via symlink, scenario symlink, sibling worktree, empty DIR or empty
+  value), counts-only supervisor context, gates reconciliation and convergence, `HOLDOUT
+  FAILED — visible verify_cmd passed` and `HOLDOUT CHANGED` logged, `verify_cmd` snapshotted at
+  pre-flight and drift warned once per change; `tests/test-loop-holdout.sh` (run by
+  `tests/test-loop.sh`) carries the controls and 16 guard mutations plus a no-op control.
+  Not done: scenario cwd = checkout root is unpinned by a mutation, because the loop itself
+  runs from that root and the two cannot be told apart from the outside.
+  StrongDM's software factory, via
   Phelps, *When AI writes all the code* (2026-10-10): "A test, stored in the codebase, can be
   lazily rewritten to match the code." Every `/loop` gate lives in the tree a worker can merge
   into. `loop_verify.sh` re-reads `verify_cmd` from the repo's CLAUDE.md on every iteration, and
