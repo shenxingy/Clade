@@ -79,7 +79,7 @@ echo "$TASKS" | while read -r id fix verifier; do
   mkdir -p "$t/base"; git -C "$repo" archive "$parent" | tar -x -C "$t/base"
   # shellcheck disable=SC2086  # one path per line, no spaces in this repository's paths
   put_fix "$fix" "$t/base" $tests
-  (cd "$t/base" && git init -q && git add -A && git -c user.name=ab -c user.email=ab@example.invalid commit -qm base)
+  (cd "$t/base" && git init -q && git add -A && git -c user.name=ab -c user.email=ab@example.invalid -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -qm base)
   # The brief points the agent's HOME at <cell>/.ab-home; keep it out of every diff.
   mkdir -p "$t/base/.git/info"; echo '/.ab-home/' >> "$t/base/.git/info/exclude"
   # Both checks run in throwaway copies, so base stays exactly the committed tree.
