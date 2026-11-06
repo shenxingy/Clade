@@ -35,7 +35,7 @@ suppresses real discoveries.
 
 ## Procedure
 
-Three lanes feed the sweep. Running only the first is the common failure — the
+Four lanes feed the sweep. Running only the first is the common failure — the
 web tells you what the field says, never what *you* keep tripping over.
 
 | Lane | Source | Already exists? |
@@ -43,6 +43,7 @@ web tells you what the field says, never what *you* keep tripping over.
 | A. The field | Broad web probes (§1) | No — this skill adds it |
 | B. Named practitioners | `docs/who-to-learn-from.md` | Yes, but manual + quarterly |
 | C. Your own usage | `~/.claude/corrections/history.jsonl` | Yes, but unmined |
+| D. The harness's verdicts | Session transcripts, via `friction-rank.py` | Yes, since 2026-11-06 |
 
 **Lane B** — do not rebuild the roster. Read `docs/who-to-learn-from.md`, take
 the Tier-1 entries whose canonical piece has changed since `Last reviewed`, and
@@ -145,22 +146,45 @@ in 58 `rules.md` files, 0 shared — measured 2026-10-12). On the author's machi
 `rule-effectiveness.json` has been `{}` since 2026-04-15. Until that is fixed,
 find recurrence by clustering `history.jsonl` yourself, as above.
 
-**Also read Claude Code's own verdict on our hooks.** A hook whose output Claude
-Code rejects still runs, exits 0 and passes its tests, and delivers nothing.
-The only record is a `hook_non_blocking_error` attachment in the session
-transcript. Tally them every run (add any other profile's `projects/` dir):
+**Lane D — the harness's own verdicts.** Corrections are slow and yield
+generic rules. What the harness told the agent at the moment of failure is
+faster and names a repair (Gorokh, 2026-10-08, one operator's fleet: the
+correction channel adopted 1 rule in 11 weeks). Run, every sweep:
 
 ```bash
-grep -rh --include='*.jsonl' '"type":"hook_non_blocking_error"' ~/.claude/projects \
-  | jq -rc 'select(.attachment.type? == "hook_non_blocking_error")
-      | [.attachment.hookName, (.attachment.stderr | gsub("\\s+"; " ") | .[0:90])] | @tsv' \
-  | sort | uniq -c | sort -rn
+python3 ~/.claude/scripts/friction-rank.py --top 15     # 30 days, main thread, every profile
 ```
 
-The 2026-10-19 sweep found two dead hooks this way, both with green suites,
-because each suite read the hook's output and never what Claude Code did with
-it: `skill-suggest.sh` (309 rejections since 2026-08-26, no `hookEventName`) and
-the rewrites in `pre-tool-guardian.sh` (41, a top-level `decision:"allow"`).
+It ranks errors, PreToolUse hook denials, permission refusals, timeouts,
+unchanged retries after one of those, and `hook_non_blocking_error`, by
+distinct sessions and then count, on discovery weeks with the current ISO week
+held out. Each family carries the full refusal text, the next 3 calls and
+provenance, and a second table regroups refusals by their first sentence
+across families. An unattended run cannot run a command, so `radar-cron.sh`
+runs it before the sweep and names the report file in the prompt; read that.
+
+Grade what it ranks, do not transcribe it:
+
+- **Friction is not a defect.** A refusal can be a guard doing its job; a family
+  near the top is where the harness said no most often, not where it is wrong.
+  Read the refusal text and the next 3 calls. A guard is suspect when the
+  calls after it reach the same end by another path, or when its text names no
+  supported path.
+- **A family that is not held out again is a burst, not a pattern.** Prefer
+  those with sessions in both columns.
+- **Test a reworded refusal before keeping it.** Gorokh records a guard whose
+  added recovery guidance bought nothing (recovery took 2 calls before the
+  change and 3 after). A rule A/B runs real sessions, so it stays opt-in (the
+  paid-API rule).
+
+This supersedes the hand tally of `hook_non_blocking_error` that lived here,
+which clipped stderr to 90 characters — the text is the thing to read. It
+found two dead hooks on 2026-10-19, both with green suites, because each suite
+read the hook's output and never what Claude Code did with it:
+`skill-suggest.sh` (309 rejections since 2026-08-26, no `hookEventName`) and the
+rewrites in `pre-tool-guardian.sh` (41, a top-level `decision:"allow"`). A hook
+whose output Claude Code rejects still runs, exits 0 and passes its tests, and
+delivers nothing; the attachment is the only record, and Lane D reads it.
 
 ### 1. Sweep broadly — probes, not topics
 

@@ -62,6 +62,10 @@ cat > "$T/claude" <<'EOF'
 pwd -P >> "$STUB_LOG"
 d="${CLADE_RADAR_DATE}"
 stage=".radar-staged"; [[ -d "$stage" ]] || stage="."
+# What Lane D handed over: the prompt, and the report as it stood when the agent ran.
+printf '%s\n' "$1" > "$STUB_LOG.prompt"
+rm -f "$STUB_LOG.friction"
+[[ -s "$stage/friction-$d.txt" ]] && cp "$stage/friction-$d.txt" "$STUB_LOG.friction"
 printf '# digest %s\n' "$d" > "$stage/radar-$d.md"
 printf 'new-concept (%s)\n' "$d" > "$stage/known-concepts-append-$d.md"
 case "${STUB_MODE:-edit}" in
@@ -75,7 +79,9 @@ EOF
 chmod +x "$T/claude"
 
 run_cron() {  # run_cron <date> <mode>
-  CLADE_CLAUDE_BIN="$T/claude" CLADE_RADAR_DATE="$1" STUB_MODE="$2" STUB_LOG="$T/stub.log" \
+  # An empty CLAUDE_CONFIG_DIR means ~/.claude: Lane D's scan must not reach the
+  # transcripts of the session running this suite.
+  CLAUDE_CONFIG_DIR= CLADE_CLAUDE_BIN="$T/claude" CLADE_RADAR_DATE="$1" STUB_MODE="$2" STUB_LOG="$T/stub.log" \
     CLADE_RADAR_LOCK="$T/radar.lock" CLADE_RADAR_WORKTREES="$T/wts" \
     bash "$CRON" >/dev/null 2>&1
 }
@@ -157,6 +163,22 @@ check "a session in the kit names radar/2026-01-05" '[[ "$SC_OUT" == *"radar/202
 mkdir -p "$T/other" && git -C "$T/other" init -q
 SC_OTHER=$(cd "$T/other" && printf '{"session_id":"t"}' | CLAUDE_PROJECT_DIR="$T/other" bash "$SESSION_HOOK" 2>/dev/null)
 check "a session in another repository does not" '[[ "$SC_OTHER" != *"radar/2026-01-05"* ]]'
+
+# ─── 7. Lane D: the wrapper runs what the agent cannot ───────────────
+section "Lane D's verdict ranking is made before the sweep and named in the prompt"
+check "with no transcripts, the prompt says Lane D was NOT MEASURED" \
+  'grep -q "Lane D was NOT MEASURED" "$T/stub.log.prompt"' "prompt: $(head -c 400 "$T/stub.log.prompt" 2>/dev/null)"
+NOW_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+mkdir -p "$HOME/.claude/projects/-p"
+cat > "$HOME/.claude/projects/-p/s1.jsonl" <<EOF
+{"type":"assistant","timestamp":"$NOW_TS","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"sleep 60"}}]}}
+{"type":"user","timestamp":"$NOW_TS","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"<tool_use_error>Blocked: sleep 60","is_error":true}]},"toolUseResult":"Error: Blocked"}
+EOF
+run_cron 2026-01-26 none
+check "the report was in the agent's staging dir when it ran" \
+  'grep -q "is_error · Bash:sleep" "$T/stub.log.friction"' "report: $(head -c 400 "$T/stub.log.friction" 2>/dev/null)"
+check "and the prompt names it, with no NOT MEASURED" \
+  'grep -q "friction-2026-01-26.txt" "$T/stub.log.prompt" && ! grep -q "NOT MEASURED" "$T/stub.log.prompt"'
 
 # ─── Summary ─────────────────────────────────────────────────────────
 printf "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"

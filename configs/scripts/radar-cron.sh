@@ -244,13 +244,30 @@ else
 report fixes in the digest instead."
 fi
 
+# ─── Lane D's input ──────────────────────────────────────────────────
+# The agent cannot run a command, so a lane that needs one is run here and
+# handed over as a file. friction-rank.py (beside this script) ranks the
+# harness's verdicts in the transcripts by distinct sessions. A run that could
+# not produce it says so in the prompt, so the digest cannot read a missing
+# report as a quiet week.
+FRICTION_REPORT="$STAGE_DIR/friction-$RUN_DATE.txt"
+FRICTION_PY="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/friction-rank.py"
+if command -v python3 >/dev/null 2>&1 && [[ -f "$FRICTION_PY" ]] \
+   && _timeout 300 python3 "$FRICTION_PY" --top 15 > "$FRICTION_REPORT" 2>&1; then
+  LANE_D="Lane D's report, from friction-rank.py, is $FRICTION_REPORT: read it rather than re-deriving it."
+  log "LANE D report at $FRICTION_REPORT"
+else
+  LANE_D="Lane D was NOT MEASURED this run (friction-rank.py did not produce a report; see $FRICTION_REPORT if it exists): say so in the digest."
+  log "LANE D NOT MEASURED"
+fi
+
 log "START weekly radar sweep"
 # --print: headless, one shot. Permission mode is explicit rather than inherited
 # from the interactive shell alias, which cron does not load.
 if ( cd "$RUN_DIR" && _timeout "$TIMEOUT_SECS" "$CLAUDE_BIN" \
      "/radar
 
-Run the full three-lane sweep unattended. $WHERE
+Run the full four-lane sweep unattended. $WHERE $LANE_D
 
 Write the digest to $STAGE_DIR/radar-$RUN_DATE.md and the ledger append to \
 $STAGE_DIR/known-concepts-append-$RUN_DATE.md — exactly those names — and the \
