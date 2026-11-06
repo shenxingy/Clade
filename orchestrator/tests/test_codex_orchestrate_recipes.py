@@ -25,7 +25,11 @@ What each test pins, as the consumer sees it:
 - resume runs in the worktree whatever the caller's cwd, re-passes the bypass
   flag, reads the follow-up prompt from stdin and writes new round files;
 - a resumed round records its own wrapper, so the cancel block pointed at that
-  round's flag stops it and leaves round 1's flag alone.
+  round's flag stops it and leaves round 1's flag alone;
+- from a shell with job control (`set -m`), dispatch and resume still record
+  the wrapper that leads the session codex runs in. Every other test runs its
+  recipe with job control off, where `$!` would name that same wrapper, so
+  only this one tells the shipped `$$` from a recipe that recorded `$!`.
 
 Linux only: the recipes use util-linux setsid(1), which macOS does not ship.
 """
@@ -207,7 +211,17 @@ class Worker:
         block: str,
         mode: str = "finish",
         overrides: dict[str, str] | None = None,
+        job_control: bool = False,
     ) -> subprocess.CompletedProcess:
+        """Run one recipe block from <live-checkout>, as `bash -c` runs it.
+
+        `job_control` turns on `set -m`, as an interactive terminal (or zsh
+        with MONITOR set) has it: each background job then leads a process
+        group of its own, which is what makes setsid(1) fork.
+        """
+        script = self.fill(block, overrides)
+        if job_control:
+            script = "set -m\n" + script
         env = dict(os.environ)
         env.update(
             PATH=f"{self.bin}{os.pathsep}{env.get('PATH', '')}",
@@ -220,7 +234,7 @@ class Worker:
             COLUMNS="80",
         )
         return subprocess.run(
-            ["bash", "-c", self.fill(block, overrides)],
+            ["bash", "-c", script],
             cwd=self.elsewhere,
             env=env,
             stdin=subprocess.DEVNULL,
@@ -482,4 +496,64 @@ def test_a_resumed_round_records_its_own_wrapper_and_cancels_alone(worker):
     assert Path(f"{worker.done}.2").read_text().strip() == "rc=cancelled"
     assert worker.done.read_text().strip() == "rc=0", (
         "cancelling round 2 must not touch round 1's flag"
+    )
+
+
+# ─── Job control: `$$`, not `$!` ───
+
+
+def _bang_names_the_wrapper(worker: Worker, job_control: bool) -> bool:
+    """Whether `$!` after `setsid … &` is the pid the wrapper knows as `$$`.
+
+    With job control off the background job is not a process-group leader, so
+    setsid(1) calls setsid() in place and the two are one pid. With it on, the
+    job leads its own group, setsid(1) forks, and `$!` names the parent, which
+    exits at once.
+    """
+    probe = worker.tmp / ("probe-set-m" if job_control else "probe")
+    probe.mkdir()
+    worker.run(
+        f"setsid bash -c 'echo $$ > {probe}/wrapper' >/dev/null 2>&1 &\n"
+        f"echo $! > {probe}/bang\n"
+        "disown\n",
+        job_control=job_control,
+    )
+    assert _wait(lambda: _read_int(probe / "wrapper") is not None)
+    return _read_int(probe / "bang") == _read_int(probe / "wrapper")
+
+
+@pytest.mark.parametrize("recipe", ["dispatch", "resume"])
+def test_the_recorded_pid_leads_the_session_under_job_control(worker, recipe):
+    # Why every other test is blind to `$!`, and the case this one must
+    # reproduce or it is blind too.
+    assert _bang_names_the_wrapper(worker, job_control=False)
+    assert not _bang_names_the_wrapper(worker, job_control=True), (
+        "setsid(1) did not fork under set -m, so this test cannot tell a recipe "
+        "that records `$!` from one that records the wrapper's `$$`"
+    )
+    if recipe == "resume":
+        _finish_round_one(worker)
+    worker.pgid_file.unlink(missing_ok=True)
+
+    worker.run(
+        _block(DISPATCH if recipe == "dispatch" else RESUME),
+        mode="hang",
+        job_control=True,
+    )
+
+    assert _wait(lambda: _read_int(worker.pgid_file) is not None), (
+        f"the {recipe} recipe wrote no <pgid-file> from a shell with job control"
+    )
+    p = _read_int(worker.pgid_file)
+    assert _alive(p) and os.getsid(p) == p and os.getpgid(p) == p, (  # type: ignore[arg-type]
+        f"from a shell with job control the {recipe} recipe recorded pid {p}, "
+        "which does not lead a live session: a `$!` taken after `setsid … &` "
+        "names setsid's exited parent, and cancel's `pkill -s` would reach nothing"
+    )
+
+    def in_session() -> list[int]:
+        return [c for c in worker.pids("codex") if (f := _stat(c)) and int(f[3]) == p]
+
+    assert _wait(lambda: bool(in_session())), (
+        f"no codex runs in session {p}, the one <pgid-file> hands to cancel"
     )
