@@ -2672,8 +2672,29 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   - [ ] M, not done: split `outcome-scorecard.py`'s kept and fixed-forward rates by review depth.
     Waits until merged PRs carry the line; until then every PR is "missing" and the split is empty.
 - [ ] 🔵 **Unverified: these leads never got the skeptic pass (rank cap).**
-  - Anhaia (2026-11-05): agent memory you cannot `git diff`. `sync-link-projects.sh:44`
-    matches by basename, so project memories may be missed.
+  - [x] Anhaia (2026-11-05): agent memory you cannot `git diff`. `sync-link-projects.sh:44`
+    matches by basename, so project memories may be missed. DONE 2026-11-06
+    (fix/memory-sync-link): the verify-first pass confirmed both claims and found
+    three more causes (no leading `-` in its slugs, `((n++))` under `set -e` ending
+    the run after one entry, no local → store direction). The linker now adopts real
+    memory dirs into the store (verified, original kept, committed), prunes
+    provably wrong links and links entries at Claude Code's own slug, in
+    `~/.claude/projects`, `$CLAUDE_CONFIG_DIR/projects` and every
+    `~/.claude-profiles/*/projects`. Private projects are skipped in every pass,
+    the commit follows the store's own `git status`, conflicts persist in
+    `~/.claude/.sync-memory-conflicts` (printed by `sync-health.sh`), and a 10 s
+    budget keeps it inside the 30 s hook. `tests/test-sync-link-projects.sh`:
+    114 cases, 64 red on the old linker, 39 guard mutations each red.
+    A `--dry-run` on the author's main host lists 20 adoptions (one of them a
+    second copy that will conflict) and 68 prunes across 4 config dirs. It has
+    not been run for real there: the first real run is the next session start
+    after `./install.sh`. Run the dry-run first.
+    Not done, on purpose: the essay's `memory-snapshot.sh` and an /audit memory
+    lane (the linker fix was preferred over a second snapshot path). 6 memory dirs
+    whose project is gone stay local, because the slug is lossy and no transcript
+    survives in any profile. The 15 legacy basename entries are not merged into the
+    new `.project-path` entries. A path spelled with different case on two hosts
+    gets one entry per spelling.
   - Jain, *Are Harnesses Worth the Cost?* (martinfowler.com, 2026-10-13): a model-tier A/B for
     implement stages, extending the 10-23 effort A/B. Verify-first pass 2026-11-06: neither
     claim refuted. `bounded-implementer.md` said nothing about its verifier being read-only, and
@@ -2708,4 +2729,12 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
     every flag again), pinned by `test_codex_orchestrate_recipes.py`. Still open: no check
     reached a model, because the checking Codex profile was logged out, so recall after resume
     is unobserved and the research row's "~4x tokens" stays unmeasured.
-  Anhaia needs the two-skeptic pass before any work.
+- [ ] 🔵 **`memory-sync.sh` commits at write time only under `~/.claude/projects`.** It
+  matches `^$HOME/.claude/projects/[^/]+/memory/`, so a session running under
+  `CLAUDE_CONFIG_DIR` (a `~/.claude-profiles/*` account) writes its project memory
+  under `$CLAUDE_CONFIG_DIR/projects`, and that edit is not pushed when it is written.
+  It is late, not lost: the next sync-push from any trigger (`git add -A`) or the
+  linker's status-based commit at the next session start picks it up.
+  S: match every projects dir the linker scans (`$CLAUDE_CONFIG_DIR/projects`,
+  `~/.claude-profiles/*/projects`), with a `tests/test-hooks.sh` case per dir.
+  Found reviewing PR #188 (2026-11-06).

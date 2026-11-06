@@ -488,6 +488,21 @@ content local, whichever writer slips:
   `~/.claude/.sync-conflicts.log`.
 - **Registration.** Session start adds every conversation-mode project to
   `~/.claude/private-projects` (both the given and the physical path).
+- **Project memory.** `sync-link-projects.sh` (run at session start) moves each
+  project's auto-memory directory into the store so it has git history. It
+  covers `~/.claude/projects`, `$CLAUDE_CONFIG_DIR/projects` and every
+  `~/.claude-profiles/*/projects`. A project listed in
+  `~/.claude/private-projects`, or carrying `.claude/conversation-mode`, is
+  never moved or linked: its memory stays a local directory, and a link it
+  already had into the store is replaced by a local copy. A memory directory
+  whose store copy holds a different version of a file is left in place and
+  listed in `~/.claude/.sync-memory-conflicts`, which `sync-health.sh` prints at
+  the start of every session until you merge it by hand (the history is in
+  `~/.claude/.sync-conflicts.log`). The session-start hook times out at 30 s,
+  so the linker starts no new directory after `CLADE_SYNC_LINK_BUDGET` seconds
+  (default 10) and the next session resumes; to move a long backlog at once,
+  run `CLADE_SYNC_LINK_BUDGET=0 bash ~/.claude/scripts/sync-link-projects.sh`.
+  `sync-link-projects.sh --dry-run` lists what would move.
 - **Private sessions.** A personal-mode skill can mark a session wherever it was
   started: `touch ~/.claude/private-sessions/$CLAUDE_CODE_SESSION_ID`. The
   correction hook then treats it like a conversation-mode project.
