@@ -2529,6 +2529,20 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   tail survives; idempotent). Its generator must insert separators, because the `redact.py`
   patterns are `\b`-anchored and fixed-length. Have `ci-local.py` rerun a failed step once and
   report a rerun-green as FLAKY, not green.
+  - DONE 2026-11-06 (test/redact-properties): the property half. `hypothesis==6.170.14` pinned;
+    `orchestrator/tests/test_redact_properties.py` reads redact.py's CLI output and checks no
+    8-char run of a separator-delimited credential survives and a second pass changes and
+    reports nothing, with shrunk counterexamples pinned and 16 mutations plus a negative control
+    in the file. It found three real redact.py defects, fixed in the same PR: overlapping
+    matches dropped the wider one (a JWT around `-AKIA…` kept header and payload), env_secret
+    re-matched its own marker (scrub-corrections reported it as a key), and a trailing `\b` after
+    a `-` class missed `AIza`+34+`-` and `sk-`+19+`-` entirely. Both rules are in
+    `configs/rules/tests.md`; `tests/test-loop-real.sh`'s flake policy now says FLAKY, not discard.
+  - OPEN: the `ci-local.py` FLAKY rerun waits for the ci-local unit (§ above) to merge.
+  - Not changed, deliberately: `orchestrator/runtime_redaction.py` (dormant layer) has the same
+    `AIza…{35}\b`, and `AIza`+34+`-` passes through it unmasked (checked by hand; its sequential
+    substitution does mask the JWT pin). A credential glued to an AWS secret with no separator
+    still escapes one pass of redact.py; that is outside the delimited property.
 - [ ] 🔵 **Say how deeply each PR was read, and roll up what could not be verified.** Osmani,
   *The Code Nobody Reads* (2026-09-28); Larson, *Speeding up code review with small-change*
   (2026-10-17) and *adopting verification pattern* (2026-10-30): "That list is your roadmap".
