@@ -2536,8 +2536,25 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   S: `create-pr` emits a fixed-enum `review depth:` line and a `could not verify:` line.
   `/retro` rolls recurring could-not-verify items into the top three.
 - [ ] 🔵 **Unverified: these leads never got the skeptic pass (rank cap).**
-  - Anhaia (2026-11-05): agent memory you cannot `git diff`. `sync-link-projects.sh:44`
-    matches by basename, so project memories may be missed.
+  - [x] Anhaia (2026-11-05): agent memory you cannot `git diff`. `sync-link-projects.sh:44`
+    matches by basename, so project memories may be missed. DONE 2026-11-06
+    (fix/memory-sync-link): the verify-first pass confirmed both claims and found
+    three more causes (no leading `-` in its slugs, `((n++))` under `set -e` ending
+    the run after one entry, no local → store direction). The linker now adopts real
+    memory dirs into the store (verified, original kept, committed), prunes
+    provably wrong links and links entries at Claude Code's own slug;
+    `tests/test-sync-link-projects.sh`, 29 of 49 cases red on the old linker.
+    A `--dry-run` on the author's main host lists 18 adoptions and 17 prunes. It has
+    not been run for real there: the first real run is the next session start
+    after `./install.sh`. Run the dry-run first.
+    Not done, on purpose: the essay's `memory-snapshot.sh` and an /audit memory
+    lane (the linker fix was preferred over a second snapshot path). 6 memory dirs
+    whose project is gone stay local, because the slug is lossy and no transcript
+    survives in any profile. The 15 legacy basename entries are not merged into the
+    new `.project-path` entries. Per-profile `projects/` dirs under
+    `CLAUDE_CONFIG_DIR` are not scanned (on that host they only link into
+    `~/.claude/projects`). A path spelled with different case on two hosts gets one
+    entry per spelling.
   - Jain, *Are Harnesses Worth the Cost?* (martinfowler.com, 2026-10-13): a model-tier A/B for
     implement stages, extending the 10-23 effort A/B.
   - LangChain, *Agents Are Going Async* (2026-11-05): `codex-orchestrate` has no recorded pgid

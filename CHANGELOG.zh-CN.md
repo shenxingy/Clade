@@ -105,6 +105,8 @@ semantic versioning。
 
 ### 修复
 
+- 项目 auto-memory 现在会进入 dotfiles 同步仓库，因此有了 git 历史。`sync-link-projects.sh`（由 `sync-pull.sh` 在会话开始时运行）原来有四个缺陷：用 `find -maxdepth 3 -name` 按目录名找项目，区分大小写、取第一个结果，所以 `projects-memory/clade` 找到的是某个仓库的 `.git/clade`，从来不是 `~/projects/Clade`；编码丢了开头的 `-`，它建的链接都落在 Claude Code 从不读取的目录里；`set -e` 下的 `((linked++))` 让它处理完第一项就退出；也没有任何东西把本地 memory 目录搬进仓库。作者的主机上因此有 24 个非空 memory 目录（共 29 个）不在任何仓库里，其中包括本仓库会话加载的那一个。现在分三步。*Adopt*：把真实的 memory 目录复制到 `projects-memory/<key>/` 并写入 `.project-path`（它在 `$HOME` 下的路径），逐字节核对每个文件，换成符号链接，原目录保留为 `memory.pre-sync-<stamp>`，再通过 `sync-push.sh` 提交。*Prune*：只删除能证明是错的链接，即指向 `.project-path` 属于别的项目的条目，或者所在的 slug 在本机没有任何 memory 根目录能产生。*Link*：在 Claude Code 读取的 slug 处补建缺失的链接（非字母数字字符换成 `-`，依据 2.1.283 二进制，它按 canonical git 根目录定位 memory），从不替换已有链接。仓库里同一文件内容不同、仓库名已被别的项目占用、私有项目（`private-projects` 或 `conversation-mode`）三种情况都只报告、不动。`--dry-run` 列出将要做的改动。`tests/test-sync-link-projects.sh`（49 个用例）通过链接读取 memory，并检查仓库的 git log；其中 29 个在旧脚本上失败，11 个守卫各自被移除后都会让测试变红。未做：项目已从本机删除的 memory 目录仍留在本地（该主机上 6 个；slug 有损，也没有留下 transcript），15 个按目录名命名的旧条目没有合并或改名。
+
 - 纠错检测不再把含糊的说法、问句或粘贴内容当成用户在纠正 Claude。在一台
   机器上，单独的“应该”（口语里多半是“大概”的意思）是 230 条纠错记录中 80 条
   的唯一触发词；“要不要”因为含有“不要”而触发；粘贴进来的网页自带
