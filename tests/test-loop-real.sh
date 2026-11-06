@@ -8,7 +8,8 @@
 #   the retry count.
 # Never chase a single flake; a lone failure with no reproduction is noise —
 #   re-run once; if it passes, discard it; if it fails identically, apply the
-#   three-failure rule above.
+#   three-failure rule above. Under ci-local.py (--all) that one re-run is
+#   ci-local's own, and a pass on it is reported FLAKY, not green.
 # ─────────────────────────────────────────────────────────────────────────────
 #
 # Two-tier pattern: tests/test-loop.sh runs the full mock suites for free on

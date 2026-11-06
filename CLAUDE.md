@@ -557,15 +557,21 @@ without it falls back to this machine's own credentials), an action step other
 than checkout, cache, artifacts or `setup-*` (a lint action, a local
 composite), or a step run without a non-secret `${{ }}` env value it inherits —
 is reported **unproven** and the summary reads `PARTIAL`; a run where no job ran
-reads `NOTHING RAN`. `--strict` exits 2 on either (the default flips after a
-report-only week, see TODO.md). Here that is one step: `Syntax Check › Sibling
-facts (report only)` picks its diff range with `${{ github.event_name }}`, so a
-local run does not execute it. Both `pull_request_target` workflows
+reads `NOTHING RAN`. A step that exits non-zero is rerun once with the same
+command, env and directory; green the second time it is **FLAKY** — its job is
+not failed, the summary reads `FLAKY` (or `PARTIAL`, which outranks it) and
+names each one as `Job › Step (first exit N)`, and the JSON lists it under
+`flaky`. A step that hit the step timeout is not rerun, and `--no-rerun` makes
+the first failure final. `--strict` exits 2 on PARTIAL, FLAKY or NOTHING RAN
+(the default flips after a report-only week, see TODO.md). Here the unproven
+lane is one step: `Syntax Check › Sibling facts (report only)` picks its diff
+range with `${{ github.event_name }}`, so a local run does not execute it. Both `pull_request_target` workflows
 (`honeypot-check`, `vouch-gate`) have no push or pull_request trigger and are
 skipped as GitHub-side, and the four key-gated tiers, the only steps here that
 use a secret, gate on `schedule`/`workflow_dispatch`, which is harmless.
-`tests/test-ci-local.sh` pins the classes and removes each guard from a copy of
-the runner to show the suite notices.
+`tests/test-ci-local.sh` pins the classes (the rerun and FLAKY cases in
+`tests/lib/ci-local-flaky.sh`, which it sources) and removes each guard from a
+copy of the runner to show the suite notices.
 
 The list below is the EXPLANATION — why each gate exists and what it caught.
 `check-ci-checklist.py` keeps it complete. Run it by hand only when you want

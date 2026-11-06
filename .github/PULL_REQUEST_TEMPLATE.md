@@ -20,6 +20,9 @@
 - [ ] Anything it reported as **skipped** or **unproven** (a `PARTIAL` or
       `NOTHING RAN` summary) is listed below, with the reason — an unproven
       lane was not proven here
+- [ ] Any step it reported **flaky** (failed, then passed on its rerun) is
+      listed below with its first exit code and what caused it — a pass on
+      rerun is not a pass
 - [ ] Hooks fire correctly (verified in a Claude Code session) — the one thing
       `ci-local.py` genuinely cannot check
 
