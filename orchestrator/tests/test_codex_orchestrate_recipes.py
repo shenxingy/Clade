@@ -8,6 +8,8 @@ fake copies what codex-cli 0.167.0 was seen to do on 2026-11-06:
 
 - its log header names the session (`session id: <uuid>`);
 - it works in the directory after `-C`, else in its cwd, also for `resume`;
+- it rejects `-C` after `resume` and exits 2, as clap does: `-C` is an option
+  of `exec`, and `codex exec resume --help` lists none;
 - it starts a child in a process group of its OWN inside the worker's session
   (an MCP server, in the observed run). `kill -- -PGID` misses that child.
 
@@ -16,10 +18,14 @@ What each test pins, as the consumer sees it:
 - dispatch records the wrapper's pid, which leads its own session and group;
 - cancel reaches every process in the session, including that child, which the
   fake also makes ignore SIGTERM, and writes the flag the tracked poll waits for;
-- cancel signals nothing that is not this worker's wrapper, and leaves a finished
-  worker's flag alone;
+- cancel reads the wrapper's whole command line even with a terminal-width
+  $COLUMNS, signals nothing that is not this worker's wrapper, leaves a
+  finished worker's flag alone, and keeps an rc the worker wrote while being
+  cancelled;
 - resume runs in the worktree whatever the caller's cwd, re-passes the bypass
-  flag, reads the follow-up prompt from stdin and writes new round files.
+  flag, reads the follow-up prompt from stdin and writes new round files;
+- a resumed round records its own wrapper, so the cancel block pointed at that
+  round's flag stops it and leaves round 1's flag alone.
 
 Linux only: the recipes use util-linux setsid(1), which macOS does not ship.
 """
@@ -117,10 +123,23 @@ FAKE_CODEX = r"""#!/usr/bin/env bash
 # observed process tree: a child in its own process group, same session. The
 # child also ignores SIGTERM, so cancel has to escalate to SIGKILL.
 d=$FAKE_CODEX_DIR
-workdir=$PWD; out=""; prev=""
+workdir=$PWD; out=""; prev=""; resumed=""
 for a in "$@"; do
-  [ "$prev" = "-C" ] && workdir=$a
-  [ "$prev" = "-o" ] && out=$a
+  case $prev in
+    -C|--cd) workdir=$a ;;
+    -o) out=$a ;;
+    *)
+      case $a in
+        resume) resumed=1 ;;
+        -C|--cd|--cd=*)
+          # -C is an option of `exec`, not of `exec resume`. 0.167.0's clap
+          # parser rejects it after `resume` before doing anything else.
+          if [ -n "$resumed" ]; then
+            printf "error: unexpected argument '%s' found\n" "${a%%=*}" >&2
+            exit 2
+          fi ;;
+      esac ;;
+  esac
   prev=$a
 done
 stdin=$(cat)    # a recipe that leaves stdin open hangs here, as codex does
@@ -176,23 +195,32 @@ class Worker:
         }
         self.strangers: list[subprocess.Popen] = []
 
-    def fill(self, block: str) -> str:
-        for key, value in self.mapping.items():
+    def fill(self, block: str, overrides: dict[str, str] | None = None) -> str:
+        for key, value in {**self.mapping, **(overrides or {})}.items():
             block = block.replace(key, value)
         left = re.findall(r"<[a-z][a-z0-9-]*>", block)
         assert not left, f"placeholders this test does not know: {left}"
         return block
 
-    def run(self, block: str, mode: str = "finish") -> subprocess.CompletedProcess:
+    def run(
+        self,
+        block: str,
+        mode: str = "finish",
+        overrides: dict[str, str] | None = None,
+    ) -> subprocess.CompletedProcess:
         env = dict(os.environ)
         env.update(
             PATH=f"{self.bin}{os.pathsep}{env.get('PATH', '')}",
             FAKE_CODEX_DIR=str(self.fake),
             FAKE_CODEX_MODE=mode,
             FAKE_SESSION=FAKE_SESSION,
+            # A terminal's width. procps ps cuts piped output to $COLUMNS
+            # unless given -ww, and the wrapper's command line names
+            # <worktree> only after its pgid-file path, past column 80.
+            COLUMNS="80",
         )
         return subprocess.run(
-            ["bash", "-c", self.fill(block)],
+            ["bash", "-c", self.fill(block, overrides)],
             cwd=self.elsewhere,
             env=env,
             stdin=subprocess.DEVNULL,
@@ -344,23 +372,66 @@ def test_cancel_leaves_a_finished_worker_alone(worker):
     assert "rc=0" in result.stdout
 
 
+# A wrapper whose codex exits between the cancel block's identity check and its
+# kill writes its real rc. The stand-in does that on SIGTERM, which makes the
+# window deterministic. It records itself the way the dispatch wrapper does,
+# only once its trap is set, and names <worktree> on its command line. `setsid
+# -f` hands it to a reaper, because pgrep -s also lists a zombie in the session.
+RC_DURING_CANCEL = """setsid -f bash -c '
+  trap "echo rc=0 > <done-flag>; exit 0" TERM   # its codex exited 0 just now
+  sleep 300 &
+  echo $$ > <pgid-file>                          # a wrapper in <worktree>
+  wait
+' >/dev/null 2>&1
+"""
+
+
+def test_cancel_keeps_an_rc_the_worker_wrote_while_being_cancelled(worker):
+    worker.run(RC_DURING_CANCEL)
+    assert _wait(lambda: _read_int(worker.pgid_file) is not None)
+    p = _read_int(worker.pgid_file)
+    assert not worker.done.exists()
+
+    worker.run(_block(CANCEL))
+
+    assert _wait(lambda: not _session_members(p))
+    assert worker.done.read_text().strip() == "rc=0", (
+        "cancel overwrote the rc the worker wrote with rc=cancelled"
+    )
+
+
 # ─── Follow up: resume ───
 
 
-def test_resume_runs_in_the_worktree_with_flags_and_prompt_repassed(worker):
+def _finish_round_one(worker: Worker) -> str:
+    """Dispatch round 1 to completion and read its session id the documented way."""
     worker.dispatch(mode="finish")
     assert _wait(lambda: worker.done.exists())
-
     sid = worker.run(_block(SESSION_ID)).stdout.strip()
     assert sid == FAKE_SESSION, (
         f"the documented id extraction read {sid!r} from the log"
     )
     worker.mapping["<session-id>"] = sid
+    return sid
+
+
+def _round_two_log(worker: Worker) -> str:
+    try:
+        return Path(f"{worker.log}.2").read_text()
+    except OSError:
+        return "(no round-2 log)"
+
+
+def test_resume_runs_in_the_worktree_with_flags_and_prompt_repassed(worker):
+    sid = _finish_round_one(worker)
     worker.run(_block(RESUME), mode="finish")
 
     done2 = Path(f"{worker.done}.2")
     assert _wait(done2.exists), "the resume round wrote no done-flag of its own"
-    assert done2.read_text().strip() == "rc=0"
+    assert done2.read_text().strip() == "rc=0", (
+        "codex rejected the resume round (0.167.0 exits 2 on a -C placed after "
+        f"`resume`); its log: {_round_two_log(worker)!r}"
+    )
     assert worker.done.read_text().strip() == "rc=0", (
         "round 2 must not touch round 1's flag"
     )
@@ -381,3 +452,34 @@ def test_resume_runs_in_the_worktree_with_flags_and_prompt_repassed(worker):
     )
     assert args[-1] == "-"
     assert call["stdin"] == "fix the test you missed"
+
+
+def test_a_resumed_round_records_its_own_wrapper_and_cancels_alone(worker):
+    _finish_round_one(worker)
+    p1 = _read_int(worker.pgid_file)
+    worker.run(_block(RESUME), mode="hang")
+
+    assert _wait(lambda: _read_int(worker.pgid_file) not in (None, p1)), (
+        "the resume round left round 1's pid in <pgid-file>, so cancel cannot reach it"
+    )
+    p2 = _read_int(worker.pgid_file)
+    assert _alive(p2) and os.getsid(p2) == p2 and os.getpgid(p2) == p2, (
+        "the recorded pid must be the resume round's wrapper, leading its own session"
+    )
+
+    def resumed() -> list[int]:
+        return [c for c in worker.pids("codex") if (f := _stat(c)) and int(f[3]) == p2]
+
+    assert _wait(lambda: bool(resumed())), "the resumed codex is not in that session"
+    (codex2,) = resumed()
+
+    worker.run(_block(CANCEL), overrides={"<done-flag>": f"{worker.done}.2"})
+
+    assert _wait(lambda: not _session_members(p2)), (
+        f"still running in round 2's session after cancel: {_session_members(p2)}"
+    )
+    assert not _alive(codex2)
+    assert Path(f"{worker.done}.2").read_text().strip() == "rc=cancelled"
+    assert worker.done.read_text().strip() == "rc=0", (
+        "cancelling round 2 must not touch round 1's flag"
+    )
