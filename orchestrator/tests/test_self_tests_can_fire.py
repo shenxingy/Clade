@@ -464,9 +464,22 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         ("--recorded-before without --ledger-summary is refused, not ignored",
          "    if args.recorded_before is not None and args.ledger_summary is None:\n        parser.error(",
          "    if False:\n        parser.error("),
+    ],
+    # The transcript reader workflow-scorecard.py and scorecard_ledger.py
+    # import, split out on 2026-11-06 with default_roots() and config_dir().
+    # Its --self-test runs the self-tests of the scripts that import it; what
+    # it does on its own is pinned by test_transcripts.py.
+    "configs/scripts/transcripts.py": [
         ("the scan reads the config dir it writes the ledger into",
          "    if all(configured.resolve() != root.resolve() for root in roots):\n        roots.append(configured)",
          "    if False:\n        roots.append(configured)"),
+        # config_dir() moved here from scorecard_ledger.py with these two.
+        ("CLAUDE_CONFIG_DIR is honoured — the ledger lands in ~/.claude",
+         'override = os.environ.get("CLAUDE_CONFIG_DIR", "")',
+         'override = ""'),
+        ("an empty CLAUDE_CONFIG_DIR means ~/.claude, not the working directory",
+         "return Path(override).expanduser() if override else Path.home() / \".claude\"",
+         "return Path(override).expanduser() if override is not None else Path.home() / \".claude\""),
     ],
     # Split out of workflow-scorecard.py on 2026-10-23 with its self-test. That
     # self-test had no mutations here before the move.
@@ -523,12 +536,6 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         ("the one role check — an assistant record read as the owner",
          '    if record.get("type") == "user" and isinstance(message, dict):',
          "    if isinstance(message, dict):"),
-        ("CLAUDE_CONFIG_DIR is honoured — the ledger lands in ~/.claude",
-         'override = os.environ.get("CLAUDE_CONFIG_DIR", "")',
-         'override = ""'),
-        ("an empty CLAUDE_CONFIG_DIR means ~/.claude, not the working directory",
-         "return Path(override).expanduser() if override else Path.home() / \".claude\"",
-         "return Path(override).expanduser() if override is not None else Path.home() / \".claude\""),
         ("per-agent detail stays out of a ledger row",
          'kept = {key: value for key, value in row.items() if key != "agent_rows"}',
          "kept = dict(row)"),
