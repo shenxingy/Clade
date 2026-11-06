@@ -9,6 +9,7 @@ semantic versioning。
 
 ### 变更
 
+- `ci-local.py` 不再在跳过了它无法复现的 lane 时报告绿色。使用 `services:`、`container:`、`strategy:` 或 `defaults:` 的 job，以及 `if:` 或 `${{ }}` 表达式无法在本地求值的 step，现在都记为 **unproven**：摘要行显示 `PARTIAL` 并列出它们，`--json` 新增 `verdict`、`unproven` 和 `partial` 字段。step 级 `if:` 不再让整个 job 被跳过：在成功路径上 `always()`、`success()`、`!cancelled()` 照常执行，`failure()` 跳过；job 级和 workflow 级 `env:` 现在也会传给各 step。`--strict` 遇到 unproven lane 时 exit 2；默认退出码在为期一周的只报告期内仍为 0。`/green` 把 PARTIAL 视为不绿。
 - 为中英文 README 增加工作流示意、首次检查和仓库地图，明确原生入口、MCP bridge 与可选适配器的边界。
 - 仓库上手规范现在检查社区入口是否可用、入门任务是否具体，以及文档是否对应读者实际能获取的版本。`document-release` 也可在发布前处理 README 和开源上手优化，`orchestrate` 会把相关检查写入任务验收条件。
 

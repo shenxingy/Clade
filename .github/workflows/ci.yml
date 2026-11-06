@@ -490,7 +490,8 @@ jobs:
       # minutes are the receipt rather than the gate. The thing it must never
       # do is execute nothing and exit 0 — a green light for a broken push.
       # This asserts it goes red on a failing step, stops a job at the first
-      # failure like GitHub does, and reports every skip with its reason.
+      # failure like GitHub does, reports every skip with its reason, and
+      # reports a lane it cannot reproduce as UNPROVEN (PARTIAL), never passed.
       - name: Run local-CI runner tests
         run: bash tests/test-ci-local.sh
 

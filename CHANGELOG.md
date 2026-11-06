@@ -9,6 +9,7 @@ versioning for the `clade-mcp` Python package and tagged public releases.
 
 ### Changed
 
+- `ci-local.py` no longer reports a run green when a lane it could not reproduce was skipped. A job using `services:`, `container:`, `strategy:` or `defaults:`, or a step whose `if:` or `${{ }}` expression it cannot evaluate, is now **unproven**: the summary reads `PARTIAL` and names it, and `--json` gains `verdict`, `unproven` and `partial`. A step-level `if:` no longer skips its whole job — `always()`, `success()` and `!cancelled()` run and `failure()` is skipped on the success path — and job- and workflow-level `env:` now reach the steps. `--strict` exits 2 on an unproven lane; the default exit code stays 0 for a one-week report-only rollout. `/green` treats PARTIAL as not green.
 - Add product-specific workflow diagrams, first-use checks, repository maps, and clear native/MCP/optional-adapter entry points to the English and Chinese READMEs.
 - Repository onboarding guidance now checks usable community routes, concrete starter tasks and agreement with the version readers can obtain. `document-release` also handles README and open-source onboarding requests before a release, and `orchestrate` carries the relevant checks into task acceptance criteria.
 

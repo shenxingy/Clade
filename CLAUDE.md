@@ -539,7 +539,7 @@ this list has twice:
 
 ```bash
 python3 configs/scripts/ci-local.py --list   # what runs here, what cannot, why
-python3 configs/scripts/ci-local.py          # 5/5 jobs in ~180s on a 32-core box
+python3 configs/scripts/ci-local.py          # 5/5 jobs in ~180s on a 32-core box, PARTIAL (below)
 python3 configs/scripts/ci-local.py --json   # machine-readable, for /green
 ```
 
@@ -547,6 +547,16 @@ It stands in for `actions/setup-python` with a cached venv outside the tree, so
 `pip install` steps work on a PEP 668 system Python, and it closes stdin the way
 a runner does — inheriting the terminal's instead made one suite hang for 13
 minutes at 9% CPU. `/green` drives it to green without weakening a gate.
+
+A lane it cannot reproduce — `services:`, `container:`, `strategy:`,
+`defaults:`, or a step whose `if:` or `${{ }}` expression it cannot evaluate —
+is reported **unproven** and the summary reads `PARTIAL`; `--strict` exits 2 on
+it (the default flips after a report-only week, see TODO.md). Here that is one
+step: `Syntax Check › Sibling facts (report only)` picks its diff range with
+`${{ github.event_name }}`, so a local run does not execute it. Both
+`pull_request_target` workflows (`honeypot-check`, `vouch-gate`) are skipped as
+GitHub-side, which is harmless. `tests/test-ci-local.sh` pins the classes and
+removes each guard from a copy of the runner to show the suite notices.
 
 The list below is the EXPLANATION — why each gate exists and what it caught.
 `check-ci-checklist.py` keeps it complete. Run it by hand only when you want

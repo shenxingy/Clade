@@ -61,8 +61,9 @@ start, which is the larger saving on a public repo where the minutes are free.
 
 ```bash
 python3 ~/.claude/scripts/ci-local.py --list   # what runs here, what cannot, and why
-python3 ~/.claude/scripts/ci-local.py          # run them; exit 0 only if all passed
+python3 ~/.claude/scripts/ci-local.py          # run them; exit 1 on a failure, PARTIAL names unproven lanes
 python3 ~/.claude/scripts/ci-local.py --json   # machine-readable, for an automatic fixer
+python3 ~/.claude/scripts/ci-local.py --strict # exit 2 when a lane is unproven, not only on a failure
 ```
 
 It parses `.github/workflows/*.yml` and executes the same `run:` blocks, so it
@@ -72,11 +73,19 @@ one such list in this toolkit was wrong twice, covering 4 of 7 gates and later
 7 of 11 plus 0 of 17 suites, both times looking authoritative.
 
 **Reading its output honestly.** A skipped job is reported with its reason and
-never dropped — "nothing ran" and "everything passed" must not look alike. Jobs
-it will not run locally, each for a good reason: `pull_request_target`
+never dropped — "nothing ran" and "everything passed" must not look alike. It
+skips five classes, and only four leave the result intact: `pull_request_target`
 workflows (they act on the GitHub API, not the tree), steps needing a
 repository secret, conditional `schedule`/`workflow_dispatch` tiers (`--all`
-includes them), and jobs whose `runs-on` names a platform this machine is not.
+includes them), and jobs whose `runs-on` names a platform this machine is not
+(proven only on that machine). The fifth is a lane the hosted run executes and
+this runner cannot reproduce: a job using `services:`, `container:`,
+`strategy:` or `defaults:`, or a step whose `if:` or `${{ }}` expression it
+cannot evaluate. Those are **unproven**: the summary line reads `PARTIAL`, names
+each one, and the JSON lists them under `unproven`. **PARTIAL is not green** —
+prove those lanes hosted (or where their services exist) before reading a local
+run as a merge signal. `--strict` exits 2 on it; the default exit code is still
+0 during a one-week report-only rollout.
 
 **Cross-platform work goes to the machine that has the platform.** A macOS job
 belongs on your Mac and a Windows job on your Windows box — over SSH or by

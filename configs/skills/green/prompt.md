@@ -46,6 +46,13 @@ belongs on the machine that has it, not on a hosted runner at 2x or 10x. Jobs
 requiring a repository secret or `pull_request_target` genuinely cannot run
 here; say so rather than reporting a clean run that covered less than it looks.
 
+A `↳ UNPROVEN` line is different in kind: a lane the hosted run executes on
+every push that this runner cannot reproduce — a job using `services:`,
+`container:`, `strategy:` or `defaults:`, or a step whose `if:` or `${{ }}`
+expression it cannot evaluate. Those are usually the backend, E2E and
+migration lanes, the ones that cover the surface a change most often breaks.
+Name them before you run anything; they will not become green here.
+
 ### 2. Run
 
 ```bash
@@ -56,8 +63,16 @@ Use `--json`: it gives the failing job, the step name, the exit code, the exact
 command, and the output tail, which is what you need to fix without guessing.
 Pass a job argument through as `--job <name>` when the user named one.
 
-Green, with nothing skipped that matters → report and stop. Do not push unless
-asked.
+Read `verdict` first, not the exit code — during the report-only rollout a
+PARTIAL run still exits 0 (`--strict` makes it 2):
+
+- `pass` → green. Report and stop. Do not push unless asked.
+- `partial` → **not green.** Nothing that ran failed, but every entry in
+  `unproven` (job, step, reason) went unexecuted. Fix what ran red first if
+  anything did; then report PARTIAL with each unproven lane and its reason,
+  and say what would prove it — the hosted run, or a machine with the
+  services it needs. Never shorten PARTIAL to "green" or "CI will pass".
+- `fail` → continue below.
 
 ### 3. Diagnose one failure at a time
 
@@ -86,7 +101,9 @@ runs everything.
 
 ### 5. Stop conditions
 
-- **Green** → report, list what was skipped and why, stop.
+- **Green** (`verdict: pass`) → report, list what was skipped and why, stop.
+- **PARTIAL** (`verdict: partial`) → nothing left to fix here; report it as
+  PARTIAL with the unproven lanes, stop. It is not a green result.
 - **Same failure twice with different fixes** → stop and report. Two failed
   hypotheses mean the model of the failure is wrong; a third guess is a loop,
   not progress.
@@ -131,10 +148,13 @@ produce green.
 
 State plainly:
 
+- the verdict — pass, PARTIAL or fail — in the first line
 - which jobs ran, which passed, and **how long the whole thing took**
+- every **unproven** lane with its reason, and what would prove it
 - every skipped job with its reason, including the platform it needs
 - for each fix: the root cause in one sentence, and the file changed
 - anything you chose **not** to fix and why
 - if you touched a gate at all, say exactly what and why, at the top
 
-Never report "CI will pass" from a subset. Report what ran.
+Never report "CI will pass" from a subset, and never from a PARTIAL run.
+Report what ran.
