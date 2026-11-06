@@ -10,6 +10,94 @@
 
 Phases 1–14 complete.
 
+## Needs the owner — reconciled 2026-11-06
+
+> Every open item in this file that an agent cannot finish without the owner: it
+> spends quota or money, needs a login or the owner at a machine, takes an
+> irreversible or outward step, or is a decision the text reserves for the owner.
+> Each line names the item that tracks it. **Tick the checkbox there, not here**,
+> so this list stays an index and nothing is open in two places. Built
+> 2026-11-06: all 86 open items and the 39 owner or decision mentions inside
+> ticked items were classified, and a skeptic per chunk tried to refute each
+> claim against the repository. 25 of 26 claims held (21 decisions once
+> duplicates merged); the one refuted, a scrub of two transcripts that no longer
+> exist, was closed. Anything open and not listed here is agent work.
+
+**Time-sensitive: data is being lost, or the trigger has already fired**
+
+- Session records written before 2026-11-06 can be matched to a transcript only
+  while it exists, and one more day of transcripts expires each day. Decide the
+  heuristic recovery, and with it re-redaction and images:
+  [§ idea-essay sweep](#2026-11-05-idea-essay-sweep-follow-ups), "Owner: three decisions left by `keep-sessions.py`".
+- Nothing has appended to the Workflow run ledger since its 2026-10-24 seed, and
+  rows past the 30-day transcript cleanup cannot be recovered. Pick the profile
+  that owns it and schedule it weekly, or drop it:
+  [§ 2026-10-22 Workflow efficiency audit](#2026-10-22-workflow-efficiency-audit-follow-ups),
+  "Owner: schedule the run ledger".
+- Claude Code is 2.1.283 and `RESERVED_CHARS` was measured on 2.1.258, so its
+  re-measure is due. Approve the quota for one `claude -p ok --debug` run and the
+  7-prompt headless Haiku re-run:
+  [§ 2026-09-20 skill listing budget](#2026-09-20-skill-listing-budget-follow-ups),
+  "`RESERVED_CHARS = 8000`".
+- The context-policy trial is evaluated from 2026-11-12. Its only direct test
+  (proxy 6) is 15–20 paired live known-answer runs; approve that quota:
+  [§ 2026-11-05 context policy](#2026-11-05-context-policy-follow-ups), "Run the measured trial".
+
+**Spend: approve or drop**
+
+- The model-tier A/B for implement stages: a pilot of 3 agents (about $9–18 at
+  list price), then the minimum (36) or full (72) design, or drop it:
+  [§ idea-essay sweep](#2026-11-05-idea-essay-sweep-follow-ups), Jain, "(b) QUEUED".
+- A paired known-answer A/B before a lean `wf-analyst` agent type is built:
+  [§ 2026-11-05 context policy](#2026-11-05-context-policy-follow-ups), "PR 4 — a lean `wf-analyst` agent type".
+- Upgrade Claude Code or keep the auto-updater off, and record why; the live
+  checks on the new version follow the choice:
+  [§ 2026-11-05 context policy](#2026-11-05-context-policy-follow-ups), "Upgrading Claude Code is an owner
+  decision" and "Still unverified".
+
+**Decisions the text reserves for the owner**
+
+- Retire `doc-align-check.sh`, whose own retire-when condition is met:
+  [§ idea-essay sweep](#2026-11-05-idea-essay-sweep-follow-ups), "Owner: retire `doc-align-check.sh`?".
+- Retire `rule-injector.sh`, or only stop it duplicating Claude Code's loader,
+  once the agent's re-measure (on or after 2026-11-16) is in:
+  [§ 2026-10-05 radar sweep](#2026-10-05-radar-sweep-follow-ups),
+  "Retire `rule-injector.sh` or stop it duplicating Claude Code".
+- Tag and publish v0.3.1, or record that it stays untagged:
+  [§ Tech Debt](#tech-debt), "Release drift", sub-item "Owner: tag and publish v0.3.1".
+- Should `committer` refuse to push to the remote's default branch without a flag?
+  [§ 2026-10-23 committer push-target](#2026-10-23-committer-push-target-follow-ups),
+  "On `main` tracking `origin/main`".
+- Give invariants one declarative home, or keep them where they are:
+  [§ Active execution program](#active-execution-program--reconciled-2026-07-28),
+  "Decide whether invariants deserve a declarative home".
+- Choose one of the three rule-domain vocabularies:
+  [§ Tech Debt](#tech-debt), "Decide the shared vocabulary for rule domains".
+- Name a front-end tree you consider clean, as the `design-lint source` baseline:
+  [§ 2026-09-19 design-sense-as-rules](#2026-09-19-design-sense-as-rules-follow-ups-pr-featdesign-rules),
+  "`design-lint source` thresholds".
+- Orchestrator layer, dormant per `docs/layers.json`: may a reaction's `abort`
+  stop a worker ([§ Tech Debt](#tech-debt), "Decide whether a reaction should be able to
+  stop a worker"), and what calibrated confidence may authorise auto-merge
+  ([§ Tech Debt](#tech-debt), "Adversarial verification with N skeptics", with the
+  "half is your call" paragraph a few lines below it).
+
+**Needs the owner at a machine, a login, or an outward step**
+
+- Run `/doctor prompt-audit` interactively and accept or reject each proposed edit:
+  [§ 2026-09-28 radar sweep](#2026-09-28-radar-sweep-follow-ups),
+  "Run `/doctor prompt-audit`".
+- Log the checking Codex profile back in, so the `codex-orchestrate` resume check
+  can reach a model: [§ idea-essay sweep](#2026-11-05-idea-essay-sweep-follow-ups), LangChain, "Owner: log the
+  checking Codex profile back in".
+- Bring the two macOS hosts of the local fleet list onto the current kit and run
+  the shell suites there: [§ idea-essay sweep](#2026-11-05-idea-essay-sweep-follow-ups), "Owner: the two macOS
+  hosts".
+- Approve, or open yourself, the upstream Kimi CLI PR that adds plan usage to the
+  status-line snapshot: [§ Tech Debt](#tech-debt), "Kimi footer quota".
+- Recruit representative users for the browser project/task flow trial:
+  [§ GUI-first local web trial](#gui-first-local-web-trial--2026-11-02).
+
 ## GUI-first local web trial — 2026-11-02
 
 - [ ] Validate the new browser project/task flow with representative GUI users
@@ -453,6 +541,9 @@ re-running the gates.
 - [x] 🟡 Settings keys published and read by nothing — DONE 2026-09-02. **Four, not five.** `replay_interrupted_on_startup` was a false positive: it is read in `config.py` and called from `lifespan` on every startup, and the audit's detector excluded all of `config.py` rather than just the defaults literal. `reactions_enabled` and `min_workers` are wired; `reaction_configs` and `patrol_auto_ideas` are deleted. Wiring `reaction_configs` as published would have been harmful — its copy carries three of five rules and the executor replaces rather than merges, so anyone using the generated reference file would silently lose two. `test_every_setting_has_a_backend_reader` now enforces the invariant.
 - [x] 🟡 `mcp_server.py` blocked its event loop for five minutes — DONE 2026-09-02. `asyncio.create_subprocess_exec` + `wait_for`, with the timeout path SIGKILLing the process group and draining pipes. Recorded as an invariant in CLAUDE.md, because the same shape exists on the second MCP surface.
 - [x] 🟡 Release drift — DONE 2026-09-02. v0.3.1 cut across every surface. The mcp-package half needed **five** sites, not one, including `SERVER_VERSION`, which is what the MCP server tells connecting clients. **No tag created — publishing is an operator decision.**
+  - [ ] Owner: tag and publish v0.3.1 (a `v0.3.1` tag on the release commit and a
+    GitHub release), or record that it stays untagged on purpose. Only v0.1.0 and
+    v0.2.0 exist (checked 2026-11-06). Listed in § Needs the owner.
 - [x] 🟡 No Python lint gate — DONE 2026-09-02, and it earned its keep on the first run: two live `NameError`s that had shipped green for months. `Worker.stop()` awaited an unimported `preserve_worktree_wip`, so every worker stop path raised before cleanup. Both fixed, both suppressions deleted in the same commit. `BLE001` is deliberately not selected: 435 blind excepts is a body of work, not a gate.
 - [x] 🟡 Fixed `/tmp` paths on a shared host — DONE 2026-09-02. All seven sites go through `configs/hooks/lib/runtime-dir.sh`, which fails closed on a squatted path.
 - [x] 🟡 Shell portability — PARTIALLY DONE 2026-09-02, and **half the finding was false**. All eight `stat -c` sites already had a `stat -f` fallback; the `mapfile` hit was a comment saying mapfile is deliberately avoided; the `awk match(` hits were Python `re.match` in a heredoc. Six real gaps fixed. The proposed shared `portable.sh` was rejected on inspection: it would put a hard sourcing dependency inside a synchronous SessionStart hook, and `configs/scripts/` must run from a bare checkout.
@@ -513,7 +604,10 @@ re-running the gates.
       re-check command stay in git history if that changes. Nothing further to
       do here.
 
-- [ ] 🟡 **Two session transcripts still hold 12 occurrences.** Mode 0600,
+- [x] 🟡 **Two session transcripts still hold 12 occurrences.** CLOSED 2026-11-06:
+      neither file exists any more, in any config dir, profile, the dotfiles sync
+      store or the keep-sessions store (searched by session id), so there is
+      nothing left to scrub and nothing was run. Mode 0600,
       owner-only, and they are the harness's own resumable state, so they were
       deliberately left alone: for a leaked key the remedy is rotation, after
       which every copy is inert.
@@ -2023,6 +2117,12 @@ tiering are real but unmeasured. Each needs a paired A/B before rollout.
   `docs/research/2026-09-02-agent-orchestration-efficiency.md:7-8`, `:121`;
   `docs/research/README.md:74`; and `docs/configuration.md:159-161` if it still
   quotes them. Add the figures to `check-asserted-numbers.py`'s patterns.
+  - [ ] Owner: schedule the run ledger. Nothing has appended to it since the
+    2026-10-24 seed (the weekly radar cron does not run it; checked 2026-11-06),
+    and a week left unscheduled loses the rows the 30-day transcript cleanup
+    deletes. Pick the one profile that owns it and run
+    `workflow-scorecard.py --since 7 --ledger` weekly under it, or drop the ledger.
+    Listed in § Needs the owner.
 - [x] 🔵 **The scorecard ignores labels, phases, outcomes, model and effort it
   already has on disk.** DONE 2026-10-23 — reads meta.json and journal.jsonl; per-phase rows, outcome column, per-agent model/effort (`agent_rows`), first-turn-context median (72.6k on the audit runs), long-gap miss share, result sizes; `util` → `util_vs_peak`. `agent-*.meta.json` carries label and phase for 94.8% of
   agents. `journal.jsonl` carries started/result/failed: 202 agents without a
@@ -2862,6 +2962,8 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
     every flag again), pinned by `test_codex_orchestrate_recipes.py`. Still open: no check
     reached a model, because the checking Codex profile was logged out, so recall after resume
     is unobserved and the research row's "~4x tokens" stays unmeasured.
+    - [ ] Owner: log the checking Codex profile back in. Until then no
+      `codex-orchestrate` resume check reaches a model. Listed in § Needs the owner.
 - [x] 🔵 **`memory-sync.sh` commits at write time only under `~/.claude/projects`.** It
   matches `^$HOME/.claude/projects/[^/]+/memory/`, so a session running under
   `CLAUDE_CONFIG_DIR` (a `~/.claude-profiles/*` account) writes its project memory
@@ -2877,3 +2979,11 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   `$CLAUDE_CONFIG_DIR/projects/<slug>/memory`. `tests/test-hooks.sh` gains a case per dir,
   two that must not push (beside `memory/`, and one level too deep), and a mutation that
   drops the profile dirs. The three positive cases fail on the old hook.
+- [ ] 🔵 **Owner: the two macOS hosts of the local fleet list are not on the 2026-11-06
+  kit.** `fleet-install.sh --apply` brought both Linux hosts to 4389fdb (VERIFIED).
+  One macOS host asks for Touch ID on every connection, so it needs the owner at the
+  machine; the other has no checkout at the path the fleet list gives. Until then the
+  sweep's shell changes (`loop_holdout.sh`, `memory-sync.sh`, `sync-link-projects.sh`)
+  have not run on bash 3.2: after the install there, run `bash tests/test-loop.sh`,
+  `bash tests/test-hooks.sh` and `bash tests/test-sync-link-projects.sh`. Listed in
+  § Needs the owner.
