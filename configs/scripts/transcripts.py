@@ -36,10 +36,14 @@ What a record holds (Claude Code 2.1.283)
 -----------------------------------------
 Inspected 2026-11-05 with ``jq`` over keys and types only, never content: the
 240 main-thread transcripts above, plus one Workflow agent and one plain Agent
-transcript for the subagent shape. ``toolUseResult``'s type was re-checked
-2026-11-06 over the 15 newest main-thread, 30 newest plain Agent and 40 newest
-Workflow agent transcripts on the same host (counts below). Each line is one
-JSON object with a ``type``:
+transcript for the subagent shape. Everything about tool results was
+re-derived 2026-11-06 over the transcripts modified in the previous 30 days on
+the same host: all 335 main-thread, all 124 plain Agent and all 6,165 Workflow
+agent transcripts, with a 600-transcript random sample of the Workflow ones
+for the record fields and text markers. That census read keys, types and tool
+names, plus whether a result's text starts with one of two Claude Code
+templates quoted below, and printed counts only, never content. Each line is
+one JSON object with a ``type``:
 
 ``assistant``   ``message`` is one API response block: ``message.content`` is a
                 list holding ONE block (thinking, text or tool_use), and a
@@ -55,21 +59,43 @@ JSON object with a ``type``:
 ``user``        ``message.content`` is a string (typed text) or a list. A list
                 can hold tool_result blocks: ``tool_use_id``, ``content`` (a
                 string, or a list of ``text``, ``image`` and ``tool_reference``
-                items) and ``is_error``, which is sometimes absent on success.
-                The record also carries ``toolUseResult``, whose type varies.
-                On a successful built-in call it is an object, the tool's
-                structured output: for Bash ``stdout``, ``stderr``,
-                ``interrupted``, and ``timedOutAfterMs`` when the command
-                outran its timeout (the result then is NOT an error), and
-                ``persistedOutputPath`` when the output was too large and the
-                transcript keeps only a ``<persisted-output>`` preview. On an
-                error or denied result it is a STRING (``Error: …``), and on
-                the MCP results seen a list of ``text`` items; neither carries
-                those fields. Main thread: 2,141 objects, 56 strings (every one
-                an error), 5 lists. A denied call adds ``toolDenialKind``:
-                ``permission-rule`` (a permission rule, or a PreToolUse hook:
-                the result text starts ``PreToolUse:<Tool> hook error:``) or
-                ``user-rejected``.
+                items) and ``is_error``, which is absent on 3,843 of the
+                31,777 main-thread results not flagged as errors. The record
+                can carry ``toolUseResult``; which transcript kinds do is
+                below the record types. Its type varies. On a successful
+                built-in call it is an OBJECT, the tool's structured output.
+                On every error or denied result it is a STRING (it starts
+                ``Error`` on 878 of the 888 main-thread errors), and so it is
+                on 4 MCP results that have no ``is_error`` but whose string
+                starts ``Error``. On a successful MCP call it is a LIST of
+                ``text`` items. Main thread: 31,624 objects, 892 strings, 149
+                lists, and none missing.
+
+                Only Bash's object holds the three fields ``tool_events``
+                reads (main thread and plain Agent; Workflow below). Every Bash
+                object has ``stdout``, ``stderr``, ``interrupted``,
+                ``isImage`` and ``noOutputExpected``. ``interrupted`` was
+                ``false`` on all 35,818 seen (27,401 main-thread, 8,417 plain
+                Agent), so no interruption has been observed through it.
+                ``timedOutAfterMs`` (119 main-thread, 25 plain Agent) marks a
+                command that outran its timeout and was moved to the
+                background: every one also has ``backgroundTaskId``, is NOT
+                ``is_error``, and its result text starts ``Command did not
+                complete within its``. ``backgroundTaskId`` alone does not
+                mean a timeout: ``run_in_background`` sets it too.
+                ``persistedOutputPath`` (110 main-thread, 56 plain Agent)
+                marks an output too large to keep: the result text is only a
+                preview that starts ``<persisted-output>`` and names that
+                path, a file under the LEAD session's
+                ``<slug>/<session>/tool-results/`` even for a subagent. A
+                persisted Grep, WebFetch or MCP result has the same preview
+                but no such field (8 on the main thread).
+
+                A denied call adds ``toolDenialKind``, only ever seen beside
+                an error string: ``permission-rule`` (a permission rule, or a
+                PreToolUse hook: the result text starts ``PreToolUse:<Tool>
+                hook error:`` and the string ``Error: PreToolUse:``) or
+                ``user-rejected``. Main thread: 95 and 53.
 ``attachment``  ``attachment.type`` names it. Hook kinds seen:
                 ``hook_success`` (command, content, stdout, stderr, exitCode,
                 durationMs), ``hook_additional_context`` (content),
@@ -93,15 +119,34 @@ other           ``permission-mode``, ``mode``, ``last-prompt``, ``ai-title``,
                 ``pr-link``, ``queue-operation``, ``file-history-*``: no
                 ``message``.
 
-Subagent records carry ``agentId`` and ``isSidechain: true``. Their
-``sessionId`` is the lead session's. A plain Agent transcript's ``toolUseResult``
-is shaped as on the main thread (1,434 objects, 50 strings, every string an
-error). A Workflow agent transcript carries ``toolUseResult`` ONLY as the error
-string, never the object: 75 of 75 were strings on error results, and a
-successful result has none. So a timeout, an interruption or a persisted output
-cannot be read there. Its denials DO carry ``toolDenialKind`` (9 of those 75;
-18 of the 50 plain Agent strings). A PreToolUse hook that DENIES a call leaves
-no hook attachment: the denial is visible only as the tool_result and the
+Subagent records carry ``agentId`` and ``isSidechain: true``, and their
+``sessionId`` is the lead session's: every user and assistant record of the 124
+plain Agent and the 600 sampled Workflow agent transcripts did. Whether a tool
+result carries ``toolUseResult`` depends on the transcript kind:
+
+main thread     Always: 32,665 of 32,665 results, typed as above.
+plain Agent     On every error (202 strings) and on most successes (9,850
+                objects, same fields as the main thread's). 402 of the 10,252
+                successes have none: all 292 in the 5 transcripts whose records
+                say ``entrypoint: "sdk-cli"``, and 110 in 4 of the 119 whose
+                records say ``"cli"``.
+Workflow agent  On every error (8,192 strings), almost never on a success:
+                356,861 of 356,981 successes have none. The other 120 are
+                objects in 4 of the 6,165 transcripts, each after a first run
+                of successes without one. 94 are Bash objects, with
+                ``interrupted`` (false on all 94) and without
+                ``timedOutAfterMs`` or ``persistedOutputPath``.
+
+Where the object is missing, a timeout and a persisted output still show in
+the result TEXT through the two templates above (in the 600 sampled Workflow
+transcripts, 139 results start with the timeout template and 297 with the
+persisted one, which names the path), but ``tool_events`` reads only the
+object, so it leaves both None. No text marker for an interruption is known.
+All three kinds carry ``toolDenialKind`` beside a denied result's error string:
+148 main-thread, 28 plain Agent and 482 Workflow agent results. Every result
+whose text starts ``PreToolUse:`` had it (72 main-thread, 12 plain Agent, 29 in
+the Workflow sample). A PreToolUse hook that DENIES a call leaves no hook
+attachment: the denial is visible only as the tool_result and the
 ``toolDenialKind`` beside it.
 
 Stdlib only, on purpose: the syntax-check CI job installs no dependencies.
@@ -298,14 +343,25 @@ class ToolEvent:
     to ``tool_events`` (with ``iter_records``, the n-th parsed record, not the
     file line). ``result`` is None until a result arrives: a call in flight, or
     a session killed mid-call. It is never clipped: the whole text the
-    transcript holds, which for a ``persisted_output`` call is Claude Code's
-    preview, with the full output in that file. ``is_error`` is None without a
-    result and False when the result omits the flag. ``timed_out_ms``,
-    ``interrupted`` and ``persisted_output`` are read only from a
-    ``toolUseResult`` OBJECT. An error or denied result carries a string there
-    instead, and a Workflow agent transcript never carries the object, so None
-    means unknown, not "no". ``denial_kind`` comes from ``toolDenialKind``,
-    which every transcript kind carries on a denial.
+    transcript holds, which for a persisted output is Claude Code's preview
+    (it starts ``<persisted-output>`` and names the file holding the full
+    output). ``is_error`` is None without a result and False when the result
+    omits the flag.
+
+    ``timed_out_ms``, ``interrupted`` and ``persisted_output`` are read only
+    from a ``toolUseResult`` OBJECT, and only Bash's object holds them (the
+    module docstring has the counts). For a Bash call whose object is there,
+    ``interrupted`` is a bool (False on every one seen), and None in
+    ``timed_out_ms`` or ``persisted_output`` means "no". So, on the data seen,
+    ``interrupted is not None`` tells "this Bash call's object was read".
+    Anywhere else None means "not recorded", not "no": any other tool (a
+    persisted Grep, WebFetch or MCP result has ``persisted_output`` None even
+    on the main thread), an error or denied result (a string there), and a
+    success with no object, which is nearly every Workflow agent success and
+    some plain Agent ones. A timeout or persisted output with no object still
+    shows in ``result`` by its text template; this module does not parse it.
+    ``denial_kind`` comes from ``toolDenialKind``, which all three transcript
+    kinds carry beside a denied result's error string.
     """
 
     id: str

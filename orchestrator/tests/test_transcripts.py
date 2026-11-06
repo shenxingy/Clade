@@ -265,6 +265,38 @@ def test_tool_events_pair_each_call_with_its_full_result():
     assert inflight.result is None and inflight.is_error is None and inflight.result_index is None
 
 
+def test_a_success_without_an_object_reads_as_not_recorded_not_as_no():
+    """The Workflow agent shape, and some plain Agent transcripts': a
+    successful Bash result with no ``toolUseResult``. A timeout and a persisted
+    output still show in the text, but the fields stay None, and
+    ``interrupted`` is None too: that is what tells "not recorded" from a Bash
+    object that said "no" (``interrupted`` False, the other two None)."""
+
+    records = [
+        _call("toolu_wf_slow", "Bash", {"command": "sleep 900"}, agentId="a1", isSidechain=True),
+        _result("toolu_wf_slow", "Command did not complete within its 120s timeout and was moved to the background.",
+                is_error=False, agentId="a1", isSidechain=True),
+        _call("toolu_wf_big", "Bash", {"command": "cat huge.log"}, agentId="a1", isSidechain=True),
+        _result("toolu_wf_big", "<persisted-output>\nOutput too large (35KB). Full output saved to: /synthetic/o.txt",
+                is_error=False, agentId="a1", isSidechain=True),
+        _call("toolu_main_ok", "Bash", {"command": "true"}),
+        _result("toolu_main_ok", "", is_error=False,
+                toolUseResult={"stdout": "", "stderr": "", "interrupted": False, "isImage": False,
+                               "noOutputExpected": True}),
+    ]
+    by_id = {e.id: e for e in tr.tool_events(records)}
+
+    for call_id in ("toolu_wf_slow", "toolu_wf_big"):
+        event = by_id[call_id]
+        assert event.is_error is False and event.agent_id == "a1"
+        assert (event.timed_out_ms, event.interrupted, event.persisted_output) == (None, None, None)
+    assert by_id["toolu_wf_slow"].result.startswith("Command did not complete within its ")
+    assert by_id["toolu_wf_big"].result.startswith("<persisted-output>\n")
+
+    said_no = by_id["toolu_main_ok"]
+    assert (said_no.timed_out_ms, said_no.interrupted, said_no.persisted_output) == (None, False, None)
+
+
 def test_tool_events_pair_by_id_when_parallel_results_arrive_out_of_order():
     """Several calls open at once, their results back in neither call order nor
     reverse call order: one API response with several tool_use blocks does
