@@ -39,20 +39,26 @@ instruments in this repository have already shipped.
 
 Skips come in two kinds, and only one of them leaves the result intact:
 
-  skipped    a pull_request_target workflow, or a job whose `if:` is false on
-             every push and pull_request — a schedule/dispatch tier, failure()
-             (the hosted push/PR run does not execute it either); a job for
-             another platform (proven on the machine that has it); a step that
-             declares or uses a repository secret itself (a credential a local
-             run should not hold).
+  skipped    a workflow triggered by pull_request_target and by no push or
+             pull_request, or a job whose `if:` is false on every push and
+             pull_request — a schedule/dispatch tier, failure() (the hosted
+             push/PR run does not execute it either); a job for another
+             platform (proven on the machine that has it).
   unproven   a lane this runner cannot reproduce: a job using services:,
              container:, strategy:, a reusable workflow, a defaults: other
-             than `run: shell: bash`, an env block scalar or a steps: block it
-             cannot parse; a runs-on: or job-level `if:` it cannot evaluate; a
-             step whose `if:` or `${{ }}` expression it cannot evaluate. A step
-             whose INHERITED env holds a `${{ }}` value runs with that variable
-             unset, and its pass is unproven too. The hosted run executes these
-             lanes; this run did not prove them, so a green here says nothing.
+             than `run: shell: bash`, an env block scalar, a steps: block or a
+             job body it cannot parse; a runs-on: or job-level `if:` it cannot
+             evaluate; a step whose `if:` or `${{ }}` expression it cannot
+             evaluate; a step that needs a repository secret — declared,
+             inherited from job or workflow env, or used in run: — which never
+             runs here, because a tool run without it falls back to this
+             machine's own credentials; an action step other than checkout,
+             cache, artifact upload/download or a setup-* action (a lint
+             action, a local composite), so a job whose only gates are actions
+             is unproven, not setup-only. A step whose INHERITED env holds a
+             non-secret `${{ }}` value runs with that variable unset, and its
+             pass is unproven too. The hosted run executes these lanes; this
+             run did not prove them, so a green here says nothing.
 
 Exit 1 when a job that ran failed. Otherwise any unproven lane makes the
 summary read PARTIAL, and a run in which no job ran at all reads NOTHING RAN;
@@ -82,8 +88,18 @@ from pathlib import Path
 # Line-based, not a YAML parser: configs/scripts/ is stdlib-only and workflow
 # files are highly regular. check-ci-checklist.py already reads them this way.
 
-_JOB = re.compile(r"^  ([a-z][\w-]*):\s*$")
+# Every line at the jobs: indent IS a job in YAML. A lowercase-only regex read
+# `  Build:`, `  _lint:` and `  backend:  # note` as nothing, and every key
+# under them then landed on the job BEFORE — its name overwritten, its steps
+# merged, the lane gone from the plan. So a header is read loosely (any id, a
+# quoted one, a trailing comment) and a line it still cannot read becomes a
+# flagged job of its own, never part of its neighbour.
+_JOB_HEADER = re.compile(r"""("[^"]*"|'[^']*'|[^\s"'#][^:]*?)\s*:(?:\s(.*))?""")
 _KEY = re.compile(r"^    ([a-z-]+):\s*(.*)$")
+# `on:`, or `"on":` — quoted by projects whose yamllint flags a bare `on` as
+# a truthy value. Missed, a pull_request_target workflow had no triggers and
+# its job ran here, against the GitHub API it exists to call.
+_ON_KEY = re.compile(r"""^(on|"on"|'on')\s*:""")
 # The first `- ` under a job's `steps:` fixes the column its steps sit at: 6
 # in most workflows, 4 in GitHub's own starter templates, which put the dash
 # level with `steps:`. A fixed 6 read every step of that shape as nothing, and
@@ -130,8 +146,9 @@ class Step:
     condition: str = ""
     env: dict[str, str] = field(default_factory=dict)
     # Keys of `env` the step did not declare itself: they came from the job or
-    # the workflow. A secret declared ON a step says that step reads it; one
-    # inherited from above says nothing about whether this step does.
+    # the workflow. A `${{ }}` declared ON a step says that step reads it; one
+    # inherited from above says nothing about whether this step does. (A
+    # secret is the exception: own or inherited, the step does not run.)
     inherited: frozenset[str] = frozenset()
 
     @property
@@ -166,6 +183,10 @@ class Job:
     declares_steps: bool = False
     # The children of a job-level `defaults:`, decided after the parse.
     defaults: list[str] | None = None
+    # Job-level keys read at four spaces. A job with neither `runs-on:` nor
+    # `uses:` is one whose body this parser did not read (keys at another
+    # indent, flow style): it reported "setup-only", a reasoned skip.
+    keys: set[str] = field(default_factory=set)
 
     @property
     def display(self) -> str:
@@ -230,6 +251,61 @@ def _defaults_modelled(lines: list[str]) -> bool:
             and pairs[1][1:] == ("shell", "bash") and pairs[1][0] > pairs[0][0])
 
 
+def _job_header(raw: str) -> tuple[str, str]:
+    """(job id, whatever follows its colon) for a line at the jobs: indent.
+    A line that does not read as `id:` comes back as its own text twice, so it
+    is still a job — flagged — rather than a key of the job above it."""
+    body = raw.strip()
+    m = _JOB_HEADER.fullmatch(body)
+    if m is None:
+        return body[:60], body
+    return _scalar(m.group(1)), _scalar(m.group(2) or "")
+
+
+def _flow_names(text: str) -> list[str]:
+    """Top-level names of a flow value: `push`, `[push, pull_request]`, or
+    `{push: {branches: [main]}, pull_request: {}}`."""
+    t = text.strip()
+    if t[:1] in ("[", "{"):
+        t = t[1:-1] if t[-1:] in ("]", "}") else t[1:]
+    items, depth, cur = [], 0, ""
+    for c in t:
+        depth += (c in "[{") - (c in "]}")
+        if c == "," and depth == 0:
+            items.append(cur)
+            cur = ""
+        else:
+            cur += c
+    items.append(cur)
+    return [it.split(":", 1)[0].strip().strip("'\"") for it in items if it.strip()]
+
+
+def workflow_triggers(on_block: str) -> set[str]:
+    """The event names an `on:` block lists, comments ignored. Until 2026-11
+    the classification was a substring test over the raw block: a comment
+    reading `pull_request:` ran a pull_request_target job here, and
+    `[push, pull_request_target]` was labelled GitHub-side only."""
+    lines = [re.sub(r"(^|\s)#.*$", "", ln).rstrip() for ln in on_block.splitlines()]
+    lines = [ln for ln in lines if ln.strip()]
+    if not lines:
+        return set()
+    head = lines[0].split(":", 1)[1].strip() if ":" in lines[0] else ""
+    if head:
+        return set(_flow_names(head))
+    body = lines[1:]
+    if not body:
+        return set()
+    pad = min(len(ln) - len(ln.lstrip()) for ln in body)
+    names: set[str] = set()
+    for ln in body:
+        if len(ln) - len(ln.lstrip()) != pad:
+            continue
+        item = ln.strip()
+        item = item[2:] if item.startswith("- ") else item.split(":", 1)[0]
+        names.add(item.strip().strip("'\""))
+    return names
+
+
 def parse_workflow(path: Path) -> tuple[list[Job], str]:
     """Return (jobs, on-block text). Tolerant by design: anything it cannot read
     becomes a skip with a reason, never a silent omission."""
@@ -237,11 +313,12 @@ def parse_workflow(path: Path) -> tuple[list[Job], str]:
     lines = text.splitlines()
 
     on_block = ""
-    if "\non:" in "\n" + text:
-        start = next(i for i, ln in enumerate(lines) if ln.startswith("on:"))
+    start = next((i for i, ln in enumerate(lines) if _ON_KEY.match(ln)), None)
+    if start is not None:
+        # A column-0 comment does not end the block; the next key does.
         end = next(
             (i for i in range(start + 1, len(lines))
-             if lines[i] and not lines[i][0].isspace()),
+             if lines[i] and not lines[i][0].isspace() and not lines[i].startswith("#")),
             len(lines),
         )
         on_block = "\n".join(lines[start:end])
@@ -265,6 +342,10 @@ def parse_workflow(path: Path) -> tuple[list[Job], str]:
     # the first one has been seen (-1 until then).
     in_steps = False
     dash = -1
+    # The column of the first line under `jobs:`: every line there is a job.
+    # The rest of this parser reads job keys at four spaces, so jobs at any
+    # other indent are listed and flagged, not dropped as they used to be.
+    job_indent = -1
     # The open step's own key whose children follow. Only `env:` children are
     # environment: a uses-step's `with: script: |` is not, and read as one it
     # made every github-script job an unproven "env block scalar".
@@ -291,7 +372,9 @@ def parse_workflow(path: Path) -> tuple[list[Job], str]:
             else:
                 step.run = value
         elif key == "uses":
-            step.uses = value
+            # Pinned actions carry `# v4.3.1` after the SHA, and the name of
+            # an unnamed action step is what a lane is reported as.
+            step.uses = _scalar(value)
         elif key == "name":
             step.name = _scalar(value)
         elif key == "working-directory":
@@ -322,7 +405,7 @@ def parse_workflow(path: Path) -> tuple[list[Job], str]:
 
         if not raw[0].isspace():
             close_step()
-            section = raw.split(":", 1)[0].strip()
+            section = raw.split(":", 1)[0].strip().strip("'\"")
             # `env: # note` is still an empty key with a mapping below it.
             rest = _scalar(raw.split(":", 1)[1]) if ":" in raw else ""
             current = None
@@ -348,10 +431,19 @@ def parse_workflow(path: Path) -> tuple[list[Job], str]:
                 workflow_env[pair.group(1)] = _scalar(pair.group(2))
             continue
 
-        job_match = _JOB.match(raw) if section == "jobs" else None
-        if job_match:
+        indent = len(raw) - len(raw.lstrip())
+        if section == "jobs" and job_indent < 0:
+            job_indent = indent
+        if section == "jobs" and indent == job_indent:
             close_step()
-            current = Job(id=job_match.group(1), name="", workflow=path.name)
+            job_id, rest = _job_header(raw)
+            current = Job(id=job_id, name="", workflow=path.name)
+            if rest:
+                # `build: {runs-on: …, steps: […]}`, an alias, or a line
+                # that is not `id:` at all: its keys are not on later lines.
+                current.unmodelled.append(f"a job written on its key line ({rest[:40]})")
+            if job_indent != 2:
+                current.unmodelled.append(f"a jobs: block indented {job_indent} spaces")
             jobs.append(current)
             job_block = ""
             in_steps = False
@@ -406,6 +498,7 @@ def parse_workflow(path: Path) -> tuple[list[Job], str]:
             # A four-space key is the job's, never a step's: the steps are over.
             close_step()
             key, value = jk.group(1), jk.group(2).strip()
+            current.keys.add(key)
             # `env: # note` is a mapping like `env:` — a comment is not a value.
             bare = not _scalar(value)
             # A job's own `env:` — every step inherits it. Dropped until
@@ -442,6 +535,8 @@ def parse_workflow(path: Path) -> tuple[list[Job], str]:
             job.unmodelled.append("defaults")
         if job.declares_steps and not job.steps:
             job.unmodelled.append("a steps: block it could not parse")
+        if not job.keys & {"runs-on", "uses"}:
+            job.unmodelled.append("a job body it could not read (no runs-on: at four spaces)")
         job.unmodelled.extend(workflow_unmodelled)
         for st in job.steps:
             # Workflow env < job env < step env, the precedence GitHub applies.
@@ -573,11 +668,35 @@ class StepPlan:
     unproven: bool = False   # the hosted run's lane is not proven by this one
 
 
+# Actions that prepare the runner or move files, and test nothing: skipping
+# one leaves no lane unproven. Every other action — a lint action, a local
+# composite (`./.github/actions/test`), a test-runner action — is a gate the
+# hosted run executes and this runner does not. Until 2026-11 all of them were
+# "action, not a gate", and a job whose only gate was an action read as a
+# setup-only skip, so a lint lane counted toward a pass it never ran in.
+_SETUP_ACTIONS = frozenset({"checkout", "cache", "upload-artifact", "download-artifact"})
+
+
+def is_setup_action(uses: str) -> bool:
+    ref, at, _ = uses.partition("@")
+    if not at:
+        return False      # ./local composite or docker://image: may be anything
+    parts = ref.lower().split("/")
+    if parts[0] == "actions" and len(parts) > 1 and parts[1] in _SETUP_ACTIONS:
+        return True
+    return any(p.startswith("setup-") or p == "action-setup" for p in parts[1:])
+
+
 def plan_step(step: Step) -> StepPlan:
     """What this runner does with one step on the success path, and whether a
     skip leaves the lane unproven or is the same thing GitHub would do."""
     if step.uses and not step.run:
-        return StepPlan(False, "action, not a gate")
+        if is_setup_action(step.uses):
+            return StepPlan(False, "action, not a gate")
+        if step.condition and success_path_if(step.condition) is False:
+            return StepPlan(False, f"if: {_scalar(step.condition)[:60]} is false on the success path")
+        return StepPlan(False, f"action {step.uses[:60]}: this runner executes only run: steps",
+                        unproven=True)
     if not step.run:
         return StepPlan(False, "no run: block")
     if step.condition:
@@ -590,22 +709,30 @@ def plan_step(step: Step) -> StepPlan:
             # GitHub skips it on a passing run too: nothing is left unproven.
             return StepPlan(False, f"if: {cond} is false on the success path")
     in_run = _expression_kind(step.run)
-    # Only what the step itself declares or uses says it needs a credential.
-    # Inherited env was merged into this check until 2026-11, so one
-    # workflow-level `GH_TOKEN: ${{ github.token }}` turned every step of every
-    # job into a reasoned "needs a repository secret" skip and the run read pass.
+    # A secret the step declares, inherits from job or workflow env, or uses in
+    # run: keeps it from running at all. Run with the variable unset — what
+    # this runner did with an inherited one until 2026-11 — aws, gh, npm and
+    # docker fall back to ~/.aws, gh auth, ~/.npmrc and ~/.docker/config.json:
+    # this machine's own credentials, acting on whatever the step targets.
+    # The hosted run executes the step and this one did not: unproven.
+    secrets = sorted(k for k, v in step.env.items() if _expression_kind(v) == "secret")
+    if in_run == "secret":
+        secrets.append("in run:")
+    if secrets:
+        return StepPlan(False, f"needs a repository secret ({', '.join(secrets)}); run without "
+                               "it, a tool falls back to this machine's own credentials",
+                        unproven=True)
     own = {_expression_kind(v) for k, v in step.env.items() if k not in step.inherited} - {None}
-    if in_run == "secret" or "secret" in own:
-        return StepPlan(False, "needs a repository secret")
     if in_run:
         return StepPlan(False, "uses a GitHub expression that cannot be evaluated locally",
                         unproven=True)
     if own:
         return StepPlan(False, "its env uses a GitHub expression that cannot be evaluated locally",
                         unproven=True)
-    # An inherited `${{ }}` may not be read by this step at all, so skipping it
-    # would throw away coverage the old runner had. Run it with those variables
-    # unset instead, and do not let its pass speak for the hosted lane.
+    # An inherited non-secret `${{ }}` (github.repository, vars.*) may not be
+    # read by this step at all, so skipping it would throw away coverage the
+    # old runner had. Run it with those variables unset instead, and do not
+    # let its pass speak for the hosted lane.
     unset = sorted(k for k in step.inherited if _EXPR.search(step.env[k]))
     if unset:
         return StepPlan(True, f"runs without {', '.join(unset)}, inherited env that only the "
@@ -630,7 +757,8 @@ def skip_reason(job: Job, on_block: str, include_conditional: bool) -> Skip | No
     runner cannot model — this repository's own honeypot-check and vouch-gate
     were, until 2026-11, because the unmodelled test came first.
     """
-    if "pull_request_target" in on_block and "pull_request:" not in on_block:
+    triggers = workflow_triggers(on_block)
+    if "pull_request_target" in triggers and not triggers & _PUSH_PR_EVENTS:
         return Skip("runs on GitHub's side only (pull_request_target)")
     cond = job_condition(job.condition) if job.condition else "run"
     if cond == "off" and not include_conditional:
@@ -656,16 +784,20 @@ def skip_reason(job: Job, on_block: str, include_conditional: bool) -> Skip | No
     if cond == "unknown" and not include_conditional:
         return Skip(f"job-level if: {_scalar(job.condition)[:60]} cannot be evaluated "
                     "locally (--all runs it anyway)", unproven=True)
+    gates = [(s, plan_step(s)) for s in job.steps if s.run or s.uses]
     if not any(s.run for s in job.steps):
+        actions = [s.display for s, p in gates if p.unproven]
+        if actions:
+            return Skip("its gates are actions, which this runner does not execute: "
+                        + ", ".join(actions)[:120], unproven=True)
         return Skip("no run: steps (setup-only job)")
-    plans = [plan_step(s) for s in job.steps if s.run]
-    if not any(p.run for p in plans):
+    if not any(p.run for _, p in gates):
         # Every step was individually skipped. Reporting the job as PASSED
         # would be the exact lie this tool exists to prevent: it executed
         # nothing. Unproven if any of those skips was.
-        reasons = sorted({p.reason for p in plans})
+        reasons = sorted({p.reason for s, p in gates if s.run or p.unproven})
         return Skip(f"every step skipped — {'; '.join(reasons)}",
-                    unproven=any(p.unproven for p in plans))
+                    unproven=any(p.unproven for _, p in gates))
     return None
 
 
@@ -900,10 +1032,12 @@ def print_plan(repo: Path, plan: list[tuple[Job, Skip | None]]) -> None:
     print(f"ci-local: {repo.name} on {local_platform()}\n")
     lanes: list[str] = []
     for job, skip in plan:
-        plans = [(s, plan_step(s)) for s in job.steps if s.run]
+        # Action steps are planned too: a gate action is an unproven lane.
+        plans = [(s, plan_step(s)) for s in job.steps if s.run or s.uses]
         runs = sum(1 for _, p in plans if p.run)
+        total = sum(1 for s, _ in plans if s.run)
         mark = "run " if skip is None else "skip"
-        print(f"  [{mark}] {job.display:32} {job.workflow:22} {runs}/{len(plans)} runnable")
+        print(f"  [{mark}] {job.display:32} {job.workflow:22} {runs}/{total} runnable")
         if skip is not None:
             print(f"         ↳ {'UNPROVEN — ' if skip.unproven else ''}{skip.reason}")
             if skip.unproven:

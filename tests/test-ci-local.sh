@@ -11,11 +11,13 @@
 #
 # The second fixture is a multi-lane workflow: a services job, a step whose
 # `if:` reads step outputs, an E2E step whose env needs runner context, a
-# pull_request_target workflow, workflow-level defaults. Those lanes run on
-# every hosted push and could not run here; the suite asserts they come back
-# UNPROVEN (summary PARTIAL, JSON `unproven`, exit 2 under --strict) and never
-# as passed. The last suite removes each guard from a copy of ci-local.py and
-# requires this suite to go red; an anchor that no longer matches is a failure.
+# pull_request_target workflow, workflow-level defaults; later fixtures add
+# secrets, unusual job ids, compound job-level if:, mixed triggers and gates
+# that are actions. Those lanes run on every hosted push and could not run
+# here; the suite asserts they come back UNPROVEN (summary PARTIAL, JSON
+# `unproven`, exit 2 under --strict) and never as passed. The last suite
+# removes each guard from a copy of ci-local.py and requires this suite to go
+# red; an anchor that no longer matches is a failure.
 #
 # Usage:
 #   bash tests/test-ci-local.sh        # Run all tests
@@ -495,7 +497,10 @@ assert_eq "$CHECK" "ok" "verdict, unproven, partial, skipped[].unproven and pass
 # Each job here was reported as a REASONED skip, or not reported at all, by an
 # earlier version of this runner, while the hosted push/PR run executes it:
 #   - a secret or GitHub context inherited from workflow or job env made every
-#     step a "needs a repository secret" skip, and the run read pass;
+#     step a "needs a repository secret" skip, and the run read pass; the next
+#     version ran such a step with the secret unset, which lets aws, gh, npm
+#     or docker fall back to this machine's own credentials. A secret, own or
+#     inherited, now keeps its step from running, and the lane is unproven;
 #   - a job-level if: on a push/PR condition read as a schedule tier;
 #   - GitHub's own starter template puts step dashes level with `steps:`, so no
 #     step parsed and the job read as setup-only;
@@ -519,13 +524,26 @@ jobs:
       CI_LOCAL_T_COV: ${{ secrets.CODECOV_TOKEN }}
     steps:
       - name: Upload coverage
+        run: touch .job-secret-ran
+      - name: Overrides it with a literal
+        env:
+          CI_LOCAL_T_COV: local
         run: |
-          test -z "${CI_LOCAL_T_COV+set}"
-          touch .job-secret-ran
+          test "$CI_LOCAL_T_COV" = local
+          touch .job-secret-override-ran
+
+  step_secret:
+    name: Step Secret
+    runs-on: ubuntu-latest
+    steps:
       - name: Own secret
         env:
           CI_LOCAL_T_KEY: ${{ secrets.DEPLOY_KEY }}
         run: touch .own-secret-ran
+      - name: Secret in run
+        run: touch .run-secret-ran  # ${{ secrets.DEPLOY_KEY }}
+      - name: After the secrets
+        run: touch .after-secret-ran
 
   run_expr:
     name: Run Expression
@@ -637,19 +655,45 @@ on:
   pull_request:
 
 env:
-  CI_LOCAL_T_GH: ${{ github.token }}
   CI_LOCAL_T_REPO: ${{ github.repository }}
+
+jobs:
+  wf_expr:
+    name: Workflow Expression
+    runs-on: ubuntu-latest
+    steps:
+      - name: Runs without it
+        run: |
+          test -z "${CI_LOCAL_T_REPO+set}"
+          touch .wf-expr-ran
+
+  job_expr:
+    name: Job Expression
+    runs-on: ubuntu-latest
+    env:
+      CI_LOCAL_T_JOBX: ${{ vars.SOMETHING }}
+    steps:
+      - name: Runs without the job value
+        run: |
+          test -z "${CI_LOCAL_T_JOBX+set}"
+          touch .job-expr-ran
+YAML
+# A workflow-level token: run with it unset, `gh` would use this machine's
+# own `gh auth` login. The step must not run at all.
+cat > "$EDGES/.github/workflows/token.yml" <<'YAML'
+name: Token
+on: [push, pull_request]
+
+env:
+  CI_LOCAL_T_GH: ${{ github.token }}
 
 jobs:
   wf_token:
     name: Workflow Token
     runs-on: ubuntu-latest
     steps:
-      - name: Runs without the token
-        run: |
-          test -z "${CI_LOCAL_T_GH+set}"
-          test -z "${CI_LOCAL_T_REPO+set}"
-          touch .wf-token-ran
+      - name: Would fall back to gh auth
+        run: touch .wf-token-ran
 YAML
 cat > "$EDGES/.github/workflows/shell.yml" <<'YAML'
 name: Shell
@@ -698,14 +742,22 @@ YAML
 edges() { python3 "$RUNNER" --repo "$EDGES" "$@" 2>&1; }
 edge_ran() { [[ -e "$EDGES/.$1-ran" ]]; }
 
-section "an inherited secret, a push/PR if:, a starter template: unproven or run, never reasoned"
+section "a secret never runs here, an inherited expression runs unset, a push/PR if: is unproven"
 OUT="$(edges --list)"
 eafter() { grep -A2 -F -- "$1" <<< "$OUT"; }
-assert_contains "$(eafter '] Job Secret')" "UNPROVEN step Upload coverage: runs without CI_LOCAL_T_COV" \
-  "a job-level secret is not a reasoned skip: its step runs without it, unproven"
-assert_contains "$(eafter '] Job Secret')" "1/2 runnable" "a secret the step declares itself is still the reasoned class"
-assert_contains "$(eafter '] Workflow Token')" "runs without CI_LOCAL_T_GH, CI_LOCAL_T_REPO" \
-  "a workflow-level github.token and a non-secret expression run unset, unproven"
+assert_contains "$(eafter '] Job Secret')" "UNPROVEN step Upload coverage: needs a repository secret (CI_LOCAL_T_COV)" \
+  "a job-level secret keeps its step from running, and that lane is UNPROVEN"
+assert_contains "$(eafter '] Job Secret')" "1/2 runnable" "a step overriding the inherited secret with a literal still runs"
+assert_contains "$(eafter '] Step Secret')" "UNPROVEN step Own secret: needs a repository secret (CI_LOCAL_T_KEY)" \
+  "a step-level secret is UNPROVEN, not a reasoned skip"
+assert_contains "$(eafter '] Step Secret')" "UNPROVEN step Secret in run: needs a repository secret (in run:)" \
+  "a secret used in run: is UNPROVEN too"
+assert_contains "$(eafter '] Workflow Token')" "UNPROVEN — every step skipped — needs a repository secret (CI_LOCAL_T_GH)" \
+  "a workflow-level github.token keeps every step from running: that job is UNPROVEN"
+assert_contains "$(eafter '] Workflow Expression')" "UNPROVEN step Runs without it: runs without CI_LOCAL_T_REPO" \
+  "a workflow-level non-secret expression runs unset, unproven"
+assert_contains "$(eafter '] Job Expression')" "runs without CI_LOCAL_T_JOBX, CI_LOCAL_T_REPO" \
+  "a job-level non-secret expression runs unset, unproven"
 assert_contains "$(eafter '] Run Expression')" "UNPROVEN step Print SHA: uses a GitHub expression" \
   "a \${{ }} in run: is UNPROVEN, not run and not reasoned"
 assert_contains "$(eafter '] Runner Variable')" "UNPROVEN — runs-on is an expression" \
@@ -732,18 +784,22 @@ assert_contains "$(eafter '] build')" "1/1 runnable" "the GitHub starter templat
 section "the edges run: PARTIAL with each lane named, the right steps executed"
 rm -f "$EDGES"/.*-ran
 # A value the developer's shell exports must not stand in for one the hosted run sets.
-OUT="$(CI_LOCAL_T_GH=from-the-shell edges)"; RC=$?
+OUT="$(CI_LOCAL_T_REPO=from-the-shell CI_LOCAL_T_JOBX=from-the-shell edges)"; RC=$?
 assert_eq "$RC" "0" "nothing failed: an inherited expression was unset, not left as its literal"
-assert_contains "$OUT" "ci-local: PARTIAL: 8/8 job(s) passed" "the summary is PARTIAL over the 8 jobs that ran"
-assert_contains "$OUT" "10 lane(s) unproven: Job Secret › Upload coverage, Run Expression › Print SHA, Runner Variable, PR Services, PR Only, Block Scalar Env, Reusable, Flow Steps, Job Defaults, Workflow Token › Runs without the token" \
-  "and names all ten unproven lanes on that line"
-for m in wf-token job-secret after-sha always-job env-comment script-action bash-defaults starter; do
+assert_contains "$OUT" "ci-local: PARTIAL: 10/10 job(s) passed" "the summary is PARTIAL over the 10 jobs that ran"
+assert_contains "$OUT" "15 lane(s) unproven: Job Secret › Upload coverage, Step Secret › Own secret, Step Secret › Secret in run, Run Expression › Print SHA, Runner Variable, PR Services, PR Only, Block Scalar Env, Script Action › actions/github-script@v7, Reusable, Flow Steps, Job Defaults, Workflow Expression › Runs without it, Job Expression › Runs without the job value, Workflow Token" \
+  "and names all fifteen unproven lanes on that line"
+for m in wf-expr job-expr job-secret-override after-secret after-sha always-job env-comment script-action \
+         bash-defaults starter; do
   if edge_ran "$m"; then pass "the .$m-ran step executed"; else fail "the .$m-ran step executed" "marker missing"; fi
 done
-for m in own-secret sha runner-var pr-services pr-only on-failure block-env flow job-defaults; do
+# The secret steps above all: run with the variable unset, each would have
+# reached this machine's own credentials.
+for m in job-secret own-secret run-secret wf-token sha runner-var pr-services pr-only on-failure block-env \
+         flow job-defaults; do
   if edge_ran "$m"; then fail "the .$m-ran lane was not executed here" "it executed"; else pass "the .$m-ran lane was not executed here"; fi
 done
-JSON="$(CI_LOCAL_T_GH=from-the-shell python3 "$RUNNER" --repo "$EDGES" --json --strict 2>/dev/null)"; RC=$?
+JSON="$(CI_LOCAL_T_REPO=from-the-shell python3 "$RUNNER" --repo "$EDGES" --json --strict 2>/dev/null)"; RC=$?
 assert_eq "$RC" "2" "--strict exits 2 on the edges run"
 CHECK=$(python3 - "$JSON" <<'PY'
 import json, sys
@@ -752,20 +808,24 @@ problems = []
 if d.get("verdict") != "partial":
     problems.append(f"verdict={d.get('verdict')!r}")
 got = sorted(f"{u['job']}|{u['step']}" for u in d.get("unproven", []))
-want = sorted(["Job Secret|Upload coverage", "Run Expression|Print SHA", "Runner Variable|",
-               "PR Services|", "PR Only|", "Block Scalar Env|", "Reusable|", "Flow Steps|",
-               "Job Defaults|", "Workflow Token|Runs without the token"])
+want = sorted(["Job Secret|Upload coverage", "Step Secret|Own secret", "Step Secret|Secret in run",
+               "Run Expression|Print SHA", "Runner Variable|", "PR Services|", "PR Only|",
+               "Block Scalar Env|", "Script Action|actions/github-script@v7", "Reusable|",
+               "Flow Steps|", "Job Defaults|", "Workflow Expression|Runs without it",
+               "Job Expression|Runs without the job value", "Workflow Token|"])
 if got != want:
     problems.append(f"unproven={got}")
-if sorted(d.get("partial", [])) != ["Job Secret", "Run Expression", "Workflow Token"]:
+if sorted(d.get("partial", [])) != ["Job Expression", "Job Secret", "Run Expression", "Script Action",
+                                    "Step Secret", "Workflow Expression"]:
     problems.append(f"partial={d.get('partial')}")
-want_passed = ["Always Job", "Bash Defaults", "Env Comment", "Job Secret", "Run Expression",
-               "Script Action", "Workflow Token", "build"]
+want_passed = ["Always Job", "Bash Defaults", "Env Comment", "Job Expression", "Job Secret",
+               "Run Expression", "Script Action", "Step Secret", "Workflow Expression", "build"]
 if sorted(d.get("passed", [])) != want_passed:
     problems.append(f"passed={d.get('passed')}")
 skipped = {s["job"]: s.get("unproven") for s in d.get("skipped", [])}
 if skipped != {"Runner Variable": True, "PR Services": True, "PR Only": True, "On Failure": False,
-               "Block Scalar Env": True, "Reusable": True, "Flow Steps": True, "Job Defaults": True}:
+               "Block Scalar Env": True, "Reusable": True, "Flow Steps": True, "Job Defaults": True,
+               "Workflow Token": True}:
     problems.append(f"skipped={skipped}")
 print("; ".join(problems) or "ok")
 PY
@@ -781,13 +841,13 @@ cat > "$NOTE/.github/workflows/note.yml" <<'YAML'
 name: Note
 on: [push]
 env:
-  CI_LOCAL_T_NEEDED: ${{ secrets.NEEDED }}
+  CI_LOCAL_T_NEEDED: ${{ vars.NEEDED }}
 jobs:
   needs_it:
     name: Needs It
     runs-on: ubuntu-latest
     steps:
-      - name: Reads the inherited secret
+      - name: Reads the inherited variable
         run: test -n "${CI_LOCAL_T_NEEDED:-}"
 YAML
 OUT="$(python3 "$RUNNER" --repo "$NOTE" 2>&1)"; RC=$?
@@ -796,6 +856,277 @@ assert_contains "$OUT" "note: runs without CI_LOCAL_T_NEEDED" "the failure names
 REASON=$(python3 "$RUNNER" --repo "$NOTE" --json 2>/dev/null \
   | python3 -c "import json,sys; print(json.load(sys.stdin)['failed'][0].get('reason', ''))" 2>/dev/null)
 assert_contains "$REASON" "runs without CI_LOCAL_T_NEEDED" "and so does the JSON failed[].reason"
+
+# ─── 8b. Job discovery: a lane never vanishes or merges ─────────────
+# Every line at the jobs: indent is a job. A lowercase-only header regex read
+# `Upper_Case:`, `_private:` and `commented:  # note` as nothing, and their
+# keys landed on the job above: its name overwritten, its steps merged.
+JOBS="$SANDBOX/jobs"; mkdir -p "$JOBS/.github/workflows"
+cat > "$JOBS/.github/workflows/jobs.yml" <<'YAML'
+name: Jobs
+on: [push, pull_request]
+
+jobs:
+  first:
+    name: First
+    runs-on: ubuntu-latest
+    steps:
+      - run: touch .first-ran
+  commented:  # a trailing comment after the id is legal YAML
+    name: Commented
+    runs-on: ubuntu-latest
+    steps:
+      - run: touch .commented-ran
+  Upper_Case:
+    name: Upper Case
+    runs-on: ubuntu-latest
+    steps:
+      - run: touch .upper-ran
+  _private:
+    runs-on: ubuntu-latest
+    steps:
+      - run: touch .private-ran
+  "quoted-id":
+    runs-on: ubuntu-latest
+    steps:
+      - run: touch .quoted-ran
+  deep_keys:
+      name: Deep Keys
+      runs-on: ubuntu-latest
+      steps:
+        - run: touch .deep-ran
+  flow_job: {runs-on: ubuntu-latest, steps: [{run: touch .flow-job-ran}]}
+YAML
+cat > "$JOBS/.github/workflows/wide.yml" <<'YAML'
+name: Wide
+on: [push]
+jobs:
+    wide:
+        name: Wide Indent
+        runs-on: ubuntu-latest
+        steps:
+            - run: touch .wide-ran
+YAML
+jobs_ci() { python3 "$RUNNER" --repo "$JOBS" "$@" 2>&1; }
+job_ran() { [[ -e "$JOBS/.$1-ran" ]]; }
+
+section "every job is discovered: legal ids run, unreadable ones are UNPROVEN"
+OUT="$(jobs_ci --list)"
+jafter() { grep -A1 -F -- "$1" <<< "$OUT"; }
+LISTED=$(grep -cE '^  \[(run |skip)\] ' <<< "$OUT" || true)
+assert_eq "$LISTED" "8" "all 8 jobs are listed, none merged into its neighbour"
+assert_contains "$OUT" "[run ] First " "the job above an unusual id keeps its own name"
+assert_contains "$(jafter '] First ')" "1/1 runnable" "and only its own step"
+assert_contains "$OUT" "[run ] Commented " "a job id with a trailing comment is a job"
+assert_contains "$OUT" "[run ] Upper Case " "a job id starting with an uppercase letter is a job"
+assert_contains "$OUT" "[run ] _private " "a job id starting with _ is a job"
+assert_contains "$OUT" "[run ] quoted-id " "a quoted job id is a job"
+assert_contains "$(jafter '] deep_keys')" "UNPROVEN — uses a job body it could not read" \
+  "a job whose keys sit at another indent is UNPROVEN, not setup-only"
+assert_contains "$(jafter '] flow_job')" "a job written on its key line" \
+  "a flow-style job is UNPROVEN, naming why"
+assert_contains "$(jafter '] wide')" "a jobs: block indented 4 spaces" \
+  "jobs indented four spaces are listed, UNPROVEN, not dropped"
+rm -f "$JOBS"/.*-ran
+OUT="$(jobs_ci)"
+assert_contains "$OUT" "ci-local: PARTIAL: 5/5 job(s) passed" "the five readable jobs ran"
+assert_contains "$OUT" "3 lane(s) unproven: deep_keys, flow_job, wide" "and the three unreadable ones are named"
+for m in first commented upper private quoted; do
+  if job_ran "$m"; then pass "the .$m-ran job executed"; else fail "the .$m-ran job executed" "marker missing"; fi
+done
+for m in deep flow-job wide; do
+  if job_ran "$m"; then fail "the .$m-ran job was not executed here" "it executed"; else pass "the .$m-ran job was not executed here"; fi
+done
+
+# ─── 8c. Compound job-level if: ─────────────────────────────────────
+# Reasoned only when false on every push AND pull_request. A combinator that
+# breaks turns a lane the PR run executes into a "conditional" skip.
+CONDS="$SANDBOX/conds"; mkdir -p "$CONDS/.github/workflows"
+{
+  echo "name: Conditions"
+  echo "on: [push, pull_request]"
+  echo "jobs:"
+  n=0
+  while IFS='|' read -r cname cif; do
+    n=$((n + 1))
+    printf '  c%s:\n    name: %s\n    if: %s\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo c%s\n' \
+      "$n" "$cname" "$cif" "$n"
+  done <<'CONDS'
+Schedule Or PR|github.event_name == 'schedule' || github.event_name == 'pull_request'
+Schedule Or Dispatch|github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+Schedule And Main|github.event_name == 'schedule' && github.ref == 'refs/heads/main'
+PR And Main|github.event_name == 'pull_request' && github.ref == 'refs/heads/main'
+Grouped Off|${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.repository == 'o/r' }}
+Precedence|github.event_name == 'schedule' && github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
+Quoted Operator|github.event_name == 'schedule' && github.head_ref != 'a || b'
+Negated Schedule|${{ !(github.event_name == 'schedule') }}
+CONDS
+} > "$CONDS/.github/workflows/conds.yml"
+
+section "compound job-level if: — || and && over event_name, grouped, quoted, negated"
+OUT="$(python3 "$RUNNER" --repo "$CONDS" --list 2>&1)"
+cafter() { grep -A1 -F -- "] $1 " <<< "$OUT"; }
+assert_contains "$(cafter 'Schedule Or PR')" "UNPROVEN — job-level if:" \
+  "schedule || pull_request runs on PRs: UNPROVEN, not a conditional tier"
+assert_contains "$(cafter 'Schedule Or Dispatch')" "conditional" "schedule || workflow_dispatch is a reasoned tier"
+assert_contains "$(cafter 'Schedule And Main')" "conditional" "schedule && anything is a reasoned tier"
+assert_contains "$(cafter 'PR And Main')" "UNPROVEN — job-level if:" "pull_request && an unknown is UNPROVEN"
+assert_contains "$(cafter 'Grouped Off')" "conditional" "(schedule || dispatch) && anything is a reasoned tier"
+assert_contains "$(cafter 'Precedence')" "UNPROVEN — job-level if:" \
+  "&& binds tighter than ||: schedule && x || pull_request runs on PRs"
+assert_contains "$(cafter 'Quoted Operator')" "conditional" "a || inside a quoted string is not an operator"
+assert_contains "$(cafter 'Negated Schedule')" "UNPROVEN — job-level if:" "!(schedule) runs on push: UNPROVEN"
+
+# ─── 8d. pull_request_target is GitHub-side only without push/PR ────
+# A substring test over the raw on: block, comments included, ran a
+# pull_request_target job here when a comment said `pull_request:`, and
+# skipped a workflow that ALSO runs on push.
+TRIG="$SANDBOX/trig"; mkdir -p "$TRIG/.github/workflows"
+cat > "$TRIG/.github/workflows/both.yml" <<'YAML'
+name: Both
+on:
+  push:
+  pull_request_target:   # labels fork PRs as well
+jobs:
+  both:
+    name: Push And Target
+    runs-on: ubuntu-latest
+    steps:
+      - run: touch .both-ran
+YAML
+cat > "$TRIG/.github/workflows/target.yml" <<'YAML'
+name: Target
+on:
+# pull_request: retired when fork PRs needed write scopes
+  pull_request_target:   # was pull_request: before
+    types: [opened]
+jobs:
+  target:
+    name: Target Only
+    runs-on: ubuntu-latest
+    steps:
+      - run: touch .target-ran
+YAML
+cat > "$TRIG/.github/workflows/flow.yml" <<'YAML'
+name: Flow
+on: [pull_request_target, issues]
+jobs:
+  flow:
+    name: Flow Target
+    runs-on: ubuntu-latest
+    steps:
+      - run: touch .flow-target-ran
+YAML
+cat > "$TRIG/.github/workflows/quoted.yml" <<'YAML'
+name: Quoted
+"on": pull_request_target
+"jobs":
+  quoted:
+    name: Quoted Target
+    runs-on: ubuntu-latest
+    steps:
+      - run: touch .quoted-target-ran
+YAML
+section "pull_request_target: GitHub-side only when no push/pull_request triggers it"
+rm -f "$TRIG"/.*-ran
+OUT="$(python3 "$RUNNER" --repo "$TRIG" 2>&1)"
+assert_contains "$OUT" "ci-local: 1/1 job(s) passed" "only the workflow that also runs on push ran"
+for j in "Target Only" "Flow Target" "Quoted Target"; do
+  assert_contains "$OUT" "skipped $j: runs on GitHub's side only" "$j is GitHub-side only"
+done
+if [[ -e "$TRIG/.both-ran" ]]; then pass "push + pull_request_target runs here: the push run executes it"
+else fail "push + pull_request_target runs here: the push run executes it" "marker missing"; fi
+for m in target flow-target quoted-target; do
+  if [[ -e "$TRIG/.$m-ran" ]]; then fail "the .$m-ran job did not run here" "it executed"
+  else pass "the .$m-ran job did not run here"; fi
+done
+
+# ─── 8e. Gates that are actions are UNPROVEN ────────────────────────
+# A job whose only gate is an action — a lint action, a local composite —
+# read as a setup-only skip, so a run of it plus one other job read pass.
+ACTS="$SANDBOX/acts"; mkdir -p "$ACTS/.github/workflows"
+cat > "$ACTS/.github/workflows/acts.yml" <<'YAML'
+name: Actions
+on: [push, pull_request]
+jobs:
+  lint:
+    name: Lint Action
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: golangci/golangci-lint-action@v6   # pinned upstream
+        with:
+          version: latest
+  composite:
+    name: Local Composite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the suite
+        uses: ./.github/actions/test
+  mixed:
+    name: Setup Then Action
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4   # v4.3.1
+      - uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@v4
+      - run: touch .mixed-install-ran
+      - name: Lint
+        uses: super-linter/super-linter@v7
+  setup_only:
+    name: Setup Only
+    runs-on: ubuntu-latest
+    steps:
+      - uses: 'actions/checkout@v4'
+      - uses: actions/cache@v4
+        with:
+          path: x
+  notify:
+    name: Failure Notice
+    runs-on: ubuntu-latest
+    steps:
+      - run: touch .notify-job-ran
+      - name: Notify
+        if: failure()
+        uses: some/notify-action@v1
+YAML
+section "a gate that is an action is UNPROVEN; setup actions are not gates"
+OUT="$(python3 "$RUNNER" --repo "$ACTS" --list 2>&1)"
+aafter() { grep -A1 -F -- "] $1 " <<< "$OUT"; }
+assert_contains "$(aafter 'Lint Action')" \
+  "UNPROVEN — its gates are actions, which this runner does not execute: golangci/golangci-lint-action@v6" \
+  "a job whose only gate is a lint action is UNPROVEN, not setup-only"
+assert_contains "$(aafter 'Local Composite')" "UNPROVEN — its gates are actions" \
+  "a local composite action is a gate, not setup"
+assert_contains "$(aafter 'Setup Then Action')" "UNPROVEN step Lint: action super-linter/super-linter@v7" \
+  "an action gate in a job that also runs is an UNPROVEN step"
+assert_contains "$(aafter 'Setup Only')" "no run: steps (setup-only job)" \
+  "checkout and cache alone are setup, a reasoned skip"
+assert_lacks "$(aafter 'Setup Only')" "UNPROVEN" "and not an unproven lane"
+assert_lacks "$(aafter 'Failure Notice')" "UNPROVEN" "an action under if: failure() is off the success path"
+rm -f "$ACTS"/.*-ran
+JSON="$(python3 "$RUNNER" --repo "$ACTS" --json 2>/dev/null)"
+CHECK=$(python3 - "$JSON" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+problems = []
+if d.get("verdict") != "partial":
+    problems.append(f"verdict={d.get('verdict')!r}")
+got = sorted(f"{u['job']}|{u['step']}" for u in d.get("unproven", []))
+if got != ["Lint Action|", "Local Composite|", "Setup Then Action|Lint"]:
+    problems.append(f"unproven={got}")
+if sorted(d.get("passed", [])) != ["Failure Notice", "Setup Then Action"]:
+    problems.append(f"passed={d.get('passed')}")
+skipped = {s["job"]: s.get("unproven") for s in d.get("skipped", [])}
+if skipped != {"Lint Action": True, "Local Composite": True, "Setup Only": False}:
+    problems.append(f"skipped={skipped}")
+print("; ".join(problems) or "ok")
+PY
+)
+assert_eq "$CHECK" "ok" "verdict, unproven, passed and skipped are exact for action gates"
+python3 "$RUNNER" --repo "$ACTS" --job "Lint Action" --strict >/dev/null 2>&1; RC=$?
+assert_eq "$RC" "2" "a run of only an action-gated job is not green under --strict"
 
 # ─── 9. Mutations: removing each guard turns this suite red ──────────
 # A clean run and a run with a guard missing print the same "ALL PASSED"
@@ -838,12 +1169,13 @@ PY
 mutation green "no-op control (a comment reworded)" \
   '# Report-only for one week, then the default' '# Report-only for one week,  then the default'
 mutation red "the reasoned-first order (unmodelled tested before pull_request_target)" \
-  '    if "pull_request_target" in on_block and "pull_request:" not in on_block:' \
-  '    if job.unmodelled:
+  '    triggers = workflow_triggers(on_block)
+' '    if job.unmodelled:
         what = ", ".join(sorted(set(job.unmodelled)))
         return Skip(f"uses {what}, which this runner does not model — run it hosted, "
                     "or split the job", unproven=True)
-    if "pull_request_target" in on_block and "pull_request:" not in on_block:'
+    triggers = workflow_triggers(on_block)
+'
 mutation red "unproven on an unmodelled job (services:)" \
   '"or split the job", unproven=True)' '"or split the job")'
 mutation red "an unevaluable step if: being unproven" \
@@ -891,9 +1223,9 @@ mutation red "the none verdict when no job ran" \
   '    elif not ran:
         verdict = "none"
 ' ''
-mutation red "a workflow-level secret being inherited, not the reasoned class" \
+mutation red "a workflow-level expression being inherited (run unset), not the step's own" \
   '(workflow_env.keys() | job.env.keys())' 'job.env.keys()'
-mutation red "a job-level secret being inherited, not the reasoned class" \
+mutation red "a job-level expression being inherited (run unset), not the step's own" \
   '(workflow_env.keys() | job.env.keys())' 'workflow_env.keys()'
 mutation red "an inherited expression being unset, not the shell's value" \
   'env.pop(key, None)' 'pass'
@@ -944,6 +1276,96 @@ mutation red "defaults: run: shell: bash alone being modelled" \
     for ln in lines:'
 mutation red "job-level defaults being unproven" \
   'job.unmodelled.append("defaults")' 'pass'
+
+# A secret, own or inherited, never runs: run unset, a tool falls back to
+# this machine's own credentials.
+mutation red "an inherited secret keeping its step from running" \
+  'secrets = sorted(k for k, v in step.env.items() if _expression_kind(v) == "secret")' \
+  'secrets = sorted(k for k, v in step.env.items() if k not in step.inherited and _expression_kind(v) == "secret")'
+mutation red "a step's own secret being the secret class" \
+  'secrets = sorted(k for k, v in step.env.items() if _expression_kind(v) == "secret")' \
+  'secrets = sorted(k for k, v in step.env.items() if k in step.inherited and _expression_kind(v) == "secret")'
+mutation red "a secret in run: being the secret class" \
+  'secrets.append("in run:")' 'pass'
+mutation red "a secret skip being unproven" \
+  '"it, a tool falls back to this machine'"'"'s own credentials",
+                        unproven=True)' \
+  '"it, a tool falls back to this machine'"'"'s own credentials")'
+# Job discovery.
+mutation red "a job id starting with an uppercase letter or _" \
+  '[^\s"'"'"'#][^:]*?)\s*:' '[a-z][\w-]*)\s*:'
+mutation red "a trailing comment after a job id" \
+  '\s*:(?:\s(.*))?""")' '\s*:()""")'
+mutation red "a quoted job id" \
+  '_JOB_HEADER = re.compile(r"""("[^"]*"|'"'"'[^'"'"']*'"'"'|' '_JOB_HEADER = re.compile(r"""('
+mutation red "a job written on its key line being flagged" \
+  '            if rest:
+                # `build:' '            if False:
+                # `build:'
+mutation red "jobs at another indent being flagged" \
+  'current.unmodelled.append(f"a jobs: block indented {job_indent} spaces")' 'pass'
+mutation red "a job body with no runs-on: being unproven" \
+  'if not job.keys & {"runs-on", "uses"}:' 'if False:'
+mutation red "a quoted top-level key (\"jobs\":)" \
+  'section = raw.split(":", 1)[0].strip().strip("'"'"'\"")' 'section = raw.split(":", 1)[0].strip()'
+# Compound job-level if:.
+mutation red "|| being false only when every side is" \
+  'return all(_off_push_pr(d) for d in disjuncts)' 'return any(_off_push_pr(d) for d in disjuncts)'
+mutation red "&& being false when any side is" \
+  'return any(_off_push_pr(c) for c in conjuncts)' 'return all(_off_push_pr(c) for c in conjuncts)'
+mutation red "&& binding tighter than ||" \
+  '    disjuncts = _split_top(e, "||")
+    if len(disjuncts) > 1:
+        return all(_off_push_pr(d) for d in disjuncts)
+    conjuncts = _split_top(e, "&&")
+    if len(conjuncts) > 1:
+        return any(_off_push_pr(c) for c in conjuncts)' \
+  '    conjuncts = _split_top(e, "&&")
+    if len(conjuncts) > 1:
+        return any(_off_push_pr(c) for c in conjuncts)
+    disjuncts = _split_top(e, "||")
+    if len(disjuncts) > 1:
+        return all(_off_push_pr(d) for d in disjuncts)'
+mutation red "an operator inside a quoted string not being one" \
+  'quoted = not quoted          # '"''"' inside a string toggles twice' 'pass'
+mutation red "grouping parentheses being stripped" \
+  'while e.startswith("(") and e.endswith(")"):' 'while False:'
+mutation red "a negated event test not reading as one" \
+  'm = _EVENT_EQ.fullmatch(e)' 'm = _EVENT_EQ.search(e)'
+# pull_request_target triggers.
+mutation red "a push trigger beside pull_request_target keeping the workflow local" \
+  'if "pull_request_target" in triggers and not triggers & _PUSH_PR_EVENTS:' \
+  'if "pull_request_target" in triggers:'
+mutation red "comments stripped from the on: block" \
+  'lines = [re.sub(r"(^|\s)#.*$", "", ln).rstrip() for ln in on_block.splitlines()]' \
+  'lines = [ln.rstrip() for ln in on_block.splitlines()]'
+mutation red "a column-0 comment not ending the on: block" \
+  'if lines[i] and not lines[i][0].isspace() and not lines[i].startswith("#")),' \
+  'if lines[i] and not lines[i][0].isspace()),'
+mutation red "flow-style triggers" \
+  'return set(_flow_names(head))' 'return {head}'
+mutation red "a quoted on: key" \
+  '_ON_KEY = re.compile(r"""^(on|"on"|'"'"'on'"'"')\s*:""")' '_ON_KEY = re.compile(r"^on\s*:")'
+# Gates that are actions.
+mutation red "a gate action being unproven" \
+  ': this runner executes only run: steps",
+                        unproven=True)' ': this runner executes only run: steps")'
+mutation red "a job whose gates are actions being unproven" \
+  '+ ", ".join(actions)[:120], unproven=True)' '+ ", ".join(actions)[:120])'
+mutation red "only setup actions being setup" \
+  'return any(p.startswith("setup-") or p == "action-setup" for p in parts[1:])' 'return True'
+mutation red "checkout, cache and artifacts being setup" \
+  '_SETUP_ACTIONS = frozenset({"checkout", "cache", "upload-artifact", "download-artifact"})' \
+  '_SETUP_ACTIONS: frozenset[str] = frozenset()'
+mutation red "a local composite never being a setup action" \
+  'return False      # ./local composite' 'return True      # ./local composite'
+mutation red "an action off the success path being reasoned" \
+  'if step.condition and success_path_if(step.condition) is False:
+            return StepPlan(False, f"if: {_scalar(step.condition)[:60]} is false on the success path")' \
+  'if False:
+            pass'
+mutation red "uses: read as a YAML scalar" \
+  'step.uses = _scalar(value)' 'step.uses = value'
 
 # A shared host and a 4-core hosted runner both run this: at most 4 at once.
 CL_JOBS=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)
