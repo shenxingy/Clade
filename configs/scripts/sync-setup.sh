@@ -202,7 +202,7 @@ if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
   echo "  Initial commit pushed"
 fi
 
-# ─── Set up project memory symlinks for existing local projects ──────────────
+# ─── Move existing project memories into the store and link them ─────────────
 
 "$(dirname "$0")/sync-link-projects.sh" 2>/dev/null || true
 

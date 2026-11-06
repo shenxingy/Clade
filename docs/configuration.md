@@ -488,6 +488,21 @@ content local, whichever writer slips:
   `~/.claude/.sync-conflicts.log`.
 - **Registration.** Session start adds every conversation-mode project to
   `~/.claude/private-projects` (both the given and the physical path).
+- **Project memory.** `sync-link-projects.sh` (run at session start) moves each
+  project's auto-memory directory into the store so it has git history. It
+  covers `~/.claude/projects`, `$CLAUDE_CONFIG_DIR/projects` and every
+  `~/.claude-profiles/*/projects`. A project listed in
+  `~/.claude/private-projects`, or carrying `.claude/conversation-mode`, is
+  never moved or linked: its memory stays a local directory, and a link it
+  already had into the store is replaced by a local copy. A memory directory
+  whose store copy holds a different version of a file is left in place and
+  listed in `~/.claude/.sync-memory-conflicts`, which `sync-health.sh` prints at
+  the start of every session until you merge it by hand (the history is in
+  `~/.claude/.sync-conflicts.log`). The session-start hook times out at 30 s,
+  so the linker starts no new directory after `CLADE_SYNC_LINK_BUDGET` seconds
+  (default 10) and the next session resumes; to move a long backlog at once,
+  run `CLADE_SYNC_LINK_BUDGET=0 bash ~/.claude/scripts/sync-link-projects.sh`.
+  `sync-link-projects.sh --dry-run` lists what would move.
 - **Private sessions.** A personal-mode skill can mark a session wherever it was
   started: `touch ~/.claude/private-sessions/$CLAUDE_CODE_SESSION_ID`. The
   correction hook then treats it like a conversation-mode project.
@@ -583,9 +598,32 @@ capped at 10/run. Killed mutants drop from the baseline automatically.
 
 ## Add a new hook
 
-1. Create `configs/hooks/your-hook.sh`
+1. Create `configs/hooks/your-hook.sh`. Within its first 10 lines it must carry
+   exactly one provenance line, with ` · retire-when: ` (a middle dot) between
+   the two halves:
+
+   ```bash
+   # exists-for: <incident or need>, <YYYY-MM-DD>, <commit sha or #PR> · retire-when: <condition>
+   ```
+
+   - **exists-for** names the recorded incident the hook answers, its date and
+     the commit or PR that records it. If nothing records one, write
+     `no incident recorded (added <date> in <sha or #PR>)` and the need it
+     serves; never invent an incident. A cited sha must resolve to a commit; a
+     new hook may cite its own open PR.
+   - **retire-when** names the condition under which the hook may be removed.
+     A hook that blocks retires only after an ablation shows no harm without
+     it, because a guard that never fires may be working. For any hook, a
+     condition resting on it going quiet ("unused for 60 days", "has not
+     fired", "0 hits", "last fired 90 days ago") is refused unless it names an
+     ablation. The check matches these wordings, not the meaning, so state the
+     condition plainly rather than around it.
+   - `/generate-hook` emits this line for you to fill. A `<…>` or `{…}`
+     placeholder left in it is refused.
 2. Add the hook definition to `configs/settings-hooks.json`
-3. Run `./install.sh`
+3. Run `bash tests/test-hook-provenance.sh`: it checks the line on every hook,
+   and that every hook the settings wire is among those checked
+4. Run `./install.sh`
 
 ## Add a new agent
 

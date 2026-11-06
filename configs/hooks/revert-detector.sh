@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # revert-detector.sh — Detect git revert/reset commands as implicit corrections
+# exists-for: no incident recorded (added 2026-02-25 in 2e9b184); need: record git revert, reset and restore as implicit corrections in corrections/history.jsonl · retire-when: session-scorecard.sh, correction-detector.sh and radar no longer read its records, or the correction channel is retired
 # Triggered by PreToolUse on Bash
 #
 # When a user (or Claude) runs git revert, git reset --hard, git checkout -- <file>,

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # learning-to-rule.sh — Convert high-confidence learnings to rule candidates
+# exists-for: no incident recorded (added 2026-04-13 in 13ce001); need: turn high-confidence .claude/learnings.jsonl entries into corrections/rules.md candidates · retire-when: /learn is retired, or the ablation in TODO.md 'Promoted rules have no half-life' shows rules from learnings give no lift
 #
 # Called from session-context.sh at session start.
 # Reads .claude/learnings.jsonl (project-local), finds entries with:

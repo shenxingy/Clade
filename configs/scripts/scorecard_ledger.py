@@ -81,6 +81,8 @@ import time
 from pathlib import Path
 from typing import IO, Any, Callable, Iterator
 
+from transcripts import config_dir
+
 # ─── Constants ──────────────────────────────────────────────────────────────
 
 LEDGER_VERSION = 1
@@ -110,13 +112,6 @@ Scanned = list[tuple[Path, dict[str, Any]]]
 
 
 # ─── Where things live ──────────────────────────────────────────────────────
-
-
-def config_dir() -> Path:
-    """$CLAUDE_CONFIG_DIR when set and non-empty, else ~/.claude."""
-
-    override = os.environ.get("CLAUDE_CONFIG_DIR", "")
-    return Path(override).expanduser() if override else Path.home() / ".claude"
 
 
 def default_ledger_path() -> Path:

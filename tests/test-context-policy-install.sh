@@ -159,12 +159,14 @@ chmod +x "$SANDBOX/share/versions/2.1.283"
 ln -s "$SANDBOX/share/versions/2.1.283" "$SANDBOX/bin/linked/claude"
 # mkscript NAME BODY — a fake claude whose body is raw sh (sleep by absolute path:
 # PATH holds only the fake). stdin: reads stdin to EOF first, so it answers at
-# once only when apply closes stdin. slow: answers after 20 s, past the 10 s
-# timeout. racer: rewrites the race case's settings.json while it is asked.
+# once only when apply closes stdin. slow: answers after 90 s, far past the 10 s
+# timeout, so a bound with room for a loaded host's own overhead still tells
+# "gave up at the timeout" from "waited for the answer". racer: rewrites the
+# race case's settings.json while it is asked.
 SLEEP_BIN="$(command -v sleep)"
 mkscript() { mkdir -p "$SANDBOX/bin/$1"; printf '#!/bin/sh\n%s\n' "$2" > "$SANDBOX/bin/$1/claude"; chmod +x "$SANDBOX/bin/$1/claude"; }
 mkscript stdin 'while read -r line; do :; done; echo "2.1.283 (Claude Code)"'
-mkscript slow "$SLEEP_BIN 20; echo '2.1.283 (Claude Code)'"
+mkscript slow "$SLEEP_BIN 90; echo '2.1.283 (Claude Code)'"
 mkscript racer "echo x >> '$SANDBOX/bin/racer/ran'; printf '{\"effortLevel\": \"high\"}\\n' > '$SANDBOX/cases/race/settings.json'; echo '2.1.283 (Claude Code)'"
 
 # mkpolicy NAME JQ_FILTER — the shipped policy, off by default, with managed
@@ -809,10 +811,15 @@ wait "$SLOW_PID"
 slow_rc=$?
 slow_secs=$(( $(date +%s) - SLOW_T0 ))
 SLOW_PID=""
-if [[ "$slow_rc" -eq 0 && "$(val)" == "ABSENT" && "$slow_secs" -lt 19 ]] && logged "Skipped (Claude Code version unreadable)"; then
-  pass "a claude that answers only after 20 s: given up at the timeout (${slow_secs}s), nothing written, says why"
+# The bound measures the wait, not the host: apply's own work around the 10 s
+# timeout took 28 s on a host at load ~80 (2026-11-06), and the old bound of
+# 19 s, 1 s under a 20 s answer, failed there twice in a passing run. Content
+# alone already tells the two apart (an answer read in time is a readable
+# version, and the value is written); the bound stays as a second check.
+if [[ "$slow_rc" -eq 0 && "$(val)" == "ABSENT" && "$slow_secs" -lt 80 ]] && logged "Skipped (Claude Code version unreadable)"; then
+  pass "a claude that answers only after 90 s: given up at the timeout (${slow_secs}s), nothing written, says why"
 else
-  fail "a claude that answers only after 20 s: given up at the timeout, nothing written, says why" \
+  fail "a claude that answers only after 90 s: given up at the timeout, nothing written, says why" \
     "rc=$slow_rc value=$(val) after ${slow_secs}s log=$(cat "$CASE/apply.log")"
 fi
 
