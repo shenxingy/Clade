@@ -13,11 +13,12 @@
 5. [Standing multi-agent orchestration](#standing-multi-agent-orchestration)
 6. [Context window policy](#context-window-policy)
 7. [Add a correction rule manually](#add-a-correction-rule-manually)
-8. [Conversation-mode projects](#conversation-mode-projects)
-9. [Adjust quality gate thresholds](#adjust-quality-gate-thresholds)
-10. [Add a new hook](#add-a-new-hook)
-11. [Add a new agent](#add-a-new-agent)
-12. [Add a new skill](#add-a-new-skill)
+8. [Keep corrected sessions](#keep-corrected-sessions)
+9. [Conversation-mode projects](#conversation-mode-projects)
+10. [Adjust quality gate thresholds](#adjust-quality-gate-thresholds)
+11. [Add a new hook](#add-a-new-hook)
+12. [Add a new agent](#add-a-new-agent)
+13. [Add a new skill](#add-a-new-skill)
 
 ---
 
@@ -412,6 +413,40 @@ Edit `~/.claude/corrections/rules.md`:
 - [2026-02-17] imports: Use @/ path aliases instead of relative paths
 - [2026-02-17] naming: Use camelCase for TypeScript variables, not snake_case
 ```
+
+## Keep corrected sessions
+
+A session where you corrected or reverted the agent is a ready-made eval, but
+Claude Code deletes its transcript 30 days after the last write. Each record in
+`~/.claude/corrections/history.jsonl` names its session (`session_id`,
+`transcript_path`), and `keep-sessions.py` copies those sessions somewhere the
+cleanup does not reach:
+
+```bash
+python3 configs/scripts/keep-sessions.py           # what it would keep; writes nothing
+python3 configs/scripts/keep-sessions.py --apply   # keep them
+zcat ~/.local/share/clade/sessions/<session_id>/transcript.jsonl.gz | head
+```
+
+- **What.** The main transcript and every file under its `<session>/`
+  directory (subagent and Workflow transcripts, tool results), for every record
+  that is not a `probe`. Records written before the detectors recorded a
+  session are counted as unlinkable, with the reason.
+- **Redacted.** Every string goes through `redact.py`; JSONL and JSON are
+  re-serialized, so a mask never breaks a record. A file that is not UTF-8 (an
+  image, a PDF page) cannot be redacted and is not kept. Symlinks are not
+  followed.
+- **Where.** `~/.local/share/clade/sessions/<session_id>/` (`--dest` moves it),
+  directories 0700 and files 0600, gzip-compressed. A `--dest` inside a Claude
+  config directory or the dotfiles sync store is refused: both sync to a remote.
+- **Private stays out.** A session with a `private-sessions/<id>` marker under
+  any profile, or a record from a conversation-mode or `private-projects`
+  project, is skipped. A copy kept before the marker appeared is reported,
+  never deleted.
+- **When.** `radar-cron.sh` runs `--apply` after its weekly sweep. A failure is
+  logged in `radar-cron.log` and never fails the sweep. Re-running is
+  idempotent: only a source that changed, or a change to the redaction
+  patterns, rewrites a file, and nothing is deleted when a source is gone.
 
 ## Conversation-mode projects
 

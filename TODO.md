@@ -2456,6 +2456,23 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   through `redact.py` into zstd under `~/.local/share/clade/sessions/`, outside the synced
   `~/.claude`, mode 0700, idempotent, skipping private sessions. Keeping only corrected sessions
   is our narrowing (the essay keeps all), chosen for cost.
+  Step 2 DONE 2026-11-06 (feat/keep-sessions): `configs/scripts/keep-sessions.py`, built on
+  `transcripts.py` (and registered as its consumer). A dry run by default; `--apply` copies
+  the main transcript and its `<session>/` directory, every string masked by `redact.py`, as
+  gzip (the standard library has no zstd) into `~/.local/share/clade/sessions/<id>/`. Records
+  are selected by `transcript_path` under a transcript root, or by `session_id` found under
+  any root. Dirs are 0700 and files 0600. A `--dest` inside a config dir or the sync store is
+  refused. Private sessions are skipped: a `private-sessions` marker under any profile, a
+  conversation-mode project, or `private-projects`. `radar-cron.sh` calls it last, weekly, and
+  it cannot fail the sweep. `--self-test` has 35 mutations, all red, in
+  `orchestrator/tests/can_fire/keep_sessions.py`. Not done, each a separate decision:
+  - Records written before Step 1 (all 1,625 non-probe records on the author's host on
+    2026-11-06) carry no link and stay unlinkable. Matching `project` and `timestamp` against
+    a transcript's time span could recover the last 30 days, but it is a heuristic that can
+    pick the wrong session, and every day it waits loses one more day.
+  - A copy whose source is gone keeps the redaction it was written with. A new `redact.py`
+    pattern re-redacts only sessions whose source still exists.
+  - Images and PDF pages under `tool-results/` are not kept, because they cannot be redacted.
 - [ ] 🟡 **Context inertia: `/pickup` executes the last session's hypothesis as orders, and the
   350K trial cannot see the failure. Do before the 2026-11-12 evaluation.** Breunig, *Context
   Inertia* (2026-10-14): "the model commits to a hypothesis, subtask, or goal … and keeps

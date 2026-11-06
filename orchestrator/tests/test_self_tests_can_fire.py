@@ -22,7 +22,8 @@ Each entry below removes ONE guard and requires the script's own --self-test to
 notice. A mutation that stays green is not a style complaint: it names a
 property the instrument claims and does not check.
 
-Adding a self-test to a script means adding its mutations here.
+Adding a self-test to a script means adding its mutations here, or in
+can_fire/<script>.py beside this file (see "Per-script mutation files").
 """
 
 from __future__ import annotations
@@ -480,6 +481,15 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         ("an empty CLAUDE_CONFIG_DIR means ~/.claude, not the working directory",
          "return Path(override).expanduser() if override else Path.home() / \".claude\"",
          "return Path(override).expanduser() if override is not None else Path.home() / \".claude\""),
+        # Both stayed green while workflow-scorecard.py was the only consumer;
+        # keep-sessions.py's self-test reads a second profile and a record
+        # holding U+2028, so each turns it red.
+        ("every profile's projects/ is a root — a session under ~/.claude-profiles/<p> is not found",
+         '        roots.extend(sorted(p / "projects" for p in profiles.iterdir() if p.is_dir()))',
+         "        pass"),
+        ("records split on \\n only — splitlines() breaks a record holding U+2028 in two",
+         "        for line in handle:\n            if not line.strip():",
+         "        for line in handle.read().splitlines(True):\n            if not line.strip():"),
     ],
     # Split out of workflow-scorecard.py on 2026-10-23 with its self-test. That
     # self-test had no mutations here before the move.
@@ -1324,6 +1334,37 @@ MUTATIONS["configs/scripts/outcome-scorecard.py"] = [
 ]
 
 
+# ─── Per-script mutation files ────────────────────────────────────────
+# This file reached 1,431 of its 1,500 lines (test_conventions.py) with one
+# block per script, so a script that gains --self-test may instead put its
+# mutations in can_fire/<script>.py beside this file, as
+# MUTATIONS = {"configs/scripts/<script>.py": [...]}. They are loaded by path
+# (this file is also executed by path, below, so a package import would not
+# resolve) and join MUTATIONS, so every test here covers them. A file that
+# defines no MUTATIONS, or names a script listed already, fails the import.
+CAN_FIRE_DIR = Path(__file__).with_name("can_fire")
+
+
+def _load_mutation_files(directory: Path = CAN_FIRE_DIR) -> dict[str, list[tuple[str, str, str]]]:
+    import importlib.util
+
+    found: dict[str, list[tuple[str, str, str]]] = {}
+    for path in sorted(directory.glob("*.py")):
+        spec = importlib.util.spec_from_file_location(f"_can_fire_{path.stem}", path)
+        assert spec is not None and spec.loader is not None, path
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        extra = getattr(module, "MUTATIONS", None)
+        assert isinstance(extra, dict) and extra, f"{path} defines no MUTATIONS dict"
+        for script, muts in extra.items():
+            assert script not in MUTATIONS and script not in found, f"{script} has mutations in two places"
+            found[script] = muts
+    return found
+
+
+MUTATIONS.update(_load_mutation_files())
+
+
 def _cases():
     for script, muts in MUTATIONS.items():
         for name, old, new in muts:
@@ -1387,6 +1428,19 @@ def test_importing_this_file_restores_the_journal():
     finally:
         canary.unlink(missing_ok=True)
         orig.unlink(missing_ok=True)
+
+
+def test_a_mutation_file_must_define_mutations(tmp_path):
+    (tmp_path / "empty.py").write_text("NOTHING = 1\n")
+    with pytest.raises(AssertionError, match="defines no MUTATIONS"):
+        _load_mutation_files(tmp_path)
+
+
+def test_a_script_cannot_have_mutations_in_two_places(tmp_path):
+    (tmp_path / "again.py").write_text(
+        "MUTATIONS = {'configs/scripts/artifact-lint.py': [('x', 'a', 'b')]}\n")
+    with pytest.raises(AssertionError, match="in two places"):
+        _load_mutation_files(tmp_path)
 
 
 def test_the_journal_is_ignored_by_git():

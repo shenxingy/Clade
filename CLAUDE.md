@@ -621,6 +621,18 @@ python3 configs/scripts/check-skill-contracts.py --self-test
 #     tests/test-workflow-preflight.sh itself.
 python3 configs/scripts/check-workflow-script.py --self-test
 
+# 2f. And of the session keeper (pytest job). keep-sessions.py copies the
+#     transcripts of corrected sessions, redacted and gzipped, to
+#     ~/.local/share/clade/sessions/ before Claude Code's 30-day cleanup;
+#     radar-cron.sh runs it weekly. A keeper that stopped masking, followed a
+#     symlink out of a session, or copied a session marked private would still
+#     print "kept N sessions". The self-test drives main() on a synthetic HOME
+#     with a negative control per exclusion, under umask 022 so the 0700/0600
+#     checks can fail; its 35 mutations are in
+#     orchestrator/tests/can_fire/keep_sessions.py, which
+#     test_self_tests_can_fire.py loads.
+python3 configs/scripts/keep-sessions.py --self-test
+
 # 3. Shell syntax check (hooks, scripts, installer)
 bash -n configs/hooks/*.sh configs/scripts/*.sh install.sh
 
