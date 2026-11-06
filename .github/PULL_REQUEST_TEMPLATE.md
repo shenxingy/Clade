@@ -17,7 +17,9 @@
 
 - [ ] `python3 configs/scripts/ci-local.py` passed locally — it runs the real
       workflow gates, so this replaces re-listing them here. Paste its summary line.
-- [ ] Anything it reported as **skipped** is listed below, with the reason
+- [ ] Anything it reported as **skipped** or **unproven** (a `PARTIAL` or
+      `NOTHING RAN` summary) is listed below, with the reason — an unproven
+      lane was not proven here
 - [ ] Hooks fire correctly (verified in a Claude Code session) — the one thing
       `ci-local.py` genuinely cannot check
 

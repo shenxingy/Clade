@@ -72,9 +72,28 @@ say so, then fall back to the gates the project documents itself (its
 Never report a build green on the strength of a runner that found no gates.
 
 Read what will be skipped and why. A job needing a platform this machine is not
-belongs on the machine that has it, not on a hosted runner at 2x or 10x. Jobs
-requiring a repository secret or `pull_request_target` genuinely cannot run
-here; say so rather than reporting a clean run that covered less than it looks.
+belongs on the machine that has it, not on a hosted runner at 2x or 10x. A
+workflow triggered by `pull_request_target` and by no push or pull_request, and
+a job whose `if:` is false on every push and pull_request (a schedule or
+dispatch tier), genuinely do not run here; say so rather than reporting a clean
+run that covered less than it looks.
+
+A `↳ UNPROVEN` line is different in kind: a lane the hosted run executes on
+every push that this runner cannot reproduce — a job using `services:`,
+`container:`, `strategy:`, a reusable workflow or a `defaults:` other than
+`run: shell: bash`, or one whose body it cannot read; a `runs-on:` or job-level
+`if:` it cannot evaluate; a step whose `if:` or `${{ }}` expression it cannot
+evaluate; a step that needs a repository secret — declared on the step,
+inherited from job or workflow env, or used in `run:` — which never runs here,
+because a tool run without it falls back to this machine's own credentials
+(`~/.aws`, `gh auth`, `~/.npmrc`); an action step other than checkout, cache,
+artifact upload/download or a `setup-*` action, so a job whose only gates are a
+lint action or a local composite is unproven, not setup-only. A step whose
+INHERITED env holds a non-secret `${{ }}` value (a workflow-level
+`REPO: ${{ github.repository }}`) runs with that variable unset, and its pass is
+unproven too. Those are usually the backend, E2E and migration lanes, the ones
+that cover the surface a change most often breaks. Name them before you run
+anything; they will not become green here.
 
 ### 2. Run
 
@@ -86,8 +105,23 @@ Use `--json`: it gives the failing job, the step name, the exit code, the exact
 command, and the output tail, which is what you need to fix without guessing.
 Pass a job argument through as `--job <name>` when the user named one.
 
-Green, with nothing skipped that matters → report and stop. Do not push unless
-asked.
+Read `verdict` first, not the exit code — during the report-only rollout a
+`partial` or `none` run still exits 0 (`--strict` makes it 2):
+
+- `pass` with a non-empty `passed` → green. Report and stop. Do not push
+  unless asked.
+- `partial` → **not green.** Nothing that ran failed, but no entry in
+  `unproven` (job, step, reason) was proven here: it was skipped, or it ran
+  without env only the hosted run sets. Report PARTIAL with each unproven lane
+  and its reason, and say what would prove it — the hosted run, or a machine
+  with the services it needs. Never shorten PARTIAL to "green" or "CI will
+  pass".
+- `none` → **not green: no job ran.** Every job was skipped; `skipped` and
+  `unproven` say why. Report it as nothing proven, then fall back to the gates
+  the project documents itself, as in step 1.
+- `fail` → continue below. A failed entry's `reason` can say the step ran
+  without inherited env; if so, that may be the whole cause. After the fix, a
+  re-run can come back `partial`, which is still not green.
 
 ### 3. Diagnose one failure at a time
 
@@ -116,7 +150,12 @@ runs everything.
 
 ### 5. Stop conditions
 
-- **Green** → report, list what was skipped and why, stop.
+- **Green** (`verdict: pass`, `passed` non-empty) → report, list what was
+  skipped and why, stop.
+- **PARTIAL** (`verdict: partial`) → nothing left to fix here; report it as
+  PARTIAL with the unproven lanes, stop. It is not a green result.
+- **Nothing ran** (`verdict: none`) → report it, with every skip and its
+  reason, stop. It is not a green result either.
 - **Same failure twice with different fixes** → stop and report. Two failed
   hypotheses mean the model of the failure is wrong; a third guess is a loop,
   not progress.
@@ -161,13 +200,16 @@ produce green.
 
 State plainly:
 
+- the verdict — pass, PARTIAL, nothing ran, or fail — in the first line
 - which jobs ran, which passed, and **how long the whole thing took**
+- every **unproven** lane with its reason, and what would prove it
 - every skipped job with its reason, including the platform it needs
 - for each fix: the root cause in one sentence, and the file changed
 - anything you chose **not** to fix and why
 - if you touched a gate at all, say exactly what and why, at the top
 
-Never report "CI will pass" from a subset. Report what ran.
+Never report "CI will pass" from a subset, and never from a PARTIAL run or
+one where nothing ran. Report what ran.
 
 ## Delivery completion
 
