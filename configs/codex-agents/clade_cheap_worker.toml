@@ -1,5 +1,5 @@
 name = "clade_cheap_worker"
-description = "Use proactively for one bounded, low-risk implementation with explicit file ownership and a deterministic verifier. Do not use for architecture, ambiguous requirements, migrations, security-sensitive work, or broad refactors."
+description = "Use proactively for one bounded, low-risk implementation with explicit file ownership and a deterministic verifier, which it treats as read-only. Do not use for architecture, ambiguous requirements, migrations, security-sensitive work, broad refactors, or a change whose point is to edit the verifier itself."
 model = "gpt-5.6-luna"
 model_reasoning_effort = "medium"
 sandbox_mode = "workspace-write"
