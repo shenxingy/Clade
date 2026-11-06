@@ -583,9 +583,32 @@ capped at 10/run. Killed mutants drop from the baseline automatically.
 
 ## Add a new hook
 
-1. Create `configs/hooks/your-hook.sh`
+1. Create `configs/hooks/your-hook.sh`. Within its first 10 lines it must carry
+   exactly one provenance line, with ` · retire-when: ` (a middle dot) between
+   the two halves:
+
+   ```bash
+   # exists-for: <incident or need>, <YYYY-MM-DD>, <commit sha or #PR> · retire-when: <condition>
+   ```
+
+   - **exists-for** names the recorded incident the hook answers, its date and
+     the commit or PR that records it. If nothing records one, write
+     `no incident recorded (added <date> in <sha or #PR>)` and the need it
+     serves; never invent an incident. A cited sha must resolve to a commit; a
+     new hook may cite its own open PR.
+   - **retire-when** names the condition under which the hook may be removed.
+     A hook that blocks retires only after an ablation shows no harm without
+     it, because a guard that never fires may be working. For any hook, a
+     condition resting on it going quiet ("unused for 60 days", "has not
+     fired", "0 hits", "last fired 90 days ago") is refused unless it names an
+     ablation. The check matches these wordings, not the meaning, so state the
+     condition plainly rather than around it.
+   - `/generate-hook` emits this line for you to fill. A `<…>` or `{…}`
+     placeholder left in it is refused.
 2. Add the hook definition to `configs/settings-hooks.json`
-3. Run `./install.sh`
+3. Run `bash tests/test-hook-provenance.sh`: it checks the line on every hook,
+   and that every hook the settings wire is among those checked
+4. Run `./install.sh`
 
 ## Add a new agent
 

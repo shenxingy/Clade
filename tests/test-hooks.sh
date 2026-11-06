@@ -16,6 +16,9 @@
 #                           note and no rotation advice (the nag drew two
 #                           corrections in four days)
 #   settings-hooks.json     the wiring that makes all three reachable
+#   (the `# exists-for: … · retire-when: …` line every hook carries is checked
+#    in tests/test-hook-provenance.sh — split out when this file would have
+#    crossed the 1500-line rule a third time)
 #
 # Every path is redirected to throwaway dirs under /tmp; the real ~/.claude and
 # the real /tmp/claude-edit-shadows are never touched. No API calls.

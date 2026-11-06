@@ -2552,7 +2552,20 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   - M: `configs/scripts/harness-usage.py`. Per shipped skill and hook, report fires, denies,
     rejections and last-fired from `skillUsage` and the transcript hook attachments, main
     thread only.
-  - S: a `# exists-for: … · retire-when: …` header on each hook, checked by `tests/test-hooks.sh`.
+  - [x] S: a `# exists-for: … · retire-when: …` header on each hook, checked by
+    `tests/test-hook-provenance.sh` (split out of `tests/test-hooks.sh` for the 1500-line rule).
+    DONE 2026-11-06 (docs/hook-provenance-headers): all 35 `configs/hooks/*.sh` carry the line,
+    from git archaeology. 10 name a recorded incident; 25 say "no incident recorded (added
+    <date> in <sha>)" plus the need they serve. The test checks one well-formed line per hook,
+    the cross-check against `settings-hooks.json`, and that every cited sha resolves. It
+    refuses a `<…>` placeholder and the `{…}` ones `/generate-hook` emits, and a retire-when
+    that rests on zero fires and names no ablation. That last check matches wordings, not
+    meaning: a table of 22 phrasings it must refuse ("unused for 90 days", "has not fired",
+    "no denials in", "never triggered", "0 hits", "last fired … ago") and 12 near-misses it
+    must allow. 16 input mutations turn it red. `docs/configuration.md` "Add a new hook" states
+    the line. Open for the owner: `doc-align-check.sh`'s condition is already met, because it
+    is async and its `systemMessage` reaches nobody. The M bullet above stays open; it is
+    another unit.
   - Caveats: zero fires never retires a preventive safety control, and only flags it for
     review. A 60-day window needs a ledger because transcripts are deleted at 30 days.
     Invocation is not behaviour change.

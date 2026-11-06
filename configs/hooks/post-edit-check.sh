@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # post-edit-check.sh — Auto type-check / lint after file edits.
+# exists-for: no incident recorded (added 2026-02-18 in 5e9103b); need: type-check or lint the edited file in the background and wake Claude only on findings · retire-when: an ablation shows sessions leave no more type or lint errors without it
 # Triggered by PostToolUse on Edit|Write, wired asyncRewake (which implies async).
 #
 # Supported: TypeScript, Python, Rust, Go, Swift, Kotlin/Java, LaTeX

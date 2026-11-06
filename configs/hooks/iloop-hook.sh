@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # iloop-hook.sh — Stop hook: in-session iterative loop
+# exists-for: no incident recorded (added 2026-03-27 in d702c05 from pua, re-added 2026-06-04 in 0164075); need: the Stop-hook engine behind /iloop · retire-when: /iloop is retired, or Claude Code ships an in-session loop that /iloop can delegate to
 #
 # When .claude/iloop.local.md exists with active:true, prevents session exit
 # and feeds the task prompt back to continue the loop.

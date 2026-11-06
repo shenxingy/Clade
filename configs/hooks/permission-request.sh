@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # permission-request.sh — Auto-allow known-safe read-only operations (Hooks §Gap5)
+# exists-for: no incident recorded (added 2026-04-08 in 5f62280; Hooks gap 5, docs/archive/BRAINSTORM-resolved.md); need: auto-allow read-only tools and commands instead of prompting · retire-when: Claude Code's permission modes or a settings allowlist cover the same read-only set
 #
 # Triggered: PermissionRequest
 # Purpose:   For clearly safe, read-only tool patterns, auto-approve and inject
