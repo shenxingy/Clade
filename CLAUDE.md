@@ -796,7 +796,7 @@ for t in loop checks skill-routing pr-scope-policy audit worktree-env \
          session-context session-scorecard \
          post-compact-reinject context-warning-drain ensure-dev-server \
          quiet-run scan-health pre-tool-guardian ask-while-live loop-args \
-         memory-watchdog ci-local seo-geo radar-cron workflow-preflight \
+         loop-holdout memory-watchdog ci-local seo-geo radar-cron workflow-preflight \
          wf-reader-guard; do
   bash "tests/test-$t.sh" >/dev/null || echo "FAILED: $t"
 done

@@ -2569,7 +2569,39 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   - Caveats: zero fires never retires a preventive safety control, and only flags it for
     review. A 60-day window needs a ledger because transcripts are deleted at 30 days.
     Invocation is not behaviour change.
-- [ ] 🟡 **`/loop` holdout scenarios outside the repository.** StrongDM's software factory, via
+- [x] 🟡 **`/loop` holdout scenarios outside the repository.** DONE 2026-11-06
+  (feat/loop-holdout): `loop-runner.sh --holdout DIR` with `configs/scripts/loop_holdout.sh`
+  — refused in-repo (also via symlink, scenario symlink, sibling worktree, empty DIR or empty
+  value), counts-only supervisor context, gates reconciliation and convergence, `HOLDOUT
+  FAILED — visible verify_cmd passed` and `HOLDOUT CHANGED` logged, `verify_cmd` snapshotted at
+  pre-flight and drift warned once per change. After review: the `--holdout` directory, the
+  baseline fingerprint and the change record live in the resume checkpoint
+  (`loop_checkpoint.py`), and a resume without the same `--holdout` is refused; whatever a
+  scenario writes into the checkout is put back before the commit sweep; a pass on a scenario
+  set that changed that iteration does not count, and the report and `--status` name the
+  iteration; the per-scenario timeout is `CLADE_LOOP_HOLDOUT_TIMEOUT` (default 120 s).
+  Second review: nothing that names DIR or a scenario, and none of their output, is written
+  inside the checkout — names, exit codes, output and put-back paths go to
+  `~/.claude/loop-holdout/<checkout>-<hash>/` (`CLADE_LOOP_HOLDOUT_LOG_DIR`, refused inside
+  the checkout, a sibling worktree or DIR), and `loop.log`, `last-progress` and the resume
+  refusal in `loop.log` carry counts only; the change fingerprint covers every file under DIR
+  recursively (fixtures, expected outputs, helpers), by content and exec bit; the git index
+  is put back byte for byte instead of `read-tree`, which dropped skip-worktree and
+  intent-to-add entries (a sparse checkout's skipped files were then committed as deleted);
+  each scenario is bounded by a python3 watchdog that kills its whole process group, so no
+  `timeout`/`gtimeout` is needed (stock macOS ran scenarios unbounded), and `--holdout`
+  without python3 is refused. `tests/test-loop-holdout.sh` (run by `tests/test-loop.sh`)
+  carries the controls and 44 guard mutations plus a no-op control.
+  Not done: scenario cwd = checkout root is unpinned by a mutation, because the loop itself
+  runs from that root and the two cannot be told apart from the outside. Sandboxing workers
+  away from DIR and the holdout log is out of scope by design (same uid, see "Honest scope"
+  below). The fingerprint does not follow a symlinked directory under DIR (it records the
+  target). A scenario's leftover child that outlives a scenario which exited normally is not
+  killed (only a cut-off scenario's group is). The supervisor and worker calls still use
+  `loop-runner.sh`'s `_timeout`, which runs unbounded with no `timeout`/`gtimeout` (the
+  scenario watchdog is holdout-only). The warning when the goal or `--context` file names
+  the holdout is the open item that follows.
+  StrongDM's software factory, via
   Phelps, *When AI writes all the code* (2026-10-10): "A test, stored in the codebase, can be
   lazily rewritten to match the code." Every `/loop` gate lives in the tree a worker can merge
   into. `loop_verify.sh` re-reads `verify_cmd` from the repo's CLAUDE.md on every iteration, and
@@ -2580,6 +2612,13 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   pre-flight and warn if it changes.
   Honest scope: the worker runs as the same uid, so this makes the scenarios harder to rewrite,
   not impossible to rewrite.
+- [ ] 🔵 **`/loop --holdout`: warn when the goal or `--context` file names the holdout.** Both
+  files are pasted into the supervisor prompt, so a holdout path written there defeats the
+  counts-only context. Today only the `/loop` skill text forbids it (`prompt.md` Rules,
+  SKILL.md "Honest scope"); nothing checks it at run time. S: in `holdout_validate`, grep the
+  goal and `--context` files for the given and the physical DIR (and `~`-relative forms) and
+  warn; scenario names are not searched, since a short name like `check` would fire on prose.
+  Deferred from PR #189 (review 2026-11-06) to keep that PR to the gate itself.
 - [ ] 🔵 **Property tests and a FLAKY label.** Osmani, *Agentic Verification* (2026-10-14):
   "Example tests say what should happen; properties say what must not", and a retry-green test
   teaches the agent to retry. The tree has zero `hypothesis`/`@given`.

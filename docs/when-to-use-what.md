@@ -75,6 +75,8 @@ For most day-to-day work — bug fixes, small features, refactoring, codebase qu
 - Supervisor plans tasks each iteration, workers execute in parallel via git worktrees
 - Runs unattended — leave it overnight, check results in the morning
 - Write a clear goal file first; vague goals produce endless loops
+- `--holdout DIR` adds acceptance scenarios kept outside the repository, where a
+  worker's commit cannot rewrite them; no prompt names them (see the loop skill)
 
 ### `/worktree`
 **When:** Running parallel Claude Code sessions on the same repo.

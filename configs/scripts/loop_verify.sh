@@ -84,6 +84,37 @@ verify_state_record_test_run() {
 # already carries no trailing newline for a second $() to trim.
 verify_state_last_result() { printf '%s' "$LOOP_VERIFY_LAST_TEST_RESULT"; }
 verify_state_last_output() { printf '%s' "$LOOP_VERIFY_LAST_TEST_OUTPUT"; }
+
+# The verify_cmd snapshot. _read_verify_cmd re-reads the repository's CLAUDE.md
+# every time, and a worker commits into that repository, so the visible gate
+# can be rewritten mid-run — including deleted, which node_test_sample then
+# reports as a pass ("skipping test sample"). node_pre_flight records what the
+# run started with; node_test_sample compares before every run and warns once
+# per new value. It warns and does not pin: an owner editing CLAUDE.md mid-run
+# is legitimate, and --holdout is the gate a worker cannot reach by commit.
+# A run resumed past pre-flight snapshots at its first test_sample instead.
+LOOP_VERIFY_CMD_SNAPSHOT=""        # verify_cmd as the run's first pre-flight read it
+LOOP_VERIFY_CMD_SNAPSHOT_TAKEN=false
+LOOP_VERIFY_CMD_WARNED=""          # "v:<value>" last warned about; one warning per change
+
+# Producer — node_pre_flight, every iteration; only the first read sticks.
+verify_state_snapshot_cmd() {
+  [ "$LOOP_VERIFY_CMD_SNAPSHOT_TAKEN" = "true" ] && return 0
+  LOOP_VERIFY_CMD_SNAPSHOT=$(_read_verify_cmd)
+  LOOP_VERIFY_CMD_SNAPSHOT_TAKEN=true
+}
+# Consumer — node_test_sample, with the value it is about to run.
+_verify_cmd_drift_check() {
+  local now="$1"
+  if [ "$LOOP_VERIFY_CMD_SNAPSHOT_TAKEN" != "true" ]; then
+    verify_state_snapshot_cmd
+    return 0
+  fi
+  [ "$now" = "$LOOP_VERIFY_CMD_SNAPSHOT" ] && return 0
+  [ "v:$now" = "$LOOP_VERIFY_CMD_WARNED" ] && return 0
+  LOOP_VERIFY_CMD_WARNED="v:$now"
+  log_warn "verify_cmd changed mid-run: pre-flight read '${LOOP_VERIFY_CMD_SNAPSHOT:-(none)}', CLAUDE.md now says '${now:-(none)}'. The in-repo gate this run started with is not the one it is running."
+}
 # ────────────────────────────────────────────────────────────────
 
 # ─── [DET] NODE: SYNTAX CHECK ───────────────────────────────────
@@ -234,6 +265,8 @@ node_test_sample() {
   log_info "[DET] test_sample"
 
   local verify_cmd; verify_cmd=$(_read_verify_cmd)
+  # Before the empty check: a deleted verify_cmd is the drift that matters most.
+  _verify_cmd_drift_check "$verify_cmd"
   if [ -z "$verify_cmd" ]; then
     log_info "No verify_cmd in CLAUDE.md — skipping test sample"
     return 0

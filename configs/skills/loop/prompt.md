@@ -19,6 +19,9 @@ Options:
 - `--worker-model MODEL` — worker model (default: same as supervisor)
 - `--max-iter N` — max iterations (default: 10)
 - `--max-workers N` — parallel workers per iteration (default: 4)
+- `--holdout DIR` — acceptance scenarios kept outside the repository (see the
+  loop SKILL.md "Holdout scenarios"); pass the absolute path through to
+  `loop-runner.sh` unchanged, on `--resume` too
 
 ---
 
@@ -86,6 +89,7 @@ The loop runs as a deterministic + LLM hybrid state machine:
 [LLM] Fix node (if needed)  — one attempt to fix syntax failures
 [DET] Test sample           — runs CLAUDE.md verify_cmd if present
 [LLM] Final verify          — explicit pass required for completion evidence
+[DET] Holdout (--holdout)   — scenarios outside the repo; names never reach a prompt or the checkout
 [DET] Goal reconciliation  — coordinator marks exact task-bound goal items
 [DET] Commit changes        — sweeps leftovers and counts all worker commits
 [DET] Convergence check     — CONVERGED? max_iter? 3 consecutive empty iters?
@@ -117,7 +121,9 @@ Hard limits (not overridable by LLM):
 4. Choose recovery behavior:
    - No `--resume`: start fresh; stale state/checkpoints are never consumed
    - `--resume`: proceed directly to Step 4; the runner fails closed unless
-     checkpoint checkout, goal path, branch, and HEAD all match
+     checkpoint checkout, goal path, branch, HEAD and `--holdout` directory all
+     match. Pass the same `--holdout DIR` the interrupted run had: a resume
+     without it, or with another one, is refused
 
 ### Step 2: Analyze goal
 
@@ -179,6 +185,10 @@ _resume_args=()
 if [ "{resume_mode}" = "true" ]; then
   _resume_args=(--resume)
 fi
+_holdout_args=()
+if [ -n "{absolute_holdout_dir_or_empty}" ]; then
+  _holdout_args=(--holdout "{absolute_holdout_dir_or_empty}")
+fi
 bash ~/.claude/scripts/loop-runner.sh \
   "$_goal_path" \
   "${_resume_args[@]}" \
@@ -186,6 +196,7 @@ bash ~/.claude/scripts/loop-runner.sh \
   --worker-model {worker_model} \
   --max-iter {max_iter} \
   --max-workers {max_workers} \
+  "${_holdout_args[@]}" \
   --context .claude/loop-context.md \
   --state .claude/loop-state.json \
   --log-dir logs/loop
@@ -236,6 +247,11 @@ Goal achieved → supervisor outputs STATUS: CONVERGED → loop exits.
 ## Rules
 
 - Resolve all paths to absolute before passing to script
+- With `--holdout DIR`: do NOT read DIR or the holdout log the runner names
+  (under `~/.claude/loop-holdout/`), list their files, or mention their paths
+  or scenarios in `.claude/loop-context.md` or the goal file. Both reach the
+  supervisor prompt, and keeping the scenarios out of every prompt is the point.
+  If the user asks for that, say why it defeats the holdout.
 - Always `run_in_background: true` — never block the session
 - Context enrichment is not optional — it saves tokens on every supervisor call
 - The loop wraps AROUND batch-tasks; it does not replace it
