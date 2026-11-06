@@ -944,6 +944,49 @@ MUTATIONS["configs/scripts/context-policy.py"] = [
 ]
 
 
+# ─── pr-verification-gaps.py ──────────────────────────────────────────
+# /retro's rollup of the PR body lines `Review depth:` and `Could not verify:`.
+# Its --self-test drives main() on fixtures and a fake gh; one guard per entry.
+MUTATIONS["configs/scripts/pr-verification-gaps.py"] = [
+    ("HTML comments are not read", '    text = _COMMENT.sub("", text)', "    text = text"),
+    ("a line opening in inline code quotes the format", 'r"^[\\s>*-]*(review depth', 'r"^[\\s>*`-]*(review depth'),
+    ("an unclosed <!-- hides the rest of the body", '(?:-->|\\Z)"', '-->"'),
+    ("fenced code is not read", "        if not fenced:", "        if True:"),
+    ("the first line of a label counts", "found.setdefault(match.group(1).lower(), match.group(2).strip())",
+     "found[match.group(1).lower()] = match.group(2).strip()"),
+    ("a <placeholder> is unfilled, not a value", 'return not value or value.startswith("<") or "|" in value',
+     "return not value"),
+    ("the skills' own `a | b` format line is unfilled", ' or "|" in value', ""),
+    ("a trailing (reason) is not part of the item", "    if match and match.start() > 0:", "    if False:"),
+    ("items ignore case", "return label.lower(), label, reason", "return label, label, reason"),
+    ("items ignore * and backtick emphasis", '_EMPHASIS.sub("", text).split()', "text.split()"),
+    ("items ignore trailing punctuation", '.split()).rstrip(" .,:")', ".split())"),
+    ("an item counts once per PR", "if key and key not in seen:", "if key:"),
+    ("'none' is not an item", 'items = [item for item in items if item["key"] != "none"]', "items = items"),
+    ("the window's lower bound — gh's search returns the first day whole", "and start <= merged <= now:",
+     "and merged <= now:"),
+    ("an item recurs from 2 PRs, not 1", "_RECURS = 2", "_RECURS = 1"),
+    ("--top cuts the recurring list", '"recurring": recurring[:top]', '"recurring": recurring'),
+    ("a tie goes to the gap seen most recently", 'items.sort(key=lambda e: e["last_merged"], reverse=True)',
+     'items.sort(key=lambda e: e["item"].lower())'),
+    ("an item keeps its first wording", 'sorted(pulls, key=lambda r: r["merged_at"])',
+     'sorted(pulls, key=lambda r: r["merged_at"], reverse=True)'),
+    ("'read in full', spaced, is read-in-full", "read[- ]in[- ]full", "read-in-full"),
+    ("a pending review backs no claim", ' and review.get("state") != "PENDING"', ""),
+    ("the author's own review backs no claim", "if reviewer and reviewer != author and", "if reviewer and"),
+    ("the author matches in any case", "author = _login(pr).lower()", "author = _login(pr)"),
+    ("'none' with a forge review is reported", 'and row["reviewed_by_other"]]', "and False]"),
+    ("no could-not-verify line reads NOT MEASURED", '    if not gaps["stated"]:', "    if False:"),
+    ("no depth line reads NOT MEASURED", '    if not depth["stated"]:', "    if False:"),
+    ("the coverage caveat names the PRs without the line", '        if gaps["stated"] < total:', "        if False:"),
+    ("gh reads merged PRs", '"--state", "merged", ', ""),
+    ("gh reads from the window's first day", '"--search", f"merged:>={start:%Y-%m-%d}",', ""),
+    ("an unauthenticated gh is named", 'if re.search(r"gh auth login|not logged|HTTP 401|authentication", proc.stderr',
+     'if re.search(r"$^", proc.stderr'),
+    ("NOT MEASURED exits 1", 'so nothing can be stated.")\n    return 1', 'so nothing can be stated.")\n    return 0'),
+    ("a missing gh is NOT MEASURED", 'raise GhError("gh is not installed or not on PATH") from exc', "raise"),
+]
+
 # ─── outcome-scorecard.py ─────────────────────────────────────────────
 # Its own block, like the two above. Each mutation removes one guard the
 # outcome scorecard claims; its --self-test drives every control through
