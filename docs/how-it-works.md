@@ -76,9 +76,9 @@ Claude auto-selects agents. Haiku agents are fast and cheap for mechanical check
 
 ## Skills (slash commands)
 
-**`/handoff`** saves the entire session state to `.claude/handoff-{timestamp}.md`: what was accomplished, git state, blockers, ordered next steps, and gotchas. Run this when context is ~80% full, before stopping work, or before handing off to a parallel agent. The next session auto-loads it via `session-context.sh`.
+**`/handoff`** saves the entire session state to `.claude/handoff-{timestamp}.md`: what was accomplished, git state, blockers, the hypotheses the work rests on (with evidence, status and what would drop each, ruled-out ones included), stop conditions and scope, ordered next steps, and gotchas. Run this when context is ~80% full, before stopping work, or before handing off to a parallel agent. The next session auto-loads it via `session-context.sh`.
 
-**`/pickup`** reads the latest handoff, verifies git state, and immediately resumes work from the first pending Next Step. Zero briefing required for the new session or agent.
+**`/pickup`** reads the latest handoff, verifies git state, and re-checks the handoff's current hypothesis against the repository before acting. Next Steps are proposals: if the check holds it starts the first one without asking; if the check contradicts the hypothesis it re-plans. Zero briefing required for the new session or agent.
 
 **`/batch-tasks`** reads TODO.md, researches the codebase, generates detailed plans for each task, scores them on readiness (scout scoring), assigns the optimal model per task (haiku for mechanical, sonnet for standard, opus for complex), then executes via `claude -p`. Supports serial and parallel (git worktree) execution.
 
