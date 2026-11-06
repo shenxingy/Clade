@@ -111,7 +111,12 @@ _EXPR_SPAN = re.compile(r"\$\{\{(.*?)\}\}", re.S)
 # expression (github.*, runner.*, steps.*, matrix.*) is context this runner
 # does not have — which is a different thing, and was labelled as a secret
 # until 2026-11, hiding an E2E suite's only real step behind a "good reason".
-_SECRET_REF = re.compile(r"\bsecrets\.|\bgithub\.token\b")
+# Any reference to the secrets context counts, not only the dot form: the
+# index form `secrets['NPM_TOKEN']` and `toJSON(secrets)` are legal, and the
+# dot-only pattern ran those steps with the variable unset, so a tool could
+# fall back to this machine's own credentials. A word "secrets" inside a
+# string literal also matches; that fails closed (a lane left unproven).
+_SECRET_REF = re.compile(r"""\bsecrets\b|\bgithub\s*(?:\.\s*token\b|\[\s*['"]token['"]\s*\])""")
 # `NAME: value` pairs of an env: block, at workflow, job and step depth.
 _ENV_PAIR_WORKFLOW = re.compile(r"^  ([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$")
 _ENV_PAIR_JOB = re.compile(r"^      ([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$")

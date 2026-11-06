@@ -542,6 +542,18 @@ jobs:
         run: touch .own-secret-ran
       - name: Secret in run
         run: touch .run-secret-ran  # ${{ secrets.DEPLOY_KEY }}
+      - name: Indexed secret
+        env:
+          CI_LOCAL_T_IDX: ${{ secrets['NPM_TOKEN'] }}
+        run: touch .idx-secret-ran
+      - name: All secrets
+        env:
+          CI_LOCAL_T_ALL: ${{ toJSON(secrets) }}
+        run: touch .all-secrets-ran
+      - name: Indexed token
+        env:
+          CI_LOCAL_T_GHI: ${{ github['token'] }}
+        run: touch .idx-token-ran
       - name: After the secrets
         run: touch .after-secret-ran
 
@@ -752,6 +764,12 @@ assert_contains "$(eafter '] Step Secret')" "UNPROVEN step Own secret: needs a r
   "a step-level secret is UNPROVEN, not a reasoned skip"
 assert_contains "$(eafter '] Step Secret')" "UNPROVEN step Secret in run: needs a repository secret (in run:)" \
   "a secret used in run: is UNPROVEN too"
+assert_contains "$(grep -A5 -F -- '] Step Secret' <<< "$OUT")" "UNPROVEN step Indexed secret: needs a repository secret (CI_LOCAL_T_IDX)" \
+  "the index form secrets['X'] is a secret too, not GitHub context run unset"
+assert_contains "$(grep -A5 -F -- '] Step Secret' <<< "$OUT")" "UNPROVEN step All secrets: needs a repository secret (CI_LOCAL_T_ALL)" \
+  "toJSON(secrets) is a secret too"
+assert_contains "$(grep -A5 -F -- '] Step Secret' <<< "$OUT")" "UNPROVEN step Indexed token: needs a repository secret (CI_LOCAL_T_GHI)" \
+  "github['token'] is the token, like github.token"
 assert_contains "$(eafter '] Workflow Token')" "UNPROVEN — every step skipped — needs a repository secret (CI_LOCAL_T_GH)" \
   "a workflow-level github.token keeps every step from running: that job is UNPROVEN"
 assert_contains "$(eafter '] Workflow Expression')" "UNPROVEN step Runs without it: runs without CI_LOCAL_T_REPO" \
@@ -787,15 +805,15 @@ rm -f "$EDGES"/.*-ran
 OUT="$(CI_LOCAL_T_REPO=from-the-shell CI_LOCAL_T_JOBX=from-the-shell edges)"; RC=$?
 assert_eq "$RC" "0" "nothing failed: an inherited expression was unset, not left as its literal"
 assert_contains "$OUT" "ci-local: PARTIAL: 10/10 job(s) passed" "the summary is PARTIAL over the 10 jobs that ran"
-assert_contains "$OUT" "15 lane(s) unproven: Job Secret › Upload coverage, Step Secret › Own secret, Step Secret › Secret in run, Run Expression › Print SHA, Runner Variable, PR Services, PR Only, Block Scalar Env, Script Action › actions/github-script@v7, Reusable, Flow Steps, Job Defaults, Workflow Expression › Runs without it, Job Expression › Runs without the job value, Workflow Token" \
-  "and names all fifteen unproven lanes on that line"
+assert_contains "$OUT" "18 lane(s) unproven: Job Secret › Upload coverage, Step Secret › Own secret, Step Secret › Secret in run, Step Secret › Indexed secret, Step Secret › All secrets, Step Secret › Indexed token, Run Expression › Print SHA, Runner Variable, PR Services, PR Only, Block Scalar Env, Script Action › actions/github-script@v7, Reusable, Flow Steps, Job Defaults, Workflow Expression › Runs without it, Job Expression › Runs without the job value, Workflow Token" \
+  "and names all eighteen unproven lanes on that line"
 for m in wf-expr job-expr job-secret-override after-secret after-sha always-job env-comment script-action \
          bash-defaults starter; do
   if edge_ran "$m"; then pass "the .$m-ran step executed"; else fail "the .$m-ran step executed" "marker missing"; fi
 done
 # The secret steps above all: run with the variable unset, each would have
 # reached this machine's own credentials.
-for m in job-secret own-secret run-secret wf-token sha runner-var pr-services pr-only on-failure block-env \
+for m in job-secret own-secret run-secret idx-secret all-secrets idx-token wf-token sha runner-var pr-services pr-only on-failure block-env \
          flow job-defaults; do
   if edge_ran "$m"; then fail "the .$m-ran lane was not executed here" "it executed"; else pass "the .$m-ran lane was not executed here"; fi
 done
@@ -809,6 +827,7 @@ if d.get("verdict") != "partial":
     problems.append(f"verdict={d.get('verdict')!r}")
 got = sorted(f"{u['job']}|{u['step']}" for u in d.get("unproven", []))
 want = sorted(["Job Secret|Upload coverage", "Step Secret|Own secret", "Step Secret|Secret in run",
+               "Step Secret|Indexed secret", "Step Secret|All secrets", "Step Secret|Indexed token",
                "Run Expression|Print SHA", "Runner Variable|", "PR Services|", "PR Only|",
                "Block Scalar Env|", "Script Action|actions/github-script@v7", "Reusable|",
                "Flow Steps|", "Job Defaults|", "Workflow Expression|Runs without it",
@@ -1187,7 +1206,11 @@ mutation red "always() running on the success path" \
 mutation red "the --strict exit 2" \
   'exit_code = 1 if failed else (2 if verdict != "pass" and args.strict else 0)' 'exit_code = 1 if failed else 0'
 mutation red "telling a secret from other GitHub context" \
-  '_SECRET_REF = re.compile(r"\bsecrets\.|\bgithub\.token\b")' '_SECRET_REF = re.compile(r".")'
+  '_SECRET_REF = re.compile(r"""\bsecrets\b|' '_SECRET_REF = re.compile(r""".|'
+mutation red "the index and toJSON forms of secrets being secrets" \
+  '_SECRET_REF = re.compile(r"""\bsecrets\b|' '_SECRET_REF = re.compile(r"""\bsecrets\.|'
+mutation red "the index form of github.token being the token" \
+  "|\\[\\s*['\"]token['\"]\\s*\\])" ")"
 mutation red "job-level env" \
   'st.env = {**workflow_env, **job.env, **st.env}' 'st.env = {**workflow_env, **st.env}'
 mutation red "workflow-level env" \
