@@ -221,6 +221,39 @@ PROMPT_SAFE="$(_cd_redact_prompt "$PROMPT")"
 # prompt, which is exactly the leak this block exists to stop.
 [[ -z "$PROMPT_SAFE" ]] && PROMPT_SAFE="[prompt withheld: redactor unavailable]"
 
+# ─── Session link, resolved from the INPUT before the record is written ──
+# A corrected session is a ready-made eval ("Sessions where an engineer corrected
+# or reverted the agent are ready-made evals", Migdal, Quesma, 2026-10-01), but
+# only while its transcript can be found, and Claude Code deletes transcripts
+# after 30 days. No record linked to one: none of the 1,636 records in the
+# author's history.jsonl on 2026-11-05 carried a session field, because the id
+# was resolved only for the private-session check further down, after the
+# append. Every day without the link lost a day of corrected sessions for good.
+#
+# One jq call, here, and the private-session check reuses it. The write path
+# spawns one process fewer than the `jq | tr` pair it replaces, and the common
+# path (a prompt that is not a correction, which exited above) spawns nothing.
+#
+# session_id keeps that check's character set exactly: [A-Za-z0-9-], everything
+# else deleted. transcript_path is kept only as a string of at most 1024
+# characters with no control character (C0, DEL, C1). Anything else is DROPPED,
+# not trimmed: a trimmed path names a file that does not exist. Unknown is null
+# in the record. revert-detector.sh carries the same filter, and
+# tests/test-correction-pairing.sh feeds both hooks the same inputs.
+_CD_TAB=$'\t'
+_CD_LINK=$(printf '%s' "$INPUT" | jq -r '
+  [ (.session_id // "" | tostring | explode
+       | map(select((. >= 48 and . <= 57) or (. >= 65 and . <= 90) or (. >= 97 and . <= 122) or . == 45))
+       | implode),
+    (.transcript_path // ""
+       | if type == "string" and length <= 1024
+            and (explode | all(. >= 32 and . != 127 and (. < 128 or . > 159)))
+         then . else "" end) ]
+  | join("\t")' 2>/dev/null)
+[[ "$_CD_LINK" == *"$_CD_TAB"* ]] || _CD_LINK="$_CD_TAB"
+_CD_SID="${_CD_LINK%%"$_CD_TAB"*}"
+_CD_TRANSCRIPT="${_CD_LINK#*"$_CD_TAB"}"
+
 # Log to correction history
 CORRECTIONS_DIR="$HOME/.claude/corrections"
 mkdir -p "$CORRECTIONS_DIR"
@@ -289,6 +322,13 @@ if [[ "${DOMAIN:-unknown}" == "unknown" && -n "$DOMAIN_FILES" && -d "$PROJECT" ]
 fi
 DOMAIN="${DOMAIN:-unknown}"
 
+# jq filter, not a shell string — the $-names are jq variables bound by the
+# --arg flags below. One filter for both write paths, so they cannot drift.
+# shellcheck disable=SC2016
+CD_RECORD='{timestamp: $ts, prompt: $prompt, project: $project, domain: $domain, type: $type,
+            session_id: ($sid | if . == "" then null else . end),
+            transcript_path: ($tp | if . == "" then null else . end)}'
+
 if declare -f cp_append_history >/dev/null 2>&1; then
   cp_append_history "$HISTORY_FILE" \
     --arg ts "$TIMESTAMP" \
@@ -296,7 +336,9 @@ if declare -f cp_append_history >/dev/null 2>&1; then
     --arg project "$PROJECT" \
     --arg domain "$DOMAIN" \
     --arg type "explicit" \
-    '{timestamp: $ts, prompt: $prompt, project: $project, domain: $domain, type: $type}'
+    --arg sid "$_CD_SID" \
+    --arg tp "$_CD_TRANSCRIPT" \
+    "$CD_RECORD"
 else
   jq -nc \
     --arg ts "$TIMESTAMP" \
@@ -304,7 +346,9 @@ else
     --arg project "$PROJECT" \
     --arg domain "$DOMAIN" \
     --arg type "explicit" \
-    '{timestamp: $ts, prompt: $prompt, project: $project, domain: $domain, type: $type}' >> "$HISTORY_FILE"
+    --arg sid "$_CD_SID" \
+    --arg tp "$_CD_TRANSCRIPT" \
+    "$CD_RECORD" >> "$HISTORY_FILE"
 fi
 
 # ─── Auto-increment domain stats ──────────────────────────────────────
@@ -384,8 +428,8 @@ done
 # the same mistake. The cross-project log is skipped too: it lives in the sync
 # store, which has its own remote, and conversation text does not belong there.
 # A session can be private wherever it was started: a personal-mode skill marks
-# it by touching ~/.claude/private-sessions/<session_id>.
-_CD_SID=$(printf '%s' "$INPUT" | jq -r '.session_id // empty' 2>/dev/null | tr -cd 'A-Za-z0-9-')
+# it by touching ~/.claude/private-sessions/<session_id>. _CD_SID was resolved
+# above, before the history append, with this check's character set.
 if [[ -f "$PROJECT/.claude/conversation-mode" ]] \
    || { [[ -n "$_CD_SID" ]] && [[ -f "$HOME/.claude/private-sessions/$_CD_SID" ]]; }; then
   CONTEXT="A possible correction was detected in the prompt above (keyword: '${MATCHED_TERM}'). This project is in conversation mode. Keyword matching is often wrong: a question, a hedge, or text the user quoted or pasted is not a correction, so first decide whether the user is telling you that something you said or did was wrong. If not, ignore this note. If so, fix it in your reply in one plain sentence and carry on, with no apology paragraph. Record it only if the same kind of mistake has happened before, or it had real consequences (a wrong fact saved to a file, money, health, a decision made on it), and then only where this project's CLAUDE.md says lessons are kept. Do not append to .claude/corrections/rules.md, and write nothing about this conversation under ~/.claude: that directory syncs to a remote."
