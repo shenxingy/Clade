@@ -7,6 +7,19 @@
 Older entries live in [docs/progress-archive/](docs/progress-archive/) — 66 archived, newest month first.
 
 ---
+### 2026-11-07 — Housekeeping audit: memory, rules, TODO
+
+The owner asked whether project memory, the correction rules and TODO.md still
+work and what the research adds. Measured on aries: the loops run (rule-injector
+445 fires / 30 d, 163 sessions read a memory file beyond the index), but every
+push had been REFUSED since 2026-09-19 (49 days in which nothing aries wrote left
+the machine), no aries commit had landed in the store since 2026-09-26 (42 days),
+and the store had been unmergeable since 2026-10-05 (33 days). The 19 adopted
+memory directories had no history. Repaired by hand and pushed; the forked
+docforensics memory (80 vs 46 files) and the Mac-slug Clade memory were merged.
+The 12 open items, including the health check that could not see any of it, are
+in TODO.md § 2026-11-07; the research is ledgered.
+
 ### 2026-11-02 — A graphical entry path for the optional Orchestrator
 
 Chose local Web for the owner's requested GUI alternative, retaining native
