@@ -20,8 +20,9 @@
 #    in tests/test-hook-provenance.sh — split out when this file would have
 #    crossed the 1500-line rule a third time)
 #
-# Every path is redirected to throwaway dirs under /tmp; the real ~/.claude and
-# the real /tmp/claude-edit-shadows are never touched. No API calls.
+# Every path is redirected to throwaway dirs under /tmp, the runtime root
+# included; the real ~/.claude and the real runtime root (its shadows and the
+# sync-push lock) are never touched. No API calls.
 #
 # Usage:
 #   bash tests/test-hooks.sh        # Run all tests
@@ -91,6 +92,11 @@ trap 'rm -rf "$TMP_ROOT"' EXIT
 export PYTHONUSERBASE="${PYTHONUSERBASE:-$HOME/.local}"
 export HOME="$TMP_ROOT/home"
 mkdir -p "$HOME/.claude"
+# The runtime root too: runtime-dir.sh reads XDG_RUNTIME_DIR, not HOME, so every
+# hook below shared the user's real one. sync-push's flock lives there, and a live
+# session's background sync-push, or a second run of this suite, made the
+# sync-push cases here exit 0 without pushing (8 failures, 2026-11-08).
+export CLADE_RUNTIME_DIR="$TMP_ROOT/runtime"
 
 SID_A="aaaaaaaa-1111-2222-3333-444444444444"
 SID_B="bbbbbbbb-5555-6666-7777-888888888888"
