@@ -2658,6 +2658,7 @@ Cursor (production A/B, n not given) and Jain (10 runs per arm) carry numbers.
   - `sync-setup.sh` writes no `.gitignore` for `corrections/history.jsonl`, so
     a fresh sync store pushes this log to its remote. Records now also carry
     `transcript_path`, but `project` already held the same home path.
+    Fixed 2026-11-08 (#214): a store created from scratch ignores the log.
   Step 2, M: `configs/scripts/keep-sessions.py`. It copies the transcripts of non-probe records
   through `redact.py` into zstd under `~/.local/share/clade/sessions/`, outside the synced
   `~/.claude`, mode 0700, idempotent, skipping private sessions. Keeping only corrected sessions
@@ -3071,7 +3072,7 @@ items below include the code that keeps the next failure from being silent.
 
 **Open — transport and health (the failure above must not be silent again):**
 
-- [ ] 🔴 **`sync-health.sh` cannot see a wedged store.** It checks the config file,
+- [x] 🔴 **`sync-health.sh` cannot see a wedged store.** It checks the config file,
   the symlinks, `SYNC_DIR` and the memory-conflict file — and reported "1 project
   memory conflict" at every start while the store itself had been unmergeable for
   33 days. Add, one line each at SessionStart: unmerged paths (`git ls-files -u`),
@@ -3079,7 +3080,13 @@ items below include the code that keeps the next failure from being silent.
   REFUSED streak in `.sync-conflicts.log`, and commits behind the remote. Test in
   `tests/test-hooks.sh`: a fixture store wedged each of the five ways must produce
   the line, and a healthy one must not.
-- [ ] 🟠 **The marker guard scans files the store will never commit.** `*.corrupt.*`
+  DONE 2026-11-07 (#208): five SessionStart checks, one stdout line each — unmerged
+  paths, a leftover `autostash`, days since this host's last store commit
+  (`CLADE_SYNC_STALE_DAYS`), the REFUSED streak in `.sync-conflicts.log`, commits
+  behind/ahead of the remote — in `tests/test-sync-health.sh` (its own suite rather than
+  `test-hooks.sh`). Implemented by Kimi K3.1 Pro (max effort) in its own worktree;
+  verified independently by Claude (re-run suites, red proof, mutations).
+- [x] 🟠 **The marker guard scans files the store will never commit.** `*.corrupt.*`
   and `skills/.trash/` are ignored in the live store's hand-made `.gitignore`; no
   script writes that file (`sync-setup.sh` writes only `.gitattributes`,
   `configs/scripts/sync-setup.sh:124`). Make `sync-setup.sh` generate a `.gitignore`
@@ -3088,12 +3095,29 @@ items below include the code that keeps the next failure from being silent.
   `correction-detector.sh`'s stats.json self-heal should write its `.corrupt`
   backup under the runtime dir (`configs/hooks/lib/runtime-dir.sh`), never into a
   synced directory.
-- [ ] 🟠 **`memory-sync.sh` has no circuit breaker.** Its only push backoff is the
+  DONE 2026-11-07 (#205): `sync-setup.sh` writes the store `.gitignore`, `sync-push.sh`
+  heals missing lines before its marker scan, and `correction-detector.sh` writes its
+  `.corrupt` backup under the runtime dir; `tests/test-sync-store.sh`. #214 (2026-11-08)
+  completed the default set for a store created from scratch: one definition in
+  `configs/scripts/sync-store-heal.sh` (the live store's eight patterns,
+  `corrections/history.jsonl` among them) that `sync-setup.sh` and `sync-push.sh` both
+  source; an already-tracked `history.jsonl` is reported, never untracked automatically.
+  Implemented by Kimi K3.1 Pro (max effort) in its own worktree; verified independently
+  by Claude (re-run suites, red proof, mutations).
+- [x] 🟠 **`memory-sync.sh` has no circuit breaker.** Its only push backoff is the
   24 h per-topic cooldown (`memory/.sync-cooldown.json`): it has other gates at
   `configs/hooks/memory-sync.sh:87-140`, but no circuit breaker after a REFUSED
   push. Writes to `corrections/`, `hooks/` and `skills/` bypass the topic gate
   entirely. A wedged store therefore cost 4,954 failing spawns in 30 days. After a
   REFUSED, skip pushes for a window and let sync-health carry the message.
+  DONE 2026-11-07 (#207): `sync-push.sh` records `<epoch> <count> <reason>` in
+  `~/.claude/.sync-push-backoff`; `memory-sync.sh` skips for a window that starts at 30
+  min and doubles to 24 h, then admits one probe; success clears it;
+  `tests/test-memory-sync-breaker.sh`. #213 (2026-11-08): `sync-health.sh` prints an
+  active or expired backoff with its reason, count and resume time plus a fix hint, from
+  one shared parser in `configs/hooks/lib/sync-push-backoff.sh`. Implemented by Kimi K3.1
+  Pro (max effort) in its own worktree; verified independently by Claude (re-run suites,
+  red proof, mutations).
 - [ ] 🟠 **Project memory is keyed by path, so one repository on two machines is two
   memories.** aries writes `projects-memory/projects-Clade`, the Mac
   `shenxingy-Clade`; `sync-link-projects.sh` derives the key from the path under
@@ -3103,6 +3127,15 @@ items below include the code that keeps the next failure from being silent.
   normalised; path as the fallback), record one `.project-path` per host, and
   migrate the legacy pairs; `tests/test-sync-link-projects.sh` gains the two-path
   case.
+  IN REVIEW 2026-11-07: PR #209, not merged: the first run on each host migrates its
+  path-keyed entries, so the owner reviews it. A `--dry-run` on aries at f218b1b changed
+  no state (sorted before/after snapshots, 20 s no-run control) and planned 15 migrations
+  to `repo-github-com-<owner>-<name>` keys, 74 relinks across five profiles and 1
+  conflict. That conflict is two checkouts of one repository on the host (9 and 45 memory
+  files, differing `MEMORY.md`); the real run migrates the first and refuses the second.
+  The dry run used to print both as migrations, fixed in 0bd3fd7 with dry/real parity
+  tests. Owner decision before the real run: merge the two checkouts' memories by hand,
+  or accept the conflict line.
 - [ ] 🟡 **82 memory files in 14 legacy store directories reach no session** —
   11 directories with memories plus three index-only directories (11 + 3 = 14).
   Under `~/shared-nfs/claude-dotfiles/projects-memory/`, counting directories
@@ -3115,10 +3148,14 @@ items below include the code that keeps the next failure from being silent.
   face-swap app, whose checkout under `product/apps/` has no memory directory on
   this host at all. Decide per directory: adopt under the current key (and read
   for staleness first), archive, or delete.
+  TRIAGED 2026-11-07 (read-only Kimi pass, spot-checked by Claude): a per-directory
+  adopt/archive/delete recommendation is in the private
+  `~/.claude/research/legacy-memory-triage-2026-11-07.md`, kept out of this public
+  repository. Still the owner's decision; nothing was moved.
 
 **Open — memory hygiene:**
 
-- [ ] 🟡 **Memory has no staleness signal.** A file carries `modified`, nothing marks
+- [x] 🟡 **Memory has no staleness signal.** A file carries `modified`, nothing marks
   it stale when its subject changed; 9 of the 29 Clade memories were last touched
   before 2026-10. Research this week: DreamBench-SWE (arXiv:2608.20664) — "a memory
   system can harm the agent when it retrieves a similar but stale fact"; the
@@ -3130,12 +3167,23 @@ items below include the code that keeps the next failure from being silent.
   monthly review list of unanchored memories older than N days. The channel is
   worth it: of 593 main-thread sessions in 30 days, 163 read a memory file beyond
   the auto-loaded index and 126 wrote one (most-read file: 22 reads).
-- [ ] 🟡 **Watch the native index cap.** Claude Code loads MEMORY.md as the first 200
+  DONE 2026-11-08 (#211): optional `anchors:` (paths, globs, `commit:` baseline) in a
+  memory's frontmatter; `memory-staleness.sh` (SessionStart, read-only, 2 s budget)
+  prints a "Memory staleness" list beside the index rather than rewriting the synced
+  MEMORY.md; `memory-staleness.py --review` lists unanchored memories older than 60 days;
+  `tests/test-memory-staleness.sh`. Silent until memories declare anchors. Implemented by
+  Kimi K3.1 Pro (max effort) in its own worktree; verified independently by Claude
+  (re-run suites, red proof, mutations).
+- [x] 🟡 **Watch the native index cap.** Claude Code loads MEMORY.md as the first 200
   lines or 25 KB (docs, memory.md). After today's merge docforensics is 92 lines /
   16.3 KB and product 61 lines / 17.6 KB — 70% of the byte cap, with one-line
   entries that run to 300 bytes. Add the two numbers to `sync-health.sh`'s output
   (or a check in `sync-link-projects.sh`) at 80% of either cap, so the tail is
   never dropped silently.
+  DONE 2026-11-07 (#208): `sync-health.sh` warns at 80% of 200 lines or 25 KB
+  (`CLADE_SYNC_MEMORY_LINE_CAP`, `CLADE_SYNC_MEMORY_BYTE_CAP`,
+  `CLADE_SYNC_MEMORY_WARN_PERCENT`). Implemented by Kimi K3.1 Pro (max effort) in its own
+  worktree; verified independently by Claude (re-run suites, red proof, mutations).
 - [ ] 🔵 **Codex is designing native memories** (openai/codex#12567, 2026-10-28 →
   11). Clade's Codex surface (`plugins/clade`, `~/.codex`) carries none today;
   when it ships, decide whether the synced project memory is exported to it or the
@@ -3154,7 +3202,7 @@ items below include the code that keeps the next failure from being silent.
 
 **Open — TODO.md and the research intake:**
 
-- [ ] 🟡 **The "Next TODO" line is the first unchecked line in file order.** Today that
+- [x] 🟡 **The "Next TODO" line is the first unchecked line in file order.** Today that
   is "Validate the new browser project/task flow with representative GUI users"
   (`TODO.md:103`, the dormant GUI, needs the owner), injected into every session by
   `session-context.sh:182`. The TODO.md on `radar/2026-11-02` (unmerged) reframed it
@@ -3165,6 +3213,10 @@ items below include the code that keeps the next failure from being silent.
   organised by sweep date — the opposite failure of the field, where 78 of 85
   committed plan files (91.8%) are written once and never revised (study relayed
   2026-08-09).
+  DONE 2026-11-07 (#204): `session-context.sh` picks 🔴 > 🟠 > 🟡 > 🔵 in one awk pass and
+  skips owner-only sections and items; `tests/test-session-context.sh`. Implemented by
+  Kimi K3.1 Pro (max effort) in its own worktree; verified independently by Claude
+  (re-run suites, red proof, mutations).
 - [ ] 🟠 **Radar review debt compounds.** radar/2026-10-26 (15 files, +525/−51) and
   radar/2026-11-02 (13 files, +258/−17) are unreviewed and now conflict with main
   (`tests/test-hooks.sh`, `tests/test-correction-pairing.sh`;
@@ -3174,9 +3226,61 @@ items below include the code that keeps the next failure from being silent.
   reached main. Either review-and-land weekly as an agent task (the sweep's own
   message says "read with git log -p, then land via PR or delete"), or have
   `radar-cron.sh` rebase its open branches before each run and open a draft PR.
-- [ ] 🟡 **Session start spends its budget on archaeology.** `commit-archeology.sh`
+  PARTLY DONE 2026-11-07 (#206): `radar-cron.sh` probes each open radar branch with `git
+  merge-tree`, rebases a clean one that fell behind in a throwaway worktree, and records
+  a conflicting one; session start shows each branch's state. No draft PR (radar stays
+  local). Still open: `radar/2026-10-26` and `radar/2026-11-02` conflict with main
+  (re-checked 2026-11-07) and their content has not been reviewed.
+- [x] 🟡 **Session start spends its budget on archaeology.** `commit-archeology.sh`
   timed out on 41 of 153 starts (27%, 15 s timeout); `session-context.sh` on 4 of
   162. `--inject` runs the 60-day scan on a stale-cache start, not on every start;
   the cache is 24 h (`configs/scripts/commit-archeology.sh:9-15`). Measure that
   cost and replace or supplement the age-based cache with a per-HEAD cache, or cut
   the window.
+  DONE 2026-11-07 (#210, #212, #215): `--inject` prints the cached lesson at once and
+  refreshes a stale cache in a detached process under a per-repository lock, keyed on
+  HEAD through a `.head` sidecar; `tests/test-commit-archeology.sh`. Hosted Shell Tests
+  then double-scanned: the runner is Ubuntu 26.04, whose default `mkdir` (uutils 0.10.0)
+  reports a lost race as success, so two callers both took the `mkdir` lock. #215
+  (Claude, 2026-11-08) claims the lock with an O_EXCL pid file instead (same runner: 0 of
+  25 runs failed, against 17 of 25 on main). #212's skip of an already-scanned HEAD and
+  #215's 30 s grace period for a forking `setsid` stay as hardening.
+
+## 2026-11-08 follow-ups from verifying the 2026-11-07 fleet
+
+Non-blocking findings from Claude's verification of the Kimi K3.1 Pro fleet
+(#204-#215). Every merged PR went in without them (#209 is still open for the
+owner); none is a regression on main.
+
+- [ ] 🟡 **A lock directory without a pid file is never reclaimed** (#210, #215).
+  `commit-archeology.sh` leaves a pid-less lock to its "in-flight owner", so a
+  caller killed between `mkdir` and its pid write blocks refreshes for that
+  repository until the runtime dir is cleared. Apply #215's 30 s grace period
+  to a pid-less lock too.
+- [ ] 🟡 **The detached archaeology scan has no time bound** (#210). A hung `git`
+  keeps the refresher alive, so the lock is never stale and no later session
+  refreshes that repository.
+- [ ] 🟡 **A failed `merge -X ours` is left in progress** (#207). The tests also
+  wait 0.3 s for background work; make them event-driven.
+- [ ] 🟡 **The privacy notice for a tracked `history.jsonl` is invisible** (#214).
+  It goes only to `~/.claude/.sync-conflicts.log`, and `sync-health.sh` surfaces
+  only REFUSED lines from that file, so no session start shows it.
+- [ ] 🔵 **Next-TODO selection edge cases** (#204): a column-0 `#` inside a fenced
+  block ends an owner section early; the inline owner check reads only an item's
+  first line; the markers are listed in two places.
+- [ ] 🔵 **The `.corrupt` self-heal backup lives on tmpfs** (#205): the runtime
+  dir is cleared at reboot, and the backup goes with it.
+- [ ] 🔵 **Radar probe fallbacks are unpinned** (#206): no test pins `merge-tree`
+  against its fallback, and with no `origin/main` the probe compares against the
+  checked-out branch.
+- [ ] 🔵 **sync-health gaps** (#208): the per-probe budget clamp is unpinned; the
+  "cut short" wording; the `CLADE_SYNC_*` knobs are not in
+  `docs/configuration.md`; `check-ci-checklist.py` stays green when a listed
+  suite file is missing.
+- [ ] 🔵 **Memory-staleness coverage** (#211): several `commit:` anchor spellings
+  are undocumented and untested; an anchor under a chmod-000 directory reports as
+  missing rather than unreadable; globs with literal brackets.
+- [ ] 🔵 **Backoff test mirrors** (#213): the expected local-time strings are
+  computed with the hook's own formula (the epochs are fixed, so only rendering
+  is mirrored); a timestamp with a leading zero parses as octal (predates #213,
+  shared with memory-sync's parser).
