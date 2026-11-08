@@ -70,10 +70,17 @@ new_store() {
   printf 'SYNC_BACKEND=nfs\nSYNC_DIR=%s\n' "$STORE" > "$H/.claude/.sync-config"
   printf -- '- rule one\n' > "$STORE/corrections/rules.md"
   printf 'base\n' > "$STORE/notes.txt"
-  # A store as current sync-setup.sh creates it: the quarantine ignores are
-  # already present, so sync-push.sh's heal writes nothing and a no-op run
-  # stays a no-op.
-  printf '*.corrupt.*\nskills/.trash/\n' > "$STORE/.gitignore"
+  # All default patterns are present without the helper's comments, so a no-op
+  # store stays byte-identical and a no-op run stays offline.
+  printf '%s\n' \
+    'corrections/history.jsonl' \
+    '*.bak-*' \
+    '.backups/' \
+    'skills/synced/' \
+    '__pycache__/' \
+    '*.py[cod]' \
+    '*.corrupt.*' \
+    'skills/.trash/' > "$STORE/.gitignore"
   git init -q "$STORE"
   git -C "$STORE" config user.email test@example.com
   git -C "$STORE" config user.name test
@@ -671,6 +678,7 @@ if [[ -z "$MSB_MUTANT" && -z "${MSB_SKIP_MUTATIONS:-}" ]]; then
     local expect="$1" target="$2" name="$3" only="$4" dir="$MUT_DIR/m$NMUT" src
     mkdir -p "$dir/scripts" "$dir/hooks/lib"
     cp "$REPO_ROOT/configs/scripts/sync-push.sh" "$dir/scripts/sync-push.sh"
+    cp "$REPO_ROOT/configs/scripts/sync-store-heal.sh" "$dir/scripts/sync-store-heal.sh"
     cp "$REPO_ROOT/configs/hooks/memory-sync.sh" "$dir/hooks/memory-sync.sh"
     cp "$REPO_ROOT/configs/hooks/lib/runtime-dir.sh" "$dir/hooks/lib/runtime-dir.sh"
     cp "$REPO_ROOT/configs/hooks/lib/sync-push-backoff.sh" "$dir/hooks/lib/sync-push-backoff.sh"
